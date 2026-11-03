@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
+import { dateComparable, derniereRealisation, REALISATIONS } from '../src/lib/realisations';
 
 const pagesDir = fileURLToPath(new URL('../src/pages', import.meta.url));
 const read = (abs: string) => readFileSync(abs, 'utf-8');
@@ -69,4 +70,47 @@ describe('RÈGLE B — le nombre brut d’installations n’est pas une stat ved
       ).toEqual([]);
     });
   }
+});
+
+describe('WAUD15 — règle B : jamais un compte de chantiers dérivé, dernière livrée = la plus récente', () => {
+  const pages = ['index.astro', 'en/index.astro', 'ar/index.astro'].map((p) => read(join(pagesDir, p)));
+  it('aucune dérivation de comptage rendue comme chiffre', () => {
+    for (const code of pages) {
+      expect(code).not.toMatch(/new Set\(REALISATIONS\.map\(\(r\) => r\.ville\)\)\.size/);
+      expect(code).not.toMatch(/ChantiersVisitablesCount|chantiersVisitablesCount|visitableSitesCount/);
+      expect(code).not.toMatch(/battersInstalls\.length/);
+    }
+  });
+  it('« Dernière installation livrée » = max(date)', () => {
+    const d = derniereRealisation();
+    for (const r of REALISATIONS) expect(dateComparable(r.date)).toBeLessThanOrEqual(dateComparable(d.date));
+    expect(dateComparable('juillet 2026')).toBeGreaterThan(dateComparable('avril 2026'));
+    expect(dateComparable('inconnue')).toBe(-1);
+  });
+});
+
+describe('WAUD18 — loi 82-21 : ni montant d’amende, ni menace, ni « à confirmer »', () => {
+  const FICHIERS = [
+    'pages/regularization-article-33.astro', 'pages/en/regularization-article-33.astro', 'pages/ar/regularization-article-33.astro',
+    'pages/faq.astro', 'pages/en/faq.astro', 'pages/ar/faq.astro',
+    'pages/guides/loi-82-21-expliquee.astro', 'pages/en/guides/loi-82-21-expliquee.astro', 'pages/ar/guides/loi-82-21-expliquee.astro',
+    'pages/loi-82-21.astro', 'pages/en/loi-82-21.astro', 'pages/ar/loi-82-21.astro',
+    'content/blog/loi-82-21-autoproduction-2026.md',
+  ];
+  const LIRE = (f: string) => {
+    const s = readFileSync(fileURLToPath(new URL(`../src/${f}`, import.meta.url)), 'utf-8');
+    return s.replace(/\/\*[\s\S]*?\*\//g, ''); // en-têtes de fichier hors rendu
+  };
+  it.each(FICHIERS)('%s', (f) => {
+    const s = LIRE(f);
+    expect(s).not.toMatch(/1[ .,\u00a0]000[ .,\u00a0]000/);
+    expect(s).not.toMatch(/d[ée]cembre 2027|December 2027/i);
+    // « point de départ à confirmer » reste sur /regularization et le guide : chaîne épinglée par
+    // article33CIW413 et loi8221TarifCIW412 jusqu'à D-WAUD-4 (WAUD18-b) ; partout ailleurs, retirée.
+    if (!/regularization-article-33|guides\/loi-82-21/.test(f)) expect(s).not.toMatch(/à confirmer|to be confirmed|يجب تأكيدها/);
+    expect(s).not.toMatch(/d[ée]connexion|disconnection|فصلها عن الشبكة/i);
+    // Garde : « MAD » ou « DH » accolé à une amende ou sanction.
+    expect(s).not.toMatch(/(amende|sanction|fine|penalt|غرام|عقوب)[^.\n]{0,80}\b(MAD|DH|درهم)\b/i);
+    expect(s).not.toMatch(/\b(MAD|DH)\b[^.\n]{0,40}(amende|sanction|fine|penalt)/i);
+  });
 });

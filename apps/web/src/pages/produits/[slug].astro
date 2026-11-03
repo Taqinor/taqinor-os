@@ -33,12 +33,8 @@ const downloadHref = ficheDownloadHref(fiche);
 const estPdf = !!downloadHref && downloadHref.toLowerCase().endsWith('.pdf');
 const pairings = relatedFiches(fiche);
 
-// W326 — Offer/availability : AUCUN prix inventé. Le prix dépend de l'étude
-// (dimensionnement propre à chaque toiture), donc n'existe pas au niveau
-// produit générique ; on déclare seulement la disponibilité + le vendeur,
-// via un Offer schema.org valide sans propriété `price`/`priceCurrency`.
-// La garantie est jointe en `warranty` (WarrantyPromise), fidèle à
-// `fiche.warranty` — aucune durée inventée, reprise telle quelle de fiches.ts.
+// WAUD71 (amende W326) — pas d'Offer sans prix (disponibilité invérifiable) ; la garantie, propriété
+// d'une Offer en schema.org, reste sur la page mais hors du JSON-LD Product.
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Product',
@@ -47,18 +43,7 @@ const jsonLd = {
   brand: { '@type': 'Brand', name: fiche.marque },
   model: fiche.modele,
   url: new URL(`/produits/${fiche.slug}`, Astro.site).href,
-  offers: {
-    '@type': 'Offer',
-    availability: 'https://schema.org/InStock',
-    itemCondition: 'https://schema.org/NewCondition',
-    seller: { '@type': 'Organization', name: 'Taqinor' },
-    url: new URL('/devis/mon-toit', Astro.site).href,
-    warranty: {
-      '@type': 'WarrantyPromise',
-      durationOfWarranty: { '@type': 'QuantitativeValue', value: fiche.warranty.years, unitCode: 'ANN' },
-      ...(fiche.warranty.note ? { description: fiche.warranty.note } : {}),
-    },
-  },
+  description: fiche.resume,
 };
 ---
 
@@ -74,7 +59,7 @@ const jsonLd = {
     <Breadcrumb
       items={[
         { label: 'Accueil', href: '/' },
-        { label: 'Fiches techniques', href: '/produits' },
+        { label: 'Fiches techniques', href: '/produits/' },
         { label: fiche.nom },
       ]}
     />
@@ -195,7 +180,7 @@ const jsonLd = {
             (parcours /devis/mon-toit, libellé principal verbatim) ; le
             téléchargement PDF est rétrogradé en bouton contour. */}
         <div class="v2-rise mt-8 flex flex-wrap gap-3">
-          <a href="/devis/mon-toit" class="glow bg-brass-400 px-5 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">Obtenir mon étude gratuite &rarr;</a>
+          <a href="/devis/mon-toit/" class="glow bg-brass-400 px-5 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">Obtenir mon étude gratuite &rarr;</a>
           {downloadHref && (
             <a
               href={downloadHref}
@@ -298,7 +283,7 @@ const jsonLd = {
             <RelatedLinks
               mt="mt-5"
               links={pairings.flatMap((group) =>
-                group.fiches.map((f) => ({ href: `/produits/${f.slug}`, label: f.nom }))
+                group.fiches.map((f) => ({ href: `/produits/${f.slug}/`, label: f.nom }))
               )}
             />
           </div>
@@ -311,7 +296,7 @@ const jsonLd = {
               ? 'Ce poste n’a pas de fiche constructeur : c’est un ensemble monté sur mesure. Sa composition exacte est fixée par l’étude, dans le respect de la norme liée ci-dessus.'
               : 'Ce poste n’a pas de fiche constructeur : c’est un ensemble monté sur mesure. Sa composition exacte est fixée par l’étude, dans le respect des normes citées ci-dessus.'}
           Le raisonnement derrière chaque marque est expliqué sur
-          <a href="/équipement" class="text-brass-300 underline underline-offset-2 hover:text-white">notre page Équipement</a>.
+          <a href="/équipement/" class="text-brass-300 underline underline-offset-2 hover:text-white">notre page Équipement</a>.
         </p>
       </div>
     </section>

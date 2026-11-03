@@ -47,7 +47,7 @@
  */
 import { launch } from 'chrome-launcher';
 import lighthouse from 'lighthouse';
-import { CATEGORIES, ROUTES, SCORE_FLOOR } from './lighthouse.config.mjs';
+import { CATEGORIES, ROUTES, ROUTES_VITESSE, SCORE_FLOOR } from './lighthouse.config.mjs';
 
 function parseArgs(argv) {
   const out = {};
@@ -129,6 +129,14 @@ async function auditRoute(baseUrl, route, chromePort) {
     requestCount,
   };
 
+  // WAUD60 — zéro erreur console, zéro requête en échec.
+  const erreursConsole = lhr.audits['errors-in-console']?.details?.items?.length ?? 0;
+  const requetesEnEchec = (lhr.audits['network-requests']?.details?.items ?? [])
+    .filter((i) => Number(i.statusCode) >= 400)
+    .map((i) => i.url);
+  if (erreursConsole > 0) failures.push(`errors-in-console (${erreursConsole})`);
+  if (requetesEnEchec.length > 0) failures.push(`requêtes en échec : ${requetesEnEchec.join(', ')}`);
+
   return { route, scores, failures, lcpCheck, metrics, skipped: false };
 }
 
@@ -142,11 +150,19 @@ async function main() {
 
   const results = [];
   try {
-    for (const route of ROUTES) {
-      process.stderr.write(`Auditing ${route.name}...\n`);
-      // eslint-disable-next-line no-await-in-loop -- audits Lighthouse séquentiels voulus (un seul Chrome, mesures non concurrentes) (D-ENF22)
-      const res = await auditRoute(baseUrl, route, chrome.port);
-      results.push(res);
+    // WAUD60 — `--routes=vitesse --runs=3` : les 5 pages clés, médiane de 3 (sur le score perf).
+    const routes = args.routes === 'vitesse' ? ROUTES_VITESSE : ROUTES;
+    const passages = Math.max(1, Number(args.runs ?? 1));
+    for (const route of routes) {
+      const essais = [];
+      for (let i = 0; i < passages; i += 1) {
+        process.stderr.write(`Auditing ${route.name} (${i + 1}/${passages})...
+`);
+        // eslint-disable-next-line no-await-in-loop -- audits Lighthouse séquentiels voulus (un seul Chrome)
+        essais.push(await auditRoute(baseUrl, route, chrome.port));
+      }
+      essais.sort((a, b) => (a.scores?.performance ?? 0) - (b.scores?.performance ?? 0));
+      results.push(essais[Math.floor(essais.length / 2)]);
     }
   } finally {
     // Chrome's tmp-profile cleanup can fail on Windows with a transient

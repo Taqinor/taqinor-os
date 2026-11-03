@@ -83,13 +83,13 @@ const STEPS = [
 ];
 
 // WJ6 — sélecteur de mode, FR + AR. WJ121 — 4 vrais modes : la carte
-// « Professionnel » est scindée en 🏭 Industriel (usine, production) et
-// 🏪 Commercial (hôtel, commerce, services) ; le site n'émet plus jamais
+// « Professionnel » est scindée en Industriel (usine, production) et
+// Commercial (hôtel, commerce, services) ; le site n'émet plus jamais
 // 'professionnel' (alias serveur conservé côté lib/lead.ts + backend).
 const MODES = [
   { id: 'residentiel', fr: 'Résidentiel', ar: 'سكني', desc_fr: 'Villa, appartement', desc_ar: 'فيلا، شقة' },
-  { id: 'industriel', fr: '🏭 Industriel', ar: '🏭 صناعي', desc_fr: 'Usine, production', desc_ar: 'مصنع، إنتاج' },
-  { id: 'commercial', fr: '🏪 Commercial', ar: '🏪 تجاري', desc_fr: 'Hôtel, commerce, services', desc_ar: 'فندق، تجارة، خدمات' },
+  { id: 'industriel', fr: 'Industriel', ar: 'صناعي', desc_fr: 'Usine, production', desc_ar: 'مصنع، إنتاج' },
+  { id: 'commercial', fr: 'Commercial', ar: 'تجاري', desc_fr: 'Hôtel, commerce, services', desc_ar: 'فندق، تجارة، خدمات' },
   { id: 'agricole', fr: 'Agricole', ar: 'فلاحي', desc_fr: 'Pompage, ferme', desc_ar: 'ضخ، مزرعة' },
 ];
 
@@ -125,8 +125,8 @@ import DevisMonToitBlocC596 from '../../components/blocs/DevisMonToitBlocC596.as
 ---
 
 <Layout
-  title="Estimation solaire instantanée — Mon toit | Taqinor"
-  description="Estimation instantanée + design 3D de votre toit + signature en ligne : indiquez votre adresse et votre facture, recevez votre puissance, vos économies et votre amortissement en quelques secondes, gratuitement."
+  title="Devis panneaux solaires au Maroc — étude gratuite sur votre facture | Taqinor"
+  description="Indiquez votre adresse et votre facture d'électricité : l'équipe Taqinor prépare gratuitement votre étude solaire et vous répond sur WhatsApp."
   ogSlug="accueil"
   locales={['fr', 'en', 'ar']}
 >
@@ -241,6 +241,20 @@ import DevisMonToitBlocC596 from '../../components/blocs/DevisMonToitBlocC596.as
           <span id="mt-mode-err" hidden role="alert" class="mt-2 block text-xs text-alert-300"></span>
         </fieldset>
 
+        <!-- WAUD43 — la carte est facultative : « Continuer » reste sous les profils. -->
+        <div class="mt-5 flex justify-end">
+          <button type="button" id="mt-next-0"
+            class="inline-flex items-center justify-center gap-2 bg-brass-400 px-6 py-3 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">
+            <span data-i18n data-fr="Continuer" data-ar="متابعة">Continuer</span>
+            <!-- WJ89 — chevron SVG auto-retourné en RTL (règle globale.css
+                 `[dir="rtl"] button svg[aria-hidden="true"]`), plus jamais un
+                 glyphe « → » littéral figé dans le sens LTR. -->
+            <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <polyline points="3,1 7,5 3,9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+        </div>
+
         <!-- WJ68/QX — les champs entreprise (raison sociale / type de site /
              nb de sites) ont DÉMÉNAGÉ dans le sous-panneau PROFESSIONNEL de
              l'étape 2 (accordéon « Votre contexte ») pour garder cette étape
@@ -315,8 +329,13 @@ import DevisMonToitBlocC596 from '../../components/blocs/DevisMonToitBlocC596.as
                (plafonné à 640 px) donne une zone de travail nettement plus
                généreuse dès que l'écran a la place, sans toucher au comportement
                téléphone/tablette (`h-[44dvh]` inchangé en dessous de `lg`). -->
+          <div class="relative">
           <div id="rp9-map" class="mt-skeleton-shimmer mt-0 h-[44dvh] min-h-[280px] w-full bg-nuit-700 lg:h-[62vh] lg:max-h-[640px]"
             aria-label="Carte satellite pour repérer votre toit"></div>
+            <button type="button" id="mt-map-facade" class="absolute inset-0 z-10 flex items-center justify-center bg-nuit-700 p-4 text-center text-base font-semibold text-white transition-colors hover:text-brass-300">
+              <span class="border border-white/25 px-5 py-3">Pointer mon toit sur la carte</span>
+            </button>
+          </div>
 
           <div class="flex flex-wrap items-center gap-3 border-t border-white/10 p-4">
             <button type="button" id="rp9-finish" disabled
@@ -377,18 +396,6 @@ import DevisMonToitBlocC596 from '../../components/blocs/DevisMonToitBlocC596.as
           </div>
         </div>
 
-        <div class="mt-5 flex justify-end">
-          <button type="button" id="mt-next-0"
-            class="inline-flex items-center justify-center gap-2 bg-brass-400 px-6 py-3 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">
-            <span data-i18n data-fr="Continuer" data-ar="متابعة">Continuer</span>
-            <!-- WJ89 — chevron SVG auto-retourné en RTL (règle globale.css
-                 `[dir="rtl"] button svg[aria-hidden="true"]`), plus jamais un
-                 glyphe « → » littéral figé dans le sens LTR. -->
-            <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10" fill="none">
-              <polyline points="3,1 7,5 3,9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-          </button>
-        </div>
       </div>
 
       <!-- ============ ÉTAPE 2 — VOTRE FACTURE (+ profil énergétique) ============ -->
@@ -741,7 +748,7 @@ import DevisMonToitBlocC596 from '../../components/blocs/DevisMonToitBlocC596.as
             <p id="mt-fda-note" class="text-xs text-lune-faint">
               Aide de l'État (FDA) possible pour remplacer une pompe au butane, sous conditions,
               avec accord préalable de votre DPA/ORMVA AVANT les travaux — détails sur la page
-              <a href="/financement" class="underline decoration-white/40 underline-offset-2 hover:text-white">Financement</a>.
+              <a href="/financement/" class="underline decoration-white/40 underline-offset-2 hover:text-white">Financement</a>.
             </p>
           </div>
 
@@ -1017,7 +1024,7 @@ import DevisMonToitBlocC596 from '../../components/blocs/DevisMonToitBlocC596.as
               </p>
               <p id="mt-doc-hypotheses" hidden class="mt-doc-hypo-line"></p>
               <p class="mt-doc-hypo-line">Estimation préliminaire, affinée après visite technique — jamais un devis.</p>
-              <a href="/methodologie-estimation" class="mt-doc-link">Voir comment nous calculons cette estimation</a>
+              <a href="/methodologie-estimation/" class="mt-doc-link">Voir comment nous calculons cette estimation</a>
             </div>
 
             <!-- (6) Prochaines étapes — même récit que la page 3 du devis premium -->
@@ -1070,7 +1077,7 @@ import DevisMonToitBlocC596 from '../../components/blocs/DevisMonToitBlocC596.as
           <div id="mt-nearest-install" hidden class="mt-4 border border-brass-400/25 bg-white/5 p-3 text-sm text-white">
             <p class="tech-label text-brass-300" data-i18n data-fr="L'installation la plus proche de chez vous" data-ar="أقرب تركيب من منزلكم">L'installation la plus proche de chez vous</p>
             <p class="mt-1"><span id="mt-nearest-install-text">—</span></p>
-            <a id="mt-nearest-install-link" href="/realisations" class="mt-1 inline-block text-xs text-brass-300 underline-offset-2 hover:underline" data-i18n data-fr="Voir cette réalisation" data-ar="مشاهدة هذا الإنجاز">Voir cette réalisation</a>
+            <a id="mt-nearest-install-link" href="/realisations/" class="mt-1 inline-block text-xs text-brass-300 underline-offset-2 hover:underline" data-i18n data-fr="Voir cette réalisation" data-ar="مشاهدة هذا الإنجاز">Voir cette réalisation</a>
           </div>
 
           <!-- W360 — le coût honnête de l'attente : DÉRIVÉ de la même fourchette
@@ -1151,7 +1158,7 @@ import DevisMonToitBlocC596 from '../../components/blocs/DevisMonToitBlocC596.as
                  sont mis à jour dynamiquement par syncCityRequirement() (jamais retirés
                  en dur ici — un visiteur SANS repère doit toujours voir le champ requis). -->
             <input id="mt-city" name="city" type="text" autocomplete="address-level2" required aria-required="true"
-              aria-describedby="mt-city-err mt-city-hint" placeholder="Lue depuis la carte — modifiable si besoin" class={`${inputClass} mt-1`} />
+              aria-describedby="mt-city-err mt-city-hint" placeholder="Votre ville" data-ph-ville="Votre ville" data-ph-repere="Lue depuis la carte — modifiable si besoin" class={`${inputClass} mt-1`} />
             <span id="mt-city-hint" hidden class="mt-1 block text-xs text-lune-faint" data-i18n
               data-fr="Facultatif — votre position GPS est déjà enregistrée. L'adresse reste utile pour le courrier."
               data-ar="اختياري — تم تسجيل موقعكم عبر GPS بالفعل. يبقى العنوان مفيدًا للمراسلة.">
@@ -1240,28 +1247,28 @@ import DevisMonToitBlocC596 from '../../components/blocs/DevisMonToitBlocC596.as
                 <div class="mt-2 border border-white/10 bg-white/5 p-2">
                   <svg id="mt-occ-chart" width="100%" height="140" viewBox="0 0 320 140"
                     preserveAspectRatio="none" role="img"
-                    aria-label="Poids de forme horaires des trois profils d'occupation"></svg>
+                    aria-label="Courbes de consommation horaires des trois profils d’occupation"></svg>
                   <p class="mt-1 text-[11px] text-lune-faint" data-i18n
-                    data-fr="Axe vertical : poids de forme (sans unité)"
-                    data-ar="المحور العمودي: وزن الشكل (بدون وحدة)">
-                    Axe vertical&nbsp;: poids de forme (sans unité)
+                    data-fr="Hauteur de la courbe : part de la consommation selon l'heure"
+                    data-ar="ارتفاع المنحنى: حصة الاستهلاك حسب الساعة">
+                    Hauteur de la courbe&nbsp;: part de la consommation selon l'heure
                   </p>
                 </div>
                 <div class="mt-2 grid grid-cols-3 gap-2">
                   <button type="button" class="mt-occ-btn cine-card relative border border-white/15 p-2.5 text-center text-xs text-white transition-colors" data-occ-id="presence_jour" aria-pressed="false">
                     <span class="mx-auto mb-1 block h-1.5 w-6" style="background:#2a78d6"></span>
                     <span data-i18n data-fr="Présent" data-ar="حاضر">Présent</span>
-                    <span class="mt-occ-chosen mt-1 block text-[10px] font-bold text-ok-400" hidden data-i18n data-fr="CHOISIE pour ce client" data-ar="مُختار لهذا العميل">CHOISIE pour ce client</span>
+                    <span class="mt-occ-chosen mt-1 block text-[10px] font-bold text-ok-400" hidden data-i18n data-fr="Votre choix" data-ar="اختياركم">Votre choix</span>
                   </button>
                   <button type="button" class="mt-occ-btn cine-card relative border border-white/15 p-2.5 text-center text-xs text-white transition-colors" data-occ-id="absence_jour" aria-pressed="false">
                     <span class="mx-auto mb-1 block h-1.5 w-6" style="background:#eb6834"></span>
                     <span data-i18n data-fr="Absent" data-ar="غائب">Absent</span>
-                    <span class="mt-occ-chosen mt-1 block text-[10px] font-bold text-ok-400" hidden data-i18n data-fr="CHOISIE pour ce client" data-ar="مُختار لهذا العميل">CHOISIE pour ce client</span>
+                    <span class="mt-occ-chosen mt-1 block text-[10px] font-bold text-ok-400" hidden data-i18n data-fr="Votre choix" data-ar="اختياركم">Votre choix</span>
                   </button>
                   <button type="button" class="mt-occ-btn cine-card relative border border-white/15 p-2.5 text-center text-xs text-white transition-colors" data-occ-id="presence_partielle" aria-pressed="false">
                     <span class="mx-auto mb-1 block h-1.5 w-6" style="background:#1baf7a"></span>
                     <span data-i18n data-fr="Partiel" data-ar="جزئي">Partiel</span>
-                    <span class="mt-occ-chosen mt-1 block text-[10px] font-bold text-ok-400" hidden data-i18n data-fr="CHOISIE pour ce client" data-ar="مُختار لهذا العميل">CHOISIE pour ce client</span>
+                    <span class="mt-occ-chosen mt-1 block text-[10px] font-bold text-ok-400" hidden data-i18n data-fr="Votre choix" data-ar="اختياركم">Votre choix</span>
                   </button>
                 </div>
                 <input type="hidden" id="mt-occupation-jour" name="occupation_jour" />
@@ -1454,7 +1461,7 @@ import DevisMonToitBlocC596 from '../../components/blocs/DevisMonToitBlocC596.as
           <div id="mt-success" hidden class="border border-ok-600/40 bg-ok-600/10 p-4 text-sm text-white">
             <p class="font-semibold" data-i18n data-fr="Merci ! Votre demande est enregistrée." data-ar="شكراً! تم تسجيل طلبك.">Merci ! Votre demande est enregistrée.</p>
             <p class="mt-1 text-lune-soft" data-i18n data-fr="Notre équipe prépare votre étude et vous recontacte très vite — souvent sur WhatsApp." data-ar="فريقنا يُعدّ دراستك ويتواصل معك قريباً — غالباً عبر واتساب.">Notre équipe prépare votre étude et vous recontacte très vite — souvent sur WhatsApp.</p>
-            <!-- WJ52 — référence courte : comble le vide post-soumission (24–48 h
+            <!-- WJ52 — référence courte : comble le vide post-soumission (rappel
                  d'attente) par un artefact concret à mentionner sur WhatsApp. -->
             <p class="mt-2 text-lune-soft">
               <span data-i18n data-fr="Votre référence :" data-ar="مرجعكم:">Votre référence&nbsp;:</span>

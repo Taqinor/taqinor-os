@@ -74,6 +74,19 @@
     U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
+/* WAUD79 — repli des titres `.display` : ils sont composés à font-stretch 112 %, soit
+   11 % plus larges que le repli à 104 % ci-dessus (mesuré en Chrome sur le H1 de
+   l'accueil : 3178 px contre 2866 px à corps 100 px) — d'où le CLS de 0,085 à
+   l'échange de police, pas l'animation du titre. 104 % × 1,109 = 115 %. */
+@font-face {
+  font-family: 'Archivo Fallback Large';
+  src: local('Arial Bold'), local('Arial');
+  size-adjust: 115%;
+  ascent-override: 83%;
+  descent-override: 20%;
+  line-gap-override: 0%;
+}
+
 /* W215 — Métrique de repli pour Hanken Grotesk : Arial Regular. */
 @font-face {
   font-family: 'Hanken Fallback';
@@ -320,7 +333,7 @@ summary:focus-visible {
 
 /* Titres display — Archivo élargi, autorité d'imprimé technique */
 .display {
-  font-family: var(--font-display);
+  font-family: 'Archivo', 'Archivo Fallback Large', 'Hanken Grotesk', 'Hanken Fallback', sans-serif;
   font-weight: 800;
   font-stretch: 112%;
   letter-spacing: -0.012em;
@@ -588,6 +601,10 @@ summary:focus-visible {
       background-position: 150% 0;
       -webkit-background-clip: text;
       background-clip: text;
+      /* WAUD63 — une ombre de texte se peint PAR-DESSUS le texte clippé (titre gris) : l'ombre
+         passe en filtre, appliqué après le remplissage. */
+      text-shadow: none;
+      filter: drop-shadow(0 2px 14px rgb(7 11 29 / 0.72));
       /* Le remplissage vient du dégradé blanc opaque clippé au texte : le
          texte de base reste `transparent` mais peint plein blanc via le
          dégradé. -webkit-text-fill-color forcé transparent pour que Safari
@@ -803,12 +820,15 @@ summary:focus-visible {
 /* Corps de texte "version 2" : taille fluide, interligne aéré */
 /* W367 — text-wrap: pretty (voir prose.css) : mêmes garanties, support
    progressif, aucun effet sur le rythme RTL. */
-.v2-body {
-  font-family: var(--font-sans);
-  font-size: clamp(1rem, 1.5vw + 0.25rem, 1.125rem);
-  line-height: 1.7;
-  color: var(--color-lune-soft);
-  text-wrap: pretty;
+/* WAUD63 — en @layer : hors couche, la couleur claire écrasait text-encre-soft sur fond clair (1,89:1). */
+@layer components {
+  .v2-body {
+    font-family: var(--font-sans);
+    font-size: clamp(1rem, 1.5vw + 0.25rem, 1.125rem);
+    line-height: 1.7;
+    color: var(--color-lune-soft);
+    text-wrap: pretty;
+  }
 }
 
 /* ─── W175 — Eyebrow canonique sur fond clair (« salle blanche ») ──────────

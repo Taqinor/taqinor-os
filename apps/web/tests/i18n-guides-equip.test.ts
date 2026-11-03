@@ -103,3 +103,10 @@ describe('W67 — les 3 guides rédactionnels gardent leur JSON-LD Article (EN +
     expect(PAGES.filter((p) => p.article)).toHaveLength(6);
   });
 });
+
+describe('WAUD22 — aucune affirmation de presse sans lien', () => {
+  it.each(['équipement', 'en/équipement', 'ar/équipement', 'pourquoi-taqinor', 'en/pourquoi-taqinor', 'ar/pourquoi-taqinor'])('%s', (p) => {
+    const code = readFileSync(`${process.cwd()}/src/pages/${p}.astro`, 'utf-8');
+    expect(code).not.toMatch(/presse marocaine|Moroccan press|الصحافة المغربية/);
+  });
+});

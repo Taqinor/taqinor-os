@@ -126,3 +126,16 @@ describe('W139 — sitemap', () => {
     expect(sitemapExcluded('/preview/toiture-3d-pro-11')).toBe(true);
   });
 });
+
+describe('WAUD67 — aucune date de blog antérieure au premier commit', () => {
+  // Premier commit de ces 8 articles (git log --diff-filter=A, relevé le 03/11/2026) : 21/06/2026.
+  const PREMIER_COMMIT = '2026-06-21';
+  it('aucune pubDate avant le premier commit', () => {
+    const dossier = fileURLToPath(new URL('../src/content/blog/', import.meta.url));
+    for (const f of readdirSync(dossier).filter((n) => n.endsWith('.md'))) {
+      const m = /^pubDate:\s*(\d{4}-\d{2}-\d{2})/m.exec(readFileSync(`${dossier}${f}`, 'utf-8'));
+      expect(m, f).not.toBeNull();
+      expect(m![1] >= PREMIER_COMMIT, `${f} : ${m![1]}`).toBe(true);
+    }
+  });
+});

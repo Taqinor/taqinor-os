@@ -93,9 +93,9 @@ type LocalizedCityContent = Record<Locale, CityContent>;
  * le `localizeNavHref` du template gère le repli FR sans lien mort).
  */
 const REGIMES_LINK: Record<Locale, string> = {
-  fr: '<a href="/loi-82-21" class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">Voir les régimes →</a>',
-  en: '<a href="/loi-82-21" class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">See the regimes →</a>',
-  ar: '<a href="/loi-82-21" class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">اطّلع على الأنظمة →</a>',
+  fr: '<a href="/loi-82-21/" class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">Voir les régimes →</a>',
+  en: '<a href="/loi-82-21/" class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">See the regimes →</a>',
+  ar: '<a href="/loi-82-21/" class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">اطّلع على الأنظمة →</a>',
 };
 
 /**
@@ -132,7 +132,7 @@ export const FALLBACK_CITY_CONTENT: LocalizedCityContent = {
       },
     },
     closer: 'Faites étudier votre toiture {intro} avant de signer quoi que ce soit.',
-    title: 'Installation solaire {intro} — étude, pose et loi 82-21 | Taqinor',
+    title: 'Installation de panneaux solaires {intro} — étude, pose et loi 82-21 | Taqinor',
     description:
       'Installation solaire {intro} : dimensionnement par l’ingénierie sur votre facture, pose, suivi de production en temps réel et conformité loi 82-21. Étude gratuite.',
     roiNuance:
@@ -202,7 +202,7 @@ export const FALLBACK_CITY_CONTENT: LocalizedCityContent = {
       },
     },
     closer: 'ادرس سطحك {intro} قبل أن توقّع أي شيء.',
-    title: 'تركيب شمسي {intro} — دراسة وتركيب والقانون 82-21 | Taqinor',
+    title: 'تركيب الألواح الشمسية {intro} — دراسة وتركيب والقانون 82-21 | Taqinor',
     description:
       'تركيب شمسي {intro}: تحديد المقاس بالهندسة انطلاقاً من فاتورتك، تركيب، متابعة الإنتاج في الوقت الحقيقي والامتثال للقانون 82-21. دراسة مجانية.',
     roiNuance:
@@ -218,7 +218,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         'À Casablanca, nous avons déjà posé : une villa de 11,36 kWc face à la skyline, avec suivi de production ' +
         'en temps réel. C’est ce chantier-là, pas une brochure, qui dit ce qu’une toiture de la ville rend vraiment.',
       sunshineContext:
-        'Sur la côte, l’air marin et la brume matinale tempèrent les pics : ces ≈ 2 950 h restent un ordre de grandeur, ' +
+        'Sur la côte, l’air marin et la brume matinale tempèrent les pics : ce potentiel reste un ordre de grandeur, ' +
         'pas une garantie. La production réelle d’un toit casablancais se calcule sur son orientation et son ombrage, jamais sur la seule durée d’ensoleillement.',
       pillars: {
         study: {
@@ -241,7 +241,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         },
       },
       closer: 'Votre toiture casablancaise mérite d’être chiffrée sur vos kWh, pas sur une moyenne.',
-      title: 'Installation solaire à Casablanca — étude, pose et loi 82-21 | Taqinor',
+      title: 'Installation de panneaux solaires à Casablanca — étude, pose et loi 82-21 | Taqinor',
       description:
         'Installation solaire à Casablanca : une villa de 11,36 kWc y bénéficie d’un suivi de production en temps réel. Étude dimensionnée sur votre facture, pose et déclaration loi 82-21.',
       roiNuance:
@@ -257,7 +257,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         'In Casablanca, we have already installed: an 11.36 kWc villa facing the skyline, with real-time ' +
         'production monitoring. It is that project, not a brochure, that tells what a roof in the city really yields.',
       sunshineContext:
-        'On the coast, sea air and morning mist temper the peaks: those ≈ 2,950 h remain an order of magnitude, ' +
+        'On the coast, sea air and morning mist temper the peaks: that potential remains an order of magnitude, ' +
         'not a guarantee. The real output of a Casablanca roof is computed from its orientation and shading, never from sunshine duration alone.',
       pillars: {
         study: {
@@ -295,7 +295,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         'في الدار البيضاء، ركّبنا بالفعل: فيلا بقدرة 11,36 kWc تواجه أفق المدينة، مع متابعة الإنتاج ' +
         'في الوقت الحقيقي. هذا الورش، لا أي مطوية، هو الذي يقول ما يعطيه سطح في المدينة حقاً.',
       sunshineContext:
-        'على الساحل، يخفّف الهواء البحري والضباب الصباحي من الذُّرى: تبقى هذه الـ ≈ 2 950 ساعة رتبة قدر، ' +
+        'على الساحل، يخفّف الهواء البحري والضباب الصباحي من الذُّرى: تبقى هذا الإمكان رتبة قدر، ' +
         'لا ضماناً. الإنتاج الحقيقي لسطح بيضاوي يُحسب من توجيهه وتظليله، لا من مدة الإشعاع وحدها.',
       pillars: {
         study: {
@@ -318,7 +318,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         },
       },
       closer: 'سطحك البيضاوي يستحقّ أن يُسعَّر على كيلوواط-ساعاتك، لا على معدّل.',
-      title: 'تركيب شمسي في الدار البيضاء — دراسة وتركيب والقانون 82-21 | Taqinor',
+      title: 'تركيب الألواح الشمسية في الدار البيضاء — دراسة وتركيب والقانون 82-21 | Taqinor',
       description:
         'تركيب شمسي في الدار البيضاء: فيلا بقدرة 11,36 kWc مع متابعة الإنتاج في الوقت الحقيقي. دراسة محسوبة على فاتورتك، تركيب وتصريح القانون 82-21.',
       roiNuance:
@@ -336,7 +336,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         'Capitale administrative, Rabat additionne villas de l’Agdal, maisons de Hay Riad et toits-terrasses du bord de mer. ' +
         'Taqinor y intervient comme partout au Maroc : on lit d’abord votre facture, puis on dimensionne — le devis ne précède jamais le calcul.',
       sunshineContext:
-        'Avec ≈ 2 900 h, le littoral atlantique de Rabat offre un potentiel solide sans la fournaise de l’intérieur. ' +
+        'Le littoral atlantique de Rabat offre un potentiel solide sans la fournaise de l’intérieur. ' +
         'Mais c’est l’orientation de votre terrasse et l’ombre des immeubles voisins qui décident de la production, pas cette moyenne météo.',
       pillars: {
         study: {
@@ -359,9 +359,9 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         },
       },
       closer: 'À Rabat, faites dimensionner votre toiture par l’ingénierie avant d’engager un budget.',
-      title: 'Installation solaire à Rabat — étude, pose et loi 82-21 | Taqinor',
+      title: 'Installation de panneaux solaires à Rabat — étude, pose et loi 82-21 | Taqinor',
       description:
-        'Installation solaire à Rabat : Taqinor dimensionne sur votre facture, pose et déclare au titre de la loi 82-21. Suivi de production en temps réel, chantiers réels mesurés dans la région.',
+        'Installation solaire à Rabat : Taqinor dimensionne sur votre facture, pose et déclare au titre de la loi 82-21. Suivi de production sur les installations raccordées.',
       roiNuance:
         'Avec ≈ 2 900 h par an, Rabat a le deuxième gisement le plus faible de nos cinq villes : de quoi tenir dans la ' +
         'bande 3–7 ans, plutôt vers sa partie haute pour un dimensionnement identique — l’étude sur votre facture reste ' +
@@ -378,7 +378,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         'The administrative capital, Rabat adds up Agdal villas, Hay Riad houses and seafront roof terraces. ' +
         'Taqinor works here as everywhere in Morocco: first we read your bill, then we size — the quote never precedes the calculation.',
       sunshineContext:
-        'At ≈ 2,900 h, Rabat’s Atlantic coast offers solid potential without the furnace of the interior. ' +
+        'Rabat’s Atlantic coast offers solid potential without the furnace of the interior. ' +
         'But it is the orientation of your terrace and the shade of neighbouring buildings that decide the output, not this weather average.',
       pillars: {
         study: {
@@ -403,7 +403,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       closer: 'In Rabat, have your roof sized by engineering before you commit a budget.',
       title: 'Solar installation in Rabat — assessment, install and Law 82-21 | Taqinor',
       description:
-        'Solar installation in Rabat: Taqinor sizes on your bill, installs and declares under Law 82-21. Real-time production monitoring, real projects measured in the region.',
+        'Solar installation in Rabat: Taqinor sizes on your bill, installs and declares under Law 82-21. Production monitoring on connected installations.',
       roiNuance:
         'At ≈ 2,900 h a year, Rabat has the second-lightest resource of our five cities: still well within the 3–7 year ' +
         'band, typically toward its upper half for an identical system size — the assessment on your bill is what really pins it down.',
@@ -418,7 +418,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         'العاصمة الإدارية، الرباط تجمع بين فيلات أگدال ومنازل حي الرياض وأسطح بحرية. ' +
         'تشتغل تاكينور هنا كما في كل أنحاء المغرب: نقرأ فاتورتك أولاً، ثم نحدّد المقاس — الثمن لا يسبق الحساب أبداً.',
       sunshineContext:
-        'بـ ≈ 2 900 ساعة، يوفّر ساحل الرباط الأطلسي إمكانات صلبة دون قيظ الداخل. ' +
+        'يوفّر ساحل الرباط الأطلسي إمكانات صلبة دون قيظ الداخل. ' +
         'لكن توجيه سطحك وظلّ العمارات المجاورة هما من يقرّران الإنتاج، لا هذا المعدّل المناخي.',
       pillars: {
         study: {
@@ -441,9 +441,9 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         },
       },
       closer: 'في الرباط، حدّد مقاس سطحك بالهندسة قبل أن تلتزم بميزانية.',
-      title: 'تركيب شمسي في الرباط — دراسة وتركيب والقانون 82-21 | Taqinor',
+      title: 'تركيب الألواح الشمسية في الرباط — دراسة وتركيب والقانون 82-21 | Taqinor',
       description:
-        'تركيب شمسي في الرباط: تاكينور تحدّد المقاس على فاتورتك، تركّب وتصرّح بموجب القانون 82-21. متابعة الإنتاج في الوقت الحقيقي، أوراش حقيقية مقيسة في الجهة.',
+        'تركيب شمسي في الرباط: تاكينور تحدّد المقاس على فاتورتك، تركّب وتصرّح بموجب القانون 82-21. متابعة الإنتاج في الوقت الحقيقي.',
       roiNuance:
         'بـ ≈ 2 900 ساعة في السنة، تملك الرباط ثاني أخفّ مخزون بين مدننا الخمس: يبقى ضمن بند 3–7 سنوات، ' +
         'غالباً في نصفه الأعلى لمقاس مماثل — والدراسة على فاتورتك هي ما يحدّده فعلاً.',
@@ -458,11 +458,11 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
   marrakech: {
     fr: {
       heroLead:
-        'Marrakech compte parmi les villes les plus ensoleillées du pays : ≈ 3 000 h par an. ' +
+        'Marrakech compte parmi les villes les plus ensoleillées du pays. ' +
         'Ce gisement est réel — reste à le convertir sans surdimensionner. Taqinor part de votre facture pour fixer la puissance juste, ni plus, ni moins.',
       sunshineContext:
         'L’intérieur sec et la forte chaleur estivale poussent la climatisation — et la facture diurne — vers le haut. ' +
-        'Ces ≈ 3 000 h disent le potentiel ; la production effective dépend de votre toiture, de la poussière et de l’ombrage, que l’étude mesure une à une.',
+        'Ce gisement dit le potentiel ; la production effective dépend de votre toiture, de la poussière et de l’ombrage, que l’étude mesure une à une.',
       pillars: {
         study: {
           heading: 'Le surdimensionnement coûte cher, ici aussi',
@@ -484,9 +484,9 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         },
       },
       closer: 'À Marrakech, le bon dimensionnement vaut mieux qu’un grand champ : faites étudier votre toiture.',
-      title: 'Installation solaire à Marrakech — étude, pose et loi 82-21 | Taqinor',
+      title: 'Installation de panneaux solaires à Marrakech — étude, pose et loi 82-21 | Taqinor',
       description:
-        'Installation solaire à Marrakech : ≈ 3 000 h de soleil par an, mais on dimensionne sur votre facture, pas sur la météo. Pose, suivi de production en temps réel et conformité loi 82-21.',
+        'Installation solaire à Marrakech : on dimensionne sur votre facture, pas sur la météo. Pose, suivi de production en temps réel et conformité loi 82-21.',
       roiNuance:
         'Avec ≈ 3 000 h par an, Marrakech se classe au-dessus de la moyenne de nos cinq villes : un gisement qui tend la ' +
         'bande 3–7 ans vers sa partie basse pour un dimensionnement comparable — sans jamais dispenser l’étude de vérifier votre toiture.',
@@ -499,11 +499,11 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
     },
     en: {
       heroLead:
-        'Marrakech ranks among the sunniest cities in the country: ≈ 3,000 h a year. ' +
+        'Marrakech ranks among the sunniest cities in the country. ' +
         'That resource is real — what remains is to convert it without oversizing. Taqinor starts from your bill to set the right power, no more, no less.',
       sunshineContext:
         'The dry interior and intense summer heat push air conditioning — and the daytime bill — upward. ' +
-        'Those ≈ 3,000 h state the potential; actual output depends on your roof, the dust and the shading, which the assessment measures one by one.',
+        'That resource states the potential; actual output depends on your roof, the dust and the shading, which the assessment measures one by one.',
       pillars: {
         study: {
           heading: 'Oversizing is costly here too',
@@ -527,7 +527,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       closer: 'In Marrakech, the right sizing beats a large array: have your roof assessed.',
       title: 'Solar installation in Marrakech — assessment, install and Law 82-21 | Taqinor',
       description:
-        'Solar installation in Marrakech: ≈ 3,000 h of sun a year, but we size on your bill, not on the weather. Install, real-time production monitoring and Law 82-21 compliance.',
+        'Solar installation in Marrakech: we size on your bill, not on the weather. Install, real-time production monitoring and Law 82-21 compliance.',
       roiNuance:
         'At ≈ 3,000 h a year, Marrakech ranks above the average of our five cities: a resource that pulls the 3–7 year ' +
         'band toward its lower half for a comparable system size — never a substitute for checking your actual roof.',
@@ -540,11 +540,11 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
     },
     ar: {
       heroLead:
-        'مراكش من أكثر مدن البلاد إشعاعاً شمسياً: ≈ 3 000 ساعة في السنة. ' +
+        'مراكش من أكثر مدن البلاد إشعاعاً شمسياً. ' +
         'هذا المخزون حقيقي — يبقى تحويله دون مبالغة في المقاس. تنطلق تاكينور من فاتورتك لتحديد القدرة المناسبة، لا أكثر ولا أقل.',
       sunshineContext:
         'الداخل الجاف والحرّ الصيفي الشديد يدفعان التكييف — والفاتورة النهارية — إلى الأعلى. ' +
-        'هذه الـ ≈ 3 000 ساعة تقول الإمكان؛ أمّا الإنتاج الفعلي فيتوقّف على سطحك والغبار والتظليل، وهو ما تقيسه الدراسة واحداً واحداً.',
+        'هذا المخزون يقول الإمكان؛ أمّا الإنتاج الفعلي فيتوقّف على سطحك والغبار والتظليل، وهو ما تقيسه الدراسة واحداً واحداً.',
       pillars: {
         study: {
           heading: 'المبالغة في المقاس مكلفة هنا أيضاً',
@@ -566,9 +566,9 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         },
       },
       closer: 'في مراكش، المقاس الصحيح خير من حقل كبير: ادرس سطحك.',
-      title: 'تركيب شمسي في مراكش — دراسة وتركيب والقانون 82-21 | Taqinor',
+      title: 'تركيب الألواح الشمسية في مراكش — دراسة وتركيب والقانون 82-21 | Taqinor',
       description:
-        'تركيب شمسي في مراكش: ≈ 3 000 ساعة شمس في السنة، لكننا نحدّد المقاس على فاتورتك، لا على الطقس. تركيب، متابعة الإنتاج في الوقت الحقيقي والامتثال للقانون 82-21.',
+        'تركيب شمسي في مراكش: نحدّد المقاس على فاتورتك، لا على الطقس. تركيب، متابعة الإنتاج في الوقت الحقيقي والامتثال للقانون 82-21.',
       roiNuance:
         'بـ ≈ 3 000 ساعة في السنة، تُصنَّف مراكش فوق متوسط مدننا الخمس: مخزون يشدّ بند 3–7 سنوات نحو نصفه الأدنى ' +
         'لمقاس مماثل — دون أن يعفي ذلك أبداً من فحص سطحك فعلياً.',
@@ -583,10 +583,10 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
   tanger: {
     fr: {
       heroLead:
-        'Tanger reçoit ≈ 2 800 h de soleil par an — la valeur la plus basse de nos cinq villes, et un détroit balayé par le vent. ' +
+        'Tanger, c’est un détroit balayé par le vent. ' +
         'Raison de plus pour calculer au lieu de promettre : Taqinor dimensionne votre installation sur votre facture, pas sur une moyenne flatteuse.',
       sunshineContext:
-        'Plus au nord, plus humide, plus venté : le Nord tangérois ensoleille un peu moins que le centre du pays, et ces ≈ 2 800 h le reflètent. ' +
+        'Plus au nord, plus humide, plus venté : le Nord tangérois ensoleille un peu moins que le centre du pays. ' +
         'C’est précisément pourquoi l’orientation et l’inclinaison de votre toit pèsent ici davantage — l’étude les optimise.',
       pillars: {
         study: {
@@ -609,9 +609,9 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         },
       },
       closer: 'À Tanger, un toit bien orienté vaut un grand champ mal posé : faisons l’étude d’abord.',
-      title: 'Installation solaire à Tanger — étude, pose et loi 82-21 | Taqinor',
+      title: 'Installation de panneaux solaires à Tanger — étude, pose et loi 82-21 | Taqinor',
       description:
-        'Installation solaire à Tanger : ≈ 2 800 h de soleil et un détroit venté — d’où un dimensionnement calculé au degré près sur votre facture. Pose, suivi de production en temps réel et loi 82-21.',
+        'Installation solaire à Tanger : un détroit venté — d’où un dimensionnement calculé au degré près sur votre facture. Pose, suivi de production en temps réel et loi 82-21.',
       roiNuance:
         'Avec ≈ 2 800 h par an, Tanger a le gisement le plus faible de nos cinq villes : à dimensionnement égal, cela ' +
         'pousse plutôt vers la partie haute de la bande 3–7 ans — raison de plus pour caler l’orientation et l’inclinaison ' +
@@ -625,10 +625,10 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
     },
     en: {
       heroLead:
-        'Tangier receives ≈ 2,800 h of sun a year — the lowest figure of our five cities, and a strait swept by wind. ' +
+        'Tangier is a strait swept by wind. ' +
         'All the more reason to calculate rather than promise: Taqinor sizes your installation on your bill, not on a flattering average.',
       sunshineContext:
-        'Further north, more humid, windier: the Tangier North gets a little less sun than the centre of the country, and those ≈ 2,800 h reflect it. ' +
+        'Further north, more humid, windier: the Tangier North gets a little less sun than the centre of the country. ' +
         'That is precisely why the orientation and tilt of your roof weigh more here — the assessment optimizes them.',
       pillars: {
         study: {
@@ -653,7 +653,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       closer: 'In Tangier, a well-oriented roof beats a large, poorly fitted array: let’s do the assessment first.',
       title: 'Solar installation in Tangier — assessment, install and Law 82-21 | Taqinor',
       description:
-        'Solar installation in Tangier: ≈ 2,800 h of sun and a windy strait — hence sizing calculated to the degree on your bill. Install, real-time production monitoring and Law 82-21.',
+        'Solar installation in Tangier: a windy strait — hence sizing calculated to the degree on your bill. Install, real-time production monitoring and Law 82-21.',
       roiNuance:
         'At ≈ 2,800 h a year, Tangier has the lightest resource of our five cities: for an identical system size, that ' +
         'leans toward the upper end of the 3–7 year band — one more reason to get the tilt and orientation right instead ' +
@@ -667,10 +667,10 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
     },
     ar: {
       heroLead:
-        'تتلقّى طنجة ≈ 2 800 ساعة شمس في السنة — أدنى قيمة بين مدننا الخمس، ومضيق يجتاحه الريح. ' +
+        'طنجة مضيق يجتاحه الريح. ' +
         'سبب إضافي للحساب بدل الوعد: تحدّد تاكينور مقاس تركيبتك على فاتورتك، لا على معدّل مُغرٍ.',
       sunshineContext:
-        'أكثر شمالاً، أكثر رطوبة، أكثر رياحاً: شمال طنجة أقل إشعاعاً قليلاً من وسط البلاد، وهذه الـ ≈ 2 800 ساعة تعكس ذلك. ' +
+        'أكثر شمالاً، أكثر رطوبة، أكثر رياحاً: شمال طنجة أقل إشعاعاً قليلاً من وسط البلاد. ' +
         'لهذا بالذات يزن توجيه سطحك وميله أكثر هنا — والدراسة تُحسّنهما.',
       pillars: {
         study: {
@@ -693,9 +693,9 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         },
       },
       closer: 'في طنجة، سطح حسن التوجيه خير من حقل كبير سيّئ التركيب: لنبدأ بالدراسة.',
-      title: 'تركيب شمسي في طنجة — دراسة وتركيب والقانون 82-21 | Taqinor',
+      title: 'تركيب الألواح الشمسية في طنجة — دراسة وتركيب والقانون 82-21 | Taqinor',
       description:
-        'تركيب شمسي في طنجة: ≈ 2 800 ساعة شمس ومضيق ذو رياح — ومن ثَمّ مقاس محسوب بدقة الدرجة على فاتورتك. تركيب، متابعة الإنتاج في الوقت الحقيقي والقانون 82-21.',
+        'تركيب شمسي في طنجة: مضيق ذو رياح — ومن ثَمّ مقاس محسوب بدقة الدرجة على فاتورتك. تركيب، متابعة الإنتاج في الوقت الحقيقي والقانون 82-21.',
       roiNuance:
         'بـ ≈ 2 800 ساعة في السنة، تملك طنجة أخفّ مخزون بين مدننا الخمس: لمقاس مماثل، يميل ذلك نحو الطرف الأعلى ' +
         'من بند 3–7 سنوات — سبب إضافي لضبط الميل والتوجيه بدل الاعتماد على الطقس وحده.',
@@ -711,16 +711,16 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
   agadir: {
     fr: {
       heroLead:
-        'Agadir affiche l’un des meilleurs gisements de nos cinq villes : ≈ 3 400 h par an sur le Souss. ' +
+        'Agadir affiche l’un des meilleurs gisements de nos cinq villes sur le Souss. ' +
         'Le gisement est solide pour le pays — mais une installation se juge à ce qu’elle produit chez vous, pas au soleil de la baie. On dimensionne sur votre facture.',
       sunshineContext:
-        'Climat semi-aride, ciel dégagé une grande partie de l’année : ces ≈ 3 400 h placent Agadir parmi les mieux exposées du littoral. ' +
+        'Climat semi-aride, ciel dégagé une grande partie de l’année  : ce climat place Agadir parmi les mieux exposées du littoral. ' +
         'Reste que votre toiture, son orientation et son ombrage déterminent la production réelle — c’est ce que l’étude chiffre, le soleil ne suffit pas.',
       pillars: {
         study: {
           heading: 'Un fort gisement ne dispense pas de calculer',
           body:
-            'Sous les ≈ 3 400 h du Souss, on pourrait être tenté de poser sans réfléchir. On dimensionne quand même sur votre consommation, ' +
+            'Sous le soleil du Souss, on pourrait être tenté de poser sans réfléchir. On dimensionne quand même sur votre consommation, ' +
             'pas sur le climat — étude validée par le fondateur, docteur-ingénieur.',
         },
         measure: {
@@ -737,9 +737,9 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         },
       },
       closer: 'À Agadir, le soleil est acquis ; ce qui compte, c’est le dimensionnement. Faites étudier votre toiture.',
-      title: 'Installation solaire à Agadir — étude, pose et loi 82-21 | Taqinor',
+      title: 'Installation de panneaux solaires à Agadir — étude, pose et loi 82-21 | Taqinor',
       description:
-        'Installation solaire à Agadir : ≈ 3 400 h de soleil par an, l’un des meilleurs gisements de nos villes — mais on dimensionne sur votre facture. Pose, suivi de production en temps réel et loi 82-21.',
+        'Installation solaire à Agadir : l’un des meilleurs gisements de nos villes — mais on dimensionne sur votre facture. Pose, suivi de production en temps réel et loi 82-21.',
       roiNuance:
         'Avec ≈ 3 400 h par an, Agadir affiche l’un des meilleurs gisements de nos cinq villes : à dimensionnement égal, cela pousse ' +
         'la bande 3–7 ans vers sa partie basse — un avantage réel, que seule l’étude sur votre facture transforme en chiffre exact.',
@@ -752,16 +752,16 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
     },
     en: {
       heroLead:
-        'Agadir has one of the best resources of our five cities: ≈ 3,400 h a year over the Souss. ' +
+        'Agadir has one of the best resources of our five cities over the Souss. ' +
         'The resource is strong for the country — but an installation is judged by what it produces at your place, not by the sun over the bay. We size on your bill.',
       sunshineContext:
-        'Semi-arid climate, clear sky for much of the year: those ≈ 3,400 h put Agadir among the best-exposed spots on the coast. ' +
+        'Semi-arid climate, clear sky for much of the year: that climate puts Agadir among the best-exposed spots on the coast. ' +
         'Still, your roof, its orientation and its shading determine the real output — that is what the assessment quantifies; the sun is not enough.',
       pillars: {
         study: {
           heading: 'A strong resource does not excuse you from calculating',
           body:
-            'Under the ≈ 3,400 h of the Souss, one could be tempted to install without thinking. We still size on your consumption, ' +
+            'Under the Souss sun, one could be tempted to install without thinking. We still size on your consumption, ' +
             'not on the climate — assessment validated by the founder, a doctor-engineer.',
         },
         measure: {
@@ -780,7 +780,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       closer: 'In Agadir, the sun is a given; what counts is the sizing. Have your roof assessed.',
       title: 'Solar installation in Agadir — assessment, install and Law 82-21 | Taqinor',
       description:
-        'Solar installation in Agadir: ≈ 3,400 h of sun a year, one of the best resources of our cities — but we size on your bill. Install, real-time production monitoring and Law 82-21.',
+        'Solar installation in Agadir: one of the best resources of our cities — but we size on your bill. Install, real-time production monitoring and Law 82-21.',
       roiNuance:
         'At ≈ 3,400 h a year, Agadir has one of the best resources of our five cities: for an identical system size, that pulls ' +
         'the 3–7 year band toward its lower end — a real edge that only the assessment on your bill turns into an exact figure.',
@@ -793,16 +793,16 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
     },
     ar: {
       heroLead:
-        'أكادير من بين المدن ذات أفضل مخزون شمسي في مدننا الخمس: ≈ 3 400 ساعة في السنة فوق سوس. ' +
+        'أكادير من بين المدن ذات أفضل مخزون شمسي في مدننا الخمس فوق سوس. ' +
         'المخزون قوي بالنسبة للبلاد — لكن التركيبة تُحكَم بما تنتجه عندك، لا بشمس الخليج. نحدّد المقاس على فاتورتك.',
       sunshineContext:
-        'مناخ شبه قاحل، سماء صافية جزءاً كبيراً من السنة: هذه الـ ≈ 3 400 ساعة تضع أكادير من بين الأفضل تعرّضاً على الساحل. ' +
+        'مناخ شبه قاحل، سماء صافية جزءاً كبيراً من السنة: هذا المناخ يضع أكادير من بين الأفضل تعرّضاً على الساحل. ' +
         'يبقى أنّ سطحك وتوجيهه وتظليله هي التي تحدّد الإنتاج الحقيقي — وهذا ما تقدّره الدراسة؛ الشمس وحدها لا تكفي.',
       pillars: {
         study: {
           heading: 'مخزون قوي لا يعفي من الحساب',
           body:
-            'تحت الـ ≈ 3 400 ساعة لسوس، قد يُغري المرءُ بالتركيب دون تفكير. ومع ذلك نحدّد المقاس على استهلاكك، ' +
+            'تحت شمس سوس، قد يُغري المرءُ بالتركيب دون تفكير. ومع ذلك نحدّد المقاس على استهلاكك، ' +
             'لا على المناخ — دراسة يصادق عليها المؤسّس، دكتور-مهندس.',
         },
         measure: {
@@ -819,9 +819,9 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         },
       },
       closer: 'في أكادير، الشمس مضمونة؛ المهمّ هو المقاس. ادرس سطحك.',
-      title: 'تركيب شمسي في أكادير — دراسة وتركيب والقانون 82-21 | Taqinor',
+      title: 'تركيب الألواح الشمسية في أكادير — دراسة وتركيب والقانون 82-21 | Taqinor',
       description:
-        'تركيب شمسي في أكادير: ≈ 3 400 ساعة شمس في السنة، من بين أفضل المخزونات لدينا — لكننا نحدّد المقاس على فاتورتك. تركيب، متابعة الإنتاج في الوقت الحقيقي والقانون 82-21.',
+        'تركيب شمسي في أكادير: من بين أفضل المخزونات لدينا — لكننا نحدّد المقاس على فاتورتك. تركيب، متابعة الإنتاج في الوقت الحقيقي والقانون 82-21.',
       roiNuance:
         'بـ ≈ 3 400 ساعة في السنة، تملك أكادير واحداً من أفضل المخزونات بين مدننا الخمس: لمقاس مماثل، يشدّ ذلك بند 3–7 سنوات ' +
         'نحو طرفه الأدنى — ميزة حقيقية لا تتحوّل إلى رقم دقيق إلا بالدراسة على فاتورتك.',

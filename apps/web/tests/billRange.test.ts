@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { RETOUR_PAR_SEGMENT } from '../src/lib/billRange';
 import { describe, expect, it } from 'vitest';
 import { BILL_RANGES, isBillRangeId, localEstimateBand, qualifiesForCrm } from '../src/lib/billRange';
 import { formatMAD } from '../src/lib/format';
@@ -45,5 +48,26 @@ describe('formatMAD', () => {
     expect(formatMAD(800)).toBe('800 MAD');
     expect(formatMAD(1000000)).toBe('1 000 000 MAD');
     expect(formatMAD(-2500)).toBe('-2 500 MAD');
+  });
+});
+
+describe('WAUD39 — retour : constante unique, affichée seulement avec une source datée', () => {
+  const lire = (p: string) => readFileSync(fileURLToPath(new URL(`../src/${p}`, import.meta.url)), 'utf-8');
+  const PAGES = ['index', 'financement', 'résidentiel', 'prix-panneaux-solaires-maroc'].flatMap((p) => [p, `en/${p}`, `ar/${p}`]);
+  it('aucune source datée au 03/11/2026 : constante vide', () => {
+    expect(RETOUR_PAR_SEGMENT.residentiel).toBeNull();
+    expect(RETOUR_PAR_SEGMENT.professionnel).toBeNull();
+  });
+  it.each(PAGES)('%s : aucune fourchette littérale, constante importée', (p) => {
+    const s = lire(`pages/${p}.astro`);
+    const rendu = s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    expect(rendu).not.toMatch(/\b[3-5]\s*(–|-|à|to)\s*[5-7][- ](ans|years|year)\b/);
+    expect(rendu).not.toMatch(/\d\s*(–|إلى)\s*\d\s*سنوات/);
+    expect(rendu).not.toMatch(/dir="ltr">[3-5]<\/span> إلى <span dir="ltr">[5-7] سنوات/);
+    if (!p.includes('prix') ) expect(s).toContain('RETOUR_PAR_SEGMENT');
+  });
+  it('pages ville : stat et nuance suivent la constante', () => {
+    expect(lire('components/CityPageBody.astro')).toContain('RETOUR_PAR_SEGMENT.residentiel &&');
+    for (const p of ['', 'en/', 'ar/']) expect(lire(`pages/${p}installation-solaire-[city].astro`)).toContain('RETOUR_PAR_SEGMENT');
   });
 });

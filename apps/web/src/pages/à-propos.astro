@@ -18,7 +18,7 @@ import StickyCta from '../components/StickyCta.astro';
 import FounderPortrait from '../components/FounderPortrait.astro';
 import InstallCounter from '../components/InstallCounter.astro';
 import CertLogoRow from '../components/CertLogoRow.astro';
-import { REALISATIONS } from '../lib/realisations';
+import { REALISATIONS, plusAncienneRealisation } from '../lib/realisations';
 import { NAP } from '../lib/nap';
 
 /**
@@ -40,7 +40,7 @@ import { NAP } from '../lib/nap';
 // ancien (avril 2026 → octobre 2025) : le dernier élément est le plus ancien
 // documenté. Sert d'ancrage factuel — aucune date de création d'entreprise
 // n'est publiée nulle part sur le site, donc on ne l'invente pas ici.
-const earliestRealisation = REALISATIONS[REALISATIONS.length - 1];
+const earliestRealisation = plusAncienneRealisation();
 
 // La méthode « l'étude d'abord, le chantier ensuite » — déroulé déjà décrit sur
 // l'accueil et la page Pourquoi : diagnostic → échange technique → étude → pose
@@ -71,6 +71,7 @@ import AProposSection62FB from '../components/blocs/AProposSection62FB.astro';
 import GarantiesSection63F3 from '../components/blocs/GarantiesSection63F3.astro';
 import ProposDiv42A2 from '../components/blocs/ProposDiv42A2.astro';
 import ProposDiv96B3 from '../components/blocs/ProposDiv96B3.astro';
+const personJsonLd = { '@context': 'https://schema.org', '@type': 'Person', name: 'Reda Kasri', jobTitle: 'Fondateur', url: `https://taqinor.ma/à-propos/`, worksFor: { '@id': 'https://taqinor.ma/#organization' } };
 ---
 
 <Layout
@@ -177,8 +178,8 @@ import ProposDiv96B3 from '../components/blocs/ProposDiv96B3.astro';
             différences détaillées, point par point ? C’est l’objet de la page <strong class="text-white">Pourquoi Taqinor</strong>.
           </p>
           <div class="mt-8 flex flex-wrap gap-3">
-            <a href="/pourquoi-taqinor" class="bg-brass-400 px-6 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">Pourquoi Taqinor →</a>
-            <a href="/realisations" class="border border-white/40 px-6 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Nos réalisations →</a>
+            <a href="/pourquoi-taqinor/" class="bg-brass-400 px-6 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">Pourquoi Taqinor →</a>
+            <a href="/realisations/" class="border border-white/40 px-6 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Nos réalisations →</a>
           </div>
         </div>
         <dl class="grid grid-cols-2 gap-x-6 gap-y-10 border-l-2 border-white/25 pl-6 sm:pl-10" data-stagger>
@@ -254,13 +255,14 @@ import ProposDiv96B3 from '../components/blocs/ProposDiv96B3.astro';
         </div>
 
         <p class="mx-auto mt-10 max-w-2xl border-l-4 border-azur-600 pl-4 text-xs leading-relaxed text-encre-faint">
-          Identité légale complète (RC, ICE) sur la page <a href="/mentions-legales" class="underline decoration-azur-600 decoration-2 underline-offset-4">Mentions légales</a>.
+          Identité légale complète (RC, ICE) sur la page <a href="/mentions-legales/" class="underline decoration-azur-600 decoration-2 underline-offset-4">Mentions légales</a>.
         </p>
       </div>
     </section>
 
-    <CtaBand title="Mettez le fondateur sur votre toiture : l’étude est gratuite." href="/devis/mon-toit" />
+    <CtaBand title="Mettez le fondateur sur votre toiture : l’étude est gratuite." href="/devis/mon-toit/" />
 
     <StickyCta />
   </div>
+  <script type="application/ld+json" set:html={JSON.stringify(personJsonLd)} />
 </Layout>

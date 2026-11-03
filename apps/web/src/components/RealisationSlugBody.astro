@@ -11,6 +11,7 @@ import Picture from './Picture.astro';
 import PhotoCaption from './PhotoCaption.astro';
 import LiteVideo from './LiteVideo.astro';
 import CtaBand from './CtaBand.astro';
+import { dateLocale, mesureAffichee } from '../lib/realisations';
 import V2Page from './V2Page.astro';
 
 interface Props {
@@ -40,6 +41,9 @@ const {
 } = Astro.props;
 const hero = r.photos[0];
 const dir = rtl ? 'ltr' : undefined;
+// WAUD21 — le seul cumul apparié à CETTE réalisation (measuredLabel), avec sa date de relevé.
+const mesure = mesureAffichee(r, fr ? 'fr' : rtl ? 'ar' : 'en');
+const dateAffichee = dateLocale(r.date, fr ? 'fr' : rtl ? 'ar' : 'en');
 const linkClass = 'border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10';
 ---
 
@@ -67,7 +71,7 @@ const linkClass = 'border border-white/40 px-5 py-3 text-sm font-bold text-white
       <div class="absolute inset-0 bg-gradient-to-t from-nuit via-nuit/55 to-nuit/20"></div>
     </div>
     <div class="mx-auto max-w-6xl px-4 pb-16 pt-24 sm:pb-20 sm:pt-32">
-      <p class="tech-label v2-kicker rule-brass cine-in text-lune">{t.ref} {rtl ? <span dir="ltr">{r.ref} · {r.ville} · {r.date}</span> : <>{r.ref} · {r.ville} · {r.date}</>}</p>
+      <p class="tech-label v2-kicker rule-brass cine-in text-lune">{t.ref} {rtl ? <span dir="ltr">{r.ref} · {r.ville} · {dateAffichee}</span> : <>{r.ref} · {r.ville} · {dateAffichee}</>}</p>
       <h1 class="display v2-page-title cine-in mt-5 max-w-[20ch] [animation-delay:120ms]">
         {r.kwc
           ? <>{rtl ? <span dir="ltr">{r.kwc}</span> : r.kwc}{' '}{t.h1Kwc}</>
@@ -91,6 +95,12 @@ const linkClass = 'border border-white/40 px-5 py-3 text-sm font-bold text-white
           <dt class="tech-label mt-2 text-lune-faint">
             {r.productionEstimated ? t.productionEstimated : t.productionMeasured}
           </dt>
+        </div>
+      )}
+      {mesure && (
+        <div class="v2-rise" style="--v2-i:1" data-production-mesuree>
+          <dd class="fig lum text-3xl sm:text-4xl" dir={dir}>{mesure.valeur}</dd>
+          <dt class="tech-label mt-2 text-lune-faint">{mesure.libelle}</dt>
         </div>
       )}
       {r.panneaux && (
@@ -242,7 +252,7 @@ const linkClass = 'border border-white/40 px-5 py-3 text-sm font-bold text-white
     <section class="border-t border-white/10 px-4 py-16">
       <div class="mx-auto max-w-6xl">
         <a
-          href={`/realisations/${nearestCase.slug}`}
+          href={`/realisations/${nearestCase.slug}/`}
           class="group flex flex-wrap items-center justify-between gap-4 border border-brass-400/40 bg-white/[0.03] px-6 py-5 transition-colors hover:border-brass-400 hover:bg-white/[0.06]"
         >
           <span>

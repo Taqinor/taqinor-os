@@ -4,11 +4,10 @@ const { trust } = Astro.props as Record<string, any>;
 ---
         <dl class="mt-12 grid grid-cols-1 gap-x-8 gap-y-12 sm:grid-cols-3" data-stagger>
           {trust.map((t: any, i: any) => (
-            <div class="v2-rise relative min-w-0 border-t-2 border-white/10 pt-5" style={`--v2-i:${i}`}>
-              <span class="absolute -top-px left-0 h-0.5 w-10 bg-brass-400" aria-hidden="true"></span>
-              <dd class="fig fig-lg lum break-words" data-tally={t.tally ? '' : undefined}>{t.fig}</dd>
-              <dt class="tech-label mt-2 text-lune-faint">{t.label}</dt>
-              <p class="mt-1 text-sm leading-snug text-lune-soft">{t.body}</p>
+            <div class="v2-rise relative flex min-w-0 flex-col border-t-2 border-white/10 pt-5 before:absolute before:-top-px before:left-0 before:h-0.5 before:w-10 before:bg-brass-400" style={`--v2-i:${i}`}>
+              <dt class="tech-label order-2 mt-2 text-lune-faint">{t.label}</dt>
+              <dd class="fig fig-lg lum order-1 break-words" data-tally={t.tally ? '' : undefined}>{t.fig}</dd>
+              <dd class="order-3 mt-1 text-sm leading-snug text-lune-soft">{t.body}</dd>
             </div>
           ))}
         </dl>

@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs';
 import { lireSourceTunnel } from './astroBlocsHelper';
 import { fileURLToPath } from 'node:url';
 
-import { REALISATIONS } from '../src/lib/realisations';
+import { MEASURED_FLEET, MEASURED_FLEET_READ_AT, MEASURED_FLEET_READ_NOTE, REALISATIONS } from '../src/lib/realisations';
 import { TESTIMONIALS, GOOGLE_RATING, hasTestimonials, hasRating } from '../src/lib/testimonials';
 import { lireAstroAvecBlocs, lireAstroAvecModulesTunnel, lirePageProposition } from './astroBlocsHelper';
 
@@ -213,5 +213,72 @@ describe('WJ35 — câblage : les deux pages du parcours montent les composants 
 
   it('[token].astro importe v3-photo-motion.css (ne monte pas <V2Enhance/> qui l’importerait sinon)', () => {
     expect(PROPOSITION).toContain("import '../../styles/v3-photo-motion.css'");
+  });
+});
+
+describe('WAUD9 — cumul de flotte daté du vrai relevé', () => {
+  const lire = (rel: string) => read(`../src/${rel}`);
+  it('la date est max(readAt), jamais la date de génération des faits', () => {
+    const dates = MEASURED_FLEET.map((p) => p.readAt).filter(Boolean).sort();
+    expect(MEASURED_FLEET_READ_AT).toBe(dates[dates.length - 1]);
+    expect(MEASURED_FLEET_READ_NOTE.fr).toBe('relevé le 05/07/2026');
+  });
+  it('héros et compteur portent la mention ; aucun « temps réel » accolé au cumul', () => {
+    for (const p of ['pages/index.astro', 'pages/en/index.astro', 'pages/ar/index.astro']) {
+      const heroSub = lire(p).match(/const heroSub =[\s\S]*?;/)![0];
+      expect(heroSub).toContain('MEASURED_FLEET_READ_NOTE');
+      expect(heroSub).not.toMatch(/temps réel|real time|الوقت الحقيقي/);
+    }
+    expect(lire('components/InstallCounter.astro')).toContain('MEASURED_FLEET_READ_NOTE');
+    expect(lire('components/InstallCounter.astro')).not.toContain('temps réel');
+  });
+  it('/production-mesuree et son Dataset lisent la date de relevé', () => {
+    for (const p of ['pages/production-mesuree.astro', 'pages/en/production-mesuree.astro', 'pages/ar/production-mesuree.astro']) {
+      const code = lire(p);
+      expect(code).toContain('temporalCoverage: MEASURED_FLEET_READ_AT');
+      expect(code.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, '')).not.toMatch(/temps réel|real time|real-time|الوقت الحقيقي/);
+    }
+  });
+});
+
+describe('WAUD40 — pas de « ligne par ligne » sans chiffre par ligne', () => {
+  it.each(['impact-taqinor', 'en/impact-taqinor', 'ar/impact-taqinor', 'production-mesuree'])('%s', (p) => {
+    expect(read(`../src/pages/${p}.astro`)).not.toMatch(/ligne par ligne|line by line|سطراً بسطر/);
+  });
+});
+
+describe('WAUD16 — /impact-taqinor : stockage exact, villes mesurées, CO2 omis', () => {
+  it('stockage = somme exacte de realisations.ts (2 × 5 kWh = 10) ; villes = villes mesurées', async () => {
+    const { impactFigures, batterieKwh } = await import('../src/lib/impactFigures');
+    expect(batterieKwh('2 × DYNESS 5 kWh (DL5.0C)')).toBe(10);
+    expect(batterieKwh('10 kWh Dyness (2 × DL5.0C)')).toBe(10);
+    expect(batterieKwh('15 kWh Dyness')).toBe(15);
+    const f = impactFigures('fr-FR');
+    expect(f.batteryKwhTotal).toBe(40);
+    expect(f.villesMesurees).toEqual(['Casablanca', 'El Jadida']);
+  });
+  it.each(['impact-taqinor', 'en/impact-taqinor', 'ar/impact-taqinor'])('%s : ni CO2, ni source à préciser, ni rien d’estimé', (p) => {
+    const src = read(`../src/pages/${p}.astro`);
+    const rendu = src.slice(src.indexOf('<Layout'));
+    expect(rendu).not.toMatch(/CO₂|CO2/);
+    expect(rendu).not.toMatch(/source à préciser|source to be specified|المصدر يبقى للتحديد/i);
+    expect(rendu).not.toMatch(/rien d'estimé|nothing estimated|لا شيء مُقدَّر/);
+    expect(rendu).not.toMatch(/des chantiers\.|of the projects\.|من أصل المشاريع/);
+    expect(src).not.toContain('villesUniques');
+  });
+});
+
+describe('WAUD49 — badges de preuve cliquables ou retirés', () => {
+  it('CertLogoRow sans keys : chaque badge a une cible, IEC vers la fiche hébergée', () => {
+    const src = read('../src/components/CertLogoRow.astro');
+    expect(src).toContain("iec: '/fiches/canadian-solar-710-topbihiku7-2608.pdf'");
+    expect(src).toMatch(/loi8221: `\$\{prefixe\}\/loi-82-21\/`/);
+    expect(src).toMatch(/panneaux: `\$\{prefixe\}\/garanties\/`/);
+    expect(src).toMatch(/onduleur: `\$\{prefixe\}\/garanties\/`/);
+  });
+  it('badge « distributeurs officiels » retiré tant qu’aucune attestation n’est hébergée', () => {
+    expect(read('../src/components/BrandStrip.astro')).not.toMatch(/heading: '[^']*(distributeurs officiels|official distributors)/);
+    expect(read('../src/pages/équipement.astro')).not.toContain('Marques tier-1 · distributeurs officiels');
+    expect(read('../src/pages/en/équipement.astro')).not.toContain('Tier-1 brands · official distributors');
   });
 });

@@ -184,7 +184,8 @@ describe('inventaire des routes (sortie construite réelle)', () => {
     // W245 — /devis/ (capture « Mon toit ») est RETIRÉE de cette liste : c'est
     // devenu le CTA principal du site, indexé + dans le sitemap comme
     // n'importe quelle page publique (donc plus jamais dans privatePaths).
-    const PRIVATE_PREFIXES = ['/preview/', '/internal/', '/proposition/', '/embed/'];
+    // WAUD58 — /liens : page de bio noindex, hors sitemap.
+    const PRIVATE_PREFIXES = ['/preview/', '/internal/', '/proposition/', '/embed/', '/liens/'];
     for (const p of privatePaths) {
       // Retire un éventuel préfixe de locale (/en, /ar) : ces tunnels restent
       // privés dans toutes les langues.
@@ -253,9 +254,13 @@ describe('chaque page publique — contrat SEO rendu', () => {
     expect(lb, 'LocalBusiness JSON-LD absent').toBeTruthy();
     expect(lb!.name).toBe(NAP.name);
     expect(lb!.url).toBe(NAP.url);
-    expect(lb!.telephone).toBe(NAP.phone);
-    expect(lb!.email).toBe(NAP.email);
-    expect(Array.isArray(lb!.areaServed)).toBe(true);
+    // WAUD51 — entité complète sur l'accueil, /à-propos, /contact ; ailleurs, référence par @id.
+    expect(lb!['@id']).toBe(`${NAP.url}/#organization`);
+    if (/^(\/(en|ar))?\/((à-propos|%C3%A0-propos|contact)\/)?$/.test(p)) {
+      expect(lb!.telephone).toBe(NAP.phone);
+      expect(lb!.email).toBe(NAP.email);
+      expect(Array.isArray(lb!.areaServed)).toBe(true);
+    }
   });
 
   it.each(publicHtml.map(({ r }) => r.path))('%s : chaque <img> porte un attribut alt', (p) => {
@@ -395,7 +400,7 @@ describe('contenu — exactitude (régressions passées)', () => {
 
   it('la carte de confiance est recadrée (pas de décompte de projets trompeur)', () => {
     const { h } = publicHtml.find((x) => x.r.path === '/')!;
-    expect(h).toContain('Chantiers visitables');
+    expect(h).not.toContain('Chantiers visitables');
     expect(h).not.toContain('>5 projets<');
     expect(h).not.toContain('livrés depuis 2025');
   });
@@ -614,5 +619,54 @@ describe('réalisations & villes — cohérence des routes & faits', () => {
       const slug = `/installation-solaire-${c.name.toLowerCase()}/`;
       expect(publicPathSet.has(slug), `manque ${slug}`).toBe(true);
     }
+  });
+});
+
+describe('WAUD63 — accessibilité et lisibilité', () => {
+  const lireSrc = (p: string) => readFileSync(fileURLToPath(new URL(`../src/${p}`, import.meta.url)), 'utf-8');
+  it('le span du logo porte un rôle pour son aria-label', () => {
+    expect(lireSrc('components/Logo.astro')).toMatch(/role="img"\s+aria-label="TAQINOR"/);
+  });
+  it('le <dl> de confiance : dt puis dd, rien d’autre dans le groupe', () => {
+    const dl = lireSrc('components/blocs/EnIndexDl0C1D.astro');
+    expect(dl.indexOf('<dt')).toBeLessThan(dl.indexOf('<dd'));
+    expect(dl).not.toContain('<span');
+    expect(dl).not.toContain('<p ');
+  });
+  it('le lien logo du header n’est plus en français sur EN/AR', () => {
+    expect(lireSrc('components/Header.astro')).toContain("aria-label={t('nav.homeLogo')}");
+    const ui = lireSrc('i18n/ui.ts');
+    expect(ui).toContain("'nav.homeLogo': 'TAQINOR — home'");
+  });
+  it('.v2-body est rangé en @layer : un utilitaire text-encre-soft gagne (contraste)', () => {
+    const css = lireSrc('styles/global.css');
+    expect(css).toMatch(/@layer components \{\s*\.v2-body \{/);
+  });
+  it('H1 du héros : plus de text-shadow peint par-dessus le texte clippé', () => {
+    const css = lireSrc('styles/global.css');
+    const bloc = css.slice(css.indexOf('.hero-title-sweep.hero-sweep-armed {'));
+    expect(bloc.slice(0, bloc.indexOf('animation:'))).toMatch(/text-shadow: none;[\s\S]*filter: drop-shadow/);
+  });
+});
+
+describe('WAUD46 WAUD64 WAUD65 — ruban, cibles tactiles, tuiles', () => {
+  const lireSrc2 = (p: string) => readFileSync(fileURLToPath(new URL(`../src/${p}`, import.meta.url)), 'utf-8');
+  it('WAUD46 : ruban sans urgence, sur une ligne, décret intact', () => {
+    const ui = lireSrc2('i18n/ui.ts');
+    expect(ui).not.toMatch(/régularisez maintenant|regularize now|سوِّ وضعك الآن/);
+    expect(ui).toContain('Décret 2-25-100 en vigueur depuis le 9 juin 2026');
+    expect(ui).toContain('installation existante ? Nous montons votre dossier de régularisation →');
+    const r = lireSrc2('components/Article33Ribbon.astro');
+    expect(r).toContain('py-1');
+    expect(r).not.toContain('flex-wrap');
+    expect(r).toContain('truncate');
+  });
+  it('WAUD64 : liens du pied de page à 24 px au moins', () => {
+    expect(lireSrc2('components/Footer.astro')).toMatch(/const linkClass = 'inline-block py-1 /);
+  });
+  it('WAUD65 : tuiles sans nowrap, donc sans collision', () => {
+    expect(lireSrc2('components/blocs/EnIndexDlF52D.astro')).not.toContain('whitespace-nowrap');
+    const ar = lireSrc2('pages/ar/index.astro');
+    expect(ar).not.toContain('fig fig-md whitespace-nowrap text-azur-600');
   });
 });

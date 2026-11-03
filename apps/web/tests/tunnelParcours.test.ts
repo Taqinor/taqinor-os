@@ -25,7 +25,7 @@ function monter() {
       <div id="mt-sub-commercial"></div><div id="mt-sub-agricole"></div>
       <div id="mt-step0-intro"></div><div id="mt-step0-intro-agri"></div><div id="mt-roof-mode-group"></div>
       <div id="mt-raison-sociale-wrap"></div>
-      <input id="mt-city"><span id="mt-city-hint" hidden></span>
+      <input id="mt-city" data-ph-ville="ville" data-ph-repere="carte"><span id="mt-city-hint" hidden></span>
       <input type="radio" id="mt-contact-phone"><input type="radio" id="mt-contact-whatsapp"><div id="mt-callback-sla"></div>
       <button id="mt-next-0"></button><button id="mt-back-1"></button>
       <span data-i18n data-ar="مرحبا">Bonjour</span>
@@ -179,5 +179,18 @@ describe('parcours — Document injecté (≠ global)', () => {
     expect(document.body.innerHTML).toBe(avant);
     expect(document.documentElement.dir).not.toBe('rtl');
     expect(document.querySelector('[data-i18n]')!.children).toHaveLength(0);
+  });
+});
+
+describe('WAUD34 — champ ville : aide adaptée au repère', () => {
+  it('sans repère « ville », avec repère « carte » ; requis seulement sans repère', () => {
+    const { ctx } = installer('fr', 'residentiel' as never);
+    const ville = document.getElementById('mt-city') as HTMLInputElement;
+    expect(ville.placeholder).toBe('ville');
+    expect(ville.required).toBe(true);
+    ctx.etat.capturePin = { lat: 33.5, lng: -7.6 };
+    ctx.crochets.appeler('syncCityRequirement');
+    expect(ville.placeholder).toBe('carte');
+    expect(ville.required).toBe(false);
   });
 });

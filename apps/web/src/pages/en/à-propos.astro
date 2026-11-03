@@ -16,7 +16,7 @@ import FounderPortrait from '../../components/FounderPortrait.astro';
 import InstallCounter from '../../components/InstallCounter.astro';
 import CertLogoRow from '../../components/CertLogoRow.astro';
 import { localizeNavHref } from '../../i18n/pages';
-import { REALISATIONS } from '../../lib/realisations';
+import { REALISATIONS, dateLocale, plusAncienneRealisation } from '../../lib/realisations';
 import { NAP } from '../../lib/nap';
 
 const { locale, L, devisHref } = pageLocale(Astro.url.pathname);
@@ -32,7 +32,7 @@ const { locale, L, devisHref } = pageLocale(Astro.url.pathname);
  * projects) — replaced with per-project facts already used elsewhere on the
  * site (tier-1 brands, earliest documented project).
  */
-const earliestRealisation = REALISATIONS[REALISATIONS.length - 1];
+const earliestRealisation = plusAncienneRealisation();
 
 const etapes = [
   {
@@ -60,6 +60,7 @@ import AProposSection62FB from '../../components/blocs/AProposSection62FB.astro'
 import GarantiesSection63F3 from '../../components/blocs/GarantiesSection63F3.astro';
 import ProposDiv42A2 from '../../components/blocs/ProposDiv42A2.astro';
 import ProposDiv96B3 from '../../components/blocs/ProposDiv96B3.astro';
+const personJsonLd = { '@context': 'https://schema.org', '@type': 'Person', name: 'Reda Kasri', jobTitle: 'Founder', url: `https://taqinor.ma/en/à-propos/`, worksFor: { '@id': 'https://taqinor.ma/#organization' } };
 ---
 
 <Layout
@@ -212,7 +213,7 @@ import ProposDiv96B3 from '../../components/blocs/ProposDiv96B3.astro';
             </div>
             <ProposDiv42A2 />
             <div>
-              <dd class="font-display text-2xl font-bold">{earliestRealisation.date}</dd>
+              <dd class="font-display text-2xl font-bold">{dateLocale(earliestRealisation.date, 'en')}</dd>
               <dt class="tech-label mt-2 text-encre-faint">Earliest documented project ({earliestRealisation.ville})</dt>
             </div>
           </dl>
@@ -250,4 +251,5 @@ import ProposDiv96B3 from '../../components/blocs/ProposDiv96B3.astro';
 
     <StickyCta />
   </div>
+  <script type="application/ld+json" set:html={JSON.stringify(personJsonLd)} />
 </Layout>

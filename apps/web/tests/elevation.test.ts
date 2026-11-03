@@ -89,7 +89,7 @@ describe('prévisualisations supprimées', () => {
     //   hors sitemap via le filter d'astro.config comme /equipe et /status).
     // Les études de cas, guides et articles de blog vivent en sous-dossier
     // (realisations/, guides/, blog/) et ne comptent pas ici.
-    expect(slugs.length).toBe(30);
+    expect(slugs.length).toBe(31); // WAUD25 : 404.astro
   });
 
   it('le filtre sitemap ne référence plus /v2 ni /v3', () => {

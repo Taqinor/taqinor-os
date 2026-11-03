@@ -24,6 +24,7 @@
  *  5. study card moved below hero as section-tight block;
  *  6. RTL-logical classes preserved throughout.
  */
+import { RETOUR_PAR_SEGMENT } from '../../lib/billRange';
 import Layout from '../../layouts/Layout.astro';
 import { pageLocale } from '../../lib/pageCtx';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -44,7 +45,7 @@ import { whatsappLink } from '../../lib/whatsapp';
 import { localizeNavHref } from '../../i18n/pages';
 import { serviceFaqItems } from '../../lib/serviceFaq';
 import { PANEL_PERFORMANCE_WARRANTY_YEARS } from '../../lib/warranty';
-import { realisationByRef } from '../../lib/realisations';
+import { dateLocale, realisationByRef } from '../../lib/realisations';
 import ProfessionnelDiv77FB from '../../components/blocs/ProfessionnelDiv77FB.astro';
 import ProfessionnelBloc2CD6 from '../../components/blocs/ProfessionnelBloc2CD6.astro';
 import ProfessionnelA9585 from '../../components/blocs/ProfessionnelA9585.astro';
@@ -93,7 +94,7 @@ const investRangeHigh = formatMAD(Math.max(...brackets.map((b) => b.investHigh))
 
 <Layout
   title="الطاقة الشمسية للفيلات والشقق بالمغرب — مُسعّرة على فاتورتك | Taqinor"
-  description="11,36 kWc بالدار البيضاء، مُتابَعة بمراقبة الإنتاج في الوقت الحقيقي: تركيباتنا السكنية مُحدّدة المقاس على فاتورتك الحقيقية، بأوامر مقدار صادقة، عائد في 3 إلى 7 سنوات وتصريح القانون 82-21."
+  description="11,36 kWc بالدار البيضاء، مُتابَعة بمراقبة الإنتاج في الوقت الحقيقي: تركيباتنا السكنية مُحدّدة المقاس على فاتورتك الحقيقية، بأوامر مقدار صادقةوات وتصريح القانون 82-21."
   ogSlug="residentiel"
 >
   <div class="v2">
@@ -120,8 +121,6 @@ const investRangeHigh = formatMAD(Math.max(...brackets.map((b) => b.investHigh))
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">فيلات · شقق</p>
         <h1 class="display v2-page-title cine-in cine-in-1 mt-5 max-w-[18ch]">فيلا، فاتورتها، سطحها: ثلاث معطيات، تحديد مقاس واحد</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
-          حين تُحدّد بإحكام، تغطّي التركيبة <span dir="ltr">50 إلى 100 %</span> مما تستهلكه الفيلا،
-          حسب عدد البطاريات والاستعمال نهارًا/ليلاً.
           هذه الأرقام الثلاثة — قراءة عدّاد ONEE، ساعات الذروة، توجيه السطح —
           هي التي تحدّد القدرة. نحن نقرأها؛ ولا نركّب شيئاً لم يُبرّره الحساب.
         </p>
@@ -160,7 +159,7 @@ const investRangeHigh = formatMAD(Math.max(...brackets.map((b) => b.investHigh))
       <h2 class="display v2-section-title mt-5 text-white">كم تكلّف الطاقة الشمسية لفيلا، وفي كم من الوقت تُسترجع كلفتها؟</h2>
       <p class="v2-lead mt-4 max-w-2xl font-bold text-white">
         بالنسبة لفاتورة سكنية نموذجية (<span dir="ltr" style="unicode-bidi:isolate">1 000</span> إلى <span dir="ltr" style="unicode-bidi:isolate">10 000 درهم/شهرياً</span>)، تتكلّف التركيبة عادةً بين
-        <span dir="ltr" style="unicode-bidi:isolate">{investRangeLow}</span> و<span dir="ltr" style="unicode-bidi:isolate">{investRangeHigh}</span> وتُسترجع كلفتها خلال <span dir="ltr" style="unicode-bidi:isolate">3</span> إلى <span dir="ltr" style="unicode-bidi:isolate">7 سنوات</span>، للجزء المُستهلَك
+        <span dir="ltr" style="unicode-bidi:isolate">{investRangeLow}</span> و<span dir="ltr" style="unicode-bidi:isolate">{investRangeHigh}</span> وتُسترجع كلفتها، للجزء المُستهلَك
         ذاتياً — بعدها، لا تكاد الكهرباء المُنتَجة تكلّف شيئاً طوال باقي سنوات ضمان الأداء الثلاثين.
       </p>
       <p class="v2-lead mt-4 max-w-2xl text-lune-soft">
@@ -185,7 +184,7 @@ const investRangeHigh = formatMAD(Math.max(...brackets.map((b) => b.investHigh))
         ))}
       </div>
       <p class="mt-5 max-w-2xl text-xs leading-relaxed text-lune-soft">
-        تحت <span dir="ltr" style="unicode-bidi:isolate">1 000 MAD</span> في الشهر، يتجاوز العائد غالباً <span dir="ltr" style="unicode-bidi:isolate">7 سنوات</span>: نقولها
+        تحت <span dir="ltr" style="unicode-bidi:isolate">1 000 MAD</span> في الشهر، يطول العائد: نقولها
         بدل أن نفرض البيع. فوق <span dir="ltr" style="unicode-bidi:isolate">10 000 MAD</span>، يخرج الاستهلاك من الإطار
         السكني ويستدعي دراسة مخصّصة — انظر مهني.
       </p>
@@ -207,8 +206,7 @@ const investRangeHigh = formatMAD(Math.max(...brackets.map((b) => b.investHigh))
             وتمحو كل سنة نحو <span dir="ltr" style="unicode-bidi:isolate">12 000</span> إلى <span dir="ltr" style="unicode-bidi:isolate">16 000 MAD</span> من الكهرباء (بتعريفة المكتب ONEE)، للجزء
             المُستهلَك ذاتياً — إذ لا توجد بعد تعريفة إعادة شراء منزلية (BT) منشورة، فالفائض
             المُصدَّر لا يساوي شيئاً ما دامت هذه التعريفة غير موجودة.
-            من أربع إلى ست سنوات لتسديدها؛ ثم، على مدى {remainingYearsLabel} سنة
-            المتبقية، لا يكلّف الكيلوواط-ساعة شيئاً تقريباً — ليس هناك سوى عاكس واحد
+            وبعد تسديدها، لا يكلّف الكيلوواط-ساعة شيئاً تقريباً — ليس هناك سوى عاكس واحد
             يُستبدَل مرة واحدة على طول المدة.
           </p>
           <dl class="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-3 border-s-2 border-brass-400/60 ps-6" data-stagger>
@@ -216,12 +214,14 @@ const investRangeHigh = formatMAD(Math.max(...brackets.map((b) => b.investHigh))
               <dd class="fig lum whitespace-nowrap text-2xl sm:text-4xl" dir="ltr" data-tally>{panelWarrantyLabel}</dd>
               <dt class="tech-label mt-1.5 text-lune-faint">ضمان الألواح</dt>
             </div>
+            {RETOUR_PAR_SEGMENT.residentiel && (
             <div class="v2-rise" style="--v2-i:1">
-              <dd class="fig lum whitespace-nowrap text-2xl sm:text-4xl" dir="ltr" data-tally>3–7 سنوات</dd>
+              <dd class="fig lum whitespace-nowrap text-2xl sm:text-4xl" dir="ltr">{RETOUR_PAR_SEGMENT.residentiel.label.ar}</dd>
               <dt class="tech-label mt-1.5 text-lune-faint">العائد النموذجي</dt>
             </div>
+            )}
             <div class="v2-rise" style="--v2-i:2">
-              <dd class="fig lum whitespace-nowrap text-2xl sm:text-4xl" dir="ltr" data-tally>&lt; 11 kW</dd>
+              <dd class="fig lum whitespace-nowrap text-2xl sm:text-4xl" dir="ltr">&lt; 11 kW</dd>
               <dt class="tech-label mt-1.5 text-lune-faint">تصريح بسيط</dt>
             </div>
           </dl>
@@ -233,7 +233,7 @@ const investRangeHigh = formatMAD(Math.max(...brackets.map((b) => b.investHigh))
               class="v3-grade w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
             <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
               <span class="tech-label block text-brass-300">{CITY_AR_MAP[figRef134?.ville ?? ''] ?? figRef134?.ville} · {figRef134?.kwc} · {figRef134?.production}</span>
-              <span class="mt-0.5 block text-xs text-lune">تركيب جارٍ · {figRef134?.panneaux} · {figRef134?.date}</span>
+              <span class="mt-0.5 block text-xs text-lune">تركيب جارٍ · {figRef134?.panneaux} · {figRef134 && dateLocale(figRef134.date, 'ar')}</span>
             </figcaption>
           </figure>
           <figure class="v2-rise cine-card group relative overflow-hidden">

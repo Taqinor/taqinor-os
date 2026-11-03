@@ -1,7 +1,7 @@
 ---
 title: "Batterie solaire : stocker ou revendre ? L'économie de l'autoconsommation au Maroc"
 description: "Export limité à 20 % de la production ; rachat 0,18–0,21 DH/kWh en MT/HT, tarif BT résidentiel non encore publié : pourquoi un kWh stocké vaut bien plus qu'un kWh exporté au Maroc."
-pubDate: 2026-06-10
+pubDate: 2026-06-21
 updatedDate: 2026-07-03
 tags: ["batterie", "autoconsommation", "stockage", "économie"]
 author: "Reda Kasri"
@@ -83,13 +83,13 @@ Le bon point de départ : dimensionner d'abord pour couvrir vos usages diurnes, 
 ## Approfondissez
 
 Pour savoir si une batterie se justifie du tout dans votre cas (souvent non si vous consommez surtout en journée) :
-[Faut-il des batteries pour son installation solaire ?](/guides/faut-il-des-batteries)
+[Faut-il des batteries pour son installation solaire ?](/guides/faut-il-des-batteries/)
 
 Pour choisir la bonne capacité de batterie selon votre situation réelle, consultez notre guide :
-[Quelle taille de batterie solaire pour votre maison ?](/guides/quelle-taille-de-batterie)
+[Quelle taille de batterie solaire pour votre maison ?](/guides/quelle-taille-de-batterie/)
 
 Pour comparer les technologies et les marques disponibles au Maroc — dont Dyness et Deye — et comprendre les différences entre modèles LFP :
-[Batteries LFP Dyness, Deye, Huawei : quelle technologie pour le solaire au Maroc ?](/blog/batterie-lfp-dyness-deye-huawei)
+[Batteries LFP Dyness, Deye, Huawei : quelle technologie pour le solaire au Maroc ?](/blog/batterie-lfp-dyness-deye-huawei/)
 
 ---
 

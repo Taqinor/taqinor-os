@@ -4,7 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { creerContexte, type ConfigLocale } from '../src/lib/tunnel/contexte';
 import { creerDom } from '../src/lib/tunnel/dom';
 import { creerEtat, type LocaleTunnel } from '../src/lib/tunnel/etat';
-import { installerCarte, TEXTES_CARTE, type ConfigCarte, type ContexteCarte } from '../src/lib/tunnel/carte';
+import { installerCarte, surveillerWorkersCarte, TEXTES_CARTE, type ConfigCarte, type ContexteCarte } from '../src/lib/tunnel/carte';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import {
+  lireFichiersMaplibre, NOM_PARTAGE, NOM_WORKER, preparerFichiersWorker, reecrireChunk,
+} from '../scripts/maplibre-worker.mjs';
 
 const HTML = `
 <input id="mt-city"><input id="rp9-address">
@@ -195,5 +199,188 @@ describe('carte — aperçu 3D et instantané du toit', () => {
     (window as any).print = print;
     document.getElementById('mt-print-estimate')!.click();
     expect(print).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('WAUD1 — worker MapLibre publié', () => {
+  it('le paquet installé référence toujours worker + partagé (contrat du plugin)', async () => {
+    const f = await lireFichiersMaplibre();
+    expect(f.nomWorker).toMatch(/^maplibre-gl-worker\.[0-9a-f]{10}\.mjs$/);
+    expect(f.nomPartage).toMatch(/^maplibre-gl-shared\.[0-9a-f]{10}\.mjs$/);
+    expect(f.worker).toContain(`./${f.nomPartage}`);
+    expect(f.worker).not.toContain(`./${NOM_PARTAGE}`);
+    expect(f.worker).not.toContain('sourceMappingURL');
+  });
+
+  it('le chunk est réécrit ; un chunk sans la référence reste intact', () => {
+    const f = preparerFichiersWorker(`import{a}from"./${NOM_PARTAGE}";a()`, 'export const a=()=>1');
+    const code = reecrireChunk(`new URL("./${NOM_WORKER}")`, f);
+    expect(code).toContain(f.nomWorker);
+    expect(code).not.toContain(NOM_WORKER);
+    expect(reecrireChunk('rien', f)).toBeNull();
+  });
+
+  it('un worker qui change de contrat fait échouer le build', () => {
+    expect(() => preparerFichiersWorker('rien', 'x')).toThrow(/montée de MapLibre/);
+  });
+
+  it('build présent : le worker référencé par le chunk MapLibre existe bel et bien', () => {
+    const astro = `${process.cwd()}/dist/client/_astro/`;
+    if (!existsSync(astro)) return;
+    const fichiers = readdirSync(astro);
+    const chunk = fichiers.find((n) => /^maplibre-gl\..*\.js$/.test(n));
+    expect(chunk).toBeTruthy();
+    const code = readFileSync(astro + chunk, 'utf-8');
+    const nom = code.match(/maplibre-gl-worker\.[0-9a-f]{10}\.mjs/)?.[0];
+    expect(nom).toBeTruthy();
+    expect(fichiers).toContain(nom);
+    const partage = readFileSync(astro + nom, 'utf-8').match(/maplibre-gl-shared\.[0-9a-f]{10}\.mjs/)?.[0];
+    expect(fichiers).toContain(partage);
+  });
+});
+
+describe('WAUD1 — repli visible si la carte échoue', () => {
+  class FauxWorker extends EventTarget { constructor(public url: string | URL, public options?: WorkerOptions) { super(); } }
+
+  it('une erreur de chargement du worker appelle le repli, une seule fois', () => {
+    const fenetre = { Worker: FauxWorker } as any;
+    const repli = vi.fn();
+    const retirer = surveillerWorkersCarte(fenetre, repli);
+    const a = new fenetre.Worker('/a.mjs', { type: 'module' });
+    const b = new fenetre.Worker('/b.mjs');
+    expect(a.url).toBe('/a.mjs');
+    a.dispatchEvent(new Event('error'));
+    b.dispatchEvent(new Event('error'));
+    expect(repli).toHaveBeenCalledTimes(1);
+    retirer();
+    expect(fenetre.Worker).toBe(FauxWorker);
+  });
+
+  it('sans Worker (navigateur ancien, jsdom) : aucune exception', () => {
+    expect(() => surveillerWorkersCarte({} as any, vi.fn())()).not.toThrow();
+    expect(() => surveillerWorkersCarte(null, vi.fn())()).not.toThrow();
+  });
+
+  it('panne carte en session (onMapError) → repli adresse', async () => {
+    (fetch as any).mockResolvedValue({ json: async () => ({ available: true, maptilerKey: 'k' }) });
+    const { ctx, bootCaptureOnly } = monter('fr');
+    ctx.crochets.appeler('ensureMapBooted');
+    await attendre(); await attendre();
+    bootCaptureOnly.mock.calls[0][0].onMapError();
+    expect(document.getElementById('mt-fallback')!.hidden).toBe(false);
+  });
+});
+
+describe('WAUD78 — façade : aucune requête carte avant un geste', () => {
+  const cfg = { json: async () => ({ available: true, maptilerKey: 'k' }) };
+  function montage(pin = false) {
+    (fetch as any).mockResolvedValue(cfg);
+    document.body.innerHTML = '';
+    const bootCaptureOnly = vi.fn();
+    const chargeurs = { captureBoot: vi.fn(async () => ({ bootCaptureOnly })), viewerOnly: vi.fn(async () => ({ createRoofViewer: vi.fn() })) };
+    document.body.innerHTML = `${HTML}<form id="rp9-search"></form><button id="mt-map-facade"></button>`;
+    const config: ConfigLocale & ConfigCarte = {
+      locale: 'fr', langueBasculable: true, formatNombre: String, doc: document, reducedMotion: true,
+      estimationGatee: true, apercu3dPublic: true, statutsSuiventLangue: false, optionsBootLocale: {}, chargeurs,
+    };
+    const ctx = creerContexte(creerDom(document), creerEtat(null, 'fr'), config) as ContexteCarte;
+    if (pin) ctx.etat.capturePin = { lat: 33.5, lng: -7.6 };
+    for (const n of ['syncCityRequirement', 'markDataEntered', 'saveWizardState']) ctx.crochets.installer(n, () => {});
+    ctx.crochets.installer('langueActive', () => 'fr');
+    installerCarte(ctx);
+    return { ctx, chargeurs, bootCaptureOnly };
+  }
+
+  it('étape 0 sans repère : config seulement, aucun import de carte, squelette arrêté', async () => {
+    const { ctx, chargeurs } = montage();
+    ctx.crochets.appeler('ensureMapBooted');
+    await attendre(); await attendre();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(chargeurs.captureBoot).not.toHaveBeenCalled();
+    expect(document.getElementById('rp9-map')!.classList.contains('mt-skeleton-shimmer')).toBe(false);
+  });
+
+  it('étape 0 : carte indisponible → repli immédiat, sans attendre de geste', async () => {
+    const { ctx } = montage();
+    (fetch as any).mockResolvedValue({ json: async () => ({ available: false }) });
+    ctx.crochets.appeler('ensureMapBooted');
+    await attendre(); await attendre();
+    expect(document.getElementById('mt-fallback')!.hidden).toBe(false);
+  });
+
+  it('clic sur la façade : la carte démarre et la façade disparaît', async () => {
+    const { ctx, bootCaptureOnly } = montage();
+    ctx.crochets.appeler('ensureMapBooted');
+    await attendre(); await attendre();
+    document.getElementById('mt-map-facade')!.click();
+    await attendre(); await attendre();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(bootCaptureOnly).toHaveBeenCalledTimes(1);
+    expect(document.getElementById('mt-map-facade')).toBeNull();
+  });
+
+  it('un repère déjà posé (reprise) démarre la carte sans geste', async () => {
+    const { ctx, bootCaptureOnly } = montage(true);
+    ctx.crochets.appeler('ensureMapBooted');
+    await attendre(); await attendre();
+    expect(bootCaptureOnly).toHaveBeenCalledTimes(1);
+  });
+
+  it('focus sur l’adresse ou choix du geste : la carte démarre', async () => {
+    const a = montage();
+    document.getElementById('rp9-address')!.dispatchEvent(new Event('focus'));
+    await attendre(); await attendre();
+    expect(a.bootCaptureOnly).toHaveBeenCalledTimes(1);
+    const b = montage();
+    document.querySelectorAll<HTMLButtonElement>('.mt-roof-mode')[0].click();
+    await attendre(); await attendre();
+    expect(b.bootCaptureOnly).toHaveBeenCalledTimes(1);
+  });
+
+  it('adresse validée avant le chargement : pas de rechargement, recherchée au démarrage', async () => {
+    const { bootCaptureOnly } = montage();
+    (document.getElementById('rp9-address') as HTMLInputElement).value = ' Maârif ';
+    const e = new Event('submit', { cancelable: true });
+    document.getElementById('rp9-search')!.dispatchEvent(e);
+    expect(e.defaultPrevented).toBe(true);
+    await attendre(); await attendre();
+    expect(bootCaptureOnly.mock.calls[0][0].initialQuery).toBe('Maârif');
+  });
+});
+
+describe('WAUD34 — adresse cherchée sans repère', () => {
+  it('pré-remplit une ville vide, jamais une ville saisie', () => {
+    const { ctx } = monter('fr');
+    const adresse = document.getElementById('rp9-address') as HTMLInputElement;
+    const ville = document.getElementById('mt-city') as HTMLInputElement;
+    adresse.value = ' Maârif ';
+    adresse.dispatchEvent(new Event('change'));
+    expect(ville.value).toBe('Maârif');
+    ville.value = '';
+    ctx.etat.cityTouched = true;
+    adresse.dispatchEvent(new Event('change'));
+    expect(ville.value).toBe('');
+  });
+});
+
+describe('WAUD43 — étape toit : outils de dessinateur masqués au grand public', () => {
+  const lire = (rel: string) => readFileSync(`${process.cwd()}/${rel}`, 'utf-8');
+
+  it('le tunnel pose le contexte public ; le CSS masque les puces pro', () => {
+    monter('fr');
+    expect(document.getElementById('mt-stage')!.dataset.contexte).toBe('public');
+    const css = lire('src/styles/mon-toit-page.css');
+    for (const c of ['rp9-trace-chips', 'rp9-fond-calage', 'rp9-geocode-country']) {
+      expect(css).toContain(`[data-contexte='public'] .${c}`);
+    }
+  });
+
+  it('« Continuer » arrive avant la carte, sous les profils, dans les 3 langues', () => {
+    for (const p of ['devis/mon-toit', 'en/devis/mon-toit', 'ar/devis/mon-toit']) {
+      const page = lire(`src/pages/${p}.astro`);
+      const suivant = page.indexOf('id="mt-next-0"');
+      expect(suivant).toBeGreaterThan(page.indexOf('id="mt-mode-grid"'));
+      expect(suivant).toBeLessThan(page.indexOf('id="mt-stage"'));
+    }
   });
 });

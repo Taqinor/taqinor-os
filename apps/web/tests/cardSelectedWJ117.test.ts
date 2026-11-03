@@ -52,7 +52,8 @@ describe('WJ117 — règle CSS .cine-card[aria-pressed="true"] dans global.css',
     // les commentaires d'abord (le mot @layer apparaît dans le commentaire
     // explicatif de la règle WJ117 elle-même).
     const sansCommentaires = css.replace(/\/\*[\s\S]*?\*\//g, '');
-    expect(sansCommentaires).not.toContain('@layer');
+    // WAUD63 : seul .v2-body vit en @layer (contraste) ; rien d'autre, et surtout pas .cine-card.
+    expect(sansCommentaires.replace(/@layer components \{\s*\.v2-body \{[^}]*\}\s*\}/, '')).not.toContain('@layer');
   });
 
   it('bordure brass : border-color brass-400 + ring inset 1px = 2px visibles sans décalage de layout', () => {

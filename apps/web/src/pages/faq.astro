@@ -37,7 +37,7 @@ const faq = [
   {
     cluster: 'Financement',
     q: "Comment financer une installation solaire au Maroc ?",
-    a: "Trois façons concrètes, sans détour. La plupart de nos clients règlent au comptant, et l'installation se rembourse ensuite seule via l'électricité qu'ils cessent d'acheter au réseau. D'autres passent par un crédit à la consommation classique souscrit directement auprès de leur banque — Taqinor n'y intervient pas et n'y touche aucune commission. Pour les entreprises, des lignes de financement vert existent pour les énergies renouvelables, mais le montage relève de votre banque. Le détail est sur la page Financement & rentabilité.",
+    a: "Deux façons concrètes, sans détour. La plupart de nos clients règlent au comptant, et l'installation se rembourse ensuite seule via l'électricité qu'ils cessent d'acheter au réseau. Pour les entreprises, des lignes de financement vert existent pour les énergies renouvelables, mais le montage relève de votre banque. Le détail est sur la page Financement & rentabilité.",
   },
   {
     q: "Taqinor propose-t-il un crédit ou une subvention ?",
@@ -47,7 +47,7 @@ const faq = [
   {
     cluster: 'Fonctionnement des panneaux',
     q: "Les panneaux fonctionnent-ils la nuit ou par temps nuageux ?",
-    a: "La nuit, non : sans lumière, pas de courant. Le temps couvert est une autre histoire — les panneaux produisent toujours, simplement moins, car la cellule photovoltaïque réagit aussi à la lumière diffuse, pas seulement au soleil direct. Au Maroc, avec plus de 300 jours de soleil par an et un ensoleillement parmi les meilleurs au monde, les journées vraiment «&nbsp;perdues&nbsp;» se comptent sur les doigts. C’est ce qui rend l’autoconsommation aussi rentable ici.",
+    a: "La nuit, non : sans lumière, pas de courant. Le temps couvert est une autre histoire — les panneaux produisent toujours, simplement moins, car la cellule photovoltaïque réagit aussi à la lumière diffuse, pas seulement au soleil direct. Au Maroc, les journées vraiment «&nbsp;perdues&nbsp;» se comptent sur les doigts. C’est ce qui rend l’autoconsommation aussi rentable ici.",
   },
   {
     q: "L’ombre réduit-elle beaucoup la production ?",
@@ -75,11 +75,11 @@ const faq = [
   {
     cluster: 'Article 33 (régularisation)',
     q: "Mon installation existante n’est pas déclarée. Que faire ?",
-    a: "Ne pas attendre. L’Article 33 prévoit « dans un délai de dix-huit (18) mois à compter de la date d'entrée en vigueur de la présente loi » pour régulariser une installation déjà en place ; le point de départ de ce délai est à confirmer auprès des services de l'énergie. Le plus sage est de lancer la démarche dès maintenant — la page Régularisation détaille la procédure en 5 étapes.",
+    a: "Ne pas attendre. L’Article 33 prévoit « dans un délai de dix-huit (18) mois à compter de la date d'entrée en vigueur de la présente loi » pour régulariser une installation déjà en place. Le plus sage est de lancer la démarche dès maintenant — la page Régularisation détaille la procédure en 5 étapes.",
   },
   {
     q: "Que risque une installation non régularisée ?",
-    a: "Tant qu’elle n’est pas régularisée, une installation existante reste, aux yeux de la loi 82-21, en situation irrégulière. Les suites possibles vont de l’amende (2 000 à 5 000 MAD pour une exploitation sans la déclaration requise, 100 000 à 1 000 000 MAD sans accord de raccordement ni autorisation) à la mise en demeure, l’arrêt de l’installation, voire sa déconnexion du réseau. Autant de bonnes raisons de saisir la fenêtre de l’Article 33.",
+    a: "Tant qu’elle n’est pas régularisée, une installation existante reste, aux yeux de la loi 82-21, en situation irrégulière. L’Article 33 ouvre une fenêtre pour la mettre en règle : la page Régularisation détaille la démarche.",
   },
   // — Batteries / autoconsommation —
   {
@@ -145,14 +145,15 @@ const faq = [
           Voici, sans langue de bois, ce que les acheteurs nous demandent avant de signer : ce que
           ça coûte, à partir de quand c’est rentable, ce que dit la loi 82-21, ce que couvrent les
           garanties et comment on suit la production. Votre question manque à l’appel ?
-          <a href="/contact" class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">Écrivez-nous.</a>
+          <a href="/contact/" class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">Écrivez-nous.</a>
         </p>
       </div>
     </section>
 
     <Faq items={faq} heading="Questions fréquentes" />
 
-    <CtaBand title="Une dernière question ? Une étude gratuite y répond." href="/devis/mon-toit" seam={false} />
+    <p class="mx-auto my-6 max-w-3xl px-4 text-sm text-lune-soft">Vous choisissez un installateur ? <a href="/ressources/10-questions-avant-de-signer/" class="border-b border-white/40 pb-0.5 font-semibold text-white">10 questions avant de signer</a>.</p>
+    <CtaBand title="Une dernière question ? Une étude gratuite y répond." href="/devis/mon-toit/" seam={false} />
 
     <StickyCta />
   </div>

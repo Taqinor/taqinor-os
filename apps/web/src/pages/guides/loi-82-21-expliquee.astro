@@ -33,7 +33,7 @@ const guideBodyText = `
   pas les installations posées avant elle. Son Article 33 ouvre, depuis le 9 juin 2026, une fenêtre de
   18 mois pour les mettre en règle. Régularisée dans ce délai, une installation existante rejoint le
   cadre légal comme une neuve. Passé la fenêtre, elle reste en situation irrégulière au regard de la
-  loi 82-21, avec les sanctions que cela suppose.
+  loi 82-21.
 `;
 // W291 — image OG (même URL que celle passée à ogSlug plus bas), pour l'éligibilité Article rich results.
 const { readingMinutes, url, schemaImageUrl } = articleMeta(guideBodyText, Astro.url.pathname, Astro.site, '/og/loi-82-21.png');
@@ -63,7 +63,7 @@ const faq = [
   },
   {
     q: 'Que faire si mon installation solaire existante n’est pas déclarée ?',
-    a: 'L’Article 33 prévoit « dans un délai de dix-huit (18) mois à compter de la date d\'entrée en vigueur de la présente loi » ; le point de départ de ce délai est à confirmer auprès des services de l’énergie : déposez sans attendre. Passé le délai, l’installation reste en situation irrégulière au regard de la loi, avec les sanctions que cela suppose.',
+    a: 'L’Article 33 prévoit « dans un délai de dix-huit (18) mois à compter de la date d\'entrée en vigueur de la présente loi » ; le point de départ de ce délai est à confirmer auprès des services de l’énergie : déposez sans attendre. Passé le délai, l’installation reste en situation irrégulière au regard de la loi.',
   },
 ];
 const regimes = [
@@ -99,7 +99,7 @@ import BatterieLithiumOuGelPCFC9 from '../../components/blocs/BatterieLithiumOuG
     <V2Enhance />
     <Article33Ribbon />
 
-    <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Guides', href: '/guides' }, { label: 'Loi 82-21 expliquée simplement' }]} />
+    <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Guides', href: '/guides/' }, { label: 'Loi 82-21 expliquée simplement' }]} />
 
     <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
       <p class="tech-label v2-kicker rule-brass text-lune">Guide · Loi 82-21</p>
@@ -150,7 +150,7 @@ import BatterieLithiumOuGelPCFC9 from '../../components/blocs/BatterieLithiumOuG
           compter de la date d'entrée en vigueur de la présente loi » ; le point de départ de ce
           délai est à confirmer auprès des services de l'énergie : déposez sans attendre, indépendamment
           de ce tarif —
-          <a href="/regularization-article-33" class="border-b border-brass-300/60 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">faites régulariser votre installation existante →</a>.
+          <a href="/regularization-article-33/" class="border-b border-brass-300/60 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">faites régulariser votre installation existante →</a>.
         </p>
       </div>
 
@@ -159,25 +159,24 @@ import BatterieLithiumOuGelPCFC9 from '../../components/blocs/BatterieLithiumOuG
       <h2 class="display v2-section-title mt-14 text-white">Et si mon installation existe déjà ?</h2>
       <p class="v2-lead mt-5 text-lune-soft">
         La loi n’oublie pas les installations posées avant elle. Son Article 33 prévoit « dans un délai de dix-huit (18) mois à compter de la date d'entrée en
-        vigueur de la présente loi » pour les mettre en règle : le point de départ de ce délai est à
-        confirmer auprès des services de l'énergie — déposez sans attendre le dossier qui manque,
+        vigueur de la présente loi » pour les mettre en règle : déposez sans attendre le dossier qui manque,
         déclaration, accord de raccordement ou autorisation, selon le régime qui vous concerne
         ci-dessus. Régularisée dans le délai, une installation existante rejoint le cadre légal
         comme une neuve. Passé le délai, elle reste en situation irrégulière au regard de la loi
-        82-21, avec les sanctions que cela suppose. Il n’y a donc rien à gagner à attendre, et la
+        82-21. Il n’y a donc rien à gagner à attendre, et la
         démarche se lance dès aujourd’hui.
       </p>
       <RelatedLinks mt="mt-8" links={[
-        { href: '/loi-82-21', label: 'Identifier mon régime en 3 questions' },
-        { href: '/regularization-article-33', label: 'Régulariser mon installation' },
-        { href: '/guides', label: 'Tous les guides' },
+        { href: '/loi-82-21/', label: 'Identifier mon régime en 3 questions' },
+        { href: '/regularization-article-33/', label: 'Régulariser mon installation' },
+        { href: '/guides/', label: 'Tous les guides' },
       ]} />
     </article>
 
     <!-- W297 — FAQ visuelle : schema={false}, /faq garde le seul FAQPage du site -->
     <Faq items={faq} heading="Loi 82-21 — questions fréquentes" schema={false} />
 
-    <CtaBand title="La théorie, c'est cette page. Votre dossier, lui, se dépose avec l'étude gratuite." buttonLabel="Faire vérifier mon dossier" href="/devis/mon-toit" />
+    <CtaBand title="La théorie, c'est cette page. Votre dossier, lui, se dépose avec l'étude gratuite." buttonLabel="Faire vérifier mon dossier" href="/devis/mon-toit/" />
 
     <StickyCta />
   </div>

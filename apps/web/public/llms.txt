@@ -37,3 +37,4 @@
 - `/proposition/`, `/internal/` et `/preview/` sont des zones privées
   (propositions client tokenisées, outils internes, prévisualisations) — non
   destinées à l'indexation ni à la citation.
+- [Choisir un installateur : 10 questions avant de signer](https://taqinor.ma/ressources/10-questions-avant-de-signer/)

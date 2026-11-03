@@ -17,22 +17,32 @@
    déjà sa hauteur finale — bg-nuit-700/min-h existants — on n'ajoute qu'un
    effet de « chargement » par-dessus, retiré au premier rendu réel). ===== */
 .mt-skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+/* WAUD8 — reflet porté par un pseudo-élément animé en transform (composité) :
+   animer background-position repeignait toute la zone à chaque image. */
+.mt-skeleton-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
   background-image: linear-gradient(
     100deg,
     transparent 30%,
     rgb(255 255 255 / 0.06) 50%,
     transparent 70%
   );
-  background-size: 200% 100%;
+  transform: translateX(-100%);
+  pointer-events: none;
 }
 @media (prefers-reduced-motion: no-preference) {
-  .mt-skeleton-shimmer {
+  .mt-skeleton-shimmer::after {
     animation: mt-shimmer 1.6s ease-in-out infinite;
   }
 }
 @keyframes mt-shimmer {
-  from { background-position: 200% 0; }
-  to { background-position: -200% 0; }
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
 }
 
 /* Squelettes des 3 chiffres d'estimation — mêmes proportions que le texte
@@ -127,4 +137,13 @@
   font-size: 0.8rem;
   color: var(--color-lune-soft, #c7cdd6);
   max-width: 34ch;
+}
+
+/* WAUD43 — tunnel grand public : les aides de dessinateur créées par l'outil de tracé
+   (angles droits, aimantation, calage du fond, grille, cotes, mention de recherche)
+   sont masquées. L'atelier ERP n'a pas ce contexte : rien n'y change. */
+[data-contexte='public'] .rp9-trace-chips,
+[data-contexte='public'] .rp9-fond-calage,
+[data-contexte='public'] .rp9-geocode-country {
+  display: none !important;
 }

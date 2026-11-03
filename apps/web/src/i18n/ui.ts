@@ -30,6 +30,8 @@ export const ui = {
     'nav.about': 'À propos',
     'nav.openMenu': 'Ouvrir le menu',
     'nav.primary': 'Navigation principale',
+    'nav.homeLogo': 'TAQINOR — accueil',
+    'nav.tenQuestions': '10 questions avant de signer',
     'nav.mobile': 'Navigation mobile',
     // WJ100 — 'Blog' et 'Fiches techniques' étaient codés en dur (non
     // traduits) dans Header.astro/Footer.astro ; 'Espace client' était dupliqué
@@ -110,7 +112,7 @@ export const ui = {
     'roof.autre': 'Autre',
     // Ruban Article 33
     'ribbon.badge': 'Loi 82-21',
-    'ribbon.text': 'Décret 2-25-100 en vigueur depuis le 9 juin 2026 — installations existantes : régularisez maintenant →',
+    'ribbon.text': 'Décret 2-25-100 en vigueur depuis le 9 juin 2026 — installation existante ? Nous montons votre dossier de régularisation →',
     // Bande CTA finale + CTA collant + fil d'Ariane
     'cta.eyebrow': 'Étude gratuite',
     'cta.title': 'Une étude technique gratuite, sans engagement.',
@@ -118,7 +120,9 @@ export const ui = {
     // surfaces laiton (en-tête / héros / mi-page / CTA collant).
     'cta.primary': 'Obtenir mon étude gratuite',
     // WJ37 — bandeau de réassurance sous le CTA principal (verbatim founder).
-    'cta.reassurance': 'Gratuit · Sans engagement · Réponse sous 24–48 h · Sur WhatsApp',
+    // WAUD2 — promesse unique (WG9).
+    'cta.delai': 'Réponse WhatsApp sous 1 h, 7j/7',
+    'cta.reassurance': 'Gratuit · Sans engagement · Réponse WhatsApp sous 1 h, 7j/7',
     'breadcrumb.label': "Fil d'Ariane",
     'breadcrumb.home': 'Accueil',
     'faq.heading': 'Questions fréquentes',
@@ -164,6 +168,8 @@ export const ui = {
     'nav.about': 'About',
     'nav.openMenu': 'Open menu',
     'nav.primary': 'Main navigation',
+    'nav.homeLogo': 'TAQINOR — home',
+    'nav.tenQuestions': '10 questions before signing',
     'nav.mobile': 'Mobile navigation',
     'nav.blog': 'Blog',
     'nav.produits': 'Technical data sheets',
@@ -230,13 +236,14 @@ export const ui = {
     'roof.toit_plat': 'Flat roof',
     'roof.autre': 'Other',
     'ribbon.badge': 'Law 82-21',
-    'ribbon.text': 'Decree 2-25-100 in force since 9 June 2026 — existing installations: regularize now →',
+    'ribbon.text': 'Decree 2-25-100 in force since 9 June 2026 — existing installation? We prepare your regularization file →',
     'cta.eyebrow': 'Free study',
     'cta.title': 'A free technical study, no commitment.',
     // WJ36 — THE primary CTA label, repeated verbatim on every brass surface.
     'cta.primary': 'Get my free study',
     // WJ37 — reassurance strip under the primary CTA (verbatim founder).
-    'cta.reassurance': 'Free · No obligation · Reply within 24–48 h · On WhatsApp',
+    'cta.delai': 'WhatsApp reply within 1 h, 7 days a week',
+    'cta.reassurance': 'Free · No obligation · WhatsApp reply within 1 h, 7 days a week',
     'breadcrumb.label': 'Breadcrumb',
     'breadcrumb.home': 'Home',
     'faq.heading': 'Frequently asked questions',
@@ -282,6 +289,8 @@ export const ui = {
     'nav.about': 'من نحن',
     'nav.openMenu': 'فتح القائمة',
     'nav.primary': 'التنقل الرئيسي',
+    'nav.homeLogo': 'TAQINOR — الرئيسية',
+    'nav.tenQuestions': '10 أسئلة قبل التوقيع',
     'nav.mobile': 'تنقل الجوال',
     'nav.blog': 'المدونة',
     'nav.produits': 'أوراق البيانات التقنية',
@@ -348,13 +357,14 @@ export const ui = {
     'roof.toit_plat': 'سطح مستوٍ',
     'roof.autre': 'أخرى',
     'ribbon.badge': 'القانون 82-21',
-    'ribbon.text': 'المرسوم 2-25-100 ساري منذ 9 يونيو 2026 — التركيبات القائمة: سوِّ وضعك الآن →',
+    'ribbon.text': 'المرسوم 2-25-100 ساري منذ 9 يونيو 2026 — تركيبة قائمة؟ نُعدّ ملف تسويتها →',
     'cta.eyebrow': 'دراسة مجانية',
     'cta.title': 'دراسة تقنية مجانية، بدون أي التزام.',
     // WJ36 — libellé du CTA principal (verbatim sur toutes les surfaces laiton).
     'cta.primary': 'احصل على دراستي المجانية',
     // WJ37 — bandeau de réassurance sous le CTA principal (verbatim founder).
-    'cta.reassurance': 'مجاناً · دون أي التزام · رد خلال 24–48 ساعة · عبر واتساب',
+    'cta.delai': 'رد عبر واتساب خلال ساعة، 7 أيام على 7',
+    'cta.reassurance': 'مجاناً · دون أي التزام · رد عبر واتساب خلال ساعة، 7 أيام على 7',
     'breadcrumb.label': 'مسار التصفّح',
     'breadcrumb.home': 'الرئيسية',
     'faq.heading': 'الأسئلة المتكررة',

@@ -32,10 +32,10 @@ const posts = (
 // de /guides (src/pages/guides/index.astro) : le guide le plus représentatif
 // de chaque thème, pour le lien « guide associé » sous les cartes concernées.
 const GUIDE_BY_THEME: Partial<Record<(typeof BLOG_THEMES)[number], { href: string; title: string }>> = {
-  Solaire: { href: '/guides/combien-de-panneaux-pour-ma-maison', title: 'Combien de panneaux et quelle puissance (kWc) ?' },
-  Batteries: { href: '/guides/faut-il-des-batteries', title: 'Faut-il des batteries ?' },
-  'Voiture électrique': { href: '/recharge-voiture-electrique-solaire', title: 'Recharger sa voiture électrique au solaire' },
-  Prix: { href: '/prix-panneaux-solaires-maroc', title: 'Prix des panneaux solaires au Maroc' },
+  Solaire: { href: '/guides/combien-de-panneaux-pour-ma-maison/', title: 'Combien de panneaux et quelle puissance (kWc) ?' },
+  Batteries: { href: '/guides/faut-il-des-batteries/', title: 'Faut-il des batteries ?' },
+  'Voiture électrique': { href: '/recharge-voiture-electrique-solaire/', title: 'Recharger sa voiture électrique au solaire' },
+  Prix: { href: '/prix-panneaux-solaires-maroc/', title: 'Prix des panneaux solaires au Maroc' },
 };
 
 // Puces de filtre : uniquement les thèmes réellement présents parmi les
@@ -109,7 +109,7 @@ const jsonLd = {
               const guide = p.data.theme ? GUIDE_BY_THEME[p.data.theme] : undefined;
               return (
                 <div class="blog-card-wrap" data-theme-item={p.data.theme ?? ''}>
-                  <a href={`/blog/${p.id}`} class="v2-rise cine-card blog-card flex flex-col p-7" style={`--v2-i:${i}`}>
+                  <a href={`/blog/${p.id}/`} class="v2-rise cine-card blog-card flex flex-col p-7" style={`--v2-i:${i}`}>
                     <p class="tech-label text-brass-300">{dateFmt.format(p.data.pubDate)}</p>
                     <h2 class="display mt-2 text-xl text-white">{p.data.title}</h2>
                     <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{p.data.description}</p>
@@ -128,7 +128,7 @@ const jsonLd = {
       )}
     </section>
 
-    <CtaBand title="Une question sur votre projet solaire ? Lancez l’étude gratuite." href="/devis/mon-toit" />
+    <CtaBand title="Une question sur votre projet solaire ? Lancez l’étude gratuite." href="/devis/mon-toit/" />
 
     <StickyCta />
   </div>

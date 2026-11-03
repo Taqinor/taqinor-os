@@ -16,6 +16,7 @@
  * cette même page) est retiré ; DiagnosticForm.astro + /api/simulate restent
  * intacts dans le code comme repli documenté (montés ailleurs).
  */
+import { RETOUR_PAR_SEGMENT } from '../lib/billRange';
 import Layout from '../layouts/Layout.astro';
 import V2Enhance from '../components/V2Enhance.astro';
 import Article33Ribbon from '../components/Article33Ribbon.astro';
@@ -33,7 +34,7 @@ import ZelligeSignature from '../components/ZelligeSignature.astro';
 import { WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink, zeroFormWhatsappText } from '../lib/whatsapp';
 import { buildGallery } from '../lib/homeGallery';
-import { REALISATIONS, MEASURED_FLEET_LIFETIME_MWH_FR } from '../lib/realisations';
+import { REALISATIONS, MEASURED_FLEET_LIFETIME_MWH_FR, MEASURED_FLEET_READ_NOTE, derniereRealisation } from '../lib/realisations';
 import { YIELD_TABLE } from '../lib/yieldTable';
 import { PRODUCTION_NET_FACTOR } from '../lib/systemLoss';
 
@@ -77,7 +78,7 @@ const casablancaSouthOptimalYield = Math.round(
 const heroFigure = MEASURED_FLEET_LIFETIME_MWH_FR; // « 6,56 »
 const heroTitleSuffix = ' MWh déjà produits et mesurés sur nos installations.';
 const heroSub =
-  'Un cumul réel, relevé en continu, en temps réel — pas une projection commerciale. Votre étude commence par un diagnostic de 60 secondes.';
+  `Un cumul réel, ${MEASURED_FLEET_READ_NOTE.fr} — pas une projection commerciale. Votre étude commence par un diagnostic de 60 secondes.`;
 
 // W267 — Sous-ligne monétaire du héros. AUCUN chiffre inventé : la
 // consommation réelle du foyer réf. 468 n'est publiée nulle part sur le site,
@@ -114,7 +115,7 @@ const heroSub =
 const faq = [
   { q: 'Combien coûte une installation solaire résidentielle ?', a: 'Cela dépend de votre consommation et de votre toiture. Une villa avec une facture de 1 500 MAD par mois s’équipe typiquement en 4 à 6 kWc. Le diagnostic ci-dessous vous donne une fourchette immédiate ; le chiffrage précis est établi après visite technique.' },
   { q: 'Que dit la loi 82-21 pour les particuliers ?', a: 'En basse tension, une installation de moins de 11 kW relève du régime de déclaration : une formalité préalable, pas une autorisation. Taqinor prépare et dépose la déclaration pour vous.' },
-  { q: 'Mon installation existante n’est pas déclarée. Que faire ?', a: 'L’Article 33 de la loi 82-21 ouvre une fenêtre de régularisation pour les installations existantes. La fenêtre est ouverte : déposez maintenant. Voir la page Régularisation pour la procédure en 5 étapes.' },
+  { q: 'Mon installation existante n’est pas déclarée. Que faire ?', a: 'L’Article 33 de la loi 82-21 ouvre une fenêtre de régularisation pour les installations existantes. Voir la page Régularisation pour la procédure en 5 étapes.' },
   { q: 'Combien de temps durent les panneaux ?', a: 'Les panneaux sont garantis en performance sur 30 ans (garantie linéaire, ≥ 87,4 % de la puissance initiale à 30 ans). Les onduleurs se remplacent typiquement une fois sur la durée de vie de l’installation.' },
   { q: 'Faut-il des batteries ?', a: 'Pas nécessairement. Si votre consommation est principalement diurne, l’autoconsommation directe est le meilleur investissement. Les batteries se justifient pour la consommation nocturne ou la continuité de service — nous le calculons dans l’étude.' },
 ];
@@ -126,14 +127,14 @@ const faq = [
 // ce choix éditorial (quelle photo porte le chiffre) reste ici, seul le
 // CHIFFRE lui-même est dérivé.
 const galleryRaw = [
-  { name: 'reflet-468', alt: 'Le soleil se reflète sur la rangée de panneaux pendant la pose, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: true, type: '24 × Canadian Solar 710 Wc · Deye 15 kW', slug: 'el-jadida-17-kwc' },
-  { name: 'equipe-trois', alt: 'Équipe Taqinor devant la longue rangée de panneaux en fin de chantier, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: false, type: 'Fin de chantier · équipe Taqinor', slug: 'el-jadida-17-kwc' },
+  { name: 'reflet-468', alt: 'Le soleil se reflète sur la rangée de panneaux pendant la pose, El Jadida', widths: [1600, 1024, 768, 640], ratio: 3 / 2, showProd: true, type: '24 × Canadian Solar 710 Wc · Deye 15 kW', slug: 'el-jadida-17-kwc' },
+  { name: 'equipe-trois', alt: 'Équipe Taqinor devant la longue rangée de panneaux en fin de chantier, El Jadida', widths: [1600, 1024, 768, 640], ratio: 3 / 2, showProd: false, type: 'Fin de chantier · équipe Taqinor', slug: 'el-jadida-17-kwc' },
   { name: 'hero-skyline', alt: 'Rangée de panneaux solaires devant la skyline de Casablanca et un minaret, lumière dorée', widths: [2000, 1280, 768, 480], ratio: 16 / 9, showProd: true, type: '16 × Canadian Solar 710 Wc · Deye 10 kW', slug: 'casablanca-11-kwc' },
-  { name: 'portrait-400', alt: "L'ingénieur devant le champ de panneaux, skyline de Casablanca", widths: [1600, 1024, 640], ratio: 4 / 3, showProd: false, type: 'Suivi de production en temps réel', slug: 'casablanca-11-kwc' },
-  { name: 'champ-villa', alt: 'Champ de huit panneaux sur toit plat de villa, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: true, type: '8 × Canadian Solar 710 Wc · Deye 5 kW', slug: 'el-jadida-6-kwc' },
-  { name: 'pose-134', alt: "L'équipe incline un panneau pendant la pose, Casablanca", widths: [1600, 1024, 640], ratio: 4 / 3, showProd: true, type: 'Pose en cours · 8 × Canadian Solar 710 Wc', slug: 'casablanca-6-kwc' },
-  { name: 'equipe-gilet-taqinor', alt: "Installateur en gilet Taqinor posant les rails d'une structure, Nouaceur", widths: [1600, 1024, 640], ratio: 1, showProd: false, type: 'Pose des rails · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
-  { name: 'entretien-jet', alt: "Nettoyage au jet d'eau du champ de panneaux, Nouaceur", widths: [1600, 1024, 640], ratio: 1, showProd: false, type: 'Entretien du champ · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
+  { name: 'portrait-400', alt: "L'ingénieur devant le champ de panneaux, skyline de Casablanca", widths: [1600, 1024, 768, 640], ratio: 4 / 3, showProd: false, type: 'Suivi de production en temps réel', slug: 'casablanca-11-kwc' },
+  { name: 'champ-villa', alt: 'Champ de huit panneaux sur toit plat de villa, El Jadida', widths: [1600, 1024, 768, 640], ratio: 3 / 2, showProd: true, type: '8 × Canadian Solar 710 Wc · Deye 5 kW', slug: 'el-jadida-6-kwc' },
+  { name: 'pose-134', alt: "L'équipe incline un panneau pendant la pose, Casablanca", widths: [1600, 1024, 768, 640], ratio: 4 / 3, showProd: true, type: 'Pose en cours · 8 × Canadian Solar 710 Wc', slug: 'casablanca-6-kwc' },
+  { name: 'equipe-gilet-taqinor', alt: "Installateur en gilet Taqinor posant les rails d'une structure, Nouaceur", widths: [1600, 1024, 768, 640], ratio: 1, showProd: false, type: 'Pose des rails · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
+  { name: 'entretien-jet', alt: "Nettoyage au jet d'eau du champ de panneaux, Nouaceur", widths: [1600, 1024, 768, 640], ratio: 1, showProd: false, type: 'Entretien du champ · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
   // (2026-09) Bouskoura — puissance non publiée pour ce chantier : `type` reste
   // qualitatif (marques confirmées à l'image), jamais un compte de panneaux deviné.
   { name: 'bouskoura-toit', alt: 'Toiture-terrasse d’une villa entièrement couverte de panneaux solaires, Bouskoura', widths: [2000, 1280, 768, 480], ratio: 16 / 9, showProd: false, type: 'Onduleur Deye · stockage DYNESS', slug: 'bouskoura-villa-2026' },
@@ -149,12 +150,12 @@ const galleryCities = ['Toutes', ...Array.from(new Set(gallery.map((g) => g.vill
 // dans le menu. Descriptions reprises du positionnement déjà publié, sans
 // nouveau claim ni chiffre. Cartes texte (aucune image) → zéro CLS.
 const solutions = [
-  { href: '/résidentiel', tag: 'Villas & appartements', title: 'Solaire résidentiel', body: 'Dimensionné sur votre facture réelle, déclaration loi 82-21 incluse.' },
-  { href: '/professionnel', tag: 'Industriels · hôtels · cliniques', title: 'Solaire professionnel', body: 'Réduction du poste électricité, moyenne tension, conformité loi 82-21.' },
-  { href: '/pompage-solaire', tag: 'Agriculture & irrigation', title: 'Pompage solaire', body: 'Pompage au fil du soleil, souvent sans batteries, dimensionné au besoin réel.' },
-  { href: '/batteries-stockage', tag: 'Autoconsommation', title: 'Batteries & stockage', body: 'Stockage LFP pour le nocturne ou la continuité de service — quand l’étude le justifie.' },
-  { href: '/maintenance-monitoring', tag: 'Après la pose', title: 'Maintenance & monitoring', body: 'Supervision en temps réel avec accès client, SAV proactif, dossier technique.' },
-  { href: '/regularization-article-33', tag: 'Mise en conformité', title: 'Régularisation Loi 82-21', body: 'Régularisation des installations existantes via l’Article 33.' },
+  { href: '/résidentiel/', tag: 'Villas & appartements', title: 'Solaire résidentiel', body: 'Dimensionné sur votre facture réelle, déclaration loi 82-21 incluse.' },
+  { href: '/professionnel/', tag: 'Industriels · hôtels · cliniques', title: 'Solaire professionnel', body: 'Réduction du poste électricité, moyenne tension, conformité loi 82-21.' },
+  { href: '/pompage-solaire/', tag: 'Agriculture & irrigation', title: 'Pompage solaire', body: 'Pompage au fil du soleil, souvent sans batteries, dimensionné au besoin réel.' },
+  { href: '/batteries-stockage/', tag: 'Autoconsommation', title: 'Batteries & stockage', body: 'Stockage LFP pour le nocturne ou la continuité de service — quand l’étude le justifie.' },
+  { href: '/maintenance-monitoring/', tag: 'Après la pose', title: 'Maintenance & monitoring', body: 'Suivi de production sur les installations raccordées, SAV proactif, dossier technique.' },
+  { href: '/regularization-article-33/', tag: 'Mise en conformité', title: 'Régularisation Loi 82-21', body: 'Régularisation des installations existantes via l’Article 33.' },
 ];
 
 // W65 — Les marques tier-1 vivent désormais dans <BrandStrip> (src/lib/brands.ts) :
@@ -170,7 +171,7 @@ const journey = [
   { n: '3', title: 'Visite technique & étude gratuite', body: 'Lecture de la toiture sur site, étude complète et devis à 0 MAD.' },
   { n: '4', title: 'Pose', body: 'Matériel tier-1 installé avec son dossier technique complet.' },
   { n: '5', title: 'Mise en service', body: 'Raccordement, contrôles, et dossier loi 82-21 mené à terme.' },
-  { n: '6', title: 'Suivi en temps réel', body: 'Production relevée en continu, accès client inclus : vous lisez vos kWh à la source.' },
+  { n: '6', title: 'Suivi de production', body: 'Sur les installations raccordées au suivi, la production se relève à la source.' },
 ];
 
 // W252 — « Comment ça marche » : bande 4 étapes sous le héros, le device
@@ -185,7 +186,7 @@ const howItWorks = [
   { n: '1', title: 'Estimation instantanée', body: 'Votre facture donne une fourchette kWc en 60 secondes, sans engagement.' },
   { n: '2', title: 'Étude personnalisée signée', body: 'Visite technique, dimensionnement sur votre toiture réelle, validé et signé avant tout devis.' },
   { n: '3', title: 'Devis + signature en ligne', body: 'Le chiffrage détaillé se signe électroniquement, où que vous soyez.' },
-  { n: '4', title: 'Installation & SAV', body: 'Pose par notre équipe, mise en service, puis suivi de production en temps réel et SAV proactif.' },
+  { n: '4', title: 'Installation & SAV', body: 'Pose par notre équipe, mise en service, puis suivi de production sur les installations raccordées et SAV proactif.' },
 ];
 
 // W58 — Iconographie sobre des cartes « Nos solutions » : un trait SVG par
@@ -200,14 +201,13 @@ const howItWorks = [
 // mais W284 les dérive désormais de REALISATIONS plutôt que de les recopier à
 // la main. L'or vit sur les chiffres .lum (discipline laiton). Aucun claim
 // inventé.
-const chantiersVisitablesCount = new Set(REALISATIONS.map((r) => r.ville)).size;
+const latest = derniereRealisation();
 // W375 — totalKwcLabel devient le pull-figure monumental de la bande (voir
 // plus bas dans le markup) ; le tableau `trust` ne porte donc plus que les
 // TROIS statistiques restantes (jamais un doublon de la même donnée).
 const trust = [
-  { fig: String(chantiersVisitablesCount), tally: false, label: 'Chantiers visitables', body: 'Installations réelles à voir sur demande — Casablanca, El Jadida, Nouaceur' },
   { fig: 'Loi 82-21', tally: false, label: 'Conformité incluse', body: 'Déclaration préparée et déposée pour vous par Taqinor' },
-  { fig: 'Temps réel', tally: false, label: 'Production suivie', body: 'Suivi de production en temps réel sur chaque installation, accès client inclus' },
+  { fig: 'Temps réel', tally: false, label: 'Production suivie', body: 'Suivi de production en temps réel sur les installations raccordées au suivi' },
 ];
 
 // W265 — L'histoire de l'investissement sur 30 ans : SEULE rupture tonale
@@ -215,9 +215,8 @@ const trust = [
 // aérer le dark→light→dark. Chiffres STRICTEMENT repris de /financement (déjà
 // publiés) — aucun nouveau nombre.
 const investment = [
-  { v: '3–7 ans', label: 'Retour sur investissement typique' },
+  ...(RETOUR_PAR_SEGMENT.residentiel ? [{ v: RETOUR_PAR_SEGMENT.residentiel.label.fr, label: 'Retour sur investissement typique' }] : []),
   { v: '30 ans', label: 'Garantie de performance des panneaux' },
-  { v: '50–100 %', label: 'De la facture couverte — selon batteries et usage jour/nuit' },
   { v: '0 MAD', label: 'L’étude et le diagnostic' },
 ];
 
@@ -238,7 +237,7 @@ import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
 
 <Layout
   title="Taqinor — Installations solaires au Maroc, conformes loi 82-21"
-  description="Installations solaires pour villas, industries et hôtels au Maroc : dimensionnées sur votre facture, déclarées loi 82-21, avec suivi de production en temps réel et accès client."
+  description="Installations solaires pour villas, industries et hôtels au Maroc : dimensionnées sur votre facture, déclarées loi 82-21, avec suivi de production sur les installations raccordées et accès client."
   ogSlug="accueil"
   preloadHeroPoster
 >
@@ -273,7 +272,7 @@ import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
           photographique ~100svh ne repose plus sur un seul chevron discret
           comme unique signal que le site continue. */}
       <div class="absolute bottom-6 left-1/2 flex -translate-x-1/2 flex-col items-center gap-1.5 scroll-chevron" aria-hidden="true">
-        <span class="tech-label text-white/70">Voir nos réalisations mesurées</span>
+        <span class="tech-label text-white/70">Voir nos réalisations</span>
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="6 9 12 15 18 9" />
         </svg>
@@ -299,7 +298,7 @@ import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
         <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">
           {/* UN seul CTA brass (discipline laiton) — l'or est ici autorisé.
               WJ36 — le héros pointe le parcours devis, libellé principal verbatim. */}
-          <a id="hero-cta-magnetic" href="/devis/mon-toit" class="glow-hero magnetic-cta bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
+          <a id="hero-cta-magnetic" href="/devis/mon-toit/" class="glow-hero magnetic-cta bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
             Obtenir mon étude gratuite →
           </a>
           {/* W349 — Ghost WhatsApp devient la porte sans formulaire : contour
@@ -348,7 +347,7 @@ import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
       <p class="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center text-sm font-semibold text-lune sm:text-base">
         <span class="text-brass-300">30 ans de performance garantie</span>
         <span class="text-lune-faint" aria-hidden="true">·</span>
-        <span>production suivie, pas promise — suivi en temps réel sur chaque installation</span>
+        <span>production suivie, pas promise — suivi en temps réel sur les installations raccordées au suivi</span>
       </p>
     </section>
 
@@ -380,7 +379,7 @@ import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
         <div class="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" data-stagger data-gallery-grid>
           {gallery.map((g, i) => (
             <div class="v2-rise cine-card cine-card-link group relative overflow-hidden" style={`--v2-i:${i % 3}`} data-gallery-card data-city={g.ville}>
-              <a href={`/realisations/${g.slug}`} class="absolute inset-0 z-0" aria-label={`Voir la réalisation : ${g.ariaLabel}`}></a>
+              <a href={`/realisations/${g.slug}/`} class="absolute inset-0 z-0" aria-label={`Voir la réalisation : ${g.ariaLabel}`}></a>
               {/* Grade « heure dorée » uniforme — .v3-grade sur la photo de contenu.
                   W364 — view-transition-name par photo (g.name, PAS g.slug —
                   certaines installations ont plusieurs cartes/photos, et un nom
@@ -388,7 +387,7 @@ import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
                   héros de /realisations/[slug] SEULEMENT quand ce héros utilise
                   la MÊME photo (photos[0].name) — sinon repli silencieux sur une
                   transition de page normale, sans morph. */}
-              <Picture name={g.name} alt={g.alt} widths={g.widths} ratio={4 / 3} sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+              <Picture name={g.name} alt={g.alt} widths={g.widths} ratio={4 / 3} sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, calc(100vw - 2rem)"
                 class="v3-grade aspect-[4/3] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"
                 style={`view-transition-name: vt-photo-${g.name}`} />
               {/* Bouton d'agrandissement (lightbox) — élément séparé du lien de
@@ -432,7 +431,7 @@ import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
           </p>
         )}
         {/* Lien discret vers TOUTES les réalisations — pas un bouton plein */}
-        <a href="/realisations" class="v2-rise group mt-10 inline-flex items-center gap-1 border-b-2 border-white/30 pb-0.5 text-sm font-bold text-white transition-colors hover:border-white">
+        <a href="/realisations/" class="v2-rise group mt-10 inline-flex items-center gap-1 border-b-2 border-white/30 pb-0.5 text-sm font-bold text-white transition-colors hover:border-white">
           Voir nos dernières réalisations <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span>
         </a>
       </div>
@@ -469,7 +468,7 @@ import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
             </a>
           ))}
         </div>
-        <a href="/nos-solutions" class="v2-rise group mt-10 inline-flex items-center gap-1 border border-white/40 px-6 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Voir toutes nos solutions <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span></a>
+        <a href="/nos-solutions/" class="v2-rise group mt-10 inline-flex items-center gap-1 border border-white/40 px-6 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Voir toutes nos solutions <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span></a>
       </div>
     </section>
 
@@ -489,7 +488,7 @@ import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
           </p>
         </div>
         <EnIndexDlF52D investment={investment} />
-        <a href="/financement" class="v2-rise group mt-10 inline-flex items-center gap-1 border-b-2 border-azur-600 pb-0.5 text-sm font-bold text-azur-700 transition-colors hover:text-azur-600">
+        <a href="/financement/" class="v2-rise group mt-10 inline-flex items-center gap-1 border-b-2 border-azur-600 pb-0.5 text-sm font-bold text-azur-700 transition-colors hover:text-azur-600">
           Voir le détail du financement <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span>
         </a>
       </div>
@@ -516,7 +515,7 @@ import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
           <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">02</span>Pourquoi Taqinor</p>
           <h2 class="display v2-section-title mt-5 text-white">La preuve avant la promesse</h2>
           <p class="v2-body mt-5">
-            Des chantiers réels, visitables, supervisés en continu, et une étude dimensionnée à la
+            Des chantiers réels, visitables, et une étude dimensionnée à la
             main sur votre facture réelle. Le chiffre décide du matériel — jamais l'inverse.
           </p>
         </div>
@@ -549,7 +548,7 @@ import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
       <p class="v2-lead mx-auto mt-4 max-w-2xl text-lune-soft">
         Études conçues par des ingénieurs — expertise R&amp;D télécom, ex-Huawei, Ericsson et STMicroelectronics.
       </p>
-      <a href="/à-propos" class="mt-6 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white transition-colors hover:text-brass-300">
+      <a href="/à-propos/" class="mt-6 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white transition-colors hover:text-brass-300">
         Le fondateur et sa méthode →
       </a>
     </section>
@@ -576,7 +575,7 @@ import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
             <p class="v2-body mt-5 max-w-md">
               Pas de centre d'appels, pas de relances : votre diagnostic arrive sur WhatsApp,
               vous échangez directement avec l'équipe technique, photos de toiture à l'appui,
-              jusqu'à la visite sur site. Échange type ci-contre — anonymisé.
+              jusqu'à la visite sur site. Exemple d'échange ci-contre.
             </p>
             {/* Copie appariée à l'étape active — masquée par défaut ; le script
                 ne l'affiche que si le pinning est armé (desktop, motion ok). */}
@@ -644,7 +643,7 @@ import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
             l'orientation réelle, et recevez une étude signée par notre équipe technique.
           </p>
           <div class="mt-6 flex flex-wrap gap-3">
-            <a href="/devis/mon-toit" class="glow inline-flex items-center gap-2 bg-brass-400 px-6 py-3.5 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">
+            <a href="/devis/mon-toit/" class="glow inline-flex items-center gap-2 bg-brass-400 px-6 py-3.5 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">
               Obtenir mon étude gratuite →
             </a>
             <EnIndexA993D waDirect={waDirect} />
@@ -652,9 +651,9 @@ import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
         </div>
         <aside class="v2-rise cine-card border-t-4 border-t-brass-400 p-6" style="--v2-i:1">
           <p class="tech-label text-lune-faint">Dernière installation livrée</p>
-          <EnIndexP51EC featured={featured} />
+          <EnIndexP51EC featured={latest} />
           <p class="mt-4 border-t border-white/10 pt-3 text-xs text-lune-faint">
-            Installation suivie en temps réel, accès client inclus. Visites de site possibles sur demande.
+            {latest.measuredLabel && 'Installation suivie en temps réel, accès client inclus.'}
           </p>
         </aside>
       </div>
