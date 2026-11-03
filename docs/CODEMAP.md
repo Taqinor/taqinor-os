@@ -594,7 +594,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1303)**
+**Done (1304)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1873,6 +1873,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT80` — Après un 409 nommant un autre devis (`version_remplacee.successeur` ou…
 - `VNT81` — Garder le panneau utilisable au téléphone : une colonne, tiroir bas, cibles ≥ 44 px, ≤…
 - `VNT82` — Deux budgets de clics en CI depuis la fiche lead : acompte proposé ≤ 3 interactions (0…
+- `VNT83` — Acceptation en direct M2 (orchestrateur) : accepter → brouillon d'acompte automatique →…
 - `VNT84` — Faire lire `devis_signes_en_vigueur` à la publicité (ticket moyen par lead, vélocité…
 - `VNT85` — Faire lire `devis_signes_en_vigueur` au contrôle d'intégrité « accepté sans chantier »
 - `VNT86` — Faire lire `devis_signes_en_vigueur` à `lead_signe_sans_devis_actif` (retirer le filtre…
@@ -1900,7 +1901,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT109` — `reporting/insights.py` (rentabilité chantier) : « facturé » = factures ÉMISES de la…
 - `VTAG1` — [GATED: décision fondateur]
 
-**Open — to build (123)**
+**Open — to build (122)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -2022,7 +2023,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `QXG4` — [GATED: founder content]
 - `QXG5` — [GATED: founder ops check, 10 minutes]
 - `QXG6` — [GATED: vérifs fondateur avant hard-coding]
-- `VNT83` — Acceptation en direct M2 (orchestrateur) : accepter → brouillon d'acompte automatique →…
 - `VNT108` — [GATED: geste du fondateur — `reparer_vente_active --lister` = 0 en prod ; aujourd'hui…
 - `VTG1` — [GATED: décision fondateur coût/infra]
 
