@@ -62,7 +62,7 @@ const t = {
 const bodyProps = { c, rtl: false, L, cardAlt: cardAlt, t, breadcrumbItems: [{ label: 'Home', href: L('/') }, { label: `Solar installation ${intro}` }], heroPhoto, showYieldNote: !!(avgYieldPerKwc && southOptimalYield), city };
 ---
 
-<Layout title={title} description={description} ogSlug="accueil">
+<Layout title={title} description={description} ogSlug={`ville-${c.slug}-en`}>
   <script type="application/ld+json" set:html={JSON.stringify(serviceJsonLd)} />
   <CityPageBody {...bodyProps}>
     <Fragment slot="yieldNote">

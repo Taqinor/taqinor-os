@@ -641,3 +641,25 @@ describe('WAUD70 (reste) — llms.txt trilingue ; toute URL de llms.txt / RSS / 
     expect(liste.map(sert200).filter(Boolean)).toEqual([]);
   });
 });
+
+describe('WAUD72 — carte de partage (OG) par ville et par langue, sans photo d’une autre ville', () => {
+  const lire = (p: string) => readFileSync(fileURLToPath(new URL(`../${p}`, import.meta.url)), 'utf-8');
+  it('une carte public/og/ville-<slug>-<fr|en|ar>.png pour chaque ville de CITIES', () => {
+    expect(CITIES.length).toBeGreaterThanOrEqual(5);
+    for (const c of CITIES) {
+      for (const l of ['fr', 'en', 'ar']) {
+        expect(existsSync(fileURLToPath(new URL(`../public/og/ville-${c.slug}-${l}.png`, import.meta.url))), `${c.slug}-${l}`).toBe(true);
+      }
+    }
+  });
+  it('les 3 pages ville pointent vers leur carte (plus aucune sur og/accueil.png) et le générateur n’y met aucune photo', () => {
+    for (const [f, l] of [['installation-solaire-[city]', 'fr'], ['en/installation-solaire-[city]', 'en'], ['ar/installation-solaire-[city]', 'ar']] as const) {
+      const s = lire(`src/pages/${f}.astro`);
+      expect(s, f).toContain(`ogSlug={\`ville-\${c.slug}-${l}\`}`);
+      expect(s, f).not.toContain('ogSlug="accueil"');
+    }
+    const g = lire('scripts/generate-og.mjs');
+    expect(g).toMatch(/slug: `ville-\$\{slug\}-fr`, title: [^\n]*\}\);/);
+    expect(g).not.toMatch(/slug: `ville-[^\n]*photo:/);
+  });
+});

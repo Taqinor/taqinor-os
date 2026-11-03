@@ -70,7 +70,7 @@ const t = {
 const bodyProps = { c, rtl: true, L, cardAlt: cardAlt, t, breadcrumbItems: [{ label: 'الرئيسية', href: L('/') }, { label: `تركيب شمسي ${intro}` }], heroPhoto, showYieldNote: !!(avgYieldPerKwc && southOptimalYield), city };
 ---
 
-<Layout title={title} description={description} ogSlug="accueil">
+<Layout title={title} description={description} ogSlug={`ville-${c.slug}-ar`}>
   <script type="application/ld+json" set:html={JSON.stringify(serviceJsonLd)} />
   <CityPageBody {...bodyProps}>
     <Fragment slot="yieldNote">
