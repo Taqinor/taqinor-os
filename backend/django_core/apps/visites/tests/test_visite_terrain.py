@@ -21,12 +21,16 @@ Aucune horloge vive n'est asservie : rien n'affirme une date « d'aujourd'hui »
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import connection
 from django.test import SimpleTestCase, TestCase
+from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.crm.models import Client, Lead, LeadActivity
+from apps.records.models import Attachment
 from apps.visites.models import VisiteMedia, VisiteTerrain
 from apps.roles.models import Role
 from apps.ventes.models import Devis, LigneDevis
@@ -712,6 +716,40 @@ class ListeFiltreLeadTests(VisiteTerrainBase):
         resp = self.api.get('/api/django/visites/visites/', {'lead': '0'})
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(resp.data, [])
+
+    def _visites_avec_photos(self, combien):
+        type_visite = ContentType.objects.get_for_model(VisiteTerrain)
+        for numero in range(combien):
+            lead = Lead.objects.create(company=self.company, nom=f'L{numero}')
+            visite = VisiteTerrain.objects.create(
+                company=self.company, lead=lead, commercial=self.commercial)
+            for rang in range(3):
+                piece = Attachment.objects.create(
+                    company=self.company, content_type=type_visite,
+                    object_id=visite.pk, file_key=f'acvi82/{visite.pk}/{rang}',
+                    filename=f'{rang}.png')
+                VisiteMedia.objects.create(
+                    company=self.company, visite=visite, attachment=piece,
+                    slot_code='toiture_vue_generale')
+
+    def _requetes_liste(self):
+        with CaptureQueriesContext(connection) as capture:
+            resp = self.api.get('/api/django/visites/visites/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        return len(capture.captured_queries), resp.data
+
+    def test_liste_requetes_constantes(self):
+        # ACVI82 — la liste coûte autant à 3 et à 9 visites (préchargement
+        # respecté) et ses lignes ne bougent pas.
+        self._visites_avec_photos(3)
+        self._requetes_liste()  # échauffement (profil, droits)
+        a_trois, lignes = self._requetes_liste()
+        self.assertEqual(len(lignes), 3)
+        self._visites_avec_photos(6)
+        a_neuf, lignes = self._requetes_liste()
+        self.assertEqual(len(lignes), 9)
+        self.assertEqual(a_neuf, a_trois)
+        self.assertEqual({ligne['complet'] for ligne in lignes}, {False})
 
 
 class ModificationSansLeadTests(VisiteTerrainBase):

@@ -289,9 +289,18 @@ def _visite_devis(lead):
         return []
 
 
+def _medias_tries(visite):
+    """ACVI82 — les photos d'une visite par id, préchargement respecté : une
+    ligne de liste préchargée (``medias__attachment``) ne relit rien ; une
+    visite seule fait UNE requête, pièces jointes comprises."""
+    if 'medias' in getattr(visite, '_prefetched_objects_cache', {}):
+        return sorted(visite.medias.all(), key=lambda media: media.id)
+    return list(visite.medias.select_related('attachment').order_by('id'))
+
+
 def visite_terrain_manquants(visite):
     """La liste SERVEUR des manquants d'une visite (gate de terminaison)."""
-    medias = list(visite.medias.select_related('attachment').all())
+    medias = _medias_tries(visite)
     blocs = _visite_checklist(visite, medias)
     return _visite_manquants(blocs, _visite_mesures(visite),
                              _gabarit(visite), _non_releves_plats(visite),
@@ -333,7 +342,7 @@ def get_company_visite_version(company, visite_id):
 
 def contexte_visite_terrain(visite):
     """L'agrégat COMPLET d'une visite technique terrain (contrat VT0)."""
-    medias = list(visite.medias.select_related('attachment').all())
+    medias = _medias_tries(visite)
     blocs = _visite_checklist(visite, medias)
     mesures_rendues = _visite_mesures(visite)
     non_releves = _non_releves_plats(visite)
@@ -832,7 +841,7 @@ def _retour_commentaires_photos(visite):
     from . import visite_checklist as checklist
 
     lignes = []
-    for media in visite.medias.all().order_by('id'):
+    for media in _medias_tries(visite):
         commentaire = (media.commentaire or '').strip()
         if not commentaire:
             continue
@@ -1064,6 +1073,7 @@ def ma_journee_du_commercial(company, user, *, aujourdhui):
 
     visites = (VisiteTerrain.objects
                .select_related('lead', 'commercial')
+               .prefetch_related('medias__attachment')
                .filter(company=company, commercial=user))
     return ma_journee(visites, aujourdhui=aujourdhui)
 

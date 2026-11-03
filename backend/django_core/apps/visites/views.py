@@ -309,6 +309,10 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        if self.action == 'list':
+            # ACVI82 — la LISTE seule : une action qui écrit puis relit
+            # l'agrégat ne doit pas lire des photos préchargées avant l'écriture.
+            qs = qs.prefetch_related('medias__attachment')
         if not self._voit_toute_l_equipe():
             return qs.filter(commercial=self.request.user)
         mine = str(self.request.query_params.get('mine', '')).strip()
@@ -892,6 +896,7 @@ class MaJourneeView(APIView):
     def get(self, request):
         visites = (VisiteTerrain.objects
                    .select_related('lead', 'commercial')
+                   .prefetch_related('medias__attachment')
                    .filter(company=request.user.company))
         brut = str(request.query_params.get('tous', '')).strip().lower()
         if brut not in ('', '0', '1', 'true', 'false'):
