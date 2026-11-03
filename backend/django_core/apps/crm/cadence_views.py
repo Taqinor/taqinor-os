@@ -1135,7 +1135,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
         à l'aperçu, sans toucher la fiche (le basculeur FR / Darija). Une
         autre valeur est refusée en 400 nommant le champ ``langue``."""
         etape = self.get_object()
-        from .cadence_messages import message_pour_etape, refus_langue_relance
+        from .cadence_messages import garde_rendu_whatsapp, message_pour_etape, refus_langue_relance
         from .cadence_reponses import CLES_MESSAGE_REPONSE
         cle = (request.query_params.get('cle') or '').strip()
         if cle and cle not in CLES_MESSAGE_REPONSE:
@@ -1149,6 +1149,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
         if langue and refus_langue_relance(langue):
             raise DRFValidationError(
                 {'erreurs': {'langue': refus_langue_relance(langue)}})
+        garde_rendu_whatsapp(etape, cle=cle or None)
         return Response(message_pour_etape(
             etape, request=request, user=request.user, cle=cle or None,
             langue=langue or None))
@@ -1172,7 +1173,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
         CAD63 — ``langue`` (corps, facultatif) : la langue CHOISIE à l'aperçu,
         pour que le rendu vérifié ici soit celui qui vient d'être ouvert."""
         etape = self.get_object()
-        from .cadence_messages import message_pour_etape, refus_langue_relance
+        from .cadence_messages import garde_rendu_whatsapp, message_pour_etape, refus_langue_relance
         from .cadence_reperes import journaliser_whatsapp_ouvert
         from .leads_premier_contact import marquer_premier_contact
         langue = (request.data.get('langue') or '').strip()
@@ -1190,10 +1191,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
             from .cadence_messages import REFUS_PREUVE_MANQUANTE
             raise ConflitEtat(
                 {'erreurs': {'preuve': REFUS_PREUVE_MANQUANTE}})
-        if not rendu.get('wa_url'):
-            return Response(
-                {'detail': 'Numéro de téléphone invalide.'},
-                status=status.HTTP_409_CONFLICT)
+        garde_rendu_whatsapp(etape, rendu=rendu)  # ACVI44
         journaliser_whatsapp_ouvert(etape, request.user)
         marquer_premier_contact(etape.lead)
 

@@ -47,7 +47,6 @@ LISTE_BLANCHE: dict[str, str] = {
     "backend/django_core/apps/crm/views_assistant.py::lead_brouillon_suivi::wa.me": _A_CORRIGER_RENDU,
     "backend/django_core/apps/crm/visites_rdv.py::build_appointment_confirmation_whatsapp::wa.me": _A_CORRIGER_RENDU,
     "backend/django_core/apps/automation/actions.py::preparer_whatsapp::wa.me": _A_CORRIGER_RENDU,
-    "backend/django_core/apps/crm/fiche_bulk.py::_file_whatsapp_en_masse::wa.me": _LOT_FILTRE,
     "backend/django_core/apps/crm/fiche_bulk.py::_lien_reactivation::wa.me": _LOT_FILTRE,
     "backend/django_core/apps/crm/receivers_clients.py::_proposer_lien_parrainage_on_devis_accepted::wa.me":
         "lien de parrainage propose au COMMERCIAL du devis (destinataire interne, pas le prospect) ; aucun envoi au "

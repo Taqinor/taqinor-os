@@ -17,6 +17,7 @@ from .cadence_plan import (
     deplacer_echeance_etape,
     reporter_prochaine_touche,
 )
+from .cadence_messages import refus_rendu_whatsapp
 from .cadence_reperes import (
     LIBELLE_RAPPEL_DEMANDE, LIBELLE_SIGNAL_PROPOSITION, LIBELLE_SIGNAL_QUESTIONNAIRE,
     q_etape_moteur, q_visite)
@@ -112,7 +113,8 @@ def notifier_signal_lecture(devis_reference: str, lead, *, friction_section='',
             return
         from apps.notifications.services import notify_many
         corps_notif = [corps]
-        wa_url = _build_lead_wa_reply_url(lead)
+        # ACVI44 — aucun lien WhatsApp vers un lead qu'on ne contacte plus.
+        wa_url = None if refus_rendu_whatsapp(lead) else _build_lead_wa_reply_url(lead)
         if wa_url:
             corps_notif.append(f'Appeler / répondre maintenant : {wa_url}')
         notify_many(
@@ -192,7 +194,7 @@ def notifier_signal_client(lead, signal, *, detail='') -> None:
         if detail:
             corps.append(detail)
         corps.append(conseil)
-        wa_url = _build_lead_wa_reply_url(lead)
+        wa_url = None if refus_rendu_whatsapp(lead) else _build_lead_wa_reply_url(lead)  # ACVI44
         if wa_url:
             corps.append(f'Appeler / répondre maintenant : {wa_url}')
         notify_many(

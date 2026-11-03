@@ -542,6 +542,34 @@ def _crochets_a_completer(texte):
     return vus
 
 
+def refus_rendu_whatsapp(lead, *, etape=None, cle=None):
+    """ACVI44 — LA garde de tout rendu WhatsApp de cadence : le motif du refus,
+    ``''`` si le rendu est permis. L'accusé ``stop_contact`` reste permis : c'est
+    la réponse à l'opposition elle-même."""
+    from .portee_selectors import peut_contacter
+
+    if cle == 'stop_contact':
+        return ''
+    if not peut_contacter(lead):
+        return 'ne plus contacter'
+    if getattr(lead, 'perdu', False) or getattr(lead, 'is_archived', False):
+        return 'perdu/archivé'
+    if etape is not None and etape.statut == RelanceEtape.Statut.ANNULEE:
+        return 'touche annulée'
+    return ''
+
+
+def garde_rendu_whatsapp(etape, *, cle=None, rendu=None):
+    """ACVI44 — le 409 nommé des vues ; avec ``rendu``, aussi le numéro inexploitable."""
+    from core.conflit_etat import ConflitEtat
+
+    refus = refus_rendu_whatsapp(etape.lead, etape=etape, cle=cle)
+    if refus:
+        raise ConflitEtat(f'Message refusé : {refus}.')
+    if rendu is not None and not rendu.get('wa_url'):
+        raise ConflitEtat('Numéro de téléphone invalide.')
+
+
 def message_pour_etape(etape, *, request=None, user=None, cle=None,
                        langue=None):
     """MRY13 — Le message d'UNE touche, rendu côté serveur.

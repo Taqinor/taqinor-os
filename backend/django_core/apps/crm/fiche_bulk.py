@@ -220,7 +220,7 @@ def _file_whatsapp_en_masse(company, user, leads, params, skip, skipped):
     plafond et trace CADV10. Sortie de ``apply_bulk_action`` (C20)."""
     from apps.ventes.utils.whatsapp import build_wa_url
 
-    from .cadence_messages import _crochets_a_completer
+    from .cadence_messages import _crochets_a_completer, refus_rendu_whatsapp
     from .serializers import pii_masquee_pour
     template_id = params.get('template_id')
     body_tpl = params.get('body') or ''
@@ -237,16 +237,12 @@ def _file_whatsapp_en_masse(company, user, leads, params, skip, skipped):
     nouvelles = 0
     reactivation = _reactivation_demandee(company, params, leads)
     for lead in leads:
-        # ACRM15 (C-ACRM-010) — LES gardes des relances (celles de
-        # ``message_pour_etape`` / ``_lead_relancable``) : une personne
-        # qui a demandé à ne plus être contactée, un lead perdu ou
+        # ACRM15 (C-ACRM-010), ACVI44 — LA garde des rendus de cadence : une
+        # personne qui a demandé à ne plus être contactée, un lead perdu ou
         # archivé ne reçoit AUCUN message — sortis avec leur motif.
-        if getattr(lead, 'ne_plus_contacter', False):
-            skip(lead, 'ne plus contacter')
-            continue
-        if getattr(lead, 'perdu', False) or getattr(
-                lead, 'is_archived', False):
-            skip(lead, 'perdu/archivé')
+        refus = refus_rendu_whatsapp(lead)
+        if refus:
+            skip(lead, refus)
             continue
         if reactivation and reactivation['ferme']:
             skip(lead, 'palier2_ferme')
