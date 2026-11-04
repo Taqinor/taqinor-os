@@ -139,7 +139,11 @@ if ($code -ne 0) { Fail 'docker compose up (applicatif).' }
 $code = Invoke-Shown 'migrations' { docker compose exec -T django_core python manage.py migrate --noinput }
 if ($code -ne 0) { Fail 'manage.py migrate.' }
 # AANA64 - role Postgres lecture seule de l'agent SQL (idempotent, apres migrate).
-$code = Invoke-Shown 'role sql_agent_ro (provisionnement idempotent)' { bash backend/db/provision_sql_agent_ro.sh }
+# bash de Git d'abord : le bash.exe de WSL n'a parfois aucune distribution.
+$BashScripts = 'bash'
+$BashGit = Join-Path $env:ProgramFiles 'Gitinash.exe'
+if (Test-Path -LiteralPath $BashGit) { $BashScripts = $BashGit }
+$code = Invoke-Shown 'role sql_agent_ro (provisionnement idempotent)' { & $BashScripts backend/db/provision_sql_agent_ro.sh }
 if ($code -ne 0) { Fail 'provision_sql_agent_ro.sh.' }
 if (-not $Build) {
     $code = Invoke-Shown 'rebuild du front (le build Vite est fige dans l''image)' { docker compose up -d --build --no-deps frontend }

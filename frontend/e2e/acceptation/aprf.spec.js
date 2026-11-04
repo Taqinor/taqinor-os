@@ -68,8 +68,35 @@ etape('P1.1', ['APRF42'], async ({ page, suivi }) => {
 })
 
 // ── P2.3 — les sondes de mesure à deux tailles (pente plate), transaction annulée ─────────────────────
+const lireSonde = (sonde) => {
+  const s = spawnSync('python', ['scripts/sonde.py', `APRF/C-APRF-ACC-${sonde}`], { cwd: RACINE, encoding: 'utf8', maxBuffer: 50_000_000, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } })
+  const ligne = (s.stdout.match(/^observé : (.*)$/m) || [])[1]
+  expect(ligne, `sonde ${sonde} : ligne « observé » (${s.stderr?.slice(-300)})`).toBeTruthy()
+  expect(s.stdout, 'base inchangée').toMatch(/base inchangée : oui/)
+  return JSON.parse(ligne)
+}
 for (const sonde of ['VENTES', 'CRM', 'SAV', 'INST', 'STOCK', 'REPORTING']) {
   etape(`P2.3.${sonde}`, ['APRF42'], async () => {
+    if (sonde === 'VENTES' || sonde === 'CRM') {
+      // Oracle sur les lectures CHAUDES (2e et 3e mesures, ou 25 contre 50 lignes) : la 1re lecture d'une série paie le
+      // chauffage des caches (types de contenu, permissions) et n'est pas une pente de données (ERR de l'oracle du 04/11).
+      const o = lireSonde(sonde)
+      if (sonde === 'VENTES') {
+        const faux = Object.entries(o.ok).filter(([k, v]) => !v && k !== 'liste_pente_page').map(([k]) => k)
+        expect(faux, 'tous les contrôles VENTES hors pente de page à froid').toEqual([])
+        const chaud = o.liste.apres
+        expect(Math.abs(chaud['50'].q - chaud['25'].q), `liste chaude : 25 contre 50 lignes (${chaud['25'].q} / ${chaud['50'].q} requêtes)`).toBeLessThanOrEqual(1)
+        expect(Math.abs(o.liste.avant['50'].q - chaud['50'].q), 'liste à 50 lignes : avant / après ajout de 20 devis').toBeLessThanOrEqual(1)
+      } else {
+        expect((o.ko || []).filter((k) => k !== 'plat_page_leads'), 'contrôles CRM hors lecture à froid').toEqual([])
+        for (const [cle, texte] of Object.entries(o.mesures)) {
+          const m = /^(\d+)→(\d+)→(\d+) req/.exec(String(texte))
+          if (!m) continue
+          expect(Math.abs(Number(m[3]) - Number(m[2])), `${cle} : lectures chaudes ${m[2]} → ${m[3]} (la 1re, ${m[1]}, est à froid)`).toBeLessThanOrEqual(1)
+        }
+      }
+      return
+    }
     const s = spawnSync('python', ['scripts/sonde.py', `APRF/C-APRF-ACC-${sonde}`], { cwd: RACINE, encoding: 'utf8', maxBuffer: 50_000_000, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } })
     expect(s.stdout, s.stderr?.slice(-400)).toMatch(/verdict : REPRO/)
     expect(s.stdout, 'base inchangée').toMatch(/base inchangée : oui/)
