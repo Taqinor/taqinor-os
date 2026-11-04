@@ -151,7 +151,9 @@ describe('WAUD47 — /loi-82-21 : textes officiels et « à qui déposer »', as
     ).toHaveLength(3);
   });
   it('aucune société de distribution nommée sur les pages loi 82-21', () => {
-    for (const f of ['../src/pages/loi-82-21.astro', '../src/pages/en/loi-82-21.astro', '../src/pages/ar/loi-82-21.astro', '../src/lib/constants82_21.ts']) {
+    // WAUD47 (reste) : le guide 82-21 nommait encore Lydec/Redal/Amendis pour l'accord de raccordement.
+    for (const f of ['../src/pages/loi-82-21.astro', '../src/pages/en/loi-82-21.astro', '../src/pages/ar/loi-82-21.astro', '../src/lib/constants82_21.ts',
+      '../src/pages/guides/loi-82-21-expliquee.astro', '../src/pages/en/guides/loi-82-21-expliquee.astro', '../src/pages/ar/guides/loi-82-21-expliquee.astro']) {
       expect(read(f), f).not.toMatch(/Lydec|Redal|Amendis/);
     }
   });

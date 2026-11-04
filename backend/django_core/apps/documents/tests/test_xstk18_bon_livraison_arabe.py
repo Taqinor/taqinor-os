@@ -157,3 +157,55 @@ class TestBonLivraisonArabe(TestCase):
         builders.generate_bon_livraison(chantier)
         html = self._captured_html(mock_pdf)
         self.assertNotIn(BUY_PRICE_MARKER, html)
+
+
+@patch('apps.ventes.utils.pdf._download', return_value=None)
+@patch('apps.documents.builders._html_to_pdf')
+class TestPvReceptionArabe(TestCase):
+    """NTI18N30 — PV de réception (N21) RTL pour un client `langue_document=ar`,
+    même patron que le BL (XSTK18) ; le rendu FR reste byte-identique."""
+
+    def setUp(self):
+        self.company = _company(slug='nti18n30-co', nom='NTI18N30 Co')
+        self.produit = _produit(self.company)
+
+    def _chantier(self, langue, ref):
+        client_obj = _client(self.company, langue=langue)
+        return _chantier(self.company, client_obj,
+                         _devis(self.company, client_obj, self.produit), ref)
+
+    def test_ar_client_pv_rtl_via_dedicated_template(self, mock_pdf, _dl):
+        from apps.documents import builders
+        mock_pdf.return_value = b'%PDF-fake'
+        builders.generate_pv_reception(self._chantier('ar', 'CH-NTI30-AR'))
+        html = mock_pdf.call_args[0][0]
+        self.assertIn('dir="rtl"', html)
+        self.assertIn('lang="ar"', html)
+        self.assertIn('direction: rtl', html)
+        self.assertIn('text-align: right', html)
+        self.assertIn('محضر الاستلام', html)
+        self.assertIn('المكونات المركّبة', html)
+        self.assertNotIn('PROCÈS-VERBAL', html)
+        self.assertNotIn(BUY_PRICE_MARKER, html)
+
+    def test_ar_pv_definitive_title_translated(self, mock_pdf, _dl):
+        from apps.documents import builders
+        mock_pdf.return_value = b'%PDF-fake'
+        builders.generate_pv_reception(
+            self._chantier('ar', 'CH-NTI30-DEF'), definitive=True)
+        self.assertIn('محضر الاستلام النهائي', mock_pdf.call_args[0][0])
+
+    def test_fr_client_pv_byte_identical(self, mock_pdf, _dl):
+        from django.template.loader import get_template
+        from apps.documents import builders
+        mock_pdf.return_value = b'%PDF-fake'
+        chantier = self._chantier('fr', 'CH-NTI30-FR')
+        builders.generate_pv_reception(chantier)
+        html = mock_pdf.call_args[0][0]
+        # Contexte construit AVANT NTI18N30 (aucune clé `L`), fragments vides
+        # pour un chantier résidentiel : le gabarit historique, à l'octet près.
+        ctx = builders._base_context(chantier)
+        ctx['composants'] = builders._composants(chantier)
+        ctx['checklist'] = builders._checklist_summary(chantier)
+        self.assertEqual(html, get_template('document_pv_reception.html').render(ctx))
+        self.assertNotIn('dir="rtl"', html)

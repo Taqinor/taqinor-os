@@ -42,7 +42,7 @@ const MESURE = `(() => {
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/').split('/').pop())) {
   const arg = process.argv.find((a) => a.startsWith('--base-url='));
   const base = (arg ? arg.split('=')[1] : process.env.BASE_URL || 'http://127.0.0.1:4321').replace(/\/$/, '');
-  const chrome = await launch({ chromeFlags: ['--headless=new', '--no-sandbox'] });
+  const chrome = await launch({ chromeFlags: ['--headless=new', '--no-sandbox', '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE localhost'] });
   let echec = false;
   for (const [largeur, hauteur] of ECRANS) {
     for (const route of ROUTES) {

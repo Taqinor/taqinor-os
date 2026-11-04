@@ -1,20 +1,30 @@
 ---
-// Ruban Article 33 — régime EN VIGUEUR depuis le 9 juin 2026.
+// Ruban Article 33 — décret 2-25-100 EN VIGUEUR (sans date : D-WAUD-4=a, WAUD18-b).
 // Pas de compte à rebours, pas de date butoir imprimée (fin de fenêtre
 // en attente de confirmation juridique). W67 : libellés traduits via le
 // dictionnaire (repli FR → rendu FR inchangé) ; le lien reste vers la page
 // FR /regularization-article-33 (localizeNavHref retombe sur le FR).
 // W160 : traitement visuel premium — accent brass subtil, icône solaire,
 // typographie raffinée, contraste amélioré.
-import { getLocaleFromPath, useTranslations } from '../i18n/utils';
+import { getLocaleFromPath, stripLocale, useTranslations } from '../i18n/utils';
 import { localizeNavHref } from '../i18n/pages';
+import { PAGES_DU_RUBAN } from '../lib/ruban';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const t = useTranslations(locale);
 const href = localizeNavHref('/regularization-article-33', locale);
+// WAUD46-b (D-WAUD-7=a) — le ruban ne s'affiche que sur ses 4 pages (×3 langues) ; ailleurs, rien.
+let chemin = stripLocale(Astro.url.pathname);
+try {
+  chemin = decodeURIComponent(chemin);
+} catch {
+  /* déjà décodé */
+}
+if (!chemin.endsWith('/')) chemin += '/';
+const affiche = PAGES_DU_RUBAN.includes(chemin);
 ---
 
-<a
+{affiche && <a
   href={href}
   class="ribbon-link block px-4 py-1 text-center text-xs font-medium text-lune transition-colors hover:text-white"
   aria-label={`${t('ribbon.badge')} — ${t('ribbon.text')}`}
@@ -53,7 +63,7 @@ const href = localizeNavHref('/regularization-article-33', locale);
     {/* Message principal */}
     <span class="truncate text-lune-soft">{t('ribbon.text')}</span>
   </span>
-</a>
+</a>}
 
 <style>
   /* Liseré doré en haut du ruban — réservé à ce composant uniquement.

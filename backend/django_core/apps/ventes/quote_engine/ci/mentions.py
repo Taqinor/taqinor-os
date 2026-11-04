@@ -25,6 +25,8 @@ Forme d'une entrée (contrat ``proposal_data.json`` › ``synthese_ci``) :
 """
 from __future__ import annotations
 
+import re
+
 from ..constants_82_21 import (
     ANRE_PERIODE,
     ANRE_TARIF_SOURCE,
@@ -154,6 +156,14 @@ TEXTES_VISITE = {
 SOURCE_CONVENTION_2 = "conventions Groupe CIQ (convention 2)"
 SOURCE_POINTE = "composition de l'offre servie (CIQ302)"
 SOURCE_VISITE = "D-CIQ-5"
+#: ADEV110 (ADEV77, D-ACI-1=b) — consommation extrapolée d'un relevé de n < 12
+#: mois (hypothèse ``consommation`` de l'étude, source « relevé partiel (n mois) »).
+TEXTES_CONSOMMATION_ESTIMEE = {
+    "fr": "Consommation : estimation sur {n} mois relevés.",
+    "en": "Consumption: estimate based on {n} metered months.",
+    "ar": "الاستهلاك: تقدير على أساس {n} أشهر مسجلة.",
+}
+_RELEVE_PARTIEL = re.compile(r"relevé partiel \((\d+) mois\)")
 
 
 def _dict(v):
@@ -516,6 +526,20 @@ def _mention_pointe(data):
     return _entree("pointe", TEXTES_POINTE_AVEC_NON_CHIFFREE, SOURCE_POINTE)
 
 
+def _mention_consommation_estimee(data):
+    """ADEV110 — « estimation sur n mois relevés » quand l'étude a retenu un
+    relevé partiel (``etude.etude_ci.hypotheses``), sinon ``None``."""
+    etude_ci = _dict(_dict(data.get("etude")).get("etude_ci"))
+    for h in etude_ci.get("hypotheses") or []:
+        h = _dict(h)
+        trouve = _RELEVE_PARTIEL.search(str(h.get("source") or ""))
+        if h.get("cle") == "consommation" and h.get("statut") == "estimation" and trouve:
+            n = int(trouve.group(1))
+            return _entree("consommation_estimee", {
+                k: v.format(n=n) for k, v in TEXTES_CONSOMMATION_ESTIMEE.items()}, h["source"])
+    return None
+
+
 def mentions_ci(data, *, sous_reserve=False):
     """Les phrases client C&I d'un devis (liste ordonnée, forme du contrat).
 
@@ -549,6 +573,9 @@ def mentions_ci(data, *, sous_reserve=False):
         sortie.append(_entree("puissance_souscrite", TEXTES_PUISSANCE,
                               SOURCE_CONVENTION_2))
     sortie.append(_mention_pointe(data))
+    estimee = _mention_consommation_estimee(data)
+    if estimee is not None:
+        sortie.append(estimee)
     if sous_reserve:
         sortie.append(_entree("visite", TEXTES_VISITE, SOURCE_VISITE))
     return sortie

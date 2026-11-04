@@ -28,7 +28,7 @@ const diagHref = quoteJourneyHref(locale);
 // WJ50 — préremplissage contextualisé PAR PAGE (chemin racine, sans préfixe de
 // locale) : l'équipe ouvre le chat en sachant déjà d'où le client écrit, et
 // chaque point d'entrée reste distinguable dans le CRM.
-const wa = whatsappLink(WHATSAPP_LEADS, pageContextWhatsappText(stripLocale(Astro.url.pathname)));
+const wa = whatsappLink(WHATSAPP_LEADS, pageContextWhatsappText(stripLocale(Astro.url.pathname), locale));
 ---
 
 <div

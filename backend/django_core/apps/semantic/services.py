@@ -360,3 +360,32 @@ def resolve_metric_valeur(company, user, cle, **kwargs):
     kwargs.pop('group_by', None)
     resultat = resolve_metric(company, user, cle, group_by=[], **kwargs)
     return resultat['valeur']
+
+
+def derniere_version_id(definition):
+    """L'id de la version la plus récente de ``definition`` (ou ``None``)."""
+    if definition is None or definition.pk is None:
+        return None
+    derniere = versions_metrique(definition).first()
+    return derniere.id if derniere is not None else None
+
+
+def attribuer_auteur(definition, version_avant_id, auteur):
+    """NTDATA10 — signe la version que le signal vient de figer.
+
+    Le récepteur ``post_save`` (NTDATA9) fige la version SANS auteur : il n'a
+    pas d'acteur. Une vue authentifiée, elle, CONNAÎT l'acteur — elle relève
+    l'id de la dernière version AVANT d'enregistrer, puis appelle ceci : si une
+    NOUVELLE version est apparue (la définition a réellement changé) et qu'elle
+    n'est pas encore signée, elle reçoit son auteur. Une sauvegarde qui ne
+    change rien ne crée pas de version et ne signe donc rien.
+    """
+    if auteur is None or not getattr(auteur, 'pk', None):
+        return None
+    derniere = versions_metrique(definition).first()
+    if (derniere is None or derniere.id == version_avant_id
+            or derniere.auteur_id is not None):
+        return derniere
+    derniere.auteur = auteur
+    derniere.save(update_fields=['auteur'])
+    return derniere

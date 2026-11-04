@@ -44,11 +44,11 @@ verte.
 
 | C-id | Tâche d'origine | Écart | Sonde | Tâches |
 |---|---|---|---|---|
-| C-ADEV-VER4-010 | ADEV81 | l'aperçu C&I du générateur calcule un retour sur un investissement incomplet (le PDF, lui, le dit non chiffré) | REPRO | ADEV106 |
-| C-ADEV-VER4-011 | ADEV9 | tableau de bord Quote-to-Cash et kWc signés lisent `is_active` : une vente révisée disparaît | REPRO | ADEV107 (après ADEV46) |
-| C-ADEV-VER4-020 | ADEV32 | origine d'upsell écrite dans la note client (page publique et PDF) au lieu du chatter | REPRO | ADEV108 (test chantiers), ADEV109 |
-| C-ADEV-VER4-030 | ADEV44 | la fenêtre « Refuser » propose les motifs archivés, que le serveur refuse | STATIQUE | ADEV110 |
-| C-ADEV-VER4-031 | ADEV91 | le générateur refuse d'enregistrer un devis C&I dont la consommation vient d'une facture en MAD ou d'un relevé partiel | STATIQUE | ADEV111 |
+| C-ADEV-VER4-010 | ADEV81 | l'aperçu C&I du générateur calcule un retour sur un investissement incomplet (le PDF, lui, le dit non chiffré) | REPRO | ADEV115 |
+| C-ADEV-VER4-011 | ADEV9 | tableau de bord Quote-to-Cash et kWc signés lisent `is_active` : une vente révisée disparaît | REPRO | ADEV116 (après ADEV46) |
+| C-ADEV-VER4-020 | ADEV32 | origine d'upsell écrite dans la note client (page publique et PDF) au lieu du chatter | REPRO | ADEV117 (test chantiers), ADEV118 |
+| C-ADEV-VER4-030 | ADEV44 | la fenêtre « Refuser » propose les motifs archivés, que le serveur refuse | STATIQUE | ADEV119 |
+| C-ADEV-VER4-031 | ADEV91 | le générateur refuse d'enregistrer un devis C&I dont la consommation vient d'une facture en MAD ou d'un relevé partiel | STATIQUE | ADEV120 |
 
 Aucun S1 ni S2 : ni seconde lentille ni critique Fable (METHODE §C.4).
 
@@ -56,7 +56,7 @@ Aucun S1 ni S2 : ni seconde lentille ni critique Fable (METHODE §C.4).
 
 - ADEV50 : le titre « Vos économies » de la page publique ne suit pas la bascule d'option (chiffre juste pour l'option affichée).
 - ADEV80 : fenêtre de quelques millisecondes entre la libération du verrou et l'écriture du rejeu.
-- `imports.py::creer_devis_import` écrit « Migré (réf. source …) » dans la note client (S4, même classe qu'ADEV109).
+- `imports.py::creer_devis_import` écrit « Migré (réf. source …) » dans la note client (S4, même classe qu'ADEV118).
 - `views/devis_cycle.py::refuser` : `abandonner_revision` appelée après le commit du refus.
 - `theme.marques_correction` n'imprime qu'en français.
 
@@ -65,7 +65,7 @@ Aucun S1 ni S2 : ni seconde lentille ni critique Fable (METHODE §C.4).
 - **Couvert.** 36 tâches sur 97 cochées ; 4 sondes jouées dans la pile locale.
 - **Non couvert.** Les 61 autres tâches cochées ; aucun rejeu navigateur (page `/proposition` d'ADEV95, cas mono d'ADEV86).
 - **Statut.** 0 écart S1-S2 à la clôture : première clôture à zéro ; ADEV sort du cycle à la prochaine clôture à zéro
-  (deux consécutives). Les S3 (ADEV106-111) se construisent sans rouvrir le cycle.
+  (deux consécutives). Les S3 (ADEV115-111) se construisent sans rouvrir le cycle.
 
 ## 7. Coût
 

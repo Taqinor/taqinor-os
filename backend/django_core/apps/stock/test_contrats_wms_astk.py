@@ -1150,11 +1150,12 @@ class ContratKitsStockTests(WmsBase):
             prix_achat=Decimal('1'), prix_vente=Decimal('2'))
         # ASTK5 — l'id étranger reçoit la réponse d'un id absent : seul l'id
         # cité diffère ; l'exemple du contrat est celui de l'id absent.
-        attendu = contrat['exemple_erreur_400_composant_autre_societe']
+        # ENF44 — id bien formé inconnu de la société = 404 (même corps).
+        attendu = contrat['exemple_erreur_404_composant_autre_societe']
         for pk in (etranger.id, ID_ABSENT):
             rep = self.api.post(self.BASE, dict(base, composants=[
                 {'produit': pk, 'quantite': 1}]), format='json')
-            self.assertEqual(rep.status_code, 400, rep.content)
+            self.assertEqual(rep.status_code, 404, rep.content)
             self.assertNotIn('Intrus ASTK', rep.content.decode())
             corps = id_cite_vers_absent(rep.json(), pk)
             self.assertTrue(corps['error']['request_id'])

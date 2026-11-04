@@ -263,3 +263,11 @@ describe('WAUD36 — règle C étendue : teaser verrouillé, promesse « étude 
     expect(read('../src/lib/tunnel/champs.ts')).toContain("webhookKey: 'estimateShown'");
   });
 });
+
+describe('WAUD65 — bande investissement : valeurs dans leur colonne, jamais animées', () => {
+  it('tuiles FR/EN (bloc partagé) et AR en data-fig-fixe, retour à la ligne permis dans home-page.css', () => {
+    expect(read('../src/components/blocs/EnIndexDlF52D.astro')).toContain('<dd class="fig fig-md text-azur-600" data-fig-fixe>{it.v}</dd>');
+    expect(read('../src/pages/ar/index.astro')).toContain('<dd class="fig fig-md text-azur-600" data-fig-fixe dir="ltr">{it.v}</dd>');
+    expect(read('../src/styles/home-page.css')).toMatch(/\.v2 dl dd\.fig-md\[data-fig-fixe\] \{\s*white-space: normal;/);
+  });
+});

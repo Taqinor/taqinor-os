@@ -103,11 +103,34 @@ describe('W131 — sitemap : nouvelles routes incluses, /preview/ exclu', () => 
 });
 
 describe('W131 — figures de marché volatiles labellisées (best-effort)', () => {
-  it('le post coût affiche « indicatif » et jamais un prix unique non labellisé', () => {
-    const post = read('../src/content/blog/prix-installation-solaire-maroc-2026.md');
-    expect(post.toLowerCase()).toContain('indicati');
+  // WAUD68 (D-WAUD-5 = a) remplace l'ancienne garde « indicatif » : un chiffre d'argent sans source
+  // datée n'est plus labellisé, il est RETIRÉ ; il reviendra de lib/prixConstants.ts seulement.
+  it('WAUD68 : /prix et billet prix FR/EN/AR sans montant (hors tarifs ONEE au kWh), une seule phrase TVA', () => {
+    const FICHIERS = [
+      '../src/pages/prix-panneaux-solaires-maroc.astro',
+      '../src/pages/en/prix-panneaux-solaires-maroc.astro',
+      '../src/pages/ar/prix-panneaux-solaires-maroc.astro',
+      '../src/content/blog/prix-installation-solaire-maroc-2026.md',
+      '../src/pages/en/blog/prix-installation-solaire-maroc-2026.astro',
+      '../src/pages/ar/blog/prix-installation-solaire-maroc-2026.astro',
+    ];
+    const MONTANT = /\d[\d\s.,  –-]*(?:<\/span>)?\s*(?:DH|MAD|dirhams?|درهم)(?!\/kWh)/g;
+    for (const f of FICHIERS) {
+      const src = read(f).replace(/^\/\*\*[\s\S]*?\*\//m, '').replace(/^\/\/.*$/gm, '');
+      expect(src.match(MONTANT) ?? [], f).toEqual([]);
+      expect(src, f).not.toMatch(/17[,.]5\s*%|TVA à 20|20\s*% VAT|4[  ,]?700/);
+    }
+    const { PRIX_KWC_TTC, PHRASE_TVA } = await_import_prix();
+    expect(PRIX_KWC_TTC.valeur === null || (PRIX_KWC_TTC.source && PRIX_KWC_TTC.date)).toBeTruthy();
+    expect(PHRASE_TVA.fr).toContain('art. 91 du CGI');
+    expect(read('../src/lib/residentielBrackets.ts')).toContain("from './prixConstants'");
+    expect(read('../src/lib/residentielBrackets.ts')).not.toMatch(/\b(?:10000|12500)\b|PRIX_PAR_KWC/);
   });
 });
+
+// Chargement synchrone de la constante (module TS sans dépendance).
+import * as prixConstants from '../src/lib/prixConstants';
+const await_import_prix = () => prixConstants;
 
 // AGW307 (reprise de l'ex-AGW406) — GARDE GLOBALE : aucune page de `apps/web/src/pages/**` ne
 // promet « jusqu'à 30 % » ni « ≈ 30 % » d'aide (D-AGR-6 : on imprime la RÈGLE de l'aide FDA —
@@ -163,6 +186,28 @@ describe('WAUD77 — « Réponse courte » sourcée : chiffre affiché = constan
     expect(REPONSES_COURTES.garanties).toContain(`${HUAWEI_INVERTER_WARRANTY_YEARS} ans (réseau Huawei)`);
     expect(REPONSES_COURTES.garanties).toContain(`${BATTERY_WARRANTY_YEARS} ans`);
     expect(REPONSES_COURTES.pompage.replace(/[  ]/g, ' ')).toContain('30 % de l’investissement, plafonnée à 3 000 DH par hectare, 3 000 DH par kWc et 30 000 DH par projet');
+  });
+  it('pages ville : bloc rendu par CityPageBody avec le rendement PVGIS de la ville (même calcul que le bloc potentiel), sans montant', async () => {
+    const { reponseCourteVille } = await import('../src/lib/reponsesCourtes');
+    const { specificYield } = await import('../src/lib/estimatorBrainV2');
+    const { YIELD_TABLE } = await import('../src/lib/yieldTable');
+    const { CITIES } = await import('../src/lib/realisations');
+    const body = read('../src/components/CityPageBody.astro');
+    expect(body).toContain('<ReponseCourte texte={reponseVille} lang={langue} />');
+    expect(body).toContain('reponseCourteVille(');
+    expect(CITIES.length).toBe(5);
+    for (const c of CITIES) {
+      const r = Math.round(specificYield(YIELD_TABLE[c.slug].lat, 30, 0) / 10) * 10;
+      const frT = reponseCourteVille(c.name, r, 'fr');
+      expect(frT.replace(/[  ]/g, ' ')).toContain(`environ ${r.toLocaleString('fr-FR').replace(/[  ]/g, ' ')} kWh par an selon PVGIS`);
+      expect(reponseCourteVille(c.name, r, 'en')).toContain(`about ${r.toLocaleString('en-US')} kWh a year`);
+      expect(reponseCourteVille(c.name, r, 'ar')).toContain(`${r} kWh`);
+      for (const l of ['fr', 'en', 'ar'] as const) {
+        const t = reponseCourteVille(c.name, r, l);
+        expect(t, `${c.slug}-${l}`).not.toMatch(/\d[\d  .,]*\s*(DH|MAD|درهم)/);
+        expect(t.length).toBeLessThan(420);
+      }
+    }
   });
   it('garanties : jamais « 30 ans » en général ; 82-21 : ni date ni pénalité ; deux phrases citables', () => {
     // « 30 ans » : uniquement rattaché aux panneaux et à leur seuil, jamais en général (WAUD77).

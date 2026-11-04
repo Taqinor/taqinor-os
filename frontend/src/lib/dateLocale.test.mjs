@@ -15,6 +15,14 @@ test('23:30 UTC la veille = déjà le lendemain à Casablanca (UTC+1)', () => {
   assert.equal(t.toISOString().slice(0, 10), '2026-10-07')
 })
 
+test('23:30 UTC la veille, 2025 : lendemain à Casablanca en dur', () => {
+  // ADEV113 — 07/10/2025 : UTC+1 dans toutes les bases tz (avant le décret
+  // 2.26.530 du 20/09/2026, hors Ramadan) ; le mutant UTC rend la veille.
+  const t = new Date('2025-10-07T23:30:00Z')
+  assert.equal(todayLocalIso(t), '2025-10-08')
+  assert.equal(t.toISOString().slice(0, 10), '2025-10-07')
+})
+
 test('milieu de journée : même date', () => {
   assert.equal(todayLocalIso(new Date('2026-10-08T12:00:00Z')), '2026-10-08')
 })

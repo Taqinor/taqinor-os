@@ -2421,7 +2421,7 @@ class KitComposantSerializer(CompanyScopedRelationsMixin,
         return attrs
 
 
-class KitProduitSerializer(ChampsTexteBooleenStricts, CompanyScopedRelationsMixin,
+class KitProduitSerializer(IdInconnu404ImbriquesMixin, ChampsTexteBooleenStricts, CompanyScopedRelationsMixin,
                            serializers.ModelSerializer):
     # ASTK5 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).

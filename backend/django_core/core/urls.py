@@ -46,6 +46,7 @@ from .sla import (
 )
 from .ui_extensions_api import UiActionBoutonViewSet, UiOngletCustomViewSet
 from .usage_limits import usage_view
+from .views_fiabilite import ReliabilitySettingsView
 from .vues_api import VuePersonnaliseeViewSet
 from .views import (
     ApiUsagePlanViewSet,
@@ -297,6 +298,9 @@ urlpatterns = router.urls + [
     # société, même politique que health/live|ready ci-dessus).
     path('degraded-mode-status/', degraded_mode_status_view,
          name='degraded-mode-status'),
+    # NTOBS21 — réglages Fiabilité de la société (singleton, GET/PATCH).
+    path('fiabilite/reglages/', ReliabilitySettingsView.as_view(),
+         name='fiabilite-reglages'),
 ]
 
 # NTWFL17 — routes du dossier transverse (core.Dossier), définies dans leur

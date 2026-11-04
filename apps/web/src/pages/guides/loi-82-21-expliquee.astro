@@ -24,16 +24,14 @@ import { getGuideVerifiedDate, guideDateModified } from '../../lib/guideMeta';
 // vient du module partagé guideMeta.ts (source unique par slug).
 const verifiedDate = getGuideVerifiedDate('loi-82-21-expliquee');
 const guideBodyText = `
-  Depuis le 9 juin 2026, la loi 82-21 sur l'autoproduction d'énergie électrique et son décret 2-25-100
+  La loi 82-21 sur l'autoproduction d'énergie électrique et son décret 2-25-100
   s'appliquent. La règle est plus simple qu'elle n'en a l'air : deux nombres — votre puissance et votre
   niveau de raccordement — suffisent à vous ranger dans l'un des trois régimes. En dessous de 11 kW en
   basse tension, une déclaration préalable suffit. Au-dessus du seuil de déclaration et jusqu'à 5 MW,
   il faut décrocher un accord de raccordement auprès du gestionnaire de réseau. À partir de 5 MW, une
   autorisation en bonne et due forme doit être obtenue avant le premier coup de pioche. La loi n'oublie
-  pas les installations posées avant elle. Son Article 33 ouvre, depuis le 9 juin 2026, une fenêtre de
-  18 mois pour les mettre en règle. Régularisée dans ce délai, une installation existante rejoint le
-  cadre légal comme une neuve. Passé la fenêtre, elle reste en situation irrégulière au regard de la
-  loi 82-21.
+  pas les installations posées avant elle : son Article 33 encadre leur régularisation. Régularisée,
+  une installation existante rejoint le cadre légal comme une neuve.
 `;
 // W291 — image OG (même URL que celle passée à ogSlug plus bas), pour l'éligibilité Article rich results.
 const { readingMinutes, url, schemaImageUrl } = articleMeta(guideBodyText, Astro.url.pathname, Astro.site, '/og/loi-82-21.png');
@@ -60,11 +58,11 @@ const faq = [
   },
   {
     q: 'Depuis quand la loi 82-21 est-elle en vigueur ?',
-    a: 'Le décret d’application 2-25-100 s’applique depuis le 9 juin 2026.',
+    a: 'Le décret d’application 2-25-100 est en vigueur ; le texte de la loi est lié sur notre page Loi 82-21.',
   },
   {
     q: 'Que faire si mon installation solaire existante n’est pas déclarée ?',
-    a: 'L’Article 33 prévoit « dans un délai de dix-huit (18) mois à compter de la date d\'entrée en vigueur de la présente loi » ; le point de départ de ce délai est à confirmer auprès des services de l’énergie : déposez sans attendre. Passé le délai, l’installation reste en situation irrégulière au regard de la loi.',
+    a: 'L’Article 33 encadre la régularisation des installations déjà en place (texte exact sur notre page Loi 82-21) : nous montons le dossier qui manque selon votre régime.',
   },
 ];
 const regimes = [
@@ -76,7 +74,7 @@ const regimes = [
   {
     n: '02',
     title: 'Accord de raccordement',
-    body: 'Au-dessus du seuil de déclaration et jusqu’à 5 MW, dès que l’on injecte sur le réseau en basse ou moyenne tension, il faut décrocher un accord de raccordement auprès du gestionnaire de réseau avant de démarrer — l’ONEE dans la plupart des régions, ou la régie locale là où il y en a une (Lydec à Casablanca, Redal à Rabat, Amendis à Tanger). C’est le terrain habituel des sites professionnels.',
+    body: 'Au-dessus du seuil de déclaration et jusqu’à 5 MW, dès que l’on injecte sur le réseau en basse ou moyenne tension, il faut décrocher un accord de raccordement auprès du gestionnaire du réseau de distribution concerné avant de démarrer. C’est le terrain habituel des sites professionnels.',
   },
   {
     n: '03',
@@ -111,7 +109,7 @@ import Loi8221OuEnEstLaLoi from '../../components/blocs/Loi8221OuEnEstLaLoi.astr
       <BatterieLithiumOuGelPCFC9 readingMinutes={readingMinutes} verifiedDate={verifiedDate} />
 
       <p class="v2-lead mt-6 text-lune-soft">
-        Depuis le 9 juin 2026, la loi 82-21 sur l’autoproduction d’énergie électrique et son décret
+        La loi 82-21 sur l’autoproduction d’énergie électrique et son décret
         2-25-100 s’appliquent. La règle est plus simple qu’elle n’en a l’air : deux nombres — votre
         puissance et votre niveau de raccordement — suffisent à vous ranger dans l’un des trois
         régimes ci-dessous, que votre installation soit neuve ou déjà en place. Voici comment vous
@@ -126,9 +124,7 @@ import Loi8221OuEnEstLaLoi from '../../components/blocs/Loi8221OuEnEstLaLoi.astr
             de 11 kW à moins de 5 MW) ; D-CIQ-4. En basse tension la revente n'est pas ouverte. */}
         <Loi8221OuEnEstLaLoi />
         <p class="mt-5 text-xs leading-relaxed text-lune-faint">
-          Une installation déjà posée ? L'Article 33 prévoit « dans un délai de dix-huit (18) mois à
-          compter de la date d'entrée en vigueur de la présente loi » ; le point de départ de ce
-          délai est à confirmer auprès des services de l'énergie : déposez sans attendre, indépendamment
+          Une installation déjà posée ? L'Article 33 encadre sa régularisation, indépendamment
           de ce tarif —
           <a href="/regularization-article-33/" class="border-b border-brass-300/60 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">faites régulariser votre installation existante →</a>.
         </p>
@@ -138,13 +134,11 @@ import Loi8221OuEnEstLaLoi from '../../components/blocs/Loi8221OuEnEstLaLoi.astr
 
       <h2 class="display v2-section-title mt-14 text-white">Et si mon installation existe déjà ?</h2>
       <p class="v2-lead mt-5 text-lune-soft">
-        La loi n’oublie pas les installations posées avant elle. Son Article 33 prévoit « dans un délai de dix-huit (18) mois à compter de la date d'entrée en
-        vigueur de la présente loi » pour les mettre en règle : déposez sans attendre le dossier qui manque,
-        déclaration, accord de raccordement ou autorisation, selon le régime qui vous concerne
-        ci-dessus. Régularisée dans le délai, une installation existante rejoint le cadre légal
-        comme une neuve. Passé le délai, elle reste en situation irrégulière au regard de la loi
-        82-21. Il n’y a donc rien à gagner à attendre, et la
-        démarche se lance dès aujourd’hui.
+        La loi n’oublie pas les installations posées avant elle : son Article 33 encadre leur mise en
+        règle (texte exact sur notre page Loi 82-21). Le dossier qui manque — déclaration, accord de
+        raccordement ou autorisation — dépend du régime qui vous concerne ci-dessus. Régularisée, une
+        installation existante rejoint le cadre légal comme une neuve, et la démarche peut se lancer
+        dès aujourd’hui.
       </p>
       <RelatedLinks mt="mt-8" links={[
         { href: '/loi-82-21/', label: 'Identifier mon régime en 3 questions' },

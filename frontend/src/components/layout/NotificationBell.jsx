@@ -448,7 +448,13 @@ export default function NotificationBell() {
      
   }, [total, location.pathname])
 
-  const goto = (path) => { navigate(path); setOpen(false) }
+  // APRF43 : un lien de téléchargement servi par Django (`/api/…`) est un
+  // chargement complet du navigateur, jamais une route de l'application.
+  const goto = (path) => {
+    if (path.startsWith('/api/')) window.location.assign(path)
+    else navigate(path)
+    setOpen(false)
+  }
 
   // Demande l'autorisation à la DEMANDE de l'utilisateur (clic), jamais avant.
   // Ne lève jamais : tout échec → no-op silencieux.

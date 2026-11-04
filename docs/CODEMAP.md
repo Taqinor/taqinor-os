@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 6158e5344eb0fe666a38a3d159d76f4c414ee3c0b9753b090790880d54a0141d
-Plan fingerprint: f01203641231574dde5a11f464dc36693db9229ed1d7d63c962dba9ac4efc78d
+Structure fingerprint: 3e551a14e3465a3c8f17901b625412f4e5ccefbb3f8a6db63076fdecb40c5da1
+Plan fingerprint: 7ee6405615f195e82dfaaeed2b5d380ea25dadb51b44fa4abe82c23f673eedc8
 
 
 
@@ -238,7 +238,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 | `portail` | `portail/` | 8 | Client self-service: quotes/invoices/deliveries, e-signature acceptance, online payment, site timeline. **Never financial detail beyond its own scope** (NTPRT14). GED links kept (SOLMVP16b). |
 | `adsengine` | `adsengine/` | 47 | Meta Ads engine: mirrors, propose->approve->apply, creative library, experiments, guardrails, `AssumptionNode` tree. **`installable: True`** (SOLMVP17 — the toggle now gates its API). Campaign creation is always PAUSED (rule #3). |
 | `reporting` | `reporting/` | 13 | Dashboards/KPIs/insights, federated KPI hub, `Classeur`, `RapportDefinition`, `KpiAlerte`, global search (`search.py`), stage-probability table (`GET reporting/probabilites-etape/`, AANA66), real-field Web Vitals (`WebVitalMetric`, VX61) and the user-problem journal (`ProblemeClient`, YJPB1 — `POST reporting/problemes-client/` posted by `frontend/src/lib/journalProblemes.js`, read by `manage.py problemes_utilisateurs`; no screen, see `docs/journal-problemes-utilisateurs.md`) — the app owns no business data. |
-| `semantic` | `semantic/` | 2 | Named, governed metrics (`MetricDefinition` + versions) — BI semantic layer consumed via `core.data_explorer`. |
+| `semantic` | `semantic/` | 2 | Named, governed metrics (`MetricDefinition` + versions) — BI semantic layer consumed via `core.data_explorer`; API `semantic/metriques/` (CRUD, `<cle>/valeur|expliquer`, `pour-agent`, `export`/`import`), `semantic/glossaire/`, `seed_dashboards_modeles` (NTDATA10/12/35/44/48/49) ; FastAPI tool `metriques_gouvernees`. |
 | `parametres` | `parametres/` | 18 | `CompanyProfile`, business settings, WhatsApp/email templates, `TauxTVA`/`ConditionPaiement`/`UniteMesure` referentials, `Realisation`, tax-ID validators, output-language resolver. |
 | `roles` | `roles/` | 1 | Per-company `Role` + permission lists (RBAC). |
 | `identity` | `identity/` | 7 | SSO/SCIM, network & session policies, trusted devices, break-glass (NTSEC). |
@@ -260,7 +260,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 | `onboarding` | `onboarding/` | 4 | « Premiers pas » checklist + product tours, auto-completed via `core.events`. |
 | `statuspage` | `statuspage/` | 6 | Public status page: components, incidents, 90-day uptime buckets, subscribers. `core` reads its models for SLA/uptime. |
 | `contact` | `contact/` | 0 | Public landing contact form — **PARKED by flag** (`CONTACT_FORM_ENABLED=0` -> 404, no email). No models. |
-| `core` | `core/` | ~53 | **Foundation, NOT under apps/**: abstract bases (`TenantModel`, `SoftDeleteModel`), `CompanyScopedModelViewSet`, numbering, `pdf.render_pdf`, `events.py` signal bus, platform registry + `platform_coverage.py` drift matrix, `documents` kit, workflow/BPM engine, `parked.py`, pure `calepinage`/`electrique` engines, jobs, quotas, DSR/PII registries. |
+| `core` | `core/` | ~53 | **Foundation, NOT under apps/**: abstract bases (`TenantModel`, `SoftDeleteModel`), `CompanyScopedModelViewSet`, numbering, `pdf.render_pdf`, `events.py` signal bus, platform registry + `platform_coverage.py` drift matrix, `documents` kit, workflow/BPM engine, `parked.py`, pure `calepinage`/`electrique` engines, jobs, quotas, DSR/PII registries, reliability settings (`views_fiabilite.py`, `/api/django/core/fiabilite/reglages/`, NTOBS21). |
 
 **What each SOLMVP lane changed in a kept app** (verified against
 `git log origin/main..HEAD -- backend/django_core/apps/<x>`):
@@ -449,7 +449,7 @@ Core routes are declared in `router/index.jsx`; every module's routes come from 
 | `entites` | `/parametres/entites`, `/admin/groupe` |
 | `offlinesync` | `/mobile/commercial`, `/mobile/cockpit`, `/mobile/equipe-terrain`, `/mobile/equipe-commerciale`, `/synchro/conflits` |
 | `portail` | `/portail/administration` |
-| `core` | `/donnees/explorateur` |
+| `core` | `/donnees/explorateur`, `/parametres/fiabilite-reglages` |
 | `tiers` | `/tiers` |
 | `ia` | `/ia` |
 
@@ -594,7 +594,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1320)**
+**Done (1322)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1240,6 +1240,8 @@ Things this map could not fully verify from source — do not over-trust:
 - `ENF40` — ENF11, tranche 04/11 (nocturne api-fuzz-full 41825184761 sur main c38868a6)
 - `ENF41` — ENF15, tranche 04/11 (liste_page1)
 - `ENF42` — ENF19, tranche 04/11
+- `ENF43` — ENF19, tranche 04/11 (2)
+- `ENF44` — ENF11, tranche 04/11 bis (fin du nocturne api-fuzz-full 41825184761, tranches 12-15…
 - `QAH1` — Skill `qa-explorer` : flotte d'agents « testeur humain » qui explore l'ERP démo module…
 - `QAH2` — Invariants Hypothesis sur la chaîne d'argent et la chaîne d'états des documents ventes
 - `QAH3` — Test différentiel `solar.js` ↔ `quote_engine/builder.py` sur un corpus figé

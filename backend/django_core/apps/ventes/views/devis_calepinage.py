@@ -527,7 +527,8 @@ class DevisCalepinageActionsMixin:
         }, SIMULATION_JOB_CACHE_TTL)
         task_simulate_bankable_study.apply_async(
             args=[devis.pk, company.id, token],
-            kwargs={'force_refresh': force_refresh},
+            # ADEV108 — l'auteur de la trace « corrigé après envoi — étude ».
+            kwargs={'force_refresh': force_refresh, 'user_id': request.user.pk},
             queue='interactive')
 
         return Response({

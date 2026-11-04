@@ -30,6 +30,8 @@ import { Navigate, useNavigate } from 'react-router-dom'
 // d'atterrissage générique post-login, donc le seul endroit qui doit décider
 // d'un redémarrage automatique vers un accueil mobile par rôle.
 import api from '../api/axios'
+import ventesApi from '../api/ventesApi'
+import reportingApi from '../api/reportingApi'
 import { useIsMobile } from '../ui/ResponsiveDialog'
 import { mobileHomeAction, routeSuggereeServeur } from '../features/offlinesync/mobile/mobileHome'
 import { toast } from '../ui/confirm'
@@ -216,30 +218,28 @@ export function ticketsSlaEnRetard(tickets) {
   return (tickets ?? []).filter((t) => t && t.sla_breach === true)
 }
 
-// VX219 — « Mes chiffres » : devis du MOIS COURANT scopés au vendeur
-// (`created_by === userId`, jamais agrégés à l'équipe), même ancrage mensuel
-// que caMensuel/devisSpark ci-dessus (`date_creation`). Fonction PURE, testée
-// sans monter le composant ni le store (`userId` absent → aucun scope, utile
-// en repli si l'utilisateur courant n'est pas encore chargé).
+// AANA60 (D-AANA-VER-1) — taux de signature et effectifs SERVIS par le
+// Quote-to-cash (`GET /ventes/dashboard/?mine=1&month=`, sélecteur
+// `taux_acceptation_periode`) : l'accueil ne divise plus jamais d'effectifs.
+// `devisServi` = bloc `devis` de la réponse. Seul `caSigne` (montant, aucune clé
+// servie) reste la somme des devis acceptés du mois du vendeur (VX219).
 // eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé (D-ENF22)
-export function mesChiffresDuMois(devis, { userId, now = new Date() } = {}) {
-  const y = now.getFullYear()
-  const m = now.getMonth()
-  const mine = (devis ?? []).filter((d) => {
-    if (!d || !d.date_creation) return false
-    if (userId != null && d.created_by !== userId) return false
-    const dt = new Date(d.date_creation)
-    return dt.getFullYear() === y && dt.getMonth() === m
-  })
-  const emis = mine.filter((d) => ['envoye', 'accepte', 'refuse', 'expire'].includes(d.statut))
-  const acceptesList = mine.filter((d) => d.statut === 'accepte')
-  const caSigne = acceptesList.reduce((s, d) => s + num(d.total_affiche ?? d.total_ttc), 0)
+export function mesChiffresDuMois(devisServi, devis, { userId, now = new Date() } = {}) {
+  const acceptes = (devis ?? []).filter((d) => d && d.statut === 'accepte' && d.date_creation
+    && (userId == null || d.created_by === userId)
+    && String(d.date_creation).slice(0, 7) === moisCourant(now))
   return {
-    envoyes: emis.length,
-    acceptes: acceptesList.length,
-    tauxSignature: emis.length > 0 ? Math.round((acceptesList.length / emis.length) * 100) : 0,
-    caSigne,
+    envoyes: devisServi?.envoyes_periode ?? 0,
+    acceptes: devisServi?.acceptes_periode ?? 0,
+    tauxSignature: devisServi?.taux_acceptation_pct ?? 0,
+    caSigne: acceptes.reduce((s, d) => s + num(d.total_affiche ?? d.total_ttc), 0),
   }
+}
+
+// AANA60 — `AAAA-MM` du mois courant (paramètre `month` du Quote-to-cash).
+// eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé (D-ENF22)
+export function moisCourant(now = new Date()) {
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 }
 
 // VX219 — leads « chauds » à traiter en priorité : les MIENS, non perdus/
@@ -508,6 +508,7 @@ export function Component() {
   // VX41 — comparaison togglable « période précédente » sur le CA mensuel
   // (off par défaut : comportement écran inchangé tant qu'on ne l'active pas).
   const [caCompare, setCaCompare] = useState(false)
+  const [servis, setServis] = useState({ q2c: null, q2cMine: null, reporting: null, refuseReporting: false })
 
   // VX67 — extrait en fonction nommée pour être réutilisable comme `onRetry`
   // du StateBlock d'erreur ci-dessous.
@@ -524,6 +525,17 @@ export function Component() {
     dispatch(fetchInstallations())
     dispatch(fetchLeads())
     dispatch(fetchTickets())
+    // AANA60 — chiffres SERVIS (taux, « Mes chiffres », CA mensuel) ; un 403 de
+    // /reporting/dashboard/ (rôle non direction) → état « accès réservé ».
+    const servi = (cle, promesse) => promesse.then(
+      (r) => setServis((s) => ({ ...s, [cle]: r.data })),
+      (err) => { if (err?.response?.status === 403) setServis((s) => ({ ...s, refuseReporting: true })) },
+    )
+    if (peutLireVentes) {
+      servi('q2c', ventesApi.getDashboardQuoteToCash())
+      servi('q2cMine', ventesApi.getDashboardQuoteToCash({ month: moisCourant(), mine: 1 }))
+    }
+    servi('reporting', reportingApi.getDashboard())
   }, [dispatch, peutLireVentes])
   useEffect(() => {
     reload()
@@ -538,23 +550,12 @@ export function Component() {
   // « période précédente » : les 6 premiers mois servent de référence décalée
   // aux 6 mois affichés, à partir des MÊMES données déjà en store (zéro appel
   // API supplémentaire).
-  const caMensuel12 = useMemo(() => {
-    const MOIS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc']
-    const map = {}
-    const today = new Date()
-    for (let i = 11; i >= 0; i--) {
-      const d = new Date(today.getFullYear(), today.getMonth() - i, 1)
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-      map[key] = { mois: `${MOIS[d.getMonth()]} ${d.getFullYear()}`, ca: 0 }
-    }
-    factures
-      .filter((f) => f.statut === 'payee' && f.date_emission)
-      .forEach((f) => {
-        const key = f.date_emission.slice(0, 7)
-        if (map[key]) map[key].ca += num(f.total_ht)
-      })
-    return Object.values(map)
-  }, [factures])
+  // AANA60 — `ca_mensuel` SERVI par /reporting/dashboard/ (12 mois, part HT des
+  // paiements reçus, avoirs déduits — AANA55) : jamais une somme locale des factures.
+  const caMensuel12 = useMemo(
+    () => (servis.reporting?.ca_mensuel ?? []).map((m) => ({ mois: m.mois, ca: num(m.ca) })),
+    [servis.reporting],
+  )
 
   const caMensuel = useMemo(() => caMensuel12.slice(-6), [caMensuel12])
 
@@ -644,15 +645,12 @@ export function Component() {
     [installations],
   )
 
-  // Conversion devis → signé : envoyés vs. acceptés (taux de signature).
-  const conversion = useMemo(() => {
-    const emis = devis.filter((d) =>
-      ['envoye', 'accepte', 'refuse', 'expire'].includes(d.statut),
-    ).length
-    const signes = devis.filter((d) => d.statut === 'accepte').length
-    const taux = emis > 0 ? Math.round((signes / emis) * 100) : 0
-    return { emis, signes, taux }
-  }, [devis])
+  // AANA60 — conversion devis → signé SERVIE (Quote-to-cash, D-AANA-VER-1).
+  const conversion = {
+    emis: servis.q2c?.devis?.envoyes_periode ?? 0,
+    signes: servis.q2c?.devis?.acceptes_periode ?? 0,
+    taux: servis.q2c?.devis?.taux_acceptation_pct ?? 0,
+  }
 
   // Encours clients : montant dû agrégé par tranche d'ancienneté (balance âgée).
   const ageBalance = useMemo(() => {
@@ -726,8 +724,8 @@ export function Component() {
   // pour ces deux blocs (seule l'atteinte d'objectif, dans la carte elle-même,
   // refait un appel scopé `?owner=`).
   const mesChiffres = useMemo(
-    () => mesChiffresDuMois(devis, { userId: user?.id }),
-    [devis, user?.id],
+    () => mesChiffresDuMois(servis.q2cMine?.devis, devis, { userId: user?.id }),
+    [servis.q2cMine, devis, user?.id],
   )
   const mesLeadsChauds = useMemo(
     () => leadsChauds(leads, { userId: user?.id, limit: 3 }),
@@ -1102,9 +1100,11 @@ export function Component() {
           <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-2">
             <ChartCard
               title="Chiffre d'affaires mensuel"
-              description={`Factures payées · ${formatMAD(caTotal, { decimals: 0 })} sur 6 mois`}
-              isEmpty={caMensuel.every((m) => m.ca === 0)}
-              emptyLabel="Aucune facture payée sur les 6 derniers mois."
+              description={`Paiements reçus HT · ${formatMAD(caTotal, { decimals: 0 })} sur 6 mois`}
+              isEmpty={servis.refuseReporting || caMensuel.every((m) => m.ca === 0)}
+              emptyLabel={servis.refuseReporting
+                ? "Accès réservé : chiffre d'affaires visible par la direction."
+                : 'Aucun paiement reçu sur les 6 derniers mois.'}
               actions={(
                 <CaCompareToggle caCompare={caCompare} setCaCompare={setCaCompare} />
               )}
