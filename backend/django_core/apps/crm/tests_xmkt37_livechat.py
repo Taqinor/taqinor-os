@@ -170,8 +170,7 @@ class DegradedModeCaptureTests(TestCase):
                 data=brut, content_type='application/json')
             self.assertEqual(resp.status_code, 400, brut)
             self.assertEqual(
-                resp.data['detail'],
-                'Le corps de la requête doit être un objet JSON.')
+                resp.data['detail'], 'Un objet JSON est attendu en corps.')
 
     def test_message_non_texte_400_nomme_le_champ(self):
         resp = self._post({'x': 1})

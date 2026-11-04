@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4908, operations: 7700, components: 3615}
+counts: {paths: 4910, operations: 7700, components: 3616}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -3624,9 +3624,9 @@ operations:
 - post /api/django/ventes/devis/{id}/offres-tailles/appliquer/ -> django_ventes_devis_offres_tailles_appliquer_create
 - patch /api/django/ventes/devis/{id}/offres-tailles/config/ -> django_ventes_devis_offres_tailles_config_partial_update
 - post /api/django/ventes/devis/{id}/offres-tailles/regenerer/ -> django_ventes_devis_offres_tailles_regenerer_create
-- delete /api/django/ventes/devis/{id}/overrides/ -> django_ventes_devis_overrides_destroy
 - get /api/django/ventes/devis/{id}/overrides/ -> django_ventes_devis_overrides_retrieve
 - patch /api/django/ventes/devis/{id}/overrides/ -> django_ventes_devis_overrides_partial_update
+- delete /api/django/ventes/devis/{id}/overrides/{chemin}/ -> django_ventes_devis_overrides_destroy
 - get /api/django/ventes/devis/{id}/pdf-partage/ -> django_ventes_devis_pdf_partage_retrieve
 - post /api/django/ventes/devis/{id}/pdf-partage/ -> django_ventes_devis_pdf_partage_create
 - post /api/django/ventes/devis/{id}/prix-negocie/ -> django_ventes_devis_prix_negocie_create
@@ -7476,9 +7476,9 @@ operations:
 - post /api/v1/ventes/devis/{id}/offres-tailles/appliquer/ -> v1_ventes_devis_offres_tailles_appliquer_create
 - patch /api/v1/ventes/devis/{id}/offres-tailles/config/ -> v1_ventes_devis_offres_tailles_config_partial_update
 - post /api/v1/ventes/devis/{id}/offres-tailles/regenerer/ -> v1_ventes_devis_offres_tailles_regenerer_create
-- delete /api/v1/ventes/devis/{id}/overrides/ -> v1_ventes_devis_overrides_destroy
 - get /api/v1/ventes/devis/{id}/overrides/ -> v1_ventes_devis_overrides_retrieve
 - patch /api/v1/ventes/devis/{id}/overrides/ -> v1_ventes_devis_overrides_partial_update
+- delete /api/v1/ventes/devis/{id}/overrides/{chemin}/ -> v1_ventes_devis_overrides_destroy
 - get /api/v1/ventes/devis/{id}/pdf-partage/ -> v1_ventes_devis_pdf_partage_retrieve
 - post /api/v1/ventes/devis/{id}/pdf-partage/ -> v1_ventes_devis_pdf_partage_create
 - post /api/v1/ventes/devis/{id}/prix-negocie/ -> v1_ventes_devis_prix_negocie_create
@@ -8457,7 +8457,6 @@ query_params:
   post /api/django/ventes/devis/{id}/dupliquer-variante/: ordering search
   get /api/django/ventes/devis/{id}/historique-configuration/: a b
   get /api/django/ventes/devis/{id}/historique/: ordering search
-  delete /api/django/ventes/devis/{id}/overrides/: chemin
   get /api/django/ventes/devis/{id}/proposal/: devis_final include_calepinage include_etude include_note_calcul langue pdf_mode show_monthly
   get /api/django/ventes/devis/{id}/schema-unifilaire/: format
   get /api/django/ventes/devis/{id}/variantes/: ordering search
@@ -9250,7 +9249,6 @@ query_params:
   post /api/v1/ventes/devis/{id}/dupliquer-variante/: ordering search
   get /api/v1/ventes/devis/{id}/historique-configuration/: a b
   get /api/v1/ventes/devis/{id}/historique/: ordering search
-  delete /api/v1/ventes/devis/{id}/overrides/: chemin
   get /api/v1/ventes/devis/{id}/proposal/: devis_final include_calepinage include_etude include_note_calcul langue pdf_mode show_monthly
   get /api/v1/ventes/devis/{id}/schema-unifilaire/: format
   get /api/v1/ventes/devis/{id}/variantes/: ordering search
@@ -12298,6 +12296,7 @@ components:
 - RetourClient
 - RetourClientCreerCorpsRequest
 - RetourClientInspecterCorpsRequest
+- RetourClientInspecterLigneCorpsRequest
 - RetourClientLigneCorpsRequest
 - RetourClientRequest
 - RetourClientStatutEnum

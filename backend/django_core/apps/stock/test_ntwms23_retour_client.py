@@ -171,6 +171,17 @@ class TestReceptionEtInspection(Ntwms23Base):
                 lignes=[{'ligne': ligne.id, 'etat_constate': 'nimporte_quoi'}])
 
 
+class TestCompteurDeStock(Ntwms23Base):
+    def test_reception_qui_deborde_la_colonne_409(self):
+        # api-fuzz-full 41773314544 : integer out of range (DataError, 500).
+        from core.conflit_etat import ConflitEtat
+
+        from apps.stock.utils.params import ID_MAX, exiger_compteur_stock
+        exiger_compteur_stock(None, ID_MAX, -ID_MAX, None)
+        with self.assertRaises(ConflitEtat):
+            exiger_compteur_stock(None, 1, ID_MAX, ID_MAX + 1)
+
+
 class TestEndpointsRetourClient(Ntwms23Base):
     URL = '/api/django/stock/retours-client/'
 

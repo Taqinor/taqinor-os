@@ -1396,7 +1396,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         if source_version is None:
             return Response(
                 {'version': 'Version inconnue ou inaccessible.'},
-                status=status.HTTP_404_NOT_FOUND)
+                status=status.HTTP_409_CONFLICT)  # ENF11 : le document existe
         # ADOC68 — jumeau de l'ajout de version : refusé (409) pendant une
         # demande de signature en attente.
         try:
@@ -1511,7 +1511,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         if document is None:
             return Response(
                 {'detail': 'Document introuvable dans la corbeille.'},
-                status=status.HTTP_404_NOT_FOUND)
+                status=selectors.statut_hors_corbeille(request.user, pk))
         self.check_object_permissions(request, document)  # ASEC38 — ACL
         try:
             services.restaurer_de_corbeille(document, user=request.user)
@@ -1537,7 +1537,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         if document is None:
             return Response(
                 {'detail': 'Document introuvable dans la corbeille.'},
-                status=status.HTTP_404_NOT_FOUND)
+                status=selectors.statut_hors_corbeille(request.user, pk))
         self.check_object_permissions(request, document)  # ASEC38 — ACL
         try:
             services.purger_definitivement(document)
@@ -1879,7 +1879,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         if version is None:
             return Response(
                 {'detail': 'Aucune version disponible pour le caviardage.'},
-                status=status.HTTP_404_NOT_FOUND)
+                status=status.HTTP_409_CONFLICT)  # ENF11 : le document existe
         try:
             new_doc = services.caviarder_document(
                 version, request.data.get('zones') or [],

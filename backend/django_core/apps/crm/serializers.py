@@ -1703,8 +1703,8 @@ class CanalSerializer(serializers.ModelSerializer):
         # La clé d'un canal protégé (ex. 'site_web') ne peut pas être renommée :
         # le webhook du site web en dépend.
         if self.instance and self.instance.protege and value != self.instance.cle:
-            raise serializers.ValidationError(
-                "La clé d'un canal protégé ne peut pas être modifiée.")
+            # ENF11 : l'état du canal s'oppose, le corps est conforme.
+            raise ConflitEtat({'cle': ["La clé d'un canal protégé ne peut pas être modifiée."]})
         return value
 
 

@@ -547,7 +547,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         from ..services import TransitionRefusee, changer_statut_chantier
 
         inst = self.get_object()
-        data = request.data
+        data = oa.corps_objet(request)  # ENF11 : `[]` en corps -> 400, jamais 500
         # Les champs de mise en service accompagnent la transition : ils sont
         # écrits par le service, dans le MÊME `save()` que le statut.
         champs = {}
@@ -720,9 +720,9 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         ensure_checklist_items(inst)
         cle = corps['cle']
         item = inst.checklist.filter(cle=cle).first()
-        if item is None:  # ERR-ENF11 : clé bien formée mais inconnue = 404
+        if item is None:  # ENF11 : clé bien formée, inconnue de CE chantier = 409
             return Response({'detail': 'Étape inconnue.'},
-                            status=status.HTTP_404_NOT_FOUND)
+                            status=status.HTTP_409_CONFLICT)
         fait = corps.get('fait', True)
         # Revue chantier 26/10/2026 — étape à photo obligatoire : pas de
         # coche sans photo de l'étape (garde partagée avec la synchro).
@@ -894,7 +894,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             content_type=ct, object_id=inst.id).first()
         if attachment is None:
             return Response({'detail': 'Pièce jointe introuvable pour ce chantier.'},
-                            status=status.HTTP_404_NOT_FOUND)
+                            status=status.HTTP_409_CONFLICT)  # ENF11 : le chantier existe
 
         cle = request.data.get('cle')
         item = inst.checklist.filter(cle=cle).first() if cle else None
@@ -1334,8 +1334,8 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             company=inst.company, phase__in=self._RELEVE_PHASES,
         ).first()
         if att is None:
-            return Response({'detail': 'Relevé introuvable.'},
-                            status=status.HTTP_404_NOT_FOUND)
+            return Response({'detail': 'Relevé introuvable.'},  # ENF11 : le chantier existe
+                            status=status.HTTP_409_CONFLICT)
         delete_attachment(att.file_key)
         activity.log_note(inst, request.user,
                           f"Relevé supprimé : {att.filename}")
@@ -1722,8 +1722,8 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         if cle:
             cible = next((s for s in stages if s.cle == cle), None)
             if cible is None:
-                return Response({'detail': 'Étape inconnue.'},
-                                status=status.HTTP_404_NOT_FOUND)
+                return Response({'detail': 'Étape inconnue.'},  # ENF11 : le chantier existe
+                                status=status.HTTP_409_CONFLICT)
         else:
             courante = etape_courante(inst)
             idx = next((k for k, s in enumerate(stages)

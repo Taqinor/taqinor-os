@@ -361,9 +361,13 @@ class DossierViewSet(CompanyScopedModelViewSet):
             return Response(DossierWorkflowChecklistItemSerializer(
                 items, many=True).data)
 
-        # api-fuzz : ``item_id: null`` = champ absent (forme « ajout »).
-        coche = (isinstance(request.data, dict)
-                 and request.data.get('item_id') is not None)
+        # api-fuzz : ``item_id: null`` = champ absent (forme « ajout ») ; avec un
+        # ``libelle``, un ``item_id`` non entier est hors forme « coche » (publiée :
+        # corps de la forme « ajout », propriété en plus, 41773314544).
+        item_id = request.data.get('item_id') if isinstance(request.data, dict) else None
+        coche = item_id is not None and (
+            'libelle' not in request.data
+            or (isinstance(item_id, int) and not isinstance(item_id, bool)))
         donnees = corps_valide(
             request, _CHECKLIST_COCHE if coche else _CHECKLIST_AJOUT)
         if coche:

@@ -360,7 +360,7 @@ SANS_PRODUCTEUR_PUR = {
         'pertes et dérogations du calepinage (ACAL8) : lues sur le '
         'calepinage et les réglages société en base',
     'calepinage_publication_electrique.json':
-        'refus de publication électrique 422 + dérogation (ACAL9) : lit le '
+        'refus de publication électrique 409 + dérogation (ACAL9) : lit le '
         'verdict du calepinage en base',
     'calepinage_liste.json':
         'liste des calepinages (ACAL11) : queryset société en base',

@@ -30,12 +30,13 @@ export const LIBELLE_CHAMP = {
 export const MESSAGE_DEROGATION_RESERVEE = 'Dérogation réservée aux approbateurs'
 export const MESSAGE_MOTIF_OBLIGATOIRE = 'Saisissez le motif de la dérogation.'
 
-/** Le refus 422 ÉLECTRIQUE (contrat `calepinage_publication_electrique.json`),
- *  ou `null`. */
+/** Le refus ÉLECTRIQUE, 409 (contrat `calepinage_publication_electrique.json`),
+ *  ou `null`. Le 422 reste lu : un onglet ouvert avant le déploiement. */
 export function bloquageElectrique(erreur) {
   const data = erreur?.response?.data
   const electrique = data?.electrique
-  if (erreur?.response?.status !== 422 || !electrique
+  const statut = erreur?.response?.status
+  if ((statut !== 409 && statut !== 422) || !electrique
     || electrique.verdict !== 'bloquant') return null
   return {
     detail: typeof data.detail === 'string' ? data.detail : '',

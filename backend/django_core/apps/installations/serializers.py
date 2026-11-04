@@ -1823,7 +1823,8 @@ class FraisImportSerializer(
         read_only_fields = ['created_by', 'date_creation']
 
 
-class LandedCostLigneSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class LandedCostLigneSerializer(ChampsTexteStrictsMixin, IdInconnu404Mixin, SameCompanyFKSerializerMixin,
+                                serializers.ModelSerializer):
     """FG316 — ligne de coût débarqué par SKU (valeur FOB + quantité). La société
     est posée CÔTÉ SERVEUR. `cout_fob_unitaire` est dérivé ; la quote-part de
     frais + le coût débarqué se lisent via l'action `landed-cost` du dossier."""
@@ -1831,8 +1832,10 @@ class LandedCostLigneSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
     same_company_fields = ('dossier', 'produit')
     produit_nom = TexteLie(
         source='produit.nom', read_only=True, default=None, allow_null=True)
+    # 14 chiffres : valeur FOB maximale (10 entiers) / quantité minimale (0,01). À 12,
+    # InvalidOperation au rendu : 500 à la création, puis sur toute la liste.
     cout_fob_unitaire = serializers.DecimalField(
-        max_digits=12, decimal_places=2, read_only=True)
+        max_digits=14, decimal_places=2, read_only=True)
 
     class Meta:
         model = LandedCostLigne
@@ -2870,19 +2873,19 @@ class RetourLivraisonLigneSerializer(IdInconnu404Mixin, SameCompanyFKSerializerM
             'quantite_retournee',
             getattr(instance, 'quantite_retournee', 0))
         if qte_livree is not None and qte_retournee > qte_livree:
-            raise serializers.ValidationError(
+            raise ConflitEtat(  # ENF11 : la quantité livrée est stockée, pas saisie
                 {'quantite_retournee':
-                 'La quantité retournée ne peut pas dépasser la quantité '
-                 'livrée.'})
+                 ['La quantité retournée ne peut pas dépasser la quantité '
+                  'livrée.']})
         # ACHT21 — plafond CUMULÉ : livré − les autres retours (brouillon +
         # validés) du même produit sur la livraison.
         if instance is not None and 'quantite_retournee' in attrs:
             from .services import quantite_retournable_livraison
             reliquat = quantite_retournable_livraison(instance)
             if qte_retournee > reliquat:
-                raise serializers.ValidationError({'quantite_retournee': (
+                raise ConflitEtat({'quantite_retournee': [
                     f'Au plus {reliquat} à retourner (cumul déjà couvert '
-                    'par d\'autres retours de cette livraison).')})
+                    'par d\'autres retours de cette livraison).']})
         return attrs
 
 

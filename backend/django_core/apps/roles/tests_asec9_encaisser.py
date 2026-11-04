@@ -69,7 +69,7 @@ class CodeEncaisserTests(TestCase):
                 resp = api.patch(
                     f'/api/django/roles/{role.id}/',
                     {'permissions': avant + [CODE]}, format='json')
-                self.assertEqual(resp.status_code, 400, resp.data)
+                self.assertEqual(resp.status_code, 409, resp.data)
                 self.assertIn('non octroyable', str(resp.data))
                 role.refresh_from_db()
                 self.assertEqual(role.permissions, avant)
@@ -101,7 +101,7 @@ class CodeEncaisserTests(TestCase):
 
         resp = api.patch(url, {'nom': 'Tech 2', 'permissions': avant + [CODE]},
                          format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('non octroyable', str(resp.data.get('permissions')))
         inchange()
         # Refus d'état (rôle système enregistré) : 409, pas un 400 (fuzz ENF11).
@@ -112,7 +112,7 @@ class CodeEncaisserTests(TestCase):
         self.assertEqual(resp.status_code, 409, resp.data)
         inchange()
         resp = api.patch(url, {'permissions': avant + [CODE]}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('non octroyable', str(resp.data))
         inchange()
         perso = Role.objects.create(company=company, nom='Vendeur',

@@ -109,15 +109,15 @@ class ChecklistPhotoMetaEndpointTests(TestCase):
         resp = self.api.post(self._url(), {'cle': self.cle}, format='json')
         self.assertEqual(resp.status_code, 400)
 
-    def test_attachment_from_other_installation_404(self):
+    def test_attachment_from_other_installation_409(self):
         other_inst = make_chantier(self.company, self.user)
         att = make_attachment(self.company, other_inst)
         resp = self.api.post(
             self._url(), {'attachment': att.id, 'cle': self.cle}, format='json')
-        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.status_code, 409)
         self.assertFalse(PhotoChecklistMeta.objects.filter(attachment=att).exists())
 
-    def test_attachment_from_other_company_404(self):
+    def test_attachment_from_other_company_409(self):
         other_user = User.objects.create_user(
             username='ntmob11-other', password='x', role_legacy='responsable',
             company=self.other_company)
@@ -125,7 +125,7 @@ class ChecklistPhotoMetaEndpointTests(TestCase):
         att = make_attachment(self.other_company, other_inst)
         resp = self.api.post(
             self._url(), {'attachment': att.id, 'cle': self.cle}, format='json')
-        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.status_code, 409)
 
     def test_unknown_cle_leaves_checklist_item_null(self):
         # NTMOB11 — checklist_item est nullable : une photo prise hors

@@ -31,6 +31,12 @@ class ToCompanyTzUnitTest(SimpleTestCase):
         result = to_company_tz(dt, None)
         self.assertEqual(str(result.tzinfo), DEFAULT_TIMEZONE)
 
+    def test_date_extreme_sans_equivalent_local_reste_en_utc(self):
+        # api-fuzz-full 41773314544 : OverflowError (500) sur toute la liste.
+        extreme = datetime.datetime(1, 1, 1, tzinfo=ZoneInfo('UTC'))
+        for fuseau_negatif in (extreme, extreme.replace(year=9999, month=12, day=31)):
+            self.assertIsNotNone(to_company_tz(fuseau_negatif, None).isoformat())
+
     def test_naive_datetime_is_treated_as_utc(self):
         naive = datetime.datetime(2026, 6, 1, 12, 0)
         result = to_company_tz(naive, None)

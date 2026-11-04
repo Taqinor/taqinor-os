@@ -1349,6 +1349,13 @@ class TestAsav100Abonnements(TestCase):
         # ENF11 : déjà résilié = refus d'ÉTAT -> 409 (plus 400).
         self.assertEqual(r.status_code, 409)
 
+    def test_resiliation_corps_non_objet_400(self):
+        # api-fuzz-full 41773314544 : `null` en corps levait AttributeError (500).
+        ab_id = self._creer().data['id']
+        r = self.api.post(f'{self.URL}{ab_id}/resilier/', 'null',
+                          content_type='application/json')
+        self.assertEqual(r.status_code, 400, r.data)
+
     def test_motif_de_resiliation_nul_ou_non_texte(self):
         """ERR-ENF11 (cron 41296444614) : NUL refusé par PostgreSQL (500)."""
         ab_id = self._creer().data['id']

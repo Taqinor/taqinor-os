@@ -19,7 +19,7 @@ from rest_framework_simplejwt.exceptions import TokenError
 from .corps_requetes import (
     CalendrierHegirienRequete, LangueInterfaceRequete, MobileHomeRouteRequete,
     REPONSES_AVATAR_REFUS, REPONSES_REINIT, REQUETE_AVATAR, REQUETE_REINIT,
-    statut_refus_avatar, statut_refus_mot_de_passe,
+    mot_de_passe_du_corps, statut_refus_avatar, statut_refus_mot_de_passe,
     ID_COMPTE, REPONSE_400_COMPTE, SCHEMA_PATCH_HEGIRIEN, SCHEMA_PATCH_LANGUE, SwitchCompanyRequete,
     TwoFactorDisableRequete, TwoFactorEnableRequete, nom_requetable, role_demande,
 )
@@ -1274,12 +1274,11 @@ class UserViewSet(viewsets.ModelViewSet):
         refus = self._refus_rang(target)
         if refus is not None:
             return refus
-        errors = reinitialiser_mot_de_passe(
-            request.user, target, request.data.get('password', ''))
-        if errors:
+        brut = mot_de_passe_du_corps(request)  # corps non objet → 400, jamais 500
+        if errors := reinitialiser_mot_de_passe(request.user, target, brut):
             # ENF11 : forme publiée → 400 ; politique → 409 (corps_requetes).
-            return Response({'password': errors}, status=statut_refus_mot_de_passe(
-                request.data.get('password', '')))
+            return Response({'password': errors},
+                            status=statut_refus_mot_de_passe(brut))
         return Response({'detail': 'Mot de passe réinitialisé.'})
 
     @extend_schema(

@@ -212,6 +212,12 @@ class DecisionRefuseeSansEcritureTest(SimpleTestCase):
         self.assertIn('Décision inconnue', str(refus))
         self.assertEqual(list(refus.corps()), ['decision'])
 
+    def test_motif_avec_caractere_nul(self):
+        # api-fuzz-full 41773314544 : DataError du JSONB (500).
+        refus = self._decider(faux_calepinage(), decision='refuse',
+                              motif='a\x00b')
+        self.assertEqual(refus.champ, 'motif')
+
     def test_decision_non_texte(self):
         # CI #997 fuzz : ``{"decision": {}}`` levait ``unhashable type`` (500).
         for valeur in ({}, [], 5, True):

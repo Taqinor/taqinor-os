@@ -596,11 +596,12 @@ class FavoriUtilisateurViewSet(CompanyScopedModelViewSet):
         dernier = (FavoriUtilisateur.objects
                    .filter(company=self.request.user.company, owner=self.request.user)
                    .order_by('-ordre').values_list('ordre', flat=True).first())
-        return 0 if dernier is None else dernier + 1
+        # Colonne entière : un favori déjà posé en dernière position ne déborde pas.
+        return 0 if dernier is None else min(dernier + 1, 2147483647)
 
     @extend_schema(
         request=inline_serializer('FavoriReordonnerRequete', {
-            'ordre': drf_serializers.IntegerField()}),
+            'ordre': drf_serializers.IntegerField(min_value=0)}),
         responses=FavoriUtilisateurSerializer(many=True))
     # ERR-ENF11-FUZZ-UXVIEWS — la réponse est un tableau NU : sans
     # `pagination_class=None` le schéma annonçait PaginatedFavoriUtilisateurList.

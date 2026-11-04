@@ -1948,7 +1948,7 @@ class DocumentVersionHistoryRestoreTests(GedBase):
         self.assertEqual(resp.status_code, 404)
 
     def test_restaurer_endpoint_rejects_other_document_version(self):
-        """La version source d'un autre document renvoie 404."""
+        """La version source d'un autre document renvoie 409 (le document existe)."""
         folder_a2 = Folder.objects.create(
             company=self.co_a, cabinet=self.cab_a, nom='Docs A2')
         other_doc = Document.objects.create(
@@ -1962,7 +1962,7 @@ class DocumentVersionHistoryRestoreTests(GedBase):
         resp = api.post(
             f'/api/django/ged/documents/{self.doc_a.id}/restaurer/',
             {'version': other_v.id}, format='json')
-        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.status_code, 409)
 
     def test_restaurer_requires_responsable_or_admin(self):
         """Un utilisateur normal (non responsable/admin) ne peut pas restaurer."""

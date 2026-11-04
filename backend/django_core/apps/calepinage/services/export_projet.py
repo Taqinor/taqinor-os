@@ -1025,6 +1025,7 @@ def _creer_variantes(calepinage, variantes, *, user=None):
     de ce feu vert n'arrête pas l'import : la variante est créée NON retenue
     et l'avertissement le dit, plutôt que de perdre le projet entier.
     """
+    from core.conflit_etat import ConflitEtat
     from rest_framework.exceptions import ValidationError
 
     from .variantes import VarianteRefusee, creer_variante, retenir_variante
@@ -1047,7 +1048,7 @@ def _creer_variantes(calepinage, variantes, *, user=None):
             # ACAL107 — l'import RESTAURE un état : la conception importée
             # est déjà le document, la retenue ne la réécrit pas.
             retenir_variante(variante, user=user, appliquer=False)
-        except (VarianteRefusee, ValidationError) as refus:
+        except (VarianteRefusee, ValidationError, ConflitEtat) as refus:
             detail = getattr(refus, 'detail', None) or str(refus)
             avertissements.append(
                 'La variante « %s » était retenue dans le fichier ; elle ne '

@@ -133,6 +133,16 @@ class SavedQueryViewSetTests(TestCase):
                 self.assertEqual(view(req).status_code,
                                  status.HTTP_400_BAD_REQUEST)
 
+    def test_run_requete_enregistree_dataset_inconnu_est_409(self):
+        # api-fuzz-full 41773314544 : la requête existe, c'est son dataset stocké
+        # qui n'existe pas (le 404 lisait « ressource indisponible après création »).
+        requete = SavedQuery.objects.create(
+            company=self.user.company, owner=self.user, titre='q', dataset='nope')
+        req = self.factory.post(f'/saved-queries/{requete.pk}/run/', {}, format='json')
+        force_authenticate(req, user=self.user)
+        resp = SavedQueryViewSet.as_view({'post': 'run'})(req, pk=requete.pk)
+        self.assertEqual(resp.status_code, status.HTTP_409_CONFLICT)
+
     def test_run_adhoc_unknown_dataset_is_404(self):
         req = self.factory.post(
             '/saved-queries/run/', {'dataset': 'nope'}, format='json')

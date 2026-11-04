@@ -29,16 +29,16 @@
     "reference": "DEV-202610-0042",
     "revision_possible": false
   },
-  "exemple_422_prevol": {
+  "exemple_409_prevol": {
     "detail": "Le calepinage n'est pas prêt à être chiffré.",
     "errors": [
       "Aucun module n'est posé sur la toiture."
     ]
   },
-  "exemple_422_hors_reseau": {
+  "exemple_409_hors_reseau": {
     "hors_reseau": "Site isolé : une référence autonome ou une batterie est requise pour générer le devis."
   },
-  "exemple_422_lead_agricole": {
+  "exemple_409_lead_agricole": {
     "type_installation": "Lead agricole : le pompage se chiffre depuis l'écran devis agricole."
   },
   "sync_devis": {

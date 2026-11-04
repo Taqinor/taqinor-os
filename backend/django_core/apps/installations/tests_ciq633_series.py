@@ -67,7 +67,7 @@ class SeriesCITests(TestCase):
             r = self.api.post(url, corps, format='json')
             self.assertEqual(r.status_code, 400, (corps, r.content))
         r = self.api.post(url, {'cle': 'inconnue'}, format='json')
-        self.assertEqual(r.status_code, 404, r.content)
+        self.assertEqual(r.status_code, 409, r.content)
 
     def test_doublon_dans_un_lot_de_trois_sans_500(self):
         Equipement.objects.create(company=self.company, produit=self.module,

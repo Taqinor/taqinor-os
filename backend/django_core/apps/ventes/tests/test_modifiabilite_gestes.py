@@ -162,7 +162,7 @@ class LesHuitEcrituresGardees(_Base):
                 f'{base}/overrides/',
                 {'scenario': {'valeur': 'Sans batterie'}}, format='json'),
             'overrides DELETE': lambda: self.api.delete(
-                f'{base}/overrides/?chemin=scenario'),
+                f'{base}/overrides/scenario/'),
             'etude-params': lambda: self.api.patch(
                 f'{base}/etude-params/', {'nb_proprietes': 2},
                 format='json'),

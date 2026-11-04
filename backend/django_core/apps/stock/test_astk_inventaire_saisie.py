@@ -39,6 +39,13 @@ class InventaireSaisieTests(TestCase):
                 quantite_stock=20)
             for n in 'ABC')
 
+    def test_motif_avec_caractere_nul_400(self):
+        # api-fuzz-full 41773314544 : ValueError à l'écriture du mouvement (500).
+        r = self.api.post(URL, {'motif': 'a\x00b', 'lignes': [
+            {'produit': self.a.pk, 'quantite_comptee': 3}]}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(MouvementStock.objects.filter(produit=self.a).count(), 0)
+
     def _poster(self, lignes):
         return self.api.post(URL, {'motif': 'test', 'lignes': lignes},
                              format='json')

@@ -198,7 +198,7 @@ def ticket_public_satisfaction(request, token):
     """XSAV10 — Enregistre la satisfaction (CSAT) via le lien client public.
 
     Résout le ticket par son ``share_token`` uniquement. Refuse : token
-    inconnu (404, sans fuite), ticket pas encore résolu/clôturé (400), une
+    inconnu (404, sans fuite), ticket pas encore résolu/clôturé (409), une
     seconde réponse pour le même ticket (409 — une seule réponse par ticket).
     Aucune donnée interne (chatter, coût, informations client) n'est jamais
     exposée ou requise par cet endpoint — seuls ``note`` (1-5) et
@@ -222,7 +222,7 @@ def ticket_public_satisfaction(request, token):
         return _noindex(Response(
             {'detail': "Ce ticket n'est pas encore résolu — "
                        "l'enquête de satisfaction n'est pas disponible."},
-            status=status.HTTP_400_BAD_REQUEST))
+            status=status.HTTP_409_CONFLICT))
 
     if TicketSatisfaction.objects.filter(ticket=ticket).exists():
         return _noindex(Response(

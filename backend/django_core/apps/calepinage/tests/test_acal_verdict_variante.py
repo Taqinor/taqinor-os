@@ -93,7 +93,7 @@ class Gouvernance(BaseApiCalepinage):
         reponse = self.api.post(
             self._url(calepinage, f'variantes/{variante.pk}/retenir/'), {},
             format='json')
-        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertIn('Isc', str(reponse.data))
         variante.refresh_from_db()
         self.assertFalse(variante.retenue)
@@ -147,7 +147,7 @@ class Gouvernance(BaseApiCalepinage):
     def test_temperatures_incoherentes_refus_nomme_jamais_500(self):
         """Lot 2 critique #19 — une saisie de températures incohérente
         (maximale absente) : approuver répond 409 (refus d'ÉTAT de la
-        conception, ERR-ENF11-FUZZ-CALEPINAGE) et retenir 400, chacun en
+        conception, ERR-ENF11-FUZZ-CALEPINAGE) et retenir aussi, chacun en
         nommant le champ, jamais 500."""
         calepinage = self._calepinage(12)
         resultat = dict(calepinage.resultat)
@@ -163,7 +163,7 @@ class Gouvernance(BaseApiCalepinage):
         reponse = self.api.post(
             self._url(calepinage, f'variantes/{variante.pk}/retenir/'), {},
             format='json')
-        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertIn('temperature_max_c', reponse.data)
 
     def test_troncons_de_la_variante_jamais_ceux_du_calepinage(self):

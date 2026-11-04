@@ -804,7 +804,7 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
         return Response(InterventionSerializer(
             interv, context={'request': request}).data)
 
-    @oa.extend_schema(responses=oa.OBJ)
+    @oa.extend_schema(responses={200: oa.OBJ, 409: oa.OBJ})  # intervention annulée
     @action(detail=True, methods=['get'], url_path='lien-client',
             permission_classes=[IsResponsableOrAdmin])
     def lien_client(self, request, pk=None):
@@ -2003,8 +2003,8 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
         self._tool_return_response(interv)
         tr = interv.tool_returns.filter(id=corps['ligne']).first()
         if tr is None:
-            return Response({'detail': 'Ligne inconnue.'},
-                            status=status.HTTP_404_NOT_FOUND)
+            return Response({'detail': 'Ligne inconnue.'},  # ENF11 : l'intervention existe
+                            status=status.HTTP_409_CONFLICT)
         tr.rendu = corps['rendu']
         fields = ['rendu']
         if 'emplacement' in corps:

@@ -146,7 +146,9 @@ export default function BoutonDevis({
         setMotifErreur(refusServeur(erreur).message)
         return null
       }
-      if (statut === 409) {
+      // Le pré-vol de composition (`errors`) et le refus par champ se lisent
+      // sous le champ qu'ils nomment : seul un `detail` nu est un conflit.
+      if (statut === 409 && data?.detail && !Array.isArray(data?.errors)) {
         setConflit({
           detail: refusServeur(erreur).message,
           revision_possible: !!data?.revision_possible,

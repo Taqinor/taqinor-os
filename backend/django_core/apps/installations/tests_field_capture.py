@@ -175,7 +175,7 @@ class TestSerials(_Base):
             with self.subTest(action=action):
                 r = self.api.post(f'{self.url}/{action}/', {'serial': 0},
                                   format='json')
-                self.assertEqual(r.status_code, 404, r.data)
+                self.assertEqual(r.status_code, 409, r.data)
                 r = self.api.post(f'{self.url}/{action}/', {}, format='json')
                 self.assertEqual(r.status_code, 400, r.data)
 
@@ -250,7 +250,7 @@ class TestPhotoAnnotation(_Base):
         # `oa.statut_inconnu`) ; `photo` absente = corps invalide, 400.
         url = f'{self.url}/supprimer-photo/'
         r = self.api.post(url, {'photo': 0}, format='json')
-        self.assertEqual(r.status_code, 404, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         r = self.api.post(url, {}, format='json')
         self.assertEqual(r.status_code, 400, r.data)
 
@@ -388,7 +388,7 @@ class TestConsommation(_Base):
         prevue = cons.lignes.get(designation='Panneau 550W')
         url = f'{self.url}/supprimer-ligne-consommation/'
         r = self.api.post(url, {'ligne': 0}, format='json')
-        self.assertEqual(r.status_code, 404, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         r = self.api.post(url, {'ligne': prevue.id}, format='json')
         self.assertEqual(r.status_code, 409, r.data)
         self.assertTrue(cons.lignes.filter(pk=prevue.pk).exists())
@@ -538,7 +538,7 @@ class TestVoiceMemo(_Base):
             with self.subTest(action=action):
                 r = self.api.post(f'{self.url}/{action}/', {'memo': 0},
                                   format='json')
-                self.assertEqual(r.status_code, 404, r.data)
+                self.assertEqual(r.status_code, 409, r.data)
                 r = self.api.post(f'{self.url}/{action}/', {}, format='json')
                 self.assertEqual(r.status_code, 400, r.data)
 
@@ -601,7 +601,7 @@ class TestReserves(_Base):
                              ('annoter-photo', {'photo': 0}),
                              ('cocher-safety', {'cle': 'inconnue'})):
             r = self.api.post(f'{self.url}/{route}/', corps, format='json')
-            self.assertEqual(r.status_code, 404, (route, r.content))
+            self.assertEqual(r.status_code, 409, (route, r.content))
         # api-fuzz-full 27/10 : un objet en `reserve` faisait lever TypeError
         # (500) ; un `statut` hors choix était écrit tel quel.
         r = self.api.post(f'{self.url}/resoudre-reserve/', {'reserve': {'x': []}},
@@ -720,7 +720,7 @@ class TestToolReturn(_Base):
         r = self.api.post(url, {'ligne': {}, 'rendu': False}, format='json')
         self.assertEqual(r.status_code, 400, r.content)
         r = self.api.post(url, {'ligne': 987654, 'rendu': True}, format='json')
-        self.assertEqual(r.status_code, 404, r.content)
+        self.assertEqual(r.status_code, 409, r.content)
 
     def test_get_still_reads_state(self):
         # ERR81 — le GET reste lisible (amorce sans doublonner).
@@ -779,7 +779,7 @@ class TestSafety(_Base):
         self.assertEqual(r.status_code, 400, r.content)
         r = self.api.post(f'{self.url}/cocher-safety/', {
             'cle': 'inconnue'}, format='json')
-        self.assertEqual(r.status_code, 404, r.content)
+        self.assertEqual(r.status_code, 409, r.content)
 
     def test_default_slots_seeded(self):
         field_capture.seed_safety_slots(self.company)

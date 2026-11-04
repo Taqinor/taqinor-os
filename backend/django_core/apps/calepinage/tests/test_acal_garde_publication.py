@@ -96,9 +96,9 @@ class Garde(BaseApiCalepinage):
         calepinage.refresh_from_db()
         return (calepinage.resultat or {}).get(CLE_FIL_DEROGATIONS) or []
 
-    def test_generer_refuse_422_nomme_les_bloquants(self):
+    def test_generer_refuse_409_nomme_les_bloquants(self):
         reponse, construire = self._generer(self.api, self.calepinage)
-        self.assertEqual(reponse.status_code, 422, reponse.data)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
         electrique = reponse.data['electrique']
         self.assertEqual(electrique['verdict'], 'bloquant')
         self.assertTrue(electrique['derogation_possible'])
@@ -118,7 +118,7 @@ class Garde(BaseApiCalepinage):
                         ) as resync:
             reponse = self.api.post(_url(self.calepinage.pk, 'sync-devis'),
                                     {}, format='json')
-        self.assertEqual(reponse.status_code, 422, reponse.data)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertEqual(reponse.data['electrique']['verdict'], 'bloquant')
         resync.assert_not_called()
         self.assertEqual(self._fil(self.calepinage), [])
@@ -219,7 +219,7 @@ class Garde(BaseApiCalepinage):
             ond_isc_max_mppt_a=45.0, ond_ac_kw=10.0, ond_phases=3)
         calepinage = self._calepinage(conforme, lead=self.lead_2)
         reponse, construire = self._generer(self.api, calepinage)
-        self.assertEqual(reponse.status_code, 422, reponse.data)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
         codes = [b['code'] for b in reponse.data['electrique']['bloquants']]
         self.assertIn('TERRE_JUSTIFICATION_MANQUANTE', codes)
         self.assertNotIn(CODE_ISC, codes)
@@ -229,7 +229,7 @@ class Garde(BaseApiCalepinage):
         avant = Devis.objects.filter(company=self.company).count()
         reponse = self.api.post(_url(self.calepinage.pk, 'generer-devis'),
                                 {}, format='json')
-        self.assertEqual(reponse.status_code, 422, reponse.data)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertEqual(Devis.objects.filter(company=self.company).count(),
                          avant)
         self.calepinage.refresh_from_db()

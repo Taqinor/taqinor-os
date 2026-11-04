@@ -37,6 +37,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutGererCalepinage
+from ..serializers import corps_objet
 from .calepinages import CalepinageViewSet
 
 MIME_PDF = 'application/pdf'
@@ -137,13 +138,14 @@ def remettre_document(self, request, pk=None):
     # autre société est INTROUVABLE (404) avant toute lecture du corps —
     # jamais un 400 sur le code qui confirmerait qu'il existe.
     calepinage = self.get_object()
-    code = str(request.data.get('code') or '').strip()
+    corps = corps_objet(request)  # ENF11 : `null` en corps -> 400, jamais 500
+    code = str(corps.get('code') or '').strip()
     if code not in REGISTRE_REMISE:
         return Response(
             {'code': 'Document inconnu : « %s ». Codes admis : %s.'
              % (code, ', '.join(REGISTRE_REMISE))},
             status=status.HTTP_400_BAD_REQUEST)
-    langue = request.data.get('langue') or None
+    langue = corps.get('langue') or None
     # Le RENDU d'abord : une pièce refusée par son GET l'est ici à
     # l'identique (même statut, même corps), avant toute lecture d'empreinte.
     octets, refus = rendre_document(self, request, code, langue)

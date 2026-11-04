@@ -25,7 +25,7 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from .models import RapportDefinition
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers
 from rest_framework.parsers import JSONParser
 
@@ -183,9 +183,9 @@ class RapportDefinitionViewSet(CompanyScopedModelViewSet):
             rows = data_explorer.run_query(
                 obj.dataset, request.user.company, request.user,
                 obj.spec or {})
-        except data_explorer.DatasetInconnu as exc:
+        except data_explorer.DatasetInconnu as exc:  # ENF11 : la définition existe
             return Response({'detail': str(exc)},
-                            status=status.HTTP_404_NOT_FOUND)
+                            status=status.HTTP_409_CONFLICT)
         except (data_explorer.ChampNonAutorise, FormulaError) as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -214,7 +214,8 @@ class RapportDefinitionViewSet(CompanyScopedModelViewSet):
     @extend_schema(
         parameters=[OpenApiParameter('format', OpenApiTypes.STR, required=False,
                                      enum=['csv', 'xlsx'])],
-        responses={(200, 'text/csv'): OpenApiTypes.STR,
+        responses={409: OpenApiResponse(description='Dataset stocké inconnu.'),
+                   (200, 'text/csv'): OpenApiTypes.STR,
                    (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
     # ASEC50 / D-ASEC-4 — la garde du viewset (``ScopedPermission``) ET le
     # code ``reporting_export`` : décocher « Exporter » ferme l'export.
@@ -257,9 +258,9 @@ class RapportDefinitionViewSet(CompanyScopedModelViewSet):
             # AANA25 — l'export s'exécute au nom du LECTEUR (sa portée, ses
             # permissions), jamais du propriétaire de la définition.
             rows, pivot = executer_definition(obj, lecteur=request.user)
-        except data_explorer.DatasetInconnu as exc:
+        except data_explorer.DatasetInconnu as exc:  # ENF11 : la définition existe
             return Response({'detail': str(exc)},
-                            status=status.HTTP_404_NOT_FOUND)
+                            status=status.HTTP_409_CONFLICT)
         except (data_explorer.ChampNonAutorise, FormulaError,
                 TypeError, ValueError) as exc:
             return Response({'detail': str(exc)},

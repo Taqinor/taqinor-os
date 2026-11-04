@@ -29,10 +29,34 @@ Tuples (immuables) : une sous-classe ne peut pas muter la liste partagée.
 from __future__ import annotations
 
 from rest_framework import serializers
+from rest_framework.exceptions import ParseError
+from rest_framework.negotiation import DefaultContentNegotiation
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 
 PARSEURS_JSON = (JSONParser,)
 PARSEURS_UPLOAD = (JSONParser, MultiPartParser, FormParser)
+
+
+class _JsonObjetParser(JSONParser):
+    def parse(self, stream, media_type=None, parser_context=None):
+        donnees = super().parse(stream, media_type, parser_context)
+        if not isinstance(donnees, dict):
+            raise ParseError('Un objet JSON est attendu en corps.')
+        return donnees
+
+
+class NegociationCorpsObjet(DefaultContentNegotiation):
+    """ENF11 (``REST_FRAMEWORK['DEFAULT_CONTENT_NEGOTIATION_CLASS']``) — aucune vue
+    de l'API ne lit un corps JSON qui ne soit pas un objet, et 539 lectures font
+    ``request.data.get`` : ``null``, ``true``, ``-1.5`` ou ``[]`` en corps levaient
+    ``AttributeError`` (500), vue par vue, à chaque passe du fuzz (5 routes encore
+    au cron 41773314544). Le refus vit donc ICI : 400 à la PREMIÈRE lecture de
+    ``request.data``, après le chargement de l'objet et les permissions, comme le
+    reste du corps. Une vue qui ne lit pas son corps n'est pas touchée."""
+
+    def select_parser(self, request, parsers):
+        parser = super().select_parser(request, parsers)
+        return _JsonObjetParser() if type(parser) is JSONParser else parser
 
 
 class JsonSeulementMixin:

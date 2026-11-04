@@ -23,7 +23,8 @@ CE QUE CHAQUE ACTION GARANTIT
 from __future__ import annotations
 
 from rest_framework import status
-from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
+from drf_spectacular.utils import (
+    OpenApiParameter, OpenApiResponse, extend_schema, inline_serializer)
 from rest_framework import serializers as drf_serializers
 from drf_spectacular.types import OpenApiTypes
 from rest_framework.decorators import action
@@ -63,7 +64,8 @@ class ElectriqueActionsMixin:
         parameters=[OpenApiParameter(
             'variante', OpenApiTypes.INT, required=False,
             description='Variante du même calepinage à évaluer.')],
-        responses=_FORME_RESULTAT)
+        responses={200: _FORME_RESULTAT, 409: OpenApiResponse(
+            description='La variante demandée n\'a pas de conception.')})
     @action(detail=True, methods=['get'], url_path='resultat',
             permission_classes=[PeutVoirCalepinage])
     def resultat(self, request, pk=None):

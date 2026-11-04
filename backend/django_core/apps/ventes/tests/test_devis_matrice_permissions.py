@@ -73,7 +73,7 @@ FIGEE = {
     'lecture_client': RESP, 'lots': RESP, 'noter': RESP,
     'offres_tailles': RESP, 'offres_tailles_appliquer': RESP,
     'offres_tailles_config': RESP, 'offres_tailles_regenerer': RESP,
-    'overrides': RESP, 'proforma_pdf': RESP, 'renouveler': RESP,
+    'override_regenerer': RESP, 'overrides': RESP, 'proforma_pdf': RESP, 'renouveler': RESP,
     'replace_lines': RESP, 'reviser': RESP, 'roof_image': RESP,
     'save_preset': RESP, 'share_link': RESP, 'simulation_status': RESP,
     'simuler': RESP, 'sync_layout': RESP, 'telecharger_pdf': RESP,

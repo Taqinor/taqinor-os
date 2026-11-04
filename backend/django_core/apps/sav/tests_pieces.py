@@ -109,7 +109,7 @@ class TestSavPieces(TestCase):
         # ERR80 — décrémenter plus que le stock en main est refusé (jamais
         # négatif) et ne crée pas la pièce.
         r = self._add(quantite='99', decrement=True)
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)  # ENF11 : état du stock
         self.produit.refresh_from_db()
         self.assertEqual(self.produit.quantite_stock, Decimal('10'))
         self.assertFalse(PieceConsommee.objects.filter(

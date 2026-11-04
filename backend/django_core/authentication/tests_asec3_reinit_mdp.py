@@ -43,6 +43,11 @@ class ReinitialisationMotDePasseTests(TestCase):
         self.api = APIClient()
         self.api.force_authenticate(self.directeur)
 
+    def test_corps_non_objet_400(self):
+        # api-fuzz-full 41773314544 : `-1.5` en corps levait AttributeError (500).
+        r = self.api.post(_URL.format(self.cible.pk), -1.5, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+
     def _session_active(self, user):
         refresh = RefreshToken.for_user(user)
         UserSession.objects.create(

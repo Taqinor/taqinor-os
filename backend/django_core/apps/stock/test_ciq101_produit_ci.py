@@ -119,6 +119,17 @@ class TestSchemaFicheBornes(SimpleTestCase):
     validateurs appliquent (oracle : DRF `run_validation` sur les mêmes
     valeurs, jamais un motif plus large que le serveur)."""
 
+    def test_decimal_positif_admet_les_zeros_de_fin(self):
+        # api-fuzz-full 41773314544 : le serveur rend « 0.100 », le motif le refusait.
+        import re
+
+        from apps.stock.schema_contraintes import _motif_decimal_positif
+        motif = _motif_decimal_positif(r'^-?\d{0,7}(?:\.\d{0,3})?$')
+        for bon in ('0.100', '0.001', '0.1', '0.010', '1', '1.5'):
+            self.assertTrue(re.fullmatch(motif, bon), bon)
+        for mauvais in ('0', '0.000', '0.0001', '-1'):
+            self.assertFalse(re.fullmatch(motif, mauvais), mauvais)
+
     @staticmethod
     def _schema():
         from apps.stock.schema_contraintes import declarer_contraintes_achats

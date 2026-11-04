@@ -307,13 +307,13 @@ class TestAvoirs(TestCase):
                  'supérieure à la quantité facturée restante (0).')):
             with self.subTest(champs=champs):
                 r = poster(**champs)
-                self.assertEqual(r.status_code, 400, r.data)
+                self.assertEqual(r.status_code, 409, r.data)
                 self.assertEqual(r.data['detail'], motif)
         self.assertEqual(Avoir.objects.filter(facture=facture).count(), 0)
         # Deux lignes du même produit se cumulent dans le même corps.
         r = api.post(url, {'lignes': [dict(ligne, quantite='2'),
                                       dict(ligne, quantite='1')]}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('Ligne 2', r.data['detail'])
         # Une quantité créditée par un avoir actif ne se crédite plus ; rendue
         # par son annulation, elle redevient créditable.
@@ -324,7 +324,7 @@ class TestAvoirs(TestCase):
                      ).status_code, 200)
         self.assertEqual(poster().status_code, 201)
         r = poster(quantite='2')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('(1)', r.data['detail'])
         # Facture sans ligne produit : ligne libre au plafond, au taux porté.
         acompte = Facture.objects.create(
@@ -337,7 +337,7 @@ class TestAvoirs(TestCase):
         url_acompte = f'/api/django/ventes/factures/{acompte.id}/creer-avoir/'
         r = api.post(url_acompte, {'lignes': [dict(libre, taux_tva='10')]},
                      format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         r = api.post(url_acompte, {'lignes': [libre]}, format='json')
         self.assertEqual(r.status_code, 201, r.data)
 
@@ -357,7 +357,8 @@ class TestAvoirs(TestCase):
         ligne = {'produit': self.panneau.id, 'designation': 'Panneau',
                  'quantite': '1', 'prix_unitaire': '1000'}
         r = api.post(url, {'lignes': [ligne]}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        # ENF11 : la facture enregistrée s'y oppose, le corps est conforme.
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertEqual(r.data['detail'],
                          'Ligne 1 : taux de TVA absent de la facture.')
         self.assertEqual(Avoir.objects.filter(facture=facture).count(), 0)

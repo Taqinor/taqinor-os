@@ -867,7 +867,7 @@ class DevisCycleActionsMixin:
             if not motif:
                 return Response(
                     {'motif': ['Choisissez un motif de refus de la liste.']},
-                    status=status.HTTP_400_BAD_REQUEST)
+                    status=status.HTTP_409_CONFLICT)  # ENF11 : liste de la société
         motif = motif[:255]
         note = (request.data.get('note') or '').strip()[:255]
         date_str = (request.data.get('date') or '').strip()

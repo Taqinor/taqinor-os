@@ -219,7 +219,7 @@ class FkViewsSerializersTests(TestCase):
         r = self.api.post(
             f'{BASE}/retours-fournisseur/{retour.id}/valider-scanne/',
             {'bins_source': {str(ligne.id): self.bin_b.id}}, format='json')
-        self.assertEqual(r.status_code, 404, r.content)  # id inconnu de la société
+        self.assertEqual(r.status_code, 409, r.content)  # id inconnu de la société
         retour.refresh_from_db()
         self.assertEqual(retour.statut, RetourFournisseur.Statut.BROUILLON)
         self.assertFalse(MouvementStock.objects.filter(
@@ -795,4 +795,4 @@ class FuzzFiltresEtCorpsStockATests(TestCase):
             r = self.api.post(url, corps, format='json')
             self.assertEqual(r.status_code, 400, (corps, r.content))
         r = self.api.post(url, {'bins_source': {'1': 987654321}}, format='json')
-        self.assertEqual(r.status_code, 404, r.content)
+        self.assertEqual(r.status_code, 409, r.content)

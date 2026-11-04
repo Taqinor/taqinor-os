@@ -106,7 +106,7 @@ def _pu_net(prix_unitaire, remise):
 
 
 def _refus_borne(i, bornes, produit_id, montants):
-    """AARG38 — le motif (400) d'une ligne hors des lignes facturées, ou None.
+    """AARG38 — le motif (409) d'une ligne hors des lignes facturées, ou None.
     Sans ligne produit sur la facture : le taux seul, le plafond borne le reste.
     Une ligne sans taux crédite au taux d'en-tête : contrôlé dès que la facture
     a des lignes (sans ligne, ses paniers figés peuvent ne pas le porter)."""
@@ -271,8 +271,8 @@ class FactureRectificatifsActionsMixin:
                         status=status.HTTP_400_BAD_REQUEST)
                 refus = bornes and _refus_borne(i, bornes, produit_id, montants)
                 if refus:
-                    return Response({'detail': refus},
-                                    status=status.HTTP_400_BAD_REQUEST)
+                    return Response({'detail': refus},  # ENF11 : état de la facture
+                                    status=status.HTTP_409_CONFLICT)
                 clean_lignes.append({
                     'produit_id': produit_id,
                     'designation': designation[:255],

@@ -272,9 +272,9 @@ class _DecimalSoupleStockBorne(OpenApiSerializerFieldExtension):
             return schema
         for branche in schema.get('anyOf', ()):
             motif = branche.get('pattern')
-            if motif and motif.startswith('^-?'):
+            if motif:  # sans « -? » déjà (_DecimalChaineNonVide) : « > 0 » reste à écrire
                 branche['pattern'] = (_motif_decimal_positif(motif) if borne > 0
-                                      else '^' + motif[3:])
+                                      else motif.replace('^-?', '^', 1))
         return schema
 
 

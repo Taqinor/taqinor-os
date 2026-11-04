@@ -167,11 +167,11 @@ class PhaseDuLeadSurLeLayout(TestCase):
 
     def test_module_lead_isole_sans_kit_autonome_refus_nomme(self):
         # CI #1004 — chaque porte garde SON statut publié : le module
-        # calepinage (generer-devis) remonte le 422 ventes « mot pour mot »
-        # (contrat calepinage, test_api_generer_devis) ; from-layout sert le
-        # 409 d'état (e8ca995cd). Pas de subTest : un échec doit rester un
+        # calepinage (generer-devis) remonte le refus ventes « mot pour mot »
+        # (contrat calepinage, test_api_generer_devis) ; les deux gestes servent
+        # le 409 d'état (e8ca995cd). Pas de subTest : un échec doit rester un
         # texte simple (classe de bug 30, MaybeEncodingError).
-        for geste, statut in ((self._generer_module, 422), (self._from_layout, 409)):
+        for geste, statut in ((self._generer_module, 409), (self._from_layout, 409)):
             avant = Devis.objects.filter(company=self.company).count()
             r = geste(self._lead('aucun'))
             self.assertEqual(r.status_code, statut, '%s : %s' % (geste.__name__, r.content.decode()))

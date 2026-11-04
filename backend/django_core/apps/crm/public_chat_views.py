@@ -22,8 +22,9 @@ from .openapi_public import PUBLIC_DETAIL
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.decorators import (
-    authentication_classes, api_view, permission_classes, throttle_classes,
+    authentication_classes, api_view, parser_classes, permission_classes, throttle_classes,
 )
+from rest_framework.parsers import JSONParser
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
@@ -150,6 +151,7 @@ def open_chat_session(request):
 @api_view(['POST'])
 @authentication_classes([])
 @permission_classes([AllowAny])
+@parser_classes([JSONParser])  # D2 : un booléen en multipart arrivait en texte, « True »
 @throttle_classes([PublicChatRateThrottle])
 def post_chat_message(request, token):
     """Poste un message VISITEUR dans une session ; renvoie la réponse

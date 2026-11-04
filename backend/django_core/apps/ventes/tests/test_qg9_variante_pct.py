@@ -162,7 +162,9 @@ class VarianteConfigEndpointTests(TestCase):
         for corps in (None, [], [1], 'abc', 25):
             resp = _api(self.directeur).put(url, corps, format='json')
             self.assertEqual(resp.status_code, 400, (corps, resp.content))
-            self.assertIn('variante_pct', resp.data['detail'])
+            # Sans corps : le champ manque ; corps non objet : NegociationCorpsObjet.
+            self.assertIn('variante_pct' if corps is None else 'objet JSON',
+                          resp.data['detail'])
         self.assertEqual(self._put(self.directeur, '12.345').status_code, 400)
         self.assertEqual(
             CompanyProfile.get(company=self.company).variante_pct,

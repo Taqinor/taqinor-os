@@ -43,9 +43,11 @@ class ReleveRefuse(ValueError):
     produisait un ``TypeError`` qui masquait le vrai refus.
     """
 
-    def __init__(self, message, champ=''):
+    def __init__(self, message, champ='', document_libre=False):
         super().__init__(message)
         self.champ = champ
+        #: Le refus porte sur un document libre que le schéma ne décrit pas : 409.
+        self.document_libre = document_libre
 
 
 def _date_saisie(brut):
@@ -75,7 +77,8 @@ def _sans_caractere_interdit(valeur, champ):
     if chemin:
         raise ReleveRefuse(
             "« %s » contient un caractere interdit (caractere nul ou "
-            "illisible) : corrigez la saisie." % chemin, champ)
+            "illisible) : corrigez la saisie." % chemin, champ,
+            document_libre=champ == 'chaines')
 
 
 def _nombre_valide(valeur, champ, libelle, *, obligatoire=False, positif=False):

@@ -155,8 +155,8 @@ class LivraisonViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                 if nom in serializer.validated_data
                 and _valeur(serializer.validated_data[nom]) != actuels[nom]]
             if modifies:  # ACHT20
-                raise ValidationError(
-                    {nom: MESSAGE_LIVRAISON_FIGEE for nom in modifies})
+                raise ConflitEtat(  # ENF11 : la livraison est partie
+                    {nom: [MESSAGE_LIVRAISON_FIGEE] for nom in modifies})
         serializer.save(company=self.request.user.company)
 
     def _set_statut(self, request, statut):

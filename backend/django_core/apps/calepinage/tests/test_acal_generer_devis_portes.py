@@ -6,7 +6,7 @@
 * un calepinage déjà lié à un devis non réutilisable (envoyé, ou brouillon
   d'une autre empreinte) répond 409 NOMMÉ ``{detail, devis, reference,
   revision_possible}`` sans créer de devis ni re-pointer le lien ;
-* un lead agricole est refusé 422 ``{type_installation}`` ;
+* un lead agricole est refusé 409 ``{type_installation}`` ;
 * la réponse porte ``avertissements`` / ``marques_manquantes`` (contrat
   ``calepinage_publication.json``).
 
@@ -150,7 +150,7 @@ class GenererDevisPortesTest(BaseApiCalepinage):
         self.original.refresh_from_db()
         self.assertEqual(self.original.devis_id, premier.data['devis'])
 
-    def test_lead_agricole_422(self):
+    def test_lead_agricole_409(self):
         agricole = Lead.objects.create(company=self.company,
                                        nom='Ferme Souss',
                                        type_installation='agricole')
@@ -159,9 +159,9 @@ class GenererDevisPortesTest(BaseApiCalepinage):
         enregistrer_layout(calepinage, copy.deepcopy(TOIT), user=self.user)
         avant = Devis.objects.filter(company=self.company).count()
         reponse = self._generer(calepinage)
-        self.assertEqual(reponse.status_code, 422, reponse.data)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertEqual(reponse.data,
-                         CONTRAT['exemple_422_lead_agricole'])
+                         CONTRAT['exemple_409_lead_agricole'])
         self.assertEqual(Devis.objects.filter(company=self.company).count(),
                          avant)
         calepinage.refresh_from_db()

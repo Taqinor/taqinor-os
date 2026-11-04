@@ -2863,6 +2863,7 @@ def record_stock_movement(*, company, produit, type_mouvement, quantite,
     silence par la colonne entière (classe AUD222)."""
     from django.db import transaction as _transaction
     from .models import MouvementStock, Produit, StockEmplacement
+    from .utils.params import exiger_compteur_stock
 
     quantite = exiger_quantite_entiere(quantite, produit)
 
@@ -2871,11 +2872,9 @@ def record_stock_movement(*, company, produit, type_mouvement, quantite,
         Produit.objects.select_for_update().filter(pk=produit.pk).first()
     # NTWMS5 — casiers source/destination du poste scanner. None partout
     # ailleurs : comportement historique strictement inchangé.
-    casiers = {'bin_destination': bin_destination}
-    if bin_source_id is not None:
-        casiers['bin_source_id'] = bin_source_id
-    else:
-        casiers['bin_source'] = bin_source
+    casiers = {'bin_destination': bin_destination, **(
+        {'bin_source_id': bin_source_id} if bin_source_id is not None else {'bin_source': bin_source})}
+    exiger_compteur_stock(produit, quantite, quantite_avant, quantite_apres)
     mouvement = MouvementStock.objects.create(
         company=company,
         produit=produit,
@@ -5808,10 +5807,10 @@ def derive_date_echeance(fournisseur, date_facture):
     historique : la date d'échéance reste saisie à la main."""
     if not date_facture or not fournisseur or not fournisseur.delai_paiement_jours:
         return None
-    from datetime import timedelta
+    from .utils.params import date_plus_jours
     import calendar
-    echeance = date_facture + timedelta(days=fournisseur.delai_paiement_jours)
-    if fournisseur.fin_de_mois:
+    echeance = date_plus_jours(date_facture, fournisseur.delai_paiement_jours)
+    if echeance and fournisseur.fin_de_mois:
         dernier_jour = calendar.monthrange(echeance.year, echeance.month)[1]
         echeance = echeance.replace(day=dernier_jour)
     return echeance

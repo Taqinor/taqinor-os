@@ -81,7 +81,7 @@ class RetourLivraisonTests(TestCase):
         l2 = r2.data['lignes'][0]['id']
         self.assertEqual(self._patch(l1, 4).status_code, 200)
         r = self._patch(l2, 4)
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('quantite_retournee', r.data)
         # Un troisième retour n'a plus rien à reprendre.
         r3 = self._retour()

@@ -10,6 +10,7 @@ from rest_framework import serializers
 from ..openapi_helpers import corps
 from ..utils.params import ID_MAX, corps_objet, types_corps_ou_400
 from ..serializers import BonCommandeFournisseurSerializer
+from core.conflit_etat import ConflitEtat
 from core.viewsets import CompanyScopedModelViewSet
 from authentication.permissions import IsAnyRole, HasPermissionOrLegacy
 from apps.ventes.utils.references import create_with_reference
@@ -26,6 +27,9 @@ from ..serializers import ModeleBonCommandeFournisseurSerializer
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update', 'destroy']
+
+#: ``total_achat`` d'une ligne de bon : 14 chiffres dont 2 décimales.
+TOTAL_LIGNE_MAX = Decimal(10) ** 12
 
 
 class ModeleBonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
@@ -106,6 +110,10 @@ class ModeleBonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                     .first())
                 prix = (prix_fournisseur.prix_achat if prix_fournisseur
                         else (ligne.produit.prix_achat or Decimal('0')))
+                if ligne.quantite * prix >= TOTAL_LIGNE_MAX:
+                    # api-fuzz : InvalidOperation au rendu de total_achat (500).
+                    raise ConflitEtat(
+                        f'Le total de la ligne « {ligne.produit} » dépasse la capacité du bon.')
                 LigneBonCommandeFournisseur.objects.create(
                     bon_commande=bon, produit=ligne.produit,
                     quantite=ligne.quantite, prix_achat_unitaire=prix)

@@ -32,6 +32,8 @@ from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL
+
 from ..permissions import PeutLireOuApprouverCalepinage
 from ..serializers import corps_obligatoire, forme_du_contrat
 from ..services.approbation import (
@@ -69,7 +71,8 @@ class _RefusMotivePublie(OpenApiSerializerExtension):
         return {**schema, 'oneOf': [
             {'properties': {'decision': {'anyOf': [{'enum': [APPROUVE]}]}}},
             {'properties': {'decision': {'anyOf': [{'enum': [REFUSE]}]},
-                            'motif': {'type': 'string', 'pattern': r'\S'}},
+                            'motif': {'type': 'string',
+                                      'pattern': MOTIF_NON_BLANC_SANS_NUL}},
              'required': ['motif']},
         ]}
 

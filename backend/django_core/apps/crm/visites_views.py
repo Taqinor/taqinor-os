@@ -275,8 +275,10 @@ class LeadVisitesActionsMixin:
                        # serveur, pas du corps → refus d'ÉTAT, 409.
                        409: inline_serializer('CrmLeadVisitePassee', {
                            'date_prevue': serializers.ListField(
-                               child=serializers.CharField()),
-                           'error': serializers.DictField()})})
+                               child=serializers.CharField(), required=False),
+                           'etape': serializers.ListField(
+                               child=serializers.CharField(), required=False),
+                           'error': serializers.DictField(required=False)})})
     @action(detail=True, methods=['post'], url_path='visites/planifier',
             permission_classes=[HasPermissionOrLegacy('crm_modifier')])
     def planifier_visite(self, request, pk=None):
@@ -352,17 +354,18 @@ class LeadVisitesActionsMixin:
         etape = None
         brut_etape = request.data.get('etape')
         if brut_etape not in (None, '', 0):
-            numerique = (str(brut_etape).isascii() and str(brut_etape).isdigit()
-                         and len(str(brut_etape)) <= 18)
-            if numerique:
+            numerique = str(brut_etape).isascii() and str(brut_etape).isdigit()
+            if numerique and len(str(brut_etape)) <= 18:
                 etape = lead.relance_etapes.filter(pk=int(brut_etape)).first()
             if etape is None:
-                # Nocturne 24/10 : le schéma publie ``^[0-9]+$`` — un
-                # identifiant bien formé inconnu de ce lead est un 404, un
+                # Le schéma publie ``^[0-9]+$`` — un identifiant bien formé
+                # (même trop long pour une clé) inconnu de ce lead est un refus
+                # d'état, 409 : le lead, lui, existe (api-fuzz-full 41773314544,
+                # « Resource is not available after creation » sur le 404) ; un
                 # texte qui n'en est pas un reste un 400.
                 return Response(
                     {'etape': ['Étape de relance inconnue sur ce lead.']},
-                    status=(status.HTTP_404_NOT_FOUND if numerique
+                    status=(status.HTTP_409_CONFLICT if numerique
                             else status.HTTP_400_BAD_REQUEST))
         replanifier = request.data.get('replanifier') in (
             True, 'true', 'True', '1', 1)

@@ -282,7 +282,12 @@ def _motif_decimal_positif(motif: str) -> str:
     decimales = tailles[1] if len(tailles) > 1 else 2
     positif_entier = r'[1-9]\d{0,%d}(?:\.\d{1,%d})?' % (
         max(entiers - 1, 0), decimales)
-    positif_fraction = r'0\.\d{0,%d}[1-9]' % max(decimales - 1, 0)
+    # api-fuzz-full 41773314544 — « 0.100 » (forme que le serveur rend) n'y était
+    # pas : le dernier chiffre devait être non nul. Zéros de tête, un chiffre non
+    # nul, puis ce qu'il reste de décimales.
+    positif_fraction = r'0\.(?:%s)' % '|'.join(
+        '0' * i + r'[1-9]\d{0,%d}' % (decimales - 1 - i)
+        for i in range(max(decimales, 1)))
     return '^(?:%s|%s)$' % (positif_entier, positif_fraction)
 
 

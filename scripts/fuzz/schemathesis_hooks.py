@@ -144,8 +144,10 @@ class FuzzAdminCookieAuth:
         )
         jeton = reponse.cookies.get('access_token')
         if reponse.status_code != 200 or not jeton:
+            # Le corps (``no_active_account``, ``otp_required``…) dit la cause.
             raise RuntimeError(
-                f'connexion {USERNAME} refusée : HTTP {reponse.status_code}')
+                f'connexion {USERNAME} refusée : HTTP {reponse.status_code} '
+                f'{reponse.text[:200]}')
         return jeton
 
     def set(self, case, data, ctx):
@@ -223,6 +225,7 @@ _CIBLES_PROTEGEES = (
 )
 # ENF1b — politique réseau de la société de fuzz (NTSEC11).
 _POLITIQUE_RESEAU = re.compile(r'^/api/django/identity/network-policies/')
+_CONNEXION = re.compile(r'^/api/(django|v1)/token/')
 _MODE_BLOQUANT = 'enforce'
 _MODE_SUR = 'monitor'
 _FOURNISSEURS_SSO = re.compile(r'^/api/django/identity/providers/')
@@ -238,6 +241,66 @@ def _proteger_soi(case):
         for nom, valeur in list((case.path_parameters or {}).items()):
             if str(valeur) == str(protege):
                 case.path_parameters[nom] = ID_INEXISTANT
+
+
+def _singuliers(segment):
+    """``fournisseurs`` -> ``fournisseur``, ``canaux`` -> ``canal`` ;
+    ``categories-equipement`` -> ``categories_equipement``, ``categorie``,
+    ``equipement`` : les noms de champ FK que peut viser une collection
+    (rapprochés de ``fk_ids`` et des règles par chemin), plus ``parent`` : une
+    règle par chemin qui le porte vise sa propre collection."""
+    def seul(nom):
+        if nom.endswith('aux'):
+            return nom[:-3] + 'al'
+        return nom[:-1] if nom.endswith('s') else nom
+    return [seul(segment.replace('-', '_'))] + [
+        seul(mot) for mot in segment.split('-')] + ['parent']
+
+
+def _proteger_references(case):
+    """api-fuzz-full 41773314544 — ``DELETE stock/fournisseurs/2/force-delete/``
+    retirait une ligne que ``fk_ids`` continuait de servir : tout cas POSITIF
+    suivant recevait « Clé primaire « 2 » non valide » (9 constats de la tranche
+    11, idem ``categorie``, ``parent``). Même nature que ``_proteger_soi`` : le
+    serveur a raison, le harnais ne scie pas sa branche. L'opération reste
+    fuzzée sur un id inexistant, et sur les lignes que la phase stateful crée
+    (ids hors des listes de référence)."""
+    if case.operation.method.upper() != 'DELETE':
+        return
+    m = _PREMIER_ID.match(case.operation.path)
+    if not m or m.group(2) not in (case.path_parameters or {}):
+        return
+    collection = m.group(1).rstrip('/').rsplit('/', 1)[-1]
+    table = _table_fk(case.operation.path)
+    valeur = str(case.path_parameters[m.group(2)])
+    # Un id venu d'un LIEN stateful est souvent la ligne que l'étape précédente
+    # vient de créer : un mot (``dossiers-import`` -> ``dossier``) ou un nom global
+    # (``outillage/kits`` -> ``kit`` de stock) vise parfois un AUTRE modèle, dont les
+    # ids recoupent le sien (vérifications 41799309706 et 41810544323 : DELETE sur
+    # l'id inexistant, « not available after creation »). Seules les règles PAR
+    # CHEMIN, propres à cette app, le protègent alors.
+    lie = m.group(2) in (getattr(getattr(case, '_override', None),
+                                 'path_parameters', None) or {})
+    noms = _singuliers(collection)
+    for nom in ([noms[0], 'parent'] if lie else noms):
+        entree = table.get(nom) if lie or nom == 'parent' else _entree(nom, table)
+        if entree is not None and valeur in {str(i) for i in entree[0]}:
+            case.path_parameters[m.group(2)] = ID_INEXISTANT
+            return
+
+
+def _proteger_connexion(case):
+    """api-fuzz-full 41773314544, tranche 14 : 214 opérations en « Token fetch
+    failed » (401 jusqu'à la fin du run). Une tentative de connexion avec le nom du
+    compte de fuzz et un mot de passe tiré compte comme un échec, le verrou compte +
+    IP (ASEC4) se referme à chaque re-login : le serveur a raison, le fuzz se
+    verrouille dehors. La route reste fuzzée sous un autre nom."""
+    if case.operation.method.upper() != 'POST' or not _CONNEXION.match(case.operation.path):
+        return
+    corps = case.body
+    if (isinstance(corps, dict) and isinstance(corps.get('username'), str)
+            and corps['username'].strip().lower() == USERNAME.lower()):
+        corps['username'] = USERNAME + '_autre'
 
 
 def _neutraliser_politique_reseau(case):
@@ -638,7 +701,7 @@ _FICHIERS_VALIDES = (
     # CI #997 (3) — dépôt d'un document du portail : le formulaire porte un
     # fichier ``fichier`` (le serveur lit les octets magiques).
     (re.compile(r'^/api/django/portail/documents-client-portail/'),
-     {'POST', 'PATCH'}, {'fichier': _PDF_MINIMAL}),
+     {'POST', 'PUT', 'PATCH'}, {'fichier': _PDF_MINIMAL}),
     # ERR-ENF11-FUZZ-CRM — scan d'une carte de visite : une PHOTO (octets
     # magiques PNG/JPEG/WebP lus par ``scan_carte_visite``) ; des octets vides
     # = « Aucune image fournie » (400). Sans clé OCR, le serveur répond 503.
@@ -1042,6 +1105,8 @@ def before_call(context, case, kwargs):
     etait_positif = _est_positif(case)
     _ids_chemin_reels(case)
     _proteger_soi(case)
+    _proteger_references(case)
+    _proteger_connexion(case)
     _neutraliser_politique_reseau(case)
     _neutraliser_sso_obligatoire(case)
     _ids_fk_connus(case)

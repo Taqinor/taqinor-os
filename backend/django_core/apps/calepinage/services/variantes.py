@@ -39,9 +39,12 @@ from .resultat import poser_resultat_variante
 class VarianteRefusee(ValueError):
     """Refus métier sur une variante, message français, champ fautif nommé."""
 
-    def __init__(self, message, *, champ=''):
+    def __init__(self, message, *, champ='', etat=False):
         super().__init__(message)
         self.champ = champ
+        #: Le refus vient de l'état ou d'un objet libre que le schéma ne peut
+        #: pas décrire, pas de la forme du corps : 409 (ENF11).
+        self.etat = etat
 
 
 #: Longueur de la colonne ``CalepinageVariante.nom`` : au-delà, l'INSERT levait
@@ -59,7 +62,8 @@ def _sans_caractere_interdit(valeur, champ):
     if chemin:
         raise VarianteRefusee(
             "« %s » contient un caractère interdit (caractère nul ou "
-            "illisible) : corrigez la saisie." % chemin, champ=champ)
+            "illisible) : corrigez la saisie." % chemin, champ=champ,
+            etat=champ != 'nom')
 
 
 def _nom_texte(nom):
@@ -308,7 +312,8 @@ def retenir_variante(variante, *, user=None, appliquer=True):
                     libelle=f'Variante « {variante.nom} » retenue')
             except LayoutRefuse as refus:
                 raise VarianteRefusee(
-                    str(refus), champ=refus.champ or 'roof_layout') from refus
+                    str(refus), champ=refus.champ or 'roof_layout',
+                    etat=True) from refus
     if not deja_retenue:
         # CAL26 — la bascule se journalise par les NOMS, AVEC son auteur.
         from .journal import journaliser_variante_retenue
@@ -550,4 +555,5 @@ def dupliquer(calepinage, *, user=None, titre='', avec_variantes=True,
 def _titre_de_copie(calepinage):
     """« <titre> (copie) » — dérivé de la donnée, jamais d'un nom figé."""
     titre = (getattr(calepinage, 'titre', '') or '').strip()
-    return f'{titre} (copie)' if titre else 'Calepinage (copie)'
+    # Colonne à 200 : un titre plein + « (copie) » levait DataError (500).
+    return f'{titre[:192]} (copie)' if titre else 'Calepinage (copie)'

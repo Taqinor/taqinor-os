@@ -266,26 +266,27 @@ class RegenererTests(_OverridesBase):
         self.api.patch(self.url,
                        {'taille.nb_panneaux': 14, 'scenario': 'Sans batterie'},
                        format='json')
-        resp = self.api.delete(self.url + '?chemin=taille.nb_panneaux')
+        resp = self.api.delete(self.url + 'taille.nb_panneaux/')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(set(resp.data['overrides']), {'scenario'})
 
     def test_delete_ne_repose_aucune_valeur_calculee(self):
         self.api.patch(self.url, {'taille.nb_panneaux': 14}, format='json')
-        self.api.delete(self.url + '?chemin=taille.nb_panneaux')
+        self.api.delete(self.url + 'taille.nb_panneaux/')
         registre = Devis.objects.get(pk=self.devis.pk).overrides or {}
         self.assertNotIn('taille.nb_panneaux', registre)
 
-    def test_delete_sans_chemin_est_refuse(self):
+    def test_delete_sans_chemin_n_existe_pas(self):
+        # api-fuzz-full 41773314544 : le chemin est dans l'URL (« use after free »).
         resp = self.api.delete(self.url)
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 405, resp.data)
 
     def test_delete_d_un_chemin_inconnu_est_refuse(self):
-        resp = self.api.delete(self.url + '?chemin=taille.inventee')
+        resp = self.api.delete(self.url + 'taille.inventee/')
         self.assertEqual(resp.status_code, 400, resp.data)
 
     def test_delete_d_un_chemin_non_pose_est_idempotent(self):
-        resp = self.api.delete(self.url + '?chemin=scenario')
+        resp = self.api.delete(self.url + 'scenario/')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(resp.data['overrides'], {})
 
@@ -327,7 +328,7 @@ class EtudesRelanceesTests(_OverridesBase):
             self.url, {'etude.jour_reference': {'valeur': '2026-03-15'}},
             format='json')
         vus = self._espion()
-        resp = self.api.delete(self.url + '?chemin=etude.jour_reference')
+        resp = self.api.delete(self.url + 'etude.jour_reference/')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(len(vus), 1)
         self.assertNotEqual(vus[0], '2026-03-15')

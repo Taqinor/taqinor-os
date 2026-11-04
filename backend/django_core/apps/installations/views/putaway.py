@@ -85,7 +85,7 @@ class PutAwayViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         self._check_tenant(serializer)
         serializer.save(company=self.request.user.company)
 
-    @oa.extend_schema(request=oa.body('RangerPutAwayRequete', bin=oa.i(True)))
+    @oa.extend_schema(request=oa.body('RangerPutAwayRequete', bin=oa.i(null=True)))
     @action(detail=True, methods=['post'])
     def ranger(self, request, pk=None):
         """FG320 — confirme le rangement. Body optionnel `bin` (casier effectif,

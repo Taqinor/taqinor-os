@@ -143,6 +143,49 @@ class CrochetsFuzzTests(unittest.TestCase):
                                {'mode': 'enforce'}))
         self.assertEqual(cas.body['mode'], 'enforce')
 
+    def test_delete_d_une_reference_redirige(self):
+        hooks = _charger_hooks({
+            'user_id': 4, 'company_id': 2, 'role_id': 7,
+            'fk_ids': {'fournisseur': [1, 2], 'categorie': [1]}})
+        for chemin, nom, valeur in (
+                ('/api/django/stock/fournisseurs/{id}/', 'id', 2),
+                ('/api/django/stock/fournisseurs/{id}/force-delete/', 'id', '1'),
+                ('/api/django/sav/categories-equipement/{id}/', 'id', 1),
+                ('/api/django/stock/categories/{id}/', 'id', 1)):
+            with self.subTest(chemin=chemin):
+                cas = _cas(hooks, 'DELETE', chemin, params={nom: valeur})
+                hooks.before_call(None, cas, {})
+                self.assertEqual(cas.path_parameters[nom], hooks.ID_INEXISTANT)
+        # Un id de LIEN sur un nom composé : la ligne créée, pas la référence.
+        cas = _cas(hooks, 'DELETE', '/api/django/stock/contacts-fournisseur/{id}/',
+                   params={'id': 2})
+        cas._override = types.SimpleNamespace(path_parameters={'id': 2})
+        hooks.before_call(None, cas, {})
+        self.assertEqual(cas.path_parameters['id'], 2)
+        cas = _cas(hooks, 'DELETE', '/api/django/outillage/fournisseurs/{id}/',
+                   params={'id': 1})
+        cas._override = types.SimpleNamespace(path_parameters={'id': 1})
+        hooks.before_call(None, cas, {})
+        self.assertEqual(cas.path_parameters['id'], 1)
+        # Une ligne créée par la phase stateful se supprime ; un GET n'est pas touché.
+        cas = _cas(hooks, 'DELETE', '/api/django/stock/fournisseurs/{id}/',
+                   params={'id': 690})
+        hooks.before_call(None, cas, {})
+        self.assertEqual(cas.path_parameters['id'], 690)
+        cas = _cas(hooks, 'GET', '/api/django/stock/fournisseurs/{id}/',
+                   params={'id': 2})
+        hooks.before_call(None, cas, {})
+        self.assertEqual(cas.path_parameters['id'], 2)
+
+    def test_connexion_du_compte_de_fuzz_n_est_jamais_tiree(self):
+        for chemin in ('/api/django/token/', '/api/v1/token/'):
+            cas = self._appel(_cas(self.hooks, 'POST', chemin,
+                                   {'username': ' Fuzz_Admin', 'password': 'x'}))
+            self.assertNotEqual(cas.body['username'].strip().lower(), 'fuzz_admin')
+        cas = self._appel(_cas(self.hooks, 'POST', '/api/django/token/',
+                               {'username': 'autre', 'password': 'x'}))
+        self.assertEqual(cas.body['username'], 'autre')
+
     def test_corps_non_dict_ignore(self):
         cas = self._appel(_cas(self.hooks, 'POST',
                                '/api/django/identity/network-policies/',

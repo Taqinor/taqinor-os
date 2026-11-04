@@ -914,14 +914,13 @@ class SavedQueryViewSet(TenantMixin, viewsets.ModelViewSet):
         # lecteur ne peut pas interroger n'est plus proposé (AUD801).
         return Response(data_explorer.list_datasets(request.user))
 
-    def _execute(self, dataset, spec):
+    def _execute(self, dataset, spec, statut_inconnu=status.HTTP_404_NOT_FOUND):
         from .formula import FormulaError
         try:
             rows = data_explorer.run_query(
                 dataset, self.request.user.company, self.request.user, spec)
         except data_explorer.DatasetInconnu as exc:
-            return Response({'detail': str(exc)},
-                            status=status.HTTP_404_NOT_FOUND)
+            return Response({'detail': str(exc)}, status=statut_inconnu)
         except (data_explorer.ChampNonAutorise, FormulaError) as exc:
             # XPLT11 — une mesure formule illégale (nœud interdit/variable
             # inconnue) renvoie 400, comme un champ hors liste blanche.
@@ -933,7 +932,8 @@ class SavedQueryViewSet(TenantMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def run(self, request, pk=None):
         obj = self.get_object()
-        return self._execute(obj.dataset, obj.spec)
+        return self._execute(  # ENF11 : la requête existe, son dataset stocké non : 409
+            obj.dataset, obj.spec, statut_inconnu=status.HTTP_409_CONFLICT)
 
     @extend_schema(request=_REQUETE_ADHOC, responses=_ROWS)
     @action(detail=False, methods=['post'], url_path='run')

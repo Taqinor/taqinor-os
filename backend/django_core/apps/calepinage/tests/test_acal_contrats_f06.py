@@ -37,7 +37,7 @@ QUATRE = {
         ('exemple', 'exemple_vide')),
     'calepinage_publication_electrique.json': (
         'POST /api/django/calepinage/calepinages/<int:pk>/generer-devis/',
-        ('exemple', 'exemple_refus_422')),
+        ('exemple', 'exemple_refus_409')),
 }
 
 

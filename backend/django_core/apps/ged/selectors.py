@@ -279,6 +279,13 @@ def documents_for_company(company):
     return Document.objects.filter(company=company)
 
 
+def statut_hors_corbeille(user, pk):
+    """409 pour un document de la société qui n'est pas à la corbeille (il vient
+    peut-être d'être créé : le 404 disait qu'il n'existait pas), 404 sinon."""
+    existe = Document.objects.filter(company_id=user.company_id, pk=pk).exists()
+    return 409 if existe else 404
+
+
 def documents_corbeille(user):
     """GED26 — Documents EN CORBEILLE visibles de l'utilisateur (vue corbeille).
 

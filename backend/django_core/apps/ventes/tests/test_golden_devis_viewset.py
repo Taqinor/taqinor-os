@@ -50,8 +50,9 @@ FIXTURE = Path(__file__).resolve().parent / 'fixtures' / \
 #: ``roof-image/fichier`` (ACAL314, l'affiche servie même origine) +
 #: ``facturer`` (VNT31, « Facturer la vente », GET aperçu + POST) +
 #: ``prix-negocie`` et ``avenant/demander-signature`` (VNT60) +
-#: ``echeancier`` (VNT66, PUT) + ``prolonger-validite`` (CADV82, POST).
-NB_ROUTES = 64
+#: ``echeancier`` (VNT66, PUT) + ``prolonger-validite`` (CADV82, POST) +
+#: ``overrides/<chemin>`` (ENF11, DELETE sorti de la collection).
+NB_ROUTES = 65
 MIXIN = re.compile(r'^Devis\w*ActionsMixin$')
 
 #: Les symboles que chaque tâche de la piste déplace (texte des tâches
@@ -73,7 +74,8 @@ GROUPES = {
               'refuser', 'historique', 'noter'],
     # SPL137 → views/devis_etudes.py
     'etudes': ['_jeton', '_offres_tailles_reponse', '_overrides_reponse',
-               'overrides', '_rafraichir_etudes_apres_surcharge',
+               'overrides', 'override_regenerer',
+               '_rafraichir_etudes_apres_surcharge',
                'etude_params', 'offres_tailles', 'offres_tailles_config',
                'offres_tailles_regenerer', 'offres_tailles_appliquer'],
     # SPL138 → views/devis_envoi.py

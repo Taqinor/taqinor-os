@@ -230,7 +230,7 @@ class NTSRV16ProblemeTest(TestCase):
             url = f"/api/django/sav/problemes/{probleme['id']}/{action}/"
             resp = self.api.post(url, [{'': 9391}, {}], format='json')
             self.assertEqual(resp.status_code, 400, resp.content)
-            self.assertIn('Corps JSON objet attendu.', resp.content.decode())
+            self.assertIn('Un objet JSON est attendu en corps.', resp.content.decode())
             resp = self.api.post(url, {'ticket': 'abc'}, format='json')
             self.assertEqual(resp.status_code, 400, resp.content)
             self.assertIn('ticket', resp.json())

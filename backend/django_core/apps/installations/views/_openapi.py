@@ -134,18 +134,21 @@ def choix_corps(request, nom, choix, defaut):
 
 
 def statut_inconnu(valeur, attendu=int):
-    """ENF11 — statut d'un identifiant de corps qui ne désigne rien : 404 pour
+    """ENF11 — statut d'un identifiant de corps qui ne désigne rien : 409 pour
     une valeur du type publié (``attendu`` : entier JSON, ou chaîne pour une
-    clé), bien formée mais absente ; 400 sinon (corps invalide)."""
+    clé), bien formée mais absente de CE parent ; 400 sinon (corps invalide).
+
+    api-fuzz-full 41773314544 : un 404 faisait croire que l'intervention elle-même,
+    à peine créée, n'existait pas (« Resource is not available after creation »)."""
     from rest_framework import status
     if isinstance(valeur, attendu) and not isinstance(valeur, bool):
-        return status.HTTP_404_NOT_FOUND
+        return status.HTTP_409_CONFLICT
     return status.HTTP_400_BAD_REQUEST
 
 
 def statut_ligne_non_supprimable(ligne, valeur):
     """api-fuzz-full 27/10 (ENF11) — ``supprimer-ligne-consommation`` : une
-    ligne INCONNUE suit ``statut_inconnu`` (404 pour un id entier) ; une ligne
+    ligne INCONNUE suit ``statut_inconnu`` (409 pour un id entier) ; une ligne
     de la NOMENCLATURE (elle existe, l'état stocké s'oppose) = 409."""
     from rest_framework import status
     if ligne is None:

@@ -91,6 +91,8 @@ class ParametresRequeteTests(TestCase):
         gid = self.garantie.pk
         self._400(f'warranties/{gid}/status/?year=abc', 'year')
         self._400(f'warranties/{gid}/curve/?years=abc', 'years')
+        self._400(f'warranties/{gid}/curve/?drift_threshold_pct=',  # vide : 41773314544
+                  'drift_threshold_pct')
         self._400(f'warranties/{gid}/curve/?drift_threshold_pct=abc',
                   'drift_threshold_pct')
 

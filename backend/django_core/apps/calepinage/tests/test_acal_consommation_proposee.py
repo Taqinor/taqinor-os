@@ -186,7 +186,7 @@ class ProposerTest(_Base):
         reponse = self.api.post(
             f'{BASE}{sans_lead.pk}/consommation/proposer/',
             {'source': 'lead'}, format='json')
-        self.assertEqual(reponse.status_code, 404)
+        self.assertEqual(reponse.status_code, 409)
 
     def test_profil_depuis_import_cree_un_profil_societe(self):
         lignes = ['horodatage;kwh'] + [

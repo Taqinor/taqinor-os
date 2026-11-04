@@ -64,12 +64,12 @@ test('EXHAUSTIVITÉ : chaque chemin du contrat (JSON sur disque, jamais recopié
   }
 })
 
-// ── regenererOverride : DELETE ?chemin= ──────────────────────────────────────
+// ── regenererOverride : DELETE <chemin>/ ──────────────────────────────────────
 
-test('regenererOverride -> DELETE /ventes/devis/<id>/overrides/?chemin=<chemin>', () => {
+test('regenererOverride -> DELETE /ventes/devis/<id>/overrides/<chemin>/', () => {
   assert.match(
     src,
-    /regenererOverride: \(id, chemin\) =>\s*\n\s*api\.delete\(`\/ventes\/devis\/\$\{id\}\/overrides\/`, \{ params: \{ chemin \} \}\)/,
+    /regenererOverride: \(id, chemin\) =>\s*\n\s*api\.delete\(`\/ventes\/devis\/\$\{id\}\/overrides\/\$\{encodeURIComponent\(chemin\)\}\/`\)/,
   )
 })
 

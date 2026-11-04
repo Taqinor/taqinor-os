@@ -11,6 +11,7 @@ from rest_framework import serializers
 from ..openapi_helpers import BINARY, DATE_OU_VIDE, INT, LISTE, NUM, P, PDF, STR, corps
 from ..erreurs_achats import IntrouvableMetier, debordement_compteur_en_409
 from ..utils.params import corps_objet, date_ou_400, id_corps
+from core.champs_stricts import ChaineStricte
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
 from ..models import FactureFournisseur
@@ -545,8 +546,8 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         return Response(self.get_serializer(facture).data,
                         status=status.HTTP_201_CREATED)
 
-    @extend_schema(request=corps('FactureResoudreExceptionCorps', commentaire=serializers.CharField(required=False,
-                                                                                                    allow_blank=True)),
+    @extend_schema(request=corps('FactureResoudreExceptionCorps',
+                                 commentaire=ChaineStricte(required=False, allow_blank=True)),
                    responses=FactureFournisseurSerializer)
     @action(detail=True, methods=['post'], url_path='resoudre-exception')
     def resoudre_exception(self, request, pk=None):
