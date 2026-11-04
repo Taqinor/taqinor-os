@@ -1,0 +1,6 @@
+== C-ADOC-VER4-010 (sha c38868a62)
+attendu : repro=True si la disposition « détruire » du document GED importé efface la clé K1 encore portée par la records.Attachment ; info : sens inverse (DELETE pièce jointe efface K2 encore portée par une DocumentVersion)
+observé : tache={'documents': 2, 'liens': 2, 'skipped': 31} ; disposition -> certificats=1 delete_object=[] ; K1 efface=False records.Attachment porte encore K1=True ; inverse : DELETE pièce jointe -> 204 delete_object=[] DocumentVersion porte encore K2=True (version GED sans binaire=False)
+{"repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 168, après 168) ; mails 0 ; tâches Celery bloquées 0

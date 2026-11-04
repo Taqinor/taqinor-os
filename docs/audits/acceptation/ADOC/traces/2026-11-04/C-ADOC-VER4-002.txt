@@ -1,0 +1,6 @@
+== C-ADOC-VER4-002 (sha c38868a62)
+attendu : devis ×3 villas, Panneau 550W ×8 par villa : dossier de remise (documents) imprime 24 ; fiche de remise premium (moteur) imprime 8 — repro=True si les deux PDF divergent
+observé : bom=[('Panneau 550W', 24.0), ('Onduleur reseau 5kW', 3.0)] ; dossier-remise -> 200 24_imprime=True nombres=['24', '3'] ; fiche-remise-premium -> 200 24_imprime=True 8_imprime=False nombres=['24.00', '3.00'] ; _chantier_composants=[('Panneau 550W', '24.00'), ('Onduleur reseau 5kW', '3.00')] ; prix_achat_imprime=False
+{"repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 8536, après 8536) ; mails 0 ; tâches Celery bloquées 0

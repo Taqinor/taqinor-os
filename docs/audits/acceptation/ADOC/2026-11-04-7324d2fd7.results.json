@@ -1,0 +1,218 @@
+{
+  "sha": "7324d2fd7b105ec9e2cb3bc785b4d0100eab0abf",
+  "date": "2026-11-04",
+  "groupe": "ADOC",
+  "verdict": "PASS",
+  "couvre": [
+    "ADOC191",
+    "ADOC195",
+    "ADOC199",
+    "ADOC192",
+    "ADOC193",
+    "ADOC196",
+    "ADOC197",
+    "ADOC198"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P.ged_tags_tous",
+      "taches": [
+        "ADOC195"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ADOC-P.ged_tags_tous.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P.dossier_8221_x3",
+      "taches": [
+        "ADOC191"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ADOC-P.dossier_8221_x3.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P.contrat_maintenance_x3",
+      "taches": [
+        "ADOC199"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ADOC-P.contrat_maintenance_x3.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "S.VER4-010",
+      "taches": [
+        "ADOC192"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ADOC/traces/2026-11-04/C-ADOC-VER4-010.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde rejouée : repro False — import hebdo puis purge GED : delete_object jamais appelé, la records.Attachment garde sa clé"
+    },
+    {
+      "id": "S.VER4-010-L2",
+      "taches": [
+        "ADOC192",
+        "ADOC193"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ADOC/traces/2026-11-04/C-ADOC-VER4-010-L2.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde rejouée : repro False — disposition « détruire » : K1 non effacée ; sens inverse (DELETE pièce jointe 204) : K2 conservée"
+    },
+    {
+      "id": "S.VER4-020",
+      "taches": [
+        "ADOC196"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ADOC/traces/2026-11-04/C-ADOC-VER4-020.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde rejouée : repro False — technicien : fiche, PV de réception, BL, dossier de remise = 200"
+    },
+    {
+      "id": "S.VER4-030",
+      "taches": [
+        "ADOC197"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ADOC/traces/2026-11-04/C-ADOC-VER4-030.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde rejouée : repro False — rapprochement sur facture annulée : 400 « Facture annulée : aucun encaissement possible. », paiement resté initié"
+    },
+    {
+      "id": "S.VER4-002",
+      "taches": [
+        "ADOC198"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ADOC/traces/2026-11-04/C-ADOC-VER4-002.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde rejouée : repro False — ×3 villas : fiche de remise premium imprime 24 / 3 comme le dossier de remise, prix_achat non imprimé"
+    },
+    {
+      "id": "S.VER4-002-L2",
+      "taches": [
+        "ADOC198"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ADOC/traces/2026-11-04/C-ADOC-VER4-002-L2.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde rejouée : repro False — ×2 villas : fiche premium imprime 12 panneaux, comme le BOM et le dossier de remise"
+    }
+  ]
+}
