@@ -25,7 +25,6 @@ import Picture from '../components/Picture.astro';
 import VideoChantier from '../components/VideoChantier.astro';
 import VideoCompteur from '../components/VideoCompteur.astro';
 import StickyCta from '../components/StickyCta.astro';
-import WhatsAppMock from '../components/WhatsAppMock.astro';
 import GarantiesTeaser from '../components/GarantiesTeaser.astro';
 import InstantEstimator from '../components/InstantEstimator.astro';
 import Testimonials from '../components/Testimonials.astro';
@@ -230,6 +229,9 @@ import '../styles/home-page.css';
 import HomeScripts from '../components/home/HomeScripts.astro';
 import GalleryLightboxDialog from '../components/home/GalleryLightboxDialog.astro';
 import ArIndexPicture8B05 from '../components/blocs/ArIndexPicture8B05.astro';
+import HomeGalleryZoomOverlay from '../components/blocs/HomeGalleryZoomOverlay.astro';
+import HomeJourneyFrame from '../components/blocs/HomeJourneyFrame.astro';
+import HomeHowItWorksSteps from '../components/blocs/HomeHowItWorksSteps.astro';
 import { solutionIcons } from '../lib/solutionIcons';
 import EnIndexA993D from '../components/blocs/EnIndexA993D.astro';
 import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
@@ -319,16 +321,7 @@ import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
     <section class="px-4 py-14 sm:py-18">
       <div class="mx-auto max-w-6xl">
         <h2 class="tech-label v2-kicker rule-brass text-lune text-center sm:text-left">Comment ça marche</h2>
-        <ol class="mt-8 grid gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
-          {howItWorks.map((s, i) => (
-            <li class="v2-rise relative border-t-2 border-white/10 pt-5" style={`--v2-i:${i}`}>
-              <span class="absolute -top-px left-0 h-0.5 w-10 bg-brass-400" aria-hidden="true"></span>
-              <span class="fig lum text-2xl">{s.n}</span>
-              <h3 class="display mt-2 text-lg text-white">{s.title}</h3>
-              <p class="mt-2 text-sm leading-relaxed text-lune-soft">{s.body}</p>
-            </li>
-          ))}
-        </ol>
+        <HomeHowItWorksSteps howItWorks={howItWorks} ruleSide="left-0" />
       </div>
     </section>
 
@@ -393,25 +386,7 @@ import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
               {/* Bouton d'agrandissement (lightbox) — élément séparé du lien de
                   carte (pas de bouton imbriqué dans un <a>, HTML invalide) ;
                   z-index au-dessus du lien étiré. */}
-              <button
-                type="button"
-                class="gallery-zoom-btn absolute end-3 top-3 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-nuit/70 text-white backdrop-blur-sm transition-colors hover:bg-nuit/90"
-                aria-label={`Agrandir la photo : ${g.ariaLabel}`}
-                data-lightbox-open
-                data-name={g.name}
-                data-alt={g.alt}
-                data-widths={g.widths.join(',')}
-                data-caption={g.caption}
-                data-type={g.type}
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="M8 3H5a2 2 0 0 0-2 2v3" /><path d="M21 8V5a2 2 0 0 0-2-2h-3" /><path d="M3 16v3a2 2 0 0 0 2 2h3" /><path d="M16 21h3a2 2 0 0 0 2-2v-3" />
-                </svg>
-              </button>
-              <div class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
-                <span class="tech-label block text-lune">{g.caption}</span>
-                <span class="mt-0.5 block text-xs text-lune-soft">{g.type}</span>
-              </div>
+              <HomeGalleryZoomOverlay g={g} btnClass="gallery-zoom-btn absolute end-3 top-3 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-nuit/70 text-white backdrop-blur-sm transition-colors hover:bg-nuit/90" ariaLabel={`Agrandir la photo : ${g.ariaLabel}`} />
             </div>
           ))}
         </div>
@@ -566,10 +541,7 @@ import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
         sticky, aucune classe active, ordre de lecture inchangé) — progressive
         enhancement pur : sans JS, tout le contenu reste lisible tel quel. ── */}
     <div class="seam-soft" aria-hidden="true"></div>
-    <section class="section px-4" data-journey-section>
-      <div class="mx-auto max-w-6xl">
-        <div class="grid items-start gap-12 lg:grid-cols-[1.1fr_1fr]">
-          <div class="v2-rise journey-sticky-col" data-journey-sticky>
+    <HomeJourneyFrame journey={journey} ruleSide="left-0">
             <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">04</span>Comment ça se passe</p>
             <h2 class="display v2-section-title mt-5 max-w-md text-white">La suite se passe sur WhatsApp</h2>
             <p class="v2-body mt-5 max-w-md">
@@ -577,28 +549,7 @@ import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
               vous échangez directement avec l'équipe technique, photos de toiture à l'appui,
               jusqu'à la visite sur site. Exemple d'échange ci-contre.
             </p>
-            {/* Copie appariée à l'étape active — masquée par défaut ; le script
-                ne l'affiche que si le pinning est armé (desktop, motion ok). */}
-            <p class="v2-body mt-5 max-w-md journey-active-caption" data-journey-caption hidden></p>
-            <div class="mt-6">
-              <WhatsAppMock />
-            </div>
-          </div>
-          {/* Frise du parcours réel — du diagnostic au monitoring */}
-          <ol class="journey-steps mt-14 grid gap-x-6 gap-y-8 sm:grid-cols-2 lg:mt-0 lg:grid-cols-1 lg:gap-y-16" data-stagger data-journey-steps>
-            {journey.map((s, i) => (
-              <li class="v2-rise journey-step relative border-t-2 border-white/10 pt-5" style={`--v2-i:${i % 3}`} data-journey-step data-journey-title={s.title} data-journey-body={s.body}>
-                <span class="absolute -top-px left-0 h-0.5 w-10 bg-brass-400 journey-step-rule" aria-hidden="true"></span>
-                {/* Numéro de step en .lum : l'or est ici un chiffre clé (discipline laiton) */}
-                <span class="fig lum text-2xl">{s.n}</span>
-                <h3 class="display mt-2 text-lg text-white">{s.title}</h3>
-                <p class="mt-2 text-sm leading-relaxed text-lune-soft">{s.body}</p>
-              </li>
-            ))}
-          </ol>
-        </div>
-      </div>
-    </section>
+    </HomeJourneyFrame>
 
     {/* ── AVIS CLIENTS — preuve sociale RÉELLE. Vide aujourd'hui (aucun avis
         inventé) → ne rend rien tant que le fondateur n'ajoute pas de vrais avis
