@@ -38,8 +38,9 @@ sortie('encaisser' in Role.objects.get(pk=4).permissions)`)
   const d = await lireJson(await com.post(`${API}/ventes/devis/atomic/`, { ...T, data: { taux_tva: '20.00', remise_globale: '0', lead: lead.id, lignes: [{ produit: p.id, designation: p.nom, quantite: '1', prix_unitaire: '1000.00', remise: '0.00', taux_tva: '20.00', type_ligne: 'produit', ordre: 0 }] } }), 'devis')
   await lireJson(await com.post(`${API}/ventes/devis/${d.id}/share-link/`, { ...T, data: { envoi: true } }), 'envoi')
   await lireJson(await r.post(`${API}/ventes/devis/${d.id}/accepter/`, { ...T, data: { nom: 'Client' } }), 'accepter')
-  const fid = (await lireJson(await r.post(`${API}/ventes/devis/${d.id}/facturer-complet/`, { ...T, data: { remplacer_brouillons: true } }), 'facture')).facture_id
-  await r.post(`${API}/ventes/factures/${fid}/emettre/`, { ...T, data: {} })
+  // La facture appartient au Commercial (portée du relevé) : il la crée et l'émet lui-même.
+  const fid = (await lireJson(await com.post(`${API}/ventes/devis/${d.id}/facturer-complet/`, { ...T, data: { remplacer_brouillons: true } }), 'facture')).facture_id
+  await com.post(`${API}/ventes/factures/${fid}/emettre/`, { ...T, data: {} })
   const f = await lireJson(await r.get(`${API}/ventes/factures/${fid}/`, T), 'facture relue')
   // Import de relevé par le Commercial : 200, paiement créé, liste relue.
   const jour = new Date().toISOString().slice(0, 10)
