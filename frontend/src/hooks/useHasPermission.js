@@ -59,7 +59,7 @@ export function useCanListUsers() {
   return estAdmin || aUsersGerer
 }
 
-// NTOBS21 — miroir de `core.maintenance_windows.FiabilitePermission` (lecture) :
+// NTOBS21 — règle serveur : `core.maintenance_windows.FiabilitePermission` (lecture) :
 // Directeur/Administrateur, palier admin, ou `fiabilite_voir`/`fiabilite_administration`.
 export function useCanLireFiabilite() {
   const estAdmin = useHasRole(['admin'])
@@ -132,7 +132,7 @@ export function useCanLireVentes() {
     && (c.startsWith('ventes_') || c === 'encaisser'))
 }
 
-// ERR-ACC-ACCUEIL-403-LECTEUR — miroir de `CustomUser.is_responsable`
+// ERR-ACC-ACCUEIL-403-LECTEUR — règle serveur : `CustomUser.is_responsable`
 // (authentication/models.py, ERR4) : un rôle fin n'est « responsable » que s'il
 // porte AU MOINS UN code d'écriture/gestion (ni `*_voir`/`*_view`, ni marqueur
 // `records_scope*`, ni `portail_*`) ; un compte hérité sans rôle fin suit son

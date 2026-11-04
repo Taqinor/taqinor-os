@@ -156,10 +156,12 @@ class LivraisonDirecteReservationTests(TestCase):
     def test_vente_sortie_puis_livraison_directe(self):
         """ROUGE sur c38868a62 : facture émise puis direct 10 ⇒ 20 sorties,
         stock 20. Attendu : ENTRÉE 10, aucune SORTIE de plus, stock 30."""
-        from apps.ventes.domain.facturation_ops import facturer_devis_complet
+        # Façade ventes (contrat import-linter) : l'émission d'une facture sort le
+        # panier par ce même appel (emettre_facture -> reserver_stock_devis_facture).
+        from apps.ventes.services import reserver_stock_devis_facture
         devis, chantier, bcf, ligne = self._vente()
-        facturer_devis_complet(
-            devis=devis, user=self.user, company=self.company, paiements=[])
+        reserver_stock_devis_facture(
+            devis=devis, user=self.user, company=self.company)
         self._direct(bcf, ligne, 10)
         sortie = MouvementStock.TypeMouvement.SORTIE
         self.assertEqual(self._somme(MouvementStock.TypeMouvement.ENTREE), 10)
@@ -175,9 +177,7 @@ class LivraisonDirecteReservationTests(TestCase):
         """Cas « acompte émis » : l'émission sort le panier par
         `reserver_stock_devis_facture` (même appel qu'`emettre_facture`) ;
         direct 15 ⇒ SORTIE 5 sous la référence du chantier, stock 30."""
-        from apps.ventes.domain.facturation_ops import (
-            reserver_stock_devis_facture,
-        )
+        from apps.ventes.services import reserver_stock_devis_facture
         devis, chantier, bcf, ligne = self._vente()
         reserver_stock_devis_facture(
             devis=devis, user=self.user, company=self.company)
