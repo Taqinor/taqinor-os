@@ -804,7 +804,7 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
         return Response(InterventionSerializer(
             interv, context={'request': request}).data)
 
-    @oa.extend_schema(responses=oa.OBJ)
+    @oa.extend_schema(responses={200: oa.OBJ, 409: oa.OBJ})  # intervention annulée
     @action(detail=True, methods=['get'], url_path='lien-client',
             permission_classes=[IsResponsableOrAdmin])
     def lien_client(self, request, pk=None):
