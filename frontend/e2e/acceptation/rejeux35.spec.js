@@ -403,3 +403,55 @@ etapeD('PA3.meta_rejeu_parcours', ['ADVS43'], async ({ page }) => {
   const faux = jouer(999999999)
   expect(faux.status, `contre-épreuve : enregistrement inexistant -> échec (code ${faux.status}) ${`${faux.stdout}${faux.stderr}`.slice(0, 300)}`).not.toBe(0)
 })
+
+// ═══════════════════════════ ADVS45 / ADVS46 ═══════════════════════════
+const etapeE = groupe('ADVS', ['ADVS45', 'ADVS46'])
+
+etapeE('PA3-03.page_publique_apres_bareme', ['ADVS45'], async () => {
+  const { RACINE } = await import('./_enregistrement.js')
+  const { spawnSync } = await import('node:child_process')
+  const r = spawnSync('python', ['scripts/sonde.py', 'ADVS/C-ADVS-VER1-101'], { cwd: RACINE, encoding: 'utf8', maxBuffer: 20_000_000, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } })
+  const sortie = `${r.stdout}`
+  expect(sortie, `sonde jouée (${sortie.slice(0, 300)})`).toContain('"instantane_a_l_envoi": true')
+  expect(sortie, 'page publique : 0 clé changée après modification du barème').toContain('"public_cles_changees": 0')
+  expect(sortie, '/proposal : 0 clé changée').toContain('"proposal_data_cles_changees": 0')
+  expect(sortie, 'plus de reproduction').toContain('"repro": false')
+  expect(sortie, 'base inchangée').toContain('base inchangée : oui')
+})
+
+etapeE('PA3-01.ecran_sans_contre_serveur', ['ADVS46'], async ({ page }) => {
+  const r = page.request
+  const m = marque()
+  const lead = await nouveauLead(r, `ADVS46 ${m}`, { type_installation: 'residentiel', facture_hiver: '1500' })
+  const pan = await produitEssai(r, `Panneau mono 550W ${m}`, '1000.00')
+  const ond = await produitEssai(r, `Onduleur réseau 10kW ${m}`, '10000.00')
+  const base = [ligneD(pan, 12, '1000.00'), ligneD(ond, 1, '10000.00', 1)]
+  const bx = await produitEssai(r, `Dyness BX51100 ${m}`, '16666.67')
+  const dyness = { produit: bx.id, designation: `Dyness BX51100 ${m}`, quantite: '1', prix_unitaire: '16666.67', remise: '0.00', taux_tva: '20.00', type_ligne: 'produit', ordre: 2, role_devis: 'batterie' }
+  const creer = async (lignes) => lireJson(await r.post(`${API}/ventes/devis/atomic/`, { ...T, data: { taux_tva: '20.00', remise_globale: '0', lead: lead.id, mode_installation: 'residentiel', lignes } }), 'devis')
+  const avecDyness = await creer([...base, dyness])
+  const relu = await lireJson(await r.get(`${API}/ventes/devis/${avecDyness.id}/`, T), 'devis relu')
+  const ligneDyness = relu.lignes.find((l) => /Dyness/.test(l.designation))
+  expect(ligneDyness?.role_devis, 'rôle stocké relu sur la ligne à désignation libre').toBe('batterie')
+  // Panier du serveur pour CHAQUE ligne relue, puis celui de l'écran (module livré) sur les mêmes lignes.
+  const serveur = await py(`from apps.ventes.utils.options import panier_de_ligne, texte_classement
+out = {}
+for l in ${JSON.stringify(relu.lignes.map((x) => ({ d: x.designation, r: x.role_devis || null, v: x.variante || '' })))}:
+    out[l['d']] = list(panier_de_ligne(l['v'], l['r'], texte_classement(l['d'], '')))
+sortie(out)`)
+  const { pathToFileURL } = await import('node:url')
+  const { RACINE } = await import('./_enregistrement.js')
+  const cls = await import(pathToFileURL(`${RACINE}frontend/src/features/ventes/calc/classification.js`).href)
+  const tot = await import(pathToFileURL(`${RACINE}frontend/src/features/ventes/calc/totaux.js`).href)
+  const lignesEcran = relu.lignes.map((l) => ({ ...l, variante: l.variante || '', prix_unit_ttc: String(Math.round(Number(l.prix_unitaire) * 1.2 * 100) / 100) }))
+  for (const l of lignesEcran) {
+    expect([cls.appartientAuPanierSans(l), cls.appartientAuPanierAvec(l)], `même panier qu'au serveur : ${l.designation}`).toEqual(serveur[l.designation])
+  }
+  expect([cls.appartientAuPanierSans(ligneDyness), cls.appartientAuPanierAvec(ligneDyness)], 'Dyness BX51100 : hors « Sans », dans « Avec »').toEqual([false, true])
+  // Total « Sans » de l'écran = celui d'un devis sans la ligne Dyness (ses 20 000 ne comptent pas) ; « Avec » = +20 000.
+  const sansLigne = lignesEcran.filter((l) => !/Dyness/.test(l.designation))
+  const avecT = tot.optionTotalsTTC(lignesEcran, 0)
+  const seulT = tot.optionTotalsTTC(sansLigne, 0)
+  expect(avecT.totalSans, 'total « Sans batterie » sans les 20 000 de la batterie').toBe(seulT.totalSans)
+  expect(Math.round(avecT.totalAvec - seulT.totalAvec), '« Avec batterie » = + 20 000').toBe(20000)
+})
