@@ -3505,3 +3505,15 @@ decisions:
     date: "2026-11-04"
     source: "Reda, question interactive, contre-visite vérifie ASTK"
     taches: [ASTK262, ASTK263]
+
+  - id: D-ACHT-VER4-1
+    question: "Dans l'Agenda de la société, un technicien voit aussi les interventions, dates et noms de techniciens de chantiers hors de sa portée (sans téléphone ni GPS), alors que les listes de chantiers les lui cachent. Que doit montrer l'Agenda à un technicien ou un commercial ?"
+    options:
+      - cle: meme_portee_que_listes
+        texte: "L'Agenda ne montre que les interventions et chantiers que la personne voit déjà dans les listes"
+      - cle: societe_entiere
+        texte: "Comportement actuel : tout rôle qui a l'Agenda voit le planning de toute la société (lecture de D-ASEC11)"
+    reponse: meme_portee_que_listes
+    date: "2026-11-04"
+    source: "Reda, question interactive, contre-visite vérifie ACHT"
+    taches: [ACHT136, ACHT137]
