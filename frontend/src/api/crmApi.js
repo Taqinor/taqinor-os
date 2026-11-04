@@ -336,7 +336,7 @@ const crmApi = {
     api.post(`/crm/leads/${leadId}/appliquer-plan/`, { plan_id: planId }),
 
   // ZSAL3 — Tableau de bord « Mes équipes ».
-  getEquipesStatistiques: () => api.get('/crm/equipes/statistiques/'),
+  getEquipesStatistiques: () => api.get('/crm/equipes/statistiques/', { suppressErrorToast: true }),
   // ZSAL3 — Équipes commerciales (admin CRUD, Paramètres → CRM).
   getEquipes: (params) => api.get('/crm/equipes/', { params }),
   saveEquipe: (id, data) =>

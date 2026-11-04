@@ -15,6 +15,7 @@ import { moduleConfigs } from '../../router/moduleRoutes'
 import { useT } from '../../i18n'
 // VX86 — compteur partagé des approbations en attente (badge nav discret).
 import { useApprobationsCount } from '../../hooks/useApprobationsCount'
+import { useCanLireParcMonitoring } from '../../hooks/useHasPermission'
 // VX247(c) — même hook PARTAGÉ que la bannière Dashboard (VX36) et l'onglet
 // Paramètres « Prise en main » : une seule dérivation de la progression.
 import { useOnboardingSteps } from '../../features/onboarding/onboardingHelpers'
@@ -116,6 +117,7 @@ export default function Sidebar({ collapsed, onToggle, onNavigate }) {
   const dispatch    = useDispatch()
   const navigate    = useNavigate()
   const role        = useSelector((s) => s.auth.role) || 'normal'
+  const peutLireParc = useCanLireParcMonitoring()
   const companyName = useSelector((s) => s.parametres.profile?.nom) || 'TAQINOR ERP'
   const roleMeta    = ROLE_META[role] ?? ROLE_META.normal
   const t           = useT()
@@ -201,9 +203,13 @@ export default function Sidebar({ collapsed, onToggle, onNavigate }) {
         )}
       </nav>
 
-      <Suspense fallback={null}>
-        <ImpactPastille collapsed={collapsed} />
-      </Suspense>
+      {/* ERR-ACC-ACCUEIL-403-LECTEUR : monté (donc appelé) seulement si le rôle
+          peut lire le parc (le Lecteur recevrait 403). */}
+      {peutLireParc && (
+        <Suspense fallback={null}>
+          <ImpactPastille collapsed={collapsed} />
+        </Suspense>
+      )}
 
       {/* ── Sortie : retour au Menu d'accueil (⊞) ─────────────────────────
           ODY5 fait du bouton ⊞ du HEADER la sortie canonique testée ; celui-ci

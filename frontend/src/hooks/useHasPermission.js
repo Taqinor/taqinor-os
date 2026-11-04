@@ -122,6 +122,43 @@ export function useCanLireVentes() {
     && (c.startsWith('ventes_') || c === 'encaisser'))
 }
 
+// ERR-ACC-ACCUEIL-403-LECTEUR — miroir de `CustomUser.is_responsable`
+// (authentication/models.py, ERR4) : un rôle fin n'est « responsable » que s'il
+// porte AU MOINS UN code d'écriture/gestion (ni `*_voir`/`*_view`, ni marqueur
+// `records_scope*`, ni `portail_*`) ; un compte hérité sans rôle fin suit son
+// palier (`state.auth.role`). Un Lecteur (Viewer, que des `*_voir`) est donc
+// refusé (403) par toute garde `IsResponsableOrAdmin` : l'écran n'appelle pas.
+function estResponsable(role, roleNom, permissions) {
+  if (role === 'admin') return true
+  if (!roleNom && permissions.length === 0) return role === 'responsable'
+  return permissions.some((c) => typeof c === 'string'
+    && !c.endsWith('_voir') && !c.endsWith('_view')
+    && !c.startsWith('records_scope') && !c.startsWith('portail_'))
+}
+
+// `GET /monitoring/configs/co2-fleet/` (ImpactPastille) : `IsResponsableOrAdmin`,
+// app `monitoring` sans module de droits propre (APPS_SANS_MODULE) : seul le
+// caractère « responsable » compte.
+export function useCanLireParcMonitoring() {
+  const role = useSelector((s) => s.auth.role)
+  const roleNom = useSelector((s) => s.auth.role_nom)
+  const permissions = useSelector((s) => s.auth.permissions) || []
+  return estResponsable(role, roleNom, permissions)
+}
+
+// `GET /crm/equipes/statistiques/` (MesEquipesCard) : `IsResponsableOrAdmin`
+// sur le module `crm` : responsable ET, pour un rôle fin non admin, au moins un
+// code `crm_*` (lecture comprise).
+export function useCanLireEquipesCrm() {
+  const role = useSelector((s) => s.auth.role)
+  const roleNom = useSelector((s) => s.auth.role_nom)
+  const permissions = useSelector((s) => s.auth.permissions) || []
+  if (role === 'admin') return true
+  if (!estResponsable(role, roleNom, permissions)) return false
+  if (!roleNom && permissions.length === 0) return true
+  return permissions.some((c) => typeof c === 'string' && c.startsWith('crm_'))
+}
+
 export const useCanListFactures = useCanLireVentes
 
 export default useHasPermission
