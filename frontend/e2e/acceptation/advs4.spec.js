@@ -54,7 +54,7 @@ q.update(tva=None); sortie(garde)`)
 sortie({str(p.id): (str(p.tva) if p.tva is not None else None) for p in Produit.objects.filter(pk__in=${JSON.stringify(ids)})})`)
     const sansTaux = corps.lignes.filter((l) => l.produit && lus[String(l.produit)] === null)
     expect(sansTaux.length, 'au moins une ligne d\'un produit sans taux').toBeGreaterThan(0)
-    for (const l of sansTaux) expect(Number(l.taux_tva), `${l.designation} : TVA standard de la société`).toBe(14)
+    expect(sansTaux.map((l) => [l.designation, Number(l.taux_tva)]).filter((x) => x[1] !== 14), 'toutes les lignes sans taux : TVA standard de la société').toEqual([])
     for (const l of corps.lignes.filter((x) => x.produit && lus[String(x.produit)] !== null)) expect(Number(l.taux_tva), `${l.designation} : son taux propre`).toBe(Number(lus[String(l.produit)]))
   } finally {
     await py(`from apps.stock.models import Produit
@@ -65,7 +65,7 @@ p = CompanyProfile.objects.get(company_id=1); p.tva_standard = ${JSON.stringify(
   }
 })
 
-etape('PA3-01.les_deux_auto', ['ADVS36'], async ({ page }) => {
+etape('PA3-01.les_deux_auto', ['ADVS36'], async ({ page, suivi }) => {
   const r = page.request
   const m = marque()
   const lead = await lireJson(await r.post(`${API}/crm/leads/`, { ...T, data: { nom: `ADVS36 ${m}`, ville: 'Casablanca', telephone: telephoneMobileUnique(), email: `a36${m}@example.invalid`, type_installation: 'commercial', categorie_commerciale: 'bureau', tension_raccordement: 'bt', raccordement: 'triphase', type_toiture: 'bac_acier', contrat_electricite: 'bt_patente' } }), 'lead')
@@ -78,7 +78,7 @@ etape('PA3-01.les_deux_auto', ['ADVS36'], async ({ page }) => {
   const q = await py(`from apps.ventes.models import Devis
 from apps.ventes.utils.options import option_totaux
 d = Devis.objects.get(pk=${d.id})
-ep = dict(d.etude_params or {}); ep['scenario'] = 'Les deux'; ep.pop('recommended_option', None); Devis.objects.filter(pk=d.pk).update(etude_params=ep)
+ep = dict(d.etude_params or {}); ep['scenario'] = 'Les deux (Sans + Avec)'; ep.pop('recommended_option', None); Devis.objects.filter(pk=d.pk).update(etude_params=ep)
 d.refresh_from_db()
 sortie(dict(sans=str(option_totaux(d, 'sans_batterie').get('ttc')), avec=str(option_totaux(d, 'avec_batterie').get('ttc'))))`)
   const sans = Number(q.sans)
@@ -86,6 +86,7 @@ sortie(dict(sans=str(option_totaux(d, 'sans_batterie').get('ttc')), avec=str(opt
   await page.goto(`/ventes/devis/nouveau?edit=${d.id}`)
   await expect(page.getByRole('heading', { name: /Générateur de Devis Solaire|Modifier/ }).first()).toBeVisible({ timeout: 60_000 })
   const barre = page.getByTestId('gen-barre-total')
+  await expect(page.locator('#gen-scenario'), 'scénario Les deux').toContainText('Les deux', { timeout: 90_000 })
   await expect(barre).toBeVisible({ timeout: 90_000 })
   await expect.poll(async () => chiffres(await barre.textContent()), { timeout: 60_000, message: 'barre = total SANS' }).toBe(sans)
   // Étude C&I déclarée (l'écran l'exige à l'enregistrement) : ne touche aucune ligne.
@@ -107,9 +108,12 @@ sortie(dict(sans=str(option_totaux(d, 'sans_batterie').get('ttc')), avec=str(opt
   await page.getByRole('button', { name: /Enregistrer les modifications/ }).click()
   const rep = await sauve.catch(async (e) => { throw new Error(`pas d'envoi : ${(await page.locator('[role=alert], .text-destructive, [data-testid=echeancier-somme]').allInnerTexts()).join(' | ').slice(0, 500)} ; ${e.message.slice(0, 60)}`) })
   expect(rep.status(), `enregistré sans erreur d'échéancier : ${(await rep.text()).slice(0, 300)}`).toBeLessThan(300)
-  // L'écran navigue après l'enregistrement : la réouverture attend que cette navigation soit finie.
-  await expect(async () => { await page.goto(`/ventes/devis/nouveau?edit=${d.id}`) }).toPass({ timeout: 60_000 })
-  await expect.poll(async () => chiffres(await page.getByTestId('gen-barre-total').textContent()), { timeout: 90_000, message: 'rouvert : même total' }).toBe(sans)
+  // Réouverture dans un onglet neuf : le même écran, rechargé depuis le serveur.
+  const p2 = await page.context().newPage()
+  suivi.surveiller(p2)
+  await p2.goto(`/ventes/devis/nouveau?edit=${d.id}`)
+  await expect.poll(async () => chiffres(await p2.getByTestId('gen-barre-total').textContent()), { timeout: 90_000, message: 'rouvert : même total' }).toBe(sans)
+  await p2.close()
   const moteur = await py(`from apps.ventes.models import Devis
 from apps.ventes.quote_engine.builder import build_quote_data
 sortie(str(build_quote_data(Devis.objects.get(pk=${d.id}), {'pdf_mode': 'full'}).get('total_sans')))`)
