@@ -39,10 +39,10 @@ except ImportError:  # exécution directe du moteur depuis son dossier
 # paquets premium ; même double chemin d'import.
 try:
     from .montants import (arrondi_affichage, decimale, fmt_centimes, fmt_centimes_mad, fmt_dirhams,
-                           format_anglais, format_langue, pct_fr, poser_regles_origine, regles_origine)
+                           format_anglais, format_langue, pct_fr, poser_regles_du_rendu, regles_origine)
 except ImportError:  # exécution directe du moteur depuis son dossier
     from montants import (arrondi_affichage, decimale, fmt_centimes, fmt_centimes_mad, fmt_dirhams,
-                          format_anglais, format_langue, pct_fr, poser_regles_origine, regles_origine)
+                          format_anglais, format_langue, pct_fr, poser_regles_du_rendu, regles_origine)
 
 # QJR617 — ordre d'affichage sections / notes ↔ lignes produit (XSAL14), UNE
 # fonction pure partagée ; même double chemin d'import.
@@ -3198,8 +3198,8 @@ def _cartes_ci_onepage(chiffres):
                       if base in ("HT", "TTC") else
                       f" ({base})" if base else "")
                    + ci_onepage.legende_retour(chiffres, _L) + ci_onepage.economie_ttc(chiffres, fnum, _L))
-        cellules.append((libelle, f"{fnum(eco)} {_L('ci_mad_an')}",
-                         _ancre_figure("economie_annuelle", fnum(eco))))
+        cellules.append((libelle, f"{ci_onepage.argent(eco, fnum)} {_L('ci_mad_an')}",  # AMOT126
+                         _ancre_figure("economie_annuelle", ci_onepage.argent(eco, fnum))))
     payback = chiffres.get("payback_ans")
     if payback is not None:
         cellules.append((_L("op_retour_estime"),
@@ -3490,8 +3490,7 @@ def generate_premium_pdf(data: dict, out_path) -> str:
     """
     # Décision fondateur 08/10/2026 — un devis envoyé avant les
     # corrections du moteur garde ses formats d'origine (AMOT24/26/45).
-    poser_regles_origine((data or {}).get("regles_calcul_origine"), avant_2710=(data or {}).get("regles_avant_2710"),
-                         arrondi_historique=(data or {}).get("regles_arrondi_historique"))  # D-ENF-ARRONDI-PDF
+    poser_regles_du_rendu(data)  # D-ENF-ARRONDI-PDF, AMOT126
     # ERR17 — serialize the whole render: the body writes module globals and
     # reads them back while building the HTML, so concurrent renders must not
     # interleave (one client's data leaking into another's PDF).
@@ -3904,8 +3903,7 @@ def render_html_for(data: dict) -> str:
     """
     # Décision fondateur 08/10/2026 — un devis envoyé avant les
     # corrections du moteur garde ses formats d'origine (AMOT24/26/45).
-    poser_regles_origine((data or {}).get("regles_calcul_origine"), avant_2710=(data or {}).get("regles_avant_2710"),
-                         arrondi_historique=(data or {}).get("regles_arrondi_historique"))  # D-ENF-ARRONDI-PDF
+    poser_regles_du_rendu(data)  # D-ENF-ARRONDI-PDF, AMOT126
     # AGR312 — le moteur legacy ne sert JAMAIS un devis agricole en format à
     # options (pas d'onduleur) : le document complet est le renderer agricole
     # de 3 pages (``agricole/renderer``) ; s'il refuse un devis (repli NOMMÉ

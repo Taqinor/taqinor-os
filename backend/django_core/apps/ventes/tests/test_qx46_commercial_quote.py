@@ -1021,6 +1021,27 @@ class TestAmot95BaseDeclaree(SimpleTestCase):
         self.assertEqual(onepage.economie_ttc(
             dict(chiffres, economie_annuelle_ttc_mad=None), fmt, str), "")
 
+    def test_une_page_moitie_vers_le_haut(self):
+        """AMOT126 (C-AMOT-VER4-040) — l'argent entier du une-page C&I passe
+        par ``fmt_dirhams`` : 98 930,50 HT / 118 716,50 TTC ⇒ « 98 931 » et
+        « soit 118 717 MAD TTC » comme la couverture ; anglais « , » ; devis
+        avant le niveau 12 (``regles_0411_historique``) : 98 930 / 118 716.
+        Mutant : remettre ``fnum`` ⇒ échec."""
+        from apps.ventes.quote_engine import generate_devis_premium as legacy
+        from apps.ventes.quote_engine.ci import onepage
+        from apps.ventes.quote_engine.montants import format_langue, poser_regles_du_rendu
+        mots = {"ci_soit": "soit", "ci_ttc": "TTC"}
+        chiffres = {"economie_annuelle_ttc_mad": 118716.5}
+        self.addCleanup(poser_regles_du_rendu, {})
+        poser_regles_du_rendu({})
+        self.assertEqual(onepage.argent(98930.5, legacy.fnum), "98\u202f931")
+        self.assertIn("soit 118\u202f717 MAD TTC", onepage.economie_ttc(chiffres, legacy.fnum, mots.get))
+        with format_langue({"langue_sortie": "en", "mode_installation": "commercial"}):
+            self.assertEqual(onepage.argent(98930.5, legacy.fnum), "98,931")
+        poser_regles_du_rendu({"regles_0411_historique": True})
+        self.assertEqual(onepage.argent(98930.5, legacy.fnum), "98\u202f930")
+        self.assertIn("soit 118\u202f716 MAD TTC", onepage.economie_ttc(chiffres, legacy.fnum, mots.get))
+
     def test_deux_options_cartes_ht_et_ttc(self):
         """AMOT115 (C-AMOT-VER-030) — base « deux », deux options : chaque
         carte imprime la TTC servie sous la HT ; base ht/ttc ou drapeau
