@@ -516,6 +516,22 @@ describe('CPRW18 — comparaison sans / avec batterie', () => {
     expect(avec.filter((l) => l.cle === 'valeur')).toHaveLength(0);
     expect(avec.find((l) => l.cle === 'economie')!.valeur).toContain('20 000');
   });
+  it('comparaison base ttc en TTC', () => {
+    // AMOT124 — base « ttc » + `economie_annuelle_ttc_mad` servie ⇒ « Économie annuelle TTC » 24 000 ; base deux / clé absente : HT.
+    const vc = { ...PLEIN.valeur_chiffree, textes: undefined, economie_annuelle_ttc_mad: 24000 };
+    const ci = (base: string, valeur_chiffree: unknown) => syntheseCi(({ mode_installation: 'industriel', synthese_ci: { argent: argent({ base }), option_batterie: { ...PLEIN, valeur_chiffree } } }) as unknown as ProposalResponse);
+    const eco = (c: ReturnType<typeof ci>) => comparaisonBatterieCi(c, 78000, 114000)!.colonnes[1]!.lignes.find((l) => l.cle === 'economie')!;
+    const ttc = eco(ci('ttc', vc));
+    expect(ttc.libelle).toEqual(LBL_COMPARAISON_CI.economie_ttc);
+    expect(ttc.libelle!.fr).toBe('Économie annuelle TTC');
+    expect(ttc.libelle!.en).toContain('incl. VAT');
+    expect(ttc.valeur).toContain('24 000');
+    expect(JSON.stringify(ttc)).not.toContain('HT');
+    for (const c of [ci('deux', vc), ci('ht', vc), ci('ttc', { ...vc, economie_annuelle_ttc_mad: undefined })]) {
+      expect(eco(c).libelle).toEqual(LBL_COMPARAISON_CI.economie);
+      expect(eco(c).valeur).toContain('20 000');
+    }
+  });
   it('échéancier : 4 jalons sur une ligne (grille 4 colonnes), pourcentage à la virgule', () => {
     const src = readFileSync(fileURLToPath(new URL('../src/components/proposition/ci/EcheancierCi.astro', import.meta.url)), 'utf-8');
     expect(src).toContain("jalons.length === 4 ? 'sm:grid-cols-2 lg:grid-cols-4'");
