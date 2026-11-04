@@ -104,7 +104,7 @@ class RetardSlaUniqueTests(TestCase):
         notifs = Notification.objects.filter(
             company=self.company, event_type=EventType.SAV_TICKET_BREACHING)
         self.assertEqual(notifs.count(), 1)
-        self.assertEqual(notifs.get().user_id, self.tech.pk)
+        self.assertEqual(notifs.get().recipient_id, self.tech.pk)
 
     def test_societe_sans_sla_jamais_en_retard(self):
         autre, _ = Company.objects.get_or_create(
