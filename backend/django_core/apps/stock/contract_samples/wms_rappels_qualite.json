@@ -437,7 +437,7 @@
         ],
         "error": {
           "code": "validation_error",
-          "message": "{'bin_destination': [ErrorDetail(string='Casier non autorisé pour la classe de danger « Batterie lithium ».', code='invalid')]}",
+          "message": "Casier non autorisé pour la classe de danger « Batterie lithium ».",
           "fields": {
             "bin_destination": [
               "Casier non autorisé pour la classe de danger « Batterie lithium »."

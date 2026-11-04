@@ -282,13 +282,20 @@ class NumeroInvalideTests(_Base):
 class ApiTests(_Base):
     slug = 'mry13-api'
 
-    def test_message_est_une_lecture_ouverte_a_tout_role(self):
+    def test_message_est_une_lecture_sous_crm_voir(self):
+        """ACVI3 (D-ACVI-2) — plus ouverte à tout rôle : `crm_voir` exigé."""
+        from apps.roles.models import Role
         touche = self._touche()
         api = APIClient()
         api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.normal)}')
-        resp = api.get(
-            f'/api/django/crm/relance-etapes/{touche.pk}/message/')
+        url = f'/api/django/crm/relance-etapes/{touche.pk}/message/'
+        self.assertEqual(api.get(url).status_code, 403)
+        self.normal.role = Role.objects.create(
+            company=self.company, nom='MRY13 lecteur',
+            permissions=['crm_voir'])
+        self.normal.save(update_fields=['role'])
+        resp = api.get(url)
         self.assertEqual(resp.status_code, 200, resp.data)
         for cle in ('message', 'wa_url', 'langue', 'phone',
                     'placeholders_manquants'):

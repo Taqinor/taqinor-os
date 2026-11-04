@@ -34,6 +34,7 @@ from .cadence_filet import (
 from .cadence_plan import _recaler_file, arreter_cadence, reporter_prochaine_touche
 from .cadence_reperes import (
     FILET_JOINT_LIBELLE,
+    MOTIF_VISITE_PLANIFIEE,
     OUTCOME_VISITE_ACCEPTEE,
     VISITE_CADENCE,
     VISITE_ORDRE_CONFIRMATION,
@@ -419,7 +420,7 @@ def appliquer_visite_planifiee(lead, user, date_prevue, commercial_nom=''):
     # Le filet « planifier la visite convenue » a rempli son office : on
     # l'ANNULE (statut moteur CKP1, jamais « sautée par un humain »). ACVI37 — la
     # prise de contact aussi : le rendez-vous la remplace ; le plan est décalé.
-    arreter_cadence(lead, user=user, motif='visite planifiée', cadences=['contact'])
+    arreter_cadence(lead, user=user, motif=MOTIF_VISITE_PLANIFIEE, cadences=['contact'])
     lead.relance_etapes.filter(
         q_etape(CLE_PLANIFIER),
         statut=RelanceEtape.Statut.A_FAIRE).update(
@@ -492,8 +493,19 @@ def clore_etape_apres_planification(etape, user, *, note='',
     juste avant la clôture (la ligne de chatter dit ainsi la vraie
     échéance). Ni ``cadence_depart``, ni la suite du plan (décalée après la
     visite), ni la naissance d'une touche ne changent : « visite acceptée »
-    n'en fait naître aucune (``issue_fait_naitre_la_suite``)."""
+    n'en fait naître aucune (``issue_fait_naitre_la_suite``).
+
+    ACVI37 — la planification vient d'annuler toute la prise de contact, CETTE
+    touche comprise (``etape`` est lue par l'appelant AVANT elle) : son geste est
+    une clôture humaine, elle est rouverte pour porter l'issue, jamais perdue."""
+    statut_avant = etape.statut
     etape.refresh_from_db()
+    if (statut_avant == RelanceEtape.Statut.A_FAIRE
+            and etape.statut == RelanceEtape.Statut.ANNULEE
+            and etape.note == MOTIF_VISITE_PLANIFIEE):
+        RelanceEtape.objects.filter(pk=etape.pk).update(
+            statut=RelanceEtape.Statut.A_FAIRE, note='', traite_le=None)
+        etape.refresh_from_db()
     note = str(note or '').strip()
     if (etape.statut == RelanceEtape.Statut.A_FAIRE
             and not est_etape(etape, CLE_CONFIRMATION, CLE_DEBRIEF)):

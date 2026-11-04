@@ -237,6 +237,8 @@ _CLOTURE_PLAFOND = {
 #: SUIVI E19 — le motif écrit sur une étape de filet annulée parce que le
 #: dossier part au parking Froid (``cloturer_cadence``).
 MOTIF_PARQUE_AU_FROID = 'dossier parqué au Froid'
+#: ACVI37 — le rendez-vous remplace la prise de contact (lu par la clôture E18).
+MOTIF_VISITE_PLANIFIEE = 'visite planifiée'
 
 
 #: MRY34 — libellé du FILET « client joint » : l'étape unique posée quand une

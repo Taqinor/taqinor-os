@@ -43,7 +43,7 @@ class VocalTests(TestCase):
                                               slug='cad79')
         CompanyProfile.objects.get_or_create(company=self.company)
         self.acteur = User.objects.create_user(
-            username='cad79-resp', password='x',
+            username='cad79-resp', password='x', first_name='Meryem',  # ACVI54
             role_legacy='responsable', company=self.company)
         self.lead = Lead.objects.create(
             company=self.company, nom='Benali', prenom='Aziz',

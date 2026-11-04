@@ -114,8 +114,13 @@ class TestArchiveRestore(ArchiveTestBase):
             self.assertEqual(touche.note, 'lead archivé')
         r = api.post(f'/api/django/crm/leads/{self.lead.id}/restaurer/')
         self.assertEqual(r.status_code, 200, r.data)
-        self.assertFalse(self.lead.relance_etapes.filter(
-            statut=RelanceEtape.Statut.A_FAIRE).exists())
+        # ACVI36 — la restauration pose la prochaine étape, une touche NEUVE :
+        # aucune touche annulée ne ressuscite.
+        ouvertes = self.lead.relance_etapes.filter(
+            statut=RelanceEtape.Statut.A_FAIRE)
+        self.assertTrue(ouvertes.exists())
+        self.assertFalse(ouvertes.filter(
+            pk__in=[touche.pk for touche in touches]).exists())
 
     def test_restore_returns_lead_to_default_views(self):
         api = auth(self.resp)

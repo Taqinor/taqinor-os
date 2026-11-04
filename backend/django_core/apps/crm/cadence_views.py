@@ -1117,7 +1117,8 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
                             status=status.HTTP_409_CONFLICT)
         return Response(self.get_serializer(etape).data)
 
-    @extend_schema(parameters=sd.parametres_message(CLES_MESSAGE_REPONSE, Lead.LanguePreferee.values), responses=sd.OBJ)
+    @extend_schema(parameters=sd.parametres_message(CLES_MESSAGE_REPONSE, Lead.LanguePreferee.values),
+                   responses={200: sd.OBJ, 409: sd.REFUS_RENDU_WHATSAPP})
     @action(detail=True, methods=['get'])
     def message(self, request, pk=None):
         """MRY13 — Le message de CETTE touche, rendu côté serveur.

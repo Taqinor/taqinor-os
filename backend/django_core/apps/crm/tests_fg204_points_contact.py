@@ -364,16 +364,26 @@ class TestPointContactRoleGate(TestCase):
         }, format='json')
         self.assertIn(resp.status_code, (401, 403))
 
+    def _accorder_crm_voir(self):
+        from apps.roles.models import Role
+        self.reader.role = Role.objects.create(
+            company=self.co, nom='FG204 lecteur', permissions=['crm_voir'])
+        self.reader.save(update_fields=['role'])
+
     def test_reader_can_list(self):
+        """ACVI3 (D-ACVI-2) — lecture sous `crm_voir` : 403 sans le droit."""
         PointContact.objects.create(
             company=self.co, lead=self.lead,
             canal='meta_ads', date_contact=_now())
+        self.assertEqual(make_api(self.reader).get(BASE).status_code, 403)
+        self._accorder_crm_voir()
         api = make_api(self.reader)
         resp = api.get(BASE)
         self.assertEqual(resp.status_code, 200)
 
     def test_reader_ne_voit_plus_la_route_attribution_retiree(self):
         """ACRM67 — la route retirée répond 404, même au lecteur."""
+        self._accorder_crm_voir()
         api = make_api(self.reader)
         resp = api.get('/api/django/crm/points-contact/attribution/',
                        {'lead': self.lead.pk})

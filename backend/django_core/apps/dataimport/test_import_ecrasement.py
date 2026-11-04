@@ -296,6 +296,63 @@ class TestIsolationTenantEcrasement(EcrasementBase):
         self.assertEqual(etranger.nom, 'Autre')
         self.assertEqual(etranger.ville, 'Tanger')
 
+    def test_apercu_creer_doublon_hors_portee_sans_nommer_la_fiche(self):
+        """ERR-W33-IMPORT-PORTEE — en mode ``creer``, le doublon d'un collègue
+        est une ligne de refus : ni id, ni nom, ni valeur ; son propriétaire,
+        lui, voit la fiche qu'il a déjà. Le commit ne crée rien."""
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import COMMERCIAL_PERMISSIONS
+
+        role = Role.objects.create(
+            company=self.company, nom='Commercial portee',
+            permissions=list(COMMERCIAL_PERMISSIONS))
+
+        def compte(nom):
+            client = APIClient()
+            utilisateur = get_user_model().objects.create_user(
+                username=f'portee-{nom}', password='x', company=self.company,
+                role=role)
+            client.force_authenticate(utilisateur)
+            return utilisateur, client
+
+        c1, api_c1 = compte('c1')
+        _c2, api_c2 = compte('c2')
+        lead = Lead.objects.create(
+            company=self.company, nom='Alaoui Secret', owner=c1,
+            telephone='0600000009', email='secret@x.ma', ville='Agadir')
+        csv_text = 'nom,telephone,ville\nAutre,0600000009,Rabat\n'
+        options = {'target': 'leads', 'mode': 'creer'}
+
+        apercu = api_c2.post(
+            DRY_RUN_URL, {'file': self._csv(csv_text), **options},
+            format='multipart')
+        self.assertEqual(apercu.status_code, 200, apercu.data)
+        self.assertEqual(apercu.data['resume']['ignoree'], 1)
+        ligne = apercu.data['conflits'][0]
+        self.assertEqual(ligne['action'], 'ignoree')
+        self.assertIsNone(ligne['cible_id'])
+        self.assertEqual(ligne['cible_libelle'], '')
+        self.assertEqual(ligne['ecrasements'], [])
+        self.assertEqual(ligne['remplissages'], [])
+        self.assertEqual(ligne['raison'], 'doublon (fiche hors de votre portée)')
+        for valeur in ('Alaoui', 'Secret', 'secret@x.ma', 'Agadir'):
+            self.assertNotIn(valeur, str(apercu.data))
+
+        commit = api_c2.post(
+            COMMIT_URL, {'file': self._csv(csv_text), **options},
+            format='multipart')
+        self.assertEqual(commit.status_code, 200, commit.data)
+        self.assertFalse(Lead.objects.filter(nom='Autre').exists())
+
+        propre = api_c1.post(
+            DRY_RUN_URL, {'file': self._csv(csv_text), **options},
+            format='multipart')
+        self.assertEqual(propre.status_code, 200, propre.data)
+        self.assertEqual(propre.data['conflits'][0]['cible_id'], lead.pk)
+
     def test_cible_lead_hors_droit_ou_hors_portee(self):
         """ACVI1 — droit `crm_modifier` et portée de l'appelant : ni lecture
         (aperçu) ni réécriture (commit) du lead d'un collègue."""

@@ -165,6 +165,10 @@ class RemplacementTests(TestCase):
         rma = WarrantyClaim.objects.get(ticket=self.ticket)
         url = f'/api/django/sav/warranty-claims/{rma.pk}/'
         corps = {'statut': 'resolu', 'resolution': 'remplacement'}
+        # réclamation pas encore résolue par remplacement : refus d'état
+        r = self.api.patch(url, {'serie_neuve': 'SN-A2'}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertIn('serie_neuve', r.data)
         # série déjà au parc : 409, rien écrit
         r = self.api.patch(url, {**corps, 'serie_neuve': 'SN-A'},
                            format='json')

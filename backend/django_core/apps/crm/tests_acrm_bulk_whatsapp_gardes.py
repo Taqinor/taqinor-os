@@ -43,7 +43,12 @@ class BulkWhatsappGardesTests(TestCase):
         texte = _corps_whatsapp_en_masse(self.c, tpl)
         self.assertIn('ici Sara', texte)
         self.assertNotIn('{', texte)
-        refus = self.api.post('/api/django/crm/message-templates/', {
+        # L'écriture d'un gabarit est réservée à l'administrateur.
+        admin = APIClient()
+        admin.force_authenticate(User.objects.create_user(
+            username='acrm15-admin', password='x', company=self.company,
+            role_legacy='admin'))
+        refus = admin.post('/api/django/crm/message-templates/', {
             'nom': 'Faux', 'langue': 'fr', 'corps': 'Bonjour {inconnu}'},
             format='json')
         self.assertEqual(refus.status_code, 400, refus.data)

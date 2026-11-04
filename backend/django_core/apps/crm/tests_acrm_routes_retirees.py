@@ -99,6 +99,12 @@ class RoutesRetireesTests(TestCase):
         self._assert_404_pour_tous(f'defis/{defi.pk}/export-xlsx/')
 
     def test_attribution_points_contact_404(self):
+        # ACVI3 (D-ACVI-2) — sans `crm_voir`, le 403 passe avant la route : le
+        # 404 de la route retirée se lit avec le droit de lecture.
+        from apps.roles.models import Role
+        User.objects.filter(pk=self.commerciale.pk).update(
+            role=Role.objects.create(company=self.company, nom='ACRM67 lecteur',
+                                     permissions=['crm_voir']))
         _defi, lead = self._fixture_iv()
         self._assert_404_pour_tous(f'points-contact/attribution/?lead={lead.pk}')
         self._assert_404_pour_tous('points-contact/attribution/')

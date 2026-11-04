@@ -322,10 +322,13 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
             return qs.filter(commercial=self.request.user)
         # ACVI8 (D-ACVI-3) — un valideur lit les visites de SES leads en portée
         # (portée « all » : bureau d'études, toute la société), et celles qui
-        # lui sont assignées : jamais moins qu'un non-valideur.
-        from apps.crm import selectors as crm_selectors
-        qs = (qs.filter(lead__in=crm_selectors.leads_en_portee(self.request.user).values('pk'))
-              | qs.filter(commercial=self.request.user))
+        # lui sont assignées : jamais moins qu'un non-valideur. Le bureau d'études
+        # dédié (valide sans relever, ALEA8 : Technicien responsable) voit toute la
+        # société, quelle que soit sa portée : aucun lead n'est dans son arbre.
+        if _user_has_or_legacy(self.request.user, 'visites_modifier'):
+            from apps.crm import selectors as crm_selectors
+            qs = (qs.filter(lead__in=crm_selectors.leads_en_portee(self.request.user).values('pk'))
+                  | qs.filter(commercial=self.request.user))
         mine = str(self.request.query_params.get('mine', '')).strip()
         if mine in ('1', 'true'):
             qs = qs.filter(commercial=self.request.user)

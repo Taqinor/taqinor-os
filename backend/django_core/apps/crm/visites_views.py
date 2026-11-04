@@ -397,10 +397,10 @@ class LeadVisitesActionsMixin:
 
     @extend_schema(parameters=[sd.param('cle', enum=[*CLES_MESSAGE_VISITE], required=True,
                                         description='Clé du message.')],
-                   responses=inline_serializer('CrmLeadMessageVisite', {
+                   responses={200: inline_serializer('CrmLeadMessageVisite', {
                        'corps_fr': serializers.CharField(),
                        'corps_darija': serializers.CharField(),
-                   }))
+                   }), 409: sd.REFUS_RENDU_WHATSAPP})
     @action(detail=True, methods=['get'], url_path='message-visite',
             permission_classes=[HasPermissionOrLegacy('crm_voir')])
     def message_visite(self, request, pk=None):

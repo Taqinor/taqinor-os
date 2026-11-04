@@ -144,8 +144,9 @@ TELEPHONE_LOCAL = '0661 62 62 62'
 class EmpreinteOppositionTests(TestCase):
 
     def test_un_stop_vivant_suit_la_personne(self):
-        """ACVI43 (D-ACVI-6) — B née opposée au numéro de A ; après la levée
-        sur A, C naît contactable."""
+        """ACVI43 (D-ACVI-6) — B née opposée au numéro de A ; le numéro reste
+        opposé tant que B le porte (ERR-ACVI6-OPPOSITION) ; une fois levé sur A
+        ET sur B, C naît contactable."""
         from apps.crm.cadence_reponses import (
             CONSENT_SOURCE_OPPOSITION_TOUCHE, tracer_opposition_registre)
         from apps.crm.leads_consentement import tracer_levee_opposition_registre
@@ -161,6 +162,9 @@ class EmpreinteOppositionTests(TestCase):
         Lead.objects.filter(pk=a.pk).update(ne_plus_contacter=False)
         a.refresh_from_db()
         tracer_levee_opposition_registre(a, self.user)
+        Lead.objects.filter(pk=b.pk).update(ne_plus_contacter=False)
+        b.refresh_from_db()
+        tracer_levee_opposition_registre(b, self.user)
         c = Lead.objects.create(company=self.company, nom='C', telephone=numero)
         self.assertFalse(c.ne_plus_contacter)
 
@@ -268,10 +272,11 @@ class EmpreinteOppositionTests(TestCase):
         absorbe = Lead.objects.create(
             company=self.company, nom='A', telephone='+212612349076',
             owner=self.user)
+        avant = EmpreinteOpposition.objects.count()  # celles de ``self.oppose``
 
         self._fusionner(survivant, absorbe)
 
-        self.assertFalse(EmpreinteOpposition.objects.exists())
+        self.assertEqual(EmpreinteOpposition.objects.count(), avant)
 
     def test_fusion_absorbe_oppose_garde_son_propre_numero(self):
         """D-ACVI-6 — l'absorbé opposé a son numéro, le survivant le sien (qui
@@ -339,7 +344,9 @@ class EmpreinteOppositionTests(TestCase):
         ailleurs = Lead.objects.create(
             company=self.autre, nom='Ailleurs', telephone='+212612349072',
             ne_plus_contacter=True)
-        self.assertFalse(EmpreinteOpposition.objects.exists())
+        # Une fiche opposée laisse aujourd'hui son empreinte dès l'écriture : la
+        # migration rattrape l'état d'AVANT ACVI43, sans aucune empreinte.
+        EmpreinteOpposition.objects.all().delete()
         modifie_le = Lead.objects.filter(pk=self.oppose.pk).values_list(
             'date_modification', flat=True).get()
         chatter = LeadActivity.objects.count()
@@ -425,7 +432,11 @@ class EmpreinteOppositionTests(TestCase):
             company=self.company).count(), 2)
 
     def test_non_oppose_sans_empreinte(self):
+        from apps.crm.leads_consentement import tracer_levee_opposition_registre
+
         Lead.objects.filter(pk=self.oppose.pk).update(ne_plus_contacter=False)
+        self.oppose.refresh_from_db()
+        tracer_levee_opposition_registre(self.oppose, self.user)
         self._effacer()
         self.assertFalse(EmpreinteOpposition.objects.exists())
         recree = Lead.objects.create(

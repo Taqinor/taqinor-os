@@ -538,6 +538,16 @@ def _relais_arreter_cadence_on_archive(**kwargs):
     return receivers_cadence._arreter_cadence_on_archive(**kwargs)
 
 
+@receiver(post_save, sender=Lead, dispatch_uid='crm_empreinte_opposition_lead')
+def _empreinte_opposition_lead(sender, instance, **kwargs):
+    """ERR-ACVI6-OPPOSITION (D-ACVI-6) — l'opposition suit la personne : un
+    contact posé ou changé sur une fiche DÉJÀ opposée laisse son empreinte
+    (idempotent, ignore_conflicts)."""
+    if instance.ne_plus_contacter and instance.company_id:
+        from .leads_doublons import poser_empreintes_opposition
+        poser_empreintes_opposition(instance.company, instance)
+
+
 # ── VTA5 — LE FEU VERT D'UNE VISITE TERRAIN REDESCEND SUR LE LEAD ────────────
 #
 # ``apps.visites`` a émis ``visite_validee`` ; c'est ICI que le CRM décide ce

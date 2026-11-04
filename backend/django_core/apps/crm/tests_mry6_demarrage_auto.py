@@ -293,6 +293,7 @@ class PointsExclusTests(_Base):
 
     def test_import_odoo_nest_pas_une_demande(self):
         lead = self._lead(source=Lead.Source.ODOO_IMPORT_TEST)
+        self.assertEqual(demarrer_cadence_contact(lead), [])
         self.assertEqual(
             RelanceEtape.objects.filter(lead=lead).count(), 0)
         self.assertTrue(lead.activites.filter(

@@ -53,7 +53,7 @@ class _Base(TestCase):
             nom='CIQ505 Solaire', slug=f'{self.slug}-a')
         CompanyProfile.objects.get_or_create(company=self.company)
         self.acteur = User.objects.create_user(
-            username=f'{self.slug}-resp', password='x',
+            username=f'{self.slug}-resp', password='x', first_name='Meryem',  # ACVI54
             role_legacy='responsable', company=self.company)
 
     def _lead(self, prenom='Aziz', telephone='', whatsapp='', email='',
