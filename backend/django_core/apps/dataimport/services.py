@@ -832,6 +832,12 @@ def _client_par_contact(company, f):
     return None, None
 
 
+def _lead_en_portee(lead, user):
+    """ACVI1 — ``lead`` est-il dans la portée de ``user`` ?"""
+    from apps.crm.selectors import leads_en_portee
+    return leads_en_portee(user).filter(pk=lead.pk).exists()
+
+
 def _match_lead(company, f, ext_id, external_system, user=None):
     """Lead rapproché en mode maj/upsert : identifiant externe d'abord, sinon
     contact normalisé (email/téléphone). ACVI1 — ``user`` borne le rapprochement
@@ -966,6 +972,7 @@ def _analyser_conflits(target, rows, mapped, company, mode, external_system,
             continue
         ext_id = f.pop('external_id', None)
         existing, action, raison = None, 'creation', None
+        masquee = False
 
         # Mêmes lignes écartées d'emblée que par le commit, sinon les compteurs
         # de l'aperçu annonceraient des créations qui n'auront pas lieu.
@@ -986,6 +993,11 @@ def _analyser_conflits(target, rows, mapped, company, mode, external_system,
                 existing = _lead_par_contact(company, f)
                 if existing is not None:
                     action, raison = 'ignoree', 'doublon (existe déjà)'
+                    # ERR-W33-IMPORT-PORTEE (ACVI1) — un doublon hors de la portée
+                    # reste un refus, sans son identifiant, son nom ni ses valeurs.
+                    if user is not None and not _lead_en_portee(existing, user):
+                        masquee = True
+                        raison = 'doublon (fiche hors de votre portée)'
         elif target == 'clients':
             if mode in ('maj', 'upsert'):
                 existing = _match_client(company, f, ext_id, external_system)
@@ -1014,7 +1026,8 @@ def _analyser_conflits(target, rows, mapped, company, mode, external_system,
         if existing is None:
             continue
 
-        ecrasements, remplissages = _diff_fields(existing, f)
+        ecrasements, remplissages = (
+            ([], []) if masquee else _diff_fields(existing, f))
         if action == 'mise_a_jour' and ecrasements:
             lignes_ecrasees += 1
             ecrasements_total += len(ecrasements)
@@ -1028,8 +1041,8 @@ def _analyser_conflits(target, rows, mapped, company, mode, external_system,
             'action': action,
             'raison': raison,
             'cible': existing._meta.label_lower,
-            'cible_id': existing.pk,
-            'cible_libelle': str(existing)[:150],
+            'cible_id': None if masquee else existing.pk,
+            'cible_libelle': '' if masquee else str(existing)[:150],
             'ecrasements': ecrasements,
             'remplissages': [r['champ'] for r in remplissages],
         })
