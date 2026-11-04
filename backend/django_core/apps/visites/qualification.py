@@ -157,6 +157,9 @@ def valider(brut):
         if not isinstance(texte, str):
             erreurs[champ] = [f'Le champ « {NOMS[champ]} » attend du texte.']
             continue
+        if '\x00' in texte:  # le JSONB de PostgreSQL le refuse (500)
+            erreurs[champ] = [f'Le champ « {NOMS[champ]} » contient un caractère nul.']
+            continue
         texte = texte.strip()
         if len(texte) > borne:
             erreurs[champ] = [

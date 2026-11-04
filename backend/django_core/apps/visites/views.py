@@ -123,10 +123,10 @@ def _schema_qualification():
         champ: {'type': 'string', 'enum': list(valeurs)}
         for champ, valeurs in choix.items()}
     proprietes['devis_details'] = {
-        'type': 'string',
+        'type': 'string', 'pattern': MOTIF_SANS_NUL,
         'maxLength': vocabulaire_qualification.MAX_DEVIS_DETAILS}
     proprietes['conseil_closing'] = {
-        'type': 'string',
+        'type': 'string', 'pattern': MOTIF_SANS_NUL,
         'maxLength': vocabulaire_qualification.MAX_CONSEIL}
     a_reprendre = list(vocabulaire_qualification.DEVIS_A_REPRENDRE)
     sans_reprise = [valeur for valeur in choix['devis']

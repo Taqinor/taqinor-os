@@ -594,6 +594,12 @@ class QualificationApiTests(VisiteCadenceBase):
         self.url = (f'/api/django/visites/visites/{self.visite.pk}'
                     '/qualification/')
 
+    def test_caractere_nul_refuse_avant_le_jsonb(self):
+        # Vérification 41799309706 : DataError (500) sur devis_details.
+        corps = dict(QUALIFICATION_VALIDE, conseil_closing='a\x00b')
+        reponse = self.api.post(self.url, corps, format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+
     def test_enregistre_et_rend_lagregat(self):
         reponse = self.api.post(self.url, dict(QUALIFICATION_VALIDE),
                                 format='json')
