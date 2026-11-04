@@ -107,3 +107,29 @@ class AttributionVentesEnVigueurTests(TestCase):
         for _ in range(27):
             self._lead_signe(self.u2, 'site_web')
         self.assertEqual(self._nb_requetes(), avant)
+
+    def test_attribution_ne_decode_pas_le_json_d_etude(self):
+        """ACVI101 (C-ACVI-VER1-106) — aucune requête ne lit ``etude_params``
+        hors d'un chemin JSON, montants identiques. Mutant : remettre
+        ``prefetch_related('devis')`` (ou le queryset entier dans
+        ``montants_devis``) ⇒ échec."""
+        import re
+        etude = {'scenario': 'Avec batterie',
+                 'profil_horaire': [round(i % 24 * 0.37, 3) for i in range(744)]}
+        for _ in range(6):
+            _, devis = self._lead_signe(self.u1, 'meta_ads')
+            Devis.objects.filter(pk=devis.pk).update(etude_params=dict(etude))
+        attendu = self._attendu().quantize(Decimal('0.01'))
+        with CaptureQueriesContext(connection) as ctx:
+            attribution = selectors.attribution_leads(self.company)
+            revenu = selectors.revenu_attribue_campagne(self.company, CAMPAGNE)
+            lignes = selectors.reporting_lead_rows(self.company)
+        self.assertEqual([
+            q['sql'] for q in ctx.captured_queries
+            if re.search(r'"etude_params"(?!\s*(?:->|#>))', q['sql'])], [])
+        self.assertEqual(
+            Decimal(attribution['par_commercial'][0]['ca_signe'])
+            .quantize(Decimal('0.01')), attendu)
+        self.assertEqual(
+            Decimal(revenu['revenu_ttc']).quantize(Decimal('0.01')), attendu)
+        self.assertEqual(len(lignes), 6)

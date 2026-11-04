@@ -156,8 +156,9 @@ def _profils_comparatifs_publique(etude_params,
 def conso_publique_du_devis(devis):
     """AGNR54 (C-AGNR-VER-007) — LA consommation (12 kWh/mois ou ``None``)
     de tous les lecteurs publics d'un devis. Niveau 8 : la résolution de
-    l'étude, ``etude_horaire.profil_conso_du_devis`` au barème de la société
-    (factures écran ``factures_hiver_ete``, puis lead, kWh déclaré CAD166).
+    l'étude, ``etude_horaire.profil_conso_du_devis`` au barème figé à l'envoi,
+    celui du jour sans instantané (ADVS45, D-ADVS-1) ; factures écran
+    ``factures_hiver_ete``, puis lead, kWh déclaré CAD166.
     Niveau ≤ 7 (nouveaux rendus seulement) : la lecture d'hier, factures du
     lead seules. Lecture pure, jamais une écriture vers le lead."""
     from apps.crm.selectors import lead_bills_for_devis
@@ -166,9 +167,9 @@ def conso_publique_du_devis(devis):
     from ..horaire.conso import profil_depuis_factures
 
     if regles_au_moins(devis, REGLES_CONSO_PUBLIQUE_0111):
-        from ..etude_horaire import _reglages_tarifaires, profil_conso_du_devis
-        tranches, charges_fixes = _reglages_tarifaires(
-            getattr(devis, 'company', None))
+        from ..etude_horaire import profil_conso_du_devis
+        from ..quote_engine.etude_chiffrage import _reglages_tarifaires_du_devis
+        tranches, charges_fixes = _reglages_tarifaires_du_devis(devis)
         return profil_conso_du_devis(
             devis, tranches=tranches, charges_fixes_mad=charges_fixes)[0]
     etude_params = getattr(devis, 'etude_params', None) or {}

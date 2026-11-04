@@ -157,9 +157,10 @@ def recalculer_statut_paiement(facture, *, user=None, source=''):
     if facture.montant_exigible <= 0:
         return facture.statut
     today = timezone.now().date()
-    # AARG56/AARG53 — l'échéance de la part encore due, comme le beat.
-    echeance = facture.echeance_exigible
-    nouveau = (Facture.Statut.EN_RETARD if echeance and echeance < today
+    # AARG56/AARG53/AARG61 — LA règle du beat (part due, délai du client).
+    from ..scheduled import _echeance_effective
+    echeance = _echeance_effective(facture, today)
+    nouveau = (Facture.Statut.EN_RETARD if echeance < today
                else Facture.Statut.EMISE)
     if facture.statut != nouveau:
         facture.statut = nouveau
@@ -1027,6 +1028,32 @@ def crediter_trop_percu_en_avance(facture, avoir, *, user=None):
         date_paiement=jour, mode=Paiement.Mode.AUTRE,
         reference=avoir.reference, note=f'{note} (facture {facture.reference})',
         created_by=user)
+
+
+def rendre_trop_percu_de_avoir(facture, avoir, *, user=None):
+    """AARG59 — l'avoir ``avoir`` est annulé : le Paiement négatif et l'avance de
+    :func:`crediter_trop_percu_en_avance` sortent du payé (saisies annulées,
+    gardées au journal), l'encaissement revient à la facture. Rien sans
+    trop-perçu. Avance déjà utilisée : ``ConflitEtat`` (409, transaction
+    annulée). Appelé sous le verrou de la facture."""
+    from core.conflit_etat import ConflitEtat
+    from ..models import Paiement
+
+    lignes = list(Paiement.objects.select_for_update().filter(
+        company=facture.company, reference=avoir.reference,
+        note__startswith=f'Trop-perçu après avoir {avoir.reference}',
+    ).exclude(statut__in=Paiement.STATUTS_NON_COMPTES))
+    if any(p.affectations.exists() for p in lignes):
+        raise ConflitEtat(
+            "L'avance née de cet avoir a été utilisée : défaites cet usage "
+            "avant d'annuler l'avoir.")
+    for p in lignes:
+        try:
+            annuler_saisie_paiement(
+                paiement=p, motif=f"Annulation de l'avoir {avoir.reference}",
+                user=user)
+        except CorrectionPaiementRefusee as exc:
+            raise ConflitEtat(exc.detail) from exc
 
 
 def ventiler_avance(*, paiement, facture, montant, user=None):
