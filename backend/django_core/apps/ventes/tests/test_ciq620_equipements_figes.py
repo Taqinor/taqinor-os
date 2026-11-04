@@ -109,3 +109,21 @@ class EquipementsFigesTest(TestCase):
         self.assertIn(self.ond_a.id, {e['produit_id']
                                       for e in self.dossier.equipements_figes})
         self.assertEqual(len(self._resume()['alertes_modification']), 1)
+
+    def test_multivilla_fige_x_n(self):
+        """ADOC191 (C-ADOC-VER4-002) — un devis ×3 villas de 8 panneaux et 1
+        onduleur fige 24 / 3 (``lignes_vendues``) ; refiger ⇒ identique."""
+        LigneDevis.objects.filter(devis=self.v1, produit=self.panneau).update(
+            quantite=Decimal('8'))
+        Devis.objects.filter(pk=self.v1.pk).update(
+            etude_params={'nombre_proprietes': 3})
+        self._deposer()
+        self.dossier.refresh_from_db()
+        figes = {e['modele']: e['quantite']
+                 for e in self.dossier.equipements_figes}
+        self.assertEqual(figes, {self.panneau.nom: 24.0, self.ond_a.nom: 3.0})
+        self.api.patch(f'{DOSSIERS}{self.dossier.id}/',
+                       {'statut': 'en_instruction'}, format='json')
+        self.dossier.refresh_from_db()
+        self.assertEqual({e['modele']: e['quantite']
+                          for e in self.dossier.equipements_figes}, figes)

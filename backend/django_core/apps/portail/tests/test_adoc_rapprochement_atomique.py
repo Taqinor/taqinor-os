@@ -85,6 +85,23 @@ class RapprochementAtomiqueTests(TestCase):
         self.facture.refresh_from_db()
         self.assertEqual(self.facture.montant_du, Decimal('1200.00'))
 
+    def test_facture_annulee_400_paiement_initie(self):
+        """ADOC197 (C-ADOC-VER4-030) — facture annulée après l'initiation :
+        400 au motif AFAC9 (jamais 500), paiement INITIÉ, 0 Paiement."""
+        Facture.objects.filter(pk=self.facture.pk).update(
+            statut=Facture.Statut.ANNULEE)
+        with frozen('2026-10-09 10:00:00'):
+            res = self._rapprocher()
+
+        self.assertEqual(res.status_code, 400, res.content)
+        self.assertTrue(res.json()['detail'])
+        self.paiement.refresh_from_db()
+        self.assertEqual(self.paiement.statut,
+                         PaiementFacturePortail.Statut.INITIE)
+        self.assertIsNone(self.paiement.paye_le)
+        self.assertFalse(Paiement.objects.filter(
+            facture=self.facture).exists())
+
     def test_rejeu_apres_delai_encaisse(self):
         with frozen('2026-10-03 10:00:00'):
             self.assertEqual(self._rapprocher().status_code, 400)

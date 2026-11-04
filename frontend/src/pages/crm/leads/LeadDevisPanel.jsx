@@ -23,7 +23,7 @@ import { reviserEtOuvrir } from '../../../features/ventes/reviserDevis'
 // QJR589 — la bannière de dérive lead → devis (mêmes gestes que l'Édition complète).
 import BandeauDeriveLead from '../../../features/ventes/quote/BandeauDeriveLead'
 import { downloadBlobInGesture, filenameFromResponse } from '../../../utils/downloadBlob'
-import { openPdfInGesture } from '../../../utils/pdfBlob'
+import { messageErreurBlob, openPdfInGesture } from '../../../utils/pdfBlob'
 import { toast, useConfirmDialog } from '../../../ui/confirm'
 // EDC6 (suite) — un « pointeur hors panneau » de Radix est-il un vrai geste de sortie ?
 import { estGesteHorsPanneau } from './gesteHorsPanneau'
@@ -43,6 +43,9 @@ import {
 // PdfPreviewSheet) : octets en BLOB via axios — MÊME chemin que « Télécharger »
 // —, dessinés par PDF.js sur canvas (jamais un cadre embarqué bloquable), refresh
 // silencieux du token rejoué, annulation réelle des rendus longs.
+// ADEV112 — sans `detail` servi, l'échec de génération garde ce texte.
+const MESSAGE_APERCU_SERVEUR = "Le serveur n'a pas pu générer ce PDF. Ouvrez l'édition complète "
+  + 'pour vérifier le devis, puis réessayez.'
 
 // ALEA55 — la création automatique dure ~30 s (étude, composition, PDF) : au lieu
 // d'un cercle muet, trois étapes dont la courante est mise en avant. Le serveur
@@ -195,10 +198,16 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   // Octets du PDF : récupérés par usePdfPreview (MÊME source que le
   // téléchargement) ; changer de format ou fermer le panneau avorte le rendu
   // en vol (APXTMO : les rendus à froid ~26 s ne s'empilent pas sur gunicorn).
+  // ADEV112 — l'aperçu affiche son propre message (le `detail` servi, décodé du Blob par
+  // usePdfPreview) : la requête ne déclenche pas en plus le toast global.
   const fetchPreviewBlob = useCallback(
     (signal) => ventesApi.getProposalPdf(
-      devisId, proposalParams(pdfMode, includeEtude, { devisFinal }), { signal })
-      .then((res) => pdfBlob(res.data)),
+      devisId, proposalParams(pdfMode, includeEtude, { devisFinal }), { signal, suppressErrorToast: true })
+      .then((res) => pdfBlob(res.data))
+      .catch(async (err) => {
+        if (err?.response) err.message = await messageErreurBlob(err, { fallback: MESSAGE_APERCU_SERVEUR })
+        throw err
+      }),
     [devisId, pdfMode, includeEtude, devisFinal])
   const preview = usePdfPreview(fetchPreviewBlob, {
     enabled: phase === 'preview' && !!devisId,
@@ -681,8 +690,7 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
                 <PdfPreviewBody
                   {...previewBodyProps(preview, reloadPreview)}
                   loadingText="Chargement de l'aperçu… La première génération d'un devis peut prendre ~30 secondes."
-                  serverMessage={"Le serveur n'a pas pu générer ce PDF. Ouvrez l'édition complète "
-                    + 'pour vérifier le devis, puis réessayez.'}
+                  serverMessage={preview.errorMessage || MESSAGE_APERCU_SERVEUR}
                   serverActions={(
                     <>
                       {editable && (

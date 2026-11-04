@@ -565,3 +565,107 @@ class VNT12GarderEnAvance(TestCase):
         self.assertEqual(r.status_code, 409, r.data)
         f.refresh_from_db()
         self.assertEqual(f.statut, Facture.Statut.EMISE)
+
+
+class AnnulationRetourStockTests(TestCase):
+    """ASTK262 (C-ASTK-VER4-060, D-ASTK-VER4-1 = retour_annulation) —
+    l'annulation d'une facture émise ré-entre la sortie de son émission
+    (ENTRÉE sous ``devis.reference``, idempotente) quand aucune autre
+    facture vivante du devis ne la porte."""
+
+    def setUp(self):
+        from apps.crm.models import Lead
+        self.company = make_company('astk262-co', 'ASTK262 Co')
+        self.client_obj = make_client(self.company, 'astk262@example.com')
+        self.admin = User.objects.create_user(
+            username='astk262_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = auth(self.admin)
+        self.panneau = Produit.objects.create(
+            company=self.company, nom='Panneau ASTK262', sku='PV-ASTK262',
+            prix_vente=Decimal('100'), quantite_stock=20,
+            tva=Decimal('20.00'))
+        lead = Lead.objects.create(
+            company=self.company, nom='Site', prenom='Client',
+            stage='SIGNED', type_installation='residentiel')
+        self.devis = Devis.objects.create(
+            company=self.company, reference=f'DEV-ASTK262-{MONTH}',
+            client=self.client_obj, lead=lead, statut=Devis.Statut.ACCEPTE,
+            taux_tva=Decimal('20'), mode_installation='residentiel')
+        LigneDevis.objects.create(
+            devis=self.devis, produit=self.panneau, designation='Panneau',
+            quantite=Decimal('10'), prix_unitaire=Decimal('100'),
+            taux_tva=Decimal('20.00'))
+
+    def _emettre(self):
+        avant = set(self.devis.factures.values_list('id', flat=True))
+        r = self.api.post(
+            f'/api/django/ventes/devis/{self.devis.id}/generer-facture/', {},
+            format='json')
+        self.assertLess(r.status_code, 400, getattr(r, 'data', r))
+        fac = self.devis.factures.exclude(id__in=avant).order_by('id').last()
+        if fac.statut == Facture.Statut.BROUILLON:
+            r = self.api.post(
+                f'/api/django/ventes/factures/{fac.id}/emettre/', {},
+                format='json')
+            self.assertLess(r.status_code, 400, getattr(r, 'data', r))
+        return fac
+
+    def _mvts(self, type_mouvement):
+        from apps.stock.models import MouvementStock
+        return list(MouvementStock.objects.filter(
+            produit=self.panneau, type_mouvement=type_mouvement)
+            .values_list('reference', 'quantite'))
+
+    def _stock(self):
+        self.panneau.refresh_from_db()
+        return self.panneau.quantite_stock
+
+    def _annuler(self, fac):
+        return self.api.post(
+            f'/api/django/ventes/factures/{fac.id}/annuler/', {},
+            format='json')
+
+    def test_annulation_rend_le_stock(self):
+        from apps.stock.services import (
+            mouvement_type_entree, mouvement_type_sortie,
+        )
+        fac = self._emettre()
+        self.assertEqual(self._stock(), 10)
+        # (a) annulée ⇒ UNE ENTRÉE 10 sous devis.reference, stock 20.
+        r = self._annuler(fac)
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(self._mvts(mouvement_type_entree()),
+                         [(self.devis.reference, 10)])
+        self.assertEqual(self._stock(), 20)
+        # Persistance : ré-annuler ⇒ refus, aucune seconde ENTRÉE.
+        self.assertGreaterEqual(self._annuler(fac).status_code, 400)
+        self.assertEqual(len(self._mvts(mouvement_type_entree())), 1)
+        # (b) une nouvelle facture émise ressort 10 (lecture nette).
+        self._emettre()
+        self.assertEqual(self._stock(), 10)
+        self.assertEqual(
+            sum(q for _, q in self._mvts(mouvement_type_sortie())), 20)
+
+    def test_autre_facture_vivante_ou_brouillon_rien(self):
+        from apps.stock.services import mouvement_type_entree
+        fac = self._emettre()
+        # (c) une autre facture vivante du devis porte la sortie.
+        Facture.objects.create(
+            company=self.company, reference=f'FAC-ASTK262-{MONTH}-2',
+            devis=self.devis, client=self.client_obj,
+            statut=Facture.Statut.EMISE, type_facture='solde',
+            montant_ht=Decimal('1'), montant_tva=Decimal('0'),
+            montant_ttc=Decimal('1'), created_by=self.admin)
+        self.assertEqual(self._annuler(fac).status_code, 200)
+        self.assertEqual(self._mvts(mouvement_type_entree()), [])
+        self.assertEqual(self._stock(), 10)
+        # (d) un brouillon annulé : rien.
+        brouillon = Facture.objects.create(
+            company=self.company, reference=f'BROUILLON-ASTK262-{MONTH}',
+            devis=self.devis, client=self.client_obj,
+            statut=Facture.Statut.BROUILLON, type_facture='solde',
+            montant_ht=Decimal('1'), montant_tva=Decimal('0'),
+            montant_ttc=Decimal('1'), created_by=self.admin)
+        self.assertEqual(self._annuler(brouillon).status_code, 200)
+        self.assertEqual(self._mvts(mouvement_type_entree()), [])

@@ -2544,15 +2544,13 @@ def purger_definitivement(document):
 
 
 def _cles_binaires_exclusives(document):
-    """ADOC29 — clés de stockage des versions de `document` qu'AUCUNE autre
-    version (d'un autre document) ne référence : seules celles-ci peuvent
-    être effacées du stockage objet."""
-    cles = set(DocumentVersion.objects.filter(document=document)
-               .exclude(file_key='').values_list('file_key', flat=True))
-    partagees = set(DocumentVersion.objects.filter(file_key__in=cles)
-                    .exclude(document=document)
-                    .values_list('file_key', flat=True))
-    return sorted(cles - partagees)
+    """ADOC29 — clés de stockage des versions de `document` qu'AUCUN autre
+    détenteur ne tient : seules celles-ci peuvent être effacées du stockage
+    objet. ADOC192 — le choix est délégué au registre des détenteurs
+    (ADOC193 : autre version GED, pièce jointe importée, créatif…)."""
+    from apps.records.cles_stockage import cle_detenue
+    versions = list(DocumentVersion.objects.filter(document=document).exclude(file_key=''))
+    return sorted({v.file_key for v in versions if not cle_detenue(v.file_key, sauf=versions)})
 
 
 def _supprimer_binaires(cles):

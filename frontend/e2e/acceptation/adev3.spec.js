@@ -10,8 +10,10 @@ import { lireJson, listeDe, telephoneMobileUnique, assurerSessionPage, API_DJANG
 
 // `ACCEPTATION_COUVRE` (ids séparés par des virgules) : le sous-ensemble rejoué avec `-g` — un enregistrement PASS ne couvre
 // que des tâches dont TOUTES les étapes passent ; les étapes en échec sont rejouées à part (enregistrement FAIL = trace).
-const TOUTES = ['ADEV106', 'ADEV107', 'ADEV108', 'ADEV109', 'ADEV110', 'ADEV112']
-const etape = groupe('ADEV', process.env.ACCEPTATION_COUVRE ? process.env.ACCEPTATION_COUVRE.split(',') : TOUTES)
+// Chaque étape porte aussi ADEV114 (la tâche d'acceptation du groupe, cochée quand ses étapes passent toutes).
+const TOUTES = ['ADEV106', 'ADEV107', 'ADEV108', 'ADEV109', 'ADEV110', 'ADEV112', 'ADEV114']
+const etapeGroupe = groupe('ADEV', process.env.ACCEPTATION_COUVRE ? process.env.ACCEPTATION_COUVRE.split(',') : TOUTES)
+const etape = (id, taches, corps, options) => etapeGroupe(id, [...taches, 'ADEV114'], corps, options)
 fermerDjangoApresTout()
 retablirCatalogueApresTout()
 const T = { timeout: 180_000 }

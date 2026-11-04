@@ -145,3 +145,109 @@ class SortieUniqueTests(TestCase):
         self.assertEqual(solder_reservations_vente(
             self.inst, {self.panneau.id: 10}, 'REF-X'), 0)
         self.assertEqual(self._resa().quantite, 10)
+
+    # ── ASTK263 (C-ASTK-VER4-060) — facture annulée ⇒ réservation rouverte ─
+
+    def _vente_acompte(self, n):
+        """Devis accepté de 10 (stock 20, chantier, résa 10), acompte émis
+        par l'API (réservation soldée) ; renvoie (devis, chantier, produit,
+        facture, client API admin)."""
+        from rest_framework.test import APIClient
+        admin = User.objects.create_user(
+            username=f'admin-astk263-{n}', password='x',
+            company=self.company, role_legacy='admin')
+        api = APIClient()
+        api.force_authenticate(admin)
+        produit = Produit.objects.create(
+            company=self.company, nom=f'Panneau ASTK263-{n}',
+            sku=f'SKU-ASTK263-{n}', prix_vente=Decimal('100'),
+            quantite_stock=20, tva=Decimal('20.00'))
+        lead = Lead.objects.create(
+            company=self.company, nom='Site', prenom=f'Client {n}',
+            stage='SIGNED', type_installation='residentiel')
+        devis = Devis.objects.create(
+            company=self.company, reference=f'DEV-ASTK263-{n}',
+            client=self.devis.client, lead=lead,
+            statut=Devis.Statut.ACCEPTE, taux_tva=Decimal('20'),
+            mode_installation='residentiel')
+        LigneDevis.objects.create(
+            devis=devis, produit=produit, designation='Panneau',
+            quantite=Decimal('10'), prix_unitaire=Decimal('100'),
+            taux_tva=Decimal('20.00'))
+        inst, _ = create_installation_from_devis(
+            devis, self.user, self.company)
+        r = api.post(f'/api/django/ventes/devis/{devis.id}/generer-facture/',
+                     {}, format='json')
+        self.assertLess(r.status_code, 400, getattr(r, 'data', r))
+        fac = devis.factures.order_by('id').first()
+        if fac.statut == 'brouillon':
+            r = api.post(f'/api/django/ventes/factures/{fac.id}/emettre/',
+                         {}, format='json')
+            self.assertLess(r.status_code, 400, getattr(r, 'data', r))
+        resa = StockReservation.objects.get(installation=inst, produit=produit)
+        self.assertTrue(resa.consomme)
+        return devis, inst, produit, fac, api
+
+    def _etat(self, inst, produit):
+        resa = StockReservation.objects.get(installation=inst, produit=produit)
+        produit.refresh_from_db()
+        sorti = MouvementStock.objects.filter(
+            produit=produit, type_mouvement=mouvement_type_sortie()).aggregate(
+                t=Sum('quantite'))['t'] or 0
+        return resa.quantite, resa.consomme, produit.quantite_stock, sorti
+
+    def test_facture_annulee_rouvre_la_reservation(self):
+        from apps.crm import stages
+        from apps.installations.services_solde_vente import (
+            rouvrir_reservations_vente,
+        )
+        from apps.ventes.models import Facture
+        with self.subTest('a — annulée puis lead hors « Signé »'):
+            devis, inst, produit, fac, api = self._vente_acompte(1)
+            r = api.post(f'/api/django/ventes/factures/{fac.id}/annuler/', {},
+                         format='json')
+            self.assertEqual(r.status_code, 200, r.data)
+            self.assertEqual(self._etat(inst, produit), (10, False, 20, 10))
+            # Persistance : rejouer le récepteur ⇒ 0 modifiée.
+            inst.refresh_from_db()
+            self.assertEqual(rouvrir_reservations_vente(
+                inst, devis.reference), 0)
+            r = api.patch(f'/api/django/crm/leads/{devis.lead_id}/',
+                          {'stage': stages.QUOTE_SENT, 'confirme_recul': True},
+                          format='json')
+            self.assertEqual(r.status_code, 200, getattr(r, 'data', r))
+            inst.refresh_from_db()
+            self.assertTrue(inst.annule)
+            produit.refresh_from_db()
+            self.assertEqual(produit.quantite_stock, 20)
+        with self.subTest('b — annulée, nouvelle facture, « Installé »'):
+            devis, inst, produit, fac, api = self._vente_acompte(2)
+            api.post(f'/api/django/ventes/factures/{fac.id}/annuler/', {},
+                     format='json')
+            r = api.post(
+                f'/api/django/ventes/devis/{devis.id}/generer-facture/', {},
+                format='json')
+            self.assertLess(r.status_code, 400, getattr(r, 'data', r))
+            nouvelle = devis.factures.exclude(pk=fac.pk).order_by('id').last()
+            if nouvelle.statut == 'brouillon':
+                api.post(f'/api/django/ventes/factures/{nouvelle.id}/emettre/',
+                         {}, format='json')
+            self.assertEqual(self._etat(inst, produit), (0, True, 10, 20))
+            inst.refresh_from_db()
+            changer_statut_chantier(inst, Installation.Statut.INSTALLE,
+                                    self.user, verifier_gates=False)
+            self.assertEqual(self._etat(inst, produit)[2:], (10, 20))
+        with self.subTest('c — une autre tranche vivante : rien rouvert'):
+            devis, inst, produit, fac, api = self._vente_acompte(3)
+            Facture.objects.create(
+                company=self.company, reference=f'FAC-ASTK263-{devis.id}',
+                devis=devis, client=devis.client, statut='emise',
+                type_facture='solde', montant_ht=Decimal('1'),
+                montant_tva=Decimal('0'), montant_ttc=Decimal('1'))
+            api.post(f'/api/django/ventes/factures/{fac.id}/annuler/', {},
+                     format='json')
+            self.assertEqual(self._etat(inst, produit), (0, True, 10, 10))
+            r = api.patch(f'/api/django/crm/leads/{devis.lead_id}/',
+                          {'stage': stages.QUOTE_SENT, 'confirme_recul': True},
+                          format='json')
+            self.assertEqual(r.status_code, 409, getattr(r, 'data', r))

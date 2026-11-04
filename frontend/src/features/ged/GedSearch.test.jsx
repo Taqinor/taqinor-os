@@ -104,6 +104,37 @@ describe('ADOC30 GedSearch — liste par tag complète', () => {
     expect(gedApi.getDocuments).toHaveBeenCalledWith(
       expect.objectContaining({ tag: 4, page: 2 }))
   })
+
+  // ADOC195 (C-ADOC-VER4-011) — tags et vues lus EN ENTIER (51 > page de 50).
+  it('lit tous les tags et toutes les vues', async () => {
+    const pagine = (items) => (params = {}) => {
+      const page = params.page || 1
+      const debut = (page - 1) * 50
+      return Promise.resolve({ data: {
+        count: items.length,
+        next: debut + 50 < items.length ? `?page=${page + 1}` : null,
+        results: items.slice(debut, debut + 50),
+      } })
+    }
+    const tags = Array.from({ length: 51 }, (_, i) => ({ id: 700 + i, nom: `Tag ${i + 1}` }))
+    const vues = Array.from({ length: 51 }, (_, i) => ({
+      id: 800 + i, nom: `Vue ${i + 1}`, criteres: {}, partagee: false,
+    }))
+    gedApi.getTags.mockImplementation(pagine(tags))
+    gedApi.getVues.mockImplementation(pagine(vues))
+    try {
+      render(<MemoryRouter><ThemeProvider><GedSearch /></ThemeProvider></MemoryRouter>)
+
+      expect(await screen.findByText('Vue 51')).toBeInTheDocument()
+      await userEvent.click(await screen.findByRole('combobox', { name: 'Filtrer par tag' }))
+      const liste = within(await screen.findByRole('listbox'))
+      expect(liste.getByText('Tag 51')).toBeInTheDocument()
+      expect(liste.getAllByRole('option').filter((o) => /^Tag \d+$/.test(o.textContent))).toHaveLength(51)
+    } finally {
+      gedApi.getTags.mockImplementation(() => Promise.resolve({ data: [] }))
+      gedApi.getVues.mockImplementation(() => Promise.resolve({ data: [] }))
+    }
+  })
 })
 
 describe('ZGED7/8/13 GedSearch — favoris, récents & vues enregistrées', () => {

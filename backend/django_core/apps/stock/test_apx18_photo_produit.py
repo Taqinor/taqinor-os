@@ -177,13 +177,43 @@ class Apx18PhotoApiTests(TestCase):
         self.produit.refresh_from_db()
         ancienne_id = self.produit.photo_id
 
-        with patch('apps.records.storage.delete_attachment') as suppr:
+        # `Model.delete()` remet `pk` à None sur l'instance APRÈS l'appel :
+        # on capture les pk de `liberee_par` AU MOMENT de l'appel.
+        pks_liberees = []
+
+        def _capture(cle, **kwargs):
+            pks_liberees.extend(o.pk for o in kwargs.get('liberee_par', ()))
+
+        with patch('apps.records.storage.delete_attachment',
+                   side_effect=_capture) as suppr:
             self._poser(cle='attachments/1/nouvelle.png')
         self.produit.refresh_from_db()
 
         self.assertNotEqual(self.produit.photo_id, ancienne_id)
         self.assertFalse(Attachment.objects.filter(id=ancienne_id).exists())
-        suppr.assert_called_once_with('attachments/1/ancienne.png')
+        suppr.assert_called_once()
+        self.assertEqual(suppr.call_args.args, ('attachments/1/ancienne.png',))
+        # ADOC201 : la pièce remplacée libère sa clé (registre ADOC193).
+        self.assertEqual(pks_liberees, [ancienne_id])
+
+    def test_remplacement_efface_ancienne_cle(self):
+        """ADOC201 (C-ADOC-VER4-010) — sans `liberee_par`, le registre
+        ADOC193 voit encore l'ancienne `Attachment` détentrice de la clé A
+        et la CONSERVE (orpheline). Avec : `delete_object(A)` est appelé."""
+        from unittest.mock import MagicMock
+        self._poser(cle='attachments/1/cle-a.png')
+        client = MagicMock()
+        with patch('apps.records.storage.get_minio_client',
+                   return_value=client):
+            r, _ = self._poser(cle='attachments/1/cle-b.png')
+        self.assertEqual(r.status_code, 201, r.data)
+        cles = [c.kwargs.get('Key') for c in client.delete_object.call_args_list]
+        self.assertEqual(cles, ['attachments/1/cle-a.png'])
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.photo.file_key, 'attachments/1/cle-b.png')
+        self.assertEqual(Attachment.objects.filter(
+            object_id=self.produit.id,
+            content_type__model='produit').count(), 1)
 
     def test_delete_retire_la_photo_sans_toucher_au_produit(self):
         self._poser()

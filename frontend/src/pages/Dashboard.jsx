@@ -46,7 +46,7 @@ import { ModuleHero } from '../ui/module/ModuleHero.jsx'
 import { fetchProduits } from '../features/stock/store/stockSlice'
 import { fetchClients, fetchLeads } from '../features/crm/store/crmSlice'
 import { fetchDevis, fetchFactures } from '../features/ventes/store/ventesSlice'
-import { useCanLireVentes } from '../hooks/useHasPermission'
+import { useCanLireVentes, useCanLireEquipesCrm } from '../hooks/useHasPermission'
 import { fetchInstallations } from '../features/installations/store/installationsSlice'
 // VX27 — cockpit du matin par rôle : le SAV réutilise les helpers de statut/SLA
 // existants (aucune logique de ticket dupliquée ici) et les tickets déjà en
@@ -467,6 +467,7 @@ export function Component() {
   const roleNom = useSelector((s) => s.auth.role_nom)
   const roleTier = useSelector((s) => s.auth.role)
   const peutLireVentes = useCanLireVentes()
+  const peutLireEquipes = useCanLireEquipesCrm()
   const profile = cockpitProfile({ roleNom, roleTier })
 
   // NTMOB6 — sélecteur de démarrage par rôle. `mobile_home_route` (NULL tant
@@ -1296,9 +1297,13 @@ export function Component() {
 
           {/* ZSAL3 — Tableau de bord « Mes équipes » (autonome : ne rend rien
               si aucune équipe ou si le rôle n'y a pas accès). */}
-          <Suspense fallback={null}>
-            <MesEquipesCard />
-          </Suspense>
+          {/* ERR-ACC-ACCUEIL-403-LECTEUR : jamais monté (jamais appelé) pour un
+              rôle que l'endpoint refuse (Lecteur : 403). */}
+          {peutLireEquipes && (
+            <Suspense fallback={null}>
+              <MesEquipesCard />
+            </Suspense>
+          )}
 
           {/* NTUX11 — Récents (autonome : ne rend rien sans entité récente). */}
           <Suspense fallback={null}>

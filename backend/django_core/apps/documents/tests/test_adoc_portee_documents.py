@@ -92,6 +92,38 @@ class PorteeDocumentsChantierTests(TestCase):
                 self.assertEqual(r.status_code, 200, route)
                 self.assertEqual(r['Content-Type'], 'application/pdf')
 
+    def test_technicien_intervention_obtient_ses_documents(self):
+        """ADOC196 (C-ADOC-VER4-020) — le technicien d'une intervention, ni
+        responsable ni créateur du chantier, lit la fiche (retrieve,
+        ERR-CHT-TECH-CHANTIER-404) ET ses documents ; l'attestation reste
+        aux responsables.
+
+        Rôle en LECTURE seule : un code d'écriture du module installations
+        (``intervention_gerer``) fait de son porteur un responsable du module
+        au sens d'``IsResponsableOrAdmin`` (ASEC11) — la portée vient de
+        l'intervention assignée, pas d'un droit d'écriture."""
+        from apps.installations.models import Intervention
+        role = Role.objects.create(
+            company=self.company, nom='Technicien d’intervention',
+            permissions=[SCOPE_TEAM, 'installation_voir'])
+        tech_iv = User.objects.create_user(
+            username=f'adoc196-iv-{next(_seq)}', password='x',
+            company=self.company, role=role)
+        Intervention.objects.create(
+            company=self.company, installation=self.chantier_x,
+            type_intervention='pose', created_by=self.resp,
+            technicien=tech_iv)
+        api = _api(tech_iv)
+        self.assertEqual(
+            api.get(f'{FICHE}/{self.chantier_x.pk}/').status_code, 200)
+        for route in ('pv-reception', 'bon-livraison', 'dossier-remise'):
+            with self.subTest(route=route):
+                r = api.get(f'{DOCS}/{self.chantier_x.pk}/{route}/')
+                self.assertEqual(r.status_code, 200, route)
+                self.assertEqual(r['Content-Type'], 'application/pdf')
+        self.assertEqual(api.get(
+            f'{DOCS}/{self.chantier_x.pk}/attestation/').status_code, 403)
+
     def test_attestation_reservee_responsable(self):
         r = _api(self.tech).get(
             f'{DOCS}/{self.chantier_y.pk}/attestation/')

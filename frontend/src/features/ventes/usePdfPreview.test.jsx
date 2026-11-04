@@ -59,6 +59,17 @@ describe('usePdfPreview', () => {
     expect(result.current.errorKind).toBe('server')
   })
 
+  it('panneau du lead : le detail servi passe à l’écran, sinon le repli de l’appelant', async () => {
+    // ADEV112 (rejeu FAIL du 04/11) — LeadDevisPanel lit `errorMessage` comme message serveur :
+    // un 409 en Blob donne son detail ; un 500 sans corps lisible garde le repli fixe de l'écran.
+    const repli = "Le serveur n'a pas pu générer ce PDF."
+    const sansDetail = Object.assign(new Error(repli),
+      { response: { status: 500, data: new Blob(['<html>'], { type: 'text/html' }) } })
+    const { result } = renderHook(() => usePdfPreview(() => Promise.reject(sansDetail)))
+    await waitFor(() => expect(result.current.errorKind).toBe('server'))
+    expect(result.current.errorMessage).toBe(repli)
+  })
+
   it('désactivé : aucune requête et état purgé', async () => {
     let n = 0
     const f = () => { n += 1; return Promise.resolve(new Blob(['x'])) }

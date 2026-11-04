@@ -1229,7 +1229,7 @@ class AttachmentViewSet(ParsersParActionMixin, viewsets.ModelViewSet):
         return resp
 
     def perform_destroy(self, instance):
-        delete_attachment(instance.file_key)
+        delete_attachment(instance.file_key, liberee_par=(instance,))  # ADOC193
         instance.delete()
 
 
