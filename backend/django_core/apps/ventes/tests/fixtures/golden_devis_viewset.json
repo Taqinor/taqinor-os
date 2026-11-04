@@ -349,12 +349,20 @@
       ]
     },
     {
+      "nom": "override_regenerer",
+      "url_path": "overrides/(?P<chemin>[^/]+)",
+      "url_name": "override-regenerer",
+      "detail": true,
+      "methodes": [
+        "delete"
+      ]
+    },
+    {
       "nom": "overrides",
       "url_path": "overrides",
       "url_name": "overrides",
       "detail": true,
       "methodes": [
-        "delete",
         "get",
         "patch"
       ]
@@ -687,6 +695,7 @@
     "offres_tailles_config",
     "offres_tailles_regenerer",
     "options",
+    "override_regenerer",
     "overrides",
     "paginate_queryset",
     "pagination_class",

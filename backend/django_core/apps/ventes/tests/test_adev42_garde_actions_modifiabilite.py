@@ -51,7 +51,8 @@ GARDEES_409 = {
     'etude_params': [('patch', {'note_interne': 'x'})],
     'offres_tailles_config': [('patch', {})],
     'offres_tailles_regenerer': [('post', {})],
-    'overrides': [('patch', {}), ('delete', {})],
+    'overrides': [('patch', {})],
+    'override_regenerer': [('delete', {})],
     'destroy': [('delete', {})],
     # CI #997 — en-tête figé : garde ``_gardes_mise_a_jour`` (même prédicat
     # ENTETE), refus d'état 409 {statut} — plus 400.
@@ -167,6 +168,7 @@ class GardeActionsModifiabiliteTests(TestCase):
     def _url(self, url_path):
         if url_path is None:
             return f'{BASE}{self.devis.pk}/'
+        url_path = url_path.replace('(?P<chemin>[^/]+)', 'scenario')
         return f'{BASE}{self.devis.pk}/{url_path}/'
 
     def _jouer(self, table, attendu):

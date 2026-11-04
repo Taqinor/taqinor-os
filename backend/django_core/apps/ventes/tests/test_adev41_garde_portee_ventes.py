@@ -317,7 +317,7 @@ class GardePorteeVentesTests(TestCase):
                     non_classees.append(f'{nom} ({classe})')
                 continue
             pk = l1 if classe == 'LigneDevisViewSet' else d1
-            url = _url(motif, {'pk': pk, 'token': '0' * 32})
+            url = _url(motif, {'pk': pk, 'token': '0' * 32, 'chemin': 'scenario'})
             detail = bool(re.search(r'<(?:\w+:)?pk>|\(\?P<pk>', motif))
             for verbe in _methodes(callback):
                 if verbe == 'get':
