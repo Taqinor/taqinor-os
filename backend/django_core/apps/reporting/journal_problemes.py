@@ -180,13 +180,14 @@ def resume_problemes(jours=7, company=None, maintenant=None):
     rencontrés ces N derniers jours ? », trié du plus fréquent au moins
     fréquent.
 
-    Une entrée par (genre, méthode, route, statut, code) avec le nombre
+    Une entrée par (genre, méthode, route, statut, code, écran) avec le nombre
     d'occurrences, le nombre d'utilisateurs DISTINCTS touchés (un problème vu
     par 4 personnes n'est pas le même incident qu'un problème vu 40 fois par
-    une seule) et la date du dernier cas. Le `code` fait partie de la clé :
-    deux erreurs JavaScript différentes sur le même écran ne sont pas le même
-    problème, et pour un genre `script` (qui n'a pas de route) c'est la SEULE
-    information qui le nomme. `company=None` balaie TOUTES les
+    une seule) et la date du dernier cas, en heure locale. Le `code` fait partie
+    de la clé : deux erreurs JavaScript différentes sur le même écran ne sont
+    pas le même problème. L'`écran` aussi (ERR-JPB-RESUME-SANS-ECRAN-ET-UTC) :
+    pour un genre `script` (qui n'a pas de route), c'est le seul « où ? ».
+    `company=None` balaie TOUTES les
     sociétés (usage administrateur serveur) ; sinon le résumé est borné à
     cette société — jamais un mélange implicite.
     """
@@ -198,11 +199,14 @@ def resume_problemes(jours=7, company=None, maintenant=None):
     qs = ProblemeClient.objects.filter(created_at__gte=depuis)
     if company is not None:
         qs = qs.filter(company=company)
-    return list(
+    lignes = list(
         qs.values('genre', 'methode', 'route', 'statut_reponse',
-                  'code')
+                  'code', 'ecran')
           .annotate(occurrences=Count('id'),
                     utilisateurs=Count('utilisateur', distinct=True),
                     dernier=Max('created_at'),
                     exemple_request_id=Max('request_id'))
-          .order_by('-occurrences', 'route'))
+          .order_by('-occurrences', 'route', 'ecran'))
+    for ligne in lignes:
+        ligne['dernier'] = timezone.localtime(ligne['dernier'])
+    return lignes

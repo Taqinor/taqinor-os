@@ -7,7 +7,9 @@
   stocké), troncature plutôt que rejet, résumé groupé, rétention et commande de
   lecture. Même patron que le beacon ci-dessus, d'où le module commun.
 """
+from datetime import timedelta
 from io import StringIO
+from zoneinfo import ZoneInfo
 
 from django.contrib.auth import get_user_model
 from django.core.management import CommandError, call_command
@@ -420,6 +422,23 @@ class ResumeTests(TestCase):
         self.assertEqual(premier['utilisateurs'], 2)
         self.assertEqual(lignes[1]['occurrences'], 1)
 
+    def test_un_ecran_different_est_un_probleme_different(self):
+        # ERR-JPB-RESUME-SANS-ECRAN-ET-UTC : tous les TypeError de tous les
+        # écrans fusionnaient en une ligne qui ne répondait pas « où ? ».
+        for ecran in ('/crm/relances', '/crm/relances', '/ventes/devis'):
+            self._ligne(genre='script', methode='', route='', statut_reponse=None,
+                        code='TypeError', ecran=ecran)
+        lignes = resume_problemes(jours=7, company=self.company)
+        self.assertEqual(
+            [(ligne['ecran'], ligne['occurrences']) for ligne in lignes],
+            [('/crm/relances', 2), ('/ventes/devis', 1)])
+
+    def test_dernier_cas_en_heure_locale(self):
+        self._ligne()
+        with timezone.override(ZoneInfo('Asia/Tokyo')):
+            dernier = resume_problemes(jours=7, company=self.company)[0]['dernier']
+        self.assertEqual(dernier.utcoffset(), timedelta(hours=9))
+
     def test_borne_a_la_societe_demandee(self):
         self._ligne()
         self._ligne(company=self.autre, route='/bruit/')
@@ -522,6 +541,17 @@ class CommandeLectureTests(TestCase):
         self.assertIn('TypeError', self._sortie(company='yjpb3-autre'))
         with self.assertRaises(CommandError):
             self._sortie(company='inexistante')
+
+    def test_une_erreur_de_script_nomme_son_ecran_et_l_heure_est_locale(self):
+        ligne = ProblemeClient.objects.create(
+            company=self.company, genre='script', code='TypeError',
+            ecran='/crm/relances')
+        with timezone.override(ZoneInfo('Asia/Tokyo')):
+            sortie = self._sortie()
+        self.assertIn('/crm/relances', sortie)
+        self.assertNotIn('(écran)', sortie)
+        attendu = ligne.created_at.astimezone(ZoneInfo('Asia/Tokyo'))
+        self.assertIn(f'{attendu:%Y-%m-%d %H:%M}', sortie)
 
     def test_affiche_un_request_id_echantillon(self):
         rid = '0123456789abcdef0123456789abcdef'

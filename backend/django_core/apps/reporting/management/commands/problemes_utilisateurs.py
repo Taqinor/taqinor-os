@@ -2,7 +2,7 @@
 semaine ? » en UNE commande.
 
 Lecture seule : affiche le journal `reporting.ProblemeClient` (YJPB1) des N
-derniers jours, regroupé par (genre, méthode, route, statut HTTP), du plus
+derniers jours, regroupé par (genre, méthode, route, statut HTTP, écran), du plus
 fréquent au moins fréquent, avec le nombre d'utilisateurs DISTINCTS touchés.
 Ne corrige RIEN, n'écrit RIEN.
 
@@ -68,7 +68,8 @@ class Command(BaseCommand):
                 f"{ligne['dernier']:%Y-%m-%d %H:%M}  "
                 f"{(ligne['code'] or '-'):<22} "
                 f"{(ligne['methode'] + ' ' if ligne['methode'] else '')}"
-                f"{ligne['route'] or '(écran)'}"
+                f"{ligne['route'] or ('' if ligne['ecran'] else '(écran)')}"
+                f"{' écran=' + ligne['ecran'] if ligne['ecran'] else ''}"
                 f"{' rid=' + ligne['exemple_request_id'] if ligne['exemple_request_id'] else ''}")
         total = sum(ligne['occurrences'] for ligne in lignes)
         self.stdout.write(self.style.WARNING(
