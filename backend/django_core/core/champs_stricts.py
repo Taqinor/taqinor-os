@@ -333,6 +333,19 @@ class DecimalSoupleMixin:
     }
 
 
+#: Une chaîne décimale qui vaut zéro (« 0 », « 0.00 », « .0 »).
+MOTIF_DECIMAL_NUL = r'^[0.]*$'
+
+
+def _plancher_est_le_pas(champ):
+    """``min_value`` = plus petit pas du champ (``0.01`` à 2 décimales) : le
+    décimal est strictement positif, seule forme que le motif sait dire."""
+    from decimal import Decimal
+    if champ.min_value is None or champ.decimal_places is None:
+        return False
+    return Decimal(str(champ.min_value)) == Decimal(1).scaleb(-champ.decimal_places)
+
+
 class _DecimalChaineNonVide(OpenApiSerializerFieldExtension):
     r"""ENF11 (api-fuzz « rejected schema-compliant request ») — le motif que
     drf-spectacular publie pour un décimal-chaîne (``^-?\d{0,N}(?:\.\d{0,M})?$``)
@@ -350,12 +363,19 @@ class _DecimalChaineNonVide(OpenApiSerializerFieldExtension):
             return schema
         schema = dict(schema)
         schema['pattern'] = _motif_decimal(champ)
-        if (isinstance(champ, DecimalBornee) and champ.min_value is not None
-                and champ.min_value >= 0):
+        # api-fuzz-full 41773314544 — ``DecimalSouple`` aussi (``frais: "-8."``,
+        # ``montant: "-.7"`` : conformes au motif publié, refusés par la borne).
+        borne = isinstance(champ, DecimalBornee) or (
+            isinstance(champ, DecimalSouple) and direction == 'request')
+        if borne and champ.min_value is not None and champ.min_value >= 0:
             schema['pattern'] = schema['pattern'].replace('^-?', '^', 1)
+        if borne and _plancher_est_le_pas(champ):
+            schema['not'] = {'pattern': MOTIF_DECIMAL_NUL}  # "0.00" refusé aussi
         if isinstance(champ, DecimalStricte) and champ.allow_null:
-            motif = schema.pop('pattern')
-            schema['anyOf'] = [{'pattern': motif}, {'maxLength': 0}]
+            branche = {'pattern': schema.pop('pattern')}
+            if 'not' in schema:
+                branche['not'] = schema.pop('not')
+            schema['anyOf'] = [branche, {'maxLength': 0}]
         if isinstance(champ, DecimalSouple) and direction == 'request':
             schema = _chaine_ou_nombre(schema, champ)
         return schema
@@ -365,7 +385,7 @@ def _chaine_ou_nombre(schema, champ):
     """``anyOf`` [décimal-chaîne au motif, nombre JSON borné] d'une
     ``DecimalSouple`` (``nullable`` porté par chaque branche, OpenAPI 3.0)."""
     from decimal import Decimal
-    branche = {k: schema.pop(k) for k in ('type', 'format', 'pattern')
+    branche = {k: schema.pop(k) for k in ('type', 'format', 'pattern', 'not')
                if k in schema}
     nombre = {'type': 'number'}
     borne = borne_decimal(champ)

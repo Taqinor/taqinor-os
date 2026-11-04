@@ -198,6 +198,32 @@ class SchemaChampsStrictsTests(SimpleTestCase):
         self.assertEqual(champ.run_validation('5.'), Decimal('5'))
         self.assertEqual(champ.run_validation(12.5), Decimal('12.50'))
 
+    def test_decimal_souple_borne_publie_sans_signe_et_non_nul(self):
+        # api-fuzz-full 41773314544 : ``frais: "-8."``, ``montant: "-.7"`` conformes
+        # au motif publié, refusés par la borne basse.
+        from decimal import Decimal
+        from types import SimpleNamespace
+
+        from core.champs_stricts import (
+            MOTIF_DECIMAL_NUL, DecimalSouple, _DecimalChaineNonVide)
+
+        def publier(champ):
+            auto = SimpleNamespace(_map_serializer_field=lambda *a, **k: {
+                'type': 'string', 'format': 'decimal', 'pattern': 'x'})
+            return _DecimalChaineNonVide(champ).map_serializer_field(
+                auto, 'request')['anyOf'][0]
+
+        pas = publier(DecimalSouple(max_digits=12, decimal_places=2,
+                                    min_value=Decimal('0.01')))
+        self.assertNotIn('-', pas['pattern'].split('(')[0])
+        self.assertEqual(pas['not'], {'pattern': MOTIF_DECIMAL_NUL})
+        zero = publier(DecimalSouple(max_digits=10, decimal_places=2,
+                                     min_value=Decimal('0')))
+        self.assertNotIn('-', zero['pattern'].split('(')[0])
+        self.assertNotIn('not', zero)
+        libre = publier(DecimalSouple(max_digits=10, decimal_places=2))
+        self.assertTrue(libre['pattern'].startswith('^-?'))
+
     def test_date_stricte_aaaa_mm_jj(self):
         from datetime import date
 

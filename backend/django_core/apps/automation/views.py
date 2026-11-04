@@ -81,7 +81,7 @@ class ResoumettreSerializer(drf_serializers.Serializer):
 
 
 class SimulerSerializer(drf_serializers.Serializer):
-    target_model = drf_serializers.CharField()
+    target_model = ChaineStricte()  # motif publié : pas de caractère nul
     target_id = drf_serializers.IntegerField()
     context = drf_serializers.DictField(required=False)
 

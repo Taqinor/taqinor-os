@@ -1823,7 +1823,8 @@ class FraisImportSerializer(
         read_only_fields = ['created_by', 'date_creation']
 
 
-class LandedCostLigneSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class LandedCostLigneSerializer(ChampsTexteStrictsMixin, IdInconnu404Mixin, SameCompanyFKSerializerMixin,
+                                serializers.ModelSerializer):
     """FG316 — ligne de coût débarqué par SKU (valeur FOB + quantité). La société
     est posée CÔTÉ SERVEUR. `cout_fob_unitaire` est dérivé ; la quote-part de
     frais + le coût débarqué se lisent via l'action `landed-cost` du dossier."""

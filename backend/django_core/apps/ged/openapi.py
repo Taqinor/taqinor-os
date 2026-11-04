@@ -181,7 +181,7 @@ LIEN_CORPS = S('DocumentLienCorps', {
 })
 ARCHIVAGE_CORPS = S('ArchivageLegalCorps', {
     'document': s.IntegerField(),
-    'motif': s.CharField(required=False, allow_blank=True),
+    'motif': ChaineStricte(required=False, allow_blank=True),
     'retain_until': s.DateField(required=False, allow_null=True),
 })
 VERSION_CREATION_CORPS = S('VersionCreationCorps', {
@@ -192,7 +192,7 @@ SERVICE_INDISPO = S('ServiceIndisponible', {'detail': s.CharField()})
 CONTEXTE_CORPS = S('ContexteFusionCorps', {
     'contexte': s.DictField(required=False)})
 MARQUER_SIGNE_CORPS = S('MarquerSigneCorps', {
-    'provider_ref': s.CharField(required=False, allow_blank=True)})
+    'provider_ref': ChaineStricte(required=False, allow_blank=True)})
 PROLONGER_CORPS = S('ProlongerCorps', {'expires_at': s.DateTimeField()})
 VALIDER_OCR_CORPS = S('ValiderOcrCorps', {
     'champs_corriges': s.DictField(required=False)})
