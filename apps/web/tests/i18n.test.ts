@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { lireAstroAvecBlocs } from './astroBlocsHelper';
 import { DEFAULT_LOCALE, LOCALES, LOCALE_DIR, isLocale } from '../src/i18n/config';
 import { getLocaleFromPath, localizePath, stripLocale, useTranslations } from '../src/i18n/utils';
 import { ui } from '../src/i18n/ui';
@@ -225,7 +226,7 @@ describe('formulaire de lead — flux de données IDENTIQUE dans toutes les lang
   // sa charge utile, ses noms de champs, l'endpoint, le seuil et le deeplink
   // ne dépendent JAMAIS de la locale. On l'affirme sur la SOURCE (une seule
   // source pour toutes les langues) + les libellés d'options gardent l'id.
-  const form = read('../src/components/DiagnosticForm.astro');
+  const form = lireAstroAvecBlocs(fileURLToPath(new URL('../src/components/DiagnosticForm.astro', import.meta.url)));
 
   it('noms de champs soumis inchangés (charge utile identique)', () => {
     for (const name of ['fullName', 'phone', 'whatsappOptIn', 'city', 'roofType', 'billRange', 'consent',

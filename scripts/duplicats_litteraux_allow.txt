@@ -91,7 +91,6 @@
 6dba33974010|apps/web/src/scripts/roof-tool-pro11.ts,apps/web/src/scripts/roofPro11/captureBoot.ts
 6e3c8edf4a2a|apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 7062b43c1b95|apps/web/src/pages/ar/ensoleillement-maroc.astro,apps/web/src/pages/ar/impact-taqinor.astro,apps/web/src/pages/ar/methodologie-estimation.astro,apps/web/src/pages/ar/parrainage.astro,apps/web/src/pages/ar/production-mesuree.astro,apps/web/src/pages/en/ensoleillement-maroc.astro,apps/web/src/pages/en/impact-taqinor.astro,apps/web/src/pages/en/methodologie-estimation.astro,apps/web/src/pages/en/parrainage.astro,apps/web/src/pages/en/production-mesuree.astro,apps/web/src/pages/ensoleillement-maroc.astro,apps/web/src/pages/impact-taqinor.astro,apps/web/src/pages/methodologie-estimation.astro,apps/web/src/pages/parrainage.astro,apps/web/src/pages/production-mesuree.astro
-721b59500543|apps/web/src/components/DiagnosticForm.astro,apps/web/src/components/DiagnosticFormEnriched.astro
 74ff5c176c5b|apps/web/src/pages/ar/pourquoi-taqinor.astro,apps/web/src/pages/en/pourquoi-taqinor.astro,apps/web/src/pages/pourquoi-taqinor.astro
 783f2df9e8cb|apps/web/src/pages/ar/marocains-du-monde.astro,apps/web/src/pages/en/marocains-du-monde.astro,apps/web/src/pages/marocains-du-monde.astro
 79b71e43bdd7|apps/web/src/pages/ar/parrainage.astro,apps/web/src/pages/en/parrainage.astro,apps/web/src/pages/parrainage.astro

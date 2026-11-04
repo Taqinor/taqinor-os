@@ -16,6 +16,7 @@
 import { BILL_RANGES } from '../lib/billRange';
 import { ROOF_TYPES } from '../lib/lead';
 import { SUPPLY_TYPES, ORIENTATIONS } from '../lib/enrichment';
+import DiagnosticChampsCaches from './blocs/DiagnosticChampsCaches.astro';
 
 interface Props {
   heading?: string;
@@ -168,20 +169,7 @@ const inputClass =
            `website_url` : la garde était un no-op. Masqué hors écran, hors
            tabulation, sans autocomplétion : un humain ne le remplit jamais.
            Rejeté en silence côté serveur — contrat webhook inchangé. -->
-      <div aria-hidden="true" style="position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap;">
-        <label>Ne pas remplir<input id="lf-hp" name="website_url" type="text" tabindex="-1" autocomplete="off" /></label>
-      </div>
-
-      <!-- fbclid + UTM persistés — remplis depuis sessionStorage au chargement -->
-      <input type="hidden" name="fbclid" />
-      <input type="hidden" name="gclid" />
-      <input type="hidden" name="gbraid" />
-      <input type="hidden" name="wbraid" />
-      <input type="hidden" name="utm_source" />
-      <input type="hidden" name="utm_medium" />
-      <input type="hidden" name="utm_campaign" />
-      <input type="hidden" name="utm_content" />
-      <input type="hidden" name="utm_term" />
+      <DiagnosticChampsCaches />
       <!-- Puissance crête estimée — pré-remplie par l'estimateur de toiture
            quand le diagnostic est ouvert depuis lui. Vide partout ailleurs :
            le payload reste alors identique au formulaire live. -->
