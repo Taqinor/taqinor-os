@@ -1,4 +1,4 @@
-# Vérifie AANA — contre-visite de clôture du groupe analyse (D4), 04/11/2026
+# Vérifie AANA — contre-visite de clôture du groupe analyse (X7), 04/11/2026
 
 Commande `loop audit` (reprise du 04/11). La contre-visite du 01/11 avait déposé 15 écarts S1-S2 (AANA62-76) ; ils sont
 cochés, la clôture est de nouveau due. La contre-visite n'a rien construit, n'a lancé aucun deploy, n'a rien écrit en prod ;
@@ -8,7 +8,7 @@ sonde tourne en transaction annulée.
 ## 0. Préconditions
 
 - **SHA.** `origin/main` = `d54c88db3`. Branche de claim : `verifie-aana-0411`.
-- **Registre.** D4 `analyse`, groupe AANA, 78 tâches, 78 `[x]`.
+- **Registre.** X7 `analyse`, groupe AANA, 78 tâches, 78 `[x]`.
 - **Échantillon (graine = SHA `d54c88db3`).** Les 12 P0/S1 cochées + AANA62-73, 75, 76 (écarts du 01/11) + 13 tirées =
   **39 tâches**, 5 lots.
 - **Déjà déposé, non redéposé.** ADEV107 (tableau Quote-to-Cash à la révision), ADOC191 (`lignes_vendues`), contre-visites
