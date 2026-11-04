@@ -11,6 +11,7 @@ SONDE = {"constat": "C-ASTK-VER4-040", "sha": "c38868a62",
 
 
 def sonde(ctx):
+    from apps.crm import stages
     from decimal import Decimal
     from django.contrib.auth import get_user_model
     from django.db.models import Sum
@@ -29,7 +30,7 @@ def sonde(ctx):
     p = Produit.objects.create(company=co, nom='Panneau VER4-040', sku='SONDE-ASTK-VER4-040',
                                prix_vente=Decimal('100'), quantite_stock=30, tva=Decimal('20.00'))
     cl = Client.objects.create(company=co, nom='Site', prenom='Client', email='ver4-040@example.invalid')
-    lead = Lead.objects.create(company=co, nom='Site', prenom='Client', stage='SIGNED',
+    lead = Lead.objects.create(company=co, nom='Site', prenom='Client', stage=stages.SIGNED,
                                type_installation='residentiel')
     d = Devis.objects.create(company=co, reference='DEV-SONDE-VER4-040', client=cl, lead=lead,
                              statut=Devis.Statut.ACCEPTE, taux_tva=Decimal('20'), mode_installation='residentiel')
