@@ -92,7 +92,6 @@
 7e3d174b60ad|apps/web/src/pages/ar/pourquoi-taqinor.astro,apps/web/src/pages/en/pourquoi-taqinor.astro,apps/web/src/pages/pourquoi-taqinor.astro
 7f52f02bdb52|apps/web/src/pages/ar/ressources/10-questions-avant-de-signer.astro,apps/web/src/pages/ressources/10-questions-avant-de-signer.astro
 7fb22cb3e1e9|apps/web/src/pages/ar/guides/batterie-lithium-ou-gel.astro,apps/web/src/pages/en/guides/batterie-lithium-ou-gel.astro,apps/web/src/pages/guides/batterie-lithium-ou-gel.astro
-800fce292aca|apps/web/src/pages/en/prix-panneaux-solaires-maroc.astro,apps/web/src/pages/prix-panneaux-solaires-maroc.astro
 834d4ed8c44f|apps/web/src/pages/en/marocains-du-monde.astro,apps/web/src/pages/en/résidentiel.astro,apps/web/src/pages/marocains-du-monde.astro,apps/web/src/pages/résidentiel.astro
 853a9da35199|apps/web/src/pages/ar/financement.astro,apps/web/src/pages/en/financement.astro,apps/web/src/pages/financement.astro
 8cda2d939272|apps/web/src/pages/ar/à-propos.astro,apps/web/src/pages/en/à-propos.astro
