@@ -16,8 +16,8 @@
  * (progressive enhancement — jamais un contenu cassé sans script).
  *
  * W67 — i18n : seuls les bulles AFFICHÉES + « WhatsApp direct » + le sous-titre
- * sont traduits (FR/EN/AR). Le lien WhatsApp pré-rempli reste EN FRANÇAIS (il
- * atteint l'équipe FR) — l'argument de `whatsappLink(...)` n'est jamais traduit.
+ * sont traduits (FR/EN/AR). WAUD10 (D-WAUD-3=a) : le lien WhatsApp pré-rempli
+ * part dans la langue de la page (l'équipe lit AR et EN ; FR identique).
  * Les CHIFFRES (1 800 MAD) et les LIEUX (Casablanca) restent
  * identiques dans toutes les langues. Rendu FR inchangé (branche `fr` = strings
  * actuels mot pour mot).
@@ -27,10 +27,15 @@ import { whatsappLink } from '../lib/whatsapp';
 import { getLocaleFromPath } from '../i18n/utils';
 import type { Locale } from '../i18n/config';
 
-// Lien pré-rempli : message TOUJOURS en français (il arrive à l'équipe FR).
-const wa = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je viens de faire le diagnostic sur taqinor.ma.');
-
 const locale = getLocaleFromPath(Astro.url.pathname);
+
+// Lien pré-rempli dans la langue de la page (WAUD10).
+const WA_TEXTE: Record<Locale, string> = {
+  fr: 'Bonjour, je viens de faire le diagnostic sur taqinor.ma.',
+  en: 'Hello, I have just done the diagnosis on taqinor.ma.',
+  ar: 'مرحباً، أجريت للتو التشخيص على taqinor.ma. عافاك تواصلو معايا.',
+};
+const wa = whatsappLink(WHATSAPP_LEADS, WA_TEXTE[locale]);
 
 const STR: Record<
   Locale,

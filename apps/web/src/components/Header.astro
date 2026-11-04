@@ -80,7 +80,7 @@ const t = useTranslations(locale);
 const rootPath = stripLocale(Astro.url.pathname);
 const pageLocales = localesForPath(rootPath);
 const L = (href: string) => localizeNavHref(href, locale);
-const waEntete = whatsappLink(WHATSAPP_LEADS, pageContextWhatsappText(stripLocale(Astro.url.pathname)));
+const waEntete = whatsappLink(WHATSAPP_LEADS, pageContextWhatsappText(stripLocale(Astro.url.pathname), locale));
 
 // Solutions — dans cet ordre (W28). Le déclencheur pointe vers /nos-solutions.
 // W264 — `featured` : les deux points d'entrée grand public (résidentiel,

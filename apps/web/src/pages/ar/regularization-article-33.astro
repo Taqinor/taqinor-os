@@ -29,7 +29,7 @@ import RegularisationDossier from '../../components/blocs/RegularisationDossier.
 
 const { locale, L } = pageLocale(Astro.url.pathname);
 
-const waFallback = whatsappLink(WHATSAPP_LEADS, regularizationWhatsappText());
+const waFallback = whatsappLink(WHATSAPP_LEADS, regularizationWhatsappText(undefined, 'ar'));
 
 const steps = [
   { title: 'الجرد التقني', body: 'معاينة التركيبة القائمة: القدرة المُركّبة، نمط الربط، مستوى الجهد، معدات الحماية والعدّ.' },

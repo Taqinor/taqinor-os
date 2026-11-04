@@ -26,7 +26,7 @@ import { localizeNavHref } from '../../i18n/pages';
 
 const { locale, L } = pageLocale(Astro.url.pathname);
 
-const waFallback = whatsappLink(WHATSAPP_LEADS, regularizationWhatsappText());
+const waFallback = whatsappLink(WHATSAPP_LEADS, regularizationWhatsappText(undefined, 'en'));
 
 const steps = [
   { title: 'Technical inventory', body: 'Survey of the existing installation: installed power, connection mode, voltage level, protection and metering equipment.' },

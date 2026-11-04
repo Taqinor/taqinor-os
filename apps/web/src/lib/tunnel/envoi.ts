@@ -10,8 +10,8 @@
 // DÉCISION FONDATEUR D-RWEB17-WA-REF (29/10/2026) : le message WhatsApp du lien
 // de succès porte « Ma référence : <code> » dans les TROIS locales (les pages EN
 // et AR l'omettaient). C'est le SEUL changement de comportement de cette
-// section ; `captureWhatsappText` n'a pas de gestion de locale (le message est
-// en français sur les trois pages), la ligne reste donc dans sa forme existante.
+// section. WAUD10 (D-WAUD-3=a) : `captureWhatsappText` reçoit `ctx.locale` — le
+// message part dans la langue de la page (FR identique à l'octet).
 //
 // La section ne possède que `submitted`, `exitShown`, `exitTriggerEl`,
 // `funnelAbandonSent` ; elle lit/écrit le reste via `ctx.etat` et appelle les
@@ -20,7 +20,7 @@
 import { WHATSAPP_LEADS } from '../nap';
 import { brancherAffiner } from '../../scripts/tunnel/affiner';
 import { readAdsConsent } from '../diagnosticFormShared';
-import { captureWhatsappText, whatsappLink } from '../whatsapp';
+import { captureWhatsappText, monNumeroWhatsapp, whatsappLink } from '../whatsapp';
 import type { ContexteTunnel } from './contexte';
 
 /** Crochets que cette section APPELLE (installés par les autres sections). */
@@ -129,7 +129,7 @@ export function installerLienWhatsapp(ctx: ContexteTunnel, doc: Document): Secti
       // WREF + D-RWEB17-WA-REF — le code promis par l'écran de succès voyage dans
       // le message, quelle que soit la locale.
       clientRef: appeler('getOrCreateClientRef'),
-    });
+    }, ctx.locale);
     return whatsappLink(WHATSAPP_LEADS, text);
   }
 
@@ -325,7 +325,7 @@ export function installerSortie(ctx: ContexteTunnel, doc: Document): SectionSort
       city: (val('mt-city') || addressEl?.value || '').trim(),
       kwcLabel: ctx.etat.lastKwcLabel || undefined,
       savingsLabel: ctx.etat.lastSavingsLabel || undefined,
-    }) + (phone.length >= 6 ? ` Mon numéro : ${phone}.` : '');
+    }, ctx.locale) + (phone.length >= 6 ? monNumeroWhatsapp(phone, ctx.locale) : '');
     return whatsappLink(WHATSAPP_LEADS, text);
   }
 

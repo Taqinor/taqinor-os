@@ -29,7 +29,7 @@ import Callout from '../../components/Callout.astro';
 import RelatedLinks from '../../components/RelatedLinks.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { NAP } from '../../lib/nap';
-import { REWARD_AMOUNT_LABEL, REWARD_MILESTONE_LABEL, waParrainage } from '../../lib/parrainage';
+import { REWARD_AMOUNT_LABEL, REWARD_MILESTONE_LABEL, waParrainageLocale } from '../../lib/parrainage';
 import { localizeNavHref } from '../../i18n/pages';
 
 // WB18 — نفس أداة الربط المضادة للروابط الميتة المستعملة في بقية شجرة EN/AR
@@ -183,7 +183,7 @@ const jsonLd = {
         <p class="tech-label text-azur-600">سؤال حول الإحالة؟</p>
         <h2 class="display v2-section-title mx-auto mt-3 max-w-2xl text-3xl sm:text-4xl">راسلنا مباشرة عبر واتساب</h2>
         <a
-          href={waParrainage}
+          href={waParrainageLocale('ar')}
           rel="noopener noreferrer"
           class="glow mt-6 inline-flex items-center gap-2 bg-brass-400 px-6 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300"
         >

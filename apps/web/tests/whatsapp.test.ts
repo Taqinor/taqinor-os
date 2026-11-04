@@ -222,3 +222,56 @@ describe('CIW404 — WhatsApp pro sans économie ni retour', () => {
     });
   }
 });
+
+// ———————————————————————————————————————————————————————————————————————————
+// WAUD10 (D-WAUD-3=a) — les messages WhatsApp des pages EN/AR partent dans la
+// langue de la page (fus'ha + une ligne darija en AR) ; FR identique à l'octet.
+// ———————————————————————————————————————————————————————————————————————————
+import { pageLabelLocale } from '../src/lib/whatsapp';
+
+describe('WAUD10 — messages WhatsApp dans la langue de la page', () => {
+  const FR_MOTS = /\b(Bonjour|je vous écris|souhaite|depuis)\b/;
+  it('pageContextWhatsappText : FR identique, EN en anglais, AR fus’ha + darija', () => {
+    expect(pageContextWhatsappText('/faq', 'fr')).toBe(pageContextWhatsappText('/faq'));
+    const en = pageContextWhatsappText('/financement', 'en');
+    expect(en).toContain('the Financing & payback page');
+    expect(en).not.toMatch(FR_MOTS);
+    const ar = pageContextWhatsappText('/financement', 'ar');
+    expect(ar).toContain('صفحة التمويل والمردودية');
+    expect(ar).toContain('عافاك');
+    expect(ar).not.toMatch(FR_MOTS);
+  });
+  it('libellés EN/AR : familles dynamiques et repli neutre, jamais un chemin technique', () => {
+    expect(pageLabelLocale('/installation-solaire-rabat', 'en')).toBe('a city installation page');
+    expect(pageLabelLocale('/guides/x/', 'ar')).toBe('دليل');
+    expect(pageLabelLocale('/inconnue', 'en')).toBe('the website');
+    expect(pageLabelLocale('/inconnue', 'ar')).not.toContain('/');
+    expect(pageLabelLocale('/faq', 'fr')).toBe(pageLabelFr('/faq'));
+  });
+  it('captureWhatsappText (bouton de succès du devis) : 3 locales, référence gardée', () => {
+    const p = { fullName: 'Karim', city: 'Rabat', clientRef: 'TQ-PKEA', kwcLabel: '5 kWc' };
+    expect(captureWhatsappText(p, 'fr')).toBe(captureWhatsappText(p));
+    const en = captureWhatsappText(p, 'en');
+    expect(en).toContain('My reference: TQ-PKEA.');
+    expect(en).not.toMatch(FR_MOTS);
+    const ar = captureWhatsappText(p, 'ar');
+    expect(ar).toContain('مرجعي: TQ-PKEA.');
+    expect(ar).not.toMatch(FR_MOTS);
+    expect(captureWhatsappText({ fullName: '', city: '' }, 'en')).not.toContain('undefined');
+  });
+  it('caseStudyWhatsappText : 3 locales, réf. exacte, sans puissance inventée', () => {
+    const r = { ville: 'Casablanca', ref: '400' };
+    expect(caseStudyWhatsappText(r, 'en')).toContain('(ref. 400)');
+    expect(caseStudyWhatsappText(r, 'en')).not.toContain('undefined');
+    expect(caseStudyWhatsappText(r, 'ar')).toContain('المرجع 400');
+    expect(caseStudyWhatsappText(r, 'fr')).toBe(caseStudyWhatsappText(r));
+  });
+  it('les CTA site-wide et le tunnel passent la locale de la page', () => {
+    for (const f of ['StickyCta', 'Footer', 'Header']) {
+      const src = readFileSync(fileURLToPath(new URL(`../src/components/${f}.astro`, import.meta.url)), 'utf-8');
+      expect(src, f).toContain('pageContextWhatsappText(stripLocale(Astro.url.pathname), locale)');
+    }
+    const envoi = readFileSync(fileURLToPath(new URL('../src/lib/tunnel/envoi.ts', import.meta.url)), 'utf-8');
+    expect(envoi.match(/\}, ctx\.locale\)/g)?.length).toBe(2);
+  });
+});
