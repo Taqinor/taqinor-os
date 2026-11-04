@@ -491,6 +491,8 @@ class JetonServiceResumeProblemes(BasePermission):
     non configuré = fermé."""
 
     def has_permission(self, request, view):
+        if request.method not in ('GET', 'HEAD', 'OPTIONS'):
+            return True  # aucune vue derrière : DRF répond 405, jamais 403
         attendu = settings.PROBLEMES_RESUME_TOKEN
         entete = request.META.get('HTTP_AUTHORIZATION', '')
         if not attendu or not entete.startswith('Bearer '):
