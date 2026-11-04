@@ -7,8 +7,10 @@
   stocké), troncature plutôt que rejet, résumé groupé, rétention et commande de
   lecture. Même patron que le beacon ci-dessus, d'où le module commun.
 """
+import json
 from datetime import timedelta
 from io import StringIO
+from unittest import mock
 from zoneinfo import ZoneInfo
 
 from django.contrib.auth import get_user_model
@@ -19,7 +21,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.reporting.journal_problemes import (
-    famille_navigateur, resume_problemes,
+    famille_navigateur, resume_json, resume_problemes,
 )
 from apps.reporting.models import ProblemeClient, WebVitalMetric
 from apps.reporting.services import purge_problemes_client, purge_web_vitals
@@ -454,6 +456,139 @@ class ResumeTests(TestCase):
         self._ligne(route='/recent/')
         lignes = resume_problemes(jours=7, company=self.company)
         self.assertEqual([ligne['route'] for ligne in lignes], ['/recent/'])
+
+
+class ResumeBoucleTests(TestCase):
+    """BPQ1 — le résumé JSON de la boucle quotidienne : premier/dernier cas,
+    classe du problème, tendance J-7."""
+
+    def setUp(self):
+        self.company = Company.objects.get_or_create(
+            slug='bpq1-co', defaults={'nom': 'BPQ1 Co'})[0]
+        self.user = User.objects.create_user(
+            username='bpq1_u', password='x', company=self.company)
+        self.maintenant = timezone.now()
+        patcheur = mock.patch(
+            'apps.reporting.journal_problemes._instants_demarrage', return_value=[])
+        self.demarrages = patcheur.start()
+        self.addCleanup(patcheur.stop)
+
+    def _ligne(self, il_y_a=timedelta(hours=1), **kw):
+        base = {'company': self.company, 'utilisateur': self.user,
+                'genre': 'serveur', 'methode': 'GET', 'route': '/x/',
+                'statut_reponse': 500}
+        base.update(kw)
+        ligne = ProblemeClient.objects.create(**base)
+        ProblemeClient.objects.filter(pk=ligne.pk).update(
+            created_at=self.maintenant - il_y_a)
+        return ligne
+
+    def _problemes(self, jours=1):
+        return resume_json(jours=jours, company=self.company,
+                           maintenant=self.maintenant)['problemes']
+
+    def test_forme_du_json_premier_dernier_en_heure_locale(self):
+        self._ligne(il_y_a=timedelta(hours=3))
+        self._ligne(il_y_a=timedelta(hours=1))
+        with timezone.override(ZoneInfo('Asia/Tokyo')):
+            probleme = self._problemes()[0]
+        self.assertEqual(
+            set(probleme),
+            {'genre', 'methode', 'route', 'statut_reponse', 'code', 'ecran',
+             'occurrences', 'personnes', 'premier', 'dernier', 'classe',
+             'tendance', 'exemple_request_id'})
+        self.assertEqual(probleme['occurrences'], 2)
+        self.assertEqual(probleme['personnes'], 1)
+        self.assertTrue(probleme['premier'].endswith('+09:00'))
+        self.assertLess(probleme['premier'], probleme['dernier'])
+        # Sérialisable tel quel : c'est le contrat de `--json`.
+        json.dumps(probleme)
+
+    def test_sans_explication_la_classe_est_reel(self):
+        self._ligne()
+        self._ligne(genre='script', methode='', route='', statut_reponse=None,
+                    code='TypeError')
+        for probleme in self._problemes():
+            self.assertEqual(probleme['classe'], 'reel')
+
+    def test_classe_deploiement_dans_les_3_min_apres_un_demarrage(self):
+        self.demarrages.return_value = [
+            self.maintenant - timedelta(hours=1, minutes=2)]
+        self._ligne(route='/juste-apres/')
+        self._ligne(route='/reseau/', genre='reseau', statut_reponse=None,
+                    code='ERR_NETWORK')
+        self._ligne(route='/trop-tard/', il_y_a=timedelta(minutes=50))
+        self._ligne(route='/avant/', il_y_a=timedelta(hours=2))
+        classes = {p['route']: p['classe'] for p in self._problemes()}
+        self.assertEqual(classes['/juste-apres/'], 'deploiement')
+        self.assertEqual(classes['/reseau/'], 'deploiement')
+        self.assertEqual(classes['/trop-tard/'], 'reel')
+        self.assertEqual(classes['/avant/'], 'reel')
+
+    def test_une_occurrence_inexpliquee_garde_le_probleme_reel(self):
+        self.demarrages.return_value = [
+            self.maintenant - timedelta(hours=1, minutes=1)]
+        self._ligne()
+        self._ligne(il_y_a=timedelta(minutes=10))
+        self.assertEqual(self._problemes()[0]['classe'], 'reel')
+
+    def test_classe_connectivite_quatre_routes_en_moins_de_2_s(self):
+        for i in range(4):
+            self._ligne(route=f'/r{i}/', genre='reseau', statut_reponse=None,
+                        code='ERR_NETWORK',
+                        il_y_a=timedelta(hours=1, milliseconds=-400 * i))
+        classes = {p['classe'] for p in self._problemes()}
+        self.assertEqual(classes, {'connectivite'})
+
+    def test_trois_routes_ou_une_autre_personne_ne_font_pas_une_coupure(self):
+        autre = User.objects.create_user(
+            username='bpq1_u2', password='x', company=self.company)
+        for i, personne in enumerate((self.user, self.user, self.user, autre)):
+            self._ligne(route=f'/r{i}/', genre='reseau', statut_reponse=None,
+                        code='ERR_NETWORK', utilisateur=personne,
+                        il_y_a=timedelta(hours=1, milliseconds=-400 * i))
+        self.assertEqual({p['classe'] for p in self._problemes()}, {'reel'})
+
+    def test_classe_maintenance_503_dans_une_fenetre_ntobs9(self):
+        from core.maintenance_windows import MaintenanceWindow
+        MaintenanceWindow.objects.create(
+            company=None, debute_le=self.maintenant - timedelta(hours=2),
+            termine_le=self.maintenant - timedelta(minutes=30))
+        self._ligne(statut_reponse=503, route='/dedans/')
+        self._ligne(statut_reponse=503, route='/apres/', il_y_a=timedelta(minutes=10))
+        self._ligne(statut_reponse=500, route='/autre-statut/')
+        classes = {p['route']: p['classe'] for p in self._problemes()}
+        self.assertEqual(classes['/dedans/'], 'maintenance')
+        self.assertEqual(classes['/apres/'], 'reel')
+        self.assertEqual(classes['/autre-statut/'], 'reel')
+
+    def test_tendance_meme_signature_la_semaine_precedente(self):
+        self._ligne(route='/recurrent/')
+        for _ in range(2):
+            self._ligne(route='/recurrent/', il_y_a=timedelta(days=7, hours=1))
+        self._ligne(route='/nouveau/')
+        self._ligne(route='/nouveau/', ecran='/autre', il_y_a=timedelta(days=7, hours=1))
+        tendances = {p['route']: p['tendance'] for p in self._problemes()}
+        self.assertEqual(tendances['/recurrent/'],
+                         {'semaine_precedente': True, 'occurrences': 2})
+        self.assertEqual(tendances['/nouveau/'],
+                         {'semaine_precedente': False, 'occurrences': 0})
+
+    def test_redis_absent_ne_casse_jamais_le_resume(self):
+        mock.patch.stopall()
+        self._ligne()
+        with mock.patch('apps.reporting.journal_problemes._client_redis',
+                        side_effect=OSError('pas de redis')):
+            self.assertEqual(self._problemes()[0]['classe'], 'reel')
+
+    def test_commande_json(self):
+        self._ligne(route='/cmd/', il_y_a=timedelta(minutes=5))
+        flux = StringIO()
+        call_command('problemes_utilisateurs', '--json', '--jours', '1',
+                     '--company', 'bpq1-co', stdout=flux)
+        document = json.loads(flux.getvalue())
+        self.assertEqual(document['jours'], 1)
+        self.assertEqual(document['problemes'][0]['route'], '/cmd/')
 
 
 class RetentionTests(TestCase):

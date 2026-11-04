@@ -10,10 +10,13 @@ Run (dans le conteneur django_core, ou avec les variables DB) :
   python manage.py problemes_utilisateurs                      # 7 j, toutes sociétés
   python manage.py problemes_utilisateurs --jours 1
   python manage.py problemes_utilisateurs --company taqinor-demo
+  python manage.py problemes_utilisateurs --jours 1 --json     # boucle quotidienne (BPQ1)
 """
+import json
+
 from django.core.management.base import BaseCommand, CommandError
 
-from apps.reporting.journal_problemes import resume_problemes
+from apps.reporting.journal_problemes import resume_json, resume_problemes
 
 
 class Command(BaseCommand):
@@ -30,6 +33,9 @@ class Command(BaseCommand):
         parser.add_argument(
             '--company', default=None,
             help="Slug d'une seule société (défaut : toutes).")
+        parser.add_argument(
+            '--json', action='store_true', dest='en_json',
+            help="Résumé JSON : classe du problème et tendance J-7 comprises.")
 
     def handle(self, *args, **options):
         from authentication.models import Company
@@ -45,6 +51,11 @@ class Command(BaseCommand):
                 company = Company.objects.get(slug=slug)
             except Company.DoesNotExist:
                 raise CommandError(f"Aucune société avec le slug '{slug}'.")
+
+        if options.get('en_json'):
+            self.stdout.write(json.dumps(
+                resume_json(jours=jours, company=company), ensure_ascii=False))
+            return
 
         lignes = resume_problemes(jours=jours, company=company)
         portee = f"société {slug}" if slug else "toutes sociétés"
