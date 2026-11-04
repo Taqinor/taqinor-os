@@ -105,7 +105,7 @@ import ProfessionnelBlocF2A1 from '../components/blocs/ProfessionnelBlocF2A1.ast
     <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Résidentiel' }]} />
 
     {/* ── 1 · HÉROS CINÉMATOGRAPHIQUE (~92svh) — la photo est le protagoniste ── */}
-    <section class="relative isolate flex min-h-[92svh] flex-col justify-end overflow-hidden text-white">
+    <section class="relative isolate flex min-h-[92svh] flex-col justify-start overflow-hidden text-white sm:justify-end">
       <div class="v2-hero-media absolute inset-0 -z-10">
         {/* Affiche héro plein cadre (élément LCP) — JAMAIS de .v3-grade ici
             (protection LCP) : seul le scrim relevé porte la chaleur. */}
@@ -120,7 +120,7 @@ import ProfessionnelBlocF2A1 from '../components/blocs/ProfessionnelBlocF2A1.ast
       <ProfessionnelDiv77FB />
 
       {/* Contenu ancré BAS — eyebrow rétrogradé en lune (discipline laiton) */}
-      <div class="mx-auto w-full max-w-6xl px-4 pb-24 pt-32 sm:pb-32">
+      <div class="mx-auto w-full max-w-6xl px-4 pb-24 pt-16 sm:pb-32 sm:pt-32">
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">Villas · appartements</p>
         <h1 class="display v2-page-title cine-in cine-in-1 mt-5 max-w-[18ch]">Votre facture connaît déjà la taille de votre installation</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">

@@ -86,7 +86,7 @@ import ProfessionnelBlocB4F1 from '../../components/blocs/ProfessionnelBlocB4F1.
     <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'Residential' }]} />
 
     {/* ── 1 · CINEMATIC HERO (~92svh) — the photo is the protagonist ── */}
-    <section class="relative isolate flex min-h-[92svh] flex-col justify-end overflow-hidden text-white">
+    <section class="relative isolate flex min-h-[92svh] flex-col justify-start overflow-hidden text-white sm:justify-end">
       <div class="v2-hero-media absolute inset-0 -z-10">
         {/* Full-frame hero image (LCP element) — NEVER .v3-grade here
             (LCP protection): only the raised scrim carries the warmth. */}
@@ -101,7 +101,7 @@ import ProfessionnelBlocB4F1 from '../../components/blocs/ProfessionnelBlocB4F1.
       <ProfessionnelDiv77FB />
 
       {/* Content anchored LOW — eyebrow demoted to lune (brass discipline) */}
-      <div class="mx-auto w-full max-w-6xl px-4 pb-24 pt-32 sm:pb-32">
+      <div class="mx-auto w-full max-w-6xl px-4 pb-24 pt-16 sm:pb-32 sm:pt-32">
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">Villas · apartments</p>
         <h1 class="display v2-page-title cine-in cine-in-1 mt-5 max-w-[18ch]">Your bill already knows the size of your installation</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">

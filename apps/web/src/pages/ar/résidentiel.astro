@@ -104,7 +104,7 @@ const investRangeHigh = formatMAD(Math.max(...brackets.map((b) => b.investHigh))
     <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'سكني' }]} />
 
     {/* ── 1 · HÉROS CINÉMATOGRAPHIQUE (~92svh) — الصورة هي النور ── */}
-    <section class="relative isolate flex min-h-[92svh] flex-col justify-end overflow-hidden text-white">
+    <section class="relative isolate flex min-h-[92svh] flex-col justify-start overflow-hidden text-white sm:justify-end">
       <div class="v2-hero-media absolute inset-0 -z-10">
         {/* عنصر LCP — لا v3-grade هنا أبداً */}
         <Picture name="crepuscule-penthouse" alt="" widths={[1600, 1024, 640]} ratio={4 / 3} sizes="100vw"
@@ -117,7 +117,7 @@ const investRangeHigh = formatMAD(Math.max(...brackets.map((b) => b.investHigh))
       <ProfessionnelDiv77FB />
 
       {/* المحتوى مُثبَّت أسفل — eyebrow مُخفَّض إلى lune (انضباط النحاس) */}
-      <div class="mx-auto w-full max-w-6xl px-4 pb-24 pt-32 sm:pb-32">
+      <div class="mx-auto w-full max-w-6xl px-4 pb-24 pt-16 sm:pb-32 sm:pt-32">
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">فيلات · شقق</p>
         <h1 class="display v2-page-title cine-in cine-in-1 mt-5 max-w-[18ch]">فيلا، فاتورتها، سطحها: ثلاث معطيات، تحديد مقاس واحد</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
