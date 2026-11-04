@@ -2,7 +2,7 @@
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: 6158e5344eb0fe666a38a3d159d76f4c414ee3c0b9753b090790880d54a0141d
-Plan fingerprint: 52b6c3ca7f6d02090dc88772266ebc4ecb13a20e06d29a9123af70dce811a6f2
+Plan fingerprint: bad38f2e1439dd7a2463653b49815c691a364ef7f3fdb8f6b9accab3c51be2b0
 
 
 
@@ -594,7 +594,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1315)**
+**Done (1316)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -785,6 +785,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `BPQ4` — [reporting/journal]
 - `BPQ5` — [skills/problemes-prod]
 - `BPQ6` — [core/health + frontend/shell]
+- `BPQ7` — [frontend/shell]
 - `BPQ8` — [docs/problemes-prod]
 - `BPQ9` — [core/observabilite]
 - `BPQ10` — [core/observabilite]
@@ -1912,7 +1913,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT109` — `reporting/insights.py` (rentabilité chantier) : « facturé » = factures ÉMISES de la…
 - `VTAG1` — [GATED: décision fondateur]
 
-**Open — to build (124)**
+**Open — to build (123)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -1962,7 +1963,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `AICM2` — Réglage de confidentialité du compte claude.ai
 - `AICM3` — Avis juriste loi 09-08 (transfert hors Maroc)
 - `AUD504` — [GATED: coût prestataire — décision fondateur]
-- `BPQ7` — [frontend/shell]
 - `BPQ12` — [core/health]
 - `CADM1` — Relecture darija par un locuteur natif
 - `CADM2` — Déclaration CNDP du fichier prospects CRM + récépissé

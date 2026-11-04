@@ -9,8 +9,6 @@ import {
 import DateRangeBar from './DateRangeBar'
 import { presetRange, previousRange, computeDelta, formatDeltaPct } from './dateRange'
 import SyncStatusBanner from './SyncStatusBanner'
-// FIXPUB4 — bandeau « version périmée » (réutilise le SW existant).
-import UpdateBanner from './UpdateBanner'
 import LoadErrorNotice from './LoadErrorNotice'
 import { markLoadError } from './loadErrors'
 
@@ -126,9 +124,6 @@ export default function ActionsLogScreen() {
       <div className="page-header">
         <h2>Journal d&apos;actions</h2>
       </div>
-
-      {/* FIXPUB4 — bandeau « nouvelle version disponible » (SW existant). */}
-      <UpdateBanner />
 
       {/* PUB41 — bandeau global « Meta ne répond plus… » (fraîcheur/panne). */}
       <SyncStatusBanner />
