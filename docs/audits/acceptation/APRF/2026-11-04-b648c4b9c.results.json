@@ -1,0 +1,56 @@
+{
+  "sha": "b648c4b9c3b0b91036b3fd3ad118735a1943eb21",
+  "date": "2026-11-04",
+  "groupe": "APRF",
+  "verdict": "PASS",
+  "couvre": [
+    "APRF42"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P2.3.devis_N_3N",
+      "taches": [
+        "APRF42"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-APRF-P2.3.devis_N_3N.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P2.3.leads_N_3N",
+      "taches": [
+        "APRF42"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-APRF-P2.3.leads_N_3N.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}

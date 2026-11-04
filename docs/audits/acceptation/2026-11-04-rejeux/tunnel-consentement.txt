@@ -1,0 +1,19 @@
+none REP /api/capture-lead 200 {"ok":true,"qualified":true}
+none FIN Recevez votre estimation solaire / Votre étude gratuite / SOLUTIONS / RESSOURCES / CONTACT / INSTALLATION SOLAIRE PAR VILLE
+none POSTS [{"u":"/api/funnel-beacon","ads":null},{"u":"/api/funnel-beacon","ads":null},{"u":"/api/funnel-beacon","ads":null},{"u":"/api/capture-lead","ads":null,"cles":["consent","eventId"]},{"u":"/api/funnel-beacon","ads":null}]
+none {"fb":true,"avant":{"q":[],"c":null},"apres":{"q":[],"c":null},"tiers":[]}
+refuse REP /api/capture-lead 200 {"ok":true,"qualified":true}
+refuse FIN Recevez votre estimation solaire / Votre étude gratuite / SOLUTIONS / RESSOURCES / CONTACT / INSTALLATION SOLAIRE PAR VILLE
+refuse POSTS [{"u":"/api/funnel-beacon","ads":null},{"u":"/api/funnel-beacon","ads":null},{"u":"/api/funnel-beacon","ads":null},{"u":"/api/capture-lead","ads":"denied","cles":["consent","eventId","adsConsent"]},{"u":"/api/funnel-beacon","ads":null}]
+refuse {"fb":true,"avant":{"q":[],"c":null},"apres":{"q":["consent:revoke"],"c":"denied"},"tiers":[]}
+accept REP /api/capture-lead 200 {"ok":true,"qualified":true}
+accept FIN Recevez votre estimation solaire / Votre étude gratuite / SOLUTIONS / RESSOURCES / CONTACT / INSTALLATION SOLAIRE PAR VILLE
+accept POSTS [{"u":"/api/visite","ads":null,"cles":[]},{"u":"/api/funnel-beacon","ads":null},{"u":"/api/funnel-beacon","ads":null},{"u":"/api/funnel-beacon","ads":null},{"u":"/api/capture-lead","ads":"granted","cles":["consent","eventId","adsConsent"]},{"u":"/api/funnel-beacon","ads":null},{"u":"/api/visite","ads":null,"cles":[]}]
+accept {"fb":true,"avant":{"q":[],"c":null},"apres":{"q":["consent:grant","init:845710231783646","track:PageView","track:Lead"],"c":"granted"},"tiers":["connect.facebook.net/en_US/fbevents.js"]}
+accept REP /api/visite 200 
+accept REP /api/visite 200 
+volte REP /api/capture-lead 200 {"ok":true,"qualified":true}
+volte FIN Recevez votre estimation solaire / Votre étude gratuite / SOLUTIONS / RESSOURCES / CONTACT / INSTALLATION SOLAIRE PAR VILLE
+volte POSTS [{"u":"/api/funnel-beacon","ads":null},{"u":"/api/funnel-beacon","ads":null},{"u":"/api/funnel-beacon","ads":null},{"u":"/api/capture-lead","ads":"granted","cles":["consent","eventId","adsConsent"]},{"u":"/api/funnel-beacon","ads":null}]
+volte {"fb":true,"avant":{"q":[],"c":null},"apres":{"q":["consent:grant","init:845710231783646","track:PageView","track:Lead"],"c":"granted"},"tiers":["connect.facebook.net/en_US/fbevents.js"]}
+refuse {"fb":true,"avant":{"q":[],"c":null},"apres":{"q":[],"c":"denied"},"tiers":[]}

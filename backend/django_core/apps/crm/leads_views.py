@@ -20,6 +20,7 @@ from . import schema_docs as sd
 from .params_requete import (
     corps_objet, date_param, entier_param, rejeter_param_repete, texte_param,
     valider_pagination)
+from apps.roles.permissions import DroitDeLaGrille  # ACVI3 : refus nommé
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin, HasPermissionOrLegacy
 import logging
 
@@ -86,7 +87,7 @@ class PointContactViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
     def get_permissions(self):
         # ACVI3 (D-ACVI-2 = portée) — lecture sous `crm_voir`.
         if self.action in READ_ACTIONS:
-            return [HasPermissionOrLegacy('crm_voir')()]
+            return [DroitDeLaGrille('crm_voir')()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):

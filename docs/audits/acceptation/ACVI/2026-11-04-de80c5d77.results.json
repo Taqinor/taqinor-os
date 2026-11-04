@@ -1,0 +1,542 @@
+{
+  "sha": "de80c5d77b3839870dd06bd57d05ffdbc2a45851",
+  "date": "2026-11-04",
+  "groupe": "ACVI",
+  "verdict": "PASS",
+  "couvre": [
+    "ACVI2",
+    "ACVI3",
+    "ACVI6",
+    "ACVI8",
+    "ACVI10",
+    "ACVI11",
+    "ACVI13",
+    "ACVI24",
+    "ACVI31",
+    "ACVI36",
+    "ACVI37",
+    "ACVI38",
+    "ACVI40",
+    "ACVI43",
+    "ACVI51",
+    "ACVI52",
+    "ACVI53",
+    "ACVI54",
+    "ACVI63",
+    "ACVI76",
+    "ACVI88",
+    "ACVI89",
+    "ACVI97",
+    "ACVI98"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PA1.05.visite_hors_portee",
+      "taches": [
+        "ACVI2"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ACVI-PA1.05.visite_hors_portee.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA1.03.lectures_crm_droit",
+      "taches": [
+        "ACVI3"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ACVI-PA1.03.lectures_crm_droit.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA1.06.pieces_hors_portee",
+      "taches": [
+        "ACVI6"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ACVI-PA1.06.pieces_hors_portee.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA1.07.valideur_borne",
+      "taches": [
+        "ACVI8"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ACVI-PA1.07.valideur_borne.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA1.08.attribution_portee",
+      "taches": [
+        "ACVI10"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ACVI-PA1.08.attribution_portee.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA1.01.meta_corbeille",
+      "taches": [
+        "ACVI11"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ACVI-PA1.01.meta_corbeille.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA1.01.proprietaire_doublon_vivant",
+      "taches": [
+        "ACVI13"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ACVI-PA1.01.proprietaire_doublon_vivant.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA1.03.ticket_cadence",
+      "taches": [
+        "ACVI88"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ACVI-PA1.03.ticket_cadence.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA1.04.empreinte_opposition",
+      "taches": [
+        "ACVI43"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ACVI-PA1.04.empreinte_opposition.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA1.04.levee_reprend",
+      "taches": [
+        "ACVI52"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ACVI-PA1.04.levee_reprend.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA1.05.whatsapp_visite_oppose",
+      "taches": [
+        "ACVI89"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ACVI-PA1.05.whatsapp_visite_oppose.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA1.08.whatsapp_devis_oppose",
+      "taches": [
+        "ACVI98"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ACVI-PA1.08.whatsapp_devis_oppose.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA1.05.visite_arrete_contact",
+      "taches": [
+        "ACVI37"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ACVI-PA1.05.visite_arrete_contact.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA1.08.froid_arrete_filet",
+      "taches": [
+        "ACVI38"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ACVI-PA1.08.froid_arrete_filet.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA1.04.annuler_touche_archive",
+      "taches": [
+        "ACVI40"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ACVI-PA1.04.annuler_touche_archive.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA1.08.rdv_annule_portes",
+      "taches": [
+        "ACVI24"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ACVI-PA1.08.rdv_annule_portes.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA1.02.patch_owner_effets",
+      "taches": [
+        "ACVI31",
+        "ACVI51"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ACVI-PA1.02.patch_owner_effets.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA1.08.restaurer_pose_touche",
+      "taches": [
+        "ACVI36"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ACVI-PA1.08.restaurer_pose_touche.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA1.08.conflit_detail",
+      "taches": [
+        "ACVI76"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ACVI-PA1.08.conflit_detail.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA1.08.kwh_contredit",
+      "taches": [
+        "ACVI97"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ACVI-PA1.08.kwh_contredit.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA1.gabarits_en_masse",
+      "taches": [
+        "ACVI53"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ACVI-PA1.gabarits_en_masse.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA1.touche_sans_login",
+      "taches": [
+        "ACVI54"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ACVI-PA1.touche_sans_login.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA1.05.reservation_publique",
+      "taches": [
+        "ACVI63"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ACVI-PA1.05.reservation_publique.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}

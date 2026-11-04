@@ -100,6 +100,18 @@ class LesTroisCheminsProduisentLaMemeRepriseTests(_Base):
         self.assertTrue(lead.activites.filter(
             body__icontains='opposition levée').exists())
 
+    def test_lever_l_opposition_sans_historique_trace_la_reprise(self):
+        """ERR-ACVI52 — lead sans historique : le repli trace aussi la reprise."""
+        lead = Lead.objects.create(
+            company=self.company, nom='Sans historique', owner=self.acteur,
+            telephone='+212661999052', ne_plus_contacter=True)
+        resp = self._api().patch(
+            f'{LEADS_URL}{lead.pk}/', {'ne_plus_contacter': False}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertTrue(lead.relance_etapes.filter(statut='a_faire').exists())
+        self.assertTrue(lead.activites.filter(
+            body__icontains='opposition levée').exists())
+
     def test_chemin_2_le_lot_unset_perdu_pose_la_meme(self):
         lead = self._lead_perdu()
         resp = self._api().post(

@@ -1,0 +1,100 @@
+{
+  "sha": "ea0f47463d3ee848163572e45f0162440470ff32",
+  "date": "2026-11-04",
+  "groupe": "AANA",
+  "verdict": "PASS",
+  "couvre": [
+    "AANA74"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P2.imports_rapportes",
+      "taches": [
+        "AANA74"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-AANA-P2.imports_rapportes.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P3.avoir_total",
+      "taches": [
+        "AANA74"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-AANA-P3.avoir_total.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P5.classement_revision",
+      "taches": [
+        "AANA74"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-AANA-P5.classement_revision.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P7.societe_b",
+      "taches": [
+        "AANA74"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-AANA-P7.societe_b.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}

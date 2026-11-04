@@ -1,0 +1,18 @@
+creation_chantier : auto (signal) : artefact Installation ; parcours {'auto': 'PASS', 'checkpoint': 'PASS', 'aval': 'NA'} ; règles aval à observer : Les réservations de stock du chantier sont semées depuis le devis. ; Le dossier 82-21 d'un chantier C&I est ouvert en constitution.
+planning_intervention : POST /api/django/installations/interventions/ -> 201 ; parcours {'auto': 'NA', 'checkpoint': 'PASS', 'aval': 'NA'} ; règles aval à observer : Un report de rendez-vous est enregistré avec son motif. ; Le démarrage est refusé sans les contrôles de sécurité.
+checklist_execution : POST /api/django/installations/chantiers/673/cocher-checklist/ -> 400 ; parcours {'auto': 'NA', 'checkpoint': 'FAIL', 'aval': 'NA'} ; corps vide envoyé ({"cle":["Ce champ est obligatoire."],"error":{"code":"validation_error","message":"Ce champ est obligatoire.","fields":{"cle":["Ce champ est obligatoire."]},"re) : fournir --corps {"checklist_execution": {...}}; règles aval à observer : La checklist complète conditionne le passage à l'étape suivante.
+avancement_etape : POST /api/django/installations/chantiers/673/avancer-etape/ -> 409 ; parcours {'auto': 'NA', 'checkpoint': 'PASS', 'aval': 'NA'} ; corps vide envoyé ({"detail":"Aucune étape configurée."}) : fournir --corps {"avancement_etape": {...}}; règles aval à observer : Les gates de l'étape (checklist, acompte, dossier) bloquent la transition.
+mise_en_service : POST /api/django/installations/chantiers/673/mise-en-service/ -> 200 ; parcours {'auto': 'NA', 'checkpoint': 'PASS', 'aval': 'NA'} ; règles aval à observer : La consommation des réservations sort le matériel du stock à « Installé ».
+reception_chantier : POST /api/django/installations/chantiers/673/reception-definitive/ -> 200 ; parcours {'auto': 'NA', 'checkpoint': 'PASS', 'aval': 'NA'} ; règles aval à observer : `chantier_receptionne` : proposition d'un contrat d'entretien au commercial. ; `chantier_receptionne` : production attendue du monitoring semée. ; Le solde à facturer est notifié.
+parc_sav : auto (signal) : artefact Equipement ; parcours {'auto': 'PASS', 'checkpoint': 'PASS', 'aval': 'NA'} ; règles aval à observer : Une date de réception corrigée recale le parc.
+ticket_sav : POST /api/django/sav/tickets/ -> 201 ; parcours {'auto': 'NA', 'checkpoint': 'PASS', 'aval': 'NA'} ; règles aval à observer : L'échéance SLA du ticket est posée à l'ouverture.
+Hors enregistrement : creation_chantier : jouée, sans tâche à couvrir (auto (signal) : artefact Installation)
+Hors enregistrement : planning_intervention : jouée, sans tâche à couvrir (POST /api/django/installations/interventions/ -> 201)
+Hors enregistrement : checklist_execution : jouée, sans tâche à couvrir (POST /api/django/installations/chantiers/673/cocher-checklist/ -> 400)
+Hors enregistrement : avancement_etape : jouée, sans tâche à couvrir (POST /api/django/installations/chantiers/673/avancer-etape/ -> 409)
+Hors enregistrement : mise_en_service : jouée, sans tâche à couvrir (POST /api/django/installations/chantiers/673/mise-en-service/ -> 200)
+Hors enregistrement : reception_chantier : jouée, sans tâche à couvrir (POST /api/django/installations/chantiers/673/reception-definitive/ -> 200)
+Hors enregistrement : parc_sav : jouée, sans tâche à couvrir (auto (signal) : artefact Equipement)
+Hors enregistrement : ticket_sav : jouée, sans tâche à couvrir (POST /api/django/sav/tickets/ -> 201)
+Base inchangée (transaction annulée) : 439 lignes avant et après.
+Aucun enregistrement écrit (aucune étape jouée ne porte de tâche).

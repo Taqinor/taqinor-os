@@ -1,0 +1,149 @@
+{
+  "sha": "ea0f47463d3ee848163572e45f0162440470ff32",
+  "date": "2026-11-04",
+  "groupe": "AARG",
+  "verdict": "PASS",
+  "couvre": [
+    "AARG6",
+    "AARG10",
+    "AARG29",
+    "AARG33",
+    "AARG46",
+    "AARG57"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PA5.retour_installe",
+      "taches": [
+        "AARG46"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-AARG-PA5.retour_installe.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P.factures_sans_carte",
+      "taches": [
+        "AARG10"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-AARG-P.factures_sans_carte.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA4.08.reimport_partiel",
+      "taches": [
+        "AARG33"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-AARG-PA4.08.reimport_partiel.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA4.08.j7_domicile",
+      "taches": [
+        "AARG6"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-AARG-PA4.08.j7_domicile.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA4.03.reliquat_revision",
+      "taches": [
+        "AARG29"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-AARG-PA4.03.reliquat_revision.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA4.11.escompte_avoir",
+      "taches": [
+        "AARG57"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-AARG-PA4.11.escompte_avoir.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}

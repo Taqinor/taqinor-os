@@ -152,6 +152,14 @@ _EXPLICATIONS = {
             "ou rejouez à l'identique pour récupérer la réponse mémorisée."),
         'http_status': status.HTTP_409_CONFLICT,
     },
+    'state_conflict': {
+        'titre': "État incompatible",
+        'description': (
+            "L'état actuel de la ressource s'oppose à l'opération demandée."),
+        'action': (
+            "Relisez la ressource, corrigez son état, puis rejouez l'appel."),
+        'http_status': status.HTTP_409_CONFLICT,
+    },
     'api_error': {
         'titre': 'Erreur applicative',
         'description': (

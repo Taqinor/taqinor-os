@@ -218,6 +218,14 @@ describe('WAUD12 — consentement avant tout cookie', () => {
     expect(file().indexOf('consent:grant')).toBeLessThan(file().indexOf('init:845710231783646'));
   });
 
+  it('pixel, Refuser puis Accepter sur la page : aucun revoke dans la file, le pixel part', () => {
+    lancerPixel();
+    choisir('denied');
+    expect(file()).toEqual([]);
+    choisir('granted');
+    expect(file()).toEqual(['consent:grant', 'init:845710231783646', 'track:PageView']);
+  });
+
   it('pixel, Accepter sur la page : grant, PageView, Lead en attente avec son eventId, puis fbevents.js', () => {
     lancerPixel();
     fen.tqPixelTrack?.('Lead', {}, 'ev-1');

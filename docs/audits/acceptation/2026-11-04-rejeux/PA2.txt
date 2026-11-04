@@ -1,0 +1,23 @@
+PA2.1 : POST /api/django/calepinage/calepinages/ -> 201 ; parcours {'auto': 'NA', 'checkpoint': 'PASS', 'aval': 'PASS'} ; refus_409 : action rejouée -> 409
+PA2.2 : GET /api/django/calepinage/calepinages/211/releve/ -> 200 ; parcours {'auto': 'NA', 'checkpoint': 'FAIL', 'aval': 'NA'} ; règles aval à observer : choix_explicite
+PA2.3 : GET /api/django/calepinage/calepinages/211/layout/ -> 200 ; parcours {'auto': 'NA', 'checkpoint': 'PASS', 'aval': 'NA'} ; règles aval à observer : preserve_manuel
+PA2.4 : GET /api/django/calepinage/calepinages/211/variantes/ -> 200 ; parcours {'auto': 'NA', 'checkpoint': 'FAIL', 'aval': 'NA'} ; règles aval à observer : non_propage
+PA2.5 : non jouée ; parcours {'auto': 'NA', 'checkpoint': 'NA', 'aval': 'NA'} ; aucune action de vue n'appelle la fonction d'entrée (index AST); aucune route API pour la fonction d'entrée, ses appelants ni le déclencheur : non jouée
+PA2.6 : non jouée ; parcours {'auto': 'NA', 'checkpoint': 'NA', 'aval': 'NA'} ; 1 action(s) de vue appelante(s), aucune route DRF; aucune route API pour la fonction d'entrée, ses appelants ni le déclencheur : non jouée
+PA2.7 : POST /api/django/calepinage/calepinages/211/variantes/211/retenir/ -> 404 ; parcours {'auto': 'NA', 'checkpoint': 'FAIL', 'aval': 'NA'} ; corps vide envoyé ({"detail":"Variante introuvable."}) : fournir --corps {"PA2.7": {...}}; règles aval à observer : ecrase
+PA2.8 : POST /api/django/calepinage/calepinages/211/generer-devis/ -> 409 ; parcours {'auto': 'NA', 'checkpoint': 'PASS', 'aval': 'NA'} ; corps vide envoyé ({"detail":"kWh déclarés incohérents avec les factures — corriger la fiche du lead","code":"kwh_incoherent_factures"}) : fournir --corps {"PA2.8": {...}}; règles aval à observer : reference
+PA2.9 : POST /api/django/calepinage/calepinages/211/sync-devis/ -> 409 ; parcours {'auto': 'NA', 'checkpoint': 'PASS', 'aval': 'NA'} ; corps vide envoyé ({"devis":"Aucun devis n'est rattaché à ce calepinage : utilisez d'abord « Générer le devis »."}) : fournir --corps {"PA2.9": {...}}; règles aval à observer : preserve_manuel
+PA2.10 : POST /api/django/calepinage/calepinages/211/pack-technique/ -> 409 ; parcours {'auto': 'NA', 'checkpoint': 'NA', 'aval': 'NA'} ; corps vide envoyé ({"planche":"Dossier technique : la pièce « Planche de calepinage » ne se rend pas — Aucune géométrie enregistrée : la planche se compose du contour et des pans ) : fournir --corps {"PA2.10": {...}}; règles aval à observer : fige
+PA2.11 : non jouée ; parcours {'auto': 'NA', 'checkpoint': 'NA', 'aval': 'NA'} ; 1 action(s) de vue appelante(s), aucune route DRF; aucune route API pour la fonction d'entrée, ses appelants ni le déclencheur : non jouée
+PA2.S1 : auto (evenement) : artefact Calepinage ; parcours {'auto': 'PASS', 'checkpoint': 'PASS', 'aval': 'NA'} ; règles aval à observer : reference ; preserve_manuel
+PA2.S2 : auto (evenement) : artefact Calepinage ; parcours {'auto': 'PASS', 'checkpoint': 'PASS', 'aval': 'NA'} ; règles aval à observer : reference
+Hors enregistrement : PA2.2 : jouée, sans tâche à couvrir (GET /api/django/calepinage/calepinages/211/releve/ -> 200)
+Hors enregistrement : PA2.4 : jouée, sans tâche à couvrir (GET /api/django/calepinage/calepinages/211/variantes/ -> 200)
+Hors enregistrement : PA2.5 : non jouée (aucune action de vue n'appelle la fonction d'entrée (index AST); aucune route API pour la fonction d'entrée, ses appelants ni le déclencheur : non jouée)
+Hors enregistrement : PA2.6 : non jouée (1 action(s) de vue appelante(s), aucune route DRF; aucune route API pour la fonction d'entrée, ses appelants ni le déclencheur : non jouée)
+Hors enregistrement : PA2.7 : jouée, sans tâche à couvrir (POST /api/django/calepinage/calepinages/211/variantes/211/retenir/ -> 404)
+Hors enregistrement : PA2.8 : jouée, sans tâche à couvrir (POST /api/django/calepinage/calepinages/211/generer-devis/ -> 409)
+Hors enregistrement : PA2.11 : non jouée (1 action(s) de vue appelante(s), aucune route DRF; aucune route API pour la fonction d'entrée, ses appelants ni le déclencheur : non jouée)
+Hors enregistrement : PA2.S2 : jouée, sans tâche à couvrir (auto (evenement) : artefact Calepinage)
+Base inchangée (transaction annulée) : 189 lignes avant et après.
+FAIL — C:\dev\taqinor-os\.claude\worktrees\w32-live\docs\audits\acceptation\PA2\2026-11-04-b648c4b9c.md

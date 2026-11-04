@@ -266,7 +266,7 @@
       "exemple_erreur_409": {
         "detail": "Renseignez soit un taux (%), soit un montant fixe.",
         "error": {
-          "code": "api_error",
+          "code": "state_conflict",
           "message": "Renseignez soit un taux (%), soit un montant fixe.",
           "fields": null,
           "request_id": "<request_id>"

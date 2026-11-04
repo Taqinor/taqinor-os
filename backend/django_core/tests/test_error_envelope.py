@@ -32,6 +32,12 @@ def _context(request_id=None):
 class ConflitEtatLisibleTests(SimpleTestCase):
     """ACVI76 — un refus par champ a un ``detail`` lisible, jamais un repr."""
 
+    def test_code_stable_state_conflict(self):
+        from core.conflit_etat import ConflitEtat
+        from core.exceptions import _code_for
+        self.assertEqual(_code_for(ConflitEtat({'stage': ['Refus.']})), 'state_conflict')
+        self.assertEqual(_code_for(ConflitEtat('Refus.')), 'state_conflict')
+
     def test_detail_additif_et_message(self):
         from core.conflit_etat import ConflitEtat
         from core.exceptions import _message_for

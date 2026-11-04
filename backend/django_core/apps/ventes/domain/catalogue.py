@@ -878,7 +878,9 @@ def _exclut_panneau(d):
 # ERR-PERF-DEVIS-ATOMIC-CATALOGUE — fonction PURE du seul nom (aucune base, aucun
 # réglage) : chaque composition de taille d'un balayage reclasse tout le catalogue
 # (~86 ms pour 2 100 noms, mesuré sur ce code). Mémoïsée par nom : mêmes résultats.
-@lru_cache(maxsize=4096)
+# Plafond au-dessus de tout catalogue : un balayage cyclique au-delà du plafond ne touche plus jamais le cache
+# (mesuré le 04/11 : 8 947 produits, 313 s à 4 096 contre 16 s sans plafond ; gunicorn coupe à 120 s).
+@lru_cache(maxsize=65536)
 def classer_produit(nom):
     """Catégorie catalogue d'un produit — port de ``classifyProduct``.
 

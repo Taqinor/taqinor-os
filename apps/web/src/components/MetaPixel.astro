@@ -71,7 +71,8 @@ const pixelId = ((import.meta.env.PUBLIC_META_PIXEL_ID as string | undefined) ??
       window.tqSurChoix(demarrer, function () {
         accorde = false;
         enAttente = [];
-        try { window.fbq('consent', 'revoke'); } catch (err) {}
+        /* Jamais de revoke avant le chargement (voir l'en-tête) : refuser puis accepter garde le pixel. */
+        if (pageVueEnvoyee) { try { window.fbq('consent', 'revoke'); } catch (err) {} }
       });
       /* Pont pour les pages (tunnel /devis/mon-toit) : gardé jusqu'au choix, no-op si refusé. */
       window.tqPixelTrack = function (event, params, eventId) {

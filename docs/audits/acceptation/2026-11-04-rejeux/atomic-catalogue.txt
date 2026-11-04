@@ -1,0 +1,9 @@
+POST /api/django/ventes/devis/atomic/ (transaction annulee, 04/11/2026, pile locale, sans cProfile sauf mention)
+Lead residentiel, 2 lignes. Gunicorn : --timeout 120.
+  2 947 produits : 5,7 s (froid 20,3 s) ; commercial 7,0 s
+  5 947 produits : 14,7 s ; commercial 1,7 s
+  8 947 produits, lru_cache(4096) : 313,2 s  > 120 s
+  8 947 produits, sans plafond (patch de session) : 16,0 s
+  8 947 produits, lru_cache(65536) (ERR-PERF-DEVIS-ATOMIC-LRU) : 20,2 s
+ 12 947 produits, lru_cache(4096) : 328,1 s ; commercial 4,4 s (non remesure apres correctif)
+Sous cProfile, avant correctif : 2 836 produits 20,2 s, 290 requetes ; 5 836 produits 49,5 s, 290 requetes.
