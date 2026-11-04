@@ -298,6 +298,7 @@ import { ficheBySlug } from '../../lib/fiches';
 // LEGAL_IDENTITY (source partagée avec /mentions-legales) : jamais une seconde
 // écriture du RC ou de l'ICE sur une page cliente.
 import { identiteEmetteur } from '../../lib/nap';
+import { appliquerStatutToken, detailRefus } from '../../lib/pageToken';
 // TAILLES (ordre fondateur, 26/08/2026) — les trois tailles explorables
 // (Éco → Recommandé → Max), servies par le contrat `offres_tailles`. Fichier
 // DÉDIÉ, à l'image d'`economiesPeriodes.ts` : aucune arithmétique de taille ne
@@ -419,13 +420,7 @@ if (!rl.allowed) {
     if (res.ok) {
       data = (await res.json()) as ProposalResponse;
     } else {
-      let detail = '';
-      try {
-        const body = (await res.json()) as { detail?: string };
-        detail = typeof body.detail === 'string' ? body.detail : '';
-      } catch {
-        detail = '';
-      }
+      const detail = await detailRefus(res);
       // ── PREVIEW-V3-FIX (16/09/2026, audit C5) — LE 403 « otp_required »
       // N'ATTERRIT PLUS EN TOUTES LETTRES SOUS LES YEUX DU CLIENT.
       // `ShareLink.otp_lecture` est un réglage PAR LIEN, actif en production :
@@ -458,11 +453,7 @@ if (!rl.allowed) {
 
 // La page renvoie 404 quand le token est invalide/expiré : propre pour les bots
 // comme pour les humains (Layout est de toute façon noindex).
-if (!data && (httpStatus === 404 || httpStatus === 200)) {
-  Astro.response.status = httpStatus === 200 ? 404 : httpStatus;
-} else if (!data) {
-  Astro.response.status = httpStatus;
-}
+appliquerStatutToken(Astro.response, data, httpStatus);
 
 // ── Préparation des données d'affichage (uniquement si OK) ───────────────────
 const ok = !!data;

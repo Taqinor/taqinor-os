@@ -69,7 +69,6 @@
 5276177c451b|apps/web/src/lib/estimatorBrainV2.ts,apps/web/src/lib/estimatorBrainV3.ts
 52d63e8c1f6a|apps/web/src/pages/ar/professionnel.astro,apps/web/src/pages/ar/résidentiel.astro,apps/web/src/pages/en/professionnel.astro,apps/web/src/pages/en/résidentiel.astro,apps/web/src/pages/professionnel.astro,apps/web/src/pages/résidentiel.astro
 52d906557e7d|apps/web/src/pages/ar/parrainage.astro,apps/web/src/pages/en/parrainage.astro,apps/web/src/pages/parrainage.astro
-531c7832a676|apps/web/src/pages/proposition/[...token].astro,apps/web/src/pages/questionnaire/[token].astro,apps/web/src/pages/suivi/[token].astro
 536a01f09416|apps/web/src/pages/ar/blog/index.astro,apps/web/src/pages/blog/index.astro,apps/web/src/pages/en/blog/index.astro
 547d3043656f|apps/web/src/pages/ar/financement.astro,apps/web/src/pages/en/financement.astro,apps/web/src/pages/financement.astro,frontend/src/pages/Landing.jsx
 54b2f979ba8a|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
@@ -96,7 +95,6 @@
 79b71e43bdd7|apps/web/src/pages/ar/parrainage.astro,apps/web/src/pages/en/parrainage.astro,apps/web/src/pages/parrainage.astro
 7bb0c5d5bda0|apps/web/src/pages/ar/garanties.astro,apps/web/src/pages/en/garanties.astro,apps/web/src/pages/garanties.astro
 7c7460501181|apps/web/src/pages/ar/à-propos.astro,apps/web/src/pages/en/à-propos.astro
-7cdff2f759cb|apps/web/src/pages/proposition/[...token].astro,apps/web/src/pages/questionnaire/[token].astro
 7da87e0d82c6|apps/web/src/pages/ar/ensoleillement-maroc.astro,apps/web/src/pages/ar/impact-taqinor.astro,apps/web/src/pages/ar/methodologie-estimation.astro,apps/web/src/pages/ar/parrainage.astro,apps/web/src/pages/ar/production-mesuree.astro,apps/web/src/pages/en/ensoleillement-maroc.astro,apps/web/src/pages/en/impact-taqinor.astro,apps/web/src/pages/en/methodologie-estimation.astro,apps/web/src/pages/en/parrainage.astro,apps/web/src/pages/en/production-mesuree.astro,apps/web/src/pages/ensoleillement-maroc.astro,apps/web/src/pages/impact-taqinor.astro,apps/web/src/pages/methodologie-estimation.astro,apps/web/src/pages/parrainage.astro,apps/web/src/pages/production-mesuree.astro
 7e3d174b60ad|apps/web/src/pages/ar/pourquoi-taqinor.astro,apps/web/src/pages/en/pourquoi-taqinor.astro,apps/web/src/pages/pourquoi-taqinor.astro
 7f52f02bdb52|apps/web/src/pages/ar/ressources/10-questions-avant-de-signer.astro,apps/web/src/pages/ressources/10-questions-avant-de-signer.astro

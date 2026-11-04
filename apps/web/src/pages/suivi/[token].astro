@@ -28,6 +28,7 @@ import {
 import { whatsappLink } from '../../lib/proposition';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 import { entetePreuve } from '../api/_apiBase';
+import { appliquerStatutToken, detailRefus } from '../../lib/pageToken';
 
 const API_BASE = (import.meta.env.PUBLIC_API_BASE as string | undefined) ?? 'https://api.taqinor.ma';
 const { token } = Astro.params as { token: string };
@@ -76,13 +77,7 @@ if (!rl.allowed) {
     } else {
       // ADOC133 — le corps du refus décide de l'écran : 403 `otp_required` ⇒
       // écran de saisie du code (jamais « Ce suivi n’est pas accessible »).
-      let detail = '';
-      try {
-        const body = (await res.json()) as { detail?: unknown };
-        detail = typeof body?.detail === 'string' ? body.detail : '';
-      } catch {
-        detail = '';
-      }
+      const detail = await detailRefus(res);
       const etat = etatErreurSuivi(res.status, detail);
       otpRequis = etat === 'otp';
       errorDetail =
@@ -114,11 +109,7 @@ if (!rl.allowed) {
 }
 
 // 404 propre pour bots comme humains (Layout est de toute façon noindex).
-if (!data && (httpStatus === 404 || httpStatus === 200)) {
-  Astro.response.status = httpStatus === 200 ? 404 : httpStatus;
-} else if (!data) {
-  Astro.response.status = httpStatus;
-}
+appliquerStatutToken(Astro.response, data, httpStatus);
 
 const ok = !!data;
 const reference = data?.reference ?? '';
