@@ -1285,6 +1285,8 @@ def comptes_dormants(company, seuil_jours=90, now=None, *, clients=None):
     # contact des leads de la société par sous-requête. Un client sans
     # devis/facture est écarté EN BASE. Requêtes constantes.
     brouillon = 'brouillon'  # statut de DOCUMENT (couche séparée, règle #4)
+    from apps.ventes.selectors import devis_signes_en_vigueur  # APRF44 (ADVS37)
+    en_vigueur = devis_signes_en_vigueur(company).values('pk')
     derniere_activite = (
         LeadActivity.objects
         .filter(lead__client=OuterRef('pk'), lead__company=company)
@@ -1298,8 +1300,8 @@ def comptes_dormants(company, seuil_jours=90, now=None, *, clients=None):
         .prefetch_related(None)  # le viewset précharge pour sa liste
         .annotate(
             _dernier_devis=Max('devis__date_creation', filter=Q(
-                devis__company=company, devis__is_active=True)
-                & ~Q(devis__statut=brouillon)),
+                devis__company=company) & (Q(devis__is_active=True) | Q(
+                    devis__pk__in=en_vigueur)) & ~Q(devis__statut=brouillon)),
             _derniere_facture=Max('factures__date_emission', filter=Q(
                 factures__company=company) & ~Q(
                     factures__statut=brouillon)),
