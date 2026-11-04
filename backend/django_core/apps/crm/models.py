@@ -1981,12 +1981,6 @@ class Lead(LeadPompageMixin, SoftDeleteModel):
                 self.company_id, email=self.email, telephone=self.telephone,
                 whatsapp=self.whatsapp)
         super().save(*args, **kwargs)
-        # ERR-ACVI6-OPPOSITION (D-ACVI-6) — l'opposition suit la personne : un
-        # contact posé ou changé sur une fiche DÉJÀ opposée laisse son
-        # empreinte (idempotent, ignore_conflicts).
-        if self.ne_plus_contacter and self.company_id:
-            from .leads_doublons import poser_empreintes_opposition
-            poser_empreintes_opposition(self.company, self)
 
     class Meta:
         verbose_name = 'Lead'

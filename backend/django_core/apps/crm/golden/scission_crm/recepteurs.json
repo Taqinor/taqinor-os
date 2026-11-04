@@ -37,6 +37,7 @@
    "crm_emit_lead_created",
    "crm_dispatch_mise_en_attente",
    "crm_stop_cadence_on_archive",
+   "crm_empreinte_opposition_lead",
    "crm_client_mirror_tiers"
   ],
   "pre_save": [
