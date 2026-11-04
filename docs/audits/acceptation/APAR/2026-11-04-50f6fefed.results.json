@@ -1,0 +1,108 @@
+{
+  "sha": "50f6fefed2bc6f04dc84d8c31982102d580dfdfd",
+  "date": "2026-11-04",
+  "groupe": "APAR",
+  "verdict": "PASS",
+  "couvre": [
+    "APAR74",
+    "APAR90",
+    "APAR78",
+    "APAR79",
+    "APAR82"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PAR90.kits_250",
+      "taches": [
+        "APAR78",
+        "APAR90"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-APAR-PAR90.kits_250.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PAR90.offres_tailles_14",
+      "taches": [
+        "APAR79",
+        "APAR90"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-APAR-PAR90.offres_tailles_14.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PAR90.securite_terrain_blur",
+      "taches": [
+        "APAR82",
+        "APAR90"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-APAR-PAR90.securite_terrain_blur.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PAR90.profil_409",
+      "taches": [
+        "APAR74",
+        "APAR90"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-APAR-PAR90.profil_409.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}
