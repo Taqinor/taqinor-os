@@ -830,8 +830,9 @@ export default function DevisGenerator({
     if (linesInitialized.current || !produits.length) return
     linesInitialized.current = true
     // QJR570 — les lignes par défaut sont une composition (pas une saisie).
-    setLines(withKeys(defaultProductLines(produits).map(r => ({ ...r, compose: true }))))
-  }, [produits])
+    // ADVS47 — produit sans taux : TVA standard de la société (profil, D-APAR-1).
+    setLines(withKeys(defaultProductLines(produits, undefined, quoteLogic.tvaStandard).map(r => ({ ...r, compose: true }))))
+  }, [produits, quoteLogic.tvaStandard])
   // Chaque ligne d'un produit À BARÈME suit le compte de panneaux COURANT des
   // lignes (`retarifer_forfaits_par_panneau` du serveur), ajusté PENDANT le
   // rendu (jamais un rendu affiché au mauvais prix) ; le même tableau revient
@@ -1450,7 +1451,7 @@ export default function DevisGenerator({
     confirm, canRenameLine, renameDialog, setRenameDialog, setRenameBusy, setRenameError, produits,
     setProduits, clientId, lines, setLines, setSavingOrdreLignes, setTauxTva, setDiscountPct,
     linesTableRef, pendingFocusKey, setPendingFocusKey, setMultiMode, villaGroups, setVillaGroups,
-    appliquerMarcheEcran,
+    appliquerMarcheEcran, tvaStandard: quoteLogic.tvaStandard,
   })
 
   // AGR130 — le dimensionnement pompage vit CÔTÉ SERVEUR (aperçu AGR127,

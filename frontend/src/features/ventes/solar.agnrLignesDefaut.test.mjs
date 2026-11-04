@@ -44,3 +44,30 @@ test('AGNR27 — un rôle sans aucun produit prix connu reste sans produit (plac
   const alu = lignes.find((l) => /aluminium/i.test(l.designation))
   assert.equal(alu.produit || '', '')
 })
+
+// ADVS47 — TVA standard société sur un produit sans taux (table par défaut + retaux).
+import { retauxerLignesSansTva } from './calc/lignesDefaut.js'
+
+test('ADVS47 — produit sans taux : 14 % société à l’écran ; produit à 10 % inchangé ; sans réglage : 20', () => {
+  const cat = [
+    { id: 1, nom: 'Installation et mise en service', prix_vente: '2500', tva: null },
+    { id: 2, nom: 'Transport', prix_vente: '600', tva: '10.00' },
+  ]
+  const inst = (std) => defaultProductLines(cat, undefined, std).find((l) => String(l.produit) === '1')
+  assert.equal(inst(14).taux_tva, 14)
+  assert.equal(inst(undefined).taux_tva, 20)
+  const transport = defaultProductLines(cat, undefined, 14).find((l) => String(l.produit) === '2')
+  assert.equal(transport.taux_tva, 10)
+  assert.ok(defaultProductLines(cat, undefined, 14).every((l) => l.produit || l.taux_tva === 14))
+})
+
+test('ADVS47 — réglages société tardifs : ligne composée suit 14 %, saisie manuelle intacte', () => {
+  const cat = [{ id: 1, nom: 'Installation', prix_vente: '2500', tva: null }]
+  const l0 = defaultProductLines(cat).find((l) => String(l.produit) === '1')
+  const lignes = [{ ...l0, compose: true }, { ...l0, compose: true, tvaManuelle: true }]
+  const out = retauxerLignesSansTva(lignes, cat, 14)
+  assert.equal(out[0].taux_tva, 14)
+  assert.ok(Math.abs(out[0].prix_unit_ttc - 2500 * 1.14) < 0.01)
+  assert.equal(out[1].taux_tva, 20)
+  assert.equal(retauxerLignesSansTva(out, cat, 14), out)
+})

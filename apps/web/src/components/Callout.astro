@@ -95,4 +95,21 @@ const { type = 'info', title } = Astro.props;
   .callout__body :global(strong) {
     color: var(--color-lune, #d6dbe9);
   }
+
+  /* WAUD63 — sur une section claire (bg-blanc-azur, ex. /methodologie-estimation
+     FR/EN/AR), les teintes « lune » pensées pour le fond nuit tombaient sous
+     4,5:1 (Lighthouse color-contrast) : encre sur fond clair. */
+  :global(.bg-blanc-azur) .callout__body,
+  :global(.bg-blanc-azur) .callout--tip .callout__title {
+    color: var(--color-encre-soft, #3f4a6e);
+  }
+  :global(.bg-blanc-azur) .callout__body :global(strong) {
+    color: var(--color-encre, #0c1335);
+  }
+  :global(.bg-blanc-azur) .callout--info .callout__title {
+    color: var(--color-azur-700, #1c3494);
+  }
+  :global(.bg-blanc-azur) .callout--warning .callout__title {
+    color: var(--color-alert-600, #b3402a);
+  }
 </style>

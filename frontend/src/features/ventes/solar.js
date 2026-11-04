@@ -343,8 +343,8 @@ export function ttcExactFromHt(prixHt, tauxTva = TVA_STANDARD_DEFAUT) {
 // tel quel à l'enregistrement tant que le vendeur n'a pas tapé de prix
 // (`lignesEcranVersPayload`) — un prix catalogue repris sans retouche est
 // stocké exactement et n'est pas « négocié ».
-export function ligneProduitCatalogue(p, quantite) {
-  const taux = tauxTvaOf(p)
+export function ligneProduitCatalogue(p, quantite, tvaStandard) {
+  const taux = tauxTvaOf(p, tvaStandard)
   return {
     produit: String(p.id),
     designation: p.nom,
