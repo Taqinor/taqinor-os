@@ -164,3 +164,21 @@ export function scrubProgress(elTop: number, viewportHeight: number): number {
   const p = Math.max(0, Math.min(1, raw));
   return 1 - Math.pow(1 - p, 3); // easeOutCubic, identique aux autres count-ups
 }
+
+/**
+ * ENF19 — animation DOM partagée (InstallCounter + V2Enhance) : roule le nombre de 0 → sa valeur
+ * (easeOutCubic, 1,1 s) puis pose la valeur finale EXACTE. Une seule copie (garde ACAL345).
+ */
+export function animerChiffre(el: HTMLElement, finalText: string): void {
+  const dur = 1100;
+  let start: number | null = null;
+  function frame(t: number) {
+    if (start === null) start = t;
+    const p = Math.min(1, (t - start) / dur);
+    const e = 1 - Math.pow(1 - p, 3); // easeOutCubic
+    el.textContent = formatFrame(finalText, e);
+    if (p < 1) requestAnimationFrame(frame);
+    else el.textContent = finalText; // valeur finale exacte
+  }
+  requestAnimationFrame(frame);
+}

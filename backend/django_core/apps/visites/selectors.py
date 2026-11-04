@@ -656,18 +656,26 @@ def texture_toit_pour_lead(lead):
 
     * seule une visite **VALIDÉE** (feu vert du bureau d'études) compte — une
       visite encore en cours ou renvoyée ne doit jamais peindre un toit ;
-    * la **dernière** validée gagne (``-id`` : déterministe, aucune horloge) ;
+    * la référence doit être validée (un renvoi retire la texture) ; validée
+      sans photo, c'est la dernière validée qui en a une (ACVI100, ``-id`` :
+      déterministe, aucune horloge) ;
     * la société vient du LEAD, jamais de la requête — une visite d'une autre
       société ne peut structurellement pas sortir d'ici ;
     * sans visite validée, ou sans image assemblée, les MÊMES clés sortent à
       ``None`` — l'appelant n'a jamais à distinguer deux formes de réponse, et
       rien n'est inventé pour combler le vide.
     """
+    from .models import VisiteTerrain
+
     vide = {'visite_id': None, 'url': None, 'texture_calage': None}
     if lead is None:
         return vide
     visite = _reference_validee(lead.company_id, lead.id)
-    if visite is None or not visite.photo_toit_key:
+    if visite is not None and not visite.photo_toit_key:
+        visite = _visites_du_lead(lead.company_id, lead.id).filter(
+            statut=VisiteTerrain.Statut.VALIDEE,
+        ).exclude(photo_toit_key='').order_by('-id').first()
+    if visite is None:
         return vide
     return {
         'visite_id': visite.id,

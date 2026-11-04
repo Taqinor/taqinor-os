@@ -5,8 +5,8 @@
  */
 import Layout from '../../layouts/Layout.astro';
 import { articleMeta } from '../../lib/pageCtx';
-import V2Enhance from '../../components/V2Enhance.astro';
-import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import GuideV2 from '../../components/blocs/GuideV2.astro';
+import GuideEntete from '../../components/blocs/GuideEntete.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
@@ -53,12 +53,9 @@ const jsonLd = {
   description="Plein sud optimal, est/ouest acceptable (−10 à 15 %), inclinaison optimale autour de 30° : les trois règles qui font vraiment la différence — et pourquoi une seule cheminée peut pénaliser toute votre installation."
   ogSlug="guides"
 >
-  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
-  {/* W376 — reading progress bar (see global.css .reading-bar) */}
-  <div class="reading-bar" aria-hidden="true"></div>
+  <GuideEntete jsonLd={jsonLd} />
   <div class="v2">
-    <V2Enhance />
-    <Article33Ribbon />
+    <GuideV2 />
 
     <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Guides', href: '/guides/' }, { label: 'Orientation, inclinaison et ombrage' }]} />
 

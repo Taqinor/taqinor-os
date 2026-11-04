@@ -78,6 +78,41 @@ class CadenceUniqueTests(TestCase):
         self.assertEqual(r.status_code, 200, r.data)
         return next(x for x in r.data if x['id'] == facture.id)
 
+    def test_relance_manuelle_joint_le_pdf(self):
+        """AARG62 (C-AARG-VER1-304) — « Relancer » avec envoi : 1 mail à pièce
+        jointe ``%PDF`` ; PDF impossible : 0 mail, EmailLog en échec.
+        Mutant : retirer ``attach_pdf`` ⇒ 0 pièce jointe."""
+        from unittest.mock import patch
+
+        from django.core import mail
+
+        from apps.ventes.models import EmailLog, RelanceLog
+        f = self._facture()
+        r = self.api.post(f'{BASE}{f.id}/relancer/',
+                          {'niveau': self.niveaux[0].ordre,
+                           'envoyer_email': True}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(len(mail.outbox), 1)
+        nom, contenu, mime = mail.outbox[0].attachments[0]
+        self.assertEqual(nom, f'{f.reference}.pdf')
+        self.assertEqual(mime, 'application/pdf')
+        self.assertTrue(contenu.startswith(b'%PDF'))
+        # CLAUSE PERSISTANCE — relu en base.
+        self.assertEqual(EmailLog.objects.get(facture=f).statut,
+                         EmailLog.Statut.ENVOYE)
+        self.assertEqual(RelanceLog.objects.filter(facture=f).count(), 1)
+        panne = self._facture()
+        with patch('apps.ventes.email_service._document_pdf',
+                   return_value=(None, None)):
+            r = self.api.post(f'{BASE}{panne.id}/relancer/',
+                              {'niveau': self.niveaux[0].ordre,
+                               'envoyer_email': True}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(len(mail.outbox), 1)
+        log = EmailLog.objects.get(facture=panne)
+        self.assertEqual(log.statut, EmailLog.Statut.ECHEC)
+        self.assertEqual(r.data['email_log_id'], log.id)
+
     def test_relance_automatique_joint_le_pdf(self):
         """AARG58 (C-AARG-019) — le mail du beat part avec la facture en pièce
         jointe ; PDF impossible : EmailLog en échec, niveau non consommé."""

@@ -374,6 +374,8 @@ def relance_reminders():
         # AUD131 — le prédicat partagé remplace le court-circuit local
         # `montant_du <= 0` (le filtre de statut est déjà appliqué en SQL).
         if not facture_relancable(facture)[0]:
+            if getattr(facture, 'contestee_le', None):
+                continue  # AARG60 — suspendue : la cadence reprend à la levée
             facture.prochaine_relance = None
             facture.save(update_fields=['prochaine_relance'])
             continue

@@ -1,0 +1,152 @@
+{
+  "sha": "b648c4b9c3b0b91036b3fd3ad118735a1943eb21",
+  "date": "2026-11-04",
+  "groupe": "PA2",
+  "verdict": "FAIL",
+  "couvre": [
+    "ACAL116",
+    "ACAL182",
+    "ACAL35",
+    "ACAL352",
+    "ACAL38"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PA2.1",
+      "taches": [
+        "ACAL182"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "POST /api/django/calepinage/calepinages/ -> 201 (rejouer_parcours.py, transaction annulée)",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "oracles_parcours": {
+        "auto": "NA",
+        "checkpoint": "PASS",
+        "aval": "PASS"
+      },
+      "notes": "refus_409 : action rejouée -> 409; parcours {\"auto\": \"NA\", \"checkpoint\": \"PASS\", \"aval\": \"PASS\"}"
+    },
+    {
+      "id": "PA2.3",
+      "taches": [
+        "ACAL352"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "GET /api/django/calepinage/calepinages/211/layout/ -> 200 (rejouer_parcours.py, transaction annulée)",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "oracles_parcours": {
+        "auto": "NA",
+        "checkpoint": "PASS",
+        "aval": "NA"
+      },
+      "notes": "règles aval à observer : preserve_manuel; parcours {\"auto\": \"NA\", \"checkpoint\": \"PASS\", \"aval\": \"NA\"}"
+    },
+    {
+      "id": "PA2.9",
+      "taches": [
+        "ACAL38"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "POST /api/django/calepinage/calepinages/211/sync-devis/ -> 409 (rejouer_parcours.py, transaction annulée)",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "oracles_parcours": {
+        "auto": "NA",
+        "checkpoint": "PASS",
+        "aval": "NA"
+      },
+      "notes": "corps vide envoyé ({\"devis\":\"Aucun devis n'est rattaché à ce calepinage : utilisez d'abord « Générer le devis ».\"}) : fournir --corps {\"PA2.9\": {...}}; règles aval à observer : preserve_manuel; parcours {\"auto\": \"NA\", \"checkpoint\": \"PASS\", \"aval\": \"NA\"}"
+    },
+    {
+      "id": "PA2.10",
+      "taches": [
+        "ACAL116"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "POST /api/django/calepinage/calepinages/211/pack-technique/ -> 409 (rejouer_parcours.py, transaction annulée)",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "oracles_parcours": {
+        "auto": "NA",
+        "checkpoint": "NA",
+        "aval": "NA"
+      },
+      "notes": "corps vide envoyé ({\"planche\":\"Dossier technique : la pièce « Planche de calepinage » ne se rend pas — Aucune géométrie enregistrée : la planche se compose du contour et des pans ) : fournir --corps {\"PA2.10\": {...}}; règles aval à observer : fige; parcours {\"auto\": \"NA\", \"checkpoint\": \"NA\", \"aval\": \"NA\"}"
+    },
+    {
+      "id": "PA2.S1",
+      "taches": [
+        "ACAL35",
+        "ACAL38"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "auto (evenement) : artefact Calepinage (rejouer_parcours.py, transaction annulée)",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "oracles_parcours": {
+        "auto": "PASS",
+        "checkpoint": "PASS",
+        "aval": "NA"
+      },
+      "notes": "règles aval à observer : reference ; preserve_manuel; parcours {\"auto\": \"PASS\", \"checkpoint\": \"PASS\", \"aval\": \"NA\"}"
+    }
+  ]
+}

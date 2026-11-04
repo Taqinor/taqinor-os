@@ -110,17 +110,31 @@ export function texteClassement(l, produits) {
   return `${l?.designation ?? ''} ${nom}`
 }
 
+// ADVS46 — vocabulaire de `core/product_roles.py::ROLES_DEVIS` (garde de parité
+// au test) : un rôle hors vocabulaire n'en dit rien, les mots-clés tranchent.
+export const ROLES_DEVIS = ['onduleur_reseau', 'onduleur_hybride', 'onduleur_offgrid', 'panneau', 'batterie',
+  'structure', 'structure_acier', 'structure_alu', 'socle', 'cable_dc', 'cable_terre',
+  'smart_meter', 'wifi_dongle', 'accessoires', 'tableau', 'installation', 'transport', 'suivi']
+const _roleDeLigne = (l) => ROLES_DEVIS.find(r => r === String(l?.role_devis ?? '').trim()) ?? null
+
+// Ordre du serveur (`utils/options.py::panier_de_ligne`) : variante, rôle stocké
+// (tout accessoire de batterie dans « Avec » seulement), mots-clés en repli.
 export function appartientAuPanierSans(l, produits) {
   const v = l?.variante
   if (v === 'avec') return false
   if (v === 'sans') return true
   const t = texteClassement(l, produits)
+  const role = _roleDeLigne(l)
+  if (role === 'onduleur_reseau') return true
+  if (role) return !['batterie', 'onduleur_hybride', 'onduleur_offgrid'].includes(role) && !isBattery(t)
   return !isBattery(t) && !isHybridInverter(t) && !isOffgridInverter(t)
 }
 export function appartientAuPanierAvec(l, produits) {
   const v = l?.variante
   if (v === 'sans') return false
   if (v === 'avec') return true
+  const role = _roleDeLigne(l)
+  if (role) return role !== 'onduleur_reseau'
   return !isReseauInverter(texteClassement(l, produits))
 }
 

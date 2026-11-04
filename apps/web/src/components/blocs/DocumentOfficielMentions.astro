@@ -1,0 +1,19 @@
+---
+// ENF19 : bloc partagé (mentions-legales fr + en + ar) — « document officiel » : couture lumière + cadre des lignes label/valeur.
+// Les paragraphes propres à la langue arrivent par le slot. ltrAuto (ar) : une valeur latine/chiffrée reste lue de gauche à droite.
+const { rows, ltrAuto = false, cadre = 'border-t-2 border-azur-900 bg-blanc' } = Astro.props as Record<string, any>;
+---
+<div class="seam-lumiere" aria-hidden="true"></div>
+<section class="bg-blanc-azur px-4 pb-16 pt-6 text-encre"
+  ><div class="mx-auto max-w-3xl">
+  <div class={cadre}>
+    {rows.map((r: any) => (
+      <div class="grid gap-1 border-b border-azur-900/15 px-5 py-4 sm:grid-cols-[14rem_1fr] sm:gap-4">
+        <span class="tech-label text-encre-faint">{r.label}</span>
+        <span class="text-sm font-semibold" dir={ltrAuto && /^[A-Za-z0-9]/.test(r.value) ? 'ltr' : undefined}>{r.value}</span>
+      </div>
+    ))}
+  </div>
+  <slot />
+  </div>
+</section>

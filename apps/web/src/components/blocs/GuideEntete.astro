@@ -1,0 +1,7 @@
+---
+// ENF19 : bloc partagé (10 guides) — JSON-LD + barre de progression de lecture (global.css .reading-bar)
+const { jsonLd } = Astro.props as Record<string, any>;
+---
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  {/* W376 — reading progress bar (see global.css .reading-bar) */}
+  <div class="reading-bar" aria-hidden="true"></div>

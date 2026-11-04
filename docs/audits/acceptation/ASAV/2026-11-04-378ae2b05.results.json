@@ -1,0 +1,57 @@
+{
+  "sha": "378ae2b051f5a7ebfaad26abec377f2f7f06d697",
+  "date": "2026-11-04",
+  "groupe": "ASAV",
+  "verdict": "PASS",
+  "couvre": [
+    "ASAV123",
+    "ASAV124"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P123.1",
+      "taches": [
+        "ASAV123"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ASAV-P123.1.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P124.1",
+      "taches": [
+        "ASAV124"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ASAV-P124.1.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}

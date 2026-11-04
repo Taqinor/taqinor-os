@@ -16,6 +16,8 @@
 import { BILL_RANGES } from '../lib/billRange';
 import { ROOF_TYPES } from '../lib/lead';
 import { SUPPLY_TYPES, ORIENTATIONS } from '../lib/enrichment';
+import DiagnosticChampsCaches from './blocs/DiagnosticChampsCaches.astro';
+import { VILLES } from '../lib/diagnosticFormShared';
 
 interface Props {
   heading?: string;
@@ -31,13 +33,6 @@ interface Props {
 const { heading = 'Diagnostic solaire — 60 secondes', singleStep = false } = Astro.props;
 
 // Aide à la saisie : grandes villes/communes — la saisie libre reste acceptée
-const VILLES = [
-  'Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Fès', 'Meknès',
-  'Oujda', 'Kénitra', 'Tétouan', 'Salé', 'Témara', 'Mohammedia', 'El Jadida',
-  'Nouaceur', 'Bouskoura', 'Dar Bouazza', 'Settat', 'Berrechid', 'Khouribga',
-  'Béni Mellal', 'Safi', 'Essaouira', 'Nador', 'Al Hoceïma', 'Larache',
-  'Khémisset', 'Ifrane', 'Errachidia', 'Ouarzazate', 'Laâyoune', 'Dakhla',
-];
 
 // W188 — ≥16 px font-size (prevents iOS zoom-on-focus), min ~44 px tap height.
 // W194 — focus ring boosted to /50 opacity; aria-invalid field style in <style>.
@@ -168,20 +163,7 @@ const inputClass =
            `website_url` : la garde était un no-op. Masqué hors écran, hors
            tabulation, sans autocomplétion : un humain ne le remplit jamais.
            Rejeté en silence côté serveur — contrat webhook inchangé. -->
-      <div aria-hidden="true" style="position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap;">
-        <label>Ne pas remplir<input id="lf-hp" name="website_url" type="text" tabindex="-1" autocomplete="off" /></label>
-      </div>
-
-      <!-- fbclid + UTM persistés — remplis depuis sessionStorage au chargement -->
-      <input type="hidden" name="fbclid" />
-      <input type="hidden" name="gclid" />
-      <input type="hidden" name="gbraid" />
-      <input type="hidden" name="wbraid" />
-      <input type="hidden" name="utm_source" />
-      <input type="hidden" name="utm_medium" />
-      <input type="hidden" name="utm_campaign" />
-      <input type="hidden" name="utm_content" />
-      <input type="hidden" name="utm_term" />
+      <DiagnosticChampsCaches />
       <!-- Puissance crête estimée — pré-remplie par l'estimateur de toiture
            quand le diagnostic est ouvert depuis lui. Vide partout ailleurs :
            le payload reste alors identique au formulaire live. -->

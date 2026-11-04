@@ -1,0 +1,28 @@
+arrivee_lead_crm : POST /api/django/crm/leads/ -> 201 ; parcours {'auto': 'NA', 'checkpoint': 'PASS', 'aval': 'NA'} ; règles aval à observer : Sans responsable par défaut, le propriétaire est choisi au tour de rôle. ; Le score de qualité est calculé et stocké sur la fiche. ; La cadence de contact démarre explicitement (jamais par signal global).
+arrivee_formulaire_web : non jouée ; parcours {'auto': 'NA', 'checkpoint': 'NA', 'aval': 'NA'} ; aucune action de vue n'appelle la fonction d'entrée (index AST); aucune route API pour la fonction d'entrée, ses appelants ni le déclencheur : non jouée
+qualification : PATCH /api/django/crm/leads/3690/ -> 200 ; parcours {'auto': 'NA', 'checkpoint': 'PASS', 'aval': 'NA'} ; règles aval à observer : Un ajustement manuel de score est tracé avec son delta.
+changement_etape : PATCH /api/django/crm/leads/3690/ -> 200 ; parcours {'auto': 'NA', 'checkpoint': 'PASS', 'aval': 'NA'} ; règles aval à observer : L'écriture d'étape hors PATCH passe par le service du funnel.
+lead_perdu : PATCH /api/django/crm/leads/3690/ -> 200 ; parcours {'auto': 'NA', 'checkpoint': 'PASS', 'aval': 'NA'} ; règles aval à observer : La cadence est arrêtée et le rendez-vous annulé avec le motif de perte.
+parcage : non jouée ; parcours {'auto': 'NA', 'checkpoint': 'NA', 'aval': 'NA'} ; aucune action de vue n'appelle la fonction d'entrée (index AST); aucune route API pour la fonction d'entrée, ses appelants ni le déclencheur : non jouée
+archivage_fusion : POST /api/django/crm/leads/3690/archiver/ -> 200 ; parcours {'auto': 'NA', 'checkpoint': 'PASS', 'aval': 'NA'} ; règles aval à observer : Le lead archivé se restaure à l’identique.
+cadence_contact : POST /api/django/crm/leads/ -> 201 ; parcours {'auto': 'NA', 'checkpoint': 'PASS', 'aval': 'NA'} ; règles aval à observer : Une touche traitée matérialise la suivante. ; Le report humain d'une échéance est tracé. ; Le digest des touches dues ne pose aucune touche : il notifie seulement.
+planification_visite : POST /api/django/visites/visites/ -> 201 ; parcours {'auto': 'NA', 'checkpoint': 'PASS', 'aval': 'NA'} ; règles aval à observer : La cadence se recale sur le rendez-vous. ; Le rendez-vous peut être annulé avec motif. ; La réservation publique et le rendez-vous d’agenda sont la visite (D-ACVI-8).
+terrain : PUT /api/django/visites/visites/57/ -> 200 ; parcours {'auto': 'NA', 'checkpoint': 'PASS', 'aval': 'NA'} ; règles aval à observer : Une photo de toiture changée invalide l’assemblage.
+visite_terminee : POST /api/django/visites/visites/57/terminer/ -> 200 ; parcours {'auto': 'NA', 'checkpoint': 'PASS', 'aval': 'NA'} ; règles aval à observer : Le retour redescend sur le lead (`visite_effectuee` posé ici) et un rappel est posé. ; Le responsable est notifié du retour.
+revue_visite : POST /api/django/visites/visites/57/valider/ -> 200 ; parcours {'auto': 'NA', 'checkpoint': 'PASS', 'aval': 'NA'} ; règles aval à observer : Le récap est posé sur la fiche lead et au chatter (idempotent).
+renvoi_visite : POST /api/django/visites/visites/57/renvoyer/ -> 200 ; parcours {'auto': 'NA', 'checkpoint': 'PASS', 'aval': 'NA'} ; règles aval à observer : Une photo remplacée perd sa pièce jointe.
+Hors enregistrement : arrivee_lead_crm : jouée, sans tâche à couvrir (POST /api/django/crm/leads/ -> 201)
+Hors enregistrement : arrivee_formulaire_web : non jouée (aucune action de vue n'appelle la fonction d'entrée (index AST); aucune route API pour la fonction d'entrée, ses appelants ni le déclencheur : non jouée)
+Hors enregistrement : qualification : jouée, sans tâche à couvrir (PATCH /api/django/crm/leads/3690/ -> 200)
+Hors enregistrement : changement_etape : jouée, sans tâche à couvrir (PATCH /api/django/crm/leads/3690/ -> 200)
+Hors enregistrement : lead_perdu : jouée, sans tâche à couvrir (PATCH /api/django/crm/leads/3690/ -> 200)
+Hors enregistrement : parcage : non jouée (aucune action de vue n'appelle la fonction d'entrée (index AST); aucune route API pour la fonction d'entrée, ses appelants ni le déclencheur : non jouée)
+Hors enregistrement : archivage_fusion : jouée, sans tâche à couvrir (POST /api/django/crm/leads/3690/archiver/ -> 200)
+Hors enregistrement : cadence_contact : jouée, sans tâche à couvrir (POST /api/django/crm/leads/ -> 201)
+Hors enregistrement : planification_visite : jouée, sans tâche à couvrir (POST /api/django/visites/visites/ -> 201)
+Hors enregistrement : terrain : jouée, sans tâche à couvrir (PUT /api/django/visites/visites/57/ -> 200)
+Hors enregistrement : visite_terminee : jouée, sans tâche à couvrir (POST /api/django/visites/visites/57/terminer/ -> 200)
+Hors enregistrement : revue_visite : jouée, sans tâche à couvrir (POST /api/django/visites/visites/57/valider/ -> 200)
+Hors enregistrement : renvoi_visite : jouée, sans tâche à couvrir (POST /api/django/visites/visites/57/renvoyer/ -> 200)
+Base inchangée (transaction annulée) : 2683 lignes avant et après.
+Aucun enregistrement écrit (aucune étape jouée ne porte de tâche).

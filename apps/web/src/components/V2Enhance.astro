@@ -25,7 +25,7 @@ import '../styles/v3-photo-motion.css';
 </script>
 
 <script>
-  import { formatFrame, shouldDigitRoll, scrubProgress } from '../lib/countup';
+  import { animerChiffre, formatFrame, shouldDigitRoll, scrubProgress } from '../lib/countup';
 
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -59,17 +59,7 @@ import '../styles/v3-photo-motion.css';
       return;
     }
 
-    const dur = 1100;
-    let start: number | null = null;
-    function frame(t: number) {
-      if (start === null) start = t;
-      const p = Math.min(1, (t - start) / dur);
-      const e = 1 - Math.pow(1 - p, 3); // easeOutCubic
-      el.textContent = formatFrame(finalText, e);
-      if (p < 1) requestAnimationFrame(frame);
-      else el.textContent = finalText; // valeur finale exacte
-    }
-    requestAnimationFrame(frame);
+    animerChiffre(el, finalText);
   }
 
   // W361 — support natif de `animation-timeline: view()` : dans ce cas, les

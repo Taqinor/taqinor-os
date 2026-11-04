@@ -220,3 +220,12 @@ export function majNavigation(
       ?.focus();
   }
 }
+
+// Aide à la saisie : grandes villes/communes — la saisie libre reste acceptée (datalist des deux formulaires).
+export const VILLES = [
+  'Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Fès', 'Meknès',
+  'Oujda', 'Kénitra', 'Tétouan', 'Salé', 'Témara', 'Mohammedia', 'El Jadida',
+  'Nouaceur', 'Bouskoura', 'Dar Bouazza', 'Settat', 'Berrechid', 'Khouribga',
+  'Béni Mellal', 'Safi', 'Essaouira', 'Nador', 'Al Hoceïma', 'Larache',
+  'Khémisset', 'Ifrane', 'Errachidia', 'Ouarzazate', 'Laâyoune', 'Dakhla',
+];

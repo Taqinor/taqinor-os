@@ -61,6 +61,7 @@ import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 import { entetesIpVisiteur } from '../api/_apiBase';
 import { NAP, WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink } from '../../lib/whatsapp';
+import { appliquerStatutToken, detailRefus } from '../../lib/pageToken';
 
 const API_BASE = (import.meta.env.PUBLIC_API_BASE as string | undefined) ?? 'https://api.taqinor.ma';
 const token = typeof Astro.params.token === 'string' ? Astro.params.token.trim() : '';
@@ -104,13 +105,7 @@ if (!rl.allowed) {
         errorDetail = 'Réponse inattendue du serveur. Réessayez dans un instant.';
       }
     } else {
-      let detail = '';
-      try {
-        const body = (await res.json()) as { detail?: string };
-        detail = typeof body.detail === 'string' ? body.detail : '';
-      } catch {
-        detail = '';
-      }
+      const detail = await detailRefus(res);
       errorDetail =
         detail ||
         (res.status === 404
@@ -128,11 +123,7 @@ if (!rl.allowed) {
   }
 }
 
-if (!data && (httpStatus === 404 || httpStatus === 200)) {
-  Astro.response.status = httpStatus === 200 ? 404 : httpStatus;
-} else if (!data) {
-  Astro.response.status = httpStatus;
-}
+appliquerStatutToken(Astro.response, data, httpStatus);
 
 const ok = !!data;
 const entreprise = data?.entreprise || 'Taqinor';

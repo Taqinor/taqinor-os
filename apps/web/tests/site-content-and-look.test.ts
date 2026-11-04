@@ -18,6 +18,7 @@ import { describe, expect, it } from 'vitest';
 import { execSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { lireAstroAvecBlocs } from './astroBlocsHelper';
 import { NAP, WHATSAPP_LEADS } from '../src/lib/nap';
 import { BILL_RANGES } from '../src/lib/billRange';
 import { ROOF_TYPES, validateLead, runSimulation, buildLeadRecord, forwardLead, fireCapi, type LeadEnv } from '../src/lib/lead';
@@ -452,7 +453,7 @@ describe('look (atteignable sans navigateur)', () => {
 
 // ───────── LE FORMULAIRE (diagnostic 3 étapes) — structure & câblage ─────────
 describe('le formulaire — structure 3 étapes & champs requis', () => {
-  const form = read('../src/components/DiagnosticForm.astro');
+  const form = lireAstroAvecBlocs(fileURLToPath(new URL('../src/components/DiagnosticForm.astro', import.meta.url)));
 
   it('expose 3 étapes (fieldsets data-step) avec indicateur « Étape 1 sur 3 »', () => {
     for (const n of [1, 2, 3]) expect(form).toContain(`data-step="${n}"`);

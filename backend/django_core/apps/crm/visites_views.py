@@ -28,6 +28,7 @@ from .cadence_views import _prochaine_touche_publique
 from .params_requete import texte_verifie, verifier_corps_texte
 from . import activity
 from . import schema_docs as sd
+from apps.roles.permissions import DroitDeLaGrille  # ACVI3 : refus nommé
 from authentication.permissions import IsResponsableOrAdmin, HasPermissionOrLegacy
 
 logger = logging.getLogger(__name__)
@@ -77,7 +78,7 @@ class AppointmentViewSet(CompanyScopedModelViewSet):
         # peut déjà VOIR (queryset scopé société, jamais un nouveau droit).
         # ACVI3 (D-ACVI-2 = portée) — lecture sous `crm_voir`.
         if self.action in READ_ACTIONS or self.action == 'ics':
-            return [HasPermissionOrLegacy('crm_voir')()]
+            return [DroitDeLaGrille('crm_voir')()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):

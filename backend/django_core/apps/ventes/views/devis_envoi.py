@@ -676,7 +676,9 @@ class DevisEnvoiActionsMixin:
                 f'PDF du devis {devis.reference} partagé (feuille de partage).')
         return Response({'devis_statut': devis.statut})
 
-    @extend_schema(request=None, responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
+    # Fuzz CI #1257 : 409 ``pdf_refuse`` (devis sans onduleur dans une option).
+    @extend_schema(request=None, responses={
+        (200, 'application/pdf'): OpenApiTypes.BINARY, 409: D.ErreurDevisFige})
     @pdf_partage.mapping.get
     def pdf_partage_fichier(self, request, pk=None):
         """ADVS14 — GET ``pdf-partage`` : le PDF à partager, avec son lien et son QR

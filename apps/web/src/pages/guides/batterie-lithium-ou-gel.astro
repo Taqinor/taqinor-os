@@ -5,8 +5,8 @@
  */
 import Layout from '../../layouts/Layout.astro';
 import { articleMeta } from '../../lib/pageCtx';
-import V2Enhance from '../../components/V2Enhance.astro';
-import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import GuideV2 from '../../components/blocs/GuideV2.astro';
+import GuideEntete from '../../components/blocs/GuideEntete.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
@@ -54,12 +54,9 @@ const jsonLd = {
   description="LFP ou GEL ? Cycles de vie, profondeur de décharge, rendement, tolérance à la chaleur au Maroc et sécurité face au NMC : tout ce qu'il faut savoir avant de choisir sa batterie solaire."
   ogSlug="guides"
 >
-  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
-  {/* W376 — reading progress bar (see global.css .reading-bar) */}
-  <div class="reading-bar" aria-hidden="true"></div>
+  <GuideEntete jsonLd={jsonLd} />
   <div class="v2">
-    <V2Enhance />
-    <Article33Ribbon />
+    <GuideV2 />
 
     <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Guides', href: '/guides/' }, { label: 'Batterie LFP vs GEL/plomb' }]} />
 

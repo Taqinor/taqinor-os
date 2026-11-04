@@ -28,21 +28,16 @@
 const FOUNDER_PHOTO: string | null = 'fondateur-portrait';
 
 import Picture from './Picture.astro';
-import { getLocaleFromPath } from '../i18n/utils';
-import { localizeNavHref } from '../i18n/pages';
+import { contexteLocale, type ChampsCarte } from '../lib/contexteLocale';
 import type { Locale } from '../i18n/config';
 
-const locale = getLocaleFromPath(Astro.url.pathname);
-const L = (href: string) => localizeNavHref(href, locale);
+const { locale, L } = contexteLocale(Astro.url.pathname);
 
 const STR: Record<
   Locale,
-  {
-    eyebrow: string;
-    title: string;
+  ChampsCarte & {
     leadBefore: string;
     leadAfter: string;
-    cta: string;
     photoAlt: string;
     caption: string;
     signedNote: string;

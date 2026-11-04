@@ -1,0 +1,57 @@
+{
+  "sha": "8adda64080f5aacce90393c98d97343a11e00e98",
+  "date": "2026-11-04",
+  "groupe": "ADVS",
+  "verdict": "FAIL",
+  "couvre": [
+    "ADVS36",
+    "ADVS27"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PA3-01.les_deux_auto",
+      "taches": [
+        "ADVS36"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ADVS-PA3-01.les_deux_auto.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA3-01.tva_societe",
+      "taches": [
+        "ADVS27"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ADVS-PA3-01.tva_societe.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "erreur : toutes les lignes sans taux : TVA standard de la société"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+PA3-01 : POST /api/django/ventes/devis/atomic/ -> 201 ; parcours {'auto': 'NA', 'checkpoint': 'PASS', 'aval': 'NA'} ; checkpoint ['client', 'lead', 'etude_params'] : PATCH -> 200, relu identique; règles aval à observer : choix_explicite ; recalcul
+PA3-02 : POST /api/django/ventes/devis/2410/envoyer-email/ -> 200 ; parcours {'auto': 'NA', 'checkpoint': 'PASS', 'aval': 'NA'} ; règles aval à observer : fige
+PA3-03 : GET /api/django/ventes/devis/2410/proposal/ -> 200 ; parcours {'auto': 'NA', 'checkpoint': 'NA', 'aval': 'NA'} ; règles aval à observer : recalcul
+PA3-04 : non jouée ; parcours {'auto': 'NA', 'checkpoint': 'NA', 'aval': 'NA'} ; aucune action de vue n'appelle la fonction d'entrée (index AST); aucune route API pour la fonction d'entrée, ses appelants ni le déclencheur : non jouée
+PA3-05 : POST /api/django/ventes/devis/2410/accepter/ -> 200 ; parcours {'auto': 'NA', 'checkpoint': 'PASS', 'aval': 'PASS'} ; via backend/django_core/apps/ventes/views/devis_cycle.py::DevisCycleActionsMixin.accepter (appelle la fonction d'entrée ; 1 candidate(s) : DevisCycleActionsMixin.accepter); refus_409 : action rejouée -> 409; règles aval à observer : fige
+PA3-06 : POST /api/django/ventes/devis/2410/accepter/ -> 409 ; parcours {'auto': 'NA', 'checkpoint': 'FAIL', 'aval': 'NA'} ; checkpoint ['accepte_par_nom', 'date_acceptation'] : PATCH -> 409, relu différent; règles aval à observer : fige
+PA3-07 : non jouée ; parcours {'auto': 'NA', 'checkpoint': 'NA', 'aval': 'NA'} ; aucun ? lié à l'enregistrement : non jouée
+PA3-08 : auto (evenement) : artefact Installation ; parcours {'auto': 'PASS', 'checkpoint': 'PASS', 'aval': 'NA'} ; règles aval à observer : recalcul ; non_propage
+PA3-09 : auto (evenement) : artefact RegulatoryDossier ; parcours {'auto': 'PASS', 'checkpoint': 'PASS', 'aval': 'NA'} ; checkpoint ['statut', 'regime_8221'] : PATCH -> 200, relu identique; règles aval à observer : preserve_manuel
+PA3-10 : POST /api/django/ventes/devis/2410/refuser/ -> 409 ; parcours {'auto': 'NA', 'checkpoint': 'FAIL', 'aval': 'NA'} ; corps vide envoyé ({"detail":"Seul un devis en cours (brouillon ou envoyé) peut être refusé ; statut actuel : « Accepté ».","code":"statut"}) : fournir --corps {"PA3-10": {...}}; checkpoint ['statut'] : PATCH -> 409, relu différent; règles aval à observer : fige
+PA3-11 : auto (beat) : artefact Devis ; parcours {'auto': 'PASS', 'checkpoint': 'PASS', 'aval': 'NA'} ; règles aval à observer : recalcul ; fige
+PA3-12 : POST /api/django/ventes/devis/2410/reviser/ -> 201 ; parcours {'auto': 'NA', 'checkpoint': 'FAIL', 'aval': 'NA'} ; checkpoint ['version', 'version_parent'] : PATCH -> 409, relu différent; règles aval à observer : recalcul ; preserve_manuel
+PA3-13 : auto (evenement) : artefact Devis ; parcours {'auto': 'PASS', 'checkpoint': 'FAIL', 'aval': 'NA'} ; checkpoint ['statut'] : PATCH -> 409, relu différent; règles aval à observer : recalcul
+Hors enregistrement : PA3-04 : non jouée (aucune action de vue n'appelle la fonction d'entrée (index AST); aucune route API pour la fonction d'entrée, ses appelants ni le déclencheur : non jouée)
+Hors enregistrement : PA3-07 : non jouée (aucun ? lié à l'enregistrement : non jouée)
+Base inchangée (transaction annulée) : 1507 lignes avant et après.
+FAIL — C:\dev\taqinor-os\.claude\worktrees\w32-live\docs\audits\acceptation\PA3\2026-11-04-b648c4b9c.md

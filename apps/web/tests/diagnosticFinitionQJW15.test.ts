@@ -22,6 +22,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { lireAstroAvecBlocs } from './astroBlocsHelper';
 
 const mockEnv: Record<string, string> = {};
 vi.mock('cloudflare:workers', () => ({
@@ -39,8 +40,8 @@ const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.met
 // ENF19 : jetons, aria-invalid et charge utile vivent dans le module partagé que les deux composants importent.
 const PARTAGE = read('../src/lib/diagnosticFormShared.ts');
 const COMPOSANTS: Array<[string, string]> = [
-  ['DiagnosticForm', read('../src/components/DiagnosticForm.astro') + PARTAGE],
-  ['DiagnosticFormEnriched', read('../src/components/DiagnosticFormEnriched.astro') + PARTAGE],
+  ['DiagnosticForm', lireAstroAvecBlocs(fileURLToPath(new URL('../src/components/DiagnosticForm.astro', import.meta.url))) + PARTAGE],
+  ['DiagnosticFormEnriched', lireAstroAvecBlocs(fileURLToPath(new URL('../src/components/DiagnosticFormEnriched.astro', import.meta.url))) + PARTAGE],
 ];
 
 const CRM = 'https://crm.example/hook';

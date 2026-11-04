@@ -20,6 +20,7 @@ from rest_framework import status
 from rest_framework.exceptions import APIException, NotFound, ValidationError
 
 from core.champs_stricts import IdInconnu404Mixin, _ids_inconnus_seulement
+from core.conflit_etat import ConflitEtat as _ConflitEtatCoeur
 
 #: SQLSTATE Postgres « numeric value out of range » (psycopg2 ``pgcode``).
 _SQLSTATE_HORS_PLAGE = '22003'
@@ -43,12 +44,16 @@ def statut_refus_metier(exc):
     return status.HTTP_400_BAD_REQUEST
 
 
-class ConflitEtat(APIException):
-    """409 — l'état courant des données s'oppose à l'écriture demandée."""
+class ConflitEtat(_ConflitEtatCoeur):
+    """409 — l'état courant des données s'oppose à l'écriture demandée.
 
-    status_code = status.HTTP_409_CONFLICT
-    default_detail = "L'état actuel du document s'oppose à cette opération."
-    default_code = 'state_conflict'
+    Hérite de ``core.conflit_etat.ConflitEtat`` pour que l'enveloppe d'erreur
+    porte ``error.code: state_conflict`` (ERR-ACVI-CODE-STATE-CONFLICT : une
+    classe sœur tombait sur ``api_error``). Constructeur DRF d'origine gardé :
+    le corps des refus par champ reste inchangé.
+    """
+
+    __init__ = APIException.__init__
 
 
 class IdInconnu404LignesMixin(IdInconnu404Mixin):

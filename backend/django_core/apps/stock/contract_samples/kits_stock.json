@@ -179,7 +179,7 @@
       "exemple_erreur_409_auto_reference": {
         "detail": "Un kit ne peut pas se contenir lui-même.",
         "error": {
-          "code": "api_error",
+          "code": "state_conflict",
           "message": "Un kit ne peut pas se contenir lui-même.",
           "fields": null,
           "request_id": "<request_id>"

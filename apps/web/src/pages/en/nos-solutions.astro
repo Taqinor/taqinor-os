@@ -25,6 +25,7 @@ import StickyCta from '../../components/StickyCta.astro';
 import { localizeNavHref } from '../../i18n/pages';
 import { NAP } from '../../lib/nap';
 import { iconFor } from '../../lib/solutionIcons';
+import { hasPartServices } from '../../lib/solutionsJsonLd';
 
 const { locale, L, devisHref } = pageLocale(Astro.url.pathname);
 
@@ -118,11 +119,7 @@ const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'CollectionPage',
   name: 'Our solar solutions — Taqinor',
-  hasPart: solutions.map((s) => ({
-    '@type': 'Service',
-    name: s.title,
-    url: new URL(s.href, Astro.site).href,
-  })),
+  hasPart: hasPartServices(solutions, Astro.site),
 };
 ---
 

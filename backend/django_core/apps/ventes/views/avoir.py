@@ -227,6 +227,14 @@ class AvoirViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
                               f"contre-passation {avoir.reference} a été "
                               f"annulé."),
                     )
+            # AARG59 — le trop-perçu parti en avance revient à la facture (409
+            # si l'avance a servi), avant tout événement.
+            from ..domain.encaissements import (
+                recalculer_statut_paiement, rendre_trop_percu_de_avoir,
+            )
+            rendre_trop_percu_de_avoir(
+                Facture.objects.select_for_update().get(pk=avoir.facture_id),
+                avoir, user=request.user)
             avoir.statut = Avoir.Statut.ANNULEE
             avoir.save(update_fields=['statut'])
             # YLEDG4 — symétrique d'``avoir_cree`` : compta extourne
@@ -235,7 +243,6 @@ class AvoirViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
                 sender=Avoir, instance=avoir, company=avoir.company)
             # ATOT8 — le reste dû remonte : une facture PAYÉE grâce à cet
             # avoir revient au recouvrement (statut dérivé du reste dû).
-            from ..domain.encaissements import recalculer_statut_paiement
             recalculer_statut_paiement(
                 Facture.objects.get(
                     pk=avoir.facture_id, company=avoir.company),
