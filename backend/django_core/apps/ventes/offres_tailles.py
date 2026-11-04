@@ -513,23 +513,23 @@ def _part_batterie(annuel):
 
 
 def _cout_onduleur_ttc(lignes, roles, facteur_remise, taux_tva=None,
-                       company=None):
+                       company=None, devis=None):
     """Le prix TTC RÉEL des lignes onduleur d'une composition (Q1), ou ``None``.
 
     C'est la provision de remplacement que le cashflow 25 ans retranche à
     l'année :data:`~apps.ventes.quote_engine.pricing.INVERTER_REPLACE_YEAR`.
     Décision fondateur du 20/08 : le prix RÉEL de la ligne, jamais un
-    pourcentage du total ; aucune ligne onduleur ⇒ AUCUNE provision (``None``),
-    jamais un forfait de repli.
+    pourcentage du total ; aucune ligne onduleur ⇒ AUCUNE provision (``None``), jamais un forfait de repli.
 
-    Remisé comme le prix de la carte : les deux doivent partager une base.
-    TVA de la ligne : ``dimensionnement._facteur_ttc_ligne`` (APAR79).
+    Remisé comme le prix de la carte : les deux doivent partager une base. TVA de la ligne :
+    ``dimensionnement._facteur_ttc_ligne`` (APAR79). Rôles : ``est_onduleur_provisionne`` (AMOT120, niveau 12).
     """
     from apps.ventes.dimensionnement import _facteur_ttc_ligne
+    from apps.ventes.domain.dimensionnement_devis import est_onduleur_provisionne
     total = 0.0
     for index, ligne in enumerate(lignes or []):
         role = roles[index] if index < len(roles or ()) else None
-        if role not in ('onduleur_reseau', 'onduleur_hybride'):
+        if not est_onduleur_provisionne(role, devis):
             continue
         quantite = _num(getattr(ligne, 'quantite', 0))
         pu_ht = _num(getattr(ligne, 'prix_unitaire', 0))
@@ -998,7 +998,7 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True,
             'cout_onduleur_ttc': _cout_onduleur_ttc(
                 lignes, list(getattr(lignes, 'roles', ()) or ()), contexte.facteur_remise
                 if regles_au_moins(contexte.devis, REGLES_CORRIGEES_2710) else 1.0, contexte.devis.taux_tva,
-                (contexte.entrees or {}).get('company')),
+                (contexte.entrees or {}).get('company'), contexte.devis),
             # AMOT30 — le rendement aller-retour que le moteur horaire a
             # RÉELLEMENT appliqué (fiche prouvée), comme ``pricing``.
             'battery_roundtrip': (etude or {}).get('rendement_batterie'),
@@ -1309,7 +1309,7 @@ def _carte_du_devis(contexte, data, variante):
         {'stockage': True, 'part_batterie': 0.0, 'cout_onduleur_ttc': _cout_onduleur_ttc(
             (lv := dd.lignes_vendues(contexte.devis, 'avec')),
             [_role_de_la_ligne(getattr(ln, 'designation', '') or '') for ln in lv], contexte.facteur_remise,
-            getattr(contexte.devis, 'taux_tva', None), (contexte.entrees or {}).get('company')),
+            getattr(contexte.devis, 'taux_tva', None), (contexte.entrees or {}).get('company'), contexte.devis),
          'battery_roundtrip': ((getattr(contexte.devis, 'etude_params', None) or {}).get('etude_horaire')
                                or {}).get('rendement_batterie')}
         if variante == 'avec' and rc.regles_au_moins(contexte.devis, rc.REGLES_ECARTS_3110) else {}))
