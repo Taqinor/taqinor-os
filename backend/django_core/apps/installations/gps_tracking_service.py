@@ -297,7 +297,7 @@ def _position_precedente(position):
 
 def enregistrer_position(
         company, technicien, lat, lng, intervention=None,
-        accuracy_m=None, captured_at=None, radius_km=None):
+        accuracy_m=None, captured_at=None, radius_km=None, reevaluer_suivant=True):
     """Persiste une position live et, si une intervention est liée avec un GPS
     de chantier connu, calcule la distance et journalise le franchissement du
     rayon dans ``GeofenceAlert``. Ne bloque JAMAIS l'enregistrement de la
@@ -365,7 +365,31 @@ def enregistrer_position(
             captured_at=position.captured_at)
         if type_franchissement == GeofenceAlert.TypeFranchissement.SORTIE:
             _notifier_sortie_perimetre(alert)
+    if reevaluer_suivant:
+        _entree_du_suivant(position, radius_km)
     return position, alert
+
+
+def _entree_du_suivant(position, radius_km):
+    """ACHT133 — un relevé DEHORS inséré avant un relevé déjà évalué DEDANS
+    (lot hors-ligne) : ce suivant devient l'entrée (s'il n'a aucune alerte)."""
+    from django.db.models import Q
+    if not position.hors_perimetre:
+        return None
+    suivant = (PositionTechnicien.objects
+               .filter(company_id=position.company_id, technicien_id=position.technicien_id,
+                       intervention_id=position.intervention_id, distance_site_km__isnull=False)
+               .filter(Q(captured_at__gt=position.captured_at)
+                       | Q(captured_at=position.captured_at, id__gt=position.pk))
+               .order_by('captured_at', 'id').first())
+    if suivant is None or suivant.hors_perimetre or suivant.geofence_alerts.exists():
+        return None
+    return GeofenceAlert.objects.create(
+        company_id=position.company_id, intervention_id=position.intervention_id,
+        technicien_id=position.technicien_id, position=suivant,
+        distance_site_km=suivant.distance_site_km, rayon_attendu_km=radius_km,
+        type_franchissement=GeofenceAlert.TypeFranchissement.ENTREE,
+        captured_at=suivant.captured_at)
 
 
 #: Taille maximale d'un lot de rattrapage hors-ligne.
@@ -394,10 +418,15 @@ def enregistrer_lot_positions(company, technicien, intervention, points):
         position, alert = enregistrer_position(
             company, technicien, p['lat'], p['lng'],
             intervention=intervention, accuracy_m=p.get('accuracy_m'),
-            captured_at=p['captured_at'])
+            captured_at=p['captured_at'], reevaluer_suivant=False)
         creees.append(position)
         if alert is not None:
             alertes.append(alert)
+    # ACHT133 — seul le DERNIER relevé du lot peut précéder un relevé live.
+    entree = (_entree_du_suivant(creees[-1], rayon_geofence_km(intervention))
+              if creees and intervention is not None else None)
+    if entree is not None:
+        alertes.append(entree)
     return creees, alertes, doublons
 
 
