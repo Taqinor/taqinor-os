@@ -4,6 +4,7 @@
 // des liens vers l'org chart (NTCRM9) et les devis/factures du client.
 import { useCallback, useEffect, useState } from 'react'
 import api from '../../../api/axios'
+import fetchAllPages from '../../../utils/fetchAllPages'
 import { Spinner, Button, Textarea, Input, Card } from '../../../ui'
 import { toast } from '../../../ui/confirm'
 import ChatterTimeline from '../../../components/ChatterTimeline'
@@ -39,10 +40,11 @@ export default function PlanComptePage({ clientId, planId }) {
     setLoading(true)
     const req = planId
       ? api.get(`/crm/plans-compte/${planId}/`)
-      : api.get('/crm/plans-compte/', { params: { client: clientId } })
+      : fetchAllPages((page, { page_size: pageSize } = {}) =>
+        api.get('/crm/plans-compte/', { params: { client: clientId, page, page_size: pageSize } }).then((r) => r.data))
     req
       .then((res) => {
-        const data = planId ? res.data : (res.data?.results ?? res.data ?? [])[0]
+        const data = planId ? res.data : (Array.isArray(res) ? res : (res?.results ?? []))[0]
         if (data) {
           setPlan(data)
           setForm({

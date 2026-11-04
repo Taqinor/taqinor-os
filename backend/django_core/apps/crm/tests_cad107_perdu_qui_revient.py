@@ -89,6 +89,17 @@ class LesTroisCheminsProduisentLaMemeRepriseTests(_Base):
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(self._cadences_ouvertes(lead), {'reveil'})
 
+    def test_lever_l_opposition_pose_la_reprise(self):
+        """ACVI52 — le client « finalement oui » a une touche à faire."""
+        lead = self._lead_perdu(perdu=False, motif_perte='',
+                                ne_plus_contacter=True)
+        resp = self._api().patch(
+            f'{LEADS_URL}{lead.pk}/', {'ne_plus_contacter': False}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertTrue(self._cadences_ouvertes(lead))
+        self.assertTrue(lead.activites.filter(
+            body__icontains='opposition levée').exists())
+
     def test_chemin_2_le_lot_unset_perdu_pose_la_meme(self):
         lead = self._lead_perdu()
         resp = self._api().post(

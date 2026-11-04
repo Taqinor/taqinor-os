@@ -63,13 +63,13 @@ def sonde(ctx):
     from apps.crm.management.commands import recycler_leads_non_travailles as recyclage
     from apps.crm.models import Client, Lead, LeadActivity
     from apps.reporting.integrity import factures_payees_avec_solde
-    from apps.reporting.views import _ht_encaisse
+    from apps.reporting.views import _STATUTS_CA, _ht_encaisse
     from apps.stock.models import Produit
     from apps.ventes.models import Devis, Facture, LigneDevis, LigneFacture, Paiement
     from apps.ventes.selectors_facturation import ca_devis_factures_par_clients
     from apps.ventes.utils.options import option_totaux
     U = get_user_model()
-    co_id = 4
+    co_id = U.objects.get(username='demo_admin').company_id  # société démo locale
     u = U.objects.filter(company_id=co_id, is_active=True).order_by('id').first()
     co = u.company
     api = _api(u)
@@ -166,7 +166,8 @@ def sonde(ctx):
         ok['plat_' + k] = c[k]['q'] - b[k]['q'] <= 1
     # Chiffres = relecture SANS préchargement.
     payees = list(Facture.objects.filter(company=co, statut=Facture.Statut.PAYEE))
-    ca_paye = sum((_ht_encaisse(f) for f in payees), Decimal('0'))
+    # AANA55 : l'encaissé se lit sur les factures émises, en retard et payées.
+    ca_paye = sum((_ht_encaisse(f) for f in Facture.objects.filter(company=co, statut__in=_STATUTS_CA)), Decimal('0'))
     k_ = (c['dashboard']['js'] or {}).get('kpis') or {}
     ok['dashboard_ca_paye'] = abs(Decimal(str(k_.get('ca_paye', -1))) - ca_paye) <= Decimal('0.01')
     mes['dashboard_ca_paye'] = '%s servi / %s relu' % (k_.get('ca_paye'), ca_paye)

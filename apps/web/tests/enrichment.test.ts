@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import {
   SUPPLY_TYPES,
   ORIENTATIONS,
+  champsEnrichis,
   cleanEnrichment,
   hasEnrichment,
 } from '../src/lib/enrichment';
@@ -80,5 +82,33 @@ describe('cleanEnrichment — puissance estimée (estimateur de toiture)', () =>
   it('absent → toujours {} (lead identique octet pour octet au formulaire live)', () => {
     expect(cleanEnrichment({ supplyType: 'mono' })).toEqual({ supplyType: 'mono' });
     expect(hasEnrichment(cleanEnrichment({}))).toBe(false);
+  });
+});
+
+describe('ERR-W33-ENRICHI-ENVOI — le formulaire enrichi envoie ses champs facultatifs', () => {
+  const formulaire = (champs: Record<string, string>) => {
+    const fd = new FormData();
+    for (const [k, v] of Object.entries(champs)) fd.set(k, v);
+    return fd;
+  };
+
+  it('ce qui est saisi arrive jusqu’à cleanEnrichment', () => {
+    const corps = champsEnrichis(formulaire({
+      fullName: 'Reda', supplyType: 'tri', roofArea: ' 120,5 ', orientation: 'sud', estimatedKwc: '8',
+    }));
+    expect(corps).toEqual({ supplyType: 'tri', roofArea: '120,5', orientation: 'sud', estimatedKwc: '8' });
+    expect(cleanEnrichment(corps)).toEqual({ supplyType: 'tri', roofAreaM2: 120.5, orientation: 'sud', estimatedKwc: 8 });
+  });
+
+  it('champs vides : rien n’est fabriqué', () => {
+    expect(champsEnrichis(formulaire({ supplyType: '', roofArea: '  ' }))).toEqual({});
+  });
+
+  it('le composant les joint à sa charge utile', () => {
+    const source = readFileSync(new URL('../src/components/DiagnosticFormEnriched.astro', import.meta.url), 'utf8');
+    expect(source).toContain('{ ...chargeUtileCommune(fd), ...champsEnrichis(fd) }');
+    for (const cle of ['supplyType', 'roofArea', 'orientation', 'estimatedKwc']) {
+      expect(source).toContain(`name="${cle}"`);
+    }
   });
 });

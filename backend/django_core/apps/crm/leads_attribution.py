@@ -65,6 +65,13 @@ def _prochain_membre_equipe(equipe, plafond):
     return eligibles[0]
 
 
+def responsable_defaut_actif(profile):
+    """ACVI14 — LA lecture de ``responsable_defaut_leads`` : ``None`` si vide ou
+    si le compte est désactivé (il ne reçoit plus rien)."""
+    responsable = profile.responsable_defaut_leads if profile else None
+    return responsable if responsable is not None and responsable.is_active else None
+
+
 def default_responsable_for(company, lead_attrs=None):
     """Responsable assigné par défaut aux nouveaux leads d'une société.
 
@@ -88,7 +95,7 @@ def default_responsable_for(company, lead_attrs=None):
         return None
     from apps.parametres.models import CompanyProfile
     profile = CompanyProfile.objects.filter(company=company).first()
-    explicit = profile.responsable_defaut_leads if profile else None
+    explicit = responsable_defaut_actif(profile)
 
     # CIQ416 (D-CIQ-20) — un lead COMMERCIAL ou INDUSTRIEL va au responsable
     # des leads pro quand il est désigné (et actif), AVANT le round-robin et

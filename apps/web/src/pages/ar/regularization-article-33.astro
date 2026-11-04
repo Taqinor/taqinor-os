@@ -21,11 +21,11 @@ import V2Enhance from '../../components/V2Enhance.astro';
 import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
 import StickyCta from '../../components/StickyCta.astro';
-import ZelligeDivider from '../../components/ZelligeDivider.astro';
 import RelatedLinks from '../../components/RelatedLinks.astro';
 import { WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink, regularizationWhatsappText } from '../../lib/whatsapp';
 import { localizeNavHref } from '../../i18n/pages';
+import RegularisationDossier from '../../components/blocs/RegularisationDossier.astro';
 
 const { locale, L } = pageLocale(Astro.url.pathname);
 
@@ -155,38 +155,7 @@ const sanctions = [
     </section>
 
     <!-- ACTE FINAL — le dossier se confie en pleine lumière -->
-    <div class="v2-seam" aria-hidden="true"></div>
-    <section class="bg-blanc-azur px-4 pb-16 pt-4 text-encre">
-      <div class="mx-auto max-w-3xl">
-        <ZelligeDivider />
-        <div class="v2-rise mt-6 border-2 border-azur-600 bg-blanc p-8 sm:p-10">
-          <p class="tech-label text-azur-600">تكفّل كامل</p>
-          <h2 class="display v2-section-title mt-2">اعهد إلينا بالملف</h2>
-          <p class="mt-4 max-w-md text-sm leading-relaxed text-encre-soft">
-            سؤالان، ورسالة واتساب تنطلق كاملة بالفعل — نحدّد النظام المطبَّق ونكوّن الملف.
-          </p>
-          <div class="mt-6 grid gap-4 sm:grid-cols-2">
-            <div>
-              <label for="rg33-kwc" class="mb-1 block text-sm font-semibold">القدرة التقريبية (<span dir="ltr">kWc</span>)</label>
-              <input id="rg33-kwc" type="number" min="0" step="0.1" inputmode="decimal" placeholder="مثلاً 5"
-                class="w-full border border-azur-900/20 bg-blanc px-3 py-2.5 text-sm outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/25" />
-              <label class="mt-2 flex items-center gap-2 text-xs text-encre-soft">
-                <input id="rg33-unknown" type="checkbox" class="accent-azur-600" />
-                لا أعرف القدرة
-              </label>
-            </div>
-            <div>
-              <label for="rg33-ville" class="mb-1 block text-sm font-semibold">مدينة التركيبة</label>
-              <input id="rg33-ville" type="text" autocomplete="address-level2" placeholder="مثلاً الدار البيضاء"
-                class="w-full border border-azur-900/20 bg-blanc px-3 py-2.5 text-sm outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/25" />
-            </div>
-          </div>
-          <a id="rg33-go" href={waFallback} rel="noopener"
-            class="glow mt-6 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300"
-          >ابدأ على واتساب</a>
-        </div>
-      </div>
-    </section>
+    <RegularisationDossier kicker="تكفّل كامل" titre="اعهد إلينا بالملف" intro="سؤالان، ورسالة واتساب تنطلق كاملة بالفعل — نحدّد النظام المطبَّق ونكوّن الملف." kwcLabel={`القدرة التقريبية (<span dir="ltr">kWc</span>)`} kwcPlaceholder="مثلاً 5" inconnu="لا أعرف القدرة" villeLabel="مدينة التركيبة" villePlaceholder="مثلاً الدار البيضاء" cta="ابدأ على واتساب" waFallback={waFallback} />
 
     <StickyCta />
   </div>
@@ -215,28 +184,3 @@ const sanctions = [
     left: -1.25rem;
   }
 </style>
-
-<script>
-  import { whatsappLink, regularizationWhatsappText } from '../../lib/whatsapp';
-  import { WHATSAPP_LEADS } from '../../lib/nap';
-
-  // Le lien se met à jour en direct : le client n'édite JAMAIS le message.
-  const kwcEl = document.getElementById('rg33-kwc') as HTMLInputElement;
-  const unknownEl = document.getElementById('rg33-unknown') as HTMLInputElement;
-  const villeEl = document.getElementById('rg33-ville') as HTMLInputElement;
-  const goEl = document.getElementById('rg33-go') as HTMLAnchorElement;
-
-  function refresh() {
-    kwcEl.disabled = unknownEl.checked;
-    if (unknownEl.checked) kwcEl.value = '';
-    goEl.href = whatsappLink(
-      WHATSAPP_LEADS,
-      regularizationWhatsappText({
-        kwc: unknownEl.checked ? '' : kwcEl.value,
-        ville: villeEl.value,
-      }),
-    );
-  }
-  for (const el of [kwcEl, unknownEl, villeEl]) el.addEventListener('input', refresh);
-  refresh();
-</script>

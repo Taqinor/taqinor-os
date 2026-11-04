@@ -40,8 +40,9 @@ def rapport_attribution(request):
     # 400 nommant le paramètre ; ``parse_date`` levait ValueError (500).
     debut = date_param(request, 'debut')
     fin = date_param(request, 'fin')
-    from .selectors import attribution_leads
-    return Response(attribution_leads(user.company, debut=debut, fin=fin))
+    from .selectors import attribution_leads, leads_en_portee
+    return Response(attribution_leads(user.company, debut=debut, fin=fin,
+                                      leads=leads_en_portee(user)))
 
 
 #: Plafond d'une colonne ``PositiveIntegerField`` (int4 Postgres).
@@ -83,8 +84,9 @@ class PointContactViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
     ordering = ['ordre', 'date_contact', 'id']
 
     def get_permissions(self):
+        # ACVI3 (D-ACVI-2 = portée) — lecture sous `crm_voir`.
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [HasPermissionOrLegacy('crm_voir')()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -316,7 +318,7 @@ class LeadIntakeActionsMixin:
             # des touches ouvertes allaient quitter leur plan. Le compte vient
             # de la MÊME définition que la fusion (`relances_ouvertes_de`),
             # jamais d'un second filtre qui dériverait.
-            from .leads_fusion import relances_ouvertes_de
+            from .leads_fusion import relances_ouvertes_de, stage_apres_fusion
             relances_reprises = sum(
                 relances_ouvertes_de(d).count() for d in others)
             champs_combles = []
@@ -338,6 +340,8 @@ class LeadIntakeActionsMixin:
                     'champs_combles': champs_combles,
                     # CAD106 — combien de touches OUVERTES quittent leur plan.
                     'relances': relances_reprises,
+                    # ACVI33 — l'étape du survivant, avant de confirmer.
+                    'stage_apres_fusion': stage_apres_fusion(group),
                 },
                 # ACRM4 — PII vidée pour un rôle sans ``client_pii_voir``.
                 'members': [

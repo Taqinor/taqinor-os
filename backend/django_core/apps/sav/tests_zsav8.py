@@ -78,8 +78,10 @@ class ZSAV8CreerLeadTest(TestCase):
 
         # 2) la note de contexte EST présente sur le chatter du lead, attribuée
         #    au système (user None), et cite la référence du ticket
+        #    (ACVI88 : la porte trace aussi la suite de sa cadence, à part)
         notes = LeadActivity.objects.filter(
-            lead=lead, kind=LeadActivity.Kind.NOTE)
+            lead=lead, kind=LeadActivity.Kind.NOTE,
+            body__contains=self.ticket.reference)
         self.assertEqual(notes.count(), 1)
         note = notes.get()
         self.assertIsNone(note.user)

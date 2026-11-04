@@ -8,6 +8,7 @@
  * Voir apps/web/DESIGN_RATIONALE.md.
  */
 import Layout from '../layouts/Layout.astro';
+import ReponseCourte from '../components/ReponseCourte.astro';
 import V2Enhance from '../components/V2Enhance.astro';
 import Article33Ribbon from '../components/Article33Ribbon.astro';
 import Breadcrumb from '../components/Breadcrumb.astro';
@@ -16,9 +17,11 @@ import CtaBand from '../components/CtaBand.astro';
 import StickyCta from '../components/StickyCta.astro';
 import ZelligeDivider from '../components/ZelligeDivider.astro';
 import RelatedLinks from '../components/RelatedLinks.astro';
+import SourcesOfficielles8221 from '../components/SourcesOfficielles8221.astro';
 import { REGIMES } from '../lib/regime';
 import Loi8221DivBD31 from '../components/blocs/Loi8221DivBD31.astro';
 import Loi8221MxAutoCF28 from '../components/blocs/Loi8221MxAutoCF28.astro';
+import Loi8221OuEnEstLaLoi from '../components/blocs/Loi8221OuEnEstLaLoi.astro';
 ---
 
 <Layout
@@ -42,6 +45,7 @@ import Loi8221MxAutoCF28 from '../components/blocs/Loi8221MxAutoCF28.astro';
           posée, toute installation d'autoproduction relève de l'un des trois régimes ci-dessous ;
           c'est sa puissance et son raccordement qui décident lequel.
         </p>
+        <ReponseCourte id="loi8221" />
       </div>
     </section>
 
@@ -52,29 +56,7 @@ import Loi8221MxAutoCF28 from '../components/blocs/Loi8221MxAutoCF28.astro';
         {/* CIW412 — sources : décision ANRE 04/26 art. 6-7 (le tarif d'excédent vise la TENSION
             MT/HT/THT, quel que soit le régime) ; décret 2.25.100 art. 12 (accord de raccordement
             de 11 kW à moins de 5 MW) ; D-CIQ-4. En basse tension la revente n'est pas ouverte. */}
-        <div class="mt-4 grid gap-5 sm:grid-cols-2">
-          <div>
-            <p class="tech-label text-lune">En vigueur</p>
-            <p class="mt-2 text-sm leading-relaxed text-lune-soft">
-              Le décret d'application <strong class="text-white">2-25-100</strong> (Bulletin Officiel du
-              9 mars 2026, en vigueur depuis le <strong class="text-white">9 juin 2026</strong>) et la
-              décision <strong class="text-white">04/26</strong> de l'ANRE. Tarif d'excédent ANRE
-              (décision 04/26) : <strong class="text-white">0,18 DH/kWh hors pointe, 0,21 DH/kWh en
-              pointe, hors taxes</strong>, pour les installations raccordées en
-              <strong class="text-white"> moyenne, haute ou très haute tension (MT/HT/THT)</strong>,
-              quel que soit leur régime.
-            </p>
-          </div>
-          <div>
-            <p class="tech-label text-lune">Pas encore publié</p>
-            <p class="mt-2 text-sm leading-relaxed text-lune-soft">
-              En <strong class="text-white">basse tension (BT)</strong>, quel que soit le régime — y compris
-              un commerce de 11 kW ou plus sous accord de raccordement — la revente du surplus n'est
-              pas ouverte à ce jour. Ne prenez pas le tarif MT/HT ci-dessus pour celui de votre villa
-              ou de votre commerce.
-            </p>
-          </div>
-        </div>
+        <Loi8221OuEnEstLaLoi />
         <p class="mt-5 text-xs leading-relaxed text-lune-faint">
           Chaque chiffre de tarif publié sur ce site porte sa fenêtre de validité et sa source ; nous
           mettons cette page à jour dès la publication du tarif BT résidentiel.
@@ -113,6 +95,8 @@ import Loi8221MxAutoCF28 from '../components/blocs/Loi8221MxAutoCF28.astro';
         </a>
       </div>
     </section>
+
+    <SourcesOfficielles8221 />
 
     <CtaBand title="Un doute sur votre régime ? Nous vérifions gratuitement." buttonLabel="Faire vérifier mon dossier" seam={false} />
 

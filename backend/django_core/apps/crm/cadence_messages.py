@@ -9,6 +9,7 @@ import re as _re
 
 from . import activity
 from .cadence_reperes import _lead_porte_tag, prefixe_activite_message_ouvert
+from .cadence_temps import numero_joignable
 from .leads_premier_contact import marquer_premier_contact
 from .models import Lead, LeadActivity, RelanceEtape
 from .visites_rdv import resoudre_lien_rdv
@@ -194,8 +195,8 @@ def _nom_affiche_conseiller(lead, user):
         conseiller = user
     if conseiller is None:
         return ''
-    return (getattr(conseiller, 'first_name', '')
-            or getattr(conseiller, 'username', '') or '')
+    # ACVI54 — jamais le login : sans prénom, la phrase est omise (MRY13).
+    return getattr(conseiller, 'first_name', '') or ''
 
 
 def _nom_affiche_marque(lead):
@@ -373,7 +374,7 @@ def message_visite_pour_lead(lead, cle, *, user=None, masquer_numero=False):
             _omettre_phrases_incompletes(corps, manquants), contexte)
     # CAD111 — les liens wa.me construits par le SERVEUR (E.164), un par
     # langue, jamais par l'écran ; aucun numéro pour un rôle sans droit PII.
-    phone = '' if masquer_numero else (lead.whatsapp or lead.telephone or '')
+    phone = '' if masquer_numero else numero_joignable(lead)  # ACVI50
     rendu['wa_url_fr'] = build_wa_url(phone, rendu['corps_fr']) if phone else None
     rendu['wa_url_darija'] = (build_wa_url(phone, rendu['corps_darija'])
                               if phone else None)
@@ -542,6 +543,43 @@ def _crochets_a_completer(texte):
     return vus
 
 
+def refus_rendu_whatsapp(lead, *, etape=None, cle=None):
+    """ACVI44 — LA garde de tout rendu WhatsApp de cadence : le motif du refus,
+    ``''`` si le rendu est permis. L'accusé ``stop_contact`` reste permis : c'est
+    la réponse à l'opposition elle-même."""
+    from .portee_selectors import peut_contacter
+
+    if cle == 'stop_contact':
+        return ''
+    if not peut_contacter(lead):
+        return 'ne plus contacter'
+    if getattr(lead, 'perdu', False) or getattr(lead, 'is_archived', False):
+        return 'perdu/archivé'
+    if etape is not None and etape.statut == RelanceEtape.Statut.ANNULEE:
+        return 'touche annulée'
+    return ''
+
+
+def garde_rendu_whatsapp(etape, *, cle=None, rendu=None):
+    """ACVI44 — le 409 nommé des vues ; avec ``rendu``, aussi le numéro inexploitable."""
+    from core.conflit_etat import ConflitEtat
+
+    refus = refus_rendu_whatsapp(etape.lead, etape=etape, cle=cle)
+    if refus:
+        raise ConflitEtat(f'Message refusé : {refus}.')
+    if rendu is not None and not rendu.get('wa_url'):
+        raise ConflitEtat('Numéro de téléphone invalide.')
+
+
+def garde_contact_du_lead(lead):
+    """ACVI89 (D-ACVI-7 = refus) — le 409 nommé d'un rendu WhatsApp hors touche."""
+    from core.conflit_etat import ConflitEtat
+
+    refus = refus_rendu_whatsapp(lead)
+    if refus:
+        raise ConflitEtat(f'Message refusé : {refus}.')
+
+
 def message_pour_etape(etape, *, request=None, user=None, cle=None,
                        langue=None):
     """MRY13 — Le message d'UNE touche, rendu côté serveur.
@@ -570,6 +608,7 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
     et la proposition."""
     from apps.parametres.models_messages import MessageTemplate
     from apps.ventes.utils.whatsapp import build_wa_url, render_message_template
+    from core.dates import aujourd_hui_local
 
     lead = etape.lead
     # CAD64 — la langue passe par le résolveur COMMUN (préférence du lead,
@@ -674,7 +713,10 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
                 # affichait « valable jusqu'au X ». Règle #4 respectée : on ne
                 # touche pas au moteur de rendu, on lit la MÊME règle.
                 validite = _date_validite_comme_le_pdf(devis)
-                if validite:
+                # ACVI49 — une validité passée ou un devis expiré : phrase omise
+                # (MRY13), jamais « valable jusqu'à » une date écoulée.
+                if (validite and validite >= aujourd_hui_local()
+                        and getattr(devis, 'statut', '') != 'expire'):
                     contexte['date_validite'] = validite.strftime('%d/%m/%Y')
                 contexte['lien'] = url_proposition(devis) or ''
         except Exception:  # noqa: BLE001 — un lien absent n'est jamais inventé (D-ENF22-BLE001)
@@ -721,7 +763,9 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
         _omettre_phrases_incompletes(objet_gabarit, manquants),
         contexte).strip() if objet_gabarit else ''
 
-    phone = lead.whatsapp or lead.telephone or ''
+    from .serializers import pii_masquee_pour
+    # ACVI4 — sans `client_pii_voir`, aucun numéro ne sort (la liste le masque).
+    phone = '' if pii_masquee_pour(user) else numero_joignable(lead)  # ACVI50
     if est_email:
         # Une touche e-mail n'ouvre pas WhatsApp : `wa_url` vaut `null`, et le
         # lien `mailto:` est construit par le serveur. Rien n'est envoyé (D5).
@@ -1257,12 +1301,13 @@ def _prenom_du_locataire_prescripteur(lead):
 def _mois_dossier_francais(lead):
     """« mars 2026 » — le mois où ce prospect nous avait consultés.
 
-    Dérivé de la date de création de SA fiche : une date réelle et traçable,
-    jamais une estimation. Fiche sans date ⇒ chaîne vide ⇒ phrase omise.
+    Dérivé de la date d'origine de SA fiche (ACVI47 : celle du système d'origine
+    si on la connaît) : une date réelle et traçable, jamais une estimation.
+    Fiche sans date ⇒ chaîne vide ⇒ phrase omise.
     """
     from . import horaires
 
-    quand = getattr(lead, 'date_creation', None)
+    quand = getattr(lead, 'date_origine', None)
     if not quand:
         return ''
     locale = quand.astimezone(horaires.CASABLANCA)
@@ -1293,7 +1338,7 @@ def _cle_identite_pour_lead(lead, cle_gabarit, *, reference=None):
     except ImportError:
         return cle_gabarit
 
-    ouverture = getattr(lead, 'date_creation', None)
+    ouverture = getattr(lead, 'date_origine', None)  # ACVI47
     if ouverture is not None and reference is not None:
         from . import horaires
         locale = ouverture.astimezone(horaires.CASABLANCA).date()

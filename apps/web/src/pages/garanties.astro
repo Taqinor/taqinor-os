@@ -27,9 +27,11 @@ import { TABLEAU_GARANTIES_FR } from '../lib/warranty';
  * renseignés, la carte apparaît automatiquement.
  */
 import Layout from '../layouts/Layout.astro';
+import ReponseCourte from '../components/ReponseCourte.astro';
 import V2Enhance from '../components/V2Enhance.astro';
 import Article33Ribbon from '../components/Article33Ribbon.astro';
 import Breadcrumb from '../components/Breadcrumb.astro';
+import CtaLigne from '../components/CtaLigne.astro';
 import CtaBand from '../components/CtaBand.astro';
 import StickyCta from '../components/StickyCta.astro';
 import Faq from '../components/Faq.astro';
@@ -149,7 +151,9 @@ import WarrantyListBlock from '../components/blocs/WarrantyListBlock.astro';
           <strong class="text-white">au moins 87,4 % de leur puissance à 30 ans</strong> (garantie
           linéaire). Le tableau ci-dessous ne cache aucune ligne.
         </p>
+        <ReponseCourte id="garanties" />
       </div>
+      <CtaLigne />
     </section>
 
     {/* W280 — InstallCounter : chiffres réels d'installations, dérivés de

@@ -59,6 +59,8 @@ def reprendre_relances_apres_fusion(absorbed, survivor, user):
                  traite_le=timezone.now())
         absorbed.relance_date = None
         absorbed.save(update_fields=['relance_date'])
+    if survivor.ne_plus_contacter:  # ACVI21 — jamais de filet sur une opposée.
+        return len(ouvertes)
     # QJ-INVARIANT — la survivante ne reste jamais sans prochaine étape.
     # Best-effort : une fusion n'échoue pas sur un filet.
     try:
@@ -134,6 +136,38 @@ def _nom_fiche_client(client):
     return f'{nom} (#{client.pk})'
 
 
+def stage_apres_fusion(leads):
+    """ACVI33 — l'étape que le survivant porte après la fusion : la plus avancée
+    du groupe, dans l'ordre de STAGES.py (Froid est un parking, sous NEW). Lue
+    par la fusion et par son aperçu."""
+    from .fiche_funnel import _rang_funnel
+    return max((lead.stage for lead in leads), key=_rang_funnel)
+
+
+def _tracer_opposition_apres_fusion(survivor, others, oppose, champs_ecrits):
+    """ACVI21 — après l'étape 6 : sous les identifiants complétés. D-ACVI-6 — un
+    contact comblé sur un survivant déjà opposé porte aussi l'opposition ; sans
+    contact neuf, rien de neuf à inscrire au registre. L'absorbé opposé garde
+    l'opposition sous SES identifiants (ceux que le survivant ne reprend pas) ;
+    un contact déjà tracé n'est pas réinscrit."""
+    from .cadence_reponses import tracer_opposition_registre
+    from .leads_doublons import empreintes_contact
+
+    contact_comble = champs_ecrits & {'email', 'telephone', 'whatsapp'}
+    if oppose or (survivor.ne_plus_contacter and contact_comble):
+        tracer_opposition_registre(survivor, source='fusion de fiches')
+    if not oppose:
+        return
+    deja = empreintes_contact(
+        survivor.email, survivor.telephone, survivor.whatsapp)
+    for absorbed in others:
+        propres = empreintes_contact(
+            absorbed.email, absorbed.telephone, absorbed.whatsapp)
+        if absorbed.ne_plus_contacter and propres - deja:
+            tracer_opposition_registre(absorbed, source='fusion de fiches')
+            deja |= propres
+
+
 def merge_leads(survivor, others, user):
     """Fusionne `others` dans `survivor` SANS perte de données. Déplace devis,
     activités, pièces jointes, historique et chantiers ; complète les champs
@@ -144,6 +178,9 @@ def merge_leads(survivor, others, user):
     from django.db import transaction
     from django.utils import timezone
 
+    from .cadence_plan import arreter_cadence
+    from .cadence_reponses import MOTIF_NE_PLUS_CONTACTER, _marquer_lead_ne_plus_contacter
+
     others = [o for o in others if o.pk != survivor.pk
               and o.company_id == survivor.company_id]
     if not others:
@@ -151,6 +188,7 @@ def merge_leads(survivor, others, user):
 
     ct = ContentType.objects.get_for_model(Lead)
     relances_reprises = 0
+    oppose = False
     # ACRM40 (C-ACRM-035) — les fiches client DISTINCTES rencontrées : le
     # survivant garde la sienne, les devis de l'autre restent sur l'autre.
     deux_clients = []
@@ -160,6 +198,10 @@ def merge_leads(survivor, others, user):
         list(Lead.objects.select_for_update()
              .filter(pk__in=[survivor.pk] + [o.pk for o in others])
              .order_by('pk').values_list('pk', flat=True))
+        # ACVI34 — l'instance a été lue AVANT le verrou : relue, et l'écriture
+        # finale bornée aux champs comblés (patron CRX25).
+        survivor.refresh_from_db()
+        champs_ecrits = {'date_modification'}
         for absorbed in others:
             if (survivor.client_id and absorbed.client_id
                     and survivor.client_id != absorbed.client_id):
@@ -181,6 +223,12 @@ def merge_leads(survivor, others, user):
             # Savepoint : un transfert qui échoue ne casse jamais la fusion,
             # mais il est tracé (journal + note au chatter du survivant).
             _transferer_calepinages_apres_fusion(absorbed, survivor, user)
+            # 2 ter) ACVI22 — le survivant porte la visite dont il affiche la date.
+            from apps.visites.services import rattacher_visites_au_lead
+            rattacher_visites_au_lead(absorbed, survivor)
+            for enfants in (absorbed.appointments, absorbed.points_contact,
+                            absorbed.booking_links, absorbed.questionnaire_liens):
+                enfants.update(lead=survivor)
             # 3) Activités + pièces jointes génériques → survivant.
             try:
                 from apps.records.models import Activity, Attachment
@@ -194,6 +242,11 @@ def merge_leads(survivor, others, user):
                 logger.warning('%s : échec ignoré (dégradé)', 'merge_leads', exc_info=True)
             # 4) Historique chatter → survivant.
             LeadActivity.objects.filter(lead=absorbed).update(lead=survivor)
+            # ACVI21 — l'opposition d'un absorbé suit la personne, AVANT le filet.
+            if absorbed.ne_plus_contacter:
+                oppose = True
+                _marquer_lead_ne_plus_contacter(survivor, user)
+                arreter_cadence(survivor, user=user, motif=MOTIF_NE_PLUS_CONTACTER)
             # 4 bis) CAD106 — les RELANCES suivent le dossier : les touches
             # ouvertes de l'absorbée sortent de son plan (annulées « fusion »,
             # donc jamais comptées comme des manquements) et le filet garantit
@@ -203,6 +256,7 @@ def merge_leads(survivor, others, user):
             # 5) Client : adopter celui de l'absorbé si le survivant n'en a pas.
             if not survivor.client_id and absorbed.client_id:
                 survivor.client = absorbed.client
+                champs_ecrits.add('client')
             # 6) Compléter les champs VIDES du survivant — ACRM13 : vide au
             # sens de ``_est_vide`` (un 0 saisi du survivant SURVIT).
             for field in _MERGE_FILL_FIELDS:
@@ -211,7 +265,8 @@ def merge_leads(survivor, others, user):
                     val = getattr(absorbed, field, None)
                     if not _est_vide(absorbed, field, val):
                         # AMET21 — une clé SAISIE du survivant n'est jamais remplacée.
-                        ecrire_si_libre(survivor, field, val, user=user)
+                        if ecrire_si_libre(survivor, field, val, user=user):
+                            champs_ecrits.add(field)
             # 7) Fusionner les tags (union).
             tags = set()
             for src in (survivor, absorbed):
@@ -221,6 +276,7 @@ def merge_leads(survivor, others, user):
                         tags.add(t)
             if tags:
                 survivor.tags = ', '.join(sorted(tags))[:500]
+                champs_ecrits.add('tags')
             # 8) Archiver l'absorbé (jamais supprimé).
             absorbed.is_archived = True
             absorbed.archived_by = user
@@ -253,8 +309,23 @@ def merge_leads(survivor, others, user):
                           f'{_nom_fiche_client(gardee)} (gardée) et '
                           f'{_nom_fiche_client(client)} ({devis_txt}) — à '
                           'fusionner (outil de fusion des clients).'))
-        survivor.save()
-    if relances_reprises:
+        for source, derivee in (('telephone', 'phone_normalise'),
+                                ('email', 'email_normalise'),
+                                ('whatsapp', 'whatsapp_normalise')):
+            if source in champs_ecrits:
+                champs_ecrits.add(derivee)
+        survivor.save(update_fields=champs_ecrits)
+        # ACVI33 — l'étape la plus avancée du groupe, par le point de passage
+        # canonique (émission de ``lead_stage_changed``, crochet SIGNED).
+        cible = stage_apres_fusion([survivor, *others])
+        if cible != survivor.stage:
+            from . import activity
+            from .fiche_funnel import appliquer_stage_lead
+            ancienne = survivor.stage
+            appliquer_stage_lead(survivor, cible, user=user)
+            activity.log_bulk_change(survivor, user, 'stage', ancienne, cible)
+        _tracer_opposition_apres_fusion(survivor, others, oppose, champs_ecrits)
+    if relances_reprises and not survivor.ne_plus_contacter:
         # CAD106 — la fusion DIT ce qu'elle a fait des relances : sans cette
         # ligne, des touches disparaissaient du plan sans un mot.
         LeadActivity.objects.create(

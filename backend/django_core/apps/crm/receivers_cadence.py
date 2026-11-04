@@ -9,6 +9,7 @@ import datetime
 import logging
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from . import stages
@@ -37,6 +38,7 @@ from .cadence_plan import (
 )
 from .fiche_funnel import avancer_stage_lead_vers
 from .cadence_reperes import (
+    LIBELLE_FAIRE_SIGNER_AVENANT,
     OUTCOME_VISITE_ACCEPTEE,
     annuler_etapes_moteur_ouvertes,
     est_cloture_d_etape_visite,
@@ -48,9 +50,6 @@ from .visites_retour_lead import ecrire_retour_lead_visite, journaliser_visite
 from .cadence_reponses import est_derniere_touche_du_suivi
 
 logger = logging.getLogger(__name__)
-
-
-LIBELLE_FAIRE_SIGNER_AVENANT = 'Faire signer l’avenant'
 
 
 def _a_un_predecesseur_accepte(devis):
@@ -364,8 +363,9 @@ def _arreter_cadence_on_stage_change(sender, lead, old_stage, new_stage, user,
         if new_stage == stages.SIGNED:
             arreter_cadence(lead, user=user, motif='lead signé')
         elif new_stage == stages.COLD:
+            # ACVI38 — tout sauf les réveils, le filet ``generique`` compris.
             arreter_cadence(lead, user=user, motif='lead passé en froid',
-                            cadences=['contact', 'apres_devis'])
+                            garder=Q(cadence='reveil'))
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             "MRY9: arrêt de cadence échoué au changement d'étape du lead #%s",
@@ -492,9 +492,12 @@ def _suivi_on_visite_terminee(sender, visite, lead_id, user, retour,
         auteur = ''
         if user is not None:
             auteur = (user.get_full_name() or user.username or '')
+        reprise = bool(kwargs.get('reprise'))
         etape = appliquer_retour_visite(lead, user, retour, auteur=auteur,
-                                        qualification=qualification)
-        _notifier_responsable_retour_visite(lead, user, etape)
+                                        qualification=qualification,
+                                        reprise=reprise)
+        if not reprise:
+            _notifier_responsable_retour_visite(lead, user, etape)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'VISITE-CADENCE : retour terrain non traité pour le lead #%s',

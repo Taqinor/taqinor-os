@@ -1,0 +1,30 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/versions/",
+  "pourquoi": "ENF15 (routes_sous_contrat) — L'historique d'un calepinage, du plus récent au plus ancien (CAL20) — liste NUE (pas de pagination), bornée société par le calepinage. Forme = `views/calepinages.py::_version_en_ligne`. Lecture pure. Garde `calepinage_voir`. Valeurs illustratives.",
+  "reponse": "liste NUE (tableau JSON, sans pagination) d'éléments de la forme `exemple`",
+  "exemple": {
+    "id": 12,
+    "libelle": "Version du 19/09 — avant reprise",
+    "layout_hash": "abababababababababababababababababababababababababababababababab",
+    "cree_le": "2026-09-19T09:00:00Z",
+    "cree_par": {
+      "id": 3,
+      "nom_complet": "demo_admin"
+    },
+    "a_un_resultat": true
+  },
+  "exemple_liste": [
+    {
+      "id": 12,
+      "libelle": "Version du 19/09 — avant reprise",
+      "layout_hash": "abababababababababababababababababababababababababababababababab",
+      "cree_le": "2026-09-19T09:00:00Z",
+      "cree_par": {
+        "id": 3,
+        "nom_complet": "demo_admin"
+      },
+      "a_un_resultat": true
+    }
+  ],
+  "exemple_vide": []
+}

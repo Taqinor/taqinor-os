@@ -232,12 +232,13 @@ def _premier_contact(company, membre_ids, debut, fin, responsable_id=None):
              .only('id', 'owner', 'date_creation', 'date_creation_origine',
                    'first_contacted_at'))
     out = {}
-    for lead in leads:
-        mesures, sous = out.get(lead.owner_id, (0, 0))
-        if lead.first_contacted_at is not None and horaires.minutes_ouvrees_entre(
-                lead.date_origine, lead.first_contacted_at, company) <= objectif:
-            sous += 1
-        out[lead.owner_id] = (mesures + 1, sous)
+    with horaires.cache_local():  # ACVI79
+        for lead in leads:
+            mesures, sous = out.get(lead.owner_id, (0, 0))
+            if lead.first_contacted_at is not None and horaires.minutes_ouvrees_entre(
+                    lead.date_origine, lead.first_contacted_at, company) <= objectif:
+                sous += 1
+            out[lead.owner_id] = (mesures + 1, sous)
     return out
 
 
@@ -276,11 +277,11 @@ def _devis_ouverts(company, membre_ids):
     (``is_active``) des leads OUVERTS du membre (même filtre que
     ``_lignes_pipeline_ouvertes`` : ni archivé, ni perdu, étape hors
     SIGNED/COLD), lus par ``lead.devis``."""
-    from .clients_selectors import _lignes_pipeline_ouvertes
+    from .clients_selectors import _lignes_pipeline_ouvertes, _prefetch_devis
     leads = (_lignes_pipeline_ouvertes(company, membre_ids)
              .filter(devis__statut=STATUT_DEVIS_OUVERT, devis__is_active=True)
              .distinct().prefetch_related(None)
-             .prefetch_related('devis__lignes__produit'))
+             .prefetch_related(*_prefetch_devis(), 'devis__lignes__produit'))
     out = {}
     for lead in leads:
         for devis in lead.devis.all():

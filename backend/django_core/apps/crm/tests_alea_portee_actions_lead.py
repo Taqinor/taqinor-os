@@ -28,6 +28,28 @@ TEL_COLLEGUE = '+212661500001'
 
 class PorteeActionsLeadTests(TestCase):
 
+    def test_post_owner_collegue_sans_crm_reassign_403(self):
+        # ACVI7 — le 403 du PATCH à la création ; `owner` = soi reste permis.
+        role = Role.objects.create(
+            company=self.company, nom='Commercial simple',
+            permissions=list(COMMERCIAL_PERMISSIONS))
+        commercial = User.objects.create_user(
+            username='acvi7-commercial', password='x', company=self.company,
+            role=role)
+        api = APIClient()
+        api.force_authenticate(commercial)
+        url = '/api/django/crm/leads/'
+        avant = Lead.objects.filter(company=self.company).count()
+        res = api.post(url, {'nom': 'X', 'telephone': '0611111111',
+                             'owner': self.collegue.pk}, format='json')
+        self.assertEqual(res.status_code, 403, res.content)
+        self.assertIn('crm_reassign', str(res.data))
+        self.assertEqual(
+            Lead.objects.filter(company=self.company).count(), avant)
+        res = api.post(url, {'nom': 'Y', 'telephone': '0611111112',
+                             'owner': commercial.pk}, format='json')
+        self.assertEqual(res.status_code, 201, res.content)
+
     def setUp(self):
         self.company = Company.objects.create(
             nom='Taqinor ALEA27', slug='taqinor-alea27')

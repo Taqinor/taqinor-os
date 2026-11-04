@@ -20,6 +20,7 @@
 import RealisationGrille from '../../components/blocs/RealisationGrille.astro';
 import RealisationCarte from '../../components/blocs/RealisationCarte.astro';
 import Layout from '../../layouts/Layout.astro';
+import { canonicalUrl } from '../../lib/canonicalUrl';
 import V2Enhance from '../../components/V2Enhance.astro';
 import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
@@ -58,11 +59,11 @@ const itemListJsonLd = {
   '@type': 'ItemList',
   name: 'Installations solaires Taqinor — visitables, production mesurée',
   description:
-    'Installations solaires réellement posées par Taqinor, visitables sur demande, avec suivi de production en temps réel.',
+    'Installations solaires réellement posées par Taqinor, visitables sur demande.',
   itemListElement: REALISATIONS.map((r, i) => ({
     '@type': 'ListItem',
     position: i + 1,
-    url: new URL(`/realisations/${r.slug}`, Astro.site).href,
+    url: canonicalUrl(`/realisations/${r.slug}`, Astro.site),
     // (2026-09) kwc absent (chantier filmé avant tout relevé de puissance,
     // ex. Bouskoura) : omis plutôt qu'un "undefined" dans le JSON-LD.
     name: `Installation solaire${r.kwc ? ` ${r.kwc}` : ''} à ${r.ville} — réf. ${r.ref}`,
@@ -77,7 +78,7 @@ import PourquoiTaqinorBlocA65D from '../../components/blocs/PourquoiTaqinorBlocA
 
 <Layout
   title="Nos réalisations solaires au Maroc — installations suivies | Taqinor"
-  description="Les installations solaires réellement posées par Taqinor : villas de Casablanca, El Jadida et Nouaceur, puissance, matériel posé et suivi de production en temps réel. Études de cas détaillées."
+  description="Les installations solaires réellement posées par Taqinor : villas de Casablanca, El Jadida et Nouaceur, puissance et matériel posé. Études de cas détaillées."
   ogSlug="accueil"
 >
   <script type="application/ld+json" set:html={JSON.stringify(itemListJsonLd)} />

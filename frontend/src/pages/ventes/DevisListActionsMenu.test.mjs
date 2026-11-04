@@ -11,16 +11,17 @@ import { lireSourcesDevisList } from './devisList/lireSources.mjs'
 // SPL203 — DevisList.jsx + devisList/*.{js,jsx} (le code suit ses déplacements).
 const SRC = lireSourcesDevisList()
 
-test('QX27 : DropdownMenu importé depuis ../../ui (même primitive que ListView.jsx)', () => {
-  assert.match(SRC, /DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,\s*\n\s*DropdownMenuItem, DropdownMenuLabel,/)
+test('QX27 : menu de ligne ui/MenuActionsLigne, entrées DropdownMenu de ../../ui (même primitive que ListView.jsx)', () => {
+  assert.match(SRC, /import MenuActionsLigne from '\.\.\/\.\.\/\.\.\/ui\/MenuActionsLigne/)
+  assert.match(SRC, /DropdownMenuItem, DropdownMenuLabel,/)
 })
 
 test('QX27 : les actions secondaires sont dans le menu « ⋯ », plus des boutons directs', () => {
   // VX20 a réaligné le menu de ligne sur `align="end"` et y a replié davantage
   // d'actions : on découpe TOUT le contenu du menu (jusqu'à sa fermeture).
-  const start = SRC.indexOf('<DropdownMenuContent align="end">')
+  const start = SRC.indexOf('<MenuActionsLigne declencheur=')
   assert.ok(start > 0, 'menu de la ligne devis introuvable')
-  const block = SRC.slice(start, SRC.indexOf('</DropdownMenuContent>', start))
+  const block = SRC.slice(start, SRC.indexOf('</MenuActionsLigne>', start))
   assert.match(block, /Réviser \(nouvelle version\)/)
   assert.match(block, /Approuver la remise/)
   assert.match(block, /Contacter mon supérieur/)

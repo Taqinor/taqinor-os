@@ -542,6 +542,17 @@ _META_CREATED_TIME_MAX_ANCIENNETE_JOURS = 90
 _META_CREATED_TIME_MARGE_FUTUR_MINUTES = 5
 
 
+def date_webhook_ou_none(brut):
+    """Date d'un webhook → datetime, ou ``None`` si absente, illisible OU
+    impossible (``2026-02-30`` lève ``ValueError`` dans ``parse_datetime``)."""
+    from django.utils.dateparse import parse_datetime as _parse_dt
+
+    try:
+        return _parse_dt(brut)
+    except (TypeError, ValueError):
+        return None
+
+
 def _parse_meta_created_time(brut):
     """``created_time`` Meta → datetime aware, ou ``None``.
 
@@ -737,9 +748,12 @@ def create_lead_from_meta_lead_ads(
     # (backfill) depuis les réponses du formulaire — champs vides uniquement,
     # jamais un écrasement de saisie humaine. C'est ce chemin qui remplit les
     # leads importés avant que le mapping complet n'existe.
-    existing = Lead.objects.filter(
+    # ACVI11 — corbeille comprise : une fiche supprimée n'est ni recréée ni touchée.
+    existing = Lead.all_objects.filter(
         company=company, external_system=_META_LEAD_ADS_SYSTEM,
         external_id=str(leadgen_id)).first()
+    if existing is not None and existing.is_deleted:
+        return existing
     if existing is not None:
         # ACRM14 — UNE seule passe d'enrichissement : déjà enrichi (note
         # « [Formulaire Meta] » présente) → aucune écriture, la saisie

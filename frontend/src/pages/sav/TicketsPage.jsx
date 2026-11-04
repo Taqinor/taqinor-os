@@ -254,6 +254,7 @@ export function TicketPremiereReponseChip({ ticket }) {
 }
 
 export function TicketDetail({ ticket, onClose, onSaved }) {
+  const [fusions, setFusions] = useState(0)
   const dispatch = useDispatch()
   const allTickets = useSelector((s) => s.tickets.items)
   const id = ticket.id
@@ -409,9 +410,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
       toast.error(frError(err, 'Rechargement du ticket impossible.'))
     }
   }
-  const loadHistorique = () => {
-    savApi.getTicketHistorique(id).then((r) => setHistorique(r.data)).catch(() => {})
-  }
+  const loadHistorique = () => savApi.getTicketHistorique(id).then((r) => setHistorique(r.data)).catch(() => {})
   const loadInterventions = () => {
     // ENF15 — toutes les pages (jamais la seule page 1).
     lireToutesLesPages((params) => installationsApi.getInterventions({ ticket: id, ...params }))
@@ -1034,7 +1033,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
           {/* PACT174 — TagChipInput (FG9) enfin monté : même modèle/id que les
               pièces jointes juste en dessous. */}
           <TagChipInput model="sav.ticket" id={id} readOnly={!peutTaguer} />
-          <AttachmentsPanel model="sav.ticket" id={id} />
+          <AttachmentsPanel key={`pj-${fusions}`} model="sav.ticket" id={id} />
         </section>
 
         {/* ── WR11/FG81+FG86 — SLA première réponse + lien de suivi client ── */}
@@ -1059,7 +1058,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
 
         {/* ── WR11/FG82 — checklist de visite de maintenance ── */}
         <CollapsibleSection icon={ShieldCheck} title="Checklist de maintenance">
-          <TicketChecklistPanel ticketId={id} />
+          <TicketChecklistPanel key={`ck-${fusions}`} ticketId={id} />
         </CollapsibleSection>
 
         {/* ── WIR119/ZMFG6 — feuille de maintenance (worksheet) à remplir ── */}
@@ -1076,6 +1075,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
             onSaved={async () => {
               // ASAV59 — après une fusion : fiche, pièces, historique et liste.
               await reloadAll()
+              setFusions((n) => n + 1) // ASAV126 — remonte pièces jointes + checklist
               loadPieces()
               loadPiecesUnifiees()
               loadHistorique()

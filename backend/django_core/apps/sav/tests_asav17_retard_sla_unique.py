@@ -88,6 +88,24 @@ class RetardSlaUniqueTests(TestCase):
         self.assertTrue(t.sla_breach)
         self.assertEqual(self._notifs(t), 1)
 
+    def test_scan_sans_technicien_notifie_les_managers_une_fois(self):
+        """ASAV124 — le scan (qui pose ``sla_breach``) notifie les managers
+        quand il n'y a pas de technicien ; le balayage quotidien ne revoit
+        plus le ticket : exactement UNE notification, scan + balayages."""
+        from apps.notifications.sweeps import _sweep_sav_breaching
+        sans = self._ticket(
+            statut=Ticket.Statut.EN_COURS, technicien_responsable=None,
+            sla_due_at=self.today - timedelta(days=2))
+        scan_sla_breaches()
+        _sweep_sav_breaching(self.company)
+        _sweep_sav_breaching(self.company)
+        sans.refresh_from_db()
+        self.assertTrue(sans.sla_breach)
+        notifs = Notification.objects.filter(
+            company=self.company, event_type=EventType.SAV_TICKET_BREACHING)
+        self.assertEqual(notifs.count(), 1)
+        self.assertEqual(notifs.get().recipient_id, self.tech.pk)
+
     def test_societe_sans_sla_jamais_en_retard(self):
         autre, _ = Company.objects.get_or_create(
             slug='asav17-off', defaults={'nom': 'ASAV17 Off'})

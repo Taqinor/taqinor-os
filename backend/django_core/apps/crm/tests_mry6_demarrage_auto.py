@@ -20,6 +20,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
+from testkit.time import frozen
 
 from apps.crm import stages, fiche_api_publique
 from apps.crm import leads_intake
@@ -86,6 +87,27 @@ class DemarrageTests(_Base):
 
 class GardesTests(_Base):
     slug = 'mry6-gardes'
+
+    @frozen('2026-09-21T10:00:00+01:00')
+    def test_numero_ajoute_au_patch_relance_la_cadence(self):
+        # ACVI27 — le PATCH du numéro pose le prochain geste (CKP2), ou trace la
+        # garde suivante. Horloge gelée : hors gel, la touche d'ouverture est
+        # déjà échue en journée (2 touches) et à venir la nuit (1 seule).
+        api = APIClient()
+        api.force_authenticate(self.acteur)
+        for nom, numero, touches in (('Y', '0612345678', 1), ('Z', '0612345678', 0)):
+            cree = api.post('/api/django/crm/leads/', {'nom': nom}, format='json')
+            self.assertEqual(cree.status_code, 201, cree.data)
+            lead = Lead.objects.get(pk=cree.data['id'])
+            self.assertEqual(self._touches(lead), 0)
+            self.assertTrue(self._refus_trace(lead, 'aucun numéro exploitable'))
+
+            maj = api.patch(f'/api/django/crm/leads/{lead.pk}/',
+                            {'telephone': numero}, format='json')
+
+            self.assertEqual(maj.status_code, 200, maj.data)
+            self.assertEqual(self._touches(lead), touches, nom)
+        self.assertTrue(self._refus_trace(lead, 'doublon possible de #'))
 
     def test_un_lead_sans_numero_est_refuse_et_trace(self):
         """Aucune touche n'est réalisable sans numéro : appel comme WhatsApp.
@@ -231,6 +253,31 @@ class PointsDappelTests(_Base):
             fields={'nom': 'Partenaire', 'telephone': '+212661445566'})
         self.assertGreater(self._touches(lead), 0)
 
+    def test_api_publique_et_ticket_ont_owner_score_et_registre(self):
+        # ACVI12 — une même finalisation d'arrivée sur les trois portes.
+        from apps.crm.models import Client
+        from core.models import ConsentRecord
+
+        api = fiche_api_publique.create_lead_from_public_api(
+            company=self.company,
+            fields={'nom': 'Partenaire', 'telephone': '0661000002'})
+        client = Client.objects.create(
+            company=self.company, nom='Client', email='acvi12@example.com')
+        ticket, _ = leads_intake.create_lead_depuis_ticket(
+            company=self.company, user=self.acteur, client=client)
+        fichier = Lead.objects.create(
+            company=self.company, nom='Fichier', telephone='0661000003')
+        leads_intake.finaliser_lead_importe(fichier)
+
+        for lead, source in ((api, 'API publique'), (ticket, 'ticket SAV'),
+                             (fichier, 'import de fichier')):
+            lead.refresh_from_db()
+            self.assertEqual(lead.owner, self.acteur, source)
+            self.assertGreater(lead.score, 0, source)
+            self.assertEqual(ConsentRecord.objects.filter(
+                company=self.company, granted=False,
+                source__startswith=source).count(), 1, source)
+
     def test_evenement_marketing(self):
         lead = leads_intake.create_lead_from_evenement_marketing(
             company=self.company, nom='Salon',
@@ -246,8 +293,11 @@ class PointsExclusTests(_Base):
 
     def test_import_odoo_nest_pas_une_demande(self):
         lead = self._lead(source=Lead.Source.ODOO_IMPORT_TEST)
+        self.assertEqual(demarrer_cadence_contact(lead), [])
         self.assertEqual(
             RelanceEtape.objects.filter(lead=lead).count(), 0)
+        self.assertTrue(lead.activites.filter(
+            body__startswith='Cadence de relance non initialisée').exists())
 
     def test_creation_en_masse_ne_declenche_rien(self):
         """`bulk_create` ne passe par AUCUN service : c'est justement pourquoi
@@ -259,7 +309,23 @@ class PointsExclusTests(_Base):
             for i in range(3)])
         self.assertEqual(RelanceEtape.objects.count(), 0)
 
-    def test_lead_depuis_ticket_sav_nest_pas_une_demande_entrante(self):
+    def test_ticket_sav_et_fichier_demarrent_la_cadence(self):
+        """ACVI88 (D-ACVI-4) — un numéro : la cadence contact démarre."""
+        from apps.crm.models import Client
+        client = Client.objects.create(
+            company=self.company, nom='Client', telephone='0661000002')
+        lead, _created = leads_intake.create_lead_depuis_ticket(
+            company=self.company, user=self.acteur, client=client)
+        self.assertTrue(RelanceEtape.objects.filter(
+            lead=lead, cadence='contact').exists())
+        fichier = Lead.objects.create(
+            company=self.company, nom='Fichier', telephone='0661000022')
+        leads_intake.finaliser_lead_importe(fichier, user=self.acteur)
+        self.assertTrue(RelanceEtape.objects.filter(
+            lead=fichier, cadence='contact').exists())
+
+    def test_lead_depuis_ticket_sans_numero_refus_trace(self):
+        """ACVI88 — sans numéro, 0 touche et le refus se lit au chatter."""
         from apps.crm.models import Client
         client = Client.objects.create(
             company=self.company, nom='Client', email='c@example.com')

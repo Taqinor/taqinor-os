@@ -112,6 +112,29 @@ class CadenceVerrouTests(TransactionTestCase):
         ouvertes = self._ouvertes_par_cle()
         self.assertEqual(ouvertes[('contact', 1)], 1, ouvertes)
 
+    def test_double_fait_une_seule_tentative(self):
+        """ACVI41 — deux « Fait » sur la même touche : une ligne au chatter."""
+        from apps.crm.cadence_touche import marquer_etape_relance
+        from apps.crm.cadence_reperes import prefixe_activite_touche
+        from apps.crm.models import LeadActivity
+
+        cadence_plan.initialiser_plan_relance(
+            self.lead, self.user, cadence='contact')
+        touche = (RelanceEtape.objects
+                  .filter(lead=self.lead, statut=RelanceEtape.Statut.A_FAIRE)
+                  .order_by('ordre').first())
+        issue = ('non_joint'
+                 if touche.canal == RelanceEtape.Canal.APPEL else '')
+        premiere = RelanceEtape.objects.select_related('lead').get(pk=touche.pk)
+        perimee = RelanceEtape.objects.select_related('lead').get(pk=touche.pk)
+        marquer_etape_relance(premiere, self.user, RelanceEtape.Statut.FAIT,
+                              outcome=issue)
+        marquer_etape_relance(perimee, self.user, RelanceEtape.Statut.FAIT,
+                              outcome=issue)
+        self.assertEqual(LeadActivity.objects.filter(
+            lead=self.lead,
+            body__startswith=prefixe_activite_touche(touche)).count(), 1)
+
     def test_double_fait_une_suivante(self):
         cadence_plan.initialiser_plan_relance(
             self.lead, self.user, cadence='contact')

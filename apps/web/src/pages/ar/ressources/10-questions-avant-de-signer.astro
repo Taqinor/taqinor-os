@@ -90,6 +90,7 @@ const jsonLd = {
   headline: '10 أسئلة قبل توقيع عرض ثمن شمسي',
   description: 'اللائحة التي تُطرح على أي مُركِّب شمسي بالمغرب قبل التوقيع: تحديد المقاس، العتاد، الضمانات، القانون 82-21، الأداء، خدمة ما بعد البيع ومنطقة الخدمة الحقيقية.',
   image: schemaImageUrl,
+  dateModified: verifiedDate.toISOString().slice(0, 10),
   about: { '@type': 'Thing', name: 'عرض ثمن شمسي' },
   author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
   publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },

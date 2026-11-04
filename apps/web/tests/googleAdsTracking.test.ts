@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * Google Ads / Google tag — suivi des leads du site.
  *  - lib/googleTag.ts : lecture des 2 variables d'env (aucun ID ⇒ rien) ;
@@ -10,7 +11,7 @@
 import { readFileSync } from 'node:fs';
 import { lireSourceTunnel } from './astroBlocsHelper';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseGoogleTagIds, parseLeadSendTo } from '../src/lib/googleTag';
 import { buildLeadRecord, forwardLead, runSimulation, validateLead } from '../src/lib/lead';
 import { etatVide } from '../src/lib/tunnel/champs';
@@ -55,15 +56,6 @@ describe('GoogleTag.astro', () => {
     expect(src).toContain('parseGoogleTagIds(import.meta.env.PUBLIC_GOOGLE_TAG_ID');
     const markup = src.split(/^---$/m)[2] ?? '';
     expect(markup.trim().startsWith('{tagIds.length > 0 && (')).toBe(true);
-  });
-
-  it('consentement : refus ⇒ pas de chargement ; refus tardif ⇒ consent update denied', () => {
-    expect(src).toContain("localStorage.getItem('tq_consent') === 'denied'");
-    expect(src).toContain("if (consent === 'denied') return;");
-    expect(src).toContain("window.gtag('consent', 'update'");
-    for (const k of ['ad_storage', 'analytics_storage', 'ad_user_data', 'ad_personalization']) {
-      expect(src).toContain(`${k}: 'denied'`);
-    }
   });
 
   it('tqGoogleTrack : conversion Ads (si send_to) + generate_lead, transaction_id = eventId', () => {
@@ -167,5 +159,139 @@ describe('CSP — hôtes Google tag', () => {
 
   it("frame-src garde 'self' (ancien repli default-src) + googletagmanager", () => {
     expect(directive('frame-src')).toBe("frame-src 'self' https://www.googletagmanager.com https://www.facebook.com");
+  });
+});
+
+// WAUD12 — on exécute les VRAIS scripts des composants : ils ne doivent rien
+// charger ni rien envoyer avant « Accepter », et jamais perdre un visiteur qui accepte.
+describe('WAUD12 — consentement avant tout cookie', () => {
+  const corpsScript = (rel: string) => read(rel).match(/<script is:inline[^>]*>([\s\S]*)<\/script>/)?.[1] ?? '';
+  type Fen = Window & { fbq?: { queue: unknown[][] }; dataLayer?: unknown[][]; tqPixelTrack?: (...a: unknown[]) => void; tqGoogleTrack?: (id?: string) => void };
+  const fen = window as unknown as Fen;
+  const lancerCommuns = () => new Function('tqConsentDureeMs', corpsScript('../src/components/ConsentExpiry.astro'))(15552000000);
+  const lancerPixel = () => new Function('tqPixelId', corpsScript('../src/components/MetaPixel.astro'))('845710231783646');
+  const lancerGoogle = () =>
+    new Function('tqGoogleTagIds', 'tqGoogleLeadSendTo', corpsScript('../src/components/GoogleTag.astro'))(['AW-1'], 'AW-1/x');
+  const choisir = (value: string) => {
+    localStorage.setItem('tq_consent', value);
+    window.dispatchEvent(new CustomEvent('tq:consent-change', { detail: { value } }));
+  };
+  const scripts = (hote: string) => [...document.querySelectorAll('script')].filter((x) => x.src.includes(hote));
+  const file = () => (fen.fbq?.queue ?? []).map((a) => [...a].slice(0, 2).join(':'));
+  const couches = () => (fen.dataLayer ?? []).map((a) => [...a].slice(0, 2).join(':'));
+
+  // Chaque script écoute `window` : on retire ses écouteurs entre deux tests.
+  const ecouteurs: [string, EventListener][] = [];
+  const ajouter = window.addEventListener.bind(window);
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.spyOn(window, 'addEventListener').mockImplementation(((t: string, f: EventListener, o?: AddEventListenerOptions) => {
+      ecouteurs.push([t, f]);
+      ajouter(t, f, o);
+    }) as typeof window.addEventListener);
+    localStorage.clear();
+    document.head.innerHTML = '';
+    delete fen.fbq;
+    delete (fen as unknown as { _fbq?: unknown })._fbq;
+    delete fen.dataLayer;
+    lancerCommuns();
+  });
+  afterEach(() => {
+    for (const [t, f] of ecouteurs.splice(0)) window.removeEventListener(t, f);
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+    localStorage.clear();
+  });
+
+  it('pixel, aucun choix : ni fbevents.js, ni init, ni PageView, file vide', () => {
+    lancerPixel();
+    vi.runAllTimers();
+    expect(scripts('fbevents')).toEqual([]);
+    expect(file()).toEqual([]);
+  });
+
+  it('pixel : jamais de revoke dans la file avant le chargement (fbevents.js s’y arrêterait, 0 /tr)', () => {
+    lancerPixel();
+    choisir('granted');
+    expect(file()).not.toContain('consent:revoke');
+    expect(file().indexOf('consent:grant')).toBeLessThan(file().indexOf('init:845710231783646'));
+  });
+
+  it('pixel, Accepter sur la page : grant, PageView, Lead en attente avec son eventId, puis fbevents.js', () => {
+    lancerPixel();
+    fen.tqPixelTrack?.('Lead', {}, 'ev-1');
+    expect(file()).not.toContain('track:Lead');
+    choisir('granted');
+    expect(file()).toEqual(['consent:grant', 'init:845710231783646', 'track:PageView', 'track:Lead']);
+    expect(fen.fbq?.queue.at(-1)?.[3]).toEqual({ eventID: 'ev-1' });
+    window.dispatchEvent(new Event('load'));
+    vi.runAllTimers();
+    expect(scripts('fbevents').length).toBe(1);
+  });
+
+  it('pixel, déjà accepté : la vue part et fbevents.js se charge, différé après l’affichage', () => {
+    localStorage.setItem('tq_consent', 'granted');
+    lancerPixel();
+    expect(file()).toContain('track:PageView');
+    expect(scripts('fbevents')).toEqual([]); // jamais en synchrone dans le <head>
+    window.dispatchEvent(new Event('load'));
+    vi.runAllTimers();
+    expect(scripts('fbevents').length).toBe(1);
+  });
+
+  it('pixel, refus : rien ; changer d’avis via « Gérer mes cookies » rallume le pixel', () => {
+    localStorage.setItem('tq_consent', 'denied');
+    lancerPixel();
+    fen.tqPixelTrack?.('Lead', {}, 'ev-2');
+    vi.runAllTimers();
+    expect(scripts('fbevents')).toEqual([]);
+    expect(file()).not.toContain('track:Lead');
+    choisir('granted');
+    window.dispatchEvent(new Event('load'));
+    vi.runAllTimers();
+    expect(file()).toContain('track:PageView');
+    expect(scripts('fbevents').length).toBe(1);
+  });
+
+  it('pixel : refus après acceptation sur la page = revoke et plus aucun événement', () => {
+    localStorage.setItem('tq_consent', 'granted');
+    lancerPixel();
+    choisir('denied');
+    fen.tqPixelTrack?.('Lead', {}, 'ev-3');
+    expect(file().at(-1)).toBe('consent:revoke');
+    expect(file()).not.toContain('track:Lead');
+  });
+
+  it('Google, aucun choix : denied par défaut, ni config ni gtag.js', () => {
+    lancerGoogle();
+    vi.runAllTimers();
+    expect(couches()).toEqual(['consent:default']);
+    expect((fen.dataLayer?.[0] as unknown as unknown[])[2]).toEqual({
+      ad_storage: 'denied', analytics_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied',
+    });
+    expect(scripts('googletagmanager')).toEqual([]);
+  });
+
+  it('Google, Accepter : update avant config, conversion en attente avec son eventId, puis gtag.js', () => {
+    lancerGoogle();
+    fen.tqGoogleTrack?.('ev-4');
+    choisir('granted');
+    window.dispatchEvent(new Event('load'));
+    vi.runAllTimers();
+    const c = couches();
+    expect(c.indexOf('consent:update')).toBeLessThan(c.indexOf('config:AW-1'));
+    expect(c).toContain('event:conversion');
+    expect(c).toContain('event:generate_lead');
+    expect(scripts('googletagmanager').length).toBe(1);
+  });
+
+  it('Google, refus : pas de chargement ; refus tardif = update denied', () => {
+    localStorage.setItem('tq_consent', 'granted');
+    lancerGoogle();
+    choisir('denied');
+    fen.tqGoogleTrack?.('ev-5');
+    expect(couches().at(-1)).toBe('consent:update');
+    expect((fen.dataLayer?.at(-1) as unknown as unknown[])[2]).toMatchObject({ ad_storage: 'denied' });
   });
 });

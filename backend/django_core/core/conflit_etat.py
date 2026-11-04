@@ -15,3 +15,13 @@ class ConflitEtat(APIException):
     status_code = status.HTTP_409_CONFLICT
     default_detail = "L'état actuel du document s'oppose à cette opération."
     default_code = 'state_conflict'
+
+    def __init__(self, detail=None, code=None):
+        # ACVI76 — un refus par champ porte aussi un ``detail`` lisible (additif).
+        if isinstance(detail, dict) and 'detail' not in detail:
+            for valeur in detail.values():
+                premier = valeur[0] if isinstance(valeur, (list, tuple)) and valeur else valeur
+                if isinstance(premier, str):
+                    detail = {'detail': premier, **detail}
+                    break
+        super().__init__(detail, code)

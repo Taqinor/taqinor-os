@@ -11,6 +11,7 @@ import Picture from './Picture.astro';
 import PhotoCaption from './PhotoCaption.astro';
 import LiteVideo from './LiteVideo.astro';
 import CtaBand from './CtaBand.astro';
+import CtaLigne from './CtaLigne.astro';
 import { dateLocale, mesureAffichee } from '../lib/realisations';
 import V2Page from './V2Page.astro';
 
@@ -114,6 +115,7 @@ const linkClass = 'border border-white/40 px-5 py-3 text-sm font-bold text-white
         <dt class="tech-label mt-2 text-lune-faint">{r.region}</dt>
       </div>
     </dl>
+    <CtaLigne />
   </section>
 
   <section class="mx-auto max-w-3xl px-4 py-20 sm:py-28">

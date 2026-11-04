@@ -1,0 +1,10 @@
+---
+/** WAUD44 — sur /ar/, isole les chiffres du contenu rendu (lib/bidi) ; ailleurs, ne fait rien. */
+import { getLocaleFromPath } from '../i18n/utils';
+import { isolerBidi } from '../lib/bidi';
+
+const html = await Astro.slots.render('default');
+const rendu = getLocaleFromPath(Astro.url.pathname) === 'ar' ? isolerBidi(html) : html;
+---
+
+<Fragment set:html={rendu} />

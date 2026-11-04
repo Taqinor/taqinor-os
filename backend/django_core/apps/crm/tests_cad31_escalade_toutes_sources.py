@@ -143,6 +143,34 @@ class UneSeuleAlerteAuSuperieurTests(_Base):
 
     slug = 'cad31-nuit'
 
+    def test_requetes_constantes_avec_les_leads_deja_escalades(self):
+        # ACVI80 — le marqueur est écarté en SQL, jamais un exists() par lead.
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        def creer(nombre):
+            for rang in range(nombre):
+                lead = self._lead(cree_le=NUIT, nom=f'Deja {rang}')
+                LeadActivity.objects.create(
+                    company=self.company, lead=lead,
+                    kind=LeadActivity.Kind.NOTE, body=f'{MARQUEUR} — posé')
+
+        def passage():
+            with CaptureQueriesContext(connection) as ctx:
+                nb = escalader_premier_contact(
+                    dry_run=True, now=LENDEMAIN_MATIN)
+            self.assertEqual(nb, 0)
+            return len(ctx)
+
+        creer(4)
+        a_quatre = passage()
+        creer(8)
+        self.assertEqual(passage(), a_quatre)
+        # Un lead échu sans marqueur reste escaladé, une seule fois.
+        self._lead(cree_le=NUIT, nom='Neuf')
+        self.assertEqual(escalader_premier_contact(now=LENDEMAIN_MATIN), 1)
+        self.assertEqual(escalader_premier_contact(now=LENDEMAIN_MATIN), 0)
+
     def test_trois_leads_de_nuit_ne_font_quUNE_alerte_au_superieur(self):
         for rang in range(3):
             self._lead(cree_le=NUIT, nom=f'Prospect {rang}')

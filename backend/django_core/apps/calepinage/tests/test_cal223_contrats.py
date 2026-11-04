@@ -78,6 +78,24 @@ AVEC_PRODUCTEUR_PUR = ('calepinage_equipements.json',
 
 #: Les autres, avec la RAISON — aucun n'est oublié, chacun est un choix.
 SANS_PRODUCTEUR_PUR = {
+    # ENF15 (routes_sous_contrat) — formes lues en base ou rendues par une vue :
+    # chacune a sa route vérifiée par ``CheminDeclareTest``.
+    'calepinage_apercu_document.json':
+        'HTML du document, mis en page depuis le calepinage en base (CALX323)',
+    'calepinage_export_layout.json':
+        'roof_layout du calepinage en base, exporté tel quel (CAL216)',
+    'calepinage_modeles.json':
+        'bibliothèque des calepinages modèles de la société en base (CAL199)',
+    'calepinage_profils_types.json':
+        'profils saisis par la société, lus en base (CAL149)',
+    'calepinage_suggestion_pente.json':
+        'disponibilité lue sur le réglage de la société en base (CAL237)',
+    'calepinage_variante_detail.json':
+        'sérialiseur DRF sur une variante en base (CAL21)',
+    'calepinage_variantes_liste.json':
+        'sérialiseur DRF sur les variantes en base (CAL21)',
+    'calepinage_versions_liste.json':
+        "historique des versions du calepinage en base (CAL20)",
     'calepinage_detail.json':
         'sérialiseur DRF sur une instance en base (test dédié CAL1)',
     'calepinage_design_context.json':

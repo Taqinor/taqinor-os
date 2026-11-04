@@ -268,7 +268,7 @@ def _reglages_tarifaires_du_devis(devis):
     return tranches or None, fige.get("redevance_compteur_mad_mois")
 
 
-def chiffrer_etude(*, _blob, _corrige, _mode_ci, avec_batterie_differee,
+def chiffrer_etude(*, _blob, _corrige, _mode_ci, _totaux_seuls, avec_batterie_differee,
                    avec_items, avec_ok, avertissements_internes, deux_options,
                    devis, devis_etude_override, has_batterie, mode,
                    option_servie, opts, panneaux_divergents, puissance_kwc,
@@ -663,8 +663,11 @@ def chiffrer_etude(*, _blob, _corrige, _mode_ci, avec_batterie_differee,
     # n'accompagne que des économies valorisées au Tarif Général MT. Le
     # moteur ne fait que LIRE (règle #4). Le bloc PUBLIC (sans vue interne)
     # est posé sur ``data['economie_ci']`` plus bas.
+    # ERR-PERF-DEVIS-LISTE-CI-N1 — chemin de la LISTE (``_totaux_seuls``) : ni ce
+    # bloc ni ses masques n'atteignent les clés lues (total, options, ``roi``
+    # calculé plus haut) ; il coûtait des lectures par devis et par ligne.
     _economie_ci = None
-    if _mode_ci:
+    if _mode_ci and not _totaux_seuls:
         try:
             from apps.ventes.economie_ci import (
                 economie_ci_pour_devis, economie_ci_publique)

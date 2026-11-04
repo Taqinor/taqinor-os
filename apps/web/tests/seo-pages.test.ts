@@ -4,7 +4,7 @@
 // l'intégrité des faits (aucun chiffre inventé).
 import { cityContentBySlug } from '../src/lib/cityContent';
 import { describe, expect, it } from 'vitest';
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { lireAstroAvecBlocs } from './astroBlocsHelper';
 import { builtPage, mainOf, visibleText } from './builtHtmlHelper';
@@ -14,6 +14,12 @@ import { REALISATIONS, CITIES, realisationByRef } from '../src/lib/realisations'
 import { NAP } from '../src/lib/nap';
 import { canonicalUrl } from '../src/lib/canonicalUrl';
 import { GUIDE_VERIFIED_DATES, guideDateModified } from '../src/lib/guideMeta';
+import { INFO_PAGES, INFO_PAGE_PATHS, type InfoPageId } from '../src/lib/infoPages';
+import { localesForPath } from '../src/i18n/pages';
+import { ANRE_TARIF_HORS_POINTE, ANRE_TARIF_POINTE } from '../src/lib/constants82_21';
+import { DECLARATION_BT_MAX_KW } from '../src/lib/regime';
+import { TABLEAU_GARANTIES_FR } from '../src/lib/warranty';
+import { ANRE_PERIODE_FR, FDA_PLAFOND_PAR_HA_DH, FDA_PLAFOND_PAR_KWC_DH, FDA_PLAFOND_PAR_PROJET_DH, FDA_TAUX_PCT } from '../src/lib/subventionFacts';
 
 const readSrc = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
 // ENF19 — le corps des pages ville et études de cas (V2Enhance, class="v2", JSON-LD Service) vit dans
@@ -516,4 +522,228 @@ describe('WAUD70 — URL canoniques uniques (barre finale, encodage) dans RSS, l
     for (const u of urls) expect(u).toBe(canonicalUrl(u));
     expect(lire('public/_headers')).toMatch(/\/llms\.txt\s+Content-Type: text\/plain; charset=utf-8/);
   });
+});
+
+describe('WAUD50 (reste) — Article hors guides : dateModified = date affichée, jamais inventée', () => {
+  const lire = (p: string) => readFileSync(fileURLToPath(new URL(`../${p}`, import.meta.url)), 'utf-8');
+  const AVEC_DATE = [
+    'src/pages/prix-panneaux-solaires-maroc.astro',
+    'src/pages/en/prix-panneaux-solaires-maroc.astro',
+    'src/pages/ar/prix-panneaux-solaires-maroc.astro',
+    'src/pages/ressources/10-questions-avant-de-signer.astro',
+    'src/pages/ar/ressources/10-questions-avant-de-signer.astro',
+  ];
+  it('pages à date « revues le » affichée : dateModified vient de verifiedDate', () => {
+    for (const f of AVEC_DATE) {
+      const s = lire(f);
+      expect(s, f).toContain('dateModified: verifiedDate.toISOString().slice(0, 10)');
+      expect(s, f).toMatch(/dateFmt\.format\(verifiedDate\)|verifiedDate=\{verifiedDate\}/);
+    }
+  });
+  it('régularisation Article 33 : dateModified = la date « vérifié le » affichée', () => {
+    const s = lire('src/pages/regularization-article-33.astro');
+    expect(s).toContain("dateModified: '2026-10-05'");
+    expect(s).toContain('vérifié le 5 octobre 2026');
+  });
+  it('crawl du build : tout Article/BlogPosting autonome émet dateModified (sauf pages sans date affichée) ; jamais deux BreadcrumbList', () => {
+    const SANS_DATE_AFFICHEE = /^\/(en\/|ar\/)?(methodologie-estimation|realisations\/|blog\/)/;
+    const routes: string[] = [];
+    const dist = fileURLToPath(new URL('../dist/client/', import.meta.url));
+    const marcher = (dir: string, rel: string) => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        if (e.isDirectory()) marcher(`${dir}${e.name}/`, `${rel}/${e.name}`);
+        else if (e.name === 'index.html') routes.push(rel || '/');
+      }
+    };
+    marcher(dist, '');
+    let articles = 0;
+    let avecDate = 0;
+    for (const r of routes) {
+      const html = builtPage(r);
+      const blocs = [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+      const noeuds = blocs.flatMap((b) => {
+        try {
+          const j = JSON.parse(b);
+          return Array.isArray(j) ? j : (j['@graph'] ?? [j]);
+        } catch {
+          return [];
+        }
+      });
+      expect(noeuds.filter((n) => n['@type'] === 'BreadcrumbList').length, `${r} : BreadcrumbList en double`).toBeLessThanOrEqual(1);
+      for (const a of noeuds.filter((n) => n['@type'] === 'Article' || n['@type'] === 'BlogPosting')) {
+        articles++;
+        if (a.dateModified) {
+          avecDate++;
+          expect(a.dateModified, r).toMatch(/^\d{4}-\d{2}-\d{2}(T[\d:.]+Z)?$/);
+        } else {
+          expect(SANS_DATE_AFFICHEE.test(r), `${r} : Article sans dateModified`).toBe(true);
+        }
+      }
+    }
+    expect(articles).toBeGreaterThan(30);
+    expect(avecDate).toBeGreaterThan(36);
+  });
+});
+
+describe('WAUD70 (reste) — llms.txt trilingue ; toute URL de llms.txt / RSS / JSON-LD répond 200 sans redirection', () => {
+  const lire = (p: string) => readFileSync(fileURLToPath(new URL(`../${p}`, import.meta.url)), 'utf-8');
+  const dist = fileURLToPath(new URL('../dist/client/', import.meta.url));
+  /** « 200 sans redirection » sur le build : forme canonique (barre finale, UTF-8) ET fichier servi. */
+  const sert200 = (u: string): string | null => {
+    const url = new URL(u);
+    if (url.origin !== 'https://taqinor.ma') return null;
+    const sansAncre = `${url.origin}${url.pathname}${url.search}`;
+    if (sansAncre !== canonicalUrl(sansAncre)) return `redirige (forme non canonique) : ${u}`;
+    const chemin = decodeURIComponent(url.pathname).replace(/^\/+/, '');
+    const fichier = url.pathname.endsWith('/') ? `${dist}${chemin}index.html` : `${dist}${chemin}`;
+    return existsSync(fichier) ? null : `introuvable dans le build : ${u}`;
+  };
+  it('llms.txt a des sections FR, EN et AR avec des liens /en/ et /ar/', () => {
+    const t = lire('public/llms.txt');
+    expect(t).toMatch(/^## Pages clés$/m);
+    expect(t).toMatch(/^## English/m);
+    expect(t).toMatch(/^## العربية/m);
+    expect([...t.matchAll(/\(https:\/\/taqinor\.ma\/en\/[^)]*\)/g)].length).toBeGreaterThanOrEqual(15);
+    expect([...t.matchAll(/\(https:\/\/taqinor\.ma\/ar\/[^)]*\)/g)].length).toBeGreaterThanOrEqual(15);
+  });
+  it('100 % des URL de llms.txt répondent 200 sans redirection sur le build', () => {
+    const urls = [...lire('public/llms.txt').matchAll(/\((https:\/\/taqinor\.ma[^)\s]*)\)/g)].map((m) => m[1]);
+    expect(urls.length).toBeGreaterThan(50);
+    expect(urls.map(sert200).filter(Boolean)).toEqual([]);
+  });
+  it('100 % des URL du flux RSS répondent 200 sans redirection sur le build', () => {
+    const rss = readFileSync(`${dist}rss.xml`, 'utf-8');
+    const urls = [...rss.matchAll(/(?:<link>|<guid[^>]*>|href=")(https:\/\/taqinor\.ma[^<"]*)/g)].map((m) => m[1]);
+    expect(urls.length).toBeGreaterThan(2);
+    expect(urls.map(sert200).filter(Boolean)).toEqual([]);
+  });
+  it('100 % des URL taqinor.ma des JSON-LD du build répondent 200 sans redirection', () => {
+    const collecte = (n: unknown, sortie: Set<string>) => {
+      if (typeof n === 'string') {
+        if (/^https:\/\/taqinor\.ma(\/|$)/.test(n)) sortie.add(n);
+      } else if (Array.isArray(n)) n.forEach((x) => collecte(x, sortie));
+      else if (n && typeof n === 'object') Object.values(n).forEach((x) => collecte(x, sortie));
+    };
+    const urls = new Set<string>();
+    const marcher = (dir: string, rel: string) => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        if (e.isDirectory()) {
+          if (e.name !== '_astro') marcher(`${dir}${e.name}/`, `${rel}/${e.name}`);
+        } else if (e.name === 'index.html') {
+          const html = readFileSync(`${dir}${e.name}`, 'utf-8');
+          for (const m of html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)) {
+            try {
+              collecte(JSON.parse(m[1]), urls);
+            } catch {
+              /* JSON-LD invalide : couvert ailleurs */
+            }
+          }
+        }
+      }
+    };
+    marcher(dist, '');
+    expect(urls.size).toBeGreaterThan(50);
+    const [...liste] = urls;
+    expect(liste.map(sert200).filter(Boolean)).toEqual([]);
+  });
+});
+
+describe('WAUD72 — carte de partage (OG) par ville et par langue, sans photo d’une autre ville', () => {
+  const lire = (p: string) => readFileSync(fileURLToPath(new URL(`../${p}`, import.meta.url)), 'utf-8');
+  it('une carte public/og/ville-<slug>-<fr|en|ar>.png pour chaque ville de CITIES', () => {
+    expect(CITIES.length).toBeGreaterThanOrEqual(5);
+    for (const c of CITIES) {
+      for (const l of ['fr', 'en', 'ar']) {
+        expect(existsSync(fileURLToPath(new URL(`../public/og/ville-${c.slug}-${l}.png`, import.meta.url))), `${c.slug}-${l}`).toBe(true);
+      }
+    }
+  });
+  it('les 3 pages ville pointent vers leur carte (plus aucune sur og/accueil.png) et le générateur n’y met aucune photo', () => {
+    for (const [f, l] of [['installation-solaire-[city]', 'fr'], ['en/installation-solaire-[city]', 'en'], ['ar/installation-solaire-[city]', 'ar']] as const) {
+      const s = lire(`src/pages/${f}.astro`);
+      expect(s, f).toContain(`ogSlug={\`ville-\${c.slug}-${l}\`}`);
+      expect(s, f).not.toContain('ogSlug="accueil"');
+    }
+    const g = lire('scripts/generate-og.mjs');
+    expect(g).toMatch(/slug: `ville-\$\{slug\}-fr`, title: [^\n]*\}\);/);
+    expect(g).not.toMatch(/slug: `ville-[^\n]*photo:/);
+  });
+});
+
+describe('WAUD73/74/75 — pages « subvention », « kit ou sur mesure », « lire deux devis » (coquille partagée, zéro montant inventé)', () => {
+  const lire = (p: string) => readFileSync(fileURLToPath(new URL(`../${p}`, import.meta.url)), 'utf-8');
+  const tout = (id: InfoPageId) =>
+    Object.values(INFO_PAGES[id]).flatMap((p) => [p!.title, p!.description, p!.lead, ...p!.blocks.flatMap((b) => [b.h2, ...b.paras, ...(b.table ? b.table.rows.flat() : [])])]);
+  const MONTANT = /\d[\d\s.,  ]*\s*(?:DH|MAD|dirhams?|درهم)/g;
+  const chiffres = (s: string) => s.replace(/[\s.,  ]/g, '');
+
+  it('registre : subvention FR/EN/AR, kit FR, devis FR+AR ; les routes existent', () => {
+    expect(localesForPath(INFO_PAGE_PATHS.subvention)).toEqual(['fr', 'en', 'ar']);
+    expect(localesForPath(INFO_PAGE_PATHS.kit)).toEqual(['fr']);
+    expect(localesForPath(INFO_PAGE_PATHS.devis)).toEqual(['fr', 'ar']);
+    for (const f of ['subvention-panneaux-solaires-maroc', 'en/subvention-panneaux-solaires-maroc', 'ar/subvention-panneaux-solaires-maroc', 'kit-solaire-maroc', 'devis-panneaux-solaires-maroc', 'ar/devis-panneaux-solaires-maroc']) {
+      expect(lire(`src/pages/${f}.astro`), f).toContain('InfoPageBody');
+    }
+  });
+  it('subvention : tout montant affiché vient des constantes sources (FDA, ANRE) ; ni « jusqu’à 30 % » ni « cumulable » ni banque', () => {
+    const permis = new Set([FDA_PLAFOND_PAR_HA_DH, FDA_PLAFOND_PAR_KWC_DH, FDA_PLAFOND_PAR_PROJET_DH].map((n) => String(n)));
+    const tarifs = new Set([ANRE_TARIF_HORS_POINTE, ANRE_TARIF_POINTE].map((n) => chiffres(n.toFixed(2))));
+    let vus = 0;
+    for (const t of tout('subvention')) {
+      for (const m of t.matchAll(MONTANT)) {
+        const n = chiffres(m[0].replace(/[^\d\s.,  ]/g, ''));
+        vus++;
+        expect(permis.has(n) || tarifs.has(n), `montant hors constantes : ${m[0]}`).toBe(true);
+      }
+      expect(t).not.toMatch(/jusqu.à 30|cumulable|banque|up to 30|bank/i);
+      expect(t).not.toMatch(/Lydec|Redal|Amendis/);
+    }
+    expect(vus).toBeGreaterThan(8);
+  });
+  it('la règle FDA et ses plafonds sont ceux déjà publiés sur /pompage-solaire (parité)', () => {
+    const p = lire('src/pages/pompage-solaire.astro');
+    expect(p).toContain(`${FDA_TAUX_PCT} % de l’investissement, plafonnée à 3 000 DH par hectare, 3 000 DH par kWc et 30 000 DH par projet`);
+    expect(FDA_PLAFOND_PAR_HA_DH + FDA_PLAFOND_PAR_KWC_DH + FDA_PLAFOND_PAR_PROJET_DH).toBe(36000);
+    expect(lire('src/lib/constants82_21.ts')).toContain('01/03/2026-28/02/2027');
+    expect(INFO_PAGES.subvention.fr!.blocks[2].paras[0]).toContain(ANRE_PERIODE_FR);
+  });
+  it('kit et devis : aucun montant ni fourchette (RÈGLE C), seuil 82-21 lu dans regime.ts', () => {
+    for (const id of ['kit', 'devis'] as const) for (const t of tout(id)) expect(t.match(MONTANT) ?? [], `${id}: ${t}`).toEqual([]);
+    expect(tout('kit').join(' ')).toContain(`${DECLARATION_BT_MAX_KW} kW`);
+    const garanties = INFO_PAGES.devis.fr!.blocks[1].table!.rows;
+    expect(garanties).toHaveLength(TABLEAU_GARANTIES_FR.length);
+    // ERR-W33-GARANTIES-NOTE — jamais une durée sans son seuil, dans les deux langues.
+    expect(garanties).toContainEqual(['Panneaux photovoltaïques (performance)', '30 ans (linéaire, ≥ 87,4 % de la puissance initiale à 30 ans)']);
+    expect(garanties).toContainEqual(['Batteries Dyness LFP', '7 ans (≥ 70 % de capacité)']);
+    expect(garanties).toContainEqual(['Structure acier galvanisé', '20 ans']);
+    const garantiesAr = INFO_PAGES.devis.ar!.blocks[1].table!.rows.flat().join(' ');
+    expect(garantiesAr).toContain('≥ 87.4 %');
+    expect(garantiesAr).toContain('≥ 70 %');
+  });
+  it('llms.txt référence les nouvelles pages (FR, EN, AR) ; liens vers /prix et 10-questions sans recopier', () => {
+    const t = lire('public/llms.txt');
+    for (const u of ['https://taqinor.ma/subvention-panneaux-solaires-maroc/', 'https://taqinor.ma/en/subvention-panneaux-solaires-maroc/', 'https://taqinor.ma/ar/subvention-panneaux-solaires-maroc/', 'https://taqinor.ma/kit-solaire-maroc/', 'https://taqinor.ma/devis-panneaux-solaires-maroc/', 'https://taqinor.ma/ar/devis-panneaux-solaires-maroc/']) expect(t, u).toContain(u);
+    const liens = INFO_PAGES.devis.fr!.blocks[2].links!.map((l) => l.href);
+    expect(liens).toEqual(['/prix-panneaux-solaires-maroc', '/ressources/10-questions-avant-de-signer']);
+  });
+});
+
+describe('WAUD26 — pages clés : mot-clé en tête, tailles d’extrait Google', () => {
+  const PAGES_CLES = ['index', 'résidentiel', 'professionnel', 'marocains-du-monde', 'nos-solutions'];
+  const attribut = (src: string, nom: string) => src.slice(src.indexOf('<Layout')).match(new RegExp(`\\b${nom}="([^"]*)"`))?.[1] ?? '';
+
+  for (const loc of ['', 'en/', 'ar/']) {
+    for (const page of PAGES_CLES) {
+      it(`/${loc}${page} : titre ≤ 62, description ≤ 160, mot-clé en tête`, () => {
+        const src = readFileSync(fileURLToPath(new URL(`../src/pages/${loc}${page}.astro`, import.meta.url)), 'utf-8');
+        const titre = attribut(src, 'title');
+        const description = attribut(src, 'description');
+        expect(titre.length, titre).toBeGreaterThan(20);
+        expect(titre.length, titre).toBeLessThanOrEqual(62);
+        expect(description.length, description).toBeGreaterThan(80);
+        expect(description.length, description).toBeLessThanOrEqual(160);
+        expect(titre.slice(0, 40)).toMatch(/panneaux solaires|Panneaux solaires|Solar panel|الألواح الشمسية/);
+      });
+    }
+  }
 });

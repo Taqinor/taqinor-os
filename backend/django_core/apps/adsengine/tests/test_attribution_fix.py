@@ -121,6 +121,22 @@ class CreateLeadFromMetaLeadAdsTests(TestCase):
         self.assertIsNone(lead.utm_content)
         self.assertEqual(lead.utm_source, 'facebook')
 
+    def test_lead_a_la_corbeille_n_est_pas_recree(self):
+        """ACVI11 — un rejeu après soft_delete rend la fiche, sans écriture."""
+        from apps.crm.leads_meta import create_lead_from_meta_lead_ads
+        from apps.crm.models import Lead, RelanceEtape
+
+        donnees = [{'name': 'phone_number', 'values': ['+212661000001']}]
+        lead = create_lead_from_meta_lead_ads(
+            company=self.company, leadgen_id='9001', field_data=donnees)
+        lead.soft_delete(None)
+        touches = RelanceEtape.objects.filter(lead=lead).count()
+        rendu = create_lead_from_meta_lead_ads(
+            company=self.company, leadgen_id='9001', field_data=donnees)
+        self.assertEqual(rendu.pk, lead.pk)
+        self.assertEqual(Lead.all_objects.filter(external_id='9001').count(), 1)
+        self.assertEqual(RelanceEtape.objects.filter(lead=lead).count(), touches)
+
     def test_idempotent_on_repeated_leadgen_id(self):
         first = create_lead_from_meta_lead_ads(
             company=self.company, leadgen_id='lg_5553',
@@ -150,6 +166,31 @@ class BackfillMetaLeadAttributionTests(TestCase):
             source=Lead.Source.META_LEAD_ADS, canal=Lead.Canal.META_ADS,
             utm_source='facebook',
             external_system='meta_lead_ads', external_id='lg_old_1')
+
+    def test_commande_sans_societe_refusee(self):
+        # ACVI19 — un jeton, une société : sans --company-id, rien n'est écrit.
+        import io
+
+        from django.core.management import CommandError, call_command
+
+        autre = Company.objects.create(nom='BF Co 2', slug='bf-co-2')
+        voisin = Lead.objects.create(
+            company=autre, nom='Vieux Voisin',
+            source=Lead.Source.META_LEAD_ADS, canal=Lead.Canal.META_ADS,
+            external_system='meta_lead_ads', external_id='lg_old_2')
+        with patch('apps.crm.leads_meta.fetch_meta_lead_node',
+                   return_value={'ad_id': 'ad_66'}) as fetch:
+            with self.assertRaisesRegex(CommandError, '--company-id'):
+                call_command('backfill_meta_lead_attribution', access_token='T')
+            fetch.assert_not_called()
+
+            sortie = io.StringIO()
+            call_command(
+                'backfill_meta_lead_attribution', access_token='T',
+                company_id=self.company.pk, stdout=sortie)
+        self.assertIn('1 scanné', sortie.getvalue())
+        voisin.refresh_from_db()
+        self.assertFalse(voisin.meta_ad_id)
 
     def test_backfill_fills_variant_attribution(self):
         node = {'ad_id': 'ad_66', 'adgroup_id': 'ast_77', 'form_id': 'frm_99'}

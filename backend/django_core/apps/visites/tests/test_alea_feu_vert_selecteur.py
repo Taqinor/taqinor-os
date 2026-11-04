@@ -86,6 +86,31 @@ class FeuVertSelecteurTests(VisiteTerrainBase):
             statut=VisiteTerrain.Statut.A_REFAIRE)
         self.assertIsNone(self._feu_vert())
 
+    def test_un_brouillon_ajoute_ne_retire_pas_le_feu_vert(self):
+        # ACVI64 — feu vert et calepinage lisent LA même visite de référence.
+        premiere = self.creer_visite()
+        self._terminer(premiere)
+        self._valider(premiere)
+        self.creer_visite()
+        self.creer_visite()
+        self.assertEqual(self._feu_vert()['visite_id'], premiere)
+        self.assertEqual(
+            selectors.releve_pour_calepinage(self.lead)['visite_id'], premiere)
+
+        self._renvoyer(premiere)
+        self.assertIsNone(self._feu_vert())
+        self.assertIsNone(
+            selectors.releve_pour_calepinage(self.lead)['visite_id'])
+
+    def test_une_visite_annulee_ne_retire_pas_le_feu_vert(self):
+        VisiteTerrain.objects.create(
+            company=self.company, lead=self.lead,
+            statut=VisiteTerrain.Statut.VALIDEE)
+        VisiteTerrain.objects.create(
+            company=self.company, lead=self.lead,
+            statut=VisiteTerrain.Statut.ANNULEE)
+        self.assertIsNotNone(self._feu_vert())
+
     def test_borne_societe(self):
         visite_id = self.creer_visite()
         self._terminer(visite_id)

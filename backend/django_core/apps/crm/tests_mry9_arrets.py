@@ -185,6 +185,13 @@ class DeclencheurEtapeTests(_Base):
         self.assertEqual(self._ouvertes('contact'), 0)
         self.assertEqual(self._ouvertes('apres_devis'), 0)
 
+    def test_froid_manuel_arrete_le_filet_generique(self):
+        """ACVI38 — parqué au Froid : plus d'étape de filet à faire."""
+        filet = _poser_plan_direct(self.lead, 'generique', LUNDI)
+        self.assertTrue(filet)
+        avancer_stage_lead_vers(self.lead, self.acteur, stages.COLD)
+        self.assertEqual(self._ouvertes('generique'), 0)
+
     def test_cold_ne_touche_pas_les_reveils(self):
         """COLD est un PARKING : arrêter les réveils J30/J60 condamnerait le
         lead à ne plus jamais être réveillé (MRY11)."""
@@ -261,6 +268,27 @@ class DeclencheurPerduTests(_Base):
             {'perdu': True, 'motif_perte': 'Prix'}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(self._ouvertes(), 0)
+
+    def test_toutes_les_portes_annulent_le_rendez_vous(self):
+        """ACVI24 — lot perdu et archivage vident ``visite_prevue_le``."""
+        from django.utils import timezone
+
+        from apps.crm.fiche_bulk import apply_bulk_action
+        from apps.visites.services import planifier_visite
+
+        for op, params in (('set_perdu', {'motif': 'Prix'}), ('archive', {})):
+            lead = Lead.objects.create(
+                company=self.company, nom=op, owner=self.acteur,
+                telephone='+2126610000' + ('41' if op == 'archive' else '42'))
+            jour = timezone.localdate() + datetime.timedelta(days=5)
+            _, erreurs = planifier_visite(lead, self.acteur, jour)
+            self.assertEqual(erreurs, {})
+            lead.refresh_from_db()
+            self.assertEqual(lead.visite_prevue_le, jour)
+            apply_bulk_action(company=self.company, user=self.acteur,
+                              lead_ids=[lead.pk], op=op, params=params)
+            lead.refresh_from_db()
+            self.assertIsNone(lead.visite_prevue_le, op)
 
     def test_action_en_masse(self):
         from apps.crm.fiche_bulk import apply_bulk_action

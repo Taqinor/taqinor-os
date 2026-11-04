@@ -44,7 +44,8 @@ from .fiche_funnel import (
     avancer_stage_pour_devis,
     signaler_mismatch_signe_sur_refus,
 )
-from .cadence_reperes import est_note_de_report, est_note_de_touche_sautee
+from .cadence_reperes import (
+    est_note_de_geste_interne, est_note_de_report, est_note_de_touche_sautee)
 from .leads_premier_contact import marquer_premier_contact
 
 logger = logging.getLogger(__name__)
@@ -315,6 +316,10 @@ def _marquer_lead_perdu_on_devis_refused(sender, devis, user, motif_refus,
     # comme les deux autres. Une seule fonction, jamais une variante locale.
     arreter_cadence(lead, user=user,
                     motif=(motif_refus or 'devis refusé'))
+    # ACVI24 — le rendez-vous en attente s'annule avec le lead perdu.
+    from .cadence_visite import annuler_rendez_vous_sur_arret, cause_rdv_perdu
+    annuler_rendez_vous_sur_arret(lead, user,
+                                  cause=cause_rdv_perdu(lead.motif_perte))
 
 
 @receiver(devis_accepted, dispatch_uid="crm_flip_parrainage_converti_on_devis_accepted")
@@ -377,7 +382,8 @@ def _avancer_stage_on_contact_activity(sender, instance, created, **kwargs):
     # d'un REPORT (« Rappel demandé le … reportée. ») ou d'une MISE EN VEILLE
     # n'est pas une tentative non plus — reporter la première touche d'un
     # lead neuf ne l'horodate plus et n'éteint plus l'escalade.
-    if est_note_de_touche_sautee(instance) or est_note_de_report(instance):
+    if (est_note_de_touche_sautee(instance) or est_note_de_report(instance)
+            or est_note_de_geste_interne(instance)):  # ACVI23
         return
     marquer_premier_contact(lead)
     # Décision fondateur du 24/09/2026 (relevé du 25/09) — « visite acceptée »
@@ -530,6 +536,16 @@ def _dispatch_mise_en_attente(sender, instance, **kwargs):
 @receiver(post_save, sender=Lead, dispatch_uid='crm_stop_cadence_on_archive')
 def _relais_arreter_cadence_on_archive(**kwargs):
     return receivers_cadence._arreter_cadence_on_archive(**kwargs)
+
+
+@receiver(post_save, sender=Lead, dispatch_uid='crm_empreinte_opposition_lead')
+def _empreinte_opposition_lead(sender, instance, **kwargs):
+    """ERR-ACVI6-OPPOSITION (D-ACVI-6) — l'opposition suit la personne : un
+    contact posé ou changé sur une fiche DÉJÀ opposée laisse son empreinte
+    (idempotent, ignore_conflicts)."""
+    if instance.ne_plus_contacter and instance.company_id:
+        from .leads_doublons import poser_empreintes_opposition
+        poser_empreintes_opposition(instance.company, instance)
 
 
 # ── VTA5 — LE FEU VERT D'UNE VISITE TERRAIN REDESCEND SUR LE LEAD ────────────

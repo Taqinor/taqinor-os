@@ -7,7 +7,7 @@
  *   node scripts/generate-og.mjs
  */
 import sharp from 'sharp';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -87,12 +87,29 @@ const backdrop = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="120
   <polygon points="1061 105 1024 155 1056 155 1051 176 1088 126 1056 126 1061 105" fill="#0a1238"/>
 </svg>`);
 
+// WAUD72 — une carte de partage par ville ET par langue (ville-<slug>-<fr|en|ar>), visuel de
+// marque + nom de ville, SANS photo de chantier (règle « preuve = vraie ville »). Les villes viennent de
+// CITIES (src/lib/realisations.ts) : jamais une liste recopiée. La carte AR ne porte que le nom latin
+// de la ville tant que la police arabe auto-hébergée (WAUD44) n'est pas là.
+{
+  const src = await readFile(path.join(root, 'src', 'lib', 'realisations.ts'), 'utf-8');
+  const bloc = src.slice(src.indexOf('export const CITIES'));
+  for (const m of bloc.matchAll(/slug: '([^']+)',\s+name: '([^']+)',\s+intro: '([^']+)'/g)) {
+    const [, slug, name, intro] = m;
+    PAGES.push({ slug: `ville-${slug}-fr`, title: `Installation solaire\n${intro}`, subtitle: 'Installateur solaire au Maroc' });
+    PAGES.push({ slug: `ville-${slug}-en`, title: `Solar installation\nin ${name}`, subtitle: 'Solar installer in Morocco' });
+    PAGES.push({ slug: `ville-${slug}-ar`, title: name, subtitle: 'taqinor.ma' });
+  }
+}
+
 await mkdir(outDir, { recursive: true });
 for (const page of PAGES) {
   const file = path.join(outDir, `${page.slug}.png`);
   const twoLines = page.title.includes('\n');
-  await sharp(path.join(photosDir, page.photo))
-    .resize(1200, 630, { fit: 'cover' })
+  // WAUD72 — carte de marque sans photo (page.photo absent) : jamais le chantier d'une autre ville.
+  await (page.photo
+    ? sharp(path.join(photosDir, page.photo)).resize(1200, 630, { fit: 'cover' })
+    : sharp({ create: { width: 1200, height: 630, channels: 3, background: '#0a1238' } }))
     .composite([
       { input: backdrop },
       { ...text('TAQINOR', 42, '#ffffff', { spacing: 3000 }), left: 80, top: 112 },

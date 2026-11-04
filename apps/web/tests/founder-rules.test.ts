@@ -114,3 +114,23 @@ describe('WAUD18 — loi 82-21 : ni montant d’amende, ni menace, ni « à conf
     expect(s).not.toMatch(/\b(MAD|DH)\b[^.\n]{0,40}(amende|sanction|fine|penalt)/i);
   });
 });
+
+describe('WAUD84 — héros tourné vers le visiteur, un seul estimateur', () => {
+  const lirePage = (rel: string) => readFileSync(fileURLToPath(new URL(`../src/pages/${rel}`, import.meta.url)), 'utf-8');
+
+  it('maquette FR : H1 visiteur, cumul mesuré daté dessous, jamais le nombre d’installations', () => {
+    const fr = lirePage('index.astro');
+    const h1 = fr.match(/<h1 id="hero-title"[\s\S]*?<\/h1>/)?.[0] ?? '';
+    expect(h1).toContain('Votre toit paie votre électricité');
+    expect(h1).not.toContain('MWh');
+    const sub = fr.match(/const heroSub =[\s\S]*?;/)?.[0] ?? '';
+    expect(sub).toContain('heroFigure');
+    expect(sub).toContain('MEASURED_FLEET_READ_NOTE');
+  });
+
+  it('accueil FR/EN/AR : un seul estimateur de facture', () => {
+    for (const p of ['index.astro', 'en/index.astro', 'ar/index.astro']) {
+      expect(lirePage(p).match(/<InstantEstimator /g)?.length, p).toBe(1);
+    }
+  });
+});

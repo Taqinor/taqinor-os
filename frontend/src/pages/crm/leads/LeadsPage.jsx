@@ -13,6 +13,7 @@ import { fetchLeads, updateLead, leadStagePatched } from '../../../features/crm/
 import crmApi from '../../../api/crmApi'
 import { downloadBlobInGesture } from '../../../utils/downloadBlob'
 import { filterLeads, EMPTY_FILTERS, archivedParam, CONVERSION_STAGE, devisAccepteReference } from '../../../features/crm/stages'
+import { refusEtape } from '../../../features/crm/raisonsFroid'
 import {
   toggleId, toggleAll, pruneSelection, bulkResultMessage,
 } from '../../../features/crm/bulk'
@@ -84,6 +85,12 @@ const FILTERS_KEY = 'taqinor.leads.filters'
 // APX4 — « plein écran board » : préférence PROPRE à l'écran leads (jamais la
 // préférence globale de sidebar, qui appartient au shell).
 const BOARD_FULLSCREEN_KEY = 'taqinor.leads.boardFullscreen'
+// ERR-W33-WA-MOTIFS — les deux codes de réactivation renvoyés par `prepare_whatsapp`
+// (les autres motifs du serveur sont déjà en français).
+const MOTIFS_FILE_WA = {
+  palier2_ferme: 'cette réactivation n’est pas encore ouverte',
+  'hors seau': 'hors du groupe de réactivation choisi',
+}
 
 // LB49 — filtres persistés en SESSIONSTORAGE (plus localStorage) : l'état
 // survit aux allers-retours vers d'autres modules DANS la session ; une
@@ -151,6 +158,12 @@ export default function LeadsPage() {
   useEffect(() => {
     crmApi.getAssignableUsers()
       .then(r => setUsers(r.data.results ?? r.data)).catch(() => {})
+  }, [])
+
+  // ACVI73 — le minuteur « À contacter » du kanban lit le réglage servi.
+  const [slaBreach, setSlaBreach] = useState(null)
+  useEffect(() => {
+    crmApi.getSlaBreach().then(r => setSlaBreach(r.data)).catch(() => {})
   }, [])
 
   // WIR229/FG33 — modèles CRM pour le panneau « WhatsApp en masse » (choix
@@ -417,6 +430,8 @@ export default function LeadsPage() {
   const [stageError, setStageError] = useState(null)
   // A2 — lead en attente de confirmation « Signé » (choix du devis + option).
   const [signeLead, setSigneLead] = useState(null)
+  // ACVI68 — la saisie du dialogue « Signé » refusé par le serveur, rendue à sa réouverture.
+  const [signeSaisie, setSigneSaisie] = useState(null)
 
   // ── Sélection multiple (actions en masse, T3) ───────────────────────────
   const [selected, setSelected] = useState(() => new Set())
@@ -425,6 +440,8 @@ export default function LeadsPage() {
   // WIR229/FG33 — file de liens wa.me pré-remplis (jamais un envoi auto : la
   // commerciale ouvre chaque lien un par un depuis cette liste).
   const [waQueue, setWaQueue] = useState(null)
+  // ERR-CADV-WA-MOTIF (CADV10) — les leads écartés de la file, avec le motif du serveur.
+  const [waSkipped, setWaSkipped] = useState([])
   const canDelete = useIsAdmin()
 
   // Le filtre « Archivés » est une dimension SERVEUR : on refait l'appel avec
@@ -531,6 +548,7 @@ export default function LeadsPage() {
       // de mise à jour (le bandeau `bulkMsg` habituel n'a pas de sens ici).
       if (action === 'prepare_whatsapp') {
         setWaQueue(data?.queue ?? [])
+        setWaSkipped(data?.skipped ?? [])
         return
       }
       setBulkMsg(bulkResultMessage(data))
@@ -691,13 +709,14 @@ export default function LeadsPage() {
     const data = { [field]: value }
     if (opts.confirmeRecul) data.confirme_recul = true
     if (opts.undo) data.undo = true
+    if (opts.parcRaison) data.parc_raison = opts.parcRaison
     return dispatch(updateLead({ id: lead.id, data })).unwrap()
       .catch((err) => {
         // Décision fondateur 08/10/2026 — un refus serveur de changement
         // d'étape (409 « Impossible de sortir ce lead de Signé : … ») est
         // montré tel quel ; InlineEdit revient seul à la valeur réelle.
-        if (field === 'stage' && typeof err?.detail === 'string') {
-          toastError(err.detail)
+        if (field === 'stage' && refusEtape(err)) {
+          toastError(refusEtape(err))
         }
         throw err
       })
@@ -721,6 +740,14 @@ export default function LeadsPage() {
       })
   ), [dispatch])
 
+  // ACVI68 — refus d'acceptation : le dialogue revient pré-rempli (même depuis
+  // une fiche fermée par la fête au clic). Conflit (`echec` absent) : rien.
+  const rouvrirSigne = useCallback((fiche, echec) => {
+    if (!echec) return
+    setSigneSaisie({ ...echec.saisie, erreurs: echec.erreurs })
+    setSigneLead(fiche)
+  }, [])
+
   // VX187 — useCallback (même raison que onOpenLead/onAutoQuote ci-dessus) :
   // passé à chaque carte/ligne comme `onChangeStage`. Seule dépendance externe
   // réelle : `dispatch` (stable, useDispatch) — `setStageError`/`setBusyLeadId`
@@ -729,7 +756,7 @@ export default function LeadsPage() {
   // kanban peut désormais aller EN ARRIÈRE, à condition que KanbanView ait
   // obtenu un oui explicite avant d'appeler (la garde n'a pas disparu, elle
   // est devenue une question). Sans le marqueur, le serveur 400 toujours.
-  const changeStage = useCallback(async (lead, newStage, { confirmeRecul = false } = {}) => {
+  const changeStage = useCallback(async (lead, newStage, { confirmeRecul = false, parcRaison } = {}) => {
     if (!lead || lead.stage === newStage) return
     // A2 — déplacer un lead dans « Signé » exige de choisir le devis accepté
     // et l'option : on ouvre le dialogue au lieu de déplacer l'étape.
@@ -743,7 +770,14 @@ export default function LeadsPage() {
     try {
       const data = { stage: newStage }
       if (confirmeRecul) data.confirme_recul = true
+      if (parcRaison) data.parc_raison = parcRaison
       await dispatch(updateLead({ id: lead.id, data })).unwrap()
+      // ACVI9 — le parcage écrit état, raison et chatter : un « Annuler » ne
+      // re-PATCHerait que l'étape et laisserait un lead parqué hors du Froid.
+      if (parcRaison) {
+        toastSuccess('Lead rangé au Froid.')
+        return
+      }
       // Décision fondateur 08/10/2026 — sortir de « Signé » a DÉS-ACCEPTÉ le
       // devis côté serveur : un « Annuler » qui re-PATCHerait l'étape Signé
       // laisserait un lead signé sans devis accepté. Pas d'undo ici : on
@@ -789,9 +823,9 @@ export default function LeadsPage() {
       // avancé…) : le texte serveur nomme la cause, on l'affiche tel quel
       // (l'optimiste est déjà annulé ci-dessus). `unwrap()` rejette avec le
       // corps de la réponse (rejectWithValue de updateLead).
-      const detail = typeof err?.detail === 'string' ? err.detail : null
-      setStageError(detail
-        ?? "Le changement d'étape n'a pas pu être enregistré — vérifiez votre connexion et réessayez.")
+      // ACVI93 — le corps peut nommer le champ (`stage`) sans `detail`.
+      setStageError(refusEtape(err)
+        || "Le changement d'étape n'a pas pu être enregistré — vérifiez votre connexion et réessayez.")
     } finally {
       setBusyLeadId(null)
     }
@@ -1034,7 +1068,11 @@ export default function LeadsPage() {
       {waQueue && (
         <div className="lp-bulk-msg" role="status" data-testid="lp-wa-queue">
           {waQueue.length === 0 ? (
-            <span>Aucun lead sélectionné n'a de numéro WhatsApp/téléphone.</span>
+            <span>
+              {waSkipped.length > 0
+                ? 'Aucun message préparé :'
+                : "Aucun lead sélectionné n'a de numéro WhatsApp/téléphone."}
+            </span>
           ) : (
             <ul>
               {waQueue.map((q) => (
@@ -1046,11 +1084,16 @@ export default function LeadsPage() {
               ))}
             </ul>
           )}
+          {waSkipped.length > 0 && (
+            <ul data-testid="lp-wa-skipped">
+              {waSkipped.map((s) => <li key={s.id}>{s.nom} : {MOTIFS_FILE_WA[s.reason] ?? s.reason}</li>)}
+            </ul>
+          )}
           <IconButton
             variant="ghost"
             className="lp-stage-error-close"
             label="Fermer la file WhatsApp"
-            onClick={() => setWaQueue(null)}
+            onClick={() => { setWaQueue(null); setWaSkipped([]) }}
           >
             <X />
           </IconButton>
@@ -1137,6 +1180,7 @@ export default function LeadsPage() {
         {view === 'kanban' && (
           <KanbanView
             {...viewProps}
+            sla={slaBreach}
             totalLeads={leads.length}
             onClearFilters={() => setFilters(EMPTY_FILTERS)}
             /* MB6 — en mobile le bouton flottant plus bas EST l'action de
@@ -1185,6 +1229,7 @@ export default function LeadsPage() {
           lead={showForm ? editLead : deepLead}
           onClose={closeForm}
           onSaved={onSaved}
+          onSigneRefuse={rouvrirSigne}
           onOpenDuplicate={onOpenDuplicate}
           initialDevis={showForm ? formDevisIntent : null}
           focusSection={showForm ? formFocusSection : null}
@@ -1235,15 +1280,16 @@ export default function LeadsPage() {
       {signeLead && (
         <SigneDialog
           lead={signeLead}
-          onClose={() => { setSigneLead(null); refetch() }}
+          saisieInitiale={signeSaisie}
+          onClose={() => { setSigneLead(null); setSigneSaisie(null); refetch() }}
           onConfirmed={() => {
             // La carte passe en « Signé » tout de suite (fête dès le clic) ;
             // le serveur confirme pendant la fête, puis on resynchronise.
             dispatch(leadStagePatched({ id: signeLead.id, stage: CONVERSION_STAGE }))
             setSigneLead(null)
           }}
-          onAccepted={() => refetch()}
-          onFailed={() => refetch()}
+          onAccepted={() => { setSigneSaisie(null); refetch() }}
+          onFailed={(echec) => { refetch(); rouvrirSigne(signeLead, echec) }}
         />
       )}
 

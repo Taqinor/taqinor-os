@@ -1,7 +1,23 @@
-import { describe, it, expect, afterEach } from 'vitest'
-import { render, cleanup } from '@testing-library/react'
+import { describe, it, expect, afterEach, vi } from 'vitest'
+import { render, cleanup, screen, fireEvent, waitFor } from '@testing-library/react'
 import LeadCard from './LeadCard'
-import { PIPELINE_STAGES, NEW_STAGE } from '../../../../features/crm/stages'
+import KanbanView from './KanbanView'
+import { PIPELINE_STAGES, NEW_STAGE, COLD_STAGE } from '../../../../features/crm/stages'
+import { refusEtape } from '../../../../features/crm/raisonsFroid'
+
+// ERR-ACVI9-KANBAN-FROID — le vrai DndContext, dont on capte `onDragEnd` : un
+// glisser au pointeur n'est pas jouable dans jsdom.
+const dnd = vi.hoisted(() => ({ onDragEnd: null }))
+vi.mock('@dnd-kit/core', async (original) => {
+  const reel = await original()
+  return {
+    ...reel,
+    DndContext: (props) => {
+      dnd.onDragEnd = props.onDragEnd
+      return <reel.DndContext {...props} />
+    },
+  }
+})
 
 describe('KanbanView · StageMover — SUPPRIMÉ (ordre fondateur 2026-08-02)', () => {
   // « Ne la cache pas, supprime-la complètement. » Le sélecteur d'étape par
@@ -67,7 +83,9 @@ describe("LeadCard — icônes lucide Zap, pas d'emoji ⚡ (VX45)", () => {
 
 describe('LeadCard — minuteur premier contact, colonne NEW seulement (QX31)', () => {
   const ilYa = (minutes) => new Date(Date.now() - minutes * 60000 - 5000).toISOString()
-  const slaDe = (over) => monter(lead({ stage: NEW_STAGE, ...over })).container.querySelector('.kb-sla')
+  const slaDe = (over, props = { slaHours: 24 }) => render(
+    <LeadCard lead={lead({ stage: NEW_STAGE, ...over })} users={[]} {...props} />,
+  ).container.querySelector('.kb-sla')
 
   it('libellé FR compact : min, h, j', () => {
     expect(slaDe({ date_creation: ilYa(12) }).textContent).toContain('À contacter — il y a 12 min, non contacté')
@@ -77,15 +95,84 @@ describe('LeadCard — minuteur premier contact, colonne NEW seulement (QX31)', 
     expect(slaDe({ date_creation: ilYa(60 * 24 * 2) }).textContent).toContain('il y a 2 j')
   })
 
-  it('ambre sous 30 min, rouge à partir de 30 min', () => {
-    expect(slaDe({ date_creation: ilYa(12) }).className).toContain('kb-actionline-warning')
+  it('ACVI73 — ambre dans le délai servi, rouge quand sla-breach le retient', () => {
+    expect(slaDe({ date_creation: ilYa(180) }).className).toContain('kb-actionline-warning')
     cleanup()
-    expect(slaDe({ date_creation: ilYa(45) }).className).toContain('kb-actionline-danger')
+    expect(slaDe({ date_creation: ilYa(180) }, { slaHours: 24, slaEnRetard: true }).className)
+      .toContain('kb-actionline-danger')
+  })
+
+  it('sla désactivé, aucun badge', () => {
+    expect(slaDe({ date_creation: ilYa(120) }, { slaHours: 0 })).toBeNull()
+  })
+
+  it('premier contact posé, aucun badge', () => {
+    expect(slaDe({ date_creation: ilYa(120), first_contacted_at: ilYa(60) })).toBeNull()
   })
 
   it("aucun minuteur hors de l'étape NEW", () => {
     const { container } = monter(lead({ stage: QUOTE_SENT, date_creation: ilYa(12) }))
     expect(container.querySelector('.kb-sla')).toBeNull()
+  })
+})
+
+describe('Kanban — glisser vers Froid (ERR-ACVI9-KANBAN-FROID)', () => {
+  const deposer = (l, cible) => dnd.onDragEnd({
+    active: { data: { current: { lead: l } } }, over: { id: cible },
+  })
+  const monterBoard = (l, onChangeStage) => render(
+    <KanbanView leads={[l]} users={[]} onChangeStage={onChangeStage} />,
+  )
+
+  it('demande la raison avant le PATCH, puis la transporte', async () => {
+    const onChangeStage = vi.fn()
+    const l = lead()
+    monterBoard(l, onChangeStage)
+    deposer(l, COLD_STAGE)
+    const bouton = await screen.findByRole('button', { name: 'Mettre au Froid' })
+    expect(bouton).toBeDisabled()
+    expect(onChangeStage).not.toHaveBeenCalled()
+    fireEvent.change(screen.getByLabelText('Raison de mise au Froid'), { target: { value: 'budget' } })
+    fireEvent.click(bouton)
+    await waitFor(() => expect(onChangeStage).toHaveBeenCalledWith(
+      l, COLD_STAGE, expect.objectContaining({ parcRaison: 'budget' })))
+  })
+
+  it("annuler la question n'écrit rien", async () => {
+    const onChangeStage = vi.fn()
+    const l = lead()
+    monterBoard(l, onChangeStage)
+    deposer(l, COLD_STAGE)
+    fireEvent.click(await screen.findByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(screen.queryByLabelText('Raison de mise au Froid')).toBeNull())
+    expect(onChangeStage).not.toHaveBeenCalled()
+  })
+
+  it('une autre étape ne pose aucune question', async () => {
+    const onChangeStage = vi.fn()
+    const l = lead()
+    monterBoard(l, onChangeStage)
+    const cible = PIPELINE_STAGES[PIPELINE_STAGES.indexOf(QUOTE_SENT) + 1]
+    await deposer(l, cible)
+    expect(onChangeStage).toHaveBeenCalledWith(l, cible, { confirmeRecul: false, parcRaison: undefined })
+    expect(screen.queryByLabelText('Raison de mise au Froid')).toBeNull()
+  })
+
+  it('le refus 409 est lu, quelle que soit sa forme', () => {
+    expect(refusEtape({ parc_raison: ['Raison de mise au Froid obligatoire.'] }))
+      .toBe('Raison de mise au Froid obligatoire.')
+    expect(refusEtape({ detail: 'Refus.' })).toBe('Refus.')
+    expect(refusEtape({ stage: ['On ne recule pas une étape.'] })).toBe('On ne recule pas une étape.')
+    expect(refusEtape({})).toBe('')
+  })
+})
+
+describe('LeadCard — état de parcage servi (ACVI74)', () => {
+  it('la carte porte la date de reprise du standby, rien sans parcage', () => {
+    const { container } = monter(lead({ parc_etat: 'standby', parc_raison: 'plus_tard_date', parc_jusqu_au: '2026-12-15' }))
+    expect(container.textContent).toContain("En attente jusqu'au 15/12/2026")
+    cleanup()
+    expect(monter(lead({ parc_etat: null })).container.querySelector('[data-testid="badge-parcage"]')).toBeNull()
   })
 })
 
@@ -107,5 +194,20 @@ describe('LeadCard — cible tactile et PII (LB17)', () => {
   it('PII non masquée : pas de cadenas', () => {
     const { container } = monter(lead({ pii_masked: false, telephone: '0600000000' }))
     expect(container.querySelector('.kb-quick-lock')).toBeNull()
+  })
+})
+
+describe('LeadCard — Devis auto (ALEA63)', () => {
+  it('désactivé quand catalogue_ci.pret est faux, motif nommé', () => {
+    const { container } = monter(lead({ devis_auto: {
+      pret: true, catalogue_ci: { pret: false, manquants: ['a', 'b', 'c'] } } }))
+    const bouton = container.querySelector('button.kb-flash')
+    expect(bouton).toBeDisabled()
+    expect(bouton.getAttribute('title')).toContain('3 postes sans prix')
+  })
+
+  it('actif quand le catalogue est prêt ou non servi', () => {
+    const { container } = monter(lead({ devis_auto: { pret: true, catalogue_ci: { pret: true, manquants: [] } } }))
+    expect(container.querySelector('button.kb-flash')).not.toBeDisabled()
   })
 })

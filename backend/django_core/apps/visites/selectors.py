@@ -289,9 +289,18 @@ def _visite_devis(lead):
         return []
 
 
+def _medias_tries(visite):
+    """ACVI82 — les photos d'une visite par id, préchargement respecté : une
+    ligne de liste préchargée (``medias__attachment``) ne relit rien ; une
+    visite seule fait UNE requête, pièces jointes comprises."""
+    if 'medias' in getattr(visite, '_prefetched_objects_cache', {}):
+        return sorted(visite.medias.all(), key=lambda media: media.id)
+    return list(visite.medias.select_related('attachment').order_by('id'))
+
+
 def visite_terrain_manquants(visite):
     """La liste SERVEUR des manquants d'une visite (gate de terminaison)."""
-    medias = list(visite.medias.select_related('attachment').all())
+    medias = _medias_tries(visite)
     blocs = _visite_checklist(visite, medias)
     return _visite_manquants(blocs, _visite_mesures(visite),
                              _gabarit(visite), _non_releves_plats(visite),
@@ -333,7 +342,7 @@ def get_company_visite_version(company, visite_id):
 
 def contexte_visite_terrain(visite):
     """L'agrégat COMPLET d'une visite technique terrain (contrat VT0)."""
-    medias = list(visite.medias.select_related('attachment').all())
+    medias = _medias_tries(visite)
     blocs = _visite_checklist(visite, medias)
     mesures_rendues = _visite_mesures(visite)
     non_releves = _non_releves_plats(visite)
@@ -356,6 +365,7 @@ def contexte_visite_terrain(visite):
         'date_realisee': (visite.date_realisee.isoformat()
                           if visite.date_realisee else None),
         'notes': visite.notes or '',
+        'retour_terrain': visite.retour_terrain or '',
         'modifiable': visite.modifiable,
         'raison_lecture_seule': visite.raison_lecture_seule,
         # AGR412 — aucun toit à assembler sur un relevé du point d'eau ;
@@ -571,11 +581,8 @@ def releve_ci_pour_lead(lead):
 
     if lead is None:
         return None
-    visite = (VisiteTerrain.objects
-              .filter(lead=lead, company_id=lead.company_id,
-                      gabarit=VisiteTerrain.Gabarit.CI,
-                      statut=VisiteTerrain.Statut.VALIDEE)
-              .select_related('lead').order_by('-id').first())
+    visite = _reference_validee(lead.company_id, lead.id,
+                                gabarit=VisiteTerrain.Gabarit.CI)
     if visite is None:
         return None
     return releve_ci_de_visite(visite)
@@ -614,16 +621,28 @@ def visite_point_eau_validee_du_lead(lead):
     ``visites.models``) ; ses mesures se lisent ensuite par
     :func:`mesures_point_eau_pour_lead`. Société = celle du LEAD."""
     from . import visite_checklist as checklist
-    from .models import VisiteTerrain
 
     if lead is None or getattr(lead, 'pk', None) is None:
         return None
-    return (VisiteTerrain.objects
-            .filter(lead=lead, company_id=lead.company_id,
-                    statut=VisiteTerrain.Statut.VALIDEE,
-                    gabarit=checklist.GABARIT_POINT_EAU)
-            .order_by('-id')
-            .first())
+    return _reference_validee(lead.company_id, lead.id,
+                              gabarit=checklist.GABARIT_POINT_EAU)
+
+
+def leads_a_point_eau_valide(company_id, lead_ids):
+    """ERR-APRF-LISTE-LEADS-POINT-EAU-N1 — l'ensemble des leads dont la visite de
+    référence « relevé du point d'eau » est VALIDÉE, en UNE requête : même règle
+    que :func:`visite_point_eau_validee_du_lead`, pour une page de liste."""
+    from . import visite_checklist as checklist
+    from .models import VisiteTerrain
+
+    lignes = VisiteTerrain.objects.filter(
+        company_id=company_id, lead_id__in=lead_ids,
+        gabarit=checklist.GABARIT_POINT_EAU,
+    ).exclude(
+        statut__in=(VisiteTerrain.Statut.BROUILLON, VisiteTerrain.Statut.ANNULEE),
+    ).order_by('lead_id', '-id').distinct('lead_id').values_list('lead_id', 'statut')
+    return {lead_id for lead_id, statut in lignes
+            if statut == VisiteTerrain.Statut.VALIDEE}
 
 
 def texture_toit_pour_lead(lead):
@@ -644,17 +663,10 @@ def texture_toit_pour_lead(lead):
       ``None`` — l'appelant n'a jamais à distinguer deux formes de réponse, et
       rien n'est inventé pour combler le vide.
     """
-    from .models import VisiteTerrain
-
     vide = {'visite_id': None, 'url': None, 'texture_calage': None}
     if lead is None:
         return vide
-    visite = (VisiteTerrain.objects
-              .filter(lead=lead, company_id=lead.company_id,
-                      statut=VisiteTerrain.Statut.VALIDEE)
-              .exclude(photo_toit_key='')
-              .order_by('-id')
-              .first())
+    visite = _reference_validee(lead.company_id, lead.id)
     if visite is None or not visite.photo_toit_key:
         return vide
     return {
@@ -832,7 +844,7 @@ def _retour_commentaires_photos(visite):
     from . import visite_checklist as checklist
 
     lignes = []
-    for media in visite.medias.all().order_by('id'):
+    for media in _medias_tries(visite):
         commentaire = (media.commentaire or '').strip()
         if not commentaire:
             continue
@@ -851,8 +863,10 @@ def retour_visite(visite):
     donc enfermé dans l'app terrain. Rien n'est inventé ni complété : un retour
     muet sort avec des valeurs vides, et l'abonné le dit tel quel.
     """
+    # ACVI55 — ``retour_terrain`` (wizard) : jamais ``notes``, qui porte la
+    # planification et les lignes système. La clé du signal reste ``notes``.
     return {
-        'notes': (visite.notes or '').strip(),
+        'notes': (visite.retour_terrain or '').strip(),
         'commentaires_photos': _retour_commentaires_photos(visite),
         'nb_photos': visite.medias.count(),
     }
@@ -879,9 +893,10 @@ def ligne_visite_pour_lead(visite):
         'date_realisee': (visite.date_realisee.isoformat()
                           if visite.date_realisee else None),
         'commercial_nom': nom,
-        'notes': visite.notes or '',
+        # ACVI55 — les deux écrans la lisent comme « Retour terrain ».
+        'notes': visite.retour_terrain or '',
         'retour_disponible': bool(
-            (visite.notes or '').strip()
+            (visite.retour_terrain or '').strip()
             or _retour_commentaires_photos(visite)),
     }
 
@@ -944,6 +959,19 @@ def nombre_visites_planifiees(company, lead_ids, *, depuis):
     return VisiteTerrain.objects.filter(
         company=company, lead_id__in=lead_ids, created_at__gte=depuis,
         date_prevue__isnull=False).count()
+
+
+def lead_ids_visite_a_venir(company_id, today):
+    """ACVI65 — les leads qui ont une visite À VENIR : brouillon ou en cours,
+    datée d'aujourd'hui ou plus tard (une sous-requête d'identifiants). Lecture
+    cross-app pour ``apps.crm`` (frontière M3)."""
+    from .models import VisiteTerrain
+
+    return VisiteTerrain.objects.filter(
+        company_id=company_id, date_prevue__gte=today,
+        statut__in=(VisiteTerrain.Statut.BROUILLON,
+                    VisiteTerrain.Statut.EN_COURS),
+    ).values('lead_id')
 
 
 def visites_pour_lead(lead):
@@ -1064,6 +1092,7 @@ def ma_journee_du_commercial(company, user, *, aujourdhui):
 
     visites = (VisiteTerrain.objects
                .select_related('lead', 'commercial')
+               .prefetch_related('medias__attachment')
                .filter(company=company, commercial=user))
     return ma_journee(visites, aujourdhui=aujourdhui)
 
@@ -1198,6 +1227,32 @@ def _visites_du_lead(company_id, lead_id):
                                         company_id=company_id)
 
 
+def _visite_de_reference(company_id, lead_id, gabarit=None):
+    """ACVI64 — LA visite de référence d'un lead : la plus récente (``-id``,
+    aucune horloge) hors ``brouillon`` et ``annulee``. Un rendez-vous ajouté ou
+    annulé ne retire donc ni le feu vert ni le relevé de la visite déjà faite.
+    ``gabarit`` : la référence de ce type de relevé."""
+    from .models import VisiteTerrain
+
+    visites = _visites_du_lead(company_id, lead_id).exclude(
+        statut__in=(VisiteTerrain.Statut.BROUILLON,
+                    VisiteTerrain.Statut.ANNULEE))
+    if gabarit is not None:
+        visites = visites.filter(gabarit=gabarit)
+    return visites.order_by('-id').first()
+
+
+def _reference_validee(company_id, lead_id, gabarit=None):
+    """La visite de référence si elle est VALIDÉE, sinon ``None`` : un renvoi
+    retire le feu vert et le relevé ensemble."""
+    from .models import VisiteTerrain
+
+    visite = _visite_de_reference(company_id, lead_id, gabarit=gabarit)
+    if visite is None or visite.statut != VisiteTerrain.Statut.VALIDEE:
+        return None
+    return visite
+
+
 def releve_pour_calepinage(lead):
     """CALX363 — le releve de terrain d'un lead, pour le calepinage.
 
@@ -1205,7 +1260,8 @@ def releve_pour_calepinage(lead):
 
     * seule une visite **VALIDEE** (feu vert du bureau d'etudes) sort — une
       visite en cours, terminee ou renvoyee n'est jamais reprise ;
-    * la **derniere** validee gagne (``-id`` : deterministe, aucune horloge) ;
+    * la visite de reference (``_visite_de_reference``, ACVI64) doit etre
+      validee : la meme definition que le feu vert ;
     * la societe vient du LEAD, jamais d'une requete : une visite d'une autre
       societe ne peut structurellement pas sortir d'ici ;
     * sans visite validee, les MEMES cles sortent a ``None`` — jamais une
@@ -1222,8 +1278,6 @@ def releve_pour_calepinage(lead):
     Returns:
         dict — ``{visite_id, validee_le, mesures, photos, motif_absence}``.
     """
-    from .models import VisiteTerrain
-
     vide = {
         'visite_id': None,
         'validee_le': None,
@@ -1234,8 +1288,7 @@ def releve_pour_calepinage(lead):
     if lead is None:
         return vide
     visites = _visites_du_lead(lead.company_id, lead.id)
-    visite = (visites.filter(statut=VisiteTerrain.Statut.VALIDEE)
-              .order_by('-id').first())
+    visite = _reference_validee(lead.company_id, lead.id)
     if visite is None:
         if visites.exists():
             return dict(vide, motif_absence=MOTIF_VISITE_NON_VALIDEE)
@@ -1261,8 +1314,8 @@ def visite_feu_vert(company_id, lead_id):
     """ALEA5 — le FEU VERT du bureau d'études pour un lead, ou ``None``.
 
     Rend ``{visite_id, validee_le, validee_par_id}`` si et seulement si la
-    visite la PLUS RÉCENTE du lead (``-id`` : déterministe, aucune horloge)
-    est au statut ``validee``. ``None`` sinon : aucune visite, visite terminée
+    visite de RÉFÉRENCE du lead (``_visite_de_reference``, ACVI64 : un brouillon
+    ajouté ne compte pas) est ``validee``. ``None`` sinon : aucune visite, visite terminée
     mais pas encore validée, ou visite renvoyée (``a_refaire``) après un feu
     vert — une validation plus ancienne ne survit pas à un renvoi.
 
@@ -1275,12 +1328,10 @@ def visite_feu_vert(company_id, lead_id):
     (``None`` pour une visite validée avant CIQ604 — jamais une date
     inventée).
     """
-    from .models import VisiteTerrain
-
     if company_id is None or lead_id is None:
         return None
-    visite = _visites_du_lead(company_id, lead_id).order_by('-id').first()
-    if visite is None or visite.statut != VisiteTerrain.Statut.VALIDEE:
+    visite = _reference_validee(company_id, lead_id)
+    if visite is None:
         return None
     return {
         'visite_id': visite.id,

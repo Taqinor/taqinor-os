@@ -1032,6 +1032,8 @@ def appliquer_section(lien, section, reponses=None, photo=None,
             f'Section non demandée sur ce lien : « {section} ».')
 
     lead = lien.lead
+    if lead_clos(lead):  # ACVI96 — aucune écriture sur une fiche close.
+        return []
     if section not in sections_du_lead(lead):
         # AGR411 — filtre de segment (lien ancien, ou type changé depuis).
         raise SectionInconnue(
@@ -1203,6 +1205,15 @@ def mint_lien(lead, *, questions=None, user=None):
     return lien, cree or lien.questions != avant, cree
 
 
+def lead_clos(lead):
+    """ACVI96 — une fiche close ne recueille plus de réponse du client : lead
+    perdu, opposé (``peut_contacter``) ou archivé — un lead absorbé par une
+    fusion est archivé et son lien suit le survivant (``merge_leads``)."""
+    from .portee_selectors import peut_contacter
+
+    return bool(lead.perdu or lead.is_archived or not peut_contacter(lead))
+
+
 def resoudre(token):
     """Résout un jeton PUBLIC → ``(lien, interne)``.
 
@@ -1226,10 +1237,11 @@ def resoudre(token):
         raise LienIndisponible('Introuvable.')
     # Un lead SUPPRIMÉ (soft-delete) ferme son lien : sans cette garde, la
     # page s'ouvrirait encore et l'écriture planterait plus loin
-    # (``Lead.objects`` masque la corbeille). Un lead simplement ARCHIVÉ
-    # reste ouvert — l'archivage est un rangement réversible du pipeline,
-    # pas une raison de bloquer le client qui répond.
+    # (``Lead.objects`` masque la corbeille). ACVI96 — une fiche close aussi,
+    # sauf pour l'aperçu du commercial (``interne``), qui n'écrit jamais.
     if getattr(lien.lead, 'is_deleted', False):
+        raise LienIndisponible('Introuvable.')
+    if not interne and lead_clos(lien.lead):
         raise LienIndisponible('Introuvable.')
     return lien, interne
 

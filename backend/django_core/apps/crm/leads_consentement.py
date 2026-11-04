@@ -140,6 +140,10 @@ CONSENT_SOURCE_SAISIE_MANUELLE = 'saisie manuelle CRM'
 CONSENT_SOURCE_META_LEAD_ADS = 'formulaire Meta Lead Ads'
 CONSENT_SOURCE_WHATSAPP_ENTRANT = 'message WhatsApp entrant'
 CONSENT_SOURCE_DOCUMENT = 'document importé'
+#: ACVI18 — les trois créations qui manquaient au registre.
+CONSENT_SOURCE_PROPRIETAIRE = 'propriétaire désigné par son locataire'
+CONSENT_SOURCE_LIVECHAT = 'conversation livechat'
+CONSENT_SOURCE_EVENEMENT = 'inscription à un événement marketing'
 #: CADV109 — la préparation d'un message de réactivation : le seau, et la base
 #: ``BASE_LEGALE_SOLLICITATION`` (art. 4 al. 3-b, lecture [O] de la conception v4).
 CONSENT_SOURCE_REACTIVATION = 'réactivation {seau}'
@@ -214,6 +218,9 @@ def tracer_levee_opposition_registre(lead, user, *, occurred_at=None):
     registre une ligne ``granted=True`` par finalité de contact et par
     identifiant, dont la source NOMME l'utilisateur (« opposition levée par
     <utilisateur> »). Best-effort, comme l'opposition."""
+    # ACVI43 (D-ACVI-6) — la personne redevient contactable sur une nouvelle fiche.
+    from .leads_doublons import retirer_empreintes_opposition
+    retirer_empreintes_opposition(lead.company, lead)
     try:
         qui = getattr(user, 'username', '') or 'utilisateur inconnu'
         return _ecrire_registre_contact(

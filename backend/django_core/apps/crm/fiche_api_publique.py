@@ -7,7 +7,8 @@ from rest_framework.exceptions import ValidationError as DRFValidationError
 
 from . import activity, stages
 from .cadence_plan import demarrer_cadence_contact, sync_relance_activity
-from .fiche_funnel import _bulk_stage_allowed, _emit_stage_changed
+from .fiche_funnel import (
+    _bulk_stage_allowed, _emit_stage_changed, parquer_lead, refus_mise_au_froid)
 from .leads_premier_contact import maybe_set_first_contacted_at
 from .leads_score import recompute_lead_score
 from .models import Lead, LeadActivity
@@ -49,7 +50,10 @@ def create_lead_from_public_api(*, company, fields):
         stage=stage or stages.NEW,
         **clean,
     )
-    activity.log_creation(lead, None)
+    # ACVI12 — responsable, chatter, score, registre : la finalisation commune.
+    from .leads_intake import finaliser_lead_importe
+    finaliser_lead_importe(lead, lead_attrs=clean, source='API publique',
+                           cadence_origine='')
     # MRY6 — l'API publique crée de VRAIES demandes (formulaire partenaire,
     # intégration) : elles entrent dans la cadence comme les autres.
     demarrer_cadence_contact(lead, origine='api_publique')
@@ -114,6 +118,14 @@ def update_lead_from_public_api(*, company, lead_id, fields):
             raise ValueError('Lead perdu — étape non modifiable.')
         if not _bulk_stage_allowed(lead.stage, stage):
             raise ValueError("On ne recule pas une étape.")
+    # ACVI9 — le Froid passe par ``parquer_lead``, raison exigée (parité PATCH).
+    raison_froid = None
+    if stage == stages.COLD and stage != lead.stage:
+        raison_froid = (fields or {}).get('parc_raison')
+        refus = refus_mise_au_froid(lead, raison_froid)
+        if refus:
+            raise DRFValidationError({'parc_raison': [refus]})
+        del clean['stage']
     old = Lead.objects.get(pk=lead.pk)
     changed_fields = []
     for field, value in clean.items():
@@ -136,6 +148,10 @@ def update_lead_from_public_api(*, company, lead_id, fields):
         maybe_set_first_contacted_at(old, lead)
         recompute_lead_score(lead)
         _emit_stage_changed(lead, old.stage, lead.stage, user=None)
+    if raison_froid:
+        parquer_lead(lead, raison_froid, None, None)
+        sync_relance_activity(lead, None)
+        recompute_lead_score(lead)
     return lead
 
 

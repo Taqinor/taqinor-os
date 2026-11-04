@@ -1,6 +1,6 @@
 // Régressions du dialogue « Signé » (L420 aperçu PDF inline, L423 détail par
 // option). On vérifie les invariants de SOURCE (le fichier est du JSX, donc non
-// importable par node:test) plus la logique pure ré-implémentée à l'identique.
+// importable par node:test) plus la logique pure, importée de signeOptions.js.
 // NB : ce fichier n'est PAS encore câblé dans le job CI
 // (.github/workflows/ci.yml, hors périmètre de ce lane) ; à exécuter :
 //   node --test src/pages/crm/leads/SigneDialog.test.mjs
@@ -9,6 +9,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { optionsDetail } from './signeOptions.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SRC = readFileSync(join(HERE, 'SigneDialog.jsx'), 'utf8')
@@ -19,6 +20,20 @@ test('L420 : aperçu PDF inline réutilise PdfCanvas + previewPdf (jamais dupliq
   assert.match(SRC, /getProposalPdf\(/)
   assert.match(SRC, /proposalParams\(/)
   assert.match(SRC, /<PdfCanvas/)
+})
+
+test('ADVS3 (D-ADVS-4) : le repli écran remonte à la centaine un TTC à moins d\'1 MAD sous elle', () => {
+  const lignes = [
+    { designation: 'Panneau', quantite: '3', prix_unitaire: '833.33', remise: '0' },
+    { designation: 'Batterie', quantite: '1', prix_unitaire: '833.33', remise: '0' },
+  ]
+  const det = (regles_calcul) => optionsDetail({ taux_tva: '20', regles_calcul, lignes })
+  // 3 × 999,996 = 2 999,988 sans batterie ; 4 × = 3 999,984 avec.
+  assert.equal(det(11).sans_batterie.ttc, 3000)
+  assert.equal(det(11).avec_batterie.ttc, 4000)
+  // Envoyé au niveau < 11 : le total qu'il a reçu.
+  assert.equal(det(10).sans_batterie.ttc, 2900)
+  assert.equal(det(10).avec_batterie.ttc, 3900)
 })
 
 test('L423 : détail par option (kWc / total TTC) affiché à côté des radios', () => {
@@ -54,7 +69,7 @@ test('LW5 : date par défaut + comparaison "future" en LOCAL, jamais toISOString
   assert.doesNotMatch(SRC, /new Date\(\)\.toISOString\(\)\.slice\(0, ?10\)/)
   assert.match(SRC, /function todayLocalStr\(now = new Date\(\)\)/)
   assert.match(SRC, /toLocaleDateString\('fr-CA'\)/)
-  assert.match(SRC, /useState\(\(\) => todayLocalStr\(\)\)/)
+  assert.match(SRC, /useState\(\(\) => saisieInitiale\?\.date \?\? todayLocalStr\(\)\)/)
   assert.match(SRC, /const today = todayLocalStr\(\)/)
 })
 
@@ -69,37 +84,7 @@ test('DealSignedCelebration : lance la fête celebrateDealSigned, montant + kWc 
   assert.match(CELEB_SRC, /kwc/)
 })
 
-// ── Logique pure de optionsDetail, ré-implémentée à l'identique pour la tester
-//    sans parseur JSX (le code source ci-dessus en garantit la présence). ──
-const isBatteryLine = (d) =>
-  (d || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-    .includes('batterie')
-function ligneTtc(l, devisTva) {
-  const qte = parseFloat(l.quantite) || 0
-  const pu = parseFloat(l.prix_unitaire) || 0
-  const rem = parseFloat(l.remise) || 0
-  const tva = (l.taux_tva != null && l.taux_tva !== '')
-    ? (parseFloat(l.taux_tva) || 0) : (parseFloat(devisTva) || 0)
-  return qte * pu * (1 - rem / 100) * (1 + tva / 100)
-}
-function optionsDetail(devis) {
-  const lignes = devis?.lignes ?? []
-  if (!lignes.length) return null
-  const tva = devis?.taux_tva
-  const factor = 1 - (parseFloat(devis?.remise_globale) || 0) / 100
-  const ttcAvec = lignes.reduce((s, l) => s + ligneTtc(l, tva), 0) * factor
-  const ttcSans = lignes.filter((l) => !isBatteryLine(l.designation))
-    .reduce((s, l) => s + ligneTtc(l, tva), 0) * factor
-  const nbPanneaux = lignes
-    .filter((l) => (l.designation || '').toLowerCase().includes('panneau'))
-    .reduce((s, l) => s + (parseFloat(l.quantite) || 0), 0)
-  const kwc = nbPanneaux > 0 ? Math.round(nbPanneaux * 0.71 * 100) / 100 : null
-  return {
-    sans_batterie: { ttc: ttcSans, kwc },
-    avec_batterie: { ttc: ttcAvec, kwc },
-  }
-}
-
+// ── optionsDetail : le VRAI code de l'écran (signeOptions.js). ──
 const devis = {
   taux_tva: '20', remise_globale: '0',
   lignes: [
@@ -122,7 +107,8 @@ test('optionsDetail : kWc estimé (≈ 0,71 kWc/panneau)', () => {
 
 test('optionsDetail : remise globale appliquée aux deux options', () => {
   const d = optionsDetail({ ...devis, remise_globale: '10' })
-  assert.equal(Math.round(d.avec_batterie.ttc), Math.round(26600 * 0.9))
+  // ARRONDI-100 : 26 600 × 0,9 = 23 940, au palier inférieur de 100.
+  assert.equal(d.avec_batterie.ttc, 23900)
 })
 
 test('optionsDetail : null sans lignes ; pas de kWc sans panneaux', () => {

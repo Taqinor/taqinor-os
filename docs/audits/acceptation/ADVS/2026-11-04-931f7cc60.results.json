@@ -1,0 +1,78 @@
+{
+  "sha": "931f7cc60d410c63586bdad950e01329ee25af3a",
+  "date": "2026-11-04",
+  "groupe": "ADVS",
+  "verdict": "PASS",
+  "couvre": [
+    "ADVS10"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PA3-01.remise_auto_ci",
+      "taches": [
+        "ADVS10"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ADVS-PA3-01.remise_auto_ci.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA3-01.remise_auto_fiche",
+      "taches": [
+        "ADVS10"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ADVS-PA3-01.remise_auto_fiche.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA3-05.remise_auto_agricole",
+      "taches": [
+        "ADVS10"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ADVS-PA3-05.remise_auto_agricole.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}

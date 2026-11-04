@@ -23,3 +23,7 @@ test("sondage du PDF : l'erreur est affichée une fois et la boucle continue (AF
   assert.doesNotMatch(m[0], /catch \{/)
   assert.match(m[0], /catch \(err\) \{[\s\S]*erreurSignalee[\s\S]*toast\.error\(frenchError\(err,[\s\S]*setTimeout\(poll, 2000\)/)
 })
+
+test('ERR-AFAC105-SQUELETTE : rafraîchir la liste ne démonte pas le formulaire ouvert', () => {
+  assert.match(src, /if \(loading && !showForm\) \{/)
+})

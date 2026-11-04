@@ -21,14 +21,15 @@ test('CADV74 : vers Froid, le panneau étape exige la raison et l\'envoie', () =
   assert.match(bar, /disabled=\{versFroid && !parcRaison\}/)
   assert.match(bar, /\{ stage, parc_raison: parcRaison \}/)
   // Une raison à date ne se pose pas en lot (le serveur la refuse).
-  assert.doesNotMatch(bar, /\['plus_tard_date'/)
+  const liste = readFileSync(join(HERE, '..', '..', '..', 'features', 'crm', 'raisonsFroid.js'), 'utf8')
+  assert.doesNotMatch(liste, /\['plus_tard_date'/)
   // Mêmes codes que le contrat, hors la seule raison standby.
   const contrat = JSON.parse(readFileSync(join(
     HERE, '..', '..', '..', '..', '..', 'backend', 'django_core', 'apps', 'crm',
     'contract_samples', 'lead.json'), 'utf8'))
   const attendus = Object.entries(contrat.notes.codes_raison)
     .filter(([, etat]) => etat !== 'standby').map(([code]) => code).sort()
-  const servis = [...bar.matchAll(/^  \['([a-z_]+)', '/gm)].map((m) => m[1]).sort()
+  const servis = [...liste.matchAll(/^  \['([a-z_]+)', '/gm)].map((m) => m[1]).sort()
   assert.deepEqual(servis, attendus)
 })
 

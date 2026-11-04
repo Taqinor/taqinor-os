@@ -61,7 +61,7 @@ def build(ctx):
     _vu = (d.get("valid_until") or "").strip()
     validity_pill = (
         '<div class="c1c-pill">'
-        + L("ci_valable_jusqu", "Valable jusqu&#8217;au {date}", date=_vu)
+        + ci_couverture.pastille_validite(d, _vu)
         + '</div>' if _vu else "")
 
     cat = d.get("com_category")

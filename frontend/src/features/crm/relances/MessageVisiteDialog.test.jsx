@@ -82,3 +82,20 @@ describe('CAD111 — message de visite : trace + lien serveur', () => {
     expect(screen.getByText(/Aucun numéro WhatsApp exploitable/)).toBeInTheDocument()
   })
 })
+
+describe('ACVI44 — le refus du serveur est montré', () => {
+  it('409 : la raison du serveur, jamais le message générique', async () => {
+    crmApi.getMessageVisite.mockRejectedValue({
+      response: { status: 409, data: { detail: 'Message refusé : ne plus contacter.' } },
+    })
+    render(<MessageVisiteDialog leadId={LEAD} open onOpenChange={() => {}} />)
+    expect(await screen.findByText('Message refusé : ne plus contacter.')).toBeInTheDocument()
+    expect(screen.queryByText('Message indisponible pour le moment.')).toBeNull()
+  })
+
+  it('panne réseau : le message générique reste', async () => {
+    crmApi.getMessageVisite.mockRejectedValue(new Error('réseau'))
+    render(<MessageVisiteDialog leadId={LEAD} open onOpenChange={() => {}} />)
+    expect(await screen.findByText('Message indisponible pour le moment.')).toBeInTheDocument()
+  })
+})

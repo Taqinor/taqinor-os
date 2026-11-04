@@ -160,8 +160,14 @@ def appliquer_champ_automatique(lead, champ, valeur, user=None):
     ancien = getattr(lead, champ, None)
     if ancien == propre:
         return CHAMP_AUTO_INCHANGE, ''
-    setattr(lead, champ, propre)
-    lead.save(update_fields=[champ])
+    # ACVI32 — comme le PATCH : marqueur respecté (refus au chatter), dérivée persistée.
+    from apps.records.provenance import MESSAGE_REFUS, ecrire_si_libre
+
+    if not ecrire_si_libre(lead, champ, propre, user=user):
+        return CHAMP_AUTO_INCHANGE, MESSAGE_REFUS
+    # Par introspection (jamais `views` : contrat import-linter ventes -/-> audit).
+    derivees = [c.name for c in Lead._meta.concrete_fields if c.name.endswith('_normalise')]
+    lead.save(update_fields=[champ, *derivees])
     LeadActivity.objects.create(
         company=lead.company, lead=lead, user=user,
         kind=LeadActivity.Kind.MODIFICATION, field=champ,
@@ -224,3 +230,106 @@ def facture_au_mois(montant, periodicite):
         return None
     mois = Lead.PERIODICITES_FACTURE[periodicite]
     return quantize_mad(Decimal(str(montant)) / Decimal(mois))
+
+
+def appliquer_bascules_fiche(old, new_lead, user):
+    """ACVI31 — les effets d'un PATCH de la fiche sur ses bascules (extrait de
+    ``LeadViewSet.perform_update``) : perdu, opposition, réouverture,
+    responsable. Le PATCH ``owner`` a les effets de ``reattribuer_lead``."""
+    # MRY9 (c)(d) — deux bascules ARRÊTENT les relances. Le passage
+    # d'étape est déjà couvert par le receiver `lead_stage_changed`.
+    # SUIVI E21 (30/09/2026) — et le rendez-vous de visite EN ATTENTE
+    # s'annule avec elles (best-effort, note au chatter quand un
+    # rendez-vous est réellement annulé) : le technicien ne se déplace
+    # pas chez un client perdu ou qui ne veut plus être contacté.
+    from .cadence_visite import (
+        CAUSE_RDV_NE_PLUS_CONTACTER,
+        annuler_rendez_vous_sur_arret,
+        cause_rdv_perdu,
+    )
+    from .cadence_plan import arreter_cadence
+    try:
+        if not old.perdu and new_lead.perdu:
+            arreter_cadence(
+                new_lead, user=user,
+                motif=(new_lead.motif_perte or 'lead perdu'))
+            annuler_rendez_vous_sur_arret(
+                new_lead, user,
+                cause=cause_rdv_perdu(new_lead.motif_perte))
+        if not old.ne_plus_contacter and new_lead.ne_plus_contacter:
+            arreter_cadence(new_lead, user=user,
+                            motif='ne plus contacter')
+            annuler_rendez_vous_sur_arret(
+                new_lead, user,
+                cause=CAUSE_RDV_NE_PLUS_CONTACTER)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
+        logger.warning(
+            'MRY9: arrêt de cadence échoué sur le lead #%s',
+            new_lead.pk, exc_info=True)
+    # CAD91 — l'opposition cochée sur la fiche est inscrite au REGISTRE
+    # (``ConsentRecord`` granted=False, daté), indépendamment de l'arrêt
+    # de cadence ci-dessus : sans elle, rien ne prouverait qu'elle a été
+    # honorée. Aucun motif exigé (loi 09-08 art. 9 al. 2).
+    if not old.ne_plus_contacter and new_lead.ne_plus_contacter:
+        from .cadence_reponses import (
+            CONSENT_SOURCE_OPPOSITION_FICHE,
+            tracer_opposition_registre,
+        )
+        tracer_opposition_registre(
+            new_lead, source=CONSENT_SOURCE_OPPOSITION_FICHE)
+    # ACRM59 — la DÉCOCHE est tracée elle aussi : une ligne accordée par
+    # finalité de contact, dont la source nomme l'utilisateur.
+    if old.ne_plus_contacter and not new_lead.ne_plus_contacter:
+        from .leads_consentement import tracer_levee_opposition_registre
+        tracer_levee_opposition_registre(new_lead, user)
+    # CAD107 — la bascule INVERSE n'était traitée nulle part : décocher
+    # « Perdu » ne déclenchait rien, alors qu'un client perdu qui revient
+    # est le meilleur signal d'achat qui existe. Les trois chemins de
+    # réouverture (ce PATCH, le lot `unset_perdu`, la nouvelle touche
+    # entrante) posent désormais la MÊME cadence de reprise.
+    from .cadence_touche import reprendre_cadence_apres_reouverture
+    try:
+        if old.perdu and not new_lead.perdu:
+            reprendre_cadence_apres_reouverture(
+                new_lead, user, origine='fiche rouverte')
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
+        logger.warning(
+            'CAD107: reprise non posée sur le lead #%s',
+            new_lead.pk, exc_info=True)
+    # ACVI52 — lever l'opposition pose la même reprise que rouvrir un perdu.
+    if old.ne_plus_contacter and not new_lead.ne_plus_contacter:
+        try:
+            reprendre_cadence_apres_reouverture(
+                new_lead, user, origine='opposition levée')
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
+            logger.warning('ACVI52: reprise non posée sur le lead #%s',
+                           new_lead.pk, exc_info=True)
+    if new_lead.owner_id and old.owner_id != new_lead.owner_id:
+        from .cadence_reponses import effets_reattribution
+        try:
+            effets_reattribution(new_lead, user, old.owner)
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
+            logger.warning('ACVI31: passation non posée sur le lead #%s',
+                           new_lead.pk, exc_info=True)
+
+
+def restaurer_lead(lead, user, *, note=None):
+    """ACVI36 — LA restauration d'un lead archivé (fiche et lot) : écriture et
+    chatter dans la même transaction (ALEA30), puis la prochaine étape.
+    ``note`` : le texte du lot, sinon la ligne de restauration de la fiche."""
+    from django.db import transaction
+
+    from . import activity
+    from .cadence_filet import assurer_prochaine_etape_apres_succes
+
+    lead.is_archived = False
+    lead.archived_by = None
+    lead.archived_at = None
+    with transaction.atomic():
+        lead.save(update_fields=['is_archived', 'archived_by', 'archived_at'])
+        if note:
+            activity.log_bulk_note(lead, user, note)
+        else:
+            activity.log_restore(lead, user)
+    assurer_prochaine_etape_apres_succes(lead, user)
+    return lead

@@ -29,6 +29,7 @@ import SwitchCreerUnAutre from '../../ui/SwitchCreerUnAutre'
 import ComboboxEntreprise from '../../components/ComboboxEntreprise'
 import { rechercherEntreprises } from '../../features/crm/rechercheEntreprises'
 import AvertissementDoublons from '../../components/AvertissementDoublons'
+import { creerSoumission } from '../../lib/soumission'
 
 // Avertissements NON bloquants sur les identifiants marocains. Renvoie une
 // chaîne d'aide (ou null) — n'empêche JAMAIS l'enregistrement, sert juste à
@@ -311,15 +312,13 @@ export default function ClientForm({ client = null, onClose }) {
     }
   }
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (!validate()) return
-    if (!isEdit && !iceEmailDupChecked) {
-      const ok = await checkDoublonExact()
-      if (!ok) return
-    }
-    setSaving(true)
-    try {
+  const validerPuisDoublon = () => {
+    if (!validate()) return false
+    return (isEdit || iceEmailDupChecked) ? true : checkDoublonExact()
+  }
+
+  // Construit au geste, jamais au rendu : l'envoi lit `nomRef` (react-hooks/refs).
+  const handleSubmit = (e) => creerSoumission(validerPuisDoublon, setSaving, async () => {
       const payload = {
         nom:         fields.nom.trim(),
         prenom:      fields.prenom.trim()    || null,
@@ -370,15 +369,12 @@ export default function ClientForm({ client = null, onClose }) {
           onClose()
         }
       }
-    } catch (err) {
-      // CIQ422 — conflit d'identité : affiché SOUS le champ ICE.
-      setConflitIce(conflitIdentite(err?.response?.data ?? err))
-      // VX171 — mapping DRF générique (detail / {champ:[…]} / array).
-      setFromResponse(err)
-    } finally {
-      setSaving(false)
-    }
-  }
+  }, (err) => {
+    // CIQ422 — conflit d'identité : affiché SOUS le champ ICE.
+    setConflitIce(conflitIdentite(err?.response?.data ?? err))
+    // VX171 — mapping DRF générique (detail / {champ:[…]} / array).
+    setFromResponse(err)
+  })(e)
 
   const errorList = [
     errors.nom ? { field: 'cf-nom', message: errors.nom } : null,

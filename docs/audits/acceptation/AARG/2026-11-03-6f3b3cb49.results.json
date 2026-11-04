@@ -1,0 +1,80 @@
+{
+  "sha": "6f3b3cb493eff6380de8bf4799efe779a7803a79",
+  "date": "2026-11-03",
+  "groupe": "AARG",
+  "verdict": "PASS",
+  "couvre": [
+    "AARG50",
+    "AARG8",
+    "AARG45"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PA4.nominal",
+      "taches": [
+        "AARG50"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-03/ACCEPTATION-AARG-PA4.nominal.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P.rapprocher",
+      "taches": [
+        "AARG8"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-03/ACCEPTATION-AARG-P.rapprocher.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA4.rejeu",
+      "taches": [
+        "AARG45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-03/ACCEPTATION-AARG-PA4.rejeu.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}

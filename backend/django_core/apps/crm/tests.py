@@ -685,6 +685,37 @@ class TestLeadMerge(TestCase):
         ids = [d['id'] for d in resp.data]
         self.assertIn(self.dup.id, ids)
 
+    def test_le_survivant_prend_l_etape_la_plus_avancee(self):
+        # ACVI33 — annoncée par l'aperçu, appliquée par la fusion, signal émis.
+        from unittest import mock
+        Lead.objects.filter(pk=self.dup.pk).update(stage=stages.SIGNED)
+        apercu = self.api.get('/api/django/crm/leads/doublons/')
+        self.assertEqual(apercu.status_code, 200, apercu.data)
+        groupe = next(g for g in apercu.data
+                      if self.survivor.id in [m['id'] for m in g['members']])
+        self.assertEqual(
+            groupe['merge_preview']['stage_apres_fusion'], stages.SIGNED)
+        with mock.patch('apps.crm.fiche_funnel._emit_stage_changed') as emission:
+            resp = self.api.post(
+                f'/api/django/crm/leads/{self.survivor.id}/merge/',
+                {'others': [self.dup.id]}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.survivor.refresh_from_db()
+        self.assertEqual(self.survivor.stage, stages.SIGNED)
+        emission.assert_called()
+
+    def test_un_patch_concurrent_survit_a_la_fusion(self):
+        # ACVI34 — instance chargée, puis PATCH concurrent d'un champ non fusionné.
+        from apps.crm.leads_fusion import merge_leads
+        Lead.objects.filter(pk=self.survivor.pk).update(ville='Fès')
+        self.survivor.refresh_from_db()
+        Lead.objects.filter(pk=self.survivor.pk).update(ville='Meknès')
+        merge_leads(self.survivor, [self.dup], self.user)
+        relu = Lead.objects.get(pk=self.survivor.pk)
+        self.assertEqual(relu.ville, 'Meknès')
+        self.assertEqual(relu.email, 'b@example.ma')
+        self.assertEqual(relu.email_normalise, self.dup.email_normalise)
+
     def test_merge_moves_devis_and_archives_absorbed(self):
         resp = self.api.post(
             f'/api/django/crm/leads/{self.survivor.id}/merge/',
@@ -842,6 +873,20 @@ class TestLeadSoftDeleteVerrouille(TestCase):
     refuse de supprimer un lead porteur de devis. Parité exacte avec
     `is_archived`, déjà verrouillé (« jamais par un PATCH direct »).
     """
+
+    def test_les_colonnes_serveur_sont_en_lecture_seule(self):
+        # ACVI30 — 200, et la base ne bouge pas.
+        Lead.objects.filter(pk=self.lead.pk).update(source='os_native')
+        resp = self.api.patch(
+            f'/api/django/crm/leads/{self.lead.pk}/',
+            {'score_ajustement': 100, 'source': 'odoo_import_test',
+             'whatsapp_opt_in': True}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.lead.refresh_from_db()
+        self.assertEqual(
+            (self.lead.score_ajustement, self.lead.source,
+             self.lead.whatsapp_opt_in),
+            (None, 'os_native', None))
 
     def setUp(self):
         self.company = make_company(slug='crx15-co', nom='CRX15 Co')

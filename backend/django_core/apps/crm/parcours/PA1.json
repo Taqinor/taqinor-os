@@ -75,11 +75,87 @@
       ]
     },
     {
+      "id": "changement_etape",
+      "libelle": "Changement d'étape du funnel (glisser, sélecteur, menu de la fiche)",
+      "declencheur": {
+        "type": "http",
+        "source": "apps/crm/views.py::LeadViewSet.perform_update"
+      },
+      "fonction_entree": "apps/crm/serializers.py::LeadSerializer.update",
+      "checkpoint": {
+        "persistance": "apps/crm/models.py::Lead",
+        "description": "Étape écrite, chatter ancien -> nouveau ; recul confirmé, Froid avec raison."
+      },
+      "regles_aval": [
+        {
+          "regle": "L'écriture d'étape hors PATCH passe par le service du funnel.",
+          "source": "apps/crm/fiche_funnel.py::appliquer_stage_lead"
+        }
+      ]
+    },
+    {
+      "id": "lead_perdu",
+      "libelle": "Lead marqué perdu avec motif",
+      "declencheur": {
+        "type": "http",
+        "source": "apps/crm/views.py::LeadViewSet.perform_update"
+      },
+      "fonction_entree": "apps/crm/serializers.py::LeadSerializer.validate",
+      "checkpoint": {
+        "persistance": "apps/crm/models.py::Lead",
+        "description": "Perdu avec motif obligatoire ; la cadence et le SLA ne le touchent plus."
+      },
+      "regles_aval": [
+        {
+          "regle": "La cadence est arrêtée et le rendez-vous annulé avec le motif de perte.",
+          "source": "apps/crm/cadence_plan.py::arreter_cadence"
+        }
+      ]
+    },
+    {
+      "id": "parcage",
+      "libelle": "Parcage : Froid avec raison, ou attente datée",
+      "declencheur": {
+        "type": "http",
+        "source": "apps/crm/serializers.py::LeadSerializer.update"
+      },
+      "fonction_entree": "apps/crm/fiche_funnel.py::parquer_lead",
+      "checkpoint": {
+        "persistance": "apps/crm/models.py::Lead",
+        "description": "Point d’écriture unique de parc_etat, parc_raison, parc_jusqu_au."
+      },
+      "regles_aval": [
+        {
+          "regle": "Une raison manquante ou un parcage trop tôt est refusé.",
+          "source": "apps/crm/fiche_funnel.py::refus_mise_au_froid"
+        }
+      ]
+    },
+    {
+      "id": "archivage_fusion",
+      "libelle": "Archivage ou fusion de doublons",
+      "declencheur": {
+        "type": "http",
+        "source": "apps/crm/views.py::LeadViewSet.archiver"
+      },
+      "fonction_entree": "apps/crm/leads_fusion.py::merge_leads",
+      "checkpoint": {
+        "persistance": "apps/crm/models.py::Lead",
+        "description": "Le survivant garde l’étape la plus avancée ; champs vides comblés seulement."
+      },
+      "regles_aval": [
+        {
+          "regle": "Le lead archivé se restaure à l’identique.",
+          "source": "apps/crm/views.py::LeadViewSet.restaurer"
+        }
+      ]
+    },
+    {
       "id": "cadence_contact",
       "libelle": "Cadence de contact : touches planifiées puis relancées",
       "declencheur": {
-        "type": "tache",
-        "source": "apps/crm/tasks.py::notifier_relances_dues_task"
+        "type": "http",
+        "source": "apps/crm/views.py::LeadViewSet.perform_create"
       },
       "fonction_entree": "apps/crm/cadence_plan.py::demarrer_cadence_contact",
       "checkpoint": {
@@ -94,7 +170,16 @@
         {
           "regle": "Le report humain d'une échéance est tracé.",
           "source": "apps/crm/cadence_plan.py::reporter_prochaine_touche"
+        },
+        {
+          "regle": "Le digest des touches dues ne pose aucune touche : il notifie seulement.",
+          "source": "apps/crm/tasks.py::notifier_relances_dues_task"
         }
+      ],
+      "portes_cadence": [
+        "apps/crm/views.py::LeadViewSet.perform_create",
+        "apps/crm/leads_meta.py::create_lead_from_meta_lead_ads",
+        "apps/crm/cadence_plan.py::reprendre_cadence_si_numero_ajoute"
       ]
     },
     {
@@ -104,7 +189,7 @@
         "type": "http",
         "source": "apps/visites/views.py::VisiteTerrainViewSet.create"
       },
-      "fonction_entree": "apps/visites/services.py::emettre_visite_planifiee",
+      "fonction_entree": "apps/visites/services.py::planifier_visite",
       "checkpoint": {
         "persistance": "apps/visites/models.py::VisiteTerrain",
         "description": "Une visite par rendez-vous, date prévue et commercial posés."
@@ -117,6 +202,34 @@
         {
           "regle": "Le rendez-vous peut être annulé avec motif.",
           "source": "apps/visites/services.py::annuler_rendez_vous"
+        },
+        {
+          "regle": "La réservation publique et le rendez-vous d’agenda sont la visite (D-ACVI-8).",
+          "source": "apps/crm/visites_rdv.py::book_appointment"
+        }
+      ],
+      "declencheurs_http": [
+        "apps/visites/views.py::VisiteTerrainViewSet.create",
+        "apps/crm/visites_views.py::LeadVisitesActionsMixin.planifier_visite",
+        "apps/visites/views.py::VisiteTerrainViewSet.update"
+      ]
+    },
+    {
+      "id": "terrain",
+      "libelle": "Contributions du terrain : photos et mesures de la visite",
+      "declencheur": {
+        "type": "http",
+        "source": "apps/visites/views.py::VisiteTerrainViewSet.update"
+      },
+      "fonction_entree": "apps/visites/services.py::enregistrer_mesures",
+      "checkpoint": {
+        "persistance": "apps/visites/models.py::VisiteTerrain",
+        "description": "La visite passe en cours à la première contribution ; mesures relues à l’identique."
+      },
+      "regles_aval": [
+        {
+          "regle": "Une photo de toiture changée invalide l’assemblage.",
+          "source": "apps/visites/services.py::invalider_assemblage_si_toiture"
         }
       ]
     },
@@ -134,7 +247,7 @@
       },
       "regles_aval": [
         {
-          "regle": "Le retour redescend sur le lead et un rappel est posé.",
+          "regle": "Le retour redescend sur le lead (`visite_effectuee` posé ici) et un rappel est posé.",
           "source": "apps/crm/receivers_cadence.py::_suivi_on_visite_terminee"
         },
         {
@@ -161,73 +274,105 @@
           "source": "apps/crm/receivers_cadence.py::_retour_lead_on_visite_validee"
         }
       ]
+    },
+    {
+      "id": "renvoi_visite",
+      "libelle": "Renvoi de la visite au terrain depuis la revue",
+      "declencheur": {
+        "type": "http",
+        "source": "apps/visites/views.py::VisiteTerrainViewSet.renvoyer"
+      },
+      "fonction_entree": "apps/visites/services.py::renvoyer_visite",
+      "checkpoint": {
+        "persistance": "apps/visites/models.py::VisiteTerrain",
+        "description": "Pièces à refaire et motif tracés ; la visite repart au terrain."
+      },
+      "regles_aval": [
+        {
+          "regle": "Une photo remplacée perd sa pièce jointe.",
+          "source": "apps/visites/services.py::supprimer_media"
+        }
+      ]
     }
   ],
   "portes": [
     {
       "id": "saisie_manuelle",
       "source": "apps/crm/views.py::LeadViewSet.perform_create",
-      "description": "Saisie à la main dans /crm/leads."
+      "description": "Saisie à la main dans /crm/leads.",
+      "arrivee": "chemin propre"
     },
     {
       "id": "formulaire_web",
       "source": "apps/crm/webhooks.py::_map_and_link_lead",
-      "description": "Formulaire du site (webhook), anti-doublon."
+      "description": "Formulaire du site (webhook), anti-doublon.",
+      "arrivee": "chemin propre"
     },
     {
       "id": "demande_rdv",
       "source": "apps/crm/webhooks.py::_rdv_creer_lead",
-      "description": "Demande de rendez-vous publique."
+      "description": "Demande de rendez-vous publique.",
+      "arrivee": "sans cadence, YBW51"
     },
     {
       "id": "meta_lead_ads",
       "source": "apps/crm/leads_meta.py::create_lead_from_meta_lead_ads",
-      "description": "Formulaire Meta Lead Ads."
+      "description": "Formulaire Meta Lead Ads.",
+      "arrivee": "chemin propre"
     },
     {
       "id": "whatsapp_ctwa",
       "source": "apps/crm/leads_meta.py::create_minimal_lead_from_ctwa",
-      "description": "Clic vers WhatsApp (annonce)."
+      "description": "Clic vers WhatsApp (annonce).",
+      "arrivee": "chemin propre"
     },
     {
       "id": "livechat",
       "source": "apps/crm/leads_intake.py::create_lead_from_livechat",
-      "description": "Chat du site."
+      "description": "Chat du site.",
+      "arrivee": "chemin propre"
     },
     {
       "id": "api_publique",
       "source": "apps/crm/fiche_api_publique.py::create_lead_from_public_api",
-      "description": "API publique."
+      "description": "API publique.",
+      "arrivee": "finaliser_lead_importe"
     },
     {
       "id": "evenement_marketing",
       "source": "apps/crm/leads_intake.py::create_lead_from_evenement_marketing",
-      "description": "Événement marketing."
+      "description": "Événement marketing.",
+      "arrivee": "chemin propre"
     },
     {
       "id": "ticket_sav",
       "source": "apps/crm/leads_intake.py::create_lead_depuis_ticket",
-      "description": "Ticket SAV devenu opportunité."
+      "description": "Ticket SAV devenu opportunité.",
+      "arrivee": "finaliser_lead_importe, cadence contact"
     },
     {
       "id": "ocr_facture",
       "source": "apps/crm/leads_intake.py::create_draft_lead_from_ocr",
-      "description": "Brouillon issu d'un scan de facture."
+      "description": "Brouillon issu d'un scan de facture.",
+      "arrivee": "chemin propre"
     },
     {
       "id": "proprietaire",
       "source": "apps/crm/cadence_reponses.py::creer_lead_proprietaire",
-      "description": "Propriétaire d'un lead locataire."
+      "description": "Propriétaire d'un lead locataire.",
+      "arrivee": "chemin propre"
     },
     {
       "id": "import_odoo",
       "source": "apps/crm/management/commands/import_odoo_leads.py::Command.handle",
-      "description": "Import des leads Odoo (miroir)."
+      "description": "Import des leads Odoo (miroir).",
+      "arrivee": "miroir"
     },
     {
       "id": "import_donnees",
       "source": "apps/dataimport/services.py::_commit_raw",
-      "description": "Import de données (fichier)."
+      "description": "Import de données (fichier).",
+      "arrivee": "finaliser_lead_importe, cadence contact"
     }
   ],
   "provenance": {
@@ -240,7 +385,7 @@
             "source": "apps/crm/leads_score.py::recompute_lead_score"
           },
           {
-            "regle": "Ajustement manuel du score.",
+            "regle": "Ajustement manuel persistant (`score_ajustement`) puis recalcul.",
             "source": "apps/crm/fiche_funnel.py::ajuster_score_lead"
           },
           {
@@ -255,6 +400,10 @@
           {
             "regle": "Propriétaire choisi au tour de rôle.",
             "source": "apps/crm/leads_attribution.py::pick_round_robin_owner"
+          },
+          {
+            "regle": "Responsable par défaut de la société à la création.",
+            "source": "apps/crm/leads_attribution.py::default_responsable_for"
           }
         ]
       },
@@ -293,8 +442,39 @@
         "champ": "visite_effectuee",
         "ecrivains": [
           {
-            "regle": "Retour de visite validée posé sur la fiche.",
-            "source": "apps/crm/receivers_cadence.py::_retour_lead_on_visite_validee"
+            "regle": "Posé au retour du terrain (terminer) ; le feu vert le confirme sans en décider.",
+            "source": "apps/crm/receivers_cadence.py::_suivi_on_visite_terminee"
+          },
+          {
+            "regle": "Écriture sur la fiche, avec le récap.",
+            "source": "apps/crm/visites_retour_lead.py::ecrire_retour_lead_visite"
+          }
+        ]
+      },
+      {
+        "champ": "visite_prevue_le",
+        "ecrivains": [
+          {
+            "regle": "Date du rendez-vous recopiée sur la fiche, tracée.",
+            "source": "apps/crm/cadence_visite.py::appliquer_visite_planifiee"
+          }
+        ]
+      },
+      {
+        "champ": "releve_ci",
+        "ecrivains": [
+          {
+            "regle": "Relevé C&I de la visite recopié sur la fiche.",
+            "source": "apps/crm/visites_retour_lead.py::appliquer_releve_ci"
+          }
+        ]
+      },
+      {
+        "champ": "point_eau",
+        "ecrivains": [
+          {
+            "regle": "Mesures du point d'eau de la visite recopiées sur la fiche.",
+            "source": "apps/crm/visites_retour_lead.py::appliquer_mesures_point_eau"
           }
         ]
       }

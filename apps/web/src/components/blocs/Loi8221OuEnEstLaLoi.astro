@@ -1,0 +1,26 @@
+---
+// ENF19 : bloc partagé (copies identiques) — loi-82-21 : état de la loi (fr)
+---
+        <div class="mt-4 grid gap-5 sm:grid-cols-2">
+          <div>
+            <p class="tech-label text-lune">En vigueur</p>
+            <p class="mt-2 text-sm leading-relaxed text-lune-soft">
+              <slot name="vigueur">Le décret d'application <strong class="text-white">2-25-100</strong> (Bulletin Officiel du
+              9 mars 2026, en vigueur depuis le <strong class="text-white">9 juin 2026</strong>) et la
+              décision <strong class="text-white">04/26</strong> de l'ANRE. Tarif d'excédent ANRE
+              (décision 04/26) : <strong class="text-white">0,18 DH/kWh hors pointe, 0,21 DH/kWh en
+              pointe, hors taxes</strong>, pour les installations raccordées en
+              <strong class="text-white"> moyenne, haute ou très haute tension (MT/HT/THT)</strong>,
+              quel que soit leur régime.</slot>
+            </p>
+          </div>
+          <div>
+            <p class="tech-label text-lune">Pas encore publié</p>
+            <p class="mt-2 text-sm leading-relaxed text-lune-soft">
+              <slot name="bt">En <strong class="text-white">basse tension (BT)</strong>, quel que soit le régime — y compris
+              un commerce de 11 kW ou plus sous accord de raccordement — la revente du surplus n'est
+              pas ouverte à ce jour. Ne prenez pas le tarif MT/HT ci-dessus pour celui de votre villa
+              ou de votre commerce.</slot>
+            </p>
+          </div>
+        </div>

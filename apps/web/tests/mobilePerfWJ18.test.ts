@@ -150,3 +150,32 @@ describe('WAUD78 — la carte attend un geste à l’étape 0 (facultative)', ()
     }
   });
 });
+
+describe('WAUD54 — vidéos d’ambiance : ordinateur + 4G seulement', () => {
+  const ok = { largeur: 1440, effectiveType: '4g', saveData: false, motionOk: true };
+
+  it('ordinateur en 4G (ou réseau inconnu) : la vidéo peut jouer', async () => {
+    const { videoAmbianceAutorisee } = await import('../src/lib/videoAmbiance');
+    expect(videoAmbianceAutorisee(ok)).toBe(true);
+    expect(videoAmbianceAutorisee({ ...ok, effectiveType: undefined })).toBe(true);
+    expect(videoAmbianceAutorisee({ ...ok, largeur: 1024 })).toBe(true);
+  });
+
+  it('mobile, 3G, économie de données ou reduced-motion : jamais', async () => {
+    const { videoAmbianceAutorisee } = await import('../src/lib/videoAmbiance');
+    expect(videoAmbianceAutorisee({ ...ok, largeur: 1023 })).toBe(false);
+    expect(videoAmbianceAutorisee({ ...ok, largeur: 390 })).toBe(false);
+    expect(videoAmbianceAutorisee({ ...ok, effectiveType: '3g' })).toBe(false);
+    expect(videoAmbianceAutorisee({ ...ok, effectiveType: 'slow-2g' })).toBe(false);
+    expect(videoAmbianceAutorisee({ ...ok, saveData: true })).toBe(false);
+    expect(videoAmbianceAutorisee({ ...ok, motionOk: false })).toBe(false);
+  });
+
+  it('le héros et le teaser passent tous deux par la garde (affiche fixe sinon)', () => {
+    for (const p of ['../src/components/home/HeroVideoScript.astro', '../src/components/VideoChantier.astro']) {
+      const src = readFileSync(root(p), 'utf-8');
+      expect(src).toContain('videoAmbianceDuNavigateur()');
+      expect(src).not.toContain('navigator.connection');
+    }
+  });
+});

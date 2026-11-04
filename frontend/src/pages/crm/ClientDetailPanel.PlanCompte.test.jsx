@@ -40,7 +40,7 @@ describe('ClientDetailPanel — WIR16 : onglet Plan de compte', () => {
     })
     await userEvent.click(screen.getByRole('tab', { name: 'Plan de compte' }))
     await waitFor(() => expect(api.get).toHaveBeenCalledWith(
-      '/crm/plans-compte/', { params: { client: 11 } },
+      '/crm/plans-compte/', { params: expect.objectContaining({ client: 11 }) },
     ))
     expect(await screen.findByTestId('plan-compte-screen')).toBeInTheDocument()
     expect(screen.getByDisplayValue('Grandir')).toBeInTheDocument()

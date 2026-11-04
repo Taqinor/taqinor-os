@@ -209,6 +209,7 @@ class PhotoVisiteSerializer(serializers.Serializer):
 
 class NotesVisiteSerializer(serializers.Serializer):
     notes = serializers.CharField(required=False, allow_blank=True)
+    retour_terrain = serializers.CharField(required=False, allow_blank=True)
 
 
 class VisiteTerrainViewSet(CompanyScopedModelViewSet):
@@ -302,6 +303,10 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         unique (``services.supprimer_media`` : pièce jointe du lead + objet
         de stockage après commit), jamais par la seule cascade."""
         from django.db import transaction
+        # ACVI60 — le lead est compensé par LA porte d'annulation, avant que
+        # la ligne disparaisse.
+        if instance.date_prevue is not None:
+            services.annuler_visite(instance, self.request.user)
         with transaction.atomic():
             for media in list(instance.medias.select_related('attachment')):
                 services.supprimer_media(media)
@@ -309,8 +314,21 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        if self.action == 'list':
+            # ACVI82 — la LISTE seule : une action qui écrit puis relit
+            # l'agrégat ne doit pas lire des photos préchargées avant l'écriture.
+            qs = qs.prefetch_related('medias__attachment')
         if not self._voit_toute_l_equipe():
             return qs.filter(commercial=self.request.user)
+        # ACVI8 (D-ACVI-3) — un valideur lit les visites de SES leads en portée
+        # (portée « all » : bureau d'études, toute la société), et celles qui
+        # lui sont assignées : jamais moins qu'un non-valideur. Le bureau d'études
+        # dédié (valide sans relever, ALEA8 : Technicien responsable) voit toute la
+        # société, quelle que soit sa portée : aucun lead n'est dans son arbre.
+        if _user_has_or_legacy(self.request.user, 'visites_modifier'):
+            from apps.crm import selectors as crm_selectors
+            qs = (qs.filter(lead__in=crm_selectors.leads_en_portee(self.request.user).values('pk'))
+                  | qs.filter(commercial=self.request.user))
         mine = str(self.request.query_params.get('mine', '')).strip()
         if mine in ('1', 'true'):
             qs = qs.filter(commercial=self.request.user)
@@ -388,6 +406,11 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
 
     # ── Garde de lecture seule (VT3 : une visite validée est gelée) ───────────
 
+    def _refus_si_terminee(self, visite, action):
+        """ACVI58 — le gel ALEA7 d'une visite terminée (mesures, photos)."""
+        refus = services.refus_transition(visite, action)
+        return None if refus is None else Response(refus, status=status.HTTP_400_BAD_REQUEST)
+
     def _refus_si_gelee(self, visite):
         if visite.modifiable:
             return None
@@ -410,11 +433,13 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
             return refus
         # ALEA7 — les notes d'une visite TERMINÉE sont parties au CRM avec le
         # retour terrain : un changement réel est refusé (renvoi BE).
-        if ('notes' in request.data
-                and (request.data.get('notes') or '') != (visite.notes or '')):
-            refus = services.refus_transition(visite, 'notes')
-            if refus is not None:
-                return Response(refus, status=status.HTTP_400_BAD_REQUEST)
+        for champ in ('notes', 'retour_terrain'):
+            if (champ in request.data and (request.data.get(champ) or '')
+                    != (getattr(visite, champ) or '')):
+                refus = services.refus_transition(visite, 'notes')
+                if refus is not None:
+                    return Response(refus,
+                                    status=status.HTTP_400_BAD_REQUEST)
         # VTA7 — on releve l'assigne AVANT l'ecriture : une REASSIGNATION
         # (changement reel d'assigne) previent le nouveau. Un PATCH qui ne
         # touche pas `commercial` ne notifie personne -- sinon chaque
@@ -428,14 +453,23 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         date_avant = visite.date_prevue
         reponse = super().update(request, *args, **kwargs)
         visite.refresh_from_db()
-        if visite.commercial_id != avant:
+        date_changee = (visite.date_prevue != date_avant
+                        and visite.date_prevue is not None)
+        # ``_deplacer_visite`` prévient déjà l'assigné : une seule notification.
+        if visite.commercial_id != avant and not date_changee:
             services.notifier_assignation(visite, acteur=request.user)
-        if visite.date_prevue != date_avant:
-            # AGR412 — une re-planification recale le gabarit sur le type
-            # du lead tant que la visite est brouillon.
-            if services.recaler_gabarit(visite):
-                visite.save(update_fields=['gabarit'])
-            services.emettre_visite_planifiee(visite, request.user)
+        if visite.date_prevue is None and date_avant is not None:
+            # ACVI60 — date vidée : c'est une annulation, jamais un silence.
+            services.annuler_visite(visite, request.user, jour=date_avant)
+            reponse.data.update(statut=visite.statut, notes=visite.notes)
+        elif date_changee:
+            # ACVI71 — LA porte de déplacement (ligne « déplacé du … au … »,
+            # gabarit recalé, ``visite_planifiee``) : elle compare à l'ancienne
+            # date, que le sérialiseur vient d'écraser.
+            nouvelle = visite.date_prevue
+            visite.date_prevue = date_avant
+            services._deplacer_visite(visite, request.user, nouvelle, None, '')
+            reponse.data['notes'] = visite.notes
         return reponse
 
     # ── Photos par slot ──────────────────────────────────────────────────────
@@ -448,7 +482,7 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
     def photos(self, request, pk=None):
         """Ajoute UNE photo dans un slot NOMMÉ de la checklist."""
         visite = self.get_object()
-        refus = self._refus_si_gelee(visite)
+        refus = self._refus_si_gelee(visite) or self._refus_si_terminee(visite, 'photos')
         if refus is not None:
             return refus
 
@@ -520,7 +554,7 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
             url_path=r'photos/(?P<media_id>[^/.]+)')
     def supprimer_photo(self, request, pk=None, media_id=None):
         visite = self.get_object()
-        refus = self._refus_si_gelee(visite)
+        refus = self._refus_si_gelee(visite) or self._refus_si_terminee(visite, 'photos')
         if refus is not None:
             return refus
         media = visite.medias.filter(pk=media_id).first()
@@ -540,7 +574,7 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
     def mesures(self, request, pk=None):
         """Enregistre les mesures d'UNE catégorie, champ par champ."""
         visite = self.get_object()
-        refus = self._refus_si_gelee(visite)
+        refus = self._refus_si_gelee(visite) or self._refus_si_terminee(visite, 'mesures')
         if refus is not None:
             return refus
 
@@ -683,12 +717,14 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         if manquants:
             # ERR-ENF11-FUZZ-VISITES — la requête est bien formée, c'est
             # l'ÉTAT de la visite (complétude) qui empêche : 409, même corps.
-            return Response({
-                'manquants': manquants,
-                'message': (
-                    'La visite ne peut pas être terminée : '
-                    f'{len(manquants)} élément(s) manquent encore.'),
-            }, status=status.HTTP_409_CONFLICT)
+            message = ('La visite ne peut pas être terminée : '
+                       f'{len(manquants)} élément(s) manquent encore.')
+            return Response({'manquants': manquants, 'message': message,
+                             'detail': message},
+                            status=status.HTTP_409_CONFLICT)
+        # ACVI61 — après un renvoi le lead a déjà eu son retour : le bureau
+        # d'études est re-prévenu, le lead reçoit UNE note et rien d'autre.
+        reprise = visite.statut == VisiteTerrain.Statut.A_REFAIRE
         visite.statut = VisiteTerrain.Statut.TERMINEE
         visite.date_realisee = timezone.now()
         visite.save(update_fields=['statut', 'date_realisee'])
@@ -696,8 +732,9 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         # geste) ; l'ÉVÉNEMENT, lui, emporte le RETOUR TERRAIN (texte libre +
         # commentaires de photos), que le CRM inscrit dans l'historique du
         # lead et qui déclenche le rappel « sous 24-48 h » au responsable.
-        services.journaliser_visite(visite, request.user, 'terminee')
-        services.emettre_visite_terminee(visite, request.user)
+        if not reprise:
+            services.journaliser_visite(visite, request.user, 'terminee')
+        services.emettre_visite_terminee(visite, request.user, reprise=reprise)
         # …et le bureau d'études apprend qu'une visite attend son feu vert :
         # avant, personne n'était prévenu et le dossier pouvait dormir.
         services.notifier_valideurs_visite(visite, acteur=request.user)
@@ -892,6 +929,7 @@ class MaJourneeView(APIView):
     def get(self, request):
         visites = (VisiteTerrain.objects
                    .select_related('lead', 'commercial')
+                   .prefetch_related('medias__attachment')
                    .filter(company=request.user.company))
         brut = str(request.query_params.get('tous', '')).strip().lower()
         if brut not in ('', '0', '1', 'true', 'false'):

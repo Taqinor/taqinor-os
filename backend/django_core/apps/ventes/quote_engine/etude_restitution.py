@@ -15,6 +15,24 @@ Ce module n'importe JAMAIS ``builder`` (cycle).
 """
 from __future__ import annotations
 
+#: Le barème résidentiel n'est PAS purement progressif : au-delà de 150 kWh/mois
+#: il est SÉLECTIF (toute la consommation du mois au tarif de sa tranche), et
+#: c'est exactement ce qui rend l'économie réelle plus grande — en repassant
+#: sous une marche, le client re-tarife TOUT son résiduel. La phrase doit dire
+#: ce que le moteur fait (pricing.ONEE_TRANCHES), pas l'inverse.
+LIGNE_METHODE_FACTURES = (
+    "Facture recalculée au barème réel du distributeur "
+    "(progressif ≤ 150 kWh/mois, puis sélectif : toute la conso du "
+    "mois au tarif de SA tranche) : facture actuelle moins facture "
+    "résiduelle après autoconsommation — jamais un prix moyen "
+    "inventé.")
+
+LIGNE_METHODE_ESTIMATION = (
+    "Estimation : production annuelle × part autoconsommée × tarif "
+    "kWh (loi 82-21 : seul l'autoconsommé est valorisé — détail "
+    "dans nos hypothèses). Fournissez une facture réelle pour un "
+    "calcul par tranche exact.")
+
 
 def ligne_tarif_hypothese(tarif_txt, util_name, savings_estimated) -> str:
     """Ligne « Tarif électricité » du bloc « Nos hypothèses ».
@@ -40,26 +58,31 @@ def ligne_tarif_hypothese(tarif_txt, util_name, savings_estimated) -> str:
 
 
 def cle_factures_exactes(etude, factures_source, devis=None):
-    """ERR-AGNR42 — ``{"factures_mensuelles_exactes": série}`` au niveau de règles 5 avec
-    une série exacte, sinon ``{}`` : la clé est ABSENTE ailleurs (rendu d'origine intact)."""
+    """ERR-AGNR42 — ``{"factures_mensuelles_exactes": série}`` au niveau de règles requis
+    avec une série exacte, sinon ``{}`` : la clé est ABSENTE ailleurs (rendu d'origine intact)."""
     serie = factures_mensuelles_exactes(etude, factures_source, devis)
     return {} if serie is None else {"factures_mensuelles_exactes": serie}
 
 
 def factures_mensuelles_exactes(etude, factures_source, devis=None):
-    """ERR-AGNR42 — les 12 factures du lead NON arrondies (ou None).
+    """ERR-AGNR42 — les 12 factures du client NON arrondies (ou None).
 
     ``factures_mensuelles`` reste arrondie au dirham (affichage des barres) ;
     la somme annuelle se fait sur cette série exacte puis s'arrondit UNE fois
-    (``residential.renderer.synthese_economies``). Servie
-    qu'au niveau de règles >= 5 (``REGLES_RETOURS_3010B``, testé ici).
+    (``residential.renderer.synthese_economies``). Douze factures du lead :
+    niveau >= 5 (``REGLES_RETOURS_3010B``). AGNR42-D6 — source « étude horaire »
+    (factures hiver/été décimales, 17 016 pour 17 010,4) : niveau >= 11 seulement
+    (``REGLES_CENTAINE_0311``) : un devis envoyé garde le total qu'il a reçu.
     """
     from apps.ventes.domain.regles_calcul import (
-        REGLES_RETOURS_3010B, regles_au_moins)
-    if factures_source != "lead_12_mois" or not regles_au_moins(
-            devis, REGLES_RETOURS_3010B):
+        REGLES_CENTAINE_0311, REGLES_RETOURS_3010B, regles_au_moins)
+    etude = etude or {}
+    if factures_source == "lead_12_mois" and regles_au_moins(devis, REGLES_RETOURS_3010B):
+        brut = etude.get("factures_mensuelles_reelles")
+    elif factures_source == "etude_horaire" and regles_au_moins(devis, REGLES_CENTAINE_0311):
+        brut = [m.get("facture_avant_mad") for m in (etude.get("etude_horaire") or {}).get("mois") or []]
+    else:
         return None
-    brut = (etude or {}).get("factures_mensuelles_reelles")
     try:
         serie = [float(v) for v in brut]
     except (TypeError, ValueError):
@@ -91,18 +114,7 @@ def restituer_etude(*, _client_city, _co_productible, _corrige, _utility,
             "facture_avec_solaire": _sm_avec,
             "economie": roi["facture_sans"] - _sm_avec,
             "approximatif": bool(roi.get("factures_approximatif")),
-            # Le barème résidentiel n'est PAS purement progressif : au-delà de
-            # 150 kWh/mois il est SÉLECTIF (toute la consommation du mois au
-            # tarif de sa tranche), et c'est exactement ce qui rend l'économie
-            # réelle plus grande — en repassant sous une marche, le client
-            # re-tarife TOUT son résiduel. La phrase doit dire ce que le moteur
-            # fait (pricing.ONEE_TRANCHES), pas l'inverse.
-            "ligne_methode": (
-                "Facture recalculée au barème réel du distributeur "
-                "(progressif ≤ 150 kWh/mois, puis sélectif : toute la conso du "
-                "mois au tarif de SA tranche) : facture actuelle moins facture "
-                "résiduelle après autoconsommation — jamais un prix moyen "
-                "inventé."),
+            "ligne_methode": LIGNE_METHODE_FACTURES,
             # QRES40 — MAD partout (le document n'emploie jamais « DH » :
             # une seule unité monétaire, aucune hésitation possible).
             "exemple": (
@@ -176,11 +188,7 @@ def restituer_etude(*, _client_city, _co_productible, _corrige, _utility,
             "facture_avec_solaire": None,
             "economie": _sm_eco_ref,
             "approximatif": True,
-            "ligne_methode": (
-                "Estimation : production annuelle × part autoconsommée × tarif "
-                "kWh (loi 82-21 : seul l'autoconsommé est valorisé — détail "
-                "dans nos hypothèses). Fournissez une facture réelle pour un "
-                "calcul par tranche exact."),
+            "ligne_methode": LIGNE_METHODE_ESTIMATION,
             "exemple": None,
         }
 

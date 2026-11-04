@@ -103,6 +103,72 @@ class RecyclerLeadsCommandTests(TestCase):
             username='owner_ylead14', password='x',
             company=self.company, role=role)
 
+    def test_un_lead_en_echec_n_arrete_pas_la_passe(self):
+        # ACVI85 — le 1er lève, le 2e est traité ; la société inactive : rien.
+        from unittest import mock
+        from apps.crm.management.commands import (
+            escalader_rappels_demandes as rappels,
+            recycler_leads_non_travailles as recyclage)
+        inactive = Company.objects.create(
+            nom='ACVI85 inactive', slug='acvi85-inactive', actif=False)
+        CompanyProfile.objects.create(company=inactive, lead_sla_hours=24)
+        chez_inactive = _old_new_lead(inactive, hours_ago=48)
+        _old_new_lead(self.company, hours_ago=48, owner=self.owner)
+        second = _old_new_lead(self.company, hours_ago=47, owner=self.owner)
+        vrai = recyclage._escalate
+        appels = []
+
+        def premier_leve(lead, *args):
+            appels.append(lead.pk)
+            if len(appels) == 1:
+                raise RuntimeError('écriture impossible')
+            return vrai(lead, *args)
+
+        with mock.patch.object(recyclage, '_escalate', premier_leve), \
+                self.assertLogs(recyclage.logger, 'WARNING'):
+            escalated, _ = recycler_leads_non_travailles(now=timezone.now())
+        self.assertEqual(escalated, 1)
+        self.assertEqual(len(appels), 2)
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=second, body__contains='recyclage SLA').exists())
+        self.assertNotIn(chez_inactive.pk, appels)
+
+        # Le jumeau des rappels demandés : même isolement par lead.
+        leads = [_old_new_lead(self.company), second]
+        with mock.patch.object(
+                selectors, 'leads_callback_sla_depasse', return_value=leads), \
+                mock.patch.object(rappels, '_escalate',
+                                  side_effect=[RuntimeError('x'), None]) as escalade, \
+                self.assertLogs(rappels.logger, 'WARNING'):
+            total = rappels.escalader_rappels_demandes(now=timezone.now())
+        self.assertEqual(escalade.call_count, 2)
+        self.assertEqual(total, 1)
+
+    def test_traiter_chaine_acceptation_isole_chaque_devis(self):
+        # ACVI85 — la notification du 1er devis lève, le 2e est escaladé.
+        import datetime as dt
+        from types import SimpleNamespace
+        from unittest import mock
+        from apps.crm import cadence_filet
+        accepte = dt.date(2026, 10, 1)
+        devis = [
+            SimpleNamespace(pk=rang, reference=f'DEV-{rang}', date_acceptation=accepte,
+                            lead=lead, lead_id=lead.pk)
+            for rang, lead in enumerate((_old_new_lead(self.company),
+                                         _old_new_lead(self.company)), start=1)]
+        echus = mock.MagicMock()
+        echus.filter.return_value.select_related.return_value = devis
+        with mock.patch('apps.ventes.selectors.devis_signes_en_vigueur',
+                        return_value=echus), \
+                mock.patch('apps.ventes.selectors.acompte_paye_pour_devis',
+                           return_value=False), \
+                mock.patch('apps.crm.dispatch._destinataires_direction',
+                           return_value=[self.owner]), \
+                mock.patch('apps.notifications.services.notify_many',
+                           side_effect=[RuntimeError('x'), []]):
+            bilan = cadence_filet.traiter_chaine_acceptation()
+        self.assertEqual(bilan['escalades'], 1)
+
     def test_escalates_sla_breached_lead_once(self):
         now = timezone.now()
         lead = _old_new_lead(self.company, hours_ago=48, owner=self.owner)
@@ -145,6 +211,23 @@ class RecyclerLeadsCommandTests(TestCase):
         self.assertEqual(deassigned, 0)
         lead.refresh_from_db()
         self.assertEqual(lead.owner_id, self.owner.id)
+
+    def test_deassign_respecte_owner_saisi_et_perdus(self):
+        # ACVI28 — owner marqué, perdu, opposé : gardés ; owner machine : retiré.
+        self.profile.lead_sla_deassign_hours = 100
+        self.profile.save(update_fields=['lead_sla_deassign_hours'])
+        saisi = _old_new_lead(self.company, hours_ago=150, owner=self.owner)
+        Lead.objects.filter(pk=saisi.pk).update(saisies_humaines=['owner'])
+        oppose = _old_new_lead(self.company, hours_ago=150, owner=self.owner)
+        Lead.objects.filter(pk=oppose.pk).update(ne_plus_contacter=True)
+        machine = _old_new_lead(self.company, hours_ago=150, owner=self.owner)
+
+        _, deassigned = recycler_leads_non_travailles(now=timezone.now())
+        self.assertEqual(deassigned, 1)
+        for lead, attendu in ((saisi, self.owner.pk), (oppose, self.owner.pk),
+                              (machine, None)):
+            lead.refresh_from_db()
+            self.assertEqual(lead.owner_id, attendu, lead.pk)
 
     def test_deassign_after_second_threshold(self):
         self.profile.lead_sla_deassign_hours = 100

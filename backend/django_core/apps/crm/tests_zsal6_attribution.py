@@ -125,6 +125,26 @@ class TestAttributionAPI(TestCase):
         token = AccessToken.for_user(self.user)
         self.api.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
 
+    def test_commercial_soi_ne_voit_que_ses_lignes(self):
+        """ACVI10 (D-ACVI-2) — ni les leads ni le CA d'un collègue."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import COMMERCIAL_PERMISSIONS
+
+        role = Role.objects.create(
+            company=self.company, nom='Commercial soi',
+            permissions=list(COMMERCIAL_PERMISSIONS))
+        moi = User.objects.create_user(
+            username='zsal6soi', password='x', company=self.company, role=role)
+        Lead.objects.create(company=self.company, nom='Le mien', owner=moi,
+                            canal=Lead.Canal.SITE_WEB, stage=stage_mod.NEW)
+        api = APIClient()
+        api.force_authenticate(moi)
+        resp = api.get('/api/django/crm/rapports/attribution/')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(
+            sum(r['nb_leads'] for r in resp.data['par_commercial']), 1)
+        self.assertEqual(sum(r['nb_leads'] for r in resp.data['par_source']), 1)
+
     def test_endpoint_scope_societe(self):
         resp = self.api.get('/api/django/crm/rapports/attribution/')
         self.assertEqual(resp.status_code, 200, resp.content)

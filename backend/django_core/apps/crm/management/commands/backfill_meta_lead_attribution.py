@@ -20,8 +20,8 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
-            '--company-id', type=int, default=None,
-            help='Limiter à une société (défaut : toutes).')
+            '--company-id', type=int, required=True,
+            help='Société à traiter (obligatoire : un jeton, une société).')
         parser.add_argument(
             '--access-token', default='',
             help='Token de page Meta (défaut : réglage '

@@ -99,7 +99,8 @@ describe('Task 3 — diagnostic « une page » opt-in (singleStep)', () => {
     expect(form).not.toContain("fetch('/api/simulate'");
     // les champs du payload sont inchangés
     for (const k of ['fullName', 'phone', 'whatsappOptIn', 'city', 'roofType', 'billRange', 'consent']) {
-      expect(form).toContain(`fd.get('${k}')`);
+      // ENF19 : le payload commun vit dans lib/diagnosticFormShared (chargeUtileCommune).
+      expect(read('../src/lib/diagnosticFormShared.ts')).toContain(`fd.get('${k}')`);
     }
     // les selects obligatoires restent dans le DOM (pré-remplis, jamais retirés)
     expect(form).toContain('name="billRange"');

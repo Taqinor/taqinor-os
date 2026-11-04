@@ -126,6 +126,24 @@ class _Normaliseur:
         return out
 
 
+def ecarts_lisibles(reel, attendu, chemin='', limite=40):
+    """Les feuilles qui diffèrent, ``chemin : attendu → réel`` : le message d'un
+    rouge (l'instantané dépasse 100 000 caractères, ``assertEqual`` le tronque)."""
+    if isinstance(reel, dict) and isinstance(attendu, dict):
+        paires = [(f'{chemin}/{k}', reel.get(k), attendu.get(k))
+                  for k in sorted(set(reel) | set(attendu))]
+    elif (isinstance(reel, list) and isinstance(attendu, list)
+          and len(reel) == len(attendu)):
+        paires = [(f'{chemin}/{i}', r, a)
+                  for i, (r, a) in enumerate(zip(reel, attendu))]
+    else:
+        return [] if reel == attendu else [f'{chemin} : {attendu!r} → {reel!r}']
+    lignes = []
+    for sous_chemin, r, a in paires:
+        lignes += ecarts_lisibles(r, a, sous_chemin, limite)
+    return lignes[:limite]
+
+
 class ScenarioServicesGoldenTests(TestCase):
 
     def setUp(self):
@@ -349,8 +367,10 @@ class ScenarioServicesGoldenTests(TestCase):
                          sorted(golden['etapes']))
         for cle in sorted(golden['etapes']):
             with self.subTest(etape=cle):
-                self.assertEqual(instantane['etapes'][cle],
-                                 golden['etapes'][cle])
+                self.assertEqual(
+                    instantane['etapes'][cle], golden['etapes'][cle],
+                    '\n'.join(ecarts_lisibles(instantane['etapes'][cle],
+                                              golden['etapes'][cle])))
 
     def test_toutes_les_fonctions_de_la_liste_sont_appelees(self):
         instantane = self._derouler()

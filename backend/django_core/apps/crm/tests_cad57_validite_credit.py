@@ -20,6 +20,7 @@ from django.test import TestCase
 
 from authentication.models import Company
 from core.events import devis_sent
+from testkit.time import frozen
 
 from apps.crm import horaires
 from apps.crm.cadence_plan import calculer_echeances_cadence, initialiser_plan_relance
@@ -229,7 +230,8 @@ class SubventionDeposeeTests(_SubventionBase):
             due_date=(ENVOI + datetime.timedelta(days=9)).date(),
             canal='whatsapp', libelle='Validité de la proposition',
             template_cle='j9_validite', devis=devis)
-        rendu = message_pour_etape(etape, user=self.acteur)
+        with frozen(ENVOI + datetime.timedelta(days=9)):  # ACVI49
+            rendu = message_pour_etape(etape, user=self.acteur)
         self.assertIn(devis.date_validite.strftime('%d/%m/%Y'),
                       rendu['message'])
 
@@ -272,7 +274,8 @@ class MessageJ9Tests(_Base):
             canal='whatsapp', libelle='Validité de la proposition',
             template_cle='j9_validite', devis=devis)
 
-        rendu = message_pour_etape(etape, user=self.acteur)
+        with frozen(ENVOI + datetime.timedelta(days=9)):  # ACVI49
+            rendu = message_pour_etape(etape, user=self.acteur)
 
         self.assertIn(devis.date_validite.strftime('%d/%m/%Y'),
                       rendu['message'])
@@ -342,7 +345,6 @@ class AttenteApresEnvoiTests(_ProBase):
     financement = 'indecis'
 
     def _repondre_attente(self):
-        from testkit.time import frozen
         from apps.crm.cadence_reponses import repondre_attente_accord
         j3 = ENVOI + datetime.timedelta(days=3)
         with frozen(j3):
@@ -406,7 +408,8 @@ class AttenteApresEnvoiTests(_ProBase):
             due_date=(ENVOI + datetime.timedelta(days=9)).date(),
             canal='whatsapp', libelle='Validité de la proposition',
             template_cle='j9_validite', devis=devis)
-        rendu = message_pour_etape(etape, user=self.acteur)
+        with frozen(ENVOI + datetime.timedelta(days=9)):  # ACVI49
+            rendu = message_pour_etape(etape, user=self.acteur)
         self.assertEqual(date_validite_effective(devis), devis.date_validite)
         self.assertIn(devis.date_validite.strftime('%d/%m/%Y'),
                       rendu['message'])

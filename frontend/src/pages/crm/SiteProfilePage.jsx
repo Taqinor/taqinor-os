@@ -117,10 +117,10 @@ export default function SiteProfilePage() {
   useEffect(() => {
     if (!clientId) return
     let active = true
-    crmApi.getSiteProfiles({ client: clientId })
-      .then((r) => {
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      crmApi.getSiteProfiles({ client: clientId, page, page_size: pageSize }).then((r) => r.data))
+      .then((data) => {
         if (!active) return
-        const data = r.data
         const rows = Array.isArray(data) ? data : (data?.results || [])
         const p = rows[0] || null
         setProfileId(p?.id ?? null)

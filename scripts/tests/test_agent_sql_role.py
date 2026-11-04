@@ -40,6 +40,12 @@ def _tables_grantees(sql: str) -> list:
     m = re.search(r"GRANT\s+SELECT\s+ON\s+(.*?)\s+TO\s+" + ROLE + r"\b", sql,
                   re.S | re.I)
     assert m, "aucun GRANT SELECT ... TO sql_agent_ro"
+    if m.group(1).strip() == "%I":
+        # ERR-AANA64 : GRANT dynamique dans ``FOREACH t IN ARRAY ARRAY[…]``.
+        tableau = re.search(r"FOREACH\s+\w+\s+IN\s+ARRAY\s+ARRAY\[(.*?)\]", sql,
+                            re.S | re.I)
+        assert tableau, "GRANT dynamique sans tableau FOREACH lisible"
+        return re.findall(r"'([^']+)'", tableau.group(1))
     return [t.strip() for t in m.group(1).split(",") if t.strip()]
 
 

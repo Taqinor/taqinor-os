@@ -5,8 +5,13 @@ module racine ; ``services`` réexporte ce qu'il faut (façade).
 """
 import logging
 
+import re
+
 from . import activity, stages
-from .cadence_messages import SEGMENTS_PRO, _omettre_phrases_incompletes, langue_relance_du_lead
+from .cadence_messages import (
+    SEGMENTS_PRO, _nom_affiche_conseiller, _nom_affiche_marque,
+    _omettre_phrases_incompletes, langue_relance_du_lead,
+)
 from .cadence_reperes import _CLOTURE_RAISONS
 from .leads_premier_contact import marquer_premier_contact
 from .models import Lead, LeadActivity
@@ -504,11 +509,11 @@ def _bulk_stage_allowed(current, target):
 
 
 def _resolve_owner(company, owner_id):
-    """Responsable cible (société courante uniquement) ou None si vidé."""
+    """Responsable cible (société courante, compte actif) ou None si vidé."""
     if owner_id in (None, '', 'null'):
         return None
     from authentication.models import CustomUser
-    return CustomUser.objects.filter(id=owner_id, company=company).first()
+    return CustomUser.objects.filter(id=owner_id, company=company, is_active=True).first()
 
 
 def _corps_whatsapp_en_masse(lead, tpl, corps_direct=''):
@@ -540,7 +545,15 @@ def _corps_whatsapp_en_masse(lead, tpl, corps_direct=''):
         'prenom': (lead.prenom or lead.nom or '').strip(),
         'ville': (lead.ville or '').strip(),
         'lien': '',
+        # ACVI53 — les valeurs des touches ; tout autre placeholder (ancien
+        # gabarit) reste sans valeur : sa phrase est omise, jamais un `{…}`.
+        'nom': (lead.nom or '').strip(),
+        'conseiller': _nom_affiche_conseiller(lead, None),
+        'marque': _nom_affiche_marque(lead),
+        'societe': _nom_affiche_marque(lead),
     }
+    for cle in re.findall(r'\{(\w+)\}', corps):
+        contexte.setdefault(cle, '')
     if '{lien_rdv}' in corps:
         contexte['lien_rdv'] = (
             resoudre_lien_rdv('{lien_rdv}', lead) or '')
@@ -676,7 +689,15 @@ def _refus_parcage(lead, raison, exiger_touche):
             f'({trouves} trouvé{"s" if trouves > 1 else ""})')
 
 
-def parquer_lead(lead, raison, jusqu_au, user, *, exiger_touche=True):
+def refus_mise_au_froid(lead, raison):
+    """ACVI9 — le refus d'une mise au Froid unitaire (PATCH, API publique) : la
+    raison est obligatoire, codes Nurture ou Archive (standby : pas de Froid)."""
+    if ETAT_PAR_RAISON.get(raison) not in ('nurture', 'archive'):
+        return 'Raison de mise au Froid obligatoire.'
+    return _refus_parcage(lead, raison, True)
+
+
+def parquer_lead(lead, raison, jusqu_au, user, *, exiger_touche=True, journal=True):
     """CADV21 — LE point d'écriture unique du parcage d'un lead : pose
     ``parc_etat`` (dicté par ``raison``, table ``ETAT_PAR_RAISON``),
     ``parc_raison`` et ``parc_jusqu_au``, range le lead au Froid
@@ -708,20 +729,28 @@ def parquer_lead(lead, raison, jusqu_au, user, *, exiger_touche=True):
     lead.parc_raison = raison
     lead.parc_jusqu_au = jusqu_au
     lead.save(update_fields=['parc_etat', 'parc_raison', 'parc_jusqu_au'])
-    activity.log_bulk_change(lead, user, 'parc_raison', ancienne, raison)
+    if journal:  # ACVI9 — le PATCH journalise déjà ses colonnes (``log_changes``).
+        activity.log_bulk_change(lead, user, 'parc_raison', ancienne, raison)
     if etat != 'standby':
         avancer_stage_lead_vers(lead, user, stages.COLD)
+    return lead
+
+
+def sortir_du_parcage(lead, user):
+    """ALEA61 — sortie canonique du parcage : ``parc_*`` vidés (une ligne de
+    chatter s'il y en avait). Écrivain unique avec ``parquer_lead``."""
+    ancienne = lead.parc_raison
+    lead.parc_etat = lead.parc_raison = lead.parc_jusqu_au = None
+    lead.save(update_fields=['parc_etat', 'parc_raison', 'parc_jusqu_au'])
+    if ancienne:
+        activity.log_bulk_change(lead, user, 'parc_raison', ancienne, None)
     return lead
 
 
 def reprendre_lead(lead, user, stage_cible):
     """CADV35 × CADV89 — sortie de parcage : ``parc_*`` vidés (une ligne de chatter
     s'il y en avait) et étape avancée vers ``stage_cible`` (jamais un recul)."""
-    ancienne = lead.parc_raison
-    lead.parc_etat = lead.parc_raison = lead.parc_jusqu_au = None
-    lead.save(update_fields=['parc_etat', 'parc_raison', 'parc_jusqu_au'])
-    if ancienne:
-        activity.log_bulk_change(lead, user, 'parc_raison', ancienne, None)
+    sortir_du_parcage(lead, user)
     avancer_stage_lead_vers(lead, user, stage_cible)
     return lead
 
@@ -823,12 +852,18 @@ def retirer_tag_lead(lead, user, tag):
 
 def ajuster_score_lead(lead, user, delta):
     """XMKT19 — ajuste le score du lead de ``delta`` (peut être négatif),
-    borné à [0, 100]."""
-    ancien = lead.score or 0
-    nouveau = max(0, min(100, ancien + int(delta)))
-    lead.score = nouveau
-    lead.save(update_fields=['score'])
-    activity.log_bulk_change(lead, user, 'score', ancien, nouveau)
+    borné à [0, 100]. ACVI70 — écrit le delta PERSISTANT (CRX22) : c'est le
+    calcul qui l'applique, il survit à tout recalcul."""
+    from .leads_score import recompute_lead_score
+    from .scoring import compute_score
+
+    score = compute_score(lead)
+    ancien = lead.score_ajustement or 0
+    nouveau = ancien + max(-score, min(100 - score, int(delta)))
+    lead.score_ajustement = nouveau
+    lead.save(update_fields=['score_ajustement'])
+    activity.log_bulk_change(lead, user, 'score_ajustement', ancien, nouveau)
+    recompute_lead_score(lead)
     return lead
 
 

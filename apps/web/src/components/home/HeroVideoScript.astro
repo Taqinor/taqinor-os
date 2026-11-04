@@ -1,11 +1,11 @@
 <script>
   // Vidéo héro : différée — première interaction ou 2,8 s après chargement ;
-  // jamais si reduced-motion ou économie de données (l'affiche reste le héros).
+  // WAUD54 : ordinateur + 4G seulement (lib/videoAmbiance), l'affiche reste le
+  // héros sur mobile, en 3G, en économie de données et sous reduced-motion.
+  import { videoAmbianceDuNavigateur } from '../../lib/videoAmbiance';
+
   const video = document.getElementById('hero-video') as HTMLVideoElement | null;
-  const motionOk = matchMedia('(prefers-reduced-motion: no-preference)').matches;
-  // @ts-expect-error saveData non typé partout
-  const saveData = navigator.connection?.saveData === true;
-  if (video && motionOk && !saveData) {
+  if (video && videoAmbianceDuNavigateur()) {
     let started = false;
     const start = () => {
       if (started) return;

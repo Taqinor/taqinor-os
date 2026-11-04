@@ -20,6 +20,8 @@ from apps.crm.visites_rdv import (
     dispatch_appointment_reminder,
     send_due_appointment_reminders,
 )
+from apps.crm import horaires
+from apps.crm.cadence_visite import CLE_CONFIRMATION, CLE_DEBRIEF
 from authentication.models import Company
 
 
@@ -76,6 +78,73 @@ class TestBookAppointment(TestCase):
                 lead=self.lead, kind=LeadActivity.Kind.NOTE,
             ).exists()
         )
+
+    def test_reservation_publique_cree_la_visite_technique(self):
+        """ACVI63 (D-ACVI-8) — la réservation est LA visite : créée, datée sur
+        la fiche, touches du rendez-vous posées ; la 2e la déplace."""
+        from apps.crm.models import BookingLink, RelanceEtape
+        from apps.crm.visites_rdv import reserver_creneau_public
+        from apps.visites.models import VisiteTerrain
+
+        def reserver(jours):
+            lien = BookingLink.objects.create(company=self.co, lead=self.lead)
+            quand = timezone.now() + timedelta(days=jours)
+            reserver_creneau_public(lien.token, scheduled_at=quand)
+            return timezone.localtime(quand, horaires.CASABLANCA).date()
+
+        jour = reserver(3)
+        visite = VisiteTerrain.objects.get(lead=self.lead)
+        self.assertEqual(visite.statut, VisiteTerrain.Statut.BROUILLON)
+        self.assertEqual(visite.date_prevue, jour)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.visite_prevue_le, jour)
+        touches = RelanceEtape.objects.filter(
+            lead=self.lead, statut=RelanceEtape.Statut.A_FAIRE)
+        self.assertTrue(touches.filter(cle=CLE_CONFIRMATION).exists())
+        self.assertTrue(touches.filter(cle=CLE_DEBRIEF).exists())
+        self.assertFalse(LeadActivity.objects.filter(
+            lead=self.lead, body__startswith='Visite planifiée le').exists())
+
+        nouveau_jour = reserver(5)
+        visite = VisiteTerrain.objects.get(lead=self.lead)
+        self.assertEqual(visite.date_prevue, nouveau_jour)
+
+    def test_visite_refusee_laisse_une_note_sur_le_lead(self):
+        """ERR-W33-RDV-CHATTER — le RDV existe sans visite : la fiche le dit."""
+        from apps.visites.models import VisiteTerrain
+
+        appt = book_appointment(
+            lead=self.lead, scheduled_at=timezone.now() - timedelta(days=2))
+        self.assertIsNotNone(appt.pk)
+        self.assertFalse(VisiteTerrain.objects.filter(lead=self.lead).exists())
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=self.lead, kind=LeadActivity.Kind.NOTE,
+            body__contains='sans visite technique',
+        ).exists())
+
+    def test_responsable_desactive_visite_non_assignee_et_note(self):
+        """ERR-W33-RDV-CHATTER — réservation publique, responsable désactivé :
+        la visite naît sans assigné et le chatter le dit."""
+        from apps.visites.models import VisiteTerrain
+
+        self.lead.owner.is_active = False
+        self.lead.owner.save(update_fields=['is_active'])
+        book_appointment(lead=self.lead, scheduled_at=_future(60 * 24 * 3))
+        visite = VisiteTerrain.objects.get(lead=self.lead)
+        self.assertIsNone(visite.commercial_id)
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=self.lead, kind=LeadActivity.Kind.NOTE,
+            body__contains='sans assigné',
+        ).exists())
+
+    def test_responsable_actif_reste_assigne(self):
+        from apps.visites.models import VisiteTerrain
+
+        book_appointment(lead=self.lead, scheduled_at=_future(60 * 24 * 3))
+        visite = VisiteTerrain.objects.get(lead=self.lead)
+        self.assertEqual(visite.commercial_id, self.lead.owner_id)
+        self.assertFalse(LeadActivity.objects.filter(
+            lead=self.lead, body__contains='sans assigné').exists())
 
     def test_requires_scheduled_at(self):
         with self.assertRaises(ValueError):

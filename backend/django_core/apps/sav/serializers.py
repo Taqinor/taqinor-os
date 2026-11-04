@@ -767,6 +767,64 @@ class WarrantyClaimSerializer(ChampsStrictsEntiersMixin, SameCompanyFKSerializer
         source='equipement.numero_serie', read_only=True, allow_null=True)
     equipement_produit = serializers.CharField(
         source='equipement.produit.nom', read_only=True, allow_null=True)
+    # ASAV123 — résolution « remplacement » : l'appareil neuf entre au parc.
+    serie_neuve = ChaineStricte(
+        write_only=True, required=False, allow_blank=True, max_length=120)
+    produit_neuf = serializers.IntegerField(
+        write_only=True, required=False, allow_null=True)
+
+    def create(self, validated_data):
+        validated_data.pop('serie_neuve', None)
+        validated_data.pop('produit_neuf', None)
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        """ASAV123 — ``statut=resolu`` + ``resolution=remplacement`` +
+        ``serie_neuve`` : le neuf entre au parc et au registre du contrat par
+        ``services.remplacer_equipement`` (même transaction que la
+        réclamation ; série déjà au parc => 409, rien écrit)."""
+        serie_neuve = (validated_data.pop('serie_neuve', '') or '').strip()
+        produit_neuf_id = validated_data.pop('produit_neuf', None)
+        if not serie_neuve:
+            return super().update(instance, validated_data)
+        from django.db import transaction
+
+        from apps.stock.selectors import (
+            get_produit_or_raise, produit_does_not_exist,
+        )
+
+        from .services import SerieNeuveDejaAuParcError, remplacer_equipement
+        statut = validated_data.get('statut', instance.statut)
+        resolution = validated_data.get('resolution', instance.resolution)
+        if (statut != WarrantyClaim.Statut.RESOLU
+                or resolution != WarrantyClaim.Resolution.REMPLACEMENT):
+            # api-fuzz (ENF11) — l'état de la réclamation, pas la forme du corps.
+            raise ConflitEtat({'serie_neuve': [
+                "Réservé à une réclamation résolue par remplacement."]})
+        ticket = validated_data.get('ticket', instance.ticket)
+        if ticket is None:
+            raise ConflitEtat({'serie_neuve': [
+                "La réclamation n'est liée à aucun ticket."]})
+        request = self.context.get('request')
+        produit_neuf = None
+        if produit_neuf_id:
+            try:
+                produit_neuf = get_produit_or_raise(
+                    instance.company, produit_neuf_id)
+            except (produit_does_not_exist(), ValueError, TypeError):
+                raise serializers.ValidationError(
+                    {'produit_neuf': ['Produit inconnu.']})
+        try:
+            with transaction.atomic():
+                claim = super().update(instance, validated_data)
+                remplacer_equipement(
+                    ticket=ticket, ancien=claim.equipement,
+                    produit_neuf=produit_neuf, serie_neuve=serie_neuve,
+                    date_pose=timezone.localdate(),
+                    user=getattr(request, 'user', None))
+        except SerieNeuveDejaAuParcError as exc:
+            raise ConflitEtat({'serie_neuve': [str(exc)]}) from exc
+        return claim
 
     class Meta:
         model = WarrantyClaim

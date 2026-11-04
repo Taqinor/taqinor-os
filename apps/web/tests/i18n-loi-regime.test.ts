@@ -125,3 +125,34 @@ describe('en/ & ar/ loi-82-21 pages (W67)', () => {
     expect(ar).toContain('9 يونيو 2026');
   });
 });
+
+describe('WAUD47 — /loi-82-21 : textes officiels et « à qui déposer »', async () => {
+  const { SOURCES_OFFICIELLES_8221, DEPOT_8221, liensMorts } = await import('../src/lib/sources8221');
+  it('3 liens officiels dans les 3 locales (composant partagé), sans société nommée', () => {
+    expect(SOURCES_OFFICIELLES_8221.map((s) => s.id)).toEqual(['dahir', 'sgg', 'anre']);
+    for (const f of ['../src/pages/loi-82-21.astro', '../src/pages/en/loi-82-21.astro', '../src/pages/ar/loi-82-21.astro']) {
+      expect(read(f), f).toContain('<SourcesOfficielles8221');
+    }
+    for (const l of ['fr', 'en', 'ar'] as const) {
+      expect(DEPOT_8221[l].p).not.toMatch(/Lydec|Redal|Amendis|SRM/);
+      expect(DEPOT_8221[l].p + DEPOT_8221[l].h2).not.toMatch(/\d/); // ni durée, ni pénalité, ni numéro d'article
+      for (const s of SOURCES_OFFICIELLES_8221) expect(s.label[l].length).toBeGreaterThan(10);
+    }
+    for (const s of SOURCES_OFFICIELLES_8221) expect(s.url).toMatch(/^https:\/\//);
+  });
+  it('lien mort détecté en CI (fetch simulé) : tout non-200 est signalé', async () => {
+    expect(await liensMorts(async () => ({ status: 200 }))).toEqual([]);
+    const mort = SOURCES_OFFICIELLES_8221[1].url;
+    expect(await liensMorts(async (u) => ({ status: u === mort ? 404 : 200 }))).toEqual([mort]);
+    expect(
+      await liensMorts(async () => {
+        throw new Error('réseau');
+      }),
+    ).toHaveLength(3);
+  });
+  it('aucune société de distribution nommée sur les pages loi 82-21', () => {
+    for (const f of ['../src/pages/loi-82-21.astro', '../src/pages/en/loi-82-21.astro', '../src/pages/ar/loi-82-21.astro', '../src/lib/constants82_21.ts']) {
+      expect(read(f), f).not.toMatch(/Lydec|Redal|Amendis/);
+    }
+  });
+});

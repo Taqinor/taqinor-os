@@ -19,6 +19,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
+from core.dates import aujourd_hui_local
 
 from apps.crm import horaires
 from apps.crm.models import Client, Lead, LeadActivity, RelanceEtape
@@ -159,12 +160,12 @@ class AucunChiffreInventeTests(_Base):
         MessageTemplate.objects.create(
             company=self.company, cle='j9_validite',
             corps_fr="Valable jusqu'au {date_validite}.")
-        devis = self._devis('DEV-MRY13-0002',
-                            date_validite=datetime.date(2026, 10, 15))
+        validite = aujourd_hui_local() + datetime.timedelta(days=30)
+        devis = self._devis('DEV-MRY13-0002', date_validite=validite)
         rendu = message_pour_etape(
             self._touche(template_cle='j9_validite', devis=devis),
             user=self.acteur)
-        self.assertIn('15/10/2026', rendu['message'])
+        self.assertIn(validite.strftime('%d/%m/%Y'), rendu['message'])
         self.assertEqual(rendu['placeholders_manquants'], [])
 
     def test_le_lien_est_lURL_reelle_de_la_proposition(self):
@@ -281,13 +282,20 @@ class NumeroInvalideTests(_Base):
 class ApiTests(_Base):
     slug = 'mry13-api'
 
-    def test_message_est_une_lecture_ouverte_a_tout_role(self):
+    def test_message_est_une_lecture_sous_crm_voir(self):
+        """ACVI3 (D-ACVI-2) — plus ouverte à tout rôle : `crm_voir` exigé."""
+        from apps.roles.models import Role
         touche = self._touche()
         api = APIClient()
         api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.normal)}')
-        resp = api.get(
-            f'/api/django/crm/relance-etapes/{touche.pk}/message/')
+        url = f'/api/django/crm/relance-etapes/{touche.pk}/message/'
+        self.assertEqual(api.get(url).status_code, 403)
+        self.normal.role = Role.objects.create(
+            company=self.company, nom='MRY13 lecteur',
+            permissions=['crm_voir'])
+        self.normal.save(update_fields=['role'])
+        resp = api.get(url)
         self.assertEqual(resp.status_code, 200, resp.data)
         for cle in ('message', 'wa_url', 'langue', 'phone',
                     'placeholders_manquants'):
@@ -443,6 +451,21 @@ class ConseillerTests(_Base):
     responsable était Reda, la modale affichait « je suis Meryem » (le
     prénom de l'utilisateur connecté)."""
     slug = 'mry13-conseiller'
+
+    def test_sans_prenom_la_phrase_est_omise(self):
+        """ACVI54 — le login ne sort jamais dans un message client."""
+        self.acteur.first_name = ''
+        self.acteur.username = 'demo_admin_mry13'
+        self.acteur.save(update_fields=['first_name', 'username'])
+        MessageTemplate.objects.create(
+            company=self.company, cle='identite',
+            corps_fr='Bonjour. Je suis {conseiller}.')
+        touche = self._touche()
+        touche.lead.owner = self.acteur
+        rendu = message_pour_etape(touche, user=self.acteur)
+        self.assertNotIn('demo_admin_mry13', rendu['message'])
+        self.assertNotIn('Je suis', rendu['message'])
+        self.assertIn('conseiller', ' '.join(rendu['placeholders_manquants']))
 
     def test_le_conseiller_est_le_responsable_du_lead(self):
         """Dans le fixture de base, `lead.owner` est déjà `self.acteur`

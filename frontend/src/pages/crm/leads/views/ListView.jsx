@@ -30,9 +30,12 @@ import {
   groupLeadsByStage,
   // Ordre fondateur 2026-09-01 — tri global partagé kanban/liste.
   LEAD_SORTERS,
+  COLD_STAGE,
+  CONVERSION_STAGE,
 } from '../../../../features/crm/stages'
 // ORDRE FONDATEUR 2026-08-01 — la MÊME question qu'au board avant un recul.
 import { useConfirmerRecul } from '../../../../features/crm/confirmRecul'
+import { useRaisonFroid } from '../../../../features/crm/useRaisonFroid'
 import { formatDate } from '../../../../lib/format'
 // CRX36 — telHref/waHref étaient recopiés À L'IDENTIQUE ici alors que
 // `lib/contactLinks` (VX108) les porte déjà pour tout écran affichant un
@@ -50,6 +53,7 @@ import CallLogPopover, { useCallEndedNudge } from '../../../../features/crm/Call
 import PerduPopover from '../PerduPopover'
 import { isSigneIntercept } from '../signeIntercept'
 import { allVisibleSelected } from '../../../../features/crm/bulk'
+import { catalogueCiBloque, raisonCatalogueCi } from '../../../../features/crm/workspace/devisTabLogique'
 import {
   Button, Checkbox, HelpTip, IconButton, StatusPill, Segmented,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
@@ -239,6 +243,7 @@ const ListRow = memo(function ListRow({
   // Ordre fondateur 2026-08-01 — question partagée avec le board avant tout
   // recul d'étape (cellule Stade plus bas).
   const confirmerRecul = useConfirmerRecul()
+  const { demanderRaisonFroid, dialogueRaisonFroid } = useRaisonFroid()
   const enRetard = lead.relance_date && lead.relance_date < today
   // LB21 — ligne ouvrable au clavier (recon-05 a11y #5 : onClick sur <tr>,
   // aucun tabIndex/role/onKeyDown). Enter/Espace ouvrent la fiche SEULEMENT
@@ -363,10 +368,14 @@ const ListRow = memo(function ListRow({
             // Décision fondateur 08/10/2026 — Signé → Froid dés-accepte aussi.
             if (!enArriere && isSortieSigne(lead.stage, v)
                 && !(await confirmerRecul(lead, v))) return
-            await onInlineSave(lead, 'stage', v, { confirmeRecul: enArriere })
+            // ACVI9 — le Froid exige une raison : demandée avant le PATCH.
+            const parcRaison = v === COLD_STAGE ? await demanderRaisonFroid(lead) : undefined
+            if (v === COLD_STAGE && !parcRaison) return
+            await onInlineSave(lead, 'stage', v, { confirmeRecul: enArriere, parcRaison })
               .catch((e) => { if (!isSigneIntercept(e)) throw e })
           }}
         />
+        {dialogueRaisonFroid}
       </td>
       {!hiddenCols.score && (
       <td className="m-hide" data-label="Score">
@@ -525,9 +534,11 @@ const ListRow = memo(function ListRow({
             },
             {
               id: 'devis', label: '⚡ Devis auto',
-              disabled: !lead.devis_auto?.pret,
+              // ALEA63 — prêt ET catalogue C&I prêt ; motif nommé sinon.
+              disabled: !lead.devis_auto?.pret || catalogueCiBloque(lead.devis_auto),
               title: lead.devis_auto?.pret
-                ? 'Devis auto'
+                ? (catalogueCiBloque(lead.devis_auto)
+                  ? raisonCatalogueCi(lead.devis_auto) : 'Devis auto')
                 : (lead.devis_auto?.message ?? 'Devis auto indisponible'),
               onClick: () => onAutoQuote(lead),
             },
@@ -735,18 +746,27 @@ export default function ListView({
      `CHAMPS_UNDO` (module, plus haut) s'enregistre EXACTEMENT comme avant, sans
      toast d'annulation. C'est volontaire — `facture_hiver` (un montant) et tout
      champ d'argent n'ont JAMAIS d'undo. */
-  const inlineSaveAvecUndo = useCallback(async (lead, champ, valeur) => {
+  const inlineSaveAvecUndo = useCallback(async (lead, champ, valeur, opts = {}) => {
     if (!onInlineSave) return undefined
     const conf = CHAMPS_UNDO[champ]
-    if (!conf) return onInlineSave(lead, champ, valeur)
+    if (!conf) return onInlineSave(lead, champ, valeur, opts)
     const precedent = lead?.[champ] ?? null
     // Enregistrer la MÊME valeur n'est pas une modification : pas de toast.
-    if (precedent === valeur) return onInlineSave(lead, champ, valeur)
+    if (precedent === valeur) return onInlineSave(lead, champ, valeur, opts)
+    // ERR-W33-INLINE-STAGE — les marqueurs de la cellule Stade (`confirmeRecul`,
+    // `parcRaison`) vont jusqu'au PATCH, et l'annulation porte `undo` : sans lui
+    // le serveur refuse le mouvement inverse. Mêmes exclusions que le glisser du
+    // kanban (LeadsPage `changeStage`) : un parcage et une entrée ou sortie de
+    // « Signé » ne s'annulent pas par un simple PATCH d'étape.
+    if (champ === 'stage' && (opts.parcRaison
+        || valeur === CONVERSION_STAGE || precedent === CONVERSION_STAGE)) {
+      return onInlineSave(lead, champ, valeur, opts)
+    }
     await mutateWithUndo({
       kind: conf.kind,
       message: conf.message,
-      apply: () => onInlineSave(lead, champ, valeur),
-      revert: () => onInlineSave(lead, champ, precedent),
+      apply: () => onInlineSave(lead, champ, valeur, opts),
+      revert: () => onInlineSave(lead, champ, precedent, champ === 'stage' ? { undo: true } : {}),
     })
     return undefined
   }, [onInlineSave])

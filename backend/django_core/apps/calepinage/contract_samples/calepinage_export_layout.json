@@ -1,0 +1,21 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/export-layout/",
+  "pourquoi": "ENF15 (routes_sous_contrat) — `roof_layout` exporté TEL QUEL avec le numéro de version du schéma (CAL216) — `services/io_layout.py::exporter_layout`. Sans conception enregistrée, `roof_layout` vaut `null` (jamais `{}`).",
+  "exemple": {
+    "roof_layout": {
+      "schema_version": 2,
+      "zones": [
+        {
+          "id": "PAN-A"
+        }
+      ]
+    },
+    "layout_hash": "abababababababababababababababababababababababababababababababab",
+    "schema_version": 2
+  },
+  "exemple_sans_conception": {
+    "roof_layout": null,
+    "layout_hash": "",
+    "schema_version": 2
+  }
+}

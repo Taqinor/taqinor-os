@@ -1463,3 +1463,18 @@ for _table in MESSAGE_TEMPLATE_VARIANTES_SEGMENT.values():
 for _table in MESSAGE_TEMPLATE_VARIANTES_SEGMENT_DARIJA.values():
     _poser_porte_de_sortie(_table, PORTE_DE_SORTIE_DARIJA)
 del _table
+
+# ACVI51 (C-ACVI-069) — le texte annoncé par CAD54 pour la passation, et le
+# script du rappel après réponse : placeholders rendables seulement, darija en
+# repli français (`get_corps`).
+MESSAGE_TEMPLATE_DEFAULTS.update({
+    'passation': (
+        "Bonjour {prenom}, c'est {conseiller} de {marque}. Je reprends "
+        "votre dossier à partir d'aujourd'hui : n'hésitez pas à m'écrire ici "
+        "pour toute question."
+    ),
+    'appel_apres_reponse': (
+        "Bonjour {prenom}, c'est {conseiller} de {marque}. Vous m'avez "
+        "répondu, je vous appelle pour faire le point sur votre projet."
+    ),
+})

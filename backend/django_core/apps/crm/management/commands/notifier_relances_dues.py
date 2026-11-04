@@ -220,13 +220,10 @@ def _responsable_defaut(company):
     Paramètres → « Responsable par défaut ») : aucun prénom codé en dur, et
     aucun destinataire inventé quand le réglage est vide.
     """
+    from apps.crm.leads_attribution import responsable_defaut_actif
     from apps.parametres.models import CompanyProfile
 
-    profil = CompanyProfile.objects.filter(company=company).first()
-    responsable = getattr(profil, 'responsable_defaut_leads', None)
-    if responsable is not None and not getattr(responsable, 'is_active', True):
-        return None
-    return responsable
+    return responsable_defaut_actif(CompanyProfile.objects.filter(company=company).first())
 
 
 class Command(BaseCommand):

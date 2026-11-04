@@ -10,14 +10,18 @@ from . import activity, stages
 from .cadence_plan import demarrer_cadence_contact
 from .cadence_touche import reprendre_cadence_apres_reouverture
 from .clients_identite import _email_identite
-from .fiche_funnel import _STAGE_CONTACTED, _rang_funnel, appliquer_stage_lead
+from .fiche_funnel import (
+    _STAGE_CONTACTED, _rang_funnel, appliquer_stage_lead, sortir_du_parcage)
 from .leads_attribution import default_responsable_for
 from .leads_consentement import (
+    CONSENT_SOURCE_EVENEMENT,
+    CONSENT_SOURCE_LIVECHAT,
     BASE_LEGALE_NON_COLLECTEE,
+    BASE_LEGALE_SOLLICITATION,
     CONSENT_SOURCE_DOCUMENT,
     enregistrer_base_legale_lead,
 )
-from .leads_doublons import find_duplicates_by_contact, normalize_phone
+from .leads_doublons import find_duplicates_by_contact
 from .leads_notifications import notify_new_lead
 from .leads_score import recompute_lead_score
 from .models import Lead, LeadActivity
@@ -51,6 +55,8 @@ def reactivate_lead_on_new_touch(lead, *, source='site web') -> bool:
     if etait_perdu:
         lead.perdu = False
         lead.save(update_fields=['perdu'])
+    if lead.parc_etat or lead.parc_raison:
+        sortir_du_parcage(lead, None)  # ALEA61 — le Froid réveillé n'est plus parqué
 
     cible = _STAGE_CONTACTED if lead.first_contacted_at else stages.NEW
     ancien_stage = None  # étape déjà ≥ cible — pas de changement d'étape.
@@ -327,12 +333,13 @@ def create_lead_from_livechat(*, company, nom, telephone='', email='',
     telephone = (telephone or '').strip()[:20]
     email = (email or '').strip()[:254]
 
-    lead = None
+    lead = froid = None
     if telephone or email:
-        dupes = find_duplicates_by_contact(
-            company, phone=telephone or None, email=email or None)
-        if dupes:
-            lead = sorted(dupes, key=lambda d: d.date_creation, reverse=True)[0]
+        # ACVI13 (D-ACVI-5) — seul un doublon vivant absorbe la demande.
+        from .cadence_reponses import doublon_a_reprendre, enregistrer_recontact
+        lead, froid = doublon_a_reprendre(find_duplicates_by_contact(
+            company, phone=telephone or None, email=email or None), telephone)
+        lead = lead or froid
 
     if lead is None:
         extra = {}
@@ -348,6 +355,9 @@ def create_lead_from_livechat(*, company, nom, telephone='', email='',
             **extra,
         )
         activity.log_creation(lead, None)
+        enregistrer_base_legale_lead(  # ACVI18
+            lead, source=CONSENT_SOURCE_LIVECHAT,
+            base_legale=BASE_LEGALE_SOLLICITATION)
         try:
             notify_new_lead(lead)
         except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
@@ -364,6 +374,8 @@ def create_lead_from_livechat(*, company, nom, telephone='', email='',
             changed = True
         if changed:
             lead.save()
+        if froid is not None:
+            enregistrer_recontact(froid, None, canal='livechat')
 
     if transcript_text:
         LeadActivity.objects.create(
@@ -420,16 +432,10 @@ def find_lead_by_phone(company, telephone):
     Point d'entrée cross-app sanctionné pour `apps.notifications` (webhook BSP
     WhatsApp) : matching par numéro SANS jamais exposer les modèles crm.
     Renvoie le lead le plus RÉCEMMENT créé en cas de doublon, ou None."""
-    key = normalize_phone(telephone)
-    if not key:
-        return None
-    candidates = [
-        lead for lead in Lead.objects.filter(company=company)
-        .order_by('-date_creation')
-        if normalize_phone(lead.telephone) == key
-        or normalize_phone(lead.whatsapp) == key
-    ]
-    return candidates[0] if candidates else None
+    from .leads_selectors import find_lead_id_by_phone  # ACVI20 — un seul sélecteur
+
+    pk = find_lead_id_by_phone(company, telephone, archives=True)
+    return Lead.objects.filter(pk=pk).first() if pk else None
 
 
 def find_lead_by_email(company, email):
@@ -495,7 +501,9 @@ def create_lead_depuis_ticket(*, company, user, client, contexte=''):
         canal=Lead.Canal.AUTRE,
         stage=stages.NEW,
     )
-    activity.log_creation(lead, user)
+    finaliser_lead_importe(lead, user=user, source='ticket SAV',
+                           base_legale=BASE_LEGALE_SOLLICITATION,
+                           cadence_origine='ticket SAV')
     contexte = (contexte or '').strip()
     if contexte:
         # Note SYSTÈME (user=None) : garde le lead au stade NEW (le récepteur
@@ -531,12 +539,13 @@ def create_lead_from_evenement_marketing(
     telephone = (telephone or '').strip()[:20]
     email = (email or '').strip()[:254]
 
-    lead = None
+    lead = froid = None
     if telephone or email:
-        dupes = find_duplicates_by_contact(
-            company, phone=telephone or None, email=email or None)
-        if dupes:
-            lead = sorted(dupes, key=lambda d: d.date_creation, reverse=True)[0]
+        # ACVI13 (D-ACVI-5) — seul un doublon vivant absorbe la demande.
+        from .cadence_reponses import doublon_a_reprendre, enregistrer_recontact
+        lead, froid = doublon_a_reprendre(find_duplicates_by_contact(
+            company, phone=telephone or None, email=email or None), telephone)
+        lead = lead or froid
 
     if lead is None:
         extra = {}
@@ -552,6 +561,9 @@ def create_lead_from_evenement_marketing(
             **extra,
         )
         activity.log_creation(lead, None)
+        enregistrer_base_legale_lead(  # ACVI18
+            lead, source=CONSENT_SOURCE_EVENEMENT,
+            base_legale=BASE_LEGALE_NON_COLLECTEE)
         # MRY6 — un inscrit d'événement marketing est une demande réelle.
         demarrer_cadence_contact(lead, origine='evenement_marketing')
     else:
@@ -564,6 +576,8 @@ def create_lead_from_evenement_marketing(
             changed = True
         if changed:
             lead.save()
+        if froid is not None:
+            enregistrer_recontact(froid, None, canal='evenement')
 
     if evenement_nom:
         activity.log_note(
@@ -577,7 +591,10 @@ def create_lead_from_evenement_marketing(
 # ---------------------------------------------------------------------------
 
 
-def finaliser_lead_importe(lead, *, user=None, lead_attrs=None):
+def finaliser_lead_importe(lead, *, user=None, lead_attrs=None,
+                           source='import de fichier',
+                           base_legale=BASE_LEGALE_NON_COLLECTEE,
+                           cadence_origine='import fichier'):
     """AUD518 — applique à un lead IMPORTÉ les effets de création du chemin
     MANUEL, dont il était intégralement privé.
 
@@ -601,6 +618,8 @@ def finaliser_lead_importe(lead, *, user=None, lead_attrs=None):
        elle-même).
     3. SCORE — ``recompute_lead_score``, qui évalue aussi le passage MQL
        (``maybe_assign_mql``). Déjà best-effort en interne.
+    4. REGISTRE (ACVI12) — la base légale au registre : ``source`` et
+       ``base_legale`` nomment la porte (API publique, ticket SAV, fichier).
 
     Renvoie le lead.
     """
@@ -620,4 +639,9 @@ def finaliser_lead_importe(lead, *, user=None, lead_attrs=None):
 
     activity.log_creation(lead, user)
     recompute_lead_score(lead)
+    enregistrer_base_legale_lead(lead, source=source, base_legale=base_legale)
+    # ACVI88 (D-ACVI-4) — parité d'arrivée : la cadence démarre, ou son refus est
+    # tracé. ``''`` : l'appelant la démarre lui-même (API publique).
+    if cadence_origine:
+        demarrer_cadence_contact(lead, origine=cadence_origine)
     return lead

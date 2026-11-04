@@ -39,6 +39,19 @@ class PrixPalierRemiseTests(TestCase):
                          44300.0)
         self.assertIsNone(prix_client_composition(None, self.devis))
 
+    def test_centimes_perdus_remontent_a_la_centaine(self):
+        """ADVS3 (D-ADVS-4), jumeau — la carte annonce le total du devis : 2 999,99
+        → 3 000, comme le noyau ; le palier inférieur reste pour le reste ; devis
+        envoyé au niveau < 11 : le prix qu'il a reçu. ROUGE AVANT : 2 900."""
+        for cout, attendu in ((2999.99, 3000.0), (2957.0, 2900.0),
+                              (3000.0, 3000.0), (2999.0, 2900.0)):
+            self.assertEqual(prix_client_composition(cout, facteur=1.0), attendu)
+            self.assertEqual(
+                prix_client_composition(cout, self.devis, facteur=1.0), attendu)
+        self._au_niveau(10)
+        self.assertEqual(
+            prix_client_composition(2999.99, self.devis, facteur=1.0), 2900.0)
+
     def _au_niveau(self, niveau):
         from apps.ventes.models import Devis
         Devis.objects.filter(pk=self.devis.pk).update(regles_calcul=niveau)

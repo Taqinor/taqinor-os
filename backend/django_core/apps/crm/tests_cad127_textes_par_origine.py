@@ -201,6 +201,20 @@ class LAncienDossierTests(_Base):
         self.assertIn('mars 2026', rendu['message'])
         self.assertNotIn(PHRASE_FORMULAIRE, rendu['message'].lower())
 
+    def test_le_mois_du_dossier_lit_la_date_d_origine(self):
+        # ACVI47 — importé en septembre, le dossier de juin reste un dossier de juin.
+        lead = self._lead('meta_ads', nom='Importe')
+        Lead.objects.filter(pk=lead.pk).update(
+            date_creation_origine=datetime.datetime(
+                2026, 6, 10, 9, 0, tzinfo=horaires.CASABLANCA))
+        lead.refresh_from_db()
+
+        self.assertEqual(
+            _cle_identite_pour_lead(lead, 'identite', reference=AUJOURDHUI),
+            'identite_ancien_dossier')
+        rendu = message_pour_etape(self._touche_identite(lead), user=self.acteur)
+        self.assertIn('juin 2026', rendu['message'])
+
     def test_une_fiche_du_MOIS_EN_COURS_reste_une_demande_fraiche(self):
         lead = self._lead('site_web', nom='Frais')
         self.assertEqual(

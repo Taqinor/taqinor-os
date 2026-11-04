@@ -760,7 +760,7 @@ def annuler_chantiers_desaccepte(devis, user, company):
     (comme l'action « Annuler ») avec le motif-marqueur
     ``MOTIF_ANNULATION_DESACCEPTATION``, ses réservations non consommées sont
     libérées et une note est posée au chatter. Le contrôle de blocage
-    (``selectors.blocage_annulation_acceptation``) a déjà garanti qu'il était
+    (``selectors_annulation.blocage_annulation_acceptation``) a déjà garanti qu'il était
     dans son état initial. N'attrape rien : appelé dans la transaction de
     dés-acceptation, une erreur annule tout. Rend le nombre de chantiers
     annulés."""

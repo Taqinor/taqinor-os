@@ -161,6 +161,29 @@ class ParcoursTests(unittest.TestCase):
         finally:
             cp.SANS_PORTES_GELEES.discard("PA9")
 
+    def test_une_creation_de_lead_non_declaree_echoue(self):
+        # ACVI92 — une porte de plus dans le code rougit la table qui ne la déclare pas.
+        d = _Depot()
+        self.addCleanup(d.tmp.cleanup)
+        table = _table(ETAPE)
+        table["parcours"] = "PA1"
+        app = d.racine / "backend/django_core/apps/fac"
+        (app / "tests_porte.py").write_text("def t():\n    Lead.objects.create()\n", encoding="utf-8")
+        d.ecrire(table)
+        self.assertEqual(cp._portes_non_declarees(table, d.racine), [])
+
+        (app / "porte_factice.py").write_text(
+            "def ouvrir():\n    return Lead.objects.create(nom='x')\n", encoding="utf-8")
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(cp.verifier_tout(racine=d.racine), 1)
+        self.assertIn(
+            "ÉCHEC PA1 : création de lead non déclarée : apps/fac/porte_factice.py::ouvrir", out.getvalue())
+
+        table["portes"].append({"id": "p2", "source": "apps/fac/porte_factice.py::ouvrir"})
+        (app / "porte_factice.py").write_text(
+            "def ouvrir():\n    return Lead(nom='x')\n", encoding="utf-8")
+        self.assertEqual(cp._portes_non_declarees(table, d.racine), [])
+
     def test_main_sur_depot_jetable(self):
         d = _Depot()
         self.addCleanup(d.tmp.cleanup)

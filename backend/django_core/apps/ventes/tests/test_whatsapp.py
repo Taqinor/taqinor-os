@@ -242,6 +242,20 @@ class TestLeadWhatsAppEndpoint(TestCase):
     def _url(self):
         return f'/api/django/crm/leads/{self.lead.id}/whatsapp-devis/'
 
+    def test_lead_oppose_409_sans_lien(self):
+        """ACVI98 (D-ACVI-7) — aperçu et envoi refusés, devis inchangé."""
+        Lead.objects.filter(pk=self.lead.pk).update(ne_plus_contacter=True)
+        statut = self.d1.statut
+        for url in (self._url().replace('whatsapp-devis/', 'whatsapp-devis-apercu/'),
+                    self._url()):
+            resp = self.api.post(url, {'devis_ids': [self.d1.id]}, format='json')
+            self.assertEqual(resp.status_code, 409, resp.data)
+            self.assertNotIn('wa_url', resp.data)
+            self.assertIn('ne plus', str(resp.data['detail']))
+        self.d1.refresh_from_db()
+        self.assertEqual(self.d1.statut, statut)
+        self.assertFalse(ShareLink.objects.filter(devis=self.d1).exists())
+
     def test_single_devis_builds_wa_url_with_public_link(self):
         resp = self.api.post(
             self._url(), {'devis_ids': [self.d1.id]}, format='json')

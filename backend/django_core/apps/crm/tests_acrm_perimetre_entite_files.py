@@ -105,6 +105,26 @@ class PerimetreEntiteFilesTests(TestCase):
                     self.company, self.moi, jours=1, today=today)},
         }
 
+    def test_role_sans_crm_voir_403_sur_les_files(self):
+        """ACVI3 (D-ACVI-2) — terrain et Admin RH : 403 sur les lectures."""
+        from apps.roles.permissions_registre import (
+            COMMERCIAL_TERRAIN_PERMISSIONS, CANONICAL_SYSTEM_ROLES)
+        for nom, permissions in (
+                ('Terrain', COMMERCIAL_TERRAIN_PERMISSIONS),
+                ('RH', dict(CANONICAL_SYSTEM_ROLES)['Admin RH'])):
+            role = Role.objects.create(company=self.company, nom=f'ACVI3 {nom}',
+                                       permissions=list(permissions))
+            user = User.objects.create_user(
+                username=f'acvi3-{nom}', password='x', company=self.company,
+                role=role)
+            api = APIClient()
+            api.force_authenticate(user)
+            for route in ('relance-etapes/', f'relance-etapes/?lead={self.lead_a.pk}',
+                          'relance-etapes/?scope=all', 'appointments/',
+                          'points-contact/'):
+                reponse = api.get(f'/api/django/crm/{route}')
+                self.assertEqual(reponse.status_code, 403, (nom, route))
+
     def test_lead_hors_perimetre_absent_de_chaque_file(self):
         api = APIClient()
         api.credentials(HTTP_AUTHORIZATION=(

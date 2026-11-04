@@ -152,6 +152,15 @@ class ToucheParSignalTests(TestCase):
             due_at=JEUDI_10H, due_date=JEUDI_10H.date(),
             cadence_depart=MERCREDI_SOIR - datetime.timedelta(days=4))
 
+    def test_le_rappel_convenu_ne_glisse_pas(self):
+        """ACVI42 — la touche au rappel promis garde son échéance."""
+        RelanceEtape.objects.filter(pk=self.plan.pk).update(
+            rappel_convenu_le=JEUDI_10H.date())
+        self._signal()
+        self.plan.refresh_from_db()
+        self.assertEqual(self.plan.due_at, JEUDI_10H)
+        self.assertTrue(self._touches_signal())
+
     def _touches_signal(self):
         return RelanceEtape.objects.filter(lead=self.lead, libelle=LIBELLE)
 

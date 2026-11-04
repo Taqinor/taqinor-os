@@ -25,6 +25,7 @@ import {
   Form, FormField, FormActions, Input,
 } from '../../../ui'
 import { ecrireStockage } from '../../../lib/stockageBestEffort.js'
+import { creerSoumissionNomRequis } from '../../../lib/soumission'
 
 // Dédoublonnage grossier : on retire les non-chiffres pour comparer.
 function normalizePhone(raw) {
@@ -140,12 +141,9 @@ export default function LeadExpressModal({ onClose, onSaved }) {
   const dupChecking = dupState === 'checking'
   const dupWarning = dupState && typeof dupState === 'object' ? dupState.warning : null
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    setError(null)
-    if (!nom.trim()) { setError('Le nom est requis.'); return }
-    setBusy(true)
-    try {
+  const handleSubmit = creerSoumissionNomRequis({
+    nom, setError, setBusy,
+    envoyer: async () => {
       const payload = {
         nom: nom.trim(),
         telephone: telephone.trim() || null,
@@ -158,16 +156,12 @@ export default function LeadExpressModal({ onClose, onSaved }) {
       ecrireLastCanal(canal)  // VX240(e) — mémorise le canal pour le prochain lead express
       onSaved?.(res.data)
       onClose?.()
-    } catch (err) {
-      const detail =
-        err?.response?.data?.detail ||
-        (typeof err?.response?.data === 'string' ? err.response.data : null) ||
-        'Erreur lors de la création du lead.'
-      setError(detail)
-    } finally {
-      setBusy(false)
-    }
-  }
+    },
+    messageErreur: (err) =>
+      err?.response?.data?.detail ||
+      (typeof err?.response?.data === 'string' ? err.response.data : null) ||
+      'Erreur lors de la création du lead.',
+  })
 
   return (
     // VX118(b) — les 23 références `lem-*` n'avaient AUCUN CSS depuis la

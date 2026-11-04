@@ -55,6 +55,37 @@ class CaSigneVersionTests(TestCase):
         self.attendu = Decimal(str(self.v2.total_ttc))
         self.somme_deux = self.attendu + Decimal(str(self.v1.total_ttc))
 
+    def test_les_selecteurs_cockpit_ne_chargent_pas_etude_params(self):
+        # ACVI78 — seules les annotations `etude_params ->` sont permises.
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from apps.crm.clients_selectors import (
+            ca_signe_periode, nb_devis_envoyes_periode)
+        from apps.crm.cockpit_equipe import _devis_ouverts
+        Devis.objects.filter(pk=self.v2.pk).update(
+            etude_params={'scenario': 'Avec batterie', 'profil': [1, 2, 3]})
+        Devis.objects.create(
+            company=self.company, reference='DEV-ACRM10-0003',
+            client=self.client_c, lead=self.lead, statut='envoye',
+            taux_tva=Decimal('20.00'), created_by=self.user,
+            etude_params={'profil': [1]})
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=(
+            f'Bearer {AccessToken.for_user(self.user)}'))
+        debut, fin = self.today, self.today
+        with CaptureQueriesContext(connection) as ctx:
+            total = ca_signe_periode(self.company, None, debut, fin)
+            nb_devis_envoyes_periode(self.company, None, debut, fin)
+            _devis_ouverts(self.company, [self.user.pk])
+            resp = api.get('/api/django/crm/equipes/statistiques/')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(total, self.attendu)
+        fautives = [q['sql'] for q in ctx.captured_queries
+                    if '"etude_params"' in q['sql']
+                    and 'etude_params" ->' not in q['sql']]
+        self.assertEqual(fautives, [])
+
     def _devis_accepte(self, reference, prix):
         devis = Devis.objects.create(
             company=self.company, reference=reference, client=self.client_c,

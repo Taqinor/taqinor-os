@@ -59,6 +59,23 @@ def formater_bilan(kpi):
     return '\n'.join(lignes)
 
 
+def _bilan_deja_parti(company):
+    """ACVI84 — le bilan de la semaine ISO en cours (depuis lundi 00:00 local)
+    est-il déjà parti pour cette société ?"""
+    import datetime
+
+    from apps.notifications.models import Notification
+    from apps.notifications.types_evenements import EventType
+    from core.dates import TZ_METIER, aujourd_hui_local
+
+    aujourdhui = aujourd_hui_local()
+    lundi = aujourdhui - datetime.timedelta(days=aujourdhui.weekday())
+    return Notification.objects.filter(
+        company=company, event_type=EventType.CRM_BILAN_HEBDO,
+        created_at__gte=datetime.datetime.combine(
+            lundi, datetime.time.min, tzinfo=TZ_METIER)).exists()
+
+
 def bilan_hebdo_relances(*, jours=7, dry_run=False):
     """Cœur de la commande — appelable directement (tests, tâche Celery).
 
@@ -72,6 +89,8 @@ def bilan_hebdo_relances(*, jours=7, dry_run=False):
     from apps.notifications.types_evenements import EventType
     from apps.notifications.services import notify_many
 
+    from django.db import transaction
+
     envoyes = 0
     for company in active_companies():
         destinataires = utilisateurs_direction(company)
@@ -84,15 +103,23 @@ def bilan_hebdo_relances(*, jours=7, dry_run=False):
                 'bilan_hebdo_relances: KPI illisible (société %s)',
                 company.pk, exc_info=True)
             continue
-        envoyes += 1
         if dry_run:
+            envoyes += 1
             continue
         try:
-            notify_many(
-                destinataires, EventType.CRM_BILAN_HEBDO,
-                title='Bilan relances de la semaine',
-                body=formater_bilan(kpi), link='/crm/cockpit',
-                company=company)
+            # ACVI84 — relecture + envoi sous le verrou de la ligne société
+            # (ENF18) : une redistribution du beat n'envoie jamais un 2e bilan.
+            with transaction.atomic():
+                type(company).objects.select_for_update().filter(
+                    pk=company.pk).first()
+                if _bilan_deja_parti(company):
+                    continue
+                notify_many(
+                    destinataires, EventType.CRM_BILAN_HEBDO,
+                    title='Bilan relances de la semaine',
+                    body=formater_bilan(kpi), link='/crm/cockpit',
+                    company=company)
+            envoyes += 1
         except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
             logger.warning(
                 'bilan_hebdo_relances: envoi échoué (société %s)',

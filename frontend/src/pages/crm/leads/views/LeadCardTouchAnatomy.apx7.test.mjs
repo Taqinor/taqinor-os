@@ -102,7 +102,7 @@ test('APX7 : « Devis auto » ne double pas le menu ••• sur la ligne tacti
   const touch = d.slice(d.indexOf('@media (hover: none)'))
   assert.match(touch, /\.kb-card--lead \.kb-card-value > \.kb-quick > \.kb-flash \{\s*\n\s*display: none;\s*\n\s*\}/)
   // ... parce que l'item existe bel et bien dans le menu.
-  assert.match(SRC, /\{onAutoQuote && lead\.devis_auto\?\.pret && \(\s*\n\s*<DropdownMenuItem onSelect=\{\(\) => onAutoQuote\(lead\)\}>/)
+  assert.match(SRC, /\{onAutoQuote && devisAutoOk && \(\s*\n\s*<DropdownMenuItem onSelect=\{\(\) => onAutoQuote\(lead\)\}>/)
 })
 
 test('APX7 : acquis intacts — gestes purs (swipe retiré), PII, clic-carte', () => {

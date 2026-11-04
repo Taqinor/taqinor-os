@@ -297,7 +297,7 @@ etape('P5.4', ['ACRM6'], async ({ testInfo }) => {
   await py(`${PRELUDE}
 from apps.crm.models import RelanceEtape
 for pk in (${m.mien}, ${m.coll}):
-    Lead.objects.filter(pk=pk).update(stage='contacted', relance_date=None, date_creation=timezone.now() - datetime.timedelta(days=60))
+    Lead.objects.filter(pk=pk).update(stage='CONTACTED', relance_date=None, date_creation=timezone.now() - datetime.timedelta(days=60))
 RelanceEtape.objects.filter(lead_id__in=[${m.mien}, ${m.coll}]).delete(); sortie('ok')`)
   const com = await api(testInfo, 'acc60_com')
   expect((await com.get(`${API_DJANGO}/crm/leads/${m.coll}/`, T)).status(), 'le lead du collègue répond 404').toBe(404)

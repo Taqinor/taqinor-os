@@ -452,6 +452,24 @@ class TestCatalogueCiAlea50(TestCase):
         self.assertEqual(resp.status_code, 200, resp.data)
         return resp.data['devis_auto']['catalogue_ci']
 
+    def test_liste_et_patch_servent_le_catalogue(self):
+        """ALEA63 — liste et réponse du PATCH servent ``catalogue_ci`` (pas
+        seulement le détail), pour que kanban, liste et autosave bloquent."""
+        lead = Lead.objects.create(company=self.company, nom='Usine',
+                                   type_installation='commercial')
+        liste = self.api.get('/api/django/crm/leads/')
+        self.assertEqual(liste.status_code, 200, liste.data)
+        rows = (liste.data['results'] if isinstance(liste.data, dict)
+                else liste.data)
+        ligne = next(r for r in rows if r['id'] == lead.id)
+        self.assertFalse(ligne['devis_auto']['catalogue_ci']['pret'])
+        self.assertEqual(
+            len(ligne['devis_auto']['catalogue_ci']['manquants']), 8 + 4)
+        maj = self.api.patch(f'/api/django/crm/leads/{lead.id}/',
+                             {'prenom': 'Karim'}, format='json')
+        self.assertEqual(maj.status_code, 200, maj.data)
+        self.assertFalse(maj.data['devis_auto']['catalogue_ci']['pret'])
+
     def test_catalogue_vide_nomme_les_postes_sans_prix(self):
         bloc = self._bloc()
         self.assertFalse(bloc['pret'])
@@ -579,6 +597,23 @@ class TestDevisAutoEndpoint(TestCase):
         api = api or self.api
         lead_id = lead_id or self.lead.id
         return api.post(f'/api/django/crm/leads/{lead_id}/devis-auto/')
+
+    def test_kwh_contredit_les_factures(self):
+        """ACVI97 — 5 000 kWh pour 300 MAD : plus « prêt », valeur gardée."""
+        lead = Lead.objects.create(
+            company=self.company, nom='Maison', type_installation='residentiel',
+            ville='Rabat', type_surface='toiture', facture_hiver=Decimal('300'))
+        url = f'/api/django/crm/leads/{lead.id}/'
+        patch = self.api.patch(url, {'conso_mensuelle_kwh': 5000}, format='json')
+        self.assertEqual(patch.status_code, 200, patch.data)
+        self.assertIn('kwh_factures', patch.data['avertissements'])
+        refus = self._post(lead.id)
+        self.assertEqual(refus.status_code, 409, refus.data)
+        self.assertIn('incohérent', refus.data['detail'])
+        # 250 kWh ≈ 372 MAD au barème, ratio 1,24 dans la bande [0,5 ; 2].
+        temoin = self.api.patch(url, {'conso_mensuelle_kwh': 250}, format='json')
+        self.assertNotIn('avertissements', temoin.data)
+        self.assertEqual(self._post(lead.id).status_code, 200)
 
     def test_409_with_exact_french_message(self):
         resp = self._post()

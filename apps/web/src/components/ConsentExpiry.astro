@@ -1,0 +1,52 @@
+---
+/**
+ * WAUD66 (D-WAUD-1, CNDP D-939-2025 §6) — le choix du bandeau vaut 180 jours.
+ * S'exécute en tête de <head>, AVANT tout lecteur de `tq_consent` (capture
+ * first-touch, pixel, tag Google). Échu ou sans date (choix donné sous l'ancien
+ * texte) : effacé, le bandeau se réaffiche.
+ */
+import { CONSENTEMENT_DUREE_MS } from '../lib/consentement';
+---
+
+<script is:inline define:vars={{ tqConsentDureeMs: CONSENTEMENT_DUREE_MS }}>
+  (function () {
+    try {
+      if (!localStorage.getItem('tq_consent')) return;
+      var date = Number(localStorage.getItem('tq_consent_at'));
+      if (date && Date.now() - date <= tqConsentDureeMs) return;
+      localStorage.removeItem('tq_consent');
+      localStorage.removeItem('tq_consent_at');
+    } catch (e) {}
+  })();
+  /* WAUD12 — communs au pixel Meta et au tag Google (scripts en ligne, sans import). */
+  window.tqChoix = function () {
+    try {
+      return localStorage.getItem('tq_consent');
+    } catch (e) {
+      return null;
+    }
+  };
+  /* Injecte un script tiers après l'affichage : événement load, puis temps libre du navigateur. */
+  window.tqChargerApresAffichage = function (src) {
+    var charger = function () {
+      if (document.querySelector('script[src="' + src + '"]')) return;
+      var t = document.createElement('script');
+      t.async = true;
+      t.src = src;
+      document.head.appendChild(t);
+    };
+    var libre = function () {
+      if (window.requestIdleCallback) window.requestIdleCallback(charger, { timeout: 3000 });
+      else setTimeout(charger, 1500);
+    };
+    if (document.readyState === 'complete') libre();
+    else window.addEventListener('load', libre, { once: true });
+  };
+  window.tqSurChoix = function (accepte, refuse) {
+    window.addEventListener('tq:consent-change', function (e) {
+      var choix = e && e.detail && e.detail.value;
+      if (choix === 'granted') accepte();
+      if (choix === 'denied') refuse();
+    });
+  };
+</script>

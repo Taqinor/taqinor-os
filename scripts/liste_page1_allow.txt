@@ -15,12 +15,5 @@ frontend/src/features/adsengine/ExperimentsScreen.jsx::ExperimentsScreen
 frontend/src/features/adsengine/FlightPlanScreen.jsx::FlightPlanScreen
 frontend/src/features/adsengine/RulesScreen.jsx::RulesScreen
 frontend/src/features/adsengine/VeilleEtiquetage.jsx::VeilleEtiquetage
-frontend/src/features/crm/workspace/LeadWorkspace.jsx::relay
-frontend/src/features/crm/workspace/sections/SectionPipeline.jsx::onFriseChanged
-frontend/src/pages/crm/ParrainagePage.jsx::load
-frontend/src/pages/crm/RelancesDuJourWidget.jsx::CadencesEchues
-frontend/src/pages/crm/SiteProfilePage.jsx::SiteProfilePage
-frontend/src/pages/crm/VisiteursPage.jsx::chargerEquipe
-frontend/src/pages/crm/comptes/PlanComptePage.jsx::PlanComptePage
 frontend/src/pages/sav/SavAlarmesPage.jsx::SavAlarmesPage
 frontend/src/pages/visites/PlanifierVisitePage.jsx::PlanifierVisitePage

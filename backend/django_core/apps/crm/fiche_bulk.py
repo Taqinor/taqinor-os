@@ -12,8 +12,8 @@ from . import activity, stages
 from .models import Canal, Lead, LeadActivity
 from .leads_fusion import raison_refus_suppression
 from .cadence_touche import reprendre_cadence_apres_reouverture
-from .cadence_filet import assurer_prochaine_etape_apres_succes
 from .cadence_plan import arreter_cadence, sync_relance_activity
+from .cadence_visite import annuler_rendez_vous_sur_arret, cause_rdv_perdu
 from .fiche_funnel import (
     ETAT_PAR_RAISON,
     ParcRefuse,
@@ -41,6 +41,24 @@ BULK_ACTIONS = {
 _PRIORITES = {'basse', 'normale', 'haute'}
 # Actions réservées à l'admin (la suppression définitive l'est déjà partout).
 BULK_ADMIN_ONLY = {'delete'}
+
+
+def archiver_lead(lead, user, *, note=None):
+    """ACVI24 — L'archivage (fiche et lot) : écriture et chatter dans la même
+    transaction (ALEA30), puis le rendez-vous de visite en attente annulé."""
+    from django.db import transaction
+
+    lead.is_archived = True
+    lead.archived_by = user
+    lead.archived_at = timezone.now()
+    with transaction.atomic():
+        lead.save(update_fields=['is_archived', 'archived_by', 'archived_at'])
+        if note:
+            activity.log_bulk_note(lead, user, note)
+        else:
+            activity.log_archive(lead, user)
+    annuler_rendez_vous_sur_arret(lead, user, cause='le lead est archivé')
+    return lead
 
 
 class ReferenceInconnue(ValueError):
@@ -220,7 +238,8 @@ def _file_whatsapp_en_masse(company, user, leads, params, skip, skipped):
     plafond et trace CADV10. Sortie de ``apply_bulk_action`` (C20)."""
     from apps.ventes.utils.whatsapp import build_wa_url
 
-    from .cadence_messages import _crochets_a_completer
+    from .cadence_messages import _crochets_a_completer, numero_joignable, refus_rendu_whatsapp
+    from .serializers import pii_masquee_pour
     template_id = params.get('template_id')
     body_tpl = params.get('body') or ''
     tpl = None
@@ -236,16 +255,12 @@ def _file_whatsapp_en_masse(company, user, leads, params, skip, skipped):
     nouvelles = 0
     reactivation = _reactivation_demandee(company, params, leads)
     for lead in leads:
-        # ACRM15 (C-ACRM-010) — LES gardes des relances (celles de
-        # ``message_pour_etape`` / ``_lead_relancable``) : une personne
-        # qui a demandé à ne plus être contactée, un lead perdu ou
+        # ACRM15 (C-ACRM-010), ACVI44 — LA garde des rendus de cadence : une
+        # personne qui a demandé à ne plus être contactée, un lead perdu ou
         # archivé ne reçoit AUCUN message — sortis avec leur motif.
-        if getattr(lead, 'ne_plus_contacter', False):
-            skip(lead, 'ne plus contacter')
-            continue
-        if getattr(lead, 'perdu', False) or getattr(
-                lead, 'is_archived', False):
-            skip(lead, 'perdu/archivé')
+        refus = refus_rendu_whatsapp(lead)
+        if refus:
+            skip(lead, refus)
             continue
         if reactivation and reactivation['ferme']:
             skip(lead, 'palier2_ferme')
@@ -253,7 +268,7 @@ def _file_whatsapp_en_masse(company, user, leads, params, skip, skipped):
         if reactivation and lead.id not in reactivation['membres']:
             skip(lead, 'hors seau')
             continue
-        phone = lead.whatsapp or lead.telephone
+        phone = numero_joignable(lead)  # ACVI50
         if not phone:
             continue
         nouvelle = not (reactivation and lead.id in reactivation['deja'])
@@ -277,11 +292,12 @@ def _file_whatsapp_en_masse(company, user, leads, params, skip, skipped):
                 skip(lead, 'à compléter : ' + ', '.join(trous))
                 continue
             wa_url = build_wa_url(phone, corps)
+        masque = pii_masquee_pour(user)  # ACVI4
         queue.append({
             'lead_id': lead.id,
             'nom': str(lead),
-            'phone': phone,
-            'wa_url': wa_url,
+            'phone': '' if masque else phone,
+            'wa_url': None if masque else wa_url,
         })
         if not nouvelle:
             continue
@@ -297,6 +313,13 @@ def _file_whatsapp_en_masse(company, user, leads, params, skip, skipped):
         'count': len(queue),
         'skipped': skipped,
     }
+
+
+def _responsable_inactif(company, owner_id):
+    """ACVI14 — ``owner_id`` est-il un compte désactivé de la société ?"""
+    from authentication.models import CustomUser
+    return CustomUser.objects.filter(
+        id=owner_id, company=company, is_active=False).exists()
 
 
 def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
@@ -328,6 +351,7 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
     # Pré-validation des paramètres dépendant de l'action.
     target_stage = None
     owner_obj = None
+    owner_inactif = False
     tag = _texte(params.get('tag')) if op in ('add_tag', 'remove_tag') else None
     relance = None
     target_canal = None
@@ -362,7 +386,9 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
     elif op == 'reassign':
         owner_obj = _resolve_owner(company, params.get('owner'))
         if params.get('owner') not in (None, '', 'null') and owner_obj is None:
-            raise ValueError("Responsable introuvable dans cette société.")
+            owner_inactif = _responsable_inactif(company, params.get('owner'))
+            if not owner_inactif:
+                raise ValueError("Responsable introuvable dans cette société.")
     elif op in ('add_tag', 'remove_tag') and not tag:
         raise ValueError("Étiquette vide.")
     elif op == 'set_perdu':
@@ -390,6 +416,9 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
     with transaction.atomic():
         for lead in leads:
             if op == 'reassign':
+                if owner_inactif:  # ACVI14
+                    skip(lead, "Responsable inactif.")
+                    continue
                 if lead.owner_id == (owner_obj.id if owner_obj else None):
                     unchanged += 1
                     continue
@@ -532,6 +561,9 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
                     # une purge de 40 leads laissait 40 cadences vivantes.
                     arreter_cadence(lead, user=user,
                                     motif=motif or 'lead perdu')
+                    # ACVI24 — le rendez-vous en attente s'annule avec le lead.
+                    annuler_rendez_vous_sur_arret(
+                        lead, user, cause=cause_rdv_perdu(motif))
                 if old_motif != motif:
                     activity.log_bulk_change(lead, user, 'motif_perte', old_motif, motif)
                 updated += 1
@@ -561,28 +593,20 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
                 if lead.is_archived:
                     unchanged += 1
                     continue
-                lead.is_archived = True
-                lead.archived_by = user
-                lead.archived_at = timezone.now()
-                lead.save(update_fields=['is_archived', 'archived_by', 'archived_at'])
-                activity.log_bulk_note(
+                archiver_lead(
                     lead, user,
-                    f"Lead archivé en masse par {getattr(user, 'username', '?')}")
+                    note=f"Lead archivé en masse par {getattr(user, 'username', '?')}")
                 updated += 1
 
             elif op == 'unarchive':
                 if not lead.is_archived:
                     unchanged += 1
                     continue
-                lead.is_archived = False
-                lead.archived_by = None
-                lead.archived_at = None
-                lead.save(update_fields=['is_archived', 'archived_by', 'archived_at'])
-                activity.log_bulk_note(
+                # QJ-INVARIANT, ACVI36 — la restauration partagée pose le filet.
+                from .fiche_ecritures import restaurer_lead
+                restaurer_lead(
                     lead, user,
-                    f"Lead restauré en masse par {getattr(user, 'username', '?')}")
-                # QJ-INVARIANT — même filet qu'au dé-perdu ci-dessus.
-                assurer_prochaine_etape_apres_succes(lead, user)
+                    note=f"Lead restauré en masse par {getattr(user, 'username', '?')}")
                 updated += 1
 
             elif op == 'plan_activity':

@@ -120,3 +120,14 @@ describe('W27 — À propos : pedigree fondateur approuvé + réconciliation Pou
     expect(pourquoi).toContain('href="/à-propos/"');
   });
 });
+
+describe('WAUD55 — WhatsApp en un geste dans l’en-tête mobile', () => {
+  it('icône 44 px, mobile seulement, sans texte, nommée pour les lecteurs d’écran', () => {
+    const lien = header.slice(header.indexOf('data-header-whatsapp') - 120, header.indexOf('data-header-whatsapp') + 200);
+    expect(lien).toContain('href={waEntete}');
+    expect(lien).toContain("aria-label={t('common.whatsapp')}");
+    expect(lien).toContain('h-11 w-11');
+    expect(lien).toContain('md:hidden');
+    expect(header).toContain('whatsappLink(WHATSAPP_LEADS, pageContextWhatsappText(');
+  });
+});

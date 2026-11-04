@@ -24,7 +24,7 @@ class VisiteTerrainSerializer(IdInconnu404Mixin, CompanyScopedRelationsMixin, se
         model = VisiteTerrain
         fields = [
             'id', 'lead', 'commercial', 'statut', 'date_prevue',
-            'date_realisee', 'notes',
+            'date_realisee', 'notes', 'retour_terrain',
         ]
         read_only_fields = [
             'id', 'statut', 'date_realisee',
@@ -45,6 +45,18 @@ class VisiteTerrainSerializer(IdInconnu404Mixin, CompanyScopedRelationsMixin, se
         if company is not None and value.company_id != company.id:
             raise serializers.ValidationError(
                 "Ce lead n'appartient pas à votre société.")
+        # ACVI2 (D-ACVI-1) — à la création, même porte que la fiche : la portée
+        # du rôle ; terrain (ni ``crm_voir`` ni ``visites_valider``) : ses leads.
+        user = getattr(request, 'user', None)
+        if self.instance is None and user is not None:
+            from apps.crm.portee_selectors import leads_en_portee
+            from core.permissions import _user_has_or_legacy
+            terrain = (getattr(user, 'role', None) is not None
+                       and not _user_has_or_legacy(user, 'crm_voir')
+                       and not _user_has_or_legacy(user, 'visites_valider'))
+            if (value.owner_id != user.id if terrain
+                    else not leads_en_portee(user).filter(pk=value.pk).exists()):
+                raise serializers.ValidationError('Lead introuvable.')
         # ALEA11 — le dossier d'une visite est FIGÉ après sa création : ses
         # photos sont des pièces jointes du lead d'origine et ses événements
         # ont déjà atteint ce lead ; la déplacer laisserait les deux derrière.
@@ -80,9 +92,15 @@ class VisiteTerrainSerializer(IdInconnu404Mixin, CompanyScopedRelationsMixin, se
             return value
         request = self.context.get('request')
         company = getattr(getattr(request, 'user', None), 'company', None)
-        if company is not None and value.company_id != company.id:
-            raise serializers.ValidationError(
-                "Ce commercial n'appartient pas à votre société.")
+        if company is not None:
+            from . import services
+
+            message = services.erreur_commercial(value, company.id)
+            # ACVI71 — à la création, un compte désactivé est rapporté par
+            # ``planifier_visite`` AVEC la garde de la date (les deux à la fois).
+            if message and (self.instance is not None
+                            or value.company_id != company.id):
+                raise serializers.ValidationError(message)
         return value
 
 

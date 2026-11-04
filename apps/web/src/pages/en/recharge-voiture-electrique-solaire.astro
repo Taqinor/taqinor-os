@@ -83,19 +83,6 @@ const jsonLd = {
     'Charging an electric car on your own solar surplus in Morocco: a daily top-up sized on your kilometres, choice of 7/11/22 kW charger (single- or three-phase), charging on surplus or via a home battery, all anchored on law 82-21 self-consumption.',
 };
 
-const breadcrumbJsonLd = {
-  '@context': 'https://schema.org',
-  '@type': 'BreadcrumbList',
-  itemListElement: [
-    { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://taqinor.ma/en' },
-    {
-      '@type': 'ListItem',
-      position: 2,
-      name: 'EV charging on solar',
-      item: 'https://taqinor.ma/en/recharge-voiture-electrique-solaire',
-    },
-  ],
-};
 import RechargeVoitureElectriqueSolaireDivCEBE from '../../components/blocs/RechargeVoitureElectriqueSolaireDivCEBE.astro';
 ---
 
@@ -106,7 +93,6 @@ import RechargeVoitureElectriqueSolaireDivCEBE from '../../components/blocs/Rech
 >
   <div class="v2">
     <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
-    <script type="application/ld+json" set:html={JSON.stringify(breadcrumbJsonLd)} />
 
     <V2Enhance />
     <Article33Ribbon />

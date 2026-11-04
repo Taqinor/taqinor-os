@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, cleanup } from '@testing-library/react'
+import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
@@ -13,19 +13,25 @@ import crmReducer from '../../../../features/crm/store/crmSlice'
    s'affiche dans un toast (jamais `window.alert`). Réducteur et vue RÉELS ;
    seul l'appel réseau `crmApi.deleteLead` est simulé. */
 
-const { deleteLead, toastError } = vi.hoisted(() => ({
+const { deleteLead, toastError, toastWithUndo } = vi.hoisted(() => ({
   deleteLead: vi.fn(),
   toastError: vi.fn(),
+  toastWithUndo: vi.fn(),
 }))
 vi.mock('../../../../api/crmApi', () => ({
   default: { deleteLead: (...a) => deleteLead(...a), restaurerCorbeille: vi.fn() },
 }))
 vi.mock('../../../../lib/toast', async (importOriginal) => {
   const actual = await importOriginal()
-  return { ...actual, toastError: (...a) => toastError(...a) }
+  return {
+    ...actual,
+    toastError: (...a) => toastError(...a),
+    toastWithUndo: (...a) => toastWithUndo(...a),
+  }
 })
 
 import ListView from './ListView'
+import { SIGNE_INTERCEPT } from '../signeIntercept'
 import { polyfillResizeObserver } from '../../../../test/selectNatif'
 
 beforeAll(polyfillResizeObserver)
@@ -35,7 +41,7 @@ const LEAD = {
   date_creation: '2026-09-01T10:00:00Z', score: 10, devis: [], tags: [],
 }
 
-function rendre() {
+function rendre({ lead = LEAD, onInlineSave } = {}) {
   const store = configureStore({
     reducer: {
       crm: crmReducer,
@@ -47,7 +53,7 @@ function rendre() {
       <ThemeProvider>
         <MemoryRouter>
           <ConfirmProvider>
-            <ListView leads={[LEAD]} onRefetch={vi.fn()} />
+            <ListView leads={[lead]} onRefetch={vi.fn()} onInlineSave={onInlineSave} />
           </ConfirmProvider>
         </MemoryRouter>
       </ThemeProvider>
@@ -103,5 +109,52 @@ describe('ALEA22 — ListView : confirmation maison', () => {
       .find((b) => b.textContent.trim() === 'Supprimer'))
     await waitFor(() => expect(toastError).toHaveBeenCalled())
     expect(alertNatif).not.toHaveBeenCalled()
+  })
+})
+
+/* ERR-W33-INLINE-STAGE — la cellule Stade passe par l'enveloppe d'undo : ses
+   marqueurs doivent atteindre l'enregistrement (sinon 409 après que
+   l'utilisatrice a choisi sa raison), et l'annulation doit porter `undo`. */
+describe('ListView : marqueurs de la cellule Stade à travers l’undo', () => {
+  const choisirEtape = async (user, etape) => {
+    await user.click(screen.getByRole('button', { name: /Nouveau|Contacté/ }))
+    const select = document.querySelector('select.ie-input')
+    fireEvent.change(select, { target: { value: etape } })
+    fireEvent.blur(select)
+  }
+
+  it('Froid : la raison choisie part avec le PATCH, sans « Annuler »', async () => {
+    const onInlineSave = vi.fn(() => Promise.resolve({}))
+    const user = userEvent.setup()
+    rendre({ onInlineSave })
+    await choisirEtape(user, 'COLD')
+    const bouton = await screen.findByRole('button', { name: 'Mettre au Froid' })
+    fireEvent.change(screen.getByLabelText('Raison de mise au Froid'), { target: { value: 'budget' } })
+    fireEvent.click(bouton)
+    await waitFor(() => expect(onInlineSave).toHaveBeenCalledWith(
+      LEAD, 'stage', 'COLD', expect.objectContaining({ parcRaison: 'budget' })))
+    expect(toastWithUndo).not.toHaveBeenCalled()
+  })
+
+  it('avancée : « Annuler » renvoie l’étape d’avant avec le marqueur undo', async () => {
+    const onInlineSave = vi.fn(() => Promise.resolve({}))
+    const user = userEvent.setup()
+    rendre({ onInlineSave })
+    await choisirEtape(user, 'CONTACTED')
+    await waitFor(() => expect(toastWithUndo).toHaveBeenCalled())
+    expect(onInlineSave).toHaveBeenCalledWith(
+      LEAD, 'stage', 'CONTACTED', { confirmeRecul: false, parcRaison: undefined })
+    await toastWithUndo.mock.calls[0][0].onUndo()
+    expect(onInlineSave).toHaveBeenLastCalledWith(LEAD, 'stage', 'NEW', { undo: true })
+  })
+
+  it('« Signé » : le dialogue s’ouvre sans faux toast d’erreur', async () => {
+    const onInlineSave = vi.fn(() => Promise.reject(SIGNE_INTERCEPT))
+    const user = userEvent.setup()
+    rendre({ onInlineSave })
+    await choisirEtape(user, 'SIGNED')
+    await waitFor(() => expect(onInlineSave).toHaveBeenCalled())
+    expect(toastError).not.toHaveBeenCalled()
+    expect(toastWithUndo).not.toHaveBeenCalled()
   })
 })

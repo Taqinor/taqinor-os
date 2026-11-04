@@ -154,17 +154,18 @@ const s = STR[locale] ?? STR.fr;
   // n'écoute plus que `litevideo:play` (émis par LiteVideo juste avant de
   // monter le <video> réel) pour couper la boucle teaser avant la lecture
   // complète (évite un second flux audio/vidéo qui jouerait en double).
+  //
+  // WAUD54 — boucle teaser : ordinateur + 4G seulement (lib/videoAmbiance) ;
+  // sur mobile et en 3G, affiche + clic-pour-lire de LiteVideo.
+  import { videoAmbianceDuNavigateur } from '../lib/videoAmbiance';
+
   const wrap = document.getElementById('chantier-player');
   const liteVideoRoot = document.getElementById('chantier-lite-video');
   const teaser = document.getElementById('chantier-teaser') as HTMLVideoElement | null;
 
-  const motionOk = matchMedia('(prefers-reduced-motion: no-preference)').matches;
-  // @ts-expect-error saveData non typé partout
-  const saveData = navigator.connection?.saveData === true;
-
   const TEASER_MAX_S = 6;
 
-  if (teaser && motionOk && !saveData && 'IntersectionObserver' in window) {
+  if (teaser && videoAmbianceDuNavigateur() && 'IntersectionObserver' in window) {
     let armed = false;
     const arm = () => {
       if (armed) return;

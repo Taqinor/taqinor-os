@@ -1742,7 +1742,7 @@ def raison_blocage_annulation_acceptation(devis):
         return (f'le dossier 82-21 {nom} est déjà '
                 f'« {dossier.get_statut_display()} ».')
     # Apps propriétaires — par leurs sélecteurs, jamais leurs modèles.
-    from apps.installations.selectors import (
+    from apps.installations.selectors_annulation import (
         blocage_annulation_acceptation as blocage_chantier,
     )
     from apps.sav.selectors import (

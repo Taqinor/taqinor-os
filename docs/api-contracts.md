@@ -153,9 +153,9 @@
 - frontend/src/api/crmApi.js :: villeStatut -> /api/django/crm/leads/ville-statut
     candidats:inconnu, gps_hors_zone:inconnu, position:inconnu, proches:inconnu, statut:inconnu, ville_canonique:inconnu
 - frontend/src/api/crmApi.js :: whatsappRelanceEtape -> /api/django/crm/relance-etapes/<>/whatsapp
-    crochets:inconnu, detail:texte, etape:inconnu, langue:inconnu, mailto_url:inconnu, message:inconnu, objet:inconnu, phone:inconnu, placeholders_manquants:inconnu, preuve_manquante:inconnu, repli_langue:inconnu, vocal:booleen, wa_url:inconnu
+    crochets:inconnu, etape:inconnu, langue:inconnu, mailto_url:inconnu, message:inconnu, objet:inconnu, phone:inconnu, placeholders_manquants:inconnu, preuve_manquante:inconnu, repli_langue:inconnu, vocal:booleen, wa_url:inconnu
 - frontend/src/api/crmApi.js :: whatsappRelanceEtapeLangue -> /api/django/crm/relance-etapes/<>/whatsapp
-    crochets:inconnu, detail:texte, etape:inconnu, langue:inconnu, mailto_url:inconnu, message:inconnu, objet:inconnu, phone:inconnu, placeholders_manquants:inconnu, preuve_manquante:inconnu, repli_langue:inconnu, vocal:booleen, wa_url:inconnu
+    crochets:inconnu, etape:inconnu, langue:inconnu, mailto_url:inconnu, message:inconnu, objet:inconnu, phone:inconnu, placeholders_manquants:inconnu, preuve_manquante:inconnu, repli_langue:inconnu, vocal:booleen, wa_url:inconnu
 - frontend/src/api/customFieldsApi.js :: reorder -> /api/django/custom-fields/definitions/reorder
     count:nombre, ok:booleen
 - frontend/src/api/demoApi.js :: resetDemo -> /api/django/companies/<>/reset-demo
@@ -617,7 +617,7 @@
 - frontend/src/api/visitesApi.js :: getMaJournee -> /api/django/visites/ma-journee
     date:texte, en_retard_count:nombre, visites:liste
 - frontend/src/api/visitesApi.js :: getVisite -> /api/django/visites/visites/<>
-    _non_releves:inconnu, arrivee_le:inconnu, checklist:inconnu, client_panel:objet, commercial:inconnu, completude:objet, date_prevue:inconnu, date_realisee:inconnu, declare:inconnu, devis:inconnu, en_route_le:inconnu, gabarit:inconnu, id:inconnu, lead:inconnu, mesures:inconnu, modifiable:inconnu, notes:texte, photo_toit:inconnu, qualification:inconnu, raison_lecture_seule:inconnu, releve_ci:inconnu, statut:inconnu, updated_at:inconnu
+    _non_releves:inconnu, arrivee_le:inconnu, checklist:inconnu, client_panel:objet, commercial:inconnu, completude:objet, date_prevue:inconnu, date_realisee:inconnu, declare:inconnu, devis:inconnu, en_route_le:inconnu, gabarit:inconnu, id:inconnu, lead:inconnu, mesures:inconnu, modifiable:inconnu, notes:texte, photo_toit:inconnu, qualification:inconnu, raison_lecture_seule:inconnu, releve_ci:inconnu, retour_terrain:texte, statut:inconnu, updated_at:inconnu
 - frontend/src/api/visitesApi.js :: rechercherLeads -> /api/django/visites/leads-recherche
     results:inconnu
 - frontend/src/api/visitesApi.js :: reviserDevisApresVisite -> /api/django/ventes/etude-ci/reviser-apres-visite

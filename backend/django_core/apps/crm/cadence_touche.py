@@ -136,6 +136,12 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     répondu au message ») et le compteur de tentatives."""
     if statut not in (RelanceEtape.Statut.FAIT, RelanceEtape.Statut.SAUTEE):
         raise ValueError("Statut de relance invalide (fait ou sautee attendu).")
+    # ACVI41 — le statut relu SOUS le verrou du lead : une 2e clôture de la même
+    # touche (instance périmée, double clic) n'écrit aucune seconde tentative.
+    if etape.pk and RelanceEtape.objects.select_for_update().filter(
+            pk=etape.pk).exclude(statut=RelanceEtape.Statut.A_FAIRE).exists():
+        etape.refresh_from_db()
+        return etape
 
     # MRY11 × MRY9 — combien de touches de CETTE cadence restaient ouvertes
     # AVANT toute écriture, celle-ci exclue. Se le demander APRÈS était le
@@ -544,7 +550,13 @@ def annuler_touche_relance(etape, user):
 
     lead = etape.lead
     if lead.pk:
-        lead.refresh_from_db(fields=['stage', 'perdu', 'ne_plus_contacter'])
+        lead.refresh_from_db(fields=['stage', 'perdu', 'ne_plus_contacter',
+                                     'is_archived'])
+    if lead.is_archived:
+        raise AnnulationToucheRefusee(
+            'lead',
+            'Ce lead est archivé : restaurez-le avant d\'annuler une touche '
+            'de son plan.')
     if lead.perdu:
         raise AnnulationToucheRefusee(
             'lead',

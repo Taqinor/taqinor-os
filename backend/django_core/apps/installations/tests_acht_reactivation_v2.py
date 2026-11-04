@@ -26,7 +26,8 @@ from apps.crm.models import Client, Lead
 from apps.installations.models import (
     Installation, InstallationActivity, StockReservation,
 )
-from apps.stock.models import Produit
+from apps.stock.models import BonCommandeFournisseur, Fournisseur, Produit
+from apps.stock.services import creer_bcf_depuis_lignes
 from apps.ventes.domain.revision import reviser_devis
 from apps.ventes.models import Devis, LigneDevis
 from core.events import devis_accepted
@@ -142,6 +143,74 @@ class ReactivationV2Tests(TestCase):
         r = self.api.post(self._url('reserver-stock'), {}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
         self._attendu_v2()
+
+    def _devis_accepte_avec_bcf(self, reference):
+        lead = Lead.objects.create(
+            company=self.company, nom='Bcf', prenom='Client',
+            stage=stages.FOLLOW_UP, type_installation='residentiel')
+        devis = Devis.objects.create(
+            company=self.company, reference=reference,
+            client=self.v1.client, lead=lead, statut=Devis.Statut.ENVOYE,
+            date_envoi=timezone.now(), taux_tva=Decimal('20'),
+            mode_installation='residentiel')
+        LigneDevis.objects.create(
+            devis=devis, produit=self.panneau, designation='Panneau',
+            quantite=Decimal('10'), prix_unitaire=Decimal('100'))
+        r = self.api.post(f'/api/django/ventes/devis/{devis.id}/accepter/',
+                          {'nom': 'M. Client'}, format='json')
+        self.assertEqual(r.status_code, 200, getattr(r, 'data', r))
+        inst = Installation.objects.get(devis=devis)
+        fournisseur = Fournisseur.objects.create(
+            company=self.company, nom=f'Fournisseur {reference}')
+        bon = creer_bcf_depuis_lignes(
+            company=self.company, user=self.user, fournisseur=fournisseur,
+            lignes=[(self.panneau.id, 'Panneau', Decimal('10'),
+                     Decimal('70'))],
+            chantier_origine=inst)
+        return lead, devis, inst, bon
+
+    def _sortir_de_signe(self, lead):
+        return self.api.patch(f'/api/django/crm/leads/{lead.id}/', {
+            'stage': stages.FOLLOW_UP, 'confirme_recul': True}, format='json')
+
+    def test_bcf_envoye_bloque_la_sortie_de_signe(self):
+        """ADVS40 (C-ADVS-027, D-ADVS-5 = refuser_409) — un BCF ENVOYÉ du
+        chantier né de la vente bloque la sortie de « Signé » : 409 nommant le
+        BCF, rien d'écrit ; une fois annulé, la sortie passe.
+        ROUGE AVANT : 200, chantier annulé, BCF envoyé orphelin."""
+        lead, devis, inst, bon = self._devis_accepte_avec_bcf('DEV-ADVS40-1')
+        Statut = BonCommandeFournisseur.Statut
+        BonCommandeFournisseur.objects.filter(pk=bon.pk).update(
+            statut=Statut.ENVOYE)
+
+        r = self._sortir_de_signe(lead)
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn(f'le bon de commande fournisseur {bon.reference} '
+                      "est envoyé : annulez-le d'abord.", r.data['detail'])
+        lead.refresh_from_db()
+        devis.refresh_from_db()
+        inst.refresh_from_db()
+        bon.refresh_from_db()
+        self.assertEqual(lead.stage, stages.SIGNED)
+        self.assertEqual(devis.statut, Devis.Statut.ACCEPTE)
+        self.assertFalse(inst.annule)
+        self.assertEqual(bon.statut, Statut.ENVOYE)
+
+        BonCommandeFournisseur.objects.filter(pk=bon.pk).update(
+            statut=Statut.ANNULE)
+        r = self._sortir_de_signe(lead)
+        self.assertEqual(r.status_code, 200, r.data)
+        inst.refresh_from_db()
+        self.assertTrue(inst.annule)
+
+    def test_bcf_brouillon_ne_bloque_pas_la_sortie_de_signe(self):
+        """ADVS40 — un BCF encore en brouillon ne bloque rien."""
+        lead, _devis, inst, bon = self._devis_accepte_avec_bcf('DEV-ADVS40-2')
+        self.assertEqual(bon.statut, BonCommandeFournisseur.Statut.BROUILLON)
+        r = self._sortir_de_signe(lead)
+        self.assertEqual(r.status_code, 200, r.data)
+        inst.refresh_from_db()
+        self.assertTrue(inst.annule)
 
     def test_reacceptation_apres_sortie_signe_realigne(self):
         """ACHT114 (C-ACHT-VER-005) — rejoue la sonde par HTTP : devis envoyé

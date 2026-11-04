@@ -85,6 +85,15 @@ _RESERVES_INTERNES = re.compile(
     r"|^\s*(?:défaut|default)\b", re.IGNORECASE)
 
 
+def pastille_validite(d, date):
+    """ERR-CADV83-COUVERTURES — la réserve « prix révisable au-delà » ; un devis
+    sous le niveau 11 garde la pastille qu'il a reçue."""
+    if d.get("regles_validite_historique"):
+        return libelle(d, "ci_valable_jusqu", "Valable jusqu&#8217;au {date}", date=date)
+    return libelle(d, "op_validite_jusqu",
+                   "Validit&#233;&#160;: jusqu&#8217;au {date} &#183; prix r&#233;visable au-del&#224;", date=date)
+
+
 def sans_reserve(texte):
     """Décision fondateur 26/10/2026 — ``texte`` tel quel, ou '' quand il
     n'est qu'une réserve interne (``_RESERVES_INTERNES``)."""

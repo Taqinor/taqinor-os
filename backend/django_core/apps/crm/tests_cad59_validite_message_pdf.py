@@ -22,6 +22,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from authentication.models import Company
+from core.dates import aujourd_hui_local
 
 from apps.crm import horaires
 from apps.crm.models import Client, Lead, RelanceEtape
@@ -109,11 +110,27 @@ class LeMessageJ9Tests(_Base):
         self.assertNotIn('date_validite', rendu['placeholders_manquants'])
 
     def test_avec_une_date_saisie_c_est_ELLE_qui_part(self):
-        saisie = datetime.date(2026, 10, 15)
+        saisie = aujourd_hui_local() + datetime.timedelta(days=30)
         devis = self._devis(date_validite=saisie,
                             reference='DEV-CAD59-SAISIE')
         rendu = self._message_j9(devis)
         self.assertIn(saisie.strftime('%d/%m/%Y'), rendu['message'])
+
+    def test_une_validite_passee_omet_la_phrase(self):
+        # ACVI49 — ni « valable jusqu'au » ni la date ; le blanc est nommé.
+        passee = aujourd_hui_local() - datetime.timedelta(days=3)
+        rendu = self._message_j9(self._devis(
+            date_validite=passee, reference='DEV-CAD59-PASSEE'))
+        self.assertNotIn(passee.strftime('%d/%m/%Y'), rendu['message'])
+        self.assertNotIn("valable jusqu'au", rendu['message'].lower())
+        self.assertIn('date_validite', rendu['placeholders_manquants'])
+
+        expire = self._devis(
+            date_validite=aujourd_hui_local() + datetime.timedelta(days=30),
+            reference='DEV-CAD59-EXPIRE')
+        type(expire).objects.filter(pk=expire.pk).update(statut='expire')
+        expire.refresh_from_db()
+        self.assertIn('date_validite', self._message_j9(expire)['placeholders_manquants'])
 
     def test_le_message_et_le_PDF_citent_la_MEME_date(self):
         devis = self._devis(date_validite=None, reference='DEV-CAD59-PAIR')

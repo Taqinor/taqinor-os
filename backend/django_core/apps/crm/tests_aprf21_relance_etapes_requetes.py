@@ -18,6 +18,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
+from core.test_utils import AssertQueryBudgetMixin
 from authentication.models import Company
 from apps.crm import stages
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
@@ -27,7 +28,7 @@ User = get_user_model()
 URL = '/api/django/crm/relance-etapes/'
 
 
-class RelanceEtapesRequetesTests(TestCase):
+class RelanceEtapesRequetesTests(AssertQueryBudgetMixin, TestCase):
 
     def setUp(self):
         from apps.roles.models import Role
@@ -72,6 +73,42 @@ class RelanceEtapesRequetesTests(TestCase):
             resp = self.api.get(URL, params)
         self.assertEqual(resp.status_code, 200, resp.data)
         return len(ctx.captured_queries), resp.data['results']
+
+    def _mesure_acvi95(self, api, url):
+        """ACVI95 — une lecture sous plafond, sans la colonne `etude_params`."""
+        with self.assertMaxQueries(40) as ctx:
+            resp = api.get(url)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertFalse([q['sql'] for q in ctx.captured_queries
+                          if '"etude_params"' in q['sql']])
+        return len(ctx.captured_queries)
+
+    def test_budget_deux_tailles_sans_etude_params(self):
+        """ACVI95 — N puis 3N touches, devis à `etude_params` rempli sur chaque
+        lead : même compte, et la colonne n'est pas lue."""
+        from apps.crm.models import Client
+        from apps.ventes.models import Devis
+
+        client = Client.objects.create(company=self.company, nom='Client')
+
+        def peupler(nombre):
+            avant = self.n
+            self._touches_whatsapp(nombre)
+            for lead in Lead.objects.filter(company=self.company,
+                                            devis__isnull=True):
+                Devis.objects.create(
+                    company=self.company, client=client, lead=lead,
+                    reference=f'DEV-ACVI95-{lead.pk}-{avant}',
+                    taux_tva=20, etude_params={'kwh': 1})
+
+        url = f'{URL}?scope=all'
+        # N = 11 : ``ordre`` atteint la dernière touche du gabarit, dont les
+        # lectures en lot sont payées UNE fois (voir ``test_file_plate``).
+        peupler(11)
+        self._mesure_acvi95(self.api, url)  # échauffement
+        n = self._mesure_acvi95(self.api, url)
+        peupler(22)
+        self.assertEqual(self._mesure_acvi95(self.api, url), n)
 
     def test_file_plate(self):
         # 11 touches : ``ordre`` = 1…11, la dernière du gabarit de prise de contact
@@ -290,6 +327,29 @@ class SuiviEtudeParamsNonChargeeTests(TestCase):
         # La référence du devis, elle, reste servie — sans requête de plus.
         self.assertTrue(all(ligne['devis_reference'].startswith('DEV-AOOM3-')
                             for ligne in lignes))
+
+    def test_file_et_frise_ne_chargent_pas_etude_params(self):
+        # ACVI77 — même règle sur la file, la frise (`?lead=`) et le digest.
+        from apps.crm.management.commands.notifier_relances_dues import (
+            notifier_relances_dues)
+        self._touches_avec_devis(3)
+        lead = RelanceEtape.objects.filter(company=self.company).first().lead
+        base = '/api/django/crm/relance-etapes/'
+        for params in ({'scope': 'all'}, {'lead': lead.pk}):
+            with CaptureQueriesContext(connection) as ctx:
+                resp = self.api.get(base, params)
+            self.assertEqual(resp.status_code, 200, resp.data)
+            lignes = resp.data.get('results', resp.data)
+            self.assertTrue(all(ligne['devis_reference'].startswith('DEV-AOOM3-')
+                                for ligne in lignes))
+            self.assertEqual(
+                [q['sql'] for q in ctx.captured_queries
+                 if 'etude_params' in q['sql']], [], params)
+        with CaptureQueriesContext(connection) as ctx:
+            notifier_relances_dues()
+        self.assertEqual(
+            [q['sql'] for q in ctx.captured_queries
+             if 'etude_params' in q['sql']], [])
 
     def test_requetes_plates(self):
         self._touches_avec_devis(5)

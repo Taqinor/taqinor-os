@@ -409,6 +409,57 @@ def empreintes_contact(email=None, telephone=None, whatsapp=None):
         for nature, valeur in valeurs if valeur}
 
 
+def poser_empreintes_opposition(company, le):
+    """ACRM62, ACVI43 — un lead « ne plus contacter » laisse l'empreinte hachée
+    de son e-mail et de son téléphone (WhatsApp compris) à la liste d'opposition
+    de la société ; un lead NON opposé ne laisse rien."""
+    if not getattr(le, 'ne_plus_contacter', False):
+        return
+    from .models import EmpreinteOpposition
+
+    # La contrainte (company, nature, empreinte) absorbe un second passage :
+    # jamais de doublon, jamais d'erreur.
+    EmpreinteOpposition.objects.bulk_create(
+        [EmpreinteOpposition(company=company, nature=nature,
+                             empreinte=empreinte)
+         for nature, empreinte in empreintes_contact(
+             le.email, le.telephone, le.whatsapp)],
+        ignore_conflicts=True)
+
+
+def retirer_empreintes_opposition(company, le):
+    """ACVI43 — l'opposition levée sur la fiche libère la personne.
+
+    ERR-ACVI6-OPPOSITION (D-ACVI-6 : l'opposition suit la personne) — un
+    contact que portent encore d'autres leads opposés de la société garde son
+    empreinte : lever la fiche A ne libère pas le numéro de B."""
+    from django.db.models import Q
+
+    from .models import EmpreinteOpposition, Lead
+
+    garder = Q(pk__in=[])
+    autres = Lead.objects.filter(
+        company=company, ne_plus_contacter=True).exclude(pk=le.pk)
+    email = normalize_email(le.email)
+    if email and autres.filter(email_normalise=email).exists():
+        garder |= Q(nature='email',
+                    empreinte__in=[e for n, e in empreintes_contact(
+                        email=le.email) if n == 'email'])
+    for valeur in (le.telephone, le.whatsapp):
+        num = (normalize_phone(valeur) or '')[:20]
+        if num and autres.filter(
+                Q(phone_normalise=num) | Q(whatsapp_normalise=num)).exists():
+            garder |= Q(nature='telephone',
+                        empreinte__in=[e for n, e in empreintes_contact(
+                            telephone=valeur) if n == 'telephone'])
+    cible = Q(pk__in=[])
+    for nature, empreinte in empreintes_contact(
+            le.email, le.telephone, le.whatsapp):
+        cible |= Q(nature=nature, empreinte=empreinte)
+    EmpreinteOpposition.objects.filter(
+        cible, company=company).exclude(garder).delete()
+
+
 def porte_une_opposition(company_id, email=None, telephone=None,
                          whatsapp=None):
     """ACRM62 — ce contact porte-t-il une empreinte d'opposition de la

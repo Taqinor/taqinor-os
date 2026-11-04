@@ -12,7 +12,7 @@ import { spawn } from 'node:child_process'
 import { groupe } from './_oracles.js'
 import { API_DJANGO, lireJson, telephoneMobileUnique, textePdf, uniq } from '../helpers.js'
 
-const etape = groupe('APAR', ['APAR45'])
+const etape = groupe('APAR', ['APAR45', 'APAR38', 'APAR3', 'APAR4', 'APAR6', 'APAR7', 'APAR9', 'APAR11', 'APAR12', 'APAR13', 'APAR14', 'APAR15', 'APAR16', 'APAR17', 'APAR19', 'APAR20', 'APAR25', 'APAR31', 'APAR32', 'APAR41', 'APAR43'])
 test.describe.configure({ timeout: 900_000 })
 
 const PW = 'Acc45-essai-local-2026!'
@@ -133,7 +133,7 @@ async function retablirProfil(r, base) {
 const nbAudit = async (r, query = '') => (await j(await r.get(`${API_DJANGO}/parametres/audit/?limit=1${query}`, T), 'journal')).count
 
 // ── P1.1 — verrou optimiste (deux onglets), ICE normalisé, erreur sous le champ ────────────────
-etape('P1.1', ['APAR45'], async ({ page, testInfo, suivi }) => {
+etape('P1.1', ['APAR16', 'APAR31', 'APAR45'], async ({ page, testInfo, suivi }) => {
   await monterComptes()
   suivi.attendre(/\/parametres\/update\/$/, 400)
   suivi.attendre(/\/parametres\/update\/$/, 409)
@@ -193,7 +193,7 @@ etape('P1.1', ['APAR45'], async ({ page, testInfo, suivi }) => {
 })
 
 // ── P1.2 — Admin RH : écriture refusée (403) ; écran en lecture seule ──────────────────────────
-etape('P1.2', ['APAR45'], async ({ page, context, testInfo, suivi }) => {
+etape('P1.2', ['APAR38', 'APAR45'], async ({ page, context, testInfo, suivi }) => {
   await monterComptes()
   const a = page.request
   const rh = await api(testInfo, 'acc45_rh')
@@ -240,7 +240,7 @@ etape('P1.2', ['APAR45'], async ({ page, context, testInfo, suivi }) => {
 })
 
 // ── P1.3 — tolérance 15 : même facture sur l'étude et sur le devis ─────────────────────────────
-etape('P1.3', ['APAR45'], async ({ page }) => {
+etape('P1.3', ['APAR4', 'APAR45'], async ({ page }) => {
   // Geste réel : l'admin règle la tolérance à 15 dans Tarification & ROI (route de l'écran), puis la
   // facture mensuelle de l'écran (`/tarification/roi/` → `tariff.monthly_bill`, chemin étude) est
   // comparée, pour 205/215/305/501/511 kWh, à celle du chemin DEVIS calculée dans le processus
@@ -284,7 +284,7 @@ sortie(dict(source='societe' if t else 'national', facture=str(Decimal(str(_mont
 })
 
 // ── P1.5 — rétention 1 j puis purge : aucune ligne de moins de 365 j supprimée ──────────────────
-etape('P1.5', ['APAR45'], async ({ testInfo }) => {
+etape('P1.5', ['APAR3', 'APAR45'], async ({ testInfo }) => {
   await monterComptes()
   const b = await api(testInfo, 'acc45_b')
   const avant = await py(`${PRELUDE}
@@ -335,7 +335,7 @@ sortie('ok')`)
 })
 
 // ── P2.1 — « Rappel de RDV » sans changement ; « } » seul dans un e-mail ───────────────────────
-etape('P2.1', ['APAR45'], async ({ page, suivi }) => {
+etape('P2.1', ['APAR12', 'APAR13', 'APAR45'], async ({ page, suivi }) => {
   const a = page.request
   const msg = (await j(await a.get(`${API_DJANGO}/parametres/messages/`, T), 'messages')).find((m) => m.cle === 'rappel_rdv')
   expect(msg, 'message « Rappel de RDV »').toBeTruthy()
@@ -359,7 +359,7 @@ etape('P2.1', ['APAR45'], async ({ page, suivi }) => {
 })
 
 // ── P2.3 — changer le RIB : le PDF du devis accepté se télécharge toujours ─────────────────────
-etape('P2.3', ['APAR45'], async ({ page, suivi }) => {
+etape('P2.3', ['APAR11', 'APAR45'], async ({ page, suivi }) => {
   const a = page.request
   const base = await profil(a)
   try {
@@ -393,7 +393,7 @@ etape('P2.3', ['APAR45'], async ({ page, suivi }) => {
 })
 
 // ── P3.1 — annonce « Toute la société » : rapport de conformité à 100 % des internes ─────────────
-etape('P3.1', ['APAR45'], async ({ page, testInfo }) => {
+etape('P3.1', ['APAR20', 'APAR45'], async ({ page, testInfo }) => {
   await monterComptes()
   const a = page.request
   const annonce = await j(await a.post(`${API_DJANGO}/notifications/annonces/`, {
@@ -433,7 +433,7 @@ sortie(dict(internes=[u.username for u in tous], portail=portail, erreurs=restan
 })
 
 // ── P3.2 — corriger une fête mobile future : une seule ligne ────────────────────────────────────
-etape('P3.2', ['APAR45'], async ({ page }) => {
+etape('P3.2', ['APAR14', 'APAR15', 'APAR45'], async ({ page }) => {
   const a = page.request
   const ANNEE = 2028
   const dates = { aid_el_fitr: '2028-01-27', aid_el_adha: '2028-04-04', '1er_moharram': '2028-06-24', aid_el_mawlid: '2028-09-02' }
@@ -530,7 +530,7 @@ AutomationScheduledStep.objects.filter(rule_id=${regle.id}).delete(); Lead.objec
 })
 
 // ── P3.3 — préférences : canal WhatsApp grisé « non disponible » ───────────────────────────────
-etape('P3.3', ['APAR45'], async ({ page }) => {
+etape('P3.3', ['APAR19', 'APAR45'], async ({ page }) => {
   await page.goto('/parametres/notifications')
   await expect(page.getByText('non disponible').first()).toBeVisible({ timeout: 60_000 })
   const indispo = page.getByRole('switch', { name: /non disponible/ })
@@ -544,7 +544,7 @@ etape('P3.3', ['APAR45'], async ({ page }) => {
 })
 
 // ── P3.4 — approuver deux fois la même demande : « Décision déjà prise » ────────────────────────
-etape('P3.4', ['APAR45'], async ({ page, testInfo, suivi }) => {
+etape('P3.4', ['APAR17', 'APAR45'], async ({ page, testInfo, suivi }) => {
   await monterComptes()
   const a = page.request
   const com = await api(testInfo, 'acc45_com')
@@ -562,7 +562,7 @@ etape('P3.4', ['APAR45'], async ({ page, testInfo, suivi }) => {
 })
 
 // ── P4.1 — recette J+3 installée et exécutée sur un devis envoyé ───────────────────────────────
-etape('P4.1', ['APAR45'], async ({ page }) => {
+etape('P4.1', ['APAR6', 'APAR45'], async ({ page }) => {
   // Recette J+3 installée par la VRAIE route d'installation (écran Automatisations → Modèles) ;
   // un devis ENVOYÉ créé pour le run (client à e-mail d'essai) dont la validité est échue depuis
   // 3 jours ; le déclencheur temporel `_trigger_date_echeance_champ` est rejoué dans le processus
@@ -618,7 +618,7 @@ sortie(dict(devis=d.pk, ref=d.reference, emails=nos, runs=runs))`)
 })
 
 // ── P4.2 — webhook avec deux règles : un seul run ─────────────────────────────────────────────
-etape('P4.2', ['APAR45'], async ({ page, testInfo }) => {
+etape('P4.2', ['APAR9', 'APAR45'], async ({ page, testInfo }) => {
   const a = page.request
   const creerRegle = async (nom) => j(await a.post(`${API_DJANGO}/automation/rules/`, {
     ...T, data: { nom: uniq(nom), trigger_type: 'webhook_inbound', trigger_config: {}, action_type: 'wait', action_config: {}, enabled: true },
@@ -641,7 +641,7 @@ etape('P4.2', ['APAR45'], async ({ page, testInfo }) => {
   }
 })
 
-etape('P4.2b', ['APAR45'], async ({ page }) => {
+etape('P4.2b', ['APAR7', 'APAR45'], async ({ page }) => {
   // Facture créée POUR LE RUN (client d'essai, émise, échue depuis 5 jours) AVANT la règle — aucun
   // run de création ; règle FACTURE_OVERDUE (`wait`) créée par la VRAIE route ; la facture est
   // annulée par la VRAIE route d'annulation (`POST /ventes/factures/<id>/annuler/`, signal
@@ -688,7 +688,7 @@ sortie(Facture.objects.filter(company_id=1, pk=${f.id}, date_echeance__lt=timezo
 })
 
 // ── P4.3 — simuler une action SMS / WhatsApp : « non disponible » ─────────────────────────────
-etape('P4.3', ['APAR45'], async ({ page }) => {
+etape('P4.3', ['APAR25', 'APAR45'], async ({ page }) => {
   const a = page.request
   const lead = await j(await a.post(`${API_DJANGO}/crm/leads/`, { ...T, data: { nom: uniq('ACC45 lead sim'), ville: 'Casablanca', telephone: telephoneMobileUnique(), type_installation: 'residentiel', facture_hiver: '800' } }), 'lead', 201)
   const effets = {}
@@ -716,7 +716,7 @@ etape('P4.3', ['APAR45'], async ({ page }) => {
 })
 
 // ── P5.1 — écran Automatisations sans déclencheur « projet » ───────────────────────────────────
-etape('P5.1', ['APAR45'], async ({ page }) => {
+etape('P5.1', ['APAR43', 'APAR45'], async ({ page }) => {
   const a = page.request
   const modeles = await j(await a.get(`${API_DJANGO}/automation/modeles-catalogue/`, T), 'modèles')
   const declencheurs = (modeles.modeles || []).map((m) => m.trigger_type)
@@ -735,7 +735,7 @@ etape('P5.1', ['APAR45'], async ({ page }) => {
 })
 
 // ── P6 — refuser une demande via le dialogue de motif ─────────────────────────────────────────
-etape('P6', ['APAR45'], async ({ page, testInfo, suivi }) => {
+etape('P6', ['APAR41', 'APAR45'], async ({ page, testInfo, suivi }) => {
   await monterComptes()
   const a = page.request
   const com = await api(testInfo, 'acc45_com')
@@ -764,7 +764,7 @@ etape('P6', ['APAR45'], async ({ page, testInfo, suivi }) => {
 })
 
 // ── P7 — journal d'audit : « Charger plus » jusqu'à la ligne 51 ────────────────────────────────
-etape('P7', ['APAR45'], async ({ page }) => {
+etape('P7', ['APAR32', 'APAR45'], async ({ page }) => {
   const a = page.request
   const total = await nbAudit(a)
   expect(total, 'journal de la société 1 d\'au moins 51 lignes').toBeGreaterThan(50)

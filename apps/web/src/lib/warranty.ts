@@ -126,3 +126,39 @@ export const TABLEAU_GARANTIES_AR = [
   { item: 'الهيكل من الفولاذ المجلفن', years: '20 سنة' },
   { item: 'التركيب واليد العاملة لتاكينور', years: 'سنتان' },
 ];
+
+/** ERR-W33-GARANTIES-NOTE — une durée ne s'affiche jamais sans son seuil (« 30 ans » sans « ≥ 87,4 % à 30 ans »). */
+export function lignesGaranties(tableau: readonly { item: string; years: string; note?: string }[]): string[][] {
+  return tableau.map((g) => [g.item, g.note ? `${g.years} (${g.note})` : g.years]);
+}
+
+/**
+ * WAUD31 — texte `garantie` d'une fiche (lib/fiches.ts, français) rendu dans la langue de la page.
+ * Mêmes durées, jamais recalculées : seul le libellé change.
+ */
+const GARANTIE_MOTS: Record<'en' | 'ar', [RegExp, string][]> = {
+  en: [
+    [/garantie de pose Taqinor (\d+) ans/gi, 'Taqinor installation warranty $1 years'],
+    [/Garantie produit (\d+) ans/g, 'Product warranty $1 years'],
+    [/performance linéaire (\d+) ans/g, 'linear performance $1 years'],
+    [/Garantie constructeur (\d+) ans/g, 'Manufacturer warranty $1 years'],
+    [/Garantie (\d+) ans/g, 'Warranty $1 years'],
+    [/\(structure\)/g, '(structure)'],
+  ],
+  ar: [
+    [/garantie de pose Taqinor (\d+) ans/gi, 'ضمان التركيب من Taqinor: $1 سنوات'],
+    [/Garantie produit (\d+) ans/g, 'ضمان المنتج: $1 سنة'],
+    [/performance linéaire (\d+) ans/g, 'الأداء الخطي: $1 سنة'],
+    [/Garantie constructeur (\d+) ans/g, 'ضمان الصانع: $1 سنوات'],
+    [/Garantie (\d+) ans/g, 'الضمان: $1 سنوات'],
+    [/\(structure\)/g, '(الهيكل)'],
+  ],
+};
+
+export function garantieLocale(texte: string, locale: 'fr' | 'en' | 'ar'): string {
+  if (locale === 'fr') return texte;
+  const rendu = GARANTIE_MOTS[locale].reduce((t, [motif, cible]) => t.replace(motif, cible), texte);
+  if (locale === 'en') return rendu;
+  // Accord du nombre en arabe : 2 = سنتان, 3 à 10 = سنوات, 11 et plus = سنة.
+  return rendu.replace(/(\d+) سنوات/g, (m, n) => (Number(n) >= 11 ? `${n} سنة` : Number(n) === 2 ? 'سنتان' : m));
+}

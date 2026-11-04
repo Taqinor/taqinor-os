@@ -1,0 +1,80 @@
+{
+  "sha": "6f3b3cb493eff6380de8bf4799efe779a7803a79",
+  "date": "2026-11-03",
+  "groupe": "AMOT",
+  "verdict": "PASS",
+  "couvre": [
+    "AMOT54",
+    "AMOT64",
+    "AMOT117"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P2.3.economie",
+      "taches": [
+        "AMOT54"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-03/ACCEPTATION-AMOT-P2.3.economie.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P.email_format",
+      "taches": [
+        "AMOT117"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-03/ACCEPTATION-AMOT-P.email_format.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "PASS",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P1.3.productible",
+      "taches": [
+        "AMOT64"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-03/ACCEPTATION-AMOT-P1.3.productible.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}

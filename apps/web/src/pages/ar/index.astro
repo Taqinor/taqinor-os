@@ -191,8 +191,8 @@ import IndexBloc1A99 from '../../components/blocs/IndexBloc1A99.astro';
 ---
 
 <Layout
-  title="Taqinor — تركيب الألواح الشمسية في المغرب، مطابقة للقانون 82-21"
-  description="تركيبات شمسية للفيلات والصناعة والفنادق بالمغرب: محسوبة على فاتورتكم، ومصرَّح بها وفق القانون 82-21، مع متابعة الإنتاج في الوقت الحقيقي وولوج للزبون."
+  title="تركيب الألواح الشمسية في المغرب، دراسة مجانية | Taqinor"
+  description="تركيب الألواح الشمسية في المغرب للفيلات والصناعة والفنادق: دراسة مجانية على فاتورتكم، تصريح وفق القانون 82-21، ومتابعة الإنتاج."
   ogSlug="accueil"
   preloadHeroPoster
 >
@@ -227,15 +227,15 @@ import IndexBloc1A99 from '../../components/blocs/IndexBloc1A99.astro';
       {/* القاعدة ج7 (2026-07-05) — `relative z-10`: يبقى المحتوى (بما فيه
           الرقم) فوق الفيديو/الملصق (الطبقة `-z-10`) حتى بعد ظهور الفيديو →
           لم يعد الرقم «يختفي» عند بدء الفيديو. */}
-      <div class="relative z-10 mx-auto w-full max-w-6xl px-4 pb-24 pt-32 sm:pb-32">
-        <p class="tech-label v2-kicker rule-brass cine-in text-lune">الدراسة أولًا، ثم الورش</p>
+      <div class="relative z-10 mx-auto w-full max-w-6xl px-4 pb-24 pt-20 sm:pb-32 sm:pt-32">
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">تركيب الألواح الشمسية في المغرب</p>
         {/* القاعدة ب1/ج7 (2026-07-04/05) — عنوان البطل ثابت: لا مزيد من
             count-up ولا `.cine-in` على عنصر LCP → يُرسَم فورًا، بلا وميض
             «يظهر ثم يختفي». ظل نصي دفاعي: يبقى الرقم الأبيض مقروءًا حتى فوق
             إطار فيديو مضيء جداً (شمس ساطعة). الرقم يبقى dir="ltr" ليصحّ عرضه
             ضمن نص عربي. */}
         <ArIndexH1ED0F heroFigure={heroFigure} heroSub={heroSub} heroTitleSuffix={heroTitleSuffix} />
-        <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">
+        <div class="cine-in cine-in-3 mt-6 flex flex-wrap sm:mt-10 items-center gap-3">
           {/* CTA نحاسي وحيد (انضباط النحاس) — الذهب مأذون هنا */}
           <a id="hero-cta-magnetic" href={L('/devis/mon-toit')} class="glow-hero magnetic-cta bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
             احصل على دراستي المجانية <span class="inline-block rtl:-scale-x-100">→</span>
@@ -528,7 +528,6 @@ import IndexBloc1A99 from '../../components/blocs/IndexBloc1A99.astro';
     {/* W250 — أداة التقدير الفوري، قبل التذييل: نسخة مُكثَّفة من الأداة نفسها
         (variant="compact")، مباشرة قبل التشخيص الكامل — فرصة أخيرة لمن مرّر
         الصفحة كاملة دون أن يُقدِّر فاتورته بعد. ── */}
-    <InstantEstimator variant="compact" />
 
     {/* ── الفصل الأخير — W249: قناة واحدة. النموذج الثاني السابق
         (DiagnosticForm، الذي كان يكرر عنصري InstantEstimator الموجودين أصلاً

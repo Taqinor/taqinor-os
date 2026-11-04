@@ -58,15 +58,41 @@ class TransitionsVisiteTests(VisiteTerrainBase):
         self.assertEqual(self._etat(visite_id), avant)
         self._assert_feu_vert_absent(visite_id, effectuee_avant=False)
 
+    def test_mesures_et_photos_terminee_refusees(self):
+        # ACVI58 — mesures et photos gelées comme notes et qualification ; hors-ligne aussi.
+        visite_id = self._terminee_complete()
+        visite = VisiteTerrain.objects.get(pk=visite_id)
+        mesures_avant = visite.mesures
+        media = visite.medias.first()
+        nb_medias = visite.medias.count()
+        base = f'/api/django/visites/visites/{visite_id}'
+
+        for resp in (
+                self.api.patch(f'{base}/mesures/', {
+                    'categorie': 'toiture', 'valeurs': {'longueur_m': 12.5}},
+                    format='json'),
+                self.poster_photo(visite_id, 'general_facade'),
+                self.api.delete(f'{base}/photos/{media.pk}/')):
+            self.assertEqual(resp.status_code, 400, resp.data)
+            self.assertIn('statut', resp.data)
+        resultat, motif = services.appliquer_mesures_hors_ligne(
+            self.company, self.commercial, visite_id, 'toiture', {'longueur_m': 12.5})
+        self.assertIsNone(resultat)
+        self.assertEqual(motif, services._MESSAGE_TERMINEE)
+
+        visite.refresh_from_db()
+        self.assertEqual(visite.mesures, mesures_avant)
+        self.assertEqual(visite.medias.count(), nb_medias)
+
     def test_valider_incomplete_refuse(self):
         visite_id = self._terminee_complete()
         detail = self.api.get(f'/api/django/visites/visites/{visite_id}/')
         slot = next(s for cat in detail.data['checklist']
                     for s in cat['slots'] if s['code'] == 'general_facade')
         media_id = slot['photos'][0]['id']
-        supprime = self.api.delete(
-            f'/api/django/visites/visites/{visite_id}/photos/{media_id}/')
-        self.assertEqual(supprime.status_code, 200, supprime.data)
+        # ACVI58 — l'API refuse ce retrait sur une visite terminée : par l'ORM.
+        from apps.visites.models import VisiteMedia
+        services.supprimer_media(VisiteMedia.objects.get(pk=media_id))
         avant = self._etat(visite_id)
         self.assertEqual(avant[0], VisiteTerrain.Statut.TERMINEE)
         effectuee_avant = self._effectuee()
@@ -78,6 +104,8 @@ class TransitionsVisiteTests(VisiteTerrainBase):
             VisiteTerrain.objects.get(pk=visite_id))
         self.assertTrue(attendus)
         self.assertEqual(resp.data['manquants'], attendus)
+        # ACVI93 — le message est servi aussi en ``detail`` (lib/apiError.js).
+        self.assertEqual(resp.data['detail'], resp.data['message'])
         self.assertEqual(self._etat(visite_id), avant)
         self._assert_feu_vert_absent(visite_id, effectuee_avant)
 

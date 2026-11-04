@@ -51,7 +51,7 @@ class JumeauxListeLeadsTests(TestCase):
                 company=self.company, nom=f'Lead {self.n}', owner=self.user,
                 stage=stages.NEW)
             Lead.objects.filter(pk=lead.pk).update(
-                relance_date=timezone.localdate() - datetime.timedelta(days=2),
+                relance_date=timezone.localdate() - datetime.timedelta(days=7),
                 date_creation=ancien, first_contacted_at=None,
                 stage=stages.NEW)
             devis = Devis.objects.create(

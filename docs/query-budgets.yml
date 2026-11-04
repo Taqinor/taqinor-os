@@ -105,3 +105,40 @@ endpoints:
     budget: 10
     enforced: false
     note: "À couvrir : liste des notifications (polling du bell)."
+
+  # --- Parcours PA1 (ACVI86, ACVI95) : plafond-filet 40 posé sans base locale, à resserrer sur mesure CI ; la garde réelle = compte égal N / 3N --
+  - path: /api/django/crm/relance-etapes/
+    budget: 40
+    enforced: true
+    colonnes_absentes: [etude_params]
+    note: "ACVI95 : file des relances (C-ACVI-140, C-ACVI-154)."
+
+  - path: /api/django/crm/relance-etapes/controle/
+    budget: 40
+    enforced: true
+    colonnes_absentes: [etude_params]
+    note: "ACVI95 : cockpit « Contrôle du suivi » (C-ACVI-154)."
+
+  - path: /api/django/crm/relance-etapes/chaine-commerciale/
+    budget: 40
+    enforced: true
+    colonnes_absentes: [etude_params]
+    note: "ACVI95 : chaîne commerciale (C-ACVI-154)."
+
+  - path: /api/django/crm/leads/kpi-premier-contact/
+    budget: 40
+    enforced: true
+    colonnes_absentes: [etude_params]
+    note: "ACVI95 : KPI du premier contact (C-ACVI-154)."
+
+  - path: /api/django/visites/visites/
+    budget: 40
+    enforced: true
+    colonnes_absentes: [etude_params]
+    note: "ACVI95 : liste des visites (C-ACVI-154)."
+
+  - path: /api/django/crm/equipes/statistiques/
+    budget: 40
+    enforced: true
+    colonnes_absentes: [etude_params]
+    note: "ACVI95 : statistiques d'équipe (C-ACVI-154)."

@@ -425,8 +425,12 @@ def chaine_commerciale(user, company, *, limite=CHAINE_COMMERCIALE_LIMITE):
         ligne['prochaine_le'] or '', ligne['id']))
 
     # ── 2. Visites à venir ──────────────────────────────────────────────────
+    # ACVI65 — l'état se lit dans la visite : ``visite_effectuee`` est un
+    # booléen de LEAD, jamais remis, qui masquait toute visite suivante.
+    from apps.visites.selectors import lead_ids_visite_a_venir
     visites = list(
-        actifs.filter(visite_prevue_le__gte=today, visite_effectuee=False)
+        actifs.filter(visite_prevue_le__gte=today,
+                      pk__in=lead_ids_visite_a_venir(company.pk, today))
         .order_by('visite_prevue_le', 'pk')
         .only('id', 'nom', 'prenom', 'telephone', 'visite_prevue_le',
               'company_id'))
@@ -572,7 +576,10 @@ def relances_du_jour(company, user, scope='today', today=None):
         company=company, is_archived=False, relance_date__isnull=False)
     qs = portee_leads(qs, user)  # ACRM28 — + périmètre d'entités
     if scope == 'overdue':
-        qs = qs.filter(relance_date__lt=today)
+        # ALEA65 — « en retard » = la règle unique (jours ouvrés), comme
+        # ``relance_etapes_dues`` ; ``today``/``week`` restent calendaires.
+        from .controle_suivi import seuil_retard
+        qs = qs.filter(relance_date__lt=seuil_retard(company, today))
     elif scope == 'week':
         # CRX28 — la borne BASSE manquait : sans ``__gte=today``, « cette
         # semaine » ramenait TOUT le passé (un retard de six mois s'affichait
@@ -641,7 +648,7 @@ def relance_etapes_dues(company, user, *, scope='today', owner=None, today=None)
         company=company, statut=RelanceEtape.Statut.A_FAIRE,
         lead__is_archived=False,
     ).select_related('lead', 'lead__owner', 'lead__client', 'lead__company',
-                     'devis')
+                     'devis').defer('devis__etude_params')  # ACVI77
     if scope == 'overdue':
         # ALEA32 — « en retard » = au moins un jour COMPTÉ depuis l'échéance
         # (le seuil unique, ``controle_suivi.seuil_retard``).

@@ -11,6 +11,7 @@ import { pageLocale } from '../../lib/pageCtx';
 import V2Enhance from '../../components/V2Enhance.astro';
 import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
+import CtaLigne from '../../components/CtaLigne.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import RelatedLinks from '../../components/RelatedLinks.astro';
@@ -55,6 +56,7 @@ const jsonLd = {
   headline: 'Solar panel prices in Morocco: indicative brackets by power',
   description: 'How much does a turnkey solar installation cost in Morocco, by power (kWc), with roof, battery and VAT surcharges — indicative brackets, reviewed every year.',
   image: schemaImageUrl,
+  dateModified: verifiedDate.toISOString().slice(0, 10),
   about: { '@type': 'Thing', name: 'Solar installation price Morocco' },
   author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
   publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
@@ -120,6 +122,7 @@ const jsonLd = {
         lechantier.ma). The spread reflects roof type, distance to the electrical panels, inverter
         brand and installer margins. An on-site quote remains essential.
       </p>
+      <CtaLigne />
 
       <h2 class="display v2-section-title mt-12 text-white">Beware of "4,700 DH/kWc" prices</h2>
       <p class="v2-lead mt-5 text-lune-soft">

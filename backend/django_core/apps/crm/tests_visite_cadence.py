@@ -143,6 +143,24 @@ class VisiteCadenceBase(TestCase):
 
 class VisitePlanifieeTests(VisiteCadenceBase):
 
+    def test_la_prise_de_contact_est_arretee(self):
+        """ACVI37 — la visite planifiée remplace la touche de prise de contact."""
+        touche = RelanceEtape.objects.create(
+            company=self.lead.company, lead=self.lead, cadence='contact',
+            ordre=1, canal=RelanceEtape.Canal.APPEL, libelle='Premier appel',
+            due_at=MAINTENANT, due_date=MAINTENANT.date())
+        with frozen(MAINTENANT):
+            cadence_visite.appliquer_visite_planifiee(
+                self.lead, self.acteur, VISITE_LE)
+        touche.refresh_from_db()
+        self.assertEqual(touche.statut, RelanceEtape.Statut.ANNULEE)
+        self.assertEqual(touche.note, 'visite planifiée')
+        self.assertFalse(self.lead.relance_etapes.filter(
+            cadence='contact', statut=RelanceEtape.Statut.A_FAIRE).exists())
+        self.assertTrue(self.lead.relance_etapes.filter(
+            cle__in=[cadence_visite.CLE_CONFIRMATION, cadence_visite.CLE_DEBRIEF],
+            statut=RelanceEtape.Statut.A_FAIRE).exists())
+
     def test_decale_le_plan_sans_jamais_lannuler(self):
         """AMENDEMENT FONDATEUR — le plan se tait, il ne meurt pas."""
         generique = self._touche_generique_ouverte()
@@ -217,6 +235,48 @@ class VisitePlanifieeTests(VisiteCadenceBase):
                                VISITE_LE + datetime.timedelta(days=1),
                                'appel'))
         self.assertEqual(debrief.canal, RelanceEtape.Canal.APPEL)
+
+    def test_la_date_manuelle_remplacee_est_tracee(self):
+        # ACVI69 — saisie à la main, remplacée puis vidée : deux lignes.
+        manuelle = VISITE_LE + datetime.timedelta(days=25)
+        self.lead.visite_prevue_le = manuelle
+        self.lead.saisies_humaines = ['visite_prevue_le']
+        self.lead.save(update_fields=['visite_prevue_le', 'saisies_humaines'])
+        with frozen(MAINTENANT):
+            cadence_visite.appliquer_visite_planifiee(
+                self.lead, self.acteur, VISITE_LE)
+            cadence_visite.annuler_rendez_vous_du_lead(
+                self.lead, self.acteur, motif='perdu')
+
+        self.lead.refresh_from_db()
+        self.assertIsNone(self.lead.visite_prevue_le)
+        self.assertNotIn('visite_prevue_le', self.lead.saisies_humaines)
+        lignes = self.lead.activites.filter(
+            kind=LeadActivity.Kind.MODIFICATION,
+            field='visite_prevue_le').order_by('id')
+        self.assertEqual(lignes.count(), 2)
+        self.assertEqual(lignes[0].new_value, lignes[1].old_value)
+        self.assertEqual(lignes[0].user, self.acteur)
+        self.assertEqual(lignes[1].user, self.acteur)
+        self.assertNotEqual(lignes[0].old_value, lignes[0].new_value)
+
+    def test_la_date_videe_par_la_compensation_est_tracee(self):
+        # ACVI69 — une visite retirée : la date part avec sa ligne ancien → vide
+        # et sa marque de saisie humaine.
+        self.lead.visite_prevue_le = VISITE_LE
+        self.lead.saisies_humaines = ['visite_prevue_le']
+        self.lead.save(update_fields=['visite_prevue_le', 'saisies_humaines'])
+        with frozen(MAINTENANT):
+            self.assertTrue(cadence_visite.compenser_visite_retiree(
+                self.lead, self.acteur, VISITE_LE))
+
+        self.lead.refresh_from_db()
+        self.assertIsNone(self.lead.visite_prevue_le)
+        self.assertNotIn('visite_prevue_le', self.lead.saisies_humaines)
+        ligne = self.lead.activites.get(
+            kind=LeadActivity.Kind.MODIFICATION, field='visite_prevue_le')
+        self.assertEqual(ligne.user, self.acteur)
+        self.assertNotEqual(ligne.old_value, ligne.new_value)
 
     def test_pose_une_note_de_chatter_systeme_qui_nomme_lassigne(self):
         with frozen(MAINTENANT):
@@ -866,6 +926,33 @@ class IssueVisiteAccepteeTests(VisiteCadenceBase):
 
 
 class MessageVisiteTests(VisiteCadenceBase):
+
+    def test_lead_oppose_refuse_sans_lien(self):
+        """ACVI89 (D-ACVI-7) — 409 aux trois routes, aucune activité."""
+        from django.utils import timezone
+        from rest_framework.test import APIClient
+
+        from apps.crm.models import Appointment
+
+        Lead.objects.filter(pk=self.lead.pk).update(
+            ne_plus_contacter=True, telephone='+212612345678')
+        rdv = Appointment.objects.create(
+            company=self.lead.company, lead=self.lead,
+            scheduled_at=timezone.now() + datetime.timedelta(days=2))
+        avant = LeadActivity.objects.filter(lead=self.lead).count()
+        api = APIClient()
+        api.force_authenticate(self.acteur)
+        base = '/api/django/crm/'
+        for reponse in (
+                api.get(f'{base}leads/{self.lead.pk}/message-visite/',
+                        {'cle': 'visite_proposition'}),
+                api.post(f'{base}leads/{self.lead.pk}/message-visite/ouvert/',
+                         {'cle': 'visite_proposition', 'langue': 'fr'}, format='json'),
+                api.post(f'{base}appointments/{rdv.pk}/confirmer-whatsapp/')):
+            self.assertEqual(reponse.status_code, 409, reponse.data)
+            self.assertIn('ne plus contacter', str(reponse.data['detail']))
+        self.assertEqual(
+            LeadActivity.objects.filter(lead=self.lead).count(), avant)
 
     def test_rend_la_date_en_francais_parle(self):
         self.lead.visite_prevue_le = datetime.date(2026, 9, 22)

@@ -87,9 +87,11 @@ describe('prévisualisations supprimées', () => {
     //   utilitaire SSR noindex, hors sitemap via le filter d'astro.config).
     // + 1 (confiance — NTOBS10 12/09/2026, trust center SSR prerender=false,
     //   hors sitemap via le filter d'astro.config comme /equipe et /status).
+    // + 3 (subvention-panneaux-solaires-maroc WAUD73, kit-solaire-maroc WAUD74,
+    //   devis-panneaux-solaires-maroc WAUD75).
     // Les études de cas, guides et articles de blog vivent en sous-dossier
     // (realisations/, guides/, blog/) et ne comptent pas ici.
-    expect(slugs.length).toBe(31); // WAUD25 : 404.astro
+    expect(slugs.length).toBe(34); // WAUD25 : 404.astro ; WAUD73-75 : subvention, kit, devis
   });
 
   it('le filtre sitemap ne référence plus /v2 ni /v3', () => {

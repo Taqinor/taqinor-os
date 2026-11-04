@@ -76,7 +76,7 @@ def sonde(ctx):
     from django.contrib.auth import get_user_model
     from apps.ventes.models import Devis
     U = get_user_model()
-    co = 4
+    co = U.objects.get(username='demo_admin').company_id  # société démo locale
     u = U.objects.filter(company_id=co, is_active=True).order_by('id').first()
     api = _api(u)
     out, ok = {}, {}

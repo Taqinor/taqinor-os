@@ -1,0 +1,67 @@
+---
+/**
+ * WAUD73/74/75 — coquille UNIQUE des pages d'information (subvention, kit ou sur mesure,
+ * lire deux devis), FR/EN/AR : le contenu vit dans lib/infoPages.ts, jamais recopié par page.
+ * Aucun montant propre à cette coquille : les chiffres viennent des constantes sources.
+ */
+import Layout from '../layouts/Layout.astro';
+import V2Page from './V2Page.astro';
+import CtaBand from './CtaBand.astro';
+import { INFO_PAGES, type InfoPageId } from '../lib/infoPages';
+import { pageLocale } from '../lib/pageCtx';
+import { localizeNavHref } from '../i18n/pages';
+
+interface Props {
+  id: InfoPageId;
+  ogSlug?: string;
+}
+const { id, ogSlug = 'accueil' } = Astro.props;
+const { locale, L } = pageLocale(Astro.url.pathname);
+const page = INFO_PAGES[id][locale] ?? INFO_PAGES[id].fr!;
+const home = locale === 'fr' ? 'Accueil' : locale === 'en' ? 'Home' : 'الرئيسية';
+---
+
+<Layout title={page.title} description={page.description} ogSlug={ogSlug}>
+  <V2Page breadcrumbItems={[{ label: home, href: L('/') }, { label: page.crumb }]}>
+    <section class="section-lg px-4 pb-6 text-white">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">{page.kicker}</p>
+        <h1 class="display v2-page-title cine-in mt-6">{page.h1}</h1>
+        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85">{page.lead}</p>
+      </div>
+    </section>
+
+    {page.blocks.map((b) => (
+      <section class="section px-4">
+        <div class="mx-auto max-w-3xl">
+          <h2 class="display v2-section-title text-white">{b.h2}</h2>
+          {b.paras.map((p) => <p class="mt-4 leading-relaxed text-lune-soft">{p}</p>)}
+          {b.table && (
+            <div class="mt-6 overflow-x-auto">
+              <table class="w-full text-start text-sm text-lune-soft">
+                <thead>
+                  <tr>{b.table.head.map((h) => <th class="border-b border-white/20 py-2 pe-4 text-start text-white">{h}</th>)}</tr>
+                </thead>
+                <tbody>
+                  {b.table.rows.map((r) => (
+                    <tr>{r.map((c) => <td class="border-b border-white/10 py-2 pe-4 align-top">{c}</td>)}</tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {b.source && <p class="mt-3 text-xs text-lune-faint">{b.source}</p>}
+          {b.links && (
+            <ul class="mt-4 space-y-1">
+              {b.links.map((l) => (
+                <li><a href={localizeNavHref(l.href, locale)} class="border-b border-brass-300 pb-0.5 font-semibold text-brass-300">{l.label}</a></li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
+    ))}
+
+    <CtaBand />
+  </V2Page>
+</Layout>

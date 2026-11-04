@@ -1853,6 +1853,23 @@ def _source_production(etude):
     return None
 
 
+def _passer_aux_regles_2710(devis):
+    """CMP12 (D-CMP-7 = a) — un recalcul FORCÉ d'un devis C&I de niveau ≤ 2 le
+    passe d'abord au niveau 3 : CMP5/7/8 et les gardes du niveau 3 s'appliquent
+    ensemble, jamais en silence. Niveau ≥ 3 : rien ; jamais à la baisse."""
+    if getattr(devis, 'pk', None) is None or regles_au_moins(devis, REGLES_CORRIGEES_2710):
+        return
+    from apps.ventes.models import DevisActivity
+    ancien = devis.regles_calcul
+    devis.regles_calcul = REGLES_CORRIGEES_2710
+    devis.save(update_fields=['regles_calcul'])
+    DevisActivity.objects.create(
+        company=devis.company, devis=devis, kind=DevisActivity.Kind.MODIFICATION,
+        field='regles_calcul', field_label='Règles de calcul',
+        old_value=str(ancien), new_value=str(REGLES_CORRIGEES_2710),
+        body='Règles du 27/10 appliquées au recalcul.')
+
+
 def rafraichir_etude_ci_devis(devis, *, force=False):
     """CIQ119 — (re)pose ``etude_ci`` / ``production_figee`` d'un devis C&I.
 
@@ -1892,6 +1909,8 @@ def rafraichir_etude_ci_devis(devis, *, force=False):
         existant = params.get(CLE_ETUDE_CI) or {}
         if not force and existant.get('empreinte') == empreinte:
             return existant
+        if force:
+            _passer_aux_regles_2710(devis)
         etude = etudier_ci(
             company, {'mode': mode, 'taille_explicite_kwc': kwc}, devis=devis,
             lead=getattr(devis, 'lead', None),

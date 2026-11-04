@@ -61,7 +61,7 @@ test('ordre fondateur 2026-08-01 : la cellule Stade CONFIRME un recul, puis enre
   assert.match(block, /if \(enArriere && !\(await confirmerRecul\(lead, v\)\)\) return/)
   // Confirmé → MÊME chemin d'enregistrement, avec le marqueur que le serveur
   // exige (sans lui, apps/crm/serializers.py refuse toujours le recul).
-  assert.match(block, /onInlineSave\(lead, 'stage', v, \{ confirmeRecul: enArriere \}\)/)
+  assert.match(block, /onInlineSave\(lead, 'stage', v, \{ confirmeRecul: enArriere, parcRaison \}\)/)
 })
 
 test('LB4 : la cellule Stade calcule les options PAR LIGNE (lead.stage courant), pas une liste plate partagée', () => {

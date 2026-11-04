@@ -389,6 +389,12 @@ def compute_attainment(objectif):
     }
 
 
+def _prefetch_devis():
+    """ACVI78 — les devis d'une liste de leads, sans le JSON d'étude."""
+    from apps.ventes.selectors_listes import prefetch_devis_resume
+    return prefetch_devis_resume()
+
+
 def _lignes_pipeline_ouvertes(company, membre_ids=None):
     """Leads ouverts (hors SIGNED/COLD/perdu) de la société, optionnellement
     restreints à un sous-ensemble de owners. Toujours les étapes de
@@ -400,7 +406,7 @@ def _lignes_pipeline_ouvertes(company, membre_ids=None):
     ]
     qs = Lead.objects.filter(
         company=company, is_archived=False, perdu=False, stage__in=ouvertes,
-    ).prefetch_related('devis')
+    ).prefetch_related(*_prefetch_devis())
     if membre_ids is not None:
         qs = qs.filter(owner_id__in=membre_ids)
     return qs
@@ -494,7 +500,7 @@ def ca_signe_periode(company, membre_ids, debut, fin):
         leads = leads.filter(owner_id__in=membre_ids)
     total = Decimal('0')
     en_vigueur = _devis_en_vigueur_ids(company)  # AANA75 : une fois
-    for lead in leads.prefetch_related('devis'):
+    for lead in leads.prefetch_related(*_prefetch_devis()):
         for devis in lead.devis.all():
             if not _devis_compte_comme_signe(devis, en_vigueur):  # AANA75
                 continue
@@ -521,7 +527,7 @@ def nb_devis_envoyes_periode(company, membre_ids, start_dt, end_dt):
     if membre_ids is not None:
         leads = leads.filter(owner_id__in=membre_ids)
     nombre = 0
-    for lead in leads.prefetch_related('devis'):
+    for lead in leads.prefetch_related(*_prefetch_devis()):
         for devis in lead.devis.all():
             envoye = getattr(devis, 'date_envoi', None)
             if envoye is not None and start_dt <= envoye < end_dt:
@@ -818,7 +824,7 @@ def revenu_pipeline_pondere_par_mois(company, mois_debut, mois_fin):
                 date_cloture_prevue__isnull=False,
                 date_cloture_prevue__gte=mois_debut,
                 date_cloture_prevue__lte=mois_fin)
-        .prefetch_related('devis')
+        .prefetch_related(*_prefetch_devis())
     )
     par_mois = {}
     for lead in qs:
@@ -1085,7 +1091,7 @@ def pipeline_pondere_par_entite(company, entite_ids):
         Lead.objects
         .filter(company=company, entite_id__in=ids, is_archived=False,
                 perdu=False, stage__in=ouvertes)
-        .prefetch_related('devis')
+        .prefetch_related(*_prefetch_devis())
     )
     out = {}
     for lead in qs:
@@ -1467,7 +1473,7 @@ def metrique_pipeline_pondere(company, user=None, *, period=None,
     qs = (Lead.objects
           .filter(company=company, is_archived=False, perdu=False,
                   stage__in=ouvertes)
-          .prefetch_related('devis'))
+          .prefetch_related(*_prefetch_devis()))
     if period:
         if isinstance(period, (tuple, list)):
             valeurs = list(period) + [None, None]

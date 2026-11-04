@@ -8,6 +8,7 @@
 // funnel et le statut du document restent deux couches séparées).
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { Eye, FileWarning } from 'lucide-react'
+import { getApiError } from '../../../lib/apiError'
 import ventesApi, { acceptationDejaFaite } from '../../../api/ventesApi'
 import fetchAllPages from '../../../utils/fetchAllPages'
 import { proposalParams, pdfBlob } from '../../../features/ventes/previewPdf'
@@ -23,7 +24,7 @@ import { useConfirmDialog } from '../../../ui/confirm'
 import { formatMAD } from '../../../lib/format'
 import { STATUT_DEVIS_LABELS } from '../../../features/ventes/devisStatuts'
 import { conflitDevis } from '../../../features/ventes/reviserDevis'
-import { PAS_ARRONDI_DEVIS } from '../../../features/ventes/remise'
+import { optionsDetail } from './signeOptions.js'
 // CIQ324 — identité d'entreprise facultative à l'acceptation d'un C&I.
 import IdentiteEntrepriseFields from '../../../features/ventes/quote/IdentiteEntrepriseFields'
 import {
@@ -37,56 +38,6 @@ const PdfCanvas = lazy(() => import('../../../features/ventes/PdfCanvas'))
 const OPTION_LABELS = {
   sans_batterie: 'Sans batterie',
   avec_batterie: 'Avec batterie',
-}
-
-// Une désignation de ligne désigne-t-elle une batterie ? (même mot-clé que le
-// moteur PDF / solar.js — accents neutralisés.)
-const isBatteryLine = (d) =>
-  (d || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-    .includes('batterie')
-
-// TTC d'une ligne : qté × P.U. HT × (1 − remise ligne) × (1 + TVA), au taux de
-// la ligne s'il est défini, sinon le taux du devis.
-function ligneTtc(l, devisTva) {
-  const qte = parseFloat(l.quantite) || 0
-  const pu = parseFloat(l.prix_unitaire) || 0
-  const rem = parseFloat(l.remise) || 0
-  const tva = (l.taux_tva != null && l.taux_tva !== '')
-    ? (parseFloat(l.taux_tva) || 0)
-    : (parseFloat(devisTva) || 0)
-  return qte * pu * (1 - rem / 100) * (1 + tva / 100)
-}
-
-// ARRONDI-100 — tout total de devis finit par deux zéros (palier inférieur).
-const auPalier = (ttc) => (ttc >= PAS_ARRONDI_DEVIS
-  ? Math.floor(ttc / PAS_ARRONDI_DEVIS) * PAS_ARRONDI_DEVIS : ttc)
-
-// Détail par option d'un devis à deux options : kWc estimé (panneaux × 0,71) et
-// total TTC de chacune (remise globale appliquée). « Sans batterie » = lignes
-// hors batterie, « Avec batterie » = toutes les lignes. Indicatif, calculé à
-// l'écran pour aider le choix — le PDF reste la source canonique : quand le
-// serveur sert `comparaison_options` (mêmes totaux que le PDF), ils priment.
-function optionsDetail(devis) {
-  const lignes = devis?.lignes ?? []
-  if (!lignes.length) return null
-  const tva = devis?.taux_tva
-  const remGlobale = parseFloat(devis?.remise_globale) || 0
-  const factor = 1 - remGlobale / 100
-  const canon = devis?.comparaison_options
-  const ttcAvec = canon?.avec?.ttc != null ? parseFloat(canon.avec.ttc)
-    : auPalier(lignes.reduce((s, l) => s + ligneTtc(l, tva), 0) * factor)
-  const ttcSans = canon?.sans?.ttc != null ? parseFloat(canon.sans.ttc)
-    : auPalier(lignes
-      .filter((l) => !isBatteryLine(l.designation))
-      .reduce((s, l) => s + ligneTtc(l, tva), 0) * factor)
-  const nbPanneaux = lignes
-    .filter((l) => (l.designation || '').toLowerCase().includes('panneau'))
-    .reduce((s, l) => s + (parseFloat(l.quantite) || 0), 0)
-  const kwc = nbPanneaux > 0 ? Math.round(nbPanneaux * 0.71 * 100) / 100 : null
-  return {
-    sans_batterie: { ttc: ttcSans, kwc },
-    avec_batterie: { ttc: ttcAvec, kwc },
-  }
 }
 
 // QJR654 — libellés de statut devis : la table unique (devisStatuts.js).
@@ -139,24 +90,24 @@ function todayLocalStr(now = new Date()) {
 // `onConfirmed` : appelé AU CLIC (ferme le dialogue) ; `onAccepted` : appelé
 // quand le serveur a confirmé l'acceptation (rafraîchir les listes) ;
 // `onFailed` : le serveur a refusé (défaire l'affichage optimiste).
-export default function SigneDialog({ lead, onClose, onConfirmed, onAccepted, onFailed }) {
+export default function SigneDialog({ lead, onClose, onConfirmed, onAccepted, onFailed, saisieInitiale = null }) {
   const [loading, setLoading] = useState(true)
   const [devisList, setDevisList] = useState([])
   // Nombre TOTAL de devis du lead (avant filtrage) : distingue « aucun devis »
   // de « aucun devis sélectionnable » (que des refusés/inactifs).
   const [totalDevisCount, setTotalDevisCount] = useState(0)
-  const [devisId, setDevisId] = useState('')
+  const [devisId, setDevisId] = useState(saisieInitiale?.devisId ?? '')
   // Choix explicite de l'option par l'utilisateur ('' = pas encore choisi) ;
   // l'option effective est dérivée (choix explicite, sinon celle déjà retenue
   // sur le devis) — pas d'état dérivé synchronisé via un effet.
-  const [optionChoice, setOptionChoice] = useState('')
-  const [nom, setNom] = useState('')
-  const [date, setDate] = useState(() => todayLocalStr())
+  const [optionChoice, setOptionChoice] = useState(saisieInitiale?.optionChoice ?? '')
+  const [nom, setNom] = useState(saisieInitiale?.nom ?? '')
+  const [date, setDate] = useState(() => saisieInitiale?.date ?? todayLocalStr())
   // CIQ324 — `null` tant que le vendeur n'a rien tapé : la raison sociale
   // connue du devis choisi sert alors de valeur affichée (jamais d'effet de sync).
-  const [entrepriseSaisie, setEntrepriseSaisie] = useState(null)
+  const [entrepriseSaisie, setEntrepriseSaisie] = useState(saisieInitiale?.entrepriseSaisie ?? null)
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState(null)
+  const [error, setError] = useState(saisieInitiale?.message ?? null)
   // VNT80 — refus serveur qui NOMME un autre devis (vente active existante,
   // version remplacée) : message nommé sous le bouton + lien vers ce devis.
   const [conflit, setConflit] = useState(null)
@@ -181,7 +132,7 @@ export default function SigneDialog({ lead, onClose, onConfirmed, onAccepted, on
         // Présélection du devis le plus pertinent (envoyé récent, sinon total
         // le plus élevé) au lieu du premier renvoyé par l'API.
         const best = preselectDevis(list)
-        if (best) setDevisId(String(best.id))
+        if (best) setDevisId((courant) => courant || String(best.id))
       })
       .catch(() => {
         if (alive) setError('Impossible de charger les devis de ce lead.')
@@ -284,8 +235,18 @@ export default function SigneDialog({ lead, onClose, onConfirmed, onAccepted, on
       if (acceptationDejaFaite(err)) { onAccepted?.(); return }
       // Vrai refus serveur : la fête s'arrête et le motif s'affiche.
       effacerAffaireSignee()
-      onFailed?.()
       const c = conflitDevis(err?.response?.data)
+      // ACVI68 — hors conflit, le parent rouvre le dialogue avec la saisie.
+      const { message, fieldErrors } = getApiError(
+        err, "L'acceptation n'a pas pu être enregistrée — réessayez.")
+      onFailed?.(c ? undefined : {
+        saisie: {
+          devisId, optionChoice, nom, date, entrepriseSaisie,
+          // Sous son champ quand il en a un : jamais deux fois à l'écran.
+          message: fieldErrors?.nom ? null : message,
+        },
+        erreurs: fieldErrors ?? {},
+      })
       if (c) {
         // La fenêtre lead est souvent déjà fermée (fête au clic) : le toast
         // porte aussi « Ouvrir <réf> » ; ouverte, le message reste sous le bouton.
@@ -299,8 +260,7 @@ export default function SigneDialog({ lead, onClose, onConfirmed, onAccepted, on
         })
         return
       }
-      toastError(err?.response?.data?.detail
-        ?? "L'acceptation n'a pas pu être enregistrée — réessayez.")
+      toastError(message)
     }
   }
 
@@ -443,6 +403,9 @@ export default function SigneDialog({ lead, onClose, onConfirmed, onAccepted, on
                 onChange={(e) => setNom(e.target.value)}
                 placeholder="ex. M. Bennani"
               />
+              {saisieInitiale?.erreurs?.nom && (
+                <p className="form-error" role="alert">{saisieInitiale.erreurs.nom}</p>
+              )}
 
               <label className="form-label" htmlFor="sd-date">Date d'acceptation</label>
               <input

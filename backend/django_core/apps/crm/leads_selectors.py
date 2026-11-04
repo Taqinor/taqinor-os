@@ -9,9 +9,6 @@ import datetime
 from .cadence_selectors import (
     _mediane,
 )
-from .portee_selectors import (
-    cles_numeros_lead,
-)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -55,7 +52,7 @@ def normalize_name_key(nom, prenom=None, societe=None):
     return leads_doublons.normalize_name(nom, prenom, societe)
 
 
-def find_lead_id_by_phone(company, phone):
+def find_lead_id_by_phone(company, phone, *, archives=False):
     """ADSDEEP24 — id du lead vivant de ``company`` dont le téléphone (ou
     WhatsApp) correspond au numéro donné, normalisé via la MÊME clé QW10 que
     ``normalize_phone_key``, ou None.
@@ -65,19 +62,20 @@ def find_lead_id_by_phone(company, phone):
     téléphone) — jamais un import de ``apps.crm.models`` côté adsengine. Renvoie
     le lead le plus récemment créé en cas de doublon ; None si le numéro est
     vide ou introuvable."""
+    from django.db.models import Q
+
     from . import leads_doublons
     from .models import Lead
 
-    key = leads_doublons.normalize_phone(phone)
+    key = leads_doublons.normalize_phone(phone)[:20]
     if not key:
         return None
-    for lead in (Lead.objects
-                 .filter(company=company, is_archived=False)
-                 .only('id', 'telephone', 'whatsapp')
-                 .order_by('-id')):
-        if key in cles_numeros_lead(lead):  # ACRM33 — helper unique
-            return lead.id
-    return None
+    # ACVI20 — colonnes indexées (QW10, ACRM32), jamais la table en Python.
+    leads = Lead.objects.filter(
+        Q(phone_normalise=key) | Q(whatsapp_normalise=key), company=company)
+    if not archives:
+        leads = leads.filter(is_archived=False)
+    return leads.order_by('-id').values_list('id', flat=True).first()
 
 
 # DC13 — localisation chantier : lead d'abord, sinon repli sur le client ──────
@@ -245,8 +243,6 @@ def _limite_rappel_du_matin(creation, company):
     9 h 30 le JOUR MÊME : il n'a pas de nuit à attendre. Les jours ouvrés et
     les fériés viennent de ``notifications.calendar_utils``, source unique.
     """
-    from apps.notifications.calendar_utils import prochain_jour_ouvre
-
     from . import horaires
 
     local = creation.astimezone(horaires.CASABLANCA)
@@ -254,7 +250,7 @@ def _limite_rappel_du_matin(creation, company):
     if fenetre is not None and local.time() < fenetre[0]:
         jour = local.date()
     else:
-        jour = prochain_jour_ouvre(
+        jour = horaires.prochain_jour_ouvre(
             local.date() + datetime.timedelta(days=1), company)
     return datetime.datetime.combine(
         jour, HEURE_RAPPEL_DU_MATIN, tzinfo=horaires.CASABLANCA)
@@ -312,23 +308,25 @@ def kpi_premier_contact(company, *, jours=30, objectif_min=None):
     nb_leads = 0
     nb_nuit = 0
     nb_nuit_rappeles = 0
-    for lead in leads:
-        nb_leads += 1
-        # CAD119 — `date_origine` = la date du système d'origine si on la
-        # connaît, sinon celle de l'insertion ici.
-        naissance = lead.date_origine
-        de_nuit = not horaires.est_dans_fenetre(naissance, company)
-        if de_nuit:
-            nb_nuit += 1
-        if lead.first_contacted_at is None:
-            continue
-        minutes.append(horaires.minutes_ouvrees_entre(
-            naissance, lead.first_contacted_at, company))
-        minutes_calendaires.append(horaires.minutes_calendaires_entre(
-            naissance, lead.first_contacted_at))
-        if de_nuit and lead.first_contacted_at <= _limite_rappel_du_matin(
-                naissance, company):
-            nb_nuit_rappeles += 1
+    # ACVI79 — profil et jours ouvrés lus une fois, pas une fois par lead.
+    with horaires.cache_local():
+        for lead in leads:
+            nb_leads += 1
+            # CAD119 — `date_origine` = la date du système d'origine si on la
+            # connaît, sinon celle de l'insertion ici.
+            naissance = lead.date_origine
+            de_nuit = not horaires.est_dans_fenetre(naissance, company)
+            if de_nuit:
+                nb_nuit += 1
+            if lead.first_contacted_at is None:
+                continue
+            minutes.append(horaires.minutes_ouvrees_entre(
+                naissance, lead.first_contacted_at, company))
+            minutes_calendaires.append(horaires.minutes_calendaires_entre(
+                naissance, lead.first_contacted_at))
+            if de_nuit and lead.first_contacted_at <= _limite_rappel_du_matin(
+                    naissance, company):
+                nb_nuit_rappeles += 1
 
     if not nb_leads:
         return {

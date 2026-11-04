@@ -35,6 +35,7 @@ from django.db import transaction
 
 from apps.crm import services, stages
 from apps.crm.models import Lead
+from apps.records.provenance import ecrire_si_libre
 # Source UNIQUE des règles d'assainissement Odoo (chemin JSON-2) — jamais une
 # seconde règle écrite ici (CRX9/CRX10).
 from apps.crm.odoo_sync import (
@@ -382,7 +383,9 @@ def _fill_empty(lead, fields):
         current = getattr(lead, field, None)
         if current not in (None, '', False):
             continue
-        setattr(lead, field, _borne(field, fields[field]))
+        # ACVI99 — un champ vidé par un humain n'est jamais rempli : refus au chatter.
+        if not ecrire_si_libre(lead, field, _borne(field, fields[field])):
+            continue
         changed.append(field)
     # CAD119 — la date d'origine est un INSTANT, pas une chaîne bornée : elle
     # passe par son propre convertisseur, et seulement si la colonne est

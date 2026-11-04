@@ -14,6 +14,10 @@ from decimal import Decimal
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from django.test import TestCase
+from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import AccessToken
+
+from core.test_utils import AssertQueryBudgetMixin
 
 from apps.crm import stages as stage_mod
 from apps.crm.models import EquipeCommerciale, Lead, ObjectifCommercial
@@ -48,7 +52,7 @@ def make_devis(company, client, lead, statut, total_ttc_cible, date_acceptation=
     return devis
 
 
-class TestStatsEquipe(TestCase):
+class TestStatsEquipe(AssertQueryBudgetMixin, TestCase):
     def setUp(self):
         self.company = make_company()
         self.today = datetime.date.today()
@@ -154,6 +158,39 @@ class TestStatsEquipe(TestCase):
         qs = _lignes_pipeline_ouvertes(self.company)
         for lead in qs:
             self.assertIn(lead.stage, stage_mod.STAGES)
+
+    def _mesure_acvi95(self, api, url):
+        """ACVI95 — une lecture sous plafond, sans la colonne `etude_params` :
+        le pipeline pondéré n'en extrait que trois clés dans le SQL (patron
+        AOOM3, ``annotations_devis``), jamais le contenu entier."""
+        import re
+        with self.assertMaxQueries(40) as ctx:
+            resp = api.get(url)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertFalse([q['sql'] for q in ctx.captured_queries
+                          if re.search(r'"etude_params"(?! (->|#>))', q['sql'])])
+        return len(ctx.captured_queries)
+
+    def test_budget_deux_tailles_sans_etude_params(self):
+        url = '/api/django/crm/equipes/statistiques/'
+        lecteur = User.objects.create_user(
+            username='zsal3budget', password='x', company=self.company,
+            role_legacy='responsable')
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(lecteur)}')
+
+        def peupler(nombre):
+            for i in range(nombre):
+                Lead.objects.create(company=self.company, nom=f'B{i}',
+                                    owner=self.resp1,
+                                    stage=stage_mod.QUOTE_SENT)
+
+        peupler(5)
+        self._mesure_acvi95(api, url)  # échauffement
+        n = self._mesure_acvi95(api, url)
+        peupler(10)
+        self.assertEqual(self._mesure_acvi95(api, url), n)
 
 
 class TestStatsEquipeMultiTenant(TestCase):

@@ -291,13 +291,13 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
         # Chaîne commerciale (25/09/2026) — `chaine_commerciale` est une
         # LECTURE PURE du cockpit : même garde que `journal`, listée ICI
         # nommément pour la même raison.
-        # COCKPIT-CONTRÔLE (30/09/2026) — `controle` est une LECTURE PURE du
-        # cockpit, ouverte à tous les rôles (décision de transparence CKP3) :
-        # listée ICI nommément, même raison.
-        if self.action in ('list', 'message', 'suivi', 'journal',
-                           'cadences_echues', 'chaine_commerciale',
-                           'controle'):
+        # COCKPIT-CONTRÔLE — `controle` reste ouvert à tous (transparence CKP3).
+        if self.action == 'controle':
             return [IsAnyRole()]
+        # ACVI3 (D-ACVI-2 = portée) — les lectures exigent `crm_voir`.
+        if self.action in ('list', 'message', 'suivi', 'journal',
+                           'cadences_echues', 'chaine_commerciale'):
+            return [HasPermissionOrLegacy('crm_voir')()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -342,7 +342,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
             qs = (self.get_queryset().filter(lead_id=lead_id)
                   .select_related('lead', 'lead__owner', 'lead__client',  # ERR-PERF-CRM-N1
                                   'lead__company', 'devis', 'traite_par')
-                  .order_by('cadence', 'ordre', 'due_date'))
+                  .defer('devis__etude_params').order_by('cadence', 'ordre', 'due_date'))  # ACVI77
         else:
             from .selectors import relance_etapes_dues
             scope = request.query_params.get('scope', 'today')
@@ -362,8 +362,8 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
                                sd.param_enum_ou_vide('statut', STATUTS_SUIVI)],
                    responses={200: sd.OBJ,
                               409: inline_serializer('CrmSuiviConflit', {  # ENF11 : écart > 62 j = 409 d'état
-                                  # Corps réel : le dict levé par ConflitEtat
-                                  # (clé `date_fin`) + l'enveloppe `error`.
+                                  # Corps réel : le dict de ConflitEtat (`date_fin`, `detail` ACVI76) + `error`.
+                                  'detail': drf_serializers.CharField(),
                                   'date_fin': drf_serializers.CharField(),
                                   'error': drf_serializers.DictField()})})
     @action(detail=False, methods=['get'], url_path='suivi',
@@ -1117,7 +1117,8 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
                             status=status.HTTP_409_CONFLICT)
         return Response(self.get_serializer(etape).data)
 
-    @extend_schema(parameters=sd.parametres_message(CLES_MESSAGE_REPONSE, Lead.LanguePreferee.values), responses=sd.OBJ)
+    @extend_schema(parameters=sd.parametres_message(CLES_MESSAGE_REPONSE, Lead.LanguePreferee.values),
+                   responses={200: sd.OBJ, 409: sd.REFUS_RENDU_WHATSAPP})
     @action(detail=True, methods=['get'])
     def message(self, request, pk=None):
         """MRY13 — Le message de CETTE touche, rendu côté serveur.
@@ -1135,7 +1136,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
         à l'aperçu, sans toucher la fiche (le basculeur FR / Darija). Une
         autre valeur est refusée en 400 nommant le champ ``langue``."""
         etape = self.get_object()
-        from .cadence_messages import message_pour_etape, refus_langue_relance
+        from .cadence_messages import garde_rendu_whatsapp, message_pour_etape, refus_langue_relance
         from .cadence_reponses import CLES_MESSAGE_REPONSE
         cle = (request.query_params.get('cle') or '').strip()
         if cle and cle not in CLES_MESSAGE_REPONSE:
@@ -1149,6 +1150,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
         if langue and refus_langue_relance(langue):
             raise DRFValidationError(
                 {'erreurs': {'langue': refus_langue_relance(langue)}})
+        garde_rendu_whatsapp(etape, cle=cle or None)
         return Response(message_pour_etape(
             etape, request=request, user=request.user, cle=cle or None,
             langue=langue or None))
@@ -1172,7 +1174,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
         CAD63 — ``langue`` (corps, facultatif) : la langue CHOISIE à l'aperçu,
         pour que le rendu vérifié ici soit celui qui vient d'être ouvert."""
         etape = self.get_object()
-        from .cadence_messages import message_pour_etape, refus_langue_relance
+        from .cadence_messages import garde_rendu_whatsapp, message_pour_etape, refus_langue_relance
         from .cadence_reperes import journaliser_whatsapp_ouvert
         from .leads_premier_contact import marquer_premier_contact
         langue = (request.data.get('langue') or '').strip()
@@ -1190,10 +1192,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
             from .cadence_messages import REFUS_PREUVE_MANQUANTE
             raise ConflitEtat(
                 {'erreurs': {'preuve': REFUS_PREUVE_MANQUANTE}})
-        if not rendu.get('wa_url'):
-            return Response(
-                {'detail': 'Numéro de téléphone invalide.'},
-                status=status.HTTP_409_CONFLICT)
+        garde_rendu_whatsapp(etape, rendu=rendu)  # ACVI44
         journaliser_whatsapp_ouvert(etape, request.user)
         marquer_premier_contact(etape.lead)
 

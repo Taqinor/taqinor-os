@@ -59,6 +59,52 @@ class DevisListePrechargementTests(TestCase):
                     montant_ht=Decimal('1000'), montant_tva=Decimal('200'),
                     montant_ttc=Decimal('1200'), created_by=self.user)
 
+    def test_resume_sans_etude_params(self):
+        # ACVI94 — statut, dates et montant lus sans jamais charger le JSON
+        # d'étude (seules les annotations `etude_params ->` sont permises).
+        from django.utils import timezone
+
+        from apps.crm.models import Lead
+        from apps.ventes.selectors_listes import prefetch_devis_resume
+
+        etude = {'scenario': 'Avec batterie', 'nombre_proprietes': 2,
+                 'profil_horaire': [0.37] * 744}
+        jour = timezone.localdate()
+        for i in range(3):
+            lead = Lead.objects.create(
+                company=self.company, nom=f'L{i}', client=self.client_obj)
+            for j, statut in enumerate((Devis.Statut.ACCEPTE, Devis.Statut.ENVOYE)):
+                Devis.objects.create(
+                    company=self.company, reference=f'DEV-ACVI94-{i}{j}',
+                    client=self.client_obj, lead=lead, statut=statut,
+                    taux_tva=Decimal('20'), version=1, etude_params=dict(etude),
+                    date_envoi=timezone.now(), date_acceptation=jour)
+
+        def charge_le_json(requetes):
+            # Une colonne lue HORS d'un chemin JSON (`->`, ou `#>` pour un chemin
+            # imbriqué) : une annotation ne masque plus le reste du SELECT
+            # (retirer `.defer` rougit ce test, prefetch compris).
+            return [q['sql'] for q in requetes
+                    if re.search(r'"etude_params"(?!\s*(?:->|#>))', q['sql'])]
+
+        leads = Lead.objects.filter(company=self.company)
+        with CaptureQueriesContext(connection) as ctx:
+            resume = list(leads.prefetch_related(*prefetch_devis_resume()))
+            champs = {d.pk: (d.statut, d.date_acceptation, d.date_envoi)
+                      for lead in resume for d in lead.devis.all()}
+        self.assertEqual(len(ctx.captured_queries), 2)
+        self.assertEqual(charge_le_json(ctx.captured_queries), [])
+        self.assertEqual(len(champs), 6)
+
+        with CaptureQueriesContext(connection) as ctx:
+            montants = {d.pk: d.total_ttc
+                        for lead in resume for d in lead.devis.all()}
+        self.assertEqual(charge_le_json(ctx.captured_queries), [])
+        oracle = Devis.objects.filter(company=self.company)
+        self.assertEqual(montants, {d.pk: d.total_ttc for d in oracle})
+        self.assertEqual(
+            champs, {d.pk: (d.statut, d.date_acceptation, d.date_envoi) for d in oracle})
+
     def _compter(self):
         with CaptureQueriesContext(connection) as ctx:
             resp = self.api.get('/api/django/ventes/devis/',

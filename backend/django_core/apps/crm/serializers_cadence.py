@@ -468,3 +468,15 @@ class MessageTemplateSerializer(serializers.ModelSerializer):
             'archived', 'date_creation', 'date_modification',
         ]
         read_only_fields = ['date_creation', 'date_modification']
+
+    def validate_corps(self, value):
+        """ACVI53 — un placeholder hors catalogue partirait tel quel au client."""
+        import re
+
+        from apps.parametres.models_messages import PLACEHOLDERS_RELANCE
+        inconnus = sorted(set(re.findall(r'\{\w+\}', value or ''))
+                          - set(PLACEHOLDERS_RELANCE))
+        if inconnus:
+            raise serializers.ValidationError(
+                f'Variable inconnue : {", ".join(inconnus)}.')
+        return value

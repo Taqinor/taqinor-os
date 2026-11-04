@@ -17,7 +17,8 @@ from authentication.models import Company
 from apps.crm.models import Client
 from apps.installations.models import Installation
 from apps.sav.dateutils import add_months
-from apps.sav.models import ContratMaintenance, Equipement, Ticket
+from apps.sav.models import (
+    ContratMaintenance, Equipement, Ticket, WarrantyClaim)
 from apps.stock.models import Produit
 
 User = get_user_model()
@@ -153,3 +154,41 @@ class RemplacementTests(TestCase):
                 f'/api/django/sav/tickets/{self.ticket.pk}/pieces-retirees/',
                 {**corps, 'produit': self.produit.id}, format='json')
             self.assertEqual(r.status_code, 400, r.content)
+
+    def test_rma_resolue_remplacement_fait_entrer_le_neuf(self):
+        """ASAV123 — PATCH de la RMA : le neuf entre au parc et au contrat."""
+        r = self.api.post(
+            f'/api/django/sav/tickets/{self.ticket.pk}/pieces-retirees/',
+            {'produit': self.produit.id, 'numero_serie': 'SN-A',
+             'destination': 'retour_fournisseur'}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        rma = WarrantyClaim.objects.get(ticket=self.ticket)
+        url = f'/api/django/sav/warranty-claims/{rma.pk}/'
+        corps = {'statut': 'resolu', 'resolution': 'remplacement'}
+        # réclamation pas encore résolue par remplacement : refus d'état
+        r = self.api.patch(url, {'serie_neuve': 'SN-A2'}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertIn('serie_neuve', r.data)
+        # série déjà au parc : 409, rien écrit
+        r = self.api.patch(url, {**corps, 'serie_neuve': 'SN-A'},
+                           format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertIn('serie_neuve', r.data)
+        rma.refresh_from_db()
+        self.assertNotEqual(rma.statut, 'resolu')
+        # série neuve : le neuf est en service au parc et au contrat
+        r = self.api.patch(url, {**corps, 'serie_neuve': 'SN-A2'},
+                           format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        neuf = Equipement.objects.get(company=self.company,
+                                      numero_serie='SN-A2')
+        self.assertEqual(neuf.statut, Equipement.Statut.EN_SERVICE)
+        self.assertEqual(neuf.installation_id, self.inst.id)
+        self.assertTrue(self.contrat.couvre_equipement(neuf))
+        self.assertFalse(
+            self.contrat.equipements.filter(pk=self.ancien.pk).exists())
+        # sans serie_neuve : comportement inchangé
+        r = self.api.patch(url, {'rma_ref': 'RMA-9'}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(Equipement.objects.filter(
+            company=self.company, numero_serie='SN-A2').count(), 1)

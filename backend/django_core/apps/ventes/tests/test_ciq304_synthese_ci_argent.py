@@ -253,6 +253,26 @@ class TestAmot80TuilesArgent(SimpleTestCase):
         self.assertIn("vos 12 dernières factures",
                       couverture.ligne_non_chiffre(d, "com", "c1c"))
 
+    def test_conso_connue_motif_du_manque_reel_au_rendu_pdf(self):
+        """AMOT116, preuve en direct (03/11) — le PDF rend ``data_rendu`` (bloc
+        ``economie_ci`` échappé : « d&#x27;électricité ») : le motif reste reconnu.
+        ROUGE AVANT : « non chiffrés à ce stade. » sans « votre contrat »."""
+        from apps.ventes import economie_ci as eco
+        from apps.ventes.quote_engine.builder import echapper_textes_client
+        from apps.ventes.quote_engine.ci import couverture
+
+        etude = _etude_ci()
+        economie = eco.assembler_economie_ci(copy.deepcopy(etude), tarif_declare={},
+                                             mode_installation="commercial")
+        s = synthese_ci(echapper_textes_client(_data(etude, economie_ci=economie)))
+        self.assertIn({"bloc": "argent", "motif": MOTIF_ARGENT_CONTRAT}, s["omissions"])
+        self.assertIn("communiquez-nous votre contrat d'électricité",
+                      couverture.ligne_non_chiffre(_tuiles(s)[0], "com", "c1c"))
+        # Matrice horaire absente : même lecture (« l'étude » échappé).
+        horaire = dict(_economie("exemple_omis"), motifs_omission=[eco.MOTIF_SANS_HORAIRE])
+        s = synthese_ci(echapper_textes_client(_data(_etude_ci(), economie_ci=horaire)))
+        self.assertIn({"bloc": "argent", "motif": MOTIF_ARGENT_HORAIRES}, s["omissions"])
+
     def test_conso_connue_motif_du_manque_reel(self):
         """AMOT116 (C-AMOT-VER-040) — baseline « factures » servie : le motif
         nomme le manque réel, jamais « vos 12 dernières factures »."""

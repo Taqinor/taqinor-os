@@ -79,7 +79,8 @@ describe('W131 — données structurées des nouvelles pages', () => {
   it('le pilier VE porte Service + BreadcrumbList', () => {
     const src = read(EV_PAGE);
     expect(src).toMatch(/['"]@type['"]:\s*['"]Service['"]/);
-    expect(src).toMatch(/['"]@type['"]:\s*['"]BreadcrumbList['"]/);
+    // WAUD50 : un seul BreadcrumbList, celui du composant <Breadcrumb> (plus de doublon en ligne).
+    expect(src).toMatch(/<Breadcrumb\s/);
   });
 });
 
@@ -137,5 +138,39 @@ describe('AGW307 — aucune page ne promet « jusqu’à 30 % » ni « ≈ 30 % 
       }
     }
     expect(fautifs).toEqual([]);
+  });
+});
+
+describe('WAUD77 — « Réponse courte » sourcée : chiffre affiché = constante, prix omis tant que non sourcé', async () => {
+  const { REPONSES_COURTES } = await import('../src/lib/reponsesCourtes');
+  const { AUTORISATION_THRESHOLD_KW, DECLARATION_BT_MAX_KW } = await import('../src/lib/regime');
+  const { DEYE_INVERTER_WARRANTY_YEARS, HUAWEI_INVERTER_WARRANTY_YEARS, BATTERY_WARRANTY_YEARS } = await import('../src/lib/warranty');
+  const PAGES: [string, 'loi8221' | 'garanties' | 'pompage'][] = [
+    ['../src/pages/loi-82-21.astro', 'loi8221'],
+    ['../src/pages/garanties.astro', 'garanties'],
+    ['../src/pages/pompage-solaire.astro', 'pompage'],
+  ];
+  it('les pages pilier portent le bloc, la page prix non (omission tant que D-WAUD-5 n’a pas sourcé les montants)', () => {
+    for (const [f, id] of PAGES) expect(read(f), f).toContain(`<ReponseCourte id="${id}"`);
+    expect(read('../src/pages/prix-panneaux-solaires-maroc.astro')).not.toContain('<ReponseCourte');
+  });
+  it('parité : chaque chiffre affiché vient de sa constante', () => {
+    expect(REPONSES_COURTES.loi8221).toContain(`moins de ${DECLARATION_BT_MAX_KW} kW`);
+    expect(REPONSES_COURTES.loi8221).toContain(`${AUTORISATION_THRESHOLD_KW / 1000} MW`);
+    expect(REPONSES_COURTES.garanties).toContain(`${DEYE_INVERTER_WARRANTY_YEARS} ans (hybrides Deye)`);
+    expect(REPONSES_COURTES.garanties).toContain(`${HUAWEI_INVERTER_WARRANTY_YEARS} ans (réseau Huawei)`);
+    expect(REPONSES_COURTES.garanties).toContain(`${BATTERY_WARRANTY_YEARS} ans`);
+    expect(REPONSES_COURTES.pompage.replace(/[  ]/g, ' ')).toContain('30 % de l’investissement, plafonnée à 3 000 DH par hectare, 3 000 DH par kWc et 30 000 DH par projet');
+  });
+  it('garanties : jamais « 30 ans » en général ; 82-21 : ni date ni pénalité ; deux phrases citables', () => {
+    // « 30 ans » : uniquement rattaché aux panneaux et à leur seuil, jamais en général (WAUD77).
+    expect(REPONSES_COURTES.garanties).toContain('Panneaux : 12 ans produit et 30 ans de performance linéaire (≥ 87,4 % à 30 ans)');
+    expect(REPONSES_COURTES.garanties).not.toMatch(/dépendent de leur marque/);
+    expect(REPONSES_COURTES.garanties.replace(/^Panneaux :[^;]*;/, '')).not.toMatch(/30 ans|25 ans/);
+    // D-AGR-6 : la règle, jamais un droit — « décision de la DPA/ORMVA », comme la section FDA de la page.
+    expect(REPONSES_COURTES.pompage).toContain('décision de la DPA/ORMVA, non garantie');
+    expect(REPONSES_COURTES.pompage).not.toMatch(/couvre/);
+    expect(REPONSES_COURTES.loi8221).not.toMatch(/pénalit|amende|délai|\b20\d\d\b|mois/i);
+    for (const t of Object.values(REPONSES_COURTES)) expect(t.length).toBeLessThan(420);
   });
 });

@@ -107,6 +107,29 @@ class PorteeDureTests(VtaBase):
         self.assertEqual({ligne['id'] for ligne in lignes},
                          {mienne.id, collegue.id})
 
+    def test_valideur_sous_arbre_ne_voit_pas_hors_portee(self):
+        """ACVI8 (D-ACVI-3) — portée du rôle pour un valideur ; le rôle à portée
+        « all » (bureau d'études) voit toute la société ; sa propre visite
+        reste lisible. Mutant : retirer le filtre ⇒ 200 sur V3."""
+        responsable = self._user(
+            self.company, 'vta6-cr', BUREAU + ['records_scope_sous_arbre'])
+        lead_mien = Lead.objects.create(
+            company=self.company, nom='Mien', owner=responsable)
+        lead_hors = Lead.objects.create(
+            company=self.company, nom='Hors', owner=self.collegue)
+        v_mien = self._visite(self.terrain, lead=lead_mien)
+        v3 = self._visite(self.collegue, lead=lead_hors)
+        assignee = self._visite(responsable, lead=lead_hors)
+        api = auth(responsable)
+        self.assertEqual(
+            api.get(f'/api/django/visites/visites/{v3.id}/').status_code, 404)
+        lignes = api.get('/api/django/visites/visites/').data
+        self.assertEqual({ligne['id'] for ligne in lignes},
+                         {v_mien.id, assignee.id})
+        self.assertEqual(
+            auth(self.bureau).get(
+                f'/api/django/visites/visites/{v3.id}/').status_code, 200)
+
     def test_mine_restreint_un_valideur_sans_elargir_personne(self):
         sienne = self._visite(self.bureau)
         self._visite(self.terrain)

@@ -24,6 +24,7 @@ from apps.roles.models import Role
 from apps.roles.permissions_registre import (
     ALL_PERMISSIONS,
     CANONICAL_SYSTEM_ROLES,
+    COMMERCIAL_PERMISSIONS,
     COMMERCIAL_TERRAIN_PERMISSIONS,
     DIRECTEUR_PERMISSIONS,
     PERMISSION_MODULE,
@@ -153,7 +154,13 @@ class PorteeServeurDuCommercialTerrainTests(TestCase):
                                       COMMERCIAL_TERRAIN_PERMISSIONS)
         cls.ancien = cls._user(cls.company, 'vta4-ancien-code', ANCIENS_CODES)
         cls.lead = Lead.objects.create(
-            company=cls.company, nom='Bennani', ville='Bouskoura')
+            company=cls.company, nom='Bennani', ville='Bouskoura',
+            owner=cls.terrain)
+        cls.c1 = cls._user(cls.company, 'vta4-c1', COMMERCIAL_PERMISSIONS)
+        cls.c2 = cls._user(cls.company, 'vta4-c2', COMMERCIAL_PERMISSIONS)
+        cls.lead_c1 = Lead.objects.create(
+            company=cls.company, nom='Lun', ville='Rabat',
+            telephone='0600000011', owner=cls.c1)
         cls.lead_autre = Lead.objects.create(
             company=cls.autre, nom='Client concurrent', ville='Rabat')
 
@@ -172,6 +179,21 @@ class PorteeServeurDuCommercialTerrainTests(TestCase):
         self.assertEqual(creation.status_code, 201, creation.data)
         liste = api.get('/api/django/visites/visites/')
         self.assertEqual(liste.status_code, 200, liste.data)
+
+    def test_visite_sur_lead_non_assigne_refusee(self):
+        """ACVI2 (D-ACVI-1) — terrain et Commercial « soi » : un lead hors de
+        leur portée n'ouvre rien, aucune écriture."""
+        from apps.crm.models import LeadActivity
+        from apps.visites.models import VisiteTerrain
+
+        for utilisateur in (self.terrain, self.c2):
+            refus = auth(utilisateur).post(
+                '/api/django/visites/visites/', {'lead': self.lead_c1.id},
+                format='json')
+            self.assertEqual(refus.status_code, 400, refus.data)
+            self.assertEqual(refus.data['lead'], ['Lead introuvable.'])
+        self.assertFalse(VisiteTerrain.objects.filter(lead=self.lead_c1).exists())
+        self.assertFalse(LeadActivity.objects.filter(lead=self.lead_c1).exists())
 
     def test_il_recoit_403_sur_les_leads_du_crm(self):
         """LE point du groupe VTA : la frontière est SERVEUR, pas un écran

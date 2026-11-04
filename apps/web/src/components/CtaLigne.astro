@@ -1,0 +1,20 @@
+---
+/**
+ * WAUD35 — CTA de milieu de page, dans le fil d'un contenu sombre : le lecteur
+ * mobile ne descend plus 4 000 px sans action. Même libellé et même destination
+ * que CtaBand (cta.primary, quoteJourneyHref) ; la bande finale reste en fin de page.
+ */
+import { getLocaleFromPath, useTranslations } from '../i18n/utils';
+import { quoteJourneyHref } from '../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const t = useTranslations(locale);
+---
+
+<p class="mt-8 text-center" data-cta-ligne>
+  <a
+    href={quoteJourneyHref(locale)}
+    class="glow inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300"
+  >{t('cta.primary')}</a>
+  <span class="mt-2 block text-xs text-lune-soft">{t('cta.reassurance')}</span>
+</p>

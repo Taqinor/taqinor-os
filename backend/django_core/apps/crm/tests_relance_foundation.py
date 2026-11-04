@@ -373,8 +373,16 @@ class TestRelanceEtapeAPI(TestCase):
         self.assertEqual(len(resp2.data), 1)
         self.assertEqual(RelanceEtape.objects.filter(lead=lead2).count(), 1)
 
-    def test_liste_dues_lecture_ouverte_a_tout_role(self):
-        resp = self.api_normal.get('/api/django/crm/relance-etapes/?scope=all')
+    def test_liste_dues_lecture_sous_crm_voir(self):
+        """ACVI3 (D-ACVI-2) — plus ouverte à tout rôle : `crm_voir` exigé."""
+        from apps.roles.models import Role
+        url = '/api/django/crm/relance-etapes/?scope=all'
+        self.assertEqual(self.api_normal.get(url).status_code, 403)
+        self.normal.role = Role.objects.create(
+            company=self.company, nom='Lecteur relances',
+            permissions=['crm_voir'])
+        self.normal.save(update_fields=['role'])
+        resp = self.api_normal.get(url)
         self.assertEqual(resp.status_code, 200, resp.content)
         # aujourd'hui + retard uniquement -> ici la 1ere echeance est J+2, donc
         # rien n'est encore du (scope=all == aujourd'hui+retard).

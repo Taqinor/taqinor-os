@@ -76,9 +76,9 @@ const casablancaSouthOptimalYield = Math.round(
 // Cumul « depuis la mise en service », jamais une projection. Rendu statique
 // (plus de count-up) → LCP peint immédiatement, aucun flash.
 const heroFigure = MEASURED_FLEET_LIFETIME_MWH_FR; // « 6,56 »
-const heroTitleSuffix = ' MWh déjà produits et mesurés sur nos installations.';
+// WAUD84 (maquette FR, D-WAUD-7) — le titre parle du visiteur ; le cumul mesuré, daté, passe dessous.
 const heroSub =
-  `Un cumul réel, ${MEASURED_FLEET_READ_NOTE.fr} — pas une projection commerciale. Votre étude commence par un diagnostic de 60 secondes.`;
+  `${heroFigure} MWh déjà produits et mesurés sur nos installations, ${MEASURED_FLEET_READ_NOTE.fr}. Votre étude commence par un diagnostic de 60 secondes.`;
 
 // W267 — Sous-ligne monétaire du héros. AUCUN chiffre inventé : la
 // consommation réelle du foyer réf. 468 n'est publiée nulle part sur le site,
@@ -183,7 +183,7 @@ const journey = [
 // construit (diagnostic → étude signée → devis + signature en ligne → pose &
 // SAV, cf. /devis/mon-toit).
 const howItWorks = [
-  { n: '1', title: 'Estimation instantanée', body: 'Votre facture donne une fourchette kWc en 60 secondes, sans engagement.' },
+  { n: '1', title: 'Étude gratuite', body: 'Votre facture suffit pour démarrer, en 60 secondes et sans engagement.' },
   { n: '2', title: 'Étude personnalisée signée', body: 'Visite technique, dimensionnement sur votre toiture réelle, validé et signé avant tout devis.' },
   { n: '3', title: 'Devis + signature en ligne', body: 'Le chiffrage détaillé se signe électroniquement, où que vous soyez.' },
   { n: '4', title: 'Installation & SAV', body: 'Pose par notre équipe, mise en service, puis suivi de production sur les installations raccordées et SAV proactif.' },
@@ -236,8 +236,8 @@ import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
 ---
 
 <Layout
-  title="Taqinor — Installations solaires au Maroc, conformes loi 82-21"
-  description="Installations solaires pour villas, industries et hôtels au Maroc : dimensionnées sur votre facture, déclarées loi 82-21, avec suivi de production sur les installations raccordées et accès client."
+  title="Installateur panneaux solaires Maroc, étude gratuite | Taqinor"
+  description="Installation de panneaux solaires au Maroc pour villas, industries et hôtels : étude gratuite sur votre facture, déclaration loi 82-21, suivi de production."
   ogSlug="accueil"
   preloadHeroPoster
 >
@@ -286,16 +286,16 @@ import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
       {/* WC7 (2026-07-05) — `relative z-10` : le contenu (dont le chiffre) reste
           AU-DESSUS de la vidéo/affiche (couche `-z-10`) même après le fondu de
           la vidéo → le chiffre ne « disparaît » plus quand la vidéo démarre. */}
-      <div class="relative z-10 mx-auto w-full max-w-6xl px-4 pb-24 pt-32 sm:pb-32">
-        <p class="tech-label v2-kicker rule-brass cine-in text-lune">L'étude d'abord, le chantier ensuite</p>
+      <div class="relative z-10 mx-auto w-full max-w-6xl px-4 pb-24 pt-20 sm:pb-32 sm:pt-32">
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">Installation de panneaux solaires au Maroc</p>
         {/* WB1/WC7 — Titre héros STATIQUE (aucun count-up/`.cine-in` sur le LCP)
             + text-shadow défensif : le chiffre blanc reste lisible même
             au-dessus d'une image de vidéo très lumineuse (plein soleil). */}
         <h1 id="hero-title" class="display v2-hero-title hero-title-sweep mt-6 max-w-[15ch] [text-shadow:0_2px_28px_rgb(7_11_29/0.72)]">
-          <span class="font-variant-numeric tabular-nums" dir="ltr">{heroFigure}</span>{heroTitleSuffix}
+          Votre toit paie votre électricité.
         </h1>
         <p class="v2-lead cine-in cine-in-2 mt-4 max-w-xl text-white/85">{heroSub}</p>
-        <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">
+        <div class="cine-in cine-in-3 mt-6 flex flex-wrap sm:mt-10 items-center gap-3">
           {/* UN seul CTA brass (discipline laiton) — l'or est ici autorisé.
               WJ36 — le héros pointe le parcours devis, libellé principal verbatim. */}
           <a id="hero-cta-magnetic" href="/devis/mon-toit/" class="glow-hero magnetic-cta bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
@@ -624,7 +624,6 @@ import EnIndexP51EC from '../components/blocs/EnIndexP51EC.astro';
         même widget (variant="compact"), juste avant l'acte final du
         diagnostic complet — un dernier rattrapage pour qui a fait défiler
         toute la page sans encore chiffrer sa facture. ── */}
-    <InstantEstimator variant="compact" />
 
     {/* ── ACTE FINAL — W249 : un seul entonnoir. L'ancien second formulaire
         (DiagnosticForm, qui dupliquait les deux InstantEstimator déjà sur

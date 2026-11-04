@@ -24,7 +24,9 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
+from core.test_utils import AssertQueryBudgetMixin
 from authentication.models import Company
+from testkit.time import frozen
 
 from apps.crm import horaires, stages
 from apps.crm.models import Lead, LeadActivity
@@ -138,6 +140,33 @@ class KpiPremierContactTests(TestCase):
             maj['first_contacted_at'] = contacte_le
         Lead.objects.filter(pk=lead.pk).update(**maj)
         return Lead.objects.get(pk=lead.pk)
+
+    @frozen('2026-09-24T22:00:00+01:00')
+    def test_requetes_constantes_avec_le_nombre_de_leads(self):
+        # ACVI79 — profil et jours ouvrés lus une fois, pas une fois par lead.
+        # Gelé le soir : la limite « du matin » n'est calculée que pour un lead
+        # de nuit, c'est elle qui coûtait 3 requêtes par lead hors journée.
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from django.utils import timezone
+
+        def creer(nombre):
+            arrivee = timezone.now() - datetime.timedelta(days=5)
+            for _ in range(nombre):
+                self._lead(arrivee, arrivee + datetime.timedelta(days=2))
+
+        def cout():
+            with CaptureQueriesContext(connection) as ctx:
+                kpi = kpi_premier_contact(self.company)
+            return len(ctx), kpi['nb_leads']
+
+        creer(3)
+        a_trois, nb = cout()
+        self.assertEqual(nb, 3)
+        creer(6)
+        a_neuf, nb = cout()
+        self.assertEqual(nb, 9)
+        self.assertEqual(a_neuf, a_trois)
 
     def test_null_partout_sur_zero_lead(self):
         kpi = kpi_premier_contact(self.company)
@@ -261,7 +290,7 @@ class KpiPremierContactTests(TestCase):
         self.assertEqual(kpi_premier_contact(voisine)['nb_leads'], 0)
 
 
-class KpiApiTests(TestCase):
+class KpiApiTests(AssertQueryBudgetMixin, TestCase):
     def setUp(self):
         self.company = _company('mry19-api')
         # VTA4 — les lectures CRM exigent le code fin ``crm_voir``.
@@ -275,6 +304,27 @@ class KpiApiTests(TestCase):
         self.api = APIClient()
         self.api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.normal)}')
+
+    def _mesure_acvi95(self, api, url):
+        """ACVI95 — une lecture sous plafond, sans la colonne `etude_params`."""
+        with self.assertMaxQueries(40) as ctx:
+            resp = api.get(url)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertFalse([q['sql'] for q in ctx.captured_queries
+                          if '"etude_params"' in q['sql']])
+        return len(ctx.captured_queries)
+
+    def test_budget_deux_tailles_sans_etude_params(self):
+        def peupler(nombre):
+            for i in range(nombre):
+                Lead.objects.create(company=self.company, nom=f'K{i}',
+                                    stage=stages.CONTACTED)
+
+        peupler(5)
+        self._mesure_acvi95(self.api, KPI_URL)  # échauffement
+        n = self._mesure_acvi95(self.api, KPI_URL)
+        peupler(10)
+        self.assertEqual(self._mesure_acvi95(self.api, KPI_URL), n)
 
     def test_lecture_ouverte_a_tout_porteur_de_crm_voir(self):
         resp = self.api.get(KPI_URL)

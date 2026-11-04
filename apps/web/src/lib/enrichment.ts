@@ -74,6 +74,19 @@ export function cleanEnrichment(body: unknown): Enrichment {
   return out;
 }
 
+/**
+ * ERR-W33-ENRICHI-ENVOI — les champs facultatifs du formulaire enrichi, tels que
+ * `cleanEnrichment` les attend : uniquement ceux qui ont une valeur (jamais bloquants).
+ */
+export function champsEnrichis(fd: FormData): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const cle of ['supplyType', 'roofArea', 'orientation', 'estimatedKwc']) {
+    const valeur = String(fd.get(cle) ?? '').trim();
+    if (valeur) out[cle] = valeur;
+  }
+  return out;
+}
+
 /** Vrai si au moins un champ facultatif a été rempli. */
 export function hasEnrichment(e: Enrichment): boolean {
   return (

@@ -229,7 +229,7 @@ def lead_touchpoints_attribution(lead, company=None):
     }
 
 
-def attribution_leads(company, debut=None, fin=None):
+def attribution_leads(company, debut=None, fin=None, leads=None):
     """ZSAL6 — Rapport d'attribution des leads : par COMMERCIAL et par
     CANAL/SOURCE, croisés avec le résultat (conversion en SIGNED, CA signé).
 
@@ -250,7 +250,9 @@ def attribution_leads(company, debut=None, fin=None):
     from decimal import Decimal
     from .models import Lead
 
-    qs = Lead.objects.filter(company=company, is_archived=False)
+    # ACVI10 (D-ACVI-2) — ``leads`` : le jeu en portée de l'appelant.
+    qs = (leads if leads is not None
+          else Lead.objects.filter(company=company)).filter(is_archived=False)
     if debut is not None:
         qs = qs.filter(date_creation__date__gte=debut)
     if fin is not None:

@@ -1512,7 +1512,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
      _economie_ci, _utility, etude, masquer_economies, prod_kwh_avec,
      prod_kwh_sans, roi, savings_estimated_avec, savings_estimated_sans,
      savings_model, savings_model_avec, savings_model_sans, tarif_mt_mention) = chiffrer_etude(
-        _blob=_blob, _corrige=_corrige, _mode_ci=_mode_ci,
+        _blob=_blob, _corrige=_corrige, _mode_ci=_mode_ci, _totaux_seuls=_totaux_seuls,
         avec_batterie_differee=avec_batterie_differee, avec_items=avec_items,
         avec_ok=avec_ok, avertissements_internes=avertissements_internes,
         deux_options=deux_options, devis=devis,
@@ -2131,8 +2131,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # ── CIQ218 — conditions générales C&I PAR MODE (texte de la société relu
     # par un juriste, gelé à l'envoi). Additif : clé posée seulement quand un
     # texte existe → tout autre devis reste octet-identique.
-    _cgv_ci = cgv_ci_du_devis(devis, data.get("tva_note"),
-                              data.get("langue_sortie"))
+    _cgv_ci = None if _totaux_seuls else cgv_ci_du_devis(  # ERR-PERF-DEVIS-LISTE-CI-N1
+        devis, data.get("tva_note"), data.get("langue_sortie"))
     if _cgv_ci:
         data["cgv_ci"] = _cgv_ci
         data.update(_titre_cgv_ci(devis))  # APDF12 — titre de la variante
@@ -2152,6 +2152,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         ("regles_avant_2710", _corrige and not _regles_2710(devis)),
         ("regles_echeancier_historique", not regles_au_moins(devis, REGLES_CONSO_PUBLIQUE_0111)),  # AGNR52
         ("regles_ecarts_0111_historique", not regles_au_moins(devis, REGLES_ECARTS_0111)),  # AMOT116/AMOT115
+        ("regles_validite_historique", not regles_au_moins(devis, REGLES_CENTAINE_0311)),  # ERR-CADV83-COUVERTURES
         ("regles_arrondi_historique", not regles_au_moins(devis, REGLES_ARRONDI_3010))) if pose})  # CE2E4 : tout mode
 
     # ── AGR217 — l'attestation d'usage agricole SAISIE (``etude_params``),
@@ -2171,7 +2172,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # lecture, jamais stocké ; SANS ``vue_interne`` ni ``alertes_internes`` —
     # ``economie_ci_publique``). Commercial / industriel seulement : tout autre
     # devis reste octet-identique. Le rendu des pages relève de D3 (CIQ4).
-    if _mode_ci:
+    if _mode_ci and not _totaux_seuls:  # ERR-PERF-DEVIS-LISTE-CI-N1 : aucune clé lue en liste.
         data["economie_ci"] = _economie_ci
         # CIQ212 — les N jalons de paiement (D-CIQ-13), source unique que D3
         # imprimera ; ``payment_terms`` reste le rabattu à trois créneaux des
@@ -2257,7 +2258,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # Clé PRÉFIXÉE ``_`` : la charge utile publique republie ``data`` sous
     # ``quote`` après ``_sans_cles_internes`` — elle n'y sort jamais. Ne casse
     # jamais un rendu.
-    if mode in ("commercial", "industriel"):
+    if mode in ("commercial", "industriel") and not _totaux_seuls:
         try:
             from apps.crm.selectors import entrees_ci_du_lead
             _entrees_ci = entrees_ci_du_lead(getattr(devis, "lead", None))

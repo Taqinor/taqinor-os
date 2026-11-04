@@ -329,7 +329,7 @@
         ],
         "error": {
           "code": "validation_error",
-          "message": "{'seuil_alerte_rfa_pct': [ErrorDetail(string='Réglage non branché.', code='invalid')]}",
+          "message": "Réglage non branché.",
           "fields": {
             "seuil_alerte_rfa_pct": [
               "Réglage non branché."

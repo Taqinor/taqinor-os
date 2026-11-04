@@ -27,6 +27,7 @@ précis (``assertLogs('apps.ventes.services')``). Un déplacement pur ne change
 pas le nom sous lequel une ligne de journal est émise.
 """
 from decimal import Decimal, ROUND_HALF_UP
+from functools import lru_cache
 import math
 import re
 import unicodedata
@@ -874,6 +875,10 @@ def _exclut_panneau(d):
     return any(k in d for k in ('onduleur', 'batterie', 'smart meter', 'wifi', 'dongle'))
 
 
+# ERR-PERF-DEVIS-ATOMIC-CATALOGUE — fonction PURE du seul nom (aucune base, aucun
+# réglage) : chaque composition de taille d'un balayage reclasse tout le catalogue
+# (~86 ms pour 2 100 noms, mesuré sur ce code). Mémoïsée par nom : mêmes résultats.
+@lru_cache(maxsize=4096)
 def classer_produit(nom):
     """Catégorie catalogue d'un produit — port de ``classifyProduct``.
 

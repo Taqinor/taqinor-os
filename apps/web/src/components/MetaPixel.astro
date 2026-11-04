@@ -8,14 +8,20 @@
  * ni optimiser une campagne « site » sur l'événement Lead, ni construire
  * d'audiences de visiteurs. Ce composant l'installe sitewide.
  *
- * CONSENTEMENT — mêmes règles que le beacon CAPI (QJW14, src/lib/lead.ts) :
- *  - « Refuser » EXPLICITE (`tq_consent` = 'denied') ⇒ le pixel ne se charge pas
- *    (au chargement) ou est révoqué (`fbq('consent','revoke')`) si le refus
- *    arrive après. AUCUN événement ne part.
- *  - PAS ENCORE RÉPONDU (flag absent) ou 'granted' ⇒ le pixel tourne. Pour
- *    basculer le cas « absent » du côté bloquant, une seule condition change
- *    ci-dessous (`=== 'denied'` → `!== 'granted'`) — même levier d'inversion
- *    d'un mot que fireCapi.
+ * CONSENTEMENT — WAUD12 (D-WAUD-1 = opt-in strict, CNDP D-939-2025 §6) : RIEN
+ * avant « Accepter » (`tq_consent` = 'granted'), ni fbevents.js, ni cookie, ni
+ * événement : l'amorce fbq reste une file locale vide, le script n'est même pas
+ * demandé. Au grant (au chargement si déjà accepté, ou `tq:consent-change` sur la
+ * page) : `consent grant`, `init`, PageView, événements en attente (avec leur
+ * eventId), puis fbevents.js injecté après l'affichage (load + requestIdleCallback).
+ * PAS de `consent revoke` dans la file avant le chargement (mesuré le 03/11/2026,
+ * sonde consent-probe : fbevents.js s'arrête sur ce revoke et ne rejoue jamais
+ * init/grant/PageView — 0 /tr, le pixel disparaît pour ceux qui acceptent) ; ne pas
+ * charger le script avant le grant est plus strict et produit le même « 0 cookie ».
+ * Un refus après chargement révoque. Le visiteur qui accepte a donc toujours son
+ * pixel, y compris s'il accepte plus tard depuis « Gérer mes cookies ».
+ * Effet connu (dit à Reda) : PageView part 1-3 s plus tard ; audiences de
+ * reciblage réduites aux « Accepter ».
  *
  * DÉDUPLICATION — l'événement `Lead` navigateur est émis par les pages du tunnel
  * via `window.tqPixelTrack('Lead', {}, eventId)` avec le MÊME `eventId` (WJ92)
@@ -31,13 +37,8 @@ const pixelId = ((import.meta.env.PUBLIC_META_PIXEL_ID as string | undefined) ??
 {pixelId && (
   <script is:inline define:vars={{ tqPixelId: pixelId }}>
     (function () {
-      var denied = false;
-      try {
-        denied = localStorage.getItem('tq_consent') === 'denied';
-      } catch (e) {}
-      if (denied) return;
-      /* Amorce fbq officielle Meta (inchangée, formatée). */
-      !(function (f, b, e, v, n, t, s) {
+      /* Amorce fbq officielle Meta (file locale) ; le chargement de fbevents.js est séparé. */
+      !(function (f, n) {
         if (f.fbq) return;
         n = f.fbq = function () {
           n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments);
@@ -47,26 +48,37 @@ const pixelId = ((import.meta.env.PUBLIC_META_PIXEL_ID as string | undefined) ??
         n.loaded = !0;
         n.version = '2.0';
         n.queue = [];
-        t = b.createElement(e);
-        t.async = !0;
-        t.src = v;
-        s = b.getElementsByTagName(e)[0];
-        s.parentNode.insertBefore(t, s);
-      })(window, document, 'script', 'https://connect.facebook.net/en_US/fbevents.js');
-      window.fbq('init', tqPixelId);
-      window.fbq('track', 'PageView');
-      /* Refus APRÈS chargement (bandeau WB31 sur la même page) : révocation. */
-      window.addEventListener('tq:consent-change', function (e) {
-        if (e && e.detail && e.detail.value === 'denied') {
-          try { window.fbq('consent', 'revoke'); } catch (err) {}
+      })(window);
+      var accorde = false;
+      var pageVueEnvoyee = false;
+      var enAttente = [];
+      var suivre = function (a) {
+        window.fbq('track', a[0], a[1] || {}, a[2] ? { eventID: a[2] } : undefined);
+      };
+      var demarrer = function () {
+        if (accorde) return;
+        accorde = true;
+        window.fbq('consent', 'grant');
+        if (!pageVueEnvoyee) {
+          pageVueEnvoyee = true;
+          window.fbq('init', tqPixelId);
+          window.fbq('track', 'PageView');
         }
+        enAttente.splice(0).forEach(suivre);
+        window.tqChargerApresAffichage('https://connect.facebook.net/en_US/fbevents.js');
+      };
+      if (window.tqChoix() === 'granted') demarrer();
+      window.tqSurChoix(demarrer, function () {
+        accorde = false;
+        enAttente = [];
+        try { window.fbq('consent', 'revoke'); } catch (err) {}
       });
-      /* Pont pour les pages (tunnel /devis/mon-toit) : no-op si refusé. */
+      /* Pont pour les pages (tunnel /devis/mon-toit) : gardé jusqu'au choix, no-op si refusé. */
       window.tqPixelTrack = function (event, params, eventId) {
         try {
-          if (typeof window.fbq !== 'function') return;
-          if (localStorage.getItem('tq_consent') === 'denied') return;
-          window.fbq('track', event, params || {}, eventId ? { eventID: eventId } : undefined);
+          if (window.tqChoix() === 'denied') return;
+          if (accorde) suivre([event, params, eventId]);
+          else enAttente.push([event, params, eventId]);
         } catch (err) {}
       };
     })();

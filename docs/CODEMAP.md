@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 31d664598c004e3e0a0ef8fec272ce99249141251e6fecf43d62e5a3e8652e63
-Plan fingerprint: cb41234c7ef09082bdc6c4cdbe5e91f58e0be5cda96fd47bc391b31432e802be
+Structure fingerprint: e2a83c7fef95bb3c5d1489787ef6d2a02cf88ba61605fb61ce74a635d819e777
+Plan fingerprint: 472847585d10de96a6d2a41d39d551349311260dcb93efd91f0d719b8a83580d
 
 
 
@@ -594,7 +594,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1304)**
+**Done (1305)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1874,6 +1874,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT80` — Après un 409 nommant un autre devis (`version_remplacee.successeur` ou…
 - `VNT81` — Garder le panneau utilisable au téléphone : une colonne, tiroir bas, cibles ≥ 44 px, ≤…
 - `VNT82` — Deux budgets de clics en CI depuis la fiche lead : acompte proposé ≤ 3 interactions (0…
+- `VNT83` — Acceptation en direct M2 (orchestrateur) : accepter → brouillon d'acompte automatique →…
 - `VNT84` — Faire lire `devis_signes_en_vigueur` à la publicité (ticket moyen par lead, vélocité…
 - `VNT85` — Faire lire `devis_signes_en_vigueur` au contrôle d'intégrité « accepté sans chantier »
 - `VNT86` — Faire lire `devis_signes_en_vigueur` à `lead_signe_sans_devis_actif` (retirer le filtre…
@@ -1901,7 +1902,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT109` — `reporting/insights.py` (rentabilité chantier) : « facturé » = factures ÉMISES de la…
 - `VTAG1` — [GATED: décision fondateur]
 
-**Open — to build (135)**
+**Open — to build (134)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -2035,7 +2036,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `QXG4` — [GATED: founder content]
 - `QXG5` — [GATED: founder ops check, 10 minutes]
 - `QXG6` — [GATED: vérifs fondateur avant hard-coding]
-- `VNT83` — Acceptation en direct M2 (orchestrateur) : accepter → brouillon d'acompte automatique →…
 - `VNT108` — [GATED: geste du fondateur — `reparer_vente_active --lister` = 0 en prod ; aujourd'hui…
 - `VTG1` — [GATED: décision fondateur coût/infra]
 
@@ -2049,4 +2049,3 @@ Things this map could not fully verify from source — do not over-trust:
 - `S21` — Real-time WebSocket upgrade (Django Channels)
 - `VX203` — Contrat d'erreur UNIQUE : fin du double-toast (35 pages), `getApiError` (@lane…
 - `VX252` — [BACKEND additif léger] Maîtrise personnelle : milestones non comparatifs, KPI
-

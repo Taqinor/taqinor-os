@@ -172,6 +172,22 @@ class TestDocLiteralTemplates(TestCase):
                           .replace('’', "'"))
                 self.assertIn(attendu, doc)
 
+    def test_les_couvertures_portent_la_meme_reserve_de_validite(self):
+        """ERR-CADV83-COUVERTURES — le rejeu en direct : le 3 pages résidentiel et les
+        couvertures C&I portent la réserve ; un devis sous le niveau 11
+        (``regles_validite_historique``) garde la pastille qu'il a reçue, sans
+        changer le catalogue servi. Test-du-test : retirer le drapeau du builder."""
+        from apps.ventes.quote_engine.ci.couverture import pastille_validite as ci
+        from apps.ventes.quote_engine.residential.cover import (
+            pastille_validite as res)
+        for pastille, ancien in ((ci, 'Valable jusqu&#8217;au 15/10/2026'),
+                                 (res, "Valable jusqu'au 15/10/2026")):
+            with self.subTest(ancien=ancien):
+                self.assertIn('r&#233;visable', pastille({}, '15/10/2026'))
+                self.assertEqual(
+                    pastille({'regles_validite_historique': True}, '15/10/2026'),
+                    ancien)
+
     def test_editing_templates_changes_rendered_html(self):
         from apps.parametres.models_documents import DocumentTemplates
         tpl = DocumentTemplates.get(company=self.company)

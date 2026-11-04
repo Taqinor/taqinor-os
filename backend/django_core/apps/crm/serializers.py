@@ -38,7 +38,7 @@ from .models import (
 from .devis_auto import (
     catalogue_ci, champs_manquants_detail, champs_requis, message_manquants,
     mode_pompe_du_lead, source_conso, visite_avant_devis,
-    visite_point_eau_avant_devis)
+    leads_a_point_eau_valide, visite_point_eau_avant_devis)
 from .scoring import compute_score, score_label, score_reasons
 import logging
 from apps.customfields.serializers import ChampsPersonnalisesField
@@ -765,6 +765,19 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
         from apps.parametres.villes_resolution import corriger_ville
         return corriger_ville(value)
 
+    def _point_eau_valide_en_lot(self, obj):
+        """ERR-APRF-LISTE-LEADS-POINT-EAU-N1 — sur une page de liste, la garde AGV5
+        est lue UNE fois pour toute la page ; ``None`` hors liste (lecture unitaire)."""
+        lignes = getattr(self.parent, 'instance', None) if isinstance(
+            self.parent, serializers.ListSerializer) else None
+        if lignes is None or (obj.type_installation or '') != 'agricole':
+            return None
+        memo = self.context.setdefault('_leads_point_eau_valide', {})
+        if obj.company_id not in memo:
+            ids = [lead.id for lead in lignes if (lead.type_installation or '') == 'agricole']
+            memo[obj.company_id] = leads_a_point_eau_valide(obj.company_id, ids)
+        return obj.id in memo[obj.company_id]
+
     @extend_schema_field(serializers.DictField())
     def get_devis_auto(self, obj):
         """Prêt pour le devis automatique ? Même règle que l'endpoint
@@ -785,7 +798,8 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
             'requis': requis,
             # AGR403 (D-AGR-4) — {requise, motifs} pour un agricole, null
             # ailleurs : une information, jamais un blocage de `pret`.
-            'visite_point_eau_avant_devis': visite_point_eau_avant_devis(obj),
+            'visite_point_eau_avant_devis': visite_point_eau_avant_devis(
+                obj, point_eau_valide=self._point_eau_valide_en_lot(obj)),
             # CIQ404 (contrat CIQ1, D-CIQ-5) — la colonne qui remplit le
             # groupe pro et la visite AVANT le devis final : commercial et
             # industriel seulement, null ailleurs ; jamais un blocage.
@@ -797,12 +811,21 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
             # CIQ428/CIQ405 — détail seulement (même porte que `entrees_ci`) :
             # la liste garde son budget de requêtes, le cache 5 min ne la fait
             # pas varier (tests « garde ses requêtes »).
-            'catalogue_ci': (catalogue_ci(obj)
-                             if self.context.get('include_chatter_recent') else None),
+            'catalogue_ci': self._catalogue_ci(obj),
             # AGQ39 (D-AGQ-10) — {valeur, par_defaut} pour un agricole (mode
             # vide ⇒ « neuve » étiqueté « par défaut »), null ailleurs.
             'mode_pompe': mode_pompe_du_lead(obj),
         }
+
+    def _catalogue_ci(self, obj):
+        """ALEA63 — ``catalogue_ci`` servi sur TOUTES les représentations
+        (liste, détail, réponse du PATCH), calculé une fois par (société, type)
+        et par requête : ``pret`` reste inchangé, les écrans lisent ce bloc."""
+        memo = self.context.setdefault('_catalogue_ci_memo', {})
+        cle = (obj.company_id, obj.type_installation or '')
+        if cle not in memo:
+            memo[cle] = catalogue_ci(obj)
+        return memo[cle]
 
     @extend_schema_field(serializers.DictField(allow_null=True))
     def get_next_activity(self, obj):
@@ -930,6 +953,18 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
         request = self.context.get('request')
         if value and request and value.company_id != request.user.company_id:
             raise serializers.ValidationError('Utilisateur inconnu.')
+        # ACVI7 — créer un lead déjà affecté à un collègue exige ``crm_reassign``
+        # (même refus que le PATCH, ASEC50) ; ``owner`` = soi reste permis (VX93).
+        if (value and request and self.instance is None
+                and value.pk != request.user.pk):
+            from rest_framework.exceptions import PermissionDenied
+            from core.permissions import _user_has_or_legacy
+            from apps.roles.permissions import DroitDeLaGrille
+            if not _user_has_or_legacy(request.user, 'crm_reassign'):
+                raise PermissionDenied(DroitDeLaGrille('crm_reassign').message)
+        # ACVI14 — un compte désactivé ne reçoit plus de lead (déjà responsable : accepté).
+        if value and not value.is_active and getattr(self.instance, 'owner_id', None) != value.pk:
+            raise serializers.ValidationError('Utilisateur inactif.')
         return value
 
     def validate_canal(self, value):
@@ -1067,6 +1102,17 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
                             or (undo and self._undo_of_last_stage_change(current, target))):
                         raise ConflitEtat(
                             {'stage': ["On ne recule pas une étape."]})
+                # ACVI9 — le Froid passe par ``parquer_lead`` (voir ``update``),
+                # raison exigée ; annuler un mouvement ne parque pas.
+                from . import stages as stage_mod
+                if target == stage_mod.COLD and not (
+                        undo and self._undo_of_last_stage_change(current, target)):
+                    from .fiche_funnel import refus_mise_au_froid
+                    raison = (self.initial_data or {}).get('parc_raison')
+                    refus = refus_mise_au_froid(self.instance, raison)
+                    if refus:
+                        raise ConflitEtat({'parc_raison': [refus]})
+                    self._parc_raison = raison
         # ORDRE FONDATEUR (24/08/2026) — le GPS ne doit JAMAIS être écrasé ni
         # supplanté par l'adresse. Le Lead Workspace (LW9, draftCore.js) ne
         # PATCH déjà que les clés réellement modifiées (dirty keys) — éditer
@@ -1270,6 +1316,10 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
             'saisies_humaines',
             # CADV21 — parcage : écrit par le seul ``parquer_lead``.
             'parc_etat', 'parc_raison', 'parc_jusqu_au',
+            # ACVI30 — colonnes posées par le serveur : un PATCH ne les écrit pas.
+            'score_ajustement', 'mql_assigned_at', 'source', 'whatsapp_opt_in',
+            'consent_timestamp', 'date_creation_origine',
+            'contact_preference_set_at',
         ]
 
     def champs_a_marquer(self, validated_data):
@@ -1290,17 +1340,42 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
         ``update`` soit persisté (vide si aucun champ n'est marqué)."""
         return {'saisies_humaines'} if self.champs_a_marquer(validated_data) else set()
 
+    def create(self, validated_data):
+        """ACVI25 — un POST de la fiche aussi : les clés du corps sont marquées,
+        pas ce que le serveur pose (``company``, ``owner`` par défaut)."""
+        from types import SimpleNamespace
+
+        from apps.records.provenance import marquer_saisie_humaine
+        champs = self.champs_a_marquer(validated_data)
+        if champs:
+            validated_data = {
+                **validated_data,
+                'saisies_humaines': marquer_saisie_humaine(SimpleNamespace(), champs)}
+        return super().create(validated_data)
+
     def update(self, instance, validated_data):
         """AMET23 — un PATCH/PUT de la fiche est une saisie humaine : les clés du
         corps (champs réels du lead) rejoignent ``saisies_humaines``."""
         from apps.records.provenance import marquer_saisie_humaine
+
+        from .cadence_plan import reprendre_cadence_si_numero_ajoute
+        from .cadence_temps import numero_joignable
+        numero_avant = numero_joignable(instance)  # ACVI27
         champs = self.champs_a_marquer(validated_data)
         if champs:
             marquer_saisie_humaine(instance, champs)
             validated_data = {
                 **validated_data,
                 'saisies_humaines': instance.saisies_humaines}
-        return super().update(instance, validated_data)
+        lead = super().update(instance, validated_data)
+        if getattr(self, '_parc_raison', None):  # ACVI9
+            from .fiche_funnel import parquer_lead
+            parquer_lead(
+                lead, self._parc_raison, None,
+                getattr(self.context.get('request'), 'user', None), journal=False)
+        reprendre_cadence_si_numero_ajoute(
+            lead, numero_avant, getattr(self.context.get('request'), 'user', None))
+        return lead
 
     # FG20 — coordonnées personnelles masquées sans ``client_pii_voir``.
     # CRX19 — SOURCE UNIQUE (module) partagée avec le masquage du chatter :
@@ -1357,6 +1432,17 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
             for name in self.PII_FIELDS:
                 if name in data:
                     data[name] = None
+        # ACVI97 — la fiche seule (pas les listes : réglages lus par lead) ; le kWh
+        # tapé est gardé, l'écart est dit et nomme son champ.
+        if (not isinstance(self.parent, serializers.ListSerializer)
+                and instance.conso_mensuelle_kwh
+                and (instance.type_installation or 'residentiel') == 'residentiel'):
+            from apps.ventes.selectors_cadence import controle_kwh_declare_du_lead
+            controle = controle_kwh_declare_du_lead(instance)
+            if controle is not None and not controle['coherent']:
+                data['avertissements'] = {'kwh_factures': (
+                    '« Consommation mensuelle (kWh) » contredit les factures '
+                    'déclarées : corrigez la fiche.')}
         return data
 
     @extend_schema_field(serializers.BooleanField())

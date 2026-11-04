@@ -1,0 +1,57 @@
+{
+  "sha": "931f7cc60d410c63586bdad950e01329ee25af3a",
+  "date": "2026-11-04",
+  "groupe": "ALEA",
+  "verdict": "PASS",
+  "couvre": [
+    "ALEA62",
+    "ALEA63"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P.fetch_perime",
+      "taches": [
+        "ALEA62"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ALEA-P.fetch_perime.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA1.08.catalogue_ci_partout",
+      "taches": [
+        "ALEA63"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ALEA-PA1.08.catalogue_ci_partout.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}

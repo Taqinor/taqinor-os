@@ -8,7 +8,6 @@ import logging as _logging
 
 from core.dates import aujourd_hui_local
 
-from . import activity
 from .leads_socle import lead_notification_recipients
 from .models import LeadActivity
 import logging
@@ -101,18 +100,30 @@ def book_appointment(*, lead, scheduled_at, notes=None, user=None):
         created_by=user,
     )
 
-    # Chatter entry on the lead.
-    try:
-        import zoneinfo
-        local = scheduled_at.astimezone(zoneinfo.ZoneInfo(RAMADAN_TZ))
-        date_str = local.strftime('%d/%m/%Y à %H:%M')
-    except Exception:
-        logger.warning('%s : échec ignoré (dégradé)', 'book_appointment', exc_info=True)
-        date_str = str(scheduled_at)
-    activity.log_note(
-        lead, user,
-        f'Visite planifiée le {date_str} (RDV #{appointment.pk}).',
-    )
+    # ACVI63 (D-ACVI-8) — ce rendez-vous EST la visite technique : la porte
+    # unique crée ou déplace la visite, date la fiche, recale la cadence et pose
+    # la note. L'``Appointment`` garde l'heure et le rappel.
+    from apps.visites.services import erreur_commercial, planifier_visite
+    from . import horaires
+    from .activity import log_note
+    # ERR-W33-RDV-CHATTER — même garde que le commercial choisi à la main : une
+    # réservation publique n'assigne jamais une visite à un compte désactivé.
+    assigne = user or lead.owner
+    refus_assigne = erreur_commercial(assigne, company.pk) if assigne else None
+    local = scheduled_at.astimezone(horaires.CASABLANCA)
+    visite, erreurs = planifier_visite(
+        lead, user, local.date(), notes=notes or '', replanifier=True,
+        assigne_par_defaut=None if refus_assigne else assigne)
+    if erreurs:
+        logger.warning('ACVI63 : RDV #%s sans visite : %s', appointment.pk, erreurs)
+        # La porte des visites n'a rien écrit : la fiche dit ce qui manque.
+        motifs = ' '.join(m for messages in erreurs.values() for m in messages)
+        log_note(lead, user, (
+            f'Rendez-vous du {local:%d/%m/%Y à %H:%M} enregistré sans visite '
+            f'technique : {motifs}'))
+    elif refus_assigne and visite.commercial_id is None:
+        log_note(lead, user, (
+            f'Visite technique du {local:%d/%m/%Y} sans assigné : {refus_assigne}'))
 
     _appt_logger.info(
         'QJ20: RDV #%d créé pour lead %s le %s (company %s)',
@@ -124,7 +135,8 @@ def book_appointment(*, lead, scheduled_at, notes=None, user=None):
 
 def build_appointment_confirmation_whatsapp(request, appointment):
     """VX245(b) — construit le message de CONFIRMATION WhatsApp d'un rendez-
-    vous : date/heure (Africa/Casablanca) + lien de téléchargement `.ics`
+    vous : date/heure (Africa/Casablanca). ACVI45 — le lien `.ics` (route JWT,
+    401 pour le client) n'entre plus dans le message ; il reste servi à l'ERP
     (VX245(a), `apps.crm.views.AppointmentViewSet.ics`). N'ENVOIE RIEN — même
     convention que `build_devis_whatsapp`/`build_facture_whatsapp` : ouvre
     WhatsApp avec le message pré-rempli, le commercial appuie lui-même sur
@@ -134,8 +146,10 @@ def build_appointment_confirmation_whatsapp(request, appointment):
 
     from apps.ventes.utils.whatsapp import build_wa_url
 
+    from .cadence_temps import numero_joignable
+
     lead = appointment.lead
-    phone = lead.whatsapp or lead.telephone
+    phone = numero_joignable(lead)  # ACVI50
     nom = f'{lead.prenom or ""} {lead.nom or ""}'.strip() or (lead.nom or '')
     try:
         local_dt = appointment.scheduled_at.astimezone(
@@ -148,10 +162,7 @@ def build_appointment_confirmation_whatsapp(request, appointment):
     ics_url = request.build_absolute_uri(
         f'/api/django/crm/appointments/{appointment.pk}/ics/')
     salutation = f'Bonjour {nom},' if nom else 'Bonjour,'
-    message = (
-        f'{salutation} je confirme notre rendez-vous le {date_str}.\n'
-        f'Ajouter à votre agenda : {ics_url}'
-    )
+    message = f'{salutation} je confirme notre rendez-vous le {date_str}.'
     return message, build_wa_url(phone, message), ics_url
 
 
@@ -178,11 +189,12 @@ def public_booking_url(lead, *, request=None):
     if link is None:
         link = BookingLink.objects.create(company=lead.company, lead=lead)
 
-    if request is not None:
+    # ACVI46 (D-ACVI-9) — UNE base : l'ERP, seul à servir la page `/rdv/<jeton>`
+    # (jamais `PUBLIC_SITE_URL`, 404) ; sans base ni requête, '' : phrase omise.
+    base = (getattr(settings, 'PUBLIC_BASE_URL', '') or '').strip().rstrip('/')
+    if not base and request is not None:
         base = request.build_absolute_uri('/')[:-1]
-    else:
-        base = (getattr(settings, 'PUBLIC_SITE_URL', '') or '').rstrip('/')
-    return f'{base}/rdv/{link.token}'
+    return f'{base}/rdv/{link.token}' if base else ''
 
 
 def resoudre_lien_rdv(text, lead, *, request=None) -> str:

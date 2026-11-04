@@ -18,19 +18,26 @@ Ce qui est prouvé ici, et pourquoi :
 
 Aucune horloge vive n'est asservie : rien n'affirme une date « d'aujourd'hui ».
 """
+import datetime
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import connection
 from django.test import SimpleTestCase, TestCase
+from django.test.utils import CaptureQueriesContext
+from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.crm.models import Client, Lead, LeadActivity
+from apps.records.models import Attachment
 from apps.visites.models import VisiteMedia, VisiteTerrain
 from apps.roles.models import Role
 from apps.ventes.models import Devis, LigneDevis
 from apps.stock.models import Produit
+from core.test_utils import AssertQueryBudgetMixin
 from authentication.models import Company
 
 User = get_user_model()
@@ -683,7 +690,31 @@ class CablageRetourLeadTests(VisiteTerrainBase):
 
 
 # ENFP (D1) — ``?lead=`` est déclaré ET honoré sur la liste des visites.
-class ListeFiltreLeadTests(VisiteTerrainBase):
+class ListeFiltreLeadTests(AssertQueryBudgetMixin, VisiteTerrainBase):
+    def _mesure_acvi95(self, api, url):
+        """ACVI95 — une lecture sous plafond, sans la colonne `etude_params`."""
+        with self.assertMaxQueries(40) as ctx:
+            resp = api.get(url)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertFalse([q['sql'] for q in ctx.captured_queries
+                          if '"etude_params"' in q['sql']])
+        return len(ctx.captured_queries)
+
+    def test_budget_deux_tailles_sans_etude_params(self):
+        url = '/api/django/visites/visites/'
+
+        def peupler(nombre):
+            for i in range(nombre):
+                lead = Lead.objects.create(company=self.company, nom=f'V{i}')
+                VisiteTerrain.objects.create(company=self.company, lead=lead,
+                                             commercial=self.commercial)
+
+        peupler(5)
+        self._mesure_acvi95(self.api, url)  # échauffement
+        n = self._mesure_acvi95(self.api, url)
+        peupler(10)
+        self.assertEqual(self._mesure_acvi95(self.api, url), n)
+
     def test_filtre_lead(self):
         visite_id = self.creer_visite()
         autre = Lead.objects.create(company=self.company, nom='Autre dossier')
@@ -713,6 +744,40 @@ class ListeFiltreLeadTests(VisiteTerrainBase):
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(resp.data, [])
 
+    def _visites_avec_photos(self, combien):
+        type_visite = ContentType.objects.get_for_model(VisiteTerrain)
+        for numero in range(combien):
+            lead = Lead.objects.create(company=self.company, nom=f'L{numero}')
+            visite = VisiteTerrain.objects.create(
+                company=self.company, lead=lead, commercial=self.commercial)
+            for rang in range(3):
+                piece = Attachment.objects.create(
+                    company=self.company, content_type=type_visite,
+                    object_id=visite.pk, file_key=f'acvi82/{visite.pk}/{rang}',
+                    filename=f'{rang}.png')
+                VisiteMedia.objects.create(
+                    company=self.company, visite=visite, attachment=piece,
+                    slot_code='toiture_vue_generale')
+
+    def _requetes_liste(self):
+        with CaptureQueriesContext(connection) as capture:
+            resp = self.api.get('/api/django/visites/visites/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        return len(capture.captured_queries), resp.data
+
+    def test_liste_requetes_constantes(self):
+        # ACVI82 — la liste coûte autant à 3 et à 9 visites (préchargement
+        # respecté) et ses lignes ne bougent pas.
+        self._visites_avec_photos(3)
+        self._requetes_liste()  # échauffement (profil, droits)
+        a_trois, lignes = self._requetes_liste()
+        self.assertEqual(len(lignes), 3)
+        self._visites_avec_photos(6)
+        a_neuf, lignes = self._requetes_liste()
+        self.assertEqual(len(lignes), 9)
+        self.assertEqual(a_neuf, a_trois)
+        self.assertEqual({ligne['complet'] for ligne in lignes}, {False})
+
 
 class ModificationSansLeadTests(VisiteTerrainBase):
     """ENF11 — le dossier (lead) d'une visite est figé : le PUT ne l'exige pas."""
@@ -735,6 +800,43 @@ class ModificationSansLeadTests(VisiteTerrainBase):
         self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('lead', resp.data)
         self.assertNotEqual(VisiteTerrain.objects.get(pk=visite_id).lead_id, autre.id)
+
+    def _visite_datee(self):
+        jour = timezone.localdate() + datetime.timedelta(days=5)
+        resp = self.api.post('/api/django/visites/visites/',
+                             {'lead': self.lead.id,
+                              'date_prevue': jour.isoformat()}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        return VisiteTerrain.objects.get(pk=resp.data['id']), jour
+
+    def test_patch_commercial_inactif_refuse(self):
+        # ACVI71 — même garde et même message qu'au POST.
+        visite, jour = self._visite_datee()
+        inactif = make_user(self.company, 'vt4-inactif', TERRAIN)
+        inactif.is_active = False
+        inactif.save(update_fields=['is_active'])
+        resp = self.api.patch(f'/api/django/visites/visites/{visite.id}/',
+                              {'commercial': inactif.id}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('désactivé', str(resp.data['commercial']))
+        visite.refresh_from_db()
+        self.assertEqual(visite.commercial_id, self.commercial.id)
+        self.assertEqual(visite.date_prevue, jour)
+
+    def test_patch_date_ecrit_la_ligne_deplace(self):
+        # ACVI71 — le PATCH passe par la porte de déplacement.
+        visite, jour = self._visite_datee()
+        nouvelle = jour + datetime.timedelta(days=3)
+        resp = self.api.patch(f'/api/django/visites/visites/{visite.id}/',
+                              {'date_prevue': nouvelle.isoformat()},
+                              format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        ligne = (f'Rendez-vous du {jour:%d/%m/%Y} déplacé au '
+                 f'{nouvelle:%d/%m/%Y}.')
+        self.assertIn(ligne, resp.data['notes'])
+        visite.refresh_from_db()
+        self.assertEqual(visite.date_prevue, nouvelle)
+        self.assertEqual(visite.notes.count(ligne), 1)
 
     def test_put_corps_non_objet_400_jamais_500(self):
         # api-fuzz-full 28/10 (ENF11) : ``PUT … -9183`` levait ``TypeError``
@@ -786,7 +888,7 @@ class SchemaVisitesPublieTests(SimpleTestCase):
         self.assertEqual(
             set(entete['properties']),
             {'id', 'lead', 'commercial', 'statut', 'date_prevue',
-             'date_realisee', 'notes'})
+             'date_realisee', 'notes', 'retour_terrain'})
 
     def test_la_qualification_publie_un_corps_obligatoire(self):
         # api-fuzz 01/11 : POST sans corps (« conforme » car facultatif au

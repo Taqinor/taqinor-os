@@ -6,7 +6,7 @@ import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronDown, LayoutGrid, X } from 'lucide-react'
 import { DndContext, DragOverlay, KeyboardSensor, MouseSensor, TouchSensor, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core'
 import {
-  formatMAD, groupLeadsByStage, isSortieSigne, isStageMoveAllowed,
+  COLD_STAGE, formatMAD, groupLeadsByStage, isSortieSigne, isStageMoveAllowed,
   isStageMoveBackward, PIPELINE_STAGES, STAGE_LABELS,
 } from '../../../../features/crm/stages'
 import {
@@ -20,6 +20,7 @@ import { usePrefersReducedMotion } from '../../../../hooks/usePrefersReducedMoti
 // (elle nomme le lead et les deux étapes) est mutualisée avec la fenêtre lead :
 // une seule phrase pour tous les gestes qui font reculer un lead.
 import { useConfirmerRecul } from '../../../../features/crm/confirmRecul'
+import { useRaisonFroid } from '../../../../features/crm/useRaisonFroid'
 // EZ14 — undo universel : appliquer tout de suite, inverser à l'annulation.
 // Un board se démonte au moindre changement de vue : aucun commit différé ici.
 import { mutateWithUndo } from '../../../../lib/mutateWithUndo'
@@ -59,6 +60,8 @@ const DraggableCard = memo(function DraggableCard({
   // (jamais le `Set` entier) : révèle la case de TOUTES les cartes pendant
   // qu'on constitue une sélection (blueprint D3). Primitive → memo intact.
   selectionActive,
+  // ACVI73 — primitives issues de `sla-breach` → memo intact.
+  slaHours, slaEnRetard,
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: lead.id,
@@ -85,6 +88,7 @@ const DraggableCard = memo(function DraggableCard({
                   users={users} onReassign={onReassign}
                   selected={selected} onToggleSelect={onToggleSelect}
                   selectionActive={selectionActive}
+                  slaHours={slaHours} slaEnRetard={slaEnRetard}
                   onPlanifierRelance={onPlanifierRelance} onMarkPerdu={onMarkPerdu} />
       </div>
     </div>
@@ -222,6 +226,8 @@ export default function KanbanView({
   onToggleSelect,
   onPlanifierRelance,
   onMarkPerdu,
+  // ACVI73 — réponse de `sla-breach` ({ sla_hours, results }), portée par LeadsPage.
+  sla,
   // LB9 — coach d'état vide à DEUX paliers, même idiome que ChartsView
   // (totalLeads/onClearFilters déjà câblés là-bas sur `leads.length`/
   // `setFilters(EMPTY_FILTERS)`) : `totalLeads` (non filtré) distingue
@@ -252,6 +258,7 @@ export default function KanbanView({
   // étape » DISPARAÎT : il annonçait un refus qui n'existe plus. Un recul se
   // demande maintenant (useConfirmerRecul), il ne se signale plus après coup.
   const confirmerRecul = useConfirmerRecul()
+  const { demanderRaisonFroid, dialogueRaisonFroid } = useRaisonFroid()
   /* PHYSIQUE TACTILE (B1/B2) — deux défauts du TouchSensor, corrigés ensemble.
      B2 : `{ delay: 150, tolerance: 8 }` armait un drag pendant un scroll LENT
      (150 ms de contact, 8 px de tolérance : un pouce qui démarre doucement
@@ -309,6 +316,8 @@ export default function KanbanView({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- boardRef est un ref stable (D-ENF22)
   }, [pointerCoarse])
   const columns = useMemo(() => groupLeadsByStage(leads, tri), [leads, tri])
+  const slaHours = sla?.sla_hours ?? 0
+  const slaIds = useMemo(() => new Set((sla?.results ?? []).map((l) => l.id)), [sla])
   const [activeLead, setActiveLead] = useState(null)
 
   // LB10 — repli de colonne PERSISTÉ (localStorage, features/kanban/
@@ -395,7 +404,13 @@ export default function KanbanView({
     // recul) dés-accepte AUSSI le devis côté serveur : même question.
     if (!enArriere && isSortieSigne(lead.stage, over.id)
         && !(await confirmerRecul(lead, over.id))) return
-    onChangeStage(lead, over.id, { confirmeRecul: enArriere })
+    // ACVI9 — le Froid exige une raison côté serveur : on la demande avant le PATCH.
+    let parcRaison
+    if (over.id === COLD_STAGE) {
+      parcRaison = await demanderRaisonFroid(lead)
+      if (!parcRaison) return
+    }
+    onChangeStage(lead, over.id, { confirmeRecul: enArriere, parcRaison })
     // LB12 — la carte déposée se RE-PARENTE dans sa nouvelle colonne (React
     // démonte/remonte l'instance — un `key={lead.id}` qui change de tableau
     // parent n'est jamais un simple déplacement DOM) : sans ça, le focus
@@ -504,6 +519,8 @@ export default function KanbanView({
                     <DraggableCard
                       key={lead.id}
                       lead={lead}
+                      slaHours={slaHours}
+                      slaEnRetard={slaIds.has(lead.id)}
                       busy={lead.id === busyLeadId}
                       onOpen={onOpenLead}
                       onAutoQuote={onAutoQuote}
@@ -535,10 +552,11 @@ export default function KanbanView({
       >
         {activeLead ? (
           <div className={prefersReducedMotion ? 'kb-drag-overlay kb-drag-overlay--flat' : 'kb-drag-overlay'}>
-            <LeadCard lead={activeLead} />
+            <LeadCard lead={activeLead} slaHours={slaHours} slaEnRetard={slaIds.has(activeLead.id)} />
           </div>
         ) : null}
       </DragOverlay>
+      {dialogueRaisonFroid}
     </DndContext>
   )
 }

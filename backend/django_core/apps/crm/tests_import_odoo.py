@@ -169,6 +169,27 @@ class TestReconciliation(ImportOdooBase):
         self.assertEqual(existing.ville, 'Casablanca')
         self.assertEqual(existing.nom, 'Déjà Là')
 
+    def test_un_champ_vide_par_un_humain_n_est_pas_rempli(self):
+        # ACVI99 — `saisies_humaines` tient face à la réconciliation Odoo.
+        from apps.records.models import Activity
+        from apps.records.provenance import MESSAGE_REFUS
+
+        lead = Lead.objects.create(
+            company=self.company, nom='Vidée', stage=stages.NEW,
+            external_system='odoo', external_id='201',
+            saisies_humaines=['email'])
+        path = self._file('.json', json.dumps([
+            {'id': 201, 'name': 'Json Un', 'email_from': 'x@exemple.ma',
+             'city': 'Fès', 'stage_id': 'New'}]))
+
+        call_command('import_odoo_leads', path, '--company', self.company.slug)
+
+        lead.refresh_from_db()
+        self.assertFalse(lead.email)
+        self.assertEqual(lead.ville, 'Fès')
+        self.assertTrue(Activity.objects.filter(
+            company=self.company, field='email', body=MESSAGE_REFUS).exists())
+
     def test_matches_existing_lead_by_phone(self):
         existing = Lead.objects.create(
             company=self.company, nom='Par Téléphone',

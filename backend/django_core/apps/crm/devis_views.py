@@ -14,6 +14,13 @@ from . import schema_docs as sd
 from .devis_auto import champs_manquants, message_manquants
 from authentication.permissions import IsResponsableOrAdmin
 from core.conflit_etat import ConflitEtat
+from .portee_selectors import MOTIF_CONTACT_REFUSE, peut_contacter
+
+
+def _refuser_si_oppose(lead):
+    """ACVI98 (D-ACVI-7 = refus) — aucun lien WhatsApp vers un lead opposé."""
+    if not peut_contacter(lead):
+        raise ConflitEtat(MOTIF_CONTACT_REFUSE)
 
 
 def _refus_pii_whatsapp(request):
@@ -134,6 +141,7 @@ class LeadDevisActionsMixin:
         if refus is not None:
             return refus
         lead = self.get_object()
+        _refuser_si_oppose(lead)
         erreur, built = self._whatsapp_devis_message(
             request, lead, enregistrer=False)
         if erreur is not None:
@@ -169,6 +177,7 @@ class LeadDevisActionsMixin:
         if refus is not None:
             return refus
         lead = self.get_object()
+        _refuser_si_oppose(lead)
         erreur, built = self._whatsapp_devis_message(
             request, lead, enregistrer=True)
         if erreur is not None:
@@ -214,5 +223,14 @@ class LeadDevisActionsMixin:
             # lead (champs manquants) qui s'oppose — refus d'ÉTAT = 409.
             return Response({'detail': message_manquants(manquants)},
                             status=status.HTTP_409_CONFLICT)
+        # ACVI97 — un kWh tapé que les factures contredisent bloque jusqu'à correction.
+        from apps.ventes.selectors_cadence import controle_kwh_declare_du_lead
+        if (lead.type_installation or 'residentiel') == 'residentiel':
+            controle = controle_kwh_declare_du_lead(lead)
+            if controle is not None and not controle['coherent']:
+                return Response(
+                    {'detail': 'kWh déclaré incohérent avec les factures : '
+                               'corriger la fiche.'},
+                    status=status.HTTP_409_CONFLICT)
         return Response(
             {'ok': True, 'detail': 'Lead prêt pour le devis automatique.'})

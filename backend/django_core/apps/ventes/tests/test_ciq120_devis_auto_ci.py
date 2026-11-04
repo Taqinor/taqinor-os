@@ -22,7 +22,7 @@ from apps.parametres.models import CompanyProfile
 from apps.stock.models import FicheTechnique, Produit
 from apps.ventes import tarif_ci
 from apps.ventes.domain import etude_ci
-from apps.ventes.models import Devis
+from apps.ventes.models import Devis, DevisActivity
 from apps.ventes.services import AutoDevisError, build_devis_auto
 from apps.ventes.tests.test_ciq118_etude_ci_preview import _production_casablanca
 from authentication.models import Company
@@ -1237,6 +1237,58 @@ class RevisionApresVisiteCorc2Tests(_Base):
         self.assertTrue(devis.is_active)
         self.assertIsNone(devis.superseded_by_id)
         self.assertEqual(Devis.objects.filter(company=self.co).count(), avant)
+
+    def _envoye_au_niveau(self, niveau):
+        devis = self._auto(self._lead(conso_mensuelle_kwh=Decimal('6000')))
+        Devis.objects.filter(pk=devis.pk).update(
+            statut=Devis.Statut.ENVOYE, regles_calcul=niveau)
+        devis.refresh_from_db()
+        return devis
+
+    def _recalcul_force(self, devis):
+        from apps.ventes.domain.pipeline import (
+            MODE_RAFRAICHIR, ORIGINE_ECRAN, IntentionDevis, appliquer)
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
+            appliquer(devis, IntentionDevis(
+                origine=ORIGINE_ECRAN, mode=MODE_RAFRAICHIR, company=self.co,
+                force_etudes=True))
+
+    def _notes_niveau(self, devis):
+        return DevisActivity.objects.filter(devis=devis, field='regles_calcul')
+
+    def test_recalcul_force_envoye_niveau_2_passe_au_niveau_3(self):
+        """CMP12 (D-CMP-7 = a) — le recalcul forcé passe d'abord le devis au
+        niveau 3, tracé au chatter, une seule fois. ROUGE AVANT : niveau 2
+        conservé alors que CMP5/7/8 s'appliquent en silence."""
+        devis = self._envoye_au_niveau(2)
+        self._recalcul_force(devis)
+        relu = Devis.objects.get(pk=devis.pk)
+        self.assertEqual(relu.regles_calcul, 3)
+        self.assertEqual(relu.statut, Devis.Statut.ENVOYE)  # règle #4
+        note = self._notes_niveau(devis).get()
+        self.assertEqual((note.old_value, note.new_value), ('2', '3'))
+        self.assertEqual(note.body, 'Règles du 27/10 appliquées au recalcul.')
+        self._recalcul_force(relu)
+        self.assertEqual(self._notes_niveau(devis).count(), 1)
+
+    def test_recalcul_non_force_garde_niveau_et_chiffres(self):
+        """CMP12 + « nouveaux rendus seulement » — sans force, empreinte
+        identique : niveau et étude inchangés, aucune trace."""
+        devis = self._envoye_au_niveau(2)
+        etude_avant = devis.etude_params.get('etude_ci')
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
+            etude_ci.rafraichir_etude_ci_devis(devis)
+        relu = Devis.objects.get(pk=devis.pk)
+        self.assertEqual(relu.regles_calcul, 2)
+        self.assertEqual(relu.etude_params.get('etude_ci'), etude_avant)
+        self.assertFalse(self._notes_niveau(devis).exists())
+
+    def test_recalcul_force_niveau_recent_jamais_abaisse(self):
+        """CMP12 — un devis au-delà du niveau 3 garde son niveau, sans trace."""
+        devis = self._envoye_au_niveau(7)
+        self._recalcul_force(devis)
+        self.assertEqual(Devis.objects.get(pk=devis.pk).regles_calcul, 7)
+        self.assertFalse(self._notes_niveau(devis).exists())
 
     def test_devis_envoye_v2_creee_v1_intacte(self):
         lead = self._lead(conso_mensuelle_kwh=Decimal('6000'))

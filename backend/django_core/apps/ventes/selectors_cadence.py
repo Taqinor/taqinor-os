@@ -462,3 +462,10 @@ def annotations_engagement_proposition():
                 valeur=Max('deep_engagement_logged_at')).values('valeur')[:1],
             output_field=DateTimeField()),
     }
+
+
+def controle_kwh_declare_du_lead(lead, company=None):
+    """ACVI97 — la règle « kWh tapé contre factures » pour le CRM : ``None`` si
+    rien à confronter, sinon ``{…, coherent}`` (``etude_horaire``, jamais recodée)."""
+    from .etude_horaire import controle_kwh_declare_du_lead as controle
+    return controle(lead, company)

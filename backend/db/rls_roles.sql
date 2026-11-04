@@ -82,30 +82,42 @@ $$;
 
 GRANT CONNECT ON DATABASE erp_db TO sql_agent_ro;
 GRANT USAGE ON SCHEMA public TO sql_agent_ro;
-GRANT SELECT ON
-    stock_produit,
-    stock_categorie,
-    stock_fournisseur,
-    stock_mouvementstock,
-    crm_client,
-    ventes_devis,
-    ventes_lignedevis,
-    ventes_boncommande,
-    ventes_facture,
-    ventes_lignefacture,
-    authentication_company,
-    parametres_companyprofile,
-    roles_role,
-    ia_ocr_document,
-    installations_installation,
-    installations_intervention,
-    sav_equipement,
-    sav_ticket,
-    sav_contratmaintenance,
-    adsengine_adcampaignmirror,
-    adsengine_insightsnapshot,
-    adsengine_metaleadmirror
-  TO sql_agent_ro;
+-- AANA64 : une table encore absente (ia_ocr_document n'existe que si le service IA a posé son schéma ;
+-- module non migré) saute SANS annuler les autres droits : le rôle reste provisionné sur une pile neuve.
+DO $$
+DECLARE
+  t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY[
+    'stock_produit',
+    'stock_categorie',
+    'stock_fournisseur',
+    'stock_mouvementstock',
+    'crm_client',
+    'ventes_devis',
+    'ventes_lignedevis',
+    'ventes_boncommande',
+    'ventes_facture',
+    'ventes_lignefacture',
+    'authentication_company',
+    'parametres_companyprofile',
+    'roles_role',
+    'ia_ocr_document',
+    'installations_installation',
+    'installations_intervention',
+    'sav_equipement',
+    'sav_ticket',
+    'sav_contratmaintenance',
+    'adsengine_adcampaignmirror',
+    'adsengine_insightsnapshot',
+    'adsengine_metaleadmirror'
+  ] LOOP
+    IF to_regclass('public.' || quote_ident(t)) IS NOT NULL THEN
+      EXECUTE format('GRANT SELECT ON %I TO sql_agent_ro', t);
+    END IF;
+  END LOOP;
+END
+$$;
 
 -- Revert (défaire ce script) :
 --   REVOKE ALL ON ALL TABLES IN SCHEMA public FROM sql_agent_ro;

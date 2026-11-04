@@ -27,6 +27,7 @@ from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
+from core.test_utils import AssertQueryBudgetMixin
 from authentication.models import Company
 from testkit.time import frozen
 
@@ -142,6 +143,9 @@ class FormeTests(_Base):
         visite = self._lead('Visite',
                             visite_prevue_le=AUJOURDHUI
                             + datetime.timedelta(days=3))
+        VisiteTerrain.objects.create(
+            company=self.company, lead=visite,
+            date_prevue=visite.visite_prevue_le)
         self._devis(visite, Devis.Statut.ENVOYE)
 
         donnees = self._chaine()
@@ -230,11 +234,16 @@ class VisitesAVenirTests(_Base):
             company=self.company, lead=loin, commercial=karim,
             date_prevue=loin.visite_prevue_le)
         proche = self._lead('Proche', visite_prevue_le=DEMAIN)
+        self._visite(proche, DEMAIN)
         self._devis(proche, Devis.Statut.ENVOYE)
-        self._lead('Passee', visite_prevue_le=HIER)
-        self._lead('Faite', visite_prevue_le=DEMAIN, visite_effectuee=True)
-        self._lead('Perdue', visite_prevue_le=DEMAIN, perdu=True)
-        self._lead('AutreVisite', owner=self.autre, visite_prevue_le=DEMAIN)
+        self._visite(self._lead('Passee', visite_prevue_le=HIER), HIER)
+        self._visite(
+            self._lead('Faite', visite_prevue_le=DEMAIN, visite_effectuee=True),
+            DEMAIN, VisiteTerrain.Statut.TERMINEE)
+        self._visite(self._lead('Perdue', visite_prevue_le=DEMAIN, perdu=True),
+                     DEMAIN)
+        self._visite(self._lead('AutreVisite', owner=self.autre,
+                                visite_prevue_le=DEMAIN), DEMAIN)
 
         bloc = self._chaine()['visites_a_venir']
 
@@ -247,6 +256,24 @@ class VisitesAVenirTests(_Base):
         self.assertEqual(lignes[loin.pk]['visite_prevue_le'],
                          loin.visite_prevue_le.isoformat())
         self.assertEqual(lignes[proche.pk]['assignee'], '')
+
+    def _visite(self, lead, date_prevue, statut=VisiteTerrain.Statut.BROUILLON):
+        return VisiteTerrain.objects.create(
+            company=self.company, lead=lead, date_prevue=date_prevue,
+            statut=statut)
+
+    def test_une_seconde_visite_reste_a_venir(self):
+        # ACVI65 — V1 terminée pose ``visite_effectuee`` ; V2 reste à venir.
+        seconde = self._lead('Seconde', visite_effectuee=True,
+                             visite_prevue_le=DEMAIN)
+        self._visite(seconde, HIER, VisiteTerrain.Statut.TERMINEE)
+        self._visite(seconde, DEMAIN)
+        seule = self._lead('Seule', visite_effectuee=True,
+                           visite_prevue_le=DEMAIN)
+        self._visite(seule, DEMAIN, VisiteTerrain.Statut.TERMINEE)
+
+        self.assertEqual(
+            self._ids(self._chaine()['visites_a_venir']), [seconde.pk])
 
 
 class DevisAPreparerTests(_Base):
@@ -356,7 +383,7 @@ class PiiMasqueeTests(_Base):
         self.assertEqual(ligne['nom'], 'Masque')
 
 
-class CoutTests(_Base):
+class CoutTests(AssertQueryBudgetMixin, _Base):
     """Jamais une requête PAR LEAD : une par compteur, une pour les
     prochaines étapes, une par lot de devis (seul l'assigné des ``limite``
     visites servies est lu dossier par dossier)."""
@@ -375,6 +402,23 @@ class CoutTests(_Base):
             self._issue(joint, 'joint')
             self._etape(joint, jour=AUJOURDHUI,
                         libelle=cadence_reperes.FILET_JOINT_LIBELLE, cle='devis')
+
+    def _mesure_acvi95(self, api, url):
+        """ACVI95 — une lecture sous plafond, sans la colonne `etude_params`."""
+        with self.assertMaxQueries(40) as ctx:
+            resp = api.get(url)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertFalse([q['sql'] for q in ctx.captured_queries
+                          if '"etude_params"' in q['sql']])
+        return len(ctx.captured_queries)
+
+    def test_budget_deux_tailles_sans_etude_params(self):
+        api = self._api()
+        self._dossiers(5, 0)
+        self._mesure_acvi95(api, URL)  # échauffement
+        n = self._mesure_acvi95(api, URL)
+        self._dossiers(10, 5)
+        self.assertEqual(self._mesure_acvi95(api, URL), n)
 
     def test_le_cout_ne_grimpe_pas_avec_les_dossiers(self):
         self._dossiers(1, 0)

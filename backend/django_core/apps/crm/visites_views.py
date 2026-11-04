@@ -11,7 +11,7 @@ import logging
 from drf_spectacular.utils import extend_schema, extend_schema_view, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError as DRFValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError as DRFValidationError
 from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 from core.champs_stricts import ChaineStricte
@@ -28,7 +28,7 @@ from .cadence_views import _prochaine_touche_publique
 from .params_requete import texte_verifie, verifier_corps_texte
 from . import activity
 from . import schema_docs as sd
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin, HasPermissionOrLegacy
+from authentication.permissions import IsResponsableOrAdmin, HasPermissionOrLegacy
 
 logger = logging.getLogger(__name__)
 
@@ -75,8 +75,9 @@ class AppointmentViewSet(CompanyScopedModelViewSet):
         # VX245(a) — `ics` (téléchargement, lecture seule) rejoint les
         # READ_ACTIONS : tout rôle peut télécharger le `.ics` d'un RDV qu'il
         # peut déjà VOIR (queryset scopé société, jamais un nouveau droit).
+        # ACVI3 (D-ACVI-2 = portée) — lecture sous `crm_voir`.
         if self.action in READ_ACTIONS or self.action == 'ics':
-            return [IsAnyRole()]
+            return [HasPermissionOrLegacy('crm_voir')()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -187,9 +188,14 @@ class AppointmentViewSet(CompanyScopedModelViewSet):
         (date/heure + lien `.ics`). N'ENVOIE RIEN : le commercial ouvre
         WhatsApp lui-même après avoir vérifié l'aperçu (même convention que
         `LeadViewSet.whatsapp_devis`)."""
-        appt = self.get_object()
+        from .devis_views import _refus_pii_whatsapp
         from .visites_rdv import build_appointment_confirmation_whatsapp
 
+        if refus := _refus_pii_whatsapp(request):  # ACVI4 — levé : le contrat reste celui du rendu.
+            raise PermissionDenied(refus.data)
+        appt = self.get_object()
+        from .cadence_messages import garde_contact_du_lead
+        garde_contact_du_lead(appt.lead)
         message, wa_url, ics_url = build_appointment_confirmation_whatsapp(
             request, appt)
         if wa_url is None:
@@ -391,10 +397,10 @@ class LeadVisitesActionsMixin:
 
     @extend_schema(parameters=[sd.param('cle', enum=[*CLES_MESSAGE_VISITE], required=True,
                                         description='Clé du message.')],
-                   responses=inline_serializer('CrmLeadMessageVisite', {
+                   responses={200: inline_serializer('CrmLeadMessageVisite', {
                        'corps_fr': serializers.CharField(),
                        'corps_darija': serializers.CharField(),
-                   }))
+                   }), 409: sd.REFUS_RENDU_WHATSAPP})
     @action(detail=True, methods=['get'], url_path='message-visite',
             permission_classes=[HasPermissionOrLegacy('crm_voir')])
     def message_visite(self, request, pk=None):
@@ -409,10 +415,12 @@ class LeadVisitesActionsMixin:
         LECTURE PURE : le serveur REND, il n'ENVOIE pas (décision D5).
         """
         from .serializers import pii_masquee_pour
-        from .cadence_messages import cles_message_visite_du_lead, message_visite_pour_lead
+        from .cadence_messages import (
+            cles_message_visite_du_lead, garde_contact_du_lead, message_visite_pour_lead)
 
         cle = (request.query_params.get('cle') or '').strip()
         lead = self.get_object()
+        garde_contact_du_lead(lead)
         # CAD111 — les liens wa.me sont construits ICI (E.164) ; un rôle sans
         # `client_pii_voir` ne reçoit aucun numéro (liens nuls, `phone` vide).
         # AGR526 — `dossier_fda` / `dossier_8221` seulement pour le lead dont
@@ -457,6 +465,8 @@ class LeadVisitesActionsMixin:
             journaliser_message_visite_ouvert,
         )
         lead = self.get_object()
+        from .cadence_messages import garde_contact_du_lead
+        garde_contact_du_lead(lead)
         # api-fuzz PR #1176 — ``cle``/``langue`` non texte (``[null, null]``
         # levait ``.strip()`` : 500) ou corps non objet : 400 nommé.
         cle = texte_verifie(request, 'cle', 'langue')

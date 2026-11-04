@@ -31,14 +31,16 @@ from .cadence_filet import (
     _poser_etape_visite,
     _suivi_de_proposition_existe,
 )
-from .cadence_plan import _recaler_file, reporter_prochaine_touche
+from .cadence_plan import _recaler_file, arreter_cadence, reporter_prochaine_touche
 from .cadence_reperes import (
     FILET_JOINT_LIBELLE,
+    MOTIF_VISITE_PLANIFIEE,
     OUTCOME_VISITE_ACCEPTEE,
     VISITE_CADENCE,
     VISITE_ORDRE_CONFIRMATION,
     VISITE_ORDRE_DEBRIEF,
     _CLES_DEBRIEF,
+    annuler_etapes_moteur_ouvertes,
     q_visite,
 )
 from .cadence_touche import marquer_etape_relance
@@ -354,12 +356,8 @@ def appliquer_visite_planifiee(lead, user, date_prevue, commercial_nom=''):
 
     ``STAGES.py`` n'est pas touché, et AUCUNE étape du plan après-devis n'est
     annulée. Renvoie les étapes posées/déplacées."""
-    champs = []
     if lead.visite_prevue_le != date_prevue:
-        lead.visite_prevue_le = date_prevue
-        champs.append('visite_prevue_le')
-    if champs:
-        lead.save(update_fields=champs)
+        _ecrire_date_visite(lead, user, date_prevue)
 
     relancable = _lead_relancable(lead)
     # Le décalage AVANT la note : c'est lui qui décide de la dernière phrase.
@@ -420,8 +418,9 @@ def appliquer_visite_planifiee(lead, user, date_prevue, commercial_nom=''):
 
     devis_id = _devis_id_de_la_cadence(lead)
     # Le filet « planifier la visite convenue » a rempli son office : on
-    # l'ANNULE (statut moteur CKP1, jamais « sautée par un humain »). C'est la
-    # SEULE étape que cette fonction annule — le plan, lui, est décalé.
+    # l'ANNULE (statut moteur CKP1, jamais « sautée par un humain »). ACVI37 — la
+    # prise de contact aussi : le rendez-vous la remplace ; le plan est décalé.
+    arreter_cadence(lead, user=user, motif=MOTIF_VISITE_PLANIFIEE, cadences=['contact'])
     lead.relance_etapes.filter(
         q_etape(CLE_PLANIFIER),
         statut=RelanceEtape.Statut.A_FAIRE).update(
@@ -494,8 +493,21 @@ def clore_etape_apres_planification(etape, user, *, note='',
     juste avant la clôture (la ligne de chatter dit ainsi la vraie
     échéance). Ni ``cadence_depart``, ni la suite du plan (décalée après la
     visite), ni la naissance d'une touche ne changent : « visite acceptée »
-    n'en fait naître aucune (``issue_fait_naitre_la_suite``)."""
+    n'en fait naître aucune (``issue_fait_naitre_la_suite``).
+
+    ACVI37 — la planification vient d'annuler toute la prise de contact, CETTE
+    touche comprise (``etape`` est lue par l'appelant AVANT elle ; hors l'étape
+    « planifier », que le rendez-vous remplace vraiment) : son geste est
+    une clôture humaine, elle est rouverte pour porter l'issue, jamais perdue."""
+    statut_avant = etape.statut
     etape.refresh_from_db()
+    if (statut_avant == RelanceEtape.Statut.A_FAIRE
+            and etape.statut == RelanceEtape.Statut.ANNULEE
+            and etape.note == MOTIF_VISITE_PLANIFIEE
+            and not est_etape(etape, CLE_PLANIFIER)):
+        RelanceEtape.objects.filter(pk=etape.pk).update(
+            statut=RelanceEtape.Statut.A_FAIRE, note='', traite_le=None)
+        etape.refresh_from_db()
     note = str(note or '').strip()
     if (etape.statut == RelanceEtape.Statut.A_FAIRE
             and not est_etape(etape, CLE_CONFIRMATION, CLE_DEBRIEF)):
@@ -524,6 +536,20 @@ def _retablir_echeance_traitee(etape, echeance):
     etape.due_initial_at = due_initial_at
 
 
+def _ecrire_date_visite(lead, user, jour):
+    """ACVI69 — la visite ERP est propriétaire de la date : écrite (ou vidée)
+    avec sa ligne ancien → nouveau, et la marque de saisie humaine levée."""
+    ancien = lead.visite_prevue_le
+    lead.visite_prevue_le = jour
+    champs = ['visite_prevue_le']
+    if 'visite_prevue_le' in (lead.saisies_humaines or []):
+        lead.saisies_humaines = [c for c in lead.saisies_humaines
+                                 if c != 'visite_prevue_le']
+        champs.append('saisies_humaines')
+    lead.save(update_fields=champs)
+    activity.log_bulk_change(lead, user, 'visite_prevue_le', ancien, jour)
+
+
 def annuler_rendez_vous_du_lead(lead, user, *, motif='',
                                 vider_date_passee=True):
     """SUIVI E4/E21 (30/09/2026) — le rendez-vous de visite EN ATTENTE du
@@ -549,9 +575,31 @@ def annuler_rendez_vous_du_lead(lead, user, *, motif='',
     jour = getattr(lead, 'visite_prevue_le', None)
     if jour is not None and (vider_date_passee
                              or jour >= aujourd_hui_local()):
-        lead.visite_prevue_le = None
-        lead.save(update_fields=['visite_prevue_le'])
+        _ecrire_date_visite(lead, user, None)
     return annules
+
+
+def compenser_visite_retiree(lead, user, jour):
+    """ACVI60 — une visite retirée (date vidée, suppression) ne laisse rien
+    derrière elle sur le lead : ``visite_prevue_le`` vidé s'il portait ce
+    ``jour``, confirmation et débrief annulés (statut moteur), UNE note
+    système. Un autre rendez-vous en attente garde tout : c'est lui que ces
+    touches préparent. Rend ``True`` si le lead a été compensé."""
+    from apps.visites.services import visite_en_attente
+
+    if visite_en_attente(lead) is not None:
+        return False
+    lead.refresh_from_db(fields=['visite_prevue_le', 'saisies_humaines'])
+    if lead.visite_prevue_le == jour:
+        _ecrire_date_visite(lead, user, None)  # ACVI69
+    annuler_etapes_moteur_ouvertes(
+        lead, CLE_CONFIRMATION, CLE_DEBRIEF, note='visite retirée')
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body=f'Visite technique du {jour:%d/%m/%Y} retirée.')
+    _recaler_file(lead, user)
+    return True
 
 
 #: SUIVI E21 — les causes écrites (visite, message au technicien, chatter)
@@ -740,7 +788,7 @@ def _requalifier_debrief(etape, cle, config=None):
 
 
 def appliquer_retour_visite(lead, user, retour, auteur='',
-                            qualification=None):
+                            qualification=None, reprise=False):
     """Le technicien est reparti : son retour redescend, et on rappelle.
 
     1. UNE note de chatter portant, dans cet ordre, la QUALIFICATION du client
@@ -773,9 +821,18 @@ def appliquer_retour_visite(lead, user, retour, auteur='',
     seule, jamais une seconde — dit la suite et sa date. Renvoie alors
     l'étape devis.
 
+    ACVI61 — ``reprise`` (terminer après un renvoi) : le retour a déjà produit
+    sa suite ; UNE note système, aucune touche ni notification.
+
     ``STAGES.py`` n'est pas touché. Renvoie l'étape de débrief, ou ``None``."""
     corps = _composer_note_retour_visite(retour, auteur=auteur,
                                          qualification=qualification)
+    if reprise:
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE,
+            body=f'Visite technique terminée de nouveau après renvoi.\n{corps}')
+        return None
     # Relevé du 25/09/2026 — la visite a EU LIEU : une « Confirmer la visite
     # (veille) » encore ouverte (retour saisi avant que la confirmation soit
     # cochée) n'a plus d'objet. Annulée par le moteur (CKP1, jamais « sautée

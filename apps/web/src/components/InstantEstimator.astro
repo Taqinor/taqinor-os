@@ -1,5 +1,9 @@
 ---
 /**
+ * WAUD36 (D-WAUD-6 = règle C étendue) — teaser verrouillé : la facture ouvre le
+ * parcours d'étude gratuite ; aucun kWc, kWh ni MAD n'est affiché (le chiffre vient
+ * dans l'étude). estimateFromBill ne sert plus qu'à reconnaître un montant valide.
+ *
  * W250 — Widget d'estimation instantanée embarqué SUR l'accueil (« l'estimateur
  * EST le tunnel »). Réutilise le MÊME cerveau que /devis/mon-toit et
  * /embed/estimation (estimateFromBill / formatMadRange, src/lib/billEstimate.ts)
@@ -97,21 +101,7 @@ const isCompact = variant === 'compact';
           {/* Résultat — masqué (hauteur nulle) jusqu'à la soumission volontaire
               du formulaire ci-dessus : son apparition n'est jamais un CLS. */}
           <div id={`${uid}-result`} class="instant-estimator-result mt-5 hidden">
-            <dl class="grid grid-cols-2 gap-3 text-sm">
-              <div class="border border-white/10 bg-white/5 p-3">
-                <dt class="tech-label text-brass-300">{t('estimator.result.kwc')}</dt>
-                <dd id={`${uid}-kwc`} class="fig lum mt-1 text-xl" dir="ltr">—</dd>
-              </div>
-              <div class="border border-white/10 bg-white/5 p-3">
-                <dt class="tech-label text-brass-300">{t('estimator.result.production')}</dt>
-                <dd id={`${uid}-prod`} class="mt-1 text-lg font-bold text-white" dir="ltr">—</dd>
-              </div>
-              <div class="col-span-2 border border-white/10 bg-white/5 p-3">
-                <dt class="tech-label text-brass-300">{t('estimator.result.savings')}</dt>
-                <dd id={`${uid}-savings`} data-per-month={t('estimator.result.perMonth')} class="fig lum mt-1 text-xl" dir="ltr">—</dd>
-              </div>
-            </dl>
-            <p class="mt-3 text-xs text-lune-soft">{t('estimator.note')}</p>
+            <p class="text-sm font-semibold text-white">{t('estimator.lock')}</p>
             <a
               id={`${uid}-cta`}
               href={quoteHref}
@@ -131,7 +121,7 @@ const isCompact = variant === 'compact';
 </section>
 
 <script>
-  import { estimateFromBill, formatMadRange } from '../lib/billEstimate';
+  import { estimateFromBill } from '../lib/billEstimate';
 
   // W250 — une instance de script par <section data-instant-estimator> rendue
   // sur la page (jusqu'à 2 : haut de page + pré-pied de page). Chaque section
@@ -144,13 +134,9 @@ const isCompact = variant === 'compact';
     const errEl = section.querySelector('[role="alert"]') as HTMLElement | null;
     const result = section.querySelector('div.instant-estimator-result') as HTMLElement | null;
     const unavailable = section.querySelector('p.instant-estimator-result') as HTMLElement | null;
-    const kwcEl = section.querySelector('[id$="-kwc"]') as HTMLElement | null;
-    const prodEl = section.querySelector('[id$="-prod"]') as HTMLElement | null;
-    const savingsEl = section.querySelector('[id$="-savings"]') as HTMLElement | null;
     const cta = section.querySelector('[id$="-cta"]') as HTMLAnchorElement | null;
     const baseHref = cta?.getAttribute('href') ?? '/devis/mon-toit';
     const errMsg = errEl?.dataset.errMsg ?? 'Entrez un montant de facture valide.';
-    const perMonthSuffix = savingsEl?.dataset.perMonth ?? '/mois';
 
     if (!form || !billInput) return;
 
@@ -196,11 +182,6 @@ const isCompact = variant === 'compact';
       }
 
       unavailable?.classList.add('hidden');
-      if (kwcEl) kwcEl.textContent = `${est.kwc} kWc`;
-      if (prodEl) prodEl.textContent = `${est.productionKwhYr.toLocaleString('fr-FR')} kWh`;
-      if (savingsEl) {
-        savingsEl.textContent = `${formatMadRange(est.savingsMonthlyLow, est.savingsMonthlyHigh)}${perMonthSuffix}`;
-      }
       if (cta) cta.href = buildDeepLink(bill);
       result?.classList.remove('hidden');
     });

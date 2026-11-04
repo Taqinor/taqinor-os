@@ -741,66 +741,9 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
                 logger.warning(
                     'QJR590: synchronisation client échouée (lead #%s)',
                     new_lead.pk, exc_info=True)
-        # MRY9 (c)(d) — deux bascules ARRÊTENT les relances. Le passage
-        # d'étape est déjà couvert par le receiver `lead_stage_changed`.
-        # SUIVI E21 (30/09/2026) — et le rendez-vous de visite EN ATTENTE
-        # s'annule avec elles (best-effort, note au chatter quand un
-        # rendez-vous est réellement annulé) : le technicien ne se déplace
-        # pas chez un client perdu ou qui ne veut plus être contacté.
-        from .cadence_visite import (
-            CAUSE_RDV_NE_PLUS_CONTACTER,
-            annuler_rendez_vous_sur_arret,
-            cause_rdv_perdu,
-        )
-        from .cadence_plan import arreter_cadence
-        try:
-            if not old.perdu and new_lead.perdu:
-                arreter_cadence(
-                    new_lead, user=self.request.user,
-                    motif=(new_lead.motif_perte or 'lead perdu'))
-                annuler_rendez_vous_sur_arret(
-                    new_lead, self.request.user,
-                    cause=cause_rdv_perdu(new_lead.motif_perte))
-            if not old.ne_plus_contacter and new_lead.ne_plus_contacter:
-                arreter_cadence(new_lead, user=self.request.user,
-                                motif='ne plus contacter')
-                annuler_rendez_vous_sur_arret(
-                    new_lead, self.request.user,
-                    cause=CAUSE_RDV_NE_PLUS_CONTACTER)
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
-            logger.warning(
-                'MRY9: arrêt de cadence échoué sur le lead #%s',
-                new_lead.pk, exc_info=True)
-        # CAD91 — l'opposition cochée sur la fiche est inscrite au REGISTRE
-        # (``ConsentRecord`` granted=False, daté), indépendamment de l'arrêt
-        # de cadence ci-dessus : sans elle, rien ne prouverait qu'elle a été
-        # honorée. Aucun motif exigé (loi 09-08 art. 9 al. 2).
-        if not old.ne_plus_contacter and new_lead.ne_plus_contacter:
-            from .cadence_reponses import (
-                CONSENT_SOURCE_OPPOSITION_FICHE,
-                tracer_opposition_registre,
-            )
-            tracer_opposition_registre(
-                new_lead, source=CONSENT_SOURCE_OPPOSITION_FICHE)
-        # ACRM59 — la DÉCOCHE est tracée elle aussi : une ligne accordée par
-        # finalité de contact, dont la source nomme l'utilisateur.
-        if old.ne_plus_contacter and not new_lead.ne_plus_contacter:
-            from .leads_consentement import tracer_levee_opposition_registre
-            tracer_levee_opposition_registre(new_lead, self.request.user)
-        # CAD107 — la bascule INVERSE n'était traitée nulle part : décocher
-        # « Perdu » ne déclenchait rien, alors qu'un client perdu qui revient
-        # est le meilleur signal d'achat qui existe. Les trois chemins de
-        # réouverture (ce PATCH, le lot `unset_perdu`, la nouvelle touche
-        # entrante) posent désormais la MÊME cadence de reprise.
-        from .cadence_touche import reprendre_cadence_apres_reouverture
-        try:
-            if old.perdu and not new_lead.perdu:
-                reprendre_cadence_apres_reouverture(
-                    new_lead, self.request.user, origine='fiche rouverte')
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
-            logger.warning(
-                'CAD107: reprise non posée sur le lead #%s',
-                new_lead.pk, exc_info=True)
+        # ACVI31 — bascules perdu, opposition, réouverture et responsable.
+        from .fiche_ecritures import appliquer_bascules_fiche
+        appliquer_bascules_fiche(old, new_lead, self.request.user)
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + [
@@ -883,18 +826,10 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
             permission_classes=[IsResponsableOrAdmin])
     def archiver(self, request, pk=None):
         """Archive un lead (réversible). Le retire des vues par défaut."""
-        from django.db import transaction
-        from django.utils import timezone
+        from .fiche_bulk import archiver_lead
         lead = self.get_object()
         if not lead.is_archived:
-            lead.is_archived = True
-            lead.archived_by = request.user
-            lead.archived_at = timezone.now()
-            # ALEA30 — écriture et chatter dans la MÊME transaction.
-            with transaction.atomic():
-                lead.save(update_fields=['is_archived', 'archived_by',
-                                         'archived_at'])
-                activity.log_archive(lead, request.user)
+            archiver_lead(lead, request.user)
         return Response(LeadSerializer(lead, context={'request': request}).data)
 
     @extend_schema(request=None, responses=LeadSerializer)
@@ -902,17 +837,10 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
             permission_classes=[IsResponsableOrAdmin])
     def restaurer(self, request, pk=None):
         """Restaure un lead archivé (le ramène dans les vues par défaut)."""
-        from django.db import transaction
+        from .fiche_ecritures import restaurer_lead
         lead = self.get_object()
         if lead.is_archived:
-            lead.is_archived = False
-            lead.archived_by = None
-            lead.archived_at = None
-            # ALEA30 — écriture et chatter dans la MÊME transaction.
-            with transaction.atomic():
-                lead.save(update_fields=['is_archived', 'archived_by',
-                                         'archived_at'])
-                activity.log_restore(lead, request.user)
+            restaurer_lead(lead, request.user)
         return Response(LeadSerializer(lead, context={'request': request}).data)
 
     @extend_schema(request=sd.corps('CrmResumeAssocieRequest', accord_client=serializers.ChoiceField(choices=[True]),

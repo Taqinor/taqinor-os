@@ -17,7 +17,10 @@ from .cadence_plan import (
     deplacer_echeance_etape,
     reporter_prochaine_touche,
 )
-from .cadence_reperes import q_etape_moteur, q_visite
+from .cadence_messages import refus_rendu_whatsapp
+from .cadence_reperes import (
+    LIBELLE_SIGNAL_PROPOSITION, LIBELLE_SIGNAL_QUESTIONNAIRE, RAPPEL_DEMANDE_LIBELLE,
+    q_etape_moteur, q_visite)
 from .leads_consentement import _ecrire_registre_contact
 from .leads_notifications import _build_lead_wa_reply_url
 from .leads_socle import lead_notification_recipients
@@ -110,7 +113,8 @@ def notifier_signal_lecture(devis_reference: str, lead, *, friction_section='',
             return
         from apps.notifications.services import notify_many
         corps_notif = [corps]
-        wa_url = _build_lead_wa_reply_url(lead)
+        # ACVI44 — aucun lien WhatsApp vers un lead qu'on ne contacte plus.
+        wa_url = None if refus_rendu_whatsapp(lead) else _build_lead_wa_reply_url(lead)
         if wa_url:
             corps_notif.append(f'Appeler / répondre maintenant : {wa_url}')
         notify_many(
@@ -190,7 +194,7 @@ def notifier_signal_client(lead, signal, *, detail='') -> None:
         if detail:
             corps.append(detail)
         corps.append(conseil)
-        wa_url = _build_lead_wa_reply_url(lead)
+        wa_url = None if refus_rendu_whatsapp(lead) else _build_lead_wa_reply_url(lead)  # ACVI44
         if wa_url:
             corps.append(f'Appeler / répondre maintenant : {wa_url}')
         notify_many(
@@ -241,8 +245,8 @@ SIGNAL_PROPOSITION_ROUVERTE = 'proposition_rouverte'
 #: et sa raison — c'est ce que la file affiche. Sert aussi de clé
 #: d'idempotence : une touche signal encore ouverte n'est jamais doublée.
 TOUCHES_SIGNAL = {
-    SIGNAL_PROPOSITION_ROUVERTE: 'Proposition rouverte — appeler',
-    SIGNAL_QUESTIONNAIRE: 'Questionnaire complété — appeler',
+    SIGNAL_PROPOSITION_ROUVERTE: LIBELLE_SIGNAL_PROPOSITION,
+    SIGNAL_QUESTIONNAIRE: LIBELLE_SIGNAL_QUESTIONNAIRE,
 }
 
 #: Les touches signal vivent dans la cadence hors protocole déjà utilisée par
@@ -402,7 +406,9 @@ def poser_touche_signal(lead, signal, *, user=None, maintenant=None):
         # 4. La touche du plan glisse DERRIÈRE la touche signal, avec toute sa
         #    suite et son ancre (mécanique existante, jamais une seconde).
         deplacee = None
-        if plan is not None and glisse_a is not None:
+        # ACVI42 — un rappel convenu avec le client ne glisse jamais.
+        if (plan is not None and glisse_a is not None
+                and not plan.rappel_convenu_le):
             # Les gestes du RENDEZ-VOUS de visite (confirmer la veille,
             # débriefer le lendemain) partagent la cadence du plan mais sont
             # ancrés sur la DATE DE VISITE : le glissement de la suite du plan
@@ -732,11 +738,6 @@ def notify_lead_callback_requested(lead) -> None:
 # comprise) : le lead garde sa position dans le protocole, on ne fabrique pas un
 # second plan concurrent. Quand il n'a plus aucune touche ouverte (cadence
 # terminée ou arrêtée), on pose UNE touche — une seule, jamais un plan.
-
-
-#: Libellé de la touche « rappel demandé ». Sert aussi de clé d'idempotence :
-#: deux clics du même client ne laissent jamais deux lignes dans la file.
-RAPPEL_DEMANDE_LIBELLE = 'Rappeler le client (il l’a demandé)'
 
 #: Cadence des touches hors protocole déjà utilisée par le dépôt.
 RAPPEL_DEMANDE_CADENCE = 'generique'
