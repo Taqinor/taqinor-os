@@ -48,6 +48,17 @@ describe('usePdfPreview', () => {
     await waitFor(() => expect(result.current.errorKind).toBe('network'))
   })
 
+  it('affiche le detail servi d\'un 409 en Blob', async () => {
+    // ADEV112 — /proposal répond en Blob (responseType blob) : son detail est lu.
+    const detail = 'Devis commercial incomplet : consommation manquante'
+    const corps = new Blob([JSON.stringify({ detail })], { type: 'application/json' })
+    const erreur409 = Object.assign(new Error('Request failed with status code 409'),
+      { response: { status: 409, data: corps } })
+    const { result } = renderHook(() => usePdfPreview(() => Promise.reject(erreur409)))
+    await waitFor(() => expect(result.current.errorMessage).toBe(detail))
+    expect(result.current.errorKind).toBe('server')
+  })
+
   it('désactivé : aucune requête et état purgé', async () => {
     let n = 0
     const f = () => { n += 1; return Promise.resolve(new Blob(['x'])) }

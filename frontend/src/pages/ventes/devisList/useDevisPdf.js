@@ -10,7 +10,7 @@ import { rafraichirDevis, genererPdfDevis } from '../../../features/ventes/store
 import ventesApi from '../../../api/ventesApi.js'
 import { toast } from '../../../ui/index.js'
 import { filenameFromResponse } from '../../../utils/downloadBlob.js'
-import { openPdfBlob } from '../../../utils/pdfBlob.js'
+import { openPdfBlob, messageErreurBlob } from '../../../utils/pdfBlob.js'
 import { proposalParams, pdfBlob } from '../../../features/ventes/previewPdf.js'
 // QJR624 — l'acompte personnalisé du dialogue PDF s'écrit dans l'échéancier.
 import parametresApi from '../../../api/parametresApi.js'
@@ -195,7 +195,9 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
       const res = await ventesApi.getProposalPdf(d.id, params)
       return pdfBlob(res.data)
     } catch (err) {
-      const msg = frenchError(err, '')
+      // ADEV112 — le 409 de /proposal arrive en Blob (responseType blob) : son
+      // `detail` est décodé, jamais remplacé par un texte fixe.
+      const msg = await messageErreurBlob(err, { fallback: '' })
       if (/onduleur|inverter/i.test(msg)) {
         throw new Error('Ce devis n\'a aucun onduleur — choisissez le format une page.')
       }
