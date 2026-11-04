@@ -166,3 +166,35 @@ class TestCalendar(TestCase):
         autre = User.objects.create_user(
             username='autre-cal', password='x', role_legacy='responsable', company=self.other)
         self.assertEqual(vus(autre), set())
+
+    def test_reschedule_hors_portee_404(self):
+        """ACHT137 (C-ACHT-VER4-032) — t1 déplace sa i1 ; i2 et la pose de C2
+        (hors portée) : 404, dates inchangées ; admin : 200 ; autre société : 404."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import COMMERCIAL_PERMISSIONS
+        p = self._portee()
+        jour = p['i2'].date_prevue
+        url = '/api/django/reporting/calendar/reschedule/'
+        cible = (date.today() + timedelta(days=9)).isoformat()
+
+        def bouger(user, type_key, obj):
+            return self._api_de(user).post(
+                url, {'type': type_key, 'id': obj.pk, 'date': cible}, format='json')
+        self.assertEqual(bouger(p['t1'], 'intervention', p['i1']).status_code, 200)
+        self.assertEqual(bouger(p['t1'], 'intervention', p['i2']).status_code, 404)
+        self.assertEqual(bouger(p['t1'], 'pose', p['c2']).status_code, 404)
+        commercial = User.objects.create_user(
+            username='com-cal', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom='Commercial',
+                                     permissions=list(COMMERCIAL_PERMISSIONS)))
+        self.assertIn(bouger(commercial, 'intervention', p['i2']).status_code, (403, 404))
+        autre = User.objects.create_user(
+            username='autre-cal2', password='x', role_legacy='responsable', company=self.other)
+        self.assertEqual(bouger(autre, 'intervention', p['i2']).status_code, 404)
+        for obj, champ in ((p['i2'], 'date_prevue'), (p['c2'], 'date_pose_prevue')):
+            obj.refresh_from_db()
+            self.assertEqual(getattr(obj, champ), jour)
+        p['i1'].refresh_from_db()
+        self.assertEqual(p['i1'].date_prevue.isoformat(), cible)
+        self.assertEqual(bouger(p['admin'], 'pose', p['c2']).status_code, 200)
+        self.assertEqual(bouger(p['admin'], 'intervention', p['i2']).status_code, 200)

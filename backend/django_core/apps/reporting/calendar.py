@@ -321,11 +321,14 @@ def calendar_reschedule(request):
     new_date = entree.validated_data['date']
 
     from apps.installations.models import Installation, Intervention
+    # ACHT137 — même portée que les listes : hors portée = 404.
+    from apps.installations.selectors import scoper_chantiers, scoper_interventions
     from apps.records.models import Activity
 
     try:
         if type_key in ('pose', 'mise_en_service'):
-            inst = Installation.objects.filter(**co).get(pk=obj_id)
+            inst = scoper_chantiers(
+                Installation.objects.filter(**co), request.user).get(pk=obj_id)
             field = ('date_pose_prevue' if type_key == 'pose'
                      else 'date_mise_en_service')
             setattr(inst, field, new_date)
@@ -334,7 +337,8 @@ def calendar_reschedule(request):
             # ACHT135 — un report d'agenda est un report (déconfirmé, compté,
             # tracé), par le service unique comme le PATCH de la fiche.
             from apps.installations.services import replanifier
-            iv = Intervention.objects.filter(**co).get(pk=obj_id)
+            iv = scoper_interventions(
+                Intervention.objects.filter(**co), request.user).get(pk=obj_id)
             replanifier(iv, new_date, 'Agenda — glisser-déposer', request.user)
         else:  # activite
             act = Activity.objects.filter(**co).get(pk=obj_id)
