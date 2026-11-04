@@ -26,7 +26,6 @@ from authentication.models import Company
 from testkit.time import frozen
 
 from apps.crm import horaires, stages, cadence_plan
-from apps.crm import cadence_reperes
 from apps.crm.cadence_config import CLE_APPEL_APRES_REPONSE, CLE_DEVIS, q_etape
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.parametres.models import CompanyProfile
@@ -117,7 +116,8 @@ class ParquerAuFroidTests(TestCase):
         self.assertEqual(self.lead.stage, stages.COLD)
         filet.refresh_from_db()
         self.assertEqual(filet.statut, ANNULEE)
-        self.assertEqual(filet.note, cadence_reperes.MOTIF_PARQUE_AU_FROID)
+        # ACVI38 — c'est l'arrêt du passage à COLD qui l'annule, filet compris.
+        self.assertEqual(filet.note, 'lead passé en froid')
         self.assertTrue(self._reveils().exists())
 
     def test_sans_filet_les_reveils_sont_poses_comme_avant(self):
