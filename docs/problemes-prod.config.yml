@@ -1,0 +1,19 @@
+# ---------------------------------------------------------------------------
+# Tri du matin des problemes vecus en production (BPQ5)
+# ---------------------------------------------------------------------------
+# Lu EN PREMIER par .claude/skills/problemes-prod/SKILL.md et par
+# scripts/nightly-qa.ps1 -Skill problemes-prod. Guide : docs/problemes-prod.md
+#
+# KILL SWITCH. `enabled: false` puis commit : la passe n'ecrit rien, ne committe
+# rien, n'ouvre aucune PR et imprime `PROBLEMES_PROD: DISABLED (config flag off)`.
+# L'autre interrupteur est celui de la routine (claude.ai/code/routines).
+enabled: true
+
+# Budget de temps de TOUTE la passe (lecture + tri + depot).
+max_minutes: 30
+
+# Nombre maximal d'items ERR-PROD deposes par passe ; le reste attend la nuit suivante.
+max_findings_per_run: 10
+
+# Cible LECTURE SEULE : l'API de resume (BPQ4). Jamais d'ecriture en production.
+base_url: "https://api.taqinor.ma"

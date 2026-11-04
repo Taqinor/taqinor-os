@@ -61,10 +61,19 @@ la release reste celle du dernier `.env` posé ; les évènements restent captur
   trace : la ligne gunicorn du conteneur et le 502/499 nginx.
 - Le service **FastAPI IA** : processus séparé, non instrumenté (ERR-JPB-IAAPI-SANS-JOURNAL).
 
-## Tri du matin (à construire : BPQ5, BPQ8)
+## Tri du matin (skill construit : BPQ5 ; routine cloud : BPQ8)
 
-Routine cloud Claude Code à 07:07 Africa/Casablanca (D-JPB-1, 03/11/2026) : lit `health/ready`,
-le résumé des problèmes (`GET /api/django/reporting/problemes/resume/`, BPQ4, jeton de service en
-secret réseau), les évènements Sentry des 24 h (API Sentry, jeton de lecture en secret réseau),
-les issues et runs nocturnes GitHub ; dépose les `ERR-PROD-*` dans `docs/ERROR_PLAN.md` par une
-PR docs-only. Kill switch : `docs/problemes-prod.config.yml` (`enabled: false`), à créer avec le skill.
+Skill `.claude/skills/problemes-prod/SKILL.md`, lecture seule sur la prod. Il lit `health/ready`, le
+résumé des problèmes (`GET /api/django/reporting/problemes/resume/?jours=1&tri=1`, BPQ4, jeton de
+service), les issues et runs GitHub des alertes nocturnes, ignore `deploiement`/`connectivite`/
+`maintenance` sauf récurrence, dédoublonne sur la `Signature:` contre `docs/ERROR_PLAN.md`
+(toutes lignes + intake), note la sévérité (1 personne bloquée sur un geste métier = High, ≥ 3
+personnes = Critical) et dépose les `ERR-PROD-<MODULE>-<SLUG>` par UNE PR docs-only
+(`gh pr merge --auto --merge`). Rien à déposer : aucun commit. Sortie : `PROBLEMES_PROD_STATUS:
+EMPTY|MORE`. Le format des lignes est gardé par `scripts/check_err_prod.py` (BPQ13).
+
+- **Kill switch** : `docs/problemes-prod.config.yml` (`enabled: false`, `max_minutes`,
+  `max_findings_per_run`, `base_url`).
+- **Sur le poste de Reda** : `powershell -File scripts/nightly-qa.ps1 -Skill problemes-prod`
+  (aucun docker, aucun seed, aucun Playwright ; jeton dans `PROBLEMES_RESUME_TOKEN`).
+- **Routine cloud** à 07:07 Africa/Casablanca (D-JPB-1, 03/11/2026) : BPQ8.
