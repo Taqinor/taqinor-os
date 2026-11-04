@@ -25,7 +25,7 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from .models import RapportDefinition
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers
 from rest_framework.parsers import JSONParser
 
@@ -214,7 +214,8 @@ class RapportDefinitionViewSet(CompanyScopedModelViewSet):
     @extend_schema(
         parameters=[OpenApiParameter('format', OpenApiTypes.STR, required=False,
                                      enum=['csv', 'xlsx'])],
-        responses={(200, 'text/csv'): OpenApiTypes.STR,
+        responses={409: OpenApiResponse(description='Dataset stocké inconnu.'),
+                   (200, 'text/csv'): OpenApiTypes.STR,
                    (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
     # ASEC50 / D-ASEC-4 — la garde du viewset (``ScopedPermission``) ET le
     # code ``reporting_export`` : décocher « Exporter » ferme l'export.

@@ -93,18 +93,18 @@ class MeteoFichierRetraitTest(BaseApiCalepinage):
         self.assertEqual(servi.status_code, 200)
         self.assertIsNone(servi.data)
 
-    def test_retrait_sans_fichier_retenu_404_nomme(self):
+    def test_retrait_sans_fichier_retenu_409_nomme(self):
         reponse = self.api.delete(self.url)
 
-        self.assertEqual(reponse.status_code, 404)
+        self.assertEqual(reponse.status_code, 409)
         self.assertEqual(reponse.data['detail'],
                          "Aucun fichier météo n'est rattaché à ce calepinage.")
 
-    def test_retrait_deux_fois_la_seconde_est_404(self):
+    def test_retrait_deux_fois_la_seconde_est_409(self):
         self._deposer()
         self.assertEqual(self.api.delete(self.url).status_code, 204)
 
-        self.assertEqual(self.api.delete(self.url).status_code, 404)
+        self.assertEqual(self.api.delete(self.url).status_code, 409)
 
     def test_retrait_reserve_a_la_gestion(self):
         self._deposer()

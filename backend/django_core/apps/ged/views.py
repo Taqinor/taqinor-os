@@ -1511,7 +1511,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         if document is None:
             return Response(
                 {'detail': 'Document introuvable dans la corbeille.'},
-                status=status.HTTP_404_NOT_FOUND)
+                status=selectors.statut_hors_corbeille(request.user, pk))
         self.check_object_permissions(request, document)  # ASEC38 — ACL
         try:
             services.restaurer_de_corbeille(document, user=request.user)
@@ -1537,7 +1537,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         if document is None:
             return Response(
                 {'detail': 'Document introuvable dans la corbeille.'},
-                status=status.HTTP_404_NOT_FOUND)
+                status=selectors.statut_hors_corbeille(request.user, pk))
         self.check_object_permissions(request, document)  # ASEC38 — ACL
         try:
             services.purger_definitivement(document)

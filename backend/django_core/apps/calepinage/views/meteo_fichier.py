@@ -85,7 +85,7 @@ SANS_FOURNISSEUR = (
 TROP_LOURD = ('Ce fichier dépasse {0} Mo : un CSV météo au pas horaire ne '
               'pèse jamais autant.'.format(OCTETS_MAX // (1024 * 1024)))
 
-#: ACAL148 — le 404 nommé d'un retrait sans fichier retenu.
+#: ACAL148 — le 409 nommé d'un retrait sans fichier retenu.
 AUCUN_FICHIER_RETENU = "Aucun fichier météo n'est rattaché à ce calepinage."
 
 MESSAGE_DEPOSE = (
@@ -231,8 +231,8 @@ def _retirer(calepinage, user):
 
     piece = lire_piece_meteo(calepinage)
     if piece is None:
-        return Response({'detail': AUCUN_FICHIER_RETENU},
-                        status=status.HTTP_404_NOT_FOUND)
+        return Response({'detail': AUCUN_FICHIER_RETENU},  # ENF11 : le calepinage existe
+                        status=status.HTTP_409_CONFLICT)
     nom = piece.filename or 'meteo.csv'
     _mettre_a_la_corbeille(calepinage, piece, user)
     noter(calepinage,
