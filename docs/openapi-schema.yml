@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4910, operations: 7700, components: 3616}
+counts: {paths: 4911, operations: 7701, components: 3616}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -3255,6 +3255,7 @@ operations:
 - post /api/django/stock/mouvements/ -> django_stock_mouvements_create
 - get /api/django/stock/mouvements/agregation/ -> django_stock_mouvements_agregation_retrieve
 - post /api/django/stock/mouvements/export-xlsx/ -> django_stock_mouvements_export_xlsx_create
+- get /api/django/stock/mouvements/telecharger-export/{token}/ -> django_stock_mouvements_telecharger_export_retrieve
 - get /api/django/stock/mouvements/{id}/ -> django_stock_mouvements_retrieve
 - get /api/django/stock/nomenclatures-code-barres/ -> django_stock_nomenclatures_code_barres_list
 - post /api/django/stock/nomenclatures-code-barres/ -> django_stock_nomenclatures_code_barres_create

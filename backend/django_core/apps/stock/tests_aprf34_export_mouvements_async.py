@@ -22,7 +22,7 @@ from apps.notifications.models import Notification
 from apps.stock.models import MouvementStock, Produit
 from apps.stock.tasks import export_mouvements_xlsx_task
 from authentication.models import Company
-from core.models import BackgroundJob
+from core.models import BackgroundJob, SignedDownload
 
 User = get_user_model()
 URL = '/api/django/stock/mouvements/export-xlsx/'
@@ -89,10 +89,18 @@ class ExportMouvementsAsyncTests(TestCase):
                              {'NTPLT30_EXPORT_ROW_THRESHOLD': str(seuil)}), \
                 eager, \
                 mock.patch('apps.records.storage.store_export_result',
-                           side_effect=self._store), \
-                mock.patch('apps.records.storage.presign_export_result',
-                           return_value='https://minio.test/signe'):
+                           side_effect=self._store):
             return _api(self.user).post(URL)
+
+    def _fetch(self, key):
+        # APRF43 — lecture MinIO simulée : seul le dépôt en mémoire répond.
+        data = self.stockes.get(key)
+        return (data, None) if data is not None else (None, 'Fichier introuvable.')
+
+    def _telecharger(self, user, link):
+        with mock.patch('apps.records.storage.fetch_attachment',
+                        side_effect=self._fetch):
+            return _api(user).get(link)
 
     def test_sous_le_seuil_reste_synchrone(self):
         self._mouvements(5)
@@ -119,8 +127,11 @@ class ExportMouvementsAsyncTests(TestCase):
                          f'exports/{self.company.id}/{job.pk}.xlsx')
         notif = Notification.objects.filter(recipient=self.user).first()
         self.assertIsNotNone(notif)
-        self.assertIn('https://minio.test/signe', notif.body)
-        self.assertEqual(notif.link, 'https://minio.test/signe')
+        # APRF43 — lien servi par Django, jamais l'hôte MinIO.
+        self.assertTrue(notif.link.startswith(
+            '/api/django/stock/mouvements/telecharger-export/'), notif.link)
+        self.assertIn(notif.link, notif.body)
+        self.assertNotIn('://', notif.body)
 
     def test_meme_contenu_que_l_export_synchrone(self):
         self._mouvements(12)
@@ -137,3 +148,38 @@ class ExportMouvementsAsyncTests(TestCase):
         # Lecture seule : aucun mouvement modifié.
         self.assertEqual(sorted(MouvementStock.objects.filter(
             company=self.company).values_list('pk', 'quantite_apres')), avant)
+
+    def test_lien_de_notification_servi_par_django(self):
+        """APRF43 (C-APRF-VER-001) — le lien de la cloche rend le xlsx en 200 à
+        l'utilisateur ; 404 à une autre société, jeton expiré ou révoqué."""
+        self._mouvements(12)
+        resp = self._export(10)
+        self.assertEqual(resp.status_code, 202)
+        job = BackgroundJob.objects.get(pk=resp.json()['job_id'])
+        link = Notification.objects.filter(recipient=self.user).first().link
+        self.assertTrue(link.startswith('/api/django/stock/'), link)
+        # Persistance : un SignedDownload sur la clé du livrable, 24 h.
+        lien = SignedDownload.objects.get(token=link.rstrip('/').rsplit('/', 1)[1])
+        self.assertEqual(lien.company_id, self.company.id)
+        self.assertEqual(lien.object_key,
+                         f'exports/{self.company.id}/{job.pk}.xlsx')
+        duree = lien.expire_le - lien.created_at
+        self.assertAlmostEqual(duree.total_seconds(), 24 * 3600, delta=60)
+
+        ok = self._telecharger(self.user, link)
+        self.assertEqual(ok.status_code, 200)
+        self.assertIn('mouvements-stock.xlsx', ok['Content-Disposition'])
+        self.assertEqual(ok.content, self.stockes[job.result_file_key])
+
+        autre = Company.objects.get(slug='aprf34-autre')
+        intrus = User.objects.create_user(
+            username='aprf43-intrus', password='x', company=autre,
+            role_legacy='admin')
+        self.assertEqual(self._telecharger(intrus, link).status_code, 404)
+
+        SignedDownload.objects.filter(pk=lien.pk).update(
+            expire_le=timezone.now() - timedelta(seconds=1))
+        self.assertEqual(self._telecharger(self.user, link).status_code, 404)
+        SignedDownload.objects.filter(pk=lien.pk).update(
+            expire_le=timezone.now() + timedelta(hours=1), actif=False)
+        self.assertEqual(self._telecharger(self.user, link).status_code, 404)

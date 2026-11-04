@@ -50,7 +50,7 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
     parser_classes = [JSONParser]
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['export_xlsx', 'agregation']:
+        if self.action in READ_ACTIONS + ['export_xlsx', 'agregation', 'telecharger_export']:
             return [IsAnyRole()]
         elif self.action == 'create':
             return [HasPermissionOrLegacy('stock_mouvement')()]
@@ -137,6 +137,29 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
                 'status_url': f'/api/django/core/jobs-status/{job.pk}/',
             },
             status=status.HTTP_202_ACCEPTED)
+
+    @extend_schema(request=None, responses={XLSX: BINARY, 404: None})
+    @action(detail=False, methods=['get'], permission_classes=[IsAnyRole],
+            url_path=r'telecharger-export/(?P<token>[^/.]+)')
+    def telecharger_export(self, request, token=None):
+        """APRF43 — livre l'export asynchrone des mouvements (lien de la
+        notification) via Django : jeton ``core.signed_download`` actif, non
+        expiré, de la SOCIÉTÉ de l'utilisateur ; sinon 404 (jamais de fuite)."""
+        from django.http import Http404, HttpResponse
+        from core.models import SignedDownload
+        from apps.records.storage import fetch_attachment
+        from apps.records.xlsx import XLSX_CONTENT_TYPE
+        lien = SignedDownload.objects.filter(
+            token=token, company_id=request.user.company_id, actif=True).first()
+        if lien is None or lien.expire or not lien.object_key.startswith(
+                f'exports/{request.user.company_id}/'):
+            raise Http404
+        data, _err = fetch_attachment(lien.object_key)
+        if data is None:
+            raise Http404
+        response = HttpResponse(data, content_type=XLSX_CONTENT_TYPE)
+        response['Content-Disposition'] = 'attachment; filename="mouvements-stock.xlsx"'
+        return response
 
     @extend_schema(parameters=[P('group_by', STR, False, 'Regroupement', ['produit', 'type', 'mois', 'emplacement']),
                                P('date_min', DATE_OU_VIDE), P('date_max', DATE_OU_VIDE),
