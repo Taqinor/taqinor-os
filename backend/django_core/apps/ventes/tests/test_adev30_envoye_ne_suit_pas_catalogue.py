@@ -219,3 +219,52 @@ class BaremeGeleEnvoiTests(q220._Base):
         self.assertEqual(
             [c.get('type') for c in v2.clauses_appliquees].count(
                 TYPE_REGLAGES_FIGES), 1)
+
+    def test_page_publique_garde_sa_conso_apres_nouveaux_reglages(self):
+        """ADVS45 (D-ADVS-1, C-ADVS-VER1-101) — la page publique d'un envoyé
+        lit les tranches et la redevance de SON envoi, comme ``/proposal``.
+        Mutant : remettre ``_reglages_tarifaires`` dans
+        ``conso_publique_du_devis`` ⇒ échec (838 → 465 à la sonde)."""
+        from apps.crm.models import Lead
+        from apps.parametres.models_tariff import TariffSettings
+        from apps.ventes.models import ShareLink
+        from apps.ventes.public.payload_horaire import conso_publique_du_devis
+
+        from .test_adev50_cumul_25_ans_servi import lire
+
+        lead = Lead.objects.create(
+            company=self.company, nom='Public', prenom='Fige',
+            telephone='+212600450045', ville='Casablanca',
+            type_installation='residentiel', facture_hiver=Decimal('1500'))
+        devis = self._devis(9, pose_a=9)
+        devis.lead = lead
+        devis.save(update_fields=['lead'])
+        brouillon = self._devis(9, pose_a=9)
+        brouillon.lead = lead
+        brouillon.save(update_fields=['lead'])
+        devis = self._envoyer(devis)
+        lien = ShareLink.objects.create(company=self.company, devis=devis)
+
+        avant = lire(lien.token)
+        self.assertEqual(avant.status_code, 200, avant.content[:300])
+        avant = avant.json()
+        self.assertTrue(avant['monthly_consumption'])
+        conso_brouillon = conso_publique_du_devis(brouillon)
+
+        tarif = TariffSettings.get(company=self.company)
+        tarif.redevance_compteur_mad_mois = Decimal('120')
+        tarif.residential_tiers = [
+            {'max_kwh': 100, 'prix_kwh_ttc': '1.50'},
+            {'max_kwh': 200, 'prix_kwh_ttc': '1.90'},
+            {'max_kwh': None, 'prix_kwh_ttc': '2.80'}]
+        tarif.save()
+
+        apres = lire(lien.token)
+        self.assertEqual(apres.status_code, 200, apres.content[:300])
+        apres = apres.json()
+        self.assertEqual(apres['monthly_consumption'],
+                         avant['monthly_consumption'])
+        self.assertEqual(apres.get('courbes_journalieres'),
+                         avant.get('courbes_journalieres'))
+        # Brouillon : pas d'instantané, les réglages du jour.
+        self.assertNotEqual(conso_publique_du_devis(brouillon), conso_brouillon)
