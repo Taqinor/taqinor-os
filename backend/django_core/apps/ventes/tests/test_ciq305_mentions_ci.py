@@ -279,6 +279,26 @@ class TestGabaritsLisentLaTable(SimpleTestCase):
             for copie in COPIES_INTERDITES:
                 self.assertNotIn(copie, html)
 
+    def test_releve_partiel_imprime_dans_les_deux_gabarits(self):
+        # ADEV110 (rejeu FAIL du 04/11, P6.pdf_releve_partiel) — la mention
+        # servie à ``synthese_ci['hypotheses']`` est IMPRIMÉE dans la note
+        # client de la couverture commerciale ET industrielle ; 12 mois : rien.
+        partiel = {"hypotheses": [{"cle": "consommation", "valeur": 48000.0,
+                                   "statut": "estimation",
+                                   "source": "relevé partiel (3 mois)"}]}
+        for sample, renderer, render, note in (
+                (com_sample, com_renderer, com_render, 'class="c1c-note"'),
+                (ind_sample, ind_renderer, ind_render, 'class="i1-note"')):
+            base = self._avec_injection(sample)
+            base["etude"]["etude_ci"] = copy.deepcopy(partiel)
+            html = render.build_html(renderer._augment(base))
+            bloc = html[html.index(note):]
+            bloc = bloc[:bloc.index("</div>")]
+            self.assertIn("estimation sur 3 mois relevés", bloc)
+            sans = render.build_html(renderer._augment(
+                self._avec_injection(sample)))
+            self.assertNotIn("mois relevés", sans)
+
     def test_aucune_copie_8221_dans_le_moteur(self):
         for chemin in QUOTE_ENGINE.rglob("*.py"):
             if chemin.name == "mentions.py":

@@ -508,6 +508,9 @@
       {
         "pdf_mode": "full",
         "include_etude": 0
+      },
+      {
+        "suppressErrorToast": true
       }
     ]
   ],

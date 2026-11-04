@@ -253,6 +253,19 @@ def ligne_non_chiffre(d, cle, prefixe):
     return f'<div class="{prefixe}-mtsrc">{phrase}</div>'
 
 
+def note_consommation_estimee(d, cle):
+    """ADEV110 — « Consommation : estimation sur n mois relevés. » : l'entrée
+    ``consommation_estimee`` servie par ``mentions_ci`` dans
+    ``synthese['hypotheses']`` (relevé partiel), imprimée dans la note client
+    de la couverture, langue du document ; '' sans relevé partiel."""
+    synthese = d.get(f"{cle}_synthese") or {}
+    entree = next((h for h in synthese.get("hypotheses") or []
+                   if isinstance(h, dict)
+                   and h.get("cle") == "consommation_estimee"), None)
+    textes = (entree or {}).get("textes")
+    return html.escape(texte(textes, langue(d))) if textes else ""
+
+
 def note_pointe(d, cle):
     """La note sur la pointe selon la composition servie (CIQ305)."""
     if langue(d) != "fr":
