@@ -1,8 +1,6 @@
 """Nettoyage des champs « origine / estimation » du webhook site (extrait de webhooks.py, C20).
 
-Code déplacé tel quel (`_ESTIMATE_SHOWN_KEYS`, `_clean_estimate_shown`) + WAUD6 `_origine_visiteur`."""
-import re
-
+Code déplacé tel quel (`_ESTIMATE_SHOWN_KEYS`, `_clean_estimate_shown`)."""
 
 #: Quote-journey — clés autorisées de `estimateShown` (les chiffres montrés
 #: au visiteur). Whitelist CÔTÉ SERVEUR : le corps de requête n'est jamais
@@ -45,24 +43,4 @@ def _clean_estimate_shown(raw):
             value = value.strip()[:120]
             if value:
                 out[key] = value
-    return out
-
-
-def _origine_visiteur(data):
-    """WAUD6 (D-WAUD-2=a) — origine du visiteur, jointe à l'envoi volontaire : page
-    d'arrivée (chemin seul, jamais de requête ni de PII) et hôte du référent (ex.
-    chatgpt.com, google.com). Rangés dans le blob : aucune colonne, aucune migration.
-    Valeur malformée → ignorée."""
-    out = {}
-    landing = data.get('landingPath', data.get('landing_path'))
-    if isinstance(landing, str):
-        landing = landing.strip()
-        if (landing.startswith('/') and len(landing) <= 200
-                and not re.search(r'[?#\s]', landing)):
-            out['landing_path'] = landing
-    host = data.get('referrerHost', data.get('referrer_host'))
-    if isinstance(host, str):
-        host = host.strip().lower()
-        if re.fullmatch(r'[a-z0-9]([a-z0-9.-]{0,98}[a-z0-9])?', host):
-            out['referrer_host'] = host
     return out

@@ -75,7 +75,9 @@ CONTRAT = (ROOT / "backend" / "django_core" / "apps" / "crm"
 #: Les deux fonctions qui transforment le corps du site en champs `crm.Lead`.
 #: `_map_payload_to_fields` APPELLE `_extract_web_questionnaire` : lire l'une
 #: sans l'autre declarerait « non traitees » les 17 cles du questionnaire.
-FONCTIONS_MAPPING = ("_map_payload_to_fields", "_extract_web_questionnaire")
+#: `_origine_visiteur` (WAUD6) est appelee par `_extract_web_questionnaire` : meme raison.
+FONCTIONS_MAPPING = ("_map_payload_to_fields", "_extract_web_questionnaire",
+                     "_origine_visiteur")
 
 #: Le nom du dictionnaire de charge utile dans ces fonctions.
 PORTEURS = ("data",)

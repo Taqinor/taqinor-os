@@ -52,7 +52,7 @@ from core.idempotency import dedupe_event
 from . import stages
 from .leads_meta import date_webhook_ou_none
 from .models import Lead, LeadActivity, WebsiteLeadPayload
-from .webhook_origine import _clean_estimate_shown, _origine_visiteur
+from .webhook_origine import _clean_estimate_shown
 
 logger = logging.getLogger(__name__)
 
@@ -476,6 +476,26 @@ def _clean_futures_charges(raw):
         return None
     out = sorted({str(k).strip().lower() for k in keys} & set(allowed))
     return out or None
+
+
+def _origine_visiteur(data):
+    """WAUD6 (D-WAUD-2=a) — origine du visiteur, jointe à l'envoi volontaire : page
+    d'arrivée (chemin seul, jamais de requête ni de PII) et hôte du référent (ex.
+    chatgpt.com, google.com). Rangés dans le blob : aucune colonne, aucune migration.
+    Valeur malformée → ignorée."""
+    out = {}
+    landing = data.get('landingPath', data.get('landing_path'))
+    if isinstance(landing, str):
+        landing = landing.strip()
+        if (landing.startswith('/') and len(landing) <= 200
+                and not re.search(r'[?#\s]', landing)):
+            out['landing_path'] = landing
+    host = data.get('referrerHost', data.get('referrer_host'))
+    if isinstance(host, str):
+        host = host.strip().lower()
+        if re.fullmatch(r'[a-z0-9]([a-z0-9.-]{0,98}[a-z0-9])?', host):
+            out['referrer_host'] = host
+    return out
 
 
 def _extract_web_questionnaire(data):
