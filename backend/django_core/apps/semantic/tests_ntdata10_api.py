@@ -166,6 +166,26 @@ class ValeurParCleTests(_Base):
         self.assertIsNone(parametres_de_resolution({})[0])
         self.assertEqual(parametres_de_resolution({'group_by': ''})[0], [])
 
+    def test_pour_agent_ntdata12(self):
+        """NTDATA12 — catalogue lecture seule, sans recette, lisible par tout
+        rôle interne, métriques ACTIVES de la société seulement."""
+        self._creer(description='Combien de sociétés.')
+        MetricDefinition.objects.create(
+            company=self.company, cle='inactive', libelle='Inactive',
+            dataset='ntdata10_societes', mesure={'agg': 'count'},
+            actif=False)
+        MetricDefinition.objects.create(
+            company=self.autre, cle='chez_le_voisin', libelle='Voisin',
+            dataset='ntdata10_societes', mesure={'agg': 'count'})
+        reponse = self._vue('get', {'get': 'pour_agent'},
+                            f'{BASE}pour-agent/', user=self.simple)
+        self.assertEqual(reponse.status_code, status.HTTP_200_OK)
+        self.assertEqual(reponse.data['metriques'], [{
+            'cle': 'nb_societes', 'libelle': 'Nombre de sociétés',
+            'description': 'Combien de sociétés.', 'unite': 'nombre'}])
+        self.assertIs(resolve(f'{BASE}pour-agent/').func.cls,
+                      MetricDefinitionViewSet)
+
     def test_routage_cle_jamais_lue_comme_detail(self):
         self.assertIs(resolve(f'{BASE}ca_ht/valeur/').func.view_class,
                       MetriqueValeurView)

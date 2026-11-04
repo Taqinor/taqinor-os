@@ -25,13 +25,14 @@ from drf_spectacular.utils import (
     OpenApiParameter, extend_schema, inline_serializer,
 )
 from rest_framework import serializers, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from authentication.permissions import IsResponsableOrAdmin
-from core.mixins import TenantMixin
+from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.mixins import TenantMixin, company_qs
 
 from . import selectors, services
 from .models import MetricDefinition
@@ -101,6 +102,37 @@ class MetricDefinitionViewSet(TenantMixin, viewsets.ModelViewSet):
         if instance.actif:
             instance.actif = False
             instance.save(update_fields=['actif', 'updated_at'])
+
+    @extend_schema(
+        responses=inline_serializer('MetriquesPourAgentReponse', {
+            'metriques': inline_serializer('MetriquePourAgent', {
+                'cle': serializers.CharField(),
+                'libelle': serializers.CharField(),
+                'description': serializers.CharField(),
+                'unite': serializers.CharField(),
+            }, many=True),
+        }))
+    @action(detail=False, methods=['get'], url_path='pour-agent',
+            permission_classes=[IsAnyRole])
+    def pour_agent(self, request):
+        """NTDATA12 — le catalogue des métriques GOUVERNÉES pour l'agent IA.
+
+        Lu par le service FastAPI (jeton de l'appelant relayé) pour que
+        l'agent NL→SQL préfère une métrique nommée à un SQL ad-hoc quand
+        l'intention correspond (« quel est notre DSO » → ``dso``). LECTURE
+        SEULE, métriques ACTIVES de la société de l'appelant, et rien que
+        clé + libellé + définition + unité : ni dataset, ni mesure, ni
+        filtres (la recette reste côté serveur, la valeur se lit par
+        ``metriques/<cle>/valeur/``).
+        """
+        definitions = company_qs(
+            MetricDefinition.objects.filter(actif=True),
+            request.user).order_by('cle')
+        return Response({'metriques': [
+            {'cle': d.cle, 'libelle': d.libelle,
+             'description': d.description, 'unite': d.unite}
+            for d in definitions
+        ]})
 
 
 def _json_param(brut, nom, attendu):

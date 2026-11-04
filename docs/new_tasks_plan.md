@@ -86,6 +86,7 @@ plans existants (PLAN/PLAN2/FRONTEND_GAP/DONE : 1 982 tâches déjà connues —
 
 ## DONE LOG (les runs de build ajoutent une ligne datée par tâche terminée)
 - 2026-11-04 NTDATA10 — `MetricDefinitionViewSet` (`semantic/metriques/`, IsResponsableOrAdmin, société forcée, 409 sur clé dupliquée, DELETE = désactivation, version NTDATA9 signée de l'acteur) + `GET semantic/metriques/<cle>/valeur/` (résolveur NTDATA8). Blocage NTDATA7/8 levé (couche livrée). Tests `apps/semantic/tests_ntdata10_api.py`.
+- 2026-11-04 NTDATA12 — `GET semantic/metriques/pour-agent/` (IsAnyRole, clé+libellé+définition+unité, actives, société de l'appelant, aucune recette) + outil LangChain `metrique_gouvernee` (`backend/fastapi_ia/app/services/metriques_gouvernees.py`, JWT relayé, valeur lue par `metriques/<cle>/valeur/`, métriques de marge seulement avec le droit L17) branché dans `_run_agent`. ARCH : nouvel outil de LECTURE de l'agent IA (hors registre d'actions). Tests `backend/fastapi_ia/tests/test_metriques_gouvernees.py` (9 OK en local) + `tests_ntdata10_api.py`.
 
 ## SECTION A — Plateforme & confiance enterprise
 
@@ -150,7 +151,7 @@ Ce groupe ajoute (sans jamais reconstruire l'existant) : (1) **couverture datase
 #### P1 — Couche sémantique versionnée (métriques nommées, différenciateur central)
 
 - [x] NTDATA10 — **CRUD métriques + endpoint de résolution** : `MetricDefinitionViewSet` (`semantic/metriques/`, company forcée serveur, `IsResponsableOrAdmin`) + `GET semantic/metriques/<cle>/valeur/?group_by=&period=&filters=` appelant NTDATA8. Catalogue `GET semantic/metriques/` pour le picker front. Critère : une métrique définie une fois est appelable par clé partout. (@lane: apps/ventes) (AUTH) «model: sonnet»
-- [ ] NTDATA12 — [BLOCKED: attend NTDATA7/8 — couche sémantique absente, vérifié 2026-08-31] **Métriques consommées par l'agent NL→SQL** : exposer le catalogue de métriques nommées au service FastAPI (endpoint Django `GET semantic/metriques/pour-agent/` renvoyant clé+libellé+description+unité, company-scopé) pour que le prompt de l'agent NL→SQL préfère une métrique GOUVERNÉE à un SQL ad-hoc quand l'intention correspond (ex. « quel est notre DSO » → `resolve_metric('dso')`). Aucun secret exposé, lecture seule. Critère : le catalogue est récupérable par le service IA et documenté dans son contexte. (@lane: apps/ventes) (ARCH) «model: opus»
+- [x] NTDATA12 — **Métriques consommées par l'agent NL→SQL** : exposer le catalogue de métriques nommées au service FastAPI (endpoint Django `GET semantic/metriques/pour-agent/` renvoyant clé+libellé+description+unité, company-scopé) pour que le prompt de l'agent NL→SQL préfère une métrique GOUVERNÉE à un SQL ad-hoc quand l'intention correspond (ex. « quel est notre DSO » → `resolve_metric('dso')`). Aucun secret exposé, lecture seule. Critère : le catalogue est récupérable par le service IA et documenté dans son contexte. (@lane: apps/ventes) (ARCH) «model: opus»
 
 #### P2 — MDM léger : golden records & survivorship
 
