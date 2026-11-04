@@ -310,10 +310,17 @@ class SuiviActionTests(_Base):
             {'a_faire': 0, 'en_retard': 0, 'fait': 0, 'sautee': 0,
              'annulee': 0})
 
-    def test_la_lecture_est_ouverte_a_tout_role(self):
+    def test_la_lecture_est_sous_crm_voir(self):
+        """ACVI3 (D-ACVI-2) — plus ouverte à tout rôle : `crm_voir` exigé."""
+        from apps.roles.models import Role
         simple = User.objects.create_user(
             username=f'{self.slug}-simple', password='x',
             role_legacy='normal', company=self.company)
+        self.assertEqual(self._get(user=simple).status_code, 403)
+        simple.role = Role.objects.create(
+            company=self.company, nom='MRY30 lecteur',
+            permissions=['crm_voir'])
+        simple.save(update_fields=['role'])
         self.assertEqual(self._get(user=simple).status_code, 200)
 
 
