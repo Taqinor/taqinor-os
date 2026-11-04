@@ -228,6 +228,35 @@ class TestAud131PredicatPartage(_Base):
         resp = self.api.post(f'{url}relancer/', {'niveau': 1}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
 
+    def test_contestation_levee_reprend_la_relance_auto(self):
+        """AARG60 (C-AARG-VER1-201) — pendant la contestation le beat n'envoie
+        rien et garde ``prochaine_relance`` ; à la levée il reprend seul.
+        Mutant : retirer le ``continue`` ⇒ 0 envoi après la levée."""
+        from apps.ventes.scheduled import relance_reminders
+        FollowupLevel.objects.create(
+            company=self.company, ordre=1, nom='Rappel', delai_jours=7,
+            message='Rappel pour {reference}.')
+        facture = self._facture()
+        Facture.objects.filter(pk=facture.pk).update(
+            prochaine_relance=date.today())
+        url = f'/api/django/ventes/factures/{facture.id}/'
+        resp = self.api.patch(url, {
+            'contestee_le': date.today().isoformat(),
+            'motif_contestation': 'Panneau livré cassé'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(relance_reminders(), 0)
+        self.assertEqual(len(mail.outbox), 0)
+        # CLAUSE PERSISTANCE — relu en base : la date reste armée.
+        facture.refresh_from_db()
+        self.assertEqual(facture.prochaine_relance, date.today())
+        resp = self.api.patch(url, {'contestee_le': None}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(relance_reminders(), 1)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(RelanceLog.objects.filter(facture=facture).count(), 1)
+        facture.refresh_from_db()
+        self.assertNotEqual(facture.prochaine_relance, date.today())
+
     def test_facture_soldee_n_est_pas_relancable(self):
         from apps.ventes.recouvrement import facture_relancable
         facture = self._facture()
