@@ -200,7 +200,7 @@
       "requis": false,
       "destination": "colonne_lead",
       "champ_lead": "langue_preferee",
-      "note": "alias toleres : langue/language/lang"
+      "note": "alias toleres : langue/language/lang ; valeurs : fr, ar (-> darija), en (WAUD83)"
     },
     "clientRef": {
       "cle_registre": "clientRef",
@@ -579,6 +579,24 @@
       "destination": "refus",
       "champ_lead": null,
       "note": "REFUS ASSUME ET DEFINITIF : honeypot anti-robot. Il est TOUJOURS emis (son absence serait elle-meme un signal exploitable) et vaut '' pour tout visiteur humain. Une soumission non vide est rejetee en amont ; aucune valeur ne doit JAMAIS atteindre une colonne du CRM."
+    },
+    "landingPath": {
+      "cle_registre": "landingPath",
+      "groupe": "G_TRACKING",
+      "requis": false,
+      "destination": "web_questionnaire",
+      "champ_lead": "web_questionnaire",
+      "cle_blob": "landing_path",
+      "note": "WAUD6 (D-WAUD-2=a) — page d'arrivee du visiteur (chemin seul, sans requete), conservee 90 jours sur l'appareil ; commence par / , <= 200"
+    },
+    "referrerHost": {
+      "cle_registre": "referrerHost",
+      "groupe": "G_TRACKING",
+      "requis": false,
+      "destination": "web_questionnaire",
+      "champ_lead": "web_questionnaire",
+      "cle_blob": "referrer_host",
+      "note": "WAUD6 — hote seul du referent externe (chatgpt.com, google.com...), absent = acces direct ; AIS-14 le classe"
     },
     "fbclid": {
       "cle_registre": "fbclid",

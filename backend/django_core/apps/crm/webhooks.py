@@ -440,12 +440,14 @@ _MARKET_MODE_ALIASES = {
     'pompage': 'agricole',
 }
 
-# QK1 — Langue du site → Lead.langue_preferee ('fr'/'darija' uniquement).
+# QK1 — Langue du site → Lead.langue_preferee ('fr'/'darija'/'en').
 # L'arabe du site est rapproché du darija (langue des messages WhatsApp).
 _LANGUE_ALIASES = {
     'fr': 'fr',
     'darija': 'darija',
     'ar': 'darija',
+    # WAUD83 (D-WAUD-14=a) — le site marque désormais les leads anglophones.
+    'en': 'en',
 }
 
 
@@ -545,6 +547,22 @@ def _extract_web_questionnaire(data):
         val = data.get(camel, data.get(snake))
         if isinstance(val, bool):
             out[snake] = val
+
+    # WAUD6 (D-WAUD-2=a) — origine du visiteur, jointe à l'envoi volontaire :
+    # page d'arrivée (chemin seul, jamais de requête ni de PII) et hôte du
+    # référent (ex. chatgpt.com, google.com). Rangés dans le blob : aucune
+    # colonne, aucune migration. Valeur malformée → ignorée.
+    landing = data.get('landingPath', data.get('landing_path'))
+    if isinstance(landing, str):
+        landing = landing.strip()
+        if (landing.startswith('/') and len(landing) <= 200
+                and not re.search(r'[?#\s]', landing)):
+            out['landing_path'] = landing
+    host = data.get('referrerHost', data.get('referrer_host'))
+    if isinstance(host, str):
+        host = host.strip().lower()
+        if re.fullmatch(r'[a-z0-9]([a-z0-9.-]{0,98}[a-z0-9])?', host):
+            out['referrer_host'] = host
 
     # ── Mode PROFESSIONNEL ──
     # NB : `tensionRaccordement` (bt/mt = basse/moyenne tension) n'est PAS

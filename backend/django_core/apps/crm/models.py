@@ -398,6 +398,10 @@ class Lead(LeadPompageMixin, SoftDeleteModel):
     class LanguePreferee(models.TextChoices):
         FR = 'fr', 'Français'
         DARIJA = 'darija', 'Darija'
+        # WAUD83 (D-WAUD-14=a) — langue du lead venu d'une page anglaise :
+        # un MARQUEUR (la relance retombe sur le français, et le DIT, tant
+        # qu'aucun texte anglais validé n'existe — CAD64).
+        EN = 'en', 'English'
 
     # CAD65 (audit L3 du 21/09/2026) — la civilité est une DONNÉE du lead,
     # rendue par `{civilite}` dans les textes client (FR « M. »/« Mme »,

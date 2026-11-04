@@ -24,6 +24,7 @@ vi.mock('cloudflare:workers', () => ({
 
 import { adsConsentFromBody, buildLeadRecord, fireCapi, validateLead } from '../src/lib/lead';
 import { resetRateLimit } from '../src/lib/rateLimit';
+import { corpsRappel } from '../src/lib/diagnosticFormShared';
 
 const CRM = 'https://crm.example/hook';
 const CAPI = 'https://capi.example/events';
@@ -167,5 +168,31 @@ describe('QJW14 — « Refuser » puis soumettre, de bout en bout', () => {
     const accepte = await call('capture-lead', { ...qualifie, adsConsent: 'granted' });
     expect(accepte.urls).toContain(CRM);
     expect(accepte.urls).toContain(CAPI);
+  });
+});
+
+describe('WAUD30 — rappel de /contact : tracking + eventId + adsConsent', () => {
+  const saisie = { fullName: 'Test Visiteur', phone: '0612345678', consent: true, websiteUrl: '' };
+
+  it('porte fbclid/gclid/utm_*, eventId et le refus du bandeau', () => {
+    const corps = corpsRappel(saisie, 'denied', { fbclid: 'abc', utm_source: 'meta', gclid: 'g1' }, 'evt-12345678');
+    expect(corps).toMatchObject({
+      quickCallback: true, contactPreference: 'phone_ok', fbclid: 'abc', utm_source: 'meta',
+      gclid: 'g1', eventId: 'evt-12345678', adsConsent: 'denied',
+    });
+  });
+
+  it('sans réponse au bandeau : aucun adsConsent fabriqué', () => {
+    expect(corpsRappel(saisie, null, {}, 'evt-12345678')).not.toHaveProperty('adsConsent');
+  });
+
+  it('le corps passe validateLead : eventId et fbclid conservés, refus transmis', () => {
+    const corps = corpsRappel(saisie, 'denied', { fbclid: 'abc' }, 'evt-12345678');
+    const r = validateLead(corps);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.lead.fbclid).toBe('abc');
+    expect(r.lead.eventId).toBe('evt-12345678');
+    expect(adsConsentFromBody(corps)).toBe('denied');
   });
 });

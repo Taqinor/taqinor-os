@@ -254,7 +254,7 @@ describe('WJ4/WJ5 — capture-lead : contrat webhook + seuil 1 000 MAD intacts',
     const { status, json } = await call({
       ...qualified,
       mode: 'martien',
-      langue_preferee: 'en',
+      langue_preferee: 'klingon',
       roofPoint: { lat: 48.85, lng: 2.35 }, // hors Maroc → garbage
       billKwh: -3,
     });

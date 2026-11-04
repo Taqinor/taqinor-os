@@ -31,7 +31,7 @@
  */
 import ContactCarteWa from '../components/blocs/ContactCarteWa.astro';
 import ContactEntete from '../components/blocs/ContactEntete.astro';
-import LigneInfoConsentement from '../components/LigneInfoConsentement.astro';
+import RappelForm from '../components/RappelForm.astro';
 import Layout from '../layouts/Layout.astro';
 import { NAP } from '../lib/nap';
 import { useTranslations } from '../i18n/utils';
@@ -92,47 +92,7 @@ const { waGeneral, waRegul, waRappel, waVisite, waSav } = contactWhatsappLinks()
           </a>
         </div>
 
-        <!-- WJ97 — mini-formulaire de rappel RÉEL : nom + téléphone seulement,
-             poste un lead via /api/capture-lead (contactPreference: 'phone_ok',
-             quickCallback: true — lib/lead.ts). Masqué par défaut, révélé par
-             la carte « Demander un rappel » ci-dessus (ancre #rappel-form). Le
-             lien WhatsApp reste disponible juste en dessous, clairement séparé. -->
-        <div id="rappel-form" class="v2-rise mt-8 border-2 border-azur-600/40 bg-blanc p-7 text-sm" hidden>
-          <p class="tech-label text-azur-600">Par téléphone</p>
-          <h2 class="display mt-1 text-xl font-bold">On vous rappelle</h2>
-          <p class="mt-2 text-encre-soft">
-            Laissez votre nom et votre numéro : un conseiller Taqinor vous rappelle directement,
-            aucune saisie supplémentaire.
-          </p>
-          <form id="rappel-form-el" novalidate class="mt-5 space-y-3">
-            <div aria-hidden="true" style="position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden;">
-              <label>Ne pas remplir<input id="rappel-hp" name="website_url" type="text" tabindex="-1" autocomplete="off" /></label>
-            </div>
-            <div>
-              <label for="rappel-nom" class="block text-xs font-semibold text-encre-soft">Nom complet</label>
-              <input id="rappel-nom" name="fullName" type="text" required autocomplete="name"
-                class="mt-1 w-full border border-azur-900/20 bg-blanc-azur px-4 py-2.5 text-encre focus:border-azur-600 focus:outline-none" />
-            </div>
-            <div>
-              <label for="rappel-tel" class="block text-xs font-semibold text-encre-soft">Téléphone</label>
-              <input id="rappel-tel" name="phone" type="tel" required autocomplete="tel" placeholder="06 12 34 56 78"
-                class="mt-1 w-full border border-azur-900/20 bg-blanc-azur px-4 py-2.5 text-encre focus:border-azur-600 focus:outline-none" />
-            </div>
-            <label class="flex items-start gap-2 text-xs text-encre-soft">
-              <input id="rappel-consent" name="consent" type="checkbox" required class="mt-0.5" />
-              <span>J'accepte d'être recontacté(e) par Taqinor au sujet de mon projet solaire.</span>
-            </label>
-            <LigneInfoConsentement sombre={false} />
-            <button type="submit" id="rappel-submit"
-              class="inline-flex w-full items-center justify-center gap-2 bg-brass-400 px-6 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300 sm:w-auto">
-              Demander à être rappelé(e)
-            </button>
-            <p id="rappel-status" role="status" class="text-sm" hidden></p>
-          </form>
-          <p class="mt-4 border-t border-azur-900/10 pt-4 text-encre-soft">
-            Vous préférez écrire ? <a href={waRappel} rel="noopener" class="font-semibold underline decoration-azur-600 decoration-2 underline-offset-4">Contactez-nous plutôt sur WhatsApp</a>.
-          </p>
-        </div>
+        <RappelForm locale="fr" waRappel={waRappel} />
 
         <div class="v2-rise mt-8 border border-azur-900/15 bg-blanc-azur p-7 text-center text-sm">
           <p class="font-display text-lg font-bold">{NAP.name}</p>
@@ -183,79 +143,3 @@ const { waGeneral, waRegul, waRappel, waVisite, waSav } = contactWhatsappLinks()
     </section>
   </div>
 </Layout>
-
-<script>
-  import { readAdsConsent } from '../lib/diagnosticFormShared';
-
-  // WJ97 — révèle #rappel-form au clic sur la carte « Demander un rappel »
-  // (jamais affiché par défaut : la grille reste dense pour qui ne veut que
-  // WhatsApp) puis poste un lead RÉEL via /api/capture-lead, DISTINCT du canal
-  // WhatsApp (contactPreference: 'phone_ok', quickCallback: true — lib/lead.ts
-  // relâche city/roofType/billRange pour ce chemin, jamais une valeur inventée).
-  const openLinks = document.querySelectorAll<HTMLAnchorElement>('[data-rappel-open]');
-  const formWrap = document.getElementById('rappel-form');
-  openLinks.forEach((a) => {
-    a.addEventListener('click', (e) => {
-      e.preventDefault();
-      if (formWrap) {
-        formWrap.hidden = false;
-        formWrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        document.getElementById('rappel-nom')?.focus();
-      }
-    });
-  });
-
-  const form = document.getElementById('rappel-form-el') as HTMLFormElement | null;
-  const statusEl = document.getElementById('rappel-status');
-  const submitBtn = document.getElementById('rappel-submit') as HTMLButtonElement | null;
-  form?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if (!statusEl || !submitBtn) return;
-    const fullName = (document.getElementById('rappel-nom') as HTMLInputElement | null)?.value ?? '';
-    const phone = (document.getElementById('rappel-tel') as HTMLInputElement | null)?.value ?? '';
-    const consent = (document.getElementById('rappel-consent') as HTMLInputElement | null)?.checked === true;
-    const websiteUrl = (document.getElementById('rappel-hp') as HTMLInputElement | null)?.value ?? '';
-
-    const adsConsent = readAdsConsent();
-    statusEl.hidden = true;
-    submitBtn.disabled = true;
-    try {
-      const res = await fetch('/api/capture-lead', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          fullName,
-          phone,
-          consent,
-          website_url: websiteUrl,
-          whatsappOptIn: false,
-          // WJ97 — chemin rappel rapide : nom + téléphone seulement (jamais de
-          // ville/toiture/facture inventées pour satisfaire un champ requis).
-          quickCallback: true,
-          // Canal explicite, distinct de tout CTA WhatsApp (lib/lead.ts CONTACT_PREFERENCES).
-          contactPreference: 'phone_ok',
-          // Le beacon Meta n'est ouvert que par un `granted` (décision fondateur 04/11/2026).
-          ...(adsConsent ? { adsConsent } : {}),
-        }),
-      });
-      const data = (await res.json().catch(() => null)) as { ok?: boolean; errors?: Record<string, string> } | null;
-      if (res.ok && data?.ok) {
-        statusEl.textContent = 'Merci — un conseiller Taqinor vous rappelle très vite.';
-        statusEl.className = 'text-sm text-azur-700';
-        statusEl.hidden = false;
-        form.reset();
-        form.hidden = true;
-      } else {
-        statusEl.textContent = 'Service momentanément indisponible — contactez-nous plutôt sur WhatsApp, nous répondons vite.';
-        statusEl.className = 'text-sm text-red-700';
-        statusEl.hidden = false;
-      }
-    } catch {
-      statusEl.textContent = 'Service momentanément indisponible — contactez-nous plutôt sur WhatsApp, nous répondons vite.';
-      statusEl.className = 'text-sm text-red-700';
-      statusEl.hidden = false;
-    } finally {
-      submitBtn.disabled = false;
-    }
-  });
-</script>

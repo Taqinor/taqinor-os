@@ -497,7 +497,7 @@ describe('WAUD66 — consentement', () => {
   });
 
   it('formulaires : ligne d’information et lien, sans aucun champ ajouté au corps', () => {
-    for (const f of ['../src/components/blocs/DevisMonToitProfil.astro', '../src/pages/en/devis/mon-toit.astro', '../src/pages/contact.astro']) {
+    for (const f of ['../src/components/blocs/DevisMonToitProfil.astro', '../src/pages/en/devis/mon-toit.astro', '../src/components/RappelForm.astro']) {
       expect(lire(f)).toContain('<LigneInfoConsentement');
     }
     const ligne = lire('../src/components/LigneInfoConsentement.astro');

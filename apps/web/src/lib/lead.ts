@@ -124,7 +124,9 @@ export type LeadModeId = (typeof LEAD_MODES)[number];
 export const RACCORDEMENTS = ['monophase', 'triphase', 'inconnu'] as const;
 export type RaccordementId = (typeof RACCORDEMENTS)[number];
 
-export const LEAD_LANGS = ['fr', 'ar'] as const;
+// WAUD83 (D-WAUD-14=a) — 'en' : un lead venu d'une page anglaise porte sa langue
+// (valeur acceptée côté ERP par la migration crm 0155) ; jamais cachée dans un champ libre.
+export const LEAD_LANGS = ['fr', 'ar', 'en'] as const;
 export type LeadLangId = (typeof LEAD_LANGS)[number];
 
 // ——— WJ31 : vocabulaires des questions de capture élargies (facultatives) ———
@@ -443,6 +445,9 @@ export interface ValidatedLead {
   //   au CAPI — pas de la PII). Le hash e-mail `em` est calculé dans fireCapi
   //   au moment de l'envoi (jamais stocké sur le lead).
   eventId?: string;
+  // — WAUD6 : origine du visiteur (page d'arrivée sans requête, hôte du référent).
+  landingPath?: string;
+  referrerHost?: string;
   // — QX parcours 3 profils : champs FACULTATIFS pro & agricole, même
   //   discipline WJ30 (validés un à un, écartés si malformés, jamais
   //   bloquants ; absents ⇒ contrat de fil inchangé octet pour octet).
@@ -770,6 +775,11 @@ function validateOptionalFields(b: Record<string, unknown>): Partial<ValidatedLe
   // corrélation attendu par la spec Meta CAPI (`event_id`), échoé tel quel sur
   // le lead ET sur l'appel fireCapi ci-dessous pour permettre la déduplication
   // pixel-navigateur ↔ serveur côté Meta. ———
+  const landingPath = cleanStr(b.landingPath, 200);
+  if (landingPath && /^\/[^?#\s]*$/.test(landingPath)) opt.landingPath = landingPath;
+  const referrerHost = cleanStr(b.referrerHost, 100)?.toLowerCase();
+  if (referrerHost && /^[a-z0-9]([a-z0-9.-]{0,98}[a-z0-9])?$/.test(referrerHost)) opt.referrerHost = referrerHost;
+
   const eventId = cleanStr(b.eventId, 64);
   if (eventId && /^[A-Za-z0-9_-]{8,64}$/.test(eventId)) opt.eventId = eventId;
 

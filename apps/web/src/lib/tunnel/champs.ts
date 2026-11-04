@@ -78,6 +78,9 @@ export const CLES_TRACKING = [
   'gclid',
   'gbraid',
   'wbraid',
+  // WAUD6 — origine (lib/origine.ts) : page d'arrivée + hôte du référent.
+  'landingPath',
+  'referrerHost',
 ] as const;
 export type CleTracking = (typeof CLES_TRACKING)[number];
 
@@ -1036,6 +1039,23 @@ const G_TRACKING = {
     domId: null,
     modes: MODES_TOUS,
     lire: (e) => e.tracking.gclid,
+    nettoyer: chaineOuOmise,
+    requis: false,
+  },
+  // WAUD6 (D-WAUD-2=a) — page d'arrivée et référent, facultatifs (absents si inconnus).
+  landingPath: {
+    webhookKey: 'landingPath',
+    domId: null,
+    modes: MODES_TOUS,
+    lire: (e) => e.tracking.landingPath,
+    nettoyer: chaineOuOmise,
+    requis: false,
+  },
+  referrerHost: {
+    webhookKey: 'referrerHost',
+    domId: null,
+    modes: MODES_TOUS,
+    lire: (e) => e.tracking.referrerHost,
     nettoyer: chaineOuOmise,
     requis: false,
   },

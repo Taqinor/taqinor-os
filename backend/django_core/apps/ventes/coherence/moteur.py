@@ -18,6 +18,7 @@ import time
 from collections import Counter
 from dataclasses import dataclass, field
 
+from celery.exceptions import SoftTimeLimitExceeded
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
@@ -152,6 +153,8 @@ def _executer_societe(company, regles, report, *, constructeur=None):
             if (REGLE_RENDU, obj_type, obj.pk) not in inconnus:
                 inconnus.add((REGLE_RENDU, obj_type, obj.pk))
                 _erreur(report, REGLE_RENDU, obj_type, obj, company, exc)
+        except SoftTimeLimitExceeded:
+            raise  # ERR-JPB-AUDIT-COHERENCE-TUE-180S : jamais rangée en « règle sans verdict »
         except Exception as exc:  # noqa: BLE001 — isolé par objet (D-ENF22-BLE001)
             logger.warning("moteur._executer_societe._appliquer : erreur ignorée (mode dégradé)", exc_info=True)
             inconnus.add((r.id, obj_type, obj.pk))
@@ -171,6 +174,8 @@ def _executer_societe(company, regles, report, *, constructeur=None):
         try:
             with transaction.atomic():
                 violations.extend(r.check(r, company, ctx) or [])
+        except SoftTimeLimitExceeded:
+            raise
         except Exception as exc:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning("moteur._executer_societe : erreur ignorée (mode dégradé)", exc_info=True)
             inconnus.add((r.id, '*', '*'))
@@ -276,6 +281,8 @@ def run_audit(company=None, persist=True, rules=None, *,
                     societe, regles, violations, inconnus, maintenant)
             report.new.extend(nouvelles)
             report.resolved += resolues
+        except SoftTimeLimitExceeded:
+            raise
         except Exception as exc:  # noqa: BLE001 — une société n'arrête pas (D-ENF22-BLE001)
             logger.exception('audit_coherence : persistance impossible (%s)',
                              societe.slug)

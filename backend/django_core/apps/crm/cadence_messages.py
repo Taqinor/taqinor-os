@@ -438,7 +438,10 @@ def _langues_relance():
     """CAD63 — les langues qu'on peut CHOISIR pour le message d'une touche :
     les valeurs du champ ``Lead.langue_preferee`` (lues sur le modèle, jamais
     recopiées)."""
-    return tuple(Lead.LanguePreferee.values)
+    # WAUD83 — « en » est un marqueur du lead, PAS une langue de relance
+    # choisissable : aucun texte anglais validé (CAD64).
+    return tuple(v for v in Lead.LanguePreferee.values
+                 if v != Lead.LanguePreferee.EN)
 
 
 def refus_langue_relance(langue):
@@ -450,7 +453,8 @@ def refus_langue_relance(langue):
         return None
     proposees = ', '.join(
         f'« {valeur} » ({libelle})'
-        for valeur, libelle in Lead.LanguePreferee.choices)
+        for valeur, libelle in Lead.LanguePreferee.choices
+        if valeur in _langues_relance())
     return (f'« Langue du message » : « {langue} » n’est pas une langue de '
             f'relance. Langues proposées : {proposees}.')
 

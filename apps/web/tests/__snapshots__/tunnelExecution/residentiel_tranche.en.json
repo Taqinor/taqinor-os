@@ -17,6 +17,7 @@
   "factureHiver": null,
   "fullName": "Karim Benali",
   "idempotencyKey": "<idempotencyKey>",
+  "langue_preferee": "en",
   "mode": "residentiel",
   "phone": "0612345678",
   "roofType": "autre",
