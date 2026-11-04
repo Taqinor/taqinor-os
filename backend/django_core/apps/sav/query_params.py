@@ -41,6 +41,12 @@ LIMITE_MAX = 1000
 LIMITE = ou_vide({'type': 'integer', 'minimum': 1, 'maximum': LIMITE_MAX})
 
 
+def actifs_en_liste(vue, qs):
+    """Un objet inactif sort de la LISTE, pas de l'API : POST ``{actif: false}`` puis
+    GET ``{id}`` répondait 404 sur ce qui venait d'être créé (api-fuzz-full, ENF11)."""
+    return qs.filter(actif=True) if getattr(vue, 'action', None) == 'list' else qs
+
+
 def entier_param(request, nom, defaut=None, *, mini=1, maxi=ID_MAX):
     """Entier du paramètre ``nom`` (``defaut`` si absent ou vide), borné à
     ``[mini, maxi]`` ; sinon 400."""

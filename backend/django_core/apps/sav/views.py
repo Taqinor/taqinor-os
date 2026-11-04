@@ -56,7 +56,7 @@ from .dateutils import add_months
 from .query_params import (
     CORPS_ACTIONS_GROUPEES_VALEUR_REQUISE, CORPS_TICKET_CLIENT_OU_EQUIPEMENT,
     DATE_OU_VIDE, ENTIER_ID, ID_MAX, LIMITE_MAX, ORDRES_PROBLEME, ORDRES_PROBLEME_SCHEMA, ou_vide,
-    archives_incluses, choix_param, date_param, entier_param,
+    actifs_en_liste, archives_incluses, choix_param, date_param, entier_param,
 )
 from .pdf import fiche_synthese_ticket_pdf, rapport_intervention_pdf
 from .serializers import (
@@ -2912,9 +2912,7 @@ class MaintenanceChecklistTemplateViewSet(CompanyScopedModelViewSet):
             ensure_modele_entretien_pompage(company)
             # CIQ641 — et « Entretien site professionnel » (C&I), même patron.
             ensure_modele_entretien_ci(company)
-            return super().get_queryset().filter(actif=True)
-        # POST {actif: false} puis GET {id} : 404 sur ce qui vient d'être créé.
-        return super().get_queryset()
+        return actifs_en_liste(self, super().get_queryset())
 
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)
@@ -3042,9 +3040,7 @@ class KbArticleViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
-        qs = super().get_queryset()
-        if getattr(self, 'action', None) == 'list':  # POST {actif: false} : 404 ensuite
-            qs = qs.filter(actif=True)
+        qs = actifs_en_liste(self, super().get_queryset())
         produit = entier_param(self.request, 'produit')
         categorie = self.request.query_params.get('categorie')
         if produit:
