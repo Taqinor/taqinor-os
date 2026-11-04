@@ -96,3 +96,26 @@ class TestCalendar(TestCase):
                    if e['type'] == 'visite_maintenance']
         self.assertGreaterEqual(len(visites), 1)
         self.assertIsNone(visites[0]['assignee_id'])
+
+    def test_reschedule_intervention_comme_un_report(self):
+        """ACHT135 (C-ACHT-VER4-030) — glisser une intervention confirmée dans
+        l'Agenda la déconfirme, compte un report et le trace (comme le PATCH) ;
+        rejouer la même date n'est pas un second report."""
+        from apps.installations.models import Intervention, InterventionActivity
+        iv = Intervention.objects.create(
+            company=self.company, installation=self._chantier(reference='CH-IV'),
+            type_intervention='pose', created_by=self.user,
+            date_prevue=date.today() + timedelta(days=3), rdv_confirme=True)
+        new = (date.today() + timedelta(days=5)).isoformat()
+        corps = {'type': 'intervention', 'id': iv.pk, 'date': new}
+        for _ in range(2):
+            resp = self.api.post(
+                '/api/django/reporting/calendar/reschedule/', corps, format='json')
+            self.assertEqual(resp.status_code, 200, resp.data)
+            self.assertEqual(resp.data, {'ok': True, 'date': new})
+        iv.refresh_from_db()
+        self.assertEqual(iv.date_prevue.isoformat(), new)
+        self.assertFalse(iv.rdv_confirme)
+        self.assertEqual(iv.rdv_reschedule_count, 1)
+        self.assertEqual(InterventionActivity.objects.filter(
+            intervention=iv, body__startswith='RDV reporté').count(), 1)

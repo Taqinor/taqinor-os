@@ -329,9 +329,11 @@ def calendar_reschedule(request):
             setattr(inst, field, new_date)
             inst.save(update_fields=[field])
         elif type_key == 'intervention':
+            # ACHT135 — un report d'agenda est un report (déconfirmé, compté,
+            # tracé), par le service unique comme le PATCH de la fiche.
+            from apps.installations.services import replanifier
             iv = Intervention.objects.filter(**co).get(pk=obj_id)
-            iv.date_prevue = new_date
-            iv.save(update_fields=['date_prevue'])
+            replanifier(iv, new_date, 'Agenda — glisser-déposer', request.user)
         else:  # activite
             act = Activity.objects.filter(**co).get(pk=obj_id)
             act.due_date = new_date
@@ -339,6 +341,8 @@ def calendar_reschedule(request):
     except (Installation.DoesNotExist, Intervention.DoesNotExist,
             Activity.DoesNotExist):
         return Response({'detail': 'Introuvable.'}, status=404)
+    except ValueError as exc:  # ACHT135 — date refusée par `replanifier`
+        return Response({'detail': str(exc)}, status=400)
 
     return Response({'ok': True, 'date': new_date.isoformat()})
 
