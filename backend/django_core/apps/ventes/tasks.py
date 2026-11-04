@@ -714,7 +714,9 @@ def task_devis_automatique_depuis_lead(lead_id, company_id):
 # aucune notification la nuit). Aucune nouvelle violation → aucune
 # notification. AUCUN RETRY : une passe ratée est rejouée la nuit suivante,
 # et l'état persistant rend la passe idempotente.
-@shared_task(name='ventes.audit_coherence_nuit')
+# ERR-JPB-AUDIT-COHERENCE-TUE-180S — limites propres (les 120/180 s globaux sont prévus pour le PDF).
+@shared_task(name='ventes.audit_coherence_nuit', soft_time_limit=1500,
+             time_limit=1800)
 def audit_coherence_nuit():
     from .coherence.moteur import run_audit
     from .coherence.notification import (

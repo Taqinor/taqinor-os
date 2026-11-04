@@ -207,6 +207,26 @@ class TestIsolation(_Base):
         self.assertIsNone(
             ViolationCoherence.objects.get(company=company).resolved_at)
 
+    def test_soft_time_limit_remonte_jamais_avalee(self):
+        # ERR-JPB-AUDIT-COHERENCE-TUE-180S — la soft-limit n'est pas une
+        # « règle sans verdict » : elle arrête la passe.
+        from celery.exceptions import SoftTimeLimitExceeded
+        company, user, client, produit = self.societe()
+        self.devis(company, user, client, produit)
+
+        def constructeur(devis, options):
+            raise SoftTimeLimitExceeded()
+        with self.assertRaises(SoftTimeLimitExceeded):
+            moteur.run_audit(company=company, persist=False,
+                             constructeur=constructeur,
+                             rules=['DOC_TOTAUX_IMPRIMES'])
+
+    def test_tache_nocturne_limites_propres(self):
+        from apps.ventes.tasks import audit_coherence_nuit
+        self.assertGreater(audit_coherence_nuit.soft_time_limit, 180)
+        self.assertGreater(audit_coherence_nuit.time_limit,
+                           audit_coherence_nuit.soft_time_limit)
+
     def test_calcul_annule_rien_ne_survit(self):
         company, user, client, produit = self.societe()
         d = self.devis(company, user, client, produit,
