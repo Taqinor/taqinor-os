@@ -19,6 +19,32 @@ class _VueJson(JsonSeulementMixin, APIView):
         return Response({'actif': request.data.get('actif')})
 
 
+class _VueLitSonCorps(JsonSeulementMixin, APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        return Response({'x': request.data.get('x')})
+
+
+class CorpsNonObjetTest(SimpleTestCase):
+    """ENF11 — `NegociationCorpsObjet` : 400 à la lecture, jamais AttributeError."""
+
+    def _poster(self, brut):
+        requete = APIRequestFactory().post('/', data=brut, content_type='application/json')
+        return _VueLitSonCorps.as_view()(requete)
+
+    def test_scalaire_ou_tableau_400(self):
+        for brut in (b'null', b'true', b'-1.5', b'"a"', b'[]', b'[null, null]'):
+            with self.subTest(brut=brut):
+                self.assertEqual(self._poster(brut).status_code, 400)
+
+    def test_objet_lu(self):
+        reponse = self._poster(b'{"x": 1}')
+        self.assertEqual(reponse.status_code, 200)
+        self.assertEqual(reponse.data, {'x': 1})
+
+
 class _VueUpload(ParseursUploadMixin, APIView):
     permission_classes = [AllowAny]
     authentication_classes = []

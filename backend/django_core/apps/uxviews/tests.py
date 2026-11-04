@@ -187,7 +187,7 @@ class SavedViewApiTests(TestCase):
         resp = auth(self.directeur).post(
             f'{self.BASE}{view.id}/definir-par-defaut-role/',
             data='null', content_type='application/json')
-        self.assertEqual(resp.status_code, 409)
+        self.assertEqual(resp.status_code, 400)
 
     def test_patch_configuration_avec_nul_sans_500(self):
         # ENF11 fuzz : un NUL (clé ou valeur) fait lever DataError à JSONB.

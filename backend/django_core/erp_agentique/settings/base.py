@@ -675,6 +675,8 @@ REST_FRAMEWORK = {
     # que du JSON — le client de test envoie donc du JSON par défaut ; les
     # tests d'upload fixent explicitement format='multipart'.
     'TEST_REQUEST_DEFAULT_FORMAT': 'json',
+    # ENF11 — un corps JSON qui n'est pas un objet : 400, jamais AttributeError.
+    'DEFAULT_CONTENT_NEGOTIATION_CLASS': 'core.parseurs.NegociationCorpsObjet',
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'authentication.cookie_auth.CookieJWTAuthentication',
     ),
