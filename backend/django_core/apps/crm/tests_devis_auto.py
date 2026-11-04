@@ -610,7 +610,8 @@ class TestDevisAutoEndpoint(TestCase):
         refus = self._post(lead.id)
         self.assertEqual(refus.status_code, 409, refus.data)
         self.assertIn('incohérent', refus.data['detail'])
-        temoin = self.api.patch(url, {'conso_mensuelle_kwh': 450}, format='json')
+        # 250 kWh ≈ 372 MAD au barème, ratio 1,24 dans la bande [0,5 ; 2].
+        temoin = self.api.patch(url, {'conso_mensuelle_kwh': 250}, format='json')
         self.assertNotIn('avertissements', temoin.data)
         self.assertEqual(self._post(lead.id).status_code, 200)
 
