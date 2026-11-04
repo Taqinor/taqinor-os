@@ -1,13 +1,18 @@
 ---
 /** WAUD77 — « Réponse courte » sourcée en tête de page ; le texte vient de lib/reponsesCourtes.ts. */
-import { REPONSES_COURTES, type ReponseCourteId } from '../lib/reponsesCourtes';
+import { LIBELLE_REPONSE_COURTE, REPONSES_COURTES, type LangueCourte, type ReponseCourteId } from '../lib/reponsesCourtes';
 
 interface Props {
-  id: ReponseCourteId;
+  /** Bloc d'une page pilier (texte FR de REPONSES_COURTES)… */
+  id?: ReponseCourteId;
+  /** …ou texte déjà calculé (pages ville : reponseCourteVille). */
+  texte?: string;
+  lang?: LangueCourte;
 }
-const { id } = Astro.props;
+const { id, texte, lang = 'fr' } = Astro.props;
+const corps = texte ?? (id ? REPONSES_COURTES[id] : '');
 ---
 
-<p class="mt-6 max-w-xl border-s-2 border-brass-400 ps-4 text-sm leading-relaxed text-white" data-reponse-courte={id}>
-  <strong class="text-brass-300">Réponse courte.</strong> {REPONSES_COURTES[id]}
+<p class="mt-6 max-w-xl border-s-2 border-brass-400 ps-4 text-sm leading-relaxed text-white" data-reponse-courte={id ?? 'ville'}>
+  <strong class="text-brass-300">{LIBELLE_REPONSE_COURTE[lang]}</strong> {corps}
 </p>

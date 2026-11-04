@@ -164,6 +164,28 @@ describe('WAUD77 — « Réponse courte » sourcée : chiffre affiché = constan
     expect(REPONSES_COURTES.garanties).toContain(`${BATTERY_WARRANTY_YEARS} ans`);
     expect(REPONSES_COURTES.pompage.replace(/[  ]/g, ' ')).toContain('30 % de l’investissement, plafonnée à 3 000 DH par hectare, 3 000 DH par kWc et 30 000 DH par projet');
   });
+  it('pages ville : bloc rendu par CityPageBody avec le rendement PVGIS de la ville (même calcul que le bloc potentiel), sans montant', async () => {
+    const { reponseCourteVille } = await import('../src/lib/reponsesCourtes');
+    const { specificYield } = await import('../src/lib/estimatorBrainV2');
+    const { YIELD_TABLE } = await import('../src/lib/yieldTable');
+    const { CITIES } = await import('../src/lib/realisations');
+    const body = read('../src/components/CityPageBody.astro');
+    expect(body).toContain('<ReponseCourte texte={reponseVille} lang={langue} />');
+    expect(body).toContain('reponseCourteVille(');
+    expect(CITIES.length).toBe(5);
+    for (const c of CITIES) {
+      const r = Math.round(specificYield(YIELD_TABLE[c.slug].lat, 30, 0) / 10) * 10;
+      const frT = reponseCourteVille(c.name, r, 'fr');
+      expect(frT.replace(/[  ]/g, ' ')).toContain(`environ ${r.toLocaleString('fr-FR').replace(/[  ]/g, ' ')} kWh par an selon PVGIS`);
+      expect(reponseCourteVille(c.name, r, 'en')).toContain(`about ${r.toLocaleString('en-US')} kWh a year`);
+      expect(reponseCourteVille(c.name, r, 'ar')).toContain(`${r} kWh`);
+      for (const l of ['fr', 'en', 'ar'] as const) {
+        const t = reponseCourteVille(c.name, r, l);
+        expect(t, `${c.slug}-${l}`).not.toMatch(/\d[\d  .,]*\s*(DH|MAD|درهم)/);
+        expect(t.length).toBeLessThan(420);
+      }
+    }
+  });
   it('garanties : jamais « 30 ans » en général ; 82-21 : ni date ni pénalité ; deux phrases citables', () => {
     // « 30 ans » : uniquement rattaché aux panneaux et à leur seuil, jamais en général (WAUD77).
     expect(REPONSES_COURTES.garanties).toContain('Panneaux : 12 ans produit et 30 ans de performance linéaire (≥ 87,4 % à 30 ans)');

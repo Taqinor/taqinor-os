@@ -13,7 +13,10 @@ import Picture from './Picture.astro';
 import CtaBand from './CtaBand.astro';
 import CtaLigne from './CtaLigne.astro';
 import V2Page from './V2Page.astro';
-import type { cityPageBase } from '../lib/cityPageData';
+import ReponseCourte from './ReponseCourte.astro';
+import { AR_CITY_NAME, type cityPageBase } from '../lib/cityPageData';
+import { pageLocale } from '../lib/pageCtx';
+import { reponseCourteVille, type LangueCourte } from '../lib/reponsesCourtes';
 
 interface Props {
   c: { name: string; slug: string; sunshineHours: number | string; hasLocalInstall: boolean };
@@ -35,6 +38,9 @@ const {
 const pillars = [pillarStudy, pillarMeasure, pillarCompliance];
 // WAUD45 — rendement PVGIS de la ville à 20 % de pertes totales (le chiffre central du site), plein sud à 30°.
 const rendementVille = Math.round(specificYield(YIELD_TABLE[c.slug].lat, 30, 0) / 10) * 10;
+// WAUD77 — réponse courte de la ville : ce même rendement, dans la langue de la page.
+const langue = pageLocale(Astro.url.pathname).locale as LangueCourte;
+const reponseVille = reponseCourteVille(langue === 'ar' ? (AR_CITY_NAME[c.slug] ?? c.name) : c.name, rendementVille, langue);
 const dir = rtl ? 'ltr' : undefined;
 const noteClass = rtl
   ? 'mx-auto mt-4 max-w-3xl border-e-2 border-brass-400/60 pe-4 text-sm leading-relaxed text-lune-soft'
@@ -58,6 +64,7 @@ const stats = [
       <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">{t.kicker}</p>
       <h1 class="display v2-page-title cine-in mt-5 max-w-[20ch] [animation-delay:120ms]">{t.h1}</h1>
       <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">{heroLead}</p>
+      <ReponseCourte texte={reponseVille} lang={langue} />
     </div>
   </section>
 
