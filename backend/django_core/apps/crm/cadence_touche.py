@@ -97,12 +97,15 @@ def reprendre_cadence_apres_reouverture(lead, user, *, origine=''):
         # QJ-INVARIANT prime, un lead actif ne reste jamais sans prochaine
         # étape. Le filet pose alors ce qu'il sait poser.
         etape = assurer_prochaine_etape_apres_succes(lead, user)
-        return [etape] if etape is not None else []
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
-        kind=LeadActivity.Kind.NOTE,
-        body=('Dossier rouvert' + (f' ({origine})' if origine else '')
-              + ' — cadence de reprise posée.'))
+        etapes = [etape] if etape is not None else []
+    if etapes:
+        # ERR-ACVI52 — le repli (lead sans historique : aucun réveil permis)
+        # trace la reprise comme la cadence de réveil.
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE,
+            body=('Dossier rouvert' + (f' ({origine})' if origine else '')
+                  + ' — cadence de reprise posée.'))
     return etapes
 
 
