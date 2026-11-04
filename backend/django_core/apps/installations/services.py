@@ -1201,6 +1201,10 @@ def quantite_deja_sortie_chantier(installation, produit_id):
     ) or Decimal('0')
     total = Decimal(str(f11)) + _quantite_soldee_par_vente(
         installation, produit_id)
+    if installation.devis_id:  # ASTK258 — max(actuel, sorties de la vente)
+        from apps.ventes.selectors import sorties_de_la_vente
+        total = max(total, Decimal(str(sorties_de_la_vente(
+            installation.devis_id, installation.company).get(produit_id, 0))))
     return int(total.quantize(Decimal('1'), rounding=ROUND_HALF_UP))
 
 

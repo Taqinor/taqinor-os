@@ -367,3 +367,4 @@ Contre-visite `vérifie ACHT` du 01/11/2026 (dossier `docs/audits/2026-11-01-cha
 - 2026-11-01 — ACHT127 — propositions_chantier saute samedis/dimanches comme départ (test_jamais_de_depart_le_week_end ; backend non exécuté localement, CI) ; code livré, preuve en direct due (API suggerer-creneau).
 - 2026-11-03 — AARG46 — cochée : rejeu en direct PASS du 04/11 (docs/audits/acceptation/).
 - 2026-11-03 — ADVS40 — cochée : clauses restantes rejouées PASS le 04/11 (docs/audits/acceptation/, sha 685ae08f1).
+- 2026-11-04 — ASTK258 — code livré, preuve en direct due (acompte puis F11 sur l'écran d'intervention ⇒ 10 sorties) : field_capture.py::validate_consommation sort max(0, posé F11 cumulé − sorties_de_la_vente) (helper _deja_sorti_vente) ; services.py::quantite_deja_sortie_chantier = max(actuel, T) (+4 l.) ; tests_astk_garde_sortie_unique.py::GardeSortieUnique::test_compositions_vente_puis_chantier (sous-tests a-d + F11 12, non joués localement — CI).

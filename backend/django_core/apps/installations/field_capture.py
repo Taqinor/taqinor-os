@@ -346,6 +346,23 @@ def consommation_missing_justifications(cons):
     return [li for li in cons.lignes.all() if ligne_needs_justification(li)]
 
 
+def _deja_sorti_vente(installation):
+    """ASTK258 — ``{'sorti': T, 'cumul': posé F11 déjà appliqué}`` par
+    produit (T = ``sorties_de_la_vente``, F11 antérieures comprises) ; None
+    pour un chantier sans devis."""
+    from django.db.models import Sum
+    from apps.ventes.selectors import sorties_de_la_vente
+    from .models import ConsommationLigne
+    if not installation.devis_id:
+        return None
+    return {'sorti': sorties_de_la_vente(
+        installation.devis_id, installation.company), 'cumul': {
+        r['produit_id']: r['t'] for r in ConsommationLigne.objects.filter(
+            consommation__intervention__installation=installation,
+            stock_applique=True, produit__isnull=False).order_by()
+        .values('produit_id').annotate(t=Sum('quantite_utilisee'))}}
+
+
 def validate_consommation(cons, user):
     """F11 — valide la réconciliation : la consommation RÉELLE pilote le stock.
 
@@ -376,6 +393,10 @@ def validate_consommation(cons, user):
     poses = {}
     installation = cons.intervention.installation
     with transaction.atomic():
+        # ASTK258 — la vente a déjà sorti T (facture, acompte, BC, F11
+        # antérieures) : sortie = max(0, posé F11 cumulé − T) ; sans devis :
+        # toute la pose (inchangé).
+        deja = _deja_sorti_vente(installation)
         lignes = (cons.lignes.select_for_update()
                   .filter(stock_applique=False, produit__isnull=False))
         for li in lignes:
@@ -386,9 +407,17 @@ def validate_consommation(cons, user):
                 continue
             produit = lock_produit(li.produit_id)
             qte_avant = produit.quantite_stock
+            due = qte if deja is None else max(
+                Decimal('0'), deja['cumul'].get(li.produit_id, 0) + qte
+                - deja['sorti'].get(li.produit_id, 0))
             # ERR80 — garde plancher : ne sors jamais plus que le stock en main
             # (on borne à zéro plutôt que de piloter `quantite_stock` négatif).
-            qte_sortie = min(qte, qte_avant) if qte_avant > 0 else Decimal('0')
+            qte_sortie = min(due, qte_avant) if qte_avant > 0 else Decimal('0')
+            if deja is not None:
+                deja['cumul'][li.produit_id] = deja['cumul'].get(
+                    li.produit_id, 0) + qte
+                deja['sorti'][li.produit_id] = deja['sorti'].get(
+                    li.produit_id, 0) + qte_sortie
             # ERR41 — sortie sur la quantité DÉCIMALE (jamais int(qte)) : une
             # ligne de 0,5 sort bien 0,5 (et n'est plus tronquée à 0/perdue).
             qte_apres = qte_avant - qte_sortie
