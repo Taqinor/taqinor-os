@@ -1029,6 +1029,32 @@ def crediter_trop_percu_en_avance(facture, avoir, *, user=None):
         created_by=user)
 
 
+def rendre_trop_percu_de_avoir(facture, avoir, *, user=None):
+    """AARG59 — l'avoir ``avoir`` est annulé : le Paiement négatif et l'avance de
+    :func:`crediter_trop_percu_en_avance` sortent du payé (saisies annulées,
+    gardées au journal), l'encaissement revient à la facture. Rien sans
+    trop-perçu. Avance déjà utilisée : ``ConflitEtat`` (409, transaction
+    annulée). Appelé sous le verrou de la facture."""
+    from core.conflit_etat import ConflitEtat
+    from ..models import Paiement
+
+    lignes = list(Paiement.objects.select_for_update().filter(
+        company=facture.company, reference=avoir.reference,
+        note__startswith=f'Trop-perçu après avoir {avoir.reference}',
+    ).exclude(statut__in=Paiement.STATUTS_NON_COMPTES))
+    if any(p.affectations.exists() for p in lignes):
+        raise ConflitEtat(
+            "L'avance née de cet avoir a été utilisée : défaites cet usage "
+            "avant d'annuler l'avoir.")
+    for p in lignes:
+        try:
+            annuler_saisie_paiement(
+                paiement=p, motif=f"Annulation de l'avoir {avoir.reference}",
+                user=user)
+        except CorrectionPaiementRefusee as exc:
+            raise ConflitEtat(exc.detail) from exc
+
+
 def ventiler_avance(*, paiement, facture, montant, user=None):
     """Ventile UN paiement non affecté (avance) sur UNE facture ouverte du
     même client, pour ``montant``. Peut être appelée plusieurs fois pour
