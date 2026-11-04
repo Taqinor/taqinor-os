@@ -24,7 +24,7 @@ from django.db import transaction
 from drf_spectacular.utils import (
     OpenApiParameter, extend_schema, inline_serializer,
 )
-from rest_framework import serializers, status, viewsets
+from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import JSONParser
@@ -32,20 +32,21 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
-from core.mixins import TenantMixin, company_qs
+from core.mixins import company_qs
+from core.viewsets import CompanyScopedModelViewSet
 
 from . import portabilite, selectors, services
 from .models import MetricDefinition
 from .serializers import ImportMetriquesSerializer, MetricDefinitionSerializer
 
 
-class MetricDefinitionViewSet(TenantMixin, viewsets.ModelViewSet):
+class MetricDefinitionViewSet(CompanyScopedModelViewSet):
     """NTDATA10 — CRUD des métriques nommées de la société.
 
     ``GET semantic/metriques/`` est le CATALOGUE que lit le picker front
     (filtres ``?actif=true|false`` et ``?q=`` sur clé/libellé). La société est
-    forcée côté serveur (``TenantMixin``), jamais lue du corps ; une clé déjà
-    prise dans la société répond 409 (``unique_conflict``).
+    forcée côté serveur (``CompanyScopedModelViewSet``), jamais lue du corps ;
+    une clé déjà prise dans la société répond 409 (``unique_conflict``).
 
     ÉDITER signe la version figée (NTDATA9) du nom de l'acteur : le signal
     ``post_save`` fige sans auteur, la vue — qui connaît l'acteur — la signe

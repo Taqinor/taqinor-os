@@ -3,13 +3,14 @@
 // `/core/fiabilite/reglages/`). Lecture `fiabilite_voir`, écriture
 // `fiabilite_administration` (Directeur/Administrateur toujours) — un refus
 // d'écriture s'affiche comme tel, sans casser l'écran.
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { BellRing } from 'lucide-react'
 import parametresApi from '../../api/parametresApi'
 import { Card, CardContent, Input, Label, Switch } from '../../ui'
 import { toast } from '../../ui/confirm'
 import { frErrDetail as frErr } from '../../lib/frErr'
 import { PageChargement, PageReglages, FormulaireReglages } from './EtatsSection'
+import useFormulaireReglages from './useFormulaireReglages'
 
 const DEFAUTS = {
   notifier_maintenance_email: true,
@@ -47,9 +48,9 @@ function depuisServeur(data) {
 }
 
 export default function ReliabilitySettingsPage() {
-  const [form, setForm] = useState(DEFAUTS)
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
+  const {
+    form, setForm, loading, setLoading, saving, setSaving, setField,
+  } = useFormulaireReglages(DEFAUTS)
 
   useEffect(() => {
     let active = true
@@ -58,9 +59,7 @@ export default function ReliabilitySettingsPage() {
       .catch((err) => toast.error(frErr(err, 'Chargement des réglages de fiabilité impossible.')))
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [])
-
-  const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }))
+  }, [setForm, setLoading])
 
   const submit = (e) => {
     e.preventDefault()
