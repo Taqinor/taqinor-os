@@ -156,6 +156,16 @@ class _ChaineSansNul(OpenApiSerializerFieldExtension):
         return schema
 
 
+class _CharFieldSansNul(_ChaineSansNul):
+    """api-fuzz-full 41773314544 — DRF ajoute ``ProhibitNullCharactersValidator`` à
+    TOUT ``CharField``, pas aux seuls ``ChaineStricte`` : chaque passe du fuzz en
+    trouvait d'autres (``designation``, ``changement``, ``motif``…), un par un.
+    Priorité basse : toute extension plus précise (e-mail, URL, gabarit) prime."""
+    target_class = 'rest_framework.fields.CharField'
+    match_subclasses = True
+    priority = -1
+
+
 class _ClePrimaireEntiere(OpenApiSerializerFieldExtension):
     """ENF11 (api-fuzz « rejected schema-compliant request ») — une clé
     primaire entière (série ``AutoField``) vaut au moins 1 : le schéma
@@ -442,6 +452,23 @@ class _HeureRendueSansFuseau(OpenApiSerializerFieldExtension):
         return schema
 
 
+#: Le ``pattern`` d'un schéma cherche (il n'ancre pas la fin) : l'anticipation seule suffit.
+MOTIF_DATE_HEURE = r'^(?!0001-|9999-)'
+
+
+class _DateHeureDansLeCalendrier(OpenApiSerializerFieldExtension):
+    """La règle d'``installer_dates_rfc3339``, publiée côté requête."""
+    target_class = 'rest_framework.fields.DateTimeField'
+    match_subclasses = True
+
+    def map_serializer_field(self, auto_schema, direction):
+        schema = auto_schema._map_serializer_field(
+            self.target, direction, bypass_extensions=True)
+        if direction != 'request' or schema.get('format') != 'date-time':
+            return schema
+        return {**schema, 'pattern': MOTIF_DATE_HEURE}
+
+
 def installer_dates_rfc3339():
     """api-fuzz-full du 24/10/2026 (« Response violates schema », POST
     ``core/dashboards-partages/`` et ``ged/partages/``, ``expires_at`` en
@@ -466,6 +493,20 @@ def installer_dates_rfc3339():
 
     enforce_timezone._rfc3339 = True
     serializers.DateTimeField.enforce_timezone = enforce_timezone
+
+    # api-fuzz-full 41773314544 — les années 1 et 9999 n'ont pas d'équivalent dans
+    # le fuseau d'affichage : selon le champ, 400 ou OverflowError (500) plus loin
+    # (``to_company_tz``, 26 réponses). Refus unique à la lecture, publié
+    # (``_DateHeureDansLeCalendrier``).
+    lecture = serializers.DateTimeField.to_internal_value
+
+    def to_internal_value(self, value):
+        lu = lecture(self, value)
+        if lu.year in (1, 9999):
+            self.fail('overflow')
+        return lu
+
+    serializers.DateTimeField.to_internal_value = to_internal_value
 
 
 def drapeau_ou_400(valeur, nom):

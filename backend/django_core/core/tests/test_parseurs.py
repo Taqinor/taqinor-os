@@ -224,6 +224,33 @@ class SchemaChampsStrictsTests(SimpleTestCase):
         self.assertEqual(champ.run_validation('5.'), Decimal('5'))
         self.assertEqual(champ.run_validation(12.5), Decimal('12.50'))
 
+    def test_date_heure_sans_equivalent_local_refusee(self):
+        # api-fuzz-full 41773314544 : 400 ou OverflowError (500) selon le champ.
+        from rest_framework import serializers
+
+        champ = serializers.DateTimeField()
+        for brut in ('0001-06-01T00:00:00Z', '9999-01-01T00:00:00Z'):
+            with self.assertRaises(serializers.ValidationError, msg=brut):
+                champ.run_validation(brut)
+        self.assertEqual(champ.run_validation('2026-01-01T00:00:00Z').year, 2026)
+
+    def test_tout_charfield_publie_sans_caractere_nul(self):
+        # api-fuzz-full 41773314544 : DRF refuse le NUL dans tout CharField.
+        from types import SimpleNamespace
+
+        from rest_framework import serializers
+
+        from core.champs_stricts import (
+            MOTIF_NON_BLANC_SANS_NUL, MOTIF_SANS_NUL, _CharFieldSansNul)
+
+        def publier(champ, sens='request'):
+            auto = SimpleNamespace(_map_serializer_field=lambda *a, **k: {'type': 'string'})
+            return _CharFieldSansNul(champ).map_serializer_field(auto, sens)
+
+        self.assertEqual(publier(serializers.CharField())['pattern'], MOTIF_NON_BLANC_SANS_NUL)
+        self.assertEqual(publier(serializers.CharField(allow_blank=True))['pattern'], MOTIF_SANS_NUL)
+        self.assertNotIn('pattern', publier(serializers.CharField(), 'response'))
+
     def test_decimal_souple_borne_publie_sans_signe_et_non_nul(self):
         # api-fuzz-full 41773314544 : ``frais: "-8."``, ``montant: "-.7"`` conformes
         # au motif publié, refusés par la borne basse.
