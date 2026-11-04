@@ -138,6 +138,7 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
             },
             status=status.HTTP_202_ACCEPTED)
 
+    # headless: lien de la notification d'export (tasks.py), ouvert par la cloche en chargement complet (cookie de session)
     @extend_schema(request=None, responses={XLSX: BINARY, 404: None})
     @action(detail=False, methods=['get'], permission_classes=[IsAnyRole],
             url_path=r'telecharger-export/(?P<token>[^/.]+)')
