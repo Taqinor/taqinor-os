@@ -26,7 +26,7 @@ import { toastError } from '../lib/toast'
 const ORIGIN = originFrom(import.meta.env.VITE_IA_API_URL)
 
 // ERR-JPB-IAAPI-SANS-JOURNAL — sans délai, un service IA muet gelait l'écran sans
-// jamais échouer. Alignés sur nginx : `proxy_read_timeout` 120 s sur /api/fastapi/,
+// erreur. Délais égaux à nginx : `proxy_read_timeout` 120 s sur /api/fastapi/,
 // 300 s sur /api/fastapi/sql-agent/ (une question à l'agent peut durer).
 const DELAI_IA_MS = 120000
 const DELAI_AGENT_SQL_MS = 300000
