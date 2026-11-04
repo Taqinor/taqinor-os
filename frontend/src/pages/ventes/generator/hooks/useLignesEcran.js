@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ecrireLastTva } from '../../../../features/ventes/quote/ecranDefauts.js'
 import ventesApi from '../../../../api/ventesApi'
 import { tauxTvaOf, ttcExactFromHt } from '../../../../features/ventes/solar'
-import { _hasPrix, deriveRoleOrderFromLines } from '../../../../features/ventes/calc/lignesDefaut.js'
+import { _hasPrix, deriveRoleOrderFromLines, retauxerLignesSansTva } from '../../../../features/ventes/calc/lignesDefaut.js'
 import {
   appliquerRecomposition, lignesManuellesEnConflitPossible,
   phrasesTvaBaseLegaleRemplacee,
@@ -23,11 +23,13 @@ export function useLignesEcran(ctx) {
     confirm, canRenameLine, renameDialog, setRenameDialog, setRenameBusy, setRenameError, produits,
     setProduits, clientId, lines, setLines, setSavingOrdreLignes, setTauxTva, setDiscountPct,
     linesTableRef, pendingFocusKey, setPendingFocusKey, setMultiMode, villaGroups, setVillaGroups,
-    appliquerMarcheEcran,
+    appliquerMarcheEcran, tvaStandard,
   } = ctx
   // EDC5 — une ligne ajoutée par Entrée (dernière ligne) reçoit le focus sur
   // sa DÉSIGNATION (on continue de saisir), pas sur le sélecteur produit.
   const focusDesignationApresAjout = useRef(false)
+  // ADVS47 — la TVA standard société arrive après le stock : les lignes composées suivent.
+  useEffect(() => { setLines(ls => retauxerLignesSansTva(ls, produits, tvaStandard)) }, [tvaStandard, produits, setLines])
 
   // ── Lignes ──
   // VX188 — callback stabilisé (identité stable via useCallback, clé de ligne
@@ -42,7 +44,8 @@ export function useLignesEcran(ctx) {
           // VX249(b) — une modification MANUELLE du taux retire le style
           // « suggéré » de CETTE ligne (jamais les autres) ; tout autre champ
           // laisse `_tvaSuggested` inchangé.
-          ...(k === 'taux_tva' ? { _tvaSuggested: false } : {}),
+          // ADVS47 — `tvaManuelle` : la fusion d'Auto-remplir ne l'écrase plus.
+          ...(k === 'taux_tva' ? { _tvaSuggested: false, tvaManuelle: true } : {}),
           // N2 — la frappe manuelle du prix pose le verrou `prixManuel` : la
           // résolution de liste de prix (refreshTarif, déclenchée par l'effet
           // [clientId, lines.length]) ne réécrit plus ce prix tant que le
@@ -115,9 +118,9 @@ export function useLignesEcran(ctx) {
             produit: produitId,
             designation: p?.nom ?? l.designation,
             // ATOT28 — TTC au centime, HT catalogue d'origine porté.
-            prix_unit_ttc: p ? String(ttcExactFromHt(p.prix_vente, tauxTvaOf(p))) : l.prix_unit_ttc,
+            prix_unit_ttc: p ? String(ttcExactFromHt(p.prix_vente, tauxTvaOf(p, tvaStandard))) : l.prix_unit_ttc,
             prixHtOrigine: p ? (parseFloat(p.prix_vente) || 0).toFixed(2) : (l.prixHtOrigine ?? null),
-            taux_tva: p ? String(tauxTvaOf(p)) : (l.taux_tva ?? '20'),
+            taux_tva: p ? String(tauxTvaOf(p, tvaStandard)) : (l.taux_tva ?? String(tauxTvaOf(null, tvaStandard))),
             // N2 — resélectionner un produit reprend la main sur son prix
             // catalogue : lève le verrou manuel posé par une frappe précédente.
             prixManuel: false,
@@ -135,7 +138,7 @@ export function useLignesEcran(ctx) {
       const l = lines.find(x => x._key === key)
       refreshTarif(key, produitId, l?.quantite)
     }
-  }, [produits, lines, refreshTarif, setLines])
+  }, [produits, lines, refreshTarif, setLines, tvaStandard])
 
   // Ré-interroge le tarif applicable quand la quantité change sur une ligne
   // déjà liée à un produit (paliers XSAL2), ou quand le client change (liste

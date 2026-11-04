@@ -207,3 +207,20 @@ test('AGNR20 — la confirmation nomme la TVA 0 % + base légale que « Prendre 
   assert.equal(appliquerRecomposition(lignes, gen, 'recalcule').lignes[0].tvaBaseLegale, undefined)
   assert.equal(appliquerRecomposition(lignes, gen, 'garder').lignes[0].tvaBaseLegale, 'Art. 92-I-6')
 })
+
+test('ADVS47 — ligne composée non éditée prend le taux composé ; saisie manuelle jamais écrasée', () => {
+  const anciennes = [
+    L(5, 'Installation', 1, 100, { compose: true, taux_tva: 20 }),
+    L(6, 'Transport', 1, 100, { compose: true, taux_tva: 20, tvaManuelle: true }),
+    L(7, 'Suivi', 1, 100, { compose: true, taux_tva: 20, prixManuel: true }),
+  ]
+  const generees = [
+    L(5, 'Installation', 1, 114, { taux_tva: 14 }),
+    L(6, 'Transport', 1, 114, { taux_tva: 14 }),
+    L(7, 'Suivi', 1, 114, { taux_tva: 14 }),
+  ]
+  const { lignes } = fusionnerRecomposition(anciennes, generees)
+  assert.equal(lignes[0].taux_tva, 14)
+  assert.equal(lignes[1].taux_tva, 20)
+  assert.equal(lignes[2].taux_tva, 20)
+})
