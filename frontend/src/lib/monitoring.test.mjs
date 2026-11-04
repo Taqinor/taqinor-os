@@ -20,7 +20,7 @@ import {
 import {
   GENRES, normaliserRoute, construireCorps, signalerProbleme,
   signalerErreurRequete, signalerErreurScript, installerRechargementChunk,
-  _resetJournalPourTests,
+  _resetJournalPourTests, _nombreSignaturesPourTests,
 } from './journalProblemes.js'
 
 test('QAH8 : import @sentry/react LITTÉRAL (un specifier variable n\'est jamais bundlé par Vite → Sentry mort en prod)', () => {
@@ -227,6 +227,34 @@ test('signalerProbleme() plafonne les envois d\'un chargement de page (écran qu
     signalerProbleme({ genre: GENRES.SCRIPT, route: '/x', code: `E${i}` }, deps)
   }
   assert.equal(envois.length, 40)
+})
+
+test('plafond par tranche de 10 min : un onglet ouvert toute la journée ne devient pas muet', () => {
+  let horloge = 1_000_000
+  const { envois, deps } = bancDEssai()
+  const avecHorloge = { ...deps, maintenant: () => horloge }
+  for (let i = 0; i < 60; i += 1) {
+    signalerProbleme({ genre: GENRES.SERVEUR, route: `/x${i}`, statut: 502 }, avecHorloge)
+  }
+  assert.equal(envois.length, 40)
+  horloge += 9 * 60_000
+  assert.equal(signalerProbleme({ genre: GENRES.SERVEUR, route: '/encore', statut: 502 }, avecHorloge), false)
+  horloge += 60_000
+  assert.equal(signalerProbleme({ genre: GENRES.SERVEUR, route: '/apres', statut: 502 }, avecHorloge), true)
+  assert.equal(envois.length, 41)
+})
+
+test("les signatures expirées sont purgées (la mémoire de l'onglet ne grossit pas)", () => {
+  let horloge = 1_000_000
+  const { deps } = bancDEssai()
+  const avecHorloge = { ...deps, maintenant: () => horloge }
+  for (let i = 0; i < 30; i += 1) {
+    signalerProbleme({ genre: GENRES.SERVEUR, route: `/x${i}`, statut: 502 }, avecHorloge)
+  }
+  assert.equal(_nombreSignaturesPourTests(), 30)
+  horloge += 10 * 60_000
+  signalerProbleme({ genre: GENRES.SERVEUR, route: '/y', statut: 502 }, avecHorloge)
+  assert.equal(_nombreSignaturesPourTests(), 1)
 })
 
 // ── Règles 1 et 2 : jamais bloquant, jamais récursif ───────────────────────

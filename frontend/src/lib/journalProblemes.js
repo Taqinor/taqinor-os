@@ -20,7 +20,7 @@
  *      l'intercepteur appelle justement ce module) et un échec du POST n'est
  *      jamais lui-même signalé ;
  *   3. jamais un flot : dédoublonnage par signature sur une fenêtre d'une
- *      minute + plafond par chargement de page (un écran qui boucle en erreur
+ *      minute + plafond par tranche de 10 minutes (un écran qui boucle en erreur
  *      peut produire des dizaines d'erreurs par seconde).
  *
  * SANS DONNÉE PERSONNELLE : la route est normalisée (identifiants → `<id>`,
@@ -53,17 +53,37 @@ export const GENRES = {
 // Un même problème qui se répète dans la minute ne vaut qu'UNE ligne : on veut
 // savoir QUOI casse, pas compter les re-renders.
 const FENETRE_DOUBLON_MS = 60000
-// Plafond dur par chargement de page : même si tout part en vrille, le journal
-// ne devient jamais lui-même la charge.
-const PLAFOND_PAR_PAGE = 40
+// Plafond dur par TRANCHE de 10 minutes : même si tout part en vrille, le journal
+// ne devient jamais lui-même la charge. ERR-JPB-PLAFOND-PAR-ONGLET — pas « par
+// chargement de page » : l'onglet d'un commercial reste ouvert toute la journée,
+// et un déploiement (22 routes en 502) le laissait muet jusqu'au rechargement.
+const PLAFOND_PAR_TRANCHE = 40
+const DUREE_TRANCHE_MS = 600000
 
+let _debutTranche = null
 let _envoyes = 0
 const _vus = new Map()
 
+/** Nouvelle tranche : compteur remis à zéro, signatures expirées oubliées. */
+function ouvrirTrancheSiEchue(maintenant) {
+  if (_debutTranche != null && maintenant - _debutTranche < DUREE_TRANCHE_MS) return
+  _debutTranche = maintenant
+  _envoyes = 0
+  for (const [cle, vu] of _vus) {
+    if (maintenant - vu >= FENETRE_DOUBLON_MS) _vus.delete(cle)
+  }
+}
+
 /** Réservé aux tests : réarme le dédoublonnage et le plafond. */
 export function _resetJournalPourTests() {
+  _debutTranche = null
   _envoyes = 0
   _vus.clear()
+}
+
+/** Réservé aux tests : taille de la mémoire de dédoublonnage. */
+export function _nombreSignaturesPourTests() {
+  return _vus.size
 }
 
 // ERR-JPB-ECRAN-JAMAIS-EMIS — un chunk introuvable (404 après un déploiement,
@@ -144,12 +164,13 @@ export function signalerProbleme(probleme, deps = {}) {
     // produirait un 401 de plus, donc du bruit au lieu d'une trace (même
     // leçon que CAD177 sur le beacon Web Vitals).
     if (!connecte()) return false
-    if (_envoyes >= PLAFOND_PAR_PAGE) return false
+    const maintenant = (deps.maintenant || Date.now)()
+    ouvrirTrancheSiEchue(maintenant)
+    if (_envoyes >= PLAFOND_PAR_TRANCHE) return false
 
     const corps = construireCorps(probleme)
     if (!corps.genre) return false
 
-    const maintenant = (deps.maintenant || Date.now)()
     const cle = signature(corps)
     const vu = _vus.get(cle)
     if (vu != null && maintenant - vu < FENETRE_DOUBLON_MS) return false
