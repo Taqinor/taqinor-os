@@ -200,11 +200,13 @@ def repartition_paiement(total, termes, tranches_montant=None) -> dict:
 
 def branche_echeancier(devis, data, branche_hier):
     """AMOT122 (C-AMOT-VER4-007, D-AMOT-VER4-1) — LA branche d'échéancier d'un
-    devis à deux options résidentiel, au niveau 12 : celle d'``option_effective``
-    (l'option facturée, la même que ``public/payload_conditions._acompte_publique``),
-    servie dans ``data['branche_echeancier']`` pour que texte (``payment_terms``)
-    et cases du Devis final lisent la même. C&I, mono-option ou niveau 11 :
-    rien n'est servi, ``branche_hier`` (rendu d'hier)."""
+    devis résidentiel à deux options, au niveau 12 : celle d'``option_effective``
+    (l'option facturée, la même que ``public/payload_conditions._acompte_publique``)
+    — le texte (``payment_terms``) la suit, et quand la règle des cases du Devis
+    final (scénario, puis option recommandée) en choisirait une autre, elle est
+    servie dans ``data['branche_echeancier']`` pour que les cases la lisent
+    (sinon aucune clé : rendu octet-identique). C&I, mono-option, devis hors base
+    ou niveau 11 : rien n'est servi, ``branche_hier`` (rendu d'hier)."""
     from apps.ventes.domain.regles_calcul import REGLES_ECARTS_0411, regles_au_moins
     from apps.ventes.utils.options import (
         AVEC_BATTERIE, SANS_BATTERIE, est_mode_ci, option_effective)
@@ -214,8 +216,13 @@ def branche_echeancier(devis, data, branche_hier):
     option = option_effective(devis)
     if option not in (SANS_BATTERIE, AVEC_BATTERIE):
         return branche_hier
-    data["branche_echeancier"] = "avec" if option == AVEC_BATTERIE else "sans"
-    return data["branche_echeancier"]
+    choisie = "avec" if option == AVEC_BATTERIE else "sans"
+    scenario = data.get("scenario")
+    cases = ("sans" if scenario == "Sans batterie" else "avec" if scenario == "Avec batterie"
+             else "sans" if data.get("recommended") == "Sans batterie" else "avec")
+    if choisie != cases:
+        data["branche_echeancier"] = choisie
+    return choisie
 
 
 def tranches_echeancier_en_montant(devis):
