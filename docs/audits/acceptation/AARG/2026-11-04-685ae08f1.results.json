@@ -1,0 +1,34 @@
+{
+  "sha": "685ae08f1173072480cf3bc9ea14d44b241ae6c6",
+  "date": "2026-11-04",
+  "groupe": "AARG",
+  "verdict": "PASS",
+  "couvre": [
+    "AARG57"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PA4.11.escompte_j5_releve_pdf",
+      "taches": [
+        "AARG57"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-AARG-PA4.11.escompte_j5_releve_pdf.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}
