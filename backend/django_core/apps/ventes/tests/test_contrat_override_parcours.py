@@ -400,7 +400,7 @@ class _ParcoursBase(TestCase):
         return r
 
     def regenerer(self, parcours, chemin):
-        r = self.api.delete(f'{parcours.url}?chemin={chemin}')
+        r = self.api.delete(f'{parcours.url}{chemin}/')
         self.assertEqual(r.status_code, 200,
                          f'régénération de « {chemin} » refusée : {str(r.data)}')
         return r
@@ -694,7 +694,7 @@ class BlocEffectifPorteLesAutosTests(_ParcoursBase):
         legacy = {'valeur': 'ONEE', 'origine': 'manuel'}
         Devis.objects.filter(pk=parcours.devis.pk).update(
             overrides={'tarif.distributeur': legacy})
-        efface = self.api.delete(f'{parcours.url}?chemin=tarif.distributeur')
+        efface = self.api.delete(f'{parcours.url}tarif.distributeur/')
         self.assertEqual(efface.status_code, 400, str(efface.data))
         bloc = self._bloc(self.api.get(parcours.url), 'tarif.distributeur')
         self.assertEqual(bloc['manuel'], 'ONEE')

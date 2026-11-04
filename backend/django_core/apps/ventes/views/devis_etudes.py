@@ -7,9 +7,8 @@ rafraichir_etudes_du_devis``, ``from ..serializers import OverridesSerializer``
 …) restent dans les corps : les ``mock.patch`` ``apps.ventes.services.*``
 n'interceptent qu'ainsi.
 """
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from . import openapi_docs as D
-from ..openapi_params import qstr
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 import logging
 from django.db import transaction
@@ -139,6 +138,57 @@ class DevisEtudesActionsMixin:
             'lignes': lignes,
         }
 
+    @extend_schema(
+        parameters=[OpenApiParameter(
+            'chemin', str, OpenApiParameter.PATH,
+            enum=['taille.nb_panneaux', 'taille.panel_watt', 'taille.kwc',
+                  'scenario', 'recommended_option', 'etude.jour_reference'],
+            description='Chemin à régénérer.')],
+        # ENF11 — DELETE rend le registre (200), pas un 204 : sans le code
+        # explicite, drf-spectacular déclare 204 « vide ».
+        responses={200: D.OverridesResponse})
+    @action(detail=True, methods=['delete'],
+            url_path=r'overrides/(?P<chemin>[^/]+)',
+            permission_classes=[IsResponsableOrAdmin])
+    def override_regenerer(self, request, pk=None, chemin=None):
+        """``regenerer`` : SUPPRIME l'override de CE chemin (retour à
+        l'automatique). Il ne le REMPLACE jamais dans le REGISTRE par une valeur
+        calculée : reposer une valeur exige un nouveau PATCH explicite. QJR216 —
+        la RÉPONSE, elle, porte le chemin régénéré avec la valeur que le moteur
+        calcule : sans quoi « retour à l'automatique » rendait un trou.
+
+        api-fuzz-full 41773314544 — la route ne supprime pas le registre, elle en
+        retire une entrée : ``DELETE overrides/?chemin=`` puis ``GET overrides/``
+        200 lisait comme un « use after free ». Le chemin est donc dans l'URL.
+        Même verrou de ligne que le PATCH (QJR223)."""
+        from ..domain import overrides as registre_overrides
+        from ..domain.modifiabilite import (
+            debut_de_geste_devis, fin_de_geste_devis)
+        from ..domain.verrou_devis import toucher
+
+        devis = self.get_object()
+        if _refus_modifiabilite(devis, 'ETUDE'):
+            return _reponse_non_modifiable(devis, 'ETUDE')
+        refus = _refus_verrou(devis, request)
+        if refus is not None:
+            return refus
+        if not registre_overrides.chemin_autorise(chemin):
+            return Response(
+                {'chemin': registre_overrides.MSG_CHEMIN_INCONNU},
+                status=status.HTTP_400_BAD_REQUEST)
+        avant_geste = debut_de_geste_devis(devis, request.user)
+        with transaction.atomic():
+            devis = registre_overrides.relire_verrouille(devis)
+            registre_overrides.ecrire_colonne(
+                devis, registre_overrides.regenerer(devis, chemin))
+        self._rafraichir_etudes_apres_surcharge(devis)
+        fin_de_geste_devis(devis, request.user, avant=avant_geste,
+                           objet='surcharges')
+        toucher(devis)
+        reponse = self._overrides_reponse(devis, chemins_regeneres=(chemin,))
+        reponse['updated_at'] = _jeton(devis)
+        return Response(reponse)
+
     @extend_schema(methods=['GET'], responses=D.OverridesResponse)
     # CI #997 fuzz (24/10) : un PATCH SANS corps était « conforme » (corps
     # non obligatoire pour un `request` en dict) puis refusé « corps vide » :
@@ -149,21 +199,11 @@ class DevisEtudesActionsMixin:
                        {'required': [chemin]}
                        for chemin in D.OverridesPatchRequest[
                            'application/json']['properties']]}})
-    @extend_schema(methods=['DELETE'],
-                   parameters=[qstr('chemin', required=True,
-                                    enum=['taille.nb_panneaux',
-                                          'taille.panel_watt', 'taille.kwc',
-                                          'scenario', 'recommended_option',
-                                          'etude.jour_reference'],
-                                    desc='Chemin à régénérer.')],
-                   # ENF11 — DELETE rend le registre (200), pas un 204 : sans
-                   # le code explicite, drf-spectacular déclare 204 « vide ».
-                   responses={200: D.OverridesResponse})
-    @action(detail=True, methods=['get', 'patch', 'delete'],
+    @action(detail=True, methods=['get', 'patch'],
             url_path='overrides',
             permission_classes=[IsResponsableOrAdmin])
     def overrides(self, request, pk=None):
-        """GET / PATCH / DELETE du REGISTRE de surcharges de CE devis.
+        """GET / PATCH du REGISTRE de surcharges de CE devis.
 
         * **GET** — le registre + le bloc ``effectif`` dérivé à la lecture.
         * **PATCH** — FUSIONNE le sous-ensemble de chemins reçu : envoyer
@@ -171,12 +211,6 @@ class DevisEtudesActionsMixin:
           chemin déjà posé. Un champ DÉRIVÉ, un chemin hors liste blanche D12
           ou une clé indexée par POSITION sont refusés en 400 avec un message
           FR qui NOMME le chemin — jamais un silence.
-        * **DELETE ?chemin=<chemin>** — ``regenerer`` : SUPPRIME l'override de
-          ce chemin (retour à l'automatique). Il ne le REMPLACE jamais dans le
-          REGISTRE par une valeur calculée : reposer une valeur exige un
-          nouveau PATCH explicite. QJR216 — la RÉPONSE, elle, porte le chemin
-          régénéré avec la valeur que le moteur calcule : sans quoi « retour à
-          l'automatique » rendait un trou au lieu de la valeur promise.
 
         L'ÉCRITURE PASSE PAR UN ``UPDATE`` D'UNE SEULE COLONNE
         (``domain.overrides.ecrire_colonne``) : ni ``updated_at`` ni le gel
@@ -206,7 +240,7 @@ class DevisEtudesActionsMixin:
         devis = self.get_object()
         if request.method == 'GET':
             return Response(self._overrides_reponse(devis))
-        # QJR516 — PATCH et DELETE gardés (geste ETUDE).
+        # QJR516 — PATCH gardé (geste ETUDE).
         if _refus_modifiabilite(devis, 'ETUDE'):
             return _reponse_non_modifiable(devis, 'ETUDE')
         # QJR545 — verrou optimiste (jeton optionnel).
@@ -214,33 +248,6 @@ class DevisEtudesActionsMixin:
         if refus is not None:
             return refus
         from ..domain.verrou_devis import toucher
-
-        if request.method == 'DELETE':
-            chemin = request.query_params.get('chemin') or ''
-            if not chemin:
-                return Response(
-                    {'chemin': 'Paramètre requis : quel chemin régénérer ?'},
-                    status=status.HTTP_400_BAD_REQUEST)
-            if not registre_overrides.chemin_autorise(chemin):
-                return Response(
-                    {'chemin': registre_overrides.MSG_CHEMIN_INCONNU},
-                    status=status.HTTP_400_BAD_REQUEST)
-            avant_geste = debut_de_geste_devis(devis, request.user)
-            with transaction.atomic():
-                devis = registre_overrides.relire_verrouille(devis)
-                registre_overrides.ecrire_colonne(
-                    devis, registre_overrides.regenerer(devis, chemin))
-            self._rafraichir_etudes_apres_surcharge(devis)
-            fin_de_geste_devis(devis, request.user, avant=avant_geste,
-                               objet='surcharges')
-            toucher(devis)
-            # QJR216 — le chemin régénéré REVIENT dans la réponse avec la
-            # valeur du moteur (avant, il en disparaissait : « retour à
-            # l'automatique » se soldait par un trou).
-            reponse = self._overrides_reponse(
-                devis, chemins_regeneres=(chemin,))
-            reponse['updated_at'] = _jeton(devis)
-            return Response(reponse)
 
         serializer = OverridesSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)

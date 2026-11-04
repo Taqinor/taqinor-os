@@ -174,7 +174,7 @@ class LeDeleteNeRendJamaisUnAutoNullMuet(_Base):
                     url, {chemin: {'valeur': VALEURS[chemin]}}, format='json')
                 self.assertEqual(pose.status_code, 200,
                                  f'pose de « {chemin} » refusée : {pose.data}')
-                reponse = self.api.delete(f'{url}?chemin={chemin}')
+                reponse = self.api.delete(f'{url}{chemin}/')
                 self.assertEqual(reponse.status_code, 200, reponse.data)
 
                 self.assertIn(chemin, reponse.data['effectif'],
@@ -195,7 +195,7 @@ class LeDeleteNeRendJamaisUnAutoNullMuet(_Base):
         self.api.patch(url, {'taille.nb_panneaux': {'valeur': 21}},
                        format='json')
         bloc = self.api.delete(
-            f'{url}?chemin=taille.nb_panneaux').data['effectif'][
+            f'{url}taille.nb_panneaux/').data['effectif'][
                 'taille.nb_panneaux']
         self.assertEqual(bloc['auto'], 14)
         self.assertNotIn('non_derivable', bloc)
@@ -210,7 +210,7 @@ class LeDeleteNeRendJamaisUnAutoNullMuet(_Base):
                 self.api.patch(url, {chemin: {'valeur': VALEURS[chemin]}},
                                format='json')
                 bloc = self.api.delete(
-                    f'{url}?chemin={chemin}').data['effectif'][chemin]
+                    f'{url}{chemin}/').data['effectif'][chemin]
                 self.assertIsNone(bloc['auto'])
                 self.assertIs(bloc.get('non_derivable'), True)
 

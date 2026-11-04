@@ -113,7 +113,7 @@ class LeVerrouEstPose(_FixtureBase, TestCase):
         self.api.patch(self.url, {'scenario': {'valeur': 'Avec batterie'}},
                        format='json')
         with CaptureQueriesContext(connection) as requetes:
-            r = self.api.delete(f'{self.url}?chemin=scenario')
+            r = self.api.delete(f'{self.url}scenario/')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertTrue(
             self._verrous(requetes),

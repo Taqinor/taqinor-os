@@ -85,7 +85,7 @@ const ventesApi = {
   patchEtudeParams: (id, cles) =>
     api.patch(`/ventes/devis/${id}/etude-params/`, cles),
   // QJR214 — client HTTP du REGISTRE de surcharges (`domain.overrides`,
-  // QJR58/QJR216) : GET/PATCH/DELETE `/ventes/devis/<pk>/overrides/` (contrat
+  // QJR58/QJR216) : GET/PATCH `/ventes/devis/<pk>/overrides/`, DELETE `…/<chemin>/` (contrat
   // `apps/ventes/contract_samples/devis_overrides.json`). PATCH = FUSION du
   // sous-ensemble envoyé (`notes.fusion`) — jamais un remplacement intégral
   // du registre. DELETE `?chemin=<chemin>` = `regenerer` (retour à
@@ -104,7 +104,7 @@ const ventesApi = {
     return api.patch(`/ventes/devis/${id}/overrides/`, patch)
   },
   regenererOverride: (id, chemin) =>
-    api.delete(`/ventes/devis/${id}/overrides/`, { params: { chemin } }),
+    api.delete(`/ventes/devis/${id}/overrides/${encodeURIComponent(chemin)}/`),
   deleteDevis: (id) => api.delete(`/ventes/devis/${id}/`),
   // VNT45 (D-VNT-3) — « Facturer la vente » : aperçu (plan, prochaine tranche,
   // acompte proposé, état de la vente) puis création de la facture d'une nature
