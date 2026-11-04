@@ -395,3 +395,57 @@ class GlossaireView(APIView):
         entrees = (selectors.glossaire(request.user.company)
                    if request.user.company_id else [])
         return Response({'nb_metriques': len(entrees), 'metriques': entrees})
+
+
+class MetriqueExpliquerView(APIView):
+    """NTDATA44 — ``GET semantic/metriques/<cle>/expliquer/`` : « expliquer ce
+    chiffre » d'un widget.
+
+    UNE réponse : le lignage NTDATA43 (définition, dataset, app, filtres,
+    version) + le drill-down NTDATA33 (identifiants et liens profonds des
+    lignes sources). ``filters`` = filtres effectifs du widget (JSON),
+    ``cellule`` = valeurs de regroupement du point cliqué (JSON), ``limite``
+    borne la liste (1..1000, défaut 200).
+    """
+
+    permission_classes = [IsResponsableOrAdmin]
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter('filters', str, required=False,
+                             description='Objet JSON des filtres du widget.'),
+            OpenApiParameter('cellule', str, required=False,
+                             description='Objet JSON des valeurs de '
+                                         'regroupement du point cliqué.'),
+            OpenApiParameter('limite', int, required=False,
+                             description='Nombre maximal de lignes (1..1000).'),
+        ],
+        responses=inline_serializer('MetriqueExpliquerReponse', {
+            'lignage': serializers.JSONField(),
+            'filtres_appliques': serializers.JSONField(),
+            'cellule': serializers.JSONField(),
+            'enregistrements': serializers.JSONField(allow_null=True),
+            'raison': serializers.CharField(),
+        }))
+    def get(self, request, cle=None):
+        params = request.query_params
+        filters = _json_param(params.get('filters'), 'filters', dict)
+        cellule = _json_param(params.get('cellule'), 'cellule', dict)
+        try:
+            limite = int(params.get('limite') or 200)
+        except (TypeError, ValueError):
+            raise ValidationError({'limite': 'Entier attendu.'})
+        if not 1 <= limite <= 1000:
+            raise ValidationError({'limite': 'Entre 1 et 1000.'})
+        try:
+            explication = selectors.expliquer(
+                request.user.company, request.user, cle, filters=filters,
+                cellule=cellule, limite=limite)
+        except services.MetriqueInconnue as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_404_NOT_FOUND)
+        except (ValueError, TypeError, DjangoValidationError):
+            return Response(
+                {'detail': 'Valeurs de filtre ou de cellule illisibles.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(explication)

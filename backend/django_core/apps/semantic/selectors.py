@@ -269,6 +269,48 @@ def lineage(company, cle, *, user=None):
     }
 
 
+def expliquer(company, user, cle, *, filters=None, cellule=None, limite=200):
+    """NTDATA44 — « expliquer ce chiffre » : lignage + lignes sources, en UNE
+    réponse.
+
+    ``filters`` — les filtres EFFECTIFS du widget (globaux traduits compris) ;
+    ``cellule`` — les valeurs de regroupement du point cliqué
+    (``{'mois': '2026-03'}``), qui deviennent des filtres d'égalité. Le
+    drill-down (NTDATA33, ``core.dashboard_data.drill``) s'applique à la
+    POPULATION de la métrique : filtres de la DÉFINITION d'abord, ceux de
+    l'appelant ensuite — exactement l'ordre du résolveur, pour que les lignes
+    listées soient celles qui ont produit le chiffre.
+
+    Une métrique d'ADAPTATEUR n'est pas une requête : ``enregistrements`` est
+    alors ``None`` et ``raison`` le dit, plutôt qu'une liste fabriquée. Même
+    chose si le dataset n'est plus enregistré ou qu'un champ n'est pas
+    autorisé. Lève ``services.MetriqueInconnue`` (404) comme le lignage.
+    """
+    from core import dashboard_data, data_explorer
+
+    arbre = lineage(company, cle, user=user)
+    definition = services.get_metric(company, cle)
+    filtres = dict(definition.filtres or {})
+    filtres.update(filters or {})
+    reponse = {'lignage': arbre, 'filtres_appliques': filtres,
+               'cellule': dict(cellule or {}), 'enregistrements': None,
+               'raison': ''}
+    if definition.est_adaptateur or not definition.dataset:
+        reponse['raison'] = (
+            'Métrique calculée par un adaptateur (%s) : elle ne se décompose '
+            'pas en lignes d\'un dataset.'
+            % (definition.mesure or {}).get('adapter', ''))
+        return reponse
+    try:
+        reponse['enregistrements'] = dashboard_data.drill(
+            definition.dataset, company, user, group_by=cellule,
+            filters=filtres, limit=limite)
+    except (data_explorer.DatasetInconnu,
+            data_explorer.ChampNonAutorise) as exc:
+        reponse['raison'] = str(exc)
+    return reponse
+
+
 def _nom_affiche(utilisateur):
     if utilisateur is None:
         return ''
