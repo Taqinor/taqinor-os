@@ -819,6 +819,7 @@ REGLES_PAR_CHEMIN = (
     (r'^/api/django/installations/(landed-cost|frais-import|dossiers-import)', ('dossier',),
      'installations.DossierImport', None, None),
     (r'^/api/django/ged/', ('exigence', 'exigence_id'), 'ged.ExigenceDossier', None, None),
+    (r'^/api/django/sav/', ('categorie', 'categorie_id'), 'sav.CategorieEquipement', None, None),
 
     # CI #997 fuzz (4) - produits et emplacements d'un transfert ; produits d'un
     # remplacement de composant en masse (le nom du champ seul est ambigu).
@@ -912,6 +913,11 @@ def main():
         slug=SLUG_DEMO)
     user = preparer_compte(company, password)
     semer_objets_references(company, user)
+    # api-fuzz-full 41773314544 — interrupteurs DGI allumés : éteints, chaque route
+    # sert 404 sur la facture qui vient d'être créée (voulu en produit : « capacité
+    # invisible ») et leur vrai code n'est jamais joué. Sans fournisseur : aucun envoi.
+    apps.get_model('parametres', 'CompanyProfile').objects.filter(company=company).update(
+        dgi_export_actif=True, dgi_transmission_actif=True)
     table = inventorier_ids_fk(company)
     regles = inventorier_ids_par_chemin(company)
     cibles = inventorier_cibles(company)

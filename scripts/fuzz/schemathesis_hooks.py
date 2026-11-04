@@ -144,8 +144,10 @@ class FuzzAdminCookieAuth:
         )
         jeton = reponse.cookies.get('access_token')
         if reponse.status_code != 200 or not jeton:
+            # Le corps (``no_active_account``, ``otp_required``…) dit la cause.
             raise RuntimeError(
-                f'connexion {USERNAME} refusée : HTTP {reponse.status_code}')
+                f'connexion {USERNAME} refusée : HTTP {reponse.status_code} '
+                f'{reponse.text[:200]}')
         return jeton
 
     def set(self, case, data, ctx):
@@ -223,6 +225,7 @@ _CIBLES_PROTEGEES = (
 )
 # ENF1b — politique réseau de la société de fuzz (NTSEC11).
 _POLITIQUE_RESEAU = re.compile(r'^/api/django/identity/network-policies/')
+_CONNEXION = re.compile(r'^/api/(django|v1)/token/')
 _MODE_BLOQUANT = 'enforce'
 _MODE_SUR = 'monitor'
 _FOURNISSEURS_SSO = re.compile(r'^/api/django/identity/providers/')
@@ -240,14 +243,18 @@ def _proteger_soi(case):
                 case.path_parameters[nom] = ID_INEXISTANT
 
 
-def _singulier(segment):
-    """``fournisseurs`` -> ``fournisseur``, ``canaux`` -> ``canal``,
-    ``dossiers-import`` -> ``dossiers_import`` : le nom de champ FK que vise une
-    collection (rapproché de ``fk_ids`` et des règles par chemin)."""
-    nom = segment.replace('-', '_')
-    if nom.endswith('aux'):
-        return nom[:-3] + 'al'
-    return nom[:-1] if nom.endswith('s') else nom
+def _singuliers(segment):
+    """``fournisseurs`` -> ``fournisseur``, ``canaux`` -> ``canal`` ;
+    ``categories-equipement`` -> ``categories_equipement``, ``categorie``,
+    ``equipement`` : les noms de champ FK que peut viser une collection
+    (rapprochés de ``fk_ids`` et des règles par chemin), plus ``parent`` : une
+    règle par chemin qui le porte vise sa propre collection."""
+    def seul(nom):
+        if nom.endswith('aux'):
+            return nom[:-3] + 'al'
+        return nom[:-1] if nom.endswith('s') else nom
+    return [seul(segment.replace('-', '_'))] + [
+        seul(mot) for mot in segment.split('-')] + ['parent']
 
 
 def _proteger_references(case):
@@ -264,10 +271,27 @@ def _proteger_references(case):
     if not m or m.group(2) not in (case.path_parameters or {}):
         return
     collection = m.group(1).rstrip('/').rsplit('/', 1)[-1]
-    entree = _entree(_singulier(collection), _table_fk(case.operation.path))
-    valeur = case.path_parameters[m.group(2)]
-    if entree is not None and str(valeur) in {str(i) for i in entree[0]}:
-        case.path_parameters[m.group(2)] = ID_INEXISTANT
+    table = _table_fk(case.operation.path)
+    valeur = str(case.path_parameters[m.group(2)])
+    for nom in _singuliers(collection):
+        entree = table.get(nom) if nom == 'parent' else _entree(nom, table)
+        if entree is not None and valeur in {str(i) for i in entree[0]}:
+            case.path_parameters[m.group(2)] = ID_INEXISTANT
+            return
+
+
+def _proteger_connexion(case):
+    """api-fuzz-full 41773314544, tranche 14 : 214 opérations en « Token fetch
+    failed » (401 jusqu'à la fin du run). Une tentative de connexion avec le nom du
+    compte de fuzz et un mot de passe tiré compte comme un échec, le verrou compte +
+    IP (ASEC4) se referme à chaque re-login : le serveur a raison, le fuzz se
+    verrouille dehors. La route reste fuzzée sous un autre nom."""
+    if case.operation.method.upper() != 'POST' or not _CONNEXION.match(case.operation.path):
+        return
+    corps = case.body
+    if (isinstance(corps, dict) and isinstance(corps.get('username'), str)
+            and corps['username'].strip().lower() == USERNAME.lower()):
+        corps['username'] = USERNAME + '_autre'
 
 
 def _neutraliser_politique_reseau(case):
@@ -1073,6 +1097,7 @@ def before_call(context, case, kwargs):
     _ids_chemin_reels(case)
     _proteger_soi(case)
     _proteger_references(case)
+    _proteger_connexion(case)
     _neutraliser_politique_reseau(case)
     _neutraliser_sso_obligatoire(case)
     _ids_fk_connus(case)

@@ -150,6 +150,7 @@ class CrochetsFuzzTests(unittest.TestCase):
         for chemin, nom, valeur in (
                 ('/api/django/stock/fournisseurs/{id}/', 'id', 2),
                 ('/api/django/stock/fournisseurs/{id}/force-delete/', 'id', '1'),
+                ('/api/django/sav/categories-equipement/{id}/', 'id', 1),
                 ('/api/django/stock/categories/{id}/', 'id', 1)):
             with self.subTest(chemin=chemin):
                 cas = _cas(hooks, 'DELETE', chemin, params={nom: valeur})
@@ -164,6 +165,15 @@ class CrochetsFuzzTests(unittest.TestCase):
                    params={'id': 2})
         hooks.before_call(None, cas, {})
         self.assertEqual(cas.path_parameters['id'], 2)
+
+    def test_connexion_du_compte_de_fuzz_n_est_jamais_tiree(self):
+        for chemin in ('/api/django/token/', '/api/v1/token/'):
+            cas = self._appel(_cas(self.hooks, 'POST', chemin,
+                                   {'username': ' Fuzz_Admin', 'password': 'x'}))
+            self.assertNotEqual(cas.body['username'].strip().lower(), 'fuzz_admin')
+        cas = self._appel(_cas(self.hooks, 'POST', '/api/django/token/',
+                               {'username': 'autre', 'password': 'x'}))
+        self.assertEqual(cas.body['username'], 'autre')
 
     def test_corps_non_dict_ignore(self):
         cas = self._appel(_cas(self.hooks, 'POST',
