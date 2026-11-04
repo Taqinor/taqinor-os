@@ -19,13 +19,22 @@ export default function SlaBadgeCard() {
 
   useEffect(() => {
     let alive = true
-    parametresApi.getSlaSnapshots()
-      .then((res) => {
-        if (!alive) return
-        const snapshots = res.data ?? []
-        setDernier(snapshots[0] ?? false)
-      })
-      .catch(() => { if (alive) setDernier(false) })
+    // NTOBS21 — la société peut masquer le badge (`afficher_badge_sla_dashboard`).
+    // Réglages illisibles (droit, réseau) = défaut = badge affiché.
+    Promise.allSettled([
+      parametresApi.getSlaSnapshots(),
+      Promise.resolve().then(() => parametresApi.getReliabilitySettings()),
+    ]).then(([snap, reglages]) => {
+      if (!alive) return
+      if (reglages.status === 'fulfilled'
+        && reglages.value?.data?.afficher_badge_sla_dashboard === false) {
+        setDernier(false)
+        return
+      }
+      if (snap.status !== 'fulfilled') { setDernier(false); return }
+      const snapshots = snap.value?.data ?? []
+      setDernier(snapshots[0] ?? false)
+    })
     return () => { alive = false }
   }, [])
 
