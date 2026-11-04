@@ -670,7 +670,7 @@ describe('WAUD46 WAUD64 WAUD65 — ruban, cibles tactiles, tuiles', () => {
   it('WAUD46 : ruban sans urgence, sur une ligne, décret intact', () => {
     const ui = lireSrc2('i18n/ui.ts');
     expect(ui).not.toMatch(/régularisez maintenant|regularize now|سوِّ وضعك الآن/);
-    expect(ui).toContain('Décret 2-25-100 en vigueur depuis le 9 juin 2026');
+    expect(ui).toContain('Décret 2-25-100 en vigueur — installation'); // WAUD18-b (D-WAUD-4=a) : sans date
     expect(ui).toContain('installation existante ? Nous montons votre dossier de régularisation →');
     const r = lireSrc2('components/Article33Ribbon.astro');
     expect(r).toContain('py-1');

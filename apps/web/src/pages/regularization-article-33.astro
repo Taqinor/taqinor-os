@@ -49,7 +49,7 @@ const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Article',
   headline: 'Régularisation Article 33 — installations solaires existantes',
-  description: 'Le décret d’application 2-25-100 est en vigueur depuis le 9 juin 2026. L’Article 33 de la loi 82-21 prévoit un délai de 18 mois pour régulariser les installations solaires existantes ; à déposer sans attendre.',
+  description: 'Le décret d’application 2-25-100 est en vigueur. L’Article 33 de la loi 82-21 encadre la régularisation des installations solaires existantes ; nous montons le dossier avec vous.',
   about: { '@type': 'Thing', name: 'Régularisation loi 82-21 — Article 33' },
   author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
   publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
@@ -78,7 +78,7 @@ import RegularisationDossier from '../components/blocs/RegularisationDossier.ast
 
 <Layout
   title="Régularisation Article 33 — installations solaires existantes | Taqinor"
-  description="Le décret d'application 2-25-100 est en vigueur depuis le 9 juin 2026. L'Article 33 de la loi 82-21 prévoit un délai de 18 mois pour régulariser les installations solaires existantes : procédure en 5 étapes et prise en charge complète du dossier."
+  description="Le décret d'application 2-25-100 est en vigueur. L'Article 33 de la loi 82-21 encadre la régularisation des installations solaires existantes : procédure en 5 étapes et prise en charge complète du dossier."
   ogSlug="article-33"
 >
   <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
@@ -94,8 +94,7 @@ import RegularisationDossier from '../components/blocs/RegularisationDossier.ast
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">Loi 82-21 — Article 33</p>
         <h1 class="display v2-page-title cine-in cine-in-1 mt-5 max-w-3xl">Votre installation solaire existe déjà ? Régularisez-la maintenant.</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
-          Le décret d'application 2-25-100, publié au Bulletin Officiel le 9 mars 2026, est entré en
-          vigueur le 9 juin 2026. La décision 04/26 de l'ANRE fixe le tarif d'excédent pour les
+          Le décret d'application 2-25-100 est en vigueur. La décision 04/26 de l'ANRE fixe le tarif d'excédent pour les
           installations raccordées en MT/HT/THT ; en basse tension, la revente du surplus n'est pas
           ouverte, même à 11 kW ou plus sous accord de raccordement. Le régime de la loi 82-21 vaut
           pour toutes les installations
@@ -112,8 +111,7 @@ import RegularisationDossier from '../components/blocs/RegularisationDossier.ast
         {/* CIW413 — mêmes phrases tarifaires que CIW412 (décision ANRE 04/26 art. 6-7 ; décret
             2.25.100 art. 12 ; D-CIQ-4) : le tarif vise la TENSION, la basse tension n'est pas ouverte. */}
         <Loi8221OuEnEstLaLoi>
-          <Fragment slot="vigueur">Le décret d'application <strong class="text-white">2-25-100</strong> (BO du 9 mars 2026, en
-              vigueur depuis le 9 juin 2026) et la décision ANRE <strong class="text-white">04/26</strong>.
+          <Fragment slot="vigueur">Le décret d'application <strong class="text-white">2-25-100</strong> (en vigueur) et la décision ANRE <strong class="text-white">04/26</strong>.
               Tarif d'excédent ANRE (décision 04/26) : <strong class="text-white">0,18 DH/kWh hors pointe,
               0,21 DH/kWh en pointe, hors taxes</strong>, pour les installations raccordées en
               <strong class="text-white"> moyenne, haute ou très haute tension (MT/HT/THT)</strong>,
@@ -130,12 +128,10 @@ import RegularisationDossier from '../components/blocs/RegularisationDossier.ast
         <p class="tech-label v2-kicker rule-brass text-lune">Le texte</p>
         <h2 class="display v2-section-title mt-4 text-white">Ce que dit l'Article 33</h2>
         <p class="v2-lead mt-5 text-lune-soft">
-          L'Article 33 de la loi 82-21 dispose que les installations existantes doivent être
-          régularisées « dans un délai de dix-huit (18) mois à compter de la date d'entrée en vigueur
-          de la présente loi » (loi 82-21, art. 33), soit <strong class="fig lum text-xl">18 mois</strong>.
-          Le point de départ de ce délai est à confirmer auprès des services de l'énergie : déposez
-          sans attendre. Une fois le dossier régularisé, l'installation est en règle au regard de la
-          loi ; sans cette démarche, elle reste en situation irrégulière.
+          L'Article 33 de la loi 82-21 encadre la régularisation des installations déjà en place ;
+          son texte exact est cité sur notre <a href="/loi-82-21/" class="border-b border-brass-300/60 font-semibold text-brass-300">page loi 82-21</a>.
+          Une fois le dossier régularisé, l'installation est en règle au regard de la loi, comme une
+          installation neuve.
         </p>
       </div>
 

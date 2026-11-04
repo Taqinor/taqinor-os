@@ -1,5 +1,5 @@
 ---
-title: "Loi 82-21 : ce qui change depuis le 9 juin 2026"
+title: "Loi 82-21 : ce qui change pour l'autoproduction"
 description: "Autoproduction au Maroc : 3 régimes, plafond surplus 20 %, net-billing (rachat 0,18–0,21 DH/kWh en MT/HT ; tarif BT résidentiel non encore publié) — la valeur est dans l'autoconsommation."
 pubDate: 2026-06-21
 updatedDate: 2026-07-03
@@ -14,9 +14,8 @@ draft: false
 Pendant des années, j'ai dû répondre la même chose aux clients qui me parlaient de
 revendre leur surplus : « la loi existe, mais elle n'est pas applicable ». La loi 82-21
 était sur le papier depuis 2022 et restait lettre morte, faute de textes d'application.
-Ce n'est plus le cas. Le **Décret 2-25-100**, publié au Bulletin Officiel le **9 mars 2026**,
-a comblé ce vide et la **décision de l'ANRE** a fixé les tarifs de rachat du surplus. Le dispositif
-est **en vigueur depuis le 9 juin 2026**.
+Ce n'est plus le cas. Le **Décret 2-25-100** a comblé ce vide et la **décision de l'ANRE** a fixé
+les tarifs de rachat du surplus. Le dispositif est **en vigueur**.
 
 Autrement dit, ce n'est plus une promesse pour plus tard. Les règles s'appliquent
 aujourd'hui, aux installations neuves comme à celles déjà posées.
@@ -104,17 +103,14 @@ j'intègre dans chaque étude sérieuse.
 
 ---
 
-## Article 33 — la fenêtre de régularisation de 18 mois
+## Article 33 — la régularisation des installations existantes
 
-L'Article 33 de la loi 82-21 prévoit explicitement une **fenêtre de régularisation de
-18 mois** à compter de l'entrée en vigueur du dispositif pour les installations déjà
-en place. La date de déclenchement opérationnelle est le **9 juin 2026** (entrée en
-vigueur du Décret 2-25-100).
+L'Article 33 de la loi 82-21 encadre la **régularisation des installations déjà en place**
+(son texte exact est cité sur notre [page loi 82-21](/loi-82-21/)).
 
-Ce délai est une opportunité, pas une menace : les propriétaires d'une installation
-posée avant juin 2026 — souvent dans un vide réglementaire — ont le temps de déposer
-leur déclaration ou leur demande d'accord de raccordement sans risquer immédiatement
-les pénalités prévues aux articles 28 et 29.
+C'est une opportunité : les propriétaires d'une installation posée avant le texte — souvent
+dans un vide réglementaire — peuvent déposer leur déclaration ou leur demande d'accord de
+raccordement et rejoindre le cadre légal comme une installation neuve.
 
 ---
 

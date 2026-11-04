@@ -1,6 +1,6 @@
 /**
  * Régimes de la loi 82-21 (autoproduction d'énergie électrique),
- * décret d'application 2-25-100 — en vigueur depuis le 9 juin 2026.
+ * décret d'application 2-25-100 — en vigueur (aucune date publiée : D-WAUD-4=a).
  *
  *  - déclaration : < 11 kW en basse tension, ou installation non raccordée
  *    au réseau (site isolé) ;

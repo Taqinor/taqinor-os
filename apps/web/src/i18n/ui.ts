@@ -113,7 +113,7 @@ export const ui = {
     'roof.autre': 'Autre',
     // Ruban Article 33
     'ribbon.badge': 'Loi 82-21',
-    'ribbon.text': 'Décret 2-25-100 en vigueur depuis le 9 juin 2026 — installation existante ? Nous montons votre dossier de régularisation →',
+    'ribbon.text': 'Décret 2-25-100 en vigueur — installation existante ? Nous montons votre dossier de régularisation →',
     // Bande CTA finale + CTA collant + fil d'Ariane
     'cta.eyebrow': 'Étude gratuite',
     'cta.title': 'Une étude technique gratuite, sans engagement.',
@@ -232,7 +232,7 @@ export const ui = {
     'roof.toit_plat': 'Flat roof',
     'roof.autre': 'Other',
     'ribbon.badge': 'Law 82-21',
-    'ribbon.text': 'Decree 2-25-100 in force since 9 June 2026 — existing installation? We prepare your regularization file →',
+    'ribbon.text': 'Decree 2-25-100 in force — existing installation? We prepare your regularization file →',
     'cta.eyebrow': 'Free study',
     'cta.title': 'A free technical study, no commitment.',
     // WJ36 — THE primary CTA label, repeated verbatim on every brass surface.
@@ -349,7 +349,7 @@ export const ui = {
     'roof.toit_plat': 'سطح مستوٍ',
     'roof.autre': 'أخرى',
     'ribbon.badge': 'القانون 82-21',
-    'ribbon.text': 'المرسوم 2-25-100 ساري منذ 9 يونيو 2026 — تركيبة قائمة؟ نُعدّ ملف تسويتها →',
+    'ribbon.text': 'المرسوم 2-25-100 ساري المفعول — تركيبة قائمة؟ نُعدّ ملف تسويتها →',
     'cta.eyebrow': 'دراسة مجانية',
     'cta.title': 'دراسة تقنية مجانية، بدون أي التزام.',
     // WJ36 — libellé du CTA principal (verbatim sur toutes les surfaces laiton).
