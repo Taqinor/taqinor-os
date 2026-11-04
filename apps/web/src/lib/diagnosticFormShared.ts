@@ -80,7 +80,7 @@ const TRACK_KEYS = ['fbclid', 'gclid', 'gbraid', 'wbraid', 'utm_source', 'utm_me
  *  défensive ; seules les clés présentes sont rendues. */
 export function lireTrackingCapte(): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const k of TRACK_KEYS) {
+  for (const k of [...TRACK_KEYS, 'landingPath', 'referrerHost']) {
     try {
       const v = sessionStorage.getItem('tq_' + k);
       if (v) out[k] = v;

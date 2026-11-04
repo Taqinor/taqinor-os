@@ -43,7 +43,7 @@ export const PERSISTED_CHECK_FIELDS = [
 ];
 export const PERSIST_ON_INPUT_IDS = [...PERSISTED_TEXT_FIELDS, ...PERSISTED_CHECK_FIELDS];
 
-export const TRACK_KEYS = ['fbclid', 'gclid', 'gbraid', 'wbraid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'] as const;
+export const TRACK_KEYS = ['fbclid', 'gclid', 'gbraid', 'wbraid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'landingPath', 'referrerHost'] as const;
 
 export type EtapeFunnel = 'toit' | 'facture' | 'estimation' | 'contact';
 export type ActionFunnel = 'reached' | 'abandoned' | 'viewed' | 'callback_requested';

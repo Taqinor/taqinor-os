@@ -117,3 +117,63 @@ describe('persistance — clés de suivi et jetons', () => {
     expect(() => ctx.crochets.appeler('inconnu')).toThrow('Crochet non installé : inconnu');
   });
 });
+
+// WAUD6 (D-WAUD-2=a) — origine gardée 90 jours SANS consentement, jointe au lead.
+import { capturerOrigine, DUREE_ORIGINE_MS, hoteReferent, type FenetreOrigine } from '../src/lib/origine';
+import { validateLead } from '../src/lib/lead';
+
+function fenetre(search: string, referrer = '', chemin = '/devis/mon-toit'): FenetreOrigine {
+  return {
+    location: { search, pathname: chemin, hostname: 'taqinor.ma' },
+    document: { referrer },
+    localStorage: window.localStorage,
+    sessionStorage: window.sessionStorage,
+  };
+}
+
+describe('WAUD6 — origine du visiteur, 90 jours, sans clic Accepter', () => {
+  beforeEach(() => { localStorage.clear(); sessionStorage.clear(); });
+
+  it('arrivée sans consentement : la campagne atteint le tracking du tunnel et le lead validé', () => {
+    expect(localStorage.getItem('tq_consent')).toBeNull();
+    capturerOrigine(fenetre('?utm_source=meta&utm_campaign=ete&fbclid=ABC', 'https://chatgpt.com/c/x?q=secret'));
+    const t = readTrackingParams();
+    expect(t).toMatchObject({ utm_source: 'meta', utm_campaign: 'ete', fbclid: 'ABC', landingPath: '/devis/mon-toit', referrerHost: 'chatgpt.com' });
+    const r = validateLead({ fullName: 'Karim Benali', phone: '0612345678', consent: true, quickCallback: true, ...t });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.lead.landingPath).toBe('/devis/mon-toit');
+    expect(r.lead.referrerHost).toBe('chatgpt.com');
+    expect(r.lead.fbclid).toBe('ABC');
+  });
+
+  it('retour J+3 en accès direct : la campagne est conservée (nouvel onglet)', () => {
+    const t0 = 1_800_000_000_000;
+    capturerOrigine(fenetre('?utm_source=google&gclid=G1'), t0);
+    sessionStorage.clear();
+    const o = capturerOrigine(fenetre('', '', '/'), t0 + 3 * 86_400_000);
+    expect(o.utm_source).toBe('google');
+    expect(sessionStorage.getItem('tq_gclid')).toBe('G1');
+  });
+
+  it('au-delà de 90 jours : oubliée, l arrivée courante repart de zéro', () => {
+    const t0 = 1_800_000_000_000;
+    capturerOrigine(fenetre('?utm_source=google'), t0);
+    sessionStorage.clear();
+    const o = capturerOrigine(fenetre('', '', '/prix'), t0 + DUREE_ORIGINE_MS + 1);
+    expect(o.utm_source).toBeUndefined();
+    expect(o.landingPath).toBe('/prix');
+  });
+
+  it('le référent est l hôte externe seul : jamais le même site, jamais une valeur douteuse', () => {
+    expect(hoteReferent('https://www.taqinor.ma/prix', 'taqinor.ma')).toBe('');
+    expect(hoteReferent('', 'taqinor.ma')).toBe('');
+    expect(hoteReferent('pas une url', 'taqinor.ma')).toBe('');
+    expect(hoteReferent('https://www.google.com/search?q=x', 'taqinor.ma')).toBe('www.google.com');
+  });
+
+  it('stockage indisponible : aucune exception', () => {
+    const casse = { getItem() { throw new Error('x'); }, setItem() { throw new Error('x'); } };
+    expect(() => capturerOrigine({ ...fenetre('?utm_source=a'), localStorage: casse, sessionStorage: casse })).not.toThrow();
+  });
+});
