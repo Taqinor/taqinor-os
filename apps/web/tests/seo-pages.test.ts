@@ -611,6 +611,20 @@ describe('WAUD70 (reste) — llms.txt trilingue ; toute URL de llms.txt / RSS / 
     expect(urls.length).toBeGreaterThan(50);
     expect(urls.map(sert200).filter(Boolean)).toEqual([]);
   });
+  it('llms.txt liste TOUTES les pages FR indexables du build (19 → 81)', () => {
+    const dans = new Set([...lire('public/llms.txt').matchAll(/\((https:\/\/taqinor\.ma[^)\s]*)\)/g)].map((m) => decodeURIComponent(new URL(m[1]).pathname)));
+    const fr: string[] = [];
+    const marcher = (dir: string, rel: string) => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        if (e.isDirectory()) {
+          if (!['_astro', 'en', 'ar', 'proposition', 'internal', 'preview', 'embed'].includes(e.name) || rel !== '') marcher(`${dir}${e.name}/`, `${rel}/${e.name}`);
+        } else if (e.name === 'index.html' && !/<meta name="robots" content="[^"]*noindex/.test(readFileSync(`${dir}${e.name}`, 'utf-8'))) fr.push(`${rel}/`);
+      }
+    };
+    marcher(dist, '');
+    expect(fr.length).toBeGreaterThan(70);
+    expect(fr.filter((p) => !dans.has(p))).toEqual([]);
+  });
   it('100 % des URL du flux RSS répondent 200 sans redirection sur le build', () => {
     const rss = readFileSync(`${dist}rss.xml`, 'utf-8');
     const urls = [...rss.matchAll(/(?:<link>|<guid[^>]*>|href=")(https:\/\/taqinor\.ma[^<"]*)/g)].map((m) => m[1]);

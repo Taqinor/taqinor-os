@@ -30,7 +30,86 @@
 - [Subvention et aides](https://taqinor.ma/subvention-panneaux-solaires-maroc/): ce qui existe (agricole FDA, tarif ANRE MT/HT), aucune aide pour un particulier.
 - [Kit solaire ou sur mesure](https://taqinor.ma/kit-solaire-maroc/): ce qu'un kit n'inclut pas.
 - [Lire et comparer deux devis](https://taqinor.ma/devis-panneaux-solaires-maroc/): tableau d'inclusions ligne à ligne.
+- [Choisir un installateur : 10 questions avant de signer](https://taqinor.ma/ressources/10-questions-avant-de-signer/): les questions à poser avant de signer un devis.
 - [Sitemap](https://taqinor.ma/sitemap.xml): index complet des pages publiques.
+
+## Toutes les pages (FR)
+
+### Guides
+
+- [Batterie solaire : LFP vs GEL/plomb (et NMC)](https://taqinor.ma/guides/batterie-lithium-ou-gel/): guide pratique.
+- [Combien de panneaux solaires pour ma maison ? La méthode kWc](https://taqinor.ma/guides/combien-de-panneaux-pour-ma-maison/): guide pratique.
+- [Garder l'électricité pendant les coupures : EPS, onduleur hybride et batterie](https://taqinor.ma/guides/electricite-pendant-les-coupures/): guide pratique.
+- [Entretien et durée de vie des panneaux solaires au Maroc](https://taqinor.ma/guides/entretien-et-duree-de-vie-des-panneaux/): guide pratique.
+- [Faut-il des batteries pour son installation solaire ?](https://taqinor.ma/guides/faut-il-des-batteries/): guide pratique.
+- [Loi 82-21 expliquée simplement — les 3 régimes](https://taqinor.ma/guides/loi-82-21-expliquee/): guide pratique.
+- [Mon toit peut-il supporter des panneaux solaires ? Poids au m²](https://taqinor.ma/guides/mon-toit-peut-il-supporter-des-panneaux/): guide pratique.
+- [Monocristallin ou polycristallin ? String ou micro-onduleurs ?](https://taqinor.ma/guides/monocristallin-ou-polycristallin/): guide pratique.
+- [On-grid, off-grid ou hybride : que se passe-t-il pendant une coupure ?](https://taqinor.ma/guides/on-grid-off-grid-ou-hybride/): guide pratique.
+- [Onduleur hybride ou onduleur réseau ?](https://taqinor.ma/guides/onduleur-hybride-ou-reseau/): guide pratique.
+- [Orientation, inclinaison et ombrage : maximiser la production sur un toit marocain](https://taqinor.ma/guides/orientation-inclinaison-ombrage/): guide pratique.
+- [Quelle taille de batterie (kWh) pour ma maison ? Stocker ou revendre ?](https://taqinor.ma/guides/quelle-taille-de-batterie/): guide pratique.
+
+### Blog
+
+- [Quelle batterie LFP choisir : la gamme Dyness, et Deye vs Huawei pour le secours](https://taqinor.ma/blog/batterie-lfp-dyness-deye-huawei/): billet du blog.
+- [Batterie solaire : stocker ou revendre ? L'économie de l'autoconsommation au Maroc](https://taqinor.ma/blog/batterie-stocker-ou-revendre-maroc/): billet du blog.
+- [Le blog Taqinor : à quoi il sert](https://taqinor.ma/blog/bienvenue-blog-taqinor/): billet du blog.
+- [Loi 82-21 : ce qui change pour l'autoproduction](https://taqinor.ma/blog/loi-82-21-autoproduction-2026/): billet du blog.
+- [Prix du solaire au Maroc en 2026 : ce qui compose la facture](https://taqinor.ma/blog/prix-installation-solaire-maroc-2026/): billet du blog.
+- [Recharger sa voiture électrique au solaire : combien ça coûte vraiment au Maroc ?](https://taqinor.ma/blog/recharger-voiture-electrique-solaire-cout-maroc/): billet du blog.
+- [Rentabilité et retour sur investissement du solaire par ville marocaine](https://taqinor.ma/blog/rentabilite-solaire-par-ville-maroc/): billet du blog.
+
+### Villes
+
+- [Installation de panneaux solaires à Agadir — étude, pose et loi 82-21](https://taqinor.ma/installation-solaire-agadir/): page ville.
+- [Installation de panneaux solaires à Casablanca — étude, pose et loi 82-21](https://taqinor.ma/installation-solaire-casablanca/): page ville.
+- [Installation de panneaux solaires à Marrakech — étude, pose et loi 82-21](https://taqinor.ma/installation-solaire-marrakech/): page ville.
+- [Installation de panneaux solaires à Rabat — étude, pose et loi 82-21](https://taqinor.ma/installation-solaire-rabat/): page ville.
+- [Installation de panneaux solaires à Tanger — étude, pose et loi 82-21](https://taqinor.ma/installation-solaire-tanger/): page ville.
+
+### Réalisations
+
+- [Nos réalisations solaires au Maroc — installations suivies](https://taqinor.ma/realisations/): liste des installations posées.
+- [Installation solaire 11,44 kWc à Bouskoura — villa mise en service en juillet 2026](https://taqinor.ma/realisations/bouskoura-villa-2026/): étude de cas d’une installation réelle.
+- [Installation solaire 11,36 kWc à Casablanca (réf. 400)](https://taqinor.ma/realisations/casablanca-11-kwc/): étude de cas d’une installation réelle.
+- [Installation solaire 5,68 kWc à Casablanca (réf. 134)](https://taqinor.ma/realisations/casablanca-6-kwc/): étude de cas d’une installation réelle.
+- [Installation solaire 17,04 kWc à El Jadida (réf. 468)](https://taqinor.ma/realisations/el-jadida-17-kwc/): étude de cas d’une installation réelle.
+- [Installation solaire 5,68 kWc à El Jadida (réf. 236)](https://taqinor.ma/realisations/el-jadida-6-kwc/): étude de cas d’une installation réelle.
+- [Installation solaire 3,72 kWc à Nouaceur — 6 panneaux JA Solar (réf. NC-10/25)](https://taqinor.ma/realisations/nouaceur-4-kwc/): étude de cas d’une installation réelle.
+
+### Produits
+
+- [Fiches techniques du matériel posé — panneaux, onduleurs, batteries](https://taqinor.ma/produits/): index des fiches techniques.
+- [Accessoires de pose — fiche technique](https://taqinor.ma/produits/accessoires-pose/): fiche technique du matériel posé.
+- [Batterie Dyness DL5.0C — fiche technique](https://taqinor.ma/produits/batterie-dyness/): fiche technique du matériel posé.
+- [Câblage — fiche technique](https://taqinor.ma/produits/cablage/): fiche technique du matériel posé.
+- [Panneau Canadian Solar 710 Wc — fiche technique](https://taqinor.ma/produits/canadian-solar-710/): fiche technique du matériel posé.
+- [Panneau Jinko 710 Wc — fiche technique](https://taqinor.ma/produits/jinko-710/): fiche technique du matériel posé.
+- [Onduleur hybride Deye — fiche technique](https://taqinor.ma/produits/onduleur-deye-hybride/): fiche technique du matériel posé.
+- [Onduleur réseau Huawei SUN2000 — fiche technique](https://taqinor.ma/produits/onduleur-huawei-reseau/): fiche technique du matériel posé.
+- [Poste MT et raccordement — fiche technique](https://taqinor.ma/produits/poste-mt-raccordement/): fiche technique du matériel posé.
+- [Protection AC (côté réseau) — fiche technique](https://taqinor.ma/produits/protection-ac/): fiche technique du matériel posé.
+- [Protection DC (côté panneaux) — fiche technique](https://taqinor.ma/produits/protection-dc/): fiche technique du matériel posé.
+- [Smart Meter Huawei — fiche technique](https://taqinor.ma/produits/smart-meter-huawei/): fiche technique du matériel posé.
+- [Socles de lestage — fiche technique](https://taqinor.ma/produits/socles-lestage/): fiche technique du matériel posé.
+- [Structure de fixation — fiche technique](https://taqinor.ma/produits/structure-fixation/): fiche technique du matériel posé.
+- [Structures pour grandes installations — fiche technique](https://taqinor.ma/produits/structures-grandes-installations/): fiche technique du matériel posé.
+- [Supervision et comptage (grands projets) — fiche technique](https://taqinor.ma/produits/supervision-comptage/): fiche technique du matériel posé.
+- [Dongle WiFi Huawei — fiche technique](https://taqinor.ma/produits/wifi-dongle-huawei/): fiche technique du matériel posé.
+
+### Autres
+
+- [Devis panneaux solaires au Maroc — étude gratuite sur votre facture](https://taqinor.ma/devis/mon-toit/): voir la page.
+- [Productible solaire au Maroc par ville, inclinaison et orientation](https://taqinor.ma/ensoleillement-maroc/): voir la page.
+- [Impact Taqinor : nos chiffres réels, cumulés et vérifiables](https://taqinor.ma/impact-taqinor/): voir la page.
+- [Mentions légales](https://taqinor.ma/mentions-legales/): voir la page.
+- [Méthodologie de l'estimation solaire — comment nous calculons](https://taqinor.ma/methodologie-estimation/): voir la page.
+- [Parrainage Taqinor — parrainez un proche, soyez récompensé](https://taqinor.ma/parrainage/): voir la page.
+- [Politique de confidentialité](https://taqinor.ma/politique-de-confidentialite/): voir la page.
+- [Prix des panneaux solaires au Maroc : fourchettes par puissance (kWc)](https://taqinor.ma/prix-panneaux-solaires-maroc/): voir la page.
+- [Production solaire suivie — le cumul réel de notre parc](https://taqinor.ma/production-mesuree/): voir la page.
+- [Recharger sa voiture électrique au solaire au Maroc : panneaux, borne, coût](https://taqinor.ma/recharge-voiture-electrique-solaire/): voir la page.
 
 ## English (key pages, /en/)
 
@@ -83,4 +162,3 @@
 - `/proposition/`, `/internal/` et `/preview/` sont des zones privées
   (propositions client tokenisées, outils internes, prévisualisations) — non
   destinées à l'indexation ni à la citation.
-- [Choisir un installateur : 10 questions avant de signer](https://taqinor.ma/ressources/10-questions-avant-de-signer/)
