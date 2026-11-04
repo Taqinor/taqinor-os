@@ -5,8 +5,8 @@
  * Figures issues de CONTENT_SEO_NOTES.md §7 (hybrides / EPS).
  */
 import Layout from '../../layouts/Layout.astro';
-import V2Enhance from '../../components/V2Enhance.astro';
-import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import GuideV2 from '../../components/blocs/GuideV2.astro';
+import GuideEntete from '../../components/blocs/GuideEntete.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
@@ -77,12 +77,9 @@ const jsonLd = {
   description="Coupure de courant et solaire : comment fonctionnent les sorties EPS d'un onduleur hybride (Deye, Huawei), pourquoi le secours n'est pas du off-grid, et pourquoi un on-grid standard s'éteint toujours pendant une panne."
   ogSlug="guides"
 >
-  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
-  {/* W376 — reading progress bar (see global.css .reading-bar) */}
-  <div class="reading-bar" aria-hidden="true"></div>
+  <GuideEntete jsonLd={jsonLd} />
   <div class="v2">
-    <V2Enhance />
-    <Article33Ribbon />
+    <GuideV2 />
 
     <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Guides', href: '/guides/' }, { label: 'Électricité pendant les coupures' }]} />
 
