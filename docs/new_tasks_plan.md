@@ -87,6 +87,7 @@ plans existants (PLAN/PLAN2/FRONTEND_GAP/DONE : 1 982 tâches déjà connues —
 ## DONE LOG (les runs de build ajoutent une ligne datée par tâche terminée)
 - 2026-11-04 NTDATA10 — `MetricDefinitionViewSet` (`semantic/metriques/`, IsResponsableOrAdmin, société forcée, 409 sur clé dupliquée, DELETE = désactivation, version NTDATA9 signée de l'acteur) + `GET semantic/metriques/<cle>/valeur/` (résolveur NTDATA8). Blocage NTDATA7/8 levé (couche livrée). Tests `apps/semantic/tests_ntdata10_api.py`.
 - 2026-11-04 NTDATA12 — `GET semantic/metriques/pour-agent/` (IsAnyRole, clé+libellé+définition+unité, actives, société de l'appelant, aucune recette) + outil LangChain `metrique_gouvernee` (`backend/fastapi_ia/app/services/metriques_gouvernees.py`, JWT relayé, valeur lue par `metriques/<cle>/valeur/`, métriques de marge seulement avec le droit L17) branché dans `_run_agent`. ARCH : nouvel outil de LECTURE de l'agent IA (hors registre d'actions). Tests `backend/fastapi_ia/tests/test_metriques_gouvernees.py` (9 OK en local) + `tests_ntdata10_api.py`.
+- 2026-11-04 NTDATA35 — `manage.py seed_dashboards_modeles` (`apps/semantic/dashboards_modeles.py`) : 3 `core.Dashboard` partagés (Direction ca_ht/marge_brute/pipeline ; Commerce taux_conversion/pipeline/panier_moyen ; Finance dso/ca_ttc/marge_brute), widgets `type: metrique` par clé, marqueur `layout.modele`, idempotent, jamais réécrits. À lancer après `seed_metriques`. Aucune métrique « relances »/« encours » inventée ; dso/marge_brute affichent « module désactivé » tant que compta est parqué (SOLMVP). Tests dans `tests_ntdata11_seed.py`.
 
 ## SECTION A — Plateforme & confiance enterprise
 
@@ -163,7 +164,7 @@ Ce groupe ajoute (sans jamais reconstruire l'existant) : (1) **couverture datase
 
 #### P2 — Dashboard builder self-service : filtres globaux & drill-down
 
-- [ ] NTDATA35 — [BLOCKED: attend NTDATA7/8 — couche sémantique absente, vérifié 2026-08-31] **Bibliothèque de dashboards modèles** : commande/seed `seed_dashboards_modeles` déposant 3 dashboards partagés prêts-à-l'emploi (Direction : CA/marge/pipeline ; Commerce : conversion/relances ; Finance : DSO/encours), construits sur les métriques nommées. Idempotent, ne touche pas les dashboards édités. Critère : une nouvelle société obtient 3 dashboards utilisables sans configuration. (@lane: apps/ventes) (ROUTINE) «model: haiku»
+- [x] NTDATA35 — **Bibliothèque de dashboards modèles** : commande/seed `seed_dashboards_modeles` déposant 3 dashboards partagés prêts-à-l'emploi (Direction : CA/marge/pipeline ; Commerce : conversion/relances ; Finance : DSO/encours), construits sur les métriques nommées. Idempotent, ne touche pas les dashboards édités. Critère : une nouvelle société obtient 3 dashboards utilisables sans configuration. (@lane: apps/ventes) (ROUTINE) «model: haiku»
 
 #### P3 — Alertes anomalie/tendance, lignage & benchmarks inter-tenant (délices)
 

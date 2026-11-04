@@ -262,3 +262,64 @@ class SeedMetriquesTests(TestCase):
             self.company, None, 'valeur_pipeline_ponderee')
         self.assertEqual(res['lignes'], [])
         self.assertIsNotNone(res['valeur'])
+
+
+class SeedDashboardsModelesTests(TestCase):
+    """NTDATA35 — 3 dashboards modèles partagés, bâtis sur les métriques
+    nommées ; idempotent ; un modèle édité n'est jamais réécrit."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = Company.objects.create(nom='NTDATA35 SA',
+                                             slug='ntdata35-sa')
+
+    def _seed(self):
+        call_command('seed_dashboards_modeles', company=self.company.id,
+                     stdout=StringIO())
+
+    def _modeles(self):
+        from core.models import Dashboard
+        return Dashboard.objects.filter(company=self.company,
+                                        layout__has_key='modele')
+
+    def test_trois_dashboards_partages_sur_metriques_coeur(self):
+        from apps.semantic.dashboards_modeles import DASHBOARDS_MODELES
+        self._seed()
+        dashboards = list(self._modeles())
+        self.assertEqual(len(dashboards), 3)
+        self.assertEqual({d.layout['modele'] for d in dashboards},
+                         {'direction', 'commerce', 'finance'})
+        for dashboard in dashboards:
+            self.assertTrue(dashboard.partage)
+            self.assertIsNone(dashboard.owner_id)
+            for widget in dashboard.layout['widgets']:
+                self.assertEqual(widget['type'], 'metrique')
+                # Aucune métrique inventée : que des clés cœur NTDATA11.
+                self.assertIn(widget['metrique'], CLES_ATTENDUES)
+        self.assertEqual(len(DASHBOARDS_MODELES), 3)
+
+    def test_idempotent_et_n_ecrase_pas_un_modele_edite(self):
+        self._seed()
+        direction = self._modeles().get(layout__modele='direction')
+        direction.titre = 'Ma direction'
+        direction.layout = dict(direction.layout, widgets=[])
+        direction.save()
+        self._seed()
+        self.assertEqual(self._modeles().count(), 3)
+        direction.refresh_from_db()
+        self.assertEqual(direction.titre, 'Ma direction')
+        self.assertEqual(direction.layout['widgets'], [])
+
+    def test_widgets_resolus_par_la_couche_semantique(self):
+        """Une société semée (métriques + modèles) exécute ses dashboards : le
+        pipeline pondéré rend une valeur, jamais une spec manquante."""
+        from core.dashboard_data import executer_dashboard
+        call_command('seed_metriques', company=self.company.id,
+                     stdout=StringIO())
+        self._seed()
+        commerce = self._modeles().get(layout__modele='commerce')
+        resultat = executer_dashboard(commerce, self.company, None)
+        pipeline = [w for w in resultat['widgets']
+                    if w['metrique'] == 'valeur_pipeline_ponderee'][0]
+        self.assertNotIn('erreur', pipeline)
+        self.assertIsNotNone(pipeline['valeur'])
