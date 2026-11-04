@@ -156,3 +156,27 @@ class MarqueurDemarrageTests(TestCase):
             resp = health_ready(req)
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data['dernier_demarrage'], entree)
+
+    def test_dernier_tri_problemes_relu_et_cle_alignee(self):
+        # BPQ6 : la cle est celle que pose le resume (pincee cote reporting).
+        client = mock.Mock()
+        client.get.return_value = '2026-11-04T07:07:00+01:00'
+        with mock.patch.object(health, '_client_demarrages',
+                               return_value=client):
+            self.assertEqual(health.dernier_tri_problemes(),
+                             '2026-11-04T07:07:00+01:00')
+        client.get.assert_called_once_with('erp:dernier_tri_problemes')
+        with mock.patch.object(health, '_client_demarrages',
+                               side_effect=OSError('redis down')):
+            self.assertIsNone(health.dernier_tri_problemes())
+
+    def test_health_ready_expose_dernier_tri_problemes(self):
+        from core.views import health_ready
+        req = APIRequestFactory().get('/api/django/core/health/ready/')
+        with mock.patch.object(health, 'dernier_demarrage',
+                               return_value=None), \
+                mock.patch.object(health, 'dernier_tri_problemes',
+                                  return_value='2026-11-04T07:07:00+01:00'):
+            resp = health_ready(req)
+        self.assertEqual(resp.data['dernier_tri_problemes'],
+                         '2026-11-04T07:07:00+01:00')

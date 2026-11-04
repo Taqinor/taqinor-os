@@ -438,3 +438,20 @@ def dernier_demarrage():
     except Exception:  # noqa: BLE001 - best-effort (D-ENF22-BLE001)
         logger.debug("dernier demarrage : Redis indisponible", exc_info=True)
         return None
+
+
+# --- BPQ6 : battement de coeur du tri quotidien des problemes -------------------
+#
+# Le endpoint de resume (reporting, BPQ4) pose cette cle a chaque passe `tri=1`.
+# ``core`` ne depend de rien : la cle est dupliquee ici, un test garde les deux.
+
+DERNIER_TRI_CLE = 'erp:dernier_tri_problemes'
+
+
+def dernier_tri_problemes():
+    """ISO 8601 du dernier tri quotidien, ou ``None`` (jamais passe / Redis absent)."""
+    try:
+        return _client_demarrages().get(DERNIER_TRI_CLE) or None
+    except Exception:  # noqa: BLE001 - best-effort (D-ENF22-BLE001)
+        logger.debug("dernier tri : Redis indisponible", exc_info=True)
+        return None
