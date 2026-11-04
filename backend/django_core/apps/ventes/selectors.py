@@ -1804,6 +1804,7 @@ from .selectors_stock import (  # noqa: E402 — ré-export (SPL147) (D-ENF22)
     classer_produit_nom,
     devis_utilisant_produit,
 )
+from .selectors_sorties_vente import sorties_de_la_vente  # noqa: E402,F401 — ré-export (ASTK257) (D-ENF22)
 
 # VNT23 — l'état de la vente se lit par la FAÇADE (contrat import-linter
 # ``vente-lue-par-la-facade``) ; défini UNE fois dans ``vente_facturation``.
