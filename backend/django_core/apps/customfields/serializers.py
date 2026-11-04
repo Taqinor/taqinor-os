@@ -7,6 +7,7 @@ from drf_spectacular.utils import extend_schema_field
 from core.champs_stricts import (
     BooleenStrict, ChampsStrictsEntiersMixin, IdInconnu404Mixin,
     MOTIF_NON_BLANC_SANS_NUL, MOTIF_SANS_NUL)
+from core.conflit_etat import ConflitEtat
 from core.mixins import SameCompanyFKSerializerMixin
 from core.parseurs import ObjetJSON
 from core.unicite import UniciteEn409Mixin
@@ -272,6 +273,10 @@ class CustomFieldDefSerializer(serializers.ModelSerializer):
         # création publie « chaque option non vide ») — au lieu de l'écarter.
         if (self._type_vise() == CustomFieldDef.FieldType.CHOICE
                 and len(propres) != len(value)):
+            if self.instance is not None:
+                # PATCH sans `type` : le type vient de la définition enregistrée,
+                # le corps seul n'est pas fautif (api-fuzz-full, ENF11).
+                raise ConflitEtat({'options': ['Une option de choix ne peut pas être vide.']})
             raise serializers.ValidationError(
                 'Une option de choix ne peut pas être vide.')
         return propres

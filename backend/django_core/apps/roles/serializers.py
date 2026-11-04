@@ -3,6 +3,7 @@ import re
 from rest_framework import serializers
 
 from core.champs_stricts import ChampsStrictsMixin
+from core.conflit_etat import ConflitEtat
 
 from .models import Role
 from .permissions_registre import (
@@ -176,7 +177,7 @@ class RoleSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
             interdits = codes_non_octroyables(
                 self.instance.nom, attrs['permissions'])
             if interdits:
-                raise serializers.ValidationError({
+                raise ConflitEtat({  # ENF11 : le rôle système enregistré s'y oppose
                     'permissions': [
                         f"Code non octroyable à ce rôle : {interdits}."],
                 })
