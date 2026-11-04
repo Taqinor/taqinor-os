@@ -69,8 +69,8 @@ class _DecimalSoupleReglagesBorne(OpenApiSerializerFieldExtension):
         motif_plafond = _motif_plafond_puissance_dix(champ)
         for branche in schema.get('anyOf', ()):
             motif = branche.get('pattern')
-            if motif and motif.startswith('^-?'):
-                branche['pattern'] = motif_plafond or '^' + motif[3:]
+            if motif:  # sans « -? » déjà (_DecimalChaineNonVide) : le plafond reste à écrire
+                branche['pattern'] = motif_plafond or motif.replace('^-?', '^', 1)
         return schema
 
 
