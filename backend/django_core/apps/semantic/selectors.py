@@ -269,6 +269,59 @@ def lineage(company, cle, *, user=None):
     }
 
 
+def _nom_affiche(utilisateur):
+    if utilisateur is None:
+        return ''
+    nom = ''
+    if hasattr(utilisateur, 'get_full_name'):
+        nom = (utilisateur.get_full_name() or '').strip()
+    return nom or getattr(utilisateur, 'username', '') or ''
+
+
+def glossaire(company):
+    """NTDATA49 — le DICTIONNAIRE DE DONNÉES : chaque métrique active, lisible.
+
+    Une entrée par métrique ACTIVE de ``company`` : sa clé, son libellé, sa
+    définition en français, son unité (code + libellé), son PROPRIÉTAIRE et sa
+    date de dernière modification. Aucune recette (ni dataset, ni formule, ni
+    filtres) : le glossaire dit ce qu'un chiffre SIGNIFIE ; « d'où il vient »
+    est le lignage (NTDATA43), réservé aux responsables.
+
+    LE PROPRIÉTAIRE EST DÉRIVÉ, jamais déclaré : c'est l'auteur de la PREMIÈRE
+    version signée de la définition (NTDATA9 — celui qui l'a posée). Une
+    métrique semée par ``seed_metriques`` n'a pas d'auteur : le propriétaire
+    est alors vide, plutôt qu'attribué à quelqu'un au hasard.
+    """
+    from django.db.models import Prefetch
+
+    from .models import MetricDefinition, MetricDefinitionVersion
+
+    definitions = (
+        MetricDefinition.objects
+        .filter(company=company, actif=True)
+        .order_by('libelle', 'cle')
+        .prefetch_related(Prefetch(
+            'versions',
+            queryset=(MetricDefinitionVersion.objects
+                      .filter(auteur__isnull=False)
+                      .select_related('auteur')
+                      .order_by('version', 'id')),
+            to_attr='versions_signees')))
+    return [
+        {
+            'cle': d.cle,
+            'libelle': d.libelle,
+            'definition': d.description,
+            'unite': d.unite,
+            'unite_libelle': d.get_unite_display(),
+            'proprietaire': (_nom_affiche(d.versions_signees[0].auteur)
+                             if d.versions_signees else ''),
+            'derniere_modification': d.updated_at.isoformat(),
+        }
+        for d in definitions
+    ]
+
+
 def variation_pct(company, user, cle, *, aujourdhui=None, filters=None):
     """Δ % entre les DEUX DERNIÈRES périodes COMPLÈTES de la métrique.
 

@@ -16,8 +16,8 @@ from django.urls import include, path
 from rest_framework.routers import SimpleRouter
 
 from .views import (
-    MetricDefinitionViewSet, MetriqueLignageView, MetriqueValeurView,
-    MetriqueVersionsView,
+    GlossaireView, MetricDefinitionViewSet, MetriqueLignageView,
+    MetriqueValeurView, MetriqueVersionsView,
 )
 
 router = SimpleRouter()
@@ -33,5 +33,7 @@ urlpatterns = [
     # NTDATA43 — lignage : d'où vient ce chiffre.
     path('metriques/<str:cle>/lignage/', MetriqueLignageView.as_view(),
          name='metrique-lignage'),
+    # NTDATA49 — dictionnaire de données lisible par tout utilisateur interne.
+    path('glossaire/', GlossaireView.as_view(), name='semantic-glossaire'),
     path('', include(router.urls)),
 ]

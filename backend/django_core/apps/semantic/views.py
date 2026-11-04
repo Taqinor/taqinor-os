@@ -366,3 +366,32 @@ class MetriqueLignageView(APIView):
             return Response({'detail': str(exc)},
                             status=status.HTTP_404_NOT_FOUND)
         return Response(lignage)
+
+
+class GlossaireView(APIView):
+    """NTDATA49 — ``GET semantic/glossaire/`` : le dictionnaire de données.
+
+    Chaque métrique ACTIVE de la société avec sa définition française, son
+    unité, son propriétaire et sa date de dernière modification — lisible par
+    TOUT utilisateur interne (un commercial lit ce que signifie
+    « marge_brute » sans coder). Aucune recette n'y figure.
+    """
+
+    permission_classes = [IsAnyRole]
+
+    @extend_schema(responses=inline_serializer('GlossaireReponse', {
+        'nb_metriques': serializers.IntegerField(),
+        'metriques': inline_serializer('GlossaireEntree', {
+            'cle': serializers.CharField(),
+            'libelle': serializers.CharField(),
+            'definition': serializers.CharField(),
+            'unite': serializers.CharField(),
+            'unite_libelle': serializers.CharField(),
+            'proprietaire': serializers.CharField(),
+            'derniere_modification': serializers.DateTimeField(),
+        }, many=True),
+    }))
+    def get(self, request):
+        entrees = (selectors.glossaire(request.user.company)
+                   if request.user.company_id else [])
+        return Response({'nb_metriques': len(entrees), 'metriques': entrees})

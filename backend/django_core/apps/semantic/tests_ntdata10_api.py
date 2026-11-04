@@ -18,7 +18,8 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.semantic.models import MetricDefinition, MetricDefinitionVersion
 from apps.semantic.views import (
-    MetricDefinitionViewSet, MetriqueValeurView, parametres_de_resolution,
+    GlossaireView, MetricDefinitionViewSet, MetriqueValeurView,
+    parametres_de_resolution,
 )
 from authentication.models import Company
 from core import data_explorer
@@ -272,3 +273,42 @@ class PortabiliteTests(_Base):
     def test_document_etranger_400(self):
         reponse = self._import({'format': 'autre.outil', 'metriques': []})
         self.assertEqual(reponse.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class GlossaireTests(_Base):
+    """NTDATA49 — dictionnaire de données lisible sans coder."""
+
+    def _glossaire(self, user):
+        requete = APIRequestFactory().get('/api/django/semantic/glossaire/')
+        force_authenticate(requete, user=user)
+        return GlossaireView.as_view()(requete)
+
+    def test_commercial_lit_la_definition(self):
+        """Critère d'acceptation NTDATA49."""
+        self._creer(cle='marge_brute', libelle='Marge brute',
+                    description='Produits moins charges de la période.',
+                    unite='MAD')
+        MetricDefinition.objects.create(
+            company=self.company, cle='seme', libelle='Semée',
+            dataset='ntdata10_societes', mesure={'agg': 'count'})
+        MetricDefinition.objects.create(
+            company=self.autre, cle='chez_le_voisin', libelle='Voisin',
+            dataset='ntdata10_societes', mesure={'agg': 'count'})
+        reponse = self._glossaire(self.simple)
+        self.assertEqual(reponse.status_code, status.HTTP_200_OK)
+        par_cle = {m['cle']: m for m in reponse.data['metriques']}
+        self.assertEqual(set(par_cle), {'marge_brute', 'seme'})
+        marge = par_cle['marge_brute']
+        self.assertEqual(marge['definition'],
+                         'Produits moins charges de la période.')
+        self.assertEqual(marge['unite'], 'MAD')
+        self.assertEqual(marge['unite_libelle'], 'Dirham (MAD)')
+        self.assertEqual(marge['proprietaire'], 'ntdata10_admin')
+        self.assertTrue(marge['derniere_modification'])
+        # Aucune recette dans le glossaire.
+        self.assertNotIn('mesure', marge)
+        self.assertNotIn('dataset', marge)
+        # Une métrique semée sans acteur n'a pas de propriétaire inventé.
+        self.assertEqual(par_cle['seme']['proprietaire'], '')
+        self.assertIs(resolve('/api/django/semantic/glossaire/').func.view_class,
+                      GlossaireView)
