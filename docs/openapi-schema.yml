@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4908, operations: 7700, components: 3612}
+counts: {paths: 4908, operations: 7700, components: 3615}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -8256,6 +8256,7 @@ query_params:
   get /api/django/reporting/insights/sav-tickets-pivot/: columns export rows
   get /api/django/reporting/insights/technicien-scorecard/: export from technicien to
   get /api/django/reporting/kpi-alertes/: ordering page page_size search
+  get /api/django/reporting/problemes/resume/: jours tri
   get /api/django/reporting/rapport-definitions/: ordering page page_size search
   get /api/django/reporting/rapport-definitions/{id}/export/: format
   get /api/django/reporting/reports/field/: equipe export from technicien to
@@ -9048,6 +9049,7 @@ query_params:
   get /api/v1/reporting/insights/sav-tickets-pivot/: columns export rows
   get /api/v1/reporting/insights/technicien-scorecard/: export from technicien to
   get /api/v1/reporting/kpi-alertes/: ordering page page_size search
+  get /api/v1/reporting/problemes/resume/: jours tri
   get /api/v1/reporting/rapport-definitions/: ordering page page_size search
   get /api/v1/reporting/rapport-definitions/{id}/export/: format
   get /api/v1/reporting/reports/field/: equipe export from technicien to
@@ -10816,6 +10818,7 @@ components:
 - LangueEnum
 - LangueInterfaceReponse
 - LanguePortailEnum
+- LanguePrefereeEnum
 - Lead
 - LeadActivity
 - LeadActivityKindEnum
@@ -12289,6 +12292,8 @@ components:
 - ResoumettreRequest
 - ResourceEnum
 - ResultatCommissioningEnum
+- ResumeProblemesRefus
+- ResumeProblemesService
 - RetenueSubie
 - RetourClient
 - RetourClientCreerCorpsRequest
