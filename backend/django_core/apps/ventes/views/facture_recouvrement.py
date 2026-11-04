@@ -99,7 +99,7 @@ class FactureRecouvrementActionsMixin:
             email_log = send_relance_email(
                 facture, niveau_nom=niveau_nom,
                 message=(note or (lvl.message if lvl is not None else '')),
-                user=request.user)
+                user=request.user, attach_pdf=True)  # AARG62
             email_log_id = email_log.id
         # Prochaine relance proposée si fournie, sinon laissée telle quelle.
         prochaine = donnees.get('prochaine_relance')
