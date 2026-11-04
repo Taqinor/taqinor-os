@@ -200,7 +200,7 @@
       "requis": false,
       "destination": "colonne_lead",
       "champ_lead": "langue_preferee",
-      "note": "alias toleres : langue/language/lang"
+      "note": "alias toleres : langue/language/lang ; valeurs : fr, ar (-> darija), en (WAUD83)"
     },
     "clientRef": {
       "cle_registre": "clientRef",

@@ -440,12 +440,14 @@ _MARKET_MODE_ALIASES = {
     'pompage': 'agricole',
 }
 
-# QK1 — Langue du site → Lead.langue_preferee ('fr'/'darija' uniquement).
+# QK1 — Langue du site → Lead.langue_preferee ('fr'/'darija'/'en').
 # L'arabe du site est rapproché du darija (langue des messages WhatsApp).
 _LANGUE_ALIASES = {
     'fr': 'fr',
     'darija': 'darija',
     'ar': 'darija',
+    # WAUD83 (D-WAUD-14=a) — le site marque désormais les leads anglophones.
+    'en': 'en',
 }
 
 
