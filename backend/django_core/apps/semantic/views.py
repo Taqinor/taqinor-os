@@ -34,9 +34,9 @@ from rest_framework.views import APIView
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from core.mixins import TenantMixin, company_qs
 
-from . import selectors, services
+from . import portabilite, selectors, services
 from .models import MetricDefinition
-from .serializers import MetricDefinitionSerializer
+from .serializers import ImportMetriquesSerializer, MetricDefinitionSerializer
 
 
 class MetricDefinitionViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -133,6 +133,51 @@ class MetricDefinitionViewSet(TenantMixin, viewsets.ModelViewSet):
              'description': d.description, 'unite': d.unite}
             for d in definitions
         ]})
+
+    @extend_schema(responses=inline_serializer('MetriquesExportReponse', {
+        'format': serializers.CharField(),
+        'version': serializers.IntegerField(),
+        'metriques': serializers.ListField(child=serializers.DictField()),
+    }))
+    @action(detail=False, methods=['get'], url_path='export')
+    def export(self, request):
+        """NTDATA48 — les métriques de la société en JSON vendor-neutre."""
+        if not request.user.company_id:
+            return Response({'format': portabilite.FORMAT,
+                             'version': portabilite.VERSION_FORMAT,
+                             'metriques': []})
+        return Response(portabilite.exporter_metriques(request.user.company))
+
+    @extend_schema(
+        request=ImportMetriquesSerializer,
+        responses=inline_serializer('MetriquesImportReponse', {
+            'commit': serializers.BooleanField(),
+            'applique': serializers.BooleanField(),
+            'resultats': serializers.ListField(child=serializers.DictField()),
+        }))
+    @action(detail=False, methods=['post'], url_path='import')
+    def importer(self, request):
+        """NTDATA48 — import symétrique : dry-run par défaut, ``commit`` tout
+        ou rien. 400 si une entrée est refusée en mode ``commit``."""
+        corps = ImportMetriquesSerializer(data=request.data)
+        corps.is_valid(raise_exception=True)
+        if not request.user.company_id:
+            raise ValidationError(
+                {'detail': 'Aucune société rattachée : import impossible.'})
+        donnees = corps.validated_data
+        if (donnees.get('format')
+                and donnees['format'] != portabilite.FORMAT):
+            raise ValidationError(
+                {'format': 'Document étranger : format « %s » attendu.'
+                           % portabilite.FORMAT})
+        rapport = portabilite.importer_metriques(
+            request.user.company, donnees['metriques'],
+            commit=donnees.get('commit', False), auteur=request.user,
+            contexte={'request': request})
+        refus = any(r['action'] == 'refusee' for r in rapport['resultats'])
+        code = (status.HTTP_400_BAD_REQUEST if rapport['commit'] and refus
+                else status.HTTP_200_OK)
+        return Response(rapport, status=code)
 
 
 def _json_param(brut, nom, attendu):

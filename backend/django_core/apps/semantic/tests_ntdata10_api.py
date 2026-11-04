@@ -187,7 +187,88 @@ class ValeurParCleTests(_Base):
                       MetricDefinitionViewSet)
 
     def test_routage_cle_jamais_lue_comme_detail(self):
+        for action in ('export', 'import', 'pour-agent'):
+            self.assertIs(resolve(f'{BASE}{action}/').func.cls,
+                          MetricDefinitionViewSet)
         self.assertIs(resolve(f'{BASE}ca_ht/valeur/').func.view_class,
                       MetriqueValeurView)
         self.assertEqual(resolve(f'{BASE}12/').func.cls,
                          MetricDefinitionViewSet)
+
+
+class PortabiliteTests(_Base):
+    """NTDATA48 — export JSON vendor-neutre + import symétrique."""
+
+    FORMULE = {'formula': 'n * 2',
+               'aggregates': [{'alias': 'n', 'fn': 'count', 'field': 'id'}]}
+
+    def _export(self, user=None):
+        return self._vue('get', {'get': 'export'}, f'{BASE}export/',
+                         user=user)
+
+    def _import(self, corps, user=None):
+        return self._vue('post', {'post': 'importer'}, f'{BASE}import/',
+                         corps, user=user)
+
+    def test_export_puis_reimport_recree_a_l_identique(self):
+        """Critère d'acceptation NTDATA48."""
+        self._creer(description='Combien.', filtres={'nom': 'x'},
+                    dimensions_par_defaut=['nom'])
+        self._creer(cle='double', libelle='Double', mesure=self.FORMULE,
+                    unite='%', format=1)
+        document = self._export().data
+        self.assertEqual(document['format'], 'taqinor.semantic.metriques')
+        self.assertNotIn('id', document['metriques'][0])
+        self.assertNotIn('company', document['metriques'][0])
+
+        # Même société : tout est « identique », rien n'est écrit.
+        rapport = self._import(dict(document, commit=True)).data
+        self.assertEqual({r['action'] for r in rapport['resultats']},
+                         {'identique'})
+
+        # Société vide : recréées à l'identique.
+        autre_admin = User.objects.create_user(
+            username='ntdata48_autre', password='x', company=self.autre,
+            role_legacy='admin')
+        reponse = self._import(dict(document, commit=True), user=autre_admin)
+        self.assertEqual(reponse.status_code, status.HTTP_200_OK, reponse.data)
+        self.assertTrue(reponse.data['applique'])
+        reexport = self._export(user=autre_admin).data
+        self.assertEqual(reexport['metriques'], document['metriques'])
+
+    def test_dry_run_n_ecrit_rien(self):
+        reponse = self._import({'metriques': [{
+            'cle': 'nb_societes', 'libelle': 'N', 'dataset': 'ntdata10_societes',
+            'mesure': {'agg': 'count'}}]})
+        self.assertEqual(reponse.status_code, status.HTTP_200_OK)
+        self.assertFalse(reponse.data['applique'])
+        self.assertEqual(reponse.data['resultats'][0]['action'], 'creee')
+        self.assertFalse(MetricDefinition.objects.filter(
+            company=self.company).exists())
+
+    def test_cle_non_portable_refusee_tout_ou_rien(self):
+        reponse = self._import({'commit': True, 'metriques': [
+            {'cle': 'bonne', 'libelle': 'B', 'dataset': 'ntdata10_societes',
+             'mesure': {'agg': 'count'}},
+            {'cle': 'mauvaise', 'libelle': 'M', 'dataset': 'ntdata10_societes',
+             'mesure': {'agg': 'count'}, 'company': self.autre.pk},
+        ]})
+        self.assertEqual(reponse.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(reponse.data['applique'])
+        self.assertIn('company', reponse.data['resultats'][1]['erreurs'])
+        self.assertFalse(MetricDefinition.objects.filter(
+            company=self.company).exists())
+
+    def test_modification_signee(self):
+        self._creer()
+        rapport = self._import({'commit': True, 'metriques': [{
+            'cle': 'nb_societes', 'mesure': {'field': 'id', 'agg': 'max'}}]})
+        self.assertEqual(rapport.data['resultats'][0]['action'], 'modifiee')
+        derniere = MetricDefinitionVersion.objects.filter(
+            metric_definition__cle='nb_societes').order_by('-version').first()
+        self.assertEqual(derniere.version, 2)
+        self.assertEqual(derniere.auteur_id, self.admin.pk)
+
+    def test_document_etranger_400(self):
+        reponse = self._import({'format': 'autre.outil', 'metriques': []})
+        self.assertEqual(reponse.status_code, status.HTTP_400_BAD_REQUEST)

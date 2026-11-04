@@ -11,10 +11,11 @@ import re
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
-from core.champs_stricts import ChampsStrictsMixin
+from core.champs_stricts import BooleenStrict, ChaineStricte, ChampsStrictsMixin
 from core.unicite import UniciteEn409Mixin
 
 from .models import MetricDefinition
+from .portabilite import MAX_METRIQUES_IMPORT
 
 #: Forme d'une clé de métrique (celle des 8 métriques cœur : ``ca_ht``, ``dso``).
 _CLE_VALIDE = re.compile(r'^[a-z][a-z0-9_]{0,79}$')
@@ -82,3 +83,19 @@ class MetricDefinitionSerializer(UniciteEn409Mixin, ChampsStrictsMixin,
             raise serializers.ValidationError(
                 getattr(exc, 'message_dict', None) or {'mesure': exc.messages})
         return attrs
+
+
+class ImportMetriquesSerializer(serializers.Serializer):
+    """NTDATA48 — corps de ``POST semantic/metriques/import/``.
+
+    ``metriques`` : les entrées du document d'export (chacune revalidée par
+    ``MetricDefinitionSerializer`` + la liste blanche de ``portabilite``) ;
+    ``commit`` : ``false`` (défaut) = dry-run, ``true`` = appliquer.
+    """
+
+    format = ChaineStricte(required=False, allow_blank=True)
+    version = serializers.IntegerField(required=False, min_value=1)
+    metriques = serializers.ListField(
+        child=serializers.JSONField(), allow_empty=True,
+        max_length=MAX_METRIQUES_IMPORT)
+    commit = BooleenStrict(required=False, default=False)
