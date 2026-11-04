@@ -1,0 +1,13 @@
+---
+// ENF19 : bloc partagé (devis/mon-toit + preview/toiture-3d-pro-11) — combobox d'adresse WAI-ARIA du tunnel carte
+const { inputClass } = Astro.props as Record<string, any>;
+---
+<div class="relative flex-1">
+  <input id="rp9-address" name="address" type="text" autocomplete="off"
+    role="combobox" aria-autocomplete="list" aria-expanded="false"
+    aria-controls="rp9-suggestions" aria-haspopup="listbox"
+    placeholder="Adresse, quartier ou ville (ex. Casablanca, Maârif)" class={inputClass} />
+  <ul id="rp9-suggestions" role="listbox" aria-label="Suggestions d'adresses" hidden
+    class="absolute left-0 right-0 top-full z-20 mt-1 max-h-72 overflow-auto border border-white/15 bg-nuit-900 shadow-xl">
+  </ul>
+</div>

@@ -64,7 +64,7 @@ const hasData = MEASURED_FLEET_LIFETIME_MWH > 0;
 </style>
 
 <script>
-  import { formatFrame, shouldDigitRoll, reserveWidth } from '../lib/countup';
+  import { animerChiffre, shouldDigitRoll, reserveWidth } from '../lib/countup';
 
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -76,17 +76,7 @@ const hasData = MEASURED_FLEET_LIFETIME_MWH > 0;
       el.textContent = finalText;
       return;
     }
-    const dur = 1100;
-    let start: number | null = null;
-    function frame(t: number) {
-      if (start === null) start = t;
-      const p = Math.min(1, (t - start) / dur);
-      const e = 1 - Math.pow(1 - p, 3);
-      el.textContent = formatFrame(finalText, e);
-      if (p < 1) requestAnimationFrame(frame);
-      else el.textContent = finalText;
-    }
-    requestAnimationFrame(frame);
+    animerChiffre(el, finalText);
   }
 
   const nodes = document.querySelectorAll<HTMLElement>('[data-install-counter] [data-tally]');
