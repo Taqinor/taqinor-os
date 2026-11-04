@@ -331,6 +331,8 @@ jobs:
             # ADEP101 — corpus de parite des calculs devis : lu par frontend/scripts/solar_*corpus.mjs
             # (importes par solar.corpus.test.jsx / solar.calculs.corpus.test.mjs).
             grep -qE '^backend/django_core/apps/ventes/tests/fixtures/solar_(corpus|calculs_)' <<< "$changed" && frontend=true || true
+            # ADVS46 — classification.test.mjs parse core/product_roles.py (parite des roles produit).
+            grep -qE '^backend/django_core/core/product_roles\.py$' <<< "$changed" && frontend=true || true
             # AUD826 — `scripts/` EST une surface backend. 27 des 32 gardes de
             # `backend-lint-fast` + 2 de `backend-openapi` sont gatees sur
             # `backend == true` et lisent leur BASELINE ici
