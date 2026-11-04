@@ -91,6 +91,39 @@ class StatutDeriveTests(TestCase):
         self.assertEqual(r.status_code, 201, r.data)
         return r.data['id']
 
+    def test_recalcul_sans_date_client_a_delai_suit_le_beat(self):
+        """AARG61 (C-AARG-VER1-305) — client à 90 j, émise il y a 45 j sans date
+        d'échéance, paiement rejeté : ÉMISE au recalcul ET après le beat.
+        Mutant : remettre ``echeance_exigible`` ⇒ EN RETARD au recalcul."""
+        import datetime
+
+        from apps.crm.models import Client
+        from apps.ventes.models import Facture, Paiement
+        from apps.ventes.scheduled import check_overdue_factures
+        aujourdhui = datetime.date.today()
+        client_90 = Client.objects.create(
+            company=self.company, nom='Délai', prenom='AARG61',
+            email=f'aarg61-{_nxt()}@example.invalid', delai_paiement_jours=90)
+        facture = Facture.objects.create(
+            company=self.company, reference=f'FAC-AARG61-{_nxt()}',
+            client=client_90, statut=Facture.Statut.EMISE,
+            taux_tva=Decimal('20.00'), montant_ht=Decimal('1000.00'),
+            montant_tva=Decimal('200.00'), montant_ttc=Decimal('1200.00'),
+            date_emission=aujourdhui - datetime.timedelta(days=45))
+        self.assertIsNone(facture.date_echeance)
+        paiement = Paiement.objects.create(
+            company=self.company, facture=facture, montant=Decimal('300'),
+            date_paiement=aujourdhui, mode='virement', created_by=self.admin)
+        r = self.api.post(f'/api/django/ventes/paiements/{paiement.id}/rejeter/',
+                          {'motif': 'Chèque impayé'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(Facture.objects.get(pk=facture.pk).statut,
+                         Facture.Statut.EMISE)
+        check_overdue_factures()
+        # CLAUSE PERSISTANCE — relu en base.
+        self.assertEqual(Facture.objects.get(pk=facture.pk).statut,
+                         Facture.Statut.EMISE)
+
     def test_recalcul_sans_date_echeance_suit_le_beat(self):
         """AARG56 (C-AARG-063) — émise il y a 45 j sans date d'échéance, payée
         300 puis paiement rejeté : EN RETARD, comme le beat ; l'échéance posée
