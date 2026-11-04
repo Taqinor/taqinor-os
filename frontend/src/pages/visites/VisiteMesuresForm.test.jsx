@@ -42,6 +42,18 @@ describe('VisiteMesuresForm — VT10', () => {
     expect(await screen.findByText('La pente doit être comprise entre 0 et 90°.')).toBeInTheDocument()
   })
 
+  it('un refus hors champ (statut) s’affiche en alerte (ALEA64)', async () => {
+    patchVisiteMesures.mockRejectedValue({
+      response: { data: { erreurs: { statut: 'Visite validée : mesures gelées.' } } },
+    })
+    const user = userEvent.setup()
+    render(
+      <VisiteMesuresForm visiteId={7} categorie="toiture" libelle="Toiture" valeurs={{ pente_deg: 15 }} onSaved={() => {}} />,
+    )
+    await user.click(screen.getByRole('button', { name: /enregistrer les mesures/i }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Visite validée : mesures gelées.')
+  })
+
   it('categorie sans schéma (general) ne rend rien — jamais un formulaire vide inventé', () => {
     const { container } = render(
       <VisiteMesuresForm visiteId={7} categorie="general" libelle="Général" valeurs={{}} onSaved={() => {}} />,
