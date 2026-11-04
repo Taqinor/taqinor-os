@@ -765,7 +765,6 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
         from apps.parametres.villes_resolution import corriger_ville
         return corriger_ville(value)
 
-    @extend_schema_field(serializers.DictField())
     def _point_eau_valide_en_lot(self, obj):
         """ERR-APRF-LISTE-LEADS-POINT-EAU-N1 — sur une page de liste, la garde AGV5
         est lue UNE fois pour toute la page ; ``None`` hors liste (lecture unitaire)."""
@@ -779,6 +778,7 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
             memo[obj.company_id] = leads_a_point_eau_valide(obj.company_id, ids)
         return obj.id in memo[obj.company_id]
 
+    @extend_schema_field(serializers.DictField())
     def get_devis_auto(self, obj):
         """Prêt pour le devis automatique ? Même règle que l'endpoint
         POST /leads/<id>/devis-auto/ (source unique : devis_auto.py)."""

@@ -496,13 +496,15 @@ def clore_etape_apres_planification(etape, user, *, note='',
     n'en fait naître aucune (``issue_fait_naitre_la_suite``).
 
     ACVI37 — la planification vient d'annuler toute la prise de contact, CETTE
-    touche comprise (``etape`` est lue par l'appelant AVANT elle) : son geste est
+    touche comprise (``etape`` est lue par l'appelant AVANT elle ; hors l'étape
+    « planifier », que le rendez-vous remplace vraiment) : son geste est
     une clôture humaine, elle est rouverte pour porter l'issue, jamais perdue."""
     statut_avant = etape.statut
     etape.refresh_from_db()
     if (statut_avant == RelanceEtape.Statut.A_FAIRE
             and etape.statut == RelanceEtape.Statut.ANNULEE
-            and etape.note == MOTIF_VISITE_PLANIFIEE):
+            and etape.note == MOTIF_VISITE_PLANIFIEE
+            and not est_etape(etape, CLE_PLANIFIER)):
         RelanceEtape.objects.filter(pk=etape.pk).update(
             statut=RelanceEtape.Statut.A_FAIRE, note='', traite_le=None)
         etape.refresh_from_db()
