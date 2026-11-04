@@ -77,3 +77,39 @@ EMPTY|MORE`. Le format des lignes est gardé par `scripts/check_err_prod.py` (BP
 - **Sur le poste de Reda** : `powershell -File scripts/nightly-qa.ps1 -Skill problemes-prod`
   (aucun docker, aucun seed, aucun Playwright ; jeton dans `PROBLEMES_RESUME_TOKEN`).
 - **Routine cloud** à 07:07 Africa/Casablanca (D-JPB-1, 03/11/2026) : BPQ8.
+
+## Routine cloud du tri du matin (BPQ8, D-JPB-1 = cloud) — recette pas à pas pour Reda
+
+Le skill `problemes-prod` tourne dans le cloud Claude Code : aucune machine allumée, aucun accès
+SSH. Il ne lit QUE l'API (le skill détecte l'absence de SSH et ne tente jamais de se connecter).
+Coût = l'usage de l'abonnement Claude de Reda (aucune clé API).
+
+1. **Créer le jeton côté serveur** (une fois). Générer une valeur aléatoire longue, la poser dans
+   `/opt/taqinor-os/.env` sous `PROBLEMES_RESUME_TOKEN=<valeur>`, recréer `django_core`
+   (`docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d django_core`). Sans
+   cette variable le endpoint de résumé répond fermé (BPQ4). Garder la valeur pour l'étape 3 ; ne
+   jamais la committer ni la coller dans une conversation.
+2. **Créer l'environnement cloud** « taqinor-prod-lecture » sur claude.ai/code : accès réseau
+   *Custom*, avec seulement `api.taqinor.ma`, `github.com` et `api.github.com` (+ `*.sentry.io`
+   si l'API Sentry est lue, voir plus haut). Aucune autre sortie.
+3. **Secret réseau** : dans cet environnement, enregistrer `PROBLEMES_RESUME_TOKEN` comme secret
+   réseau injecté en `Authorization: Bearer` sur l'hôte `api.taqinor.ma`. Il n'est **jamais** une
+   variable d'environnement visible de la session (la routine ne peut donc ni l'afficher ni le
+   copier dans une PR).
+4. **Créer la routine** sur claude.ai/code/routines : dépôt `taqinor/taqinor-os`, environnement
+   « taqinor-prod-lecture », déclencheur quotidien à **07:07 Africa/Casablanca**, consigne :
+   `run the problemes-prod skill`. Autoriser la routine à ouvrir des PR docs-only et à les mettre
+   en file de fusion (`gh pr merge --auto --merge`), rien de plus.
+5. **Vérifier** : lancer la routine à la main une fois ; la sortie doit finir par
+   `PROBLEMES_PROD_STATUS: EMPTY` ou `MORE`, et `health/ready` doit afficher un
+   `dernier_tri_problemes` récent (BPQ6 : sans cela, le bandeau d'alerte apparaît aux superusers
+   après 48 h).
+
+**Rotation du jeton** (à chaque départ d'une personne ayant vu la valeur, ou tous les 6 mois) :
+nouvelle valeur dans `.env` serveur + recréation de `django_core`, puis mise à jour du secret
+réseau de l'étape 3. L'ancienne valeur cesse de marcher dès la recréation.
+
+**Kill switch** : `docs/problemes-prod.config.yml`, `enabled: false` (commit sur `main`) — la
+prochaine passe imprime `PROBLEMES_PROD: DISABLED (config flag off)` sans rien écrire. L'autre
+interrupteur est la mise en pause de la routine sur claude.ai/code/routines. Le jeton ne se révoque
+que côté serveur (retirer la variable).
