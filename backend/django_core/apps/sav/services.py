@@ -1733,7 +1733,7 @@ def creer_contrat_depuis_devis_accepte(*, devis, user=None):
     # nomenclature du chantier) ; les lignes optionnelles non activées sont
     # exclues : le client n'est pas engagé sur la maintenance d'un équipement
     # qu'il n'a pas acheté.
-    from apps.ventes.utils.options import option_lines
+    from apps.ventes.utils.options import lignes_vendues, option_lines
     lignes = list(option_lines(devis))
     lignes_recurrentes = [
         ligne for ligne in lignes
@@ -1750,9 +1750,10 @@ def creer_contrat_depuis_devis_accepte(*, devis, user=None):
     if not lignes_recurrentes:
         return _creer_contrat_om(devis, lignes_om[0], marqueur)
 
-    prix = sum((ligne.total_ht * (
+    # ADOC191/ADOC199 — prix × nombre de villas (quantité VENDUE ÷ quantité).
+    prix = sum((ligne.total_ht * qte / ligne.quantite * (
         1 + (ligne.taux_tva_effectif or 0) / Decimal('100'))
-        for ligne in lignes_recurrentes), Decimal('0'))
+        for ligne, qte in lignes_vendues(devis) if ligne in lignes_recurrentes), Decimal('0'))
 
     premiere_periodicite = None
     for ligne in lignes_recurrentes:

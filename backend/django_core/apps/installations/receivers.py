@@ -16,7 +16,7 @@ from django.dispatch import receiver
 
 from core.events import (
     abonne_best_effort, bon_commande_cree, devis_acceptation_annulee,
-    devis_accepted,
+    devis_accepted, facture_annulee,
     reception_fournisseur_annulee,
     reception_fournisseur_confirmee, facture_fournisseur_creee,
 )
@@ -174,6 +174,21 @@ def _rattacher_chantier_on_bon_commande_cree(sender, instance, company,
     Installation.objects.filter(
         devis_id=devis_id, company=company, bon_commande__isnull=True,
     ).update(bon_commande=instance)
+
+
+@receiver(facture_annulee,
+          dispatch_uid="installations_rouvrir_resa_on_facture_annulee")
+@abonne_best_effort
+def _rouvrir_reservation_on_facture_annulee(sender, instance, company,
+                                            **kwargs):
+    """ASTK263 — la facture annulée a rendu son stock (ASTK262) : la
+    réservation que la vente avait soldée redevient active."""
+    from apps.installations.selectors import installation_for_devis
+    from .services_solde_vente import rouvrir_reservations_vente
+    devis = getattr(instance, 'devis', None)
+    if devis is not None:
+        rouvrir_reservations_vente(installation_for_devis(
+            devis, company=company), devis.reference)
 
 
 @receiver(facture_fournisseur_creee,

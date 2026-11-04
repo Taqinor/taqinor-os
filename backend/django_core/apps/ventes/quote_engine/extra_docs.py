@@ -672,9 +672,10 @@ def _chantier_composants(chantier):
     devis = getattr(chantier, "devis", None)
     if devis is None:
         return []
-    from apps.ventes.utils.options import option_lines
+    # ADOC198 — matériel VENDU : lignes de l'option retenue × nombre de villas.
+    from apps.ventes.utils.options import lignes_vendues
     out = []
-    for ligne in option_lines(devis):
+    for ligne, quantite in lignes_vendues(devis):
         produit = ligne.produit
         garantie = ((getattr(produit, "garantie", None) or "").strip()
                     if produit else "")
@@ -682,7 +683,7 @@ def _chantier_composants(chantier):
                   if produit else "")
         out.append({
             "designation": ligne.designation,
-            "quantite": ligne.quantite,
+            "quantite": quantite,
             "marque": marque,
             "garantie": garantie or DEFAULT_GARANTIE,
         })

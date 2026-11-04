@@ -96,6 +96,19 @@ class GardeClasseEndpointsDocumentsTests(TestCase):
             client=client, created_by=self.resp,
             technicien_responsable=self.resp,
             statut=Installation.Statut.INSTALLE, annule=True)
+        # ADOC196 — technicien d'une intervention du chantier (ni responsable
+        # ni créateur) : il voit la fiche, donc ses documents (403 attestation).
+        from apps.installations.models import Intervention
+        role_iv = Role.objects.create(
+            company=self.company, nom='Technicien intervention',
+            permissions=[SCOPE_TEAM, 'installation_voir', 'intervention_gerer'])
+        self.tech_iv = User.objects.create_user(
+            username=f'adoc80-iv-{n}', password='x', company=self.company,
+            role=role_iv)
+        Intervention.objects.create(
+            company=self.company, installation=self.chantier,
+            type_intervention='pose', created_by=self.resp,
+            technicien=self.tech_iv)
 
     def _api(self, user):
         api = APIClient()
@@ -118,6 +131,8 @@ class GardeClasseEndpointsDocumentsTests(TestCase):
                 ('autre société', self.etranger, self.chantier, (404,)),
                 ('compte portail', self.portail, self.chantier, (401, 403, 404)),
                 ('chantier annulé', self.resp, self.chantier_annule, (409,)),
+                ("technicien d'intervention", self.tech_iv, self.chantier,
+                 (200, 403)),
             )
             for libelle, user, chantier, attendus in cas:
                 code = self._api(user).get(url(chantier.pk)).status_code

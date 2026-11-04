@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 3e551a14e3465a3c8f17901b625412f4e5ccefbb3f8a6db63076fdecb40c5da1
+Structure fingerprint: 718008e279d667fcc4272b337c3951662dd16dc0990bf42b46718b85b13d7baf
 Plan fingerprint: 7ee6405615f195e82dfaaeed2b5d380ea25dadb51b44fa4abe82c23f673eedc8
 
 
@@ -244,7 +244,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 | `identity` | `identity/` | 7 | SSO/SCIM, network & session policies, trusted devices, break-glass (NTSEC). |
 | `accessreview` | `accessreview/` | 3 | Access-review campaigns, attestation, SoD rules. |
 | `audit` | `audit/` | 1 | `AuditLog` activity trail. |
-| `records` | `records/` | 7 | Generic chatter: `Activity`, `Comment`, `Follower`, `Tag`, `Attachment` (ContentType-based) + `platform_guards.py` (the pure guard logic `scripts/check_platform.py` reuses). |
+| `records` | `records/` | 7 | Generic chatter: `Activity`, `Comment`, `Follower`, `Tag`, `Attachment` (ContentType-based; `file_key` indexé, registre des détenteurs de clés `cles_stockage.py`, ADOC193) + `platform_guards.py` (the pure guard logic `scripts/check_platform.py` reuses). |
 | `customfields` | `custom-fields/` | 4 | Admin-defined fields and custom objects, registry fed by the platform manifests. |
 | `dataimport` | `imports/` | 4 | Two-step CSV/XLSX import (dry-run + commit), registry-driven targets, `ExternalRef`. |
 | `tiers` | `tiers/` | 1 | Unified party directory (`res.partner` equivalent), bridged additively from crm/stock. **Foundation layer** under an import-linter contract. |

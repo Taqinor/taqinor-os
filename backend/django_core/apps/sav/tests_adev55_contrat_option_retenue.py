@@ -93,3 +93,29 @@ class ContratOptionRetenueTests(TestCase):
     def test_optionnelle_non_activee_exclue(self):
         devis = self._devis(3, option='avec_batterie', optionnelle=True)
         self.assertEqual(self._contrats(devis).count(), 0)
+
+    def test_prix_multivilla_x_n(self):
+        """ADOC199 (C-ADOC-VER4-002) — devis ×3 villas, maintenance récurrente
+        1 000 HT (TVA 20) : contrat à 3 600,00 ; N=1 : 1 200,00 ; ré-émission
+        de l'acceptation : aucun second contrat."""
+        maintenance = Produit.objects.create(
+            company=self.company, nom='Maintenance annuelle', sku='MAINT-199',
+            prix_achat=0, prix_vente=1000, est_recurrent=True)
+        prix = {}
+        for num, villas in ((4, 3), (5, 1)):
+            devis = Devis.objects.create(
+                company=self.company, reference=f'DEV-{MONTH}-{7000 + num}',
+                client=self.client_obj, statut=Devis.Statut.ACCEPTE,
+                taux_tva=Decimal('20'),
+                etude_params={'nombre_proprietes': villas})
+            LigneDevis.objects.create(
+                devis=devis, produit=maintenance, designation='Maintenance',
+                quantite=1, prix_unitaire=Decimal('1000'),
+                taux_tva=Decimal('20'))
+            for _ in range(2):  # ré-émission : idempotent
+                devis_accepted.send(sender=None, devis=devis, user=self.user,
+                                    ancien_statut='envoye')
+            contrats = list(self._contrats(devis))
+            self.assertEqual(len(contrats), 1)
+            prix[villas] = contrats[0].prix
+        self.assertEqual(prix, {3: Decimal('3600.00'), 1: Decimal('1200.00')})

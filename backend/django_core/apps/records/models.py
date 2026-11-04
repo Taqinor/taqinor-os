@@ -356,7 +356,7 @@ class Attachment(models.Model):
 
     # Clé objet MinIO (bucket erp-uploads) — le fichier ne quitte jamais le
     # stockage objet ; rien n'est commité dans le dépôt.
-    file_key = models.CharField(max_length=500)
+    file_key = models.CharField(max_length=500, db_index=True)  # ADOC193
     filename = models.CharField(max_length=255)
     size = models.PositiveIntegerField(default=0)
     mime = models.CharField(max_length=120, blank=True, default='')

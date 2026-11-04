@@ -909,7 +909,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                 return Response(status=status.HTTP_204_NO_CONTENT)
             produit.photo = None
             produit.save(update_fields=['photo'])
-            delete_attachment(ancienne.file_key)
+            delete_attachment(ancienne.file_key, liberee_par=(ancienne,))
             ancienne.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -933,7 +933,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             produit.save(update_fields=['photo'])
         # Remplacer une photo ne laisse pas l'ancienne traîner dans MinIO.
         if ancienne is not None:
-            delete_attachment(ancienne.file_key)
+            delete_attachment(ancienne.file_key, liberee_par=(ancienne,))
             ancienne.delete()
         return Response(
             {'image_url':

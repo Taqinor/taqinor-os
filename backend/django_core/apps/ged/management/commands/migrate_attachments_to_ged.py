@@ -122,6 +122,8 @@ def import_attachments(company=None, dry_run=False):
                 nom=att.filename or att.file_key or f'Pièce jointe #{att.pk}',
                 description=_origin_description(att),
                 created_by=att.uploaded_by,
+                # ADOC192 — la clé reste tenue par la pièce jointe d'origine.
+                custom_data={'source_partagee': f'records.Attachment:{att.pk}'},
             )
             DocumentVersion.objects.create(
                 company=att_company,

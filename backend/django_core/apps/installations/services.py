@@ -1201,6 +1201,10 @@ def quantite_deja_sortie_chantier(installation, produit_id):
     ) or Decimal('0')
     total = Decimal(str(f11)) + _quantite_soldee_par_vente(
         installation, produit_id)
+    if installation.devis_id:  # ASTK258 — max(actuel, sorties de la vente)
+        from apps.ventes.selectors import sorties_de_la_vente
+        total = max(total, Decimal(str(sorties_de_la_vente(
+            installation.devis_id, installation.company).get(produit_id, 0))))
     return int(total.quantize(Decimal('1'), rounding=ROUND_HALF_UP))
 
 
@@ -1425,11 +1429,8 @@ def solder_reservations_vente(installation, quantites_par_produit, reference,
                     .first())
             if resa is None:
                 continue
-            deja = InstallationActivity.objects.filter(
-                installation=installation, field=_MARQUEUR_SOLDE_VENTE,
-                old_value=reference,
-                new_value__startswith=f'{produit_id}:').exists()
-            if deja:
+            from .services_solde_vente import net_marqueurs_vente  # ASTK263
+            if net_marqueurs_vente(installation, produit_id, reference) > 0:
                 continue
             decompte = min(qte, resa.quantite)
             resa.quantite -= decompte
@@ -1505,19 +1506,10 @@ def _quantite_sortie_chantier(installation, produit_id):
 
 def _quantite_soldee_par_vente(installation, produit_id):
     """ASTK128 — Σ des quantités de réservation soldées par une vente
-    (marqueurs posés par `solder_reservations_vente`)."""
-    from decimal import Decimal
-    from .models import InstallationActivity
-    total = Decimal('0')
-    for valeur in InstallationActivity.objects.filter(
-            installation=installation, field=_MARQUEUR_SOLDE_VENTE,
-            new_value__startswith=f'{produit_id}:').values_list(
-            'new_value', flat=True):
-        try:
-            total += Decimal(valeur.split(':', 1)[1])
-        except (IndexError, ArithmeticError, ValueError):
-            continue
-    return total
+    (marqueurs posés par `solder_reservations_vente`), NETTE des
+    contre-marqueurs de réouverture (ASTK263)."""
+    from .services_solde_vente import net_marqueurs_vente
+    return net_marqueurs_vente(installation, produit_id)
 
 
 def _quantite_deja_retournee(installation, produit_id):

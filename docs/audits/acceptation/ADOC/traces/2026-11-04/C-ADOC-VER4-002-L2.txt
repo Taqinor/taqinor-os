@@ -1,0 +1,6 @@
+== C-ADOC-VER4-002 (sha c38868a62)
+attendu : repro=True si la fiche premium d'un chantier ×2 villas imprime la puissance projet (6.6 kWc) mais 6 panneaux (une villa) alors que Installation.bom et le dossier de remise disent 12
+observé : chantier.puissance_installee_kwc=6.60 bom_panneaux=[12.0] ; premium -> 200 kWc_projet_6.6_imprime=True 6_imprime=False 12_imprime=True lignes=['Panneau 550W L2 — MarqueY'] ; dossier-remise -> 200 12_imprime=True
+{"repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 8644, après 8644) ; mails 0 ; tâches Celery bloquées 0

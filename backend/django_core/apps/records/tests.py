@@ -268,6 +268,53 @@ class TestAttachments(TestCase):
             self.assertEqual(d2.status_code, 204)
         self.assertFalse(Attachment.objects.filter(id=att_id).exists())
 
+    def test_cle_tenue_ailleurs_conservee(self):
+        """ADOC193 (C-ADOC-VER4-010) — une clé encore tenue par un détenteur
+        enregistré (version GED, créatif) n'est pas effacée ; tenue par
+        personne d'autre, elle l'est comme avant."""
+        from django.contrib.contenttypes.models import ContentType
+        from apps.adsengine.models import CreativeAsset
+        from apps.ged.models import Cabinet, Document, DocumentVersion, Folder
+        from apps.records.storage import delete_attachment
+        ct = ContentType.objects.get_for_model(Lead)
+
+        def piece(cle):
+            return Attachment.objects.create(
+                company=self.company, content_type=ct, object_id=self.lead.id,
+                uploaded_by=self.user, file_key=cle, filename='f.pdf',
+                size=1, mime='application/pdf')
+
+        partagee, seule = piece('attachments/ged.pdf'), piece('attachments/x.pdf')
+        folder = Folder.objects.create(
+            company=self.company, nom='R', cabinet=Cabinet.objects.create(
+                company=self.company, nom='Cab'))
+        DocumentVersion.objects.create(
+            company=self.company, version=1, file_key=partagee.file_key,
+            document=Document.objects.create(
+                company=self.company, folder=folder, nom='D'))
+        CreativeAsset.objects.create(
+            company=self.company, asset_type='static',
+            file_key='attachments/photo.jpg')
+        client = mock.MagicMock()
+        with mock.patch('apps.records.storage.get_minio_client',
+                        return_value=client):
+            # (1) DELETE de la pièce jointe importée en GED : binaire gardé.
+            r = auth(self.admin).delete(
+                f'/api/django/records/attachments/{partagee.id}/')
+            self.assertEqual(r.status_code, 204)
+            self.assertFalse(Attachment.objects.filter(
+                pk=partagee.pk).exists())
+            # Photo copiée en créatif : False, clé lisible.
+            self.assertFalse(delete_attachment('attachments/photo.jpg'))
+            client.delete_object.assert_not_called()
+            # Clé tenue par personne d'autre : effacée comme avant.
+            r = auth(self.admin).delete(
+                f'/api/django/records/attachments/{seule.id}/')
+            self.assertEqual(r.status_code, 204)
+        self.assertEqual(
+            [c.kwargs['Key'] for c in client.delete_object.call_args_list],
+            ['attachments/x.pdf'])
+
     def test_set_phase_retags_attachment(self):
         """L5 — déplacer une pièce jointe entre phases (avant/pendant/après)
         sans supprimer/ré-uploader : le re-tag persiste, scopé société."""

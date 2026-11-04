@@ -135,3 +135,48 @@ class SuppressionPreuvesTests(TestCase):
         for attendu in ('N° de série SN-41 supprimé', 'Mémo vocal supprimé',
                         'Ligne de consommation Vis supprimée'):
             self.assertIn(attendu, lignes)
+
+
+class CleLibereeParLaLigneTests(TestCase):
+    """ADOC200 (C-ADOC-VER4-010) — la photo supprimée libère sa clé
+    (``liberee_par``) : son binaire part ; une photo importée en créatif
+    garde le sien. Seul le client MinIO est simulé (frontière externe) :
+    ``delete_attachment`` est RÉEL ici."""
+
+    _iv = SuppressionPreuvesTests._iv
+    _photo = SuppressionPreuvesTests._photo
+
+    def setUp(self):
+        self.company, _ = Company.objects.get_or_create(
+            slug='co-adoc200', defaults={'nom': 'Co ADOC200'})
+        self.user = User.objects.create_user(
+            username='resp-adoc200', password='x', company=self.company,
+            role_legacy='responsable')
+        self.api = APIClient()
+        self.api.force_authenticate(self.user)
+        inst = Installation.objects.create(
+            company=self.company, reference='CH-ADOC200')
+        self.validee = self._iv(inst, Intervention.Statut.VALIDEE)
+        self.en_cours = self._iv(inst, Intervention.Statut.SUR_SITE)
+
+    def test_photo_importee_en_creatif_conservee(self):
+        from apps.adsengine.models import CreativeAsset
+        p, q = self._photo(self.en_cours), self._photo(self.validee)
+        Attachment.objects.filter(pk=q.pk).update(file_key='k/creatif')
+        CreativeAsset.objects.create(
+            company=self.company, asset_type='static', file_key='k/creatif')
+        client = mock.MagicMock()
+        with mock.patch('apps.records.storage.get_minio_client',
+                        return_value=client):
+            for iv, photo in ((self.en_cours, p), (self.validee, q)):
+                r = self.api.post(
+                    f'{BASE}/{iv.id}/supprimer-photo/',
+                    {'photo': photo.id, 'motif': 'doublon'}, format='json')
+                self.assertEqual(r.status_code, 204, r.data)
+        self.assertFalse(Attachment.objects.filter(
+            pk__in=(p.pk, q.pk)).exists())
+        self.assertEqual(
+            [c.kwargs['Key'] for c in client.delete_object.call_args_list],
+            [p.file_key])
+        self.assertTrue(CreativeAsset.objects.filter(
+            file_key='k/creatif').exists())

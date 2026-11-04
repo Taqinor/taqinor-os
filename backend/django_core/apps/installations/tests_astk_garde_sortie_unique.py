@@ -362,3 +362,83 @@ class GardeSortieUnique(TestCase):
                 self.assertEqual(
                     panneau.quantite_stock,
                     STOCK_INITIAL + entrees - QUANTITE_VENDUE, cas)
+
+    # ── ASTK258 (C-ASTK-VER4-040) — vente PUIS chantier ───────────────────
+
+    def _f11_api(self, inst, panneau, qte=None):
+        """F11 par la route terrain ; ``qte`` ≠ prévu ⇒ ligne justifiée."""
+        from apps.installations import field_capture
+        from apps.installations.models import Intervention
+        itv = Intervention.objects.create(
+            company=self.company, installation=inst)
+        cons = field_capture.ensure_consommation(itv)
+        if qte is not None:
+            cons.lignes.filter(produit=panneau).update(
+                quantite_utilisee=Decimal(qte), justification='partiel')
+        rep = self.api.post(
+            f'/api/django/installations/interventions/{itv.id}/'
+            'valider-consommation/', {}, format='json')
+        self.assertEqual(rep.status_code, 200, getattr(rep, 'data', rep))
+        return cons
+
+    def _acompte_api(self, devis):
+        rep = self.api.post(
+            f'/api/django/ventes/devis/{devis.id}/generer-facture/', {},
+            format='json')
+        self.assertLess(rep.status_code, 400, getattr(rep, 'data', rep))
+        fac = devis.factures.order_by('id').first()
+        if fac is not None and fac.statut == 'brouillon':
+            rep = self.api.post(
+                f'/api/django/ventes/factures/{fac.id}/emettre/', {},
+                format='json')
+            self.assertLess(rep.status_code, 400, getattr(rep, 'data', rep))
+
+    def _chantier(self, inst, action, **data):
+        rep = self.api.post(
+            f'/api/django/installations/chantiers/{inst.id}/{action}/',
+            data, format='json')
+        self.assertEqual(rep.status_code, 200, getattr(rep, 'data', rep))
+
+    def _bilan(self, panneau):
+        from apps.stock.models import MouvementStock
+        from apps.stock.services import mouvement_type_sortie
+        panneau.refresh_from_db()
+        return (MouvementStock.objects.filter(
+            produit=panneau, type_mouvement=mouvement_type_sortie())
+            .aggregate(t=Sum('quantite'))['t'] or 0, panneau.quantite_stock)
+
+    def test_compositions_vente_puis_chantier(self):
+        from apps.installations import field_capture
+        with self.subTest('a — facture émise puis F11 10'):
+            devis, inst, panneau = self._vente()
+            self._facture_directe(devis, inst, panneau)
+            cons = self._f11_api(inst, panneau)
+            self._installer(inst)
+            self.assertEqual(self._bilan(panneau), (10, 20))
+            self.assertEqual(  # persistance : revalider ⇒ 0 sortie
+                field_capture.validate_consommation(cons, self.user), 0)
+            self.assertEqual(self._bilan(panneau), (10, 20))
+        with self.subTest("b — acompte par l'API puis F11 par l'API"):
+            devis, inst, panneau = self._vente()
+            self._acompte_api(devis)
+            self._f11_api(inst, panneau)
+            self._installer(inst)
+            self.assertEqual(self._bilan(panneau), (10, 20))
+        with self.subTest('c — sans facture, F11 6 puis F11 4'):
+            devis, inst, panneau = self._vente()
+            self._f11_api(inst, panneau, 6)
+            self._f11_api(inst, panneau, 4)
+            self._installer(inst)
+            self.assertEqual(self._bilan(panneau), (10, 20))
+        with self.subTest('d — annulé, acompte, réactivé, Installé'):
+            devis, inst, panneau = self._vente()
+            self._chantier(inst, 'annuler', motif='test')
+            self._acompte_api(devis)
+            self._chantier(inst, 'reactiver')
+            self._installer(inst)
+            self.assertEqual(self._bilan(panneau), (10, 20))
+        with self.subTest('F11 12 après facture ⇒ 12'):
+            devis, inst, panneau = self._vente()
+            self._facture_directe(devis, inst, panneau)
+            self._f11_api(inst, panneau, 12)
+            self.assertEqual(self._bilan(panneau), (12, 18))

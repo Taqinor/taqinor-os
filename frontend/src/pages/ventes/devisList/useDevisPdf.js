@@ -192,7 +192,8 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
       // CIQ325 — jamais d'`include_etude` : l'aperçu rend le MÊME premium que
       // le lien du client (aucun détour par le moteur legacy).
       const params = proposalParams('full', false)
-      const res = await ventesApi.getProposalPdf(d.id, params)
+      // ADEV112 — l'aperçu affiche son propre message : pas de toast global en double.
+      const res = await ventesApi.getProposalPdf(d.id, params, { suppressErrorToast: true })
       return pdfBlob(res.data)
     } catch (err) {
       // ADEV112 — le 409 de /proposal arrive en Blob (responseType blob) : son
