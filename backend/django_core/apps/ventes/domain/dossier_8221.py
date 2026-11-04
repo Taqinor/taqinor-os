@@ -155,9 +155,9 @@ def equipements_du_devis(devis):
     """Équipements déclarables (modules, onduleurs, batteries) des lignes
     retenues du devis : ``[{produit_id, fabricant, modele, quantite,
     puissance}]`` regroupés par produit, triés par produit."""
-    from ..utils.options import option_lines
+    from ..utils.options import lignes_vendues
     par_produit = {}
-    for ligne in option_lines(devis):
+    for ligne, quantite in lignes_vendues(devis):  # ADOC191 — × N villas
         produit = getattr(ligne, 'produit', None)
         if produit is None or not _est_declare(produit.nom):
             continue
@@ -168,10 +168,7 @@ def equipements_du_devis(devis):
             'quantite': 0.0,
             'puissance': _puissance(produit),
         })
-        try:
-            entree['quantite'] += float(ligne.quantite or 0)
-        except (TypeError, ValueError):
-            pass
+        entree['quantite'] += float(quantite)
     return [par_produit[k] for k in sorted(par_produit)]
 
 

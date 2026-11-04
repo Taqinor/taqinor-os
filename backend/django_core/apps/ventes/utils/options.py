@@ -452,6 +452,26 @@ def option_lines(devis, option=None):
     return filter_lines_for_option(lignes, option, devis=devis)
 
 
+def lignes_vendues(devis):
+    """ADOC191 (C-ADOC-VER4-002) — ``[(ligne, quantité vendue)]`` : les
+    lignes de l'option retenue (``option_lines``) × nombre de villas
+    (``multivilla.nombre_proprietes``), lignes sans quantité exclues. LA
+    lecture du matériel vendu d'un devis multi-villas (82-21, fiche de
+    remise, contrat de maintenance)."""
+    from decimal import Decimal, InvalidOperation
+    from apps.ventes.multivilla import nombre_proprietes
+    n = nombre_proprietes(devis)
+    vendues = []
+    for ligne in option_lines(devis):
+        try:
+            qte = Decimal(str(ligne.quantite or 0)) * n
+        except (InvalidOperation, ValueError):
+            continue
+        if qte:
+            vendues.append((ligne, qte))
+    return vendues
+
+
 def _totaux_canoniques(devis, lignes) -> dict:
     """Totaux canoniques d'une liste de lignes de CE devis — le cœur partagé
     d'``option_totaux`` et du repli sans moteur (``totaux_affichage_repli``) :
