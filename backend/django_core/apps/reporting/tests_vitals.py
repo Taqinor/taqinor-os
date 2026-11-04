@@ -750,7 +750,7 @@ class ResumeServiceTests(TestCase):
         self.assertIs(reponse.data['tri_horodate'], True)
         cle, valeur = self.client_redis.return_value.set.call_args.args
         self.assertEqual(cle, 'erp:dernier_tri_problemes')
-        self.assertEqual(datetime.fromisoformat(valeur).year, timezone.now().year)
+        self.assertIsNotNone(datetime.fromisoformat(valeur).utcoffset())
 
     def test_sans_tri_aucun_battement(self):
         self.assertIs(self._get().data['tri_horodate'], False)
