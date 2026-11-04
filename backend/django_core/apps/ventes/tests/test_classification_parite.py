@@ -225,7 +225,8 @@ class BatterieCapaciteParitesTest(SimpleTestCase):
 
 
 class ClassementPlafondMemoTest(SimpleTestCase):
-    """ERR-PERF-DEVIS-ATOMIC-LRU — un catalogue plus grand que le plafond relit tout le cache à vide (8 947 produits : 313 s)."""
+    """ERR-PERF-DEVIS-ATOMIC-LRU — un catalogue plus grand que le plafond relit
+    tout le cache à vide (8 947 produits : 313 s)."""
 
     def test_plafond_au_dessus_de_tout_catalogue(self):
         self.assertGreaterEqual(classer_produit.cache_info().maxsize, 50_000)
