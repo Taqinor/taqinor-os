@@ -2025,7 +2025,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 return Response(
                     {'detail': 'Stock insuffisant : '
                      f'{produit.quantite_stock} en main, {quantite} demandé(s).'},
-                    status=status.HTTP_400_BAD_REQUEST)
+                    status=status.HTTP_409_CONFLICT)  # ENF11 : état du stock
         with transaction.atomic():
             piece = PieceConsommee.objects.create(
                 company=ticket.company, ticket=ticket, produit=produit,
@@ -3042,7 +3042,9 @@ class KbArticleViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
-        qs = super().get_queryset().filter(actif=True)
+        qs = super().get_queryset()
+        if getattr(self, 'action', None) == 'list':  # POST {actif: false} : 404 ensuite
+            qs = qs.filter(actif=True)
         produit = entier_param(self.request, 'produit')
         categorie = self.request.query_params.get('categorie')
         if produit:

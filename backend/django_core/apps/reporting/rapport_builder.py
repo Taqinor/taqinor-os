@@ -183,9 +183,9 @@ class RapportDefinitionViewSet(CompanyScopedModelViewSet):
             rows = data_explorer.run_query(
                 obj.dataset, request.user.company, request.user,
                 obj.spec or {})
-        except data_explorer.DatasetInconnu as exc:
+        except data_explorer.DatasetInconnu as exc:  # ENF11 : la définition existe
             return Response({'detail': str(exc)},
-                            status=status.HTTP_404_NOT_FOUND)
+                            status=status.HTTP_409_CONFLICT)
         except (data_explorer.ChampNonAutorise, FormulaError) as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -257,9 +257,9 @@ class RapportDefinitionViewSet(CompanyScopedModelViewSet):
             # AANA25 — l'export s'exécute au nom du LECTEUR (sa portée, ses
             # permissions), jamais du propriétaire de la définition.
             rows, pivot = executer_definition(obj, lecteur=request.user)
-        except data_explorer.DatasetInconnu as exc:
+        except data_explorer.DatasetInconnu as exc:  # ENF11 : la définition existe
             return Response({'detail': str(exc)},
-                            status=status.HTTP_404_NOT_FOUND)
+                            status=status.HTTP_409_CONFLICT)
         except (data_explorer.ChampNonAutorise, FormulaError,
                 TypeError, ValueError) as exc:
             return Response({'detail': str(exc)},

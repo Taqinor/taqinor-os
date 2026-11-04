@@ -1572,6 +1572,8 @@ BulkResponse = {
     },
 }
 UblXml = {(200, 'application/xml'): OpenApiTypes.BINARY}
+#: dgi-export d'un document non émis ou annulé : refus d'état sur un GET.
+DgiExportXml = {**UblXml, 409: ErreurDetail}
 PdfBinaire = {(200, 'application/pdf'): OpenApiTypes.BINARY}
 DgiConformiteResponse = _ser('FactureDgiConformite', {
     'conforme': s.BooleanField(),

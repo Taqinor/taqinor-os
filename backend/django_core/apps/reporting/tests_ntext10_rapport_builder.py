@@ -208,10 +208,10 @@ class RapportDefinitionExecutionTests(TestCase):
         second = self.api.post(f'{URL}{obj.id}/executer/', format='json')
         self.assertEqual(second.data['pivot']['grand_total'], 30)
 
-    def test_unknown_dataset_returns_404(self):
+    def test_unknown_dataset_returns_409(self):
         obj = self._definition(dataset='dataset-inexistant', spec={})
         res = self.api.post(f'{URL}{obj.id}/executer/', format='json')
-        self.assertEqual(res.status_code, 404)
+        self.assertEqual(res.status_code, 409)
 
     def test_field_outside_whitelist_returns_400(self):
         obj = self._definition(spec={'select': ['navigation_id']})

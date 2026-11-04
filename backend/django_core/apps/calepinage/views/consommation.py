@@ -118,7 +118,7 @@ def proposer_consommation(self, request, pk=None):
     document). 400 NOMMANT le champ pour la FORME du corps (source inconnue,
     sous-document du mauvais type ou absent) ; 409 pour le CONTENU que le
     service refuse (facture non finie, appareil hors contrat, CSV illisible,
-    classe tarifaire non résolue) ; 404 pour un lead absent.
+    classe tarifaire non résolue) ; 409 pour un lead absent (le calepinage existe).
     """
     from ..services.charges import ChargeInvalide
     from ..services.consommation import (
@@ -136,7 +136,7 @@ def proposer_consommation(self, request, pk=None):
                          company=getattr(request.user, 'company', None))
     except LeadIntrouvable:
         return Response({'detail': 'Introuvable.'},
-                        status=status.HTTP_404_NOT_FOUND)
+                        status=status.HTTP_409_CONFLICT)
     except (ConsommationInvalide, ImportCourbeInvalide,
             ChargeInvalide) as refus:
         champ = getattr(refus, 'champ', '') or 'consommation'

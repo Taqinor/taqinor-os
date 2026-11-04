@@ -151,7 +151,7 @@ class AvoirViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
                 created_by=user)
         return None
 
-    @extend_schema(responses=D.UblXml)
+    @extend_schema(responses=D.DgiExportXml)
     @action(detail=True, methods=['get'], url_path='dgi-export')
     def dgi_export(self, request, pk=None):
         return _dgi_export_rectificatif(self.get_object(), '381')
@@ -315,7 +315,7 @@ class NoteDebitViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
             return [IsResponsableOrAdmin(), DroitDeLaGrille('ventes_export')()]
         return [IsResponsableOrAdmin()]
 
-    @extend_schema(responses=D.UblXml)
+    @extend_schema(responses=D.DgiExportXml)
     @action(detail=True, methods=['get'], url_path='dgi-export')
     def dgi_export(self, request, pk=None):
         return _dgi_export_rectificatif(self.get_object(), '383')

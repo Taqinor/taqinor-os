@@ -108,7 +108,7 @@ class FactureDocumentsActionsMixin:
         )
         return response
 
-    @extend_schema(responses=D.UblXml)
+    @extend_schema(responses=D.DgiExportXml)
     @action(detail=True, methods=['get'], url_path='dgi-export',
             # ASEC50 / D-ASEC-4 — l'export DGI exige ``ventes_export``.
             permission_classes=[IsResponsableOrAdmin,
