@@ -23,6 +23,24 @@ from __future__ import annotations
 from .registre import GRAVITE_AVERTISSEMENT, PORTEE_DEVIS, TOLERANCES, regle
 
 
+def _memo(ctx, devis, nom, calcul):
+    """ERR-JPB-AUDIT-COHERENCE-TUE-180S — les trois règles relisaient chacune
+    le calepinage et ses mesures : lu UNE fois par devis via le contexte
+    d'audit (``ctx`` absent — appel direct en test — ⇒ calcul simple)."""
+    if ctx is None or not hasattr(ctx, 'memo_devis'):
+        return calcul()
+    return ctx.memo_devis(devis, nom, calcul)
+
+
+def _calepinage_du_devis(devis, ctx):
+    return _memo(ctx, devis, 'calepinage_lie', lambda: _calepinage_lie(devis))
+
+
+def _mesures_du_devis(devis, calepinage, ctx):
+    return _memo(ctx, devis, 'mesures_calepinage',
+                 lambda: _mesures_document(calepinage))
+
+
 def _calepinage_lie(devis):
     """Le calepinage OUVERT rattaché DIRECTEMENT à ce devis, ou ``None``
     (devis inactif, sans conception, ou conception re-liée à une révision)."""
@@ -68,10 +86,10 @@ def _modules_option_retenue(devis):
        'Modules posés au calepinage ≠ panneaux du devis (option retenue)',
        gravite=GRAVITE_AVERTISSEMENT, portee=PORTEE_DEVIS)
 def modules_devis_vs_calepinage(r, devis, ctx):
-    calepinage = _calepinage_lie(devis)
+    calepinage = _calepinage_du_devis(devis, ctx)
     if calepinage is None:
         return []
-    modules_doc, _kwc = _mesures_document(calepinage)
+    modules_doc, _kwc = _mesures_du_devis(devis, calepinage, ctx)
     modules_devis = _modules_option_retenue(devis)
     if not modules_doc or modules_devis is None or modules_doc == modules_devis:
         return []
@@ -88,10 +106,10 @@ def modules_devis_vs_calepinage(r, devis, ctx):
        'kWc dessiné au calepinage ≠ kWc du devis',
        gravite=GRAVITE_AVERTISSEMENT, portee=PORTEE_DEVIS)
 def kwc_devis_vs_calepinage(r, devis, ctx):
-    calepinage = _calepinage_lie(devis)
+    calepinage = _calepinage_du_devis(devis, ctx)
     if calepinage is None:
         return []
-    _modules, kwc_doc = _mesures_document(calepinage)
+    _modules, kwc_doc = _mesures_du_devis(devis, calepinage, ctx)
     from apps.ventes.domain.scenario import puissance_kwc_du_devis
     kwc_devis = puissance_kwc_du_devis(devis)
     if not kwc_doc or kwc_devis is None:
@@ -113,7 +131,7 @@ def kwc_devis_vs_calepinage(r, devis, ctx):
        'Empreinte imprimée du calepinage ≠ empreinte du devis (non resynchronisé)',
        gravite=GRAVITE_AVERTISSEMENT, portee=PORTEE_DEVIS)
 def empreinte_imprimee_perimee(r, devis, ctx):
-    calepinage = _calepinage_lie(devis)
+    calepinage = _calepinage_du_devis(devis, ctx)
     if calepinage is None or not getattr(devis, 'layout_hash', ''):
         return []
     from apps.ventes.domain.geometrie import layout_hash

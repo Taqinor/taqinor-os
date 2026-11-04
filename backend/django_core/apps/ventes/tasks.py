@@ -718,11 +718,22 @@ def task_devis_automatique_depuis_lead(lead_id, company_id):
 @shared_task(name='ventes.audit_coherence_nuit', soft_time_limit=1500,
              time_limit=1800)
 def audit_coherence_nuit():
+    from celery.exceptions import SoftTimeLimitExceeded
+
     from .coherence.moteur import run_audit
     from .coherence.notification import (
         notifier_nouvelles_violations, notifier_regles_sans_verdict)
 
-    report = run_audit(persist=True)
+    try:
+        report = run_audit(persist=True)
+    except SoftTimeLimitExceeded as exc:
+        # ERR-JPB-AUDIT-COHERENCE-TUE-180S — passe interrompue : les nouvelles
+        # violations déjà persistées sont notifiées (sinon, vues comme
+        # « existantes » la nuit suivante, elles ne le seraient jamais).
+        partiel = getattr(exc, 'rapport', None)
+        if partiel is not None and partiel.new:
+            notifier_nouvelles_violations(partiel)
+        raise
     notifications = notifier_nouvelles_violations(report) if report.new \
         else 0
     # AMOT61 (C-AMOT-037) — une règle restée SANS VERDICT n'est plus muette :
