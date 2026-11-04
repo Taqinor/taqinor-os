@@ -15,7 +15,6 @@
 export const prerender = false;
 
 import type { APIRoute } from 'astro';
-import * as cf from 'cloudflare:workers';
 import {
   fireCapi,
   forwardLead,
@@ -92,7 +91,7 @@ export const POST: APIRoute = async ({ request }) => {
     // représentative du trafic. Même appel, même tolérance de panne (silencieux,
     // jamais bloquant), fireCapi se gate déjà lui-même sur `record.qualified`.
     const capi = await fireCapi(record, env, fetch, { adsConsent });
-    if (!capi.sent && baseRecord.qualified && capi.reason !== 'consent-denied') {
+    if (!capi.sent && baseRecord.qualified && !capi.reason) {
       console.log('[capi] non envoyé (service absent ou injoignable)');
     }
   })();

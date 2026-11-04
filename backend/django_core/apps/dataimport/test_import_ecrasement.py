@@ -362,6 +362,55 @@ class TestIsolationTenantEcrasement(EcrasementBase):
         lead.refresh_from_db()
         self.assertEqual(lead.email, 'b@y.ma')
 
+    def test_upsert_contact_hors_portee_jamais_cree(self):
+        """ERR-W33-IMPORT-DOUBLON — en ``upsert``, le contact d'un lead hors de
+        portée n'est ni réécrit ni recréé : la ligne est ignorée, avec son motif,
+        sans nommer la fiche ; l'aperçu annonce la même chose que le commit."""
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import COMMERCIAL_PERMISSIONS
+
+        role = Role.objects.create(
+            company=self.company, nom='Commercial doublon',
+            permissions=list(COMMERCIAL_PERMISSIONS))
+
+        def compte(nom):
+            return get_user_model().objects.create_user(
+                username=f'doublon-{nom}', password='x', company=self.company,
+                role=role)
+        lead = Lead.objects.create(
+            company=self.company, nom='Alaoui', owner=compte('c1'),
+            telephone='0600000001', email='a@x.ma')
+        client = APIClient()
+        client.force_authenticate(compte('c2'))
+        csv_text = 'nom,telephone\nDoublon,+212600000001\nNeuf,0600000002\n'
+        options = {'target': 'leads', 'mode': 'upsert'}
+
+        apercu = client.post(
+            DRY_RUN_URL, {'file': self._csv(csv_text), **options},
+            format='multipart')
+        self.assertEqual(apercu.status_code, 200, apercu.data)
+        self.assertEqual(apercu.data['resume']['creation'], 1)
+        self.assertEqual(apercu.data['resume']['ignoree'], 1)
+        self.assertIn('hors de votre portée', apercu.data['conflits'][0]['raison'])
+        self.assertIsNone(apercu.data['conflits'][0]['cible_id'])
+        self.assertNotIn('Alaoui', str(apercu.data))
+
+        commit = client.post(
+            COMMIT_URL, {'file': self._csv(csv_text), **options},
+            format='multipart')
+        self.assertEqual(commit.status_code, 200, commit.data)
+        self.assertEqual(commit.data['created'], 1)
+        self.assertEqual(commit.data['updated'], 0)
+        self.assertEqual(
+            Lead.objects.filter(company=self.company, nom='Doublon').count(), 0)
+        self.assertEqual(
+            Lead.objects.filter(company=self.company, nom='Neuf').count(), 1)
+        lead.refresh_from_db()
+        self.assertEqual(lead.nom, 'Alaoui')
+
     def test_apercu_reserve_aux_roles_autorises(self):
         """L'aperçu expose des valeurs internes (dont ``prix_achat`` pour le
         catalogue) : il reste derrière la même garde que le commit, jamais

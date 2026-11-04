@@ -163,7 +163,13 @@ describe('WAUD77 — « Réponse courte » sourcée : chiffre affiché = constan
     expect(REPONSES_COURTES.pompage.replace(/[  ]/g, ' ')).toContain('30 % de l’investissement, plafonnée à 3 000 DH par hectare, 3 000 DH par kWc et 30 000 DH par projet');
   });
   it('garanties : jamais « 30 ans » en général ; 82-21 : ni date ni pénalité ; deux phrases citables', () => {
-    expect(REPONSES_COURTES.garanties).not.toMatch(/30 ans|25 ans/);
+    // « 30 ans » : uniquement rattaché aux panneaux et à leur seuil, jamais en général (WAUD77).
+    expect(REPONSES_COURTES.garanties).toContain('Panneaux : 12 ans produit et 30 ans de performance linéaire (≥ 87,4 % à 30 ans)');
+    expect(REPONSES_COURTES.garanties).not.toMatch(/dépendent de leur marque/);
+    expect(REPONSES_COURTES.garanties.replace(/^Panneaux :[^;]*;/, '')).not.toMatch(/30 ans|25 ans/);
+    // D-AGR-6 : la règle, jamais un droit — « décision de la DPA/ORMVA », comme la section FDA de la page.
+    expect(REPONSES_COURTES.pompage).toContain('décision de la DPA/ORMVA, non garantie');
+    expect(REPONSES_COURTES.pompage).not.toMatch(/couvre/);
     expect(REPONSES_COURTES.loi8221).not.toMatch(/pénalit|amende|délai|\b20\d\d\b|mois/i);
     for (const t of Object.values(REPONSES_COURTES)) expect(t.length).toBeLessThan(420);
   });

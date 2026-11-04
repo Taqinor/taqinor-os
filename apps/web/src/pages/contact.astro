@@ -185,6 +185,8 @@ const { waGeneral, waRegul, waRappel, waVisite, waSav } = contactWhatsappLinks()
 </Layout>
 
 <script>
+  import { readAdsConsent } from '../lib/diagnosticFormShared';
+
   // WJ97 — révèle #rappel-form au clic sur la carte « Demander un rappel »
   // (jamais affiché par défaut : la grille reste dense pour qui ne veut que
   // WhatsApp) puis poste un lead RÉEL via /api/capture-lead, DISTINCT du canal
@@ -214,6 +216,7 @@ const { waGeneral, waRegul, waRappel, waVisite, waSav } = contactWhatsappLinks()
     const consent = (document.getElementById('rappel-consent') as HTMLInputElement | null)?.checked === true;
     const websiteUrl = (document.getElementById('rappel-hp') as HTMLInputElement | null)?.value ?? '';
 
+    const adsConsent = readAdsConsent();
     statusEl.hidden = true;
     submitBtn.disabled = true;
     try {
@@ -231,6 +234,8 @@ const { waGeneral, waRegul, waRappel, waVisite, waSav } = contactWhatsappLinks()
           quickCallback: true,
           // Canal explicite, distinct de tout CTA WhatsApp (lib/lead.ts CONTACT_PREFERENCES).
           contactPreference: 'phone_ok',
+          // Le beacon Meta n'est ouvert que par un `granted` (décision fondateur 04/11/2026).
+          ...(adsConsent ? { adsConsent } : {}),
         }),
       });
       const data = (await res.json().catch(() => null)) as { ok?: boolean; errors?: Record<string, string> } | null;

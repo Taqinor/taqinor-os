@@ -847,6 +847,23 @@ def _match_lead(company, f, ext_id, external_system, user=None):
     return existing
 
 
+#: ERR-W33-IMPORT-DOUBLON — motif d'une ligne ``upsert`` dont le contact appartient
+#: à un lead de la société que l'appelant ne voit pas : ni créée, ni nommée.
+RAISON_LEAD_HORS_PORTEE = (
+    "contact déjà présent sur un lead de la société, hors de votre portée : "
+    "ligne ignorée")
+
+
+def _lead_hors_portee(company, f, ext_id, external_system):
+    """ERR-W33-IMPORT-DOUBLON — appelée quand ``_match_lead`` n'a rien trouvé :
+    la ligne vise-t-elle quand même un lead de la société (identifiant externe ou
+    contact) ? ACVI1 le cache à l'appelant, mais le créer ferait un doublon."""
+    from apps.crm.models import Lead
+    return (
+        _find_by_external_id(company, external_system, ext_id, Lead) is not None
+        or _lead_par_contact(company, f) is not None)
+
+
 def _match_client(company, f, ext_id, external_system):
     from apps.crm.models import Client
     existing = _find_by_external_id(company, external_system, ext_id, Client)
@@ -982,6 +999,18 @@ def _analyser_conflits(target, rows, mapped, company, mode, external_system,
                 if existing is None and mode == 'maj':
                     action = 'ignoree'
                     raison = 'aucune correspondance (maj seule)'
+                elif existing is None and _lead_hors_portee(
+                        company, f, ext_id, external_system):
+                    # Même décision que le commit ; la ligne ne nomme aucune fiche.
+                    action, raison = 'ignoree', RAISON_LEAD_HORS_PORTEE
+                    if len(conflits) < MAX_CONFLITS_DETAILLES:
+                        conflits.append({
+                            'ligne': i, 'action': action, 'raison': raison,
+                            'cible': None, 'cible_id': None, 'cible_libelle': '',
+                            'ecrasements': [], 'remplissages': [],
+                        })
+                    else:
+                        tronque = True
             else:
                 existing = _lead_par_contact(company, f)
                 if existing is not None:
@@ -1135,6 +1164,9 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
                     if _lead_par_contact(company, f) is not None:
                         skipped.append({'ligne': i, 'raison': 'doublon (existe déjà)'})
                         continue
+                elif _lead_hors_portee(company, f, ext_id, external_system):
+                    skipped.append({'ligne': i, 'raison': RAISON_LEAD_HORS_PORTEE})
+                    continue
                 tags = (f.pop('tags', '') or '')
                 f['tags'] = (tags + (', ' if tags else '') + 'Import').strip(', ')[:500]
                 lead = Lead.objects.create(company=company, **f)

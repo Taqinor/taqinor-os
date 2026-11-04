@@ -571,7 +571,7 @@ describe('le flux lead — bout-en-bout (sans secret, frontière mockée)', () =
     expect(payload.utm.utm_term).toBe('solaire');
     expect(payload.consent).toBe(true);
 
-    const capi = await fireCapi(record, env, fetchMock);
+    const capi = await fireCapi(record, env, fetchMock, { adsConsent: 'granted' });
     expect(capi.sent).toBe(true);
     const capiCall = calls.find((c) => c.url === env.CAPI_URL)!;
     expect(JSON.parse(String(capiCall.init.body)).event).toBe('Lead');
@@ -599,7 +599,7 @@ describe('le flux lead — bout-en-bout (sans secret, frontière mockée)', () =
     expect(fw.delivered).toBe(false);
     expect(fw.reason).toBe('below-threshold');
 
-    const capi = await fireCapi(record, env, fetchMock);
+    const capi = await fireCapi(record, env, fetchMock, { adsConsent: 'granted' });
     expect(capi.sent).toBe(false);
     // band reste fournie pour l'état de remerciement.
     expect(band.kwcLabel.length).toBeGreaterThan(0);

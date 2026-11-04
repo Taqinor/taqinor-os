@@ -1,6 +1,6 @@
 /**
- * QJW14 — « Refuser » sur la bannière de consentement bloque le beacon Meta
- * CAPI, et RIEN D'AUTRE.
+ * QJW14 + décision fondateur du 04/11/2026 — le beacon Meta CAPI ne part que sur
+ * « Accepter » : « Refuser » et l'absence de réponse le bloquent, et RIEN D'AUTRE.
  *
  * Avant : `fireCapi` ne lisait jamais `tq_consent` ; un visiteur qui cliquait
  * « Refuser » puis soumettait le formulaire voyait quand même partir chez Meta
@@ -9,9 +9,8 @@
  * Ce que cette garde épingle, dans les deux sens :
  *  - refus explicite → AUCUN appel au CAPI, mais le lead part quand même au CRM
  *    (le contrat webhook n'est jamais gaté par ce signal) ;
- *  - pas de réponse à la bannière → comportement INCHANGÉ (le beacon part) :
- *    c'est la moitié « documentée » de la décision, épinglée pour qu'un
- *    changement d'avis du fondateur soit un choix visible, pas une dérive.
+ *  - pas de réponse à la bannière → même chose : aucun appel au CAPI, le lead part ;
+ *  - seul `granted` ouvre le beacon.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -95,19 +94,20 @@ describe('QJW14 — fireCapi respecte un refus explicite', () => {
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
-  it('part normalement quand le visiteur a accepté, ou n’a pas répondu', async () => {
+  it('part seulement sur `granted` ; sans réponse ou sans option, rien ne part', async () => {
     const v = validateLead(qualifie);
     if (!v.ok) return;
     const record = buildLeadRecord(v.lead, { kwcMin: 8, kwcMax: 16, kwcLabel: '8 à 16 kWc', paybackLabel: '5 à 7 ans', source: 'local' }, new Date());
-    for (const adsConsent of ['granted', 'unset'] as const) {
-      const fetchFn = vi.fn(async () => ({ ok: true }) as unknown as Response) as unknown as typeof fetch;
-      const out = await fireCapi(record, { CAPI_URL: CAPI }, fetchFn, { adsConsent });
-      expect(out.sent, adsConsent).toBe(true);
-      expect(fetchFn).toHaveBeenCalledOnce();
-    }
-    // Appel HISTORIQUE sans option : comportement strictement inchangé.
-    const fetchFn = vi.fn(async () => ({ ok: true }) as unknown as Response) as unknown as typeof fetch;
-    expect((await fireCapi(record, { CAPI_URL: CAPI }, fetchFn)).sent).toBe(true);
+    const accepte = vi.fn(async () => ({ ok: true }) as unknown as Response) as unknown as typeof fetch;
+    expect((await fireCapi(record, { CAPI_URL: CAPI }, accepte, { adsConsent: 'granted' })).sent).toBe(true);
+    expect(accepte).toHaveBeenCalledOnce();
+
+    const sansReponse = vi.fn(async () => ({ ok: true }) as unknown as Response) as unknown as typeof fetch;
+    expect(await fireCapi(record, { CAPI_URL: CAPI }, sansReponse, { adsConsent: 'unset' }))
+      .toEqual({ sent: false, reason: 'consent-absent' });
+    expect(await fireCapi(record, { CAPI_URL: CAPI }, sansReponse))
+      .toEqual({ sent: false, reason: 'consent-absent' });
+    expect(sansReponse).not.toHaveBeenCalled();
   });
 });
 
@@ -137,10 +137,10 @@ describe('QJW14 — « Refuser » puis soumettre, de bout en bout', () => {
     expect(forwarded.adsConsent).toBeUndefined();
   });
 
-  it('/api/simulate — sans réponse à la bannière, le beacon part (comportement documenté)', async () => {
+  it('/api/simulate — sans réponse à la bannière, le lead part et le beacon ne part PAS', async () => {
     const { urls } = await call('simulate', qualifie);
     expect(urls).toContain(CRM);
-    expect(urls).toContain(CAPI);
+    expect(urls).not.toContain(CAPI);
   });
 
   it('/api/preview-lead — même gate (miroir strict)', async () => {
@@ -160,6 +160,12 @@ describe('QJW14 — « Refuser » puis soumettre, de bout en bout', () => {
 
     resetRateLimit();
     const sansReponse = await call('capture-lead', qualifie);
-    expect(sansReponse.urls).toContain(CAPI);
+    expect(sansReponse.urls).toContain(CRM);
+    expect(sansReponse.urls).not.toContain(CAPI);
+
+    resetRateLimit();
+    const accepte = await call('capture-lead', { ...qualifie, adsConsent: 'granted' });
+    expect(accepte.urls).toContain(CRM);
+    expect(accepte.urls).toContain(CAPI);
   });
 });

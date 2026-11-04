@@ -57,3 +57,9 @@ test('LeadsPage : les leads écartés de la file montrent le motif du serveur (E
   assert.ok(start > 0)
   assert.match(LEADS_PAGE.slice(start, start + 200), /s\.reason/)
 })
+
+test('LeadsPage : file vide avec des motifs : pas de « sans numéro », motifs en clair (ERR-W33-WA-MOTIFS)', () => {
+  assert.match(LEADS_PAGE, /waSkipped\.length > 0\s+\? 'Aucun message préparé :'/)
+  assert.match(LEADS_PAGE, /palier2_ferme: '[^']*réactivation[^']*'/)
+  assert.match(LEADS_PAGE, /'hors seau': '[^']*réactivation[^']*'/)
+})

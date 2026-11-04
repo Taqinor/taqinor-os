@@ -127,6 +127,11 @@ export const TABLEAU_GARANTIES_AR = [
   { item: 'التركيب واليد العاملة لتاكينور', years: 'سنتان' },
 ];
 
+/** ERR-W33-GARANTIES-NOTE — une durée ne s'affiche jamais sans son seuil (« 30 ans » sans « ≥ 87,4 % à 30 ans »). */
+export function lignesGaranties(tableau: readonly { item: string; years: string; note?: string }[]): string[][] {
+  return tableau.map((g) => [g.item, g.note ? `${g.years} (${g.note})` : g.years]);
+}
+
 /**
  * WAUD31 — texte `garantie` d'une fiche (lib/fiches.ts, français) rendu dans la langue de la page.
  * Mêmes durées, jamais recalculées : seul le libellé change.

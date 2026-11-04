@@ -85,6 +85,12 @@ const FILTERS_KEY = 'taqinor.leads.filters'
 // APX4 — « plein écran board » : préférence PROPRE à l'écran leads (jamais la
 // préférence globale de sidebar, qui appartient au shell).
 const BOARD_FULLSCREEN_KEY = 'taqinor.leads.boardFullscreen'
+// ERR-W33-WA-MOTIFS — les deux codes de réactivation renvoyés par `prepare_whatsapp`
+// (les autres motifs du serveur sont déjà en français).
+const MOTIFS_FILE_WA = {
+  palier2_ferme: 'cette réactivation n’est pas encore ouverte',
+  'hors seau': 'hors du groupe de réactivation choisi',
+}
 
 // LB49 — filtres persistés en SESSIONSTORAGE (plus localStorage) : l'état
 // survit aux allers-retours vers d'autres modules DANS la session ; une
@@ -1062,7 +1068,11 @@ export default function LeadsPage() {
       {waQueue && (
         <div className="lp-bulk-msg" role="status" data-testid="lp-wa-queue">
           {waQueue.length === 0 ? (
-            <span>Aucun lead sélectionné n'a de numéro WhatsApp/téléphone.</span>
+            <span>
+              {waSkipped.length > 0
+                ? 'Aucun message préparé :'
+                : "Aucun lead sélectionné n'a de numéro WhatsApp/téléphone."}
+            </span>
           ) : (
             <ul>
               {waQueue.map((q) => (
@@ -1076,7 +1086,7 @@ export default function LeadsPage() {
           )}
           {waSkipped.length > 0 && (
             <ul data-testid="lp-wa-skipped">
-              {waSkipped.map((s) => <li key={s.id}>{s.nom} : {s.reason}</li>)}
+              {waSkipped.map((s) => <li key={s.id}>{s.nom} : {MOTIFS_FILE_WA[s.reason] ?? s.reason}</li>)}
             </ul>
           )}
           <IconButton

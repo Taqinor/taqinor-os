@@ -257,6 +257,7 @@ const inputClass =
 <script>
   import { normalizeMoroccanPhone } from '../lib/phone';
   import { nextStep, progressLabel, sunshineSignal, validateStep } from '../lib/diagnostic';
+  import { champsEnrichis } from '../lib/enrichment';
   import { afficherEtape, chargeUtileCommune, creerMarqueurs, lireElements, lireEtat, majNavigation, reprendreTracking } from '../lib/diagnosticFormShared';
 
   const { form, success, kwcEl, roiEl, waEl, errEl, phoneErr, submitBtn, nextBtn, backBtn, progressEl, sunEl, spinnerEl, submitLabelEl } = lireElements();
@@ -349,7 +350,8 @@ const inputClass =
       return;
     }
 
-    const payload = chargeUtileCommune(fd);
+    // Champs FACULTATIFS — uniquement s'ils ont une valeur (jamais bloquants)
+    const payload = { ...chargeUtileCommune(fd), ...champsEnrichis(fd) };
 
     submitBtn.disabled = true;
     // W191 — show spinner + aria-busy; update label text without destroying innerHTML
