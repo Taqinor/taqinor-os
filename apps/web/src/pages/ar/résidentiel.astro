@@ -175,9 +175,9 @@ const investRangeHigh = formatMAD(Math.max(...brackets.map((b) => b.investHigh))
           <div class="v2-rise border-b border-white/10 py-5" style={`--v2-i:${i}`}>
             <div class="grid gap-1.5 sm:grid-cols-[1.1fr_0.8fr_1.2fr_0.8fr] sm:items-baseline sm:gap-4">
               <span class="font-display text-base font-bold text-white">{b.bill}</span>
-              <span class="fig lum text-xl sm:text-2xl" dir="ltr" data-tally>{b.kwc}</span>
+              <span class="fig lum text-xl sm:text-2xl" dir="ltr" data-fig-fixe>{b.kwc}</span>
               <span class="fig text-lg text-lune sm:text-xl" dir="ltr">{b.invest}</span>
-              <span class="fig text-xl text-brass-300 sm:text-2xl" dir="ltr" data-tally>{b.payback}</span>
+              <span class="fig text-xl text-brass-300 sm:text-2xl" dir="ltr" data-fig-fixe>{b.payback}</span>
             </div>
             {b.exemple && <p class="tech-label mt-2.5 text-lune-faint">{b.exemple}</p>}
           </div>
@@ -211,7 +211,7 @@ const investRangeHigh = formatMAD(Math.max(...brackets.map((b) => b.investHigh))
           </p>
           <dl class="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-3 border-s-2 border-brass-400/60 ps-6" data-stagger>
             <div class="v2-rise" style="--v2-i:0">
-              <dd class="fig lum whitespace-nowrap text-2xl sm:text-4xl" dir="ltr" data-tally>{panelWarrantyLabel}</dd>
+              <dd class="fig lum whitespace-nowrap text-2xl sm:text-4xl" dir="ltr" data-fig-fixe>{panelWarrantyLabel}</dd>
               <dt class="tech-label mt-1.5 text-lune-faint">ضمان الألواح</dt>
             </div>
             {RETOUR_PAR_SEGMENT.residentiel && (

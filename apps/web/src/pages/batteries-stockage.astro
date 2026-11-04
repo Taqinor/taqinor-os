@@ -282,7 +282,7 @@ import BatteriesStockageDiv1626 from '../components/blocs/BatteriesStockageDiv16
         <div class="mt-6 grid gap-4 sm:grid-cols-3" data-stagger>
           {installs.map((inst, i) => (
             <div class="v2-rise border-l-2 border-azur-600 bg-blanc px-4 py-4" style={`--v2-i:${i}`}>
-              <p class="fig whitespace-nowrap text-2xl text-azur-600" data-tally>{inst.kwh}</p>
+              <p class="fig whitespace-nowrap text-2xl text-azur-600" data-fig-fixe>{inst.kwh}</p>
               <p class="tech-label mt-2 text-encre-faint">Dyness · {inst.where} · réf. {inst.ref}</p>
             </div>
           ))}
