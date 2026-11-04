@@ -201,13 +201,13 @@ class TestFacturerComplet(TestCase):
 
     def test_generer_facture_corps_non_objet_400(self):
         """api-fuzz (ENF11) : ``[null, null]`` posté à ``generer-facture``
-        levait une 500 (``list.get``) — le corps est validé par son
-        sérialiseur déclaré : 400 ``validation_error``, rien n'est créé."""
+        levait une 500 (``list.get``) — ``NegociationCorpsObjet`` refuse le
+        corps à la lecture : 400 ``parse_error``, rien n'est créé."""
         resp = self.api.post(
             f'/api/django/ventes/devis/{self.devis.id}/generer-facture/',
             [None, None], format='json')
         self.assertEqual(resp.status_code, 400, resp.data)
-        self.assertEqual(resp.data['error']['code'], 'validation_error')
+        self.assertEqual(resp.data['error']['code'], 'parse_error')
         self.assertFalse(Facture.objects.filter(devis=self.devis).exists())
 
     def test_surpaiement_refuse_et_rien_n_est_cree(self):

@@ -192,7 +192,7 @@ class ValidationTests(ConfirmationBase):
     def test_corps_liste_400(self):
         rep = self._confirmer(self.bc, [1])
         self.assertEqual(rep.status_code, 400, rep.data)
-        self.assertEqual(rep.data, {'detail': 'Corps JSON attendu.'})
+        self.assertEqual(rep.data['detail'], 'Un objet JSON est attendu en corps.')
         self._assert_inchange()
 
     def test_saisie_valide_200(self):

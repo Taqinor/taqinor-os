@@ -1034,10 +1034,13 @@ class ContratFournisseurJetonsTests(WmsBase):
                 ({'date_confirmee_fournisseur': '18/10'}, e400['exemple_date']),
                 ({**contrat['exemple_corps'],
                   'numero_confirmation_fournisseur': 'N' * 101},
-                 e400['exemple_numero']),
-                ([], e400['exemple_corps_non_objet'])):
+                 e400['exemple_numero'])):
             rep = self.anonyme.post(url, corps, format='json')
             self.assertEqual((rep.status_code, rep.json()), (400, attendu))
+        # Corps non objet : refus de NegociationCorpsObjet, enveloppe commune.
+        rep = self.anonyme.post(url, [], format='json')
+        self.assertEqual((rep.status_code, rep.json()['detail']),
+                         (400, e400['exemple_corps_non_objet']['detail']))
         BonCommandeFournisseur.objects.filter(pk=self.bcf.pk).update(
             statut=BonCommandeFournisseur.Statut.RECU)
         rep = self.anonyme.post(url, contrat['exemple_corps'], format='json')

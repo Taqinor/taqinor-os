@@ -224,7 +224,7 @@
           ]
         },
         "exemple_corps_non_objet": {
-          "detail": "Corps JSON attendu."
+          "detail": "Un objet JSON est attendu en corps."
         }
       },
       "exemple_erreur_409": {

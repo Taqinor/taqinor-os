@@ -134,4 +134,5 @@ class RefreshRotationTests(TestCase):
 
     def test_corps_non_objet_sans_500(self):
         r = APIClient().post(_CORPS_URL, ['x'], format='json')
-        self.assertEqual(r.status_code, 401)
+        # ENF11 : corps non objet = 400 (NegociationCorpsObjet), avant tout jeton.
+        self.assertEqual(r.status_code, 400)
