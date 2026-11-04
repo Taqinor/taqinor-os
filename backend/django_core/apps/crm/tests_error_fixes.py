@@ -678,8 +678,9 @@ class TestFuzzCrmTour2(TestCase):
             '/api/django/crm/relance-etapes/{id}/message/']['get']['parameters']}
         self.assertCountEqual(params['cle']['schema']['enum'],
                               CLES_MESSAGE_REPONSE)
+        # WAUD83 — « en » marque le lead, ce n'est pas une langue de relance.
         self.assertCountEqual(params['langue']['schema']['enum'],
-                              Lead.LanguePreferee.values)
+                              [v for v in Lead.LanguePreferee.values if v != 'en'])
         noter = chemins['/api/django/crm/leads/{id}/noter/']['post'][
             'requestBody']['content']
         corps = noter['application/json']['schema']

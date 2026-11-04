@@ -108,7 +108,7 @@ describe('WJ17 — mon-toit.astro : le toggle WJ33 reste la référence + couvre
   });
 
   it('le step de capture 3D (WJ2) est AR-labellé et participe au toggle', () => {
-    expect(MON_TOIT).toContain('fr: "Voir les panneaux sur votre toit", ar: "مشاهدة الألواح على سطحك"');
+    expect(readFileSync(root('../src/pages/devis/mon-toit.astro'), 'utf8')).toContain('fr: "Voir les panneaux sur votre toit", ar: "مشاهدة الألواح على سطحك"');
   });
 
   it("l'étage de précision a entièrement quitté le tunnel — et la carte facture reste AR-labellée", () => {
