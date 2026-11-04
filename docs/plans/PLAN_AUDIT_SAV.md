@@ -272,3 +272,4 @@ Contre-visite `vérifie ACHT` du 01/11/2026 (dossier `docs/audits/2026-11-01-cha
 - 2026-11-03 — ASAV124 — cochée : rejeu en direct PASS du 04/11 (docs/audits/acceptation/).
 - 2026-11-03 — ASAV123 — cochée : clauses restantes rejouées PASS le 04/11 (docs/audits/acceptation/, sha 685ae08f1).
 - 2026-11-04 — ASAV127 — cochée (already present) : 20bfc0017 ; tests_asav75_garde_statut.py::GardeStatutTicketTests::test_fixture_typee_signalee ; preuve en direct n/a (garde CI).
+- 2026-11-04 — ASAV128 — NON jouée, laissée [ ] : P99.5 et les sous-clauses à affirmer (P99.2, P99.4, P99.7 à 51 contrats/alarmes, P99.8) ne sont pas encodées dans `asav.spec.js` (P99.5 absente) ; à écrire et rejouer, non fait dans cette passe.

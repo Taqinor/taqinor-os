@@ -1,0 +1,80 @@
+{
+  "sha": "bfa13a246a13e549ccf5b919fd99f0759593272a",
+  "date": "2026-11-04",
+  "groupe": "AANA",
+  "verdict": "PASS",
+  "couvre": [
+    "AANA60"
+  ],
+  "couvre_avec_ecart": [
+    "AANA60"
+  ],
+  "etapes": [
+    {
+      "id": "P.commercial_mes_chiffres",
+      "taches": [
+        "AANA60"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-AANA-P.commercial_mes_chiffres.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "FAIL",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : SlaBadgeCard (NTOBS21, frontend/src/features/reporting/SlaBadgeCard.jsx) appelle GET /api/django/core/fiabilite/reglages/ pour tout rôle à l'accueil : 403 + console.error pour un rôle sans fiabilite_voir — défaut de NTOBS21, hors AANA60 ; avant AANA60 la même étape échouait déjà (chiffres recalculés localement) ; oracle 2 — GET http://localhost/api/django/core/fiabilite/reglages/ → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost/api/django/core/fiabilite/reglages/) ; oracle 2 — GET http://localhost/api/django/core/fiabilite/reglages/ → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost/api/django/core/fiabilite/reglages/)"
+    },
+    {
+      "id": "P.directeur_taux_ca",
+      "taches": [
+        "AANA60"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-AANA-P.directeur_taux_ca.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P.role_refuse_acces_reserve",
+      "taches": [
+        "AANA60"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-AANA-P.role_refuse_acces_reserve.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "FAIL",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : SlaBadgeCard (NTOBS21, frontend/src/features/reporting/SlaBadgeCard.jsx) appelle GET /api/django/core/fiabilite/reglages/ pour tout rôle à l'accueil : 403 + console.error pour un rôle sans fiabilite_voir — défaut de NTOBS21, hors AANA60 ; avant AANA60 la même étape échouait déjà (chiffres recalculés localement) ; pour le rôle Viewer, deux autres cartes de l'accueil appellent aussi des routes que ce rôle ne lit pas : components/layout/ImpactPastille.jsx (GET /monitoring/configs/co2-fleet/ → 403) et components/MesEquipesCard.jsx (GET /crm/equipes/statistiques/ → 403) — hors AANA60 ; oracle 2 — GET http://localhost/api/django/monitoring/configs/co2-fleet/ → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost/api/django/monitoring/configs/co2-fleet/) ; oracle 2 — GET http://localhost/api/django/monitoring/configs/co2-fleet/ → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost/api/django/monitoring/configs/co2-fleet/) ; oracle 2 — GET http://localhost/api/django/crm/equipes/statistiques/ → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost/api/django/crm/equipes/statistiques/) ; oracle 2 — GET http://localhost/api/django/core/fiabilite/reglages/ → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost/api/django/core/fiabilite/reglages/) ; oracle 2 — GET http://localhost/api/django/crm/equipes/statistiques/ → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost/api/django/crm/equipes/statistiques/) ; oracle 2 — GET http://localhost/api/django/core/fiabilite/reglages/ → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost/api/django/core/fiabilite/reglages/)"
+    }
+  ]
+}

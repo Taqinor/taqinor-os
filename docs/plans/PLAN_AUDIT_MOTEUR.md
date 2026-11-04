@@ -432,3 +432,4 @@ Contre-visite de clôture n° 2 du groupe APDF (dossier `docs/audits/2026-11-01-
 - 2026-11-03 — ADVS18 — cochée : rejeu en direct PASS (docs/audits/acceptation/, enregistrements du 03/11).
 - 2026-11-03 — ADVS39 — cochée : rejeu en direct PASS (docs/audits/acceptation/, enregistrements du 03/11).
 - 2026-11-03 — AMOT115 — cochée : rejeu en direct PASS (docs/audits/acceptation/, enregistrements du 03-04/11).
+- 2026-11-04 — APDF117 — NON jouée, laissée [ ] : les étapes P9.1-P9.6 (2ᵉ société « SOLAIRE EXEMPLE SARL », titre PDF, QR rastérisé, clauses en/ar…) n'existent dans aucune spec (`apdf.spec.js` n'en porte aucune) ; à écrire et rejouer, non fait dans cette passe.
