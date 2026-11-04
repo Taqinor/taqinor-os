@@ -2,9 +2,8 @@
 /**
  * EN — Blog post (W295): How much does a solar installation cost in Morocco
  * in 2026? Faithful translation of
- * src/content/blog/prix-installation-solaire-maroc-2026.md, every figure kept
- * EXACT (28,000–42,000 / 45,000–65,000 / 85,000–120,000 DH brackets,
- * 10,000–14,000 DH/kWc, roof/battery surcharges, VAT, 5–7 year payback).
+ * src/content/blog/prix-installation-solaire-maroc-2026.md. WAUD68 (D-WAUD-5 = a): no amount
+ * without a dated source (lib/prixConstants.ts); single VAT sentence = PHRASE_TVA.
  * Static page (not a content-collection entry) mirroring the guides pattern,
  * since the blog collection has no locale field (out of this lane's scope —
  * see content.config.ts). Internal links use localizeNavHref (EN/AR if
@@ -20,6 +19,7 @@ import StickyCta from '../../../components/StickyCta.astro';
 import RelatedLinks from '../../../components/RelatedLinks.astro';
 import { NAP } from '../../../lib/nap';
 import { localizeNavHref } from '../../../i18n/pages';
+import { PHRASE_TVA } from '../../../lib/prixConstants';
 import '../../../styles/prose.css';
 
 const { locale, L } = pageLocale(Astro.url.pathname);
@@ -28,14 +28,14 @@ const pubDate = new Date('2026-06-21');
 const dateFmt = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 
 const bodyText = `
-What makes up the price in 2026: panels, inverter, labour and accessories. VAT at 20% on turnkey installs, panels alone exempt without input deduction. Customs duties on inverters. Payback 5 to 7 years residential.
+What makes up the price in 2026: panels, inverter, labour and accessories, paperwork, VAT line by line on the quote. Payback depends on consumption and ONEE bracket.
 `;
 const { readingMinutes, url, schemaImageUrl } = articleMeta(bodyText, Astro.url.pathname, Astro.site, '/og/accueil.png');
 const blogPosting = {
   '@context': 'https://schema.org',
   '@type': 'BlogPosting',
   headline: 'Solar prices in Morocco in 2026: what makes up the bill',
-  description: "Panels, inverter, installation, VAT and customs: what makes up the price of a solar installation in 2026, with indicative figures.",
+  description: "Panels, inverter, installation, paperwork and VAT: what makes up the price of a solar installation in 2026, and how to read a quote item by item.",
   image: schemaImageUrl,
   datePublished: pubDate.toISOString(),
   keywords: 'cost, price, installation, 2026',
@@ -49,7 +49,7 @@ const blogPosting = {
 
 <Layout
   title="Solar prices in Morocco in 2026: what makes up the bill | Taqinor"
-  description="Panels, inverter, installation, VAT and customs: what makes up the price of a solar installation in 2026, with indicative figures."
+  description="Panels, inverter, installation, paperwork and VAT: what makes up the price of a solar installation in 2026, and how to read a quote item by item."
   ogSlug="accueil"
 >
   <script type="application/ld+json" set:html={JSON.stringify(blogPosting)} />
@@ -69,80 +69,60 @@ const blogPosting = {
         {readingMinutes} min read
       </p>
 
-      <p class="prose-lead mt-5">Indicative 2026 brackets by power, roof, battery and VAT surcharges — to know what to expect before your quote.</p>
+      <p class="prose-lead mt-5">What makes up the bill in 2026 — equipment, installation, paperwork and VAT — and how to read a quote item by item.</p>
 
       <div class="prose mt-10">
         <p>
           "How much does it really cost?" is the first sentence of almost every one of my meetings.
           And the reason the figures you find online range from single to triple is easy to explain:
           the price of a panel sitting on a shelf has nothing to do with that of a turnkey
-          installation, mounted on your roof and connected. So I'd rather lay out the 2026 Moroccan
-          market brackets as they are, with their sources and, above all, their limits.
+          installation, mounted on your roof and connected. This post details what makes up the bill
+          — without copying any amount whose dated source I cannot show you.
         </p>
         <p class="text-xs text-lune-faint">
-          <em>(The brackets by power, roof surcharges and the battery question live on our page <a href={L('/prix-panneaux-solaires-maroc')}>Solar panel
+          <em>(What makes the price, the roof and the battery question are on our page <a href={L('/prix-panneaux-solaires-maroc')}>Solar panel
           prices in Morocco</a>.)</em>
         </p>
 
         <h2>What makes up the price: equipment and installation</h2>
         <h3>Photovoltaic panels</h3>
         <p>
-          Indicative 2026 market price: <strong>~1.0 – 1.5 DH/Wc</strong> for panels alone
-          (excluding installation). 550–600 W modules represent the current standard — count on
-          about 2 panels per kWc installed.
+          550–600 W modules represent the current standard — count on about 2 panels per kWc
+          installed. On a quote, look for the brand, model and actual power of each panel, not just a
+          total in kWc.
         </p>
         <h3>The inverter</h3>
         <p>
-          Indicative example: a Huawei SUN2000-5K inverter traded around
-          <strong> ~12,500 DH</strong> with a 10-year warranty (indicative 2026 market price —
-          source: electrosolarplus.ma). The range varies by power and brand.
+          Its price depends on the power, the type (grid-tied or hybrid, with a battery) and the brand.
+          A serious quote names the exact model and its manufacturer warranty.
         </p>
         <h3>Labour and accessories</h3>
         <p>
           Mounting structure, DC/AC wiring, protection panel, administrative steps (Law 82-21
-          declaration for installations under 11 kWc) — these items represent a significant share of
-          the total turnkey cost.
+          declaration for low-voltage installations under 11 kW) — these items represent a significant
+          share of the total turnkey cost, and they are what a "kit price" leaves out.
         </p>
 
-        <h2>VAT and customs duties: an important nuance</h2>
-        <p>Morocco's solar tax regime in 2026 is <strong>not uniform</strong>:</p>
-        <ul>
-          <li><strong>Bare photovoltaic panels</strong>: <strong>VAT-exempt</strong> — but with no
-          input-VAT deduction right. For an individual, this is neutral. For a VAT-liable business,
-          the lack of deductibility can reduce the benefit.</li>
-          <li><strong>Turnkey installation</strong> (supply + installation): subject to
-          <strong> 20% VAT</strong> — but with deduction rights for liable professionals. The price
-          brackets in this guide are stated including VAT for individuals.</li>
-          <li><strong>Inverters</strong>: customs duties on inverters have changed — they dropped
-          from <strong>17.5% to 2.5%</strong> for imported models, which contributed to lowering
-          their market cost in 2026 (source: lechantier.ma, fnh.ma).</li>
-        </ul>
-        <p>
-          If you're a business or investor, have your VAT situation checked by an accountant: the
-          treatment can vary depending on the legal nature of the installation.
-        </p>
+        <h2>VAT</h2>
+        <p>{PHRASE_TVA.en} If you're a business or investor, have your VAT situation checked by an accountant.</p>
 
-        <h2>Return on investment: 5 to 7 years residential</h2>
-        <p>
-          The payback most often cited by Moroccan installers for a standard residential installation
-          (without battery) is <strong>5 to 7 years</strong> — indicative 2026 bracket, consistent
-          with several sources (solaropeak.com, ecovolt.ma, fnh.ma). With a battery, add
-          <strong> 1 to 3 more years</strong>.
-        </p>
+        <h2>Return on investment</h2>
         <p>
           This calculation depends heavily on your actual consumption and your ONEE/régie tariff
           bracket. A household consuming more than 310 kWh/month (bracket at 1.381704 DH/kWh, or beyond
           510 kWh at 1.622856 DH/kWh) recovers its installation faster than a low consumer — solar is
-          all the more profitable the higher your current bill is. (Up-to-date tariff grid: see
+          all the more profitable the higher your current bill is, and a battery lengthens the payback
+          time. (Up-to-date tariff grid: see
           <a href={L('/blog/rentabilite-solaire-par-ville-maroc')}>our profitability-by-city
           article</a>.)
         </p>
         <p>
-          For more on real savings by city and profitability simulations, see our article
+          For more on real savings by city, see our article
           <a href={L('/blog/rentabilite-solaire-par-ville-maroc')}>Solar profitability by city in Morocco</a>.
         </p>
 
         <p>
+
           The only figure that counts for your house comes from reading your bill and a visit.
           That's exactly what our diagnostic does, free of charge and with no obligation.
         </p>
@@ -157,7 +137,7 @@ const blogPosting = {
       />
     </article>
 
-    <CtaBand title="Market brackets only go so far. Your bill gives the exact number." href={L('/devis/mon-toit')} />
+    <CtaBand title="Only your bill gives the exact number." href={L('/devis/mon-toit')} />
 
     <StickyCta />
   </div>

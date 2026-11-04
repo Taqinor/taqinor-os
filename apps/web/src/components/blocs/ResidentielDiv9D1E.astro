@@ -2,14 +2,15 @@
 // ENF19 : bloc partagé (copies identiques) — résidentiel.astro
 // WAUD39 : colonne « Retour » retirée de l'affichage (aucune source datée : RETOUR_PAR_SEGMENT vide) ;
 // la bande transmise au lead (billRange) est inchangée.
+// WAUD68 : colonne « Investissement » rendue seulement si le prix au kWc est sourcé (lib/prixConstants.ts).
 const { brackets } = Astro.props as Record<string, any>;
 ---
         {brackets.map((b: any, i: any) => (
           <div class="v2-rise border-b border-white/10 py-5" style={`--v2-i:${i}`}>
-            <div class="grid gap-1.5 sm:grid-cols-[1.1fr_0.8fr_1.2fr] sm:items-baseline sm:gap-4">
+            <div class={`grid gap-1.5 sm:items-baseline sm:gap-4 ${b.invest ? 'sm:grid-cols-[1.1fr_0.8fr_1.2fr]' : 'sm:grid-cols-[1.1fr_0.8fr]'}`}>
               <span class="font-display text-base font-bold text-white">{b.bill}</span>
               <span class="fig lum text-xl sm:text-2xl" data-fig-fixe>{b.kwc}</span>
-              <span class="fig text-lg text-lune sm:text-xl">{b.invest}</span>
+              {b.invest && <span class="fig text-lg text-lune sm:text-xl">{b.invest}</span>}
             </div>
             {b.exemple && <p class="tech-label mt-2.5 text-lune-faint">{b.exemple}</p>}
           </div>

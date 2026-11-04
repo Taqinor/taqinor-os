@@ -103,11 +103,34 @@ describe('W131 — sitemap : nouvelles routes incluses, /preview/ exclu', () => 
 });
 
 describe('W131 — figures de marché volatiles labellisées (best-effort)', () => {
-  it('le post coût affiche « indicatif » et jamais un prix unique non labellisé', () => {
-    const post = read('../src/content/blog/prix-installation-solaire-maroc-2026.md');
-    expect(post.toLowerCase()).toContain('indicati');
+  // WAUD68 (D-WAUD-5 = a) remplace l'ancienne garde « indicatif » : un chiffre d'argent sans source
+  // datée n'est plus labellisé, il est RETIRÉ ; il reviendra de lib/prixConstants.ts seulement.
+  it('WAUD68 : /prix et billet prix FR/EN/AR sans montant (hors tarifs ONEE au kWh), une seule phrase TVA', () => {
+    const FICHIERS = [
+      '../src/pages/prix-panneaux-solaires-maroc.astro',
+      '../src/pages/en/prix-panneaux-solaires-maroc.astro',
+      '../src/pages/ar/prix-panneaux-solaires-maroc.astro',
+      '../src/content/blog/prix-installation-solaire-maroc-2026.md',
+      '../src/pages/en/blog/prix-installation-solaire-maroc-2026.astro',
+      '../src/pages/ar/blog/prix-installation-solaire-maroc-2026.astro',
+    ];
+    const MONTANT = /\d[\d\s.,  –-]*(?:<\/span>)?\s*(?:DH|MAD|dirhams?|درهم)(?!\/kWh)/g;
+    for (const f of FICHIERS) {
+      const src = read(f).replace(/^\/\*\*[\s\S]*?\*\//m, '').replace(/^\/\/.*$/gm, '');
+      expect(src.match(MONTANT) ?? [], f).toEqual([]);
+      expect(src, f).not.toMatch(/17[,.]5\s*%|TVA à 20|20\s*% VAT|4[  ,]?700/);
+    }
+    const { PRIX_KWC_TTC, PHRASE_TVA } = await_import_prix();
+    expect(PRIX_KWC_TTC.valeur === null || (PRIX_KWC_TTC.source && PRIX_KWC_TTC.date)).toBeTruthy();
+    expect(PHRASE_TVA.fr).toContain('art. 91 du CGI');
+    expect(read('../src/lib/residentielBrackets.ts')).toContain("from './prixConstants'");
+    expect(read('../src/lib/residentielBrackets.ts')).not.toMatch(/\b(?:10000|12500)\b|PRIX_PAR_KWC/);
   });
 });
+
+// Chargement synchrone de la constante (module TS sans dépendance).
+import * as prixConstants from '../src/lib/prixConstants';
+const await_import_prix = () => prixConstants;
 
 // AGW307 (reprise de l'ex-AGW406) — GARDE GLOBALE : aucune page de `apps/web/src/pages/**` ne
 // promet « jusqu'à 30 % » ni « ≈ 30 % » d'aide (D-AGR-6 : on imprime la RÈGLE de l'aide FDA —

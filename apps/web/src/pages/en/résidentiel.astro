@@ -41,7 +41,7 @@ import Testimonials from '../../components/Testimonials.astro';
 import Faq from '../../components/Faq.astro';
 import ServiceWarrantyTable from '../../components/ServiceWarrantyTable.astro';
 import RelatedLinks from '../../components/RelatedLinks.astro';
-import { buildBrackets } from '../../lib/residentielBrackets';
+import { bornesInvestissement, buildBrackets } from '../../lib/residentielBrackets';
 import { formatMAD } from '../../lib/format';
 import { localizeNavHref } from '../../i18n/pages';
 import { WHATSAPP_LEADS } from '../../lib/nap';
@@ -67,8 +67,8 @@ const brackets = buildBrackets(EXEMPLES_REELS, 'en');
 
 // WB14 (2026-07-04) — bounds DERIVED from the brackets table above (already
 // published) for the extractable AEO answer; no new figure.
-const investRangeLow = formatMAD(Math.min(...brackets.map((b) => b.investLow)));
-const investRangeHigh = formatMAD(Math.max(...brackets.map((b) => b.investHigh)));
+// WAUD68 — null until the price per kWc is sourced (lib/prixConstants.ts, D-WAUD-5).
+const investRange = bornesInvestissement(brackets);
 import ResidentielDiv9D1E from '../../components/blocs/ResidentielDiv9D1E.astro';
 import ProfessionnelDiv77FB from '../../components/blocs/ProfessionnelDiv77FB.astro';
 import ProfessionnelBlocB4F1 from '../../components/blocs/ProfessionnelBlocB4F1.astro';
@@ -149,10 +149,16 @@ import ProfessionnelBlocB4F1 from '../../components/blocs/ProfessionnelBlocB4F1.
       <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">01</span>Price transparency</p>
       <h2 class="display v2-section-title mt-5 text-white">How much does solar cost for a villa, and how long does it take to pay back?</h2>
       <p class="v2-lead mt-4 max-w-2xl font-semibold text-white">
-        For a typical residential bill (1,000 to 10,000 MAD/month), an installation typically costs
-        between {investRangeLow} and {investRangeHigh} and pays back, for the
-        self-consumed share — beyond that, the electricity produced costs almost nothing for the
-        rest of the 30-year performance warranty.
+        {investRange ? (
+          <>For a typical residential bill (1,000 to 10,000 MAD/month), an installation typically costs
+          between {investRange.bas} and {investRange.haut} and pays back, for the
+          self-consumed share — beyond that, the electricity produced costs almost nothing for the
+          rest of the 30-year performance warranty.</>
+        ) : (
+          <>For a typical residential bill (1,000 to 10,000 MAD/month), here is the power usually
+          chosen; the price of your installation is set from your bill, through a free study —
+          never from a bracket.</>
+        )}
       </p>
       <p class="v2-lead mt-4 max-w-2xl text-lune-soft">
         Here are the orders of magnitude recorded on our residential sites — <strong class="text-lune">never a
@@ -160,8 +166,8 @@ import ProfessionnelBlocB4F1 from '../../components/blocs/ProfessionnelBlocB4F1.
         make solar pay off, we'll tell you before you've signed anything at all.
       </p>
       <div class="mt-10 border-t-2 border-brass-400/60" data-stagger>
-        <div class="tech-label hidden grid-cols-[1.1fr_0.8fr_1.2fr] gap-4 border-b border-white/10 py-3 text-lune-faint sm:grid">
-          <span>Monthly bill</span><span>Power</span><span>Investment (order of magnitude)</span>
+        <div class={`tech-label hidden gap-4 border-b border-white/10 py-3 text-lune-faint sm:grid ${investRange ? 'grid-cols-[1.1fr_0.8fr_1.2fr]' : 'grid-cols-[1.1fr_0.8fr]'}`}>
+          <span>Monthly bill</span><span>Power</span>{investRange && <span>Investment (order of magnitude)</span>}
         </div>
         <ResidentielDiv9D1E brackets={brackets} />
       </div>
