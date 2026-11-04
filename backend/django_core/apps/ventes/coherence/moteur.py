@@ -133,18 +133,18 @@ def _erreur(report, regle_id, obj_type, obj, company, exc):
     })
 
 
-def _parcourir(company, par_portee, report, appliquer):
+def _parcourir(company, par_portee, report, evaluer_regle):
     """Les objets par portée (devis puis factures), chaque règle appliquée."""
     if par_portee.get(PORTEE_DEVIS):
         for devis in _devis_qs(company).iterator(chunk_size=100):
             report.checked['devis'] += 1
             for r in par_portee[PORTEE_DEVIS]:
-                appliquer(r, devis, 'devis')
+                evaluer_regle(r, devis, 'devis')
     if par_portee.get(PORTEE_FACTURE):
         for facture in _factures_qs(company).iterator(chunk_size=100):
             report.checked['facture'] += 1
             for r in par_portee[PORTEE_FACTURE]:
-                appliquer(r, facture, 'facture')
+                evaluer_regle(r, facture, 'facture')
 
 
 def _executer_societe(company, regles, report, *, constructeur=None):

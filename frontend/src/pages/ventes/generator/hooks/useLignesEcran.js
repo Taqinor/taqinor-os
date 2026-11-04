@@ -41,10 +41,8 @@ export function useLignesEcran(ctx) {
     setLines(ls => ls.map(l => (l._key === key
       ? {
           ...l, [k]: v,
-          // VX249(b) — une modification MANUELLE du taux retire le style
-          // « suggéré » de CETTE ligne (jamais les autres) ; tout autre champ
-          // laisse `_tvaSuggested` inchangé.
-          // ADVS47 — `tvaManuelle` : la fusion d'Auto-remplir ne l'écrase plus.
+          // VX249(b) — taux tapé : retire « suggéré » de CETTE ligne seule ;
+          // ADVS47 — pose `tvaManuelle` (Auto-remplir ne l'écrase plus).
           ...(k === 'taux_tva' ? { _tvaSuggested: false, tvaManuelle: true } : {}),
           // N2 — la frappe manuelle du prix pose le verrou `prixManuel` : la
           // résolution de liste de prix (refreshTarif, déclenchée par l'effet

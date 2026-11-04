@@ -103,7 +103,7 @@ test('QJR569 — setLine pose quantiteManuelle sur une frappe de quantité d\'un
 
 test('QJR569 — onProduitChange lève le verrou de quantité avec celui du prix', () => {
   const change = blocCode('const onProduitChange = useCallback(',
-    '}, [produits, lines, refreshTarif, setLines])')
+    '}, [produits, lines, refreshTarif, setLines, tvaStandard])')
   assert.match(change, /prixManuel: false,/)
   assert.match(change, /quantiteManuelle: false,/)
 })
