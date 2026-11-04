@@ -112,6 +112,16 @@ describe('CPRW27 — propositionPdfSigne : `detail` serveur seulement en FR', ()
     expect(src).toContain("(g.langue() === 'fr' && r.detail) || MSG.erreur[g.langue()]");
     expect(src).not.toMatch(/: r\.detail \|\| MSG\.erreur/);
   });
+
+  // ADEV109 (C-ADEV-VER-005) — même règle sur la demande de code de SIGNATURE (409 `aucun_canal` lisible).
+  it('la demande de code de signature affiche le detail servi en FR', () => {
+    const debut = PROPOSITION.indexOf("otpRequestBtn?.addEventListener('click'");
+    const bloc = PROPOSITION.slice(debut, PROPOSITION.indexOf('} finally {', debut));
+    expect(debut).toBeGreaterThan(0);
+    expect(bloc).toContain('as { ok?: boolean; detail?: string }');
+    expect(bloc).toContain("(currentLang === 'fr' && data.detail) || OTP_SEND_FAILED_MSG[currentLang]");
+    expect(bloc).toContain('data.ok ? OTP_SENT_MSG[currentLang]');
+  });
 });
 
 // ── ASEC53 (C-ASEC-025, D-ASEC-3) — la preuve de lecture vaut pour CE navigateur ──

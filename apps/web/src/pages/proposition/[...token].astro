@@ -8381,9 +8381,10 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ token: cfg.token, mode: otpMode }),
         });
-        const data = (await res.json().catch(() => ({}))) as { ok?: boolean };
+        const data = (await res.json().catch(() => ({}))) as { ok?: boolean; detail?: string };
         if (otpStatusEl) {
-          otpStatusEl.textContent = data.ok ? OTP_SENT_MSG[currentLang] : OTP_SEND_FAILED_MSG[currentLang];
+          // ADEV109 — échec : le `detail` servi (409 `aucun_canal`…) en FR seulement (CPRW27), sinon le message traduit.
+          otpStatusEl.textContent = data.ok ? OTP_SENT_MSG[currentLang] : (currentLang === 'fr' && data.detail) || OTP_SEND_FAILED_MSG[currentLang];
           otpStatusEl.hidden = false;
         }
       } catch {
