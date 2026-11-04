@@ -528,8 +528,7 @@ def _cout_onduleur_ttc(lignes, roles, facteur_remise, taux_tva=None,
     from apps.ventes.domain.dimensionnement_devis import est_onduleur_provisionne
     total = 0.0
     for index, ligne in enumerate(lignes or []):
-        role = roles[index] if index < len(roles or ()) else None
-        if not est_onduleur_provisionne(role, devis):
+        if not est_onduleur_provisionne(roles[index] if index < len(roles or ()) else None, devis):
             continue
         quantite = _num(getattr(ligne, 'quantite', 0))
         pu_ht = _num(getattr(ligne, 'prix_unitaire', 0))
