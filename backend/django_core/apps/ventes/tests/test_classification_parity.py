@@ -145,8 +145,10 @@ class TestClassificationParity(SimpleTestCase):
             src = fh.read()
         low = src.lower()
         # hybride testé AVANT réseau (sinon un hybride serait classé réseau).
-        idx_hyb = low.find("'onduleur_hybride'")
-        idx_res = low.find("'onduleur_reseau'")
+        # On compare les `return` de classifyProduct (la table ROLES_DEVIS
+        # liste aussi les deux noms, dans l'ordre de l'écran).
+        idx_hyb = low.find("return 'onduleur_hybride'")
+        idx_res = low.find("return 'onduleur_reseau'")
         self.assertGreater(idx_hyb, -1)
         self.assertGreater(idx_res, -1)
         self.assertLess(idx_hyb, idx_res,
