@@ -103,14 +103,27 @@ def book_appointment(*, lead, scheduled_at, notes=None, user=None):
     # ACVI63 (D-ACVI-8) — ce rendez-vous EST la visite technique : la porte
     # unique crée ou déplace la visite, date la fiche, recale la cadence et pose
     # la note. L'``Appointment`` garde l'heure et le rappel.
-    from apps.visites.services import planifier_visite
+    from apps.visites.services import erreur_commercial, planifier_visite
     from . import horaires
-    _, erreurs = planifier_visite(
-        lead, user, scheduled_at.astimezone(horaires.CASABLANCA).date(),
-        notes=notes or '', replanifier=True,
-        assigne_par_defaut=user or lead.owner)
+    from .activity import log_note
+    # ERR-W33-RDV-CHATTER — même garde que le commercial choisi à la main : une
+    # réservation publique n'assigne jamais une visite à un compte désactivé.
+    assigne = user or lead.owner
+    refus_assigne = erreur_commercial(assigne, company.pk) if assigne else None
+    local = scheduled_at.astimezone(horaires.CASABLANCA)
+    visite, erreurs = planifier_visite(
+        lead, user, local.date(), notes=notes or '', replanifier=True,
+        assigne_par_defaut=None if refus_assigne else assigne)
     if erreurs:
         logger.warning('ACVI63 : RDV #%s sans visite : %s', appointment.pk, erreurs)
+        # La porte des visites n'a rien écrit : la fiche dit ce qui manque.
+        motifs = ' '.join(m for messages in erreurs.values() for m in messages)
+        log_note(lead, user, (
+            f'Rendez-vous du {local:%d/%m/%Y à %H:%M} enregistré sans visite '
+            f'technique : {motifs}'))
+    elif refus_assigne and visite.commercial_id is None:
+        log_note(lead, user, (
+            f'Visite technique du {local:%d/%m/%Y} sans assigné : {refus_assigne}'))
 
     _appt_logger.info(
         'QJ20: RDV #%d créé pour lead %s le %s (company %s)',

@@ -109,6 +109,43 @@ class TestBookAppointment(TestCase):
         visite = VisiteTerrain.objects.get(lead=self.lead)
         self.assertEqual(visite.date_prevue, nouveau_jour)
 
+    def test_visite_refusee_laisse_une_note_sur_le_lead(self):
+        """ERR-W33-RDV-CHATTER — le RDV existe sans visite : la fiche le dit."""
+        from apps.visites.models import VisiteTerrain
+
+        appt = book_appointment(
+            lead=self.lead, scheduled_at=timezone.now() - timedelta(days=2))
+        self.assertIsNotNone(appt.pk)
+        self.assertFalse(VisiteTerrain.objects.filter(lead=self.lead).exists())
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=self.lead, kind=LeadActivity.Kind.NOTE,
+            body__contains='sans visite technique',
+        ).exists())
+
+    def test_responsable_desactive_visite_non_assignee_et_note(self):
+        """ERR-W33-RDV-CHATTER — réservation publique, responsable désactivé :
+        la visite naît sans assigné et le chatter le dit."""
+        from apps.visites.models import VisiteTerrain
+
+        self.lead.owner.is_active = False
+        self.lead.owner.save(update_fields=['is_active'])
+        book_appointment(lead=self.lead, scheduled_at=_future(60 * 24 * 3))
+        visite = VisiteTerrain.objects.get(lead=self.lead)
+        self.assertIsNone(visite.commercial_id)
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=self.lead, kind=LeadActivity.Kind.NOTE,
+            body__contains='sans assigné',
+        ).exists())
+
+    def test_responsable_actif_reste_assigne(self):
+        from apps.visites.models import VisiteTerrain
+
+        book_appointment(lead=self.lead, scheduled_at=_future(60 * 24 * 3))
+        visite = VisiteTerrain.objects.get(lead=self.lead)
+        self.assertEqual(visite.commercial_id, self.lead.owner_id)
+        self.assertFalse(LeadActivity.objects.filter(
+            lead=self.lead, body__contains='sans assigné').exists())
+
     def test_requires_scheduled_at(self):
         with self.assertRaises(ValueError):
             book_appointment(lead=self.lead, scheduled_at=None)
