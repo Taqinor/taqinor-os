@@ -283,6 +283,9 @@ def _valider(decision, motif, roof_layout):
             f"« {decision if isinstance(decision, str) else ''} ». Décisions "
             f"admises : {', '.join(DECISIONS)}.", champ='decision')
     motif = motif.strip() if isinstance(motif, str) else ''
+    if '\x00' in motif:  # api-fuzz : NUL refusé par le JSONB de PostgreSQL (500)
+        raise ApprobationRefusee(
+            "Le motif contient un caractère nul : corrigez la saisie.", champ='motif')
     if decision == REFUSE and not motif:
         raise ApprobationRefusee(
             "Un refus d'approbation exige un motif : dites ce qui est à "

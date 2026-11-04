@@ -625,8 +625,9 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             return Response({'detail': 'Aucune ligne de comptage fournie.'},
                             status=status.HTTP_400_BAD_REQUEST)
         motif = donnees.get('motif')
-        if motif is not None and not isinstance(motif, str):
-            raise serializers.ValidationError({'motif': ['Texte attendu.']})
+        # api-fuzz-full 41773314544 : un NUL atteignait la note du mouvement (500).
+        if motif is not None and (not isinstance(motif, str) or '\x00' in motif):
+            raise serializers.ValidationError({'motif': ['Texte sans caractère nul attendu.']})
         # CI #997 fuzz (4) — chaque ligne est un objet qui NOMME son produit (clé
         # requise du schéma publié) ; la quantité est contrôlée par le service.
         if any(not isinstance(lg, dict) or id_corps(lg.get('produit')) is None for lg in lignes):
