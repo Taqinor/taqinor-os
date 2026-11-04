@@ -108,6 +108,23 @@ class WorkflowDefinitionCrudTests(TenantAPITestCase):
             etapes_v1_avant)
         instance.refresh_from_db()
         self.assertEqual(instance.definition_id, definition.pk)  # non déplacée
+        # NTWFL26 — la lignée se lit sur la réponse (lecture seule).
+        self.assertEqual(body['version'], 2)
+        self.assertEqual(body['definition_precedente'], definition.pk)
+        v1 = self._admin().get(f"{BASE}{cr['id']}/").json()
+        self.assertEqual(v1['version'], 1)
+        self.assertIsNone(v1['definition_precedente'])
+
+    def test_version_et_precedente_en_lecture_seule(self):
+        """NTWFL26 — un corps qui tente de poser ``version``/
+        ``definition_precedente`` est ignoré (fork réservé au serveur)."""
+        autre = self._admin().post(BASE, _payload('Autre'), format='json').json()
+        payload = _payload('Injectée')
+        payload.update({'version': 9, 'definition_precedente': autre['id']})
+        r = self._admin().post(BASE, payload, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(r.json()['version'], 1)
+        self.assertIsNone(r.json()['definition_precedente'])
 
     def test_tenant_isolation_list_and_retrieve(self):
         other_def = WorkflowDefinition.objects.create(

@@ -104,6 +104,28 @@ def admins_cibles(company):
     return [u for u in qs if _est_admin(u)]
 
 
+def _societe_veut_la_fenetre(fenetre, company_id, cache):
+    """NTOBS21 — lit ``core.ReliabilitySettings`` de la société du
+    destinataire (une fois par société et par envoi). Pas de ligne = défauts
+    = notifier (comportement historique). ``notifier_maintenance_email``
+    à ``False`` coupe l'annonce ; une région suivie non vide n'écarte que les
+    fenêtres d'une AUTRE région déclarée (une fenêtre sans région concerne
+    tout le monde)."""
+    if company_id not in cache:
+        from .models import ReliabilitySettings
+        cache[company_id] = ReliabilitySettings.objects.filter(
+            company_id=company_id).first()
+    reglages = cache[company_id]
+    if reglages is None:
+        return True
+    if not reglages.notifier_maintenance_email:
+        return False
+    region_suivie = (reglages.notifier_incident_region or '').strip().lower()
+    region_fenetre = (fenetre.region or '').strip().lower()
+    return not (region_suivie and region_fenetre
+                and region_suivie != region_fenetre)
+
+
 def _notifier_fenetre(fenetre, delai_label):
     """Best-effort : un envoi en échec pour UN admin n'empêche pas les autres.
     Passe par ``core.notify_registry`` (jamais un import direct d'``apps.
@@ -113,7 +135,11 @@ def _notifier_fenetre(fenetre, delai_label):
     from . import notify_registry
 
     titre = f'Fenêtre de maintenance {delai_label}'
+    reglages_par_societe = {}
     for admin in admins_cibles(fenetre.company):
+        if not _societe_veut_la_fenetre(
+                fenetre, admin.company_id, reglages_par_societe):
+            continue
         notify_registry.notify(
             admin, 'maintenance_window_announced', titre,
             body=fenetre.description, company=admin.company,

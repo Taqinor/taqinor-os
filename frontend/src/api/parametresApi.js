@@ -108,6 +108,9 @@ const parametresApi = {
   getUsageLimites: () => api.get('/core/usage-limites/'),
   // NTOBS3/NTOBS16 — rapport SLA mensuel (historique 12 mois, scopé société).
   getSlaSnapshots: () => api.get('/core/sla/'),
+  // NTOBS21 — réglages « Fiabilité » de la société (singleton GET/PATCH).
+  getReliabilitySettings: () => api.get('/core/fiabilite/reglages/'),
+  saveReliabilitySettings: (data) => api.patch('/core/fiabilite/reglages/', data),
 }
 
 export default parametresApi
