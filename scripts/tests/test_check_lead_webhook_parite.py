@@ -228,10 +228,10 @@ class DepotReelTests(unittest.TestCase):
     def test_le_depot_reel_est_VERT(self):
         self.assertEqual(parite.constats(self.contrat, self.source), [])
 
-    def test_les_73_cles_du_registre_sont_toutes_declarees(self):
+    def test_les_75_cles_du_registre_sont_toutes_declarees(self):
         cles = self.contrat["cles"]
-        # ACAL20 : + roofLayout (refus en attente de PATCH-T03) ; Google Ads : + gclid, gbraid, wbraid
-        self.assertEqual(len(cles), 73)
+        # ACAL20 : + roofLayout (refus en attente de PATCH-T03) ; Google Ads : + gclid, gbraid, wbraid ; WAUD6 : + landingPath, referrerHost
+        self.assertEqual(len(cles), 75)
         for cle, entree in cles.items():
             self.assertIn(entree["destination"], parite.DESTINATIONS, cle)
 
