@@ -1,0 +1,19 @@
+---
+// ENF19 : bloc partagé (copies identiques) — index.astro FR/EN/AR (section « parcours » épinglée).
+// Le slot reçoit l'intro de la colonne de gauche (kicker, titre, paragraphe — propres à chaque langue).
+// `ruleSide` : `left-0` (FR/EN) ou `start-0` (AR, RTL).
+import HomeJourneySteps from './HomeJourneySteps.astro';
+import IndexBloc1A99 from './IndexBloc1A99.astro';
+const { journey, ruleSide } = Astro.props as Record<string, any>;
+---
+    <section class="section px-4" data-journey-section>
+      <div class="mx-auto max-w-6xl">
+        <div class="grid items-start gap-12 lg:grid-cols-[1.1fr_1fr]">
+          <div class="v2-rise journey-sticky-col" data-journey-sticky>
+            <slot />
+            <IndexBloc1A99 />
+          </div>
+          <HomeJourneySteps journey={journey} ruleSide={ruleSide} />
+        </div>
+      </div>
+    </section>

@@ -11,7 +11,7 @@ import { configureStore } from '@reduxjs/toolkit'
    hors liste blanche (comme la sonde #LIVE1). Un composant ajouté plus tard à
    ShellGlobal entre automatiquement dans ce balayage. */
 
-const { appels } = vi.hoisted(() => ({ appels: [] }))
+const { appels, sante } = vi.hoisted(() => ({ appels: [], sante: { tri: null } }))
 
 vi.mock('../api/axios', () => {
   const repondre = (verbe) => (url, ...reste) => {
@@ -19,6 +19,9 @@ vi.mock('../api/axios', () => {
     const autorise = /^\/(auth|portail)\//.test(url)
       || (url === '/parametres/traductions/effective/'
         && reste[reste.length - 1]?.suppressErrorToast === true)
+    if (url === '/core/health/ready/') {
+      return Promise.resolve({ data: { status: 'ready', dernier_tri_problemes: sante.tri } })
+    }
     if (autorise) return Promise.resolve({ data: {} })
     return Promise.reject({
       response: { status: 403, data: { detail: "Vous n'avez pas la permission" } },
@@ -66,6 +69,7 @@ async function stabiliser() {
 
 beforeEach(() => {
   appels.length = 0
+  sante.tri = null
   try { window.localStorage.clear() } catch { /* noop */ }
 })
 afterEach(() => cleanup())
@@ -95,5 +99,36 @@ describe('ADOC146 — ShellGlobal pour un compte portail', () => {
       appels.some(({ url }) => url === '/notifications/messages-accueil/a-lire/'),
     ).toBe(true))
     expect(await screen.findByText(/Bienvenue chez Taqinor/i)).toBeInTheDocument()
+  })
+})
+
+describe('BPQ6 — bandeau du tri quotidien des problèmes', () => {
+  const ilYa = (h) => new Date(Date.now() - h * 3600000).toISOString()
+
+  it("superuser : bandeau au-delà de 48 h, avec le nombre d'heures", async () => {
+    sante.tri = ilYa(60)
+    rendre({ username: 'root', portee: 'interne', is_superuser: true, langue_interface: 'fr' })
+    expect(await screen.findByText(/n'a pas tourné depuis 60 h/)).toBeInTheDocument()
+    expect(appels.filter(({ url }) => url === '/core/health/ready/')).toHaveLength(1)
+  })
+
+  it("superuser : rien avant 48 h, rien si le tri n'a jamais tourné", async () => {
+    sante.tri = ilYa(20)
+    rendre({ username: 'root', portee: 'interne', is_superuser: true, langue_interface: 'fr' })
+    await stabiliser()
+    expect(screen.queryByTestId('bandeau-tri-problemes')).toBeNull()
+    cleanup()
+    sante.tri = null
+    rendre({ username: 'root', portee: 'interne', is_superuser: true, langue_interface: 'fr' })
+    await stabiliser()
+    expect(screen.queryByTestId('bandeau-tri-problemes')).toBeNull()
+  })
+
+  it('non-superuser : ni appel ni bandeau', async () => {
+    sante.tri = ilYa(100)
+    rendre({ username: 'demo_admin', portee: 'interne', is_superuser: false, langue_interface: 'fr' })
+    await stabiliser()
+    expect(appels.some(({ url }) => url === '/core/health/ready/')).toBe(false)
+    expect(screen.queryByTestId('bandeau-tri-problemes')).toBeNull()
   })
 })

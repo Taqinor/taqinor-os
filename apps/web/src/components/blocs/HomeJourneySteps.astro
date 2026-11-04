@@ -1,0 +1,15 @@
+---
+// ENF19 : bloc partagé (copies identiques) — index.astro FR/EN/AR (frise du parcours réel).
+// `ruleSide` : `left-0` (FR/EN) ou `start-0` (AR, RTL).
+const { journey, ruleSide } = Astro.props as Record<string, any>;
+---
+          <ol class="journey-steps mt-14 grid gap-x-6 gap-y-8 sm:grid-cols-2 lg:mt-0 lg:grid-cols-1 lg:gap-y-16" data-stagger data-journey-steps>
+            {journey.map((s: any, i: any) => (
+              <li class="v2-rise journey-step relative border-t-2 border-white/10 pt-5" style={`--v2-i:${i % 3}`} data-journey-step data-journey-title={s.title} data-journey-body={s.body}>
+                <span class={`absolute -top-px ${ruleSide} h-0.5 w-10 bg-brass-400 journey-step-rule`} aria-hidden="true"></span>
+                <span class="fig lum text-2xl">{s.n}</span>
+                <h3 class="display mt-2 text-lg text-white">{s.title}</h3>
+                <p class="mt-2 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+              </li>
+            ))}
+          </ol>

@@ -1748,7 +1748,8 @@ def health_live(request):
 @extend_schema(responses={
     200: inline_serializer('SantePret', {
         'status': drf_serializers.CharField(),
-        'dernier_demarrage': drf_serializers.DictField(allow_null=True)}),
+        'dernier_demarrage': drf_serializers.DictField(allow_null=True),
+        'dernier_tri_problemes': drf_serializers.CharField(allow_null=True)}),
     403: _DETAIL,
     503: inline_serializer('SanteNonPrete', {
         'status': drf_serializers.CharField(),
@@ -1767,7 +1768,8 @@ def health_ready(request):
         return Response({'status': 'not-ready', 'detail': db_check['detail']},
                         status=503)
     return Response({'status': 'ready',
-                     'dernier_demarrage': health.dernier_demarrage()})
+                     'dernier_demarrage': health.dernier_demarrage(),
+                     'dernier_tri_problemes': health.dernier_tri_problemes()})
 
 
 class ApiUsagePlanViewSet(TenantMixin, viewsets.GenericViewSet):

@@ -27,7 +27,6 @@ import Faq from '../../components/Faq.astro';
 import Picture from '../../components/Picture.astro';
 import VideoChantier from '../../components/VideoChantier.astro';
 import StickyCta from '../../components/StickyCta.astro';
-import WhatsAppMock from '../../components/WhatsAppMock.astro';
 import GarantiesTeaser from '../../components/GarantiesTeaser.astro';
 import InstantEstimator from '../../components/InstantEstimator.astro';
 import Testimonials from '../../components/Testimonials.astro';
@@ -187,6 +186,9 @@ import '../../styles/home-page.css';
 import HomeScripts from '../../components/home/HomeScripts.astro';
 import GalleryLightboxDialog from '../../components/home/GalleryLightboxDialog.astro';
 import ArIndexPicture8B05 from '../../components/blocs/ArIndexPicture8B05.astro';
+import HomeGalleryZoomOverlay from '../../components/blocs/HomeGalleryZoomOverlay.astro';
+import HomeJourneyFrame from '../../components/blocs/HomeJourneyFrame.astro';
+import HomeHowItWorksSteps from '../../components/blocs/HomeHowItWorksSteps.astro';
 import { solutionIcons } from '../../lib/solutionIcons';
 import ProfessionnelDiv77FB from '../../components/blocs/ProfessionnelDiv77FB.astro';
 import EnIndexA993D from '../../components/blocs/EnIndexA993D.astro';
@@ -262,16 +264,7 @@ import ArIndexH1ED0F from '../../components/blocs/ArIndexH1ED0F.astro';
     <section class="px-4 py-14 sm:py-18">
       <div class="mx-auto max-w-6xl">
         <h2 class="tech-label v2-kicker rule-brass text-lune text-center sm:text-left">How it works</h2>
-        <ol class="mt-8 grid gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
-          {howItWorks.map((s, i) => (
-            <li class="v2-rise relative border-t-2 border-white/10 pt-5" style={`--v2-i:${i}`}>
-              <span class="absolute -top-px left-0 h-0.5 w-10 bg-brass-400" aria-hidden="true"></span>
-              <span class="fig lum text-2xl">{s.n}</span>
-              <h3 class="display mt-2 text-lg text-white">{s.title}</h3>
-              <p class="mt-2 text-sm leading-relaxed text-lune-soft">{s.body}</p>
-            </li>
-          ))}
-        </ol>
+        <HomeHowItWorksSteps howItWorks={howItWorks} ruleSide="left-0" />
       </div>
     </section>
 
@@ -328,25 +321,7 @@ import ArIndexH1ED0F from '../../components/blocs/ArIndexH1ED0F.astro';
               {/* Enlarge (lightbox) button — kept separate from the card link
                   (no button nested in an <a>, invalid HTML); z-index above
                   the stretched link. */}
-              <button
-                type="button"
-                class="gallery-zoom-btn absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-nuit/70 text-white backdrop-blur-sm transition-colors hover:bg-nuit/90"
-                aria-label={`Enlarge photo: ${g.ariaLabel}`}
-                data-lightbox-open
-                data-name={g.name}
-                data-alt={g.alt}
-                data-widths={g.widths.join(',')}
-                data-caption={g.caption}
-                data-type={g.type}
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="M8 3H5a2 2 0 0 0-2 2v3" /><path d="M21 8V5a2 2 0 0 0-2-2h-3" /><path d="M3 16v3a2 2 0 0 0 2 2h3" /><path d="M16 21h3a2 2 0 0 0 2-2v-3" />
-                </svg>
-              </button>
-              <div class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
-                <span class="tech-label block text-lune">{g.caption}</span>
-                <span class="mt-0.5 block text-xs text-lune-soft">{g.type}</span>
-              </div>
+              <HomeGalleryZoomOverlay g={g} btnClass="gallery-zoom-btn absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-nuit/70 text-white backdrop-blur-sm transition-colors hover:bg-nuit/90" ariaLabel={`Enlarge photo: ${g.ariaLabel}`} />
             </div>
           ))}
         </div>
@@ -478,10 +453,7 @@ import ArIndexH1ED0F from '../../components/blocs/ArIndexH1ED0F.astro';
         active class, reading order unchanged) — pure progressive
         enhancement: without JS, all content stays readable as-is. ── */}
     <div class="seam-soft" aria-hidden="true"></div>
-    <section class="section px-4" data-journey-section>
-      <div class="mx-auto max-w-6xl">
-        <div class="grid items-start gap-12 lg:grid-cols-[1.1fr_1fr]">
-          <div class="v2-rise journey-sticky-col" data-journey-sticky>
+    <HomeJourneyFrame journey={journey} ruleSide="left-0">
             <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">04</span>How it works</p>
             <h2 class="display v2-section-title mt-5 max-w-md text-white">The rest happens on WhatsApp</h2>
             <p class="v2-body mt-5 max-w-md">
@@ -489,28 +461,7 @@ import ArIndexH1ED0F from '../../components/blocs/ArIndexH1ED0F.astro';
               you talk directly with the technical team, roof photos in hand,
               right up to the on-site visit. Sample exchange opposite.
             </p>
-            {/* Copy paired with the active step — hidden by default; the
-                script only shows it once pinning is armed (desktop, motion ok). */}
-            <p class="v2-body mt-5 max-w-md journey-active-caption" data-journey-caption hidden></p>
-            <div class="mt-6">
-              <WhatsAppMock />
-            </div>
-          </div>
-          {/* The real journey timeline — from diagnostic to monitoring */}
-          <ol class="journey-steps mt-14 grid gap-x-6 gap-y-8 sm:grid-cols-2 lg:mt-0 lg:grid-cols-1 lg:gap-y-16" data-stagger data-journey-steps>
-            {journey.map((s, i) => (
-              <li class="v2-rise journey-step relative border-t-2 border-white/10 pt-5" style={`--v2-i:${i % 3}`} data-journey-step data-journey-title={s.title} data-journey-body={s.body}>
-                <span class="absolute -top-px left-0 h-0.5 w-10 bg-brass-400 journey-step-rule" aria-hidden="true"></span>
-                {/* Step number in .lum: gold here is a key figure (brass discipline) */}
-                <span class="fig lum text-2xl">{s.n}</span>
-                <h3 class="display mt-2 text-lg text-white">{s.title}</h3>
-                <p class="mt-2 text-sm leading-relaxed text-lune-soft">{s.body}</p>
-              </li>
-            ))}
-          </ol>
-        </div>
-      </div>
-    </section>
+    </HomeJourneyFrame>
 
     {/* ── CLIENT REVIEWS — REAL social proof. Empty today (no invented review) →
          renders nothing until the founder adds real reviews. ── */}
