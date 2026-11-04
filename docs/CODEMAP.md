@@ -2,7 +2,7 @@
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: 6158e5344eb0fe666a38a3d159d76f4c414ee3c0b9753b090790880d54a0141d
-Plan fingerprint: f01203641231574dde5a11f464dc36693db9229ed1d7d63c962dba9ac4efc78d
+Plan fingerprint: 7ee6405615f195e82dfaaeed2b5d380ea25dadb51b44fa4abe82c23f673eedc8
 
 
 
@@ -594,7 +594,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1320)**
+**Done (1322)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1240,6 +1240,8 @@ Things this map could not fully verify from source — do not over-trust:
 - `ENF40` — ENF11, tranche 04/11 (nocturne api-fuzz-full 41825184761 sur main c38868a6)
 - `ENF41` — ENF15, tranche 04/11 (liste_page1)
 - `ENF42` — ENF19, tranche 04/11
+- `ENF43` — ENF19, tranche 04/11 (2)
+- `ENF44` — ENF11, tranche 04/11 bis (fin du nocturne api-fuzz-full 41825184761, tranches 12-15…
 - `QAH1` — Skill `qa-explorer` : flotte d'agents « testeur humain » qui explore l'ERP démo module…
 - `QAH2` — Invariants Hypothesis sur la chaîne d'argent et la chaîne d'états des documents ventes
 - `QAH3` — Test différentiel `solar.js` ↔ `quote_engine/builder.py` sur un corpus figé

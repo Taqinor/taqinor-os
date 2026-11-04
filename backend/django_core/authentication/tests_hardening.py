@@ -199,7 +199,8 @@ class AuthorizationMalFormeTests(TestCase):
         from rest_framework.exceptions import AuthenticationFailed
         from rest_framework.test import APIRequestFactory
         fab = APIRequestFactory()
-        for valeur in ('0', 'Basic abc', 'Bearer', 'Bearer é!!', 'Token x'):
+        # '' : en-tête présent mais vide (api-fuzz-full 41825184761, sav).
+        for valeur in ('', '0', 'Basic abc', 'Bearer', 'Bearer é!!', 'Token x'):
             req = fab.get('/api/django/x/', HTTP_AUTHORIZATION=valeur)
             req.COOKIES['access_token'] = 'jeton-quelconque'
             with self.assertRaises(AuthenticationFailed, msg=valeur):
