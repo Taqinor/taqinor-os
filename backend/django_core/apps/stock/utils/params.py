@@ -80,6 +80,17 @@ def montant_requete_ou_400(valeur, nom):
     return Decimal(valeur)
 
 
+def exiger_compteur_stock(produit, *valeurs):
+    """api-fuzz-full 41773314544 — le stock et les mouvements sont des colonnes
+    entières 32 bits : au-delà, l'écriture levait ``integer out of range`` (500).
+    Le dépassement vient de l'état du stock : 409, rien n'est écrit."""
+    from core.conflit_etat import ConflitEtat
+    if any(isinstance(v, int) and abs(v) > ID_MAX for v in valeurs):
+        raise ConflitEtat(
+            f"Le stock de « {getattr(produit, 'nom', 'ce produit')} » dépasserait "
+            'la capacité du compteur.')
+
+
 def corps_objet(request):
     """Corps de requête OBJET (ERR fuzz stock) : un corps JSON non objet
     (``[null, null]``, ``null``, nombre) levait AttributeError sur ``.get``
