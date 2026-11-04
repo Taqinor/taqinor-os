@@ -1275,8 +1275,7 @@ class UserViewSet(viewsets.ModelViewSet):
         if refus is not None:
             return refus
         brut = mot_de_passe_du_corps(request)  # corps non objet → 400, jamais 500
-        errors = reinitialiser_mot_de_passe(request.user, target, brut)
-        if errors:
+        if errors := reinitialiser_mot_de_passe(request.user, target, brut):
             # ENF11 : forme publiée → 400 ; politique → 409 (corps_requetes).
             return Response({'password': errors},
                             status=statut_refus_mot_de_passe(brut))

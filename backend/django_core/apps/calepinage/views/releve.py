@@ -29,6 +29,7 @@ from rest_framework.response import Response
 
 from core.champs_stricts import ChaineStricte, DateStricte
 from core.conflit_etat import ConflitEtat
+from core.parseurs import ListeJSON
 
 from ..permissions import PeutGererCalepinage, PeutLireOuEcrireCalepinage
 from ..serializers import forme_reponse
@@ -38,6 +39,15 @@ __all__ = ['ReleveTerrainMixin']
 
 _FORME_RELEVE = forme_reponse('CalepinageReleveTerrain', 'releve', 'releves',
                               'releve_courant_id')
+
+
+def _statut_refus_releve(refus):
+    """ENF11 — le CONTENU d'une chaîne de cotes (deux cotes manquantes, valeur
+    illisible) est un document libre que le schéma ne décrit pas : 409, même
+    doctrine que les réglages. La forme du corps reste un 400."""
+    if (refus.champ or '').startswith('chaines['):
+        return status.HTTP_409_CONFLICT
+    return status.HTTP_400_BAD_REQUEST
 
 
 class ReleveTerrainMixin:
@@ -50,7 +60,7 @@ class ReleveTerrainMixin:
             # ENF11 — la date est OBLIGATOIRE et s'écrit AAAA-MM-JJ (publié).
             'releve_le': DateStricte(),
             'notes': ChaineStricte(required=False, allow_blank=True),
-            'chaines': serializers.JSONField(required=False)}),
+            'chaines': ListeJSON(element=dict, required=False)}),
         responses={201: _FORME_RELEVE})
     @action(detail=True, methods=['get', 'post'], url_path='releve',
             permission_classes=[PeutLireOuEcrireCalepinage])
@@ -78,7 +88,7 @@ class ReleveTerrainMixin:
                 # ENF11 — règle d'HORLOGE, que le schéma ne peut pas dire.
                 raise ConflitEtat(str(refus))
             return Response({refus.champ or 'detail': str(refus)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=_statut_refus_releve(refus))
 
         from ..services.releve import releve_en_ligne
 
@@ -94,7 +104,7 @@ class ReleveTerrainMixin:
             description="Identifiant du relevé terrain (sous-ressource).")],
         request=inline_serializer('CalepinageReleveModifCorps', {
             'notes': ChaineStricte(required=False, allow_blank=True),
-            'chaines': serializers.JSONField(required=False)}),
+            'chaines': ListeJSON(element=dict, required=False)}),
         responses={200: _FORME_RELEVE, 204: None})
     @action(detail=True, methods=['patch', 'delete'],
             url_path=r'releve/(?P<releve_id>[^/.]+)',
@@ -133,7 +143,7 @@ class ReleveTerrainMixin:
                 user=request.user)
         except ReleveRefuse as refus:
             return Response({refus.champ or 'detail': str(refus)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=_statut_refus_releve(refus))
         return Response({'releve': releve_en_ligne(releve),
                          'releve_courant_id': releve_courant_id(calepinage)})
 

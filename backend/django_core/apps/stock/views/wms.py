@@ -14,10 +14,12 @@ from rest_framework.response import Response
 from ..openapi_helpers import (
     BINARY, BOOL, DATE, DATE_OU_VIDE, ID_OU_VIDE, INT, OBJET, P, PDF, STR, choix_ou_vide, corps,
 )
-from core.champs_stricts import MOTIF_SANS_NUL, ChaineStricte, IdInconnu404Mixin, _ids_inconnus_seulement
+from core.champs_stricts import (
+    MOTIF_SANS_NUL, ChaineStricte, EntierStrict, IdInconnu404Mixin, _ids_inconnus_seulement)
+from core.parseurs import ChoixDocumente, corps_valide
 from core.viewsets import CompanyScopedModelViewSet
 from ..utils.params import (
-    ID_MAX, booleen_requete_ou_400, choix_ou_400, corps_objet, date_ou_400, entier_ou_400, id_corps, lignes_objets,
+    ID_MAX, booleen_requete_ou_400, choix_ou_400, corps_objet, date_ou_400, entier_ou_400, id_corps,
     id_requete_ou_400, statut_requete_ou_400, texte_sans_nul_ou_400, types_corps_ou_400, valeur_unique_ou_400,
 )
 from ..corps_achats import UniteAjouterLigneCorps, UniteControlerScanCorps, valider_corps
@@ -69,6 +71,16 @@ CORPS_VAGUE = corps(
     note=ChaineStricte(required=False, allow_blank=True, allow_null=True))
 
 #: Corps de création d'un retour client : un client, au moins une ligne.
+_CORPS_INSPECTER = corps(
+    'RetourClientInspecterCorps',
+    lignes=serializers.ListField(child=corps(
+        'RetourClientInspecterLigneCorps',
+        ligne=EntierStrict(),
+        etat_constate=ChoixDocumente(LigneRetourClient.EtatConstate.values),
+        bin=EntierStrict(required=False, allow_null=True),
+        note=ChaineStricte(required=False, allow_blank=True))))
+
+
 CORPS_RETOUR_CLIENT = corps(
     'RetourClientCreerCorps',
     client=serializers.IntegerField(**_ID_CORPS),
@@ -1279,9 +1291,7 @@ class RetourClientViewSet(CompanyScopedModelViewSet):
         retour.refresh_from_db()
         return Response(self.get_serializer(retour).data)
 
-    @extend_schema(request=corps('RetourClientInspecterCorps',
-                                 lignes=serializers.ListField(child=serializers.DictField())),
-                   responses=RetourClientSerializer)
+    @extend_schema(request=_CORPS_INSPECTER, responses=RetourClientSerializer)
     @action(detail=True, methods=['post'], url_path='inspecter')
     def inspecter(self, request, pk=None):
         """Acte le contrôle qualité : ``{lignes: [{ligne, etat_constate,
@@ -1294,9 +1304,12 @@ class RetourClientViewSet(CompanyScopedModelViewSet):
             return Response(
                 {'detail': "Le retour doit être réceptionné avant d'être inspecté."},
                 status=status.HTTP_409_CONFLICT)
+        # api-fuzz-full 41773314544 : l'état constaté était refusé (400) sans être
+        # publié ; le corps validé est le corps publié.
+        lignes = corps_valide(request, _CORPS_INSPECTER)['lignes']
         try:
             inspecter_retour_client(
-                retour=retour, lignes=lignes_objets(corps_objet(request).get('lignes')),
+                retour=retour, lignes=[dict(ligne) for ligne in lignes],
                 user=request.user)
         except ValueError as exc:
             return Response({'detail': str(exc)},

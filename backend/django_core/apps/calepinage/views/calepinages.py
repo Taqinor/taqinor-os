@@ -1927,7 +1927,7 @@ def _booleen(valeur):
 
 def _moment(valeur):
     """Une date (ou un horodatage ISO), ou ``None`` — jamais une date devinée."""
-    if valeur in (None, ''):
+    if valeur is None:  # ``?depuis=`` vide n'est pas une date (format publié) : 400
         return None
     moment = parse_datetime(valeur) or parse_date(valeur)
     if moment is None:

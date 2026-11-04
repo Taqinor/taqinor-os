@@ -80,7 +80,7 @@ class RefusNommesTest(BaseApiCalepinage):
                     f'{self.url}releve/',
                     {'releve_le': '2026-10-01', 'chaines': chaines},
                     format='json')
-                self.assertEqual(reponse.status_code, 400, reponse.data)
+                self.assertEqual(reponse.status_code, 409, reponse.data)
                 self.assertIn('chaines[0]', reponse.data)
         self.assertEqual(ReleveTerrain.objects.count(), avant)
 

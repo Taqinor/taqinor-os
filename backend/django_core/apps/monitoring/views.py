@@ -902,6 +902,10 @@ class ProductionWarrantyViewSet(TenantMixin, viewsets.ModelViewSet):
         ?years=N pour borner ; ?drift_threshold_pct=X pour le seuil."""
         warranty = self.get_object()
         years = entier_borne(request, 'years', None, mini=1, maxi=100)
+        if request.query_params.get('drift_threshold_pct') == '':
+            # Publié par motif (au moins un chiffre) : le vide n'est pas « absent ».
+            raise serializers.ValidationError(
+                {'drift_threshold_pct': 'Nombre attendu.'})
         threshold = decimal_param(request, 'drift_threshold_pct')
         if threshold is not None and abs(threshold) >= 1000000:
             raise serializers.ValidationError(

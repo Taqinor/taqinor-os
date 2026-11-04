@@ -138,6 +138,12 @@ class FiltresListeTest(BaseApiCalepinage):
     def test_filtre_q_sur_le_titre(self):
         self.assertEqual(self._ids(q='anfa'), {self.sur_lead.pk})
 
+    def test_filtre_depuis_vide_400(self):
+        # api-fuzz-full 41773314544 : ``?depuis=`` (format publié : date) passait.
+        reponse = self.api.get(URL, {'depuis': ''})
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('depuis', reponse.data)
+
     def test_filtre_depuis(self):
         from datetime import timedelta
 
