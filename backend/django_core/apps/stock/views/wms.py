@@ -75,9 +75,9 @@ _CORPS_INSPECTER = corps(
     'RetourClientInspecterCorps',
     lignes=serializers.ListField(child=corps(
         'RetourClientInspecterLigneCorps',
-        ligne=EntierStrict(),
+        ligne=EntierStrict(**_ID_CORPS),
         etat_constate=ChoixDocumente(LigneRetourClient.EtatConstate.values),
-        bin=EntierStrict(required=False, allow_null=True),
+        bin=EntierStrict(required=False, allow_null=True, **_ID_CORPS),
         note=ChaineStricte(required=False, allow_blank=True))))
 
 
@@ -1311,9 +1311,8 @@ class RetourClientViewSet(CompanyScopedModelViewSet):
             inspecter_retour_client(
                 retour=retour, lignes=[dict(ligne) for ligne in lignes],
                 user=request.user)
-        except ValueError as exc:
-            return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+        except ValueError as exc:  # forme validée ci-dessus : seul l'état refuse ici
+            raise ConflitEtat(str(exc))
         retour.refresh_from_db()
         return Response(self.get_serializer(retour).data)
 

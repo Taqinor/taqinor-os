@@ -163,7 +163,7 @@ class Gouvernance(BaseApiCalepinage):
         reponse = self.api.post(
             self._url(calepinage, f'variantes/{variante.pk}/retenir/'), {},
             format='json')
-        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertIn('temperature_max_c', reponse.data)
 
     def test_troncons_de_la_variante_jamais_ceux_du_calepinage(self):
