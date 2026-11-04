@@ -166,9 +166,9 @@ class TestFicheReleveMaterialisation(TestCase):
         val = next(v for v in r.data['valeurs'] if v['id'] == valeur_id)
         self.assertEqual(val['valeur'], '235.4')
 
-    def test_renseigner_sans_gabarit_409_champ_inconnu_404(self):
-        # api-fuzz-full 27/10 (ENF11) : pas de gabarit pour ce type = refus
-        # d'ÉTAT (409) ; un id de champ entier absent = 404.
+    def test_renseigner_sans_gabarit_ou_champ_inconnu_409(self):
+        # ENF11 : pas de gabarit pour ce type, ou id de champ entier absent de
+        # cette intervention (qui existe) = refus d'ÉTAT (409).
         interv2 = Intervention.objects.create(
             company=self.company, installation=self.inst,
             type_intervention='pose', created_by=self.user)
@@ -179,7 +179,7 @@ class TestFicheReleveMaterialisation(TestCase):
         r = self.api.post(
             f'{BASE}/interventions/{self.interv.id}/renseigner-fiche/',
             {'valeur_id': 0}, format='json')
-        self.assertEqual(r.status_code, 404, r.content)
+        self.assertEqual(r.status_code, 409, r.content)
 
     def test_missing_required_champ_blocks_terminee(self):
         field_services.ensure_fiche_releve(self.interv)

@@ -192,8 +192,9 @@ class RefusNommesTests(_Base):
                                  canal=RelanceEtape.Canal.APPEL,
                                  libelle="Appel d'ouverture")
         resp = self._planifier(etape=etrangere.pk)
-        # Nocturne 24/10 : identifiant bien formé inconnu de ce lead = 404.
-        self.assertEqual(resp.status_code, 404, resp.data)
+        # ENF11 : identifiant de corps bien formé, inconnu de ce lead (qui, lui,
+        # existe) = refus d'état.
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('etape', resp.data)
         self.assertEqual(resp.data, CONTRAT['exemple_erreur_etape'])
         self.assertFalse(VisiteTerrain.objects.filter(

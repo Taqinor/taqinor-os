@@ -188,7 +188,8 @@ class TestPreparation(TestCase):
             for brut in ([{}, []], {'a': 1}, True, 2 ** 40):
                 r = self.api.post(f'{self.url}/{route}/', {'ligne': brut},
                                   format='json')
-                self.assertIn(r.status_code, (400, 404), (route, brut, r.content))
+                # 2 ** 40 : entier bien formé, ligne absente = refus d'état (ENF11).
+                self.assertIn(r.status_code, (400, 409), (route, brut, r.content))
 
     def test_manquant_flag_and_draft_order(self):
         # Produit dont la nomenclature dépasse le stock disponible.
