@@ -87,6 +87,28 @@ def _check_db():
 check_db = _check_db
 
 
+def check_beat():
+    """BPQ12 (D-JPB-7) — alias public de la sonde beat pour ``health/ready`` :
+    la sonde externe (Cloudflare Health Check) n'alerte que sur un code HTTP,
+    donc un beat ``degraded`` doit sortir en 503. ``unknown`` (aucun heartbeat
+    encore reçu) reste 200."""
+    return _check_beat()
+
+
+def etat_ready():
+    """Corps + code HTTP de ``health/ready`` : 503 ``not-ready`` si la DB est
+    down, 503 ``degraded`` si beat est arrêté (BPQ12), 200 ``ready`` sinon."""
+    db_check = check_db()
+    if db_check['status'] == STATUS_DOWN:
+        return {'status': 'not-ready', 'detail': db_check['detail']}, 503
+    extra = {'dernier_demarrage': dernier_demarrage(),
+             'dernier_tri_problemes': dernier_tri_problemes()}
+    beat_check = check_beat()
+    if beat_check['status'] == STATUS_DEGRADED:
+        return {'status': 'degraded', 'detail': beat_check['detail'], **extra}, 503
+    return {'status': 'ready', **extra}, 200
+
+
 def _check_cache():
     try:
         cache.set('core_health_probe', '1', 5)

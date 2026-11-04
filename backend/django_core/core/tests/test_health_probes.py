@@ -53,6 +53,26 @@ class HealthProbesTests(TestCase):
         self.assertEqual(resp.status_code, 503)
         self.assertEqual(resp.data['status'], 'not-ready')
 
+    def test_ready_returns_503_when_beat_degraded(self):
+        """BPQ12 (D-JPB-7) — beat arrêté ⇒ 503 pour la sonde externe ; le
+        corps garde dernier_tri_problemes (bandeau superuser du shell)."""
+        from core import health
+        fake_beat = {'name': 'beat', 'status': health.STATUS_DEGRADED,
+                     'detail': 'Dernier heartbeat il y a 900s.'}
+        with mock.patch.object(health, 'check_beat', return_value=fake_beat):
+            resp = self.client.get('/api/django/core/health/ready/')
+        self.assertEqual(resp.status_code, 503)
+        self.assertEqual(resp.data['status'], 'degraded')
+        self.assertIn('dernier_tri_problemes', resp.data)
+
+    def test_ready_stays_200_when_beat_unknown(self):
+        from core import health
+        fake_beat = {'name': 'beat', 'status': health.STATUS_UNKNOWN,
+                     'detail': 'Aucun heartbeat reçu pour le moment.'}
+        with mock.patch.object(health, 'check_beat', return_value=fake_beat):
+            resp = self.client.get('/api/django/core/health/ready/')
+        self.assertEqual(resp.status_code, 200)
+
     def test_no_company_data_leaks_on_probes(self):
         resp = self.client.get('/api/django/core/health/ready/')
         self.assertNotIn('company', str(resp.data).lower())

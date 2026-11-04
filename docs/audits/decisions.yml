@@ -3475,9 +3475,9 @@ decisions:
         texte: "Oui, créée par Reda dans le tableau de bord (jamais un jeton API Cloudflare dans le dépôt)"
       - cle: non
         texte: "Non"
-    reponse: ouverte
-    date: "2026-11-03"
-    source: "session 2026-11-03 revue L3 journal : non posée (défaut recommandé : oui)"
+    reponse: oui
+    date: "2026-11-04"
+    source: "session 2026-11-04 work on the plan : question interactive, Reda répond « Oui »"
     taches: [BPQ12]
 
   - id: D-ASTK-VER4-1
