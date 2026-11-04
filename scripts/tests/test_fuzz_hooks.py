@@ -143,6 +143,28 @@ class CrochetsFuzzTests(unittest.TestCase):
                                {'mode': 'enforce'}))
         self.assertEqual(cas.body['mode'], 'enforce')
 
+    def test_delete_d_une_reference_redirige(self):
+        hooks = _charger_hooks({
+            'user_id': 4, 'company_id': 2, 'role_id': 7,
+            'fk_ids': {'fournisseur': [1, 2], 'categorie': [1]}})
+        for chemin, nom, valeur in (
+                ('/api/django/stock/fournisseurs/{id}/', 'id', 2),
+                ('/api/django/stock/fournisseurs/{id}/force-delete/', 'id', '1'),
+                ('/api/django/stock/categories/{id}/', 'id', 1)):
+            with self.subTest(chemin=chemin):
+                cas = _cas(hooks, 'DELETE', chemin, params={nom: valeur})
+                hooks.before_call(None, cas, {})
+                self.assertEqual(cas.path_parameters[nom], hooks.ID_INEXISTANT)
+        # Une ligne créée par la phase stateful se supprime ; un GET n'est pas touché.
+        cas = _cas(hooks, 'DELETE', '/api/django/stock/fournisseurs/{id}/',
+                   params={'id': 690})
+        hooks.before_call(None, cas, {})
+        self.assertEqual(cas.path_parameters['id'], 690)
+        cas = _cas(hooks, 'GET', '/api/django/stock/fournisseurs/{id}/',
+                   params={'id': 2})
+        hooks.before_call(None, cas, {})
+        self.assertEqual(cas.path_parameters['id'], 2)
+
     def test_corps_non_dict_ignore(self):
         cas = self._appel(_cas(self.hooks, 'POST',
                                '/api/django/identity/network-policies/',

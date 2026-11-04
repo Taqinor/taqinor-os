@@ -240,6 +240,36 @@ def _proteger_soi(case):
                 case.path_parameters[nom] = ID_INEXISTANT
 
 
+def _singulier(segment):
+    """``fournisseurs`` -> ``fournisseur``, ``canaux`` -> ``canal``,
+    ``dossiers-import`` -> ``dossiers_import`` : le nom de champ FK que vise une
+    collection (rapproché de ``fk_ids`` et des règles par chemin)."""
+    nom = segment.replace('-', '_')
+    if nom.endswith('aux'):
+        return nom[:-3] + 'al'
+    return nom[:-1] if nom.endswith('s') else nom
+
+
+def _proteger_references(case):
+    """api-fuzz-full 41773314544 — ``DELETE stock/fournisseurs/2/force-delete/``
+    retirait une ligne que ``fk_ids`` continuait de servir : tout cas POSITIF
+    suivant recevait « Clé primaire « 2 » non valide » (9 constats de la tranche
+    11, idem ``categorie``, ``parent``). Même nature que ``_proteger_soi`` : le
+    serveur a raison, le harnais ne scie pas sa branche. L'opération reste
+    fuzzée sur un id inexistant, et sur les lignes que la phase stateful crée
+    (ids hors des listes de référence)."""
+    if case.operation.method.upper() != 'DELETE':
+        return
+    m = _PREMIER_ID.match(case.operation.path)
+    if not m or m.group(2) not in (case.path_parameters or {}):
+        return
+    collection = m.group(1).rstrip('/').rsplit('/', 1)[-1]
+    entree = _entree(_singulier(collection), _table_fk(case.operation.path))
+    valeur = case.path_parameters[m.group(2)]
+    if entree is not None and str(valeur) in {str(i) for i in entree[0]}:
+        case.path_parameters[m.group(2)] = ID_INEXISTANT
+
+
 def _neutraliser_politique_reseau(case):
     """``mode: enforce`` → ``monitor`` sur une écriture de la politique
     réseau : le fuzzeur (127.0.0.1) ne doit jamais se refuser l'accès."""
@@ -638,7 +668,7 @@ _FICHIERS_VALIDES = (
     # CI #997 (3) — dépôt d'un document du portail : le formulaire porte un
     # fichier ``fichier`` (le serveur lit les octets magiques).
     (re.compile(r'^/api/django/portail/documents-client-portail/'),
-     {'POST', 'PATCH'}, {'fichier': _PDF_MINIMAL}),
+     {'POST', 'PUT', 'PATCH'}, {'fichier': _PDF_MINIMAL}),
     # ERR-ENF11-FUZZ-CRM — scan d'une carte de visite : une PHOTO (octets
     # magiques PNG/JPEG/WebP lus par ``scan_carte_visite``) ; des octets vides
     # = « Aucune image fournie » (400). Sans clé OCR, le serveur répond 503.
@@ -1042,6 +1072,7 @@ def before_call(context, case, kwargs):
     etait_positif = _est_positif(case)
     _ids_chemin_reels(case)
     _proteger_soi(case)
+    _proteger_references(case)
     _neutraliser_politique_reseau(case)
     _neutraliser_sso_obligatoire(case)
     _ids_fk_connus(case)

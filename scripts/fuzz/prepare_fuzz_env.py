@@ -445,7 +445,19 @@ def _semer_ged(company, user):
     _modele('ged.DocumentTag').objects.get_or_create(
         company=company, slug='fuzz-etiquette',
         defaults={'nom': 'Étiquette fuzz'})
+    # api-fuzz-full 41773314544 — ``exigence`` d'une demande de document : sans
+    # ligne, ``{exigence: 1}`` répondait 404 juste après la création (PUT).
+    _modele('ged.ExigenceDossier').objects.get_or_create(
+        company=company, cabinet=cabinet, libelle='Exigence fuzz')
     return coffre
+
+
+def _semer_dossier_import(company, user):
+    """api-fuzz-full 41773314544 — ``dossier`` d'une ligne de coût débarqué
+    visait l'id d'un AUTRE modèle (union par nom de champ) : aucune création
+    positive de ``landed-cost-lignes`` n'aboutissait."""
+    return _modele('installations.DossierImport').objects.create(
+        company=company, reference='IMP-FUZZ-1', designation='Dossier fuzz')
 
 
 def _calepinages_modeles(qs, company):
@@ -698,6 +710,7 @@ SEMEURS = (
     ('calepinage.SystemeFixation', _semer_systeme_fixation),
     ('calepinage.GabaritDossierReglementaire', _semer_gabarit_dossier),
     ('entites.Entite', _semer_entite),
+    ('installations.DossierImport', _semer_dossier_import),
     ('stock.CategorieFournisseur', _semer_categorie_fournisseur),
     ('parametres.ConditionPaiement', _semer_condition_paiement),
     ('stock.EmplacementStock', _semer_emplacement_stock),
@@ -803,6 +816,9 @@ REGLES_PAR_CHEMIN = (
     # (installations) et de stock : l'union donnait leurs ids.
     (r'^/api/django/ventes/dossiers-(checklist|echanges)/', ('dossier',),
      'ventes.RegulatoryDossier', None, None),
+    (r'^/api/django/installations/(landed-cost|frais-import|dossiers-import)', ('dossier',),
+     'installations.DossierImport', None, None),
+    (r'^/api/django/ged/', ('exigence', 'exigence_id'), 'ged.ExigenceDossier', None, None),
 
     # CI #997 fuzz (4) - produits et emplacements d'un transfert ; produits d'un
     # remplacement de composant en masse (le nom du champ seul est ambigu).
