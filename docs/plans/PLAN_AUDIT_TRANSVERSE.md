@@ -947,3 +947,4 @@ Seconde contre-visite de clôture du groupe ALEA (dossier `docs/audits/2026-11-0
 - 2026-11-03 — ACVI31 — cochée : rejeu en direct PASS du 04/11 (docs/audits/acceptation/).
 - 2026-11-03 — ACVI36 — cochée : rejeu en direct PASS du 04/11 (docs/audits/acceptation/).
 - 2026-11-03 — ACVI24 — cochée : clauses restantes rejouées PASS le 04/11 (docs/audits/acceptation/, sha 685ae08f1).
+- 2026-11-04 — ADEV108 — code livré, preuve en direct due (ADEV114) : `tasks.py::ranger_simulation` trace « corrigé après envoi — étude » (`consigner_correction_apres_envoi`) et `toucher` quand la simulation change hors `computed_at` sur un envoyé ; `simuler` passe `user_id` à la tâche ; tests `test_calepinage_adev58_conception_gardee.py::ConceptionGardeeTests::test_simuler_envoye_trace` / `::test_simuler_brouillon_sans_trace` (non joués localement : pas de pile).
