@@ -95,3 +95,31 @@ export function refusConflit(error, repli) {
 export function apiErrorMessage(error, fallback) {
   return getApiError(error, fallback).message
 }
+
+// ADEV112 — premier texte d'un `erreurs` servi : chaîne, liste (de chaînes ou de
+// `{message}`) ou dictionnaire `{champ: [..]}` ; `null` sinon.
+function premierMessage(v) {
+  if (typeof v === 'string') return v.trim() || null
+  const valeurs = Array.isArray(v) ? v : (v && typeof v === 'object' ? Object.values(v) : [])
+  for (const x of valeurs) {
+    const m = premierMessage(x && typeof x === 'object' && !Array.isArray(x) && 'message' in x ? x.message : x)
+    if (m) return m
+  }
+  return null
+}
+
+/**
+ * ADEV112 — le message d'une erreur dont le corps arrive en Blob (`responseType:
+ * 'blob'`, ex. `/proposal`) ou sous `{erreurs: …}` : le Blob est relu (JSON), son
+ * `detail` ou le premier message d'`erreurs` est rendu ; sinon le contrat habituel
+ * d'`apiErrorMessage`. Ne lève jamais.
+ */
+export async function apiErrorMessageServi(error, fallback) {
+  let data = error?.response?.data
+  if (typeof Blob !== 'undefined' && data instanceof Blob) {
+    try { data = JSON.parse(await data.text()) } catch { data = null }
+  }
+  const erreurs = data && typeof data === 'object' && !data.detail ? premierMessage(data.erreurs) : null
+  return erreurs || apiErrorMessage(
+    { code: error?.code, message: error?.message, response: { ...error?.response, data } }, fallback)
+}

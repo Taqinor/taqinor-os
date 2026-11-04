@@ -39,7 +39,8 @@ test('APXTMO : getProposalPdf accepte un config (signal d\'annulation) transmis 
 test('APXTMO : le panneau lead transmet le signal et le hook partagé ANNULE le rendu en vol', () => {
   // QJR653 — le signal d'annulation est transmis à l'appel d'aperçu…
   assert.match(LDP_SRC,
-    /getProposalPdf\([\s\S]{0,160}?\{ signal \}/,
+    // ADEV112 — `suppressErrorToast` voyage avec le signal (l'aperçu affiche son propre message).
+    /getProposalPdf\([\s\S]{0,160}?\{ signal(, suppressErrorToast: true)? \}/,
     'le fetch d\'aperçu ne transmet pas le signal d\'annulation')
   // …et le hook partagé crée l'AbortController et l'avorte réellement.
   const hook = readFileSync(
