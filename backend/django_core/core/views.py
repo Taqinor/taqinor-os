@@ -1753,7 +1753,11 @@ def health_live(request):
     403: _DETAIL,
     503: inline_serializer('SanteNonPrete', {
         'status': drf_serializers.CharField(),
-        'detail': drf_serializers.CharField()}),
+        'detail': drf_serializers.CharField(),
+        'dernier_demarrage': drf_serializers.DictField(
+            allow_null=True, required=False),
+        'dernier_tri_problemes': drf_serializers.CharField(
+            allow_null=True, required=False)}),
 })
 @api_view(['GET'])
 @permission_classes([AllowAny])
@@ -1761,15 +1765,22 @@ def health_live(request):
 def health_ready(request):
     """``GET /api/django/core/health/ready/`` — 200 si la DB répond
     (``core.health._check_db``), 503 sinon. Conçu pour un probe
-    nginx/Caddy AVANT de router du trafic vers ce worker."""
+    nginx/Caddy AVANT de router du trafic vers ce worker.
+
+    BPQ12 (D-JPB-7) : 503 ``degraded`` aussi quand Celery Beat est arrêté,
+    pour que la sonde externe hors serveur alerte Reda (docs/problemes-prod.md)."""
     from . import health
     db_check = health.check_db()
     if db_check['status'] == health.STATUS_DOWN:
         return Response({'status': 'not-ready', 'detail': db_check['detail']},
                         status=503)
-    return Response({'status': 'ready',
-                     'dernier_demarrage': health.dernier_demarrage(),
-                     'dernier_tri_problemes': health.dernier_tri_problemes()})
+    extra = {'dernier_demarrage': health.dernier_demarrage(),
+             'dernier_tri_problemes': health.dernier_tri_problemes()}
+    beat_check = health.check_beat()
+    if beat_check['status'] == health.STATUS_DEGRADED:
+        return Response({'status': 'degraded', 'detail': beat_check['detail'],
+                         **extra}, status=503)
+    return Response({'status': 'ready', **extra})
 
 
 class ApiUsagePlanViewSet(TenantMixin, viewsets.GenericViewSet):
