@@ -113,3 +113,24 @@ réseau de l'étape 3. L'ancienne valeur cesse de marcher dès la recréation.
 prochaine passe imprime `PROBLEMES_PROD: DISABLED (config flag off)` sans rien écrire. L'autre
 interrupteur est la mise en pause de la routine sur claude.ai/code/routines. Le jeton ne se révoque
 que côté serveur (retirer la variable).
+
+## Clôture prouvée et rapport du lundi (BPQ11)
+
+Une `ERR-PROD` cochée n'est pas « réglée » tant que la prod ne le prouve pas.
+
+- **Régression** : si la `Signature:` d'une `ERR-PROD` cochée réapparaît dans le résumé **≥ 7 jours
+  après le déploiement du correctif**, le skill la marque `regresse` et dépose un nouvel item
+  `<ID>-2` qui cite l'original (id, signature, sha du correctif). L'item d'origine n'est pas décoché.
+- **Date de déploiement du correctif** : le premier sha de `erp:demarrages` (`dernier_demarrage` de
+  `health/ready`, BPQ2) qui contient le commit du correctif (`git merge-base --is-ancestor`).
+  Une réapparition avant ces 7 jours, ou avant tout déploiement, n'est pas une régression.
+- **En attente de déploiement** : un correctif mergé sur `main` mais dont le commit n'est pas
+  encore dans le sha déployé reste « en attente de déploiement » ; le résumé le dit, le skill ne
+  dépose rien dessus.
+- **Rapport du lundi** (sortie de la routine, et le même résumé affiché par BPQ6 aux superusers) :
+  1. problèmes de la semaine (signatures distinctes) ;
+  2. personnes touchées (somme des `personnes` du résumé, sans doublon d'identifiant) ;
+  3. top 3 par personnes touchées puis par gravité ;
+  4. corrigés (cochés et absents depuis ≥ 7 jours après déploiement) ;
+  5. régressés (`<ID>-2` ouverts cette semaine) ;
+  6. en attente de déploiement.

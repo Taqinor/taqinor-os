@@ -63,12 +63,19 @@ construise. Conception : `docs/boucle-problemes-quotidienne.md` ; capture serveu
   telle que le resume la rend, sans identifiant numerique). C'est la cle de deduplication.
 - **Dedoublonner** : cherche la signature (texte exact) dans TOUTES les lignes de
   `docs/ERROR_PLAN.md`, cochees ou non, et dans son journal d'intake. Deja presente et ouverte :
-  ne rien deposer. Presente et cochee : voir la regle de cloture de `docs/problemes-prod.md`.
+  ne rien deposer. Presente et cochee : applique la **cloture prouvee** ci-dessous.
 - **Severite = personnes x gene** : 1 personne bloquee sur un geste metier (creer/envoyer un
   devis, signer, facturer, se connecter) = **High** ; au moins 3 personnes touchees = **Critical** ;
   une gene sans blocage = Medium ; cosmetique sans perte de geste = Low (non deposee si
   `max_findings_per_run` est atteint).
 - Garde au plus `max_findings_per_run` items, par severite decroissante puis nombre de personnes.
+
+- **Cloture prouvee** (regle ecrite dans `docs/problemes-prod.md`) : une `ERR-PROD` cochee dont la
+  `Signature:` reapparait au moins 7 jours APRES le deploiement du correctif (premier sha de
+  `erp:demarrages` / `dernier_demarrage` contenant le commit du correctif, verifie par
+  `git merge-base --is-ancestor`) est `regresse` : depose un nouvel item `<ID>-2` qui cite l'original
+  (id, signature, sha) ; ne decoche rien. Un correctif merge mais pas encore deploye reste « en
+  attente de deploiement » : rien n'est depose dessus.
 
 ## ETAPE 3 — Deposer
 
@@ -96,3 +103,9 @@ la PR. Jamais `--squash`, jamais de force.
 
 Termine par une ligne : `PROBLEMES_PROD_STATUS: MORE` si des problemes deposables restent
 (budget atteint), sinon `PROBLEMES_PROD_STATUS: EMPTY`.
+
+## Rapport du lundi
+
+Le lundi, ajoute a ta sortie un rapport court : problemes de la semaine, personnes touchees, top 3,
+corriges, regresses, en attente de deploiement (definitions dans `docs/problemes-prod.md`, section
+« Cloture prouvee »). Il n'ajoute aucun commit : c'est du texte de sortie.
