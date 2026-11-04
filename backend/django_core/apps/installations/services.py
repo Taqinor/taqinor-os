@@ -1506,19 +1506,10 @@ def _quantite_sortie_chantier(installation, produit_id):
 
 def _quantite_soldee_par_vente(installation, produit_id):
     """ASTK128 — Σ des quantités de réservation soldées par une vente
-    (marqueurs posés par `solder_reservations_vente`)."""
-    from decimal import Decimal
-    from .models import InstallationActivity
-    total = Decimal('0')
-    for valeur in InstallationActivity.objects.filter(
-            installation=installation, field=_MARQUEUR_SOLDE_VENTE,
-            new_value__startswith=f'{produit_id}:').values_list(
-            'new_value', flat=True):
-        try:
-            total += Decimal(valeur.split(':', 1)[1])
-        except (IndexError, ArithmeticError, ValueError):
-            continue
-    return total
+    (marqueurs posés par `solder_reservations_vente`), NETTE des
+    contre-marqueurs de réouverture (ASTK263)."""
+    from .services_solde_vente import net_marqueurs_vente
+    return net_marqueurs_vente(installation, produit_id)
 
 
 def _quantite_deja_retournee(installation, produit_id):
