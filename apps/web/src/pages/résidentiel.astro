@@ -181,13 +181,13 @@ import ProfessionnelBlocF2A1 from '../components/blocs/ProfessionnelBlocF2A1.ast
         rentabilise pas le solaire, nous vous le dirons avant que vous n'ayez signé quoi que ce soit.
       </p>
       <div class="mt-10 border-t-2 border-brass-400/60" data-stagger>
-        <div class="tech-label hidden grid-cols-[1.1fr_0.8fr_1.2fr_0.8fr] gap-4 border-b border-white/10 py-3 text-lune-faint sm:grid">
-          <span>Facture mensuelle</span><span>Puissance</span><span>Investissement (ordre de grandeur)</span><span>Retour</span>
+        <div class="tech-label hidden grid-cols-[1.1fr_0.8fr_1.2fr] gap-4 border-b border-white/10 py-3 text-lune-faint sm:grid">
+          <span>Facture mensuelle</span><span>Puissance</span><span>Investissement (ordre de grandeur)</span>
         </div>
         <ResidentielDiv9D1E brackets={brackets} />
       </div>
       <p class="mt-5 max-w-2xl text-xs leading-relaxed text-lune-soft">
-        Sous 1 000 MAD par mois, le retour dépasse le plus souvent 7 ans : nous le disons
+        Sous 1 000 MAD par mois, le solaire se rentabilise lentement : nous le disons
         plutôt que de forcer la vente. Au-delà de 10 000 MAD, la consommation sort du cadre
         résidentiel et appelle une étude dédiée — voir Professionnel.
       </p>
@@ -215,7 +215,7 @@ import ProfessionnelBlocF2A1 from '../components/blocs/ProfessionnelBlocF2A1.ast
           </p>
           <dl class="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-3 border-l-2 border-brass-400/60 pl-6" data-stagger>
             <div class="v2-rise" style="--v2-i:0">
-              <dd class="fig lum whitespace-nowrap text-2xl sm:text-4xl" data-tally>{panelWarrantyLabel}</dd>
+              <dd class="fig lum whitespace-nowrap text-2xl sm:text-4xl" data-fig-fixe>{panelWarrantyLabel}</dd>
               <dt class="tech-label mt-1.5 text-lune-faint">Garantie panneaux</dt>
             </div>
             {RETOUR_PAR_SEGMENT.residentiel && (

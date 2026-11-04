@@ -46,7 +46,7 @@ const L = (href: string) => localizeNavHref(href, locale);
 // WJ50 — préremplissage contextualisé PAR PAGE (chemin racine, sans préfixe de
 // locale) : même helper que StickyCta, pour que la reprise WhatsApp du pied
 // de page ouvre elle aussi un chat déjà informé et distinguable dans le CRM.
-const wa = whatsappLink(WHATSAPP_LEADS, pageContextWhatsappText(stripLocale(Astro.url.pathname)));
+const wa = whatsappLink(WHATSAPP_LEADS, pageContextWhatsappText(stripLocale(Astro.url.pathname), locale));
 // W246 — lien de parcours devis localisé (même point de bascule unique que
 // l'en-tête / CtaBand / StickyCta : quoteJourneyHref, jamais un href codé en dur).
 const journeyHref = quoteJourneyHref(locale);

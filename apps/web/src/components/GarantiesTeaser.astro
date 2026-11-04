@@ -123,7 +123,7 @@ const items = years.map((yrs, i) => ({ years: yrs, label: s.labels[i] }));
     <dl class="mt-10 grid grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-3 lg:grid-cols-7" data-stagger>
       {items.map((it, i) => (
         <div class="v2-rise" style={`--v2-i:${i}`}>
-          <dd class="fig lum whitespace-nowrap text-3xl sm:text-4xl" data-tally>{it.years}</dd>
+          <dd class="fig lum whitespace-nowrap text-3xl sm:text-4xl" data-fig-fixe>{it.years}</dd>
           <dt class="tech-label mt-2 text-lune-faint">{it.label}</dt>
         </div>
       ))}

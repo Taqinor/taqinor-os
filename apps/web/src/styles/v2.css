@@ -102,7 +102,9 @@
      (les valeurs comme « 21 406 kWh/an » contiennent des espaces insécables,
      mais cette règle couvre aussi les espaces normaux éventuels).
    Le bloc est identique à la valeur au repos : ZÉRO CLS hors animation. */
-.v2 [data-tally] {
+/* WAUD38 — `data-fig-fixe` : même rendu qu'un compteur, mais valeur à unité jamais animée. */
+.v2 [data-tally],
+.v2 [data-fig-fixe] {
   font-variant-numeric: lining-nums tabular-nums;
   display: inline-block;
   min-width: 1ch;

@@ -10,6 +10,9 @@ import { installerEnvoi, SEUIL_SORTIE_CACHEE_MS } from '../src/lib/tunnel/envoi'
 
 vi.setConfig({ testTimeout: 30_000 }); // jsdom sous charge (suite complète en parallèle)
 const LOCALES: LocaleTunnel[] = ['fr', 'en', 'ar'];
+// WAUD10 (D-WAUD-3=a) — le message WhatsApp suit la langue de la page.
+const MA_REF: Record<LocaleTunnel, string> = { fr: 'Ma référence : TQ-ABCD1.', en: 'My reference: TQ-ABCD1.', ar: 'مرجعي: TQ-ABCD1.' };
+const MON_NUM: Record<LocaleTunnel, string> = { fr: 'Mon numéro : 0612345678.', en: 'My number: 0612345678.', ar: 'رقمي: 0612345678.' };
 const HTML = `
 <main id="page"><form id="mt-form">
   <input id="mt-name" value="Karim"><input id="mt-city" value="Casablanca"><input id="mt-contact-phone" type="checkbox">
@@ -86,8 +89,8 @@ describe.each(LOCALES)('RWEB17-M8 — envoi et sortie · %s', (locale) => {
     expect(document.getElementById('mt-success')!.hidden).toBe(false);
     expect(texte('mt-client-ref')).toBe('TQ-ABCD1');
     const href = decodeURIComponent((document.getElementById('mt-success-wa') as HTMLAnchorElement).href);
-    expect(href).toContain('Ma référence : TQ-ABCD1.'); // D-RWEB17-WA-REF : les trois locales
-    expect(href).toContain('installation estimée 9,5 kWc');
+    expect(href).toContain(MA_REF[locale]); // D-RWEB17-WA-REF : les trois locales
+    expect(href).toContain({ fr: 'installation estimée 9,5 kWc', en: 'estimated installation 9,5 kWc', ar: 'تركيب مُقدَّر 9,5 kWc' }[locale]);
     expect(etat.submitted).toBe(true);
     expect((document.getElementById('mt-name') as HTMLInputElement).disabled).toBe(true);
     expect(appels).toContain('clear');
@@ -119,7 +122,7 @@ describe.each(LOCALES)('RWEB17-M8 — envoi et sortie · %s', (locale) => {
     await envoyer();
     expect(document.getElementById('mt-success')!.hidden).toBe(true);
     expect(document.getElementById('mt-belowthreshold')!.hidden).toBe(false);
-    expect(decodeURIComponent((document.getElementById('mt-belowthreshold-wa') as HTMLAnchorElement).href)).toContain('Ma référence : TQ-ABCD1.');
+    expect(decodeURIComponent((document.getElementById('mt-belowthreshold-wa') as HTMLAnchorElement).href)).toContain(MA_REF[locale]);
   });
 
   it('erreur 500 : message serveur de la langue, CTA rétabli', async () => {
@@ -221,7 +224,7 @@ describe.each(LOCALES)('RWEB17-M8 — envoi et sortie · %s', (locale) => {
     const saisie = document.getElementById('mt-exit-phone') as HTMLInputElement;
     saisie.value = '0612345678';
     saisie.dispatchEvent(new window.Event('input', { bubbles: true }));
-    expect(decodeURIComponent(lien.href)).toContain('Mon numéro : 0612345678.');
+    expect(decodeURIComponent(lien.href)).toContain(MON_NUM[locale]);
   });
 
   it('init finale : tranche resynchronisée, estimation recalculée si déjà révélée', () => {

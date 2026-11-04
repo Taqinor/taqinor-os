@@ -29,7 +29,7 @@ import RegularisationDossier from '../../components/blocs/RegularisationDossier.
 
 const { locale, L } = pageLocale(Astro.url.pathname);
 
-const waFallback = whatsappLink(WHATSAPP_LEADS, regularizationWhatsappText());
+const waFallback = whatsappLink(WHATSAPP_LEADS, regularizationWhatsappText(undefined, 'ar'));
 
 const steps = [
   { title: 'الجرد التقني', body: 'معاينة التركيبة القائمة: القدرة المُركّبة، نمط الربط، مستوى الجهد، معدات الحماية والعدّ.' },
@@ -46,7 +46,7 @@ const sanctions = [
 
 <Layout
   title="تسوية المادة 33 — التركيبات الشمسية القائمة | Taqinor"
-  description="المرسوم التطبيقي 2-25-100 ساري المفعول منذ 9 يونيو 2026. تنص المادة 33 من القانون 82-21 على أجل 18 شهراً لتسوية التركيبات الشمسية القائمة: مسطرة من 5 مراحل وتكفّل كامل بالملف."
+  description="المرسوم التطبيقي 2-25-100 ساري المفعول. تؤطّر المادة 33 من القانون 82-21 تسوية التركيبات الشمسية القائمة: مسطرة من 5 مراحل وتكفّل كامل بالملف."
   ogSlug="article-33"
 >
   <div class="v2">
@@ -61,8 +61,7 @@ const sanctions = [
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">القانون <span dir="ltr">82-21</span> — المادة <span dir="ltr">33</span></p>
         <h1 class="display v2-page-title cine-in cine-in-1 mt-5 max-w-3xl">تركيبتك الشمسية قائمة بالفعل؟ سوّها الآن.</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
-          المرسوم التطبيقي <span dir="ltr">2-25-100</span>، الذي نُشِر بالجريدة الرسمية في <span dir="ltr">9 مارس 2026</span>، دخل حيّز التنفيذ في
-          <span dir="ltr">9 يونيو 2026</span>. وقرار ANRE رقم <span dir="ltr">04/26</span> يحدّد تعريفة الفائض للتركيبات المربوطة بالتوتر
+          المرسوم التطبيقي <span dir="ltr">2-25-100</span> ساري المفعول. وقرار ANRE رقم <span dir="ltr">04/26</span> يحدّد تعريفة الفائض للتركيبات المربوطة بالتوتر
           المتوسط والعالي والعالي جداً (<span dir="ltr">MT/HT/THT</span>)؛ أمّا في التوتر المنخفض، فإعادة بيع الفائض غير مفتوحة،
           حتى بقدرة <span dir="ltr">11 kW</span> فأكثر بموجب اتفاق ربط. ويُطبَّق نظام القانون <span dir="ltr">82-21</span> على جميع تركيبات الإنتاج الذاتي — حتى تلك
                     المُركّبة قبل صدور النص بزمن.
@@ -81,8 +80,7 @@ const sanctions = [
           <div>
             <p class="tech-label text-lune">ساري المفعول</p>
             <p class="mt-2 text-sm leading-relaxed text-lune-soft">
-              المرسوم التطبيقي <strong class="text-white" dir="ltr">2-25-100</strong> (الجريدة الرسمية بتاريخ <span dir="ltr">9 مارس 2026</span>،
-              ساري منذ <span dir="ltr">9 يونيو 2026</span>) وقرار ANRE رقم <strong class="text-white" dir="ltr">04/26</strong>.
+              المرسوم التطبيقي <strong class="text-white" dir="ltr">2-25-100</strong> (ساري المفعول) وقرار ANRE رقم <strong class="text-white" dir="ltr">04/26</strong>.
               تعريفة الفائض (قرار ANRE 04/26):
               <strong class="text-white" dir="ltr"> 0,18 درهم/kWh خارج الذروة، 0,21 درهم/kWh في الذروة، دون احتساب الرسوم</strong>،
               للتركيبات المربوطة بـ<strong class="text-white">التوتر المتوسط أو العالي أو العالي جداً (<span dir="ltr">MT/HT/THT</span>)</strong>،
@@ -107,11 +105,9 @@ const sanctions = [
         <p class="tech-label v2-kicker rule-brass text-lune">النص</p>
         <h2 class="display v2-section-title mt-4 text-white">ما تقوله المادة <span dir="ltr">33</span></h2>
         <p class="v2-lead mt-5 text-lune-soft">
-          تنص المادة <span dir="ltr">33</span> من القانون <span dir="ltr">82-21</span> على تسوية التركيبات القائمة
-          «خلال ثمانية عشر (<span dir="ltr">18</span>) شهراً ابتداءً من تاريخ دخول هذا القانون حيّز التنفيذ»
-          (القانون <span dir="ltr">82-21</span>، المادة <span dir="ltr">33</span>)، أي <strong class="fig lum text-xl" dir="ltr">18 شهراً</strong>.
-          نقطة انطلاق هذا الأجل يجب تأكيدها لدى مصالح الطاقة: أودِع دون انتظار. تركيبة مُسوّاة مؤمَّنة قانونياً؛
-          تركيبة غير مُسوّاة في وضعية غير قانونية.
+          تؤطّر المادة <span dir="ltr">33</span> من القانون <span dir="ltr">82-21</span> تسوية التركيبات القائمة؛
+          نصّها الحرفي مذكور في <a href={L('/loi-82-21')} class="border-b border-brass-300/60 font-semibold text-brass-300">صفحة القانون 82-21</a>.
+          بعد تسوية الملف، تصبح التركيبة مطابقة للقانون مثل تركيبة جديدة.
         </p>
       </div>
 

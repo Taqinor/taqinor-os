@@ -113,7 +113,8 @@ export function captureWhatsappText(p: {
    *  le message pré-rempli ne le portait JAMAIS : le client devait le retaper
    *  de mémoire. Optionnel : absent, le message reste identique à l'octet. */
   clientRef?: string;
-}): string {
+}, locale: Locale = 'fr'): string {
+  if (locale === 'en' || locale === 'ar') return captureWhatsappTextLocale(p, locale);
   const name = p.fullName.trim() || 'un visiteur';
   const city = p.city.trim();
   const parts: string[] = [
@@ -134,6 +135,47 @@ export function captureWhatsappText(p: {
   return parts.join(' ');
 }
 
+/** WAUD10 — invitation au vocal, EN et AR (le FR reste `VOICE_NOTE_INVITE`). */
+const VOICE_NOTE_INVITE_LOC: Record<'en' | 'ar', string> = {
+  en: 'I can also send you a voice note with a photo of my bill.',
+  ar: 'يمكنني أيضاً أن أرسل لكم رسالة صوتية مع صورة فاتورتي. نقدر نصيفط ليكم أوديو مع تصويرة الفاتورة.',
+};
+
+/** WAUD10 (D-WAUD-3=a) — `captureWhatsappText` dans la langue de la page EN/AR. */
+function captureWhatsappTextLocale(
+  p: { fullName: string; city: string; kwcLabel?: string; savingsLabel?: string; clientRef?: string },
+  locale: 'en' | 'ar',
+): string {
+  const en = locale === 'en';
+  const name = p.fullName.trim();
+  const city = p.city.trim();
+  const parts: string[] = [];
+  if (en) {
+    parts.push(`Hello, I am ${name || 'a visitor'}${city ? ` (${city})` : ''}.`);
+    parts.push('I would like to receive my solar estimate from taqinor.ma.');
+  } else {
+    parts.push(`مرحباً، أنا ${name || 'زائر'}${city ? ` (${city})` : ''}.`);
+    parts.push('أرغب في الحصول على تقديري الشمسي من taqinor.ma.');
+  }
+  if (p.clientRef?.trim()) parts.push(en ? `My reference: ${p.clientRef.trim()}.` : `مرجعي: ${p.clientRef.trim()}.`);
+  if (p.kwcLabel?.trim() || p.savingsLabel?.trim()) {
+    const bits: string[] = [];
+    if (p.kwcLabel?.trim()) bits.push(en ? `estimated installation ${p.kwcLabel.trim()}` : `تركيب مُقدَّر ${p.kwcLabel.trim()}`);
+    if (p.savingsLabel?.trim()) bits.push(en ? `estimated savings ${p.savingsLabel.trim()}` : `توفير مُقدَّر ${p.savingsLabel.trim()}`);
+    parts.push(en ? `My preliminary estimate: ${bits.join(', ')}.` : `تقديري الأولي: ${bits.join('، ')}.`);
+  }
+  parts.push(en ? 'Could you contact me for a study?' : 'هل يمكنكم التواصل معي لإجراء دراسة؟');
+  parts.push(VOICE_NOTE_INVITE_LOC[locale]);
+  return parts.join(' ');
+}
+
+/** WAUD10 — « Mon numéro : … » ajouté au lien d'abandon, dans la locale. */
+export function monNumeroWhatsapp(phone: string, locale: Locale = 'fr'): string {
+  if (locale === 'en') return ` My number: ${phone}.`;
+  if (locale === 'ar') return ` رقمي: ${phone}.`;
+  return ` Mon numéro : ${phone}.`;
+}
+
 /**
  * W350 — message pré-rempli PAR INSTALLATION pour le bouton WhatsApp d'une
  * étude de cas (/realisations/[slug]) : cite la ville + la puissance + la
@@ -142,7 +184,21 @@ export function captureWhatsappText(p: {
  * WhatsApp) arrive déjà contextualisé côté équipe. Aucun chiffre inventé :
  * les trois champs viennent tels quels de `Realisation` (lib/realisations.ts).
  */
-export function caseStudyWhatsappText(p: { ville: string; kwc?: string; ref: string }): string {
+export function caseStudyWhatsappText(p: { ville: string; kwc?: string; ref: string }, locale: Locale = 'fr'): string {
+  if (locale === 'en') {
+    const kwcEn = p.kwc ? `${p.kwc} ` : '';
+    return (
+      `Hello, I saw the ${kwcEn}installation in ${p.ville} (ref. ${p.ref}) on taqinor.ma ` +
+      'and I would like a similar study for my own project.'
+    );
+  }
+  if (locale === 'ar') {
+    const kwcAr = p.kwc ? ` بقدرة ${p.kwc}` : '';
+    return (
+      `مرحباً، رأيت التركيبة${kwcAr} في ${p.ville} (المرجع ${p.ref}) على taqinor.ma ` +
+      'وأرغب في دراسة مماثلة لمشروعي. عافاك تواصلو معايا.'
+    );
+  }
   // (2026-09) `kwc` absent (chantier filmé avant tout relevé de puissance,
   // ex. Bouskoura) : le segment "de X" est omis plutôt que d'écrire "de
   // undefined" — jamais de chiffre deviné dans un message pré-rempli.
@@ -159,9 +215,26 @@ export function caseStudyWhatsappText(p: { ville: string; kwc?: string; ref: str
  * mini-formulaire de la page Régularisation ; sans eux, le message reste
  * naturel et complet.
  */
-export function regularizationWhatsappText(p?: { kwc?: string; ville?: string }): string {
+export function regularizationWhatsappText(p?: { kwc?: string; ville?: string }, locale: Locale = 'fr'): string {
   const kwc = p?.kwc?.trim();
   const ville = p?.ville?.trim();
+  if (locale === 'en') {
+    return (
+      'Hello, I have an existing solar installation and I would like to regularise it ' +
+      'under Article 33 of Law 82-21. ' +
+      (kwc ? `Approximate capacity: ${kwc} kWp. ` : 'Capacity: to be determined together. ') +
+      (ville ? `City: ${ville}. ` : '') +
+      'Please contact me to prepare the file.'
+    );
+  }
+  if (locale === 'ar') {
+    return (
+      'مرحباً، لديّ تركيبة شمسية قائمة وأرغب في تسويتها في إطار المادة 33 من القانون 82-21. ' +
+      (kwc ? `القدرة التقريبية: ${kwc} kWc. ` : 'القدرة: نحدّدها معاً. ') +
+      (ville ? `المدينة: ${ville}. ` : '') +
+      'المرجو التواصل معي لإعداد الملف. عافاك تواصلو معايا.'
+    );
+  }
   return (
     'Bonjour, je dispose d’une installation solaire existante et je souhaite la régulariser ' +
     'dans le cadre de l’Article 33 de la loi 82-21. ' +
@@ -257,6 +330,122 @@ export function pageLabelFr(rootPath: string): string {
  * Reste volontairement DISTINCT de `captureWhatsappText` (parcours devis,
  * avec estimation) : ici on n'a ni nom ni estimation, seulement la page.
  */
-export function pageContextWhatsappText(rootPath: string): string {
+export function pageContextWhatsappText(rootPath: string, locale: Locale = 'fr'): string {
+  if (locale === 'en') {
+    return `Hello, I am writing from ${pageLabelLocale(rootPath, 'en')} on taqinor.ma and I would like a study for a solar installation.`;
+  }
+  if (locale === 'ar') {
+    // Fus'ha d'abord (registre du site), puis UNE ligne darija (AGW402, relue par Reda — D-AGR-11).
+    return (
+      `مرحباً، أكتب إليكم من ${pageLabelLocale(rootPath, 'ar')} على taqinor.ma وأرغب في دراسة لتركيب نظام للطاقة الشمسية. ` +
+      'عافاك تواصلو معايا.'
+    );
+  }
   return `Bonjour, je vous écris depuis ${pageLabelFr(rootPath)} sur taqinor.ma et je souhaite une étude pour une installation solaire.`;
+}
+
+/**
+ * WAUD10 (D-WAUD-3=a) — libellés de page EN et AR : le message pré-rempli part
+ * dans la langue de la page (l'équipe lit AR et EN), et chaque point d'entrée
+ * reste distinguable dans le CRM comme en FR. Même clé (chemin racine) que
+ * `PAGE_LABELS_FR` ; une page absente retombe sur un libellé neutre de la locale.
+ */
+const PAGE_LABELS_LOC: Record<'en' | 'ar', Record<string, string>> = {
+  en: {
+    '/': 'the home page',
+    '/résidentiel': 'the Residential page',
+    '/professionnel': 'the Business page',
+    '/pompage-solaire': 'the Solar pumping page',
+    '/batteries-stockage': 'the Batteries & storage page',
+    '/maintenance-monitoring': 'the Maintenance & monitoring page',
+    '/recharge-voiture-electrique-solaire': 'the EV charging page',
+    '/regularization-article-33': 'the Law 82-21 regularisation page',
+    '/loi-82-21': 'the Law 82-21 explained page',
+    '/réalisations': 'the Projects page',
+    '/realisations': 'the Projects page',
+    '/équipement': 'the Equipment page',
+    '/guides': 'the Guides page',
+    '/faq': 'the FAQ page',
+    '/pourquoi-taqinor': 'the Why Taqinor page',
+    '/financement': 'the Financing & payback page',
+    '/marocains-du-monde': 'the Moroccans abroad page',
+    '/à-propos': 'the About page',
+    '/contact': 'the Contact page',
+    '/garanties': 'the Warranties page',
+    '/nos-solutions': 'the Our solutions page',
+    '/impact-taqinor': 'the Taqinor impact page',
+    '/production-mesuree': 'the Measured production page',
+    '/ensoleillement-maroc': 'the Sunshine in Morocco page',
+    '/parrainage': 'the Referral page',
+    '/prix-panneaux-solaires-maroc': 'the Solar panel prices in Morocco page',
+    '/methodologie-estimation': 'the Estimation methodology page',
+    '/blog': 'the blog',
+    '/produits': 'the Products page',
+    '/devis/mon-toit': 'the “My roof” quote journey',
+  },
+  ar: {
+    '/': 'الصفحة الرئيسية',
+    '/résidentiel': 'صفحة السكني',
+    '/professionnel': 'صفحة المهنيين',
+    '/pompage-solaire': 'صفحة الضخ الشمسي',
+    '/batteries-stockage': 'صفحة البطاريات والتخزين',
+    '/maintenance-monitoring': 'صفحة الصيانة والمراقبة',
+    '/recharge-voiture-electrique-solaire': 'صفحة شحن السيارة الكهربائية',
+    '/regularization-article-33': 'صفحة تسوية القانون 82-21',
+    '/loi-82-21': 'صفحة شرح القانون 82-21',
+    '/réalisations': 'صفحة الإنجازات',
+    '/realisations': 'صفحة الإنجازات',
+    '/équipement': 'صفحة المعدات',
+    '/guides': 'صفحة الأدلة',
+    '/faq': 'صفحة الأسئلة الشائعة',
+    '/pourquoi-taqinor': 'صفحة لماذا تاكينور',
+    '/financement': 'صفحة التمويل والمردودية',
+    '/marocains-du-monde': 'صفحة مغاربة العالم',
+    '/à-propos': 'صفحة من نحن',
+    '/contact': 'صفحة الاتصال',
+    '/garanties': 'صفحة الضمانات',
+    '/nos-solutions': 'صفحة حلولنا',
+    '/impact-taqinor': 'صفحة أثر تاكينور',
+    '/production-mesuree': 'صفحة الإنتاج المقيس',
+    '/ensoleillement-maroc': 'صفحة الإشعاع الشمسي في المغرب',
+    '/parrainage': 'صفحة الإحالة',
+    '/prix-panneaux-solaires-maroc': 'صفحة أسعار الألواح الشمسية في المغرب',
+    '/methodologie-estimation': 'صفحة منهجية التقدير',
+    '/blog': 'المدونة',
+    '/produits': 'صفحة المنتجات',
+    '/devis/mon-toit': 'مسار عرض السعر « سطحي »',
+  },
+};
+
+const PAGE_LABEL_PREFIXES_LOC: Record<'en' | 'ar', readonly [string, string][]> = {
+  en: [
+    ['/installation-solaire-', 'a city installation page'],
+    ['/realisations/', 'a project case study'],
+    ['/réalisations/', 'a project case study'],
+    ['/guides/', 'a guide'],
+    ['/blog/', 'a blog article'],
+    ['/produits/', 'a product sheet'],
+  ],
+  ar: [
+    ['/installation-solaire-', 'صفحة تركيب في مدينة'],
+    ['/realisations/', 'دراسة حالة من الإنجازات'],
+    ['/réalisations/', 'دراسة حالة من الإنجازات'],
+    ['/guides/', 'دليل'],
+    ['/blog/', 'مقال من المدونة'],
+    ['/produits/', 'بطاقة منتج'],
+  ],
+};
+
+const DEFAULT_PAGE_LABEL_LOC: Record<'en' | 'ar', string> = { en: 'the website', ar: 'الموقع' };
+
+/** Libellé de page dans la locale (FR : `pageLabelFr`, inchangé). */
+export function pageLabelLocale(rootPath: string, locale: Locale): string {
+  if (locale === 'fr') return pageLabelFr(rootPath);
+  const clean = (rootPath || '/').split(/[?#]/)[0].replace(/\/+$/, '') || '/';
+  const table = PAGE_LABELS_LOC[locale];
+  if (table[clean]) return table[clean];
+  for (const [prefix, label] of PAGE_LABEL_PREFIXES_LOC[locale]) {
+    if (clean.startsWith(prefix)) return label;
+  }
+  return DEFAULT_PAGE_LABEL_LOC[locale];
 }

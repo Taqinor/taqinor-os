@@ -119,7 +119,7 @@ const faqItems = [
   {
     cluster: usageCluster,
     q: 'Is it better to store the surplus or sell it to the grid in Morocco?',
-    a: "In Morocco, law 82-21 (in force since June 2026) caps grid injection at 20% of annual output, and the ANRE buy-back rate of 0.18 to 0.21 DH/kWh is published for the medium, high and very-high voltage (MV/HV/EHV) regimes — the low-voltage (LV) declaration regime, the one that covers almost every residential installation, has no published rate yet (see /loi-82-21). Yet a kWh bought from the grid costs you between 0.90 DH (first tier) and 1.66 DH (heavy use). In other words, until the LV rate is published, a kWh stored and self-consumed in the evening has a certain value, while an exported kWh currently has no guaranteed value for a residential household. So the order of priority is: (1) consume directly by day, (2) store for the evening, (3) export the balance, capped at 20%, without counting on it financially. Don't oversize your batteries to export more — it doesn't pay.",
+    a: "In Morocco, law 82-21 caps grid injection at 20% of annual output, and the ANRE buy-back rate of 0.18 to 0.21 DH/kWh is published for the medium, high and very-high voltage (MV/HV/EHV) regimes — the low-voltage (LV) declaration regime, the one that covers almost every residential installation, has no published rate yet (see /loi-82-21). Yet a kWh bought from the grid costs you between 0.90 DH (first tier) and 1.66 DH (heavy use). In other words, until the LV rate is published, a kWh stored and self-consumed in the evening has a certain value, while an exported kWh currently has no guaranteed value for a residential household. So the order of priority is: (1) consume directly by day, (2) store for the evening, (3) export the balance, capped at 20%, without counting on it financially. Don't oversize your batteries to export more — it doesn't pay.",
   },
   ...serviceFaqItems('batteries-stockage', 'en'),
 ];
@@ -287,7 +287,7 @@ import BatteriesStockageDiv1626 from '../../components/blocs/BatteriesStockageDi
         <div class="mt-6 grid gap-4 sm:grid-cols-3" data-stagger>
           {installs.map((inst, i) => (
             <div class="v2-rise border-l-2 border-azur-600 bg-blanc px-4 py-4" style={`--v2-i:${i}`}>
-              <p class="fig whitespace-nowrap text-2xl text-azur-600" data-tally>{inst.kwh}</p>
+              <p class="fig whitespace-nowrap text-2xl text-azur-600" data-fig-fixe>{inst.kwh}</p>
               <p class="tech-label mt-2 text-encre-faint">Dyness · {inst.where} · ref. {inst.ref}</p>
             </div>
           ))}

@@ -70,6 +70,12 @@ describe('WAUD39 — retour : constante unique, affichée seulement avec une sou
     expect(lire('components/CityPageBody.astro')).toContain('RETOUR_PAR_SEGMENT.residentiel &&');
     for (const p of ['', 'en/', 'ar/']) expect(lire(`pages/${p}installation-solaire-[city].astro`)).toContain('RETOUR_PAR_SEGMENT');
   });
+  it('tableau facture → puissance de /résidentiel : la bande de retour (non sourcée) n’est plus affichée', () => {
+    expect(lire('components/blocs/ResidentielDiv9D1E.astro')).not.toContain('b.payback');
+    expect(lire('pages/ar/résidentiel.astro')).not.toContain('b.payback');
+    expect(lire('pages/résidentiel.astro')).not.toMatch(/<span>Retour<\/span>|dépasse le plus souvent 7 ans/);
+    expect(lire('pages/en/résidentiel.astro')).not.toMatch(/<span>Payback<\/span>|exceeds 7 years/);
+  });
 });
 
 describe('WAUD31 — bandes dans la langue de la page, à l’affichage seulement', () => {

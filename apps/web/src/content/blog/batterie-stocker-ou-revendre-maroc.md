@@ -11,7 +11,7 @@ draft: false
 
 ## Faut-il stocker son surplus, ou le revendre ?
 
-C'est la question que me posent presque tous les clients tentés par une batterie. La réponse tient dans deux chiffres qui s'affrontent. Depuis l'entrée en vigueur du décret 2-25-100, le 9 juin 2026, la loi 82-21 encadre l'autoproduction des particuliers. Vous pouvez injecter votre surplus sur le réseau, mais dans la limite de **20 % de votre production annuelle**, et ce surplus est racheté par l'ONEE à **0,18 DH/kWh en heures creuses et 0,21 DH/kWh en heures de pointe** pour le **moyen et le haut tension** (source : décision 04/26 de l'ANRE, Médias24, LesEco).
+C'est la question que me posent presque tous les clients tentés par une batterie. La réponse tient dans deux chiffres qui s'affrontent. Depuis l'entrée en vigueur du décret 2-25-100, la loi 82-21 encadre l'autoproduction des particuliers. Vous pouvez injecter votre surplus sur le réseau, mais dans la limite de **20 % de votre production annuelle**, et ce surplus est racheté par l'ONEE à **0,18 DH/kWh en heures creuses et 0,21 DH/kWh en heures de pointe** pour le **moyen et le haut tension** (source : décision 04/26 de l'ANRE, Médias24, LesEco).
 
 > **Le tarif BT résidentiel n'est pas encore publié.** Ces 0,18–0,21 DH/kWh sont le tarif MT/HT de la décision 04/26. Pour le régime déclaration (< 11 kW en basse tension), qui couvre la quasi-totalité des maisons et villas, l'ANRE n'a pas encore publié de tarif de rachat spécifique. Cet article utilise le chiffre MT/HT connu comme ordre de grandeur indicatif ; nous le mettrons à jour dès la publication du tarif BT.
 
@@ -93,4 +93,4 @@ Pour comparer les technologies et les marques disponibles au Maroc — dont Dyne
 
 ---
 
-*Données réglementaires : Loi 82-21 / Décret 2-25-100, publié au BO le 9 mars 2026, en vigueur depuis le 9 juin 2026 / décision 04/26 de l'ANRE (tarif de rachat MT/HT ; tarif BT résidentiel non encore publié à la date de mise à jour de cet article). Tarifs ONEE BT en vigueur. Prix batteries : fourchette indicative marché général LFP 2026. Pour un chiffrage adapté à votre installation, demandez un diagnostic.*
+*Données réglementaires : Loi 82-21 / Décret 2-25-100 (en vigueur) / décision 04/26 de l'ANRE (tarif de rachat MT/HT ; tarif BT résidentiel non encore publié à la date de mise à jour de cet article). Tarifs ONEE BT en vigueur. Prix batteries : fourchette indicative marché général LFP 2026. Pour un chiffrage adapté à votre installation, demandez un diagnostic.*

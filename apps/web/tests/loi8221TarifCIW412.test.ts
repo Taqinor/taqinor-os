@@ -2,6 +2,9 @@
 // TENSION (MT/HT/THT), pas un régime ; plus d'« échéance 2027 » sans source ;
 // « hors taxes » à côté de 0,18–0,21 ; l'Article 33 sans date de départ
 // affirmée. Garde sur le HTML CONSTRUIT des 6 pages (astro build).
+// Amendé par WAUD18-b selon D-WAUD-4=a (Reda, 03/11/2026) : plus aucune date du décret (9 juin /
+// 9 mars 2026, BO non relu) ; la citation de l'art. 33 (« dix-huit (18) mois ») ne vit plus que sur
+// /loi-82-21, sourcée par le lien du dahir 1-23-21 ; le guide n'en porte plus.
 import { describe, expect, it } from 'vitest';
 import { builtPage, visibleText } from './builtHtmlHelper';
 
@@ -56,10 +59,10 @@ describe('CIW412 — tarif d\'excédent = TENSION MT/HT/THT, Article 33 sans dat
     });
   }
 
-  it('la date du DÉCRET (en vigueur le 9 juin 2026) reste sur les pages loi', () => {
-    expect(visibleText(builtPage('/loi-82-21'))).toContain('9 juin 2026');
-    expect(visibleText(builtPage('/en/loi-82-21'))).toContain('9 June 2026');
-    expect(visibleText(builtPage('/ar/loi-82-21'))).toContain('9 يونيو 2026');
+  it('D-WAUD-4=a : aucune date du décret sur les pages loi et le guide (3 langues)', () => {
+    for (const [, route] of PAGES) {
+      expect(visibleText(builtPage(route))).not.toMatch(/9 juin 2026|9 June 2026|9 يونيو 2026|9 mars 2026|9 March 2026|9 مارس 2026/);
+    }
   });
 
   it('la date « vérifié le » de l\'encadré est mise à jour (plus le 3 juillet)', () => {
@@ -71,14 +74,14 @@ describe('CIW412 — tarif d\'excédent = TENSION MT/HT/THT, Article 33 sans dat
     }
   });
 
-  it('le guide cite l\'Article 33 mot pour mot et dit que le point de départ est à confirmer', () => {
-    const fr = visibleText(builtPage('/guides/loi-82-21-expliquee'));
-    expect(fr).toContain("« dans un délai de dix-huit (18) mois à compter de la date d'entrée en vigueur de la présente loi »");
-    expect(fr).toContain("point de départ de ce délai est à confirmer auprès des services de l'énergie");
-    const en = visibleText(builtPage('/en/guides/loi-82-21-expliquee'));
-    expect(en).toContain('within eighteen (18) months from the date of entry into force of this law');
-    expect(en).toContain('to be confirmed with the energy authorities');
-    const ar = visibleText(builtPage('/ar/guides/loi-82-21-expliquee'));
-    expect(ar).toMatch(/ثمانية عشر \(\s*18\s*\) شهراً ابتداءً من تاريخ دخول هذا القانون حيّز التنفيذ/);
+  it('D-WAUD-4=a : la citation de l\'Article 33 ne vit que sur /loi-82-21 (sourcée par le dahir), jamais dans le guide', () => {
+    expect(visibleText(builtPage('/loi-82-21'))).toContain("« dans un délai de dix-huit (18) mois à compter de la date d'entrée en vigueur de la présente loi »");
+    expect(visibleText(builtPage('/en/loi-82-21'))).toContain('within eighteen (18) months from the date of entry into force of this law');
+    expect(visibleText(builtPage('/ar/loi-82-21'))).toMatch(/ثمانية عشر \(\s*18\s*\) شهراً ابتداءً من تاريخ دخول هذا القانون حيّز التنفيذ/);
+    for (const route of ['/guides/loi-82-21-expliquee', '/en/guides/loi-82-21-expliquee', '/ar/guides/loi-82-21-expliquee']) {
+      const txt = visibleText(builtPage(route));
+      expect(txt).not.toMatch(/18 mois|18 months|18 شهر|dix-huit|eighteen|ثمانية عشر/);
+      expect(txt).not.toMatch(/à confirmer|to be confirmed|يجب تأكيدها/);
+    }
   });
 });

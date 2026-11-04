@@ -27,7 +27,7 @@ import Callout from '../../components/Callout.astro';
 import RelatedLinks from '../../components/RelatedLinks.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { NAP } from '../../lib/nap';
-import { REWARD_AMOUNT_LABEL, REWARD_MILESTONE_LABEL, waParrainage } from '../../lib/parrainage';
+import { REWARD_AMOUNT_LABEL, REWARD_MILESTONE_LABEL, waParrainageLocale } from '../../lib/parrainage';
 import { localizeNavHref } from '../../i18n/pages';
 
 // WB18 — same anti-dead-link helper as the rest of the EN/AR tree (this page
@@ -178,7 +178,7 @@ import ParrainageDivD63B from '../../components/blocs/ParrainageDivD63B.astro';
         <p class="tech-label text-azur-600">A question about referrals?</p>
         <h2 class="display v2-section-title mx-auto mt-3 max-w-2xl text-3xl sm:text-4xl">Write to us directly on WhatsApp</h2>
         <a
-          href={waParrainage}
+          href={waParrainageLocale('en')}
           rel="noopener noreferrer"
           class="glow mt-6 inline-flex items-center gap-2 bg-brass-400 px-6 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300"
         >
