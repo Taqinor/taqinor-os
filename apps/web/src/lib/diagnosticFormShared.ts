@@ -97,6 +97,7 @@ export function corpsRappel(
   adsConsent: 'granted' | 'denied' | null,
   tracking: Record<string, string>,
   eventId: string,
+  langue?: string,
 ): Record<string, unknown> {
   return {
     fullName: saisie.fullName,
@@ -109,6 +110,8 @@ export function corpsRappel(
     ...tracking,
     eventId,
     ...(adsConsent ? { adsConsent } : {}),
+    // WAUD81 — le rappel EN/AR dit sa langue ; le FR n'envoie rien (inchangé).
+    ...(langue ? { langue_preferee: langue } : {}),
   };
 }
 

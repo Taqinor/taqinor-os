@@ -16,6 +16,7 @@ import {
   type LeadEnv,
   type ValidatedLead,
 } from '../src/lib/lead';
+import { corpsRappel } from '../src/lib/diagnosticFormShared';
 
 const validBody = {
   fullName: 'Karim Benali',
@@ -846,5 +847,31 @@ describe('CIW411 — runSimulation sans bande résidentielle pour les leads pro'
     const band = await runSimulation(makeLead({ mode: 'agricole', billRange: '1500-3000' }), env, fetchFn as unknown as typeof fetch);
     expect(band.source).toBe('simulator');
     expect(fetchFn).toHaveBeenCalledOnce();
+  });
+});
+
+describe('WAUD81 — rappel /contact FR/EN/AR : même corps hors langue', () => {
+  const saisie = { fullName: 'Test Visiteur', phone: '0612345678', consent: true, websiteUrl: '' };
+  const suivi = { fbclid: 'abc', utm_source: 'meta' };
+
+  it('le corps EN/AR = le corps FR + langue_preferee seulement', () => {
+    const fr = corpsRappel(saisie, 'granted', suivi, 'evt-12345678');
+    const en = corpsRappel(saisie, 'granted', suivi, 'evt-12345678', 'en') as Record<string, unknown>;
+    const ar = corpsRappel(saisie, 'granted', suivi, 'evt-12345678', 'ar') as Record<string, unknown>;
+    expect(fr).not.toHaveProperty('langue_preferee');
+    const { langue_preferee: lEn, ...resteEn } = en;
+    const { langue_preferee: lAr, ...resteAr } = ar;
+    expect(lEn).toBe('en');
+    expect(lAr).toBe('ar');
+    expect(resteEn).toEqual(fr);
+    expect(resteAr).toEqual(fr);
+  });
+
+  it('le serveur accepte le rappel EN et garde la langue', () => {
+    const r = validateLead(corpsRappel(saisie, null, {}, 'evt-12345678', 'en'));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.lead.langue_preferee).toBe('en');
+    expect(r.lead.quickCallback).toBe(true);
   });
 });
