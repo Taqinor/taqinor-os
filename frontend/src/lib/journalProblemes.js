@@ -29,6 +29,7 @@
  * `company`/`utilisateur`/famille de navigateur sont posés CÔTÉ SERVEUR.
  */
 import { originFrom } from '../api/origin.js'
+import { refreshSession } from '../api/refreshCoordinator.js'
 
 // LECTEUR DE SESSION : INJECTÉ par l'appelant (`deps.sessionEstActive`), jamais
 // importé ici. `providers/session-bridge` ouvre un `BroadcastChannel` au
@@ -180,12 +181,21 @@ export function signalerProbleme(probleme, deps = {}) {
     const envoyer = deps.fetch || globalThis.fetch
     if (!envoyer) return false
     const base = originFrom(import.meta.env?.VITE_API_URL)
-    envoyer(base + CHEMIN, {
+    const poster = () => envoyer(base + CHEMIN, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(corps),
       credentials: 'include',
       keepalive: true,
+    })
+    const rafraichir = deps.rafraichir || refreshSession
+    poster()?.then?.((reponse) => {
+      // ERR-JPB-BALISE-401-APRES-30-MIN — `sessionEstActive` est un drapeau
+      // Redux : il ignore l'expiration du cookie (30 min). Sans ceci, une
+      // erreur survenue avant toute requête axios perdait sa ligne en silence.
+      // UN refresh et UN second envoi, dont la réponse n'est plus regardée.
+      if (reponse?.status !== 401) return undefined
+      return rafraichir(base).then(poster)
     })?.catch?.(() => {
       // RÈGLE 2 : un échec du journal n'est JAMAIS signalé (ce serait la
       // boucle parfaite — le réseau est coupé, donc le signalement du problème

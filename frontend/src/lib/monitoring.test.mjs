@@ -221,7 +221,7 @@ test('signalerProbleme() re-signale le même problème passée la fenêtre d\'un
   assert.equal(envois.length, 2)
 })
 
-test('signalerProbleme() plafonne les envois d\'un chargement de page (écran qui boucle)', () => {
+test('signalerProbleme() plafonne les envois d\'une tranche (écran qui boucle)', () => {
   const { envois, deps } = bancDEssai()
   for (let i = 0; i < 200; i += 1) {
     signalerProbleme({ genre: GENRES.SCRIPT, route: '/x', code: `E${i}` }, deps)
@@ -280,6 +280,80 @@ test('signalerProbleme() avale un rejet du POST (jamais de boucle de signalement
   assert.equal(signalerProbleme({ genre: GENRES.RESEAU, route: '/x' }, deps), true)
   await new Promise((r) => setTimeout(r, 0))
   assert.equal(rejete, 1)
+})
+
+// ── ERR-JPB-BALISE-401-APRES-30-MIN : la ligne survit au cookie expiré ──────
+
+const attendreMicrotaches = () => new Promise((r) => setTimeout(r, 0))
+
+test('balise : sur 401, UN refresh puis UN second envoi du même corps', async () => {
+  _resetJournalPourTests()
+  const envois = []
+  let refreshes = 0
+  const reponses = [{ status: 401 }, { status: 201 }]
+  const deps = {
+    sessionEstActive: () => true,
+    maintenant: () => 1,
+    rafraichir: () => { refreshes += 1; return Promise.resolve() },
+    fetch: (url, options) => { envois.push(options.body); return Promise.resolve(reponses.shift()) },
+  }
+  assert.equal(signalerProbleme({ genre: GENRES.SCRIPT, code: 'TypeError' }, deps), true)
+  await attendreMicrotaches()
+  assert.equal(refreshes, 1)
+  assert.equal(envois.length, 2)
+  assert.equal(envois[0], envois[1])
+})
+
+test('balise : un 401 persistant ne boucle jamais', async () => {
+  _resetJournalPourTests()
+  let envois = 0
+  let refreshes = 0
+  const deps = {
+    sessionEstActive: () => true,
+    maintenant: () => 1,
+    rafraichir: () => { refreshes += 1; return Promise.resolve() },
+    fetch: () => { envois += 1; return Promise.resolve({ status: 401 }) },
+  }
+  signalerProbleme({ genre: GENRES.SCRIPT, code: 'TypeError' }, deps)
+  await attendreMicrotaches()
+  assert.equal(refreshes, 1)
+  assert.equal(envois, 2)
+})
+
+test('balise : un refresh en échec est avalé, sans second envoi ni signalement', async () => {
+  _resetJournalPourTests()
+  let envois = 0
+  const deps = {
+    sessionEstActive: () => true,
+    maintenant: () => 1,
+    rafraichir: () => Promise.reject(new Error('refresh mort')),
+    fetch: () => { envois += 1; return Promise.resolve({ status: 401 }) },
+  }
+  assert.equal(signalerProbleme({ genre: GENRES.SCRIPT, code: 'TypeError' }, deps), true)
+  await attendreMicrotaches()
+  assert.equal(envois, 1)
+})
+
+test("balise : tout autre statut ne déclenche aucun refresh", async () => {
+  for (const status of [201, 403, 429, 500]) {
+    _resetJournalPourTests()
+    let refreshes = 0
+    const deps = {
+      sessionEstActive: () => true,
+      maintenant: () => 1,
+      rafraichir: () => { refreshes += 1; return Promise.resolve() },
+      fetch: () => Promise.resolve({ status }),
+    }
+    signalerProbleme({ genre: GENRES.SCRIPT, code: 'TypeError' }, deps)
+    await attendreMicrotaches()
+    assert.equal(refreshes, 0, String(status))
+  }
+})
+
+test('balise : le refresh par défaut est la promesse PARTAGÉE (jamais un second POST en rotation)', () => {
+  const source = readFileSync(new URL('./journalProblemes.js', import.meta.url), 'utf8')
+  assert.match(source, /deps\.rafraichir \|\| refreshSession/)
+  assert.match(source, /from '\.\.\/api\/refreshCoordinator\.js'/)
 })
 
 test('signalerErreurRequete() ignore une erreur sur le journal lui-même', () => {
