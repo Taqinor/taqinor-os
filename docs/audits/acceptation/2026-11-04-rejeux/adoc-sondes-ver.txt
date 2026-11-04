@@ -1,0 +1,58 @@
+REFUSÉE : en-tete SONDE = {constat, sha, attendu} absent ou incomplet : C:\dev\taqinor-os\.claude\worktrees\w32-live\docs\audits\sondes\ADOC\C-ADOC-VER-001.py
+REFUSÉE : en-tete SONDE = {constat, sha, attendu} absent ou incomplet : C:\dev\taqinor-os\.claude\worktrees\w32-live\docs\audits\sondes\ADOC\C-ADOC-VER-002.py
+REFUSÉE : en-tete SONDE = {constat, sha, attendu} absent ou incomplet : C:\dev\taqinor-os\.claude\worktrees\w32-live\docs\audits\sondes\ADOC\C-ADOC-VER-003.py
+== C-ADOC-VER-005 (sha 6f3191ad7)
+attendu : une disposition « archiver » approuvée dont un document est en corbeille s'exécute en ignorant ce document (demande exécutée), jamais ValueError/500 avec la demande bloquée « approuvée »
+observé : executer -> 200 ; demande.statut=executee ; corps=b'{"id":2,"libelle":"archivage","action":"archiver","documents":[428],"statut":"executee","demandeur":971,"demandeur_nom":"sonde-adoc-ver-005-a1","approbateur":
+{"repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 131385, après 131385) ; mails 0 ; tâches Celery bloquées 0
+== C-ADOC-VER-006 (sha 6f3191ad7)
+attendu : regénérer depuis un modèle modifié un document dont une demande de signature est en attente est refusé (SignatureEnCoursError), le document garde UNE version
+observé : refus : SignatureEnCoursError : Une demande de signature est en cours sur ce document : aucune nouvelle version tant qu'elle n'est pas close.
+création initiale cree=True ; versions du document après regénération = 1
+{"repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 131385, après 131385) ; mails 0 ; tâches Celery bloquées 0
+== C-ADOC-VER-013 (sha 56d5b623a)
+attendu : une demande GED à chaîne en deux étapes approuvée depuis la boîte centrale des approbations (/reporting/approbations-en-attente/decider/) par l'approbateur de l'étape 1 n'avance que l'étape 1 (demande « en_attente », approbateur = étape 2), jamais une approbation finale
+observé : decider -> 200 ; demande.statut=en_attente ; approbateur=975 (a2=975) ; document.statut=revue ; etape_courante=1 ; etapes=['approuve', 'en_cours']
+{"repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 131385, après 131385) ; mails 0 ; tâches Celery bloquées 0
+== C-ADOC-VER-020 (sha 56d5b623a)
+attendu : ADOC180 : republier par publier_documents_meryem un guide MODIFIE (nouveau contenu + mot ajoute a sa description de manifeste) => la nouvelle version est trouvee en recherche GED par le mot ajoute
+observé : versions=2 ; description_en_base='Pompage au fil du soleil, forage immerge' ; recherche pompage -> 200 trouve=True ; recherche forage (mot ajoute) -> 200 trouve=True
+{"repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 131385, après 131385) ; mails 0 ; tâches Celery bloquées 0
+== C-ADOC-VER-021 (sha 56d5b623a)
+attendu : ADOC26 : tout alias accepte par le dialogue du dossier (motif publie : lettres, chiffres, point, tiret, souligne) classe l'e-mail adresse a ged+<alias>@ dans ce dossier
+observé : PATCH alias 'compta.2026' -> 200 ; alias_en_base='compta.2026' ; extraire_alias='compta.2026' ; documents_crees=1
+{"repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 131385, après 131385) ; mails 0 ; tâches Celery bloquées 0
+== C-ADOC-VER-030 (sha 56d5b623a)
+attendu : un fichier « CIN.pdf » téléversé (nom = nom du fichier) dans un dossier dont la seule demande en attente est « CIN » solde cette demande et la checklist passe CIN à 'present' (preuve en direct d'ADOC177)
+observé : televerser CIN.pdf -> 201 ; noms=['CIN.pdf'] ; demande CIN statut=soldee ; service soldee par nom={'CIN.pdf': True, 'cin.PDF': True, 'Attestation CNSS.pdf': True} ; checklist=[(None, 'present')]
+{"repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 131385, après 131385) ; mails 0 ; tâches Celery bloquées 0
+== C-ADOC-VER-031 (sha 56d5b623a)
+attendu : ADOC29 : un échec de l'appel MinIO (delete_object) pendant la purge définitive laisse le document en place (rien de détruit à moitié) — jamais un document effacé dont le binaire reste dans le bucket
+observé : purge avec MinIO en panne -> exception=ConnectionError('minio indisponible (simulé)') ; document encore en base=True
+{"repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 131385, après 131385) ; mails 0 ; tâches Celery bloquées 0
+
+== bilan ADOC : 0/10 OK
+  C-ADOC-VER-001.py REFUSÉE (échec)
+  C-ADOC-VER-002.py REFUSÉE (échec)
+  C-ADOC-VER-003.py REFUSÉE (échec)
+  C-ADOC-VER-005.py ÉCART (échec)
+  C-ADOC-VER-006.py ÉCART (échec)
+  C-ADOC-VER-013.py ÉCART (échec)
+  C-ADOC-VER-020.py ÉCART (échec)
+  C-ADOC-VER-021.py ÉCART (échec)
+  C-ADOC-VER-030.py ÉCART (échec)
+  C-ADOC-VER-031.py ÉCART (échec)
