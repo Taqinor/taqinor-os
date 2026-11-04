@@ -32,7 +32,7 @@ p = CompanyProfile.objects.get(company_id=1); v = str(p.tva_standard); p.tva_sta
   try {
     // Marché C&I (seul parcours Auto-remplir sans carte) : le catalogue de démo, ses postes tarifés comme `amot3.spec.js`.
     await catalogueCi(r)
-    const lead = await leadCi(r, `ADVS27 ${m}`)
+    const lead = await leadCi(r, `ADVS27 ${m}`, { conso_mensuelle_kwh: null })
     await page.goto(`/ventes/devis/nouveau?lead=${lead.id}`)
     await expect(page.getByRole('heading', { name: 'Générateur de Devis Solaire' })).toBeVisible({ timeout: 30_000 })
     await expect(page.locator('#gen-tel')).not.toHaveValue('', { timeout: 90_000 })
@@ -98,7 +98,7 @@ sortie(dict(sans=str(option_totaux(d, 'sans_batterie').get('ttc')), avec=str(opt
   await carte.locator(`#gen-echeance-${n - 1}`).fill('70')
   const sauve = page.waitForResponse((x) => x.request().method() !== 'GET' && x.url().includes(`/ventes/devis/${d.id}/`) && /replace-lines/.test(x.url()), { timeout: 120_000 })
   await page.getByRole('button', { name: /Enregistrer les modifications/ }).click()
-  const rep = await sauve
+  const rep = await sauve.catch(async (e) => { throw new Error(`pas d'envoi : ${(await page.locator('[role=alert], .text-destructive, [data-testid=echeancier-somme]').allInnerTexts()).join(' | ').slice(0, 500)} ; ${e.message.slice(0, 60)}`) })
   expect(rep.status(), `enregistré sans erreur d'échéancier : ${(await rep.text()).slice(0, 300)}`).toBeLessThan(300)
   await page.goto(`/ventes/devis/nouveau?edit=${d.id}`)
   await expect.poll(async () => chiffres(await page.getByTestId('gen-barre-total').textContent()), { timeout: 90_000, message: 'rouvert : même total' }).toBe(sans)

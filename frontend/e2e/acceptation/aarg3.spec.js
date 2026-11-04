@@ -176,7 +176,8 @@ sortie(1)`)
   const e = await py(`from apps.ventes.models import Facture, Paiement
 f = Facture.objects.get(pk=${f.id})
 pa = Paiement.objects.filter(facture=f).order_by('-pk').first()
-av = [dict(total_ht=str(x.total_ht), total_tva=str(x.total_ttc - x.total_ht), total_ttc=str(x.total_ttc)) for x in Facture.objects.filter(company_id=1, devis_id=f.devis_id, type_facture='avoir')]
+from apps.ventes.models import Avoir
+av = [dict(total_ht=str(x.total_ht), total_tva=str(x.total_ttc - x.total_ht), total_ttc=str(x.total_ttc)) for x in Avoir.objects.filter(facture=f)]
 sortie(dict(statut=f.statut, montant=str(pa.montant), escompte=str(pa.escompte_montant or 0), avoirs=av))`)
   expect(Number(e.montant), 'paiement 1 176').toBe(1176)
   expect(Number(e.escompte), 'paiement sans escompte_montant').toBe(0)

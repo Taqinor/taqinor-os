@@ -11,7 +11,7 @@ const T = { timeout: 120_000 }
 test.describe.configure({ timeout: 420_000 })
 test.beforeEach(async ({ page }) => { await assurerSessionPage(page) })
 
-etape('P7.admin', ['ATOT53'], async ({ page, browser, testInfo }) => {
+etape('P7.admin', ['ATOT53'], async ({ page, testInfo }) => {
   const r = page.request
   const m = Date.now().toString(36)
   const lead = await lireJson(await r.post(`${API}/crm/leads/`, { ...T, data: { nom: `ATOT53 ${m}`, ville: 'Casablanca', telephone: telephoneMobileUnique(), email: `${m}@example.invalid` } }), 'lead')
@@ -26,7 +26,7 @@ etape('P7.admin', ['ATOT53'], async ({ page, browser, testInfo }) => {
   const devisAvant = await lireJson(await r.get(`${API}/ventes/devis/${d.id}/`, T), 'devis')
   const su = `atot53su_${m}`
   await py(`u = compte(${JSON.stringify(su)}, role=2); u.is_staff = True; u.is_superuser = True; u.save(); sortie(1)`)
-  const ctx = await browser.newContext({ baseURL: testInfo.project.use.baseURL, storageState: { cookies: [], origins: [] } })
+  const ctx = await page.context().browser().newContext({ baseURL: testInfo.project.use.baseURL, storageState: { cookies: [], origins: [] } })
   const adm = await ctx.newPage()
   await adm.goto(`${API}/admin/login/`)
   await adm.fill('input[name=username]', su)

@@ -111,7 +111,7 @@ etape('P5.classement_revision', ['AANA74'], async ({ testInfo }) => {
   expect(ca(trouve(ap.lb)), 'export inchangé après révision en brouillon').toBe(3000)
   const attr = await lireJson(await da.get(`${API}/crm/rapports/attribution/`, T), 'attribution')
   const lc = (attr.par_commercial || []).find((x) => x.commercial === a.com)
-  expect(Number(lc?.ca_signe), `attribution : V1 gardée (${JSON.stringify(attr.par_commercial).slice(0, 200)})`).toBe(1000)
+  expect(Number(lc?.ca_signe), `attribution : V1 gardée, 1 000 HT = 1 200 TTC, brouillon exclu (${JSON.stringify(attr.par_commercial).slice(0, 200)})`).toBe(1200)
 })
 
 etape('P7.societe_b', ['AANA74'], async ({ testInfo }) => {

@@ -29,8 +29,10 @@ async function devisAccepte(r, cible, ttcHt) {
 const facture = (devisId, reference, ttc) => py(`from apps.ventes.models import Devis, Facture
 from decimal import Decimal as D
 d = Devis.objects.get(pk=${devisId})
+from apps.ventes.models import LigneFacture
 ttc = D('${ttc}'); ht = (ttc / D('1.2')).quantize(D('0.01'))
-f = Facture.objects.create(company_id=1, devis=d, client=d.client, reference=${JSON.stringify(reference)}, statut='emise', type_facture='acompte', total_ht=ht, total_tva=ttc-ht, total_ttc=ttc, date_emission=timezone.localdate())
+f = Facture.objects.create(company_id=1, devis=d, client=d.client, reference=${JSON.stringify(reference)}, statut='emise', type_facture='acompte', taux_tva=D('20.00'), date_emission=timezone.localdate())
+LigneFacture.objects.create(facture=f, designation='Acompte', quantite=D('1'), prix_unitaire=ht, remise=D('0'), taux_tva=D('20.00'))
 sortie(f.id)`)
 
 etape('P103.1', ['AFAC103'], async ({ page }) => {
