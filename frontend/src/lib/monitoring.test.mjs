@@ -393,6 +393,17 @@ test('signalerErreurRequete() classe une 5xx en « serveur »', () => {
   assert.equal(envois[0].corps.route, '/ventes/devis/<id>/')
 })
 
+test('signalerErreurRequete() journalise le 429 du refresh de session (seul 4xx concerné)', () => {
+  const { envois, deps } = bancDEssai()
+  signalerErreurRequete({
+    config: { url: '/api/django/auth/token/refresh/', method: 'post' },
+    response: { status: 429 },
+  }, deps)
+  assert.equal(envois.length, 1)
+  assert.equal(envois[0].corps.genre, 'serveur')
+  assert.equal(envois[0].corps.statut_reponse, 429)
+})
+
 test('signalerErreurRequete() ignore les 4xx (refus compris) et les annulations', () => {
   const { envois, deps } = bancDEssai()
   for (const statut of [400, 401, 403, 404, 409, 429]) {

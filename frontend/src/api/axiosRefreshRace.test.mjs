@@ -16,6 +16,8 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
+import { estPanneDeRefresh, reprendreApresPanne } from './refreshCoordinator.js'
+
 const HERE = dirname(fileURLToPath(import.meta.url))
 const CLIENTS = {
   'axios.js': readFileSync(join(HERE, 'axios.js'), 'utf8'),
@@ -44,3 +46,75 @@ for (const [nom, src] of Object.entries(CLIENTS)) {
     assert.match(src, /import \{ emitSessionExpired, sessionEstActive \} from '\.\.\/providers\/session-bridge'/)
   })
 }
+
+// ── ERR-JPB-REFRESH-MUET-SESSION-EXPIREE ────────────────────────────────────
+// Un refresh qui échoue pour une raison RÉSEAU (502 de déploiement, coupure,
+// délai) n'est pas une session expirée : la modale « reconnectez-vous » ne
+// s'ouvre que sur un vrai refus (401/403), et la panne laisse une ligne.
+
+for (const [nom, src] of Object.entries(CLIENTS)) {
+  test(`${nom} : une panne du refresh journalise et reprend AVANT toute expiration`, () => {
+    const prise = src.indexOf('catch (errRefresh)')
+    assert.notEqual(prise, -1)
+    assert.match(src, /estPanneDeRefresh\(errRefresh\)/)
+    assert.match(src, /signalerErreurRequete\(errRefresh, \{ sessionEstActive \}\)/)
+    assert.match(src, /return reprendreApresPanne\(ORIGIN, \{/)
+    assert.ok(prise < src.indexOf('emitSessionExpired()'))
+  })
+}
+
+test('refreshSession() borne le refresh par un délai (axios brut : aucun délai hérité)', () => {
+  const source = readFileSync(join(HERE, 'refreshCoordinator.js'), 'utf8')
+  assert.match(source, /withCredentials: true, timeout: DELAI_REFRESH_MS/)
+})
+
+test('estPanneDeRefresh() : réseau, délai, 5xx et 429 sont des pannes ; 401/403/400 un vrai refus', () => {
+  for (const err of [
+    { code: 'ERR_NETWORK' },
+    { code: 'ECONNABORTED' },
+    { response: { status: 502 } },
+    { response: { status: 503 } },
+    { response: { status: 429 } },
+  ]) assert.equal(estPanneDeRefresh(err), true, JSON.stringify(err))
+  for (const statut of [400, 401, 403]) {
+    assert.equal(estPanneDeRefresh({ response: { status: statut } }), false, String(statut))
+  }
+})
+
+function bancReprise(resultatRefresh) {
+  const banc = { pauses: [], rejeux: 0, expirations: 0, signalements: [] }
+  banc.options = {
+    rafraichir: resultatRefresh,
+    attendre: (ms) => { banc.pauses.push(ms); return Promise.resolve() },
+    rejouer: () => { banc.rejeux += 1; return Promise.resolve('reponse') },
+    expirer: () => { banc.expirations += 1 },
+    signaler: (e) => { banc.signalements.push(e) },
+  }
+  return banc
+}
+
+test('reprendreApresPanne() : réseau revenu → la requête est rejouée, aucune modale', async () => {
+  const banc = bancReprise(() => Promise.resolve())
+  assert.equal(await reprendreApresPanne('', banc.options), 'reponse')
+  assert.equal(banc.pauses.length, 1)
+  assert.equal(banc.rejeux, 1)
+  assert.equal(banc.expirations, 0)
+  assert.equal(banc.signalements.length, 0)
+})
+
+test('reprendreApresPanne() : panne persistante → signalée et rejetée, JAMAIS une expiration', async () => {
+  const panne = { code: 'ERR_NETWORK' }
+  const banc = bancReprise(() => Promise.reject(panne))
+  await assert.rejects(reprendreApresPanne('', banc.options), (e) => e === panne)
+  assert.equal(banc.expirations, 0)
+  assert.equal(banc.rejeux, 0)
+  assert.deepEqual(banc.signalements, [panne])
+})
+
+test('reprendreApresPanne() : au réessai un vrai 401 → la modale reste', async () => {
+  const refus = { response: { status: 401 } }
+  const banc = bancReprise(() => Promise.reject(refus))
+  await assert.rejects(reprendreApresPanne('', banc.options), (e) => e === refus)
+  assert.equal(banc.expirations, 1)
+  assert.equal(banc.signalements.length, 0)
+})

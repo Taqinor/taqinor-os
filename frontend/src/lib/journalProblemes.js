@@ -237,7 +237,9 @@ export function signalerErreurRequete(error, deps = {}) {
         message: error?.message,
       }, deps)
     }
-    if (statut >= 500) {
+    // ERR-JPB-REFRESH-MUET-SESSION-EXPIREE — bridé, le refresh n'a rien dit de la
+    // session : ce 429-là est un problème vécu (`api/refreshCoordinator.js`).
+    if (statut >= 500 || (statut === 429 && String(url).includes('token/refresh'))) {
       return signalerProbleme({
         genre: GENRES.SERVEUR,
         methode: config.method,

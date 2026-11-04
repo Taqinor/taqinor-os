@@ -9,7 +9,11 @@ import { originFrom } from './origin'
 import { emitSessionExpired, sessionEstActive } from '../providers/session-bridge'
 // VX161 — refresh 401 partagé avec axios.js (une seule promesse en vol,
 // jamais un POST /token/refresh/ par requête en échec).
-import { refreshSession } from './refreshCoordinator'
+import {
+  MESSAGE_PANNE_REFRESH, estPanneDeRefresh, refreshSession, reprendreApresPanne,
+} from './refreshCoordinator'
+// YJPB1 — journal des problèmes vécus (module pur, transport `fetch`).
+import { signalerErreurRequete } from '../lib/journalProblemes'
 // VX203 — même contrat d'erreur UNIQUE que `axios.js` : jusqu'ici cette
 // instance ne toastait RIEN hors 401 (un 403 du catalogue d'actions
 // agentiques ou un 500 FastAPI était INVISIBLE). `getApiError` couvre déjà
@@ -54,8 +58,22 @@ iaApi_instance.interceptors.response.use(
         // simultanés (mix des deux instances) n'émettent qu'UN SEUL POST refresh.
         await refreshSession(ORIGIN)
         return iaApi_instance(originalRequest)
-      } catch {
-        // Refresh echoue : la session est reellement expiree.
+      } catch (errRefresh) {
+        // ERR-JPB-REFRESH-MUET-SESSION-EXPIREE — jumeau d'axios.js : une panne
+        // du refresh n'expire jamais la session.
+        if (estPanneDeRefresh(errRefresh) && sessionEstActive()) {
+          signalerErreurRequete(errRefresh, { sessionEstActive })
+          const silencieux = originalRequest.suppressErrorToast
+          return reprendreApresPanne(ORIGIN, {
+            rejouer: () => iaApi_instance(originalRequest),
+            expirer: emitSessionExpired,
+            signaler: (err) => {
+              signalerErreurRequete(err, { sessionEstActive })
+              if (!silencieux) toastError(MESSAGE_PANNE_REFRESH)
+            },
+          })
+        }
+        // Sinon : un vrai refus, la session est réellement expirée.
       }
       if (!sessionAvantRefresh && sessionEstActive()) {
         return iaApi_instance(originalRequest)
