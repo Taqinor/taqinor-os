@@ -24,8 +24,8 @@ def detenteurs(bucket=None):
     return [e for e in _DETENTEURS if bucket is None or e[2] == bucket]
 
 
-def cle_detenue(cle, bucket, sauf=()):
-    """True si une ligne d'un détenteur du ``bucket`` porte encore ``cle``,
+def cle_detenue(cle, bucket=None, sauf=()):
+    """True si une ligne d'un détenteur du ``bucket`` (tous si None) porte ``cle``,
     hors les instances ``sauf`` (celles qui libèrent la clé). Toutes sociétés :
     une clé est un identifiant physique, le doute conserve le fichier."""
     from django.apps import apps
