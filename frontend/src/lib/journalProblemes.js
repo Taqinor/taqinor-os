@@ -66,6 +66,17 @@ export function _resetJournalPourTests() {
   _vus.clear()
 }
 
+// ERR-JPB-ECRAN-JAMAIS-EMIS — un chunk introuvable (404 après un déploiement,
+// l'onglet garde l'ancien index) n'a pas de nom stable selon le navigateur : on
+// le reconnaît au message pour lui donner UN code. `#306` / « Lazy element » :
+// après le `preventDefault` de `vite:preloadError`, `lazy()` résout `undefined`
+// et React tombe dans la boundary juste avant que le rechargement parte.
+const MOTIFS_CHUNK = /dynamically imported module|Importing a module script failed|Unable to preload CSS|Lazy element type must resolve|Minified React error #306\b/i
+
+function estErreurChunk(error) {
+  return error?.name === 'ChunkLoadError' || MOTIFS_CHUNK.test(String(error?.message || ''))
+}
+
 /** Segment d'URL qui porte un identifiant plutôt qu'un nom de ressource. */
 function estIdentifiant(segment) {
   if (/^\d+$/.test(segment)) return true
@@ -220,10 +231,52 @@ export function signalerErreurScript(error, genre = GENRES.SCRIPT, deps = {}) {
       genre,
       route: '',
       statut: null,
-      code: error?.name || 'Error',
+      code: estErreurChunk(error) ? 'ChunkLoadError' : (error?.name || 'Error'),
       message: error?.message || String(error),
     }, deps)
   } catch {
     return false
   }
+}
+
+// Un seul rechargement par fenêtre : si le chunk manque ENCORE juste après, le
+// serveur n'a pas la version (déploiement cassé) et recharger bouclerait.
+const CLE_RECHARGEMENT_CHUNK = 'erp:rechargement-chunk'
+const FENETRE_RECHARGEMENT_MS = 60000
+
+/** Note le rechargement ; `false` s'il vient d'avoir lieu ou si on ne peut pas
+ *  le noter (mode privé) : sans mémoire, pas de garde contre la boucle. */
+function reserverRechargement(stockage, maintenant) {
+  try {
+    const dernier = Number(stockage.getItem(CLE_RECHARGEMENT_CHUNK))
+    if (dernier && maintenant - dernier < FENETRE_RECHARGEMENT_MS) return false
+    stockage.setItem(CLE_RECHARGEMENT_CHUNK, String(maintenant))
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * ERR-JPB-ECRAN-JAMAIS-EMIS — `vite:preloadError` : un chunk `lazy` est
+ * introuvable. Une ligne `ecran` `ChunkLoadError`, puis UN rechargement ; sinon
+ * l'erreur suit son cours jusqu'à la boundary, qui affiche son écran.
+ * `cible`/`stockage`/`recharger` sont des points d'injection pour les tests.
+ */
+export function installerRechargementChunk(deps = {}) {
+  const cible = 'cible' in deps ? deps.cible : globalThis.window
+  if (!cible?.addEventListener) return
+  cible.addEventListener('vite:preloadError', (event) => {
+    try {
+      signalerErreurScript(event?.payload || new Error('Importing a module script failed'), GENRES.ECRAN, deps)
+      const stockage = deps.stockage || globalThis.sessionStorage
+      const maintenant = (deps.maintenant || Date.now)()
+      if (!reserverRechargement(stockage, maintenant)) return
+      event?.preventDefault?.()
+      const recharger = deps.recharger || (() => globalThis.location?.reload())
+      recharger()
+    } catch {
+      // RÈGLE 1 : le journal ne fait jamais planter l'application.
+    }
+  })
 }

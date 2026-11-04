@@ -19,7 +19,8 @@ import {
 } from './monitoring.js'
 import {
   GENRES, normaliserRoute, construireCorps, signalerProbleme,
-  signalerErreurRequete, signalerErreurScript, _resetJournalPourTests,
+  signalerErreurRequete, signalerErreurScript, installerRechargementChunk,
+  _resetJournalPourTests,
 } from './journalProblemes.js'
 
 test('QAH8 : import @sentry/react LITTÉRAL (un specifier variable n\'est jamais bundlé par Vite → Sentry mort en prod)', () => {
@@ -325,4 +326,101 @@ test("sans lecteur de session injecté, rien n'est envoyé (jamais un 401 de plu
     { fetch: () => { appels += 1; return Promise.resolve({}) }, maintenant: () => 1 },
   ), false)
   assert.equal(appels, 0)
+})
+
+// ── ERR-JPB-ECRAN-JAMAIS-EMIS : un écran tombé laisse enfin une ligne ───────
+
+test('les deux error boundaries signalent le genre « ecran » avec le lecteur de session', () => {
+  for (const chemin of ['../components/RouteErrorBoundary.jsx', '../ui/ErrorBoundary.jsx']) {
+    const source = readFileSync(new URL(chemin, import.meta.url), 'utf8')
+    assert.match(source, /signalerErreurScript\(error, GENRES\.ECRAN, \{ sessionEstActive \}\)/, chemin)
+    // Le journal passe AVANT Sentry : c'est lui qui survit sans DSN.
+    assert.ok(
+      source.indexOf('signalerErreurScript(error') < source.indexOf('captureException(error'),
+      chemin)
+  }
+})
+
+test('main.jsx arme le rechargement de chunk avec le lecteur de session', () => {
+  const source = readFileSync(new URL('../main.jsx', import.meta.url), 'utf8')
+  assert.match(source, /installerRechargementChunk\(\{ sessionEstActive \}\)/)
+})
+
+test('un écran tombé sur un chunk introuvable porte le code ChunkLoadError', () => {
+  for (const message of [
+    'Failed to fetch dynamically imported module: https://x/assets/a.js',
+    'error loading dynamically imported module',
+    'Importing a module script failed.',
+    'Unable to preload CSS for /assets/a.css',
+    // `preventDefault` de Vite : lazy() résout undefined avant le rechargement.
+    'Minified React error #306; visit https://react.dev/errors/306',
+  ]) {
+    const { envois, deps } = bancDEssai()
+    signalerErreurScript(new TypeError(message), GENRES.ECRAN, deps)
+    assert.equal(envois[0].corps.genre, 'ecran')
+    assert.equal(envois[0].corps.code, 'ChunkLoadError', message)
+  }
+})
+
+/** Fenêtre + stockage factices pour `vite:preloadError`. */
+function bancChunk(stockageInitial = {}, { stockageCasse = false } = {}) {
+  const ecouteurs = {}
+  const valeurs = { ...stockageInitial }
+  const banc = {
+    recharges: 0,
+    valeurs,
+    cible: { addEventListener: (nom, fn) => { ecouteurs[nom] = fn } },
+    stockage: {
+      getItem: (cle) => { if (stockageCasse) throw new Error('privé'); return valeurs[cle] ?? null },
+      setItem: (cle, valeur) => { if (stockageCasse) throw new Error('privé'); valeurs[cle] = valeur },
+    },
+    recharger: () => { banc.recharges += 1 },
+    emettre: () => {
+      const event = {
+        payload: new Error('Failed to fetch dynamically imported module'),
+        empeche: false,
+        preventDefault() { this.empeche = true },
+      }
+      ecouteurs['vite:preloadError'](event)
+      return event
+    },
+  }
+  return banc
+}
+
+test('vite:preloadError : une ligne ecran ChunkLoadError et UN rechargement', () => {
+  const { envois, deps } = bancDEssai({ maintenant: 500_000 })
+  const banc = bancChunk()
+  installerRechargementChunk({ ...deps, cible: banc.cible, stockage: banc.stockage, recharger: banc.recharger })
+  const event = banc.emettre()
+  assert.equal(banc.recharges, 1)
+  assert.equal(event.empeche, true)
+  assert.equal(envois.length, 1)
+  assert.equal(envois[0].corps.genre, 'ecran')
+  assert.equal(envois[0].corps.code, 'ChunkLoadError')
+})
+
+test('vite:preloadError : jamais une boucle — déjà rechargé récemment, la boundary prend le relais', () => {
+  const { deps } = bancDEssai({ maintenant: 500_000 })
+  const banc = bancChunk()
+  const options = { ...deps, cible: banc.cible, stockage: banc.stockage, recharger: banc.recharger }
+  installerRechargementChunk(options)
+  banc.emettre()
+  const seconde = banc.emettre()
+  assert.equal(banc.recharges, 1)
+  assert.equal(seconde.empeche, false)
+})
+
+test("vite:preloadError : stockage indisponible → aucun rechargement (la boucle est pire que l'écran)", () => {
+  const { envois, deps } = bancDEssai()
+  const banc = bancChunk({}, { stockageCasse: true })
+  installerRechargementChunk({ ...deps, cible: banc.cible, stockage: banc.stockage, recharger: banc.recharger })
+  const event = banc.emettre()
+  assert.equal(banc.recharges, 0)
+  assert.equal(event.empeche, false)
+  assert.equal(envois.length, 1)
+})
+
+test('installerRechargementChunk() est inerte sans window (node, SSR)', () => {
+  assert.doesNotThrow(() => installerRechargementChunk({ cible: null }))
 })
