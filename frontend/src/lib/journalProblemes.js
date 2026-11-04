@@ -81,8 +81,11 @@ function estErreurChunk(error) {
 function estIdentifiant(segment) {
   if (/^\d+$/.test(segment)) return true
   // UUID, et plus généralement tout jeton long (jetons de partage public,
-  // hachages) : jamais un nom de route.
+  // hachages) : jamais un nom de route. ERR-JPB-ROUTE-SLUG-MASQUE — sauf un
+  // slug kebab-case (`bons-commande-fournisseur`) : il FAIT la route, le masquer
+  // fusionne des routes différentes dans la signature et le résumé.
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(segment)) return true
+  if (/^[a-z]+(?:-[a-z]+)+$/.test(segment)) return false
   return segment.length >= 20 && /^[A-Za-z0-9._~-]+$/.test(segment)
 }
 

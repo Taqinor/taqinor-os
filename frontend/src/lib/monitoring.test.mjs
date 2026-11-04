@@ -129,6 +129,26 @@ test('normaliserRoute() regroupe les identifiants sous <id> (500 devis = 1 ligne
     '/api/django/reporting/rapports-partages/<id>/')
 })
 
+test('normaliserRoute() ne masque jamais un slug de route kebab-case, même long', () => {
+  assert.equal(
+    normaliserRoute('/api/django/reporting/approbations-en-attente/'),
+    '/api/django/reporting/approbations-en-attente/')
+  assert.equal(
+    normaliserRoute('/achats/bons-commande-fournisseur/12/recevoir/'),
+    '/achats/bons-commande-fournisseur/<id>/recevoir/')
+  // Un jeton de partage (token_urlsafe) porte aussi des tirets : il reste masqué.
+  assert.equal(
+    normaliserRoute('/proposal/Xy7-kQ2_mN9pLw4Rt8Zb-Vc3Hs6Jd1Fg/'),
+    '/proposal/<id>/')
+  assert.equal(
+    normaliserRoute('/proposal/3f2504e04f8911d39a0c0305e82c3301/'),
+    '/proposal/<id>/')
+  // Des chiffres hexadécimaux coupés par des tirets ne font pas un slug.
+  assert.equal(
+    normaliserRoute('/x/a1b2c3d4-e5f6a7b8-c9d0e1f2/'),
+    '/x/<id>/')
+})
+
 test('normaliserRoute() accepte une URL absolue et une entrée vide sans lever', () => {
   assert.equal(normaliserRoute('https://api.taqinor.ma/api/django/x/?a=1'),
     '/api/django/x/')
