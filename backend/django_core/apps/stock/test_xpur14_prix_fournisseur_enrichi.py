@@ -257,6 +257,30 @@ class TestExportImportXlsx(Xpur14Base):
         self.assertFalse(PalierPrixFournisseur.objects.filter(
             prix_fournisseur__produit=sku_b).exists())
 
+    def test_zeros_de_fin_acceptes(self):
+        """AANA83 — « 12.340 » et « 10:9.500 » sont exacts au centime : écrits
+        12,34 / 9,50 (normalisés comme l'import produit AANA54) ; « 12.345 »
+        reste refusé. Réimporter donne le même état."""
+        sku_b = Produit.objects.create(
+            company=self.company, nom='Produit B', sku='SKU-B',
+            prix_vente=Decimal('900'), prix_achat=Decimal('500'))
+        file_bytes = self._make_xlsx([
+            ['OND-XPUR14', 'A', '', '12.340', None, None, '10:9.500'],
+            ['SKU-B', 'B', '', '12.345', None, None, ''],
+        ])
+        for _ in range(2):
+            result = import_prix_fournisseur_xlsx(
+                self.company, self.fournisseur, file_bytes)
+            self.assertEqual([e['row'] for e in result['errors']], [3])
+            self.assertIn('plus de 2 décimales', result['errors'][0]['message'])
+            pf = PrixFournisseur.objects.get(
+                produit=self.produit, fournisseur=self.fournisseur)
+            self.assertEqual(pf.prix_achat, Decimal('12.34'))
+            self.assertEqual(
+                [(p.qte_min, p.prix) for p in pf.paliers.all()],
+                [(10, Decimal('9.50'))])
+        self.assertFalse(PrixFournisseur.objects.filter(produit=sku_b).exists())
+
     def test_import_ne_supprime_jamais_silencieusement(self):
         # Un produit absent du fichier garde son tarif existant.
         PrixFournisseur.objects.create(

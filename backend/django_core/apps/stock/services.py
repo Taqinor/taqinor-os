@@ -6990,7 +6990,7 @@ def _parse_palier_cell(value):
         except (InvalidOperation, TypeError, ValueError):
             rejets.append(f'palier illisible : « {segment} »')
             continue
-        if prix.as_tuple().exponent < -2:
+        if prix.normalize().as_tuple().exponent < -2:  # AANA83 : « 9.500 » = 9,50
             rejets.append(f'palier à plus de 2 décimales : « {segment} »')
             continue
         out.append((qte, prix.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)))  # échelle exacte, aucun arrondi
@@ -7039,7 +7039,7 @@ def _lire_ligne_tarif(company, row, idx_sku, idx_prix, idx_paliers):
     paliers, rejets = _parse_palier_cell(
         row[idx_paliers] if idx_paliers is not None and idx_paliers < len(row) else None)
     rejets = ([f'prix à plus de 2 décimales : {prix_raw!r}']
-              if prix.as_tuple().exponent < -2 else []) + rejets
+              if prix.normalize().as_tuple().exponent < -2 else []) + rejets  # AANA83
     if rejets:
         prix, paliers = None, []
     return sku, produit, prix, paliers, (f'{sku} : ' + ' ; '.join(rejets) + '.' if rejets else None)
