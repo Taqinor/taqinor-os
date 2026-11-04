@@ -76,9 +76,11 @@ Trois règles tenues par le module (et par ses tests) :
    produire des dizaines d'erreurs par seconde), et débit borné côté serveur
    (120/min par utilisateur, `PROBLEMES_CLIENT_RATE_LIMIT`).
 
-Hors session (page publique, écran de connexion) **rien n'est envoyé** :
+Hors session **rien n'est envoyé** — page publique, écran de connexion, mais
+aussi le portail client par jeton, `/proposal/<tok>` et les écrans SPA sans login
+(kiosque, quai, dépositaire, portail fournisseur) :
 l'endpoint est authentifié, un POST sans session ne produirait qu'un 401 de
-plus — donc du bruit au lieu d'une trace.
+plus — donc du bruit au lieu d'une trace (décision D-JPB-6 encore ouverte).
 
 ### Sans donnée personnelle
 

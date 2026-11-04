@@ -48,6 +48,19 @@ class CoreConfig(AppConfig):
         from . import monitoring
         monitoring.init_sentry()
 
+        # BPQ2 - marqueur de demarrage (horodatage + sha deploye dans la liste
+        # Redis bornee ``erp:demarrages``) : jamais pour une commande de gestion
+        # (migrate, test, shell...), seulement pour un process serveur/worker.
+        # Best-effort, no-op si Redis est injoignable.
+        import sys
+        argv = sys.argv
+        commande_gestion = (
+            len(argv) > 1 and argv[0].endswith('manage.py')
+            and argv[1] != 'runserver')
+        if not commande_gestion and 'test' not in argv[1:2]:
+            from .health import enregistrer_demarrage
+            enregistrer_demarrage()
+
         # SCA28 — hook signup « branding neutre » (thème + modèles brandés par
         # défaut) enregistré dans le registre core.signup_hooks. Idempotent :
         # le ré-enregistrement remplace, jamais de doublon d'exécution.

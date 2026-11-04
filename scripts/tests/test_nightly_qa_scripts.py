@@ -235,3 +235,30 @@ class TestSetup(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_tache_rattrape_une_nuit_manquee(self):
+        # ERR-JPB-NIGHTLY-QA-TACHE-FRAGILE : sans StartWhenAvailable, une nuit
+        # manquee (PC eteint/en veille) est perdue sans trace.
+        self.assertIn("-StartWhenAvailable", self.code)
+        self.assertIn("-WakeToRun", self.code)
+
+
+class TestNightlyRobustesse(unittest.TestCase):
+    def setUp(self):
+        self.code = _code(NIGHTLY)
+
+    def test_verrou_a_ttl_et_pid_verifie(self):
+        # TTL > max_minutes + 30 ; le PID doit etre un powershell LANCANT nightly-qa.
+        verrou = self.code.find("nightly-qa.lock")
+        bloc = self.code[verrou:verrou + 2500]
+        self.assertIn("LastWriteTime", bloc)
+        self.assertIn("$script:MaxMinutes + 30", bloc)
+        self.assertIn("Win32_Process", bloc)
+        self.assertIn("nightly-qa", bloc[bloc.find("Win32_Process"):])
+
+    def test_journal_de_bord_hors_depot_avant_toute_etape(self):
+        self.assertIn("$env:LOCALAPPDATA", self.code)
+        self.assertIn("nightly-qa.log", self.code)
+        self.assertLess(self.code.find("nightly-qa.log"),
+                        self.code.find("Read-KillSwitch $ConfigPath"))
+

@@ -25,6 +25,7 @@ métrique nouveau émis.
 from __future__ import annotations
 
 import contextvars
+import re
 import time
 import uuid
 from typing import Any, Dict, Optional
@@ -138,6 +139,8 @@ class RequestObservabilityMiddleware:
         logger.warning(
             'Requête lente %.0fms %s %s (tenant=%s)',
             duration_ms, ctx['method'], ctx['path'], ctx['company_id'])
+        # BPQ10 - trace durable : un message Sentry tague ``lent`` (dedoublonne).
+        self._signaler_sentry_lent(ctx, duration_ms)
         if capture is not None:
             queries = list(capture.captured_queries)
             top = sorted(
@@ -146,3 +149,43 @@ class RequestObservabilityMiddleware:
             logger.debug(
                 'SQL: %d requêtes ; top: %s', len(queries),
                 [(q['sql'][:120], q['time']) for q in top])
+
+    _SEGMENT_VARIABLE = re.compile(
+        r'^(\d+|[0-9a-fA-F]{8}-[0-9a-fA-F-]{27}|[0-9a-fA-F]{16,})$')
+
+    @classmethod
+    def _route_normalisee(cls, path):
+        """``/a/123/b/`` -> ``/a/:id/b/`` (cardinalite bornee pour le dedoublonnage)."""
+        segments = [
+            ':id' if cls._SEGMENT_VARIABLE.match(seg) else seg
+            for seg in (path or '').split('/')]
+        return '/'.join(segments)
+
+    def _signaler_sentry_lent(self, ctx, duration_ms):
+        """BPQ10 - ``capture_message`` Sentry tague ``lent`` au-dela du seuil.
+
+        Deduplique par route normalisee et par heure (cache) pour ne jamais
+        consommer le quota gratuit sur une tempete ; sans DSN : no-op.
+        """
+        try:
+            from . import monitoring
+            if not monitoring.is_enabled():
+                return
+            from django.core.cache import cache
+            route = self._route_normalisee(ctx['path'])
+            cle = 'obs:lent:%s:%s' % (route, int(time.time() // 3600))
+            if not cache.add(cle, 1, 3600):
+                return
+            import sentry_sdk
+            with sentry_sdk.new_scope() as scope:
+                scope.set_tag('lent', 'true')
+                scope.set_tag('route', route)
+                scope.set_tag('duration_ms', str(int(duration_ms)))
+                scope.set_tag('request_id', ctx.get('request_id') or '')
+                sentry_sdk.capture_message(
+                    'Requete lente %.0fms %s %s' % (
+                        duration_ms, ctx['method'], route),
+                    level='warning')
+        except Exception:  # noqa: BLE001 - l'observabilite ne casse jamais la requete (D-ENF22-BLE001)
+            logging.getLogger(__name__).debug(
+                "requete lente : envoi Sentry ignore", exc_info=True)

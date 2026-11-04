@@ -384,3 +384,57 @@ def recent_incidents(company=None, limit=10):
 
     incidents.sort(key=lambda i: i['survenu_le'] or '', reverse=True)
     return incidents[:limit]
+
+
+# --- BPQ2 : marqueur de demarrage (qui a redemarre, avec quel sha) ------------
+#
+# A chaque demarrage de process Django, un horodatage + le sha deploye sont
+# pousses dans une liste Redis bornee a 50 (aucune table). Le tri quotidien des
+# problemes les lit pour classer un pic d'erreurs en « deploiement » ; le
+# endpoint ``health/ready`` expose le dernier. Best-effort : Redis absent =>
+# aucun effet.
+
+DEMARRAGES_CLE = 'erp:demarrages'
+DEMARRAGES_MAX = 50
+
+
+def _client_demarrages():
+    import redis as redis_lib
+    from django.conf import settings
+    url = getattr(settings, 'CELERY_BROKER_URL', '') or ''
+    if not url.startswith('redis'):
+        raise OSError('broker non Redis')
+    return redis_lib.Redis.from_url(url, socket_timeout=0.5,
+                                    decode_responses=True)
+
+
+def sha_deploye():
+    import os
+    return (os.environ.get('DEPLOYED_SHA') or os.environ.get('SENTRY_RELEASE')
+            or '').strip() or None
+
+
+def enregistrer_demarrage():
+    """Pousse ``{ts, sha}`` dans ``erp:demarrages`` (borne a 50). Jamais bloquant."""
+    import json
+    import time
+    try:
+        client = _client_demarrages()
+        client.lpush(DEMARRAGES_CLE, json.dumps(
+            {'ts': time.time(), 'sha': sha_deploye()}))
+        client.ltrim(DEMARRAGES_CLE, 0, DEMARRAGES_MAX - 1)
+        return True
+    except Exception:  # noqa: BLE001 - best-effort, jamais casser un demarrage (D-ENF22-BLE001)
+        logger.debug("marqueur de demarrage : Redis indisponible", exc_info=True)
+        return False
+
+
+def dernier_demarrage():
+    """Derniere entree ``{ts, sha}`` ou ``None`` (Redis absent / liste vide)."""
+    import json
+    try:
+        brut = _client_demarrages().lindex(DEMARRAGES_CLE, 0)
+        return json.loads(brut) if brut else None
+    except Exception:  # noqa: BLE001 - best-effort (D-ENF22-BLE001)
+        logger.debug("dernier demarrage : Redis indisponible", exc_info=True)
+        return None

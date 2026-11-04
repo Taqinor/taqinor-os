@@ -37,6 +37,15 @@ param(
 $ErrorActionPreference = 'Stop'
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 
+# ---- 0. Journal de bord HORS depot - AVANT toute autre etape ------------------
+# Un checkout casse ou un script absent ne laisse aucune trace dans logs/ du depot
+# (ERR-JPB-NIGHTLY-QA-TACHE-FRAGILE) : une ligne est ecrite ici dans tous les cas.
+$BordLog = Join-Path $env:LOCALAPPDATA 'taqinor\nightly-qa.log'
+try {
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $BordLog) | Out-Null
+    Add-Content -LiteralPath $BordLog -Value ((Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + '  demarrage nightly-qa.ps1 PID ' + $PID + ' repo ' + $RepoRoot) -Encoding UTF8
+} catch { }
+
 # ---- 1. KILL SWITCH - lu AVANT git, docker ou claude -------------------------
 $ConfigRel = 'docs/qa-explorer.config.yml'
 $script:MaxMinutes = 240
@@ -98,10 +107,19 @@ if (Test-Path -LiteralPath $LockFile) {
     $raw = [string](Get-Content -LiteralPath $LockFile -Raw)
     $raw = $raw.Trim()
     $alive = $false
-    if ([int]::TryParse($raw, [ref]$oldPid)) {
-        $p = Get-Process -Id $oldPid -ErrorAction SilentlyContinue
-        if ($null -ne $p) {
-            if ($p.ProcessName -match '^(powershell|pwsh)$') { $alive = $true }
+    # TTL : un verrou plus vieux que max_minutes + 30 est perime, quel que soit le PID
+    # (un PID reutilise par un powershell quelconque ne doit jamais bloquer la passe).
+    $verrouAge = (Get-Date) - (Get-Item -LiteralPath $LockFile).LastWriteTime
+    if ($verrouAge.TotalMinutes -le ($script:MaxMinutes + 30)) {
+        if ([int]::TryParse($raw, [ref]$oldPid)) {
+            $p = Get-Process -Id $oldPid -ErrorAction SilentlyContinue
+            if ($null -ne $p) {
+                if ($p.ProcessName -match '^(powershell|pwsh)$') {
+                    # ... ET ce powershell doit LANCER nightly-qa (pas un autre script).
+                    $proc = Get-CimInstance Win32_Process -Filter ('ProcessId=' + $oldPid) -ErrorAction SilentlyContinue
+                    if (($null -ne $proc) -and ([string]$proc.CommandLine -match 'nightly-qa')) { $alive = $true }
+                }
+            }
         }
     }
     if ($alive) {

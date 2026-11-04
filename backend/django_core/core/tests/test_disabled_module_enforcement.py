@@ -110,3 +110,21 @@ class MiddlewareEnforcementTests(TestCase):
         resp = mw(self._request('/api/django/flotte/x/', AnonymousUser()))
         # Pas de société résolue ⇒ aucun blocage (défaut actif).
         self.assertIs(resp, sentinel)
+
+
+class JetonPerimeSilencieuxTests(TestCase):
+    """ERR-JPB-BRUIT-DEGRADE-90-TRACES : un jeton perime est un cas normal."""
+
+    def test_jeton_invalide_sans_avertissement_ni_traceback(self):
+        from unittest import mock
+        from django.test import RequestFactory
+        from rest_framework.exceptions import AuthenticationFailed
+        mw = permissions.DisabledModuleMiddleware(
+            lambda req: HttpResponse('ok'))
+        req = RequestFactory().get('/api/django/flotte/vehicules/')
+        with mock.patch(
+                'authentication.cookie_auth.CookieJWTAuthentication'
+                '.authenticate',
+                side_effect=AuthenticationFailed('jeton perime')):
+            with self.assertNoLogs('core.permissions', level='WARNING'):
+                self.assertIsNone(mw._company(req))

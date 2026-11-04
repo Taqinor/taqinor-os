@@ -40,7 +40,9 @@ def _load_stages_module():
         if hasattr(module, "STAGES") and hasattr(module, "STAGE_LABELS"):
             return module
     except Exception:
-        logger.warning("load stages module : échec ignoré, comportement dégradé", exc_info=True)
+        # En conteneur STAGES.py est monté en /opt (hors sys.path) : l'échec de
+        # l'import nu est le cas NORMAL (ERR-JPB-BRUIT-DEGRADE-90-TRACES).
+        logger.debug("import nu de STAGES impossible, repli sur les emplacements connus")
 
     # 2) Search known locations for the real STAGES.py, skipping this file.
     candidates = [Path("/opt") / "STAGES.py"]           # docker-compose mount
