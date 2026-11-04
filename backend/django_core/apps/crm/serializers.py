@@ -38,7 +38,7 @@ from .models import (
 from .devis_auto import (
     catalogue_ci, champs_manquants_detail, champs_requis, message_manquants,
     mode_pompe_du_lead, source_conso, visite_avant_devis,
-    visite_point_eau_avant_devis)
+    leads_a_point_eau_valide, visite_point_eau_avant_devis)
 from .scoring import compute_score, score_label, score_reasons
 import logging
 from apps.customfields.serializers import ChampsPersonnalisesField
@@ -766,6 +766,19 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
         return corriger_ville(value)
 
     @extend_schema_field(serializers.DictField())
+    def _point_eau_valide_en_lot(self, obj):
+        """ERR-APRF-LISTE-LEADS-POINT-EAU-N1 — sur une page de liste, la garde AGV5
+        est lue UNE fois pour toute la page ; ``None`` hors liste (lecture unitaire)."""
+        lignes = getattr(self.parent, 'instance', None) if isinstance(
+            self.parent, serializers.ListSerializer) else None
+        if lignes is None or (obj.type_installation or '') != 'agricole':
+            return None
+        memo = self.context.setdefault('_leads_point_eau_valide', {})
+        if obj.company_id not in memo:
+            ids = [lead.id for lead in lignes if (lead.type_installation or '') == 'agricole']
+            memo[obj.company_id] = leads_a_point_eau_valide(obj.company_id, ids)
+        return obj.id in memo[obj.company_id]
+
     def get_devis_auto(self, obj):
         """Prêt pour le devis automatique ? Même règle que l'endpoint
         POST /leads/<id>/devis-auto/ (source unique : devis_auto.py)."""
@@ -785,7 +798,8 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
             'requis': requis,
             # AGR403 (D-AGR-4) — {requise, motifs} pour un agricole, null
             # ailleurs : une information, jamais un blocage de `pret`.
-            'visite_point_eau_avant_devis': visite_point_eau_avant_devis(obj),
+            'visite_point_eau_avant_devis': visite_point_eau_avant_devis(
+                obj, point_eau_valide=self._point_eau_valide_en_lot(obj)),
             # CIQ404 (contrat CIQ1, D-CIQ-5) — la colonne qui remplit le
             # groupe pro et la visite AVANT le devis final : commercial et
             # industriel seulement, null ailleurs ; jamais un blocage.

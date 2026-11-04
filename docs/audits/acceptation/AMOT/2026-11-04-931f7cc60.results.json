@@ -1,0 +1,80 @@
+{
+  "sha": "931f7cc60d410c63586bdad950e01329ee25af3a",
+  "date": "2026-11-04",
+  "groupe": "AMOT",
+  "verdict": "PASS",
+  "couvre": [
+    "AMOT115",
+    "AMOT116",
+    "AMOT65"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P.motif_contrat",
+      "taches": [
+        "AMOT116"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-AMOT-P.motif_contrat.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P.carte_ttc",
+      "taches": [
+        "AMOT115"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-AMOT-P.carte_ttc.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P3.4.estimation_agricole",
+      "taches": [
+        "AMOT65"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-AMOT-P3.4.estimation_agricole.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}

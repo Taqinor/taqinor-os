@@ -39,9 +39,12 @@ function messageErreur(erreur, repli) {
 // libellé = référence, valeur = id (jamais un n° saisi lu comme clé primaire).
 const lignesDe = (r) => (Array.isArray(r?.data) ? r.data : (r?.data?.results ?? []))
 const chercherTickets = async (q) => {
-  const lignes = await fetchAllPages((page) => savApi.getTickets({
-    search: q || undefined, ouvert: 'tous', page, page_size: 200,
-  }))
+  // ERR-ASAV125-RECHERCHE-TICKET — fetchAllPages lit le CORPS de la page, jamais
+  // la réponse axios : sinon « .map is not a function » dans le sélecteur.
+  const rep = await fetchAllPages((page, { page_size: pageSize } = {}) => savApi.getTickets({
+    search: q || undefined, ouvert: 'tous', page, page_size: pageSize,
+  }).then((r) => r.data))
+  const lignes = Array.isArray(rep) ? rep : (rep?.results ?? [])
   return lignes.map((t) => ({
     value: String(t.id), label: t.reference ?? `Ticket ${t.id}`,
   }))

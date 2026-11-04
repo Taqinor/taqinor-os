@@ -71,6 +71,39 @@ class TestLeadViewSetNPlusOne(TestCase):
         self.assertEqual(resp.status_code, 200)
         return len(ctx.captured_queries), resp
 
+    def test_liste_agricole_plate_et_garde_de_visite_identique(self):
+        """ERR-APRF-LISTE-LEADS-POINT-EAU-N1 — la garde de visite du point d'eau
+        coûtait une requête VisiteTerrain par lead agricole de la page."""
+        from apps.visites.models import VisiteTerrain
+        from apps.visites.visite_checklist import GABARIT_POINT_EAU
+
+        def compter():
+            with CaptureQueriesContext(connection) as ctx:
+                r = self.api.get(self.BASE)
+            self.assertEqual(r.status_code, 200)
+            return r, sum('"visites_visiteterrain"' in q['sql'] or '"crm_visiteterrain"' in q['sql']
+                          for q in ctx.captured_queries)
+
+        def lead(i):
+            return Lead.objects.create(
+                company=self.company, nom=f'Ferme{i}', stage='NEW',
+                type_installation='agricole')
+
+        valide, vide = lead(0), lead(1)
+        VisiteTerrain.objects.create(
+            company=self.company, lead=valide, gabarit=GABARIT_POINT_EAU,
+            statut=VisiteTerrain.Statut.VALIDEE)
+        _, deux = compter()
+        for i in range(2, 8):
+            lead(i)
+        rep, huit = compter()
+        self.assertEqual(deux, huit)
+        rangs = {x['id']: x['devis_auto']['visite_point_eau_avant_devis'] for x in rep.json()['results']}
+        self.assertFalse(rangs[valide.id]['requise'])
+        self.assertTrue(rangs[vide.id]['requise'])
+        unitaire = self.api.get(f'{self.BASE}{vide.id}/').json()
+        self.assertEqual(unitaire['devis_auto']['visite_point_eau_avant_devis'], rangs[vide.id])
+
     def test_list_query_count_flat_as_row_count_grows(self):
         # 5 leads, each with an owner + resolved client + one devis.
         self._make_leads(5)

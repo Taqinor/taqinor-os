@@ -68,9 +68,10 @@ etape('P1.1', ['APRF42'], async ({ page, suivi }) => {
 })
 
 // ── P2.3 — les sondes de mesure à deux tailles (pente plate), transaction annulée ─────────────────────
-for (const sonde of ['VENTES-PILES', 'CRM', 'SAV', 'INST', 'STOCK', 'REPORTING']) {
+for (const sonde of ['VENTES', 'CRM', 'SAV', 'INST', 'STOCK', 'REPORTING']) {
   etape(`P2.3.${sonde}`, ['APRF42'], async () => {
     const s = spawnSync('python', ['scripts/sonde.py', `APRF/C-APRF-ACC-${sonde}`], { cwd: RACINE, encoding: 'utf8', maxBuffer: 50_000_000, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } })
-    expect(s.stdout, s.stderr?.slice(-400)).toContain('"repro": false')
+    expect(s.stdout, s.stderr?.slice(-400)).toMatch(/verdict : REPRO/)
+    expect(s.stdout, 'base inchangée').toMatch(/base inchangée : oui/)
   })
 }
