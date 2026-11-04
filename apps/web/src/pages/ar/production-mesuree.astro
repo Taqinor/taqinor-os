@@ -37,7 +37,7 @@ const { locale, L, devisHref } = pageLocale(Astro.url.pathname);
 // معامل المردود عبر عدة مواقع — مستحيل). الرقم الحقيقي الوحيد للإنتاج هو
 // الحصيلة التراكمية للأسطول المتابَع في الوقت الحقيقي (MEASURED_FLEET،
 // realisations.ts) — تراكمي "منذ التشغيل"، أبداً سنوي.
-const { productionTotal, productionTotalLabel, generatedDateLabel } = impactFigures('fr-FR');
+const { productionTotal, productionTotalLabel, generatedDateLabel } = impactFigures('fr-FR', 'ar-MA');
 
 
 const jsonLd = {
