@@ -313,7 +313,7 @@
         ],
         "error": {
           "code": "validation_error",
-          "message": "{'bin_source': [ErrorDetail(string='Un transfert scanné exige un casier source ou destination.', code='invalid')]}",
+          "message": "Un transfert scanné exige un casier source ou destination.",
           "fields": {
             "bin_source": [
               "Un transfert scanné exige un casier source ou destination."

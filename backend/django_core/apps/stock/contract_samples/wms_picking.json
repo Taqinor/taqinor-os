@@ -416,7 +416,7 @@
         ],
         "error": {
           "code": "validation_error",
-          "message": "{'frequence_jours': [ErrorDetail(string='La fréquence doit être un nombre de jours positif.', code='invalid')]}",
+          "message": "La fréquence doit être un nombre de jours positif.",
           "fields": {
             "frequence_jours": [
               "La fréquence doit être un nombre de jours positif."
