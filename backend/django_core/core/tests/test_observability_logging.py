@@ -1,6 +1,7 @@
 """NTPLT43 — contexte tenant + logs JSON structurés."""
 import json
 import logging
+from unittest import mock
 
 from django.http import HttpResponse
 from django.test import RequestFactory, SimpleTestCase
@@ -58,3 +59,50 @@ class TenantLogFilterTests(SimpleTestCase):
             return HttpResponse('ok')
 
         RequestObservabilityMiddleware(get_response)(rf.get('/api/y/'))
+
+
+class RequeteLenteSentryTests(SimpleTestCase):
+    """BPQ10 - requete lente => capture_message Sentry, dedupliquee par route/heure."""
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.rf = RequestFactory()
+
+    def _appel(self, chemin):
+        mw = RequestObservabilityMiddleware(lambda req: HttpResponse('ok'))
+        mw.slow_ms = 1e-9  # tout appel depasse le seuil
+        mw(self.rf.get(chemin))
+
+    def _avec_sentry(self, actif=True):
+        import sys
+        faux = mock.MagicMock()
+        ctx = mock.patch.dict(sys.modules, {'sentry_sdk': faux})
+        gate = mock.patch('core.monitoring.is_enabled', return_value=actif)
+        return faux, ctx, gate
+
+    def test_envoie_un_message_tague_lent_avec_route_normalisee(self):
+        faux, ctx, gate = self._avec_sentry()
+        with ctx, gate:
+            self._appel('/api/django/ventes/devis/123/')
+        faux.capture_message.assert_called_once()
+        scope = faux.new_scope.return_value.__enter__.return_value
+        tags = {c.args[0]: c.args[1] for c in scope.set_tag.call_args_list}
+        self.assertEqual(tags['lent'], 'true')
+        self.assertEqual(tags['route'], '/api/django/ventes/devis/:id/')
+        self.assertIn('request_id', tags)
+        self.assertIn('duration_ms', tags)
+
+    def test_dedoublonne_par_route_et_par_heure(self):
+        faux, ctx, gate = self._avec_sentry()
+        with ctx, gate:
+            self._appel('/api/django/ventes/devis/1/')
+            self._appel('/api/django/ventes/devis/2/')
+            self._appel('/api/django/crm/leads/')
+        self.assertEqual(faux.capture_message.call_count, 2)
+
+    def test_sans_dsn_no_op(self):
+        faux, ctx, gate = self._avec_sentry(actif=False)
+        with ctx, gate:
+            self._appel('/api/django/ventes/devis/1/')
+        faux.capture_message.assert_not_called()
