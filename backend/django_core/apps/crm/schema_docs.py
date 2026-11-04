@@ -6,7 +6,7 @@ vue est déclaré, tout corps attendu est décrit, toute réponse qui n'est pas 
 ``inline_serializer`` / ``OpenApiParameter`` dans ``views.py``.
 """
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter, extend_schema_field, inline_serializer
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema_field, inline_serializer
 from rest_framework import serializers
 
 from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL, MOTIF_SANS_NUL
@@ -14,6 +14,10 @@ from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE, MOTIF_QUERY_SANS_NUL
 
 #: Réponse « objet libre » (dict dont la forme dépend de la situation).
 OBJ = OpenApiTypes.OBJECT
+#: ACVI44/ACVI89 — une LECTURE de message WhatsApp refusée par l'état du lead
+#: (les écritures portent déjà leur 409 par ``openapi_erreurs``).
+REFUS_RENDU_WHATSAPP = OpenApiResponse(description=(
+    "Conflit d'état : lead opposé, perdu ou archivé, ou touche annulée."))
 
 XLSX_TYPE = ('application/vnd.openxmlformats-officedocument.'
              'spreadsheetml.sheet')
