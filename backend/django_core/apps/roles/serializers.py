@@ -186,7 +186,6 @@ class RoleSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
         # Refus d'ÉTAT (``est_systeme`` enregistré, corps conforme) : 409.
         if self.instance is not None and self.instance.est_systeme \
                 and 'nom' in attrs and attrs['nom'] != self.instance.nom:
-            from core.conflit_etat import ConflitEtat
             raise ConflitEtat({
                 'nom': ["Le nom d'un rôle système ne se modifie pas."]})
         return attrs
