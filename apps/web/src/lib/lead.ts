@@ -124,7 +124,9 @@ export type LeadModeId = (typeof LEAD_MODES)[number];
 export const RACCORDEMENTS = ['monophase', 'triphase', 'inconnu'] as const;
 export type RaccordementId = (typeof RACCORDEMENTS)[number];
 
-export const LEAD_LANGS = ['fr', 'ar'] as const;
+// WAUD83 (D-WAUD-14=a) — 'en' : un lead venu d'une page anglaise porte sa langue
+// (valeur acceptée côté ERP par la migration crm 0155) ; jamais cachée dans un champ libre.
+export const LEAD_LANGS = ['fr', 'ar', 'en'] as const;
 export type LeadLangId = (typeof LEAD_LANGS)[number];
 
 // ——— WJ31 : vocabulaires des questions de capture élargies (facultatives) ———

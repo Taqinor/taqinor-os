@@ -173,7 +173,7 @@ describe('WJ30 — validateLead élargi : les champs capturés passent, le garba
       billKwh: 'abc',
       raccordement: 'pentaphase',
       mode: 'martien',
-      langue_preferee: 'en',
+      langue_preferee: 'klingon',
       roofPoint: { lat: 'x', lng: null },
       roofOutline: [[1]],
     });
@@ -183,6 +183,13 @@ describe('WJ30 — validateLead élargi : les champs capturés passent, le garba
       'langue_preferee', 'roofPoint', 'roofOutline']) {
       expect(r.lead).not.toHaveProperty(k);
     }
+  });
+
+  it('WAUD83 : la langue « en » d’une page anglaise est transmise, jamais écartée', () => {
+    const r = validateLead({ ...validBody, langue_preferee: 'en' });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.lead.langue_preferee).toBe('en');
   });
 
   it('un GPS hors du Maroc est du garbage : écarté, lead intact', () => {

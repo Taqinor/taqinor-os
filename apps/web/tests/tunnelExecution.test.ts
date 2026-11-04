@@ -66,11 +66,11 @@ function builtPage(route: string): string {
 /**
  * Les SEULES clés du corps autorisées à différer entre locales, avec la valeur
  * attendue dans chacune (`undefined` = clé absente). Tout autre écart = rouge.
- * `langue_preferee` : FR/AR transmettent la langue affichée ; EN n'envoie rien
- * (`LEAD_LANGS` n'accepte que fr/ar — cf. src/lib/tunnel/champs.ts).
+ * `langue_preferee` : FR/AR/EN transmettent la langue affichée (WAUD83 : EN
+ * envoie 'en' ; `LEAD_LANGS` = fr/ar/en — cf. src/lib/lead.ts).
  */
 const CLES_PROPRES_A_LA_LOCALE: Record<string, Record<Locale, unknown>> = {
-  langue_preferee: { fr: 'fr', en: undefined, ar: 'ar' },
+  langue_preferee: { fr: 'fr', en: 'en', ar: 'ar' },
 };
 
 /**
