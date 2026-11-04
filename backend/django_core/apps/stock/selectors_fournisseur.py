@@ -372,3 +372,26 @@ def comparer_tco_fournisseurs(company, produit, *, cout_rupture_jour=None,
             aujourdhui=aujourdhui))
     lignes.sort(key=lambda ligne: _dec(ligne['tco']))
     return lignes
+
+
+# ── ASTK259 (C-ASTK-VER4-041) — livraison directe chantier d'une VENTE ──────
+def sortie_livraison_directe(company, bc, produit, quantite, reference):
+    """``(chantier, quantité à sortir, référence)`` d'une réception en
+    livraison directe (XPUR23). Chantier d'une vente : seul ce que la vente
+    n'a pas déjà sorti — Σ reçu en direct pour ce chantier et ce produit
+    (réception courante comprise) − ``sorties_de_la_vente`` (façade ventes,
+    jamais ``ventes.domain``), borné à la réception, sous la référence du
+    chantier (ainsi lue par la vente). Sans devis : inchangé."""
+    chantier = bc.chantier_livraison
+    if not getattr(chantier, 'devis_id', None):
+        return chantier, quantite, reference
+    from django.db.models import Sum
+    from apps.ventes.selectors import sorties_de_la_vente
+    from .models import LigneBonCommandeFournisseur
+    recu = LigneBonCommandeFournisseur.objects.filter(
+        bon_commande__company=company, produit=produit,
+        bon_commande__chantier_livraison_id=chantier.pk,
+    ).aggregate(s=Sum('quantite_recue'))['s'] or 0
+    deja = sorties_de_la_vente(chantier.devis_id, company).get(produit.pk, 0)
+    return (chantier, min(quantite, max(0, int(recu - deja))),
+            chantier.reference or reference)
