@@ -628,6 +628,23 @@ def visite_point_eau_validee_du_lead(lead):
                               gabarit=checklist.GABARIT_POINT_EAU)
 
 
+def leads_a_point_eau_valide(company_id, lead_ids):
+    """ERR-APRF-LISTE-LEADS-POINT-EAU-N1 — l'ensemble des leads dont la visite de
+    référence « relevé du point d'eau » est VALIDÉE, en UNE requête : même règle
+    que :func:`visite_point_eau_validee_du_lead`, pour une page de liste."""
+    from . import visite_checklist as checklist
+    from .models import VisiteTerrain
+
+    lignes = VisiteTerrain.objects.filter(
+        company_id=company_id, lead_id__in=lead_ids,
+        gabarit=checklist.GABARIT_POINT_EAU,
+    ).exclude(
+        statut__in=(VisiteTerrain.Statut.BROUILLON, VisiteTerrain.Statut.ANNULEE),
+    ).order_by('lead_id', '-id').distinct('lead_id').values_list('lead_id', 'statut')
+    return {lead_id for lead_id, statut in lignes
+            if statut == VisiteTerrain.Statut.VALIDEE}
+
+
 def texture_toit_pour_lead(lead):
     """VT12 — la texture de toit CALÉE d'un lead, ou des valeurs nulles.
 

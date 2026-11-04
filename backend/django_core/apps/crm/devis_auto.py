@@ -336,7 +336,14 @@ def _visite_point_eau_validee(lead):
     return visites_selectors.visite_point_eau_validee_du_lead(lead) is not None
 
 
-def visite_point_eau_avant_devis(lead):
+def leads_a_point_eau_valide(company_id, lead_ids):
+    """La lecture en lot de la garde AGV5 pour une page de liste."""
+    from apps.visites import selectors as visites_selectors
+
+    return visites_selectors.leads_a_point_eau_valide(company_id, lead_ids)
+
+
+def visite_point_eau_avant_devis(lead, *, point_eau_valide=None):
     """AGR403 (D-AGR-4) — ``{requise, motifs}`` pour un lead AGRICOLE, None
     ailleurs.
 
@@ -350,10 +357,15 @@ def visite_point_eau_avant_devis(lead):
     débit peut y être « non mesurable » (lead resté vide) et la visite ne
     serait sinon redemandée sans fin ; le devis part avec les entrées
     déclarées. Sans visite validée, rien ne change.
+
+    ``point_eau_valide`` : la réponse déjà lue en lot (page de liste) ; absent,
+    elle est lue ici.
     """
     if (lead.type_installation or '') != _MODE_AGRICOLE:
         return None
-    if _visite_point_eau_validee(lead):
+    if point_eau_valide is None:
+        point_eau_valide = _visite_point_eau_validee(lead)
+    if point_eau_valide:
         return {'requise': False, 'motifs': [], 'motifs_detail': []}
     # AGQ22 (C-AGQ-021) — chaque motif porte le CHAMP du lead qu'il vise
     # (``motifs_detail``) : la puce et le 409 du devis automatique nomment le
