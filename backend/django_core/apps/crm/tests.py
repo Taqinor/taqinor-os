@@ -1202,7 +1202,6 @@ class TestIdentiteClientHookFlagOff(TestCase):
         self.assertFalse(ecrire_identite_client(client))
 
 
-
 class ChargementStagesSilencieuxTests(TestCase):
     """ERR-JPB-BRUIT-DEGRADE-90-TRACES : l'import nu de STAGES echoue en
     conteneur (monte en /opt) - cas normal, aucun avertissement."""
