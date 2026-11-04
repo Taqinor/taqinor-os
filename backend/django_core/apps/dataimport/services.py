@@ -97,7 +97,7 @@ FIELD_MAPS = {
         'client_email': 'client_email', 'email_client': 'client_email',
         'client_external_id': 'client_external_id',
         'statut': 'statut',
-        'date_creation': 'date_creation', 'date': 'date_creation',
+        # AANA82 (D-AANA-VER4-1) — aucune date lue par creer_devis_import.
         'external_id': 'external_id', 'id_externe': 'external_id',
     },
     # NTMIG10 — Factures (EN-TÊTES seulement — lignes via NTMIG11). Écriture
@@ -111,8 +111,8 @@ FIELD_MAPS = {
         'client_nom': 'client_nom', 'client': 'client_nom',
         'client_email': 'client_email', 'email_client': 'client_email',
         'client_external_id': 'client_external_id',
-        'statut': 'statut', 'statut_paiement': 'statut_paiement',
-        'date_emission': 'date_emission', 'date': 'date_emission',
+        # AANA82 (D-AANA-VER4-1) — ni date ni statut de paiement lus.
+        'statut': 'statut',
         'external_id': 'external_id', 'id_externe': 'external_id',
     },
 }
