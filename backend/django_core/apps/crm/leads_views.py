@@ -381,10 +381,11 @@ class LeadIntakeActionsMixin:
                 {'others': ["Liste d'identifiants de leads (entiers) attendue."]})
         others = list(self.get_queryset().filter(pk__in=ids).exclude(pk=survivor.pk))
         if not others:
-            # ERR-ENF11-FUZZ-CRM : identifiants bien formés mais inconnus (ou
-            # hors portée) = ressource introuvable, 404 — jamais un 400.
+            # ENF11 : identifiants de corps bien formés mais inconnus (ou hors
+            # portée), le lead survivant existe = refus d'état, 409 (ni 400, ni
+            # un 404 qui dirait le survivant introuvable).
             return Response({'detail': 'Leads à fusionner introuvables.'},
-                            status=status.HTTP_404_NOT_FOUND)
+                            status=status.HTTP_409_CONFLICT)
         merge_leads(survivor, others, request.user)
         survivor.refresh_from_db()
         data = dict(

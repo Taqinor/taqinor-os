@@ -111,5 +111,11 @@ class CalibrationTests(TestCase):
         self.assertIsNone(r.data['emplacement_nom'])
         r = self.api.post(f"{URL}{data['id']}/calibrer/", [1, 2], format='json')
         self.assertEqual(r.status_code, 400, r.data)
+        # api-fuzz-full 41825184761 : une valeur hors ``format: date`` n'est
+        # plus prise pour « absente » (aujourd'hui) — 400, rien d'écrit.
+        for brut in (False, 0, '', None, '20230301', '2023-03-01T00:00:00'):
+            r = self.api.post(f"{URL}{data['id']}/calibrer/",
+                              {'date_calibration': brut}, format='json')
+            self.assertEqual(r.status_code, 400, (brut, r.data))
         r = self.api.post(URL, {'nom': 'X'}, format='multipart')
         self.assertEqual(r.status_code, 415, r.data)

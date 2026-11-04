@@ -11,7 +11,7 @@ dans les corps (patchs ``apps.ventes.utils.pdf.*``,
 ``core.events.layout_finalise.send``).
 """
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiResponse, extend_schema
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from . import openapi_docs as D
 from rest_framework import status
@@ -746,7 +746,8 @@ class DevisCalepinageActionsMixin:
 
     # api-only: chemin fabriqué côté serveur (url_fichier_toiture_devis),
     # rendu par roof-image et lu tel quel par un <img src> (ACAL314)
-    @extend_schema(responses={(200, 'image/*'): OpenApiTypes.BINARY, 404: None})
+    @extend_schema(responses={(200, 'image/*'): OpenApiTypes.BINARY, 404: None,
+                              409: OpenApiResponse(description='Aucune affiche.')})
     @action(detail=True, methods=['get'], url_path='roof-image/fichier',
             permission_classes=[IsAnyRole])
     def roof_image_fichier(self, request, pk=None):
@@ -755,23 +756,26 @@ class DevisCalepinageActionsMixin:
         Même origine (cookie httpOnly), jamais l'hôte interne ``minio:9000``
         d'une URL pré-signée. La clé est celle que porte le devis
         (``Devis.roof_image``), lue par ``services.lire_image_toiture`` ;
-        le MIME vient des octets. Un devis d'une AUTRE société, un devis sans
-        affiche ou un objet absent rendent le MÊME 404 : aucun oracle
-        d'existence. Lecture seule, aucun statut touché (règle #4)."""
+        le MIME vient des octets. Un devis d'une AUTRE société (ou absent)
+        rend 404 ; un devis de la société sans affiche (ou dont l'objet manque)
+        rend 409 « Fichier introuvable. » — ENF11, api-fuzz-full 41825184761 :
+        le devis existe, seul son état s'y oppose (même règle que
+        ``documents-fournisseur/{id}/telecharger``) ; aucun oracle sur une
+        autre société. Lecture seule, aucun statut touché (règle #4)."""
         from django.http import Http404, HttpResponse
 
         from ..services import lire_image_toiture
 
-        introuvable = Response({'detail': 'Fichier introuvable.'},
-                               status=status.HTTP_404_NOT_FOUND)
         try:
             devis = self.get_object()  # borné société par get_queryset
         except Http404:
-            return introuvable
+            return Response({'detail': 'Fichier introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
         octets, mime = lire_image_toiture(
             (getattr(devis, 'roof_image', None) or '').strip())
         if octets is None:
-            return introuvable
+            return Response({'detail': 'Fichier introuvable.'},
+                            status=status.HTTP_409_CONFLICT)
         reponse = HttpResponse(octets, content_type=mime)
         reponse['Cache-Control'] = 'private, max-age=300'
         reponse['X-Content-Type-Options'] = 'nosniff'

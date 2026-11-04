@@ -546,7 +546,10 @@ def _emettre(facture, user, override_credit=False):
         emettre_facture(facture, user=user, source='facturer_vente',
                         verifier_credit=not override_credit)
     except EmissionRefusee as exc:
-        raise FacturationVenteRefusee(exc.motif)
+        # ENF11 (api-fuzz-full 41825184761) — vente déjà facturée au-delà du
+        # prix convenu (``etat``, VNT20) : le corps est conforme, seul l'état
+        # enregistré s'oppose = 409, comme ``facture_cycle.emettre``.
+        raise FacturationVenteRefusee(exc.motif, status=409 if exc.etat else 400)
     except StockInsuffisantError as exc:
         raise FacturationVenteRefusee(exc.message)
     except CreditHoldError as exc:

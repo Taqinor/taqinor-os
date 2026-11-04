@@ -1236,6 +1236,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `ENF37` — ENF19, tranche 30/10 (2)
 - `ENF38` — ENF19, tranche 30/10 (3)
 - `ENF39` — ENF15, tranche 02/11 (liste_page1)
+- `ENF40` — ENF11, tranche 04/11 (nocturne api-fuzz-full 41825184761 sur main c38868a6)
 - `QAH1` — Skill `qa-explorer` : flotte d'agents « testeur humain » qui explore l'ERP démo module…
 - `QAH2` — Invariants Hypothesis sur la chaîne d'argent et la chaîne d'états des documents ventes
 - `QAH3` — Test différentiel `solar.js` ↔ `quote_engine/builder.py` sur un corpus figé
