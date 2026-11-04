@@ -5,7 +5,8 @@
   "verdict": "PASS",
   "couvre": [
     "AANA86",
-    "AANA82"
+    "AANA82",
+    "AANA83"
   ],
   "couvre_avec_ecart": [],
   "etapes": [
@@ -52,6 +53,28 @@
         "10": "NA"
       },
       "notes": "dry-run HTTP factures et devis : date_emission, statut_paiement, date (factures) et date_creation, date (devis) rendus dans non_mappees, absents du mapping ; rejeu identique."
+    },
+    {
+      "id": "P.tarif_zeros_de_fin",
+      "taches": [
+        "AANA83"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AANA/traces/2026-11-04/ACCEPTATION-AANA-P.tarif_zeros_de_fin.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Fiche fournisseur > Tarif > import xlsx : « 12.340 » / « 10:9.500 » ecrits 12.34 / 9.50 (psql), « 12.345 » refuse dans errors (rien d'arrondi). Detail : traces/2026-11-04/AANA83-AANA84-import-tarif.txt."
     }
   ]
 }
