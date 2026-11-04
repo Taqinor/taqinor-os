@@ -167,15 +167,18 @@ class RoofImageProxy(TestCase):
         self.assertEqual(pub['Content-Type'], 'image/png')
         self.assertEqual(pub.content, PNG)
 
-    def test_devis_autre_societe_404_identique_a_absent(self):
+    def test_devis_autre_societe_404_sans_affiche_409(self):
+        # ENF11 : le devis de la société existe, seule l'affiche manque = 409 ;
+        # un devis d'une autre société reste un 404, sans octet ni détail.
         sans_affiche = self._devis('02', avec_affiche=False)
         absent = self.api.get(
             f'/api/django/ventes/devis/{sans_affiche.pk}/roof-image/fichier/')
         etranger = _api(self.user_autre).get(
             f'/api/django/ventes/devis/{self.devis.pk}/roof-image/fichier/')
-        self.assertEqual(absent.status_code, 404)
+        self.assertEqual(absent.status_code, 409)
         self.assertEqual(etranger.status_code, 404)
-        self.assertEqual(etranger.content, absent.content)
+        self.assertNotIn(PNG, etranger.content)
+        self.assertEqual(etranger.data['detail'], absent.data['detail'])
 
     def test_jeton_invalide_404(self):
         r = APIClient().get(

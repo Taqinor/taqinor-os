@@ -577,11 +577,12 @@ class TestFuzzCrmTour2(TestCase):
                              format='json')
         self.assertEqual(resp.status_code, 201, resp.content)
 
-    def test_fusion_ids_inconnus_404(self):
+    def test_fusion_ids_inconnus_409(self):
+        # ENF11 : le survivant existe, seuls les ids du corps sont inconnus.
         lead = Lead.objects.create(company=self.company, nom='Survivant')
         resp = self.api.post(f'/api/django/crm/leads/{lead.pk}/merge/',
                              {'others': [987654321]}, format='json')
-        self.assertEqual(resp.status_code, 404, resp.content)
+        self.assertEqual(resp.status_code, 409, resp.content)
 
     def test_tour3_ids_inconnus_404_et_bornes_publiees(self):
         """ERR-ENF11-FUZZ-CRM (nocturnes 11-14/10) — FK ``0``/inconnue → 404

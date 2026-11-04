@@ -129,11 +129,11 @@ class SimulationTests(TestCase):
                             format='json')
         self.assertEqual(res.status_code, 400)
 
-    def test_target_of_other_company_is_404(self):
+    def test_target_of_other_company_is_409(self):
         etranger = Lead.objects.create(
             company=self.autre, nom='X', stage='NEW')
         res = self._simuler(target_id=etranger.pk)
-        self.assertEqual(res.status_code, 404)
+        self.assertEqual(res.status_code, 409)  # ENF11 : la règle existe
 
     def test_limited_role_cannot_simulate(self):
         limite = User.objects.create_user(
@@ -148,9 +148,9 @@ class SimulationTests(TestCase):
         self.assertEqual(res.status_code, 403)
 
     def test_identifiant_zero_est_inconnu_pas_manquant(self):
-        # ENF11 : 0 est une valeur (404 « inconnu »), pas un champ absent.
+        # ENF11 : 0 est une valeur (409 « inconnu »), pas un champ absent.
         res = self._simuler(target_id=0)
-        self.assertEqual(res.status_code, 404, res.content)
+        self.assertEqual(res.status_code, 409, res.content)
 
     def test_identifiant_non_entier_400(self):
         res = self._simuler(target_id='abc')
