@@ -3614,3 +3614,15 @@ decisions:
     date: "2026-11-04"
     source: "Reda, question interactive, contre-visite vérifie AMOT"
     taches: [AMOT122]
+
+  - id: D-AANA-VER4-1
+    question: "L'import de factures et de devis (API seule, aucun écran aujourd'hui) propose les colonnes date d'émission, statut de paiement et date de création, mais ne les lit jamais : une facture 2024 « payée » migrée sort émise aujourd'hui, numérotée dans la série du mois, montant 0 (aucune relance). Que doit faire l'import de ces colonnes ?"
+    options:
+      - cle: retirer_colonnes
+        texte: "Les retirer du mapping : l'aperçu les dit « non mappées » ; les factures migrées gardent le comportement d'aujourd'hui jusqu'à un vrai besoin de migration"
+      - cle: lire_colonnes
+        texte: "Les lire vraiment : date source appliquée, posted + paid = payée, et une facture migrée non brouillon garde son numéro source au lieu d'en prendre un dans la série vivante"
+    reponse: retirer_colonnes
+    date: "2026-11-04"
+    source: "Reda, question interactive, contre-visite vérifie AANA"
+    taches: [AANA82]
