@@ -68,7 +68,8 @@ class Command(BaseCommand):
                 f"{ligne['dernier']:%Y-%m-%d %H:%M}  "
                 f"{(ligne['code'] or '-'):<22} "
                 f"{(ligne['methode'] + ' ' if ligne['methode'] else '')}"
-                f"{ligne['route'] or '(écran)'}")
+                f"{ligne['route'] or '(écran)'}"
+                f"{' rid=' + ligne['exemple_request_id'] if ligne['exemple_request_id'] else ''}")
         total = sum(ligne['occurrences'] for ligne in lignes)
         self.stdout.write(self.style.WARNING(
             f"{total} occurrence(s) sur {len(lignes)} problème(s) distinct(s)."))

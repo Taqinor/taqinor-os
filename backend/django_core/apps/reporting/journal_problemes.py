@@ -15,6 +15,8 @@ utilisateur BRUT n'est jamais stocké : seule sa FAMILLE est déduite ici.
 
 Lecture : `python manage.py problemes_utilisateurs --jours 7`.
 """
+import re
+
 from rest_framework import serializers
 from rest_framework.decorators import (
     api_view, parser_classes, permission_classes, throttle_classes,
@@ -87,6 +89,10 @@ def famille_navigateur(agent):
     return ' '.join(p for p in (navigateur, plateforme) if p)[:40]
 
 
+#: Forme de l'identifiant de `core.middleware.RequestIdMiddleware` (uuid4 hex).
+_REQUEST_ID = re.compile(r'[0-9a-fA-F]{32}')
+
+
 class ProblemeClientSerializer(ChampsStrictsEntiersMixin,
                                serializers.ModelSerializer):
     # Les textes sont TRONQUÉS, jamais rejetés : un signalement
@@ -104,13 +110,14 @@ class ProblemeClientSerializer(ChampsStrictsEntiersMixin,
     # signalement serait PERDU. Ici il est simplement oublié par
     # `validate_statut_reponse` (le genre porte déjà le sens).
     statut_reponse = EntierStrict(required=False, allow_null=True)
+    request_id = ChaineStricte(required=False, allow_null=True, allow_blank=True)
 
     class Meta:
         model = ProblemeClient
         # company/utilisateur/navigateur : posés côté serveur dans la vue,
         # jamais lus du corps — absents des champs acceptés en écriture.
         fields = ['genre', 'methode', 'route', 'ecran', 'statut_reponse', 'code',
-                  'message']
+                  'message', 'request_id']
 
     def validate_methode(self, value):
         return (value or '')[:8].upper()
@@ -131,6 +138,10 @@ class ProblemeClientSerializer(ChampsStrictsEntiersMixin,
         # Un statut hors plage HTTP n'est pas une raison de perdre la trace :
         # il est simplement oublié (le genre reste porteur du sens).
         return value if value is not None and 100 <= value <= 599 else None
+
+    def validate_request_id(self, value):
+        # Même logique : un identifiant illisible est oublié, la trace reste.
+        return value if value and _REQUEST_ID.fullmatch(value) else None
 
 
 class ProblemeClientRequeteSerializer(ProblemeClientSerializer):
@@ -192,5 +203,6 @@ def resume_problemes(jours=7, company=None, maintenant=None):
                   'code')
           .annotate(occurrences=Count('id'),
                     utilisateurs=Count('utilisateur', distinct=True),
-                    dernier=Max('created_at'))
+                    dernier=Max('created_at'),
+                    exemple_request_id=Max('request_id'))
           .order_by('-occurrences', 'route'))

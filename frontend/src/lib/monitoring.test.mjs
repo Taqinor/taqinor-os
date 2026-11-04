@@ -174,6 +174,7 @@ test('construireCorps() renvoie la forme exacte attendue par le serializer backe
     statut_reponse: null,
     code: 'ECONNABORTED',
     message: 'timeout of 20000ms exceeded',
+    request_id: null,
   })
 })
 
@@ -391,6 +392,45 @@ test('signalerErreurRequete() classe une 5xx en « serveur »', () => {
   assert.equal(envois[0].corps.genre, 'serveur')
   assert.equal(envois[0].corps.statut_reponse, 502)
   assert.equal(envois[0].corps.route, '/ventes/devis/<id>/')
+})
+
+// ── ERR-JPB-REQUEST-ID-PERDU : relier une ligne `serveur` à sa trace ────────
+
+const ID_REQUETE = '0123456789abcdef0123456789abcdef'
+
+test("signalerErreurRequete() lit le request_id dans l'en-tête X-Request-Id", () => {
+  const { envois, deps } = bancDEssai()
+  signalerErreurRequete({
+    config: { url: '/x/', method: 'get' },
+    response: { status: 500, headers: { 'x-request-id': ID_REQUETE }, data: {} },
+  }, deps)
+  assert.equal(envois[0].corps.request_id, ID_REQUETE)
+})
+
+test('signalerErreurRequete() se rabat sur error.request_id du corps', () => {
+  const { envois, deps } = bancDEssai()
+  signalerErreurRequete({
+    config: { url: '/x/', method: 'get' },
+    response: { status: 500, headers: {}, data: { error: { code: 'e', request_id: ID_REQUETE } } },
+  }, deps)
+  assert.equal(envois[0].corps.request_id, ID_REQUETE)
+})
+
+test("un 502 sans Django, ou un identifiant illisible, laisse request_id nul (la ligne part)", () => {
+  for (const reponse of [
+    { status: 502, data: '<html>' },
+    { status: 500, headers: { 'x-request-id': 'pas-un-id' }, data: {} },
+  ]) {
+    const { envois, deps } = bancDEssai()
+    signalerErreurRequete({ config: { url: '/x/', method: 'get' }, response: reponse }, deps)
+    assert.equal(envois.length, 1)
+    assert.equal(envois[0].corps.request_id, null)
+  }
+})
+
+test('nginx journalise le request_id de Django (un 502 sans rid = Django absent)', () => {
+  const conf = readFileSync(new URL('../../../backend/nginx/nginx.conf', import.meta.url), 'utf8')
+  assert.match(conf, /rid=\$upstream_http_x_request_id/)
 })
 
 test('signalerErreurRequete() journalise le 429 du refresh de session (seul 4xx concerné)', () => {

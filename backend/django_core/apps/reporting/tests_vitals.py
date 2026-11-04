@@ -282,6 +282,24 @@ class SignalementTests(TestCase):
         self.assertEqual(ligne.code, 'ECONNABORTED')
         self.assertEqual(ligne.ecran, '/crm/relances')
 
+    def test_request_id_conserve_pour_relier_la_trace_serveur(self):
+        rid = '0123456789abcdef0123456789abcdef'
+        resp = self.api.post(URL, {'genre': 'serveur', 'statut_reponse': 500,
+                                   'request_id': rid}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(ProblemeClient.objects.get().request_id, rid)
+
+    def test_request_id_absent_nul_ou_illisible_ne_perd_jamais_la_ligne(self):
+        for corps in ({}, {'request_id': None}, {'request_id': ''},
+                      {'request_id': 'pas-un-identifiant'},
+                      {'request_id': 'A' * 500}):
+            ProblemeClient.objects.all().delete()
+            resp = self.api.post(
+                URL, {'genre': 'serveur', 'statut_reponse': 502, **corps},
+                format='json')
+            self.assertEqual(resp.status_code, 201, resp.data)
+            self.assertIsNone(ProblemeClient.objects.get().request_id, corps)
+
     def test_famille_navigateur_posee_serveur_agent_brut_jamais_stocke(self):
         resp = self.api.post(URL, {'genre': 'serveur', 'statut_reponse': 502},
                              format='json', HTTP_USER_AGENT=UA_ANDROID)
@@ -504,6 +522,13 @@ class CommandeLectureTests(TestCase):
         self.assertIn('TypeError', self._sortie(company='yjpb3-autre'))
         with self.assertRaises(CommandError):
             self._sortie(company='inexistante')
+
+    def test_affiche_un_request_id_echantillon(self):
+        rid = '0123456789abcdef0123456789abcdef'
+        ProblemeClient.objects.create(
+            company=self.company, genre='serveur', methode='GET', route='/x/',
+            statut_reponse=500, request_id=rid)
+        self.assertIn(f'rid={rid}', self._sortie())
 
     def test_fenetre_invalide_refusee(self):
         with self.assertRaises(CommandError):

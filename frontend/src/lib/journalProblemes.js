@@ -133,7 +133,7 @@ export function normaliserRoute(url) {
 }
 
 /** Corps exact envoyé au serveur (exporté pour les tests). */
-export function construireCorps({ genre, methode, route, statut, code, message }) {
+export function construireCorps({ genre, methode, route, statut, code, message, requestId }) {
   return {
     genre,
     methode: String(methode || '').slice(0, 8).toUpperCase(),
@@ -142,6 +142,7 @@ export function construireCorps({ genre, methode, route, statut, code, message }
     statut_reponse: typeof statut === 'number' && Number.isFinite(statut) ? statut : null,
     code: String(code || '').slice(0, 64),
     message: String(message || '').slice(0, 255),
+    request_id: requestId || null,
   }
 }
 
@@ -208,6 +209,14 @@ export function signalerProbleme(probleme, deps = {}) {
   }
 }
 
+// ERR-JPB-REQUEST-ID-PERDU — l'identifiant que Django pose sur chaque réponse
+// relie la ligne à sa trace serveur (journaux, Sentry). Un 502 de nginx n'en a
+// pas : Django était absent, et c'est une information.
+function requestIdDe(reponse) {
+  const candidat = reponse?.headers?.['x-request-id'] || reponse?.data?.error?.request_id
+  return /^[0-9a-f]{32}$/i.test(String(candidat || '')) ? candidat : null
+}
+
 /**
  * Adaptateur pour une erreur axios (appelé par l'intercepteur de réponse). Ne
  * signale QUE les deux cas qui comptent et qui, jusqu'ici, ne laissaient
@@ -247,6 +256,7 @@ export function signalerErreurRequete(error, deps = {}) {
         statut,
         code: error?.response?.data?.error?.code || error?.code || '',
         message: error?.message,
+        requestId: requestIdDe(error?.response),
       }, deps)
     }
     return false
