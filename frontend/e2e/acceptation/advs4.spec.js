@@ -27,9 +27,16 @@ const produit = async (r, nom, pv) => lireJson(await r.post(`${API}/stock/produi
 etape('PA3-01.tva_societe', ['ADVS27'], async ({ page }) => {
   const r = page.request
   const m = marque()
+  let taux = {}
   const avant = await py(`from apps.parametres.models import CompanyProfile
 p = CompanyProfile.objects.get(company_id=1); v = str(p.tva_standard); p.tva_standard = 14; p.save(update_fields=['tva_standard']); sortie(v)`)
   try {
+    // Le catalogue démo porte un taux sur ses articles composés : le temps de l'étape, seuls les panneaux gardent le leur (témoin « son
+    // taux propre ») ; les autres passent à NULL (le Given) et tout est rétabli à la fin.
+    taux = await py(`from apps.stock.models import Produit
+q = Produit.objects.filter(company_id=1, tva__isnull=False).exclude(nom__icontains='panneau')
+garde = {str(i): str(t) for i, t in q.values_list('id', 'tva')}
+q.update(tva=None); sortie(garde)`)
     // Marché C&I (seul parcours Auto-remplir sans carte) : le catalogue de démo, ses postes tarifés comme `amot3.spec.js`.
     await catalogueCi(r)
     const lead = await leadCi(r, `ADVS27 ${m}`, { conso_mensuelle_kwh: null })
@@ -49,13 +56,16 @@ p = CompanyProfile.objects.get(company_id=1); v = str(p.tva_standard); p.tva_sta
     const corps = rep.request().postDataJSON()
     expect(rep.status(), `création : ${(await rep.text()).slice(0, 300)}`).toBeLessThan(300)
     const ids = corps.lignes.map((l) => l.produit).filter(Boolean)
-    const taux = await py(`from apps.stock.models import Produit
+    const lus = await py(`from apps.stock.models import Produit
 sortie({str(p.id): (str(p.tva) if p.tva is not None else None) for p in Produit.objects.filter(pk__in=${JSON.stringify(ids)})})`)
-    const sansTaux = corps.lignes.filter((l) => l.produit && taux[String(l.produit)] === null)
+    const sansTaux = corps.lignes.filter((l) => l.produit && lus[String(l.produit)] === null)
     expect(sansTaux.length, 'au moins une ligne d\'un produit sans taux').toBeGreaterThan(0)
     for (const l of sansTaux) expect(Number(l.taux_tva), `${l.designation} : TVA standard de la société`).toBe(14)
-    for (const l of corps.lignes.filter((x) => x.produit && taux[String(x.produit)] !== null)) expect(Number(l.taux_tva), `${l.designation} : son taux propre`).toBe(Number(taux[String(l.produit)]))
+    for (const l of corps.lignes.filter((x) => x.produit && lus[String(x.produit)] !== null)) expect(Number(l.taux_tva), `${l.designation} : son taux propre`).toBe(Number(lus[String(l.produit)]))
   } finally {
+    await py(`from apps.stock.models import Produit
+for i, t in ${JSON.stringify(taux)}.items(): Produit.objects.filter(pk=int(i)).update(tva=t)
+sortie(1)`)
     await py(`from apps.parametres.models import CompanyProfile
 p = CompanyProfile.objects.get(company_id=1); p.tva_standard = ${JSON.stringify(avant)}; p.save(update_fields=['tva_standard']); sortie(1)`)
   }
@@ -64,7 +74,7 @@ p = CompanyProfile.objects.get(company_id=1); p.tva_standard = ${JSON.stringify(
 etape('PA3-01.les_deux_auto', ['ADVS36'], async ({ page }) => {
   const r = page.request
   const m = marque()
-  const lead = await lireJson(await r.post(`${API}/crm/leads/`, { ...T, data: { nom: `ADVS36 ${m}`, ville: 'Casablanca', telephone: telephoneMobileUnique(), email: `a36${m}@example.invalid`, type_installation: 'commercial', categorie_commerciale: 'bureau', tension_raccordement: 'bt', raccordement: 'triphase', type_toiture: 'bac_acier', conso_mensuelle_kwh: '10000', contrat_electricite: 'bt_patente' } }), 'lead')
+  const lead = await lireJson(await r.post(`${API}/crm/leads/`, { ...T, data: { nom: `ADVS36 ${m}`, ville: 'Casablanca', telephone: telephoneMobileUnique(), email: `a36${m}@example.invalid`, type_installation: 'commercial', categorie_commerciale: 'bureau', tension_raccordement: 'bt', raccordement: 'triphase', type_toiture: 'bac_acier', contrat_electricite: 'bt_patente' } }), 'lead')
   const pan = await produit(r, `Panneau mono 550W ${m}`, '1000.00')
   const res = await produit(r, `Onduleur réseau 10kW ${m}`, '5000.00')
   const hyb = await produit(r, `Onduleur hybride Deye 10kW ${m}`, '8000.00')
@@ -84,6 +94,9 @@ sortie(dict(sans=str(option_totaux(d, 'sans_batterie').get('ttc')), avec=str(opt
   const barre = page.getByTestId('gen-barre-total')
   await expect(barre).toBeVisible({ timeout: 90_000 })
   await expect.poll(async () => chiffres(await barre.textContent()), { timeout: 60_000, message: 'barre = total SANS' }).toBe(sans)
+  // Étude C&I déclarée (l'écran l'exige à l'enregistrement) : ne touche aucune ligne.
+  for (let i = 0; i < 12; i += 1) await page.locator(`#gen-ci-kwh-${i}`).fill(String(KWH_COMMERCIAL[i]))
+  await declarerProfilCi(page)
   // Acompte de 30 % du SANS en MAD + solde 70 % : refusé si l'écran validait sur l'AVEC.
   const carte = page.getByTestId('carte-echeancier')
   const perso = carte.getByRole('button', { name: "Personnaliser l'échéancier" })

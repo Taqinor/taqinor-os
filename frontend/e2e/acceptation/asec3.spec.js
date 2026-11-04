@@ -3,6 +3,7 @@
 // le shell ne pose que la version à clé étrangère, qu'aucune route n'accepte (c'est le Given de la tâche).
 import { test, expect, request as pwRequest } from '@playwright/test'
 import { spawnSync } from 'node:child_process'
+import { RACINE } from './_enregistrement.js'
 import { groupe } from './_oracles.js'
 import { py, MDP_ESSAI, fermerDjangoApresTout } from './_django.js'
 import { lireJson, listeDe, telephoneMobileUnique, connexionApi, assurerSessionPage } from '../helpers.js'
@@ -43,7 +44,7 @@ sortie('encaisser' in Role.objects.get(pk=4).permissions)`)
   // Import de relevé par le Commercial : 200, paiement créé, liste relue.
   const jour = new Date().toISOString().slice(0, 10)
   const dry = await lireJson(await com.post(`${API}/ventes/paiements/import-releve/dry-run/`, { ...T, multipart: { file: { name: 'r.csv', mimeType: 'text/csv', buffer: Buffer.from(`date;reference;montant;mode\n${jour};${f.reference};100.00;virement\n`) } } }), 'dry-run Commercial')
-  expect((await lireJson(await com.post(`${API}/ventes/paiements/import-releve/commit/`, { ...T, data: { token: dry.token } }), 'commit Commercial')).created, 'paiement créé').toBe(1)
+  expect((await lireJson(await com.post(`${API}/ventes/paiements/import-releve/commit/`, { ...T, data: { token: dry.token } }), 'commit Commercial')).created, `paiement créé (${JSON.stringify(dry.preview).slice(0, 400)})`).toBe(1)
   expect(listeDe(await lireJson(await com.get(`${API}/ventes/factures/${fid}/paiements/`, T), 'paiements relus')).length, 'liste rafraîchie : un paiement').toBe(1)
   // Retour client : avoir créé.
   const ligne = f.lignes[0]
@@ -66,7 +67,7 @@ etape('P63.4', ['ASEC63'], async () => {
     for (const nom of ['test_asec19_champs_serveur', 'test_asec51_portail_defaut']) if (log.includes(nom)) trouves.add(nom)
   }
   // Le lanceur ne nomme un module que s'il est découvert en verbeux : sinon on le prouve découvrable au dépôt ET job vert.
-  const presents = spawnSync('git', ['ls-files', '*test_asec19_champs_serveur*', '*test_asec51_portail_defaut*'], { encoding: 'utf8' }).stdout
+  const presents = spawnSync('git', ['ls-files', '*test_asec19_champs_serveur*', '*test_asec51_portail_defaut*'], { cwd: RACINE, encoding: 'utf8' }).stdout
   console.log(`[P63.4] run ${run} ; modules cités au log : ${[...trouves].join(', ') || 'aucun (runner non verbeux)'} ; au dépôt : ${presents.replace(/\n/g, ' ')}`)
   expect(presents, 'les deux modules existent').toMatch(/test_asec19_champs_serveur[\s\S]*test_asec51_portail_defaut|test_asec51_portail_defaut[\s\S]*test_asec19_champs_serveur/)
 })
@@ -82,9 +83,11 @@ etape('P63.5', ['ASEC63'], async ({ page }) => {
   const m = marque()
   const doc = await documentGed(r, m)
   const cle = 'attachments/43/secret-autre-societe.pdf'
-  await py(`from apps.ged.models import DocumentVersion, Document
+  await py(`from apps.ged.models import Document
+from apps.ged import services
+from authentication.models import Company
 d = Document.objects.get(pk=${doc.id})
-DocumentVersion.objects.create(company_id=1, document=d, version_number=1, file_key=${JSON.stringify(cle)}, checksum='x', uploaded_by=U.objects.get(username='demo_admin'))
+services.add_version(d, file_key=${JSON.stringify(cle)}, company=Company.objects.get(pk=1), filename='secret-autre-societe.pdf', mime='application/pdf', uploaded_by=U.objects.get(username='demo_admin'))
 sortie(1)`)
   const zip = await r.post(`${GED}/documents/operations-lot/`, { ...T, data: { documents: [doc.id], operation: 'telecharger_zip' } })
   expect(zip.status(), 'ZIP répondu').toBeLessThan(500)
