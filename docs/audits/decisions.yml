@@ -3505,3 +3505,15 @@ decisions:
     date: "2026-11-04"
     source: "Reda, question interactive, contre-visite vérifie ASTK"
     taches: [ASTK262, ASTK263]
+
+  - id: D-AMOT-VER4-1
+    question: "Devis à deux options, option recommandée « Sans batterie », acompte fixé en dirhams : les cases de paiement du PDF suivent l'option « Sans » (44 % / 56 % de 22 800) tandis que le texte des conditions et la page publique suivent « Avec » (18 % de 55 200), l'option dont le total est affiché et facturé. Quelle option tout l'échéancier doit-il suivre ?"
+    options:
+      - cle: option_facturee
+        texte: "Cases, texte et page publique suivent l'option dont le devis tire son total et sa facture (option_effective)"
+      - cle: option_recommandee
+        texte: "Cases, texte et page publique suivent le scénario puis l'option recommandée, même si le total affiché est l'autre option"
+    reponse: option_facturee
+    date: "2026-11-04"
+    source: "Reda, question interactive, contre-visite vérifie AMOT"
+    taches: [AMOT122]
