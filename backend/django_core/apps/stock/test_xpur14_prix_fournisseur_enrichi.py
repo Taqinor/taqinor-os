@@ -281,6 +281,22 @@ class TestExportImportXlsx(Xpur14Base):
                 [(10, Decimal('9.50'))])
         self.assertFalse(PrixFournisseur.objects.filter(produit=sku_b).exists())
 
+    def test_date_illisible_refusee(self):
+        """AANA84 — `date_fin` « 31/13/2026 » : ligne refusée et nommée dans
+        `errors`, aucun prix écrit (aperçu comme import, réimport identique)."""
+        file_bytes = self._make_xlsx([
+            ['OND-XPUR14', 'A', '', 100, None, '31/13/2026', ''],
+        ])
+        for apercu in (True, False, False):
+            result = import_prix_fournisseur_xlsx(
+                self.company, self.fournisseur, file_bytes, apercu=apercu)
+            self.assertEqual([e['row'] for e in result['errors']], [2])
+            self.assertIn("date_fin illisible : '31/13/2026'",
+                          result['errors'][0]['message'])
+            self.assertEqual(result['created'], 0)
+        self.assertFalse(PrixFournisseur.objects.filter(
+            fournisseur=self.fournisseur).exists())
+
     def test_import_ne_supprime_jamais_silencieusement(self):
         # Un produit absent du fichier garde son tarif existant.
         PrixFournisseur.objects.create(
