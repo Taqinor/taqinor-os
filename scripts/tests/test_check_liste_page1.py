@@ -208,6 +208,17 @@ class TestDetection(Depot):
         self.assertEqual(code, 1, out)
         self.assertIn("GedSearch.jsx", out)
 
+    def test_helper_importe_vraie_source_ged(self):
+        """ADOC194 — fixture = le VRAI `features/ged/search.js` (alias
+        `const d = resp?.data` puis `d?.results`, « axios » en commentaire)."""
+        vrai = (ROOT / "frontend" / "src" / "features" / "ged" / "search.js").read_text(encoding="utf-8")
+        self._monter({"ged/search.js": vrai,
+                      "ged/GedSearch.jsx": SEARCH_JSX.replace("'./listes'", "'./search'")})
+        code, out = self._main()
+        self.assertEqual(code, 1, out)
+        self.assertIn("GedSearch.jsx", out)
+        self.assertNotIn("search.js:", out)
+
     def test_helper_unpage_avec_toutes_les_pages_ne_rougit_pas(self):
         self._monter({"ged/Coffres.jsx": HELPER_TOUTES_LES_PAGES})
         code, out = self._main()
