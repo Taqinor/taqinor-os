@@ -1342,6 +1342,9 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
                             except (ValueError, AttributeError):
                                 pass
                         else:
+                            if raw_date.strip():  # AANA85 — refus nommé
+                                skipped.append({'ligne': i, 'raison': f'date_pose illisible : {raw_date!r}'})
+                                continue
                             f.pop('date_pose')
                 statut, message = creer_equipement_import(
                     company, f, produit=produit, installation=installation,
