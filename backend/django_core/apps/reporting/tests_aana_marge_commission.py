@@ -72,9 +72,12 @@ class TestMargeCommission(TestCase):
         resp = self.api.get(f'{BASE}/commissions/')
         self.assertEqual(resp.status_code, 200)
         row = resp.data['rows'][0]
-        # (1000 × 0,8) − 600 = 200 ; 10 % = 20.
-        self.assertEqual(Decimal(row['base']), Decimal('200'))
-        self.assertEqual(Decimal(row['commission']), Decimal('20'))
+        # AANA80 — base = total_ht (1000 × 0,8, palier compris) − 600.
+        ht = Decimal(Devis.objects.get(pk=devis.pk).total_ht)
+        self.assertLessEqual(ht, Decimal('800'))
+        self.assertEqual(Decimal(row['base']), ht - Decimal('600'))
+        self.assertEqual(Decimal(row['commission']),
+                         (ht - Decimal('600')) / Decimal('10'))
 
     def test_remise_globale_et_ligne_optionnelle(self):
         devis = self._devis('DEV-AANA23-2', remise_globale=Decimal('10'))
@@ -97,9 +100,13 @@ class TestMargeCommission(TestCase):
         resp = self.api.get(f'{BASE}/commissions/')
         self.assertEqual(resp.status_code, 200)
         row = resp.data['rows'][0]
-        # CA = 1000 × 0,9 = 900 (option non activée hors totaux) ; coût 600.
-        self.assertEqual(Decimal(row['base']), Decimal('300'))
-        self.assertEqual(Decimal(row['commission']), Decimal('30'))
+        # AANA80 — CA = total_ht (1000 × 0,9, palier compris ; option non
+        # activée hors totaux) ; coût 600.
+        ht = Decimal(Devis.objects.get(pk=devis.pk).total_ht)
+        self.assertLessEqual(ht, Decimal('900'))
+        self.assertEqual(Decimal(row['base']), ht - Decimal('600'))
+        self.assertEqual(Decimal(row['commission']),
+                         (ht - Decimal('600')) / Decimal('10'))
 
         # Job-costing lit LA même fonction : coût = 600 (option exclue).
         resp = self.api.get(f'{BASE}/job-costing/')

@@ -322,3 +322,4 @@ Contre-visite de clôture du groupe ACAL (dossier `docs/audits/2026-10-10-calepi
 - 2026-11-03 — ACVI91 — cochée (API seulement ou n/a) : relue contre le Then, test d'épinglage vert au run 41714381466.
 - 2026-11-03 — ACVI1 — cochée : rejeu en direct PASS (docs/audits/acceptation/, enregistrements du 03-04/11).
 - 2026-11-03 — AANA74 — cochée : rejeu en direct PASS du 04/11 (docs/audits/acceptation/).
+- 2026-11-04 — AANA80 — code livré, preuve en direct due (pile locale, /reporting « Coût de revient » du chantier de la sonde -030 ⇒ 11 000) : reporting/insights.py::_marge_devis — CA = option_totaux(devis)['ht'] (= total_ht, palier compris), coût = prix_achat × qté de lignes_vendues (option retenue × villas), marge au prorata des lignes à coût connu ; tests_insights.py::TestJobCosting::test_deux_options_et_multivilla (11 000 / commission 700 / ×3 = 33 000) ; tests_aana_marge_commission.py réaligné sur total_ht.
