@@ -33,6 +33,7 @@ from .cadence_reponses import CANAUX_RECONTACT_API, CLES_MESSAGE_REPONSE, REPONS
 from core.champs_stricts import ChaineStricte, entier_ou_400
 from core.conflit_etat import ConflitEtat
 from core.parseurs import ChoixDocumente
+from apps.roles.permissions import DroitDeLaGrille  # ACVI3 : refus nommé
 from authentication.permissions import (
     HasPermissionOrLegacy, IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
 )
@@ -297,7 +298,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
         # ACVI3 (D-ACVI-2 = portée) — les lectures exigent `crm_voir`.
         if self.action in ('list', 'message', 'suivi', 'journal',
                            'cadences_echues', 'chaine_commerciale'):
-            return [HasPermissionOrLegacy('crm_voir')()]
+            return [DroitDeLaGrille('crm_voir')()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
