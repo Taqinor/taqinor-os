@@ -44,6 +44,11 @@ export function conflitEnErreur(resp) {
   }
 }
 
+// ACHT132 — op_type fusionnable → clé de sa cible (même intervention, même ligne).
+const CLES_FUSION = {
+  'intervention.consommation_ligne': (p) => `${p?.intervention}:${p?.ligne}`,
+}
+
 export class FieldOutbox extends Outbox {
   // `clientTs` : instant de la SAISIE sur le terminal (défaut : maintenant) ;
   // `baseUpdatedAt` : `date_modification` de l'enregistrement tel que chargé.
@@ -56,8 +61,21 @@ export class FieldOutbox extends Outbox {
     if (baseUpdatedAt) op.base_updated_at = baseUpdatedAt
     if (target !== undefined && target !== null) op.target = target
     if (queuedAt) op.queued_at = queuedAt
-    await this._mutate((cur) => (
-      cur.some((x) => x.client_op_id === client_op_id) ? cur : [...cur, op]))
+    // ACHT132 — une saisie en attente de la même cible (pas en erreur, pas de
+    // flush en cours) est FUSIONNÉE : 1re base gardée, payloads fusionnés, clé
+    // NEUVE (l'ancienne a pu être appliquée par un appel en ligne expiré, ADEP45).
+    const cle = !this._flushing && CLES_FUSION[opType]
+    await this._mutate((cur) => {
+      if (cur.some((x) => x.client_op_id === client_op_id)) return cur
+      const i = cle ? cur.findIndex((x) => x.op_type === opType && !x.serverError
+        && cle(x.payload) === cle(payload)) : -1
+      if (i < 0) return [...cur, op]
+      const { base_updated_at: base, payload: avant } = cur[i]
+      const fusion = { ...op, payload: { ...avant, ...payload } }
+      if (base) fusion.base_updated_at = base
+      else delete fusion.base_updated_at
+      return cur.map((x, j) => (j === i ? fusion : x))
+    })
     return client_op_id
   }
 
