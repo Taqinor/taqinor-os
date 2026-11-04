@@ -131,10 +131,13 @@ def lignes_avec(d, cle, fmt, fmt_mad):
               _ligne_prix(d, synthese, nombre_ou_none(totaux.get("ht_net")),
                           nombre_ou_none(totaux.get("ttc")), fmt_mad, False)]
     if not d.get(f"{cle}_masquer_economies"):
-        # ``valeur_option_avec`` : l'économie annuelle HT de l'option.
+        # ``valeur_option_avec`` : l'économie annuelle HT de l'option (TTC en base « ttc »).
         economie = nombre_ou_none(valeur.get("economie_annuelle_mad"))
-        if economie:
-            ttc = economie_ttc_option_avec(d)
+        ttc = economie_ttc_option_avec(d) if economie else None
+        if ttc and d.get(f"{cle}_economie_base") == "TTC" and not d.get("regles_0411_historique"):
+            # AMOT123 — base « ttc » servie : l'économie TTC de l'option, comme la carte Sans.
+            lignes.append(_ligne_economie(d, ttc, "TTC", fmt, False))
+        elif economie:
             lignes.append(_ligne_economie(d, economie, "HT", fmt, False, couverture.economie_ttc(
                 d, cle, fmt, ttc) if ttc else ""))
         retour = nombre_ou_none(valeur.get("retour_simple_ans"))

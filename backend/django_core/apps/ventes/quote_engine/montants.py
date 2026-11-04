@@ -31,8 +31,14 @@ _REGLES_AVANT_2710 = contextvars.ContextVar('regles_avant_2710', default=False)
 #: l'arrondi bancaire de ``round()`` que le client a reçu.
 _ARRONDI_HISTORIQUE = contextvars.ContextVar('arrondi_historique', default=False)
 
+#: AMOT126 (C-AMOT-VER4-040) — vrai pendant le rendu d'un devis avant le niveau 12
+#: (``data['regles_0411_historique']``, AMOT123) : l'argent entier du une-page
+#: C&I y garde ``fnum`` (au pair) que le client a reçu.
+_REGLES_0411_HISTORIQUE = contextvars.ContextVar('regles_0411_historique', default=False)
 
-def poser_regles_origine(valeur, avant_2710=False, arrondi_historique=None):
+
+def poser_regles_origine(valeur, avant_2710=False, arrondi_historique=None,
+                         historique_0411=None):
     """Pose les drapeaux « règles d'origine » et « avant le niveau 3 » du
     rendu en cours (un devis aux règles d'origine est aussi avant le niveau 3 :
     le builder ne pose alors que ``regles_calcul_origine``).
@@ -43,6 +49,22 @@ def poser_regles_origine(valeur, avant_2710=False, arrondi_historique=None):
     _REGLES_ORIGINE.set(bool(valeur))
     _REGLES_AVANT_2710.set(bool(avant_2710 or valeur))
     _ARRONDI_HISTORIQUE.set(bool(arrondi_historique or valeur))
+    _REGLES_0411_HISTORIQUE.set(bool(historique_0411 or valeur))
+
+
+def poser_regles_du_rendu(data):
+    """AMOT126 — ``poser_regles_origine`` depuis les drapeaux d'un ``data`` du
+    builder (règles d'origine, avant le niveau 3, arrondi avant le niveau 6,
+    gabarits avant le niveau 12) : le relais UNIQUE du moteur legacy."""
+    data = data if isinstance(data, dict) else {}
+    poser_regles_origine(data.get("regles_calcul_origine"), avant_2710=data.get("regles_avant_2710"),
+                         arrondi_historique=data.get("regles_arrondi_historique"),
+                         historique_0411=data.get("regles_0411_historique"))
+
+
+def regles_0411_historique():
+    """Vrai pendant le rendu d'un devis avant le niveau 12 (AMOT126)."""
+    return _REGLES_0411_HISTORIQUE.get()
 
 
 def arrondi_affichage(valeur, ndigits=None):
@@ -82,6 +104,7 @@ def reinitialiser_regles(*_args, task=None, **_kwargs):
     _REGLES_ORIGINE.set(False)
     _REGLES_AVANT_2710.set(False)
     _ARRONDI_HISTORIQUE.set(False)
+    _REGLES_0411_HISTORIQUE.set(False)
 
 
 def regles_origine():

@@ -139,6 +139,21 @@ CASES = [
         "must_be_scalar": True,
         "expect_failure": True,
     },
+    {
+        # AANA81 — cas NEGATIF : le montant d'un devis par somme de ses lignes
+        # (deux options, ni villas ni palier) doit etre SIGNALE.
+        "id": "somme_lignes_devis_accepte",
+        "question": "Quel est le montant du devis accepte DEV-2026-0001 ?",
+        "gold_sql": (
+            "SELECT SUM(l.quantite * l.prix_unitaire) FROM ventes_lignedevis l "
+            "JOIN ventes_devis d ON l.devis_id = d.id "
+            "WHERE d.company_id = 1 AND d.reference = 'DEV-2026-0001'"
+        ),
+        "expected_tables": {"ventes_lignedevis", "ventes_devis"},
+        "forbidden_tables": set(),
+        "must_be_scalar": True,
+        "expect_failure": True,
+    },
 ]
 
 

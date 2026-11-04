@@ -64,6 +64,19 @@ class EvalHarnessTests(unittest.TestCase):
         # "passed" ici signifie "le harnais a correctement flag l'anomalie".
         self.assertTrue(result["passed"])
 
+    def test_somme_des_lignes_de_devis_signalee(self):
+        """AANA81 (C-AANA-VER4-032) — le montant d'un devis par somme de ses
+        lignes est signale ; le prompt ne la prescrit plus."""
+        case = next(c for c in CASES if c["id"] == "somme_lignes_devis_accepte")
+        result = runner.score_case(case)
+        self.assertTrue(result["passed"])
+        self.assertIn("somme des lignes de devis", result["reason"])
+        self.assertNotIn("SUM(ventes_lignedevis", runner.svc._AGENT_PREFIX)
+        self.assertIn("fiche ERP", runner.svc._AGENT_PREFIX)
+        self.assertIn("total_ht_stocke", runner.svc._AGENT_PREFIX)
+        listing = next(c for c in CASES if c["id"] == "join_devis_lignes")
+        self.assertTrue(runner.score_case(listing)["passed"])
+
     def test_regression_case_that_should_fail_does_fail(self):
         """Sanity check du harnais lui-meme : un SQL DML injecte comme
         producer factice doit faire echouer le cas correspondant (le harnais

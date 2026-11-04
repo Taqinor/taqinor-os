@@ -116,3 +116,24 @@ class TauxAcceptationTests(TestCase):
         self.assertEqual(devis['envoyes_periode'], 3)  # 2 acceptés + 1 envoyé
         self.assertEqual(devis['acceptes_periode'], 2)
         self.assertEqual(devis['taux_acceptation_pct'], 66.7)
+
+    def test_v1_acceptee_revisee_reste_acceptee(self):
+        """AANA87 — « Réviser » une vente acceptée (V2 brouillon) laisse la V1
+        envoyée ET acceptée (devis_signes_en_vigueur) : 1/2 = 50,0 %."""
+        from apps.ventes.domain.revision import reviser_devis
+        from apps.ventes.selectors import taux_acceptation_periode
+        maintenant = timezone.now()
+        jour = timezone.localdate()
+        v1 = self._devis('accepte', maintenant)
+        self._devis('envoye', maintenant)
+        sans = taux_acceptation_periode(self.company, jour, jour)
+        self.assertEqual((sans['envoyes'], sans['acceptes']), (2, 1))
+        v2 = reviser_devis(Devis.objects.get(pk=v1.pk), user=self.user)
+        self.assertNotEqual(v2.pk, v1.pk)
+        res = taux_acceptation_periode(self.company, jour, jour)
+        self.assertEqual(res, {'envoyes': 2, 'acceptes': 1, 'taux_pct': 50.0})
+        # V2 acceptée ⇒ une seule vente (la V1 sort, la V2 envoyée compte).
+        Devis.objects.filter(pk=v2.pk).update(
+            statut='accepte', date_envoi=maintenant)
+        res = taux_acceptation_periode(self.company, jour, jour)
+        self.assertEqual(res, {'envoyes': 2, 'acceptes': 1, 'taux_pct': 50.0})

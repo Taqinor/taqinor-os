@@ -41,8 +41,8 @@ from .etude_chiffrage import (  # noqa: F401
 # mentions vivent dans ``conditions_commerciales`` (move only) ; builder
 # n'importe ici que ce qu'il utilise lui-même.
 from .conditions_commerciales import (
-    _pct_simple, conditions_et_liens, delais_validite_et_kit, remises_et_puces,
-    repartition_paiement, tranches_echeancier_en_montant,
+    _pct_simple, branche_echeancier, conditions_et_liens, delais_validite_et_kit,
+    remises_et_puces, repartition_paiement, tranches_echeancier_en_montant,
 )
 # SPL164 — ré-export (noqa: F401) pour d'autres propriétaires :
 # utils/company_settings et tests devis test_qx43_mode_commercial,
@@ -486,7 +486,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     """Build the dict consumed by generate_premium_pdf from a Devis instance."""
     from apps.ventes.domain.regles_calcul import (
         REGLES_ARRONDI_3010, REGLES_CENTAINE_0311, REGLES_CONSO_PUBLIQUE_0111, REGLES_ECARTS_0111,
-        calcul_corrige, regles_au_moins)
+        REGLES_ECARTS_0411, calcul_corrige, regles_au_moins)
 
     # Décision fondateur 08/10/2026 — « nouveaux rendus seulement » : un devis
     # envoyé avant les corrections du moteur (``Devis.regles_calcul = 1``)
@@ -2022,9 +2022,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # chaque lecteur l'omet, jamais « 60 % à la réception du matériel » à côté
     # de cases 45/55. ``payment_terms`` (entrée ci-dessus) reste la source
     # des cases elles-mêmes.
-    _branche_imprimee = ("sans" if option_servie == "sans"
-                         else ("avec" if (deux_options or avec_ok)
-                               else "sans"))
+    _branche_imprimee = branche_echeancier(devis, data, "sans" if option_servie == "sans" else (  # AMOT122
+        "avec" if (deux_options or avec_ok) else "sans"))
     _cases = data["montants_tranches"].get(_branche_imprimee) or {}
     # Règles d'origine (devis envoyé avant AMOT19) : ``payment_terms`` d'hier.
     if _cases and _corrige:
@@ -2153,6 +2152,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         ("regles_echeancier_historique", not regles_au_moins(devis, REGLES_CONSO_PUBLIQUE_0111)),  # AGNR52
         ("regles_ecarts_0111_historique", not regles_au_moins(devis, REGLES_ECARTS_0111)),  # AMOT116/AMOT115
         ("regles_validite_historique", not regles_au_moins(devis, REGLES_CENTAINE_0311)),  # ERR-CADV83-COUVERTURES
+        ("regles_0411_historique", not regles_au_moins(devis, REGLES_ECARTS_0411)),  # AMOT123/AMOT126
         ("regles_arrondi_historique", not regles_au_moins(devis, REGLES_ARRONDI_3010))) if pose})  # CE2E4 : tout mode
 
     # ── AGR217 — l'attestation d'usage agricole SAISIE (``etude_params``),

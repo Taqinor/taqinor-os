@@ -39,10 +39,10 @@ except ImportError:  # exécution directe du moteur depuis son dossier
 # paquets premium ; même double chemin d'import.
 try:
     from .montants import (arrondi_affichage, decimale, fmt_centimes, fmt_centimes_mad, fmt_dirhams,
-                           format_anglais, format_langue, pct_fr, poser_regles_origine, regles_origine)
+                           format_anglais, format_langue, pct_fr, poser_regles_du_rendu, regles_origine)
 except ImportError:  # exécution directe du moteur depuis son dossier
     from montants import (arrondi_affichage, decimale, fmt_centimes, fmt_centimes_mad, fmt_dirhams,
-                          format_anglais, format_langue, pct_fr, poser_regles_origine, regles_origine)
+                          format_anglais, format_langue, pct_fr, poser_regles_du_rendu, regles_origine)
 
 # QJR617 — ordre d'affichage sections / notes ↔ lignes produit (XSAL14), UNE
 # fonction pure partagée ; même double chemin d'import.
@@ -349,6 +349,7 @@ PAY_A, PAY_M, PAY_S = 30, 60, 10
 # QJR623 — cases « Modalités de paiement » calculées par le builder (par
 # branche « sans » / « avec », au centime) ; le moteur ne fait qu'imprimer.
 MONTANTS_TRANCHES = {}
+BRANCHE_ECHEANCIER = None  # AMOT122 — branche servie par le builder (niveau 12)
 # Devis deux-options rendu en une page : option 1 seule + mention discrète.
 ONEPAGE_NOTE_BATTERIE = False
 # M4 — branche ('sans' | 'avec' | None) dont proviennent les lignes du format
@@ -2619,15 +2620,10 @@ def page3():
     # ── Payment section (Devis Final only) ──
     _payment_html = ""
     if DEVIS_FINAL:
-        # Pick the relevant branch based on scenario / recommendation
-        if SCENARIO == "Sans batterie":
-            _branche = "sans"
-        elif SCENARIO == "Avec batterie":
-            _branche = "avec"
-        elif RECOMMENDED == "Sans batterie":
-            _branche = "sans"
-        else:
-            _branche = "avec"
+        # AMOT122 — la branche servie (niveau 12), sinon scénario / recommandation
+        _branche = BRANCHE_ECHEANCIER if BRANCHE_ECHEANCIER in ("sans", "avec") else (
+            "sans" if SCENARIO == "Sans batterie" else "avec" if SCENARIO == "Avec batterie"
+            else "sans" if RECOMMENDED == "Sans batterie" else "avec")
 
         # QJR623 / ERR120 — le moteur ne fait plus qu'IMPRIMER : les montants
         # (au centime, ×N villas compris, reliquat sur la dernière tranche,
@@ -3202,8 +3198,8 @@ def _cartes_ci_onepage(chiffres):
                       if base in ("HT", "TTC") else
                       f" ({base})" if base else "")
                    + ci_onepage.legende_retour(chiffres, _L) + ci_onepage.economie_ttc(chiffres, fnum, _L))
-        cellules.append((libelle, f"{fnum(eco)} {_L('ci_mad_an')}",
-                         _ancre_figure("economie_annuelle", fnum(eco))))
+        cellules.append((libelle, f"{ci_onepage.argent(eco, fnum)} {_L('ci_mad_an')}",  # AMOT126
+                         _ancre_figure("economie_annuelle", ci_onepage.argent(eco, fnum))))
     payback = chiffres.get("payback_ans")
     if payback is not None:
         cellules.append((_L("op_retour_estime"),
@@ -3494,8 +3490,7 @@ def generate_premium_pdf(data: dict, out_path) -> str:
     """
     # Décision fondateur 08/10/2026 — un devis envoyé avant les
     # corrections du moteur garde ses formats d'origine (AMOT24/26/45).
-    poser_regles_origine((data or {}).get("regles_calcul_origine"), avant_2710=(data or {}).get("regles_avant_2710"),
-                         arrondi_historique=(data or {}).get("regles_arrondi_historique"))  # D-ENF-ARRONDI-PDF
+    poser_regles_du_rendu(data)  # D-ENF-ARRONDI-PDF, AMOT126
     # ERR17 — serialize the whole render: the body writes module globals and
     # reads them back while building the HTML, so concurrent renders must not
     # interleave (one client's data leaking into another's PDF).
@@ -3733,8 +3728,8 @@ def apply_quote_data(data: dict) -> None:
     PAY_A = _pct_echeance(_terms.get("acompte"), 30)
     PAY_M = _pct_echeance(_terms.get("materiel"), 60)
     PAY_S = _pct_echeance(_terms.get("solde"), 10)
-    global MONTANTS_TRANCHES
-    MONTANTS_TRANCHES = dict(data.get("montants_tranches") or {})
+    global MONTANTS_TRANCHES, BRANCHE_ECHEANCIER  # AMOT122 — branche servie par le builder
+    MONTANTS_TRANCHES, BRANCHE_ECHEANCIER = dict(data.get("montants_tranches") or {}), data.get("branche_echeancier")
     ONEPAGE_NOTE_BATTERIE = bool(data.get("onepage_note_batterie", False))
     LIBELLE_AVEC = str(data.get("libelle_avec") or "Avec batterie")
     LINKS = dict(data.get("links") or {})
@@ -3907,8 +3902,7 @@ def render_html_for(data: dict) -> str:
     """
     # Décision fondateur 08/10/2026 — un devis envoyé avant les
     # corrections du moteur garde ses formats d'origine (AMOT24/26/45).
-    poser_regles_origine((data or {}).get("regles_calcul_origine"), avant_2710=(data or {}).get("regles_avant_2710"),
-                         arrondi_historique=(data or {}).get("regles_arrondi_historique"))  # D-ENF-ARRONDI-PDF
+    poser_regles_du_rendu(data)  # D-ENF-ARRONDI-PDF, AMOT126
     # AGR312 — le moteur legacy ne sert JAMAIS un devis agricole en format à
     # options (pas d'onduleur) : le document complet est le renderer agricole
     # de 3 pages (``agricole/renderer``) ; s'il refuse un devis (repli NOMMÉ
