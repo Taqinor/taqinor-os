@@ -19,14 +19,23 @@ import { configureStore } from '@reduxjs/toolkit'
 
 // Le refresh silencieux ÉCHOUE — c'est exactement le chemin « 401 non
 // rejouable » qui menait à `emitSessionExpired()`.
-vi.mock('../api/refreshCoordinator', () => ({
-  refreshSession: vi.fn(() => Promise.reject(new Error('refresh KO'))),
-  default: vi.fn(() => Promise.reject(new Error('refresh KO'))),
-}))
+// Un vrai refus du serveur (401) : une panne réseau du refresh n'expire plus la
+// session (ERR-JPB-REFRESH-MUET-SESSION-EXPIREE, dernier test de ce fichier).
+vi.mock('../api/refreshCoordinator', async (importOriginal) => {
+  const refus = () => Object.assign(new Error('refresh KO'), { response: { status: 401 } })
+  return {
+    ...(await importOriginal()),
+    refreshSession: vi.fn(() => Promise.reject(refus())),
+    reprendreApresPanne: vi.fn(() => Promise.reject(new Error('panne persistante'))),
+    default: vi.fn(() => Promise.reject(refus())),
+  }
+})
 
 const { default: api } = await import('../api/axios')
 const { brancherSourceDeSession } = await import('./session-bridge')
 const { SessionProvider } = await import('./SessionProvider')
+const { refreshSession, reprendreApresPanne } = await import('../api/refreshCoordinator')
+const { _resetJournalPourTests } = await import('../lib/journalProblemes')
 const { default: authReducer, setCredentials } = await import(
   '../features/auth/store/authSlice')
 
@@ -111,5 +120,30 @@ describe('Modale « Session expirée » — seulement s\'il y avait une session'
     await declencher401()
 
     expect(await screen.findByText(TITRE_MODALE)).toBeTruthy()
+  })
+
+  it("un refresh en 502 avec session : ligne de journal, reprise, et PAS de modale", async () => {
+    _resetJournalPourTests()
+    const balise = vi.fn(() => Promise.resolve({ status: 201 }))
+    vi.stubGlobal('fetch', balise)
+    const panne = Object.assign(new Error('Bad Gateway'), {
+      config: { url: '/api/django/auth/token/refresh/', method: 'post' },
+      response: { status: 502 },
+    })
+    refreshSession.mockRejectedValueOnce(panne)
+    store.dispatch(setCredentials({ user: { username: 'reda' } }))
+    monterAvecStore()
+
+    await declencher401()
+
+    expect(reprendreApresPanne).toHaveBeenCalledTimes(1)
+    expect(balise).toHaveBeenCalledTimes(1)
+    const corps = JSON.parse(balise.mock.calls[0][1].body)
+    expect(corps.genre).toBe('serveur')
+    expect(corps.statut_reponse).toBe(502)
+    expect(corps.route).toBe('/api/django/auth/token/refresh/')
+    await waitFor(() => expect(screen.getByText('contenu public')).toBeTruthy())
+    expect(screen.queryByText(TITRE_MODALE)).toBeNull()
+    vi.unstubAllGlobals()
   })
 })

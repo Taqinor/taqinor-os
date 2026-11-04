@@ -314,10 +314,10 @@ export function installerCorpsLead(ctx: ContexteTunnel, doc: Document): SectionC
       ...lireChampsDomTunnel(doc),
       adresseCarte: addressEl?.value ?? '',
       adresseSecours: fallbackAddrEl?.value ?? '',
-      // WJ30 — type de projet et langue active partent au webhook ; la page EN
-      // n'envoie pas de langue préférée.
+      // WJ30 — type de projet et langue active partent au webhook ; WAUD83 : la
+      // page EN envoie 'en' (l'ERP la range, la relance ne reste plus muette).
       mode: e.mode,
-      languePreferee: ctx.locale === 'en' ? '' : e.currentLang,
+      languePreferee: ctx.locale === 'en' ? 'en' : e.currentLang,
       // WJ122 — la conso C&I vient du panneau ACTIF ; le tarif accompagne la valeur.
       factureProValeur: num(appeler('proBillId')),
       factureProUnite: appeler('proBillUnit'),

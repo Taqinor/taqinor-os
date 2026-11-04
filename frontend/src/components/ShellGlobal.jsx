@@ -8,6 +8,8 @@ import DealSignedCelebrationHost from '../ui/DealSignedCelebrationHost'
 // NTI18N3 — langue d'interface persistée serveur (retrouvée d'un autre poste).
 // Composant sans rendu, séparé pour ne pas coupler I18nProvider à Redux.
 import ServerLocaleSync from '../i18n/ServerLocaleSync'
+// BPQ6 — dead-man's switch du tri quotidien des problèmes (superusers seulement).
+import TriProblemesBanner from './TriProblemesBanner'
 
 /* ADOC146 — SHELL GLOBAL : les composants montés HORS du RouterProvider
    (donc rendus pour TOUT compte connecté, y compris un compte PORTAIL
@@ -35,6 +37,7 @@ export default function ShellGlobal() {
       <PwaPrompts />
       <Suspense fallback={null}><MessageAccueilModal /></Suspense>
       <WelcomeMoment />
+      <TriProblemesBanner />
     </>
   )
 }

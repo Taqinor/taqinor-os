@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: e2a83c7fef95bb3c5d1489787ef6d2a02cf88ba61605fb61ce74a635d819e777
-Plan fingerprint: 472847585d10de96a6d2a41d39d551349311260dcb93efd91f0d719b8a83580d
+Structure fingerprint: a8a65f4724b6aacaedb03316a96fb307144874bcd619dbf9837cdaeb94a28103
+Plan fingerprint: 52b6c3ca7f6d02090dc88772266ebc4ecb13a20e06d29a9123af70dce811a6f2
 
 
 
@@ -594,7 +594,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1305)**
+**Done (1315)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -779,7 +779,17 @@ Things this map could not fully verify from source — do not over-trust:
 - `AIC50` — Skill `assistant-manuel` : Claude Code génère sur l'abonnement de Reda (jamais une clé…
 - `AIC51` — Skill `assistant-tri` + `docs/assistant-tri.md` + interrupteur…
 - `AICM1` — Réclamer les crédits API et créer le workspace de l'assistant
+- `BPQ1` — [reporting/journal]
+- `BPQ2` — [core/observabilite]
+- `BPQ3` — [reporting/journal]
+- `BPQ4` — [reporting/journal]
+- `BPQ5` — [skills/problemes-prod]
+- `BPQ6` — [core/health + frontend/shell]
+- `BPQ8` — [docs/problemes-prod]
 - `BPQ9` — [core/observabilite]
+- `BPQ10` — [core/observabilite]
+- `BPQ11` — [docs/problemes-prod]
+- `BPQ13` — [scripts/check]
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
 - `CAD2` — Les trois étapes de VISITE posent la question du suivi de proposition
 - `CAD3` — « À rappeler le… » sur une étape de filet la transforme en « Décider la suite — perdu…
@@ -1902,7 +1912,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT109` — `reporting/insights.py` (rentabilité chantier) : « facturé » = factures ÉMISES de la…
 - `VTAG1` — [GATED: décision fondateur]
 
-**Open — to build (134)**
+**Open — to build (124)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -1952,18 +1962,8 @@ Things this map could not fully verify from source — do not over-trust:
 - `AICM2` — Réglage de confidentialité du compte claude.ai
 - `AICM3` — Avis juriste loi 09-08 (transfert hors Maroc)
 - `AUD504` — [GATED: coût prestataire — décision fondateur]
-- `BPQ1` — [reporting/journal]
-- `BPQ2` — [core/observabilite]
-- `BPQ3` — [reporting/journal]
-- `BPQ4` — [reporting/journal]
-- `BPQ5` — [skills/problemes-prod]
-- `BPQ6` — [core/health + frontend/shell]
 - `BPQ7` — [frontend/shell]
-- `BPQ8` — [docs/problemes-prod]
-- `BPQ10` — [core/observabilite]
-- `BPQ11` — [docs/problemes-prod]
 - `BPQ12` — [core/health]
-- `BPQ13` — [scripts/check]
 - `CADM1` — Relecture darija par un locuteur natif
 - `CADM2` — Déclaration CNDP du fichier prospects CRM + récépissé
 - `CADM3` — Question à un juriste : loi 31-08, démarchage à domicile

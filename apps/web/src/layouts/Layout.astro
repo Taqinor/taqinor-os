@@ -259,6 +259,14 @@ const jsonLd = {
       installerMesureContact(document, window);
     </script>
     <ConsentExpiry />
+    <script>
+      // WAUD6 (D-WAUD-2=a) — origine (campagne, page d'arrivée, référent)
+      // gardée 90 jours sur l'appareil, SANS clic « Accepter » : elle ne part
+      // qu'avec le lead envoyé volontairement. Le consentement continue de
+      // régir pixel, tag et CAPI. Voir lib/origine.ts.
+      import { capturerOrigine } from '../lib/origine';
+      try { capturerOrigine(window); } catch { /* jamais bloquant */ }
+    </script>
     <script is:inline>
       // Capture first-touch fbclid + UTM sur toute page d'atterrissage —
       // persistés en sessionStorage, repris par le formulaire (gate CAPI).

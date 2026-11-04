@@ -52,6 +52,7 @@ from core.idempotency import dedupe_event
 from . import stages
 from .leads_meta import date_webhook_ou_none
 from .models import Lead, LeadActivity, WebsiteLeadPayload
+from .webhook_origine import _clean_estimate_shown
 
 logger = logging.getLogger(__name__)
 
@@ -440,12 +441,14 @@ _MARKET_MODE_ALIASES = {
     'pompage': 'agricole',
 }
 
-# QK1 — Langue du site → Lead.langue_preferee ('fr'/'darija' uniquement).
+# QK1 — Langue du site → Lead.langue_preferee ('fr'/'darija'/'en').
 # L'arabe du site est rapproché du darija (langue des messages WhatsApp).
 _LANGUE_ALIASES = {
     'fr': 'fr',
     'darija': 'darija',
     'ar': 'darija',
+    # WAUD83 (D-WAUD-14=a) — le site marque désormais les leads anglophones.
+    'en': 'en',
 }
 
 
@@ -475,47 +478,22 @@ def _clean_futures_charges(raw):
     return out or None
 
 
-#: Quote-journey — clés autorisées de `estimateShown` (les chiffres montrés
-#: au visiteur). Whitelist CÔTÉ SERVEUR : le corps de requête n'est jamais
-#: copié tel quel dans Lead.web_estimate.
-_ESTIMATE_SHOWN_KEYS = frozenset([
-    'kwc', 'prodKwh',
-    'ecoMadMonthLow', 'ecoMadMonthHigh',
-    'ecoMadYearLow', 'ecoMadYearHigh',
-    'paybackLabel', 'tauxAutoconso', 'tauxCouverture',
-    'pompeCv', 'champKwc', 'm3Jour',
-    # WJ124 — le tunnel ANNONCE aussi au visiteur le nombre de modules du
-    # dimensionnement (`nbPanneaux`) et le bassin de stockage suggéré
-    # (`bassinM3` — un VOLUME en m³ : le besoin journalier de pointe, borne
-    # basse de la fourchette 1-3×, cf. apps/web/src/lib/lead.ts:231 et
-    # mon-toit.astro `s.bassinM3 = ag.m3Jour`). Les DEUX moitiés du contrat
-    # les émettaient déjà (lead.ts:ESTIMATE_SHOWN_NUMERIC_KEYS) mais cette
-    # whitelist les jetait : le commercial recomptait les modules à la main.
-    'nbPanneaux', 'bassinM3',
-])
-
-
-def _clean_estimate_shown(raw):
-    """`estimateShown` du site → dict whitelisté pour Lead.web_estimate.
-
-    Ne garde que les clés connues (_ESTIMATE_SHOWN_KEYS) avec des valeurs
-    scalaires (nombre, ou chaîne courte pour paybackLabel) — tout le reste
-    (clés inconnues, dict/list/bool/None) est silencieusement ignoré, dans
-    le style tolérant du webhook (jamais d'erreur)."""
-    if not isinstance(raw, dict):
-        return {}
+def _origine_visiteur(landing, host):
+    """WAUD6 (D-WAUD-2=a) — origine du visiteur, jointe à l'envoi volontaire : page
+    d'arrivée (chemin seul, jamais de requête ni de PII) et hôte du référent (ex.
+    chatgpt.com, google.com). Rangés dans le blob : aucune colonne, aucune migration.
+    Valeur malformée → ignorée. Les clés du payload sont lues par l'appelant
+    (`_extract_web_questionnaire`), que la garde de parité lit en AST."""
     out = {}
-    for key, value in raw.items():
-        if key not in _ESTIMATE_SHOWN_KEYS:
-            continue
-        if isinstance(value, bool):
-            continue
-        if isinstance(value, (int, float)):
-            out[key] = value
-        elif isinstance(value, str):
-            value = value.strip()[:120]
-            if value:
-                out[key] = value
+    if isinstance(landing, str):
+        landing = landing.strip()
+        if (landing.startswith('/') and len(landing) <= 200
+                and not re.search(r'[?#\s]', landing)):
+            out['landing_path'] = landing
+    if isinstance(host, str):
+        host = host.strip().lower()
+        if re.fullmatch(r'[a-z0-9]([a-z0-9.-]{0,98}[a-z0-9])?', host):
+            out['referrer_host'] = host
     return out
 
 
@@ -545,6 +523,10 @@ def _extract_web_questionnaire(data):
         val = data.get(camel, data.get(snake))
         if isinstance(val, bool):
             out[snake] = val
+
+    out.update(_origine_visiteur(
+        data.get('landingPath', data.get('landing_path')),
+        data.get('referrerHost', data.get('referrer_host'))))
 
     # ── Mode PROFESSIONNEL ──
     # NB : `tensionRaccordement` (bt/mt = basse/moyenne tension) n'est PAS

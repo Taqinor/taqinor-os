@@ -61,14 +61,9 @@ SPECS_PAR_DEFAUT = {
         'titre': ('reference',),
         'extrait': ('type', 'statut', 'description'),
     },
-    'contrats.contrat': {
-        'titre': ('reference', 'objet'),
-        'extrait': ('type_contrat', 'statut', 'objet'),
-    },
-    'kb.kbarticle': {
-        'titre': ('titre',),
-        'extrait': ('categorie', 'tags', 'corps'),
-    },
+    # contrats.contrat et kb.kbarticle : apps PARQUEES sans modele, retirees
+    # (ERR-JPB-BRUIT-DEGRADE-90-TRACES) ; a re-declarer via register_indexable()
+    # dans leur apps.py ready() quand elles reviennent.
 }
 
 #: Longueur maximale de l'extrait stocké — on indexe de quoi retrouver une

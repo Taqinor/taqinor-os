@@ -11,13 +11,86 @@ unittest (stdlib). A lancer depuis backend/fastapi_ia :
 Ces modules importent sqlalchemy / fastapi ; si ces deps manquent (env leger),
 les tests se sautent proprement.
 """
+import ast
+import asyncio
 import os
+import re
 import sys
+import types
 import unittest
+import uuid
 from unittest import mock
 
 os.environ.setdefault("DJANGO_SECRET_KEY", "test-secret")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+MAIN_PY = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "app", "main.py")
+
+
+# ── ERR-JPB-IAAPI-SANS-JOURNAL — une 500 FastAPI laisse une trace ─────────────
+class ExceptionNonGereeTests(unittest.TestCase):
+    """Le handler est extrait de main.py et joue sans importer l'application
+    (ses imports tirent toute la pile agent/OCR, absente d'un environnement
+    léger). Le décorateur qui l'enregistre est vérifié sur la source."""
+
+    @classmethod
+    def setUpClass(cls):
+        with open(MAIN_PY, encoding="utf-8") as fichier:
+            cls.source = fichier.read()
+        arbre = ast.parse(cls.source)
+        fonctions = [n for n in arbre.body
+                     if isinstance(n, ast.AsyncFunctionDef)
+                     and n.name == "journaliser_exception_non_geree"]
+        cls.fonctions = fonctions
+
+    def _handler(self, logger):
+        self.assertEqual(len(self.fonctions), 1)
+        module = ast.Module(body=self.fonctions, type_ignores=[])
+
+        class Reponse:
+            def __init__(self, content, status_code, headers):
+                self.content, self.status_code, self.headers = content, status_code, headers
+
+        application = types.SimpleNamespace(exception_handler=lambda _: lambda fonction: fonction)
+        espace = {"app": application, "logger": logger, "uuid": uuid, "re": re,
+                  "JSONResponse": Reponse, "Request": object}
+        exec(compile(module, MAIN_PY, "exec"), espace)  # noqa: S102 - source du depot
+        return espace["journaliser_exception_non_geree"]
+
+    def _requete(self, entetes=None):
+        return types.SimpleNamespace(
+            method="POST", url=types.SimpleNamespace(path="/sql-agent/query"),
+            headers=entetes or {})
+
+    def test_enregistre_pour_toute_exception(self):
+        self.assertRegex(
+            self.source,
+            r"@app\.exception_handler\(Exception\)\s+async def journaliser_exception_non_geree")
+
+    def test_journalise_et_repond_500_avec_request_id(self):
+        logger = mock.Mock()
+        erreur = RuntimeError("boom")
+        reponse = asyncio.run(self._handler(logger)(self._requete(), erreur))
+        self.assertEqual(reponse.status_code, 500)
+        rid = reponse.headers["X-Request-Id"]
+        self.assertRegex(rid, r"^[0-9a-f]{32}$")
+        self.assertEqual(reponse.content["request_id"], rid)
+        logger.error.assert_called_once()
+        self.assertIn(rid, logger.error.call_args.args)
+        self.assertIs(logger.error.call_args.kwargs["exc_info"], erreur)
+        # Jamais le message brut de l'exception côté client.
+        self.assertNotIn("boom", str(reponse.content))
+
+    def test_reprend_un_request_id_entrant_valide_seulement(self):
+        logger = mock.Mock()
+        handler = self._handler(logger)
+        rid = "0123456789abcdef0123456789abcdef"
+        reponse = asyncio.run(handler(self._requete({"x-request-id": rid}), RuntimeError()))
+        self.assertEqual(reponse.headers["X-Request-Id"], rid)
+        reponse = asyncio.run(handler(self._requete({"x-request-id": "x\nFAUX"}), RuntimeError()))
+        self.assertRegex(reponse.headers["X-Request-Id"], r"^[0-9a-f]{32}$")
+
 
 # ── ERR85 — gating DDL ────────────────────────────────────────────────────────
 from tests._import_optionnel import verifier_import_optionnel  # noqa: E402 — après sys.path/setup() (D-ENF22)

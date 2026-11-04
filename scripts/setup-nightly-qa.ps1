@@ -118,9 +118,11 @@ function Register-DailyTask([string]$Name, [string]$At, [string]$ExtraArgs) {
     # schtasks cree la tache avec "demarrer seulement sur secteur" : sur un portable
     # sur batterie a l'heure dite, elle ne partirait pas. Reglage best-effort.
     try {
-        $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew
+        # -StartWhenAvailable : une nuit manquee (PC eteint/en veille) est rattrapee au
+        # reveil ; -WakeToRun : le PC en veille est reveille (ERR-JPB-NIGHTLY-QA-TACHE-FRAGILE).
+        $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -WakeToRun -MultipleInstances IgnoreNew
         Set-ScheduledTask -TaskName $Name -Settings $settings | Out-Null
-        Say '  reglage : demarre aussi sur batterie ; jamais deux instances a la fois.'
+        Say '  reglage : demarre aussi sur batterie ; rattrape une nuit manquee ; reveille le PC ; jamais deux instances a la fois.'
     } catch {
         Say ('  NOTE : reglage batterie non applique (' + $_.Exception.Message + ') - sur un portable, laisser le secteur branche la nuit.')
     }

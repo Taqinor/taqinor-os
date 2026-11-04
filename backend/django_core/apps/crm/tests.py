@@ -1200,3 +1200,16 @@ class TestIdentiteClientHookFlagOff(TestCase):
             company=make_company(), nom='ClientAvant', email='c@example.ma')
         client.refresh_from_db()  # le miroir ARC18 a posé client.tiers
         self.assertFalse(ecrire_identite_client(client))
+
+
+class ChargementStagesSilencieuxTests(TestCase):
+    """ERR-JPB-BRUIT-DEGRADE-90-TRACES : l'import nu de STAGES echoue en
+    conteneur (monte en /opt) - cas normal, aucun avertissement."""
+
+    def test_import_nu_impossible_sans_avertissement(self):
+        from unittest import mock
+        with mock.patch('importlib.import_module',
+                        side_effect=ImportError('x')):
+            with self.assertNoLogs('apps.crm.stages', level='WARNING'):
+                module = stages._load_stages_module()
+        self.assertTrue(hasattr(module, 'STAGES'))

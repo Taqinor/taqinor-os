@@ -61,10 +61,76 @@ la release reste celle du dernier `.env` posé ; les évènements restent captur
   trace : la ligne gunicorn du conteneur et le 502/499 nginx.
 - Le service **FastAPI IA** : processus séparé, non instrumenté (ERR-JPB-IAAPI-SANS-JOURNAL).
 
-## Tri du matin (à construire : BPQ5, BPQ8)
+## Tri du matin (skill construit : BPQ5 ; routine cloud : BPQ8)
 
-Routine cloud Claude Code à 07:07 Africa/Casablanca (D-JPB-1, 03/11/2026) : lit `health/ready`,
-le résumé des problèmes (`GET /api/django/reporting/problemes/resume/`, BPQ4, jeton de service en
-secret réseau), les évènements Sentry des 24 h (API Sentry, jeton de lecture en secret réseau),
-les issues et runs nocturnes GitHub ; dépose les `ERR-PROD-*` dans `docs/ERROR_PLAN.md` par une
-PR docs-only. Kill switch : `docs/problemes-prod.config.yml` (`enabled: false`), à créer avec le skill.
+Skill `.claude/skills/problemes-prod/SKILL.md`, lecture seule sur la prod. Il lit `health/ready`, le
+résumé des problèmes (`GET /api/django/reporting/problemes/resume/?jours=1&tri=1`, BPQ4, jeton de
+service), les issues et runs GitHub des alertes nocturnes, ignore `deploiement`/`connectivite`/
+`maintenance` sauf récurrence, dédoublonne sur la `Signature:` contre `docs/ERROR_PLAN.md`
+(toutes lignes + intake), note la sévérité (1 personne bloquée sur un geste métier = High, ≥ 3
+personnes = Critical) et dépose les `ERR-PROD-<MODULE>-<SLUG>` par UNE PR docs-only
+(`gh pr merge --auto --merge`). Rien à déposer : aucun commit. Sortie : `PROBLEMES_PROD_STATUS:
+EMPTY|MORE`. Le format des lignes est gardé par `scripts/check_err_prod.py` (BPQ13).
+
+- **Kill switch** : `docs/problemes-prod.config.yml` (`enabled: false`, `max_minutes`,
+  `max_findings_per_run`, `base_url`).
+- **Sur le poste de Reda** : `powershell -File scripts/nightly-qa.ps1 -Skill problemes-prod`
+  (aucun docker, aucun seed, aucun Playwright ; jeton dans `PROBLEMES_RESUME_TOKEN`).
+- **Routine cloud** à 07:07 Africa/Casablanca (D-JPB-1, 03/11/2026) : BPQ8.
+
+## Routine cloud du tri du matin (BPQ8, D-JPB-1 = cloud) — recette pas à pas pour Reda
+
+Le skill `problemes-prod` tourne dans le cloud Claude Code : aucune machine allumée, aucun accès
+SSH. Il ne lit QUE l'API (le skill détecte l'absence de SSH et ne tente jamais de se connecter).
+Coût = l'usage de l'abonnement Claude de Reda (aucune clé API).
+
+1. **Créer le jeton côté serveur** (une fois). Générer une valeur aléatoire longue, la poser dans
+   `/opt/taqinor-os/.env` sous `PROBLEMES_RESUME_TOKEN=<valeur>`, recréer `django_core`
+   (`docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d django_core`). Sans
+   cette variable le endpoint de résumé répond fermé (BPQ4). Garder la valeur pour l'étape 3 ; ne
+   jamais la committer ni la coller dans une conversation.
+2. **Créer l'environnement cloud** « taqinor-prod-lecture » sur claude.ai/code : accès réseau
+   *Custom*, avec seulement `api.taqinor.ma`, `github.com` et `api.github.com` (+ `*.sentry.io`
+   si l'API Sentry est lue, voir plus haut). Aucune autre sortie.
+3. **Secret réseau** : dans cet environnement, enregistrer `PROBLEMES_RESUME_TOKEN` comme secret
+   réseau injecté en `Authorization: Bearer` sur l'hôte `api.taqinor.ma`. Il n'est **jamais** une
+   variable d'environnement visible de la session (la routine ne peut donc ni l'afficher ni le
+   copier dans une PR).
+4. **Créer la routine** sur claude.ai/code/routines : dépôt `taqinor/taqinor-os`, environnement
+   « taqinor-prod-lecture », déclencheur quotidien à **07:07 Africa/Casablanca**, consigne :
+   `run the problemes-prod skill`. Autoriser la routine à ouvrir des PR docs-only et à les mettre
+   en file de fusion (`gh pr merge --auto --merge`), rien de plus.
+5. **Vérifier** : lancer la routine à la main une fois ; la sortie doit finir par
+   `PROBLEMES_PROD_STATUS: EMPTY` ou `MORE`, et `health/ready` doit afficher un
+   `dernier_tri_problemes` récent (BPQ6 : sans cela, le bandeau d'alerte apparaît aux superusers
+   après 48 h).
+
+**Rotation du jeton** (à chaque départ d'une personne ayant vu la valeur, ou tous les 6 mois) :
+nouvelle valeur dans `.env` serveur + recréation de `django_core`, puis mise à jour du secret
+réseau de l'étape 3. L'ancienne valeur cesse de marcher dès la recréation.
+
+**Kill switch** : `docs/problemes-prod.config.yml`, `enabled: false` (commit sur `main`) — la
+prochaine passe imprime `PROBLEMES_PROD: DISABLED (config flag off)` sans rien écrire. L'autre
+interrupteur est la mise en pause de la routine sur claude.ai/code/routines. Le jeton ne se révoque
+que côté serveur (retirer la variable).
+
+## Clôture prouvée et rapport du lundi (BPQ11)
+
+Une `ERR-PROD` cochée n'est pas « réglée » tant que la prod ne le prouve pas.
+
+- **Régression** : si la `Signature:` d'une `ERR-PROD` cochée réapparaît dans le résumé **≥ 7 jours
+  après le déploiement du correctif**, le skill la marque `regresse` et dépose un nouvel item
+  `<ID>-2` qui cite l'original (id, signature, sha du correctif). L'item d'origine n'est pas décoché.
+- **Date de déploiement du correctif** : le premier sha de `erp:demarrages` (`dernier_demarrage` de
+  `health/ready`, BPQ2) qui contient le commit du correctif (`git merge-base --is-ancestor`).
+  Une réapparition avant ces 7 jours, ou avant tout déploiement, n'est pas une régression.
+- **En attente de déploiement** : un correctif mergé sur `main` mais dont le commit n'est pas
+  encore dans le sha déployé reste « en attente de déploiement » ; le résumé le dit, le skill ne
+  dépose rien dessus.
+- **Rapport du lundi** (sortie de la routine, et le même résumé affiché par BPQ6 aux superusers) :
+  1. problèmes de la semaine (signatures distinctes) ;
+  2. personnes touchées (somme des `personnes` du résumé, sans doublon d'identifiant) ;
+  3. top 3 par personnes touchées puis par gravité ;
+  4. corrigés (cochés et absents depuis ≥ 7 jours après déploiement) ;
+  5. régressés (`<ID>-2` ouverts cette semaine) ;
+  6. en attente de déploiement.

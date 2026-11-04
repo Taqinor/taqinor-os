@@ -12,7 +12,9 @@ import { lireEntiteActive } from '../lib/entiteActive'
 import { emitSessionExpired, sessionEstActive } from '../providers/session-bridge'
 // VX161 — refresh 401 partagé avec iaApi.js (une seule promesse en vol,
 // jamais un POST /token/refresh/ par requête en échec).
-import { refreshSession } from './refreshCoordinator'
+import {
+  MESSAGE_PANNE_REFRESH, estPanneDeRefresh, refreshSession, reprendreApresPanne,
+} from './refreshCoordinator'
 // YJPB1 — journal des problèmes VÉCUS par les utilisateurs (module pur,
 // transport `fetch` : il n'utilise JAMAIS cette instance axios, donc
 // aucune récursion possible par cet intercepteur).
@@ -91,8 +93,23 @@ api.interceptors.response.use(
         await refreshSession(ORIGIN)
         // Rejoue la requete originale — le nouveau cookie access_token est pris
         return api(originalRequest)
-      } catch {
-        // Refresh echoue : la session est reellement expiree.
+      } catch (errRefresh) {
+        // ERR-JPB-REFRESH-MUET-SESSION-EXPIREE — coupure, délai ou 502 de
+        // déploiement : la session n'est pas expirée pour autant. Une ligne de
+        // journal, un réessai différé, et jamais la modale « reconnectez-vous ».
+        if (estPanneDeRefresh(errRefresh) && sessionEstActive()) {
+          signalerErreurRequete(errRefresh, { sessionEstActive })
+          const silencieux = originalRequest.suppressErrorToast
+          return reprendreApresPanne(ORIGIN, {
+            rejouer: () => api(originalRequest),
+            expirer: emitSessionExpired,
+            signaler: (err) => {
+              signalerErreurRequete(err, { sessionEstActive })
+              if (!silencieux) toastError(MESSAGE_PANNE_REFRESH)
+            },
+          })
+        }
+        // Sinon : un vrai refus, la session est réellement expirée.
       }
       if (!sessionAvantRefresh && sessionEstActive()) {
         return api(originalRequest)

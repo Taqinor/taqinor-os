@@ -33,6 +33,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from django.apps import apps as django_apps
+from django.core.exceptions import FieldDoesNotExist
 from django.db import models as m
 
 import logging
@@ -98,6 +99,9 @@ def _has_local_company_fk(model):
         return False
     try:
         field = meta.get_field("company")
+    except FieldDoesNotExist:
+        # Branche normale : pas de champ company => hors périmètre.
+        return False
     except Exception:  # noqa: BLE001 — pas de champ company => hors périmètre (D-ENF22-BLE001)
         logger.warning("has local company fk : échec ignoré, comportement dégradé", exc_info=True)
         return False

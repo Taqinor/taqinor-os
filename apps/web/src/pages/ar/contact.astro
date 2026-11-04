@@ -18,6 +18,7 @@ import { NAP } from '../../lib/nap';
 import { useTranslations } from '../../i18n/utils';
 import { contactWhatsappLinks } from '../../lib/contactWhatsapp';
 import ContactP1D0F from '../../components/blocs/ContactP1D0F.astro';
+import RappelForm from '../../components/RappelForm.astro';
 
 const t = useTranslations('ar');
 const { waGeneral, waRegul, waRappel, waVisite, waSav } = contactWhatsappLinks();
@@ -50,11 +51,11 @@ const { waGeneral, waRegul, waRappel, waVisite, waSav } = contactWhatsappLinks()
           </ContactCarteWa>
           {/* W249 — معاودة الاتصال الهاتفي: باب إنساني لمن يفضّل التحدث بدل
               الكتابة (مُعبَّأ مسبقاً، لا فراغ للتحرير). */}
-          <a href={waRappel} rel="noopener"
+          <a href="#rappel-form" data-rappel-open rel="noopener"
             class="v2-rise group border border-azur-900/15 bg-blanc p-6 text-center transition-all hover:-translate-y-0.5 hover:border-azur-600 hover:shadow-[0_14px_40px_-16px_rgb(15_28_84/0.4)]" style="--v2-i:1">
             <p class="tech-label text-azur-600">عبر الهاتف</p>
             <p class="mt-2 font-display font-bold">اطلب معاودة الاتصال</p>
-            <p class="mt-1 text-sm text-encre-soft">نتصل بك — بدون نموذج إلكتروني</p>
+            <p class="mt-1 text-sm text-encre-soft">اترك رقمك — نتصل بك</p>
           </a>
           <a href={waRegul} rel="noopener"
             class="v2-rise group border border-azur-900/15 bg-blanc p-6 text-center transition-all hover:-translate-y-0.5 hover:border-azur-600 hover:shadow-[0_14px_40px_-16px_rgb(15_28_84/0.4)]" style="--v2-i:2">
@@ -71,6 +72,8 @@ const { waGeneral, waRegul, waRappel, waVisite, waSav } = contactWhatsappLinks()
             <p class="mt-1 text-sm text-encre-soft">أرغب في زيارة تركيبة حقيقية</p>
           </a>
         </div>
+
+        <RappelForm locale="ar" waRappel={waRappel} />
 
         <div class="v2-rise mt-8 border border-azur-900/15 bg-blanc-azur p-7 text-center text-sm">
           <p class="font-display text-lg font-bold" dir="ltr">{NAP.name}</p>

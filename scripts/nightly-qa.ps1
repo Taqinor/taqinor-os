@@ -30,12 +30,21 @@
 # Compatible Windows PowerShell 5.1 : ASCII seulement, pas de && / || / ?: / ??.
 
 param(
-    [ValidateSet('qa-explorer', 'error-autopilot')]
+    [ValidateSet('qa-explorer', 'error-autopilot', 'problemes-prod')]
     [string]$Skill = 'qa-explorer'
 )
 
 $ErrorActionPreference = 'Stop'
 $RepoRoot = Split-Path -Parent $PSScriptRoot
+
+# ---- 0. Journal de bord HORS depot - AVANT toute autre etape ------------------
+# Un checkout casse ou un script absent ne laisse aucune trace dans logs/ du depot
+# (ERR-JPB-NIGHTLY-QA-TACHE-FRAGILE) : une ligne est ecrite ici dans tous les cas.
+$BordLog = Join-Path $env:LOCALAPPDATA 'taqinor\nightly-qa.log'
+try {
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $BordLog) | Out-Null
+    Add-Content -LiteralPath $BordLog -Value ((Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + '  demarrage nightly-qa.ps1 PID ' + $PID + ' repo ' + $RepoRoot) -Encoding UTF8
+} catch { }
 
 # ---- 1. KILL SWITCH - lu AVANT git, docker ou claude -------------------------
 $ConfigRel = 'docs/qa-explorer.config.yml'
@@ -43,6 +52,13 @@ $script:MaxMinutes = 240
 if ($Skill -eq 'error-autopilot') {
     $ConfigRel = 'docs/error-autopilot.config.yml'
     $script:MaxMinutes = 480
+}
+if ($Skill -eq 'problemes-prod') {
+    # BPQ5 : tri du matin en LECTURE SEULE (API de resume, GitHub) - ni docker,
+    # ni seed, ni Playwright. La routine cloud (BPQ8) est le chemin normal ; cette
+    # branche sert au poste de Reda.
+    $ConfigRel = 'docs/problemes-prod.config.yml'
+    $script:MaxMinutes = 30
 }
 $ConfigPath = Join-Path $RepoRoot $ConfigRel
 $SkillRel = '.claude/skills/' + $Skill + '/SKILL.md'
@@ -98,10 +114,19 @@ if (Test-Path -LiteralPath $LockFile) {
     $raw = [string](Get-Content -LiteralPath $LockFile -Raw)
     $raw = $raw.Trim()
     $alive = $false
-    if ([int]::TryParse($raw, [ref]$oldPid)) {
-        $p = Get-Process -Id $oldPid -ErrorAction SilentlyContinue
-        if ($null -ne $p) {
-            if ($p.ProcessName -match '^(powershell|pwsh)$') { $alive = $true }
+    # TTL : un verrou plus vieux que max_minutes + 30 est perime, quel que soit le PID
+    # (un PID reutilise par un powershell quelconque ne doit jamais bloquer la passe).
+    $verrouAge = (Get-Date) - (Get-Item -LiteralPath $LockFile).LastWriteTime
+    if ($verrouAge.TotalMinutes -le ($script:MaxMinutes + 30)) {
+        if ([int]::TryParse($raw, [ref]$oldPid)) {
+            $p = Get-Process -Id $oldPid -ErrorAction SilentlyContinue
+            if ($null -ne $p) {
+                if ($p.ProcessName -match '^(powershell|pwsh)$') {
+                    # ... ET ce powershell doit LANCER nightly-qa (pas un autre script).
+                    $proc = Get-CimInstance Win32_Process -Filter ('ProcessId=' + $oldPid) -ErrorAction SilentlyContinue
+                    if (($null -ne $proc) -and ([string]$proc.CommandLine -match 'nightly-qa')) { $alive = $true }
+                }
+            }
         }
     }
     if ($alive) {
@@ -240,6 +265,7 @@ function Invoke-NightlyPass {
     }
 
     # ---- 5. Stack docker debout, migrations, demo seedee -----------------------
+    if ($Skill -ne 'problemes-prod') {
     if (-not (Start-DockerDesktop)) {
         Write-Log 'ECHEC : Docker ne repond pas. Action : demarrer Docker Desktop (et l''activer au demarrage de Windows).'
         return 1
@@ -284,6 +310,7 @@ function Invoke-NightlyPass {
     if ($held) {
         Write-Log ('REFUS : verrou single-writer de test-backend.ps1 tenu (' + $held + ').')
         return 2
+    }
     }
 
     # ---- 7. claude -p headless (abonnement Claude, aucune cle API) -------------
@@ -340,7 +367,7 @@ function Invoke-NightlyPass {
             if ($res.is_error) { $isError = $true }
             Write-Log ('cout estime (total_cost_usd) : ' + $res.total_cost_usd)
             foreach ($l in ([string]$res.result -split "`n")) {
-                if ($l -match '^(QA_EXPLORER|ERROR_AUTOPILOT|ERROR_PLAN_STATUS|WEB_ERROR_STATUS)') { Write-Log ('  ' + $l.Trim()) }
+                if ($l -match '^(QA_EXPLORER|ERROR_AUTOPILOT|ERROR_PLAN_STATUS|WEB_ERROR_STATUS|PROBLEMES_PROD_STATUS|PROBLEMES_PROD)') { Write-Log ('  ' + $l.Trim()) }
             }
         } catch {
             Write-Log 'Sortie claude non-JSON (voir le fichier .json brut).'

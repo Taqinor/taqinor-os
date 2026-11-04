@@ -22,6 +22,8 @@ import math
 from unittest import mock
 import logging
 
+from celery.exceptions import SoftTimeLimitExceeded
+
 logger = logging.getLogger(__name__)
 
 
@@ -86,6 +88,8 @@ class ContexteAudit:
                 with transaction.atomic():
                     self._rendus[cle] = ('ok', self._constructeur(
                         devis, options))
+            except SoftTimeLimitExceeded:
+                raise  # ERR-JPB-AUDIT-COHERENCE-TUE-180S
             except Exception as exc:  # noqa: BLE001 — isolé par devis (D-ENF22-BLE001)
                 logger.warning("contexte.ContexteAudit.donnees_devis : erreur ignorée (mode dégradé)", exc_info=True)
                 self._rendus[cle] = (

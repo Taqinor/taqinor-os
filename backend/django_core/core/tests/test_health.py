@@ -108,3 +108,75 @@ class HealthTests(TestCase):
         ]
         self.assertEqual(health.overall_status(services),
                          health.STATUS_DEGRADED)
+
+
+class MarqueurDemarrageTests(TestCase):
+    """BPQ2 - marqueur de demarrage (liste Redis bornee ``erp:demarrages``)."""
+
+    def _faux_redis(self):
+        client = mock.MagicMock()
+        stock = []
+        client.lpush.side_effect = lambda k, v: stock.insert(0, v)
+        client.lindex.side_effect = lambda k, i: stock[i] if stock else None
+        client.stock = stock
+        return client
+
+    def test_enregistre_horodatage_et_sha_liste_bornee_a_50(self):
+        import json
+        client = self._faux_redis()
+        with mock.patch.object(health, '_client_demarrages',
+                               return_value=client), \
+                mock.patch.dict('os.environ', {'DEPLOYED_SHA': 'abc123'}):
+            self.assertTrue(health.enregistrer_demarrage())
+        client.ltrim.assert_called_once_with('erp:demarrages', 0, 49)
+        entree = json.loads(client.stock[0])
+        self.assertEqual(entree['sha'], 'abc123')
+        self.assertIn('ts', entree)
+
+    def test_dernier_demarrage_relu(self):
+        client = self._faux_redis()
+        with mock.patch.object(health, '_client_demarrages',
+                               return_value=client), \
+                mock.patch.dict('os.environ', {'DEPLOYED_SHA': 'abc123'}):
+            health.enregistrer_demarrage()
+            self.assertEqual(health.dernier_demarrage()['sha'], 'abc123')
+
+    def test_redis_injoignable_jamais_bloquant(self):
+        with mock.patch.object(health, '_client_demarrages',
+                               side_effect=OSError('redis down')):
+            self.assertFalse(health.enregistrer_demarrage())
+            self.assertIsNone(health.dernier_demarrage())
+
+    def test_health_ready_expose_dernier_demarrage(self):
+        from core.views import health_ready
+        req = APIRequestFactory().get('/api/django/core/health/ready/')
+        entree = {'ts': 1.0, 'sha': 'abc123'}
+        with mock.patch.object(health, 'dernier_demarrage',
+                               return_value=entree):
+            resp = health_ready(req)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data['dernier_demarrage'], entree)
+
+    def test_dernier_tri_problemes_relu_et_cle_alignee(self):
+        # BPQ6 : la cle est celle que pose le resume (pincee cote reporting).
+        client = mock.Mock()
+        client.get.return_value = '2026-11-04T07:07:00+01:00'
+        with mock.patch.object(health, '_client_demarrages',
+                               return_value=client):
+            self.assertEqual(health.dernier_tri_problemes(),
+                             '2026-11-04T07:07:00+01:00')
+        client.get.assert_called_once_with('erp:dernier_tri_problemes')
+        with mock.patch.object(health, '_client_demarrages',
+                               side_effect=OSError('redis down')):
+            self.assertIsNone(health.dernier_tri_problemes())
+
+    def test_health_ready_expose_dernier_tri_problemes(self):
+        from core.views import health_ready
+        req = APIRequestFactory().get('/api/django/core/health/ready/')
+        with mock.patch.object(health, 'dernier_demarrage',
+                               return_value=None), \
+                mock.patch.object(health, 'dernier_tri_problemes',
+                                  return_value='2026-11-04T07:07:00+01:00'):
+            resp = health_ready(req)
+        self.assertEqual(resp.data['dernier_tri_problemes'],
+                         '2026-11-04T07:07:00+01:00')

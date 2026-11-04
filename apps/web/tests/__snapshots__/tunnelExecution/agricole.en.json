@@ -22,6 +22,7 @@
   "heuresPompage": 9,
   "hmtM": 85,
   "idempotencyKey": "<idempotencyKey>",
+  "langue_preferee": "en",
   "mode": "agricole",
   "phone": "0612345678",
   "profondeurM": 60,

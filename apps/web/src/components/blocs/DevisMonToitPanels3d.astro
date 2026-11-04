@@ -1,0 +1,18 @@
+---
+// ENF19 : bloc partagé (copies identiques) — devis/mon-toit.astro FR/AR (+ EN sans attributs data-i18n).
+// FR/AR : textes bilingues portés par data-fr / data-ar (`i18n`) ; EN : textes seuls.
+const { i18n, start, note, hint } = Astro.props as Record<string, any>;
+---
+          <div id="mt-panels3d" hidden class="mt-5 border-t border-white/10 pt-5">
+            <div id="mt-panels3d-stage" class="mt-panels3d-stage cine-card relative overflow-hidden rounded-lg">
+              <div id="mt-panels3d-overlay" class="absolute inset-0 flex flex-col items-center justify-center gap-2 px-4 text-center">
+                <button type="button" id="mt-panels3d-start"
+                  class="btn-pill inline-flex items-center justify-center gap-2"
+                  style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)">
+                  {i18n ? <span data-i18n data-fr={start.fr} data-ar={start.ar}>{start.text}</span> : <span>{start.text}</span>}
+                </button>
+                {i18n ? <p class="max-w-xs text-xs text-lune-faint" data-i18n data-fr={note.fr} data-ar={note.ar}>{note.text}</p> : <p class="max-w-xs text-xs text-lune-faint">{note.text}</p>}
+              </div>
+            </div>
+            {i18n ? <p id="mt-panels3d-hint" hidden class="mt-2 text-xs text-lune-faint" data-i18n data-fr={hint.fr} data-ar={hint.ar}>{hint.text}</p> : <p id="mt-panels3d-hint" hidden class="mt-2 text-xs text-lune-faint">{hint.text}</p>}
+          </div>

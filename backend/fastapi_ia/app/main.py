@@ -1,10 +1,16 @@
+import logging
 import os
+import re
+import uuid
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from app.api.endpoints import ocr, sql_agent, voice
 from app.core.database import create_tables
 from app.core.security import verify_token
+
+logger = logging.getLogger(__name__)
 
 # ERR42 — fail-closed : _DEBUG defaut False. /docs et /redoc (divulgation de
 # schema) restent fermes en production sauf si DJANGO_DEBUG est EXPLICITEMENT
@@ -34,6 +40,23 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "X-CSRFToken", "Accept"],
 )
+
+
+# ERR-JPB-IAAPI-SANS-JOURNAL — sans ce handler, une exception non geree ne laissait
+# qu'une trace uvicorn sans contexte, impossible a relier a ce qu'a vu l'utilisateur
+# (meme X-Request-Id que Django : c'est lui que le journal navigateur conserve).
+@app.exception_handler(Exception)
+async def journaliser_exception_non_geree(request: Request, exc: Exception):
+    entrant = request.headers.get("x-request-id", "")
+    request_id = entrant if re.fullmatch(r"[0-9a-fA-F]{32}", entrant) else uuid.uuid4().hex
+    logger.error(
+        "exception non geree %s %s request_id=%s",
+        request.method, request.url.path, request_id, exc_info=exc)
+    return JSONResponse(
+        content={"detail": "Erreur interne du service IA.", "request_id": request_id},
+        status_code=500,
+        headers={"X-Request-Id": request_id},
+    )
 
 
 @app.on_event("startup")

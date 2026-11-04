@@ -50,17 +50,20 @@ precondition fails, print one line saying why and end without writing anything.
    `transient_analyzers`, and confirm `output: self-merge-to-main`.
 4. Read `docs/ERROR_PLAN.md`, `docs/WEB_ERROR_PLAN.md`, `CLAUDE.md`,
    `docs/CODEMAP.md` so you know the backlog, the rules, and the code map.
-5. **Capture a clean baseline on the starting `main` tree** (so newly-found
-   failures are attributable and you never refile a pre-existing/known state):
-   run the four required checks once — backend-lint (`flake8 backend
-   --max-line-length=120 --extend-ignore=E501 --exclude=migrations` + `lint-imports`),
-   backend-tests (`python manage.py test apps`, Postgres + MinIO like CI),
-   frontend-lint (`npm run lint`), stage-names (`python scripts/check_stages.py`
-   + `python scripts/codemap_fingerprint.py --check`), plus web `npm run check`
-   & build. Record what is already green; any check that is *already red on a
-   clean main* is itself a real error to file (with the fix that greens it).
-6. Compute next free ids per prefix from the backlog (today: OS → ERR114, web →
-   WEBERR1).
+5. **Capture the baseline from CI, never from local docker (founder rule
+   « CI d'abord », 27/10: docker is slow on every machine — no local docker
+   gate, no `preflight.ps1`).** Read the latest `main` runs of the four required
+   checks (backend-lint, backend-tests, frontend-lint, stage-names) with
+   `gh run list --branch main` / `gh run view`, plus the cheap host checks
+   (`python scripts/check_stages.py`, `python scripts/codemap_fingerprint.py
+   --check`, web `npm run check`). Record what is already green; a check
+   *already red on a clean main* is itself a real error to file (with the fix
+   that greens it). Do NOT re-arm a local-docker baseline.
+6. Compute next free ids per prefix from the backlog (highest existing id + 1;
+   on 04/11/2026: OS → ERR125, web → WEBERR3 — recompute, never hardcode).
+   The nightly alert surface (red scheduled workflows, open alert issues
+   #726/#1002/#461) is read by the daily problem loop
+   (`docs/boucle-problemes-quotidienne.md`, layer 3), not here.
 
 The two areas **never overlap**:
 - **OS → `docs/ERROR_PLAN.md`** (`ERR`): everything under `backend/` (Django
@@ -307,10 +310,10 @@ one `dev`. Make the single merge sync-safe: (1) integrate the latest
 `origin/main` into `dev` (merge it in — never rebase published history, never
 force-push); (2) recompute the CODEMAP structure fingerprint if integrating
 `main` moved the structural surface; (3) run the four required CI checks once over
-the whole batch (with MinIO) and self-merge `dev` → `main` **exactly once** (one
-merge commit, 0 approvals, no per-item PR/merge); (4) if the push is rejected
-because `main` advanced, repeat fetch → integrate → (refresh fingerprint) → CI →
-push. Keep branch protection exactly as configured. The merge auto-deploys; never
+the whole batch (with MinIO) and land `dev` → `main` **exactly once** through the
+merge queue (`gh pr merge --auto --merge` — the queue rebuilds on `main` and
+merges by itself; never a `gh pr update-branch` loop); (4) if the queue removes
+the PR (red checks on the group), fix and re-queue — never force. Keep branch protection exactly as configured. The merge auto-deploys; never
 run a deploy command.
 
 ---

@@ -233,5 +233,68 @@ class TestSetup(unittest.TestCase):
         self.assertIn("serena", serveurs)
 
 
+
+
+class TestProblemesProd(unittest.TestCase):
+    """BPQ5 : le tri du matin passe par nightly-qa.ps1 SANS docker, seed ni Playwright."""
+
+    def setUp(self):
+        self.code = _code(NIGHTLY)
+
+    def test_skill_et_config_propres(self):
+        self.assertIn("'qa-explorer', 'error-autopilot', 'problemes-prod'", self.code)
+        self.assertIn("'docs/problemes-prod.config.yml'", self.code)
+        self.assertIn("PROBLEMES_PROD_STATUS", self.code)
+        self.assertTrue((ROOT / ".claude/skills/problemes-prod/SKILL.md").exists())
+        cfg = (ROOT / "docs/problemes-prod.config.yml").read_text(encoding="utf-8")
+        self.assertRegex(cfg, r"(?m)^enabled\s*:\s*true")
+        for cle in ("max_minutes", "max_findings_per_run", "base_url"):
+            self.assertIn(cle + ":", cfg)
+
+    def test_branche_sans_docker(self):
+        # Les etapes docker (pile, migrations, verrou test-backend) sont sautees.
+        debut = self.code.find("if ($Skill -ne 'problemes-prod') {")
+        fin = self.code.find("$claudeExe = Resolve-ClaudeExe")
+        self.assertGreater(debut, -1)
+        self.assertGreater(fin, debut)
+        bloc = self.code[debut:fin]
+        for etape in ("Start-DockerDesktop", "docker compose up -d --build",
+                      "Get-TestBackendLock", "migrate --noinput"):
+            self.assertIn(etape, bloc, etape)
+        self.assertNotIn("Start-DockerDesktop", self.code[fin:].split("function")[0])
+
+    def test_skill_en_lecture_seule(self):
+        texte = (ROOT / ".claude/skills/problemes-prod/SKILL.md").read_text(encoding="utf-8")
+        for garde in ("Jamais d'ecriture en production", "Signature:", "check_err_prod.py",
+                      "PROBLEMES_PROD_STATUS", "gh pr merge --auto --merge"):
+            self.assertIn(garde, texte, garde)
+
 if __name__ == "__main__":
     unittest.main()
+
+    def test_tache_rattrape_une_nuit_manquee(self):
+        # ERR-JPB-NIGHTLY-QA-TACHE-FRAGILE : sans StartWhenAvailable, une nuit
+        # manquee (PC eteint/en veille) est perdue sans trace.
+        self.assertIn("-StartWhenAvailable", self.code)
+        self.assertIn("-WakeToRun", self.code)
+
+
+class TestNightlyRobustesse(unittest.TestCase):
+    def setUp(self):
+        self.code = _code(NIGHTLY)
+
+    def test_verrou_a_ttl_et_pid_verifie(self):
+        # TTL > max_minutes + 30 ; le PID doit etre un powershell LANCANT nightly-qa.
+        verrou = self.code.find("nightly-qa.lock")
+        bloc = self.code[verrou:verrou + 2500]
+        self.assertIn("LastWriteTime", bloc)
+        self.assertIn("$script:MaxMinutes + 30", bloc)
+        self.assertIn("Win32_Process", bloc)
+        self.assertIn("nightly-qa", bloc[bloc.find("Win32_Process"):])
+
+    def test_journal_de_bord_hors_depot_avant_toute_etape(self):
+        self.assertIn("$env:LOCALAPPDATA", self.code)
+        self.assertIn("nightly-qa.log", self.code)
+        self.assertLess(self.code.find("nightly-qa.log"),
+                        self.code.find("Read-KillSwitch $ConfigPath"))
+

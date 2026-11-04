@@ -405,6 +405,10 @@
      [
       "darija",
       "Darija"
+     ],
+     [
+      "en",
+      "English"
      ]
     ],
     "max_length": 10,

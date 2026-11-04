@@ -22,7 +22,7 @@ from rest_framework.response import Response
 from core.mixins import TenantMixin
 from core.viewsets import CompanyScopedModelViewSet
 from apps.parametres.models_relance import CADENCES_MOTEUR, Cadence
-from .models import Lead, LeadActivity, MessageTemplate, PlanActivite, RelanceEtape
+from .models import LeadActivity, MessageTemplate, PlanActivite, RelanceEtape
 from .serializers_cadence import MessageTemplateSerializer, RelanceEtapeSerializer
 from . import schema_docs as sd
 from .cadence_selectors import STATUTS_SUIVI
@@ -1012,7 +1012,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
                                     outcome=ChoixDocumente(choices=[k for k, _ in LeadActivity.OUTCOMES],
                                                            required=False),
                                     reponse=ChoixDocumente(choices=['', *REPONSES_TOUCHE], required=False),
-                                    langue=ChoixDocumente(choices=['', *Lead.LanguePreferee.values], required=False),
+                                    langue=ChoixDocumente(choices=['', *sd.LANGUES_RELANCE], required=False),
                                     note=ChaineStricte(required=False, allow_blank=True)),
                    responses=RelanceEtapeSerializer)
     @action(detail=True, methods=['post'])
@@ -1117,7 +1117,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
                             status=status.HTTP_409_CONFLICT)
         return Response(self.get_serializer(etape).data)
 
-    @extend_schema(parameters=sd.parametres_message(CLES_MESSAGE_REPONSE, Lead.LanguePreferee.values),
+    @extend_schema(parameters=sd.parametres_message(CLES_MESSAGE_REPONSE, sd.LANGUES_RELANCE),
                    responses={200: sd.OBJ, 409: sd.REFUS_RENDU_WHATSAPP})
     @action(detail=True, methods=['get'])
     def message(self, request, pk=None):
@@ -1156,7 +1156,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
             langue=langue or None))
 
     @extend_schema(request=sd.corps('CrmRelanceWhatsappRequest',
-                                    langue=ChoixDocumente(choices=[*Lead.LanguePreferee.values], required=False)),
+                                    langue=ChoixDocumente(choices=[*sd.LANGUES_RELANCE], required=False)),
                    responses=sd.OBJ)
     @action(detail=True, methods=['post'])
     @_geste_atomique
@@ -1232,7 +1232,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @extend_schema(request=sd.corps('CrmRelanceLangueRequest',
-                                    langue=ChoixDocumente(choices=Lead.LanguePreferee.values)),
+                                    langue=ChoixDocumente(choices=sd.LANGUES_RELANCE)),
                    responses=RelanceEtapeSerializer)
     @action(detail=True, methods=['post'])
     def langue(self, request, pk=None):

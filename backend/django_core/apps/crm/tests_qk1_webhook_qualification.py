@@ -127,6 +127,18 @@ class WebhookQualificationTests(TestCase):
         # Dict → liste filtrée sur les clés autorisées et véridiques.
         self.assertEqual(lead.futures_charges, ['pompe'])
 
+    def test_langue_anglaise_du_site_marque_le_lead_en(self):
+        # WAUD83 (D-WAUD-14=a) — un lead venu d'une page anglaise porte « en ».
+        res = self.post(payload_site(language='en'))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(lead.langue_preferee, 'en')
+
+    def test_en_n_est_pas_une_langue_de_relance_choisissable(self):
+        from .cadence_messages import refus_langue_relance
+        self.assertIsNone(refus_langue_relance('darija'))
+        self.assertIn('n’est pas une langue', refus_langue_relance('en'))
+
     def test_valeurs_invalides_ignorees_jamais_de_crash(self):
         res = self.post(payload_site(
             marketMode='fusion-nucleaire',

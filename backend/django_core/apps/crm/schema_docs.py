@@ -11,6 +11,11 @@ from rest_framework import serializers
 
 from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL, MOTIF_SANS_NUL
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE, MOTIF_QUERY_SANS_NUL
+from .models import Lead
+
+# WAUD83 — « en » est un marqueur du lead, pas une langue de relance (miroir de
+# cadence_messages._langues_relance, qui refuse « en » : le schéma ne l'annonce pas).
+LANGUES_RELANCE = [v for v in Lead.LanguePreferee.values if v != Lead.LanguePreferee.EN]
 
 #: Réponse « objet libre » (dict dont la forme dépend de la situation).
 OBJ = OpenApiTypes.OBJECT

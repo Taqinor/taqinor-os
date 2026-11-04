@@ -339,6 +339,14 @@ export default function VisiteMesuresForm({
     )
   }
 
+  // ALEA64 : toute clé d'erreur ni champ du schéma (ni sous-clé de liste) ni
+  // `_non_releves.*` (ex. `statut`, `corps`, `categorie`) est affichée en
+  // alerte — sinon le refus serveur reste muet.
+  const erreursHorsChamp = Object.entries(erreurs).filter(
+    ([k]) => !k.startsWith('_non_releves.')
+      && !schema.some((c) => k === c.key || k.startsWith(`${c.key}.`) || k.startsWith(`${c.key}[`)),
+  )
+
   return (
     <Card className="p-3" data-testid={`visite-mesures-${categorie}`}>
       <form noValidate onSubmit={submit} className="space-y-3">
@@ -346,6 +354,9 @@ export default function VisiteMesuresForm({
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {schema.map((champ) => (champ.type === 'list' ? rendreListe(champ) : rendreChampTop(champ)))}
         </div>
+        {erreursHorsChamp.map(([k, msg]) => (
+          <p key={k} role="alert" className="text-xs text-destructive">{String(msg)}</p>
+        ))}
         {!lectureSeule && (
           <Button type="submit" size="sm" disabled={saving}>Enregistrer les mesures</Button>
         )}

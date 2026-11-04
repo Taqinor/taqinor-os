@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4906, operations: 7698, components: 3612}
+counts: {paths: 4908, operations: 7700, components: 3615}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -2729,6 +2729,7 @@ operations:
 - get /api/django/reporting/pipeline/velocity/ -> django_reporting_pipeline_velocity_retrieve
 - get /api/django/reporting/probabilites-etape/ -> django_reporting_probabilites_etape_retrieve
 - post /api/django/reporting/problemes-client/ -> django_reporting_problemes_client_create
+- get /api/django/reporting/problemes/resume/ -> django_reporting_problemes_resume_retrieve
 - get /api/django/reporting/rapport-definitions/ -> django_reporting_rapport_definitions_list
 - post /api/django/reporting/rapport-definitions/ -> django_reporting_rapport_definitions_create
 - delete /api/django/reporting/rapport-definitions/{id}/ -> django_reporting_rapport_definitions_destroy
@@ -6583,6 +6584,7 @@ operations:
 - get /api/v1/reporting/pipeline/velocity/ -> v1_reporting_pipeline_velocity_retrieve
 - get /api/v1/reporting/probabilites-etape/ -> v1_reporting_probabilites_etape_retrieve
 - post /api/v1/reporting/problemes-client/ -> v1_reporting_problemes_client_create
+- get /api/v1/reporting/problemes/resume/ -> v1_reporting_problemes_resume_retrieve
 - get /api/v1/reporting/rapport-definitions/ -> v1_reporting_rapport_definitions_list
 - post /api/v1/reporting/rapport-definitions/ -> v1_reporting_rapport_definitions_create
 - delete /api/v1/reporting/rapport-definitions/{id}/ -> v1_reporting_rapport_definitions_destroy
@@ -8254,6 +8256,7 @@ query_params:
   get /api/django/reporting/insights/sav-tickets-pivot/: columns export rows
   get /api/django/reporting/insights/technicien-scorecard/: export from technicien to
   get /api/django/reporting/kpi-alertes/: ordering page page_size search
+  get /api/django/reporting/problemes/resume/: jours tri
   get /api/django/reporting/rapport-definitions/: ordering page page_size search
   get /api/django/reporting/rapport-definitions/{id}/export/: format
   get /api/django/reporting/reports/field/: equipe export from technicien to
@@ -9046,6 +9049,7 @@ query_params:
   get /api/v1/reporting/insights/sav-tickets-pivot/: columns export rows
   get /api/v1/reporting/insights/technicien-scorecard/: export from technicien to
   get /api/v1/reporting/kpi-alertes/: ordering page page_size search
+  get /api/v1/reporting/problemes/resume/: jours tri
   get /api/v1/reporting/rapport-definitions/: ordering page page_size search
   get /api/v1/reporting/rapport-definitions/{id}/export/: format
   get /api/v1/reporting/reports/field/: equipe export from technicien to
@@ -10814,6 +10818,7 @@ components:
 - LangueEnum
 - LangueInterfaceReponse
 - LanguePortailEnum
+- LanguePrefereeEnum
 - Lead
 - LeadActivity
 - LeadActivityKindEnum
@@ -12287,6 +12292,8 @@ components:
 - ResoumettreRequest
 - ResourceEnum
 - ResultatCommissioningEnum
+- ResumeProblemesRefus
+- ResumeProblemesService
 - RetenueSubie
 - RetourClient
 - RetourClientCreerCorpsRequest

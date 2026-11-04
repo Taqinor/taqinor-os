@@ -1,0 +1,25 @@
+---
+// ENF19 : bloc partagé (copies identiques) — index.astro FR/EN/AR (galerie d'accueil).
+// Bouton d'agrandissement (lightbox) + légende de la carte ; seuls la classe du bouton
+// (côté RTL / taille) et l'aria-label changent d'une langue à l'autre.
+const { g, btnClass, ariaLabel } = Astro.props as Record<string, any>;
+---
+              <button
+                type="button"
+                class={btnClass}
+                aria-label={ariaLabel}
+                data-lightbox-open
+                data-name={g.name}
+                data-alt={g.alt}
+                data-widths={g.widths.join(',')}
+                data-caption={g.caption}
+                data-type={g.type}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M8 3H5a2 2 0 0 0-2 2v3" /><path d="M21 8V5a2 2 0 0 0-2-2h-3" /><path d="M3 16v3a2 2 0 0 0 2 2h3" /><path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+                </svg>
+              </button>
+              <div class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
+                <span class="tech-label block text-lune">{g.caption}</span>
+                <span class="mt-0.5 block text-xs text-lune-soft">{g.type}</span>
+              </div>

@@ -75,6 +75,46 @@ export function readAdsConsent(): 'granted' | 'denied' | null {
 // Reprise fbclid + UTM depuis sessionStorage (capture first-touch du Layout)
 const TRACK_KEYS = ['fbclid', 'gclid', 'gbraid', 'wbraid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
 
+/** WAUD30 — fbclid/gclid/utm_* déjà captés (sessionStorage), sans champ DOM :
+ *  pour le rappel de /contact, qui n'a pas de formulaire diagnostic. Lecture
+ *  défensive ; seules les clés présentes sont rendues. */
+export function lireTrackingCapte(): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const k of [...TRACK_KEYS, 'landingPath', 'referrerHost']) {
+    try {
+      const v = sessionStorage.getItem('tq_' + k);
+      if (v) out[k] = v;
+    } catch {}
+  }
+  return out;
+}
+
+/** WAUD30 — corps du rappel rapide de /contact (une seule source, testée) :
+ *  tracking + eventId (dédoublonnage Lead pixel ↔ CAPI) + adsConsent seulement
+ *  s'ils existent — jamais un champ fabriqué. */
+export function corpsRappel(
+  saisie: { fullName: string; phone: string; consent: boolean; websiteUrl: string },
+  adsConsent: 'granted' | 'denied' | null,
+  tracking: Record<string, string>,
+  eventId: string,
+  langue?: string,
+): Record<string, unknown> {
+  return {
+    fullName: saisie.fullName,
+    phone: saisie.phone,
+    consent: saisie.consent,
+    website_url: saisie.websiteUrl,
+    whatsappOptIn: false,
+    quickCallback: true,
+    contactPreference: 'phone_ok',
+    ...tracking,
+    eventId,
+    ...(adsConsent ? { adsConsent } : {}),
+    // WAUD81 — le rappel EN/AR dit sa langue ; le FR n'envoie rien (inchangé).
+    ...(langue ? { langue_preferee: langue } : {}),
+  };
+}
+
 export function reprendreTracking(form: HTMLFormElement | null) {
   for (const k of TRACK_KEYS) {
     const input = form?.elements.namedItem(k) as HTMLInputElement | null;

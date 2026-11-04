@@ -2,6 +2,8 @@ import { Component } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import { Button } from './Button'
 import { captureException } from '../lib/monitoring'
+import { GENRES, signalerErreurScript } from '../lib/journalProblemes'
+import { sessionEstActive } from '../providers/session-bridge'
 
 /* G30 — ErrorBoundary : capture une erreur de rendu et affiche un écran FR clair
    au lieu d'une page blanche. `fallback` personnalisable ; sinon écran par défaut.
@@ -23,6 +25,8 @@ export class ErrorBoundary extends Component {
     // VX206 — socle local d'observabilité : trace TOUJOURS en console (avant
     // le monitoring distant, qui peut être no-op sans DSN).
     console.error('[ErrorBoundary]', error, info?.componentStack)
+    // ERR-JPB-ECRAN-JAMAIS-EMIS — voir RouteErrorBoundary.jsx.
+    signalerErreurScript(error, GENRES.ECRAN, { sessionEstActive })
     if (typeof this.props.onError === 'function') this.props.onError(error, info)
     captureException(error, { componentStack: info?.componentStack })
       .then((eventId) => { if (eventId) this.setState({ eventId }) })
