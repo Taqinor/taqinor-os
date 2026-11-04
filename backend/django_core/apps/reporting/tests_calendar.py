@@ -96,3 +96,105 @@ class TestCalendar(TestCase):
                    if e['type'] == 'visite_maintenance']
         self.assertGreaterEqual(len(visites), 1)
         self.assertIsNone(visites[0]['assignee_id'])
+
+    def test_reschedule_intervention_comme_un_report(self):
+        """ACHT135 (C-ACHT-VER4-030) — glisser une intervention confirmée dans
+        l'Agenda la déconfirme, compte un report et le trace (comme le PATCH) ;
+        rejouer la même date n'est pas un second report."""
+        from apps.installations.models import Intervention, InterventionActivity
+        iv = Intervention.objects.create(
+            company=self.company, installation=self._chantier(reference='CH-IV'),
+            type_intervention='pose', created_by=self.user,
+            date_prevue=date.today() + timedelta(days=3), rdv_confirme=True)
+        new = (date.today() + timedelta(days=5)).isoformat()
+        corps = {'type': 'intervention', 'id': iv.pk, 'date': new}
+        for _ in range(2):
+            resp = self.api.post(
+                '/api/django/reporting/calendar/reschedule/', corps, format='json')
+            self.assertEqual(resp.status_code, 200, resp.data)
+            self.assertEqual(resp.data, {'ok': True, 'date': new})
+        iv.refresh_from_db()
+        self.assertEqual(iv.date_prevue.isoformat(), new)
+        self.assertFalse(iv.rdv_confirme)
+        self.assertEqual(iv.rdv_reschedule_count, 1)
+        self.assertEqual(InterventionActivity.objects.filter(
+            intervention=iv, body__startswith='RDV reporté').count(), 1)
+
+    def _portee(self):
+        """ACHT136/137 — t1, t2 Techniciens (portée équipe), un admin ; i1 (t1),
+        i2 (t2) sur un chantier C2 hors portée de t1, pose dans la fenêtre."""
+        from apps.installations.models import Intervention
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import (
+            CANONICAL_SYSTEM_ROLES, TECHNICIEN_PERMISSIONS)
+        role_tech = Role.objects.create(
+            company=self.company, nom='Technicien',
+            permissions=list(TECHNICIEN_PERMISSIONS))
+        role_admin = Role.objects.create(
+            company=self.company, nom='Administrateur',
+            permissions=list(dict(CANONICAL_SYSTEM_ROLES)['Administrateur']))
+        p = {nom: User.objects.create_user(
+            username=f'{nom}-cal', password='x', company=self.company, role=role)
+            for nom, role in (('t1', role_tech), ('t2', role_tech), ('admin', role_admin))}
+        jour = date.today() + timedelta(days=2)
+        p['c2'] = Installation.objects.create(
+            company=self.company, reference='CH-C2', client=self.client_obj,
+            technicien_responsable=p['t2'], created_by=p['admin'], date_pose_prevue=jour)
+        for n, tech in (('i1', p['t1']), ('i2', p['t2'])):
+            p[n] = Intervention.objects.create(
+                company=self.company, installation=p['c2'],
+                type_intervention='pose', technicien=tech, date_prevue=jour)
+        return p
+
+    def _api_de(self, user):
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+        return api
+
+    def test_technicien_borne_a_sa_portee(self):
+        """ACHT136 (C-ACHT-VER4-031) — l'agenda d'un Technicien a la portée de
+        ses listes : i1 seule, aucune pose de C2 ; l'admin voit tout."""
+        p = self._portee()
+
+        def vus(user):
+            r = self._api_de(user).get('/api/django/reporting/calendar/')
+            self.assertEqual(r.status_code, 200, r.data)
+            return {e['id'] for e in r.data['events'] if e['type'] in ('pose', 'intervention')}
+        self.assertEqual(vus(p['t1']), {f"intervention-{p['i1'].pk}"})
+        self.assertEqual(vus(p['admin']), {
+            f"intervention-{p['i1'].pk}", f"intervention-{p['i2'].pk}", f"pose-{p['c2'].pk}"})
+        autre = User.objects.create_user(
+            username='autre-cal', password='x', role_legacy='responsable', company=self.other)
+        self.assertEqual(vus(autre), set())
+
+    def test_reschedule_hors_portee_404(self):
+        """ACHT137 (C-ACHT-VER4-032) — t1 déplace sa i1 ; i2 et la pose de C2
+        (hors portée) : 404, dates inchangées ; admin : 200 ; autre société : 404."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import COMMERCIAL_PERMISSIONS
+        p = self._portee()
+        jour = p['i2'].date_prevue
+        url = '/api/django/reporting/calendar/reschedule/'
+        cible = (date.today() + timedelta(days=9)).isoformat()
+
+        def bouger(user, type_key, obj):
+            return self._api_de(user).post(
+                url, {'type': type_key, 'id': obj.pk, 'date': cible}, format='json')
+        self.assertEqual(bouger(p['t1'], 'intervention', p['i1']).status_code, 200)
+        self.assertEqual(bouger(p['t1'], 'intervention', p['i2']).status_code, 404)
+        self.assertEqual(bouger(p['t1'], 'pose', p['c2']).status_code, 404)
+        commercial = User.objects.create_user(
+            username='com-cal', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom='Commercial',
+                                     permissions=list(COMMERCIAL_PERMISSIONS)))
+        self.assertIn(bouger(commercial, 'intervention', p['i2']).status_code, (403, 404))
+        autre = User.objects.create_user(
+            username='autre-cal2', password='x', role_legacy='responsable', company=self.other)
+        self.assertEqual(bouger(autre, 'intervention', p['i2']).status_code, 404)
+        for obj, champ in ((p['i2'], 'date_prevue'), (p['c2'], 'date_pose_prevue')):
+            obj.refresh_from_db()
+            self.assertEqual(getattr(obj, champ), jour)
+        p['i1'].refresh_from_db()
+        self.assertEqual(p['i1'].date_prevue.isoformat(), cible)
+        self.assertEqual(bouger(p['admin'], 'pose', p['c2']).status_code, 200)
+        self.assertEqual(bouger(p['admin'], 'intervention', p['i2']).status_code, 200)

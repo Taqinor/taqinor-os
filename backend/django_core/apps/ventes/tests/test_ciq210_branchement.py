@@ -420,3 +420,32 @@ class VuesEconomieCiTest(_BaseDevis):
             default=str))
         self.assertEqual(avant, apres)
         self.assertNotIn('30000', json.dumps(rep.json()['remplacements']))
+
+    def test_preview_article_sans_prix_omet_le_retour(self):
+        """ADEV115 (C-ADEV-VER4-010) — l'aperçu du générateur contrôle les
+        lignes comme le devis : 3 articles « prix à renseigner », 1 000 HT
+        sans panneau ⇒ investissement omis (motif nommé), ni retour ni TRI."""
+        import copy
+        import os
+
+        import apps.ventes as ventes_pkg
+        chemin = os.path.join(os.path.dirname(ventes_pkg.__file__),
+                              'contract_samples', 'etude_ci_preview.json')
+        with open(chemin, encoding='utf-8') as f:
+            apercu = copy.deepcopy(json.load(f)['exemple'])
+        self.assertEqual(len(apercu['composition']['prix_a_renseigner']), 3)
+        apercu['entrees_resolues']['tension'] = {'valeur': 'mt', 'provenance': None}
+        rep = self.api.post('/api/django/ventes/economie-ci/preview/', {
+            'sortie_etude_ci': apercu, 'saisies': {},
+            'lignes': [{'designation': 'Smart Meter', 'quantite': 1,
+                        'optionnelle': False,
+                        'totaux': {'ht': 1000.0, 'ttc': 1200.0}}]},
+            format='json')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        bloc = rep.json()
+        omis = [o for o in bloc.get('omissions') or []
+                if o.get('cle') == 'investissement_mad']
+        self.assertTrue(omis and omis[0].get('motif'), bloc.get('omissions'))
+        indicateurs = bloc.get('indicateurs') or {}
+        self.assertIsNone(indicateurs.get('retour_ans'))
+        self.assertIsNone(indicateurs.get('tri_pct'))

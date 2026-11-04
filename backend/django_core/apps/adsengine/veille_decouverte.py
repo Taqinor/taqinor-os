@@ -61,6 +61,11 @@ SUFFIXES_DOUBLES = {
     'net.br', 'org.br', 'com.ma', 'net.ma', 'org.ma', 'net.au', 'org.au',
 }
 
+# AACQ109 — préfixes d'hôte génériques (pas un vendeur) retirés de la clé.
+PREFIXES_GENERIQUES = frozenset({
+    'www', 'shop', 'store', 'm', 'fr', 'en', 'de', 'es', 'it', 'nl', 'pt',
+    'ar'})
+
 
 @functools.lru_cache(maxsize=1)
 def _hebergeurs_boutiques():
@@ -89,21 +94,17 @@ def legende_vers_domaine(texte):
         labels = hote.split('.')
         if len(labels) < 2 or labels[-1] not in TLD_CONNUS:
             continue
-        if labels[0] == 'www':
+        nb = 3 if '.'.join(labels[-2:]) in SUFFIXES_DOUBLES else 2
+        # AACQ109 — la clé est l'hôte complet (deux boutiques d'un même
+        # hébergeur, listé ou non, ne partagent jamais une clé) ; seuls les
+        # préfixes génériques (www, langue, shop…) sont retirés.
+        while len(labels) > nb and labels[0] in PREFIXES_GENERIQUES:
             labels = labels[1:]
-        if len(labels) < 2:
-            continue
-        racine = '.'.join(labels[-2:])
-        if racine in _hebergeurs_boutiques():
-            # AACQ38 — boutique hébergée : le sous-domaine EST le vendeur ;
-            # l'hébergeur nu n'est jamais un domaine de vendeur.
-            if len(labels) < 3:
-                continue
-            return '.'.join(labels[-3:])
-        nb = 3 if racine in SUFFIXES_DOUBLES else 2
         if len(labels) < nb:
             continue
-        domaine = '.'.join(labels[-nb:])
+        if len(labels) == nb and '.'.join(labels) in _hebergeurs_boutiques():
+            continue  # AACQ38 — l'hébergeur nu n'est jamais un vendeur
+        domaine = '.'.join(labels)
         if domaine in SUFFIXES_DOUBLES:  # AACQ38 — jamais un suffixe public
             continue
         return domaine
