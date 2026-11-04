@@ -185,8 +185,8 @@
           "request_id": "<request_id>"
         }
       },
-      "exemple_erreur_400_composant_autre_societe": {
-        "note": "ASTK5/ASTK168 — un composant d'une AUTRE société reçoit EXACTEMENT la réponse d'un id absent (CompanyScopedRelationsMixin sur KitComposantSerializer) : exemple pour l'id 99999999 ; l'id étranger donne le même corps, son propre id cité.",
+      "exemple_erreur_404_composant_autre_societe": {
+        "note": "ASTK5/ASTK168 — un composant d'une AUTRE société reçoit EXACTEMENT la réponse d'un id absent (CompanyScopedRelationsMixin sur KitComposantSerializer) ; ENF44 — un id bien formé qui ne désigne aucune ligne de la société répond 404 (IdInconnu404ImbriquesMixin sur KitProduitSerializer) : exemple pour l'id 99999999 ; l'id étranger donne le même corps, son propre id cité.",
         "exemple": {
           "composants": [
             {
@@ -196,17 +196,9 @@
             }
           ],
           "error": {
-            "code": "validation_error",
+            "code": "not_found",
             "message": "{'composants': [{'produit': [ErrorDetail(string=\"Clé primaire «\\xa099999999\\xa0» non valide - l'objet n'existe pas.\", code='does_not_exist')]}]}",
-            "fields": {
-              "composants": [
-                {
-                  "produit": [
-                    "Clé primaire « 99999999 » non valide - l'objet n'existe pas."
-                  ]
-                }
-              ]
-            },
+            "fields": null,
             "request_id": "<request_id>"
           }
         }

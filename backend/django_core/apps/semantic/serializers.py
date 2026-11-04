@@ -96,6 +96,9 @@ class ImportMetriquesSerializer(serializers.Serializer):
     format = ChaineStricte(required=False, allow_blank=True)
     version = serializers.IntegerField(required=False, min_value=1)
     metriques = serializers.ListField(
-        child=serializers.JSONField(), allow_empty=True,
+        # Toute valeur JSON (``null`` compris) : une entrée qui n'est pas un
+        # objet est REFUSÉE ligne à ligne par ``portabilite`` (rapport), comme
+        # le schéma publié l'annonce — jamais un 400 global (api-fuzz).
+        child=serializers.JSONField(allow_null=True), allow_empty=True,
         max_length=MAX_METRIQUES_IMPORT)
     commit = BooleenStrict(required=False, default=False)

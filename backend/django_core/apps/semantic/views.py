@@ -67,6 +67,22 @@ class MetricDefinitionViewSet(CompanyScopedModelViewSet):
     # et les actions de liste (`export`, `glossaire`…) ne doivent jamais être
     # lus comme un détail.
     lookup_value_regex = r'\d+'
+    # YAPIC2 / YAPIC11 — tri et recherche DÉCLARÉS (liste blanche) : la
+    # recherche historique ``?q=`` reste lue par ``get_queryset``.
+    ordering_fields = ('cle', 'libelle', 'actif', 'updated_at')
+    search_fields = ('cle', 'libelle')
+
+    # Lecture du catalogue par l'agent : tout rôle interne ; tout le reste
+    # (CRUD, export, import) reste Responsable/Admin.
+    ACTIONS_LECTURE_AGENT = ('pour_agent',)
+    ACTIONS_RESPONSABLE = ('export', 'importer')
+
+    def get_permissions(self):
+        if self.action in self.ACTIONS_LECTURE_AGENT:
+            return [IsAnyRole()]
+        if self.action in self.ACTIONS_RESPONSABLE:
+            return [IsResponsableOrAdmin()]
+        return super().get_permissions()
 
     def get_queryset(self):
         qs = super().get_queryset().order_by('cle')
@@ -140,7 +156,8 @@ class MetricDefinitionViewSet(CompanyScopedModelViewSet):
         'version': serializers.IntegerField(),
         'metriques': serializers.ListField(child=serializers.DictField()),
     }))
-    @action(detail=False, methods=['get'], url_path='export')
+    @action(detail=False, methods=['get'], url_path='export',
+            permission_classes=[IsResponsableOrAdmin])
     def export(self, request):
         """NTDATA48 — les métriques de la société en JSON vendor-neutre."""
         if not request.user.company_id:
@@ -156,7 +173,8 @@ class MetricDefinitionViewSet(CompanyScopedModelViewSet):
             'applique': serializers.BooleanField(),
             'resultats': serializers.ListField(child=serializers.DictField()),
         }))
-    @action(detail=False, methods=['post'], url_path='import')
+    @action(detail=False, methods=['post'], url_path='import',
+            permission_classes=[IsResponsableOrAdmin])
     def importer(self, request):
         """NTDATA48 — import symétrique : dry-run par défaut, ``commit`` tout
         ou rien. 400 si une entrée est refusée en mode ``commit``."""
@@ -418,7 +436,9 @@ class MetriqueExpliquerView(APIView):
             OpenApiParameter('cellule', str, required=False,
                              description='Objet JSON des valeurs de '
                                          'regroupement du point cliqué.'),
-            OpenApiParameter('limite', int, required=False,
+            OpenApiParameter('limite', {'type': 'integer', 'minimum': 1,
+                                        'maximum': 1000, 'default': 200},
+                             required=False,
                              description='Nombre maximal de lignes (1..1000).'),
         ],
         responses=inline_serializer('MetriqueExpliquerReponse', {
