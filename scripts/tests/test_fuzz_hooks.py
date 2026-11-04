@@ -162,6 +162,11 @@ class CrochetsFuzzTests(unittest.TestCase):
         cas._override = types.SimpleNamespace(path_parameters={'id': 2})
         hooks.before_call(None, cas, {})
         self.assertEqual(cas.path_parameters['id'], 2)
+        cas = _cas(hooks, 'DELETE', '/api/django/outillage/fournisseurs/{id}/',
+                   params={'id': 1})
+        cas._override = types.SimpleNamespace(path_parameters={'id': 1})
+        hooks.before_call(None, cas, {})
+        self.assertEqual(cas.path_parameters['id'], 1)
         # Une ligne créée par la phase stateful se supprime ; un GET n'est pas touché.
         cas = _cas(hooks, 'DELETE', '/api/django/stock/fournisseurs/{id}/',
                    params={'id': 690})
