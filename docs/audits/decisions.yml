@@ -3480,3 +3480,16 @@ decisions:
     source: "session 2026-11-04 work on the plan : question interactive, Reda répond « Oui »"
     taches: [BPQ12]
 
+  - id: D-ASTK-VER4-1
+    question: "Une facture (acompte compris) sort le matériel de la vente à son émission ; si elle est annulée, le matériel reste sorti et le lead ne peut plus quitter « Signé » (409 stock sorti). Que faire ?"
+    options:
+      - cle: retour_annulation
+        texte: "L'annulation d'une facture émise ré-entre le stock qu'elle a sorti (entrée tracée) ; la sortie suit toujours une facture vivante, la facture suivante la refait"
+      - cle: retour_desacceptation
+        texte: "L'annulation garde le stock sorti ; seule la dés-acceptation ré-entre et ce stock ne bloque plus la sortie de « Signé »"
+      - cle: ajustement_manuel
+        texte: "Comportement actuel : retour par ajustement d'inventaire, dés-acceptation bloquée"
+    reponse: retour_annulation
+    date: "2026-11-04"
+    source: "Reda, question interactive, contre-visite vérifie ASTK"
+    taches: [ASTK262, ASTK263]
