@@ -349,6 +349,7 @@ PAY_A, PAY_M, PAY_S = 30, 60, 10
 # QJR623 — cases « Modalités de paiement » calculées par le builder (par
 # branche « sans » / « avec », au centime) ; le moteur ne fait qu'imprimer.
 MONTANTS_TRANCHES = {}
+BRANCHE_ECHEANCIER = None  # AMOT122 — branche servie par le builder (niveau 12)
 # Devis deux-options rendu en une page : option 1 seule + mention discrète.
 ONEPAGE_NOTE_BATTERIE = False
 # M4 — branche ('sans' | 'avec' | None) dont proviennent les lignes du format
@@ -2619,15 +2620,10 @@ def page3():
     # ── Payment section (Devis Final only) ──
     _payment_html = ""
     if DEVIS_FINAL:
-        # Pick the relevant branch based on scenario / recommendation
-        if SCENARIO == "Sans batterie":
-            _branche = "sans"
-        elif SCENARIO == "Avec batterie":
-            _branche = "avec"
-        elif RECOMMENDED == "Sans batterie":
-            _branche = "sans"
-        else:
-            _branche = "avec"
+        # AMOT122 — la branche servie (niveau 12), sinon scénario / recommandation
+        _branche = BRANCHE_ECHEANCIER if BRANCHE_ECHEANCIER in ("sans", "avec") else (
+            "sans" if SCENARIO == "Sans batterie" else "avec" if SCENARIO == "Avec batterie"
+            else "sans" if RECOMMENDED == "Sans batterie" else "avec")
 
         # QJR623 / ERR120 — le moteur ne fait plus qu'IMPRIMER : les montants
         # (au centime, ×N villas compris, reliquat sur la dernière tranche,
@@ -3733,8 +3729,9 @@ def apply_quote_data(data: dict) -> None:
     PAY_A = _pct_echeance(_terms.get("acompte"), 30)
     PAY_M = _pct_echeance(_terms.get("materiel"), 60)
     PAY_S = _pct_echeance(_terms.get("solde"), 10)
-    global MONTANTS_TRANCHES
+    global MONTANTS_TRANCHES, BRANCHE_ECHEANCIER
     MONTANTS_TRANCHES = dict(data.get("montants_tranches") or {})
+    BRANCHE_ECHEANCIER = data.get("branche_echeancier")
     ONEPAGE_NOTE_BATTERIE = bool(data.get("onepage_note_batterie", False))
     LIBELLE_AVEC = str(data.get("libelle_avec") or "Avec batterie")
     LINKS = dict(data.get("links") or {})

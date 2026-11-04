@@ -15,6 +15,8 @@ devis ACCEPTÉ imprime l'échéancier FIGÉ à l'acceptation (``figer_echeancier
 AMET1), jamais les réglages société changés depuis ; un brouillon les suit.
 """
 import html as _html
+import re
+from decimal import Decimal
 
 from django.test import TestCase
 
@@ -178,6 +180,43 @@ class EcheancierTexteCasesTests(TestCase):
             self.assertIn(f'{pct} % · {fmt_centimes(montant)} MAD', cases)
         hier = _texte(agr._echeancier(dict(d, regles_echeancier_historique=True), 'fr'))
         self.assertIn(f'10 % · {fmt_centimes(3000)} MAD', hier)
+
+    def test_recommandee_sans_texte_cases_acompte_alignes(self):
+        """AMOT122 (C-AMOT-VER4-007, D-AMOT-VER4-1) — deux options résidentiel,
+        recommandée « Sans », acompte 10 000 MAD : texte (``payment_terms``),
+        cases du Devis final (résidentiel ET legacy) et page publique lisent
+        LA branche d'``option_effective`` ; niveau 11 : rien servi (rendu
+        d'hier). Mutant : cases par recommandation ⇒ % ≠ texte."""
+        from apps.ventes.domain.regles_calcul import REGLES_CENTAINE_0311
+        from apps.ventes.public.payload_conditions import _acompte_publique
+        self.n += 1
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau mono 550W', '10', '1100'),
+            ('Onduleur réseau Huawei 5kW', '1', '8000'),
+            ('Onduleur hybride Deye 5kW', '1', '15000'),
+            ('Batterie Dyness 5kWh', '1', '20000'),
+        ], reference=f'DEV-AMOT122-{self.n}', etude_params={
+            'scenario': 'Les deux (Sans + Avec)', 'recommended_option': 'Sans batterie'})
+        Devis.objects.filter(pk=devis.pk).update(mode_installation='residentiel', echeancier=[
+            {'libelle': 'Acompte', 'type': 'montant', 'pct_or_montant': 10000},
+            {'libelle': 'Solde', 'pct_or_montant': 50}])
+        devis.refresh_from_db()
+        opts = clean_pdf_options({'pdf_mode': 'full', 'devis_final': True})
+        data = build_quote_data(devis, opts)
+        self.assertEqual(data['branche_echeancier'], 'avec')
+        cases = data['montants_tranches']['avec']
+        pct = cases['pct_a']
+        self.assertNotEqual(pct, data['montants_tranches']['sans']['pct_a'])
+        self.assertEqual(data['payment_terms']['acompte'], pct)
+        res_html = res_render.build_html(res_renderer._augment(dict(data)))
+        self.assertEqual(re.findall(r'class="p3-pay-p">([^<]+)<', res_html)[:1], [f'{pct}%'])
+        self.assertIn(f'line-height:1.0;">{pct}%</div>', legacy.render_html_for(dict(data)))
+        publique = _acompte_publique(devis)
+        self.assertEqual(publique['option'], 'avec_batterie')
+        self.assertEqual(Decimal(publique['ttc']), Decimal(str(cases['acompte'])))
+        Devis.objects.filter(pk=devis.pk).update(regles_calcul=REGLES_CENTAINE_0311)
+        devis.refresh_from_db()
+        self.assertNotIn('branche_echeancier', build_quote_data(devis, opts))
 
     def test_trois_tranches_par_defaut_inchangees(self):
         data, res, une_page, cgv, publiques = self._surfaces(self._devis())
