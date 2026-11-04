@@ -10,6 +10,8 @@ import DealSignedCelebrationHost from '../ui/DealSignedCelebrationHost'
 import ServerLocaleSync from '../i18n/ServerLocaleSync'
 // BPQ6 — dead-man's switch du tri quotidien des problèmes (superusers seulement).
 import TriProblemesBanner from './TriProblemesBanner'
+// BPQ7 — bandeau « Nouvelle version » (SKIP_WAITING sur demande, cf. src/sw.js).
+import UpdateBanner from '../features/adsengine/UpdateBanner'
 
 /* ADOC146 — SHELL GLOBAL : les composants montés HORS du RouterProvider
    (donc rendus pour TOUT compte connecté, y compris un compte PORTAIL
@@ -38,6 +40,7 @@ export default function ShellGlobal() {
       <Suspense fallback={null}><MessageAccueilModal /></Suspense>
       <WelcomeMoment />
       <TriProblemesBanner />
+      <UpdateBanner />
     </>
   )
 }
