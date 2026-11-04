@@ -198,6 +198,31 @@ class BulkWhatsappGardesTests(TestCase):
         self.assertFalse(LeadActivity.objects.filter(
             lead=self.c, body__startswith='WhatsApp préparé en lot').exists())
 
+    def test_reactivation_a_completer_sort_de_la_file(self):
+        """ACVI48 (C-ACVI-065) — la branche réactivation (seau ``k6_p1``) suit la
+        même règle que la branche gabarit : sans plateforme tapée, le blanc
+        « [plateforme] » n'est jamais mis en file, aucune trace de réactivation.
+        Seule l'appartenance au seau est fixée (``seaux_reactivation``) ; le
+        rendu passe par la vraie machinerie. Mutant : ignorer ``crochets`` ⇒
+        le lien part avec ``%5Bplateforme%5D``."""
+        from unittest.mock import patch
+
+        from apps.crm.mesure_cadence import trace_reactivation
+
+        with patch('apps.crm.cadence_selectors.seaux_reactivation',
+                   return_value={'K6_p1': [self.c.pk]}):
+            resp = self.api.post(URL, {
+                'action': 'prepare_whatsapp', 'ids': [self.c.pk],
+                'seau': 'k6_p1', 'template_cle': 'reactivation_k6_p1'},
+                format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.data['queue'], [])
+        self.assertEqual([(s['id'], s['reason']) for s in resp.data['skipped']],
+                         [(self.c.pk, 'à compléter : [plateforme]')])
+        self.assertNotIn('%5Bplateforme%5D', str(resp.data))
+        self.assertFalse(LeadActivity.objects.filter(
+            lead=self.c, body=trace_reactivation('k6_p1')).exists())
+
     def test_jumeau_darija_rendu_pour_lead_darija(self):
         # ACRM70 — « RDV » FR et « RDV » darija coexistent (unicité société +
         # nom + langue) ; le lead darija reçoit le texte darija, le lead FR
