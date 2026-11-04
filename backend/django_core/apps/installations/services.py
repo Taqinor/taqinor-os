@@ -1429,11 +1429,8 @@ def solder_reservations_vente(installation, quantites_par_produit, reference,
                     .first())
             if resa is None:
                 continue
-            deja = InstallationActivity.objects.filter(
-                installation=installation, field=_MARQUEUR_SOLDE_VENTE,
-                old_value=reference,
-                new_value__startswith=f'{produit_id}:').exists()
-            if deja:
+            from .services_solde_vente import net_marqueurs_vente  # ASTK263
+            if net_marqueurs_vente(installation, produit_id, reference) > 0:
                 continue
             decompte = min(qte, resa.quantite)
             resa.quantite -= decompte
