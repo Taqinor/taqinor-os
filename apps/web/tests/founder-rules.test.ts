@@ -87,6 +87,11 @@ describe('WAUD15 — règle B : jamais un compte de chantiers dérivé, dernièr
     expect(dateComparable('juillet 2026')).toBeGreaterThan(dateComparable('avril 2026'));
     expect(dateComparable('inconnue')).toBe(-1);
   });
+  it('aucune promesse de visite sur l’accueil tant que WAUD15-b n’a pas les villes confirmées', () => {
+    for (const code of pages) {
+      expect(code).not.toMatch(/réels, visitables|installations, visitable|حقيقية، قابلة للزيارة/);
+    }
+  });
 });
 
 describe('WAUD18 — loi 82-21 : ni montant d’amende, ni menace, ni « à confirmer »', () => {
