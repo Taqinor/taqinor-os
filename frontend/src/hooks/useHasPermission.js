@@ -59,6 +59,16 @@ export function useCanListUsers() {
   return estAdmin || aUsersGerer
 }
 
+// NTOBS21 — miroir de `core.maintenance_windows.FiabilitePermission` (lecture) :
+// Directeur/Administrateur, palier admin, ou `fiabilite_voir`/`fiabilite_administration`.
+export function useCanLireFiabilite() {
+  const estAdmin = useHasRole(['admin'])
+  const roleDirection = useHasPermission(null, ['Directeur', 'Administrateur'])
+  const voir = useHasPermission('fiabilite_voir')
+  const administrer = useHasPermission('fiabilite_administration')
+  return estAdmin || roleDirection || voir || administrer
+}
+
 // Alias lisibles pour les deux paliers les plus fréquents.
 export function useIsAdmin() {
   return useHasRole(['admin'])

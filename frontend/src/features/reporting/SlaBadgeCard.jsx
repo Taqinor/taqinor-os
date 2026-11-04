@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ShieldCheck } from 'lucide-react'
 import parametresApi from '../../api/parametresApi'
+import { useCanLireFiabilite } from '../../hooks/useHasPermission'
 import { Card, CardContent } from '../../ui'
 
 /* ============================================================================
@@ -16,6 +17,8 @@ import { Card, CardContent } from '../../ui'
 export default function SlaBadgeCard() {
   const navigate = useNavigate()
   const [dernier, setDernier] = useState(null) // null = en cours/indisponible
+  // Les réglages ne sont lus que par un rôle qui y a droit (jamais un 403 évitable).
+  const peutLireReglages = useCanLireFiabilite()
 
   useEffect(() => {
     let alive = true
@@ -23,7 +26,9 @@ export default function SlaBadgeCard() {
     // Réglages illisibles (droit, réseau) = défaut = badge affiché.
     Promise.allSettled([
       parametresApi.getSlaSnapshots(),
-      Promise.resolve().then(() => parametresApi.getReliabilitySettings()),
+      peutLireReglages
+        ? Promise.resolve().then(() => parametresApi.getReliabilitySettings())
+        : Promise.reject(new Error('reglages-non-lus')),
     ]).then(([snap, reglages]) => {
       if (!alive) return
       if (reglages.status === 'fulfilled'
@@ -36,7 +41,7 @@ export default function SlaBadgeCard() {
       setDernier(snapshots[0] ?? false)
     })
     return () => { alive = false }
-  }, [])
+  }, [peutLireReglages])
 
   if (!dernier) return null
 
