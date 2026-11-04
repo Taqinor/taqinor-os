@@ -159,3 +159,11 @@
     display: block;
   }
 }
+
+/* WAUD65 — tuiles de la bande investissement : la valeur reste dans sa colonne à 360-414 px
+   (« 30 years » dépassait de 29 px) — retour à la ligne permis, jamais de chevauchement. */
+.v2 dl dd.fig-md[data-fig-fixe] {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
