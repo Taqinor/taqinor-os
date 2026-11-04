@@ -1,4 +1,5 @@
 ---
+import { garantieLocale } from '../../lib/warranty';
 import { DEYE_PLAGE_KW } from '../../lib/fiches';
 import { DEYE_INVERTER_WARRANTY_YEARS, HUAWEI_INVERTER_WARRANTY_YEARS, BATTERY_WARRANTY_YEARS } from '../../lib/warranty';
 import { pageLocale } from '../../lib/pageCtx';
@@ -28,7 +29,7 @@ const comparaisonPanneaux = [
   { critere: 'Cell', a: 'N-type TOPCon cell, bifacial technology', b: 'High-efficiency monocrystalline N-type cell' },
   { critere: 'Power', a: 'Power range 705 – 720 Wc', b: 'Power range ≈ 700 – 720 Wc' },
   { critere: 'Standards', a: 'IEC 61215 and IEC 61730 compliant', b: 'IEC 61215 and IEC 61730 compliant' },
-  { critere: 'Warranty', a: panneauCanadian.garantie, b: panneauJinko.garantie },
+  { critere: 'Warranty', a: garantieLocale(panneauCanadian.garantie, 'en'), b: garantieLocale(panneauJinko.garantie, 'en') },
 ];
 
 const comparaisonOnduleurs = [
@@ -36,7 +37,7 @@ const comparaisonOnduleurs = [
   { critere: 'Model', a: onduleurHuawei.modele, b: onduleurDeye.modele },
   { critere: 'Strength', a: 'Per-string optimisation (multiple MPPT)', b: 'Built-in CAN BMS battery management' },
   { critere: 'Range / compliance', a: 'From residential to commercial rooftops', b: `Single-phase and three-phase, ${DEYE_PLAGE_KW}` },
-  { critere: 'Warranty', a: onduleurHuawei.garantie, b: onduleurDeye.garantie },
+  { critere: 'Warranty', a: garantieLocale(onduleurHuawei.garantie, 'en'), b: garantieLocale(onduleurDeye.garantie, 'en') },
 ];
 
 const categories = [

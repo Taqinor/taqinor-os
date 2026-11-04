@@ -145,7 +145,7 @@ const journey = [
 // actually delivered by the built journey (diagnostic → signed study → quote
 // + e-signature → install & after-sales, see /devis/mon-toit).
 const howItWorks = [
-  { n: '1', title: 'Instant estimate', body: 'Your bill gives a kWc range in 60 seconds, with no commitment.' },
+  { n: '1', title: 'Free study', body: 'Your bill is enough to start, in 60 seconds with no commitment.' },
   { n: '2', title: 'Personalised, signed study', body: 'Technical visit, sizing on your actual roof, validated and signed before any quote.' },
   { n: '3', title: 'Quote + e-signature', body: 'The detailed quote is signed electronically, wherever you are.' },
   { n: '4', title: 'Installation & after-sales', body: 'Installed by our team, commissioned, then production monitoring on connected installations and proactive after-sales.' },
@@ -195,8 +195,8 @@ import ArIndexH1ED0F from '../../components/blocs/ArIndexH1ED0F.astro';
 ---
 
 <Layout
-  title="Taqinor — Solar installations in Morocco, Law 82-21 compliant"
-  description="Solar installations for villas, industry and hotels in Morocco: sized on your bill, declared under Law 82-21, with production monitoring on connected installations and client access."
+  title="Solar panel installer in Morocco, free study | Taqinor"
+  description="Solar panel installation in Morocco for villas, industry and hotels: a free study on your bill, the Law 82-21 declaration and production monitoring."
   ogSlug="accueil"
   preloadHeroPoster
 >
@@ -232,14 +232,14 @@ import ArIndexH1ED0F from '../../components/blocs/ArIndexH1ED0F.astro';
           figure) stays ABOVE the video/poster (the `-z-10` layer) even after
           the video fades in → the figure no longer "disappears" when the
           video starts. */}
-      <div class="relative z-10 mx-auto w-full max-w-6xl px-4 pb-24 pt-32 sm:pb-32">
-        <p class="tech-label v2-kicker rule-brass cine-in text-lune">The study first, the worksite second</p>
+      <div class="relative z-10 mx-auto w-full max-w-6xl px-4 pb-24 pt-20 sm:pb-32 sm:pt-32">
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">Solar panel installation in Morocco</p>
         {/* WB1/WC7 (2026-07-04/05) — STATIC hero title: no count-up nor
             `.cine-in` on the LCP element → it paints immediately, no "appears
             then disappears" flash. Defensive text-shadow: the white figure
             stays legible even over a very bright video frame (full sun). */}
         <ArIndexH1ED0F heroFigure={heroFigure} heroSub={heroSub} heroTitleSuffix={heroTitleSuffix} />
-        <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">
+        <div class="cine-in cine-in-3 mt-6 flex flex-wrap sm:mt-10 items-center gap-3">
           {/* The single brass CTA (brass discipline) — gold is allowed here */}
           <a id="hero-cta-magnetic" href={L('/devis/mon-toit')} class="glow-hero magnetic-cta bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
             Get my free study →
@@ -530,7 +530,6 @@ import ArIndexH1ED0F from '../../components/blocs/ArIndexH1ED0F.astro';
         same widget (variant="compact"), right before the full diagnostic —
         one last catch for anyone who scrolled the whole page without yet
         sizing their bill. ── */}
-    <InstantEstimator variant="compact" />
 
     {/* ── FINAL ACT — W249: a single funnel. The former second form
         (DiagnosticForm, which duplicated the two InstantEstimator widgets

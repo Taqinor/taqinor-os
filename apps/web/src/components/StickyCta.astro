@@ -81,9 +81,14 @@ const wa = whatsappLink(WHATSAPP_LEADS, pageContextWhatsappText(stripLocale(Astr
   // pastHero/formVisible (qui gardent seuls le contrôle du `hidden`).
   let collapsed = false;
   let lastY = scrollY;
+  const REAPPARITION_MS = 600;
+  let arret: ReturnType<typeof setTimeout> | undefined;
 
   function update() {
     bar?.classList.toggle('hidden', !pastHero || formVisible);
+    // WAUD35 — la fin de page reste lisible : la barre ne recouvre jamais le dernier bloc.
+    const mobile = matchMedia('(max-width: 639px)').matches;
+    document.body.style.paddingBottom = bar && mobile && pastHero && !formVisible ? `${bar.offsetHeight}px` : '';
     // On glisse la pilule hors-champ (transform, donc zéro reflow) quand on
     // descend ; elle revient dès qu'on remonte ou qu'on s'arrête en haut.
     bar?.classList.toggle('translate-y-[150%]', collapsed);
@@ -105,10 +110,27 @@ const wa = whatsappLink(WHATSAPP_LEADS, pageContextWhatsappText(stripLocale(Astr
         lastY = y;
         update();
         ticking = false;
+        // WAUD35 — jamais d'action invisible pendant la lecture : la barre revient
+        // 600 ms après l'arrêt du défilement (repliée pendant le geste, W59).
+        if (arret) clearTimeout(arret);
+        arret = setTimeout(() => {
+          collapsed = false;
+          update();
+        }, REAPPARITION_MS);
       });
     },
     { passive: true },
   );
+
+  // WAUD3 — sur mobile, la barre (z-40) se pose AU-DESSUS du bandeau de consentement
+  // (z-60, fixe en bas) au lieu de passer dessous ; le bandeau parti, elle redescend.
+  const bandeau = document.querySelector<HTMLElement>('[data-consent-banner]:not([data-consent-inline])');
+  if (bar && bandeau && 'ResizeObserver' in window) {
+    new ResizeObserver(() => {
+      const mobile = matchMedia('(max-width: 639px)').matches;
+      bar.style.bottom = mobile && bandeau.offsetHeight > 0 ? `${bandeau.offsetHeight}px` : '';
+    }).observe(bandeau);
+  }
 
   if (form && 'IntersectionObserver' in window) {
     new IntersectionObserver(

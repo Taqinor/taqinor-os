@@ -19,7 +19,8 @@
 // mobile lui-même (markup/JS, cibles 44px variant="menu") reste inchangé à
 // l'octet — seul le seuil qui y bascule a été relevé un cran plus haut.
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { isolerBidi } from '../src/lib/bidi';
 import { fileURLToPath } from 'node:url';
 
 const root = (rel: string) => fileURLToPath(new URL(rel, import.meta.url));
@@ -109,5 +110,48 @@ describe('W378 (26/08) — en-tête desktop : plus jamais de retour à la ligne'
 describe('WC1 — global.css : le glyphe WhatsApp (fill plein) échappe au mirroir RTL générique', () => {
   it('la règle de mirroir RTL des SVG exclut explicitement les glyphes fill="currentColor" (WhatsApp, téléphone)', () => {
     expect(GLOBAL_CSS).toContain(':not([fill="currentColor"])');
+  });
+});
+
+describe('WAUD44 — pages arabes : police auto-hébergée et chiffres dans le bon sens', () => {
+  it('« 82-21 », décret, milliers et téléphone isolés ; MAD devient درهم après un montant', () => {
+    expect(isolerBidi('<p>القانون 82-21 ساري</p>')).toBe('<p>القانون <bdi dir="ltr">82-21</bdi> ساري</p>');
+    expect(isolerBidi('<p>المرسوم 2-25-100</p>')).toContain('<bdi dir="ltr">2-25-100</bdi>');
+    expect(isolerBidi('<p>من 60 000 إلى</p>')).toContain('<bdi dir="ltr">60 000</bdi>');
+    expect(isolerBidi('<p>0 MAD</p>')).toBe('<p>0 درهم</p>');
+    expect(isolerBidi('<p>هاتف +212 661 85 04 10</p>')).toContain('<bdi dir="ltr">+212 661 85 04 10</bdi>');
+  });
+
+  it('ni attributs, ni script, ni style, ni svg, ni un élément déjà en dir="ltr"', () => {
+    for (const intact of [
+      '<input data-x="82-21" value="60 000">',
+      '<script>const a = "82-21";</script>',
+      '<style>.a::after{content:"82-21"}</style>',
+      '<svg><text>82-21</text></svg>',
+      '<span dir="ltr">82-21</span>',
+      '<bdi>82-21</bdi>',
+      '<!-- 82-21 -->',
+    ]) {
+      expect(isolerBidi(intact)).toBe(intact);
+    }
+    // Le saut s'arrête bien à la fermeture de l'élément.
+    expect(isolerBidi('<span dir="ltr"><span>1</span>82-21</span><p>82-21</p>')).toBe(
+      '<span dir="ltr"><span>1</span>82-21</span><p><bdi dir="ltr">82-21</bdi></p>',
+    );
+    expect(isolerBidi('<br><p>82-21</p>')).toContain('<bdi dir="ltr">82-21</bdi>');
+  });
+
+  it('police : fichiers et licence présents, chargée sur /ar/ seulement', () => {
+    for (const f of ['noto-sans-arabic-400.woff2', 'noto-sans-arabic-700.woff2', 'noto-sans-arabic-OFL.txt']) {
+      expect(existsSync(root(`../public/fonts/${f}`)), f).toBe(true);
+    }
+    const css = read('../src/styles/global.css');
+    expect(css).toContain("url('/fonts/noto-sans-arabic-400.woff2')");
+    expect(css).toMatch(/:root\[lang='ar'\] \{\s*--font-sans: 'Hanken Grotesk', 'Noto Sans Arabic'/);
+    const layout = read('../src/layouts/Layout.astro');
+    expect(layout).toMatch(/lang === 'ar' && <link rel="preload"[^>]*noto-sans-arabic-400/);
+    expect(layout).toContain("{lang === 'ar' ? <Bidi><slot /></Bidi> : <slot />}");
+    expect(layout).toContain("<Bidi><Header /></Bidi>");
+    expect(layout).toContain("<Bidi><Footer /></Bidi>");
   });
 });

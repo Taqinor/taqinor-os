@@ -66,7 +66,8 @@ import LanguageSwitcher from './LanguageSwitcher.astro';
 import StarRating from './StarRating.astro';
 import Picture from './Picture.astro';
 import { hasRating } from '../lib/testimonials';
-import { DEYE_CLOUD_URL, NAP } from '../lib/nap';
+import { DEYE_CLOUD_URL, NAP, WHATSAPP_LEADS } from '../lib/nap';
+import { pageContextWhatsappText, whatsappLink } from '../lib/whatsapp';
 import { REALISATIONS } from '../lib/realisations';
 import { getLocaleFromPath, stripLocale, useTranslations } from '../i18n/utils';
 import { localesForPath, localizeNavHref, QUOTE_JOURNEY_PATH } from '../i18n/pages';
@@ -79,6 +80,7 @@ const t = useTranslations(locale);
 const rootPath = stripLocale(Astro.url.pathname);
 const pageLocales = localesForPath(rootPath);
 const L = (href: string) => localizeNavHref(href, locale);
+const waEntete = whatsappLink(WHATSAPP_LEADS, pageContextWhatsappText(stripLocale(Astro.url.pathname)));
 
 // Solutions — dans cet ordre (W28). Le déclencheur pointe vers /nos-solutions.
 // W264 — `featured` : les deux points d'entrée grand public (résidentiel,
@@ -402,6 +404,17 @@ const itemClass =
     </nav>
     <div class="flex items-center gap-1.5 sm:gap-3 xl:gap-2">
       <LanguageSwitcher path={rootPath} current={locale} locales={pageLocales} />
+      {/* WAUD55 — WhatsApp en un geste sur mobile : icône 44 px, sans texte qui
+          déborde à 320 px ; zone « header » pour la mesure (installerMesureContact). */}
+      <a
+        href={waEntete}
+        rel="noopener"
+        aria-label={t('common.whatsapp')}
+        data-header-whatsapp
+        class="flex h-11 w-11 flex-none items-center justify-center text-brass-300 transition-colors hover:text-white md:hidden"
+      >
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.8 0-1.3.7-2 1-2.3.2-.2.5-.3.7-.3h.5c.2 0 .4 0 .6.5l.8 2c.1.2.1.4 0 .5l-.3.5-.4.4c-.1.2-.3.3-.1.6.2.3.8 1.3 1.7 2.1 1.2 1 2.1 1.3 2.4 1.5.3.1.5.1.6-.1l.8-1c.2-.3.4-.2.6-.1l1.9.9c.3.1.5.2.5.4.1.1.1.8-.2 1.4Z"/></svg>
+      </a>
       <a
         href={`tel:${NAP.phone}`}
         class="link-underline hidden items-center gap-1.5 whitespace-nowrap text-sm font-semibold text-lune-soft transition-colors hover:text-white md:flex"

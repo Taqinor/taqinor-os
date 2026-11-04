@@ -1,7 +1,7 @@
 // Étapes, profils et villes du tunnel FR/AR (garde ACAL345).
 export const STEPS = [
   { fr: 'Votre toit', ar: 'سطحك' },
-  { fr: 'Votre estimation', ar: 'تقديرك' },
+  { fr: 'Votre étude gratuite', ar: 'دراستك المجانية' },
 ];
 export const MODES = [
   { id: 'residentiel', fr: 'Résidentiel', ar: 'سكني', desc_fr: 'Villa, appartement', desc_ar: 'فيلا، شقة' },
@@ -9,4 +9,4 @@ export const MODES = [
   { id: 'commercial', fr: 'Commercial', ar: 'تجاري', desc_fr: 'Hôtel, commerce, services', desc_ar: 'فندق، تجارة، خدمات' },
   { id: 'agricole', fr: 'Agricole', ar: 'فلاحي', desc_fr: 'Pompage, ferme', desc_ar: 'ضخ، مزرعة' },
 ];
-export const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra', 'Fès', 'Settat'];
+export const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir'];

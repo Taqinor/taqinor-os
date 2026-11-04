@@ -1,0 +1,26 @@
+---
+/**
+ * WAUD66 — sous la case « être recontacté » : à quoi servent les données + lien
+ * vers la politique. Aucun champ : le corps du lead ne change pas.
+ */
+import { getLocaleFromPath } from '../i18n/utils';
+import type { Locale } from '../i18n/config';
+import { localizeNavHref } from '../i18n/pages';
+
+interface Props {
+  /** Fond sombre du tunnel (défaut) ; `false` pour le fond clair de /contact. */
+  sombre?: boolean;
+}
+const { sombre = true } = Astro.props;
+const locale = getLocaleFromPath(Astro.url.pathname);
+const STR: Record<Locale, { info: string; lien: string }> = {
+  fr: { info: 'Vos données servent à traiter votre demande et à vous recontacter.', lien: 'Politique de confidentialité' },
+  en: { info: 'Your data is used to handle your request and contact you back.', lien: 'Privacy policy' },
+  ar: { info: 'تُستخدم معطياتكم لمعالجة طلبكم والتواصل معكم.', lien: 'سياسة الخصوصية' },
+};
+const s = STR[locale] ?? STR.fr;
+---
+
+<p data-info-consentement class={sombre ? 'text-xs text-lune-faint' : 'text-xs text-encre-faint'}>
+  {s.info} <a href={localizeNavHref('/politique-de-confidentialite', locale)} class="underline underline-offset-2">{s.lien}</a>
+</p>

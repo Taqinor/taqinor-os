@@ -720,3 +720,23 @@ describe('WAUD73/74/75 — pages « subvention », « kit ou sur mesure », « l
     expect(liens).toEqual(['/prix-panneaux-solaires-maroc', '/ressources/10-questions-avant-de-signer']);
   });
 });
+
+describe('WAUD26 — pages clés : mot-clé en tête, tailles d’extrait Google', () => {
+  const PAGES_CLES = ['index', 'résidentiel', 'professionnel', 'marocains-du-monde', 'nos-solutions'];
+  const attribut = (src: string, nom: string) => src.slice(src.indexOf('<Layout')).match(new RegExp(`\\b${nom}="([^"]*)"`))?.[1] ?? '';
+
+  for (const loc of ['', 'en/', 'ar/']) {
+    for (const page of PAGES_CLES) {
+      it(`/${loc}${page} : titre ≤ 62, description ≤ 160, mot-clé en tête`, () => {
+        const src = readFileSync(fileURLToPath(new URL(`../src/pages/${loc}${page}.astro`, import.meta.url)), 'utf-8');
+        const titre = attribut(src, 'title');
+        const description = attribut(src, 'description');
+        expect(titre.length, titre).toBeGreaterThan(20);
+        expect(titre.length, titre).toBeLessThanOrEqual(62);
+        expect(description.length, description).toBeGreaterThan(80);
+        expect(description.length, description).toBeLessThanOrEqual(160);
+        expect(titre.slice(0, 40)).toMatch(/panneaux solaires|Panneaux solaires|Solar panel|الألواح الشمسية/);
+      });
+    }
+  }
+});

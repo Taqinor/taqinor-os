@@ -16,6 +16,7 @@
 import DevisMonToitPiscine from '../../../components/blocs/DevisMonToitPiscine.astro';
 import DevisMonToitClim from '../../../components/blocs/DevisMonToitClim.astro';
 import DevisMonToitProfil from '../../../components/blocs/DevisMonToitProfil.astro';
+import DevisMonToitBoutonsEtude from '../../../components/blocs/DevisMonToitBoutonsEtude.astro';
 import DevisMonToitVehicule from '../../../components/blocs/DevisMonToitVehicule.astro';
 import DevisMonToitChauffeEau from '../../../components/blocs/DevisMonToitChauffeEau.astro';
 import DevisMonToitEquipements from '../../../components/blocs/DevisMonToitEquipements.astro';
@@ -669,35 +670,10 @@ import DevisMonToitCaptureFin from '../../../components/blocs/DevisMonToitCaptur
           </div>
         </div>
 
-        <div class="mt-5 flex items-center justify-between gap-3">
-          <button type="button" id="mt-back-1"
-            class="inline-flex items-center gap-1 px-2 py-3 text-base font-semibold text-lune-soft transition-colors hover:text-white">
-            <!-- WJ89 — chevron « retour » auto-retourné en RTL. -->
-            <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10" fill="none">
-              <polyline points="7,1 3,5 7,9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-            <span data-i18n data-fr="Retour" data-ar="رجوع">Retour</span>
-          </button>
-          <button type="button" id="mt-estimate"
-            class="inline-flex items-center justify-center gap-2 bg-brass-400 px-6 py-3 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">
-            <span data-i18n data-fr="Voir mon estimation" data-ar="عرض تقديري">Voir mon estimation</span>
-            <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10" fill="none">
-              <polyline points="3,1 7,5 3,9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-          </button>
-        </div>
+        <DevisMonToitBoutonsEtude />
       </div>
-      <!-- ====== RÉVÉLATION — VOTRE ESTIMATION (WJ1) + CONTACT (WJ3) ======
-           COUPE FONDATEUR 21/08 — ce bloc ÉTAIT l'écran 3 (#mt-panel-2). Il
-           n'est plus une étape : c'est la seconde moitié de l'écran 1, révélée
-           SUR PLACE au clic de « Voir mon estimation », juste sous les questions
-           qui viennent de la produire. Frère (et non enfant) de #mt-panel-1 :
-           l'imbrication existante n'est pas touchée, seule renderStep() décide
-           de sa visibilité (`step === 1 && revealed`). Le landmark <h2> de
-           l'ancienne étape 3 disparaît avec elle — l'écran 1 a UN seul titre de
-           repère (#mt-h2-1), exactement comme l'écran 0. -->
       <div id="mt-reveal" class="mt-step-panel" hidden>
-        <p class="tech-label mt-6 text-brass-300" data-i18n data-fr="Votre estimation instantanée" data-ar="تقديرك الفوري">Votre estimation instantanée</p>
+        <p class="tech-label mt-6 text-brass-300" data-i18n data-fr="Votre étude gratuite" data-ar="دراستك المجانية">Votre étude gratuite</p>
         <!-- WJ48 — anticipation animation brandée courte avant les vrais chiffres. -->
         <MonToitP1516 />
 
@@ -1156,14 +1132,14 @@ import DevisMonToitCaptureFin from '../../../components/blocs/DevisMonToitCaptur
       <!-- WJ35 — signature zellige de clôture -->
       <ZelligeSignature
         line="كل رقم في هذه الصفحة مقيس، لا موعود."
-        sub="تقديركم أولاً. الدراسة بعد ذلك."
+        sub="دراستكم المجانية أولاً. الورش بعد ذلك."
       />
     </div>
   </section>
 
   <!-- ============ WJ7 — RÉCUPÉRATION D'ABANDON (exit-intent / sortie mobile) ============ -->
   <DevisMonToitExitModal inputClass={inputClass} closeLabel="إغلاق" phoneDir="ltr">
-    <p slot="title" id="mt-exit-title" class="display text-lg text-white" data-i18n data-fr="Recevez votre estimation sur WhatsApp" data-ar="استلم تقديرك على واتساب">Recevez votre estimation sur WhatsApp</p>
+    <p slot="title" id="mt-exit-title" class="display text-lg text-white" data-i18n data-fr="Recevez votre étude gratuite sur WhatsApp" data-ar="استلم دراستك المجانية على واتساب">Recevez votre estimation sur WhatsApp</p>
     <DevisMonToitPB974 />
     <span slot="send" data-i18n data-fr="Envoyer" data-ar="إرسال">Envoyer</span>
   </DevisMonToitExitModal>

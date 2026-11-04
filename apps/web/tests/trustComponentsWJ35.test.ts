@@ -282,3 +282,44 @@ describe('WAUD49 — badges de preuve cliquables ou retirés', () => {
     expect(read('../src/pages/en/équipement.astro')).not.toContain('Tier-1 brands · official distributors');
   });
 });
+
+describe('WAUD61-b — liste du tunnel : la zone de service, rien d’autre (D-WAUD-8)', () => {
+  it('FR/AR (module partagé) et EN : ni Kénitra, ni Fès, ni Settat', () => {
+    const modes = readFileSync(fileURLToPath(new URL('../src/lib/tunnel/modes.ts', import.meta.url)), 'utf-8');
+    const en = readFileSync(fileURLToPath(new URL('../src/pages/en/devis/mon-toit.astro', import.meta.url)), 'utf-8');
+    for (const src of [modes, en]) {
+      const ligne = src.split('\n').find((l) => l.includes('TOWNS =')) ?? '';
+      expect(ligne).toContain('Casablanca');
+      expect(ligne).not.toMatch(/Kénitra|Fès|Settat/);
+    }
+  });
+});
+
+describe('WAUD31 — garanties et badges dans la langue de la page', () => {
+  it('garantieLocale : mêmes durées, plus un mot français', async () => {
+    const { garantieLocale } = await import('../src/lib/warranty');
+    for (const loc of ['en', 'ar'] as const) {
+      for (const t of [
+        'Garantie produit 12 ans · performance linéaire 30 ans',
+        'Garantie constructeur 5 ans',
+        'Garantie 10 ans',
+        'Garantie 20 ans (structure) · garantie de pose Taqinor 2 ans',
+        'Garantie de pose Taqinor 2 ans',
+      ]) {
+        const rendu = garantieLocale(t, loc);
+        expect(rendu, rendu).not.toMatch(/Garantie|garantie|\bans\b|linéaire/);
+        if (loc === 'en') expect(rendu.match(/\d+/g)).toEqual(t.match(/\d+/g));
+      }
+    }
+    expect(garantieLocale('Garantie 20 ans (structure)', 'ar')).toContain('20 سنة');
+    expect(garantieLocale('Garantie de pose Taqinor 2 ans', 'ar')).toContain('سنتان');
+    expect(garantieLocale('Garantie 10 ans', 'fr')).toBe('Garantie 10 ans');
+  });
+
+  it('CertLogoRow rend la locale de la page côté serveur, sans retirer data-fr/en/ar', () => {
+    const src = readFileSync(fileURLToPath(new URL('../src/components/CertLogoRow.astro', import.meta.url)), 'utf-8');
+    expect(src).toContain('{libelleDe(c)}');
+    expect(src).toContain('data-ar={c.detailAr}>{detailDe(c)}</p>');
+    expect(src).not.toContain('>{c.label}</p>');
+  });
+});

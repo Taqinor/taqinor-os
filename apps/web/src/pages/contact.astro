@@ -31,6 +31,7 @@
  */
 import ContactCarteWa from '../components/blocs/ContactCarteWa.astro';
 import ContactEntete from '../components/blocs/ContactEntete.astro';
+import LigneInfoConsentement from '../components/LigneInfoConsentement.astro';
 import Layout from '../layouts/Layout.astro';
 import { NAP } from '../lib/nap';
 import { useTranslations } from '../i18n/utils';
@@ -50,7 +51,7 @@ const { waGeneral, waRegul, waRappel, waVisite, waSav } = contactWhatsappLinks()
         <h1 class="display v2-page-title cine-in mt-5 max-w-2xl [animation-delay:120ms]">Parlez à un humain</h1>
         <p class="v2-lead cine-in mt-5 max-w-xl text-white/85 [animation-delay:240ms]">
           Pas de formulaire ici : écrivez-nous directement sur WhatsApp, appelez, ou demandez à être
-          rappelé. Pour une estimation chiffrée en 60 secondes, le diagnostic vit sur la page d'accueil.
+          rappelé. Pour votre étude gratuite, le diagnostic prend 60 secondes.
         </p>
         {/* W280 — StarRating : note Google réelle uniquement, no-op-safe
             (n'affiche rien tant que le fondateur n'a pas renseigné une vraie note). */}
@@ -121,6 +122,7 @@ const { waGeneral, waRegul, waRappel, waVisite, waSav } = contactWhatsappLinks()
               <input id="rappel-consent" name="consent" type="checkbox" required class="mt-0.5" />
               <span>J'accepte d'être recontacté(e) par Taqinor au sujet de mon projet solaire.</span>
             </label>
+            <LigneInfoConsentement sombre={false} />
             <button type="submit" id="rappel-submit"
               class="inline-flex w-full items-center justify-center gap-2 bg-brass-400 px-6 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300 sm:w-auto">
               Demander à être rappelé(e)

@@ -11,6 +11,7 @@ import Layout from '../../layouts/Layout.astro';
 import { NAP } from '../../lib/nap';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
+import TableauTraceurs from '../../components/TableauTraceurs.astro';
 
 const legalHref = localizeNavHref('/mentions-legales', getLocaleFromPath(Astro.url.pathname));
 
@@ -97,8 +98,9 @@ const gdprSection = {
       </h2>
       <p class="mt-3 ps-10 text-sm leading-relaxed text-encre-soft">{gdprSection.p}</p>
     </div>
+    <TableauTraceurs />
     <p class="mt-7 text-xs text-encre-faint">
-      آخر تحديث: يوليوز 2026 — TAQINOR Solutions SARLAU، RC 691213 (الدار البيضاء).
+      آخر تحديث: نونبر 2026 — TAQINOR Solutions SARLAU، RC 691213 (الدار البيضاء).
       انظر أيضاً <a href={legalHref} class="underline decoration-azur-600 underline-offset-2">الإشعار القانوني</a>.
     </p>
     </div>
