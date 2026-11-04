@@ -272,3 +272,4 @@ Contre-visite `vérifie ACHT` du 01/11/2026 (dossier `docs/audits/2026-11-01-cha
 - 2026-11-03 — ASAV124 — cochée : rejeu en direct PASS du 04/11 (docs/audits/acceptation/).
 - 2026-11-03 — ASAV123 — cochée : clauses restantes rejouées PASS le 04/11 (docs/audits/acceptation/, sha 685ae08f1).
 - 2026-11-04 — ASAV127 — cochée (already present) : 20bfc0017 ; tests_asav75_garde_statut.py::GardeStatutTicketTests::test_fixture_typee_signalee ; preuve en direct n/a (garde CI).
+- 2026-11-04 — ADOC199 — code livré, preuve en direct due (acceptation d'un devis ×3 sur la pile locale, fiche contrat SAV ⇒ 3 600) : sav/services.py::creer_contrat_depuis_devis_accepte, prix = Σ total_ht × qté vendue ÷ qté × (1+TVA) sur lignes_vendues (ADOC191 ; 0 ligne logique nette, import fusionné) ; tests_adev55_contrat_option_retenue.py::test_prix_multivilla_x_n (non joué localement — CI).
