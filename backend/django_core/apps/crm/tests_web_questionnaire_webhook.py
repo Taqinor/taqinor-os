@@ -59,6 +59,24 @@ class WebQuestionnaireWebhookTests(TestCase):
         lead = Lead.objects.get(pk=res.json()['lead_id'])
         self.assertEqual(lead.type_installation, 'industriel')
 
+    def test_waud6_origine_page_darrivee_et_referent(self):
+        # WAUD6 (D-WAUD-2=a) — chemin d'arrivée + hôte du référent atterrissent
+        # dans le blob ; une valeur malformée est ignorée, jamais une erreur.
+        res = self.post(payload_site(
+            landingPath='/devis/mon-toit', referrerHost='ChatGPT.com'))
+        self.assertEqual(res.status_code, 201, res.content)
+        sac = Lead.objects.get(pk=res.json()['lead_id']).web_questionnaire
+        self.assertEqual(sac.get('landing_path'), '/devis/mon-toit')
+        self.assertEqual(sac.get('referrer_host'), 'chatgpt.com')
+
+    def test_waud6_origine_malformee_ignoree(self):
+        res = self.post(payload_site(
+            landingPath='https://evil/x?a=1', referrerHost='a b/c'))
+        self.assertEqual(res.status_code, 201, res.content)
+        sac = Lead.objects.get(pk=res.json()['lead_id']).web_questionnaire
+        self.assertNotIn('landing_path', sac)
+        self.assertNotIn('referrer_host', sac)
+
     def test_roof_type_fabrique_du_tunnel_n_est_plus_enregistre(self):
         """QJR657 — le tunnel émet roofType='autre' pour tout visiteur non pro :
         une valeur inventée ne devient plus un « Type de toiture (site) »."""
