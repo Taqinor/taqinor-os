@@ -894,7 +894,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             content_type=ct, object_id=inst.id).first()
         if attachment is None:
             return Response({'detail': 'Pièce jointe introuvable pour ce chantier.'},
-                            status=status.HTTP_404_NOT_FOUND)
+                            status=status.HTTP_409_CONFLICT)  # ENF11 : le chantier existe
 
         cle = request.data.get('cle')
         item = inst.checklist.filter(cle=cle).first() if cle else None

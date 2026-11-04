@@ -11,7 +11,7 @@ dossier non VALIDÉ bloque la création d'un bon de commande (garde posée dans
 ``views/bon_commande_fournisseur.py``).
 """
 from django.utils import timezone
-from drf_spectacular.utils import extend_schema, extend_schema_field, extend_schema_view
+from drf_spectacular.utils import OpenApiResponse, extend_schema, extend_schema_field, extend_schema_view
 from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.parsers import JSONParser, MultiPartParser
@@ -277,7 +277,8 @@ class DocumentFournisseurViewSet(CompanyScopedModelViewSet):
             dossier.save(update_fields=['statut', 'updated_at'])
         return Response(self.get_serializer(document).data)
 
-    @extend_schema(responses={(200, 'application/octet-stream'): BINARY})
+    @extend_schema(responses={(200, 'application/octet-stream'): BINARY,
+                              409: OpenApiResponse(description='Aucun fichier attaché.')})
     @action(detail=True, methods=['get'])
     def telecharger(self, request, pk=None):
         """NTP2P7 — sert le fichier depuis MinIO (même origine, scopé société)."""
@@ -287,8 +288,8 @@ class DocumentFournisseurViewSet(CompanyScopedModelViewSet):
 
         document = self.get_object()
         if not document.file_key:
-            return Response({'detail': 'Aucun fichier attaché.'},
-                            status=status.HTTP_404_NOT_FOUND)
+            return Response({'detail': 'Aucun fichier attaché.'},  # ENF11 : état du document
+                            status=status.HTTP_409_CONFLICT)
         contenu = fetch_attachment(document.file_key)
         reponse = HttpResponse(
             contenu, content_type=document.mime or 'application/octet-stream')

@@ -727,7 +727,6 @@ class Enf11FuzzGedTour2Tests(TestCase):
                 ('depots-publics/', {'folder': 0}, 'folder'),
                 ('annotations/', {'version': 0}, 'version'),
                 (f'documents/{doc.pk}/tagger/', {'tag': 0}, 'tag'),
-                (f'documents/{doc.pk}/restaurer/', {'version': 0}, 'version'),
                 ('demandes-signature/creer-multi/', {
                     'document': 0, 'destinataires': [{'nom': 'A'}]},
                  'document')):

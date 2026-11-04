@@ -1396,7 +1396,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         if source_version is None:
             return Response(
                 {'version': 'Version inconnue ou inaccessible.'},
-                status=status.HTTP_404_NOT_FOUND)
+                status=status.HTTP_409_CONFLICT)  # ENF11 : le document existe
         # ADOC68 — jumeau de l'ajout de version : refusé (409) pendant une
         # demande de signature en attente.
         try:

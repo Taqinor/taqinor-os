@@ -1116,12 +1116,13 @@ class TestFuzzCrmNocturne2410(TestCase):
             'date_expiration_certification': '2026-01-01'}, format='json')
         self.assertEqual(resp.status_code, 409, resp.content)
 
-    def test_planifier_visite_etape_inconnue_404_texte_400(self):
+    def test_planifier_visite_etape_inconnue_409_texte_400(self):
         url = f'/api/django/crm/leads/{self.lead.pk}/visites/planifier/'
-        resp = self.api.post(
-            url, {'date_prevue': '2999-01-01', 'etape': '987654'},
-            format='json')
-        self.assertEqual(resp.status_code, 404, resp.content)
+        for etape in ('987654', '23691620070840878904975'):
+            resp = self.api.post(
+                url, {'date_prevue': '2999-01-01', 'etape': etape},
+                format='json')
+            self.assertEqual(resp.status_code, 409, resp.content)
         resp = self.api.post(
             url, {'date_prevue': '2999-01-01', 'etape': 'abc'}, format='json')
         self.assertEqual(resp.status_code, 400, resp.content)

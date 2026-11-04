@@ -180,7 +180,7 @@ class TestPreparation(TestCase):
         for route in ('cocher-materiel', 'cocher-outil'):
             r = self.api.post(f'{self.url}/{route}/', {'ligne': 0},
                               format='json')
-            self.assertEqual(r.status_code, 404, (route, r.data))
+            self.assertEqual(r.status_code, 409, (route, r.data))
             r = self.api.post(f'{self.url}/{route}/', {}, format='json')
             self.assertEqual(r.status_code, 400, (route, r.data))
             # api-fuzz-full 27/10 : une liste / un objet en `ligne` faisait
@@ -229,7 +229,7 @@ class TestPreparation(TestCase):
         self.assertIn('fournisseur par défaut', r.data['detail'])
         r = self.api.post(f'{url}/commander-manques/',
                           {'fournisseur': 2147483000}, format='json')
-        self.assertEqual(r.status_code, 404, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         # api-fuzz-pr 30/10 : une LISTE en `fournisseur` atteignait
         # `filter(id=[None, None])` (TypeError, 500) → 400 nommant le champ.
         r = self.api.post(f'{url}/commander-manques/',
