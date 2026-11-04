@@ -6,7 +6,8 @@
   "couvre": [
     "AANA86",
     "AANA82",
-    "AANA83"
+    "AANA83",
+    "AANA85"
   ],
   "couvre_avec_ecart": [],
   "etapes": [
@@ -75,6 +76,28 @@
         "10": "NA"
       },
       "notes": "Fiche fournisseur > Tarif > import xlsx : « 12.340 » / « 10:9.500 » ecrits 12.34 / 9.50 (psql), « 12.345 » refuse dans errors (rien d'arrondi). Detail : traces/2026-11-04/AANA83-AANA84-import-tarif.txt."
+    },
+    {
+      "id": "P.parc_date_pose_illisible",
+      "taches": [
+        "AANA85"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AANA/traces/2026-11-04/ACCEPTATION-AANA-P.parc_date_pose_illisible.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Parc d'equipements (/equipements) > Importer, CSV produit_sku PAN-450M, CHT-202609-0001, date_pose 31/13/2025 : commit 200, skipped ligne 1 « date_pose illisible : '31/13/2025' » affiche dans « Lignes ignorees », 0 equipement cree (psql SN-AANA85-001 = 0, liste « 0 equipement »). L'import du parc vit sur l'ecran SAV Equipements, pas sur /parc (Parc installe n'a qu'un export)."
     }
   ]
 }
