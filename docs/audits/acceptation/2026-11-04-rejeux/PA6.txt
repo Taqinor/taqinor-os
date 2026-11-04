@@ -1,0 +1,22 @@
+besoin_materiel : GET /api/django/installations/chantiers/11/besoin-materiel/ -> 200 ; parcours {'auto': 'NA', 'checkpoint': 'FAIL', 'aval': 'NA'} ; règles aval à observer : Les quantités déjà réservées sont déduites du disponible.
+demande_achat : non jouée ; parcours {'auto': 'NA', 'checkpoint': 'NA', 'aval': 'NA'} ; aucun DemandeAchat lié à l'enregistrement : non jouée
+bcf_brouillon : POST /api/django/installations/chantiers/11/commander-besoin/ -> 409 ; parcours {'auto': 'NA', 'checkpoint': 'PASS', 'aval': 'NA'} ; corps vide envoyé ({"detail":"Un BCF ouvert couvre déjà ces manques : BCF-202610-0007, BCF-202610-0006."}) : fournir --corps {"bcf_brouillon": {...}}; règles aval à observer : À la création du BCF, le chantier né du même devis lui est rattaché.
+bcf_envoi : POST /api/django/stock/bons-commande-fournisseur/25/envoyer/ -> 200 ; parcours {'auto': 'NA', 'checkpoint': 'PASS', 'aval': 'NA'} ; règles aval à observer : L'envoi est bloqué si le palier d'approbation n'est pas validé.
+reception_fournisseur : non jouée ; parcours {'auto': 'NA', 'checkpoint': 'NA', 'aval': 'NA'} ; aucun ReceptionFournisseur lié à l'enregistrement : non jouée
+mouvement_entree : auto (signal) : artefact MouvementStock ; parcours {'auto': 'FAIL', 'checkpoint': 'FAIL', 'aval': 'NA'} ; règles aval à observer : Le mouvement est annoncé sur le bus (miroir d'inventaire).
+kitting_picklist : non jouée ; parcours {'auto': 'NA', 'checkpoint': 'NA', 'aval': 'NA'} ; aucun PickList lié à l'enregistrement : non jouée
+facture_fournisseur : POST /api/django/stock/factures-fournisseur/ -> 201 ; parcours {'auto': 'NA', 'checkpoint': 'FAIL', 'aval': 'NA'} ; règles aval à observer : `facture_fournisseur_creee` : lettrage des provisions GR/IR du BCF. ; Statut et solde recalculés.
+paiement_fournisseur : POST /api/django/stock/paiements-fournisseur/ -> 409 ; parcours {'auto': 'NA', 'checkpoint': 'FAIL', 'aval': 'NA'} ; règles aval à observer : Le solde est verrouillé et vérifié avant d'accepter le montant. ; Le statut de la facture suit le solde.
+produit_modifie : non jouée ; parcours {'auto': 'NA', 'checkpoint': 'NA', 'aval': 'NA'} ; aucun Produit lié à l'enregistrement : non jouée
+Hors enregistrement : besoin_materiel : jouée, sans tâche à couvrir (GET /api/django/installations/chantiers/11/besoin-materiel/ -> 200)
+Hors enregistrement : demande_achat : non jouée (aucun DemandeAchat lié à l'enregistrement : non jouée)
+Hors enregistrement : bcf_brouillon : jouée, sans tâche à couvrir (POST /api/django/installations/chantiers/11/commander-besoin/ -> 409)
+Hors enregistrement : bcf_envoi : jouée, sans tâche à couvrir (POST /api/django/stock/bons-commande-fournisseur/25/envoyer/ -> 200)
+Hors enregistrement : reception_fournisseur : non jouée (aucun ReceptionFournisseur lié à l'enregistrement : non jouée)
+Hors enregistrement : mouvement_entree : jouée, sans tâche à couvrir (auto (signal) : artefact MouvementStock)
+Hors enregistrement : kitting_picklist : non jouée (aucun PickList lié à l'enregistrement : non jouée)
+Hors enregistrement : facture_fournisseur : jouée, sans tâche à couvrir (POST /api/django/stock/factures-fournisseur/ -> 201)
+Hors enregistrement : paiement_fournisseur : jouée, sans tâche à couvrir (POST /api/django/stock/paiements-fournisseur/ -> 409)
+Hors enregistrement : produit_modifie : non jouée (aucun Produit lié à l'enregistrement : non jouée)
+Base inchangée (transaction annulée) : 32 lignes avant et après.
+Aucun enregistrement écrit (aucune étape jouée ne porte de tâche).

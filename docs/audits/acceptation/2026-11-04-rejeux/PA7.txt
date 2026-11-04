@@ -1,0 +1,22 @@
+equipement_parc : auto (signal) : artefact Equipement ; parcours {'auto': 'PASS', 'checkpoint': 'PASS', 'aval': 'NA'} ; règles aval à observer : Sans contrat d'entretien actif, une activité « Proposer le contrat » est créée pour le commercial (J+14). ; La production attendue du monitoring est semée depuis le PR de recette ou l'étude du devis.
+abonnement_creation : POST /api/django/monitoring/abonnements/ -> 201 ; parcours {'auto': 'NA', 'checkpoint': 'FAIL', 'aval': 'NA'} ; règles aval à observer : La prochaine échéance est posée à une période après la date de début (mensuel +1 mois, annuel +12 mois) ; le client est résolu depuis le système (ASAV100). ; La résiliation coupe la supervision automatique du système lié (voir l'étape résiliation).
+releves : auto (tache) : artefact ProductionReading ; parcours {'auto': 'FAIL', 'checkpoint': 'FAIL', 'aval': 'NA'} ; règles aval à observer : Après la synchro, la sous-performance du système est évaluée.
+sous_performance : auto (tache) : artefact UnderperformanceFlag ; parcours {'auto': 'FAIL', 'checkpoint': 'FAIL', 'aval': 'NA'} ; règles aval à observer : Un épisode ouvert crée un ticket SAV correctif (une seule fois par épisode).
+sla_disponibilite : non jouée ; parcours {'auto': 'NA', 'checkpoint': 'NA', 'aval': 'NA'} ; aucun SlaDisponibilite lié à l'enregistrement : non jouée
+credit_sla_genere : auto (tache) : artefact SlaSnapshot ; parcours {'auto': 'FAIL', 'checkpoint': 'FAIL', 'aval': 'NA'} ; règles aval à observer : Le crédit dû se déduit de l'uptime par paliers de la politique de la société.
+credit_sla_decision : non jouée ; parcours {'auto': 'NA', 'checkpoint': 'NA', 'aval': 'NA'} ; aucune action de vue n'appelle la fonction d'entrée (index AST); aucune route API pour la fonction d'entrée, ses appelants ni le déclencheur : non jouée
+equipement_remplace : non jouée ; parcours {'auto': 'NA', 'checkpoint': 'NA', 'aval': 'NA'} ; aucun Ticket lié à l'enregistrement : non jouée
+monitoring_suit_remplacement : non jouée ; parcours {'auto': 'NA', 'checkpoint': 'NA', 'aval': 'NA'} ; étape manquante déclarée : non jouée
+resiliation : non jouée ; parcours {'auto': 'NA', 'checkpoint': 'NA', 'aval': 'NA'} ; aucun AbonnementMonitoring lié à l'enregistrement : non jouée
+Hors enregistrement : equipement_parc : jouée, sans tâche à couvrir (auto (signal) : artefact Equipement)
+Hors enregistrement : abonnement_creation : jouée, sans tâche à couvrir (POST /api/django/monitoring/abonnements/ -> 201)
+Hors enregistrement : releves : jouée, sans tâche à couvrir (auto (tache) : artefact ProductionReading)
+Hors enregistrement : sous_performance : jouée, sans tâche à couvrir (auto (tache) : artefact UnderperformanceFlag)
+Hors enregistrement : sla_disponibilite : non jouée (aucun SlaDisponibilite lié à l'enregistrement : non jouée)
+Hors enregistrement : credit_sla_genere : jouée, sans tâche à couvrir (auto (tache) : artefact SlaSnapshot)
+Hors enregistrement : credit_sla_decision : non jouée (aucune action de vue n'appelle la fonction d'entrée (index AST); aucune route API pour la fonction d'entrée, ses appelants ni le déclencheur : non jouée)
+Hors enregistrement : equipement_remplace : non jouée (aucun Ticket lié à l'enregistrement : non jouée)
+Hors enregistrement : monitoring_suit_remplacement : manquante déclarée, jamais jouée
+Hors enregistrement : resiliation : non jouée (aucun AbonnementMonitoring lié à l'enregistrement : non jouée)
+Base inchangée (transaction annulée) : 62 lignes avant et après.
+Aucun enregistrement écrit (aucune étape jouée ne porte de tâche).
