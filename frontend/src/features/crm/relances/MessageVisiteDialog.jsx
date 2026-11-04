@@ -19,6 +19,7 @@ import { useEffect, useState } from 'react'
 import { Send, Copy } from 'lucide-react'
 import crmApi from '../../../api/crmApi'
 import { toastSuccess } from '../../../lib/toast'
+import { refusConflit } from '../../../lib/apiError'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
   Button, Spinner,
@@ -37,7 +38,7 @@ export default function MessageVisiteDialog({
   etapeId = null,
 }) {
   const [loading, setLoading] = useState(false)
-  const [erreur, setErreur] = useState(false)
+  const [erreur, setErreur] = useState(null)
   const [rendu, setRendu] = useState(null)
   const [langue, setLangue] = useState('fr')
 
@@ -51,11 +52,12 @@ export default function MessageVisiteDialog({
     }
     queueMicrotask(() => {
       if (!active) return
-      setLangue('fr'); setLoading(true); setErreur(false)
+      setLangue('fr'); setLoading(true); setErreur(null)
     })
     crmApi.getMessageVisite(leadId, cle)
       .then((r) => { if (active) setRendu(r.data) })
-      .catch(() => { if (active) setErreur(true) })
+      // ACVI44 — un 409 dit pourquoi (ne plus contacter, lead perdu…) : montré tel quel.
+      .catch((err) => { if (active) setErreur(refusConflit(err, 'Message indisponible pour le moment.')) })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
   }, [open, leadId, cle])
@@ -101,7 +103,7 @@ export default function MessageVisiteDialog({
         {loading ? (
           <Spinner />
         ) : erreur ? (
-          <p className="text-sm text-muted-foreground">Message indisponible pour le moment.</p>
+          <p className="text-sm text-muted-foreground">{erreur}</p>
         ) : (
           <div className="flex flex-col gap-3">
             {rendu?.corps_darija && (
