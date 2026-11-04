@@ -132,6 +132,8 @@ def build(ctx):
     methode_line = (ci_couverture.ligne_methode(d, "com", "c1c")
                     + ci_couverture.ligne_surplus(d, "com", "c1c"))
     note_pointe = ci_couverture.note_pointe(d, "com")
+    # ADEV110 — relevé partiel : « estimation sur n mois relevés » (mention servie).
+    note_conso = ci_couverture.note_consommation_estimee(d, "com")
 
     # QXMT — la SOURCE du barème voyage avec le chiffre, ou l'explication de
     # son absence. Vide hors dossier MT.
@@ -256,7 +258,7 @@ def build(ctx):
     {methode_line}
     {mt_line}
     <div class="c1c-note">
-      {note_autoconso} {note_pointe}
+      {note_autoconso} {note_conso} {note_pointe}
     </div>{inv_html}{bas}
   </div>
 </div>
