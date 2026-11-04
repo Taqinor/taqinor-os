@@ -491,6 +491,20 @@ test('les deux appelants réels injectent le lecteur de session (sinon journal m
   assert.match(globaux, /signalerErreurScript\(error, undefined, \{ sessionEstActive \}\)/)
 })
 
+test('iaApi : journal et délai sur la seconde instance axios (copilote, agent SQL, OCR)', () => {
+  const source = readFileSync(new URL('../api/iaApi.js', import.meta.url), 'utf8')
+  assert.match(source, /timeout: DELAI_IA_MS/)
+  // Même place que dans axios.js : après la branche 401, avant le toast — donc
+  // AUSSI pour les écrans qui gèrent l'erreur eux-mêmes (suppressErrorToast).
+  const signal = source.indexOf('signalerErreurRequete(error, { sessionEstActive })')
+  assert.notEqual(signal, -1)
+  assert.ok(signal > source.indexOf('emitSessionExpired()'))
+  assert.ok(signal < source.indexOf('toastError(getApiError(error).message)'))
+  // L'agent SQL a droit au délai que nginx lui laisse (300 s, pas 120 s).
+  assert.match(source, /'\/sql-agent\/query',[^\n]*\{ timeout: DELAI_AGENT_SQL_MS \}/)
+  assert.match(source, /'\/sql-agent\/confirm', \{ token \}, \{ timeout: DELAI_AGENT_SQL_MS \}/)
+})
+
 test("sans lecteur de session injecté, rien n'est envoyé (jamais un 401 de plus)", () => {
   _resetJournalPourTests()
   let appels = 0
