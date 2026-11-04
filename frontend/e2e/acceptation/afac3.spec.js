@@ -18,9 +18,9 @@ test.beforeEach(async ({ page }) => {
 })
 const jour = () => new Date().toISOString().slice(0, 10)
 
-async function devisAccepte(r, clientLead, ttcHt) {
+async function devisAccepte(r, cible, ttcHt) {
   const p = await lireJson(await r.post(`${API}/stock/produits/`, { ...T, data: { nom: `Prestation AFAC103 ${Date.now()}`, prix_vente: ttcHt, prix_achat: '100.00' } }), 'produit')
-  const d = await lireJson(await r.post(`${API}/ventes/devis/atomic/`, { ...T, data: { taux_tva: '20.00', remise_globale: '0', lead: clientLead, lignes: [{ produit: p.id, designation: p.nom, quantite: '1', prix_unitaire: ttcHt, remise: '0.00', taux_tva: '20.00', type_ligne: 'produit', ordre: 0 }] } }), 'devis')
+  const d = await lireJson(await r.post(`${API}/ventes/devis/atomic/`, { ...T, data: { taux_tva: '20.00', remise_globale: '0', ...cible, lignes: [{ produit: p.id, designation: p.nom, quantite: '1', prix_unitaire: ttcHt, remise: '0.00', taux_tva: '20.00', type_ligne: 'produit', ordre: 0 }] } }), 'devis')
   await lireJson(await r.post(`${API}/ventes/devis/${d.id}/share-link/`, { ...T, data: { envoi: true } }), 'envoi')
   await lireJson(await r.post(`${API}/ventes/devis/${d.id}/accepter/`, { ...T, data: { nom: 'Client AFAC103' } }), 'acceptation')
   return lireJson(await r.get(`${API}/ventes/devis/${d.id}/`, T), 'devis relu')
@@ -36,8 +36,8 @@ sortie(f.id)`)
 etape('P103.1', ['AFAC103'], async ({ page }) => {
   const r = page.request
   const lead = await lireJson(await r.post(`${API}/crm/leads/`, { ...T, data: { nom: uniq('AFAC103'), ville: 'Casablanca', telephone: telephoneMobileUnique(), email: `${uniq('afac').toLowerCase().replace(/[^a-z0-9]/g, '')}@example.invalid` } }), 'lead')
-  const d1 = await devisAccepte(r, lead.id, '10000.00')
-  const d2 = await devisAccepte(r, lead.id, '16666.67')
+  const d1 = await devisAccepte(r, { lead: lead.id }, '10000.00')
+  const d2 = await devisAccepte(r, { client: d1.client }, '16666.67')
   const m = uniq('A103').replace(/[^A-Za-z0-9]/g, '').slice(-8)
   const F = await facture(d1.id, `FAC-F-${m}`, '12000.00')
   const G = await facture(d1.id, `FAC-G-${m}`, '8000.00')
