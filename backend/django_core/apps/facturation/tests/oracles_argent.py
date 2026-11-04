@@ -42,12 +42,12 @@ def reste_brut(facture):
     from apps.ventes.models import Paiement
     f = relire(facture)
     valides = [p for p in f.paiements.all()
-               if p.statut != Paiement.Statut.REJETE]
+               if p.statut not in Paiement.STATUTS_NON_COMPTES]
     payes = sum((_dec(p.montant) + _dec(p.escompte_montant)
                  for p in valides), ZERO)
     ventile = sum((_dec(a.montant)
                    for a in f.affectations_paiement.select_related('paiement')
-                   if a.paiement.statut != Paiement.Statut.REJETE), ZERO)
+                   if a.paiement.statut not in Paiement.STATUTS_NON_COMPTES), ZERO)
     retenues = sum((_dec(r.montant) for r in f.retenues_subies.all()), ZERO)
     avoirs = sum((_dec(a.total_ttc) for a in f.avoirs.all()
                   if a.statut != 'annulee'), ZERO)

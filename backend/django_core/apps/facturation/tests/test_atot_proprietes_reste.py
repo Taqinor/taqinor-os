@@ -117,7 +117,7 @@ class ProprietesResteTests(HypothesisDjangoTestCase):
                     pass
             elif geste == 'rejet':
                 paiement = (Paiement.objects.filter(facture=f)
-                            .exclude(statut=Paiement.Statut.REJETE)
+                            .exclude(statut__in=Paiement.STATUTS_NON_COMPTES)
                             .order_by('-id').first())
                 if paiement is None:
                     continue
@@ -146,9 +146,15 @@ class ProprietesResteTests(HypothesisDjangoTestCase):
                 if avoir is None:
                     continue
                 avant = reste_brut(f)
+                # AARG59 — le trop-perçu sorti (Paiement négatif) revient.
+                rendu = sum(
+                    (-p.montant for p in Paiement.objects.filter(
+                        facture=f, reference=avoir.reference, montant__lt=0,
+                    ).exclude(statut__in=Paiement.STATUTS_NON_COMPTES)),
+                    Decimal('0'))
                 r = api.post(f'/api/django/ventes/avoirs/{avoir.id}/annuler/',
                              {}, format='json')
                 self.assertEqual(r.status_code, 200, r.data)
                 self.assertEqual(reste_brut(f),
-                                 avant + Decimal(str(avoir.total_ttc)))
+                                 avant + Decimal(str(avoir.total_ttc)) - rendu)
             verifier_reste_a_payer(facture)

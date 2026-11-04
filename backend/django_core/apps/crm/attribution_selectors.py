@@ -5,7 +5,7 @@ Déplacement pur ; `apps.crm.selectors` ré-exporte chaque nom (frontière
 inter-apps). N'importe jamais `.selectors` au niveau module.
 """
 from .clients_selectors import (
-    _devis_compte_comme_signe, _devis_en_vigueur_ids,
+    _devis_compte_comme_signe, _devis_en_vigueur_ids, _prefetch_devis,
 )
 from .portee_selectors import (
     lead_signe_q, est_lead_signe, cles_numeros_lead,
@@ -257,7 +257,7 @@ def attribution_leads(company, debut=None, fin=None, leads=None):
         qs = qs.filter(date_creation__date__gte=debut)
     if fin is not None:
         qs = qs.filter(date_creation__date__lte=fin)
-    leads = list(qs.prefetch_related('devis').select_related('owner'))
+    leads = list(qs.prefetch_related(*_prefetch_devis()).select_related('owner'))
     # AANA76 — ventes en vigueur (VNT22) calculées UNE fois pour tous les leads.
     en_vigueur = _devis_en_vigueur_ids(company, [lead.pk for lead in leads])
     ttc_en_vigueur = _ttc_en_lot(en_vigueur, company)
@@ -399,7 +399,7 @@ def revenu_attribue_campagne(company, nom_campagne):
     leads = list(
         Lead.objects.filter(
             company=company, is_archived=False, utm_campaign=nom_campagne,
-        ).prefetch_related('devis'))
+        ).prefetch_related(*_prefetch_devis()))
     # AANA76 — ventes en vigueur (VNT22) calculées UNE fois, en lot.
     en_vigueur = _devis_en_vigueur_ids(company, [lead.pk for lead in leads])
     ttc_en_vigueur = _ttc_en_lot(en_vigueur, company)
@@ -634,7 +634,7 @@ def reporting_lead_rows(company, *, date_start=None, date_end=None):
 
     meta_canaux = {Lead.Canal.META_ADS, Lead.Canal.WHATSAPP_CTWA}
     rows = []
-    for lead in qs.prefetch_related('devis'):
+    for lead in qs.prefetch_related(*_prefetch_devis()):
         accept_dates = [
             d.date_acceptation for d in lead.devis.all()
             if getattr(d, 'statut', None) == 'accepte' and d.date_acceptation]

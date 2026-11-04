@@ -491,16 +491,16 @@ def montants_devis(devis_ids, company):
     inconnu ou d'une autre société n'apparaît PAS dans le résultat."""
     from decimal import Decimal
 
-    from .models import Devis
+    from .selectors_listes import _devis_sans_etude
 
     devis_ids = list(devis_ids or [])
     if not devis_ids:
         return {}
     out = {}
-    # APRF7 — préchargement unique : requêtes constantes quel que soit le
-    # nombre de devis (mono ET deux options).
+    # APRF7 — préchargement unique, requêtes constantes (mono ET deux options) ;
+    # ACVI101 — sans décoder le JSON d'étude.
     for devis in devis_avec_totaux(
-            Devis.objects.filter(company=company, id__in=devis_ids)):
+            _devis_sans_etude().filter(company=company, id__in=devis_ids)):
         try:
             ht = Decimal(str(devis.total_ht or 0))
             ttc = Decimal(str(devis.total_ttc or 0))

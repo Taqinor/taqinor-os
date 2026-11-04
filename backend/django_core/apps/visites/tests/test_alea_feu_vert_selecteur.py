@@ -128,6 +128,24 @@ class FeuVertSelecteurTests(VisiteTerrainBase):
         self.assertIsNotNone(
             selectors.visite_feu_vert(self.autre.id, self.lead_etranger.id))
 
+    def test_v2_validee_sans_photo_garde_la_texture_de_v1(self):
+        """ACVI100 (C-ACVI-VER1-202) — référence validée sans photo : la texture
+        de la dernière validée qui en a une ; référence renvoyée : rien.
+        Mutant : retirer le repli ⇒ ``visite_id`` None."""
+        def visite(**champs):
+            return VisiteTerrain.objects.create(
+                company=self.company, lead=self.lead, **champs)
+        v1 = visite(statut=VisiteTerrain.Statut.VALIDEE,
+                    photo_toit_key='toit/v1.jpg')
+        v2 = visite(statut=VisiteTerrain.Statut.VALIDEE)
+        self.assertEqual(
+            selectors.texture_toit_pour_lead(self.lead)['visite_id'], v1.id)
+        VisiteTerrain.objects.filter(pk=v2.pk).update(
+            statut=VisiteTerrain.Statut.A_REFAIRE)
+        self.assertEqual(
+            selectors.texture_toit_pour_lead(self.lead),
+            {'visite_id': None, 'url': None, 'texture_calage': None})
+
     def test_ne_lit_pas_visite_effectuee(self):
         Lead.objects.filter(pk=self.lead.pk).update(visite_effectuee=True)
         self.assertIsNone(self._feu_vert())
