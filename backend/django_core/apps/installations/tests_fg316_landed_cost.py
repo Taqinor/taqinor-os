@@ -103,6 +103,15 @@ class TestFraisEtLignes(TestCase):
         self.assertEqual(r.status_code, 409, r.data)
 
 
+class TestCoutFobExtreme(TestCase):
+    def test_rendu_de_la_plus_grande_valeur_sur_la_plus_petite_quantite(self):
+        from apps.installations.serializers import LandedCostLigneSerializer
+        champ = LandedCostLigneSerializer().fields['cout_fob_unitaire']
+        self.assertEqual(
+            champ.to_representation(Decimal('999999999999.00')),
+            '999999999999.00')
+
+
 class TestLandedCostComputation(TestCase):
     def setUp(self):
         self.company = make_company()

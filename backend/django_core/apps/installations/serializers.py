@@ -1832,8 +1832,10 @@ class LandedCostLigneSerializer(ChampsTexteStrictsMixin, IdInconnu404Mixin, Same
     same_company_fields = ('dossier', 'produit')
     produit_nom = TexteLie(
         source='produit.nom', read_only=True, default=None, allow_null=True)
+    # 14 chiffres : valeur FOB maximale (10 entiers) / quantité minimale (0,01). À 12,
+    # InvalidOperation au rendu : 500 à la création, puis sur toute la liste.
     cout_fob_unitaire = serializers.DecimalField(
-        max_digits=12, decimal_places=2, read_only=True)
+        max_digits=14, decimal_places=2, read_only=True)
 
     class Meta:
         model = LandedCostLigne
