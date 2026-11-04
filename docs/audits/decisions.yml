@@ -3480,6 +3480,18 @@ decisions:
     source: "session 2026-11-04 work on the plan : question interactive, Reda répond « Oui »"
     taches: [BPQ12]
 
+  - id: D-ADOC-VER4-1
+    question: "Un technicien assigné à une intervention ouvre la fiche du chantier (ERR-CHT-TECH-CHANTIER-404) mais ses documents (PV de réception, bon de livraison, dossier de remise) répondent 404 : que doit-il obtenir ?"
+    options:
+      - cle: aligner_documents
+        texte: "Le technicien télécharge le PV, le BL et le dossier de remise d'un chantier sur lequel il intervient, même portée de lecture que la fiche (attestation exclue, réservée aux responsables)"
+      - cle: masquer_boutons
+        texte: "Les documents restent réservés aux responsables ; la fiche masque ces boutons pour ce rôle"
+    reponse: aligner_documents
+    date: "2026-11-04"
+    source: "Reda, question interactive, contre-visite vérifie ADOC"
+    taches: [ADOC196]
+
   - id: D-ASTK-VER4-1
     question: "Une facture (acompte compris) sort le matériel de la vente à son émission ; si elle est annulée, le matériel reste sorti et le lead ne peut plus quitter « Signé » (409 stock sorti). Que faire ?"
     options:
