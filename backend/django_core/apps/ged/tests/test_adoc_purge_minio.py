@@ -121,3 +121,36 @@ class PurgeMinioTests(TestCase):
         efface.assert_called_once_with('attachments/vieux.pdf', lever=True)
         self.assertEqual(len(certificats), 1)
         self.assertEqual(CertificatDestruction.objects.count(), 1)
+
+    def test_cle_tenue_par_piece_jointe_conservee(self):
+        """ADOC192 (C-ADOC-VER4-010) — un document importé d'une pièce jointe
+        (clé K partagée) est purgé sans effacer K ; un document natif garde
+        son effacement. L'import marque la source partagée."""
+        from django.contrib.contenttypes.models import ContentType
+        from apps.ged.management.commands.migrate_attachments_to_ged import (
+            import_attachments,
+        )
+        from apps.records.models import Attachment
+        att = Attachment.objects.create(
+            company=self.co, object_id=self.folder.pk,
+            content_type=ContentType.objects.get_for_model(Folder),
+            uploaded_by=self.admin, file_key='attachments/K.pdf',
+            filename='K.pdf', size=1, mime='application/pdf')
+        import_attachments(company=self.co)
+        import_attachments(company=self.co)  # ré-import : aucun doublon
+        version = DocumentVersion.objects.get(file_key='attachments/K.pdf')
+        doc = version.document
+        self.assertEqual(doc.custom_data['source_partagee'],
+                         f'records.Attachment:{att.pk}')
+        natif = self._doc('Natif', 'attachments/natif.pdf')
+        self.assertEqual(services._cles_binaires_exclusives(doc), [])
+        client = mock.Mock()
+        with mock.patch('apps.records.storage.get_minio_client',
+                        return_value=client):
+            for d in (doc, natif):
+                services.mettre_en_corbeille(d, self.admin)
+                services.purger_definitivement(d)
+        self.assertEqual(
+            [c.kwargs['Key'] for c in client.delete_object.call_args_list],
+            ['attachments/natif.pdf'])
+        self.assertTrue(Attachment.objects.filter(pk=att.pk).exists())

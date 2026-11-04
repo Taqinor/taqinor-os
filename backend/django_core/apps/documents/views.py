@@ -20,16 +20,21 @@ from drf_spectacular.utils import (
     OpenApiParameter, extend_schema, inline_serializer)
 from rest_framework import serializers as drf_serializers
 
-# ADOC69 — champs propriétaires de la portée d'un chantier : la MÊME liste que
-# le viewset chantier (installations/views/installation.py, get_queryset). Un
-# document de chantier ne sort jamais vers un rôle qui ne voit pas la fiche.
-CHANTIER_OWNER_FIELDS = ['technicien_responsable', 'created_by']
-
 
 def _scope_chantier(qs, user):
-    """ADOC69 — portée de rôle (``records_scope_*``) d'un chantier."""
-    from authentication.scoping import scope_queryset
-    return scope_queryset(qs, user, CHANTIER_OWNER_FIELDS)
+    """ADOC69/ADOC196 — portée de LECTURE de la fiche chantier (retrieve de
+    ``InstallationViewSet``) : ``scoper_chantiers`` ∪ les chantiers d'une
+    intervention dont ``user`` est le technicien (ERR-CHT-TECH-CHANTIER-404).
+    Un document de chantier ne sort jamais vers un rôle qui ne voit pas la
+    fiche, et sort vers tout rôle qui la voit."""
+    from django.db.models import Q
+    from apps.installations.selectors import interventions_visibles, scoper_chantiers
+    from core.scoping import visible_user_ids
+    portee = scoper_chantiers(qs, user)
+    if visible_user_ids(user) is None:
+        return portee
+    assignees = interventions_visibles(user).filter(technicien=user).values('installation_id')
+    return qs.filter(Q(pk__in=portee.values('pk')) | Q(pk__in=assignees))
 
 
 def _get_chantier_or_404(request, pk):

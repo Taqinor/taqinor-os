@@ -25,3 +25,8 @@ class RecordsConfig(AppConfig):
         # générique (ARC8). Import seul : le décorateur `@receiver` fait le
         # câblage, idempotent au rechargement grâce à son `dispatch_uid`.
         import_module(f'{self.name}.receivers')
+        # ADOC193 — détenteur de clés du bucket uploads (registre append-only).
+        from django.conf import settings
+        from .cles_stockage import enregistrer_detenteur
+        enregistrer_detenteur('records.Attachment', 'file_key',
+                              settings.MINIO_BUCKET_UPLOADS)

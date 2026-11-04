@@ -133,7 +133,8 @@ ALLOWED_UNCONSUMED = {
     # l'abonnement redevient vrai sans toucher `core`.
     # APAR43 — ``facture_emise`` RETIRÉ : il a de nouveau un abonné vivant
     # (le garder ici masquait la liste ; ``stale_allowlist`` le refuse).
-    "facture_annulee",                  # compta (extourne)
+    # ASTK263 — ``facture_annulee`` RETIRÉ : abonné vivant (installations,
+    # réouverture de la réservation soldée par la vente).
     "avoir_cree",                       # compta (ecriture d'avoir)
     "avoir_annule",                     # compta (extourne d'avoir)
     "paiement_enregistre",              # compta (ecriture d'encaissement)

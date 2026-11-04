@@ -345,24 +345,12 @@ def quantites_deja_sorties_pour_vente(devis, company):
     sortie du chantier (``quantite_deja_sortie_chantier`` : soldée par une
     vente, dont la livraison directe, + F11) : le max ne compte jamais deux
     fois une sortie qui a aussi soldé la réservation."""
-    from django.db.models import Sum
     from apps.installations.selectors import installation_for_devis
     from apps.installations.services import quantite_deja_sortie_chantier
-    from apps.stock.selectors import mouvements_par_reference
-    from apps.stock.services import mouvement_type_sortie
-    from apps.ventes.models import BonCommande
+    from ..selectors import sorties_de_la_vente
     inst = installation_for_devis(devis, company=company)
-    refs = {devis.reference, getattr(inst, 'reference', None), *(
-        BonCommande.objects.filter(devis=devis)
-        .values_list('reference', flat=True))} - {None, ''}
-    sorti = {}
-    for ref in refs:
-        for row in (mouvements_par_reference(company, ref)
-                    .filter(type_mouvement=mouvement_type_sortie())
-                    .order_by().values('produit_id')
-                    .annotate(t=Sum('quantite'))):
-            sorti[row['produit_id']] = (
-                sorti.get(row['produit_id'], 0) + row['t'])
+    # ASTK262 — Σ SORTIES nettes des ENTRÉES (annulation) : UNE lecture.
+    sorti = dict(sorties_de_la_vente(devis.id, company))
     for pid in (_panier_vendu(devis) if inst is not None else ()):
         sorti[pid] = max(sorti.get(pid, 0),
                          quantite_deja_sortie_chantier(inst, pid))

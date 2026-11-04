@@ -366,6 +366,14 @@ class PaiementFacturePortailViewSet(_PortailBaseViewSet):
             # paiement reste INITIÉ, re-rapprochable après le délai.
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
+        except ValueError as exc:
+            # ADOC197 — FactureNonEncaissable (AFAC9 : ValueError portant
+            # `motif`, jamais importée ici — contrat vente-lue-par-la-facade) :
+            # 400 nommé, paiement resté INITIÉ ; toute autre erreur remonte.
+            if not hasattr(exc, 'motif'):
+                raise
+            return Response({'detail': exc.motif},
+                            status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(paiement).data)
 
 
