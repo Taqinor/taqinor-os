@@ -93,6 +93,29 @@ class ClassificationPariteFixtureTest(SimpleTestCase):
                         c.get('designation'), col))
 
 
+class ClasserProduitMemoTest(SimpleTestCase):
+    def test_une_repasse_est_servie_par_le_memo_memes_classes(self):
+        """ERR-PERF-DEVIS-ATOMIC-CATALOGUE — un balayage reclasse le catalogue
+        à chaque taille : la repasse ne recalcule rien et rend les mêmes
+        classes (l'ordre des tests du classifieur reste le sien)."""
+        attendu = {
+            'Onduleur hybride 5kW': 'onduleur_hybride',
+            'Onduleur réseau 5kW': 'onduleur_reseau',
+            'Câble AC Onduleur réseau vers TGBT': 'cable_dc',
+            'Panneau mono 550W': 'panneau',
+            'Divers': None,
+        }
+        classer_produit.cache_clear()
+        premiere = {nom: classer_produit(nom) for nom in attendu}
+        avant = classer_produit.cache_info()
+        seconde = {nom: classer_produit(nom) for nom in attendu}
+        apres = classer_produit.cache_info()
+        self.assertEqual(premiere, attendu)
+        self.assertEqual(seconde, attendu)
+        self.assertEqual(apres.misses, avant.misses)
+        self.assertEqual(apres.hits, avant.hits + len(attendu))
+
+
 class ClassificationPariteBackendTest(SimpleTestCase):
     """Les classifieurs de ``builder.py`` sur CHAQUE cas de la fixture QJR2.
 

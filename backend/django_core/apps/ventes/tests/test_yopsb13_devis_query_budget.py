@@ -46,6 +46,15 @@ MONO = [('Panneau mono 550W', '12', '1100'),
         ('Onduleur réseau 5kW', '1', '11700')]
 DEUX = MONO + [('Onduleur hybride 5kW', '1', '15000'),
                ('Batterie 5 kWh', '1', '14000')]
+# ERR-PERF-DEVIS-LISTE-CI-N1 — (désignation, quantité, P.U. HT, famille) : sans
+# rôle déclaré, chaque ligne C&I devait lire ``produit.categorie``.
+LIGNES_MONO = [('Panneau mono 710W', '100', '1000', 'panneau'),
+               ('Onduleur réseau 50kW Triphasé', '1', '20000', 'onduleur')]
+LIGNES_DEUX = LIGNES_MONO + [
+    ('Onduleur hybride 50kW Triphasé', '1', '30000', 'onduleur'),
+    ('Batterie 50 kWh', '1', '50000', 'batterie')]
+LIGNES_POMPAGE = [('Pompe immergée 4 kW', '1', '20000', 'pompe'),
+                  ('Panneau mono 550W', '10', '1000', 'panneau')]
 
 
 def _api(user):
@@ -293,6 +302,172 @@ class DevisListQueryBudgetTests(AssertQueryBudgetMixin, TestCase):
             complet = build_quote_data(Devis.objects.get(pk=ligne['id']),
                                        {'pdf_mode': 'onepage'})
             self.assertEqual(ligne['total_affiche'], complet['display_total'])
+
+    def _devis_chiffre(self, rang, mode, lignes, *, deux=False, envoye=False,
+                       etude=None, lead=False):
+        """ERR-PERF-DEVIS-LISTE-CI-N1 — un devis réel : client propre, lead
+        propre, produits CATÉGORISÉS (``produit.categorie`` est ce que le
+        chemin C&I relisait par ligne), TVA de ligne explicite ; ``envoye`` =
+        envoyé aux règles d'origine (il garde ce que le client a reçu)."""
+        from apps.crm.models import Lead
+        from apps.stock.models import Categorie
+        client = Client.objects.create(
+            company=self.company, nom='Client', prenom=f'Figures {rang}',
+            email=f'figures{rang}@example.com',
+            telephone=f'+2126130{rang:05d}')
+        devis = Devis.objects.create(
+            company=self.company, reference=f'DEV-{MONTH}-C{rang:03d}',
+            client=client, created_by=self.user, taux_tva=Decimal('20'),
+            lead=(Lead.objects.create(
+                company=self.company, nom='Pro', prenom=f'Lead {rang}',
+                telephone=f'+2126120{rang:05d}', ville='Casablanca')
+                if lead else None),
+            statut=(Devis.Statut.ENVOYE if envoye
+                    else Devis.Statut.BROUILLON),
+            mode_installation=mode,
+            etude_params={**(etude or {}), **(DEUX_OPTIONS if deux else {})})
+        if envoye:
+            Devis.objects.filter(pk=devis.pk).update(regles_calcul=1)
+        for j, (desig, qte, pu, famille) in enumerate(lignes):
+            categorie, _ = Categorie.objects.get_or_create(
+                company=self.company, nom=f'Famille {famille}',
+                defaults={'type_equipement': famille})
+            produit = Produit.objects.create(
+                company=self.company, nom=desig, sku=f'C{rang}-{j}',
+                prix_vente=Decimal(pu), prix_achat=Decimal('1'),
+                quantite_stock=100, categorie=categorie)
+            LigneDevis.objects.create(
+                devis=devis, produit=produit, designation=desig,
+                quantite=Decimal(qte), prix_unitaire=Decimal(pu),
+                remise=Decimal('0'), taux_tva=Decimal('20'))
+        return devis
+
+    @staticmethod
+    def _etude_ci(mode):
+        """L'aperçu C&I du contrat, comme le rafraîchisseur le stocke."""
+        import json
+        from pathlib import Path
+        contrat = json.loads(
+            (Path(__file__).resolve().parent.parent / 'contract_samples'
+             / 'etude_ci_preview.json').read_text(encoding='utf-8'))
+        return {'mode': mode, 'tension': 'bt', 'etude_ci': contrat['exemple']}
+
+    def _seed_ci(self, count, start=0):
+        """Les 8 combinaisons mode × options × statut dès 8 lignes."""
+        for i in range(start, start + count):
+            mode = ('commercial', 'industriel')[i & 1]
+            deux, envoye = bool(i & 2), bool(i & 4)
+            self._devis_chiffre(
+                i, mode, LIGNES_DEUX if deux else LIGNES_MONO, deux=deux,
+                envoye=envoye, etude=self._etude_ci(mode), lead=True)
+
+    def test_devis_ci_requetes_constantes_n_3n(self):
+        """ERR-PERF-DEVIS-LISTE-CI-N1 — 8 puis 24 devis C&I (commercial et
+        industriel, une ou deux options, brouillon et envoyé) : même nombre de
+        requêtes, aucune relecture de ``stock_categorie``, aucune écriture.
+        Le premier GET est à blanc (mémos de processus).
+
+        Test-du-test : retirer ``and not _totaux_seuls`` de ``chiffrer_etude``
+        ⇒ profil, barème et catégories sont relus par devis et par ligne."""
+        self._seed_ci(8)
+        self._get_liste()
+        _resp, ctx_n = self._get_liste()
+        self._seed_ci(16, start=8)
+        resp_3n, ctx_3n = self._get_liste()
+        self.assertEqual(len(self._lignes(resp_3n)), 24)
+        self.assertEqual(
+            len(ctx_n.captured_queries), len(ctx_3n.captured_queries),
+            'Devis C&I : le nombre de requêtes a grandi avec le nombre de '
+            'lignes (bloc C&I calculé en liste ?).')
+        self.assertEqual(
+            [q['sql'] for q in ctx_3n.captured_queries
+             if '"stock_categorie"' in q['sql']], [])
+        self.assertEqual(_ecritures(ctx_3n), [])
+
+    def _comparer_au_document(self, ligne):
+        """La ligne de liste = le chemin DOCUMENT (``build_quote_data`` sans
+        ``_totaux_seuls``, que le correctif ne touche pas) : total, nombre
+        d'options, carte A/B et son ROI, au centime."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        data = build_quote_data(Devis.objects.get(pk=ligne['id']),
+                                {'pdf_mode': 'onepage'})
+        total = data.get('display_total_multi')
+        self.assertEqual(ligne['total_affiche'],
+                         data['display_total'] if total is None else total)
+        self.assertEqual(ligne['nb_options'], data['nb_options'])
+        if data['nb_options'] != 2:
+            self.assertIsNone(ligne['comparaison_options'])
+            return data
+        carte = ligne['comparaison_options']
+        for cote, cle in (('sans', 'totaux_sans'), ('avec', 'totaux_avec')):
+            for champ in ('ttc', 'ht_net', 'remise'):
+                self.assertEqual(carte[cote][champ], data[cle].get(champ))
+        for champ in ('prod_kwh', 'prod_kwh_sans', 'prod_kwh_avec',
+                      'eco_s_ann', 'eco_a_ann', 'roi_s', 'roi_a'):
+            self.assertEqual(carte['roi'][champ], data.get(champ), champ)
+        return data
+
+    def test_figures_de_liste_inchangees_tous_marches(self):
+        """ERR-PERF-DEVIS-LISTE-CI-N1 (règle #4) — résidentiel, commercial,
+        industriel, agricole, chacun en brouillon et envoyé : les figures de
+        la liste sont celles du document ET les totaux calculés à la main
+        (HT × 1,20, multiples de 100 : aucun arrondi n'y touche)."""
+        from apps.ventes.quote_engine.builder import display_totals
+        saisies = {'saisies_economie_pompage': self._saisies_pompage()}
+        cas = []
+        for envoye in (False, True):
+            base = len(cas) * 10
+            cas += [
+                (self._devis_chiffre(base + 1, 'residentiel', LIGNES_MONO,
+                                     envoye=envoye), 144000.0, None),
+                (self._devis_chiffre(base + 2, 'residentiel', LIGNES_DEUX,
+                                     deux=True, envoye=envoye),
+                 None, (144000.0, 216000.0)),
+                (self._devis_chiffre(base + 3, 'commercial', LIGNES_MONO,
+                                     envoye=envoye, lead=True,
+                                     etude=self._etude_ci('commercial')),
+                 144000.0, None),
+                (self._devis_chiffre(base + 4, 'industriel', LIGNES_DEUX,
+                                     deux=True, envoye=envoye, lead=True,
+                                     etude=self._etude_ci('industriel')),
+                 None, (144000.0, 216000.0)),
+                (self._devis_chiffre(base + 5, 'agricole', LIGNES_POMPAGE,
+                                     envoye=envoye, lead=True, etude=saisies),
+                 36000.0, None),
+            ]
+        resp, _ctx = self._get_liste()
+        lignes = {r['id']: r for r in self._lignes(resp)}
+        self.assertEqual(len(lignes), len(cas))
+        for devis, total, options in cas:
+            with self.subTest(devis=devis.reference,
+                              mode=devis.mode_installation,
+                              statut=devis.statut):
+                ligne = lignes[devis.pk]
+                data = self._comparer_au_document(ligne)
+                if total is not None:
+                    self.assertEqual(ligne['total_affiche'], total)
+                else:
+                    carte = ligne['comparaison_options']
+                    self.assertEqual(
+                        (carte['sans']['ttc'], carte['avec']['ttc']), options)
+                    self.assertIn(ligne['total_affiche'], options)
+                # Le moteur a bien répondu (pas le repli léger), et seul le
+                # chemin de liste saute le bloc C&I : le document le garde.
+                donnees = {}
+                display_totals(Devis.objects.get(pk=devis.pk), donnees=donnees)
+                self.assertTrue(donnees)
+                self.assertNotIn('economie_ci', donnees)
+                if devis.mode_installation in ('commercial', 'industriel'):
+                    self.assertIn('economie_ci', data)
+
+    @staticmethod
+    def _saisies_pompage():
+        import json
+        from pathlib import Path
+        return json.loads(
+            (Path(__file__).resolve().parent.parent / 'contract_samples'
+             / 'economie_pompage.json').read_text(encoding='utf-8')
+        )['saisies_economie_pompage']['exemple']
 
     def test_carte_ab_en_liste(self):
         """La carte A/B reste servie EN LISTE, mêmes valeurs qu'au détail."""
