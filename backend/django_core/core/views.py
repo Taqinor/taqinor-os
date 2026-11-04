@@ -1770,17 +1770,8 @@ def health_ready(request):
     BPQ12 (D-JPB-7) : 503 ``degraded`` aussi quand Celery Beat est arrêté,
     pour que la sonde externe hors serveur alerte Reda (docs/problemes-prod.md)."""
     from . import health
-    db_check = health.check_db()
-    if db_check['status'] == health.STATUS_DOWN:
-        return Response({'status': 'not-ready', 'detail': db_check['detail']},
-                        status=503)
-    extra = {'dernier_demarrage': health.dernier_demarrage(),
-             'dernier_tri_problemes': health.dernier_tri_problemes()}
-    beat_check = health.check_beat()
-    if beat_check['status'] == health.STATUS_DEGRADED:
-        return Response({'status': 'degraded', 'detail': beat_check['detail'],
-                         **extra}, status=503)
-    return Response({'status': 'ready', **extra})
+    corps, code = health.etat_ready()
+    return Response(corps, status=code)
 
 
 class ApiUsagePlanViewSet(TenantMixin, viewsets.GenericViewSet):
