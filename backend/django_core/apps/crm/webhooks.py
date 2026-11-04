@@ -478,19 +478,18 @@ def _clean_futures_charges(raw):
     return out or None
 
 
-def _origine_visiteur(data):
+def _origine_visiteur(landing, host):
     """WAUD6 (D-WAUD-2=a) — origine du visiteur, jointe à l'envoi volontaire : page
     d'arrivée (chemin seul, jamais de requête ni de PII) et hôte du référent (ex.
     chatgpt.com, google.com). Rangés dans le blob : aucune colonne, aucune migration.
-    Valeur malformée → ignorée."""
+    Valeur malformée → ignorée. Les clés du payload sont lues par l'appelant
+    (`_extract_web_questionnaire`), que la garde de parité lit en AST."""
     out = {}
-    landing = data.get('landingPath', data.get('landing_path'))
     if isinstance(landing, str):
         landing = landing.strip()
         if (landing.startswith('/') and len(landing) <= 200
                 and not re.search(r'[?#\s]', landing)):
             out['landing_path'] = landing
-    host = data.get('referrerHost', data.get('referrer_host'))
     if isinstance(host, str):
         host = host.strip().lower()
         if re.fullmatch(r'[a-z0-9]([a-z0-9.-]{0,98}[a-z0-9])?', host):
@@ -525,7 +524,9 @@ def _extract_web_questionnaire(data):
         if isinstance(val, bool):
             out[snake] = val
 
-    out.update(_origine_visiteur(data))
+    out.update(_origine_visiteur(
+        data.get('landingPath', data.get('landing_path')),
+        data.get('referrerHost', data.get('referrer_host'))))
 
     # ── Mode PROFESSIONNEL ──
     # NB : `tensionRaccordement` (bt/mt = basse/moyenne tension) n'est PAS
