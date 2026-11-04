@@ -128,6 +128,7 @@ import MonToitInputA829 from '../../../components/blocs/MonToitInputA829.astro';
 import DevisMonToitBlocF6B4 from '../../../components/blocs/DevisMonToitBlocF6B4.astro';
 import DevisMonToitBlocC596 from '../../../components/blocs/DevisMonToitBlocC596.astro';
 import DevisMonToitCaptureFin from '../../../components/blocs/DevisMonToitCaptureFin.astro';
+import DevisMonToitPanels3d from '../../../components/blocs/DevisMonToitPanels3d.astro';
 ---
 
 <Layout
@@ -932,27 +933,7 @@ import DevisMonToitCaptureFin from '../../../components/blocs/DevisMonToitCaptur
           </p>
 
           <!-- ===== WJ2 — « voir les panneaux sur votre toit » (facultatif, lazy) ===== -->
-          <div id="mt-panels3d" hidden class="mt-5 border-t border-white/10 pt-5">
-            <div id="mt-panels3d-stage" class="mt-panels3d-stage cine-card relative overflow-hidden rounded-lg">
-              <div id="mt-panels3d-overlay" class="absolute inset-0 flex flex-col items-center justify-center gap-2 px-4 text-center">
-                <button type="button" id="mt-panels3d-start"
-                  class="btn-pill inline-flex items-center justify-center gap-2"
-                  style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)">
-                  <span data-i18n data-fr="Voir les panneaux sur votre toit" data-ar="مشاهدة الألواح على سطحك">Voir les panneaux sur votre toit</span>
-                </button>
-                <p class="max-w-xs text-xs text-lune-faint" data-i18n
-                  data-fr="Aperçu illustratif — l'implantation exacte est confirmée après visite technique."
-                  data-ar="معاينة توضيحية — يُؤكَّد التوضع الدقيق بعد زيارة تقنية.">
-                  Aperçu illustratif — l'implantation exacte est confirmée après visite technique.
-                </p>
-              </div>
-            </div>
-            <p id="mt-panels3d-hint" hidden class="mt-2 text-xs text-lune-faint" data-i18n
-              data-fr="Faites glisser pour tourner · pincez ou molette pour zoomer."
-              data-ar="اسحب للتدوير · قرّب بإصبعين أو بعجلة الفأرة.">
-              Faites glisser pour tourner · pincez ou molette pour zoomer.
-            </p>
-          </div>
+          <DevisMonToitPanels3d i18n={true} start={{ text: "Voir les panneaux sur votre toit", fr: "Voir les panneaux sur votre toit", ar: "مشاهدة الألواح على سطحك" }} note={{ text: "Aperçu illustratif — l'implantation exacte est confirmée après visite technique.", fr: "Aperçu illustratif — l'implantation exacte est confirmée après visite technique.", ar: "معاينة توضيحية — يُؤكَّد التوضع الدقيق بعد زيارة تقنية." }} hint={{ text: "Faites glisser pour tourner · pincez ou molette pour zoomer.", fr: "Faites glisser pour tourner · pincez ou molette pour zoomer.", ar: "اسحب للتدوير · قرّب بإصبعين أو بعجلة الفأرة." }} />
 
         <!-- Formulaire de contact (la porte vient APRÈS l'estimation). -->
         <form id="mt-form" novalidate class="cine-card mt-5 space-y-4 p-5 sm:p-6">

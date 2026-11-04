@@ -120,6 +120,7 @@ import DevisMonToitExitModal from '../../../components/blocs/DevisMonToitExitMod
 import MonToitDiv56C1Div1839 from '../../../components/blocs/MonToitDiv56C1Div1839.astro';
 import MonToitDiv56C1Span6F51 from '../../../components/blocs/MonToitDiv56C1Span6F51.astro';
 import DevisMonToitBloc988F from '../../../components/blocs/DevisMonToitBloc988F.astro';
+import DevisMonToitPanels3d from '../../../components/blocs/DevisMonToitPanels3d.astro';
 ---
 
 <Layout
@@ -1087,23 +1088,7 @@ import DevisMonToitBloc988F from '../../../components/blocs/DevisMonToitBloc988F
           <!-- ===== WJ2 — "see the panels on your roof" (optional, lazy) =====
                Shown ONLY when an outline (≥3 vertices) was traced in step 1 AND
                a kWc estimate is available. RESERVED-height box (zero CLS). -->
-          <div id="mt-panels3d" hidden class="mt-5 border-t border-white/10 pt-5">
-            <div id="mt-panels3d-stage" class="mt-panels3d-stage cine-card relative overflow-hidden rounded-lg">
-              <div id="mt-panels3d-overlay" class="absolute inset-0 flex flex-col items-center justify-center gap-2 px-4 text-center">
-                <button type="button" id="mt-panels3d-start"
-                  class="btn-pill inline-flex items-center justify-center gap-2"
-                  style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)">
-                  <span>See the panels on your roof</span>
-                </button>
-                <p class="max-w-xs text-xs text-lune-faint">
-                  Illustrative preview — the exact layout is confirmed after a technical site visit.
-                </p>
-              </div>
-            </div>
-            <p id="mt-panels3d-hint" hidden class="mt-2 text-xs text-lune-faint">
-              Drag to rotate · pinch or scroll to zoom.
-            </p>
-          </div>
+          <DevisMonToitPanels3d i18n={false} start={{ text: "See the panels on your roof" }} note={{ text: "Illustrative preview — the exact layout is confirmed after a technical site visit." }} hint={{ text: "Drag to rotate · pinch or scroll to zoom." }} />
 
         <!-- Contact form (the gate comes AFTER the estimate). -->
         <form id="mt-form" novalidate class="cine-card mt-5 space-y-4 p-5 sm:p-6">
