@@ -14,7 +14,9 @@ export function batterieKwh(batterie: string | null): number {
   return m ? Number(m[1] ?? 1) * parseFloat(m[2].replace(',', '.')) : 0;
 }
 
-export function impactFigures(numberLocale: string) {
+/** `dateLocale` (WAUD32) : la date d'arrêté suit la langue de la page (AR : chiffres
+ *  au format fr-FR, mois en arabe). Par défaut = `numberLocale` (FR/EN inchangés). */
+export function impactFigures(numberLocale: string, dateLocale: string = numberLocale) {
   const productionTotal = Math.round(MEASURED_FLEET_LIFETIME_MWH * 1000);
   const productionTotalLabel = productionTotal.toLocaleString(numberLocale);
 
@@ -28,7 +30,7 @@ export function impactFigures(numberLocale: string) {
   const battersInstalls = REALISATIONS.filter((r) => r.batterie !== null);
   const batteryKwhTotal = battersInstalls.reduce((sum, r) => sum + batterieKwh(r.batterie), 0);
 
-  const generatedDateLabel = new Intl.DateTimeFormat(numberLocale, {
+  const generatedDateLabel = new Intl.DateTimeFormat(dateLocale, {
     day: 'numeric',
     month: 'long',
     year: 'numeric',

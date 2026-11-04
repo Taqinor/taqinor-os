@@ -49,6 +49,25 @@ describe('ADEV50 — cumul 25 ans servi, option par option', () => {
     expect(LIB).not.toMatch(/const\s+BILL_INFLATION_RATE/);
     expect(PAGE).toContain("data-figure={headline.gainNet !== null ? 'gain_net_25_ans' : 'economies_cumul_25_ans'}");
   });
+
+  // ADEV107 (C-ADEV-VER-003) — cocher l'autre option change la carte : cumul + mensualité de l'option cochée.
+  it('la carte suit l’option cochée au niveau ≤ 2', () => {
+    // Chaque option est LUE par savingsHeadline au rendu (aucune seconde formule), seulement sans gain net (niveau ≤ 2).
+    expect(PAGE).toMatch(/const cumulParOption = headline && headline\.gainNet === null && twoOptions[\s\S]{0,200}savingsHeadline\(data!, o\)/);
+    expect(PAGE).toContain('cumulParOption,');
+    // La bascule (syncRecap, branchée sur chaque radio) réécrit la valeur, son option et la mensualité.
+    const debut = PAGE.indexOf('function syncRecap(): void {');
+    const bloc = PAGE.slice(debut, PAGE.indexOf("radio.addEventListener('change', syncRecap);", debut) + 60);
+    expect(bloc).toContain('cfg.cumulParOption?.[opt]');
+    expect(bloc).toContain("document.querySelector<HTMLElement>('[data-detail-cumul-value]')");
+    expect(bloc).toContain("const cumulOpt = opt === 'avec_batterie' ? 'avec' : 'sans';");
+    expect(bloc).toContain('cumulVal.dataset.figureOption = cumulOpt;');
+    expect(bloc).toContain("document.querySelector<HTMLElement>('[data-detail-cumul-sous]')");
+    expect(bloc).toContain("radio.addEventListener('change', syncRecap);");
+    expect(PAGE).toContain('data-detail-cumul-sous');
+    // Les valeurs servies par option diffèrent (échantillon partagé) : la carte n'affiche plus une seule option.
+    expect(savingsHeadline(EXEMPLE, 'avec_batterie').cumulative).not.toBe(savingsHeadline(EXEMPLE, 'sans_batterie').cumulative);
+  });
 });
 
 describe('RWEB24 (FIX-WEB C) — gain NET 25 ans servi : la carte affiche le chiffre du PDF, sous son libellé', () => {

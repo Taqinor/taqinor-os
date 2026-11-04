@@ -21,7 +21,7 @@ import * as maplibregl from 'maplibre-gl';
 // n'injecte aucun <link>. On l'ajoute nous-mêmes à l'init → ~69 ko chargés
 // seulement à l'ouverture de l'outil, jamais au chargement de la page.
 import maplibreCssUrl from 'maplibre-gl/dist/maplibre-gl.css?url';
-import { GOLD, MOROCCO_CENTER, $, assertWebGL, addTraceLayers, estimateAndShow, geocodeAndFly, injectMaplibreCss, makeSetStatus, mapErrorWarner, maptilerStyleUrl, renderRoofResults, traceGeoJson, wireSearchForm, wireVertexClicks, createRoofMap, wireOrientReestimate, type RoofResults } from './roofToolShared';
+import { GOLD, MOROCCO_CENTER, $, assertWebGL, addTraceLayers, estimateAndShow, geocodeAndFly, injectMaplibreCss, makeSetStatus, mapErrorWarner, maptilerStyleUrl, renderRoofResults, traceGeoJson, wireSearchForm, wireVertexClicks, createRoofMap, moveCamera, wireOrientReestimate, type RoofResults } from './roofToolShared';
 import { layoutPanels, type LngLat } from '../lib/roof';
 
 interface InitOptions {
@@ -181,9 +181,7 @@ export function initRoofTool3D(opts: InitOptions): void {
     if (buildPanel) buildPanel.hidden = true;
     if (finishBtn) finishBtn.disabled = true;
     // Retour à la vue de dessus pour retracer.
-    const target = { pitch: 0, bearing: 0 } as const;
-    if (opts.reducedMotion) map.jumpTo(target);
-    else map.easeTo({ ...target, duration: 600 });
+    moveCamera(map, opts.reducedMotion, { pitch: 0, bearing: 0 }, 600);
     setStatus('Cliquez les coins de votre toit. Double-cliquez pour fermer.');
   }
 
@@ -262,10 +260,8 @@ export function initRoofTool3D(opts: InitOptions): void {
       lat += y;
     }
     const center: [number, number] = [lng / ring.length, lat / ring.length];
-    const target = { center, pitch: PITCH_VIEW } as const;
-    // Sous prefers-reduced-motion : bascule instantanée, AUCUNE animation.
-    if (opts.reducedMotion) map.jumpTo(target);
-    else map.easeTo({ ...target, duration: 1100, essential: true });
+    // Sous prefers-reduced-motion : bascule instantanée, AUCUNE animation (moveCamera).
+    moveCamera(map, opts.reducedMotion, { center, pitch: PITCH_VIEW }, 1100, true);
   }
 
   function close() {

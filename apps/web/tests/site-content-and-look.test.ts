@@ -670,7 +670,7 @@ describe('WAUD46 WAUD64 WAUD65 — ruban, cibles tactiles, tuiles', () => {
   it('WAUD46 : ruban sans urgence, sur une ligne, décret intact', () => {
     const ui = lireSrc2('i18n/ui.ts');
     expect(ui).not.toMatch(/régularisez maintenant|regularize now|سوِّ وضعك الآن/);
-    expect(ui).toContain('Décret 2-25-100 en vigueur depuis le 9 juin 2026');
+    expect(ui).toContain('Décret 2-25-100 en vigueur — installation'); // WAUD18-b (D-WAUD-4=a) : sans date
     expect(ui).toContain('installation existante ? Nous montons votre dossier de régularisation →');
     const r = lireSrc2('components/Article33Ribbon.astro');
     expect(r).toContain('py-1');
@@ -679,6 +679,13 @@ describe('WAUD46 WAUD64 WAUD65 — ruban, cibles tactiles, tuiles', () => {
   });
   it('WAUD64 : liens du pied de page à 24 px au moins', () => {
     expect(lireSrc2('components/Footer.astro')).toMatch(/const linkClass = 'inline-block py-1 /);
+  });
+  it('WAUD64 (reste) : liens fléchés, puces de filtre, en-tête et fil d’Ariane — cibles agrandies', () => {
+    expect(lireSrc2('styles/global.css')).toMatch(/a\.border-b-2\.pb-0\\\.5:is\(\.inline-flex, \.inline-block\) \{\s*padding-top: 1\.25rem;/);
+    expect(lireSrc2('components/blocs/ArIndexButton3FED.astro')).toContain('gallery-filter-chip min-h-11');
+    expect(lireSrc2('components/Breadcrumb.astro')).toContain('breadcrumb-bidi inline-block py-1');
+    expect(lireSrc2('components/Header.astro')).toContain('class="tech-label block py-1 text-brass-300">{t(\'nav.solutions\')}');
+    expect(lireSrc2('components/Footer.astro')).toMatch(/\.footer-wa-recapture \{[^}]*padding-block: 0\.25rem;/);
   });
   it('WAUD65 : tuiles sans nowrap, donc sans collision', () => {
     expect(lireSrc2('components/blocs/EnIndexDlF52D.astro')).not.toContain('whitespace-nowrap');

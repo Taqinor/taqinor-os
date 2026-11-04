@@ -289,6 +289,20 @@ export async function estimateAndShow<L extends { kwc: number }>(
   setStatus('Production momentanément indisponible — la taille du système reste indicative.');
 }
 
+/** Déplace la caméra (outils toit 3D) : saut instantané sous prefers-reduced-motion,
+ *  sinon `easeTo` d'une durée donnée. Retour vue de dessus : `{ pitch: 0, bearing: 0 }`, 600 ms ;
+ *  bascule 3D : `{ center, pitch }`, 1100 ms, `essential`. */
+export function moveCamera(
+  map: { jumpTo: (t: any) => unknown; easeTo: (t: any) => unknown },
+  reducedMotion: boolean,
+  target: Record<string, unknown>,
+  duration: number,
+  essential = false,
+): void {
+  if (reducedMotion) map.jumpTo(target);
+  else map.easeTo(essential ? { ...target, duration, essential: true } : { ...target, duration });
+}
+
 /** Carte MapLibre commune : satellite hybride MapTiler centré sur le Maroc. */
 export function createRoofMap(
   ML: { Map: new (o: any) => any },

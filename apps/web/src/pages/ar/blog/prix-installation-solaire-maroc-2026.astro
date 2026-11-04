@@ -2,10 +2,8 @@
 /**
  * AR — Blog post (W295, RTL): How much does a solar installation cost in
  * Morocco in 2026? Faithful Arabic translation of
- * src/content/blog/prix-installation-solaire-maroc-2026.md, every figure kept
- * in Latin digits (28 000–42 000 / 45 000–65 000 / 85 000–120 000 DH
- * brackets, 10 000–14 000 DH/kWc, roof/battery surcharges, VAT, 5–7 year
- * payback). Static page mirroring the guides pattern (blog collection has no
+ * src/content/blog/prix-installation-solaire-maroc-2026.md. WAUD68 (D-WAUD-5 = a): no amount
+ * without a dated source (lib/prixConstants.ts); single VAT sentence = PHRASE_TVA. Static page mirroring the guides pattern (blog collection has no
  * locale field — out of this lane's scope). Internal links use
  * localizeNavHref (EN/AR if available, else the existing FR page — never a
  * dead link). FR untouched.
@@ -28,14 +26,14 @@ const { locale, L } = pageLocale(Astro.url.pathname);
 const pubDate = new Date('2026-06-21');
 
 const bodyText = `
-ما يُكوّن الثمن في 2026: الألواح والعاكس واليد العاملة والملحقات. الضريبة على القيمة المضافة والرسوم الجمركية. العائد على الاستثمار 5 إلى 7 سنوات في السكني.
+ما يُكوّن الثمن في 2026: الألواح والعاكس واليد العاملة والملحقات والإجراءات، والضريبة سطراً بسطر في عرض الأسعار. العائد يتوقّف على الاستهلاك وشطر ONEE.
 `;
 const { readingMinutes, url, schemaImageUrl } = articleMeta(bodyText, Astro.url.pathname, Astro.site, '/og/accueil.png');
 const blogPosting = {
   '@context': 'https://schema.org',
   '@type': 'BlogPosting',
   headline: 'أسعار الطاقة الشمسية بالمغرب في 2026: مكوّنات الفاتورة',
-  description: "الألواح والعاكس والتركيب والضريبة والجمارك: مكوّنات سعر التركيب الشمسي في 2026، بأرقام إرشادية.",
+  description: "الألواح والعاكس والتركيب والإجراءات والضريبة: مكوّنات سعر التركيب الشمسي في 2026، وكيف يُقرأ عرض الأسعار بنداً بنداً.",
   image: schemaImageUrl,
   datePublished: pubDate.toISOString(),
   keywords: 'كلفة, ثمن, تركيبة, 2026',
@@ -49,7 +47,7 @@ const blogPosting = {
 
 <Layout
   title="أسعار الطاقة الشمسية بالمغرب في 2026: مكوّنات الفاتورة | Taqinor"
-  description="الألواح والعاكس والتركيب والضريبة والجمارك: مكوّنات سعر التركيب الشمسي في 2026، بأرقام إرشادية."
+  description="الألواح والعاكس والتركيب والإجراءات والضريبة: مكوّنات سعر التركيب الشمسي في 2026، وكيف يُقرأ عرض الأسعار بنداً بنداً."
   ogSlug="accueil"
 >
   <script type="application/ld+json" set:html={JSON.stringify(blogPosting)} />
@@ -69,67 +67,54 @@ const blogPosting = {
         {readingMinutes} دقائق قراءة
       </p>
 
-      <p class="prose-lead mt-5">هوامش استرشادية 2026 حسب القدرة، تكاليف السقف والبطارية والضريبة — لمعرفة ما تتوقّعونه قبل عرض أسعاركم.</p>
+      <p class="prose-lead mt-5">ما يتكوّن منه ثمن التركيب في 2026 — العتاد والتركيب والإجراءات والضريبة — وكيف يُقرأ عرض الأسعار بنداً بنداً.</p>
 
       <div class="prose mt-10">
         <p>
           «كم تكلّف حقاً؟» هي الجملة الأولى في جلّ لقاءاتي. والسبب الذي يجعل الأرقام الموجودة على
           الإنترنت تتراوح من الواحد إلى الثلاثة سهل الشرح: ثمن لوح موضوع على رفّ لا علاقة له بثمن
-          تركيبة جاهزة، مُركَّبة على سقفكم ومربوطة. لذا أُفضّل عرض هوامش السوق المغربية 2026 كما هي،
-          بمصادرها، وخصوصاً بحدودها.
+          تركيبة جاهزة، مُركَّبة على سقفكم ومربوطة. يشرح هذا المقال ما تتكوّن منه الفاتورة — دون نقل
+          أي مبلغ لا أستطيع أن أُريكم مصدره المؤرَّخ.
         </p>
         <p class="text-xs text-lune-faint">
-          <em>(الهوامش حسب القدرة وتكاليف السقف وحالة البطارية توجد في صفحتنا <a href={L('/prix-panneaux-solaires-maroc')}>أثمنة الألواح الشمسية بالمغرب</a>.)</em>
+          <em>(ما يصنع الثمن، والسقف، وحالة البطارية توجد في صفحتنا <a href={L('/prix-panneaux-solaires-maroc')}>أثمنة الألواح الشمسية بالمغرب</a>.)</em>
         </p>
 
         <h2>ما يُكوّن الثمن: العتاد والتركيب</h2>
         <h3>الألواح الكهروضوئية</h3>
         <p>
-          ثمن السوق الاسترشادي 2026: <strong><span dir="ltr">~1,0 – 1,5</span> درهم/Wc</strong> للألواح وحدها (دون التركيب).
-          تُمثّل طُرز 550–600 واط المعيار الحالي — احسبوا حوالي لوحين لكل kWc مُركَّب.
+          تمثّل الألواح من <span dir="ltr" style="unicode-bidi:isolate">550–600 W</span> المعيار الحالي —
+          احسبوا لوحين تقريباً لكل kWc مركَّب. في عرض الأسعار، ابحثوا عن العلامة والطراز والقدرة
+          الفعلية لكل لوح، لا عن مجموع بالـkWc فقط.
         </p>
         <h3>العاكس</h3>
         <p>
-          مثال استرشادي: كان عاكس Huawei SUN2000-5K يُتداوَل حوالي <strong> <span dir="ltr" style="unicode-bidi:isolate">~12 500 درهم</span></strong>
-          بضمان 10 سنوات (ثمن سوق استرشادي 2026 — المصدر: electrosolarplus.ma). تتفاوت المجموعة حسب
-          القدرة والماركة.
+          يتوقّف ثمنه على القدرة والنوع (شبكة أو هجين مع بطارية) والعلامة. عرض الأسعار الجادّ يُسمّي
+          الطراز بدقّة وضمان الصانع.
         </p>
         <h3>اليد العاملة والملحقات</h3>
         <p>
           بنية التثبيت، أسلاك التيار المستمر/المتردّد، لوحة الحماية، الإجراءات الإدارية (تصريح القانون
-          <span dir="ltr" style="unicode-bidi:isolate">82-21</span> للتركيبات دون <span dir="ltr" style="unicode-bidi:isolate">11 kWc</span>) — تُمثّل هذه البنود حصّة معتبرة من الكلفة الإجمالية الجاهزة.
+          <span dir="ltr" style="unicode-bidi:isolate">82-21</span> للتركيبات دون <span dir="ltr" style="unicode-bidi:isolate">11 kW</span> في التوتر المنخفض) — تُمثّل هذه البنود حصّة معتبرة من الكلفة الإجمالية الجاهزة، وهي ما يغيب عن «ثمن العُدّة».
         </p>
 
-        <h2>الضريبة على القيمة المضافة والرسوم الجمركية: فارقة مهمّة</h2>
-        <p>النظام الضريبي للطاقة الشمسية بالمغرب سنة 2026 <strong>غير موحّد</strong>:</p>
-        <ul>
-          <li><strong>الألواح الكهروضوئية العارية</strong>: <strong>مُعفاة من الضريبة</strong> — لكن دون حق خصم الضريبة الأمامية. بالنسبة لفرد، هذا محايد. بالنسبة لمقاولة خاضعة للضريبة، يمكن أن يُقلّص غياب الخصم الفائدة.</li>
-          <li><strong>التركيبة الجاهزة</strong> (توريد + تركيب): خاضعة <strong>لضريبة <span dir="ltr" style="unicode-bidi:isolate">20%</span></strong> — لكن بحق خصم للمهنيين الخاضعين. هوامش الأثمنة في هذا الدليل مُحتَسَبة شاملة الضريبة للأفراد.</li>
-          <li><strong>العاكسات</strong>: تغيّرت الرسوم الجمركية على العاكسات — انخفضت من <strong><span dir="ltr">17,5% إلى 2,5%</span></strong> للطُّرز المستوردة، ما ساهم في خفض كلفتها في السوق سنة 2026 (المصدر: lechantier.ma، fnh.ma).</li>
-        </ul>
-        <p>
-          إن كنتم مقاولة أو مستثمراً، تحقّقوا من وضعكم الضريبي مع محاسب: يمكن أن تتفاوت المعالجة حسب
-          الطبيعة القانونية للتركيبة.
-        </p>
+        <h2>الضريبة سطراً بسطر</h2>
+        <p>يظهر سعر الضريبة لكل بند في عرض الأسعار — والقاعدة مذكورة في صفحتنا <a href={L('/prix-panneaux-solaires-maroc')}>أثمنة الألواح الشمسية بالمغرب</a>. مقاولة أو مستثمر: اطلبوا من محاسب التحقّق من وضعيتكم.</p>
 
-        <h2>العائد على الاستثمار: 5 إلى 7 سنوات في السكني</h2>
-        <p>
-          فترة الاسترجاع الأكثر ذكراً من طرف المُركِّبين المغاربة لتركيبة سكنية قياسية (دون بطارية) هي
-          <strong> <span dir="ltr" style="unicode-bidi:isolate">5</span> إلى <span dir="ltr" style="unicode-bidi:isolate">7 سنوات</span></strong> — هامش استرشادي 2026، مُنسجم مع عدّة مصادر (solaropeak.com،
-          ecovolt.ma، fnh.ma). مع بطارية، أضيفوا <strong><span dir="ltr" style="unicode-bidi:isolate">1</span> إلى <span dir="ltr" style="unicode-bidi:isolate">3 سنوات</span> أخرى</strong>.
-        </p>
+        <h2>ما يُسرّع الاسترجاع</h2>
         <p>
           يعتمد هذا الحساب بشدّة على استهلاككم الفعلي وشطركم التعريفي لدى ONEE/الوكالة. أسرة تستهلك
           أكثر من <span dir="ltr">310 kWh</span>/شهر (شطر بـ<span dir="ltr">1,381704</span> درهم/kWh، أو أبعد من <span dir="ltr">510 kWh</span> بـ<span dir="ltr">1,622856</span> درهم/kWh) تسترجع
           كلفة تركيبتها أسرع من مستهلك ضعيف — الطاقة الشمسية أكثر ربحاً كلما كانت فاتورتكم الحالية
-          مرتفعة. (الشبكة التعريفية المُحدَّثة: انظروا <a href={L('/blog/rentabilite-solaire-par-ville-maroc')}>مقالنا حول الربحية حسب المدينة</a>.)
+          مرتفعة، والبطارية تُطيل مدّة الاسترجاع. (الشبكة التعريفية المُحدَّثة: انظروا <a href={L('/blog/rentabilite-solaire-par-ville-maroc')}>مقالنا حول الربحية حسب المدينة</a>.)
         </p>
         <p>
-          لمزيد حول التوفير الفعلي حسب المدينة ومحاكاة الربحية، انظروا مقالنا
+          لمزيد حول التوفير الفعلي حسب المدينة، انظروا مقالنا
           <a href={L('/blog/rentabilite-solaire-par-ville-maroc')}>الربحية الشمسية حسب المدينة بالمغرب</a>.
         </p>
 
         <p>
+
           الرقم الوحيد الصالح لبيتكم يخرج من قراءة فاتورتكم وزيارة. هذا بالضبط ما يفعله تشخيصنا، مجاناً
           ودون التزام.
         </p>
@@ -144,7 +129,7 @@ const blogPosting = {
       />
     </article>
 
-    <CtaBand title="فوارق السوق لها حدود. فاتورتكم تعطي الرقم الدقيق." href={L('/devis/mon-toit')} />
+    <CtaBand title="فاتورتكم وحدها تعطي الرقم الدقيق." href={L('/devis/mon-toit')} />
 
     <StickyCta />
   </div>

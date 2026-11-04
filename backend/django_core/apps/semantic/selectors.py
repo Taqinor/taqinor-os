@@ -269,6 +269,101 @@ def lineage(company, cle, *, user=None):
     }
 
 
+def expliquer(company, user, cle, *, filters=None, cellule=None, limite=200):
+    """NTDATA44 — « expliquer ce chiffre » : lignage + lignes sources, en UNE
+    réponse.
+
+    ``filters`` — les filtres EFFECTIFS du widget (globaux traduits compris) ;
+    ``cellule`` — les valeurs de regroupement du point cliqué
+    (``{'mois': '2026-03'}``), qui deviennent des filtres d'égalité. Le
+    drill-down (NTDATA33, ``core.dashboard_data.drill``) s'applique à la
+    POPULATION de la métrique : filtres de la DÉFINITION d'abord, ceux de
+    l'appelant ensuite — exactement l'ordre du résolveur, pour que les lignes
+    listées soient celles qui ont produit le chiffre.
+
+    Une métrique d'ADAPTATEUR n'est pas une requête : ``enregistrements`` est
+    alors ``None`` et ``raison`` le dit, plutôt qu'une liste fabriquée. Même
+    chose si le dataset n'est plus enregistré ou qu'un champ n'est pas
+    autorisé. Lève ``services.MetriqueInconnue`` (404) comme le lignage.
+    """
+    from core import dashboard_data, data_explorer
+
+    arbre = lineage(company, cle, user=user)
+    definition = services.get_metric(company, cle)
+    filtres = dict(definition.filtres or {})
+    filtres.update(filters or {})
+    reponse = {'lignage': arbre, 'filtres_appliques': filtres,
+               'cellule': dict(cellule or {}), 'enregistrements': None,
+               'raison': ''}
+    if definition.est_adaptateur or not definition.dataset:
+        reponse['raison'] = (
+            'Métrique calculée par un adaptateur (%s) : elle ne se décompose '
+            'pas en lignes d\'un dataset.'
+            % (definition.mesure or {}).get('adapter', ''))
+        return reponse
+    try:
+        reponse['enregistrements'] = dashboard_data.drill(
+            definition.dataset, company, user, group_by=cellule,
+            filters=filtres, limit=limite)
+    except (data_explorer.DatasetInconnu,
+            data_explorer.ChampNonAutorise) as exc:
+        reponse['raison'] = str(exc)
+    return reponse
+
+
+def _nom_affiche(utilisateur):
+    if utilisateur is None:
+        return ''
+    nom = ''
+    if hasattr(utilisateur, 'get_full_name'):
+        nom = (utilisateur.get_full_name() or '').strip()
+    return nom or getattr(utilisateur, 'username', '') or ''
+
+
+def glossaire(company):
+    """NTDATA49 — le DICTIONNAIRE DE DONNÉES : chaque métrique active, lisible.
+
+    Une entrée par métrique ACTIVE de ``company`` : sa clé, son libellé, sa
+    définition en français, son unité (code + libellé), son PROPRIÉTAIRE et sa
+    date de dernière modification. Aucune recette (ni dataset, ni formule, ni
+    filtres) : le glossaire dit ce qu'un chiffre SIGNIFIE ; « d'où il vient »
+    est le lignage (NTDATA43), réservé aux responsables.
+
+    LE PROPRIÉTAIRE EST DÉRIVÉ, jamais déclaré : c'est l'auteur de la PREMIÈRE
+    version signée de la définition (NTDATA9 — celui qui l'a posée). Une
+    métrique semée par ``seed_metriques`` n'a pas d'auteur : le propriétaire
+    est alors vide, plutôt qu'attribué à quelqu'un au hasard.
+    """
+    from django.db.models import Prefetch
+
+    from .models import MetricDefinition, MetricDefinitionVersion
+
+    definitions = (
+        MetricDefinition.objects
+        .filter(company=company, actif=True)
+        .order_by('libelle', 'cle')
+        .prefetch_related(Prefetch(
+            'versions',
+            queryset=(MetricDefinitionVersion.objects
+                      .filter(auteur__isnull=False)
+                      .select_related('auteur')
+                      .order_by('version', 'id')),
+            to_attr='versions_signees')))
+    return [
+        {
+            'cle': d.cle,
+            'libelle': d.libelle,
+            'definition': d.description,
+            'unite': d.unite,
+            'unite_libelle': d.get_unite_display(),
+            'proprietaire': (_nom_affiche(d.versions_signees[0].auteur)
+                             if d.versions_signees else ''),
+            'derniere_modification': d.updated_at.isoformat(),
+        }
+        for d in definitions
+    ]
+
+
 def variation_pct(company, user, cle, *, aujourdhui=None, filters=None):
     """Δ % entre les DEUX DERNIÈRES périodes COMPLÈTES de la métrique.
 

@@ -180,7 +180,8 @@ class FkCatalogueMouvementsTests(TestCase):
                 {'produit': produit_id, 'quantite': 1}]}
         r = self.api.post(url, _payload(self.pb.pk), format='json')
         r_absent = self.api.post(url, _payload(ID_ABSENT), format='json')
-        self._assert_comme_absent(r, r_absent, self.pb.pk)
+        # api-fuzz-full 41825184761 (tranche 14) : composant inconnu = 404.
+        self._assert_comme_absent(r, r_absent, self.pb.pk, 404)
         self.assertFalse(KitProduit.objects.exists())
 
     def test_kit_sous_kit_etranger(self):
@@ -192,7 +193,7 @@ class FkCatalogueMouvementsTests(TestCase):
                 {'composant_kit': kit_id, 'quantite': 1}]}
         r = self.api.post(url, _payload(kit_b.pk), format='json')
         r_absent = self.api.post(url, _payload(ID_ABSENT), format='json')
-        self._assert_comme_absent(r, r_absent, kit_b.pk)
+        self._assert_comme_absent(r, r_absent, kit_b.pk, 404)
         self.assertEqual(KitProduit.objects.count(), 1)
 
     def test_produit_entite_bornee_societe(self):

@@ -10,6 +10,9 @@ export function initRegularisationWhatsapp() {
   const unknownEl = document.getElementById('rg33-unknown') as HTMLInputElement;
   const villeEl = document.getElementById('rg33-ville') as HTMLInputElement;
   const goEl = document.getElementById('rg33-go') as HTMLAnchorElement;
+  // WAUD10 — message dans la langue de la page (<html lang>).
+  const lang = document.documentElement.lang;
+  const locale = lang === 'en' || lang === 'ar' ? lang : 'fr';
 
   function refresh() {
     kwcEl.disabled = unknownEl.checked;
@@ -19,7 +22,7 @@ export function initRegularisationWhatsapp() {
       regularizationWhatsappText({
         kwc: unknownEl.checked ? '' : kwcEl.value,
         ville: villeEl.value,
-      }),
+      }, locale),
     );
   }
   for (const el of [kwcEl, unknownEl, villeEl]) el.addEventListener('input', refresh);

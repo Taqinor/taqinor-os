@@ -35,7 +35,7 @@ import { PERIMETER_SETBACK_M, cotesDePavage, type Panel2Module, type PerimeterSe
 import { rognerParArete } from './roofSetbackEdge'; // CALX95 câblage
 import { PANEL2_WATT, type ConfigFamily, type PackResult, type EastWestGeometry, type TariffGrid, annualSavingsMad, aspectForAzimuth, billToAnnualKwh, neededPanelsForTarget, optimalSouthTiltDeg, packConfig, roofDominantAzimuthDeg, specificYield, tariffForCity } from './estimatorBrainV2';
 import { matrixTiltGrid, type YieldFn, type YieldSource } from './estimatorBrainV6';
-import { departageAspect, departageBase, type EvalProductionSourced } from './estimatorBrainCommun';
+import { departageAspect, departageBase, productionFields, type EvalProductionSourced } from './estimatorBrainCommun';
 
 export { PANEL2_WATT };
 export type { YieldFn, YieldSource };
@@ -322,12 +322,7 @@ function evalOne(
     fitCount,
     placedCount,
     kwc,
-    annualKwh,
-    pctOfTarget: ctx.target > 0 ? (annualKwh / ctx.target) * 100 : 0,
-    savingsLow: savings.low,
-    savingsHigh: savings.high,
-    perPanelYield,
-    yieldSource: source,
+    ...productionFields({ kwh: annualKwh, perPanelYield, source }, ctx.target, savings),
     orientationLabel,
     layoutLabel: LAYOUT_FR[layout],
     label: `${tiltDeg}° · ${orientationLabel} · ${LAYOUT_FR[layout]}`,

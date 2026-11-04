@@ -25,7 +25,7 @@ import '../styles/v3-photo-motion.css';
 </script>
 
 <script>
-  import { animerChiffre, formatFrame, shouldDigitRoll, scrubProgress } from '../lib/countup';
+  import { animerChiffre, shouldDigitRoll } from '../lib/countup';
 
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -92,9 +92,14 @@ import '../styles/v3-photo-motion.css';
         if (!finalText) continue;
         if (el.dataset.v2Done === '1') continue;
         const rect = el.getBoundingClientRect();
-        const p = scrubProgress(rect.top, viewportHeight);
-        el.textContent = shouldDigitRoll(finalText) ? formatFrame(finalText, p) : finalText;
-        if (p >= 1) el.dataset.v2Done = '1'; // valeur finale atteinte, on arrête d'échantillonner cet élément
+        // WAUD38 — plus de chiffre lié au défilement (il restait figé sur une valeur fausse
+        // quand le visiteur s'arrêtait) : dès l'entrée dans la vue, roulement temporel
+        // unique (< 900 ms) jusqu'à la valeur finale exacte.
+        if (rect.top < viewportHeight && rect.bottom > 0) {
+          el.dataset.v2Done = '1';
+          if (shouldDigitRoll(finalText)) animerChiffre(el, finalText);
+          else el.textContent = finalText;
+        }
       }
       ticking = false;
     };

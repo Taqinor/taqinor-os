@@ -364,3 +364,14 @@ describe('WAUD14 (reste) — /realisations : ni la meta description ni le JSON-L
     });
   }
 });
+
+describe('WAUD32 (reste) — /ar/production-mesuree : date d’arrêté en arabe', () => {
+  it('impactFigures date selon dateLocale ; FR/EN inchangés ; la page AR passe ar-MA', async () => {
+    const { impactFigures } = await import('../src/lib/impactFigures');
+    const ar = impactFigures('fr-FR', 'ar-MA');
+    expect(ar.generatedDateLabel).not.toMatch(/janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre/);
+    expect(ar.productionTotalLabel).toBe(impactFigures('fr-FR').productionTotalLabel);
+    expect(impactFigures('fr-FR').generatedDateLabel).toBe(impactFigures('fr-FR', 'fr-FR').generatedDateLabel);
+    expect(readSrc('../src/pages/ar/production-mesuree.astro')).toContain("impactFigures('fr-FR', 'ar-MA')");
+  });
+});

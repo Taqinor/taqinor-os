@@ -1,0 +1,34 @@
+{
+  "sha": "52764c5a95e5d051e7f956c408706f2634d10d2c",
+  "date": "2026-11-04",
+  "groupe": "ADVS",
+  "verdict": "PASS",
+  "couvre": [
+    "ADVS27"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PA3-01.tva_societe",
+      "taches": [
+        "ADVS27"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ADVS-PA3-01.tva_societe.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}

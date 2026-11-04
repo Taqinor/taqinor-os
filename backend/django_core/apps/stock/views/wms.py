@@ -349,7 +349,9 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
         déjà imprimée doit toujours correspondre au contenu). Même prédicat
         ``est_figee`` que l'ajout de ligne. Refus d'ÉTAT (le corps était
         conforme) : 409, comme l'ajout de ligne (api-fuzz stock, vague 8)."""
-        if serializer.instance.est_figee:
+        from ..services_wms import unite_sous_scellage
+        # ASTK261 — sous une palette scellée aussi (détachement compris).
+        if unite_sous_scellage(serializer.instance):
             raise ConflitEtat(
                 'Unité scellée : elle ne peut plus être modifiée.')
         super().perform_update(serializer)

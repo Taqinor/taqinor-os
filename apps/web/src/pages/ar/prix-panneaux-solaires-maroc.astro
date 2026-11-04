@@ -20,30 +20,25 @@ import Faq from '../../components/Faq.astro';
 import { NAP } from '../../lib/nap';
 import { localizeNavHref } from '../../i18n/pages';
 import { DATE_LONGUE_AR as dateFmt } from '../../lib/format';
+import { PHRASE_TVA } from '../../lib/prixConstants';
 
 const { locale, L } = pageLocale(Astro.url.pathname);
 
-const verifiedDate = new Date('2026-07-03');
+const verifiedDate = new Date('2026-11-04');
 
-const fourchettes = [
-  { kwc: '3 kWc', prix: '28 000 – 42 000 درهم' },
-  { kwc: '5 kWc', prix: '45 000 – 65 000 درهم' },
-  { kwc: '10 kWc', prix: '85 000 – 120 000 درهم' },
-];
-
-// W297 — تمريرة AEO/GEO: أسئلة وأجوبة مستقلّة تُعيد استعمال الهوامش المنشورة
-// أعلاه، كي تتمكّن مساعدات الذكاء الاصطناعي من الاستشهاد بجواب كامل حول الثمن.
+// WAUD68 (D-WAUD-5 = a) — لا مبلغ ما دام lib/prixConstants.ts بلا مصدر مؤرَّخ (قائمة الأرقام المسحوبة هناك).
 // schema={false}: تبقى /faq الصفحة الوحيدة الحاملة لـFAQPage في الموقع.
 const faq = [
   {
     q: 'كم تكلّف تركيبة شمسية جاهزة بالمغرب؟',
-    a: 'هوامش استرشادية حسب القدرة: 3 kWc بين 28 000 و42 000 درهم، 5 kWc بين 45 000 و65 000 درهم، 10 kWc بين 85 000 و120 000 درهم — أي حوالي 10 000 إلى 14 000 درهم لكل kWc في المتوسط، شاملاً العتاد والتركيب.',
+    a: 'يتوقّف الثمن على القدرة المعتمدة انطلاقاً من فاتورتكم، وعلى السقف، والبطارية إن وُجدت، والعلامات المركَّبة. لا ننشر هامش أسعار بلا مصدر مؤرَّخ: ثمن تركيبكم يخرج من دراسة مجانية لفاتورتكم.',
   },
   {
-    q: 'لماذا يكون ثمن «4 700 درهم/kWc» مشبوهاً؟',
-    a: 'يقابل هذا الرقم كلفة عتاد التركيبة وحده (ألواح + عاكس)، دون التركيب، الأسلاك، البنية أو الربط — ليس تركيبة جاهزة ومنجَزة. لا تقارنوا هذا الرقم أبداً بالهوامش الجاهزة.',
+    q: 'لماذا يجب أن يثير ثمن منخفض جداً للـkWc الانتباه؟',
+    a: 'غالباً ما يطابق ثمن العُدّة وحدها (ألواح + عاكس)، دون التركيب والأسلاك والهيكل والربط — لا تركيبة جاهزة منتهية. قارِنوا دائماً بين عرضين سطراً بسطر.',
   },
   {
+
     q: 'ما العائد على الاستثمار لتركيبة شمسية بالمغرب؟',
     a: 'يعتمد الحساب بشدّة على استهلاككم الفعلي وشطركم التعريفي لدى ONEE.',
   },
@@ -54,8 +49,8 @@ const schemaImageUrl = new URL('/og/residentiel.png', Astro.site).href;
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Article',
-  headline: 'أثمنة الألواح الشمسية بالمغرب: هوامش استرشادية حسب القدرة',
-  description: 'كم تكلّف تركيبة شمسية جاهزة بالمغرب، حسب القدرة (kWc)، مع تكاليف السقف والبطارية والضريبة على القيمة المضافة — هوامش استرشادية، تُراجَع كل سنة.',
+  headline: 'أثمنة الألواح الشمسية بالمغرب: ما يصنع الثمن',
+  description: 'ما يصنع ثمن تركيبة شمسية جاهزة بالمغرب: القدرة (kWc)، السقف، البطارية، العلامات — ولماذا يأتي الرقم الحقيقي من فاتورتكم.',
   image: schemaImageUrl,
   dateModified: verifiedDate.toISOString().slice(0, 10),
   about: { '@type': 'Thing', name: 'ثمن التركيبة الشمسية بالمغرب' },
@@ -66,8 +61,8 @@ const jsonLd = {
 ---
 
 <Layout
-  title="ثمن الألواح الشمسية بالمغرب: هوامش حسب القدرة (kWc) | Taqinor"
-  description="كم تكلّف تركيبة شمسية جاهزة بالمغرب؟ هوامش استرشادية حسب القدرة (3، 5، 10 kWc)، تكاليف السقف والبطارية، الضريبة على القيمة المضافة، ولماذا الرقم الحقيقي يأتي دائماً من زيارة تقنية."
+  title="ثمن الألواح الشمسية بالمغرب: ما يصنع الثمن | Taqinor"
+  description="كم تكلّف تركيبة شمسية بالمغرب؟ ما يصنع الثمن: القدرة (kWc)، السقف، البطارية، العلامات، الضريبة — ولماذا يأتي الرقم الحقيقي من فاتورتكم."
   ogSlug="residentiel"
 >
   <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
@@ -78,94 +73,54 @@ const jsonLd = {
     <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'أثمنة الألواح الشمسية بالمغرب' }]} />
 
     <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
-      <p class="tech-label v2-kicker rule-brass text-lune">الأثمنة والهوامش</p>
+      <p class="tech-label v2-kicker rule-brass text-lune">الأثمنة وعروض الأسعار</p>
       <h1 class="display v2-page-title mt-5 text-white">أثمنة الألواح الشمسية بالمغرب</h1>
 
       <p class="guide-byline mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-lune-faint">
-        <span>هوامش رُوجعت في {dateFmt.format(verifiedDate)} · بقلم Reda Kasri</span>
+        <span>صفحة رُوجعت في {dateFmt.format(verifiedDate)} · بقلم Reda Kasri</span>
       </p>
 
       <p class="v2-lead mt-6 text-lune-soft">
-        «كم تكلّف حقاً؟» هو السؤال الأول في جلّ لقاءاتنا. تجمع هذه الصفحة أوامر حجم من السوق المغربية،
-        بمصادرها وحدودها — ليس ثمناً نهائياً، بل ما يكفي للتخطيط المالي ولرصد عرض منخفض أو مرتفع بشكل
-        غير طبيعي قبل عرض أسعاركم.
+        «كم تكلّف حقاً؟» هو السؤال الأول في جلّ لقاءاتنا. تشرح هذه الصفحة ما يصنع ثمن التركيب وكيف
+        تُقرأ العروض — دون نقل هوامش أسعار لا نستطيع إظهار مصدرها المؤرَّخ. ثمن تركيبكم أنتم يخرج من
+        دراسة مجانية لفاتورتكم.
       </p>
 
-      <h2 class="display v2-section-title mt-12 text-white">الهوامش الجاهزة حسب القدرة</h2>
+      <h2 class="display v2-section-title mt-12 text-white">ما يشمله ثمن التركيب الجاهز</h2>
       <p class="v2-lead mt-5 text-lune-soft">
-        تشمل هذه الأثمنة توريد العتاد <strong class="text-white">و</strong> التركيب الكامل (العاكس،
-        الأسلاك، البنية، التشغيل). مُستخرَجة من منشورات مُركِّبين مغاربة وأدلة أثمنة على الإنترنت —
-        <strong class="text-white"> هوامش استرشادية</strong>، لا تعريفات رسمية.
-      </p>
-      <div class="mt-6 overflow-x-auto">
-        <table class="v2-lead w-full border-collapse text-left text-sm text-lune-soft">
-          <thead>
-            <tr class="border-b border-white/20 text-white">
-              <th class="py-3 pr-4 font-bold">القدرة المُركَّبة</th>
-              <th class="py-3 font-bold">الهامش الاسترشادي (درهم شامل الضريبة)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {fourchettes.map((f) => (
-              <tr class="border-b border-white/10">
-                <td class="py-3 pr-4 font-bold text-white" dir="ltr">{f.kwc}</td>
-                <td class="py-3" dir="ltr">{f.prix}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p class="v2-lead mt-5 text-lune-soft">
-        <strong class="text-white">الكلفة المتوسطة جاهزة: حوالي <span dir="ltr" style="unicode-bidi:isolate">10 000 – 14 000 درهم/kWc</span></strong>
-        (عتاد + يد عاملة — مصادر: solaropeak.com، ecovolt.ma، electrosolarplus.ma، lechantier.ma).
-        التشتّت يعكس نوع السقف، المسافة إلى اللوحات الكهربائية، ماركة العاكس، وهوامش ربح متفاوتة حسب
-        المُركِّب. عرض أسعار ميداني يبقى ضرورياً.
+        يشمل الثمن الجاهز توريد العتاد <strong class="text-white">و</strong>التركيب الكامل: الألواح،
+        العاكس، الهيكل، الأسلاك، الحمايات من جهتي التيار المتناوب والمستمر، التشغيل، وحسب القدرة
+        التصريح وفق القانون <span dir="ltr" style="unicode-bidi:isolate">82-21</span>. يتوقّف المجموع
+        أولاً على <strong class="text-white">القدرة (kWc)</strong> المعتمدة انطلاقاً من استهلاككم، ثم
+        على نوع السقف، والمسافة إلى اللوحة الكهربائية، والعلامات المركَّبة، والبطارية إن وُجدت. تبقى
+        الزيارة التقنية ضرورية.
       </p>
       <CtaLigne />
 
-      <h2 class="display v2-section-title mt-12 text-white">احذروا من أثمنة «4 700 درهم/kWc»</h2>
+      <h2 class="display v2-section-title mt-12 text-white">احذروا من ثمن منخفض جداً للـkWc</h2>
       <p class="v2-lead mt-5 text-lune-soft">
-        كثيراً ما يتردّد ثمن حوالي <strong class="text-white"><span dir="ltr" style="unicode-bidi:isolate">4 700 درهم/kWc</span></strong> أو أقل. هذا الرقم
-        يقابل <strong class="text-white">كلفة عتاد التركيبة وحده</strong> (ألواح + عاكس، دون التركيب،
-        دون الأسلاك، دون البنية، دون الربط) — منخفض بشكل غير معقول لتركيبة جاهزة ومنجَزة. لا تقارنوا هذا
-        الرقم بالهوامش أعلاه: إنهما واقعان مختلفان.
+        ثمن للـkWc يبدو بلا منافس يطابق غالباً <strong class="text-white">ثمن العُدّة وحدها</strong>
+        (ألواح + عاكس، دون التركيب والأسلاك والهيكل والربط) — لا تركيبة منتهية. قارِنوا بين عرضين سطراً
+        بسطر: صفحتنا <a href={L('/devis-panneaux-solaires-maroc')} class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">مقارنة عرضين</a>
+        تعطي جدول المشمولات.
       </p>
 
-      <h2 class="display v2-section-title mt-12 text-white">تكاليف إضافية حسب تهيئة السقف</h2>
+      <h2 class="display v2-section-title mt-12 text-white">السقف يُحرِّك الثمن</h2>
       <p class="v2-lead mt-5 text-lune-soft">
-        لا تتشابه كل الأسقف. بعض التهيئات تضيف تكاليف معتبرة إلى الهامش الأساسي:
-      </p>
-      <ul class="v2-lead mt-5 list-disc space-y-3 pr-6 text-lune-soft">
-        <li><strong class="text-white">سقف من القرميد أو الصفيح المموّج</strong> (تركيب أكثر تقنية): <span dir="ltr" style="unicode-bidi:isolate">+6 000 – 12 000 درهم</span></li>
-        <li><strong class="text-white">ميلان قوي (أكثر من <span dir="ltr" style="unicode-bidi:isolate">30°</span>)</strong>: <span dir="ltr" style="unicode-bidi:isolate">+4 000 – 8 000 درهم</span> لأجهزة السلامة وتعقيد التركيب</li>
-      </ul>
-      <p class="v2-lead mt-5 text-lune-soft">
-        السطح الخرساني سهل الولوج يبقى التهيئة الأقل كلفة. إن كان سقفكم منحدراً أو من مواد هشّة،
-        توقّعوا هذه التكلفة الإضافية في ميزانيتكم — انظروا أيضاً دليلنا
-        <a href={L('/guides/mon-toit-peut-il-supporter-des-panneaux')} class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">هل يتحمّل سقفي الألواح؟</a>
+        يبقى السطح الإسمنتي سهل الولوج أقلّ التهيئات كلفة. سقف القرميد أو الصفيح يتطلّب تركيباً أكثر
+        تقنية، والانحدار القوي (أكثر من <span dir="ltr" style="unicode-bidi:isolate">30°</span>) تجهيزات
+        سلامة: تظهر هذه التكاليف الإضافية في سطر التركيب من عرض أسعاركم.
       </p>
 
       <h2 class="display v2-section-title mt-12 text-white">حالة البطارية: مفيدة، لكن ليست محايدة على الكلفة</h2>
       <p class="v2-lead mt-5 text-lune-soft">
-        تبقى التركيبة <strong class="text-white">دون بطارية</strong> (مربوطة بالشبكة) الحل الأكثر شيوعاً
-        والأكثر ربحاً لغالبية البيوت الحضرية. إن رغبتم في تخزين الطاقة للمساء أو الاحتماء من الانقطاعات،
-        تضيف بطارية LFP كلفة معتبرة:
-      </p>
-      <ul class="v2-lead mt-5 list-disc space-y-3 pr-6 text-lune-soft">
-        <li><strong class="text-white">بطارية LFP بسعة <span dir="ltr" style="unicode-bidi:isolate">5 – 15 kWh</span>: <span dir="ltr" style="unicode-bidi:isolate">+22 000 – 60 000 درهم</span></strong> حسب السعة والماركة</li>
-        <li>تُطيل فترة استرجاع الكلفة بـ <strong class="text-white"><span dir="ltr" style="unicode-bidi:isolate">1</span> إلى <span dir="ltr" style="unicode-bidi:isolate">3 سنوات</span></strong> مع البطارية</li>
-      </ul>
-      <p class="v2-lead mt-5 text-lune-soft">
-        دليلنا <a href={L('/guides/quelle-taille-de-batterie')} class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">أي حجم بطارية؟</a> يفصّل مراحل التحجيم ولماذا التخزين، بالمغرب، يربح أكثر من التصدير.
+        تبقى التركيبة <strong class="text-white">دون بطارية</strong> (المربوطة بالشبكة) الحلّ الأكثر
+        شيوعاً لأغلب المنازل الحضرية. بطارية LFP، لتخزين الطاقة للمساء أو لتجاوز الانقطاعات، تضيف بنداً
+        مهمّاً إلى عرض الأسعار وتُطيل مدّة الاسترجاع: لا يبرّرها إلا ملف استهلاككم.
       </p>
 
-      <h2 class="display v2-section-title mt-12 text-white">الضريبة على القيمة المضافة والرسوم الجمركية</h2>
-      <p class="v2-lead mt-5 text-lune-soft">
-        النظام الضريبي غير موحّد: الألواح العارية مُعفاة من الضريبة على القيمة المضافة (دون حق خصم)،
-        والتركيبة الجاهزة (توريد + تركيب) خاضعة <strong class="text-white"> لضريبة <span dir="ltr" style="unicode-bidi:isolate">20 %</span></strong> —
-        الهوامش في هذه الصفحة مُحتَسَبة شاملة الضريبة للأفراد. الرسوم الجمركية على العاكسات المستوردة
-        انخفضت من <span dir="ltr" style="unicode-bidi:isolate">17,5 %</span> إلى <span dir="ltr" style="unicode-bidi:isolate">2,5 %</span>، ما ساهم في خفض كلفتها في السوق.
-      </p>
+      <h2 class="display v2-section-title mt-12 text-white">الضريبة على القيمة المضافة</h2>
+      <p class="v2-lead mt-5 text-lune-soft">{PHRASE_TVA.ar}</p>
 
       <h2 class="display v2-section-title mt-12 text-white">العائد على الاستثمار</h2>
       <p class="v2-lead mt-5 text-lune-soft">
@@ -186,13 +141,12 @@ const jsonLd = {
 
       <h2 class="display v2-section-title mt-12 text-white">كلمة أخيرة قبل توقيع أي شيء</h2>
       <p class="v2-lead mt-5 text-lune-soft">
-        استعملوا هذه الهوامش للتخطيط المالي ولرصد عرض منخفض أو مرتفع بشكل غير طبيعي. لكن لا تطلبوا منها
-        ما لا يمكنها تقديمه: ثمناً نهائياً. تهيئة سقفكم، استهلاككم، شطركم لدى ONEE، والمسافة بين الألواح
-        واللوحة الكهربائية تُحرِّك المجموع النهائي، أحياناً بآلاف الدراهم. الرقم الوحيد الصالح لبيتكم
-        يخرج من قراءة فاتورتكم وزيارة — مجانية ودون التزام.
+        لا يعطي أي هامش عمومي ثمناً نهائياً. تهيئة سقفكم، استهلاككم، شطركم لدى ONEE، والمسافة بين الألواح
+        واللوحة الكهربائية تُحرِّك المجموع النهائي. الرقم الوحيد الصالح لبيتكم يخرج من قراءة فاتورتكم
+        وزيارة — مجانية ودون التزام.
       </p>
       <p class="v2-lead mt-3 text-xs text-lune-faint">
-        لتحديث الأثمنة الكامل لسنة 2026 (توزيع العتاد/التركيب، أمثلة محسوبة)، انظروا مقالنا
+        لما يتكوّن منه ثمن التركيب سنة 2026 (العتاد، التركيب، الإجراءات)، انظروا مقالنا
         <a href={L('/blog/prix-installation-solaire-maroc-2026')} class="border-b border-white/40 pb-0.5 font-semibold text-white transition-colors hover:border-white">كم تكلّف تركيبة شمسية بالمغرب سنة 2026؟</a>
       </p>
 

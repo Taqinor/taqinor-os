@@ -149,6 +149,11 @@ class UniteLogistiqueSerializer(IdInconnu404Mixin, ChampsStrictsMixin, CompanySc
                     'contenir elle-même).')
             vus.add(courant.pk)
             courant = courant.parent
+        from .services_wms import refuser_parent_unite  # ASTK261 : refus de la création
+        try:  # (parent déjà borné à la société par le champ scopé)
+            refuser_parent_unite(value, self.instance.company_id)
+        except ValueError as exc:
+            raise ConflitEtat(str(exc))
         return value
 
 

@@ -74,3 +74,30 @@ class SuppressionCategorieTests(TestCase):
         self.assertEqual(reponse.status_code, 204, reponse.content)
         self.assertFalse(Categorie.objects.filter(
             pk=self.categorie.pk).exists())
+
+    def test_superutilisateur_sans_societe_refuse(self):
+        """ASTK260 — un superutilisateur plateforme sans société reçoit le
+        même 409 que l'admin (sonde C-ASTK-VER4-021 : 204)."""
+        produit = Produit.objects.create(
+            company=self.company, nom='Rail alu',
+            prix_achat=Decimal('100'), prix_vente=Decimal('150'),
+            categorie=self.categorie)
+        n = next(_seq)
+        root = User.objects.create_superuser(
+            username=f'astk260_root_{n}', password='x',
+            email=f'astk260-{n}@example.test')
+        self.assertIsNone(root.company_id)
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(root)}')
+
+        reponse = api.delete(
+            f'/api/django/stock/categories/{self.categorie.pk}/')
+
+        self.assertEqual(reponse.status_code, 409, reponse.content)
+        self.assertIn('Catégorie utilisée par 1 produit',
+                      reponse.json()['detail'])
+        produit.refresh_from_db()
+        self.assertEqual(produit.categorie_id, self.categorie.pk)
+        self.assertTrue(Categorie.objects.filter(
+            pk=self.categorie.pk).exists())

@@ -6,7 +6,7 @@ const { warranties, dirYears } = Astro.props as Record<string, any>;
           {warranties.map((w: any, i: any) => (
             <div class="v2-rise flex items-baseline justify-between gap-4 border-b border-azur-900/15 px-5 py-4" style={`--v2-i:${i}`}>
               <span class="text-sm font-semibold">{w.item}{w.note && <span class="block text-xs font-normal text-encre-faint">{w.note}</span>}</span>
-              <span class="fig whitespace-nowrap text-2xl text-azur-600" dir={dirYears} data-tally>{w.years}</span>
+              <span class="fig whitespace-nowrap text-2xl text-azur-600" dir={dirYears} data-fig-fixe>{w.years}</span>
             </div>
           ))}
         </div>
