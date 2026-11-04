@@ -162,26 +162,27 @@ def _verifier_verdict_de_la_variante(calepinage, variante):
     ``roof_layout``) ne peut pas porter un bloquant. L'indéterminé passe.
 
     Raises:
-        rest_framework.exceptions.ValidationError: champ ``electrique``
-            nommant les bloquants — converti en 400 par l'enveloppe globale.
+        core.conflit_etat.ConflitEtat: champ ``electrique`` nommant les
+            bloquants — 409 (ENF11) : la variante enregistrée s'oppose, le
+            corps (vide) n'y est pour rien.
     """
     document = getattr(variante, 'roof_layout', None) if variante else None
     if calepinage is None or not isinstance(document, dict) or not document:
         return
-    from rest_framework.exceptions import ValidationError
+    from core.conflit_etat import ConflitEtat
 
     from .electrique import TemperaturesInvalides, verdict_de_conception
 
     try:
         verdict = verdict_de_conception(calepinage, layout=document)
     except TemperaturesInvalides as refus:
-        # Lot 2 critique #19 — refus NOMMÉ (400), jamais un 500.
-        raise ValidationError({
+        # Lot 2 critique #19 — refus NOMMÉ (409), jamais un 500.
+        raise ConflitEtat({
             getattr(refus, 'champ', '') or 'temperatures': [
                 "Cette variante ne peut pas être retenue : " + str(refus)]
         }) from refus
     if verdict['bloquants']:
-        raise ValidationError({'electrique': [
+        raise ConflitEtat({'electrique': [
             "Cette variante ne peut pas être retenue : verdict électrique "
             "bloquant — " + ' ; '.join(b['libelle']
                                        for b in verdict['bloquants'])]})
