@@ -39,8 +39,7 @@ from core.champs_stricts import (
     ChaineStricte, ChampsStrictsEntiersMixin, EntierStrict,
 )
 from core.parseurs import PARSEURS_JSON
-from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, inline_serializer
 
 from .models import ProblemeClient
 from .schema_fields import champ_choix
@@ -518,9 +517,26 @@ def _horodater_tri(maintenant):
         return False
 
 
+#: Contrat : `contract_samples/problemes_resume.json` (mêmes clés que `resume_json`
+#: + `tri_horodate`). Les listes imbriquées sont décrites par ce contrat.
+_RESUME_PROBLEMES_REPONSE = inline_serializer('ResumeProblemesService', {
+    'jours': serializers.IntegerField(),
+    'genere_le': serializers.DateTimeField(),
+    'problemes': serializers.ListField(child=serializers.DictField()),
+    'outbox_en_echec': serializers.ListField(child=serializers.DictField()),
+    'sauvegardes_en_echec': serializers.ListField(child=serializers.DictField()),
+    'sante': serializers.DictField(child=serializers.DictField()),
+    'tri_horodate': serializers.BooleanField(),
+})
+#: Jeton de service absent / faux (ou non configuré) : 403, corps d'erreur DRF.
+_RESUME_PROBLEMES_REFUS = inline_serializer('ResumeProblemesRefus', {
+    'detail': serializers.CharField(),
+})
+
+
 @extend_schema(
     parameters=[ResumeProblemesParams],
-    responses={200: OpenApiTypes.OBJECT})
+    responses={200: _RESUME_PROBLEMES_REPONSE, 403: _RESUME_PROBLEMES_REFUS})
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([JetonServiceResumeProblemes])
