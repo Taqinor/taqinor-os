@@ -227,6 +227,73 @@ class TestIsolation(_Base):
         self.assertGreater(audit_coherence_nuit.time_limit,
                            audit_coherence_nuit.soft_time_limit)
 
+    def test_soft_limit_persiste_le_partiel_sans_resoudre(self):
+        # ERR-JPB-AUDIT-COHERENCE-TUE-180S — la soft-limit au milieu d'une
+        # société ne perd plus la passe : les violations établies AVANT sont
+        # persistées (et rendues pour notification), rien n'est résolu.
+        from celery.exceptions import SoftTimeLimitExceeded
+        company, user, client, produit = self.societe()
+        d1 = self.devis(company, user, client, produit)
+        d2 = self.devis(company, user, client, produit)
+        moteur.run_audit(company=company, rules=[REGLE])
+        Devis.objects.filter(pk=d2.pk).update(
+            date_acceptation=datetime.date(2026, 9, 10))
+        d3 = self.devis(company, user, client, produit)
+        d4 = self.devis(company, user, client, produit,
+                        date_acceptation=datetime.date(2026, 9, 10))
+
+        def stop(r, devis, ctx):
+            if devis.pk == d4.pk:
+                raise SoftTimeLimitExceeded()
+            return []
+        REGISTRE['TEST_STOP'] = Regle(
+            id='TEST_STOP', libelle='test', gravite=GRAVITE_CRITIQUE,
+            portee=PORTEE_DEVIS, check=stop, actif_par_defaut=False)
+        try:
+            with self.assertRaises(SoftTimeLimitExceeded) as cm:
+                moteur.run_audit(company=company, rules=[REGLE, 'TEST_STOP'])
+        finally:
+            REGISTRE.pop('TEST_STOP', None)
+        rapport = cm.exception.rapport
+        self.assertEqual([v.object_id for v in rapport.new], [d3.pk])
+        self.assertEqual(rapport.checked['devis'], 4)
+        ouvertes = set(ViolationCoherence.objects.filter(
+            company=company, resolved_at__isnull=True)
+            .values_list('object_id', flat=True))
+        # d2 corrigé n'est PAS résolu par une passe interrompue.
+        self.assertEqual(ouvertes, {d1.pk, d2.pk, d3.pk})
+
+    def test_tache_notifie_les_nouvelles_partielles(self):
+        from celery.exceptions import SoftTimeLimitExceeded
+        from apps.ventes.tasks import audit_coherence_nuit
+        rapport = moteur.AuditReport(new=['v'])
+        exc = SoftTimeLimitExceeded()
+        exc.rapport = rapport
+        with mock.patch.object(moteur, 'run_audit', side_effect=exc), \
+                mock.patch('apps.ventes.coherence.notification.'
+                           'notifier_nouvelles_violations',
+                           return_value=1) as notif:
+            with self.assertRaises(SoftTimeLimitExceeded):
+                audit_coherence_nuit()
+        notif.assert_called_once_with(rapport)
+
+    def test_calepinage_lu_une_fois_par_devis(self):
+        # Les trois règles CAL_* partagent UNE lecture du calepinage par devis.
+        from types import SimpleNamespace
+        from apps.ventes.coherence import regles_calepinage
+        from apps.ventes.coherence.contexte import ContexteAudit
+        ctx = ContexteAudit(company=None)
+        d1, d2 = SimpleNamespace(pk=1), SimpleNamespace(pk=2)
+        ids = ('CAL_MODULES_DEVIS_VS_CALEPINAGE', 'CAL_KWC_DEVIS_VS_CALEPINAGE',
+               'CAL_EMPREINTE_IMPRIMEE_PERIMEE')
+        with mock.patch.object(regles_calepinage, '_calepinage_lie',
+                               return_value=None) as lu:
+            for d in (d1, d2):
+                for rid in ids:
+                    r = REGISTRE[rid]
+                    self.assertEqual(r.check(r, d, ctx), [])
+        self.assertEqual([c.args[0].pk for c in lu.call_args_list], [1, 2])
+
     def test_calcul_annule_rien_ne_survit(self):
         company, user, client, produit = self.societe()
         d = self.devis(company, user, client, produit,

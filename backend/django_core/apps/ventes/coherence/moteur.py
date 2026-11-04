@@ -133,6 +133,20 @@ def _erreur(report, regle_id, obj_type, obj, company, exc):
     })
 
 
+def _parcourir(company, par_portee, report, evaluer_regle):
+    """Les objets par portée (devis puis factures), chaque règle appliquée."""
+    if par_portee.get(PORTEE_DEVIS):
+        for devis in _devis_qs(company).iterator(chunk_size=100):
+            report.checked['devis'] += 1
+            for r in par_portee[PORTEE_DEVIS]:
+                evaluer_regle(r, devis, 'devis')
+    if par_portee.get(PORTEE_FACTURE):
+        for facture in _factures_qs(company).iterator(chunk_size=100):
+            report.checked['facture'] += 1
+            for r in par_portee[PORTEE_FACTURE]:
+                evaluer_regle(r, facture, 'facture')
+
+
 def _executer_societe(company, regles, report, *, constructeur=None):
     """Évalue toutes les règles pour une société. Rend ``(violations,
     inconnus)`` où ``inconnus`` = {(règle, type, id)} dont le verdict n'a
@@ -160,16 +174,15 @@ def _executer_societe(company, regles, report, *, constructeur=None):
             inconnus.add((r.id, obj_type, obj.pk))
             _erreur(report, r.id, obj_type, obj, company, exc)
 
-    if par_portee.get(PORTEE_DEVIS):
-        for devis in _devis_qs(company).iterator(chunk_size=100):
-            report.checked['devis'] += 1
-            for r in par_portee[PORTEE_DEVIS]:
-                _appliquer(r, devis, 'devis')
-    if par_portee.get(PORTEE_FACTURE):
-        for facture in _factures_qs(company).iterator(chunk_size=100):
-            report.checked['facture'] += 1
-            for r in par_portee[PORTEE_FACTURE]:
-                _appliquer(r, facture, 'facture')
+    try:
+        _parcourir(company, par_portee, report, _appliquer)
+    except SoftTimeLimitExceeded as exc:
+        # ERR-JPB-AUDIT-COHERENCE-TUE-180S — la passe s'arrête, mais ce qui a
+        # été établi AVANT la limite n'est pas perdu : ``run_audit`` le
+        # persiste (sans rien résoudre) puis relève l'exception.
+        exc.partiel = ([v for v in violations if v.company_id == company.pk],
+                       inconnus)
+        raise
     for r in par_portee.get(PORTEE_SOCIETE, []):
         try:
             with transaction.atomic():
@@ -190,11 +203,14 @@ def _executer_societe(company, regles, report, *, constructeur=None):
     return violations, inconnus
 
 
-def _persister(company, regles, violations, inconnus, maintenant):
+def _persister(company, regles, violations, inconnus, maintenant, *,
+               resoudre=True):
     """Upsert des violations d'UNE société ; rend (nouvelles, nb résolues).
 
     Ne résout que les violations ouvertes des règles EXÉCUTÉES dans cette
-    passe, et jamais celles d'un objet dont le verdict est inconnu."""
+    passe, et jamais celles d'un objet dont le verdict est inconnu.
+    ``resoudre=False`` (passe interrompue par la soft-limit) : upsert seul,
+    AUCUNE résolution — les objets non audités n'ont pas de verdict."""
     from apps.ventes.models_coherence import ViolationCoherence
     ids_regles = {r.id for r in regles}
     ouvertes = {
@@ -234,6 +250,8 @@ def _persister(company, regles, violations, inconnus, maintenant):
         ligne.save(update_fields=['last_seen', 'resolved_at', 'severity',
                                   'reference', 'details', 'updated_at'])
     resolues = 0
+    if not resoudre:
+        return nouvelles, resolues
     for emp, ligne in ouvertes.items():
         if emp in vues:
             continue
@@ -245,6 +263,32 @@ def _persister(company, regles, violations, inconnus, maintenant):
         ligne.save(update_fields=['resolved_at', 'updated_at'])
         resolues += 1
     return nouvelles, resolues
+
+
+def _sauver_partiel(report, societe, regles, exc, persist, maintenant, t0):
+    """ERR-JPB-AUDIT-COHERENCE-TUE-180S — soft-limit atteinte au milieu
+    d'une société : les violations déjà établies sont persistées (upsert
+    seul, sans résolution) AVANT que la tâche ne relève l'exception — un
+    kill ne perd plus toute la passe. Journalise l'avancement (combien
+    d'objets audités) pour mesurer en prod."""
+    exc.rapport = report  # la tâche notifie les nouvelles partielles
+    violations, inconnus = getattr(exc, 'partiel', None) or ([], set())
+    report.violations.extend(violations)
+    report.duration_s = time.monotonic() - t0
+    logger.error('audit_coherence : soft-limit atteinte (%s) après %.1f s — '
+                 '%s audités, %d violation(s) partielles', societe.slug,
+                 report.duration_s, dict(report.checked), len(violations))
+    if not persist or not violations:
+        return
+    try:
+        with transaction.atomic():
+            nouvelles, _ = _persister(societe, regles, violations, inconnus,
+                                      maintenant, resoudre=False)
+        report.new.extend(nouvelles)
+        report.persisted = True
+    except Exception:  # noqa: BLE001 — l'exception d'origine prime (D-ENF22-BLE001)
+        logger.exception('audit_coherence : persistance partielle impossible '
+                         '(%s)', societe.slug)
 
 
 def run_audit(company=None, persist=True, rules=None, *,
@@ -262,15 +306,21 @@ def run_audit(company=None, persist=True, rules=None, *,
     for societe in _societes(company):
         report.companies.append(societe.slug)
         report._slugs[societe.pk] = societe.slug
-        with rendu_sans_reseau():
-            with transaction.atomic():
-                try:
-                    violations, inconnus = _executer_societe(
-                        societe, regles, report, constructeur=constructeur)
-                finally:
-                    # LECTURE SEULE : rien de ce que le calcul a touché ne
-                    # survit, succès ou échec.
-                    transaction.set_rollback(True)
+        try:
+            with rendu_sans_reseau():
+                with transaction.atomic():
+                    try:
+                        violations, inconnus = _executer_societe(
+                            societe, regles, report,
+                            constructeur=constructeur)
+                    finally:
+                        # LECTURE SEULE : rien de ce que le calcul a touché
+                        # ne survit, succès ou échec.
+                        transaction.set_rollback(True)
+        except SoftTimeLimitExceeded as exc:
+            _sauver_partiel(report, societe, regles, exc, persist, maintenant,
+                            t0)
+            raise
         report.violations.extend(violations)
         if not persist:
             report.new.extend(violations)

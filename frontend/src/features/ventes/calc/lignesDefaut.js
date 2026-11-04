@@ -6,7 +6,7 @@
 // PVMRQ (_filtrerParMarque, _marqueEpinglee, _marqueCorrespond) supprimé.
 
 import { _norm, classifyProduct } from './classification.js'
-import { ligneProduitCatalogue, tauxTvaOf } from '../solar.js'
+import { ligneProduitCatalogue, tauxTvaOf, ttcExactFromHt } from '../solar.js'
 
 // ── PVORD (fondateur 19/08/2026) — ordre PAR DÉFAUT des lignes de devis ──────
 // Frontend de `ParametresGammes.ordre_lignes` (apps/ventes/models.py) : une
@@ -78,20 +78,20 @@ function indexProduits(produits) {
   return byType
 }
 
-const lineFrom = (p, quantite, ttcOverride = null) => ((p && ttcOverride == null)
+const lineFrom = (p, quantite, ttcOverride = null, tvaStandard) => ((p && ttcOverride == null)
   // ATOT28 — prix catalogue repris tel quel (HT d'origine porté).
-  ? ligneProduitCatalogue(p, quantite)
+  ? ligneProduitCatalogue(p, quantite, tvaStandard)
   : {
       produit: p ? String(p.id) : '',
       designation: p ? p.nom : '',
       quantite,
       prix_unit_ttc: p || ttcOverride != null ? ttcOverride : 0,
-      taux_tva: p ? tauxTvaOf(p) : 20,
+      taux_tva: tauxTvaOf(p, tvaStandard),
     })
 
 // Ligne vide placeholder (désignation canonique, pas de produit)
-const placeholder = (designation, quantite) => ({
-  produit: '', designation, quantite, prix_unit_ttc: 0, taux_tva: 20,
+const placeholder = (designation, quantite, tvaStandard) => ({
+  produit: '', designation, quantite, prix_unit_ttc: 0, taux_tva: tauxTvaOf(null, tvaStandard),
 })
 
 // ── Table par défaut au chargement (port de getDefaultProductLines) ──────────
@@ -101,7 +101,8 @@ const placeholder = (designation, quantite) => ({
 // PVORD — `ordreLignes` (optionnel, `ParametresGammes.ordre_lignes`) réordonne
 // le résultat par rôle préféré ; absent/vide = ordre canonique ci-dessous,
 // byte-identique à l'historique (voir `orderLinesByRolePreference`).
-export function defaultProductLines(produits, ordreLignes) {
+// ADVS47 — `tvaStandard` (profil société, D-APAR-1) : taux d'un produit sans TVA.
+export function defaultProductLines(produits, ordreLignes, tvaStandard) {
   const byType = indexProduits(produits)
   // AGNR27 — garde « aucun produit sans prix » : un rôle pointe le premier
   // produit PRIX CONNU, ou reste sans produit (placeholder) — jamais un
@@ -112,16 +113,16 @@ export function defaultProductLines(produits, ordreLignes) {
     return pool.find(p => _hasPrix(p) && _norm(p.nom).includes(needle)) ?? null
   }
   const row = (p, designation, quantite) =>
-    p ? lineFrom(p, quantite) : placeholder(designation, quantite)
+    p ? lineFrom(p, quantite, null, tvaStandard) : placeholder(designation, quantite, tvaStandard)
 
   const tagged = [
-    ['onduleur_reseau', placeholder('Onduleur réseau', 1)],
-    ['onduleur_hybride', placeholder('Onduleur hybride', 1)],
+    ['onduleur_reseau', placeholder('Onduleur réseau', 1, tvaStandard)],
+    ['onduleur_hybride', placeholder('Onduleur hybride', 1, tvaStandard)],
     ['smart_meter', row(first('smart_meter'), 'Smart Meter', 0)],
     ['wifi_dongle', row(first('wifi_dongle'), 'Wifi Dongle', 0)],
-    ['panneau', placeholder('Panneaux', 0)],
-    ['batterie', placeholder('Batterie', 1)],
-    ['batterie', placeholder('Batterie', 0)],
+    ['panneau', placeholder('Panneaux', 0, tvaStandard)],
+    ['batterie', placeholder('Batterie', 1, tvaStandard)],
+    ['batterie', placeholder('Batterie', 0, tvaStandard)],
     ['structure_acier', row(exactOr('structure', 'acier'), 'Structures acier', 0)],
     ['structure_alu', row(exactOr('structure', 'alu'), 'Structures aluminium', 0)],
     ['socle', row(first('socle'), 'Socles', 0)],
@@ -132,6 +133,30 @@ export function defaultProductLines(produits, ordreLignes) {
     ['suivi', row(first('suivi'), 'Suivi journalier, maintenance chaque 12 mois pendant 2 ans', 1)],
   ]
   return orderLinesByRolePreference(tagged, ordreLignes)
+}
+
+// ADVS47 — les réglages société arrivent APRÈS le stock : quand la TVA standard
+// change, les lignes COMPOSÉES jamais éditées (ni taux, ni prix tapés, ni base
+// légale) dont le produit n'a pas de taux propre suivent le nouveau standard.
+// Fonction PURE ; même tableau rendu si rien ne change (aucune boucle).
+export function retauxerLignesSansTva(lignes, produits, tvaStandard) {
+  let change = false
+  const out = (lignes || []).map((l) => {
+    if (!l?.compose || l.tvaManuelle || l.prixManuel || String(l.tvaBaseLegale ?? '').trim() !== '') return l
+    const p = l.produit ? (produits || []).find(x => String(x.id) === String(l.produit)) : null
+    if (p && Number.isFinite(parseFloat(p.tva))) return l
+    const taux = tauxTvaOf(null, tvaStandard)
+    if (parseFloat(l.taux_tva) === taux) return l
+    change = true
+    const texte = typeof l.taux_tva === 'string'
+    const ttc = (p && l.prixHtOrigine != null) ? ttcExactFromHt(l.prixHtOrigine, taux) : null
+    return {
+      ...l,
+      taux_tva: texte ? String(taux) : taux,
+      ...(ttc != null ? { prix_unit_ttc: typeof l.prix_unit_ttc === 'string' ? String(ttc) : ttc } : {}),
+    }
+  })
+  return change ? out : lignes
 }
 
 /* STKCAT10 — LE RÔLE ÉMIS POUR LA LIGNE STRUCTURE, MIROIR EXACT DU SERVEUR

@@ -152,6 +152,11 @@ export function fusionnerRecomposition(anciennes, generees) {
       quantite: g.quantite,
       prix_unit_ttc: g.prix_unit_ttc,
     }
+    // ADVS47 — une ligne `compose` jamais éditée à la main prend le taux COMPOSÉ
+    // (TVA standard société) quand l'ancienne porte le repli 20 % codé ; une
+    // saisie (prix tapé, TVA/base légale posée) reste.
+    if (o.compose && parseFloat(o.taux_tva) === 20 && !o.prixManuel && !o.tvaManuelle
+      && String(o.tvaBaseLegale ?? '').trim() === '' && g.taux_tva != null) base.taux_tva = g.taux_tva
     if (o.prixManuel) {
       base.prix_unit_ttc = o.prix_unit_ttc
       base.prixManuel = true

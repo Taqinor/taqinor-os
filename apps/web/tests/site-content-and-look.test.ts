@@ -634,6 +634,21 @@ describe('WAUD63 — accessibilité et lisibilité', () => {
     expect(dl).not.toContain('<span');
     expect(dl).not.toContain('<p ');
   });
+  it('le <dl> de confiance de /ar/ (copie propre à l’arabe) : dt puis dd, rien d’autre (Lighthouse definition-list)', () => {
+    const ar = lireSrc('pages/ar/index.astro');
+    const debut = ar.indexOf('<dl class="mt-12 grid grid-cols-1 gap-x-8 gap-y-12 sm:grid-cols-3"');
+    const dl = ar.slice(debut, ar.indexOf('</dl>', debut));
+    expect(debut).toBeGreaterThan(0);
+    expect(dl.indexOf('<dt')).toBeLessThan(dl.indexOf('<dd'));
+    expect(dl).not.toContain('<span');
+    expect(dl).not.toContain('<p ');
+  });
+  it('Callout sur section claire (/methodologie-estimation) : corps et titres en encre, plus en « lune »', () => {
+    const c = lireSrc('components/Callout.astro');
+    expect(c).toMatch(/:global\(\.bg-blanc-azur\) \.callout__body,[\s\S]*?color: var\(--color-encre-soft/);
+    expect(c).toMatch(/:global\(\.bg-blanc-azur\) \.callout--info \.callout__title \{\s*color: var\(--color-azur-700/);
+    expect(c).toMatch(/:global\(\.bg-blanc-azur\) \.callout--warning \.callout__title \{\s*color: var\(--color-alert-600/);
+  });
   it('le lien logo du header n’est plus en français sur EN/AR', () => {
     expect(lireSrc('components/Header.astro')).toContain("aria-label={t('nav.homeLogo')}");
     const ui = lireSrc('i18n/ui.ts');
