@@ -20,7 +20,7 @@
  *      l'intercepteur appelle justement ce module) et un échec du POST n'est
  *      jamais lui-même signalé ;
  *   3. jamais un flot : dédoublonnage par signature sur une fenêtre d'une
- *      minute + plafond par chargement de page (un écran qui boucle en erreur
+ *      minute + plafond par tranche de 10 minutes (un écran qui boucle en erreur
  *      peut produire des dizaines d'erreurs par seconde).
  *
  * SANS DONNÉE PERSONNELLE : la route est normalisée (identifiants → `<id>`,
@@ -29,6 +29,7 @@
  * `company`/`utilisateur`/famille de navigateur sont posés CÔTÉ SERVEUR.
  */
 import { originFrom } from '../api/origin.js'
+import { refreshSession } from '../api/refreshCoordinator.js'
 
 // LECTEUR DE SESSION : INJECTÉ par l'appelant (`deps.sessionEstActive`), jamais
 // importé ici. `providers/session-bridge` ouvre un `BroadcastChannel` au
@@ -53,25 +54,59 @@ export const GENRES = {
 // Un même problème qui se répète dans la minute ne vaut qu'UNE ligne : on veut
 // savoir QUOI casse, pas compter les re-renders.
 const FENETRE_DOUBLON_MS = 60000
-// Plafond dur par chargement de page : même si tout part en vrille, le journal
-// ne devient jamais lui-même la charge.
-const PLAFOND_PAR_PAGE = 40
+// Plafond dur par TRANCHE de 10 minutes : même si tout part en vrille, le journal
+// ne devient jamais lui-même la charge. ERR-JPB-PLAFOND-PAR-ONGLET — pas « par
+// chargement de page » : l'onglet d'un commercial reste ouvert toute la journée,
+// et un déploiement (22 routes en 502) le laissait muet jusqu'au rechargement.
+const PLAFOND_PAR_TRANCHE = 40
+const DUREE_TRANCHE_MS = 600000
 
+let _debutTranche = null
 let _envoyes = 0
 const _vus = new Map()
 
+/** Nouvelle tranche : compteur remis à zéro, signatures expirées oubliées. */
+function ouvrirTrancheSiEchue(maintenant) {
+  if (_debutTranche != null && maintenant - _debutTranche < DUREE_TRANCHE_MS) return
+  _debutTranche = maintenant
+  _envoyes = 0
+  for (const [cle, vu] of _vus) {
+    if (maintenant - vu >= FENETRE_DOUBLON_MS) _vus.delete(cle)
+  }
+}
+
 /** Réservé aux tests : réarme le dédoublonnage et le plafond. */
 export function _resetJournalPourTests() {
+  _debutTranche = null
   _envoyes = 0
   _vus.clear()
+}
+
+/** Réservé aux tests : taille de la mémoire de dédoublonnage. */
+export function _nombreSignaturesPourTests() {
+  return _vus.size
+}
+
+// ERR-JPB-ECRAN-JAMAIS-EMIS — un chunk introuvable (404 après un déploiement,
+// l'onglet garde l'ancien index) n'a pas de nom stable selon le navigateur : on
+// le reconnaît au message pour lui donner UN code. `#306` / « Lazy element » :
+// après le `preventDefault` de `vite:preloadError`, `lazy()` résout `undefined`
+// et React tombe dans la boundary juste avant que le rechargement parte.
+const MOTIFS_CHUNK = /dynamically imported module|Importing a module script failed|Unable to preload CSS|Lazy element type must resolve|Minified React error #306\b/i
+
+function estErreurChunk(error) {
+  return error?.name === 'ChunkLoadError' || MOTIFS_CHUNK.test(String(error?.message || ''))
 }
 
 /** Segment d'URL qui porte un identifiant plutôt qu'un nom de ressource. */
 function estIdentifiant(segment) {
   if (/^\d+$/.test(segment)) return true
   // UUID, et plus généralement tout jeton long (jetons de partage public,
-  // hachages) : jamais un nom de route.
+  // hachages) : jamais un nom de route. ERR-JPB-ROUTE-SLUG-MASQUE — sauf un
+  // slug kebab-case (`bons-commande-fournisseur`) : il FAIT la route, le masquer
+  // fusionne des routes différentes dans la signature et le résumé.
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(segment)) return true
+  if (/^[a-z]+(?:-[a-z]+)+$/.test(segment)) return false
   return segment.length >= 20 && /^[A-Za-z0-9._~-]+$/.test(segment)
 }
 
@@ -98,7 +133,7 @@ export function normaliserRoute(url) {
 }
 
 /** Corps exact envoyé au serveur (exporté pour les tests). */
-export function construireCorps({ genre, methode, route, statut, code, message }) {
+export function construireCorps({ genre, methode, route, statut, code, message, requestId }) {
   return {
     genre,
     methode: String(methode || '').slice(0, 8).toUpperCase(),
@@ -107,6 +142,7 @@ export function construireCorps({ genre, methode, route, statut, code, message }
     statut_reponse: typeof statut === 'number' && Number.isFinite(statut) ? statut : null,
     code: String(code || '').slice(0, 64),
     message: String(message || '').slice(0, 255),
+    request_id: requestId || null,
   }
 }
 
@@ -130,12 +166,13 @@ export function signalerProbleme(probleme, deps = {}) {
     // produirait un 401 de plus, donc du bruit au lieu d'une trace (même
     // leçon que CAD177 sur le beacon Web Vitals).
     if (!connecte()) return false
-    if (_envoyes >= PLAFOND_PAR_PAGE) return false
+    const maintenant = (deps.maintenant || Date.now)()
+    ouvrirTrancheSiEchue(maintenant)
+    if (_envoyes >= PLAFOND_PAR_TRANCHE) return false
 
     const corps = construireCorps(probleme)
     if (!corps.genre) return false
 
-    const maintenant = (deps.maintenant || Date.now)()
     const cle = signature(corps)
     const vu = _vus.get(cle)
     if (vu != null && maintenant - vu < FENETRE_DOUBLON_MS) return false
@@ -145,12 +182,21 @@ export function signalerProbleme(probleme, deps = {}) {
     const envoyer = deps.fetch || globalThis.fetch
     if (!envoyer) return false
     const base = originFrom(import.meta.env?.VITE_API_URL)
-    envoyer(base + CHEMIN, {
+    const poster = () => envoyer(base + CHEMIN, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(corps),
       credentials: 'include',
       keepalive: true,
+    })
+    const rafraichir = deps.rafraichir || refreshSession
+    poster()?.then?.((reponse) => {
+      // ERR-JPB-BALISE-401-APRES-30-MIN — `sessionEstActive` est un drapeau
+      // Redux : il ignore l'expiration du cookie (30 min). Sans ceci, une
+      // erreur survenue avant toute requête axios perdait sa ligne en silence.
+      // UN refresh et UN second envoi, dont la réponse n'est plus regardée.
+      if (reponse?.status !== 401) return undefined
+      return rafraichir(base).then(poster)
     })?.catch?.(() => {
       // RÈGLE 2 : un échec du journal n'est JAMAIS signalé (ce serait la
       // boucle parfaite — le réseau est coupé, donc le signalement du problème
@@ -161,6 +207,14 @@ export function signalerProbleme(probleme, deps = {}) {
     // RÈGLE 1 : le journal ne fait jamais planter l'application.
     return false
   }
+}
+
+// ERR-JPB-REQUEST-ID-PERDU — l'identifiant que Django pose sur chaque réponse
+// relie la ligne à sa trace serveur (journaux, Sentry). Un 502 de nginx n'en a
+// pas : Django était absent, et c'est une information.
+function requestIdDe(reponse) {
+  const candidat = reponse?.headers?.['x-request-id'] || reponse?.data?.error?.request_id
+  return /^[0-9a-f]{32}$/i.test(String(candidat || '')) ? candidat : null
 }
 
 /**
@@ -192,7 +246,9 @@ export function signalerErreurRequete(error, deps = {}) {
         message: error?.message,
       }, deps)
     }
-    if (statut >= 500) {
+    // ERR-JPB-REFRESH-MUET-SESSION-EXPIREE — bridé, le refresh n'a rien dit de la
+    // session : ce 429-là est un problème vécu (`api/refreshCoordinator.js`).
+    if (statut >= 500 || (statut === 429 && String(url).includes('token/refresh'))) {
       return signalerProbleme({
         genre: GENRES.SERVEUR,
         methode: config.method,
@@ -200,6 +256,7 @@ export function signalerErreurRequete(error, deps = {}) {
         statut,
         code: error?.response?.data?.error?.code || error?.code || '',
         message: error?.message,
+        requestId: requestIdDe(error?.response),
       }, deps)
     }
     return false
@@ -220,10 +277,52 @@ export function signalerErreurScript(error, genre = GENRES.SCRIPT, deps = {}) {
       genre,
       route: '',
       statut: null,
-      code: error?.name || 'Error',
+      code: estErreurChunk(error) ? 'ChunkLoadError' : (error?.name || 'Error'),
       message: error?.message || String(error),
     }, deps)
   } catch {
     return false
   }
+}
+
+// Un seul rechargement par fenêtre : si le chunk manque ENCORE juste après, le
+// serveur n'a pas la version (déploiement cassé) et recharger bouclerait.
+const CLE_RECHARGEMENT_CHUNK = 'erp:rechargement-chunk'
+const FENETRE_RECHARGEMENT_MS = 60000
+
+/** Note le rechargement ; `false` s'il vient d'avoir lieu ou si on ne peut pas
+ *  le noter (mode privé) : sans mémoire, pas de garde contre la boucle. */
+function reserverRechargement(stockage, maintenant) {
+  try {
+    const dernier = Number(stockage.getItem(CLE_RECHARGEMENT_CHUNK))
+    if (dernier && maintenant - dernier < FENETRE_RECHARGEMENT_MS) return false
+    stockage.setItem(CLE_RECHARGEMENT_CHUNK, String(maintenant))
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * ERR-JPB-ECRAN-JAMAIS-EMIS — `vite:preloadError` : un chunk `lazy` est
+ * introuvable. Une ligne `ecran` `ChunkLoadError`, puis UN rechargement ; sinon
+ * l'erreur suit son cours jusqu'à la boundary, qui affiche son écran.
+ * `cible`/`stockage`/`recharger` sont des points d'injection pour les tests.
+ */
+export function installerRechargementChunk(deps = {}) {
+  const cible = 'cible' in deps ? deps.cible : globalThis.window
+  if (!cible?.addEventListener) return
+  cible.addEventListener('vite:preloadError', (event) => {
+    try {
+      signalerErreurScript(event?.payload || new Error('Importing a module script failed'), GENRES.ECRAN, deps)
+      const stockage = deps.stockage || globalThis.sessionStorage
+      const maintenant = (deps.maintenant || Date.now)()
+      if (!reserverRechargement(stockage, maintenant)) return
+      event?.preventDefault?.()
+      const recharger = deps.recharger || (() => globalThis.location?.reload())
+      recharger()
+    } catch {
+      // RÈGLE 1 : le journal ne fait jamais planter l'application.
+    }
+  })
 }

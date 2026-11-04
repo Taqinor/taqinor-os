@@ -6,6 +6,8 @@ import { AlertTriangle } from 'lucide-react'
 // `<link rel="modulepreload">` sur chaque page, `/login` inclus.
 import { Button } from '../ui/Button'
 import { captureException } from '../lib/monitoring'
+import { GENRES, signalerErreurScript } from '../lib/journalProblemes'
+import { sessionEstActive } from '../providers/session-bridge'
 
 // VX206 — identifiant support « horodatage court » quand le monitoring
 // distant est no-op (pas de DSN) : toujours quelque chose de transmissible,
@@ -40,6 +42,10 @@ export default class RouteErrorBoundary extends Component {
 
   componentDidCatch(error, info) {
     console.error('[RouteErrorBoundary]', error, info?.componentStack)
+    // ERR-JPB-ECRAN-JAMAIS-EMIS — React 19 n'envoie une erreur capturée ni à
+    // `window.error` ni à `unhandledrejection` : sans cette ligne, un écran
+    // tombé ne laisse aucune trace (Sentry est un no-op sans DSN).
+    signalerErreurScript(error, GENRES.ECRAN, { sessionEstActive })
     captureException(error, { componentStack: info?.componentStack })
       .then((eventId) => this.setState({ eventId: eventId || shortTimestamp() }))
       .catch(() => this.setState({ eventId: shortTimestamp() }))

@@ -9,6 +9,8 @@ Importé par `base.py` (`from .reglages_lus import *`) : `dev.py` et `prod.py` e
 """
 import os
 
+# apps.reporting.journal_problemes (BPQ4) : jeton de service du résumé des problèmes ; vide = fermé (403).
+PROBLEMES_RESUME_TOKEN = os.environ.get('PROBLEMES_RESUME_TOKEN', '').strip()
 # apps.crm.cadence_selectors (CADV32, D-CADV-11) : K6 palier 2, après le récépissé F211 et la relecture Meta.
 REACTIVATION_K6_PALIER2 = os.environ.get('REACTIVATION_K6_PALIER2', '0') == '1'
 # apps.adsengine.whatsapp_ack (CADV41, D-CADV-5) : accusé WhatsApp utilitaire hors heures ; une clé vide = rien ne part.

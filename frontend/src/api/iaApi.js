@@ -9,7 +9,11 @@ import { originFrom } from './origin'
 import { emitSessionExpired, sessionEstActive } from '../providers/session-bridge'
 // VX161 — refresh 401 partagé avec axios.js (une seule promesse en vol,
 // jamais un POST /token/refresh/ par requête en échec).
-import { refreshSession } from './refreshCoordinator'
+import {
+  MESSAGE_PANNE_REFRESH, estPanneDeRefresh, refreshSession, reprendreApresPanne,
+} from './refreshCoordinator'
+// YJPB1 — journal des problèmes vécus (module pur, transport `fetch`).
+import { signalerErreurRequete } from '../lib/journalProblemes'
 // VX203 — même contrat d'erreur UNIQUE que `axios.js` : jusqu'ici cette
 // instance ne toastait RIEN hors 401 (un 403 du catalogue d'actions
 // agentiques ou un 500 FastAPI était INVISIBLE). `getApiError` couvre déjà
@@ -21,9 +25,16 @@ import { toastError } from '../lib/toast'
 
 const ORIGIN = originFrom(import.meta.env.VITE_IA_API_URL)
 
+// ERR-JPB-IAAPI-SANS-JOURNAL — sans délai, un service IA muet gelait l'écran sans
+// jamais échouer. Alignés sur nginx : `proxy_read_timeout` 120 s sur /api/fastapi/,
+// 300 s sur /api/fastapi/sql-agent/ (une question à l'agent peut durer).
+const DELAI_IA_MS = 120000
+const DELAI_AGENT_SQL_MS = 300000
+
 const iaApi_instance = axios.create({
   baseURL: ORIGIN,
   withCredentials: true, // envoie les cookies httpOnly automatiquement
+  timeout: DELAI_IA_MS,
 })
 
 // ── Requete : prefixe /api/fastapi uniquement ─────────────────
@@ -54,8 +65,22 @@ iaApi_instance.interceptors.response.use(
         // simultanés (mix des deux instances) n'émettent qu'UN SEUL POST refresh.
         await refreshSession(ORIGIN)
         return iaApi_instance(originalRequest)
-      } catch {
-        // Refresh echoue : la session est reellement expiree.
+      } catch (errRefresh) {
+        // ERR-JPB-REFRESH-MUET-SESSION-EXPIREE — jumeau d'axios.js : une panne
+        // du refresh n'expire jamais la session.
+        if (estPanneDeRefresh(errRefresh) && sessionEstActive()) {
+          signalerErreurRequete(errRefresh, { sessionEstActive })
+          const silencieux = originalRequest.suppressErrorToast
+          return reprendreApresPanne(ORIGIN, {
+            rejouer: () => iaApi_instance(originalRequest),
+            expirer: emitSessionExpired,
+            signaler: (err) => {
+              signalerErreurRequete(err, { sessionEstActive })
+              if (!silencieux) toastError(MESSAGE_PANNE_REFRESH)
+            },
+          })
+        }
+        // Sinon : un vrai refus, la session est réellement expirée.
       }
       if (!sessionAvantRefresh && sessionEstActive()) {
         return iaApi_instance(originalRequest)
@@ -66,6 +91,10 @@ iaApi_instance.interceptors.response.use(
       emitSessionExpired()
       return Promise.reject(error)
     }
+
+    // ERR-JPB-IAAPI-SANS-JOURNAL — même journal qu'`axios.js`, au même endroit :
+    // un 5xx ou une coupure sur ces flux ne laissait aucune trace, nulle part.
+    signalerErreurRequete(error, { sessionEstActive })
 
     // VX203 — aligné sur le contrat (a) d'`axios.js` : toute erreur ≠401
     // surface un toast FR par défaut, sauf annulation ou opt-out explicite
@@ -85,7 +114,7 @@ iaApi_instance.interceptors.response.use(
 const iaApi = {
   // AIC9 — `contexte` {ecran, lead_id} facultatif (écran d'où part la question).
   queryAgent: (question, contexte = null) =>
-    iaApi_instance.post('/sql-agent/query', contexte ? { question, contexte } : { question }),
+    iaApi_instance.post('/sql-agent/query', contexte ? { question, contexte } : { question }, { timeout: DELAI_AGENT_SQL_MS }),
 
   // AIC9 — trois questions suggérées pour l'écran (manifeste `capacites.yml`).
   getSuggestions: (ecran) =>
@@ -96,7 +125,7 @@ const iaApi = {
   // de POST /sql-agent/confirm (AG2). Le bouton « Confirmer » de la carte de
   // proposition l'appelle ; « Annuler » se contente d'écarter la carte.
   confirmAction: (token) =>
-    iaApi_instance.post('/sql-agent/confirm', { token }),
+    iaApi_instance.post('/sql-agent/confirm', { token }, { timeout: DELAI_AGENT_SQL_MS }),
 
   // AG10/AG11 — transcrit un court clip vocal de l'assistant en texte via Groq
   // Whisper (POST /sql-agent/transcribe, multipart). Réponse : { text, language }

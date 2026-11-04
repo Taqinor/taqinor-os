@@ -862,6 +862,10 @@ class ProblemeClient(TenantModel):
     #: Famille d'agent utilisateur, recalculée CÔTÉ SERVEUR ('Chrome Android',
     #: 'Safari iOS'…) — jamais l'agent brut.
     navigateur = models.CharField(max_length=40, blank=True, default='')
+    #: ERR-JPB-REQUEST-ID-PERDU — `X-Request-Id` de la réponse (32 hex) : relie
+    #: la ligne à sa trace serveur. NUL quand Django n'a pas répondu (502 nginx,
+    #: requête sans réponse, erreur de script) : c'est lui-même une information.
+    request_id = models.CharField(max_length=32, null=True, blank=True)
 
     class Meta:
         verbose_name = 'Problème vécu par un utilisateur'

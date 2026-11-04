@@ -33,12 +33,16 @@ import { installGlobalErrors } from './lib/globalErrors'
 // QAH8 — Sentry armé AU DÉMARRAGE (no-op total sans VITE_SENTRY_DSN) + tag
 // `company` qui suit l'utilisateur connecté, comme core.monitoring côté Django.
 import { initMonitoring, suivreSocieteDuStore } from './lib/monitoring'
+// ERR-JPB-ECRAN-JAMAIS-EMIS — chunk introuvable après un déploiement.
+import { installerRechargementChunk } from './lib/journalProblemes'
+import { sessionEstActive } from './providers/session-bridge'
 
 // Applique la préférence de thème/densité avant le rendu (aucun flash). Inerte
 // pour les écrans existants (couleurs en dur, aucun `dark:` utilisé).
 initTheme()
 initVitals({ isAuthenticated: () => Boolean(store.getState().auth?.isAuthenticated) })
 installGlobalErrors()
+installerRechargementChunk({ sessionEstActive })
 initMonitoring().catch(() => {})
 suivreSocieteDuStore(store)
 

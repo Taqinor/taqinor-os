@@ -19,7 +19,8 @@ import {
 } from './monitoring.js'
 import {
   GENRES, normaliserRoute, construireCorps, signalerProbleme,
-  signalerErreurRequete, signalerErreurScript, _resetJournalPourTests,
+  signalerErreurRequete, signalerErreurScript, installerRechargementChunk,
+  _resetJournalPourTests, _nombreSignaturesPourTests,
 } from './journalProblemes.js'
 
 test('QAH8 : import @sentry/react LITTÉRAL (un specifier variable n\'est jamais bundlé par Vite → Sentry mort en prod)', () => {
@@ -128,6 +129,26 @@ test('normaliserRoute() regroupe les identifiants sous <id> (500 devis = 1 ligne
     '/api/django/reporting/rapports-partages/<id>/')
 })
 
+test('normaliserRoute() ne masque jamais un slug de route kebab-case, même long', () => {
+  assert.equal(
+    normaliserRoute('/api/django/reporting/approbations-en-attente/'),
+    '/api/django/reporting/approbations-en-attente/')
+  assert.equal(
+    normaliserRoute('/achats/bons-commande-fournisseur/12/recevoir/'),
+    '/achats/bons-commande-fournisseur/<id>/recevoir/')
+  // Un jeton de partage (token_urlsafe) porte aussi des tirets : il reste masqué.
+  assert.equal(
+    normaliserRoute('/proposal/Xy7-kQ2_mN9pLw4Rt8Zb-Vc3Hs6Jd1Fg/'),
+    '/proposal/<id>/')
+  assert.equal(
+    normaliserRoute('/proposal/3f2504e04f8911d39a0c0305e82c3301/'),
+    '/proposal/<id>/')
+  // Des chiffres hexadécimaux coupés par des tirets ne font pas un slug.
+  assert.equal(
+    normaliserRoute('/x/a1b2c3d4-e5f6a7b8-c9d0e1f2/'),
+    '/x/<id>/')
+})
+
 test('normaliserRoute() accepte une URL absolue et une entrée vide sans lever', () => {
   assert.equal(normaliserRoute('https://api.taqinor.ma/api/django/x/?a=1'),
     '/api/django/x/')
@@ -153,6 +174,7 @@ test('construireCorps() renvoie la forme exacte attendue par le serializer backe
     statut_reponse: null,
     code: 'ECONNABORTED',
     message: 'timeout of 20000ms exceeded',
+    request_id: null,
   })
 })
 
@@ -200,12 +222,40 @@ test('signalerProbleme() re-signale le même problème passée la fenêtre d\'un
   assert.equal(envois.length, 2)
 })
 
-test('signalerProbleme() plafonne les envois d\'un chargement de page (écran qui boucle)', () => {
+test('signalerProbleme() plafonne les envois d\'une tranche (écran qui boucle)', () => {
   const { envois, deps } = bancDEssai()
   for (let i = 0; i < 200; i += 1) {
     signalerProbleme({ genre: GENRES.SCRIPT, route: '/x', code: `E${i}` }, deps)
   }
   assert.equal(envois.length, 40)
+})
+
+test('plafond par tranche de 10 min : un onglet ouvert toute la journée ne devient pas muet', () => {
+  let horloge = 1_000_000
+  const { envois, deps } = bancDEssai()
+  const avecHorloge = { ...deps, maintenant: () => horloge }
+  for (let i = 0; i < 60; i += 1) {
+    signalerProbleme({ genre: GENRES.SERVEUR, route: `/x${i}`, statut: 502 }, avecHorloge)
+  }
+  assert.equal(envois.length, 40)
+  horloge += 9 * 60_000
+  assert.equal(signalerProbleme({ genre: GENRES.SERVEUR, route: '/encore', statut: 502 }, avecHorloge), false)
+  horloge += 60_000
+  assert.equal(signalerProbleme({ genre: GENRES.SERVEUR, route: '/apres', statut: 502 }, avecHorloge), true)
+  assert.equal(envois.length, 41)
+})
+
+test("les signatures expirées sont purgées (la mémoire de l'onglet ne grossit pas)", () => {
+  let horloge = 1_000_000
+  const { deps } = bancDEssai()
+  const avecHorloge = { ...deps, maintenant: () => horloge }
+  for (let i = 0; i < 30; i += 1) {
+    signalerProbleme({ genre: GENRES.SERVEUR, route: `/x${i}`, statut: 502 }, avecHorloge)
+  }
+  assert.equal(_nombreSignaturesPourTests(), 30)
+  horloge += 10 * 60_000
+  signalerProbleme({ genre: GENRES.SERVEUR, route: '/y', statut: 502 }, avecHorloge)
+  assert.equal(_nombreSignaturesPourTests(), 1)
 })
 
 // ── Règles 1 et 2 : jamais bloquant, jamais récursif ───────────────────────
@@ -231,6 +281,80 @@ test('signalerProbleme() avale un rejet du POST (jamais de boucle de signalement
   assert.equal(signalerProbleme({ genre: GENRES.RESEAU, route: '/x' }, deps), true)
   await new Promise((r) => setTimeout(r, 0))
   assert.equal(rejete, 1)
+})
+
+// ── ERR-JPB-BALISE-401-APRES-30-MIN : la ligne survit au cookie expiré ──────
+
+const attendreMicrotaches = () => new Promise((r) => setTimeout(r, 0))
+
+test('balise : sur 401, UN refresh puis UN second envoi du même corps', async () => {
+  _resetJournalPourTests()
+  const envois = []
+  let refreshes = 0
+  const reponses = [{ status: 401 }, { status: 201 }]
+  const deps = {
+    sessionEstActive: () => true,
+    maintenant: () => 1,
+    rafraichir: () => { refreshes += 1; return Promise.resolve() },
+    fetch: (url, options) => { envois.push(options.body); return Promise.resolve(reponses.shift()) },
+  }
+  assert.equal(signalerProbleme({ genre: GENRES.SCRIPT, code: 'TypeError' }, deps), true)
+  await attendreMicrotaches()
+  assert.equal(refreshes, 1)
+  assert.equal(envois.length, 2)
+  assert.equal(envois[0], envois[1])
+})
+
+test('balise : un 401 persistant ne boucle jamais', async () => {
+  _resetJournalPourTests()
+  let envois = 0
+  let refreshes = 0
+  const deps = {
+    sessionEstActive: () => true,
+    maintenant: () => 1,
+    rafraichir: () => { refreshes += 1; return Promise.resolve() },
+    fetch: () => { envois += 1; return Promise.resolve({ status: 401 }) },
+  }
+  signalerProbleme({ genre: GENRES.SCRIPT, code: 'TypeError' }, deps)
+  await attendreMicrotaches()
+  assert.equal(refreshes, 1)
+  assert.equal(envois, 2)
+})
+
+test('balise : un refresh en échec est avalé, sans second envoi ni signalement', async () => {
+  _resetJournalPourTests()
+  let envois = 0
+  const deps = {
+    sessionEstActive: () => true,
+    maintenant: () => 1,
+    rafraichir: () => Promise.reject(new Error('refresh mort')),
+    fetch: () => { envois += 1; return Promise.resolve({ status: 401 }) },
+  }
+  assert.equal(signalerProbleme({ genre: GENRES.SCRIPT, code: 'TypeError' }, deps), true)
+  await attendreMicrotaches()
+  assert.equal(envois, 1)
+})
+
+test("balise : tout autre statut ne déclenche aucun refresh", async () => {
+  for (const status of [201, 403, 429, 500]) {
+    _resetJournalPourTests()
+    let refreshes = 0
+    const deps = {
+      sessionEstActive: () => true,
+      maintenant: () => 1,
+      rafraichir: () => { refreshes += 1; return Promise.resolve() },
+      fetch: () => Promise.resolve({ status }),
+    }
+    signalerProbleme({ genre: GENRES.SCRIPT, code: 'TypeError' }, deps)
+    await attendreMicrotaches()
+    assert.equal(refreshes, 0, String(status))
+  }
+})
+
+test('balise : le refresh par défaut est la promesse PARTAGÉE (jamais un second POST en rotation)', () => {
+  const source = readFileSync(new URL('./journalProblemes.js', import.meta.url), 'utf8')
+  assert.match(source, /deps\.rafraichir \|\| refreshSession/)
+  assert.match(source, /from '\.\.\/api\/refreshCoordinator\.js'/)
 })
 
 test('signalerErreurRequete() ignore une erreur sur le journal lui-même', () => {
@@ -268,6 +392,56 @@ test('signalerErreurRequete() classe une 5xx en « serveur »', () => {
   assert.equal(envois[0].corps.genre, 'serveur')
   assert.equal(envois[0].corps.statut_reponse, 502)
   assert.equal(envois[0].corps.route, '/ventes/devis/<id>/')
+})
+
+// ── ERR-JPB-REQUEST-ID-PERDU : relier une ligne `serveur` à sa trace ────────
+
+const ID_REQUETE = '0123456789abcdef0123456789abcdef'
+
+test("signalerErreurRequete() lit le request_id dans l'en-tête X-Request-Id", () => {
+  const { envois, deps } = bancDEssai()
+  signalerErreurRequete({
+    config: { url: '/x/', method: 'get' },
+    response: { status: 500, headers: { 'x-request-id': ID_REQUETE }, data: {} },
+  }, deps)
+  assert.equal(envois[0].corps.request_id, ID_REQUETE)
+})
+
+test('signalerErreurRequete() se rabat sur error.request_id du corps', () => {
+  const { envois, deps } = bancDEssai()
+  signalerErreurRequete({
+    config: { url: '/x/', method: 'get' },
+    response: { status: 500, headers: {}, data: { error: { code: 'e', request_id: ID_REQUETE } } },
+  }, deps)
+  assert.equal(envois[0].corps.request_id, ID_REQUETE)
+})
+
+test("un 502 sans Django, ou un identifiant illisible, laisse request_id nul (la ligne part)", () => {
+  for (const reponse of [
+    { status: 502, data: '<html>' },
+    { status: 500, headers: { 'x-request-id': 'pas-un-id' }, data: {} },
+  ]) {
+    const { envois, deps } = bancDEssai()
+    signalerErreurRequete({ config: { url: '/x/', method: 'get' }, response: reponse }, deps)
+    assert.equal(envois.length, 1)
+    assert.equal(envois[0].corps.request_id, null)
+  }
+})
+
+test('nginx journalise le request_id de Django (un 502 sans rid = Django absent)', () => {
+  const conf = readFileSync(new URL('../../../backend/nginx/nginx.conf', import.meta.url), 'utf8')
+  assert.match(conf, /rid=\$upstream_http_x_request_id/)
+})
+
+test('signalerErreurRequete() journalise le 429 du refresh de session (seul 4xx concerné)', () => {
+  const { envois, deps } = bancDEssai()
+  signalerErreurRequete({
+    config: { url: '/api/django/auth/token/refresh/', method: 'post' },
+    response: { status: 429 },
+  }, deps)
+  assert.equal(envois.length, 1)
+  assert.equal(envois[0].corps.genre, 'serveur')
+  assert.equal(envois[0].corps.statut_reponse, 429)
 })
 
 test('signalerErreurRequete() ignore les 4xx (refus compris) et les annulations', () => {
@@ -317,6 +491,20 @@ test('les deux appelants réels injectent le lecteur de session (sinon journal m
   assert.match(globaux, /signalerErreurScript\(error, undefined, \{ sessionEstActive \}\)/)
 })
 
+test('iaApi : journal et délai sur la seconde instance axios (copilote, agent SQL, OCR)', () => {
+  const source = readFileSync(new URL('../api/iaApi.js', import.meta.url), 'utf8')
+  assert.match(source, /timeout: DELAI_IA_MS/)
+  // Même place que dans axios.js : après la branche 401, avant le toast — donc
+  // AUSSI pour les écrans qui gèrent l'erreur eux-mêmes (suppressErrorToast).
+  const signal = source.indexOf('signalerErreurRequete(error, { sessionEstActive })')
+  assert.notEqual(signal, -1)
+  assert.ok(signal > source.indexOf('emitSessionExpired()'))
+  assert.ok(signal < source.indexOf('toastError(getApiError(error).message)'))
+  // L'agent SQL a droit au délai que nginx lui laisse (300 s, pas 120 s).
+  assert.match(source, /'\/sql-agent\/query',[^\n]*\{ timeout: DELAI_AGENT_SQL_MS \}/)
+  assert.match(source, /'\/sql-agent\/confirm', \{ token \}, \{ timeout: DELAI_AGENT_SQL_MS \}/)
+})
+
 test("sans lecteur de session injecté, rien n'est envoyé (jamais un 401 de plus)", () => {
   _resetJournalPourTests()
   let appels = 0
@@ -325,4 +513,101 @@ test("sans lecteur de session injecté, rien n'est envoyé (jamais un 401 de plu
     { fetch: () => { appels += 1; return Promise.resolve({}) }, maintenant: () => 1 },
   ), false)
   assert.equal(appels, 0)
+})
+
+// ── ERR-JPB-ECRAN-JAMAIS-EMIS : un écran tombé laisse enfin une ligne ───────
+
+test('les deux error boundaries signalent le genre « ecran » avec le lecteur de session', () => {
+  for (const chemin of ['../components/RouteErrorBoundary.jsx', '../ui/ErrorBoundary.jsx']) {
+    const source = readFileSync(new URL(chemin, import.meta.url), 'utf8')
+    assert.match(source, /signalerErreurScript\(error, GENRES\.ECRAN, \{ sessionEstActive \}\)/, chemin)
+    // Le journal passe AVANT Sentry : c'est lui qui survit sans DSN.
+    assert.ok(
+      source.indexOf('signalerErreurScript(error') < source.indexOf('captureException(error'),
+      chemin)
+  }
+})
+
+test('main.jsx arme le rechargement de chunk avec le lecteur de session', () => {
+  const source = readFileSync(new URL('../main.jsx', import.meta.url), 'utf8')
+  assert.match(source, /installerRechargementChunk\(\{ sessionEstActive \}\)/)
+})
+
+test('un écran tombé sur un chunk introuvable porte le code ChunkLoadError', () => {
+  for (const message of [
+    'Failed to fetch dynamically imported module: https://x/assets/a.js',
+    'error loading dynamically imported module',
+    'Importing a module script failed.',
+    'Unable to preload CSS for /assets/a.css',
+    // `preventDefault` de Vite : lazy() résout undefined avant le rechargement.
+    'Minified React error #306; visit https://react.dev/errors/306',
+  ]) {
+    const { envois, deps } = bancDEssai()
+    signalerErreurScript(new TypeError(message), GENRES.ECRAN, deps)
+    assert.equal(envois[0].corps.genre, 'ecran')
+    assert.equal(envois[0].corps.code, 'ChunkLoadError', message)
+  }
+})
+
+/** Fenêtre + stockage factices pour `vite:preloadError`. */
+function bancChunk(stockageInitial = {}, { stockageCasse = false } = {}) {
+  const ecouteurs = {}
+  const valeurs = { ...stockageInitial }
+  const banc = {
+    recharges: 0,
+    valeurs,
+    cible: { addEventListener: (nom, fn) => { ecouteurs[nom] = fn } },
+    stockage: {
+      getItem: (cle) => { if (stockageCasse) throw new Error('privé'); return valeurs[cle] ?? null },
+      setItem: (cle, valeur) => { if (stockageCasse) throw new Error('privé'); valeurs[cle] = valeur },
+    },
+    recharger: () => { banc.recharges += 1 },
+    emettre: () => {
+      const event = {
+        payload: new Error('Failed to fetch dynamically imported module'),
+        empeche: false,
+        preventDefault() { this.empeche = true },
+      }
+      ecouteurs['vite:preloadError'](event)
+      return event
+    },
+  }
+  return banc
+}
+
+test('vite:preloadError : une ligne ecran ChunkLoadError et UN rechargement', () => {
+  const { envois, deps } = bancDEssai({ maintenant: 500_000 })
+  const banc = bancChunk()
+  installerRechargementChunk({ ...deps, cible: banc.cible, stockage: banc.stockage, recharger: banc.recharger })
+  const event = banc.emettre()
+  assert.equal(banc.recharges, 1)
+  assert.equal(event.empeche, true)
+  assert.equal(envois.length, 1)
+  assert.equal(envois[0].corps.genre, 'ecran')
+  assert.equal(envois[0].corps.code, 'ChunkLoadError')
+})
+
+test('vite:preloadError : jamais une boucle — déjà rechargé récemment, la boundary prend le relais', () => {
+  const { deps } = bancDEssai({ maintenant: 500_000 })
+  const banc = bancChunk()
+  const options = { ...deps, cible: banc.cible, stockage: banc.stockage, recharger: banc.recharger }
+  installerRechargementChunk(options)
+  banc.emettre()
+  const seconde = banc.emettre()
+  assert.equal(banc.recharges, 1)
+  assert.equal(seconde.empeche, false)
+})
+
+test("vite:preloadError : stockage indisponible → aucun rechargement (la boucle est pire que l'écran)", () => {
+  const { envois, deps } = bancDEssai()
+  const banc = bancChunk({}, { stockageCasse: true })
+  installerRechargementChunk({ ...deps, cible: banc.cible, stockage: banc.stockage, recharger: banc.recharger })
+  const event = banc.emettre()
+  assert.equal(banc.recharges, 0)
+  assert.equal(event.empeche, false)
+  assert.equal(envois.length, 1)
+})
+
+test('installerRechargementChunk() est inerte sans window (node, SSR)', () => {
+  assert.doesNotThrow(() => installerRechargementChunk({ cible: null }))
 })
