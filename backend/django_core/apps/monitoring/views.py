@@ -1011,6 +1011,9 @@ class AbonnementMonitoringViewSet(CompanyScopedModelViewSet):
             AbonnementMonitoringError, resilier_abonnement_monitoring,
         )
         abonnement = self.get_object()
+        if not hasattr(request.data, 'get'):  # ENF11 : `null` en corps -> 400
+            raise serializers.ValidationError(
+                {'detail': 'Un objet JSON est attendu en corps.'})
         try:
             resilier_abonnement_monitoring(
                 abonnement, motif=request.data.get('motif'),

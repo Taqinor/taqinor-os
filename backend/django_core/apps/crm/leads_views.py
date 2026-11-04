@@ -370,7 +370,7 @@ class LeadIntakeActionsMixin:
         les leads absorbés sont archivés (jamais supprimés)."""
         from .leads_fusion import merge_leads
         survivor = self.get_object()
-        ids = request.data.get('others') or []
+        ids = corps_objet(request).get('others') or []  # ENF11 : `true` -> 400
         if not isinstance(ids, list) or not ids:
             return Response({'detail': 'Aucun lead à fusionner.'},
                             status=status.HTTP_400_BAD_REQUEST)

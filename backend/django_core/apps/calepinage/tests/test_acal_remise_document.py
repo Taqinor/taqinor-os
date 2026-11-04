@@ -111,6 +111,12 @@ class RemiseDocumentTest(TestCase):
                                  {'code': code, 'langue': langue},
                                  format='json')
 
+    def test_corps_non_objet_400(self):
+        # api-fuzz-full 41773314544 : `null` en corps levait AttributeError (500).
+        reponse = self.api.post(
+            self._url('remettre-document/'), 'null', content_type='application/json')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+
     def _documents(self):
         with patch_materiel():
             return self.api.get(self._url('documents/'))

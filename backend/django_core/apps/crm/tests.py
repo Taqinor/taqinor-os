@@ -716,6 +716,12 @@ class TestLeadMerge(TestCase):
         self.assertEqual(relu.email, 'b@example.ma')
         self.assertEqual(relu.email_normalise, self.dup.email_normalise)
 
+    def test_merge_corps_non_objet_400(self):
+        # api-fuzz-full 41773314544 : `true` en corps levait AttributeError (500).
+        resp = self.api.post(
+            f'/api/django/crm/leads/{self.survivor.id}/merge/', True, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+
     def test_merge_moves_devis_and_archives_absorbed(self):
         resp = self.api.post(
             f'/api/django/crm/leads/{self.survivor.id}/merge/',

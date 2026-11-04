@@ -547,7 +547,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         from ..services import TransitionRefusee, changer_statut_chantier
 
         inst = self.get_object()
-        data = request.data
+        data = oa.corps_objet(request)  # ENF11 : `[]` en corps -> 400, jamais 500
         # Les champs de mise en service accompagnent la transition : ils sont
         # écrits par le service, dans le MÊME `save()` que le statut.
         champs = {}

@@ -220,6 +220,13 @@ class TestStatusAndMES(TestCase):
             self.assertIn(cle, r.data)
             self.assertIsNone(r.data[cle], cle)
 
+    def test_mise_en_service_corps_non_objet_400(self):
+        # api-fuzz-full 41773314544 : `[]` en corps levait AttributeError (500).
+        r = self.api.post(
+            f'/api/django/installations/chantiers/{self.inst.id}/mise-en-service/',
+            [], format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+
     def test_mise_en_service_sets_status(self):
         # ACHT2 — la mise en service suit « Installé » (un pas à la fois).
         Installation.objects.filter(pk=self.inst.pk).update(statut='installe')

@@ -242,6 +242,15 @@ REPONSES_REINIT = {
 }
 
 
+def mot_de_passe_du_corps(request):
+    """``password`` du corps ; un corps non objet (``-1.5``) levait
+    ``AttributeError`` (500) : 400 à la place (api-fuzz-full 41773314544)."""
+    if not hasattr(request.data, 'get'):
+        raise serializers.ValidationError(
+            {'detail': 'Un objet JSON est attendu en corps.'})
+    return request.data.get('password', '')
+
+
 def statut_refus_mot_de_passe(brut):
     forme = not isinstance(brut, str) or len(brut) < 8 or brut.isdigit()
     return status.HTTP_400_BAD_REQUEST if forme else status.HTTP_409_CONFLICT
