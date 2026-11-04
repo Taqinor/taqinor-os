@@ -180,3 +180,4 @@ société) n'a PAS de tâche ATOT : il est porté par le groupe ASEC (X1, STENA-
 - 2026-11-03 — ACVI6 — cochée : rejeu en direct PASS du 04/11 (docs/audits/acceptation/).
 - 2026-11-03 — ACVI76 — cochée : rejeu en direct PASS du 04/11 (docs/audits/acceptation/).
 - 2026-11-03 — ASEC63 — cochée : rejeu en direct PASS du 04/11 (docs/audits/acceptation/).
+- 2026-11-04 — AFAC106 — code livré (0799c5730, test_seed_demo_company.py::SeedDemoFacturesCoherenceTest::test_factures_demo_coherentes présent), preuve en direct due : sonde C-AFAC-VER2-030.py à rejouer après seed_demo ; reste [ ].
