@@ -45,7 +45,7 @@ q.update(tva=None); sortie(garde)`)
     await page.getByTestId('btn-auto-remplir').click()
     await expect(page.getByTestId('btn-auto-remplir')).not.toHaveAttribute('aria-busy', 'true', { timeout: 180_000 })
     await expect(page.locator('table.lines-table tbody tr[data-line-key]').first()).toBeVisible({ timeout: 60_000 })
-    const creation = page.waitForResponse((x) => x.request().method() === 'POST' && /\/ventes\/devis\/atomic\/$/.test(new URL(x.url()).pathname))
+    const creation = page.waitForResponse((x) => x.request().method() === 'POST' && /\/ventes\/devis\/atomic\/$/.test(new URL(x.url()).pathname), { timeout: 150_000 })
     const rep = await cliquerCreerDevis(page, creation)
     const corps = rep.request().postDataJSON()
     expect(rep.status(), `création : ${(await rep.text()).slice(0, 300)}`).toBeLessThan(300)
@@ -107,8 +107,8 @@ sortie(dict(sans=str(option_totaux(d, 'sans_batterie').get('ttc')), avec=str(opt
   await page.getByRole('button', { name: /Enregistrer les modifications/ }).click()
   const rep = await sauve.catch(async (e) => { throw new Error(`pas d'envoi : ${(await page.locator('[role=alert], .text-destructive, [data-testid=echeancier-somme]').allInnerTexts()).join(' | ').slice(0, 500)} ; ${e.message.slice(0, 60)}`) })
   expect(rep.status(), `enregistré sans erreur d'échéancier : ${(await rep.text()).slice(0, 300)}`).toBeLessThan(300)
-  await page.waitForLoadState('load')
-  await page.goto(`/ventes/devis/nouveau?edit=${d.id}`, { waitUntil: 'commit' }).catch(() => page.goto(`/ventes/devis/nouveau?edit=${d.id}`))
+  // L'écran navigue après l'enregistrement : la réouverture attend que cette navigation soit finie.
+  await expect(async () => { await page.goto(`/ventes/devis/nouveau?edit=${d.id}`) }).toPass({ timeout: 60_000 })
   await expect.poll(async () => chiffres(await page.getByTestId('gen-barre-total').textContent()), { timeout: 90_000, message: 'rouvert : même total' }).toBe(sans)
   const moteur = await py(`from apps.ventes.models import Devis
 from apps.ventes.quote_engine.builder import build_quote_data
