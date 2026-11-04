@@ -89,6 +89,18 @@ class SortiesDeLaVenteTests(TestCase):
             sorties_de_la_vente(devis.id, self.company),
             {self.panneau.id: Decimal('6')})
 
+    def test_nette_les_entrees_de_l_annulation(self):
+        """ASTK262 — l'ENTRÉE rendue par l'annulation d'une facture (sous
+        ``devis.reference``) est nettée ; un net nul disparaît."""
+        from apps.stock.services import mouvement_type_entree
+        devis, _ = self._devis(chantier=False)
+        self._sortie(devis.reference, 10)
+        MouvementStock.objects.create(
+            company=self.company, produit=self.panneau,
+            type_mouvement=mouvement_type_entree(), quantite=10,
+            quantite_avant=0, quantite_apres=0, reference=devis.reference)
+        self.assertEqual(sorties_de_la_vente(devis.id, self.company), {})
+
     def test_devis_inconnu_ou_autre_societe(self):
         devis, _ = self._devis(chantier=False)
         self._sortie(devis.reference, 4)
