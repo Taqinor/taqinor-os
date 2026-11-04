@@ -51,8 +51,9 @@ class CategorieViewSet(CompanyScopedModelViewSet):
         retombant sur les mots-clés du nom) et les profils saisonniers de la
         catégorie supprimés en cascade."""
         categorie = self.get_object()
+        # ASTK260 — société de la catégorie, jamais celle de l'utilisateur.
         nb = Produit.objects.filter(
-            company=request.user.company, categorie=categorie).count()
+            company_id=categorie.company_id, categorie=categorie).count()
         if nb:
             mot = 'produit' if nb == 1 else 'produits'
             return Response(

@@ -624,6 +624,21 @@ def _prochain_sscc(company):
         PREFIXE_SSCC_INTERNE, str(plus_haut + 1), extension='0')
 
 
+def unite_sous_scellage(unite, vus=frozenset()):  # ASTK261 : figée ou sous un ancêtre figé
+    if unite is None or unite.pk in vus:  # remontée bornée par les cycles
+        return False
+    return unite.est_figee or unite_sous_scellage(unite.parent, vus | {unite.pk})
+
+
+def refuser_parent_unite(parent, company_id):  # ASTK261 : création ET PATCH
+    if parent.company_id != company_id:
+        raise ValueError('Palette introuvable dans cette société.')
+    if parent.type_unite != parent.TypeUnite.PALETTE:
+        raise EtatIncompatible('Seule une palette peut contenir une unité.')
+    if unite_sous_scellage(parent):
+        raise EtatIncompatible('Cette palette est scellée : contenu figé.')
+
+
 def creer_unite_logistique(*, company, type_unite='colis', parent=None,
                            vague=None, poids_kg=None, dimensions=''):
     """Crée un colis ou une palette avec un SSCC GS1 fraîchement attribué.
@@ -637,12 +652,7 @@ def creer_unite_logistique(*, company, type_unite='colis', parent=None,
     if type_unite not in dict(UniteLogistique.TypeUnite.choices):
         raise ValueError('Type d\'unité logistique inconnu.')
     if parent is not None:
-        if parent.company_id != getattr(company, 'id', None):
-            raise ValueError('Palette introuvable dans cette société.')
-        if parent.type_unite != UniteLogistique.TypeUnite.PALETTE:
-            raise EtatIncompatible('Seule une palette peut contenir une unité.')
-        if parent.est_figee:
-            raise EtatIncompatible('Cette palette est scellée : contenu figé.')
+        refuser_parent_unite(parent, getattr(company, 'id', None))
 
     derniere_erreur = None
     for _ in range(5):
@@ -675,7 +685,7 @@ def ajouter_ligne_unite_logistique(*, company, unite, produit, quantite,
     from django.db.models import F
     from .models_wms import UniteLogistique, UniteLogistiqueLigne
 
-    if unite.est_figee:
+    if unite_sous_scellage(unite):  # ASTK261 : ancêtre scellé compris
         raise EtatIncompatible(
             'Cette unité logistique est scellée : son contenu est figé.')
     try:
