@@ -364,9 +364,96 @@ def resume_problemes(jours=7, company=None, maintenant=None):
     return lignes
 
 
+#: BPQ3 — bornes d'affichage : le résumé reste lisible même un mauvais jour.
+LIMITE_ECHECS = 100
+LONGUEUR_ERREUR = 200
+#: Clés du payload d'un événement qui peuvent nommer un destinataire.
+_CLES_DESTINATAIRE = ('destinataire', 'recipient', 'to', 'email', 'telephone')
+#: Services de `core.health` que le tri quotidien regarde (beat, base, Redis).
+_SERVICES_SANTE = ('database', 'cache', 'beat')
+
+
+def _masquer_destinataire(valeur):
+    """`n***@exemple.ma`, `06***78` : assez pour reconnaître, jamais une adresse."""
+    texte = str(valeur or '').strip()
+    if '@' in texte:
+        local, domaine = texte.split('@', 1)
+        return f'{local[:1]}***@{domaine}'
+    return f'{texte[:2]}***{texte[-2:]}' if len(texte) >= 6 else ('***' if texte else '')
+
+
+def _outbox_en_echec(depuis, company):
+    """Événements `failed`/`dead` modifiés dans la fenêtre. `OutboxEvent` ne garde
+    pas de colonne d'erreur : canal, destinataire et erreur viennent du payload,
+    vides quand l'événement n'en porte pas."""
+    from core.models import OutboxEvent
+
+    qs = OutboxEvent.objects.filter(
+        statut__in=[OutboxEvent.STATUT_FAILED, OutboxEvent.STATUT_DEAD],
+        updated_at__gte=depuis)
+    if company is not None:
+        qs = qs.filter(company=company)
+    resultat = []
+    for evenement in qs.order_by('-updated_at')[:LIMITE_ECHECS]:
+        charge = evenement.payload if isinstance(evenement.payload, dict) else {}
+        destinataire = next(
+            (charge[cle] for cle in _CLES_DESTINATAIRE if charge.get(cle)), '')
+        resultat.append({
+            'evenement': evenement.event_name,
+            'statut': evenement.statut,
+            'tentatives': evenement.tentatives,
+            'canal': str(charge.get('canal') or ''),
+            'destinataire': _masquer_destinataire(destinataire),
+            'derniere_erreur': str(
+                charge.get('erreur') or charge.get('error') or '')[:LONGUEUR_ERREUR],
+            'modifie_le': timezone.localtime(evenement.updated_at).isoformat(),
+        })
+    return resultat
+
+
+def _sauvegardes_en_echec(depuis, company):
+    from core.models import BackupRun
+
+    qs = BackupRun.objects.filter(
+        statut=BackupRun.STATUT_ECHEC, updated_at__gte=depuis)
+    if company is not None:
+        qs = qs.filter(company=company)
+    return [
+        {
+            'type': run.kind,
+            'mode': run.mode,
+            'message': str((run.detail or {}).get('message') or '')[:LONGUEUR_ERREUR],
+            'modifie_le': timezone.localtime(run.updated_at).isoformat(),
+        }
+        for run in qs.order_by('-updated_at')[:LIMITE_ECHECS]
+    ]
+
+
+def _etat_sante():
+    """État des services que le tri surveille, ou `{}` si la sonde elle-même
+    tombe (le résumé des problèmes doit sortir quand même)."""
+    from core import health
+
+    try:
+        return {
+            service['name']: {
+                'statut': service['status'],
+                'detail': str(service.get('detail') or '')[:LONGUEUR_ERREUR],
+            }
+            for service in health.check_services()
+            if service['name'] in _SERVICES_SANTE
+        }
+    except Exception:  # noqa: BLE001 — best-effort, le résumé doit sortir (D-ENF22-BLE001)
+        logger.warning('sonde santé illisible pour le résumé', exc_info=True)
+        return {}
+
+
 def resume_json(jours=7, company=None, maintenant=None):
-    """BPQ1 — le résumé en objets sérialisables, pour la boucle quotidienne."""
+    """BPQ1 — le résumé en objets sérialisables, pour la boucle quotidienne.
+    BPQ3 — avec les problèmes « que personne ne vit encore » : événements en
+    échec, sauvegardes en échec, état des services."""
     maintenant = maintenant or timezone.now()
+    depuis = maintenant - timedelta(days=max(int(jours), 0))
     return {
         'jours': int(jours),
         'genere_le': timezone.localtime(maintenant).isoformat(),
@@ -383,4 +470,7 @@ def resume_json(jours=7, company=None, maintenant=None):
             }
             for ligne in resume_problemes(jours, company, maintenant)
         ],
+        'outbox_en_echec': _outbox_en_echec(depuis, company),
+        'sauvegardes_en_echec': _sauvegardes_en_echec(depuis, company),
+        'sante': _etat_sante(),
     }

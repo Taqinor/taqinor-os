@@ -468,10 +468,13 @@ class ResumeBoucleTests(TestCase):
         self.user = User.objects.create_user(
             username='bpq1_u', password='x', company=self.company)
         self.maintenant = timezone.now()
-        patcheur = mock.patch(
+        self.patch_demarrages = mock.patch(
             'apps.reporting.journal_problemes._instants_demarrage', return_value=[])
-        self.demarrages = patcheur.start()
-        self.addCleanup(patcheur.stop)
+        self.demarrages = self.patch_demarrages.start()
+        self.addCleanup(self.patch_demarrages.stop)
+        patch_sante = mock.patch('core.health.check_services', return_value=[])
+        patch_sante.start()
+        self.addCleanup(patch_sante.stop)
 
     def _ligne(self, il_y_a=timedelta(hours=1), **kw):
         base = {'company': self.company, 'utilisateur': self.user,
@@ -575,7 +578,7 @@ class ResumeBoucleTests(TestCase):
                          {'semaine_precedente': False, 'occurrences': 0})
 
     def test_redis_absent_ne_casse_jamais_le_resume(self):
-        mock.patch.stopall()
+        self.patch_demarrages.stop()
         self._ligne()
         with mock.patch('apps.reporting.journal_problemes._client_redis',
                         side_effect=OSError('pas de redis')):
@@ -589,6 +592,91 @@ class ResumeBoucleTests(TestCase):
         document = json.loads(flux.getvalue())
         self.assertEqual(document['jours'], 1)
         self.assertEqual(document['problemes'][0]['route'], '/cmd/')
+
+
+class ResumeEnrichiTests(TestCase):
+    """BPQ3 — ce qui échoue sans que personne ne le vive encore."""
+
+    def setUp(self):
+        self.company = Company.objects.get_or_create(
+            slug='bpq3-co', defaults={'nom': 'BPQ3 Co'})[0]
+        self.autre = Company.objects.get_or_create(
+            slug='bpq3-autre', defaults={'nom': 'BPQ3 Autre'})[0]
+        patcheur = mock.patch(
+            'core.health.check_services',
+            return_value=[
+                {'name': 'database', 'status': 'ok', 'detail': ''},
+                {'name': 'cache', 'status': 'ok', 'detail': ''},
+                {'name': 'beat', 'status': 'degraded', 'detail': 'x' * 900},
+                {'name': 'storage', 'status': 'down', 'detail': 'hors sujet'},
+            ])
+        self.sante = patcheur.start()
+        self.addCleanup(patcheur.stop)
+
+    def _evenement(self, il_y_a=timedelta(hours=1), **kw):
+        from core.models import OutboxEvent
+        base = {'company': self.company, 'event_name': 'devis_accepted',
+                'statut': OutboxEvent.STATUT_DEAD, 'tentatives': 5}
+        base.update(kw)
+        evenement = OutboxEvent.objects.create(**base)
+        OutboxEvent.objects.filter(pk=evenement.pk).update(
+            updated_at=timezone.now() - il_y_a)
+        return evenement
+
+    def test_outbox_en_echec_destinataire_masque_erreur_tronquee(self):
+        self._evenement(payload={
+            'canal': 'email', 'destinataire': 'nabil.amar@exemple.ma',
+            'erreur': 'E' * 900})
+        ligne = resume_json(jours=1, company=self.company)['outbox_en_echec'][0]
+        self.assertEqual(ligne['evenement'], 'devis_accepted')
+        self.assertEqual(ligne['statut'], 'dead')
+        self.assertEqual(ligne['tentatives'], 5)
+        self.assertEqual(ligne['canal'], 'email')
+        self.assertEqual(ligne['destinataire'], 'n***@exemple.ma')
+        self.assertEqual(len(ligne['derniere_erreur']), 200)
+        self.assertNotIn('nabil.amar', json.dumps(ligne))
+
+    def test_telephone_masque_et_payload_sans_detail(self):
+        self._evenement(payload={'telephone': '0612345678'})
+        self._evenement(event_name='sans_detail')
+        lignes = {ligne['evenement']: ligne for ligne in
+                  resume_json(jours=1, company=self.company)['outbox_en_echec']}
+        self.assertEqual(lignes['devis_accepted']['destinataire'], '06***78')
+        self.assertEqual(lignes['sans_detail']['destinataire'], '')
+        self.assertEqual(lignes['sans_detail']['derniere_erreur'], '')
+
+    def test_outbox_filtre_statut_fenetre_et_societe(self):
+        from core.models import OutboxEvent
+        self._evenement(event_name='garde_echec', statut=OutboxEvent.STATUT_FAILED)
+        self._evenement(event_name='livre', statut=OutboxEvent.STATUT_DELIVERED)
+        self._evenement(event_name='attente', statut=OutboxEvent.STATUT_PENDING)
+        self._evenement(event_name='vieux', il_y_a=timedelta(days=3))
+        self._evenement(event_name='ailleurs', company=self.autre)
+        noms = [ligne['evenement'] for ligne in
+                resume_json(jours=1, company=self.company)['outbox_en_echec']]
+        self.assertEqual(noms, ['garde_echec'])
+        self.assertIn('ailleurs', [ligne['evenement'] for ligne in
+                                   resume_json(jours=1)['outbox_en_echec']])
+
+    def test_sauvegardes_en_echec(self):
+        from core.models import BackupRun
+        BackupRun.objects.create(
+            kind=BackupRun.KIND_DB_DUMP, statut=BackupRun.STATUT_ECHEC,
+            detail={'message': 'pg_dump absent'})
+        BackupRun.objects.create(
+            kind=BackupRun.KIND_DB_DUMP, statut=BackupRun.STATUT_TERMINE)
+        lignes = resume_json(jours=1)['sauvegardes_en_echec']
+        self.assertEqual(len(lignes), 1)
+        self.assertEqual(lignes[0]['type'], 'db_dump')
+        self.assertEqual(lignes[0]['message'], 'pg_dump absent')
+
+    def test_sante_seulement_les_services_du_tri_et_sonde_cassee(self):
+        sante = resume_json(jours=1)['sante']
+        self.assertEqual(set(sante), {'database', 'cache', 'beat'})
+        self.assertEqual(sante['beat']['statut'], 'degraded')
+        self.assertEqual(len(sante['beat']['detail']), 200)
+        self.sante.side_effect = RuntimeError('sonde morte')
+        self.assertEqual(resume_json(jours=1)['sante'], {})
 
 
 class RetentionTests(TestCase):
