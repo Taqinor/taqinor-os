@@ -611,6 +611,20 @@ describe('WAUD70 (reste) — llms.txt trilingue ; toute URL de llms.txt / RSS / 
     expect(urls.length).toBeGreaterThan(50);
     expect(urls.map(sert200).filter(Boolean)).toEqual([]);
   });
+  it('llms.txt liste TOUTES les pages FR indexables du build (19 → 81)', () => {
+    const dans = new Set([...lire('public/llms.txt').matchAll(/\((https:\/\/taqinor\.ma[^)\s]*)\)/g)].map((m) => decodeURIComponent(new URL(m[1]).pathname)));
+    const fr: string[] = [];
+    const marcher = (dir: string, rel: string) => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        if (e.isDirectory()) {
+          if (!['_astro', 'en', 'ar', 'proposition', 'internal', 'preview', 'embed'].includes(e.name) || rel !== '') marcher(`${dir}${e.name}/`, `${rel}/${e.name}`);
+        } else if (e.name === 'index.html' && !/<meta name="robots" content="[^"]*noindex/.test(readFileSync(`${dir}${e.name}`, 'utf-8'))) fr.push(`${rel}/`);
+      }
+    };
+    marcher(dist, '');
+    expect(fr.length).toBeGreaterThan(70);
+    expect(fr.filter((p) => !dans.has(p))).toEqual([]);
+  });
   it('100 % des URL du flux RSS répondent 200 sans redirection sur le build', () => {
     const rss = readFileSync(`${dist}rss.xml`, 'utf-8');
     const urls = [...rss.matchAll(/(?:<link>|<guid[^>]*>|href=")(https:\/\/taqinor\.ma[^<"]*)/g)].map((m) => m[1]);
@@ -667,6 +681,53 @@ describe('WAUD72 — carte de partage (OG) par ville et par langue, sans photo d
     const g = lire('scripts/generate-og.mjs');
     expect(g).toMatch(/slug: `ville-\$\{slug\}-fr`, title: [^\n]*\}\);/);
     expect(g).not.toMatch(/slug: `ville-[^\n]*photo:/);
+  });
+});
+
+describe('WAUD72 (reste) — carte du sujet et de la langue ; accueil.png réservé à l’accueil et aux pages légales', async () => {
+  const { carteOg, CARTE_PAR_CHEMIN } = await import('../src/lib/ogCartes');
+  const og = (f: string) => existsSync(fileURLToPath(new URL(`../public/og/${f}.png`, import.meta.url)));
+  it('carteOg : sujet par chemin, variante de langue, cartes déjà localisées et proposition intactes', () => {
+    expect(carteOg('accueil', '/faq/', 'fr')).toBe('faq');
+    expect(carteOg('accueil', '/%C3%A0-propos/', 'ar')).toBe('a-propos-ar');
+    expect(carteOg('accueil', '/', 'en')).toBe('accueil-en');
+    expect(carteOg('garanties', '/garanties/', 'en')).toBe('garanties-en');
+    expect(carteOg('ville-rabat-ar', '/installation-solaire-rabat/', 'ar')).toBe('ville-rabat-ar');
+    expect(carteOg('proposition', '/proposition/x/', 'en')).toBe('proposition');
+  });
+  it('chaque carte de base (et chaque carte de CARTE_PAR_CHEMIN) existe en FR, EN et AR', () => {
+    const bases = readdirSync(fileURLToPath(new URL('../public/og/', import.meta.url)))
+      .filter((f) => f.endsWith('.png') && !/-(fr|en|ar)\.png$/.test(f) && f !== 'proposition.png')
+      .map((f) => f.replace(/\.png$/, ''));
+    expect(bases.length).toBeGreaterThan(20);
+    for (const b of [...bases, ...Object.values(CARTE_PAR_CHEMIN)]) {
+      for (const v of [b, `${b}-en`, `${b}-ar`]) expect(og(v), v).toBe(true);
+    }
+  });
+  it('crawl du build : og:image servie partout, ≤ 6 pages sur accueil.png, toute page EN/AR sur une carte de sa langue', () => {
+    const dist = fileURLToPath(new URL('../dist/client/', import.meta.url));
+    const fautes: string[] = [];
+    let surAccueil = 0;
+    const marcher = (dir: string, rel: string) => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        if (e.isDirectory()) {
+          if (!['_astro', 'proposition', 'internal', 'preview', 'embed'].includes(e.name) || rel !== '') marcher(`${dir}${e.name}/`, `${rel}/${e.name}`);
+        } else if (e.name === 'index.html') {
+          const html = readFileSync(`${dir}${e.name}`, 'utf-8');
+          if (/<meta name="robots" content="[^"]*noindex/.test(html)) continue;
+          const src = html.match(/<meta property="og:image" content="([^"]*)"/)?.[1];
+          if (!src) { fautes.push(`${rel}/ : pas d'og:image`); continue; }
+          const chemin = decodeURIComponent(new URL(src).pathname);
+          if (!existsSync(`${dist}${chemin.slice(1)}`)) fautes.push(`${rel}/ : ${chemin} absente`);
+          if (chemin === '/og/accueil.png') surAccueil++;
+          const loc = rel.match(/^\/(en|ar)\//)?.[1];
+          if (loc && chemin.startsWith('/og/') && !chemin.endsWith(`-${loc}.png`)) fautes.push(`${rel}/ : ${chemin} (pas ${loc})`);
+        }
+      }
+    };
+    marcher(dist, '');
+    expect(fautes).toEqual([]);
+    expect(surAccueil).toBeLessThanOrEqual(6);
   });
 });
 

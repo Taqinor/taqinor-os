@@ -159,3 +159,19 @@
     display: block;
   }
 }
+
+/* WAUD46 — à moins de 640 px, le héros plein écran de l'accueil (FR/EN/AR) aligne son contenu en
+   HAUT : le H1 passe sous 260 px (472 px avec le contenu poussé en bas). Ordinateur inchangé. */
+@media (max-width: 639.98px) {
+  .v2 > section.min-h-\[100svh\].justify-end {
+    justify-content: flex-start;
+  }
+}
+
+/* WAUD65 — tuiles de la bande investissement : la valeur reste dans sa colonne à 360-414 px
+   (« 30 years » dépassait de 29 px) — retour à la ligne permis, jamais de chevauchement. */
+.v2 dl dd.fig-md[data-fig-fixe] {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
