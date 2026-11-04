@@ -63,7 +63,7 @@ const link = tone === 'dark' ? 'hover:text-encre' : 'hover:text-lune';
     {items.map((c, i) => (
       <li class="flex items-center gap-x-2">
         {c.href && i < items.length - 1 ? (
-          <a href={c.href} class={`breadcrumb-bidi transition-colors ${link}`}>{c.label}</a>
+          <a href={c.href} class={`breadcrumb-bidi inline-block py-1 transition-colors ${link}`}>{c.label}</a>
         ) : (
           <span class="breadcrumb-bidi" aria-current="page">{c.label}</span>
         )}

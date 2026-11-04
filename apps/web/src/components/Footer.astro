@@ -365,6 +365,9 @@ const SOCIAL_LINKS: SocialLink[] = [];
 
   .footer-wa-recapture {
     transition: color 0.2s ease;
+    /* WAUD64 — cible ≥ 24 px même sur une ligne (la phrase entière est le lien). */
+    display: inline-block;
+    padding-block: 0.25rem;
   }
 
   /* Réduire les animations si prefers-reduced-motion : les transitions CSS
