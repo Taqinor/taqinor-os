@@ -784,7 +784,7 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
             'derogation_electrique': drf_serializers.JSONField(
                 required=False)}),
         responses={200: _PUBLICATION_DEVIS, 201: _PUBLICATION_DEVIS,
-                   422: _REFUS_VENTES})
+                   409: _REFUS_VENTES})
     @action(detail=True, methods=['post'], url_path='generer-devis',
             permission_classes=[PeutGererCalepinage])
     def generer_devis(self, request, pk=None):
@@ -797,8 +797,8 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
         aucun PDF n'est produit (règle #4).
 
         Un second appel rend le MÊME devis (dédup ``lead`` + ``layout_hash``)
-        et un catalogue invalide remonte le 422 du serveur ventes, mot pour
-        mot.
+        et un catalogue invalide remonte le refus du serveur ventes, mot pour
+        mot (409).
         """
         calepinage = self.get_object()
         corps = request.data if isinstance(request.data, dict) else {}
@@ -837,7 +837,7 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
         responses={200: forme_reponse(
             'CalepinageSyncDevis', 'inchange', 'panneaux', 'kwc', 'scenario',
             'batterie', 'lignes_modifiees', 'lignes_ajoutees',
-            'avertissements'), 422: _REFUS_VENTES})
+            'avertissements'), 409: _REFUS_VENTES})
     @action(detail=True, methods=['post'], url_path='sync-devis',
             permission_classes=[PeutGererCalepinage])
     def sync_devis(self, request, pk=None):
@@ -902,7 +902,7 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
                 retenir=_booleen(corps.get('retenir')))
         except VarianteRefusee as refus:
             return Response({refus.champ or 'variante': str(refus)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=_statut_refus_variante(refus))
         return Response(CalepinageVarianteSerializer(variante).data,
                         status=status.HTTP_201_CREATED)
 
@@ -939,12 +939,8 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
                 roof_layout=corps.get('roof_layout', ...),
                 resultat=corps.get('resultat', ...), user=request.user)
         except VarianteRefusee as refus:
-            # ENF11 — supprimer la variante RETENUE est un refus d'ÉTAT
-            # (requête conforme) : 409, même corps.
             return Response({refus.champ or 'variante': str(refus)},
-                            status=(status.HTTP_409_CONFLICT
-                                    if refus.champ == 'retenue'
-                                    else status.HTTP_400_BAD_REQUEST))
+                            status=_statut_refus_variante(refus))
         return Response(CalepinageVarianteSerializer(variante).data)
 
     @extend_schema(parameters=[_param_chemin(
@@ -972,7 +968,7 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
                 retenir_variante(variante, user=request.user)
             except VarianteRefusee as refus:
                 return Response({refus.champ or 'variante': str(refus)},
-                                status=status.HTTP_400_BAD_REQUEST)
+                                status=_statut_refus_variante(refus))
             return Response(CalepinageVarianteSerializer(variante).data)
 
         return self.executer_idempotent(request, basculer)
@@ -1239,22 +1235,34 @@ def _refus_derogation_sans_droit(request, vue, corps):
 
 #: ERR-ENF11-FUZZ-CALEPINAGE — un refus 400 du service devis qui dit l'ÉTAT du
 #: calepinage (pas de conception, ni lead ni client, lead à la corbeille, aucun
-#: devis lié) est un 409 : la requête était bien formée. Les 422/409 du serveur
-#: ventes passent TELS QUELS (le service, lui, garde son 400 : ventes le relaie).
+#: devis lié) est un 409 : la requête était bien formée. Le service, lui, garde
+#: son statut : la route ventes le relaie.
 CHAMPS_ETAT_DEVIS = frozenset({'roof_layout', 'lead', 'client', 'devis'})
 
 
 def _statut_refus_devis(refus):
-    if (refus.statut == status.HTTP_400_BAD_REQUEST
+    # api-fuzz-full 41773314544 — le 422 du serveur ventes (composition,
+    # verdict électrique, lead agricole) dit l'état de la conception, comme le
+    # 409 de ``devis/from-layout`` (ACAL368) : même corps, statut d'état.
+    if refus.statut == status.HTTP_422_UNPROCESSABLE_ENTITY or (
+            refus.statut == status.HTTP_400_BAD_REQUEST
             and refus.champ in CHAMPS_ETAT_DEVIS):
         return status.HTTP_409_CONFLICT
     return refus.statut
 
 
+def _statut_refus_variante(refus):
+    """ENF11 — 409 quand l'état s'oppose (variante RETENUE, verdict électrique,
+    conception refusée, objet libre illisible) ; 400 pour la forme du corps."""
+    if refus.etat or refus.champ in ('retenue', 'electrique'):
+        return status.HTTP_409_CONFLICT
+    return status.HTTP_400_BAD_REQUEST
+
+
 def _refus_devis(refus):
     """Le corps d'un refus du pont devis — la charge VENTES telle quelle.
 
-    Quand le serveur ventes a parlé (pré-vol 422, conflit 409), on rend SON
+    Quand le serveur ventes a parlé (pré-vol, conflit : 409), on rend SON
     dictionnaire : ni traduit, ni adouci, ni renuméroté. Sinon on nomme le
     champ fautif, en français.
     """

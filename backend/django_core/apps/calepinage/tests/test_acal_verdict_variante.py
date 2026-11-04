@@ -93,7 +93,7 @@ class Gouvernance(BaseApiCalepinage):
         reponse = self.api.post(
             self._url(calepinage, f'variantes/{variante.pk}/retenir/'), {},
             format='json')
-        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertIn('Isc', str(reponse.data))
         variante.refresh_from_db()
         self.assertFalse(variante.retenue)

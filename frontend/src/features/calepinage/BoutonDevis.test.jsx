@@ -67,11 +67,11 @@ describe('BoutonDevis (CAL38)', () => {
     expect(screen.queryByTestId('cal-resynchroniser-devis')).toBeNull()
   })
 
-  it('refus 422 : le message du SERVEUR s’affiche, sous le champ qu’il nomme', async () => {
+  it('refus 409 de pré-vol : le message du SERVEUR s’affiche, sous le champ qu’il nomme', async () => {
     const MESSAGE = 'Le catalogue ne porte aucun panneau avec un prix : '
       + 'complétez-le avant de chiffrer.'
     calepinageApi.calepinages.genererDevis.mockRejectedValue({
-      response: { status: 422, data: { detail: MESSAGE, errors: [MESSAGE] } },
+      response: { status: 409, data: { detail: MESSAGE, errors: [MESSAGE] } },
     })
 
     rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
@@ -328,7 +328,7 @@ describe('BoutonDevis — enregistrer avant le geste (ACAL94)', () => {
    viennent du contrat COMMITTÉ `calepinage_publication_electrique.json`. */
 describe('BoutonDevis — verdict électrique (ACAL171)', () => {
   const REFUS = exempleContrat('calepinage', 'calepinage_publication_electrique',
-    'exemple_refus_422')
+    'exemple_refus_409')
   const DEROGUE = exempleContrat('calepinage', 'calepinage_publication_electrique',
     'exemple_derogue')
   const MANQUANTES = exempleContrat('calepinage', 'calepinage_publication_electrique',
@@ -345,7 +345,7 @@ describe('BoutonDevis — verdict électrique (ACAL171)', () => {
 
   async function refuser(peutDeroger = true) {
     calepinageApi.calepinages.genererDevis.mockRejectedValueOnce({
-      response: { status: 422, data: REFUS },
+      response: { status: 409, data: REFUS },
     })
     rendre({ calepinageId: DETAIL_VIDE.id, detail: avecDroit(peutDeroger) })
     await userEvent.click(await screen.findByTestId('cal-generer-devis'))

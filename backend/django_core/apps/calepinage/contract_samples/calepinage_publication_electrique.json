@@ -1,7 +1,7 @@
 {
   "endpoint": "POST /api/django/calepinage/calepinages/<int:pk>/generer-devis/",
-  "pourquoi": "ACAL9 (d) (D-ACAL-9, C-ACAL-062) — REFUS DE PUBLICATION ÉLECTRIQUE : un verdict électrique « bloquant » REFUSE « Générer le devis » et « Resynchroniser le devis » (POST …/sync-devis/) en NOMMANT les bloquants : 422 {detail, electrique{verdict:'bloquant', bloquants[], derogation_possible}}. Le succès (201/200) gagne la clé `electrique` {verdict, manquantes, derogation}. Corps OPTIONNEL `derogation_electrique` {motif} : réservé au droit calepinage_approuver (D-ACAL-9), consigné dans le fil avec l'auteur et l'horodatage ; la dérogation ne passe JAMAIS outre un bloquant non dérogeable. Complète calepinage_publication.json (mêmes routes, mêmes codes). Variante : GET resultat/?variante=<id> → `variante` {id, nom} ; ligne de comparer/ → `verdict_electrique` {verdict, bloquants[]}. PACT10 : aucun code, ce fichier part AVANT D05-T26/T28.",
-  "exemple_refus_422": {
+  "pourquoi": "ACAL9 (d) (D-ACAL-9, C-ACAL-062) — REFUS DE PUBLICATION ÉLECTRIQUE : un verdict électrique « bloquant » REFUSE « Générer le devis » et « Resynchroniser le devis » (POST …/sync-devis/) en NOMMANT les bloquants : 409 {detail, electrique{verdict:'bloquant', bloquants[], derogation_possible}}. Le succès (201/200) gagne la clé `electrique` {verdict, manquantes, derogation}. Corps OPTIONNEL `derogation_electrique` {motif} : réservé au droit calepinage_approuver (D-ACAL-9), consigné dans le fil avec l'auteur et l'horodatage ; la dérogation ne passe JAMAIS outre un bloquant non dérogeable. Complète calepinage_publication.json (mêmes routes, mêmes codes). Variante : GET resultat/?variante=<id> → `variante` {id, nom} ; ligne de comparer/ → `verdict_electrique` {verdict, bloquants[]}. PACT10 : aucun code, ce fichier part AVANT D05-T26/T28.",
+  "exemple_refus_409": {
     "detail": "Le verdict électrique est bloquant : le devis n'est pas généré.",
     "electrique": {
       "verdict": "bloquant",
@@ -73,7 +73,7 @@
   },
   "sync_devis": {
     "endpoint": "POST /api/django/calepinage/calepinages/<int:pk>/sync-devis/",
-    "exemple_refus_422": {
+    "exemple_refus_409": {
       "detail": "Le verdict électrique est bloquant : le devis n'est pas resynchronisé.",
       "electrique": {
         "verdict": "bloquant",

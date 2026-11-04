@@ -8,7 +8,7 @@ Ce qui est prouvé ici :
   calepinage lui est rattaché ;
 * un SECOND appel rend le MÊME devis (dédup ``lead`` + ``layout_hash``), sans
   rappeler le constructeur ;
-* un catalogue invalide remonte le 422 du serveur ventes MOT POUR MOT ;
+* un catalogue invalide remonte le refus du serveur ventes MOT POUR MOT (409) ;
 * un calepinage sans conception est refusé en nommant le champ ;
 * un calepinage d'une autre société est introuvable (404).
 
@@ -86,13 +86,13 @@ class GenererDevisTest(BaseApiCalepinage):
         self.assertEqual(reponse.data['devis'], devis.pk)
         construire.assert_not_called()
 
-    def test_catalogue_invalide_remonte_le_422_mot_pour_mot(self):
+    def test_catalogue_invalide_remonte_le_refus_mot_pour_mot(self):
         motifs = ['Aucun panneau tarifé au catalogue.']
         with mock.patch('apps.ventes.services.validate_composition_for_layout',
                         return_value=motifs):
             reponse = self.api.post(url_generer(self.calepinage.pk), {},
                                     format='json')
-        self.assertEqual(reponse.status_code, 422)
+        self.assertEqual(reponse.status_code, 409)
         self.assertEqual(reponse.data['detail'], motifs[0])
         self.assertEqual(reponse.data['errors'], motifs)
 
