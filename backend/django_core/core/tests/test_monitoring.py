@@ -39,3 +39,23 @@ class MonitoringTests(SimpleTestCase):
             with mock.patch.dict('sys.modules', {'sentry_sdk': fake}):
                 self.assertTrue(monitoring.init_sentry())
                 fake.init.assert_called_once()
+
+    def test_init_passes_release_from_env(self):
+        # BPQ9 — `release` = sha déployé (SENTRY_RELEASE), pour que Sentry
+        # distingue « régressé après tel déploiement » de « jamais corrigé ».
+        fake = mock.MagicMock()
+        with mock.patch.dict('os.environ',
+                             {'SENTRY_DSN': 'https://x@example/1',
+                              'SENTRY_RELEASE': 'abc1234'},
+                             clear=False):
+            with mock.patch.dict('sys.modules', {'sentry_sdk': fake}):
+                self.assertTrue(monitoring.init_sentry())
+                self.assertEqual(fake.init.call_args.kwargs['release'], 'abc1234')
+
+    def test_init_without_release_env_passes_none(self):
+        fake = mock.MagicMock()
+        env = {'SENTRY_DSN': 'https://x@example/1', 'SENTRY_RELEASE': ''}
+        with mock.patch.dict('os.environ', env, clear=False):
+            with mock.patch.dict('sys.modules', {'sentry_sdk': fake}):
+                self.assertTrue(monitoring.init_sentry())
+                self.assertIsNone(fake.init.call_args.kwargs['release'])
