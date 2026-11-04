@@ -14,7 +14,7 @@ import CityPageBody from '../../components/CityPageBody.astro';
 import { pageLocale } from '../../lib/pageCtx';
 import Layout from '../../layouts/Layout.astro';
 import { CITIES } from '../../lib/realisations';
-import { cityPageBase, cityServiceJsonLd, NEUTRAL_CITY_HERO } from '../../lib/cityPageData';
+import { cityPageBase, cityServiceJsonLd, NEUTRAL_CITY_HERO, AR_CITY_NAME } from '../../lib/cityPageData';
 import { localizeNavHref } from '../../i18n/pages';
 
 export function getStaticPaths() {
@@ -25,13 +25,6 @@ const { c } = Astro.props;
 const { locale, L } = pageLocale(Astro.url.pathname);
 
 // Nom de ville en arabe (slug Latin inchangé) + forme localisée « في <مدينة> ».
-const AR_CITY_NAME: Record<string, string> = {
-  casablanca: 'الدار البيضاء',
-  rabat: 'الرباط',
-  marrakech: 'مراكش',
-  tanger: 'طنجة',
-  agadir: 'أكادير',
-};
 const cityNameAr = AR_CITY_NAME[c.slug] ?? c.name;
 const intro = `في ${cityNameAr}`;
 

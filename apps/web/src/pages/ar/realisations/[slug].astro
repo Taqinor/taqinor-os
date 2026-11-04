@@ -28,16 +28,8 @@ const { locale, L, cs } = caseStudyPage(Astro.url.pathname, r.slug);
 
 
 // Nom de ville en arabe (pour les villes de la zone de service).
-const AR_CITY_NAME: Record<string, string> = {
-  casablanca: 'الدار البيضاء',
-  rabat: 'الرباط',
-  marrakech: 'مراكش',
-  tanger: 'طنجة',
-  agadir: 'أكادير',
-};
 
-const cityPage = CITIES.find((c) => c.name === r.ville);
-const cityNameAr = cityPage ? (AR_CITY_NAME[cityPage.slug] ?? cityPage.name) : r.ville;
+const { cityPage, cityNameAr } = villeEnArabe(CITIES, r.ville);
 const cityIntro = `في ${cityNameAr}`;
 const cityLink = cityPage
   ? { href: `/installation-solaire-${cityPage.slug}/`, label: `تركيب شمسي في ${cityNameAr}` }
@@ -83,6 +75,7 @@ const galleryPhotos = rest;
 import PhotoLightbox from '../../../components/PhotoLightbox.astro';
 import '../../../styles/realisations-hover-zoom.css';
 import { heroRealisation } from '../../../lib/heroRealisation';
+import { villeEnArabe } from '../../../lib/cityPageData';
 const t = {
   ref: 'المرجع',
   h1Kwc: `من التركيب الشمسي ${cityIntro}`,

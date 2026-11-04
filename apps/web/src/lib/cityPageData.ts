@@ -95,3 +95,19 @@ export function cityPageBase(c: City, intro: string, locale: Locale = 'fr') {
     ...cityProse(cityContentBySlug(c.slug, locale), intro),
   };
 }
+
+/** ENF19 — nom de ville en arabe pour les villes de la zone de service (page ville AR + fiche réalisation AR). */
+export const AR_CITY_NAME: Record<string, string> = {
+  casablanca: 'الدار البيضاء',
+  rabat: 'الرباط',
+  marrakech: 'مراكش',
+  tanger: 'طنجة',
+  agadir: 'أكادير',
+};
+
+/** ENF19 — ville-page correspondant à une réalisation + son nom arabe (repli : nom de la ville-page, puis nom brut). */
+export function villeEnArabe<C extends { slug: string; name: string }>(cities: C[], ville: string) {
+  const cityPage = cities.find((c) => c.name === ville);
+  const cityNameAr = cityPage ? (AR_CITY_NAME[cityPage.slug] ?? cityPage.name) : ville;
+  return { cityPage, cityNameAr };
+}

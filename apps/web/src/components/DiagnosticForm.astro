@@ -13,6 +13,7 @@ import { getLocaleFromPath, stripLocale, useTranslations } from '../i18n/utils';
 import { localizeNavHref } from '../i18n/pages';
 import type { Locale } from '../i18n/config';
 import DiagnosticChampsCaches from './blocs/DiagnosticChampsCaches.astro';
+import { VILLES } from '../lib/diagnosticFormShared';
 
 interface Props {
   heading?: string;
@@ -46,13 +47,6 @@ const runtimeStrings = JSON.stringify({
 });
 
 // Aide à la saisie : grandes villes/communes — la saisie libre reste acceptée
-const VILLES = [
-  'Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Fès', 'Meknès',
-  'Oujda', 'Kénitra', 'Tétouan', 'Salé', 'Témara', 'Mohammedia', 'El Jadida',
-  'Nouaceur', 'Bouskoura', 'Dar Bouazza', 'Settat', 'Berrechid', 'Khouribga',
-  'Béni Mellal', 'Safi', 'Essaouira', 'Nador', 'Al Hoceïma', 'Larache',
-  'Khémisset', 'Ifrane', 'Errachidia', 'Ouarzazate', 'Laâyoune', 'Dakhla',
-];
 
 // W51 — Le diagnostic vit désormais dans le système navy+or (champs sombres,
 // texte lune/blanc, accents laiton). Comportement, markup, attributs (hors
