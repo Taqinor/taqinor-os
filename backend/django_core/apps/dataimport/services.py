@@ -1090,6 +1090,13 @@ def _analyser_conflits(target, rows, mapped, company, mode, external_system,
     }
 
 
+def _raison_de_ne_pas_creer(mode, company, f, ext_id, external_system):
+    """Pourquoi cette ligne sans correspondance ne crée pas de lead (``None`` : elle le crée)."""
+    if mode == 'creer':
+        return 'doublon (existe déjà)' if _lead_par_contact(company, f) is not None else None
+    return RAISON_LEAD_HORS_PORTEE if _lead_hors_portee(company, f, ext_id, external_system) else None
+
+
 def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
                 external_system=None, mapping_name=None, ecraser=False):
     """Crée (mode=creer, défaut inchangé) ou rapproche+met à jour (maj/upsert)
@@ -1154,8 +1161,7 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
 
                 existing = None
                 if mode in ('maj', 'upsert'):
-                    existing = _match_lead(
-                        company, f, ext_id, external_system, user=user)
+                    existing = _match_lead(company, f, ext_id, external_system, user=user)
 
                 if existing is not None:
                     _, modifications, refuses = _apply_updates(
@@ -1173,12 +1179,9 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
                     continue
 
                 # Création (mode=creer, ou mode=upsert sans correspondance).
-                if mode == 'creer':
-                    if _lead_par_contact(company, f) is not None:
-                        skipped.append({'ligne': i, 'raison': 'doublon (existe déjà)'})
-                        continue
-                elif _lead_hors_portee(company, f, ext_id, external_system):
-                    skipped.append({'ligne': i, 'raison': RAISON_LEAD_HORS_PORTEE})
+                raison = _raison_de_ne_pas_creer(mode, company, f, ext_id, external_system)
+                if raison:
+                    skipped.append({'ligne': i, 'raison': raison})
                     continue
                 tags = (f.pop('tags', '') or '')
                 f['tags'] = (tags + (', ' if tags else '') + 'Import').strip(', ')[:500]
