@@ -128,7 +128,6 @@ c858d2869d87|apps/web/src/components/DiagnosticForm.astro,apps/web/src/component
 ca7f4da11612|apps/web/src/pages/ar/blog/index.astro,apps/web/src/pages/blog/index.astro,apps/web/src/pages/en/blog/index.astro
 cc62e631cdad|apps/web/src/pages/ar/methodologie-estimation.astro,apps/web/src/pages/en/methodologie-estimation.astro,apps/web/src/pages/methodologie-estimation.astro
 cfeacdb5f0b1|apps/web/src/scripts/roofPro11/scene3d.ts,apps/web/src/scripts/roofPro11/viewerOnly.ts
-d3866765cb4d|apps/web/src/lib/estimatorBrainV4.ts,apps/web/src/lib/estimatorBrainV6.ts
 d4abfd98f93b|apps/web/src/pages/en/professionnel.astro,apps/web/src/pages/en/résidentiel.astro,apps/web/src/pages/professionnel.astro,apps/web/src/pages/résidentiel.astro
 d699f5edee5f|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
 d6d8ed1c0206|apps/web/src/pages/ar/pompage-solaire.astro,apps/web/src/pages/en/pompage-solaire.astro,apps/web/src/pages/pompage-solaire.astro

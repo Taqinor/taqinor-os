@@ -44,9 +44,9 @@
  */
 import { type LngLat } from './roof';
 import { PERIMETER_SETBACK_M, type PerimeterSetbacks } from './roofPro2';
-import { PANEL2_WATT, type ConfigFamily, type PackResult, type PanelGrid, type TariffGrid, annualSavingsMad, aspectForAzimuth, billToAnnualKwh, neededPanelsForTarget, optimalSouthTiltDeg, packConfig, roofDominantAzimuthDeg, specificYield, tariffForCity } from './estimatorBrainV2';
+import { PANEL2_WATT, type ConfigFamily, type PackResult, type PanelGrid, type TariffGrid, annualSavingsMad, billToAnnualKwh, neededPanelsForTarget, optimalSouthTiltDeg, packConfig, roofDominantAzimuthDeg, tariffForCity } from './estimatorBrainV2';
 import { type YieldFn, type YieldSource } from './estimatorBrainV4';
-import { departageAspect, departageBase, productionFields, resolveYield, type EvalProductionSourced } from './estimatorBrainCommun';
+import { departageAspect, departageBase, productionFields, configProduction, type EvalProductionSourced } from './estimatorBrainCommun';
 
 export { PANEL2_WATT };
 export type { YieldFn, YieldSource };
@@ -326,29 +326,6 @@ function ewOrientationLabel(axis: AzimuthAxis): string {
 }
 
 
-/** Production annuelle (kWh) d'une config via la source PVGIS (repli table). */
-function matrixProduction(
-  family: ConfigFamily,
-  tiltDeg: number,
-  azimuthDeg: number,
-  kwc: number,
-  yieldFn: YieldFn | undefined,
-  latitudeDeg: number,
-): { kwh: number; perPanelYield: number; source: YieldSource; aspect: number } {
-  const aspect = aspectForAzimuth(family, azimuthDeg);
-  if (family === 'eastwest') {
-    const e = resolveYield(yieldFn, latitudeDeg, tiltDeg, aspect - 90);
-    const w = resolveYield(yieldFn, latitudeDeg, tiltDeg, aspect + 90);
-    return {
-      kwh: (kwc / 2) * e.value + (kwc / 2) * w.value,
-      perPanelYield: (e.value + w.value) / 2,
-      source: e.source === 'pvgis' && w.source === 'pvgis' ? 'pvgis' : 'estimate',
-      aspect,
-    };
-  }
-  const s = resolveYield(yieldFn, latitudeDeg, tiltDeg, aspect);
-  return { kwh: kwc * s.value, perPanelYield: s.value, source: s.source, aspect };
-}
 
 interface MatrixCfg {
   family: ConfigFamily;
@@ -400,7 +377,7 @@ function evalMatrixConfig(
   const fitCount = grid.count;
   const placedCount = needed > 0 ? Math.min(needed, fitCount) : fitCount;
   const kwc = (placedCount * PANEL2_WATT) / 1000;
-  const prod = matrixProduction(cfg.family, cfg.tiltDeg, pack.azimuthDeg, kwc, yieldFn, latitudeDeg);
+  const prod = configProduction(cfg.family, cfg.tiltDeg, pack.azimuthDeg, kwc, yieldFn, latitudeDeg);
   const savings = annualSavingsMad(prod.kwh, target, tariff);
   const orientationLabel =
     cfg.family === 'eastwest'
