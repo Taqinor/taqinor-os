@@ -109,7 +109,8 @@ const parametresApi = {
   // NTOBS3/NTOBS16 — rapport SLA mensuel (historique 12 mois, scopé société).
   getSlaSnapshots: () => api.get('/core/sla/'),
   // NTOBS21 — réglages « Fiabilité » de la société (singleton GET/PATCH).
-  getReliabilitySettings: () => api.get('/core/fiabilite/reglages/'),
+  // Lu aussi par le badge SLA de l'accueil (tous rôles) : un 403 = défaut, sans toast.
+  getReliabilitySettings: () => api.get('/core/fiabilite/reglages/', { suppressErrorToast: true }),
   saveReliabilitySettings: (data) => api.patch('/core/fiabilite/reglages/', data),
 }
 
