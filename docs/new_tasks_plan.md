@@ -85,6 +85,7 @@ plans existants (PLAN/PLAN2/FRONTEND_GAP/DONE : 1 982 tâches déjà connues —
 **Total : 2 084 tâches `[ ]` — rien n'est construit ni coché dans ce fichier.**
 
 ## DONE LOG (les runs de build ajoutent une ligne datée par tâche terminée)
+- 2026-11-04 — NTI18N30 — PV de réception RTL : `generate_pv_reception` choisit le gabarit dédié `templates/pdf/document_pv_reception_ar.html` (dir=rtl, tableaux/texte à droite, libellés fixes `_PV_RECEPTION_LIBELLES` FR/AR, titre « définitive » traduit) quand `document_langue(client, company)` = ar (NTI18N4) ; FR inchangé (gabarit et contexte byte-identiques) ; `_bl_libelle` factorisé en `_libelle_traduit` (patron XSTK18). Moitié QHSE : aucune fiche de contrôle QHSE imprimable n'existe (aucun rendu PDF dans apps/qhse) — rien à basculer. Fragments injectés (recette pompage AGR611, C&I CIQ631) restent en français. Tests ajoutés à `apps/documents/tests/test_xstk18_bon_livraison_arabe.py` (TestPvReceptionArabe : RTL, définitive, FR byte-identique) — NON exécutés localement (pas de docker en lane) ; rendu Jinja du gabarit AR vérifié hors Django ; flake8 + py_compile OK.
 
 ## SECTION A — Plateforme & confiance enterprise
 
@@ -282,7 +283,7 @@ Existant vérifié : `apps/portail` (ODX12, ré-export transitoire de `apps/comp
 
 #### Profondeur (round 2) — Rapports & documents imprimables
 
-- [ ] NTI18N30 — **[BLOCKED: moitié PV : apps/documents/builders.py:332 + gabarit — copier le patron XSTK18 (bon de livraison FR/AR)]** **PV de recette / feuille de contrôle RTL imprimable (interne, jamais le PDF devis client)** : les PV de réception chantier et fiches de contrôle QHSE existants (rendus HTML→PDF via le pipeline WeasyPrint générique, hors quote_engine) respectent `direction:rtl` quand `langue_sortie=ar` est résolue pour le document (NTI18N4) ; critère d'acceptation : un PV généré pour un client `langue_document=ar` s'imprime avec tableaux et texte alignés à droite, sans régression sur le rendu FR par défaut. (@lane: apps/parametres) (ROUTINE) «model: sonnet»
+- [x] NTI18N30 — **PV de recette / feuille de contrôle RTL imprimable (interne, jamais le PDF devis client)** : les PV de réception chantier et fiches de contrôle QHSE existants (rendus HTML→PDF via le pipeline WeasyPrint générique, hors quote_engine) respectent `direction:rtl` quand `langue_sortie=ar` est résolue pour le document (NTI18N4) ; critère d'acceptation : un PV généré pour un client `langue_document=ar` s'imprime avec tableaux et texte alignés à droite, sans régression sur le rendu FR par défaut. (@lane: apps/parametres) (ROUTINE) «model: sonnet»
 
 #### Profondeur (round 2) — Permissions fines par rôle
 

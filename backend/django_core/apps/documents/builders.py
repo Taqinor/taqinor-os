@@ -77,13 +77,76 @@ _BON_LIVRAISON_LIBELLES = {
 }
 
 
+# NTI18N30 — libellés FR/AR du PV de réception (N21), même patron que le BL
+# (XSTK18) : libellés fixes traduits, valeurs et fragments telles quelles.
+_PV_RECEPTION_LIBELLES = {
+    'fr': {
+        'titre': 'PROCÈS-VERBAL DE RÉCEPTION',
+        'titre_definitive': 'PROCÈS-VERBAL DE RÉCEPTION DÉFINITIVE',
+        'chantier': 'Chantier',
+        'installateur': 'Installateur',
+        'client': 'Client',
+        'technicien': 'Technicien',
+        'intro': ("Le présent procès-verbal constate la réception des travaux "
+                  "d'installation du système photovoltaïque réalisé par"),
+        'intro_fin': 'pour le client ci-dessus.',
+        'puissance': 'Puissance',
+        'type': 'Type',
+        'raccordement': 'Raccordement',
+        'mise_en_service': 'Mise en service',
+        'composants': 'Composants installés',
+        'designation': 'Désignation',
+        'quantite': 'Qté',
+        'verifications': 'Réception — vérifications',
+        'le_client': 'Le client',
+        'l_installateur': "L'installateur",
+        'mention': 'Mention manuscrite « Bon pour accord »',
+        'signe_le': 'Signé le',
+        'empreinte': 'empreinte',
+        'fige_le': 'Figé le',
+        'apres_signature': 'après la signature du',
+        'genere_le': 'Document généré le',
+    },
+    'ar': {
+        'titre': 'محضر الاستلام',
+        'titre_definitive': 'محضر الاستلام النهائي',
+        'chantier': 'الورش',
+        'installateur': 'المركّب',
+        'client': 'الزبون',
+        'technicien': 'التقني',
+        'intro': 'يثبت هذا المحضر استلام أشغال تركيب النظام الكهروضوئي المنجز من طرف',
+        'intro_fin': 'لفائدة الزبون المذكور أعلاه.',
+        'puissance': 'القدرة',
+        'type': 'النوع',
+        'raccordement': 'الربط',
+        'mise_en_service': 'التشغيل',
+        'composants': 'المكونات المركّبة',
+        'designation': 'البيان',
+        'quantite': 'الكمية',
+        'verifications': 'الاستلام — عمليات التحقق',
+        'le_client': 'الزبون',
+        'l_installateur': 'المركّب',
+        'mention': 'عبارة بخط اليد « موافق »',
+        'signe_le': 'تم التوقيع بتاريخ',
+        'empreinte': 'البصمة',
+        'fige_le': 'تم التجميد بتاريخ',
+        'apres_signature': 'بعد التوقيع بتاريخ',
+        'genere_le': 'تم إنشاء الوثيقة بتاريخ',
+    },
+}
+
+
+def _libelle_traduit(tables, cle, langue='fr'):
+    """XSTK18/NTI18N30 — libellé fixe FR/AR d'un document chantier. FR par
+    défaut ; une clé absente du dictionnaire AR retombe sur le FR, jamais une
+    clé brute affichée au client."""
+    table = tables.get(langue) or tables['fr']
+    return table.get(cle) or tables['fr'].get(cle, cle)
+
+
 def _bl_libelle(cle, langue='fr'):
-    """XSTK18 — Traduction d'un libellé du bon de livraison. FR par défaut
-    (comportement inchangé quand `langue` n'est pas 'ar' ou que la clé est
-    absente du dictionnaire AR — retombe alors sur le FR, jamais une clé
-    brute affichée au client)."""
-    table = _BON_LIVRAISON_LIBELLES.get(langue) or _BON_LIVRAISON_LIBELLES['fr']
-    return table.get(cle) or _BON_LIVRAISON_LIBELLES['fr'].get(cle, cle)
+    """XSTK18 — Traduction d'un libellé du bon de livraison."""
+    return _libelle_traduit(_BON_LIVRAISON_LIBELLES, cle, langue)
 
 
 # Guide d'exploitation & maintenance par défaut (français). Texte générique
@@ -641,7 +704,15 @@ def generate_pv_reception(chantier, fige_le=None, definitive=False):
         # « figé le …, après la signature du … » remplace l'empreinte.
         if fige_le is not None:
             ctx['fige_le'] = fige_le
-    html = get_template('document_pv_reception.html').render(ctx)
+    # NTI18N30 — client `langue_document='ar'` (NTI18N4, repli société) : PV
+    # RTL par le gabarit dédié (patron XSTK18) ; le FR garde son gabarit et
+    # son contexte inchangés (byte-identique).
+    template_name = 'document_pv_reception.html'
+    if document_langue(chantier.client, company=chantier.company) == 'ar':
+        ctx['L'] = lambda cle: _libelle_traduit(_PV_RECEPTION_LIBELLES, cle, 'ar')
+        ctx['doc_titre'] = ctx['L']('titre_definitive' if definitive else 'titre')
+        template_name = 'document_pv_reception_ar.html'
+    html = get_template(template_name).render(ctx)
     # AGR611 — chantier agricole : mesures de la recette pompage + formalité
     # art. 3 (fragment vide ailleurs : PV strictement inchangé).
     html = _inject_before(html, '<div class="signature-section">',
