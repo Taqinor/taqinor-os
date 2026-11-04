@@ -522,6 +522,17 @@ def _ids_chemin_reels(case):
     meta = case.meta
     if meta is None or meta.generation.mode != GenerationMode.POSITIVE:
         return
+    # api-fuzz-full 41825184761 (POST facturation/niveaux-relance/ puis GET
+    # .../4/ ; POST ventes/recettes-mes/ puis PATCH .../1/ : 404). En phase
+    # STATEFUL, Schemathesis 4.28 lit comme « venu d'un lien » TOUT paramètre
+    # qui diffère de sa valeur générée (``Case._override`` = écart au cliché,
+    # ``generation/overrides.py::get_component_diff``) : l'id d'inventaire posé
+    # ici sur un id GÉNÉRÉ (le lien n'est suivi qu'avec une probabilité <1)
+    # passait pour l'id de la ligne créée, et une ligne d'inventaire supprimée
+    # plus tôt donnait « not available after creation ». Les liens apportent
+    # les ids réels de cette phase : aucune substitution.
+    if getattr(getattr(meta, 'phase', None), 'name', None) == 'stateful':
+        return
     gabarit = case.operation.path
     m = _PREMIER_ID.match(gabarit)
     if not m or m.group(2) not in (case.path_parameters or {}):
