@@ -399,6 +399,45 @@ def _refuser_si_argent(locked, net_acompte):
         )
 
 
+def _retourner_stock_de_la_vente(locked, statut_avant, user):
+    """ASTK262 (C-ASTK-VER4-060, D-ASTK-VER4-1 = retour_annulation) — rend
+    au stock, par une ENTRÉE sous ``devis.reference``, la sortie de
+    l'émission quand plus aucune facture vivante du devis ne la porte.
+    No-op sans devis, pour un brouillon ou si une autre facture du devis
+    n'est ni brouillon ni annulée ; idempotent (net SORTIE − ENTRÉE)."""
+    from django.db.models import Sum
+    from apps.stock.selectors import mouvements_par_reference
+    from apps.stock.services import (
+        mouvement_type_entree, mouvement_type_sortie, record_stock_movement,
+        verrouiller_produit,
+    )
+    from ..models import Facture
+    devis = locked.devis
+    if devis is None or statut_avant == Facture.Statut.BROUILLON or (
+            Facture.objects.filter(devis=devis).exclude(pk=locked.pk)
+            .exclude(statut__in=(Facture.Statut.BROUILLON,
+                                 Facture.Statut.ANNULEE)).exists()):
+        return
+    net = {}
+    for row in (mouvements_par_reference(locked.company, devis.reference)
+                .order_by().values('produit_id', 'type_mouvement')
+                .annotate(t=Sum('quantite'))):
+        signe = {mouvement_type_sortie(): 1,
+                 mouvement_type_entree(): -1}.get(row['type_mouvement'], 0)
+        net[row['produit_id']] = net.get(row['produit_id'], 0) + signe * row['t']
+    for pid, qte in sorted(net.items()):
+        if qte > 0:
+            produit = verrouiller_produit(pid)
+            record_stock_movement(
+                company=locked.company, produit=produit,
+                type_mouvement=mouvement_type_entree(), quantite=qte,
+                quantite_avant=produit.quantite_stock,
+                quantite_apres=produit.quantite_stock + qte,
+                reference=devis.reference,
+                note=f'Retour stock — annulation facture {locked.reference}',
+                created_by=user)
+
+
 def annuler_facture(facture, *, user, directive=None, motif=''):
     """Annule une facture — admin only.
 
@@ -452,6 +491,7 @@ def annuler_facture(facture, *, user, directive=None, motif=''):
             raise AnnulationRefusee(
                 {'detail': 'Cette facture ne peut plus être annulée.'},
             )
+        statut_avant = locked.statut  # ASTK262
         # ATOT7 (D-ATOT-4) — LA définition unique du payé : un paiement
         # REJETÉ (chèque impayé) n'est ni remboursé ni transféré, et le
         # net est `Facture.montant_paye` — plus aucune somme locale de
@@ -517,6 +557,7 @@ def annuler_facture(facture, *, user, directive=None, motif=''):
         fermer_liens_paiement(facture, PaymentLink.Statut.ANNULE)
         # AARG35 — plus de retenue comptée ni d'attestation attendue.
         locked.retenues_subies.filter(annulee=False).update(annulee=True)
+        _retourner_stock_de_la_vente(locked, statut_avant, user)
 
     # YEVNT6 — événement documentaire (best-effort), une fois pour les
     # trois branches ci-dessus (toutes convergent vers ANNULEE).

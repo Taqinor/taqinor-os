@@ -1,0 +1,6 @@
+== C-ADOC-VER4-010 (sha c38868a62)
+attendu : repro=True si la purge GED efface du bucket la clé encore portée par la records.Attachment d'origine (pièce jointe du client sans binaire) ; sain : delete_object jamais appelé avec K
+observé : import={'documents': 1, 'liens': 1, 'skipped': 0} ; version GED reutilise la cle K=True ; purge -> delete_object=[] ; records.Attachment portant K encore en base=True ; document GED en base=False
+{"repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 168, après 168) ; mails 0 ; tâches Celery bloquées 0

@@ -7,6 +7,7 @@ import { originFrom } from './origin'
 // L53 (toast d'erreur global) + L57 (session expirée). Ces modules sont
 // volontairement sans React : ils émettent un toast / un événement window.
 import { errorMessageFrom, toastError } from '../lib/toast'
+import { apiErrorMessageServi } from '../lib/apiError'
 // NTADM26 — entité active (filtre d'affichage, module pur sans React ici).
 import { lireEntiteActive } from '../lib/entiteActive'
 import { emitSessionExpired, sessionEstActive } from '../providers/session-bridge'
@@ -155,6 +156,12 @@ api.interceptors.response.use(
       // pas une erreur : l'écran réessaie seul avec la même clé.
       const enCours = status === 409 && error.response?.data?.code === 'idempotency_en_cours'
       if (status !== 401 && status !== 404 && !enCours) {
+        // ADEV112 — corps en Blob (`responseType: 'blob'`) ou `{erreurs: …}` : le
+        // toast dit le message SERVI, jamais le générique « Une erreur est survenue. ».
+        const corps = error.response?.data
+        if ((typeof Blob !== 'undefined' && corps instanceof Blob) || corps?.erreurs) {
+          return apiErrorMessageServi(error).then((m) => { toastError(m); return Promise.reject(error) })
+        }
         toastError(errorMessageFrom(error))
       }
     }

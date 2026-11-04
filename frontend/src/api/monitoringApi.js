@@ -56,7 +56,7 @@ const monitoringApi = {
     api.get(`/monitoring/configs/${configId}/co2/`, { params }),
   // CO₂ évité par système ET cumulé sur le parc.
   getCo2Fleet: (params) =>
-    api.get('/monitoring/configs/co2-fleet/', { params }),
+    api.get('/monitoring/configs/co2-fleet/', { params, suppressErrorToast: true }),
 
   // ── Nettoyages + salissure (FG283, WR7) ──
   getCleanings: (params) => api.get('/monitoring/cleanings/', { params }),

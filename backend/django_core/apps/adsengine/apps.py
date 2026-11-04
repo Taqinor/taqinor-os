@@ -59,3 +59,10 @@ class AdsengineConfig(AppConfig):
         from . import veille_conservation
         register_retention_policy(veille_conservation.NOM_POLITIQUE,
                                   veille_conservation.politique_retention)
+
+        # ADOC193 — un créatif tient la clé de la photo de chantier importée
+        # (import_chantier_photo) : registre des détenteurs de records.
+        from django.conf import settings
+        from apps.records.cles_stockage import enregistrer_detenteur
+        enregistrer_detenteur('adsengine.CreativeAsset', 'file_key',
+                              settings.MINIO_BUCKET_UPLOADS)

@@ -1336,7 +1336,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         if att is None:
             return Response({'detail': 'Relevé introuvable.'},  # ENF11 : le chantier existe
                             status=status.HTTP_409_CONFLICT)
-        delete_attachment(att.file_key)
+        delete_attachment(att.file_key, liberee_par=(att,))  # ADOC200
         activity.log_note(inst, request.user,
                           f"Relevé supprimé : {att.filename}")
         att.delete()

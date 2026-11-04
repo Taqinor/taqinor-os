@@ -27,7 +27,7 @@ import base64
 import io
 import time
 
-from django.test import SimpleTestCase, tag
+from django.test import SimpleTestCase, TestCase, tag
 
 from apps.ventes.tests._quote_engine_common import (
     DEUX_OPTIONS,
@@ -262,3 +262,41 @@ class RpdfLegacyMiseEnPageTest(SimpleTestCase):
                       p3)
         # Le pied reste absolu au bas de la feuille ; seule la page 3 change.
         self.assertIn('position:absolute;bottom:0;left:0;right:0;', p3)
+
+
+class FicheRemisePremiumMultivilla(TestCase):
+    """ADOC198 (C-ADOC-VER4-002) — la fiche de remise premium liste le
+    matériel VENDU × nombre de villas (``lignes_vendues``), comme le dossier
+    de remise ; le moteur ne fait que RENDRE (règle #4)."""
+
+    def test_quantites_x_n(self):
+        from rest_framework.test import APIClient
+        from apps.installations.services import create_installation_from_devis
+        from apps.ventes.quote_engine.extra_docs import (
+            _chantier_composants, build_fiche_remise_html,
+        )
+        company = make_company()
+        user = make_user(company)
+        devis = make_devis(
+            company, user, make_client(company),
+            [('Panneau 550W', '8', '1000'), ('Onduleur 5kW', '1', '9000')],
+            reference='DEV-ADOC198-1', etude_params={'nombre_proprietes': 3})
+        devis.statut = 'accepte'
+        devis.save(update_fields=['statut'])
+        chantier, _ = create_installation_from_devis(devis, user, company)
+        composants = _chantier_composants(chantier)
+        self.assertEqual(
+            {c['designation']: int(c['quantite']) for c in composants},
+            {'Panneau 550W': 24, 'Onduleur 5kW': 3})
+        html = build_fiche_remise_html(
+            {'entreprise_nom': 'ADOC198'}, {'nom': 'Alaoui'},
+            {'reference': chantier.reference}, composants)
+        self.assertIn('24', html)
+        self.assertNotIn('prix_achat', html)
+        api = APIClient()
+        api.force_authenticate(user)
+        resp = api.get(
+            f'/api/django/ventes/chantiers/{chantier.id}/fiche-remise-premium/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp['Content-Type'], 'application/pdf')
+        self.assertNotIn(b'prix_achat', resp.content)

@@ -16,3 +16,19 @@ frontend/src/features/adsengine/FlightPlanScreen.jsx::FlightPlanScreen
 frontend/src/features/adsengine/VeilleEtiquetage.jsx::VeilleEtiquetage
 frontend/src/pages/sav/SavAlarmesPage.jsx::SavAlarmesPage
 frontend/src/pages/visites/PlanifierVisitePage.jsx::PlanifierVisitePage
+# ADOC194 (2026-11-04) — passif gelé révélé quand la garde suit un helper qui lit un alias de `.data`
+# (`const d = resp?.data` puis `d?.results` : le vrai features/ged/search.js::rows) et ignore les commentaires `//` :
+# lectures réelles de la page 1 à corriger (fetchAllPages) ; la liste ne fait que décroître.
+frontend/src/features/adsengine/CommandPalette.jsx::CommandPalette
+frontend/src/features/adsengine/ComparatorScreen.jsx::ComparatorScreen
+frontend/src/features/calepinage/Bibliotheque.jsx::Bibliotheque
+frontend/src/features/calepinage/CalepinageList.jsx::chercherClients
+frontend/src/features/calepinage/CalepinageList.jsx::chercherLeads
+frontend/src/features/calepinage/CalepinageNouveau.jsx::CalepinageNouveau
+frontend/src/features/calepinage/CalepinageNouveau.jsx::chercherClients
+frontend/src/features/calepinage/CalepinageNouveau.jsx::chercherLeads
+frontend/src/features/calepinage/SelecteurRattachement.jsx::SelecteurRattachement
+frontend/src/features/ged/GedSearch.jsx::runSearchWith
+frontend/src/features/installations/ParametrageKits.jsx::ParametrageKits
+frontend/src/features/installations/SuiviImport.jsx::SuiviImport
+frontend/src/features/reporting/RapportBuilderPage.jsx::RapportBuilderPage

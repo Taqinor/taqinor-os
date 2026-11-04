@@ -107,3 +107,23 @@ test('CE2E8 : fetchDevis relance la requête si la promesse partagée a été an
     VENTES_SLICE_SRC.indexOf("export const createDevis"))
   assert.match(body, /isCancelledError\(err\) && !signal\.aborted \? charger\(\)/)
 })
+
+test('ADEV112 : un corps d’erreur en Blob ou `{erreurs}` toaste le message SERVI (jamais le générique)', () => {
+  const start = AXIOS_SRC.indexOf("if (!originalRequest.suppressErrorToast")
+  const block = AXIOS_SRC.slice(start, start + 2000)
+  assert.match(AXIOS_SRC, /import \{ apiErrorMessageServi \} from '\.\.\/lib\/apiError'/)
+  assert.match(block, /corps instanceof Blob\) \|\| corps\?\.erreurs\)/)
+  assert.match(block, /apiErrorMessageServi\(error\)\.then\(\(m\) => \{ toastError\(m\); return Promise\.reject\(error\) \}\)/)
+  // Le décodage précède le toast générique, toujours derrière la garde suppressErrorToast.
+  assert.ok(block.indexOf('apiErrorMessageServi(error)') < block.indexOf('toastError(errorMessageFrom(error))'))
+})
+
+test('ADEV112 : les aperçus PDF (liste, panneau du lead) gèrent leur message — pas de toast global', () => {
+  const useDevisPdf = readFileSync(join(HERE, '../pages/ventes/devisList/useDevisPdf.js'), 'utf8')
+  const panneau = readFileSync(join(HERE, '../pages/crm/leads/LeadDevisPanel.jsx'), 'utf8')
+  assert.match(useDevisPdf, /getProposalPdf\(d\.id, params, \{ suppressErrorToast: true \}\)/)
+  assert.match(panneau, /\{ signal, suppressErrorToast: true \}\)/)
+  // Le panneau affiche le `detail` décodé (même chemin messageErreurBlob que la liste), repli fixe sinon.
+  assert.match(panneau, /messageErreurBlob\(err, \{ fallback: MESSAGE_APERCU_SERVEUR \}\)/)
+  assert.match(panneau, /serverMessage=\{preview\.errorMessage \|\| MESSAGE_APERCU_SERVEUR\}/)
+})

@@ -1,0 +1,6 @@
+== C-ADOC-VER4-030 (sha c38868a62)
+attendu : POST paiements-facture-portail/<id>/rapprocher/ sur une facture ANNULÉE → 500 (FactureNonEncaissable non traduite) ; paiement toujours INITIÉ, 0 Paiement (rollback) ; attendu sain : 400 nommé (motif AFAC9) comme le refus loi 31-08
+observé : obs={'http': 400, 'corps': {'detail': 'Facture annulée : aucun encaissement possible.'}, 'facture_statut': 'annulee', 'montant_exigible': '1200.00', 'paiement_statut': 'initie', 'paye_le': 'None', 'nb_paiements': 0}
+{"repro": false, "http": 400, "corps": {"detail": "Facture annulée : aucun encaissement possible."}, "facture_statut": "annulee", "montant_exigible": "1200.00", "paiement_statut": "initie", "paye_le": "None", "nb_paiements": 0}
+verdict : ÉCART
+base inchangée : oui (avant 711, après 711) ; mails 0 ; tâches Celery bloquées 0

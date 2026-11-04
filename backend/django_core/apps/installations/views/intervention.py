@@ -1042,7 +1042,7 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
         if refus is not None:
             return refus
         slot = field_services._slot_of_attachment(att)
-        delete_attachment(att.file_key)
+        delete_attachment(att.file_key, liberee_par=(att,))  # ADOC200
         att.delete()
         self._tracer_suppression(
             interv, f"Photo supprimée{(' — ' + slot) if slot else ''}", motif)
@@ -1627,7 +1627,7 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
         if refus is not None:
             return refus
         if memo.audio_id:
-            delete_attachment(memo.audio.file_key)
+            delete_attachment(memo.audio.file_key, liberee_par=(memo.audio,))  # ADOC200
             memo.audio.delete()
         memo.delete()
         self._tracer_suppression(interv, 'Mémo vocal supprimé', motif)

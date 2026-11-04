@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import {
   cockpitProfile,
   leadsARelancer,
@@ -102,5 +104,27 @@ describe('tickets SAV — signaux terrain (VX27)', () => {
     // #3 clôturé, #5 annulé → jamais late.
     expect(r).not.toContain(3)
     expect(r).not.toContain(5)
+  })
+})
+
+/* ERR-ACC-ACCUEIL-403-LECTEUR : le Lecteur n'a pas droit à `crm/equipes/
+   statistiques/` ni à `monitoring/configs/co2-fleet/` (IsResponsableOrAdmin) :
+   la carte « Mes équipes » n'est pas montée pour lui, et ces deux lectures ne
+   déclenchent jamais le toast d'erreur global. Test-du-test : retirer la garde
+   `peutLireEquipes` ou `suppressErrorToast` fait échouer. */
+describe('cartes gardées IsResponsableOrAdmin : accueil du Lecteur (ERR-ACC-ACCUEIL-403-LECTEUR)', () => {
+  const lire = (rel) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8')
+  it("MesEquipesCard n'est monté que si le rôle peut lire les équipes", () => {
+    const src = lire('./Dashboard.jsx')
+    expect(src).toMatch(/useCanLireEquipesCrm\(\)/)
+    expect(src).toMatch(/peutLireEquipes && \(\s*<Suspense fallback=\{null\}>\s*<MesEquipesCard \/>/)
+  })
+  it("ImpactPastille n'est monté (dans la Sidebar) que si le rôle peut lire le parc", () => {
+    const src = lire('../components/layout/Sidebar.jsx')
+    expect(src).toMatch(/peutLireParc && \(\s*<Suspense fallback=\{null\}>\s*<ImpactPastille/)
+  })
+  it('les deux lectures coupent le toast global sur 403', () => {
+    expect(lire('../api/monitoringApi.js')).toMatch(/co2-fleet\/', \{ params, suppressErrorToast: true \}/)
+    expect(lire('../api/crmApi.js')).toMatch(/equipes\/statistiques\/', \{ suppressErrorToast: true \}/)
   })
 })

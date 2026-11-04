@@ -86,14 +86,15 @@ export default function GedSearch({ onOpenDocument, ocrActif = false } = {}) {
   const [savingVue, setSavingVue] = useState(false)
 
   const loadVues = () => {
-    gedApi.getVues().then((r) => setVues(rows(r))).catch(() => setVues([]))
+    // ADOC195 — vues lues EN ENTIER (au-delà de 50, plus rien ne manque).
+    toutesLesPages(gedApi.getVues).then(setVues).catch(() => setVues([]))
   }
 
   // Charge la taxonomie de tags (filtre par tag) + favoris/récents/vues.
   useEffect(() => {
     let alive = true
-    gedApi.getTags()
-      .then((r) => { if (alive) setTags(rows(r)) })
+    toutesLesPages(gedApi.getTags) // ADOC195 — tous les tags, pas la page 1
+      .then((t) => { if (alive) setTags(t) })
       .catch(() => { if (alive) setTags([]) })
     gedApi.getMesFavoris()
       .then((r) => { if (alive) setFavoris(r.data) })

@@ -171,6 +171,19 @@ def _appels_non_exemptes(corps: str, non_pagines: set):
     return reste
 
 
+_COMMENTAIRE_RE = re.compile(r"(?<![:\w'\"])//[^\n]*")
+_ALIAS_DATA_RE = re.compile(r"\b(?:const|let|var)\s+(\w+)\s*=\s*[\w.?]*\??\.data\b")
+
+
+def _est_helper(corps: str) -> bool:
+    """ADOC194 : corps SANS commentaires `//` (« axios » d'un commentaire n'est pas un appel) qui lit
+    `.results` — directement ou par un alias `const d = resp?.data` puis `d?.results` — sans appel HTTP."""
+    code = _COMMENTAIRE_RE.sub("", corps)
+    lit = _RESULTS_RE.search(code) or any(
+        re.search(r"\b" + re.escape(a) + r"\??\.results\b", code) for a in _ALIAS_DATA_RE.findall(code))
+    return bool(lit) and not _HTTP_RE.search(code)
+
+
 def _helpers_importes(path: Path, texte: str) -> list:
     """ADOC190 : helpers `{ rows }` importés d'un module local qui lisent `.results` sans appel HTTP."""
     out = []
@@ -187,7 +200,7 @@ def _helpers_importes(path: Path, texte: str) -> list:
             ds = _declarations(ls)
             bs = [i for i, _ in ds] + [len(ls)]
             corps = ["\n".join(ls[d:bs[n + 1]]) for n, (d, _) in enumerate(ds)]
-            noms = {nom for (_, nom), c in zip(ds, corps) if _RESULTS_RE.search(c) and not _HTTP_RE.search(c)}
+            noms = {nom for (_, nom), c in zip(ds, corps) if _est_helper(c)}
             for brut in m.group(1).split(","):
                 orig, _, alias = brut.strip().partition(" as ")
                 if orig.strip() in noms:
@@ -209,11 +222,10 @@ def analyser() -> dict:
         bornes = [i for i, _ in decls] + [len(lignes)]
         corps_de = ["\n".join(lignes[d:bornes[n + 1]]) for n, (d, _) in enumerate(decls)]
         # ADOC182 : helpers locaux (`unpage`, `rows`) qui lisent `.results` sans appel HTTP
-        helpers = [nom for (_, nom), c in zip(decls, corps_de)
-                   if _RESULTS_RE.search(c) and not _HTTP_RE.search(c)]
+        helpers = [nom for (_, nom), c in zip(decls, corps_de) if _est_helper(c)]
         helpers += _helpers_importes(path, "\n".join(lignes))
         for n, (debut, nom) in enumerate(decls):
-            corps = corps_de[n]
+            corps = _COMMENTAIRE_RE.sub("", corps_de[n])  # ADOC194 : un commentaire n'est pas du code
             lit = _RESULTS_RE.search(corps) or any(
                 re.search(r"\b" + re.escape(h) + r"\(\s*\w+(?:\??\.data\b|\s*\))", corps) for h in helpers)
             if not lit or not _HTTP_RE.search(corps):

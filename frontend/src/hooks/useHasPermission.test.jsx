@@ -19,6 +19,8 @@ import {
   useCanCreateProduit,
   useCanValiderVente,
   useCanListFactures,
+  useCanLireParcMonitoring,
+  useCanLireEquipesCrm,
   PRODUIT_CREATE_ROLES,
   VENTES_VALIDER_PERMISSION,
 } from './useHasPermission'
@@ -168,5 +170,34 @@ describe('useCanListFactures (ERR-ASEC11-LECTURE-FACTURES)', () => {
     expect(peut({ role_nom: 'Rédacteur', permissions: ['ventes_creer'] })).toBe(true)
     expect(peut({ role: 'admin', role_nom: 'Directeur', permissions: [] })).toBe(true)
     expect(peut({ role: 'responsable', role_nom: null, permissions: [] })).toBe(true)
+  })
+})
+
+// ERR-ACC-ACCUEIL-403-LECTEUR : l'accueil ne monte pas (n'appelle pas) les cartes
+// dont l'endpoint est gardé `IsResponsableOrAdmin` pour un rôle qu'il refuse.
+describe('useCanLireParcMonitoring / useCanLireEquipesCrm (ERR-ACC-ACCUEIL-403-LECTEUR)', () => {
+  const VIEWER = { role: 'normal', role_nom: 'Viewer', permissions: ['crm_voir', 'ventes_voir', 'stock_voir'] }
+  const parc = (auth) => renderHook(() => useCanLireParcMonitoring(), { wrapper: renderWithAuth(auth) }).result.current
+  const equipes = (auth) => renderHook(() => useCanLireEquipesCrm(), { wrapper: renderWithAuth(auth) }).result.current
+
+  it('Lecteur (que des *_voir) : ni parc ni équipes (le serveur répond 403)', () => {
+    expect(parc(VIEWER)).toBe(false)
+    expect(equipes(VIEWER)).toBe(false)
+  })
+  it('Commercial (écriture crm) : parc et équipes', () => {
+    const c = { role: 'normal', role_nom: 'Commercial', permissions: ['crm_voir', 'crm_creer'] }
+    expect(parc(c)).toBe(true)
+    expect(equipes(c)).toBe(true)
+  })
+  it("rôle d'écriture hors module crm (Commercial terrain) : parc oui, équipes non", () => {
+    const t = { role: 'normal', role_nom: 'Commercial terrain', permissions: ['visites_creer'] }
+    expect(parc(t)).toBe(true)
+    expect(equipes(t)).toBe(false)
+  })
+  it('palier admin et compte hérité responsable : oui ; hérité normal : non', () => {
+    expect(parc({ role: 'admin', role_nom: 'Directeur', permissions: [] })).toBe(true)
+    expect(equipes({ role: 'admin', role_nom: 'Directeur', permissions: [] })).toBe(true)
+    expect(equipes({ role: 'responsable', role_nom: null, permissions: [] })).toBe(true)
+    expect(parc({ role: 'normal', role_nom: null, permissions: [] })).toBe(false)
   })
 })

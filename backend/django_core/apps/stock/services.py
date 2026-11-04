@@ -6,7 +6,7 @@ Les changements sont journalisés (audit logger).
 """
 import logging
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
-from django.db import models
+from django.db import models, transaction
 
 from .erreurs_achats import ConflitEtat, EtatIncompatible, IntrouvableMetier, delta_revalorisation_borne
 from .services_produit import get_or_create_produit
@@ -533,16 +533,16 @@ def credit_emplacement_destination(company, produit, emplacement, quantite):
 def affecter_livraison_directe_chantier(
         company, user, bc, produit, quantite, reference):
     """XPUR23 — livraison DIRECTE chantier : la marchandise reçue N'ENTRE
-    JAMAIS en stock libre. On la sort aussitôt (SORTIE tracée, référence du
-    BCF + chantier) via l'accesseur unique `record_stock_movement` — jamais
-    un mécanisme parallèle. Best-effort : une erreur ne casse jamais la
-    réception elle-même (le stock reste alors en dépôt principal, visible et
-    corrigeable manuellement)."""
-    from django.db import transaction
-    if quantite <= 0:
-        return
+    JAMAIS en stock libre ; on la sort aussitôt par `record_stock_movement`.
+    ASTK259 — chantier d'une vente : seul ce que la vente n'a pas déjà sorti,
+    sous la référence du chantier (`selectors_fournisseur`). Best-effort : une
+    erreur ne casse jamais la réception (stock laissé au dépôt principal)."""
+    from .selectors_fournisseur import sortie_livraison_directe
     try:
-        chantier = bc.chantier_livraison
+        chantier, quantite, ref_sortie = sortie_livraison_directe(
+            company, bc, produit, quantite, reference)
+        if quantite <= 0:
+            return
         with transaction.atomic():
             record_stock_movement(
                 company=company, produit=produit,
@@ -550,7 +550,7 @@ def affecter_livraison_directe_chantier(
                 quantite=quantite,
                 quantite_avant=produit.quantite_stock,
                 quantite_apres=produit.quantite_stock - quantite,
-                reference=reference,
+                reference=ref_sortie,
                 note=(f'Livraison directe chantier {chantier.reference} '
                       f'(BCF {bc.reference})'
                       if chantier is not None else
