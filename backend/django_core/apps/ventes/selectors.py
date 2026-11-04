@@ -309,18 +309,18 @@ def devis_pour_projet(devis_id, company):
     désignation, alignée sur ``frontend/src/features/ventes/solar.js``).
     """
     from .models import Devis
-
+    from .utils.options import option_lines
     devis = (
         Devis.objects.filter(pk=devis_id, company=company)
         .select_related('client')
-        .prefetch_related('lignes')
+        .prefetch_related('lignes__produit')
         .first())
     if devis is None or devis.statut != Devis.Statut.ACCEPTE:
         return None
 
     lignes_mo = []
     lignes_materiel = []
-    for ligne in devis.lignes.all():
+    for ligne in option_lines(devis):  # AANA89 — l'option retenue seule
         cible = lignes_mo if _est_main_oeuvre(ligne.designation) \
             else lignes_materiel
 

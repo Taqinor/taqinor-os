@@ -311,6 +311,22 @@ class TestOptionDownstream(TestCase):
         self.assertEqual(Decimal(dossier['total_ttc']),
                          Decimal(str(Devis.objects.get(pk=devis.pk).total_ttc)))
 
+    def test_devis_pour_projet_option_retenue(self):
+        """AANA89 — le budget projet d'un deux-options accepté « sans » ne
+        ventile que les lignes de l'option retenue."""
+        from apps.ventes.selectors import devis_pour_projet
+        devis = self._two_option_devis(num=89)
+        Devis.objects.filter(pk=devis.pk).update(
+            statut=Devis.Statut.ACCEPTE, option_acceptee='sans_batterie')
+        res = devis_pour_projet(devis.id, self.company)
+        attendu = sum((Decimal(str(li.total_ht)) for li in option_lines(
+            Devis.objects.get(pk=devis.pk))), Decimal('0'))
+        self.assertEqual(attendu, Decimal('31100'))
+        self.assertEqual(
+            Decimal(str(res['montant_materiel'])) + Decimal(str(res['montant_main_oeuvre'])),
+            attendu)
+        self.assertEqual(res['nb_lignes_materiel'] + res['nb_lignes_main_oeuvre'], 3)
+
 
 class TestFamillesServables(SimpleTestCase):
     """BAT-DIFF (ordre fondateur, 17/09/2026) — servabilité PURE par familles.
