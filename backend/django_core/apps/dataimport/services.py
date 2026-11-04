@@ -458,6 +458,28 @@ def list_mappings(company, target=None):
     return list(qs)
 
 
+def _normaliser_date_pose(f):
+    """FG14/AANA85 — normalise EN PLACE ``f['date_pose']`` (datetime, ou texte
+    aux formats AAAA-MM-JJ, JJ/MM/AAAA, JJ-MM-AAAA) ; renvoie la raison de
+    refus d'une cellule non vide illisible (« 31/13/2025 »), sinon ``None``.
+    Une cellule vide est écartée comme avant (champ retiré)."""
+    import datetime
+    raw = f.get('date_pose')
+    if isinstance(raw, datetime.datetime):
+        f['date_pose'] = raw.date()
+    elif isinstance(raw, str):
+        for fmt in ('%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y'):
+            try:
+                f['date_pose'] = datetime.datetime.strptime(raw.strip(), fmt).date()
+                return None
+            except ValueError:
+                pass
+        if raw.strip():
+            return f'date_pose illisible : {raw!r}'
+        f.pop('date_pose')
+    return None
+
+
 def _row_to_fields(row, mapped):
     return {field: row.get(col) for col, field in mapped.items()
             if row.get(col) not in (None, '')}
@@ -1298,7 +1320,6 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
         # que les garanties sont recalculées, le jeton QR posé, et la garde de
         # doublon alignée sur la contrainte DB (company, numero_serie).
         elif target == 'equipements':
-            import datetime
             from apps.sav.services import creer_equipement_import
             from apps.stock.models import Produit
             from apps.installations.models import Installation
@@ -1328,24 +1349,11 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
                 # AUD517 — la garde de doublon vit désormais DANS le service
                 # sav (alignée sur la contrainte DB réelle : company +
                 # numero_serie, plus étroite que l'ancien quadruplet).
-                # Normalisation date_pose.
-                if 'date_pose' in f:
-                    raw_date = f['date_pose']
-                    if isinstance(raw_date, datetime.datetime):
-                        f['date_pose'] = raw_date.date()
-                    elif isinstance(raw_date, str):
-                        for fmt in ('%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y'):
-                            try:
-                                f['date_pose'] = datetime.datetime.strptime(
-                                    raw_date.strip(), fmt).date()
-                                break
-                            except (ValueError, AttributeError):
-                                pass
-                        else:
-                            if raw_date.strip():  # AANA85 — refus nommé
-                                skipped.append({'ligne': i, 'raison': f'date_pose illisible : {raw_date!r}'})
-                                continue
-                            f.pop('date_pose')
+                # Normalisation date_pose (AANA85 : illisible ⇒ ligne refusée, nommée).
+                raison = _normaliser_date_pose(f)
+                if raison:
+                    skipped.append({'ligne': i, 'raison': raison})
+                    continue
                 statut, message = creer_equipement_import(
                     company, f, produit=produit, installation=installation,
                     user=user)

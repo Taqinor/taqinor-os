@@ -318,8 +318,7 @@ def devis_pour_projet(devis_id, company):
     if devis is None or devis.statut != Devis.Statut.ACCEPTE:
         return None
 
-    lignes_mo = []
-    lignes_materiel = []
+    lignes_mo, lignes_materiel = [], []
     for ligne in option_lines(devis):  # AANA89 — l'option retenue seule
         cible = lignes_mo if _est_main_oeuvre(ligne.designation) \
             else lignes_materiel

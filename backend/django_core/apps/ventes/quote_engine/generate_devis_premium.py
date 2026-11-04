@@ -3728,9 +3728,8 @@ def apply_quote_data(data: dict) -> None:
     PAY_A = _pct_echeance(_terms.get("acompte"), 30)
     PAY_M = _pct_echeance(_terms.get("materiel"), 60)
     PAY_S = _pct_echeance(_terms.get("solde"), 10)
-    global MONTANTS_TRANCHES, BRANCHE_ECHEANCIER
-    MONTANTS_TRANCHES = dict(data.get("montants_tranches") or {})
-    BRANCHE_ECHEANCIER = data.get("branche_echeancier")
+    global MONTANTS_TRANCHES, BRANCHE_ECHEANCIER  # AMOT122 — branche servie par le builder
+    MONTANTS_TRANCHES, BRANCHE_ECHEANCIER = dict(data.get("montants_tranches") or {}), data.get("branche_echeancier")
     ONEPAGE_NOTE_BATTERIE = bool(data.get("onepage_note_batterie", False))
     LIBELLE_AVEC = str(data.get("libelle_avec") or "Avec batterie")
     LINKS = dict(data.get("links") or {})
