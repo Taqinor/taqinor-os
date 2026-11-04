@@ -211,4 +211,12 @@ describe('WAUD87 — assurance habitation sur /garanties EN et AR', () => {
     expect(src).toContain('items={insuranceFaq}');
     expect(src).toContain('schema={false}');
   });
+  it('pages ville et tunnel AR : liens vers la page de LEUR locale quand elle existe (loi 82-21, méthodologie, réalisations)', () => {
+    const lire = (p: string) => readFileSync(fileURLToPath(new URL(`../src/${p}`, import.meta.url)), 'utf-8');
+    const city = lire('lib/cityContent.ts');
+    expect(city).toContain(`en: '<a href="/en/loi-82-21/"`);
+    expect(city).toContain(`ar: '<a href="/ar/loi-82-21/"`);
+    const arTunnel = lire('pages/ar/devis/mon-toit.astro');
+    expect(arTunnel).not.toMatch(/href="\/(methodologie-estimation|realisations)\/"/);
+  });
 });
