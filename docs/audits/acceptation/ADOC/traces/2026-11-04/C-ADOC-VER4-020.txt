@@ -1,0 +1,6 @@
+== C-ADOC-VER4-020 (sha c38868a62)
+attendu : technicien d'une intervention (portée équipe, ni responsable ni créateur) : GET fiche chantier 200 ; GET pv-reception / bon-livraison / dossier-remise 404 (divergence) ; attendu sain : même verdict que la fiche
+observé : codes={'fiche': 200, 'pv-reception': 200, 'bon-livraison': 200, 'dossier-remise': 200, 'temoin_responsable_pv': 200}
+{"repro": false, "codes": {"fiche": 200, "pv-reception": 200, "bon-livraison": 200, "dossier-remise": 200, "temoin_responsable_pv": 200}}
+verdict : ÉCART
+base inchangée : oui (avant 144, après 144) ; mails 0 ; tâches Celery bloquées 0
