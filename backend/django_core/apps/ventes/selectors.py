@@ -103,7 +103,7 @@ def devis_lecture_seule_pour_lead(lead):
     domaine.
 
     CE QUI SORT, ET RIEN D'AUTRE : référence, statut, date, total TTC, et les
-    lignes PRODUIT comptées dans les totaux (désignation, quantité, prix
+    lignes PRODUIT de l'option retenue (``option_lines``) (désignation, quantité, prix
     unitaire TTC, total TTC). ``prix_achat`` — et toute donnée de coût ou de
     marge — ne franchit JAMAIS cette fonction : le panneau est montré au
     commercial ET dérivé d'un document client.
@@ -115,6 +115,7 @@ def devis_lecture_seule_pour_lead(lead):
     from decimal import ROUND_HALF_UP, Decimal
 
     from .models import Devis
+    from .utils.options import option_lines
 
     cent = Decimal('0.01')
     dossiers = []
@@ -123,9 +124,7 @@ def devis_lecture_seule_pour_lead(lead):
         Devis.objects.filter(lead=lead, company=lead.company).order_by('-id'))
     for devis in devis_qs:
         lignes = []
-        for ligne in devis.lignes.all():
-            if not ligne.compte_dans_totaux:
-                continue
+        for ligne in option_lines(devis):  # AANA88 — l'option retenue seule
             taux = Decimal(str(ligne.taux_tva_effectif or 0))
             coefficient = Decimal('1') + (taux / Decimal('100'))
             unitaire = Decimal(str(ligne.prix_unitaire or 0)) * coefficient
