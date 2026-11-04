@@ -28,7 +28,6 @@ frontend/src/features/calepinage/CalepinageNouveau.jsx::CalepinageNouveau
 frontend/src/features/calepinage/CalepinageNouveau.jsx::chercherClients
 frontend/src/features/calepinage/CalepinageNouveau.jsx::chercherLeads
 frontend/src/features/calepinage/SelecteurRattachement.jsx::SelecteurRattachement
-frontend/src/features/ged/GedSearch.jsx::loadVues
 frontend/src/features/ged/GedSearch.jsx::runSearchWith
 frontend/src/features/installations/ParametrageKits.jsx::ParametrageKits
 frontend/src/features/installations/SuiviImport.jsx::SuiviImport
