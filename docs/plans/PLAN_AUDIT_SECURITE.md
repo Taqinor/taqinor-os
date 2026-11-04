@@ -186,3 +186,4 @@ société) n'a PAS de tâche ATOT : il est porté par le groupe ASEC (X1, STENA-
 - 2026-11-03 — ACVI76 — cochée : rejeu en direct PASS du 04/11 (docs/audits/acceptation/).
 - 2026-11-03 — ASEC63 — cochée : rejeu en direct PASS du 04/11 (docs/audits/acceptation/).
 - 2026-11-04 — AFAC106 — code livré (0799c5730, test_seed_demo_company.py::SeedDemoFacturesCoherenceTest::test_factures_demo_coherentes présent), preuve en direct due : sonde C-AFAC-VER2-030.py à rejouer après seed_demo ; reste [ ].
+- 2026-11-04 — ADOC193 — code livré, preuve en direct due (sonde C-ADOC-VER4-010-L2 rejouée ⇒ repro False) : records/cles_stockage.py (enregistrer_detenteur, cle_detenue) ; storage.delete_attachment(key, *, lever, liberee_par) → False + log si détenue ; perform_destroy passe liberee_par ; détenteurs déclarés dans records/ged/adsengine apps.py ; migration records 0014 (index file_key) ; tests.py::TestAttachments::test_cle_tenue_ailleurs_conservee (non joué localement — CI).
