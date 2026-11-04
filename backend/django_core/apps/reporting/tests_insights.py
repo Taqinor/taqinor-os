@@ -234,9 +234,9 @@ class TestJobCosting(InsightsBase):
                 company=self.company, reference=ref, client=client,
                 lead=lead, statut=Devis.Statut.ACCEPTE,
                 date_acceptation=date.today(), taux_tva=Decimal('20'), **kw)
-            for nom, var, q, pu, pa in lignes:
+            for i, (nom, var, q, pu, pa) in enumerate(lignes):
                 p = Produit.objects.create(
-                    company=self.company, nom=nom, sku=f'{ref}-{nom[:6]}',
+                    company=self.company, nom=nom, sku=f'{ref}-{i}-{nom[:6]}',
                     prix_vente=pu, prix_achat=pa, quantite_stock=0)
                 LigneDevis.objects.create(
                     devis=d, produit=p, designation=nom, quantite=q,
