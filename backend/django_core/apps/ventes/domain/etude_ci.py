@@ -432,18 +432,30 @@ def _kwh_depuis_mad(montant_ttc, tarif, tarif_declare):
     return round(bas, 1)
 
 
+def _kwh_declare(res):
+    """ADEV106 — ``(feuille, 12 mois | annuel)`` du kWh déclaré retenu : couche
+    la plus haute (corps > devis > lead), puis ``kwh_mensuels`` > mensuel > annuel."""
+    candidats = []
+    for ordre, feuille in enumerate(('kwh_mensuels', 'kwh_mensuel_declare', 'kwh_annuel')):
+        brut = res.valeur(feuille)
+        if feuille == 'kwh_mensuels':
+            ok = isinstance(brut, (list, tuple)) and len(brut) == 12 and all(
+                _num(v) is not None for v in brut)
+            valeur = [_num(v) for v in brut] if ok else None
+        else:
+            valeur = _num(brut) if (_num(brut) or 0) > 0 else None
+            valeur = [valeur] * 12 if valeur and feuille == 'kwh_mensuel_declare' else valeur
+        if valeur is not None:
+            rang = {'saisie': 0, 'devis': 1}.get((res.provenance(feuille) or {}).get('origine'), 2)
+            candidats.append((rang, ordre, feuille, valeur))
+    return min(candidats)[2:] if candidats else (None, None)
+
+
 def _consommation(res, tarif, alertes, hypotheses):
     """``(kwh_mensuels [12] | kwh annuel | None, feuille_retenue)``."""
-    kwh = res.valeur('kwh_mensuels')
-    if isinstance(kwh, (list, tuple)) and len(kwh) == 12 and all(
-            _num(v) is not None for v in kwh):
-        return [_num(v) for v in kwh], 'kwh_mensuels'
-    unique = _num(res.valeur('kwh_mensuel_declare'))
-    if unique and unique > 0:
-        return [unique] * 12, 'kwh_mensuel_declare'
-    annuel = _num(res.valeur('kwh_annuel'))
-    if annuel and annuel > 0:
-        return annuel, 'kwh_annuel'
+    feuille, kwh = _kwh_declare(res)
+    if feuille:
+        return kwh, feuille
     partiel = None
     for feuille in ('factures_mad', 'releve_kwh'):
         lignes = res.valeur(feuille)
@@ -567,18 +579,9 @@ def _courbe_mesuree_resolue(courbe, annee_reference):
 def _garde_kwh_factures(res, tarif, alertes):
     """Décision du 30/09 : un kWh déclaré qui contredit la facture (> 2×) bloque."""
     from apps.ventes.horaire.conso import RATIO_KWH_FACTURE_MAX, RATIO_KWH_FACTURE_MIN
-    kwh = _num(res.valeur('kwh_mensuel_declare'))
-    # ADEV100 (L3, 24/10/2026) — le générateur pré-rempli envoie le kWh du lead
-    # en ANNUEL (12 × mensuel) ou en 12 mois : la décision du 30/09 vaut pour
-    # tout kWh déclaré, pas seulement pour la feuille mensuelle du lead.
-    if not kwh:
-        annuel = _num(res.valeur('kwh_annuel'))
-        mensuels = [_num(v) for v in (res.valeur('kwh_mensuels') or [])]
-        mensuels = [v for v in mensuels if v]
-        if annuel:
-            kwh = annuel / 12.0
-        elif len(mensuels) == 12:
-            kwh = sum(mensuels) / 12.0
+    # ADEV100/ADEV106 — tout kWh déclaré, la feuille que retient l'étude.
+    _feuille, kwh = _kwh_declare(res)
+    kwh = (sum(kwh) if isinstance(kwh, list) else kwh or 0) / 12.0
     facture = _num(res.valeur('_facture_hiver_lead'))
     if not kwh or not facture:
         return
