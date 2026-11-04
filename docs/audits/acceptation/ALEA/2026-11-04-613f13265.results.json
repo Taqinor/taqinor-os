@@ -1,0 +1,36 @@
+{
+  "sha": "613f13265514ee244674b2417d9c02bdb8b6d278",
+  "date": "2026-11-04",
+  "groupe": "ALEA",
+  "verdict": "PASS",
+  "couvre": [
+    "ALEA64"
+  ],
+  "couvre_avec_ecart": [
+    "ALEA64"
+  ],
+  "etapes": [
+    {
+      "id": "PA1.06",
+      "taches": [
+        "ALEA64"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ALEA-PA1.06.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "FAIL",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : toast global « Une erreur est survenue. » émis par frontend/src/api/axios.js (intercepteur L53, toastError(errorMessageFrom(error))) sur tout 4xx : errorMessageFrom ne lit pas le corps {erreurs:{statut}} ; il apparaît à côté de l'alerte du formulaire et fait tomber l'oracle 8 (texte « Une erreur est survenue ») ; hors du formulaire de mesures (ALEA64), même toast avant la tâche (la base n'affichait en plus aucune raison) ; oracle 8 — écran cassé sur http://localhost/visites/15"
+    }
+  ]
+}
