@@ -270,12 +270,12 @@ sortie(dict(statut=f.statut, pa=[[str(x.montant), str(x.escompte_montant or 0), 
     return textePdf(await rep.body())
   }
   const txt = await lirePdf()
-  const compact = txt.replace(/[\s  ]/g, '')
+  const compact = txt.replace(/[\s\u00a0\u202f]/g, '')
   expect(compact, `relevé : paiement 1 176 (${txt.slice(0, 600)})`).toMatch(/1176[,.]00/)
   expect(compact, 'relevé : avoir 24').toMatch(/24[,.]00/)
   expect(txt, 'relevé : aucune ligne « escompte »').not.toMatch(/escompte/i)
   expect(txt, 'relevé : mention d\'avoir').toMatch(/avoir/i)
-  expect((await lirePdf()).replace(/[\s  ]/g, ''), 'relecture identique').toBe(compact)
+  expect((await lirePdf()).replace(/[\s\u00a0\u202f]/g, ''), 'relecture identique').toBe(compact)
 })
 
 // ═══════════════════════════ ADVS ═══════════════════════════
