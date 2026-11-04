@@ -860,7 +860,7 @@ def ca_par_entite(company, entite_ids):
 
 
 def devis_envoyes_periode(company, *, date_debut=None, date_fin=None,
-                          commercial_id=None):
+                          commercial_id=None, en_vigueur=False):
     """NTCPQ24 — Devis ENVOYÉS (ou au-delà) d'une société sur une période.
 
     Point d'entrée cross-app en LECTURE (sans importer
@@ -868,9 +868,10 @@ def devis_envoyes_periode(company, *, date_debut=None, date_fin=None,
     sur ``date_envoi`` ; bornes optionnelles (ouvertes si absentes). Précharge
     les lignes/produits (le calcul de conformité les parcourt)."""
     from .models import Devis
-    qs = devis_en_jeu(Devis.objects.filter(
-        company=company, date_envoi__isnull=False,
-    )).select_related('client', 'created_by').prefetch_related(
+    qs = Devis.objects.filter(company=company, date_envoi__isnull=False)
+    # AANA87 — ``en_vigueur`` : + la V1 acceptée puis révisée (vente en vigueur).
+    qs = (qs.filter(is_active=True) | qs.filter(pk__in=devis_signes_en_vigueur(company).values('pk'))
+          if en_vigueur else devis_en_jeu(qs)).select_related('client', 'created_by').prefetch_related(
         'lignes__produit__categorie')
     if date_debut:
         qs = qs.filter(date_envoi__date__gte=date_debut)
@@ -884,9 +885,9 @@ def devis_envoyes_periode(company, *, date_debut=None, date_fin=None,
 def taux_acceptation_periode(company, date_debut, date_fin, commercial_id=None):
     """D-AANA-VER-1 — LE taux d'acceptation : acceptés ÷ devis envoyés dans la
     période (versions en jeu, révisions remplacées exclues). `None` sans envoi."""
-    envoyes = devis_envoyes_periode(
-        company, date_debut=date_debut, date_fin=date_fin, commercial_id=commercial_id)
-    n, acceptes = envoyes.count(), envoyes.filter(statut='accepte').count()
+    envoyes = devis_envoyes_periode(company, date_debut=date_debut, date_fin=date_fin,
+                                    commercial_id=commercial_id, en_vigueur=True)
+    n, acceptes = envoyes.count(), envoyes.filter(pk__in=devis_signes_en_vigueur(company).values('pk')).count()
     return {'envoyes': n, 'acceptes': acceptes,
             'taux_pct': round(acceptes / n * 100, 1) if n else None}
 
