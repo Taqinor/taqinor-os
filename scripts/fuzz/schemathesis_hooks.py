@@ -273,7 +273,14 @@ def _proteger_references(case):
     collection = m.group(1).rstrip('/').rsplit('/', 1)[-1]
     table = _table_fk(case.operation.path)
     valeur = str(case.path_parameters[m.group(2)])
-    for nom in _singuliers(collection):
+    # Un id venu d'un LIEN stateful est souvent la ligne que l'étape précédente
+    # vient de créer : les mots d'un nom composé (``dossiers-import`` -> ``dossier``)
+    # visent parfois un AUTRE modèle, dont les ids recoupent le sien (vérification
+    # 41799309706 : DELETE sur l'id inexistant, « not available after creation »).
+    lie = m.group(2) in (getattr(getattr(case, '_override', None),
+                                 'path_parameters', None) or {})
+    noms = _singuliers(collection)
+    for nom in ([noms[0], 'parent'] if lie else noms):
         entree = table.get(nom) if nom == 'parent' else _entree(nom, table)
         if entree is not None and valeur in {str(i) for i in entree[0]}:
             case.path_parameters[m.group(2)] = ID_INEXISTANT

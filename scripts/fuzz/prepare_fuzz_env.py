@@ -452,6 +452,16 @@ def _semer_ged(company, user):
     return coffre
 
 
+def _semer_departement(company, user):
+    """``departement`` d'une équipe : sans ligne, aucun id réel, 404 après création."""
+    return _modele('roles.Departement').objects.create(company=company, nom='Département fuzz')
+
+
+def _semer_categorie_stockage(company, user):
+    return _modele('installations.CategorieStockage').objects.create(
+        company=company, nom='Catégorie fuzz')
+
+
 def _semer_dossier_import(company, user):
     """api-fuzz-full 41773314544 — ``dossier`` d'une ligne de coût débarqué
     visait l'id d'un AUTRE modèle (union par nom de champ) : aucune création
@@ -711,6 +721,8 @@ SEMEURS = (
     ('calepinage.GabaritDossierReglementaire', _semer_gabarit_dossier),
     ('entites.Entite', _semer_entite),
     ('installations.DossierImport', _semer_dossier_import),
+    ('installations.CategorieStockage', _semer_categorie_stockage),
+    ('roles.Departement', _semer_departement),
     ('stock.CategorieFournisseur', _semer_categorie_fournisseur),
     ('parametres.ConditionPaiement', _semer_condition_paiement),
     ('stock.EmplacementStock', _semer_emplacement_stock),
@@ -820,6 +832,8 @@ REGLES_PAR_CHEMIN = (
      'installations.DossierImport', None, None),
     (r'^/api/django/ged/', ('exigence', 'exigence_id'), 'ged.ExigenceDossier', None, None),
     (r'^/api/django/sav/', ('categorie', 'categorie_id'), 'sav.CategorieEquipement', None, None),
+    (r'^/api/django/installations/bin-locations/', ('categorie',),
+     'installations.CategorieStockage', None, None),
 
     # CI #997 fuzz (4) - produits et emplacements d'un transfert ; produits d'un
     # remplacement de composant en masse (le nom du champ seul est ambigu).

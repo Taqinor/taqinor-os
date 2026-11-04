@@ -156,6 +156,12 @@ class CrochetsFuzzTests(unittest.TestCase):
                 cas = _cas(hooks, 'DELETE', chemin, params={nom: valeur})
                 hooks.before_call(None, cas, {})
                 self.assertEqual(cas.path_parameters[nom], hooks.ID_INEXISTANT)
+        # Un id de LIEN sur un nom composé : la ligne créée, pas la référence.
+        cas = _cas(hooks, 'DELETE', '/api/django/stock/contacts-fournisseur/{id}/',
+                   params={'id': 2})
+        cas._override = types.SimpleNamespace(path_parameters={'id': 2})
+        hooks.before_call(None, cas, {})
+        self.assertEqual(cas.path_parameters['id'], 2)
         # Une ligne créée par la phase stateful se supprime ; un GET n'est pas touché.
         cas = _cas(hooks, 'DELETE', '/api/django/stock/fournisseurs/{id}/',
                    params={'id': 690})
