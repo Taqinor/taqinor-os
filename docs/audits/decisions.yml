@@ -3232,7 +3232,7 @@ decisions:
     reponse: figer_a_l_envoi
     date: "2026-11-02"
     source: "Reda, question interactive, audit parcours PA3"
-    taches: [ADVS1, ADVS2]
+    taches: [ADVS1, ADVS2, ADVS45]
   - id: D-ADVS-2
     question: "Une vente dés-acceptée, corrigée puis signée une seconde fois garde la première preuve et le premier exemplaire signé : que faire ?"
     options:
