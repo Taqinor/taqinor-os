@@ -257,13 +257,17 @@ def note_consommation_estimee(d, cle):
     """ADEV110 — « Consommation : estimation sur n mois relevés. » : l'entrée
     ``consommation_estimee`` servie par ``mentions_ci`` dans
     ``synthese['hypotheses']`` (relevé partiel), imprimée dans la note client
-    de la couverture, langue du document ; '' sans relevé partiel."""
+    de la couverture, langue du document ; '' sans relevé partiel.
+
+    L'espace de séparation est PORTÉ par la note (préfixe) : sans relevé
+    partiel, le HTML rendu reste octet pour octet celui d'avant (golden
+    ``split_sd_rendu_html``, règle #4)."""
     synthese = d.get(f"{cle}_synthese") or {}
     entree = next((h for h in synthese.get("hypotheses") or []
                    if isinstance(h, dict)
                    and h.get("cle") == "consommation_estimee"), None)
     textes = (entree or {}).get("textes")
-    return html.escape(texte(textes, langue(d))) if textes else ""
+    return " " + html.escape(texte(textes, langue(d))) if textes else ""
 
 
 def note_pointe(d, cle):

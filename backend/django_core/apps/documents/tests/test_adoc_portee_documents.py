@@ -96,12 +96,16 @@ class PorteeDocumentsChantierTests(TestCase):
         """ADOC196 (C-ADOC-VER4-020) — le technicien d'une intervention, ni
         responsable ni créateur du chantier, lit la fiche (retrieve,
         ERR-CHT-TECH-CHANTIER-404) ET ses documents ; l'attestation reste
-        aux responsables."""
+        aux responsables.
+
+        Rôle en LECTURE seule : un code d'écriture du module installations
+        (``intervention_gerer``) fait de son porteur un responsable du module
+        au sens d'``IsResponsableOrAdmin`` (ASEC11) — la portée vient de
+        l'intervention assignée, pas d'un droit d'écriture."""
         from apps.installations.models import Intervention
         role = Role.objects.create(
             company=self.company, nom='Technicien d’intervention',
-            permissions=[SCOPE_TEAM, 'installation_voir',
-                         'intervention_gerer'])
+            permissions=[SCOPE_TEAM, 'installation_voir'])
         tech_iv = User.objects.create_user(
             username=f'adoc196-iv-{next(_seq)}', password='x',
             company=self.company, role=role)

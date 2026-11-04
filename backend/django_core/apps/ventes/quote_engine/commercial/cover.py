@@ -258,7 +258,7 @@ def build(ctx):
     {methode_line}
     {mt_line}
     <div class="c1c-note">
-      {note_autoconso} {note_conso} {note_pointe}
+      {note_autoconso}{note_conso} {note_pointe}
     </div>{inv_html}{bas}
   </div>
 </div>

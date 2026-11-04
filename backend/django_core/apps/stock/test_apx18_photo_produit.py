@@ -177,7 +177,15 @@ class Apx18PhotoApiTests(TestCase):
         self.produit.refresh_from_db()
         ancienne_id = self.produit.photo_id
 
-        with patch('apps.records.storage.delete_attachment') as suppr:
+        # `Model.delete()` remet `pk` à None sur l'instance APRÈS l'appel :
+        # on capture les pk de `liberee_par` AU MOMENT de l'appel.
+        pks_liberees = []
+
+        def _capture(cle, **kwargs):
+            pks_liberees.extend(o.pk for o in kwargs.get('liberee_par', ()))
+
+        with patch('apps.records.storage.delete_attachment',
+                   side_effect=_capture) as suppr:
             self._poser(cle='attachments/1/nouvelle.png')
         self.produit.refresh_from_db()
 
@@ -186,8 +194,7 @@ class Apx18PhotoApiTests(TestCase):
         suppr.assert_called_once()
         self.assertEqual(suppr.call_args.args, ('attachments/1/ancienne.png',))
         # ADOC201 : la pièce remplacée libère sa clé (registre ADOC193).
-        (liberee,) = suppr.call_args.kwargs['liberee_par']
-        self.assertEqual(liberee.pk, ancienne_id)
+        self.assertEqual(pks_liberees, [ancienne_id])
 
     def test_remplacement_efface_ancienne_cle(self):
         """ADOC201 (C-ADOC-VER4-010) — sans `liberee_par`, le registre

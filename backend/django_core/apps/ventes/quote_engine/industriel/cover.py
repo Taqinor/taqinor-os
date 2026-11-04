@@ -417,7 +417,7 @@ def build(ctx):
     {puissance_line}
 
     <div class="i1-note">
-      {note_autoconso} {note_conso} {note_pointe}
+      {note_autoconso}{note_conso} {note_pointe}
     </div>
 
     {inv_html}{etapes}
