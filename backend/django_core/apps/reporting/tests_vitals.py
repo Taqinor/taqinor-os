@@ -8,14 +8,15 @@
   lecture. Même patron que le beacon ci-dessus, d'où le module commun.
 """
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta
 from io import StringIO
+from pathlib import Path
 from unittest import mock
 from zoneinfo import ZoneInfo
 
 from django.contrib.auth import get_user_model
 from django.core.management import CommandError, call_command
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
@@ -677,6 +678,105 @@ class ResumeEnrichiTests(TestCase):
         self.assertEqual(len(sante['beat']['detail']), 200)
         self.sante.side_effect = RuntimeError('sonde morte')
         self.assertEqual(resume_json(jours=1)['sante'], {})
+
+
+JETON_RESUME = 'jeton-de-service-de-test'
+RESUME_URL = '/api/django/reporting/problemes/resume/'
+CONTRAT_RESUME = (Path(__file__).resolve().parent / 'contract_samples'
+                  / 'problemes_resume.json')
+
+
+@override_settings(PROBLEMES_RESUME_TOKEN=JETON_RESUME)
+class ResumeServiceTests(TestCase):
+    """BPQ4 — l'API du résumé, ouverte au seul jeton de service."""
+
+    def setUp(self):
+        self.company = Company.objects.get_or_create(
+            slug='bpq4-co', defaults={'nom': 'BPQ4 Co'})[0]
+        self.autre = Company.objects.get_or_create(
+            slug='bpq4-autre', defaults={'nom': 'BPQ4 Autre'})[0]
+        self.user = User.objects.create_user(
+            username='bpq4_u', password='x', company=self.company,
+            is_staff=True, is_superuser=True)
+        self.addCleanup(mock.patch.stopall)
+        mock.patch('core.health.check_services', return_value=[]).start()
+        mock.patch('apps.reporting.journal_problemes._instants_demarrage',
+                   return_value=[]).start()
+        self.client_redis = mock.patch(
+            'apps.reporting.journal_problemes._client_redis').start()
+
+    def _get(self, jeton=JETON_RESUME, **parametres):
+        api = APIClient()
+        if jeton:
+            api.credentials(HTTP_AUTHORIZATION=f'Bearer {jeton}')
+        return api.get(RESUME_URL, parametres)
+
+    def test_sans_jeton_ou_faux_jeton_403(self):
+        self.assertEqual(self._get(jeton=None).status_code, 403)
+        self.assertEqual(self._get(jeton='faux').status_code, 403)
+
+    def test_une_session_superuser_ne_suffit_pas(self):
+        self.assertEqual(_auth(self.user).get(RESUME_URL).status_code, 403)
+
+    def test_jeton_non_configure_ferme_meme_avec_un_jeton_vide(self):
+        with override_settings(PROBLEMES_RESUME_TOKEN=''):
+            self.assertEqual(self._get().status_code, 403)
+            api = APIClient()
+            api.credentials(HTTP_AUTHORIZATION='Bearer ')
+            self.assertEqual(api.get(RESUME_URL).status_code, 403)
+
+    def test_toutes_societes_et_fenetre(self):
+        for societe, route in ((self.company, '/a/'), (self.autre, '/b/')):
+            ProblemeClient.objects.create(
+                company=societe, genre='serveur', route=route, statut_reponse=500)
+        vieux = ProblemeClient.objects.create(
+            company=self.company, genre='serveur', route='/vieux/', statut_reponse=500)
+        ProblemeClient.objects.filter(pk=vieux.pk).update(
+            created_at=timezone.now() - timedelta(days=3))
+        reponse = self._get(jours=1)
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual({p['route'] for p in reponse.data['problemes']}, {'/a/', '/b/'})
+        self.assertEqual(reponse.data['jours'], 1)
+        routes = {p['route'] for p in self._get(jours=7).data['problemes']}
+        self.assertIn('/vieux/', routes)
+
+    def test_jours_invalide_400(self):
+        for jours in ('0', '91', 'abc'):
+            self.assertEqual(self._get(jours=jours).status_code, 400, jours)
+
+    def test_tri_pose_le_battement_de_coeur(self):
+        reponse = self._get(tri=1)
+        self.assertEqual(reponse.status_code, 200)
+        self.assertIs(reponse.data['tri_horodate'], True)
+        cle, valeur = self.client_redis.return_value.set.call_args.args
+        self.assertEqual(cle, 'erp:dernier_tri_problemes')
+        self.assertEqual(datetime.fromisoformat(valeur).year, timezone.now().year)
+
+    def test_sans_tri_aucun_battement(self):
+        self.assertIs(self._get().data['tri_horodate'], False)
+        self.client_redis.return_value.set.assert_not_called()
+
+    def test_redis_en_panne_le_resume_reste_servi(self):
+        self.client_redis.side_effect = OSError('pas de redis')
+        reponse = self._get(tri=1)
+        self.assertEqual(reponse.status_code, 200)
+        self.assertIs(reponse.data['tri_horodate'], False)
+
+    def test_reponse_egale_au_contrat_partage(self):
+        from core.models import BackupRun, OutboxEvent
+        ProblemeClient.objects.create(
+            company=self.company, genre='serveur', route='/a/', statut_reponse=500)
+        OutboxEvent.objects.create(
+            company=self.company, event_name='e', statut=OutboxEvent.STATUT_DEAD)
+        BackupRun.objects.create(
+            kind=BackupRun.KIND_DB_DUMP, statut=BackupRun.STATUT_ECHEC)
+        contrat = json.loads(CONTRAT_RESUME.read_text(encoding='utf-8'))
+        self.assertEqual(contrat['endpoint'], f'GET {RESUME_URL}')
+        exemple = contrat['exemple']
+        corps = self._get().data
+        self.assertEqual(set(corps), set(exemple))
+        for liste in ('problemes', 'outbox_en_echec', 'sauvegardes_en_echec'):
+            self.assertEqual(set(corps[liste][0]), set(exemple[liste][0]), liste)
 
 
 class RetentionTests(TestCase):

@@ -36,7 +36,7 @@ from .reports_chantier import pilotage_chantiers_report
 from .p2p_kpi import kpi_p2p
 from .technicien_scorecard import technicien_scorecard
 from .vitals import collect_vital, vitals_p75
-from .journal_problemes import signaler_probleme
+from .journal_problemes import resume_problemes_service, signaler_probleme
 
 # N79 — CRUD des rapports sauvegardés (router DRF, ajouté en additif).
 # FG96 — CRUD + effective/ pour la config tableau de bord.
@@ -166,4 +166,7 @@ urlpatterns = [
     # une commande serveur, pas une page de l'ERP).
     path('problemes-client/', signaler_probleme,
          name='reporting-problemes-client'),
+    # BPQ4 — résumé pour la routine de tri quotidien (jeton de service seul).
+    path('problemes/resume/', resume_problemes_service,
+         name='reporting-problemes-resume'),
 ]

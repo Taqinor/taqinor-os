@@ -15,6 +15,7 @@ utilisateur BRUT n'est jamais stocké : seule sa FAMILLE est déduite ici.
 
 Lecture : `python manage.py problemes_utilisateurs --jours 7`.
 """
+import hmac
 import json
 import logging
 import re
@@ -27,9 +28,10 @@ from django.db.models import Count, Max, Min, Q
 from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.decorators import (
-    api_view, parser_classes, permission_classes, throttle_classes,
+    api_view, authentication_classes, parser_classes, permission_classes,
+    throttle_classes,
 )
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
 
@@ -37,6 +39,7 @@ from core.champs_stricts import (
     ChaineStricte, ChampsStrictsEntiersMixin, EntierStrict,
 )
 from core.parseurs import PARSEURS_JSON
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 
 from .models import ProblemeClient
@@ -474,3 +477,60 @@ def resume_json(jours=7, company=None, maintenant=None):
         'sauvegardes_en_echec': _sauvegardes_en_echec(depuis, company),
         'sante': _etat_sante(),
     }
+
+
+#: BPQ6 lit ce battement de cœur : « le tri quotidien a-t-il tourné ? ».
+CLE_DERNIER_TRI = 'erp:dernier_tri_problemes'
+#: Une fenêtre de résumé, pas un export : au-delà, c'est la commande serveur.
+JOURS_RESUME_MAX = 90
+
+
+class JetonServiceResumeProblemes(BasePermission):
+    """BPQ4 — UNE seule authentification : le jeton de service
+    `PROBLEMES_RESUME_TOKEN` en `Authorization: Bearer`, comparé à temps constant.
+    Ce résumé couvre TOUTES les sociétés : ni session, ni clé API société. Jeton
+    non configuré = fermé."""
+
+    def has_permission(self, request, view):
+        attendu = settings.PROBLEMES_RESUME_TOKEN
+        entete = request.META.get('HTTP_AUTHORIZATION', '')
+        if not attendu or not entete.startswith('Bearer '):
+            return False
+        return hmac.compare_digest(
+            entete[len('Bearer '):].strip().encode(), attendu.encode())
+
+
+class ResumeProblemesParams(serializers.Serializer):
+    jours = serializers.IntegerField(
+        required=False, default=1, min_value=1, max_value=JOURS_RESUME_MAX)
+    tri = serializers.BooleanField(required=False, default=False)
+
+
+def _horodater_tri(maintenant):
+    """Pose le battement de cœur ; `False` si Redis ne répond pas : la routine le
+    voit dans sa réponse, et le résumé reste servi."""
+    try:
+        _client_redis().set(
+            CLE_DERNIER_TRI, timezone.localtime(maintenant).isoformat())
+        return True
+    except Exception:  # noqa: BLE001 — best-effort, le résumé doit sortir (D-ENF22-BLE001)
+        logger.warning('battement de cœur du tri non posé', exc_info=True)
+        return False
+
+
+@extend_schema(
+    parameters=[ResumeProblemesParams],
+    responses={200: OpenApiTypes.OBJECT})
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([JetonServiceResumeProblemes])
+def resume_problemes_service(request):
+    """GET — le résumé de BPQ1/BPQ3 pour la routine de tri (`tri=1` la marque
+    comme passée). Contrat : `contract_samples/problemes_resume.json`."""
+    params = ResumeProblemesParams(data=request.query_params)
+    params.is_valid(raise_exception=True)
+    maintenant = timezone.now()
+    corps = resume_json(jours=params.validated_data['jours'], maintenant=maintenant)
+    corps['tri_horodate'] = (
+        _horodater_tri(maintenant) if params.validated_data['tri'] else False)
+    return Response(corps)

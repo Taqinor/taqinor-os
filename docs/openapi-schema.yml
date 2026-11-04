@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4906, operations: 7698, components: 3612}
+counts: {paths: 4908, operations: 7700, components: 3612}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -2729,6 +2729,7 @@ operations:
 - get /api/django/reporting/pipeline/velocity/ -> django_reporting_pipeline_velocity_retrieve
 - get /api/django/reporting/probabilites-etape/ -> django_reporting_probabilites_etape_retrieve
 - post /api/django/reporting/problemes-client/ -> django_reporting_problemes_client_create
+- get /api/django/reporting/problemes/resume/ -> django_reporting_problemes_resume_retrieve
 - get /api/django/reporting/rapport-definitions/ -> django_reporting_rapport_definitions_list
 - post /api/django/reporting/rapport-definitions/ -> django_reporting_rapport_definitions_create
 - delete /api/django/reporting/rapport-definitions/{id}/ -> django_reporting_rapport_definitions_destroy
@@ -6583,6 +6584,7 @@ operations:
 - get /api/v1/reporting/pipeline/velocity/ -> v1_reporting_pipeline_velocity_retrieve
 - get /api/v1/reporting/probabilites-etape/ -> v1_reporting_probabilites_etape_retrieve
 - post /api/v1/reporting/problemes-client/ -> v1_reporting_problemes_client_create
+- get /api/v1/reporting/problemes/resume/ -> v1_reporting_problemes_resume_retrieve
 - get /api/v1/reporting/rapport-definitions/ -> v1_reporting_rapport_definitions_list
 - post /api/v1/reporting/rapport-definitions/ -> v1_reporting_rapport_definitions_create
 - delete /api/v1/reporting/rapport-definitions/{id}/ -> v1_reporting_rapport_definitions_destroy
