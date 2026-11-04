@@ -2,7 +2,7 @@
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: 6158e5344eb0fe666a38a3d159d76f4c414ee3c0b9753b090790880d54a0141d
-Plan fingerprint: bad38f2e1439dd7a2463653b49815c691a364ef7f3fdb8f6b9accab3c51be2b0
+Plan fingerprint: f01203641231574dde5a11f464dc36693db9229ed1d7d63c962dba9ac4efc78d
 
 
 
@@ -594,7 +594,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1316)**
+**Done (1320)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -790,6 +790,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `BPQ9` — [core/observabilite]
 - `BPQ10` — [core/observabilite]
 - `BPQ11` — [docs/problemes-prod]
+- `BPQ12` — [core/health]
 - `BPQ13` — [scripts/check]
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
 - `CAD2` — Les trois étapes de VISITE posent la question du suivi de proposition
@@ -1237,6 +1238,8 @@ Things this map could not fully verify from source — do not over-trust:
 - `ENF38` — ENF19, tranche 30/10 (3)
 - `ENF39` — ENF15, tranche 02/11 (liste_page1)
 - `ENF40` — ENF11, tranche 04/11 (nocturne api-fuzz-full 41825184761 sur main c38868a6)
+- `ENF41` — ENF15, tranche 04/11 (liste_page1)
+- `ENF42` — ENF19, tranche 04/11
 - `QAH1` — Skill `qa-explorer` : flotte d'agents « testeur humain » qui explore l'ERP démo module…
 - `QAH2` — Invariants Hypothesis sur la chaîne d'argent et la chaîne d'états des documents ventes
 - `QAH3` — Test différentiel `solar.js` ↔ `quote_engine/builder.py` sur un corpus figé
@@ -1914,7 +1917,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT109` — `reporting/insights.py` (rentabilité chantier) : « facturé » = factures ÉMISES de la…
 - `VTAG1` — [GATED: décision fondateur]
 
-**Open — to build (123)**
+**Open — to build (122)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -1964,7 +1967,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `AICM2` — Réglage de confidentialité du compte claude.ai
 - `AICM3` — Avis juriste loi 09-08 (transfert hors Maroc)
 - `AUD504` — [GATED: coût prestataire — décision fondateur]
-- `BPQ12` — [core/health]
 - `CADM1` — Relecture darija par un locuteur natif
 - `CADM2` — Déclaration CNDP du fichier prospects CRM + récépissé
 - `CADM3` — Question à un juriste : loi 31-08, démarchage à domicile
