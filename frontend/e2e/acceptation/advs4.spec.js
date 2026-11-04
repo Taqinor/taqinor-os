@@ -4,10 +4,12 @@
 import { test, expect } from '@playwright/test'
 import { groupe } from './_oracles.js'
 import { py, fermerDjangoApresTout } from './_django.js'
-import { lireJson, telephoneMobileUnique, assurerSessionPage, cliquerCreerDevis, choisirMarche } from '../helpers.js'
+import { lireJson, telephoneMobileUnique, assurerSessionPage, cliquerCreerDevis, choisirMarche, declarerProfilCi, retirerLignesPrixARenseigner, KWH_COMMERCIAL } from '../helpers.js'
+import { catalogueCi, retablirCatalogueApresTout, leadCi } from './_ci.js'
 
 const etape = groupe('ADVS', ['ADVS27', 'ADVS36'])
 fermerDjangoApresTout()
+retablirCatalogueApresTout()
 const API = '/api/django'
 const T = { timeout: 120_000 }
 test.describe.configure({ timeout: 480_000 })
@@ -28,17 +30,20 @@ etape('PA3-01.tva_societe', ['ADVS27'], async ({ page }) => {
   const avant = await py(`from apps.parametres.models import CompanyProfile
 p = CompanyProfile.objects.get(company_id=1); v = str(p.tva_standard); p.tva_standard = 14; p.save(update_fields=['tva_standard']); sortie(v)`)
   try {
-    // Un catalogue où le panneau vendu n'a pas de taux propre, un autre taux propre à 10 (témoin).
-    const nul = await produit(r, `Panneau mono 550W sans taux ${m}`, '1000.00')
-    const dix = await produit(r, `Onduleur réseau 5kW taux dix ${m}`, '8000.00')
-    await py(`from apps.stock.models import Produit
-Produit.objects.filter(pk=${nul.id}).update(tva=None); Produit.objects.filter(pk=${dix.id}).update(tva=10); sortie(1)`)
-    const lead = await lireJson(await r.post(`${API}/crm/leads/`, { ...T, data: { nom: `ADVS27 ${m}`, ville: 'Casablanca', telephone: telephoneMobileUnique(), email: `a27${m}@example.invalid`, type_installation: 'residentiel', facture_hiver: '1500', facture_ete: '1500' } }), 'lead')
+    // Marché C&I (seul parcours Auto-remplir sans carte) : le catalogue de démo, ses postes tarifés comme `amot3.spec.js`.
+    await catalogueCi(r)
+    const lead = await leadCi(r, `ADVS27 ${m}`)
     await page.goto(`/ventes/devis/nouveau?lead=${lead.id}`)
     await expect(page.getByRole('heading', { name: 'Générateur de Devis Solaire' })).toBeVisible({ timeout: 30_000 })
     await expect(page.locator('#gen-tel')).not.toHaveValue('', { timeout: 90_000 })
+    await choisirMarche(page, /Commercial/)
+    await expect(page.getByTestId('ci-profil')).toBeVisible()
+    for (let i = 0; i < 12; i += 1) await page.locator(`#gen-ci-kwh-${i}`).fill(String(KWH_COMMERCIAL[i]))
+    await declarerProfilCi(page)
+    await expect(page.getByTestId('ci-taille-retenue')).toBeVisible({ timeout: 45_000 })
     await page.getByTestId('btn-auto-remplir').click()
     await expect(page.getByTestId('btn-auto-remplir')).not.toHaveAttribute('aria-busy', 'true', { timeout: 180_000 })
+    await retirerLignesPrixARenseigner(page)
     const creation = page.waitForResponse((x) => x.request().method() === 'POST' && /\/ventes\/devis\/atomic\/$/.test(new URL(x.url()).pathname))
     const rep = await cliquerCreerDevis(page, creation)
     const corps = rep.request().postDataJSON()
@@ -91,7 +96,7 @@ sortie(dict(sans=str(option_totaux(d, 'sans_batterie').get('ttc')), avec=str(opt
   for (let i = 1; i < n - 1; i += 1) await carte.locator(`#gen-echeance-${i}`).fill('0')
   await carte.locator(`select[aria-label^="Unité"]`).nth(n - 1).selectOption({ label: '%' })
   await carte.locator(`#gen-echeance-${n - 1}`).fill('70')
-  const sauve = page.waitForResponse((x) => x.request().method() !== 'GET' && x.url().includes(`/ventes/devis/${d.id}/`) && /lignes|atomic|remplacer|replace/.test(x.url()), { timeout: 120_000 })
+  const sauve = page.waitForResponse((x) => x.request().method() !== 'GET' && x.url().includes(`/ventes/devis/${d.id}/`) && /replace-lines/.test(x.url()), { timeout: 120_000 })
   await page.getByRole('button', { name: /Enregistrer les modifications/ }).click()
   const rep = await sauve
   expect(rep.status(), `enregistré sans erreur d'échéancier : ${(await rep.text()).slice(0, 300)}`).toBeLessThan(300)
