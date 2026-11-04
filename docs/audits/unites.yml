@@ -541,11 +541,11 @@ unites:
     statut: audité
     groupe: ADEV
     plan: docs/plans/PLAN_AUDIT_DEVIS.md
-    plans_alimentes: [docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_MOTEUR.md, docs/plans/PLAN_AUDIT_CALEPINAGE.md, docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_SAV.md]
+    plans_alimentes: [docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_MOTEUR.md, docs/plans/PLAN_AUDIT_CALEPINAGE.md, docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_SAV.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_GENERATEUR.md]
     pr: 859
     date: 2026-10-08
     dossier: docs/audits/2026-10-07-devis.md
-    notes: "Audité par QJR5 le 30/09, contre-visite après un cycle de build. Propriétaire RÉSIDUEL de apps/ventes et des écrans ventes (J5, D2, D3, D4 possèdent des fichiers plus spécifiques). Audit L3 du 07-08/10/2026 (dossier docs/audits/2026-10-07-devis.md) : 58 constats (4 S1, 15 S2), 70 tâches ADEV déposées + 3 tâches web (apps/web, propriétaire web) gardées au dossier §7 en attente d'accord ; 6 décisions fondateur ouvertes (D-ADEV-1..6, tâches M1) ; contre-visite QJR5 : 11 écarts (dont C-ADEV-034 S1 TVA de ligne, 008/012/040/044/045 S2) repris en tâches ADEV."
+    notes: "vérifie ADEV du 04/11/2026 (clôture, 97/99 ; dossier docs/audits/2026-11-04-devis-verifie.md) : 36 tâches (graine fcbed3760) — 29 ok, 7 partielles ; 0 S1-S2, 5 S3 par sonde ou lecture (aperçu C&I sans contrôle de complétude, acceptés perdus à la révision, origine d'upsell dans la note client, motifs archivés proposés au refus, consommation C&I non reconnue à l'enregistrement) → ADEV106-111 (DEVIS, CHANTIERS, GENERATEUR) ; pas de Fable. Audité par QJR5 le 30/09, contre-visite après un cycle de build. Propriétaire RÉSIDUEL de apps/ventes et des écrans ventes (J5, D2, D3, D4 possèdent des fichiers plus spécifiques). Audit L3 du 07-08/10/2026 (dossier docs/audits/2026-10-07-devis.md) : 58 constats (4 S1, 15 S2), 70 tâches ADEV déposées + 3 tâches web (apps/web, propriétaire web) gardées au dossier §7 en attente d'accord ; 6 décisions fondateur ouvertes (D-ADEV-1..6, tâches M1) ; contre-visite QJR5 : 11 écarts (dont C-ADEV-034 S1 TVA de ligne, 008/012/040/044/045 S2) repris en tâches ADEV."
 
   - id: X5
     rang: 16
