@@ -1207,7 +1207,7 @@ class RulePolicyViewSet(AdsengineViewSet):
     # ADSENG14 — catalogue FIXE (lecture) : le front rend la liste des templates
     # (style STAGES.py) sans que le fondateur puisse en inventer un (pas de
     # builder libre). GET → permission de LECTURE (adsengine_view) héritée.
-    @action(detail=False, methods=['get'],
+    @action(detail=False, methods=['get'], pagination_class=None,
             permission_classes=[HasPermissionOrLegacy('adsengine_view')])
     def catalogue(self, request):
         """Liste des templates du catalogue fixe (clé, libellé, sévérité,
@@ -1319,7 +1319,7 @@ class RulePolicyViewSet(AdsengineViewSet):
     # condition (valeurs comparées, ``condition_fr``) et le delta de l'action
     # proposée (``action``) — le « pourquoi » de chaque déclenchement, rendu sur
     # l'écran Règles. Lecture ``adsengine_view``.
-    @action(detail=False, methods=['get'],
+    @action(detail=False, methods=['get'], pagination_class=None,
             permission_classes=[HasPermissionOrLegacy('adsengine_view')])
     def journal(self, request):
         from . import rule_templates as rt
