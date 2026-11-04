@@ -208,7 +208,10 @@ describe('estimateur 3D — variante privée, parallèle, sans toucher la 2D', (
   it('prefers-reduced-motion : bascule 3D instantanée, aucune animation auto', () => {
     const tool = read(tool3d);
     expect(tool).toContain('opts.reducedMotion'); // chemin sans animation
-    expect(tool).toContain('map.jumpTo'); // bascule instantanée si réduit
+    // ENF43 — la bascule vit dans `moveCamera` (roofToolShared) : l'outil lui passe
+    // `opts.reducedMotion`, le helper fait `jumpTo` (instantané) si réduit.
+    expect(tool).toContain('moveCamera(map, opts.reducedMotion');
+    expect(read('../src/scripts/roofToolShared.ts')).toContain('if (reducedMotion) map.jumpTo(target)');
     // Aucune rotation automatique continue.
     expect(tool).not.toContain('rotateTo');
     expect(tool).not.toMatch(/setInterval|requestAnimationFrame/);
@@ -337,7 +340,9 @@ describe('estimateur 3D RÉALISTE (pro) — Three.js isolé, parallèle, sans to
   it('prefers-reduced-motion : bascule 3D instantanée, aucune animation/rendu auto', () => {
     const tool = read(toolPro);
     expect(tool).toContain('opts.reducedMotion');
-    expect(tool).toContain('map.jumpTo');
+    // ENF43 — bascule instantanée déléguée à `moveCamera` (roofToolShared).
+    expect(tool).toContain('moveCamera(map, opts.reducedMotion');
+    expect(read('../src/scripts/roofToolShared.ts')).toContain('if (reducedMotion) map.jumpTo(target)');
     // Pas de boucle de rendu continue ni de rotation automatique.
     expect(tool).not.toContain('rotateTo');
     expect(tool).not.toMatch(/setInterval|requestAnimationFrame/);

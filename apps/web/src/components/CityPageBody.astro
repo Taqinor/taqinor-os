@@ -30,7 +30,7 @@ interface Props {
   /** Résultat de `cityPageBase()` (lib/cityPageData.ts) : listes de chantiers + prose de la ville. */
   city: ReturnType<typeof cityPageBase>;
 }
-const { c, rtl = false, L, cardAlt, t, breadcrumbItems, heroPhoto, showYieldNote, city } = Astro.props;
+const { c, rtl = false, L, cardAlt, t, breadcrumbItems, heroPhoto, showYieldNote, city } = Astro.props as Props;
 const {
   heroLead, sunshineContext, roiNuance, delegataireNote, inCity, nearby, closest, closer,
   pillarStudy, pillarMeasure, pillarCompliance,

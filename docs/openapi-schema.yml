@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4911, operations: 7701, components: 3616}
+counts: {paths: 4930, operations: 7730, components: 3632}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -749,6 +749,8 @@ operations:
 - post /api/django/core/export-reversibilite/ -> django_core_export_reversibilite_create
 - get /api/django/core/export-reversibilite/historique/ -> django_core_export_reversibilite_historique_list
 - get /api/django/core/export-reversibilite/telecharger/{token}/ -> django_core_export_reversibilite_telecharger_retrieve
+- get /api/django/core/fiabilite/reglages/ -> django_core_fiabilite_reglages_retrieve
+- patch /api/django/core/fiabilite/reglages/ -> django_core_fiabilite_reglages_partial_update
 - get /api/django/core/formulaire-champs/ -> django_core_formulaire_champs_list
 - post /api/django/core/formulaire-champs/ -> django_core_formulaire_champs_create
 - delete /api/django/core/formulaire-champs/{id}/ -> django_core_formulaire_champs_destroy
@@ -2970,7 +2972,19 @@ operations:
 - get /api/django/sav/worksheet-modeles/{id}/ -> django_sav_worksheet_modeles_retrieve
 - patch /api/django/sav/worksheet-modeles/{id}/ -> django_sav_worksheet_modeles_partial_update
 - put /api/django/sav/worksheet-modeles/{id}/ -> django_sav_worksheet_modeles_update
+- get /api/django/semantic/glossaire/ -> django_semantic_glossaire_retrieve
+- get /api/django/semantic/metriques/ -> django_semantic_metriques_list
+- post /api/django/semantic/metriques/ -> django_semantic_metriques_create
+- get /api/django/semantic/metriques/export/ -> django_semantic_metriques_export_retrieve
+- post /api/django/semantic/metriques/import/ -> django_semantic_metriques_import_create
+- get /api/django/semantic/metriques/pour-agent/ -> django_semantic_metriques_pour_agent_retrieve
+- get /api/django/semantic/metriques/{cle}/expliquer/ -> django_semantic_metriques_expliquer_retrieve
 - get /api/django/semantic/metriques/{cle}/lignage/ -> django_semantic_metriques_lignage_retrieve
+- get /api/django/semantic/metriques/{cle}/valeur/ -> django_semantic_metriques_valeur_retrieve
+- delete /api/django/semantic/metriques/{id}/ -> django_semantic_metriques_destroy
+- get /api/django/semantic/metriques/{id}/ -> django_semantic_metriques_retrieve
+- patch /api/django/semantic/metriques/{id}/ -> django_semantic_metriques_partial_update
+- put /api/django/semantic/metriques/{id}/ -> django_semantic_metriques_update
 - get /api/django/semantic/metriques/{id}/versions/ -> django_semantic_metriques_versions_retrieve
 - get /api/django/statuspage/historique-statut/ -> django_statuspage_historique_statut_list
 - get /api/django/statuspage/historique-statut/{id}/prefill-incident/ -> django_statuspage_historique_statut_prefill_incident_retrieve
@@ -4640,6 +4654,8 @@ operations:
 - post /api/v1/core/export-reversibilite/ -> v1_core_export_reversibilite_create
 - get /api/v1/core/export-reversibilite/historique/ -> v1_core_export_reversibilite_historique_list
 - get /api/v1/core/export-reversibilite/telecharger/{token}/ -> v1_core_export_reversibilite_telecharger_retrieve
+- get /api/v1/core/fiabilite/reglages/ -> v1_core_fiabilite_reglages_retrieve
+- patch /api/v1/core/fiabilite/reglages/ -> v1_core_fiabilite_reglages_partial_update
 - get /api/v1/core/formulaire-champs/ -> v1_core_formulaire_champs_list
 - post /api/v1/core/formulaire-champs/ -> v1_core_formulaire_champs_create
 - delete /api/v1/core/formulaire-champs/{id}/ -> v1_core_formulaire_champs_destroy
@@ -6826,7 +6842,19 @@ operations:
 - get /api/v1/sav/worksheet-modeles/{id}/ -> v1_sav_worksheet_modeles_retrieve
 - patch /api/v1/sav/worksheet-modeles/{id}/ -> v1_sav_worksheet_modeles_partial_update
 - put /api/v1/sav/worksheet-modeles/{id}/ -> v1_sav_worksheet_modeles_update
+- get /api/v1/semantic/glossaire/ -> v1_semantic_glossaire_retrieve
+- get /api/v1/semantic/metriques/ -> v1_semantic_metriques_list
+- post /api/v1/semantic/metriques/ -> v1_semantic_metriques_create
+- get /api/v1/semantic/metriques/export/ -> v1_semantic_metriques_export_retrieve
+- post /api/v1/semantic/metriques/import/ -> v1_semantic_metriques_import_create
+- get /api/v1/semantic/metriques/pour-agent/ -> v1_semantic_metriques_pour_agent_retrieve
+- get /api/v1/semantic/metriques/{cle}/expliquer/ -> v1_semantic_metriques_expliquer_retrieve
 - get /api/v1/semantic/metriques/{cle}/lignage/ -> v1_semantic_metriques_lignage_retrieve
+- get /api/v1/semantic/metriques/{cle}/valeur/ -> v1_semantic_metriques_valeur_retrieve
+- delete /api/v1/semantic/metriques/{id}/ -> v1_semantic_metriques_destroy
+- get /api/v1/semantic/metriques/{id}/ -> v1_semantic_metriques_retrieve
+- patch /api/v1/semantic/metriques/{id}/ -> v1_semantic_metriques_partial_update
+- put /api/v1/semantic/metriques/{id}/ -> v1_semantic_metriques_update
 - get /api/v1/semantic/metriques/{id}/versions/ -> v1_semantic_metriques_versions_retrieve
 - get /api/v1/statuspage/historique-statut/ -> v1_statuspage_historique_statut_list
 - get /api/v1/statuspage/historique-statut/{id}/prefill-incident/ -> v1_statuspage_historique_statut_prefill_incident_retrieve
@@ -7111,6 +7139,7 @@ operations:
 - post /api/v1/stock/mouvements/ -> v1_stock_mouvements_create
 - get /api/v1/stock/mouvements/agregation/ -> v1_stock_mouvements_agregation_retrieve
 - post /api/v1/stock/mouvements/export-xlsx/ -> v1_stock_mouvements_export_xlsx_create
+- get /api/v1/stock/mouvements/telecharger-export/{token}/ -> v1_stock_mouvements_telecharger_export_retrieve
 - get /api/v1/stock/mouvements/{id}/ -> v1_stock_mouvements_retrieve
 - get /api/v1/stock/nomenclatures-code-barres/ -> v1_stock_nomenclatures_code_barres_list
 - post /api/v1/stock/nomenclatures-code-barres/ -> v1_stock_nomenclatures_code_barres_create
@@ -8312,6 +8341,9 @@ query_params:
   get /api/django/sav/tickets/{id}/similaires/: limit
   get /api/django/sav/warranty-claims/: equipement ordering page page_size search statut ticket
   get /api/django/sav/worksheet-modeles/: ordering page page_size search
+  get /api/django/semantic/metriques/: ordering page page_size search
+  get /api/django/semantic/metriques/{cle}/expliquer/: cellule filters limite
+  get /api/django/semantic/metriques/{cle}/valeur/: filters group_by period
   get /api/django/statuspage/historique-statut/: ordering search
   get /api/django/statuspage/public/incidents/: ordering page page_size search
   get /api/django/stock/accords-rfa-fournisseur/: fournisseur ordering page page_size search statut
@@ -9104,6 +9136,9 @@ query_params:
   get /api/v1/sav/tickets/{id}/similaires/: limit
   get /api/v1/sav/warranty-claims/: equipement ordering page page_size search statut ticket
   get /api/v1/sav/worksheet-modeles/: ordering page page_size search
+  get /api/v1/semantic/metriques/: ordering page page_size search
+  get /api/v1/semantic/metriques/{cle}/expliquer/: cellule filters limite
+  get /api/v1/semantic/metriques/{cle}/valeur/: filters group_by period
   get /api/v1/statuspage/historique-statut/: ordering search
   get /api/v1/statuspage/public/incidents/: ordering page page_size search
   get /api/v1/stock/accords-rfa-fournisseur/: fournisseur ordering page page_size search statut
@@ -10704,6 +10739,8 @@ components:
 - GenrePhotoSiteEnum
 - GeoGeoPointsReponse
 - GeofenceAlert
+- GlossaireEntree
+- GlossaireReponse
 - GpsConsentRecord
 - GpsConsentRecordRequest
 - GpsConsentementEnum
@@ -10732,6 +10769,7 @@ components:
 - ImportMappingEnregistre
 - ImportMappingLigne
 - ImportMappingRequeteRequest
+- ImportMetriquesRequest
 - ImporterFeriesRapport
 - ImporterFeriesRequestRequest
 - ImporterLignesCsvRequeteRequest
@@ -10969,9 +11007,17 @@ components:
 - MethodeEnum
 - MethodeReservationStockEnum
 - MetierEnum
+- MetricDefinition
+- MetricDefinitionRequest
 - MetriqueCommercialeEnum
+- MetriqueExpliquerReponse
 - MetriqueLignageReponse
+- MetriquePourAgent
+- MetriqueValeurReponse
 - MetriqueVersionsReponse
+- MetriquesExportReponse
+- MetriquesImportReponse
+- MetriquesPourAgentReponse
 - MiseEnServiceRequeteRequest
 - MobileHomeRouteReponse
 - MobileHomeRouteRequeteRequest
@@ -11323,6 +11369,7 @@ components:
 - PaginatedMessageAccueilList
 - PaginatedMessageTemplateList
 - PaginatedMetaConnectionList
+- PaginatedMetricDefinitionList
 - PaginatedModeleBonCommandeFournisseurList
 - PaginatedModeleDocumentList
 - PaginatedMonitoringConfigList
@@ -11707,6 +11754,7 @@ components:
 - PatchedMessageTemplateRequest
 - PatchedMesuresRequest
 - PatchedMetaConnectionRequest
+- PatchedMetricDefinitionRequest
 - PatchedModeleBonCommandeFournisseurRequest
 - PatchedModeleDocumentRequest
 - PatchedMonitoringConfigRequest
@@ -11781,6 +11829,7 @@ components:
 - PatchedRegleRoutageEcritureRequest
 - PatchedRegularisation8221Request
 - PatchedRegulatoryDossierRequest
+- PatchedReliabilitySettingsRequest
 - PatchedRemedeDefaillanceRequest
 - PatchedRemiseEncaissementRequest
 - PatchedRendezVousTransporteurRequest
@@ -12254,6 +12303,7 @@ components:
 - ReleveImportCommitResponse
 - ReleveImportDryRunRequestRequest
 - ReleveImportDryRunResponse
+- ReliabilitySettings
 - RemedeDefaillance
 - RemedeDefaillanceRequest
 - RemiseEncaissement
@@ -12774,6 +12824,7 @@ components:
 - UniteAjouterLigneCorpsRequest
 - UniteControlerScanCorpsRequest
 - UniteDeplacerCorpsRequest
+- UniteEnum
 - UniteImportAsnCorpsRequest
 - UniteLogistique
 - UniteLogistiqueLigne

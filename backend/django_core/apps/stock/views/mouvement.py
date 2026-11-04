@@ -1,4 +1,4 @@
-from drf_spectacular.utils import extend_schema, extend_schema_view
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework.parsers import JSONParser
 from rest_framework import filters, status
 from rest_framework.decorators import action
@@ -139,7 +139,8 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
             status=status.HTTP_202_ACCEPTED)
 
     # headless: lien de notification d'export (tasks.py), ouvert en chargement complet (cookie)
-    @extend_schema(request=None, responses={XLSX: BINARY, 404: None})
+    @extend_schema(request=None, responses={XLSX: BINARY, 404: None},
+                   parameters=[OpenApiParameter('token', str, OpenApiParameter.PATH)])
     @action(detail=False, methods=['get'], permission_classes=[IsAnyRole],
             url_path=r'telecharger-export/(?P<token>[^/.]+)')
     def telecharger_export(self, request, token=None):
