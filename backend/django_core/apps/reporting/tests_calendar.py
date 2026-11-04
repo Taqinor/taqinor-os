@@ -119,3 +119,50 @@ class TestCalendar(TestCase):
         self.assertEqual(iv.rdv_reschedule_count, 1)
         self.assertEqual(InterventionActivity.objects.filter(
             intervention=iv, body__startswith='RDV reporté').count(), 1)
+
+    def _portee(self):
+        """ACHT136/137 — t1, t2 Techniciens (portée équipe), un admin ; i1 (t1),
+        i2 (t2) sur un chantier C2 hors portée de t1, pose dans la fenêtre."""
+        from apps.installations.models import Intervention
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import (
+            CANONICAL_SYSTEM_ROLES, TECHNICIEN_PERMISSIONS)
+        role_tech = Role.objects.create(
+            company=self.company, nom='Technicien',
+            permissions=list(TECHNICIEN_PERMISSIONS))
+        role_admin = Role.objects.create(
+            company=self.company, nom='Administrateur',
+            permissions=list(dict(CANONICAL_SYSTEM_ROLES)['Administrateur']))
+        p = {nom: User.objects.create_user(
+            username=f'{nom}-cal', password='x', company=self.company, role=role)
+            for nom, role in (('t1', role_tech), ('t2', role_tech), ('admin', role_admin))}
+        jour = date.today() + timedelta(days=2)
+        p['c2'] = Installation.objects.create(
+            company=self.company, reference='CH-C2', client=self.client_obj,
+            technicien_responsable=p['t2'], created_by=p['admin'], date_pose_prevue=jour)
+        for n, tech in (('i1', p['t1']), ('i2', p['t2'])):
+            p[n] = Intervention.objects.create(
+                company=self.company, installation=p['c2'],
+                type_intervention='pose', technicien=tech, date_prevue=jour)
+        return p
+
+    def _api_de(self, user):
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+        return api
+
+    def test_technicien_borne_a_sa_portee(self):
+        """ACHT136 (C-ACHT-VER4-031) — l'agenda d'un Technicien a la portée de
+        ses listes : i1 seule, aucune pose de C2 ; l'admin voit tout."""
+        p = self._portee()
+
+        def vus(user):
+            r = self._api_de(user).get('/api/django/reporting/calendar/')
+            self.assertEqual(r.status_code, 200, r.data)
+            return {e['id'] for e in r.data['events'] if e['type'] in ('pose', 'intervention')}
+        self.assertEqual(vus(p['t1']), {f"intervention-{p['i1'].pk}"})
+        self.assertEqual(vus(p['admin']), {
+            f"intervention-{p['i1'].pk}", f"intervention-{p['i2'].pk}", f"pose-{p['c2'].pk}"})
+        autre = User.objects.create_user(
+            username='autre-cal', password='x', role_legacy='responsable', company=self.other)
+        self.assertEqual(vus(autre), set())

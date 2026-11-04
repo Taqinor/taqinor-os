@@ -169,9 +169,11 @@ def calendar_events(request):
     events = []
 
     from apps.installations.models import Installation, Intervention
+    # ACHT136 — même portée que les listes (D-ACHT-VER4-1).
+    from apps.installations.selectors import scoper_chantiers, scoper_interventions
 
     # ── Poses prévues + mises en service (chantiers) ──────────────────────
-    inst_qs = Installation.objects.filter(**co).select_related(
+    inst_qs = scoper_chantiers(Installation.objects.filter(**co), request.user).select_related(
         'technicien_responsable', 'client')
     if want('pose'):
         qs = inst_qs.filter(date_pose_prevue__gte=start,
@@ -208,7 +210,7 @@ def calendar_events(request):
 
     # ── Interventions terrain ─────────────────────────────────────────────
     if want('intervention'):
-        qs = (Intervention.objects.filter(**co)
+        qs = (scoper_interventions(Intervention.objects.filter(**co), request.user)
               .select_related('technicien')
               .filter(date_prevue__gte=start, date_prevue__lte=end))
         if assignee_id:
