@@ -626,3 +626,4 @@ Contre-visite de clôture n° 2 du groupe ACAL (dossier `docs/audits/2026-11-01-
 - 2026-11-03 — ADVS44 — cochée (API seulement) : 404 « Lead inconnu. », 5ccfff7f7.
 - 2026-11-03 — ADVS26 — cochée : rejeu en direct PASS (docs/audits/acceptation/, enregistrements du 03/11).
 - 2026-11-04 — ACAL373 cochée : PA2.3 PASS (enregistrement ACAL 2026-11-03-6f3b3cb49) + dry-run fondateur d'ACAL42 joué en lecture seule sur la prod (e62ca97aa5) : 0 devis envoyé lié à un calepinage, 0 écart d'empreinte, consigné dans le même enregistrement.
+- 2026-11-04 — ACAL373 (NON cochée) — la preuve écran PA2.3 est consignée PASS (`docs/audits/acceptation/ACAL/2026-11-03-6f3b3cb49.md` : agricole, multi-villa, résidentiel) ; reste SEUL dû le dry-run fondateur d'ACAL42, orchestrateur en LECTURE SEULE sur la prod (devis ENVOYÉS liés dont `Calepinage.layout_hash != Devis.layout_hash`, références et nombre, aucune réécriture) — non jouable depuis une lane.
