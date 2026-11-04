@@ -63,4 +63,9 @@ def to_company_tz(dt, company):
 
     if dj_timezone.is_naive(dt):
         dt = dj_timezone.make_aware(dt, ZoneInfo('UTC'))
-    return dt.astimezone(tz)
+    try:
+        return dt.astimezone(tz)
+    except OverflowError:
+        # api-fuzz-full 41773314544 : ``0001-01-01T00:00:00Z`` (date conforme) n'a
+        # pas d'équivalent local : l'instant reste en UTC, la liste ne tombe pas.
+        return dt
