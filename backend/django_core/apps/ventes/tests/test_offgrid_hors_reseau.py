@@ -157,6 +157,33 @@ class TestClassificationHorsReseau(SimpleTestCase):
         self.assertEqual(classer_produit('Onduleur réseau Huawei 5kW'),
                          'onduleur_reseau')
 
+    def test_port_batterie_offgrid_lu(self):
+        """AMOT121 (C-AMOT-VER4-011) — onduleur hors réseau (port 3 kW) ×1 + 2
+        packs de 5 kW : au niveau 12 le port est lu comme celui d'un hybride
+        de même fiche (3,0 partout) ; niveau 11 : None / 10,0 d'hier.
+        Test-du-test : ôter ``onduleur_offgrid`` des rôles lus ⇒ échec."""
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.ventes.horaire import batterie_lignes as BL
+        port = {'bat_max_decharge_kw': 3, 'bat_max_charge_kw': 3}
+        pack = {'max_decharge_kw': 5, 'max_charge_kw': 5}
+
+        def devis(nom_onduleur, niveau):
+            lignes = [SimpleNamespace(produit='ond', designation=nom_onduleur, quantite=1),
+                      SimpleNamespace(produit='bat', designation='Batterie lithium 5 kWh', quantite=2)]
+            return SimpleNamespace(regles_calcul=niveau, lignes=SimpleNamespace(all=lambda: lignes))
+        with mock.patch('apps.stock.selectors.specs_for_produit',
+                        side_effect=lambda p: port if p == 'ond' else pack):
+            off12 = BL.puissance_batterie_du_devis(devis('Onduleur off-grid Deye 6kW', 12))
+            hyb12 = BL.puissance_batterie_du_devis(devis('Onduleur hybride Deye 6kW', 12))
+            off11 = BL.puissance_batterie_du_devis(devis('Onduleur off-grid Deye 6kW', 11))
+        for cle in ('ond_decharge_kw', 'decharge_kw', 'charge_kw'):
+            self.assertEqual(off12[cle], 3.0, cle)
+            self.assertEqual(off12[cle], hyb12[cle], cle)
+        self.assertIsNone(off11['ond_decharge_kw'])
+        self.assertEqual(off11['charge_kw'], 10.0)
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 2. LE DÉCOUPAGE EN OPTIONS DU MOTEUR PDF
