@@ -51,7 +51,7 @@ etape('PA5.retour_installe', ['AARG46'], async ({ page }) => {
 sortie(Installation.objects.get(devis_id=${d.id}).id)`)
   const etat = () => py(`from apps.installations.models import Installation
 from apps.installations.services import chantiers_a_facturer
-from apps.gestion_projet.models import JalonProjet
+from apps.installations.models_projet import JalonProjet
 from apps.portail.models import JalonChantierPortail
 from authentication.models import Company
 co = Company.objects.get(pk=1)
@@ -81,11 +81,12 @@ etape('P.factures_sans_carte', ['AARG10'], async ({ page }) => {
   const appels = []
   page.on('request', (q) => { if (q.url().includes('/core/paiements-en-ligne')) appels.push(q.url()) })
   await page.goto('/ventes/factures')
-  await page.getByPlaceholder(/Rechercher/).first().fill(f.reference, { timeout: 60_000 })
-  const ligne = page.locator('tr', { hasText: f.reference }).first()
+  await page.getByPlaceholder('Référence, client').fill(f.reference)
+  const ligne = page.locator(`#facture-row-${f.id}`).first()
   await expect(ligne).toBeVisible({ timeout: 60_000 })
-  await ligne.getByRole('button', { name: /actions|plus|menu|⋯|…/i }).first().click()
-  await expect(page.getByRole('menuitem', { name: /Payer en ligne/ }).or(page.getByRole('button', { name: /Payer en ligne/ })).first(), '« Payer en ligne » reste').toBeVisible({ timeout: 30_000 })
+  await expect(ligne.getByRole('button', { name: 'Payer en ligne' }), '« Payer en ligne » reste').toBeVisible({ timeout: 30_000 })
+  await ligne.getByTitle("Plus d'actions").click()
+  await expect(page.getByTestId('annuler-facture'), 'le menu de la ligne est ouvert').toBeVisible({ timeout: 30_000 })
   await expect(page.getByText('Demander un paiement carte'), 'entrée retirée').toHaveCount(0)
   expect(appels, 'aucun appel paiements-en-ligne').toEqual([])
 })
@@ -143,6 +144,9 @@ etape('PA4.03.reliquat_revision', ['AARG29'], async ({ page }) => {
   const bc = await lireJson(await r.post(`${API}/ventes/devis/${d.id}/convertir-bc/`, { ...T, data: {} }), 'BC')
   await lireJson(await r.post(`${API}/ventes/bons-commande/${bc.id}/confirmer/`, { ...T, data: {} }), 'confirmer')
   const pan = d.lignes.find((l) => l.designation === 'Panneau AARG29')
+  await py(`from apps.stock.models import Produit
+Produit.objects.filter(pk=${pan.produit}).update(quantite_stock=100)
+sortie(1)`)
   await lireJson(await r.post(`${API}/ventes/bons-commande/${bc.id}/livrer-partiel/`, { ...T, data: { lignes: [{ ligne_devis: pan.id, quantite: '6' }] } }), 'livraison partielle')
   // V2 réelle (route de révision), 12 panneaux, puis le BC rattaché à la révision comme à sa conversion.
   const v2 = await lireJson(await r.post(`${API}/ventes/devis/${d.id}/reviser/`, { ...T, data: {} }), 'révision V2')
@@ -168,12 +172,13 @@ sortie(1)`)
   const p = await lireJson(await r.post(`${API}/ventes/factures/${f.id}/enregistrer-paiement/`, {
     ...T, data: { montant: '1176.00', mode: 'virement', date_paiement: jourIso() },
   }), 'paiement net')
-  expect(Number(p.montant ?? p.paiement?.montant), 'paiement 1 176').toBe(1176)
+  expect(p, 'paiement accepté').toBeTruthy()
   const e = await py(`from apps.ventes.models import Facture, Paiement
 f = Facture.objects.get(pk=${f.id})
 pa = Paiement.objects.filter(facture=f).order_by('-pk').first()
 av = list(Facture.objects.filter(company_id=1, devis_id=f.devis_id, type_facture='avoir').values('total_ht', 'total_tva', 'total_ttc'))
-sortie(dict(statut=f.statut, escompte=str(pa.escompte_montant or 0), avoirs=av))`)
+sortie(dict(statut=f.statut, montant=str(pa.montant), escompte=str(pa.escompte_montant or 0), avoirs=av))`)
+  expect(Number(e.montant), 'paiement 1 176').toBe(1176)
   expect(Number(e.escompte), 'paiement sans escompte_montant').toBe(0)
   expect(e.statut, 'facture payée').toBe('payee')
   expect(e.avoirs.length, 'un avoir').toBe(1)

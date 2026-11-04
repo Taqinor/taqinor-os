@@ -302,16 +302,19 @@ etape('PA1.05.visite_arrete_contact', ['ACVI37'], async ({ page }) => {
 
 etape('PA1.08.froid_arrete_filet', ['ACVI38'], async ({ page }) => {
   const m = marque()
+  // Un appel réel tracé (aucun parcage à 0 touche), puis le filet seul ouvert : le Given de la tâche.
+  const l = await nouveauLead(page.request, `ACVI38 ${m}`)
+  const t0 = aFaire(await touches(page.request, l.id))[0]
+  await lireJson(await page.request.post(`${API}/crm/relance-etapes/${t0.id}/fait/`, { ...T, data: { outcome: 'non_joint', note: 'rejeu ACVI38' } }), 'appel')
   const pose = await py(`from apps.crm.models import Lead
+from apps.crm.models_cadence import RelanceEtape
 from apps.crm.cadence_filet import assurer_prochaine_etape_apres_succes
 from apps.crm import stages
 a = U.objects.get(username='demo_admin')
-x = Lead.objects.create(company_id=1, nom='ACVI38 ${m}', owner=a, telephone=${JSON.stringify(telephoneMobileUnique())}, ville='Rabat', stage=stages.CONTACTED, first_contacted_at=timezone.now())
-from apps.crm.models_cadence import RelanceEtape
-RelanceEtape.objects.create(company_id=1, lead=x, cadence='contact', ordre=1, due_date=timezone.localdate(), canal='appel', libelle='Appel', statut='fait', fait_le=timezone.now())
-f = assurer_prochaine_etape_apres_succes(x, a)
-sortie(dict(id=x.id, cadence=f.cadence if f else None))`)
-  const l = { id: pose.id }
+RelanceEtape.objects.filter(lead_id=${l.id}, statut='a_faire').update(statut='annulee')
+Lead.objects.filter(pk=${l.id}).update(stage=stages.CONTACTED, first_contacted_at=timezone.now())
+f = assurer_prochaine_etape_apres_succes(Lead.objects.get(pk=${l.id}), a)
+sortie(dict(cadence=f.cadence if f else None))`)
   expect(pose.cadence, 'filet generique posé').toBe('generique')
   expect(aFaire(await touches(page.request, l.id), 'generique').length, 'filet à faire avant').toBeGreaterThan(0)
   await lireJson(await page.request.patch(`${API}/crm/leads/${l.id}/`, { ...T, data: { stage: 'COLD', parc_raison: 'budget' } }), 'Froid')
@@ -420,8 +423,14 @@ sortie([x['champ'] for x in champs_manquants_detail(Lead.objects.get(pk=${l.id})
   const r = await page.request.post(`${API}/crm/leads/${l.id}/devis-auto/`, { ...T, data: {} })
   expect(r.status(), 'devis-auto refusé').toBe(409)
   expect(await r.text(), 'motif').toContain('kWh déclaré incohérent')
+  // Le plan disait « témoin 450 kWh » : au barème, 450 kWh = 737 MAD, soit 2,46 × 300 MAD, au-delà du seuil fondateur de 2× ;
+  // la règle reste vraie à 450 et le témoin sous le seuil est 300 kWh (441 MAD, 1,47 ×).
   await lireJson(await page.request.patch(`${API}/crm/leads/${l.id}/`, { ...T, data: { conso_mensuelle_kwh: 450 } }), 'PATCH 450')
-  expect((await relu(page.request, l.id)).avertissements?.kwh_factures ?? null, 'témoin 450 kWh : plus d\'avertissement').toBeNull()
+  expect((await relu(page.request, l.id)).avertissements?.kwh_factures ?? null, '450 kWh : 2,46× reste contredit').not.toBeNull()
+  await lireJson(await page.request.patch(`${API}/crm/leads/${l.id}/`, { ...T, data: { conso_mensuelle_kwh: 300 } }), 'PATCH 300')
+  expect((await relu(page.request, l.id)).avertissements?.kwh_factures ?? null, 'témoin 300 kWh : plus d\'avertissement').toBeNull()
+  const pret = await page.request.post(`${API}/crm/leads/${l.id}/devis-auto/`, { ...T, data: {} })
+  expect(await pret.text(), 'témoin : devis-auto ne refuse plus sur le kWh').not.toContain('kWh déclaré incohérent')
 })
 
 // ── Messages ────────────────────────────────────────────────────────────────────────────────
