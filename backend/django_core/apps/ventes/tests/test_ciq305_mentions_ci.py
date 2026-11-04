@@ -229,6 +229,28 @@ class TestTableMentions(SimpleTestCase):
         self.assertEqual(h["tarif"]["date"], "2026-10-03")
         self.assertNotIn("tarif", _par_cle(mentions_ci(_data(_etude("bt")))))
 
+    def test_releve_partiel_mention_estimation(self):
+        # ADEV110 (C-ADEV-VER-006) — un relevé partiel (ADEV77) est dit au
+        # client, trilingue et sourcé, AVANT la mention de visite.
+        etude = _etude("bt")
+        etude["sous_reserve_visite"] = {"valeur": True, "motif": None}
+        etude["hypotheses"] = [{"cle": "consommation", "valeur": 48000.0,
+                                "statut": "estimation",
+                                "source": "relevé partiel (3 mois)"}]
+        entrees = synthese_ci(_data(etude))["hypotheses"]
+        cles = [e["cle"] for e in entrees]
+        h = _par_cle(entrees)["consommation_estimee"]
+        self.assertIn("estimation sur 3 mois relevés", h["textes"]["fr"])
+        self.assertEqual(set(h["textes"]), {"fr", "en", "ar"})
+        self.assertTrue(all("3" in t for t in h["textes"].values()))
+        self.assertEqual(h["source"], "relevé partiel (3 mois)")
+        self.assertLess(cles.index("consommation_estimee"), cles.index("visite"))
+        # 12 mois relevés (aucune hypothèse d'estimation) : liste inchangée.
+        sans = _etude("bt")
+        sans["sous_reserve_visite"] = {"valeur": True, "motif": None}
+        self.assertEqual([e for e in entrees if e["cle"] != "consommation_estimee"],
+                         synthese_ci(_data(sans))["hypotheses"])
+
     def test_visite_si_sous_reserve(self):
         etude = _etude("bt")
         etude["sous_reserve_visite"] = {"valeur": True, "motif": None}

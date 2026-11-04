@@ -8,6 +8,7 @@
    d'un chargement périmé. */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { classifyFetchError } from './previewPdf'
+import { messageErreurBlob } from '../../utils/pdfBlob'
 
 export function usePdfPreview(fetchBlob, { enabled = true } = {}) {
   const [blob, setBlob] = useState(null)
@@ -44,9 +45,13 @@ export function usePdfPreview(fetchBlob, { enabled = true } = {}) {
       setBlob(b)
     } catch (err) {
       if (runIdRef.current !== runId) return
+      // ADEV112 — une réponse d'erreur en Blob : le `detail` servi est lu.
+      const repli = err?.message || 'Aperçu indisponible.'
+      const message = err?.response ? await messageErreurBlob(err, { fallback: repli }) : repli
+      if (runIdRef.current !== runId) return
       setBlob(null)
       setErrorKind(classifyFetchError(err))
-      setErrorMessage(err?.message || 'Aperçu indisponible.')
+      setErrorMessage(message)
     } finally {
       if (runIdRef.current === runId) setLoading(false)
     }
