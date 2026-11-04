@@ -20,7 +20,7 @@ const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.met
 const index = lireAstroAvecBlocs(fileURLToPath(new URL('../src/pages/index.astro', import.meta.url)));
 // ENF19 (lane apps/web) — la table des pictogrammes vit dans lib/solutionIcons.ts (partagée accueil + hub).
 const solutionIconsLib = read('../src/lib/solutionIcons.ts');
-const form = read('../src/components/DiagnosticForm.astro');
+const form = lireAstroAvecBlocs(fileURLToPath(new URL('../src/components/DiagnosticForm.astro', import.meta.url)));
 const faq = read('../src/components/Faq.astro');
 // W64/W65 — la bande fondateur et la bande de marques sont passées en
 // composants (FounderPortrait / BrandStrip + src/lib/brands.ts) ; les gardes

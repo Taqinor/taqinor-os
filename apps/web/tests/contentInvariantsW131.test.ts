@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
+import { lireAstroAvecBlocs } from './astroBlocsHelper';
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
 
@@ -70,7 +71,8 @@ describe('W131 — un seul canonical auto-référent par nouvelle page', () => {
 describe('W131 — données structurées des nouvelles pages', () => {
   it('chaque guide porte un JSON-LD Article', () => {
     for (const g of GUIDES) {
-      const src = read(`../src/pages/guides/${g}.astro`);
+      // ENF19 : le <script ld+json> vit dans blocs/GuideEntete.astro - source deroulee.
+      const src = lireAstroAvecBlocs(fileURLToPath(new URL(`../src/pages/guides/${g}.astro`, import.meta.url)));
       expect(src, g).toContain('application/ld+json');
       expect(src, g).toMatch(/['"]@type['"]:\s*['"]Article['"]/);
     }

@@ -16,8 +16,7 @@
  * rendu FR reste byte-identique (branche `fr` = strings actuels mot pour mot ;
  * `localizeNavHref('/garanties','fr') === '/garanties'`).
  */
-import { getLocaleFromPath } from '../i18n/utils';
-import { localizeNavHref } from '../i18n/pages';
+import { contexteLocale, type ChampsCarte } from '../lib/contexteLocale';
 import type { Locale } from '../i18n/config';
 import {
   DEYE_INVERTER_WARRANTY_YEARS,
@@ -31,8 +30,7 @@ interface Props {
 }
 const { seam = true } = Astro.props;
 
-const locale = getLocaleFromPath(Astro.url.pathname);
-const L = (href: string) => localizeNavHref(href, locale);
+const { locale, L } = contexteLocale(Astro.url.pathname);
 
 // Chiffres STRICTEMENT identiques au tableau de /garanties (source publiée) —
 // les valeurs (« 12 ans », « 87,4 % »…) ne sont JAMAIS traduites, seuls les
@@ -42,12 +40,9 @@ const L = (href: string) => localizeNavHref(href, locale);
 // « Deye Cloud » reste dans le corps rendu (et donc identique partout).
 const STR: Record<
   Locale,
-  {
-    eyebrow: string;
-    title: string;
+  ChampsCarte & {
     monitoringBefore: string;
     monitoringAfter: string;
-    cta: string;
     labels: string[];
   }
 > = {

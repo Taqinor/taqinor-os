@@ -2,6 +2,7 @@
 import Layout from '../layouts/Layout.astro';
 import V2Enhance from '../components/V2Enhance.astro';
 import { NAP, LEGAL_IDENTITY } from '../lib/nap';
+import DocumentOfficielMentions from '../components/blocs/DocumentOfficielMentions.astro';
 
 // Informations légales — dossier entreprise 2026. Pas d'adresse postale
 // publiée (décision propriétaire : mode zone de service uniquement).
@@ -36,17 +37,7 @@ const rows = [
     </section>
 
     <!-- Le document officiel, en pleine lumière -->
-    <div class="seam-lumiere" aria-hidden="true"></div>
-    <section class="bg-blanc-azur px-4 pb-16 pt-6 text-encre"
-      ><div class="mx-auto max-w-3xl">
-      <div class="v2-rise border-t-2 border-azur-900 bg-blanc">
-        {rows.map((r) => (
-          <div class="grid gap-1 border-b border-azur-900/15 px-5 py-4 sm:grid-cols-[14rem_1fr] sm:gap-4">
-            <span class="tech-label text-encre-faint">{r.label}</span>
-            <span class="text-sm font-semibold">{r.value}</span>
-          </div>
-        ))}
-      </div>
+    <DocumentOfficielMentions rows={rows} cadre="v2-rise border-t-2 border-azur-900 bg-blanc">
       <p class="mt-6 text-sm leading-relaxed text-encre-soft">
         Taqinor intervient en mode zone de service (interventions sur site uniquement,
         pas d'accueil du public) : Casablanca, Rabat, Marrakech, Tanger, Agadir —
@@ -56,7 +47,6 @@ const rows = [
         Pour toute question relative aux données personnelles, consultez la
         <a href="/politique-de-confidentialite/" class="font-semibold underline decoration-azur-600 decoration-2 underline-offset-4">politique de confidentialité</a>.
       </p>
-      </div>
-    </section>
+    </DocumentOfficielMentions>
   </div>
 </Layout>

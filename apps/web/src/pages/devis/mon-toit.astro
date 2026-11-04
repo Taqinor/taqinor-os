@@ -120,6 +120,7 @@ import DevisMonToitBlocF6B4 from '../../components/blocs/DevisMonToitBlocF6B4.as
 import DevisMonToitBlocC596 from '../../components/blocs/DevisMonToitBlocC596.astro';
 import DevisMonToitCaptureFin from '../../components/blocs/DevisMonToitCaptureFin.astro';
 import DevisMonToitPanels3d from '../../components/blocs/DevisMonToitPanels3d.astro';
+import AdresseCombobox from '../../components/blocs/AdresseCombobox.astro';
 ---
 
 <Layout
@@ -291,15 +292,7 @@ import DevisMonToitPanels3d from '../../components/blocs/DevisMonToitPanels3d.as
         <div id="mt-stage" class="cine-card mt-5 overflow-hidden">
           <form id="rp9-search" class="flex flex-col gap-3 border-b border-white/10 p-4 sm:flex-row">
             <label for="rp9-address" class="sr-only">Votre adresse</label>
-            <div class="relative flex-1">
-              <input id="rp9-address" name="address" type="text" autocomplete="off"
-                role="combobox" aria-autocomplete="list" aria-expanded="false"
-                aria-controls="rp9-suggestions" aria-haspopup="listbox"
-                placeholder="Adresse, quartier ou ville (ex. Casablanca, Maârif)" class={inputClass} />
-              <ul id="rp9-suggestions" role="listbox" aria-label="Suggestions d'adresses" hidden
-                class="absolute left-0 right-0 top-full z-20 mt-1 max-h-72 overflow-auto border border-white/15 bg-nuit-900 shadow-xl">
-              </ul>
-            </div>
+            <AdresseCombobox inputClass={inputClass} />
             <button type="submit"
               class="flex-none bg-brass-400 px-6 py-3 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">
               Localiser

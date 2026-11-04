@@ -5,8 +5,8 @@
  */
 import Layout from '../../layouts/Layout.astro';
 import { articleMeta } from '../../lib/pageCtx';
-import V2Enhance from '../../components/V2Enhance.astro';
-import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import GuideV2 from '../../components/blocs/GuideV2.astro';
+import GuideEntete from '../../components/blocs/GuideEntete.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
@@ -53,12 +53,9 @@ const jsonLd = {
   description="Les paliers de dimensionnement (5–10 kWh secours, 10–20 kWh autoconsommation du soir, 20 kWh+ quasi-autonomie), la règle du kWh utile, et l'économie marocaine : avec la loi 82-21 stocker vaut bien plus qu'exporter."
   ogSlug="guides"
 >
-  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
-  {/* W376 — reading progress bar (see global.css .reading-bar) */}
-  <div class="reading-bar" aria-hidden="true"></div>
+  <GuideEntete jsonLd={jsonLd} />
   <div class="v2">
-    <V2Enhance />
-    <Article33Ribbon />
+    <GuideV2 />
 
     <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Guides', href: '/guides/' }, { label: 'Quelle taille de batterie ?' }]} />
 

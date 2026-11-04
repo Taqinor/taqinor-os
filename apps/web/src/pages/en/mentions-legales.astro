@@ -7,6 +7,7 @@ import Layout from '../../layouts/Layout.astro';
 import { NAP } from '../../lib/nap';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
+import DocumentOfficielMentions from '../../components/blocs/DocumentOfficielMentions.astro';
 
 const privacyHref = localizeNavHref('/politique-de-confidentialite', getLocaleFromPath(Astro.url.pathname));
 
@@ -36,17 +37,7 @@ const rows = [
   </section>
 
   <!-- The official document, in full light -->
-  <div class="seam-lumiere" aria-hidden="true"></div>
-  <section class="bg-blanc-azur px-4 pb-16 pt-6 text-encre"
-    ><div class="mx-auto max-w-3xl">
-    <div class="border-t-2 border-azur-900 bg-blanc">
-      {rows.map((r) => (
-        <div class="grid gap-1 border-b border-azur-900/15 px-5 py-4 sm:grid-cols-[14rem_1fr] sm:gap-4">
-          <span class="tech-label text-encre-faint">{r.label}</span>
-          <span class="text-sm font-semibold">{r.value}</span>
-        </div>
-      ))}
-    </div>
+  <DocumentOfficielMentions rows={rows}>
     <p class="mt-6 text-sm leading-relaxed text-encre-soft">
       Taqinor operates in service-area mode (on-site work only, no public
       reception): Casablanca, Rabat, Marrakech, Tanger, Agadir — travel across
@@ -56,6 +47,5 @@ const rows = [
       For any question about personal data, see the
       <a href={privacyHref} class="font-semibold underline decoration-azur-600 decoration-2 underline-offset-4">privacy policy</a>.
     </p>
-    </div>
-  </section>
+  </DocumentOfficielMentions>
 </Layout>
