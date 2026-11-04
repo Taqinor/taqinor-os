@@ -34,7 +34,8 @@ const ALL: Array<[string, string]> = [
 
 describe('W67 — les 6 composants à chiffres ont 3 branches de locale', () => {
   it.each(ALL)('%s expose getLocaleFromPath + un objet STR fr/en/ar', (_name, src) => {
-    expect(src).toContain('getLocaleFromPath');
+    // ENF19 : la locale se déduit du chemin, directement ou via lib/contexteLocale (qui appelle getLocaleFromPath).
+    expect(src).toMatch(/getLocaleFromPath|contexteLocale\(Astro\.url\.pathname\)/);
     // L'objet de traduction typé Record<Locale, …> avec les trois branches.
     expect(src).toMatch(/Record<\s*Locale/);
     expect(src).toMatch(/\bfr:\s*\{/);

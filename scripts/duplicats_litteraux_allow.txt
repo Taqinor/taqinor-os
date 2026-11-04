@@ -16,7 +16,6 @@
 #     `--autoriser-croissance`, drapeau reserve au fondateur, visible en revue.
 02357e43ead3|apps/web/src/components/DiagnosticForm.astro,apps/web/src/components/DiagnosticFormEnriched.astro
 031a15dcab6a|apps/web/src/scripts/roof-tool-3d.ts,apps/web/src/scripts/roof-tool-pro.ts
-053ef256acae|apps/web/src/components/FounderPortrait.astro,apps/web/src/components/GarantiesTeaser.astro
 0746f2198898|apps/web/src/pages/ar/impact-taqinor.astro,apps/web/src/pages/ar/production-mesuree.astro
 086980b0d865|apps/web/src/pages/ar/professionnel.astro,apps/web/src/pages/professionnel.astro
 08c72c01ea54|apps/web/src/lib/estimatorBrainV7.ts,apps/web/src/lib/estimatorBrainV8.ts
@@ -116,7 +115,6 @@ a768423b2e51|apps/web/src/pages/ar/batteries-stockage.astro,apps/web/src/pages/b
 af8da5d3b297|apps/web/src/pages/ar/guides/index.astro,apps/web/src/pages/en/guides/index.astro
 afa00e8d3551|apps/web/src/pages/ar/index.astro,apps/web/src/pages/en/index.astro
 b3c5df680532|apps/web/src/pages/ar/pourquoi-taqinor.astro,apps/web/src/pages/en/pourquoi-taqinor.astro,apps/web/src/pages/pourquoi-taqinor.astro
-b555e22d2262|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/en/realisations/[slug].astro
 b62c37e4bc88|apps/web/src/pages/ar/production-mesuree.astro,apps/web/src/pages/en/production-mesuree.astro,apps/web/src/pages/production-mesuree.astro
 b6cab6094a86|apps/web/src/pages/ar/pompage-solaire.astro,apps/web/src/pages/en/pompage-solaire.astro,apps/web/src/pages/pompage-solaire.astro
 b7d71faf0d66|apps/web/src/pages/ar/batteries-stockage.astro,apps/web/src/pages/batteries-stockage.astro,apps/web/src/pages/en/batteries-stockage.astro

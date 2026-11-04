@@ -46,11 +46,7 @@ const segmentHref = r.segment === 'professionnel' ? '/professionnel' : '/réside
 const segmentLabel = r.segment === 'professionnel' ? 'مهنية' : 'سكنية';
 const ogSlug = r.segment === 'professionnel' ? 'professionnel' : 'residentiel';
 
-const hero = r.photos[0];
-const rest = r.photos.slice(1);
-const heroAlt = cs.alts[hero.name] ?? hero.alt;
-const heroLargest = Math.max(...hero.widths);
-const heroImg = new URL(`/photos/${hero.name}-${heroLargest}.webp`, Astro.site).href;
+const { hero, rest, heroAlt, heroImg } = heroRealisation(r.photos, cs.alts, Astro.site);
 
 const equipment = [
   { label: 'الألواح', value: r.panneaux },
@@ -86,6 +82,7 @@ const hasDiptych = phasedPhotos.length >= 2;
 const galleryPhotos = rest;
 import PhotoLightbox from '../../../components/PhotoLightbox.astro';
 import '../../../styles/realisations-hover-zoom.css';
+import { heroRealisation } from '../../../lib/heroRealisation';
 const t = {
   ref: 'المرجع',
   h1Kwc: `من التركيب الشمسي ${cityIntro}`,
