@@ -1,0 +1,82 @@
+{
+  "sha": "15e390f963ee8bf343d5822bbac44839bd93c1ec",
+  "date": "2026-11-04",
+  "groupe": "AANA",
+  "verdict": "PASS",
+  "couvre": [
+    "AANA74",
+    "AANA57",
+    "AANA58"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "S.sondes_ver",
+      "taches": [
+        "AANA74"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-AANA-S.sondes_ver.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P1.role_et_refus",
+      "taches": [
+        "AANA74"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-AANA-P1.role_et_refus.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P4.un_seul_taux",
+      "taches": [
+        "AANA57",
+        "AANA58",
+        "AANA74"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-AANA-P4.un_seul_taux.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}
