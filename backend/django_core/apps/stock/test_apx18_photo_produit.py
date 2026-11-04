@@ -183,7 +183,30 @@ class Apx18PhotoApiTests(TestCase):
 
         self.assertNotEqual(self.produit.photo_id, ancienne_id)
         self.assertFalse(Attachment.objects.filter(id=ancienne_id).exists())
-        suppr.assert_called_once_with('attachments/1/ancienne.png')
+        suppr.assert_called_once()
+        self.assertEqual(suppr.call_args.args, ('attachments/1/ancienne.png',))
+        # ADOC201 : la pièce remplacée libère sa clé (registre ADOC193).
+        (liberee,) = suppr.call_args.kwargs['liberee_par']
+        self.assertEqual(liberee.pk, ancienne_id)
+
+    def test_remplacement_efface_ancienne_cle(self):
+        """ADOC201 (C-ADOC-VER4-010) — sans `liberee_par`, le registre
+        ADOC193 voit encore l'ancienne `Attachment` détentrice de la clé A
+        et la CONSERVE (orpheline). Avec : `delete_object(A)` est appelé."""
+        from unittest.mock import MagicMock
+        self._poser(cle='attachments/1/cle-a.png')
+        client = MagicMock()
+        with patch('apps.records.storage.get_minio_client',
+                   return_value=client):
+            r, _ = self._poser(cle='attachments/1/cle-b.png')
+        self.assertEqual(r.status_code, 201, r.data)
+        cles = [c.kwargs.get('Key') for c in client.delete_object.call_args_list]
+        self.assertEqual(cles, ['attachments/1/cle-a.png'])
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.photo.file_key, 'attachments/1/cle-b.png')
+        self.assertEqual(Attachment.objects.filter(
+            object_id=self.produit.id,
+            content_type__model='produit').count(), 1)
 
     def test_delete_retire_la_photo_sans_toucher_au_produit(self):
         self._poser()
