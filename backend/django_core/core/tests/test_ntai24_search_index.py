@@ -42,8 +42,18 @@ class Ntai24RegistreTests(TestCase):
 
     def test_modeles_cles_declares(self):
         for label in ('crm.lead', 'crm.client', 'ventes.devis',
-                      'sav.ticket', 'contrats.contrat', 'kb.kbarticle'):
+                      'sav.ticket'):
             self.assertIn(label, search.registered_labels())
+
+    def test_apps_parquees_non_declarees(self):
+        # ERR-JPB-BRUIT-DEGRADE-90-TRACES : contrats/kb sont parquees (aucun
+        # modele) ; les declarer ecrivait un traceback a chaque demarrage.
+        for label in ('contrats.contrat', 'kb.kbarticle'):
+            self.assertNotIn(label, search.registered_labels())
+
+    def test_connect_signals_sans_avertissement(self):
+        with self.assertNoLogs('core.ai.search', level='WARNING'):
+            search.connect_signals()
 
     def test_enregistrement_et_retrait(self):
         search.register_indexable('demo.exemple', titre=('nom',))

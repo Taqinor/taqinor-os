@@ -24,7 +24,7 @@ import os
 
 from django.contrib.auth import get_user_model
 from django.db import connection
-from django.test import TransactionTestCase
+from django.test import TestCase, TransactionTestCase
 
 from authentication.models import Company
 from core import rls
@@ -159,3 +159,12 @@ class RlsSealTests(WideTeardownTimeoutMixin, TransactionTestCase):
         # Les lignes de A existent toujours (vérifié sous le rôle owner).
         self.assertTrue(
             User.objects.filter(company=self.company_a).exists())
+
+
+class HasLocalCompanyFkSilencieuxTests(TestCase):
+    """ERR-JPB-BRUIT-DEGRADE-90-TRACES : FieldDoesNotExist = branche normale."""
+
+    def test_modele_sans_champ_company_sans_avertissement(self):
+        from django.contrib.contenttypes.models import ContentType
+        with self.assertNoLogs('core.rls', level='WARNING'):
+            self.assertFalse(rls._has_local_company_fk(ContentType))

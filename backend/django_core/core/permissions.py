@@ -192,7 +192,14 @@ class DisabledModuleMiddleware:
             return company
         try:
             from authentication.cookie_auth import CookieJWTAuthentication
-            result = CookieJWTAuthentication().authenticate(request)
+            from rest_framework.exceptions import AuthenticationFailed
+            from rest_framework_simplejwt.exceptions import TokenError
+            try:
+                result = CookieJWTAuthentication().authenticate(request)
+            except (AuthenticationFailed, TokenError):
+                # Jeton périmé/invalide = cas normal (ERR-JPB-BRUIT-DEGRADE-90-TRACES).
+                logger.debug("company : jeton invalide, aucune société")
+                return None
         except Exception:  # noqa: BLE001 — jeton invalide ⇒ pas de blocage (D-ENF22-BLE001)
             logger.warning("company : échec ignoré, comportement dégradé", exc_info=True)
             return None
