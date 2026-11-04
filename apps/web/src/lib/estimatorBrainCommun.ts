@@ -38,7 +38,7 @@ export interface EvalProductionSourced extends EvalProduction {
 
 // — Logique PARTAGÉE de l'évaluation toit plat (V3 / V4) et du départage (V3/V4/V6/V7) —
 import type { LngLat } from './roof';
-import { PANEL2_WATT, packConfig, specificYield, type ConfigFamily } from './estimatorBrainV2';
+import { PANEL2_WATT, aspectForAzimuth, packConfig, specificYield, type ConfigFamily } from './estimatorBrainV2';
 import type { AxisAzimuth, FlatConfig } from './estimatorBrainV3';
 
 const EVAL_EPS = 1e-6;
@@ -147,4 +147,28 @@ export function resolveYield(
     if (v != null && Number.isFinite(v) && v > 0) return { value: v, source: 'pvgis' };
   }
   return { value: borne(specificYield(latitudeDeg, tiltDeg, aspect)), source: 'estimate' };
+}
+
+/** Production annuelle (kWh) d'une config via la source PVGIS (repli table). */
+export function configProduction(
+  family: ConfigFamily,
+  tiltDeg: number,
+  azimuthDeg: number,
+  kwc: number,
+  yieldFn: YieldFn | undefined,
+  latitudeDeg: number,
+): { kwh: number; perPanelYield: number; source: YieldSource; aspect: number } {
+  const aspect = aspectForAzimuth(family, azimuthDeg);
+  if (family === 'eastwest') {
+    const e = resolveYield(yieldFn, latitudeDeg, tiltDeg, aspect - 90);
+    const w = resolveYield(yieldFn, latitudeDeg, tiltDeg, aspect + 90);
+    return {
+      kwh: (kwc / 2) * e.value + (kwc / 2) * w.value,
+      perPanelYield: (e.value + w.value) / 2,
+      source: e.source === 'pvgis' && w.source === 'pvgis' ? 'pvgis' : 'estimate',
+      aspect,
+    };
+  }
+  const s = resolveYield(yieldFn, latitudeDeg, tiltDeg, aspect);
+  return { kwh: kwc * s.value, perPanelYield: s.value, source: s.source, aspect };
 }

@@ -33,9 +33,9 @@
  */
 import { type LngLat } from './roof';
 import { PERIMETER_SETBACK_M } from './roofPro2';
-import { PANEL2_WATT, type ConfigFamily, type TariffGrid, annualSavingsMad, aspectForAzimuth, billToAnnualKwh, neededPanelsForTarget, optimalSouthTiltDeg, packConfig, roofDominantAzimuthDeg, specificYield, tariffForCity } from './estimatorBrainV2';
+import { PANEL2_WATT, type ConfigFamily, type TariffGrid, annualSavingsMad, billToAnnualKwh, neededPanelsForTarget, optimalSouthTiltDeg, packConfig, roofDominantAzimuthDeg, tariffForCity } from './estimatorBrainV2';
 import type { AxisAzimuth, AxisOrient, AxisMargin, FlatConfig } from './estimatorBrainV3';
-import { departageBase, packFlat, productionFields, resolveYield, type EvalProductionSourced, type YieldFn, type YieldSource } from './estimatorBrainCommun';
+import { configProduction, departageBase, packFlat, productionFields, type EvalProductionSourced, type YieldFn, type YieldSource } from './estimatorBrainCommun';
 
 export type { AxisAzimuth, AxisOrient, AxisMargin, FlatConfig } from './estimatorBrainV3';
 export { PANEL2_WATT };
@@ -114,29 +114,6 @@ export function pvgisCandidatePairs(
   return [...out.values()];
 }
 
-/** Production annuelle (kWh) d'une config via la source PVGIS (repli table). */
-function configProduction(
-  family: ConfigFamily,
-  tiltDeg: number,
-  azimuthDeg: number,
-  kwc: number,
-  yieldFn: YieldFn | undefined,
-  latitudeDeg: number,
-): { kwh: number; perPanelYield: number; source: YieldSource } {
-  const aspect = aspectForAzimuth(family, azimuthDeg);
-  if (family === 'eastwest') {
-    const e = resolveYield(yieldFn, latitudeDeg, tiltDeg, aspect - 90);
-    const w = resolveYield(yieldFn, latitudeDeg, tiltDeg, aspect + 90);
-    const perPanelYield = (e.value + w.value) / 2;
-    return {
-      kwh: (kwc / 2) * e.value + (kwc / 2) * w.value,
-      perPanelYield,
-      source: e.source === 'pvgis' && w.source === 'pvgis' ? 'pvgis' : 'estimate',
-    };
-  }
-  const s = resolveYield(yieldFn, latitudeDeg, tiltDeg, aspect);
-  return { kwh: kwc * s.value, perPanelYield: s.value, source: s.source };
-}
 
 export interface FlatEvalV4 extends FlatConfig, EvalProductionSourced {
   azimuthDeg: number;
