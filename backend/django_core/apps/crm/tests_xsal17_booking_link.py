@@ -121,7 +121,9 @@ class PublicBookingUrlReuseTests(TestCase):
     @override_settings(PUBLIC_BASE_URL='', PUBLIC_SITE_URL='https://taqinor.ma')
     def test_sans_base_ni_requete_la_phrase_est_omise(self):
         texte = self._file_en_masse()
-        self.assertIn('Bonjour.', texte)
+        # _omettre_phrases_incompletes (MRY13) rend le fragment restant, sans
+        # point : le gabarit ne se termine pas par un point.
+        self.assertTrue(texte.endswith('Bonjour'), texte)
         self.assertNotIn('Réservez', texte)
         self.assertNotIn('/rdv/', texte)
 
