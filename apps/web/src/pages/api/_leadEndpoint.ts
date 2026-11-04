@@ -108,7 +108,7 @@ export async function transfererLead(
     );
   }
   const capi = await fireCapi(recordCapi, env, fetch, { adsConsent });
-  if (!capi.sent && recordCapi.qualified && capi.reason !== 'consent-denied') {
+  if (!capi.sent && recordCapi.qualified && !capi.reason) {
     console.log('[capi] non envoyé (service absent ou injoignable)');
   }
 }

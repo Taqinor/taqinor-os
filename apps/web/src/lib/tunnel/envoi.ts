@@ -19,6 +19,7 @@
 
 import { WHATSAPP_LEADS } from '../nap';
 import { brancherAffiner } from '../../scripts/tunnel/affiner';
+import { readAdsConsent } from '../diagnosticFormShared';
 import { captureWhatsappText, whatsappLink } from '../whatsapp';
 import type { ContexteTunnel } from './contexte';
 
@@ -213,11 +214,14 @@ export function installerSoumission(ctx: ContexteTunnel, doc: Document): Section
     appeler('showInlineErrors', {});
 
     setSubmitPending(true);
+    // Le serveur n'ouvre le beacon Meta que sur un `granted` reçu ici (décision
+    // fondateur 04/11/2026). Ce champ ne part jamais au CRM (hors liste blanche).
+    const adsConsent = readAdsConsent();
     try {
       const res = await fetch('/api/capture-lead', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify(adsConsent ? { ...body, adsConsent } : body),
         signal: AbortSignal.timeout(SUBMIT_TIMEOUT_MS),
       });
       // WJ60/WJ63 — une réponse JSON malformée est une panne serveur.

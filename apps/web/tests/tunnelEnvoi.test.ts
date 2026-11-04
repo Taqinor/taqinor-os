@@ -93,6 +93,26 @@ describe.each(LOCALES)('RWEB17-M8 — envoi et sortie · %s', (locale) => {
     expect(appels).toContain('clear');
   });
 
+  it('le choix de la bannière part avec le lead ; sans réponse, aucun champ', async () => {
+    const envoyes: Record<string, unknown>[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (String(url).startsWith('/api/capture-lead')) envoyes.push(JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify({ ok: true, qualified: true }), { status: 200 });
+    }));
+    localStorage.removeItem('tq_consent');
+    monter(locale);
+    await envoyer();
+    expect(envoyes).toHaveLength(1);
+    expect(envoyes[0]).not.toHaveProperty('adsConsent');
+
+    localStorage.setItem('tq_consent', 'granted');
+    monter(locale);
+    await envoyer();
+    expect(envoyes).toHaveLength(2);
+    expect(envoyes[1].adsConsent).toBe('granted');
+    localStorage.removeItem('tq_consent');
+  });
+
   it('sous le seuil : message de seuil + lien WhatsApp, pas de succès', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ ok: true, qualified: false }), { status: 200 })));
     monter(locale);

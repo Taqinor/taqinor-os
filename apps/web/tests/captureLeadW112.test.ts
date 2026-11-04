@@ -161,10 +161,10 @@ describe('WJ110 — /api/capture-lead déclenche le Meta CAPI', () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  it('une soumission QUALIFIÉE déclenche fireCapi exactement une fois', async () => {
+  it('une soumission QUALIFIÉE et consentie déclenche fireCapi exactement une fois', async () => {
     const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }) as unknown as Response);
     vi.stubGlobal('fetch', fetchMock);
-    const { status, json } = await call(qualified);
+    const { status, json } = await call({ ...qualified, adsConsent: 'granted' });
     expect(status).toBe(200);
     expect(json.ok).toBe(true);
     const capiCalls = fetchMock.mock.calls.filter((c) => String(c[0]).includes('capi.example/events'));

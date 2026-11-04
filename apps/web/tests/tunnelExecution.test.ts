@@ -315,6 +315,9 @@ async function executer(locale: Locale, parcours: string): Promise<Record<string
   await pause(30); // laisse les balises (FileReader) arriver
   (ecrans[parcours] ||= {})[locale] = instantaneEcran(rec);
   const corps = { ...rec.lead[0] };
+  // Signal du beacon Meta, ajouté à l'envoi et absent du contrat CRM des instantanés.
+  expect(corps.adsConsent, `adsConsent (${locale}/${parcours})`).toBe(avant.local?.tq_consent);
+  delete corps.adsConsent;
   for (const [cle, forme] of Object.entries(JETONS)) {
     if (cle in corps) {
       expect(String(corps[cle]), `${cle} (${locale}/${parcours})`).toMatch(forme);

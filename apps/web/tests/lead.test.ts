@@ -549,7 +549,7 @@ describe('fireCapi — fire-and-forget', () => {
       return new Response('ok');
     }) as unknown as typeof fetch;
     const record = buildLeadRecord(makeLead(), band, new Date());
-    const r = await fireCapi(record, env, fetchFn);
+    const r = await fireCapi(record, env, fetchFn, { adsConsent: 'granted' });
     expect(r.sent).toBe(true);
     const payload = JSON.parse(sentBody);
     expect(payload.event).toBe('Lead');
@@ -564,7 +564,7 @@ describe('fireCapi — fire-and-forget', () => {
       return new Response('ok');
     }) as unknown as typeof fetch;
     const record = buildLeadRecord(makeLead(), band, new Date());
-    await fireCapi(record, env, fetchFn);
+    await fireCapi(record, env, fetchFn, { adsConsent: 'granted' });
     const payload = JSON.parse(sentBody);
     // PII en clair JAMAIS présente.
     expect(sentBody).not.toContain('+212612345678');
@@ -598,13 +598,13 @@ describe('fireCapi — fire-and-forget', () => {
       throw new Error('unreachable');
     }) as unknown as typeof fetch;
     const record = buildLeadRecord(makeLead(), band, new Date());
-    await expect(fireCapi(record, env, fetchFn)).resolves.toEqual({ sent: false });
+    await expect(fireCapi(record, env, fetchFn, { adsConsent: 'granted' })).resolves.toEqual({ sent: false });
   });
 
   it("n'envoie rien pour un lead non qualifié", async () => {
     const fetchFn = vi.fn() as unknown as typeof fetch;
     const record = buildLeadRecord(makeLead({ billRange: 'lt800' }), band, new Date());
-    const r = await fireCapi(record, env, fetchFn);
+    const r = await fireCapi(record, env, fetchFn, { adsConsent: 'granted' });
     expect(r.sent).toBe(false);
     expect(fetchFn).not.toHaveBeenCalled();
   });
@@ -619,7 +619,7 @@ describe('fireCapi — fire-and-forget', () => {
 
     // Sans e-mail ni eventId côté client : em absent, event_id dérivé et présent.
     const recordNoEmail = buildLeadRecord(makeLead(), band, new Date());
-    await fireCapi(recordNoEmail, env, fetchFn);
+    await fireCapi(recordNoEmail, env, fetchFn, { adsConsent: 'granted' });
     const payloadNoEmail = JSON.parse(sentBody);
     expect(payloadNoEmail).not.toHaveProperty('em');
     expect(typeof payloadNoEmail.event_id).toBe('string');
@@ -631,7 +631,7 @@ describe('fireCapi — fire-and-forget', () => {
       band,
       new Date(),
     );
-    await fireCapi(recordWithEmail, env, fetchFn);
+    await fireCapi(recordWithEmail, env, fetchFn, { adsConsent: 'granted' });
     const payloadWithEmail = JSON.parse(sentBody);
     expect(payloadWithEmail.em).toBe(await hashEmailForCapi('karim@example.com'));
     expect(payloadWithEmail.em).toMatch(/^[0-9a-f]{64}$/);
