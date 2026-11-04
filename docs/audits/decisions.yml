@@ -3626,3 +3626,15 @@ decisions:
     date: "2026-11-04"
     source: "Reda, question interactive, contre-visite vérifie AANA"
     taches: [AANA82]
+
+  - id: D-ASEC-VER4-1
+    question: "Appliquer la grille des rôles côté serveur fait perdre aux rôles Commercial et Commercial responsable (3 comptes actifs en prod) les exports stock (produits, mouvements), leurs rôles ne portant pas « Exporter » stock. Que faire ?"
+    options:
+      - cle: appliquer_grille
+        texte: "Le serveur suit la grille : ces rôles perdent l'export stock ; un admin coche « Exporter » dans Paramètres au besoin"
+      - cle: ajouter_code
+        texte: "Appliquer la grille mais ajouter d'abord stock_export aux rôles Commercial et Commercial responsable"
+    reponse: appliquer_grille
+    date: "2026-11-04"
+    source: "Reda, question interactive, contre-visite vérifie ASEC"
+    taches: [ASEC70]
