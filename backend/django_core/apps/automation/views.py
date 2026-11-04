@@ -291,7 +291,9 @@ class AutomationRuleViewSet(TenantMixin, viewsets.ModelViewSet):
         rule = self.get_object()
         company = request.user.company
         # ENF11 — corps validé par SON schéma publié (``0`` est un identifiant
-        # comme un autre : inconnu → 404, jamais « requis »).
+        # comme un autre : inconnu → 409, jamais « requis »). La règle existe,
+        # seule la cible du corps manque : refus d'état, pas un 404 qui dirait
+        # la règle introuvable.
         corps = SimulerSerializer(data=request.data)
         corps.is_valid(raise_exception=True)
         target_model = corps.validated_data['target_model'].strip()
@@ -307,7 +309,7 @@ class AutomationRuleViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response(
                 {'detail': f'Aucun enregistrement « {target_model} » '
                            f'd\'identifiant {target_id} dans cette société.'},
-                status=404)
+                status=409)
         contexte = request.data.get('context')
         effets = simuler_regle(
             rule, instance, company,

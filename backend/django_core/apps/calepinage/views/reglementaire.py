@@ -104,12 +104,14 @@ MESSAGE_SANS_DESIGNATION = (
 
 def _refus_designation(corps):
     """Le refus d'un dossier non désigné : 400 si le corps n'en désigne AUCUN
-    (entrée manquante), 404 s'il désigne un dossier/gabarit qui n'existe pas
-    (ou pas pour cette société) — jamais un 400 sur un identifiant bien formé."""
+    (entrée manquante), 409 s'il désigne un dossier/gabarit qui n'existe pas
+    (ou pas pour cette société) — jamais un 400 sur un identifiant bien formé,
+    ni un 404 : le calepinage du chemin existe, seule la ligne désignée par le
+    corps manque (refus d'état, ENF11 — api-fuzz-full 41825184761)."""
     designe = (corps.get('dossier') is not None
                or corps.get('gabarit') is not None)
     return Response({'dossier': [MESSAGE_SANS_DESIGNATION]},
-                    status=(status.HTTP_404_NOT_FOUND if designe
+                    status=(status.HTTP_409_CONFLICT if designe
                             else status.HTTP_400_BAD_REQUEST))
 
 

@@ -34,12 +34,14 @@ export default function TriProblemesBanner() {
   useEffect(() => {
     if (!isAuthenticated || !superuser || fetchedRef.current) return
     fetchedRef.current = true
+    const lire = (data) => {
+      const h = heuresDepuis(data?.dernier_tri_problemes)
+      if (h !== null && h > SEUIL_HEURES) setHeures(h)
+    }
     api.get('/core/health/ready/', { suppressErrorToast: true })
-      .then((res) => {
-        const h = heuresDepuis(res.data?.dernier_tri_problemes)
-        if (h !== null && h > SEUIL_HEURES) setHeures(h)
-      })
-      .catch(() => { /* silencieux — jamais bloquer l'ouverture de l'ERP */ })
+      .then((res) => lire(res.data))
+      // BPQ12 : beat arrêté ⇒ 503 « degraded », le corps garde la date du tri.
+      .catch((err) => lire(err?.response?.data))
   }, [isAuthenticated, superuser])
 
   if (!superuser || heures === null) return null

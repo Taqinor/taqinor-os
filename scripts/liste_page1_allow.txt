@@ -13,7 +13,6 @@
 frontend/src/features/adsengine/ExperimentsScreen.jsx::ArmDailySeries
 frontend/src/features/adsengine/ExperimentsScreen.jsx::ExperimentsScreen
 frontend/src/features/adsengine/FlightPlanScreen.jsx::FlightPlanScreen
-frontend/src/features/adsengine/RulesScreen.jsx::RulesScreen
 frontend/src/features/adsengine/VeilleEtiquetage.jsx::VeilleEtiquetage
 frontend/src/pages/sav/SavAlarmesPage.jsx::SavAlarmesPage
 frontend/src/pages/visites/PlanifierVisitePage.jsx::PlanifierVisitePage

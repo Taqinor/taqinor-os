@@ -1,4 +1,5 @@
 import datetime
+import re
 
 from django.db.models import Q
 from drf_spectacular.types import OpenApiTypes
@@ -23,6 +24,9 @@ from .serializers import (
 )
 
 READ_ACTIONS = ['list', 'retrieve']
+
+#: ENF11 — ``format: date`` du schéma (RFC 3339 full-date), rien d'autre.
+_DATE_ISO = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 
 #: Valeurs publiées ET acceptées du filtre ``?a_calibrer=``.
 _A_CALIBRER_VALEURS = ['1', 'true', 'True']
@@ -146,13 +150,21 @@ class OutillageViewSet(UsageGuardedDestroyMixin, TenantMixin,
         if not isinstance(request.data, dict):  # ENF11 — corps liste/null = 500
             return Response({'detail': 'Corps JSON objet attendu.'},
                             status=status.HTTP_400_BAD_REQUEST)
-        date_str = request.data.get('date_calibration')
-        try:
-            date_cal = (datetime.date.fromisoformat(date_str)
-                        if date_str else datetime.date.today())
-        except (ValueError, TypeError):
-            return Response({'date_calibration': 'Date invalide (YYYY-MM-DD).'},
-                            status=status.HTTP_400_BAD_REQUEST)
+        # ENF11 (api-fuzz-full 41825184761) — ``false``/``0``/``""`` étaient
+        # pris pour « absent » (aujourd'hui) : 200 sur un corps hors schéma.
+        # Seule l'ABSENCE de la clé vaut aujourd'hui ; sinon une date ISO.
+        if 'date_calibration' not in request.data:
+            date_cal = datetime.date.today()
+        else:
+            date_str = request.data['date_calibration']
+            try:
+                if not isinstance(date_str, str) or not _DATE_ISO.match(date_str):
+                    raise TypeError
+                date_cal = datetime.date.fromisoformat(date_str)
+            except (ValueError, TypeError):
+                return Response(
+                    {'date_calibration': 'Date invalide (YYYY-MM-DD).'},
+                    status=status.HTTP_400_BAD_REQUEST)
         # ACHT74 — une calibration ne se date ni dans le futur ni avant la
         # précédente (refus d'ÉTAT daté d'aujourd'hui / de l'outil : 409).
         if date_cal > datetime.date.today():

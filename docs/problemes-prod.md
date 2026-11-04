@@ -134,3 +134,27 @@ Une `ERR-PROD` cochée n'est pas « réglée » tant que la prod ne le prouve pa
   4. corrigés (cochés et absents depuis ≥ 7 jours après déploiement) ;
   5. régressés (`<ID>-2` ouverts cette semaine) ;
   6. en attente de déploiement.
+
+## Sonde externe hors serveur (BPQ12, D-JPB-7 = oui) — geste de Reda, ~5 minutes
+
+Seule mesure qui vit HORS du serveur : si la machine, Caddy ou Django tombe, rien sur le serveur ne
+peut alerter. `GET https://api.taqinor.ma/api/django/core/health/ready/` (public, sans jeton) répond :
+
+- `200 {"status": "ready", …}` : base joignable et Celery Beat vivant (ou heartbeat pas encore reçu) ;
+- `503 {"status": "not-ready", …}` : la base ne répond pas ;
+- `503 {"status": "degraded", …}` : Celery Beat arrêté (heartbeat périmé) — plus de relances, de tri
+  ni de sauvegardes planifiées.
+
+Création (tableau de bord Cloudflare, JAMAIS un jeton API Cloudflare dans le dépôt) :
+
+1. Cloudflare → zone `taqinor.ma` → **Traffic → Health Checks → Create** (gratuit sur l'offre Free ;
+   à défaut, un moniteur HTTP gratuit équivalent, ex. UptimeRobot).
+2. Adresse `api.taqinor.ma`, chemin `/api/django/core/health/ready/`, HTTPS, port 443, méthode GET,
+   code attendu `200`, intervalle 5 min (le minimum de l'offre), 2 échecs consécutifs avant alerte.
+3. **Notifications → Add → Health Check status notification** sur ce contrôle, destinataire l'e-mail
+   de Reda.
+4. Vérifier : l'onglet du contrôle passe « Healthy » ; arrêter `celery_beat` quelques minutes au-delà
+   du seuil de péremption doit faire passer le contrôle « Unhealthy » et envoyer l'e-mail.
+
+Rien côté serveur ni `.env` : seule la réponse 503 sur beat arrêté est dans le code
+(`core/views.py::health_ready`, `core/health.py::check_beat`).

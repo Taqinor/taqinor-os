@@ -138,7 +138,8 @@ class AccessReviewTests(TenantAPITestCase):
         r = self._admin().post(
             f'{self.BASE}{my_campaign.id}/attester/',
             {'item': foreign_item.id, 'decision': 'revoque'}, format='json')
-        self.assertEqual(r.status_code, 404)
+        # ENF11 : même refus qu'un item inconnu (409), rien sur l'autre société.
+        self.assertEqual(r.status_code, 409)
 
     def test_enf11_attester_corps_invalide_400_pas_500(self):
         """ENF11 — decision objet / item non entier ou hors bornes = 400."""
@@ -156,7 +157,7 @@ class AccessReviewTests(TenantAPITestCase):
         r = self._admin().post(
             f'{self.BASE}{c.id}/attester/',
             {'item': 999999, 'decision': 'maintenu'}, format='json')
-        self.assertEqual(r.status_code, 404)
+        self.assertEqual(r.status_code, 409)  # ENF11 : la campagne existe
 
     def test_enf17_item_fk_bornees_societe(self):
         """ENF17 — campagne / compte d'une autre société = id absent (400)."""
