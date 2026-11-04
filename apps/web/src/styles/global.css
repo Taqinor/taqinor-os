@@ -1312,3 +1312,10 @@ summary:focus-visible {
 .primary-cta-vt {
   view-transition-name: vt-primary-cta;
 }
+
+/* WAUD64 — liens fléchés soulignés (« Voir … → », « Le fondateur et sa méthode → ») : cible tactile
+   ≥ 44 px. La hauteur est prise AU-DESSUS du texte (padding-top), le soulignement (border-bottom)
+   ne bouge pas ; s'applique à toutes les pages et langues sans toucher leur balisage. */
+a.border-b-2.pb-0\.5:is(.inline-flex, .inline-block) {
+  padding-top: 1.25rem;
+}

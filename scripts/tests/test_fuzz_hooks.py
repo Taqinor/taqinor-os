@@ -291,6 +291,16 @@ class IdsCheminTests(unittest.TestCase):
             self.hooks.before_call(None, cas, {})
             self.assertEqual(cas.path_parameters['id'], 900 + rang)
 
+    def test_phase_stateful_jamais_substituee(self):
+        # api-fuzz-full 41825184761 : un id GÉNÉRÉ remplacé en phase stateful
+        # passait, pour Schemathesis, pour l'id venu du lien de création.
+        for rang in range(50):
+            cas = _cas(self.hooks, 'GET', '/api/django/ventes/devis/{id}/',
+                       params={'id': 10**6 + rang})
+            cas.meta.phase = types.SimpleNamespace(name='stateful')
+            self.hooks.before_call(None, cas, {})
+            self.assertEqual(cas.path_parameters['id'], 10**6 + rang)
+
     def test_id_reel_substitue_et_part_invalide_conservee(self):
         vals = self._valeurs('/api/django/ventes/devis/{id}/proposal/')
         reels = [v for v in vals if v in (11, 12, 13)]

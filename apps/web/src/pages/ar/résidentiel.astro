@@ -38,7 +38,7 @@ import ZelligeDivider from '../../components/ZelligeDivider.astro';
 import Faq from '../../components/Faq.astro';
 import ServiceWarrantyTable from '../../components/ServiceWarrantyTable.astro';
 import RelatedLinks from '../../components/RelatedLinks.astro';
-import { buildBrackets } from '../../lib/residentielBrackets';
+import { bornesInvestissement, buildBrackets } from '../../lib/residentielBrackets';
 import { formatMAD } from '../../lib/format';
 import { WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink } from '../../lib/whatsapp';
@@ -88,8 +88,8 @@ const brackets = buildBrackets(EXEMPLES_REELS, 'ar');
 
 // القاعدة ب14 (2026-07-04) — الحدود مُشتقّة من جدول brackets أعلاه (منشور
 // أصلاً) للإجابة القابلة للاستخراج (AEO)؛ لا رقم جديد.
-const investRangeLow = formatMAD(Math.min(...brackets.map((b) => b.investLow)));
-const investRangeHigh = formatMAD(Math.max(...brackets.map((b) => b.investHigh)));
+// WAUD68 — null ما دام سعر الـ kWc غير موثَّق المصدر (lib/prixConstants.ts، D-WAUD-5).
+const investRange = bornesInvestissement(brackets);
 ---
 
 <Layout
@@ -104,7 +104,7 @@ const investRangeHigh = formatMAD(Math.max(...brackets.map((b) => b.investHigh))
     <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'سكني' }]} />
 
     {/* ── 1 · HÉROS CINÉMATOGRAPHIQUE (~92svh) — الصورة هي النور ── */}
-    <section class="relative isolate flex min-h-[92svh] flex-col justify-end overflow-hidden text-white">
+    <section class="relative isolate flex min-h-[92svh] flex-col justify-start overflow-hidden text-white sm:justify-end">
       <div class="v2-hero-media absolute inset-0 -z-10">
         {/* عنصر LCP — لا v3-grade هنا أبداً */}
         <Picture name="crepuscule-penthouse" alt="" widths={[1600, 1024, 640]} ratio={4 / 3} sizes="100vw"
@@ -117,7 +117,7 @@ const investRangeHigh = formatMAD(Math.max(...brackets.map((b) => b.investHigh))
       <ProfessionnelDiv77FB />
 
       {/* المحتوى مُثبَّت أسفل — eyebrow مُخفَّض إلى lune (انضباط النحاس) */}
-      <div class="mx-auto w-full max-w-6xl px-4 pb-24 pt-32 sm:pb-32">
+      <div class="mx-auto w-full max-w-6xl px-4 pb-24 pt-16 sm:pb-32 sm:pt-32">
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">فيلات · شقق</p>
         <h1 class="display v2-page-title cine-in cine-in-1 mt-5 max-w-[18ch]">فيلا، فاتورتها، سطحها: ثلاث معطيات، تحديد مقاس واحد</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
@@ -158,9 +158,14 @@ const investRangeHigh = formatMAD(Math.max(...brackets.map((b) => b.investHigh))
       <p class="tech-label v2-kicker rule-brass text-lune"><span class="ms-2 font-display text-xs text-azur-200/80" aria-hidden="true">01</span>شفافية الأسعار</p>
       <h2 class="display v2-section-title mt-5 text-white">كم تكلّف الطاقة الشمسية لفيلا، وفي كم من الوقت تُسترجع كلفتها؟</h2>
       <p class="v2-lead mt-4 max-w-2xl font-bold text-white">
-        بالنسبة لفاتورة سكنية نموذجية (<span dir="ltr" style="unicode-bidi:isolate">1 000</span> إلى <span dir="ltr" style="unicode-bidi:isolate">10 000 درهم/شهرياً</span>)، تتكلّف التركيبة عادةً بين
-        <span dir="ltr" style="unicode-bidi:isolate">{investRangeLow}</span> و<span dir="ltr" style="unicode-bidi:isolate">{investRangeHigh}</span> وتُسترجع كلفتها، للجزء المُستهلَك
-        ذاتياً — بعدها، لا تكاد الكهرباء المُنتَجة تكلّف شيئاً طوال باقي سنوات ضمان الأداء الثلاثين.
+        {investRange ? (
+          <>بالنسبة لفاتورة سكنية نموذجية (<span dir="ltr" style="unicode-bidi:isolate">1 000</span> إلى <span dir="ltr" style="unicode-bidi:isolate">10 000 درهم/شهرياً</span>)، تتكلّف التركيبة عادةً بين
+          <span dir="ltr" style="unicode-bidi:isolate">{investRange.bas}</span> و<span dir="ltr" style="unicode-bidi:isolate">{investRange.haut}</span> وتُسترجع كلفتها، للجزء المُستهلَك
+          ذاتياً — بعدها، لا تكاد الكهرباء المُنتَجة تكلّف شيئاً طوال باقي سنوات ضمان الأداء الثلاثين.</>
+        ) : (
+          <>بالنسبة لفاتورة سكنية نموذجية (<span dir="ltr" style="unicode-bidi:isolate">1 000</span> إلى <span dir="ltr" style="unicode-bidi:isolate">10 000 درهم/شهرياً</span>)، إليكم القدرة المعتمدة عادةً؛
+          ويُحدَّد سعر تركيبكم انطلاقاً من فاتورتكم، عبر دراسة مجانية — لا انطلاقاً من هامش أسعار.</>
+        )}
       </p>
       <p class="v2-lead mt-4 max-w-2xl text-lune-soft">
         إليك أوامر المقدار المسجَّلة على أوراشنا السكنية — <strong class="text-lune">لا تكون أبداً
@@ -168,15 +173,15 @@ const investRangeHigh = formatMAD(Math.max(...brackets.map((b) => b.investHigh))
         يجعل الطاقة الشمسية مربحة، سنقول لك ذلك قبل أن توقّع أي شيء على الإطلاق.
       </p>
       <div class="mt-10 border-t-2 border-brass-400/60" data-stagger>
-        <div class="tech-label hidden grid-cols-[1.1fr_0.8fr_1.2fr] gap-4 border-b border-white/10 py-3 text-lune-faint sm:grid">
-          <span>الفاتورة الشهرية</span><span>القدرة</span><span>الاستثمار (أمر مقدار)</span>
+        <div class={`tech-label hidden gap-4 border-b border-white/10 py-3 text-lune-faint sm:grid ${investRange ? 'grid-cols-[1.1fr_0.8fr_1.2fr]' : 'grid-cols-[1.1fr_0.8fr]'}`}>
+          <span>الفاتورة الشهرية</span><span>القدرة</span>{investRange && <span>الاستثمار (أمر مقدار)</span>}
         </div>
         {brackets.map((b, i) => (
           <div class="v2-rise border-b border-white/10 py-5" style={`--v2-i:${i}`}>
-            <div class="grid gap-1.5 sm:grid-cols-[1.1fr_0.8fr_1.2fr] sm:items-baseline sm:gap-4">
+            <div class={`grid gap-1.5 sm:items-baseline sm:gap-4 ${b.invest ? 'sm:grid-cols-[1.1fr_0.8fr_1.2fr]' : 'sm:grid-cols-[1.1fr_0.8fr]'}`}>
               <span class="font-display text-base font-bold text-white">{b.bill}</span>
               <span class="fig lum text-xl sm:text-2xl" dir="ltr" data-fig-fixe>{b.kwc}</span>
-              <span class="fig text-lg text-lune sm:text-xl" dir="ltr">{b.invest}</span>
+              {b.invest && <span class="fig text-lg text-lune sm:text-xl" dir="ltr">{b.invest}</span>}
             </div>
             {b.exemple && <p class="tech-label mt-2.5 text-lune-faint">{b.exemple}</p>}
           </div>

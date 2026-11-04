@@ -70,7 +70,10 @@ class CookieJWTAuthentication(BaseAuthentication):
         # « Bearer <jeton> » est un justificatif MAL FORMÉ : 401, jamais ignoré
         # au profit du cookie (fermé par défaut ; le front n'envoie jamais
         # d'en-tête Authorization, l'API publique a ses propres classes).
-        if auth_header and not _BEARER_BIEN_FORME.match(auth_header):
+        # api-fuzz-full 41825184761 (PUT sav/tickets/{id}/, 200) : un en-tête
+        # PRÉSENT mais VIDE (« Authorization: ») passait — présence, pas valeur.
+        if 'HTTP_AUTHORIZATION' in request.META \
+                and not _BEARER_BIEN_FORME.match(auth_header):
             raise AuthenticationFailed(
                 'En-tête Authorization mal formé : « Bearer <jeton> » attendu.')
 

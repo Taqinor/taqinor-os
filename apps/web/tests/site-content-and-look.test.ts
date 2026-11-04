@@ -680,6 +680,13 @@ describe('WAUD46 WAUD64 WAUD65 — ruban, cibles tactiles, tuiles', () => {
   it('WAUD64 : liens du pied de page à 24 px au moins', () => {
     expect(lireSrc2('components/Footer.astro')).toMatch(/const linkClass = 'inline-block py-1 /);
   });
+  it('WAUD64 (reste) : liens fléchés, puces de filtre, en-tête et fil d’Ariane — cibles agrandies', () => {
+    expect(lireSrc2('styles/global.css')).toMatch(/a\.border-b-2\.pb-0\\\.5:is\(\.inline-flex, \.inline-block\) \{\s*padding-top: 1\.25rem;/);
+    expect(lireSrc2('components/blocs/ArIndexButton3FED.astro')).toContain('gallery-filter-chip min-h-11');
+    expect(lireSrc2('components/Breadcrumb.astro')).toContain('breadcrumb-bidi inline-block py-1');
+    expect(lireSrc2('components/Header.astro')).toContain('class="tech-label block py-1 text-brass-300">{t(\'nav.solutions\')}');
+    expect(lireSrc2('components/Footer.astro')).toMatch(/\.footer-wa-recapture \{[^}]*padding-block: 0\.25rem;/);
+  });
   it('WAUD65 : tuiles sans nowrap, donc sans collision', () => {
     expect(lireSrc2('components/blocs/EnIndexDlF52D.astro')).not.toContain('whitespace-nowrap');
     const ar = lireSrc2('pages/ar/index.astro');

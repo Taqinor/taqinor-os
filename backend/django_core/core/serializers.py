@@ -356,11 +356,18 @@ class WorkflowDefinitionSerializer(
 
     class Meta:
         model = WorkflowDefinition
+        # NTWFL26 — ``version``/``definition_precedente`` (NTWFL25) exposés en
+        # LECTURE SEULE : l'historique d'une lignée se lit, il ne s'écrit que
+        # via ``core.workflow.editer_etapes_definition`` (fork serveur).
         fields = [
             'id', 'code', 'nom', 'description', 'actif', 'steps',
+            'version', 'definition_precedente',
             'created_at', 'updated_at',
         ]
-        read_only_fields = ['id', 'code', 'created_at', 'updated_at']
+        read_only_fields = [
+            'id', 'code', 'version', 'definition_precedente',
+            'created_at', 'updated_at',
+        ]
 
     def validate(self, attrs):
         """NTWFL9 — au moins une étape, pas de boucle infinie via

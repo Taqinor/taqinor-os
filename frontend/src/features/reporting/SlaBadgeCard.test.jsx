@@ -6,7 +6,7 @@ import { MemoryRouter } from 'react-router-dom'
    sans snapshot, jamais un pourcentage inventé. */
 
 vi.mock('../../api/parametresApi', () => ({
-  default: { getSlaSnapshots: vi.fn() },
+  default: { getSlaSnapshots: vi.fn(), getReliabilitySettings: vi.fn() },
 }))
 
 import parametresApi from '../../api/parametresApi'
@@ -40,5 +40,17 @@ describe('SlaBadgeCard (NTOBS16)', () => {
     const { container } = renderCard()
     await waitFor(() => expect(parametresApi.getSlaSnapshots).toHaveBeenCalled())
     expect(container).toBeEmptyDOMElement()
+  })
+
+  it("NTOBS21 — masque si la societe a coupe le badge", async () => {
+    parametresApi.getSlaSnapshots.mockResolvedValueOnce({
+      data: [{ id: 1, periode: '2026-06-01', uptime_pct: '99.9500', latence_p95_ms: 120 }],
+    })
+    parametresApi.getReliabilitySettings.mockResolvedValueOnce({
+      data: { afficher_badge_sla_dashboard: false },
+    })
+    const { container } = renderCard()
+    await waitFor(() => expect(parametresApi.getReliabilitySettings).toHaveBeenCalled())
+    await waitFor(() => expect(container).toBeEmptyDOMElement())
   })
 })

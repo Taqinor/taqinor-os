@@ -11,6 +11,7 @@ import { NAP, SAME_AS, LEGAL_IDENTITY } from '../lib/nap';
 import { DEFAULT_LOCALE, isLocale, LOCALE_BCP47, LOCALE_DIR, type Locale } from '../i18n/config';
 import { localizePath, stripLocale } from '../i18n/utils';
 import { localesForPath } from '../i18n/pages';
+import { carteOg } from '../lib/ogCartes';
 
 interface Props {
   title: string;
@@ -116,7 +117,8 @@ const cfAnalyticsToken = (import.meta.env.PUBLIC_CF_ANALYTICS_TOKEN as string | 
 const canonical = new URL(Astro.url.pathname, Astro.site);
 // W185 — ogImageProp (URL absolue fournie par la page) prend le dessus sur le
 // slug générique ; fallback : /og/<slug>.png construit depuis Astro.site.
-const ogImageUrl = ogImageProp ?? new URL(`/og/${ogSlug}.png`, Astro.site).href;
+// WAUD72 — carte du sujet de la page et de sa langue (lib/ogCartes.ts).
+const ogImageUrl = ogImageProp ?? new URL(`/og/${carteOg(ogSlug, rootPath, lang)}.png`, Astro.site).href;
 // Rétrocompatibilité — la variable `ogImage` reste utilisée par le JSON-LD ci-dessous.
 const ogImage = { href: ogImageUrl };
 

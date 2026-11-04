@@ -71,7 +71,19 @@ describe('CIW413 + WAUD18-b — Article 33 nommé, décret (pas « la loi »), n
     }
   });
 
-  it('le ruban affiché sur tout le site nomme le décret 2-25-100 (3 langues)', () => {
+  it('WAUD46-b (D-WAUD-7=a ; date retirée par D-WAUD-4=a) : ruban sur accueil, /loi-82-21, /regularization-article-33, /résidentiel seulement (3 langues)', () => {
+    const avec = ['/', '/loi-82-21', '/regularization-article-33', '/résidentiel'];
+    const sans = ['/garanties', '/faq', '/installation-solaire-casablanca', '/ressources/10-questions-avant-de-signer', '/contact', '/guides/loi-82-21-expliquee'];
+    for (const pre of ['', '/en', '/ar']) {
+      for (const r of avec) expect(builtPage(`${pre}${r}`), `${pre}${r}`).toContain('class="ribbon-link');
+      for (const r of sans) {
+        if (pre === '/en' && r.startsWith('/ressources')) continue; // pas de version EN
+        expect(builtPage(`${pre}${r}`), `${pre}${r}`).not.toContain('class="ribbon-link');
+      }
+    }
+  });
+
+  it('le ruban nomme le décret 2-25-100 (3 langues)', () => {
     for (const lang of ['fr', 'en', 'ar'] as const) {
       const t = (ui[lang] as Record<string, string>)['ribbon.text'];
       expect(t).toContain('2-25-100');
