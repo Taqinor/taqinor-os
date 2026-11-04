@@ -7,7 +7,7 @@
 import type { Locale } from '../i18n/config';
 import { ANRE_TARIF_HORS_POINTE, ANRE_TARIF_POINTE } from './constants82_21';
 import { DECLARATION_BT_MAX_KW } from './regime';
-import { TABLEAU_GARANTIES_AR, TABLEAU_GARANTIES_FR } from './warranty';
+import { lignesGaranties, TABLEAU_GARANTIES_AR, TABLEAU_GARANTIES_FR } from './warranty';
 import {
   ANRE_PERIODE_AR,
   ANRE_PERIODE_EN,
@@ -227,7 +227,7 @@ const DEVIS: Partial<Record<Locale, InfoPage>> = {
       {
         h2: 'Garanties par composant',
         paras: ['Demandez la durée de garantie de chaque composant, pas une durée unique. Chez Taqinor :'],
-        table: { head: ['Composant', 'Garantie'], rows: TABLEAU_GARANTIES_FR.map((g) => [g.item, g.years]) },
+        table: { head: ['Composant', 'Garantie'], rows: lignesGaranties(TABLEAU_GARANTIES_FR) },
       },
       {
         h2: 'Pour aller plus loin',
@@ -256,7 +256,7 @@ const DEVIS: Partial<Record<Locale, InfoPage>> = {
       {
         h2: 'الضمانات لكل مكوّن',
         paras: ['اطلبوا مدة ضمان كل مكوّن، لا مدة واحدة. لدى تاكينور:'],
-        table: { head: ['المكوّن', 'الضمان'], rows: TABLEAU_GARANTIES_AR.map((g) => [g.item, g.years]) },
+        table: { head: ['المكوّن', 'الضمان'], rows: lignesGaranties(TABLEAU_GARANTIES_AR) },
       },
       {
         h2: 'للمزيد',

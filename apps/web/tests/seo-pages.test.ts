@@ -711,7 +711,14 @@ describe('WAUD73/74/75 — pages « subvention », « kit ou sur mesure », « l
     for (const id of ['kit', 'devis'] as const) for (const t of tout(id)) expect(t.match(MONTANT) ?? [], `${id}: ${t}`).toEqual([]);
     expect(tout('kit').join(' ')).toContain(`${DECLARATION_BT_MAX_KW} kW`);
     const garanties = INFO_PAGES.devis.fr!.blocks[1].table!.rows;
-    expect(garanties).toEqual(TABLEAU_GARANTIES_FR.map((g) => [g.item, g.years]));
+    expect(garanties).toHaveLength(TABLEAU_GARANTIES_FR.length);
+    // ERR-W33-GARANTIES-NOTE — jamais une durée sans son seuil, dans les deux langues.
+    expect(garanties).toContainEqual(['Panneaux photovoltaïques (performance)', '30 ans (linéaire, ≥ 87,4 % de la puissance initiale à 30 ans)']);
+    expect(garanties).toContainEqual(['Batteries Dyness LFP', '7 ans (≥ 70 % de capacité)']);
+    expect(garanties).toContainEqual(['Structure acier galvanisé', '20 ans']);
+    const garantiesAr = INFO_PAGES.devis.ar!.blocks[1].table!.rows.flat().join(' ');
+    expect(garantiesAr).toContain('≥ 87.4 %');
+    expect(garantiesAr).toContain('≥ 70 %');
   });
   it('llms.txt référence les nouvelles pages (FR, EN, AR) ; liens vers /prix et 10-questions sans recopier', () => {
     const t = lire('public/llms.txt');
