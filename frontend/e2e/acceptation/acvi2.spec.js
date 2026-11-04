@@ -307,6 +307,8 @@ from apps.crm.cadence_filet import assurer_prochaine_etape_apres_succes
 from apps.crm import stages
 a = U.objects.get(username='demo_admin')
 x = Lead.objects.create(company_id=1, nom='ACVI38 ${m}', owner=a, telephone=${JSON.stringify(telephoneMobileUnique())}, ville='Rabat', stage=stages.CONTACTED, first_contacted_at=timezone.now())
+from apps.crm.models_cadence import RelanceEtape
+RelanceEtape.objects.create(company_id=1, lead=x, cadence='contact', ordre=1, due_date=timezone.localdate(), canal='appel', libelle='Appel', statut='fait', fait_le=timezone.now())
 f = assurer_prochaine_etape_apres_succes(x, a)
 sortie(dict(id=x.id, cadence=f.cadence if f else None))`)
   const l = { id: pose.id }
@@ -454,12 +456,13 @@ sortie(RelanceEtape.objects.create(company_id=1, lead_id=${l.id}, cadence='conta
 etape('PA1.05.reservation_publique', ['ACVI63'], async ({ page, testInfo }) => {
   const m = marque()
   const l = await nouveauLead(page.request, `ACVI63 ${m}`)
-  const tok = await py(`from apps.crm.models import BookingLink
+  // Un lien sert une fois : la 2e réservation passe par un 2e lien du même lead (replanifie, ne crée pas).
+  const lien = () => py(`from apps.crm.models import BookingLink
 sortie(BookingLink.objects.create(company_id=1, lead_id=${l.id}).token)`)
   const pub = await pwRequest.newContext({ baseURL: testInfo.project.use.baseURL })
   const reserver = async (j) => {
     const d = new Date(Date.now() + j * 86_400_000); d.setUTCHours(9, 0, 0, 0)
-    const r = await pub.post(`${API}/crm/public/booking/${tok}/reserve/`, { ...T, data: { scheduled_at: d.toISOString() } })
+    const r = await pub.post(`${API}/crm/public/booking/${await lien()}/reserve/`, { ...T, data: { scheduled_at: d.toISOString() } })
     expect(r.status(), `réservation J+${j} : ${await r.text()}`).toBeLessThan(300)
     return d.toISOString().slice(0, 10)
   }
