@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: a0f1238e64147be14c34237b0cf20eb91bdbd0312de953bbb679284e9fe73d30
+Structure fingerprint: 3e551a14e3465a3c8f17901b625412f4e5ccefbb3f8a6db63076fdecb40c5da1
 Plan fingerprint: 7ee6405615f195e82dfaaeed2b5d380ea25dadb51b44fa4abe82c23f673eedc8
 
 
@@ -238,7 +238,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 | `portail` | `portail/` | 8 | Client self-service: quotes/invoices/deliveries, e-signature acceptance, online payment, site timeline. **Never financial detail beyond its own scope** (NTPRT14). GED links kept (SOLMVP16b). |
 | `adsengine` | `adsengine/` | 47 | Meta Ads engine: mirrors, propose->approve->apply, creative library, experiments, guardrails, `AssumptionNode` tree. **`installable: True`** (SOLMVP17 — the toggle now gates its API). Campaign creation is always PAUSED (rule #3). |
 | `reporting` | `reporting/` | 13 | Dashboards/KPIs/insights, federated KPI hub, `Classeur`, `RapportDefinition`, `KpiAlerte`, global search (`search.py`), stage-probability table (`GET reporting/probabilites-etape/`, AANA66), real-field Web Vitals (`WebVitalMetric`, VX61) and the user-problem journal (`ProblemeClient`, YJPB1 — `POST reporting/problemes-client/` posted by `frontend/src/lib/journalProblemes.js`, read by `manage.py problemes_utilisateurs`; no screen, see `docs/journal-problemes-utilisateurs.md`) — the app owns no business data. |
-| `semantic` | `semantic/` | 2 | Named, governed metrics (`MetricDefinition` + versions) — BI semantic layer consumed via `core.data_explorer`. |
+| `semantic` | `semantic/` | 2 | Named, governed metrics (`MetricDefinition` + versions) — BI semantic layer consumed via `core.data_explorer`; API `semantic/metriques/` (CRUD, `<cle>/valeur|expliquer`, `pour-agent`, `export`/`import`), `semantic/glossaire/`, `seed_dashboards_modeles` (NTDATA10/12/35/44/48/49) ; FastAPI tool `metriques_gouvernees`. |
 | `parametres` | `parametres/` | 18 | `CompanyProfile`, business settings, WhatsApp/email templates, `TauxTVA`/`ConditionPaiement`/`UniteMesure` referentials, `Realisation`, tax-ID validators, output-language resolver. |
 | `roles` | `roles/` | 1 | Per-company `Role` + permission lists (RBAC). |
 | `identity` | `identity/` | 7 | SSO/SCIM, network & session policies, trusted devices, break-glass (NTSEC). |
