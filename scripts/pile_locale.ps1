@@ -141,7 +141,7 @@ if ($code -ne 0) { Fail 'manage.py migrate.' }
 # AANA64 - role Postgres lecture seule de l'agent SQL (idempotent, apres migrate).
 # bash de Git d'abord : le bash.exe de WSL n'a parfois aucune distribution.
 $BashScripts = 'bash'
-$BashGit = Join-Path $env:ProgramFiles 'Gitinash.exe'
+$BashGit = Join-Path $env:ProgramFiles 'Git\bin\bash.exe'
 if (Test-Path -LiteralPath $BashGit) { $BashScripts = $BashGit }
 $code = Invoke-Shown 'role sql_agent_ro (provisionnement idempotent)' { & $BashScripts backend/db/provision_sql_agent_ro.sh }
 if ($code -ne 0) { Fail 'provision_sql_agent_ro.sh.' }
