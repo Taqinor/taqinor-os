@@ -45,7 +45,7 @@
   "permissions": [
    {
     "attrs": {},
-    "classe": "HasPermissionOrLegacy_crm_voir"
+    "classe": "DroitDeLaGrille_crm_voir"
    }
   ]
  },
@@ -65,7 +65,7 @@
   "permissions": [
    {
     "attrs": {},
-    "classe": "HasPermissionOrLegacy_crm_voir"
+    "classe": "DroitDeLaGrille_crm_voir"
    }
   ]
  },
