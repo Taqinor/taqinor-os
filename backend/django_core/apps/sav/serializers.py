@@ -798,7 +798,8 @@ class WarrantyClaimSerializer(ChampsStrictsEntiersMixin, SameCompanyFKSerializer
         resolution = validated_data.get('resolution', instance.resolution)
         if (statut != WarrantyClaim.Statut.RESOLU
                 or resolution != WarrantyClaim.Resolution.REMPLACEMENT):
-            raise serializers.ValidationError({'serie_neuve': [
+            # api-fuzz (ENF11) — l'état de la réclamation, pas la forme du corps.
+            raise ConflitEtat({'serie_neuve': [
                 "Réservé à une réclamation résolue par remplacement."]})
         ticket = validated_data.get('ticket', instance.ticket)
         if ticket is None:
