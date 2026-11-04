@@ -25,11 +25,11 @@ Son prix dépend de la puissance, du type (réseau ou hybride, avec batterie) et
 ### La main-d'œuvre et les accessoires
 Structure de fixation, câblage DC/AC, tableau de protection, démarches administratives (déclaration loi 82-21 pour les installations de moins de 11 kW en basse tension) — ces postes représentent une part significative du coût total clé-en-main, et ce sont eux qui manquent dans un « prix du kit ».
 
-## La TVA
+## La TVA, ligne par ligne
 
-Seules les pompes à eau solaires à usage agricole sont exonérées de TVA (art. 91 du CGI) ; le taux de chaque autre élément figure ligne par ligne sur votre devis. Si vous êtes une entreprise ou un investisseur, faites vérifier votre situation TVA par un comptable.
+Le taux de TVA applicable à chaque poste figure sur le devis — la règle est rappelée sur notre page [Prix des panneaux solaires au Maroc](/prix-panneaux-solaires-maroc/). Entreprise ou investisseur : faites vérifier votre situation par un comptable.
 
-## Retour sur investissement
+## Ce qui accélère le retour
 
 Ce calcul dépend fortement de votre consommation réelle et de votre tranche tarifaire ONEE/régie. Un foyer consommant plus de 310 kWh/mois (tranche à 1,381704 DH/kWh, ou au-delà de 510 kWh à 1,622856 DH/kWh) rentabilise son installation plus vite qu'un faible consommateur — le solaire est d'autant plus rentable que votre facture actuelle est élevée, et une batterie allonge le temps de retour. (Grille tarifaire à jour : voir [notre article sur la rentabilité par ville](/blog/rentabilite-solaire-par-ville-maroc/).)
 

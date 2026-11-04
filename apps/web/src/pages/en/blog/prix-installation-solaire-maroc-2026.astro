@@ -19,7 +19,6 @@ import StickyCta from '../../../components/StickyCta.astro';
 import RelatedLinks from '../../../components/RelatedLinks.astro';
 import { NAP } from '../../../lib/nap';
 import { localizeNavHref } from '../../../i18n/pages';
-import { PHRASE_TVA } from '../../../lib/prixConstants';
 import '../../../styles/prose.css';
 
 const { locale, L } = pageLocale(Astro.url.pathname);
@@ -103,10 +102,10 @@ const blogPosting = {
           share of the total turnkey cost, and they are what a "kit price" leaves out.
         </p>
 
-        <h2>VAT</h2>
-        <p>{PHRASE_TVA.en} If you're a business or investor, have your VAT situation checked by an accountant.</p>
+        <h2>VAT, line by line</h2>
+        <p>The VAT rate for each item appears on the quote — the rule is restated on our page <a href={L('/prix-panneaux-solaires-maroc')}>Solar panel prices in Morocco</a>. Business or investor: have your situation checked by an accountant.</p>
 
-        <h2>Return on investment</h2>
+        <h2>What speeds up the payback</h2>
         <p>
           This calculation depends heavily on your actual consumption and your ONEE/régie tariff
           bracket. A household consuming more than 310 kWh/month (bracket at 1.381704 DH/kWh, or beyond
