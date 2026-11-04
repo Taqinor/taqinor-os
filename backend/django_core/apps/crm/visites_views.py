@@ -275,8 +275,10 @@ class LeadVisitesActionsMixin:
                        # serveur, pas du corps → refus d'ÉTAT, 409.
                        409: inline_serializer('CrmLeadVisitePassee', {
                            'date_prevue': serializers.ListField(
-                               child=serializers.CharField()),
-                           'error': serializers.DictField()})})
+                               child=serializers.CharField(), required=False),
+                           'etape': serializers.ListField(
+                               child=serializers.CharField(), required=False),
+                           'error': serializers.DictField(required=False)})})
     @action(detail=True, methods=['post'], url_path='visites/planifier',
             permission_classes=[HasPermissionOrLegacy('crm_modifier')])
     def planifier_visite(self, request, pk=None):

@@ -640,9 +640,9 @@ def creer_unite_logistique(*, company, type_unite='colis', parent=None,
         if parent.company_id != getattr(company, 'id', None):
             raise ValueError('Palette introuvable dans cette société.')
         if parent.type_unite != UniteLogistique.TypeUnite.PALETTE:
-            raise ValueError('Seule une palette peut contenir une unité.')
+            raise EtatIncompatible('Seule une palette peut contenir une unité.')
         if parent.est_figee:
-            raise ValueError('Cette palette est scellée : contenu figé.')
+            raise EtatIncompatible('Cette palette est scellée : contenu figé.')
 
     derniere_erreur = None
     for _ in range(5):

@@ -339,8 +339,7 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
                 poids_kg=simples.validated_data.get('poids_kg'),
                 dimensions=simples.validated_data.get('dimensions') or '')
         except ValueError as exc:
-            return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+            return Response({'detail': str(exc)}, status=statut_refus_metier(exc))
         return Response(self.get_serializer(unite).data,
                         status=status.HTTP_201_CREATED)
 

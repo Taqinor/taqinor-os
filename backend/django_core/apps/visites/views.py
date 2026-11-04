@@ -134,6 +134,7 @@ def _schema_qualification():
     requis = list(choix)
     return {
         'type': 'object',
+        'additionalProperties': False,  # « Champ inconnu dans la qualification »
         'properties': proprietes,
         'required': requis,
         'oneOf': [

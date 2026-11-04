@@ -2912,8 +2912,9 @@ class MaintenanceChecklistTemplateViewSet(CompanyScopedModelViewSet):
             ensure_modele_entretien_pompage(company)
             # CIQ641 — et « Entretien site professionnel » (C&I), même patron.
             ensure_modele_entretien_ci(company)
-        qs = super().get_queryset()
-        return qs.filter(actif=True)
+            return super().get_queryset().filter(actif=True)
+        # POST {actif: false} puis GET {id} : 404 sur ce qui vient d'être créé.
+        return super().get_queryset()
 
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)

@@ -16,7 +16,7 @@ from rest_framework.response import Response
 from . import openapi_docs as D
 from ..models import Devis
 from ..serializers import DevisSerializer
-from ..serializers_facturation import BonCommandeSerializer, FactureSerializer
+from ..serializers_facturation import BonCommandeSerializer, FactureListeSerializer, FactureSerializer
 from authentication.permissions import (
     HasPermissionOrLegacy, IsAdminOrResponsableTier, IsResponsableOrAdmin,
 )
@@ -155,7 +155,8 @@ class DevisFacturationActionsMixin:
     # écran, le panneau de vente (VNT75/VNT79) sert la facturation ; gardé pour
     # intégrations/scripts.
     @extend_schema(request=D.GenererFactureRequest,
-                   responses={201: FactureSerializer, 403: D.ErreurGarde})
+                   # VNT91 : les blocs de vente ne sont servis qu'au détail.
+                   responses={201: FactureListeSerializer, 403: D.ErreurGarde})
     @action(
         detail=True,
         methods=['post'],

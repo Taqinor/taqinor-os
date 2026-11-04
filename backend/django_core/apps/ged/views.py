@@ -1879,7 +1879,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         if version is None:
             return Response(
                 {'detail': 'Aucune version disponible pour le caviardage.'},
-                status=status.HTTP_404_NOT_FOUND)
+                status=status.HTTP_409_CONFLICT)  # ENF11 : le document existe
         try:
             new_doc = services.caviarder_document(
                 version, request.data.get('zones') or [],

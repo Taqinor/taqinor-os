@@ -45,7 +45,7 @@ def _statut_refus_releve(refus):
     """ENF11 — le CONTENU d'une chaîne de cotes (deux cotes manquantes, valeur
     illisible) est un document libre que le schéma ne décrit pas : 409, même
     doctrine que les réglages. La forme du corps reste un 400."""
-    if (refus.champ or '').startswith('chaines['):
+    if refus.document_libre or (refus.champ or '').startswith('chaines['):
         return status.HTTP_409_CONFLICT
     return status.HTTP_400_BAD_REQUEST
 

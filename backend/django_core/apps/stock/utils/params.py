@@ -80,6 +80,16 @@ def montant_requete_ou_400(valeur, nom):
     return Decimal(valeur)
 
 
+def date_plus_jours(depart, jours):
+    """``depart + jours``, ``None`` hors calendrier (délai énorme : OverflowError,
+    500 à la création d'une facture, 2e passe du cron 41773314544)."""
+    from datetime import timedelta
+    try:
+        return depart + timedelta(days=jours)
+    except OverflowError:
+        return None
+
+
 def exiger_compteur_stock(produit, *valeurs):
     """api-fuzz-full 41773314544 — le stock et les mouvements sont des colonnes
     entières 32 bits : au-delà, l'écriture levait ``integer out of range`` (500).

@@ -279,6 +279,17 @@ class FolderSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                 raise ConflitEtat({'alias_email': ['Alias déjà utilisé.']})
         return alias
 
+    def to_internal_value(self, data):
+        # Publiés (``minimum: 1``) mais en lecture seule à la mise à jour : la
+        # valeur est ignorée, pas son illisibilité (``cabinet: 0`` passait en 200).
+        if isinstance(self.instance, Folder) and hasattr(data, 'get'):
+            for nom in ('parent', 'cabinet'):
+                valeur = data.get(nom)
+                if nom in data and valeur is not None and (
+                        isinstance(valeur, bool) or not isinstance(valeur, int) or valeur < 1):
+                    raise serializers.ValidationError({nom: ['Identifiant entier attendu.']})
+        return super().to_internal_value(data)
+
     def get_fields(self):
         """ADOC21 — à la MISE À JOUR, `parent` et `cabinet` sont en lecture
         seule : un dossier ne se déplace que par l'action `deplacer`

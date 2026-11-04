@@ -206,6 +206,15 @@ class SaisieIllisibleTest(SimpleTestCase):
             self.assertEqual(capture.exception.champ, 'nom')
         self.assertEqual(_nom_texte(' ' + 'x' * NOM_MAX + ' '), 'x' * NOM_MAX)
 
+    def test_titre_de_copie_tient_dans_la_colonne(self):
+        # api-fuzz-full, lane w37 : titre de 200 caractères + « (copie) » = DataError.
+        from types import SimpleNamespace
+
+        from apps.calepinage.services.variantes import _titre_de_copie
+        copie = _titre_de_copie(SimpleNamespace(titre='x' * 200))
+        self.assertEqual(len(copie), 200)
+        self.assertTrue(copie.endswith(' (copie)'))
+
     def test_conception_et_resultat_refusent_un_caractere_nul_imbrique(self):
         from apps.calepinage.services.variantes import (
             _sans_caractere_interdit,

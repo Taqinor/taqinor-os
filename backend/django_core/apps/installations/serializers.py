@@ -2871,19 +2871,19 @@ class RetourLivraisonLigneSerializer(IdInconnu404Mixin, SameCompanyFKSerializerM
             'quantite_retournee',
             getattr(instance, 'quantite_retournee', 0))
         if qte_livree is not None and qte_retournee > qte_livree:
-            raise serializers.ValidationError(
+            raise ConflitEtat(  # ENF11 : la quantité livrée est stockée, pas saisie
                 {'quantite_retournee':
-                 'La quantité retournée ne peut pas dépasser la quantité '
-                 'livrée.'})
+                 ['La quantité retournée ne peut pas dépasser la quantité '
+                  'livrée.']})
         # ACHT21 — plafond CUMULÉ : livré − les autres retours (brouillon +
         # validés) du même produit sur la livraison.
         if instance is not None and 'quantite_retournee' in attrs:
             from .services import quantite_retournable_livraison
             reliquat = quantite_retournable_livraison(instance)
             if qte_retournee > reliquat:
-                raise serializers.ValidationError({'quantite_retournee': (
+                raise ConflitEtat({'quantite_retournee': [
                     f'Au plus {reliquat} à retourner (cumul déjà couvert '
-                    'par d\'autres retours de cette livraison).')})
+                    'par d\'autres retours de cette livraison).']})
         return attrs
 
 

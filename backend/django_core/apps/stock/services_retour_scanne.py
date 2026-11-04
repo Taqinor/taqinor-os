@@ -151,7 +151,7 @@ def valider_retour_scanne(retour, user, *, bins_source=None):
     elle-même reste ``apply_retour_fournisseur`` (N19/YPROC8) : aucun second
     chemin de sortie de stock n'est créé.
     """
-    from .erreurs_achats import EtatIncompatible, IntrouvableMetier
+    from .erreurs_achats import EtatIncompatible
     from .services import apply_retour_fournisseur
 
     bins_source = bins_source or {}
@@ -168,7 +168,7 @@ def valider_retour_scanne(retour, user, *, bins_source=None):
             company_id=retour.company_id, id__in=demandes)
             .values_list('id', flat=True))
         if trouves != demandes:
-            raise IntrouvableMetier('Casier introuvable dans cette société.')
+            raise EtatIncompatible('Casier introuvable dans cette société.')  # le retour existe
     # ASTK51 — UNE transaction qui contrôle D'ABORD le statut du retour (relu
     # sous verrou) puis déplace et valide : un second clic (ou deux clics
     # concurrents) ne pose plus aucun transfert fantôme vers la zone de

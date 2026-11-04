@@ -104,7 +104,7 @@ class LivraisonVentilationTests(TestCase):
         r = self.api.patch(f'{BASE}/livraisons/{liv.id}/', {
             'depot': self.depot2.id, 'mode_acheminement': 'direct_site'},
             format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn(FIGEE, str(r.data))
         liv.refresh_from_db()
         self.assertEqual(liv.depot_id, self.depot.id)

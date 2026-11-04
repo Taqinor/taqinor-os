@@ -5807,10 +5807,10 @@ def derive_date_echeance(fournisseur, date_facture):
     historique : la date d'échéance reste saisie à la main."""
     if not date_facture or not fournisseur or not fournisseur.delai_paiement_jours:
         return None
-    from datetime import timedelta
+    from .utils.params import date_plus_jours
     import calendar
-    echeance = date_facture + timedelta(days=fournisseur.delai_paiement_jours)
-    if fournisseur.fin_de_mois:
+    echeance = date_plus_jours(date_facture, fournisseur.delai_paiement_jours)
+    if echeance and fournisseur.fin_de_mois:
         dernier_jour = calendar.monthrange(echeance.year, echeance.month)[1]
         echeance = echeance.replace(day=dernier_jour)
     return echeance

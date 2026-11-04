@@ -555,4 +555,5 @@ def dupliquer(calepinage, *, user=None, titre='', avec_variantes=True,
 def _titre_de_copie(calepinage):
     """« <titre> (copie) » — dérivé de la donnée, jamais d'un nom figé."""
     titre = (getattr(calepinage, 'titre', '') or '').strip()
-    return f'{titre} (copie)' if titre else 'Calepinage (copie)'
+    # Colonne à 200 : un titre plein + « (copie) » levait DataError (500).
+    return f'{titre[:192]} (copie)' if titre else 'Calepinage (copie)'
