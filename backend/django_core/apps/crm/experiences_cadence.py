@@ -5,7 +5,7 @@ triée par date, bornée à ``request.user.company`` (``company`` forcée côté
 serveur par ``TenantMixin``, jamais lue du corps). Lecture : ``crm_voir`` ;
 écriture (POST/PATCH) : responsable ou admin. Aucune suppression : un
 registre de repères ne s'efface pas. ``resultat`` se renseigne par PATCH à la
-date de lecture ; ``date_lecture`` avant ``date`` est refusée (400 nommant le
+date de lecture ; ``date_lecture`` avant ``date`` est refusée (409 nommant le
 champ). Lu par la courbe de cohorte (CADV110).
 """
 from rest_framework import serializers
@@ -14,6 +14,8 @@ from authentication.permissions import (
     HasPermissionOrLegacy, IsResponsableOrAdmin,
 )
 from core.viewsets import CompanyScopedModelViewSet
+
+from core.conflit_etat import ConflitEtat
 
 from .models_cadence import ExperienceCadence
 
@@ -31,9 +33,10 @@ class ExperienceCadenceSerializer(serializers.ModelSerializer):
         lecture = attrs.get('date_lecture',
                             getattr(instance, 'date_lecture', None))
         if date and lecture and lecture < date:
-            raise serializers.ValidationError({
-                'date_lecture': 'La date de lecture ne peut pas précéder la '
-                                'date du changement.'})
+            # ENF11 : règle liant deux champs, que le schéma ne peut pas dire.
+            raise ConflitEtat({
+                'date_lecture': ['La date de lecture ne peut pas précéder la '
+                                 'date du changement.']})
         return attrs
 
 

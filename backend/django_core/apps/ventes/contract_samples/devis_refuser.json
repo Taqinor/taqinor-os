@@ -42,7 +42,7 @@
   },
   "reponses": {
     "200": "DevisSerializer du devis refusé (extrait dans `exemple`)",
-    "400": {
+    "409_motif_hors_liste": {
       "motif": [
         "Choisissez un motif de refus de la liste."
       ]

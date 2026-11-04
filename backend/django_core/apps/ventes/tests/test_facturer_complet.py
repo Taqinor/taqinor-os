@@ -415,7 +415,7 @@ class FacturerVenteTrancheVNT26(_BaseVente):
         self.assertEqual(refus.status, 409)
         self.assertEqual(refus.corps['code'], 'tranche_deja_creee')
         refus = self._refus(devis, nature='solde')
-        self.assertEqual(refus.status, 400)
+        self.assertEqual(refus.status, 409)
         self.assertEqual(refus.corps['code'], 'rien_a_facturer')
 
 

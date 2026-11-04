@@ -44,7 +44,7 @@ class TestCanaux(T6Base):
         site = Canal.objects.get(company=self.company, cle='site_web')
         resp = self.api.patch(f'/api/django/crm/canaux/{site.id}/',
                               {'cle': 'autre_cle'}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
 
     def test_cannot_delete_canal_in_use(self):
         self.api.get('/api/django/crm/canaux/')  # seed

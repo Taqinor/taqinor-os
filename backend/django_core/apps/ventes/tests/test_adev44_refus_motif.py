@@ -75,10 +75,10 @@ class RefusMotifTests(TestCase):
         self.assertIn('Budget insuffisant', corps)
         self.assertIn('subvention', corps)
 
-    def test_motif_inconnu_400(self):
+    def test_motif_inconnu_409(self):
         for nom in ('inconnu', 'Archivé', 'Motif autre société'):
             r = self._refuser({'motif': nom})
-            self.assertEqual(r.status_code, 400, (nom, r.data))
+            self.assertEqual(r.status_code, 409, (nom, r.data))
             self.assertEqual(
                 r.data, {'motif': ['Choisissez un motif de refus de la liste.']})
         self.devis.refresh_from_db()

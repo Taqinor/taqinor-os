@@ -341,7 +341,7 @@ class IsolationEtContratTests(_Base):
         self.assertEqual(ligne.resultat, '37 % → 41 %')
         mauvais = dict(corps, date_lecture='2026-11-01')
         resp = self._api().post(url, mauvais, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         self.assertIn('date_lecture', resp.data)
         self.assertEqual(ExperienceCadence.objects.count(), 1)
 

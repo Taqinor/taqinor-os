@@ -307,7 +307,7 @@ class TestAvoirs(TestCase):
                  'supérieure à la quantité facturée restante (0).')):
             with self.subTest(champs=champs):
                 r = poster(**champs)
-                self.assertEqual(r.status_code, 400, r.data)
+                self.assertEqual(r.status_code, 409, r.data)
                 self.assertEqual(r.data['detail'], motif)
         self.assertEqual(Avoir.objects.filter(facture=facture).count(), 0)
         # Deux lignes du même produit se cumulent dans le même corps.

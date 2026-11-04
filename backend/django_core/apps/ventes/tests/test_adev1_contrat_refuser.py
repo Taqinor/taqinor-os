@@ -57,7 +57,7 @@ class ContratRefuserTests(SimpleTestCase):
 
         rep = doc['reponses']
         self.assertEqual(
-            rep['400'],
+            rep['409_motif_hors_liste'],
             {'motif': ['Choisissez un motif de refus de la liste.']})
         self.assertEqual(set(rep['409']), {'statut', 'version_remplacee'})
         for code, corps in rep['409'].items():

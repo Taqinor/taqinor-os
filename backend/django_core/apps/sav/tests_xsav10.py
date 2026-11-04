@@ -2,7 +2,7 @@
 
 Couvre :
   * POST public validé par token, ticket résolu/clôturé → 201 ;
-  * ticket pas encore résolu → 400, aucune ligne créée ;
+  * ticket pas encore résolu → 409, aucune ligne créée ;
   * doublon (2e réponse pour le même ticket) → 409 refusé ;
   * token inconnu → 404 sans fuite ;
   * aucune donnée interne (chatter, coût, infos client) sur la page publique ;
@@ -67,7 +67,7 @@ class XSAV10SatisfactionTest(TestCase):
         self.ticket.statut = Ticket.Statut.EN_COURS
         self.ticket.save(update_fields=['statut'])
         resp = self.public_api.post(self._url(), {'note': 4}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         self.assertFalse(
             TicketSatisfaction.objects.filter(ticket=self.ticket).exists())
 

@@ -106,7 +106,7 @@ def _tranche_cible(plan, nature, cle_attendue):
     """La tranche à facturer (``plan['prochaine']``) — refus nommés : 409
     ``tranche_deja_creee`` (la clé attendue est déjà couverte),
     ``tranche_en_brouillon`` (une tranche ANTÉRIEURE attend son émission),
-    ``cle_inattendue`` (le plan a changé) ; 400 ``rien_a_facturer``."""
+    ``cle_inattendue`` (le plan a changé) ; 409 ``rien_a_facturer``."""
     tranches = plan['tranches']
     if cle_attendue and any(t['cle'] == cle_attendue
                             and t['statut'] != 'a_faire' for t in tranches):
@@ -116,7 +116,7 @@ def _tranche_cible(plan, nature, cle_attendue):
     if prochaine is None:
         raise FacturationVenteRefusee(
             "Il n'y a plus rien à facturer sur cette vente.",
-            code='rien_a_facturer')
+            code='rien_a_facturer', status=409)  # ENF11 : état de la vente
     avant = tranches[:tranches.index(prochaine)]
     brouillon = next((t for t in avant if t['statut'] == 'brouillon'), None)
     if brouillon is not None:
