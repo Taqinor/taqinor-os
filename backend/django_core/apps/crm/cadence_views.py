@@ -23,6 +23,7 @@ from core.mixins import TenantMixin
 from core.viewsets import CompanyScopedModelViewSet
 from apps.parametres.models_relance import CADENCES_MOTEUR, Cadence
 from .models import Lead, LeadActivity, MessageTemplate, PlanActivite, RelanceEtape
+
 from .serializers_cadence import MessageTemplateSerializer, RelanceEtapeSerializer
 from . import schema_docs as sd
 from .cadence_selectors import STATUTS_SUIVI
@@ -30,6 +31,10 @@ from .cadence_temps import instant_utc
 from .controle_suivi import SEGMENTS_ADMIS
 from .params_requete import CorpsTexteMixin, corps_objet, entier_param, texte_verifie, verifier_corps_texte
 from .cadence_reponses import CANAUX_RECONTACT_API, CLES_MESSAGE_REPONSE, REPONSES_TOUCHE, TYPES_PIECE_RECUE
+
+# WAUD83 — « en » est un marqueur du lead, pas une langue de relance (miroir de
+# cadence_messages._langues_relance, qui refuse « en » : le schéma ne l'annonce pas).
+LANGUES_RELANCE = [v for v in Lead.LanguePreferee.values if v != Lead.LanguePreferee.EN]
 from core.champs_stricts import ChaineStricte, entier_ou_400
 from core.conflit_etat import ConflitEtat
 from core.parseurs import ChoixDocumente
@@ -1012,7 +1017,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
                                     outcome=ChoixDocumente(choices=[k for k, _ in LeadActivity.OUTCOMES],
                                                            required=False),
                                     reponse=ChoixDocumente(choices=['', *REPONSES_TOUCHE], required=False),
-                                    langue=ChoixDocumente(choices=['', *Lead.LanguePreferee.values], required=False),
+                                    langue=ChoixDocumente(choices=['', *LANGUES_RELANCE], required=False),
                                     note=ChaineStricte(required=False, allow_blank=True)),
                    responses=RelanceEtapeSerializer)
     @action(detail=True, methods=['post'])
@@ -1117,7 +1122,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
                             status=status.HTTP_409_CONFLICT)
         return Response(self.get_serializer(etape).data)
 
-    @extend_schema(parameters=sd.parametres_message(CLES_MESSAGE_REPONSE, Lead.LanguePreferee.values),
+    @extend_schema(parameters=sd.parametres_message(CLES_MESSAGE_REPONSE, LANGUES_RELANCE),
                    responses={200: sd.OBJ, 409: sd.REFUS_RENDU_WHATSAPP})
     @action(detail=True, methods=['get'])
     def message(self, request, pk=None):
@@ -1156,7 +1161,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
             langue=langue or None))
 
     @extend_schema(request=sd.corps('CrmRelanceWhatsappRequest',
-                                    langue=ChoixDocumente(choices=[*Lead.LanguePreferee.values], required=False)),
+                                    langue=ChoixDocumente(choices=[*LANGUES_RELANCE], required=False)),
                    responses=sd.OBJ)
     @action(detail=True, methods=['post'])
     @_geste_atomique
@@ -1232,7 +1237,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @extend_schema(request=sd.corps('CrmRelanceLangueRequest',
-                                    langue=ChoixDocumente(choices=Lead.LanguePreferee.values)),
+                                    langue=ChoixDocumente(choices=LANGUES_RELANCE)),
                    responses=RelanceEtapeSerializer)
     @action(detail=True, methods=['post'])
     def langue(self, request, pk=None):
