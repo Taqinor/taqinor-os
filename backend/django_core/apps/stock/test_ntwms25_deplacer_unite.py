@@ -197,3 +197,21 @@ class TestEndpointDeplacer(Ntwms25Base):
             self.assertEqual(reponse.status_code, 400, valeur)
         palette.refresh_from_db()
         self.assertEqual(palette.bin_actuel_id, self.casier_a.id)
+
+    def test_compteur_casier_qui_deborderait_repond_409(self):
+        """api-fuzz PR #1273 — ``BinAffectation.quantite`` du casier cible déjà
+        au plafond entier : déplacer y ajouterait la palette → SQLSTATE 22003.
+        Réponse 409 nommée (rien d'écrit), jamais un 500."""
+        from apps.installations.models_bin_location import BinAffectation
+        palette = self._palette(nb_lignes=1)
+        BinAffectation.objects.create(
+            company=self.company, bin=self.casier_b,
+            produit=self.produits[0], quantite=2147483647)
+        reponse = self.api.post(
+            f'/api/django/stock/unites-logistiques/{palette.id}/deplacer/',
+            {'bin_destination': self.casier_b.id}, format='json')
+        self.assertEqual(reponse.status_code, 409, reponse.content)
+        palette.refresh_from_db()
+        self.assertEqual(palette.bin_actuel_id, self.casier_a.id)
+        self.assertFalse(MouvementStock.objects.filter(
+            unite_logistique=palette).exists())
