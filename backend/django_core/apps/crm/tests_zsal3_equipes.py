@@ -160,12 +160,15 @@ class TestStatsEquipe(AssertQueryBudgetMixin, TestCase):
             self.assertIn(lead.stage, stage_mod.STAGES)
 
     def _mesure_acvi95(self, api, url):
-        """ACVI95 — une lecture sous plafond, sans la colonne `etude_params`."""
+        """ACVI95 — une lecture sous plafond, sans la colonne `etude_params` :
+        le pipeline pondéré n'en extrait que trois clés dans le SQL (patron
+        AOOM3, ``annotations_devis``), jamais le contenu entier."""
+        import re
         with self.assertMaxQueries(40) as ctx:
             resp = api.get(url)
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertFalse([q['sql'] for q in ctx.captured_queries
-                          if '"etude_params"' in q['sql']])
+                          if re.search(r'"etude_params"(?! (->|#>))', q['sql'])])
         return len(ctx.captured_queries)
 
     def test_budget_deux_tailles_sans_etude_params(self):

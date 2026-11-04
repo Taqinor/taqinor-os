@@ -102,10 +102,12 @@ class RelanceEtapesRequetesTests(AssertQueryBudgetMixin, TestCase):
                     taux_tva=20, etude_params={'kwh': 1})
 
         url = f'{URL}?scope=all'
-        peupler(5)
+        # N = 11 : ``ordre`` atteint la dernière touche du gabarit, dont les
+        # lectures en lot sont payées UNE fois (voir ``test_file_plate``).
+        peupler(11)
         self._mesure_acvi95(self.api, url)  # échauffement
         n = self._mesure_acvi95(self.api, url)
-        peupler(10)
+        peupler(22)
         self.assertEqual(self._mesure_acvi95(self.api, url), n)
 
     def test_file_plate(self):
