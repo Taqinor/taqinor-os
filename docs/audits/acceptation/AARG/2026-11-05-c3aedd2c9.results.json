@@ -1,0 +1,417 @@
+{
+  "sha": "c3aedd2c9f61b0b9a1845edc689d7c9c0482d2d4",
+  "date": "2026-11-05",
+  "groupe": "AARG",
+  "verdict": "FAIL",
+  "couvre": [
+    "AARG44"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PA4.01.rejeu_aarg44",
+      "taches": [
+        "AARG44"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "POST /api/django/ventes/devis/731/convertir-bc/ -> 201 (rejouer_parcours.py, transaction annulée)",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "oracles_parcours": {
+        "auto": "NA",
+        "checkpoint": "PASS",
+        "aval": "PASS"
+      },
+      "notes": "refus_409 : action rejouée -> 409; règles aval à observer : reference; parcours {\"auto\": \"NA\", \"checkpoint\": \"PASS\", \"aval\": \"PASS\"}"
+    },
+    {
+      "id": "PA4.02.rejeu_aarg44",
+      "taches": [
+        "AARG44"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "POST /api/django/ventes/bons-commande/188/confirmer/ -> 200 (rejouer_parcours.py, transaction annulée)",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "oracles_parcours": {
+        "auto": "NA",
+        "checkpoint": "PASS",
+        "aval": "PASS"
+      },
+      "notes": "refus_409 : action rejouée -> 409; règles aval à observer : choix_explicite; parcours {\"auto\": \"NA\", \"checkpoint\": \"PASS\", \"aval\": \"PASS\"}"
+    },
+    {
+      "id": "PA4.03.rejeu_aarg44",
+      "taches": [
+        "AARG44"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "POST /api/django/ventes/bons-commande/188/livrer-partiel/ -> 200 (rejouer_parcours.py, transaction annulée)",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "oracles_parcours": {
+        "auto": "NA",
+        "checkpoint": "PASS",
+        "aval": "NA"
+      },
+      "notes": "règles aval à observer : recalcul; parcours {\"auto\": \"NA\", \"checkpoint\": \"PASS\", \"aval\": \"NA\"}"
+    },
+    {
+      "id": "PA4.04.rejeu_aarg44",
+      "taches": [
+        "AARG44"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "POST /api/django/ventes/bons-commande/188/creer-facture/ -> 201 (rejouer_parcours.py, transaction annulée)",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "oracles_parcours": {
+        "auto": "NA",
+        "checkpoint": "PASS",
+        "aval": "PASS"
+      },
+      "notes": "refus_409 : action rejouée -> 409; règles aval à observer : reference; parcours {\"auto\": \"NA\", \"checkpoint\": \"PASS\", \"aval\": \"PASS\"}"
+    },
+    {
+      "id": "PA4.05.rejeu_aarg44",
+      "taches": [
+        "AARG44"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "GET /api/django/ventes/devis/731/facturer/ -> 200 (rejouer_parcours.py, transaction annulée)",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "oracles_parcours": {
+        "auto": "NA",
+        "checkpoint": "PASS",
+        "aval": "NA"
+      },
+      "notes": "via backend/django_core/apps/ventes/views/devis_facturation.py::DevisFacturationActionsMixin.facturer (appelle la fonction d'entrée ; 1 candidate(s) : DevisFacturationActionsMixin.facturer); règles aval à observer : fige; parcours {\"auto\": \"NA\", \"checkpoint\": \"PASS\", \"aval\": \"NA\"}"
+    },
+    {
+      "id": "PA4.06.rejeu_aarg44",
+      "taches": [
+        "AARG44"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "POST /api/django/ventes/factures/1088/emettre/ -> 200 (rejouer_parcours.py, transaction annulée)",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "oracles_parcours": {
+        "auto": "NA",
+        "checkpoint": "PASS",
+        "aval": "NA"
+      },
+      "notes": "via backend/django_core/apps/ventes/views/facture_cycle.py::FactureCycleActionsMixin.emettre (appelle la fonction d'entrée ; 3 candidate(s) : FactureCycleActionsMixin.emettre, FactureLotActionsMixin.bulk, FactureRectificatifsActionsMixin.facturer_penalites); règles aval à observer : fige; parcours {\"auto\": \"NA\", \"checkpoint\": \"PASS\", \"aval\": \"NA\"}"
+    },
+    {
+      "id": "PA4.07.rejeu_aarg44",
+      "taches": [
+        "AARG44"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "POST /api/django/ventes/factures/1088/enregistrer-paiement/ -> 201 (rejouer_parcours.py, transaction annulée)",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "oracles_parcours": {
+        "auto": "NA",
+        "checkpoint": "PASS",
+        "aval": "PASS"
+      },
+      "notes": "via backend/django_core/apps/ventes/views/facture_encaissement.py::FactureEncaissementActionsMixin.enregistrer_paiement (appelle la fonction d'entrée ; 1 candidate(s) : FactureEncaissementActionsMixin.enregistrer_paiement); refus_409 : action rejouée -> 409; règles aval à observer : recalcul; parcours {\"auto\": \"NA\", \"checkpoint\": \"PASS\", \"aval\": \"PASS\"}"
+    },
+    {
+      "id": "PA4.08.rejeu_aarg44",
+      "taches": [
+        "AARG44"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "POST /api/django/ventes/paiements/import-releve/commit/ -> 400 (rejouer_parcours.py, transaction annulée)",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "oracles_parcours": {
+        "auto": "NA",
+        "checkpoint": "PASS",
+        "aval": "NA"
+      },
+      "notes": "via backend/django_core/apps/ventes/views/releve_import.py::releve_commit (appelle la fonction d'entrée ; 1 candidate(s) : releve_commit); corps vide envoyé ({\"detail\":\"Jeton de dry-run requis : lancez d'abord l'aperçu, vérifiez les lignes, puis validez.\"}) : fournir --corps {\"PA4.08\": {...}}; règles aval à observer : choix_explicite; parcours {\"auto\": \"NA\", \"checkpoint\": \"PASS\", \"aval\": \"NA\"}"
+    },
+    {
+      "id": "PA4.09.rejeu_aarg44",
+      "taches": [
+        "AARG44"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "POST /api/django/ventes/factures/1088/creer-avoir/ -> 201 (rejouer_parcours.py, transaction annulée)",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "oracles_parcours": {
+        "auto": "NA",
+        "checkpoint": "PASS",
+        "aval": "PASS"
+      },
+      "notes": "via backend/django_core/apps/ventes/views/facture_rectificatifs.py::FactureRectificatifsActionsMixin.creer_avoir (appelle la fonction d'entrée ; 2 candidate(s) : FactureRectificatifsActionsMixin.creer_avoir, FactureRectificatifsActionsMixin.retour_client); refus_409 : action rejouée -> 409; règles aval à observer : fige ; fige; parcours {\"auto\": \"NA\", \"checkpoint\": \"PASS\", \"aval\": \"PASS\"}"
+    },
+    {
+      "id": "PA4.10.rejeu_aarg44",
+      "taches": [
+        "AARG44"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "POST /api/django/ventes/factures/1088/creer-note-debit/ -> 201 (rejouer_parcours.py, transaction annulée)",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "oracles_parcours": {
+        "auto": "NA",
+        "checkpoint": "PASS",
+        "aval": "NA"
+      },
+      "notes": "règles aval à observer : reference; parcours {\"auto\": \"NA\", \"checkpoint\": \"PASS\", \"aval\": \"NA\"}"
+    },
+    {
+      "id": "PA4.11.rejeu_aarg44",
+      "taches": [
+        "AARG44"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "POST /api/django/ventes/paiements/factures/339/paiement-avec-retenue/ -> 404 (rejouer_parcours.py, transaction annulée)",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "oracles_parcours": {
+        "auto": "NA",
+        "checkpoint": "PASS",
+        "aval": "NA"
+      },
+      "notes": "corps vide envoyé ({\"detail\":\"Facture introuvable.\"}) : fournir --corps {\"PA4.11\": {...}}; règles aval à observer : recalcul ; choix_explicite; parcours {\"auto\": \"NA\", \"checkpoint\": \"PASS\", \"aval\": \"NA\"}"
+    },
+    {
+      "id": "PA4.13.rejeu_aarg44",
+      "taches": [
+        "AARG44"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "POST /api/django/ventes/devis/731/proforma-pdf/ -> 200 (rejouer_parcours.py, transaction annulée)",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "oracles_parcours": {
+        "auto": "NA",
+        "checkpoint": "PASS",
+        "aval": "NA"
+      },
+      "notes": "règles aval à observer : reference; parcours {\"auto\": \"NA\", \"checkpoint\": \"PASS\", \"aval\": \"NA\"}"
+    },
+    {
+      "id": "PA4.14.rejeu_aarg44",
+      "taches": [
+        "AARG44"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "POST /api/django/ventes/factures/1088/dgi-transmettre/ -> 404 (rejouer_parcours.py, transaction annulée)",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "oracles_parcours": {
+        "auto": "NA",
+        "checkpoint": "PASS",
+        "aval": "NA"
+      },
+      "notes": "via backend/django_core/apps/ventes/views/facture_documents.py::FactureDocumentsActionsMixin.dgi_transmettre (appelle la fonction d'entrée ; 1 candidate(s) : FactureDocumentsActionsMixin.dgi_transmettre); corps vide envoyé ({\"detail\":\"Introuvable.\"}) : fournir --corps {\"PA4.14\": {...}}; règles aval à observer : preserve_manuel ; reference; parcours {\"auto\": \"NA\", \"checkpoint\": \"PASS\", \"aval\": \"NA\"}"
+    },
+    {
+      "id": "PA4.15.rejeu_aarg44",
+      "taches": [
+        "AARG44"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "auto (beat) : artefact RelanceLog (rejouer_parcours.py, transaction annulée)",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "oracles_parcours": {
+        "auto": "FAIL",
+        "checkpoint": "FAIL",
+        "aval": "NA"
+      },
+      "notes": "règles aval à observer : recalcul ; choix_explicite; parcours {\"auto\": \"FAIL\", \"checkpoint\": \"FAIL\", \"aval\": \"NA\"}"
+    },
+    {
+      "id": "PA4.16.rejeu_aarg44",
+      "taches": [
+        "AARG44"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "POST /api/django/ventes/devis/731/facturer-complet/ -> 409 (rejouer_parcours.py, transaction annulée)",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "oracles_parcours": {
+        "auto": "NA",
+        "checkpoint": "PASS",
+        "aval": "NA"
+      },
+      "notes": "via backend/django_core/apps/ventes/views/devis_facturation.py::DevisFacturationActionsMixin.facturer_complet (appelle la fonction d'entrée ; 1 candidate(s) : DevisFacturationActionsMixin.facturer_complet); corps vide envoyé ({\"detail\":\"Cette vente est déjà facturée par FAC-202611-0031 : une facture complète ne peut plus être créée (corrigez par un avoir).\"}) : fournir --corps {\"PA4.16\": {...}}; parcours {\"auto\": \"NA\", \"checkpoint\": \"PASS\", \"aval\": \"NA\"}"
+    }
+  ]
+}

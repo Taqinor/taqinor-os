@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { devisVersEtat, etatVersEcritures, facturesHiverEte, entreesDeEtat, etudeDeCreation, serieMixte } from './etatDevis.js'
+import { devisVersEtat, etatVersEcritures, facturesHiverEte, entreesDeEtat, etudeDeCreation, serieMixte, erreursBloquantes } from './etatDevis.js'
 import { consoAnnuelleDepuisFactures } from '../calc/tarifs.js'
 import { documentContrat } from '../../../test/fixtures/contractSamples.js'
 
@@ -457,4 +457,16 @@ test('ete_sans_hiver_refuse', () => {
   const hook = readFileSync(join(ICI, 'hooks/usePersistanceDevis.js'), 'utf-8')
   assert.match(hook, /parseFloat\(fEte\) > 0 && !facturesHiverEte\(fHiver, fEte\)/)
   assert.match(hook, /Facture d\\'hiver manquante/)
+})
+
+test('erreurs_bloquantes_toutes_a_la_fois', () => {
+  // AGNR76 — lignes ET factures en erreur : la carte les liste ensemble.
+  assert.deepEqual(erreursBloquantes({}), [])
+  assert.deepEqual(erreursBloquantes({ factures: 'F' }), ['F'])
+  assert.deepEqual(
+    erreursBloquantes({ factures: 'F', lines: 'L', client: 'C', submit: 'S', autre: 'X' }),
+    ['S', 'L', 'C', 'F'])
+  assert.deepEqual(erreursBloquantes({ lines: 'M', submit: 'M' }), ['M'])
+  const carte = readFileSync(join(ICI, '../../../pages/ventes/generator/CarteCreation.jsx'), 'utf-8')
+  assert.match(carte, /erreursBloquantes\(errors\)/)
 })

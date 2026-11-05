@@ -84,10 +84,17 @@ def _c_chercher(C, test, action):
     return None
 
 
-def _c_route_de(C, ancre):
-    morceaux = (ancre or "").partition("::")[2].split(".")
-    if len(morceaux) < 2:
+def _c_route_de(C, ancre, vue_fonction=True):
+    fichier, _, sym = (ancre or "").partition("::")
+    morceaux = sym.split(".")
+    if len(morceaux) < 2 and not vue_fonction:
         return None
+    if len(morceaux) < 2:  # ADVS41 — vue-FONCTION (@api_view, page publique à jeton) nommée par l'ENTRÉE
+        mod = fichier.replace("backend/django_core/", "")[:-3].replace("/", ".")
+        return next(((r, v, cb.cls) for r, cb in C["routes"] for v in ("get", "post")
+                     if sym and getattr(getattr(cb, "cls", None), "__name__", None) == sym
+                     and getattr(cb.cls, "__module__", None) == mod and not getattr(cb, "actions", None)
+                     and "format" not in r and hasattr(cb.cls, v)), None)
     action = {"perform_create": "create", "perform_update": "partial_update"}.get(morceaux[1], morceaux[1])
     return _c_chercher(C, lambda c: morceaux[0] in {k.__name__ for k in c.__mro__}, action)
 
@@ -165,13 +172,30 @@ def _c_lier(C, M):
     return None
 
 
+def _c_jeton(C):
+    """ADVS41 — jeton d'une route publique : le lien le plus récent (modèle à champ `token`, FK vers un objet
+    suivi, non expiré) — celui que l'envoi rejoué vient de frapper dans la même transaction."""
+    from django.apps import apps
+    from django.utils import timezone
+    for M in apps.get_models():
+        noms = {f.name for f in M._meta.fields}
+        for f in [f for f in M._meta.fields if "token" in noms and f.many_to_one and f.related_model is not None]:
+            if f.related_model._meta.label in C["objets"]:
+                qs = M._default_manager.filter(**{f.name: C["objets"][f.related_model._meta.label]})
+                o = (qs.filter(expires_at__gt=timezone.now()) if "expires_at" in noms else qs).order_by("-pk").first()
+                if o is not None:
+                    return o.token
+    return None
+
+
 def _c_appeler(C, verbe, chemin, corps=None):
     from django.db import transaction
     api = C["api"]
     with transaction.atomic():
         r = api.get(chemin) if verbe == "get" else getattr(api, verbe)(chemin, corps or {}, format="json")
     ctype = r.get("Content-Type", "")
-    texte = "" if "pdf" in ctype else r.content[:500000].decode("utf-8", "replace")
+    # ADVS41 — corps ENTIER (une liste de 50 devis dépasse 1,5 Mo : tronquée, elle ne se lisait plus en JSON)
+    texte = "" if "pdf" in ctype else r.content.decode("utf-8", "replace")
     try:
         donnees = json.loads(texte) if "json" in ctype else None
     except ValueError:
@@ -184,7 +208,7 @@ def _c_oracles_api(C, res, appel, cls, types):
     verbe, chemin, corps, (st, ctype, texte, donnees) = appel
     O, R, co = res["oracles"], res["parcours"], C["co"]
     O["1"], O["2"] = ("FAIL" if st >= 500 else "PASS"), ("FAIL" if 400 <= st < 500 else "PASS")
-    if "proposal" in chemin:
+    if "proposal" in chemin and chemin.rstrip("/").endswith(("proposal", "pdf")):  # rendu PDF, pas la data JSON
         O["6"] = "PASS" if st == 200 and "pdf" in ctype else "FAIL"
     if any(k in chemin for k in ("public", "proposal", "portail")):
         O["7"] = "FAIL" if "prix_achat" in texte else "PASS"
@@ -204,9 +228,10 @@ def _c_jouer_api(C, e, res, trouve, types):
     """Joue l'étape par sa route DRF ; False si aucun objet lié n'existe pour une route de détail."""
     route, verbe, cls = trouve
     detail = bool(re.search(r"\(\?P<|<\w", route))
-    pk = _c_lier(C, _c_modele_vue(cls)) if detail else ""
+    jeton = bool(re.search(r"<(?:\w+:)?token>|\(\?P<token>", route))
+    pk = _c_jeton(C) if jeton else (_c_lier(C, _c_modele_vue(cls)) if detail else "")
     if detail and pk is None:
-        nom = getattr(_c_modele_vue(cls), "__name__", "?")
+        nom = "lien à jeton valide" if jeton else getattr(_c_modele_vue(cls), "__name__", "?")
         res["notes"].append(f"aucun {nom} lié à l'enregistrement : non jouée")
         return False
     chemin, corps = _c_url(route, pk), C["P"]["corps"].get(e.get("id"), {})
@@ -255,7 +280,7 @@ def _c_etape(C, e):
     regles = e.get("regle_aval", e.get("regles_aval")) or []
     types = {r if isinstance(r, str) else r.get("type") for r in regles}
     entree = e.get("fonction_entree")
-    trouve = _c_route_de(C, entree if isinstance(entree, str) else "") or _c_route_de(C, decl.get("source"))
+    trouve = _c_route_de(C, entree if isinstance(entree, str) else "") or _c_route_de(C, decl.get("source"), False)
     if not trouve and not auto:
         trouve = _c_par_appelant(C, e, Mp, res["notes"])
     if trouve:
@@ -294,7 +319,7 @@ def _jouer(P):
 
 
 _CONTENEUR = (_c_routes, _c_url, _c_modele_vue, _c_chercher, _c_route_de, _c_par_appelant, _c_artefact,
-              _c_modele_de, _c_lier, _c_appeler,
+              _c_modele_de, _c_lier, _c_jeton, _c_appeler,
               _c_oracles_api, _c_jouer_api, _c_checkpoint, _c_etape, _jouer)
 EN_TETE_CONTENEUR = "import json\nimport re\nimport sys\n\n\n"
 

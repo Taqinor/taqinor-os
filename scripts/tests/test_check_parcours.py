@@ -387,6 +387,18 @@ class EntreeDomaineTests(unittest.TestCase):
         self.assertIsNone(rp._c_par_appelant(C, {"id": "autre"}, Facture, notes))
         self.assertIn("aucune action de vue n'appelle", notes[0])
 
+    def test_vue_fonction_publique_a_jeton_resolue_par_son_ancre(self):
+        """ADVS41 — `fichier::fonction` (@api_view publique, PA3-04) : sa route, jouée au jeton du lien."""
+        Vue = type("proposal_data", (), {"get": lambda self: None, "__module__": "apps.ventes.public_views"})
+        route = "api/django/ventes/proposal/<str:token>/"
+        C = {"routes": [(route, SimpleNamespace(cls=Vue, actions=None))]}
+        self.assertEqual(rp._c_route_de(C, "apps/ventes/public_views.py::proposal_data"), (route, "get", Vue))
+        self.assertIsNone(rp._c_route_de(C, "apps/ventes/autre.py::proposal_data"))  # autre module
+        # un DÉCLENCHEUR public (signature à empreinte lue) n'est jamais joué à la place de l'entrée
+        self.assertIsNone(rp._c_route_de(C, "apps/ventes/public_views.py::proposal_data", False))
+        self.assertIsNone(rp._c_route_de(C, "apps/ventes/domain/envoi.py::mark_devis_sent"))  # fonction domaine
+        self.assertEqual(rp._c_url(route, "abc"), "/api/django/ventes/proposal/abc/")
+
 
 if __name__ == "__main__":
     unittest.main()
