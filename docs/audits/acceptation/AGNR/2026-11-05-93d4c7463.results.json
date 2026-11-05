@@ -1,0 +1,34 @@
+{
+  "sha": "93d4c74638cb8a6db52826db0c8d676d2cd1bf3f",
+  "date": "2026-11-05",
+  "groupe": "AGNR",
+  "verdict": "PASS",
+  "couvre": [
+    "AGNR63"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "W14.AGNR63.gestes_ttc_rebasent_echeancier",
+      "taches": [
+        "AGNR63"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-05-rejeux-w14/AGNR63.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "API reelle (admin), devis industriel 17 000 TTC : PATCH remise 50, DELETE ligne onduleur, prix-negocie 9 000 (V1 acceptee) avec [8 000 MAD ; 40 % ; 10 %] => 409 {echeancier}, rien ecrit (remise, lignes, TTC, echeancier, aucun V2) ; avec [2 000 MAD ; 40 % ; 10 %] => 200 / 204 / 201, derniere tranche = reste en MAD, aucun jalon < 0, somme = TTC ; tout % => succes, echeancier inchange ; sondes C-AGNR-VER4-010 et -012 repro False"
+    }
+  ]
+}
