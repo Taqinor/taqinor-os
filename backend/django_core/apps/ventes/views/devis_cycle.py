@@ -520,6 +520,12 @@ class DevisCycleActionsMixin:
                 corps = {k: v for k, v in corps.items()
                          if not k.startswith('_')}
                 return Response(corps)
+            from .facture_gardes import MOTIF_SANS_ENCAISSER, PeutEncaisser
+            if not PeutEncaisser().has_permission(request, self) and (
+                    apercu_prix_negocie(devis, **saisie)['regularisation']
+                    ['type'] == 'avoir'):  # ASEC68 — un avoir exige encaisser
+                return Response({'detail': MOTIF_SANS_ENCAISSER},
+                                status=status.HTTP_403_FORBIDDEN)
             corps = appliquer_prix_negocie(
                 devis, confirmer_avoir=bool(donnees.get('confirmer_avoir')),
                 **saisie)

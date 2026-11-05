@@ -142,3 +142,42 @@ class RangCibleTests(TestCase):
             f'/api/django/users/{self.commercial.id}/', {'role': self.r_cresp.id},
             format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
+
+    def test_cible_aux_codes_plus_larges_refusee(self):
+        """ASEC66 — un Technicien responsable (même palier) ne gère pas un
+        Commercial responsable dont le rôle porte des codes qu'il n'a pas :
+        403 ``role_plus_large`` aux 4 portes, cible relue inchangée."""
+        avant = self._etat(self.cresp)
+        api = self._api(self.tresp)
+        base = f'/api/django/users/{self.cresp.id}/'
+        portes = [
+            ('reinit', lambda: api.post(
+                base + 'reinitialiser-mot-de-passe/',
+                {'password': 'Qz7#wLp2!vR9-mK4@tH6'}, format='json')),
+            ('email', lambda: api.patch(
+                base, {'email': 'pirate@x.ma'}, format='json')),
+            ('avatar', lambda: api.post(
+                base + 'avatar/',
+                {'file': SimpleUploadedFile('a.png', _PNG, 'image/png')},
+                format='multipart')),
+            ('DELETE', lambda: api.delete(base)),
+        ]
+        for nom, appel in portes:
+            with self.subTest(porte=nom):
+                self._assert_refus(appel(), code='role_plus_large')
+                self.assertEqual(self._etat(self.cresp), avant)
+        self.assertTrue(User.objects.filter(pk=self.cresp.pk).exists())
+        # Rang inférieur aussi : l'Admin RH ne gère pas un Commercial (+33).
+        self._assert_refus(self._api(self.rh).patch(
+            f'/api/django/users/{self.commercial.id}/', {'poste': 'X'},
+            format='json'), code='role_plus_large')
+        # Inclus ⇒ 200 : Commercial resp → Commercial, Directeur → Commercial
+        # responsable, soi-même.
+        for acteur, cible in ((self.cresp, self.commercial),
+                              (self.directeur, self.cresp),
+                              (self.tresp, self.tresp)):
+            with self.subTest(acteur=acteur.username, cible=cible.username):
+                resp = self._api(acteur).patch(
+                    f'/api/django/users/{cible.id}/', {'poste': 'Vendeur'},
+                    format='json')
+                self.assertEqual(resp.status_code, 200, resp.data)

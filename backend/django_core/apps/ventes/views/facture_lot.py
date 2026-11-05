@@ -78,6 +78,10 @@ class FactureLotActionsMixin:
     def consolider(self, request):
         """XFAC11 — crée UNE facture consolidée à partir de plusieurs devis
         acceptés du MÊME client. Body : ``{devis_ids: [...]}``."""
+        from .facture_gardes import MOTIF_SANS_ENCAISSER, PeutEncaisser
+        if not PeutEncaisser().has_permission(request, self):  # ASEC67
+            return Response({'detail': MOTIF_SANS_ENCAISSER},
+                            status=status.HTTP_403_FORBIDDEN)
         from ..services import SaleWarningError, consolider_factures
 
         # CI #997 fuzz — corps validé par le sérialiseur PUBLIÉ (ids entiers
