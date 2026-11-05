@@ -3,19 +3,19 @@
 Sélectionnez un lead ou un client
 *
 Au moins une ligne avec un produit et une quantité > 0
-Au moins une ligne avec un produit et une quantité > 0
+Au moins une ligne avec un produit et une quantité > 0Sélectionnez un lead ou un client
 == industriel sans consommation ==
 Renseignez la consommation du site (12 mois, total annuel ou factures) ou une taille explicite — l'étude en dépend.
 *
 Renseignez la consommation du site (12 mois, total annuel ou factures) ou une taille explicite — l'étude en dépend.
 Au moins une ligne avec un produit et une quantité > 0
-Au moins une ligne avec un produit et une quantité > 0
+Au moins une ligne avec un produit et une quantité > 0Renseignez la consommation du site (12 mois, total annuel ou factures) ou une taille explicite — l'étude en dépend.
 == kWh déclaré incohérent ==
 kWh déclarés incohérents avec les factures — corriger la fiche du lead
 *
 *
 Au moins une ligne avec un produit et une quantité > 0
-Au moins une ligne avec un produit et une quantité > 0
+Au moins une ligne avec un produit et une quantité > 0kWh déclarés incohérents avec les factures — corriger la fiche du lead
 == aucune ligne exploitable ==
 *
 Au moins une ligne avec un produit et une quantité > 0
