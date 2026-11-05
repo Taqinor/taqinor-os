@@ -419,7 +419,7 @@ export function useApercuEtude(ctx) {
     ? paybackMoteurHoraire(totals.totalAvec, apercuEcoAvec, {
         annuel: etudeHoraireAnnuelAvec,
         rendementBatterie: etudeHoraireDonneesPourAvec?.etude?.rendement_batterie ?? null,
-        stockage: batteryKwhFromLines(lines, produits) > 0,
+        stockage: batteryKwhFromLines(lines, produits) > 0, reglesCalcul,
         inverterReplaceCost: provisionOnduleurPayee(inverterCostFromLines(
           lines.filter(l => appartientAuPanierAvec(l, produits)), produits), discountPct, reglesCalcul),
       })

@@ -360,3 +360,61 @@ class EtatVenteVNT23Tests(TestCase):
                 self.assertEqual(etat['peut']['prix_negocie'], attendu)
         normal = etat_vente(devis, roles[2])
         self.assertFalse(normal['factures'][0]['peut']['annuler'])
+
+    def test_avoir_de_revision_a_confirmer_servi(self):
+        """ATOT59 (C-ATOT-VER4-022) — V1 40 000 HT à 10 % + 60 000 à 20 %
+        acceptée et facturée en entier, V2 à 30 000 à 10 % acceptée par le
+        flux normal : la vente DIT l'avoir de 11000.00 MAD TTC à confirmer ;
+        rôle sans palier : faux, phrase absente. Mutant : forcer le drapeau
+        à faux ⇒ échec."""
+        from unittest import mock
+
+        from apps.ventes.domain.cycle_vie import accept_devis
+        from apps.ventes.domain.revision import reviser_devis
+        from apps.ventes.models import Devis, LigneDevis
+        from apps.ventes.tests._quote_engine_common import make_devis
+        from apps.ventes.utils.echeancier import creer_facture_tranche
+        from apps.ventes.utils.references import create_with_reference
+        from apps.ventes.vente_facturation import etat_vente
+
+        def accepter(devis):
+            Devis.objects.filter(pk=devis.pk).update(
+                statut=Devis.Statut.ENVOYE)
+            return accept_devis(
+                devis=Devis.objects.get(pk=devis.pk), user=self.user,
+                nom='Client ATOT59', date_acceptation=date.today(),
+                option='sans_batterie')
+
+        with mock.patch('apps.ventes.domain.cycle_vie._send_acceptance_emails'), \
+                mock.patch('apps.ventes.domain.cycle_vie._store_signed_pdf'):
+            v1 = make_devis(
+                self.company, self.user, self.client_obj,
+                [('Équipement à 10', '1', '40000', '10'),
+                 ('Installation à 20', '1', '60000', '20')],
+                reference=f'DEV-ATOT59-{_nxt()}')
+            Devis.objects.filter(pk=v1.pk).update(lead=self.lead)
+            v1 = accepter(v1)
+            while True:
+                try:
+                    creer_facture_tranche(Devis.objects.get(pk=v1.pk),
+                                          self.user, self.company,
+                                          create_with_reference)
+                except ValueError:
+                    break
+            v2 = reviser_devis(v1, user=self.user)
+            LigneDevis.objects.filter(
+                devis=v2, designation='Équipement à 10').update(
+                    prix_unitaire=Decimal('30000'))
+            v2 = accepter(v2)
+        etat = etat_vente(Devis.objects.get(pk=v2.pk), self.user)
+        self.assertTrue(etat['peut']['confirmer_avoir_revision'])
+        self.assertIn('11000.00 MAD TTC', etat['raison_bloquee'])
+        exemple = self._contrat()['exemple_avoir_a_confirmer']['vente']
+        self.assertEqual(set(etat['peut']), set(exemple['peut']))
+        self.assertTrue(exemple['peut']['confirmer_avoir_revision'])
+        normal = User.objects.create_user(
+            username=f'atot59_normal_{_nxt()}', password='x',
+            role_legacy='normal', company=self.company)
+        sans = etat_vente(Devis.objects.get(pk=v2.pk), normal)
+        self.assertFalse(sans['peut']['confirmer_avoir_revision'])
+        self.assertNotIn('MAD TTC', sans['raison_bloquee'])

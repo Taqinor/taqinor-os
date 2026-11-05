@@ -101,6 +101,8 @@ FIGEE = {
     'avenant_demander_signature': PALIER_VENTE,
     # VNT66 — réécrire l'échéancier d'une vente : même palier.
     'echeancier_vente': PALIER_VENTE,
+    # ATOT62 — confirmer l'avoir de révision en attente : même palier.
+    'confirmer_avoir_revision': PALIER_VENTE,
     # CADV82 — l'appel J28 prolonge la validité d'un envoyé (écriture).
     'prolonger_validite': RESP,
 }

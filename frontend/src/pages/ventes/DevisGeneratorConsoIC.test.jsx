@@ -67,6 +67,7 @@ function rendre() {
 function reponseSansConso() {
   const r = reponseContrat('ventes', 'etude_ci_preview')
   r.data.entrees_resolues = {}
+  r.data.feuille_consommation_retenue = null // ADEV120 — aucune feuille retenue
   return r
 }
 
@@ -109,10 +110,27 @@ describe('CIQ125 — profil déclaré C&I et résultat serveur en direct', () =>
     ventesApi.getDevisById.mockResolvedValue(devisIndustriel('commercial'))
     const r = reponseSansConso()
     r.data.entrees_resolues = { kwh_mensuel_declare: { valeur: 6000, provenance: { origine: 'lead', detail: 'client' } } }
+    r.data.feuille_consommation_retenue = 'kwh_mensuel_declare' // ce que le serveur sert alors (AMOT104)
     ventesApi.etudeCiPreview.mockResolvedValue(r)
     rendre()
     // L'aperçu serveur doit être LU avant d'enregistrer (c'est lui qui porte
     // la consommation résolue) : la taille retenue affichée en est la preuve.
+    const retenue = exempleContrat('ventes', 'etude_ci_preview').taille.retenue_kwc
+    expect(await screen.findByTestId('ci-taille-retenue', {}, { timeout: 5000 })).toHaveTextContent(String(retenue))
+    fireEvent.click(await screen.findByRole('button', { name: /Enregistrer les modifications/ }))
+    await waitFor(() => expect(ventesApi.patchEtudeParams).toHaveBeenCalled(), { timeout: 5000 })
+    expect(screen.queryByTestId('erreur-conso')).toBeNull()
+  })
+
+  it("ADEV120 — facture d'hiver seule résolue vaut consommation connue", async () => {
+    // C-ADEV-VER4-031 — l'aperçu a chiffré sur `facture_hiver_mad` (feuille
+    // retenue servie, AMOT104) : l'écran ne refuse plus « Enregistrer ».
+    ventesApi.getDevisById.mockResolvedValue(devisIndustriel('commercial'))
+    const r = reponseSansConso()
+    r.data.entrees_resolues = { facture_hiver_mad: { valeur: 3500, provenance: { origine: 'lead', detail: 'client' } } }
+    r.data.feuille_consommation_retenue = 'facture_hiver_mad'
+    ventesApi.etudeCiPreview.mockResolvedValue(r)
+    rendre()
     const retenue = exempleContrat('ventes', 'etude_ci_preview').taille.retenue_kwc
     expect(await screen.findByTestId('ci-taille-retenue', {}, { timeout: 5000 })).toHaveTextContent(String(retenue))
     fireEvent.click(await screen.findByRole('button', { name: /Enregistrer les modifications/ }))

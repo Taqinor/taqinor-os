@@ -7,7 +7,7 @@
 // par `pages/ventes/DevisGeneratorPaybackMoteur.test.jsx`.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { paybackMoteurHoraire, provisionOnduleurPayee } from './calc/roi.js'
+import { paybackMoteurHoraire, provisionOnduleurPayee, reglesAuMoins } from './calc/roi.js'
 
 test("cas e2e : 36 873,11 MAD / 4 580 MAD/an ⇒ 8,2 ans (document), pas 8,05", () => {
   const r = paybackMoteurHoraire(36873.11, 4580, { inverterReplaceCost: 12000 })
@@ -58,4 +58,26 @@ test('AMOT106 : niveau 2 ou sans remise, provision inchangée (24 000)', () => {
   assert.equal(provisionOnduleurPayee(24000, 10, 2), 24000)
   assert.equal(provisionOnduleurPayee(24000, 0, 3), 24000)
   assert.equal(provisionOnduleurPayee(24000, '', 3), 24000)
+})
+
+// AMOT125 (C-AMOT-VER4-020) — un devis d'origine (niveau 1) garde la part
+// batterie du serveur (`rendement_une_fois=False`). Attendu calculé par
+// `pricing.calculate_savings_roi(6.0, 60000, 90000, battery_kwh=10,
+// stockage_present=True, etude_horaire=<cas VB AMOT72>, rendement_une_fois=False)`
+// (exécuté le 04/11/2026) : roi_a 13,4, net_gain_avec 72 819 ; corrigé : 12,9 / 79 603.
+test("regles d'origine : part batterie du serveur", () => {
+  const annuel = {
+    production_kwh: 9000, consommation_kwh: 8000,
+    taux_autoconso_sans: 0.45, taux_autoconso_avec: 0.75,
+  }
+  const base = { annuel, rendementBatterie: 0.9, stockage: true }
+  const origine = paybackMoteurHoraire(90000, 7200, { ...base, reglesCalcul: 1 })
+  assert.equal(origine.paybackYears, 13.4)
+  assert.equal(origine.netGain, 72819)
+  for (const reglesCalcul of [2, 12, null]) {
+    const r = paybackMoteurHoraire(90000, 7200, { ...base, reglesCalcul })
+    assert.deepEqual([r.paybackYears, r.netGain], [12.9, 79603])
+  }
+  assert.equal(reglesAuMoins(undefined, 3), true)
+  assert.equal(reglesAuMoins(1, 2), false)
 })

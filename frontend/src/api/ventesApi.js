@@ -602,6 +602,9 @@ const ventesApi = {
   prixNegocie: (id, data) => api.post(`/ventes/devis/${id}/prix-negocie/`, data),
   // Pose le lien de signature de l'avenant ET la tâche unique (idempotent).
   demanderSignatureAvenant: (id) => api.post(`/ventes/devis/${id}/avenant/demander-signature/`, {}),
+  // ATOT62 — émet l'avoir de révision en attente (contrat
+  // `apps/ventes/contract_samples/devis_confirmer_avoir_revision.json`).
+  confirmerAvoirRevision: (id) => api.post(`/ventes/devis/${id}/confirmer-avoir-revision/`, {}),
 
   // VNT77 — « Modifier le montant » d'un BROUILLON de tranche (VNT67) : le TTC
   // tapé part tel quel, le serveur réécrit HT / TVA et l'échéancier (409 sur une émise).

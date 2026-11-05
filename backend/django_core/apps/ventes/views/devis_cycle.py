@@ -534,6 +534,43 @@ class DevisCycleActionsMixin:
             return Response(exc.corps(), status=statut)
         return Response(corps, status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=None, responses={
+        200: inline_serializer('DevisConfirmerAvoirRevisionReponse', {
+            'avoirs': serializers.ListField(child=serializers.DictField())}),
+        409: D.ErreurDevisFige})
+    @action(detail=True, methods=['post'], url_path='confirmer-avoir-revision',
+            permission_classes=PALIER_VENTE)
+    def confirmer_avoir_revision(self, request, pk=None):
+        """ATOT62 (C-ATOT-VER4-022) — émet l'avoir de révision qui attend sa
+        confirmation (VNT64 ; contrat ``devis_confirmer_avoir_revision.json``,
+        écran ``PanneauVente.jsx``). Aucun avoir produit ⇒ 409, rien d'écrit."""
+        from ..domain.facturation_ops import AvoirPlafondDepasse
+        from ..domain.facturation_vente import verrouiller_vente
+        from ..domain.revision import rattacher_aval_financier_revision
+        from ..models import Avoir
+        devis, code, avoirs = self.get_object(), 'aucun_avoir_a_confirmer', []
+        with transaction.atomic():
+            verrouiller_vente(devis)
+            devis.refresh_from_db()
+            avant = list(Avoir.objects.filter(facture__devis=devis).values_list('pk', flat=True))
+            try:
+                if devis.statut == Devis.Statut.ACCEPTE and devis.is_active:
+                    rattacher_aval_financier_revision(devis, user=request.user, confirmer_avoir=True)
+                avoirs = list(Avoir.objects.filter(facture__devis=devis).exclude(pk__in=avant)
+                              .select_related('facture').order_by('pk'))
+            except AvoirPlafondDepasse:
+                code = 'avoir_au_dela_du_creditable'
+            if not avoirs:
+                transaction.set_rollback(True)
+        if not avoirs:
+            detail = ("Aucun avoir de révision n'attend de confirmation sur cette vente."
+                      if code == 'aucun_avoir_a_confirmer'
+                      else "L'avoir dépasse le montant restant des factures de la vente.")
+            return Response({'detail': detail, 'code': code}, status=status.HTTP_409_CONFLICT)
+        return Response({'avoirs': [
+            {'reference': a.reference, 'montant_ttc': f'{a.total_ttc:.2f}',
+             'facture': a.facture.reference} for a in avoirs]})
+
     # api-only: l'écran « Faire signer l'avenant » arrive avec le panneau de vente (VNT75/VNT79).
     @extend_schema(request=None,
                    responses={200: _AVENANT_SIGNATURE_REPONSE,
