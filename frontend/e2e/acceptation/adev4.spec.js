@@ -5,7 +5,7 @@ import { groupe } from './_oracles.js'
 import { py, fermerDjangoApresTout } from './_django.js'
 import { lireJson, assurerSessionPage, telephoneMobileUnique } from '../helpers.js'
 
-const etape = groupe('ADEV', ['ADEV119'])
+const etape = groupe('ADEV', ['ADEV119', 'ADEV120'])
 fermerDjangoApresTout()
 const API = '/api/django'
 const T = { timeout: 120_000 }
@@ -73,4 +73,34 @@ MotifPerte.objects.filter(id__in=${JSON.stringify(actifs)}).update(archived=Fals
 sortie(1)`)
   }
   suivi.verifie(5)
+})
+
+etape('V4.120', ['ADEV120'], async ({ page }) => {
+  const r = page.request
+  const m = marque()
+  await page.addInitScript(() => {
+    try { localStorage.setItem('taqinor-pwa-install-dismissed', '1') } catch { /* mode privé */ }
+    try { localStorage.setItem('taqinor:welcome:seen:v1', '1') } catch { /* mode privé */ }
+  })
+  // Lead commercial à facture d'hiver SEULE (aucun kWh, aucune facture d'été, aucun profil).
+  const lead = await lireJson(await r.post(`${API}/crm/leads/`, { ...T, data: {
+    nom: `ADEV120 ${m}`, ville: 'Casablanca', telephone: telephoneMobileUnique(), email: `adev120_${m}@example.invalid`,
+    type_installation: 'commercial', categorie_commerciale: 'bureau', tension_raccordement: 'bt', raccordement: 'triphase',
+    type_toiture: 'bac_acier', contrat_electricite: 'bt_patente', facture_hiver: '4500',
+  } }), 'lead C&I')
+  const p = await lireJson(await r.post(`${API}/stock/produits/`, { ...T, data: { nom: `Panneau ADEV120 ${m}`, prix_vente: '1200.00', prix_achat: '1.00' } }), 'produit')
+  const d = await lireJson(await r.post(`${API}/ventes/devis/atomic/`, { ...T, data: { taux_tva: '20.00', remise_globale: '0', lead: lead.id, mode_installation: 'commercial', lignes: [{ produit: p.id, designation: p.nom, quantite: '10', prix_unitaire: '1200.00', remise: '0.00', taux_tva: '20.00', type_ligne: 'produit', ordre: 0 }] } }), 'devis commercial')
+  const apercu = page.waitForResponse(async (x) => {
+    if (!/\/ventes\/etude-ci\/preview\/?$/.test(new URL(x.url()).pathname) || x.status() !== 200) return false
+    try { return (await x.json())?.feuille_consommation_retenue === 'facture_hiver_mad' } catch { return false }
+  }, { timeout: 120_000 })
+  await page.goto(`/ventes/devis/nouveau?edit=${d.id}`, { waitUntil: 'domcontentloaded', timeout: 90_000 })
+  await expect(page.getByTestId('ci-profil'), 'générateur C&I').toBeVisible({ timeout: 90_000 })
+  const rep = await apercu
+  expect((await rep.json()).feuille_consommation_retenue, 'aperçu : facture d\'hiver retenue').toBe('facture_hiver_mad')
+  const etude = page.waitForResponse((x) => x.request().method() === 'PATCH' && new RegExp(`/ventes/devis/${d.id}/etude-params/?$`).test(new URL(x.url()).pathname), { timeout: 120_000 })
+  await page.getByRole('button', { name: /Enregistrer les modifications/ }).click()
+  const patch = await etude.catch(async (e) => { throw new Error(`pas de patchEtudeParams : ${(await page.locator('[data-testid=erreur-conso], [role=alert]').allInnerTexts()).join(' | ').slice(0, 500)} ; ${e.message.slice(0, 80)}`) })
+  expect(patch.status(), `etude-params : ${(await patch.text()).slice(0, 300)}`).toBeLessThan(300)
+  await expect(page.getByTestId('erreur-conso'), 'aucun refus sous le champ conso').toHaveCount(0)
 })
