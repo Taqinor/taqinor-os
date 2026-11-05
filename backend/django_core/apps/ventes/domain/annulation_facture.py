@@ -377,6 +377,35 @@ def rendre_avance_gardee(facture, *, avant_pk, user):
         _reclasser_avance(avance)
 
 
+def restaurer_facture(facture, *, avoir, trace, user):
+    """AARG63 — LA porte de restauration d'une facture annulée par l'avoir
+    miroir ``avoir`` (``trace`` = sa contre-passation, ``old_value`` = statut
+    antérieur) : vente verrouillée et bornée comme une émission (vente
+    refacturée ⇒ 409), devis non accepté ⇒ 409, puis l'avance gardée revient."""
+    from core.conflit_etat import ConflitEtat
+    from ..models import Facture, FactureActivity
+    from .facturation_ops import EmissionRefusee
+    from .facturation_vente import verrouiller_emission
+    from apps.ventes.vente_facturation import _ventes_de_la_facture
+    for devis, _p in _ventes_de_la_facture(facture):
+        if devis is not None and devis.statut != 'accepte':
+            raise ConflitEtat(f'Le devis {devis.reference} n\'est plus accepté : la facture '
+                              f'{facture.reference} ne peut pas être restaurée.')
+    try:
+        verrouiller_emission(facture, Facture.Statut.ANNULEE)
+    except EmissionRefusee as exc:
+        raise ConflitEtat(exc.motif) from exc
+    rendre_avance_gardee(facture, avant_pk=trace.pk, user=user)
+    ancien = trace.old_value.strip()
+    facture.statut = ancien
+    facture.save(update_fields=['statut'])
+    FactureActivity.objects.create(
+        company=facture.company, facture=facture, user=user,
+        kind=FactureActivity.Kind.MODIFICATION, field='statut', field_label='Statut',
+        old_value=Facture.Statut.ANNULEE, new_value=ancien,
+        body=(f"Facture restaurée : l'avoir de contre-passation {avoir.reference} a été annulé."))
+
+
 def _refuser_si_argent(locked, net_acompte):
     """AFAC12 — sans directive, une facture qui porte de l'argent est
     refusée (400 ``directive_acompte_requise``)."""
