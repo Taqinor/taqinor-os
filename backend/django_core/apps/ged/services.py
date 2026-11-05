@@ -6400,7 +6400,7 @@ def caviarder_document(version, zones, *, created_by=None):
     finally:
         doc.close()
 
-    nom = f'{document.nom} (caviardé)'
+    nom = f'{document.nom[:240]} (caviardé)'  # ENF48 : nom ≤ 255, « .pdf » compris
     new_doc = create_document(
         company=document.company, folder=document.folder, nom=nom,
         description=document.description,

@@ -312,9 +312,17 @@ class TestLeadWhatsAppEndpoint(TestCase):
             company=other, reference='DEV-X-1', client=oc)
         resp = self.api.post(
             self._url(), {'devis_ids': [foreign.id]}, format='json')
-        # ERR-ENF11-FUZZ-CRM : id bien formé mais hors société/hors lead =
-        # introuvable (404), indiscernable d'un id qui n'existe pas.
-        self.assertEqual(resp.status_code, 404)
+        # ENF48 : lead existant, id bien formé hors société/hors lead = 409
+        # (règle d'ENF40), indiscernable d'un id qui n'existe pas.
+        self.assertEqual(resp.status_code, 409)
+        inconnu = self.api.post(
+            self._url(), {'devis_ids': [foreign.id + 10_000]}, format='json')
+        self.assertEqual(inconnu.status_code, 409)
+        self.assertEqual(inconnu.data['detail'], resp.data['detail'])
+        apercu = self.api.post(
+            self._url().replace('whatsapp-devis/', 'whatsapp-devis-apercu/'),
+            {'devis_ids': [foreign.id]}, format='json')
+        self.assertEqual(apercu.status_code, 409)
 
 
 class TestFactureWhatsAppEndpoint(TestCase):

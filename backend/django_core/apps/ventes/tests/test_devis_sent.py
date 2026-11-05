@@ -235,10 +235,10 @@ class TestCrossTenantIsolation(TestCase):
         resp = self.api.post(
             f'/api/django/crm/leads/{self.lead.id}/whatsapp-devis/',
             {'devis_ids': [self.foreign_devis.id]}, format='json')
-        # L'endpoint refuse un devis hors société/hors lead (404, comme un id
-        # inexistant — ERR-ENF11-FUZZ-CRM) — et surtout le devis étranger
+        # L'endpoint refuse un devis hors société/hors lead (409, comme un id
+        # inexistant — ENF48, règle ENF40) — et surtout le devis étranger
         # n'est PAS passé à « envoyé ».
-        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.status_code, 409)
         self.foreign_devis.refresh_from_db()
         self.assertEqual(self.foreign_devis.statut, Devis.Statut.BROUILLON)
         self.assertIsNone(self.foreign_devis.date_envoi)

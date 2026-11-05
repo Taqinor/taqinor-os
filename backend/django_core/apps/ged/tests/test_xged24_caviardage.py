@@ -120,6 +120,19 @@ class CaviarderServiceTests(XGed24Base):
             created_by=self.admin_a)
         self.assertEqual(new_doc.custom_data.get('caviarde_depuis'), self.doc.pk)
 
+    def test_nom_original_255_caracteres_copie_bornee(self):
+        """ENF48 — api-fuzz : un original au nom de 255 caractères débordait
+        la colonne avec « (caviardé) » (500). Nom et fichier ≤ 255."""
+        self.doc.nom = 'n' * 255
+        self.doc.save()
+        version = self._add_pdf_version(self.doc, 'secret')
+        new_doc = services.caviarder_document(
+            version, [{'page': 0, 'x0': 0, 'y0': 0, 'x1': 100, 'y1': 100}],
+            created_by=self.admin_a)
+        self.assertTrue(new_doc.nom.endswith(' (caviardé)'))
+        self.assertLessEqual(len(new_doc.nom), 255)
+        self.assertLessEqual(len(new_doc.versions.first().filename), 255)
+
     def test_sans_zones_leve(self):
         version = self._add_pdf_version(self.doc, 'texte')
         with self.assertRaises(ValueError):

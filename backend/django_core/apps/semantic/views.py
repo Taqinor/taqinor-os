@@ -23,7 +23,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from drf_spectacular.openapi import AutoSchema
 from drf_spectacular.utils import (
-    OpenApiParameter, extend_schema, inline_serializer,
+    OpenApiParameter, OpenApiResponse, extend_schema, inline_serializer,
 )
 from rest_framework import serializers, status
 from rest_framework.decorators import action
@@ -53,7 +53,8 @@ class MetricDefinitionViewSet(CompanyScopedModelViewSet):
     ``post_save`` fige sans auteur, la vue — qui connaît l'acteur — la signe
     juste après (``services.attribuer_auteur``).
 
-    SUPPRIMER = DÉSACTIVER (``actif=False``). Une métrique est référencée PAR
+    JAMAIS SUPPRIMÉE : on la DÉSACTIVE (``PATCH {"actif": false}`` ; le DELETE
+    qui désactivait est retiré, ENF48). Une métrique est référencée PAR
     CLÉ par des widgets, des alertes et des rapports, et son historique de
     versions explique les chiffres passés : l'effacer casserait les uns et
     rendrait les autres inexplicables. Une métrique désactivée n'est plus
@@ -63,6 +64,10 @@ class MetricDefinitionViewSet(CompanyScopedModelViewSet):
     serializer_class = MetricDefinitionSerializer
     permission_classes = [IsResponsableOrAdmin]
     parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
+    # ENF48 — jamais de suppression : désactiver = ``PATCH {"actif": false}``.
+    # Un DELETE 2xx suivi d'un GET 200 était un « use after free » (api-fuzz-full
+    # 42074433075) ; aucun écran ne l'appelait (précédent ``entites``, NTADM1).
+    http_method_names = ['get', 'post', 'put', 'patch', 'head', 'options']
     queryset = MetricDefinition.objects.all()
     # Identifiant NUMÉRIQUE seulement : `metriques/<cle>/…` (valeur, lignage)
     # et les actions de liste (`export`, `glossaire`…) ne doivent jamais être
@@ -116,11 +121,6 @@ class MetricDefinitionViewSet(CompanyScopedModelViewSet):
             services.attribuer_auteur(serializer.instance, avant,
                                       self.request.user)
 
-    def perform_destroy(self, instance):
-        if instance.actif:
-            instance.actif = False
-            instance.save(update_fields=['actif', 'updated_at'])
-
     @extend_schema(
         responses=inline_serializer('MetriquesPourAgentReponse', {
             'metriques': inline_serializer('MetriquePourAgent', {
@@ -167,18 +167,25 @@ class MetricDefinitionViewSet(CompanyScopedModelViewSet):
                              'metriques': []})
         return Response(portabilite.exporter_metriques(request.user.company))
 
+    _RAPPORT_IMPORT = inline_serializer('MetriquesImportReponse', {
+        'commit': serializers.BooleanField(),
+        'applique': serializers.BooleanField(),
+        'resultats': serializers.ListField(child=serializers.DictField()),
+    })
+
     @extend_schema(
         request=ImportMetriquesSerializer,
-        responses=inline_serializer('MetriquesImportReponse', {
-            'commit': serializers.BooleanField(),
-            'applique': serializers.BooleanField(),
-            'resultats': serializers.ListField(child=serializers.DictField()),
-        }))
+        responses={200: _RAPPORT_IMPORT, 409: OpenApiResponse(
+            response=_RAPPORT_IMPORT, description=(
+                "Mode commit : une entrée est refusée par l'ÉTAT (création "
+                "incomplète, doublon dans le document) — rien n'est écrit, "
+                "le rapport nomme chaque refus."))})
     @action(detail=False, methods=['post'], url_path='import',
             permission_classes=[IsResponsableOrAdmin])
     def importer(self, request):
         """NTDATA48 — import symétrique : dry-run par défaut, ``commit`` tout
-        ou rien. 400 si une entrée est refusée en mode ``commit``."""
+        ou rien. Une entrée de forme invalide = 400 (ENF48, même en dry-run) ;
+        une entrée refusée par l'état en mode ``commit`` = 409 (était 400)."""
         corps = ImportMetriquesSerializer(data=request.data)
         corps.is_valid(raise_exception=True)
         if not request.user.company_id:
@@ -195,7 +202,7 @@ class MetricDefinitionViewSet(CompanyScopedModelViewSet):
             commit=donnees.get('commit', False), auteur=request.user,
             contexte={'request': request})
         refus = any(r['action'] == 'refusee' for r in rapport['resultats'])
-        code = (status.HTTP_400_BAD_REQUEST if rapport['commit'] and refus
+        code = (status.HTTP_409_CONFLICT if rapport['commit'] and refus
                 else status.HTTP_200_OK)
         return Response(rapport, status=code)
 

@@ -156,10 +156,16 @@ class ContratOmCiTest(TestCase):
             libelle='Autre')
         resp = api.patch(url, {'prestations': [
             {'id': etrangere.pk, 'frequence_an': 9}]}, format='json')
-        # ENF11 (api-fuzz-full) : id bien formé sans prestation = 404.
-        self.assertEqual(resp.status_code, 404)
+        # ENF48 (api-fuzz-full) : contrat existant, prestation désignée
+        # absente = 409 (était 404, « not available after creation » sur PUT).
+        self.assertEqual(resp.status_code, 409)
+        self.assertIn('prestations', resp.data)
         etrangere.refresh_from_db()
         self.assertIsNone(etrangere.frequence_an)
+        # Une entrée SANS id ne désigne aucune prestation : même 409.
+        resp = api.patch(url, {'prestations': [{'frequence_an': 3}]},
+                         format='json')
+        self.assertEqual(resp.status_code, 409)
 
     def test_migration_additive(self):
         module = import_module(

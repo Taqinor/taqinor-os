@@ -214,6 +214,21 @@ class CommissioningApiTests(TestCase):
         self.assertEqual(rec.resultat, 'non_conforme')
         self.assertFalse(rec.passe)
 
+    def test_ecart_iv_hors_colonne_409_sans_ecriture(self):
+        """ENF48 — api-fuzz : mesuré 469 W / attendu -0,30 W donnait un écart
+        hors de la colonne (6 chiffres) → 500. Refus 409 nommé, rien d'écrit."""
+        from .models import CommissioningIVReading
+        inst = make_installation(self.company)
+        rec = ensure_commissioning_record(inst, self.user)
+        r = self.api.post(
+            f'{BASE}/recettes-commissioning/{rec.id}/ajouter-iv/',
+            {'string_label': '0', 'pmax_mesure_w': '469.',
+             'pmax_attendu_w': '-.30'}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('pmax_attendu_w', r.data)
+        self.assertFalse(
+            CommissioningIVReading.objects.filter(record=rec).exists())
+
     def test_scope_par_societe(self):
         autre = make_company()
         inst_autre = make_installation(autre)
