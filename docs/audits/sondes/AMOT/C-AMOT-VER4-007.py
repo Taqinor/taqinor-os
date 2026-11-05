@@ -4,7 +4,13 @@
 « Devis final » (residential/trust.py, generate_devis_premium.py) choisissent leur branche par scénario puis
 `recommended` (« sans » si l'option recommandée est « Sans batterie »). Avec un échéancier dont une tranche est en
 DIRHAMS (`tranches_echeancier_en_montant`), les % diffèrent d'une branche à l'autre : texte et cases divergent-ils ?
-Moteur réel, transaction annulée."""
+Moteur réel, transaction annulée.
+
+Réalignée le 05/11/2026 sur AMOT122 (D-AMOT-VER4-1) : les cases du Devis final lisent désormais
+`data['branche_echeancier']` quand le builder la sert (niveau ≥ 12 : `option_effective`), la règle
+scénario → `recommended` n'étant plus que le repli d'hier. La sonde recalcule donc la branche des cases
+EXACTEMENT comme `residential/trust.py::_bloc_paiement` et le Devis final de `generate_devis_premium.py`
+(et non plus avec l'ancienne règle seule, qui la faisait répondre `repro` à tort)."""
 SONDE = {"constat": "C-AMOT-VER4-007", "sha": "c38868a62",
          "attendu": "devis deux options, option recommandée « Sans batterie », acompte 10 000 MAD : le % d'acompte "
                     "imprimé dans le texte (puces CGV, page publique, résidentiel) = le % de la case Acompte du Devis "
@@ -41,8 +47,11 @@ def sonde(ctx):
     dv.refresh_from_db()
     data = build_quote_data(dv, clean_pdf_options({'pdf_mode': 'full', 'devis_final': True}))
     scen, reco = data.get('scenario'), data.get('recommended')
-    branche_cases = ('sans' if scen == 'Sans batterie' else 'avec' if scen == 'Avec batterie'
-                     else 'sans' if reco == 'Sans batterie' else 'avec')
+    branche_hier = ('sans' if scen == 'Sans batterie' else 'avec' if scen == 'Avec batterie'
+                    else 'sans' if reco == 'Sans batterie' else 'avec')
+    # AMOT122 — la branche SERVIE par le builder prime (trust._bloc_paiement, Devis final legacy).
+    servie = data.get('branche_echeancier')
+    branche_cases = servie if servie in ('sans', 'avec') else branche_hier
     mt = data.get('montants_tranches') or {}
     cases = mt.get(branche_cases) or {}
     termes = data.get('payment_terms')
@@ -55,7 +64,7 @@ def sonde(ctx):
     m_res_cases = re.findall(r'class="p3-pay-p">([^<]+)<', res_html)
     out = {
         'nb_options': data.get('nb_options'), 'scenario': scen, 'recommended': reco,
-        'branche_cases': branche_cases,
+        'branche_cases': branche_cases, 'branche_echeancier_servie': servie, 'branche_regle_hier': branche_hier,
         'cases_sans': {k: mt.get('sans', {}).get(k) for k in ('pct_a', 'acompte', 'pct_s2', 'deux_cases', 'total')},
         'cases_avec': {k: mt.get('avec', {}).get(k) for k in ('pct_a', 'acompte', 'pct_s2', 'deux_cases', 'total')},
         'payment_terms_texte': termes,
