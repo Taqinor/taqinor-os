@@ -8,6 +8,7 @@
  */
 import { BILL_RANGES, libelleBandeLocale, localEstimateBand } from './billRange';
 import { formatMAD } from './format';
+import { nombresVersLocale } from './nombreLocale';
 import { PRIX_KWC_TTC } from './prixConstants';
 
 export const arrondi5k = (v: number) => Math.round(v / 5000) * 5000;
@@ -19,7 +20,7 @@ export function buildBrackets(exemples: Record<string, string>, locale: 'fr' | '
     const investLow = prix ? arrondi5k(band.kwcMin * prix.bas) : null;
     const investHigh = prix ? arrondi5k(band.kwcMax * prix.haut) : null;
     return {
-      bill: r.label,
+      bill: nombresVersLocale(r.label, locale), // WAUD44 — EN « 1,000 – 1,500 MAD »
       kwc: libelleBandeLocale(band.kwcLabel, locale),
       payback: libelleBandeLocale(band.paybackLabel, locale),
       investLow,

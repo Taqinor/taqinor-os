@@ -24,7 +24,7 @@ import CtaBand from '../../../components/CtaBand.astro';
 import StickyCta from '../../../components/StickyCta.astro';
 import CertLogoRow from '../../../components/CertLogoRow.astro';
 import BrandStrip from '../../../components/BrandStrip.astro';
-import { REALISATIONS, dateLocale, standardCaption } from '../../../lib/realisations';
+import { REALISATIONS, dateLocale, kwcLocale, standardCaption } from '../../../lib/realisations';
 import { realisationsItemListJsonLd, realisationsPage, villesUniques } from '../../../lib/realisationsView';
 import { localizeNavHref } from '../../../i18n/pages';
 
@@ -44,7 +44,7 @@ const itemListJsonLd = realisationsItemListJsonLd(
   Astro.site,
   'Taqinor solar installations — viewable, tracked production',
   'Solar installations actually fitted by Taqinor, viewable on request.',
-  (r) => `Solar installation${r.kwc ? ` ${r.kwc}` : ''} in ${r.ville} — ref. ${r.ref}`,
+  (r) => `Solar installation${r.kwc ? ` ${kwcLocale(r, 'en')}` : ''} in ${r.ville} — ref. ${r.ref}`,
 );
 import RealisationsIndexSection9BE4 from '../../../components/blocs/RealisationsIndexSection9BE4.astro';
 import PhotoLightbox from '../../../components/PhotoLightbox.astro';
@@ -106,7 +106,7 @@ import PourquoiTaqinorBloc4D73 from '../../../components/blocs/PourquoiTaqinorBl
     <!-- W308 : gallery with lightbox — data-lightbox-gallery marks the group -->
     <RealisationGrille>
         {REALISATIONS.map((r, i) => (
-          <RealisationCarte i={i} src={`/photos/${r.photos[0].name}-${Math.max(...r.photos[0].widths)}.webp`} alt={altOf(r)} label={[r.ville, r.kwc, dateLocale(r.date, 'en')].filter(Boolean).join(' · ')} aria={`Enlarge photo: ${altOf(r)}`}>
+          <RealisationCarte i={i} src={`/photos/${r.photos[0].name}-${Math.max(...r.photos[0].widths)}.webp`} alt={altOf(r)} label={[r.ville, kwcLocale(r, 'en'), dateLocale(r.date, 'en')].filter(Boolean).join(' · ')} aria={`Enlarge photo: ${altOf(r)}`}>
               <Fragment slot="image">
               <RealisationPhoto r={r} alt={altOf(r)} caption={standardCaption(r, 'en')} />
               </Fragment>

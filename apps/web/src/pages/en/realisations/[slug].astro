@@ -15,7 +15,7 @@
 import RealisationSlugBody from '../../../components/RealisationSlugBody.astro';
 import { caseStudyPage } from '../../../lib/realisationsView';
 import Layout from '../../../layouts/Layout.astro';
-import { REALISATIONS, CITIES } from '../../../lib/realisations';
+import { REALISATIONS, CITIES, kwcLocale } from '../../../lib/realisations';
 import { NAP } from '../../../lib/nap';
 import { localizeNavHref } from '../../../i18n/pages';
 
@@ -52,7 +52,7 @@ const description = cs.description;
 const articleJsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Article',
-  headline: `Solar installation${r.kwc ? ` ${r.kwc}` : ''} ${cityIntro} — ref. ${r.ref}`,
+  headline: `Solar installation${r.kwc ? ` ${kwcLocale(r, 'en')}` : ''} ${cityIntro} — ref. ${r.ref}`,
   description: cs.resume,
   image: heroImg,
   about: { '@type': 'Thing', name: 'Photovoltaic solar installation' },
@@ -109,7 +109,7 @@ const t = {
   ctaTitle: `An assessment like the one in ${r.ville}, for your roof.`,
 };
 
-const bodyProps = { r, cs, L, rtl: false, fr: false, t, altOf: (p: { name: string; alt: string }) => cs.alts[p.name] ?? p.alt, breadcrumbItems: [{ label: 'Home', href: L('/') }, { label: 'Projects', href: L('/realisations') }, { label: r.kwc ? `${r.ville} · ${r.kwc}` : r.ville }], cityLink, segmentHref, phasedPhotos, phaseLabels, hasDiptych, galleryPhotos, equipment, heroAlt };
+const bodyProps = { r, cs, L, rtl: false, fr: false, t, altOf: (p: { name: string; alt: string }) => cs.alts[p.name] ?? p.alt, breadcrumbItems: [{ label: 'Home', href: L('/') }, { label: 'Projects', href: L('/realisations') }, { label: r.kwc ? `${r.ville} · ${kwcLocale(r, 'en')}` : r.ville }], cityLink, segmentHref, phasedPhotos, phaseLabels, hasDiptych, galleryPhotos, equipment, heroAlt };
 ---
 
 <Layout title={title} description={description} ogSlug={ogSlug}>

@@ -1,11 +1,11 @@
 ---
 // ENF19 : bloc partagé (copies identiques) — index.astro
-import { dateLocale } from '../../lib/realisations';
+import { dateLocale, kwcLocale } from '../../lib/realisations';
 import { getLocaleFromPath } from '../../i18n/utils';
 const { featured } = Astro.props as Record<string, any>;
 const locale = getLocaleFromPath(Astro.url.pathname);
 ---
-{featured.kwc && <p class="fig lum mt-3 text-4xl" data-fig-fixe>{featured.kwc}</p>}
+{featured.kwc && <p class="fig lum mt-3 text-4xl" data-fig-fixe>{kwcLocale(featured, locale)}</p>}
 <p class="tech-label mt-1 text-lune-faint">{featured.ville} · {dateLocale(featured.date, locale)}</p>
 <p class="mt-4 text-sm leading-relaxed text-lune-soft">
   {[featured.panneaux, featured.onduleur, featured.batterie].filter(Boolean).join(' · ')}
