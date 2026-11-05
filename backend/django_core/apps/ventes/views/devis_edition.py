@@ -559,6 +559,9 @@ class DevisEditionActionsMixin:
         envoye = devis.statut == 'envoye'
         remise_avant = profondeur_remise_effective(devis) if envoye else None
         geste_complet = entete_ser is not None or bool(etude_in)
+        from ..domain.modifiabilite import (
+            rebaser_echeancier_ou_409, ttc_du_devis)
+        ttc_avant = ttc_du_devis(devis)
         try:
             with transaction.atomic():
                 # QJR544 — avec un en-tête, la trace QJR518 encadre le geste
@@ -586,6 +589,8 @@ class DevisEditionActionsMixin:
                     composition=lignes_in,
                     tracer_correction=not geste_complet))
                 _garde_capacite_totaux(devis)
+                # AGNR63 — nouveau TTC : échéancier re-basé ou 409 (rollback).
+                rebaser_echeancier_ou_409(devis, ttc_avant=ttc_avant)
                 # QJR539 — remise plus profonde au-dessus du seuil sur un
                 # envoyé : la garde T17 s'applique, un refus annule le geste.
                 if envoye:
@@ -686,9 +691,14 @@ class DevisEditionActionsMixin:
         archive = (serializer.instance.is_active is True
                    and serializer.validated_data.get('is_active') is False)
         from django.db import transaction
+        from ..domain.modifiabilite import (
+            rebaser_echeancier_ou_409, ttc_du_devis)
         from ..domain.revision import abandonner_revision
+        ttc_avant = ttc_du_devis(serializer.instance)
         with transaction.atomic():
             super().perform_update(serializer)
+            # AGNR63 — un TTC changé (remise…) re-base l'échéancier ou 409.
+            rebaser_echeancier_ou_409(serializer.instance, ttc_avant=ttc_avant)
             if archive:
                 abandonner_revision(serializer.instance, self.request.user,
                                     retrait=True)

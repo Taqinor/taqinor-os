@@ -192,6 +192,7 @@ def puissance_kwc_du_devis(devis, *, avertissements=None):
         SOURCE_DEVIS, effectif, preseance_nb_panneaux,
     )
     from apps.ventes.quote_engine.builder import panneaux_et_watt_lu
+    from apps.ventes.quote_engine.lignes_classement import kwc_des_lignes
 
     lignes = [li for li in devis.lignes.select_related(
         'produit', 'produit__fiche_technique').all()
@@ -226,8 +227,8 @@ def puissance_kwc_du_devis(devis, *, avertissements=None):
         logger.warning("scenario.puissance_kwc_du_devis : erreur ignorée (mode dégradé)", exc_info=True)
         lignes_kwc = lignes
     nb_lu, watt_lu = panneaux_et_watt_lu(lignes_kwc)
-    auto = (round(nb_lu * watt_lu / 1000, 2)
-            if nb_lu > 0 and watt_lu else None)
+    # AGNR70 — niveau 12 : Σ quantité × watt lu de chaque ligne (AGNR69).
+    auto = kwc_des_lignes(lignes_kwc, nb_lu, watt_lu, devis)
 
     kwc_surcharge, source = effectif(devis, 'taille.kwc', None)
     if source != 'auto' and kwc_surcharge:

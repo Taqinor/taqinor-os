@@ -88,6 +88,26 @@ test('QJ31 mode A — ×N multiplie le total TTC (unitaire × N)', () => {
   assert.equal(r.totalMultiSans, 102000)
 })
 
+test('QJ31 mode A — produits classe comme le rail', () => {
+  // AGNR71 — « Kit 1 » lié à un onduleur réseau (désignation sans mot-clé) :
+  // l'aperçu ×3 classe avec le catalogue comme le rail ; sans `produits`,
+  // comportement d'hier (classement sur la seule désignation).
+  const produits = [{ id: 7, nom: 'Onduleur réseau Huawei 5kW' }]
+  const lines = [
+    L('Panneau Canadien Solar 715W', 8, 1320, { taux_tva: '10' }),
+    L('Kit 1', 1, 10800, { produit: 7 }),
+    L('Onduleur hybride Deye 6kW', 1, 16800),
+    L('Batterie lithium 5kWh', 1, 19200),
+  ]
+  const rail = optionTotalsTTC(lines, 0, { produits })
+  const r = multiPropertyPreviewTTC(lines, { nombreProprietes: '3', discountPct: '0', option: 'avec', produits })
+  assert.equal(r.totalUnitaire, rail.totalAvec)
+  assert.equal(r.totalMulti, Math.round(rail.totalAvec * 100) * 3 / 100)
+  const hier = multiPropertyPreviewTTC(lines, { nombreProprietes: '3', discountPct: '0', option: 'avec' })
+  assert.equal(hier.totalUnitaire, optionTotalsTTC(lines, 0).totalAvec)
+  assert.notEqual(hier.totalUnitaire, rail.totalAvec, 'le catalogue change bien le classement')
+})
+
 test('QJ31 mode A — ×N applique aussi la remise (unitaire remisé × N)', () => {
   const lines = [L('Panneaux', 10, 1400), L('Onduleur réseau', 1, 20000)] // 34000 brut
   const r = multiPropertyPreviewTTC(lines, { nombreProprietes: '2', discountPct: '10' })
