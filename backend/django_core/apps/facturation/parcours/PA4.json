@@ -493,7 +493,7 @@
    "regle_aval": [
     {
      "type": "preserve_manuel",
-     "detail": "société sans export DGI actif : aucune transmission, export non proposé"
+     "detail": "société sans export DGI actif : aucune transmission, export non proposé ; transmission dormante (dgi_transmission_actif OFF) : HTTP 404, la capacité reste invisible"
     },
     {
      "type": "reference",
