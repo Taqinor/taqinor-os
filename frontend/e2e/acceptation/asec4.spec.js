@@ -9,7 +9,7 @@ import { groupe } from './_oracles.js'
 import { py, MDP_ESSAI, fermerDjangoApresTout } from './_django.js'
 import { lireJson, connexionApi, assurerSessionPage, telephoneMobileUnique } from '../helpers.js'
 
-const etape = groupe('ASEC', ['ASEC66', 'ASEC67', 'ASEC68', 'ASEC69', 'ASEC70', 'ASEC71', 'ASEC72', 'ASEC74', 'ASEC75', 'ASEC76', 'ASEC79', 'ASEC80', 'ASEC81'])
+const etape = groupe('ASEC', ['ASEC66', 'ASEC67', 'ASEC68', 'ASEC69', 'ASEC70', 'ASEC71', 'ASEC72', 'ASEC74', 'ASEC75', 'ASEC76', 'ASEC79', 'ASEC80', 'ASEC81', 'ASEC84'])
 fermerDjangoApresTout()
 const API = '/api/django'
 const T = { timeout: 120_000 }
@@ -419,4 +419,45 @@ sortie({'att_a': att_a.decode(errors='replace')[:30], 'pv_a': pv_a.decode(errors
   expect(obs.att_a, 'attestation de A : re-rendue, jamais les octets de B').toBe('%PDF rerendu att')
   expect(obs.pv_a, 'PV de A : jamais les octets de B').not.toContain('octets B')
   expect(obs.att_b, 'clé de la société : octets figés servis inchangés').toBe('%PDF octets A')
+})
+
+const PDF = (n) => Buffer.from(`%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj 3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]>>endobj\n% version ${n}\ntrailer<</Root 1 0 R>>\n%%EOF\n`)
+
+etape('V4.84', ['ASEC84'], async ({ page, testInfo }) => {
+  const r = page.request
+  const m = marque()
+  const a1 = await session(testInfo, `asec84a1_${m}`, await role('Directeur'))
+  const a2 = await session(testInfo, `asec84a2_${m}`, await role('Directeur'))
+  const GED = `${API}/ged`
+  const cab = await lireJson(await r.post(`${GED}/cabinets/`, { ...T, data: { nom: `Cab ASEC84 ${m}` } }), 'cabinet')
+  const dos = await lireJson(await r.post(`${GED}/dossiers/`, { ...T, data: { nom: `Dos ASEC84 ${m}`, cabinet: cab.id } }), 'dossier')
+  const nom = `Contrat ASEC84 ${m}`
+  const doc = await lireJson(await r.post(`${GED}/documents/`, { ...T, data: { nom, folder: dos.id } }), 'document')
+  const version = async (d, n) => lireJson(await r.post(`${GED}/documents/${d}/nouvelle-version/`, { ...T, multipart: { file: { name: `v${n}.pdf`, mimeType: 'application/pdf', buffer: PDF(n) } } }), `version ${n}`)
+  await version(doc.id, 1)
+  await py(`from apps.ged.models import RegleApprobationGed
+RegleApprobationGed.objects.create(company_id=${SOC}, libelle='ASEC84 deux niveaux ${m}', condition_group={'field': 'nom', 'operator': 'eq', 'value': ${JSON.stringify(nom)}}, approbateurs=[${a1.id}, ${a2.id}])
+sortie(1)`)
+  const dem = await lireJson(await r.post(`${GED}/documents/${doc.id}/demander-revue/`, { ...T, data: {} }), 'demande de revue')
+  const demId = dem.id || dem.demande?.id
+  expect(demId, `demande créée : ${JSON.stringify(dem).slice(0, 200)}`).toBeTruthy()
+  const ap = await a1.ctx.post(`${GED}/demandes-approbation/${demId}/approuver/`, { ...T, data: { commentaire: 'étape 1 sur v1' } })
+  expect(ap.status(), `approbation étape 1 : ${(await ap.text()).slice(0, 300)}`).toBe(200)
+  const chaine = () => py(`from apps.ged.models import ChaineApprobationGed
+c = ChaineApprobationGed.objects.get(demande_id=${demId})
+sortie([c.etape_courante, [e['statut'] for e in c.etapes]])`)
+  expect((await chaine())[0], 'étape 1 approuvée : étape courante 1').toBe(1)
+  await version(doc.id, 2)
+  expect(await chaine(), 'chaîne relue : reprise à l\'étape 1').toEqual([0, ['en_cours', 'en_attente']])
+  const relue = await lireJson(await r.get(`${GED}/demandes-approbation/${demId}/`, T), 'demande relue')
+  expect([relue.statut, relue.approbateur], 'demande en attente, approbateur d\'étape 1').toEqual(['en_attente', a1.id])
+  expect(await py(`from apps.ged.models import DocumentActivity
+sortie(DocumentActivity.objects.filter(document_id=${doc.id}, message__icontains='reprise à l').count())`), 'journal « chaîne reprise à l\'étape 1 »').toBeGreaterThan(0)
+  // Sans chaîne en cours : une nouvelle version est inchangée (201, aucune chaîne).
+  const autre = await lireJson(await r.post(`${GED}/documents/`, { ...T, data: { nom: `Note ASEC84 ${m}`, folder: dos.id } }), 'document sans chaîne')
+  await version(autre.id, 1)
+  await version(autre.id, 2)
+  expect(await py(`from apps.ged.models import ChaineApprobationGed
+sortie(ChaineApprobationGed.objects.filter(demande__document_id=${autre.id}).count())`), 'sans chaîne : aucune créée').toBe(0)
+  for (const y of [a1, a2]) await y.ctx.dispose()
 })
