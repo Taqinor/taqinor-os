@@ -790,6 +790,17 @@ def journaliser_evenement_assistant(
     preuve = calculer_preuve_confirmation(
         action_key=ACTION_PREUVE_EVENEMENT, company_id=ctx.company_id,
         user_id=_caller_user_id(ctx), inputs=corps, object_id=None)
+    if not preuve:
+        # ERR-ACC-JOURNAL-AGENT-PREUVE-VIDE — sans AGENT_HMAC_SECRET le relais
+        # ne peut pas signer : Django refuse (fail-closed) tout evenement non
+        # signe, echec de l'agent compris. On ne poste pas une preuve vide
+        # (400 « preuve: Ce champ ne peut etre vide », trompeur) : on nomme
+        # la cause, et la reponse du commercial part quand meme.
+        logger.warning(
+            "Journal de l'assistant non ecrit : AGENT_HMAC_SECRET absent, le "
+            "relais ne peut pas signer l'evenement (intention=%s).",
+            corps.get("intention"))
+        return None
     res = _django_call(ctx, "/api/django/agent/evenements/", method="POST",
                        payload={**corps, "preuve": preuve})
     data = res.get("data") if res.get("ok") else None
