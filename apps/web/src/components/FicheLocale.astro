@@ -1,0 +1,117 @@
+---
+/**
+ * WAUD87 — fiche technique /en|ar/produits/<slug> : EN-TÊTE localisé (catégorie, marque, nom,
+ * modèle, résumé — lib/fichesLocale.ts, traduction de la fiche française, aucune spécification
+ * ajoutée) + REPLI FR EXPLICITE : le détail (caractéristiques, normes, garantie, FAQ) n'existe
+ * qu'en français, la page le dit et y renvoie (hreflang="fr"). Le lien constructeur officiel
+ * (PDF ou norme) est le même que sur la fiche française.
+ */
+import Layout from '../layouts/Layout.astro';
+import V2Enhance from './V2Enhance.astro';
+import Breadcrumb from './Breadcrumb.astro';
+import CtaBand from './CtaBand.astro';
+import StickyCta from './StickyCta.astro';
+import { canonicalUrl } from '../lib/canonicalUrl';
+import { ficheDownloadHref, type Fiche } from '../lib/fiches';
+import { enTeteFiche, type LocaleFiche } from '../lib/fichesLocale';
+import { pageLocale } from '../lib/pageCtx';
+import { useTranslations } from '../i18n/utils';
+
+interface Props {
+  fiche: Fiche;
+}
+const { fiche } = Astro.props as Props;
+const { locale: loc, L } = pageLocale(Astro.url.pathname);
+const locale = loc as LocaleFiche;
+const t = enTeteFiche(fiche, locale);
+const downloadHref = ficheDownloadHref(fiche);
+const estPdf = !!downloadHref && downloadHref.toLowerCase().endsWith('.pdf');
+const frHref = `/produits/${fiche.slug}/`;
+
+const S = {
+  en: {
+    accueil: 'Home',
+    fiches: 'Technical data sheets',
+    titre: 'technical data sheet',
+    repliTitre: 'Full sheet in French',
+    repli:
+      'The detailed sheet — verified specifications, standards, warranty and questions — is only available in French for now.',
+    repliLien: 'Read the full sheet (in French)',
+    pdf: 'Official manufacturer datasheet (PDF)',
+    norme: 'The reference standard (official source) ↗',
+    retour: 'All technical data sheets',
+    cta: `${t.nom}: yes or no for your roof? The free study will tell.`,
+    descPdf: 'Official manufacturer datasheet to download.',
+    descNorme: 'Role, typical composition and reference standards.',
+  },
+  ar: {
+    accueil: 'الرئيسية',
+    fiches: 'أوراق البيانات التقنية',
+    titre: 'ورقة البيانات التقنية',
+    repliTitre: 'الورقة الكاملة بالفرنسية',
+    repli: 'الورقة المفصّلة — المواصفات المُتحقَّق منها والمعايير والضمان والأسئلة — متاحة حالياً بالفرنسية فقط.',
+    repliLien: 'اقرأ الورقة الكاملة (بالفرنسية)',
+    pdf: 'ورقة بيانات الصانع الرسمية (PDF)',
+    norme: 'المعيار المرجعي (مصدر رسمي) ↗',
+    retour: 'كل أوراق البيانات التقنية',
+    cta: `${t.nom}: هل يناسب سطحكم؟ الدراسة المجانية تجيب.`,
+    descPdf: 'ورقة بيانات الصانع الرسمية للتحميل.',
+    descNorme: 'الدور والتكوين المعتاد والمعايير المرجعية.',
+  },
+}[locale];
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Product',
+  name: t.nom,
+  category: t.categorie,
+  brand: { '@type': 'Brand', name: fiche.marque },
+  model: fiche.modele,
+  url: canonicalUrl(`/${locale}/produits/${fiche.slug}`, Astro.site),
+  description: t.resume,
+};
+---
+
+<Layout
+  title={`${t.nom} — ${S.titre} | Taqinor`}
+  description={`${t.nom} (${t.modele}) : ${t.resume} ${estPdf ? S.descPdf : S.descNorme}`}
+  ogSlug="equipement"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+
+    <Breadcrumb items={[{ label: S.accueil, href: L('/') }, { label: S.fiches, href: L('/produits') }, { label: t.nom }]} />
+
+    <section class="px-4 py-16 text-white sm:py-20">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">{t.categorie} · {t.marque}</p>
+        <h1 class="display v2-page-title cine-in mt-4 [animation-delay:120ms]">{t.nom}</h1>
+        <p class="cine-in mt-2 text-sm text-lune-faint [animation-delay:200ms]">{t.modele}</p>
+        <p class="v2-lead cine-in mt-5 max-w-2xl text-white/85 [animation-delay:280ms]">{t.resume}</p>
+
+        <div class="v2-rise mt-8 border-t-2 border-brass-400/70" data-repli-fr>
+          <h2 class="tech-label mt-5 text-brass-300">{S.repliTitre}</h2>
+          <p class="mt-3 text-sm leading-relaxed text-lune">{S.repli}</p>
+          <a href={frHref} hreflang="fr" class="mt-4 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white hover:text-brass-300">{S.repliLien} &rarr;</a>
+        </div>
+
+        <div class="v2-rise mt-8 flex flex-wrap gap-3">
+          <a href={L('/devis/mon-toit')} class="glow bg-brass-400 px-5 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">{useTranslations(loc)('cta.primary')} &rarr;</a>
+          {downloadHref && (
+            <a href={downloadHref} target="_blank" rel="noopener" class="inline-flex items-center gap-2 border border-white/25 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
+              {estPdf ? S.pdf : S.norme}
+            </a>
+          )}
+        </div>
+
+        <p class="mt-8 text-sm">
+          <a href={L('/produits')} class="text-brass-300 underline underline-offset-2 hover:text-white">{S.retour}</a>
+        </p>
+      </div>
+    </section>
+
+    <CtaBand title={S.cta} seam={false} href={L('/devis/mon-toit')} />
+    <StickyCta />
+  </div>
+</Layout>
