@@ -373,6 +373,29 @@ class CrmAgentBrouillonSuiviTest(TestCase):
         self.assertEqual(resp.data['langue_servie'], 'fr')
         self.assertIn('Salma', resp.data['texte'])
 
+    def test_lead_oppose_409_sans_lien(self):
+        """ACVI103 (D-ACVI-7) — opposé, perdu ou archivé : 409 nommé à chaque
+        canal, ni texte ni lien, rien d'écrit ; hors portée : 404 d'abord."""
+        oppose = self._lead('Salma', ne_plus_contacter=True)
+        avant = LeadActivity.objects.count()
+        for canal in ('whatsapp', 'sms', 'email'):
+            with self.subTest(canal=canal):
+                resp = self._appel(oppose, canal=canal)
+                self.assertEqual(resp.status_code, 409, resp.data)
+                self.assertEqual(str(resp.data['detail']), 'Message refusé : ne plus contacter.')
+                self.assertNotIn('lien_wa_me', resp.data)
+                self.assertNotIn('texte', resp.data)
+        resp = self._appel(self._lead('Perdu', perdu=True))
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertEqual(str(resp.data['detail']), 'Message refusé : perdu/archivé.')
+        # Archivé : hors des leads en portée (404) ou refusé (409) — jamais un brouillon.
+        self.assertIn(self._appel(self._lead('Archive', is_archived=True)).status_code, (404, 409))
+        self.assertEqual(LeadActivity.objects.count(), avant)
+        autre = Company.objects.create(nom='AIC32 Autre', slug='aic32-autre')
+        etranger = Lead.objects.create(company=autre, nom='X', telephone='0600112244',
+                                       ne_plus_contacter=True)
+        self.assertEqual(self._appel(etranger).status_code, 404)
+
     def test_objectif_inconnu_est_refuse(self):
         resp = self._appel(self._lead('Salma'), objectif='vendre')
         self.assertEqual(resp.status_code, 400)

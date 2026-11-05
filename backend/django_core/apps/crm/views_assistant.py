@@ -279,6 +279,7 @@ def lead_brouillon_suivi(request, lead_id):
 
     donnees = corps_valide(request, _CORPS_BROUILLON)
     lead = _lead_en_portee_ou_404(request.user, lead_id)
+    cm.garde_contact_du_lead(lead)  # ACVI103 (D-ACVI-7) — opposé/perdu/archivé : 409
     objectif, canal = donnees['objectif'], donnees['canal']
     modele, langue_servie = _modele_societe(
         lead.company, objectif, donnees.get('langue') or 'fr')
