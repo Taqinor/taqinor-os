@@ -13,7 +13,10 @@
     "ASEC72",
     "ASEC74",
     "ASEC75",
-    "ASEC76"
+    "ASEC76",
+    "ASEC79",
+    "ASEC80",
+    "ASEC81"
   ],
   "couvre_avec_ecart": [],
   "etapes": [
@@ -223,6 +226,72 @@
       "verdict": "PASS",
       "base_verdict": null,
       "trace": "docs/qa-explorer/captures/2026-11-05/ACCEPTATION-ASEC-V4.75.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "V4.79",
+      "taches": [
+        "ASEC79"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-05/ACCEPTATION-ASEC-V4.79.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "V4.80",
+      "taches": [
+        "ASEC80"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-05/ACCEPTATION-ASEC-V4.80.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "V4.81",
+      "taches": [
+        "ASEC81"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-05/ACCEPTATION-ASEC-V4.81.jpg",
       "oracles": {
         "1": "PASS",
         "2": "PASS",

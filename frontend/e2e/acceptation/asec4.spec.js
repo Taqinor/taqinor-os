@@ -9,7 +9,7 @@ import { groupe } from './_oracles.js'
 import { py, MDP_ESSAI, fermerDjangoApresTout } from './_django.js'
 import { lireJson, connexionApi, assurerSessionPage, telephoneMobileUnique } from '../helpers.js'
 
-const etape = groupe('ASEC', ['ASEC66', 'ASEC67', 'ASEC68', 'ASEC69', 'ASEC70', 'ASEC71', 'ASEC72', 'ASEC74', 'ASEC75', 'ASEC76'])
+const etape = groupe('ASEC', ['ASEC66', 'ASEC67', 'ASEC68', 'ASEC69', 'ASEC70', 'ASEC71', 'ASEC72', 'ASEC74', 'ASEC75', 'ASEC76', 'ASEC79', 'ASEC80', 'ASEC81'])
 fermerDjangoApresTout()
 const API = '/api/django'
 const T = { timeout: 120_000 }
@@ -309,4 +309,114 @@ etape('V4.75', ['ASEC75'], async ({ page, testInfo }) => {
   const ok = await tec.ctx.patch(`${API}/installations/chantiers/${ch.id}/`, { ...T, data: { notes: 'technicien' } })
   expect(ok.status(), `Technicien du registre PATCH : ${(await ok.text()).slice(0, 300)}`).toBe(200)
   for (const y of [sans, tec]) await y.ctx.dispose()
+})
+
+etape('V4.79', ['ASEC79'], async ({ page }) => {
+  const s = sonde('ASEC/C-ASEC-VER4-021')
+  expect([s.repro, s.devis_avant, s.devis_apres], 'sonde : Devis inchangé').toEqual([false, 0, 0])
+  const r = page.request
+  const m = marque()
+  const client = await lireJson(await r.post(`${API}/crm/clients/`, { ...T, data: { nom: `ASEC79 ${m}`, prenom: 'Acceptation', email: `asec79_${m}@example.test`, telephone: telephoneMobileUnique() } }), 'client')
+  const p = await lireJson(await r.post(`${API}/stock/produits/`, { ...T, data: { nom: `Pièce ASEC79 ${m}`, prix_vente: '900.00', prix_achat: '1.00' } }), 'produit')
+  // Le service du domaine ventes, appelé tel que le SAV l'appelle ; transaction annulée à la fin.
+  const obs = await py(`from django.db import transaction
+from apps.ventes.domain.creation import create_devis_pour_ticket
+from apps.ventes.models import Devis
+from authentication.models import Company
+co = Company.objects.get(pk=${SOC}); u = U.objects.get(username='demo_admin')
+def etat():
+    q = Devis.objects.filter(company=co)
+    return [q.count(), q.order_by('-id').values_list('reference', flat=True).first()]
+avant = etat()
+try:
+    create_devis_pour_ticket(company=co, user=u, client_id=${client.id}, lignes=[{'produit_id': ${p.id}, 'quantite': 'abc', 'prix_unitaire': '10'}])
+    err = None
+except ValueError as e:
+    err = str(e)
+apres = etat()
+with transaction.atomic():
+    d = create_devis_pour_ticket(company=co, user=u, client_id=${client.id}, lignes=[{'produit_id': ${p.id}, 'designation': 'Pièce', 'quantite': '2', 'prix_unitaire': '900'}])
+    valide = [d.statut, d.lignes.count(), str(d.lignes.first().quantite)]
+    transaction.set_rollback(True)
+sortie({'err': err, 'avant': avant, 'apres': apres, 'valide': valide, 'final': etat()})`)
+  expect(obs.err, 'ValueError nommant la ligne 0 et le champ').toMatch(/Ligne 0 : quantite invalide/)
+  expect(obs.apres, 'aucun devis ni numéro consommé').toEqual(obs.avant)
+  expect(obs.valide, 'lignes valides : devis brouillon et ligne créés').toEqual(['brouillon', 1, '2.00'])
+  expect(obs.final, 'relu : même compte qu\'avant').toEqual(obs.avant)
+})
+
+etape('V4.80', ['ASEC80'], async ({ page, testInfo }) => {
+  const s = sonde('ASEC/C-ASEC-VER4-021')
+  expect([s.repro, s.http, s.detail?.lignes?.['0']?.quantite?.length, s.devis_apres, s.ticket_devis_id_ext], 'sonde : 400 et Devis inchangé').toEqual([false, 400, 1, 0, null])
+  const r = page.request
+  const m = marque()
+  const nomRole = await py(`from apps.roles.models import Role
+sortie(next(x.nom for x in Role.objects.filter(company_id=${SOC}, est_systeme=True).order_by('id') if 'sav_gerer' in (x.permissions or []) and x.nom not in ('Directeur', 'Administrateur')))`)
+  const sav = await session(testInfo, `asec80sav_${m}`, await role(nomRole))
+  const client = await lireJson(await r.post(`${API}/crm/clients/`, { ...T, data: { nom: `ASEC80 ${m}`, prenom: 'Acceptation', email: `asec80_${m}@example.test`, telephone: telephoneMobileUnique() } }), 'client')
+  const p = await lireJson(await r.post(`${API}/stock/produits/`, { ...T, data: { nom: `Pièce ASEC80 ${m}`, prix_vente: '900.00', prix_achat: '1.00' } }), 'produit')
+  const ticket = await py(`from apps.sav.models import Ticket
+t = Ticket.objects.create(company_id=${SOC}, reference='SAV-ASEC80-${m}', client_id=${client.id}, type=Ticket.Type.CORRECTIF, sous_garantie=Ticket.SousGarantie.NON, created_by=U.objects.get(pk=${sav.id}))
+sortie(t.pk)`)
+  const lireTicket = () => py(`from apps.sav.models import Ticket
+sortie(Ticket.objects.get(pk=${ticket}).devis_id_ext)`)
+  const avant = await compter('ventes.Devis')
+  const x = await sav.ctx.post(`${API}/sav/tickets/${ticket}/creer-devis/`, { ...T, data: { lignes: [{ produit_id: p.id, quantite: 'abc' }] } })
+  const cx = await x.json()
+  expect([x.status(), Array.isArray(cx.lignes?.['0']?.quantite)], `quantité « abc » : ${JSON.stringify(cx).slice(0, 300)}`).toEqual([400, true])
+  const y = await sav.ctx.post(`${API}/sav/tickets/${ticket}/creer-devis/`, { ...T, data: { lignes: [{ produit_id: p.id, quantite: '1', prix_unitaire: 'xyz' }] } })
+  expect(y.status(), `prix « xyz » : ${(await y.text()).slice(0, 300)}`).toBe(400)
+  expect([await compter('ventes.Devis'), await lireTicket()], 'aucun devis, ticket sans devis').toEqual([avant, null])
+  // Lignes valides : 201 inchangé ; le ticket porte le devis.
+  const ok = await sav.ctx.post(`${API}/sav/tickets/${ticket}/creer-devis/`, { ...T, data: { lignes: [{ produit_id: p.id, quantite: '1' }] } })
+  expect(ok.status(), `lignes valides : ${(await ok.text()).slice(0, 300)}`).toBe(201)
+  expect([await compter('ventes.Devis'), (await lireTicket()) !== null], 'un devis, ticket lié').toEqual([avant + 1, true])
+  await sav.ctx.dispose()
+})
+
+etape('V4.81', ['ASEC81'], async ({ page }) => {
+  // La sonde d'origine passe un chantier factice (SimpleNamespace) : la clé étrangère refusée, elle tombe désormais
+  // dans le re-rendu, qui exige un vrai chantier (AttributeError `statut`) — preuve indirecte. Rejeu contrôlé ici sur
+  // de VRAIS chantiers de la société, rendus PDF et dépôt GED remplacés par des témoins, transaction annulée.
+  const r = page.request
+  const cA = (await lireJson(await r.post(`${API}/installations/chantiers/`, { ...T, data: {} }), 'chantier')).id
+  const cB = (await lireJson(await r.post(`${API}/installations/chantiers/`, { ...T, data: {} }), 'chantier')).id
+  const obs = await py(`from django.db import transaction
+from apps.documents import builders
+from apps.ged import services as ged
+from apps.ged.models import Cabinet, Folder, Document
+from apps.installations.selectors import chantiers_visibles
+from authentication.models import Company
+co = Company.objects.get(pk=${SOC}); u = U.objects.get(username='demo_admin')
+etrangere = 'attachments/' + str(Company.objects.exclude(pk=${SOC}).order_by('pk').first().pk) + '/secret-b.pdf'
+propre = 'attachments/' + str(co.pk) + '/fige-a.pdf'
+appels = []
+def faux_fetch(cle):
+    appels.append(cle)
+    return (b'%PDF octets B' if cle == etrangere else b'%PDF octets A', None)
+with transaction.atomic():
+    cab = Cabinet.objects.create(company=co, nom='ASEC81 cab')
+    fo = Folder.objects.create(company=co, cabinet=cab, nom='ASEC81')
+    ch_a = chantiers_visibles(u).get(pk=${cA}); ch_b = chantiers_visibles(u).get(pk=${cB})
+    def doc(ch, source, cle):
+        d = Document.objects.create(company=co, folder=fo, nom='ASEC81 ' + source, custom_data={ged.SOURCE_TYPE_KEY: source, ged.SOURCE_ID_KEY: ch.pk})
+        ged.add_version(d, file_key=cle, company=co, filename='f.pdf', mime='application/pdf', uploaded_by=u)
+        return d
+    src_att = builders._source_attestation('installation')
+    doc(ch_a, src_att, etrangere); doc(ch_a, builders.SOURCE_PV_RECEPTION, etrangere)
+    doc(ch_b, src_att, propre)
+    ch_a.signature_client = 'signé'; ch_a.save(update_fields=['signature_client'])
+    with mock.patch('apps.records.storage.fetch_attachment', side_effect=faux_fetch), \\
+         mock.patch.object(builders, 'generate_attestation', return_value=b'%PDF rerendu att'), \\
+         mock.patch.object(builders, 'generate_pv_reception', return_value=b'%PDF rerendu pv'), \\
+         mock.patch.object(builders, '_deposer_fige', return_value=None):
+        att_a = builders.attestation_pour_client(ch_a, 'installation')
+        pv_a = builders.pv_reception_pour_client(ch_a)
+        att_b = builders.attestation_pour_client(ch_b, 'installation')
+    transaction.set_rollback(True)
+sortie({'att_a': att_a.decode(errors='replace')[:30], 'pv_a': pv_a.decode(errors='replace')[:30] if pv_a else None, 'att_b': att_b.decode(errors='replace')[:30], 'cles_lues': appels, 'etrangere': etrangere})`)
+  expect(obs.cles_lues, `la clé étrangère n'est jamais lue (${JSON.stringify(obs)})`).not.toContain(obs.etrangere)
+  expect(obs.att_a, 'attestation de A : re-rendue, jamais les octets de B').toBe('%PDF rerendu att')
+  expect(obs.pv_a, 'PV de A : jamais les octets de B').not.toContain('octets B')
+  expect(obs.att_b, 'clé de la société : octets figés servis inchangés').toBe('%PDF octets A')
 })
