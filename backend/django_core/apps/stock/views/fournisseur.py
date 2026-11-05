@@ -141,13 +141,10 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
         # Archivage — même patron que `ProduitViewSet` : les fournisseurs
         # archivés sortent des listes par défaut, restent consultables avec
         # `?show_archived=true`, et sont toujours visibles pour les actions
-        # qui n'ont de sens que sur un archivé.
+        # qui n'ont de sens que sur un archivé (ou l'atteignent : revoquer, ENF47).
         if choix_ou_400(valeur_unique_ou_400(self.request, 'show_archived'),
                         'show_archived', ('true', 'false')) == 'true':
             return qs
-        # ENF47 (api-fuzz-full 42017839549) — fermer l'accès portail d'un
-        # fournisseur ARCHIVÉ reste possible (l'archivage ne coupe pas ses
-        # jetons) : il était introuvable (404) pour cette action.
         if self.action in ('force_delete', 'unarchive', 'revoquer_acces_portail'):
             return qs
         return qs.filter(is_archived=False)
@@ -387,8 +384,7 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
         # ASTK179 — compte ET jetons à lien public coupés ensemble.
         compte, nb, jetons_revoques = revoquer_acces_compte_fournisseur(
             request.user.company, fournisseur.pk, avec_jetons=True)
-        if compte is None and not jetons_revoques:
-            # ENF47 — fournisseur existant sans accès : refus d'état (ENF40).
+        if compte is None and not jetons_revoques:  # ENF47 : refus d'état (ENF40)
             return Response(
                 {'detail': "Ce fournisseur n'a aucun accès portail à "
                            'révoquer.'},
