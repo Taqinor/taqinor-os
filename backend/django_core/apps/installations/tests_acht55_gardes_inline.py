@@ -147,3 +147,29 @@ class GardesInlineTests(TestCase):
         r = api.patch(f'{BASE}/interventions/{iv.id}/',
                       {'compte_rendu': 'Revue'}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
+
+    def test_ecritures_chantier_exigent_installation_gerer(self):
+        """ASEC75 (C-ASEC-VER4-040) — un rôle = Technicien du registre SANS
+        ``installation_gerer`` : 403 ``droit_manquant`` au PATCH du chantier
+        et à ``noter``, instructions d'accès inchangées ; le Technicien du registre : 200.
+        Mutant : retirer la garde ⇒ échec."""
+        prive = self._sans('Technicien sans chantier', 'installation_gerer')
+        tech = User.objects.create_user(
+            username='tech-asec75', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom='Technicien',
+                                     permissions=list(TECHNICIEN_PERMISSIONS)))
+        Installation.objects.filter(pk=self.chantier.pk).update(
+            acces_instructions='Origine', technicien_responsable=prive)
+        url = f'{BASE}/chantiers/{self.chantier.id}/'
+        api = self._api(prive)
+        for r in (api.patch(url, {'acces_instructions': 'Pirate'}, format='json'),
+                  api.post(url + 'noter/', {'body': 'Pirate'},
+                           format='json')):
+            self.assertEqual(r.status_code, 403, r.data)
+            self.assertEqual(r.data.get('code'), 'droit_manquant', r.data)
+        self.chantier.refresh_from_db()
+        self.assertEqual(self.chantier.acces_instructions, 'Origine')
+        Installation.objects.filter(pk=self.chantier.pk).update(
+            technicien_responsable=tech)
+        r = self._api(tech).patch(url, {'acces_instructions': 'Revue'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
