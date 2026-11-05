@@ -434,3 +434,87 @@ class StatutDeriveTests(TestCase):
         self.assertEqual(r.status_code, 409, r.data)
         self.assertEqual(Facture.objects.get(pk=f1.pk).statut,
                          Facture.Statut.ANNULEE)
+
+    # ── AARG64 (C-AARG-VER5-001) — effets réversibles rejoués ───────────
+    def _soldee_ras_puis_annulee(self, directive='garder_en_avance'):
+        """Facture 1 200 TTC (Panneau 550W ×2, stock 10 → 8) soldée par
+        1 000 + RAS-TVA 200, annulée selon ``directive`` : (facture, avoir,
+        produit)."""
+        from apps.stock.models import Produit
+        from apps.ventes.domain.annulation_facture import annuler_facture
+        from apps.ventes.domain.encaissements import (
+            enregistrer_paiement_avec_retenue,
+        )
+        from apps.ventes.models import Avoir, Devis, Facture, LigneDevis
+        panneau = Produit.objects.create(
+            company=self.company, nom='Panneau 550W', sku=f'AARG64-{_nxt()}',
+            prix_vente=Decimal('500'), quantite_stock=10)
+        devis = Devis.objects.create(
+            company=self.company, reference=f'DEV-AARG64-{_nxt()}',
+            client=self.client_obj, statut=Devis.Statut.ACCEPTE,
+            taux_tva=Decimal('20.00'), mode_installation='residentiel')
+        LigneDevis.objects.create(
+            devis=devis, produit=panneau, designation='Panneau 550W',
+            quantite=Decimal('2'), prix_unitaire=Decimal('500'),
+            remise=Decimal('0'), taux_tva=Decimal('20.00'))
+        r = self.api.post(
+            f'/api/django/ventes/devis/{devis.id}/facturer-complet/',
+            {'paiements': []}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        facture = Facture.objects.get(pk=r.data['facture_id'])
+        panneau.refresh_from_db()
+        self.assertEqual(panneau.quantite_stock, 8)
+        enregistrer_paiement_avec_retenue(
+            facture=facture, montant=Decimal('1000'),
+            date_paiement=date.today(), mode='virement',
+            type_retenue='ras_tva', taux=Decimal('100'), created_by=self.admin)
+        facture = Facture.objects.get(pk=facture.pk)
+        self.assertEqual(facture.montant_du, Decimal('0'))
+        annuler_facture(facture, user=self.admin,
+                        directive={'action': directive})
+        panneau.refresh_from_db()
+        self.assertEqual(panneau.quantite_stock, 10)
+        return facture, Avoir.objects.get(facture=facture), panneau
+
+    def test_annuler_avoir_miroir_rend_retenue_et_stock(self):
+        """AARG64 — restaurer la facture soldée 1 000 + RAS-TVA 200 : payée,
+        dû 0, retenue comptée, stock ressorti (8).
+        Mutant : retirer le rejeu des retenues ⇒ émise, dû 200."""
+        from apps.ventes.models import Facture, RetenueSubie
+        facture, avoir, panneau = self._soldee_ras_puis_annulee()
+        r = self.api.post(f'/api/django/ventes/avoirs/{avoir.id}/annuler/',
+                          {}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        # CLAUSE PERSISTANCE — relu en base.
+        facture = Facture.objects.get(pk=facture.pk)
+        self.assertEqual(facture.statut, Facture.Statut.PAYEE)
+        self.assertEqual(facture.montant_du, Decimal('0'))
+        self.assertFalse(RetenueSubie.objects.filter(
+            facture=facture, annulee=True).exists())
+        panneau.refresh_from_db()
+        self.assertEqual(panneau.quantite_stock, 8)
+
+    def test_annuler_avoir_miroir_apres_remboursement_409(self):
+        """AARG64 — annulée en remboursant : 409 nommant le geste à défaire."""
+        from apps.ventes.models import Avoir, Facture
+        from apps.stock.models import Produit
+        from apps.ventes.domain.annulation_facture import annuler_facture
+        from apps.ventes.domain.encaissements import encaisser_sur_facture
+        facture = self._facture()
+        encaisser_sur_facture(
+            facture=Facture.objects.get(pk=facture.pk),
+            donnees={'montant': Decimal('1000.00'),
+                     'date_paiement': date.today(), 'mode': 'virement',
+                     'reference': ''}, user=self.admin)
+        annuler_facture(Facture.objects.get(pk=facture.pk), user=self.admin,
+                        directive={'action': 'rembourser'})
+        avoir = Avoir.objects.get(facture=facture)
+        stock = Produit.objects.get(pk=self.kit.pk).quantite_stock
+        r = self.api.post(f'/api/django/ventes/avoirs/{avoir.id}/annuler/',
+                          {}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('remboursement', r.data['detail'])
+        self.assertEqual(Facture.objects.get(pk=facture.pk).statut,
+                         Facture.Statut.ANNULEE)
+        self.assertEqual(Produit.objects.get(pk=self.kit.pk).quantite_stock,
+                         stock)
