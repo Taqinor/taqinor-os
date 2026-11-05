@@ -145,7 +145,10 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
         if choix_ou_400(valeur_unique_ou_400(self.request, 'show_archived'),
                         'show_archived', ('true', 'false')) == 'true':
             return qs
-        if self.action in ('force_delete', 'unarchive'):
+        # ENF47 (api-fuzz-full 42017839549) — fermer l'accès portail d'un
+        # fournisseur ARCHIVÉ reste possible (l'archivage ne coupe pas ses
+        # jetons) : il était introuvable (404) pour cette action.
+        if self.action in ('force_delete', 'unarchive', 'revoquer_acces_portail'):
             return qs
         return qs.filter(is_archived=False)
 
@@ -385,10 +388,11 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
         compte, nb, jetons_revoques = revoquer_acces_compte_fournisseur(
             request.user.company, fournisseur.pk, avec_jetons=True)
         if compte is None and not jetons_revoques:
+            # ENF47 — fournisseur existant sans accès : refus d'état (ENF40).
             return Response(
                 {'detail': "Ce fournisseur n'a aucun accès portail à "
                            'révoquer.'},
-                status=status.HTTP_404_NOT_FOUND)
+                status=status.HTTP_409_CONFLICT)
         return Response({
             'fournisseur_id': fournisseur.pk,
             'actif': compte.actif if compte is not None else False,
