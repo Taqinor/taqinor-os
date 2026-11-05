@@ -9,7 +9,8 @@
     "ACVI110",
     "ACVI104",
     "ACVI105",
-    "ACVI106"
+    "ACVI106",
+    "ACVI108"
   ],
   "couvre_avec_ecart": [],
   "etapes": [
@@ -144,6 +145,28 @@
         "10": "NA"
       },
       "notes": "API reelle : role perimetre {A} ⇒ piece du lead B absente avec et sans cible, POST commentaire sur LB 404 et 0 commentaire ; lead A et lead non affecte 201/visibles ; role sans perimetre inchange"
+    },
+    {
+      "id": "W10.ACVI108.rappel_retire_empreinte",
+      "taches": [
+        "ACVI108"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-05-rejeux-w10/ACVI108.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "service reel : rappel demande ⇒ empreinte 1→0, A contactable, C nee contactable, relecture identique ; autre lead encore oppose au meme numero ⇒ empreinte gardee, D nee opposee ; sonde VER4-001 repro False"
     }
   ]
 }
