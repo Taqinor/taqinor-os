@@ -869,12 +869,27 @@ def _ventiler_part(paniers, part, total):
     return vent
 
 
+def _creditable_par_taux(facture):
+    """ATOT56 — TTC créditable par taux d'une facture : ses paniers
+    (``tva_par_taux``) moins ceux de ses avoirs actifs (même mixin)."""
+    reste = {}
+    docs = [(1, facture)] + [(-1, a) for a in facture.avoirs.all()
+                             if a.statut != 'annulee']
+    for signe, doc in docs:
+        for b in doc.tva_par_taux:
+            t = Decimal(str(b['taux']))
+            reste[t] = reste.get(t, Decimal('0')) + signe * (
+                _q(b['base_ht']) + _q(b['montant']))
+    return reste
+
+
 def crediter_ecart_de_vente(devis, montant_ttc, paniers, *, user, motif):
     """ATOT43 — crédite ``montant_ttc`` (paniers de l'écart) sur les factures
     émises de la vente, chacune sous son créditable (le plafond de
     ``creer_avoir_facture``) : le plus fort reste d'abord, à égalité la plus
-    récente. Un avoir CORRECTION par facture, ventilé au prorata ; le dernier
-    porte le solde des paniers au centime. Σ créditable insuffisant ⇒
+    récente. ATOT56 — taux par taux, sous le créditable À CE TAUX de la
+    facture (jamais de base négative) ; la dernière part d'un taux porte son
+    solde au centime. Σ créditable (par taux) insuffisant ⇒
     ``AvoirPlafondDepasse``, rien n'est écrit (transaction unique)."""
     from datetime import date
 
@@ -882,9 +897,11 @@ def crediter_ecart_de_vente(devis, montant_ttc, paniers, *, user, motif):
     from .facturation_ops import AvoirPlafondDepasse, creer_avoir_facture
     montant = _q(montant_ttc)
     total = sum(_q(p['base_ht']) + _q(p['montant']) for p in paniers)
-    restes = {Decimal(str(p['taux'])): [_q(p['base_ht']), _q(p['montant'])]
-              for p in paniers}
-    avoirs = []
+    if total and total != montant:
+        paniers = _ventiler_part(paniers, montant, total)
+    restes = [[str(p['taux']), _q(p['base_ht']), _q(p['montant'])]
+              for p in paniers]
+    plan = []
     with transaction.atomic():
         factures = sorted((
             (_q(f.total_ttc + f.notes_debit_total - f.avoirs_total
@@ -894,27 +911,31 @@ def crediter_ecart_de_vente(devis, montant_ttc, paniers, *, user, motif):
                 company_id=devis.company_id, devis_id=devis.pk).exclude(
                 statut__in=(Facture.Statut.BROUILLON, Facture.Statut.ANNULEE))
         ), key=lambda x: x[:3], reverse=True)
-        if sum(max(x[0], 0) for x in factures) < montant or not total:
+        for creditable, _date, _pk, facture in factures:
+            par_taux, vent = _creditable_par_taux(facture), []
+            for r in restes:
+                part = min(r[1] + r[2], max(creditable, 0), max(
+                    par_taux.get(Decimal(r[0]), 0), 0))
+                if part <= 0:
+                    continue
+                tva = r[2] if part == r[1] + r[2] else _q(
+                    part * r[2] / (r[1] + r[2]))
+                r[1], r[2] = r[1] - (part - tva), r[2] - tva
+                creditable -= part
+                vent.append({'taux': r[0], 'base_ht': str(part - tva),
+                             'montant': str(tva)})
+            if vent:
+                plan.append((facture, vent))
+        if not total or any(r[1] + r[2] for r in restes):
             raise AvoirPlafondDepasse(
                 "L'écart dépasse le montant restant des factures de la vente.")
-        reste = montant
-        for creditable, _date, _pk, facture in factures:
-            part = min(reste, creditable)
-            if part <= 0:
-                break
-            reste -= part
-            vent = (_ventiler_part(paniers, part, total)
-                    if reste or total != montant else [
-                        {'taux': str(t), 'base_ht': str(b), 'montant': str(m)}
-                        for t, (b, m) in restes.items()])
-            for v in vent:
-                r = restes[Decimal(str(v['taux']))]
-                r[0] -= Decimal(v['base_ht'])
-                r[1] -= Decimal(v['montant'])
+        avoirs = []
+        for facture, vent in plan:
             tva = sum(Decimal(v['montant']) for v in vent)
+            ttc = sum(Decimal(v['base_ht']) for v in vent) + tva
             avoirs.append(creer_avoir_facture(
                 facture=facture, user=user, motif=motif,
                 type_avoir=Avoir.Type.CORRECTION, montant_ventile={
-                    'ht': part - tva, 'tva': tva, 'ttc': part,
+                    'ht': ttc - tva, 'tva': tva, 'ttc': ttc,
                     'ventilation': vent}))
     return avoirs
