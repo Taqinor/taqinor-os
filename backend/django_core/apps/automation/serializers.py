@@ -352,18 +352,20 @@ class ApprovalRequestSerializer(SameCompanyFKSerializerMixin,
         ]
 
     def validate(self, attrs):
-        """ASEC30 — une demande DÉCIDÉE (approuvée/rejetée) est figée :
-        ni son type ni son contenu ne changent plus par PATCH ; seules les
-        actions dédiées écrivent la décision."""
+        """ASEC30/ASEC69 — une demande DÉCIDÉE (approuvée/rejetée) ou
+        portant déjà une décision (double approbation en cours) est figée :
+        ni son type ni son contenu ne changent plus par PATCH (409, refus
+        d'état) ; seules les actions dédiées écrivent la décision."""
         attrs = super().validate(attrs)
         inst = self.instance
         decidees = (ApprovalRequest.Status.APPROVED,
                     ApprovalRequest.Status.REJECTED)
-        if inst is not None and inst.status in decidees:
+        if inst is not None and (inst.status in decidees
+                                 or inst.decisions.exists()):
             figes = sorted(k for k in ('request_type', 'payload')
                            if k in attrs)
             if figes:
-                raise serializers.ValidationError({
+                raise ConflitEtat({
                     k: ['Demande déjà décidée : modification impossible.']
                     for k in figes})
         return attrs

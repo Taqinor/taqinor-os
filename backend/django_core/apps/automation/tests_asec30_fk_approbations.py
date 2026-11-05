@@ -116,12 +116,36 @@ class AutomationFkTests(TestCase):
         r = self.api.patch(f'{BASE}/approval-requests/{self.demande.pk}/',
                            {'payload': {'montant': 999999},
                             'request_type': type_a2.pk}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)  # ASEC69 : refus d'état
         self.demande.refresh_from_db()
         self.assertEqual(self.demande.payload, {'montant': 100})
         self.assertEqual(self.demande.request_type_id, self.type_a.pk)
         self.assertEqual(self.demande.status,
                          ApprovalRequest.Status.APPROVED)
+
+    def test_patch_apres_premiere_decision_409(self):
+        """ASEC69 (C-ASEC-VER4-020) — double approbation : dès la première
+        décision, le demandeur ne change plus le montant (409) ; la décision
+        reste, statut en attente. Avant toute décision : PATCH 200. Mutant :
+        retirer ``decisions.exists()`` ⇒ échec."""
+        from apps.automation.models import ApprovalDecision
+        self.type_a.min_approbations = 2
+        self.type_a.save(update_fields=['min_approbations'])
+        self.demande.status = ApprovalRequest.Status.PENDING
+        self.demande.save(update_fields=['status'])
+        api = _api(self.collegue_a)
+        url = f'{BASE}/approval-requests/{self.demande.pk}/'
+        r = api.patch(url, {'payload': {'montant': 100}}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        ApprovalDecision.objects.create(
+            request=self.demande, decided_by=self.admin_a,
+            decision=ApprovalDecision.Decision.APPROVE)
+        r = api.patch(url, {'payload': {'montant': 100000}}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.demande.refresh_from_db()
+        self.assertEqual(self.demande.payload, {'montant': 100})
+        self.assertEqual(self.demande.decisions.count(), 1)
+        self.assertEqual(self.demande.status, ApprovalRequest.Status.PENDING)
 
     def test_delegation_suppleant_etranger_404(self):
         avant = ApprovalDelegation.objects.count()
