@@ -4,7 +4,8 @@
   "groupe": "ACVI",
   "verdict": "PASS",
   "couvre": [
-    "ACVI102"
+    "ACVI102",
+    "ACVI103"
   ],
   "couvre_avec_ecart": [],
   "etapes": [
@@ -29,6 +30,28 @@
         "10": "NA"
       },
       "notes": "API reelle (responsable, societe demo) : 6 gestes 409 MOTIF_CONTACT_REFUSE, 0 mail, 0 EmailLog, brouillon, date_envoi nul ; devis envoye 409 ; lead normal 200 + envoye ; sondes VER4-010/012 repro False"
+    },
+    {
+      "id": "W10.ACVI103.brouillon_suivi_oppose",
+      "taches": [
+        "ACVI103"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-05-rejeux-w10/ACVI103.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "API reelle : brouillon-suivi oppose 409 ne plus contacter x3 canaux sans texte ni lien ; perdu et archive 409 perdu/archive ; autre societe 404 ; normal 200 ; 0 LeadActivity ; sonde VER4-002 repro False"
     }
   ]
 }
