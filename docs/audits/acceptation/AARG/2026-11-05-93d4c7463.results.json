@@ -4,7 +4,8 @@
   "groupe": "AARG",
   "verdict": "PASS",
   "couvre": [
-    "AARG63"
+    "AARG63",
+    "AARG64"
   ],
   "couvre_avec_ecart": [],
   "etapes": [
@@ -29,6 +30,28 @@
         "10": "NA"
       },
       "notes": "API reelle (admin) : F1 annulee (miroir A1), vente refacturee par F2 emise => avoirs/<A1>/annuler/ 409 {detail}, F1 annulee, A1 emise, avoir_annule non emis, 1 facture vivante ; sans F2 => 200, F1 emise ; devis repasse envoye => 409 ; sonde C-AARG-VER5-002 repro False (409, Σ du 1 200 = TTC)"
+    },
+    {
+      "id": "W14.AARG64.restauration_rejoue_effets",
+      "taches": [
+        "AARG64"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-05-rejeux-w14/AARG64.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "API reelle (admin) : Panneau 550W x2 facturer-complet (stock 10 -> 8), paiement-avec-retenue 1 000 + RAS-TVA 200 (201), annulee garder_en_avance (stock 10, retenue annulee) => avoirs/<miroir>/annuler/ 200, payee, du 0, retenue annulee=False, stock 8 ; avec chantier : reservation N14 2 -> 0 -> 2 -> 0 (resoldee) ; annulee rembourser => 409 « Defaites d'abord le remboursement… », annulee, stock inchange ; transferer non rejoue ; sonde C-AARG-VER5-001 repro False"
     }
   ]
 }
