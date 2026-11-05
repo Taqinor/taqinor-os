@@ -861,6 +861,8 @@ class FichiersPdfTests(unittest.TestCase):
         ged = '/api/django/ged/documents/'
         for chemin, champ, debut in (
                 (ged + 'televerser/', 'file', b'%PDF-'),
+                # Nocturne 41958593088 : dépôt public par lien (octets magiques).
+                ('/api/django/ged/depot/{token}/', 'file', b'%PDF-'),
                 (ged + 'assembler-photos/', 'photos', b'\x89PNG'),
                 (ged + 'import-masse/', 'csv', b'nom,')):
             with self.subTest(chemin=chemin):

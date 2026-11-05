@@ -1061,7 +1061,25 @@ def _liste_saisie(valeur, champ):
         raise GabaritRefuse({champ: (
             f"« {champ} » se donne en liste JSON (reçu : "
             f"{'null' if valeur is None else type(valeur).__name__}).")})
+    if _contient_nul(valeur):
+        # ENF11 (nocturne 41958593088) : un « \u0000 » imbriqué (clé ou
+        # valeur) casse l'écriture jsonb (« unsupported Unicode escape
+        # sequence », 500) — refusé nommé comme le NUL d'un champ texte.
+        raise GabaritRefuse({champ: (
+            f"« {champ} » ne peut pas contenir de caractère nul.")})
     return valeur
+
+
+def _contient_nul(valeur):
+    """Vrai si un texte de l'arbre JSON (clé ou valeur) porte un NUL."""
+    if isinstance(valeur, str):
+        return '\x00' in valeur
+    if isinstance(valeur, dict):
+        return any(_contient_nul(k) or _contient_nul(v)
+                   for k, v in valeur.items())
+    if isinstance(valeur, list):
+        return any(_contient_nul(v) for v in valeur)
+    return False
 
 
 def _booleen(valeur):

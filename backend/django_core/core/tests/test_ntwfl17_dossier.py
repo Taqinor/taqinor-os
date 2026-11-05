@@ -183,10 +183,18 @@ class DossierApiTests(TestCase):
         reponse = LIER(
             appeler(self.user, cle_modele='pasune.app', object_id=1),
             pk=dossier_id)
-        # ERR-ENF11-FUZZ-CORE — forme valide, type inexistant : cible
-        # introuvable (404 documenté) ; une forme invalide reste 400.
-        self.assertEqual(reponse.status_code, 404)
+        # ERR-ENF11-FUZZ-CORE — forme valide, type inexistant : le dossier
+        # existe, seule la cible manque — 409 (ENF11 nocturne 41958593088,
+        # bd5Nsr : le 404 le disait absent) ; une forme invalide reste 400.
+        self.assertEqual(reponse.status_code, 409)
         self.assertIn('cle_modele', reponse.data)
+        reponse = DELIER(
+            appeler(self.user, cle_modele='pasune.app', object_id=1),
+            pk=dossier_id)
+        self.assertEqual(reponse.status_code, 409)
+        reponse = CHECKLIST(appeler(self.user, item_id=999999), pk=dossier_id)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertIn('item_id', reponse.data)
         for corps in ({'cle_modele': 'pasunecle', 'object_id': 1},
                       {'cle_modele': 'crm.lead', 'object_id': 0}):
             with self.subTest(corps=corps):

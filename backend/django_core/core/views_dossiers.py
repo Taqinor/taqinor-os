@@ -177,7 +177,8 @@ def resoudre_content_type(cle_modele):
 
 # ERR-ENF11-FUZZ-CORE — ``cle_modele`` publié avec sa forme
 # (« app_label.model ») ; une forme valide mais un type inexistant est une
-# cible introuvable : 404 documenté (400 avant, sur une requête conforme).
+# cible introuvable : 409 (le dossier existe ; ENF11 nocturne 41958593088,
+# le 404 le disait absent — 400 avant, sur une requête conforme).
 _CIBLE_LIEN = inline_serializer('DossierCibleLien', {
     'cle_modele': serializers.RegexField(
         r'^[A-Za-z_]\w*\.[A-Za-z_]\w*$',
@@ -290,7 +291,7 @@ class DossierViewSet(CompanyScopedModelViewSet):
         ct = resoudre_content_type(cible['cle_modele'])
         if ct is None:
             return Response({'cle_modele': _TYPE_INCONNU},
-                            status=status.HTTP_404_NOT_FOUND)
+                            status=status.HTTP_409_CONFLICT)
         object_id = cible['object_id']
 
         lien, cree = DossierLien.objects.get_or_create(
@@ -320,7 +321,7 @@ class DossierViewSet(CompanyScopedModelViewSet):
         object_id = cible['object_id']
         if ct is None:
             return Response({'detail': _TYPE_INCONNU},
-                            status=status.HTTP_404_NOT_FOUND)
+                            status=status.HTTP_409_CONFLICT)
         supprimes, _ = DossierLien.objects.filter(
             dossier=dossier, content_type=ct, object_id=object_id).delete()
         if supprimes:
@@ -376,7 +377,7 @@ class DossierViewSet(CompanyScopedModelViewSet):
                 return Response(
                     {'item_id': 'Étape de checklist introuvable sur ce '
                                 'dossier.'},
-                    status=status.HTTP_404_NOT_FOUND)
+                    status=status.HTTP_409_CONFLICT)
             item.fait = donnees['fait']
             item.fait_par = request.user if item.fait else None
             item.fait_le = timezone.now() if item.fait else None

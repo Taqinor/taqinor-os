@@ -413,11 +413,13 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         return None if refus is None else Response(refus, status=status.HTTP_400_BAD_REQUEST)
 
     def _refus_si_gelee(self, visite):
+        # ENF11 (nocturne 41958593088) : une visite validée ou annulée est
+        # gelée par son ÉTAT — le corps était conforme : 409, même corps.
         if visite.modifiable:
             return None
         return Response(
             {'erreurs': {'statut': visite.raison_lecture_seule}},
-            status=status.HTTP_400_BAD_REQUEST)
+            status=status.HTTP_409_CONFLICT)
 
     # ERR-ENF11-FUZZ-VISITES — le PUT rend l'ENTÊTE écrite par le sérialiseur
     # (``super().update``), pas l'agrégat : la réponse publiée le dit.

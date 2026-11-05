@@ -9,16 +9,19 @@ ses messages FRANÇAIS champ par champ.
 import re
 
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.validators import RegexValidator
 from rest_framework import serializers
 
-from core.champs_stricts import BooleenStrict, ChaineStricte, ChampsStrictsMixin
+from core.champs_stricts import BooleenStrict, ChampsStrictsMixin
 from core.unicite import UniciteEn409Mixin
 
 from .models import MetricDefinition
-from .portabilite import MAX_METRIQUES_IMPORT
+from .portabilite import FORMAT, MAX_METRIQUES_IMPORT
 
 #: Forme d'une clé de métrique (celle des 8 métriques cœur : ``ca_ht``, ``dso``).
 _CLE_VALIDE = re.compile(r'^[a-z][a-z0-9_]{0,79}$')
+_MESSAGE_CLE = ('La clé ne contient que des lettres minuscules, des chiffres '
+                'et « _ » (ex. « marge_brute »), et commence par une lettre.')
 
 
 class MetricDefinitionSerializer(UniciteEn409Mixin, ChampsStrictsMixin,
@@ -33,15 +36,17 @@ class MetricDefinitionSerializer(UniciteEn409Mixin, ChampsStrictsMixin,
             'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+        # ENF11 (nocturne 41958593088, dCl2lo) : la forme de la clé est PUBLIÉE
+        # (motif au schéma via RegexValidator) — « 0 » était conforme puis 400.
+        extra_kwargs = {'cle': {'validators': [
+            RegexValidator(_CLE_VALIDE, message=_MESSAGE_CLE)]}}
 
     def validate_cle(self, value):
         # La clé voyage dans les URL (`metriques/<cle>/valeur/`) et dans les
         # layouts de tableaux de bord : un identifiant simple, jamais une
         # phrase.
         if not _CLE_VALIDE.match(value or ''):
-            raise serializers.ValidationError(
-                'La clé ne contient que des lettres minuscules, des chiffres '
-                'et « _ » (ex. « marge_brute »), et commence par une lettre.')
+            raise serializers.ValidationError(_MESSAGE_CLE)
         return value
 
     def validate_mesure(self, value):
@@ -93,7 +98,13 @@ class ImportMetriquesSerializer(serializers.Serializer):
     ``commit`` : ``false`` (défaut) = dry-run, ``true`` = appliquer.
     """
 
-    format = ChaineStricte(required=False, allow_blank=True)
+    # ENF11 (nocturne 41958593088, VKjai2) : le SEUL format lisible est
+    # publié (motif exact, sans composant d'énumération qui renommerait le
+    # ``FormatEnum`` voisin) — un texte quelconque était conforme puis 400.
+    format = serializers.RegexField(
+        r'^(?:%s)?$' % re.escape(FORMAT), required=False, allow_blank=True,
+        error_messages={'invalid': (
+            'Document étranger : format « %s » attendu.' % FORMAT)})
     version = serializers.IntegerField(required=False, min_value=1)
     metriques = serializers.ListField(
         # Toute valeur JSON (``null`` compris) : une entrée qui n'est pas un

@@ -229,10 +229,18 @@ class SchemaChampsStrictsTests(SimpleTestCase):
         from rest_framework import serializers
 
         champ = serializers.DateTimeField()
-        for brut in ('0001-06-01T00:00:00Z', '9999-01-01T00:00:00Z'):
+        # ENF11 (nocturne 41958593088, uBIPkp) : l'an 2 / 9998 aux bords
+        # atteignables par un décalage, refusés comme le motif publié.
+        import re
+
+        from core.champs_stricts import MOTIF_DATE_HEURE
+        for brut in ('0001-06-01T00:00:00Z', '9999-01-01T00:00:00Z',
+                     '0002-01-01T00:01:00+04:00', '9998-12-31T23:00:00-05:00'):
             with self.assertRaises(serializers.ValidationError, msg=brut):
                 champ.run_validation(brut)
+            self.assertIsNone(re.match(MOTIF_DATE_HEURE, brut), brut)
         self.assertEqual(champ.run_validation('2026-01-01T00:00:00Z').year, 2026)
+        self.assertEqual(champ.run_validation('0003-06-01T00:00:00Z').year, 3)
 
     def test_tout_charfield_publie_sans_caractere_nul(self):
         # api-fuzz-full 41773314544 : DRF refuse le NUL dans tout CharField.

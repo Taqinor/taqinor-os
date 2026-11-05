@@ -135,6 +135,26 @@ class ValidationTests(Wir163Base):
         acl.refresh_from_db()
         self.assertEqual((acl.folder_id, acl.document_id), (self.folder_a.id, None))
 
+    def test_put_sans_cible_ni_principal_dans_le_corps_400(self):
+        """ENF11 (nocturne 41958593088, cn00tY) — un PUT est un corps complet :
+        sans cible (ou sans principal) NOMMÉE, la ligne ne comble plus le trou
+        (200 sur un corps hors schéma) → 400, rien n'est écrit."""
+        acl = AclGed.objects.create(
+            company=self.co_a, folder=self.folder_a, utilisateur=self.normal_a,
+            niveau='lecture')
+        for corps in ({'document': None, 'utilisateur': self.normal_a.id,
+                       'niveau': 'gestion'},
+                      {'folder': self.folder_a.id, 'niveau': 'gestion'}):
+            resp = auth(self.admin_a).put(f'{BASE}{acl.id}/', corps,
+                                          format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.data))
+        acl.refresh_from_db()
+        self.assertEqual(acl.niveau, 'lecture')
+        # Le PATCH garde sa sémantique partielle.
+        resp = auth(self.admin_a).patch(f'{BASE}{acl.id}/',
+                                        {'niveau': 'gestion'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+
     def test_cible_hors_societe_refusee(self):
         resp = auth(self.admin_a).post(BASE, {
             'document': self.doc_b.id, 'utilisateur': self.normal_a.id,
