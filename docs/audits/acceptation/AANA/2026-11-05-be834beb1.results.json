@@ -4,7 +4,9 @@
   "groupe": "AANA",
   "verdict": "PASS",
   "couvre": [
-    "AANA87"
+    "AANA87",
+    "AANA88",
+    "AANA89"
   ],
   "couvre_avec_ecart": [],
   "etapes": [
@@ -29,6 +31,50 @@
         "10": "NA"
       },
       "notes": "DEV-202611-0078 envoye : accepter => 62 envoyes / 49 acceptes / 79,0 % ; Reviser (V2 brouillon) => inchange ; ecran /reporting « Devis acceptes / envoyes : 79 % ». Detail : traces/2026-11-04/AANA87-reviser-taux.txt."
+    },
+    {
+      "id": "P.visite_lignes_option",
+      "taches": [
+        "AANA88"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AANA/traces/2026-11-04/ACCEPTATION-AANA-P.visite_lignes_option.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "DEV-202611-0083 deux options accepte « sans » ; visite du lead : panneau DEV-202611-0083 Accepte 22 800 MAD, lignes panneau + onduleur reseau seulement, ni batterie ni hybride. Detail : traces/2026-11-04/AANA88-AANA89-option-retenue.txt."
+    },
+    {
+      "id": "P.projet_option_retenue",
+      "taches": [
+        "AANA89"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AANA/traces/2026-11-04/AANA88-AANA89-option-retenue.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "app parquee (preuve n/a) - selecteur appele en shell sur le meme devis : devis_pour_projet montant_materiel 19 000 HT = somme HT des option_lines, sans batterie ni hybride."
     }
   ]
 }
