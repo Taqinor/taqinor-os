@@ -340,9 +340,9 @@ class CrmAgentBrouillonSuiviTest(TestCase):
         owner = User.objects.create_user(
             username=f'aic32_{owner_prenom}', password='x', role=self.role,
             company=self.company, first_name=owner_prenom)
+        kw.setdefault('telephone', '0600112233')
         return Lead.objects.create(
-            company=self.company, nom='Alami', prenom='Karim',
-            telephone='0600112233', owner=owner, **kw)
+            company=self.company, nom='Alami', prenom='Karim', owner=owner, **kw)
 
     def _appel(self, lead, **corps):
         corps = {'canal': 'whatsapp', 'objectif': 'relance_devis', **corps}
@@ -406,11 +406,14 @@ class CrmAgentBrouillonSuiviTest(TestCase):
                 self.assertEqual(str(resp.data['detail']), 'Message refusé : ne plus contacter.')
                 self.assertNotIn('lien_wa_me', resp.data)
                 self.assertNotIn('texte', resp.data)
-        resp = self._appel(self._lead('Perdu', perdu=True))
+        # ACVI108 — l'empreinte d'opposition couvre le numéro de Salma : le lead
+        # perdu/archivé porte un AUTRE numéro pour isoler le motif « perdu/archivé ».
+        resp = self._appel(self._lead('Perdu', perdu=True, telephone='0600112255'))
         self.assertEqual(resp.status_code, 409, resp.data)
         self.assertEqual(str(resp.data['detail']), 'Message refusé : perdu/archivé.')
         # Archivé : hors des leads en portée (404) ou refusé (409) — jamais un brouillon.
-        self.assertIn(self._appel(self._lead('Archive', is_archived=True)).status_code, (404, 409))
+        self.assertIn(self._appel(self._lead('Archive', is_archived=True,
+                                             telephone='0600112266')).status_code, (404, 409))
         self.assertEqual(LeadActivity.objects.count(), avant)
         autre = Company.objects.create(nom='AIC32 Autre', slug='aic32-autre')
         etranger = Lead.objects.create(company=autre, nom='X', telephone='0600112244',

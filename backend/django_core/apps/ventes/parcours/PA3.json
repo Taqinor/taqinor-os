@@ -16,6 +16,7 @@
   {"type": "envoi", "ref": "apps/ventes/views/devis_envoi.py::DevisEnvoiActionsMixin.whatsapp", "nom": "WhatsApp"},
   {"type": "envoi", "ref": "apps/ventes/views/devis_envoi.py::DevisEnvoiActionsMixin.pdf_partage", "nom": "PDF de partage"},
   {"type": "envoi", "ref": "apps/crm/devis_views.py::LeadDevisActionsMixin.whatsapp_devis", "nom": "WhatsApp depuis le lead"},
+  {"type": "envoi", "ref": "apps/ventes/domain/envoi.py::mark_devis_sent", "nom": "gamme sœur envoyée avec le devis (ADVS49, paire)"},
   {"type": "creation", "ref": "apps/ventes/views/devis.py::DevisViewSet.perform_create", "nom": "POST devis"},
   {"type": "creation", "ref": "apps/ventes/views/devis.py::DevisViewSet.auto", "nom": "auto"},
   {"type": "creation", "ref": "apps/ventes/views/devis_calepinage.py::DevisCalepinageActionsMixin.from_layout", "nom": "from-layout (calepinage)"},
