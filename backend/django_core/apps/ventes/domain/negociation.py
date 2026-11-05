@@ -336,6 +336,10 @@ def appliquer_prix_negocie(devis, *, prix_ttc=None, remise_pct=None, user,
             ) from exc
         v2.remise_globale = apercu['_remise']
         v2.save(update_fields=['remise_globale'])
+        # AGNR63 — prix négocié = TTC neuf : échéancier de la V2 re-basé ou
+        # 409 ``{echeancier}`` (tout le geste annulé, aucune V2).
+        from apps.ventes.domain.modifiabilite import rebaser_echeancier_ou_409
+        rebaser_echeancier_ou_409(v2)
         nom = (devis.accepte_par_nom or 'Client').strip()
         try:
             v2 = accept_devis(

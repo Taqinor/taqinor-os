@@ -299,6 +299,41 @@ def echeancier_au_reste(entrees, total_ttc):
         entrees[-1], pct_or_montant=float(reste), unite=UNITE_MONTANT)]
 
 
+def ttc_du_devis(devis):
+    """AGNR63 — le TTC de l'option effective, relu en base (lignes fraîches)."""
+    from apps.ventes.utils.options import option_totaux
+    return option_totaux(type(devis).objects.get(pk=devis.pk))['ttc']
+
+
+def rebaser_echeancier(devis, *, ttc_avant=None):
+    """AGNR63 — LA règle d'AGNR49 (:func:`echeancier_au_reste`) re-jouée au
+    TTC COURANT après un geste qui l'a changé (remise, ligne, étude, taille,
+    prix négocié) : dernière tranche = reste en MAD ; dépassement ⇒
+    ``EcheancierIncoherent`` (l'appelant annule son geste). ``ttc_avant``
+    égal au TTC courant ⇒ rien (donnée d'hier jamais réécrite sans geste)."""
+    from apps.ventes.utils.options import option_totaux
+    frais = type(devis).objects.get(pk=devis.pk)
+    ttc = option_totaux(frais)['ttc']
+    if not frais.echeancier or (ttc_avant is not None and ttc == ttc_avant):
+        return frais.echeancier
+    nouveau = echeancier_au_reste(frais.echeancier, ttc)
+    if nouveau != frais.echeancier:
+        type(devis).objects.filter(pk=devis.pk).update(echeancier=nouveau)
+        devis.echeancier = nouveau
+    return nouveau
+
+
+def rebaser_echeancier_ou_409(devis, *, ttc_avant=None):
+    """AGNR63 — :func:`rebaser_echeancier` ; un refus devient le 409
+    ``{echeancier}`` (``ConflitEtat``), levé SOUS la transaction du geste."""
+    from apps.ventes.utils.echeancier import EcheancierIncoherent
+    from core.conflit_etat import ConflitEtat
+    try:
+        return rebaser_echeancier(devis, ttc_avant=ttc_avant)
+    except EcheancierIncoherent as exc:
+        raise ConflitEtat({'echeancier': [str(exc)]})
+
+
 def _exiger_couvertes_inchangees(plan, tranches, figer_brouillons):
     """409 ``tranche_facturee`` si une tranche couverte (émise ; brouillon
     quand ``figer_brouillons``) disparaît ou change (unité, valeur, libellé)."""
