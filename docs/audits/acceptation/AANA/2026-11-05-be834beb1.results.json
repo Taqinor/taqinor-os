@@ -1,0 +1,34 @@
+{
+  "sha": "be834beb1732b54cc2c0b2279c542135736b6ccc",
+  "date": "2026-11-05",
+  "groupe": "AANA",
+  "verdict": "PASS",
+  "couvre": [
+    "AANA87"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P.reviser_taux_inchange",
+      "taches": [
+        "AANA87"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AANA/traces/2026-11-04/ACCEPTATION-AANA-P.reviser_taux_inchange.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "DEV-202611-0078 envoye : accepter => 62 envoyes / 49 acceptes / 79,0 % ; Reviser (V2 brouillon) => inchange ; ecran /reporting « Devis acceptes / envoyes : 79 % ». Detail : traces/2026-11-04/AANA87-reviser-taux.txt."
+    }
+  ]
+}
