@@ -185,6 +185,49 @@ class Acvi6PorteeDesCiblesLeadTests(TestCase):
         self.assertIn(com.pk, ids(c1, coms))
         self.assertTrue({act.pk, a_moi.pk} <= set(ids(c1, acts)))
 
+    def test_perimetre_entite_exclut_le_lead(self):
+        """ACVI106 — un rôle limité à l'entité A ne lit ni ne dépose rien sur
+        un lead de l'entité B (même règle que le CRM : ``portee_leads``)."""
+        from django.contrib.auth import get_user_model
+        from django.contrib.contenttypes.models import ContentType
+
+        from apps.crm.models import Lead
+        from apps.entites.models import Entite
+        from apps.records.models import Attachment, Comment
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import COMMERCIAL_PERMISSIONS
+        ent_a = Entite.objects.create(company=self.company, nom='Agence A', code='A')
+        ent_b = Entite.objects.create(company=self.company, nom='Agence B', code='B')
+        role = Role.objects.create(company=self.company, nom='Commercial A',
+                                   permissions=list(COMMERCIAL_PERMISSIONS))
+        role.entites_visibles.set([ent_a])
+        moi = get_user_model().objects.create_user(
+            username='acvi106-a', password='x', company=self.company, role=role)
+        ct = ContentType.objects.get_for_model(Lead)
+        pieces = {}
+        for ent in (ent_a, ent_b):
+            lead = Lead.objects.create(company=self.company, nom=f'L{ent.code}', owner=moi, entite=ent)
+            pieces[ent.code] = (lead, Attachment.objects.create(
+                company=self.company, uploaded_by=moi, content_type=ct, object_id=lead.pk,
+                filename='p.pdf', file_key=f'k/{ent.code}.pdf', size=1, mime='application/pdf'))
+        (lead_a, piece_a), (lead_b, piece_b) = pieces['A'], pieces['B']
+        api, base = self._api(moi), '/api/django/records/attachments/'
+
+        def lignes(rep):
+            self.assertEqual(rep.status_code, 200, rep.data)
+            return [r['id'] for r in (rep.data['results'] if isinstance(rep.data, dict) else rep.data)]
+
+        self.assertEqual(lignes(api.get(base, {'model': 'crm.lead', 'id': lead_b.pk})), [])
+        libre = lignes(api.get(base))
+        self.assertNotIn(piece_b.pk, libre)
+        self.assertIn(piece_a.pk, libre)
+        coms = '/api/django/records/comments/'
+        rep = api.post(coms, {'model': 'crm.lead', 'id': lead_b.pk, 'body': 'x'}, format='json')
+        self.assertEqual(rep.status_code, 404, rep.data)
+        self.assertEqual(Comment.objects.filter(object_id=lead_b.pk).count(), 0)
+        rep = api.post(coms, {'model': 'crm.lead', 'id': lead_a.pk, 'body': 'x'}, format='json')
+        self.assertEqual(rep.status_code, 201, rep.data)
+
     def test_role_sans_droit_crm_ne_depose_rien(self):
         from apps.records.models import Comment
         reponse = self._api(self.rh).post(

@@ -261,11 +261,11 @@ def _sans_leads_hors_portee(qs, user, garder=None):
     auteur ou assigné reste visible."""
     from django.contrib.contenttypes.models import ContentType
 
-    from authentication.scoping import scope_queryset
+    from apps.crm.selectors import portee_leads  # ACVI106 — + périmètre d'entités
     from core.permissions import _user_has_or_legacy
 
     ct = ContentType.objects.get(app_label='crm', model='lead')
-    visibles = scope_queryset(ct.model_class().objects.all(), user, ['owner'])
+    visibles = portee_leads(ct.model_class().objects.all(), user)
     if getattr(user, 'role', None) is not None and not _user_has_or_legacy(user, 'crm_voir'):
         visibles = visibles.none()
     hors = models.Q(content_type=ct) & ~models.Q(object_id__in=visibles.values('pk'))

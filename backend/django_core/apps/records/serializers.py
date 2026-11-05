@@ -73,14 +73,15 @@ def resolve_target(model_label, object_id, company, user=None, ecriture=False):
     # auditée (qui vient toujours d'une cible sans société, désormais close pour
     # tout le monde).
     # ACVI6 — ``crm.lead`` hors portée, ou sans droit CRM pour un rôle fin : absent.
+    # ACVI106 — portée propriétaire ET périmètre d'entités (``portee_leads``).
     if user is not None and (app_label, model) == ('crm', 'lead'):
-        from authentication.scoping import scope_queryset
+        from apps.crm.selectors import portee_leads
         from core.permissions import _user_has_or_legacy
         droit = 'crm_modifier' if ecriture else 'crm_voir'
         if ((getattr(user, 'role', None) is not None
              and not _user_has_or_legacy(user, droit))
-                or not scope_queryset(type(obj).objects.filter(pk=obj.pk),
-                                      user, ['owner']).exists()):
+                or not portee_leads(type(obj).objects.filter(pk=obj.pk),
+                                    user).exists()):
             raise CibleIntrouvable('Cible introuvable.')
     return ct, obj
 
