@@ -342,8 +342,10 @@ class GestesArgentTests(TestCase):
         self.assertEqual(r.data['detail'], motif)
         self.assertEqual(
             Facture.objects.filter(company=self.company).count(), avant)
+        # Le Commercial est borné à SES devis (portée « own ») : son propre devis.
+        d4 = self._devis(commercial)
         r = self._api(commercial).post(
-            f'/api/django/ventes/devis/{d1.id}/generer-facture/', {},
+            f'/api/django/ventes/devis/{d4.id}/generer-facture/', {},
             format='json')
         self.assertEqual(r.status_code, 201, r.data)
 
