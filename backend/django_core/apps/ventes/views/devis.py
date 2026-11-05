@@ -25,7 +25,7 @@ from authentication.permissions import (
 # NTPRT10 — garde du chemin canonique /proposal ouverte au client PROPRIÉTAIRE
 # depuis son portail (``apps.roles`` est une app FONDATION, pas un domaine).
 from apps.roles.permissions import (
-    DroitDeLaGrille, is_portal_user, portal_scope_id,
+    DroitDeLaGrille, droits_de_la_grille, is_portal_user, portal_scope_id,
 )
 from core.viewsets import CompanyScopedModelViewSet  # ARC5
 from ..gardes_lecture import LectureVentes  # ADVS23
@@ -277,7 +277,10 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
             # DANS l'action.
             return [IsAnyRole()]
         if self.action in ('create', 'update', 'partial_update'):
-            return [IsResponsableOrAdmin()]
+            # ASEC71 — modifier un devis exige ``ventes_modifier`` (grille).
+            modifier = [DroitDeLaGrille('ventes_modifier')]
+            return [IsResponsableOrAdmin()] + droits_de_la_grille(
+                self, update=modifier, partial_update=modifier)
         if self.action == 'destroy':
             # ASEC50 / D-ASEC-4 — supprimer un devis exige ``ventes_supprimer``
             # en plus du palier administrateur.
