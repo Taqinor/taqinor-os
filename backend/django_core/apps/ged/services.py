@@ -835,6 +835,9 @@ def add_version(document, *, file_key, company, filename='', size=0, mime='',
     # ADOC14 — une nouvelle version d'un document APPROUVÉ n'est pas
     # approuvée : il repasse en revue (approbation à refaire).
     from .models import LIFECYCLE_APPROUVE, LIFECYCLE_REVUE
+    from .chaine_approbation import reprendre_chaine_a_l_etape_1  # ASEC84
+    if next_version > 1:
+        reprendre_chaine_a_l_etape_1(document, utilisateur=uploaded_by)
     if (next_version > 1 and Document.objects.filter(
             pk=document.pk, statut=LIFECYCLE_APPROUVE).exists()):
         Document.objects.filter(pk=document.pk).update(statut=LIFECYCLE_REVUE)
@@ -6111,37 +6114,10 @@ def avancer_chaine_approbation_ged(demande, *, user, commentaire=''):
                 f"impossible.")
         _assert_peut_decider(demande, user)
         chaine = type(chaine).objects.select_for_update().get(pk=chaine.pk)
-        return _avancer_chaine_verrouillee(
+        from .chaine_approbation import avancer_chaine_verrouillee
+        return avancer_chaine_verrouillee(
             demande, chaine, user=user, commentaire=commentaire,
             get_user_model=get_user_model, _tz=_tz)
-
-
-def _avancer_chaine_verrouillee(demande, chaine, *, user, commentaire,
-                                get_user_model, _tz):
-    """ADOC14 — corps de `avancer_chaine_approbation_ged`, appelé sous
-    verrou de ligne (demande + chaîne)."""
-    etapes = list(chaine.etapes or [])
-    idx = chaine.etape_courante
-    if idx < len(etapes):
-        etapes[idx]['statut'] = 'approuve'
-        etapes[idx]['decision_le'] = _tz.now().isoformat()
-    if idx + 1 < len(etapes):
-        # Étape suivante : réassigne l'approbateur actif, la demande reste
-        # « en_attente » (décision globale pas encore prise).
-        etapes[idx + 1]['statut'] = 'en_cours'
-        User = get_user_model()
-        suivant = User.objects.filter(
-            company=demande.company, pk=etapes[idx + 1]['approbateur_id']).first()
-        demande.approbateur = suivant
-        demande.save(update_fields=['approbateur', 'updated_at'])
-        chaine.etapes = etapes
-        chaine.etape_courante = idx + 1
-        chaine.save(update_fields=['etapes', 'etape_courante', 'updated_at'])
-        return demande
-    # Dernière étape : décision définitive (réutilise GED18, jamais dupliqué).
-    chaine.etapes = etapes
-    chaine.save(update_fields=['etapes', 'updated_at'])
-    return approve_demande(demande, user=user, commentaire=commentaire)
 
 
 # ── XGED23 — Disposition fin de rétention (revue + certificat) ─────────────
