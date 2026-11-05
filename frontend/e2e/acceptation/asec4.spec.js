@@ -9,7 +9,7 @@ import { groupe } from './_oracles.js'
 import { py, MDP_ESSAI, fermerDjangoApresTout } from './_django.js'
 import { lireJson, connexionApi, assurerSessionPage, telephoneMobileUnique } from '../helpers.js'
 
-const etape = groupe('ASEC', ['ASEC66', 'ASEC67', 'ASEC68', 'ASEC69', 'ASEC70'])
+const etape = groupe('ASEC', ['ASEC66', 'ASEC67', 'ASEC68', 'ASEC69', 'ASEC70', 'ASEC71', 'ASEC72', 'ASEC74', 'ASEC75', 'ASEC76'])
 fermerDjangoApresTout()
 const API = '/api/django'
 const T = { timeout: 120_000 }
@@ -202,4 +202,111 @@ etape('V4.70', ['ASEC70'], async ({ page, testInfo }) => {
     expect(obtenu.map((x) => (x === 202 ? 200 : x)), `${nom} : exports produits / mouvements`).toEqual([statut, statut])
     await u.ctx.dispose()
   }
+})
+
+/** Code de refus d'une réponse 403 (corps `{code}` ou enveloppe `{error: {code}}`). */
+async function codeDe(res) {
+  const t = await res.text()
+  try { const j = JSON.parse(t); return j.code || j.error?.code || j.detail?.code || t } catch { return t }
+}
+const compter = (modele, filtre = '') => py(`from django.apps import apps
+sortie(apps.get_model(${JSON.stringify(modele)}).objects.filter(company_id=${SOC}${filtre}).count())`)
+async function devisBrouillon(r, ctx, m) {
+  const l = await lireJson(await ctx.post(`${API}/crm/leads/`, { ...T, data: { nom: `ASEC4 ${m}`, ville: 'Casablanca', telephone: telephoneMobileUnique(), email: `${m}@example.invalid` } }), 'lead')
+  const p = await lireJson(await r.post(`${API}/stock/produits/`, { ...T, data: { nom: `Onduleur ASEC4 ${m}`, prix_vente: '1000.00', prix_achat: '111.11' } }), 'produit')
+  return lireJson(await ctx.post(`${API}/ventes/devis/atomic/`, { ...T, data: { taux_tva: '20.00', remise_globale: '0', lead: l.id, note: 'note d\'origine', lignes: [{ produit: p.id, designation: p.nom, quantite: '1', prix_unitaire: '1000.00', remise: '0.00', taux_tva: '20.00', type_ligne: 'produit', ordre: 0 }] } }), 'devis')
+}
+
+etape('V4.71', ['ASEC71'], async ({ page, testInfo }) => {
+  const r = page.request
+  const m = marque()
+  const sans = await session(testInfo, `asec71sans_${m}`, await role('ASEC71 Commercial sans modifier', await permsSans('Commercial', ['ventes_modifier'])))
+  const com = await session(testInfo, `asec71com_${m}`, await role('Commercial'))
+  const d1 = await devisBrouillon(r, sans.ctx, `${m}a`)
+  const x = await sans.ctx.patch(`${API}/ventes/devis/${d1.id}/`, { ...T, data: { note: 'pirate' } })
+  expect([x.status(), await codeDe(x)], 'PATCH sans ventes_modifier').toEqual([403, 'droit_manquant'])
+  expect((await lireJson(await r.get(`${API}/ventes/devis/${d1.id}/`, T), 'devis relu')).note, 'note d\'origine').toBe('note d\'origine')
+  const d2 = await devisBrouillon(r, com.ctx, `${m}b`)
+  const ok = await com.ctx.patch(`${API}/ventes/devis/${d2.id}/`, { ...T, data: { note: 'note modifiée' } })
+  expect(ok.status(), `Commercial du registre : ${(await ok.text()).slice(0, 300)}`).toBe(200)
+  expect((await lireJson(await r.get(`${API}/ventes/devis/${d2.id}/`, T), 'devis relu')).note, 'note modifiée').toBe('note modifiée')
+  for (const y of [sans, com]) await y.ctx.dispose()
+})
+
+etape('V4.74', ['ASEC74'], async ({ page, testInfo }) => {
+  const r = page.request
+  const m = marque()
+  const sans = await session(testInfo, `asec74sans_${m}`, await role('ASEC74 Commercial sans créer', await permsSans('Commercial', ['ventes_creer'])))
+  const com = await session(testInfo, `asec74com_${m}`, await role('Commercial'))
+  const client = await lireJson(await r.post(`${API}/crm/clients/`, { ...T, data: { nom: `ASEC74 ${m}`, prenom: 'Acceptation', email: `asec74_${m}@example.test`, telephone: telephoneMobileUnique() } }), 'client')
+  const p = await lireJson(await r.post(`${API}/stock/produits/`, { ...T, data: { nom: `Onduleur ASEC74 ${m}`, prix_vente: '1000.00', prix_achat: '111.11' } }), 'produit')
+  const corps = { client: client.id, taux_tva: '20.00', remise_globale: '0', lignes: [{ produit: p.id, designation: p.nom, quantite: '1', prix_unitaire: '1000.00', remise: '0.00', taux_tva: '20.00', type_ligne: 'produit', ordre: 0 }] }
+  const avant = await compter('ventes.Devis')
+  const x = await sans.ctx.post(`${API}/ventes/devis/`, { ...T, data: corps })
+  expect([x.status(), await codeDe(x)], 'POST devis sans ventes_creer').toEqual([403, 'droit_manquant'])
+  expect(await compter('ventes.Devis'), 'aucun devis écrit').toBe(avant)
+  const ok = await com.ctx.post(`${API}/ventes/devis/`, { ...T, data: corps })
+  expect(ok.status(), `Commercial du registre : ${(await ok.text()).slice(0, 300)}`).toBe(201)
+  for (const y of [sans, com]) await y.ctx.dispose()
+})
+
+etape('V4.76', ['ASEC76'], async ({ testInfo }) => {
+  const m = marque()
+  const sans = await session(testInfo, `asec76sans_${m}`, await role('ASEC76 Commercial sans crm_creer', await permsSans('Commercial', ['crm_creer'])))
+  const com = await session(testInfo, `asec76com_${m}`, await role('Commercial'))
+  const avant = await compter('crm.Lead')
+  const x = await sans.ctx.post(`${API}/crm/leads/`, { ...T, data: { nom: `ASEC76 ${m}`, telephone: telephoneMobileUnique() } })
+  expect([x.status(), await codeDe(x)], 'POST lead sans crm_creer').toEqual([403, 'droit_manquant'])
+  expect(await compter('crm.Lead'), 'aucun lead écrit').toBe(avant)
+  const ok = await com.ctx.post(`${API}/crm/leads/`, { ...T, data: { nom: `ASEC76 b ${m}`, telephone: telephoneMobileUnique() } })
+  expect(ok.status(), `Commercial du registre : ${(await ok.text()).slice(0, 300)}`).toBe(201)
+  for (const y of [sans, com]) await y.ctx.dispose()
+})
+
+etape('V4.72', ['ASEC72'], async ({ page, testInfo }) => {
+  const r = page.request
+  const m = marque()
+  const sans = await session(testInfo, `asec72sans_${m}`, await role('ASEC72 Technicien sans intervention_gerer', await permsSans('Technicien', ['intervention_gerer'])))
+  const tec = await session(testInfo, `asec72tec_${m}`, await role('Technicien'))
+  const ch = await lireJson(await r.post(`${API}/installations/chantiers/`, { ...T, data: {} }), 'chantier')
+  const jour = new Date().toISOString().slice(0, 10)
+  const corps = { installation: ch.id, type_intervention: 'controle', date_prevue: jour }
+  const avant = await compter('installations.Intervention')
+  const x = await sans.ctx.post(`${API}/installations/interventions/`, { ...T, data: corps })
+  expect([x.status(), await codeDe(x)], 'POST intervention sans intervention_gerer').toEqual([403, 'droit_manquant'])
+  expect(await compter('installations.Intervention'), 'aucune intervention écrite').toBe(avant)
+  const iv = await lireJson(await r.post(`${API}/installations/interventions/`, { ...T, data: { ...corps, technicien: sans.id, compte_rendu: 'origine' } }), 'intervention (admin)')
+  const p = await sans.ctx.patch(`${API}/installations/interventions/${iv.id}/`, { ...T, data: { compte_rendu: 'pirate' } })
+  expect([p.status(), await codeDe(p)], 'PATCH intervention sans intervention_gerer').toEqual([403, 'droit_manquant'])
+  expect((await lireJson(await r.get(`${API}/installations/interventions/${iv.id}/`, T), 'intervention relue')).compte_rendu, 'compte rendu d\'origine').toBe('origine')
+  // Technicien du registre : 201 / 200 inchangés.
+  const ok = await tec.ctx.post(`${API}/installations/interventions/`, { ...T, data: corps })
+  expect(ok.status(), `Technicien POST : ${(await ok.text()).slice(0, 300)}`).toBe(201)
+  const iv2 = await ok.json()
+  const ok2 = await tec.ctx.patch(`${API}/installations/interventions/${iv2.id}/`, { ...T, data: { compte_rendu: 'mis à jour' } })
+  expect(ok2.status(), `Technicien PATCH : ${(await ok2.text()).slice(0, 300)}`).toBe(200)
+  for (const y of [sans, tec]) await y.ctx.dispose()
+})
+
+etape('V4.75', ['ASEC75'], async ({ page, testInfo }) => {
+  const r = page.request
+  const m = marque()
+  const sans = await session(testInfo, `asec75sans_${m}`, await role('ASEC75 Technicien sans installation_gerer', await permsSans('Technicien', ['installation_gerer'])))
+  const tec = await session(testInfo, `asec75tec_${m}`, await role('Technicien'))
+  // Le Technicien du registre est technicien responsable du chantier (portée d'écriture) ; le technicien privé le
+  // lit comme technicien d'une intervention : son refus n'est pas un 404 de portée.
+  const ch = await lireJson(await r.post(`${API}/installations/chantiers/`, { ...T, data: { notes: 'origine', technicien_responsable: tec.id } }), 'chantier')
+  const jour = new Date().toISOString().slice(0, 10)
+  for (const t of [sans]) await lireJson(await r.post(`${API}/installations/interventions/`, { ...T, data: { installation: ch.id, type_intervention: 'controle', date_prevue: jour, technicien: t.id } }), 'intervention assignée')
+  expect((await sans.ctx.get(`${API}/installations/chantiers/${ch.id}/`, T)).status(), 'chantier lisible par le technicien privé').toBe(200)
+  const notesAvant = await compter('installations.InstallationActivity', `, installation_id=${ch.id}`).catch(() => null)
+  const x = await sans.ctx.patch(`${API}/installations/chantiers/${ch.id}/`, { ...T, data: { notes: 'pirate' } })
+  expect([x.status(), await codeDe(x)], 'PATCH chantier sans installation_gerer').toEqual([403, 'droit_manquant'])
+  const n = await sans.ctx.post(`${API}/installations/chantiers/${ch.id}/noter/`, { ...T, data: { body: 'note pirate' } })
+  expect([n.status(), await codeDe(n)], 'noter sans installation_gerer').toEqual([403, 'droit_manquant'])
+  expect((await lireJson(await r.get(`${API}/installations/chantiers/${ch.id}/`, T), 'chantier relu')).notes, 'notes d\'origine').toBe('origine')
+  if (notesAvant !== null) expect(await compter('installations.InstallationActivity', `, installation_id=${ch.id}`), 'aucune note écrite').toBe(notesAvant)
+  const ok = await tec.ctx.patch(`${API}/installations/chantiers/${ch.id}/`, { ...T, data: { notes: 'technicien' } })
+  expect(ok.status(), `Technicien du registre PATCH : ${(await ok.text()).slice(0, 300)}`).toBe(200)
+  for (const y of [sans, tec]) await y.ctx.dispose()
 })
