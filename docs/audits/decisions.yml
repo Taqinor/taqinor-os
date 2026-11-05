@@ -3650,3 +3650,15 @@ decisions:
     date: "2026-11-05"
     source: "Reda, question interactive, contre-visite vérifie ACVI"
     taches: [ACVI102, ACVI107]
+
+  - id: D-ADVS-VER5-1
+    question: "Un envoi « les deux gammes » (Essentielle + Premium) ne passe que le devis principal en envoyé ; la gamme sœur reste brouillon et la page client n'affiche jamais le comparatif ni « choisir cette gamme ». Que doit faire un envoi « les deux » ?"
+    options:
+      - cle: envoyer_les_deux
+        texte: "L'envoi passe les DEUX devis en envoyé (par le seul chemin d'envoi), chacun avec un lien vivant ; le client voit et peut choisir l'une ou l'autre gamme"
+      - cle: garder_tel_quel
+        texte: "La sœur reste brouillon ; le commercial l'envoie à part quand il veut le comparatif"
+    reponse: envoyer_les_deux
+    date: "2026-11-05"
+    source: "Reda, question interactive, contre-visite vérifie ADVS"
+    taches: [ADVS49]
