@@ -53,7 +53,8 @@ class MetricDefinitionViewSet(CompanyScopedModelViewSet):
     ``post_save`` fige sans auteur, la vue — qui connaît l'acteur — la signe
     juste après (``services.attribuer_auteur``).
 
-    SUPPRIMER = DÉSACTIVER (``actif=False``). Une métrique est référencée PAR
+    JAMAIS SUPPRIMÉE : on la DÉSACTIVE (``PATCH {"actif": false}`` ; le DELETE
+    qui désactivait est retiré, ENF48). Une métrique est référencée PAR
     CLÉ par des widgets, des alertes et des rapports, et son historique de
     versions explique les chiffres passés : l'effacer casserait les uns et
     rendrait les autres inexplicables. Une métrique désactivée n'est plus
@@ -63,6 +64,10 @@ class MetricDefinitionViewSet(CompanyScopedModelViewSet):
     serializer_class = MetricDefinitionSerializer
     permission_classes = [IsResponsableOrAdmin]
     parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
+    # ENF48 — jamais de suppression : désactiver = ``PATCH {"actif": false}``.
+    # Un DELETE 2xx suivi d'un GET 200 était un « use after free » (api-fuzz-full
+    # 42074433075) ; aucun écran ne l'appelait (précédent ``entites``, NTADM1).
+    http_method_names = ['get', 'post', 'put', 'patch', 'head', 'options']
     queryset = MetricDefinition.objects.all()
     # Identifiant NUMÉRIQUE seulement : `metriques/<cle>/…` (valeur, lignage)
     # et les actions de liste (`export`, `glossaire`…) ne doivent jamais être
@@ -115,11 +120,6 @@ class MetricDefinitionViewSet(CompanyScopedModelViewSet):
             super().perform_update(serializer)
             services.attribuer_auteur(serializer.instance, avant,
                                       self.request.user)
-
-    def perform_destroy(self, instance):
-        if instance.actif:
-            instance.actif = False
-            instance.save(update_fields=['actif', 'updated_at'])
 
     @extend_schema(
         responses=inline_serializer('MetriquesPourAgentReponse', {

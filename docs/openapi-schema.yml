@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4932, operations: 7732, components: 3633}
+counts: {paths: 4932, operations: 7730, components: 3633}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -2981,7 +2981,6 @@ operations:
 - get /api/django/semantic/metriques/{cle}/expliquer/ -> django_semantic_metriques_expliquer_retrieve
 - get /api/django/semantic/metriques/{cle}/lignage/ -> django_semantic_metriques_lignage_retrieve
 - get /api/django/semantic/metriques/{cle}/valeur/ -> django_semantic_metriques_valeur_retrieve
-- delete /api/django/semantic/metriques/{id}/ -> django_semantic_metriques_destroy
 - get /api/django/semantic/metriques/{id}/ -> django_semantic_metriques_retrieve
 - patch /api/django/semantic/metriques/{id}/ -> django_semantic_metriques_partial_update
 - put /api/django/semantic/metriques/{id}/ -> django_semantic_metriques_update
@@ -6852,7 +6851,6 @@ operations:
 - get /api/v1/semantic/metriques/{cle}/expliquer/ -> v1_semantic_metriques_expliquer_retrieve
 - get /api/v1/semantic/metriques/{cle}/lignage/ -> v1_semantic_metriques_lignage_retrieve
 - get /api/v1/semantic/metriques/{cle}/valeur/ -> v1_semantic_metriques_valeur_retrieve
-- delete /api/v1/semantic/metriques/{id}/ -> v1_semantic_metriques_destroy
 - get /api/v1/semantic/metriques/{id}/ -> v1_semantic_metriques_retrieve
 - patch /api/v1/semantic/metriques/{id}/ -> v1_semantic_metriques_partial_update
 - put /api/v1/semantic/metriques/{id}/ -> v1_semantic_metriques_update

@@ -168,10 +168,17 @@ class CrudMetriquesTests(_BaseApi):
         self.assertTrue(all(v.auteur_id == self.admin.pk for v in versions))
 
     def test_suppression_desactive(self):
+        """ENF48 — jamais de DELETE (405, « use after free » au fuzz) :
+        désactiver = PATCH ``actif: false`` ; la métrique reste lisible."""
         pk = self._creer().data['id']
         reponse = self._vue('delete', {'delete': 'destroy'}, f'{BASE}{pk}/',
                             pk=pk)
-        self.assertEqual(reponse.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(reponse.status_code,
+                         status.HTTP_405_METHOD_NOT_ALLOWED)
+        self.assertTrue(MetricDefinition.objects.get(pk=pk).actif)
+        reponse = self._vue('patch', {'patch': 'partial_update'},
+                            f'{BASE}{pk}/', {'actif': False}, pk=pk)
+        self.assertEqual(reponse.status_code, status.HTTP_200_OK, reponse.data)
         self.assertFalse(MetricDefinition.objects.get(pk=pk).actif)
         self.assertEqual(self._valeur('nb_societes').status_code,
                          status.HTTP_404_NOT_FOUND)
