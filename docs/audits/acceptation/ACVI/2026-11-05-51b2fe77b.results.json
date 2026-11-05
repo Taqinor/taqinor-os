@@ -7,7 +7,8 @@
     "ACVI102",
     "ACVI103",
     "ACVI110",
-    "ACVI104"
+    "ACVI104",
+    "ACVI105"
   ],
   "couvre_avec_ecart": [],
   "etapes": [
@@ -98,6 +99,28 @@
         "10": "NA"
       },
       "notes": "API reelle : oppose 409 Message refuse ne plus contacter, aucun wa_url, 0 LeadActivity ; sans client_pii_voir 403 ; normal 200 + wa_url ; ecran : 409, rien ouvert, historique vide — mais le motif 409 n est affiche nulle part (defaut d ecran hors fini-quand, decrit dans la trace)"
+    },
+    {
+      "id": "W10.ACVI105.records_sans_cible",
+      "taches": [
+        "ACVI105"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-05-rejeux-w10/ACVI105.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": "API reelle (Commerciaux soi) : c2 sans cible ne liste ni le commentaire ni l activite de c1 (details 404) ; activite assignee a c2 listee, detail 200 ; c1, admin, requete a cible inchanges ; sonde VER4-011 repro False"
     }
   ]
 }
