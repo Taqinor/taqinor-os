@@ -79,7 +79,7 @@ const heroSub =
 
 // PLACEHOLDER(MERYEM): provisional FAQ.
 const faq = [
-  { q: 'How much does a residential solar installation cost?', a: 'It depends on your consumption and your roof. A villa with a bill of 1 500 MAD per month typically gets a 4 to 6 kWc system. The diagnostic below gives you an immediate range; the precise quote is set after a technical visit.' },
+  { q: 'How much does a residential solar installation cost?', a: 'It depends on your consumption and your roof. A villa with a bill of 1,500 MAD per month typically gets a 4 to 6 kWc system. The diagnostic below gives you an immediate range; the precise quote is set after a technical visit.' },
   { q: 'What does Law 82-21 say for households?', a: 'At low voltage, an installation under 11 kW falls under the declaration regime: a prior formality, not an authorisation. Taqinor prepares and files the declaration for you.' },
   { q: 'My existing installation is not declared. What should I do?', a: 'Article 33 of Law 82-21 opens a regularisation window for existing installations. See the Regularisation page for the 5-step procedure.' },
   { q: 'How long do the panels last?', a: 'Panels carry a 30-year linear performance warranty (≥ 87.4 % of the initial output at 30 years). Inverters are typically replaced once over the lifetime of the installation.' },
@@ -105,7 +105,7 @@ const galleryRaw = [
   // stays qualitative (brands confirmed on camera), never a guessed panel count.
   { name: 'bouskoura-toit', alt: 'A villa roof terrace fully covered in solar panels, Bouskoura', widths: [2000, 1280, 768, 480], ratio: 16 / 9, showProd: false, type: 'Deye inverter · DYNESS storage', slug: 'bouskoura-villa-2026' },
 ];
-const gallery = buildGallery(galleryRaw, { prodLabel: (p) => p.replace('/an', '/yr') });
+const gallery = buildGallery(galleryRaw, { prodLabel: (p) => p.replace('/an', '/yr'), locale: 'en' });
 
 // W271 — City filter chips: "All" + the cities actually present in `gallery`
 // above (no invented city; order follows each city's first appearance in the

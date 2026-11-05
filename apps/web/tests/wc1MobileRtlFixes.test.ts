@@ -19,8 +19,12 @@
 // mobile lui-même (markup/JS, cibles 44px variant="menu") reste inchangé à
 // l'octet — seul le seuil qui y bascule a été relevé un cran plus haut.
 import { describe, expect, it } from 'vitest';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { isolerBidi } from '../src/lib/bidi';
+import { formatNombreLocale, nombresVersLocale } from '../src/lib/nombreLocale';
+import { kwcLocale, realisationByRef } from '../src/lib/realisations';
+import { mainOf, visibleText } from './builtHtmlHelper';
 import { fileURLToPath } from 'node:url';
 
 const root = (rel: string) => fileURLToPath(new URL(rel, import.meta.url));
@@ -153,5 +157,46 @@ describe('WAUD44 — pages arabes : police auto-hébergée et chiffres dans le b
     expect(layout).toContain("{lang === 'ar' ? <Bidi><slot /></Bidi> : <slot />}");
     expect(layout).toContain("<Bidi><Header /></Bidi>");
     expect(layout).toContain("<Bidi><Footer /></Bidi>");
+  });
+});
+
+// WAUD44 (convention EN tranchée = en-GB, lib/nombreLocale.ts) : aucune page EN construite ne rend
+// un nombre au format français dans <main> (« 44,19 », « 17,04 kWc », « 1 500 MAD »). Les valeurs ne
+// changent pas : seul le séparateur suit la langue (FR et AR gardent le format français, règle AR).
+const NOMBRE_FR_RENDU = /(?<![\d.,])\d+,\d{1,2}(?!\d)|(?<![\d.,])\d{1,3}(?:[   ]\d{3})+(?!\d)/g;
+const nombresFr = (html: string): string[] => visibleText(mainOf(html)).match(NOMBRE_FR_RENDU) ?? [];
+
+describe('WAUD44 — pages anglaises : un seul format de nombre (en-GB)', () => {
+  it('formateurs : EN « 44.19 » / « 1,500 » / « 17.04 kWc », FR et AR inchangés', () => {
+    expect(formatNombreLocale(44.19, 'en', 2)).toBe('44.19');
+    expect(formatNombreLocale(44.19, 'fr', 2)).toBe('44,19');
+    expect(formatNombreLocale(44.19, 'ar', 2)).toBe('44,19');
+    expect(nombresVersLocale('1 000 – 1 500 MAD', 'en')).toBe('1,000 – 1,500 MAD');
+    expect(nombresVersLocale('100 000,00 MAD', 'en')).toBe('100,000.00 MAD');
+    expect(nombresVersLocale('1 000 – 1 500 MAD', 'ar')).toBe('1 000 – 1 500 MAD');
+    const r = realisationByRef('468');
+    expect(kwcLocale(r, 'en')).toBe('17.04 kWc');
+    expect(kwcLocale(r, 'fr')).toBe(r?.kwc);
+    expect(kwcLocale(r, 'ar')).toBe(r?.kwc);
+  });
+
+  it('test du test : virgule décimale et espace des milliers comptés, format EN non', () => {
+    expect(nombresFr('<main><p>44,19 MWh · 1 500 MAD · 1,500 MAD · 17.04 kWc · ref. 82-21</p></main>')).toEqual([
+      '44,19',
+      '1 500',
+    ]);
+  });
+
+  it('0 nombre au format français dans <main> des pages EN construites', () => {
+    const dossier = root('../dist/client/en/');
+    expect(existsSync(dossier), 'lancer « npm run build » avant vitest').toBe(true);
+    const fautes: string[] = [];
+    for (const f of readdirSync(dossier, { recursive: true }) as string[]) {
+      const rel = f.replace(/\\/g, '/');
+      if (!rel.endsWith('index.html')) continue;
+      const trouves = nombresFr(readFileSync(join(dossier, f), 'utf-8'));
+      if (trouves.length) fautes.push(`/en/${rel.replace(/index\.html$/, '')} : ${trouves.join(' | ')}`);
+    }
+    expect(fautes).toEqual([]);
   });
 });

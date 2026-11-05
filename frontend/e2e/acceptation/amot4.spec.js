@@ -67,9 +67,13 @@ sortie({'pdf_niveau1': {k: q1.get(k) for k in cles}, 'pdf_courant': {k: qc.get(k
     const v = await ancre.first().getAttribute('data-figure-value').catch(() => null)
     return v && /\d/.test(v) ? v : null
   }, { timeout: 180_000, message: 'payback « avec » affiché' }).not.toBeNull()
+  // AMOT127 — l'écran converge (miroir local `computeROI` → étude horaire serveur, convention de
+  // figures-parite.spec.js) : comparer au PDF seulement une fois les cartes servies par le moteur horaire.
+  await expect(p2.getByTestId('bandeau-modele-cartes'), 'cartes chiffrées par le moteur horaire serveur').toBeVisible({ timeout: 180_000 })
+  const nombre = async (sel) => Number(String(await p2.locator(sel).first().getAttribute('data-figure-value')).replace(/\s/g, '').replace(',', '.').match(/[\d.]+/)?.[0])
+  await expect.poll(() => nombre('[data-figure="production_annuelle_kwh"]'), { timeout: 30_000, message: `production écran = PDF ${chiffres.pdf_niveau1?.prod_kwh}` }).toBe(Number(chiffres.pdf_niveau1?.prod_kwh))
   console.log('[V4.125] figures devis niveau 1', JSON.stringify(await figures(p2)))
-  const ecran = Number(String(await ancre.first().getAttribute('data-figure-value')).replace(',', '.').match(/[\d.]+/)[0])
-  expect(Math.abs(ecran - Number(chiffres.roi_a)), `écran ${ecran} = PDF niveau 1 ${chiffres.roi_a} (règles courantes : ${chiffres.roi_a_courant})`).toBeLessThanOrEqual(0.05)
+  await expect.poll(async () => Math.abs(await nombre('[data-figure="payback_ans"][data-figure-option="avec"]') - Number(chiffres.roi_a)), { timeout: 30_000, message: `écran = PDF niveau 1 ${chiffres.roi_a} (règles courantes : ${chiffres.roi_a_courant})` }).toBeLessThanOrEqual(0.05)
   // Le PDF `/proposal` imprime ce même payback.
   const texte = await pdfTexte(r, d.id)
   const affiche = String(chiffres.roi_a)
