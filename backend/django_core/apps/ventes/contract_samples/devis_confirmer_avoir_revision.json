@@ -1,0 +1,40 @@
+{
+  "endpoint": "POST /api/django/ventes/devis/<int:pk>/confirmer-avoir-revision/",
+  "forme_serveur": "partielle",
+  "pourquoi": "ATOT61 (PACT10, C-ATOT-VER4-022) — l'avoir d'écart d'une révision acceptée par le flux normal attend sa confirmation (VNT64, D-VNT-2) ; seul le prix négocié savait le confirmer. Cette route (palier vente, ATOT62) émet l'avoir de révision en attente du devis tête (V2) : un avoir CORRECTION par facture, sous le créditable par taux (ATOT56). Contrat posé SEUL sur main AVANT la vue (ATOT62) et le bouton « Confirmer l'avoir » du panneau de vente (ATOT60). Exemple chiffré : V1 40 000 HT à 10 % + 60 000 HT à 20 % facturée en entier (116 000,00 TTC), V2 où la ligne à 10 % passe à 30 000 HT : avoir 10 000,00 HT / 1 000,00 TVA à 10 % = 11 000,00 TTC. Montants en TEXTE décimal ; aucun statut nouveau (règle #4).",
+  "requete": {
+    "regle": "corps vide : le montant est celui que le serveur a calculé (`raison_bloquee` du bloc `vente`, vente_etat.json) — jamais saisi à l'écran."
+  },
+  "exemple": {
+    "avoirs": [
+      {
+        "reference": "AV-202611-0004",
+        "montant_ttc": "11000.00",
+        "facture": "FAC-202610-0012"
+      }
+    ]
+  },
+  "reponse_200": {
+    "avoirs": [
+      {
+        "reference": "AV-202611-0004",
+        "montant_ttc": "11000.00",
+        "facture": "FAC-202610-0012"
+      }
+    ]
+  },
+  "notes": {
+    "avoirs": "éléments {reference, montant_ttc, facture} : un avoir CORRECTION par facture créditée (le plus fort reste d'abord) ; `facture` = référence de la facture visée.",
+    "relecture": "l'écran relit la vente après le 200 (`peut.confirmer_avoir_revision` repasse à faux)."
+  },
+  "erreurs_409": {
+    "aucun_avoir_a_confirmer": {
+      "detail": "Aucun avoir de révision n'attend de confirmation sur cette vente.",
+      "code": "aucun_avoir_a_confirmer"
+    },
+    "avoir_au_dela_du_creditable": {
+      "detail": "L'avoir dépasse le montant restant des factures de la vente.",
+      "code": "avoir_au_dela_du_creditable"
+    }
+  }
+}

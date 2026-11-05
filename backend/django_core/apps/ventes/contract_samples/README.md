@@ -115,6 +115,7 @@ rougit pas tant que la route n'existe pas.
 | Fichier | Endpoint / ce qu'il apparie |
 | --- | --- |
 | `devis_prix_negocie.json` | POST ventes/devis/<pk>/prix-negocie/ : aperçu / appliquer, erreurs 400/409, `demander_signature` (VNT1) |
+| `devis_confirmer_avoir_revision.json` | POST ventes/devis/<pk>/confirmer-avoir-revision/ : avoirs de révision émis, 409 `aucun_avoir_a_confirmer` / `avoir_au_dela_du_creditable` (ATOT61) |
 | `devis_refuser.json` (étendu) | 409 `version_remplacee` + `successeur` (VNT1) |
 | `proposal_accept.json` / `proposal_data.json` (+ copies `apps/web/src/contract_samples/`) | 409 `vente_active_existante`, `avenant_signe`, clé `avenant` (VNT2) |
 | `devis_facturer.json` | POST/GET ventes/devis/<pk>/facturer/ : natures, montant libre, aperçu, erreurs nommées (VNT3) |
