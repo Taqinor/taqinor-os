@@ -1,0 +1,4 @@
+prix_a_renseigner : 3
+POST /api/django/ventes/economie-ci/preview/ (3 articles prix a renseigner, Smart Meter 1 000 HT) -> 200
+  omissions investissement : [{"cle": "investissement_mad", "motif": "investissement non encore chiffré (3 articles sans prix)"}]
+  indicateurs retour_ans = None ; tri_pct = None ; statut = calcule

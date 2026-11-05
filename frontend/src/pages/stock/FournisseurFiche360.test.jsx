@@ -533,6 +533,28 @@ describe('WIR268/XPUR14 — onglet Tarif (export/import xlsx)', () => {
     expect(await within(panel).findByText(/Import effectué/)).toBeInTheDocument()
   })
 
+  it("AANA84 — les lignes refusées (errors) sont montrées avec leur motif, à l'aperçu et à l'import", async () => {
+    setupBaseMocks()
+    const motif = "PAN-330P : date_fin illisible : '31/13/2026'."
+    stockApi.importPrixFournisseurXlsx
+      .mockResolvedValueOnce({ data: { created: 0, updated: 0, refuses: [], errors: [{ row: 2, message: motif }] } })
+      .mockResolvedValueOnce({ data: { created: 0, updated: 0, errors: [{ row: 2, message: motif }] } })
+    renderPage({ fournisseurId: '7' })
+    const panel = await ouvrirTarif()
+
+    const file = new File(['xlsx-contenu'], 'tarif.xlsx', { type: 'application/octet-stream' })
+    await userEvent.upload(document.querySelector('input[type="file"]'), file)
+    await userEvent.click(within(panel).getByRole('button', { name: /Aperçu/ }))
+    const blocApercu = await within(panel).findByTestId('tarif-lignes-refusees')
+    expect(blocApercu).toHaveTextContent('Ligne 2 :')
+    expect(blocApercu).toHaveTextContent("date_fin illisible : '31/13/2026'")
+
+    await userEvent.click(within(panel).getByRole('button', { name: 'Importer' }))
+    expect(await within(panel).findByText(/1 ligne\(s\) refusée\(s\)\./)).toBeInTheDocument()
+    const blocImport = within(panel).getByTestId('tarif-lignes-refusees')
+    expect(blocImport).toHaveTextContent("date_fin illisible : '31/13/2026'")
+  })
+
   it('cocher « Écraser » avant de confirmer envoie ecraser=true', async () => {
     setupBaseMocks()
     stockApi.importPrixFournisseurXlsx

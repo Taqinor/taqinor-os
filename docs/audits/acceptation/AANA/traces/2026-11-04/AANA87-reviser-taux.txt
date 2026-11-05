@@ -1,0 +1,16 @@
+AANA87 — pile locale, sha be834beb1, demo_admin ; GET /api/django/reporting/dashboard/ (clé conversion) autour des gestes.
+
+Rejeu principal — DEV-202611-0078 (lead 3937, devis unique, V1, envoyé le 04/11) :
+  avant           envoyes_periode=62 acceptes_periode=48 taux=77.4
+  POST accepter -> 200
+  après accepter  envoyes_periode=62 acceptes_periode=49 taux=79.0
+  POST reviser  -> 201   V1 2753 accepte, is_active False ; V2 3131 DEV-202611-0114 brouillon, date_envoi nulle
+  après Réviser   envoyes_periode=62 acceptes_periode=49 taux=79.0     <- inchangé
+Écran /reporting après Réviser : « Devis acceptés / envoyés : 79 % ».
+
+Premier essai — DEV-202611-0077 (V2 envoyée d'une famille dont la V1 DEV-202611-0076 était déjà acceptée puis révisée) :
+  avant           63 / 48 / 76.2
+  après accepter  62 / 48 / 77.4   (la V1 sort des « en vigueur » : la famille passe de 2 envoyés/1 accepté à 1/1)
+  après Réviser   62 / 48 / 77.4   <- inchangé
+Observation (non tranchée ici) : tant qu'une V1 acceptée-révisée et sa V2 envoyée coexistent, la famille compte
+pour DEUX envoyés ; accepter la V2 la ramène à un.

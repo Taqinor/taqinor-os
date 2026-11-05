@@ -1,0 +1,6 @@
+== C-AMOT-VER4-007 (sha c38868a62)
+attendu : devis deux options, option recommandée « Sans batterie », acompte 10 000 MAD : le % d'acompte imprimé dans le texte (puces CGV, page publique, résidentiel) = le % de la case Acompte du Devis final ; REPRO = ils diffèrent
+observé : Generating charts...
+{"nb_options": 2, "scenario": "Les deux (Sans + Avec)", "recommended": "Sans batterie", "branche_cases": "sans", "cases_sans": {"pct_a": 44, "acompte": 10000.0, "pct_s2": 56, "deux_cases": true, "total": 22800.0}, "cases_avec": {"pct_a": 18, "acompte": 10000.0, "pct_s2": 82, "deux_cases": true, "total": 55200.0}, "payment_terms_texte": {"acompte": 18, "materiel": 0, "solde": 82}, "cgv_acompte": ["Acompte à la commande : 18%"], "publique_acompte": ["Acompte à la commande : 18%"], "residentiel_case_acompte_pct": ["18%", "82%"], "legacy_texte_acompte": ["compte à la commande&#160;: 18&#37;", "compte 18&#37;"], "residentiel_ligne_acompte": ["Acompte à la commande : 18%"], "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 7170, après 7170) ; mails 0 ; tâches Celery bloquées 0
