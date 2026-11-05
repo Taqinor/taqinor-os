@@ -38,6 +38,8 @@ const reportingApi = {
   // {token, url}. L'URL .ics est authentifiée par jeton signé (sans session).
   getCalendarSubscription: () =>
     api.get('/reporting/calendar/subscription/'),
+  // ASEC82 — régénère le jeton (ASEC45) : l'ancien lien .ics est refusé.
+  regenererCalendarSubscription: () => api.post('/reporting/calendar/subscription/'),
   // N85 — Vue carte. Points géolocalisés ; filtres optionnels ?types=&statuts=.
   getGeoPoints: (params) => api.get('/reporting/geo/', { params }),
   // FG91 — Rapports sauvegardés (CRUD). company + owner posés côté serveur.
