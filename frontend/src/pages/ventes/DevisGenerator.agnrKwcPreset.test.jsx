@@ -9,7 +9,7 @@ import { cycleEcran } from '../../test/cycleEcran'
 import { act, waitFor, fireEvent } from '@testing-library/react'
 
 import {
-  monter, attendreStable, CATALOGUE, DEVIS_ETUDE_HORAIRE,
+  monter, attendreStable, CATALOGUE, DEVIS_ETUDE_HORAIRE, DEVIS_ENVOYE_LES_DEUX,
 } from './DevisGeneratorGoldenHarnais'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
 
@@ -57,5 +57,30 @@ describe('AGNR18 — kWc des lignes au watt de chaque ligne panneau', () => {
       const corps = vue.ventesApi.postEtudeHorairePreview.mock.calls.at(-1)[0]
       expect(corps.kwc).toBe(5.5)
     }, { timeout: 5000 })
+  }, 60000)
+
+  it('prix_kwc_option_avec — AGNR74 : le prix/kWc divise le total « avec » par le kWc « avec »', async () => {
+    // « Les deux » : 22 panneaux 715 W « sans », 26 « avec » ; l'option
+    // affichée (résidentiel) est « avec » ⇒ total avec ÷ 26 × 0,715 = 18,59.
+    const [pan, , , , struct] = DEVIS_ENVOYE_LES_DEUX.lignes
+    const devis = {
+      ...DEVIS_ENVOYE_LES_DEUX, id: 74, statut: 'brouillon', date_envoi: null,
+      lignes: [
+        { ...pan, quantite: '22', variante: 'sans' },
+        { ...pan, id: 6, quantite: '26', variante: 'avec', ordre: 5 },
+        ...DEVIS_ENVOYE_LES_DEUX.lignes.slice(1, 4), struct,
+      ],
+    }
+    const vue = await monter(`/ventes/devis/nouveau?edit=${devis.id}`, { devis })
+    await attendreStable(vue.container, act, { stables: 10 })
+    const valeur = (re) => {
+      const item = [...vue.container.querySelectorAll('.gen-total-item')]
+        .find((i) => re.test(i.querySelector('.gen-total-label')?.textContent || ''))
+      return Number((item?.querySelector('.gen-total-value')?.textContent || '').replace(/[^\d]/g, ''))
+    }
+    const totalAvec = valeur(/^Total AVEC batterie/)
+    expect(totalAvec).toBeGreaterThan(0)
+    expect(valeur(/^Prix \/ kWc/)).toBe(Math.round(totalAvec / 18.59))
+    expect(valeur(/^Prix \/ kWc/)).not.toBe(Math.round(totalAvec / (22 * 0.715)))
   }, 60000)
 })

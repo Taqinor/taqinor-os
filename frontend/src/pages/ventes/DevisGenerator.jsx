@@ -1597,14 +1597,14 @@ export default function DevisGenerator({
   // (`apercuPompage`, AGR127) : plus de besoin FAO-56 calculé dans le
   // navigateur (le jumeau `agronomy.js` disparaît avec AGR131).
 
-  // QJR568 — prix/kWc et prix cible au kWc FACTURÉ des lignes.
-  const pkwc = prixParKwc(kpiTotal, kwpLignes)
+  // QJR568 / AGNR74 — prix/kWc et prix cible au kWc FACTURÉ de l'option affichée.
+  const pkwc = prixParKwc(kpiTotal, optionArgent === 'avec' ? kwpAvec : kwpLignes)
   const buyDetail = useMemo(() => computeBuyCostDetail(lines, produits), [lines, produits])
   const buyCost = buyDetail.cost
   const marge = buyCost != null ? Math.round(kpiTotal - buyCost) : null
 
   const applyPrixCible = () => {
-    const pct = discountForTarget(prixCible, kwpLignes, kpiTotalBrut)
+    const pct = discountForTarget(prixCible, optionArgent === 'avec' ? kwpAvec : kwpLignes, kpiTotalBrut)
     if (pct == null) return
     setDiscountPct(String(Math.max(0, pct)))
   }
