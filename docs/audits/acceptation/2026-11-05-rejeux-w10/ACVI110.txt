@@ -1,0 +1,178 @@
+# Preuve en direct ACVI110 - pile locale, code 51b2fe77b (dev-plan-6a6fc9-w10), 2026-11-05
+# Lanceur : python scripts/sonde.py (transaction annulee, mail en memoire, HTTP sortant bloque).
+# Sondes LIVE-* : repro=true signifie ICI que le comportement attendu par la tache est observe.
+
+== LIVE-ACVI103-110 (sha 51b2fe77b)
+attendu : ACVI103 : 409 nommes x3 canaux, perdu 409, archive 404/409, etranger 404, normal 200, 0 activite ; ACVI110 : aucun '{', Bonjour Karim, pas de 'je suis  de'
+observé : {"repro": true, "observe": {"acvi103": {"oppose_whatsapp": [409, "Message refusé : ne plus contacter.", false, false], "oppose_sms": [409, "Message refusé : ne plus contacter.", false, false], "oppose_email": [409, "Message refusé : ne plus contacter.", false, false], "perdu": [409, "Message refusé : perdu/archivé."], "archive": [409, "Message refusé : perdu/archivé."], "hors_portee_oppose": [404, "Pas trouvé."], "normal": [200, "Bonjour Karim. Je reviens vers vous au sujet de votre devis : avez-vous pu le co", "https://wa.me/212600112205?tex"], "activites_avant_apres": [0, 0]}, "acvi110": {"relance_devis": [200, "Relance devis", "Bonjour Karim.", "https://wa.me/212600112206?text=Bonjour%20Karim."], "reveil_froid": [200, null, "Bonjour Karim. Je reprends contact pour savoir où en est votre projet solaire. Il est toujours d'actualité ?", "https://wa.me/212600112206?text=Bonjour%20Karim.%20Je%20reprends%20contact%20pour%20savoir%20o%C3%B9%20en%20est%20votre%20projet%20solaire.%20Il%20est%20toujour"], "repli_relance_devis": [200, null, "Bonjour Karim. Je reviens vers vous au sujet de votre devis : avez-vous pu le consulter ? Je reste disponible pour toute question.", "https://wa.me/212600112233?text=Bonjour%20Karim.%20Je%20reviens%20vers%20vous%20au%20sujet%20de%20votre%20devis%20%3A%20avez-vous%20pu%20le%20consulter%20%3F%20"], "repli_reveil_froid": [200, null, "Bonjour Karim. Je reprends contact pour savoir où en est votre projet solaire. Il est toujours d'actualité ?", "https://wa.me/212600112233?text=Bonjour%20Karim.%20Je%20reprends%20contact%20pour%20savoir%20o%C3%B9%20en%20est%20votre%20projet%20solaire.%20Il%20est%20toujour"]}, "ok": {"ACVI103": true, "ACVI110": true}}}
+verdict : REPRO
+base inchangée : oui (avant 3621, après 3621) ; mails 0 ; tâches Celery bloquées 0
+
+== C-ACVI-VER4-020 (sha 64c9c7317)
+attendu : POST message-templates (admin) corps avec {societe} {date_validite} → 201 ; POST leads/<id>/brouillon-suivi/ → 200 avec '{societe}' ou '{date_validite}' littéral dans texte et lien_wa_me ; la file en masse, même gabarit : aucun '{' ; attendu sain : aucun '{' dans le brouillon
+observé : {'code_ok': True, 'creation': (201, None), 'status': 200, 'modele_source': 'Relance devis sonde', 'texte': 'Bonne journée.', 'lien_contient_accolade': False, 'masse': 'Bonne journée.'}
+{"repro": false, "code_ok": true, "creation": [201, null], "status": 200, "modele_source": "Relance devis sonde", "texte": "Bonne journée.", "lien_contient_accolade": false, "masse": "Bonne journée."}
+verdict : ÉCART
+base inchangée : oui (avant 4173, après 4173) ; mails 0 ; tâches Celery bloquées 0
+
+# ---- source : C-LIVE-ACVI103.py ----
+# flake8: noqa  (preuve en direct ACVI103 + ACVI110, 05/11/2026)
+"""ACVI103 — POST crm/leads/<id>/brouillon-suivi/ d'un lead oppose (whatsapp, sms, email) : 409 « Message refuse :
+ne plus contacter. », ni texte ni lien ; perdu / archive : 409 « perdu/archive » (ou 404 archive) ; hors portee
+(autre societe) : 404 ; lead normal : 200 ; 0 LeadActivity ecrite.
+ACVI110 — modele « Bonjour {prenom}. Je suis {conseiller} de {marque}. Votre etude pour {societe}. Valable jusqu'au
+{date_validite}. », responsable sans prenom, lead sans raison sociale ni devis : 200, « Bonjour Karim » garde, phrases
+vides omises, aucun « { » dans texte ni lien ; repli sans modele : jamais « c'est  de ». Societes neuves, annule."""
+SONDE = {"constat": "LIVE-ACVI103-110", "sha": "51b2fe77b",
+         "attendu": "ACVI103 : 409 nommes x3 canaux, perdu 409, archive 404/409, etranger 404, normal 200, 0 activite ; ACVI110 : aucun '{', Bonjour Karim, pas de 'je suis  de'",
+         "modeles": ["crm.Lead", "crm.LeadActivity", "crm.MessageTemplate"]}
+
+
+def sonde(ctx):
+    import json
+    from django.contrib.auth import get_user_model
+    from django.db import transaction
+    from rest_framework.test import APIClient
+    from authentication.models import Company
+    from apps.crm.models import Lead, LeadActivity
+    from apps.crm.models_cadence import MessageTemplate
+    U = get_user_model()
+
+    def societe(slug):
+        c = Company.objects.create(nom='Live ' + slug, slug='live-' + slug)
+        u = U.objects.create_user(username='live-' + slug, password='x', role_legacy='responsable',
+                                  company=c, first_name='')
+        api = APIClient()
+        api.force_authenticate(u)
+        return c, u, api
+
+    def appel(api, lead, **corps):
+        corps = {'canal': 'whatsapp', 'objectif': 'relance_devis', **corps}
+        try:
+            with transaction.atomic():
+                r = api.post(f'/api/django/crm/leads/{lead.pk}/brouillon-suivi/', corps, format='json',
+                             HTTP_HOST='localhost')
+            return r.status_code, json.loads(r.content.decode('utf-8', 'replace') or '{}')
+        except Exception as e:
+            return 599, {'_exc': repr(e)[:300]}
+
+    c, u, api = societe('acvi103')
+    autre, _, _ = societe('acvi103-autre')
+
+    seq = [0]
+
+    def lead(cc, **kw):  # numero distinct : l'empreinte d'opposition d'un numero ferait naitre le suivant oppose
+        seq[0] += 1
+        return Lead.objects.create(company=cc, nom='Alami', prenom='Karim', telephone='06001122%02d' % seq[0],
+                                   owner=u, **kw)
+
+    obs = {'acvi103': {}, 'acvi110': {}}
+    ok103 = True
+    avant = LeadActivity.objects.filter(lead__company=c).count()
+    oppose = lead(c, ne_plus_contacter=True)
+    for canal in ('whatsapp', 'sms', 'email'):
+        s, r = appel(api, oppose, canal=canal)
+        obs['acvi103']['oppose_' + canal] = [s, str(r.get('detail', '')), 'texte' in r, 'lien_wa_me' in r]
+        ok103 = ok103 and s == 409 and str(r.get('detail')) == 'Message refusé : ne plus contacter.' \
+            and 'texte' not in r and 'lien_wa_me' not in r
+    s, r = appel(api, lead(c, perdu=True))
+    obs['acvi103']['perdu'] = [s, str(r.get('detail', ''))]
+    ok103 = ok103 and s == 409 and str(r.get('detail')) == 'Message refusé : perdu/archivé.'
+    s, r = appel(api, lead(c, is_archived=True))
+    obs['acvi103']['archive'] = [s, str(r.get('detail', ''))]
+    ok103 = ok103 and s in (404, 409) and 'texte' not in r
+    s, r = appel(api, lead(autre, ne_plus_contacter=True))
+    obs['acvi103']['hors_portee_oppose'] = [s, str(r.get('detail', ''))[:60]]
+    ok103 = ok103 and s == 404
+    s, r = appel(api, lead(c))
+    obs['acvi103']['normal'] = [s, (r.get('texte') or '')[:80], (r.get('lien_wa_me') or '')[:30]]
+    ok103 = ok103 and s == 200 and bool(r.get('lien_wa_me'))
+    apres = LeadActivity.objects.filter(lead__company=c).count()
+    obs['acvi103']['activites_avant_apres'] = [avant, apres]
+    ok103 = ok103 and avant == apres
+
+    # ACVI110 — modele aux placeholders vides
+    MessageTemplate.objects.create(
+        company=c, nom='Relance devis', langue='fr',
+        corps=("Bonjour {prenom}. Je suis {conseiller} de {marque}. "
+               "Votre étude pour {societe}. Valable jusqu'au {date_validite}."))
+    ok110 = True
+    L = lead(c)
+    for objectif in ('relance_devis', 'reveil_froid'):
+        s, r = appel(api, L, objectif=objectif)
+        texte, lien = r.get('texte') or '', r.get('lien_wa_me') or ''
+        obs['acvi110'][objectif] = [s, r.get('modele_source'), texte, lien[:160]]
+        ok110 = ok110 and s == 200 and texte.startswith('Bonjour Karim') and '{' not in texte \
+            and '{' not in lien and '%7B' not in lien.upper() and 'je suis  de' not in texte.lower() \
+            and 'Votre étude' not in texte
+    # repli sans modele (societe sans gabarit)
+    c2, u2, api2 = societe('acvi110-repli')
+    L2 = Lead.objects.create(company=c2, nom='Alami', prenom='Karim', telephone='0600112233', owner=u2)
+    for objectif in ('relance_devis', 'reveil_froid'):
+        s, r = appel(api2, L2, objectif=objectif)
+        texte, lien = r.get('texte') or '', r.get('lien_wa_me') or ''
+        obs['acvi110']['repli_' + objectif] = [s, r.get('modele_source'), texte, lien[:160]]
+        ok110 = ok110 and s == 200 and '{' not in texte and "c'est  de" not in texte.lower() \
+            and 'je suis  de' not in texte.lower() and '{' not in lien
+    obs['ok'] = {'ACVI103': ok103, 'ACVI110': ok110}
+    return {'repro': ok103 and ok110, 'observe': obs}
+
+
+# ---- source : C-ACVI-VER4-020.py ----
+# flake8: noqa  (sonde de contre-visite ACVI, rejouable par scripts/sonde.py — AMET93)
+"""ACVI53/ACVI54 — jumeau oublié : la file en masse (`fiche_funnel.py::_corps_whatsapp_en_masse`) rend tout
+placeholder du catalogue et OMET la phrase d'un placeholder vide ; le brouillon de suivi de l'assistant
+(`views_assistant.py::lead_brouillon_suivi`, rendu par `cadence_views.py::rendre_modele_message` +
+4 `replace`) ne rend que prenom/ville/lien/lien_rdv/conseiller/marque/civilite/reference et n'omet rien :
+un gabarit ACCEPTÉ par `MessageTemplateSerializer.validate_corps` (ACVI53) laisse `{societe}`,
+`{date_validite}` littéraux dans `texte` et dans `lien_wa_me` ; conseiller sans prénom (ACVI54) → « je suis  de ».
+Chaîne API réelle (admin crée le gabarit, responsable demande le brouillon). Transaction annulée. Jamais contre la prod."""
+SONDE = {"constat": "C-ACVI-VER4-020", "sha": "64c9c7317",
+         "attendu": "POST message-templates (admin) corps avec {societe} {date_validite} → 201 ; POST leads/<id>/brouillon-suivi/ → 200 avec '{societe}' ou '{date_validite}' littéral dans texte et lien_wa_me ; la file en masse, même gabarit : aucun '{' ; attendu sain : aucun '{' dans le brouillon",
+         "modeles": ["authentication.Company", "crm.Lead", "crm.LeadActivity", "crm.MessageTemplate", "crm.RelanceEtape"]}
+
+
+def sonde(ctx):
+    import inspect
+    from django.contrib.auth import get_user_model
+    from rest_framework.test import APIClient
+    from authentication.models import Company
+    from apps.crm import cadence_messages, serializers_cadence
+    from apps.crm.fiche_funnel import _corps_whatsapp_en_masse
+    from apps.crm.models import Lead, MessageTemplate
+    # Le conteneur porte-t-il bien ACVI53 + ACVI54 ?
+    code_ok = (hasattr(serializers_cadence.MessageTemplateSerializer, 'validate_corps')
+               and 'username' not in inspect.getsource(cadence_messages._nom_affiche_conseiller))
+    User = get_user_model()
+    co = Company.objects.create(nom='Sonde ACVI-VER4-020', slug='sonde-acvi-ver4-020')
+    admin = User.objects.create_user(username='sonde-acvi-ver4-020-adm', password='x',
+                                     role_legacy='admin', company=co)
+    resp = User.objects.create_user(username='sonde-acvi-ver4-020-resp', password='x',
+                                    role_legacy='responsable', company=co, first_name='')
+    lead = Lead.objects.create(company=co, nom='Alami', prenom='Karim', telephone='+212612349720',
+                               owner=resp)
+    api_a = APIClient(); api_a.force_authenticate(admin)
+    corps = ("Bonjour {prenom}, je suis {conseiller} de {societe}. "
+             "Votre devis reste valable jusqu'au {date_validite}. Bonne journée.")
+    r = api_a.post('/api/django/crm/message-templates/',
+                   {'nom': 'Relance devis sonde', 'langue': 'fr', 'corps': corps},
+                   format='json', HTTP_HOST='localhost')
+    creation = (r.status_code, r.data if r.status_code >= 400 else None)
+    if r.status_code != 201:
+        return {'repro': False, 'code_ok': code_ok, 'creation': creation}
+    api_r = APIClient(); api_r.force_authenticate(resp)
+    r = api_r.post(f'/api/django/crm/leads/{lead.pk}/brouillon-suivi/',
+                   {'canal': 'whatsapp', 'objectif': 'relance_devis', 'langue': 'fr'},
+                   format='json', HTTP_HOST='localhost')
+    data = r.data if isinstance(getattr(r, 'data', None), dict) else {}
+    texte = data.get('texte') or ''
+    lien = data.get('lien_wa_me') or ''
+    tpl = MessageTemplate.objects.get(company=co, nom='Relance devis sonde')
+    masse = _corps_whatsapp_en_masse(lead, tpl)
+    obs = {'code_ok': code_ok, 'creation': creation, 'status': r.status_code,
+           'modele_source': data.get('modele_source'), 'texte': texte,
+           'lien_contient_accolade': '%7B' in lien or '{' in lien, 'masse': masse}
+    print(obs)
+    repro = (code_ok and r.status_code == 200 and data.get('modele_source') == 'Relance devis sonde'
+             and '{' in texte and '{' not in masse)
+    return {'repro': repro, **obs}

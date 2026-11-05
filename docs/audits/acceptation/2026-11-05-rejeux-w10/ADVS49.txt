@@ -1,0 +1,234 @@
+# Preuve en direct ADVS49 - pile locale, code 51b2fe77b (dev-plan-6a6fc9-w10), 2026-11-05
+# Lanceur : python scripts/sonde.py (transaction annulee, mail en memoire, HTTP sortant bloque).
+# Sondes LIVE-* : repro=true signifie ICI que le comportement attendu par la tache est observe.
+
+== LIVE-ADVS49 (sha 51b2fe77b)
+attendu : les_deux : deux envoyes + jeton soeur servi ; seule : soeur brouillon ; T17 soeur : 409, deux brouillons
+observé : {"repro": true, "observe": {"les_deux": {"http": 200, "statuts": ["envoye", "envoye"], "liens_soeur": 1, "soeur_lien_valide": true}, "page_client": {"http": 200, "proposition_path": "/proposition/SYA-GsvgXTVSfv3sQ9YbM1-HuIPZ6pqzfLOoPYsawYU", "porte_jeton_soeur": true, "soeur_nom": "Premium", "comparatif_n": 0}, "ouverture_jeton_soeur": [200, "DEV-202611-0001"], "renvoi": {"http": 200, "liens_soeur": 1, "relecture": ["envoye", "envoye"]}, "seule": {"http": 200, "statuts": ["envoye", "brouillon"], "liens_soeur": 0}, "t17_soeur": {"http": 409, "detail": "Remise de 30.00 % supérieure au seuil de 10.00 % : l'approbation d'un administrateur est requise avant l'envoi.", "code": "state_conflict", "statuts": ["brouillon", "brouillon"], "date_envoi_nuls": [true, true], "liens_soeur": 0, "remise_approuvee_soeur": false}, "ok": {"les_deux": true, "seule": true, "t17": true}}}
+verdict : REPRO
+base inchangée : oui (avant 7891, après 7891) ; mails 0 ; tâches Celery bloquées 0
+
+== C-ADVS-022 (sha 1dfa7986c)
+attendu : aucune gamme brouillon servie, aucun ShareLink créé par la lecture (défaut : sœur brouillon servie, lien +1, 404)
+observé : {"repro": false, "observe": {"envoi_source": 200, "statuts_apres_envoi": {"source": "envoye", "soeur": "envoye", "soeur_envoi": "les_deux"}, "lecture_client": 200, "gammes_servies": {"courante": {"nom": "Essentielle", "recommandee": true, "reference": "DEV-ADVS022-01", "total_ttc": 34800.0}, "soeur": {"nom": "Premium", "reference": "DEV-202611-0001", "total_ttc": 42000.0, "ecart_ttc": 7200.0, "proposition_path": "/proposition/v6Sn_HP_KRXiekTC4EtJFn-GjtSuNv7WR8psvdLudpE"}, "comparatif_n": 0}, "sharelinks_soeur_avant_apres_GET": [1, 1], "lien_soeur": {"sections": {}, "otp_lecture": false, "niveau": "standard"}, "ouverture_lien_soeur": [200, null]}}
+verdict : ÉCART
+base inchangée : oui (avant 7888, après 7888) ; mails 0 ; tâches Celery bloquées 0
+
+== Paire persistante societe demo (DEV-LIVEW10-49 + soeur Premium, envoi les_deux par l'API reelle) : 200, source envoye, soeur envoye, deux jetons. ECRAN NON JOUE : la page client /proposition/<jeton> est servie par apps/web (Worker Cloudflare), absente de la pile docker locale (http://localhost/proposition/... = 404 du SPA ERP) ; la preuve porte sur la charge utile que cette page rend (GET /api/django/public/proposal/<jeton>/data/ : gammes.soeur.proposition_path au jeton de la soeur, jeton qui s'ouvre en 200).
+
+
+# ---- source : C-LIVE-ADVS49.py ----
+# flake8: noqa  (preuve en direct ADVS49, 05/11/2026)
+"""ADVS49 — paire creer_variante_gamme (source « Essentielle », soeur « Premium » brouillon), responsable :
+(1) share-link {envoi, gamme_envoi: les_deux} => les deux envoyes, soeur a ShareLink valide, GET public
+/public/proposal/<jeton source>/data/ : gammes.soeur.proposition_path porte le jeton de la soeur, et ce jeton s'ouvre
+(200) ; renvoi => aucun second lien ; relecture => deux envoyes.
+(2) mode seule => soeur brouillon.
+(3) T17 : seuil societe 10 %, soeur a 30 % de remise non approuvee (source sans remise) => 409, les deux brouillons,
+0 ShareLink sur la soeur. Societe neuve, transaction annulee."""
+SONDE = {"constat": "LIVE-ADVS49", "sha": "51b2fe77b",
+         "attendu": "les_deux : deux envoyes + jeton soeur servi ; seule : soeur brouillon ; T17 soeur : 409, deux brouillons",
+         "modeles": ["ventes.Devis", "ventes.ShareLink", "ventes.LigneDevis", "parametres.CompanyProfile"]}
+
+
+def sonde(ctx):
+    import json
+    from decimal import Decimal
+    from unittest import mock
+    from django.contrib.auth import get_user_model
+    from django.db import transaction
+    from rest_framework.test import APIClient
+    from authentication.models import Company
+    from apps.crm.models import Client
+    from apps.parametres.models import CompanyProfile
+    from apps.stock.models import Produit
+    from apps.ventes.models import Devis, LigneDevis, ShareLink
+    from apps.ventes.services import creer_variante_gamme
+    U = get_user_model()
+    c = Company.objects.create(nom='Live ADVS49', slug='live-advs49')
+    u = U.objects.create_user(username='live-advs49', password='x', role_legacy='responsable', company=c)
+    cl = Client.objects.create(company=c, nom='Gamme', prenom='Salma', email='live-advs49@example.invalid',
+                               telephone='+212611004901')
+    pan = Produit.objects.create(company=c, nom='Panneau 550W', sku='L49-P', prix_vente=Decimal('2000'),
+                                 prix_achat=Decimal('1200'), quantite_stock=50)
+    ond = Produit.objects.create(company=c, nom='Onduleur réseau 5kW', sku='L49-O', prix_vente=Decimal('9000'),
+                                 prix_achat=Decimal('6000'), quantite_stock=50)
+    api = APIClient()
+    api.force_authenticate(u)
+    pub = APIClient()
+
+    def paire(ref):
+        src = Devis.objects.create(company=c, reference=ref, client=cl, statut='brouillon', created_by=u)
+        LigneDevis.objects.create(devis=src, produit=pan, designation=pan.nom, quantite=Decimal('10'),
+                                  prix_unitaire=Decimal('2000'), remise=Decimal('0'))
+        LigneDevis.objects.create(devis=src, produit=ond, designation=ond.nom, quantite=Decimal('1'),
+                                  prix_unitaire=Decimal('9000'), remise=Decimal('0'))
+        with transaction.atomic():
+            soeur = creer_variante_gamme(src, 'Premium', user=u)
+        LigneDevis.objects.filter(devis=soeur, produit=pan).update(prix_unitaire=Decimal('2600'))
+        src.refresh_from_db()
+        soeur.refresh_from_db()
+        return src, soeur
+
+    def appel(client, meth, url, corps=None):
+        try:
+            with transaction.atomic():
+                r = getattr(client, meth)(url, corps or {}, format='json', HTTP_HOST='localhost')
+            brut = r.content if hasattr(r, 'content') else b''.join(r.streaming_content)
+            try:
+                return r.status_code, json.loads(brut.decode('utf-8', 'replace'))
+            except Exception:
+                return r.status_code, {}
+        except Exception as e:
+            return repr(e)[:200], {}
+
+    obs = {}
+    B = '/api/django/ventes/devis'
+    with mock.patch('apps.ventes.public_views._notify_open'):
+        # (1) les deux
+        src, soeur = paire('DEV-L49-01')
+        s, r = appel(api, 'post', f'{B}/{src.id}/share-link/', {'envoi': True, 'gamme_envoi': 'les_deux'})
+        src.refresh_from_db()
+        soeur.refresh_from_db()
+        liens_soeur = list(ShareLink.objects.filter(devis=soeur))
+        lien_src = ShareLink.objects.filter(devis=src, revoque_le__isnull=True).order_by('-id').first()
+        obs['les_deux'] = {'http': s, 'statuts': [src.statut, soeur.statut], 'liens_soeur': len(liens_soeur),
+                           'soeur_lien_valide': bool(liens_soeur and liens_soeur[0].revoque_le is None)}
+        sp, lu = appel(pub, 'get', f'/api/django/public/proposal/{lien_src.token}/data/') if lien_src else (None, {})
+        g = (lu or {}).get('gammes') or {}
+        path = (g.get('soeur') or {}).get('proposition_path') or ''
+        jeton_soeur = str(liens_soeur[0].token) if liens_soeur else '?'
+        obs['page_client'] = {'http': sp, 'proposition_path': path, 'porte_jeton_soeur': jeton_soeur in path,
+                              'soeur_nom': (g.get('soeur') or {}).get('nom'), 'comparatif_n': len(g.get('comparatif') or [])}
+        so, lo = appel(pub, 'get', f'/api/django/public/proposal/{jeton_soeur}/data/')
+        obs['ouverture_jeton_soeur'] = [so, (lo or {}).get('reference') or (lo or {}).get('detail')]
+        s2, _ = appel(api, 'post', f'{B}/{src.id}/share-link/', {'envoi': True, 'gamme_envoi': 'les_deux'})
+        src.refresh_from_db()
+        soeur.refresh_from_db()
+        obs['renvoi'] = {'http': s2, 'liens_soeur': ShareLink.objects.filter(devis=soeur).count(),
+                         'relecture': [Devis.objects.get(pk=src.pk).statut, Devis.objects.get(pk=soeur.pk).statut]}
+        ok1 = (s == 200 and obs['les_deux']['statuts'] == ['envoye', 'envoye'] and obs['les_deux']['liens_soeur'] == 1
+               and obs['les_deux']['soeur_lien_valide'] and sp == 200 and jeton_soeur in path and so == 200
+               and s2 == 200 and obs['renvoi']['liens_soeur'] == 1 and obs['renvoi']['relecture'] == ['envoye', 'envoye'])
+        # (2) seule
+        src2, soeur2 = paire('DEV-L49-02')
+        s3, _ = appel(api, 'post', f'{B}/{src2.id}/share-link/', {'envoi': True, 'gamme_envoi': 'seule'})
+        src2.refresh_from_db()
+        soeur2.refresh_from_db()
+        obs['seule'] = {'http': s3, 'statuts': [src2.statut, soeur2.statut],
+                        'liens_soeur': ShareLink.objects.filter(devis=soeur2).count()}
+        ok2 = s3 == 200 and obs['seule']['statuts'] == ['envoye', 'brouillon']
+        # (3) T17 sur la soeur
+        prof = CompanyProfile.get(c)
+        prof.discount_approval_threshold = Decimal('10')
+        prof.save()
+        src3, soeur3 = paire('DEV-L49-03')
+        Devis.objects.filter(pk=soeur3.pk).update(remise_globale=Decimal('30'))
+        soeur3.refresh_from_db()
+        s4, r4 = appel(api, 'post', f'{B}/{src3.id}/share-link/', {'envoi': True, 'gamme_envoi': 'les_deux'})
+        a, b = Devis.objects.get(pk=src3.pk), Devis.objects.get(pk=soeur3.pk)
+        obs['t17_soeur'] = {'http': s4, 'detail': str((r4 or {}).get('detail', ''))[:140],
+                            'code': (r4 or {}).get('code') or ((r4 or {}).get('error') or {}).get('code'),
+                            'statuts': [a.statut, b.statut], 'date_envoi_nuls': [a.date_envoi is None, b.date_envoi is None],
+                            'liens_soeur': ShareLink.objects.filter(devis=b).count(),
+                            'remise_approuvee_soeur': b.remise_approuvee}
+        ok3 = s4 == 409 and obs['t17_soeur']['statuts'] == ['brouillon', 'brouillon'] \
+            and obs['t17_soeur']['date_envoi_nuls'] == [True, True] and obs['t17_soeur']['liens_soeur'] == 0
+    obs['ok'] = {'les_deux': ok1, 'seule': ok2, 't17': ok3}
+    return {'repro': ok1 and ok2 and ok3, 'observe': obs}
+
+
+# ---- source : C-ADVS-022.py ----
+# flake8: noqa  (sonde de vérification C-L3-1, rejouable par scripts/sonde.py)
+"""C-L3-1 — paire de gammes (source « Essentielle » + sœur « Premium » née brouillon, `creer_variante_gamme`) ;
+le vendeur envoie la SOURCE par l'API réelle (`share-link {envoi, gamme_envoi: les_deux}`) ; le client lit
+`/public/proposal/<jeton source>/data/` : le bloc `gammes` sert-il la sœur BROUILLON (prix, comparatif, lien) ? le
+GET crée-t-il un ShareLink sur la sœur ? le lien servi s'ouvre-t-il (404 attendu sur un brouillon au jeton client) ?
+Société neuve, transaction annulée."""
+SONDE = {"constat": "C-ADVS-022", "sha": "1dfa7986c",
+         "attendu": "aucune gamme brouillon servie, aucun ShareLink créé par la lecture (défaut : sœur brouillon servie, lien +1, 404)",
+         "modeles": ["ventes.Devis", "ventes.ShareLink", "ventes.LigneDevis"]}
+
+
+def sonde(ctx):
+    import json
+    from decimal import Decimal
+    from unittest import mock
+    from django.contrib.auth import get_user_model
+    from django.db import transaction
+    from rest_framework.test import APIClient
+    from authentication.models import Company
+    from apps.crm.models import Client
+    from apps.stock.models import Produit
+    from apps.ventes.models import Devis, LigneDevis, ShareLink
+    from apps.ventes.services import creer_variante_gamme
+    U = get_user_model()
+    c = Company.objects.create(nom='Sonde ADVS 022', slug='sonde-advs-022')
+    u = U.objects.create_user(username='sonde-advs-022', password='x', role_legacy='responsable', company=c)
+    cl = Client.objects.create(company=c, nom='Gamme', prenom='Salma', email='sonde-advs-022@example.invalid')
+    pan = Produit.objects.create(company=c, nom='Panneau 550W', sku='ADVS022-P', prix_vente=Decimal('2000'),
+                                 prix_achat=Decimal('1200'), quantite_stock=50)
+    ond = Produit.objects.create(company=c, nom='Onduleur réseau 5kW', sku='ADVS022-O', prix_vente=Decimal('9000'),
+                                 prix_achat=Decimal('6000'), quantite_stock=50)
+    src = Devis.objects.create(company=c, reference='DEV-ADVS022-01', client=cl, statut='brouillon', created_by=u)
+    LigneDevis.objects.create(devis=src, produit=pan, designation=pan.nom, quantite=Decimal('10'),
+                              prix_unitaire=Decimal('2000'), remise=Decimal('0'))
+    LigneDevis.objects.create(devis=src, produit=ond, designation=ond.nom, quantite=Decimal('1'),
+                              prix_unitaire=Decimal('9000'), remise=Decimal('0'))
+    obs = {}
+    try:
+        with transaction.atomic():
+            soeur = creer_variante_gamme(src, 'Premium', user=u)
+    except Exception as e:
+        return {'repro': False, 'observe': {'creer_variante_err': repr(e)[:300]}}
+    src.refresh_from_db()
+    # la sœur « Premium » coûte plus : on monte le prix de ses panneaux
+    LigneDevis.objects.filter(devis=soeur, produit=pan).update(prix_unitaire=Decimal('2600'))
+    soeur.refresh_from_db()
+    api = APIClient()
+    api.force_authenticate(u)
+    pub = APIClient()
+
+    def appel(client, meth, url, corps=None):
+        try:
+            with transaction.atomic():
+                r = getattr(client, meth)(url, corps or {}, format='json', HTTP_HOST='localhost')
+            brut = r.content if hasattr(r, 'content') else b''.join(r.streaming_content)
+            try:
+                return r.status_code, json.loads(brut.decode('utf-8', 'replace'))
+            except Exception:
+                return r.status_code, {}
+        except Exception as e:
+            return repr(e)[:200], {}
+
+    with mock.patch('apps.ventes.public_views._notify_open'):
+        s, rs = appel(api, 'post', f'/api/django/ventes/devis/{src.id}/share-link/',
+                      {'envoi': True, 'gamme_envoi': 'les_deux'})
+        obs['envoi_source'] = s
+        src.refresh_from_db()
+        soeur.refresh_from_db()
+        obs['statuts_apres_envoi'] = {'source': src.statut, 'soeur': soeur.statut,
+                                      'soeur_envoi': (soeur.etude_params or {}).get('gamme', {}).get('envoi')
+                                      if isinstance((soeur.etude_params or {}).get('gamme'), dict) else None}
+        link = ShareLink.objects.filter(devis=src, revoque_le__isnull=True).order_by('-id').first()
+        if link is None:
+            return {'repro': False, 'observe': obs}
+        n0 = ShareLink.objects.filter(devis=soeur).count()
+        s, lu = appel(pub, 'get', f'/api/django/public/proposal/{link.token}/data/')
+        n1 = ShareLink.objects.filter(devis=soeur).count()
+        g = lu.get('gammes')
+        obs['lecture_client'] = s
+        obs['gammes_servies'] = None if not g else {
+            'courante': g.get('courante'),
+            'soeur': {k: (g.get('soeur') or {}).get(k) for k in ('nom', 'reference', 'total_ttc', 'ecart_ttc',
+                                                                   'proposition_path')},
+            'comparatif_n': len(g.get('comparatif') or [])}
+        obs['sharelinks_soeur_avant_apres_GET'] = [n0, n1]
+        nouveau = ShareLink.objects.filter(devis=soeur).order_by('-id').first()
+        if nouveau is not None:
+            obs['lien_soeur'] = {'sections': nouveau.sections, 'otp_lecture': nouveau.otp_lecture,
+                                 'niveau': getattr(nouveau, 'niveau', None)}
+            s2, lu2 = appel(pub, 'get', f'/api/django/public/proposal/{nouveau.token}/data/')
+            obs['ouverture_lien_soeur'] = [s2, lu2.get('detail')]
+    repro = bool(g and soeur.statut == 'brouillon' and (g.get('soeur') or {}).get('reference') == soeur.reference)
+    return {'repro': repro, 'observe': obs}

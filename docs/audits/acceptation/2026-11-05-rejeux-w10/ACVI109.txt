@@ -1,0 +1,61 @@
+# Preuve en direct ACVI109 - pile locale, code 51b2fe77b (dev-plan-6a6fc9-w10), 2026-11-05
+
+== LIVE-ACVI109 (sha 51b2fe77b)
+attendu : msg1 Boulangerie Atlas sans marque ; msg2 sans phrase etude, Bonjour garde, aucun {
+observé : {"repro": true, "observe": {"status": 200, "marque": "TAQINOR Démo", "cles_file": ["lead_id", "nom", "phone", "wa_url"], "msg1": "Je prépare l'étude solaire de Boulangerie Atlas. Bonjour Karim.", "msg2": "Bonjour Sara.", "skipped": []}}
+verdict : REPRO
+base inchangée : oui (avant 3627, après 3627) ; mails 0 ; tâches Celery bloquées 0
+
+== C-ACVI-VER4-021 (sha 64c9c7317)
+attendu : file en masse : 'Boulangerie Atlas' absent, nom de marque présent ; lead sans societe : phrase gardée (marque) ; voie des touches (_societe_du_lead) : 'Boulangerie Atlas' ; attendu sain : la file rend Lead.societe et omet la phrase sans raison sociale
+observé : {'marque': 'Sonde Solaire VER4-021', 'masse_avec': "Bonjour Karim. Je prépare l'étude solaire de Boulangerie Atlas. Bonne journée.", 'masse_sans': 'Bonjour Sara. Bonne journée.', 'societe_touches': 'Boulangerie Atlas'}
+{"repro": false, "marque": "Sonde Solaire VER4-021", "masse_avec": "Bonjour Karim. Je prépare l'étude solaire de Boulangerie Atlas. Bonne journée.", "masse_sans": "Bonjour Sara. Bonne journée.", "societe_touches": "Boulangerie Atlas"}
+verdict : ÉCART
+base inchangée : oui (avant 1416, après 1416) ; mails 0 ; tâches Celery bloquées 0
+
+== ECRAN (Playwright, http://localhost, demo_admin, societe demo id 2) : /crm/leads?search=LIVEW10 vue liste, 2 leads coches (LIVEW10Atlas societe « Boulangerie Atlas », LIVEW10Sans sans raison sociale), « Plus d'actions en masse » > « WhatsApp en masse », modele « LIVEW10 etude pro », « Preparer les liens » => POST /api/django/crm/leads/bulk/ 200 ; liens wa.me : « Je prépare l'étude solaire de Boulangerie Atlas. Bonjour Karim. » et « Bonjour Sara. » (marque « TAQINOR Démo » absente, aucun « { ») ; console : 0 erreur. Capture : docs/qa-explorer/captures/2026-11-05/ACCEPTATION-ACVI-W10.ACVI109.whatsapp_masse_societe.jpg
+
+# ---- source : C-LIVE-ACVI109.py ----
+# flake8: noqa  (preuve en direct ACVI109, 05/11/2026)
+"""ACVI109 — gabarit « Je prepare l'etude solaire de {societe}. Bonjour {prenom}. », lead societe « Boulangerie Atlas »,
+second lead sans raison sociale ; POST /api/django/crm/leads/bulk/ {action: prepare_whatsapp} (societe demo, responsable) :
+message 1 contient « Boulangerie Atlas », jamais la marque emettrice ; message 2 : phrase omise, « Bonjour » garde,
+aucun « { ». Transaction annulee."""
+SONDE = {"constat": "LIVE-ACVI109", "sha": "51b2fe77b",
+         "attendu": "msg1 Boulangerie Atlas sans marque ; msg2 sans phrase etude, Bonjour garde, aucun {",
+         "modeles": ["crm.Lead", "crm.MessageTemplate", "crm.LeadActivity"]}
+
+
+def sonde(ctx):
+    import json
+    from urllib.parse import unquote
+    from django.contrib.auth import get_user_model
+    from rest_framework.test import APIClient
+    from apps.crm.models import Lead, MessageTemplate
+    from apps.crm.cadence_messages import _nom_affiche_marque
+    U = get_user_model()
+    c = U.objects.get(username='demo_admin').company
+    u = U.objects.create_user(username='live-acvi109', password='x', role_legacy='responsable', company=c,
+                              first_name='Sara')
+    tpl = MessageTemplate.objects.create(company=c, nom='Live ACVI109 etude pro', langue='fr',
+                                         corps="Je prépare l'étude solaire de {societe}. Bonjour {prenom}.")
+    l1 = Lead.objects.create(company=c, nom='Atlas', prenom='Karim', telephone='+212661151091', owner=u,
+                             societe='Boulangerie Atlas')
+    l2 = Lead.objects.create(company=c, nom='Sans', prenom='Sara', telephone='+212661151092', owner=u)
+    marque = _nom_affiche_marque(l1)
+    api = APIClient()
+    api.force_authenticate(u)
+    r = api.post('/api/django/crm/leads/bulk/', {'action': 'prepare_whatsapp', 'ids': [l1.pk, l2.pk],
+                                                'template_id': tpl.pk}, format='json', HTTP_HOST='localhost')
+    d = json.loads(r.content.decode('utf-8', 'replace') or '{}')
+    q = {x.get('lead_id'): x for x in d.get('queue', [])}
+
+    def texte(x):
+        return x.get('message') or x.get('texte') or unquote((x.get('wa_url') or '').split('text=', 1)[-1])
+
+    t1, t2 = texte(q.get(l1.pk, {})), texte(q.get(l2.pk, {}))
+    obs = {'status': r.status_code, 'marque': marque, 'cles_file': sorted(q.get(l1.pk, {}).keys()),
+           'msg1': t1, 'msg2': t2, 'skipped': d.get('skipped')}
+    ok = (r.status_code == 200 and 'Boulangerie Atlas' in t1 and (not marque or marque not in t1)
+          and 'étude solaire' not in t2 and 'Bonjour Sara' in t2 and '{' not in t1 + t2)
+    return {'repro': ok, 'observe': obs}
