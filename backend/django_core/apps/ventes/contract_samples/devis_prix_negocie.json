@@ -116,6 +116,11 @@
       "code": "avoir_a_confirmer"
     }
   },
+  "erreurs_403": {
+    "avoir_sans_encaisser": {
+      "detail": "Émettre ou encaisser une facture exige le droit d'encaissement."
+    }
+  },
   "erreurs_409": {
     "version_remplacee": {
       "detail": "Cette version du devis a été remplacée par une révision.",

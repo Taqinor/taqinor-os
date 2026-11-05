@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 1009bac0d312279dce76887ac7f68f5e44104940af617dd9b037f211df1b959a
+Structure fingerprint: acc7ba46c0aa19a6baec439da132449bbe61ced30790aefa07d5bfc33193e391
 Plan fingerprint: 7ee6405615f195e82dfaaeed2b5d380ea25dadb51b44fa4abe82c23f673eedc8
 
 
@@ -420,7 +420,7 @@ Core routes are declared in `router/index.jsx`; every module's routes come from 
 
 **Core (`router/index.jsx`)** — public: `/`, `/landing`, `/login`, `/register`, `/ui`,
 `/403`, `*`; public tokenized: `/rdv/:token`, `/salle-vente/:token`,
-`/ged/signature|signataire|depot/:token`, `/e/:token`, `/suivi/:token`,
+`/ged/signature|signataire|depot|partage/:token`, `/e/:token`, `/suivi/:token`,
 `/intervention/:token`, `/intervention-rapport/:token`; portals: `/portail/client`
 (+`/devis`, `/factures`, `/livraisons`, `/chantiers`, `/mot-de-passe`),
 `/portail/fournisseur` (+`/commandes`), `/portail/partenaire` (+`/affaires`,

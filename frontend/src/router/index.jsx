@@ -74,6 +74,8 @@ const PublicSalleVentePage = lazy(() => import('../pages/crm/salle-vente/PublicS
 const PublicSignaturePage = lazy(() => import('../pages/ged/PublicSignaturePage'))
 // XGED7 — dépôt public de fichier (upload-request, sans login).
 const PublicDepotPage = lazy(() => import('../pages/ged/PublicDepotPage'))
+// ASEC77 — ouverture publique d'un partage GED (mot de passe, sans login).
+const PublicPartagePage = lazy(() => import('../pages/ged/PublicPartagePage'))
 // XSAV19 — page publique « Signaler un problème » via QR équipement.
 const EquipementSignalerPage = lazy(() => import('../pages/sav/EquipementSignalerPage'))
 // XSAV10/FG86 — page publique de suivi client d'un ticket SAV + CSAT.
@@ -436,6 +438,8 @@ const router = createBrowserRouter([
   { path: '/ged/signataire/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PublicSignaturePage mode="signataire" /></Suspense></RouteErrorBoundary> },
   // XGED7 — dépôt public de fichier (upload-request), sans login.
   { path: '/ged/depot/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PublicDepotPage /></Suspense></RouteErrorBoundary> },
+  // ASEC77 — partage GED public (formulaire de mot de passe), sans login.
+  { path: '/ged/partage/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PublicPartagePage /></Suspense></RouteErrorBoundary> },
   // XSAV19 — « Signaler un problème » via QR équipement (sans login, sans layout ERP).
   { path: '/e/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><EquipementSignalerPage /></Suspense></RouteErrorBoundary> },
   // XSAV10/FG86 — suivi client d'un ticket SAV + CSAT (sans login, sans layout ERP).

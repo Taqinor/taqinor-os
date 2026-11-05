@@ -161,22 +161,34 @@ export function computeCashflowPayback(investment, economieAnnee1, {
 // servie (`etude_horaire` borne le restitué) ; la part batterie du cashflow
 // vaut donc 0 — plus de seconde déduction. Flux année 1 = économie servie.
 // `annuel` et `rendementBatterie` restent acceptés (appelants inchangés).
+// AMOT125 — règle serveur : `regles_calcul.py::regles_au_moins` : niveau absent ou illisible
+// (devis neuf) ⇒ règles courantes (vrai), sinon niveau ≥ n.
+export function reglesAuMoins(niveau, n) {
+  const v = niveau == null ? NaN : parseInt(niveau, 10)
+  return Number.isNaN(v) ? true : v >= n
+}
+
 // AMOT106 — provision onduleur au prix PAYÉ (remise globale déduite) dès le niveau 3, comme `_cout_onduleur_paye` du PDF.
 export function provisionOnduleurPayee(cout, discountPct = 0, reglesCalcul = 0) {
   const c = parseFloat(cout) || 0
   const r = parseFloat(discountPct) || 0
-  return reglesCalcul >= 3 && r > 0 ? c * (1 - r / 100) : c
+  return reglesAuMoins(reglesCalcul, 3) && r > 0 ? c * (1 - r / 100) : c
 }
 
+// AMOT125 — `reglesCalcul` sous le niveau 2 (devis d'origine, `rendement_une_fois`
+// faux côté serveur) : part batterie = (autoconso avec − sans) ÷ avec (`pricing`).
 export function paybackMoteurHoraire(total, ecoAnnuelle, {
   annuel = null, rendementBatterie = null, stockage = false, inverterReplaceCost = null,
+  reglesCalcul = null,
 } = {}) {
-  void annuel
   const t = parseFloat(total) || 0
   const eco = parseFloat(ecoAnnuelle) || 0
   if (!(t > 0) || !(eco > 0)) return null
+  const sans = parseFloat(annuel?.taux_autoconso_sans) || 0
+  const avec = Math.max(parseFloat(annuel?.taux_autoconso_avec) || 0, sans)
+  const part = stockage && !reglesAuMoins(reglesCalcul, 2) && avec > 0 ? Math.max(0, avec - sans) / avec : 0
   const cf = computeCashflowPayback(t, eco, {
-    battery: !!stockage, batteryShare: 0, inverterReplaceCost,
+    battery: !!stockage, batteryShare: part, inverterReplaceCost,
     batteryRoundtrip: rendementBatterie ?? BATTERY_ROUNDTRIP,
   })
   return { paybackYears: cf.paybackYears, jamaisRembourse: !!cf.jamaisRembourse, netGain: cf.netGain }
@@ -412,7 +424,7 @@ export function computeROI({
   // (autoconsoAvecEff − autoconsoSansEff) est stocké puis restitué.
   let battPart = autoconsoAvecEff > 0 ? Math.max(0, autoconsoAvecEff - autoconsoSansEff) / autoconsoAvecEff : 0
   // RGEN5 — niveau 3 : même règle que le PDF (RHOR6, économie nette) ; le cashflow lit le net (part 0).
-  ;({ economie: ecoAnnuelleAvec, factureAvec: factureAvecAvec, partStockee: battPart } = economieAvecNette(ecoAnnuelleAvec, factureAvecAvec, battPart, { nette: reglesCalcul >= 3 && stockagePresent, roundtrip: BATTERY_ROUNDTRIP, series: [{ valeurs: ecoAvecMonthly }, { valeurs: monthlyDetail, cle: 'eco_avec' }] }))
+  ;({ economie: ecoAnnuelleAvec, factureAvec: factureAvecAvec, partStockee: battPart } = economieAvecNette(ecoAnnuelleAvec, factureAvecAvec, battPart, { nette: reglesAuMoins(reglesCalcul, 3) && stockagePresent, roundtrip: BATTERY_ROUNDTRIP, series: [{ valeurs: ecoAvecMonthly }, { valeurs: monthlyDetail, cle: 'eco_avec' }] }))
 
   // QX39 — payback par croisement du cumul du cashflow 25 ans (miroir backend),
   // pas un ratio année-1 : écran/PDF/proposition affichent le MÊME payback.

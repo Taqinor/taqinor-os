@@ -230,9 +230,30 @@ def create_devis_pour_ticket(*, company, user, client_id, lignes, note=None):
     Renvoie le ``Devis`` créé (brouillon, sans lien lead — un ticket SAV n'a
     pas de lead d'origine).
     """
+    from decimal import InvalidOperation
+
+    from django.db import transaction
+
     from ..models import Devis
     from apps.ventes.utils.company_settings import create_numbered, tva_standard
     from apps.crm.selectors import client_base_qs  # ADEV56
+
+    # ASEC79 — TOUTES les lignes converties et contrôlées AVANT le devis : une
+    # saisie invalide ne consomme ni brouillon ni numéro.
+    valides = []
+    for i, ligne in enumerate(lignes or []):
+        if not ligne.get('produit_id'):
+            continue
+        nombres = {}
+        for champ, defaut, minimum in (('quantite', 1, 'pos'), ('prix_unitaire', 0, 'zero')):
+            try:
+                v = Decimal(str(ligne.get(champ) or defaut))
+            except (InvalidOperation, ValueError, TypeError):
+                v = None
+            if v is None or not v.is_finite() or v < 0 or (minimum == 'pos' and v == 0):
+                raise ValueError(f'Ligne {i} : {champ} invalide ({ligne.get(champ)!r}).')
+            nombres[champ] = v
+        valides.append((ligne, nombres))
 
     client = client_base_qs(company).get(pk=client_id)
 
@@ -243,19 +264,15 @@ def create_devis_pour_ticket(*, company, user, client_id, lignes, note=None):
             note=note or '', taux_tva=tva_standard(company),
             devise=devise_par_defaut(company),
         )
-    devis = create_numbered(Devis, company, 'devis', _create)
-
-    for ligne in (lignes or []):
-        produit_id = ligne.get('produit_id')
-        if not produit_id:
-            continue
-        creer_ligne(
-            devis,
-            produit_id=produit_id,
-            designation=ligne.get('designation') or '',
-            quantite=Decimal(str(ligne.get('quantite') or 1)),
-            prix_unitaire=Decimal(str(ligne.get('prix_unitaire') or 0)),
-        )
+    with transaction.atomic():
+        devis = create_numbered(Devis, company, 'devis', _create)
+        for ligne, nombres in valides:
+            creer_ligne(
+                devis,
+                produit_id=ligne['produit_id'],
+                designation=ligne.get('designation') or '',
+                **nombres,
+            )
     return devis
 
 

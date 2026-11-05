@@ -808,7 +808,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
             # d'``owner`` au PATCH) exige ``crm_reassign`` ; la suppression en
             # masse ``delete`` exige ``crm_supprimer``.
             return [IsResponsableOrAdmin()] + droits_de_la_grille(
-                self,
+                self, create=[DroitDeLaGrille('crm_creer')],  # ASEC76
                 bulk=[DroitDeLaGrille('crm_reassign', operation='reassign'),
                       DroitDeLaGrille('crm_supprimer', operation='delete')],
                 update=[DroitDeLaGrille('crm_reassign', champ='owner')],
