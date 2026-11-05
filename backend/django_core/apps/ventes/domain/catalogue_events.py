@@ -162,6 +162,36 @@ def _etendus_courants(produit, champs):
                                if n in gardes}
 
 
+def rebaser_ou_signaler_echeancier(devis, *, user=None):
+    """AGNR64 — resynchronisation SANS réponse HTTP (catalogue, conception) :
+    l'échéancier est re-basé au nouveau TTC (``rebaser_echeancier``, AGNR63) ;
+    s'il ne tient plus, il est GARDÉ et une note « Échéancier à revoir »
+    nommant le reste est posée au chatter (une seule, rejeu idempotent)."""
+    from decimal import Decimal
+
+    from apps.ventes.utils.echeancier import (
+        UNITE_MONTANT, EcheancierIncoherent, _mad, valider_echeancier)
+    from apps.ventes.utils.options import option_totaux
+
+    from ..activity import log_devis_note
+    from .modifiabilite import rebaser_echeancier
+    try:
+        rebaser_echeancier(devis)
+        return
+    except EcheancierIncoherent as exc:
+        motif = str(exc)
+    ttc = Decimal(str(option_totaux(devis)['ttc']))
+    tranches = valider_echeancier(devis.echeancier, controler_somme=False)
+    reste = ttc - sum((Decimal(str(t['valeur'])) if t['unite'] == UNITE_MONTANT
+                       else ttc * Decimal(str(t['valeur'])) / 100)
+                      for t in tranches[:-1])
+    corps = (f"Échéancier à revoir : {motif} Reste de la dernière tranche : "
+             f"{_mad(reste.quantize(Decimal('0.01')))} — l'échéancier est "
+             "conservé, corrigez-le avant de l'envoyer.")
+    if not devis.activites.filter(body=corps).exists():
+        log_devis_note(devis, user, corps)
+
+
 def resynchroniser_devis_pour_produit(*, produit, company, champs, user=None):
     """PVSYNC — propage un changement de RÉFÉRENCE aux devis qui l'utilisent.
 
@@ -364,6 +394,7 @@ def resynchroniser_devis_pour_produit(*, produit, company, champs, user=None):
             instantane_de_geste(devis, user=user)
             log_devis_resynchronisation(
                 devis, produit=produit, modifications=modifications, user=user)
+            rebaser_ou_signaler_echeancier(devis, user=user)  # AGNR64
         resultat['devis_touches'] = len(touches)
 
     if envoyes_conserves:
