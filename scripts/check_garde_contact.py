@@ -35,7 +35,6 @@ GARDES_RECONNUES = {"peut_contacter", "_lead_relancable", "motif_de_refus",
                     "garde_contact_du_lead", "_refuser_si_oppose", "_refus_opposition",
                     "exiger_contact_permis"}
 
-_A_CORRIGER_BUILDER = "A CORRIGER (ACVI111, C-ACVI-VER4-002) : builder wa.me vers le lead, garde dans les vues seules"
 _LOT_FILTRE = "lot : _file_whatsapp_en_masse sort les leads ne_plus_contacter avant tout lien (C-ACVI-061)"
 _INTERNE = "interne : destinataire = utilisateur ou equipe de la societe (ou numero d'alerte), jamais un prospect"
 _FOURNISSEUR = "fournisseur : destinataire = un fournisseur, pas un lead"
@@ -51,9 +50,6 @@ _AMONT_NUDGE = "garde en amont : _nudge_suppressed (CADV8, peut_contacter) avant
 #: append-only (docs/ownership.yml) : une tache ne retire que les lignes de SES
 #: fichiers.
 LISTE_BLANCHE: dict[str, str] = {
-    "backend/django_core/apps/crm/cadence_messages.py::message_visite_pour_lead::wa.me": _A_CORRIGER_BUILDER,
-    "backend/django_core/apps/crm/cadence_messages.py::message_pour_etape::wa.me": _A_CORRIGER_BUILDER,
-    "backend/django_core/apps/crm/visites_rdv.py::build_appointment_confirmation_whatsapp::wa.me": _A_CORRIGER_BUILDER,
     "backend/django_core/apps/automation/actions.py::preparer_whatsapp::wa.me":
         "garde en amont : le handler appelle _refus_opposition avant preparer_whatsapp (partage avec la simulation)",
     "backend/django_core/apps/crm/fiche_bulk.py::_lien_reactivation::wa.me": _LOT_FILTRE,

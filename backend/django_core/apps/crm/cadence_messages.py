@@ -375,9 +375,10 @@ def message_visite_pour_lead(lead, cle, *, user=None, masquer_numero=False):
     # CAD111 — les liens wa.me construits par le SERVEUR (E.164), un par
     # langue, jamais par l'écran ; aucun numéro pour un rôle sans droit PII.
     phone = '' if masquer_numero else numero_joignable(lead)  # ACVI50
-    rendu['wa_url_fr'] = build_wa_url(phone, rendu['corps_fr']) if phone else None
+    lien_permis = phone and not refus_rendu_whatsapp(lead)  # ACVI111 — aucun lien à un refusé
+    rendu['wa_url_fr'] = build_wa_url(phone, rendu['corps_fr']) if lien_permis else None
     rendu['wa_url_darija'] = (build_wa_url(phone, rendu['corps_darija'])
-                              if phone else None)
+                              if lien_permis else None)
     rendu['phone'] = phone
     return rendu
 
@@ -770,9 +771,11 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
     from .serializers import pii_masquee_pour
     # ACVI4 — sans `client_pii_voir`, aucun numéro ne sort (la liste le masque).
     phone = '' if pii_masquee_pour(user) else numero_joignable(lead)  # ACVI50
-    if est_email:
+    if est_email or refus_rendu_whatsapp(lead, cle=cle):
         # Une touche e-mail n'ouvre pas WhatsApp : `wa_url` vaut `null`, et le
         # lien `mailto:` est construit par le serveur. Rien n'est envoyé (D5).
+        # ACVI111 — un lead refusé (opposé, perdu, archivé) : aucun lien, le
+        # texte reste servi (script du panneau d'appel) ; `stop_contact` passe.
         wa_url = None
     elif template_cle in _TEMPLATES_VOCAUX:
         # Le texte est le SCRIPT du vocal : on ouvre la conversation, on ne
