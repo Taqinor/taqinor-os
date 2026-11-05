@@ -87,12 +87,9 @@ class LeadDevisActionsMixin:
         # Devis du lead, dans la société courante uniquement.
         devis_list = devis_for_lead(lead, ids)
         if len(devis_list) != len(set(ids)):
-            # ERR-ENF11-FUZZ-CRM : identifiant bien formé mais inconnu pour ce
-            # lead = ressource introuvable, 404 — jamais un 400.
-            return Response(
-                {'detail': 'Un devis sélectionné est introuvable pour ce lead.'},
-                status=status.HTTP_404_NOT_FOUND,
-            ), None
+            # ENF48 : le lead existe, un id bien formé ne désigne aucun de SES
+            # devis (absent ou autre société, même corps) = 409, règle d'ENF40.
+            raise ConflitEtat('Un devis sélectionné est introuvable pour ce lead.')
         phone = lead.whatsapp or lead.telephone
         if not normalize_phone_e164(phone):
             # ERR-ENF11-FUZZ-CRM — le numéro vient de la FICHE du lead, pas du
