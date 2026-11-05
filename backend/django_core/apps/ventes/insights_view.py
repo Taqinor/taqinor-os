@@ -24,7 +24,8 @@ from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from authentication.permissions import IsResponsableOrAdmin
+from .gardes_lecture import LectureFactures
 from apps.roles.permissions import DroitDeLaGrille  # ASEC50
 
 
@@ -46,7 +47,7 @@ def _start_of_next_month(d):
 @extend_schema(parameters=[qstr('mode', enum=['comportement'])],
                responses=SH.CashFlowResponse)
 @api_view(['GET'])
-@permission_classes([IsAnyRole])
+@permission_classes([LectureFactures])  # AARG66
 def cash_flow_forecast(request):
     """GET /ventes/insights/cash-flow/
 

@@ -210,3 +210,34 @@ class EcheanceEffectiveTests(TestCase):
         relue = self._emettre(
             self._facture(statut='brouillon', date_echeance=saisie))
         self.assertEqual(relue.date_echeance, saisie)
+
+    def test_historique_client_a_delai_jours_retard(self):
+        """AARG70 (C-AARG-VER5-012) — facture historique J-45 sans date d'un
+        client à 90 j : la liste des relances sert `jours_retard` 0 (même règle
+        que le beat) ; sans délai : 15 ; `fin_de_mois` : fin du mois.
+        Mutant : remettre émission + 30 j ⇒ 15."""
+        import calendar
+        from apps.ventes.models import Facture
+        facture = self._facture()
+        emission = timezone.now().date() - timedelta(days=45)
+        Facture.objects.filter(pk=facture.pk).update(date_emission=emission)
+        type(self.client_obj).objects.filter(pk=self.client_obj.pk).update(
+            delai_paiement_jours=90)
+        r = self.api.get('/api/django/ventes/relances/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertNotIn(facture.id, [x['id'] for x in r.data
+                                      if x['jours_retard'] > 0])
+        relue = Facture.objects.get(pk=facture.pk)
+        self.assertEqual(relue.jours_retard, 0)
+        self.assertEqual(relue.echeance_appliquee,
+                         emission + timedelta(days=90))
+        self.assertIsNone(relue.date_echeance)
+        type(self.client_obj).objects.filter(pk=self.client_obj.pk).update(
+            delai_paiement_jours=None)
+        self.assertEqual(Facture.objects.get(pk=facture.pk).jours_retard, 15)
+        type(self.client_obj).objects.filter(pk=self.client_obj.pk).update(
+            delai_paiement_jours=90, fin_de_mois=True)
+        brute = emission + timedelta(days=90)
+        self.assertEqual(
+            Facture.objects.get(pk=facture.pk).echeance_appliquee,
+            brute.replace(day=calendar.monthrange(brute.year, brute.month)[1]))

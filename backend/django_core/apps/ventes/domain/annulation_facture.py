@@ -17,6 +17,8 @@ from django.db import transaction
 GARDER_EN_AVANCE = 'garder_en_avance'
 #: AARG2 — ``field_label`` de la trace de cette directive (relue à la restauration).
 LIBELLE_TRACE_AVANCE = 'Acompte gardé en avance'
+#: AARG64 — ``field_label`` de la trace des effets réversibles (retenues, stock).
+LIBELLE_TRACE_EFFETS = "Effets de l'annulation"
 
 
 class AnnulationRefusee(Exception):
@@ -377,6 +379,78 @@ def rendre_avance_gardee(facture, *, avant_pk, user):
         _reclasser_avance(avance)
 
 
+def restaurer_facture(facture, *, avoir, trace, user):
+    """AARG63 — LA porte de restauration d'une facture annulée par l'avoir
+    miroir ``avoir`` (``trace`` = sa contre-passation, ``old_value`` = statut
+    antérieur) : vente verrouillée et bornée comme une émission (vente
+    refacturée ⇒ 409), devis non accepté ⇒ 409, puis l'avance gardée revient."""
+    from core.conflit_etat import ConflitEtat
+    from ..models import Facture, FactureActivity
+    from .facturation_ops import EmissionRefusee
+    from .facturation_vente import verrouiller_emission
+    from apps.ventes.vente_facturation import _ventes_de_la_facture
+    for devis, _p in _ventes_de_la_facture(facture):
+        if devis is not None and devis.statut != 'accepte':
+            raise ConflitEtat(f'Le devis {devis.reference} n\'est plus accepté : la facture '
+                              f'{facture.reference} ne peut pas être restaurée.')
+    try:
+        verrouiller_emission(facture, Facture.Statut.ANNULEE)
+    except EmissionRefusee as exc:
+        raise ConflitEtat(exc.motif) from exc
+    _rejouer_effets(facture, trace, user)
+    rendre_avance_gardee(facture, avant_pk=trace.pk, user=user)
+    ancien = trace.old_value.strip()
+    facture.statut = ancien
+    facture.save(update_fields=['statut'])
+    FactureActivity.objects.create(
+        company=facture.company, facture=facture, user=user,
+        kind=FactureActivity.Kind.MODIFICATION, field='statut', field_label='Statut',
+        old_value=Facture.Statut.ANNULEE, new_value=ancien,
+        body=(f"Facture restaurée : l'avoir de contre-passation {avoir.reference} a été annulé."))
+
+
+def _rejouer_effets(facture, trace, user):
+    """AARG64 — rejoue à l'envers les effets consignés par ``annuler_facture``
+    (retenues ré-comptées, stock ressorti, réservation du chantier resoldée) ;
+    remboursement/transfert, stock manquant ou effet sans trace : 409."""
+    from core.conflit_etat import ConflitEtat
+    from apps.stock.selectors import mouvements_par_reference
+    from apps.stock.services import (
+        mouvement_type_sortie, record_stock_movement, verrouiller_produit)
+    from ..models import FactureActivity
+    from .facturation_ops import solder_reservations_chantier_vente
+    devis = facture.devis
+    ligne = FactureActivity.objects.filter(
+        facture=facture, field_label=LIBELLE_TRACE_EFFETS, pk__gt=trace.pk).order_by('pk').first()
+    if ligne is None:
+        rentre = devis is not None and mouvements_par_reference(facture.company, devis.reference).filter(
+            note=f'Retour stock — annulation facture {facture.reference}').exists()
+        if rentre or facture.retenues_subies.filter(annulee=True).exists():
+            raise ConflitEtat("Annulation antérieure au suivi de ses effets (retenues, stock) : "
+                              "restaurez la facture à la main.")
+        return
+    effets = json.loads(ligne.new_value)
+    geste = {'rembourser': 'le remboursement', 'transferer': 'le transfert'}.get(effets['directive'])
+    if geste:
+        raise ConflitEtat(f"Défaites d'abord {geste} de l'acompte fait à l'annulation de "
+                          f"{facture.reference} avant d'annuler l'avoir.")
+    facture.retenues_subies.filter(pk__in=effets['retenues']).update(annulee=False)
+    sorties = {}
+    for pid, qte in sorted((int(k), v) for k, v in effets['stock'].items()):
+        produit = verrouiller_produit(pid)
+        if produit.quantite_stock < qte:
+            raise ConflitEtat(f'Stock insuffisant pour ressortir {qte} × {produit.nom} : '
+                              'la facture ne peut pas être restaurée.')
+        record_stock_movement(
+            company=facture.company, produit=produit, type_mouvement=mouvement_type_sortie(),
+            quantite=qte, quantite_avant=produit.quantite_stock,
+            quantite_apres=produit.quantite_stock - qte, reference=devis.reference,
+            note=f'Sortie — restauration facture {facture.reference}', created_by=user)
+        sorties[pid] = qte
+    solder_reservations_chantier_vente(devis=devis, company=facture.company, sorties=sorties,
+                                       reference=devis.reference if devis else '', user=user)
+
+
 def _refuser_si_argent(locked, net_acompte):
     """AFAC12 — sans directive, une facture qui porte de l'argent est
     refusée (400 ``directive_acompte_requise``)."""
@@ -417,8 +491,8 @@ def _retourner_stock_de_la_vente(locked, statut_avant, user):
             Facture.objects.filter(devis=devis).exclude(pk=locked.pk)
             .exclude(statut__in=(Facture.Statut.BROUILLON,
                                  Facture.Statut.ANNULEE)).exists()):
-        return
-    net = {}
+        return {}
+    net, rentre = {}, {}
     for row in (mouvements_par_reference(locked.company, devis.reference)
                 .order_by().values('produit_id', 'type_mouvement')
                 .annotate(t=Sum('quantite'))):
@@ -436,6 +510,8 @@ def _retourner_stock_de_la_vente(locked, statut_avant, user):
                 reference=devis.reference,
                 note=f'Retour stock — annulation facture {locked.reference}',
                 created_by=user)
+            rentre[str(pid)] = qte
+    return rentre
 
 
 def annuler_facture(facture, *, user, directive=None, motif=''):
@@ -556,8 +632,18 @@ def annuler_facture(facture, *, user, directive=None, motif=''):
         from ..models import PaymentLink
         fermer_liens_paiement(facture, PaymentLink.Statut.ANNULE)
         # AARG35 — plus de retenue comptée ni d'attestation attendue.
-        locked.retenues_subies.filter(annulee=False).update(annulee=True)
-        _retourner_stock_de_la_vente(locked, statut_avant, user)
+        retenues = locked.retenues_subies.filter(annulee=False)
+        effets = {'retenues': list(retenues.values_list('pk', flat=True))}
+        retenues.update(annulee=True)
+        effets['stock'] = _retourner_stock_de_la_vente(locked, statut_avant, user)
+        effets['directive'] = acompte_action
+        # AARG64 — trace rejouée à l'envers par ``restaurer_facture``.
+        from ..models import FactureActivity
+        FactureActivity.objects.create(
+            company=locked.company, facture=locked, user=user,
+            kind=FactureActivity.Kind.MODIFICATION, field='effets',
+            field_label=LIBELLE_TRACE_EFFETS, new_value=json.dumps(effets),
+            body="Effets de l'annulation consignés (retenues, stock).")
 
     # YEVNT6 — événement documentaire (best-effort), une fois pour les
     # trois branches ci-dessus (toutes convergent vers ANNULEE).

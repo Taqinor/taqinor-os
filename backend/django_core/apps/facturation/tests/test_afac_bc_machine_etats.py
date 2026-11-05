@@ -304,3 +304,36 @@ class BcMachineEtatsTests(TestCase):
         self.assertEqual(BonCommande.objects.filter(
             devis__in=[v1, v2]).count(), 1)
         self.assertEqual(self._stock(self.panneau), stock)
+
+    def test_patch_vers_version_remplacee_refuse(self):
+        """AARG68 (C-AARG-VER5-020) — BC2 « en attente » sans devis re-pointé
+        par PATCH vers V1 remplacée : 409 `version_remplacee` (corps VNT24),
+        BC2 sans devis, stock 7 ; vers un devis actif sans BC : 200.
+        Mutant : retirer la garde ⇒ 200."""
+        from apps.ventes.models import BonCommande, Devis
+        v1 = self._devis_panneaux('3')
+        self.panneau.quantite_stock = 7
+        self.panneau.save(update_fields=['quantite_stock'])
+        v2 = Devis.objects.create(
+            company=self.company, reference=f'DEV-AFAC15-{_nxt()}',
+            client=self.client_obj, statut=Devis.Statut.ACCEPTE,
+            taux_tva=Decimal('20.00'), mode_installation='residentiel')
+        Devis.objects.filter(pk=v1.pk).update(is_active=False,
+                                              superseded_by=v2)
+        self._bc(v2, statut='livre')
+        bc2 = BonCommande.objects.create(
+            company=self.company, reference=f'BC-AFAC15-{_nxt()}',
+            client=self.client_obj, statut='en_attente')
+        url = f'/api/django/ventes/bons-commande/{bc2.id}/'
+        r = self.api.patch(url, {'devis': v1.id}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual(r.data['code'], 'version_remplacee')
+        self.assertEqual(r.data['successeur'],
+                         {'id': v2.id, 'reference': v2.reference})
+        # CLAUSE PERSISTANCE — relu en base.
+        bc2.refresh_from_db()
+        self.assertIsNone(bc2.devis_id)
+        self.assertEqual(self._stock(self.panneau), 7)
+        actif = self._devis_panneaux('1')
+        r = self.api.patch(url, {'devis': actif.id}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)

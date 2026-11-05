@@ -13,6 +13,7 @@ from rest_framework.response import Response
 from authentication.permissions import IsResponsableOrAdmin
 from ..gardes_lecture import LectureFactures  # ERR-ASEC11-LISTE-FACTURES
 from . import openapi_docs as D
+from .. import openapi_shapes as SH
 from ..models import RelanceLog
 from ..serializers import EmailLogSerializer
 from ..serializers_facturation import (
@@ -25,7 +26,7 @@ class FactureRecouvrementActionsMixin:
     """Le suivi d'une créance : relances, journaux et historique."""
 
     @extend_schema(request=RelancerFactureSerializer,
-                   responses=D.FactureRelancee)
+                   responses={200: D.FactureRelancee, 502: SH.DetailResponse})  # AARG69
     @action(detail=True, methods=['post'], url_path='relancer',
             permission_classes=[IsResponsableOrAdmin])
     def relancer(self, request, pk=None):
@@ -85,10 +86,6 @@ class FactureRecouvrementActionsMixin:
             lvl, _tous = prochain_niveau(facture)
             niveau = lvl.ordre if lvl is not None else None
         niveau_nom = lvl.nom if lvl is not None else ''
-        RelanceLog.objects.create(
-            company=facture.company, facture=facture,
-            niveau=niveau or None, niveau_nom=niveau_nom, note=note,
-            created_by=request.user)
         # AUD129 — envoi d'email en OPT-IN explicite (défaut : ne rien envoyer).
         # NO-OP réseau sans clé configurée.
         email_log_id = None
@@ -101,6 +98,13 @@ class FactureRecouvrementActionsMixin:
                 message=(note or (lvl.message if lvl is not None else '')),
                 user=request.user, attach_pdf=True)  # AARG62
             email_log_id = email_log.id
+            from ..scheduled import _email_parti
+            if not _email_parti(email_log):  # AARG69 : niveau non consommé
+                return Response({'detail': "L'e-mail de relance n'est pas parti : aucune relance consignée.",
+                                 'email_log_id': email_log_id}, status=status.HTTP_502_BAD_GATEWAY)
+        RelanceLog.objects.create(
+            company=facture.company, facture=facture, niveau=niveau or None,
+            niveau_nom=niveau_nom, note=note, created_by=request.user)
         # Prochaine relance proposée si fournie, sinon laissée telle quelle.
         prochaine = donnees.get('prochaine_relance')
         if prochaine:

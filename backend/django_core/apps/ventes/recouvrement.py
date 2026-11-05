@@ -20,6 +20,7 @@ from authentication.permissions import (
     IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
 
+from .gardes_lecture import LectureFactures
 from .models import (
     Facture, FollowupLevel, Paiement, ParametrageRelanceClient,
     PromessePaiement,
@@ -453,7 +454,7 @@ def _facture_due_rows(user):
     parameters=[qstr('mes_relances', desc='1/true : seulement mes relances.')],
     responses=SH.RelancesListResponse)
 @api_view(['GET'])
-@permission_classes([IsAnyRole])
+@permission_classes([LectureFactures])
 def relances_list(request):
     """Impayés à relancer : factures dues, jours de retard, niveau courant.
 
@@ -537,7 +538,7 @@ def relances_list(request):
 
 @extend_schema(responses=SH.BalanceAgeeResponse)
 @api_view(['GET'])
-@permission_classes([IsAnyRole])
+@permission_classes([LectureFactures])
 def balance_agee(request):
     """Balance âgée : encours par client, bucketé 0–30/31–60/61–90/90+ jours."""
     from .selectors import comportement_paiement
@@ -744,7 +745,7 @@ def _releve_data(client, user=None):
 @extend_schema(responses={200: SH.ReleveClientResponse,
                           404: SH.DetailResponse})
 @api_view(['GET'])
-@permission_classes([IsAnyRole])
+@permission_classes([LectureFactures])
 def client_releve(request, client_id):
     client = _scope(client_base_qs(), request.user).filter(
         pk=client_id).first()
@@ -757,7 +758,7 @@ def client_releve(request, client_id):
 @extend_schema(responses={200: SH.ScoreComportementResponse,
                           404: SH.DetailResponse})
 @api_view(['GET'])
-@permission_classes([IsAnyRole])
+@permission_classes([LectureFactures])
 def client_score_comportement(request, client_id):
     """XFAC15 — badge de comportement de paiement d'un client (fiche client).
 
@@ -776,7 +777,7 @@ def client_score_comportement(request, client_id):
                           404: SH.DetailResponse,
                           500: SH.DetailResponse})
 @api_view(['GET'])
-@permission_classes([IsAnyRole])
+@permission_classes([LectureFactures])
 def client_releve_pdf(request, client_id):
     client = _scope(client_base_qs(), request.user).filter(
         pk=client_id).first()
@@ -807,7 +808,7 @@ def client_releve_pdf(request, client_id):
                           409: SH.DetailResponse,
                           500: SH.DetailResponse})
 @api_view(['GET'])
-@permission_classes([IsAnyRole])
+@permission_classes([LectureFactures])
 def lettre_relance_pdf(request, facture_id):
     # AFAC54 (C-AFAC-048) — portée de `FactureViewSet` (créée par soi /
     # l'équipe) : hors portée = 404, indistinct d'un id inexistant.
@@ -879,7 +880,6 @@ class PromessePaiementViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):  # AARG12 — module Ventes
-            from .gardes_lecture import LectureFactures
             return [LectureFactures()]
         # AARG7 (D-ASEC-VER-1) — une promesse suspend la relance : geste
         # d'argent, la garde ``encaisser`` (ASEC29) s'ajoute au palier.

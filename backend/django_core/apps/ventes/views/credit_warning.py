@@ -16,7 +16,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework import status
 
-from authentication.permissions import IsAnyRole
+from ..gardes_lecture import LectureFactures
 from core.selectors import get_company_object
 
 
@@ -31,7 +31,7 @@ _MONTANT_TTC = re.compile(MONTANT_TTC_OU_VIDE)
     'montant_ttc', OpenApiTypes.STR, OpenApiParameter.QUERY, required=False,
     pattern=MONTANT_TTC_OU_VIDE)], responses=D.CreditWarningResponse)
 @api_view(['GET'])
-@permission_classes([IsAnyRole])
+@permission_classes([LectureFactures])  # AARG66
 def client_credit_warning(request, client_id):
     """GET /ventes/clients/<client_id>/credit-warning/
 

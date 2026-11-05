@@ -424,3 +424,53 @@ class GestesArgentTests(TestCase):
             r = api.get(f'{base}{mienne.id}/')
             with self.subTest(role=nom, url='fiche'):
                 self.assertEqual(r.status_code, 200, getattr(r, 'data', None))
+
+    def _lectures_bornees(self, urls_json, urls_autres):
+        """Admin RH : 403 (texte LectureFactures) sur chaque URL ; Commercial et
+        Directeur : 200 sur les lectures JSON, jamais 403 sur les autres (PDF
+        à rendu dépendant de l'environnement)."""
+        rh = self._api(self.users['Admin RH'])
+        for url in urls_json + urls_autres:
+            with self.subTest(role='Admin RH', url=url):
+                r = rh.get(url)
+                self.assertEqual(r.status_code, 403, getattr(r, 'data', None))
+                self.assertEqual(
+                    str(r.data['detail']),
+                    'Accès aux factures réservé aux rôles du module Ventes.')
+        for nom in AUTORISES:
+            api = self._api(self.users[nom])
+            for url in urls_json:
+                with self.subTest(role=nom, url=url):
+                    r = api.get(url)
+                    self.assertEqual(r.status_code, 200,
+                                     getattr(r, 'data', None))
+            for url in urls_autres:
+                with self.subTest(role=nom, url=url):
+                    self.assertNotEqual(api.get(url).status_code, 403)
+
+    def test_lectures_recouvrement_bornees_au_module_ventes(self):
+        """AARG65 (C-AARG-VER5-011) — relances, balance âgée, relevé client
+        (JSON, PDF), lettre de relance PDF et score de comportement : 403 pour
+        Admin RH, comme la liste des factures ; Commercial/Directeur lisent.
+        Mutant : remettre ``IsAnyRole`` sur une vue ⇒ échec."""
+        facture = self._facture(self.users['Commercial'])
+        base = '/api/django/ventes/'
+        client = self.client_obj.id
+        self._lectures_bornees(
+            [base + 'relances/', base + 'balance-agee/',
+             f'{base}clients/{client}/releve/',
+             f'{base}clients/{client}/score-comportement/'],
+            [f'{base}clients/{client}/releve-pdf/',
+             f'{base}factures/{facture.id}/lettre-relance-pdf/'])
+
+    def test_lectures_annexes_bornees_au_module_ventes(self):
+        """AARG66 (C-AARG-VER5-003) — lignes de facture, prévision de
+        trésorerie, alerte d'encours client, lettre de relance premium : 403
+        pour Admin RH ; Commercial/Directeur lisent.
+        Mutant : remettre ``IsAnyRole`` sur une vue ⇒ échec."""
+        facture = self._facture(self.users['Commercial'])
+        base = '/api/django/ventes/'
+        self._lectures_bornees(
+            [base + 'factures-lignes/', base + 'insights/cash-flow/',
+             f'{base}clients/{self.client_obj.id}/credit-warning/'],
+            [f'{base}factures/{facture.id}/lettre-relance-premium/'])

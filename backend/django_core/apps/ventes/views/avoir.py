@@ -196,8 +196,7 @@ class AvoirViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
                                     status=status.HTTP_400_BAD_REQUEST)
             trace = self._trace_contre_passation(avoir)
             if trace is not None:
-                facture = Facture.objects.select_for_update().get(
-                    pk=avoir.facture_id)
+                facture = Facture.objects.get(pk=avoir.facture_id, company_id=avoir.company_id)
                 ancien = (trace.old_value or '').strip()
                 if not ancien or ancien == Facture.Statut.ANNULEE:
                     return Response(
@@ -209,24 +208,11 @@ class AvoirViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
                         )},
                         status=status.HTTP_400_BAD_REQUEST)
                 if facture.statut == Facture.Statut.ANNULEE:
-                    # AARG2 — l'argent gardé en avance revient d'abord ; le
-                    # statut final se dérive du reste dû (recalcul ci-dessous).
-                    from ..domain.annulation_facture import rendre_avance_gardee
-                    rendre_avance_gardee(
-                        facture, avant_pk=trace.pk, user=request.user)
-                    facture.statut = ancien
-                    facture.save(update_fields=['statut'])
-                    from ..models import FactureActivity
-                    FactureActivity.objects.create(
-                        company=facture.company, facture=facture,
-                        user=request.user,
-                        kind=FactureActivity.Kind.MODIFICATION,
-                        field='statut', field_label='Statut',
-                        old_value=Facture.Statut.ANNULEE, new_value=ancien,
-                        body=(f"Facture restaurée : l'avoir de "
-                              f"contre-passation {avoir.reference} a été "
-                              f"annulé."),
-                    )
+                    # AARG63 — LA porte : vente verrouillée, refacturée ou
+                    # devis non accepté ⇒ 409 ; AARG2 : l'avance revient.
+                    from ..domain.annulation_facture import restaurer_facture
+                    restaurer_facture(facture, avoir=avoir, trace=trace,
+                                      user=request.user)
             # AARG59 — le trop-perçu parti en avance revient à la facture (409
             # si l'avance a servi), avant tout événement.
             from ..domain.encaissements import (

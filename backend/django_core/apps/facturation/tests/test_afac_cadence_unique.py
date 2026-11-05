@@ -80,7 +80,7 @@ class CadenceUniqueTests(TestCase):
 
     def test_relance_manuelle_joint_le_pdf(self):
         """AARG62 (C-AARG-VER1-304) — « Relancer » avec envoi : 1 mail à pièce
-        jointe ``%PDF`` ; PDF impossible : 0 mail, EmailLog en échec.
+        jointe ``%PDF`` ; PDF impossible : 0 mail, EmailLog en échec, 502 (AARG69).
         Mutant : retirer ``attach_pdf`` ⇒ 0 pièce jointe."""
         from unittest.mock import patch
 
@@ -107,11 +107,13 @@ class CadenceUniqueTests(TestCase):
             r = self.api.post(f'{BASE}{panne.id}/relancer/',
                               {'niveau': self.niveaux[0].ordre,
                                'envoyer_email': True}, format='json')
-        self.assertEqual(r.status_code, 200, r.data)
+        # AARG69 — mail non parti ⇒ 502, aucune relance consignée.
+        self.assertEqual(r.status_code, 502, r.data)
         self.assertEqual(len(mail.outbox), 1)
         log = EmailLog.objects.get(facture=panne)
         self.assertEqual(log.statut, EmailLog.Statut.ECHEC)
         self.assertEqual(r.data['email_log_id'], log.id)
+        self.assertEqual(RelanceLog.objects.filter(facture=panne).count(), 0)
 
     def test_relance_automatique_joint_le_pdf(self):
         """AARG58 (C-AARG-019) — le mail du beat part avec la facture en pièce
