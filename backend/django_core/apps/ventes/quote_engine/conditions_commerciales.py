@@ -208,6 +208,20 @@ def repartition_paiement(total, termes, tranches_montant=None) -> dict:
     return cases
 
 
+def cases_imprimees(data, branche, devis, avertissements):
+    """AMOT19 / AGNR66 — les cases de la branche imprimée ; au niveau 12, une
+    tranche coupée par la borne ERR76 (``bornees``) est DITE au vendeur dans
+    ``avertissements`` (liste interne du builder, jamais publique)."""
+    from apps.ventes.domain.regles_calcul import (
+        REGLES_ECARTS_0411, regles_au_moins)
+    cases = data["montants_tranches"].get(branche) or {}
+    if cases.get("bornees") and regles_au_moins(devis, REGLES_ECARTS_0411):
+        avertissements.append(
+            "échéancier au-delà du TTC : " + ", ".join(cases["bornees"])
+            + " borné(s) au reste — corrigez l'échéancier")
+    return cases
+
+
 def branche_echeancier(devis, data, branche_hier, option_choisie):
     """AMOT122 (C-AMOT-VER4-007, D-AMOT-VER4-1) — LA branche d'échéancier d'un
     devis résidentiel à deux options, au niveau 12 : celle d'``option_effective``

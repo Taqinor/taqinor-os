@@ -162,6 +162,18 @@ def _etendus_courants(produit, champs):
                                if n in gardes}
 
 
+def _toucher_et_instantane(devis, user):
+    """PVSYNC — par devis resynchronisé (extrait d'AGNR64, C20)."""
+    from apps.ventes.domain.historique_config import instantane_de_geste
+    from apps.ventes.domain.verrou_devis import toucher
+    # QJR545 — la ligne est sauvée en ``update_fields`` : le jeton
+    # d'édition du devis (``updated_at``) avance explicitement, sinon
+    # un vendeur ouvert avant la resynchro l'écraserait sans le savoir.
+    toucher(devis)
+    # QJR550 — UN instantané par devis resynchronisé.
+    instantane_de_geste(devis, user=user)
+
+
 def rebaser_ou_signaler_echeancier(devis, *, user=None):
     """AGNR64 — resynchronisation SANS réponse HTTP (catalogue, conception) :
     l'échéancier est re-basé au nouveau TTC (``rebaser_echeancier``, AGNR63) ;
@@ -384,15 +396,8 @@ def resynchroniser_devis_pour_produit(*, produit, company, champs, user=None):
                 forfait=forfait if drapeaux['forfait'] else None,
                 user=user)
 
-        from apps.ventes.domain.historique_config import instantane_de_geste
-        from apps.ventes.domain.verrou_devis import toucher
         for devis in touches.values():
-            # QJR545 — la ligne est sauvée en ``update_fields`` : le jeton
-            # d'édition du devis (``updated_at``) avance explicitement, sinon
-            # un vendeur ouvert avant la resynchro l'écraserait sans le savoir.
-            toucher(devis)
-            # QJR550 — UN instantané par devis resynchronisé.
-            instantane_de_geste(devis, user=user)
+            _toucher_et_instantane(devis, user)
             log_devis_resynchronisation(
                 devis, produit=produit, modifications=modifications, user=user)
             rebaser_ou_signaler_echeancier(devis, user=user)  # AGNR64
