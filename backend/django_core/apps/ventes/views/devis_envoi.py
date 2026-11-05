@@ -196,7 +196,9 @@ def _pdf_partage_fichier(devis):
     from ..quote_engine import generate_premium_devis_pdf
     from ..utils.filenames import document_filename
     from ..utils.pdf import download_pdf
+    from ..domain.envoi import exiger_contact_permis
 
+    exiger_contact_permis(devis)  # ACVI102 — aucun lien ni PDF pour un opposé
     opts = _options_piece_jointe(devis, '', ShareLink.for_devis(devis).token)
     try:
         octets = download_pdf(generate_premium_devis_pdf(devis.id, opts, persist=False))

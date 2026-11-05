@@ -292,6 +292,16 @@ def figer_clauses_devis(devis):
     return True
 
 
+def exiger_contact_permis(devis):
+    """ACVI102 (D-ACVI-7 = refus 409, D-ACVI-10) — aucun geste d'envoi d'un
+    devis dont le lead est ``ne_plus_contacter`` : 409 ``MOTIF_CONTACT_REFUSE``
+    (la règle de ``apps.crm.selectors.peut_contacter``)."""
+    from apps.crm.selectors import MOTIF_CONTACT_REFUSE, peut_contacter
+    from core.conflit_etat import ConflitEtat
+    if not peut_contacter(devis):
+        raise ConflitEtat(MOTIF_CONTACT_REFUSE)
+
+
 def mark_devis_sent(*, devis, user=None):
     """U4 — flip a Devis to « envoyé » through the ONE status-change path.
 
@@ -320,6 +330,7 @@ def mark_devis_sent(*, devis, user=None):
     from apps.ventes import activity
     from core.events import devis_sent
 
+    exiger_contact_permis(devis)  # ACVI102 — avant le statut : envoyé compris
     # Already sent (or beyond): never re-stamp, never downgrade. Only a live
     # brouillon advances — accepté/refusé/expiré are terminal-or-further and
     # must stay put (the guard the test pins).
