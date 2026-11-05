@@ -248,7 +248,7 @@ class AnnulerRendezVousServiceTests(_Base):
             f'/api/django/visites/visites/{visite.pk}/terminer/', {},
             format='json')
 
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('statut', resp.data['erreurs'])
         self.lead.refresh_from_db()
         self.assertFalse(self.lead.visite_effectuee)

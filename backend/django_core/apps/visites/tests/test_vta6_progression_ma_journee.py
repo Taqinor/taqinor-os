@@ -227,7 +227,7 @@ class ProgressionTerrainTests(VtaBase):
         reponse = auth(self.terrain).post(
             f'/api/django/visites/visites/{visite.id}/demarrer-route/', {},
             format='json')
-        self.assertEqual(reponse.status_code, 400, reponse.status_code)
+        self.assertEqual(reponse.status_code, 409, reponse.status_code)
         self.assertIn('statut', reponse.data['erreurs'])
 
 
