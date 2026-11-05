@@ -1,0 +1,6 @@
+== C-AMOT-VER4-010 (sha c38868a62)
+attendu : même ligne onduleur (15 000 HT) : PDF provision 18 000 ; carte Éco/Max provision None si rôle onduleur_offgrid (18 000 si onduleur_hybride) ; palier d'échelle 90 000 / 6 500 : payback plus court en offgrid qu'en hybride (provision oubliée)
+observé : {'is_inverter': True, 'is_offgrid_inverter': True, 'pdf_provision': 18000.0, 'carte_provision_offgrid': 18000.0, 'carte_provision_hybride': 18000.0, 'carte_payback_offgrid': 17.3, 'carte_payback_hybride': 17.3, 'palier_payback_offgrid': 17.3, 'palier_payback_hybride': 17.3, 'pdf_roi_a_definition': 17.3}
+{"repro": false, "is_inverter": true, "is_offgrid_inverter": true, "pdf_provision": 18000.0, "carte_provision_offgrid": 18000.0, "carte_provision_hybride": 18000.0, "carte_payback_offgrid": 17.3, "carte_payback_hybride": 17.3, "palier_payback_offgrid": 17.3, "palier_payback_hybride": 17.3, "pdf_roi_a_definition": 17.3}
+verdict : ÉCART
+base inchangée : oui (avant 7173, après 7173) ; mails 0 ; tâches Celery bloquées 0
