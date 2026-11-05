@@ -66,16 +66,23 @@ def _sans_commentaires(texte: str) -> str:
     return re.sub(r"(?m)(?<![:'\"`])//.*$", "", texte)
 
 
-def _bloc_snapshot(lignes: list) -> set:
-    """Indices de lignes du bloc `draftSnapshot` (de sa déclaration à la
-    fermeture `])` de son tableau de dépendances)."""
-    debut = next((i for i, l in enumerate(lignes) if re.search(r"\bconst\s+draftSnapshot\b", l)), None)
+def _bloc(lignes: list, ouverture: str, fermeture: str) -> set:
+    """Indices de lignes de la 1re ligne qui matche `ouverture` à la première
+    qui matche `fermeture` (fin de fichier à défaut)."""
+    debut = next((i for i, l in enumerate(lignes) if re.search(ouverture, l)), None)
     if debut is None:
         return set()
-    for fin in range(debut, len(lignes)):
-        if re.match(r"\s*\]\)", lignes[fin]):
-            return set(range(debut, fin + 1))
-    return set(range(debut, len(lignes)))
+    fin = next((j for j in range(debut, len(lignes)) if re.match(fermeture, lignes[j])), len(lignes) - 1)
+    return set(range(debut, fin + 1))
+
+
+def _bloc_snapshot(lignes: list) -> set:
+    """Indices de lignes NEUTRES de l'instantané : le bloc `draftSnapshot` (de
+    sa déclaration à la fermeture `])` de ses dépendances) et, depuis SPL54,
+    les arguments de l'appel `useBrouillonEcran({...})` (AGNR72 : même règle,
+    l'instantané vit dans ce hook)."""
+    return (_bloc(lignes, r"\bconst\s+draftSnapshot\b", r"\s*\]\)")
+            | _bloc(lignes, r"\buseBrouillonEcran\(", r"\s*\}\)"))
 
 
 def etats_sans_consommateur(source: str) -> dict:
@@ -122,6 +129,8 @@ def _fichiers(root: Path) -> list:
     dossier = base / DOSSIER_GENERATOR
     if dossier.is_dir():
         sortie += [p for p in sorted(dossier.glob("*.jsx")) if ".test." not in p.name]
+        # AGNR72 — les hooks extraits (SPL54) déclarent eux aussi des états.
+        sortie += [p for p in sorted((dossier / "hooks").glob("*.js")) if ".test." not in p.name]
     return sortie
 
 
