@@ -4,6 +4,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction, IntegrityError
 from django.db.models import Count, Q
 from django.http import HttpResponse
@@ -39,7 +40,8 @@ from apps.records.champs_stricts import RegexStricte
 
 from . import activity
 from .champs_corps import (
-    CORPS_PIECE_RETIREE, QuantitePositive, TexteSansSubstitut, refus_stock_en_conflit,
+    CORPS_PIECE_RETIREE, QuantitePositive, TexteSansSubstitut, erreurs_nombres_lignes,
+    refus_stock_en_conflit,
 )
 from .validations_releve import date_du_corps, datetime_du_corps, exiger_objet
 from .models import (
@@ -2725,11 +2727,10 @@ class TicketViewSet(CompanyScopedModelViewSet):
 
     @staticmethod
     def _produits_lignes_hors_societe(company, lignes):
-        """ASEC35 — résout dans la société du ticket chaque ``produit_id``
-        reçu par ``creer-devis`` AVANT le domaine ventes (via le sélecteur
-        stock borné société). Renvoie ``{index: {'produit_id': [msg]}}`` —
-        un produit d'une autre société et un id inexistant reçoivent la MÊME
-        réponse (aucun oracle d'existence) ; ``{}`` si tout est valide."""
+        """ASEC35/ASEC80 — résout dans la société chaque ``produit_id`` de ``creer-devis``
+        AVANT le domaine ventes (sélecteur stock borné société) et contrôle quantité / prix.
+        Renvoie ``{index: {champ: [msg]}}`` — un produit d'une autre société et un id
+        inexistant reçoivent la MÊME réponse (aucun oracle) ; ``{}`` si tout est valide."""
         from apps.stock.selectors import valid_produit_ids
 
         message = "Produit introuvable pour votre société."
@@ -2751,7 +2752,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         for i, pid in a_verifier.items():
             if pid not in valides:
                 erreurs[i] = {'produit_id': [message]}
-        return erreurs
+        return erreurs_nombres_lignes(lignes, erreurs)
 
     @extend_schema(
         request=_sch('SavCreerDevisRequete', {
@@ -2819,8 +2820,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 company=ticket.company, user=request.user,
                 client_id=client_id, lignes=lignes,
                 note=f'Devis de réparation SAV — ticket {ticket.reference}')
-        except Exception:
-            logging.getLogger(__name__).warning("sav.creer_devis : exception ignorée", exc_info=True)
+        except ObjectDoesNotExist:  # ASEC80 — seul le client inconnu est un 404
             return Response(
                 {'detail': 'Client introuvable pour votre société.'},
                 status=status.HTTP_404_NOT_FOUND)
