@@ -817,7 +817,12 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
     @extend_schema(responses={(200, 'image/png'): OpenApiTypes.BINARY})
     @action(detail=True, methods=['get'], url_path='photo-toit')
     def photo_toit(self, request, pk=None):
-        """Sert l'image assemblée par le proxy Django (jamais MinIO direct)."""
+        """Sert l'image assemblée par le proxy Django (jamais MinIO direct).
+
+        ENF47 (api-fuzz-full 42017839549) — visite d'une autre société ou
+        absente : 404 (``get_object``) ; visite de la société SANS image (ou
+        objet manquant) : 409, son état s'y oppose (même règle que
+        ``devis/{id}/roof-image/fichier``) — c'était un 404 « introuvable »."""
         from django.http import HttpResponse
 
         from apps.records.storage import fetch_attachment
@@ -826,10 +831,10 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         if not visite.photo_toit_key:
             return _erreur('photo_toit', "Aucune image de toit assemblée pour "
                                          'cette visite.',
-                           status.HTTP_404_NOT_FOUND)
+                           status.HTTP_409_CONFLICT)
         data, message = fetch_attachment(visite.photo_toit_key)
         if message:
-            return _erreur('photo_toit', message, status.HTTP_404_NOT_FOUND)
+            return _erreur('photo_toit', message, status.HTTP_409_CONFLICT)
         return HttpResponse(data, content_type='image/png')
 
     @extend_schema(request=CalageSerializer, responses=_VISITE_CONTEXTE,
