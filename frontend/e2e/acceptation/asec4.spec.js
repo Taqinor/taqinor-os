@@ -9,7 +9,7 @@ import { groupe } from './_oracles.js'
 import { py, MDP_ESSAI, fermerDjangoApresTout } from './_django.js'
 import { lireJson, connexionApi, assurerSessionPage, telephoneMobileUnique } from '../helpers.js'
 
-const etape = groupe('ASEC', ['ASEC66', 'ASEC67', 'ASEC68', 'ASEC69', 'ASEC70', 'ASEC71', 'ASEC72', 'ASEC74', 'ASEC75', 'ASEC76', 'ASEC79', 'ASEC80', 'ASEC81', 'ASEC84'])
+const etape = groupe('ASEC', ['ASEC66', 'ASEC67', 'ASEC68', 'ASEC69', 'ASEC70', 'ASEC71', 'ASEC72', 'ASEC74', 'ASEC75', 'ASEC76', 'ASEC79', 'ASEC80', 'ASEC81', 'ASEC84', 'ASEC77', 'ASEC78'])
 fermerDjangoApresTout()
 const API = '/api/django'
 const T = { timeout: 120_000 }
@@ -460,4 +460,96 @@ sortie(DocumentActivity.objects.filter(document_id=${doc.id}, message__icontains
   expect(await py(`from apps.ged.models import ChaineApprobationGed
 sortie(ChaineApprobationGed.objects.filter(demande__document_id=${autre.id}).count())`), 'sans chaîne : aucune créée').toBe(0)
   for (const y of [a1, a2]) await y.ctx.dispose()
+})
+
+/** Document GED avec une version PDF + partage (protégé si `password`). */
+async function partageGed(r, m, password = null) {
+  const GED = `${API}/ged`
+  const cab = await lireJson(await r.post(`${GED}/cabinets/`, { ...T, data: { nom: `Cab ASEC77 ${m}` } }), 'cabinet')
+  const dos = await lireJson(await r.post(`${GED}/dossiers/`, { ...T, data: { nom: `Dos ASEC77 ${m}`, cabinet: cab.id } }), 'dossier')
+  const doc = await lireJson(await r.post(`${GED}/documents/`, { ...T, data: { nom: `Plan ASEC77 ${m}`, folder: dos.id } }), 'document')
+  await lireJson(await r.post(`${GED}/documents/${doc.id}/nouvelle-version/`, { ...T, multipart: { file: { name: 'plan.pdf', mimeType: 'application/pdf', buffer: PDF(1) } } }), 'version')
+  const p = await lireJson(await r.post(`${GED}/partages/`, { ...T, data: password ? { document: doc.id, password } : { document: doc.id } }), 'partage')
+  return { doc, partage: p, token: p.public_url.split('/').filter(Boolean).pop() }
+}
+/** Navigation privée (aucun cookie) observée par les oracles. */
+async function pagePrivee(page, suivi, testInfo) {
+  const ctx = await page.context().browser().newContext({ baseURL: testInfo.project.use.baseURL, storageState: { cookies: [], origins: [] }, serviceWorkers: 'block' })
+  return { ctx, p: suivi.surveiller(await ctx.newPage()) }
+}
+const PUBLIC = /\/api\/django\/ged\/public\//
+
+etape('V4.77', ['ASEC77'], async ({ page, suivi, testInfo }) => {
+  const r = page.request
+  const m = marque()
+  const MDP = 'Partage-Acc-2026!'
+  const { partage, token } = await partageGed(r, m, MDP)
+  // Échecs DÉCLARÉS : 403 du GET initial (protégé) et du mauvais mot de passe / du gel, 404 du jeton inconnu.
+  for (const s of [403, 404, 410, 429]) suivi.attendre(PUBLIC, s)
+  const { ctx, p } = await pagePrivee(page, suivi, testInfo)
+  await p.goto(`/ged/partage/${token}`)
+  const mdp = p.getByLabel('Mot de passe')
+  await expect(mdp, 'formulaire de mot de passe').toBeVisible({ timeout: 60_000 })
+  const bouton = p.getByRole('button', { name: /Ouvrir le document/ })
+  // Mauvais mot de passe : le message du serveur.
+  await mdp.fill('faux-mot-de-passe')
+  const [faux] = await Promise.all([p.waitForResponse((x) => PUBLIC.test(x.url()) && x.request().method() === 'POST'), bouton.click()])
+  expect(faux.status(), 'mauvais mot de passe refusé').toBe(403)
+  const corpsFaux = await faux.json()
+  await expect(p.locator('p.page-error[role=alert]'), 'message du serveur').toContainText(String(corpsFaux.detail || '').slice(0, 30))
+  // Après le gel (tenu par le serveur) : « Trop d'essais, réessayez plus tard. », même avec le bon mot de passe.
+  await py(`from apps.ged.models import PartageGed
+PartageGed.objects.filter(pk=${partage.id}).update(gele_jusqua=timezone.now() + datetime.timedelta(minutes=15))
+sortie(1)`)
+  await mdp.fill(MDP)
+  await expect(bouton, 'ré-essai permis après le délai client').toBeEnabled({ timeout: 15_000 })
+  await bouton.click()
+  await expect(p.locator('p.page-error[role=alert]')).toContainText("Trop d'essais, réessayez plus tard.", { timeout: 30_000 })
+  await py(`from apps.ged.models import PartageGed
+PartageGed.objects.filter(pk=${partage.id}).update(gele_jusqua=None, echecs_mdp=0)
+sortie(1)`)
+  // Bon mot de passe : POST JSON {password} (jamais dans l'adresse), PDF servi et ouvert.
+  await expect(bouton).toBeEnabled({ timeout: 15_000 })
+  const [bon] = await Promise.all([p.waitForResponse((x) => PUBLIC.test(x.url()) && x.request().method() === 'POST'), bouton.click()])
+  expect(bon.status(), 'bon mot de passe : 200').toBe(200)
+  expect(bon.headers()['content-type'], 'PDF servi').toContain('application/pdf')
+  expect(bon.request().postDataJSON(), 'mot de passe dans le corps').toEqual({ password: MDP })
+  expect(bon.url(), 'jamais dans l\'adresse').not.toContain(MDP)
+  expect((await bon.body()).subarray(0, 5).toString(), 'octets PDF').toBe('%PDF-')
+  await expect.poll(() => p.url().startsWith('blob:') || p.getByText("Le document s'ouvre").count().then((n) => n > 0).catch(() => false), { timeout: 30_000, message: 'le PDF s\'ouvre' }).toBeTruthy()
+  // Sans mot de passe : GET direct ; jeton inconnu : message honnête.
+  const libre = await partageGed(r, `${m}l`)
+  const p2 = suivi.surveiller(await ctx.newPage())
+  const [direct] = await Promise.all([p2.waitForResponse((x) => PUBLIC.test(x.url())), p2.goto(`/ged/partage/${libre.token}`)])
+  expect([direct.request().method(), direct.status()], 'partage libre : GET direct 200').toEqual(['GET', 200])
+  const p3 = suivi.surveiller(await ctx.newPage())
+  await p3.goto('/ged/partage/jeton-inconnu-asec77')
+  await expect(p3.locator('p.page-error[role=alert]'), 'jeton inconnu : message honnête').toBeVisible({ timeout: 60_000 })
+  await ctx.close()
+})
+
+etape('V4.78', ['ASEC78'], async ({ page, suivi, testInfo }) => {
+  const r = page.request
+  const m = marque()
+  const MDP = 'Partage-Acc-2026!'
+  const { doc, partage, token } = await partageGed(r, m, MDP)
+  expect(partage.public_url, 'public_url = page publique').toBe(`/ged/partage/${token}`)
+  const relu = await lireJson(await r.get(`${API}/ged/partages/${partage.id}/`, T), 'partage relu')
+  expect(relu.public_url, 'relu : même public_url').toBe(partage.public_url)
+  const entete = await r.get(`${API}/ged/public/${token}/`, { ...T, headers: { 'X-Partage-Password': MDP } })
+  expect(entete.status(), 'GET API avec en-tête : 200').toBe(200)
+  // Écran des partages ⇒ lien affiché ⇒ formulaire ⇒ PDF.
+  await page.goto('/ged/retention')
+  await page.getByRole('tab', { name: 'Partages' }).click()
+  const ligne = page.getByRole('row').filter({ hasText: doc.nom })
+  await expect(ligne, 'partage listé').toBeVisible({ timeout: 60_000 })
+  const lien = await ligne.locator('span.font-mono').getAttribute('title')
+  expect(lien, 'lien affiché = page publique').toBe(`/ged/partage/${token}`)
+  suivi.attendre(PUBLIC, 403)
+  const { ctx, p } = await pagePrivee(page, suivi, testInfo)
+  await p.goto(lien)
+  await p.getByLabel('Mot de passe').fill(MDP)
+  const [bon] = await Promise.all([p.waitForResponse((x) => PUBLIC.test(x.url()) && x.request().method() === 'POST'), p.getByRole('button', { name: /Ouvrir le document/ }).click()])
+  expect([bon.status(), bon.headers()['content-type']], 'PDF servi').toEqual([200, 'application/pdf'])
+  await ctx.close()
 })
