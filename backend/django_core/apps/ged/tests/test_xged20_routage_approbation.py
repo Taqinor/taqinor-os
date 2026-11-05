@@ -116,6 +116,39 @@ class ChaineSequentielleTests(XGed20Base):
         self.assertEqual(demande.statut, APPROBATION_APPROUVE)
         self.assertEqual(doc.statut, LIFECYCLE_APPROUVE)
 
+    def test_nouvelle_version_reprend_la_chaine_a_l_etape_1(self):
+        """ASEC84 (C-ASEC-VER4-020) — une nouvelle version pendant la revue
+        remet la chaîne à l'étape 1 : l'approbation d'étape 1 donnée sur la
+        v1 ne compte plus pour la v2 (étape courante 0, approbateur d'étape
+        1, demande en attente, journal). Mutant : retirer la remise ⇒ échec."""
+        from apps.ged.models import APPROBATION_EN_ATTENTE, DocumentActivity
+        RegleApprobationGed.objects.create(
+            company=self.co_a, libelle='2 niveaux',
+            condition_group={'field': 'nom', 'operator': 'eq', 'value': 'Contrat'},
+            approbateurs=[self.approbateur1.pk, self.approbateur2.pk])
+        doc = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Contrat')
+
+        def version(n):
+            services.add_version(doc, file_key=f'ged/{self.co_a.pk}/v{n}.pdf',
+                                 company=self.co_a, filename=f'v{n}.pdf',
+                                 uploaded_by=self.admin_a)
+        version(1)
+        demande = services.request_review_avec_routage(doc, user=self.admin_a)
+        services.avancer_chaine_approbation_ged(demande, user=self.approbateur1)
+        chaine = ChaineApprobationGed.objects.get(demande=demande)
+        self.assertEqual(chaine.etape_courante, 1)
+        version(2)
+        chaine.refresh_from_db()
+        demande.refresh_from_db()
+        self.assertEqual(chaine.etape_courante, 0)
+        self.assertEqual([e['statut'] for e in chaine.etapes],
+                         ['en_cours', 'en_attente'])
+        self.assertEqual(demande.approbateur_id, self.approbateur1.pk)
+        self.assertEqual(demande.statut, APPROBATION_EN_ATTENTE)
+        self.assertTrue(DocumentActivity.objects.filter(
+            document=doc, message__icontains='reprise à l').exists())
+
     def test_sans_regle_comportement_ged18_inchange(self):
         doc = Document.objects.create(
             company=self.co_a, folder=self.folder_a, nom='Sans règle')

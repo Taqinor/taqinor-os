@@ -62,3 +62,9 @@ test('VX25 : MonthGrid gère la navigation mois + « Aujourd\'hui »', () => {
 test('VX25 : plus aucun btn/bouton pré-design-system (btn btn-light) dans CalendarPage', () => {
   assert.doesNotMatch(CALENDAR_PAGE, /className="btn btn-light"/)
 })
+
+test("ASEC83 : CalendarPage régénère le lien d'abonnement par regenererCalendarSubscription", () => {
+  assert.match(CALENDAR_PAGE, /reportingApi\.regenererCalendarSubscription\(\)[\s\S]*?setSubUrl\(/)
+  assert.match(CALENDAR_PAGE, /onClick=\{regenererSub\}[\s\S]*?Régénérer le lien/)
+  assert.doesNotMatch(CALENDAR_PAGE, /window\.confirm/)
+})

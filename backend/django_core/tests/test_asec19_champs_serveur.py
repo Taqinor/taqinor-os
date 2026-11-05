@@ -280,8 +280,10 @@ class ChampsServeurTests(TestCase):
                 r = self._api_pour(objet).patch(
                     self.urls[objet].format(instance.pk), {champ: valeur},
                     format='json')
+                # 409 = refus d'état (ASEC69 : demande décidée figée) — un
+                # refus, comme 400 ; la garde réelle est « valeur inchangée ».
                 self.assertIn(
-                    r.status_code, (200, 400),
+                    r.status_code, (200, 400, 409),
                     f'{entree["modele"]}.{champ} : PATCH → '
                     f'{r.status_code} {getattr(r, "data", "")}')
                 instance.refresh_from_db()

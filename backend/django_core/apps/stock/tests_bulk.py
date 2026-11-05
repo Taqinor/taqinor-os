@@ -122,3 +122,30 @@ class TestBulkExportAndScope(ProductBulkBase):
         self.assertEqual(resp.data['total'], 0)
         foreign.refresh_from_db()
         self.assertEqual(foreign.prix_vente, Decimal('500'))
+
+    def test_exports_exigent_stock_export(self):
+        """ASEC70 (C-ASEC-VER4-040, D-ASEC-VER4-1) — un rôle personnalisé
+        ``stock_voir`` seul : 403 ``droit_manquant`` aux exports Excel des
+        produits ET des mouvements, aucun job d'export ; le même rôle avec
+        ``stock_export`` exporte. Mutant : retirer une garde ⇒ échec."""
+        from apps.roles.models import Role
+        from core.models import BackgroundJob
+        p = self.mk(nom='Panneau')
+        lecteur = Role.objects.create(company=self.company, nom='Lecteur stock',
+                                      permissions=['stock_voir'])
+        user = User.objects.create_user(
+            username='pb_lecteur', password='x', role_legacy='normal',
+            role=lecteur, company=self.company)
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+        jobs = BackgroundJob.objects.count()
+        for url, corps in (('/api/django/stock/produits/export-xlsx/', {'ids': [p.id]}),
+                           ('/api/django/stock/mouvements/export-xlsx/', {})):
+            resp = api.post(url, corps, format='json')
+            self.assertEqual(resp.status_code, 403, (url, resp.content))
+            self.assertEqual(resp.json()['code'], 'droit_manquant', url)
+        self.assertEqual(BackgroundJob.objects.count(), jobs)
+        lecteur.permissions = ['stock_voir', 'stock_export']
+        lecteur.save(update_fields=['permissions'])
+        resp = api.post('/api/django/stock/produits/export-xlsx/', {'ids': [p.id]}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)

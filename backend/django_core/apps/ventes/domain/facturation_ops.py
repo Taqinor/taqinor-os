@@ -122,10 +122,15 @@ def emettre_facture(facture, *, user=None, source='', exiger_lignes=False,
         raise EmissionRefusee(
             'La facture doit contenir au moins une ligne.')
     verifier_ice_client_entreprise(facture)
-    from apps.ventes.vente_facturation import motif_emission_hors_prix
-    if (motif := motif_emission_hors_prix(facture)):  # VNT20 : 1 vente, 1 fois
-        raise EmissionRefusee(motif, etat=True)
+    from .facturation_vente import verrouiller_emission
+    with transaction.atomic():  # ATOT58 — vente verrouillée de la borne à ÉMISE
+        verrouiller_emission(facture, statut)
+        return _poser_emise(facture, user=user, source=source,
+                            verifier_credit=verifier_credit, statut=statut)
 
+
+def _poser_emise(facture, *, user, source, verifier_credit, statut):
+    from apps.ventes.models import Facture
     if verifier_credit and facture.client_id:
         from apps.ventes.domain.recouvrement import verifier_credit_hold
         verifier_credit_hold(

@@ -40,3 +40,11 @@ test('QX26 : le bouton « Refuser » de la ligne ouvre la modale (openRefusModal
   assert.doesNotMatch(SRC, /onClick=\{\(\) => handleRefuser\(d\)\}/)
   assert.match(SRC, /onClick=\{\(\) => openRefusModal\(d\)\}/)
 })
+
+test('ADEV119 : motifs archivés exclus de la modale', () => {
+  // C-ADEV-VER4-030 — `motif_refus_valide` n'accepte qu'un motif ACTIF : un
+  // motif archivé listé produisait un 409. Même forme que PerduPopover.jsx.
+  const body = SRC.slice(SRC.indexOf('const openRefusModal = (d) =>'),
+    SRC.indexOf('const closeRefusModal'))
+  assert.match(body, /setMotifsPerte\(\(Array\.isArray\(rows\).*\.filter\(\(m\) => !m\.archived\)\)/)
+})

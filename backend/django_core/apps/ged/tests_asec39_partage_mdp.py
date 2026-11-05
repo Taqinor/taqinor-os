@@ -82,3 +82,21 @@ class PartageMotDePasseTests(TestCase):
             gele_jusqua=timezone.now() - timedelta(minutes=1))
         r = self._get(MDP, ip='10.2.0.1')
         self.assertEqual(r.status_code, 200, r.content)
+
+    def test_public_url_pointe_la_page_publique(self):
+        """ASEC78 (C-ASEC-VER4-041) — le ``public_url`` d'un partage protégé
+        créé par l'API est la page publique ``/ged/partage/<token>`` (relue à
+        l'identique) ; l'API brute sert toujours le PDF avec l'en-tête.
+        Mutant : rendre l'URL d'API ⇒ échec."""
+        api = APIClient()
+        api.force_authenticate(self.admin)
+        r = api.post('/api/django/ged/partages/',
+                     {'document': self.doc.pk, 'password': MDP}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        token = r.data['token']
+        self.assertEqual(r.data['public_url'], f'/ged/partage/{token}')
+        relu = api.get(f'/api/django/ged/partages/{r.data["id"]}/')
+        self.assertEqual(relu.data['public_url'], f'/ged/partage/{token}')
+        brut = APIClient().get(f'/api/django/ged/public/{token}/',
+                               HTTP_X_PARTAGE_PASSWORD=MDP)
+        self.assertEqual(brut.status_code, 200)

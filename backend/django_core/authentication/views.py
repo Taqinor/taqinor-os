@@ -1164,14 +1164,12 @@ class UserViewSet(viewsets.ModelViewSet):
     def _refus_rang(self, target):
         """ASEC2 — 403 ``rang_cible`` si l'acteur ne peut pas gérer ``target``
         (palier supérieur, protégé, dernier propriétaire). None sinon."""
-        from .role_tiers import peut_gerer
+        from .role_tiers import MESSAGES_REFUS_GESTION, peut_gerer
         ok, code = peut_gerer(self.request.user, target)
         if ok:
             return None
         return Response(
-            {'detail': "Vous ne pouvez pas gérer ce compte : son rang est "
-                       "supérieur au vôtre ou il est protégé.",
-             'code': code},
+            {'detail': MESSAGES_REFUS_GESTION[code], 'code': code},
             status=status.HTTP_403_FORBIDDEN,
         )
 

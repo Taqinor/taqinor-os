@@ -7,7 +7,10 @@
 // une version remplacée ni quand le serveur dit `prochaine_action: 'aucune'`.
 // VNT78 — « Prix négocié » (dialogue VNT73) suivant `vente.peut.prix_negocie` ;
 // le succès relit le lead, qui sert alors la V2 acceptée.
+// ATOT60 — « Confirmer l'avoir » suivant `vente.peut.confirmer_avoir_revision` ;
+// le montant est dans `raison_bloquee` (serveur), jamais calculé ici.
 import { useState } from 'react'
+import ventesApi from '../../../api/ventesApi'
 import { Button } from '../../../ui'
 import BilanVente from './BilanVente'
 import LigneFactureVente from './LigneFactureVente'
@@ -32,6 +35,7 @@ export default function PanneauVente({ devis, onRafraichir, avecFacturer = true 
   const vente = useVenteMemorisee(devis)
   const [facturer, setFacturer] = useState(false)
   const [prixOuvert, setPrixOuvert] = useState(false)
+  const [avoir, setAvoir] = useState({ enCours: false, erreur: '' })
   if (!vente) return null
   const remplacee = vente.est_tete === false
   const tete = remplacee ? (vente.versions || []).find((v) => v.id === vente.tete_id) : null
@@ -44,6 +48,17 @@ export default function PanneauVente({ devis, onRafraichir, avecFacturer = true 
   const solde = ouvert && peutFacturerSolde(d)
   // VNT78 (D-VNT-2) — tête acceptée active seulement (jamais une version remplacée).
   const prix = !remplacee && peutVente(d, 'prix_negocie')
+  const confirmer = !remplacee && peutVente(d, 'confirmer_avoir_revision')
+  const confirmerAvoir = async () => {
+    setAvoir({ enCours: true, erreur: '' })
+    try {
+      await ventesApi.confirmerAvoirRevision(devis.id)
+      setAvoir({ enCours: false, erreur: '' })
+      onRafraichir?.()
+    } catch (e) {
+      setAvoir({ enCours: false, erreur: e?.response?.data?.detail || "L'avoir n'a pas pu être confirmé." })
+    }
+  }
   return (
     <section
       // VNT81 — une colonne, aucun débordement horizontal au téléphone.
@@ -67,7 +82,7 @@ export default function PanneauVente({ devis, onRafraichir, avecFacturer = true 
           ))}
         </ul>
       )}
-      {(acompte || solde || prix) && (
+      {(acompte || solde || prix || confirmer) && (
         <div className="flex flex-wrap gap-2">
           {acompte && (
             <Button type="button" size="sm" className={CIBLE_TACTILE} onClick={() => setFacturer(true)}>
@@ -84,8 +99,15 @@ export default function PanneauVente({ devis, onRafraichir, avecFacturer = true 
               Prix négocié
             </Button>
           )}
+          {confirmer && (
+            <Button type="button" size="sm" variant="outline" className={CIBLE_TACTILE}
+              disabled={avoir.enCours} onClick={confirmerAvoir}>
+              Confirmer l&apos;avoir
+            </Button>
+          )}
         </div>
       )}
+      {avoir.erreur && <p role="alert" className="text-sm text-destructive">{avoir.erreur}</p>}
       <FacturerVenteDialog
         devis={facturer ? devis : null}
         onOpenChange={(o) => { if (!o) setFacturer(false) }}

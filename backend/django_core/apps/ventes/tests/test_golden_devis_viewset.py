@@ -51,8 +51,9 @@ FIXTURE = Path(__file__).resolve().parent / 'fixtures' / \
 #: ``facturer`` (VNT31, « Facturer la vente », GET aperçu + POST) +
 #: ``prix-negocie`` et ``avenant/demander-signature`` (VNT60) +
 #: ``echeancier`` (VNT66, PUT) + ``prolonger-validite`` (CADV82, POST) +
-#: ``overrides/<chemin>`` (ENF11, DELETE sorti de la collection).
-NB_ROUTES = 65
+#: ``overrides/<chemin>`` (ENF11, DELETE sorti de la collection) +
+#: ``confirmer-avoir-revision`` (ATOT62, POST).
+NB_ROUTES = 66
 MIXIN = re.compile(r'^Devis\w*ActionsMixin$')
 
 #: Les symboles que chaque tâche de la piste déplace (texte des tâches

@@ -27,6 +27,7 @@ vi.mock('../../../api/ventesApi', () => ({
     emettreFacture: vi.fn(),
     genererPdfFacture: vi.fn(),
     telechargerPdfFacture: vi.fn(),
+    confirmerAvoirRevision: vi.fn(),
   },
 }))
 vi.mock('../../../ui/Toaster', async (importOriginal) => ({
@@ -333,5 +334,49 @@ describe('VNT81 — panneau de vente au téléphone (matchMedia)', () => {
     expect(within(ligne).queryByRole('button', { name: /Autres actions/ })).toBeNull()
     expect(within(ligne).getByRole('button', { name: 'PDF' })).toBeInTheDocument()
     expect(within(ligne).getByRole('button', { name: 'WhatsApp' })).toBeInTheDocument()
+  })
+})
+
+// ATOT60 — « Confirmer l'avoir » : ouvert par `vente.peut.confirmer_avoir_revision`
+// SEUL (variante committée `exemple_avoir_a_confirmer`, ATOT59) ; le clic poste
+// `confirmer-avoir-revision` (ATOT62) puis relit ; un 409 affiche son `detail`.
+describe('ATOT60 — avoir de révision à confirmer', () => {
+  const monterPanneau = async (variante, onRafraichir = vi.fn()) => {
+    const { exempleContrat } = await import('../../../test/fixtures/contractSamples.js')
+    const { default: PanneauVente } = await import('./PanneauVente')
+    const vente = exempleContrat('ventes', 'vente_etat', variante).vente
+    render(<PanneauVente devis={{ ...DEVIS, vente }} onRafraichir={onRafraichir} />)
+    return { vente, onRafraichir }
+  }
+
+  it('le bouton poste puis relit', async () => {
+    const user = userEvent.setup()
+    const reponse = documentContrat('ventes', 'devis_confirmer_avoir_revision').reponse_200
+    ventesApi.confirmerAvoirRevision.mockResolvedValue({ data: reponse })
+    const { vente, onRafraichir } = await monterPanneau('exemple_avoir_a_confirmer')
+    expect(screen.getByText(vente.raison_bloquee)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Confirmer l.avoir/ }))
+    await waitFor(() => expect(onRafraichir).toHaveBeenCalledTimes(1))
+    expect(ventesApi.confirmerAvoirRevision).toHaveBeenCalledTimes(1)
+    expect(ventesApi.confirmerAvoirRevision).toHaveBeenCalledWith(DEVIS.id)
+  })
+
+  it('un 409 affiche son detail sous le bouton, sans relire', async () => {
+    const user = userEvent.setup()
+    const refus = documentContrat('ventes', 'devis_confirmer_avoir_revision')
+      .erreurs_409.aucun_avoir_a_confirmer
+    ventesApi.confirmerAvoirRevision.mockRejectedValue({ response: { status: 409, data: refus } })
+    const { onRafraichir } = await monterPanneau('exemple_avoir_a_confirmer')
+    await user.click(screen.getByRole('button', { name: /Confirmer l.avoir/ }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(refus.detail)
+    expect(onRafraichir).not.toHaveBeenCalled()
+  })
+
+  it('drapeau faux ou version remplacée : aucun bouton', async () => {
+    await monterPanneau('exemple_tout_facture')
+    expect(screen.queryByRole('button', { name: /Confirmer l.avoir/ })).toBeNull()
+    cleanup()
+    await monterPanneau('exemple_version_remplacee')
+    expect(screen.queryByRole('button', { name: /Confirmer l.avoir/ })).toBeNull()
   })
 })

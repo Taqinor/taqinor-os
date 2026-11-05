@@ -101,3 +101,32 @@ class NumerotationConfigureeTests(TestCase):
     def test_sans_prefixe_dev_inchange(self):
         devis = self._chemins()['ticket']()
         self.assertTrue(devis.reference.startswith('DEV-'), devis.reference)
+
+    def test_ticket_quantite_invalide_aucun_devis_cree(self):
+        """ASEC79 (C-ASEC-VER4-021) — une quantité « abc » lève une
+        ``ValueError`` nommant la ligne et le champ AVANT ``create_numbered`` :
+        aucun devis, aucun numéro consommé ; des lignes valides créent devis
+        et lignes. Mutant : contrôle après la création ⇒ échec."""
+        from apps.stock.models import Produit
+        produit = Produit.objects.create(
+            company=self.company, nom='Onduleur ASEC79', sku='ASEC79-P',
+            prix_vente=Decimal('10'), quantite_stock=0)
+        avant = Devis.objects.filter(company=self.company).count()
+        for champ, valeur in (('quantite', 'abc'), ('quantite', '-1'),
+                              ('prix_unitaire', 'NaN')):
+            ligne = {'produit_id': produit.pk, 'quantite': '1',
+                     'prix_unitaire': '10', champ: valeur}
+            with self.subTest(champ=champ, valeur=valeur):
+                with self.assertRaisesMessage(ValueError, f'Ligne 0 : {champ}'):
+                    create_devis_pour_ticket(
+                        company=self.company, user=self.user,
+                        client_id=self.client_obj.pk, lignes=[ligne])
+                self.assertEqual(
+                    Devis.objects.filter(company=self.company).count(), avant)
+        devis = create_devis_pour_ticket(
+            company=self.company, user=self.user,
+            client_id=self.client_obj.pk,
+            lignes=[{'produit_id': produit.pk, 'quantite': '2',
+                     'prix_unitaire': '10'}])
+        self.assertTrue(devis.reference.endswith('0001'), devis.reference)
+        self.assertEqual(devis.lignes.count(), 1)

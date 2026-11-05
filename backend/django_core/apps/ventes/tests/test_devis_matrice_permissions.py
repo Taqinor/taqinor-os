@@ -42,7 +42,10 @@ PALIER_VENTE = ('IsAdminOrResponsableTier', 'IsResponsableOrAdmin')
 FIGEE = {
     # Actions standard du ModelViewSet (non décorées).
     'list': LECTURE, 'retrieve': LECTURE,
-    'create': RESP, 'update': RESP, 'partial_update': RESP,
+    # ASEC74 / ASEC71 — la grille « Créer » / « Modifier » en plus du palier.
+    'create': (RESP, 'DroitDeLaGrille_ventes_creer'),
+    'update': (RESP, 'DroitDeLaGrille_ventes_modifier'),
+    'partial_update': (RESP, 'DroitDeLaGrille_ventes_modifier'),
     # ASEC50 / D-ASEC-4 — le palier admin ET le code ``ventes_supprimer``.
     'destroy': ('IsAdminRole', 'DroitDeLaGrille_ventes_supprimer'),
     # Seule @action sans ``permission_classes`` déclaré.
@@ -101,6 +104,8 @@ FIGEE = {
     'avenant_demander_signature': PALIER_VENTE,
     # VNT66 — réécrire l'échéancier d'une vente : même palier.
     'echeancier_vente': PALIER_VENTE,
+    # ATOT62 — confirmer l'avoir de révision en attente : même palier.
+    'confirmer_avoir_revision': PALIER_VENTE,
     # CADV82 — l'appel J28 prolonge la validité d'un envoyé (écriture).
     'prolonger_validite': RESP,
 }
@@ -231,3 +236,51 @@ class MatricePermissionsDevis(TestCase):
             username='advs23_sans_role', password='x', role_legacy='normal',
             company=self.company))
         self.assertEqual(api.get('/api/django/ventes/devis/').status_code, 200)
+
+    def test_patch_exige_ventes_modifier(self):
+        """ASEC71 (C-ASEC-VER4-040, D-ASEC-4) — un rôle = Commercial du
+        registre SANS ``ventes_modifier`` reçoit 403 ``droit_manquant`` au
+        PATCH d'un devis, note inchangée ; le Commercial du registre (porte
+        le code) : 200. Mutant : retirer ``DroitDeLaGrille`` ⇒ échec."""
+        client = Client.objects.create(company=self.company, nom='ASEC71')
+        prive = self._compte('Commercial sans modifier', [
+            c for c in registre.COMMERCIAL_PERMISSIONS
+            if c != 'ventes_modifier'])
+        commercial = self._compte('Commercial', registre.COMMERCIAL_PERMISSIONS)
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-ASEC71-1', client=client,
+            statut=Devis.Statut.BROUILLON, created_by=prive, note='Origine')
+        url = '/api/django/ventes/devis/%s/' % devis.pk
+        api = APIClient()
+        api.force_authenticate(prive)
+        r = api.patch(url, {'note': 'Pirate'}, format='json')
+        self.assertEqual(r.status_code, 403, r.data)
+        self.assertEqual(r.data.get('code'), 'droit_manquant', r.data)
+        devis.refresh_from_db()
+        self.assertEqual(devis.note, 'Origine')
+        Devis.objects.filter(pk=devis.pk).update(created_by=commercial)
+        api.force_authenticate(commercial)
+        r = api.patch(url, {'note': 'Revue'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+
+    def test_creation_exige_ventes_creer(self):
+        """ASEC74 (C-ASEC-VER4-040) — un rôle = Commercial du registre SANS
+        ``ventes_creer`` reçoit 403 ``droit_manquant`` à ``POST
+        /ventes/devis/``, aucun devis créé ; le Commercial du registre : 201.
+        Mutant : retirer la garde ⇒ échec."""
+        client = Client.objects.create(company=self.company, nom='ASEC74')
+        prive = self._compte('Commercial sans creer', [
+            c for c in registre.COMMERCIAL_PERMISSIONS if c != 'ventes_creer'])
+        commercial = self._compte('Commercial', registre.COMMERCIAL_PERMISSIONS)
+        corps = {'client': client.pk, 'taux_tva': '20'}
+        api = APIClient()
+        api.force_authenticate(prive)
+        avant = Devis.objects.filter(company=self.company).count()
+        r = api.post('/api/django/ventes/devis/', corps, format='json')
+        self.assertEqual(r.status_code, 403, r.data)
+        self.assertEqual(r.data.get('code'), 'droit_manquant', r.data)
+        self.assertEqual(Devis.objects.filter(company=self.company).count(),
+                         avant)
+        api.force_authenticate(commercial)
+        r = api.post('/api/django/ventes/devis/', corps, format='json')
+        self.assertEqual(r.status_code, 201, r.data)

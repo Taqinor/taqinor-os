@@ -183,7 +183,8 @@ class LectureChantierTechnicienInterventionTests(TestCase):
     def test_aucune_ecriture_elargie(self):
         r = self._api(self.b).patch(
             self.URL.format(self.inst.id), {'notes': 'b'}, format='json')
-        self.assertEqual(r.status_code, 404)
+        # ASEC75 — sans ``installation_gerer`` : refusé avant la portée (403).
+        self.assertEqual(r.status_code, 403)
         r = self._api(self.b).post(SYNC, {'ops': [{
             'client_op_id': str(uuid.uuid4()),
             'op_type': 'chantier.cocher_checklist',
