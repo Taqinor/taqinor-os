@@ -196,7 +196,7 @@ class AvoirViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
                                     status=status.HTTP_400_BAD_REQUEST)
             trace = self._trace_contre_passation(avoir)
             if trace is not None:
-                facture = Facture.objects.get(pk=avoir.facture_id)
+                facture = Facture.objects.get(pk=avoir.facture_id, company_id=avoir.company_id)
                 ancien = (trace.old_value or '').strip()
                 if not ancien or ancien == Facture.Statut.ANNULEE:
                     return Response(
