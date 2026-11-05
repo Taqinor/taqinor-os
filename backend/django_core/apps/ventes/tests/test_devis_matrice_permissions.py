@@ -42,8 +42,8 @@ PALIER_VENTE = ('IsAdminOrResponsableTier', 'IsResponsableOrAdmin')
 FIGEE = {
     # Actions standard du ModelViewSet (non décorées).
     'list': LECTURE, 'retrieve': LECTURE,
-    'create': RESP,
-    # ASEC71 — la grille « Modifier » (``ventes_modifier``) en plus du palier.
+    # ASEC74 / ASEC71 — la grille « Créer » / « Modifier » en plus du palier.
+    'create': (RESP, 'DroitDeLaGrille_ventes_creer'),
     'update': (RESP, 'DroitDeLaGrille_ventes_modifier'),
     'partial_update': (RESP, 'DroitDeLaGrille_ventes_modifier'),
     # ASEC50 / D-ASEC-4 — le palier admin ET le code ``ventes_supprimer``.
@@ -260,3 +260,25 @@ class MatricePermissionsDevis(TestCase):
         api.force_authenticate(commercial)
         r = api.patch(url, {'note': 'Revue'}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
+
+    def test_creation_exige_ventes_creer(self):
+        """ASEC74 (C-ASEC-VER4-040) — un rôle = Commercial du registre SANS
+        ``ventes_creer`` reçoit 403 ``droit_manquant`` à ``POST
+        /ventes/devis/``, aucun devis créé ; le Commercial du registre : 201.
+        Mutant : retirer la garde ⇒ échec."""
+        client = Client.objects.create(company=self.company, nom='ASEC74')
+        prive = self._compte('Commercial sans creer', [
+            c for c in registre.COMMERCIAL_PERMISSIONS if c != 'ventes_creer'])
+        commercial = self._compte('Commercial', registre.COMMERCIAL_PERMISSIONS)
+        corps = {'client': client.pk, 'taux_tva': '20'}
+        api = APIClient()
+        api.force_authenticate(prive)
+        avant = Devis.objects.filter(company=self.company).count()
+        r = api.post('/api/django/ventes/devis/', corps, format='json')
+        self.assertEqual(r.status_code, 403, r.data)
+        self.assertEqual(r.data.get('code'), 'droit_manquant', r.data)
+        self.assertEqual(Devis.objects.filter(company=self.company).count(),
+                         avant)
+        api.force_authenticate(commercial)
+        r = api.post('/api/django/ventes/devis/', corps, format='json')
+        self.assertEqual(r.status_code, 201, r.data)

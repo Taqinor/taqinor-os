@@ -277,10 +277,12 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
             # DANS l'action.
             return [IsAnyRole()]
         if self.action in ('create', 'update', 'partial_update'):
-            # ASEC71 — modifier un devis exige ``ventes_modifier`` (grille).
+            # ASEC71/ASEC74 — modifier / créer un devis exige ``ventes_modifier``
+            # / ``ventes_creer`` (grille).
             modifier = [DroitDeLaGrille('ventes_modifier')]
             return [IsResponsableOrAdmin()] + droits_de_la_grille(
-                self, update=modifier, partial_update=modifier)
+                self, update=modifier, partial_update=modifier,
+                create=[DroitDeLaGrille('ventes_creer')])
         if self.action == 'destroy':
             # ASEC50 / D-ASEC-4 — supprimer un devis exige ``ventes_supprimer``
             # en plus du palier administrateur.
