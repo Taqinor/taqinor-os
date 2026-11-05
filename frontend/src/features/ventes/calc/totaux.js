@@ -261,11 +261,12 @@ const _foisN = (ttc, n) => (Math.round((Number(ttc) || 0) * 100) * n) / 100
 // général est la chaîne canonique de TOUTES les lignes au palier
 // ARRONDI-100 — exactement `multi_villa_totaux` (selectors.py).
 export function multiPropertyPreviewTTC(lines, {
-  nombreProprietes, discountPct, scenario, option, montee = true,
+  nombreProprietes, discountPct, scenario, option, montee = true, produits,
 } = {}) {
   const n = parseInt(nombreProprietes, 10)
   if (Number.isFinite(n) && n > 1) {
-    const { totalSans, totalAvec, totalSansBrut, totalAvecBrut } = optionTotalsTTC(lines, discountPct, { scenario, montee })
+    // AGNR71 — `produits` : lignes classées avec le catalogue, comme le rail.
+    const { totalSans, totalAvec, totalSansBrut, totalAvecBrut } = optionTotalsTTC(lines, discountPct, { scenario, produits, montee })
     const opt = option === 'avec' || option === 'sans'
       ? option : (scenario === 'Avec batterie' ? 'avec' : 'sans')
     const totalUnitaire = opt === 'avec' ? totalAvec : totalSans

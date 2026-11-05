@@ -975,9 +975,9 @@ export default function DevisGenerator({
     () => multiPropertyPreviewTTC(lines, {
       nombreProprietes: multiMode === 'multiplier' ? nombreProprietes : null,
       // ATOT24 — la chaîne du rail : scénario + option effective (celle de `kpiTotal`).
-      discountPct, scenario, option: optionArgent, montee: centaineMontee,
+      discountPct, scenario, option: optionArgent, montee: centaineMontee, produits,
     }),
-    [lines, multiMode, nombreProprietes, discountPct, scenario, optionArgent, centaineMontee],
+    [lines, multiMode, nombreProprietes, discountPct, scenario, optionArgent, centaineMontee, produits],
   )
 
   // SPL51 — dérivations d'aperçu et d'étude horaire (déplacées telles quelles dans le hook, même position : l'ordre des hooks est inchangé).
