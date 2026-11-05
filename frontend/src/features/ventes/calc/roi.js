@@ -161,7 +161,7 @@ export function computeCashflowPayback(investment, economieAnnee1, {
 // servie (`etude_horaire` borne le restitué) ; la part batterie du cashflow
 // vaut donc 0 — plus de seconde déduction. Flux année 1 = économie servie.
 // `annuel` et `rendementBatterie` restent acceptés (appelants inchangés).
-// AMOT125 — miroir de `regles_calcul.py::regles_au_moins` : niveau absent ou illisible
+// AMOT125 — règle serveur : `regles_calcul.py::regles_au_moins` : niveau absent ou illisible
 // (devis neuf) ⇒ règles courantes (vrai), sinon niveau ≥ n.
 export function reglesAuMoins(niveau, n) {
   const v = niveau == null ? NaN : parseInt(niveau, 10)
