@@ -10,7 +10,7 @@ import {
 } from '../../calc/classification.js'
 import { controlerFacturesSaisies, controlerKwhDeclare, MESSAGE_KWH_INCOHERENT } from '../../calc/tarifs.js'
 import { CATEGORIE_NON_PRECISEE } from '../../../../pages/ventes/generator/PanneauCommercial'
-import { etatVersEcritures, etudeDeCreation, serieMixte } from '../etatDevis'
+import { etatVersEcritures, etudeDeCreation, facturesHiverEte, serieMixte } from '../etatDevis'
 import ventesApi from '../../../../api/ventesApi'
 import { erreursTarifDeclare } from '../etudeMarcheBloc'
 import { toast } from '../../../../ui/confirm'
@@ -177,6 +177,9 @@ export function usePersistanceDevis(ctx) {
       const vides = mixte.filter(m => m.vide)
       e.factures = [tapes.length && nom(tapes, 'tapé'), vides.length && nom(vides, 'vide')]
         .filter(Boolean).join(', ') + ' : tapez les 12 mois ou effacez la correction'
+    } else if (modeInstallation === 'residentiel' && parseFloat(fEte) > 0 && !facturesHiverEte(fHiver, fEte)
+      && !(provenanceMois.length === 12 && provenanceMois.every(p => p === 'tapee'))) {
+      e.factures = 'Facture d\'hiver manquante : saisissez-la (l\'été seul n\'est pas enregistré).' // AGNR68
     } else if (facturesSaisies) {
       const ctl = controlerFacturesSaisies(monthly, {
         factureHiverLead: selectedLead?.facture_hiver,

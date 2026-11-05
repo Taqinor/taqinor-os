@@ -443,3 +443,18 @@ test('serie_mixte_nommee', () => {
   assert.match(hook, /serieMixte\(provenanceMois\)/)
   assert.match(hook, /tapez les 12 mois ou effacez la correction/)
 })
+
+test('ete_sans_hiver_refuse', () => {
+  // AGNR68 — été 1 200 seul : facturesHiverEte rend null (rien ne part) ;
+  // validate le refuse au lieu d'une estimation montrée puis non envoyée.
+  assert.equal(facturesHiverEte('', '1200'), null)
+  assert.deepEqual(facturesHiverEte('500', '1200'),
+    { hiver_mad: 500, ete_mad: 1200, ete_differente: true })
+  const etat = { mode: 'residentiel', lignes: [], distributeur: 'onee', monthly: Array(12).fill(0),
+    provenanceMois: Array(12).fill('derivee'), facturesSaisies: true, fHiver: '', fEte: '1200',
+    consoStockee: null }
+  assert.equal(entreesDeEtat(etat).factures_hiver_ete, undefined)
+  const hook = readFileSync(join(ICI, 'hooks/usePersistanceDevis.js'), 'utf-8')
+  assert.match(hook, /parseFloat\(fEte\) > 0 && !facturesHiverEte\(fHiver, fEte\)/)
+  assert.match(hook, /Facture d\\'hiver manquante/)
+})
