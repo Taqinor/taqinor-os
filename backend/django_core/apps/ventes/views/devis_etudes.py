@@ -376,8 +376,14 @@ class DevisEtudesActionsMixin:
         from ..domain.modifiabilite import (
             debut_de_geste_devis, fin_de_geste_devis)
         avant_geste = debut_de_geste_devis(devis, request.user)
+        from ..domain.modifiabilite import (
+            rebaser_echeancier_ou_409, ttc_du_devis)
+        ttc_avant = ttc_du_devis(devis)
         try:
-            bloc = ecrire(devis, proprietaire=ECRAN, **corps)
+            with transaction.atomic():
+                bloc = ecrire(devis, proprietaire=ECRAN, **corps)
+                # AGNR63 — option/scénario changés : TTC neuf ⇒ re-base ou 409.
+                rebaser_echeancier_ou_409(devis, ttc_avant=ttc_avant)
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -508,9 +514,15 @@ class DevisEtudesActionsMixin:
         refus = _refus_verrou(devis, request)
         if refus is not None:
             return refus
+        from ..domain.modifiabilite import (
+            rebaser_echeancier_ou_409, ttc_du_devis)
+        ttc_avant = ttc_du_devis(devis)
         try:
-            resume = appliquer_au_devis(devis, corps['cle'],
-                                        utilisateur=request.user)
+            with transaction.atomic():
+                resume = appliquer_au_devis(devis, corps['cle'],
+                                            utilisateur=request.user)
+                # AGNR63 — lignes recomposées : re-base ou 409 (rollback).
+                rebaser_echeancier_ou_409(devis, ttc_avant=ttc_avant)
         except ApplicationImpossible as erreur:
             # PAS de ``ValidationError`` ICI, ET C'EST DÉLIBÉRÉ. DRF passe le
             # detail d'une ``ValidationError`` par ``_get_error_details``, qui

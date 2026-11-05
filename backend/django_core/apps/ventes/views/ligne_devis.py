@@ -1,3 +1,4 @@
+from django.db import transaction
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework.parsers import JSONParser
 from rest_framework import viewsets
@@ -46,9 +47,24 @@ def _retarifer_forfaits(devis, comptes_avant=None):
     from ..domain.lignes import retarifer_forfaits_par_panneau
 
     try:
-        retarifer_forfaits_par_panneau(devis, comptes_avant=comptes_avant)
+        with transaction.atomic():  # AGNR63 — savepoint : l'appelant est atomique
+            retarifer_forfaits_par_panneau(devis, comptes_avant=comptes_avant)
     except Exception:  # noqa: BLE001 — best-effort, comme les études (D-ENF22-BLE001)
         logger.warning("ligne_devis._retarifer_forfaits : erreur ignorée (mode dégradé)", exc_info=True)
+
+
+def _ttc_avant(devis):
+    """AGNR63 — TTC du devis AVANT le geste de ligne (``None`` sans devis)."""
+    from ..domain.modifiabilite import ttc_du_devis
+    return ttc_du_devis(devis) if devis is not None else None
+
+
+def _retarifer_et_rebaser(devis, comptes_avant, ttc_avant):
+    """AGNR63 — sous la transaction du geste : forfaits re-tarifés PUIS
+    échéancier re-basé au nouveau TTC, ou 409 ``{echeancier}`` (rollback)."""
+    from ..domain.modifiabilite import rebaser_echeancier_ou_409
+    _retarifer_forfaits(devis, comptes_avant)
+    rebaser_echeancier_ou_409(devis, ttc_avant=ttc_avant)
 
 
 def _rafraichir(devis):
@@ -206,11 +222,15 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
         avant_geste = debut_de_geste_devis(
             serializer.validated_data.get('devis'), self.request.user)
         comptes_avant = _comptes_avant(serializer.validated_data.get('devis'))
-        self._sauver_sous_garde_t17(
-            serializer, serializer.validated_data.get('devis'))
-        # ACAL90 — une ligne de kit AJOUTÉE à la main sort du marqueur.
-        from ..domain.lignes import noter_ligne_ajoutee
-        noter_ligne_ajoutee(serializer.instance)
+        ttc_avant = _ttc_avant(serializer.validated_data.get('devis'))
+        with transaction.atomic():
+            self._sauver_sous_garde_t17(
+                serializer, serializer.validated_data.get('devis'))
+            # ACAL90 — une ligne de kit AJOUTÉE à la main sort du marqueur.
+            from ..domain.lignes import noter_ligne_ajoutee
+            noter_ligne_ajoutee(serializer.instance)
+            _retarifer_et_rebaser(serializer.instance.devis, comptes_avant,
+                                  ttc_avant)
         # CJ2b / L-1V — une ligne AJOUTÉE peut changer la puissance kWc
         # résidentielle : les QUATRE études du devis (bloc horaire,
         # dimensionnement, profils comparatifs, CONCEPTION ÉLECTRIQUE) doivent
@@ -219,7 +239,6 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
         # le graphe de la page client sans toucher au schéma unifilaire, qui
         # continuait de décrire la composition d'avant. Best-effort, ne lève
         # jamais (voir ``services.rafraichir_etudes_du_devis``).
-        _retarifer_forfaits(serializer.instance.devis, comptes_avant)
         _rafraichir(serializer.instance.devis)
         _instantane(serializer.instance.devis, self.request.user)
         fin_de_geste_devis(serializer.instance.devis, self.request.user,
@@ -236,10 +255,13 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
         avant_geste = debut_de_geste_devis(
             serializer.instance.devis, self.request.user)
         comptes_avant = _comptes_avant(serializer.instance.devis)
-        self._sauver_sous_garde_t17(serializer, serializer.instance.devis)
+        ttc_avant = _ttc_avant(serializer.instance.devis)
+        with transaction.atomic():
+            self._sauver_sous_garde_t17(serializer, serializer.instance.devis)
+            _retarifer_et_rebaser(serializer.instance.devis, comptes_avant,
+                                  ttc_avant)
         # CJ2b / L-1V — voir perform_create ci-dessus (même raison : la ligne
         # MODIFIÉE peut changer la puissance kWc).
-        _retarifer_forfaits(serializer.instance.devis, comptes_avant)
         _rafraichir(serializer.instance.devis)
         _instantane(serializer.instance.devis, self.request.user)
         fin_de_geste_devis(serializer.instance.devis, self.request.user,
@@ -254,14 +276,16 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
         devis = instance.devis
         avant_geste = debut_de_geste_devis(devis, self.request.user)
         comptes_avant = _comptes_avant(devis)
+        ttc_avant = _ttc_avant(devis)
         # ACAL90 — LE point de suppression à la main : une ligne de kit
         # retirée est mémorisée (``kit_retire``), jamais recréée par la
         # resynchro (D-ACAL-22).
         from ..domain.lignes import supprimer_ligne
-        supprimer_ligne(instance)
+        with transaction.atomic():
+            supprimer_ligne(instance)
+            _retarifer_et_rebaser(devis, comptes_avant, ttc_avant)
         # CJ2b / L-1V — voir perform_create ci-dessus (même raison : une ligne
         # RETIRÉE peut changer, voire annuler, la puissance kWc).
-        _retarifer_forfaits(devis, comptes_avant)
         _rafraichir(devis)
         _instantane(devis, self.request.user)
         fin_de_geste_devis(devis, self.request.user, avant=avant_geste,

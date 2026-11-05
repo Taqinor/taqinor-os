@@ -517,6 +517,75 @@ class ApiEcheancier(TestCase):
         self.assertIn('echeancier', reponse.data)
         self.assertEqual(Devis.objects.count(), avant + 1)
 
+    def test_ttc_baisse_rebase_ou_409(self):
+        """AGNR63 (C-AGNR-VER4-010) — un geste qui baisse le TTC SANS renvoyer
+        l'échéancier (PATCH remise, DELETE ligne, prix négocié) re-base
+        l'échéancier stocké par LA règle d'AGNR49 ou répond 409 sans écriture.
+        ROUGE AVANT : 200 et dernier jalon négatif (−2 900,20 / −1 400,30)."""
+        from unittest import mock
+
+        def _ech(acompte):
+            return [
+                {'libelle': 'Commande', 'type': 'acompte', 'unite': 'montant',
+                 'pct_or_montant': acompte},
+                {'libelle': 'Livraison', 'jalon': 'livraison_materiel',
+                 'unite': 'pct', 'pct_or_montant': 40},
+                {'libelle': 'Réception', 'jalon': 'reception_definitive',
+                 'unite': 'pct', 'pct_or_montant': 10}]
+        trop = _ech(8000)
+        Devis.objects.filter(pk=self.devis.pk).update(echeancier=trop)
+        url = f'/api/django/ventes/devis/{self.devis.id}/'
+        # (1) PATCH remise 50 : 8 500 TTC < 8 000 + 3 400 ⇒ 409, rien d'écrit.
+        reponse = self.api.patch(url, {'remise_globale': '50'}, format='json')
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertIn('echeancier', reponse.data)
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.remise_globale or 0, 0)
+        self.assertEqual(self.devis.echeancier, trop)
+        # (2) DELETE onduleur : 11 000 TTC < 8 000 + 4 400 ⇒ 409, ligne gardée.
+        onduleur = self.devis.lignes.get(designation='Onduleur 5kW')
+        reponse = self.api.delete(
+            f'/api/django/ventes/devis-lignes/{onduleur.id}/')
+        self.assertEqual(reponse.status_code, 409, getattr(reponse, 'data', ''))
+        self.assertTrue(LigneDevis.objects.filter(pk=onduleur.pk).exists())
+        # Acompte 2 000 : 200, dernière tranche = reste en MAD (8 500 − 5 400).
+        Devis.objects.filter(pk=self.devis.pk).update(echeancier=_ech(2000))
+        reponse = self.api.patch(url, {'remise_globale': '50'}, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.echeancier[-1]['unite'], UNITE_MONTANT)
+        self.assertEqual(self.devis.echeancier[-1]['pct_or_montant'], 3100.0)
+        self.assertEqual(self.devis.echeancier[:-1], _ech(2000)[:-1])
+        # Tout en % : inchangé.
+        tout_pct = [{'libelle': 'A', 'type': 'acompte', 'unite': 'pct',
+                     'pct_or_montant': 30},
+                    {'libelle': 'S', 'type': 'solde', 'unite': 'pct',
+                     'pct_or_montant': 70}]
+        Devis.objects.filter(pk=self.devis.pk).update(echeancier=tout_pct)
+        reponse = self.api.patch(url, {'remise_globale': '40'}, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.echeancier, tout_pct)
+        # (3) Prix négocié (V1 acceptée, remise 50 ⇒ V2 à 8 500) : 409, aucune V2.
+        v1 = _devis(self.company, self.client_obj, f'DEV-{MONTH}-Q21N',
+                    echeancier=trop)
+        apercu = {'_remise': Decimal('50'), 'total_ttc': '8500.00',
+                  'remise_pct': '50.00',
+                  'regularisation': {'type': 'aucune', 'montant': '0.00'}}
+        nb_devis = Devis.objects.filter(company=self.company).count()
+        with mock.patch('apps.ventes.domain.negociation.apercu_prix_negocie',
+                        return_value=apercu):
+            reponse = self.api.post(
+                f'/api/django/ventes/devis/{v1.id}/prix-negocie/',
+                {'prix_ttc': '8500', 'mode': 'appliquer'}, format='json')
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertIn('echeancier', reponse.data)
+        self.assertEqual(
+            Devis.objects.filter(company=self.company).count(), nb_devis)
+        v1.refresh_from_db()
+        self.assertTrue(v1.is_active)
+        self.assertEqual(v1.echeancier, trop)
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 4. VNT25 — LE GESTE ÉCHÉANCIER (brouillon / envoyé / ACCEPTÉ)

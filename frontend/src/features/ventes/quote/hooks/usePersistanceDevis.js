@@ -10,7 +10,7 @@ import {
 } from '../../calc/classification.js'
 import { controlerFacturesSaisies, controlerKwhDeclare, MESSAGE_KWH_INCOHERENT } from '../../calc/tarifs.js'
 import { CATEGORIE_NON_PRECISEE } from '../../../../pages/ventes/generator/PanneauCommercial'
-import { etatVersEcritures, etudeDeCreation } from '../etatDevis'
+import { etatVersEcritures, etudeDeCreation, facturesHiverEte, serieMixte } from '../etatDevis'
 import ventesApi from '../../../../api/ventesApi'
 import { erreursTarifDeclare } from '../etudeMarcheBloc'
 import { toast } from '../../../../ui/confirm'
@@ -46,6 +46,12 @@ const champsEntete = (err) => {
   }
   return Object.keys(out).length ? out : null
 }
+
+// AGNR58 / AGNR73 — les lignes sans produit (hors « prix à renseigner », qui
+// bloque) que `lignesEnvoyees` écartera : annoncées par `validate`,
+// confirmées par un second clic dans `handleSubmit`.
+const lignesEcartees = (lines) => lignesNonEnvoyees(lines).sansProduit
+  .filter(l => (l.designation || '').trim() && !/prix à renseigner/i.test(l.designation || ''))
 
 export function usePersistanceDevis(ctx) {
   const {
@@ -169,7 +175,18 @@ export function usePersistanceDevis(ctx) {
     // du compteur est REFUSÉE (le serveur la refuserait aussi, après
     // l'enregistrement des lignes) ; un écart avec la facture d'hiver du lead
     // se fait CONFIRMER une fois (second clic), jamais corrigé en silence.
-    if (facturesSaisies) {
+    // AGNR67 — série dérivée puis corrigée : jamais une conso que l'aperçu ne montre pas.
+    const mixte = serieMixte(provenanceMois)
+    if (mixte.length) {
+      const nom = (l, s) => `${l.map(m => m.mois).join(', ')} ${s}${l.length > 1 ? 's' : ''}`
+      const tapes = mixte.filter(m => !m.vide)
+      const vides = mixte.filter(m => m.vide)
+      e.factures = [tapes.length && nom(tapes, 'tapé'), vides.length && nom(vides, 'vide')]
+        .filter(Boolean).join(', ') + ' : tapez les 12 mois ou effacez la correction'
+    } else if (modeInstallation === 'residentiel' && parseFloat(fEte) > 0 && !facturesHiverEte(fHiver, fEte)
+      && !(provenanceMois.length === 12 && provenanceMois.every(p => p === 'tapee'))) {
+      e.factures = 'Facture d\'hiver manquante : saisissez-la (l\'été seul n\'est pas enregistré).' // AGNR68
+    } else if (facturesSaisies) {
       const ctl = controlerFacturesSaisies(monthly, {
         factureHiverLead: selectedLead?.facture_hiver,
         chargesFixes: baremeSociete?.chargesFixes,
@@ -205,7 +222,7 @@ export function usePersistanceDevis(ctx) {
 
     // AGNR58 — une ligne sans produit (hors « prix à renseigner », qui bloque)
     // ne disparaît plus en silence : annoncée, nommée.
-    const ecartees = e.lines ? [] : sansProduit.filter(l => (l.designation || '').trim() && !sansPrix.includes(l))
+    const ecartees = e.lines ? [] : lignesEcartees(lines)
     if (ecartees.length) {
       const noms = ecartees.map(l => l.designation.trim()).join(', ')
       w.lignes = ecartees.length === 1 ? `1 ligne sans produit ne sera pas enregistrée : ${noms}`
@@ -368,6 +385,7 @@ export function usePersistanceDevis(ctx) {
   // premier devis si la coupure est survenue APRÈS son commit), oubliée dès
   // qu'une création a réussi (la session de création est finie).
   const cleCreationRef = useRef(null)
+  const lignesEcarteesConfirmeRef = useRef(null) // AGNR73 — signature confirmée par le 2e clic
   const cleCreation = () => {
     if (!cleCreationRef.current) {
       cleCreationRef.current = globalThis.crypto?.randomUUID?.()
@@ -686,6 +704,13 @@ export function usePersistanceDevis(ctx) {
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!validate()) return
+    // AGNR73 — 1er clic : l'avertissement des lignes sans produit est affiché, rien n'est écrit ;
+    // 2e clic sur les MÊMES lignes : enregistré sans elles ; lignes changées : nouvel avertissement.
+    const signature = lignesEcartees(lines).map(l => `${l.designation.trim()}×${l.quantite}`).join('|')
+    if (signature && lignesEcarteesConfirmeRef.current !== signature) {
+      lignesEcarteesConfirmeRef.current = signature
+      return
+    }
     // EDC7 — capturé AVANT l'écriture : `editDevis` décide édition vs création.
     const enEdition = Boolean(editDevis)
     const res = await persisterDevis()

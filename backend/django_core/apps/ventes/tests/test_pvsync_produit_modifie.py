@@ -168,6 +168,51 @@ class BrouillonEtEnvoyeSuiventTests(PvSyncBase):
         devis.refresh_from_db()
         self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
 
+    def test_baisse_prix_echeancier_signale(self):
+        """AGNR64 (C-AGNR-VER4-010) — la resynchro catalogue re-base
+        l'échéancier stocké ; s'il ne tient plus dans le nouveau TTC il est
+        GARDÉ et une note « Échéancier à revoir » le dit (une seule). ROUGE
+        AVANT : aucune note, dernier jalon négatif muet."""
+        from apps.ventes.domain.catalogue_events import (
+            rebaser_ou_signaler_echeancier)
+        from apps.ventes.utils.options import option_totaux
+
+        def _ech(acompte):
+            return [
+                {'libelle': 'Commande', 'type': 'acompte', 'unite': 'montant',
+                 'pct_or_montant': acompte},
+                {'libelle': 'Livraison', 'unite': 'pct', 'pct_or_montant': 40},
+                {'libelle': 'Réception', 'unite': 'pct', 'pct_or_montant': 10}]
+        baisse = {'prix_vente': [str(ANCIEN_PRIX), '0.01']}
+        trop = self._devis(Devis.Statut.BROUILLON)
+        Devis.objects.filter(pk=trop.pk).update(echeancier=_ech(8000))
+        self._resync(champs=baisse)
+        trop.refresh_from_db()
+        self.assertEqual(self._ligne(trop).prix_unitaire, Decimal('0.01'))
+        self.assertEqual(trop.echeancier, _ech(8000))
+        notes = DevisActivity.objects.filter(
+            devis=trop, body__startswith='Échéancier à revoir')
+        self.assertEqual(notes.count(), 1)
+        self.assertIn('Reste de la dernière tranche : -', notes.first().body)
+        rebaser_ou_signaler_echeancier(trop, user=self.user)  # rejeu
+        self.assertEqual(notes.count(), 1)
+        # Acompte 2 000 : la dernière tranche devient le reste en MAD.
+        Produit.objects.filter(pk=self.produit.pk).update(
+            prix_vente=ANCIEN_PRIX)
+        tient = self._devis(Devis.Statut.BROUILLON)
+        Devis.objects.filter(pk=tient.pk).update(echeancier=_ech(2000))
+        self._resync(champs=baisse)
+        tient.refresh_from_db()
+        ttc = Decimal(str(option_totaux(tient)['ttc']))
+        derniere = tient.echeancier[-1]
+        self.assertEqual(derniere['unite'], 'montant')
+        self.assertAlmostEqual(
+            Decimal(str(derniere['pct_or_montant'])),
+            ttc - Decimal('2000') - (ttc * Decimal('0.4')).quantize(
+                Decimal('0.01')), places=2)
+        self.assertFalse(DevisActivity.objects.filter(
+            devis=tient, body__startswith='Échéancier à revoir').exists())
+
 
 class TransparenceApresEnvoiTests(PvSyncBase):
     """D-ASTK-1 (06/10/2026) : un devis DÉJÀ ENVOYÉ ne bouge plus — sa page

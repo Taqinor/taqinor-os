@@ -632,6 +632,26 @@ def montants_tranches(total_ttc, pourcentages) -> dict:
     return out
 
 
+def _bornes_au_reste(tranches, total_ttc):
+    """AGNR65 — PURE : montants d'un échéancier HORS règle bornés au reste
+    dans l'ordre des tranches (MAD à sa valeur, % du TTC, chacun ≤ reste ; la
+    dernière = reste ≥ 0) ; les % sont dérivés des montants (Σ 100, ≥ 0)."""
+    total = _q(Decimal(str(total_ttc or 0)))
+    voulus = montants_tranches(total, [
+        (i, t.get('valeur') or 0) for i, t in enumerate(tranches)])
+    montants, reste = {}, total
+    for i, t in enumerate(tranches):
+        voulu = (_q(Decimal(str(t.get('valeur') or 0)))
+                 if t.get('unite') == UNITE_MONTANT else voulus[i])
+        montants[i] = reste if i == len(tranches) - 1 else min(voulu, reste)
+        reste -= montants[i]
+    pcts = [_q(montants[i] * 100 / total) if total else Decimal('0')
+            for i in range(len(tranches))]
+    if pcts:
+        pcts[-1] = max(Decimal('0'), Decimal('100') - sum(pcts[:-1]))
+    return montants, [{'pct': p} for p in pcts]
+
+
 def jalons_paiement_devis(devis, lignes=None) -> list:
     """CIQ212 — les JALONS de paiement d'un devis, source unique que le PDF
     et /proposition imprimeront (D3) : ``[{jalon, libelle, pct, montant_ttc,
@@ -650,7 +670,7 @@ def jalons_paiement_devis(devis, lignes=None) -> list:
     (« nouveaux rendus seulement », le niveau d'AGNR52) : répartition par %.
     """
     from apps.ventes.domain.regles_calcul import (
-        REGLES_CONSO_PUBLIQUE_0111, regles_au_moins)
+        REGLES_CONSO_PUBLIQUE_0111, REGLES_ECARTS_0411, regles_au_moins)
     from apps.ventes.utils.options import option_totaux
     tranches = tranches_normalisees(devis)
     pourcentages = pourcentages_echeancier(devis, lignes=lignes)
@@ -662,7 +682,11 @@ def jalons_paiement_devis(devis, lignes=None) -> list:
             non_dernieres, reste = regle_somme_echeancier(tranches, total)
             montants = dict(enumerate(non_dernieres + [reste]))
         except EcheancierIncoherent:
-            pass  # donnée d'hier hors règle : répartition par les %
+            # AGNR65 — niveau 12 : hors règle, bornée au reste (jamais < 0).
+            if regles_au_moins(devis, REGLES_ECARTS_0411):
+                montants, pourcentages = _bornes_au_reste(tranches, total)
+                logger.warning('AGNR65 : échéancier hors règle du devis %s '
+                               'borné au reste.', getattr(devis, 'reference', ''))
     if montants is None:
         montants = montants_tranches(
             total, [(i, p['pct']) for i, p in enumerate(pourcentages)])

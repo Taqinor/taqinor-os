@@ -344,6 +344,19 @@ export function facturesHiverEte(fHiver, fEte) {
   return { hiver_mad: hiver, ete_mad: differente ? ete : null, ete_differente: differente }
 }
 
+const MOIS_LONGS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+  'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre']
+
+/** AGNR67 (D-AGNR-1 (a)) — une série DÉRIVÉE des deux factures puis
+ *  corrigée (mois tapé ou vidé) n'est ni la série dérivée ni douze mois
+ *  tapés : `entreesDeEtat` n'enverrait que hiver / été (ou rien). Rend les
+ *  mois en cause `[{ mois, vide }]`, `[]` hors série mixte. */
+export function serieMixte(provenanceMois) {
+  if (!Array.isArray(provenanceMois) || !provenanceMois.includes('derivee')) return []
+  return provenanceMois.flatMap((p, i) => (p === 'derivee' ? []
+    : [{ mois: MOIS_LONGS[i], vide: p !== 'tapee' }]))
+}
+
 /**
  * AGNR57 — LES « entrées réelles » de l'étude envoyée (un seul constructeur,
  * celui que le générateur appelle à l'enregistrement). Un état d'écran porte

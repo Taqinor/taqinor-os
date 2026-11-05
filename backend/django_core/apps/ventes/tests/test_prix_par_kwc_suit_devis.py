@@ -125,3 +125,33 @@ class PrixParKwcSuitLeDevis(TestCase):
         relu = Devis.objects.get(pk=devis.pk)
         self.assertEqual(relu.updated_at, maj)
         self.assertEqual(relu.prix_par_kwc, _attendu(relu))
+
+    def test_watts_mixtes_niveau_12(self):
+        """AGNR70 (C-AGNR-VER4-030) — Panneau 550W ×10 + Panneau 710W ×10 :
+        ``puissance_kwc_du_devis`` et l'étude horaire lisent 12,6 kWc
+        (Σ quantité × watt de chaque ligne) au niveau 12, ``prix_par_kwc`` =
+        total ÷ 12,6 ; niveau 11 : 11,0 d'hier. ROUGE AVANT : 11,0."""
+        from apps.ventes.domain.etudes import puissances_etude_horaire
+        from apps.ventes.domain.scenario import puissance_kwc_du_devis
+        devis = self._devis()
+        p550 = Produit.objects.create(
+            company=self.company, nom='Panneau 550W', sku='AGNR70-550',
+            prix_vente=Decimal('900'), quantite_stock=100)
+        LigneDevis.objects.filter(devis=devis, ordre=0).update(
+            designation='Panneau 550W', produit=p550)
+        LigneDevis.objects.create(
+            devis=devis, produit=self.panneau, designation='Panneau 710W',
+            quantite=Decimal('10'), prix_unitaire=Decimal('1000'),
+            remise=Decimal('0'), ordre=2)
+        Devis.objects.filter(pk=devis.pk).update(regles_calcul=12)
+        frais = Devis.objects.get(pk=devis.pk)
+        self.assertEqual(puissance_kwc_du_devis(frais), 12.6)
+        self.assertEqual(puissances_etude_horaire(frais), (12.6, None))
+        self._poser_kwc(devis)
+        self.assertEqual(Decimal(str(devis.etude_params['puissance_kwc'])),
+                         Decimal('12.6'))
+        self.assertEqual(devis.prix_par_kwc, _attendu(devis))
+        Devis.objects.filter(pk=devis.pk).update(regles_calcul=11)
+        hier = Devis.objects.get(pk=devis.pk)
+        self.assertEqual(puissance_kwc_du_devis(hier), 11.0)
+        self.assertEqual(puissances_etude_horaire(hier), (11.0, None))

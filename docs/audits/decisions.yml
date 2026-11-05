@@ -1949,6 +1949,16 @@ decisions:
     source: "docs/claude-memory/decisions-audit-0810.md (AGNR43)"
     taches: [AGNR43, AGNR44]
 
+  - id: D-AGNR-4
+    question: "Avis « lignes à quantité 0 » sur une ligne composée intacte de l'auto-remplissage (AGNR59) ?"
+    options:
+      - cle: a
+        texte: "Générateur : l'avis « lignes à quantité 0 » ignore une ligne composée intacte de l'auto-remplissage (décision fondateur 01/11) — une ligne mise à 0 par l'utilisateur (quantité ou prix tapé) reste annoncée ; goldens rétablis sans l'avis sur un devis vierge"
+    reponse: a
+    date: "2026-11-01"
+    source: "commit e71e17290 (message cité mot pour mot)"
+    taches: [AGNR59]
+
   - id: D-ADEV-5
     question: "Lead PERDU dont le client signe (ADEV61) ?"
     options:

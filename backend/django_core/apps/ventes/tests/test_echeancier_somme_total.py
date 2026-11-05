@@ -210,6 +210,41 @@ class AcompteImprimeEgalFactureTest(TestCase):
             {'libelle': 'Solde', 'type': 'solde', 'pct_or_montant': 10}])
         self.assertEqual(rep['acompte'], 7000.0)
 
+    def test_echeancier_hors_regle_jamais_negatif(self):
+        """AGNR65 (C-AGNR-VER4-010) — un échéancier stocké HORS règle
+        (acompte 94 % du TTC en MAD + 40 % + 10 %) : au niveau 12 les jalons
+        sont bornés au reste (acompte / reste / 0, Σ = TTC, aucun % < 0) et
+        journalisés ; niveau 11 : répartition par les % d'hier (dernier < 0).
+        ROUGE AVANT : « −34,12 % · −2 900,20 MAD » au niveau 12."""
+        from apps.ventes.models import Devis
+        from apps.ventes.tests._quote_engine_common import make_devis
+        from apps.ventes.utils.echeancier import jalons_paiement_devis
+        from apps.ventes.utils.options import option_totaux
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau mono 450W', '9', '1487.37'),
+            ('Onduleur réseau 5kW', '1', '9013.41'),
+        ], reference='DEV-AGNR65')
+        ttc = Decimal(str(option_totaux(devis)['ttc']))
+        acompte = (ttc * Decimal('0.94')).quantize(Decimal('1'))
+        Devis.objects.filter(pk=devis.pk).update(echeancier=[
+            {'libelle': 'Commande', 'type': 'acompte', 'unite': 'montant',
+             'pct_or_montant': float(acompte)},
+            {'libelle': 'Livraison', 'unite': 'pct', 'pct_or_montant': 40},
+            {'libelle': 'Réception', 'unite': 'pct', 'pct_or_montant': 10}],
+            regles_calcul=12)
+        devis.refresh_from_db()
+        with self.assertLogs('apps.ventes.utils.echeancier', 'WARNING') as log:
+            jalons = jalons_paiement_devis(devis)
+        self.assertIn('DEV-AGNR65', ''.join(log.output))
+        self.assertEqual([j['montant_ttc'] for j in jalons],
+                         [acompte, ttc - acompte, Decimal('0.00')])
+        self.assertEqual(sum(j['montant_ttc'] for j in jalons), ttc)
+        self.assertTrue(all(j['pct'] >= 0 for j in jalons))
+        Devis.objects.filter(pk=devis.pk).update(regles_calcul=11)
+        devis.refresh_from_db()
+        hier = jalons_paiement_devis(devis)
+        self.assertLess(hier[-1]['montant_ttc'], 0)
+
     def test_les_options_de_rendu_ne_portent_plus_d_acompte(self):
         from apps.ventes.quote_engine import clean_pdf_options
         opts = clean_pdf_options({'payment_mode': 'custom',

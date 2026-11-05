@@ -975,9 +975,9 @@ export default function DevisGenerator({
     () => multiPropertyPreviewTTC(lines, {
       nombreProprietes: multiMode === 'multiplier' ? nombreProprietes : null,
       // ATOT24 — la chaîne du rail : scénario + option effective (celle de `kpiTotal`).
-      discountPct, scenario, option: optionArgent, montee: centaineMontee,
+      discountPct, scenario, option: optionArgent, montee: centaineMontee, produits,
     }),
-    [lines, multiMode, nombreProprietes, discountPct, scenario, optionArgent, centaineMontee],
+    [lines, multiMode, nombreProprietes, discountPct, scenario, optionArgent, centaineMontee, produits],
   )
 
   // SPL51 — dérivations d'aperçu et d'étude horaire (déplacées telles quelles dans le hook, même position : l'ordre des hooks est inchangé).
@@ -1597,14 +1597,14 @@ export default function DevisGenerator({
   // (`apercuPompage`, AGR127) : plus de besoin FAO-56 calculé dans le
   // navigateur (le jumeau `agronomy.js` disparaît avec AGR131).
 
-  // QJR568 — prix/kWc et prix cible au kWc FACTURÉ des lignes.
-  const pkwc = prixParKwc(kpiTotal, kwpLignes)
+  // QJR568 / AGNR74 — prix/kWc et prix cible au kWc FACTURÉ de l'option affichée.
+  const pkwc = prixParKwc(kpiTotal, optionArgent === 'avec' ? kwpAvec : kwpLignes)
   const buyDetail = useMemo(() => computeBuyCostDetail(lines, produits), [lines, produits])
   const buyCost = buyDetail.cost
   const marge = buyCost != null ? Math.round(kpiTotal - buyCost) : null
 
   const applyPrixCible = () => {
-    const pct = discountForTarget(prixCible, kwpLignes, kpiTotalBrut)
+    const pct = discountForTarget(prixCible, optionArgent === 'avec' ? kwpAvec : kwpLignes, kpiTotalBrut)
     if (pct == null) return
     setDiscountPct(String(Math.max(0, pct)))
   }
