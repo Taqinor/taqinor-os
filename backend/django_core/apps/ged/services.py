@@ -363,9 +363,9 @@ def valider_extraction_ocr(validation, *, champs_corriges, user):
     document = validation.document
     # ADOC9 — jamais sur un document archivé légalement (write-once).
     assert_not_archive_legalement(document)
-    champs_corriges = sans_nul(champs_corriges)  # ENF47 : NUL imbriqué (jsonb → 500) retiré
+    # ENF47 — NUL imbriqué (jsonb → 500) retiré des corrections stockées.
     corrections = {
-        k: v for k, v in (champs_corriges or {}).items()
+        k: v for k, v in (sans_nul(champs_corriges) or {}).items()
         if k not in (SOURCE_TYPE_KEY, SOURCE_ID_KEY)}
     existant = dict(document.custom_data or {})
     data = dict(existant)
@@ -384,7 +384,7 @@ def valider_extraction_ocr(validation, *, champs_corriges, user):
     document.save(update_fields=['custom_data', 'updated_at'])
     from django.utils import timezone as _tz
     validation.valide = True
-    validation.champs_extraits = champs_corriges or validation.champs_extraits
+    validation.champs_extraits = sans_nul(champs_corriges) or validation.champs_extraits
     validation.valide_par = user
     validation.valide_le = _tz.now()
     validation.save(update_fields=[

@@ -25,6 +25,8 @@ import logging
 
 from django.db import transaction
 
+from .bornes import ecrire_facture_generee
+
 logger = logging.getLogger("apps.ventes.services")
 
 
@@ -1305,19 +1307,6 @@ def _facture_generee_sous_verrou(instance, champ):
     ).exclude(statut=Facture.Statut.ANNULEE).first()
 
 
-def _ecrire_facture_generee(creer, lignes):
-    """ENF47 — bornes vérifiées (409 hors capacité, plus de DataError 500)
-    PUIS facture provisoire + lignes : rien n'est écrit sur un refus."""
-    from ..models import LigneFacture
-    from ..utils.company_settings import create_provisoire
-    from .bornes import verifier_capacite_facture
-    verifier_capacite_facture(lignes)
-    facture = create_provisoire(creer)
-    for ligne in lignes:
-        LigneFacture.objects.create(facture=facture, **ligne)
-    return facture
-
-
 @transaction.atomic
 def generer_facture_ticket_sav(*, ticket, sous_garantie, pieces, user):
     """XFSM1 — construit une ``Facture`` BROUILLON pour un ticket SAV hors
@@ -1357,21 +1346,16 @@ def generer_facture_ticket_sav(*, ticket, sous_garantie, pieces, user):
         )
 
     suffixe_couvert = ' (couvert garantie/contrat)' if sous_garantie else ''
-    lignes = []  # ENF47 — bornées AVANT toute écriture (verifier_capacite_facture)
-
-    for piece in pieces:
-        produit = piece.produit
-        quantite = piece.quantite
-        prix_unitaire = (
-            Decimal('0') if sous_garantie
-            else Decimal(str(produit.prix_vente or 0)))
-        lignes.append(dict(
-            produit=produit,
-            designation=f'{produit.nom}{suffixe_couvert}',
-            quantite=quantite, prix_unitaire=prix_unitaire,
-            taux_tva=(produit.tva if produit.tva is not None
-                      else taux_tva_defaut),
-        ))
+    # ENF47 — lignes bornées AVANT toute écriture (bornes.ecrire_facture_generee).
+    lignes = [dict(
+        produit=piece.produit,
+        designation=f'{piece.produit.nom}{suffixe_couvert}',
+        quantite=piece.quantite,
+        prix_unitaire=(Decimal('0') if sous_garantie
+                       else Decimal(str(piece.produit.prix_vente or 0))),
+        taux_tva=(piece.produit.tva if piece.produit.tva is not None
+                  else taux_tva_defaut),
+    ) for piece in pieces]
 
     heures = ticket.heures_main_oeuvre
     if heures and heures > 0:  # ERR-ENF11 : négatives = pas de ligne (contrainte montants positifs, 500 sinon)
@@ -1394,7 +1378,7 @@ def generer_facture_ticket_sav(*, ticket, sous_garantie, pieces, user):
                 taux_tva=taux_tva_defaut,
             ))
 
-    facture = _ecrire_facture_generee(_create, lignes)
+    facture = ecrire_facture_generee(_create, lignes)
     ticket.facture_id_ext = facture.id
     ticket.save(update_fields=['facture_id_ext'])
     return facture
@@ -1455,7 +1439,7 @@ def generer_facture_intervention(*, intervention, user):
             created_by=user,
         )
 
-    lignes = []  # ENF47 — bornées AVANT toute écriture (_ecrire_facture_generee)
+    lignes = []  # ENF47 — bornées AVANT toute écriture (bornes.ecrire_facture_generee)
     consommation = getattr(intervention, 'consommation', None)
     if consommation is not None:
         for ligne in consommation.lignes.all():
@@ -1493,7 +1477,7 @@ def generer_facture_intervention(*, intervention, user):
                 taux_tva=taux_tva_defaut,
             ))
 
-    facture = _ecrire_facture_generee(_create, lignes)
+    facture = ecrire_facture_generee(_create, lignes)
     intervention.facture_id = facture.id
     intervention.save(update_fields=['facture_id'])
     logger.info(
