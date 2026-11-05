@@ -8,7 +8,8 @@
     "ACVI103",
     "ACVI110",
     "ACVI104",
-    "ACVI105"
+    "ACVI105",
+    "ACVI106"
   ],
   "couvre_avec_ecart": [],
   "etapes": [
@@ -121,6 +122,28 @@
         "10": "NA"
       },
       "notes": "API reelle (Commerciaux soi) : c2 sans cible ne liste ni le commentaire ni l activite de c1 (details 404) ; activite assignee a c2 listee, detail 200 ; c1, admin, requete a cible inchanges ; sonde VER4-011 repro False"
+    },
+    {
+      "id": "W10.ACVI106.records_perimetre_entite",
+      "taches": [
+        "ACVI106"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-05-rejeux-w10/ACVI106.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": "API reelle : role perimetre {A} ⇒ piece du lead B absente avec et sans cible, POST commentaire sur LB 404 et 0 commentaire ; lead A et lead non affecte 201/visibles ; role sans perimetre inchange"
     }
   ]
 }

@@ -1,0 +1,118 @@
+# Preuve en direct ACVI106 - pile locale, code 51b2fe77b (dev-plan-6a6fc9-w10), 2026-11-05
+# Lanceur : python scripts/sonde.py (transaction annulee, mail en memoire, HTTP sortant bloque).
+# Sondes LIVE-* : repro=true signifie ICI que le comportement attendu par la tache est observe.
+
+== LIVE-ACVI105-106 (sha 51b2fe77b)
+attendu : ACVI105 : rien de c1 chez c2 sauf l'activite assignee ; ACVI106 : rien de LB, LA et non affecte inchanges
+observé : {"repro": true, "observe": {"acvi105": {"c2_comments": [200, []], "c2_activities": [200, [1199]], "c2_detail_com_c1": 404, "c2_detail_act_c1": 404, "c2_detail_act_assignee": 200, "c1_comments": [200, [110]], "c1_activities": [200, [1198, 1199]], "adm_comments": [200, [110]], "adm_activities": [200, [1198, 1199]], "c1_cible_comments": [200, [110]], "ids": {"com": 110, "act": 1198, "act_c2": 1199}}, "acvi106": {"cible_LB": [200, []], "cible_LA": [200, [141]], "sans_cible": [200, [141, 143]], "post_com_LB": [404, 0], "post_com_LA": 201, "post_com_non_affecte": 201, "sans_perimetre_cible_LB": [200, [144]], "ids": {"A": 141, "B": 142, "N": 143, "libre": 144}}, "ok": {"ACVI105": true, "ACVI106": true}}}
+verdict : REPRO
+base inchangée : oui (avant 2219, après 2219) ; mails 0 ; tâches Celery bloquées 0
+
+# ---- source : C-LIVE-ACVI105.py ----
+# flake8: noqa  (preuve en direct ACVI105 + ACVI106, 05/11/2026)
+"""ACVI105 — Commerciaux « soi » c1, c2 ; lead L de c1 : commentaire + activite de c1, activite de L assignee a c2.
+c2 GET records/comments/ et records/activities/ SANS cible + details : elements de c1 absents / 404 ; activite assignee
+a c2 : listee, detail 200 ; c1, admin, requetes a cible : inchanges.
+ACVI106 — role perimetre {A} : piece d'un lead d'entite B absente (avec et sans cible), POST commentaire sur LB 404 et 0
+commentaire ; lead A et lead non affecte : visibles / 201 ; role sans perimetre : inchange. Societe neuve, annule."""
+SONDE = {"constat": "LIVE-ACVI105-106", "sha": "51b2fe77b",
+         "attendu": "ACVI105 : rien de c1 chez c2 sauf l'activite assignee ; ACVI106 : rien de LB, LA et non affecte inchanges",
+         "modeles": ["crm.Lead", "records.Comment", "records.Activity", "records.Attachment", "roles.Role", "entites.Entite"]}
+
+
+def sonde(ctx):
+    from django.contrib.auth import get_user_model
+    from django.contrib.contenttypes.models import ContentType
+    from rest_framework.test import APIClient
+    from authentication.models import Company
+    from apps.crm.models import Lead
+    from apps.entites.models import Entite
+    from apps.records.models import Activity, Attachment, Comment
+    from apps.roles.models import Role
+    from apps.roles.permissions_registre import COMMERCIAL_PERMISSIONS
+    U = get_user_model()
+    c = Company.objects.create(nom='Live ACVI105', slug='live-acvi105')
+    role = Role.objects.create(company=c, nom='Commercial soi', permissions=list(COMMERCIAL_PERMISSIONS))
+    c1 = U.objects.create_user(username='live-acvi105-c1', password='x', company=c, role=role)
+    c2 = U.objects.create_user(username='live-acvi105-c2', password='x', company=c, role=role)
+    adm = U.objects.create_user(username='live-acvi105-adm', password='x', company=c, role_legacy='admin')
+    ct = ContentType.objects.get_for_model(Lead)
+    L = Lead.objects.create(company=c, nom='Lead de c1', telephone='0661005011', owner=c1)
+    com = Comment.objects.create(company=c, content_type=ct, object_id=L.pk, body='commentaire c1', author=c1)
+    act = Activity.objects.create(company=c, content_type=ct, object_id=L.pk, kind='note', body='note c1',
+                                  created_by=c1)
+    act_c2 = Activity.objects.create(company=c, content_type=ct, object_id=L.pk, kind='note', body='pour c2',
+                                     created_by=c1, assigned_to=c2)
+
+    def api(u):
+        a = APIClient()
+        a.force_authenticate(u)
+        return a
+
+    def ids(a, url, params=None):
+        r = a.get(url, params or {}, HTTP_HOST='localhost')
+        d = r.data
+        rows = d.get('results', d) if isinstance(d, dict) else d
+        try:
+            return r.status_code, sorted(x.get('id') for x in rows)
+        except Exception:
+            return r.status_code, repr(d)[:120]
+
+    def det(a, url):
+        return a.get(url, HTTP_HOST='localhost').status_code
+
+    C, A = '/api/django/records/comments/', '/api/django/records/activities/'
+    o5 = {}
+    o5['c2_comments'] = ids(api(c2), C)
+    o5['c2_activities'] = ids(api(c2), A)
+    o5['c2_detail_com_c1'] = det(api(c2), f'{C}{com.pk}/')
+    o5['c2_detail_act_c1'] = det(api(c2), f'{A}{act.pk}/')
+    o5['c2_detail_act_assignee'] = det(api(c2), f'{A}{act_c2.pk}/')
+    o5['c1_comments'] = ids(api(c1), C)
+    o5['c1_activities'] = ids(api(c1), A)
+    o5['adm_comments'] = ids(api(adm), C)
+    o5['adm_activities'] = ids(api(adm), A)
+    o5['c1_cible_comments'] = ids(api(c1), C, {'model': 'crm.lead', 'id': L.pk})
+    o5['ids'] = {'com': com.pk, 'act': act.pk, 'act_c2': act_c2.pk}
+    ok5 = (o5['c2_comments'] == (200, []) and o5['c2_activities'] == (200, [act_c2.pk])
+           and o5['c2_detail_com_c1'] == 404 and o5['c2_detail_act_c1'] == 404 and o5['c2_detail_act_assignee'] == 200
+           and o5['c1_comments'] == (200, [com.pk]) and o5['c1_activities'] == (200, sorted([act.pk, act_c2.pk]))
+           and o5['adm_comments'] == (200, [com.pk]) and o5['adm_activities'] == (200, sorted([act.pk, act_c2.pk]))
+           and o5['c1_cible_comments'] == (200, [com.pk]))
+
+    # ACVI106 — perimetre d'entites
+    ent_a = Entite.objects.create(company=c, nom='Agence A', code='A')
+    ent_b = Entite.objects.create(company=c, nom='Agence B', code='B')
+    role_a = Role.objects.create(company=c, nom='Commercial A', permissions=list(COMMERCIAL_PERMISSIONS))
+    role_a.entites_visibles.set([ent_a])
+    moi = U.objects.create_user(username='live-acvi106-a', password='x', company=c, role=role_a)
+    libre = U.objects.create_user(username='live-acvi106-libre', password='x', company=c, role=role)
+    pieces = {}
+    for code, ent in (('A', ent_a), ('B', ent_b), ('N', None)):
+        lead = Lead.objects.create(company=c, nom='L' + code, owner=moi, entite=ent)
+        pieces[code] = (lead, Attachment.objects.create(company=c, uploaded_by=moi, content_type=ct, object_id=lead.pk,
+                                                        filename='p.pdf', file_key='k/%s.pdf' % code, size=1,
+                                                        mime='application/pdf'))
+    P = '/api/django/records/attachments/'
+    o6 = {}
+    o6['cible_LB'] = ids(api(moi), P, {'model': 'crm.lead', 'id': pieces['B'][0].pk})
+    o6['cible_LA'] = ids(api(moi), P, {'model': 'crm.lead', 'id': pieces['A'][0].pk})
+    o6['sans_cible'] = ids(api(moi), P)
+    r = api(moi).post(C, {'model': 'crm.lead', 'id': pieces['B'][0].pk, 'body': 'x'}, format='json', HTTP_HOST='localhost')
+    o6['post_com_LB'] = [r.status_code, Comment.objects.filter(object_id=pieces['B'][0].pk, content_type=ct).count()]
+    r = api(moi).post(C, {'model': 'crm.lead', 'id': pieces['A'][0].pk, 'body': 'x'}, format='json', HTTP_HOST='localhost')
+    o6['post_com_LA'] = r.status_code
+    r = api(moi).post(C, {'model': 'crm.lead', 'id': pieces['N'][0].pk, 'body': 'x'}, format='json', HTTP_HOST='localhost')
+    o6['post_com_non_affecte'] = r.status_code
+    # role sans perimetre, lead B qui lui appartient : inchange
+    lb2 = Lead.objects.create(company=c, nom='LB libre', owner=libre, entite=ent_b)
+    pj2 = Attachment.objects.create(company=c, uploaded_by=libre, content_type=ct, object_id=lb2.pk, filename='q.pdf',
+                                    file_key='k/q.pdf', size=1, mime='application/pdf')
+    o6['sans_perimetre_cible_LB'] = ids(api(libre), P, {'model': 'crm.lead', 'id': lb2.pk})
+    pa, pb, pn = pieces['A'][1].pk, pieces['B'][1].pk, pieces['N'][1].pk
+    o6['ids'] = {'A': pa, 'B': pb, 'N': pn, 'libre': pj2.pk}
+    sc = o6['sans_cible'][1] if isinstance(o6['sans_cible'][1], list) else []
+    ok6 = (o6['cible_LB'] == (200, []) and o6['cible_LA'] == (200, [pa]) and pb not in sc and pa in sc and pn in sc
+           and o6['post_com_LB'] == [404, 0] and o6['post_com_LA'] == 201 and o6['post_com_non_affecte'] == 201
+           and o6['sans_perimetre_cible_LB'] == (200, [pj2.pk]))
+    return {'repro': ok5 and ok6, 'observe': {'acvi105': o5, 'acvi106': o6, 'ok': {'ACVI105': ok5, 'ACVI106': ok6}}}
