@@ -275,7 +275,7 @@ def verrouiller_vente(devis):
                 .filter(Q(pk=racine.pk) | Q(pk=devis.pk)).order_by('pk'))
 
 
-def verrouiller_emission(facture, statut):
+def verrouiller_emission(facture, statut, *, restauration=False):
     """ATOT58 (C-ATOT-VER4-002) — appelé par ``emettre_facture`` DANS la
     transaction de la pose d'ÉMISE : ventes de la facture verrouillées (pk
     croissant) AVANT la borne VNT20, facture relue et statut revérifié —
@@ -293,7 +293,8 @@ def verrouiller_emission(facture, statut):
     if facture.pk and relu != statut:
         raise EmissionRefusee(
             'La facture a changé entre-temps : rechargez-la.', etat=True)
-    if (motif := motif_emission_hors_prix(facture)):  # VNT20 : 1 vente, 1 fois
+    if (motif := motif_emission_hors_prix(
+            facture, restauration=restauration)):  # VNT20 : 1 vente, 1 fois
         raise EmissionRefusee(motif, etat=True)
 
 

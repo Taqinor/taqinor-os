@@ -499,3 +499,18 @@ export function normaliserNombreEntete(valeur) {
   const envoye = negatif && centimes > 0n ? `-${texteAbs}` : texteAbs
   return { tape, envoye, change: Number(envoye) !== Number(tape.replace(/\s/g, '').replace(',', '.')) }
 }
+
+// AGNR76 — TOUTES les raisons de blocage de l'enregistrement, dans l'ordre de
+// la carte d'erreur (submit, lignes, client, conso, factures), sans doublon :
+// la carte les liste d'un coup au lieu de masquer la facture derrière la
+// ligne. Ne change JAMAIS ce qui est valide (lecture pure de `validate()`).
+export const CLES_ERREURS_BLOQUANTES = ['submit', 'lines', 'client', 'conso', 'factures']
+
+export function erreursBloquantes(errors) {
+  const vus = []
+  for (const cle of CLES_ERREURS_BLOQUANTES) {
+    const m = errors?.[cle]
+    if (m && typeof m === 'string' && !vus.includes(m)) vus.push(m)
+  }
+  return vus
+}

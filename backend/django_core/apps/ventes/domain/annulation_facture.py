@@ -394,7 +394,8 @@ def restaurer_facture(facture, *, avoir, trace, user):
             raise ConflitEtat(f'Le devis {devis.reference} n\'est plus accepté : la facture '
                               f'{facture.reference} ne peut pas être restaurée.')
     try:
-        verrouiller_emission(facture, Facture.Statut.ANNULEE)
+        verrouiller_emission(facture, Facture.Statut.ANNULEE,
+                             restauration=True)
     except EmissionRefusee as exc:
         raise ConflitEtat(exc.motif) from exc
     _rejouer_effets(facture, trace, user)

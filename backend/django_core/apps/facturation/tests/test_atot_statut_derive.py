@@ -406,6 +406,9 @@ class StatutDeriveTests(TestCase):
         r, emis = self._annuler_avoir_compte(a1)
         self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('detail', r.data)
+        # AARG71 — message de RESTAURATION, pas celui de l'émission.
+        self.assertIn('Restauration impossible', r.data['detail'])
+        self.assertNotIn('Annulez ce brouillon', r.data['detail'])
         # CLAUSE PERSISTANCE — relu en base : une seule facture vivante.
         self.assertEqual(Facture.objects.get(pk=f1.pk).statut,
                          Facture.Statut.ANNULEE)
