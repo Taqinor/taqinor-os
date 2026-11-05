@@ -11,7 +11,8 @@
     "ACVI105",
     "ACVI106",
     "ACVI108",
-    "ACVI109"
+    "ACVI109",
+    "ACVI111"
   ],
   "couvre_avec_ecart": [],
   "etapes": [
@@ -190,6 +191,28 @@
         "10": "NA"
       },
       "notes": "ecran Leads (vue liste, WhatsApp en masse) + API bulk prepare_whatsapp : message 1 porte Boulangerie Atlas sans la marque, message 2 Bonjour Sara (phrase omise, aucun {) ; sonde VER4-021 repro False ; detail : docs/audits/acceptation/2026-11-05-rejeux-w10/ACVI109.txt"
+    },
+    {
+      "id": "W10.ACVI111.builders_sans_lien_oppose",
+      "taches": [
+        "ACVI111"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-05-rejeux-w10/ACVI111.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "appels directs sur la pile : message_pour_etape, message_visite_pour_lead(visite_confirmation), build_appointment_confirmation_whatsapp d un oppose ⇒ wa_url, wa_url_fr, wa_url_darija, 2e element None, textes identiques ; stop_contact garde son lien ; lead normal : liens rendus"
     }
   ]
 }
