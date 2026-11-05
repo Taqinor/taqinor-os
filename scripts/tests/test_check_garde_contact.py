@@ -65,6 +65,29 @@ class GardeContactTests(unittest.TestCase):
         code, sortie = _lancer()
         self.assertEqual(code, 0, sortie)
 
+    def test_site_ventes_sans_garde_detecte(self):
+        """ACVI107 — toutes les apps sont lues : un wa.me sans garde dans
+        ``ventes`` rougit la garde ; le meme site garde passe."""
+        rel = "backend/django_core/apps/ventes/x_fixture.py"
+        nus = "def f(devis):\n    return build_wa_url(devis.lead.telephone, 'Votre devis')\n"
+        sortie = io.StringIO()
+        with contextlib.redirect_stdout(sortie):
+            code = garde.main([], sources_en_plus=[(rel, nus)])
+        self.assertEqual(code, 1)
+        self.assertIn(f"{rel}:2: f() - wa.me", sortie.getvalue())
+        gardee = ("def f(devis):\n    garde_contact_du_lead(devis.lead)\n"
+                  "    return build_wa_url(devis.lead.telephone, 'Votre devis')\n")
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(garde.main([], sources_en_plus=[(rel, gardee)]), 0)
+        lus = {garde._rel(p) for p in garde._fichiers()}
+        self.assertIn("backend/django_core/apps/ventes/views/devis_envoi.py", lus)
+
+    def test_a_corriger_seulement_sur_un_vrai_trou(self):
+        """ACVI107 — aucun « A CORRIGER » sur un site que la garde reconnait."""
+        for nom in ("garde_contact_du_lead", "_refuser_si_oppose", "_refus_opposition"):
+            src = f"def f(lead):\n    {nom}(lead)\n    return build_wa_url(lead.telephone, 'x')\n"
+            self.assertEqual(garde.analyser_source(src, "f.py"), [], nom)
+
     def test_test_du_test_garde_retiree_rougit(self):
         sauve = set(garde.GARDES_RECONNUES)
         try:

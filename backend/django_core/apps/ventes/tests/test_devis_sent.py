@@ -52,6 +52,44 @@ class TestMarkDevisSentService(TestCase):
             company=self.company, reference=f'DEV-{statut}-{id(statut)}',
             client=self.client_obj, lead=lead, statut=statut)
 
+    def test_kwh_incoherent_factures_refuse_l_envoi(self):
+        """ADVS48 (règle fondateur 30/09) — un brouillon au kWh déclaré contredit
+        par les factures ne part par aucun geste : 409 nommé, brouillon, 0 mail ;
+        lead corrigé : envoyé."""
+        from decimal import Decimal
+
+        from django.core import mail
+        from apps.ventes.horaire.conso import CODE_KWH_INCOHERENT, MESSAGE_KWH_INCOHERENT
+        from core.conflit_etat import ConflitEtat
+        Lead.objects.filter(pk=self.lead.pk).update(
+            conso_mensuelle_kwh=Decimal('46'), facture_hiver=Decimal('10000'), ete_differente=False)
+        self.lead.refresh_from_db()
+        self.client_obj.email = 'alaoui@example.com'
+        self.client_obj.save(update_fields=['email'])
+        devis = self._devis(lead=self.lead)
+        with self.assertRaises(ConflitEtat):
+            mark_devis_sent(devis=devis, user=None)
+        api = make_api(User.objects.create_user(
+            username='advs48-resp', password='x', company=self.company, role_legacy='responsable'))
+        base = f'/api/django/ventes/devis/{devis.id}/'
+        for chemin, corps in (('share-link/', {'envoi': True}), ('envoyer-email/', {}),
+                              ('whatsapp/', {}), ('pdf-partage/', {})):
+            with self.subTest(chemin=chemin):
+                resp = api.post(base + chemin, corps, format='json')
+                self.assertEqual(resp.status_code, 409, resp.content)
+                self.assertEqual(str(resp.data['code']), CODE_KWH_INCOHERENT)
+                self.assertEqual(str(resp.data['detail']), MESSAGE_KWH_INCOHERENT)
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
+        self.assertIsNone(devis.date_envoi)
+        self.assertEqual(len(mail.outbox), 0)
+        Lead.objects.filter(pk=self.lead.pk).update(
+            conso_mensuelle_kwh=Decimal('650'), facture_hiver=Decimal('1200'))
+        devis.refresh_from_db()
+        mark_devis_sent(devis=devis, user=None)
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
+
     def test_brouillon_flips_to_envoye_and_stamps_date(self):
         devis = self._devis()
         self.assertIsNone(devis.date_envoi)

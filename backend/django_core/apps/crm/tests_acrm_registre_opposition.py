@@ -108,6 +108,38 @@ class RegistreOppositionTests(TestCase):
                 self.assertTrue(derniere.granted, (identifiant, finalite))
                 self.assertIn('à la demande du client', derniere.source)
 
+    def test_rappel_demande_libere_l_empreinte(self):
+        """ACVI108 (D-ACVI-6) — le rappel demandé par la personne retire
+        l'empreinte de son numéro : une nouvelle fiche au même numéro naît
+        contactable ; un autre lead encore opposé au numéro la garde."""
+        from apps.crm.cadence_signaux import notify_client_contact_request
+        from apps.crm.leads_doublons import poser_empreintes_opposition
+        from apps.crm.models import EmpreinteOpposition
+
+        def empreintes_du_numero():
+            return EmpreinteOpposition.objects.filter(
+                company=self.company, nature='telephone').count()
+
+        self._patch(True)
+        self.lead.refresh_from_db()
+        poser_empreintes_opposition(self.company, self.lead)
+        self.assertEqual(empreintes_du_numero(), 1)
+        notify_client_contact_request('DEV-ACVI108', self.lead, canal='rappel', message='')
+        self.lead.refresh_from_db()
+        self.assertFalse(self.lead.ne_plus_contacter)
+        self.assertEqual(empreintes_du_numero(), 0)
+        nouvelle = Lead.objects.create(company=self.company, nom='Fiche C', telephone=TELEPHONE)
+        nouvelle.refresh_from_db()
+        self.assertFalse(nouvelle.ne_plus_contacter)
+        # Un autre lead encore opposé au même numéro garde l'empreinte.
+        self._patch(True)
+        self.lead.refresh_from_db()
+        autre = Lead.objects.create(company=self.company, nom='Opposant B',
+                                    telephone=TELEPHONE, ne_plus_contacter=True)
+        poser_empreintes_opposition(self.company, autre)
+        notify_client_contact_request('DEV-ACVI108', self.lead, canal='rappel', message='')
+        self.assertEqual(empreintes_du_numero(), 1)
+
     def test_rappel_client_lead_non_oppose_sans_note(self):
         from apps.crm.models import LeadActivity
         from apps.crm.cadence_signaux import notify_client_contact_request

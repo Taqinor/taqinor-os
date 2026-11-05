@@ -1431,10 +1431,10 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
         return Response(self.get_serializer(etape).data)
 
 
-def rendre_modele_message(tmpl, *, request=None, lead=None, prenom='',
-                          ville='', lien=''):
-    """Rend un ``MessageTemplate`` : l'UNIQUE moteur de texte des modèles
-    (aperçu ``render`` ET brouillon de suivi de l'assistant, AIC32).
+def _rendre_modele_message(tmpl, *, request=None, lead=None, prenom='',
+                           ville='', lien=''):
+    """Rend un ``MessageTemplate`` pour l'aperçu ``render`` (le brouillon de
+    suivi de l'assistant suit la règle MRY13 des touches depuis ACVI110).
     ``lead`` résout ``{lien_rdv}`` (best-effort) ; sans lead, le placeholder
     disparaît et rien n'est créé."""
     lien_rdv = ''
@@ -1515,7 +1515,7 @@ class MessageTemplateViewSet(CompanyScopedModelViewSet):
             if lead is None:
                 # LEVÉ, pas renvoyé : le contrat reste la forme du 200.
                 raise DRFValidationError({'lead': ['Lead introuvable.']})
-        return Response({'texte': rendre_modele_message(
+        return Response({'texte': _rendre_modele_message(
             tmpl, request=request, lead=lead, prenom=prenom, ville=ville,
             lien=lien)})
 

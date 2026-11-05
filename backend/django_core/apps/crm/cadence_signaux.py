@@ -663,6 +663,8 @@ def _lever_opposition_a_la_demande_du_client(lead) -> bool:
     maintenant = timezone.now()
     lead.ne_plus_contacter = False
     lead.save(update_fields=['ne_plus_contacter'])
+    from .leads_doublons import retirer_empreintes_opposition  # ACVI108 (D-ACVI-6)
+    retirer_empreintes_opposition(lead.company, lead)
     LeadActivity.objects.create(
         company=lead.company, lead=lead, user=None,
         kind=LeadActivity.Kind.NOTE,

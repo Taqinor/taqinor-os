@@ -163,7 +163,8 @@ def build_appointment_confirmation_whatsapp(request, appointment):
         f'/api/django/crm/appointments/{appointment.pk}/ics/')
     salutation = f'Bonjour {nom},' if nom else 'Bonjour,'
     message = f'{salutation} je confirme notre rendez-vous le {date_str}.'
-    return message, build_wa_url(phone, message), ics_url
+    from .cadence_messages import refus_rendu_whatsapp  # ACVI111 — aucun lien à un refusé
+    return message, (None if refus_rendu_whatsapp(lead) else build_wa_url(phone, message)), ics_url
 
 
 # ── XSAL17 — Placeholder {lien_rdv} : lien de réservation dans les messages ──
