@@ -7,7 +7,8 @@
     "AGNR63",
     "AGNR65",
     "AGNR66",
-    "AGNR69"
+    "AGNR69",
+    "AGNR70"
   ],
   "couvre_avec_ecart": [],
   "etapes": [
@@ -98,6 +99,28 @@
         "10": "NA"
       },
       "notes": "Brouillon neuf 10 x 550 W + 10 x 710 W + onduleur, niveau 12 : kwc_lu_des_panneaux 12,6 ; build_quote_data puissance_kwc 12,6 (sans, avec) ; GET /proposal 200, PDF : « 12,6 kWc » et « 41 000,00 MAD soit 3 254 MAD/kWc » (= TTC / 12,6) ; ligne au watt illisible => watt de la 1re lisible (11,0) ; niveau 11 : 11,0 ; production non mesuree a part ; sonde C-AGNR-VER4-030 repro False"
+    },
+    {
+      "id": "W14.AGNR70.kwc_scenario_et_etude_par_ligne",
+      "taches": [
+        "AGNR70"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-05-rejeux-w14/AGNR70.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Brouillon neuf 10 x 550 W + 10 x 710 W + onduleur, niveau 12 : puissance_kwc_du_devis 12,6, puissances_etude_horaire (12,6, None) ; PATCH remise 10 (vraie route, admin) 200 => prix_par_kwc 3 253,97 = TTC 41 000 / 12,6 ; niveau 11 : 11,0 et prix_par_kwc 3 727,27 = TTC / 11,0 ; sonde C-AGNR-VER4-030 repro False"
     }
   ]
 }
