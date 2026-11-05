@@ -78,4 +78,4 @@ class RenvoyerPermissionTests(TestCase):
             f'/api/django/visites/visites/{self.visite.id}/mesures/',
             {'categorie': 'toiture', 'valeurs': {'pente_deg': 20}},
             format='json')
-        self.assertEqual(gel.status_code, 400, gel.data)
+        self.assertEqual(gel.status_code, 409, gel.data)

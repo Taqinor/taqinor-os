@@ -57,7 +57,7 @@ class PhotoSupprimeeTests(VisiteTerrainBase):
             statut=VisiteTerrain.Statut.VALIDEE)
         resp = self.api.delete(
             f'/api/django/visites/visites/{visite_id}/photos/{media.id}/')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertTrue(VisiteMedia.objects.filter(pk=media.id).exists())
         self.assertTrue(
             Attachment.objects.filter(pk=media.attachment_id).exists())
@@ -127,6 +127,6 @@ class PhotoSupprimeeTests(VisiteTerrainBase):
         VisiteTerrain.objects.filter(pk=visite_id).update(
             statut=VisiteTerrain.Statut.VALIDEE)
         resp = self.api.delete(f'/api/django/visites/visites/{visite_id}/')
-        self.assertEqual(resp.status_code, 400, getattr(resp, 'data', None))
+        self.assertEqual(resp.status_code, 409, getattr(resp, 'data', None))
         self.assertTrue(VisiteTerrain.objects.filter(pk=visite_id).exists())
         self.assertTrue(Attachment.objects.filter(pk=media.attachment_id).exists())
