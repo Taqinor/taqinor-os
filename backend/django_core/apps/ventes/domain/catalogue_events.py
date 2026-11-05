@@ -172,6 +172,7 @@ def rebaser_ou_signaler_echeancier(devis, *, user=None):
     from apps.ventes.utils.echeancier import (
         UNITE_MONTANT, EcheancierIncoherent, _mad, valider_echeancier)
     from apps.ventes.utils.options import option_totaux
+    from core.money import quantize_mad
 
     from ..activity import log_devis_note
     from .modifiabilite import rebaser_echeancier
@@ -186,7 +187,7 @@ def rebaser_ou_signaler_echeancier(devis, *, user=None):
                        else ttc * Decimal(str(t['valeur'])) / 100)
                       for t in tranches[:-1])
     corps = (f"Échéancier à revoir : {motif} Reste de la dernière tranche : "
-             f"{_mad(reste.quantize(Decimal('0.01')))} — l'échéancier est "
+             f"{_mad(quantize_mad(reste))} — l'échéancier est "
              "conservé, corrigez-le avant de l'envoyer.")
     if not devis.activites.filter(body=corps).exists():
         log_devis_note(devis, user, corps)
