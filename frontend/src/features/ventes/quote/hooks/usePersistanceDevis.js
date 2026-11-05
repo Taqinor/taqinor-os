@@ -10,7 +10,7 @@ import {
 } from '../../calc/classification.js'
 import { controlerFacturesSaisies, controlerKwhDeclare, MESSAGE_KWH_INCOHERENT } from '../../calc/tarifs.js'
 import { CATEGORIE_NON_PRECISEE } from '../../../../pages/ventes/generator/PanneauCommercial'
-import { etatVersEcritures, etudeDeCreation } from '../etatDevis'
+import { etatVersEcritures, etudeDeCreation, serieMixte } from '../etatDevis'
 import ventesApi from '../../../../api/ventesApi'
 import { erreursTarifDeclare } from '../etudeMarcheBloc'
 import { toast } from '../../../../ui/confirm'
@@ -169,7 +169,15 @@ export function usePersistanceDevis(ctx) {
     // du compteur est REFUSÉE (le serveur la refuserait aussi, après
     // l'enregistrement des lignes) ; un écart avec la facture d'hiver du lead
     // se fait CONFIRMER une fois (second clic), jamais corrigé en silence.
-    if (facturesSaisies) {
+    // AGNR67 — série dérivée puis corrigée : jamais une conso que l'aperçu ne montre pas.
+    const mixte = serieMixte(provenanceMois)
+    if (mixte.length) {
+      const nom = (l, s) => `${l.map(m => m.mois).join(', ')} ${s}${l.length > 1 ? 's' : ''}`
+      const tapes = mixte.filter(m => !m.vide)
+      const vides = mixte.filter(m => m.vide)
+      e.factures = [tapes.length && nom(tapes, 'tapé'), vides.length && nom(vides, 'vide')]
+        .filter(Boolean).join(', ') + ' : tapez les 12 mois ou effacez la correction'
+    } else if (facturesSaisies) {
       const ctl = controlerFacturesSaisies(monthly, {
         factureHiverLead: selectedLead?.facture_hiver,
         chargesFixes: baremeSociete?.chargesFixes,

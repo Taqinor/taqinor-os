@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { devisVersEtat, etatVersEcritures, facturesHiverEte, entreesDeEtat, etudeDeCreation } from './etatDevis.js'
+import { devisVersEtat, etatVersEcritures, facturesHiverEte, entreesDeEtat, etudeDeCreation, serieMixte } from './etatDevis.js'
 import { consoAnnuelleDepuisFactures } from '../calc/tarifs.js'
 import { documentContrat } from '../../../test/fixtures/contractSamples.js'
 
@@ -422,4 +422,24 @@ test('etude_envoyee_par_entreesDeEtat', () => {
   // aucune seconde construction dans le hook
   const hook = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'hooks/usePersistanceDevis.js'), 'utf-8')
   assert.equal(/const entreesReellesEcran\b/.test(hook), false)
+})
+
+test('serie_mixte_nommee', () => {
+  // AGNR67 — hiver 500 / été 1 200 dérivés, puis Mars tapé (ou vidé) : la
+  // série n'est ni dérivée ni tapée ; entreesDeEtat n'enverrait que hiver /
+  // été (Mars perdu) : la règle exportée nomme le mois, validate bloque.
+  const derivee = Array(12).fill('derivee')
+  const marsTape = derivee.map((p, i) => (i === 2 ? 'tapee' : p))
+  const marsVide = derivee.map((p, i) => (i === 2 ? 'exemple' : p))
+  assert.deepEqual(serieMixte(marsTape), [{ mois: 'Mars', vide: false }])
+  assert.deepEqual(serieMixte(marsVide), [{ mois: 'Mars', vide: true }])
+  assert.deepEqual(serieMixte(derivee), [])
+  assert.deepEqual(serieMixte(Array(12).fill('tapee')), [])
+  assert.deepEqual(serieMixte(Array(12).fill('exemple')), [])
+  const etat = { mode: 'residentiel', lignes: [], distributeur: 'onee', monthly: Array(12).fill(500),
+    provenanceMois: marsTape, facturesSaisies: true, fHiver: '500', fEte: '1200', consoStockee: null }
+  assert.equal(entreesDeEtat(etat).factures_mensuelles_reelles, undefined)
+  const hook = readFileSync(join(ICI, 'hooks/usePersistanceDevis.js'), 'utf-8')
+  assert.match(hook, /serieMixte\(provenanceMois\)/)
+  assert.match(hook, /tapez les 12 mois ou effacez la correction/)
 })
