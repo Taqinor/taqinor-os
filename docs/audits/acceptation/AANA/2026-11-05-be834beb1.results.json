@@ -6,7 +6,8 @@
   "couvre": [
     "AANA87",
     "AANA88",
-    "AANA89"
+    "AANA89",
+    "AANA80"
   ],
   "couvre_avec_ecart": [],
   "etapes": [
@@ -75,6 +76,28 @@
         "10": "NA"
       },
       "notes": "app parquee (preuve n/a) - selecteur appele en shell sur le meme devis : devis_pour_projet montant_materiel 19 000 HT = somme HT des option_lines, sans batterie ni hybride."
+    },
+    {
+      "id": "P.cout_de_revient_option",
+      "taches": [
+        "AANA80"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AANA/traces/2026-11-04/ACCEPTATION-AANA-P.cout_de_revient_option.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sondes -030 (commission 700, cout 11 000) et -031 (3 villas : cout 33 000) repro False ; ecran /rapports > Insights > Cout de revient : CHT-202611-0053 (deux options accepte sans) 3 531,99 = cout des lignes vendues seules. Detail : traces/2026-11-04/AANA80-cout-de-revient.txt."
     }
   ]
 }

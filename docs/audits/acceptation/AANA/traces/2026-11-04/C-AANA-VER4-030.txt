@@ -1,0 +1,6 @@
+== C-AANA-VER4-030 (sha d54c88db3)
+attendu : devis 2 options accepté « sans » : total_ht = 18 000 ; _marge_devis ca_ht = 50 000, marge 16 000 ; commission MARGE_INTERNE 10 % = 1 600 au lieu de 700 (marge du panier accepté 7 000)
+observé : {'deux_options': True, 'option_effective': 'sans_batterie', 'total_ht': '18000.00', 'option_totaux_ht': '18000.00', 'marge_ca_ht': '18000.00', 'marge_cout': '11000.0000', 'marge': '7000.0000', 'commissions_status': 200, 'commissions_rows': [{'commercial': 'sonde-aana-030-com', 'base': '7000.0000', 'commission': '700.000000'}]}
+{"repro": false, "deux_options": true, "option_effective": "sans_batterie", "total_ht": "18000.00", "option_totaux_ht": "18000.00", "marge_ca_ht": "18000.00", "marge_cout": "11000.0000", "marge": "7000.0000", "commissions_status": 200, "commissions_rows": [{"commercial": "sonde-aana-030-com", "base": "7000.0000", "commission": "700.000000"}]}
+verdict : ÉCART
+base inchangée : oui (avant 9536, après 9536) ; mails 0 ; tâches Celery bloquées 0
