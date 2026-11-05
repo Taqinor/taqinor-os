@@ -120,6 +120,18 @@ class ResumeAssocieTests(TestCase):
         self.assertEqual((self.devis.statut, getattr(self.devis, 'date_envoi', None)), avant)
         self.assertEqual(self.lead.relance_etapes.count(), etapes_avant)
 
+    def test_lead_oppose_409_sans_lien(self):
+        """ACVI104 (D-ACVI-7) — la proposition d'un opposé ne sort plus, même
+        vers l'associé : 409 nommé, aucun lien, aucune ligne d'historique."""
+        self._envoyer()
+        Lead.objects.filter(pk=self.lead.pk).update(ne_plus_contacter=True)
+        avant = LeadActivity.objects.filter(lead=self.lead).count()
+        resp = self._post()
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertEqual(str(resp.data['detail']), 'Message refusé : ne plus contacter.')
+        self.assertNotIn('wa_url', resp.data)
+        self.assertEqual(LeadActivity.objects.filter(lead=self.lead).count(), avant)
+
     def test_403_sans_client_pii_voir(self):
         self._envoyer()
         role = Role.objects.create(company=self.company, nom='Lecteur AGR534',

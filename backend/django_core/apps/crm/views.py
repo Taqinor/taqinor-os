@@ -875,8 +875,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         from .models import LeadActivity
         from .serializers import pii_masquee_pour
         from .cadence_messages import (
-            _corps_pour_segment,
-            _nom_affiche_conseiller,
+            _corps_pour_segment, _nom_affiche_conseiller, garde_contact_du_lead,
             _nom_affiche_marque,
             _omettre_phrases_incompletes,
             _societe_du_lead,
@@ -888,6 +887,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
                            'coordonnées du client.'},
                 status=status.HTTP_403_FORBIDDEN)
         lead = self.get_object()
+        garde_contact_du_lead(lead)  # ACVI104 (D-ACVI-7) — opposé/perdu/archivé : 409, aucun lien
         accord = corps_objet(request).get('accord_client')  # fuzz #1176 : [null, null] → 400
         if not (accord is True or str(accord).strip().lower() == 'true'):
             return Response(
