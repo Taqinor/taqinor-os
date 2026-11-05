@@ -138,7 +138,9 @@ def planifier_tournee(company, ticket_ids, date_tournee, technicien_id=None,
             # désigne aucun technicien de la société (absent ou voisin, même
             # réponse) est une ressource manquante — 404, plus un 400 dont le
             # ``detail`` (objet) violait le schéma d'erreur publié.
-            raise NotFound({'technicien': 'Technicien inconnu.'})
+            # ``detail`` TEXTE : ce que l'écran affiche (ContratsMaintenance).
+            raise NotFound({'detail': 'Technicien inconnu.',
+                            'technicien': 'Technicien inconnu.'})
 
     qs = Ticket.objects.filter(
         company=company, id__in=ticket_ids, type=Ticket.Type.PREVENTIF,
