@@ -345,6 +345,12 @@ def mark_devis_sent(*, devis, user=None):
     from apps.ventes.domain.modifiabilite import ENVOYER, geste_cycle_permis
     if not geste_cycle_permis(devis, ENVOYER)[0]:
         return devis
+    # ADVS48 (règle fondateur 30/09) — kWh déclaré contredit par les factures :
+    # 409 ``kwh_incoherent_factures``, le brouillon ne part pas.
+    from apps.ventes.selectors_calepinage import refus_kwh_declare_du_devis
+    if (refus := refus_kwh_declare_du_devis(devis)) is not None:
+        from core.conflit_etat import ConflitEtat
+        raise ConflitEtat(refus)
 
     # QJR539 — FILET T17 (brouillon seulement) : chaque vue d'envoi appelle
     # déjà la garde AVANT ses effets ; ce filet couvre tout autre appelant.
