@@ -129,6 +129,34 @@ class DevisWhatsappActionTests(TestCase):
         devis = self._devis(client=client_no_phone, lead=lead)
         self.assertEqual(devis_recipient_phone(devis), '0698765432')
 
+    def test_lead_oppose_tout_envoi_409(self):
+        """ACVI102 (D-ACVI-7) — les six gestes d'envoi d'un devis de lead opposé :
+        409 nommé, 0 mail, 0 EmailLog, brouillon ; déjà envoyé : 409 aussi."""
+        from django.core import mail
+        from apps.crm.selectors import MOTIF_CONTACT_REFUSE
+        from apps.ventes.models import EmailLog
+        self.client_obj.email = 'idrissi@example.com'
+        self.client_obj.save(update_fields=['email'])
+        self.lead.ne_plus_contacter = True
+        self.lead.save(update_fields=['ne_plus_contacter'])
+        devis = self._devis(lead=self.lead)
+        base = f'/api/django/ventes/devis/{devis.id}/'
+        gestes = [('whatsapp-preview/', {}), ('whatsapp/', {}), ('envoyer-email/', {}),
+                  ('share-link/', {'envoi': True}), ('pdf-partage/', {}), ('pdf-partage/', None)]
+        for chemin, corps in gestes:
+            with self.subTest(chemin=chemin, get=corps is None):
+                resp = (self.api.get(base + chemin) if corps is None
+                        else self.api.post(base + chemin, corps, format='json'))
+                self.assertEqual(resp.status_code, 409, resp.content)
+                self.assertEqual(str(resp.data['detail']), MOTIF_CONTACT_REFUSE)
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
+        self.assertIsNone(devis.date_envoi)
+        self.assertEqual(len(mail.outbox), 0)
+        self.assertEqual(EmailLog.objects.filter(devis=devis).count(), 0)
+        Devis.objects.filter(pk=devis.pk).update(statut=Devis.Statut.ENVOYE)
+        self.assertEqual(self._post(devis).status_code, 409)
+
 
 class BuildSingleDevisWhatsappTests(TestCase):
     """Le builder pur (message + lien) — utilisé par l'action."""

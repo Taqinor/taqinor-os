@@ -10,7 +10,7 @@ import re
 from . import activity, stages
 from .cadence_messages import (
     SEGMENTS_PRO, _nom_affiche_conseiller, _nom_affiche_marque,
-    _omettre_phrases_incompletes, langue_relance_du_lead,
+    _omettre_phrases_incompletes, _societe_du_lead, langue_relance_du_lead,
 )
 from .cadence_reperes import _CLOTURE_RAISONS
 from .leads_premier_contact import marquer_premier_contact
@@ -550,7 +550,7 @@ def _corps_whatsapp_en_masse(lead, tpl, corps_direct=''):
         'nom': (lead.nom or '').strip(),
         'conseiller': _nom_affiche_conseiller(lead, None),
         'marque': _nom_affiche_marque(lead),
-        'societe': _nom_affiche_marque(lead),
+        'societe': _societe_du_lead(lead),  # ACVI109 — la raison sociale DU LEAD
     }
     for cle in re.findall(r'\{(\w+)\}', corps):
         contexte.setdefault(cle, '')

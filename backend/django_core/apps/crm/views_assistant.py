@@ -9,6 +9,7 @@ Fichier à part car ``apps/crm/views.py`` appartient au propriétaire crm
 (fichier-dieu en découpe SPL).
 """
 import datetime
+import re
 
 from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import (
@@ -267,18 +268,20 @@ def _tronquer(texte, limite):
 def lead_brouillon_suivi(request, lead_id):
     """AIC32 — ``POST /api/django/crm/leads/<id>/brouillon-suivi/`` : un TEXTE
     de suivi à relire puis copier ou ouvrir par ``wa.me`` — l'assistant
-    n'envoie JAMAIS. Le modèle société prime (rendu par
-    ``cadence_views.rendre_modele_message``) ; l'expéditeur est le
-    responsable du lead (aucun prénom codé en dur) ; rien n'est écrit."""
+    n'envoie JAMAIS. Le modèle société prime ; l'expéditeur est le
+    responsable du lead (aucun prénom codé en dur) ; rien n'est écrit.
+    ACVI110 — règle MRY13 des touches : seules les valeurs non vides sont
+    remplacées, toute phrase qui garde un placeholder est omise (jamais un
+    « { » ni « je suis  de »), repli sans modèle compris."""
     from apps.ventes import selectors as ventes
     from apps.ventes.utils.whatsapp import build_wa_url
 
     from . import cadence_messages as cm
-    from .cadence_views import rendre_modele_message
     from .serializers import pii_masquee_pour
 
     donnees = corps_valide(request, _CORPS_BROUILLON)
     lead = _lead_en_portee_ou_404(request.user, lead_id)
+    cm.garde_contact_du_lead(lead)  # ACVI103 (D-ACVI-7) — opposé/perdu/archivé : 409
     objectif, canal = donnees['objectif'], donnees['canal']
     modele, langue_servie = _modele_societe(
         lead.company, objectif, donnees.get('langue') or 'fr')
@@ -288,16 +291,17 @@ def lead_brouillon_suivi(request, lead_id):
     marque = cm._nom_affiche_marque(lead)
     devis = ventes.dernier_devis_envoye_par_lead(
         lead.company, [lead.pk]).get(lead.pk)
-    if modele is not None:
-        texte = rendre_modele_message(
-            modele, request=request, prenom=salut, ville=lead.ville or '')
-        for cle, valeur in (('conseiller', conseiller), ('marque', marque),
-                            ('civilite', civilite),
-                            ('reference', devis.reference if devis else '')):
-            texte = texte.replace('{' + cle + '}', valeur)
-    else:
-        texte = (f"Bonjour {salut}, c'est {conseiller} de {marque} : "
-                 f'{_OBJECTIFS_BROUILLON[objectif][1]}')
+    validite = cm._date_validite_comme_le_pdf(devis)
+    valeurs = {'prenom': salut, 'ville': lead.ville or '', 'conseiller': conseiller,
+               'marque': marque, 'civilite': civilite, 'societe': cm._societe_du_lead(lead),
+               'reference': devis.reference if devis else '',
+               'date_validite': validite.strftime('%d/%m/%Y') if validite else ''}
+    repli = _OBJECTIFS_BROUILLON[objectif][1]
+    texte = (modele.corps or '') if modele is not None else (
+        f"Bonjour {{prenom}}. C'est {{conseiller}} de {{marque}}. {repli[:1].upper()}{repli[1:]}")
+    for cle, valeur in valeurs.items():
+        texte = texte.replace('{' + cle + '}', valeur) if valeur.strip() else texte
+    texte = cm._omettre_phrases_incompletes(texte, sorted(set(re.findall(r'\{(\w+)\}', texte))))
     if canal == 'whatsapp':
         texte = _tronquer(texte, LONGUEUR_WHATSAPP)
     telephone = '' if pii_masquee_pour(request.user) else cm.numero_joignable(lead)  # ACVI50

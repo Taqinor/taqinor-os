@@ -292,7 +292,17 @@ def figer_clauses_devis(devis):
     return True
 
 
-def mark_devis_sent(*, devis, user=None):
+def exiger_contact_permis(devis):
+    """ACVI102 (D-ACVI-7 = refus 409, D-ACVI-10) — aucun geste d'envoi d'un
+    devis dont le lead est ``ne_plus_contacter`` : 409 ``MOTIF_CONTACT_REFUSE``
+    (la règle de ``apps.crm.selectors.peut_contacter``)."""
+    from apps.crm.selectors import MOTIF_CONTACT_REFUSE, peut_contacter
+    from core.conflit_etat import ConflitEtat
+    if not peut_contacter(devis):
+        raise ConflitEtat(MOTIF_CONTACT_REFUSE)
+
+
+def mark_devis_sent(*, devis, user=None, paire=True):
     """U4 — flip a Devis to « envoyé » through the ONE status-change path.
 
     Called when a quote is shared with the client (e.g. the lead WhatsApp
@@ -320,6 +330,7 @@ def mark_devis_sent(*, devis, user=None):
     from apps.ventes import activity
     from core.events import devis_sent
 
+    exiger_contact_permis(devis)  # ACVI102 — avant le statut : envoyé compris
     # Already sent (or beyond): never re-stamp, never downgrade. Only a live
     # brouillon advances — accepté/refusé/expiré are terminal-or-further and
     # must stay put (the guard the test pins).
@@ -334,6 +345,12 @@ def mark_devis_sent(*, devis, user=None):
     from apps.ventes.domain.modifiabilite import ENVOYER, geste_cycle_permis
     if not geste_cycle_permis(devis, ENVOYER)[0]:
         return devis
+    # ADVS48 (règle fondateur 30/09) — kWh déclaré contredit par les factures :
+    # 409 ``kwh_incoherent_factures``, le brouillon ne part pas.
+    from apps.ventes.selectors_calepinage import refus_kwh_declare_du_devis
+    if (refus := refus_kwh_declare_du_devis(devis)) is not None:
+        from core.conflit_etat import ConflitEtat
+        raise ConflitEtat(refus)
 
     # QJR539 — FILET T17 (brouillon seulement) : chaque vue d'envoi appelle
     # déjà la garde AVANT ses effets ; ce filet couvre tout autre appelant.
@@ -349,10 +366,28 @@ def mark_devis_sent(*, devis, user=None):
             devis.refresh_from_db(fields=['statut'])
             return devis
         geler_document_engage(devis, user, statut=Devis.Statut.ENVOYE)
+        if paire:  # ADVS49 — même transaction : un refus de la sœur annule tout
+            _envoyer_la_soeur(devis, user)
     activity.log_devis_sent(devis, user)
     devis_sent.send(
         sender=Devis, devis=devis, user=user, ancien_statut=ancien)
     return devis
+
+
+def _envoyer_la_soeur(devis, user):
+    """ADVS49 (D-ADVS-VER5-1) — « les deux » : la sœur brouillon part aussi, lien vivant ; T17 refusé = 409."""
+    from apps.ventes.domain.gammes import GAMME_ENVOI_LES_DEUX, gamme_envoi, gamme_soeur
+    from apps.ventes.domain.tarification import RemiseNonApprouvee
+    from apps.ventes.models import Devis, ShareLink
+    from core.conflit_etat import ConflitEtat
+    soeur = gamme_soeur(devis) if gamme_envoi(devis) == GAMME_ENVOI_LES_DEUX else None
+    if soeur is not None and soeur.statut == Devis.Statut.BROUILLON:
+        try:
+            mark_devis_sent(devis=soeur, user=user, paire=False)
+        except RemiseNonApprouvee as erreur:
+            raise ConflitEtat(erreur.message) from erreur
+        if soeur.statut == Devis.Statut.ENVOYE:
+            ShareLink.for_devis(soeur)
 
 
 def geler_document_engage(devis, user, *, statut=None, acceptation=False):
