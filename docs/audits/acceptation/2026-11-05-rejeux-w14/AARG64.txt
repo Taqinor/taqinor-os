@@ -1,0 +1,115 @@
+# Preuve en direct AARG64 - pile locale, code 93d4c7463 (dev-plan-6a6fc9-w13), 2026-11-05
+# Lanceur : python scripts/sonde.py (transaction annulee, mail en memoire, HTTP sortant bloque) ou node.
+# Sondes LIVE-* : repro=true signifie ICI que le comportement attendu par la tache est observe ;
+# sondes C-* d'audit : ECART (repro=false) = le defaut constate n'est plus reproduit.
+
+== LIVE-AARG64 (sha 93d4c7463)
+attendu : R : 200 payee du 0 retenue comptee stock 8 ; X : 409 'remboursement' ; D : reservation resoldee
+observé : {"repro": true, "ok_R": true, "ok_X": true, "observe": {"R": {"resa_initiale": null, "stock_apres_facture": 8, "resa_apres_facture": null, "paiement_avec_retenue": [201, null], "avant_annulation": ["payee", "0", "200.00"], "stock_apres_annulation": 10, "resa_apres_annulation": null, "retenues_annulees_apres_annulation": [true], "annuler_avoir_http": 200, "detail": null, "statut": "payee", "du": "0", "retenues_total": "200.00", "retenues_annulees": [false], "stock_final": 8, "resa_finale": null, "avoir": "annulee"}, "X": {"resa_initiale": null, "stock_apres_facture": 8, "resa_apres_facture": null, "paiement": "encaisser_sur_facture 1000", "avant_annulation": ["emise", "200.00", "0"], "stock_apres_annulation": 10, "resa_apres_annulation": null, "retenues_annulees_apres_annulation": [], "annuler_avoir_http": 409, "detail": "Défaites d'abord le remboursement de l'acompte fait à l'annulation de FAC-202611-0002 avant d'annuler l'avoir.", "statut": "annulee", "du": "0", "retenues_total": "0", "retenues_annulees": [], "stock_final": 10, "resa_finale": null, "avoir": "emise"}, "D": {"resa_initiale": [[2, false, true]], "stock_apres_facture": 8, "resa_apres_facture": [[0, true, true]], "paiement_avec_retenue": [201, null], "avant_annulation": ["payee", "0", "200.00"], "stock_apres_annulation": 10, "resa_apres_annulation": [[2, false, true]], "retenues_annulees_apres_annulation": [true], "annuler_avoir_http": 200, "detail": null, "statut": "payee", "du": "0", "retenues_total": "200.00", "retenues_annulees": [false], "stock_final": 8, "resa_finale": [[0, true, true]], "avoir": "annulee"}}}
+verdict : REPRO
+base inchangée : oui (avant 591, après 591) ; mails 0 ; tâches Celery bloquées 0
+
+== C-AARG-002 (sha 2781a2049)
+attendu : repro si R : statut != payee ou dû 200 (RAS neutralisée non rendue) ; T : payee, dû 0
+observé : {'base_code': {'AARG59_present': True, 'ASTK262_present': True, 'AARG2_present': True}, 'R': {'avant': {'statut': 'payee', 'du': '0', 'paye': '1000.00', 'retenues': '200.00'}, 'apres_annulation': {'statut': 'annulee', 'retenues_annulees': [True]}, 'annuler_avoir_http': 200, 'detail': None, 'statut': 'payee', 'paye': '1000.00', 'du': '0', 'retenues_total': '200.00', 'retenues_annulees': [False], 'avances_libres': 0, 'relancable': [False]}, 'T': {'avant': {'statut': 'payee', 'du': '0', 'paye': '1200.00', 'retenues': '0'}, 'apres_annulation': {'statut': 'annulee', 'retenues_annulees': []}, 'annuler_avoir_http': 200, 'detail': None, 'statut': 'payee', 'paye': '1200.00', 'du': '0', 'retenues_total': '0', 'retenues_annulees': [], 'avances_libres': 0, 'relancable': [False]}}
+{"base_code": {"AARG59_present": true, "ASTK262_present": true, "AARG2_present": true}, "R": {"avant": {"statut": "payee", "du": "0", "paye": "1000.00", "retenues": "200.00"}, "apres_annulation": {"statut": "annulee", "retenues_annulees": [true]}, "annuler_avoir_http": 200, "detail": null, "statut": "payee", "paye": "1000.00", "du": "0", "retenues_total": "200.00", "retenues_annulees": [false], "avances_libres": 0, "relancable": [false]}, "T": {"avant": {"statut": "payee", "du": "0", "paye": "1200.00", "retenues": "0"}, "apres_annulation": {"statut": "annulee", "retenues_annulees": []}, "annuler_avoir_http": 200, "detail": null, "statut": "payee", "paye": "1200.00", "du": "0", "retenues_total": "0", "retenues_annulees": [], "avances_libres": 0, "relancable": [false]}, "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0
+
+# ---- source : C-LIVE-AARG64.py ----
+# flake8: noqa  (preuve en direct AARG64, 05/11/2026)
+"""AARG64 — effets réversibles de l'annulation rejoués à la restauration. (R) devis accepté Panneau 550W ×2 (stock 10),
+`facturer-complet` (vraie API ⇒ stock 8), soldée par `paiement-avec-retenue` (vraie API) 1 000 + RAS-TVA 200,
+annulée `garder_en_avance` (stock 10) ⇒ POST avoirs/<miroir>/annuler/ : 200, payée, dû 0, retenue annulee=False,
+stock 8. (X) annulée `rembourser` ⇒ 409 nommant « le remboursement », stock et statut inchangés. (D) même chose que R
+avec un chantier du devis et sa réservation N14 : quantités de la réservation à chaque pas. Admin, société neuve,
+transaction annulée."""
+SONDE = {"constat": "LIVE-AARG64", "sha": "93d4c7463",
+         "attendu": "R : 200 payee du 0 retenue comptee stock 8 ; X : 409 'remboursement' ; D : reservation resoldee",
+         "modeles": ["ventes.Facture", "ventes.Avoir", "ventes.Paiement", "ventes.RetenueSubie", "stock.MouvementStock"]}
+
+
+def sonde(ctx):
+    from datetime import date
+    from decimal import Decimal
+    from django.contrib.auth import get_user_model
+    from rest_framework.test import APIClient
+    from authentication.models import Company
+    from apps.crm.models import Client
+    from apps.stock.models import Produit
+    from apps.ventes.models import Devis, LigneDevis, Facture, Avoir, RetenueSubie
+    from apps.ventes.domain.annulation_facture import annuler_facture
+    H = {'HTTP_HOST': 'localhost'}
+    B = '/api/django/ventes'
+    co = Company.objects.create(nom='Live AARG64', slug='live-aarg64')
+    u = get_user_model().objects.create_user(username='live_aarg64', password='x', role_legacy='admin', company=co)
+    api = APIClient()
+    api.force_authenticate(u)
+    cl = Client.objects.create(company=co, nom='Client', prenom='L64', email='l64@example.invalid')
+    obs = {}
+
+    def preparer(suffixe, directive, chantier=False):
+        p = Produit.objects.create(company=co, nom='Panneau 550W', sku=f'LIVE-L64-{suffixe}',
+                                   prix_vente=Decimal('500'), quantite_stock=10)
+        d = Devis.objects.create(company=co, reference=f'DEV-L64-{suffixe}', client=cl, statut='accepte',
+                                 taux_tva=Decimal('20'), mode_installation='residentiel', created_by=u)
+        LigneDevis.objects.create(devis=d, produit=p, designation='Panneau 550W', quantite=Decimal('2'),
+                                  prix_unitaire=Decimal('500'), remise=Decimal('0'), taux_tva=Decimal('20'))
+        resa = None
+        if chantier:
+            from apps.installations.services import create_installation_from_devis, seed_reservations
+            from apps.installations.models import StockReservation
+            inst, _ = create_installation_from_devis(d, u, co)
+            seed_reservations(inst)
+            resa = lambda: list(StockReservation.objects.filter(installation=inst, produit=p).values_list(
+                'quantite', 'consomme', 'active'))
+        pas = {'resa_initiale': resa() if resa else None}
+        r = api.post(f'{B}/devis/{d.id}/facturer-complet/', {'paiements': []}, format='json', **H)
+        assert r.status_code == 201, r.data
+        f = Facture.objects.get(pk=r.data['facture_id'])
+        pas['stock_apres_facture'] = Produit.objects.get(pk=p.pk).quantite_stock
+        pas['resa_apres_facture'] = resa() if resa else None
+        if directive == 'garder_en_avance':
+            r = api.post(f'{B}/paiements/factures/{f.pk}/paiement-avec-retenue/',
+                         {'montant': '1000.00', 'date_paiement': date.today().isoformat(), 'mode': 'virement',
+                          'type_retenue': 'ras_tva', 'taux': '100'}, format='json', **H)
+            pas['paiement_avec_retenue'] = [r.status_code, None if r.status_code < 400 else str(r.data)[:160]]
+        else:
+            from apps.ventes.domain.encaissements import encaisser_sur_facture
+            encaisser_sur_facture(facture=Facture.objects.get(pk=f.pk), donnees={'montant': Decimal('1000.00'),
+                                  'date_paiement': date.today(), 'mode': 'virement', 'reference': ''}, user=u)
+            pas['paiement'] = 'encaisser_sur_facture 1000'
+        f = Facture.objects.get(pk=f.pk)
+        pas['avant_annulation'] = [f.statut, str(f.montant_du), str(f.retenues_subies_total)]
+        annuler_facture(f, user=u, directive={'action': directive})
+        pas['stock_apres_annulation'] = Produit.objects.get(pk=p.pk).quantite_stock
+        pas['resa_apres_annulation'] = resa() if resa else None
+        pas['retenues_annulees_apres_annulation'] = list(RetenueSubie.objects.filter(facture=f).values_list('annulee', flat=True))
+        a = Avoir.objects.get(facture=f)
+        r = api.post(f'{B}/avoirs/{a.id}/annuler/', {}, format='json', **H)
+        f = Facture.objects.get(pk=f.pk)
+        pas.update({'annuler_avoir_http': r.status_code,
+                    'detail': str((r.data or {}).get('detail'))[:200] if r.status_code >= 400 else None,
+                    'statut': f.statut, 'du': str(f.montant_du), 'retenues_total': str(f.retenues_subies_total),
+                    'retenues_annulees': list(RetenueSubie.objects.filter(facture=f).values_list('annulee', flat=True)),
+                    'stock_final': Produit.objects.get(pk=p.pk).quantite_stock,
+                    'resa_finale': resa() if resa else None, 'avoir': Avoir.objects.get(pk=a.pk).statut})
+        return pas
+
+    obs['R'] = preparer('R', 'garder_en_avance')
+    try:
+        obs['X'] = preparer('X', 'rembourser')
+    except Exception as exc:
+        obs['X'] = f'erreur preparation {type(exc).__name__}: {str(exc)[:200]}'
+    try:
+        obs['D'] = preparer('D', 'garder_en_avance', chantier=True)
+    except Exception as exc:
+        obs['D'] = f'erreur preparation {type(exc).__name__}: {str(exc)[:200]}'
+    r, x = obs['R'], obs['X']
+    ok_r = (r['stock_apres_facture'] == 8 and r['stock_apres_annulation'] == 10 and r['annuler_avoir_http'] == 200
+            and r['statut'] == 'payee' and Decimal(r['du']) == 0 and r['retenues_annulees'] == [False]
+            and r['stock_final'] == 8)
+    ok_x = isinstance(x, dict) and x['annuler_avoir_http'] == 409 and 'remboursement' in (x['detail'] or '') \
+        and x['statut'] == 'annulee' and x['stock_final'] == x['stock_apres_annulation']
+    return {'repro': bool(ok_r and ok_x), 'ok_R': ok_r, 'ok_X': ok_x, 'observe': obs}
+
