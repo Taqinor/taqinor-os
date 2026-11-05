@@ -38,8 +38,12 @@ class MetricDefinitionSerializer(UniciteEn409Mixin, ChampsStrictsMixin,
         read_only_fields = ['id', 'created_at', 'updated_at']
         # ENF11 (nocturne 41958593088, dCl2lo) : la forme de la clé est PUBLIÉE
         # (motif au schéma via RegexValidator) — « 0 » était conforme puis 400.
+        # ENF45 d : sans ``mesure`` (défaut ``{}``) ``MetricDefinition.clean``
+        # refusait un corps que le schéma disait complet — elle est REQUISE à
+        # la création (et au PUT) ; PATCH la garde facultative.
         extra_kwargs = {'cle': {'validators': [
-            RegexValidator(_CLE_VALIDE, message=_MESSAGE_CLE)]}}
+            RegexValidator(_CLE_VALIDE, message=_MESSAGE_CLE)]},
+            'mesure': {'required': True}}
 
     def validate_cle(self, value):
         # La clé voyage dans les URL (`metriques/<cle>/valeur/`) et dans les

@@ -124,6 +124,22 @@ class CrudMetriquesTests(_BaseApi):
         reponse = self._creer(cle='Marge Brute')
         self.assertEqual(reponse.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_mesure_requise_a_la_creation_et_au_schema(self):
+        """ENF45 d (api-fuzz-full 41958593088) : ``mesure`` absente = refus
+        nommé, et le schéma la dit REQUISE (POST/PUT) — un corps « complet »
+        au schéma n'est plus refusé par ``clean``. PATCH reste partiel."""
+        from apps.semantic.serializers import MetricDefinitionSerializer
+        donnees = {'cle': 'sans_mesure', 'libelle': 'Sans mesure',
+                   'dataset': 'ntdata10_societes'}
+        reponse = self._vue('post', {'post': 'create'}, BASE, donnees)
+        self.assertEqual(reponse.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(reponse.data['mesure'][0].code, 'required')
+        self.assertTrue(MetricDefinitionSerializer().fields['mesure'].required)
+        pk = self._creer().data['id']
+        reponse = self._vue('patch', {'patch': 'partial_update'},
+                            f'{BASE}{pk}/', {'libelle': 'Renommée'}, pk=pk)
+        self.assertEqual(reponse.status_code, status.HTTP_200_OK, reponse.data)
+
     def test_edition_fige_une_version_signee(self):
         pk = self._creer().data['id']
         reponse = self._vue(
@@ -164,6 +180,32 @@ class ValeurParCleTests(_BaseApi):
         self._creer()
         reponse = self._valeur('nb_societes', {'filters': '{pas du json'})
         self.assertEqual(reponse.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_parametres_objet_json_publies_en_content_json(self):
+        """ENF45 c (api-fuzz-full 41958593088) : ``period``/``filters`` (et
+        ``cellule`` d'expliquer) sont publiés ``content: application/json``
+        + schéma objet — plus ``type: string``, dont « 2 » était conforme puis
+        refusé ; un objet conforme est bien lu par la vue."""
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+        doc = SchemaGenerator(patterns=[
+            path('api/django/semantic/', include('apps.semantic.urls')),
+        ]).get_schema(request=None, public=True)
+        attendus = {
+            '/api/django/semantic/metriques/{cle}/valeur/': {'period', 'filters'},
+            '/api/django/semantic/metriques/{cle}/expliquer/': {'filters', 'cellule'},
+        }
+        for chemin, noms in attendus.items():
+            parametres = {p['name']: p for p in doc['paths'][chemin]['get']['parameters']}
+            for nom in noms:
+                with self.subTest(chemin=chemin, nom=nom):
+                    parametre = parametres[nom]
+                    self.assertNotIn('schema', parametre)
+                    schema = parametre['content']['application/json']['schema']
+                    self.assertEqual(schema['type'], 'object')
+        self._creer()
+        reponse = self._valeur('nb_societes', {'group_by': '', 'filters': '{}'})
+        self.assertEqual(reponse.status_code, status.HTTP_200_OK, reponse.data)
 
     def test_parametres_lus(self):
         group_by, period, filters = parametres_de_resolution({
