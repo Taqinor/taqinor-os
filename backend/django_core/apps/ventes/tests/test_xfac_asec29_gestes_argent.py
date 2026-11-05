@@ -462,3 +462,15 @@ class GestesArgentTests(TestCase):
              f'{base}clients/{client}/score-comportement/'],
             [f'{base}clients/{client}/releve-pdf/',
              f'{base}factures/{facture.id}/lettre-relance-pdf/'])
+
+    def test_lectures_annexes_bornees_au_module_ventes(self):
+        """AARG66 (C-AARG-VER5-003) — lignes de facture, prévision de
+        trésorerie, alerte d'encours client, lettre de relance premium : 403
+        pour Admin RH ; Commercial/Directeur lisent.
+        Mutant : remettre ``IsAnyRole`` sur une vue ⇒ échec."""
+        facture = self._facture(self.users['Commercial'])
+        base = '/api/django/ventes/'
+        self._lectures_bornees(
+            [base + 'factures-lignes/', base + 'insights/cash-flow/',
+             f'{base}clients/{self.client_obj.id}/credit-warning/'],
+            [f'{base}factures/{facture.id}/lettre-relance-premium/'])
