@@ -234,7 +234,7 @@ class ResponsableEnBase(BaseApiCalepinage):
         reponse = self.api.patch(url_detail(self.a_personne.pk),
                                  {'responsable': self.user_autre.pk},
                                  format='json')
-        self.assertEqual(reponse.status_code, 404)
+        self.assertEqual(reponse.status_code, 409)  # ENF45 a : mise à jour = 409
         self.assertIn('responsable', reponse.data)
         self.a_personne.refresh_from_db()
         self.assertIsNone(self.a_personne.responsable)

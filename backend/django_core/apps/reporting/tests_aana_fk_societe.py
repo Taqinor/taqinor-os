@@ -87,6 +87,30 @@ class TestFkSociete(TestCase):
         resp = poster(locale.pk)
         self.assertEqual(resp.status_code, 201, resp.data)
 
+    def test_put_metrique_inconnue_409_sur_alerte_existante(self):
+        """ENF45 a (api-fuzz-full 41958593088) : sur une MISE À JOUR l'alerte
+        du chemin existe — la métrique du corps absente ou d'une autre société
+        est un refus d'état (409, plus 404), même corps dans les deux cas."""
+        from apps.semantic.models import MetricDefinition
+        alerte = KpiAlerte.objects.create(
+            company=self.co_a, nom='Stock', kpi=KpiAlerte.Kpi.VALEUR_STOCK_TOTALE,
+            operateur=KpiAlerte.Operateur.SUP, seuil='60')
+        etrangere = MetricDefinition.objects.create(
+            company=self.co_b, cle='mrr', libelle='MRR',
+            dataset='sav_contrats', mesure={'agg': 'count'})
+        codes = []
+        for pk in (etrangere.pk, 999999):
+            resp = self.api.put(f'{BASE}/kpi-alertes/{alerte.pk}/', {
+                'nom': 'MRR bas', 'source': KpiAlerte.Source.METRIQUE,
+                'metric_definition': pk,
+                'operateur': KpiAlerte.Operateur.INF, 'seuil': '1',
+            }, format='json')
+            self.assertEqual(resp.status_code, 409, resp.data)
+            codes.append([str(e.code) for e in resp.data['metric_definition']])
+        self.assertEqual(codes[0], codes[1])
+        alerte.refresh_from_db()
+        self.assertIsNone(alerte.metric_definition_id)
+
     def test_config_user_autre_societe_refuse(self):
         resp = self.api.post(f'{BASE}/dashboard-config/', {
             'user': self.etranger.pk, 'cards': [],

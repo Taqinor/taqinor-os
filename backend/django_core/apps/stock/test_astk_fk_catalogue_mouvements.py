@@ -123,7 +123,7 @@ class FkCatalogueMouvementsTests(TestCase):
                            format='json')
         r_absent = self.api.patch(url, {'nomenclature': ID_ABSENT},
                                   format='json')
-        self._assert_comme_absent(r, r_absent, self.nom_b.pk, 404)
+        self._assert_comme_absent(r, r_absent, self.nom_b.pk, 409)  # ENF45 a : mise à jour
         self.regle_a.refresh_from_db()
         self.assertEqual(self.regle_a.nomenclature_id, self.nom_a.pk)
         # La règle de A ne s'évalue jamais chez B.

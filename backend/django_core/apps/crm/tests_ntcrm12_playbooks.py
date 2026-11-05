@@ -256,7 +256,7 @@ class PlaybookEnfantsScopeTests(TestCase):
         resp = self.api.patch(
             f'/api/django/crm/playbook-etapes/{self.etape.pk}/',
             {'playbook': self.playbook_autre.pk, 'stage': stages.SIGNED}, format='json')
-        self.assertEqual(resp.status_code, 404, getattr(resp, 'data', resp))
+        self.assertEqual(resp.status_code, 409, getattr(resp, 'data', resp))  # ENF45 a : mise à jour = 409
         self.assertIn('playbook', resp.data)
         self.etape.refresh_from_db()
         self.assertEqual(self.etape.playbook_id, self.playbook.pk)
