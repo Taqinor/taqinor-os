@@ -10,8 +10,14 @@
    d'entrée ou le déclencheur), DANS le conteneur Django, par le programme de `sonde.py` (AMET93) :
    transaction annulée, mail en mémoire, Celery coupé, HTTP sortant bloqué, comptes avant / après
    — rien n'est gardé ; une base modifiée = ÉCHEC, jamais d'enregistrement. Une étape `manquante`
-   est rapportée, jamais jouée. `--corps` : `{id_étape: corps JSON}` pour les actions qui en exigent.
-3. Oracles qa-explorer 1-10 au niveau API (1 : ≥ 500 ; 2 : 4xx sur l'action ; 5 : liste relue après
+   est rapportée, jamais jouée. `--corps` : `{id_étape: corps JSON}` pour les actions qui en exigent
+   (« {app.Modele.champ} » = champ de l'objet chaîné ; `{"__fichier__": nom, "contenu": …}` = envoi multipart ;
+   `"<id>.apercu"` = corps de l'aperçu). Aperçu DÉCLARÉ (déclencheur = vue dry-run distincte de l'action) : joué
+   d'abord, son jeton passé à l'action. Route à `<modele>_id` : pk de l'objet de CE modèle. Étape automatique
+   dont le déclencheur nomme une tâche (`fichier.py::fonction`) : la tâche est exécutée dans la transaction ;
+   sans artefact lié (ou sans tâche nommée) : « hors rejeu » avec la raison, jamais FAIL — sauf tâche levée.
+3. Oracles qa-explorer 1-10 au niveau API (1 : ≥ 500 ; 2 : 4xx sur l'action que la table ne DÉCLARE pas
+   — `statuts_declares` : « HTTP 4xx » d'une règle aval, 409 d'un `refus_409` ; 5 : liste relue après
    un 201 ; 6 : PDF `/proposal` ; 7 : `prix_achat` sur une route client ; 9 : `company` d'une autre
    société ; 3, 4, 8 sans navigateur et 10 = commande de l'orchestrateur : NA) + 3 oracles de
    parcours : `auto` (étape automatique : son artefact de checkpoint existe, lié à l'enregistrement),
@@ -62,7 +68,10 @@ def _c_routes():
 
 
 def _c_url(route, pk):
-    s = re.sub(r"\(\?P<\w+>[^)]*\)|<(?:\w+:)?\w+>", str(pk), route)
+    """`pk` : une valeur pour tous les paramètres, ou {nom: valeur} (route à `<modele>_id` nommé)."""
+    def val(m):
+        return str(pk.get(m.group(1) or m.group(2), "") if isinstance(pk, dict) else pk)
+    s = re.sub(r"\(\?P<(\w+)>[^)]*\)|<(?:\w+:)?(\w+)>", val, route)
     return "/" + s.replace("^", "").replace("$", "").replace("\\", "").lstrip("/")
 
 
@@ -191,8 +200,14 @@ def _c_jeton(C):
 def _c_appeler(C, verbe, chemin, corps=None):
     from django.db import transaction
     api = C["api"]
+    fichiers = isinstance(corps, dict) and any(isinstance(v, dict) and "__fichier__" in v for v in corps.values())
+    if fichiers:  # {"file": {"__fichier__": "releve.csv", "contenu": "..."}} -> envoi multipart
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        corps = {k: SimpleUploadedFile(v["__fichier__"], str(v.get("contenu", "")).encode("utf-8"))
+                 if isinstance(v, dict) and "__fichier__" in v else v for k, v in corps.items()}
     with transaction.atomic():
-        r = api.get(chemin) if verbe == "get" else getattr(api, verbe)(chemin, corps or {}, format="json")
+        r = (api.get(chemin) if verbe == "get" else
+             getattr(api, verbe)(chemin, corps or {}, format="multipart" if fichiers else "json"))
     ctype = r.get("Content-Type", "")
     # ADVS41 — corps ENTIER (une liste de 50 devis dépasse 1,5 Mo : tronquée, elle ne se lisait plus en JSON)
     texte = "" if "pdf" in ctype else r.content.decode("utf-8", "replace")
@@ -203,11 +218,93 @@ def _c_appeler(C, verbe, chemin, corps=None):
     return r.status_code, ctype, texte, donnees
 
 
+def _c_gabarit(C, v):
+    """Corps `--corps` : « {app.Modele.champ} » remplacé par le champ (relu) de l'objet chaîné à l'enregistrement."""
+    from django.apps import apps
+    if isinstance(v, dict):
+        return {k: _c_gabarit(C, x) for k, x in v.items()}
+    if isinstance(v, list):
+        return [_c_gabarit(C, x) for x in v]
+
+    def champ(m):
+        try:
+            M = apps.get_model(m.group(1))
+        except (LookupError, ValueError):
+            return m.group(0)
+        pk = _c_lier(C, M)
+        o = M._default_manager.filter(pk=pk).first() if pk is not None else None
+        return m.group(0) if o is None else str(getattr(o, m.group(2), m.group(0)))
+    return re.sub(r"\{(\w+\.\w+)\.(\w+)\}", champ, v) if isinstance(v, str) else v
+
+
+def _c_parametres(C, route, cls):
+    """({nom: valeur} des paramètres de la route, nom introuvable | None) : `token` = jeton du lien, `<modele>_id`
+    = pk de l'objet de CE modèle chaîné à l'enregistrement (jamais le pk du modèle de la vue), sinon pk de la vue."""
+    from django.apps import apps
+    valeurs = {}
+    for a, b in re.findall(r"\(\?P<(\w+)>|<(?:\w+:)?(\w+)>", route):
+        nom = a or b
+        if nom == "token":
+            valeurs[nom] = _c_jeton(C)
+        elif nom.endswith("_id"):
+            cible = nom[:-3].replace("_", "")
+            tous = [M for M in apps.get_models() if M.__name__.lower() == cible]
+            M = next((M for M in tous if M._meta.label in C["objets"]), tous[0] if tous else None)
+            valeurs[nom] = _c_lier(C, M)
+        else:
+            valeurs[nom] = _c_lier(C, _c_modele_vue(cls))
+        if valeurs[nom] is None:
+            return valeurs, nom
+    return valeurs, None
+
+
+def _c_apercu(C, e, trouve, res):
+    """Aperçu DÉCLARÉ (déclencheur = vue dry-run / aperçu distincte de l'action) : le joue d'abord et rend
+    {jeton, ok} ; corps de l'aperçu = `--corps {"<id>.apercu": ...}`. None : l'étape n'en déclare pas."""
+    source = (e.get("declencheur") or {}).get("source") or ""
+    ap = _c_route_de(C, source)
+    if not ap or ap[0] == trouve[0] or not re.search(r"dry.?run|apercu|preview", ap[0] + source, re.I):
+        return None
+    chemin = _c_url(ap[0], "")
+    st, _, texte, d = _c_appeler(C, ap[1], chemin, _c_gabarit(C, C["P"]["corps"].get(e.get("id") + ".apercu", {})))
+    jeton = (d.get("token") or d.get("jeton")) if isinstance(d, dict) else None
+    res["notes"].append(f"aperçu déclaré {ap[1].upper()} {chemin} -> {st}"
+                        + (" (jeton passé à l'action)" if jeton else f", sans jeton ({texte[:160]})"))
+    return {"jeton": jeton, "ok": st < 400 and bool(jeton)}
+
+
+def _c_tache(C, ancre, res):
+    """Étape automatique : la tâche planifiée NOMMÉE par le déclencheur (`fichier.py::fonction`, sans argument)
+    exécutée dans la transaction du rejeu. True / False (levée) / None (aucune tâche exécutable nommée)."""
+    import importlib
+    from django.db import transaction
+    fichier, _, sym = (ancre or "").partition("::")
+    if not fichier.startswith("backend/django_core/") or not fichier.endswith(".py") or not sym or "." in sym:
+        return None
+    try:
+        f = getattr(importlib.import_module(fichier[len("backend/django_core/"):-3].replace("/", ".")), sym, None)
+    except ImportError:
+        return None
+    if not callable(f):
+        return None
+    try:
+        with transaction.atomic():
+            retour = f()
+    except Exception as exc:  # noqa: BLE001 — rapportée, l'étape tombe
+        res["notes"].append(f"tâche {sym}() levée : {type(exc).__name__}: {exc}"[:300])
+        return False
+    res["notes"].append(f"tâche {sym}() exécutée dans la transaction -> {retour!r}"[:200])
+    return True
+
+
 def _c_oracles_api(C, res, appel, cls, types):
     """Oracles qa-explorer 1, 2, 5, 6, 7, 9 d'une action jouée + oracle de parcours `aval` (refus_409)."""
     verbe, chemin, corps, (st, ctype, texte, donnees) = appel
     O, R, co = res["oracles"], res["parcours"], C["co"]
-    O["1"], O["2"] = ("FAIL" if st >= 500 else "PASS"), ("FAIL" if 400 <= st < 500 else "PASS")
+    declare = 400 <= st < 500 and st in set(C["P"]["declares"].get(res["id"]) or [])
+    O["1"], O["2"] = ("FAIL" if st >= 500 else "PASS"), ("FAIL" if 400 <= st < 500 and not declare else "PASS")
+    if declare:  # 4xx que la table DÉCLARE (regle_aval « HTTP nnn » / refus_409) : la réponse attendue
+        res["notes"].append(f"{st} déclaré par la table : réponse attendue de l'étape")
     if "proposal" in chemin and chemin.rstrip("/").endswith(("proposal", "pdf")):  # rendu PDF, pas la data JSON
         O["6"] = "PASS" if st == 200 and "pdf" in ctype else "FAIL"
     if any(k in chemin for k in ("public", "proposal", "portail")):
@@ -227,19 +324,25 @@ def _c_oracles_api(C, res, appel, cls, types):
 def _c_jouer_api(C, e, res, trouve, types):
     """Joue l'étape par sa route DRF ; False si aucun objet lié n'existe pour une route de détail."""
     route, verbe, cls = trouve
-    detail = bool(re.search(r"\(\?P<|<\w", route))
-    jeton = bool(re.search(r"<(?:\w+:)?token>|\(\?P<token>", route))
-    pk = _c_jeton(C) if jeton else (_c_lier(C, _c_modele_vue(cls)) if detail else "")
-    if detail and pk is None:
-        nom = "lien à jeton valide" if jeton else getattr(_c_modele_vue(cls), "__name__", "?")
+    params, manque = _c_parametres(C, route, cls)
+    if manque:
+        nom = "lien à jeton valide" if manque == "token" else (
+            manque if manque.endswith("_id") else getattr(_c_modele_vue(cls), "__name__", "?"))
         res["notes"].append(f"aucun {nom} lié à l'enregistrement : non jouée")
         return False
-    chemin, corps = _c_url(route, pk), C["P"]["corps"].get(e.get("id"), {})
+    chemin, corps = _c_url(route, params), _c_gabarit(C, C["P"]["corps"].get(e.get("id"), {}))
+    ap = _c_apercu(C, e, trouve, res)
+    if ap and ap["jeton"] and isinstance(corps, dict) and "token" not in corps:
+        corps = dict(corps, token=ap["jeton"])
     reponse = _c_appeler(C, verbe, chemin, corps)
     res["joue"], res["appel"] = True, f"{verbe.upper()} {chemin} -> {reponse[0]}"
-    if 400 <= reponse[0] < 500 and not corps and verbe != "get":
+    declare = reponse[0] in set(C["P"]["declares"].get(e.get("id")) or [])
+    if 400 <= reponse[0] < 500 and not corps and verbe != "get" and not declare:
         res["notes"].append(f"corps vide envoyé ({reponse[2][:160]}) : fournir --corps {{\"{e.get('id')}\": {{...}}}}")
     _c_oracles_api(C, res, (verbe, chemin, corps, reponse), cls, types)
+    if ap and not ap["ok"]:  # aperçu déclaré en échec : un refus « jeton absent » n'est JAMAIS une réponse attendue
+        res["oracles"]["2"] = "FAIL"
+        res["notes"].append("aperçu déclaré en échec : enchaînement aperçu -> action impossible")
     return True
 
 
@@ -283,15 +386,22 @@ def _c_etape(C, e):
     trouve = _c_route_de(C, entree if isinstance(entree, str) else "") or _c_route_de(C, decl.get("source"), False)
     if not trouve and not auto:
         trouve = _c_par_appelant(C, e, Mp, res["notes"])
+    tache = None
     if trouve:
         if not _c_jouer_api(C, e, res, trouve, types):
             return res
     elif auto:
+        tache = _c_tache(C, decl.get("source"), res)
         res["joue"], res["appel"] = True, f"auto ({decl.get('type')}) : artefact {getattr(Mp, '__name__', '?')}"
     else:
         res["notes"].append("aucune route API pour la fonction d'entrée, ses appelants ni le déclencheur : non jouée")
         return res
     _c_checkpoint(C, res, point, Mp, auto)
+    if auto and tache is not False and res["parcours"]["auto"] == "FAIL":  # jamais quand la tâche a levé
+        res["hors_rejeu"] = ("tâche planifiée exécutée dans la transaction, aucun artefact lié : sa condition "
+                             "(échéance, date) n'est pas atteinte par un enregistrement créé le jour du rejeu"
+                             if tache else "le déclencheur ne nomme aucune tâche exécutable et aucun artefact lié")
+        res["parcours"].update(auto="NA", checkpoint="NA")
     autres = [x if isinstance(x, str) else (x.get("type") or x.get("regle")) for x in regles]
     autres = [str(x) for x in autres if x != "refus_409"]
     if autres:
@@ -319,15 +429,28 @@ def _jouer(P):
 
 
 _CONTENEUR = (_c_routes, _c_url, _c_modele_vue, _c_chercher, _c_route_de, _c_par_appelant, _c_artefact,
-              _c_modele_de, _c_lier, _c_jeton, _c_appeler,
+              _c_modele_de, _c_lier, _c_jeton, _c_appeler, _c_gabarit, _c_parametres, _c_apercu, _c_tache,
               _c_oracles_api, _c_jouer_api, _c_checkpoint, _c_etape, _jouer)
 EN_TETE_CONTENEUR = "import json\nimport re\nimport sys\n\n\n"
+
+
+def statuts_declares(etape: dict) -> list:
+    """Codes 4xx que l'étape DÉCLARE comme réponse attendue : « HTTP nnn » d'une règle aval, 409 pour `refus_409`.
+    Un 4xx hors de cette liste reste un FAIL (oracle 2) ; un 5xx l'est toujours."""
+    codes = set()
+    for r in etape.get("regle_aval", etape.get("regles_aval")) or []:
+        texte = r if isinstance(r, str) else " ".join(str(r.get(k) or "") for k in ("type", "detail", "regle"))
+        codes |= {int(c) for c in re.findall(r"HTTP\s+(4\d\d)\b", texte)}
+        if (r if isinstance(r, str) else r.get("type")) == "refus_409":
+            codes.add(409)
+    return sorted(codes)
 
 
 def programme(table: dict, params: dict, timeout: int) -> str:
     """Programme AUTONOME (sonde.py) : transaction annulée, comptes avant / après."""
     P = dict(params, etapes=table.get("etapes") or [], oracles=ORACLES, marque=MARQUE,
-             auto=sorted(cp.TYPES_AUTO), corps=params.get("corps") or {}, appelants=params.get("appelants") or {})
+             auto=sorted(cp.TYPES_AUTO), corps=params.get("corps") or {}, appelants=params.get("appelants") or {},
+             declares={e.get("id"): statuts_declares(e) for e in table.get("etapes") or []})
     source = (EN_TETE_CONTENEUR + "\n\n".join(inspect.getsource(f) for f in _CONTENEUR)
               + f"\n\nP = __import__('json').loads({json.dumps(P, ensure_ascii=True)!r})\n"
               "\n\ndef sonde(ctx):\n    return _jouer(P)\n")
@@ -352,22 +475,27 @@ def _notes(res: dict) -> str:
     return "; ".join(notes) if isinstance(notes, list) else str(notes)
 
 
-def etapes_enregistrement(table: dict, resultats: list) -> tuple:
-    """(étapes au format results.json AMET88, lignes « non enregistrées » à rapporter)."""
+def etapes_enregistrement(table: dict, resultats: list, couvre=None) -> tuple:
+    """(étapes au format results.json AMET88, lignes « non enregistrées » à rapporter). `couvre` (--couvre) :
+    chaque étape jouée couvre CES tâches (rejeu preuve d'une tâche de table), id suffixé `.rejeu_<tâche>`."""
     par_id = {r.get("id"): r for r in resultats}
     etapes, ignorees = [], []
+    suffixe = ".rejeu_" + "_".join(couvre).lower() if couvre else ""
     for e in cp.parcours.etapes(table):
         ident, res = e.get("id"), par_id.get(e.get("id")) or {}
         if cp.est_manquante(e):
             ignorees.append(f"{ident} : manquante déclarée, jamais jouée")
         elif not res.get("joue"):
             ignorees.append(f"{ident} : non jouée ({_notes(res) or 'sans résultat'})")
-        elif not e.get("taches"):
+        elif res.get("hors_rejeu"):
+            ignorees.append(f"{ident} : hors rejeu ({res['hors_rejeu']})")
+        elif not (couvre or e.get("taches")):
             ignorees.append(f"{ident} : jouée, sans tâche à couvrir ({res.get('appel')})")
         else:
             verdicts = list(res["oracles"].values()) + list(res["parcours"].values())
             etapes.append({
-                "id": ident, "taches": list(e["taches"]), "verdict": "FAIL" if "FAIL" in verdicts else "PASS",
+                "id": ident + suffixe, "taches": list(couvre or e["taches"]),
+                "verdict": "FAIL" if "FAIL" in verdicts else "PASS",
                 "base_verdict": None, "trace": f"{res.get('appel')} (rejouer_parcours.py, transaction annulée)",
                 "oracles": {o: res["oracles"].get(o, "NA") for o in ORACLES},
                 "oracles_parcours": res["parcours"],
@@ -407,6 +535,8 @@ def main(argv=None, executer=sonde.executer_docker, ecrire=ecrire_enregistrement
     a.add_argument("--pile", action="store_true", help="monte / met à jour d'abord la pile (pile_locale.ps1)")
     a.add_argument("--dry-run", action="store_true", help="imprime le programme, sans docker")
     a.add_argument("--sans-enregistrement", action="store_true", help="joue et rapporte, n'écrit rien")
+    a.add_argument("--couvre", help="tâches (virgules) que CHAQUE étape jouée couvre (preuve d'une tâche de table)")
+    a.add_argument("--groupe", help="groupe d'acceptation de l'enregistrement (défaut : le parcours)")
     a = a.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
@@ -442,8 +572,10 @@ def main(argv=None, executer=sonde.executer_docker, ecrire=ecrire_enregistrement
         return 1
     resultats = json.loads(brut)
     for r in resultats:
-        print(f"{r['id']} : {r.get('appel') or 'non jouée'} ; parcours {r['parcours']} ; {_notes(r)}")
-    etapes, ignorees = etapes_enregistrement(table, resultats)
+        hors = f" ; HORS REJEU : {r['hors_rejeu']}" if r.get("hors_rejeu") else ""
+        print(f"{r['id']} : {r.get('appel') or 'non jouée'} ; parcours {r['parcours']} ; {_notes(r)}{hors}")
+    couvre_taches = [t.strip() for t in (a.couvre or "").split(",") if t.strip()]
+    etapes, ignorees = etapes_enregistrement(table, resultats, couvre_taches)
     for ligne in ignorees:
         print(f"Hors enregistrement : {ligne}")
     print(f"Base inchangée (transaction annulée) : {bilan.get('comptes_avant')} lignes avant et après.")
@@ -452,7 +584,7 @@ def main(argv=None, executer=sonde.executer_docker, ecrire=ecrire_enregistrement
         print("Aucun enregistrement écrit" + (" (aucune étape jouée ne porte de tâche)." if not etapes else "."))
         return 0 if ok else 1
     couvre = sorted({t for e in etapes for t in e["taches"]})
-    return 0 if ecrire(pa, {"couvre": couvre, "etapes": etapes}) == 0 and ok else 1
+    return 0 if ecrire((a.groupe or pa).upper(), {"couvre": couvre, "etapes": etapes}) == 0 and ok else 1
 
 
 if __name__ == "__main__":
