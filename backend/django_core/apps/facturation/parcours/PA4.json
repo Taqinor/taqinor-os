@@ -228,7 +228,7 @@
     "composant": "PaiementDialog.jsx",
     "action": "Enregistrer le paiement"
    },
-   "fonction_entree": "backend/django_core/apps/ventes/domain/encaissements.py::enregistrer_paiement",
+   "fonction_entree": "backend/django_core/apps/ventes/domain/encaissements.py::encaisser_sur_facture",
    "checkpoint": {
     "modifiable": true,
     "champs": [

@@ -1,0 +1,100 @@
+{
+  "sha": "17795b619ad6fcd31563ae1988680c4bd3ecc77d",
+  "date": "2026-11-05",
+  "groupe": "ADVS",
+  "verdict": "PASS",
+  "couvre": [
+    "ADVS41"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PA3-01.rejeu_advs41",
+      "taches": [
+        "ADVS41"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/PA3/2026-11-05-17795b619.results.json",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": "rejouer_parcours.py PA3 --enregistrement 3222 (devis brouillon demo, societe 2), transaction annulee ; POST /api/django/ventes/devis/atomic/ -> 201 (rejouer_parcours.py, transaction annulée) ; checkpoint ['client', 'lead', 'etude_params'] : PATCH -> 200, relu identique; règles aval à observer : choix_explicite ; recalcul; parcours {\"auto\": \"NA\", \"checkpoint\": \"PASS\", \"aval\": \"NA\"}"
+    },
+    {
+      "id": "PA3-02.rejeu_advs41",
+      "taches": [
+        "ADVS41"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/PA3/2026-11-05-17795b619.results.json",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "rejouer_parcours.py PA3 --enregistrement 3222 (devis brouillon demo, societe 2), transaction annulee ; POST /api/django/ventes/devis/3222/envoyer-email/ -> 200 (rejouer_parcours.py, transaction annulée) ; règles aval à observer : fige; parcours {\"auto\": \"NA\", \"checkpoint\": \"PASS\", \"aval\": \"NA\"}"
+    },
+    {
+      "id": "PA3-04.rejeu_advs41",
+      "taches": [
+        "ADVS41"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/PA3/2026-11-05-17795b619.results.json",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "rejouer_parcours.py PA3 --enregistrement 3222 (devis brouillon demo, societe 2), transaction annulee ; GET /api/django/ventes/proposal/U2BWKGJAyJsIUT8d7yKsoLRD2q4Lc1CYR0S9dokV5rU/ -> 200 (rejouer_parcours.py, transaction annulée) ; règles aval à observer : reference; parcours {\"auto\": \"NA\", \"checkpoint\": \"PASS\", \"aval\": \"NA\"}"
+    },
+    {
+      "id": "PA3-13.rejeu_advs41",
+      "taches": [
+        "ADVS41"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/PA3/2026-11-05-17795b619.results.json",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "rejouer_parcours.py PA3 --enregistrement 3222 (devis brouillon demo, societe 2), transaction annulee ; auto (evenement) : artefact Devis (rejouer_parcours.py, transaction annulée) ; règles aval à observer : recalcul; parcours {\"auto\": \"PASS\", \"checkpoint\": \"PASS\", \"aval\": \"NA\"}"
+    }
+  ]
+}
