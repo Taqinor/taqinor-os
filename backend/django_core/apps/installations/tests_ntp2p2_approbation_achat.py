@@ -99,8 +99,12 @@ class DecisionEtapeCorpsAbsurdeTests(TestCase):
         for corps in (False, [1], {'etape': 'x'}, {'commentaire': 3}):
             self.assertEqual(api.post(url, corps, format='json').status_code,
                              400, corps)
-        self.assertEqual(
-            api.post(url, {'etape': 10 ** 12}, format='json').status_code, 404)
+        # ENF47 (api-fuzz-full 42017839549) : demande existante, étape du
+        # corps absente (hors bornes ou négative) = refus d'état 409 (ENF40).
+        for etape in (10 ** 12, -20313):
+            self.assertEqual(
+                api.post(url, {'etape': etape}, format='json').status_code,
+                409, etape)
 
 
 class ApprobationAchatSequentielleTests(TestCase):

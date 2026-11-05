@@ -505,6 +505,15 @@ class FacturerVenteAcompteVNT28(_BaseVente):
             'tranches'] if t['statut'] == 'a_faire']
         self.assertEqual(a_faire, [Decimal('29400.00'), Decimal('4600.00')])
 
+    def test_acompte_sans_montant_ni_acompte_a_facturer_409(self):
+        # ENF47 (api-fuzz-full 42017839549) : ``{"nature": "acompte"}`` sans
+        # montant, l'acompte de l'échéancier déjà émis — refus d'ÉTAT, pas 400.
+        devis = self._388('DEV-ENF47-ACPT')
+        self._acompte_14700(devis, statut='emise')
+        refus = self._refus(devis, nature='acompte')
+        self.assertEqual((refus.status, refus.corps['code']),
+                         (409, 'montant_invalide'))
+
     def test_double_clic_un_seul_brouillon(self):
         devis = self._388('DEV-VNT28-DBL')
         premiere, _p = self._facturer(devis, nature='acompte',

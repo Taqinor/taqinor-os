@@ -2531,7 +2531,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         try:
             item = ticket.checklist_items.get(cle=cle)
         except TicketChecklistItem.DoesNotExist:
-            return Response({'detail': 'Item introuvable.'}, status=404)
+            return Response({'detail': 'Item introuvable.'}, status=409)  # ENF47 : refus d'état (ENF40)
         if 'coche' in corps:
             item.coche = corps['coche']
             if item.coche:

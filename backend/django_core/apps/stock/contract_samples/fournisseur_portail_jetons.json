@@ -114,14 +114,14 @@
     },
     "fournisseur_revoquer_acces": {
       "endpoint": "POST /api/django/stock/fournisseurs/<id>/revoquer-acces/",
-      "pourquoi": "NTPRT3 — ferme l'accès portail du fournisseur (ADMIN ; views/fournisseur.py:317) : le compte reste (traçabilité), l'accès cesse immédiatement (`actif` false + `is_active` false). 404 {detail:'Ce fournisseur n'a aucun accès portail à révoquer.'} sans compte. NB : AUJOURD'HUI la réponse porte {fournisseur_id, actif, comptes_desactives, detail} ; la clé `jetons_revoques` (nombre de jetons à lien public révoqués en même temps) est NOUVELLE — voir `exemple_nouveau_astk179`.",
+      "pourquoi": "NTPRT3 — ferme l'accès portail du fournisseur (ADMIN ; views/fournisseur.py:317) : le compte reste (traçabilité), l'accès cesse immédiatement (`actif` false + `is_active` false), fournisseur archivé compris. 409 {detail:'Ce fournisseur n'a aucun accès portail à révoquer.'} sans compte ni jeton (refus d'état, ENF47 — c'était un 404). NB : AUJOURD'HUI la réponse porte {fournisseur_id, actif, comptes_desactives, detail} ; la clé `jetons_revoques` (nombre de jetons à lien public révoqués en même temps) est NOUVELLE — voir `exemple_nouveau_astk179`.",
       "exemple": {
         "fournisseur_id": 5,
         "actif": false,
         "comptes_desactives": 1,
         "detail": "L'accès portail de ce fournisseur est fermé."
       },
-      "exemple_erreur_404": {
+      "exemple_erreur_409": {
         "detail": "Ce fournisseur n'a aucun accès portail à révoquer."
       },
       "nouveau_astk179": "NOUVEAU — ASTK179 (clé jetons_revoques ; non construite, exclue du test de forme)",

@@ -13,9 +13,10 @@ from django.core.validators import RegexValidator
 from rest_framework import serializers
 
 from core.champs_stricts import BooleenStrict, ChampsStrictsMixin
+from core.parseurs import ObjetJSON
 from core.unicite import UniciteEn409Mixin
 
-from .models import MetricDefinition
+from .models import AGREGATIONS, MetricDefinition
 from .portabilite import FORMAT, MAX_METRIQUES_IMPORT
 
 #: Forme d'une clé de métrique (celle des 8 métriques cœur : ``ca_ht``, ``dso``).
@@ -23,10 +24,69 @@ _CLE_VALIDE = re.compile(r'^[a-z][a-z0-9_]{0,79}$')
 _MESSAGE_CLE = ('La clé ne contient que des lettres minuscules, des chiffres '
                 'et « _ » (ex. « marge_brute »), et commence par une lettre.')
 
+#: ENF47 (api-fuzz-full 42017839549, « rejected schema-compliant request ») —
+#: la forme de ``mesure`` PUBLIÉE telle que ``MetricDefinition.clean`` la lit
+#: (``JSONField`` publiait ``{}`` : ``null`` ou ``{}`` étaient conformes puis
+#: 400). Une des quatre formes : adaptateur, formule, ``count``, agrégat sur un
+#: champ ; une formule « vide » (valeur fausse) désigne une mesure simple. Les
+#: textes lus sont sans caractère nul (``ObjetJSON`` le retire, le schéma
+#: publié l'exclut : conforme ⇒ inchangé par ce retrait). OpenAPI 3.0 : ni
+#: ``propertyNames`` ni ``const`` ; énumérations sous ``allOf`` (comme
+#: ``ChoixDocumente`` : aucun composant ``<Prop>Enum`` créé ni renommé).
+_TEXTE_LU = {'type': 'string', 'pattern': '^[^\u0000]+$'}
+
+
+def _parmi(valeurs):
+    return {'allOf': [{'enum': list(valeurs)}]}
+
+
+_FORMULE_VIDE = _parmi([None, False, '', 0, [], {}])
+SCHEMA_MESURE = {'type': 'object', 'anyOf': [
+    {'required': ['adapter'], 'properties': {'adapter': _TEXTE_LU}},
+    {'required': ['formula', 'aggregates'], 'properties': {
+        'formula': _TEXTE_LU,
+        'aggregates': {'type': 'array', 'minItems': 1, 'items': {
+            'type': 'object', 'required': ['alias', 'fn'],
+            'properties': {'alias': _TEXTE_LU,
+                           'fn': _parmi(AGREGATIONS)}}}}},
+    {'required': ['agg'], 'properties': {
+        'agg': _parmi(['count']), 'formula': _FORMULE_VIDE}},
+    {'required': ['agg', 'field'], 'properties': {
+        'agg': _parmi(a for a in AGREGATIONS if a != 'count'),
+        'field': _TEXTE_LU, 'formula': _FORMULE_VIDE}},
+]}
+
+
+class MesureJSON(ObjetJSON):
+    """ENF47 — ``mesure`` : un objet (``null`` refusé) de forme
+    ``SCHEMA_MESURE``, publié ET appliqué (le JSON brut est jugé, avant le
+    retrait du caractère nul) ; refus en 400 nommé, message de ``clean``."""
+
+    def __init__(self, **kwargs):
+        from drf_spectacular.drainage import set_override
+        super().__init__(**kwargs)
+        set_override(self, 'field', SCHEMA_MESURE)
+
+    def to_internal_value(self, data):
+        import jsonschema
+        if isinstance(data, dict) and not jsonschema.Draft7Validator(
+                SCHEMA_MESURE).is_valid(data):
+            try:
+                MetricDefinition(cle='x', dataset='x', mesure=data).clean()
+                message = None
+            except DjangoValidationError as exc:
+                message = exc.message_dict.get('mesure', [None])[0]
+            raise serializers.ValidationError(message or (
+                'La mesure doit être {"field": …, "agg": …}, {"agg": "count"}, '
+                '{"formula": …, "aggregates": […]} ou {"adapter": …}.'))
+        return super().to_internal_value(data)
+
 
 class MetricDefinitionSerializer(UniciteEn409Mixin, ChampsStrictsMixin,
                                  serializers.ModelSerializer):
     """Une métrique nommée : clé, dataset, mesure, unité, filtres."""
+
+    mesure = MesureJSON()  # ENF47 — forme publiée et appliquée, null refusé
 
     class Meta:
         model = MetricDefinition
@@ -42,8 +102,7 @@ class MetricDefinitionSerializer(UniciteEn409Mixin, ChampsStrictsMixin,
         # refusait un corps que le schéma disait complet — elle est REQUISE à
         # la création (et au PUT) ; PATCH la garde facultative.
         extra_kwargs = {'cle': {'validators': [
-            RegexValidator(_CLE_VALIDE, message=_MESSAGE_CLE)]},
-            'mesure': {'required': True}}
+            RegexValidator(_CLE_VALIDE, message=_MESSAGE_CLE)]}}
 
     def validate_cle(self, value):
         # La clé voyage dans les URL (`metriques/<cle>/valeur/`) et dans les
@@ -111,9 +170,10 @@ class ImportMetriquesSerializer(serializers.Serializer):
             'Document étranger : format « %s » attendu.' % FORMAT)})
     version = serializers.IntegerField(required=False, min_value=1)
     metriques = serializers.ListField(
-        # Toute valeur JSON (``null`` compris) : une entrée qui n'est pas un
-        # objet est REFUSÉE ligne à ligne par ``portabilite`` (rapport), comme
-        # le schéma publié l'annonce — jamais un 400 global (api-fuzz).
-        child=serializers.JSONField(allow_null=True), allow_empty=True,
+        # ENF47 (api-fuzz-full 42017839549) : une entrée est un OBJET, publié
+        # et appliqué (``ObjetJSON``) — une liste ou ``null`` était conforme
+        # au schéma ``{}`` puis refusé ligne à ligne (400 en ``commit``). Le
+        # CONTENU d'un objet reste jugé ligne à ligne par ``portabilite``.
+        child=ObjetJSON(), allow_empty=True,
         max_length=MAX_METRIQUES_IMPORT)
     commit = BooleenStrict(required=False, default=False)
