@@ -27,6 +27,7 @@ import { estimateFromBill, formatMad, formatMadRange } from '../billEstimate';
 import { formatKwc } from '../proposition';
 import { nearestRealisation, REALISATIONS } from '../realisations';
 import { libelleRetourLocale } from './i18n';
+import { LOCALE_NOMBRE } from '../nombreLocale';
 import type { ConfigLocale, ContexteTunnel } from './contexte';
 import type { LocaleTunnel } from './etat';
 
@@ -108,7 +109,8 @@ export const TEXTES_RESIDENTIEL: Record<LocaleTunnel, TextesResidentiel> = { fr,
 
 /** Locale de `toLocaleString` pour `fmtNum`/`fmtYears` : `fr-FR` pour FR et AR,
  *  `en-GB` pour EN, tel qu'aujourd'hui. */
-export const LOCALE_NOMBRE: Record<LocaleTunnel, string> = { fr: 'fr-FR', ar: 'fr-FR', en: 'en-GB' };
+// WAUD44 — source unique déplacée dans lib/nombreLocale.ts (mêmes valeurs), ré-exportée ici.
+export { LOCALE_NOMBRE } from '../nombreLocale';
 
 export const fmtNumLocale = (locale: LocaleTunnel) => (n: number): string =>
   (Math.round(n * 10) / 10).toLocaleString(LOCALE_NOMBRE[locale]);

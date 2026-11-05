@@ -200,6 +200,10 @@ describe("registre de disponibilité & alternates (anti-lien-mort)", () => {
       if (/^realisations\/.+/.test(base)) {
         candidates.push(`../src/pages/${locale}/realisations/[slug].astro`);
       }
+      // WAUD87 — fiches techniques : gabarit [slug] EN/AR dérivé de FICHES.
+      if (/^produits\/.+/.test(base)) {
+        candidates.push(`../src/pages/${locale}/produits/[slug].astro`);
+      }
       return candidates.some((f) => {
         try {
           read(f);

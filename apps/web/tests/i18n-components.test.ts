@@ -12,6 +12,10 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { FICHES } from '../src/lib/fiches';
+import { CATEGORIES_FICHE, EN_TETES_FICHE } from '../src/lib/fichesLocale';
+import { localesForPath } from '../src/i18n/pages';
+import { builtPage } from './builtHtmlHelper';
 
 const read = (rel: string) =>
   readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
@@ -218,5 +222,29 @@ describe('WAUD87 — assurance habitation sur /garanties EN et AR', () => {
     expect(city).toContain(`ar: '<a href="/ar/loi-82-21/"`);
     const arTunnel = lire('pages/ar/devis/mon-toit.astro');
     expect(arTunnel).not.toMatch(/href="\/(methodologie-estimation|realisations)\/"/);
+  });
+
+  it('fiches /produits : chaque fiche et chaque catégorie a son en-tête EN et AR (nom + résumé)', () => {
+    expect(FICHES.length).toBe(16);
+    for (const f of FICHES) {
+      for (const loc of ['en', 'ar'] as const) {
+        const t = EN_TETES_FICHE[f.slug]?.[loc];
+        expect(t?.nom, `${f.slug} ${loc}`).toBeTruthy();
+        expect(t?.resume, `${f.slug} ${loc}`).toBeTruthy();
+        expect(t?.resume).not.toBe(f.resume);
+        expect(CATEGORIES_FICHE[f.categorie][loc], f.categorie).toBeTruthy();
+      }
+    }
+    expect(localesForPath('/produits')).toEqual(['fr', 'en', 'ar']);
+    expect(localesForPath('/produits/cablage')).toEqual(['fr', 'en', 'ar']);
+  });
+
+  it.each(['en', 'ar'])('fiches /%s/produits construites : en-tête localisé + repli FR explicite', (loc) => {
+    expect(builtPage(`/${loc}/produits`)).toContain(`href="/${loc}/produits/cablage/"`);
+    for (const f of FICHES) {
+      const html = builtPage(`/${loc}/produits/${f.slug}`);
+      expect(html).toContain(EN_TETES_FICHE[f.slug][loc as 'en' | 'ar'].nom.replace(/&/g, '&amp;'));
+      expect(html).toMatch(new RegExp(`<a href="/produits/${f.slug}/" hreflang="fr"`));
+    }
   });
 });

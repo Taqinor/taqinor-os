@@ -44,6 +44,7 @@ import RelatedLinks from '../../components/RelatedLinks.astro';
 import { bornesInvestissement, buildBrackets } from '../../lib/residentielBrackets';
 import { formatMAD } from '../../lib/format';
 import { localizeNavHref } from '../../i18n/pages';
+import { kwcLocale, realisationByRef } from '../../lib/realisations';
 import { WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink } from '../../lib/whatsapp';
 import { serviceFaqItems } from '../../lib/serviceFaq';
@@ -57,10 +58,10 @@ const faqItems = serviceFaqItems('residentiel', 'en');
 
 
 const EXEMPLES_REELS: Record<string, string> = {
-  '1000-1500': 'Real example: ref. NC-10/25 — 3,72 kWc, Nouaceur, October 2025',
-  '1500-3000': 'Real example: ref. 236 — 5,68 kWc, El Jadida, March 2026',
-  '3000-5000': 'Real example: ref. 400 — 11,36 kWc, Casablanca, April 2026',
-  '5000-10000': 'Real example: ref. 468 — 17,04 kWc, El Jadida, April 2026',
+  '1000-1500': `Real example: ref. NC-10/25 — ${kwcLocale(realisationByRef('NC-10/25'), 'en')}, Nouaceur, October 2025`,
+  '1500-3000': `Real example: ref. 236 — ${kwcLocale(realisationByRef('236'), 'en')}, El Jadida, March 2026`,
+  '3000-5000': `Real example: ref. 400 — ${kwcLocale(realisationByRef('400'), 'en')}, Casablanca, April 2026`,
+  '5000-10000': `Real example: ref. 468 — ${kwcLocale(realisationByRef('468'), 'en')}, El Jadida, April 2026`,
 };
 
 const brackets = buildBrackets(EXEMPLES_REELS, 'en');
@@ -76,7 +77,7 @@ import ProfessionnelBlocB4F1 from '../../components/blocs/ProfessionnelBlocB4F1.
 
 <Layout
   title="Solar panels for villas in Morocco, free study | Taqinor"
-  description="Solar panels for villas and apartments in Morocco: 11,36 kWc tracked in Casablanca, a study on your real bill and the law 82-21 declaration."
+  description="Solar panels for villas and apartments in Morocco: 11.36 kWc tracked in Casablanca, a study on your real bill and the law 82-21 declaration."
   ogSlug="residentiel"
 >
   <div class="v2">
@@ -132,7 +133,7 @@ import ProfessionnelBlocB4F1 from '../../components/blocs/ProfessionnelBlocB4F1.
       <aside class="v2-rise mx-auto max-w-3xl border-t-4 border-brass-400 bg-blanc p-6 text-encre shadow-premium sm:p-8">
         <p class="tech-label text-brass-600">Study excerpt — ref. 400 · Casablanca · April 2026</p>
         <div class="mt-5 grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-4">
-          <div><p class="fig text-3xl text-azur-600 sm:text-4xl">11,36 <span class="text-base">kWc</span></p><p class="tech-label mt-1.5 text-encre-faint">Installed power</p></div>
+          <div><p class="fig text-3xl text-azur-600 sm:text-4xl">{kwcLocale(realisationByRef('400'), 'en').replace(' kWc', '')} <span class="text-base">kWc</span></p><p class="tech-label mt-1.5 text-encre-faint">Installed power</p></div>
           <div><p class="fig text-3xl text-azur-600 sm:text-4xl">16 <span class="text-base">panels</span></p><p class="tech-label mt-1.5 text-encre-faint">Canadian Solar 710 Wc</p></div>
           <div><p class="fig text-3xl text-azur-600 sm:text-4xl">10 <span class="text-base">kWh</span></p><p class="tech-label mt-1.5 text-encre-faint">Dyness LFP storage</p></div>
           <div><p class="fig text-3xl text-azur-600 sm:text-4xl">Real-time <span class="text-base">tracking</span></p><p class="tech-label mt-1.5 text-encre-faint">Monitoring, client access</p></div>
@@ -172,8 +173,8 @@ import ProfessionnelBlocB4F1 from '../../components/blocs/ProfessionnelBlocB4F1.
         <ResidentielDiv9D1E brackets={brackets} />
       </div>
       <p class="mt-5 max-w-2xl text-xs leading-relaxed text-lune-soft">
-        Under 1 000 MAD a month, solar pays back slowly: we say so
-        rather than force the sale. Beyond 10 000 MAD, consumption leaves the residential
+        Under 1,000 MAD a month, solar pays back slowly: we say so
+        rather than force the sale. Beyond 10,000 MAD, consumption leaves the residential
         frame and calls for a dedicated study — see Business.
       </p>
     </section>
@@ -190,8 +191,8 @@ import ProfessionnelBlocB4F1 from '../../components/blocs/ProfessionnelBlocB4F1.
           <h2 class="display v2-section-title mt-5 text-white">What the 30 years deliver, year by year</h2>
           <p class="v2-lead mt-5 text-lune-soft">
             The manufacturer guarantees panel performance over 30 years (a linear warranty). Take a villa with a
-            2 000 MAD monthly bill: 6 kWc come to around 60 000 to 75 000 MAD and
-            wipe out some 12 000 to 16 000 MAD of electricity every year (at the ONEE utility tariff).
+            2,000 MAD monthly bill: 6 kWc come to around 60,000 to 75,000 MAD and
+            wipe out some 12,000 to 16,000 MAD of electricity every year (at the ONEE utility tariff).
             Four to six years to pay it back; then, over the twenty-four to twenty-six years that
             remain, the kilowatt-hour costs almost nothing — there's just one inverter to
             replace once over the lifetime.
@@ -219,7 +220,7 @@ import ProfessionnelBlocB4F1 from '../../components/blocs/ProfessionnelBlocB4F1.
               widths={[1600, 1024, 640]} ratio={4 / 3} sizes="(min-width: 1024px) 40vw, 100vw"
               class="v3-grade w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
             <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
-              <span class="tech-label block text-brass-300">Casablanca · 5,68 kWc</span>
+              <span class="tech-label block text-brass-300">Casablanca · {kwcLocale(realisationByRef('134'), 'en')}</span>
               <span class="mt-0.5 block text-xs text-lune">Install in progress · 8 × Canadian Solar 710 Wc · March 2026</span>
             </figcaption>
           </figure>
@@ -228,7 +229,7 @@ import ProfessionnelBlocB4F1 from '../../components/blocs/ProfessionnelBlocB4F1.
               widths={[1600, 1024, 640]} ratio={3 / 2} sizes="(min-width: 1024px) 40vw, 100vw"
               class="v3-grade w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
             <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
-              <span class="tech-label block text-brass-300">El Jadida · 5,68 kWc</span>
+              <span class="tech-label block text-brass-300">El Jadida · {kwcLocale(realisationByRef('236'), 'en')}</span>
               <span class="mt-0.5 block text-xs text-lune">8 × Canadian Solar 710 Wc · Deye 5 kW</span>
             </figcaption>
           </figure>
