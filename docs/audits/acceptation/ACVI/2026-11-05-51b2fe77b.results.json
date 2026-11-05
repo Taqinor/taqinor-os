@@ -6,7 +6,8 @@
   "couvre": [
     "ACVI102",
     "ACVI103",
-    "ACVI110"
+    "ACVI110",
+    "ACVI104"
   ],
   "couvre_avec_ecart": [],
   "etapes": [
@@ -75,6 +76,28 @@
         "10": "NA"
       },
       "notes": "API reelle : modele aux placeholders vides (responsable sans prenom, lead sans societe ni devis) ⇒ 200 Bonjour Karim., phrases vides omises, aucun { dans texte ni lien ; repli sans modele jamais c est  de ; sonde VER4-020 repro False"
+    },
+    {
+      "id": "W10.ACVI104.resume_associe_oppose",
+      "taches": [
+        "ACVI104"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-05-rejeux-w10/ACVI104.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "API reelle : oppose 409 Message refuse ne plus contacter, aucun wa_url, 0 LeadActivity ; sans client_pii_voir 403 ; normal 200 + wa_url ; ecran : 409, rien ouvert, historique vide — mais le motif 409 n est affiche nulle part (defaut d ecran hors fini-quand, decrit dans la trace)"
     }
   ]
 }

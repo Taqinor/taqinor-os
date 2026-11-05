@@ -1,0 +1,77 @@
+# Preuve en direct ACVI104 - pile locale, code 51b2fe77b (dev-plan-6a6fc9-w10), 2026-11-05
+# Lanceur : python scripts/sonde.py (transaction annulee, mail en memoire, HTTP sortant bloque).
+# Sondes LIVE-* : repro=true signifie ICI que le comportement attendu par la tache est observe.
+
+== LIVE-ACVI104 (sha 51b2fe77b)
+attendu : oppose 409 nomme sans lien ni activite ; sans PII 403 ; normal 200 + wa_url
+observé : {"repro": true, "observe": {"oppose_responsable": [409, "Message refusé : ne plus contacter.", null, [0, 0]], "oppose_sans_pii": [403, "Vous n'avez pas la permission de voir les coordonnées du client."], "normal_responsable": [200, "https://wa.me/212612349777?text=Bonjour%", ""]}}
+verdict : REPRO
+base inchangée : oui (avant 4797, après 4797) ; mails 0 ; tâches Celery bloquées 0
+
+== ECRAN (Playwright, http://localhost, demo_admin, societe demo id 2) : fiche lead 4350 (opposé, associé 0612341059, devis DEV-LIVEW10-104 envoyé), case « Le client a demandé ou accepté ce partage » cochée, clic « Envoyer le résumé à un associé » => POST /api/django/crm/leads/4350/resume-associe/ 409, aucun onglet wa.me ouvert, historique « Aucune activité pour le moment. » ; ECART D'ECRAN (hors fini-quand) : le motif « Message refusé : ne plus contacter. » n'est affiché nulle part (SectionPipeline.jsx::ResumeAssocie pose data en erreurs de champ, detail jamais rendu, suppressErrorToast). Capture : docs/qa-explorer/captures/2026-11-05/ACCEPTATION-ACVI-W10.ACVI104.resume_associe_oppose.jpg
+
+
+# ---- source : C-LIVE-ACVI104.py ----
+# flake8: noqa  (preuve en direct ACVI104, 05/11/2026)
+"""ACVI104 — POST crm/leads/<id>/resume-associe/ {devis_id, accord_client} d'un lead ne_plus_contacter (associe a
+telephone valide, devis envoye) : 409 « Message refuse : ne plus contacter. », aucun wa_url, 0 LeadActivity ajoutee ;
+role sans client_pii_voir : 403 d'abord ; lead normal : 200 + wa_url. Societe demo, transaction annulee."""
+SONDE = {"constat": "LIVE-ACVI104", "sha": "51b2fe77b",
+         "attendu": "oppose 409 nomme sans lien ni activite ; sans PII 403 ; normal 200 + wa_url",
+         "modeles": ["crm.Lead", "crm.Client", "ventes.Devis", "crm.LeadActivity", "roles.Role"]}
+
+
+def sonde(ctx):
+    import json
+    from decimal import Decimal
+    from django.contrib.auth import get_user_model
+    from django.db import transaction
+    from rest_framework.test import APIClient
+    from apps.crm.models import Lead, Client, LeadActivity
+    from apps.roles.models import Role
+    from apps.ventes.models import Devis
+    U = get_user_model()
+    c = U.objects.get(username='demo_admin').company
+    resp = U.objects.create_user(username='live-acvi104-resp', password='x', role_legacy='responsable', company=c)
+    role = Role.objects.create(company=c, nom='Live ACVI104 sans PII',
+                               permissions=['crm_voir', 'crm_modifier', 'ventes_voir'])
+    sans_pii = U.objects.create_user(username='live-acvi104-sanspii', password='x', role=role, company=c)
+
+    def api_de(u):
+        a = APIClient()
+        a.force_authenticate(u)
+        return a
+
+    def appel(a, L, d):
+        try:
+            with transaction.atomic():
+                r = a.post(f'/api/django/crm/leads/{L.id}/resume-associe/',
+                           {'devis_id': d.id, 'accord_client': True}, format='json', HTTP_HOST='localhost')
+            return r.status_code, json.loads(r.content.decode('utf-8', 'replace') or '{}')
+        except Exception as e:
+            return 599, {'_exc': repr(e)[:300]}
+
+    def lead_devis(tag, tel, oppose):
+        cl = Client.objects.create(company=c, nom='Live ' + tag, telephone=tel)
+        L = Lead.objects.create(company=c, nom='Live', prenom=tag, telephone=tel, client=cl, owner=resp,
+                                contact_secondaire_nom='Associe Live', contact_secondaire_telephone='0612349777')
+        d = Devis.objects.create(company=c, reference='DEV-LIVE104-' + tag, client=cl, lead=L,
+                                 statut=Devis.Statut.ENVOYE, taux_tva=Decimal('20'), version=1, created_by=resp)
+        if oppose:
+            Lead.objects.filter(pk=L.pk).update(ne_plus_contacter=True)
+        return L, d
+
+    obs = {}
+    Lo, do = lead_devis('O', '0612341041', True)
+    n0 = LeadActivity.objects.filter(lead=Lo).count()
+    s, r = appel(api_de(resp), Lo, do)
+    n1 = LeadActivity.objects.filter(lead=Lo).count()
+    obs['oppose_responsable'] = [s, str(r.get('detail', '')), r.get('wa_url'), [n0, n1]]
+    s2, r2 = appel(api_de(sans_pii), Lo, do)
+    obs['oppose_sans_pii'] = [s2, str(r2.get('detail', ''))[:90]]
+    Ln, dn = lead_devis('N', '0612341042', False)
+    s3, r3 = appel(api_de(resp), Ln, dn)
+    obs['normal_responsable'] = [s3, (r3.get('wa_url') or '')[:40], str(r3.get('detail', ''))[:60]]
+    ok = (s == 409 and str(r.get('detail')) == 'Message refusé : ne plus contacter.' and not r.get('wa_url')
+          and n0 == n1 and s2 == 403 and s3 == 200 and bool(r3.get('wa_url')))
+    return {'repro': ok, 'observe': obs}
