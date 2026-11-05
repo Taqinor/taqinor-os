@@ -4,7 +4,8 @@
   "groupe": "AGNR",
   "verdict": "PASS",
   "couvre": [
-    "AGNR63"
+    "AGNR63",
+    "AGNR65"
   ],
   "couvre_avec_ecart": [],
   "etapes": [
@@ -29,6 +30,28 @@
         "10": "NA"
       },
       "notes": "API reelle (admin), devis industriel 17 000 TTC : PATCH remise 50, DELETE ligne onduleur, prix-negocie 9 000 (V1 acceptee) avec [8 000 MAD ; 40 % ; 10 %] => 409 {echeancier}, rien ecrit (remise, lignes, TTC, echeancier, aucun V2) ; avec [2 000 MAD ; 40 % ; 10 %] => 200 / 204 / 201, derniere tranche = reste en MAD, aucun jalon < 0, somme = TTC ; tout % => succes, echeancier inchange ; sondes C-AGNR-VER4-010 et -012 repro False"
+    },
+    {
+      "id": "W14.AGNR65.jalons_bornes_au_reste",
+      "taches": [
+        "AGNR65"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-05-rejeux-w14/AGNR65.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Etat hors regle pose par l'ORM (PATCH remise = 409 depuis AGNR63) : industriel TTC 8 500, stocke [8 000 MAD ; 40 % ; 10 %], niveau 12 => jalons_paiement_devis 8 000 / 500 / 0, somme 8 500, pct 94,12 / 5,88 / 0, logger.warning « AGNR65 … DEV-… borne au reste » ; jalons_imprimes sans negatif (tranche a 0 non imprimee) ; GET /proposal 200 PDF 4 pages, seul montant negatif = ligne Remise ; niveau 11 : repli % d'hier 8 000,20 / 3 400 / -2 900,20 ; sonde C-AGNR-VER4-010 repro False"
     }
   ]
 }

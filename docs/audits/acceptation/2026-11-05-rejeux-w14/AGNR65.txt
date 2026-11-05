@@ -1,0 +1,117 @@
+# Preuve en direct AGNR65 - pile locale, code 93d4c7463 (dev-plan-6a6fc9-w13), 2026-11-05
+# Lanceur : python scripts/sonde.py (transaction annulee, mail en memoire, HTTP sortant bloque) ou node.
+# Sondes LIVE-* : repro=true signifie ICI que le comportement attendu par la tache est observe ;
+# sondes C-* d'audit : ECART (repro=false) = le defaut constate n'est plus reproduit.
+
+== LIVE-AGNR65 (sha 93d4c7463)
+attendu : niveau 12 : 8000/500/0, somme 8500, pct >= 0, warning avec reference, PDF sans negatif ; niveau 11 : repli % d'hier
+observé : {"repro": true, "observe": {"n12": {"ttc": "8500.00", "montants": ["8000.00", "500.00", "0.00"], "pcts": ["94.12", "5.88", "0"], "somme": "8500.00", "warnings": ["AGNR65 : échéancier hors règle du devis DEV-202611-9651 borné au reste."], "imprime": ["Commande : 94.12 % · 8 000,00 MAD TTC", "Livraison : 5.88 % · 500,00 MAD TTC"], "proposal": {"http": 200, "type": "application/pdf", "debut": "%PDF", "pages": 4, "negatifs_contexte": [["- 7 500,00 MAD", "kW Huawei 1 2 500,00 20 % 2 500,00 Sous-total HT 15 000,00 MAD Remise "]], "negatifs_mad_ou_pct": [], "bloc_echeancier": [], "lignes_echeancier": ["8 000,00 MAD TTC"]}}, "n11": {"montants": ["8000.20", "3400.00", "-2900.20"], "pcts": ["94.12", "40.0", "10.0"], "repli_pct_hier": ["8000.20", "3400.00", "-2900.20"], "warnings": []}}}
+verdict : REPRO
+base inchangée : oui (avant 8755, après 8755) ; mails 0 ; tâches Celery bloquées 0
+
+== C-AGNR-VER4-010 (sha 4cd568403)
+attendu : PATCH remise 200 ; jalons publiés : dernière tranche < 0 MAD et % < 0 imprimés
+observé : patch_echeancier=200 stocke=[{'type': 'acompte', 'unite': 'montant', 'libelle': 'Commande', 'pct_or_montant': 8000}, {'jalon': 'livraison_materiel', 'unite': 'pct', 'libelle': 'Livraison', 'pct_or_montant': 40}, {'jalon': 'reception_definitive', 'unite': 'montant', 'libelle': 'Réception', 'pct_or_montant': 2200.0}] montants_avant=['8000.00', '6800.00', '2200.00'] patch_remise=409 {'detail': ErrorDetail(string='Total des tranches avant la dernière : 11 400 MAD — il dépasse le total TTC du devis (8 500 MAD).', code='state_conflict'), 'echeancier': [ErrorDetail(string='Total des tranches avant la dernière : 11 400 MAD — il dépasse le total TTC du devis (8 500 MAD).', code='state_conflict')], 'error': {'code': 'state_conflict', 'message': 'Total des tranches avant la dernière : 11 400 MAD — il dépasse le total TTC du devis (8 500 MAD).', 'fields': None, 'request_id': '2390ed8cb2fe4b41b030442ac8c5d679'}} regles=12 echeancier_apres=[{'type': 'acompte', 'unite': 'montant', 'libelle': 'Commande', 'pct_or_montant': 8000}, {'jalon': 'livraison_materiel', 'unite': 'pct', 'libelle': 'Livraison', 'pct_or_montant': 40}, {'jalon': 'reception_definitive', 'unite': 'montant', 'libelle': 'Réception', 'pct_or_montant': 2200.0}] montants_apres=['8000.00', '6800.00', '2200.00'] imprime=['Commande : 47.06 % · 8\u202f000,00 MAD TTC', 'Livraison : 40 % · 6\u202f800,00 MAD TTC', 'Réception : 12.94 % · 2\u202f200,00 MAD TTC']
+{"repro": false, "patch_remise": 409, "montants_apres": ["8000.00", "6800.00", "2200.00"], "imprime": ["Commande : 47.06 % · 8 000,00 MAD TTC", "Livraison : 40 % · 6 800,00 MAD TTC", "Réception : 12.94 % · 2 200,00 MAD TTC"]}
+verdict : ÉCART
+base inchangée : oui (avant 8755, après 8755) ; mails 0 ; tâches Celery bloquées 0
+
+# ---- source : C-LIVE-AGNR65.py ----
+# flake8: noqa  (preuve en direct AGNR65, 05/11/2026)
+"""AGNR65 — `jalons_paiement_devis` ne rend jamais un jalon négatif. Devis industriel des sondes (17 000 TTC) avec
+remise 50 % posée par l'ORM (TTC 8 500) et échéancier stocké hors règle `[8 000 MAD ; 40 % ; 10 %]` posé par l'ORM
+(le PATCH remise rend 409 depuis AGNR63). Niveau 12 : jalons 8 000 / 500 / 0, Σ 8 500, aucun % < 0, un
+logger.warning nommant la référence ; `jalons_imprimes` (puce CGV) et le PDF `/proposal` (vraie route, texte lu par
+PyMuPDF) sans montant négatif. Niveau 11 (même état) : répartition par % d'hier (`montants_tranches`). Admin, société
+neuve, transaction annulée."""
+SONDE = {"constat": "LIVE-AGNR65", "sha": "93d4c7463",
+         "attendu": "niveau 12 : 8000/500/0, somme 8500, pct >= 0, warning avec reference, PDF sans negatif ; niveau 11 : repli % d'hier",
+         "modeles": ["authentication.Company", "crm.Client", "stock.Produit", "ventes.Devis", "ventes.LigneDevis"]}
+
+
+def sonde(ctx):
+    import logging, re
+    from decimal import Decimal
+    from django.contrib.auth import get_user_model
+    from django.utils import timezone
+    from rest_framework.test import APIClient
+    from authentication.models import Company
+    from apps.crm.models import Client
+    from apps.stock.models import Produit
+    from apps.ventes.models import Devis, LigneDevis
+    from apps.ventes.utils.echeancier import jalons_paiement_devis, montants_tranches, pourcentages_echeancier
+    from apps.ventes.utils.options import option_totaux
+    from apps.ventes.quote_engine.clauses_cgv import jalons_imprimes
+    mois = timezone.now().strftime('%Y%m')
+    co = Company.objects.create(nom='Live AGNR65', slug='live-agnr65')
+    u = get_user_model().objects.create_user(username='live-agnr65', password='x', company=co, role_legacy='admin')
+    cl = Client.objects.create(company=co, nom='Client', prenom='L65', email='live-agnr65@example.invalid')
+    api = APIClient()
+    api.force_authenticate(u)
+    STOCKE = [{'type': 'acompte', 'unite': 'montant', 'libelle': 'Commande', 'pct_or_montant': 8000},
+              {'jalon': 'livraison_materiel', 'unite': 'pct', 'libelle': 'Livraison', 'pct_or_montant': 40},
+              {'jalon': 'reception_definitive', 'unite': 'pct', 'libelle': 'Réception', 'pct_or_montant': 10}]
+
+    def devis(n, niveau):
+        d = Devis.objects.create(company=co, reference=f'DEV-{mois}-965{n}', client=cl, statut=Devis.Statut.BROUILLON,
+                                 taux_tva=Decimal('20.00'), mode_installation='industriel')
+        for nom, pu, q, tva in (('Panneau 550W', '1000', '10', '10.00'), ('Onduleur réseau Huawei 10kW', '5000', '1', '20.00')):
+            p = Produit.objects.create(company=co, nom=nom, sku=f'L65-{n}-{nom[:6]}', prix_vente=Decimal(pu), quantite_stock=100)
+            LigneDevis.objects.create(devis=d, produit=p, designation=nom, quantite=Decimal(q), prix_unitaire=Decimal(pu),
+                                      remise=Decimal('0'), taux_tva=Decimal(tva))
+        Devis.objects.filter(pk=d.pk).update(remise_globale=Decimal('50'), echeancier=STOCKE, regles_calcul=niveau)
+        return Devis.objects.get(pk=d.pk)
+
+    class Cap(logging.Handler):
+        def __init__(self):
+            super().__init__(); self.msgs = []
+        def emit(self, rec):
+            self.msgs.append(rec.getMessage())
+    cap = Cap()
+    lg = logging.getLogger('apps.ventes.utils.echeancier')
+    lg.addHandler(cap)
+    obs = {}
+    try:
+        d12 = devis(1, 12)
+        j = jalons_paiement_devis(d12)
+        obs['n12'] = {'ttc': str(option_totaux(d12)['ttc']), 'montants': [str(x['montant_ttc']) for x in j],
+                      'pcts': [str(x['pct']) for x in j], 'somme': str(sum(Decimal(str(x['montant_ttc'])) for x in j)),
+                      'warnings': [m for m in cap.msgs if 'AGNR65' in m], 'imprime': jalons_imprimes(j)}
+        r = api.get(f'/api/django/ventes/devis/{d12.pk}/proposal/', HTTP_HOST='localhost')
+        corps = b''.join(r.streaming_content) if getattr(r, 'streaming', False) else r.content
+        pdf = {'http': r.status_code, 'type': r.get('Content-Type'), 'debut': corps[:4].decode('latin-1')}
+        if corps[:4] == b'%PDF':
+            import fitz
+            doc = fitz.open(stream=corps, filetype='pdf')
+            txt = '\n'.join(pg.get_text() for pg in doc)
+            pdf['pages'] = doc.page_count
+            plat = re.sub(r'\s+', ' ', txt)
+            negs = [(m.group(0), plat[max(0, m.start() - 70):m.start()]) for m in
+                    re.finditer(r'[-−‑]\s?\d[\d\s .,]*\s?(?:%|MAD)', plat)]
+            pdf['negatifs_contexte'] = negs[:10]
+            pdf['negatifs_mad_ou_pct'] = [n for n, ctxt in negs if 'emise' not in ctxt]
+            i = plat.find('Commande')
+            pdf['bloc_echeancier'] = [plat[max(0, m.start() - 20):m.start() + 160] for m in re.finditer(r'Commande :', plat)][:3]
+            pdf['lignes_echeancier'] = [l.strip() for l in txt.splitlines()
+                                        if ('8 000' in l or '8 000' in l or 'Réception' in l or 'Livraison' in l)][:12]
+        else:
+            pdf['corps'] = corps[:300].decode('utf-8', 'replace')
+        obs['n12']['proposal'] = pdf
+        cap.msgs.clear()
+        d11 = devis(2, 11)
+        j11 = jalons_paiement_devis(d11)
+        total = option_totaux(d11)['ttc']
+        hier = montants_tranches(total, [(i, p['pct']) for i, p in enumerate(pourcentages_echeancier(d11))])
+        obs['n11'] = {'montants': [str(x['montant_ttc']) for x in j11], 'pcts': [str(x['pct']) for x in j11],
+                      'repli_pct_hier': [str(hier[i]) for i in sorted(hier)], 'warnings': list(cap.msgs)}
+    finally:
+        lg.removeHandler(cap)
+    n12, n11 = obs['n12'], obs['n11']
+    ok = (n12['ttc'] == '8500.00' and [Decimal(x) for x in n12['montants']] == [Decimal('8000'), Decimal('500'), Decimal('0')]
+          and Decimal(n12['somme']) == Decimal('8500') and all(Decimal(p) >= 0 for p in n12['pcts'])
+          and any(d12.reference in w for w in n12['warnings'])
+          and not any('-' in s or '−' in s for s in n12['imprime'])
+          and n12['proposal']['http'] == 200 and n12['proposal'].get('negatifs_mad_ou_pct') == []
+          and n11['montants'] == n11['repli_pct_hier'])
+    return {'repro': bool(ok), 'observe': obs}
+
