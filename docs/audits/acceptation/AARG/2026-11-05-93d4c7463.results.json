@@ -1,0 +1,34 @@
+{
+  "sha": "93d4c74638cb8a6db52826db0c8d676d2cd1bf3f",
+  "date": "2026-11-05",
+  "groupe": "AARG",
+  "verdict": "PASS",
+  "couvre": [
+    "AARG63"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "W14.AARG63.restauration_porte_unique",
+      "taches": [
+        "AARG63"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-05-rejeux-w14/AARG63.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "API reelle (admin) : F1 annulee (miroir A1), vente refacturee par F2 emise => avoirs/<A1>/annuler/ 409 {detail}, F1 annulee, A1 emise, avoir_annule non emis, 1 facture vivante ; sans F2 => 200, F1 emise ; devis repasse envoye => 409 ; sonde C-AARG-VER5-002 repro False (409, Σ du 1 200 = TTC)"
+    }
+  ]
+}
