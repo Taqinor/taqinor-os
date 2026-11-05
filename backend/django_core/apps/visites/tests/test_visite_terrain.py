@@ -425,7 +425,9 @@ class FeuVertTests(VisiteTerrainBase):
 
         # Plus aucune contribution n'est acceptée après le feu vert.
         bloque = self.poster_photo(visite_id, 'general_facade')
-        self.assertEqual(bloque.status_code, 400, bloque.data)
+        # ENF11 (nocturne 41958593088) : le gel est un ÉTAT — 409, même corps.
+        self.assertEqual(bloque.status_code, 409, bloque.data)
+        self.assertTrue(bloque.data['erreurs']['statut'])
 
 
 class PanneauClientDevisTests(VisiteTerrainBase):
@@ -670,23 +672,29 @@ class CablageRetourLeadTests(VisiteTerrainBase):
         self._visite_avec_toit()
 
         # (a) l'étranger ne voit pas le toit du lead de notre société — et
-        #     n'apprend même pas que ce lead existe (200 à valeurs nulles,
-        #     jamais un 404 distinctif).
+        #     n'apprend même pas que ce lead existe : le MÊME 404 qu'un lead
+        #     inexistant (ENF11 nocturne 41958593088, jamais distinctif).
         intrus = auth(self.etranger)
         resp = intrus.get(self.URL.format(self.lead.id))
-        self.assertEqual(resp.status_code, 200, resp.data)
-        self.assertEqual(dict(resp.data), {
-            'visite_id': None, 'url': None, 'texture_calage': None})
+        absent = intrus.get(self.URL.format(999999))
+        self.assertEqual(resp.status_code, 404, resp.data)
+        self.assertEqual(absent.status_code, 404, absent.data)
+        self.assertEqual(resp.data['detail'], absent.data['detail'])
 
         # (b) et l'étranger voit bien SA propre texture (la porte fonctionne
         #     des deux côtés — ce n'est pas un refus global).
         sienne = intrus.get(self.URL.format(self.lead_etranger.id))
         self.assertIsNotNone(sienne.data['visite_id'])
 
-    def test_un_lead_inexistant_ne_leve_jamais_404(self):
+    def test_un_lead_inexistant_ou_supprime_404(self):
+        # ENF11 (nocturne 41958593088, eKCfFd « use after free ») : le lead
+        # mis à la corbeille ne sert plus sa texture.
         resp = self.api.get(self.URL.format(999999))
-        self.assertEqual(resp.status_code, 200, resp.data)
-        self.assertIsNone(resp.data['visite_id'])
+        self.assertEqual(resp.status_code, 404, resp.data)
+        self._visite_avec_toit()
+        self.lead.soft_delete(record=False)
+        resp = self.api.get(self.URL.format(self.lead.id))
+        self.assertEqual(resp.status_code, 404, resp.data)
 
 
 # ENFP (D1) — ``?lead=`` est déclaré ET honoré sur la liste des visites.

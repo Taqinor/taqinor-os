@@ -243,7 +243,8 @@ class Ntwms34ApiTests(Ntwms34Base):
         self.assertIsNone(etat.data['controle'])
 
         bloque = api.post(base + 'confirmer/')
-        self.assertEqual(bloque.status_code, 400)
+        # ENF11 (nocturne 41958593088) : verdict manquant = état, 409.
+        self.assertEqual(bloque.status_code, 409)
 
         saisie = api.post(base + 'controle-qualite/',
                           {'resultat': 'conforme', 'unites_controlees': 6},

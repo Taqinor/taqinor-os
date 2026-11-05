@@ -270,3 +270,19 @@ class XSAV16DowntimeTest(TestCase):
             self.assertEqual(resp.status_code, 400, (corps, resp.content))
         dt.refresh_from_db()
         self.assertIsNone(dt.fin)
+
+    def test_api_cloturer_downtime_decalage_hors_postgres_200(self):
+        # ENF11 (nocturne 41958593088, cp6rAe) : « +22:09 » est lu par Python
+        # mais refusé par PostgreSQL (500) — l'instant est rangé en UTC.
+        dt = ouvrir_downtime(
+            company=self.company, equipement=self.equip,
+            debut=timezone.now() - timedelta(hours=2))
+        resp = auth(self.admin).post(
+            f'/api/django/sav/equipements/{self.equip.id}'
+            f'/downtime/{dt.id}/cloturer/',
+            {'fin': '9665-07-05T10:57:55.8+22:09'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        dt.refresh_from_db()
+        self.assertEqual(dt.fin.utcoffset(), timedelta(0))
+        self.assertEqual((dt.fin.year, dt.fin.month, dt.fin.day, dt.fin.hour),
+                         (9665, 7, 4, 12))

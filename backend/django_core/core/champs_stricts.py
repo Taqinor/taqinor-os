@@ -453,7 +453,12 @@ class _HeureRendueSansFuseau(OpenApiSerializerFieldExtension):
 
 
 #: Le ``pattern`` d'un schéma cherche (il n'ancre pas la fin) : l'anticipation seule suffit.
-MOTIF_DATE_HEURE = r'^(?!0001-|9999-)'
+#: ENF11 (nocturne 41958593088, uBIPkp) : « 0002-01-01T00:01:00+04:00 » tombe
+#: en l'an 1 une fois ramené au fuseau (OverflowError → 400 « out of range ») —
+#: les années 2 et 9998 (bords atteignables par un décalage) sont exclues aussi.
+MOTIF_DATE_HEURE = r'^(?!000[12]-|999[89]-)'
+#: Le même refus, côté serveur, lu sur le TEXTE reçu (avant toute conversion).
+_ANNEES_HORS_CALENDRIER = ('0001-', '0002-', '9998-', '9999-')
 
 
 class _DateHeureDansLeCalendrier(OpenApiSerializerFieldExtension):
@@ -501,6 +506,9 @@ def installer_dates_rfc3339():
     lecture = serializers.DateTimeField.to_internal_value
 
     def to_internal_value(self, value):
+        if isinstance(value, str) and value.lstrip().startswith(
+                _ANNEES_HORS_CALENDRIER):
+            self.fail('overflow')
         lu = lecture(self, value)
         if lu.year in (1, 9999):
             self.fail('overflow')

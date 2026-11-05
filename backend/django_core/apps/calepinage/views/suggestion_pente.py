@@ -45,7 +45,7 @@ LIBELLE = 'pente du terrain'
 
 
 class _ZoneIntrouvable(LayoutRefuse):
-    """``zone_id`` ne désigne aucun pan de la conception : 404."""
+    """``zone_id`` ne désigne aucun pan de la conception : 409 (ENF11)."""
 
 
 class _AucuneSuggestion(LayoutRefuse):
@@ -180,8 +180,10 @@ def suggestions_pente(self, request, pk=None):
     except DocumentModifie as conflit:
         return Response(conflit.corps(), status=status.HTTP_409_CONFLICT)
     except _ZoneIntrouvable as refus:
+        # ENF11 (nocturne 41958593088) : le calepinage existe, seul le pan
+        # désigné par le corps manque — 409, pas un 404 qui le dirait absent.
         return Response({refus.champ: str(refus)},
-                        status=status.HTTP_404_NOT_FOUND)
+                        status=status.HTTP_409_CONFLICT)
     except _AucuneSuggestion as refus:
         return Response({refus.champ: str(refus)},
                         status=status.HTTP_409_CONFLICT)
