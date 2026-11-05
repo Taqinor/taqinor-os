@@ -100,6 +100,25 @@ class DocumentsSignesFigesTests(TestCase):
             site_adresse='99 boulevard Nouveau')
         self.chantier.refresh_from_db()
 
+    def test_version_a_cle_d_une_autre_societe_jamais_servie(self):
+        """ASEC81 (C-ASEC-VER4-030) — une version GED dont la clé porte l'id
+        d'une AUTRE société n'est jamais lue (traitée comme non récupérable :
+        re-rendu) ; la clé de la société sert ses octets figés. Mutant :
+        revenir à ``fetch_attachment`` ⇒ échec."""
+        self._signer()
+        builders.figer_documents_signes(self.chantier)
+        document = self._document(builders.SOURCE_PV_RECEPTION)
+        version = document.versions.order_by('-version').first()
+        self.assertEqual(builders._octets_en_vigueur(document),
+                         self._octets_version_en_vigueur(document))
+        autre = Company.objects.create(slug=f'asec81-b-{next(_seq)}', nom='B')
+        type(version).objects.filter(pk=version.pk).update(
+            file_key=f'attachments/{autre.pk}/pv-de-b.pdf')
+        with patch('apps.records.storage.fetch_attachment',
+                   return_value=(b'%PDF- octets de B', None)) as lu:
+            self.assertIsNone(builders._octets_en_vigueur(document))
+        lu.assert_not_called()
+
     def test_pv_signe_identique_apres_modification_du_chantier(self):
         self._signer()
         builders.figer_documents_signes(self.chantier)
