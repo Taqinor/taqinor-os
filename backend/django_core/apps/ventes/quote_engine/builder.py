@@ -482,26 +482,6 @@ def cgv_ci_du_devis(devis, tva_note="", langue=None):
     return puces or None
 
 
-def _option_echeancier(devis):
-    """AMOT122 — l'option FACTURÉE d'un devis résidentiel (« sans » / « avec »),
-    lue par ``conditions_commerciales.branche_echeancier`` ; None pour un C&I,
-    un devis hors base ou une option inconnue. Import fonction-local —
-    ``utils.options`` importe ce module à son sommet."""
-    from apps.ventes.domain.regles_calcul import REGLES_ECARTS_0411, regles_au_moins
-    if getattr(devis, 'pk', None) is None or not regles_au_moins(devis, REGLES_ECARTS_0411):
-        return None  # niveau 11 : aucune lecture de plus (rendu d'hier)
-    from apps.ventes.utils.options import (
-        AVEC_BATTERIE, SANS_BATTERIE, est_mode_ci, option_effective)
-    if est_mode_ci(devis):
-        return None
-    option = option_effective(devis)
-    if option == AVEC_BATTERIE:
-        return "avec"
-    if option == SANS_BATTERIE:
-        return "sans"
-    return None
-
-
 def build_quote_data(devis, pdf_options=None) -> dict:
     """Build the dict consumed by generate_premium_pdf from a Devis instance."""
     from apps.ventes.domain.regles_calcul import (
@@ -1141,7 +1121,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # suive l'option que ce rétrécissement fait TITRER au document.
     from apps.ventes.utils.options import AVEC_BATTERIE as _NOYAU_AVEC
     from apps.ventes.utils.options import SANS_BATTERIE as _NOYAU_SANS
-    from apps.ventes.utils.options import option_du_scenario_mono as _mono_de
+    from apps.ventes.utils.options import option_du_scenario_mono as _mono_de, option_echeancier
     _scenario_mono = _mono_de(scenario)
     if _scenario_mono == _NOYAU_SANS:
         avec_ok = False
@@ -2043,7 +2023,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # de cases 45/55. ``payment_terms`` (entrée ci-dessus) reste la source
     # des cases elles-mêmes.
     _branche_imprimee = branche_echeancier(devis, data, "sans" if option_servie == "sans" else (  # AMOT122
-        "avec" if (deux_options or avec_ok) else "sans"), _option_echeancier(devis))
+        "avec" if (deux_options or avec_ok) else "sans"), option_echeancier(devis))
     _cases = data["montants_tranches"].get(_branche_imprimee) or {}
     # Règles d'origine (devis envoyé avant AMOT19) : ``payment_terms`` d'hier.
     if _cases and _corrige:
