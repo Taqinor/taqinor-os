@@ -140,6 +140,22 @@ class CrudMetriquesTests(_BaseApi):
                             f'{BASE}{pk}/', {'libelle': 'Renommée'}, pk=pk)
         self.assertEqual(reponse.status_code, status.HTTP_200_OK, reponse.data)
 
+    def test_forme_de_mesure_publiee_et_appliquee(self):
+        """ENF47 (api-fuzz-full 42017839549) : ``mesure: null`` (et ``{}``)
+        étaient conformes au schéma ``{}`` puis refusés — la forme est
+        publiée (``anyOf``, non nullable) et la MÊME est appliquée (400)."""
+        from apps.semantic.serializers import (
+            SCHEMA_MESURE, MetricDefinitionSerializer)
+        for mesure in (None, {}, {'agg': 'sum'}, {'adapter': ''}):
+            reponse = self._creer(mesure=mesure)
+            self.assertEqual(reponse.status_code,
+                             status.HTTP_400_BAD_REQUEST, (mesure, reponse.data))
+            self.assertIn('mesure', reponse.data)
+        champ = MetricDefinitionSerializer().fields['mesure']
+        self.assertEqual(champ._spectacular_annotation['field'], SCHEMA_MESURE)
+        self.assertEqual(self._creer(mesure={'agg': 'count', 'formula': ''})
+                         .status_code, status.HTTP_201_CREATED)
+
     def test_edition_fige_une_version_signee(self):
         pk = self._creer().data['id']
         reponse = self._vue(
@@ -320,6 +336,16 @@ class PortabiliteTests(_BaseApi):
             metric_definition__cle='nb_societes').order_by('-version').first()
         self.assertEqual(derniere.version, 2)
         self.assertEqual(derniere.auteur_id, self.admin.pk)
+
+    def test_entree_non_objet_refusee_par_la_forme(self):
+        """ENF47 (api-fuzz-full 42017839549) : une entrée liste était
+        conforme au schéma (élément ``{}``) puis refusée ligne à ligne — une
+        entrée est un OBJET, publié et appliqué (400 nommé, rien d'écrit)."""
+        reponse = self._import({'commit': True, 'metriques': [[{}], None]})
+        self.assertEqual(reponse.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('metriques', reponse.data)
+        self.assertFalse(MetricDefinition.objects.filter(
+            company=self.company).exists())
 
     def test_document_etranger_400(self):
         reponse = self._import({'format': 'autre.outil', 'metriques': []})
