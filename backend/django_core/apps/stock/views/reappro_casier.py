@@ -120,7 +120,8 @@ class TacheReapproInterneViewSet(CompanyScopedModelViewSet):
     def executer(self, request, pk=None):
         """ASTK213 — exécute la tâche UNE fois : transfert casier source →
         casier cible (chemin du poste scanner) puis statut ``faite``. Second
-        appel → 409 « Tâche déjà exécutée. », sans second mouvement."""
+        appel → 409 « Tâche déjà exécutée. », sans second mouvement ; une
+        tâche inexécutable telle qu'enregistrée → 409 nommé (ENF48)."""
         from ..services_reappro_casier import (
             TacheDejaExecutee, executer_tache_reappro_interne,
         )
@@ -133,8 +134,11 @@ class TacheReapproInterneViewSet(CompanyScopedModelViewSet):
             return Response({'detail': str(exc)},
                             status=status.HTTP_409_CONFLICT)
         except ValueError as exc:
+            # ENF48 — corps VIDE : le refus vient de la TÂCHE enregistrée
+            # (quantité nulle, casier source absent, stock du casier) = état,
+            # 409 (était 400, « rejected schema-compliant » au fuzz).
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         return Response(resultat)
 
 

@@ -96,6 +96,20 @@ class ExecuterTests(TestCase):
         self.assertEqual(rep.data, {'detail': 'Tâche déjà exécutée.'})
         self.assertEqual(MouvementStock.objects.count(), nb)
 
+    def test_tache_inexecutable_409_sans_mouvement(self):
+        """ENF48 (api-fuzz-full 42074433075) — tâche créée sans quantité
+        (0) puis exécutée, corps vide : refus d'ÉTAT 409 nommé (était 400),
+        aucun mouvement, la tâche reste à faire."""
+        self.tache.quantite = 0
+        self.tache.save(update_fields=['quantite'])
+        rep = self._executer()
+        self.assertEqual(rep.status_code, 409, rep.data)
+        self.assertEqual(rep.data['detail'], 'La quantité doit être positive.')
+        self.assertFalse(MouvementStock.objects.exists())
+        self.tache.refresh_from_db()
+        self.assertEqual(self.tache.statut,
+                         TacheReapproInterne.Statut.A_FAIRE)
+
     def test_statut_non_editable(self):
         rep = self.api.patch(f'{URL}{self.tache.pk}/', {'statut': 'faite'},
                              format='json')
