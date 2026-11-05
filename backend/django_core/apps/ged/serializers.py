@@ -757,8 +757,8 @@ class PartageGedSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
 
     @extend_schema_field(OpenApiTypes.STR)
     def get_public_url(self, obj):
-        # Chemin public (relatif) — le jeton EST le secret d'accès.
-        return f'/api/django/ged/public/{obj.token}/'
+        # ASEC78 — la PAGE publique (ASEC77), relative ; le jeton EST le secret.
+        return f'/ged/partage/{obj.token}'
 
     def validate_document(self, value):
         """Le document doit appartenir à la société courante — on ne partage
