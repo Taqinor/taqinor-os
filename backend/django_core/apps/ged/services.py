@@ -361,6 +361,10 @@ def valider_extraction_ocr(validation, *, champs_corriges, user):
     document = validation.document
     # ADOC9 — jamais sur un document archivé légalement (write-once).
     assert_not_archive_legalement(document)
+    # ENF47 (api-fuzz-full 42017839549) — un NUL imbriqué (clé ou valeur) que
+    # le jsonb refuse (DataError, 500) : retiré, jamais refusé (core.parseurs).
+    from core.parseurs import sans_nul
+    champs_corriges = sans_nul(champs_corriges)
     corrections = {
         k: v for k, v in (champs_corriges or {}).items()
         if k not in (SOURCE_TYPE_KEY, SOURCE_ID_KEY)}
