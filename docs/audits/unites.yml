@@ -711,7 +711,7 @@ unites:
     pr: 1227
     date: 2026-11-02
     dossier: docs/audits/2026-11-02-parcours-PA3.md
-    notes: "Deuxième audit de PARCOURS (L3, 02/11/2026) : 38 constats dont 26 prouvés par sonde (7 S1 : arrondi −100 MAD sur prix tapé, garde kWh absente au calepinage, envoyé re-rendu aux réglages courants, sceau C&I rompu, re-signature qui garde la 1re preuve, option « sans batterie » PDF ≠ serveur/acompte, étude agricole corrigée hors empreinte ; 15 S2) ; parcours heureux rejoué par l'API sans écart ; D-ADVS-1..4 répondues, D-ADVS-5 ouverte ; 1 critique Fable (2 trous sondés). Tâches ADVS1-44."
+    notes: "vérifie ADVS du 05/11/2026 (clôture, 45/47 ; dossier docs/audits/2026-11-05-devis-signature-verifie.md) : 19 tâches (graine 2781a2049) — 18 ok, 1 partielle ; écarts du 04/11 (ADVS45-46) fermés ; 1 S2 par sonde (l'envoi saute la garde « kWh déclaré contredit par les factures ») + 1 S3 (envoi « les deux » qui garde la sœur en brouillon, D-ADVS-VER5-1 = envoyer les deux) → ADVS48-49 ; pas de Fable. Deuxième audit de PARCOURS (L3, 02/11/2026) : 38 constats dont 26 prouvés par sonde (7 S1 : arrondi −100 MAD sur prix tapé, garde kWh absente au calepinage, envoyé re-rendu aux réglages courants, sceau C&I rompu, re-signature qui garde la 1re preuve, option « sans batterie » PDF ≠ serveur/acompte, étude agricole corrigée hors empreinte ; 15 S2) ; parcours heureux rejoué par l'API sans écart ; D-ADVS-1..4 répondues, D-ADVS-5 ouverte ; 1 critique Fable (2 trous sondés). Tâches ADVS1-44."
 
   - id: PA1
     rang: 22
