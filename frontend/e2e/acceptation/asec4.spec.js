@@ -9,7 +9,7 @@ import { groupe } from './_oracles.js'
 import { py, MDP_ESSAI, fermerDjangoApresTout } from './_django.js'
 import { lireJson, connexionApi, assurerSessionPage, telephoneMobileUnique } from '../helpers.js'
 
-const etape = groupe('ASEC', ['ASEC66', 'ASEC67', 'ASEC68', 'ASEC69', 'ASEC70', 'ASEC71', 'ASEC72', 'ASEC74', 'ASEC75', 'ASEC76', 'ASEC79', 'ASEC80', 'ASEC81', 'ASEC84', 'ASEC77', 'ASEC78'])
+const etape = groupe('ASEC', ['ASEC66', 'ASEC67', 'ASEC68', 'ASEC69', 'ASEC70', 'ASEC71', 'ASEC72', 'ASEC74', 'ASEC75', 'ASEC76', 'ASEC79', 'ASEC80', 'ASEC81', 'ASEC84', 'ASEC77', 'ASEC78', 'ASEC83'])
 fermerDjangoApresTout()
 const API = '/api/django'
 const T = { timeout: 120_000 }
@@ -552,4 +552,42 @@ etape('V4.78', ['ASEC78'], async ({ page, suivi, testInfo }) => {
   const [bon] = await Promise.all([p.waitForResponse((x) => PUBLIC.test(x.url()) && x.request().method() === 'POST'), p.getByRole('button', { name: /Ouvrir le document/ }).click()])
   expect([bon.status(), bon.headers()['content-type']], 'PDF servi').toEqual([200, 'application/pdf'])
   await ctx.close()
+})
+
+etape('V4.83', ['ASEC83'], async ({ page, testInfo }) => {
+  await page.goto('/calendrier')
+  await page.getByRole('button', { name: /abonner au calendrier/i }).click()
+  const champ = page.locator('.cp-subscribe-box input')
+  await expect(champ, 'URL v1 affichée').toHaveValue(/calendar\.ics\?token=/, { timeout: 60_000 })
+  const v1 = await champ.inputValue()
+  const anonyme = await pwRequest.newContext({ baseURL: testInfo.project.use.baseURL })
+  const ics = async (url) => (await anonyme.get(new URL(url, testInfo.project.use.baseURL).pathname + new URL(url, testInfo.project.use.baseURL).search, T)).status()
+  expect(await ics(v1), 'v1 servi avant régénération').toBe(200)
+  const regen = page.getByRole('button', { name: 'Régénérer le lien' })
+  await regen.click()
+  const [post] = await Promise.all([
+    page.waitForResponse((x) => /\/reporting\/calendar\/subscription\/?$/.test(new URL(x.url()).pathname) && x.request().method() === 'POST'),
+    page.getByRole('button', { name: 'Régénérer', exact: true }).click(),
+  ])
+  expect(post.status(), 'POST subscription').toBeLessThan(300)
+  await expect(champ, 'URL affichée devient v2').not.toHaveValue(v1, { timeout: 30_000 })
+  const v2 = await champ.inputValue()
+  expect(v2, 'v2 est un lien .ics').toMatch(/calendar\.ics\?token=/)
+  await expect(page.locator('.cp-subscribe-box').getByRole('button', { name: 'Copier' }), 'état « copié » remis à zéro').toBeVisible()
+  expect(await ics(v1), 'ancien lien .ics refusé').toBeGreaterThanOrEqual(400)
+  expect(await ics(v2), 'nouveau lien .ics 200').toBe(200)
+  // Persistance : rechargement, réouverture ⇒ URL v2.
+  await page.reload()
+  await page.getByRole('button', { name: /abonner au calendrier/i }).click()
+  // Le jeton est signé horodaté (TimestampSigner) : chaque GET re-signe la MÊME charge utile — on compare la
+  // charge (utilisateur, version), pas la chaîne entière ; le lien relu est servi, l'ancien reste refusé.
+  await expect(champ).toHaveValue(/calendar\.ics\?token=/, { timeout: 60_000 })
+  const v3 = await champ.inputValue()
+  const charge = (u) => new URL(u).searchParams.get('token').split(':')[0]
+  console.log(`[V4.83] charges v1=${Buffer.from(charge(v1), 'base64').toString()} v2=${Buffer.from(charge(v2), 'base64').toString()} relu=${Buffer.from(charge(v3), 'base64').toString()}`)
+  expect(charge(v3), 'après rechargement : jeton v2 (même charge)').toBe(charge(v2))
+  expect(charge(v2), 'v2 ≠ v1').not.toBe(charge(v1))
+  expect([await ics(v3), await ics(v1)], 'relu 200, ancien toujours refusé').toEqual([200, await ics(v1)])
+  expect(await ics(v1)).toBeGreaterThanOrEqual(400)
+  await anonyme.dispose()
 })
