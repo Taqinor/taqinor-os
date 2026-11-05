@@ -255,3 +255,41 @@ class RevisionParTauxTests(TestCase):
             type=Avoir.Type.CORRECTION).exists())
         d.refresh_from_db()
         self.assertTrue(d.is_active)
+
+    def test_prix_negocie_avoir_sans_encaisser_403_rien_ecrit(self, *_):
+        """ASEC68 (C-ASEC-VER4-011, D-ASEC-VER-1) — appliquer un prix
+        négocié qui émettrait un avoir exige ``encaisser`` : Admin Ventes ⇒
+        403 ``{detail}``, ni V2 ni avoir ; l'aperçu reste ouvert et le
+        compte qui encaisse applique (201). Mutant : retirer la garde ⇒
+        échec."""
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import ADMIN_VENTES_PERMISSIONS
+        d, _factures = self._vente_5x20_emise()
+        av = get_user_model().objects.create_user(
+            username='asec68_av', password='x', company=self.company,
+            role_legacy='responsable', role=Role.objects.create(
+                company=self.company, nom='Admin Ventes', est_systeme=True,
+                permissions=list(ADMIN_VENTES_PERMISSIONS)))
+        api = APIClient()
+        api.force_authenticate(av)
+        url = f'/api/django/ventes/devis/{d.id}/prix-negocie/'
+        corps = {'prix_ttc': '9000', 'confirmer_avoir': True}
+        self.assertEqual(api.post(url, corps, format='json').status_code,
+                         200)
+        nb_devis = Devis.objects.count()
+        r = api.post(url, {**corps, 'mode': 'appliquer'}, format='json')
+        self.assertEqual(r.status_code, 403, r.data)
+        self.assertEqual(
+            r.data, {'detail': "Émettre ou encaisser une facture exige le "
+                               "droit d'encaissement."})
+        self.assertEqual(Devis.objects.count(), nb_devis)
+        self.assertFalse(Avoir.objects.filter(company=self.company).exists())
+        d.refresh_from_db()
+        self.assertTrue(d.is_active)
+        self.assertEqual(d.version, 1)
+        api.force_authenticate(self.user)
+        r = api.post(url, {**corps, 'mode': 'appliquer'}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
