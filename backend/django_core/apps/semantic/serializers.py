@@ -102,8 +102,12 @@ class MetricDefinitionSerializer(UniciteEn409Mixin, ChampsStrictsMixin,
         # ENF45 d : sans ``mesure`` (défaut ``{}``) ``MetricDefinition.clean``
         # refusait un corps que le schéma disait complet — elle est REQUISE à
         # la création (et au PUT) ; PATCH la garde facultative.
+        # ENF48 (api-fuzz-pr XL1gwd) : null est publié pour filtres et
+        # dimensions et ``validate_*`` le ramène à {} / [] — le champ l'accepte.
         extra_kwargs = {'cle': {'validators': [
-            RegexValidator(_CLE_VALIDE, message=_MESSAGE_CLE)]}}
+            RegexValidator(_CLE_VALIDE, message=_MESSAGE_CLE)]},
+            'filtres': {'allow_null': True},
+            'dimensions_par_defaut': {'allow_null': True}}
 
     def validate_cle(self, value):
         # La clé voyage dans les URL (`metriques/<cle>/valeur/`) et dans les
