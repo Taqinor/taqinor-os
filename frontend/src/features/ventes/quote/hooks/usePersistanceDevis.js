@@ -47,6 +47,12 @@ const champsEntete = (err) => {
   return Object.keys(out).length ? out : null
 }
 
+// AGNR58 / AGNR73 — les lignes sans produit (hors « prix à renseigner », qui
+// bloque) que `lignesEnvoyees` écartera : annoncées par `validate`,
+// confirmées par un second clic dans `handleSubmit`.
+const lignesEcartees = (lines) => lignesNonEnvoyees(lines).sansProduit
+  .filter(l => (l.designation || '').trim() && !/prix à renseigner/i.test(l.designation || ''))
+
 export function usePersistanceDevis(ctx) {
   const {
     navigate, confirm, setClients, setLeads, setSaving, setErrors, setWarnings,
@@ -216,7 +222,7 @@ export function usePersistanceDevis(ctx) {
 
     // AGNR58 — une ligne sans produit (hors « prix à renseigner », qui bloque)
     // ne disparaît plus en silence : annoncée, nommée.
-    const ecartees = e.lines ? [] : sansProduit.filter(l => (l.designation || '').trim() && !sansPrix.includes(l))
+    const ecartees = e.lines ? [] : lignesEcartees(lines)
     if (ecartees.length) {
       const noms = ecartees.map(l => l.designation.trim()).join(', ')
       w.lignes = ecartees.length === 1 ? `1 ligne sans produit ne sera pas enregistrée : ${noms}`
@@ -379,6 +385,7 @@ export function usePersistanceDevis(ctx) {
   // premier devis si la coupure est survenue APRÈS son commit), oubliée dès
   // qu'une création a réussi (la session de création est finie).
   const cleCreationRef = useRef(null)
+  const lignesEcarteesConfirmeRef = useRef(null) // AGNR73 — signature confirmée par le 2e clic
   const cleCreation = () => {
     if (!cleCreationRef.current) {
       cleCreationRef.current = globalThis.crypto?.randomUUID?.()
@@ -697,6 +704,13 @@ export function usePersistanceDevis(ctx) {
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!validate()) return
+    // AGNR73 — 1er clic : l'avertissement des lignes sans produit est affiché, rien n'est écrit ;
+    // 2e clic sur les MÊMES lignes : enregistré sans elles ; lignes changées : nouvel avertissement.
+    const signature = lignesEcartees(lines).map(l => `${l.designation.trim()}×${l.quantite}`).join('|')
+    if (signature && lignesEcarteesConfirmeRef.current !== signature) {
+      lignesEcarteesConfirmeRef.current = signature
+      return
+    }
     // EDC7 — capturé AVANT l'écriture : `editDevis` décide édition vs création.
     const enEdition = Boolean(editDevis)
     const res = await persisterDevis()

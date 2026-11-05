@@ -99,3 +99,25 @@ test('validate_annonce_ligne_sans_produit', () => {
   ])
   assert.deepEqual(sansProduit.map(l => l.designation), ['Câble'])
 })
+
+test('ligne_sans_produit_deux_clics', () => {
+  // AGNR73 — le 1er clic « Enregistrer » avec « Câble ×2 » sans produit
+  // n'écrit rien (l'avertissement reste lu) ; le 2e, sur les MÊMES lignes,
+  // enregistre ; lignes changées ⇒ nouvelle signature, nouvel avertissement.
+  const src = readFileSync(fileURLToPath(new URL('./usePersistanceDevis.js', import.meta.url)), 'utf-8')
+  const corps = src.slice(src.indexOf('const handleSubmit = async'), src.indexOf('const ouvrirConception3D'))
+  assert.match(src, /const lignesEcarteesConfirmeRef = useRef\(null\)/)
+  const garde = corps.indexOf('lignesEcarteesConfirmeRef.current !== signature')
+  assert.ok(garde > 0, 'la garde des deux clics vit dans handleSubmit')
+  assert.ok(garde < corps.indexOf('persisterDevis()'), 'avant toute écriture')
+  assert.match(corps, /lignesEcarteesConfirmeRef\.current = signature\s*\n\s*return/)
+  assert.match(src, /const ecartees = e\.lines \? \[\] : lignesEcartees\(lines\)/)
+  const lignes = [
+    { produit: '', quantite: '2', prix_unit_ttc: '0', designation: 'Câble' },
+    { produit: '5', quantite: '1', designation: 'Panneau' },
+  ]
+  const sig = (ls) => lignesNonEnvoyees(ls).sansProduit.filter(l => (l.designation || '').trim())
+    .map(l => `${l.designation.trim()}×${l.quantite}`).join('|')
+  assert.equal(sig(lignes), 'Câble×2')
+  assert.notEqual(sig([{ ...lignes[0], quantite: '3' }, lignes[1]]), sig(lignes))
+})
