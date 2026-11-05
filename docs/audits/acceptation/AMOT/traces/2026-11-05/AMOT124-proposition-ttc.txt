@@ -1,0 +1,19 @@
+AMOT124 — pile locale, code w6 (849157fc3), apps/web servi en `astro dev` depuis le worktree (PUBLIC_API_BASE=http://localhost).
+
+Devis DEV-202610-0102 (id 1113, commercial, deux options, niveau 12 après 0153, brouillon) :
+  PATCH /api/django/ventes/devis/1113/etude-params/ {saisies_economie_ci.tva_recuperable: {valeur: non, provenance: declare_client}}
+  POST /api/django/ventes/devis/1113/share-link/ -> 200 (lien interne d'aperçu : un brouillon n'a pas de lien public servi)
+  GET /api/django/public/proposal/<token_interne>/data/ :
+    synthese_ci.argent.base = ttc ; economie_annee1 total_mad 20 180,68 / total_mad_ttc 24 216,25
+    option_batterie.valeur_chiffree.economie_annuelle_ttc_mad = 80 377,43 (clé AMOT123) ;
+    texte fr « … 80 377 MAD TTC d'économie par an avec l'option batterie. »
+  Page http://127.0.0.1:4322/proposition/<token_interne> (« Proposition DEV-202610-0102 — Restaurant La Corniche ») :
+    bloc « Option proposée — Avec batterie (option) » : « … 80 377 MAD TTC d'économie par an avec l'option batterie. »
+    texte de la page : 0 occurrence de « HT ».
+  Note : la phrase servie l'emporte sur la ligne chiffrée (comparaisonBatterieCi n'émet « Économie annuelle TTC »
+  que sans phrase) ; ce rejeu montre le chemin phrase, en TTC. Le libellé « Économie annuelle TTC » lui-même n'est
+  donc pas affiché sur cette page (couvert par propositionSyntheseCiCIW300.test.ts).
+
+Écart rencontré en préparant : un premier PATCH avec provenance « rejeu AMOT124 » a été ACCEPTÉ (200) puis a rendu
+GET …/economie-ci/ 400 « provenance : choisir parmi lead, declare_client » et la page publique « économies non
+chiffrées à ce stade » — corrigé par le second PATCH (provenance declare_client).
