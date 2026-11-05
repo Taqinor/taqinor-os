@@ -6,7 +6,8 @@
   "couvre": [
     "AGNR63",
     "AGNR65",
-    "AGNR66"
+    "AGNR66",
+    "AGNR69"
   ],
   "couvre_avec_ecart": [],
   "etapes": [
@@ -75,6 +76,28 @@
         "10": "NA"
       },
       "notes": "Etat pose par l'ORM (PATCH remise = 409 depuis AGNR63) : agricole TTC 8 500, stocke [Acompte 8 000 MAD ; Materiel 40 % ; Solde 10 %], niveau 12 => build_quote_data + _echeancier : 3 cases 94 % 8 000 / 6 % 500 / 0 % 0, somme 8 500, somme pct 100, aucune < 0 ; avertissements_internes « echeancier au-dela du TTC : materiel, solde borne(s) au reste » ; GET /proposal 200 PDF 3 pages sans l'avertissement (cases 94/6/0 imprimees) ; niveau 11 : rendu d'hier a 2 cases (solde omis), sans avertissement ; sonde C-AGNR-VER4-012 repro False"
+    },
+    {
+      "id": "W14.AGNR69.kwc_document_par_ligne",
+      "taches": [
+        "AGNR69"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-05-rejeux-w14/AGNR69.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Brouillon neuf 10 x 550 W + 10 x 710 W + onduleur, niveau 12 : kwc_lu_des_panneaux 12,6 ; build_quote_data puissance_kwc 12,6 (sans, avec) ; GET /proposal 200, PDF : « 12,6 kWc » et « 41 000,00 MAD soit 3 254 MAD/kWc » (= TTC / 12,6) ; ligne au watt illisible => watt de la 1re lisible (11,0) ; niveau 11 : 11,0 ; production non mesuree a part ; sonde C-AGNR-VER4-030 repro False"
     }
   ]
 }
