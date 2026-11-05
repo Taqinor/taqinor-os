@@ -110,3 +110,34 @@ MOTIF_MONTANT_DEMANDE = (r'^(?:|0*(?:[1-9][0-9]{0,9}(?:[.,][0-9]*)?'
                          r'|[.,][0-9]*[1-9][0-9]*))$')
 MOTIF_POURCENTAGE_DEMANDE = (r'^(?:|0*(?:100(?:[.,]0*)?|[1-9][0-9]?(?:[.,][0-9]*)?'
                              r'|[.,][0-9]*[1-9][0-9]*))$')
+
+
+#: ENF47 (api-fuzz-full 42017839549) — capacité des colonnes d'une facture :
+#: ``LigneFacture.quantite``/``prix_unitaire`` ``DecimalField(max_digits=10,
+#: decimal_places=2)`` (|x| < 10^8) ; ``Facture.total_ttc_stocke``
+#: ``max_digits=14`` (< 10^12, marge du palier ARRONDI-100 déduite).
+PLAFOND_LIGNE_FACTURE = 10 ** 8
+PLAFOND_TOTAL_FACTURE = 10 ** 12 - 100
+
+
+def verifier_capacite_facture(lignes):
+    """ENF47 — refus d'ÉTAT (409) AVANT d'écrire une facture générée depuis
+    des données déjà stockées (ticket SAV, intervention) : une quantité
+    consommée (``max_digits=12``) ou un total ``quantité × prix`` sorti des
+    colonnes de la facture levait ``DataError`` « numeric field overflow »
+    (500). ``lignes`` : dicts ``quantite``/``prix_unitaire``/``taux_tva``/
+    ``designation`` ; aucune écriture, l'appelant crée ensuite."""
+    from decimal import Decimal
+    from core.conflit_etat import ConflitEtat
+    total = Decimal('0')
+    for ligne in lignes:
+        quantite = Decimal(str(ligne['quantite']))
+        prix = Decimal(str(ligne['prix_unitaire']))
+        if max(abs(quantite), abs(prix)) >= PLAFOND_LIGNE_FACTURE:
+            raise ConflitEtat(
+                f"« {ligne['designation']} » : quantité et prix unitaire "
+                'doivent rester sous 100 000 000 pour être facturés.')
+        total += quantite * prix * (1 + Decimal(str(ligne['taux_tva'] or 0)) / 100)
+        if abs(total) >= PLAFOND_TOTAL_FACTURE:
+            raise ConflitEtat('Total de la facture hors capacité '
+                              '(1 000 000 000 000 DH ou plus).')

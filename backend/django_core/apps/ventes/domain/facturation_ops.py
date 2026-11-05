@@ -1305,6 +1305,19 @@ def _facture_generee_sous_verrou(instance, champ):
     ).exclude(statut=Facture.Statut.ANNULEE).first()
 
 
+def _ecrire_facture_generee(creer, lignes):
+    """ENF47 — bornes vérifiées (409 hors capacité, plus de DataError 500)
+    PUIS facture provisoire + lignes : rien n'est écrit sur un refus."""
+    from ..models import LigneFacture
+    from ..utils.company_settings import create_provisoire
+    from .bornes import verifier_capacite_facture
+    verifier_capacite_facture(lignes)
+    facture = create_provisoire(creer)
+    for ligne in lignes:
+        LigneFacture.objects.create(facture=facture, **ligne)
+    return facture
+
+
 @transaction.atomic
 def generer_facture_ticket_sav(*, ticket, sous_garantie, pieces, user):
     """XFSM1 — construit une ``Facture`` BROUILLON pour un ticket SAV hors
@@ -1324,8 +1337,8 @@ def generer_facture_ticket_sav(*, ticket, sous_garantie, pieces, user):
     IDEMPOTENT, même sous concurrence (AFAC91) : ``facture_id_ext`` est relu
     SOUS VERROU ; s'il pointe vers une facture non annulée, elle est renvoyée
     telle quelle. Renvoie la ``Facture`` créée (ou réutilisée)."""
-    from ..models import Facture, LigneFacture
-    from ..utils.company_settings import create_provisoire, tva_standard
+    from ..models import Facture
+    from ..utils.company_settings import tva_standard
 
     existante = _facture_generee_sous_verrou(ticket, 'facture_id_ext')
     if existante is not None:
@@ -1343,9 +1356,8 @@ def generer_facture_ticket_sav(*, ticket, sous_garantie, pieces, user):
             created_by=user,
         )
 
-    facture = create_provisoire(_create)
-
     suffixe_couvert = ' (couvert garantie/contrat)' if sous_garantie else ''
+    lignes = []  # ENF47 — bornées AVANT toute écriture (verifier_capacite_facture)
 
     for piece in pieces:
         produit = piece.produit
@@ -1353,13 +1365,13 @@ def generer_facture_ticket_sav(*, ticket, sous_garantie, pieces, user):
         prix_unitaire = (
             Decimal('0') if sous_garantie
             else Decimal(str(produit.prix_vente or 0)))
-        LigneFacture.objects.create(
-            facture=facture, produit=produit,
+        lignes.append(dict(
+            produit=produit,
             designation=f'{produit.nom}{suffixe_couvert}',
             quantite=quantite, prix_unitaire=prix_unitaire,
             taux_tva=(produit.tva if produit.tva is not None
                       else taux_tva_defaut),
-        )
+        ))
 
     heures = ticket.heures_main_oeuvre
     if heures and heures > 0:  # ERR-ENF11 : négatives = pas de ligne (contrainte montants positifs, 500 sinon)
@@ -1375,14 +1387,14 @@ def generer_facture_ticket_sav(*, ticket, sous_garantie, pieces, user):
             else Decimal(str(profile_taux)) if profile_taux is not None
             else None)
         if taux_horaire is not None:
-            mo_produit = _main_oeuvre_produit(company)
-            LigneFacture.objects.create(
-                facture=facture, produit=mo_produit,
+            lignes.append(dict(
+                produit=_main_oeuvre_produit(company),
                 designation=f"Main-d'œuvre{suffixe_couvert}",
                 quantite=heures, prix_unitaire=taux_horaire,
                 taux_tva=taux_tva_defaut,
-            )
+            ))
 
+    facture = _ecrire_facture_generee(_create, lignes)
     ticket.facture_id_ext = facture.id
     ticket.save(update_fields=['facture_id_ext'])
     return facture
@@ -1410,8 +1422,8 @@ def generer_facture_intervention(*, intervention, user):
     IDEMPOTENT, même sous concurrence (AFAC91) : ``facture_id`` est relu SOUS
     VERROU ; s'il pointe vers une facture non annulée, elle est renvoyée
     telle quelle. Renvoie la ``Facture`` créée (ou réutilisée)."""
-    from ..models import Facture, LigneFacture
-    from ..utils.company_settings import create_provisoire, tva_standard
+    from ..models import Facture
+    from ..utils.company_settings import tva_standard
 
     # AFAC92 — contrat ZFSM4 « hors contrat/ticket » : une intervention
     # rattachée à un ticket SAV se facture depuis le TICKET (XFSM1/XCTR4),
@@ -1443,8 +1455,7 @@ def generer_facture_intervention(*, intervention, user):
             created_by=user,
         )
 
-    facture = create_provisoire(_create)
-
+    lignes = []  # ENF47 — bornées AVANT toute écriture (_ecrire_facture_generee)
     consommation = getattr(intervention, 'consommation', None)
     if consommation is not None:
         for ligne in consommation.lignes.all():
@@ -1452,14 +1463,14 @@ def generer_facture_intervention(*, intervention, user):
             quantite = ligne.quantite_utilisee
             if produit is None or not quantite:
                 continue
-            LigneFacture.objects.create(
-                facture=facture, produit=produit,
+            lignes.append(dict(
+                produit=produit,
                 designation=ligne.designation or produit.nom,
                 quantite=quantite,
                 prix_unitaire=Decimal(str(produit.prix_vente or 0)),
                 taux_tva=(produit.tva if produit.tva is not None
                           else taux_tva_defaut),
-            )
+            ))
 
     from apps.installations import field_capture
     heures_min = field_capture.crew_time(intervention).get('duree_sur_site_min')
@@ -1475,14 +1486,14 @@ def generer_facture_intervention(*, intervention, user):
         if profile_taux is not None:
             heures = (Decimal(heures_min) / Decimal(60)).quantize(
                 Decimal('0.01'), rounding=ROUND_HALF_UP)
-            mo_produit = _main_oeuvre_produit(company)
-            LigneFacture.objects.create(
-                facture=facture, produit=mo_produit,
+            lignes.append(dict(
+                produit=_main_oeuvre_produit(company),
                 designation="Main-d'œuvre",
                 quantite=heures, prix_unitaire=Decimal(str(profile_taux)),
                 taux_tva=taux_tva_defaut,
-            )
+            ))
 
+    facture = _ecrire_facture_generee(_create, lignes)
     intervention.facture_id = facture.id
     intervention.save(update_fields=['facture_id'])
     logger.info(

@@ -143,6 +143,30 @@ class XCTR4CouvertureRoutageTest(TestCase):
         resp = auth(self.admin).post(f'/api/django/sav/tickets/{ticket.pk}/facturer/')
         self.assertEqual(resp.status_code, 201, resp.data)
 
+    def test_action_facturer_total_hors_capacite_409_sans_facture(self):
+        """ENF47 (api-fuzz-full 42017839549) : quantité × prix au-delà des
+        14 chiffres du total stocké levait DataError (500)."""
+        from apps.ventes.models import Facture
+        cher = Produit.objects.create(
+            company=self.company, nom='Pièce chère XCTR4', sku='CHER-XCTR4',
+            prix_achat=Decimal('1'), prix_vente=Decimal('99999999.00'))
+        ticket = Ticket.objects.create(
+            company=self.company, reference='SAV-XCTR4-CAP',
+            client=self.client_obj, installation=self.inst,
+            type=Ticket.Type.CORRECTIF, couverture=Ticket.Couverture.FACTURABLE,
+            created_by=self.admin)
+        PieceConsommee.objects.create(
+            company=self.company, ticket=ticket, produit=cher,
+            quantite=Decimal('99999999.00'))
+        avant = Facture.objects.count()
+        for action in ('facturer', 'generer-facture'):
+            resp = auth(self.admin).post(
+                f'/api/django/sav/tickets/{ticket.pk}/{action}/', {}, format='json')
+            self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertEqual(Facture.objects.count(), avant)
+        ticket.refresh_from_db()
+        self.assertIsNone(ticket.facture_id_ext)
+
     def test_action_facturer_couvert_facture_zero(self):
         ContratMaintenance.objects.create(
             company=self.company, client=self.client_obj,

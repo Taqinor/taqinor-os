@@ -159,3 +159,18 @@ class TestGenererFactureIntervention(TestCase):
         self.assertEqual(r.status_code, 409)  # ENF11 : refus d'état
         self.assertFalse(Facture.objects.filter(
             client_id=None, company=self.company).exists())
+
+    def test_quantite_hors_capacite_facture_409_sans_facture(self):
+        """ENF47 (api-fuzz-full 42017839549) : ``quantite_utilisee``
+        (12 chiffres) au-delà des 10 de la ligne facturée → DataError (500)."""
+        ConsommationLigne.objects.filter(
+            consommation__intervention=self.interv).update(
+                quantite_utilisee=Decimal('1000000000.00'))
+        r = self.api.post(
+            f'{BASE}/interventions/{self.interv.id}/generer-facture/',
+            format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertFalse(Facture.objects.filter(
+            client_id=self.inst.client_id).exists())
+        self.interv.refresh_from_db()
+        self.assertIsNone(self.interv.facture_id)
