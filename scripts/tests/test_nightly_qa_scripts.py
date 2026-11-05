@@ -80,6 +80,12 @@ class TestCommun(unittest.TestCase):
             non_ascii = [b for b in data if b > 127]
             self.assertEqual(non_ascii, [], f"{path.name} : octets non-ASCII")
 
+    def test_aucun_octet_de_controle_ps1(self):
+        # AANA86 (C-AANA-VER4-012) : un 0x08 a la place de \b cassait Test-Path.
+        for path in sorted((ROOT / "scripts").glob("*.ps1")):
+            bad = [(i, b) for i, b in enumerate(path.read_bytes()) if b < 32 and b not in (9, 10, 13)]
+            self.assertEqual(bad, [], f"{path.name} : octets de controle (position, octet)")
+
     def test_jamais_de_force(self):
         for path in (SETUP, NIGHTLY, PILE):
             text = path.read_text(encoding="utf-8")

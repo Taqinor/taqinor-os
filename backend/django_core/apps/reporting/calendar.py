@@ -169,9 +169,11 @@ def calendar_events(request):
     events = []
 
     from apps.installations.models import Installation, Intervention
+    # ACHT136 — même portée que les listes (D-ACHT-VER4-1).
+    from apps.installations.selectors import scoper_chantiers, scoper_interventions
 
     # ── Poses prévues + mises en service (chantiers) ──────────────────────
-    inst_qs = Installation.objects.filter(**co).select_related(
+    inst_qs = scoper_chantiers(Installation.objects.filter(**co), request.user).select_related(
         'technicien_responsable', 'client')
     if want('pose'):
         qs = inst_qs.filter(date_pose_prevue__gte=start,
@@ -208,7 +210,7 @@ def calendar_events(request):
 
     # ── Interventions terrain ─────────────────────────────────────────────
     if want('intervention'):
-        qs = (Intervention.objects.filter(**co)
+        qs = (scoper_interventions(Intervention.objects.filter(**co), request.user)
               .select_related('technicien')
               .filter(date_prevue__gte=start, date_prevue__lte=end))
         if assignee_id:
@@ -319,19 +321,25 @@ def calendar_reschedule(request):
     new_date = entree.validated_data['date']
 
     from apps.installations.models import Installation, Intervention
+    # ACHT137 — même portée que les listes : hors portée = 404.
+    from apps.installations.selectors import scoper_chantiers, scoper_interventions
     from apps.records.models import Activity
 
     try:
         if type_key in ('pose', 'mise_en_service'):
-            inst = Installation.objects.filter(**co).get(pk=obj_id)
+            inst = scoper_chantiers(
+                Installation.objects.filter(**co), request.user).get(pk=obj_id)
             field = ('date_pose_prevue' if type_key == 'pose'
                      else 'date_mise_en_service')
             setattr(inst, field, new_date)
             inst.save(update_fields=[field])
         elif type_key == 'intervention':
-            iv = Intervention.objects.filter(**co).get(pk=obj_id)
-            iv.date_prevue = new_date
-            iv.save(update_fields=['date_prevue'])
+            # ACHT135 — un report d'agenda est un report (déconfirmé, compté,
+            # tracé), par le service unique comme le PATCH de la fiche.
+            from apps.installations.services import replanifier
+            iv = scoper_interventions(
+                Intervention.objects.filter(**co), request.user).get(pk=obj_id)
+            replanifier(iv, new_date, 'Agenda — glisser-déposer', request.user)
         else:  # activite
             act = Activity.objects.filter(**co).get(pk=obj_id)
             act.due_date = new_date
@@ -339,6 +347,8 @@ def calendar_reschedule(request):
     except (Installation.DoesNotExist, Intervention.DoesNotExist,
             Activity.DoesNotExist):
         return Response({'detail': 'Introuvable.'}, status=404)
+    except ValueError as exc:  # ACHT135 — date refusée par `replanifier`
+        return Response({'detail': str(exc)}, status=400)
 
     return Response({'ok': True, 'date': new_date.isoformat()})
 

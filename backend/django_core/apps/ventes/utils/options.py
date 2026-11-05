@@ -429,6 +429,20 @@ def option_mise_en_avant(devis) -> str:
     return SANS_BATTERIE if est_mode_ci(devis) else AVEC_BATTERIE
 
 
+def option_echeancier(devis):
+    """AMOT122 — l'option FACTURÉE (``option_effective``) d'un devis
+    résidentiel au niveau 12, en branche d'échéancier « sans » / « avec »,
+    passée par ``quote_engine.builder`` à
+    ``conditions_commerciales.branche_echeancier`` (qui n'importe jamais ce
+    module — SPL164). None pour un devis hors base, de niveau 11 (aucune
+    lecture de plus : rendu d'hier), C&I ou d'option inconnue."""
+    from apps.ventes.domain.regles_calcul import REGLES_ECARTS_0411, regles_au_moins
+    if (getattr(devis, 'pk', None) is None or not regles_au_moins(devis, REGLES_ECARTS_0411)
+            or est_mode_ci(devis)):
+        return None
+    return {SANS_BATTERIE: 'sans', AVEC_BATTERIE: 'avec'}.get(option_effective(devis))
+
+
 def option_lines(devis, option=None):
     """Lignes RÉELLES du devis pour l'option retenue (nomenclature du chantier).
 

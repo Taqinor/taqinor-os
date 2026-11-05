@@ -365,6 +365,8 @@ def _sync_outils(prep):
     # Retire les lignes d'un outil qui n'est plus dans le kit (ou kit changé).
     for outil_id, li in existing.items():
         if outil_id not in seen:
+            if li.coche:  # ACHT134 — l'outil sorti est libéré (retour non confirmé)
+                cocher_outil_ligne(li, False)
             li.delete()
 
 

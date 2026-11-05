@@ -214,6 +214,74 @@ class TestJobCosting(InsightsBase):
         self.assertEqual(Decimal(row['margin']), Decimal('4000'))
         self.assertEqual(row['margin_pct'], 40.0)
 
+    def test_deux_options_et_multivilla(self):
+        """AANA80 (C-AANA-VER4-030/031) — coût et marge sur les lignes VENDUES :
+        option retenue « sans » (11 000, commission 700), ×3 villas (33 000)."""
+        from apps.crm import stages
+        commercial = User.objects.create_user(
+            username='aana80_comm', password='x', role_legacy='responsable',
+            company=self.company)
+        PlanCommission.objects.create(
+            company=self.company, owner=commercial,
+            base=PlanCommission.Base.MARGE_INTERNE,
+            taux_pct=Decimal('10'), actif=True)
+        client = Client.objects.create(company=self.company, nom='C-AANA80')
+        lead = Lead.objects.create(company=self.company, nom='L-AANA80',
+                                   stage=stages.SIGNED, owner=commercial)
+
+        def devis(ref, lignes, **kw):
+            d = Devis.objects.create(
+                company=self.company, reference=ref, client=client,
+                lead=lead, statut=Devis.Statut.ACCEPTE,
+                date_acceptation=date.today(), taux_tva=Decimal('20'), **kw)
+            for i, (nom, var, q, pu, pa) in enumerate(lignes):
+                p = Produit.objects.create(
+                    company=self.company, nom=nom, sku=f'{ref}-{i}-{nom[:6]}',
+                    prix_vente=pu, prix_achat=pa, quantite_stock=0)
+                LigneDevis.objects.create(
+                    devis=d, produit=p, designation=nom, quantite=q,
+                    prix_unitaire=pu, variante=var)
+            Installation.objects.create(
+                company=self.company, reference=f'CH-{ref}', client=client,
+                devis=d, statut=Installation.Statut.RECEPTIONNE,
+                date_reception=date.today())
+            return d
+
+        d1 = devis('AANA80-1', [
+            ('Panneau solaire 550W', '', Decimal('10'), Decimal('1000'),
+             Decimal('600')),
+            ('Onduleur réseau 8 kW injection', 'sans', Decimal('1'),
+             Decimal('8000'), Decimal('5000')),
+            ('Onduleur hybride 8 kW', 'avec', Decimal('1'), Decimal('12000'),
+             Decimal('8000')),
+            ('Batterie lithium 10 kWh', 'avec', Decimal('1'),
+             Decimal('20000'), Decimal('15000')),
+        ], option_acceptee='sans_batterie')
+        self._facture(client, d1, 'FAC-AANA80-1', Facture.Statut.EMISE,
+                      '18000')
+        self.assertEqual(Decimal(Devis.objects.get(pk=d1.pk).total_ht),
+                         Decimal('18000'))
+        resp = self.api.get(f'{BASE}/job-costing/')
+        self.assertEqual(resp.status_code, 200)
+        row = next(r for r in resp.data['chantiers']
+                   if r['ref'] == 'CH-AANA80-1')
+        self.assertEqual(Decimal(row['cost_estimate']), Decimal('11000'))
+        resp = self.api.get(f'{BASE}/commissions/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(Decimal(resp.data['rows'][0]['commission']),
+                         Decimal('700'))
+
+        devis('AANA80-3', [
+            ('Panneau solaire 550W', '', Decimal('10'), Decimal('1000'),
+             Decimal('600')),
+            ('Onduleur réseau 8 kW injection', '', Decimal('1'),
+             Decimal('8333'), Decimal('5000')),
+        ], etude_params={'nombre_proprietes': 3})
+        resp = self.api.get(f'{BASE}/job-costing/')
+        row = next(r for r in resp.data['chantiers']
+                   if r['ref'] == 'CH-AANA80-3')
+        self.assertEqual(Decimal(row['cost_estimate']), Decimal('33000'))
+
     def _vente_revisee(self):
         """VNT109 — chantier posé sur la V1 ; la vente vit sur la V2 (les
         factures re-pointées par la révision portent ``devis`` = V2)."""

@@ -394,6 +394,14 @@ TEXTES_OPTION_AVEC = {
            "سنويًا مع خيار البطارية."),
 }
 
+#: AMOT123 (C-AMOT-VER4-030) — base « ttc » (TVA non récupérable) : la même
+#: phrase, l'économie de l'option en TTC.
+TEXTES_OPTION_AVEC_TTC = {
+    "fr": TEXTES_OPTION_AVEC["fr"].replace("MAD HT", "MAD TTC"),
+    "en": TEXTES_OPTION_AVEC["en"].replace("MAD excl. VAT", "MAD incl. VAT"),
+    "ar": TEXTES_OPTION_AVEC["ar"].replace("دون احتساب الضريبة", "مع احتساب الضريبة"),
+}
+
 
 def _nombre_langue(valeur, langue, decimales=0):
     texte_ = f"{valeur:,.{decimales}f}"
@@ -425,14 +433,19 @@ def valeur_option_avec(data):
                   or _dict(data.get("totaux_avec")))
         ht = nombre_normalise(totaux.get("ht_net"))
         retour = round(ht / eco, 1) if ht else None
+    # AMOT123 — base « ttc » servie (niveau 12) : l'économie TTC de l'option.
+    eco_ttc = (economie_ttc_option_avec(data) if _dict(data.get("economie_ci")).get("base") == "ttc"
+               and not data.get("regles_0411_historique") else None)
     textes = {lg: gabarit.format(cap=_nombre_langue(cap, lg, 1),
                                  rest=_nombre_langue(rest, lg),
-                                 eco=_nombre_langue(eco, lg))
-              for lg, gabarit in TEXTES_OPTION_AVEC.items()}
+                                 eco=_nombre_langue(eco_ttc or eco, lg))
+              for lg, gabarit in (TEXTES_OPTION_AVEC_TTC if eco_ttc else TEXTES_OPTION_AVEC).items()}
     valeur = {"economie_annuelle_mad": round(eco, 2),
               "retour_simple_ans": retour if retour and retour > 0 else None,
               "capacite_utile_kwh": cap, "restitue_kwh_an": rest,
               "textes": textes}
+    if eco_ttc:
+        valeur["economie_annuelle_ttc_mad"] = round(eco_ttc, 2)
     valeur.update(non_rentable_option_avec(avec))
     return valeur
 

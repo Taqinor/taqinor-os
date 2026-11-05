@@ -133,3 +133,19 @@ class AUD517ImportParcTests(TestCase):
         resp = self._commit('SKU,Chantier\nSKU-BOGUS,CHANT-AUD517\n')
         self.assertEqual(resp.data['created'], 0)
         self.assertIn('produit SKU inconnu', resp.data['skipped'][0]['raison'])
+
+    def test_date_pose_illisible_refusee(self):
+        """AANA85 — « 31/13/2025 » : ligne refusée et nommée, aucun équipement
+        sans date de pose ; cellule vide : importée comme avant."""
+        resp = self._commit(
+            'produit_sku,installation_ref,numero_serie,date_pose\n'
+            'SKU-AUD517,CHANT-AUD517,SN-AANA85,31/13/2025\n'
+            'SKU-AUD517,CHANT-AUD517,SN-AANA85-VIDE,\n')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['created'], 1, resp.data)
+        self.assertEqual(resp.data['skipped'], [
+            {'ligne': 1, 'raison': "date_pose illisible : '31/13/2025'"}])
+        self.assertFalse(Equipement.objects.filter(
+            company=self.company, numero_serie='SN-AANA85').exists())
+        self.assertTrue(Equipement.objects.filter(
+            company=self.company, numero_serie='SN-AANA85-VIDE').exists())

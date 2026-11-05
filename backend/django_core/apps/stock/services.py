@@ -6990,7 +6990,7 @@ def _parse_palier_cell(value):
         except (InvalidOperation, TypeError, ValueError):
             rejets.append(f'palier illisible : « {segment} »')
             continue
-        if prix.as_tuple().exponent < -2:
+        if prix.normalize().as_tuple().exponent < -2:  # AANA83 : « 9.500 » = 9,50
             rejets.append(f'palier à plus de 2 décimales : « {segment} »')
             continue
         out.append((qte, prix.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)))  # échelle exacte, aucun arrondi
@@ -7001,23 +7001,24 @@ def _date_cellule_tarif(valeur):
     """XPUR14 — normalise une cellule date d'un xlsx tarif (datetime openpyxl,
     date, ou texte) en ``date``.
 
-    Renvoie ``None`` pour une cellule VIDE **ou** illisible : dans les deux cas
-    le champ est simplement écarté de la ligne, jamais écrit — une colonne
-    présente mais vide ne doit pas effacer une date de validité déjà saisie."""
+    Renvoie ``None`` pour une cellule VIDE : le champ est écarté de la ligne —
+    une colonne présente mais vide n'efface pas une date déjà saisie. Un texte
+    ILLISIBLE lève ``ValueError(texte)`` (AANA84) : la ligne est refusée et
+    nommée, jamais un prix écrit sans sa validité."""
     import datetime
-    if valeur in (None, ''):
-        return None
     if isinstance(valeur, datetime.datetime):
         return valeur.date()
     if isinstance(valeur, datetime.date):
         return valeur
-    texte = str(valeur).strip()
+    texte = str(valeur if valeur is not None else '').strip()
+    if not texte:
+        return None
     for fmt in ('%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y'):
         try:
             return datetime.datetime.strptime(texte, fmt).date()
         except ValueError:
             continue
-    return None
+    raise ValueError(texte)
 
 
 def _lire_ligne_tarif(company, row, idx_sku, idx_prix, idx_paliers):
@@ -7039,7 +7040,7 @@ def _lire_ligne_tarif(company, row, idx_sku, idx_prix, idx_paliers):
     paliers, rejets = _parse_palier_cell(
         row[idx_paliers] if idx_paliers is not None and idx_paliers < len(row) else None)
     rejets = ([f'prix à plus de 2 décimales : {prix_raw!r}']
-              if prix.as_tuple().exponent < -2 else []) + rejets
+              if prix.normalize().as_tuple().exponent < -2 else []) + rejets  # AANA83
     if rejets:
         prix, paliers = None, []
     return sku, produit, prix, paliers, (f'{sku} : ' + ' ; '.join(rejets) + '.' if rejets else None)
@@ -7145,14 +7146,13 @@ def import_prix_fournisseur_xlsx(company, fournisseur, file_bytes, *,
             ref = str(row[idx_ref] or '').strip()
             if ref:
                 champs['ref_produit_fournisseur'] = ref
-        if idx_debut is not None and idx_debut < len(row):
-            debut = _date_cellule_tarif(row[idx_debut])
-            if debut is not None:
-                champs['date_debut'] = debut
-        if idx_fin is not None and idx_fin < len(row):
-            fin = _date_cellule_tarif(row[idx_fin])
-            if fin is not None:
-                champs['date_fin'] = fin
+        try:  # AANA84 : date illisible ⇒ ligne refusée et nommée, rien d'écrit
+            for nom, idx in (('date_debut', idx_debut), ('date_fin', idx_fin)):
+                if idx is not None and idx < len(row) and (date := _date_cellule_tarif(row[idx])) is not None:
+                    champs[nom] = date
+        except ValueError as exc:
+            _erreur(row_num, sku, f'{sku} : {nom} illisible : {str(exc)!r}.')
+            continue
 
         pf = PrixFournisseur.objects.filter(
             produit=produit, fournisseur=fournisseur).first()

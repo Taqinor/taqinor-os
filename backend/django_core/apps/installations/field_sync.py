@@ -28,6 +28,8 @@ JAMAIS lue du corps. Une cible (intervention/chantier) hors-société est rejet�
 proprement (l'op échoue mais ne casse pas le lot). Additif — la machine à états
 de l'intervention n'est jamais touchée (séparée du chantier et de STAGES.py).
 """
+from datetime import timedelta
+
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
@@ -74,14 +76,33 @@ def _lire_horodatage(brut):
     return dt
 
 
-def _instant_saisie(payload):
+#: ACHT130 — au-delà, un `client_ts` est une horloge de terminal fausse.
+FENETRE_HORS_LIGNE_MAX = timedelta(days=7)
+
+
+def _instant_saisie(payload, plancher=None):
     """ACHT32 — instant de SAISIE de l'op (`client_ts`), borné au présent ;
-    sans `client_ts` valide, l'instant de synchro (rétrocompatible)."""
+    sans `client_ts` valide, l'instant de synchro (rétrocompatible) ;
+    ACHT130 — avant `plancher` ou la fenêtre : heure de synchro, marquée."""
     maintenant = timezone.now()
     saisie = payload.get('_client_ts') if isinstance(payload, dict) else None
     if saisie is None:
         return maintenant
+    if saisie < max(plancher or saisie, maintenant - FENETRE_HORS_LIGNE_MAX):
+        payload['_saisie_ramenee'] = True
+        return maintenant
     return min(saisie, maintenant)
+
+
+def _plancher(iv, *champs):
+    """ACHT130 — plus tardif de la création et des étapes précédentes."""
+    return max(d for d in [iv.date_creation, *(getattr(iv, c) for c in champs)] if d)
+
+
+def _suffixe(payload):
+    if payload.get('_saisie_ramenee'):
+        return ' (synchro hors-ligne ; heure du terminal invraisemblable, heure de synchro retenue)'
+    return ' (synchro hors-ligne)'
 
 
 # ── Résolution scopée société des cibles ─────────────────────────────────────
@@ -128,9 +149,10 @@ def _h_depart_depot(company, user, payload):
     iv = _intervention(company, payload, user)
     _garde_accord_geoloc(user)
     # ACHT43 — même geste que la vue (position de départ incluse).
+    instant = _instant_saisie(payload, _plancher(iv))
     field_services.enregistrer_depart_depot(
-        iv, _instant_saisie(payload), payload.get('lat'), payload.get('lng'),
-        user, suffixe=' (synchro hors-ligne)')
+        iv, instant, payload.get('lat'), payload.get('lng'),
+        user, suffixe=_suffixe(payload))
     return {'intervention': iv.id, 'depart_depot_le': iv.depart_depot_le.isoformat()}
 
 
@@ -139,9 +161,10 @@ def _h_checkin(company, user, payload):
     _garde_accord_geoloc(user)
     # ACHT43 — même geste que la vue (ponctualité XFSM5 incluse).
     try:
+        instant = _instant_saisie(payload, _plancher(iv, 'depart_depot_le'))
         field_services.enregistrer_arrivee(
-            iv, _instant_saisie(payload), payload.get('lat'),
-            payload.get('lng'), user, suffixe=' (synchro hors-ligne)')
+            iv, instant, payload.get('lat'),
+            payload.get('lng'), user, suffixe=_suffixe(payload))
     except field_services.CoordonneesInvalides:
         raise FieldOpError('Coordonnées invalides.')
     res = {'intervention': iv.id, 'arrivee_site_le': iv.arrivee_site_le.isoformat()}
@@ -163,9 +186,11 @@ def _h_checkin(company, user, payload):
 
 def _h_retour(company, user, payload):
     iv = _intervention(company, payload, user)
-    iv.retour_depot_le = _instant_saisie(payload)
+    iv.retour_depot_le = _instant_saisie(
+        payload, _plancher(iv, 'depart_depot_le', 'arrivee_site_le'))
     iv.save(update_fields=['retour_depot_le'])
-    intervention_activity.log_note(iv, user, 'Retour dépôt enregistré (synchro hors-ligne).')
+    intervention_activity.log_note(
+        iv, user, 'Retour dépôt enregistré' + _suffixe(payload) + '.')
     return {'intervention': iv.id, 'retour_depot_le': iv.retour_depot_le.isoformat()}
 
 

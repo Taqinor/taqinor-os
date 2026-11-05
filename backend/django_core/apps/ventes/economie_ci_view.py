@@ -56,7 +56,7 @@ def lignes_ecran(company, lignes, produits=None):
     liste facultative qui reçoit les produits des lignes non optionnelles."""
     from apps.stock.selectors import get_produit_scoped
 
-    from .economie_ci import _est_onduleur
+    from .economie_ci import _est_onduleur, _est_panneau
 
     sorties = []
     ht_total = ttc_total = 0.0
@@ -84,6 +84,7 @@ def lignes_ecran(company, lignes, produits=None):
             'ht': ht, 'ttc': ttc, 'optionnelle': optionnelle,
             'quantite': _nombre(ligne.get('quantite')),  # CEC10 (alerte O&M)
             'onduleur': _est_onduleur(produit),
+            'panneau': _est_panneau(produit, ligne.get('designation')),  # ADEV115
             'role_ci': (getattr(produit, 'role_ci', '') or None)
             if produit is not None else None,
         })
@@ -131,7 +132,8 @@ def economie_ci_preview(request):
         bloc = assembler_economie_ci(
             sortie, saisies=saisies if isinstance(saisies, dict) else {},
             investissement=investissement, lignes=lignes,
-            mode_installation=mode, reglages=reglages)
+            mode_installation=mode, reglages=reglages,
+            controle_lignes=True)  # ADEV115 — comme le devis (ADEV81)
     except (SaisieEconomieCiInvalide, EconomieInvalide) as refus:  # CEC14
         return refus_saisie(refus)
     except (TypeError, ValueError, AttributeError, KeyError):  # CEC18

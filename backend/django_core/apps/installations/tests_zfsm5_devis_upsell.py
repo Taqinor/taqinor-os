@@ -81,7 +81,9 @@ class TestGenererDevisUpsell(TestCase):
         devis = Devis.objects.get(id=r.data['devis_id'])
         self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
         self.assertEqual(devis.client_id, self.inst.client_id)
-        self.assertIn(self.inst.reference, devis.note)
+        # ADEV117 — la référence chantier se lit côté vendeur : note OU chatter.
+        self.assertIn(self.inst.reference, ' '.join(
+            [devis.note or ''] + [a.body or '' for a in devis.activites.all()]))
         self.interv.refresh_from_db()
         self.assertEqual(self.interv.devis_upsell_id, devis.id)
 
