@@ -4,7 +4,11 @@
   "groupe": "ASEC",
   "verdict": "PASS",
   "couvre": [
-    "ASEC66"
+    "ASEC66",
+    "ASEC67",
+    "ASEC68",
+    "ASEC69",
+    "ASEC70"
   ],
   "couvre_avec_ecart": [],
   "etapes": [
@@ -16,6 +20,94 @@
       "verdict": "PASS",
       "base_verdict": null,
       "trace": "docs/qa-explorer/captures/2026-11-05/ACCEPTATION-ASEC-V4.66.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "V4.69",
+      "taches": [
+        "ASEC69"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-05/ACCEPTATION-ASEC-V4.69.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "V4.67",
+      "taches": [
+        "ASEC67"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-05/ACCEPTATION-ASEC-V4.67.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "V4.68",
+      "taches": [
+        "ASEC68"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-05/ACCEPTATION-ASEC-V4.68.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "V4.70",
+      "taches": [
+        "ASEC70"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-05/ACCEPTATION-ASEC-V4.70.jpg",
       "oracles": {
         "1": "PASS",
         "2": "PASS",
