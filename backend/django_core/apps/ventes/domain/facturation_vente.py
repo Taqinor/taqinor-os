@@ -275,6 +275,28 @@ def verrouiller_vente(devis):
                 .filter(Q(pk=racine.pk) | Q(pk=devis.pk)).order_by('pk'))
 
 
+def verrouiller_emission(facture, statut):
+    """ATOT58 (C-ATOT-VER4-002) — appelé par ``emettre_facture`` DANS la
+    transaction de la pose d'ÉMISE : ventes de la facture verrouillées (pk
+    croissant) AVANT la borne VNT20, facture relue et statut revérifié —
+    deux émissions simultanées d'une même vente : la seconde voit la
+    première (409)."""
+    from apps.ventes.models import Facture
+    from apps.ventes.vente_facturation import (
+        _ventes_de_la_facture, motif_emission_hors_prix)
+    from .facturation_ops import EmissionRefusee
+    for devis, _p in sorted(_ventes_de_la_facture(facture),
+                            key=lambda v: v[0].pk):
+        verrouiller_vente(devis)
+    relu = Facture.objects.select_for_update().filter(
+        pk=facture.pk).values_list('statut', flat=True).first()
+    if facture.pk and relu != statut:
+        raise EmissionRefusee(
+            'La facture a changé entre-temps : rechargez-la.', etat=True)
+    if (motif := motif_emission_hors_prix(facture)):  # VNT20 : 1 vente, 1 fois
+        raise EmissionRefusee(motif, etat=True)
+
+
 def _facturer_tranche(devis, plan, nature, *, user, montant, cle_attendue,
                       libelle):
     """Natures ``intermediaire`` / ``solde`` : la prochaine tranche du plan."""
