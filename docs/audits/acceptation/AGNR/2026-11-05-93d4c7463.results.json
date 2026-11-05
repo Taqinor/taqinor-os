@@ -8,7 +8,8 @@
     "AGNR65",
     "AGNR66",
     "AGNR69",
-    "AGNR70"
+    "AGNR70",
+    "AGNR67"
   ],
   "couvre_avec_ecart": [],
   "etapes": [
@@ -121,6 +122,28 @@
         "10": "NA"
       },
       "notes": "Brouillon neuf 10 x 550 W + 10 x 710 W + onduleur, niveau 12 : puissance_kwc_du_devis 12,6, puissances_etude_horaire (12,6, None) ; PATCH remise 10 (vraie route, admin) 200 => prix_par_kwc 3 253,97 = TTC 41 000 / 12,6 ; niveau 11 : 11,0 et prix_par_kwc 3 727,27 = TTC / 11,0 ; sonde C-AGNR-VER4-030 repro False"
+    },
+    {
+      "id": "W14.AGNR67.serie_mixte_bloque_enregistrement",
+      "taches": [
+        "AGNR67"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-05-rejeux-w14/AGNR67.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Ecran reel (front reconstruit, demo_admin) : generateur residentiel, hiver 500 / ete 1 200, Estimer 12 mois, Mars tape 900 puis Creer => « Mars tape : tapez les 12 mois ou effacez la correction », aucune requete /ventes/devis ; Mars vide => « Mars vide : … » ; 12 derives => erreur factures levee ; node : serieMixte (Mars tape / vide => [{Mars}], 12 tapes / 12 derives => []) ; sonde C-AGNR-VER4-011.mjs : entreesDeEtat inchange (blocage attendu, pas un nouveau corps) ; Composition libre cochee pour lever la garde des lignes qui passe avant dans la carte d'erreur"
     }
   ]
 }
