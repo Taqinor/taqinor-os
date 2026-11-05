@@ -160,10 +160,9 @@ def banque_batterie_du_devis(devis, option='avec'):
         return None
 
 
-#: Rôles de composition (``composition_residentielle``) qui portent un PORT
-#: BATTERIE. Le classifieur de libellés (``classer_produit``) rend les MÊMES
-#: deux étiquettes : la sélection des lignes est donc identique qu'on parte
-#: d'un devis enregistré ou d'une composition en mémoire.
+#: Rôles d'onduleur lus pour le PORT BATTERIE par les règles d'HIER (niveau < 12). Le classifieur
+#: (``classer_produit``) rend AUSSI ``onduleur_offgrid`` : au niveau 12 (``REGLES_ECARTS_0411``, AMOT121)
+#: les trois rôles ``core.product_roles.est_onduleur_devis`` sont lus.
 ROLES_ONDULEUR = ('onduleur_hybride', 'onduleur_reseau')
 
 
@@ -180,7 +179,7 @@ def _puissance_fiche(produit, cle):
     return valeur if valeur > 0 else None
 
 
-def puissances_batterie_des_lignes(lignes, roles=None):
+def puissances_batterie_des_lignes(lignes, roles=None, devis=None):
     """LA source unique des puissances du chemin batterie d'une composition.
 
     L'ÉTUDE (:func:`etude_horaire_pour_devis`, sur un devis enregistré) et le
@@ -233,6 +232,10 @@ def puissances_batterie_des_lignes(lignes, roles=None):
     }
     try:
         from apps.ventes.services import classer_produit
+        from apps.ventes.domain.regles_calcul import REGLES_ECARTS_0411, regles_au_moins
+        from core.product_roles import est_onduleur_devis
+        est_onduleur = (est_onduleur_devis if regles_au_moins(devis, REGLES_ECARTS_0411)
+                        else ROLES_ONDULEUR.__contains__)  # AMOT121 — devis absent ⇒ courantes
         roles = list(roles or ())
         cumuls = {'packs_decharge_kw': 0.0, 'packs_charge_kw': 0.0,
                   'ond_decharge_kw': 0.0, 'ond_charge_kw': 0.0}
@@ -247,7 +250,7 @@ def puissances_batterie_des_lignes(lignes, roles=None):
             if role == 'batterie':
                 champs = (('packs_decharge_kw', 'max_decharge_kw'),
                           ('packs_charge_kw', 'max_charge_kw'))
-            elif role in ROLES_ONDULEUR:
+            elif est_onduleur(role):
                 champs = (('ond_decharge_kw', 'bat_max_decharge_kw'),
                           ('ond_charge_kw', 'bat_max_charge_kw'))
             else:
@@ -378,7 +381,7 @@ def rendement_batterie_du_devis(devis):
 def puissance_batterie_du_devis(devis):
     """:func:`puissances_batterie_des_lignes` sur les lignes d'un devis."""
     try:
-        return puissances_batterie_des_lignes(devis.lignes.all())
+        return puissances_batterie_des_lignes(devis.lignes.all(), devis=devis)
     except Exception:  # noqa: BLE001 — lignes illisibles ⇒ règle conservatrice (D-ENF22-BLE001)
         logger.warning('lignes du devis illisibles', exc_info=True)
         return {'decharge_kw': None, 'charge_kw': None,

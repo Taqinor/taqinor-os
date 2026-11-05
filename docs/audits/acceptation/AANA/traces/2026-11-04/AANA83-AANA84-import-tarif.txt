@@ -1,0 +1,18 @@
+AANA83 / AANA84 — pile locale, sha be834beb1, 04/11/2026, demo_admin, fiche fournisseur 5 (Electra Distribution),
+onglet « Tarif », « Importer un tarif (xlsx) » : Aperçu puis Importer.
+
+AANA83 — fichier : sku PAN-450M prix_achat « 12.340 » paliers « 10:9.500 » ; sku PAN-550M prix_achat « 12.345 »
+  POST import-xlsx (apercu faux) -> 200 {"created":1,"updated":0,
+    "errors":[{"row":3,"message":"PAN-550M : prix à plus de 2 décimales : '12.345'."}],"job_id":53}
+  psql : stock_prixfournisseur PAN-450M prix_achat = 12.34 ; stock_palierprixfournisseur quantite 10 prix 9.50 ;
+         aucun prix PAN-550M.
+  Écran : « Import effectué : 1 création(s), 0 mise(s) à jour. »  => PASS (12,34 et 9,50 écrits, 12.345 refusé)
+
+AANA84 — fichier : sku PAN-330P prix_achat 100, date_debut vide, date_fin « 31/13/2026 »
+  Aperçu -> 200 {"created":0,"errors":[{"row":2,"message":"PAN-330P : date_fin illisible : '31/13/2026'."}],"apercu":true}
+  Importer -> 200 {"created":0,"errors":[{"row":2,"message":"PAN-330P : date_fin illisible : '31/13/2026'."}],"job_id":54}
+  psql : 0 PrixFournisseur PAN-330P chez ce fournisseur  (serveur : juste)
+  Écran : « Aperçu : 0 création(s), 0 mise(s) à jour, 0 refusé(s) » puis « Import effectué : 0 création(s),
+          0 mise(s) à jour. » — AUCUN motif affiché : FournisseurFiche360.jsx (l. 1266) n'affiche jamais `errors`.
+  => FAIL de la preuve en direct « motif affiché » (capture FAIL-AANA-P.tarif_date_illisible.jpg) ;
+     défaut d'écran préexistant, hors des Files de la tâche (services.py + test).

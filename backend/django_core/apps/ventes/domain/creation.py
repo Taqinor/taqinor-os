@@ -300,7 +300,9 @@ def create_devis_upsell_from_intervention(*, intervention, user):
     client = installation.client
     company = intervention.company or installation.company
 
-    note = (
+    # ADEV118 — ``Devis.note`` est le texte CLIENT (page publique, PDF) :
+    # l'origine de l'upsell va au CHATTER, comme ``create_devis_from_reserve``.
+    trace = (
         "Devis d'upsell généré depuis une intervention sur place.\n"
         f"Chantier : {installation.reference}\n"
         f"Type d'intervention : {intervention.get_type_intervention_display()}")
@@ -312,12 +314,14 @@ def create_devis_upsell_from_intervention(*, intervention, user):
             client=client,
             statut=Devis.Statut.BROUILLON,
             created_by=user,
-            note=note,
+            note='',
             taux_tva=tva_standard(company),
             devise=devise_par_defaut(company),
         )
 
     devis = create_numbered(Devis, company, 'devis', _create)
+    from apps.ventes import activity
+    activity.log_devis_note(devis, user, trace)
     intervention.devis_upsell_id = devis.id
     intervention.save(update_fields=['devis_upsell_id'])
     logger.info(

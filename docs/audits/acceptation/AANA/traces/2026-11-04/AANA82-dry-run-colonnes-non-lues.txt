@@ -1,0 +1,10 @@
+POST /api/django/imports/dry-run/ target=factures -> HTTP 200
+  colonnes    : ['reference', 'client_nom', 'date_emission', 'statut_paiement', 'date', 'montant_ht']
+  mapping     : {"reference": "reference_source", "client_nom": "client_nom"}
+  non_mappees : ['date_emission', 'statut_paiement', 'date', 'montant_ht']
+  rejeu identique : True
+POST /api/django/imports/dry-run/ target=devis -> HTTP 200
+  colonnes    : ['reference', 'client_nom', 'date_creation', 'date', 'montant_ht']
+  mapping     : {"reference": "reference_source", "client_nom": "client_nom"}
+  non_mappees : ['date_creation', 'date', 'montant_ht']
+  rejeu identique : True

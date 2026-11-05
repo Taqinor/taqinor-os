@@ -1,0 +1,31 @@
+AMOT118 — pile locale (django_core recree depuis le worktree), sha be834beb1, 04/11/2026
+
+Avant migrate (psql) : derniere migration ventes = 0152_retenuesubie_annulee
+  niveau 11 : 376 brouillons jamais envoyes ; 43 envoyes/acceptes (10+7 accepte, 25+1 envoye)
+
+migrate --noinput :
+  Applying records.0014_attachment_file_key_index... OK
+  Applying ventes.0153_regles_calcul_niveau_12... OK
+
+showmigrations ventes :
+  [X] 0151_regles_calcul_niveau_11
+  [X] 0152_retenuesubie_annulee
+  [X] 0153_regles_calcul_niveau_12
+
+Apres (psql : regles_calcul, statut, date_envoi nulle, nombre ; niveaux >= 11) :
+  11|accepte|f|10
+  11|accepte|t|7
+  11|envoye|f|25
+  11|envoye|t|1
+  12|brouillon|t|376
+
+manage.py shell : REGLES_COURANTES 12 REGLES_ECARTS_0411 12 default 12
+
+=> les 376 brouillons jamais envoyes passent 11 -> 12 ; les 43 envoyes/acceptes restent au niveau 11 ;
+   un devis neuf nait en 12 (defaut du champ = REGLES_COURANTES = 12 ; les sondes AMOT de ce rejeu
+   creent leurs devis a ce niveau).
+
+Retour (restauration de la pile en fin de rejeu, 05/11) : migrate ventes 0152
+  Unapplying ventes.0153_regles_calcul_niveau_12... OK
+  psql : niveau 12 = 0 devis ; 378 brouillons jamais envoyes au niveau 11 (les 376 + 2 V2 de revision creees
+  pendant le rejeu, nees en 12) ; envoyes/acceptes inchanges au niveau 11  => 12 -> 11 au retour.

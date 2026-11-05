@@ -70,6 +70,22 @@ class SchemaCiV2Test(SimpleTestCase):
         self.assertIn('cle_inventee_ci', reproches[0])
         self.assertIn('Clé inconnue', reproches[0])
 
+    def test_provenance_tva_hors_vocabulaire_refusee_a_l_ecriture(self):
+        """ERR-ACC-ETUDE-PARAMS-PROVENANCE — une ``provenance`` inconnue de
+        ``tva_recuperable`` est refusée à l'écriture en nommant le champ (elle
+        cassait ensuite ``GET …/economie-ci/``) ; les valeurs admises passent."""
+        champ = 'saisies_economie_ci.tva_recuperable.provenance'
+        with self.assertRaises(ValueError) as ctx:
+            es.fusionner({}, proprietaire=es.ECRAN, saisies_economie_ci={
+                'tva_recuperable': {'valeur': 'oui', 'provenance': 'devine'}})
+        self.assertIn(champ, str(ctx.exception))
+        for provenance in ('lead', 'declare_client', None):
+            with self.subTest(provenance=provenance):
+                self.assertEqual(es.valider({'saisies_economie_ci': {
+                    'tva_recuperable': {'valeur': 'non',
+                                        'provenance': provenance}}}), [])
+        self.assertEqual(es.valider({'saisies_economie_ci': {}}), [])
+
     def test_cles_v1_retirees_par_ciq129(self):
         """CIQ129 — les clés `a_retirer_v1` ont quitté le schéma : chacune
         reçue est refusée en la nommant."""

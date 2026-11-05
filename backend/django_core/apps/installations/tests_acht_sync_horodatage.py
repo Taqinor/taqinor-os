@@ -66,13 +66,52 @@ class SyncHorodatageTests(TestCase):
         self.assertEqual(r.status_code, 200, r.data)
         return r.data['results'][0]
 
+    def _creee_il_y_a(self, delta):
+        Intervention.objects.filter(pk=self.iv.pk).update(
+            date_creation=timezone.now() - delta)
+
     def test_checkin_date_de_saisie(self):
+        # ACHT130 — réaligné : saisie relative, après la création (J-2).
+        self._creee_il_y_a(timedelta(days=2))
+        saisie = (timezone.now() - timedelta(days=1)).replace(microsecond=0)
         res = self._sync('intervention.checkin', {},
-                         client_ts='2026-10-01T08:00:00Z')
+                         client_ts=saisie.isoformat())
         self.assertEqual(res['status'], 'applied', res)
         self.iv.refresh_from_db()
-        self.assertEqual(
-            self.iv.arrivee_site_le.isoformat(), '2026-10-01T08:00:00+00:00')
+        self.assertEqual(self.iv.arrivee_site_le, saisie)
+
+    def test_client_ts_invraisemblable_heure_de_synchro(self):
+        """ACHT130 (C-ACHT-VER4-020) — horloge −1 an, ou retour antérieur au
+        check-in : heure de synchro + mention ; témoin H-3 → H = 180 min."""
+        from apps.installations.field_capture import crew_time
+        from apps.installations.models import InterventionActivity
+        self._creee_il_y_a(timedelta(days=2))
+        maintenant = timezone.now()
+        # (a) check-in à J-365 → ramené.
+        res = self._sync('intervention.checkin', {}, client_ts=(
+            maintenant - timedelta(days=365)).isoformat())
+        self.assertEqual(res['status'], 'applied', res)
+        self.iv.refresh_from_db()
+        self.assertGreaterEqual(self.iv.arrivee_site_le, maintenant)
+        self.assertTrue(InterventionActivity.objects.filter(
+            intervention=self.iv, body__contains='invraisemblable').exists())
+        # (b) check-in H-1, retour H-3 → retour ramené, durée ≥ 0.
+        self._sync('intervention.checkin', {}, client_ts=(
+            maintenant - timedelta(hours=1)).isoformat())
+        res = self._sync('intervention.retour', {}, client_ts=(
+            maintenant - timedelta(hours=3)).isoformat())
+        self.assertEqual(res['status'], 'applied', res)
+        self.iv.refresh_from_db()
+        self.assertGreaterEqual(self.iv.retour_depot_le, maintenant)
+        self.assertGreaterEqual(crew_time(self.iv)['duree_sur_site_min'], 0)
+        # Témoin : check-in H-3, retour H → 180 min, sans mention.
+        self._sync('intervention.checkin', {}, client_ts=(
+            maintenant - timedelta(hours=3)).isoformat())
+        self._sync('intervention.retour', {}, client_ts=maintenant.isoformat())
+        self.iv.refresh_from_db()
+        self.assertEqual(crew_time(self.iv)['duree_sur_site_min'], 180)
+        self.assertEqual(InterventionActivity.objects.filter(
+            intervention=self.iv, body__contains='invraisemblable').count(), 2)
 
     def test_op_ancienne_en_conflit(self):
         base = self.ligne.date_modification.isoformat()

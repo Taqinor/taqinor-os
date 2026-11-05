@@ -114,6 +114,34 @@ class TestMappingChampsAutorises(ImportBase):
         }, format='json')
         self.assertEqual(resp.status_code, 400, resp.data)
 
+    def test_colonnes_non_lues_non_mappees(self):
+        # AANA82 (C-AANA-VER4-020, D-AANA-VER4-1) : date / statut de paiement
+        # jamais lus par l'import ⇒ « non mappées », pas acceptées puis ignorées.
+        from .services import champs_autorises
+        for cible, csv, cols in (
+                ('factures', 'reference,client_nom,statut,date_emission,'
+                 'statut_paiement,date\nF1,Acme,emise,2024-03-01,paid,'
+                 '2024-03-01\n', ('date_emission', 'statut_paiement', 'date')),
+                ('devis', 'reference,client_nom,statut,date_creation,date\n'
+                 'D1,Acme,envoye,2024-03-01,2024-03-01\n',
+                 ('date_creation', 'date'))):
+            self.assertFalse(set(cols) & champs_autorises(cible))
+            resp = self.api.post('/api/django/imports/dry-run/', {
+                'file': self._csv(csv), 'target': cible,
+            }, format='multipart')
+            self.assertEqual(resp.status_code, 200, resp.data)
+            for col in cols:
+                self.assertIn(col, resp.data['non_mappees'], cible)
+        ImportMapping.objects.create(
+            company=self.company, entity='factures', nom='Ancien',
+            mapping={'Emis': 'date_emission', 'Ref': 'reference_source'})
+        resp = self.api.post('/api/django/imports/dry-run/', {
+            'file': self._csv('Ref,Emis\nF2,2024-03-01\n'),
+            'target': 'factures', 'mapping': 'Ancien',
+        }, format='multipart')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIn('Emis', resp.data['non_mappees'])
+
     def test_montants_source_non_mappes(self):
         # AANA73 : rien ne lit montant_*_source ⇒ la colonne montant est
         # annoncée « non mappée », pas acceptée puis ignorée.

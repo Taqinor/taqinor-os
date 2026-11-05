@@ -264,7 +264,8 @@ Clients → crm_client (nom, prenom, email, telephone)
 
 Devis → ventes_devis + ventes_lignedevis
   - statut : 'brouillon', 'envoye', 'accepte', 'refuse', 'expire'
-  (aucun montant stocke : SUM(ventes_lignedevis.quantite * ventes_lignedevis.prix_unitaire), remises en plus)
+  (aucun montant stocke ; ne somme JAMAIS les lignes d un devis pour son montant : renvoie a sa fiche ERP ;
+   le CA facture = SUM(ventes_facture.total_ht_stocke))
 
 Factures → ventes_facture + ventes_lignefacture
   - statut : 'brouillon', 'emise', 'payee', 'en_retard', 'annulee'

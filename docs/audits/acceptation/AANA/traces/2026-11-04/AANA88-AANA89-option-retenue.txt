@@ -1,0 +1,18 @@
+AANA88 / AANA89 — pile locale, sha be834beb1, demo_admin.
+
+Devis DEV-202611-0083 (id 2980, lead 4146), deux options, envoyé :
+  lignes : Panneau mono 550W (commune) ; Onduleur hybride 6kW (avec) ; Batterie lithium 5kWh (avec) ;
+           Onduleur réseau injection 6kW (sans)
+  POST /api/django/ventes/devis/2980/accepter/ {option: sans_batterie} -> 200
+  POST /api/django/visites/visites/ {lead: 4146} -> 201 (visite 20)
+
+AANA88 — GET /api/django/visites/visites/20/ clé devis :
+  [{"numero":"DEV-202611-0083","statut":"accepte","total_ttc":"22800.00","lignes":[
+     Panneau mono 550W 10 × 1 200 = 12 000 ; Onduleur réseau injection 6kW 1 × 10 800 = 10 800 ]}]
+  Écran /visites/20 (panneau client/devis) : « DEV-202611-0083 Accepté 22 800,00 MAD », 2 lignes,
+  ni « Batterie lithium » ni « Onduleur hybride » dans la page.
+
+AANA89 — manage.py shell (app gestion_projet parquée : aucun écran, appel direct du sélecteur) :
+  option_lines      : [Panneau mono 550W, Onduleur réseau injection 6kW (sans)]
+  devis_pour_projet : {'reference': 'DEV-202611-0083', 'montant_materiel': '19000.0000'}  (pas de ligne MO)
+  19 000 HT = 10 000 (panneaux) + 9 000 (onduleur réseau) = Σ HT de option_lines ; batterie et hybride exclus.

@@ -1,0 +1,103 @@
+{
+  "sha": "be834beb1732b54cc2c0b2279c542135736b6ccc",
+  "date": "2026-11-04",
+  "groupe": "AMOT",
+  "verdict": "PASS",
+  "couvre": [
+    "AMOT118",
+    "AMOT122",
+    "AMOT123",
+    "AMOT126"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P.migration_0153_niveau_12",
+      "taches": [
+        "AMOT118"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AMOT/traces/2026-11-04/AMOT118-migration-0153.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "migrate sur la pile locale : 376 brouillons jamais envoyes 11 -> 12, 43 envoyes/acceptes restent 11, defaut du champ = REGLES_COURANTES = 12 (psql + shell)."
+    },
+    {
+      "id": "P.sonde_007_echeancier_une_branche",
+      "taches": [
+        "AMOT122"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AMOT/traces/2026-11-04/C-AMOT-VER4-007.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde -007 (devis neuf niveau 12, recommandee Sans, acompte 10 000 MAD) : puces CGV 18 %, page publique 18 %, cases du Devis final residentiel 18 % / 82 %, texte legacy 18 % - un seul % partout, sur option_effective (avant acceptation = avec, D9). Le drapeau repro de la sonde reste vrai car il recalcule la branche des cases par l'ancienne regle scenario/recommended (sans, 44 %) : regle d'ecriture de la sonde, pas le rendu."
+    },
+    {
+      "id": "P.sonde_030_carte_avec_ttc",
+      "taches": [
+        "AMOT123"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AMOT/traces/2026-11-04/C-AMOT-VER4-030.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde -030 => repro False : base ttc, carte Avec « Economie annuelle 24 000 MAD TTC » ; base deux inchangee « 20 000 MAD HT soit 24 000 MAD TTC »."
+    },
+    {
+      "id": "P.sonde_040_une_page_fmt_dirhams",
+      "taches": [
+        "AMOT126"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AMOT/traces/2026-11-04/C-AMOT-VER4-040.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde -040 : cellules du une-page C&I = « 98 931 MAD/an » et « soit 118 717 MAD TTC » = couverture (theme.fmt 98 931 / 118 717). Le drapeau repro de la sonde reste vrai car il teste fnum lui-meme (98 930), que la tache garde inchange par contrat (« fnum inchange »)."
+    }
+  ]
+}

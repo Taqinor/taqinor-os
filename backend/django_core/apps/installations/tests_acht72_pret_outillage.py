@@ -172,3 +172,24 @@ class PretOutillageTests(TestCase):
         self.api.post(f'{BASE}/{self.iv1.id}/confirmer-tool-return/', {},
                       format='json')
         self.assertEqual(self._statut('C'), (S.DISPONIBLE, self.depot.id))
+
+    def test_changement_de_kit_libere_outil_sorti(self):
+        """ACHT134 (C-ACHT-VER4-041) — changer de kit (ou le retirer) libère
+        l'outil coché à son emplacement de retour ; il redevient cochable."""
+        self.assertEqual(self._cocher(self.iv1, 'C').status_code, 200)
+        self.assertEqual(self._statut('C'), (S.EN_INTERVENTION, None))
+        k2 = KitOutillage.objects.create(
+            company=self.company, nom='K2', type_intervention='pose')
+        KitOutillageItem.objects.create(
+            company=self.company, kit=k2, outil=self.outils['D'], ordre=0)
+        url = f'{BASE}/{self.iv1.id}/choisir-kit/'
+        r = self.api.post(url, {'kit': k2.id}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(self._statut('C'), (S.DISPONIBLE, self.depot.id))
+        self.assertEqual(self._cocher(self.iv2, 'C').status_code, 200)
+        # Rechoisir K2 : rien de plus ; retirer le kit libère pareil.
+        self.assertEqual(self.api.post(url, {'kit': k2.id}, format='json').status_code, 200)
+        self.assertEqual(self._statut('C'), (S.EN_INTERVENTION, None))
+        self.assertEqual(self._cocher(self.iv1, 'D').status_code, 200)
+        self.assertEqual(self.api.post(url, {'kit': None}, format='json').status_code, 200)
+        self.assertEqual(self._statut('D'), (S.DISPONIBLE, self.depot.id))

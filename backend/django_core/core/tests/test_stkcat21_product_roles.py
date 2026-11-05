@@ -88,3 +88,13 @@ class TestVocabulaireIntegre(SimpleTestCase):
         self.assertIn('structure_acier', ROLES_DEVIS)
         self.assertIn('structure_alu', ROLES_DEVIS)
         self.assertIn('structure', ROLES_DEVIS)
+
+    def test_est_onduleur_devis_trois_roles(self):
+        # AMOT119 — réseau, hybride ET hors réseau ; sous-suite ordonnée de
+        # ROLES_DEVIS (aucun littéral recopié).
+        roles = [r for r in ROLES_DEVIS if r in product_roles.ROLES_ONDULEUR_DEVIS]
+        self.assertEqual(tuple(roles), product_roles.ROLES_ONDULEUR_DEVIS)
+        for role in ('onduleur_reseau', 'onduleur_hybride', 'onduleur_offgrid'):
+            self.assertTrue(product_roles.est_onduleur_devis(role), role)
+        for role in ('batterie', 'panneau', None):
+            self.assertFalse(product_roles.est_onduleur_devis(role), role)

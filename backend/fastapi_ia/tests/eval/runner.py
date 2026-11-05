@@ -25,6 +25,7 @@ utilise directement ``case['gold_sql']``, donc zero appel reseau)."""
 from __future__ import annotations
 
 import os
+import re
 import sys
 from typing import Callable, Optional
 
@@ -62,6 +63,11 @@ def _is_well_formed_select(sql: str) -> tuple[bool, str]:
 
 def _tables_of(sql: str) -> set[str]:
     return svc._extract_base_tables(sql)
+
+
+# AANA81 — un montant de devis = sa fiche ERP (option retenue, villas, palier),
+# jamais SUM(quantite * prix_unitaire) de ses lignes ; les lister reste permis.
+_SOMME_LIGNES = re.compile(r"SUM\s*\([^)]*quantite\s*\*\s*(?:\w+\.)?prix_unitaire", re.I)
 
 
 def _is_scalar_form(sql: str) -> bool:
@@ -103,6 +109,10 @@ def score_case(case: dict, sql_producer: Optional[Callable[[str], str]] = None) 
                 f"Table(s) hors allowlist (hallucination) : {sorted(out_of_allowlist)}"
             ),
         }
+
+    if "ventes_lignedevis" in tables and _SOMME_LIGNES.search(sql):
+        return {"id": case["id"], "passed": bool(case.get("expect_failure")),
+                "reason": "somme des lignes de devis (montant = fiche ERP du devis)"}
 
     if case.get("expect_failure"):
         # On attendait un echec (hallucination) mais tout est dans l'allowlist.
