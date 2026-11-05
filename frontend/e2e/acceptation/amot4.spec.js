@@ -7,7 +7,7 @@ import { py, fermerDjangoApresTout } from './_django.js'
 import { lireJson, assurerSessionPage, telephoneMobileUnique } from '../helpers.js'
 import { pdfTexte } from './_ci.js'
 
-const etape = groupe('AMOT', ['AMOT125'])
+const etape = groupe('AMOT', ['AMOT125', 'AMOT127'])
 fermerDjangoApresTout()
 const API = '/api/django'
 const T = { timeout: 120_000 }
@@ -23,7 +23,7 @@ const marque = () => `${Date.now().toString(36)}${Math.floor(Math.random() * 100
 const produit = async (r, nom, pv) => lireJson(await r.post(`${API}/stock/produits/`, { ...T, data: { nom, prix_vente: pv, prix_achat: '111.11' } }), 'produit')
 const ligne = (p, q, ordre = 0) => ({ produit: p.id, designation: p.nom, quantite: String(q), prix_unitaire: p.prix_vente, remise: '0.00', taux_tva: '20.00', type_ligne: 'produit', ordre })
 
-etape('V4.125', ['AMOT125'], async ({ page, suivi }) => {
+etape('V4.125', ['AMOT125', 'AMOT127'], async ({ page, suivi }) => {
   const r = page.request
   const m = marque()
   const lead = await lireJson(await r.post(`${API}/crm/leads/`, { ...T, data: { nom: `AMOT125 ${m}`, ville: 'Casablanca', telephone: telephoneMobileUnique(), email: `amot125_${m}@example.invalid`, type_installation: 'residentiel', facture_hiver: '1500' } }), 'lead')
@@ -69,7 +69,8 @@ sortie({'pdf_niveau1': {k: q1.get(k) for k in cles}, 'pdf_courant': {k: qc.get(k
   }, { timeout: 180_000, message: 'payback « avec » affiché' }).not.toBeNull()
   // AMOT127 — l'écran converge (miroir local `computeROI` → étude horaire serveur, convention de
   // figures-parite.spec.js) : comparer au PDF seulement une fois les cartes servies par le moteur horaire.
-  await expect(p2.getByTestId('bandeau-modele-cartes'), 'cartes chiffrées par le moteur horaire serveur').toBeVisible({ timeout: 180_000 })
+  // En Édition complète (?edit=) la carte Simulation est repliée par défaut (EDC9) : contenu MONTÉ mais `hidden` ⇒ attaché, pas visible.
+  await expect(p2.getByTestId('bandeau-modele-cartes'), 'cartes chiffrées par le moteur horaire serveur').toBeAttached({ timeout: 180_000 })
   const nombre = async (sel) => Number(String(await p2.locator(sel).first().getAttribute('data-figure-value')).replace(/\s/g, '').replace(',', '.').match(/[\d.]+/)?.[0])
   await expect.poll(() => nombre('[data-figure="production_annuelle_kwh"]'), { timeout: 30_000, message: `production écran = PDF ${chiffres.pdf_niveau1?.prod_kwh}` }).toBe(Number(chiffres.pdf_niveau1?.prod_kwh))
   console.log('[V4.125] figures devis niveau 1', JSON.stringify(await figures(p2)))

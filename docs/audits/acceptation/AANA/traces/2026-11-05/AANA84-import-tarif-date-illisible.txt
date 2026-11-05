@@ -1,0 +1,16 @@
+AANA84 — pile locale (front reconstruit, code e68b5cee2 = 5ec853a49 + docs), 05/11/2026, demo_admin (société démo 2),
+fiche fournisseur 4 (SunPro Maroc) /stock/fournisseurs/4/360, onglet « Tarif », « Importer un tarif (xlsx) ».
+
+Fichier : en-tête sku | ref_produit_fournisseur | prix_achat | date_debut | date_fin
+          ligne   PAN-450M | (vide) | 100 | (vide) | « 31/13/2026 » (texte)
+Avant : 0 PrixFournisseur PAN-450M (produit 129) chez le fournisseur 4.
+
+Aperçu  -> POST import-xlsx 200 {"created":0,"updated":0,"errors":[{"row":2,"message":"PAN-450M : date_fin illisible : '31/13/2026'."}],"apercu":true,...,"job_id":null}
+  Écran : bloc tarif-lignes-refusees « 1 ligne(s) refusée(s) : Ligne 2 : PAN-450M : date_fin illisible : '31/13/2026'. »
+          (capture ACCEPTATION-AANA-P.tarif_date_illisible-apercu.jpg)
+Importer -> POST import-xlsx 200 {"created":0,"updated":0,"errors":[{"row":2,"message":"PAN-450M : date_fin illisible : '31/13/2026'."}],"apercu":false,...,"job_id":56}
+  Écran : « Import effectué : 0 création(s), 0 mise(s) à jour, 1 ligne(s) refusée(s). » + même bloc
+          « Ligne 2 : PAN-450M : date_fin illisible : '31/13/2026'. » (capture ACCEPTATION-AANA-P.tarif_date_illisible.jpg)
+Après (manage.py shell) : PrixFournisseur(fournisseur=4, produit=129).count() = 0 — rien écrit.
+Oracles : aucune réponse >= 400, aucun console.error / pageerror / dialogue natif.
+=> PASS (motif affiché à l'aperçu et à l'import, rien écrit).

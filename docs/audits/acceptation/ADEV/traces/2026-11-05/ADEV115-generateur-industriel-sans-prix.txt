@@ -1,0 +1,18 @@
+ADEV115 — pile locale (front reconstruit, code b07aebf3f = 5ec853a49 + docs), 05/11/2026, demo_admin (société démo 2).
+
+Given (LOCAL, démo seulement) : prix de vente TEMPORAIREMENT mis à 0 sur 5 articles C&I de la démo —
+  2476/2477/2478 (structure_ci : bac acier, toit plat lestée, ombrière), 2471 (Coffret AC C&I), 2472 (Coffret DC C&I),
+  tous à 900.00 avant ; RESTAURÉS à 900.00 en fin de passe (relus par GET /stock/produits/<id>/ : 900.00 ×5).
+When : nouveau lead industriel, /ventes/devis/nouveau?lead=<id>, marché Industriel, tension MT, 12 factures MT
+  (kWh KWH_INDUSTRIEL, montant = kWh × 1,25), profil déclaré (lundi→samedi, 8 h→18 h), taille 20 kWc, « Auto-remplir ».
+  POST etude-ci/preview -> composition.prix_a_renseigner = ["Coffret DC C&I","Structure toit plat lestée C&I","Coffret AC C&I"]
+  POST economie-ci/preview -> 200, statut calcule,
+    omissions investissement_mad « investissement non encore chiffré (3 articles sans prix) » (et sensibilites idem),
+    indicateurs.retour_ans = null, indicateurs.tri_pct = null.
+Then (écran, carte Économies C&I `eco-ci`) :
+  eco-ci-omissions : « investissement_mad : investissement non encore chiffré (3 articles sans prix) » …
+  eco-ci-indicateurs : « TRI : — % sur 25 ans · retour : — ans · VAN non calculée : … » (ni retour ni TRI chiffrés)
+  Composition : « Prix à renseigner : Coffret DC C&I, Structure toit plat lestée C&I, Coffret AC C&I — devis incomplet. »
+  (capture ACCEPTATION-ADEV-P.ci_investissement_non_chiffre.jpg)
+Oracles : aucune réponse >= 400, aucun console.error / pageerror / dialogue natif. Aucun devis créé (lecture seule).
+=> PASS.
