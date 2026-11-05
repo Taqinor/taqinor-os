@@ -159,6 +159,8 @@ export function servicesCi(ci: SyntheseCi | null, societe: string = SOCIETE_CI):
 export const LBL_COMPARAISON_CI = {
   titre: { fr: 'Option avec batterie', en: 'Battery option', ar: 'خيار مع بطارية' },
   economie: { fr: 'Économie annuelle HT', en: 'Annual saving excl. VAT', ar: 'التوفير السنوي دون ضريبة' },
+  /** AMOT124 — base « ttc » servie : l'économie TTC de l'option (PDF `ci/options_cote.py::lignes_avec`, AMOT123). */
+  economie_ttc: { fr: 'Économie annuelle TTC', en: 'Annual saving incl. VAT', ar: 'التوفير السنوي شامل الضريبة' },
   retour: { fr: 'Retour sur investissement', en: 'Payback', ar: 'مدة استرداد الاستثمار' },
   ans: { fr: 'ans', en: 'years', ar: 'سنوات' },
   total_ttc: { fr: 'Total TTC', en: 'Total incl. VAT', ar: 'المجموع شامل الضريبة' },
@@ -205,7 +207,11 @@ export function comparaisonBatterieCi(
     avec.push({ cle: 'valeur', libelle: null, valeur: '', textes: ob.valeurChiffree });
   }
   // La phrase servie porte déjà l'économie annuelle : la ligne chiffrée ne sort que sans phrase (jamais deux fois le même chiffre).
-  if (positif(v?.economieAnnuelleMad) && !avec.some((l) => l.cle === 'valeur')) avec.push({ cle: 'economie', libelle: LBL_COMPARAISON_CI.economie, valeur: formatMAD(v.economieAnnuelleMad) });
+  // AMOT124 — base « ttc » servie avec l'économie TTC servie : la ligne la dit en TTC ; sinon HT (inchangé).
+  const ecoTtc = argentCiCalcule(ci)?.base === 'ttc' && positif(v?.economieAnnuelleTtcMad) ? v.economieAnnuelleTtcMad : null;
+  if (positif(v?.economieAnnuelleMad) && !avec.some((l) => l.cle === 'valeur')) {
+    avec.push({ cle: 'economie', libelle: ecoTtc ? LBL_COMPARAISON_CI.economie_ttc : LBL_COMPARAISON_CI.economie, valeur: formatMAD(ecoTtc ?? v.economieAnnuelleMad) });
+  }
   if (positif(v?.retourSimpleAns)) avec.push({ cle: 'retour', libelle: LBL_COMPARAISON_CI.retour, valeur: formatNumber(v.retourSimpleAns, 1) });
   // D-CI-BATTERIE-NON-RENTABLE — option montrée, marquée (badge servi au titre), raison servie sous les chiffres.
   const nr = ob.nonRentable;

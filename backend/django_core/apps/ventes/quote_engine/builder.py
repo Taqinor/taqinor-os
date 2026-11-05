@@ -1121,7 +1121,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # suive l'option que ce rétrécissement fait TITRER au document.
     from apps.ventes.utils.options import AVEC_BATTERIE as _NOYAU_AVEC
     from apps.ventes.utils.options import SANS_BATTERIE as _NOYAU_SANS
-    from apps.ventes.utils.options import option_du_scenario_mono as _mono_de
+    from apps.ventes.utils.options import option_du_scenario_mono as _mono_de, option_echeancier
     _scenario_mono = _mono_de(scenario)
     if _scenario_mono == _NOYAU_SANS:
         avec_ok = False
@@ -2023,7 +2023,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # de cases 45/55. ``payment_terms`` (entrée ci-dessus) reste la source
     # des cases elles-mêmes.
     _branche_imprimee = branche_echeancier(devis, data, "sans" if option_servie == "sans" else (  # AMOT122
-        "avec" if (deux_options or avec_ok) else "sans"))
+        "avec" if (deux_options or avec_ok) else "sans"), option_echeancier(devis))
     _cases = data["montants_tranches"].get(_branche_imprimee) or {}
     # Règles d'origine (devis envoyé avant AMOT19) : ``payment_terms`` d'hier.
     if _cases and _corrige:

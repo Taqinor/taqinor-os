@@ -150,6 +150,8 @@ export interface SyntheseCiOptionBatterie {
   /** CPRW18 — chiffres servis par le moteur C&I (`valeur_chiffree`) ; `null` = non chiffrée. L'économie est la TOTALE (HT) de l'option. */
   chiffres: {
     economieAnnuelleMad: number | null;
+    /** AMOT124 — économie TTC servie en base « ttc » seulement (`economie_annuelle_ttc_mad`, AMOT123). */
+    economieAnnuelleTtcMad: number | null;
     retourSimpleAns: number | null;
     capaciteUtileKwh: number | null;
     restitueKwhAn: number | null;
@@ -443,6 +445,7 @@ export function syntheseCi(
           chiffres: estRecord(brut.option_batterie.valeur_chiffree)
             ? {
                 economieAnnuelleMad: nombreServi(brut.option_batterie.valeur_chiffree.economie_annuelle_mad),
+                economieAnnuelleTtcMad: nombreServi(brut.option_batterie.valeur_chiffree.economie_annuelle_ttc_mad),
                 retourSimpleAns: nombreServi(brut.option_batterie.valeur_chiffree.retour_simple_ans),
                 capaciteUtileKwh: nombreServi(brut.option_batterie.valeur_chiffree.capacite_utile_kwh),
                 restitueKwhAn: nombreServi(brut.option_batterie.valeur_chiffree.restitue_kwh_an),
