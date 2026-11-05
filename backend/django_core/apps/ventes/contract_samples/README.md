@@ -120,4 +120,4 @@ rougit pas tant que la route n'existe pas.
 | `devis_facturer.json` | POST/GET ventes/devis/<pk>/facturer/ : natures, montant libre, aperçu, erreurs nommées (VNT3) |
 | `devis_solde.json` (étendu) | `solde` : scalaires `emis`, `brouillons`, `reste_a_facturer` (VNT5) |
 | `devis_echeancier.json` | PUT ventes/devis/<pk>/echeancier/ sur devis accepté (VNT6) |
-| `vente_etat.json` | GET ventes/devis/<pk>/ : bloc `vente` (état de la vente), 6 variantes (VNT7) |
+| `vente_etat.json` | GET ventes/devis/<pk>/ : bloc `vente` (état de la vente), 7 variantes (VNT7 ; ATOT59 : `exemple_avoir_a_confirmer`) |
