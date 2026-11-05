@@ -112,7 +112,7 @@ class FkDevisSocieteTests(TestCase):
             quantite=Decimal('1'), prix_unitaire=Decimal('1000'))
         r = self.api.patch(f'{LIGNES}{ligne.id}/',
                            {'produit': self.produit_b.id}, format='json')
-        self.assertEqual(r.status_code, 404, r.content)
+        self.assertEqual(r.status_code, 409, r.content)  # ENF45 a : mise à jour = 409
         self.assertIn('produit', r.data)
         ligne.refresh_from_db()
         self.assertEqual(ligne.produit_id, self.produit_a.id)
@@ -163,7 +163,7 @@ class FkDevisSocieteTests(TestCase):
             quantite=Decimal('1'), prix_unitaire=Decimal('1000'))
         r = self.api.patch(f'{LIGNES}{ligne.id}/',
                            {'lot': self.lot_b.id}, format='json')
-        self.assertEqual(r.status_code, 404, r.content)
+        self.assertEqual(r.status_code, 409, r.content)  # ENF45 a : mise à jour = 409
         self.assertIn('lot', r.data)
         ligne.refresh_from_db()
         self.assertIsNone(ligne.lot_id)

@@ -96,7 +96,7 @@ class RegulatoryFkSocieteTests(TestCase):
         dossier = self._dossier(chantier=self.chantier_a)
         r = self.api.patch(f'{URL}{dossier.id}/',
                            {'chantier': self.chantier_b.id}, format='json')
-        self.assertEqual(r.status_code, 404, r.content)
+        self.assertEqual(r.status_code, 409, r.content)  # ENF45 a : mise à jour = 409
         self.assertIn('chantier', r.data)
         self.assertNotIn(b'CH-ASEC26-B-SECRET', r.content)
         dossier.refresh_from_db()
@@ -113,7 +113,7 @@ class RegulatoryFkSocieteTests(TestCase):
         dossier = self._dossier()
         r = self.api.patch(f'{URL}{dossier.id}/',
                            {'chantier': 999999999}, format='json')
-        self.assertEqual(r.status_code, 404, r.content)
+        self.assertEqual(r.status_code, 409, r.content)  # ENF45 a : mise à jour = 409
         self.assertIn('chantier', r.data)
         dossier.refresh_from_db()
         self.assertIsNone(dossier.chantier_id)

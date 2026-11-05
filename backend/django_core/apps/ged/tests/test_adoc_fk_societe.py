@@ -76,7 +76,7 @@ class FkSocieteGedTests(TestCase):
                              methode='post'):
         envoyer = getattr(self.api, methode)
         resp = envoyer(url, corps_etranger, format='json')
-        self.assertIn(resp.status_code, (400, 404), resp.data)
+        self.assertIn(resp.status_code, (400, 404, 409), resp.data)  # ENF45 a : PATCH = 409
         self.assertIn(champ, resp.data)
         absent = envoyer(url, corps_absent, format='json')
         self.assertEqual(absent.status_code, resp.status_code, absent.data)

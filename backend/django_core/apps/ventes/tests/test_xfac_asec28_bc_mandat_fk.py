@@ -79,7 +79,7 @@ class BcMandatRelanceRemiseTests(TestCase):
                               ('lead', self.lead_b.pk)):
             with self.subTest(champ=champ):
                 r = self.api.patch(url, {champ: valeur}, format='json')
-                self.assertEqual(r.status_code, 404, r.data)
+                self.assertEqual(r.status_code, 409, r.data)  # ENF45 a : mise à jour = 409
                 self.assertEqual(r.data[champ][0].code, 'does_not_exist', r.data)
         self.bc.refresh_from_db()
         self.assertEqual(self.bc.client_id, self.client_a.pk)
@@ -96,7 +96,7 @@ class BcMandatRelanceRemiseTests(TestCase):
                               ('client', self.client_b.pk)):
             with self.subTest(champ=champ):
                 r = self.api.patch(url, {champ: valeur}, format='json')
-                self.assertEqual(r.status_code, 404, r.data)
+                self.assertEqual(r.status_code, 409, r.data)  # ENF45 a : mise à jour = 409
                 self.assertEqual(r.data[champ][0].code, 'does_not_exist', r.data)
         self.relance.refresh_from_db()
         self.assertEqual(self.relance.responsable_id, self.user.pk)
@@ -112,7 +112,7 @@ class BcMandatRelanceRemiseTests(TestCase):
                                         'montant_declare': '10'})):
             with self.subTest(methode=methode):
                 r = getattr(self.api, methode)(url, corps, format='json')
-                self.assertEqual(r.status_code, 404, r.data)
+                self.assertEqual(r.status_code, 409, r.data)  # ENF45 a : mise à jour = 409
                 self.assertEqual(r.data['technicien'][0].code,
                                  'does_not_exist', r.data)
         self.remise.refresh_from_db()

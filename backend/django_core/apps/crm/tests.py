@@ -1170,7 +1170,7 @@ class TestLeadStructureProduitSTKCAT9(TestCase):
                            {'structure_produit': self.pergola_voisine.id},
                            format='json')
         # api-fuzz-full 27/10 (ENF11) : id inconnu ou d'une autre société → 404.
-        self.assertEqual(r.status_code, 404, r.data)
+        self.assertEqual(r.status_code, 409, r.data)  # ENF45 a : mise à jour = 409
         self.assertIn('structure_produit', r.data)
         lead.refresh_from_db()
         self.assertIsNone(lead.structure_produit_id)

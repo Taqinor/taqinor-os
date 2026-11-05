@@ -120,7 +120,7 @@ class TestDevisUpdateTenant(TestCase):
         r = self.api.patch(
             f'/api/django/ventes/devis/{self.devis.id}/',
             {'client': self.client_b.id}, format='json')
-        self.assertEqual(r.status_code, 404, getattr(r, 'data', r))  # IdInconnu404Mixin
+        self.assertEqual(r.status_code, 409, getattr(r, 'data', r))  # IdInconnu404Mixin, ENF45 a
         self.devis.refresh_from_db()
         self.assertEqual(self.devis.client_id, self.client_a.id)
 
@@ -128,7 +128,7 @@ class TestDevisUpdateTenant(TestCase):
         r = self.api.patch(
             f'/api/django/ventes/devis/{self.devis.id}/',
             {'lead': self.lead_b.id}, format='json')
-        self.assertEqual(r.status_code, 404, getattr(r, 'data', r))  # IdInconnu404Mixin
+        self.assertEqual(r.status_code, 409, getattr(r, 'data', r))  # IdInconnu404Mixin, ENF45 a
         self.devis.refresh_from_db()
         self.assertIsNone(self.devis.lead_id)
 

@@ -140,7 +140,7 @@ class OracleInterSocietesTest(TestCase):
         avant = self._instantane()
         r = self._paire(lambda pk: self.api.patch(
             f'{URL}{self.calepinage.pk}/', {'responsable': pk},
-            format='json'), self.user_voisin.pk, statut=404)
+            format='json'), self.user_voisin.pk, statut=409)  # ENF45 a : mise à jour = 409
         self.assertEqual(_champs(r.data), ['responsable'])
         self.assertEqual(r.data['responsable'][0].code, 'does_not_exist')
         self.assertEqual(self._instantane(), avant)

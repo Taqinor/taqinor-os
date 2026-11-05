@@ -731,13 +731,29 @@ def _ids_inconnus_seulement(erreurs, champs, imbriques=False):
     return inconnu
 
 
+def _id_corps_inconnu_409(erreurs):
+    """409 ``state_conflict`` au corps INCHANGÉ (``{champ: [...]}``, celui du
+    404 qu'il remplace) : ``ConflitEtat`` y ajouterait une clé ``detail``."""
+    from rest_framework.exceptions import APIException
+    from core.conflit_etat import ConflitEtat
+    refus = ConflitEtat.__new__(ConflitEtat)
+    APIException.__init__(refus, erreurs)
+    return refus
+
+
 class IdInconnu404Mixin:
     """ERR-ENF11-FUZZ-CRM/GED — un identifiant BIEN FORMÉ (``0`` compris) qui
     ne désigne aucune ligne de la société répond 404, plus 400 : la requête est
     conforme au schéma, c'est la ressource qui manque. Le corps reste celui de
     DRF (``{champ: ["Clé primaire « n » non valide…"]}``), IDENTIQUE pour un id
     inexistant et un id d'une autre société (aucun oracle). Toute autre erreur,
-    seule ou mêlée, garde le 400. À placer en tête des bases du sérialiseur."""
+    seule ou mêlée, garde le 400. À placer en tête des bases du sérialiseur.
+
+    ENF11 (api-fuzz-full 41958593088, ENF45 a) — sur une MISE À JOUR
+    (``self.instance`` posé) la ressource du chemin EXISTE : un 404 se lirait
+    « ressource indisponible après création ». L'id du corps qui ne désigne
+    rien est alors un refus d'état = 409 (règle d'ENF40 : parent existant,
+    désignation du corps absente), corps toujours identique absent/voisin."""
 
     def is_valid(self, *, raise_exception=False):
         valide = super().is_valid(raise_exception=False)
@@ -746,6 +762,8 @@ class IdInconnu404Mixin:
             if _ids_inconnus_seulement(
                     self.errors, self.fields,
                     imbriques=getattr(self, 'ids_inconnus_imbriques', False)):
+                if getattr(self, 'instance', None) is not None:
+                    raise _id_corps_inconnu_409(self.errors)
                 raise NotFound(self.errors)
             raise serializers.ValidationError(self.errors)
         return valide

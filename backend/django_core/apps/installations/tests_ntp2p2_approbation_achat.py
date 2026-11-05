@@ -294,3 +294,26 @@ class ArbitrageRegleApprobationAchatTests(TestCase):
             'montant_max': '100.00',
         }, format='json')
         self.assertEqual(resp.status_code, 409)
+
+    def test_put_programme_inconnu_409_meme_corps_qu_un_voisin(self):
+        """ENF45 a (api-fuzz-full 41958593088) : la règle du chemin EXISTE ; un
+        ``programme`` du corps qui ne désigne rien (absent ou d'une autre
+        société) est un refus d'état = 409 — plus un 404, que le fuzz lit
+        « ressource indisponible après création » —, corps identique."""
+        from apps.installations.models_program import Projet
+        regle = RegleApprobationAchat.objects.create(
+            company=self.company, libelle='Règle', montant_min=100)
+        voisin = Projet.objects.create(
+            company=make_company(), reference='PRG-ENF45', nom='Voisin')
+        corps = {'libelle': 'Règle', 'montant_min': '100.00',
+                 'nombre_approbateurs': 1}
+        messages = []
+        for pk in (voisin.pk, 99999999):
+            resp = self.api.put(f'{BASE}/regles-approbation-achat/{regle.pk}/',
+                                {**corps, 'programme': pk}, format='json')
+            self.assertEqual(resp.status_code, 409, resp.data)
+            self.assertEqual(resp.data['error']['code'], 'state_conflict')
+            messages.append(str(resp.data['programme'][0]).replace(str(pk), '<ID>'))
+        self.assertEqual(messages[0], messages[1])
+        regle.refresh_from_db()
+        self.assertIsNone(regle.programme_id)
