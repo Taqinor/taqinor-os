@@ -1,0 +1,80 @@
+# Preuve en direct AARG71 - pile locale, code a711ebdd22 (dev-plan-6a6fc9-w19), 2026-11-05
+# Lanceur : python scripts/sonde.py (transaction annulee, mail en memoire, HTTP sortant bloque).
+
+== LIVE-AARG71 (sha a711ebdd22)
+attendu : A : 409, detail commence par 'Restauration impossible : la vente', nomme vente+F2+montants, sans 'Annulez ce brouillon', F1 annulee, A1 emise ; T : refus d'emission garde 'Emission refusee' + 'Annulez ce brouillon'
+observé : {"repro": true, "observe": {"A": {"f2": "FAC-202611-0002", "f2_emise": 200, "http": 409, "detail": "Restauration impossible : la vente DEV-L71-A a été facturée à nouveau depuis l'annulation (FAC-202611-0002, 1200.00 MAD sur 1200.00 MAD TTC) ; la facture FAC-202611-0001 ne peut pas être restaurée. Corrigez par un avoir sur la nouvelle facture si besoin.", "F1": "annulee", "A1": "emise", "vente": "DEV-L71-A"}, "T": {"emission": "Émission refusée : la vente DEV-L71-A (1200.00 MAD TTC) est déjà facturée à 1200.00 MAD par FAC-202611-0002 ; cette facture (1200.00 MAD) la dépasserait. Annulez ce brouillon ou corrigez par un avoir.", "restauration": "Restauration impossible : la vente DEV-L71-A a été facturée à nouveau depuis l'annulation (FAC-202611-0002, 1200.00 MAD sur 1200.00 MAD TTC) ; la facture FAC-202611-0001 ne peut pas être restaurée. Corrigez par un avoir sur la nouvelle facture si besoin."}, "restauration_ok": true, "temoin_emission_ok": true}}
+verdict : REPRO
+base inchangée : oui (avant 669, après 669) ; mails 0 ; tâches Celery bloquées 0
+
+# ---- source : LIVE-AARG71.py ----
+# flake8: noqa  (preuve en direct AARG71, 05/11/2026)
+"""AARG71 — message de refus propre a la restauration. Devis accepte 1200 TTC -> BC1 (vraie API) -> F1 emise ->
+annuler_facture(F1) (avoir miroir A1) -> F2 creee par le BC1 puis emise -> POST avoirs/<A1>/annuler/ : 409 dont le
+detail commence par « Restauration impossible : la vente » (vente, F2, montants), sans « Annulez ce brouillon ».
+Temoin emission : sur une vente deja facturee par F1 emise, une 2e facture emise garde « Émission refusée ... Annulez
+ce brouillon ou corrigez par un avoir ». Admin, societe neuve, transaction annulee."""
+SONDE = {"constat": "LIVE-AARG71", "sha": "a711ebdd22",
+         "attendu": "A : 409, detail commence par 'Restauration impossible : la vente', nomme vente+F2+montants, sans 'Annulez ce brouillon', F1 annulee, A1 emise ; T : refus d'emission garde 'Emission refusee' + 'Annulez ce brouillon'",
+         "modeles": ["ventes.Devis", "ventes.BonCommande", "ventes.Facture", "ventes.Avoir", "ventes.LigneFacture"]}
+
+
+def sonde(ctx):
+    from decimal import Decimal
+    from django.contrib.auth import get_user_model
+    from rest_framework.test import APIClient
+    from authentication.models import Company
+    from apps.crm.models import Client
+    from apps.stock.models import Produit
+    from apps.ventes.models import Devis, LigneDevis, Facture, Avoir
+    from apps.ventes.domain.annulation_facture import annuler_facture
+    H = {'HTTP_HOST': 'localhost'}
+    B = '/api/django/ventes'
+    co = Company.objects.create(nom='Live AARG71', slug='live-aarg71')
+    u = get_user_model().objects.create_user(username='live_aarg71', password='x', role_legacy='admin', company=co)
+    api = APIClient()
+    api.force_authenticate(u)
+    cl = Client.objects.create(company=co, nom='Client', prenom='L71', email='l71@example.invalid')
+    p = Produit.objects.create(company=co, nom='Kit L71', sku='LIVE-L71', prix_vente=Decimal('1000'), quantite_stock=50)
+
+    def preparer(suffixe):
+        d = Devis.objects.create(company=co, reference=f'DEV-L71-{suffixe}', client=cl, statut='accepte',
+                                 taux_tva=Decimal('20'), created_by=u)
+        LigneDevis.objects.create(devis=d, produit=p, designation='Centrale L71', quantite=Decimal('1'),
+                                  prix_unitaire=Decimal('1000'))
+        r = api.post(B + '/bons-commande/', {'client': cl.pk, 'devis': d.pk}, format='json', **H)
+        assert r.status_code == 201, r.data
+        bc = r.data['id']
+        api.post(f'{B}/bons-commande/{bc}/confirmer/', {}, format='json', **H)
+        r = api.post(f'{B}/bons-commande/{bc}/creer-facture/', {}, format='json', **H)
+        assert r.status_code == 201, r.data
+        f1 = r.data['id']
+        r = api.post(f'{B}/factures/{f1}/emettre/', {}, format='json', **H)
+        assert r.status_code == 200, r.data
+        return d, bc, f1
+
+    obs = {}
+    d, bc, f1 = preparer('A')
+    f1_A = f1
+    annuler_facture(Facture.objects.get(pk=f1), user=u, directive=None)
+    a1 = Avoir.objects.get(facture_id=f1)
+    r = api.post(f'{B}/bons-commande/{bc}/creer-facture/', {}, format='json', **H)
+    f2 = r.data['id']
+    r2 = api.post(f'{B}/factures/{f2}/emettre/', {}, format='json', **H)
+    F2 = Facture.objects.get(pk=f2)
+    r = api.post(f'{B}/avoirs/{a1.id}/annuler/', {}, format='json', **H)
+    det = str((r.data or {}).get('detail'))
+    obs['A'] = {'f2': F2.reference, 'f2_emise': r2.status_code, 'http': r.status_code, 'detail': det,
+                'F1': Facture.objects.get(pk=f1).statut, 'A1': Avoir.objects.get(pk=a1.pk).statut,
+                'vente': d.reference}
+    from apps.ventes.vente_facturation import motif_emission_hors_prix
+    m_em = motif_emission_hors_prix(Facture.objects.get(pk=f1_A))
+    m_re = motif_emission_hors_prix(Facture.objects.get(pk=f1_A), restauration=True)
+    obs['T'] = {'emission': m_em, 'restauration': m_re}
+    a = obs['A']
+    ok = (a['http'] == 409 and det.startswith('Restauration impossible : la vente')
+          and 'DEV-L71-A' in det and a['f2'] in det and 'Annulez ce brouillon' not in det
+          and a['F1'] == 'annulee' and a['A1'] == 'emise')
+    obs['restauration_ok'] = bool(ok)
+    obs['temoin_emission_ok'] = bool(m_em and m_em.startswith('Émission refusée : la vente') and m_em.endswith('Annulez ce brouillon ou corrigez par un avoir.') and m_re.startswith('Restauration impossible'))
+    return {'repro': bool(ok and obs['temoin_emission_ok']), 'observe': obs}
