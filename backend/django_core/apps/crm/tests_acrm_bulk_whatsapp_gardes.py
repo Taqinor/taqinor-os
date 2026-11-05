@@ -55,6 +55,29 @@ class BulkWhatsappGardesTests(TestCase):
         self.assertIn('corps', refus.data)
         self.assertFalse(MessageTemplate.objects.filter(nom='Faux').exists())
 
+    def test_societe_est_celle_du_lead(self):
+        """ACVI109 — `{societe}` = la raison sociale DU LEAD, jamais notre
+        marque ; vide : la phrase est omise, « Bonjour » gardé."""
+        from apps.crm.cadence_messages import _nom_affiche_marque
+        from apps.crm.fiche_funnel import _corps_whatsapp_en_masse
+
+        tpl = MessageTemplate.objects.create(
+            company=self.company, nom='Etude pro', langue='fr',
+            corps="Je prépare l'étude solaire de {societe}. Bonjour {prenom}.")
+        Lead.objects.filter(pk=self.c.pk).update(societe='Boulangerie Atlas')
+        self.c.refresh_from_db()
+        marque = _nom_affiche_marque(self.c)
+        texte = _corps_whatsapp_en_masse(self.c, tpl)
+        self.assertIn('Boulangerie Atlas', texte)
+        if marque:
+            self.assertNotIn(marque, texte)
+        Lead.objects.filter(pk=self.c.pk).update(societe='')
+        self.c.refresh_from_db()
+        texte = _corps_whatsapp_en_masse(self.c, tpl)
+        self.assertNotIn('étude solaire', texte)
+        self.assertIn('Bonjour', texte)
+        self.assertNotIn('{', texte)
+
     def setUp(self):
         self.company = Company.objects.create(
             nom='ACRM15 Solaire', slug='acrm15-bulk')
