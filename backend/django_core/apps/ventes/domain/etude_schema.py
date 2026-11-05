@@ -557,7 +557,25 @@ def valider(etude_params):
         elif cle == 'tarif_declare':
             from apps.ventes.tarif_ci import reproches_tarif_declare
             reproches.extend(reproches_tarif_declare(valeur))
+        elif cle == 'saisies_economie_ci':
+            reproches.extend(_reproches_saisies_economie_ci(valeur))
     return reproches
+
+
+def _reproches_saisies_economie_ci(saisies):
+    """ERR-ACC-ETUDE-PARAMS-PROVENANCE — ``tva_recuperable`` validée à
+    l'ÉCRITURE par le même lecteur que ``GET …/economie-ci/``
+    (``economie_ci.lire_saisie_tva``) : une ``provenance`` (ou ``valeur``)
+    hors vocabulaire était enregistrée en 200 puis faisait échouer chaque
+    lecture de l'économie (400, « économies non chiffrées »). Le reproche
+    NOMME le champ (``saisies_economie_ci.tva_recuperable.provenance``)."""
+    from apps.ventes.economie_ci import (
+        SaisieEconomieCiInvalide, lire_saisie_tva)
+    try:
+        lire_saisie_tva(saisies.get('tva_recuperable'))
+    except SaisieEconomieCiInvalide as refus:
+        return [str(refus)]
+    return []
 
 
 def _reproches_factures(factures):
