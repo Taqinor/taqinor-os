@@ -10,7 +10,8 @@
     "ACVI104",
     "ACVI105",
     "ACVI106",
-    "ACVI108"
+    "ACVI108",
+    "ACVI109"
   ],
   "couvre_avec_ecart": [],
   "etapes": [
@@ -167,6 +168,28 @@
         "10": "NA"
       },
       "notes": "service reel : rappel demande ⇒ empreinte 1→0, A contactable, C nee contactable, relecture identique ; autre lead encore oppose au meme numero ⇒ empreinte gardee, D nee opposee ; sonde VER4-001 repro False"
+    },
+    {
+      "id": "W10.ACVI109.whatsapp_masse_societe",
+      "taches": [
+        "ACVI109"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-05/ACCEPTATION-ACVI-W10.ACVI109.whatsapp_masse_societe.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "ecran Leads (vue liste, WhatsApp en masse) + API bulk prepare_whatsapp : message 1 porte Boulangerie Atlas sans la marque, message 2 Bonjour Sara (phrase omise, aucun {) ; sonde VER4-021 repro False ; detail : docs/audits/acceptation/2026-11-05-rejeux-w10/ACVI109.txt"
     }
   ]
 }
