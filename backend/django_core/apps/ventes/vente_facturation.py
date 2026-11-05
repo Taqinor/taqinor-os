@@ -657,6 +657,18 @@ def _gestes_vente(plan, actionnable, palier) -> tuple:
     return prochaine, a_venir, peut
 
 
+def _avoir_revision_a_confirmer(tete, plan):
+    """ATOT59 — avoir de révision à confirmer (VNT64) : max(0, ``prevu`` −
+    prix convenu) si une facture est émise et ``tete`` remplace une version
+    acceptée (lue seulement quand ``prevu`` dépasse)."""
+    ecart = plan['prevu'] - plan['prix_convenu_ttc']
+    if ecart <= 0 or not any(f.statut in STATUTS_EMIS
+                             for f, _r in plan['factures_parts']):
+        return ZERO
+    from apps.ventes.selectors import predecesseurs_acceptes
+    return _q(ecart) if predecesseurs_acceptes(tete) else ZERO
+
+
 def etat_vente(devis, user=None) -> dict:
     """L'état de la vente de ``devis`` (bloc ``vente`` du contrat
     ``vente_etat.json``), composé au-dessus de :func:`plan_facturation` et
@@ -680,6 +692,14 @@ def _etat_vente(devis, palier, encaisse=False) -> dict:
     prochaine, a_venir, peut = _gestes_vente(plan, actionnable, palier)
     brouillon = next((t for t in plan['tranches']
                       if t['statut'] == 'brouillon'), None)
+    avoir = _avoir_revision_a_confirmer(tete, plan) if (
+        actionnable and palier) else ZERO
+    peut['confirmer_avoir_revision'] = avoir > 0
+    raison = _raison_bloquee(devis, tete, revision, brouillon)
+    if avoir > 0:
+        raison = ' '.join(filter(None, [raison, (
+            f'Avoir de révision de {avoir:.2f} MAD TTC à confirmer : '
+            'confirmez-le pour ramener la facturation au prix convenu.')]))
     return {
         **_montants_vente(plan),
         'factures': [_facture_etat(f, ids, palier, actionnable and encaisse)
@@ -694,7 +714,7 @@ def _etat_vente(devis, palier, encaisse=False) -> dict:
                                'reference': revision.reference}
                               if revision is not None else None),
         'prochaine_action': prochaine,
-        'raison_bloquee': _raison_bloquee(devis, tete, revision, brouillon),
+        'raison_bloquee': raison,
         'prochaines_echeances': ([{'cle': t['cle'], 'libelle': t['libelle'],
                                    'montant_ttc': _txt(t['montant_ttc'])}
                                   for t in a_venir] if est_tete else []),

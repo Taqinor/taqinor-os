@@ -1,0 +1,23 @@
+AANA86 — rejeu sous Windows PowerShell 5.1.19041.6456, sha be834beb1, 04/11/2026
+
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\pile_locale.ps1 -DryRun
+  pile locale - depot : C:\dev\taqinor-os\.claude\worktrees\agent-a2c336edc33e17c3c
+  > docker info [dry-run] non execute.
+  RAPPEL : un seul run de tests backend a la fois (...)
+  > infra partagee, jamais recreee : db, redis, redis_cache, minio
+  > docker compose up -d --no-deps (applicatif)
+  > migrations
+  > role sql_agent_ro (provisionnement idempotent)      <- etape atteinte (le Test-Path du bash de Git
+                                                           s'execute meme en -DryRun : plus d'« Illegal
+                                                           characters in path »)
+  > rebuild du front (le build Vite est fige dans l'image)
+  > sonde des societes demo ; seed_demo puis seed_demo_company si vides
+  > sante : http://localhost/ = 200 et /api/django/ = 401
+  rc=0
+
+Etape reelle (meme chemin, hors dry-run) :
+  Test-Path "$env:ProgramFiles\Git\bin\bash.exe" = True
+  & bash.exe backend/db/provision_sql_agent_ro.sh
+    provision_sql_agent_ro : SQL_AGENT_DB_USER/PASSWORD absents du .env - saute.   rc=0
+
+Garde : python -m unittest scripts.tests.test_nightly_qa_scripts -> Ran 25 tests ... OK

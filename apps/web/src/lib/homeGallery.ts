@@ -5,17 +5,22 @@
  * (2026-09) `kwc` peut être vide (chantier filmé avant tout relevé de puissance, ex. Bouskoura) :
  * jointures filtrées plutôt qu'un séparateur qui pend sur rien.
  */
-import { realisationBySlug } from './realisations';
+import { kwcLocale, realisationBySlug } from './realisations';
 
 export function buildGallery<T extends { slug: string; showProd: boolean }>(
   galleryRaw: T[],
-  opts: { cityName?: (ville: string) => string; prodLabel?: (production: string) => string } = {},
+  opts: {
+    cityName?: (ville: string) => string;
+    prodLabel?: (production: string) => string;
+    /** WAUD44 — langue de la page : la puissance suit son format (EN « 17.04 kWc »). */
+    locale?: 'fr' | 'en' | 'ar';
+  } = {},
 ) {
-  const { cityName = (v: string) => v, prodLabel = (p: string) => p } = opts;
+  const { cityName = (v: string) => v, prodLabel = (p: string) => p, locale = 'fr' } = opts;
   return galleryRaw.map((g) => {
     const r = realisationBySlug(g.slug);
     const ville = cityName(r?.ville ?? '');
-    const kwc = r?.kwc ?? '';
+    const kwc = kwcLocale(r, locale);
     const prod = g.showProd && r?.production != null ? prodLabel(r.production) : null;
     return {
       ...g,

@@ -69,6 +69,17 @@ ROLES_DEVIS = (
     'transport', 'suivi',
 )
 
+#: AMOT119 — rôles d'ONDULEUR du devis, DÉRIVÉS de ``ROLES_DEVIS`` (aucun
+#: nouveau littéral) : réseau, hybride ET hors réseau, jamais un sous-ensemble
+#: recopié à la main (C-AMOT-VER4-010/011 : ``onduleur_offgrid`` oublié).
+ROLES_ONDULEUR_DEVIS = tuple(r for r in ROLES_DEVIS if r.startswith('onduleur_'))
+
+
+def est_onduleur_devis(role) -> bool:
+    """AMOT119 — vrai si ``role`` est un rôle d'onduleur du devis."""
+    return role in ROLES_ONDULEUR_DEVIS
+
+
 #: AGR100 (Groupe AGR) — vocabulaire de rôles POMPAGE, DISTINCT de
 #: ``ROLES_DEVIS`` : l'arbitrage écrit ci-dessus (« pompe / variateur → PAS DE
 #: RÔLE DE DEVIS ») est RESPECTÉ, pas révisé. Aucun rôle résidentiel n'est

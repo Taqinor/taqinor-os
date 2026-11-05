@@ -10,6 +10,7 @@ import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
+import FichesGroupe from '../../components/FichesGroupe.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { fichesByCategorie, ficheDownloadHref } from '../../lib/fiches';
 
@@ -38,9 +39,7 @@ const groups = fichesByCategorie();
     </section>
 
     {groups.map((g) => (
-      <section class="mx-auto max-w-6xl px-4 pb-4">
-        <h2 class="tech-label mb-5 text-brass-300">{g.categorie}</h2>
-        <div class="grid gap-6 pb-10 md:grid-cols-2 lg:grid-cols-3" data-stagger>
+      <FichesGroupe titre={g.categorie}>
           {g.fiches.map((f, i) => (
             <article class="v2-rise cine-card flex flex-col" style={`--v2-i:${i}`}>
               <div class="flex items-center justify-between border-b-2 border-brass-400/70 px-5 py-3">
@@ -71,8 +70,7 @@ const groups = fichesByCategorie();
               </div>
             </article>
           ))}
-        </div>
-      </section>
+      </FichesGroupe>
     ))}
 
     <section class="mx-auto max-w-6xl px-4 pb-16">

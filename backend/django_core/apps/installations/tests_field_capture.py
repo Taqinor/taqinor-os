@@ -569,6 +569,26 @@ class TestCrewTime(_Base):
         jd = field_capture.labour_days_for_intervention(self.interv)
         self.assertEqual(jd, Decimal('0.50'))  # 240 min / 480 × 1 personne
 
+    def test_duree_negative_inconnue(self):
+        """ACHT131 — retour antérieur au check-in (ou départ après l'arrivée) :
+        durée inconnue (None), aucune main-d'œuvre ; témoin 180 min."""
+        from django.utils import timezone
+        from datetime import timedelta
+        now = timezone.now()
+        self.interv.arrivee_site_le = now - timedelta(hours=1)
+        self.interv.retour_depot_le = now - timedelta(hours=3)
+        self.interv.depart_depot_le = now
+        self.interv.save()
+        t = field_capture.crew_time(self.interv)
+        self.assertIsNone(t['duree_sur_site_min'])
+        self.assertIsNone(t['trajet_aller_min'])
+        self.assertIsNone(
+            field_capture.labour_days_for_intervention(self.interv))
+        self.interv.retour_depot_le = now + timedelta(minutes=120)
+        self.interv.save()
+        self.assertEqual(
+            field_capture.crew_time(self.interv)['duree_sur_site_min'], 180)
+
     def test_push_labour_to_chantier(self):
         from django.utils import timezone
         from datetime import timedelta

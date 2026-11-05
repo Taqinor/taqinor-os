@@ -355,32 +355,24 @@ def _marge_devis(devis):
     MARGE_INTERNE, job-costing, rentabilité). INTERNE — ``prix_achat`` n'est
     lu que côté serveur, jamais rendu dans un export/PDF client.
 
-    Seules les lignes COMPTÉES dans les totaux (``compte_dans_totaux`` : ligne
-    produit non optionnelle) entrent. Par ligne :
-      - CA HT = ``ligne.total_ht`` (remise de LIGNE déduite) × (1 − remise
-        GLOBALE du devis) ;
-      - coût = ``prix_achat`` × quantité (0 si le prix d'achat est inconnu).
+    AANA80 — CA HT = ``option_totaux(devis)['ht']`` (= ``Devis.total_ht`` :
+    option retenue, remises, ×N villas, palier) ; coût = ``prix_achat`` ×
+    quantité VENDUE (``lignes_vendues`` : option retenue × villas).
     Renvoie ``{'ca_ht', 'cout', 'marge'}`` ; ``marge`` ne somme que les lignes
     dont le prix d'achat est CONNU (une ligne sans coût connu ne fabrique pas
     de marge). Utilise ``devis.lignes`` (prefetch conseillé, avec ``produit``).
     """
-    remise_globale = Decimal(str(getattr(devis, 'remise_globale', 0) or 0))
-    facteur = Decimal('1') - remise_globale / Decimal('100')
-    ca_ht = Decimal('0')
-    cout = Decimal('0')
-    marge = Decimal('0')
-    for ligne in devis.lignes.all():
-        if not ligne.compte_dans_totaux:
-            continue
-        ca_ligne = Decimal(str(ligne.total_ht)) * facteur
-        ca_ht += ca_ligne
-        produit = ligne.produit
-        prix_achat = getattr(produit, 'prix_achat', None) if produit else None
-        if prix_achat is None:
-            continue
-        cout_ligne = Decimal(prix_achat) * Decimal(ligne.quantite or 0)
-        cout += cout_ligne
-        marge += ca_ligne - cout_ligne
+    from apps.ventes.utils.options import lignes_vendues, option_totaux
+    # AANA80 — CA = total HT du devis (option retenue, ×N villas, palier) ;
+    # coût = lignes VENDUES ; marge = CA au prorata des lignes à coût connu.
+    ca_ht = Decimal(option_totaux(devis)['ht'])
+    vendues = lignes_vendues(devis)
+    brut = sum((Decimal(str(li.total_ht)) for li, _q in vendues), Decimal('0'))
+    connues = [(li, q) for li, q in vendues
+               if li.produit is not None and li.produit.prix_achat is not None]
+    cout = sum((Decimal(li.produit.prix_achat) * q for li, q in connues), Decimal('0'))
+    brut_connu = sum((Decimal(str(li.total_ht)) for li, _q in connues), Decimal('0'))
+    marge = (ca_ht * brut_connu / brut if brut else Decimal('0')) - cout
     return {'ca_ht': ca_ht, 'cout': cout, 'marge': marge}
 
 

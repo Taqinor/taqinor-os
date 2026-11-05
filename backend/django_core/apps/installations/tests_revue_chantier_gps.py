@@ -348,6 +348,29 @@ class LotHorsLigneTests(Base):
         sortie = self.ping(DEHORS)
         self.assertEqual(sortie.data['geofence_alert']['type_franchissement'], 'sortie')
 
+    def test_lot_finissant_dehors_reevalue_le_releve_suivant(self):
+        """ACHT133 (C-ACHT-VER4-040) — live DEDANS T-40, T-20 ; lot [DEHORS
+        T-30] ; live DEDANS T-10, DEHORS T-5 : sortie, entrée (T-20), sortie
+        notifiée ; renvoyer le lot ne double rien."""
+        def live(point, minutes):
+            r = self.ping(point, captured_at=self._point(minutes)['captured_at'])
+            self.assertEqual(r.status_code, 201, r.content)
+            return r
+        live(DEDANS, 40)
+        live(DEDANS, 20)
+        lot = {'intervention': self.interv.id, 'positions': [self._point(30, DEHORS)]}
+        self.assertEqual(self.api.post(self.url, lot, format='json').status_code, 201)
+        live(DEDANS, 10)
+        derniere = live(DEHORS, 5)
+        journal = list(GeofenceAlert.objects.filter(intervention=self.interv)
+                       .order_by('captured_at', 'id')
+                       .values_list('type_franchissement', flat=True))
+        self.assertEqual(journal, ['sortie', 'entree', 'sortie'])
+        self.assertEqual(derniere.data['geofence_alert']['type_franchissement'], 'sortie')
+        encore = self.api.post(self.url, lot, format='json')
+        self.assertEqual(encore.data['doublons'], 1)
+        self.assertEqual(GeofenceAlert.objects.filter(intervention=self.interv).count(), 3)
+
     def _terminer(self, **champs):
         self.interv.statut = Intervention.Statut.TERMINEE
         for nom, valeur in champs.items():

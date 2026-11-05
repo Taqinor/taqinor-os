@@ -1021,6 +1021,27 @@ class TestAmot95BaseDeclaree(SimpleTestCase):
         self.assertEqual(onepage.economie_ttc(
             dict(chiffres, economie_annuelle_ttc_mad=None), fmt, str), "")
 
+    def test_une_page_moitie_vers_le_haut(self):
+        """AMOT126 (C-AMOT-VER4-040) — l'argent entier du une-page C&I passe
+        par ``fmt_dirhams`` : 98 930,50 HT / 118 716,50 TTC ⇒ « 98 931 » et
+        « soit 118 717 MAD TTC » comme la couverture ; anglais « , » ; devis
+        avant le niveau 12 (``regles_0411_historique``) : 98 930 / 118 716.
+        Mutant : remettre ``fnum`` ⇒ échec."""
+        from apps.ventes.quote_engine import generate_devis_premium as legacy
+        from apps.ventes.quote_engine.ci import onepage
+        from apps.ventes.quote_engine.montants import format_langue, poser_regles_du_rendu
+        mots = {"ci_soit": "soit", "ci_ttc": "TTC"}
+        chiffres = {"economie_annuelle_ttc_mad": 118716.5}
+        self.addCleanup(poser_regles_du_rendu, {})
+        poser_regles_du_rendu({})
+        self.assertEqual(onepage.argent(98930.5, legacy.fnum), "98\u202f931")
+        self.assertIn("soit 118\u202f717 MAD TTC", onepage.economie_ttc(chiffres, legacy.fnum, mots.get))
+        with format_langue({"langue_sortie": "en", "mode_installation": "commercial"}):
+            self.assertEqual(onepage.argent(98930.5, legacy.fnum), "98,931")
+        poser_regles_du_rendu({"regles_0411_historique": True})
+        self.assertEqual(onepage.argent(98930.5, legacy.fnum), "98\u202f930")
+        self.assertIn("soit 118\u202f716 MAD TTC", onepage.economie_ttc(chiffres, legacy.fnum, mots.get))
+
     def test_deux_options_cartes_ht_et_ttc(self):
         """AMOT115 (C-AMOT-VER-030) — base « deux », deux options : chaque
         carte imprime la TTC servie sous la HT ; base ht/ttc ou drapeau
@@ -1058,6 +1079,60 @@ class TestAmot95BaseDeclaree(SimpleTestCase):
                 for base in ("ht", "ttc"):
                     self.assertNotIn("soit", " ".join(cartes(cle, base)))
                 self.assertNotIn("soit", " ".join(cartes(cle, regles_ecarts_0111_historique=True)))
+
+    def test_base_ttc_carte_avec_en_ttc(self):
+        """AMOT123 (C-AMOT-VER4-030) — base « ttc », deux options : la carte
+        Avec et la phrase de l'option impriment l'économie TTC (24 000), la
+        valeur chiffrée sert ``economie_annuelle_ttc_mad`` ; base ht/deux et
+        drapeau ``regles_0411_historique`` : rendu d'hier. Mutant : « HT » en
+        dur dans ``lignes_avec`` ⇒ échec."""
+        import html as _h
+        import re
+        from apps.ventes.quote_engine.ci import options_cote
+        from apps.ventes.quote_engine.ci.mentions import valeur_option_avec
+        from apps.ventes.quote_engine.residential.theme import fmt
+        option_avec = {"economie_annuelle_mad": 20000.0, "retour_simple_ans": 9.1,
+                       "bilan": {"batterie": {"capacite_utile_kwh": 100.0, "restitue_kwh_an": 30000}},
+                       "economie_ci": {"economie_annee1": {"total_mad": 20000.0, "total_mad_ttc": 24000.0}}}
+
+        def carte_avec(base, **extra):
+            synthese = {
+                "argent": {"base": base, "economie_annee1": {
+                    "total_mad": 98931.16, "total_mad_ttc": 118717.39},
+                    "indicateurs": {"retour_ans": 5.4}},
+                "option_batterie": {"totaux": {"ht_net": 700000.0, "ttc": 840000.0},
+                                    "valeur_chiffree": {"economie_annuelle_mad": 20000.0,
+                                                        "retour_simple_ans": 9.1}}}
+            ch = chiffres_cles(synthese)
+            d = {"langue_sortie": "fr", "option_servie": "sans", "com_synthese": synthese,
+                 "com_economies": ch["economie_annuelle_mad"],
+                 "com_economie_base": ch["base_economie"], "com_payback": 5.4,
+                 "com_kwc": 100.0, "puissance_kwc_avec": 100.0,
+                 "totaux_all": {"ht_net": 533333.0, "ttc": 640000.0},
+                 "etude": {"etude_ci": {"option_avec": option_avec}}, **extra}
+            brut = options_cote.cartes_options(d, "com", "c1c", fmt, fmt, 640000.0)
+            texte = re.sub(r"\s+", " ", _h.unescape(re.sub(r"<[^>]+>", " ", brut)).replace("\xa0", " "))
+            return texte.split("Avec batterie", 1)[1]
+
+        avec = carte_avec("ttc")
+        self.assertIn("24 000 MAD TTC", avec)
+        self.assertNotIn("20 000 MAD HT", avec)
+        self.assertIn("20 000 MAD HT", carte_avec("ttc", regles_0411_historique=True))
+        self.assertIn("20 000 MAD HT", carte_avec("ht"))
+        self.assertIn("20 000 MAD", carte_avec("deux"))
+
+        def valeur(base, **extra):
+            return valeur_option_avec({"economie_ci": {"base": base},
+                                       "etude": {"etude_ci": {"option_avec": option_avec}}, **extra})
+
+        v = valeur("ttc")
+        self.assertEqual(v["economie_annuelle_ttc_mad"], 24000.0)
+        self.assertEqual(v["economie_annuelle_mad"], 20000.0)
+        self.assertIn("24 000 MAD TTC", v["textes"]["fr"])
+        self.assertIn("24,000 MAD incl. VAT", v["textes"]["en"])
+        for hier in (valeur("deux"), valeur("ht"), valeur("ttc", regles_0411_historique=True)):
+            self.assertNotIn("economie_annuelle_ttc_mad", hier)
+            self.assertIn("20 000 MAD HT", hier["textes"]["fr"])
 
     def test_anglais(self):
         p1 = _texte_ci(_pages_ci(_data_ci(langue="en"))[1])

@@ -89,3 +89,36 @@ test('une réponse sans conflit est inchangée', () => {
   assert.deepEqual(conflitEnErreur(r), r)
   assert.equal(conflitEnErreur(undefined), undefined)
 })
+
+test('deux saisies de la même ligne fusionnent, base gardée', async () => {
+  // ACHT132 (C-ACHT-VER4-010) — quantité puis justification hors ligne.
+  const CONSO = 'intervention.consommation_ligne'
+  const T0 = '2026-11-04T08:00:00Z'
+  const store = memoryStore()
+  const ob = new FieldOutbox({ store, sender: async () => ({ results: [] }) })
+  await ob.enqueue(CONSO, { intervention: 7, ligne: 3, quantite_utilisee: '8' }, { baseUpdatedAt: T0 })
+  const cle2 = await ob.enqueue(CONSO, { intervention: 7, ligne: 3, justification: 'casse' }, {
+    baseUpdatedAt: '2026-11-04T09:00:00Z',
+  })
+  let ops = await ob.pending()
+  assert.equal(ops.length, 1)
+  assert.equal(ops[0].client_op_id, cle2)
+  assert.equal(ops[0].base_updated_at, T0)
+  assert.deepEqual(ops[0].payload, { intervention: 7, ligne: 3, quantite_utilisee: '8', justification: 'casse' })
+  // Relire la file (même magasin) ⇒ 1 op identique.
+  assert.deepEqual(await new FieldOutbox({ store }).pending(), ops)
+  // Autre ligne, autre op_type : nouvelle op.
+  await ob.enqueue(CONSO, { intervention: 7, ligne: 4, quantite_utilisee: '1' })
+  await ob.enqueue('intervention.serial', { intervention: 7, ligne: 3 })
+  assert.equal((await ob.pending()).length, 3)
+  // Op en erreur serveur : jamais fusionnée.
+  await ob._mutate((cur) => cur.map((o) => (o.client_op_id === cle2 ? { ...o, serverError: 'x' } : o)))
+  await ob.enqueue(CONSO, { intervention: 7, ligne: 3, quantite_utilisee: '9' })
+  ops = await ob.pending()
+  assert.equal(ops.length, 4)
+  // Flush en cours : nouvelle op.
+  ob._flushing = true
+  await ob.enqueue(CONSO, { intervention: 7, ligne: 4, quantite_utilisee: '2' })
+  ob._flushing = false
+  assert.equal((await ob.pending()).length, 5)
+})

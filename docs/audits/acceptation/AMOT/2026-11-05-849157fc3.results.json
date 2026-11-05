@@ -1,0 +1,80 @@
+{
+  "sha": "849157fc301b6ae1f7a2758dda32243a7c55282c",
+  "date": "2026-11-05",
+  "groupe": "AMOT",
+  "verdict": "PASS",
+  "couvre": [
+    "AMOT120",
+    "AMOT121",
+    "AMOT124"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P.sonde_010_provision_offgrid",
+      "taches": [
+        "AMOT120"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AMOT/traces/2026-11-05/C-AMOT-VER4-010.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde -010 => repro False : carte Eco/Max provision 18 000 en offgrid comme en hybride (= PDF 18 000), paybacks cartes et palier 17,3 ans identiques. Sonde -010-L2 (payload public reel GET /public/proposal/<token>/data/, niveau 12) => repro False : paliers A (code) = B (offgrid vu hybride), aucun ecart ; trace C-AMOT-VER4-010-L2.txt."
+    },
+    {
+      "id": "P.sonde_011_port_batterie_offgrid",
+      "taches": [
+        "AMOT121"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AMOT/traces/2026-11-05/C-AMOT-VER4-011.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde -011 => repro False : onduleur off-grid et hybride (meme fiche, port 3 kW) donnent la meme economie avec batterie dans les 3 variantes (ecart 0,0 MAD) : le port batterie de l'offgrid est lu."
+    },
+    {
+      "id": "P.proposition_option_avec_ttc",
+      "taches": [
+        "AMOT124"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AMOT/traces/2026-11-05/ACCEPTATION-AMOT-P.proposition_option_avec_ttc.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "/proposition (apps/web local) d'un C&I deux options base ttc : option avec batterie « 80 377 MAD TTC d'economie par an », aucun « HT » sur la page ; payload economie_annuelle_ttc_mad 80 377,43. Chemin phrase servie (le libelle « Economie annuelle TTC » ne sort que sans phrase). Detail : traces/2026-11-05/AMOT124-proposition-ttc.txt."
+    }
+  ]
+}

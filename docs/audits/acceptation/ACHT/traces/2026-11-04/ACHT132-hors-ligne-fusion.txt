@@ -1,0 +1,16 @@
+ACHT132 — pile locale, sha be834beb1, 04/11/2026, demo_admin (technicien de l'intervention), Ma journée > Consommé.
+
+Intervention 669 (chantier 1200, créés pour le rejeu puis supprimés), ligne hors devis « Câble ACHT132 » quantité 10
+(T0 date_modification 2026-11-04T23:57:48.169841Z).
+context.setOffline(true) ; champ Utilisé 10 -> 8 (blur) : « Hors ligne — enregistré » ; Justification « casse » (blur).
+File locale IndexedDB taqinor-field-outbox, hors ligne :
+  [ {"client_op_id":"c370e85a-adb7-467a-8683-22248b630bfe","op_type":"intervention.consommation_ligne",
+     "payload":{"intervention":669,"ligne":209,"quantite_utilisee":"8","justification":"casse"},
+     "base_updated_at":"2026-11-04T23:57:48.169841Z"} ]          <- UNE op, base T0, payloads fusionnés
+context.setOffline(false) :
+  POST /api/django/installations/sync/ -> 200 {"applied":1,"replayed":0,"errors":0,
+     "results":[{"client_op_id":"c370e85a-…","status":"applied","result":{"ligne":209,"quantite_utilisee":"8"}}]}
+  file locale ensuite : []
+  GET consommation : quantite_utilisee 8.00, justification « casse »
+  texte « Conflit — » à l'écran : 0 occurrence
+Console : 3 ERR_INTERNET_DISCONNECTED attendus (appels en ligne pendant la coupure), aucune autre erreur.

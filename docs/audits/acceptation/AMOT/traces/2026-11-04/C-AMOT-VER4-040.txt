@@ -1,0 +1,6 @@
+== C-AMOT-VER4-040 (sha ecd7fcf406)
+attendu : une-page C&I : « 98 930 » et « soit 118 716 MAD TTC » (fnum, au pair) ; couverture/theme.fmt et fmt_dirhams : « 98 931 » / « 118 717 » — 1 dirham d'écart entre les deux PDF du même devis ; attendu sain : 98 931 / 118 717 partout
+observé : {'onepage_cellules': 'Production annuelle => 150\u202f000 kWh/an | &#201;conomies estim&#233;es / an (HT) soit 118\u202f717 MAD TTC  => 98\u202f931 MAD/an', 'fnum_eco': '98\u202f930', 'fnum_ttc': '118\u202f716', 'economie_ttc_onepage': ' ci_soit 118\u202f717 MAD ci_ttc ', 'theme_fmt_eco': '98\u202f931', 'theme_fmt_ttc': '118\u202f717', 'fmt_dirhams_eco': '98\u202f931'}
+{"repro": true, "onepage_cellules": "Production annuelle => 150 000 kWh/an | &#201;conomies estim&#233;es / an (HT) soit 118 717 MAD TTC  => 98 931 MAD/an", "fnum_eco": "98 930", "fnum_ttc": "118 716", "economie_ttc_onepage": " ci_soit 118 717 MAD ci_ttc ", "theme_fmt_eco": "98 931", "theme_fmt_ttc": "118 717", "fmt_dirhams_eco": "98 931"}
+verdict : REPRO
+base inchangée : oui (avant 627, après 627) ; mails 0 ; tâches Celery bloquées 0

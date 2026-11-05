@@ -17,6 +17,7 @@
  */
 import { DEFAULT_LOCALE, isLocale, LOCALES, type Locale } from './config';
 import { CITIES, REALISATIONS } from '../lib/realisations';
+import { FICHES } from '../lib/fiches';
 
 const ALL_LOCALES: readonly Locale[] = LOCALES;
 
@@ -123,6 +124,11 @@ const TRANSLATED: Record<string, readonly Locale[]> = Object.fromEntries([
   ...STATIC_TRANSLATED.map((p) => [p, ALL_LOCALES] as const),
   ...CITIES.map((c) => [`/installation-solaire-${c.slug}`, ALL_LOCALES] as const),
   ...REALISATIONS.map((r) => [`/realisations/${r.slug}`, ALL_LOCALES] as const),
+  // WAUD87 — fiches techniques : en-tête EN/AR + repli FR explicite vers le détail (routes
+  // src/pages/{en,ar}/produits/, dérivées de FICHES comme celles du gabarit FR). Hors
+  // STATIC_TRANSLATED à dessein : la page EN/AR est un en-tête, pas un miroir de structure (W313).
+  ['/produits', ALL_LOCALES] as const,
+  ...FICHES.map((f) => [`/produits/${f.slug}`, ALL_LOCALES] as const),
   ...Object.entries(PARTIAL_TRANSLATED),
 ]);
 

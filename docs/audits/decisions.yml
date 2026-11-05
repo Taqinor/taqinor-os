@@ -3638,3 +3638,27 @@ decisions:
     date: "2026-11-04"
     source: "Reda, question interactive, contre-visite vérifie ASEC"
     taches: [ASEC70]
+
+  - id: D-ACVI-10
+    question: "Un lead « ne plus contacter » peut déjà être un client signé. D-ACVI-7 refuse tout message devis / visite / cadence vers un lead opposé. Les messages vers cette personne en tant que CLIENT sous contrat (facture, relance de paiement, notifications chantier et SAV, accès portail) doivent-ils aussi être bloqués ?"
+    options:
+      - cle: contractuel_autorise
+        texte: "Opposition = prospection (loi 09-08 art. 9) : factures, relances, messages chantier / SAV / portail vers un client sous contrat partent, tracés ; tout rendu ou envoi de devis reste refusé"
+      - cle: tout_bloquer
+        texte: "Tout message ou lien vers une personne dont le lead est opposé est refusé, contractuels compris"
+    reponse: contractuel_autorise
+    date: "2026-11-05"
+    source: "Reda, question interactive, contre-visite vérifie ACVI"
+    taches: [ACVI102, ACVI107]
+
+  - id: D-ADVS-VER5-1
+    question: "Un envoi « les deux gammes » (Essentielle + Premium) ne passe que le devis principal en envoyé ; la gamme sœur reste brouillon et la page client n'affiche jamais le comparatif ni « choisir cette gamme ». Que doit faire un envoi « les deux » ?"
+    options:
+      - cle: envoyer_les_deux
+        texte: "L'envoi passe les DEUX devis en envoyé (par le seul chemin d'envoi), chacun avec un lien vivant ; le client voit et peut choisir l'une ou l'autre gamme"
+      - cle: garder_tel_quel
+        texte: "La sœur reste brouillon ; le commercial l'envoie à part quand il veut le comparatif"
+    reponse: envoyer_les_deux
+    date: "2026-11-05"
+    source: "Reda, question interactive, contre-visite vérifie ADVS"
+    taches: [ADVS49]

@@ -39,6 +39,8 @@
  *      « 43,48 kWc installés ».
  */
 
+import { formatNombreLocale } from './nombreLocale';
+
 export interface RealisationPhoto {
   name: string;
   alt: string;
@@ -562,11 +564,27 @@ const CAPTION_STR: Record<'fr' | 'en' | 'ar', { installed: string; filmed: strin
  * d'afficher `undefined`. `dateType: 'filmed'` bascule le verbe sur « filmé
  * en » pour ne jamais laisser croire à une mise en service confirmée.
  */
+/**
+ * WAUD44 — puissance publiée dans le format de la langue de la page : EN « 17.04 kWc » (en-GB),
+ * FR/AR la chaîne publiée telle quelle (« 17,04 kWc », règle AR = format français). La valeur vient
+ * de `kwcNum`, avec le même nombre de décimales que la chaîne publiée — jamais retapée.
+ * Chaîne vide quand la puissance n'est pas publiée (les appelants gardent leur `r.kwc &&`).
+ */
+export function kwcLocale(
+  r: Pick<Realisation, 'kwc' | 'kwcNum'> | null | undefined,
+  locale: 'fr' | 'en' | 'ar' = 'fr',
+): string {
+  if (!r?.kwc) return '';
+  if (locale !== 'en' || r.kwcNum == null) return r.kwc;
+  const decimales = r.kwc.match(/\d,(\d+)/)?.[1].length ?? 0;
+  return `${formatNombreLocale(r.kwcNum, 'en', decimales)} kWc`;
+}
+
 export const standardCaption = (r: Realisation, locale: 'fr' | 'en' | 'ar' = 'fr'): string => {
   const s = CAPTION_STR[locale] ?? CAPTION_STR.fr;
   const dateVerb = r.dateType === 'filmed' ? s.filmed : s.installed;
   const parts = [r.ville];
-  if (r.kwc) parts.push(r.kwc);
+  if (r.kwc) parts.push(kwcLocale(r, locale));
   parts.push(`${dateVerb} ${dateLocale(r.date, locale)}`);
   if (r.production) {
     const unitLabel = r.productionEstimated ? s.estimated : s.measured;

@@ -525,6 +525,8 @@ def _minutes_between(start, end):
     if not (start and end):
         return None
     delta = end - start
+    if delta.total_seconds() < 0:  # ACHT131 — ordre inversé : durée inconnue
+        return None
     return round(delta.total_seconds() / 60)
 
 

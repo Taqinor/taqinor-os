@@ -68,7 +68,7 @@ import Picture from './Picture.astro';
 import { hasRating } from '../lib/testimonials';
 import { DEYE_CLOUD_URL, NAP, WHATSAPP_LEADS } from '../lib/nap';
 import { pageContextWhatsappText, whatsappLink } from '../lib/whatsapp';
-import { REALISATIONS } from '../lib/realisations';
+import { kwcLocale, REALISATIONS } from '../lib/realisations';
 import { getLocaleFromPath, stripLocale, useTranslations } from '../i18n/utils';
 import { localesForPath, localizeNavHref, QUOTE_JOURNEY_PATH } from '../i18n/pages';
 
@@ -131,7 +131,7 @@ const solutionPreview: Record<string, { photo: string; alt: string; ville: strin
     alt: bestRealisation.photos[0].alt,
     ville: bestRealisation.ville,
     // Non-null : `bestRealisation` vient du pool filtré sur kwcNum != null ci-dessus.
-    kwc: bestRealisation.kwc!,
+    kwc: kwcLocale(bestRealisation, locale), // WAUD44 — format de la langue
     production: bestRealisation.production,
   },
 };

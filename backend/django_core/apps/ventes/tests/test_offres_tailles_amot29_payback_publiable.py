@@ -159,6 +159,31 @@ class PaybackPubliableTests(SimpleTestCase):
             90000.0, 6500.0, lignes, 1.0, devis=SimpleNamespace(regles_calcul=6),
             taux_tva=20), 18.8)
 
+    def test_provision_onduleur_offgrid_niveau_12(self):
+        """AMOT120 (C-AMOT-VER4-010) — onduleur hors réseau 15 000 HT (TVA 20) :
+        au niveau 12 la carte provisionne 18 000 et le palier 90 000 / 6 500
+        publie le payback de l'hybride = ``roi_a`` (≥ 12 a) ; niveau 11 : les
+        chiffres d'hier (aucune provision off-grid). Test-du-test : ôter
+        ``onduleur_offgrid`` des rôles provisionnés ⇒ échec."""
+        des = 'Onduleur hors-réseau Deye 6kW'
+        ligne = SimpleNamespace(quantite=1, prix_unitaire=15000, produit=None, designation=des)
+        n12, n11 = SimpleNamespace(regles_calcul=12, company=None), SimpleNamespace(regles_calcul=11, company=None)
+        self.assertEqual(ot._cout_onduleur_ttc([ligne], ['onduleur_offgrid'], 1.0, 20, None, n12), 18000.0)
+        self.assertEqual(ot._cout_onduleur_ttc([ligne], ['onduleur_offgrid'], 1.0, 20, None), 18000.0)
+        self.assertIsNone(ot._cout_onduleur_ttc([ligne], ['onduleur_offgrid'], 1.0, 20, None, n11))
+
+        def palier(role, devis):
+            return _payback_publie_palier(90000.0, 6500.0, [{
+                'role': role, 'quantite': 1, 'prix_unitaire_ht': 15000.0, 'designation': des}],
+                1.0, devis=devis, taux_tva=20)
+        roi_a = round(compute_cashflow_payback(
+            90000.0, 6500.0, battery=True, battery_share=0.0,
+            inverter_replace_cost=18000.0)['payback_years'], 2)
+        self.assertEqual(palier('onduleur_offgrid', n12), roi_a)
+        self.assertEqual(palier('onduleur_hybride', n12), roi_a)
+        self.assertGreaterEqual(roi_a, 12)
+        self.assertLess(palier('onduleur_offgrid', n11), palier('onduleur_hybride', n11))
+
 
 class ArrondiAffichageCartesTests(SimpleTestCase):
     """D-ENF-ARRONDI-PDF (fondateur 30/10/2026) — les cartes de tailles

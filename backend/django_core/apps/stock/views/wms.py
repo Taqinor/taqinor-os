@@ -23,7 +23,8 @@ from ..utils.params import (
     id_requete_ou_400, statut_requete_ou_400, texte_sans_nul_ou_400, types_corps_ou_400, valeur_unique_ou_400,
 )
 from ..corps_achats import UniteAjouterLigneCorps, UniteControlerScanCorps, valider_corps
-from ..erreurs_achats import ConflitEtat, EtatIncompatible, statut_refus_metier
+from ..erreurs_achats import (
+    ConflitEtat, EtatIncompatible, debordement_compteur_en_409, statut_refus_metier)
 from authentication.permissions import (
     IsAnyRole, IsAdminRole, IsResponsableOrAdmin,
 )
@@ -458,9 +459,13 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
         bin_destination = modele_bin.objects.filter(
             id=id_corps(cible), company=request.user.company).first()
         try:
-            resultat = deplacer_unite_logistique(
-                unite=unite, bin_destination=bin_destination,
-                user=request.user)
+            # api-fuzz PR #1273 — un casier dont le compteur (BinAffectation)
+            # déborderait sa colonne entière (SQLSTATE 22003) : 409 nommé, rien
+            # d'écrit, au lieu d'un 500 « integer out of range ».
+            with debordement_compteur_en_409():
+                resultat = deplacer_unite_logistique(
+                    unite=unite, bin_destination=bin_destination,
+                    user=request.user)
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=statut_refus_metier(exc))

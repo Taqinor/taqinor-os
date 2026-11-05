@@ -30,6 +30,7 @@ from ..corps_achats import ProduitDecoupeCorps, valider_corps
 from ..erreurs_achats import ConflitEtat, IntrouvableMetier
 from ..models import Produit, Categorie, Fournisseur, MouvementStock, EmplacementStock, RegleCodeBarres
 from ..serializers import ProduitSerializer, PrixFournisseurSerializer
+from apps.roles.permissions import DroitDeLaGrille, droits_de_la_grille  # ASEC70
 from authentication.permissions import (
     IsAnyRole,
     IsAdminRole,
@@ -404,8 +405,8 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             # l'@action, d'où ce cas explicite — sinon repli IsAdminRole).
             # ZSTK3 — `previsionnel` est LECTURE SEULE, même garde.
             # XSTK7 — `tracer` (rapport de traçabilité) est LECTURE SEULE,
-            # même garde.
-            return [IsAnyRole()]
+            # même garde. ASEC70 — l'export applique EN PLUS `stock_export`.
+            return [IsAnyRole(), *droits_de_la_grille(self, export_xlsx=[DroitDeLaGrille('stock_export')])]
         elif self.action in ('create', 'dupliquer'):
             # QG4 — création réservée à Directeur + Commercial responsable.
             # QP2 — le clone (`dupliquer`) EST une création : même garde. Ce
@@ -641,7 +642,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                                  ids=serializers.ListField(child=serializers.IntegerField(),
                                                            min_length=1)), responses={XLSX: BINARY})
     @action(detail=False, methods=['post'], url_path='export-xlsx',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsAnyRole, DroitDeLaGrille('stock_export')])
     def export_xlsx(self, request):
         """Exporte une sélection de produits en .xlsx (prix d'achat exclu)."""
         from ..services import export_products_xlsx

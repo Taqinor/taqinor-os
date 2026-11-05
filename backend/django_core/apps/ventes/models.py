@@ -220,7 +220,7 @@ class Devis(models.Model):
     # l'argent affiché, D-ENF-ARRONDI-PDF) ; niveau 7 (0146, écarts AMOT du
     # 31/10) ; 8 (0147, AGNR54) ; 9 (0148, AMOT116) ; 10 (0149, ADVS5/ADVS6,
     # répartition unique des options) — un devis neuf naît en 10.
-    regles_calcul = models.PositiveSmallIntegerField(default=11)
+    regles_calcul = models.PositiveSmallIntegerField(default=12)
     version = models.PositiveIntegerField(default=1)
     version_parent = models.ForeignKey(
         'self', on_delete=models.SET_NULL, null=True, blank=True,

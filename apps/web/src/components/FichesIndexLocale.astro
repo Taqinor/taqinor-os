@@ -1,0 +1,105 @@
+---
+/**
+ * WAUD87 — bibliothèque /en|ar/produits : les 16 fiches avec leur EN-TÊTE localisé
+ * (lib/fichesLocale.ts) ; chaque carte mène à la fiche de la langue, qui renvoie au détail
+ * français (repli FR explicite). Mêmes liens constructeur que la page française.
+ */
+import Layout from '../layouts/Layout.astro';
+import V2Enhance from './V2Enhance.astro';
+import Breadcrumb from './Breadcrumb.astro';
+import CtaBand from './CtaBand.astro';
+import FichesGroupe from './FichesGroupe.astro';
+import StickyCta from './StickyCta.astro';
+import { fichesByCategorie, ficheDownloadHref } from '../lib/fiches';
+import { CATEGORIES_FICHE, enTeteFiche, type LocaleFiche } from '../lib/fichesLocale';
+import { pageLocale } from '../lib/pageCtx';
+
+const { locale: loc, L } = pageLocale(Astro.url.pathname);
+const locale = loc as LocaleFiche;
+const groups = fichesByCategorie();
+
+const S = {
+  en: {
+    title: 'Technical data sheets for the hardware we fit — panels, inverters, batteries | Taqinor',
+    description:
+      'The official technical data sheets for the hardware we fit: Canadian Solar and Jinko panels, Huawei and Deye inverters, Dyness batteries, Huawei metering and monitoring. Manufacturer specifications to download.',
+    accueil: 'Home',
+    fiches: 'Technical data sheets',
+    kicker: 'Documentation · hardware actually fitted',
+    lead: 'Every item in our installations — and in your quote — points here, to its technical data sheet. The detailed figures come from the official manufacturer datasheet; we do not rewrite any specification by hand. The detailed sheets are in French; each one is summarised here.',
+    details: 'Details',
+    pdf: 'Datasheet (PDF)',
+    norme: 'The reference standard',
+    note: 'Hardware is never chosen in advance: the power, whether there is a battery, single- or three-phase all come out of your roof’s figures. For the reasoning behind each brand, see',
+    noteLien: 'our Equipment page',
+    cta: 'A manufacturer datasheet doesn’t say which model you need — the study does.',
+  },
+  ar: {
+    title: 'أوراق البيانات التقنية للعتاد المُركّب — ألواح، عاكسات، بطاريات | Taqinor',
+    description:
+      'أوراق البيانات التقنية الرسمية للعتاد الذي نركّبه: ألواح Canadian Solar وJinko، عاكسات Huawei وDeye، بطاريات Dyness، عدّ ومراقبة Huawei. مواصفات الصانع للتحميل.',
+    accueil: 'الرئيسية',
+    fiches: 'أوراق البيانات التقنية',
+    kicker: 'توثيق · عتاد مُركّب فعلاً',
+    lead: 'كل عنصر في تركيباتنا — وفي عرض سعركم — يحيل إلى هنا، إلى ورقة بياناته التقنية. الأرقام المفصّلة مأخوذة من ورقة بيانات الصانع الرسمية؛ لا نعيد كتابة أي مواصفة يدوياً. الأوراق المفصّلة بالفرنسية؛ ونلخّص كل واحدة منها هنا.',
+    details: 'التفاصيل',
+    pdf: 'ورقة البيانات (PDF)',
+    norme: 'المعيار المرجعي',
+    note: 'لا يُختار العتاد مسبقاً: القدرة، ووجود بطارية أو عدمه، والأحادي أو الثلاثي الطور، كلها تخرج من أرقام سطحكم. لمعرفة السبب وراء كل ماركة، راجعوا',
+    noteLien: 'صفحة العتاد',
+    cta: 'ورقة بيانات الصانع لا تقول أيّ مرجع تحتاجون — الدراسة تقول ذلك.',
+  },
+}[locale];
+---
+
+<Layout title={S.title} description={S.description} ogSlug="equipement">
+  <div class="v2">
+    <V2Enhance />
+    <Breadcrumb items={[{ label: S.accueil, href: L('/') }, { label: S.fiches }]} />
+
+    <section class="px-4 py-20 text-white sm:py-24">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">{S.kicker}</p>
+        <h1 class="display v2-page-title cine-in mt-5 max-w-3xl [animation-delay:120ms]">{S.fiches}</h1>
+        <p class="v2-lead cine-in mt-6 max-w-2xl text-white/85 [animation-delay:240ms]">{S.lead}</p>
+      </div>
+    </section>
+
+    {groups.map((g) => (
+      <FichesGroupe titre={CATEGORIES_FICHE[g.categorie][locale]}>
+          {g.fiches.map((f, i) => {
+            const t = enTeteFiche(f, locale);
+            const href = ficheDownloadHref(f);
+            return (
+              <article class="v2-rise cine-card flex flex-col" style={`--v2-i:${i}`}>
+                <div class="flex items-center justify-between border-b-2 border-brass-400/70 px-5 py-3">
+                  <span class="tech-label text-brass-300">{t.marque}</span>
+                  <span class="h-1.5 w-1.5 rotate-45 border border-brass-400" aria-hidden="true"></span>
+                </div>
+                <div class="flex flex-1 flex-col p-5">
+                  <h3 class="display text-lg text-white">{t.nom}</h3>
+                  <p class="mt-1 text-xs text-lune-faint">{t.modele}</p>
+                  <p class="mt-3 text-sm leading-relaxed text-lune-soft">{t.resume}</p>
+                  <div class="mt-auto flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-white/10 pt-4">
+                    <a href={L(`/produits/${f.slug}`)} class="text-sm font-bold text-white transition-colors hover:text-brass-300">{S.details} &rsaquo;</a>
+                    {href && (
+                      <a href={href} target="_blank" rel="noopener" class="text-sm font-semibold text-brass-300 transition-colors hover:text-brass-200">{href.toLowerCase().endsWith('.pdf') ? S.pdf : S.norme} &rsaquo;</a>
+                    )}
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+      </FichesGroupe>
+    ))}
+
+    <section class="mx-auto max-w-6xl px-4 pb-16">
+      <p class="v2-rise max-w-2xl border-s-4 border-brass-400 ps-4 text-sm leading-relaxed text-lune-soft">
+        {S.note} <a href={L('/équipement')} class="text-brass-300 underline underline-offset-2 hover:text-white">{S.noteLien}</a>.
+      </p>
+    </section>
+
+    <CtaBand title={S.cta} seam={false} href={L('/devis/mon-toit')} />
+    <StickyCta />
+  </div>
+</Layout>

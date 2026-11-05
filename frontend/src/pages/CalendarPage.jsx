@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import reportingApi from '../api/reportingApi'
 import crmApi from '../api/crmApi'
 import MonthGrid from '../components/MonthGrid'
+import { useConfirmDialog } from '../ui/confirm'
 import {
   Button, Spinner, Input, EmptyState,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
@@ -52,6 +53,7 @@ export default function CalendarPage() {
   const [subUrl, setSubUrl] = useState('')
   const [subOpen, setSubOpen] = useState(false)
   const [copied, setCopied] = useState(false)
+  const { confirm } = useConfirmDialog()
 
   // Bornes du mois affiché (semaines complètes, comme MonthGrid les calcule).
   const { from, to } = useMemo(() => {
@@ -118,6 +120,21 @@ export default function CalendarPage() {
       return next
     })
   }, [subUrl])
+
+  // ASEC82/ASEC83 — « Régénérer le lien » : nouveau jeton (ASEC45), l'ancien
+  // lien .ics (fuité ?) est refusé ; l'URL affichée devient la nouvelle.
+  const regenererSub = useCallback(async () => {
+    const ok = await confirm({
+      title: 'Régénérer le lien ?',
+      description: "L'ancien lien cessera de fonctionner partout où il est abonné.",
+      confirmLabel: 'Régénérer',
+    })
+    if (!ok) return
+    setCopied(false)
+    reportingApi.regenererCalendarSubscription()
+      .then(r => setSubUrl(r.data?.url || ''))
+      .catch(() => setErr('Régénération du lien impossible.'))
+  }, [confirm])
 
   const copySub = useCallback(() => {
     if (!subUrl) return
@@ -219,6 +236,9 @@ export default function CalendarPage() {
               placeholder="Génération du lien…" />
             <Button variant="outline" size="sm" onClick={copySub} disabled={!subUrl}>
               {copied ? 'Copié !' : 'Copier'}
+            </Button>
+            <Button variant="outline" size="sm" onClick={regenererSub} disabled={!subUrl}>
+              Régénérer le lien
             </Button>
           </div>
         </div>

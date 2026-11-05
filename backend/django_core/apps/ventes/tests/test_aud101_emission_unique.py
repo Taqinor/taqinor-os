@@ -22,7 +22,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
@@ -482,3 +482,73 @@ class EmissionLibelleSeulVNT32(_BaseEmission):
         self.assertEqual(resp.status_code, 409, resp.data)
         facture.refresh_from_db()
         self.assertEqual(facture.statut, Facture.Statut.BROUILLON)
+
+
+class TestEmissionConcurrenteVNT20(TransactionTestCase):
+    """ATOT58 (C-ATOT-VER4-002) — deux POST ``emettre`` SIMULTANÉS sur deux
+    brouillons pleins (12 000 TTC chacun) d'une même vente de 12 000 : un
+    200, un 409, Σ émis 12 000. ``TransactionTestCase`` : les threads ouvrent
+    leur propre connexion (harnais de ``TestAvoirConcurrenceAUD126``).
+    Mutant : retirer ``verrouiller_emission`` ⇒ deux 200."""
+
+    def setUp(self):
+        self.company = Company.objects.create(slug='atot58-co', nom='ATOT58')
+        self.user = User.objects.create_user(
+            username='atot58_resp', password='x', role_legacy='responsable',
+            company=self.company)
+        client = Client.objects.create(
+            company=self.company, nom='ATOT58', prenom='Client',
+            telephone='+212600000058')
+        produit = Produit.objects.create(
+            company=self.company, nom='Kit', sku='ATOT58-KIT',
+            prix_vente=Decimal('10000'), quantite_stock=500)
+        self.devis = Devis.objects.create(
+            company=self.company, created_by=self.user, client=client,
+            reference='DEV-ATOT58-1', statut=Devis.Statut.ACCEPTE,
+            taux_tva=Decimal('20'))
+        LigneDevis.objects.create(
+            devis=self.devis, produit=produit, designation='Kit PV',
+            quantite=Decimal('1'), prix_unitaire=Decimal('10000'),
+            taux_tva=Decimal('20'))
+        self.brouillons = [Facture.objects.create(
+            company=self.company, reference='', client=client,
+            devis=self.devis, statut=Facture.Statut.BROUILLON,
+            type_facture='complete', libelle=f'Facture {i}',
+            taux_tva=Decimal('20'), montant_ht=Decimal('10000'),
+            montant_tva=Decimal('2000'), montant_ttc=Decimal('12000'))
+            for i in range(2)]
+
+    def test_deux_emissions_simultanees_une_409(self):
+        import threading
+        resultats, verrou = [], threading.Lock()
+        barriere = threading.Barrier(2, timeout=30)
+
+        def _emettre(facture):
+            from django.db import connection as thread_connection
+            try:
+                api = APIClient()
+                api.credentials(HTTP_AUTHORIZATION=(
+                    f'Bearer {AccessToken.for_user(self.user)}'))
+                barriere.wait()
+                resp = api.post(
+                    f'/api/django/ventes/factures/{facture.id}/emettre/', {},
+                    format='json')
+                with verrou:
+                    resultats.append(resp.status_code)
+            except threading.BrokenBarrierError:
+                pass
+            finally:
+                thread_connection.close()
+
+        threads = [threading.Thread(target=_emettre, args=(f,))
+                   for f in self.brouillons]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=90)
+        self.assertEqual(sorted(resultats), [200, 409], resultats)
+        # CLAUSE PERSISTANCE — relu : une ÉMISE, une BROUILLON.
+        statuts = sorted(Facture.objects.filter(devis=self.devis)
+                         .values_list('statut', flat=True))
+        self.assertEqual(statuts, sorted([Facture.Statut.BROUILLON,
+                                          Facture.Statut.EMISE]))

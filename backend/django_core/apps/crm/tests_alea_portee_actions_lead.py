@@ -50,6 +50,32 @@ class PorteeActionsLeadTests(TestCase):
                              'owner': commercial.pk}, format='json')
         self.assertEqual(res.status_code, 201, res.content)
 
+    def test_creation_exige_crm_creer(self):
+        """ASEC76 (C-ASEC-VER4-040) — un rôle = Commercial du registre SANS
+        ``crm_creer`` : 403 ``droit_manquant`` à ``POST /crm/leads/``, aucun
+        lead créé ; le Commercial du registre : 201. Mutant : retirer la
+        garde ⇒ échec."""
+        prive = User.objects.create_user(
+            username='asec76-prive', password='x', company=self.company,
+            role=Role.objects.create(
+                company=self.company, nom='Commercial sans creer',
+                permissions=[c for c in COMMERCIAL_PERMISSIONS
+                             if c != 'crm_creer']))
+        api = APIClient()
+        api.force_authenticate(prive)
+        url = '/api/django/crm/leads/'
+        avant = Lead.objects.filter(company=self.company).count()
+        res = api.post(url, {'nom': 'Z', 'telephone': '0611111113'},
+                       format='json')
+        self.assertEqual(res.status_code, 403, res.content)
+        self.assertEqual(res.data.get('code'), 'droit_manquant', res.data)
+        self.assertEqual(
+            Lead.objects.filter(company=self.company).count(), avant)
+        api.force_authenticate(self.moi)
+        res = api.post(url, {'nom': 'Z', 'telephone': '0611111114'},
+                       format='json')
+        self.assertEqual(res.status_code, 201, res.content)
+
     def setUp(self):
         self.company = Company.objects.create(
             nom='Taqinor ALEA27', slug='taqinor-alea27')

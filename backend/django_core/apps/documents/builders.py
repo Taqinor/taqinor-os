@@ -1182,8 +1182,8 @@ def _octets_en_vigueur(document):
     version = document.versions.order_by('-version').first()
     if version is None or not version.file_key:
         return None
-    from apps.records.storage import fetch_attachment
-    data, err = fetch_attachment(version.file_key)
+    from apps.ged import services as ged_services  # ASEC81 — garde ASEC58 (clé hors société)
+    data, err = ged_services._fetch_version_bytes(version)
     if err or not data:
         return None
     return data

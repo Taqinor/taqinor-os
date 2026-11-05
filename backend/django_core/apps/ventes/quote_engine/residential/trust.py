@@ -167,7 +167,9 @@ def _bloc_paiement(d, ctx, ident) -> str:
     C = ctx["C"]
     fmt_mad = ctx.get("fmt_mad") or theme.fmt
     scenario = d.get("scenario")
-    if scenario == "Sans batterie":
+    if d.get("branche_echeancier") in ("sans", "avec"):  # AMOT122 — niveau 12 : LA branche du builder
+        branche = d["branche_echeancier"]
+    elif scenario == "Sans batterie":
         branche = "sans"
     elif scenario == "Avec batterie":
         branche = "avec"

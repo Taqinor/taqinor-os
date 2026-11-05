@@ -320,19 +320,19 @@ class MachineFacturation(RuleBasedStateMachine):
         return net, actives
 
     def _verifier_borne(self, devis):
+        from apps.ventes.selectors import predecesseurs_acceptes
         from apps.ventes.utils.options import option_totaux
-        from apps.ventes.vente_facturation import plan_facturation
         net, actives = self._net(devis)
-        # ATOT50 / VNT64 (D-VNT-2) — après une révision à la baisse, l'avoir
-        # d'écart ATTEND sa confirmation : le facturé dépasse le TTC de la
-        # V2 de cet avoir à confirmer, LU sur la vente (jamais recalculé).
-        plan = plan_facturation(devis)
-        a_confirmer = max(ZERO, plan['prevu'] - plan['prix_convenu_ttc'])
-        plafond = _d(option_totaux(devis)['ttc']) + a_confirmer
+        # ATOT57 (C-ATOT-VER4-001/021) — plafond INDÉPENDANT du code testé :
+        # le TTC le plus haut de la chaîne acceptée (après une révision à la
+        # baisse, l'avoir d'écart attend sa confirmation, D-VNT-2), jamais
+        # ``plan_facturation`` (son ``prevu`` contient le facturé lui-même).
+        plafond = max(_d(option_totaux(d)['ttc'])
+                      for d in [devis, *predecesseurs_acceptes(devis)])
         tolerance = CENT * (len(actives) + 1)
         assert net <= plafond + tolerance, (
-            f'{devis.reference} : facturé net {_q(net)} > TTC du devis '
-            f'+ avoir à confirmer {plafond} — factures '
+            f'{devis.reference} : facturé net {_q(net)} > TTC le plus haut '
+            f'de la chaîne acceptée {plafond} — factures '
             + ', '.join(f'{f.reference}={f.total_ttc}' for f in actives))
 
     @invariant()
@@ -379,3 +379,29 @@ class MachineFacturationTests(HypothesisDjangoTestCase):
         rattacher_aval_financier_revision(v2, confirmer_avoir=True)
         self.assertEqual(_q(m._net(m._devis())[0]), Decimal('135000.00'))
         m.somme_factures_bornee_par_devis()
+
+    def test_double_facturation_leve_l_invariant(self):
+        """ATOT57 — test-du-test : un devis de 1 200 TTC facturé DEUX fois
+        en entier (état d'une porte fautive, posé en ORM) fait échouer
+        ``_verifier_borne``. Mutant : remettre ``plan['prevu']`` dans le
+        plafond ⇒ aucune erreur levée."""
+        from apps.ventes.models import Devis, Facture, LigneDevis
+        m = MachineFacturation()
+        devis = Devis.objects.create(
+            company=m.company, reference=f'DEV-ATOT57-{uuid.uuid4().hex[:8]}',
+            client=m.client_obj, statut=Devis.Statut.ACCEPTE,
+            taux_tva=Decimal('20.00'), mode_installation='residentiel')
+        LigneDevis.objects.create(
+            devis=devis, produit=m.onduleur, designation='Onduleur',
+            quantite=Decimal('1'), prix_unitaire=Decimal('1000'),
+            remise=Decimal('0'), taux_tva=Decimal('20.00'))
+        for i in range(2):
+            Facture.objects.create(
+                company=m.company, client=m.client_obj, devis=devis,
+                reference=f'FAC-ATOT57-{uuid.uuid4().hex[:8]}-{i}',
+                statut=Facture.Statut.EMISE,
+                type_facture=Facture.TypeFacture.COMPLETE,
+                taux_tva=Decimal('20.00'), montant_ht=Decimal('1000.00'),
+                montant_tva=Decimal('200.00'), montant_ttc=Decimal('1200.00'))
+        with self.assertRaises(AssertionError):
+            m._verifier_borne(devis)

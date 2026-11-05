@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4930, operations: 7730, components: 3632}
+counts: {paths: 4932, operations: 7732, components: 3633}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -3607,6 +3607,7 @@ operations:
 - post /api/django/ventes/devis/{id}/avenant/demander-signature/ -> django_ventes_devis_avenant_demander_signature_create
 - get /api/django/ventes/devis/{id}/conception-electrique/ -> django_ventes_devis_conception_electrique_retrieve
 - post /api/django/ventes/devis/{id}/conception-electrique/ -> django_ventes_devis_conception_electrique_create
+- post /api/django/ventes/devis/{id}/confirmer-avoir-revision/ -> django_ventes_devis_confirmer_avoir_revision_create
 - post /api/django/ventes/devis/{id}/contacter-superieur/ -> django_ventes_devis_contacter_superieur_create
 - post /api/django/ventes/devis/{id}/convertir-bc/ -> django_ventes_devis_convertir_bc_create
 - get /api/django/ventes/devis/{id}/declaration-raccordement/ -> django_ventes_devis_declaration_raccordement_retrieve
@@ -7474,6 +7475,7 @@ operations:
 - post /api/v1/ventes/devis/{id}/avenant/demander-signature/ -> v1_ventes_devis_avenant_demander_signature_create
 - get /api/v1/ventes/devis/{id}/conception-electrique/ -> v1_ventes_devis_conception_electrique_retrieve
 - post /api/v1/ventes/devis/{id}/conception-electrique/ -> v1_ventes_devis_conception_electrique_create
+- post /api/v1/ventes/devis/{id}/confirmer-avoir-revision/ -> v1_ventes_devis_confirmer_avoir_revision_create
 - post /api/v1/ventes/devis/{id}/contacter-superieur/ -> v1_ventes_devis_contacter_superieur_create
 - post /api/v1/ventes/devis/{id}/convertir-bc/ -> v1_ventes_devis_convertir_bc_create
 - get /api/v1/ventes/devis/{id}/declaration-raccordement/ -> v1_ventes_devis_declaration_raccordement_retrieve
@@ -10264,6 +10266,7 @@ components:
 - DevisConceptionElectriqueResponse
 - DevisConcurrentsEnum
 - DevisConfigSnapshot
+- DevisConfirmerAvoirRevisionReponse
 - DevisContacterSuperieurRequestRequest
 - DevisContacterSuperieurResponse
 - DevisDeriveResponse

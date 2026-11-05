@@ -1,0 +1,9 @@
+== C-AMOT-VER4-030 (sha c38868a62)
+attendu : base ttc, deux options : carte Sans « 118 717 MAD TTC » ; carte Avec « Investissement TTC » + « 20 000 MAD HT » sans TTC (24 000 servi) ; base deux : les deux cartes portent la TTC
+observé : TTC base_economie=TTC economie=118717.39
+TTC SANS:  Sans batterie Puissance 100 kWc Investissement TTC 640 000 MAD Économie annuelle 118 717 MAD TTC Retour sur investissement 5,4 ans 
+TTC AVEC:  Puissance 100 kWc Investissement TTC 840 000 MAD Économie annuelle 24 000 MAD TTC Retour sur investissement 9,1 ans 
+DEUX AVEC:  Puissance 100 kWc Investissement TTC 840 000 MAD Économie annuelle 20 000 MAD HT soit 24 000 MAD TTC Retour sur investissement 9,1 ans 
+{"ttc_sans_eco_ttc": true, "ttc_avec_invest_ttc": true, "ttc_avec_eco_ht": false, "ttc_avec_eco_ttc": true, "deux_avec_eco_ttc": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 627, après 627) ; mails 0 ; tâches Celery bloquées 0

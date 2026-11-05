@@ -418,6 +418,8 @@
     budgets_departement:inconnu, conformite_fournisseur_moyenne:inconnu, debut:inconnu, delai_demande_bcf_jours:inconnu, fin:inconnu, taux_conversion_pct:inconnu
 - frontend/src/api/reportingApi.js :: rafraichirClasseur -> /api/django/reporting/classeurs/<>/rafraichir
     cellules:inconnu
+- frontend/src/api/reportingApi.js :: regenererCalendarSubscription -> /api/django/reporting/calendar/subscription
+    token:inconnu, url:inconnu
 - frontend/src/api/reportingApi.js :: savTauxAttache -> /api/django/reporting/insights/sav-taux-attache
     avec_contrat:inconnu, detail:texte, taux_pct:inconnu, total:inconnu
 - frontend/src/api/reportingApi.js :: savTicketsCoutMoyen -> /api/django/reporting/insights/sav-tickets-cout-moyen
@@ -546,6 +548,8 @@
     avoir:inconnu, cree:inconnu, detail:inconnu, note_debit:inconnu
 - frontend/src/api/ventesApi.js :: arrondiCaisseFacture -> /api/django/ventes/factures/<>/arrondi-caisse
     applicable:inconnu, ecart:texte, montant_arrondi:texte, montant_du:texte, pas:texte
+- frontend/src/api/ventesApi.js :: confirmerAvoirRevision -> /api/django/ventes/devis/<>/confirmer-avoir-revision
+    avoirs:liste, code:inconnu, detail:inconnu
 - frontend/src/api/ventesApi.js :: contacterSuperieur -> /api/django/ventes/devis/<>/contacter-superieur
     detail:texte, recipients:liste
 - frontend/src/api/ventesApi.js :: creerDevisAuto -> /api/django/ventes/devis/auto
