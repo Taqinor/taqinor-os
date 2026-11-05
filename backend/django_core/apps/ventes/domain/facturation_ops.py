@@ -1327,7 +1327,7 @@ def generer_facture_ticket_sav(*, ticket, sous_garantie, pieces, user):
     SOUS VERROU ; s'il pointe vers une facture non annulée, elle est renvoyée
     telle quelle. Renvoie la ``Facture`` créée (ou réutilisée)."""
     from ..models import Facture
-    from ..utils.company_settings import tva_standard
+    from ..utils.company_settings import create_provisoire, tva_standard
 
     existante = _facture_generee_sous_verrou(ticket, 'facture_id_ext')
     if existante is not None:
@@ -1378,7 +1378,7 @@ def generer_facture_ticket_sav(*, ticket, sous_garantie, pieces, user):
                 taux_tva=taux_tva_defaut,
             ))
 
-    facture = ecrire_facture_generee(_create, lignes)
+    facture = ecrire_facture_generee(lambda: create_provisoire(_create), lignes)
     ticket.facture_id_ext = facture.id
     ticket.save(update_fields=['facture_id_ext'])
     return facture
@@ -1407,7 +1407,7 @@ def generer_facture_intervention(*, intervention, user):
     VERROU ; s'il pointe vers une facture non annulée, elle est renvoyée
     telle quelle. Renvoie la ``Facture`` créée (ou réutilisée)."""
     from ..models import Facture
-    from ..utils.company_settings import tva_standard
+    from ..utils.company_settings import create_provisoire, tva_standard
 
     # AFAC92 — contrat ZFSM4 « hors contrat/ticket » : une intervention
     # rattachée à un ticket SAV se facture depuis le TICKET (XFSM1/XCTR4),
@@ -1477,7 +1477,7 @@ def generer_facture_intervention(*, intervention, user):
                 taux_tva=taux_tva_defaut,
             ))
 
-    facture = ecrire_facture_generee(_create, lignes)
+    facture = ecrire_facture_generee(lambda: create_provisoire(_create), lignes)
     intervention.facture_id = facture.id
     intervention.save(update_fields=['facture_id'])
     logger.info(

@@ -25,7 +25,7 @@ from decimal import Decimal, InvalidOperation
 
 from django.utils import timezone
 from drf_spectacular.utils import (
-    OpenApiParameter, extend_schema, inline_serializer)
+    OpenApiParameter, OpenApiResponse, extend_schema, inline_serializer)
 from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -814,7 +814,8 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         visite.refresh_from_db()
         return self._agregat(visite)
 
-    @extend_schema(responses={(200, 'image/png'): OpenApiTypes.BINARY})
+    @extend_schema(responses={(200, 'image/png'): OpenApiTypes.BINARY, 404: None,
+                              409: OpenApiResponse(description='Aucune image assemblée.')})
     @action(detail=True, methods=['get'], url_path='photo-toit')
     def photo_toit(self, request, pk=None):
         """Sert l'image assemblée par le proxy Django (jamais MinIO direct).

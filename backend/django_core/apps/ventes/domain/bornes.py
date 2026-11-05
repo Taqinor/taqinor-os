@@ -145,12 +145,12 @@ def verifier_capacite_facture(lignes):
 
 def ecrire_facture_generee(creer, lignes):
     """ENF47 — bornes vérifiées (409 hors capacité, plus de DataError 500)
-    PUIS facture provisoire (``creer(ref)``) + ses lignes : rien n'est écrit
-    sur un refus. Sert ``facturation_ops`` (ticket SAV, intervention)."""
+    PUIS facture provisoire (``creer()`` : le ``create_provisoire`` de
+    l'appelant, porte PA4.16) + ses lignes : rien n'est écrit sur un refus.
+    Sert ``facturation_ops`` (ticket SAV, intervention)."""
     from ..models import LigneFacture
-    from ..utils.company_settings import create_provisoire
     verifier_capacite_facture(lignes)
-    facture = create_provisoire(creer)
+    facture = creer()
     for ligne in lignes:
         LigneFacture.objects.create(facture=facture, **ligne)
     return facture
