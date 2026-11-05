@@ -373,6 +373,27 @@ class CrmAgentBrouillonSuiviTest(TestCase):
         self.assertEqual(resp.data['langue_servie'], 'fr')
         self.assertIn('Salma', resp.data['texte'])
 
+    def test_placeholder_vide_omis_jamais_une_accolade(self):
+        """ACVI110 — règle MRY13 : une phrase dont le placeholder est vide ou
+        inconnu est omise ; jamais « { » ni « je suis  de », repli compris."""
+        from apps.crm.models_cadence import MessageTemplate
+        MessageTemplate.objects.create(
+            company=self.company, nom='Relance devis', langue='fr',
+            corps=("Bonjour {prenom}. Je suis {conseiller} de {marque}. "
+                   "Votre étude pour {societe}. Valable jusqu'au {date_validite}."))
+        lead = self._lead('')
+        for objectif in ('relance_devis', 'reveil_froid'):
+            with self.subTest(objectif=objectif):
+                resp = self._appel(lead, objectif=objectif)
+                self.assertEqual(resp.status_code, 200, resp.data)
+                texte, lien = resp.data['texte'], resp.data['lien_wa_me']
+                self.assertTrue(texte.startswith('Bonjour Karim'), texte)
+                for interdit in ('{', 'je suis  de', "c'est  de", 'Je suis', "C'est"):
+                    self.assertNotIn(interdit, texte)
+                self.assertNotIn('%7B', lien)
+                self.assertNotIn('{', lien)
+        self.assertNotIn('Votre étude', self._appel(lead).data['texte'])
+
     def test_lead_oppose_409_sans_lien(self):
         """ACVI103 (D-ACVI-7) — opposé, perdu ou archivé : 409 nommé à chaque
         canal, ni texte ni lien, rien d'écrit ; hors portée : 404 d'abord."""
