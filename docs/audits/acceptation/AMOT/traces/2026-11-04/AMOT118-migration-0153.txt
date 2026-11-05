@@ -24,3 +24,8 @@ manage.py shell : REGLES_COURANTES 12 REGLES_ECARTS_0411 12 default 12
 => les 376 brouillons jamais envoyes passent 11 -> 12 ; les 43 envoyes/acceptes restent au niveau 11 ;
    un devis neuf nait en 12 (defaut du champ = REGLES_COURANTES = 12 ; les sondes AMOT de ce rejeu
    creent leurs devis a ce niveau).
+
+Retour (restauration de la pile en fin de rejeu, 05/11) : migrate ventes 0152
+  Unapplying ventes.0153_regles_calcul_niveau_12... OK
+  psql : niveau 12 = 0 devis ; 378 brouillons jamais envoyes au niveau 11 (les 376 + 2 V2 de revision creees
+  pendant le rejeu, nees en 12) ; envoyes/acceptes inchanges au niveau 11  => 12 -> 11 au retour.
