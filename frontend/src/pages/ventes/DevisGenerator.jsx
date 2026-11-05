@@ -1003,8 +1003,8 @@ export default function DevisGenerator({
     realBillMad, distributeur, baremeSociete, provenanceMois, realBillSaisi, leadDuDevis, leads,
     leadId, modeInstallation, clientsConnus, clientId, confirm, quoteLogic, editId, fHiver, fEte,
     // RGEN5 — niveau de règles du devis édité (`Devis.regles_calcul`, ancien calcul tant
-    // qu'il n'est pas lu) ; un devis neuf naît au niveau 3.
-    sizing, dispatchSizing, produits, discountPct, reglesCalcul: editId ? (editDevis?.regles_calcul ?? 0) : 3,
+    // qu'il n'est pas lu) ; devis neuf : null = règles courantes (AMOT125).
+    sizing, dispatchSizing, produits, discountPct, reglesCalcul: editId ? (editDevis?.regles_calcul ?? 0) : null,
   })
 
   // ── Mode d'installation (Résidentiel / Industriel-Commercial / Agricole) ──
