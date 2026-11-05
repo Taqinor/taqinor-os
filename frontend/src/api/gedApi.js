@@ -327,6 +327,23 @@ const gedApi = {
   // ══════════════════════════════════════════════════════════════════════
   // Infos du lien (message d'instruction + quota restant).
   getDepotPublic: (token) => api.get(`/ged/depot/${token}/`),
+  // ASEC77 — ouvre un partage public (page /ged/partage/:token) : GET direct
+  // sans mot de passe, POST `{password}` sinon (jamais en query string —
+  // ASEC39). Réponse en blob ; un corps d'erreur JSON est relu pour que
+  // `errMessage` affiche le message du serveur (dont « Trop d'essais »).
+  ouvrirPartagePublic: (token, password) => {
+    const url = `/ged/public/${token}/`
+    const req = password
+      ? api.post(url, { password }, { responseType: 'blob' })
+      : api.get(url, { responseType: 'blob' })
+    return req.catch(async (err) => {
+      const data = err?.response?.data
+      if (data && typeof data.text === 'function') {
+        try { err.response.data = JSON.parse(await data.text()) } catch { /* corps non JSON */ }
+      }
+      throw err
+    })
+  },
   // Dépose un fichier via le lien. `data` : { file, nom?, email? }.
   deposerPublique: (token, { file, nom, email }) => {
     const fd = new FormData()

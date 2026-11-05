@@ -822,7 +822,8 @@ class CodesGrilleAppliquesTests(TestCase):
         from apps.installations.models import Intervention
         interv = Intervention.objects.create(
             company=self.company, installation=self.chantier)
-        base = ['installation_voir', 'installation_gerer']
+        # ASEC72 — toute écriture d'intervention exige aussi intervention_gerer.
+        base = ['installation_voir', 'installation_gerer', 'intervention_gerer']
         sans, avec = self._paire(base, 'technicien_assign')
         url = f'/api/django/installations/interventions/{interv.pk}/'
         self._refus(sans.patch(url, {'technicien': self.collegue.pk},
@@ -969,8 +970,8 @@ class CodesGrilleAppliquesTests(TestCase):
 
     def test_technicien_assign_creation_intervention(self):
         from apps.installations.models import Intervention
-        sans, avec = self._paire(['installation_voir', 'installation_gerer'],
-                                 'technicien_assign')
+        sans, avec = self._paire(['installation_voir', 'installation_gerer',
+                                  'intervention_gerer'], 'technicien_assign')
         url = '/api/django/installations/interventions/'
         corps = {'installation': self.chantier.pk, 'type_intervention': 'pose'}
         avant = Intervention.objects.filter(company=self.company).count()

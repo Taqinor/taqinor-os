@@ -12,6 +12,7 @@ from ..models import Produit, MouvementStock
 from ..utils.params import choix_ou_400, date_ou_400, id_requete_ou_400
 from ..serializers import MouvementStockSerializer
 from authentication.permissions import IsAnyRole, IsAdminRole, HasPermissionOrLegacy
+from apps.roles.permissions import DroitDeLaGrille, droits_de_la_grille  # ASEC70
 import logging
 
 logger = logging.getLogger(__name__)
@@ -51,7 +52,7 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['export_xlsx', 'agregation', 'telecharger_export']:
-            return [IsAnyRole()]
+            return [IsAnyRole(), *droits_de_la_grille(self, export_xlsx=[DroitDeLaGrille('stock_export')])]
         elif self.action == 'create':
             return [HasPermissionOrLegacy('stock_mouvement')()]
         else:
@@ -92,7 +93,7 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
                                          status=serializers.CharField(), rows=serializers.IntegerField(),
                                          status_url=serializers.CharField())})
     @action(detail=False, methods=['post'], url_path='export-xlsx',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsAnyRole, DroitDeLaGrille('stock_export')])
     def export_xlsx(self, request):
         """FG60 — Export Excel de la liste des mouvements de stock (INTERNE).
         Prix d'achat jamais inclus.

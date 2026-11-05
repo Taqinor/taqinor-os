@@ -93,6 +93,15 @@
       ]
     },
     {
+      "nom": "confirmer_avoir_revision",
+      "url_path": "confirmer-avoir-revision",
+      "url_name": "confirmer-avoir-revision",
+      "detail": true,
+      "methodes": [
+        "post"
+      ]
+    },
+    {
       "nom": "contacter_superieur",
       "url_path": "contacter-superieur",
       "url_name": "contacter-superieur",
@@ -623,6 +632,7 @@
     "check_throttles",
     "composition",
     "conception_electrique",
+    "confirmer_avoir_revision",
     "contacter_superieur",
     "content_negotiation_class",
     "convertir_en_bc",

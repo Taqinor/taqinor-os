@@ -319,6 +319,36 @@ class GestesArgentTests(TestCase):
         self.assertEqual(Facture.objects.get(pk=brouillon.pk).statut,
                          Facture.Statut.EMISE)
 
+    def test_generer_facture_et_consolider_exigent_encaisser(self):
+        """ASEC67 (C-ASEC-VER4-010, D-AARG-3) — les jumelles d'émission
+        ``devis/<id>/generer-facture/`` et ``factures/consolider/`` : 403
+        sans ``encaisser``, aucune facture créée ; un Commercial (porte
+        ``encaisser``) émet toujours. Mutant : retirer une garde ⇒ échec."""
+        from apps.ventes.models import Facture
+        motif = "Émettre ou encaisser une facture exige le droit d'encaissement."
+        sans, commercial = (self.users['Commercial sans encaisser'],
+                            self.users['Commercial'])
+        api = self._api(sans)
+        avant = Facture.objects.filter(company=self.company).count()
+        d1 = self._devis(sans)
+        r = api.post(f'/api/django/ventes/devis/{d1.id}/generer-facture/',
+                     {}, format='json')
+        self.assertEqual(r.status_code, 403, r.data)
+        self.assertEqual(r.data['detail'], motif)
+        d2, d3 = self._devis(sans), self._devis(sans)
+        r = api.post('/api/django/ventes/factures/consolider/',
+                     {'devis_ids': [d2.id, d3.id]}, format='json')
+        self.assertEqual(r.status_code, 403, r.data)
+        self.assertEqual(r.data['detail'], motif)
+        self.assertEqual(
+            Facture.objects.filter(company=self.company).count(), avant)
+        # Le Commercial est borné à SES devis (portée « own ») : son propre devis.
+        d4 = self._devis(commercial)
+        r = self._api(commercial).post(
+            f'/api/django/ventes/devis/{d4.id}/generer-facture/', {},
+            format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+
     def test_lecture_argent_bornee_au_module_ventes(self):
         """AARG12 — paiements (+ reçu PDF), avoirs, notes de débit, bons de
         commande et promesses : 403 pour Admin RH (aucun code ventes), comme

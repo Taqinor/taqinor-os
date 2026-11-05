@@ -40,10 +40,17 @@ _DOSSIERS_EXCLUS = {'migrations', 'golden', '__pycache__', 'tests', 'node_module
 _FICHIERS_EXCLUS = {
     'apps/roles/permissions_registre.py',   # le catalogue lui-même
     'apps/accessreview/sod.py',             # paires incompatibles, pas une application
+    # ASEC73 — registres de l'agent : déclarent les droits d'une action
+    # d'assistant, ne gardent aucune vue (un code lu là seul est décoratif).
+    'apps/agent/registry.py',
 }
+_NOMS_EXCLUS = {'agent_actions.py'}         # ASEC73 — registre d'agent par app
 
 _C015 = ('A CORRIGER (C-ASEC-015, D-ASEC-4) : code affiché dans la grille mais jamais '
-         'vérifié côté serveur ; la garde est posée par ASEC29/ASEC31/ASEC50')
+         'vérifié côté serveur ; la garde est posée par ASEC70 (lane non foldée ici)')
+#: ASEC73 — révélés par l'exclusion des registres d'agent (S4, sans tâche).
+_C040 = ("A CORRIGER (C-ASEC-VER4-040, S4) : lu seulement par un registre d'agent "
+         "(agent_actions.py), aucune vue ne l'applique ; révélé par ASEC73, sans tâche")
 
 #: ASEC50 — code appliqué par ``DroitDeLaGrille`` dès son PREMIER endpoint ;
 #: aucun endpoint de ce geste n'existe aujourd'hui (inventaire du 14/10/2026 :
@@ -54,9 +61,8 @@ _ASEC50_SANS_ENDPOINT = (
 
 #: code -> raison. Décroissant : retirer la ligne dès que le code est consommé.
 EXEMPTIONS = {
-    'intervention_gerer': _C015,
-    'stock_export': _C015,
-    'ventes_modifier': _C015,
+    'stock_supprimer': _C040,
+    'ventes_pdf': _C040,
     # Un devis n'a pas de responsable propre (sa portée suit le lead) : aucun
     # endpoint ne réaffecte un devis — la réaffectation passe par le lead
     # (``crm_reassign``).
@@ -91,7 +97,7 @@ def _fichiers_serveur(racine):
         if set(rel.parts) & _DOSSIERS_EXCLUS:
             continue
         nom = p.name
-        if nom.startswith(('tests', 'test_')) or nom == 'conftest.py':
+        if nom.startswith(('tests', 'test_')) or nom in {'conftest.py', *_NOMS_EXCLUS}:
             continue
         if rel.as_posix() in _FICHIERS_EXCLUS:
             continue
@@ -177,3 +183,13 @@ class CodesAppliquesTests(SimpleTestCase):
             (racine / 'apps' / 'x' / 'tests_v.py').write_text(
                 "X = 'ventes_export'\n", encoding='utf-8')
             self.assertFalse(consommateurs(['ventes_export'], racine)['ventes_export'])
+            # ASEC73 — un littéral seul dans un registre d'agent ne consomme pas.
+            (racine / 'apps' / 'x' / 'agent_actions.py').write_text(
+                "DROIT = 'ventes_export'\n", encoding='utf-8')
+            (racine / 'apps' / 'agent').mkdir(parents=True)
+            (racine / 'apps' / 'agent' / 'registry.py').write_text(
+                "DROIT = 'ventes_export'\n", encoding='utf-8')
+            self.assertFalse(
+                consommateurs(['ventes_export'], racine)['ventes_export'])
+            self.assertIn('ventes_export', sans_consommateur(
+                ['ventes_export'], racine))
