@@ -44,6 +44,11 @@ def _exiger_devis_du_bc(devis, client):
         return
     if devis.statut != Devis.Statut.ACCEPTE:
         raise ConflitEtat('Le devis doit être accepté.')
+    if not Devis.objects.filter(pk=devis.pk, is_active=True).exists():  # AARG68 : relu sous le verrou
+        from ..domain.modifiabilite import corps_version_remplacee
+        conflit = ConflitEtat(corps := corps_version_remplacee(devis))
+        conflit.detail = corps  # corps VNT24 tel quel (patron AARG18)
+        raise conflit
     if client is None or client.pk != devis.client_id:
         raise ConflitEtat(
             'Le client du bon de commande doit être celui du devis.')
