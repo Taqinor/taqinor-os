@@ -83,11 +83,28 @@ class MesureJSON(ObjetJSON):
         return super().to_internal_value(data)
 
 
+class JSONPublie(serializers.JSONField):
+    """ENF48 (api-fuzz-pr XL1gwd) — un ``JSONField`` dont la forme lue par
+    ``validate_*`` est PUBLIÉE (``JSONField`` publiait « n'importe quoi » :
+    une liste de filtres était conforme puis 400)."""
+
+    def __init__(self, schema=None, **kwargs):
+        from drf_spectacular.drainage import set_override
+        super().__init__(**kwargs)
+        set_override(self, 'field', schema)
+
+
 class MetricDefinitionSerializer(UniciteEn409Mixin, ChampsStrictsMixin,
                                  serializers.ModelSerializer):
     """Une métrique nommée : clé, dataset, mesure, unité, filtres."""
 
     mesure = MesureJSON()  # ENF47 — forme publiée et appliquée, null refusé
+    # ENF48 — null publié et ramené à {} / [] par ``validate_*``.
+    filtres = JSONPublie(schema={'type': 'object', 'nullable': True},
+                         required=False, allow_null=True)
+    dimensions_par_defaut = JSONPublie(
+        schema={'type': 'array', 'nullable': True, 'items': _TEXTE_LU},
+        required=False, allow_null=True)
 
     class Meta:
         model = MetricDefinition
@@ -102,12 +119,8 @@ class MetricDefinitionSerializer(UniciteEn409Mixin, ChampsStrictsMixin,
         # ENF45 d : sans ``mesure`` (défaut ``{}``) ``MetricDefinition.clean``
         # refusait un corps que le schéma disait complet — elle est REQUISE à
         # la création (et au PUT) ; PATCH la garde facultative.
-        # ENF48 (api-fuzz-pr XL1gwd) : null est publié pour filtres et
-        # dimensions et ``validate_*`` le ramène à {} / [] — le champ l'accepte.
         extra_kwargs = {'cle': {'validators': [
-            RegexValidator(_CLE_VALIDE, message=_MESSAGE_CLE)]},
-            'filtres': {'allow_null': True},
-            'dimensions_par_defaut': {'allow_null': True}}
+            RegexValidator(_CLE_VALIDE, message=_MESSAGE_CLE)]}}
 
     def validate_cle(self, value):
         # La clé voyage dans les URL (`metriques/<cle>/valeur/`) et dans les
@@ -129,13 +142,15 @@ class MetricDefinitionSerializer(UniciteEn409Mixin, ChampsStrictsMixin,
         if not isinstance(value, dict):
             raise serializers.ValidationError(
                 'Les filtres doivent être un objet JSON.')
-        return value
+        from core.parseurs import sans_nul
+        return sans_nul(value)
 
     def validate_dimensions_par_defaut(self, value):
         if value in (None, ''):
             return []
         if (not isinstance(value, list)
-                or not all(isinstance(v, str) and v for v in value)):
+                or not all(isinstance(v, str) and v and '\x00' not in v
+                           for v in value)):
             raise serializers.ValidationError(
                 'Les dimensions par défaut doivent être une liste de noms de '
                 'champs.')

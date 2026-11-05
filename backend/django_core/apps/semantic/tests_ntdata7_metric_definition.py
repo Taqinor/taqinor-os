@@ -358,6 +358,19 @@ class PortabiliteTests(_BaseApi):
         self.assertFalse(MetricDefinition.objects.filter(
             company=self.company).exists())
 
+    def test_filtres_et_dimensions_nuls_acceptes_liste_refusee(self):
+        """ENF48 (api-fuzz-pr XL1gwd) : ``null`` est publié pour filtres et
+        dimensions (ramené à {} / []) ; une LISTE de filtres sort du schéma
+        publié (objet) → 400 nommé."""
+        entree = {'cle': 'bonne', 'libelle': 'B', 'dataset': 'ntdata10_societes',
+                  'mesure': {'agg': 'count'}, 'filtres': None,
+                  'dimensions_par_defaut': None}
+        reponse = self._import({'metriques': [entree]})
+        self.assertEqual(reponse.status_code, status.HTTP_200_OK, reponse.data)
+        reponse = self._import({'metriques': [{**entree, 'filtres': [None]}]})
+        self.assertEqual(reponse.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('filtres', str(reponse.data['metriques']))
+
     def test_modification_signee(self):
         self._creer()
         rapport = self._import({'commit': True, 'metriques': [{
