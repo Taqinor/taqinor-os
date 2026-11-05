@@ -6,7 +6,8 @@
   "couvre": [
     "AARG63",
     "AARG64",
-    "AARG68"
+    "AARG68",
+    "AARG69"
   ],
   "couvre_avec_ecart": [],
   "etapes": [
@@ -75,6 +76,28 @@
         "10": "NA"
       },
       "notes": "API reelle (responsable) : V1 acceptee Panneau 550W x3 -> BC1 livre (stock 7), V1 revisee en V2 acceptee (BC1 sur V2) ; PATCH bons-commande/<BC2>/ {devis: V1} => 409 {code version_remplacee, successeur {id V2, reference}, detail}, BC2 sans devis, stock 7 apres confirmer+livrer BC2 ; devis actif sans BC => PATCH 200 ; sonde C-AARG-VER5-020 repro False (sorties 3)"
+    },
+    {
+      "id": "W14.AARG69.relance_consignee_apres_envoi",
+      "taches": [
+        "AARG69"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-05-rejeux-w14/AARG69.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "API reelle (responsable), mail en memoire : facture en retard de 15 j, PDF en panne => relancer/ {niveau 1, envoyer_email true} 502 {detail exact, email_log_id}, RelanceLog 0, EmailLog echec 1 (= email_log_id), 0 mail, prochain niveau 1 inchange ; PDF reel => 200, 1 mail + PJ %PDF, RelanceLog 1 ; envoyer_email false => 200, RelanceLog 1, 0 mail ; sonde C-AARG-VER5-010 repro False"
     }
   ]
 }
