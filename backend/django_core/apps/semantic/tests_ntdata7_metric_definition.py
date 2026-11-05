@@ -321,9 +321,33 @@ class PortabiliteTests(_BaseApi):
             {'cle': 'mauvaise', 'libelle': 'M', 'dataset': 'ntdata10_societes',
              'mesure': {'agg': 'count'}, 'company': self.autre.pk},
         ]})
+        # ENF48 : la forme d'une entrée est PUBLIÉE (clés portables,
+        # ``additionalProperties: false``) — 400 nommé sur le corps.
         self.assertEqual(reponse.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertFalse(reponse.data['applique'])
-        self.assertIn('company', reponse.data['resultats'][1]['erreurs'])
+        self.assertIn('metriques', reponse.data)
+        self.assertIn('company', str(reponse.data['metriques']))
+        self.assertFalse(MetricDefinition.objects.filter(
+            company=self.company).exists())
+        # Même en dry-run (le schéma ne dépend pas du mode).
+        reponse = self._import({'metriques': [{'cle': 'x', 'id': 1}]})
+        self.assertEqual(reponse.status_code, status.HTTP_400_BAD_REQUEST)
+        # Valeur de forme invalide (motif de clé publié) : 400 aussi.
+        reponse = self._import({'metriques': [{'cle': 'Pas Une Cle'}]})
+        self.assertEqual(reponse.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_refus_d_etat_en_commit_409_rien_ecrit(self):
+        """ENF48 — création incomplète (dataset/mesure absents pour une clé
+        nouvelle) ou clé en double dans le document : dépend de l'état ou
+        du document entier, inexprimable au schéma → 409, rapport nommé."""
+        bonne = {'cle': 'bonne', 'libelle': 'B',
+                 'dataset': 'ntdata10_societes', 'mesure': {'agg': 'count'}}
+        for metriques in ([bonne, {'cle': 'incomplete'}], [bonne, bonne]):
+            reponse = self._import({'commit': True, 'metriques': metriques})
+            self.assertEqual(reponse.status_code, status.HTTP_409_CONFLICT,
+                             reponse.data)
+            self.assertFalse(reponse.data['applique'])
+            self.assertEqual(reponse.data['resultats'][1]['action'],
+                             'refusee')
         self.assertFalse(MetricDefinition.objects.filter(
             company=self.company).exists())
 

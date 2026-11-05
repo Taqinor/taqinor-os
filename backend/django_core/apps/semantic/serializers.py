@@ -10,6 +10,7 @@ import re
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import RegexValidator
+from drf_spectacular.extensions import OpenApiSerializerFieldExtension
 from rest_framework import serializers
 
 from core.champs_stricts import BooleenStrict, ChampsStrictsMixin
@@ -17,7 +18,7 @@ from core.parseurs import ObjetJSON
 from core.unicite import UniciteEn409Mixin
 
 from .models import AGREGATIONS, MetricDefinition
-from .portabilite import FORMAT, MAX_METRIQUES_IMPORT
+from .portabilite import CHAMPS_PORTABLES, FORMAT, MAX_METRIQUES_IMPORT
 
 #: Forme d'une clé de métrique (celle des 8 métriques cœur : ``ca_ht``, ``dso``).
 _CLE_VALIDE = re.compile(r'^[a-z][a-z0-9_]{0,79}$')
@@ -153,6 +154,44 @@ class MetricDefinitionSerializer(UniciteEn409Mixin, ChampsStrictsMixin,
         return attrs
 
 
+class EntreeMetriqueJSON(serializers.JSONField):
+    """ENF48 (api-fuzz-full 42074433075, « rejected schema-compliant ») — une
+    entrée d'import : un objet aux SEULES clés portables, clé requise, chaque
+    valeur jugée par le champ du CRUD (type, motif, forme de mesure) ; publié
+    TEL QUEL (propriétés du corps CRUD, ``additionalProperties: false``) et
+    refusé en 400 nommé, même en dry-run. Ce qui dépend de l'ÉTAT (métrique
+    existante ou non, champs requis à la création, doublon dans le document)
+    reste jugé ligne à ligne par ``portabilite``."""
+
+    def to_internal_value(self, data):
+        from core.parseurs import sans_nul
+        if not isinstance(data, dict):
+            raise serializers.ValidationError('Un objet JSON est attendu.')
+        inconnues = sorted(set(data) - set(CHAMPS_PORTABLES))
+        if inconnues:
+            raise serializers.ValidationError(
+                {k: 'Clé non portable (refusée).' for k in inconnues})
+        if 'cle' not in data:
+            raise serializers.ValidationError(
+                {'cle': 'Ce champ est obligatoire.'})
+        MetricDefinitionSerializer(partial=True).to_internal_value(data)
+        return super().to_internal_value(sans_nul(data))
+
+
+class _EntreeMetriqueSchema(OpenApiSerializerFieldExtension):
+    """Publie l'entrée : les propriétés PORTABLES du corps CRUD, rien d'autre."""
+    target_class = 'apps.semantic.serializers.EntreeMetriqueJSON'
+
+    def map_serializer_field(self, auto_schema, direction):
+        import copy
+        corps = auto_schema.resolve_serializer(
+            MetricDefinitionSerializer, 'request').schema or {}
+        proprietes = {k: v for k, v in (corps.get('properties') or {}).items()
+                      if k in CHAMPS_PORTABLES}
+        return {'type': 'object', 'properties': copy.deepcopy(proprietes),
+                'required': ['cle'], 'additionalProperties': False}
+
+
 class ImportMetriquesSerializer(serializers.Serializer):
     """NTDATA48 — corps de ``POST semantic/metriques/import/``.
 
@@ -173,7 +212,8 @@ class ImportMetriquesSerializer(serializers.Serializer):
         # ENF47 (api-fuzz-full 42017839549) : une entrée est un OBJET, publié
         # et appliqué (``ObjetJSON``) — une liste ou ``null`` était conforme
         # au schéma ``{}`` puis refusé ligne à ligne (400 en ``commit``). Le
-        # CONTENU d'un objet reste jugé ligne à ligne par ``portabilite``.
-        child=ObjetJSON(), allow_empty=True,
+        # CONTENU d'un objet est jugé par ``EntreeMetriqueJSON`` (ENF48), l'ÉTAT
+        # ligne à ligne par ``portabilite``.
+        child=EntreeMetriqueJSON(), allow_empty=True,
         max_length=MAX_METRIQUES_IMPORT)
     commit = BooleenStrict(required=False, default=False)
