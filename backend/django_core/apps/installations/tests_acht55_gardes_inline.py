@@ -27,7 +27,7 @@ from apps.installations.models import (
 from apps.roles.models import Role
 from apps.roles.permissions_registre import (
     ADMIN_RH_PERMISSIONS, COMMERCIAL_TERRAIN_PERMISSIONS,
-    RESPONSABLE_PERMISSIONS,
+    RESPONSABLE_PERMISSIONS, TECHNICIEN_PERMISSIONS,
 )
 from apps.stock.models import BonCommandeFournisseur, Fournisseur
 
@@ -103,3 +103,47 @@ class GardesInlineTests(TestCase):
         self.assertEqual(r.status_code, 200)
         r = api.get(f'{BASE}/chantiers/{self.chantier.id}/pack-remise/')
         self.assertEqual(r.status_code, 200)
+
+    def _sans(self, nom, code):
+        role = Role.objects.create(
+            company=self.company, nom=nom,
+            permissions=[c for c in TECHNICIEN_PERMISSIONS if c != code])
+        return User.objects.create_user(
+            username=f'{code}-acht55', password='x', company=self.company,
+            role=role)
+
+    def test_ecritures_intervention_exigent_intervention_gerer(self):
+        """ASEC72 (C-ASEC-VER4-040, D-ASEC-4) — un rôle = Technicien du
+        registre SANS ``intervention_gerer`` : 403 ``droit_manquant`` à la
+        création et au PATCH, rien d'écrit ; le Technicien du registre : 201 /
+        200. Mutant : retirer la garde ⇒ échec."""
+        from apps.installations.models import Intervention
+        prive = self._sans('Technicien sans intervention', 'intervention_gerer')
+        tech = User.objects.create_user(
+            username='tech-asec72', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom='Technicien',
+                                     permissions=list(TECHNICIEN_PERMISSIONS)))
+        corps = {'installation': self.chantier.id, 'type_intervention': 'pose',
+                 'date_prevue': '2026-12-18'}
+        iv = Intervention.objects.create(
+            company=self.company, installation=self.chantier,
+            type_intervention='pose', technicien=prive, compte_rendu='Origine')
+        api = self._api(prive)
+        for r in (api.post(f'{BASE}/interventions/', corps, format='json'),
+                  api.patch(f'{BASE}/interventions/{iv.id}/',
+                            {'compte_rendu': 'Pirate'}, format='json')):
+            self.assertEqual(r.status_code, 403, r.data)
+            self.assertEqual(r.data.get('code'), 'droit_manquant', r.data)
+        iv.refresh_from_db()
+        self.assertEqual(iv.compte_rendu, 'Origine')
+        self.assertEqual(Intervention.objects.filter(
+            company=self.company).count(), 1)
+        Installation.objects.filter(pk=self.chantier.pk).update(
+            technicien_responsable=tech)
+        api = self._api(tech)
+        r = api.post(f'{BASE}/interventions/', corps, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        Intervention.objects.filter(pk=iv.pk).update(technicien=tech)
+        r = api.patch(f'{BASE}/interventions/{iv.id}/',
+                      {'compte_rendu': 'Revue'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
