@@ -8,6 +8,7 @@ import Layout from '../layouts/Layout.astro';
 import V2Enhance from './V2Enhance.astro';
 import Breadcrumb from './Breadcrumb.astro';
 import CtaBand from './CtaBand.astro';
+import FichesGroupe from './FichesGroupe.astro';
 import StickyCta from './StickyCta.astro';
 import { fichesByCategorie, ficheDownloadHref } from '../lib/fiches';
 import { CATEGORIES_FICHE, enTeteFiche, type LocaleFiche } from '../lib/fichesLocale';
@@ -65,9 +66,7 @@ const S = {
     </section>
 
     {groups.map((g) => (
-      <section class="mx-auto max-w-6xl px-4 pb-4">
-        <h2 class="tech-label mb-5 text-brass-300">{CATEGORIES_FICHE[g.categorie][locale]}</h2>
-        <div class="grid gap-6 pb-10 md:grid-cols-2 lg:grid-cols-3" data-stagger>
+      <FichesGroupe titre={CATEGORIES_FICHE[g.categorie][locale]}>
           {g.fiches.map((f, i) => {
             const t = enTeteFiche(f, locale);
             const href = ficheDownloadHref(f);
@@ -91,8 +90,7 @@ const S = {
               </article>
             );
           })}
-        </div>
-      </section>
+      </FichesGroupe>
     ))}
 
     <section class="mx-auto max-w-6xl px-4 pb-16">

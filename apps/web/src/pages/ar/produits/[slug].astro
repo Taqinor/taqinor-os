@@ -1,11 +1,10 @@
 ---
 // WAUD87 — /ar/produits/<slug> : en-tête AR + repli FR explicite (components/FicheLocale.astro).
 import FicheLocale from '../../../components/FicheLocale.astro';
-import { FICHES, type Fiche } from '../../../lib/fiches';
+import type { Fiche } from '../../../lib/fiches';
+import { fichesStaticPaths } from '../../../lib/fichesStaticPaths';
 
-export function getStaticPaths() {
-  return FICHES.map((f) => ({ params: { slug: f.slug }, props: { fiche: f } }));
-}
+export const getStaticPaths = fichesStaticPaths;
 
 const { fiche } = Astro.props as { fiche: Fiche };
 ---
