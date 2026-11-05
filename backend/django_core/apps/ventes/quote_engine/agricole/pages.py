@@ -990,7 +990,11 @@ def _echeancier(d, lg):
                 and abs(_num(m.get("total")) - tot) < 0.005:
             montants = m
             break
-    cles = [cle for cle in CRENEAUX if _num(termes.get(cle))]
+    # AGNR66 — niveau 12 : un créneau coupé par la borne (``bornees``) reste
+    # imprimé, à son % dérivé et à son montant borné (0 compris).
+    bornees = ((montants or {}).get("bornees") or ()) \
+        if not d.get("regles_0411_historique") else ()
+    cles = [cle for cle in CRENEAUX if _num(termes.get(cle)) or cle in bornees]
     pcts = [_num(termes.get(cle)) for cle in cles]
     if not d.get("regles_echeancier_historique"):  # AGNR52 : % dérivé, dernier au reliquat (bloc C&I)
         pcts = _pcts_au_reliquat(pcts)

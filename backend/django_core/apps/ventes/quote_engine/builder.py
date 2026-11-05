@@ -2025,6 +2025,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     _branche_imprimee = branche_echeancier(devis, data, "sans" if option_servie == "sans" else (  # AMOT122
         "avec" if (deux_options or avec_ok) else "sans"), option_echeancier(devis))
     _cases = data["montants_tranches"].get(_branche_imprimee) or {}
+    if _cases.get("bornees") and regles_au_moins(devis, REGLES_ECARTS_0411):  # AGNR66 — dit au vendeur seul
+        avertissements_internes.append("échéancier au-delà du TTC : " + ", ".join(
+            _cases["bornees"]) + " borné(s) au reste — corrigez l'échéancier")
     # Règles d'origine (devis envoyé avant AMOT19) : ``payment_terms`` d'hier.
     if _cases and _corrige:
         if _cases.get("deux_cases"):

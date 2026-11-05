@@ -154,8 +154,11 @@ def repartition_paiement(total, termes, tranches_montant=None) -> dict:
         # Échéancier sans tranche matériel : le reliquat va au solde.
         solde = tot - acompte
         materiel = _D(0)
+    bornees = []  # AGNR66 — créneaux coupés par la borne ERR76 (dits au vendeur)
     if tranches_montant:
         montants = []
+        creneaux = (("acompte", "materiel", "solde") if len(tranches_montant) == 3
+                    else ("acompte",) + ("materiel",) * (len(tranches_montant) - 2) + ("solde",))
         for i, tr in enumerate(tranches_montant):
             if i == len(tranches_montant) - 1:
                 montants.append(tot - sum(montants, _D(0)))
@@ -169,6 +172,10 @@ def repartition_paiement(total, termes, tranches_montant=None) -> dict:
                         _D("0.01"), rounding=ROUND_HALF_UP)
                 # Borné au reste (ERR76) : aucune case négative.
                 montants.append(max(_D(0), min(m, tot - sum(montants, _D(0)))))
+                if montants[-1] < m:
+                    bornees.append(creneaux[i])
+        if bornees and creneaux[-1] not in bornees:
+            bornees.append(creneaux[-1])  # le reliquat ne reçoit plus sa part
         acompte = montants[0]
         materiel = montants[1] if len(montants) == 3 else _D(0)
         solde = montants[-1]
@@ -187,7 +194,7 @@ def repartition_paiement(total, termes, tranches_montant=None) -> dict:
                       else pm <= 0)
     solde2 = tot - acompte
     pct_s2 = 100 - pct_a
-    return {
+    cases = {
         "total": float(tot),
         "acompte": float(acompte), "materiel": float(max(materiel, _D(0))),
         "solde": float(solde),
@@ -196,6 +203,9 @@ def repartition_paiement(total, termes, tranches_montant=None) -> dict:
         "deux_cases": bool(deux_cases),
         "solde2": float(solde2), "pct_s2": _pct_simple(pct_s2),
     }
+    if bornees and tot > 0:
+        cases["bornees"] = list(dict.fromkeys(bornees))  # additif : absent sinon
+    return cases
 
 
 def branche_echeancier(devis, data, branche_hier, option_choisie):
