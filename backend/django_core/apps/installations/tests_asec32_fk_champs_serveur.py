@@ -55,7 +55,7 @@ class InterventionInstallationTests(TestCase):
 
     def test_technicien_etranger_404(self):
         r = self._patch_interv({'technicien': self.tech_b.pk})
-        self.assertEqual(r.status_code, 404, r.content)
+        self.assertEqual(r.status_code, 409, r.content)  # ENF45 a : mise à jour = 409
         self.assertIn('technicien', r.data)
         self.assertNotIn('secret', str(r.data))
         self.interv.refresh_from_db()
@@ -68,10 +68,10 @@ class InterventionInstallationTests(TestCase):
 
     def test_equipe_etrangere_404(self):
         r = self._patch_interv({'equipe_ref': self.equipe_b.pk})
-        self.assertEqual(r.status_code, 404, r.content)
+        self.assertEqual(r.status_code, 409, r.content)  # ENF45 a : mise à jour = 409
         self.assertIn('equipe_ref', r.data)
         r2 = self._patch_interv({'equipe': [self.tech_b.pk]})
-        self.assertEqual(r2.status_code, 404, r2.content)
+        self.assertEqual(r2.status_code, 409, r2.content)  # ENF45 a : mise à jour = 409
         self.assertIn('equipe', r2.data)
         self.interv.refresh_from_db()
         self.assertIsNone(self.interv.equipe_ref_id)
@@ -83,7 +83,7 @@ class InterventionInstallationTests(TestCase):
         r = self.api.patch(f'{BASE}/chantiers/{self.inst.pk}/',
                            {'technicien_responsable': self.tech_b.pk},
                            format='json')
-        self.assertEqual(r.status_code, 404, r.content)
+        self.assertEqual(r.status_code, 409, r.content)  # ENF45 a : mise à jour = 409
         self.assertIn('technicien_responsable', r.data)
         self.inst.refresh_from_db()
         self.assertIsNone(self.inst.technicien_responsable_id)

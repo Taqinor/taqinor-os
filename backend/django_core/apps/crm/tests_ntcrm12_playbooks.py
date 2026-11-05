@@ -83,6 +83,14 @@ class PlaybookEndToEndApiTests(TestCase):
             content_type='application/x-www-form-urlencoded')
         self.assertEqual(resp.status_code, 415)
 
+    def test_cocher_une_tache_inconnue_409(self):
+        # ENF11 (nocturne 41958593088, Da3Uj4) : le lead existe, seule la
+        # tâche du corps manque — 409, pas un 404 qui dirait le lead absent.
+        resp = self.client_api.post(
+            f'/api/django/crm/leads/{self.lead.pk}/playbook/',
+            {'tache': 27512, 'fait': True}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+
     def test_changement_stage_via_api_genere_puis_cocher_tache(self):
         resp = self.client_api.patch(
             f'/api/django/crm/leads/{self.lead.pk}/', {'stage': stages.QUOTE_SENT}, format='json')
@@ -248,7 +256,7 @@ class PlaybookEnfantsScopeTests(TestCase):
         resp = self.api.patch(
             f'/api/django/crm/playbook-etapes/{self.etape.pk}/',
             {'playbook': self.playbook_autre.pk, 'stage': stages.SIGNED}, format='json')
-        self.assertEqual(resp.status_code, 404, getattr(resp, 'data', resp))
+        self.assertEqual(resp.status_code, 409, getattr(resp, 'data', resp))  # ENF45 a : mise à jour = 409
         self.assertIn('playbook', resp.data)
         self.etape.refresh_from_db()
         self.assertEqual(self.etape.playbook_id, self.playbook.pk)

@@ -1,0 +1,118 @@
+# Preuve en direct AGNR70 - pile locale, code 93d4c7463 (dev-plan-6a6fc9-w13), 2026-11-05
+# Lanceur : python scripts/sonde.py (transaction annulee, mail en memoire, HTTP sortant bloque) ou node.
+# Sondes LIVE-* : repro=true signifie ICI que le comportement attendu par la tache est observe ;
+# sondes C-* d'audit : ECART (repro=false) = le defaut constate n'est plus reproduit.
+
+== LIVE-AGNR69-70 (sha 93d4c7463)
+attendu : niveau 12 : 12.6 partout (kwc_lu, build_quote_data sans/avec, PDF, puissance_kwc_du_devis, etude horaire, prix_par_kwc = TTC/12.6) ; watt illisible = 1re lisible ; niveau 11 : 11.0
+observé : {"repro": true, "ok_AGNR69": true, "ok_AGNR70": true, "observe": {"n12": {"kwc_lu_des_panneaux": 12.6, "build.puissance_kwc": 12.6, "build.par_option": {"sans": 12.6, "avec": 12.6}, "build.prix_kwc": {}, "puissance_kwc_du_devis": 12.6, "puissances_etude_horaire": [12.6, null], "patch_remise": 200, "apres_patch": {"ttc": "41000.00", "puissance_kwc": null, "prix_par_kwc": "3253.97", "ttc_sur_12_6": "3253.97", "ttc_sur_11_0": "3727.27"}, "proposal": {"http": 200, "kwc_imprimes": ["12,6 kWc"], "contextes_kwc": ["ES · PERFORMANCE GARANTIE 30 ANS · SUIVI EN TEMPS RÉEL 12,6 kWc Puissance", " A L L A T I O N Sans batterie 41 000,00 MAD soit 3 254 MAD/kWc · TTC 20 ", " T R E I N S TA L L AT I O N Le détail de votre projet 12,6 kWc installés"], "prix_kwc_attendu_sur_12_6": "3 254", "prix_kwc_attendu_present": true}}, "n11": {"kwc_lu_des_panneaux": 12.6, "build.puissance_kwc": 11.0, "build.par_option": {"sans": 11.0, "avec": 11.0}, "build.prix_kwc": {}, "puissance_kwc_du_devis": 11.0, "puissances_etude_horaire": [11.0, null], "patch_remise": 200, "apres_patch": {"ttc": "41000.00", "puissance_kwc": null, "prix_par_kwc": "3727.27", "ttc_sur_12_6": "3253.97", "ttc_sur_11_0": "3727.27"}}, "watt_illisible_n12": {"kwc_lu_des_panneaux": 11.0, "build.puissance_kwc": 11.0}}}
+verdict : REPRO
+base inchangée : oui (avant 8755, après 8755) ; mails 0 ; tâches Celery bloquées 0
+
+== C-AGNR-VER4-030 (sha 4cd568403)
+attendu : panneaux_et_watt_lu = (20, 550) ; puissance_kwc_du_devis = 11.0 (et non 12.6, le kWc que l'écran affiche et sur lequel il calcule prix/kWc et prix cible)
+observé : {'panneaux_et_watt_lu': [20, 550], 'puissance_kwc_du_devis': 12.6, 'kwc_somme_par_ligne_ecran': 12.6, 'build_quote_data.puissance_kwc': 12.6, 'build_quote_data.nb_panneaux': 20, 'build_quote_data.watt': None}
+{"repro": false, "panneaux_et_watt_lu": [20, 550], "puissance_kwc_du_devis": 12.6, "kwc_somme_par_ligne_ecran": 12.6, "build_quote_data.puissance_kwc": 12.6, "build_quote_data.nb_panneaux": 20, "build_quote_data.watt": null}
+verdict : ÉCART
+base inchangée : oui (avant 8755, après 8755) ; mails 0 ; tâches Celery bloquées 0
+
+# ---- source : C-LIVE-AGNR69-70.py ----
+# flake8: noqa  (preuve en direct AGNR69 + AGNR70, 05/11/2026)
+"""AGNR69 / AGNR70 — kWc Σ quantité × watt de CHAQUE ligne panneau. Brouillon neuf : Panneau Jinko 550W ×10 +
+Panneau Canadian Solar 710W ×10 + onduleur 10 kW. Niveau 12 :
+AGNR69 — `kwc_lu_des_panneaux` 12,6 ; `build_quote_data` puissance_kwc 12,6 (sans, avec) et prix/kWc sur 12,6 ;
+`/proposal` (vraie route, PDF lu par PyMuPDF) imprime 12,6 kWc ; une ligne au watt illisible (« Panneau maison »
+×10) prend le watt de la 1re ligne lisible (550 ⇒ 11,0 au lieu de compter 0) ; niveau 11 : 11,0.
+AGNR70 — `puissance_kwc_du_devis` 12,6 et `puissances_etude_horaire` 12,6 ; PATCH remise (vraie route, rafraîchit
+`prix_par_kwc`) ⇒ `prix_par_kwc` = total TTC ÷ 12,6 ; niveau 11 : 11,0. Admin, société neuve, transaction annulée."""
+SONDE = {"constat": "LIVE-AGNR69-70", "sha": "93d4c7463",
+         "attendu": "niveau 12 : 12.6 partout (kwc_lu, build_quote_data sans/avec, PDF, puissance_kwc_du_devis, etude horaire, prix_par_kwc = TTC/12.6) ; watt illisible = 1re lisible ; niveau 11 : 11.0",
+         "modeles": ["authentication.Company", "stock.Produit", "ventes.Devis", "ventes.LigneDevis", "crm.Client"]}
+
+
+def sonde(ctx):
+    import re
+    from decimal import Decimal
+    from django.contrib.auth import get_user_model
+    from rest_framework.test import APIClient
+    from authentication.models import Company
+    from apps.crm.models import Client
+    from apps.stock.models import Produit
+    from apps.ventes.models import Devis, LigneDevis
+    from apps.ventes.quote_engine.lignes_classement import kwc_lu_des_panneaux
+    from apps.ventes.quote_engine.builder import build_quote_data
+    from apps.ventes.domain.scenario import puissance_kwc_du_devis
+    from apps.ventes.domain.etudes import puissances_etude_horaire
+    from apps.ventes.utils.options import option_totaux
+    co = Company.objects.create(nom='Live AGNR69', slug='live-agnr69')
+    u = get_user_model().objects.create_user(username='live-agnr69', password='x', company=co, role_legacy='admin')
+    cl = Client.objects.create(company=co, nom='Client', prenom='L69G', email='live-agnr69@example.invalid')
+    api = APIClient()
+    api.force_authenticate(u)
+    seq = [0]
+
+    def produit(nom, pu):
+        seq[0] += 1
+        return Produit.objects.create(company=co, nom=nom, sku=f'L69G-{seq[0]}', prix_vente=Decimal(pu), quantite_stock=0)
+
+    def devis(niveau, second=('Panneau Canadian Solar 710W', '1300')):
+        d = Devis.objects.create(company=co, reference=f'DEV-L69G-{seq[0]}-{niveau}', client=cl,
+                                 statut=Devis.Statut.BROUILLON, taux_tva=Decimal('20'), mode_installation='residentiel')
+        for nom, pu, q in (('Panneau Jinko 550W', '1000', '10'), (second[0], second[1], '10'),
+                           ('Onduleur réseau Huawei 10kW Triphasé', '15000', '1')):
+            LigneDevis.objects.create(devis=d, produit=produit(nom, pu), designation=nom, quantite=Decimal(q),
+                                      prix_unitaire=Decimal(pu))
+        Devis.objects.filter(pk=d.pk).update(regles_calcul=niveau)
+        return Devis.objects.get(pk=d.pk)
+
+    def f(x):
+        return None if x is None else round(float(x), 3)
+
+    obs = {}
+    for niveau in (12, 11):
+        d = devis(niveau)
+        lignes = list(d.lignes.select_related('produit').all())
+        q = build_quote_data(d)
+        o = {'kwc_lu_des_panneaux': f(kwc_lu_des_panneaux(lignes)),
+             'build.puissance_kwc': f(q.get('puissance_kwc')),
+             'build.par_option': {b: f(q.get(f'puissance_kwc_{b}')) for b in ('sans', 'avec')},
+             'build.prix_kwc': {k: q.get(k) for k in ('prix_par_kwc', 'prix_kwc', 'price_per_kwc') if k in q},
+             'puissance_kwc_du_devis': f(puissance_kwc_du_devis(d)),
+             'puissances_etude_horaire': [f(x) for x in (puissances_etude_horaire(d) or ())]}
+        r = api.patch(f'/api/django/ventes/devis/{d.pk}/', {'remise_globale': '10'}, format='json', HTTP_HOST='localhost')
+        d = Devis.objects.get(pk=d.pk)
+        ttc = option_totaux(d)['ttc']
+        o['patch_remise'] = r.status_code
+        o['apres_patch'] = {'ttc': str(ttc), 'puissance_kwc': f(getattr(d, 'puissance_kwc', None)),
+                            'prix_par_kwc': str(d.prix_par_kwc),
+                            'ttc_sur_12_6': str((Decimal(ttc) / Decimal('12.6')).quantize(Decimal('0.01'))),
+                            'ttc_sur_11_0': str((Decimal(ttc) / Decimal('11.0')).quantize(Decimal('0.01')))}
+        if niveau == 12:
+            r = api.get(f'/api/django/ventes/devis/{d.pk}/proposal/', HTTP_HOST='localhost')
+            corps = b''.join(r.streaming_content) if getattr(r, 'streaming', False) else r.content
+            pdf = {'http': r.status_code}
+            if corps[:4] == b'%PDF':
+                import fitz
+                plat = re.sub(r'\s+', ' ', '\n'.join(pg.get_text() for pg in fitz.open(stream=corps, filetype='pdf')))
+                pdf['kwc_imprimes'] = sorted(set(re.findall(r'\d+[,.]\d+\s?kWc', plat)))[:10]
+                pdf['contextes_kwc'] = [plat[max(0, m.start() - 60):m.end() + 10] for m in re.finditer(r'kWc', plat)][:8]
+                attendu = f"{round(float(ttc) / 12.6):,}".replace(',', ' ')
+                pdf['prix_kwc_attendu_sur_12_6'] = attendu
+                pdf['prix_kwc_attendu_present'] = attendu in plat or attendu.replace(' ', ' ') in plat
+            o['proposal'] = pdf
+        obs[f'n{niveau}'] = o
+    # Watt illisible : seconde ligne « Panneau maison » (aucun watt lisible).
+    d = devis(12, second=('Panneau maison', '900'))
+    obs['watt_illisible_n12'] = {'kwc_lu_des_panneaux': f(kwc_lu_des_panneaux(list(d.lignes.select_related('produit')))),
+                                 'build.puissance_kwc': f(build_quote_data(d).get('puissance_kwc'))}
+    n12, n11 = obs['n12'], obs['n11']
+    ok69 = (n12['kwc_lu_des_panneaux'] == 12.6 and n12['build.puissance_kwc'] == 12.6
+            and n12['build.par_option']['sans'] == 12.6 and n12['build.par_option']['avec'] in (12.6, None)
+            and n12['proposal'].get('prix_kwc_attendu_present')
+            and any('12,6' in k or '12.6' in k for k in n12['proposal'].get('kwc_imprimes', []))
+            and n11['build.puissance_kwc'] == 11.0 and obs['watt_illisible_n12']['build.puissance_kwc'] == 11.0)
+    ok70 = (n12['puissance_kwc_du_devis'] == 12.6 and 12.6 in n12['puissances_etude_horaire']
+            and n12['patch_remise'] == 200 and n12['apres_patch']['prix_par_kwc'] == n12['apres_patch']['ttc_sur_12_6']
+            and n11['puissance_kwc_du_devis'] == 11.0)
+    return {'repro': bool(ok69 and ok70), 'ok_AGNR69': ok69, 'ok_AGNR70': ok70, 'observe': obs}
+

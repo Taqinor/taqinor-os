@@ -78,7 +78,7 @@ class TicketFkEtChampsServeurTests(TestCase):
     def _assert_refus(self, champ, valeur):
         r = self._patch({champ: valeur})
         # CI #997 api-fuzz : id d'ailleurs = id inconnu → 404 (``IdInconnu404Mixin``).
-        self.assertEqual(r.status_code, 404, r.data)
+        self.assertEqual(r.status_code, 409, r.data)  # ENF45 a : mise à jour = 409
         self.assertIn(champ, r.data)
         self.assertNotIn('secrète', str(r.data))
         self.ticket.refresh_from_db()
@@ -104,7 +104,7 @@ class TicketFkEtChampsServeurTests(TestCase):
     def test_id_inexistant_meme_reponse(self):
         r_etr = self._patch({'categorie': self.cat_b.id})
         r_abs = self._patch({'categorie': 999999})
-        self.assertEqual(r_abs.status_code, 404)
+        self.assertEqual(r_abs.status_code, 409)  # ENF45 a : mise à jour = 409
         self.assertEqual(
             str(r_etr.data['categorie'][0]).replace(str(self.cat_b.id), '?'),
             str(r_abs.data['categorie'][0]).replace('999999', '?'))
@@ -265,7 +265,7 @@ class FkSavBorneesSocieteTests(TestCase):
         url = f'/api/django/sav/tickets/{self.a.ticket.pk}/'
         r = api.patch(url, {'equipement': self.b.equipement.pk},
                       format='json')
-        self.assertEqual(r.status_code, 404, r.data)
+        self.assertEqual(r.status_code, 409, r.data)  # ENF45 a : mise à jour = 409
         self.assertIn('equipement', r.data)
         self.a.ticket.refresh_from_db()
         self.assertIsNone(self.a.ticket.equipement_id)

@@ -135,7 +135,8 @@ class RecevoirDelegueTests(TestCase):
             taux_echantillon_pct=100)
         bc, ligne = self._bcf(15)
         rep = self._recevoir(bc, ligne, 15)
-        self.assertEqual(rep.status_code, 400, rep.data)
+        # ENF11 (nocturne 41958593088) : verdict manquant = état, 409.
+        self.assertEqual(rep.status_code, 409, rep.data)
         self.assertIn("plan d'échantillonnage", rep.data['detail'])
         # Rien n'est écrit : ni réception, ni stock, ni quantité reçue.
         self.assertFalse(

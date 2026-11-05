@@ -691,6 +691,12 @@ _FICHIERS_VALIDES = (
     (re.compile(_GED + r'deposer-lot-scans-separe/$'), {'POST'},
      {'files': _PNG_MINIMAL}),
     (re.compile(_GED + r'import-masse/$'), {'POST'}, {'csv': _CSV_MINIMAL}),
+    # Nocturne 41958593088 (tranche 13, HrXXRu) — dépôt PUBLIC par lien :
+    # ``store_attachment`` lit les octets magiques (PDF, PNG, JPEG, WebP) ;
+    # des octets quelconques sont « Format non supporté » (400), le schéma ne
+    # dit que ``format: binary``.
+    (re.compile(r'^/api/django/ged/depot/\{[^}]+\}/$'), {'POST'},
+     {'file': _PDF_MINIMAL}),
     # CI #997 (2e passe) — pièce jointe polymorphe de records : un part sans
     # nom ni octets est « Aucun fichier fourni » (400) ; le serveur valide
     # les octets magiques, inexprimable dans le schéma.

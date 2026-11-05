@@ -72,7 +72,7 @@ class ParametrageRelanceSocieteTests(TestCase):
     def test_patch_client_etranger_404(self):
         r = self.a['api'].patch(f'{URL}{self.param_a}/', {
             'client': self.b['client'].id, 'mode': 'manuel'}, format='json')
-        self.assertEqual(r.status_code, 404, r.data)  # ENF11
+        self.assertEqual(r.status_code, 409, r.data)  # ENF11
         self.assertIn('client', r.data)
         param = self._relire_param_a()
         self.assertEqual(param.client_id, self.a['client'].id)
@@ -81,7 +81,7 @@ class ParametrageRelanceSocieteTests(TestCase):
     def test_put_client_etranger_404(self):
         r = self.a['api'].put(f'{URL}{self.param_a}/', {
             'client': self.b['client'].id, 'mode': 'manuel'}, format='json')
-        self.assertEqual(r.status_code, 404, r.data)  # ENF11
+        self.assertEqual(r.status_code, 409, r.data)  # ENF11
         param = self._relire_param_a()
         self.assertEqual(param.client_id, self.a['client'].id)
 

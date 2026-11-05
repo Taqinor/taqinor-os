@@ -10,6 +10,7 @@ from django.test import TestCase
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 
 from authentication.models import Company
+from core.conflit_etat import ConflitEtat
 from core.entite_scoping import assert_entite_assignable
 
 User = get_user_model()
@@ -55,6 +56,14 @@ class EntiteScopingTests(TestCase):
         for entite_id in (self.e_b.id, 999999999):
             with self.assertRaises(NotFound) as ctx:
                 assert_entite_assignable(self.libre, entite_id, inconnu_404=True)
+            self.assertEqual(ctx.exception.detail['entite'][0].code,
+                             'does_not_exist')
+            # ENF45 a — sur une mise à jour : 409, MÊME corps.
+            with self.assertRaises(ConflitEtat) as ctx:
+                assert_entite_assignable(self.libre, entite_id,
+                                         inconnu_404=True, mise_a_jour=True)
+            self.assertEqual(ctx.exception.status_code, 409)
+            self.assertEqual(list(ctx.exception.detail), ['entite'])
             self.assertEqual(ctx.exception.detail['entite'][0].code,
                              'does_not_exist')
         with self.assertRaises(ValidationError):

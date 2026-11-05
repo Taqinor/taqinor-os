@@ -1,0 +1,108 @@
+# Preuve en direct AARG63 - pile locale, code 93d4c7463 (dev-plan-6a6fc9-w13), 2026-11-05
+# Lanceur : python scripts/sonde.py (transaction annulee, mail en memoire, HTTP sortant bloque) ou node.
+# Sondes LIVE-* : repro=true signifie ICI que le comportement attendu par la tache est observe ;
+# sondes C-* d'audit : ECART (repro=false) = le defaut constate n'est plus reproduit.
+
+== LIVE-AARG63 (sha 93d4c7463)
+attendu : A : 409 detail, F1 annulee, A1 emise, 0 avoir_annule, 1 vivante ; B : 200, F1 emise, 1 avoir_annule ; C : 409, F1 annulee
+observé : {"repro": true, "observe": {"A": {"f2_emise": 200, "http": 409, "detail": "Émission refusée : la vente DEV-L63-A (1200.00 MAD TTC) est déjà facturée à 1200.00 MAD par FAC-202611-0002 ; cette facture (1200.00 MAD) la dépasserait. Annulez ce brouillon ou corrigez par un avoir.", "F1": "annulee", "A1": "emise", "avoir_annule_emis": [], "vivantes": 1}, "B": {"http": 200, "F1": "emise", "A1": "annulee", "avoir_annule_emis": 1}, "C": {"http": 409, "detail": "Le devis DEV-L63-C n'est plus accepté : la facture FAC-202611-0004 ne peut pas être restaurée.", "F1": "annulee", "avoir_annule_emis": 0}}}
+verdict : REPRO
+base inchangée : oui (avant 669, après 669) ; mails 0 ; tâches Celery bloquées 0
+
+== C-AARG-002 (sha 2781a2049)
+attendu : repro si l'annulation de A1 rend 200 et laisse 2 factures vivantes (F1 restaurée + F2) dont Σ dû = 2 × TTC ; sain : 400/409 tant que F2 vit
+observé : {'etapes': {'creer_bc': [201, None], 'confirmer': [200, None], 'creer_F1': [201, None], 'emettre_F1': [200, None], 'F1_apres_emission': ['FAC-202611-0001', 'emise', '1200.00', '1200.00'], 'F1_apres_annulation': ['annulee', 'AVO-202611-0001', '1200.00'], 'creer_F2': [201, None], 'emettre_F2': [200, None], 'annuler_A1': [409, "{'detail': ErrorDetail(string='Émission refusée : la vente DEV-V502 (1200.00 MAD TTC) est déjà facturée à 1200.00 MAD par FAC-202611-0002 ; cette facture (1200."]}, 'vivantes': [['F2', 'FAC-202611-0002', 'emise', '1200.00', '1200.00', 172]], 'somme_du': '1200.00', 'ttc_vente': '1200.00', 'bc1': 172, 'A1_statut': 'emise'}
+{"etapes": {"creer_bc": [201, null], "confirmer": [200, null], "creer_F1": [201, null], "emettre_F1": [200, null], "F1_apres_emission": ["FAC-202611-0001", "emise", "1200.00", "1200.00"], "F1_apres_annulation": ["annulee", "AVO-202611-0001", "1200.00"], "creer_F2": [201, null], "emettre_F2": [200, null], "annuler_A1": [409, "{'detail': ErrorDetail(string='Émission refusée : la vente DEV-V502 (1200.00 MAD TTC) est déjà facturée à 1200.00 MAD par FAC-202611-0002 ; cette facture (1200."]}, "vivantes": [["F2", "FAC-202611-0002", "emise", "1200.00", "1200.00", 172]], "somme_du": "1200.00", "ttc_vente": "1200.00", "bc1": 172, "A1_statut": "emise", "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 669, après 669) ; mails 0 ; tâches Celery bloquées 0
+
+# ---- source : C-LIVE-AARG63.py ----
+# flake8: noqa  (preuve en direct AARG63, 05/11/2026)
+"""AARG63 — restauration d'une facture par la seule porte `restaurer_facture`. Devis accepté 1 200 TTC → BC1 (vraie API)
+→ creer-facture → F1 émise ; `annuler_facture(F1)` (avoir miroir A1). (A) F2 créée par le BC1 puis émise ⇒
+POST avoirs/<A1>/annuler/ : 409 {detail}, F1 annulée, A1 émis, `avoir_annule` non émis, une seule facture vivante.
+(B) sans F2 : 200, F1 émise, `avoir_annule` émis. (C) devis repassé « envoyé » : 409, F1 annulée. Admin, société
+neuve, transaction annulée."""
+SONDE = {"constat": "LIVE-AARG63", "sha": "93d4c7463",
+         "attendu": "A : 409 detail, F1 annulee, A1 emise, 0 avoir_annule, 1 vivante ; B : 200, F1 emise, 1 avoir_annule ; C : 409, F1 annulee",
+         "modeles": ["ventes.Devis", "ventes.BonCommande", "ventes.Facture", "ventes.Avoir", "ventes.LigneFacture"]}
+
+
+def sonde(ctx):
+    from decimal import Decimal
+    from django.contrib.auth import get_user_model
+    from rest_framework.test import APIClient
+    from authentication.models import Company
+    from apps.crm.models import Client
+    from apps.stock.models import Produit
+    from apps.ventes.models import Devis, LigneDevis, Facture, Avoir
+    from apps.ventes.domain.annulation_facture import annuler_facture
+    from core.events import avoir_annule
+    H = {'HTTP_HOST': 'localhost'}
+    B = '/api/django/ventes'
+    co = Company.objects.create(nom='Live AARG63', slug='live-aarg63')
+    u = get_user_model().objects.create_user(username='live_aarg63', password='x', role_legacy='admin', company=co)
+    api = APIClient()
+    api.force_authenticate(u)
+    cl = Client.objects.create(company=co, nom='Client', prenom='L63', email='l63@example.invalid')
+    p = Produit.objects.create(company=co, nom='Kit L63', sku='LIVE-L63', prix_vente=Decimal('1000'), quantite_stock=50)
+    emis = []
+
+    def _compter(sender, instance=None, **kwargs):
+        emis.append(instance.pk)
+    avoir_annule.connect(_compter, weak=False)
+
+    def preparer(suffixe):
+        d = Devis.objects.create(company=co, reference=f'DEV-L63-{suffixe}', client=cl, statut='accepte',
+                                 taux_tva=Decimal('20'), created_by=u)
+        LigneDevis.objects.create(devis=d, produit=p, designation='Centrale L63', quantite=Decimal('1'),
+                                  prix_unitaire=Decimal('1000'))
+        r = api.post(B + '/bons-commande/', {'client': cl.pk, 'devis': d.pk}, format='json', **H)
+        assert r.status_code == 201, r.data
+        bc = r.data['id']
+        api.post(f'{B}/bons-commande/{bc}/confirmer/', {}, format='json', **H)
+        r = api.post(f'{B}/bons-commande/{bc}/creer-facture/', {}, format='json', **H)
+        assert r.status_code == 201, r.data
+        f1 = r.data['id']
+        r = api.post(f'{B}/factures/{f1}/emettre/', {}, format='json', **H)
+        assert r.status_code == 200, r.data
+        annuler_facture(Facture.objects.get(pk=f1), user=u, directive=None)
+        return d, bc, f1, Avoir.objects.get(facture_id=f1)
+
+    obs = {}
+    try:
+        # (A) vente refacturée
+        d, bc, f1, a1 = preparer('A')
+        r = api.post(f'{B}/bons-commande/{bc}/creer-facture/', {}, format='json', **H)
+        f2 = r.data['id']
+        r2 = api.post(f'{B}/factures/{f2}/emettre/', {}, format='json', **H)
+        emis.clear()
+        r = api.post(f'{B}/avoirs/{a1.id}/annuler/', {}, format='json', **H)
+        obs['A'] = {'f2_emise': r2.status_code, 'http': r.status_code,
+                    'detail': str((r.data or {}).get('detail'))[:200] if r.status_code >= 400 else None,
+                    'F1': Facture.objects.get(pk=f1).statut, 'A1': Avoir.objects.get(pk=a1.pk).statut,
+                    'avoir_annule_emis': list(emis),
+                    'vivantes': Facture.objects.filter(devis=d).exclude(statut='annulee').count()}
+        # (B) sans refacturation
+        d, bc, f1, a1 = preparer('B')
+        emis.clear()
+        r = api.post(f'{B}/avoirs/{a1.id}/annuler/', {}, format='json', **H)
+        obs['B'] = {'http': r.status_code, 'F1': Facture.objects.get(pk=f1).statut,
+                    'A1': Avoir.objects.get(pk=a1.pk).statut, 'avoir_annule_emis': len(emis)}
+        # (C) devis repassé envoyé
+        d, bc, f1, a1 = preparer('C')
+        Devis.objects.filter(pk=d.pk).update(statut='envoye')
+        emis.clear()
+        r = api.post(f'{B}/avoirs/{a1.id}/annuler/', {}, format='json', **H)
+        obs['C'] = {'http': r.status_code,
+                    'detail': str((r.data or {}).get('detail'))[:200] if r.status_code >= 400 else None,
+                    'F1': Facture.objects.get(pk=f1).statut, 'avoir_annule_emis': len(emis)}
+    finally:
+        avoir_annule.disconnect(_compter)
+    a, b, c = obs['A'], obs['B'], obs['C']
+    ok = (a['http'] == 409 and a['detail'] and a['F1'] == 'annulee' and a['A1'] == 'emise'
+          and a['avoir_annule_emis'] == [] and a['vivantes'] == 1
+          and b['http'] == 200 and b['F1'] in ('emise', 'en_retard') and b['avoir_annule_emis'] == 1
+          and c['http'] == 409 and c['F1'] == 'annulee')
+    return {'repro': bool(ok), 'observe': obs}
+

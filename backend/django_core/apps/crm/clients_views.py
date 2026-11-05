@@ -1964,10 +1964,10 @@ def lead_playbook_view(request, lead_id):
     fait = booleen_param(corps, 'fait') if 'fait' in corps else True
     progress = LeadPlaybookProgress.objects.filter(
         lead=lead, tache_id=tache_id).first()
-    if progress is None:
+    if progress is None:  # ENF11 : le lead existe, la tâche du corps non = 409
         return Response(
             {'detail': 'Tâche de playbook introuvable pour ce lead.'},
-            status=status.HTTP_404_NOT_FOUND)
+            status=status.HTTP_409_CONFLICT)
     from django.utils import timezone as _tz
     progress.fait = fait
     progress.fait_par = request.user if fait else None

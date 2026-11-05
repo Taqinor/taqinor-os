@@ -3,7 +3,7 @@
 Corrections de fuzz nocturne : corps non objet, valeur hors bornes
 (DecimalField(12, 2) -> débordement SQL = 500), date non texte ou hors bornes.
 """
-from datetime import date
+from datetime import date, timezone as dt_timezone
 from decimal import Decimal, InvalidOperation
 
 from django.utils import timezone
@@ -46,6 +46,14 @@ def datetime_du_corps(corps, champ):
         valeur = None
     if valeur is None:
         raise ValidationError({champ: 'Date-heure invalide.'})
+    if valeur.tzinfo is not None:
+        # ENF11 (nocturne 41958593088, cp6rAe) : un décalage de +22:09 est lu
+        # par Python mais refusé par PostgreSQL (« time zone displacement out
+        # of range », 500) — ramené en UTC ; un instant hors calendrier = 400.
+        try:
+            valeur = valeur.astimezone(dt_timezone.utc)
+        except (OverflowError, ValueError):
+            raise ValidationError({champ: 'Date-heure hors bornes.'})
     return valeur
 
 

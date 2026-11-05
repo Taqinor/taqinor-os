@@ -21,6 +21,7 @@ import json
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
+from drf_spectacular.openapi import AutoSchema
 from drf_spectacular.utils import (
     OpenApiParameter, extend_schema, inline_serializer,
 )
@@ -199,6 +200,45 @@ class MetricDefinitionViewSet(CompanyScopedModelViewSet):
         return Response(rapport, status=code)
 
 
+#: ENF45 c (api-fuzz-full 41958593088) — paramètres de requête qui portent un
+#: OBJET JSON (``?filters={"statut":"ouvert"}``) : publiés ``type: string``, le
+#: fuzz y envoyait « 2 » ou un texte libre, conformes au schéma et refusés
+#: (400). Ils sont publiés tels que la vue les lit : ``content:
+#: application/json`` + schéma objet (OpenAPI 3, « parameter content »). La
+#: validation serveur (``_json_param``, liste blanche du moteur) est inchangée ;
+#: ``period`` accepte toujours aussi « debut,fin » en texte.
+_OBJET_JSON = {'type': 'object'}
+_PERIODE_JSON = {
+    'type': 'object',
+    'properties': {
+        'debut': {'type': 'string', 'format': 'date'},
+        'fin': {'type': 'string', 'format': 'date'},
+        'champ': {'type': 'string', 'minLength': 1},
+    },
+}
+
+
+class _SchemaParametresJson(AutoSchema):
+    """AutoSchema qui publie les paramètres de ``parametres_json`` en
+    ``content: application/json`` (drf-spectacular 0.30 n'expose pas
+    ``content`` sur ``OpenApiParameter``). Déclaration de schéma UNIQUEMENT :
+    aucune route, aucune lecture ni réponse ne change."""
+
+    parametres_json = {'period': _PERIODE_JSON, 'filters': _OBJET_JSON,
+                       'cellule': _OBJET_JSON}
+
+    def get_operation(self, *args, **kwargs):
+        operation = super().get_operation(*args, **kwargs)
+        for parametre in (operation or {}).get('parameters', []):
+            schema = self.parametres_json.get(parametre.get('name'))
+            if parametre.get('in') != 'query' or schema is None:
+                continue
+            for cle in ('schema', 'style', 'explode'):
+                parametre.pop(cle, None)
+            parametre['content'] = {'application/json': {'schema': dict(schema)}}
+        return operation
+
+
 def _json_param(brut, nom, attendu):
     """Un paramètre de requête JSON, du type ``attendu`` (400 sinon)."""
     if brut in (None, ''):
@@ -257,6 +297,7 @@ class MetriqueValeurView(APIView):
     """
 
     permission_classes = [IsResponsableOrAdmin]
+    schema = _SchemaParametresJson()
 
     @extend_schema(
         parameters=[
@@ -428,6 +469,7 @@ class MetriqueExpliquerView(APIView):
     """
 
     permission_classes = [IsResponsableOrAdmin]
+    schema = _SchemaParametresJson()
 
     @extend_schema(
         parameters=[

@@ -255,8 +255,10 @@ class DevisEnvoiActionsMixin:
             return Response({'detail': invalide},
                             status=status.HTTP_400_BAD_REQUEST)
         # ADEV20 (C-ADEV-021) — un code de lecture exigé d'un client qu'aucun
-        # canal ne peut joindre rendrait le lien illisible pour toujours : 400
+        # canal ne peut joindre rendrait le lien illisible pour toujours : 409
         # qui nomme ``otp_lecture``, AVANT tout effet (gamme, mint, statut).
+        # ENF11 (nocturne 41958593088) : le corps est conforme, c'est l'ÉTAT
+        # de la fiche client (sans e-mail) qui s'oppose — 409, plus 400.
         if 'otp_lecture' in request.data \
                 and bool(request.data.get('otp_lecture')):
             from ..domain.cycle_vie import canal_otp_disponible
@@ -266,7 +268,7 @@ class DevisEnvoiActionsMixin:
                         "Ce client n'a ni e-mail ni canal actif : aucun code "
                         "de lecture ne pourrait lui parvenir. Renseignez son "
                         "e-mail ou désactivez le code d'accès."]},
-                    status=status.HTTP_400_BAD_REQUEST)
+                    status=status.HTTP_409_CONFLICT)
         # QJR539 — garde T17 AVANT tout effet d'un ENVOI (gamme, mint, statut).
         if request.data.get('envoi'):
             # ADEV7 — une version remplacée ne s'envoie plus (409).
