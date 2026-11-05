@@ -669,12 +669,18 @@ class Facture(TotauxDocumentMixin, models.Model):
     @property
     def echeance_appliquee(self):
         """AFAC48 — l'échéance réellement appliquée : ``date_echeance`` si
-        posée, sinon (facture émise historique sans date) émission +
+        posée, sinon (facture émise historique sans date) émission + délai
+        négocié du client (AARG70, fin de mois comprise), sinon émission +
         ``DEFAULT_ECHEANCE_DAYS`` ; ``None`` pour un brouillon sans date."""
         if self.date_echeance:
             return self.date_echeance
         if self.statut == self.Statut.BROUILLON or not self.date_emission:
             return None
+        client = self.client if self.client_id else None
+        derivee = echeance_selon_delai(self.date_emission, getattr(client, 'delai_paiement_jours', None),
+                                       getattr(client, 'fin_de_mois', False))
+        if derivee is not None:
+            return derivee
         from datetime import timedelta
         return self.date_emission + timedelta(days=DEFAULT_ECHEANCE_DAYS)
 
@@ -1459,3 +1465,16 @@ models.signals.post_save.connect(
 models.signals.post_delete.connect(
     _ligne_facture_ecrite, sender=LigneFacture,
     dispatch_uid='atot55_total_stocke_ligne_delete')
+
+
+def echeance_selon_delai(date_emission, delai_jours, fin_de_mois):
+    """AARG70 — émission + délai négocié (reporté en fin de mois si demandé) ;
+    ``None`` sans délai. Pure : le client est lu par sa FK, jamais importé."""
+    if not delai_jours or date_emission is None:
+        return None
+    import calendar
+    from datetime import timedelta
+    echeance = date_emission + timedelta(days=int(delai_jours))
+    if fin_de_mois:
+        echeance = echeance.replace(day=calendar.monthrange(echeance.year, echeance.month)[1])
+    return echeance
