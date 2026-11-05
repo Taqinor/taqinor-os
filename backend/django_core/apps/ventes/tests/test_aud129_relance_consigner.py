@@ -115,3 +115,31 @@ class TestAud129RelanceConsigner(TestCase):
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn(
             'Message générique du niveau configuré.', mail.outbox[0].body)
+
+    def test_envoi_en_echec_ne_consomme_pas_le_niveau(self):
+        """AARG69 (C-AARG-VER5-010) — PDF en panne : l'e-mail ne part pas ⇒
+        502 `{detail, email_log_id}`, aucune `RelanceLog`, le prochain niveau
+        reste 1 ; l'essai suivant réussi consigne le niveau 1.
+        Mutant : recréer le log avant l'envoi ⇒ échec."""
+        from unittest import mock
+        from apps.ventes.domain.recouvrement import prochain_niveau
+        with mock.patch('apps.ventes.email_service._document_pdf',
+                        return_value=(None, None)):
+            resp = self.api.post(
+                self._url(), {'niveau': 1, 'envoyer_email': True},
+                format='json')
+        self.assertEqual(resp.status_code, 502, resp.data)
+        self.assertEqual(
+            resp.data['detail'],
+            "L'e-mail de relance n'est pas parti : aucune relance consignée.")
+        log = EmailLog.objects.get(pk=resp.data['email_log_id'])
+        self.assertEqual(log.statut, EmailLog.Statut.ECHEC)
+        # CLAUSE PERSISTANCE — relu en base.
+        self.assertFalse(
+            RelanceLog.objects.filter(facture=self.facture).exists())
+        self.assertEqual(prochain_niveau(self.facture)[0].ordre, 1)
+        resp = self.api.post(
+            self._url(), {'niveau': 1, 'envoyer_email': True}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(RelanceLog.objects.get(
+            facture=self.facture).niveau, 1)
