@@ -457,8 +457,13 @@ def _facturer_acompte(devis, plan, *, user, montant, cle_attendue, libelle):
                          if str(t['type']) == 'acompte'
                          and t['statut'] != 'emise'), None)
         if premiere is None or premiere['montant_ttc'] <= 0:
-            raise FacturationVenteRefusee('Montant invalide.',
-                                          code='montant_invalide')
+            # ENF47 (api-fuzz-full 42017839549) — montant facultatif au
+            # schéma : c'est l'ÉCHÉANCIER (aucun acompte à facturer) qui
+            # s'oppose, refus d'état 409 (le 400 rejetait un corps conforme).
+            raise FacturationVenteRefusee(
+                "Montant invalide : l'échéancier ne prévoit plus d'acompte à "
+                'facturer, indiquez un montant.',
+                code='montant_invalide', status=409)
         montant = premiere['montant_ttc']
     if montant >= prix:
         raise FacturationVenteRefusee(
