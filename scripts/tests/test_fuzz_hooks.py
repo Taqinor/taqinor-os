@@ -1528,12 +1528,15 @@ class ConfigSchemathesisTests(unittest.TestCase):
                   if 'positive_data_acceptance' in op.get('checks', {})]
         # Routes nommées, jamais un motif : la route retirée du portail SAV
         # (410), le créneau hors grille (400, D-ENF11-CRENEAU-400) et le lien
-        # de dépôt GED expiré (410, ENF45 b).
+        # de dépôt GED expiré (410, ENF45 b), l'étape de workflow en boucle
+        # (400, D-ENF11-WORKFLOW-BOUCLE-400).
         self.assertEqual(sorted(op.get('include-name') for op in visees), [
             'GET /api/django/ged/depot/{token}/',
+            'PATCH /api/django/core/workflow-definitions/{id}/',
             'POST /api/django/ged/depot/{token}/',
             'POST /api/django/public/stock/portail-fournisseur/{token}/reserver-creneau/',
-            'POST /api/django/sav/portail/tickets/'])
+            'POST /api/django/sav/portail/tickets/',
+            'PUT /api/django/core/workflow-definitions/{id}/'])
         op = next(o for o in visees
                   if o['include-name'] == 'POST /api/django/sav/portail/tickets/')
         self.assertEqual(
@@ -1592,6 +1595,28 @@ class ConfigSchemathesisTests(unittest.TestCase):
         self.assertEqual(sorted(str(s) for s in attendus),
                          ['2xx', '400', '401', '403', '404', '409', '429',
                           '5xx'])
+
+    def test_400_admis_pour_la_seule_mise_a_jour_de_workflow(self):
+        # D-ENF11-WORKFLOW-BOUCLE-400 — étape en boucle (NTWFL9) = règle.
+        import tomllib
+
+        with open(ROOT / 'schemathesis.toml', 'rb') as fh:
+            config = tomllib.load(fh)
+        for methode in ('PUT', 'PATCH'):
+            nom = f'{methode} /api/django/core/workflow-definitions/{{id}}/'
+            visees = [op for op in config['operations']
+                      if 'positive_data_acceptance' in op.get('checks', {})
+                      and op.get('include-name') == nom]
+            self.assertEqual(len(visees), 1, nom)
+            op = visees[0]
+            self.assertEqual(
+                {k for k in op if k.startswith(('include-', 'exclude-'))},
+                {'include-name'})
+            self.assertNotIn('enabled', op)
+            attendus = op['checks']['positive_data_acceptance']['expected-statuses']
+            self.assertEqual(sorted(str(s) for s in attendus),
+                             ['2xx', '400', '401', '403', '404', '409', '429',
+                              '5xx'])
 
     def test_503_admis_pour_la_seule_route_scan_carte_sans_cle_ocr(self):
         # CI #1001 (fuzz crm) — XSAL8 : sans clé OCR, 503 douce voulue.
