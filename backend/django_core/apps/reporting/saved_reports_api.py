@@ -78,10 +78,16 @@ class SavedReportSerializer(ChampsStrictsEntiersMixin,
                 if sonde.resoudre_cible() is None:
                     # ERR-ENF11-FUZZ-REPORTING : id bien formé sans ligne de
                     # la société = ressource introuvable, 404 (même corps).
+                    # ENF51 (règle d'ENF46) : sur une MISE À JOUR le rapport
+                    # existe, c'est la cible désignée qui manque -> 409, même
+                    # corps ``{cible_id: [...]}``.
                     from rest_framework.exceptions import NotFound
-                    raise NotFound({
-                        'cible_id': ["Cette cible n'existe pas dans votre "
-                                     'société.']})
+                    from core.champs_stricts import _id_corps_inconnu_409
+                    erreurs = {'cible_id': ["Cette cible n'existe pas dans "
+                                            'votre société.']}
+                    if instance is not None:
+                        raise _id_corps_inconnu_409(erreurs)
+                    raise NotFound(erreurs)
         return attrs
 
 
