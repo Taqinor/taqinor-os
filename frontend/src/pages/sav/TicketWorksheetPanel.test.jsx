@@ -30,7 +30,8 @@ const notFound = (detail) => Promise.reject({ response: { status: 404, data: { d
 
 describe('TicketWorksheetPanel (WIR119)', () => {
   it('affiche une note d\'activation quand la fonctionnalité est désactivée', async () => {
-    sav.getTicketWorksheet.mockReturnValue(notFound('Feuilles de maintenance non activées pour cette société.'))
+    // ENF50 — fonction éteinte sur un ticket existant : 409 (état), plus 404.
+    sav.getTicketWorksheet.mockReturnValue(Promise.reject({ response: { status: 409, data: { detail: 'Feuilles de maintenance non activées pour cette société.' } } }))
     render(<TicketWorksheetPanel ticketId={1} />)
     expect(await screen.findByText(/ne sont pas activées/)).toBeInTheDocument()
   })
