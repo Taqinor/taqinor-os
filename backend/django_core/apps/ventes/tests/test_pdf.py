@@ -406,8 +406,9 @@ class TestPdfEndpoints(TestCase):
         self.assertEqual(resp.status_code, 202)
         mock_task.delay.assert_called_once_with(facture.id)
 
-    def test_telecharger_pdf_404_when_not_generated(self):
-        """GET telecharger-pdf returns 404 when fichier_pdf is empty."""
+    def test_telecharger_pdf_409_when_not_generated(self):
+        """GET telecharger-pdf returns 409 when fichier_pdf is empty (ENF49 :
+        devis existant, PDF absent — regle d'ENF40)."""
         devis = make_devis(self.user, self.client_obj, self.produit)
 
         from rest_framework.test import APIClient
@@ -417,7 +418,26 @@ class TestPdfEndpoints(TestCase):
         api.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
 
         resp = api.get(f'/api/django/ventes/devis/{devis.id}/telecharger-pdf/')
+        self.assertEqual(resp.status_code, 409)
+        # Le devis absent reste 404.
+        resp = api.get('/api/django/ventes/devis/999999999/telecharger-pdf/')
         self.assertEqual(resp.status_code, 404)
+
+    @patch('apps.ventes.utils.pdf.download_pdf', side_effect=OSError('absent'))
+    def test_telecharger_pdf_409_when_file_missing(self, mock_dl):
+        """ENF49 — fichier_pdf pose mais absent du stockage : 409."""
+        devis = make_devis(self.user, self.client_obj, self.produit)
+        devis.fichier_pdf = 'devis/DEV-TEST-ABSENT.pdf'
+        devis.save(update_fields=['fichier_pdf'])
+
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+        api = APIClient()
+        token = str(AccessToken.for_user(self.user))
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+
+        resp = api.get(f'/api/django/ventes/devis/{devis.id}/telecharger-pdf/')
+        self.assertEqual(resp.status_code, 409)
 
     @patch('apps.ventes.utils.pdf.download_pdf', return_value=b'%PDF-1.4 fake')
     def test_telecharger_pdf_streams_bytes(self, mock_dl):
