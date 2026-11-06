@@ -142,10 +142,14 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
         # archivés sortent des listes par défaut, restent consultables avec
         # `?show_archived=true`, et sont toujours visibles pour les actions
         # qui n'ont de sens que sur un archivé (ou l'atteignent : revoquer, ENF47).
+        # ENF51 : la FICHE elle-même (lecture, modification) reste ouverte sur
+        # un archivé — créé archivé ou archivé par PATCH, il répondait 404 à
+        # son propre GET ; l'archivage masque des LISTES, il ne supprime pas.
         if choix_ou_400(valeur_unique_ou_400(self.request, 'show_archived'),
                         'show_archived', ('true', 'false')) == 'true':
             return qs
-        if self.action in ('force_delete', 'unarchive', 'revoquer_acces_portail'):
+        if self.action in ('force_delete', 'unarchive', 'revoquer_acces_portail',
+                           'retrieve', 'update', 'partial_update'):
             return qs
         return qs.filter(is_archived=False)
 
