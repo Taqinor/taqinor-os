@@ -161,6 +161,22 @@ class WorkflowDefinitionApiValidationTests(TenantAPITestCase):
         r = self._admin().post(BASE, payload, format='json')
         self.assertEqual(r.status_code, 400, r.content)
 
+    def test_boucle_jugee_sur_l_ordre_enregistre(self):
+        """ENF49 — les étapes sont renumérotées 1..n par position : un
+        ``ordre`` envoyé permuté (A « 2 » → alternative 1) cachait la boucle
+        A → A réellement enregistrée ; il est ignoré par la validation."""
+        payload = {
+            'nom': 'Boucle cachee',
+            'steps': [
+                {'ordre': 2, 'nom': 'A', 'type_approbation': 'auto',
+                 'etape_alternative_si_echec': 1},
+                {'ordre': 1, 'nom': 'B', 'type_approbation': 'auto'},
+            ],
+        }
+        r = self._admin().post(BASE, payload, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(WorkflowDefinition.objects.count(), 0)
+
     def test_creation_valide_toujours_acceptee(self):
         payload = {
             'nom': 'Valide',
