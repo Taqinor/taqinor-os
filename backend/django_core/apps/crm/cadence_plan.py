@@ -1654,7 +1654,7 @@ def reporter_prochaine_touche(lead, user, quand, *, etape=None,
         # décalées sont calculées ici d'abord, un ``OverflowError`` part vers
         # l'appelant (409 de ``reporter``, geste annulé) avant toute écriture.
         for borne in ancres.aggregate(a=Min('cadence_depart'), b=Max('cadence_depart')).values():
-            borne + delta
+            borne is None or borne + delta  # aucune ancre : agrégat None
         ancres.update(cadence_depart=F('cadence_depart') + delta)
         if cible.cadence_depart is not None:
             # L'objet rendu doit porter la MÊME ancre que sa ligne : c'est lui
