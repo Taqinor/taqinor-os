@@ -7,7 +7,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from . import cadence_temps
-from .champs_api import MAPPING_TEXTE_STRICT
+from .champs_api import MAPPING_TEXTE_STRICT, CorpsGabarit
 from .models import Lead, LeadActivity, MessageTemplate, RelanceEtape
 from .serializers import (
     nom_affichable_lead, nom_affichable_responsable, pii_masquee_pour,
@@ -460,6 +460,7 @@ class MessageTemplateSerializer(serializers.ModelSerializer):
     serializer_field_mapping = MAPPING_TEXTE_STRICT  # ENF11
     langue_display = serializers.CharField(
         source='get_langue_display', read_only=True)
+    corps = CorpsGabarit()  # ENF49 — variables du catalogue publiées
 
     class Meta:
         model = MessageTemplate
