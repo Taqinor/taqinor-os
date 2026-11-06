@@ -149,4 +149,4 @@ Porte : 0 réfuté sur 56 candidats de découverte et 7 trous de la critique (63
 
 ## 9. Coût et routage
 Coût : H0 S1 O15 F1 · jetons sous-agents ≈ 5,4 M · tâches 68 (P0 15 P1 6 P2 25 P3 22 GATED 0) ; une critique de complétude Fable, 7 trous dont 3 sondés (nature d'achat jamais posée, archivage d'un produit en stock → deux totaux, suppression de BCF = 2e porte de l'annulation) et 4 lus.
-Routage : `PLAN_AUDIT_STOCK.md` 47 · `PLAN_AUDIT_CHANTIERS.md` 20 · `PLAN_AUDIT_ANALYSE.md` 1 · aucune tâche d'acceptation posée · PR #0.
+Routage : `PLAN_AUDIT_STOCK.md` 47 · `PLAN_AUDIT_CHANTIERS.md` 20 · `PLAN_AUDIT_ANALYSE.md` 1 · aucune tâche d'acceptation posée · PR #1296.
