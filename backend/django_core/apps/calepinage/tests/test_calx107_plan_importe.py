@@ -224,8 +224,8 @@ class PlanImporteApiTest(TestCase):
     """L'API réelle — EXIGE LA BASE, non exécutée sur le poste de la lane.
 
     Elle arme les promesses de la tâche : 200 à la forme du contrat quand le
-    document désigne une pièce rattachée, 404 NOMMÉ dans les quatre cas
-    d'absence, et 404 (introuvable, jamais « interdit ») pour un calepinage
+    document désigne une pièce rattachée, 409 NOMMÉ dans les quatre cas
+    d'absence (ENF51, règle d'ENF40 : le calepinage existe), et 404 (introuvable, jamais « interdit ») pour un calepinage
     d'une AUTRE société.
     """
 
@@ -296,38 +296,38 @@ class PlanImporteApiTest(TestCase):
         self.assertIsNone(servi['hauteur'])
         self.assertTrue(servi['motif'])
 
-    def test_404_nomme_quand_le_document_ne_demande_aucun_fond(self):
+    def test_409_nomme_quand_le_document_ne_demande_aucun_fond(self):
         reponse = self.client.get(self._url(self.calepinage))
 
-        self.assertEqual(reponse.status_code, 404)
+        self.assertEqual(reponse.status_code, 409)
         self.assertEqual(reponse.json()['champ'], 'underlay')
 
-    def test_404_nomme_quand_le_fond_est_une_photo(self):
+    def test_409_nomme_quand_le_fond_est_une_photo(self):
         self._poser_fond({'kind': 'photo', 'photoSiteId': 7})
 
         reponse = self.client.get(self._url(self.calepinage))
 
-        self.assertEqual(reponse.status_code, 404)
+        self.assertEqual(reponse.status_code, 409)
         self.assertEqual(reponse.json()['champ'], 'kind')
         self.assertEqual(reponse.json()['detail'], FOND_PHOTO)
 
-    def test_404_nomme_quand_le_plan_ne_designe_aucune_piece(self):
+    def test_409_nomme_quand_le_plan_ne_designe_aucune_piece(self):
         self._poser_fond({'kind': 'plan'})
 
         reponse = self.client.get(self._url(self.calepinage))
 
-        self.assertEqual(reponse.status_code, 404)
+        self.assertEqual(reponse.status_code, 409)
         self.assertEqual(reponse.json()['champ'], 'attachmentId')
         self.assertEqual(reponse.json()['detail'], SANS_PIECE)
 
-    def test_404_quand_la_piece_appartient_a_un_autre_dossier(self):
+    def test_409_quand_la_piece_appartient_a_un_autre_dossier(self):
         self._poser_fond({'kind': 'plan', 'attachmentId': self.piece.pk})
         self.piece.object_id = self.calepinage_autre.pk
         self.piece.save(update_fields=['object_id'])
 
         reponse = self.client.get(self._url(self.calepinage))
 
-        self.assertEqual(reponse.status_code, 404)
+        self.assertEqual(reponse.status_code, 409)
         self.assertEqual(reponse.json()['detail'], PIECE_INTROUVABLE)
 
     def test_404_pour_un_calepinage_d_une_autre_societe(self):
