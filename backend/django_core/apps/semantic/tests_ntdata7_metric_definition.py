@@ -180,8 +180,9 @@ class CrudMetriquesTests(_BaseApi):
                             f'{BASE}{pk}/', {'actif': False}, pk=pk)
         self.assertEqual(reponse.status_code, status.HTTP_200_OK, reponse.data)
         self.assertFalse(MetricDefinition.objects.get(pk=pk).actif)
+        # ENF50 — désactivée mais EXISTANTE : état de la métrique, 409.
         self.assertEqual(self._valeur('nb_societes').status_code,
-                         status.HTTP_404_NOT_FOUND)
+                         status.HTTP_409_CONFLICT)
 
     def test_non_responsable_refuse(self):
         reponse = self._vue('get', {'get': 'list'}, BASE, user=self.simple)
