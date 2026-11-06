@@ -1402,6 +1402,21 @@ class PorteePRTests(unittest.TestCase):
             {'operationId': 'x'})
         self.assertEqual(stats['liens'], 2)
 
+    def test_parametre_nomme_comme_un_champ_du_201_recoit_ce_champ(self):
+        # ENF50 (UwBLOT) — `metriques/{cle}/lignage/` : le 201 publie `cle`,
+        # le lien pose `cle`, plus l'`id` (49 → « Aucune métrique « 49 » »).
+        doc = _doc_crud()
+        doc['components']['schemas']['Produit']['properties']['cle'] = {'type': 'string'}
+        doc['paths']['/api/django/stock/produits/{cle}/lignage/'] = {
+            'get': {'operationId': 'lignage'}}
+        sortie, _stats = self.m.preparer_schema(doc)
+        liens = sortie['paths']['/api/django/stock/produits/']['post'][
+            'responses']['201']['links']
+        self.assertEqual(liens['GET /api/django/stock/produits/{cle}/lignage/'][
+            'parameters'], {'cle': '$response.body#/cle'})
+        self.assertEqual(liens['GET /api/django/stock/produits/{id}/'][
+            'parameters'], {'id': '$response.body#/id'})
+
     def test_verdict_rouge_sur_constat_hors_dette_seulement(self):
         rapport = {'failures': [
             {'title': 'Server error', 'operations': ['GET /a/', 'POST /b/']},
