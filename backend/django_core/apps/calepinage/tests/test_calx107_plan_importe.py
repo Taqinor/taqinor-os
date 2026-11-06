@@ -225,8 +225,8 @@ class PlanImporteApiTest(TestCase):
 
     Elle arme les promesses de la tâche : 200 à la forme du contrat quand le
     document désigne une pièce rattachée, 409 NOMMÉ dans les quatre cas
-    d'absence (ENF51, règle d'ENF40 : le calepinage existe), et 404 (introuvable, jamais « interdit ») pour un calepinage
-    d'une AUTRE société.
+    d'absence (ENF51, règle d'ENF40 : le calepinage existe), et 404
+    (introuvable, jamais « interdit ») pour un calepinage d'une AUTRE société.
     """
 
     def setUp(self):
