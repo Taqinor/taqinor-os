@@ -734,3 +734,25 @@ unites:
     date: 2026-11-03
     dossier: docs/audits/2026-11-03-parcours-PA1.md
     notes: "vérifie ACVI du 05/11/2026 (clôture, 99/101 ; dossier docs/audits/2026-11-05-contact-visite-verifie.md) : 33 tâches (graine 64c9c7317) — 29 ok, 4 partielles ; 2 S1 par sonde + seconde lentille (envoi de devis à un lead opposé : WhatsApp, e-mail réel, lien de partage, PDF ; brouillon WhatsApp de l'assistant) + 2 S2 (résumé à l'associé, commentaires et activités hors portée) + S3 → ACVI102-111 ; D-ACVI-10 = contractuel autorisé ; 1 critique Fable. Troisième audit de PARCOURS (L3, 03/11/2026, loop audit : aucune unité à auditer, 0 vérifie dû ; PA1 = plus fort churn, cadence v4 mergée les 01-02/11) : 88 constats dont 6 S1 (import hors portée, visite sur tout lead, fusion qui perd l'opposition, opposition non portée par le téléphone, rendus WhatsApp sans garde d'opposition, pièces du lead hors portée) et 30 S2 ; 5 S1 maintenus et élargis par la seconde lentille ; parcours heureux rejoué par l'API sans écart ; D-ACVI-1..9 ouvertes (boucle sans fondateur) ; 1 critique Fable (3 trous sondés, 2 retenus). Tâches ACVI1-99."
+
+  - id: PA6
+    rang: 23
+    declencheur: approvisionnement
+    titre: "Parcours PA6 « Approvisionnement » : fiche chantier « Matériel & BC » (besoin) → demande d'achat et approbations → BCF → réception fournisseur (séries, lots, qualité, retour, annulation) → facture fournisseur / 3 voies / GR-IR → acompte, avoir, paiement, RAS-TVA → stock et réservations du chantier (METHODE §D.1)"
+    possede: []
+    perimetre_lu:
+      - "table backend/django_core/apps/stock/parcours/PA6.json (pilote stock) ; apps/stock, apps/achats, apps/installations (besoin, DA, approbations, GR/IR, F11, retours chantier, comptage, transferts), apps/reporting/approbations.py, apps/roles/permissions_registre.py, core/events/stock.py, frontend pages stock / installations / ia et features/installations"
+    coutures:
+      - "passages de main installations (chantier, réservations) ↔ stock (BCF, réception, mouvements) ↔ facturation fournisseur (3 voies, GR/IR, RAS-TVA) ; rôles × portes d'achat ; valorisation du stock (écran, BI, tableau de bord) ; portes OCR et UBL de la facture fournisseur"
+    P: 4
+    I: 4
+    score: 16
+    niveau: L3
+    statut: audité
+    groupe: AAPV
+    plan: docs/plans/PLAN_AUDIT_STOCK.md
+    plans_alimentes: [docs/plans/PLAN_AUDIT_STOCK.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_ANALYSE.md]
+    pr: 0
+    date: 2026-11-06
+    dossier: docs/audits/2026-11-06-parcours-PA6.md
+    notes: "Quatrième audit de PARCOURS (L3, 06/11/2026, base 16da385) : 63 constats, 49 prouvés par sonde et 14 lus (S3) ; gravités 14 S1, 21 S2, 28 S3, dont 4 S1 conditionnels à un réglage éteint par défaut (RAS-TVA, budget départemental, produit « sur commande »). S1 : GR/IR jamais réduit par un retour ni lettré par réception, retour sur BCF livré au chantier, annulation de réception périmée, acomptes non imputés au lien d'une facture, 3 voies aveugle à HT + TVA ≠ TTC, relevé de TVA incomplet, RAS-TVA sous-retenue, nature d'achat jamais posée, besoin matériel sur-compté, BCF au prix catalogue, annulation de BCF sans défaire la DA ni le budget, « déjà sorti » compté deux fois, archivage d'un produit en stock. Seconde lentille sur 15 S1 : 9 maintenus, 3 conditionnels, 3 abaissés S3 (annulation d'une réception confirmée sans bouton). Prod lue le 06/11 : exposition nulle (achats quasi inutilisés). D-AAPV-1..4 (RAS sur TVA nette, imputation qui solde, F11 = ses produits, nature d'achat par défaut fournisseur). 1 critique Fable (7 trous dont 3 sondés). Tâches AAPV1-74 (68 posées : STOCK 47, CHANTIERS 20, ANALYSE 1)."
