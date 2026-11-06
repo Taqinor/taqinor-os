@@ -1641,14 +1641,14 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         return Response(
             DocumentSerializer(doc, context={'request': request}).data)
 
-    @extend_schema(request=None, responses=oa.OFFICE_REPONSE)
+    @extend_schema(request=None, responses={200: oa.OFFICE_REPONSE, 409: oa.REFUS_ETAT})
     @action(detail=True, methods=['post'], url_path='office-ouvrir')
     def office_ouvrir(self, request, pk=None):
         """XGED30 — Ouvre ce document Office dans l'éditeur embarqué (slot
         Collabora/OnlyOffice, key-gated).
 
         `POST …/documents/<id>/office-ouvrir/` — sans `GED_OFFICE_URL`
-        configuré : 404 explicite (aucune UI, aucun appel). Avec l'URL posée :
+        configuré : 409 explicite (aucune UI, aucun appel). Avec l'URL posée :
         pose le check-out (GED16) et renvoie `{"editor_url", "document_id"}`.
         Gardes GED23/24 respectées (403). Écriture : responsable/admin (même
         motif que check-out — ouvrir en édition verrouille le document)."""
@@ -1657,11 +1657,11 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
             data = services.ouvrir_dans_editeur_office(
                 document, user=request.user)
         except ValueError as exc:
-            # ERR-ENF11-FUZZ-GED : fonction à clé non configurée
-            # (GED_OFFICE_URL absent) = désactivée, 404 comme toute route
-            # GATED sans clé — la requête, elle, était conforme.
+            # ENF50 (api-fuzz-full 42160785666, Iz5I0g) : le document EXISTE,
+            # la co-édition (GED_OFFICE_URL) n'est pas configurée : état du
+            # serveur = 409 (règle d'ENF40), plus le 404 d'une ressource absente.
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_404_NOT_FOUND)
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         except (ArchivageLegalError, LegalHoldError) as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
