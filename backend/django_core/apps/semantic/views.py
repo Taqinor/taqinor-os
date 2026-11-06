@@ -292,6 +292,11 @@ def parametres_de_resolution(query_params):
     return group_by, period, filters
 
 
+#: ENF50 — la métrique existe mais est désactivée (``actif`` faux).
+_METRIQUE_DESACTIVEE = OpenApiResponse(
+    description='Métrique désactivée : la réactiver pour la lire.')
+
+
 class MetriqueValeurView(APIView):
     """NTDATA10 — ``GET semantic/metriques/<cle>/valeur/`` : la valeur PAR CLÉ.
 
@@ -330,8 +335,8 @@ class MetriqueValeurView(APIView):
                 'lignes': serializers.JSONField(),
             }),
             409: OpenApiResponse(
-                description='Adaptateur ou dataset de la métrique absent de '
-                            'ce serveur (module désactivé).'),
+                description='Métrique désactivée, ou adaptateur/dataset de la '
+                            'métrique absent de ce serveur (module désactivé).'),
         })
     def get(self, request, cle=None):
         group_by, period, filters = parametres_de_resolution(
@@ -340,6 +345,11 @@ class MetriqueValeurView(APIView):
             resultat = services.resolve_metric(
                 request.user.company, request.user, cle, filters=filters,
                 group_by=group_by, period=period)
+        except services.MetriqueInactive as exc:
+            # ENF50 — la métrique EXISTE mais est désactivée : état (409),
+            # 404 gardé pour une clé que la société n'a pas.
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_409_CONFLICT)
         except services.MetriqueInconnue as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_404_NOT_FOUND)
@@ -425,7 +435,7 @@ class MetriqueLignageView(APIView):
     permission_classes = [IsResponsableOrAdmin]
 
     @extend_schema(
-        responses=inline_serializer('MetriqueLignageReponse', {
+        responses={200: inline_serializer('MetriqueLignageReponse', {
             'metrique': serializers.CharField(),
             'libelle': serializers.CharField(),
             'description': serializers.CharField(),
@@ -436,11 +446,16 @@ class MetriqueLignageView(APIView):
             'filtres': serializers.JSONField(),
             'nb_lignes_agregees': serializers.IntegerField(allow_null=True),
             'version': serializers.JSONField(allow_null=True),
-        }))
+        }), 409: _METRIQUE_DESACTIVEE})
     def get(self, request, cle=None):
         try:
             lignage = selectors.lineage(request.user.company, cle,
                                         user=request.user)
+        except services.MetriqueInactive as exc:
+            # ENF50 — la métrique EXISTE mais est désactivée : état (409),
+            # 404 gardé pour une clé que la société n'a pas.
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_409_CONFLICT)
         except services.MetriqueInconnue as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_404_NOT_FOUND)
@@ -502,13 +517,13 @@ class MetriqueExpliquerView(APIView):
                              required=False,
                              description='Nombre maximal de lignes (1..1000).'),
         ],
-        responses=inline_serializer('MetriqueExpliquerReponse', {
+        responses={200: inline_serializer('MetriqueExpliquerReponse', {
             'lignage': serializers.JSONField(),
             'filtres_appliques': serializers.JSONField(),
             'cellule': serializers.JSONField(),
             'enregistrements': serializers.JSONField(allow_null=True),
             'raison': serializers.CharField(),
-        }))
+        }), 409: _METRIQUE_DESACTIVEE})
     def get(self, request, cle=None):
         params = request.query_params
         filters = _json_param(params.get('filters'), 'filters', dict)
@@ -523,6 +538,11 @@ class MetriqueExpliquerView(APIView):
             explication = selectors.expliquer(
                 request.user.company, request.user, cle, filters=filters,
                 cellule=cellule, limite=limite)
+        except services.MetriqueInactive as exc:
+            # ENF50 — la métrique EXISTE mais est désactivée : état (409),
+            # 404 gardé pour une clé que la société n'a pas.
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_409_CONFLICT)
         except services.MetriqueInconnue as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_404_NOT_FOUND)

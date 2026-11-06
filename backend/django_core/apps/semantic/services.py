@@ -37,6 +37,13 @@ class MetriqueInconnue(Exception):
     """Aucune métrique ACTIVE ne porte cette clé dans cette société."""
 
 
+class MetriqueInactive(MetriqueInconnue):
+    """ENF50 — la métrique EXISTE dans la société mais est désactivée
+    (``actif`` faux) : un état de la métrique, pas une ressource absente (les
+    vues répondent 409 ; les appelants qui attrapent ``MetriqueInconnue``
+    restent inchangés)."""
+
+
 class MetriqueNonResolvable(Exception):
     """La définition existe mais ne peut pas être exécutée telle quelle.
 
@@ -59,6 +66,10 @@ def get_metric(company, cle):
     definition = MetricDefinition.objects.filter(
         company=company, cle=cle, actif=True).first()
     if definition is None:
+        if MetricDefinition.objects.filter(company=company, cle=cle).exists():
+            raise MetriqueInactive(
+                'La métrique « %s » est désactivée : la réactiver pour la '
+                'lire.' % cle)
         raise MetriqueInconnue(
             'Aucune métrique active « %s » pour cette société.' % cle)
     return definition

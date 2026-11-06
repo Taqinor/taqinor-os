@@ -162,6 +162,19 @@ class InstantHorsPlageTests(_Base):
         self.assertEqual(self.etape.due_at, avant)
         self.assertEqual(suivante.due_at, loin)
 
+    def test_ancre_hors_calendrier_409_rien_ecrit(self):
+        """api-fuzz-full 06/11 (ENF50) — l'ANCRE (``cadence_depart``) décalée
+        par Postgres dépassait l'an 9999 (Postgres l'accepte, Python ne la
+        relit plus) : 500 « geste annulé » ; désormais 409 nommé, rien écrit."""
+        loin = datetime.datetime(8000, 1, 5, 10, 0, tzinfo=horaires.CASABLANCA)
+        RelanceEtape.objects.filter(pk=self.etape.pk).update(cadence_depart=loin)
+        avant = self.etape.due_at
+        resp = self._reporter(due_at='5298-05-29T10:15:47Z')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertIn('due_at', resp.data['erreurs'])
+        self.etape.refresh_from_db()
+        self.assertEqual((self.etape.due_at, self.etape.cadence_depart), (avant, loin))
+
     def test_motif_publie_du_jour_suit_le_calendrier(self):
         import re
         from apps.crm.schema_docs import MOTIF_JOUR_PUBLIE

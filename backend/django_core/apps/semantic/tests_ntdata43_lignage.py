@@ -9,7 +9,7 @@ Couvre :
   * le nombre de lignes agrégées est RÉEL, et VIDE (jamais 0) quand il n'est
     pas exprimable — métrique d'adaptateur, dataset désenregistré ;
   * la version de définition en vigueur (NTDATA9) est citée ;
-  * une métrique inconnue/inactive est un 404 ;
+  * une métrique inconnue est un 404, désactivée un 409 (ENF50) ;
   * l'endpoint `/semantic/metriques/<cle>/lignage/` et son scoping société.
 """
 from django.contrib.auth import get_user_model
@@ -136,7 +136,7 @@ class LignageTests(TestCase):
     def test_metrique_inactive_leve(self):
         definition = self._metrique()
         MetricDefinition.objects.filter(pk=definition.pk).update(actif=False)
-        with self.assertRaises(services.MetriqueInconnue):
+        with self.assertRaises(services.MetriqueInactive):
             selectors.lineage(self.company, 'ca_ht', user=self.user)
 
 
@@ -182,6 +182,15 @@ class LignageEndpointTests(TestCase):
     def test_metrique_d_une_autre_societe_est_un_404(self):
         reponse = self._get('chez_le_voisin')
         self.assertEqual(reponse.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_metrique_desactivee_est_un_409(self):
+        """ENF50 (api-fuzz-full 42160785666, UwBLOT) — la métrique EXISTE
+        mais est désactivée : 409 nommé, jamais le 404 d'une clé absente."""
+        MetricDefinition.objects.filter(
+            company=self.company, cle='ca_ht').update(actif=False)
+        reponse = self._get('ca_ht')
+        self.assertEqual(reponse.status_code, status.HTTP_409_CONFLICT)
+        self.assertIn('désactivée', reponse.data['detail'])
 
     def test_utilisateur_non_responsable_refuse(self):
         self.assertEqual(self._get('ca_ht', user=self.simple).status_code,
