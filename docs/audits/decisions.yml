@@ -3684,3 +3684,51 @@ decisions:
     date: "2026-11-05"
     source: "Reda, question interactive, contre-visite vérifie ADVS"
     taches: [ADVS49]
+  - id: D-AAPV-1
+    question: "RAS-TVA fournisseur : après imputation d'un avoir fournisseur, la retenue de 75 % porte-t-elle sur la TVA nette des avoirs ou sur la TVA totale de la facture ? (aujourd'hui : totale — 200 retenus au lieu de 100 sur une facture avec un avoir de 600 TTC)"
+    options:
+      - cle: tva_nette
+        texte: "Base = TVA de la facture − TVA des avoirs imputés, comme D-AARG-2 côté client"
+      - cle: tva_totale
+        texte: "Base = TVA totale de la facture ; comportement actuel conforme"
+    reponse: tva_nette
+    date: "2026-11-06"
+    source: "Reda, question interactive, audit de parcours PA6"
+    taches: [AAPV4]
+  - id: D-AAPV-2
+    question: "Quand une imputation d'acompte ou d'avoir (et non un paiement) solde la facture fournisseur, où va la retenue RAS-TVA restante ?"
+    options:
+      - cle: imputation_porte_le_reste
+        texte: "L'imputation qui solde porte la retenue restante : le total retenu vaut toujours 75 % de la TVA (D-ASTK-171)"
+      - cle: paiement_final_exige
+        texte: "Refuser une imputation qui solderait la facture tant qu'une retenue reste due ; le dernier règlement doit être un paiement"
+    reponse: imputation_porte_le_reste
+    date: "2026-11-06"
+    source: "Reda, question interactive, audit de parcours PA6"
+    taches: [AAPV5]
+  - id: D-AAPV-3
+    question: "Chantier posé en plusieurs interventions : valider la F11 de l'intervention 1 libère aujourd'hui TOUTES les réservations du chantier (l'onduleur réservé pour l'intervention 2 part sur un autre chantier). Que doit libérer une F11 ?"
+    options:
+      - cle: produits_de_la_f11
+        texte: "Seulement les réservations des produits réconciliés par cette F11 ; le reste demeure réservé jusqu'à sa F11 ou la clôture / l'annulation du chantier"
+      - cle: rien_avant_installe
+        texte: "Aucune F11 ne libère ; le reliquat n'est libéré qu'à « Installé » ou à l'annulation"
+      - cle: garder_actuel
+        texte: "Comportement actuel voulu (une F11 par chantier)"
+    reponse: produits_de_la_f11
+    date: "2026-11-06"
+    source: "Reda, question interactive, audit de parcours PA6 (précise D-ACHT-1 « reliquat libéré »)"
+    taches: [AAPV31]
+  - id: D-AAPV-4
+    question: "La RAS-TVA dépend de la nature de la facture fournisseur (biens 0 %, services 75 %), mais aucune porte ne renseigne `type_achat` : toute facture compte comme « biens ». D'où vient la nature ?"
+    options:
+      - cle: defaut_fournisseur_et_ecran
+        texte: "Pré-remplie depuis le type du fournisseur, modifiable à l'écran de facture ; OCR / UBL / factures nées d'un BCF prennent le défaut fournisseur"
+      - cle: champ_ecran_obligatoire
+        texte: "Choix obligatoire à l'écran ; les autres portes prennent le défaut fournisseur"
+      - cle: depuis_les_produits
+        texte: "Dérivée des produits / catégories des lignes"
+    reponse: defaut_fournisseur_et_ecran
+    date: "2026-11-06"
+    source: "Reda, question interactive, audit de parcours PA6"
+    taches: [AAPV6]
