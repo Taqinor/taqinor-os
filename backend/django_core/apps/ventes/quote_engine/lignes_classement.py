@@ -404,3 +404,35 @@ def panneaux_et_watt_lu(lignes) -> tuple:
                     or _fiche_watt(produit)
                     or _parse_watt(designation, produit_nom))
     return nb_panneaux, watt
+
+
+def kwc_lu_des_panneaux(lignes):
+    """AGNR69 — kWc = Σ quantité × watt lu de CHAQUE ligne panneau (fiche,
+    puis désignation / nom), la règle de ``solar.js::kwcPanneauxOption`` ; une
+    ligne au watt illisible prend le watt de la 1re ligne lisible. ``None``
+    sans panneau ou sans aucun watt lu (M3 : aucun watt inventé)."""
+    paires = []
+    for li in lignes:
+        designation = getattr(li, "designation", "") or ""
+        produit = getattr(li, "produit", None)
+        produit_nom = getattr(produit, "nom", "") or ""
+        if _is_panel(designation, produit_nom):
+            paires.append((int(round(float(getattr(li, "quantite", 0) or 0))),
+                           _fiche_watt(produit) or _parse_watt(designation, produit_nom)))
+    premier = next((w for _n, w in paires if w), None)
+    if not premier or not sum(n for n, _w in paires):
+        return None
+    return round(sum(n * (w or premier) for n, w in paires) / 1000, 2)
+
+
+def kwc_des_lignes(lignes, nb, watt, devis):
+    """AGNR69 — le kWc imprimé : ``None`` sans panneau / watt lu ; niveau 12
+    (``REGLES_ECARTS_0411``) : :func:`kwc_lu_des_panneaux` ; avant : compte ×
+    watt de la 1re ligne lisible (rendu d'hier)."""
+    from apps.ventes.domain.regles_calcul import (
+        REGLES_ECARTS_0411, regles_au_moins)
+    if not (nb and nb > 0 and watt):
+        return None
+    if devis is not None and regles_au_moins(devis, REGLES_ECARTS_0411):
+        return kwc_lu_des_panneaux(lignes)
+    return round(nb * watt / 1000, 2)

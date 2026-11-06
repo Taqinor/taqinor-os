@@ -1,7 +1,7 @@
 """ZMFG6 — Feuilles de maintenance (worksheets) remplies par le technicien.
 
 Couvre :
-  * OFF (défaut) → l'action `worksheet/` répond 404 (comportement inchangé) ;
+  * OFF (défaut) → l'action `worksheet/` répond 409 (ENF50 : ticket existant, fonction éteinte) ;
   * ON → création idempotente depuis un modèle, mise à jour des valeurs,
     complétion bloquée tant qu'un champ requis manque, complétion OK une fois
     tous les champs requis renseignés ;
@@ -79,9 +79,9 @@ class ZMFG6WorksheetTest(TestCase):
         self.assertEqual(modele.nom, 'Fuzz')
         self.assertEqual(modele.champs, [{'ox': ['a', {'k': None}]}])
 
-    def test_off_by_default_returns_404(self):
+    def test_off_by_default_returns_409(self):
         resp = self.api.get(f'/api/django/sav/tickets/{self.ticket.pk}/worksheet/')
-        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.status_code, 409)  # ENF50 (6ALxpE)
 
     def test_on_creates_worksheet_idempotently(self):
         self._activer_toggle()

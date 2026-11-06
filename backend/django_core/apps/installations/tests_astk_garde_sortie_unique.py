@@ -55,6 +55,10 @@ CHEMINS_COUVERTS = {
         'livraison_directe_chantier',
     'apps/ventes/views/bon_commande.py::BonCommandeViewSet.livrer_partiel':
         'bc_livraison_partielle',
+    # AARG64 — la restauration d'une facture annulée RESSORT le stock rentré
+    # à l'annulation (et resolde la réservation) : joué par un cas composé.
+    'apps/ventes/domain/annulation_facture.py::_rejouer_effets':
+        'facture_restauree',
 }
 
 #: La primitive elle-même (ses appelants sont classés un par un).
@@ -174,7 +178,8 @@ class TableDesCheminsTests(SimpleTestCase):
 
     def test_chaque_chemin_couvert_est_joue(self):
         self.assertLessEqual(set(CHEMINS_COUVERTS.values()),
-                             set(GardeSortieUnique.CAS))
+                             set(GardeSortieUnique.CAS)
+                             | set(GardeSortieUnique.CAS_COMPOSES))
 
 
 class GardeSortieUnique(TestCase):
@@ -182,6 +187,8 @@ class GardeSortieUnique(TestCase):
     CAS = ('facture_directe', 'bc_livre_toggle_off', 'bc_livre_toggle_on',
            'livraison_directe_chantier', 'consommation_terrain_f11',
            'bc_livraison_partielle')
+    #: Cas composés (retour puis ressortie) : bilan NET, joués à part.
+    CAS_COMPOSES = ('facture_restauree',)
 
     def setUp(self):
         from apps.crm.models import Client
@@ -362,6 +369,46 @@ class GardeSortieUnique(TestCase):
                 self.assertEqual(
                     panneau.quantite_stock,
                     STOCK_INITIAL + entrees - QUANTITE_VENDUE, cas)
+
+    def test_facture_restauree_une_sortie_nette(self):
+        """AARG64 — facture directe, annulée (stock rentré), restaurée par
+        l'annulation de son avoir miroir (stock ressorti), puis « Installé » :
+        Σ SORTIE − Σ ENTRÉE = 10 vendues, stock 20 — jamais une 3e sortie."""
+        from apps.stock.models import MouvementStock
+        from apps.stock.services import (
+            mouvement_type_entree, mouvement_type_sortie,
+        )
+        import importlib
+
+        from apps.ventes.models import Avoir
+        # Même import dynamique délibéré du domaine que ``_facture_directe``.
+        annuler_facture = importlib.import_module(
+            'apps.ventes.domain.annulation_facture').annuler_facture
+        admin = User.objects.create_user(
+            username='admin-astk129', password='x', company=self.company,
+            role_legacy='admin')
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(admin)}')
+        devis, inst, panneau = self._vente()
+        self._facture_directe(devis, inst, panneau)
+        facture = devis.factures.exclude(statut='brouillon').get()
+        annuler_facture(facture, user=admin, directive=None)
+        avoir = Avoir.objects.get(facture=facture)
+        rep = api.post(f'/api/django/ventes/avoirs/{avoir.id}/annuler/', {},
+                       format='json')
+        self.assertEqual(rep.status_code, 200, getattr(rep, 'data', rep))
+        self._installer(inst)
+        mouvements = MouvementStock.objects.filter(produit=panneau)
+        sorties = mouvements.filter(type_mouvement=mouvement_type_sortie(
+        )).aggregate(t=Sum('quantite'))['t'] or 0
+        entrees = mouvements.filter(type_mouvement=mouvement_type_entree(
+        )).aggregate(t=Sum('quantite'))['t'] or 0
+        self.assertEqual((sorties, entrees), (2 * QUANTITE_VENDUE,
+                                              QUANTITE_VENDUE))
+        panneau.refresh_from_db()
+        self.assertEqual(panneau.quantite_stock,
+                         STOCK_INITIAL - QUANTITE_VENDUE)
 
     # ── ASTK258 (C-ASTK-VER4-040) — vente PUIS chantier ───────────────────
 

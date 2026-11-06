@@ -228,7 +228,7 @@
     "composant": "PaiementDialog.jsx",
     "action": "Enregistrer le paiement"
    },
-   "fonction_entree": "backend/django_core/apps/ventes/domain/encaissements.py::enregistrer_paiement",
+   "fonction_entree": "backend/django_core/apps/ventes/domain/encaissements.py::encaisser_sur_facture",
    "checkpoint": {
     "modifiable": true,
     "champs": [
@@ -493,7 +493,7 @@
    "regle_aval": [
     {
      "type": "preserve_manuel",
-     "detail": "société sans export DGI actif : aucune transmission, export non proposé"
+     "detail": "société sans export DGI actif : aucune transmission, export non proposé ; transmission dormante (dgi_transmission_actif OFF) : HTTP 404, la capacité reste invisible"
     },
     {
      "type": "reference",

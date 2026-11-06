@@ -124,6 +124,38 @@ class CrudMetriquesTests(_BaseApi):
         reponse = self._creer(cle='Marge Brute')
         self.assertEqual(reponse.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_mesure_requise_a_la_creation_et_au_schema(self):
+        """ENF45 d (api-fuzz-full 41958593088) : ``mesure`` absente = refus
+        nommé, et le schéma la dit REQUISE (POST/PUT) — un corps « complet »
+        au schéma n'est plus refusé par ``clean``. PATCH reste partiel."""
+        from apps.semantic.serializers import MetricDefinitionSerializer
+        donnees = {'cle': 'sans_mesure', 'libelle': 'Sans mesure',
+                   'dataset': 'ntdata10_societes'}
+        reponse = self._vue('post', {'post': 'create'}, BASE, donnees)
+        self.assertEqual(reponse.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(reponse.data['mesure'][0].code, 'required')
+        self.assertTrue(MetricDefinitionSerializer().fields['mesure'].required)
+        pk = self._creer().data['id']
+        reponse = self._vue('patch', {'patch': 'partial_update'},
+                            f'{BASE}{pk}/', {'libelle': 'Renommée'}, pk=pk)
+        self.assertEqual(reponse.status_code, status.HTTP_200_OK, reponse.data)
+
+    def test_forme_de_mesure_publiee_et_appliquee(self):
+        """ENF47 (api-fuzz-full 42017839549) : ``mesure: null`` (et ``{}``)
+        étaient conformes au schéma ``{}`` puis refusés — la forme est
+        publiée (``anyOf``, non nullable) et la MÊME est appliquée (400)."""
+        from apps.semantic.serializers import (
+            SCHEMA_MESURE, MetricDefinitionSerializer)
+        for mesure in (None, {}, {'agg': 'sum'}, {'adapter': ''}):
+            reponse = self._creer(mesure=mesure)
+            self.assertEqual(reponse.status_code,
+                             status.HTTP_400_BAD_REQUEST, (mesure, reponse.data))
+            self.assertIn('mesure', reponse.data)
+        champ = MetricDefinitionSerializer().fields['mesure']
+        self.assertEqual(champ._spectacular_annotation['field'], SCHEMA_MESURE)
+        self.assertEqual(self._creer(mesure={'agg': 'count', 'formula': ''})
+                         .status_code, status.HTTP_201_CREATED)
+
     def test_edition_fige_une_version_signee(self):
         pk = self._creer().data['id']
         reponse = self._vue(
@@ -136,13 +168,21 @@ class CrudMetriquesTests(_BaseApi):
         self.assertTrue(all(v.auteur_id == self.admin.pk for v in versions))
 
     def test_suppression_desactive(self):
+        """ENF48 — jamais de DELETE (405, « use after free » au fuzz) :
+        désactiver = PATCH ``actif: false`` ; la métrique reste lisible."""
         pk = self._creer().data['id']
         reponse = self._vue('delete', {'delete': 'destroy'}, f'{BASE}{pk}/',
                             pk=pk)
-        self.assertEqual(reponse.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(reponse.status_code,
+                         status.HTTP_405_METHOD_NOT_ALLOWED)
+        self.assertTrue(MetricDefinition.objects.get(pk=pk).actif)
+        reponse = self._vue('patch', {'patch': 'partial_update'},
+                            f'{BASE}{pk}/', {'actif': False}, pk=pk)
+        self.assertEqual(reponse.status_code, status.HTTP_200_OK, reponse.data)
         self.assertFalse(MetricDefinition.objects.get(pk=pk).actif)
+        # ENF50 — désactivée mais EXISTANTE : état de la métrique, 409.
         self.assertEqual(self._valeur('nb_societes').status_code,
-                         status.HTTP_404_NOT_FOUND)
+                         status.HTTP_409_CONFLICT)
 
     def test_non_responsable_refuse(self):
         reponse = self._vue('get', {'get': 'list'}, BASE, user=self.simple)
@@ -164,6 +204,48 @@ class ValeurParCleTests(_BaseApi):
         self._creer()
         reponse = self._valeur('nb_societes', {'filters': '{pas du json'})
         self.assertEqual(reponse.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_adaptateur_ou_dataset_absent_409(self):
+        """ENF49 (api-fuzz-full 42128456456, UDnVtL) : la métrique ENREGISTRÉE
+        désigne un adaptateur / dataset absent de ce serveur → 409 (état de
+        la métrique), plus 400 sur un GET conforme."""
+        MetricDefinition.objects.create(
+            company=self.company, cle='adaptateur_absent', libelle='A',
+            mesure={'adapter': '0'})
+        MetricDefinition.objects.create(
+            company=self.company, cle='dataset_absent', libelle='D',
+            dataset='dataset_jamais_enregistre', mesure={'agg': 'count'})
+        for cle in ('adaptateur_absent', 'dataset_absent'):
+            reponse = self._valeur(cle)
+            self.assertEqual(reponse.status_code, status.HTTP_409_CONFLICT,
+                             (cle, reponse.data))
+            self.assertIn('detail', reponse.data)
+
+    def test_parametres_objet_json_publies_en_content_json(self):
+        """ENF45 c (api-fuzz-full 41958593088) : ``period``/``filters`` (et
+        ``cellule`` d'expliquer) sont publiés ``content: application/json``
+        + schéma objet — plus ``type: string``, dont « 2 » était conforme puis
+        refusé ; un objet conforme est bien lu par la vue."""
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+        doc = SchemaGenerator(patterns=[
+            path('api/django/semantic/', include('apps.semantic.urls')),
+        ]).get_schema(request=None, public=True)
+        attendus = {
+            '/api/django/semantic/metriques/{cle}/valeur/': {'period', 'filters'},
+            '/api/django/semantic/metriques/{cle}/expliquer/': {'filters', 'cellule'},
+        }
+        for chemin, noms in attendus.items():
+            parametres = {p['name']: p for p in doc['paths'][chemin]['get']['parameters']}
+            for nom in noms:
+                with self.subTest(chemin=chemin, nom=nom):
+                    parametre = parametres[nom]
+                    self.assertNotIn('schema', parametre)
+                    schema = parametre['content']['application/json']['schema']
+                    self.assertEqual(schema['type'], 'object')
+        self._creer()
+        reponse = self._valeur('nb_societes', {'group_by': '', 'filters': '{}'})
+        self.assertEqual(reponse.status_code, status.HTTP_200_OK, reponse.data)
 
     def test_parametres_lus(self):
         group_by, period, filters = parametres_de_resolution({
@@ -263,11 +345,48 @@ class PortabiliteTests(_BaseApi):
             {'cle': 'mauvaise', 'libelle': 'M', 'dataset': 'ntdata10_societes',
              'mesure': {'agg': 'count'}, 'company': self.autre.pk},
         ]})
+        # ENF48 : la forme d'une entrée est PUBLIÉE (clés portables,
+        # ``additionalProperties: false``) — 400 nommé sur le corps.
         self.assertEqual(reponse.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertFalse(reponse.data['applique'])
-        self.assertIn('company', reponse.data['resultats'][1]['erreurs'])
+        self.assertIn('metriques', reponse.data)
+        self.assertIn('company', str(reponse.data['metriques']))
         self.assertFalse(MetricDefinition.objects.filter(
             company=self.company).exists())
+        # Même en dry-run (le schéma ne dépend pas du mode).
+        reponse = self._import({'metriques': [{'cle': 'x', 'id': 1}]})
+        self.assertEqual(reponse.status_code, status.HTTP_400_BAD_REQUEST)
+        # Valeur de forme invalide (motif de clé publié) : 400 aussi.
+        reponse = self._import({'metriques': [{'cle': 'Pas Une Cle'}]})
+        self.assertEqual(reponse.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_refus_d_etat_en_commit_409_rien_ecrit(self):
+        """ENF48 — création incomplète (dataset/mesure absents pour une clé
+        nouvelle) ou clé en double dans le document : dépend de l'état ou
+        du document entier, inexprimable au schéma → 409, rapport nommé."""
+        bonne = {'cle': 'bonne', 'libelle': 'B',
+                 'dataset': 'ntdata10_societes', 'mesure': {'agg': 'count'}}
+        for metriques in ([bonne, {'cle': 'incomplete'}], [bonne, bonne]):
+            reponse = self._import({'commit': True, 'metriques': metriques})
+            self.assertEqual(reponse.status_code, status.HTTP_409_CONFLICT,
+                             reponse.data)
+            self.assertFalse(reponse.data['applique'])
+            self.assertEqual(reponse.data['resultats'][1]['action'],
+                             'refusee')
+        self.assertFalse(MetricDefinition.objects.filter(
+            company=self.company).exists())
+
+    def test_filtres_et_dimensions_nuls_acceptes_liste_refusee(self):
+        """ENF48 (api-fuzz-pr XL1gwd) : ``null`` est publié pour filtres et
+        dimensions (ramené à {} / []) ; une LISTE de filtres sort du schéma
+        publié (objet) → 400 nommé."""
+        entree = {'cle': 'bonne', 'libelle': 'B', 'dataset': 'ntdata10_societes',
+                  'mesure': {'agg': 'count'}, 'filtres': None,
+                  'dimensions_par_defaut': None}
+        reponse = self._import({'metriques': [entree]})
+        self.assertEqual(reponse.status_code, status.HTTP_200_OK, reponse.data)
+        reponse = self._import({'metriques': [{**entree, 'filtres': [None]}]})
+        self.assertEqual(reponse.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('filtres', str(reponse.data['metriques']))
 
     def test_modification_signee(self):
         self._creer()
@@ -278,6 +397,16 @@ class PortabiliteTests(_BaseApi):
             metric_definition__cle='nb_societes').order_by('-version').first()
         self.assertEqual(derniere.version, 2)
         self.assertEqual(derniere.auteur_id, self.admin.pk)
+
+    def test_entree_non_objet_refusee_par_la_forme(self):
+        """ENF47 (api-fuzz-full 42017839549) : une entrée liste était
+        conforme au schéma (élément ``{}``) puis refusée ligne à ligne — une
+        entrée est un OBJET, publié et appliqué (400 nommé, rien d'écrit)."""
+        reponse = self._import({'commit': True, 'metriques': [[{}], None]})
+        self.assertEqual(reponse.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('metriques', reponse.data)
+        self.assertFalse(MetricDefinition.objects.filter(
+            company=self.company).exists())
 
     def test_document_etranger_400(self):
         reponse = self._import({'format': 'autre.outil', 'metriques': []})

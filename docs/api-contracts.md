@@ -477,7 +477,7 @@
 - frontend/src/api/savApi.js :: neplusSuivreTicket -> /api/django/sav/tickets/<>/suivre
     suivi:booleen
 - frontend/src/api/savApi.js :: planifierTournee -> /api/django/sav/contrats-maintenance/planifier-tournee
-    detail:inconnu, ok:booleen, tickets_planifies:inconnu
+    ok:booleen, tickets_planifies:inconnu
 - frontend/src/api/savApi.js :: removeTicketPiece -> /api/django/sav/tickets/<>/pieces/<>
     detail:texte
 - frontend/src/api/savApi.js :: suivreTicket -> /api/django/sav/tickets/<>/suivre

@@ -445,7 +445,7 @@ def _ventes_de_la_facture(facture):
     return [(s.devis, parts[(s.facture_id, s.devis_id)]) for s in sources]
 
 
-def motif_emission_hors_prix(facture):
+def motif_emission_hors_prix(facture, *, restauration=False):
     """None si l'émission de ``facture`` tient dans le prix convenu de sa
     (ses) vente(s) ; sinon le motif FR du refus (lecture pure — l'appelant,
     ``emettre_facture``, lève ``EmissionRefusee``).
@@ -474,6 +474,13 @@ def motif_emission_hors_prix(facture):
         prix = _d(option_totaux(devis)['ttc'])
         if deja + part > prix + CENT * (len(emises) + 1):
             refs = ', '.join(f.reference for f, _r in emises) or '—'
+            if restauration:  # AARG71 : le geste est une restauration
+                return (f'Restauration impossible : la vente {devis.reference} '
+                        f'a été facturée à nouveau depuis l\'annulation '
+                        f'({refs}, {_q(deja)} MAD sur {_q(prix)} MAD TTC) ; '
+                        f'la facture {facture.reference} ne peut pas être '
+                        'restaurée. Corrigez par un avoir sur la nouvelle '
+                        'facture si besoin.')
             return (f'Émission refusée : la vente {devis.reference} '
                     f'({_q(prix)} MAD TTC) est déjà facturée à '
                     f'{_q(deja)} MAD par {refs} ; cette facture '

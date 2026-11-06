@@ -1,0 +1,56 @@
+{
+  "sha": "46931cba7c8409e5247e920f72f0f12931cb444a",
+  "date": "2026-11-05",
+  "groupe": "ADVS",
+  "verdict": "PASS",
+  "couvre": [
+    "ADVS47"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PA3-01.tva_societe_au_chargement",
+      "taches": [
+        "ADVS47"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-05/ACCEPTATION-ADVS-PA3-01.tva_societe_au_chargement.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Ecran reel (Playwright MCP, demo_admin, societe demo 2) : tva_standard societe 14, 181 articles hors panneaux passes a taux NULL le temps de l'etape (retablis). /ventes/devis/nouveau charge : les 15 lignes par defaut (dont Smart Meter, Wifi Dongle, Structures, Socles, Accessoires, Tableau AC/DC, Installation, Transport, Suivi = produits catalogue sans taux) affichent TVA 14. 0 erreur console, toutes les API 200/201."
+    },
+    {
+      "id": "PA3-01.tva_saisie_gardee_auto_remplir",
+      "taches": [
+        "ADVS47"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-05/ACCEPTATION-ADVS-PA3-01.tva_saisie_gardee_auto_remplir.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "TVA 20 tapee sur la ligne Accessoires (produit 140) et sur la ligne Installation (produit 15383), kWc cible 5, Auto-remplir (POST devis/composition/ 200) : Accessoires, ligne appariee (meme cle 11, meme produit), garde 20 ; lignes composees de produits sans taux = 14 (onduleurs, batterie, structures, socles, cables, tableau, installation, transport), panneau Canadian Solar = son taux propre 10. Observation : la ligne Installation 15383 n'est pas appariee, la composition la remplace par le produit Installation 142 (nouvelle cle 28, 14) : la saisie disparait avec la ligne remplacee, aucun taux n'est ecrase sur une ligne gardee."
+    }
+  ]
+}

@@ -64,7 +64,7 @@ class ActiviteFkSocieteTests(TestCase):
             with self.subTest(champ=champ):
                 resp = self.api.patch(f'{URL}{act.id}/', {champ: valeur},
                                       format='json')
-                self.assertEqual(resp.status_code, 404, resp.data)  # ENF11
+                self.assertEqual(resp.status_code, 409, resp.data)  # ENF11
                 self.assertIn(champ, resp.data)
                 self._sans_fuite(resp)
         act.refresh_from_db()

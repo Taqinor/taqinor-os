@@ -297,10 +297,10 @@ class DemandeAchatViewSet(oa.CorpsObjetMixin, oa.JsonOnlyMixin, ChatterViewSetMi
         if etape_id:
             etape = (da.etapes_approbation.filter(pk=etape_id).first()
                      if 0 < etape_id <= oa.ID_MAX else None)
-            if etape is None:
+            if etape is None:  # ENF47 : demande existante, étape absente = 409 (ENF40)
                 return Response(
                     {'detail': 'Étape inconnue pour cette demande.'},
-                    status=status.HTTP_404_NOT_FOUND)
+                    status=status.HTTP_409_CONFLICT)
         else:
             etape = services.prochaine_etape_approbation_achat(da)
             if etape is None:

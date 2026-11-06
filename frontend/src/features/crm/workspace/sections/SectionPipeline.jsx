@@ -318,6 +318,11 @@ function ResumeAssocie({ leadId, devis, erreurs, setErreurs }) {
           </select>
         </FormField>
       )}
+      {premier('detail') && (
+        <p role="alert" className="text-sm text-red-600" data-testid="resume-associe-refus">
+          {premier('detail')}
+        </p>
+      )}
       <div>
         <Button type="button" variant="outline" size="sm"
                 disabled={!accord || busy || !choisi} onClick={envoyer}>

@@ -1,0 +1,110 @@
+# Preuve en direct AARG69 - pile locale, code 93d4c7463 (dev-plan-6a6fc9-w13), 2026-11-05
+# Lanceur : python scripts/sonde.py (transaction annulee, mail en memoire, HTTP sortant bloque) ou node.
+# Sondes LIVE-* : repro=true signifie ICI que le comportement attendu par la tache est observe ;
+# sondes C-* d'audit : ECART (repro=false) = le defaut constate n'est plus reproduit.
+
+== LIVE-AARG69 (sha 93d4c7463)
+attendu : B : 502 detail + email_log_id, 0 RelanceLog, EmailLog echec 1, niveau 1 ; A : 200 + PDF ; C : 200 sans mail
+observé : {"repro": true, "a_ok": true, "b_ok": true, "c_ok": true, "observe": {"ttc": "None", "b_niveau_avant": 1, "b": {"http": 502, "corps": {"detail": "L'e-mail de relance n'est pas parti : aucune relance consignée.", "email_log_id": "228"}, "mails": 0, "emaillog": [[228, "echec"]], "relancelog": 0}, "b_niveau_apres": 1, "a": {"http": 200, "mails": 1, "pj_pdf": [[["application/pdf", true]]], "emaillog": ["envoye"], "relancelog": 1}, "c": {"http": 200, "mails": 0, "relancelog": 1}}}
+verdict : REPRO
+base inchangée : oui (avant 103, après 103) ; mails 1 ; tâches Celery bloquées 0
+
+== C-AARG-VER1-304 (sha 2781a2049)
+attendu : (a) 1 mail + PJ %PDF, EmailLog envoye ; (b) 0 mail, EmailLog echec, reponse qui le dit, aucun niveau consomme
+observé : {'a_http': 200, 'a_mails': 1, 'a_pj': [[('FAC-202611-0001.pdf', 'application/pdf', True)]], 'a_emaillog': [('envoye', 'FAC-202611-0001.pdf', '')], 'a_relancelog': 1, 'b_niveau_avant': 1, 'b_http': 502, 'b_reponse_cles_email': {'detail': "L'e-mail de relance n'est pas parti : aucune relance consignée.", 'email_log_id': 231}, 'b_mails': 0, 'b_emaillog': [('echec', "PDF indisponible : la facture promise « ci-joint » n'a pas pu être produite — aucun e-mail envoyé.")], 'b_relancelog': [], 'b_niveau_apres': 1}
+{"repro": false, "a_ok": true, "b_echec_logue": true, "b_niveau_consomme": false, "b_reponse_muette": false, "a_http": 200, "a_mails": 1, "a_pj": [[["FAC-202611-0001.pdf", "application/pdf", true]]], "a_emaillog": [["envoye", "FAC-202611-0001.pdf", ""]], "a_relancelog": 1, "b_niveau_avant": 1, "b_http": 502, "b_reponse_cles_email": {"detail": "L'e-mail de relance n'est pas parti : aucune relance consignée.", "email_log_id": 231}, "b_mails": 0, "b_emaillog": [["echec", "PDF indisponible : la facture promise « ci-joint » n'a pas pu être produite — aucun e-mail envoyé."]], "b_relancelog": [], "b_niveau_apres": 1}
+verdict : ÉCART
+base inchangée : oui (avant 103, après 103) ; mails 1 ; tâches Celery bloquées 0
+
+# ---- source : C-LIVE-AARG69.py ----
+# flake8: noqa  (preuve en direct AARG69, 05/11/2026)
+"""AARG69 — relance manuelle « avec envoi » consignée seulement une fois l'e-mail parti. Factures émises 1 200 TTC en
+retard de 15 j, client à e-mail, niveaux par défaut, responsable. (B) rendu PDF en panne (`_document_pdf` → (None,
+None)) : POST relancer/ {niveau: 1, envoyer_email: true} ⇒ 502 {detail exact, email_log_id}, RelanceLog 0, EmailLog
+échec 1 (= email_log_id), 0 mail, prochain niveau 1 inchangé. (A) PDF réel ⇒ 200, 1 mail + PJ %PDF, RelanceLog 1.
+(C) envoyer_email false ⇒ 200, RelanceLog 1, 0 mail. Mail en mémoire, société neuve, transaction annulée."""
+SONDE = {"constat": "LIVE-AARG69", "sha": "93d4c7463",
+         "attendu": "B : 502 detail + email_log_id, 0 RelanceLog, EmailLog echec 1, niveau 1 ; A : 200 + PDF ; C : 200 sans mail",
+         "modeles": ["authentication.Company", "ventes.Facture", "ventes.EmailLog", "ventes.RelanceLog"]}
+
+
+def sonde(ctx):
+    from datetime import timedelta
+    from decimal import Decimal
+    from unittest.mock import patch
+    from django.core import mail
+    from django.contrib.auth import get_user_model
+    from rest_framework.test import APIClient
+    from authentication.models import Company
+    from apps.crm.models import Client
+    from apps.stock.models import Produit
+    from apps.ventes.models import EmailLog, Facture, LigneFacture, RelanceLog
+    from apps.ventes import scheduled
+    from apps.ventes.domain.facturation_ops import emettre_facture
+    from apps.ventes.domain.recouvrement import prochain_niveau
+    from apps.ventes.recouvrement import ensure_default_followup_levels
+    co = Company.objects.create(nom='Live AARG69', slug='live-aarg69')
+    adm = get_user_model().objects.create_user(username='live_aarg69_adm', password='x', role_legacy='admin', company=co)
+    u = get_user_model().objects.create_user(username='live_aarg69', password='x', role_legacy='responsable', company=co)
+    cl = Client.objects.create(company=co, nom='Tazi', prenom='L69', email='l69@example.invalid', telephone='+212600006900')
+    p = Produit.objects.create(company=co, nom='Kit', sku='LIVE-L69', prix_vente=Decimal('1000'), quantite_stock=0)
+    today = scheduled.casablanca_today()
+    ensure_default_followup_levels(co)
+
+    def ob():
+        return getattr(mail, 'outbox', [])
+
+    def facture(ref):
+        f = Facture.objects.create(company=co, reference=f'BROUILLON-{ref}', client=cl, statut=Facture.Statut.BROUILLON,
+                                   taux_tva=Decimal('20'), created_by=adm)
+        LigneFacture.objects.create(facture=f, produit=p, designation='Kit', quantite=Decimal('1'),
+                                    prix_unitaire=Decimal('1000'), taux_tva=Decimal('20'))
+        emettre_facture(Facture.objects.get(pk=f.pk), source='sonde')
+        Facture.objects.filter(pk=f.pk).update(date_emission=today - timedelta(days=45),
+                                               date_echeance=today - timedelta(days=15),
+                                               statut=Facture.Statut.EN_RETARD)
+        return Facture.objects.get(pk=f.pk)
+
+    api = APIClient()
+    api.force_authenticate(u)
+    H = dict(format='json', HTTP_HOST='localhost')
+    obs = {}
+    fa, fb, fc = facture('L69-A'), facture('L69-B'), facture('L69-C')
+    obs['ttc'] = str(fb.montant_ttc)
+    # (B) PDF en panne
+    nv, _t = prochain_niveau(Facture.objects.get(pk=fb.pk))
+    obs['b_niveau_avant'] = getattr(nv, 'ordre', None)
+    avant = len(ob())
+    with patch('apps.ventes.email_service._document_pdf', return_value=(None, None)):
+        r = api.post(f'/api/django/ventes/factures/{fb.id}/relancer/', {'niveau': 1, 'envoyer_email': True}, **H)
+    data = r.data if isinstance(r.data, dict) else {}
+    obs['b'] = {'http': r.status_code, 'corps': {k: (str(v)[:160]) for k, v in data.items()},
+                'mails': len(ob()) - avant,
+                'emaillog': list(EmailLog.objects.filter(facture=fb).values_list('id', 'statut')),
+                'relancelog': RelanceLog.objects.filter(facture=fb).count()}
+    na, _t = prochain_niveau(Facture.objects.get(pk=fb.pk))
+    obs['b_niveau_apres'] = getattr(na, 'ordre', None)
+    # (A) PDF réel
+    avant = len(ob())
+    r = api.post(f'/api/django/ventes/factures/{fa.id}/relancer/', {'niveau': 1, 'envoyer_email': True}, **H)
+    env = ob()[avant:]
+    obs['a'] = {'http': r.status_code, 'mails': len(env),
+                'pj_pdf': [[(mime, bytes(c[:4]) == b'%PDF') for _n, c, mime in m.attachments] for m in env],
+                'emaillog': list(EmailLog.objects.filter(facture=fa).values_list('statut', flat=True)),
+                'relancelog': RelanceLog.objects.filter(facture=fa).count()}
+    # (C) sans envoi
+    avant = len(ob())
+    r = api.post(f'/api/django/ventes/factures/{fc.id}/relancer/', {'niveau': 1, 'envoyer_email': False}, **H)
+    obs['c'] = {'http': r.status_code, 'mails': len(ob()) - avant,
+                'relancelog': RelanceLog.objects.filter(facture=fc).count()}
+    b = obs['b']
+    attendu = "L'e-mail de relance n'est pas parti : aucune relance consignée."
+    b_ok = (b['http'] == 502 and b['corps'].get('detail') == attendu and 'email_log_id' in b['corps']
+            and b['relancelog'] == 0 and len(b['emaillog']) == 1 and b['emaillog'][0][1] == EmailLog.Statut.ECHEC
+            and str(b['emaillog'][0][0]) == b['corps'].get('email_log_id') and b['mails'] == 0
+            and obs['b_niveau_avant'] == obs['b_niveau_apres'] == 1)
+    a_ok = obs['a']['http'] == 200 and obs['a']['mails'] == 1 and obs['a']['pj_pdf'] == [[('application/pdf', True)]] \
+        and obs['a']['relancelog'] == 1
+    c_ok = obs['c']['http'] == 200 and obs['c']['mails'] == 0 and obs['c']['relancelog'] == 1
+    return {'repro': bool(a_ok and b_ok and c_ok), 'a_ok': a_ok, 'b_ok': b_ok, 'c_ok': c_ok, 'observe': obs}
+

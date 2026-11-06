@@ -197,7 +197,7 @@ class NetworkPolicyCrudTests(TenantAPITestCase):
         r = self._admin().patch(
             f'{self.RULES}{regle.id}/',
             {'policy': etrangere.id, 'cidr': '0.0.0.0/0'}, format='json')
-        self.assertEqual(r.status_code, 404, r.content)
+        self.assertEqual(r.status_code, 409, r.content)  # ENF45 a : mise à jour = 409
         regle.refresh_from_db()
         self.assertNotEqual(regle.policy_id, etrangere.id)
         self.assertEqual(regle.cidr, '10.0.0.0/8')
@@ -209,7 +209,7 @@ class NetworkPolicyCrudTests(TenantAPITestCase):
         r = self._admin().put(
             f'{self.RULES}{regle.id}/',
             {'policy': etrangere.id, 'cidr': '0.0.0.0/0'}, format='json')
-        self.assertEqual(r.status_code, 404, r.content)
+        self.assertEqual(r.status_code, 409, r.content)  # ENF45 a : mise à jour = 409
         regle.refresh_from_db()
         self.assertNotEqual(regle.policy_id, etrangere.id)
 

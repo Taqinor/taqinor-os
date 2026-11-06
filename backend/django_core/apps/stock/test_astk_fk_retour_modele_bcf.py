@@ -142,7 +142,7 @@ class FkRetourModeleBcfTests(TestCase):
                                format='json'),
                 self.api.patch(url, {'fournisseur': ID_ABSENT},
                                format='json'),
-                self.fb.pk, 404)
+                self.fb.pk, 409)  # ENF45 a : PATCH = mise à jour → 409
         retour.refresh_from_db()
         self.assertEqual(retour.fournisseur_id, self.fa.pk)
         # Un fournisseur de la même société reste accepté en brouillon.

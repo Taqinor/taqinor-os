@@ -2531,7 +2531,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         try:
             item = ticket.checklist_items.get(cle=cle)
         except TicketChecklistItem.DoesNotExist:
-            return Response({'detail': 'Item introuvable.'}, status=404)
+            return Response({'detail': 'Item introuvable.'}, status=409)  # ENF47 : refus d'état (ENF40)
         if 'coche' in corps:
             item.coche = corps['coche']
             if item.coche:
@@ -2545,8 +2545,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
         item.save()
         return Response(TicketChecklistItemSerializer(item).data)
 
-    @extend_schema(
-        methods=['GET'], request=None, responses=TicketWorksheetSerializer)
+    @extend_schema(methods=['GET'], request=None, responses={
+        200: TicketWorksheetSerializer, 409: _sch('SavWorksheetRefus', {'detail': drf_serializers.CharField()})})
     @extend_schema(
         methods=['POST'],
         request=_sch('SavWorksheetInitRequete', {
@@ -2573,13 +2573,13 @@ class TicketViewSet(CompanyScopedModelViewSet):
                marque complétée (body: {complete: true}) — refuse (400) si
                un champ requis du modèle manque encore.
         Gaté par ``SavSlaSettings.worksheets_maintenance_actifs`` (défaut
-        OFF) : 404 tant que la société n'a pas activé la fonctionnalité."""
+        OFF) : 409 tant que la société n'a pas activé la fonctionnalité."""
         ticket = self.get_object()
         sla = SavSlaSettings.get(ticket.company)
         if not sla.worksheets_maintenance_actifs:
             return Response(
                 {'detail': 'Feuilles de maintenance non activées pour cette société.'},
-                status=404)
+                status=409)  # ENF50 : ticket existant, fonction éteinte = état (ENF40)
 
         if request.method == 'GET':
             worksheet = getattr(ticket, 'worksheet', None)

@@ -254,20 +254,22 @@ _EFFORT_ESTIME_PAR_KIND = {
 }
 
 
-def _sans_leads_hors_portee(qs, user):
+def _sans_leads_hors_portee(qs, user, garder=None):
     """ACVI6 — une liste sans cible n'expose pas les pièces des leads hors portée
-    (ni, pour un rôle fin sans ``crm_voir``, celles d'aucun lead)."""
+    (ni, pour un rôle fin sans ``crm_voir``, celles d'aucun lead). ACVI105 —
+    aussi les commentaires et activités ; ``garder`` (Q) : ce dont ``user`` est
+    auteur ou assigné reste visible."""
     from django.contrib.contenttypes.models import ContentType
 
-    from authentication.scoping import scope_queryset
+    from apps.crm.selectors import portee_leads  # ACVI106 — + périmètre d'entités
     from core.permissions import _user_has_or_legacy
 
     ct = ContentType.objects.get(app_label='crm', model='lead')
-    visibles = scope_queryset(ct.model_class().objects.all(), user, ['owner'])
+    visibles = portee_leads(ct.model_class().objects.all(), user)
     if getattr(user, 'role', None) is not None and not _user_has_or_legacy(user, 'crm_voir'):
         visibles = visibles.none()
-    return qs.exclude(
-        models.Q(content_type=ct) & ~models.Q(object_id__in=visibles.values('pk')))
+    hors = models.Q(content_type=ct) & ~models.Q(object_id__in=visibles.values('pk'))
+    return qs.exclude(hors & ~garder if garder is not None else hors)
 
 
 def _company(request):
@@ -382,8 +384,11 @@ class ActivityViewSet(viewsets.ModelViewSet):
             except ValueError:
                 return qs.none()
             qs = qs.filter(content_type=ct, object_id=oid)
-        elif personnelle:
-            qs = qs.filter(personnelle=True, created_by=self.request.user)
+        else:  # ACVI105 — sans cible : rien des leads hors portée, sauf le sien
+            moi = self.request.user
+            qs = _sans_leads_hors_portee(qs, moi, models.Q(assigned_to=moi) | models.Q(created_by=moi))
+            if personnelle:
+                qs = qs.filter(personnelle=True, created_by=moi)
         if ouvertes:
             qs = qs.filter(done=False)
         return qs
@@ -1064,6 +1069,8 @@ class CommentViewSet(viewsets.ModelViewSet):
             except ValueError:
                 return qs.none()
             qs = qs.filter(content_type=ct, object_id=oid)
+        else:  # ACVI105 — sans cible : rien des leads hors portée, sauf ses commentaires
+            qs = _sans_leads_hors_portee(qs, self.request.user, models.Q(author=self.request.user))
         # XKB13 — ?resolved=true|false : masque/affiche les fils résolus
         # (le frontend masque les fils résolus par défaut).
         # Déclaré booléen au schéma : « true »/« false » seulement (autre valeur

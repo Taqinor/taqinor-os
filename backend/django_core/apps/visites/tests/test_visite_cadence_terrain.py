@@ -638,7 +638,7 @@ class QualificationApiTests(VisiteCadenceBase):
         self.visite.save(update_fields=['statut'])
         reponse = self.api.post(self.url, dict(QUALIFICATION_VALIDE),
                                 format='json')
-        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertIn('statut', reponse.data['erreurs'])
 
     def test_isolation_societe(self):

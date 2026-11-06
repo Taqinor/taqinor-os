@@ -55,6 +55,56 @@ class BulkWhatsappGardesTests(TestCase):
         self.assertIn('corps', refus.data)
         self.assertFalse(MessageTemplate.objects.filter(nom='Faux').exists())
 
+    def test_motif_publie_du_corps_egale_la_validation(self):
+        """ENF49 (api-fuzz-full 42128456456) — le corps publie un motif qui
+        accepte EXACTEMENT ce que ``validate_corps`` accepte (un corps à
+        ``{entreprise}`` était conforme au schéma puis 400)."""
+        import re
+
+        from apps.crm.champs_api import CorpsGabarit, motif_gabarit
+        from apps.crm.serializers_cadence import MessageTemplateSerializer
+        from apps.parametres.models_messages import PLACEHOLDERS_RELANCE
+
+        serialiseur = MessageTemplateSerializer()
+        champ = serialiseur.fields['corps']
+        self.assertIsInstance(champ, CorpsGabarit)
+        self.assertEqual(champ.motif_publie,
+                         motif_gabarit(PLACEHOLDERS_RELANCE))
+        motif = re.compile(champ.motif_publie)
+        for corps in ('Bonjour {civilite} {nom}, devis {reference} : {lien}',
+                      "L'équipe {entreprise}", '{ab{nom}', '{nom', '{}',
+                      'a { b }', '{nomx}', '{{societe}}', 'x {lien_rdv}\n',
+                      '   ', '\u001c', 'a\u0000b', ' {nom} '):
+            try:
+                serialiseur.validate_corps(champ.run_validation(corps))
+                accepte = True
+            except Exception:  # noqa: BLE001 — ValidationError attendue
+                accepte = False
+            self.assertEqual(bool(motif.search(corps)), accepte, corps)
+
+    def test_societe_est_celle_du_lead(self):
+        """ACVI109 — `{societe}` = la raison sociale DU LEAD, jamais notre
+        marque ; vide : la phrase est omise, « Bonjour » gardé."""
+        from apps.crm.cadence_messages import _nom_affiche_marque
+        from apps.crm.fiche_funnel import _corps_whatsapp_en_masse
+
+        tpl = MessageTemplate.objects.create(
+            company=self.company, nom='Etude pro', langue='fr',
+            corps="Je prépare l'étude solaire de {societe}. Bonjour {prenom}.")
+        Lead.objects.filter(pk=self.c.pk).update(societe='Boulangerie Atlas')
+        self.c.refresh_from_db()
+        marque = _nom_affiche_marque(self.c)
+        texte = _corps_whatsapp_en_masse(self.c, tpl)
+        self.assertIn('Boulangerie Atlas', texte)
+        if marque:
+            self.assertNotIn(marque, texte)
+        Lead.objects.filter(pk=self.c.pk).update(societe='')
+        self.c.refresh_from_db()
+        texte = _corps_whatsapp_en_masse(self.c, tpl)
+        self.assertNotIn('étude solaire', texte)
+        self.assertIn('Bonjour', texte)
+        self.assertNotIn('{', texte)
+
     def setUp(self):
         self.company = Company.objects.create(
             nom='ACRM15 Solaire', slug='acrm15-bulk')

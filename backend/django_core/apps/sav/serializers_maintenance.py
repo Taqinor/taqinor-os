@@ -1,11 +1,12 @@
 from django.db import models
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
-from rest_framework.exceptions import NotFound, ValidationError
+from rest_framework.exceptions import ValidationError
 
 from core.champs_stricts import (
     ChampsStrictsSansDecimalMixin, DecimalSouple, EntierStrict,
     ListesStrictesMixin)
+from core.conflit_etat import ConflitEtat
 from core.mixins import SameCompanyFKSerializerMixin
 
 from .models import ContratMaintenance, PrestationContrat
@@ -162,9 +163,10 @@ class ContratMaintenanceSerializer(ListesStrictesMixin,
         if prestations is not None:
             existantes = {p.pk: p for p in instance.prestations.all()}
             if any(e.get('id') not in existantes for e in prestations):
-                # ENF11 : un id bien formé qui ne désigne aucune prestation de
-                # CE contrat = ressource absente (404), pas un corps invalide.
-                raise NotFound(
+                # ENF11/ENF48 : le contrat existe, l'id (absent ou bien formé)
+                # ne désigne aucune de SES prestations = 409 (règle d'ENF40 :
+                # parent existant, désignation absente), pas un corps invalide.
+                raise ConflitEtat(
                     {'prestations': 'Prestation inconnue pour ce contrat.'})
             for entree in prestations:
                 prestation = existantes[entree['id']]

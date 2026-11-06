@@ -1,0 +1,159 @@
+# Preuve en direct AGNR63 - pile locale, code 93d4c7463 (dev-plan-6a6fc9-w13), 2026-11-05
+# Lanceur : python scripts/sonde.py (transaction annulee, mail en memoire, HTTP sortant bloque) ou node.
+# Sondes LIVE-* : repro=true signifie ICI que le comportement attendu par la tache est observe ;
+# sondes C-* d'audit : ECART (repro=false) = le defaut constate n'est plus reproduit.
+
+== LIVE-AGNR63 (sha 93d4c7463)
+attendu : 8000 MAD : 409 echeancier, rien ecrit ; 2000 MAD : succes, derniere = reste MAD >= 0, somme = TTC ; tout % : inchange
+observé : {"repro": true, "observe": {"P_8000": {"http": 409, "cle_echeancier": true, "detail": "Total des tranches avant la dernière : 11 400 MAD — il dépasse le total TTC du devis (8 500 MAD).", "nouveaux_devis": 0, "avant": {"ttc": "17000.00", "remise": "0.00", "jalons": ["8000.00", "6800.00", "2200.00"], "lignes": 2, "derniere": ["montant", 2200.0]}, "apres": {"ttc": "17000.00", "remise": "0.00", "jalons": ["8000.00", "6800.00", "2200.00"], "lignes": 2, "derniere": ["montant", 2200.0]}, "ok": true}, "P_2000": {"http": 200, "cle_echeancier": true, "detail": null, "nouveaux_devis": 0, "avant": {"ttc": "17000.00", "remise": "0.00", "jalons": ["2000.00", "6800.00", "8200.00"], "lignes": 2, "derniere": ["montant", 8200.0]}, "apres": {"ttc": "8500.00", "remise": "50.00", "jalons": ["2000.00", "3400.00", "3100.00"], "lignes": 2, "derniere": ["montant", 3100.0]}, "ok": true}, "P_pct": {"http": 200, "cle_echeancier": true, "detail": null, "nouveaux_devis": 0, "avant": {"ttc": "17000.00", "remise": "0.00", "jalons": ["5100.00", "6800.00", "5100.00"], "lignes": 2, "derniere": ["pct", 30]}, "apres": {"ttc": "8500.00", "remise": "50.00", "jalons": ["2550.00", "3400.00", "2550.00"], "lignes": 2, "derniere": ["pct", 30]}, "ok": true}, "D_8000": {"http": 409, "cle_echeancier": true, "detail": "Total des tranches avant la dernière : 12 400 MAD — il dépasse le total TTC du devis (11 000 MAD).", "nouveaux_devis": 0, "avant": {"ttc": "17000.00", "remise": "0.00", "jalons": ["8000.00", "6800.00", "2200.00"], "lignes": 2, "derniere": ["montant", 2200.0]}, "apres": {"ttc": "17000.00", "remise": "0.00", "jalons": ["8000.00", "6800.00", "2200.00"], "lignes": 2, "derniere": ["montant", 2200.0]}, "ok": true}, "D_2000": {"http": 204, "cle_echeancier": false, "detail": null, "nouveaux_devis": 0, "avant": {"ttc": "17000.00", "remise": "0.00", "jalons": ["2000.00", "6800.00", "8200.00"], "lignes": 2, "derniere": ["montant", 8200.0]}, "apres": {"ttc": "11000.00", "remise": "0.00", "jalons": ["2000.00", "4400.00", "4600.00"], "lignes": 1, "derniere": ["montant", 4600.0]}, "ok": true}, "D_pct": {"http": 204, "cle_echeancier": false, "detail": null, "nouveaux_devis": 0, "avant": {"ttc": "17000.00", "remise": "0.00", "jalons": ["5100.00", "6800.00", "5100.00"], "lignes": 2, "derniere": ["pct", 30]}, "apres": {"ttc": "11000.00", "remise": "0.00", "jalons": ["3300.00", "4400.00", "3300.00"], "lignes": 1, "derniere": ["pct", 30]}, "ok": true}, "N_8000": {"http": 409, "cle_echeancier": true, "detail": "Total des tranches avant la dernière : 11 600 MAD — il dépasse le total TTC du devis (9 000 MAD).", "nouveaux_devis": 0, "avant": {"ttc": "17000.00", "remise": "0.00", "jalons": ["8000.00", "6800.00", "2200.00"], "lignes": 2, "derniere": ["montant", 2200.0]}, "apres": {"ttc": "17000.00", "remise": "0.00", "jalons": ["8000.00", "6800.00", "2200.00"], "lignes": 2, "derniere": ["montant", 2200.0]}, "ok": true}, "N_2000": {"http": 201, "cle_echeancier": false, "detail": null, "nouveaux_devis": 1, "avant": {"ttc": "17000.00", "remise": "0.00", "jalons": ["2000.00", "6800.00", "8200.00"], "lignes": 2, "derniere": ["montant", 8200.0]}, "apres": {"ttc": "9000.00", "remise": "47.00", "jalons": ["2000.00", "3600.00", "3400.00"], "lignes": 2, "derniere": ["montant", 3400.0]}, "ok": true}, "N_pct": {"http": 201, "cle_echeancier": false, "detail": null, "nouveaux_devis": 1, "avant": {"ttc": "17000.00", "remise": "0.00", "jalons": ["5100.00", "6800.00", "5100.00"], "lignes": 2, "derniere": ["pct", 30]}, "apres": {"ttc": "9000.00", "remise": "47.00", "jalons": ["2700.00", "3600.00", "2700.00"], "lignes": 2, "derniere": ["pct", 30]}, "ok": true}}}
+verdict : REPRO
+base inchangée : oui (avant 8860, après 8860) ; mails 0 ; tâches Celery bloquées 0
+
+== C-AGNR-VER4-010 (sha 4cd568403)
+attendu : PATCH remise 200 ; jalons publiés : dernière tranche < 0 MAD et % < 0 imprimés
+observé : patch_echeancier=200 stocke=[{'type': 'acompte', 'unite': 'montant', 'libelle': 'Commande', 'pct_or_montant': 8000}, {'jalon': 'livraison_materiel', 'unite': 'pct', 'libelle': 'Livraison', 'pct_or_montant': 40}, {'jalon': 'reception_definitive', 'unite': 'montant', 'libelle': 'Réception', 'pct_or_montant': 2200.0}] montants_avant=['8000.00', '6800.00', '2200.00'] patch_remise=409 {'detail': ErrorDetail(string='Total des tranches avant la dernière : 11 400 MAD — il dépasse le total TTC du devis (8 500 MAD).', code='state_conflict'), 'echeancier': [ErrorDetail(string='Total des tranches avant la dernière : 11 400 MAD — il dépasse le total TTC du devis (8 500 MAD).', code='state_conflict')], 'error': {'code': 'state_conflict', 'message': 'Total des tranches avant la dernière : 11 400 MAD — il dépasse le total TTC du devis (8 500 MAD).', 'fields': None, 'request_id': '2390ed8cb2fe4b41b030442ac8c5d679'}} regles=12 echeancier_apres=[{'type': 'acompte', 'unite': 'montant', 'libelle': 'Commande', 'pct_or_montant': 8000}, {'jalon': 'livraison_materiel', 'unite': 'pct', 'libelle': 'Livraison', 'pct_or_montant': 40}, {'jalon': 'reception_definitive', 'unite': 'montant', 'libelle': 'Réception', 'pct_or_montant': 2200.0}] montants_apres=['8000.00', '6800.00', '2200.00'] imprime=['Commande : 47.06 % · 8\u202f000,00 MAD TTC', 'Livraison : 40 % · 6\u202f800,00 MAD TTC', 'Réception : 12.94 % · 2\u202f200,00 MAD TTC']
+{"repro": false, "patch_remise": 409, "montants_apres": ["8000.00", "6800.00", "2200.00"], "imprime": ["Commande : 47.06 % · 8 000,00 MAD TTC", "Livraison : 40 % · 6 800,00 MAD TTC", "Réception : 12.94 % · 2 200,00 MAD TTC"]}
+verdict : ÉCART
+base inchangée : oui (avant 8755, après 8755) ; mails 0 ; tâches Celery bloquées 0
+
+== C-AGNR-VER4-012 (sha 4cd568403)
+attendu : (1) prix-negocie 201, jalons V2 : dernière tranche < 0 ; (2) jalons < 0 mais repartition_paiement bornée (aucune case < 0, tranche matériel tronquée) ; (3) DELETE 204, jalons : dernière < 0
+observé : empreintes={'echeancier': '18460fa263', 'negociation': '2aa25ed09c', 'revision': 'a2542c87c9', 'conditions_commerciales': '77d57e001b'}
+(1) patch_ech=200 statut_v1=accepte ttc_v1=17000.00 ech_v1=[{'type': 'acompte', 'unite': 'montant', 'libelle': 'Commande', 'pct_or_montant': 8000}, {'jalon': 'livraison_materiel', 'unite': 'pct', 'libelle': 'Livraison', 'pct_or_montant': 40}, {'jalon': 'reception_definitive', 'unite': 'montant', 'libelle': 'Réception', 'pct_or_montant': 2200.0}] jalons_v1=['8000.00', '6800.00', '2200.00'] saisie={'prix_ttc': '9000'} apercu=200 {'devis_v2': {'id': None, 'reference': None, 'version': 2}, 'remise_pct': '47.00', 'total_ttc': '9000.00', 'factures_annulees': [{'reference': 'BROUILLON-1068'}], 'factures_reprises': [], 'ecart_ttc': '-8000.00', 'regularisation': {'type': 'aucune', 'montant': '0.00'}, 'reste_a_facturer': '9000.00'} appliquer=409 {'detail': ErrorDetail(string='Total des tranches avant la dernière : 11 600 MAD — il dépasse le total TTC du devis (9 000 MAD).', code='state_conflict'), 'echeancier': [ErrorDetail(string='Total des tranches avant la dernière : 11 600 MAD — il dépasse le total TTC du devis (9 000 MAD).', code='state_conflict')], 'error': {'code': 'state_conflict', 'message': 'Total des tranches avant la dernière : 11 600 MAD — il dépasse le total TTC du devis (9 000 MAD).', 'fields': None, 'request_id': '4514a42b89a64f7f8df6c683bd5c5c0e'}}
+(2) agricole {'patch_ech': 200, 'patch_remise': 409, 'ttc': '17000.00', 'ech': [{'type': 'acompte', 'unite': 'montant', 'libelle': 'Acompte', 'pct_or_montant': 8000}, {'type': 'materiel', 'unite': 'pct', 'libelle': 'Matériel', 'pct_or_montant': 40}, {'type': 'solde', 'unite': 'montant', 'libelle': 'Solde', 'pct_or_montant': 2200.0}], 'jalons': ['8000.00', '6800.00', '2200.00'], 'repartition_direct': {'acompte': 8000.0, 'materiel': 6800.0, 'solde': 2200.0, 'pct_a': 47, 'pct_m': 40, 'pct_s': 13, 'deux_cases': False}, 'builder_montants_tranches': {'sans': {'total': 17000.0, 'acompte': 8000.0, 'materiel': 6800.0, 'solde': 2200.0, 'pct_a': 47, 'pct_m': 40, 'pct_s': 13}, 'avec': {'total': 17000.0, 'acompte': 8000.0, 'materiel': 6800.0, 'solde': 2200.0, 'pct_a': 47, 'pct_m': 40, 'pct_s': 13}}, 'builder_payment_terms': {'acompte': 47, 'materiel': 40, 'solde': 13}, 'regles_echeancier_historique': None, 'agricole_echeancier_texte': "| | | | Acompte à la commande | | 47 % · 8 000,00 MAD | | | | À la réception du matériel | | 40 % · 6 800,00 MAD | | | | Après mise en marche | | 13 % · 2 200,00 MAD | | | | | Acompte à la commande — après l'accord FDA si vous demandez l'aide. |"}
+(2) residentiel {'patch_ech': 200, 'patch_remise': 409, 'ttc': '17000.00', 'ech': [{'type': 'acompte', 'unite': 'montant', 'libelle': 'Acompte', 'pct_or_montant': 8000}, {'type': 'materiel', 'unite': 'pct', 'libelle': 'Matériel', 'pct_or_montant': 40}, {'type': 'solde', 'unite': 'montant', 'libelle': 'Solde', 'pct_or_montant': 2200.0}], 'jalons': ['8000.00', '6800.00', '2200.00'], 'repartition_direct': {'acompte': 8000.0, 'materiel': 6800.0, 'solde': 2200.0, 'pct_a': 47, 'pct_m': 40, 'pct_s': 13, 'deux_cases': False}, 'builder_erreur': "ValueError: Devis DEV-202611-9423 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité)."}
+(3) patch_ech=200 ech=[{'type': 'acompte', 'unite': 'montant', 'libelle': 'Commande', 'pct_or_montant': 8000}, {'jalon': 'livraison_materiel', 'unite': 'pct', 'libelle': 'Livraison', 'pct_or_montant': 40}, {'jalon': 'reception_definitive', 'unite': 'montant', 'libelle': 'Réception', 'pct_or_montant': 2200.0}] jalons_avant=['8000.00', '6800.00', '2200.00'] delete=409 {'detail': ErrorDetail(string='Total des tranches avant la dernière : 12 400 MAD — il dépasse le total TTC du devis (11 000 MAD).', code='state_conflict'), 'echeancier': [ErrorDetail(string='Total des tranches avant la dernière : 12 400 MAD — il dépasse le total TTC du devis (11 000 MAD).', code='state_conflict')], 'error': {'code': 'state_conflict', 'message': 'Total des tranches avant la dernière : 12 400 MAD — il dépasse le total TTC du devis (11 000 MAD).', 'fields': None, 'request_id': '2279821e251f4f8096e8ca9227e506d9'}} ttc_apres=17000.00 jalons_apres=['8000.00', '6800.00', '2200.00']
+{"1": {"appliquer": 409}, "2_agricole": {"jalons": ["8000.00", "6800.00", "2200.00"], "jalons_negatif": false, "repartition_negatif": false, "repartition": {"acompte": 8000.0, "materiel": 6800.0, "solde": 2200.0, "pct_a": 47, "pct_m": 40, "pct_s": 13, "deux_cases": false}, "builder": {"sans": {"total": 17000.0, "acompte": 8000.0, "materiel": 6800.0, "solde": 2200.0, "pct_a": 47, "pct_m": 40, "pct_s": 13}, "avec": {"total": 17000.0, "acompte": 8000.0, "materiel": 6800.0, "solde": 2200.0, "pct_a": 47, "pct_m": 40, "pct_s": 13}}}, "2_residentiel": {"jalons": ["8000.00", "6800.00", "2200.00"], "jalons_negatif": false, "repartition_negatif": false, "repartition": {"acompte": 8000.0, "materiel": 6800.0, "solde": 2200.0, "pct_a": 47, "pct_m": 40, "pct_s": 13, "deux_cases": false}, "builder": "ValueError: Devis DEV-202611-9423 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité)."}, "3": {"delete": 409, "jalons_apres": ["8000.00", "6800.00", "2200.00"], "negatif": false}, "empreintes": {"echeancier": "18460fa263", "negociation": "2aa25ed09c", "revision": "a2542c87c9", "conditions_commerciales": "77d57e001b"}, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 8860, après 8860) ; mails 0 ; tâches Celery bloquées 0
+
+# ---- source : C-LIVE-AGNR63.py ----
+# flake8: noqa  (preuve en direct AGNR63, 05/11/2026)
+"""AGNR63 — tout geste qui change le TTC d'un devis re-base son échéancier stocké par la règle d'AGNR49 ou répond 409
+sans écriture. Devis industriel des sondes (Panneau 1 000 ×10 TVA 10 % + Onduleur 5 000 ×1 TVA 20 % = 17 000 TTC),
+admin, vraie API. Pour chaque geste — (P) PATCH devis {remise_globale: 50}, (D) DELETE devis-lignes/<onduleur>,
+(N) POST prix-negocie 9 000 sur V1 acceptée — trois échéanciers : [8 000 MAD ; 40 % ; 10 %] ⇒ 409 {echeancier},
+rien d'écrit ; [2 000 MAD ; 40 % ; 10 %] ⇒ 200/204/201, dernière tranche = reste en MAD, aucun jalon < 0, Σ = TTC ;
+tout % [30 ; 40 ; 30] ⇒ succès, échéancier inchangé. Société neuve, transactions annulées."""
+SONDE = {"constat": "LIVE-AGNR63", "sha": "93d4c7463",
+         "attendu": "8000 MAD : 409 echeancier, rien ecrit ; 2000 MAD : succes, derniere = reste MAD >= 0, somme = TTC ; tout % : inchange",
+         "modeles": ["authentication.Company", "crm.Client", "stock.Produit", "ventes.Devis", "ventes.LigneDevis",
+                     "facturation.Facture"]}
+
+
+def sonde(ctx):
+    import copy
+    from datetime import date
+    from decimal import Decimal
+    from unittest import mock
+    from django.contrib.auth import get_user_model
+    from django.db import transaction
+    from django.utils import timezone
+    from rest_framework.test import APIClient
+    from authentication.models import Company
+    from apps.crm.models import Client
+    from apps.stock.models import Produit
+    from apps.ventes.models import Devis, LigneDevis
+    from apps.ventes.utils.echeancier import jalons_paiement_devis
+    from apps.ventes.utils.options import option_totaux
+    from apps.ventes.domain.cycle_vie import accept_devis
+    mois = timezone.now().strftime('%Y%m')
+    co = Company.objects.create(nom='Live AGNR63', slug='live-agnr63')
+    u = get_user_model().objects.create_user(username='live-agnr63', password='x', company=co, role_legacy='admin')
+    cl = Client.objects.create(company=co, nom='Client', prenom='L63G', email='live-agnr63@example.invalid')
+    api = APIClient()
+    api.force_authenticate(u)
+    B = '/api/django/ventes'
+    H = dict(format='json', HTTP_HOST='localhost')
+    seq = [0]
+
+    def devis():
+        seq[0] += 1
+        d = Devis.objects.create(company=co, reference=f'DEV-{mois}-96{10 + seq[0]}', client=cl,
+                                 statut=Devis.Statut.BROUILLON, taux_tva=Decimal('20.00'), mode_installation='industriel')
+        lignes = {}
+        for nom, pu, q, tva in (('Panneau', '1000', '10', '10.00'), ('Onduleur', '5000', '1', '20.00')):
+            p = Produit.objects.create(company=co, nom=nom, sku=f'L63G-{seq[0]}-{nom}', prix_vente=Decimal(pu),
+                                       quantite_stock=100)
+            lignes[nom] = LigneDevis.objects.create(devis=d, produit=p, designation=nom, quantite=Decimal(q),
+                                                    prix_unitaire=Decimal(pu), remise=Decimal('0'), taux_tva=Decimal(tva))
+        return d, lignes
+
+    def corps(premier):
+        if premier is None:
+            return [{'libelle': 'Commande', 'type': 'acompte', 'unite': 'pct', 'pct_or_montant': 30},
+                    {'libelle': 'Livraison', 'jalon': 'livraison_materiel', 'unite': 'pct', 'pct_or_montant': 40},
+                    {'libelle': 'Réception', 'jalon': 'reception_definitive', 'unite': 'pct', 'pct_or_montant': 30}]
+        return [{'libelle': 'Commande', 'type': 'acompte', 'unite': 'montant', 'pct_or_montant': premier},
+                {'libelle': 'Livraison', 'jalon': 'livraison_materiel', 'unite': 'pct', 'pct_or_montant': 40},
+                {'libelle': 'Réception', 'jalon': 'reception_definitive', 'unite': 'pct', 'pct_or_montant': 10}]
+
+    def lire(d):
+        d = Devis.objects.get(pk=d.pk)
+        j = [Decimal(str(x['montant_ttc'])) for x in jalons_paiement_devis(d)]
+        return {'ttc': str(option_totaux(d)['ttc']), 'remise': str(d.remise_globale), 'ech': copy.deepcopy(d.echeancier),
+                'jalons': [str(x) for x in j], 'somme': str(sum(j)), 'negatif': any(x < 0 for x in j),
+                'nb_lignes': d.lignes.count()}
+
+    def geste(nom, d, lignes):
+        if nom == 'P':
+            r = api.patch(f'{B}/devis/{d.pk}/', {'remise_globale': '50'}, **H)
+            return r, d
+        if nom == 'D':
+            r = api.delete(f'{B}/devis-lignes/{lignes["Onduleur"].pk}/', HTTP_HOST='localhost')
+            return r, d
+        Devis.objects.filter(pk=d.pk).update(statut=Devis.Statut.ENVOYE)
+        with mock.patch('apps.ventes.domain.cycle_vie._send_acceptance_emails'), \
+                mock.patch('apps.ventes.domain.cycle_vie._store_signed_pdf'):
+            v1 = accept_devis(devis=Devis.objects.get(pk=d.pk), user=u, nom='Client L63G',
+                              date_acceptation=date.today(), option='sans_batterie')
+            r = api.post(f'{B}/devis/{v1.pk}/prix-negocie/', {'mode': 'appliquer', 'confirmer_avoir': True,
+                                                              'prix_ttc': '9000'}, **H)
+        cible = Devis.objects.get(pk=r.data['devis_v2']['id']) if r.status_code == 201 else v1
+        return r, cible
+
+    obs, ok = {}, True
+    for g in ('P', 'D', 'N'):
+        for cas, premier in (('8000', 8000), ('2000', 2000), ('pct', None)):
+            try:
+                with transaction.atomic():
+                    d, lignes = devis()
+                    rp = api.patch(f'{B}/devis/{d.pk}/', {'echeancier': corps(premier)}, **H)
+                    avant = lire(d)
+                    nb_devis_avant = Devis.objects.filter(company=co).count()
+                    r, cible = geste(g, d, lignes)
+                    apres = lire(cible)
+                    data = r.data if isinstance(getattr(r, 'data', None), dict) else {}
+                    o = {'patch_ech': rp.status_code, 'http': r.status_code, 'cle_echeancier': 'echeancier' in data,
+                         'detail': str(data.get('detail'))[:160] if r.status_code >= 400 else None,
+                         'avant': avant, 'apres': apres,
+                         'nouveaux_devis': Devis.objects.filter(company=co).count() - nb_devis_avant}
+                    if cas == '8000':
+                        v = (r.status_code == 409 and o['cle_echeancier'] and o['nouveaux_devis'] == 0
+                             and apres['ech'] == avant['ech'] and apres['remise'] == avant['remise']
+                             and apres['nb_lignes'] == avant['nb_lignes'] and apres['ttc'] == avant['ttc'])
+                    elif cas == '2000':
+                        der = (apres['ech'] or [{}])[-1]
+                        v = (r.status_code in (200, 201, 204) and not apres['negatif'] and apres['ttc'] != avant['ttc']
+                             and Decimal(apres['somme']) == Decimal(apres['ttc']) and der.get('unite') == 'montant'
+                             and Decimal(str(der.get('pct_or_montant'))) == Decimal(apres['jalons'][-1]))
+                    else:
+                        v = (r.status_code in (200, 201, 204) and not apres['negatif']
+                             and [(t.get('unite'), t.get('pct_or_montant')) for t in apres['ech']]
+                             == [(t.get('unite'), t.get('pct_or_montant')) for t in avant['ech']])
+                    o['ok'] = bool(v)
+                    ok = ok and bool(v)
+                    obs[f'{g}_{cas}'] = o
+                    transaction.set_rollback(True)
+            except Exception as exc:
+                obs[f'{g}_{cas}'] = {'erreur': f'{type(exc).__name__}: {str(exc)[:200]}'}
+                ok = False
+    def court(o):
+        if 'erreur' in o:
+            return o
+        f = lambda e: {'ttc': e['ttc'], 'remise': e['remise'], 'jalons': e['jalons'], 'lignes': e['nb_lignes'],
+                       'derniere': [(e['ech'] or [{}])[-1].get('unite'), (e['ech'] or [{}])[-1].get('pct_or_montant')]}
+        return {'http': o['http'], 'cle_echeancier': o['cle_echeancier'], 'detail': o['detail'],
+                'nouveaux_devis': o['nouveaux_devis'], 'avant': f(o['avant']), 'apres': f(o['apres']), 'ok': o['ok']}
+    return {'repro': bool(ok), 'observe': {k: court(v) for k, v in obs.items()}}
+

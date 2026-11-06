@@ -99,7 +99,10 @@ def verifier_controle_reception(reception):
         return None
     controle = controle_de_reception(reception)
     if controle is None:
-        raise ValueError(
+        # ENF11 (nocturne 41958593088) : un verdict qualité MANQUANT est un
+        # état de la réception, pas une faute du corps — 409 (EtatIncompatible
+        # reste un ValueError pour les appelants).
+        raise EtatIncompatible(
             'Un plan d\'échantillonnage s\'applique à cette réception : '
             'saisissez le résultat du contrôle qualité avant de confirmer.')
     return controle

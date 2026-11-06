@@ -64,6 +64,26 @@ class ChampsSansConsommateurTests(unittest.TestCase):
         self.assertTrue(any("MORTE" in e for e in guard.verifier(
             {}, {cle: {"heures": "r"}})))
 
+    def test_argument_du_hook_n_est_pas_un_consommateur(self):
+        """AGNR72 — depuis SPL54 l'instantané vit dans `useBrouillonEcran` :
+        un état lu par les SEULS arguments de son appel (texte réel de
+        l'appel dans DevisGenerator.jsx, hook réel) est signalé ; lu par un
+        calcul, il reste vert. Les hooks `generator/hooks/*.js` sont lus."""
+        hook = ROOT / guard.VENTES / "generator" / "hooks" / "useBrouillonEcran.js"
+        self.assertIn("export function useBrouillonEcran", hook.read_text(encoding="utf-8"))
+        reel = (ROOT / guard.VENTES / "DevisGenerator.jsx").read_text(encoding="utf-8").splitlines()
+        appel = sorted(guard._bloc(reel, r"\buseBrouillonEcran\(", r"\s*\}\)"))
+        self.assertGreater(len(appel), 2)
+        bloc = "\n".join(reel[appel[0]:appel[-1] + 1]).replace(
+            "useBrouillonEcran({", "useBrouillonEcran({\n    heures,", 1)
+        source = ("function Ecran() {\n  const [heures, setHeures] = useState('7')\n  const {\n"
+                  + bloc + "\n  return (\n    <input value={heures} "
+                  "onChange={(e) => setHeures(e.target.value)} />\n  )\n}\n")
+        self.assertEqual(set(guard.etats_sans_consommateur(source)), {"heures"})
+        consomme = source.replace("  return (\n", "  const total = Number(heures) * 2\n  return (\n")
+        self.assertEqual(guard.etats_sans_consommateur(consomme), {})
+        self.assertIn(hook, guard._fichiers(ROOT))
+
     def test_depot_reel_vert(self):
         self.assertEqual(guard.verifier(guard.analyser()), [])
 

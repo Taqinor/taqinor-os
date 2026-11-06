@@ -13,6 +13,8 @@ from django.contrib.postgres.search import SearchVector
 from django.db import models, transaction
 from django.db.models import F, Value
 
+from core.conflit_etat import ConflitEtat
+from core.parseurs import sans_nul
 from core.pdf import render_pdf
 
 from .models import Cabinet, Document, DocumentVersion, Folder, RoutageDocumentaire
@@ -361,8 +363,9 @@ def valider_extraction_ocr(validation, *, champs_corriges, user):
     document = validation.document
     # ADOC9 — jamais sur un document archivé légalement (write-once).
     assert_not_archive_legalement(document)
+    # ENF47 — NUL imbriqué (jsonb → 500) retiré des corrections stockées.
     corrections = {
-        k: v for k, v in (champs_corriges or {}).items()
+        k: v for k, v in (sans_nul(champs_corriges) or {}).items()
         if k not in (SOURCE_TYPE_KEY, SOURCE_ID_KEY)}
     existant = dict(document.custom_data or {})
     data = dict(existant)
@@ -381,7 +384,7 @@ def valider_extraction_ocr(validation, *, champs_corriges, user):
     document.save(update_fields=['custom_data', 'updated_at'])
     from django.utils import timezone as _tz
     validation.valide = True
-    validation.champs_extraits = champs_corriges or validation.champs_extraits
+    validation.champs_extraits = sans_nul(champs_corriges) or validation.champs_extraits
     validation.valide_par = user
     validation.valide_le = _tz.now()
     validation.save(update_fields=[
@@ -5409,7 +5412,6 @@ def scinder_pdf(version, points_de_coupe, *, created_by=None):
         # stocké → 409 (ENF11, api-fuzz-full 24/10).
         raw_points = [int(p) for p in (points_de_coupe or [])]
         if n_pages < 1 or any(p < 1 or p > n_pages for p in raw_points):
-            from core.conflit_etat import ConflitEtat
             raise ConflitEtat("Points de coupe invalides.")
         coupes = sorted(set(raw_points))
         if not coupes or coupes[0] != 1:
@@ -5912,12 +5914,12 @@ def creer_document_lien(*, company, folder, nom, url_externe, description='',
         url_externe=url_externe, created_by=created_by)
 
 
-def assert_not_document_lien(document, *, action=''):
+def assert_not_document_lien(document, *, action='', exc=ValueError):
     """XGED18 — Garde : refuse une action FICHIER (version/OCR/signature) sur un
     document-lien. Lève `ValueError` (→ 400 explicite côté vue, jamais un
     comportement silencieusement faux)."""
     if document.est_document_lien:
-        raise ValueError(
+        raise exc(
             f"Action « {action or 'fichier'} » impossible : ce document est "
             "un document-lien (URL externe, sans fichier stocké).")
 
@@ -6338,12 +6340,10 @@ def caviarder_document(version, zones, *, created_by=None):
     l'original), dont `custom_data` trace l'origine
     (`{'caviarde_depuis': <id original>}`) — pattern `source_type`/`source_id`
     déjà utilisé pour les traces cross-app, pas un nouveau schéma de FK.
-    Respecte les gardes GED23/24 sur l'ORIGINAL (lecture seule — jamais
-    bloquant : caviarder ne MODIFIE pas l'original, seule une garde
-    `assert_not_document_lien` s'applique, XGED18). Renvoie le nouveau
-    `Document` créé."""
+    L'original n'est jamais modifié ; un document-lien (XGED18) est un refus
+    d'ÉTAT, 409 (ENF47, c'était 400). Renvoie le `Document` créé."""
     document = version.document
-    assert_not_document_lien(document, action='caviarder')
+    assert_not_document_lien(document, action='caviarder', exc=ConflitEtat)
     try:
         import fitz  # PyMuPDF
     except Exception:
@@ -6359,7 +6359,6 @@ def caviarder_document(version, zones, *, created_by=None):
         # copie « (caviardée) » qui ne masque rien fuirait le texte).
         # api-fuzz-full 24/10 — 409 : le nombre de pages du fichier stocké et
         # « x1 > x0 » sont des règles que le schéma ne peut pas porter.
-        from core.conflit_etat import ConflitEtat
         a_rediger = []
         for zone in zones:
             try:
@@ -6401,7 +6400,7 @@ def caviarder_document(version, zones, *, created_by=None):
     finally:
         doc.close()
 
-    nom = f'{document.nom} (caviardé)'
+    nom = f'{document.nom[:240]} (caviardé)'  # ENF48 : nom ≤ 255, « .pdf » compris
     new_doc = create_document(
         company=document.company, folder=document.folder, nom=nom,
         description=document.description,

@@ -21,8 +21,9 @@ import json
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
+from drf_spectacular.openapi import AutoSchema
 from drf_spectacular.utils import (
-    OpenApiParameter, extend_schema, inline_serializer,
+    OpenApiParameter, OpenApiResponse, extend_schema, inline_serializer,
 )
 from rest_framework import serializers, status
 from rest_framework.decorators import action
@@ -52,7 +53,8 @@ class MetricDefinitionViewSet(CompanyScopedModelViewSet):
     ``post_save`` fige sans auteur, la vue — qui connaît l'acteur — la signe
     juste après (``services.attribuer_auteur``).
 
-    SUPPRIMER = DÉSACTIVER (``actif=False``). Une métrique est référencée PAR
+    JAMAIS SUPPRIMÉE : on la DÉSACTIVE (``PATCH {"actif": false}`` ; le DELETE
+    qui désactivait est retiré, ENF48). Une métrique est référencée PAR
     CLÉ par des widgets, des alertes et des rapports, et son historique de
     versions explique les chiffres passés : l'effacer casserait les uns et
     rendrait les autres inexplicables. Une métrique désactivée n'est plus
@@ -62,6 +64,10 @@ class MetricDefinitionViewSet(CompanyScopedModelViewSet):
     serializer_class = MetricDefinitionSerializer
     permission_classes = [IsResponsableOrAdmin]
     parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
+    # ENF48 — jamais de suppression : désactiver = ``PATCH {"actif": false}``.
+    # Un DELETE 2xx suivi d'un GET 200 était un « use after free » (api-fuzz-full
+    # 42074433075) ; aucun écran ne l'appelait (précédent ``entites``, NTADM1).
+    http_method_names = ['get', 'post', 'put', 'patch', 'head', 'options']
     queryset = MetricDefinition.objects.all()
     # Identifiant NUMÉRIQUE seulement : `metriques/<cle>/…` (valeur, lignage)
     # et les actions de liste (`export`, `glossaire`…) ne doivent jamais être
@@ -115,11 +121,6 @@ class MetricDefinitionViewSet(CompanyScopedModelViewSet):
             services.attribuer_auteur(serializer.instance, avant,
                                       self.request.user)
 
-    def perform_destroy(self, instance):
-        if instance.actif:
-            instance.actif = False
-            instance.save(update_fields=['actif', 'updated_at'])
-
     @extend_schema(
         responses=inline_serializer('MetriquesPourAgentReponse', {
             'metriques': inline_serializer('MetriquePourAgent', {
@@ -166,18 +167,25 @@ class MetricDefinitionViewSet(CompanyScopedModelViewSet):
                              'metriques': []})
         return Response(portabilite.exporter_metriques(request.user.company))
 
+    _RAPPORT_IMPORT = inline_serializer('MetriquesImportReponse', {
+        'commit': serializers.BooleanField(),
+        'applique': serializers.BooleanField(),
+        'resultats': serializers.ListField(child=serializers.DictField()),
+    })
+
     @extend_schema(
         request=ImportMetriquesSerializer,
-        responses=inline_serializer('MetriquesImportReponse', {
-            'commit': serializers.BooleanField(),
-            'applique': serializers.BooleanField(),
-            'resultats': serializers.ListField(child=serializers.DictField()),
-        }))
+        responses={200: _RAPPORT_IMPORT, 409: OpenApiResponse(
+            response=_RAPPORT_IMPORT, description=(
+                "Mode commit : une entrée est refusée par l'ÉTAT (création "
+                "incomplète, doublon dans le document) — rien n'est écrit, "
+                "le rapport nomme chaque refus."))})
     @action(detail=False, methods=['post'], url_path='import',
             permission_classes=[IsResponsableOrAdmin])
     def importer(self, request):
         """NTDATA48 — import symétrique : dry-run par défaut, ``commit`` tout
-        ou rien. 400 si une entrée est refusée en mode ``commit``."""
+        ou rien. Une entrée de forme invalide = 400 (ENF48, même en dry-run) ;
+        une entrée refusée par l'état en mode ``commit`` = 409 (était 400)."""
         corps = ImportMetriquesSerializer(data=request.data)
         corps.is_valid(raise_exception=True)
         if not request.user.company_id:
@@ -194,9 +202,48 @@ class MetricDefinitionViewSet(CompanyScopedModelViewSet):
             commit=donnees.get('commit', False), auteur=request.user,
             contexte={'request': request})
         refus = any(r['action'] == 'refusee' for r in rapport['resultats'])
-        code = (status.HTTP_400_BAD_REQUEST if rapport['commit'] and refus
+        code = (status.HTTP_409_CONFLICT if rapport['commit'] and refus
                 else status.HTTP_200_OK)
         return Response(rapport, status=code)
+
+
+#: ENF45 c (api-fuzz-full 41958593088) — paramètres de requête qui portent un
+#: OBJET JSON (``?filters={"statut":"ouvert"}``) : publiés ``type: string``, le
+#: fuzz y envoyait « 2 » ou un texte libre, conformes au schéma et refusés
+#: (400). Ils sont publiés tels que la vue les lit : ``content:
+#: application/json`` + schéma objet (OpenAPI 3, « parameter content »). La
+#: validation serveur (``_json_param``, liste blanche du moteur) est inchangée ;
+#: ``period`` accepte toujours aussi « debut,fin » en texte.
+_OBJET_JSON = {'type': 'object'}
+_PERIODE_JSON = {
+    'type': 'object',
+    'properties': {
+        'debut': {'type': 'string', 'format': 'date'},
+        'fin': {'type': 'string', 'format': 'date'},
+        'champ': {'type': 'string', 'minLength': 1},
+    },
+}
+
+
+class _SchemaParametresJson(AutoSchema):
+    """AutoSchema qui publie les paramètres de ``parametres_json`` en
+    ``content: application/json`` (drf-spectacular 0.30 n'expose pas
+    ``content`` sur ``OpenApiParameter``). Déclaration de schéma UNIQUEMENT :
+    aucune route, aucune lecture ni réponse ne change."""
+
+    parametres_json = {'period': _PERIODE_JSON, 'filters': _OBJET_JSON,
+                       'cellule': _OBJET_JSON}
+
+    def get_operation(self, *args, **kwargs):
+        operation = super().get_operation(*args, **kwargs)
+        for parametre in (operation or {}).get('parameters', []):
+            schema = self.parametres_json.get(parametre.get('name'))
+            if parametre.get('in') != 'query' or schema is None:
+                continue
+            for cle in ('schema', 'style', 'explode'):
+                parametre.pop(cle, None)
+            parametre['content'] = {'application/json': {'schema': dict(schema)}}
+        return operation
 
 
 def _json_param(brut, nom, attendu):
@@ -245,6 +292,11 @@ def parametres_de_resolution(query_params):
     return group_by, period, filters
 
 
+#: ENF50 — la métrique existe mais est désactivée (``actif`` faux).
+_METRIQUE_DESACTIVEE = OpenApiResponse(
+    description='Métrique désactivée : la réactiver pour la lire.')
+
+
 class MetriqueValeurView(APIView):
     """NTDATA10 — ``GET semantic/metriques/<cle>/valeur/`` : la valeur PAR CLÉ.
 
@@ -257,6 +309,7 @@ class MetriqueValeurView(APIView):
     """
 
     permission_classes = [IsResponsableOrAdmin]
+    schema = _SchemaParametresJson()
 
     @extend_schema(
         parameters=[
@@ -269,16 +322,22 @@ class MetriqueValeurView(APIView):
             OpenApiParameter('filters', str, required=False,
                              description='Objet JSON de filtres.'),
         ],
-        responses=inline_serializer('MetriqueValeurReponse', {
-            'cle': serializers.CharField(),
-            'libelle': serializers.CharField(),
-            'unite': serializers.CharField(),
-            'format': serializers.IntegerField(),
-            'dataset': serializers.CharField(),
-            'group_by': serializers.ListField(child=serializers.CharField()),
-            'valeur': serializers.JSONField(allow_null=True),
-            'lignes': serializers.JSONField(),
-        }))
+        responses={
+            200: inline_serializer('MetriqueValeurReponse', {
+                'cle': serializers.CharField(),
+                'libelle': serializers.CharField(),
+                'unite': serializers.CharField(),
+                'format': serializers.IntegerField(),
+                'dataset': serializers.CharField(),
+                'group_by': serializers.ListField(
+                    child=serializers.CharField()),
+                'valeur': serializers.JSONField(allow_null=True),
+                'lignes': serializers.JSONField(),
+            }),
+            409: OpenApiResponse(
+                description='Métrique désactivée, ou adaptateur/dataset de la '
+                            'métrique absent de ce serveur (module désactivé).'),
+        })
     def get(self, request, cle=None):
         group_by, period, filters = parametres_de_resolution(
             request.query_params)
@@ -286,9 +345,20 @@ class MetriqueValeurView(APIView):
             resultat = services.resolve_metric(
                 request.user.company, request.user, cle, filters=filters,
                 group_by=group_by, period=period)
+        except services.MetriqueInactive as exc:
+            # ENF50 — la métrique EXISTE mais est désactivée : état (409),
+            # 404 gardé pour une clé que la société n'a pas.
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_409_CONFLICT)
         except services.MetriqueInconnue as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_404_NOT_FOUND)
+        except services.MetriqueIndisponible as exc:
+            # ENF49 (api-fuzz-full 42128456456, UDnVtL) — adaptateur/dataset
+            # ENREGISTRÉ mais absent de ce serveur : état de la métrique (409),
+            # la requête « GET sans paramètre » était conforme.
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_409_CONFLICT)
         except services.MetriqueNonResolvable as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -365,7 +435,7 @@ class MetriqueLignageView(APIView):
     permission_classes = [IsResponsableOrAdmin]
 
     @extend_schema(
-        responses=inline_serializer('MetriqueLignageReponse', {
+        responses={200: inline_serializer('MetriqueLignageReponse', {
             'metrique': serializers.CharField(),
             'libelle': serializers.CharField(),
             'description': serializers.CharField(),
@@ -376,11 +446,16 @@ class MetriqueLignageView(APIView):
             'filtres': serializers.JSONField(),
             'nb_lignes_agregees': serializers.IntegerField(allow_null=True),
             'version': serializers.JSONField(allow_null=True),
-        }))
+        }), 409: _METRIQUE_DESACTIVEE})
     def get(self, request, cle=None):
         try:
             lignage = selectors.lineage(request.user.company, cle,
                                         user=request.user)
+        except services.MetriqueInactive as exc:
+            # ENF50 — la métrique EXISTE mais est désactivée : état (409),
+            # 404 gardé pour une clé que la société n'a pas.
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_409_CONFLICT)
         except services.MetriqueInconnue as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_404_NOT_FOUND)
@@ -428,6 +503,7 @@ class MetriqueExpliquerView(APIView):
     """
 
     permission_classes = [IsResponsableOrAdmin]
+    schema = _SchemaParametresJson()
 
     @extend_schema(
         parameters=[
@@ -441,13 +517,13 @@ class MetriqueExpliquerView(APIView):
                              required=False,
                              description='Nombre maximal de lignes (1..1000).'),
         ],
-        responses=inline_serializer('MetriqueExpliquerReponse', {
+        responses={200: inline_serializer('MetriqueExpliquerReponse', {
             'lignage': serializers.JSONField(),
             'filtres_appliques': serializers.JSONField(),
             'cellule': serializers.JSONField(),
             'enregistrements': serializers.JSONField(allow_null=True),
             'raison': serializers.CharField(),
-        }))
+        }), 409: _METRIQUE_DESACTIVEE})
     def get(self, request, cle=None):
         params = request.query_params
         filters = _json_param(params.get('filters'), 'filters', dict)
@@ -462,6 +538,11 @@ class MetriqueExpliquerView(APIView):
             explication = selectors.expliquer(
                 request.user.company, request.user, cle, filters=filters,
                 cellule=cellule, limite=limite)
+        except services.MetriqueInactive as exc:
+            # ENF50 — la métrique EXISTE mais est désactivée : état (409),
+            # 404 gardé pour une clé que la société n'a pas.
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_409_CONFLICT)
         except services.MetriqueInconnue as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_404_NOT_FOUND)

@@ -1539,11 +1539,11 @@ class TaggedItemTagBorneTests(TestCase):
         # ERR-ENF11-FUZZ-RECORDS : id bien formé mais inconnu de la société
         # (autre société = absent) -> 404, plus 400.
         r = api.patch(url, {'tag': self.tag_b.pk}, format='json')
-        self.assertEqual(r.status_code, 404, r.data)
+        self.assertEqual(r.status_code, 409, r.data)  # ENF45 a : mise à jour = 409
         self.assertIn('tag', r.data)
         self.assertNotIn('TAG-B-SECRET', str(r.data))
         r0 = api.put(url, {'tag': 0}, format='json')
-        self.assertEqual(r0.status_code, 404, r0.data)
+        self.assertEqual(r0.status_code, 409, r0.data)  # ENF45 a : mise à jour = 409
         self.item.refresh_from_db()
         self.assertEqual(self.item.tag_id, self.tag_a.pk)
         r_ok = api.patch(url, {'tag': self.tag_a2.pk}, format='json')
@@ -1718,7 +1718,7 @@ class Enf11Records2eTourTests(TestCase):
         r = self.api.patch(
             f'/api/django/records/activity-types/{self.type.id}/',
             {'type_suivant': 987654321}, format='json')
-        self.assertEqual(r.status_code, 404, r.content)
+        self.assertEqual(r.status_code, 409, r.content)  # ENF45 a : mise à jour = 409
         r = self.api.post(
             f'/api/django/records/activities/{self.act.id}/snooze/',
             {'snoozed_until': '2999-01-01',

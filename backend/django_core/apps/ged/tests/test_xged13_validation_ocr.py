@@ -128,3 +128,17 @@ class ValiderExtractionTests(XGed13Base):
             {'champs_corriges': {'numero_facture': 'XYZ'}}, format='json')
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.data['valide'])
+
+    def test_valider_endpoint_nul_imbrique_retire(self):
+        """ENF47 (api-fuzz-full 42017839549) : un NUL imbriqué dans
+        ``champs_corriges`` faisait refuser le jsonb (DataError, 500)."""
+        validation = ValidationOcrDocument.objects.create(
+            company=self.co_a, document=self.doc, score_confiance=0.3,
+            champs_extraits={'numero_facture': 'ABC'})
+        resp = auth(self.admin_a).post(
+            f'/api/django/ged/validations-ocr/{validation.pk}/valider/',
+            {'champs_corriges': {'note': {'a\x00': ['x\x00y']}}},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.doc.refresh_from_db()
+        self.assertEqual(self.doc.custom_data['note'], {'a': ['xy']})

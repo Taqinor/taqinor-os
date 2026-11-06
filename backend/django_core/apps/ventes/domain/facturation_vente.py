@@ -275,7 +275,7 @@ def verrouiller_vente(devis):
                 .filter(Q(pk=racine.pk) | Q(pk=devis.pk)).order_by('pk'))
 
 
-def verrouiller_emission(facture, statut):
+def verrouiller_emission(facture, statut, *, restauration=False):
     """ATOT58 (C-ATOT-VER4-002) — appelé par ``emettre_facture`` DANS la
     transaction de la pose d'ÉMISE : ventes de la facture verrouillées (pk
     croissant) AVANT la borne VNT20, facture relue et statut revérifié —
@@ -293,7 +293,8 @@ def verrouiller_emission(facture, statut):
     if facture.pk and relu != statut:
         raise EmissionRefusee(
             'La facture a changé entre-temps : rechargez-la.', etat=True)
-    if (motif := motif_emission_hors_prix(facture)):  # VNT20 : 1 vente, 1 fois
+    if (motif := motif_emission_hors_prix(
+            facture, restauration=restauration)):  # VNT20 : 1 vente, 1 fois
         raise EmissionRefusee(motif, etat=True)
 
 
@@ -456,8 +457,13 @@ def _facturer_acompte(devis, plan, *, user, montant, cle_attendue, libelle):
                          if str(t['type']) == 'acompte'
                          and t['statut'] != 'emise'), None)
         if premiere is None or premiere['montant_ttc'] <= 0:
-            raise FacturationVenteRefusee('Montant invalide.',
-                                          code='montant_invalide')
+            # ENF47 (api-fuzz-full 42017839549) — montant facultatif au
+            # schéma : c'est l'ÉCHÉANCIER (aucun acompte à facturer) qui
+            # s'oppose, refus d'état 409 (le 400 rejetait un corps conforme).
+            raise FacturationVenteRefusee(
+                "Montant invalide : l'échéancier ne prévoit plus d'acompte à "
+                'facturer, indiquez un montant.',
+                code='montant_invalide', status=409)
         montant = premiere['montant_ttc']
     if montant >= prix:
         raise FacturationVenteRefusee(

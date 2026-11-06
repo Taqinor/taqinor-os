@@ -104,7 +104,7 @@ class TestTransporteur(TestCase):
         resp = self.api.patch(f'{BASE}/livraisons/{liv.id}/', {
             'transporteur': t_other.id,
         }, format='json')
-        self.assertEqual(resp.status_code, 404, resp.content)
+        self.assertEqual(resp.status_code, 409, resp.content)  # ENF45 a : mise à jour = 409
 
 
 class TestScopingAndRoles(TestCase):

@@ -2,8 +2,8 @@ from rest_framework.parsers import JSONParser
 from rest_framework import viewsets
 from ..models import LigneFacture
 from ..serializers_facturation import LigneFactureSerializer
+from ..gardes_lecture import LectureFactures
 from authentication.permissions import (
-    IsAnyRole,
     IsResponsableOrAdmin,
     IsAdminRole,
 )
@@ -48,7 +48,7 @@ class LigneFactureViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureFactures()]  # AARG66
         elif self.action in WRITE_ACTIONS:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':

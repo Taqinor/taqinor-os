@@ -112,7 +112,8 @@ def scope_entite_queryset(qs, user, champ='entite'):
         Q(**{f'{champ}_id__isnull': True}) | Q(**{f'{champ}_id__in': ids}))
 
 
-def _assert_entite_de_la_societe(user, entite_id, inconnu_404=False):
+def _assert_entite_de_la_societe(user, entite_id, inconnu_404=False,
+                                 mise_a_jour=False):
     """ASEC7 — lève ``ValidationError`` (400, champ ``entite``) si l'entité
     ``entite_id`` n'est pas une entité de la société de ``user`` ;
     ``NotFound`` (404, MÊME corps) quand ``inconnu_404`` — la surface dont le
@@ -139,11 +140,18 @@ def _assert_entite_de_la_societe(user, entite_id, inconnu_404=False):
         gabarit = PrimaryKeyRelatedField.default_error_messages['does_not_exist']
         detail = {'entite': [str(gabarit).format(pk_value=entite_id)]}
         if inconnu_404:
-            raise NotFound(ValidationError(detail, code='does_not_exist').detail)
+            corps = ValidationError(detail, code='does_not_exist').detail
+            if mise_a_jour:
+                # ENF45 a — parité ``IdInconnu404Mixin`` : sur une mise à
+                # jour la ressource du chemin existe → 409, corps inchangé.
+                from core.champs_stricts import _id_corps_inconnu_409
+                raise _id_corps_inconnu_409(corps)
+            raise NotFound(corps)
         raise ValidationError(detail, code='does_not_exist')
 
 
-def assert_entite_assignable(user, entite_id, *, inconnu_404=False):
+def assert_entite_assignable(user, entite_id, *, inconnu_404=False,
+                             mise_a_jour=False):
     """NTADM3 — lève ``PermissionDenied`` (403) si ``user`` n'a pas le droit
     de rattacher une ligne à l'entité ``entite_id``.
 
@@ -161,7 +169,8 @@ def assert_entite_assignable(user, entite_id, *, inconnu_404=False):
     # None) : avant, ce cas rendait la main sans rien vérifier et une entité
     # d'une AUTRE société était acceptée. 400 sur ``entite``, réponse
     # identique pour un id étranger et un id inexistant (aucun oracle).
-    _assert_entite_de_la_societe(user, valeur, inconnu_404=inconnu_404)
+    _assert_entite_de_la_societe(user, valeur, inconnu_404=inconnu_404,
+                                 mise_a_jour=mise_a_jour)
     ids = entites_visibles_ids(user)
     if ids is None:
         return
@@ -231,4 +240,5 @@ class EntiteScopeMixin:
         if not hasattr(data, 'get') or self.entite_field not in data:
             return
         assert_entite_assignable(request.user, data.get(self.entite_field),
-                                 inconnu_404=self.entite_inconnue_404)
+                                 inconnu_404=self.entite_inconnue_404,
+                                 mise_a_jour=request.method in ('PUT', 'PATCH'))

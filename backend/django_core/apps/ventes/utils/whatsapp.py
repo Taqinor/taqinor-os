@@ -159,7 +159,9 @@ def build_single_devis_whatsapp(request, devis, langue='fr'):
     from apps.ventes.models import ShareLink
     from apps.parametres.models import MessageTemplate
     from apps.ventes.utils.client_links import url_proposition
+    from apps.ventes.domain.envoi import exiger_contact_permis
 
+    exiger_contact_permis(devis)  # ACVI102 — ni message ni lien vers un opposé
     company = devis.company
     client = getattr(devis, 'client', None)
     lead = getattr(devis, 'lead', None)

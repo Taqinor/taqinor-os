@@ -81,7 +81,8 @@ def releve_client_portail(client):
     # AFAC40 — même définition que le relevé : ni brouillon ni annulée.
     qs = (Facture.objects
           .filter(client=client)
-          .exclude(statut__in=[Facture.Statut.PAYEE, *STATUTS_HORS_RELEVE]))
+          .exclude(statut__in=[Facture.Statut.PAYEE, *STATUTS_HORS_RELEVE])
+          .select_related('client'))  # AARG70 — `jours_retard` lit le délai client
     # APRF11 — toutes les relations lues par `montant_du` (plus de requête
     # par facture sur le relevé du portail).
     from apps.facturation.selectors import factures_avec_montant_du
@@ -514,6 +515,7 @@ def etat_recouvrement_client(company, client_id):
         Facture.objects
         .filter(company=company, client_id=client_id)
         .exclude(statut=Facture.Statut.ANNULEE)
+        .select_related('client')  # AARG70 — `jours_retard` lit le délai client
     )
     # APRF11 — toutes les relations lues par `montant_du`.
     from apps.facturation.selectors import factures_avec_montant_du

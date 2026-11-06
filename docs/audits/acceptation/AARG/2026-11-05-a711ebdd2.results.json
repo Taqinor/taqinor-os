@@ -1,0 +1,34 @@
+{
+ "sha": "a711ebdd22f045629fef836730564a5df11931d3",
+ "date": "2026-11-05",
+ "groupe": "AARG",
+ "verdict": "PASS",
+ "couvre": [
+  "AARG71"
+ ],
+ "couvre_avec_ecart": [],
+ "etapes": [
+  {
+   "id": "W20.AARG71.restauration_message_propre",
+   "taches": [
+    "AARG71"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/2026-11-05-rejeux-w20/AARG71.txt",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "API reelle (admin), societe neuve, transaction annulee : F1 emise (1 200 TTC) annulee (miroir A1), vente refacturee par F2 emise => POST avoirs/<A1>/annuler/ 409 {detail « Restauration impossible : la vente DEV-L71-A a ete facturee a nouveau depuis l'annulation (FAC-202611-0002, 1200.00 MAD sur 1200.00 MAD TTC) ; la facture FAC-202611-0001 ne peut pas etre restauree. Corrigez par un avoir sur la nouvelle facture si besoin. »}, sans « Annulez ce brouillon » ; F1 annulee, A1 emise (relus) ; temoin : motif_emission_hors_prix sans le drapeau rend toujours « Emission refusee : la vente … Annulez ce brouillon ou corrigez par un avoir. »"
+  }
+ ]
+}

@@ -108,7 +108,7 @@ export default function TicketWorksheetPanel({ ticketId }) {
         if (cancelled) return
         const status = err?.response?.status
         const detail = err?.response?.data?.detail || ''
-        if (status === 404 && /activ/i.test(detail)) {
+        if (status === 409 && /activ/i.test(detail)) { // ENF50 : fonction éteinte = 409
           setFeatureOff(true)
         } else if (status === 404) {
           setWorksheet(null)

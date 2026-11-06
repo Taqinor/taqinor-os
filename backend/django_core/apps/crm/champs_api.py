@@ -160,3 +160,33 @@ class _UrlBlancAutorise(OpenApiSerializerFieldExtension):
 
     def map_serializer_field(self, auto_schema, direction):
         return _schema_blanc_autorise(auto_schema, self.target, direction)
+
+
+def motif_gabarit(variables):
+    """ENF49 — motif d'un corps de message NON BLANC, SANS NUL (règle de
+    ``ChaineStricte``, ``MOTIF_NON_BLANC_SANS_NUL``) dont TOUTE variable
+    ``{mot}`` est dans ``variables`` (texte libre et accolades isolées
+    permis) : EXACTEMENT la règle de ``MessageTemplateSerializer.validate_corps``
+    (``re.findall(r'\\{\\w+\\}')`` inclus dans le catalogue). Un seul motif,
+    sans assertion : générable par le fuzz."""
+    noms = '|'.join(sorted((v.strip('{}') for v in variables),
+                           key=len, reverse=True))
+    accolade = (r'(?:\{\w*)*(?:\{(?:' + noms + r')\}|\{\}'
+                r'|\{\w*[^\w{}\u0000]|\{\w*$)')
+    autre = r'[^{\u0000]'
+    visible = r'[^{\s\u0000\u001c-\u001f\u0085]'
+    return (r'^(?:' + autre + '|' + accolade + r')*(?:' + visible + '|'
+            + accolade + r')(?:' + autre + '|' + accolade + r')*$')
+
+
+class CorpsGabarit(ChaineStricte):
+    """ENF49 (api-fuzz-full 42128456456, aZaaYa/pxcQ9z/ZWyYOz) — corps de
+    modèle de message : le schéma publiait une chaîne libre, un corps à
+    ``{entreprise}`` (variable hors catalogue) était conforme puis 400. Le
+    motif est publié côté requête par ``core.champs_stricts._ChaineSansNul``
+    (``motif_publie``) ; la validation reste ``validate_corps``."""
+
+    @property
+    def motif_publie(self):
+        from apps.parametres.models_messages import PLACEHOLDERS_RELANCE
+        return motif_gabarit(PLACEHOLDERS_RELANCE)

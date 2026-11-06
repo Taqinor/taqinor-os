@@ -1,0 +1,34 @@
+{
+ "sha": "a711ebdd22f045629fef836730564a5df11931d3",
+ "date": "2026-11-05",
+ "groupe": "AGNR",
+ "verdict": "PASS",
+ "couvre": [
+  "AGNR76"
+ ],
+ "couvre_avec_ecart": [],
+ "etapes": [
+  {
+   "id": "W20.AGNR76.erreurs_bloquantes_ensemble",
+   "taches": [
+    "AGNR76"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/2026-11-05-rejeux-w20/AGNR76.txt",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   },
+   "notes": "Ecran reel (Playwright MCP, demo_admin, societe demo 2, front reconstruit) : generateur residentiel sans lead ni client et sans aucune ligne, « Creer le devis » => la carte erreur-enregistrement liste les deux messages (« Au moins une ligne avec un produit et une quantite > 0 », « Selectionnez un lead ou un client ») ; aucune requete /ventes/devis ; console 0 erreur ; aucun dialogue natif"
+  }
+ ]
+}

@@ -861,6 +861,8 @@ class FichiersPdfTests(unittest.TestCase):
         ged = '/api/django/ged/documents/'
         for chemin, champ, debut in (
                 (ged + 'televerser/', 'file', b'%PDF-'),
+                # Nocturne 41958593088 : dépôt public par lien (octets magiques).
+                ('/api/django/ged/depot/{token}/', 'file', b'%PDF-'),
                 (ged + 'assembler-photos/', 'photos', b'\x89PNG'),
                 (ged + 'import-masse/', 'csv', b'nom,')):
             with self.subTest(chemin=chemin):
@@ -1400,6 +1402,21 @@ class PorteePRTests(unittest.TestCase):
             {'operationId': 'x'})
         self.assertEqual(stats['liens'], 2)
 
+    def test_parametre_nomme_comme_un_champ_du_201_recoit_ce_champ(self):
+        # ENF50 (UwBLOT) — `metriques/{cle}/lignage/` : le 201 publie `cle`,
+        # le lien pose `cle`, plus l'`id` (49 → « Aucune métrique « 49 » »).
+        doc = _doc_crud()
+        doc['components']['schemas']['Produit']['properties']['cle'] = {'type': 'string'}
+        doc['paths']['/api/django/stock/produits/{cle}/lignage/'] = {
+            'get': {'operationId': 'lignage'}}
+        sortie, _stats = self.m.preparer_schema(doc)
+        liens = sortie['paths']['/api/django/stock/produits/']['post'][
+            'responses']['201']['links']
+        self.assertEqual(liens['GET /api/django/stock/produits/{cle}/lignage/'][
+            'parameters'], {'cle': '$response.body#/cle'})
+        self.assertEqual(liens['GET /api/django/stock/produits/{id}/'][
+            'parameters'], {'id': '$response.body#/id'})
+
     def test_verdict_rouge_sur_constat_hors_dette_seulement(self):
         rapport = {'failures': [
             {'title': 'Server error', 'operations': ['GET /a/', 'POST /b/']},
@@ -1509,11 +1526,17 @@ class ConfigSchemathesisTests(unittest.TestCase):
             config = tomllib.load(fh)
         visees = [op for op in config['operations']
                   if 'positive_data_acceptance' in op.get('checks', {})]
-        # Deux routes nommées, jamais un motif : la route retirée du portail
-        # SAV (410) et le créneau hors grille (400, D-ENF11-CRENEAU-400).
+        # Routes nommées, jamais un motif : la route retirée du portail SAV
+        # (410), le créneau hors grille (400, D-ENF11-CRENEAU-400) et le lien
+        # de dépôt GED expiré (410, ENF45 b), l'étape de workflow en boucle
+        # (400, D-ENF11-WORKFLOW-BOUCLE-400).
         self.assertEqual(sorted(op.get('include-name') for op in visees), [
+            'GET /api/django/ged/depot/{token}/',
+            'PATCH /api/django/core/workflow-definitions/{id}/',
+            'POST /api/django/ged/depot/{token}/',
             'POST /api/django/public/stock/portail-fournisseur/{token}/reserver-creneau/',
-            'POST /api/django/sav/portail/tickets/'])
+            'POST /api/django/sav/portail/tickets/',
+            'PUT /api/django/core/workflow-definitions/{id}/'])
         op = next(o for o in visees
                   if o['include-name'] == 'POST /api/django/sav/portail/tickets/')
         self.assertEqual(
@@ -1525,6 +1548,30 @@ class ConfigSchemathesisTests(unittest.TestCase):
         self.assertEqual(sorted(str(s) for s in attendus),
                          ['2xx', '401', '403', '404', '409', '410', '429',
                           '5xx'])
+
+    def test_410_admis_pour_le_seul_lien_de_depot_ged_expire(self):
+        # ENF45 b (nocturne 41958593088) — lien de dépôt expiré = 410 voulu,
+        # lu par PublicDepotPage.jsx ; GET et POST, une entrée chacun.
+        import tomllib
+
+        with open(ROOT / 'schemathesis.toml', 'rb') as fh:
+            config = tomllib.load(fh)
+        for methode in ('GET', 'POST'):
+            nom = f'{methode} /api/django/ged/depot/{{token}}/'
+            with self.subTest(operation=nom):
+                visees = [op for op in config['operations']
+                          if op.get('include-name') == nom]
+                self.assertEqual(len(visees), 1)
+                op = visees[0]
+                self.assertEqual(
+                    {k for k in op if k.startswith(('include-', 'exclude-'))},
+                    {'include-name'})
+                self.assertNotIn('enabled', op)
+                self.assertEqual(set(op['checks']), {'positive_data_acceptance'})
+                attendus = op['checks']['positive_data_acceptance']['expected-statuses']
+                self.assertEqual(sorted(str(s) for s in attendus),
+                                 ['2xx', '401', '403', '404', '409', '410',
+                                  '429', '5xx'])
 
     def test_400_admis_pour_le_seul_creneau_hors_grille(self):
         # D-ENF11-CRENEAU-400 — refus hors grille (ASTK191) = règle métier.
@@ -1548,6 +1595,28 @@ class ConfigSchemathesisTests(unittest.TestCase):
         self.assertEqual(sorted(str(s) for s in attendus),
                          ['2xx', '400', '401', '403', '404', '409', '429',
                           '5xx'])
+
+    def test_400_admis_pour_la_seule_mise_a_jour_de_workflow(self):
+        # D-ENF11-WORKFLOW-BOUCLE-400 — étape en boucle (NTWFL9) = règle.
+        import tomllib
+
+        with open(ROOT / 'schemathesis.toml', 'rb') as fh:
+            config = tomllib.load(fh)
+        for methode in ('PUT', 'PATCH'):
+            nom = f'{methode} /api/django/core/workflow-definitions/{{id}}/'
+            visees = [op for op in config['operations']
+                      if 'positive_data_acceptance' in op.get('checks', {})
+                      and op.get('include-name') == nom]
+            self.assertEqual(len(visees), 1, nom)
+            op = visees[0]
+            self.assertEqual(
+                {k for k in op if k.startswith(('include-', 'exclude-'))},
+                {'include-name'})
+            self.assertNotIn('enabled', op)
+            attendus = op['checks']['positive_data_acceptance']['expected-statuses']
+            self.assertEqual(sorted(str(s) for s in attendus),
+                             ['2xx', '400', '401', '403', '404', '409', '429',
+                              '5xx'])
 
     def test_503_admis_pour_la_seule_route_scan_carte_sans_cle_ocr(self):
         # CI #1001 (fuzz crm) — XSAL8 : sans clé OCR, 503 douce voulue.

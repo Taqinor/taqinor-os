@@ -276,6 +276,16 @@ class RefusTest(BaseGabarits):
                            format='json')
         self.assertEqual(ok.status_code, 201, ok.data)
         self.assertIsNone(ok.data['gabarit']['fichiers'])
+        # ENF11 (nocturne 41958593088, CnMFW7) : un NUL IMBRIQUÉ dans une
+        # liste (clé ou valeur) cassait l'écriture jsonb (500) — 400 nommé.
+        gabarit_id = ok.data['gabarit']['id']
+        for pieces in ([{'code': 'a\x00', 'intitule': 'X', 'source_reference': 'Y'}],
+                       [{'code': 'a', 'intitule': 'X', 'source_reference': 'Y',
+                         'cl\x00e': True}]):
+            refus = self.api.patch(f'{URL}{gabarit_id}/',
+                                   {'pieces_attendues': pieces}, format='json')
+            self.assertEqual(refus.status_code, 400, refus.data)
+            self.assertIn('pieces_attendues', refus.data)
 
     def test_schema_publie_genre_vide_accepte(self):
         # CI #997 api-fuzz : ``genre`` vide est accepté par le serveur, le

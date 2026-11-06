@@ -11,6 +11,7 @@ import { Button, Card, CardContent, Textarea } from '../../../ui'
 import { GenCardHeader } from './CarteMetrique'
 import { FileText, RotateCcw, StickyNote, Sun } from 'lucide-react'
 import { formatMoney } from '../../../features/ventes/solar'
+import { erreursBloquantes } from '../../../features/ventes/quote/etatDevis'
 
 export default function CarteCreation({
   embedded, clients, saving, errors, warnings, cancel, editDevis, superieurBusy, superieurMsg,
@@ -57,9 +58,16 @@ export default function CarteCreation({
       )}
       {/* Toute raison de blocage est VISIBLE à côté du bouton — jamais de
           clic silencieux sans effet. */}
-      {(errors.submit || errors.lines || errors.client || errors.conso || errors.factures) && (
+      {erreursBloquantes(errors).length > 0 && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive" data-testid="erreur-enregistrement">
-          {errors.submit || errors.lines || errors.client || errors.conso || errors.factures}
+          {/* AGNR77 — toutes les raisons d'un coup (une seule : texte nu). */}
+          {erreursBloquantes(errors).length === 1
+            ? erreursBloquantes(errors)[0]
+            : (
+              <ul className="list-disc pl-5">
+                {erreursBloquantes(errors).map(m => <li key={m}>{m}</li>)}
+              </ul>
+            )}
           {/* ALEA51 — le refus du devis AUTOMATIQUE nomme le champ du lead à
               compléter (`field`) : même geste que « Compléter » du panneau de
               la fiche lead. */}

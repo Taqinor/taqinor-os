@@ -1426,6 +1426,10 @@ def resynchroniser_conception(devis, layout, user=None, *, emettre=True,
     resultat = sync_devis_from_layout(devis, layout, user)
     if isinstance(resultat, dict) and resultat.get('inchange'):
         return resultat
+    # AGNR64 — TTC neuf : échéancier re-basé, ou gardé et signalé au chatter.
+    from apps.ventes.domain.catalogue_events import (
+        rebaser_ou_signaler_echeancier)
+    rebaser_ou_signaler_echeancier(devis, user=user)
     if roof_image:
         from apps.ventes.domain.stockage_toiture import poser_affiche_depuis
         try:

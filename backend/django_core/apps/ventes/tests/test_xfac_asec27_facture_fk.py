@@ -108,13 +108,13 @@ class FactureFkEtChampsServeurTests(TestCase):
             with self.subTest(champ=champ):
                 r = self.api.patch(self._url(), {champ: self.mb[champ].pk},
                                    format='json')
-                self.assertEqual(r.status_code, 404, r.data)
+                self.assertEqual(r.status_code, 409, r.data)  # ENF45 a : mise à jour = 409
                 self.assertIn(champ, r.data)
                 self.assertNotIn('Client B', str(r.data))
                 # Inexistant → 404, jamais 500.
                 r = self.api.patch(self._url(), {champ: 999999},
                                    format='json')
-                self.assertEqual(r.status_code, 404, r.data)
+                self.assertEqual(r.status_code, 409, r.data)  # ENF45 a : mise à jour = 409
         self.facture.refresh_from_db()
         self.assertEqual(self.facture.client_id, self.ma['client'].pk)
         self.assertIsNone(self.facture.devis_id)
@@ -174,7 +174,7 @@ class FactureFkEtChampsServeurTests(TestCase):
         avant = solde_devis(devis_b)
         r = self.api.patch(self._url(), {'devis': devis_b.pk},
                            format='json')
-        self.assertEqual(r.status_code, 404, r.data)  # api-fuzz-full 24/10
+        self.assertEqual(r.status_code, 409, r.data)  # api-fuzz-full 24/10
         devis_b.refresh_from_db()
         self.assertEqual(solde_devis(devis_b), avant)
 

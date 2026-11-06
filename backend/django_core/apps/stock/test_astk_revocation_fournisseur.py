@@ -133,6 +133,21 @@ class RevocationTests(TestCase):
             statut=Fournisseur.Statut.BLOQUE_COMMANDES)
         self.assertEqual(self._portail(self.jeton.token).status_code, 200)
 
+    def test_revoquer_fournisseur_archive_puis_sans_acces_409(self):
+        """ENF47 (api-fuzz-full 42017839549) : un fournisseur ARCHIVÉ était
+        introuvable (404) pour ``revoquer-acces`` ; il se révoque (200), puis
+        n'ayant plus rien à fermer, le refus est d'état (409, plus 404)."""
+        Fournisseur.objects.filter(pk=self.fournisseur.pk).update(
+            is_archived=True)
+        rep = self._revoquer()
+        self.assertEqual(rep.status_code, 200, rep.content)
+        self.assertEqual(rep.json()['jetons_revoques'], 2)
+        sans_acces = Fournisseur.objects.create(
+            company=self.company, nom='Sans accès ASTK179', is_archived=True)
+        rep = self.api.post(
+            f'/api/django/stock/fournisseurs/{sans_acces.id}/revoquer-acces/')
+        self.assertEqual(rep.status_code, 409, rep.content)
+
     def test_jeton_candidature_rejetee_404(self):
         Fournisseur.objects.filter(pk=self.fournisseur.pk).update(
             statut_validation=Fournisseur.StatutValidation.REJETE)
