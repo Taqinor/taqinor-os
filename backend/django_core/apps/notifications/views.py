@@ -11,7 +11,8 @@ from django.utils import timezone
 from drf_spectacular.extensions import OpenApiSerializerExtension
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
-    OpenApiParameter, extend_schema, extend_schema_view, inline_serializer,
+    OpenApiParameter, OpenApiResponse, extend_schema, extend_schema_view,
+    inline_serializer,
 )
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import (
@@ -644,8 +645,16 @@ class MessageAccueilViewSet(CompanyScopedModelViewSet):
             )
         if self.action == 'lu':
             # Réservé au destinataire : jamais l'auteur ni un admin ne
-            # peuvent poser `lu_le` à la place de l'intéressé.
-            return qs.filter(destinataire=self.request.user)
+            # peuvent poser `lu_le` à la place de l'intéressé. ENF49
+            # (api-fuzz-full 42128456456, jqs8zO) : le message que l'appelant
+            # VOIT (auteur, ou Responsable/Admin) répondait 404 « introuvable »
+            # juste après sa création → visible ici, refusé en 403 dans
+            # ``lu`` ; un collègue qui ne le voit pas garde le 404.
+            from django.db.models import Q
+            if self._est_admin_ou_responsable(self.request):
+                return qs
+            return qs.filter(Q(destinataire=self.request.user)
+                             | Q(auteur=self.request.user))
         if self._est_admin_ou_responsable(self.request):
             # Écran de gestion — un Responsable/Admin voit toute la société.
             return qs
@@ -676,10 +685,18 @@ class MessageAccueilViewSet(CompanyScopedModelViewSet):
         ]
         return Response({'messages': messages})
 
-    @extend_schema(request=None, responses=MessageAccueilSerializer)
+    @extend_schema(request=None, responses={
+        200: MessageAccueilSerializer,
+        403: OpenApiResponse(
+            description="Message visible mais réservé à son destinataire."),
+    })
     @action(detail=True, methods=['post'], url_path='lu')
     def lu(self, request, pk=None):
         message = self.get_object()
+        if message.destinataire_id != request.user.id:
+            return Response(
+                {'detail': 'Seul le destinataire peut marquer ce message lu.'},
+                status=status.HTTP_403_FORBIDDEN)
         if message.lu_le is None:
             message.lu_le = timezone.now()
             message.save(update_fields=['lu_le'])

@@ -46,6 +46,12 @@ class MetriqueNonResolvable(Exception):
     """
 
 
+class MetriqueIndisponible(MetriqueNonResolvable):
+    """ENF49 — la définition ENREGISTRÉE désigne un calcul absent de ce
+    serveur (adaptateur ou dataset non enregistré, module désactivé) : un état
+    de la métrique, pas une requête fautive (la vue répond 409)."""
+
+
 def get_metric(company, cle):
     """La définition ACTIVE de ``cle`` pour ``company`` (ou ``MetriqueInconnue``)."""
     from .models import MetricDefinition
@@ -74,7 +80,7 @@ def _champ_de_temps(dataset_nom, champ_demande=None):
     try:
         schema = data_explorer.describe_dataset(dataset_nom)
     except data_explorer.DatasetInconnu as exc:
-        raise MetriqueNonResolvable(str(exc))
+        raise MetriqueIndisponible(str(exc))
     temps = schema.get('temps') or []
     if not temps:
         raise MetriqueNonResolvable(
@@ -213,7 +219,7 @@ def resolve_metric(company, user, cle, *, filters=None, group_by=None,
         try:
             adaptateur = adapters.get_adapter(definition.mesure['adapter'])
         except adapters.AdaptateurInconnu as exc:
-            raise MetriqueNonResolvable('Métrique « %s » : %s' % (cle, exc))
+            raise MetriqueIndisponible('Métrique « %s » : %s' % (cle, exc))
         filtres_adaptateur = dict(definition.filtres or {})
         filtres_adaptateur.update(filters or {})
         valeur = adaptateur(company, user, period=period,
@@ -236,7 +242,7 @@ def resolve_metric(company, user, cle, *, filters=None, group_by=None,
     try:
         lignes = data_explorer.run_query(dataset_nom, company, user, spec)
     except data_explorer.DatasetInconnu as exc:
-        raise MetriqueNonResolvable(
+        raise MetriqueIndisponible(
             'Métrique « %s » : %s' % (cle, exc))
     except (data_explorer.ChampNonAutorise, FormulaError) as exc:
         raise MetriqueNonResolvable(

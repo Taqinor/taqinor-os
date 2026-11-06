@@ -160,8 +160,10 @@ class MarquageLuTests(TestCase):
         self.assertIsNone(self.msg.lu_le)
 
     def test_auteur_ne_peut_pas_marquer_lu_a_la_place_du_destinataire(self):
+        # ENF49 — l'auteur/admin VOIT le message (liste de gestion) : 403
+        # nommé, plus un 404 « introuvable » juste après sa création.
         res = _auth(self.admin).post(f'{URL_LIST}{self.msg.id}/lu/')
-        self.assertEqual(res.status_code, 404, res.data)
+        self.assertEqual(res.status_code, 403, res.data)
         self.msg.refresh_from_db()
         self.assertIsNone(self.msg.lu_le)
 

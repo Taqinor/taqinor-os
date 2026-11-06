@@ -204,6 +204,22 @@ class ValeurParCleTests(_BaseApi):
         reponse = self._valeur('nb_societes', {'filters': '{pas du json'})
         self.assertEqual(reponse.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_adaptateur_ou_dataset_absent_409(self):
+        """ENF49 (api-fuzz-full 42128456456, UDnVtL) : la métrique ENREGISTRÉE
+        désigne un adaptateur / dataset absent de ce serveur → 409 (état de
+        la métrique), plus 400 sur un GET conforme."""
+        MetricDefinition.objects.create(
+            company=self.company, cle='adaptateur_absent', libelle='A',
+            mesure={'adapter': '0'})
+        MetricDefinition.objects.create(
+            company=self.company, cle='dataset_absent', libelle='D',
+            dataset='dataset_jamais_enregistre', mesure={'agg': 'count'})
+        for cle in ('adaptateur_absent', 'dataset_absent'):
+            reponse = self._valeur(cle)
+            self.assertEqual(reponse.status_code, status.HTTP_409_CONFLICT,
+                             (cle, reponse.data))
+            self.assertIn('detail', reponse.data)
+
     def test_parametres_objet_json_publies_en_content_json(self):
         """ENF45 c (api-fuzz-full 41958593088) : ``period``/``filters`` (et
         ``cellule`` d'expliquer) sont publiés ``content: application/json``

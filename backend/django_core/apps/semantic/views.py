@@ -317,16 +317,22 @@ class MetriqueValeurView(APIView):
             OpenApiParameter('filters', str, required=False,
                              description='Objet JSON de filtres.'),
         ],
-        responses=inline_serializer('MetriqueValeurReponse', {
-            'cle': serializers.CharField(),
-            'libelle': serializers.CharField(),
-            'unite': serializers.CharField(),
-            'format': serializers.IntegerField(),
-            'dataset': serializers.CharField(),
-            'group_by': serializers.ListField(child=serializers.CharField()),
-            'valeur': serializers.JSONField(allow_null=True),
-            'lignes': serializers.JSONField(),
-        }))
+        responses={
+            200: inline_serializer('MetriqueValeurReponse', {
+                'cle': serializers.CharField(),
+                'libelle': serializers.CharField(),
+                'unite': serializers.CharField(),
+                'format': serializers.IntegerField(),
+                'dataset': serializers.CharField(),
+                'group_by': serializers.ListField(
+                    child=serializers.CharField()),
+                'valeur': serializers.JSONField(allow_null=True),
+                'lignes': serializers.JSONField(),
+            }),
+            409: OpenApiResponse(
+                description='Adaptateur ou dataset de la métrique absent de '
+                            'ce serveur (module désactivé).'),
+        })
     def get(self, request, cle=None):
         group_by, period, filters = parametres_de_resolution(
             request.query_params)
@@ -337,6 +343,12 @@ class MetriqueValeurView(APIView):
         except services.MetriqueInconnue as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_404_NOT_FOUND)
+        except services.MetriqueIndisponible as exc:
+            # ENF49 (api-fuzz-full 42128456456, UDnVtL) — adaptateur/dataset
+            # ENREGISTRÉ mais absent de ce serveur : état de la métrique (409),
+            # la requête « GET sans paramètre » était conforme.
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_409_CONFLICT)
         except services.MetriqueNonResolvable as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
