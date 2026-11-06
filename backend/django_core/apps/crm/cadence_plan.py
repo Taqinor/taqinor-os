@@ -1643,12 +1643,19 @@ def reporter_prochaine_touche(lead, user, quand, *, etape=None,
         # ligne d'avant CKP2 (`cadence_depart` NULL) il n'y a rien à décaler :
         # la matérialisation réactive retombe alors sur son repli — la plus
         # ancienne échéance de la cadence, qui vient d'être décalée.
-        from django.db.models import F
+        from django.db.models import F, Max, Min
 
-        lead.relance_etapes.filter(
+        ancres = lead.relance_etapes.filter(
             cadence=cible.cadence, statut=RelanceEtape.Statut.A_FAIRE,
             cadence_depart__isnull=False,
-        ).update(cadence_depart=F('cadence_depart') + delta)
+        )
+        # ENF50 — Postgres accepte une ancre au-delà de l'an 9999 que Python
+        # ne relit plus (``refresh_from_db`` → ValueError, 500) : les bornes
+        # décalées sont calculées ici d'abord, un ``OverflowError`` part vers
+        # l'appelant (409 de ``reporter``, geste annulé) avant toute écriture.
+        for borne in ancres.aggregate(a=Min('cadence_depart'), b=Max('cadence_depart')).values():
+            borne + delta
+        ancres.update(cadence_depart=F('cadence_depart') + delta)
         if cible.cadence_depart is not None:
             # L'objet rendu doit porter la MÊME ancre que sa ligne : c'est lui
             # que l'appelant passera à `materialiser_touche_suivante`.
