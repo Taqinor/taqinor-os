@@ -85,12 +85,21 @@ class SalleVenteSerializer(IdInconnu404Mixin, _CompanyScopedRelationsMixin,
         # (mise à jour). Un `actif: false` EXPLICITE reste évidemment honoré.
         if 'actif' in attrs and 'actif' not in getattr(self, 'initial_data', {}):
             attrs.pop('actif')
-        lead = attrs.get('lead', getattr(self.instance, 'lead', None))
-        client = attrs.get('client', getattr(self.instance, 'client', None))
+        # ENF51 — création et REMPLACEMENT (PUT) se jugent sur le corps seul
+        # (règle publiée ``SALLE_CIBLE_UNIQUE``) : la relation absente d'un PUT
+        # est remise à nul. PATCH : une relation absente se replie sur la
+        # salle — le refus dépend alors de l'état, 409 (corps publié par
+        # ``SALLE_CIBLE_PARTIELLE``).
+        repli = self.instance if self.partial else None
+        lead = attrs.get('lead', getattr(repli, 'lead', None))
+        client = attrs.get('client', getattr(repli, 'client', None))
         if bool(lead) == bool(client):
-            raise serializers.ValidationError(
+            du_corps = not self.partial or ('lead' in attrs and 'client' in attrs)
+            raise (serializers.ValidationError if du_corps else ConflitEtat)(
                 'Une salle de vente doit référencer exactement un lead OU un '
                 'client (jamais les deux, jamais ni l\'un ni l\'autre).')
+        if not self.partial:
+            attrs['lead'], attrs['client'] = lead, client
         return attrs
 
     def create(self, validated_data):
