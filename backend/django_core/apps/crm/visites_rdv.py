@@ -11,6 +11,7 @@ from core.dates import aujourd_hui_local
 from .leads_socle import lead_notification_recipients
 from .models import LeadActivity
 import logging
+from .activity import journal_systeme
 
 logger = logging.getLogger(__name__)
 
@@ -316,8 +317,8 @@ def reserver_creneau_public(token, *, scheduled_at, notes=None):
             lead=link.lead, scheduled_at=scheduled_at, notes=notes, user=None)
         BookingLink.objects.filter(pk=link.pk).update(appointment=appointment)
         # ACRM41 — une note LISIBLE au chatter, dans la même transaction.
-        LeadActivity.objects.create(
-            company=link.lead.company, lead=link.lead, user=None,
+        journal_systeme(
+            company=link.lead.company, lead=link.lead,
             kind=LeadActivity.Kind.NOTE,
             body=(f'Le client a réservé sa visite le '
                   f'{_quand_local(scheduled_at)} via le lien de '

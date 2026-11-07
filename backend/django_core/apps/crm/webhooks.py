@@ -53,6 +53,7 @@ from . import stages
 from .leads_meta import date_webhook_ou_none
 from .models import Lead, LeadActivity, WebsiteLeadPayload
 from .webhook_origine import _clean_estimate_shown
+from .activity import journal_systeme
 
 logger = logging.getLogger(__name__)
 
@@ -378,8 +379,8 @@ def _noter_trace_toit(lead):
     if not _a_un_contour(contour):
         return
     try:
-        LeadActivity.objects.create(
-            company=lead.company, lead=lead, user=None,
+        journal_systeme(
+            company=lead.company, lead=lead,
             kind=LeadActivity.Kind.NOTE,
             body=(
                 'Toit dessiné par le client sur la carte du site : '
@@ -2033,8 +2034,8 @@ def _note_rappel_sous_seuil(lead):
     ).exists()
     if already:
         return
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
+    journal_systeme(
+        company=lead.company, lead=lead,
         kind=LeadActivity.Kind.NOTE,
         body=(f'{CALLBACK_SOUS_SEUIL_MARKER} : demande consignée, '
               'aucune alerte urgente envoyée.'),
@@ -2092,8 +2093,8 @@ def _flag_possible_duplicates(lead, *, telephone='', email='', dupes=None,
         owner_name = inherited_owner.get_full_name() or inherited_owner.username
         body += (f" — attribué à {owner_name} comme la fiche d'origine "
                  f"#{inherited_from.pk}")
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
+    journal_systeme(
+        company=lead.company, lead=lead,
         kind=LeadActivity.Kind.NOTE, body=body)
     return [le.pk for le in dupes], match_fort
 
@@ -2348,8 +2349,8 @@ def _map_and_link_lead(raw, data, company):
         if provisional_ref and provisional_ref != server_ref:
             creation_body += (
                 f' (code provisoire affiché au visiteur : {provisional_ref})')
-        LeadActivity.objects.create(
-            company=lead.company, lead=lead, user=None,
+        journal_systeme(
+            company=lead.company, lead=lead,
             kind=LeadActivity.Kind.CREATION,
             body=creation_body,
         )
@@ -2400,8 +2401,8 @@ def _map_and_link_lead(raw, data, company):
         try:
             questionnaire_full = _extract_web_questionnaire(data)
             if questionnaire_full:
-                LeadActivity.objects.create(
-                    company=lead.company, lead=lead, user=None,
+                journal_systeme(
+                    company=lead.company, lead=lead,
                     kind=LeadActivity.Kind.NOTE,
                     body=_build_questionnaire_note(
                         questionnaire_full,
@@ -2621,8 +2622,8 @@ def website_lead_webhook(request):
                         matched = candidate
                         break
             if matched is not None:
-                LeadActivity.objects.create(
-                    company=matched.company, lead=matched, user=None,
+                journal_systeme(
+                    company=matched.company, lead=matched,
                     kind=LeadActivity.Kind.NOTE,
                     body=f'Engagement proposition : {event_type}',
                 )
@@ -3346,8 +3347,8 @@ def _rdv_creer_lead(company, propre):
     if propre['message']:
         lignes.append('Message :')
         lignes.append(propre['message'])
-    LeadActivity.objects.create(
-        company=company, lead=lead, user=None,
+    journal_systeme(
+        company=company, lead=lead,
         kind=LeadActivity.Kind.NOTE, body='\n'.join(lignes))
     return lead
 

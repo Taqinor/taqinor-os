@@ -936,7 +936,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         message = render_message_template(
             _omettre_phrases_incompletes(corps, manquants), contexte)
         nom = (lead.contact_secondaire_nom or '').strip() or 'l’associé'
-        LeadActivity.objects.create(
+        activity.creer_activite(
             company=lead.company, lead=lead, user=request.user,
             kind=LeadActivity.Kind.NOTE,
             body=f'Résumé transmis à {nom} — accord du client noté '
@@ -1419,7 +1419,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         from .cadence_plan import reporter_prochaine_touche
         from .leads_premier_contact import marquer_premier_contact
         with transaction.atomic():
-            act = LeadActivity.objects.create(
+            act = activity.creer_activite(
                 lead=lead,
                 company=lead.company,
                 kind=kind,

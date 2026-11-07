@@ -8,6 +8,7 @@ import logging
 from django.utils import timezone
 
 from .models import Lead, LeadActivity
+from .activity import journal_systeme
 
 logger = logging.getLogger(__name__)
 
@@ -181,8 +182,8 @@ def maybe_assign_mql(lead) -> bool:
         body = (f"auto — MQL : score {lead.score} ≥ seuil {seuil}"
                 f"{' — assigné à ' + str(assignee) if assignee else ''}. "
                 f"Contexte marketing : {contexte_txt}.")
-        LeadActivity.objects.create(
-            company=lead.company, lead=lead, user=None,
+        journal_systeme(
+            company=lead.company, lead=lead,
             kind=LeadActivity.Kind.NOTE, body=body)
 
         # Si on vient d'assigner un owner (round-robin), le save() ci-dessus a

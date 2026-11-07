@@ -50,6 +50,7 @@ from .cadence_reperes import (
     q_visite,
 )
 from .models import Lead, LeadActivity, RelanceEtape
+from .activity import journal_systeme
 
 logger = logging.getLogger(__name__)
 
@@ -81,8 +82,8 @@ def _poser_releve_point_eau(lead, user):
         return None
     etape.note = NOTE_RELEVE_POINT_EAU
     etape.save(update_fields=['note'])
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
+    journal_systeme(
+        company=lead.company, lead=lead,
         kind=LeadActivity.Kind.NOTE,
         body=(f'Étape « {etape.libelle} » posée automatiquement à la place du '
               f'devis — {NOTE_RELEVE_POINT_EAU}'))
@@ -300,8 +301,8 @@ def assurer_prochaine_etape_apres_succes(lead, user,
     # Note SYSTÈME (``user=None``, même motif que `arreter_cadence`) : poser
     # un rappel n'est pas AVOIR contacté le lead (garde QJ7).
     quand_local = quand.astimezone(horaires.CASABLANCA)
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
+    journal_systeme(
+        company=lead.company, lead=lead,
         kind=LeadActivity.Kind.NOTE,
         body=(f'Étape « {libelle} » posée automatiquement pour le '
               f'{quand_local:%d/%m/%Y à %H:%M} — aucune autre relance '
@@ -538,8 +539,8 @@ def poser_rappel_subvention(lead, user=None):
                             '« accordé ».')
             ouverte.traite_le = timezone.now()
             ouverte.save(update_fields=['statut', 'note', 'traite_le'])
-            LeadActivity.objects.create(
-                company=lead.company, lead=lead, user=None,
+            journal_systeme(
+                company=lead.company, lead=lead,
                 kind=LeadActivity.Kind.NOTE,
                 body=('Rappel du délai FDA annulé : le dossier de subvention '
                       'n\'est plus « accordé ».'))
@@ -857,8 +858,8 @@ def traiter_chaine_acceptation(maintenant=None):
                     body=f'Devis {devis.reference} accepté le '
                          f'{devis.date_acceptation:%d/%m/%Y}, aucun acompte payé.',
                     link=f'/crm/leads?lead={devis.lead_id}', company=company)
-                LeadActivity.objects.create(
-                    company=company, lead=devis.lead, user=None,
+                journal_systeme(
+                    company=company, lead=devis.lead,
                     kind=LeadActivity.Kind.NOTE, body=marqueur)
                 bilan['escalades'] += 1
             except Exception:  # noqa: BLE001 — ACVI85 : un lead en échec n'arrête rien (D-ENF22-BLE001)
