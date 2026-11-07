@@ -36,3 +36,13 @@ class DocumentFigeMixin:
             return Response(
                 {'detail': message}, status=status.HTTP_409_CONFLICT)
         return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        # AAPV14 : un document figé ne se supprime pas plus qu'il ne se modifie.
+        document = self.get_object()
+        message = self.messages_document_fige.get(
+            getattr(document, 'statut', None))
+        if message is not None:
+            return Response(
+                {'detail': message}, status=status.HTTP_409_CONFLICT)
+        return super().destroy(request, *args, **kwargs)
