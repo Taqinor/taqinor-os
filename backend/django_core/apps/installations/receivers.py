@@ -17,7 +17,7 @@ from django.dispatch import receiver
 from core.events import (
     abonne_best_effort, bon_commande_cree, devis_acceptation_annulee,
     devis_accepted, facture_annulee,
-    reception_fournisseur_annulee,
+    reception_fournisseur_annulee, retour_fournisseur_valide,
     reception_fournisseur_confirmee, facture_fournisseur_creee,
 )
 
@@ -27,7 +27,8 @@ from .services import (
     extourner_gr_ir_reception,
     provisionner_gr_ir_reception, lettrer_gr_ir_facture,
     peupler_series_entrepot_reception,
-    replafonner_reservation_recue_pour_chantier,
+    reduire_gr_ir_retour, replafonner_reservation_recue_pour_chantier,
+    replafonner_reservation_retour,
     reserver_stock_recu_pour_chantier, retourner_series_entrepot_reception,
 )
 
@@ -151,6 +152,24 @@ def _replafonner_reservation_on_reception_annulee(sender, reception, company,
     d'origine ne dépasse plus le reçu net (idempotent)."""
     replafonner_reservation_recue_pour_chantier(
         reception=reception, company=company)
+
+
+@receiver(retour_fournisseur_valide,
+          dispatch_uid="installations_reduire_gr_ir_on_retour_valide")
+@abonne_best_effort
+def _reduire_gr_ir_on_retour_valide(sender, retour, company, user=None, **kwargs):
+    """AAPV9 — la provision GR/IR ouverte du BCF baisse de la valeur
+    retournée (idempotent, état persisté)."""
+    reduire_gr_ir_retour(retour=retour, company=company)
+
+
+@receiver(retour_fournisseur_valide,
+          dispatch_uid="installations_replafonner_resa_on_retour_valide")
+@abonne_best_effort
+def _replafonner_reservation_on_retour_valide(sender, retour, company, user=None, **kwargs):
+    """AAPV9 — la réservation du chantier d'origine ne dépasse plus le reçu
+    net du BCF après le retour (idempotent)."""
+    replafonner_reservation_retour(retour=retour, company=company)
 
 
 @receiver(bon_commande_cree,

@@ -161,6 +161,38 @@ class AnnulationReceptionAbonnesTests(TestCase):
             series_en_stock(self.company, self.panneau.id, ['S1', 'SN-9']),
             {'S1': 'REC-ASTK57'})
 
+    def test_retour_valide_reduit_provision_et_reservation(self):
+        """AAPV9 — retour de 4 sur 10 reçus à 50 : provision 300 ouverte,
+        réservation 6 ; renvoyer le signal ne change rien ; une facture de
+        300 HT liée au BCF lettre la provision."""
+        from apps.installations.services import lettrer_gr_ir_facture
+        from apps.stock.models import FactureFournisseur, RetourFournisseur
+        from apps.stock.services import apply_retour_fournisseur
+        from core.events import retour_fournisseur_valide
+        retour = RetourFournisseur.objects.create(
+            company=self.company, reference='RF-AAPV9', fournisseur=self.bc.fournisseur,
+            bon_commande=self.bc, statut=RetourFournisseur.Statut.BROUILLON)
+        retour.lignes.create(produit=self.panneau, quantite=4)
+        with self.captureOnCommitCallbacks(execute=True):
+            apply_retour_fournisseur(retour, self.user)
+
+        def etat():
+            prov = ReceptionNonFacturee.objects.get(bon_commande=self.bc)
+            resa = StockReservation.objects.get(
+                installation=self.inst, produit=self.panneau)
+            return prov.montant_provision, prov.lettre, resa.quantite
+        self.assertEqual(etat(), (Decimal('300.00'), False, 6))
+        retour_fournisseur_valide.send(
+            sender=RetourFournisseur, retour=retour, company=self.company,
+            user=self.user, lignes=[])
+        self.assertEqual(etat(), (Decimal('300.00'), False, 6))
+        facture = FactureFournisseur.objects.create(
+            company=self.company, reference='FF-AAPV9', fournisseur=self.bc.fournisseur,
+            bon_commande=self.bc, montant_ht=Decimal('300'),
+            montant_tva=Decimal('60'), montant_ttc=Decimal('360'))
+        lettrer_gr_ir_facture(facture=facture, company=self.company, user=self.user)
+        self.assertEqual(etat()[1], True)
+
     def test_reservation_replafonnee_au_recu_net(self):
         self._annuler()
         self.ligne_cmd.refresh_from_db()

@@ -5415,7 +5415,20 @@ def replafonner_reservation_recue_pour_chantier(*, reception, company=None):
     Fonction pure de l'état persisté → idempotente. Renvoie le nombre de
     réservations modifiées."""
     bc = reception.bon_commande
-    if bc is None or not getattr(bc, 'chantier_origine_id', None):
+    if bc is None:
+        return 0
+    produit_ids = {lg.produit_id for lg in reception.lignes.all()
+                   if lg.produit_id is not None and lg.ligne_commande_id is not None}
+    return _replafonner_reservation_bcf(bc, produit_ids, company)
+
+
+def _replafonner_reservation_bcf(bc, produit_ids, company):
+    """ASTK57/AAPV9 — cœur PAR BCF : la réservation du chantier d'origine
+    (YPROC10) ne dépasse plus le reçu NET des lignes du BCF pour
+    ``produit_ids`` (`quantite_recue`), sauf le besoin propre de la
+    nomenclature (N14, jamais réduit). Ne fait que BAISSER ; à 0, désactivée.
+    Idempotent (état persisté)."""
+    if bc is None or not getattr(bc, 'chantier_origine_id', None) or not produit_ids:
         return 0
     installation = bc.chantier_origine
     if installation is None:
@@ -5424,15 +5437,11 @@ def replafonner_reservation_recue_pour_chantier(*, reception, company=None):
         return 0
 
     recu_net = {}
-    for ligne in reception.lignes.select_related('ligne_commande').all():
-        if ligne.produit_id is None or ligne.ligne_commande_id is None:
-            continue
-        ligne_cmd = ligne.ligne_commande
-        ligne_cmd.refresh_from_db()
+    for ligne_cmd in bc.lignes.filter(produit_id__in=list(produit_ids)):
         cap = min(int(ligne_cmd.quantite_recue or 0),
                   int(ligne_cmd.quantite or 0))
-        recu_net[ligne.produit_id] = max(
-            recu_net.get(ligne.produit_id, 0), max(cap, 0))
+        recu_net[ligne_cmd.produit_id] = max(
+            recu_net.get(ligne_cmd.produit_id, 0), max(cap, 0))
     if not recu_net:
         return 0
 
@@ -5453,6 +5462,50 @@ def replafonner_reservation_recue_pour_chantier(*, reception, company=None):
         resa.save(update_fields=changed)
         count += 1
     return count
+
+
+def replafonner_reservation_retour(*, retour, company=None):
+    """AAPV9 — après un retour fournisseur validé : même re-plafonnement que
+    l'annulation de réception, sur les produits retournés du BCF."""
+    produit_ids = {lg.produit_id for lg in retour.lignes.all() if lg.produit_id}
+    return _replafonner_reservation_bcf(retour.bon_commande, produit_ids, company)
+
+
+def reduire_gr_ir_retour(*, retour, company):
+    """AAPV9 — un retour fournisseur validé baisse la provision GR/IR
+    OUVERTE de son BCF de la valeur retournée (qté × PU de la ligne BCF), de
+    la plus récente à la plus ancienne (supprimée à 0). Lu sur l'état
+    persisté : la baisse est plafonnée à l'excédent Σ provisions − reçu NET
+    valorisé du BCF, donc un second envoi ne change rien. Une provision
+    lettrée n'est jamais touchée. Renvoie le montant réduit."""
+    from .models_gr_ir import ReceptionNonFacturee
+    bc = getattr(retour, 'bon_commande', None)
+    if bc is None or company is None:
+        return Decimal('0')
+    pu = {}
+    attendu = Decimal('0')
+    for lc in bc.lignes.all():
+        prix = lc.prix_achat_unitaire or Decimal('0')
+        pu.setdefault(lc.produit_id, prix)
+        attendu += Decimal(int(lc.quantite_recue or 0)) * prix
+    valeur = sum((Decimal(int(lg.quantite or 0)) * pu.get(lg.produit_id, Decimal('0'))
+                  for lg in retour.lignes.all()), Decimal('0'))
+    provisions = ReceptionNonFacturee.objects.filter(company=company, bon_commande=bc)
+    total = sum((p.montant_provision or Decimal('0') for p in provisions), Decimal('0'))
+    reste = min(valeur, total - attendu)
+    reduit = Decimal('0')
+    for prov in provisions.filter(lettre=False).order_by('-date_creation', '-pk'):
+        if reste <= 0:
+            break
+        part = min(reste, prov.montant_provision or Decimal('0'))
+        prov.montant_provision = (prov.montant_provision or Decimal('0')) - part
+        if prov.montant_provision <= 0:
+            prov.delete()
+        else:
+            prov.save(update_fields=['montant_provision', 'date_modification'])
+        reste -= part
+        reduit += part
+    return reduit
 
 
 # ── YSERV1 — Gate « acompte encaissé » avant planification (opt-in) ────────
