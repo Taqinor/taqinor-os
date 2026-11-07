@@ -2204,8 +2204,8 @@ class FactureFournisseurSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMix
     @staticmethod
     def _a_une_imputation(instance):
         return (instance.paiements.exists()
-                or instance.acomptes_imputes.exists()
-                or instance.avoirs_imputes.exists())
+                or instance.imputations_acompte.exists()  # AAPV42 — table d'imputation
+                or instance.acomptes_imputes.exists() or instance.avoirs_imputes.exists())
 
     def _verifier_verrou_imputation(self, instance, validated_data):
         """ASTK26 — une facture qui porte un paiement, un acompte ou un avoir
