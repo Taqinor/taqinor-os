@@ -17,7 +17,7 @@ from django.dispatch import receiver
 from core.events import (
     abonne_best_effort, bon_commande_cree, devis_acceptation_annulee,
     devis_accepted, facture_annulee,
-    reception_fournisseur_annulee, retour_fournisseur_valide,
+    reception_fournisseur_annulee, retour_fournisseur_valide, bon_commande_fournisseur_annule,
     reception_fournisseur_confirmee, facture_fournisseur_creee,
 )
 
@@ -229,3 +229,14 @@ def _lettrer_gr_ir_on_facture(sender, instance, company, user=None, **kwargs):
     stock.FactureFournisseur, ``user`` optionnel (None pour une création
     système/hors-requête, ex. saisie manuelle via la vue)."""
     lettrer_gr_ir_facture(facture=instance, company=company, user=user)
+
+
+@receiver(bon_commande_fournisseur_annule,
+          dispatch_uid="installations_rouvrir_da_on_bcf_annule")
+def _rouvrir_da_on_bcf_annule(sender, bon_commande_id, company, user=None,
+                              supprime=False, **kwargs):
+    """AAPV71 — abonné OBLIGATOIRE (pas best-effort) : la DA suit le BCF
+    annulé/supprimé dans la même transaction."""
+    from .services import rouvrir_demande_achat_bcf_annule
+    rouvrir_demande_achat_bcf_annule(
+        bon_commande_id=bon_commande_id, company=company, user=user, supprime=supprime)

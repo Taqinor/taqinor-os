@@ -8042,3 +8042,27 @@ def appliquer_mouvement_casier(company, produit_id, quantite,
                     changed.append('company')
                 dest.save(update_fields=changed)
     return ecart
+
+
+def rouvrir_demande_achat_bcf_annule(*, bon_commande_id, company, user=None, supprime=False):
+    """AAPV71 — abonné de ``bon_commande_fournisseur_annule`` : la demande
+    d'achat commandée par ce BCF redevient « approuvée » (lien effacé) pour
+    qu'un nouveau BCF puisse être généré. Relue sous verrou ; renvoie la DA
+    rouverte ou ``None``."""
+    from django.db import transaction
+    from .models import DemandeAchat
+    with transaction.atomic():
+        da = (DemandeAchat.objects.select_for_update()
+              .filter(company=company, bon_commande_id=bon_commande_id,
+                      statut=DemandeAchat.Statut.COMMANDEE).first())
+        if da is None:
+            return None
+        ref_bcf = da.bon_commande.reference if da.bon_commande_id else bon_commande_id
+        appliquer_statut_document(
+            da, DemandeAchat.Statut.APPROUVEE, user=user, champs={'bon_commande': None})
+    try:
+        from apps.records.services import log_note
+        log_note(da, user, f'BCF {ref_bcf} annulé : demande rouverte', company=company)
+    except Exception:  # noqa: BLE001 — chatter best-effort (D-ENF22-BLE001)
+        logger.warning('AAPV71 : note de réouverture non journalisée (DA %s)', da.pk)
+    return da

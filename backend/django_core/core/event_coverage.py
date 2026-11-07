@@ -161,7 +161,6 @@ ALLOWED_UNCONSUMED = {
     "contrat_signe",                    # notifications (CONTRAT_SIGNE) — contrats parqué
     "projet_status_change",             # notifications (PROJET_STATUT_CHANGE) — gestion_projet parqué
     "rfq_attribuee",                    # automation (RFQ_ATTRIBUEE) — achats avancés parqués
-    "bon_commande_fournisseur_annule",  # AAPV17 — abonné AAPV71 (installations : DA rouverte)
 }
 
 # APAR43 — signaux qui ont un abonné VIVANT mais AUCUN émetteur statique dans

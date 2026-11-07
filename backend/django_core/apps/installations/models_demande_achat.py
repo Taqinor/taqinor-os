@@ -93,7 +93,7 @@ class DemandeAchat(DocumentMetier):
         Statut.SOUMISE: {Statut.APPROUVEE, Statut.REFUSEE},
         Statut.APPROUVEE: {Statut.COMMANDEE},
         Statut.REFUSEE: set(),
-        Statut.COMMANDEE: set(),
+        Statut.COMMANDEE: {Statut.APPROUVEE},  # AAPV71 — BCF annulé : DA rouverte
     }
 
     # Redéclarée à l'identique (SCA36) : conserve le related_name + la
