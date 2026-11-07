@@ -1379,6 +1379,7 @@ def proposer_cross_dock(reception):
     NTWMS2). LECTURE SEULE : cette fonction PROPOSE, elle n'écrit rien.
     """
     from .models_wms import AffectationCrossDock
+    from .services import quantite_entree_ligne_reception
 
     if reception is None:
         return []
@@ -1403,7 +1404,8 @@ def proposer_cross_dock(reception):
             'ligne_id': ligne.id,
             'produit_id': ligne.produit_id,
             'produit_nom': getattr(ligne.produit, 'nom', '') or '',
-            'quantite': ligne.quantite or 0,
+            # AAPV38 — la quantité RÉELLEMENT entrée (ASTK59), jamais la saisie.
+            'quantite': quantite_entree_ligne_reception(ligne),
             'deja_affectee': ligne.id in deja,
             'vagues': vagues,
         })
@@ -1464,6 +1466,8 @@ def affecter_reception_cross_dock(*, reception, user=None, lignes=None,
 
     if reception is None:
         raise ValueError('Réception introuvable.')
+    if reception.statut != 'confirme':  # AAPV38
+        raise EtatIncompatible('Seule une réception confirmée part en cross-dock.')
     company = reception.company
     filtre = {int(x) for x in (lignes or []) if str(x).isdigit()}
     propositions = [
