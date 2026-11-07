@@ -5606,6 +5606,19 @@ def taux_ras_tva(facture):
     return Decimal('0') if a_arf else Decimal('100')
 
 
+def _tva_avoirs_imputes(facture):
+    """AAPV4 — (TVA, TTC) des avoirs fournisseur imputés sur la facture : TVA
+    au prorata de chaque imputation (montant × TVA avoir / TTC avoir)."""
+    if facture.pk is None:
+        return Decimal('0'), Decimal('0')
+    tva = ttc = Decimal('0')
+    for imp in facture.avoirs_imputes.select_related('avoir'):
+        ttc += imp.montant or Decimal('0')
+        if imp.avoir.montant_ttc:
+            tva += imp.montant * (imp.avoir.montant_tva or 0) / imp.avoir.montant_ttc
+    return tva.quantize(Decimal('0.01')), ttc
+
+
 def compute_ras_tva(company, facture, montant_paiement):
     """XPUR2/ASTK175 — calcule (taux, montant_ras) pour un paiement de
     ``montant_paiement`` sur ``facture``. No-op (0, 0) si la société n'a pas
@@ -5636,6 +5649,13 @@ def compute_ras_tva(company, facture, montant_paiement):
         return Decimal('0'), Decimal('0')
     montant_paiement = Decimal(montant_paiement or 0)
     if montant_paiement <= 0:
+        return taux, Decimal('0')
+    # AAPV4 (D-AAPV-1 = tva_nette) — base = TVA − TVA des avoirs imputés ;
+    # prorata sur le TTC net des avoirs imputés.
+    tva_avoirs, ttc_avoirs = _tva_avoirs_imputes(facture)
+    montant_tva -= tva_avoirs
+    montant_ttc -= ttc_avoirs
+    if montant_tva <= 0 or montant_ttc <= 0:
         return taux, Decimal('0')
     ras_totale = (montant_tva * taux / Decimal('100')).quantize(
         Decimal('0.01'))

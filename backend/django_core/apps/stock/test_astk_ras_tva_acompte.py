@@ -90,6 +90,27 @@ class RasTests(TestCase):
         self.assertEqual(resp.status_code, 201, resp.data)
         return PaiementFournisseur.objects.get(pk=resp.data['id'])
 
+    def test_avoir_impute_reduit_la_base(self):
+        """AAPV4 (D-AAPV-1) — facture TTC 1 200 / TVA 200, avoir 600 TTC (TVA
+        100) imputé : le paiement de 600 retient 100,00 (TVA nette)."""
+        from apps.stock.models import AvoirFournisseur
+        facture = FactureFournisseur.objects.create(
+            company=self.company, reference='FF-AAPV4', fournisseur=self.fournisseur,
+            montant_ht=Decimal('1000'), montant_tva=Decimal('200'),
+            montant_ttc=Decimal('1200'))
+        avoir = AvoirFournisseur.objects.create(
+            company=self.company, reference='AVF-AAPV4', fournisseur=self.fournisseur,
+            montant_ht=Decimal('500'), montant_tva=Decimal('100'),
+            montant_ttc=Decimal('600'), statut=AvoirFournisseur.Statut.VALIDE)
+        r = self.api.post(f'/api/django/stock/avoirs-fournisseur/{avoir.id}/imputer/',
+                          {'facture': facture.id}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        paiement = self._payer(facture, '600')
+        self.assertEqual(paiement.montant_ras_tva, Decimal('100.00'))
+        self.assertEqual(paiement.montant_net_paye, Decimal('500.00'))
+        facture.refresh_from_db()
+        self.assertEqual(facture.statut, FactureFournisseur.Statut.PAYEE)
+
     def test_ras_totale_facture(self):
         """Sonde FACF-12 rejouée : 140,00 observé au prorata, 200,00 sous (a)."""
         facture = self._facture_avec_acompte(Decimal('360'))
