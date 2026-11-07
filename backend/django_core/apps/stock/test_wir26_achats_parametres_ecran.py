@@ -59,6 +59,7 @@ class Wir26Base(TestCase):
         self.user = _user(
             self.company, 'wir26-user',
             permissions=['stock_modifier', 'stock_voir', 'prix_achat_voir',
+                         'parametres_modifier',  # AAPV73 : écriture des réglages
                          # ASTK17-20 (D-ASTK-3) : l'acheteur porte les codes achats.
                          'achats_commander', 'achats_receptionner',
                          'achats_payer', 'catalogue_prix_modifier'])
@@ -110,6 +111,20 @@ class TestAchatsParametresApi(Wir26Base):
         self.assertEqual(obj.tolerance_prix_pct, Decimal('5.00'))
         self.assertEqual(obj.tolerance_prix_absolu_mad, Decimal('50.00'))
         self.assertEqual(obj.tolerance_quantite_pct, Decimal('2.00'))
+
+    def test_patch_exige_parametres_modifier(self):
+        # AAPV73 : `stock_modifier` seul (Technicien responsable, Admin Ventes)
+        # ne suffit plus ; l'Administrateur (parametres_modifier) passe.
+        pk = self.api.get('/api/django/stock/achats-parametres/').data['id']
+        AchatsParametres.objects.filter(pk=pk).update(sod_stricte=True)
+        url = f'/api/django/stock/achats-parametres/{pk}/'
+        stock_seul = _user(self.company, 'wir26-stock-seul',
+                           permissions=['stock_modifier', 'stock_voir'])
+        resp = _api(stock_seul).patch(url, {'sod_stricte': False}, format='json')
+        self.assertEqual(resp.status_code, 403, resp.data)
+        self.assertTrue(AchatsParametres.for_company(self.company).sod_stricte)
+        self.assertEqual(self.api.patch(
+            url, {'sod_stricte': False}, format='json').status_code, 200)
 
     def test_patch_refuse_sans_permission(self):
         readonly_user = _user(self.company, 'wir26-lecture', permissions=[])
