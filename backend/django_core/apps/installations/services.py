@@ -1193,6 +1193,9 @@ def quantite_deja_sortie_chantier(installation, produit_id):
     from decimal import ROUND_HALF_UP
     from django.db.models import Sum
     from .models import ConsommationLigne
+    if installation.devis_id:  # AAPV18 — les sorties de la vente font foi
+        total = _sorties_vente_du_chantier(installation, produit_id)
+        return int(total.quantize(Decimal('1'), rounding=ROUND_HALF_UP))
     f11 = (
         ConsommationLigne.objects
         .filter(consommation__intervention__installation=installation,
@@ -1201,11 +1204,20 @@ def quantite_deja_sortie_chantier(installation, produit_id):
     ) or Decimal('0')
     total = Decimal(str(f11)) + _quantite_soldee_par_vente(
         installation, produit_id)
-    if installation.devis_id:  # ASTK258 — max(actuel, sorties de la vente)
-        from apps.ventes.selectors import sorties_de_la_vente
-        total = max(total, Decimal(str(sorties_de_la_vente(
-            installation.devis_id, installation.company).get(produit_id, 0))))
     return int(total.quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+
+
+def _sorties_vente_du_chantier(installation, produit_id):
+    """AAPV18 — chantier né d'un devis : ``sorties_de_la_vente`` (F11, N14,
+    livraison directe sous la référence du chantier ; vente sous devis et BC)
+    est LA mesure du déjà-sorti — jamais « F11 + soldé vente » (double compte
+    de la pose nettée par ASTK258). Plancher : le solde-vente des
+    réservations (un marqueur sans mouvement sous les références de la vente
+    reste compté, jamais additionné)."""
+    from apps.ventes.selectors import sorties_de_la_vente
+    return max(Decimal(str(sorties_de_la_vente(
+        installation.devis_id, installation.company).get(produit_id, 0))),
+        Decimal(str(_quantite_soldee_par_vente(installation, produit_id))))
 
 
 def _poser_reservation_ecart(installation, produit_id, besoin,
@@ -1487,6 +1499,8 @@ def _quantite_sortie_chantier(installation, produit_id):
     from apps.stock.selectors import mouvements_par_reference
     from apps.stock.services import mouvement_type_sortie
     from .models import ConsommationLigne
+    if installation.devis_id:  # AAPV18
+        return _sorties_vente_du_chantier(installation, produit_id)
     f11 = (
         ConsommationLigne.objects
         .filter(consommation__intervention__installation=installation,

@@ -489,3 +489,21 @@ class GardeSortieUnique(TestCase):
             self._facture_directe(devis, inst, panneau)
             self._f11_api(inst, panneau, 12)
             self.assertEqual(self._bilan(panneau), (12, 18))
+
+    def test_acompte_puis_f11_deja_sorti_compte_une_fois(self):
+        """AAPV18 — acompte émis (sortie 10) puis F11 de 10 : besoin,
+        déjà-sorti et retournable lisent 10, jamais 20."""
+        from apps.installations.selectors import quantites_deja_sorties_chantier
+        from apps.installations.services import (
+            quantite_deja_sortie_chantier, quantite_retournable,
+        )
+        devis, inst, panneau = self._vente()
+        self._acompte_api(devis)
+        self._f11_api(inst, panneau)
+        inst.refresh_from_db()
+        self.assertEqual(self._bilan(panneau), (10, 20))
+        self.assertEqual(quantite_deja_sortie_chantier(inst, panneau.id), 10)
+        self.assertEqual(quantite_retournable(inst, panneau.id), Decimal('10'))
+        self.assertEqual(
+            quantites_deja_sorties_chantier(inst, [panneau.id]),
+            {panneau.id: 10})
