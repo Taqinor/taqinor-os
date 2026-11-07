@@ -3929,6 +3929,38 @@ def ventiler_tva_achats(lignes):
 
 # ── FG56 — Facturer une réception ────────────────────────────────────────────
 
+def _retourne_valide_ligne_bcf(lc):
+    """AAPV25 — quantité du produit de la ligne BCF sortie par les retours
+    fournisseur VALIDÉS de ce BCF (YPROC8)."""
+    from django.db.models import Sum
+    from .models import LigneRetourFournisseur
+    if lc.produit_id is None:
+        return Decimal('0')
+    return Decimal(str(LigneRetourFournisseur.objects.filter(
+        retour__bon_commande_id=lc.bon_commande_id, retour__statut='valide',
+        produit_id=lc.produit_id).aggregate(t=Sum('quantite'))['t'] or 0))
+
+
+def _quantite_facturable_reception(ligne):
+    """AAPV25 — entrée de la ligne, plafonnée au reçu NET de la ligne BCF
+    (entrées confirmées − retours validés) moins ce que les AUTRES réceptions
+    déjà facturées de cette ligne ont fait entrer."""
+    from .models import LigneReceptionFournisseur
+    entree = quantite_entree_ligne_reception(ligne)
+    lc = ligne.ligne_commande
+    if lc is None:
+        return entree
+    recu = deja = 0
+    for autre in (LigneReceptionFournisseur.objects
+                  .filter(ligne_commande=lc, reception__statut='confirme')
+                  .select_related('reception')):
+        q = quantite_entree_ligne_reception(autre)
+        recu += q
+        if autre.reception_id != ligne.reception_id and autre.reception.factures_issues.exists():
+            deja += q
+    return max(min(entree, int(recu - _retourne_valide_ligne_bcf(lc) - deja)), 0)
+
+
 def facturer_reception(company, user, reception):
     """Crée une FactureFournisseur à partir d'une réception confirmée.
 
@@ -3979,7 +4011,7 @@ def facturer_reception(company, user, reception):
         for ligne in lignes_reception:
             # ASTK59 — facture ce qui est RÉELLEMENT entré (quantite_appliquee),
             # jamais la saisie : une ligne plafonnée à 0 ne facture rien.
-            qte_facturee = quantite_entree_ligne_reception(ligne)
+            qte_facturee = _quantite_facturable_reception(ligne)  # AAPV25 net des retours
             if qte_facturee <= 0:
                 continue
             pu = ligne.ligne_commande.prix_achat_unitaire if ligne.ligne_commande else Decimal('0')
@@ -6402,7 +6434,9 @@ def _montant_attendu_bcf_ht(bon_commande_id):
                 == Produit.PolitiqueFacturationAchat.SUR_COMMANDE):
             quantite = Decimal(str(ligne.quantite or 0))
         else:
-            quantite = recu.get(ligne.id, Decimal('0'))
+            # AAPV25 — le reçu NET des retours fournisseur validés.
+            quantite = max(recu.get(ligne.id, Decimal('0'))
+                           - _retourne_valide_ligne_bcf(ligne), Decimal('0'))
         attendu += quantite * pu
     return attendu.quantize(Decimal('0.01'))
 
