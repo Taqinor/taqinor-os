@@ -175,6 +175,10 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
             complet.is_valid(raise_exception=True)
         with transaction.atomic():
             facture = serializer.save()
+            if ancien_bcf_id is not None and facture.bon_commande_id != ancien_bcf_id:
+                # AAPV43 — re-pointée ou déliée : l'ancien GR/IR est rouvert.
+                from apps.installations.services import delettrer_gr_ir_facture
+                delettrer_gr_ir_facture(facture)
             if (facture.bon_commande_id is not None
                     and facture.bon_commande_id != ancien_bcf_id):
                 evaluer_rapprochement_3_voies(facture)
