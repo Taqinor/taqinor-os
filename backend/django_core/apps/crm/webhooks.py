@@ -1951,25 +1951,16 @@ def assign_client_ref(lead):
 def _owners_habilites(company, owner_ids):
     """Sous-ensemble de ``owner_ids`` réellement ATTRIBUABLE aujourd'hui.
 
-    MÊMES filtres que ``services.pick_round_robin_owner`` (le chemin normal
-    d'attribution) : utilisateur de la société, ``is_active=True``, et
-    habilité au CRM — permission ``crm_creer``, ou rôle legacy admin/
-    responsable pour les comptes sans Role. Renvoie un ``set`` de pk."""
-    from django.contrib.auth import get_user_model
-    from django.db.models import Q
+    CRXB4 — le filtre n'est plus une COPIE : c'est
+    ``leads_attribution.commerciaux_habilites``, celui du chemin normal
+    (``pick_round_robin_owner``). Renvoie un ``set`` de pk."""
+    from .leads_attribution import commerciaux_habilites
 
     ids = {pk for pk in owner_ids if pk}
     if not ids:
         return set()
-    User = get_user_model()
-    return set(
-        User.objects.filter(
-            pk__in=ids, company=company, is_active=True,
-        ).filter(
-            Q(role__permissions__contains=['crm_creer'])
-            | Q(role__isnull=True, role_legacy__in=['admin', 'responsable']),
-        ).values_list('pk', flat=True)
-    )
+    return set(commerciaux_habilites(company).filter(
+        pk__in=ids).values_list('pk', flat=True))
 
 
 def _pick_owner_from_duplicates(dupes, *, telephone='', email='', company=None):

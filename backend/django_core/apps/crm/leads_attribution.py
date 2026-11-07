@@ -7,6 +7,62 @@ from . import stages
 from .models import Lead
 
 
+# ---------------------------------------------------------------------------
+# CRXB4 — UN SEUL round-robin.
+#
+# Six copies vivaient côte à côte (QW6 ``pick_round_robin_owner``, XSAL11
+# ``_next_balanced_round_robin_commercial``, l'équipe « reçoit les leads »
+# ``_prochain_membre_equipe``, la rotation du responsable ``dispatch.rotation``,
+# le MQL ``leads_score._next_round_robin_commercial`` et le filtre copié de
+# ``webhooks._owners_habilites``). Elles se ramènent à DEUX primitives :
+#
+# * ``commerciaux_habilites`` — QUI est attribuable (filtre QW6) ;
+# * ``rotation_equilibree`` — le tour : le MOINS chargé d'abord, départage
+#   par id, en sautant quiconque a atteint ``plafond`` ; chaque appelant
+#   garde SA mesure de charge (leads assignés, leads ouverts, + propositions
+#   en attente, leads MQL).
+#
+# ORDRE D'ATTRIBUTION D'UN NOUVEAU LEAD (documenté, le premier qui répond
+# gagne) : 0) héritage du commercial d'un doublon actif et habilité
+# (``webhooks._pick_owner_from_duplicates``, QW11) ; 1) responsable des leads
+# pro pour un lead commercial/industriel (CIQ416) ; 2) équipe cochée « Reçoit
+# les nouveaux leads » (rotation entre ses membres, ou mise en attente du
+# responsable — ``dispatch``) ; 3) round-robin équilibré XSAL11 si activé ;
+# 4) responsable par défaut ; 5) round-robin QW6. Les TERRITOIRES (NTCRM1)
+# étaient PRIORITAIRES sur tout le reste (consultés EN PREMIER, avant le
+# point 1) : app sortie (SOLMVP10) ; si elle revient, elle se rebranche en
+# tête de ``default_responsable_for`` et nulle part ailleurs.
+# ---------------------------------------------------------------------------
+def commerciaux_habilites(company):
+    """CRXB4 — LE filtre « attribuable » : utilisateur de ``company``, actif,
+    habilité au CRM (permission ``crm_creer``, ou rôle legacy admin/
+    responsable pour les comptes sans Role). Queryset non trié."""
+    from django.contrib.auth import get_user_model
+    from django.db.models import Q
+
+    return get_user_model().objects.filter(
+        company=company, is_active=True,
+    ).filter(
+        Q(role__permissions__contains=['crm_creer'])
+        | Q(role__isnull=True, role_legacy__in=['admin', 'responsable']),
+    )
+
+
+def rotation_equilibree(candidats, charge, plafond=None):
+    """CRXB4 — LE round-robin : parmi ``candidats``, celui dont ``charge(c)``
+    est la plus faible (départage par pk), en sautant quiconque a atteint ou
+    dépassé ``plafond`` (aucun plafond si ``None``). ``None`` si personne
+    d'éligible. Sans état dédié : le tour revient au moins chargé."""
+    eligibles = []
+    for candidat in candidats:
+        n = charge(candidat)
+        if plafond is None or n < plafond:
+            eligibles.append((n, candidat.pk, candidat))
+    if not eligibles:
+        return None
+    return min(eligibles, key=lambda t: (t[0], t[1]))[2]
+
+
 def _leads_ouverts_count(commercial):
     """XSAL11 — Nombre de leads OUVERTS assignés à un commercial : stage NON
     SIGNED/COLD (clés STAGES.py — jamais codées en dur) et jamais perdu. Sert
@@ -26,21 +82,10 @@ def _next_balanced_round_robin_commercial(company, plafond):
     ou s'il n'y a aucun commercial actif du tout."""
     from django.contrib.auth import get_user_model
 
-    User = get_user_model()
-    candidats = list(
-        User.objects.filter(
-            company=company, is_active=True, role__nom='Commercial',
-        ).order_by('id')
-    )
-    if not candidats:
-        return None
-    eligibles = [
-        c for c in candidats if _leads_ouverts_count(c) < plafond
-    ]
-    if not eligibles:
-        return None  # tous saturés — fallback à l'appelant
-    eligibles.sort(key=lambda c: (_leads_ouverts_count(c), c.id))
-    return eligibles[0]
+    candidats = get_user_model().objects.filter(
+        company=company, is_active=True, role__nom='Commercial',
+    ).order_by('id')
+    return rotation_equilibree(candidats, _leads_ouverts_count, plafond)
 
 
 def _equipe_recevant_leads(company):
@@ -55,14 +100,9 @@ def _prochain_membre_equipe(equipe, plafond):
     """Rotation ÉQUILIBRÉE entre les membres ACTIFS de ``equipe`` (même règle
     que XSAL11 : le moins de leads ouverts d'abord, départage par id, en
     sautant quiconque a atteint ``plafond``). None si personne d'éligible."""
-    candidats = list(
-        equipe.membres.filter(
-            is_active=True, company_id=equipe.company_id).order_by('id'))
-    eligibles = [c for c in candidats if _leads_ouverts_count(c) < plafond]
-    if not eligibles:
-        return None
-    eligibles.sort(key=lambda c: (_leads_ouverts_count(c), c.id))
-    return eligibles[0]
+    candidats = equipe.membres.filter(
+        is_active=True, company_id=equipe.company_id).order_by('id')
+    return rotation_equilibree(candidats, _leads_ouverts_count, plafond)
 
 
 def responsable_defaut_actif(profile):
@@ -164,18 +204,8 @@ def pick_round_robin_owner(company):
     l'utilisateur ayant le MOINS de leads assignés (ties départagés par id,
     ordre stable) — équivalent d'une rotation, sans compteur externe. None si
     la société n'a aucun utilisateur commercial actif."""
-    from django.contrib.auth import get_user_model
-    from django.db.models import Count, Q
+    from django.db.models import Count
 
-    User = get_user_model()
-    candidates = list(
-        User.objects.filter(
-            company=company, is_active=True,
-        ).filter(
-            Q(role__permissions__contains=['crm_creer'])
-            | Q(role__isnull=True, role_legacy__in=['admin', 'responsable']),
-        ).annotate(
-            nb_leads=Count('leads_assignes'),
-        ).order_by('nb_leads', 'pk').distinct()
-    )
-    return candidates[0] if candidates else None
+    candidats = commerciaux_habilites(company).annotate(
+        nb_leads=Count('leads_assignes')).order_by('pk').distinct()
+    return rotation_equilibree(candidats, lambda u: u.nb_leads)
