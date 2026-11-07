@@ -6313,7 +6313,8 @@ def imputer_acomptes_bcf(bon_commande):
     with transaction.atomic():
         factures = list(
             FactureFournisseur.objects.select_for_update()
-            .filter(bon_commande=bon_commande)
+            # AAPV53 — seules les factures du fournisseur du BCF.
+            .filter(bon_commande=bon_commande, fournisseur_id=bon_commande.fournisseur_id)
             .order_by('date_creation', 'id'))
         if not factures:
             return []

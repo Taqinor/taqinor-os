@@ -2152,6 +2152,15 @@ class FactureFournisseurSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMix
         from .selectors import sous_totaux_tva_facture_fournisseur
         return sous_totaux_tva_facture_fournisseur(obj)
 
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        bcf = attrs.get('bon_commande', getattr(self.instance, 'bon_commande', None))
+        fournisseur = attrs.get('fournisseur', getattr(self.instance, 'fournisseur', None))
+        if bcf is not None and fournisseur is not None and bcf.fournisseur_id != fournisseur.pk:
+            raise serializers.ValidationError(  # AAPV53
+                {'bon_commande': 'Ce bon de commande appartient à un autre fournisseur.'})
+        return attrs
+
     # DC16 — une facture rattachée à un bon de commande doit être créée via
     # « facturer une réception » (FG56) pour que ses montants soient DÉRIVÉS de
     # la réception (jamais saisis à la main) AVANT le rapprochement 3 voies

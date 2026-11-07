@@ -182,6 +182,29 @@ class TestImputationOnFacture(Xpur8Base):
             'montant': '12000', 'date_paiement': '2026-06-20'}, format='json')
         self.assertEqual(r.status_code, 409, r.content)
 
+    def test_lien_bcf_autre_fournisseur_refuse(self):
+        """AAPV53 — la facture du fournisseur B liée au BCF de A : 400, aucun
+        lien, l'acompte de A reste ouvert ; l'imputation ne sert jamais une
+        facture d'un autre fournisseur."""
+        from apps.stock.models import FactureFournisseur
+        AcompteFournisseur.objects.create(
+            company=self.company, bon_commande=self.bcf,
+            montant=Decimal('3600'), date_versement=datetime.date(2026, 6, 1))
+        autre = Fournisseur.objects.create(company=self.company, nom='Fournisseur B')
+        ff_b = FactureFournisseur.objects.create(
+            company=self.company, reference='FF-AAPV53', fournisseur=autre,
+            montant_ht=Decimal('10000'), montant_tva=Decimal('2000'),
+            montant_ttc=Decimal('12000'))
+        r = self.api.patch(f'/api/django/stock/factures-fournisseur/{ff_b.id}/',
+                           {'bon_commande': self.bcf.id}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('autre fournisseur', str(r.data['bon_commande']))
+        ff_b.refresh_from_db()
+        self.assertIsNone(ff_b.bon_commande_id)
+        FactureFournisseur.objects.filter(pk=ff_b.pk).update(bon_commande=self.bcf)
+        imputer_acomptes_bcf(self.bcf)
+        self.assertEqual(len(acomptes_fournisseur_ouverts(self.company)), 1)
+
     def test_no_acompte_unchanged_behaviour(self):
         rec = self._confirm_reception()
         facture = facturer_reception(self.company, self.user, rec)
