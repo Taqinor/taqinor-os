@@ -510,6 +510,11 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         les devis comme l'édition unitaire.
         """
         avant = _instantane_suivi(serializer.instance)
+        if serializer.validated_data.get('is_archived') and not serializer.instance.is_archived:
+            from ..services import motif_archivage_refuse  # AAPV19
+            motif = motif_archivage_refuse(serializer.instance)
+            if motif:
+                raise ConflitEtat({'detail': motif})
         # L'écriture PASSE PAR ``super()`` : c'est lui qui force la société côté
         # serveur (``TenantMixin.perform_update``). Sauvegarder soi-même ici
         # défairait cette garde d'isolation.
@@ -526,6 +531,10 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         detail=serializers.CharField(), nb_mouvements=serializers.IntegerField())})
     def destroy(self, request, *args, **kwargs):
         produit = self.get_object()
+        from ..services import motif_archivage_refuse  # AAPV19 — stock ≠ 0 : refus
+        motif = motif_archivage_refuse(produit)
+        if motif:
+            return Response({'detail': motif}, status=status.HTTP_409_CONFLICT)
         # ASTK81 — un produit référencé par une relation vivante (réservation
         # chantier, ligne BCF, conditionnement…) est ARCHIVÉ, jamais supprimé :
         # plus de donnée détachée (SET_NULL) ni effacée en cascade.

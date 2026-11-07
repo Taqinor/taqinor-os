@@ -41,6 +41,24 @@ class SuppressionProduitTests(TestCase):
             company=self.company, nom=nom, prix_achat=Decimal('100'),
             prix_vente=Decimal('150'), is_archived=archive)
 
+    def test_archivage_refuse_si_stock(self):
+        """AAPV19 — un produit à stock > 0 ne s'archive ni par DELETE ni par
+        PATCH is_archived (409), il reste actif ; à stock 0 l'archivage passe."""
+        p = self._produit('Panneau AAPV19')
+        Produit.objects.filter(pk=p.pk).update(quantite_stock=40)
+        resp = self.api.delete(f'/api/django/stock/produits/{p.id}/')
+        self.assertEqual(resp.status_code, 409, resp.content)
+        self.assertIn('40 unité(s) en stock', resp.data['detail'])
+        resp = self.api.patch(f'/api/django/stock/produits/{p.id}/',
+                              {'is_archived': True}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+        p.refresh_from_db()
+        self.assertFalse(p.is_archived)
+        Produit.objects.filter(pk=p.pk).update(quantite_stock=0)
+        resp = self.api.patch(f'/api/django/stock/produits/{p.id}/',
+                              {'is_archived': True}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+
     def _reservation(self, produit):
         Client = apps.get_model('crm', 'Client')
         Installation = apps.get_model('installations', 'Installation')

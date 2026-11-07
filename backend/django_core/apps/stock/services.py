@@ -9467,6 +9467,16 @@ def merge_produits(survivor, others, user):
                       etiquette='NTDATA19 fusion produit')
 
 
+def motif_archivage_refuse(produit):
+    """AAPV19 — motif du refus d'archiver un produit qui a encore du stock
+    (sa valeur sortirait de la Valorisation), ``None`` si archivable."""
+    qte = int(produit.quantite_stock or 0)
+    if qte > 0:
+        return (f'{qte} unité(s) en stock : sortez-les ou inventoriez à 0 '
+                "avant d'archiver ce produit.")
+    return None
+
+
 def fournisseurs_par_ids(company, ids):
     """NTDATA19 — fournisseurs d'une société par id (point d'entrée cross-app).
 
