@@ -6237,10 +6237,13 @@ def annuler_receptions_brouillon_bcf(bc, user=None):
     from django.utils import timezone
     from .models import ReceptionFournisseur
 
+    from django.db import transaction
+
     today = timezone.now().date()
-    receptions = bc.receptions.filter(
-        statut=ReceptionFournisseur.Statut.BROUILLON)
     count = 0
+    with transaction.atomic():  # AAPV11 — brouillons relus sous verrou
+        receptions = list(bc.receptions.select_for_update().filter(
+            statut=ReceptionFournisseur.Statut.BROUILLON))
     for reception in receptions:
         note_annulation = (
             f'[{today.isoformat()}] Annulée automatiquement (BCF '
@@ -6252,6 +6255,40 @@ def annuler_receptions_brouillon_bcf(bc, user=None):
         reception.save(update_fields=['statut', 'note'])
         count += 1
     return count
+
+
+def annuler_reception_brouillon(reception):
+    """AAPV11 — annule une réception BROUILLON sous verrou, statut relu : une
+    réception confirmée entre-temps est refusée (``EtatIncompatible``, 409)
+    — son stock et sa provision restent intacts."""
+    from django.db import transaction
+    from .models import ReceptionFournisseur
+    with transaction.atomic():
+        verrou = ReceptionFournisseur.objects.select_for_update().get(pk=reception.pk)
+        if verrou.statut == ReceptionFournisseur.Statut.CONFIRME:
+            raise EtatIncompatible(
+                "Réception confirmée entre-temps : rouvrez-la pour l'annuler.")
+        verrou.statut = ReceptionFournisseur.Statut.ANNULE
+        verrou.save(update_fields=['statut'])
+    reception.statut = verrou.statut
+    return reception
+
+
+def annuler_retour_brouillon(retour):
+    """AAPV11 — annule un retour fournisseur non validé sous verrou, statut
+    relu : un retour validé entre-temps est refusé (409)."""
+    from django.db import transaction
+    from .models import RetourFournisseur
+    with transaction.atomic():
+        verrou = RetourFournisseur.objects.select_for_update().get(pk=retour.pk)
+        if verrou.statut == RetourFournisseur.Statut.VALIDE:
+            raise EtatIncompatible(
+                'Un retour validé ne peut pas être annulé (le stock a déjà '
+                'été décrémenté).')
+        verrou.statut = RetourFournisseur.Statut.ANNULE
+        verrou.save(update_fields=['statut'])
+    retour.statut = verrou.statut
+    return retour
 
 
 def notify_bcf_annule(bc):

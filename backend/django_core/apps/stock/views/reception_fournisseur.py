@@ -373,8 +373,11 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
                 return Response({'detail': str(exc)},
                                 status=status.HTTP_400_BAD_REQUEST)
             return Response(self.get_serializer(reception).data)
-        reception.statut = ReceptionFournisseur.Statut.ANNULE
-        reception.save(update_fields=['statut'])
+        from ..services import annuler_reception_brouillon
+        try:  # AAPV11 — relu sous verrou
+            annuler_reception_brouillon(reception)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=statut_refus_metier(exc))
         return Response(self.get_serializer(reception).data)
 
     @extend_schema(request=None, responses={201: FactureFournisseurSerializer})
