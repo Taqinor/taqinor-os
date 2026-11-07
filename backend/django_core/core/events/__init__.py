@@ -118,6 +118,7 @@ from .stock import (
     reception_fournisseur_confirmee, reception_fournisseur_annulee, facture_fournisseur_creee,
     paiement_fournisseur_enregistre, mouvement_stock_enregistre, produit_modifie,
     demande_achat_approuvee, rfq_attribuee, retour_fournisseur_valide,
+    bon_commande_fournisseur_annule,
 )
 from .lead import (
     lead_erased, lead_created, visite_validee, visite_planifiee, visite_terminee,
@@ -148,7 +149,8 @@ __all__ = [
     'bon_commande_cree', 'paiement_enregistre', 'avoir_cree', 'avoir_annule', 'devis_accepted',
     'devis_acceptation_annulee', 'devis_sent', 'layout_finalise', 'devis_revise', 'devis_refused',
     'devis_expired', 'document_pdf_generated', 'reception_fournisseur_confirmee',
-    'reception_fournisseur_annulee', 'retour_fournisseur_valide', 'facture_fournisseur_creee',
+    'reception_fournisseur_annulee', 'retour_fournisseur_valide', 'bon_commande_fournisseur_annule',
+    'facture_fournisseur_creee',
     'paiement_fournisseur_enregistre', 'mouvement_stock_enregistre', 'produit_modifie',
     'demande_achat_approuvee', 'rfq_attribuee', 'lead_erased', 'lead_created', 'visite_validee',
     'visite_planifiee', 'visite_terminee', 'lead_stage_changed', 'deal_commission_due',

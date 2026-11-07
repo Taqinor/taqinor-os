@@ -336,7 +336,10 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                     '(annulez-le).'
                 ),
             })
-        instance.delete()
+        from ..services import emettre_bcf_annule
+        with transaction.atomic():  # AAPV17 — budget rendu + DA rouverte avant le SET_NULL
+            emettre_bcf_annule(instance, self.request.user, supprime=True)
+            instance.delete()
 
     def create(self, request, *args, **kwargs):
         # XPUR4 — refuse la création si le fournisseur est bloqué commandes
@@ -543,7 +546,8 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         # (comportement inchangé) ; le détail des quantités déjà entrées en
         # stock est renvoyé pour décision (retour fournisseur éventuel).
         from ..services import annuler_bcf_cascade
-        detail_cascade = annuler_bcf_cascade(bc, user=request.user)
+        with transaction.atomic():  # AAPV17 — l'abonné (DA rouverte) est obligatoire
+            detail_cascade = annuler_bcf_cascade(bc, user=request.user)
         data = self.get_serializer(bc).data
         data['cascade'] = detail_cascade
         return Response(data)

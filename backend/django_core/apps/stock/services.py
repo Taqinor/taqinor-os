@@ -6386,8 +6386,9 @@ def annuler_retour_brouillon(retour):
 
 
 def notify_bcf_annule(bc):
-    """YPROC7 — notifie best-effort le créateur du BCF (et de la DA liée si
-    connue) qu'un BCF vient d'être annulé. N'échoue jamais l'annulation."""
+    """YPROC7 — notifie best-effort le CRÉATEUR du BCF qu'il vient d'être
+    annulé (la DA liée est rouverte par l'abonné de
+    ``bon_commande_fournisseur_annule``, AAPV71). N'échoue jamais l'annulation."""
     try:
         from apps.notifications.services import notify
         from apps.notifications.types_evenements import EventType
@@ -6403,6 +6404,18 @@ def notify_bcf_annule(bc):
         logger.warning('notify_bcf_annule: échec pour BCF %s', bc.pk)
 
 
+def emettre_bcf_annule(bc, user, supprime):
+    """AAPV17 — défait la consommation budgétaire du BCF (engagements
+    CONSOMMÉ → ACTIF) puis émet ``bon_commande_fournisseur_annule``
+    (SYNCHRONE : l'abonné obligatoire relit la DA avant le SET_NULL)."""
+    from core.events import bon_commande_fournisseur_annule
+    from .models import BonCommandeFournisseur
+    rendre_engagements_bcf(bc.company, bc.pk)
+    bon_commande_fournisseur_annule.send(
+        sender=BonCommandeFournisseur, bon_commande_id=bc.pk,
+        company=bc.company, user=user, supprime=supprime)
+
+
 def annuler_bcf_cascade(bc, user=None):
     """YPROC7 — annulation d'un BCF : annule en cascade ses réceptions
     brouillon (`annuler_receptions_brouillon_bcf`) puis notifie
@@ -6412,6 +6425,7 @@ def annuler_bcf_cascade(bc, user=None):
     (utile si l'annulation concerne un BCF partiellement reçu) pour décision
     éventuelle de retour fournisseur."""
     nb_receptions_annulees = annuler_receptions_brouillon_bcf(bc, user=user)
+    emettre_bcf_annule(bc, user, supprime=False)  # AAPV17
     notify_bcf_annule(bc)
     quantites_deja_recues = [
         {
@@ -9433,6 +9447,16 @@ def consommer_engagements_demande(company, demande_achat_id,
     if bon_commande_id:
         valeurs['bon_commande_id'] = bon_commande_id
     return qs.update(**valeurs)
+
+
+def rendre_engagements_bcf(company, bon_commande_id):
+    """AAPV17 — BCF annulé/supprimé : ses engagements CONSOMMÉS redeviennent
+    ACTIFS (l'enveloppe reste engagée par la DA), lien BCF effacé."""
+    from .models import EngagementBudget
+    return EngagementBudget.objects.filter(
+        company=company, bon_commande_id=bon_commande_id,
+        statut=EngagementBudget.Statut.CONSOMME,
+    ).update(statut=EngagementBudget.Statut.ACTIF, bon_commande_id=None)
 
 
 # ── NTDATA19 — FUSION SUPERVISÉE : FOURNISSEURS & PRODUITS ──────────────────

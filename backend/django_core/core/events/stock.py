@@ -164,6 +164,17 @@ rfq_attribuee = django.dispatch.Signal()
 # AAPV65 : réservation du chantier d'origine replafonnée).
 retour_fournisseur_valide = django.dispatch.Signal()
 
+# ── AAPV17 — BCF annulé ou supprimé ─────────────────────────────────────────
+# Émis SYNCHRONE par ``stock.services.emettre_bcf_annule`` à l'annulation
+# (``annuler_bcf_cascade``) ET avant la suppression d'un BCF brouillon
+# (l'abonné relit la DA liée avant le ``SET_NULL``). Arguments :
+#   * ``bon_commande_id`` — l'id du BCF ;
+#   * ``company`` — la société ;
+#   * ``user`` — l'acteur (peut être ``None``) ;
+#   * ``supprime`` — ``True`` pour une suppression, ``False`` une annulation.
+# Abonné attendu : ``installations`` (AAPV71 : la DA liée est rouverte).
+bon_commande_fournisseur_annule = django.dispatch.Signal()
+
 __all__ = [
     'reception_fournisseur_confirmee',
     'reception_fournisseur_annulee',
@@ -174,4 +185,5 @@ __all__ = [
     'demande_achat_approuvee',
     'rfq_attribuee',
     'retour_fournisseur_valide',
+    'bon_commande_fournisseur_annule',
 ]
