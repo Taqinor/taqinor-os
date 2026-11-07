@@ -2512,6 +2512,9 @@ def compute_besoin_materiel(installation):
     # chantier (pour ne pas la décompter deux fois de son propre disponible).
     reserved_all = reserved_quantities(installation.company)
     own_reserved = _own_reservation_map(installation)
+    # AAPV15 — le stock sert les réservations par ancienneté (AAPV70).
+    from apps.installations.selectors import reservations_anterieures_map
+    anterieures = reservations_anterieures_map(installation)
     en_commande, en_commande_brouillon = en_commande_chantier_par_statut(
         installation)
     deja_sorti = quantites_deja_sorties_chantier(
@@ -2542,7 +2545,8 @@ def compute_besoin_materiel(installation):
                 'stock_total': produit.quantite_stock,
                 'reserve_autres': reserve_autres,
                 'reserve_chantier': own_reserved.get(produit.id, 0),
-                'disponible': produit.quantite_stock - reserve_autres,
+                'disponible': max(produit.quantite_stock
+                                  - anterieures.get(produit.id, 0), 0),
                 'reserve': reserved_all.get(produit.id, 0),
                 'fournisseur_id': produit.fournisseur_id,
                 'fournisseur_nom': (produit.fournisseur.nom
