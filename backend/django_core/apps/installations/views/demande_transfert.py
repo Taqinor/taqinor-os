@@ -14,6 +14,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.conflit_etat import ConflitEtat
 from core.viewsets import CompanyScopedModelViewSet
 
 from apps.ventes.utils.references import create_with_reference
@@ -73,6 +74,9 @@ class DemandeTransfertViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         create_with_reference(DemandeTransfert, 'DTR', company, _save)
 
     def perform_update(self, serializer):
+        # AAPV30 — une demande hors « demandé » est figée (approuvée telle quelle).
+        if serializer.instance.statut != DemandeTransfert.Statut.DEMANDE:
+            raise ConflitEtat('Demande approuvée : non modifiable.')
         self._check_tenant(serializer)
         serializer.save(company=self.request.user.company)
 
@@ -129,7 +133,8 @@ class DemandeTransfertViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                 company=request.user.company, user=request.user,
                 produit_id=dt.produit_id, source_id=dt.source_id,
                 destination_id=dt.destination_id, quantite=dt.quantite,
-                note=f'Demande de transfert {dt.reference}')
+                note=f'Demande de transfert {dt.reference}',
+                demande_approuvee=True)  # AAPV30 — l'approbation EST cette demande
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_409_CONFLICT)
