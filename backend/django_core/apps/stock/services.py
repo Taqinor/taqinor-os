@@ -3852,6 +3852,7 @@ def _construire_facture_fournisseur(company, user, bon_commande, lignes, *,
             company=company, reference=ref,
             fournisseur=bon_commande.fournisseur,
             bon_commande=bon_commande,
+            type_achat=type_achat_par_defaut(bon_commande.fournisseur),  # AAPV6
             montant_ht=montant_ht, montant_tva=montant_tva,
             montant_ttc=montant_ttc,
             statut=FactureFournisseur.Statut.A_PAYER,
@@ -5653,6 +5654,16 @@ def taux_ras_tva(facture):
     return Decimal('0') if a_arf else Decimal('100')
 
 
+def type_achat_par_defaut(fournisseur):
+    """AAPV6 (D-AAPV-4 = defaut_fournisseur_et_ecran) — nature d'achat d'une
+    facture fournisseur pré-remplie depuis le type du fournisseur :
+    sous-traitant (``service``) ⇒ prestations de services, sinon biens."""
+    from .models import FactureFournisseur, Fournisseur
+    if getattr(fournisseur, 'type', None) == Fournisseur.Type.SERVICE:
+        return FactureFournisseur.TypeAchat.SERVICES
+    return FactureFournisseur.TypeAchat.BIENS
+
+
 def _tva_avoirs_imputes(facture):
     """AAPV4 — (TVA, TTC) des avoirs fournisseur imputés sur la facture : TVA
     au prorata de chaque imputation (montant × TVA avoir / TTC avoir)."""
@@ -6840,6 +6851,7 @@ def creer_facture_fournisseur_depuis_ocr(
         return FactureFournisseur.objects.create(
             company=company, reference=ref, fournisseur=fournisseur,
             ref_fournisseur=ref_fournisseur,
+            type_achat=type_achat_par_defaut(fournisseur),  # AAPV6
             date_facture=date_facture, date_echeance=date_echeance,
             montant_ht=montant_ht or Decimal('0'),
             montant_tva=montant_tva or Decimal('0'),
@@ -8872,6 +8884,7 @@ def creer_facture_fournisseur_depuis_ubl(*, company, user, xml_bytes):
         facture = FactureFournisseur.objects.create(
             company=company, reference=ref, fournisseur=fournisseur,
             ref_fournisseur=fields.get('numero'),
+            type_achat=type_achat_par_defaut(fournisseur),  # AAPV6
             date_facture=_parsed_date(fields.get('date_facture')),
             date_echeance=_parsed_date(fields.get('date_echeance')),
             montant_ht=fields.get('montant_ht') or Decimal('0'),

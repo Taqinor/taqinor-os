@@ -2176,8 +2176,10 @@ class FactureFournisseurSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMix
     def create(self, validated_data):
         if validated_data.get('bon_commande'):
             raise ConflitEtat({'bon_commande': self._MSG_DC16_CREATE})
-        from .services import apply_devise_facture
+        from .services import apply_devise_facture, type_achat_par_defaut
         lignes_data = validated_data.pop('lignes', [])
+        if 'type_achat' not in validated_data:  # AAPV6 — défaut fournisseur
+            validated_data['type_achat'] = type_achat_par_defaut(validated_data.get('fournisseur'))
         # XPUR3 — si un montant TTC en devise est fourni, sa contre-valeur
         # MAD ÉCRASE montant_ttc (comportement historique inchangé quand la
         # facture est en MAD / le champ devise n'est pas renseigné).

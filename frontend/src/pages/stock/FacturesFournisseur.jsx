@@ -54,8 +54,21 @@ const fmtDateFR = (iso) => {
 }
 
 // ── Modal : création d'une facture fournisseur ──────────────────────────────
-function NouvelleFacture({ fournisseurs, bons, onClose, onSaved }) {
-  const [fournisseur, setFournisseur] = useState('')
+// AAPV6 (D-AAPV-4) — nature d'achat pré-remplie depuis le type du fournisseur
+// (sous-traitant « service » ⇒ prestations de services), modifiable ici.
+const NATURES_ACHAT = [
+  { value: 'biens', label: 'Biens & travaux' },
+  { value: 'services', label: 'Prestations de services' },
+]
+const natureParDefaut = (f) => (f?.type === 'service' ? 'services' : 'biens')
+
+export function NouvelleFacture({ fournisseurs, bons, onClose, onSaved }) {
+  const [fournisseur, setFournisseurState] = useState('')
+  const [typeAchat, setTypeAchat] = useState('biens')
+  const setFournisseur = (v) => {
+    setFournisseurState(v)
+    setTypeAchat(natureParDefaut(fournisseurs.find((f) => String(f.id) === String(v))))
+  }
   const [bonCommande, setBonCommande] = useState('')
   const [refFournisseur, setRefFournisseur] = useState('')
   const [dateFacture, setDateFacture] = useState('')
@@ -88,6 +101,7 @@ function NouvelleFacture({ fournisseurs, bons, onClose, onSaved }) {
       await stockApi.createFactureFournisseur({
         fournisseur: Number(fournisseur),
         bon_commande: bonCommande ? Number(bonCommande) : null,
+        type_achat: typeAchat,
         ref_fournisseur: refFournisseur || null,
         date_facture: dateFacture || null,
         date_echeance: dateEcheance || null,
@@ -129,6 +143,17 @@ function NouvelleFacture({ fournisseurs, bons, onClose, onSaved }) {
                 <SelectItem value="__none">— Aucun —</SelectItem>
                 {bons.map((b) => (
                   <SelectItem key={b.id} value={String(b.id)}>{b.reference}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium" htmlFor="ff-nature">Nature</label>
+            <Select value={typeAchat} onValueChange={setTypeAchat}>
+              <SelectTrigger id="ff-nature"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {NATURES_ACHAT.map((n) => (
+                  <SelectItem key={n.value} value={n.value}>{n.label}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

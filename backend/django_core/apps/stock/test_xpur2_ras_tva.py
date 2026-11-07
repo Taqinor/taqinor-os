@@ -173,6 +173,32 @@ class TestPaiementEndpointRas(Xpur2Base):
         self.assertEqual(
             Decimal(resp.data['montant_net_paye']), Decimal('1000.00'))
 
+    def test_facture_sous_traitant_sans_nature_retient_75(self):
+        """AAPV6 (D-AAPV-4) — facture saisie SANS nature pour un sous-traitant
+        (type service) à ARF valide : née « services », retient 1 500 sur
+        12 000 et figure au relevé ; un fournisseur matériel reste « biens »."""
+        self._activate_ras()
+        self._arf(valide=True)
+        self.fournisseur.type = Fournisseur.Type.SERVICE
+        self.fournisseur.save(update_fields=['type'])
+        resp = self.api.post('/api/django/stock/factures-fournisseur/', {
+            'fournisseur': self.fournisseur.id, 'montant_ht': '10000',
+            'montant_tva': '2000', 'montant_ttc': '12000'}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        facture = FactureFournisseur.objects.get(pk=resp.data['id'])
+        self.assertEqual(facture.type_achat, FactureFournisseur.TypeAchat.SERVICES)
+        resp = self.api.post('/api/django/stock/paiements-fournisseur/', {
+            'facture': facture.id, 'montant': '12000'}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(Decimal(resp.data['taux_ras']), Decimal('75.00'))
+        self.assertEqual(Decimal(resp.data['montant_ras_tva']), Decimal('1500.00'))
+        self.assertEqual(Decimal(resp.data['montant_net_paye']), Decimal('10500.00'))
+        self.assertEqual(len(relevé_ras_tva(self.company)), 1)
+        materiel = Fournisseur.objects.create(company=self.company, nom='Matériel AAPV6')
+        resp = self.api.post('/api/django/stock/factures-fournisseur/', {
+            'fournisseur': materiel.id, 'montant_ttc': '100'}, format='json')
+        self.assertEqual(resp.data['type_achat'], FactureFournisseur.TypeAchat.BIENS)
+
     def test_payment_no_ras_when_disabled(self):
         facture = self._facture(
             FactureFournisseur.TypeAchat.SERVICES,

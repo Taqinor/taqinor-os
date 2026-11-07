@@ -50,11 +50,12 @@ vi.mock('../../api/stockApi', () => ({
     // AUDV04 — acomptes fournisseur ouverts (chargés au montage, panneau
     // optionnel affiché uniquement si des lignes existent).
     acomptesFournisseurOuverts: vi.fn(() => Promise.resolve({ data: [] })),
+    createFactureFournisseur: vi.fn(() => Promise.resolve({ data: { id: 9 } })),
   },
 }))
 
 import stockApi from '../../api/stockApi'
-import FacturesFournisseur, { FactureDetail } from './FacturesFournisseur.jsx'
+import FacturesFournisseur, { FactureDetail, NouvelleFacture } from './FacturesFournisseur.jsx'
 
 function makeStore({ role = 'admin' } = {}) {
   return configureStore({
@@ -183,5 +184,26 @@ describe('FacturesFournisseur — acomptes ouverts réservés à prix_achat_voir
     renderPage()
     await screen.findByRole('grid', { name: 'Factures fournisseur' })
     await waitFor(() => expect(stockApi.acomptesFournisseurOuverts).toHaveBeenCalled())
+  })
+})
+
+describe("Nouvelle facture — nature d'achat (AAPV6)", () => {
+  it('pré-choisit « Prestations de services » pour un sous-traitant et poste type_achat', async () => {
+    const user = userEvent.setup()
+    render(
+      <ThemeProvider>
+        <NouvelleFacture
+          fournisseurs={[{ id: 5, nom: 'Sous-traitant SA', type: 'service' },
+            { id: 6, nom: 'Grossiste', type: 'materiel' }]}
+          bons={[]} onClose={() => {}} onSaved={() => {}} />
+      </ThemeProvider>,
+    )
+    await user.click(screen.getByLabelText('Fournisseur'))
+    await user.click(await screen.findByRole('option', { name: 'Sous-traitant SA' }))
+    expect(screen.getByLabelText('Nature')).toHaveTextContent('Prestations de services')
+    await user.type(screen.getByLabelText('Montant TTC'), '12000')
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(stockApi.createFactureFournisseur).toHaveBeenCalledWith(
+      expect.objectContaining({ fournisseur: 5, type_achat: 'services' })))
   })
 })
