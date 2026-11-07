@@ -36,9 +36,9 @@ with no rate column at all — mono-MAD in practice.
 | --- | --- | --- | --- |
 | achats | PrixFournisseur | `apps/achats/models.py:37` | prix_achat |
 | achats | LigneBonCommandeFournisseur | `apps/achats/models.py:269` | prix_achat_unitaire, prix_achat_unitaire_devise |
-| achats | ImputationAcompteFournisseur | `apps/achats/models.py:632` | montant |
-| achats | LigneFactureFournisseur | `apps/achats/models.py:666` | prix_unitaire_ht, taux_tva |
-| achats | PaiementFournisseur | `apps/achats/models.py:716` | montant, montant_ras_tva |
+| achats | ImputationAcompteFournisseur | `apps/achats/models.py:632` | montant, montant_ras_tva |
+| achats | LigneFactureFournisseur | `apps/achats/models.py:669` | prix_unitaire_ht, taux_tva |
+| achats | PaiementFournisseur | `apps/achats/models.py:719` | montant, montant_ras_tva |
 | adminops | FactureLicence | `apps/adminops/models.py:299` | montant_ht, montant_ttc, tva |
 | adsengine | CreativeAsset | `apps/adsengine/models.py:990` | cost_cents |
 | adsengine | InstagramPublishJob | `apps/adsengine/models.py:2331` | quota_total |
@@ -85,11 +85,11 @@ with no rate column at all — mono-MAD in practice.
 | stock | EcheanceFactureFournisseur | `apps/stock/models.py:1702` | montant |
 | stock | AcompteFournisseur | `apps/stock/models.py:1737` | montant, montant_consomme |
 | stock | AvoirFournisseur | `apps/stock/models.py:1798` | montant_ht, montant_impute, montant_ttc, montant_tva |
-| stock | ImputationAvoirFournisseur | `apps/stock/models.py:1859` | montant |
-| stock | InventaireAnnuel | `apps/stock/models.py:1957` | total_valeur |
-| stock | RevalorisationStock | `apps/stock/models.py:1996` | ancien_cout, nouveau_cout |
-| stock | BudgetDepartement | `apps/stock/models.py:2335` | montant_alloue |
-| stock | EngagementBudget | `apps/stock/models.py:2395` | montant |
+| stock | ImputationAvoirFournisseur | `apps/stock/models.py:1859` | montant, montant_ras_tva |
+| stock | InventaireAnnuel | `apps/stock/models.py:1960` | total_valeur |
+| stock | RevalorisationStock | `apps/stock/models.py:1999` | ancien_cout, nouveau_cout |
+| stock | BudgetDepartement | `apps/stock/models.py:2338` | montant_alloue |
+| stock | EngagementBudget | `apps/stock/models.py:2398` | montant |
 | stock | IncidentQualiteFournisseur | `apps/stock/models_incident_fournisseur.py:18` | cout_impact_mad |
 | stock | ParametresNegoce | `apps/stock/models_negoce_params.py:16` | cout_rupture_jour_mad |
 | stock | AccordRFAFournisseur | `apps/stock/models_rfa.py:16` | montant_fixe |

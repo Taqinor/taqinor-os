@@ -5713,9 +5713,7 @@ def compute_ras_tva(company, facture, montant_paiement):
     else:
         fraiche = FactureFournisseur.objects.get(pk=facture.pk)
         solde_avant = fraiche.solde_du
-        deja_retenu = sum(
-            (p.montant_ras_tva or Decimal('0')
-             for p in fraiche.paiements.all()), Decimal('0'))
+        deja_retenu = ras_retenue_facture(fraiche)  # AAPV5 imputations comprises
     if montant_paiement >= solde_avant:
         # Dernier règlement : il porte le solde de retenue au centime.
         due_cumulee = ras_totale
@@ -5727,6 +5725,40 @@ def compute_ras_tva(company, facture, montant_paiement):
     montant_ras = max(due_cumulee - deja_retenu, Decimal('0'))
     montant_ras = min(montant_ras, montant_paiement)
     return taux, montant_ras
+
+
+def ras_retenue_facture(facture):
+    """AAPV5 — Σ RAS-TVA déjà retenue sur la facture : paiements ET
+    imputations (acompte, avoir) qui l'ont soldée."""
+    total = Decimal('0')
+    for rel in (facture.paiements, facture.imputations_acompte, facture.avoirs_imputes):
+        total += sum((x.montant_ras_tva or Decimal('0') for x in rel.all()), Decimal('0'))
+    return total
+
+
+def ras_restante_au_solde(company, facture):
+    """AAPV5 (D-AAPV-2 = imputation_porte_le_reste) — quand une imputation
+    d'acompte ou d'avoir SOLDE la facture, la retenue restante (retenue due
+    − déjà retenue) qu'elle porte ; 0 si la facture n'est pas soldée, RAS
+    inactive ou rien ne reste."""
+    from .models import AchatsParametres, FactureFournisseur
+    if facture is None or not AchatsParametres.for_company(company).ras_tva_actif:
+        return Decimal('0')
+    fraiche = FactureFournisseur.objects.get(pk=facture.pk)
+    taux = taux_ras_tva(fraiche)
+    base = (fraiche.montant_tva or Decimal('0')) - _tva_avoirs_imputes(fraiche)[0]
+    if fraiche.solde_du > 0 or taux <= 0 or base <= 0:
+        return Decimal('0')
+    due = (base * taux / Decimal('100')).quantize(Decimal('0.01'))
+    return max(due - ras_retenue_facture(fraiche), Decimal('0'))
+
+
+def poser_ras_au_solde(imputation):
+    """AAPV5 — pose sur ``imputation`` la RAS restante si elle solde."""
+    ras = ras_restante_au_solde(imputation.facture.company, imputation.facture)
+    if ras > 0:
+        imputation.montant_ras_tva = ras
+        imputation.save(update_fields=['montant_ras_tva'])
 
 
 def relevé_ras_tva(company, *, date_debut=None, date_fin=None):
@@ -5752,6 +5784,35 @@ def relevé_ras_tva(company, *, date_debut=None, date_fin=None):
             'taux_ras': p.taux_ras,
             'montant_ras_tva': p.montant_ras_tva,
             'montant_net_paye': p.montant_net_paye,
+        })
+    rows += _releve_ras_imputations(company, date_debut, date_fin)  # AAPV5
+    from datetime import date
+    return sorted(rows, key=lambda r: r['date_paiement'] or date.min)
+
+
+def _releve_ras_imputations(company, date_debut, date_fin):
+    """AAPV5 — lignes du relevé RAS portées par une imputation (acompte ou
+    avoir) qui a soldé la facture (date = date de l'imputation)."""
+    from django.utils import timezone
+    from .models import ImputationAcompteFournisseur, ImputationAvoirFournisseur
+    rows = []
+    for imp, quand in (
+            [(i, i.created_at) for i in ImputationAcompteFournisseur.objects.filter(
+                facture__company=company, montant_ras_tva__gt=0).select_related(
+                'facture', 'facture__fournisseur')]
+            + [(i, i.date_creation) for i in ImputationAvoirFournisseur.objects.filter(
+                facture__company=company, montant_ras_tva__gt=0).select_related(
+                'facture', 'facture__fournisseur')]):
+        jour = timezone.localdate(quand) if quand else None
+        if (date_debut and jour and jour < date_debut) or (date_fin and jour and jour > date_fin):
+            continue
+        rows.append({
+            'date_paiement': jour, 'fournisseur': imp.facture.fournisseur.nom,
+            'facture': imp.facture.reference,
+            'type_achat': imp.facture.get_type_achat_display(),
+            'montant_paiement': imp.montant, 'taux_ras': taux_ras_tva(imp.facture),
+            'montant_ras_tva': imp.montant_ras_tva,
+            'montant_net_paye': imp.montant - imp.montant_ras_tva,
         })
     return rows
 
@@ -6272,6 +6333,7 @@ def imputer_acomptes_bcf(bon_commande):
                 creees.append(ImputationAcompteFournisseur.objects.create(
                     company=acompte.company or facture.company,
                     acompte=acompte, facture=facture, montant=montant))
+                poser_ras_au_solde(creees[-1])  # AAPV5 (D-AAPV-2)
                 reste -= montant
                 acompte.montant_consomme = (
                     (acompte.montant_consomme or Decimal('0')) + montant)

@@ -39,6 +39,8 @@ def imputer_avoir_sous_verrou(avoir, facture, montant):
         imputation = ImputationAvoirFournisseur.objects.create(
             company=verrou.company, avoir=verrou, facture=facture,
             montant=montant_impute)
+        from .services import poser_ras_au_solde
+        poser_ras_au_solde(imputation)  # AAPV5 (D-AAPV-2)
         verrou.montant_impute = (
             verrou.montant_impute or Decimal('0')) + montant_impute
         verrou.statut = (AvoirFournisseur.Statut.IMPUTE
