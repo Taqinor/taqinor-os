@@ -210,8 +210,9 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(
         request=BcfEnvoyerEmailCorps,
-        responses=corps('BcfEnvoyerEmailReponse', detail=serializers.CharField(), log_id=serializers.IntegerField(),
-                        email_statut=serializers.CharField(), statut=serializers.CharField()))
+        responses={code: corps(
+            'BcfEnvoyerEmailReponse', detail=serializers.CharField(), log_id=serializers.IntegerField(),
+            email_statut=serializers.CharField(), statut=serializers.CharField()) for code in (200, 502)})
     @action(detail=True, methods=['post'], url_path='envoyer-email')
     def envoyer_email(self, request, pk=None):
         """QS3 — Envoie le BCF (PDF joint) au FOURNISSEUR par email + EmailLog.
@@ -266,6 +267,12 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             company=bc.company, to_email=to_email, sujet=sujet, corps=corps,
             attachment=attachment, attachment_name=attachment_name,
             reference=bc.reference, user=request.user)
+        if not ok:
+            # AAPV46 : l'e-mail n'est pas parti -> le BCF reste en brouillon.
+            return Response({
+                'detail': "L'e-mail n'est pas parti : le bon de commande reste en brouillon.",
+                'log_id': log.id, 'email_statut': log.statut, 'statut': bc.statut,
+            }, status=status.HTTP_502_BAD_GATEWAY)
         self._mark_bcf_envoye(bc)
         try:
             from apps.audit.recorder import record
@@ -277,8 +284,7 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                 "bon_commande_fournisseur.BonCommandeFournisseurViewSet.envoyer_email "
                 ": erreur ignorée (mode dégradé)", exc_info=True)
         return Response({
-            'detail': (f'Email envoyé à {to_email}.' if ok
-                       else "Échec de l'envoi de l'email."),
+            'detail': f'Email envoyé à {to_email}.',
             'log_id': log.id, 'email_statut': log.statut,
             'statut': bc.statut,
         })

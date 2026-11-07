@@ -121,6 +121,21 @@ class BcfWhatsappTests(BcfSendBase):
 
 
 class BcfEmailTests(BcfSendBase):
+    def test_email_en_echec_ne_marque_pas_envoye(self):
+        # AAPV46 : envoi en panne -> 502 {detail, log_id}, BCF reste brouillon.
+        from types import SimpleNamespace
+        from unittest import mock
+        faux_log = SimpleNamespace(id=7, statut='echec')
+        with mock.patch('apps.ventes.services.log_supplier_email',
+                        return_value=(False, faux_log)):
+            resp = self._post('envoyer-email')
+        self.assertEqual(resp.status_code, 502, resp.data)
+        self.assertIn("n'est pas parti", resp.data['detail'])
+        self.assertEqual(resp.data['log_id'], 7)
+        self.bcf.refresh_from_db()
+        self.assertEqual(self.bcf.statut,
+                         BonCommandeFournisseur.Statut.BROUILLON)
+
     def test_email_sends_and_logs_and_marks_envoye(self):
         resp = self._post('envoyer-email')
         self.assertEqual(resp.status_code, 200)
