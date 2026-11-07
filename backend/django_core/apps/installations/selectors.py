@@ -1752,7 +1752,9 @@ def bcf_approbation_valide(company, bcf_id, montant):
     total du BCF depuis l'approbation invalide celle-ci (cohérent avec la
     ré-approbation XPUR18). Lecture seule, jamais d'écriture ici."""
     from decimal import Decimal
-    from .models_approbation_bcf import ApprobationBCF
+    from .models_approbation_bcf import (
+        PALIER_ADMIN, PALIER_RESPONSABLE, ApprobationBCF,
+    )
 
     seuil = seuil_approbation_bcf_actif(company)
     if seuil is None:
@@ -1766,7 +1768,9 @@ def bcf_approbation_valide(company, bcf_id, montant):
                    .first())
     if approbation is None:
         return False
-    if approbation.palier != palier_requis:
+    # AAPV48 — un palier SUPÉRIEUR OU ÉGAL au requis reste valide.
+    rang = {PALIER_RESPONSABLE: 0, PALIER_ADMIN: 1}
+    if rang.get(approbation.palier, -1) < rang.get(palier_requis, 0):
         return False
     if (approbation.montant_approuve or Decimal('0')) < montant:
         return False
