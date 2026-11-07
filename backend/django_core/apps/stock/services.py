@@ -3860,6 +3860,9 @@ def _construire_facture_fournisseur(company, user, bon_commande, lignes, *,
             montant_ttc_devise=_ttc_en_devise(montant_ttc, bon_commande),
             statut=FactureFournisseur.Statut.A_PAYER,
             date_facture=timezone.now().date(),
+            # AAPV54 — échéance dérivée du délai du fournisseur (XPUR6).
+            date_echeance=derive_date_echeance(
+                bon_commande.fournisseur, timezone.now().date()),
             note=note, created_by=user)
         for designation, qte, pu, taux_ligne in lignes_data:
             LigneFactureFournisseur.objects.create(
@@ -6864,7 +6867,8 @@ def creer_facture_fournisseur_depuis_ocr(
             company=company, reference=ref, fournisseur=fournisseur,
             ref_fournisseur=ref_fournisseur,
             type_achat=type_achat_par_defaut(fournisseur),  # AAPV6
-            date_facture=date_facture, date_echeance=date_echeance,
+            date_facture=date_facture,
+            date_echeance=date_echeance or derive_date_echeance(fournisseur, date_facture),  # AAPV54
             montant_ht=montant_ht or Decimal('0'),
             montant_tva=montant_tva or Decimal('0'),
             montant_ttc=montant_ttc or Decimal('0'),
@@ -8898,7 +8902,8 @@ def creer_facture_fournisseur_depuis_ubl(*, company, user, xml_bytes):
             ref_fournisseur=fields.get('numero'),
             type_achat=type_achat_par_defaut(fournisseur),  # AAPV6
             date_facture=_parsed_date(fields.get('date_facture')),
-            date_echeance=_parsed_date(fields.get('date_echeance')),
+            date_echeance=(_parsed_date(fields.get('date_echeance')) or derive_date_echeance(  # AAPV54
+                fournisseur, _parsed_date(fields.get('date_facture')))),
             montant_ht=fields.get('montant_ht') or Decimal('0'),
             montant_tva=fields.get('montant_tva') or Decimal('0'),
             montant_ttc=fields.get('montant_ttc') or Decimal('0'),
