@@ -1460,6 +1460,20 @@ def apply_retour_fournisseur(retour, user):
                     retour.bon_commande, ligne.produit_id, ligne.quantite)
         retour.statut = RetourFournisseur.Statut.VALIDE
         retour.save(update_fields=['statut'])
+        lignes_retour = [{'ligne': lg, 'produit': lg.produit, 'quantite': lg.quantite}
+                         for lg in lignes]
+
+        def _emettre_retour():  # AAPV8 — une fois, après commit
+            from core.events import retour_fournisseur_valide
+            try:
+                retour_fournisseur_valide.send(
+                    sender=RetourFournisseur, retour=retour, company=retour.company,
+                    user=user, lignes=lignes_retour)
+            except Exception:  # noqa: BLE001 — après commit : journalisé (D-ENF22-BLE001)
+                logger.exception('AAPV8: abonné de retour_fournisseur_valide en '
+                                 'échec pour le retour %s', retour.pk)
+
+        transaction.on_commit(_emettre_retour)
     return retour
 
 

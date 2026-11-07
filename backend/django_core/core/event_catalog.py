@@ -118,6 +118,11 @@ CATALOG = {
     'reception_fournisseur_annulee': _e(
         'Une réception fournisseur confirmée est annulée.',
         ['reception', 'company', 'user', 'lignes']),
+    # AAPV8 — émetteur stock (apply_retour_fournisseur), abonné installations
+    # (AAPV9 : GR/IR ; AAPV65 : réservation du chantier d'origine).
+    'retour_fournisseur_valide': _e(
+        'Un retour fournisseur est validé (stock sorti, reçu du BCF rouvert).',
+        ['retour', 'company', 'user', 'lignes']),
     'employe_sorti': _e(
         'Un employé quitte l’entreprise (sortie RH).',
         ['dossier', 'user', 'motif']),
