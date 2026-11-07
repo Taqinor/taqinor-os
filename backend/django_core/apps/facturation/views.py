@@ -19,7 +19,7 @@ from apps.ventes.views import (
     NoteDebitViewSet,
     PaiementViewSet,
 )
-from apps.ventes.recouvrement import (
+from .recouvrement import (
     FollowupLevelViewSet,
 )
 

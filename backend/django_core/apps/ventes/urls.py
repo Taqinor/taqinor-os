@@ -32,7 +32,7 @@ from .views import (
     ParametresGammesView,  # PVMRQ
     PlanCommissionViewSet,  # WIR281/XSAL6
 )
-from .recouvrement import (
+from apps.facturation.recouvrement import (  # ODX18 — mêmes vues sous facturation/
     FollowupLevelViewSet,
     ParametrageRelanceClientViewSet,  # ZFAC8
     PromessePaiementViewSet,
