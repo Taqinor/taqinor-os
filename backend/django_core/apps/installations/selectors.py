@@ -402,6 +402,26 @@ def own_reservation_map(installation):
     return {pid: qte for pid, qte in rows}
 
 
+def reservations_anterieures_map(installation):
+    """AAPV70 — {produit_id: quantité} déjà promise par les réservations
+    actives non consommées des AUTRES chantiers posées AVANT celle de ce
+    chantier (ordre ``(date_creation, id)`` ; toutes si le chantier n'en a
+    pas pour ce produit), + les réservations d'assemblage actives. Le stock
+    sert d'abord ces réservations antérieures (contrat lu par AAPV15)."""
+    base = _active_reservations().filter(company=installation.company_id)
+    propres = {pid: (dc, rid) for pid, dc, rid in base.filter(
+        installation=installation).values_list('produit_id', 'date_creation', 'id')}
+    out = {pid: 0 for pid in propres}
+    for pid, qte, dc, rid in base.exclude(installation=installation).values_list(
+            'produit_id', 'quantite', 'date_creation', 'id'):
+        if pid not in propres or (dc, rid) < propres[pid]:
+            out[pid] = out.get(pid, 0) + (qte or 0)
+    for pid, qte in _active_reservations_assemblage().filter(
+            company=installation.company_id).values_list('produit_id', 'quantite'):
+        out[pid] = out.get(pid, 0) + (qte or 0)
+    return out
+
+
 def update_installation_lead(absorbed_lead, survivor_lead):
     """Réassigne les chantiers liés au lead absorbé vers le lead survivant (fusion
     de leads). Renvoie le nombre de chantiers réassignés."""
