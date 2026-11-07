@@ -855,8 +855,8 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             'ChecklistPhotoRequete',
             attachment=oa.idf(True),
             cle=oa.s(null=True),
-            latitude=oa.f(null=True),
-            longitude=oa.f(null=True),
+            latitude=oa.f(null=True, min_value=-90, max_value=90),
+            longitude=oa.f(null=True, min_value=-180, max_value=180),
             precision_m=oa.f(null=True),
         ),
         responses={201: PhotoChecklistMetaSerializer},
@@ -900,14 +900,23 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         cle = request.data.get('cle')
         item = inst.checklist.filter(cle=cle).first() if cle else None
 
-        def _num(key):
+        def _num(key, borne=None):
             v = request.data.get(key)
             if v in (None, ''):
                 return None
             try:
-                return float(v)
+                x = float(v)
             except (TypeError, ValueError):
                 return None
+            # ENF51 : latitude/longitude bornées (publiées au schéma) — hors
+            # bornes, la colonne (9, 6) débordait (« numeric field overflow », 500).
+            if borne is not None and not -borne <= x <= borne:
+                from rest_framework.exceptions import ValidationError
+                raise ValidationError({key: f'Valeur entre -{borne} et {borne} attendue.'})
+            return x
+
+        geoloc = {'latitude': _num('latitude', 90), 'longitude': _num('longitude', 180),
+                  'precision_m': _num('precision_m')}
 
         from ..models import PhotoChecklistMeta
         meta, _created = PhotoChecklistMeta.objects.update_or_create(
@@ -915,9 +924,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             defaults={
                 'company': inst.company,
                 'checklist_item': item,
-                'latitude': _num('latitude'),
-                'longitude': _num('longitude'),
-                'precision_m': _num('precision_m'),
+                **geoloc,
             },
         )
         return Response(

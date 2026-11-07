@@ -124,12 +124,13 @@ class TraceTests(_Base):
             company=self.company, lead=autre_lead, cadence='apres_devis',
             ordre=1, canal=RelanceEtape.Canal.WHATSAPP, libelle='Autre',
             due_at=MERCREDI, due_date=MERCREDI.date())
-        # ERR-ENF11-FUZZ-CRM : une touche d'un autre lead = id inconnu, 404.
+        # ENF51 : une touche d'un autre lead (ou inconnue) = 409, le lead existe.
         cas = (
             ({'cle': 'apres_visite'}, 'cle', 400),
             ({'cle': 'visite_proposition', 'langue': 'en'}, 'langue', 400),
             ({'cle': 'visite_proposition', 'etape': autre_touche.pk}, 'etape',
-             404),
+             409),
+            ({'cle': 'visite_proposition', 'etape': '999999999'}, 'etape', 409),
         )
         for corps, champ, attendu in cas:
             resp = self._ouvert(**corps)

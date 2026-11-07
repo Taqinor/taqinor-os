@@ -90,6 +90,26 @@ class SalleVenteApiTests(TestCase):
         resp2 = self.api.get(f'/api/django/crm/salles-vente/{salle_id}/')
         self.assertEqual(len(resp2.data['items']), 1)
 
+    def test_cible_unique_put_patch_et_item_absent(self):
+        """ENF51 — PUT jugé sur le corps (relation absente remise à nul),
+        PATCH incohérent par lui-même 400, repli sur la salle 409 ; retirer
+        un élément absent = 404 JSON."""
+        from apps.crm.models import Lead
+        lead = Lead.objects.create(company=self.company, nom='Lead SV')
+        salle_id = self._create_salle()['id']
+        url = f'/api/django/crm/salles-vente/{salle_id}/'
+        resp = self.api.patch(url, {'client': None, 'lead': None}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        resp = self.api.patch(url, {'client': None}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        resp = self.api.put(url, {'titre': 'Remplacée', 'lead': lead.pk}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        salle = SalleVente.objects.get(pk=salle_id)
+        self.assertEqual((salle.lead_id, salle.client_id), (lead.pk, None))
+        resp = self.api.delete(f'{url}items/999999999/')
+        self.assertEqual(resp.status_code, 404)
+        self.assertIn('detail', resp.json())
+
     def test_public_endpoint_expose_2_devis_1_document_sans_prix_achat(self):
         data = self._create_salle()
         token = data['token']

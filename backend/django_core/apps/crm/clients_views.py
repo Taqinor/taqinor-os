@@ -64,7 +64,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-@extend_schema_view(create=extend_schema(extensions=sd.SALLE_CIBLE_UNIQUE))
+@extend_schema_view(create=extend_schema(extensions=sd.SALLE_CIBLE_UNIQUE),
+                    update=extend_schema(extensions=sd.SALLE_CIBLE_UNIQUE),  # ENF51
+                    partial_update=extend_schema(extensions=sd.SALLE_CIBLE_PARTIELLE))
 class SalleVenteViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
 
     """NTCRM17 — Salle de vente digitale (CRUD interne, authentifié).
@@ -135,8 +137,10 @@ class SalleVenteViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
         salle = self.get_object()
         deleted, _ = SalleVenteItem.objects.filter(
             salle=salle, pk=item_id).delete()
-        if not deleted:
-            return Response(status=status.HTTP_404_NOT_FOUND)
+        if not deleted:  # ENF51 : un 404 JSON (corps vide = hors contrat)
+            return Response({'detail': "Aucun élément de cette salle ne porte "
+                                       f"l'identifiant « {item_id} »."},
+                            status=status.HTTP_404_NOT_FOUND)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @extend_schema(responses=sd.OBJ)

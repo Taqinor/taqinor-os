@@ -10,7 +10,7 @@ Source réelle : ``records.Attachment``, ``views/plan_importe.py`` et le
 magasin d'objets de test — aucune simulation.
 
 Test-du-test : ne pas écrire l'underlay dans ``fond_plan`` ⇒ ``GET
-plan-importe/`` rend 404 et ``test_televersement_ecrit_underlay_et_plan_importe
+plan-importe/`` rend 409 (ENF51) et ``test_televersement_ecrit_underlay_et_plan_importe
 _le_sert`` rougit.
 """
 from __future__ import annotations

@@ -578,6 +578,18 @@ def _reproches_saisies_economie_ci(saisies):
     return []
 
 
+def forme_element_facture():
+    """ENF51 — la forme PUBLIÉE d'un élément de ``factures_mensuelles_reelles``,
+    EXACTEMENT ce que ``_reproches_factures`` refuse : tout sauf un nombre
+    strictement compris entre 0 et le plancher des lignes fixes (un booléen
+    n'est pas un nombre JSON ; les autres types restent hors de cette garde).
+    Sans elle, une série « conforme » (tableau libre) répondait 400."""
+    from apps.ventes.quote_engine import bareme
+    return {'not': {'type': 'number', 'minimum': 0, 'exclusiveMinimum': True,
+                    'maximum': bareme.charges_fixes_ttc(),
+                    'exclusiveMaximum': True}}
+
+
 def _reproches_factures(factures):
     """ERR-QAC-FACTURES-ECRAN-INVRAISEMBLABLES — une facture mensuelle RÉELLE
     ne peut pas valoir moins que ses deux lignes fixes (location du compteur +

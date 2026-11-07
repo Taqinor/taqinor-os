@@ -240,10 +240,21 @@ class SeedMetriquesTests(TestCase):
 
     def test_metrique_adaptateur_refuse_un_regroupement(self):
         self._seed()
-        with self.assertRaises(services.MetriqueNonResolvable) as ctx:
+        with self.assertRaises(services.MetriqueNonRegroupable) as ctx:
             services.resolve_metric(self.company, None, 'dso',
                                     group_by=['mois'])
         self.assertIn('adaptateur', str(ctx.exception))
+        # ENF51 — état de la métrique, pas requête fautive : 409 à l'API.
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+        api = APIClient()
+        api.force_authenticate(get_user_model().objects.create_user(
+            username='enf51-sem', password='x', role_legacy='responsable',
+            company=self.company))
+        reponse = api.get('/api/django/semantic/metriques/dso/valeur/',
+                          {'group_by': 'mois'})
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertIn('adaptateur', reponse.data['detail'])
 
     def test_dso_resolu_par_l_adaptateur(self):
         self._seed()
