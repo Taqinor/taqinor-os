@@ -118,9 +118,9 @@ class ApprobationAchatSequentielleTests(TestCase):
         self.api = auth(self.demandeur)
         self.regle = RegleApprobationAchat.objects.create(
             company=self.company, libelle='Au-delà de 20 000 MAD',
-            montant_min=20000, nombre_approbateurs=2,
-            niveau_approbation=(
-                RegleApprobationAchat.NiveauApprobation.DIRECTION))
+            montant_min=20000, nombre_approbateurs=2)
+        # AAPV33 — palier par défaut « responsable » : le palier Direction est
+        # désormais APPLIQUÉ (couvert par test_palier_et_approbateurs_distincts).
 
     def _soumettre(self, montant=50000):
         da = make_demande(self.company, self.demandeur, montant=montant)
@@ -179,6 +179,27 @@ class ApprobationAchatSequentielleTests(TestCase):
         self.assertEqual([e.approbateur_id for e in etapes],
                          [self.appro1.pk, self.appro2.pk])
         self.assertEqual(etapes[0].commentaire, 'OK niveau 1')
+
+    def test_palier_et_approbateurs_distincts(self):
+        """AAPV33 — étape « direction » : un Responsable 409 ; un même
+        approbateur ne décide pas deux étapes ; un second admin si."""
+        self.regle.niveau_approbation = (
+            RegleApprobationAchat.NiveauApprobation.DIRECTION)
+        self.regle.save(update_fields=['niveau_approbation'])
+        admin2 = make_user(self.company, role='admin')
+        da = self._soumettre(montant=80000)
+        url = f'{BASE}/demandes-achat/{da.pk}/approuver-etape/'
+        r = auth(self.appro1).post(url, {}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('palier Direction', str(r.data))
+        self.assertEqual(auth(self.appro2).post(url, {}, format='json').status_code, 200)
+        r = auth(self.appro2).post(url, {}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('déjà approuvé une étape', str(r.data))
+        self.assertEqual(auth(admin2).post(url, {}, format='json').status_code, 200)
+        etapes = list(da.etapes_approbation.order_by('niveau'))
+        self.assertEqual([e.approbateur_id for e in etapes],
+                         [self.appro2.pk, admin2.pk])
 
     def test_ordre_sequentiel_impose(self):
         da = self._soumettre()

@@ -7321,6 +7321,7 @@ def _decider_etape_approbation_achat(etape, *, statut_cible, approbateur,
                 "Les étapes se décident dans l'ordre : l'étape "
                 f'{attendue.niveau} est encore en attente.')
         verifier_separation_taches_achat(etape.demande, approbateur)
+        _verifier_palier_etape_achat(etape, approbateur)
         etape.statut = statut_cible
         etape.approbateur = approbateur
         etape.decision_le = timezone.now()
@@ -7328,6 +7329,25 @@ def _decider_etape_approbation_achat(etape, *, statut_cible, approbateur,
         etape.save(update_fields=['statut', 'approbateur', 'decision_le',
                                   'commentaire', 'updated_at'])
     return etape
+
+
+def _verifier_palier_etape_achat(etape, approbateur):
+    """AAPV33 — palier ``niveau_approbation`` de l'étape (responsable ⇒
+    responsable ou admin ; administrateur/direction ⇒ admin) et approbateurs
+    DISTINCTS d'une étape à l'autre de la même demande."""
+    if approbateur is None or approbateur.is_superuser:
+        return
+    niveau = etape.niveau_approbation or 'responsable'
+    admis = (approbateur.is_admin_role if niveau != 'responsable'
+             else (approbateur.is_responsable or approbateur.is_admin_role))
+    if not admis:
+        raise ApprobationAchatError(
+            f'Étape réservée au palier {etape.get_niveau_approbation_display()}.')
+    if etape.demande.etapes_approbation.filter(
+            statut=type(etape).Statut.APPROUVE, approbateur=approbateur
+    ).exclude(pk=etape.pk).exists():
+        raise ApprobationAchatError(
+            'Vous avez déjà approuvé une étape de cette demande.')
 
 
 def _notifier_prochaine_etape_approbation_achat(demande):
