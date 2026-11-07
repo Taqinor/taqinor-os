@@ -318,11 +318,17 @@ export function ReceptionDetail({ reception, onClose, onSaved, peutReceptionner 
   }
 
   const annuler = async () => {
-    if (!(await demanderConfirmation({ title: 'Annuler cette réception ?', confirmLabel: 'Annuler la réception' }))) return
+    // AAPV13 — une réception CONFIRMÉE s'annule par contre-passation.
+    if (!(await demanderConfirmation({
+      title: 'Annuler cette réception ?',
+      description: isConfirme
+        ? 'La réception est confirmée : son entrée de stock sera contre-passée.' : undefined,
+      confirmLabel: 'Annuler la réception',
+    }))) return
     setBusy(true); setError(null)
     try {
       await stockApi.annulerReceptionFournisseur(reception.id)
-      onSaved?.('Réception annulée.')
+      onSaved?.(isConfirme ? 'Réception annulée (contre-passation).' : 'Réception annulée.')
       onClose()
     } catch (err) {
       setError(frError(err, "L'annulation a échoué."))
@@ -412,7 +418,7 @@ export function ReceptionDetail({ reception, onClose, onSaved, peutReceptionner 
         )}
 
         <DialogFooter className="flex-wrap">
-          {peutReceptionner && isBrouillon && (
+          {peutReceptionner && (isBrouillon || isConfirme) && (
             <Button type="button" variant="destructive" loading={busy} onClick={annuler}>
               Annuler la réception
             </Button>

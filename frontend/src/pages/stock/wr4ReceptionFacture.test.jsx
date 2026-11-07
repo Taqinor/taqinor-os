@@ -168,4 +168,21 @@ describe('ReceptionDetail — annulation confirmée par AlertDialog (ASTK231)', 
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
     expect(stockApi.annulerReceptionFournisseur).not.toHaveBeenCalled()
   })
+
+  it("une réception confirmée propose l'annulation et affiche le refus serveur", async () => {
+    // AAPV13 — contre-passation annoncée ; un 409 (AAPV12) affiche son detail.
+    const confirmee = { ...brouillon, statut: 'confirme' }
+    stockApi.annulerReceptionFournisseur.mockRejectedValueOnce({
+      response: { status: 409, data: { detail: '7 unité(s) de Panneau ne sont plus en stock.' } },
+    })
+    const onSaved = vi.fn()
+    wrap(<ReceptionDetail reception={confirmee} onClose={() => {}} onSaved={onSaved} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Annuler la réception' }))
+    const dialog = await screen.findByRole('alertdialog')
+    expect(within(dialog).getByText(/contre-passée/)).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Annuler la réception' }))
+    await waitFor(() => expect(stockApi.annulerReceptionFournisseur).toHaveBeenCalledWith(12))
+    expect(await screen.findByText(/ne sont plus en stock/)).toBeInTheDocument()
+    expect(onSaved).not.toHaveBeenCalled()
+  })
 })
