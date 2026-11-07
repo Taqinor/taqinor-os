@@ -1,0 +1,45 @@
+{
+  "endpoint": "GET /api/django/crm/leads/<id>/",
+  "forme_serveur": "partielle",
+  "pourquoi": "CRXB1 (PACT10, D-CRXB = b, Reda 07/11/2026) — le contrat de la FICHE lead (LeadWorkspace) : ce que `LeadViewSet.retrieve()` ajoute à la forme de liste (`lead_list.json`). `retrieve()` pose `include_chatter_recent` + `include_vente` dans le contexte ; `LeadSerializer.get_fields()` ne garde QUE sur la fiche les clés ci-dessous (absentes de la liste — la clé disparaît, jamais null) et `to_representation` y ajoute `avertissements` quand le kWh tapé contredit les factures (ACVI97, clé absente sinon). Échantillon PARTIEL : le reste de la fiche est la forme du sérialiseur (`fields = '__all__'`), non lisible statiquement tant que CRXB3 n'a pas posé la liste blanche explicite — à ce moment la garde des sérialiseurs (PACT177) la fige d'elle-même. Lecteurs : `features/crm/workspace/` (LeadWorkspace, IdentityRail, ContextRail, TimelineTab, DevisTab).",
+  "exemple": {
+    "id": 1489,
+    "chatter_recent": [
+      {
+        "id": 9001,
+        "kind": "note",
+        "body": "Rappel demandé samedi matin.",
+        "pinned": false,
+        "created_at": "2026-11-07T09:30:00+01:00"
+      }
+    ],
+    "conception": null,
+    "provenance_site": null,
+    "entrees_pompage": null,
+    "identite_entreprise": null,
+    "entrees_ci": null,
+    "indicateurs_internes": null,
+    "incoherence_segment": null,
+    "segment_suggere": null
+  },
+  "exemple_avertissement": {
+    "id": 1490,
+    "avertissements": {
+      "kwh_factures": "« Consommation mensuelle (kWh) » contredit les factures déclarées : corrigez la fiche."
+    }
+  },
+  "notes": {
+    "cles_fiche_seulement": [
+      "chatter_recent",
+      "conception",
+      "provenance_site",
+      "entrees_pompage",
+      "identite_entreprise",
+      "entrees_ci",
+      "indicateurs_internes",
+      "incoherence_segment",
+      "segment_suggere"
+    ],
+    "cle_conditionnelle": "avertissements (ACVI97) : posée par to_representation, fiche seule, uniquement si le contrôle kWh est incohérent"
+  }
+}

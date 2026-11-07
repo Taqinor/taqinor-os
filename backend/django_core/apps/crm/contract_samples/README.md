@@ -24,6 +24,8 @@ ce dossier s'écarte du cas nominal.
 | `lead_message_visite.json` | les deux textes « proposer / confirmer la visite » |
 | `panneau_appel.json` | le panneau d'appel guidé : segment, touche, script, questions à poser, drapeaux d'équipement (CAD147) |
 | `cadences_echues.json` | la liste « cadences échues à clore » du cockpit, en lecture seule (CAD99, moitié écran de CAD75) |
+| `lead_list.json` | l'enveloppe de la LISTE des leads (`count/next/previous/results`), dict explicite de `LeadViewSet.list()` — `forme_serveur: complete` (CRXB1) |
+| `lead_workspace.json` | les clés réservées à la FICHE lead (`retrieve()`), partiel jusqu'à la liste blanche de CRXB3 (CRXB1) |
 
 ## Écart 1 — un échantillon peut ne PAS décrire une réponse
 

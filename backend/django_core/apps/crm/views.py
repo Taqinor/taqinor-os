@@ -192,21 +192,21 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
     ordering = ['-date_creation', 'id']  # départage déterministe (golden GET leads ; même ligne que #956)
 
     def list(self, request, *args, **kwargs):
-        # YOPSB13 — LeadSerializer.get_next_activity() et get_devis() (via
-        # installation_summaries_for_devis) exécutaient chacun 1 requête PAR
-        # LIGNE (N+1 réel : le nombre de requêtes grandissait avec le nombre
-        # de leads — apps/crm/tests_yopsb13_lead_query_budget.py /
-        # tests_perf_n1_leads.py). On précharge ici les deux cartes {lead_id
-        # / devis_id: ...} en UNE SEULE requête chacune, pour TOUTE la page
-        # (après pagination), et on les pose dans le contexte serializer —
-        # le serializer les préfère à son fallback requête-par-ligne.
-        queryset = self.filter_queryset(self.get_queryset())
-        page = self.paginate_queryset(queryset)
-        objects = page if page is not None else list(queryset)
-        donnees = self._serialiser_leads_en_lot(objects)
-        if page is not None:
-            return self.get_paginated_response(donnees)
-        return Response(donnees)
+        # YOPSB13 — cartes {lead_id/devis_id: …} préchargées en UNE requête
+        # pour toute la page (``_serialiser_leads_en_lot``), jamais une par
+        # ligne (tests_yopsb13_lead_query_budget.py / tests_perf_n1_leads.py).
+        # CRXB1 (PACT10) — l'enveloppe est un DICT EXPLICITE, lisible par
+        # ``check_api_shapes`` (contrat ``contract_samples/lead_list.json``) :
+        # mêmes clés, même ordre que ``PageNumberPagination`` (octet pour
+        # octet). Le viewset est toujours paginé (``StandardPagination``,
+        # ``page_size`` jamais nul) : ``page`` n'est donc jamais ``None``.
+        page = self.paginate_queryset(self.filter_queryset(self.get_queryset()))
+        return Response({
+            'count': self.paginator.page.paginator.count,
+            'next': self.paginator.get_next_link(),
+            'previous': self.paginator.get_previous_link(),
+            'results': self._serialiser_leads_en_lot(page),
+        })
 
     def _serialiser_leads_en_lot(self, objects):
         """APRF18 (C-APRF-009) — LA sérialisation EN LOT d'une liste de

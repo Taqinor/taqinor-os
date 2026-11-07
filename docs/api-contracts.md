@@ -106,6 +106,8 @@
     references:inconnu, segment:texte
 - frontend/src/api/crmApi.js :: getLeadVisites -> /api/django/crm/leads/<>/visites
     avertissement_sans_devis:inconnu, rappel_juridique:inconnu, visites:inconnu
+- frontend/src/api/crmApi.js :: getLeads -> /api/django/crm/leads
+    count:inconnu, next:inconnu, previous:inconnu, results:inconnu
 - frontend/src/api/crmApi.js :: getMonPortefeuille -> /api/django/crm/clients/mon-portefeuille
     count:nombre, results:inconnu
 - frontend/src/api/crmApi.js :: getPermanences -> /api/django/crm/dispatch/permanences/<>
