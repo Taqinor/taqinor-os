@@ -1791,7 +1791,33 @@ class BonCommandeFournisseurSerializer(IdInconnu404Mixin, CapaciteMontantsBcfMix
             instance.save()
             if lignes_data is not None:
                 self._upsert_lignes(instance, lignes_data)
+            elif {'devise', 'taux_change'} & set(validated_data):
+                # AAPV45 — taux/devise changés sans lignes : contre-valeur
+                # MAD des lignes à PU devise recalculée.
+                from .services import apply_devise_ligne_bcf
+                for ligne in instance.lignes.filter(prix_achat_unitaire_devise__isnull=False):
+                    fusion = {'prix_achat_unitaire_devise': ligne.prix_achat_unitaire_devise,
+                              'prix_achat_unitaire': ligne.prix_achat_unitaire}
+                    apply_devise_ligne_bcf(fusion, instance.devise, instance.taux_change)
+                    ligne.prix_achat_unitaire = fusion['prix_achat_unitaire']
+                    ligne.save(update_fields=['prix_achat_unitaire'])
         return instance
+
+    @staticmethod
+    def _devise_depuis_mad(instance, data, fusion):
+        """AAPV45 — PU MAD transmis SEUL sur un BCF en devise : le PU devise
+        en découle (MAD ÷ taux, règle de ``_valider_revision_ligne_bcf``) et le
+        MAD saisi est gardé (jamais écrasé). Renvoie True si appliqué."""
+        from decimal import Decimal
+        from .models import DeviseAchat
+        if ('prix_achat_unitaire' not in data or 'prix_achat_unitaire_devise' in data
+                or not instance.devise or instance.devise == DeviseAchat.MAD
+                or not instance.taux_change or fusion.get('prix_achat_unitaire') is None):
+            return False
+        fusion['prix_achat_unitaire_devise'] = (
+            Decimal(str(fusion['prix_achat_unitaire'])) / Decimal(str(instance.taux_change))
+        ).quantize(Decimal('0.01'))
+        return True
 
     #: ASTK67 — champs d'une ligne existante mis à jour quand ils sont
     #: transmis ; un champ NON transmis garde sa valeur en base.
@@ -1813,8 +1839,9 @@ class BonCommandeFournisseurSerializer(IdInconnu404Mixin, CapaciteMontantsBcfMix
             ligne_id = data.pop('id', None)
             ligne = existantes.get(ligne_id)
             if ligne is None or ligne_id in gardees:
-                apply_devise_ligne_bcf(
-                    data, instance.devise, instance.taux_change)
+                if not self._devise_depuis_mad(instance, dict(data), data):
+                    apply_devise_ligne_bcf(
+                        data, instance.devise, instance.taux_change)
                 LigneBonCommandeFournisseur.objects.create(
                     bon_commande=instance, **data)
                 continue
@@ -1823,8 +1850,9 @@ class BonCommandeFournisseurSerializer(IdInconnu404Mixin, CapaciteMontantsBcfMix
                 champ: data.get(champ, getattr(ligne, champ))
                 for champ in self.CHAMPS_LIGNE_MODIFIABLES
             }
-            apply_devise_ligne_bcf(
-                fusion, instance.devise, instance.taux_change)
+            if not self._devise_depuis_mad(instance, data, fusion):  # AAPV45
+                apply_devise_ligne_bcf(
+                    fusion, instance.devise, instance.taux_change)
             for champ in self.CHAMPS_LIGNE_MODIFIABLES:
                 setattr(ligne, champ, fusion[champ])
             ligne.save()
