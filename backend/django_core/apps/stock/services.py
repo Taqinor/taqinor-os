@@ -6318,6 +6318,15 @@ def bcf_en_retard_list(company, *, a_la_date=None):
     return [bc for bc in qs if bcf_en_retard(bc, a_la_date=a_la_date)]
 
 
+def destinataires_achats(company):
+    """AAPV51 — internes actifs qui portent ``achats_commander`` (comptes
+    hérités responsable/admin compris, repli ``_user_has_or_legacy``)."""
+    from apps.notifications.selectors import utilisateurs_internes_actifs
+    from core.permissions import _user_has_or_legacy
+    return [u for u in utilisateurs_internes_actifs(company).select_related('role')
+            if _user_has_or_legacy(u, 'achats_commander')]
+
+
 def notify_bcf_en_retard(company):
     """XPUR7 — notifie les responsables/admins des BCF ENVOYE en retard.
     Best-effort : une erreur de notification n'interrompt jamais l'appelant.
@@ -6328,11 +6337,7 @@ def notify_bcf_en_retard(company):
         try:
             from apps.notifications.services import notify_many
             from apps.notifications.types_evenements import EventType
-            from django.contrib.auth import get_user_model
-            User = get_user_model()
-            recipients = User.objects.filter(
-                company=company, is_active=True,
-                role_legacy__in=['responsable', 'admin'])
+            recipients = destinataires_achats(company)  # AAPV51
             notify_many(
                 recipients, EventType.BCF_LATE,
                 title=f'BCF en retard ({bc.reference})',

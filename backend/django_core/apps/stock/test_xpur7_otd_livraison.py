@@ -207,6 +207,39 @@ class TestBcfEnRetard(Xpur7Base):
         self.assertIn(bc, bcf_en_retard_list(
             self.company, a_la_date=datetime.date(2026, 6, 1)))
 
+    def test_alerte_retard_aux_porteurs_d_achats_commander(self):
+        """AAPV51 — l'alerte « BCF en retard » va aux porteurs
+        d'`achats_commander` (rôle « Acheteur », compte hérité admin), jamais
+        à un « Responsable » sans droit achats."""
+        from unittest import mock
+        from django.contrib.auth import get_user_model
+        from apps.roles.models import Role
+        from apps.stock.services import notify_bcf_en_retard
+        User = get_user_model()
+        bc = BonCommandeFournisseur.objects.create(
+            company=self.company, reference='BCF-AAPV51', fournisseur=self.fournisseur,
+            statut=BonCommandeFournisseur.Statut.ENVOYE,
+            date_livraison_prevue=datetime.date(2020, 1, 1))
+        LigneBonCommandeFournisseur.objects.create(
+            bon_commande=bc, produit=self.produit, quantite=5, prix_achat_unitaire=Decimal('1200'))
+        acheteur = User.objects.create_user(
+            username='aapv51-acheteur', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom='Acheteur AAPV51',
+                                     permissions=['achats_commander']))
+        responsable = User.objects.create_user(
+            username='aapv51-resp', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom='Responsable AAPV51',
+                                     permissions=['stock_voir', 'stock_modifier']))
+        herite = User.objects.create_user(
+            username='aapv51-admin', password='x', company=self.company, role_legacy='admin')
+        with mock.patch('apps.notifications.services.notify_many') as notifier:
+            notify_bcf_en_retard(self.company)
+        self.assertTrue(notifier.called)
+        destinataires = set(notifier.call_args.args[0])
+        self.assertIn(acheteur, destinataires)
+        self.assertIn(herite, destinataires)
+        self.assertNotIn(responsable, destinataires)
+
     def test_brouillon_never_late(self):
         bc = BonCommandeFournisseur.objects.create(
             company=self.company, reference='BCF-XPUR7-0004',

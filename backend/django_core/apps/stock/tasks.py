@@ -152,11 +152,8 @@ def relancer_bcf_en_retard_task():
             try:
                 from apps.notifications.services import notify_many
                 from apps.notifications.types_evenements import EventType
-                from django.contrib.auth import get_user_model
-                User = get_user_model()
-                recipients = list(User.objects.filter(
-                    company=company, is_active=True,
-                    role_legacy__in=['responsable', 'admin']))
+                from .services import destinataires_achats  # AAPV51
+                recipients = destinataires_achats(company)
                 fournisseur_nom = (
                     bc.fournisseur.nom if bc.fournisseur_id else '')
                 url, _token = bcf_share_url(bc)
