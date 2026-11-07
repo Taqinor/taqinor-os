@@ -10,6 +10,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.conflit_etat import ConflitEtat
 from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import RetourLivraison, RetourLivraisonLigne
@@ -20,6 +21,13 @@ from ..services import valider_retour_livraison
 from . import _openapi as oa
 
 READ_ACTIONS = ['list', 'retrieve']
+
+
+def _exiger_retour_non_valide(retour):
+    """AAPV49 — un retour VALIDÉ est figé (son stock est déjà posté) : toute
+    écriture du retour ou de ses lignes est un refus d'état (409)."""
+    if retour is not None and retour.statut == 'valide':
+        raise ConflitEtat('Retour validé : non modifiable.')
 
 
 @oa.listing(p0=oa.qi('livraison'), p1=oa.qs('statut'))
@@ -62,8 +70,13 @@ class RetourLivraisonViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             created_by=self.request.user)
 
     def perform_update(self, serializer):
+        _exiger_retour_non_valide(serializer.instance)  # AAPV49
         self._check_tenant(serializer)
         serializer.save(company=self.request.user.company)
+
+    def perform_destroy(self, instance):
+        _exiger_retour_non_valide(instance)  # AAPV49
+        instance.delete()
 
     @oa.extend_schema(request=None)
     @action(detail=True, methods=['post'])
@@ -125,8 +138,15 @@ class RetourLivraisonLigneViewSet(oa.JsonOnlyMixin, viewsets.ModelViewSet):
         # ERR115 — la création doit aussi borner le retour parent à la
         # société de l'appelant (sinon POST greffe une ligne chez une autre).
         self._check_parent(serializer)
+        _exiger_retour_non_valide(serializer.validated_data.get('retour'))  # AAPV49
         serializer.save()
 
     def perform_update(self, serializer):
         self._check_parent(serializer)
+        _exiger_retour_non_valide(serializer.instance.retour)  # AAPV49
+        _exiger_retour_non_valide(serializer.validated_data.get('retour'))
         serializer.save()
+
+    def perform_destroy(self, instance):
+        _exiger_retour_non_valide(instance.retour)  # AAPV49
+        instance.delete()

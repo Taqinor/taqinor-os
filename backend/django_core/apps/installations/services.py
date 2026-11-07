@@ -1575,10 +1575,15 @@ def valider_retour_materiel(retour, user):
 
     installation = retour.installation
     lignes = list(retour.lignes.select_related('produit').all())
+    cumul = {}  # AAPV49 — le retournable se compare au CUMUL par produit
+    for ligne in lignes:
+        if ligne.produit_id is not None:
+            cumul[ligne.produit_id] = cumul.get(ligne.produit_id, Decimal('0')) + (
+                ligne.quantite or Decimal('0'))
     for ligne in lignes:
         if ligne.produit_id is None:
             continue
-        qte = ligne.quantite or Decimal('0')
+        qte = cumul[ligne.produit_id]
         retournable = quantite_retournable(installation, ligne.produit_id)
         if qte > retournable:
             raise ValueError(
