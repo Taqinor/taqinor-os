@@ -193,6 +193,23 @@ class AnnulationReceptionAbonnesTests(TestCase):
         lettrer_gr_ir_facture(facture=facture, company=self.company, user=self.user)
         self.assertEqual(etat()[1], True)
 
+    def test_retour_valide_retourne_les_series_citees(self):
+        """AAPV65 — un retour citant S1 la passe « retourné » ; renvoyer le
+        signal ne change rien."""
+        from apps.stock.models import RetourFournisseur
+        from apps.stock.services import apply_retour_fournisseur
+        retour = RetourFournisseur.objects.create(
+            company=self.company, reference='RF-AAPV65', fournisseur=self.bc.fournisseur,
+            bon_commande=self.bc, statut=RetourFournisseur.Statut.BROUILLON)
+        retour.lignes.create(produit=self.panneau, quantite=1, numeros_serie=['S1'])
+        with self.captureOnCommitCallbacks(execute=True):
+            apply_retour_fournisseur(retour, self.user)
+        serie = SerieEntrepot.objects.get(
+            company=self.company, produit=self.panneau, numero_serie='S1')
+        self.assertEqual(serie.statut, SerieEntrepot.Statut.RETOURNE)
+        from apps.installations.services import retourner_series_retour
+        self.assertEqual(retourner_series_retour(retour=retour, company=self.company), 0)
+
     def test_reservation_replafonnee_au_recu_net(self):
         self._annuler()
         self.ligne_cmd.refresh_from_db()

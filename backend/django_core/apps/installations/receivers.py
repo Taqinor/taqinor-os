@@ -28,7 +28,7 @@ from .services import (
     provisionner_gr_ir_reception, lettrer_gr_ir_facture,
     peupler_series_entrepot_reception,
     reduire_gr_ir_retour, replafonner_reservation_recue_pour_chantier,
-    replafonner_reservation_retour,
+    replafonner_reservation_retour, retourner_series_retour,
     reserver_stock_recu_pour_chantier, retourner_series_entrepot_reception,
 )
 
@@ -170,6 +170,14 @@ def _replafonner_reservation_on_retour_valide(sender, retour, company, user=None
     """AAPV9 — la réservation du chantier d'origine ne dépasse plus le reçu
     net du BCF après le retour (idempotent)."""
     replafonner_reservation_retour(retour=retour, company=company)
+
+
+@receiver(retour_fournisseur_valide,
+          dispatch_uid="installations_retourner_series_on_retour_valide")
+@abonne_best_effort
+def _retourner_series_on_retour_valide(sender, retour, company, user=None, **kwargs):
+    """AAPV65 — les séries citées par le retour passent « retourné »."""
+    retourner_series_retour(retour=retour, company=company)
 
 
 @receiver(bon_commande_cree,

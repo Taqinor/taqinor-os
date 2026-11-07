@@ -5405,6 +5405,27 @@ def retourner_series_entrepot_reception(*, reception, company):
     return count
 
 
+def retourner_series_retour(*, retour, company):
+    """AAPV65 — sœur de ``retourner_series_entrepot_reception`` pour un
+    RETOUR fournisseur validé : les séries citées sur ses lignes encore « en
+    stock » passent « retourné » (sortie/réservée : intactes). Idempotent.
+    Renvoie le nombre de séries modifiées."""
+    from .models_serie_entrepot import SerieEntrepot
+    if company is None or retour is None:
+        return 0
+    count = 0
+    for ligne in retour.lignes.all():
+        numeros = [n.strip() for n in (getattr(ligne, 'numeros_serie', None) or [])
+                   if isinstance(n, str) and n.strip()]
+        if not numeros or ligne.produit_id is None:
+            continue
+        count += SerieEntrepot.objects.filter(
+            company=company, produit_id=ligne.produit_id, numero_serie__in=numeros,
+            statut=SerieEntrepot.Statut.EN_STOCK,
+        ).update(statut=SerieEntrepot.Statut.RETOURNE)
+    return count
+
+
 def replafonner_reservation_recue_pour_chantier(*, reception, company=None):
     """ASTK57 — après l'annulation d'une réception d'un BCF « besoin
     chantier » (YPROC10), re-plafonne la réservation du chantier : elle ne
