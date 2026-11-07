@@ -85,7 +85,7 @@ def _exiger_brouillon(demande):
         return
     libelle = demande.get_statut_display().lower()
     raise ConflitEtat({'detail': (
-        f'Demande {libelle} : repassez-la en brouillon pour la modifier.')})
+        f'Demande {libelle} : figée, elle ne se modifie plus.')})
 
 
 #: ACHT12 — seul champ d'en-tête modifiable hors brouillon (épingle terrain).
