@@ -167,9 +167,12 @@ class DemandeAchatViewSet(oa.CorpsObjetMixin, oa.JsonOnlyMixin, ChatterViewSetMi
         # ACHT54 — `approuver` (décision directe) relève du même code fin que
         # `approuver-etape` ; `generer-bcf` CRÉE un BCF : `achats_commander`
         # (patron ASTK17 du viewset BCF stock).
-        if self.action in ('approuver_etape', 'approuver'):
+        # AAPV32 — refuser / rejeter-etape : même droit que l'approbation ;
+        # marquer-commandee : `achats_commander`, comme generer-bcf.
+        if self.action in ('approuver_etape', 'approuver', 'refuser',
+                           'rejeter_etape'):
             return [IsResponsableOrAdmin(), PeutApprouverDemandeAchat()]
-        if self.action == 'generer_bcf':
+        if self.action in ('generer_bcf', 'marquer_commandee'):
             return [IsResponsableOrAdmin(),
                     HasPermissionOrLegacy('achats_commander')()]
         if self.action in READ_ACTIONS:
@@ -351,12 +354,13 @@ class DemandeAchatViewSet(oa.CorpsObjetMixin, oa.JsonOnlyMixin, ChatterViewSetMi
                 status=status.HTTP_409_CONFLICT)
         # AUD819 — transition GARDÉE par la table TRANSITIONS + événement bus.
         try:
+            services.verifier_separation_taches_achat(da, request.user)  # AAPV32
             services.appliquer_statut_document(
                 da, DemandeAchat.Statut.APPROUVEE, user=request.user,
                 champs={'approuvee_par': request.user,
                         'date_decision': timezone.now(),
                         'motif_refus': None})
-        except TransitionRefusee as exc:
+        except (TransitionRefusee, services.ApprobationAchatError) as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_409_CONFLICT)
         # DA-EVENT-VIEWSET (NTP2P38) — ce chemin direct (sans plan

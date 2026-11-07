@@ -125,3 +125,45 @@ class DeciderDemandeAchatSansWorkflowTests(TestCase):
         da.refresh_from_db()
         self.assertEqual(da.statut, DemandeAchat.Statut.REFUSEE)
         self.assertEqual(da.motif_refus, 'Hors budget')
+
+    def test_decision_exige_le_droit_et_la_separation(self):
+        """AAPV32 — sans `approuver_demande_achat` : refus (403 au service et
+        aux actions), DA inchangée ; `sod_stricte` + créateur = décideur :
+        409 sur `approuver/` et DecisionError au service."""
+        from django.core.exceptions import PermissionDenied
+        from django.core.management import call_command
+        from rest_framework.test import APIClient
+        from apps.roles.models import Role
+        from apps.stock.models import AchatsParametres
+        call_command('init_roles', verbosity=0)
+        tech = User.objects.create_user(
+            username=f'aud312-tech-{next(_seq)}', password='x',
+            company=self.company,
+            role=Role.objects.get(company=self.company, nom='Technicien'))
+        da = make_demande(self.company, self.user, montant=500)
+        for approuver in (True, False):
+            with self.assertRaises(PermissionDenied):
+                services.decider_demande_achat(
+                    da, approuver=approuver, user=tech, motif_refus='x')
+        api = APIClient()
+        api.force_authenticate(tech)
+        base = f'/api/django/installations/demandes-achat/{da.id}'
+        for action in ('refuser', 'rejeter-etape', 'marquer_commandee'):
+            r = api.post(f'{base}/{action}/', {'motif_refus': 'x'}, format='json')
+            self.assertEqual(r.status_code, 403, (action, r.status_code))
+        da.refresh_from_db()
+        self.assertEqual(da.statut, DemandeAchat.Statut.SOUMISE)
+
+        AchatsParametres.objects.update_or_create(
+            company=self.company, defaults={'sod_stricte': True})
+        with self.assertRaises(services.DecisionError):
+            services.decider_demande_achat(da, approuver=True, user=self.user)
+        api.force_authenticate(self.user)
+        r = api.post(f'{base}/approuver/', {}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('Séparation des tâches', r.data['detail'])
+        da.refresh_from_db()
+        self.assertEqual(da.statut, DemandeAchat.Statut.SOUMISE)
+        services.decider_demande_achat(da, approuver=True, user=self.decideur)
+        da.refresh_from_db()
+        self.assertEqual(da.statut, DemandeAchat.Statut.APPROUVEE)

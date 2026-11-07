@@ -4580,14 +4580,28 @@ def decider_demande_achat(demande_achat, *, approuver, user, motif_refus=''):
     NTP2P2 (N approbateurs séquentiels) était approuvée EN UN COUP depuis
     l'écran d'approbations générique, laissant des ``EtapeApprobationAchat``
     ``en_attente`` orphelines et perdant la séparation des tâches
-    (``sod_stricte``) — ce n'était PAS un franchissement de rôle (le rôle
-    exigé est identique des deux côtés) mais une perte d'intégrité.
+    (``sod_stricte``) — perte d'intégrité.
+
+    AAPV32 — la boîte d'approbations n'exigeait que le palier Responsable :
+    le service exige désormais ``approuver_demande_achat`` (``PermissionDenied``,
+    403) et la séparation créateur/décideur sous ``sod_stricte`` (409).
     """
+    from django.core.exceptions import PermissionDenied
     from django.utils import timezone
 
     from core.documents import TransitionRefusee
+    from core.permissions import _user_has_or_legacy
 
     from .models import DemandeAchat, EtapeApprobationAchat
+
+    if not _user_has_or_legacy(user, 'approuver_demande_achat'):
+        raise PermissionDenied(
+            "Permission « approuver_demande_achat » requise pour décider une "
+            "demande d'achat.")
+    try:
+        verifier_separation_taches_achat(demande_achat, user)
+    except ApprobationAchatError as exc:
+        raise DecisionError(str(exc))
 
     # ENF15 — deux décisions concurrentes passaient toutes deux la garde de
     # statut (lue avant la transaction) : ``sous_verrou`` verrouille et RELIT
@@ -7262,17 +7276,17 @@ def prochaine_etape_approbation_achat(demande):
     ).order_by('niveau', 'id').first()
 
 
-def verifier_separation_taches_achat(etape, approbateur):
+def verifier_separation_taches_achat(demande, approbateur):
     """NTP2P37 — SoD : le demandeur ne peut pas approuver sa propre demande.
 
     Contrôle SERVEUR (jamais un simple masquage d'écran), activé par
     ``stock.AchatsParametres.sod_stricte`` — défaut ``False`` pour ne pas
     casser les petites structures à un seul décideur. Lecture cross-app via
-    ``stock.selectors`` uniquement.
+    ``stock.selectors`` uniquement. AAPV32 — prend la DEMANDE (les étapes
+    passent ``etape.demande``) : décision directe et boîte comprises.
     """
     if approbateur is None or not getattr(approbateur, 'pk', None):
         return
-    demande = etape.demande
     createur_id = getattr(demande, 'created_by_id', None)
     if createur_id is None or createur_id != approbateur.pk:
         return
@@ -7280,7 +7294,7 @@ def verifier_separation_taches_achat(etape, approbateur):
     if sod_stricte_active(demande.company):
         raise ApprobationAchatError(
             "Séparation des tâches : le créateur d'une demande d'achat ne "
-            'peut pas approuver sa propre étape.')
+            'peut pas la décider lui-même.')
 
 
 def _decider_etape_approbation_achat(etape, *, statut_cible, approbateur,
@@ -7306,7 +7320,7 @@ def _decider_etape_approbation_achat(etape, *, statut_cible, approbateur,
             raise ApprobationAchatError(
                 "Les étapes se décident dans l'ordre : l'étape "
                 f'{attendue.niveau} est encore en attente.')
-        verifier_separation_taches_achat(etape, approbateur)
+        verifier_separation_taches_achat(etape.demande, approbateur)
         etape.statut = statut_cible
         etape.approbateur = approbateur
         etape.decision_le = timezone.now()
