@@ -1806,6 +1806,39 @@ def _liberer_cross_dock_reception_annulee(reception):
     return len(affectations)
 
 
+def _garde_annulation_reception_entiere(bc, lignes_stockees, lignes):
+    """AAPV12 — une réception ne s'annule que si elle peut être défaite
+    ENTIÈREMENT : refus (``EtatIncompatible``, 409) si des unités entrées ne
+    sont plus en stock, ou si le BCF est facturé au-delà de ce qui
+    resterait reçu (facture liée par PATCH/OCR comprise)."""
+    from .models import FactureFournisseur, Produit
+    from .selectors import montant_recu_bcf
+    entrees = {}
+    for lg in lignes_stockees:
+        entrees[lg.produit_id] = entrees.get(lg.produit_id, 0) + quantite_entree_ligne_reception(lg)
+    for produit_id, qte in entrees.items():
+        produit = Produit.objects.select_for_update().get(pk=produit_id)
+        en_main = max(int(produit.quantite_stock or 0), 0)
+        if qte > en_main:
+            raise EtatIncompatible(
+                f'{qte - en_main} unité(s) de {produit.nom} ne sont plus en stock : '
+                f'enregistrez un retour fournisseur pour les {en_main} restantes.')
+    if bc is None:
+        return
+    valeur = sum((Decimal(quantite_entree_ligne_reception(lg)) * (
+        lg.ligne_commande.prix_achat_unitaire or Decimal('0'))
+        for lg in lignes if lg.ligne_commande_id), Decimal('0'))
+    # Factures du BCF encore dues (une facture neutralisée par un avoir
+    # couvrant tout son TTC ne compte plus — même règle qu'ERR-ASTK54).
+    dues = [f for f in FactureFournisseur.objects.filter(bon_commande=bc)
+            if f.total_avoirs_imputes < (f.montant_ttc or 0)]
+    if sum((f.montant_ht or Decimal('0') for f in dues), Decimal('0')) > montant_recu_bcf(bc) - valeur:
+        refs = ', '.join(f.reference for f in dues)
+        raise EtatIncompatible(
+            f'Le BCF est facturé ({refs}) au-delà de ce qui resterait reçu : '
+            "émettez un avoir avant d'annuler.")
+
+
 def annuler_reception_confirmee(reception, user):
     """YSTCK6 — annule une réception CONFIRMÉE par une CONTRE-PASSATION
     (reversal référencé, jamais un blocage ni une suppression — pattern SAP
@@ -1868,6 +1901,7 @@ def annuler_reception_confirmee(reception, user):
                         for lg in lignes)):
             raise ValueError(
                 'Marchandise livrée au chantier — passer par un retour.')
+        _garde_annulation_reception_entiere(bc, [lg for lg in lignes if _est_stockee(lg)], lignes)
         # ERR-ASTK58 — jumeaux de la confirmation : l'ajustement de pesée
         # `PESEE-<réf>` est contre-passé AVANT la sortie (la sortie est
         # plafonnée au stock en main : l'ordre inverse laisserait un reste),

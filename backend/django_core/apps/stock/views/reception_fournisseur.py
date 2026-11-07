@@ -369,9 +369,9 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
         if reception.statut == ReceptionFournisseur.Statut.CONFIRME:
             try:
                 annuler_reception_confirmee(reception, request.user)
-            except ValueError as exc:
+            except ValueError as exc:  # AAPV12 — EtatIncompatible : 409
                 return Response({'detail': str(exc)},
-                                status=status.HTTP_400_BAD_REQUEST)
+                                status=statut_refus_metier(exc))
             return Response(self.get_serializer(reception).data)
         from ..services import annuler_reception_brouillon
         try:  # AAPV11 — relu sous verrou
