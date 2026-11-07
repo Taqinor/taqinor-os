@@ -1440,6 +1440,24 @@ class RetourFournisseurSerializer(IdInconnu404ImbriquesMixin, SameCompanyFKSeria
             raise serializers.ValidationError('Au moins une ligne est requise.')
         return value
 
+    def validate(self, attrs):
+        """AAPV41 — un retour lié à un BCF vise SON fournisseur et ses produits."""
+        attrs = super().validate(attrs)
+        bc = attrs.get('bon_commande', getattr(self.instance, 'bon_commande', None))
+        fournisseur = attrs.get('fournisseur', getattr(self.instance, 'fournisseur', None))
+        if bc is None:
+            return attrs
+        if fournisseur is not None and fournisseur.pk != bc.fournisseur_id:
+            raise serializers.ValidationError({'fournisseur': [
+                f'Le fournisseur doit être celui du bon de commande ({bc.fournisseur.nom}).']})
+        produits_bcf = set(bc.lignes.values_list('produit_id', flat=True))
+        for ligne in attrs.get('lignes') or []:
+            produit = ligne.get('produit')
+            if produit is not None and produit.pk not in produits_bcf:
+                raise serializers.ValidationError({'lignes': [
+                    f"{produit.nom} n'est pas sur le bon de commande {bc.reference}."]})
+        return attrs
+
     def create(self, validated_data):
         lignes_data = validated_data.pop('lignes')
         retour = RetourFournisseur.objects.create(**validated_data)

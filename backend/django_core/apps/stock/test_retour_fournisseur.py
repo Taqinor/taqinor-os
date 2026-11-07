@@ -67,6 +67,33 @@ class TestRetour(RetourBase):
         self.assertEqual(mv.quantite, 5)
         self.assertEqual(mv.quantite_apres, 45)
 
+    def test_retour_incoherent_avec_le_bcf_refuse(self):
+        """AAPV41 — retour du fournisseur B sur le BCF de A, ou d'un produit
+        absent du BCF : 400 nommé, rien créé ; cohérent : 201."""
+        from rest_framework.test import APIClient
+        api = APIClient()
+        api.force_authenticate(self.user)
+        bc = BonCommandeFournisseur.objects.create(
+            company=self.company, reference='BCF-AAPV41', fournisseur=self.fournisseur,
+            statut=BonCommandeFournisseur.Statut.ENVOYE)
+        bc.lignes.create(produit=self.produit, quantite=10, prix_achat_unitaire=Decimal('10'))
+        autre = Fournisseur.objects.create(company=self.company, nom='Autre B')
+        hors = Produit.objects.create(company=self.company, nom='Hors BCF', sku='HORS-41',
+                                      prix_vente=Decimal('1'))
+        url = '/api/django/stock/retours-fournisseur/'
+        rep = api.post(url, {'fournisseur': autre.id, 'bon_commande': bc.id, 'lignes': [
+            {'produit': self.produit.id, 'quantite': 2}]}, format='json')
+        self.assertEqual(rep.status_code, 400, rep.content)
+        self.assertIn('fournisseur', rep.data)
+        rep = api.post(url, {'fournisseur': self.fournisseur.id, 'bon_commande': bc.id, 'lignes': [
+            {'produit': hors.id, 'quantite': 2}]}, format='json')
+        self.assertEqual(rep.status_code, 400, rep.content)
+        self.assertIn('lignes', rep.data)
+        self.assertFalse(RetourFournisseur.objects.filter(bon_commande=bc).exists())
+        rep = api.post(url, {'fournisseur': self.fournisseur.id, 'bon_commande': bc.id, 'lignes': [
+            {'produit': self.produit.id, 'quantite': 2}]}, format='json')
+        self.assertEqual(rep.status_code, 201, rep.content)
+
     def test_double_validation_idempotent(self):
         retour = self._retour(qte=5)
         apply_retour_fournisseur(retour, self.user)
