@@ -2743,6 +2743,8 @@ def _creer_bcfs_groupes(installation, user, company, groupes, fournisseurs):
     from apps.ventes.utils.references import create_with_reference
     from .models import BonCommandeFournisseur, LigneBonCommandeFournisseur
     crees = []
+    for fid in groupes:  # AAPV29 — aucun BCF tant qu'un fournisseur est bloqué
+        exiger_fournisseur_commandable(company, fournisseurs[fid])
     for fid, lignes in groupes.items():
         def _save(ref, fid=fid, lignes=lignes):
             bon = BonCommandeFournisseur.objects.create(
@@ -2844,6 +2846,7 @@ def creer_bcf_depuis_lignes(*, company, user, fournisseur, lignes, note='',
             getattr(chantier_origine, 'company_id', None) != company.pk):
         raise ValueError(
             "Le chantier d'origine n'appartient pas à cette société.")
+    exiger_fournisseur_commandable(company, fournisseur)  # AAPV29
 
     def _save(ref):
         bon = BonCommandeFournisseur.objects.create(
@@ -3783,6 +3786,7 @@ def generer_bcf_reappro(company, user, fournisseur_id):
 
     if not lignes:
         raise ValueError("Aucun produit à réapprovisionner.")
+    exiger_fournisseur_commandable(company, fournisseur)  # AAPV29
 
     from .models import Produit
     lignes_produits = [
@@ -4301,6 +4305,7 @@ def dupliquer_bcf(company, user, bon_commande):
     from apps.ventes.utils.references import create_with_reference
     from .models import BonCommandeFournisseur, LigneBonCommandeFournisseur
 
+    exiger_fournisseur_commandable(company, bon_commande.fournisseur)  # AAPV29
     lignes_source = list(bon_commande.lignes.all())
     created = {}
 
@@ -4362,6 +4367,7 @@ def fusionner_bcf(company, user, bon_commande_ids):
     if len(fournisseur_ids) > 1:
         raise EtatIncompatible(
             'Tous les bons de commande doivent être du même fournisseur.')
+    exiger_fournisseur_commandable(company, bcs[0].fournisseur)  # AAPV29
     non_brouillon = [
         bc for bc in bcs
         if bc.statut != BonCommandeFournisseur.Statut.BROUILLON]
@@ -6026,6 +6032,24 @@ def check_fournisseur_statut_commande(fournisseur):
             f"Impossible de créer un bon de commande : {fournisseur.nom} est "
             f"{fournisseur.get_statut_display().lower()}"
             f"{' (' + fournisseur.motif_blocage + ')' if fournisseur.motif_blocage else ''}.")
+
+
+def exiger_fournisseur_commandable(company, fournisseur):
+    """AAPV29 — garde UNIQUE de toute porte qui crée, réaffecte ou envoie un
+    BCF : statut bloqué (XPUR4) puis onboarding obligatoire (NTP2P7).
+    Lève ``EtatIncompatible`` (409) ; no-op pour un fournisseur commandable."""
+    if fournisseur is None:
+        return
+    try:
+        check_fournisseur_statut_commande(fournisseur)
+    except EtatIncompatible:
+        raise
+    except ValueError as exc:
+        raise EtatIncompatible(str(exc))
+    from .selectors import fournisseur_peut_recevoir_bcf
+    autorise, motif = fournisseur_peut_recevoir_bcf(company, fournisseur.pk)
+    if not autorise:
+        raise EtatIncompatible(motif)
 
 
 def check_fournisseur_statut_paiement(fournisseur):

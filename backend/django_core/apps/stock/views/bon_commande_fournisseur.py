@@ -117,6 +117,11 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         (précédent : stock.services.reserved_quantity)."""
         if bc.statut != BonCommandeFournisseur.Statut.BROUILLON:
             return None
+        from ..services import exiger_fournisseur_commandable
+        try:  # AAPV29 — jamais d'envoi chez un fournisseur bloqué / non validé
+            exiger_fournisseur_commandable(bc.company, bc.fournisseur)
+        except EtatIncompatible as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         from apps.installations.selectors import (
             bcf_approbation_valide, palier_manquant_bcf_detail,
         )
@@ -352,27 +357,9 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         from ..utils.params import id_corps
         donnees = request.data if hasattr(request.data, 'get') else {}
         fournisseur_id = id_corps(donnees.get('fournisseur'))
-        if fournisseur_id:
-            try:
-                from ..services import check_fournisseur_statut_commande
-                fournisseur = Fournisseur.objects.get(
-                    pk=fournisseur_id, company=request.user.company)
-                check_fournisseur_statut_commande(fournisseur)
-            except Fournisseur.DoesNotExist:
-                pass
-            except ValueError as exc:
-                # ENF11 — fournisseur bloqué = état (409), pas un corps invalide.
-                return Response(
-                    {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
-            # NTP2P7 — onboarding OBLIGATOIRE (réglage société, OFF par
-            # défaut) : un fournisseur au dossier incomplet/non validé ne peut
-            # pas recevoir de nouveau BCF. No-op tant que le flag est OFF.
-            from .. import selectors as stock_selectors
-            autorise, motif = stock_selectors.fournisseur_peut_recevoir_bcf(
-                request.user.company, fournisseur_id)
-            if not autorise:
-                return Response({'detail': motif},
-                                status=status.HTTP_409_CONFLICT)
+        refus = self._refus_fournisseur(request, fournisseur_id)
+        if refus is not None:
+            return refus
         # XPUR1 — WARNING (non bloquant) si le fournisseur a un document de
         # conformité manquant/expiré ; ajouté à la réponse sans jamais
         # empêcher la création du BCF.
@@ -392,6 +379,24 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             self._attach_prix_warnings(response, request)
         return response
 
+    @staticmethod
+    def _refus_fournisseur(request, fournisseur_id):
+        """AAPV29 — garde unique (statut bloqué XPUR4 + onboarding NTP2P7)
+        d'un fournisseur NOMMÉ dans le corps : Response 409 ou None (ENF11 :
+        fournisseur bloqué = état, pas un corps invalide)."""
+        if not fournisseur_id:
+            return None
+        from ..services import exiger_fournisseur_commandable
+        fournisseur = Fournisseur.objects.filter(
+            pk=fournisseur_id, company=request.user.company).first()
+        if fournisseur is None:
+            return None
+        try:
+            exiger_fournisseur_commandable(request.user.company, fournisseur)
+        except EtatIncompatible as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
+        return None
+
     def update(self, request, *args, **kwargs):
         # XPUR18 — un BCF ENVOYE/RECU se modifie UNIQUEMENT via l'action
         # `reviser` (tracée + ré-approbation) : l'édition directe (PUT/PATCH)
@@ -407,6 +412,13 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                     "Ce BCF a été envoyé : utilisez l'action « réviser » "
                     'pour le modifier (traçabilité + ré-approbation).')},
                 status=status.HTTP_409_CONFLICT)
+        from ..utils.params import id_corps
+        donnees = request.data if hasattr(request.data, 'get') else {}
+        nouveau = id_corps(donnees.get('fournisseur'))
+        if nouveau and nouveau != bc.fournisseur_id:  # AAPV29 — réaffectation gardée
+            refus = self._refus_fournisseur(request, nouveau)
+            if refus is not None:
+                return refus
         response = super().update(request, *args, **kwargs)
         if response.status_code == status.HTTP_200_OK:
             self._attach_prix_warnings(response, request)
@@ -572,6 +584,9 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                     'réouvrir.')},
                 status=status.HTTP_409_CONFLICT,
             )
+        refus = self._refus_fournisseur(request, bc.fournisseur_id)  # AAPV29
+        if refus is not None:
+            return refus
         bc.statut = BonCommandeFournisseur.Statut.BROUILLON
         bc.save(update_fields=['statut'])
         from ..services import log_bcf_chatter
@@ -847,7 +862,10 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         lignes. La source n'est jamais modifiée."""
         from ..services import dupliquer_bcf
         bc = self.get_object()
-        clone = dupliquer_bcf(request.user.company, request.user, bc)
+        try:
+            clone = dupliquer_bcf(request.user.company, request.user, bc)
+        except EtatIncompatible as exc:  # AAPV29 — fournisseur bloqué
+            return Response({'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         return Response(
             self.get_serializer(clone).data, status=status.HTTP_201_CREATED)
 
