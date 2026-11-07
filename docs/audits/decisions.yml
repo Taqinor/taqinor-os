@@ -3696,7 +3696,7 @@ decisions:
     reponse: plancher_et_derogation
     date: "2026-11-06"
     source: "Reda, question interactive, audit de parcours PA5"
-    taches: []
+    taches: [ACSV35]
   - id: D-ACSV-2
     question: "Parc SAV : un Technicien qui voit un chantier voit 0 de ses équipements, car le parc est filtré par auteur (le responsable les a créés à la réception). Qui voit les équipements d'un chantier ?"
     options:
@@ -3707,7 +3707,7 @@ decisions:
     reponse: qui_voit_le_chantier
     date: "2026-11-06"
     source: "Reda, question interactive, audit de parcours PA5"
-    taches: []
+    taches: [ACSV58]
   - id: D-ACSV-3
     question: "Sur un ticket SAV, un Technicien sans droit ventes crée devis et facture, et un Commercial responsable sans droit de mouvement de stock sort des pièces — `sav_gerer` suffit. Que doivent exiger ces gestes ?"
     options:
@@ -3718,7 +3718,7 @@ decisions:
     reponse: droits_metier_exiges
     date: "2026-11-06"
     source: "Reda, question interactive, audit de parcours PA5"
-    taches: []
+    taches: [ACSV62]
   - id: D-ACSV-4
     question: "La signature client du chantier (PV / bon de livraison) fonctionne dans tout état, même sur un chantier annulé ; le BL se signe « à la livraison du matériel », avant « Installé ». Que refuser ?"
     options:
