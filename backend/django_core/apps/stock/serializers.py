@@ -2690,6 +2690,16 @@ class AcompteFournisseurSerializer(SameCompanyFKSerializerMixin,
                 "n'est plus modifiable.")
         return value
 
+    def validate_bon_commande(self, value):
+        """AAPV63 — le BCF d'un acompte imputé est figé, comme son montant."""
+        instance = self.instance
+        if (instance is not None and value is not None and value.pk != instance.bon_commande_id
+                and instance.imputations.exists()):
+            raise serializers.ValidationError(
+                "Cet acompte est déjà imputé sur une facture : son bon de "
+                "commande n'est plus modifiable.")
+        return value
+
 
 # ── XPUR9 — avoir fournisseur (note de crédit AP) ────────────────────────────
 
