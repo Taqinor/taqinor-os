@@ -417,7 +417,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            facture = creer_facture_fournisseur_depuis_ubl(
+            facture, doublons = creer_facture_fournisseur_depuis_ubl(
                 company=request.user.company, user=request.user,
                 xml_bytes=upload.read())
         except IntrouvableMetier as exc:
@@ -427,9 +427,10 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
-        return Response(
-            self.get_serializer(facture).data,
-            status=status.HTTP_201_CREATED)
+        data = self.get_serializer(facture).data
+        if doublons:  # AAPV55 — comme depuis-ocr/
+            data['doublon_warning'] = doublons
+        return Response(data, status=status.HTTP_201_CREATED)
 
     @extend_schema(parameters=[P('date_debut', DATE_OU_VIDE), P('date_fin', DATE_OU_VIDE)], responses=LISTE)
     @action(detail=False, methods=['get'], url_path='releve-deductions-tva')

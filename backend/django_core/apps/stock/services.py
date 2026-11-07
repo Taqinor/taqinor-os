@@ -8836,7 +8836,7 @@ def creer_facture_fournisseur_depuis_ubl(*, company, user, xml_bytes):
     `cleared` si un numéro de clearance est présent dans le document, sinon
     `non_cleared` (aucune validation plateforme réelle : préparation mandat
     uniquement). Lève ValueError si aucun fournisseur ne matche ou le XML est
-    invalide. Renvoie la facture créée."""
+    invalide. Renvoie ``(facture, doublons)`` (AAPV55)."""
     from datetime import date as _date
     from .models import FactureFournisseur, LigneFactureFournisseur
 
@@ -8859,6 +8859,10 @@ def creer_facture_fournisseur_depuis_ubl(*, company, user, xml_bytes):
         except ValueError:
             return None
 
+    # AAPV55 — même avertissement de doublon que l'OCR (XPUR11, non bloquant).
+    doublons = detect_facture_fournisseur_doublon(
+        company, fournisseur_id=fournisseur.id, ref_fournisseur=fields.get('numero'),
+        montant_ttc=fields.get('montant_ttc'), date_facture=_parsed_date(fields.get('date_facture')))
     numero_clearance = fields.get('numero_clearance_dgi')
     statut_dgi = (
         FactureFournisseur.StatutConformiteDgi.CLEARED if numero_clearance
@@ -8895,7 +8899,7 @@ def creer_facture_fournisseur_depuis_ubl(*, company, user, xml_bytes):
     # PATCH (no-op sans BCF).
     evaluer_rapprochement_3_voies(facture)
     _emettre_facture_creee(facture, user)
-    return facture
+    return facture, doublons
 
 
 # ── XSTK15 — Unités de mesure & conditionnements (touret/carton…) ───────────
