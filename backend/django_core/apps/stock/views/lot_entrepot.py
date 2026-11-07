@@ -126,6 +126,8 @@ class LotEntrepotViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
                     user=request.user,
                     forcer=bool(request.data.get('forcer')),
                     motif=request.data.get('motif'))
+                from ..services_wms import exiger_hors_quarantaine
+                exiger_hors_quarantaine(company, produit, quantite)  # AAPV21
                 motif = request.data.get('motif')
                 record_stock_movement(
                     company=company, produit=produit,

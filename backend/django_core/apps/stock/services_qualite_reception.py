@@ -179,8 +179,13 @@ def router_apres_controle(reception, user):
         qte = int(quantite_entree_ligne_reception(ligne) or 0)
         if ligne.produit_id is None or qte <= 0:
             continue
+        # AAPV21 — le blocage porte le lot reçu (FEFO et « Sortir » le voient).
+        from .models import LotEntrepot
+        lot = (LotEntrepot.objects.filter(
+            company=reception.company, produit_id=ligne.produit_id,
+            numero_lot=ligne.numero_lot).first() if getattr(ligne, 'numero_lot', None) else None)
         blocages.append(BlocageQualite.objects.create(
-            company=reception.company, produit=ligne.produit, quantite=qte,
+            company=reception.company, produit=ligne.produit, quantite=qte, lot=lot,
             reception=reception, bloque_par=user,
             statut=BlocageQualite.Statut.EN_QUARANTAINE,
             motif=(f'NTWMS34 — contrôle à réception non conforme '
