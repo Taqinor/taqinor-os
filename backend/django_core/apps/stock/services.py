@@ -4085,6 +4085,21 @@ def facturer_bcf_sur_commande(company, user, bon_commande):
     `sur_reception` restent hors de ce chemin — direction vers FG56), ou si
     ce BCF est déjà entièrement facturé par ce chemin (idempotence : jamais
     deux factures pour la même quantité `sur_commande`)."""
+    from django.db import transaction
+    from .models import BonCommandeFournisseur
+
+    with transaction.atomic():  # AAPV26 — statut et marqueur relus sous verrou
+        bon_commande = BonCommandeFournisseur.objects.select_for_update().get(
+            pk=bon_commande.pk)
+        if bon_commande.statut == BonCommandeFournisseur.Statut.ANNULE:
+            raise EtatIncompatible('Un bon de commande annulé ne se facture pas.')
+        if bon_commande.statut == BonCommandeFournisseur.Statut.BROUILLON:
+            raise EtatIncompatible('Envoyez le bon de commande avant de le facturer.')
+        return _facturer_bcf_sur_commande_verrouille(company, user, bon_commande)
+
+
+def _facturer_bcf_sur_commande_verrouille(company, user, bon_commande):
+    """ZPUR1 — corps de ``facturer_bcf_sur_commande``, BCF verrouillé."""
     from decimal import Decimal
     from .models import FactureFournisseur, Produit
 

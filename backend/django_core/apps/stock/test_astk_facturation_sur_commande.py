@@ -95,6 +95,26 @@ class SurCommandeTests(_Base):
                 company=self.company, bon_commande=self.bcf).count(), 1)
         self.assertEqual(self._total_ht_bcf(), Decimal('1000.00'))
 
+    def test_bcf_brouillon_ou_annule_refuse(self):
+        """AAPV26 — BCF annulé ou brouillon : 409, aucune facture ; envoyé :
+        201 puis 409 au second appel."""
+        from rest_framework.test import APIClient
+        api = APIClient()
+        api.force_authenticate(self.user)
+        url = f'/api/django/stock/bons-commande-fournisseur/{self.bcf.id}/facturer/'
+        for statut, message in (
+                (BonCommandeFournisseur.Statut.ANNULE, 'annulé ne se facture pas'),
+                (BonCommandeFournisseur.Statut.BROUILLON, 'Envoyez le bon de commande')):
+            BonCommandeFournisseur.objects.filter(pk=self.bcf.pk).update(statut=statut)
+            r = api.post(url, {}, format='json')
+            self.assertEqual(r.status_code, 409, r.content)
+            self.assertIn(message, str(r.data))
+            self.assertEqual(self._total_ht_bcf(), None)
+        BonCommandeFournisseur.objects.filter(pk=self.bcf.pk).update(
+            statut=BonCommandeFournisseur.Statut.ENVOYE)
+        self.assertEqual(api.post(url, {}, format='json').status_code, 201)
+        self.assertEqual(api.post(url, {}, format='json').status_code, 409)
+
     def test_reception_mixte_ne_facture_que_sur_reception(self):
         l_reception = LigneBonCommandeFournisseur.objects.create(
             bon_commande=self.bcf, produit=self.p_reception, quantite=50,
