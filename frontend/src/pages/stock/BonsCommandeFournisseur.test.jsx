@@ -47,6 +47,7 @@ vi.mock('../../api/stockApi', () => ({
     getSuggestionsConsolidationBcf: vi.fn(() => Promise.resolve({ data: [] })),
     // AAPV20 — retour fournisseur (lot / séries).
     createRetourFournisseur: vi.fn(() => Promise.resolve({ data: { id: 3 } })),
+    envoyerBcf: vi.fn(() => Promise.resolve({ data: {} })),
     validerRetourFournisseur: vi.fn(() => Promise.resolve({ data: {} })),
   },
 }))
@@ -603,5 +604,25 @@ describe('RetourModal (AAPV20)', () => {
       expect.objectContaining({ lignes: [expect.objectContaining({
         produit: 7, quantite: 3, numero_lot: 'L-0425', numeros_serie: ['SN1', 'SN2', 'SN3'] })] })))
     await waitFor(() => expect(onDone).toHaveBeenCalled())
+  })
+})
+
+describe('BcfDetail — avertissements prix (AAPV16)', () => {
+  it('affiche prix_warnings et confirme avant envoi', async () => {
+    const brouillon = {
+      id: 77, reference: 'BCF-77', statut: 'brouillon', fournisseur: 1,
+      lignes: [{ id: 1, produit: 5, produit_nom: 'Onduleur', quantite: 10, prix_achat_unitaire: '1400' }],
+    }
+    stockApi.updateBonCommandeFournisseur.mockResolvedValue({
+      data: { ...brouillon, prix_warnings: [{ ligne_id: 1, produit: 5, warnings: ['Prix au-dessus du contrat (1 150).'] }] },
+    })
+    renderDetail({ bcf: brouillon, fournisseurs: [{ id: 1, nom: 'F2' }] },
+      { role_nom: 'Directeur', permissions: ['achats_commander', 'prix_achat_voir'] })
+    fireEvent.click(screen.getByRole('button', { name: /Envoyer au fournisseur/ }))
+    const dialog = await screen.findByRole('alertdialog')
+    expect(within(dialog).getByText(/au-dessus du contrat/)).toBeInTheDocument()
+    expect(stockApi.envoyerBcf).not.toHaveBeenCalled()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Envoyer' }))
+    await waitFor(() => expect(stockApi.envoyerBcf).toHaveBeenCalledWith(77))
   })
 })

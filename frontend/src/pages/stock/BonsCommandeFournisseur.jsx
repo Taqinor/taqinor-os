@@ -39,6 +39,12 @@ import {
 // ASTK231 — confirmations par l'AlertDialog commune (aucune boîte native).
 import { erreurComptageSeries, parseSeries } from './numerosSerie.js'
 import { useConfirmation } from '../../features/stock/useConfirmation'
+import { toast } from '../../ui/confirm'
+
+// AAPV16 — avertissements prix (XPUR13, non bloquants) servis par le PATCH /
+// la création d'un BCF : texte unique pour le toast et la confirmation d'envoi.
+const texteAvertissementsPrix = (data) => (data?.prix_warnings ?? [])
+  .flatMap((w) => w.warnings ?? []).map(String).join(' · ')
 import { AlerteErreurStock, MessagesStock } from './BandeauxListeStock'
 import { AlerteErreur, InfoSucces } from '../../ui/AlertesServeur'
 import PiedDialogueFormulaire from '../../ui/PiedDialogueFormulaire'
@@ -493,8 +499,10 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
     if (payload.lignes.length === 0) { setError('Ajoutez au moins une ligne.'); return }
     setBusy(true)
     try {
-      if (isNew) await stockApi.createBonCommandeFournisseur(payload)
-      else await stockApi.updateBonCommandeFournisseur(bcf.id, payload)
+      const r = isNew ? await stockApi.createBonCommandeFournisseur(payload)
+        : await stockApi.updateBonCommandeFournisseur(bcf.id, payload)
+      const avertissement = texteAvertissementsPrix(r?.data)
+      if (avertissement) toast.warning(`Prix à vérifier : ${avertissement}`)
       onSaved?.()
       onClose()
     } catch (err) {
@@ -515,12 +523,14 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
     setBusy(true); setError(null)
     try {
       // En brouillon, on enregistre d'abord d'éventuelles modifications.
-      if (!isNew) await stockApi.updateBonCommandeFournisseur(bcf.id, buildPayload())
-      let id = bcf?.id
-      if (isNew) {
-        const r = await stockApi.createBonCommandeFournisseur(buildPayload())
-        id = r.data.id
-      }
+      const r = isNew ? await stockApi.createBonCommandeFournisseur(buildPayload())
+        : await stockApi.updateBonCommandeFournisseur(bcf.id, buildPayload())
+      const id = isNew ? r.data.id : bcf?.id
+      const avertissement = texteAvertissementsPrix(r?.data)
+      if (avertissement && !(await confirmer({
+        title: 'Envoyer malgré l\'avertissement prix ?', description: avertissement,
+        confirmLabel: 'Envoyer',
+      }))) { onSaved?.(); return }
       await stockApi.envoyerBcf(id)
       onSaved?.()
       onClose()

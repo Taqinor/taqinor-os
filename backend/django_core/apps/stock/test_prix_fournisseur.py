@@ -119,6 +119,32 @@ class TestBesoinSurfacesCheapest(PrixFournisseurBase):
         self.assertEqual(entry['fournisseur_min_id'], self.f_eco.id)
         self.assertEqual(entry['prix_achat_min'], Decimal('820'))
 
+    def test_brouillon_des_manques_au_tarif_en_vigueur(self):
+        """AAPV16 — catalogue 1 000, éco expiré hier (moins cher), cher en
+        vigueur avec palier 10+ : le brouillon des manques part chez « cher »
+        au prix du palier, jamais au prix catalogue ni chez l'expiré."""
+        from django.contrib.auth import get_user_model
+        from django.utils import timezone
+        from apps.stock.models import PalierPrixFournisseur
+        from apps.stock.services import draft_bcfs_for_shortfall
+        hier = timezone.localdate() - datetime.timedelta(days=1)
+        PrixFournisseur.objects.create(
+            company=self.company, produit=self.produit, fournisseur=self.f_eco,
+            prix_achat=Decimal('700'), date_fin=hier)
+        pf = PrixFournisseur.objects.create(
+            company=self.company, produit=self.produit, fournisseur=self.f_cher,
+            prix_achat=Decimal('950'))
+        PalierPrixFournisseur.objects.create(prix_fournisseur=pf, qte_min=10, prix=Decimal('900'))
+        self.assertEqual(cheapest_prix_fournisseur(self.produit).fournisseur_id, self.f_cher.id)
+        inst = self._chantier(self.produit, 10)
+        user = get_user_model().objects.create_user(
+            username='pf-aapv16', password='x', company=self.company, role_legacy='responsable')
+        crees, _sans = draft_bcfs_for_shortfall(inst, user, self.company)
+        self.assertEqual(len(crees), 1)
+        bon = crees[0][0]
+        self.assertEqual(bon.fournisseur_id, self.f_cher.id)
+        self.assertEqual(bon.lignes.get().prix_achat_unitaire, Decimal('900'))
+
     def test_resolve_prefers_cheapest(self):
         # Fournisseur catalogue = cher ; liste de prix = éco moins cher.
         self.produit.fournisseur = self.f_cher

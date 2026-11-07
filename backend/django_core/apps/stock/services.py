@@ -468,9 +468,23 @@ def transfer_stock(*, company, user, produit_id, source_id, destination_id,
 
 def cheapest_prix_fournisseur(produit):
     """Renvoie le PrixFournisseur le moins cher (prix > 0) pour ce produit, ou
-    None s'il n'existe aucun prix multi-fournisseur renseigné."""
+    None s'il n'existe aucun prix multi-fournisseur renseigné. AAPV16 —
+    seuls les tarifs EN VIGUEUR (bornes nulles ouvertes, comme
+    ``PrixFournisseur.est_en_vigueur``)."""
+    from django.db.models import Q
+    from django.utils import timezone
+    jour = timezone.localdate()
     return (produit.prix_fournisseurs.filter(prix_achat__gt=0)
+            .filter(Q(date_debut__isnull=True) | Q(date_debut__lte=jour))
+            .filter(Q(date_fin__isnull=True) | Q(date_fin__gte=jour))
             .select_related('fournisseur').order_by('prix_achat').first())
+
+
+def prix_bcf_en_vigueur(produit, fournisseur, quantite):
+    """AAPV16 — PU d'une ligne de BCF générée : tarif EN VIGUEUR du
+    fournisseur (palier de la quantité, XPUR14), repli prix catalogue."""
+    prix = prix_effectif_fournisseur(produit, fournisseur, quantite=quantite or 1)
+    return prix if prix else (produit.prix_achat or Decimal('0'))
 
 
 def record_purchase_price(*, company, produit, fournisseur, prix_achat, date):
@@ -2746,7 +2760,8 @@ def _creer_bcfs_groupes(installation, user, company, groupes, fournisseurs):
                     bon_commande=bon,
                     produit=produit,
                     quantite=qte,
-                    prix_achat_unitaire=produit.prix_achat,
+                    prix_achat_unitaire=prix_bcf_en_vigueur(  # AAPV16
+                        produit, fournisseurs[fid], qte),
                 )
             return bon
 
@@ -2837,6 +2852,9 @@ def creer_bcf_depuis_lignes(*, company, user, fournisseur, lignes, note='',
             note=note or '', created_by=user,
             chantier_origine=chantier_origine)
         for produit_id, designation, qte, prix in normalisees:
+            if produit_id and not prix:  # AAPV16 — prix estimé nul : tarif en vigueur
+                from .models import Produit
+                prix = prix_bcf_en_vigueur(Produit.objects.get(pk=produit_id), fournisseur, qte)
             LigneBonCommandeFournisseur.objects.create(
                 bon_commande=bon, produit_id=produit_id,
                 designation=designation, quantite=qte,
@@ -3768,8 +3786,10 @@ def generer_bcf_reappro(company, user, fournisseur_id):
 
     from .models import Produit
     lignes_produits = [
-        (Produit.objects.get(id=pid, company=company), qte, prix)
-        for pid, qte, prix in lignes
+        (produit, qte, prix_bcf_en_vigueur(produit, fournisseur, qte))  # AAPV16
+        for produit, qte, prix in (
+            (Produit.objects.get(id=pid, company=company), qte, prix)
+            for pid, qte, prix in lignes)
     ]
 
     # Dernier BROUILLON réappro auto du MÊME fournisseur (le plus récent).
