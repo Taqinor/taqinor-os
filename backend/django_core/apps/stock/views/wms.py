@@ -26,7 +26,7 @@ from ..corps_achats import UniteAjouterLigneCorps, UniteControlerScanCorps, vali
 from ..erreurs_achats import (
     ConflitEtat, EtatIncompatible, debordement_compteur_en_409, statut_refus_metier)
 from authentication.permissions import (
-    IsAnyRole, IsAdminRole, IsResponsableOrAdmin,
+    IsAnyRole, IsAdminRole, IsResponsableOrAdmin, HasPermissionOrLegacy,
 )
 
 from ..models_wms import (
@@ -1173,9 +1173,9 @@ class MouvementRebutViewSet(CompanyScopedModelViewSet):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
         if self.action == 'create':
-            # Le magasinier déclare ce qu'il casse : la déclaration doit être
-            # à sa portée, sinon elle n'est jamais faite.
-            return [IsAnyRole()]
+            # AAPV36 : sous `stock_mouvement` (comme les mouvements) — le
+            # magasinier (Technicien) garde le geste, Commercial/Viewer non.
+            return [HasPermissionOrLegacy('stock_mouvement')()]
         return [IsAdminRole()]
 
     def get_queryset(self):
