@@ -1557,6 +1557,15 @@ def reste_du_net_ligne_bcf(ligne_cmd, *, exclure_reception_id=None):
     return max(ligne_cmd.quantite_restante - en_brouillon, 0)
 
 
+def motif_series_en_trop(nb, qte):
+    """AAPV68 — règle ACHT122 unique : plus de n° de série que d'unités ⇒
+    message (jamais une troncature muette), sinon ``None``."""
+    qte = max(int(qte or 0), 0)
+    if nb > qte:
+        return f'{nb} n° de série saisis pour {qte} reçu(s) : retirez-en {nb - qte}.'
+    return None
+
+
 def _refuser_series_deja_en_stock(company, lignes):
     """AAPV67 — un n° de série déjà « en stock »/« réservé » pour le produit
     (registre installations, lu par son sélecteur) ne se reçoit pas deux
@@ -1628,6 +1637,9 @@ def confirm_reception_fournisseur(reception, user):
             # refresh_from_db) : le reste dû est décidé sur une valeur sûre.
             ligne_cmd = _verrouiller_ligne_bcf(ligne.ligne_commande)
             qte = min(qte, ligne_cmd.quantite_restante)
+            motif = motif_series_en_trop(len(ligne.numeros_serie or []), qte)  # AAPV68
+            if motif:
+                raise EtatIncompatible(motif)
             # ASTK59 — la quantité RÉELLEMENT appliquée est persistée : la
             # facturation et l'annulation la relisent (jamais `quantite`).
             _poser_quantite_appliquee(ligne, max(qte, 0))

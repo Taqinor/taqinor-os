@@ -1868,6 +1868,14 @@ class LigneReceptionFournisseurSerializer(CompanyScopedRelationsMixin,
             raise serializers.ValidationError('La quantité doit être positive.')
         return value
 
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        from .services import motif_series_en_trop  # AAPV68
+        motif = motif_series_en_trop(len(attrs.get('numeros_serie') or []), attrs.get('quantite'))
+        if motif:
+            raise serializers.ValidationError(motif)
+        return attrs
+
 
 class ReceptionFournisseurSerializer(IdInconnu404LignesMixin, CompanyScopedRelationsMixin,
                                      ChampsTexteBooleenStricts, serializers.ModelSerializer):

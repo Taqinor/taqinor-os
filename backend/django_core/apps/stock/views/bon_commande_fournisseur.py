@@ -757,12 +757,10 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             # Plafonnement au reste dû — jamais plus que commandé (idempotence).
             qte = min(qte, ligne.quantite_restante)
             series = rec.get('numeros_serie') or []
-            if len(series) > max(qte, 0):  # ACHT122 : jamais d'ajustement silencieux
-                return Response(
-                    {'detail': (
-                        f'{len(series)} n° de série saisis pour {max(qte, 0)} '
-                        f'reçu(s) : retirez-en {len(series) - max(qte, 0)}.')},
-                    status=status.HTTP_400_BAD_REQUEST)
+            from ..services import motif_series_en_trop  # ACHT122/AAPV68 : règle unique
+            motif_series = motif_series_en_trop(len(series), qte)
+            if motif_series:
+                return Response({'detail': motif_series}, status=status.HTTP_400_BAD_REQUEST)
             if qte > 0:
                 plan.append((ligne, qte, series, (rec.get('numero_lot') or '').strip() or None))
 
