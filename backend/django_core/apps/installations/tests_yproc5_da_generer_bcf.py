@@ -125,6 +125,70 @@ class GenererBcfTests(TestCase):
         da.refresh_from_db()
         self.assertEqual(da.bon_commande.fournisseur_id, self.fournisseur.id)
 
+    def test_deux_generer_bcf_entrelaces_un_seul_bcf(self):
+        """AAPV28 — le second clic arrive entre la garde et la création du
+        premier : 200 puis 409, UN BCF, DA liée à lui."""
+        from unittest import mock
+        from apps.stock import services as stock_services
+        from apps.stock.models import BonCommandeFournisseur
+        da = make_da_approuvee(self.company, self.user, lignes=[
+            (self.produit, None, 2, 999),
+        ])
+        url = f'{BASE}/demandes-achat/{da.id}/generer-bcf/'
+        reel = stock_services.creer_bcf_depuis_lignes
+        seconds = []
+
+        def crochet(**kwargs):
+            if not seconds:
+                seconds.append(self.api.post(
+                    url, {'fournisseur': self.fournisseur.id}, format='json'))
+            return reel(**kwargs)
+        with mock.patch.object(stock_services, 'creer_bcf_depuis_lignes',
+                               side_effect=crochet):
+            r1 = self.api.post(url, {'fournisseur': self.fournisseur.id},
+                               format='json')
+        self.assertEqual(r1.status_code, 200, r1.data)
+        self.assertEqual(seconds[0].status_code, 409, seconds[0].data)
+        bcfs = BonCommandeFournisseur.objects.filter(
+            company=self.company, note__contains=da.reference)
+        self.assertEqual(bcfs.count(), 1)
+        da.refresh_from_db()
+        self.assertEqual(da.bon_commande_id, bcfs.get().id)
+
+    def test_generer_bcf_echec_creation_rollback(self):
+        """AAPV28 — création en échec (ValueError) : 409, DA restée approuvée."""
+        from unittest import mock
+        from apps.stock import services as stock_services
+        da = make_da_approuvee(self.company, self.user, lignes=[
+            (self.produit, None, 2, 999),
+        ])
+        with mock.patch.object(stock_services, 'creer_bcf_depuis_lignes',
+                               side_effect=ValueError('quantité invalide')):
+            r = self.api.post(f'{BASE}/demandes-achat/{da.id}/generer-bcf/',
+                              {'fournisseur': self.fournisseur.id}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        da.refresh_from_db()
+        self.assertEqual(da.statut, DemandeAchat.Statut.APPROUVEE)
+        self.assertIsNone(da.bon_commande_id)
+
+    def test_commander_besoin_verrouille_le_chantier(self):
+        """AAPV28 — `commander-besoin` relit le chantier FOR UPDATE avant
+        de calculer le besoin."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from apps.installations.models import Installation
+        if not connection.features.has_select_for_update:  # pragma: no cover
+            self.skipTest('SELECT FOR UPDATE non supporté.')
+        inst = Installation.objects.create(
+            company=self.company, reference='CH-AAPV28')
+        table = Installation._meta.db_table
+        with CaptureQueriesContext(connection) as ctx:
+            self.api.post(f'{BASE}/chantiers/{inst.id}/commander-besoin/',
+                          {}, format='json')
+        verrous = [q['sql'] for q in ctx.captured_queries
+                   if 'FOR UPDATE' in q['sql'].upper() and table in q['sql']]
+        self.assertTrue(verrous, 'commander-besoin ne verrouille pas le chantier')
+
     def test_regenerer_refuse_deja_lie(self):
         da = make_da_approuvee(self.company, self.user, lignes=[
             (self.produit, None, 2, 999),

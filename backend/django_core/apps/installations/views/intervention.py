@@ -751,6 +751,7 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
         from apps.stock.services import (
             draft_bcf_for_shortfall, resolve_fournisseur,
         )
+        from django.db import transaction
         from apps.stock.serializers import BonCommandeFournisseurSerializer
         interv = self.get_object()
         inst = interv.installation
@@ -767,9 +768,10 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
                     'par défaut sur les produits manquants.')},
                 status=oa.statut_inconnu(request.data.get('fournisseur'))
                 if request.data.get('fournisseur') else status.HTTP_409_CONFLICT)
-        try:
-            bon, nb = draft_bcf_for_shortfall(
-                inst, fournisseur, request.user, company)
+        try:  # AAPV28 — chantier verrouillé AVANT le calcul des manques
+            with transaction.atomic():
+                inst = Installation.objects.select_for_update().get(pk=inst.pk)
+                bon, nb = draft_bcf_for_shortfall(inst, fournisseur, request.user, company)
         except ValueError as exc:
             # api-fuzz-full 27/10 (ENF11) : rien à commander / BCF ouvert qui
             # couvre déjà les manques = refus d'ÉTAT.
