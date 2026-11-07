@@ -114,8 +114,11 @@ class TestPeuplerSerieEntrepotAReception(TestCase):
             2)
 
     def test_serie_deja_enregistree_pas_dupliquee(self):
+        # AAPV67 — une série EN STOCK ne se reçoit plus deux fois (409) : la
+        # série déjà enregistrée est ici « retournée » (re-réception légitime).
         SerieEntrepot.objects.create(
-            company=self.company, produit=self.produit, numero_serie='SN-X')
+            company=self.company, produit=self.produit, numero_serie='SN-X',
+            statut=SerieEntrepot.Statut.RETOURNE)
         series = ['SN-X', 'SN-Y']
         reception, _bc = make_reception_avec_series(
             self.company, self.produit, self.user, quantite=2, series=series)

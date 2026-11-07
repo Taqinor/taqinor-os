@@ -1552,6 +1552,19 @@ def reste_du_net_ligne_bcf(ligne_cmd, *, exclure_reception_id=None):
     return max(ligne_cmd.quantite_restante - en_brouillon, 0)
 
 
+def _refuser_series_deja_en_stock(company, lignes):
+    """AAPV67 — un n° de série déjà « en stock »/« réservé » pour le produit
+    (registre installations, lu par son sélecteur) ne se reçoit pas deux
+    fois : ``EtatIncompatible`` (409). Une série « retournée » repasse."""
+    from apps.installations.selectors import series_en_stock
+    for ligne in lignes:
+        numeros = [n.strip() for n in (ligne.numeros_serie or []) if isinstance(n, str) and n.strip()]
+        deja = series_en_stock(company, ligne.produit_id, numeros) if numeros else {}
+        for numero, ref in deja.items():
+            raise EtatIncompatible(
+                f'N° de série {numero} déjà en stock ({ref}) pour {ligne.produit.nom}.')
+
+
 def confirm_reception_fournisseur(reception, user):
     """Confirme une réception fournisseur : crée un MouvementStock ENTREE par
     ligne reçue, incrémente le stock + `quantite_recue` du BCF, puis avance le
@@ -1597,6 +1610,7 @@ def confirm_reception_fournisseur(reception, user):
             raise EtatIncompatible(
                 'Seule une réception en brouillon peut être confirmée '
                 '(déjà confirmée ou annulée).')
+        _refuser_series_deja_en_stock(reception.company, lignes)  # AAPV67
         applique_total = 0
         for ligne in lignes:
             qte = int(ligne.quantite or 0)
