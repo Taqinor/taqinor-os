@@ -279,6 +279,8 @@ def _bom_quantities(installation):
 #: ACHT30 — messages des gardes communes (synchro terrain + vues).
 MESSAGE_CONSOMMATION_VALIDEE = 'Réconciliation déjà validée.'
 MESSAGE_INTERVENTION_VALIDEE = 'Intervention validée.'
+# AAPV52 — saisie F11 (vues + synchro terrain) : le stock se compte en unités.
+MESSAGE_QTE_ENTIERE_F11 = 'Quantité entière exigée (le stock se compte en unités).'
 
 
 def consommation_modifiable(cons):
@@ -425,8 +427,8 @@ def validate_consommation(cons, user):
                     li.produit_id, 0) + qte
                 deja['sorti'][li.produit_id] = deja['sorti'].get(
                     li.produit_id, 0) + qte_sortie
-            # ERR41 — sortie sur la quantité DÉCIMALE (jamais int(qte)) : une
-            # ligne de 0,5 sort bien 0,5 (et n'est plus tronquée à 0/perdue).
+            # AAPV52 — la saisie refuse toute quantité non entière (vues et
+            # synchro terrain) ; record_stock_movement reste le filet (ASTK45).
             qte_apres = qte_avant - qte_sortie
             record_stock_movement(
                 company=cons.company, produit=produit,

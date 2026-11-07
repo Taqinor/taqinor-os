@@ -334,12 +334,33 @@ class TestConsommation(_Base):
             r = self.api.post(url, {'designation': 'Câble', 'quantite_utilisee': brut},
                               format='json')
             self.assertEqual(r.status_code, 400, (brut, r.content))
-        r = self.api.post(url, {'designation': 'Câble', 'quantite_utilisee': '9999999999.99'},
+        # AAPV52 — borne haute ENTIÈRE (une quantité non entière est refusée).
+        r = self.api.post(url, {'designation': 'Câble', 'quantite_utilisee': '9999999999'},
                           format='json')
         self.assertEqual(r.status_code, 201, r.content)
         r = self.api.post(f'{self.url}/modifier-ligne-consommation/', {
             'ligne': r.data['id'], 'quantite_utilisee': 1e15}, format='json')
         self.assertEqual(r.status_code, 400, r.content)
+
+    def test_quantite_f11_decimale_refusee_a_la_saisie(self):
+        """AAPV52 — 12,5 / 0,5 refusés dès la saisie (409 au champ, corps
+        conforme au schéma), ligne inchangée ; 12 accepté puis F11 validée."""
+        cons = field_capture.ensure_consommation(self.interv)
+        ligne = cons.lignes.get(designation='Panneau 550W')
+        r = self.api.post(f'{self.url}/modifier-ligne-consommation/', {
+            'ligne': ligne.id, 'quantite_utilisee': 12.5}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertIn('Quantité entière exigée', str(r.data['quantite_utilisee']))
+        r = self.api.post(f'{self.url}/ajouter-ligne-consommation/', {
+            'designation': 'Câble', 'quantite_utilisee': 0.5}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        ligne.refresh_from_db()
+        self.assertEqual(ligne.quantite_utilisee, Decimal('12'))
+        r = self.api.post(f'{self.url}/modifier-ligne-consommation/', {
+            'ligne': ligne.id, 'quantite_utilisee': 12}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        r = self.api.post(f'{self.url}/valider-consommation/', {}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
 
     def test_produit_et_justification_mal_types_400_jamais_500(self):
         # api-fuzz-full 28/10 : `produit` en liste atteignait `filter(id=…)`

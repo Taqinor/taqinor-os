@@ -291,6 +291,9 @@ def _h_consommation_ligne(company, user, payload):
             ligne.quantite_utilisee = Decimal(str(payload.get('quantite_utilisee')))
         except (InvalidOperation, TypeError, ValueError):
             raise FieldOpError('Quantité invalide.')
+        if (not ligne.quantite_utilisee.is_finite()
+                or ligne.quantite_utilisee != ligne.quantite_utilisee.to_integral_value()):
+            raise FieldOpError(field_capture.MESSAGE_QTE_ENTIERE_F11)  # AAPV52
     if 'justification' in payload:
         ligne.justification = (payload.get('justification') or '').strip()
     ligne.save(update_fields=[
