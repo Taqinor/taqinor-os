@@ -3719,3 +3719,14 @@ decisions:
     date: "2026-11-06"
     source: "Reda, question interactive, audit de parcours PA5"
     taches: []
+  - id: D-ACSV-4
+    question: "La signature client du chantier (PV / bon de livraison) fonctionne dans tout état, même sur un chantier annulé ; le BL se signe « à la livraison du matériel », avant « Installé ». Que refuser ?"
+    options:
+      - cle: annule_seulement
+        texte: "Refuser la signature sur un chantier annulé seulement ; la signature à la livraison (avant Installé) reste permise"
+      - cle: avant_installe_aussi
+        texte: "Refuser aussi avant « Installé »"
+    reponse: annule_seulement
+    date: "2026-11-07"
+    source: "Reda, question interactive, audit de parcours PA5"
+    taches: [ACSV34]
