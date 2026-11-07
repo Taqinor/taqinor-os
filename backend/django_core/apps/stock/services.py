@@ -1671,8 +1671,9 @@ def confirm_reception_fournisseur(reception, user):
                     qte)
             # XSTK6 — alimente le registre de lots quand la ligne porte un
             # numero_lot (FG64). Sans lot renseigné : comportement historique
-            # inchangé (aucune écriture LotEntrepot).
-            if getattr(ligne, 'numero_lot', None):
+            # inchangé (aucune écriture LotEntrepot). AAPV23 — livraison
+            # directe au chantier : rien n'entre au dépôt, aucun lot crédité.
+            if getattr(ligne, 'numero_lot', None) and not (bc is not None and bc.chantier_livraison_id):
                 alimenter_lot_entrepot(
                     company=reception.company, produit=produit,
                     numero_lot=ligne.numero_lot,

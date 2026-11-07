@@ -172,6 +172,9 @@ def router_apres_controle(reception, user):
     from .services import quantite_entree_ligne_reception
 
     blocages = []
+    bc = reception.bon_commande
+    if bc is not None and bc.chantier_livraison_id:
+        return []  # AAPV23 — livré au chantier : rien en quarantaine au dépôt
     for ligne in reception.lignes.select_related('produit'):
         # ERR-ASTK59 — on bloque ce qui est RÉELLEMENT entré (plafonné au
         # reste dû, ASTK59), jamais la saisie : sur-livraison 12/10 ⇒ 10
