@@ -3732,3 +3732,25 @@ decisions:
     date: "2026-11-06"
     source: "Reda, question interactive, audit de parcours PA6"
     taches: [AAPV6]
+  - id: D-AMON-1
+    question: "Un abonnement de supervision (mensuel ou annuel, SAV → Supervision → Abonnements) n'est jamais facturé : sa « prochaine échéance » est posée une fois et reste dans le passé. L'ERP doit-il le facturer ?"
+    options:
+      - cle: vendu_une_fois
+        texte: "Comme les contrats de maintenance (D-ASAV-3) : vendu une fois avec le devis / facturé à la main ; « prochaine échéance » et « dernière facturation » retirées de l'écran et de l'API"
+      - cle: facturer_a_chaque_echeance
+        texte: "Facture brouillon créée à chaque échéance, échéance avancée d'une période (idempotent)"
+    reponse: vendu_une_fois
+    date: "2026-11-07"
+    source: "Reda, question interactive, audit de parcours PA7"
+    taches: []
+  - id: D-AMON-2
+    question: "La pénalité de disponibilité de l'installation client (calculée sur les relevés) est affichée à l'écran et dans le rapport O&M mais jamais stockée, décidée ni créditée. Que doit-elle devenir ?"
+    options:
+      - cle: affichage_interne
+        texte: "Indicateur interne seulement : jamais un montant dû ni imprimé dans le rapport client ; fenêtre juste et rien sans relevé"
+      - cle: stockee_decidee_avoir
+        texte: "Stockée par période, décision humaine tracée (émise / refusée), avoir via la facturation si émise"
+    reponse: affichage_interne
+    date: "2026-11-07"
+    source: "Reda, question interactive, audit de parcours PA7"
+    taches: []
