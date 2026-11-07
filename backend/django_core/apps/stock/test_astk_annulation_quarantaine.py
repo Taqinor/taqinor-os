@@ -74,6 +74,30 @@ class AnnulationQuarantaineTests(TestCase):
             reception=self.reception,
             statut=BlocageQualite.Statut.EN_QUARANTAINE).exists())
 
+    def test_retour_et_rebut_consomment_la_quarantaine(self):
+        """AAPV37 — stock sain 5 + 10 en quarantaine ; rebut 3 ramène le
+        blocage à 7 ; retour 7 du BCF le lève (motif du retour) : 5 sains
+        disponibles."""
+        from apps.stock.models import RetourFournisseur
+        from apps.stock.services import apply_retour_fournisseur, rebuter_produit
+        from apps.stock.services_wms import quantite_disponible_hors_quarantaine
+        Produit.objects.filter(pk=self.produit.pk).update(quantite_stock=15)
+        self.produit.refresh_from_db()
+        rebuter_produit(company=self.company, produit=self.produit, quantite=3,
+                        motif='casse', user=self.admin)
+        blocage = BlocageQualite.objects.get(reception=self.reception)
+        self.assertEqual((blocage.quantite, blocage.statut), (7, BlocageQualite.Statut.EN_QUARANTAINE))
+        retour = RetourFournisseur.objects.create(
+            company=self.company, reference='RF-AAPV37', fournisseur=self.fournisseur,
+            bon_commande=self.reception.bon_commande)
+        retour.lignes.create(produit=self.produit, quantite=7)
+        apply_retour_fournisseur(retour, self.admin)
+        blocage.refresh_from_db()
+        self.assertEqual(blocage.statut, BlocageQualite.Statut.LEVEE)
+        self.assertIn('RF-AAPV37', blocage.motif)
+        self.produit.refresh_from_db()
+        self.assertEqual(quantite_disponible_hors_quarantaine(self.company, self.produit), 5)
+
     def test_annulation_leve_la_quarantaine(self):
         annuler_reception_confirmee(self.reception, self.admin)
 

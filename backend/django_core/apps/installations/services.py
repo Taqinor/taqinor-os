@@ -5515,7 +5515,7 @@ def reduire_gr_ir_retour(*, retour, company):
     total = sum((p.montant_provision or Decimal('0') for p in provisions), Decimal('0'))
     reste = min(valeur, total - attendu)
     reduit = Decimal('0')
-    for prov in provisions.filter(lettre=False).order_by('-date_creation', '-pk'):
+    for prov in provisions.select_for_update().filter(lettre=False).order_by('-date_creation', '-pk'):
         if reste <= 0:
             break
         part = min(reste, prov.montant_provision or Decimal('0'))

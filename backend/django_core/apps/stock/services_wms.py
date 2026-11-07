@@ -1739,6 +1739,34 @@ def lever_quarantaine(*, blocage, user=None):
     return blocage
 
 
+def imputer_sortie_sur_quarantaine(*, company, produit, quantite, bon_commande=None,
+                                   user=None, motif=''):
+    """AAPV37 — un retour fournisseur ou un rebut qui ÉVACUE de la marchandise
+    consomme d'abord la quarantaine du produit (blocages des réceptions du
+    BCF d'abord) : un blocage couvert est levé au motif du geste, un blocage
+    partiellement couvert est réduit. Sans quarantaine : no-op."""
+    from .models_wms import BlocageQualite
+    blocages = list(BlocageQualite.objects.select_for_update().filter(
+        company=company, produit=produit,
+        statut=BlocageQualite.Statut.EN_QUARANTAINE).select_related('reception'))
+    bcf_id = getattr(bon_commande, 'pk', None)
+    blocages.sort(key=lambda b: (not (bcf_id and b.reception_id
+                                      and b.reception.bon_commande_id == bcf_id), b.pk))
+    reste = int(quantite or 0)
+    for blocage in blocages:
+        if reste <= 0:
+            break
+        if blocage.quantite <= reste:
+            reste -= blocage.quantite
+            blocage.motif = f'{blocage.motif} — {motif}'.strip(' —')
+            blocage.save(update_fields=['motif'])
+            lever_quarantaine(blocage=blocage, user=user)
+        else:
+            blocage.quantite -= reste
+            blocage.save(update_fields=['quantite'])
+            reste = 0
+
+
 def lever_quarantaine_bin(*, company, bin_id, user=None):
     """Lève TOUS les blocages d'un casier de quarantaine (un seul geste au
     poste qualité). Renvoie le nombre de blocages levés."""

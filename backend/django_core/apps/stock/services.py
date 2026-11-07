@@ -1463,6 +1463,11 @@ def apply_retour_fournisseur(retour, user):
             if retour.bon_commande_id:
                 _reouvrir_quantite_recue_bcf(
                     retour.bon_commande, ligne.produit_id, ligne.quantite)
+            from .services_wms import imputer_sortie_sur_quarantaine  # AAPV37
+            imputer_sortie_sur_quarantaine(
+                company=retour.company, produit=produit, quantite=ligne.quantite,
+                bon_commande=bc_retour, user=user,
+                motif=f'évacué par le retour {retour.reference}')
         retour.statut = RetourFournisseur.Statut.VALIDE
         retour.save(update_fields=['statut'])
         lignes_retour = [{'ligne': lg, 'produit': lg.produit, 'quantite': lg.quantite}
@@ -3286,6 +3291,10 @@ def rebuter_produit(
             quantite=quantite, quantite_avant=avant, quantite_apres=apres,
             reference=reference_chantier or 'REBUT', note=note,
             motif_rebut=motif, created_by=user)
+        from .services_wms import imputer_sortie_sur_quarantaine  # AAPV37
+        imputer_sortie_sur_quarantaine(
+            company=company, produit=p, quantite=quantite, user=user,
+            motif=f'évacué par le rebut ({motif})')
         if emplacement is not None and not emplacement.is_principal:
             se, _ = StockEmplacement.objects.select_for_update().get_or_create(
                 company=company, produit=p, emplacement=emplacement,
