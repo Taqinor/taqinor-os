@@ -6409,6 +6409,16 @@ def evaluer_rapprochement_3_voies(facture):
         return None
     if facture.statut_controle != FactureFournisseur.StatutControle.NORMALE:
         return facture.statut_controle
+    ht, tva, ttc = (facture.montant_ht or Decimal('0'), facture.montant_tva or Decimal('0'),
+                    facture.montant_ttc or Decimal('0'))
+    if ht <= 0 or abs(ht + tva - ttc) > Decimal('0.01'):  # AAPV2 — montants incohérents
+        facture.statut_controle = FactureFournisseur.StatutControle.EXCEPTION
+        facture.motif_ecart = (
+            f'Montants incohérents : HT {_fmt_montant_pdf(ht)} + TVA '
+            f'{_fmt_montant_pdf(tva)} ≠ TTC {_fmt_montant_pdf(ttc)}')
+        FactureFournisseur.objects.filter(pk=facture.pk).update(
+            statut_controle=facture.statut_controle, motif_ecart=facture.motif_ecart)
+        return facture.statut_controle
     company = facture.company
     facture_ht = (FactureFournisseur.objects
                   .filter(company=company,
