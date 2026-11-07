@@ -781,7 +781,8 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             if motif_series:
                 return Response({'detail': motif_series}, status=status.HTTP_400_BAD_REQUEST)
             if qte > 0:
-                plan.append((ligne, qte, series, (rec.get('numero_lot') or '').strip() or None))
+                plan.append((ligne, qte, series, (rec.get('numero_lot') or '').strip() or None,
+                             rec.get('date_peremption')))  # AAPV39
 
         if not plan:
             return Response(
@@ -805,12 +806,12 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
 
                 reception = create_with_reference(
                     ReceptionFournisseur, 'REC', bc.company, _creer)
-                for ligne, qte, series, lot in plan:
+                for ligne, qte, series, lot, peremption in plan:
                     reception.lignes.create(
                         ligne_commande=ligne,
                         produit=ligne.produit if ligne.produit_id else None,
                         quantite=qte, numeros_serie=series or None,
-                        numero_lot=lot)
+                        numero_lot=lot, date_peremption=peremption)
                 # ASTK62 — survivant UNIQUE (XPUR16 lignes libres, XPUR23
                 # destination, YPROC* GR/IR + réservation, NTWMS34 qualité,
                 # XSTK6 lots) : la confirmation de réception.

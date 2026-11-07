@@ -65,6 +65,7 @@ export function NouvelleReception({ bonsRecevables, onClose, onSaved }) {
   // N° de série / lot par ligne (optionnels, repliés par défaut).
   const [series, setSeries] = useState({})      // { ligneCmdId: texte }
   const [lots, setLots] = useState({})          // { ligneCmdId: texte }
+  const [peremptions, setPeremptions] = useState({})  // AAPV39 { ligneCmdId: AAAA-MM-JJ }
   const [ouvertes, setOuvertes] = useState({})  // { ligneCmdId: bool }
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
@@ -130,6 +131,7 @@ export function NouvelleReception({ bonsRecevables, onClose, onSaved }) {
         if (nums.length > 0) ligne.numeros_serie = nums
         const lot = (lots[l.id] ?? '').trim()
         if (lot) ligne.numero_lot = lot
+        if (lot && peremptions[l.id]) ligne.date_peremption = peremptions[l.id]
         return ligne
       })
       .filter(Boolean)
@@ -259,6 +261,11 @@ export function NouvelleReception({ bonsRecevables, onClose, onSaved }) {
                         <label className="text-xs font-medium" htmlFor={`rec-lot-${l.id}`}>N° de lot (optionnel)</label>
                         <Input id={`rec-lot-${l.id}`} className="h-9" value={lots[l.id] ?? ''}
                                onChange={(e) => setLots((x) => ({ ...x, [l.id]: e.target.value }))} />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-medium" htmlFor={`rec-per-${l.id}`}>Péremption du lot (optionnel)</label>
+                        <Input id={`rec-per-${l.id}`} type="date" className="h-9" value={peremptions[l.id] ?? ''}
+                               onChange={(e) => setPeremptions((x) => ({ ...x, [l.id]: e.target.value }))} />
                       </div>
                     </div>
                   )}

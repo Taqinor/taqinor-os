@@ -153,6 +153,8 @@ class BcfRecevoirLigneCorps(serializers.Serializer):
     numeros_serie = serializers.ListField(
         child=ChaineStricte(max_length=100), required=False, allow_null=True)
     numero_lot = ChaineStricte(required=False, allow_null=True, allow_blank=True, max_length=100)
+    # AAPV39 — péremption du lot reçu (FEFO, garde du périmé XSTK6).
+    date_peremption = serializers.DateField(required=False, allow_null=True)
 
 
 class BcfRecevoirCorps(serializers.Serializer):

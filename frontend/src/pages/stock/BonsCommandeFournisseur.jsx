@@ -591,7 +591,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
 
   const recevoir = async () => {
     const trac = Object.fromEntries(Object.entries(tracas).map(([id, t]) => [
-      id, { numeros_serie: parseSeries(t.series), numero_lot: t.lot }]))
+      id, { numeros_serie: parseSeries(t.series), numero_lot: t.lot, date_peremption: t.peremption }]))
     const ligneEnErreur = bcf.lignes.find((l) => erreurSeriesLigne(l, receptions, tracas))
     if (ligneEnErreur) { setError(erreurSeriesLigne(ligneEnErreur, receptions, tracas)); return }
     const payload = buildReceptionPayload(bcf.lignes, receptions, trac)
@@ -1046,6 +1046,11 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
                                  aria-label={`N° de lot — ${l.produit_nom ?? l.designation ?? 'ligne'}`}
                                  value={tracas[l.id]?.lot ?? ''}
                                  onChange={(e) => setTracas((t) => ({ ...t, [l.id]: { ...t[l.id], lot: e.target.value } }))} />
+                          {/* AAPV39 — péremption du lot (FEFO, garde du périmé). */}
+                          <Input type="date" className="h-8 w-48 text-xs"
+                                 aria-label={`Péremption du lot — ${l.produit_nom ?? l.designation ?? 'ligne'}`}
+                                 value={tracas[l.id]?.peremption ?? ''}
+                                 onChange={(e) => setTracas((t) => ({ ...t, [l.id]: { ...t[l.id], peremption: e.target.value } }))} />
                         </div>
                       )}
                     </td>

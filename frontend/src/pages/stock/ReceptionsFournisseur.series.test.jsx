@@ -53,6 +53,18 @@ describe('Réception — n° de série', () => {
     ])
   })
 
+  it('envoie la date de péremption du lot', async () => {
+    // AAPV39 — péremption saisie avec le lot.
+    await ouvrir()
+    fireEvent.change(screen.getByLabelText(/N° de lot/), { target: { value: 'L-1' } })
+    fireEvent.change(screen.getByLabelText(/Péremption du lot/), { target: { value: '2027-03-31' } })
+    fireEvent.click(screen.getByRole('button', { name: /Enregistrer en brouillon/ }))
+    await waitFor(() => expect(stockApi.createReceptionFournisseur).toHaveBeenCalled())
+    expect(stockApi.createReceptionFournisseur.mock.calls[0][0].lignes).toEqual([
+      { ligne_commande: 11, quantite: 3, numero_lot: 'L-1', date_peremption: '2027-03-31' },
+    ])
+  })
+
   it('refuse plus de séries que de quantités avec une erreur sous le champ', async () => {
     await ouvrir()
     fireEvent.change(screen.getByLabelText(/N° de série \(un par ligne/), { target: { value: 'a,b,c,d' } })
