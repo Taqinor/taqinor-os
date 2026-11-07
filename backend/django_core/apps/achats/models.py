@@ -839,6 +839,9 @@ class LigneRetourFournisseur(models.Model):
         related_name='lignes_retour_fournisseur')
     quantite = models.IntegerField()
     motif = models.CharField(max_length=255, blank=True, null=True)
+    # AAPV20 — lot et séries retournés (le lot est débité à la validation).
+    numero_lot = models.CharField(max_length=100, blank=True, null=True)
+    numeros_serie = models.JSONField(null=True, blank=True)
 
     class Meta:
         verbose_name = 'Ligne de retour fournisseur'

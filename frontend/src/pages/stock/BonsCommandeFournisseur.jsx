@@ -91,8 +91,8 @@ const fmtDateFR = (iso) => {
 
 // ── N19 — Modal de retour fournisseur (créé + validé depuis un BCF) ──────────
 // La validation décrémente le stock. Lien automatique vers le BCF d'origine.
-function RetourModal({ bcf, onClose, onDone }) {
-  const [saisies, setSaisies] = useState({})   // { ligneId: { qte, motif } }
+export function RetourModal({ bcf, onClose, onDone }) {
+  const [saisies, setSaisies] = useState({})   // { ligneId: { qte, motif, lot, series } }
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const lignes = bcf?.lignes ?? []
@@ -102,13 +102,18 @@ function RetourModal({ bcf, onClose, onDone }) {
 
   const submit = async () => {
     setError(null)
+    // AAPV20 — même règle de comptage des séries que la réception.
+    const erreurSeries = lignes.map((l) => erreurComptageSeries(
+      saisies[l.id]?.series, Math.floor(Number(saisies[l.id]?.qte)) || 0)).find(Boolean)
+    if (erreurSeries) { setError(erreurSeries); return }
     const payloadLignes = lignes
       .map((l) => {
         const s = saisies[l.id] ?? {}
         // Plafonne au reçu : on ne retourne jamais plus que ce qui a été reçu.
         const qte = Math.min(Math.floor(Number(s.qte)), Number(l.quantite_recue) || 0)
         return Number.isFinite(qte) && qte > 0
-          ? { produit: l.produit, quantite: qte, motif: s.motif || '' }
+          ? { produit: l.produit, quantite: qte, motif: s.motif || '',
+              numero_lot: s.lot || null, numeros_serie: parseSeries(s.series) }
           : null
       })
       .filter(Boolean)
@@ -148,6 +153,7 @@ function RetourModal({ bcf, onClose, onDone }) {
                 <th className="px-3 py-2 text-left font-semibold">Reçu</th>
                 <th className="px-3 py-2 text-left font-semibold">À retourner</th>
                 <th className="px-3 py-2 text-left font-semibold">Motif</th>
+                <th className="px-3 py-2 text-left font-semibold">Lot / séries</th>
               </tr>
             </thead>
           )}>
@@ -170,6 +176,14 @@ function RetourModal({ bcf, onClose, onDone }) {
                        value={saisies[l.id]?.motif ?? ''}
                        placeholder="ex. cassé à la livraison"
                        onChange={(e) => setLigne(l.id, { motif: e.target.value })} />
+              </td>
+              <td className="px-3 py-2">
+                <Input className="h-9" aria-label={`Lot retourné — ${l.produit_nom}`} placeholder="Lot"
+                       value={saisies[l.id]?.lot ?? ''}
+                       onChange={(e) => setLigne(l.id, { lot: e.target.value })} />
+                <Input className="mt-1 h-9" aria-label={`Séries retournées — ${l.produit_nom}`}
+                       placeholder="SN1, SN2…" value={saisies[l.id]?.series ?? ''}
+                       onChange={(e) => setLigne(l.id, { series: e.target.value })} />
               </td>
             </tr>
           ))}

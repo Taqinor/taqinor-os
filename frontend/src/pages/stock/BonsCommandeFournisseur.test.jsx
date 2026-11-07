@@ -45,6 +45,9 @@ vi.mock('../../api/stockApi', () => ({
     getAchatsHorsContrat: vi.fn(() => Promise.resolve({ data: [] })),
     // NTP2P21 — suggestions de fusion des BCF brouillon (lecture seule).
     getSuggestionsConsolidationBcf: vi.fn(() => Promise.resolve({ data: [] })),
+    // AAPV20 — retour fournisseur (lot / séries).
+    createRetourFournisseur: vi.fn(() => Promise.resolve({ data: { id: 3 } })),
+    validerRetourFournisseur: vi.fn(() => Promise.resolve({ data: {} })),
   },
 }))
 
@@ -53,7 +56,7 @@ vi.mock('../../api/coreApi', () => ({
 }))
 
 import stockApi from '../../api/stockApi'
-import BonsCommandeFournisseur, { BcfDetail, MotifAnnulationModal } from './BonsCommandeFournisseur.jsx'
+import BonsCommandeFournisseur, { BcfDetail, MotifAnnulationModal, RetourModal } from './BonsCommandeFournisseur.jsx'
 import { messageErreurBlob } from '../../utils/pdfBlob'
 import { installJsdomPolyfills } from './__tests__/jsdomPolyfills.js'
 
@@ -582,5 +585,23 @@ describe('Chantier d\'origine du BCF', () => {
   it('ne devine plus par regex quand le champ serveur est présent mais nul', () => {
     renderDetail({ bcf: { ...bcf, note: 'chantier CHT-X', chantier_origine: null, chantier_origine_reference: null } })
     expect(screen.queryByText(/Chantier/)).toBeNull()
+  })
+})
+
+describe('RetourModal (AAPV20)', () => {
+  it('RetourModal envoie lot et séries', async () => {
+    const bcf = { id: 4, reference: 'BCF-4', fournisseur: 2, lignes: [
+      { id: 9, produit: 7, produit_nom: 'Batterie', quantite_recue: 10 }] }
+    const onDone = vi.fn()
+    render(<ThemeProvider><RetourModal bcf={bcf} onClose={() => {}} onDone={onDone} /></ThemeProvider>)
+    fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '3' } })
+    fireEvent.change(screen.getByLabelText('Lot retourné — Batterie'), { target: { value: 'L-0425' } })
+    fireEvent.change(screen.getByLabelText('Séries retournées — Batterie'),
+      { target: { value: 'SN1, SN2, SN3' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Valider le retour' }))
+    await waitFor(() => expect(stockApi.createRetourFournisseur).toHaveBeenCalledWith(
+      expect.objectContaining({ lignes: [expect.objectContaining({
+        produit: 7, quantite: 3, numero_lot: 'L-0425', numeros_serie: ['SN1', 'SN2', 'SN3'] })] })))
+    await waitFor(() => expect(onDone).toHaveBeenCalled())
   })
 })

@@ -1386,11 +1386,21 @@ class LigneRetourFournisseurSerializer(SameCompanyFKSerializerMixin,
     same_company_fields = ('produit',)
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
     produit_sku = serializers.CharField(source='produit.sku', read_only=True)
+    numeros_serie = serializers.ListField(  # AAPV20
+        child=ChaineStricte(max_length=100), allow_null=True, required=False)
 
     class Meta:
         model = LigneRetourFournisseur
         fields = ['id', 'produit', 'produit_nom', 'produit_sku', 'quantite',
-                  'motif']
+                  'motif', 'numero_lot', 'numeros_serie']
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        nb = len(attrs.get('numeros_serie') or [])
+        if nb > (attrs.get('quantite') or 0):  # AAPV20 — comptage des séries
+            raise serializers.ValidationError({'numeros_serie': [
+                f'{nb} n° de série pour {attrs.get("quantite") or 0} retourné(s).']})
+        return attrs
 
     def validate_quantite(self, value):
         if value is None or value <= 0:

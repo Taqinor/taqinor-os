@@ -204,6 +204,29 @@ class AnnulationMiroirTests(TestCase):
         retour.refresh_from_db()
         self.assertEqual(retour.statut, RetourFournisseur.Statut.BROUILLON)
 
+    def test_retour_fournisseur_debite_le_lot_retourne(self):
+        """AAPV20 — retour de 3 du lot LOT-X (avec 3 séries) : le lot passe à
+        7, la ligne relue porte lot et séries ; plus de séries que la
+        quantité : 400 nommant le champ."""
+        bc, _rec = self._reception_camionnette_avec_lot()
+        url = '/api/django/stock/retours-fournisseur/'
+        corps = {'fournisseur': self.fournisseur.id, 'bon_commande': bc.id, 'lignes': [{
+            'produit': self.produit.id, 'quantite': 3, 'numero_lot': 'LOT-X',
+            'numeros_serie': ['SN1', 'SN2', 'SN3', 'SN4']}]}
+        rep = self.api.post(url, corps, format='json')
+        self.assertEqual(rep.status_code, 400, rep.content)
+        self.assertIn('numeros_serie', str(rep.data))
+        corps['lignes'][0]['numeros_serie'] = ['SN1', 'SN2', 'SN3']
+        rep = self.api.post(url, corps, format='json')
+        self.assertEqual(rep.status_code, 201, rep.content)
+        retour = RetourFournisseur.objects.get(pk=rep.data['id'])
+        apply_retour_fournisseur(retour, self.user)
+        lot = LotEntrepot.objects.get(produit=self.produit, numero_lot='LOT-X')
+        self.assertEqual(lot.quantite_restante, 7)
+        ligne = retour.lignes.get()
+        self.assertEqual((ligne.numero_lot, ligne.numeros_serie),
+                         ('LOT-X', ['SN1', 'SN2', 'SN3']))
+
     def test_retour_fournisseur_debite_l_emplacement(self):
         bc, _rec = self._reception_camionnette_avec_lot()
         retour = RetourFournisseur.objects.create(

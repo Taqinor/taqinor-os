@@ -1459,7 +1459,7 @@ def apply_retour_fournisseur(retour, user):
                              if bc_retour is not None
                              and bc_retour.emplacement_destination_id
                              else None),
-                numero_lot=None, quantite=ligne.quantite)
+                numero_lot=ligne.numero_lot or None, quantite=ligne.quantite)  # AAPV20
             if retour.bon_commande_id:
                 _reouvrir_quantite_recue_bcf(
                     retour.bon_commande, ligne.produit_id, ligne.quantite)
