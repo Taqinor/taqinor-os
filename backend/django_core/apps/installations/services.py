@@ -1382,13 +1382,16 @@ def consume_reservations(installation, user):
     return consumed
 
 
-def release_reservations(installation):
+def release_reservations(installation, produits=None):
     """N14 — libère les réservations NON consommées du chantier (annulation /
     clôture). Une réservation consommée n'est jamais touchée (le stock a déjà
-    été sorti). Renvoie le nombre de réservations libérées."""
-    return (StockReservation.objects
-            .filter(installation=installation, active=True, consomme=False)
-            .update(active=False))
+    été sorti). AAPV31 (D-AAPV-3) — ``produits`` borne la libération aux
+    produits réconciliés par une F11. Renvoie le nombre libéré."""
+    qs = StockReservation.objects.filter(
+        installation=installation, active=True, consomme=False)
+    if produits is not None:
+        qs = qs.filter(produit_id__in=list(produits))
+    return qs.update(active=False)
 
 
 _MARQUEUR_SOLDE_VENTE = 'reservation_soldee_vente'

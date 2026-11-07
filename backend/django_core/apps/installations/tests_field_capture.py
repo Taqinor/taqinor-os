@@ -297,6 +297,28 @@ class TestConsommation(_Base):
             produit=self.panneau,
             type_mouvement=MouvementStock.TypeMouvement.SORTIE).exists())
 
+    def test_f11_ne_libere_que_ses_produits(self):
+        """AAPV31 (D-AAPV-3) — F11 n°1 : panneaux posés, onduleur à 0 « posé à
+        l'intervention 2 » ⇒ l'onduleur reste réservé ; la F11 n°2 ne
+        propose que le reliquat (0 panneau, 1 onduleur)."""
+        from apps.installations.models import StockReservation
+        cons = field_capture.ensure_consommation(self.interv)
+        ond = cons.lignes.get(designation='Onduleur 5kW')
+        ond.quantite_utilisee = Decimal('0')
+        ond.justification = "Posé à l'intervention 2"
+        ond.save()
+        field_capture.validate_consommation(cons, self.user)
+        resa = StockReservation.objects.get(
+            installation=self.inst, produit=self.onduleur)
+        self.assertEqual((resa.quantite, resa.active, resa.consomme),
+                         (1, True, False))
+        interv2 = make_intervention(self.inst, self.company, self.user)
+        cons2 = field_capture.ensure_consommation(interv2)
+        lignes = {li.designation: li.quantite_utilisee
+                  for li in cons2.lignes.all()}
+        self.assertEqual(lignes['Panneau 550W'], Decimal('0'))
+        self.assertEqual(lignes['Onduleur 5kW'], Decimal('1'))
+
     def test_extra_unplanned_line(self):
         r = self.api.post(f'{self.url}/ajouter-ligne-consommation/', {
             'designation': 'Câble 6mm² (m)', 'quantite_utilisee': '25'},

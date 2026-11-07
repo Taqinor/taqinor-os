@@ -309,6 +309,7 @@ def ensure_consommation(intervention):
     if cons.valide:
         return cons
     besoins = _bom_quantities(intervention.installation)
+    deja_pose = _deja_pose_f11(intervention.installation)
     existing = {(li.produit_id, li.designation): li
                 for li in cons.lignes.filter(hors_nomenclature=False)}
     seen = set()
@@ -320,7 +321,8 @@ def ensure_consommation(intervention):
             ligne = ConsommationLigne(
                 company=company, consommation=cons, produit_id=produit_id,
                 designation=designation, quantite_prevue=qte,
-                quantite_utilisee=qte, ordre=i)
+                quantite_utilisee=max(qte - deja_pose.get(produit_id, 0), 0),
+                ordre=i)
             ligne.save()
         elif li.quantite_prevue != qte or li.ordre != i:
             li.quantite_prevue = qte
@@ -331,6 +333,16 @@ def ensure_consommation(intervention):
         if key not in seen:
             li.delete()
     return cons
+
+
+def _deja_pose_f11(installation):
+    """AAPV31 — ``{produit_id: Σ posé}`` des F11 déjà appliquées du chantier :
+    la F11 suivante n'est pré-remplie que du reliquat non posé."""
+    from django.db.models import Sum
+    return {r['produit_id']: r['t'] for r in ConsommationLigne.objects.filter(
+        consommation__intervention__installation=installation,
+        stock_applique=True, produit__isnull=False).order_by()
+        .values('produit_id').annotate(t=Sum('quantite_utilisee'))}
 
 
 def ligne_needs_justification(ligne):
@@ -350,17 +362,12 @@ def _deja_sorti_vente(installation):
     """ASTK258 — ``{'sorti': T, 'cumul': posé F11 déjà appliqué}`` par
     produit (T = ``sorties_de_la_vente``, F11 antérieures comprises) ; None
     pour un chantier sans devis."""
-    from django.db.models import Sum
     from apps.ventes.selectors import sorties_de_la_vente
-    from .models import ConsommationLigne
     if not installation.devis_id:
         return None
     return {'sorti': sorties_de_la_vente(
-        installation.devis_id, installation.company), 'cumul': {
-        r['produit_id']: r['t'] for r in ConsommationLigne.objects.filter(
-            consommation__intervention__installation=installation,
-            stock_applique=True, produit__isnull=False).order_by()
-        .values('produit_id').annotate(t=Sum('quantite_utilisee'))}}
+        installation.devis_id, installation.company),
+        'cumul': _deja_pose_f11(installation)}
 
 
 def validate_consommation(cons, user):
@@ -447,7 +454,8 @@ def validate_consommation(cons, user):
             release_reservations, solder_reservations_consommation_terrain,
         )
         solder_reservations_consommation_terrain(installation, poses)
-        release_reservations(installation)
+        # AAPV31 (D-AAPV-3) — seuls les produits posés par CETTE F11.
+        release_reservations(installation, produits=poses)
         cons.valide = True
         cons.valide_par = user
         cons.valide_le = timezone.now()
