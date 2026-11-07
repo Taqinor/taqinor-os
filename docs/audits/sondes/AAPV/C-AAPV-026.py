@@ -1,0 +1,74 @@
+# flake8: noqa  (sonde d'audit de parcours PA6 « Approvisionnement », rejouable par scripts/sonde.py — METHODE §C.4)
+"""K29 — livraison DIRECTE chantier (XPUR23) : la marchandise est sortie vers le chantier à la confirmation,
+mais le lot (XSTK6), les séries (YSTCK7) et la quarantaine (NTWMS34) sont posés à l'ENTREPÔT.
+BCF `chantier_livraison` CH-12 (chantier sans devis : chemin identique avant/après ASTK259), catégorie sous plan
+d'échantillonnage, stock libre sain 4 ; réception 10 panneaux lot L-9 + SN1..SN10 (vraie route
+`receptions-fournisseur/`), verdict NON CONFORME (`controle-qualite/`), `confirmer/` ; puis sortie des 4 sains
+(`mouvements/` SORTIE 4)."""
+SONDE = {"constat": "C-AAPV-026", "sha": "b432084786",
+         "attendu": "repro si stock libre 4 (entrée+sortie chantier) mais LotEntrepot L-9 = 10, 10 séries en_stock au dépôt principal, blocage 10, disponible 0 et sortie des 4 sains refusée 409",
+         "modeles": ["stock.Produit", "stock.MouvementStock", "stock.LotEntrepot", "stock.BlocageQualite",
+                     "installations.SerieEntrepot", "installations.Installation"]}
+
+
+def sonde(ctx):
+    from decimal import Decimal
+    from django.contrib.auth import get_user_model
+    from rest_framework.test import APIClient
+    from authentication.models import Company
+    from apps.crm.models import Client
+    from apps.installations.models import Installation
+    from apps.installations.models_serie_entrepot import SerieEntrepot
+    from apps.stock.models import (Fournisseur, BonCommandeFournisseur, LigneBonCommandeFournisseur,
+                                   Produit, Categorie, PlanEchantillonnage, BlocageQualite, LotEntrepot,
+                                   MouvementStock)
+    from apps.stock.services import quantite_disponible_hors_quarantaine
+    H = {'HTTP_HOST': 'localhost'}
+    co = Company.objects.create(nom='Sonde AAPV 026', slug='sonde-aapv-026')
+    u = get_user_model().objects.create_user(username='sonde_aapv_026', password='x', role_legacy='admin', company=co)
+    api = APIClient()
+    api.force_authenticate(u)
+    cl = Client.objects.create(company=co, nom='Client AAPV26', prenom='T')
+    ch = Installation.objects.create(company=co, reference='CH-AAPV26-12', client=cl)
+    cat = Categorie.objects.create(company=co, nom='Panneaux AAPV26')
+    PlanEchantillonnage.objects.create(company=co, categorie=cat, taux_echantillon_pct=20)
+    f = Fournisseur.objects.create(company=co, nom='F-AAPV26')
+    p = Produit.objects.create(company=co, nom='Panneau AAPV26', sku='AAPV-026', categorie=cat,
+                               prix_vente=Decimal('1500'), prix_achat=Decimal('1000'), quantite_stock=4)
+    bc = BonCommandeFournisseur.objects.create(company=co, fournisseur=f, reference='BCF-AAPV-026',
+                                               chantier_livraison=ch, statut=BonCommandeFournisseur.Statut.ENVOYE)
+    lc = LigneBonCommandeFournisseur.objects.create(bon_commande=bc, produit=p, quantite=10,
+                                                    prix_achat_unitaire=Decimal('1000'))
+    url = '/api/django/stock/receptions-fournisseur/'
+    r = api.post(url, {'bon_commande': bc.id, 'lignes': [{
+        'ligne_commande': lc.id, 'quantite': 10, 'numero_lot': 'L-9',
+        'numeros_serie': [f'SN{i}' for i in range(1, 11)]}]}, format='json', **H)
+    rid = r.data['id']
+    rq = api.post(f'{url}{rid}/controle-qualite/', {'resultat': 'non_conforme', 'unites_controlees': 2},
+                  format='json', **H)
+    rc = api.post(f'{url}{rid}/confirmer/', {}, format='json', **H)
+    p.refresh_from_db()
+    series = list(SerieEntrepot.objects.filter(company=co, produit=p).values_list(
+        'statut', 'emplacement__nom', 'emplacement__is_principal'))
+    obs = {'creation': r.status_code, 'controle': rq.status_code, 'confirmer': rc.status_code,
+           'stock_libre': p.quantite_stock,
+           'mouvements': list(MouvementStock.objects.filter(company=co, produit=p).order_by('id').values_list(
+               'type_mouvement', 'quantite', 'reference')),
+           'lots': list(LotEntrepot.objects.filter(company=co, produit=p).values_list(
+               'numero_lot', 'quantite_restante', 'emplacement_id')),
+           'series_en_stock': sum(1 for s in series if s[0] == 'en_stock'),
+           'series_emplacements': sorted(set((s[1], s[2]) for s in series)),
+           'blocages': list(BlocageQualite.objects.filter(company=co, produit=p).values_list('quantite', 'statut')),
+           'dispo_hors_quarantaine': quantite_disponible_hors_quarantaine(co, p)}
+    rs = api.post('/api/django/stock/mouvements/', {'produit': p.id, 'type_mouvement': 'sortie', 'quantite': 4,
+                                                    'note': 'sortie des 4 sains'}, format='json', **H)
+    obs['sortie_4_sains'] = rs.status_code
+    obs['sortie_detail'] = None if rs.status_code < 400 else str(rs.data)[:180]
+    print(obs)
+    temoin_ok = obs['confirmer'] == 200 and obs['stock_libre'] == 4
+    defaut = (any(q == 10 for _, q, _e in obs['lots']) and obs['series_en_stock'] == 10
+              and any(q == 10 and st == 'en_quarantaine' for q, st in obs['blocages'])
+              and obs['dispo_hors_quarantaine'] == 0 and rs.status_code == 409)
+    obs['temoin_ok'] = temoin_ok
+    obs['repro'] = bool(temoin_ok and defaut)
+    return obs
