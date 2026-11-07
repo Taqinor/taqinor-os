@@ -1421,6 +1421,11 @@ def apply_retour_fournisseur(retour, user):
     lignes = list(retour.lignes.select_related('produit'))
     if not lignes:
         raise ValueError('Le retour ne contient aucune ligne.')
+    bc_direct = retour.bon_commande if retour.bon_commande_id else None
+    if bc_direct is not None and bc_direct.chantier_livraison_id:  # AAPV10 — jumeau ASTK54
+        raise EtatIncompatible(
+            f'Marchandise livrée au chantier {bc_direct.chantier_livraison.reference} : ce '
+            "retour sortirait du stock du dépôt, qui ne l'a jamais reçue.")
     with transaction.atomic():
         # ASTK49 — le retour est relu SOUS verrou et son statut re-contrôlé :
         # une 2e validation sur une instance périmée ne sort rien.

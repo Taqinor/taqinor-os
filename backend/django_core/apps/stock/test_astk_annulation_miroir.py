@@ -180,6 +180,30 @@ class AnnulationMiroirTests(TestCase):
         self.produit.refresh_from_db()
         self.assertEqual(self.produit.quantite_stock, 50)
 
+    def test_retour_livraison_directe_refuse(self):
+        """AAPV10 — retour d'un BCF livré directement au chantier : 409 (comme
+        l'annulation), stock du dépôt intact, retour brouillon."""
+        from apps.installations.models import Installation
+        from apps.stock.erreurs_achats import EtatIncompatible
+        ch = Installation.objects.create(company=self.company, reference=f'CH-AAPV10-{self.n}')
+        bc = BonCommandeFournisseur.objects.create(
+            company=self.company, reference=f'BCF-AAPV10-{self.n}',
+            fournisseur=self.fournisseur, chantier_livraison=ch,
+            statut=BonCommandeFournisseur.Statut.ENVOYE)
+        retour = RetourFournisseur.objects.create(
+            company=self.company, reference=f'RET-AAPV10-{self.n}',
+            fournisseur=self.fournisseur, bon_commande=bc)
+        retour.lignes.create(produit=self.produit, quantite=2)
+        with self.assertRaises(EtatIncompatible) as err:
+            apply_retour_fournisseur(retour, self.user)
+        self.assertIn(f'CH-AAPV10-{self.n}', str(err.exception))
+        rep = self.api.post(f'/api/django/stock/retours-fournisseur/{retour.id}/valider/')
+        self.assertEqual(rep.status_code, 409, rep.content)
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.quantite_stock, 50)
+        retour.refresh_from_db()
+        self.assertEqual(retour.statut, RetourFournisseur.Statut.BROUILLON)
+
     def test_retour_fournisseur_debite_l_emplacement(self):
         bc, _rec = self._reception_camionnette_avec_lot()
         retour = RetourFournisseur.objects.create(
