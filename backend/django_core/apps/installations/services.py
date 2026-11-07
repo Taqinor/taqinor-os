@@ -5188,13 +5188,21 @@ def provisionner_gr_ir_reception(*, reception, company, user):
     if date_reception is None and reception.date_creation:
         date_reception = reception.date_creation.date()
 
-    return ReceptionNonFacturee.objects.create(
+    provision = ReceptionNonFacturee.objects.create(
         company=company, reception=reception, bon_commande=bc,
         libelle=f'Réception {reception.reference}',
         montant_provision=montant,
         date_reception=date_reception,
         created_by=user,
     )
+    # AAPV7 — provision née APRÈS la facture du BCF (« sur commande ») :
+    # lettrée à sa création par cette facture si le cumul facturé la couvre.
+    from apps.stock.selectors import derniere_facture_bcf
+    facture = derniere_facture_bcf(bc)
+    if facture is not None:
+        lettrer_gr_ir_facture(facture=facture, company=company, user=user)
+        provision.refresh_from_db()
+    return provision
 
 
 def lettrer_gr_ir_facture(*, facture, company, user):
@@ -5233,9 +5241,13 @@ def lettrer_gr_ir_facture(*, facture, company, user):
     montant_restant = (Decimal(str(montant_facture_bcf(bc) or 0))
                        - Decimal(str(deja_lettre)))
     lettres = []
-    provisions = ReceptionNonFacturee.objects.filter(
-        company=company, bon_commande=bc, lettre=False).order_by(
-        'date_creation', 'pk')
+    # AAPV7 — la facture d'une réception lettre d'abord SA provision, puis FIFO.
+    reception_id = getattr(facture, 'reception_id', None)
+    provisions = sorted(
+        ReceptionNonFacturee.objects.filter(
+            company=company, bon_commande=bc, lettre=False),
+        key=lambda p: (not (reception_id and p.reception_id == reception_id),
+                       p.date_creation, p.pk))
     for prov in provisions:
         montant_prov = prov.montant_provision or Decimal('0')
         if montant_restant < montant_prov or montant_restant <= 0:
@@ -5350,6 +5362,17 @@ def extourner_gr_ir_reception(*, reception, company):
         return 0
     deleted, _ = ReceptionNonFacturee.objects.filter(
         company=company, reception=reception, lettre=False).delete()
+    # AAPV7 — provision lettrée par la facture d'une AUTRE réception :
+    # supprimée, puis cette facture re-lettre la provision sœur. Un lettrage
+    # manuel (facture nulle) ou par sa propre facture n'est jamais touché.
+    for prov in list(ReceptionNonFacturee.objects.filter(
+            company=company, reception=reception, lettre=True,
+            facture__reception__isnull=False).exclude(
+            facture__reception_id=reception.pk).select_related('facture')):
+        facture = prov.facture
+        prov.delete()
+        deleted += 1
+        lettrer_gr_ir_facture(facture=facture, company=company, user=None)
     return deleted
 
 
