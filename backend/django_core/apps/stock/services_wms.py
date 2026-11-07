@@ -2556,39 +2556,16 @@ def valeur_transfert(produit, quantite):
     return (prix * Decimal(int(quantite or 0))).quantize(Decimal('0.01'))
 
 
-def demande_transfert_approuvee_existe(company, *, produit_id, source_id,
-                                       destination_id, quantite):
-    """Vrai si une demande FG325 APPROUVÉE couvre exactement ce transfert.
-
-    Le modèle vit dans ``installations`` : il est atteint par l'ACCESSEUR
-    INVERSE de la string-FK que cette app expose (``EmplacementStock`` →
-    demandes sortantes), jamais par un import de ``apps.installations.models``.
-    C'est ce qui permet à l'exécution d'une demande approuvée de traverser la
-    garde de seuil sans que l'app ``installations`` ait à changer d'appel.
-    """
-    from .models import EmplacementStock
-
-    modele = EmplacementStock._meta.get_field(
-        'installations_demandes_transfert_sortantes').related_model
-    return modele.objects.filter(
-        company=company, produit_id=produit_id, source_id=source_id,
-        destination_id=destination_id, quantite=quantite,
-        statut='approuve').exists()
-
-
 def transfert_exige_approbation(company, produit, quantite, *, source_id=None,
                                 destination_id=None):
-    """Vrai si CE transfert dépasse le seuil configuré ET n'est couvert par
-    aucune demande de transfert déjà approuvée (FG325)."""
+    """Vrai si CE transfert dépasse le seuil configuré. AAPV74 — une
+    demande FG325 approuvée ne couvre plus un transfert DIRECT : seule son
+    exécution (``transfer_stock(…, demande_approuvee=True)``) traverse la
+    garde. ``source_id``/``destination_id`` gardés pour la signature."""
     seuil = seuil_approbation_transfert(company)
     if seuil <= 0:
         return False
     if valeur_transfert(produit, quantite) <= seuil:
-        return False
-    if source_id and destination_id and demande_transfert_approuvee_existe(
-            company, produit_id=getattr(produit, 'id', None),
-            source_id=source_id, destination_id=destination_id,
-            quantite=quantite):
         return False
     return True
 

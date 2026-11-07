@@ -410,15 +410,14 @@ def transfer_stock(*, company, user, produit_id, source_id, destination_id,
             raise ValueError('Emplacement introuvable dans cette société.')
 
         # NTWMS21 — garde d'approbation (no-op tant que le seuil vaut 0).
-        # Une demande FG325 (`installations.DemandeTransfert`) APPROUVÉE
-        # traverse la garde : son action `executer` appelle ce service sans
-        # drapeau, et elle ne doit évidemment pas être re-bloquée.
+        # AAPV74 — seule l'EXÉCUTION d'une demande FG325 approuvée
+        # (`executer`, qui passe demande_approuvee=True) traverse la garde.
         if not demande_approuvee and transfert_exige_approbation(
                 company, produit, quantite, source_id=source.id,
                 destination_id=destination.id):
             raise EtatIncompatible(
                 'Ce transfert dépasse le seuil d\'approbation de la société : '
-                'ouvrez une demande de transfert et faites-la approuver.')
+                'exécutez la demande de transfert approuvée.')
 
         records = {se.emplacement_id: se for se in
                    produit.stocks_emplacement.select_for_update()}
@@ -9652,7 +9651,6 @@ from .services_wms import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF2
     sceller_unite_logistique,
     solde_portail_tiers,
     suggestions_rangement_reception,
-    demande_transfert_approuvee_existe,
     transfert_exige_approbation,
     valeur_transfert,
     verifier_capacite_plan,
@@ -9665,7 +9663,7 @@ __all__ = [
     'controler_scan_emballage', 'creer_expedition_transporteur', 'creer_plan_chargement',
     'creer_retour_client', 'creer_unite_logistique', 'creer_vague_depuis_besoins',
     'declarer_mouvement_rebut', 'decrementer_stock_expedition',
-    'demande_transfert_approuvee_existe', 'deplacer_unite_logistique',
+    'deplacer_unite_logistique',
     'enregistrer_arrivee_chauffeur', 'enregistrer_mouvement_scanne', 'exporter_asn',
     'generer_comptages_tournants', 'generer_etiquette_expedition', 'get_or_create_produit',
     'impact_rappel', 'importer_asn',
