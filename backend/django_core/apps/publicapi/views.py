@@ -96,7 +96,8 @@ class DocsView(APIView):
     @extend_schema(responses=_DOCS_REPONSE)
     def get(self, request):
         from .docs import public_api_reference
-        return Response(public_api_reference())
+        # NTI18N44 — `?lang=en` : descriptions en anglais (même structure).
+        return Response(public_api_reference(request.query_params.get('lang')))
 
 
 class ApiKeyCreeSerializer(ApiKeySerializer):

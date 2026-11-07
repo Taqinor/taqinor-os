@@ -328,10 +328,18 @@ def _webhooks(ref):
     return webhooks
 
 
-def build_openapi_schema():
+def build_openapi_schema(langue='fr'):
     """Construit le document OpenAPI 3.1 complet — 100 % dérivé de
-    `docs.public_api_reference()` (source de vérité unique, FG105)."""
-    ref = public_api_reference()
+    `docs.public_api_reference()` (source de vérité unique, FG105).
+
+    NTI18N44 — ``langue='en'`` : mêmes chemins, mêmes schémas, mêmes champs ;
+    seuls les textes descriptifs passent en anglais (`docs_i18n`)."""
+    from .docs_i18n import traduire_openapi
+    return traduire_openapi(_build_openapi_schema(langue), langue)
+
+
+def _build_openapi_schema(langue):
+    ref = public_api_reference(langue)
     paths = {}
 
     for endpoint in ref['endpoints']:
@@ -417,4 +425,5 @@ class PublicOpenApiSchemaView(APIView):
         'paths': serializers.JSONField(),
         'webhooks': serializers.JSONField()}))
     def get(self, request):
-        return Response(build_openapi_schema())
+        # NTI18N44 — `?lang=en` : descriptions en anglais (même structure).
+        return Response(build_openapi_schema(request.query_params.get('lang')))

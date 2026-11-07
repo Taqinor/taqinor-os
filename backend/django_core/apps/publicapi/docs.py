@@ -140,8 +140,18 @@ CHARGE_CALEPINAGE_SIMULE = [
 ]
 
 
-def public_api_reference():
-    """Construit la référence FR de l'API publique (dict sérialisable en JSON)."""
+def public_api_reference(langue='fr'):
+    """Référence de l'API publique (dict sérialisable en JSON).
+
+    NTI18N44 — ``langue='en'`` traduit les TEXTES descriptifs (couche
+    ``docs_i18n``) ; la structure et toutes les clés restent identiques, une
+    langue inconnue donne le français historique."""
+    from .docs_i18n import traduire_reference
+    return traduire_reference(_reference_fr(), langue)
+
+
+def _reference_fr():
+    """Construit la référence FR de l'API publique (source de vérité)."""
     return {
         'titre': "API publique Taqinor — Référence",
         'version': '1',
@@ -201,6 +211,14 @@ def public_api_reference():
                 "2026-06-30T12:00:00Z) ne renvoie que les enregistrements "
                 "modifiés depuis cet horodatage — idéal pour un polling "
                 "incrémental sans re-scanner toute la liste."
+            ),
+            # NTI18N44 — sélecteur de langue des MÉTADONNÉES uniquement.
+            'langue': (
+                "?lang=fr|en sur `GET /api/public/v1/openapi.json` et sur "
+                "cette référence : descriptions d'endpoints, de scopes et "
+                "d'évènements en français (défaut) ou en anglais. Même "
+                "structure, mêmes champs, mêmes chemins : seuls les textes "
+                "changent (les données renvoyées ne sont jamais traduites)."
             ),
         },
         'endpoints': [
