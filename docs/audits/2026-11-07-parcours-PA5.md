@@ -142,4 +142,4 @@ Porte : 0 réfuté sur 50 candidats de découverte et 8 trous de la critique (58
 
 ## 9. Coût et routage
 Coût : H0 S1 O16 F1 · jetons sous-agents ≈ 6 M · tâches 70 (P0 8 P2 27 P3 35 GATED 0) ; une critique de complétude Fable, 8 trous dont 4 sondés (chantier annulé sans abonné SAV, ticket annulé et son intervention, réserve et ticket sans synchro, prêt sans rappel) et 4 lus (déplacement, porte de création, suppression, QR d'un retiré).
-Routage : `PLAN_AUDIT_CHANTIERS.md` 43 · `PLAN_AUDIT_SAV.md` 20 · `PLAN_AUDIT_DOCUMENTS.md` 3 · `PLAN_AUDIT_TRANSVERSE.md` 2 · `PLAN_AUDIT_MOTEUR.md` 1 · `PLAN_AUDIT_FACTURATION.md` 1 · aucune tâche d'acceptation posée · PR #0.
+Routage : `PLAN_AUDIT_CHANTIERS.md` 43 · `PLAN_AUDIT_SAV.md` 20 · `PLAN_AUDIT_DOCUMENTS.md` 3 · `PLAN_AUDIT_TRANSVERSE.md` 2 · `PLAN_AUDIT_MOTEUR.md` 1 · `PLAN_AUDIT_FACTURATION.md` 1 · aucune tâche d'acceptation posée · PR #1297.
