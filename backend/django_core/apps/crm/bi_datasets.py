@@ -43,6 +43,9 @@ CLIENTS_DATASET = 'crm_clients'
 CLIENTS_FIELDS = [
     'id', 'ville', 'mois_creation', 'type', 'ice', 'adresse', 'telephone',
     'email', 'nom',
+    # NTI18N53 — langue documentaire : alimente le widget « Répartition des
+    # clients par langue documentaire » du noyau (core.dashboard_data).
+    'langue_document',
 ]
 
 # NTDATA5 — libellé FR + nature par champ. Le LIBELLÉ d'une étape n'est PAS
@@ -76,6 +79,8 @@ CLIENTS_FIELD_META = {
     'telephone': {'label': 'Téléphone', 'type': 'dimension'},
     'email': {'label': 'Email', 'type': 'dimension'},
     'nom': {'label': 'Nom', 'type': 'dimension'},
+    'langue_document': {'label': 'Langue des documents',
+                        'type': 'dimension'},
 }
 
 
