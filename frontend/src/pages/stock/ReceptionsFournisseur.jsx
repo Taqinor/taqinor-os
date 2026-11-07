@@ -392,7 +392,10 @@ export function ReceptionDetail({ reception, onClose, onSaved, peutReceptionner 
           )}
           {lignes.map((l) => (
             <tr key={l.id} className="border-t border-border">
-              <CellulesProduitQuantite l={l} />
+              {/* AAPV40 — confirmée : la quantité ENTRÉE, la saisie en second. */}
+              <CellulesProduitQuantite l={isConfirme && l.quantite_appliquee != null
+                && Number(l.quantite_appliquee) !== Number(l.quantite)
+                ? { ...l, quantite: `${l.quantite_appliquee} entré(s) (saisi ${l.quantite})` } : l} />
               <td className="px-3 py-2">
                 {[(l.numeros_serie ?? []).join(', '), l.numero_lot ? `Lot ${l.numero_lot}` : '']
                   .filter(Boolean).join(' · ') || '—'}

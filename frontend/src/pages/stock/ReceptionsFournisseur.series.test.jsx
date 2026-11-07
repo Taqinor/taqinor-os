@@ -81,4 +81,17 @@ describe('Réception — détail enregistré (ACHT129)', () => {
     expect(within(ligne('Câble')).getByText('Lot L-42')).toBeTruthy()
     expect(within(ligne('Vis')).getByText('—')).toBeTruthy()
   })
+
+  it('affiche la quantité entrée', () => {
+    // AAPV40 — sur-livraison 12 sur un reste 10 : 10 entrés, la saisie en second.
+    const reception = {
+      id: 10, reference: 'REC-10', statut: 'confirme',
+      lignes: [{ id: 1, produit_nom: 'Panneau', quantite: 12, quantite_appliquee: 10,
+        numeros_serie: [], numero_lot: '' }],
+    }
+    render(<ThemeProvider>
+      <ReceptionDetail reception={reception} onClose={() => {}} onSaved={() => {}} />
+    </ThemeProvider>)
+    expect(screen.getByText('10 entré(s) (saisi 12)')).toBeTruthy()
+  })
 })

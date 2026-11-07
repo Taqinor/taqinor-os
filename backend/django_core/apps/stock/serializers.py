@@ -1884,7 +1884,13 @@ class ReceptionFournisseurSerializer(IdInconnu404LignesMixin, CompanyScopedRelat
         source='recu_par.username', read_only=True, allow_null=True)
     created_by_username = serializers.CharField(
         source='created_by.username', read_only=True, allow_null=True)
-    total_recu = serializers.IntegerField(read_only=True)
+    # AAPV40 — ce qui est RÉELLEMENT entré (quantité appliquée, ASTK59).
+    total_recu = serializers.SerializerMethodField()
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_total_recu(self, obj):
+        from .services import quantite_entree_ligne_reception
+        return sum((quantite_entree_ligne_reception(lg) for lg in obj.lignes.all()), 0)
 
     class Meta:
         model = ReceptionFournisseur

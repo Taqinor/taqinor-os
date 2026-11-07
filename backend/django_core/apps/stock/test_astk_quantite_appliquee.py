@@ -136,6 +136,15 @@ class QuantiteAppliqueeTests(TestCase):
         facture = facturer_reception(self.company, self.user, rec)
         self.assertEqual(facture.montant_ht, Decimal('600.00'))
 
+    def test_total_recu_sert_la_quantite_appliquee(self):
+        """AAPV40 — sur-livraison 12 sur un reste 10 : `total_recu` servi 10."""
+        bc, ligne = self._bcf(quantite=10)
+        rec = self._creer_orm(bc, ligne, 12)
+        confirm_reception_fournisseur(rec, self.user)
+        resp = self.api.get(f'/api/django/stock/receptions-fournisseur/{rec.id}/')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.data['total_recu'], 10)
+
     def test_annulation_relit_quantite_appliquee(self):
         Produit.objects.filter(pk=self.produit.pk).update(quantite_stock=5)
         bc, ligne = self._bcf(quantite=10)

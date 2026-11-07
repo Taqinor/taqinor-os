@@ -414,11 +414,6 @@ class ReceptionFournisseur(models.Model):
     def __str__(self):
         return self.reference
 
-    @property
-    def total_recu(self):
-        """Nombre total d'articles reçus sur cette réception."""
-        return sum((ligne.quantite for ligne in self.lignes.all()), 0)
-
 
 class LigneReceptionFournisseur(models.Model):
     """Ligne d'une réception fournisseur : la ligne de BCF concernée, le produit
