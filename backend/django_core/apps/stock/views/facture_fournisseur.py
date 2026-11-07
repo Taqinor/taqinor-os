@@ -22,7 +22,6 @@ from ..serializers import (
 from authentication.permissions import (
     IsAnyRole,
     IsAdminRole,
-    IsResponsableOrAdmin,
     HasPermissionOrLegacy,
 )
 
@@ -89,7 +88,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
     parser_classes = [JSONParser]
 
     def get_permissions(self):
-        if self.action in ('comptes_a_payer', 'en_exception'):
+        if self.action in ('comptes_a_payer', 'en_exception', 'releve_deductions_tva'):
             # ASTK11 (D-ASTK-2) — files dont l'objet est un montant d'achat :
             # `prix_achat_voir` requis (repli légacy can_view_buy_prices).
             from ..permissions import PeutVoirPrixAchat
@@ -108,8 +107,6 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
             # régler, son échéancier, résoudre une exception, l'importer
             # (OCR/UBL) = « payer » : ``achats_payer`` (repli légacy).
             return [HasPermissionOrLegacy('achats_payer')()]
-        elif self.action == 'releve_deductions_tva':
-            return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
         return [IsAdminRole()]
