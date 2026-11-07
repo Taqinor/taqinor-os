@@ -3855,6 +3855,9 @@ def _construire_facture_fournisseur(company, user, bon_commande, lignes, *,
             type_achat=type_achat_par_defaut(bon_commande.fournisseur),  # AAPV6
             montant_ht=montant_ht, montant_tva=montant_tva,
             montant_ttc=montant_ttc,
+            # AAPV44 — la facture née d'un BCF en devise en porte devise et taux.
+            devise=bon_commande.devise, taux_change=bon_commande.taux_change,
+            montant_ttc_devise=_ttc_en_devise(montant_ttc, bon_commande),
             statut=FactureFournisseur.Statut.A_PAYER,
             date_facture=timezone.now().date(),
             note=note, created_by=user)
@@ -5849,6 +5852,15 @@ def export_ras_tva_xlsx(company, *, date_debut=None, date_fin=None):
 
 
 # ── XPUR3 — Multi-devises sur les achats ────────────────────────────────────
+
+def _ttc_en_devise(montant_ttc_mad, bon_commande):
+    """AAPV44 — TTC dans la devise du BCF (MAD / taux, 0,01) ; None en MAD."""
+    from .models import DeviseAchat
+    taux = _dec(bon_commande.taux_change)
+    if bon_commande.devise == DeviseAchat.MAD or not taux:
+        return None
+    return (Decimal(str(montant_ttc_mad)) / taux).quantize(Decimal('0.01'))
+
 
 def contre_valeur_mad(montant_devise, taux_change):
     """XPUR3 — convertit un montant en devise vers sa contre-valeur MAD au

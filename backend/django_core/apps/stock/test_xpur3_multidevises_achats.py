@@ -140,6 +140,53 @@ class TestFactureMultiDevise(Xpur3Base):
         self.assertEqual(Decimal(resp.data['montant_ttc']), Decimal('4950.00'))
         self.assertEqual(resp.data['devise'], 'USD')
 
+    def test_facture_eur_convertit_ht_tva_et_fg56_porte_devise(self):
+        """AAPV44 — facture API EUR : HT et TVA convertis comme le TTC, RAS
+        sur la TVA MAD ; facture FG56 d'un BCF EUR : devise et taux portés,
+        TTC en devise = TTC / taux."""
+        import datetime
+        from apps.stock.models import (
+            AchatsParametres, BonCommandeFournisseur, FactureFournisseur,
+            LigneBonCommandeFournisseur, LigneReceptionFournisseur, Produit,
+            ReceptionFournisseur,
+        )
+        from apps.stock.services import facturer_reception
+        AchatsParametres.objects.update_or_create(
+            company=self.company, defaults={'ras_tva_actif': True})
+        resp = self.api.post('/api/django/stock/factures-fournisseur/', {
+            'fournisseur': self.fournisseur.id, 'devise': DeviseAchat.EUR,
+            'taux_change': '10.8', 'montant_ttc_devise': '1200',
+            'montant_ht': '1000', 'montant_tva': '200'}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        facture = FactureFournisseur.objects.get(pk=resp.data['id'])
+        self.assertEqual((facture.montant_ht, facture.montant_tva, facture.montant_ttc),
+                         (Decimal('10800.00'), Decimal('2160.00'), Decimal('12960.00')))
+        resp = self.api.post('/api/django/stock/paiements-fournisseur/', {
+            'facture': facture.id, 'montant': '12960'}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(Decimal(resp.data['montant_ras_tva']), Decimal('2160.00'))
+
+        bcf = BonCommandeFournisseur.objects.create(
+            company=self.company, reference='BCF-AAPV44', fournisseur=self.fournisseur,
+            statut=BonCommandeFournisseur.Statut.ENVOYE, devise=DeviseAchat.EUR,
+            taux_change=Decimal('10.8'))
+        produit = Produit.objects.create(
+            company=self.company, nom='Onduleur AAPV44', prix_vente=Decimal('1'))
+        ligne = LigneBonCommandeFournisseur.objects.create(
+            bon_commande=bcf, produit=produit, quantite=1,
+            prix_achat_unitaire=Decimal('10800'))
+        rec = ReceptionFournisseur.objects.create(
+            company=self.company, reference='REC-AAPV44', bon_commande=bcf,
+            statut=ReceptionFournisseur.Statut.CONFIRME,
+            date_reception=datetime.date(2026, 10, 1))
+        LigneReceptionFournisseur.objects.create(
+            reception=rec, ligne_commande=ligne, produit=produit, quantite=1)
+        ff = FactureFournisseur.objects.get(pk=facturer_reception(self.company, self.user, rec).pk)
+        self.assertEqual(ff.devise, DeviseAchat.EUR)
+        self.assertEqual(ff.taux_change, Decimal('10.800000'))
+        self.assertEqual(ff.montant_ttc_devise,
+                         (ff.montant_ttc / Decimal('10.8')).quantize(Decimal('0.01')))
+
     def test_facture_mad_default_unchanged(self):
         resp = self.api.post('/api/django/stock/factures-fournisseur/', {
             'fournisseur': self.fournisseur.id,

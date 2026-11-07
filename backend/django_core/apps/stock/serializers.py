@@ -2188,6 +2188,7 @@ class FactureFournisseurSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMix
             validated_data.get('devise'), validated_data.get('taux_change'))
         if mad is not None:
             validated_data['montant_ttc'] = mad
+            self._convertir_ht_tva(validated_data, validated_data.get('taux_change'))
         # XPUR6 — auto-dérive date_echeance depuis les conditions de paiement
         # du fournisseur QUAND elle n'est pas explicitement fournie (reste
         # modifiable ensuite). No-op si le fournisseur n'a pas de délai
@@ -2241,6 +2242,15 @@ class FactureFournisseurSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMix
                 'champs': changes,
             })
 
+    @staticmethod
+    def _convertir_ht_tva(validated_data, taux_change):
+        """AAPV44 — document en devise : HT et TVA du corps sont, comme le
+        TTC, en devise ⇒ convertis en MAD au même taux (XPUR3)."""
+        from .services import contre_valeur_mad
+        for champ in ('montant_ht', 'montant_tva'):
+            if validated_data.get(champ) is not None:
+                validated_data[champ] = contre_valeur_mad(validated_data[champ], taux_change)
+
     def update(self, instance, validated_data):
         self._verifier_verrou_imputation(instance, validated_data)
         # ASTK26 — un PATCH du montant en devise / du taux ré-applique la
@@ -2255,6 +2265,8 @@ class FactureFournisseurSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMix
                 validated_data.get('taux_change', instance.taux_change))
             if mad is not None:
                 validated_data['montant_ttc'] = mad
+                self._convertir_ht_tva(
+                    validated_data, validated_data.get('taux_change', instance.taux_change))
         # DC16 — sur une FF déjà liée à un BCF (typiquement issue de FG56), les
         # montants restent ceux dérivés de la réception : on rejette toute
         # tentative de les écraser à la main.
