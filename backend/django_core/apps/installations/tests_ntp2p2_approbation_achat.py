@@ -244,8 +244,37 @@ class ArbitrageRegleApprobationAchatTests(TestCase):
 
     def setUp(self):
         self.company = make_company()
-        self.user = make_user(self.company)
+        # AAPV34 — l'écriture des règles est réservée à l'Administrateur.
+        self.user = make_user(self.company, role='admin')
         self.api = auth(self.user)
+
+    def test_ecriture_reservee_a_l_administrateur(self):
+        """AAPV34 — Technicien et Responsable : 403 en écriture, règle
+        inchangée ; lecture tout rôle ; Administrateur 200/201/204."""
+        from django.core.management import call_command
+        from apps.roles.models import Role
+        call_command('init_roles', verbosity=0)
+        regle = RegleApprobationAchat.objects.create(
+            company=self.company, libelle='> 50 000', montant_min=50000,
+            nombre_approbateurs=2)
+        tech = User.objects.create_user(
+            username=f'ntp2p2-tech-{next(_seq)}', password='x',
+            company=self.company,
+            role=Role.objects.get(company=self.company, nom='Technicien'))
+        url = f'{BASE}/regles-approbation-achat/'
+        for user in (tech, make_user(self.company)):
+            api = auth(user)
+            self.assertEqual(api.get(url).status_code, 200)
+            self.assertEqual(api.patch(f'{url}{regle.pk}/', {'actif': False},
+                                       format='json').status_code, 403)
+            self.assertEqual(api.post(url, {
+                'libelle': 'X', 'montant_min': '1.00'}, format='json').status_code, 403)
+            self.assertEqual(api.delete(f'{url}{regle.pk}/').status_code, 403)
+        regle.refresh_from_db()
+        self.assertTrue(regle.actif)
+        self.assertEqual(self.api.patch(f'{url}{regle.pk}/', {'actif': False},
+                                        format='json').status_code, 200)
+        self.assertEqual(self.api.delete(f'{url}{regle.pk}/').status_code, 204)
 
     def test_regle_la_plus_prioritaire_gagne(self):
         from apps.installations import services

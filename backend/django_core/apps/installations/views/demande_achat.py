@@ -26,7 +26,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import (
-    HasPermissionOrLegacy, IsAnyRole, IsResponsableOrAdmin,
+    HasPermissionOrLegacy, IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
 from core.conflit_etat import ConflitEtat
 from core.documents import TransitionRefusee
@@ -620,7 +620,9 @@ class RegleApprobationAchatViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):
             return [IsAnyRole()]
-        return [IsResponsableOrAdmin()]
+        # AAPV34 — écriture des règles : Administrateur seul (patron
+        # SeuilApprobationBCFViewSet).
+        return [IsAdminRole()]
 
     def get_queryset(self):
         qs = super().get_queryset()
