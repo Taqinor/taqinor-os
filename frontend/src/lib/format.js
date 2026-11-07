@@ -66,6 +66,26 @@ export function formatMAD(value, { decimals = 2, withSymbol = true, locale } = {
 }
 
 /**
+ * NTI18N9 — Montant dans la devise d'AFFICHAGE de la société
+ * (`CompanyProfile.devise_tenant`, ISO 4217, défaut MAD), lue depuis le store
+ * `parametres` (`profile.devise_tenant`) via `useDeviseTenant`. `devise`
+ * omise → MAD : sortie IDENTIQUE à `formatMAD`. Réservé aux dashboards /
+ * listes / rapports SANS devise document explicite : un devis ou une facture
+ * garde sa propre devise (FG52) — `formatMAD` et les PDF ne changent pas.
+ */
+export function formatMontant(value, { devise, decimals = 2, withSymbol = true, locale } = {}) {
+  const code = /^[A-Z]{3}$/.test(devise || '') ? devise : 'MAD'
+  const n = toNumber(value)
+  if (n === null) return '—'
+  const body = new Intl.NumberFormat(resolveLocaleTag(locale), {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+    numberingSystem: numberingSystemFor(locale),
+  }).format(n)
+  return withSymbol ? `${body} ${code}` : body
+}
+
+/**
  * Nombre localisé — fr-FR par défaut (espace fine milliers, virgule
  * décimale) ; `locale: 'en'` → virgule milliers + point décimal ; `locale:
  * 'ar'` → mêmes séparateurs qu'ar-MA (chiffres occidentaux, jamais
