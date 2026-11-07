@@ -14,6 +14,9 @@ vi.mock('../../api/stockApi', () => ({
     factureFournisseurPdf: vi.fn(),
     ajouterPaiementFournisseur: vi.fn(),
     receptionEtiquettes: vi.fn(),
+    // AAPV24 — contrôle qualité à réception.
+    getEchantillonnageReception: vi.fn(() => Promise.resolve({ data: { echantillon_requis: false } })),
+    saisirControleQualiteReception: vi.fn(),
   },
 }))
 
@@ -184,5 +187,27 @@ describe('ReceptionDetail — annulation confirmée par AlertDialog (ASTK231)', 
     await waitFor(() => expect(stockApi.annulerReceptionFournisseur).toHaveBeenCalledWith(12))
     expect(await screen.findByText(/ne sont plus en stock/)).toBeInTheDocument()
     expect(onSaved).not.toHaveBeenCalled()
+  })
+})
+
+describe('ReceptionDetail — contrôle qualité', () => {
+  it('saisit le verdict puis autorise la confirmation', async () => {
+    // AAPV24 — plan applicable : « Confirmer » bloqué jusqu'au verdict.
+    const brouillon = {
+      id: 21, reference: 'REC-21', statut: 'brouillon', bon_commande_reference: 'BCF-21',
+      lignes: [{ id: 1, produit_nom: 'Batterie', quantite: 5 }],
+    }
+    stockApi.getEchantillonnageReception.mockResolvedValueOnce({
+      data: { echantillon_requis: true, unites_attendues: 1, controle: null } })
+    stockApi.saisirControleQualiteReception.mockResolvedValueOnce({
+      data: { id: 7, resultat: 'conforme', unites_controlees: 1 } })
+    wrap(<ReceptionDetail reception={brouillon} onClose={() => {}} onSaved={() => {}} />)
+    const confirmer = screen.getByRole('button', { name: /Confirmer \(incrémente le stock\)/ })
+    await screen.findByRole('region', { name: 'Contrôle qualité' })
+    expect(confirmer).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Conforme' }))
+    await waitFor(() => expect(stockApi.saisirControleQualiteReception).toHaveBeenCalledWith(
+      21, { resultat: 'conforme', unites_controlees: 1 }))
+    await waitFor(() => expect(confirmer).not.toBeDisabled())
   })
 })

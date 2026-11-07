@@ -297,6 +297,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   const [showRetour, setShowRetour] = useState(false)
   const [showAnnuler, setShowAnnuler] = useState(false)
   const [info, setInfo] = useState(null)
+  const [payloadAControler, setPayloadAControler] = useState(null)  // AAPV24
   // WIR220/XPUR7 — accusé de commande fournisseur (date confirmée + n°) : la
   // date DEMANDÉE (`date_livraison_prevue`, ci-dessus) n'est JAMAIS écrasée —
   // état local séparé mis à jour depuis la réponse serveur (le composant ne
@@ -596,13 +597,30 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
     if (ligneEnErreur) { setError(erreurSeriesLigne(ligneEnErreur, receptions, tracas)); return }
     const payload = buildReceptionPayload(bcf.lignes, receptions, trac)
     if (payload.length === 0) { setError('Saisissez au moins une quantité à recevoir.'); return }
-    setBusy(true); setError(null)
+    setBusy(true); setError(null); setPayloadAControler(null)
     try {
       await stockApi.recevoirBcf(bcf.id, payload)
       onSaved?.()
       onClose()
     } catch (err) {
       setError(frBcfError(err, 'La réception a échoué.'))
+      // AAPV24 — plan d'échantillonnage : proposer la réception brouillon à contrôler.
+      if (/échantillonnage/i.test(err?.response?.data?.detail ?? '')) setPayloadAControler(payload)
+    } finally { setBusy(false) }
+  }
+
+  const creerReceptionAControler = async () => {
+    setBusy(true); setError(null)
+    try {
+      const r = await stockApi.createReceptionFournisseur({
+        bon_commande: bcf.id,
+        lignes: payloadAControler.map(({ ligne, ...reste }) => ({ ligne_commande: ligne, ...reste })),
+      })
+      setPayloadAControler(null)
+      setInfo(`Réception ${r.data?.reference ?? ''} créée en brouillon : saisissez son contrôle qualité dans Réceptions.`)
+      onSaved?.()
+    } catch (err) {
+      setError(frBcfError(err, 'La création de la réception à contrôler a échoué.'))
     } finally { setBusy(false) }
   }
 
@@ -1080,6 +1098,11 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
 
         <AlerteErreur error={error} />
         <InfoSucces info={info} />
+        {payloadAControler && (
+          <Button type="button" variant="outline" loading={busy} onClick={creerReceptionAControler}>
+            Créer la réception à contrôler
+          </Button>
+        )}
 
         <DialogFooter className="flex-wrap">
           {voitPrix && !isNew && statut !== 'annule' && (

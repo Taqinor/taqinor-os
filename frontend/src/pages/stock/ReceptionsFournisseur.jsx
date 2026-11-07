@@ -312,6 +312,30 @@ export function ReceptionDetail({ reception, onClose, onSaved, peutReceptionner 
   const lignes = reception?.lignes ?? []
   const isBrouillon = reception?.statut === 'brouillon'
   const isConfirme = reception?.statut === 'confirme'
+  // AAPV24 — contrôle qualité à réception (plan d'échantillonnage NTWMS34) :
+  // verdict saisi ici, « Confirmer » bloqué tant qu'il manque.
+  const [qualite, setQualite] = useState(null)
+  useEffect(() => {
+    if (!reception?.id || reception?.statut !== 'brouillon') return undefined
+    let actif = true
+    // Lecture best-effort : sans plan (ou sans droit), l'écran reste inchangé.
+    Promise.resolve()
+      .then(() => stockApi.getEchantillonnageReception(reception.id))
+      .then((r) => { if (actif) setQualite(r?.data ?? null) })
+      .catch(() => {})
+    return () => { actif = false }
+  }, [reception?.id, reception?.statut])
+  const controleManquant = Boolean(qualite?.echantillon_requis && !qualite?.controle)
+  const saisirVerdict = async (resultat) => {
+    setBusy(true); setError(null)
+    try {
+      const r = await stockApi.saisirControleQualiteReception(reception.id, {
+        resultat, unites_controlees: qualite?.unites_attendues ?? 0 })
+      setQualite((q) => ({ ...q, controle: r.data }))
+    } catch (err) {
+      setError(frError(err, "L'enregistrement du contrôle qualité a échoué."))
+    } finally { setBusy(false) }
+  }
 
   const confirmer = async () => {
     setBusy(true); setError(null)
@@ -417,6 +441,24 @@ export function ReceptionDetail({ reception, onClose, onSaved, peutReceptionner 
           ))}
         </TableauLignes>
 
+        {isBrouillon && qualite?.echantillon_requis && (
+          <div role="region" aria-label="Contrôle qualité"
+               className="flex flex-wrap items-center gap-2 rounded-lg border border-border p-3 text-sm">
+            <span className="font-medium">Contrôle qualité</span>
+            <span className="text-muted-foreground">
+              {qualite.unites_attendues} unité(s) à contrôler
+              {qualite.controle ? ` — verdict : ${qualite.controle.resultat === 'conforme' ? 'conforme' : 'non conforme'}` : ''}
+            </span>
+            {!qualite.controle && peutReceptionner && (
+              <>
+                <Button type="button" size="sm" variant="success" loading={busy}
+                        onClick={() => saisirVerdict('conforme')}>Conforme</Button>
+                <Button type="button" size="sm" variant="destructive" loading={busy}
+                        onClick={() => saisirVerdict('non_conforme')}>Non conforme</Button>
+              </>
+            )}
+          </div>
+        )}
         <AlerteErreur error={error} />
         {factureInfo && (
           <div role="status" className="rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
@@ -447,7 +489,9 @@ export function ReceptionDetail({ reception, onClose, onSaved, peutReceptionner 
           )}
           <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
           {peutReceptionner && isBrouillon && (
-            <Button type="button" variant="success" loading={busy} onClick={confirmer}>
+            <Button type="button" variant="success" loading={busy} onClick={confirmer}
+                    disabled={controleManquant}
+                    title={controleManquant ? 'Saisissez d\'abord le contrôle qualité' : undefined}>
               {busy ? '…' : 'Confirmer (incrémente le stock)'}
             </Button>
           )}
