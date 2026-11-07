@@ -80,6 +80,26 @@ class TestPeuplerSerieEntrepotAReception(TestCase):
             self.assertEqual(e.statut, SerieEntrepot.Statut.EN_STOCK)
             self.assertEqual(e.reference_reception, reception.reference)
 
+    def test_livraison_directe_series_sorties_au_chantier(self):
+        """AAPV66 — BCF livré au chantier : 10 séries « sorti » sur CH, 0 en
+        stock ; renvoyer le signal ne change rien."""
+        from apps.installations.models import Installation
+        ch = Installation.objects.create(
+            company=self.company, reference='CH-AAPV66')
+        series = [f'SN{i}' for i in range(1, 11)]
+        reception, bc = make_reception_avec_series(
+            self.company, self.produit, self.user, quantite=10, series=series)
+        bc.chantier_livraison = ch
+        bc.save(update_fields=['chantier_livraison'])
+        confirm_reception_fournisseur(reception, self.user)
+        peupler_series_entrepot_reception(
+            reception=reception, company=self.company, user=self.user)
+        qs = SerieEntrepot.objects.filter(
+            company=self.company, produit=self.produit)
+        self.assertEqual(qs.filter(
+            statut=SerieEntrepot.Statut.SORTI, installation=ch).count(), 10)
+        self.assertFalse(qs.filter(statut=SerieEntrepot.Statut.EN_STOCK).exists())
+
     def test_reconfirmer_evenement_idempotent(self):
         series = ['SN-A', 'SN-B']
         reception, _bc = make_reception_avec_series(

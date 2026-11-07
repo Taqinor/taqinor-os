@@ -5262,6 +5262,11 @@ def peupler_series_entrepot_reception(*, reception, company, user):
     if company is None or reception is None:
         return 0
     depot_principal = ensure_emplacements(company)
+    # AAPV66 — livraison directe au chantier : séries « sorti » sur CH.
+    chantier_id = getattr(reception.bon_commande, 'chantier_livraison_id', None)
+    defaut = ({'statut': SerieEntrepot.Statut.SORTI, 'installation_id': chantier_id}
+              if chantier_id else {'statut': SerieEntrepot.Statut.EN_STOCK,
+                                   'emplacement': depot_principal})
     created = 0
     for ligne in reception.lignes.select_related('produit').all():
         if ligne.produit_id is None:
@@ -5279,8 +5284,7 @@ def peupler_series_entrepot_reception(*, reception, company, user):
                 company=company, produit_id=ligne.produit_id,
                 numero_serie=numero,
                 defaults={
-                    'statut': SerieEntrepot.Statut.EN_STOCK,
-                    'emplacement': depot_principal,
+                    **defaut,
                     'reference_reception': reception.reference,
                     'created_by': user,
                 })
