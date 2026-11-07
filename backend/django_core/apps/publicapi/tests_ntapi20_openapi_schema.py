@@ -104,9 +104,11 @@ class Ntapi20OpenApiSchemaTests(TestCase):
         # CALX369 (2026-09-24) : + 1 sous-ressource en lecture
         # (`docs.py::sous_ressources` — `calepinages/<id>/resultat/` GET,
         # scope `read:calepinages`) = 38.
+        # NTI18N42 (2026-11-07) : + 1 lecture simple (`clients/{id}/langue/`,
+        # scope `read:clients`) = 39.
         schema = build_openapi_schema()
         nb_operations = sum(len(ops) for ops in schema['paths'].values())
-        self.assertEqual(nb_operations, 38)
+        self.assertEqual(nb_operations, 39)
 
     def test_covers_licence_statut_ntadm42(self):
         schema = build_openapi_schema()

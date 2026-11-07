@@ -10,7 +10,7 @@ HMAC `X-Taqinor-Signature`.
 La source de vérité des scopes/évènements reste `constants.py` : on lit
 `SCOPE_CHOICES`/`EVENT_CHOICES` pour ne jamais diverger de l'implémentation.
 """
-from .portees import SCOPE_CHOICES, SCOPE_READ_FIABILITE
+from .portees import SCOPE_CHOICES, SCOPE_READ_CLIENTS, SCOPE_READ_FIABILITE
 from .constants import EVENT_CHOICES, EVENT_CALEPINAGE_SIMULE
 from .auth import AUTH_KEYWORD
 from .delivery import (
@@ -546,6 +546,20 @@ def public_api_reference():
                         "Statut de licence de la société (plan_code, "
                         "modules_inclus, sieges_max, sieges_utilises). "
                         "Aucun champ interne (prix, historique)."
+                    ),
+                },
+                {
+                    'chemin': '/api/public/v1/clients/{id}/langue/',
+                    'scope': SCOPE_READ_CLIENTS,
+                    'description': (
+                        "NTI18N42 — langue des documents d'un client : "
+                        "``{client_id, langue_document, langue_sortie}``. "
+                        "``langue_document`` est la préférence stockée sur la "
+                        "fiche (fr/ar), ``langue_sortie`` la langue RÉSOLUE "
+                        "pour ses documents (préférence client, sinon repli "
+                        "société, sinon fr — fr/en/ar). Aucun autre champ de "
+                        "la fiche client. Client d'une autre société ou "
+                        "inconnu → 404."
                     ),
                 },
                 # NTOBS27 — gouvernance fournisseur : les trois ressources

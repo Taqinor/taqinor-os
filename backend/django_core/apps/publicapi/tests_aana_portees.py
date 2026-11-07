@@ -49,7 +49,8 @@ class JuridiqueScopeRetireTests(SimpleTestCase):
 
     def test_les_autres_portees_sont_intactes(self):
         # Retrait ciblé : les 16 autres portées restent, dans le même ordre.
-        self.assertEqual(len(portees.SCOPE_CHOICES), 16)
+        # 17 depuis NTI18N42 (`read:clients`, 2026-11-07).
+        self.assertEqual(len(portees.SCOPE_CHOICES), 17)
         self.assertEqual(portees.ALL_SCOPES[0], 'read:leads')
         self.assertEqual(portees.ALL_SCOPES[-1], 'tickets:write')
 

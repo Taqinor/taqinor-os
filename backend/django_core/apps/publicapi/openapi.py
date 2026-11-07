@@ -185,7 +185,16 @@ def _simple_read_operation(entry):
     """NTADM42 — opération pour un endpoint `endpoints_lecture_simple` : un
     OBJET UNIQUE (jamais une liste), sans pagination/tri/filtre — contrairement
     à `_list_operation`/`_retrieve_operation` (ressources paginées avec `<id>`)."""
-    return {
+    # NTI18N42 — un chemin `{id}` déclare son paramètre de chemin (un objet
+    # unique reste un objet unique : seul l'identifiant du parent varie).
+    path_params = [
+        {
+            'name': name, 'in': 'path', 'required': True,
+            'schema': {'type': 'integer' if name == 'id' else 'string'},
+        }
+        for name in re.findall(r'\{(\w+)\}', entry['chemin'])
+    ]
+    operation = {
         'summary': entry['description'],
         'security': [{'ApiKeyAuth': []}],
         'responses': {
@@ -197,6 +206,9 @@ def _simple_read_operation(entry):
             **_common_error_responses(),
         },
     }
+    if path_params:
+        operation['parameters'] = path_params
+    return operation
 
 
 def _bulk_operation(entry):

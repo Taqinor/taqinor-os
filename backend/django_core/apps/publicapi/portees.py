@@ -60,6 +60,12 @@ SCOPE_READ_ACHATS = 'lecture_achats'
 # chaque omission.
 SCOPE_READ_FIABILITE = 'fiabilite:lecture'
 
+# NTI18N42 — langue documentaire RÉSOLUE d'un client (`clients/<id>/langue/`),
+# en lecture seule. Ce scope n'ouvre QU'UNE langue (fr/en/ar) : ni nom, ni
+# coordonnées, ni aucun autre champ de la fiche client — voir
+# `apps/publicapi/public_clients_views.py`.
+SCOPE_READ_CLIENTS = 'read:clients'
+
 # XPLT5 — scopes d'ÉCRITURE (créer/mettre à jour un lead, créer une activité).
 # La société est TOUJOURS forcée depuis la clé (jamais du body) ; les stages
 # viennent de STAGES.py (jamais hardcodés).
@@ -92,6 +98,8 @@ SCOPE_CHOICES = [
      "Lire les demandes d'achat et les demandes de prix (sans aucun prix d'achat)"),
     (SCOPE_READ_FIABILITE,
      'Lire la fiabilité (sauvegardes, rapport SLA mensuel, limites & usage)'),
+    (SCOPE_READ_CLIENTS,
+     "Lire la langue des documents d'un client (langue seule, sans fiche)"),
     (SCOPE_WRITE_LEADS, 'Créer/mettre à jour des leads'),
     (SCOPE_WRITE_ACTIVITIES, 'Créer des activités (notes) sur un lead'),
     (SCOPE_WRITE_DEVIS, 'Créer un devis brouillon (jamais envoyé/accepté)'),

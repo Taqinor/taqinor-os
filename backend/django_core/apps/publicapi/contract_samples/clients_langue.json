@@ -1,0 +1,10 @@
+{
+  "endpoint": "GET /api/public/v1/clients/<id>/langue/",
+  "forme_serveur": "partielle",
+  "pourquoi": "NTI18N42 (PACT10) - contrat pose EN PREMIER pour la lecture publique de la langue documentaire d'un client. Scope dedie `read:clients` (403 sans lui), client borne a la societe de la cle (404 sinon, jamais 403 : ne revele pas l'existence d'un client d'une autre societe). `langue_document` = preference STOCKEE sur le client (fr|ar) ; `langue_sortie` = langue RESOLUE pour ses documents (apps.parametres.i18n_resolver.resolve_langue_sortie : preference client si differente du defaut, sinon repli societe, sinon fr) - fr|en|ar. Aucun autre champ client (ni nom, ni contact) n'est servi.",
+  "exemple": {
+    "client_id": 42,
+    "langue_document": "fr",
+    "langue_sortie": "ar"
+  }
+}
