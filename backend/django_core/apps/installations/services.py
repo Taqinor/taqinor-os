@@ -5335,6 +5335,8 @@ def retourner_series_entrepot_reception(*, reception, company):
         count += SerieEntrepot.objects.filter(
             company=company, produit_id=ligne.produit_id,
             numero_serie__in=numeros,
+            # AAPV22 — seules les séries que CETTE réception a mises en stock.
+            reference_reception=reception.reference,
             statut=SerieEntrepot.Statut.EN_STOCK,
         ).update(statut=SerieEntrepot.Statut.RETOURNE)
     return count

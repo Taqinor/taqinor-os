@@ -355,6 +355,21 @@ def serie_entrepot_scoped_by_serial(company, produit_id, numero_serie):
             .first())
 
 
+def series_en_stock(company, produit_id, numeros):
+    """AAPV22 — {numéro: référence de réception} des séries de ``numeros``
+    déjà en rayon (EN_STOCK ou RESERVE) pour ce produit, scopé société.
+    Lecture cross-app consommée par stock (refus d'un doublon à l'entrée)."""
+    from .models import SerieEntrepot
+    numeros = [n for n in (numeros or []) if n]
+    if company is None or produit_id is None or not numeros:
+        return {}
+    return dict(SerieEntrepot.objects.filter(
+        company=company, produit_id=produit_id, numero_serie__in=numeros,
+        statut__in=[SerieEntrepot.Statut.EN_STOCK,
+                    SerieEntrepot.Statut.RESERVE],
+    ).values_list('numero_serie', 'reference_reception'))
+
+
 def reserved_quantities_for_company(company):
     """Map {produit_id: quantité réservée active} pour toute la société —
     chantier (N14) + ordre d'assemblage (XMFG2), un seul agrégat par source

@@ -138,6 +138,29 @@ class AnnulationReceptionAbonnesTests(TestCase):
         self.assertNotEqual(statut, SerieEntrepot.Statut.EN_STOCK)
         self.assertEqual(statut, SerieEntrepot.Statut.RETOURNE)
 
+    def test_serie_d_une_autre_reception_jamais_retournee(self):
+        """AAPV22 — S1 mise en stock par REC-ASTK57 puis « reçue » par une
+        seconde réception : annuler la seconde laisse S1 en stock (REC-1)."""
+        from apps.installations.selectors import series_en_stock
+        from apps.installations.services import (
+            retourner_series_entrepot_reception,
+        )
+        rec2 = ReceptionFournisseur.objects.create(
+            company=self.company, reference='REC-ASTK57-2',
+            bon_commande=self.bc)
+        LigneReceptionFournisseur.objects.create(
+            reception=rec2, ligne_commande=self.ligne_cmd,
+            produit=self.panneau, quantite=1, numeros_serie=['S1'])
+        retourner_series_entrepot_reception(
+            reception=rec2, company=self.company)
+        serie = SerieEntrepot.objects.get(
+            company=self.company, produit=self.panneau, numero_serie='S1')
+        self.assertEqual(serie.statut, SerieEntrepot.Statut.EN_STOCK)
+        self.assertEqual(serie.reference_reception, 'REC-ASTK57')
+        self.assertEqual(
+            series_en_stock(self.company, self.panneau.id, ['S1', 'SN-9']),
+            {'S1': 'REC-ASTK57'})
+
     def test_reservation_replafonnee_au_recu_net(self):
         self._annuler()
         self.ligne_cmd.refresh_from_db()
