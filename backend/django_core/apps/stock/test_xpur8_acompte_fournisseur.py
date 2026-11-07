@@ -152,6 +152,36 @@ class TestImputationOnFacture(Xpur8Base):
             rows[0]['montant_non_consomme'],
             Decimal('99999') - facture.montant_ttc)
 
+    def test_lien_bcf_par_patch_impute_acompte(self):
+        """AAPV1 — facture née sans BCF (OCR), liée par PATCH : l'acompte de
+        3 600 s'impute, solde 8 400, un paiement de 12 000 est refusé (409) ;
+        un PATCH sans changement de BCF n'impute rien de plus."""
+        from apps.stock.models import (
+            FactureFournisseur, ImputationAcompteFournisseur,
+        )
+        AcompteFournisseur.objects.create(
+            company=self.company, bon_commande=self.bcf,
+            montant=Decimal('3600'), date_versement=datetime.date(2026, 6, 1))
+        self._confirm_reception()
+        facture = FactureFournisseur.objects.create(
+            company=self.company, reference='FF-AAPV1', fournisseur=self.fournisseur,
+            montant_ht=Decimal('10000'), montant_tva=Decimal('2000'),
+            montant_ttc=Decimal('12000'))
+        url = f'/api/django/stock/factures-fournisseur/{facture.id}/'
+        r = self.api.patch(url, {'bon_commande': self.bcf.id}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        facture.refresh_from_db()
+        self.assertEqual(facture.total_acomptes_imputes, Decimal('3600.00'))
+        self.assertEqual(facture.solde_du, Decimal('8400.00'))
+        self.assertEqual(acomptes_fournisseur_ouverts(self.company), [])
+        r = self.api.patch(url, {'bon_commande': self.bcf.id}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(ImputationAcompteFournisseur.objects.filter(
+            facture=facture).count(), 1)
+        r = self.api.post(f'{url}paiements/', {
+            'montant': '12000', 'date_paiement': '2026-06-20'}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+
     def test_no_acompte_unchanged_behaviour(self):
         rec = self._confirm_reception()
         facture = facturer_reception(self.company, self.user, rec)

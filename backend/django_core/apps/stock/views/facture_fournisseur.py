@@ -165,6 +165,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         change pas `bon_commande` n'émet rien."""
         from ..services import (
             _emettre_facture_creee, evaluer_rapprochement_3_voies,
+            imputer_acomptes_bcf,
         )
         ancien_bcf_id = serializer.instance.bon_commande_id
         # ENF11 (nocturne 15/10) — en PATCH l'imbriqué `lignes` est partiel :
@@ -181,6 +182,8 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
                     and facture.bon_commande_id != ancien_bcf_id):
                 evaluer_rapprochement_3_voies(facture)
                 _emettre_facture_creee(facture, self.request.user)
+                # AAPV1 — les acomptes ouverts du BCF acquis s'imputent ici.
+                imputer_acomptes_bcf(facture.bon_commande)
 
     def perform_destroy(self, instance):
         """AUD207 — `PaiementFournisseur.facture` est désormais PROTECT (une
