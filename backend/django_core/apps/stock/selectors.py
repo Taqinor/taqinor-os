@@ -669,6 +669,18 @@ def montant_facture_bcf(bon_commande):
     return agg['total'] or Decimal('0')
 
 
+def derniere_facture_bcf(bon_commande):
+    """AAPV69 — FactureFournisseur la plus récente liée au BCF (même filtre
+    que ``montant_facture_bcf``), ``None`` sans facture ou sans BCF. Lue par
+    ``installations`` pour lettrer une provision GR/IR créée APRÈS la facture
+    (AAPV7). INTERNE, lecture seule."""
+    from .models import FactureFournisseur
+    if bon_commande is None:
+        return None
+    return (FactureFournisseur.objects.filter(bon_commande=bon_commande)
+            .order_by('-date_creation', '-pk').first())
+
+
 def quantite_en_commande_produit(company, produit_id):
     """YPROC9 — quantité TOTALE de ``produit_id`` déjà « en commande » chez un
     fournisseur (Σ ``quantite_restante`` des lignes de BCF BROUILLON ou

@@ -148,6 +148,20 @@ class BuilderUniqueTests(_Base):
             facture_fournisseur_creee.disconnect,
             dispatch_uid='astk109-capte')
 
+    def test_derniere_facture_bcf(self):
+        """AAPV69 — la facture la plus récente du BCF ; None sans facture ou
+        sans BCF."""
+        from apps.stock.selectors import derniere_facture_bcf
+        self.assertIsNone(derniere_facture_bcf(self.bcf))
+        self.assertIsNone(derniere_facture_bcf(None))
+        f1 = facturer_bcf_sur_commande(self.company, self.user, self.bcf)
+        self.assertEqual(derniere_facture_bcf(self.bcf).pk, f1.pk)
+        f2 = FactureFournisseur.objects.create(
+            company=self.company, reference=f'FF-{self.slug}-AAPV69',
+            fournisseur=self.fournisseur, bon_commande=self.bcf,
+            montant_ht=Decimal('10'), montant_tva=Decimal('2'), montant_ttc=Decimal('12'))
+        self.assertEqual(derniere_facture_bcf(self.bcf).pk, f2.pk)
+
     def test_sur_commande_porte_date_facture(self):
         with frozen('2026-10-06 10:00:00'):
             facture = facturer_bcf_sur_commande(
