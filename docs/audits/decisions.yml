@@ -3779,6 +3779,30 @@ decisions:
     date: "2026-11-06"
     source: "Reda, question interactive, audit de parcours PA6"
     taches: [AAPV6]
+  - id: D-AAPV-5
+    question: "Un BCF annulé dont l'annulation a rouvert la demande d'achat (AAPV71) et rendu l'engagement budgétaire (AAPV17) peut être « Réouvert » en brouillon : la DA re-génère alors un second BCF (40 000 commandés pour 20 000 demandés, budget réalisé 20 000). Que fait « Réouvrir » ?"
+    options:
+      - cle: refus
+        texte: "Refus 409 nommé : le BCF né d'une DA rouverte ne se réouvre pas ; on régénère le BC depuis la demande (recommandé)"
+      - cle: recommander
+        texte: "Réouvrir re-commande la DA (si elle est encore approuvée sans BCF) et re-consomme l'engagement ; 409 si la DA a déjà un autre BCF"
+    reponse: ouverte
+    date: "2026-11-08"
+    source: "vérifie AAPV du 08/11/2026 (critique de complétude, sonde C-AAPV-VER-007 écrite)"
+    taches: [AAPV85]
+  - id: D-AAPV-6
+    question: "D-AAPV-2 fait porter la RAS-TVA restante par l'imputation qui solde (AAPV5). Quand c'est un acompte DÉJÀ versé brut (paiement 840 net puis acompte 360), 60 de RAS sont déclarés sans avoir été retenus : 1 260 décaissés pour 1 200 TTC. Que faire ?"
+    options:
+      - cle: garder
+        texte: "Garder : la RAS est due à l'État, la créance de 60 sur le fournisseur se règle hors ERP"
+      - cle: creance_fournisseur
+        texte: "L'ERP constate une créance de 60 sur le fournisseur (avoir à réclamer) à l'imputation"
+      - cle: retenir_avant
+        texte: "Retenir la RAS de l'acompte dès son versement (acompte versé net), plus jamais à l'imputation"
+    reponse: ouverte
+    date: "2026-11-08"
+    source: "vérifie AAPV du 08/11/2026 (vérificateur du lot argent)"
+    taches: []
   - id: D-AMON-1
     question: "Un abonnement de supervision (mensuel ou annuel, SAV → Supervision → Abonnements) n'est jamais facturé : sa « prochaine échéance » est posée une fois et reste dans le passé. L'ERP doit-il le facturer ?"
     options:
