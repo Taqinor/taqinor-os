@@ -3811,7 +3811,7 @@ decisions:
     reponse: devis_au_marche_du_lead
     date: "2026-11-08"
     source: "Reda, question interactive, audit de parcours PA2"
-    taches: []
+    taches: [ACON40]
   - id: D-ACON-2
     question: "Un lead a un calepinage ouvert C1 lié au devis actif A ; un second devis actif B (pas une V2) demande une conception : aujourd'hui un C2 est créé et « Concevoir » l'ouvre en silence. Quelle règle ?"
     options:
@@ -3824,7 +3824,7 @@ decisions:
     reponse: variante_de_c1
     date: "2026-11-08"
     source: "Reda, question interactive, audit de parcours PA2"
-    taches: []
+    taches: [ACON6]
   - id: D-ACON-3
     question: "L'approbation d'une conception ne couvre que le layout dessiné : changer l'onduleur, une longueur de chaîne forcée ou la fixation après accord garde l'accord valide et les pièces d'exécution ouvertes. L'empreinte d'approbation doit-elle les couvrir ?"
     options:
@@ -3835,7 +3835,7 @@ decisions:
     reponse: conception_seule
     date: "2026-11-08"
     source: "Reda, question interactive, audit de parcours PA2"
-    taches: []
+    taches: [ACON24]
   - id: D-ACON-4
     question: "La page publique de proposition ne dessine que 600 panneaux par zone (et la visionneuse web partage un seul budget de 600 entre toutes les zones), alors que le compte affiché reste complet. Que faire ?"
     options:
@@ -3846,4 +3846,4 @@ decisions:
     reponse: tout_dessiner_2000
     date: "2026-11-08"
     source: "Reda, question interactive, audit de parcours PA2"
-    taches: []
+    taches: [ACON50]

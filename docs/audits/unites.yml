@@ -797,3 +797,25 @@ unites:
     date: 2026-11-08
     dossier: docs/audits/2026-11-08-parcours-PA7.md
     notes: "Sixième audit de PARCOURS (L3, 07-08/11/2026, base 39313d4, fraîcheur b31e3e5) : 33 constats, 21 prouvés par sonde et 12 lus (11 S3, 1 S4) ; gravités 5 S1, 11 S2, 16 S3, 1 S4. S1 : relevés chevauchants additionnés (CO₂, garantie, sous-performance), crédits SLA de toutes les sociétés lisibles par le Directeur de chaque société, disponibilité calculée sur 365 jours fixes (un système neuf ou sans relevé est « sous la garantie » jusque dans le rapport O&M client), retard d'import lu comme sous-production (drapeau et alerte au portail), garantie de production non proratée (S1 si la garantie est autorisée, S2 sinon). Seconde lentille sur les 4 S1 : 4 maintenus dont 3 élargis (geste d'écran, rôles système, supervision tardive), 0 réfuté. Prod lue le 07/11 : 1 société, 0 relevé, 0 abonnement, 0 garantie : exposition nulle. D-AMON-1..2 (abonnement vendu une fois, jamais facturé par l'ERP ; pénalité de disponibilité = indicateur interne, jamais un montant dû ni imprimé au client). 1 critique Fable (8 trous dont 6 sondés : garantie de production, facteur CO₂, registre carbone, deux disponibilités, salissure, droits). Tâches AMON1-94 (48 posées : SAV 33, SECURITE 7, PARAMETRES 3, CHANTIERS 2, DOCUMENTS 1, LEAD 1, TRANSVERSE 1)."
+
+  - id: PA2
+    rang: 26
+    declencheur: conception
+    titre: "Parcours PA2 « Conception » : créer le calepinage (lead ou client, adoption par un devis) → relevé terrain → conception du toit → variantes → simulation de production → approbation → retenir une variante → publication vers le devis (générer, resynchroniser) → livrables techniques (planches, pack) → dossier réglementaire 82-21 ; sous-parcours : V2 du devis re-liée à la conception (METHODE §D.1)"
+    possede: []
+    perimetre_lu:
+      - "table backend/django_core/apps/calepinage/parcours/PA2.json (pilote calepinage) ; apps/calepinage (services, views, selectors, receivers, contract_samples), apps/ventes (domain, horaire, public, views/devis_calepinage.py, public_views.py, calepinage_options.py, quote_engine/artefacts_rendu.py), apps/crm (portee_selectors, fiche_selectors), apps/parametres (models_company, selectors), core/events, frontend features calepinage et pages ventes, apps/web/src/lib/proposition.ts"
+    coutures:
+      - "passages de main lead ↔ calepinage ↔ devis (adoption, génération, resynchronisation, révision V2) ↔ simulation et ombrage servis au chiffre client (PDF règle #4 et page publique) ↔ approbation et feu vert ↔ livrables et dossier 82-21 (GED) ; rôles × portes de création et d'approbation ; marché du lead (résidentiel, C&I, agricole) ; devis envoyé dont la conception continue de bouger"
+    P: 4
+    I: 4
+    score: 16
+    niveau: L3
+    statut: audité
+    groupe: ACON
+    plan: docs/plans/PLAN_AUDIT_CALEPINAGE.md
+    plans_alimentes: [docs/plans/PLAN_AUDIT_CALEPINAGE.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_PARAMETRES.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/WEB_PLAN.md]
+    pr: 0
+    date: 2026-11-08
+    dossier: docs/audits/2026-11-08-parcours-PA2.md
+    notes: "Septième audit de PARCOURS (L3, 08/11/2026, base 8b62d8c, fraîcheur 76344a2) : 39 constats, 21 prouvés par sonde et 18 lus (13 S3, 5 S4) ; gravités 3 S1, 10 S2, 20 S3, 6 S4. S1 : la page publique d'un devis envoyé lit l'ombrage VIVANT du calepinage pendant que le PDF lit le bloc rangé (deux chiffres client ; un devis né de « Générer le devis » les a dès le premier envoi), l'ombrage d'une autre conception appliqué à la production d'un brouillon non resynchronisé (−17 %), un devis C&I construit au marché résidentiel avec les économies du layout (2 brouillons en prod : devis 418 et 154, signalés, non réparés). Seconde lentille sur les 3 S1 : 3 maintenus dont 1 élargi, 0 réfuté. D-ACON-1..4 (devis au marché du lead, second devis actif = variante de C1, approbation = conception imprimée seule, page publique et visionneuse jusqu'à 2 000 panneaux par zone). 1 critique Fable (7 trous dont 4 sondés : Dupliquer vers un autre lead, archivage qui détache un brouillon, devis refusé ou expiré, temps de rendu). Tâches ACON1-93 (45 posées : CALEPINAGE 35, DEVIS 6, TRANSVERSE 2, PARAMETRES 1, WEB 1)."
