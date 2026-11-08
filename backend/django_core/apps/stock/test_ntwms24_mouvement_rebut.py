@@ -186,10 +186,12 @@ class TestEndpointsRebut(Ntwms24Base):
         liste = auth(technicien).get(self.URL)
         for ligne in liste.data.get('results', liste.data):
             self.assertNotIn('valeur_perte', ligne)
+        # 50 − 30 = 20 en stock : le second rebut en déclare 10.
         voit = self._roled('direction', ['stock_mouvement', 'prix_achat_voir'])
-        reponse = auth(voit).post(self.URL, corps, format='json')
+        reponse = auth(voit).post(
+            self.URL, {**corps, 'quantite': 10}, format='json')
         self.assertEqual(reponse.status_code, 201, reponse.content)
-        self.assertEqual(reponse.data['valeur_perte'], '30000.00')
+        self.assertEqual(reponse.data['valeur_perte'], '10000.00')
 
     def test_magasinier_peut_declarer(self):
         # Réaligné AAPV36 : le magasinier porte `stock_mouvement` (+ le droit
