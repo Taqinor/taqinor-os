@@ -141,4 +141,4 @@ Porte : 0 constat réfuté sur 56 candidats bruts (2 fusionnés dans un autre co
 ## 9. Coût et routage
 Coût : H0 S1 O14 F1 · jetons sous-agents ≈ 5,5 M · tâches 70 (P0 2 P2 19 P3 49 GATED 0) · constats S1 1 S2 10 S3 36 S4 8.
 Fable : une critique de complétude, 8 trous tous lus (S3 et S4) ; elle a trouvé les couches transverses laissées de côté par les lanes de module : trois calendriers de jours ouvrés concurrents (C-ASOC-143), journal aveugle aux gestes d'argent du système (C-ASOC-163), langue et fuseau de la société ignorés (C-ASOC-152, C-ASOC-144).
-Routage : `PLAN_AUDIT_*.md` LEAD 15 · PARAMETRES 13 · TRANSVERSE 8 · DOCUMENTS 7 · DEVIS 6 · ANALYSE 5 · FACTURATION 5 · SECURITE 4 · MOTEUR 2 · SAV 2 · STOCK 2 · CHANTIERS 1 · priorité : S1 → P0 (ASOC40, ASOC95), S2 → P2, S3 et S4 → P3 · aucune tâche d'acceptation posée · PR #0.
+Routage : `PLAN_AUDIT_*.md` LEAD 15 · PARAMETRES 13 · TRANSVERSE 8 · DOCUMENTS 7 · DEVIS 6 · ANALYSE 5 · FACTURATION 5 · SECURITE 4 · MOTEUR 2 · SAV 2 · STOCK 2 · CHANTIERS 1 · priorité : S1 → P0 (ASOC40, ASOC95), S2 → P2, S3 et S4 → P3 · aucune tâche d'acceptation posée · PR #1304.
