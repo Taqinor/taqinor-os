@@ -99,7 +99,7 @@ def chantiers_receptionnes(company, *, date_debut=None, date_fin=None):
 
     qs = Installation.objects.filter(
         company=company, statut=Installation.Statut.RECEPTIONNE,
-        date_reception__isnull=False)
+        date_reception__isnull=False, annule=False)  # ACSV103
     if date_debut is not None:
         qs = qs.filter(date_reception__gte=date_debut)
     if date_fin is not None:
