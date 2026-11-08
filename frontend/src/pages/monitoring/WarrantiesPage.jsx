@@ -306,9 +306,11 @@ export default function WarrantiesPage() {
                       </div>
                       <div className="font-medium tabular-nums">{formatMAD(status.compensation_mad)}</div>
                     </div>
-                    <Badge tone={status.within_tolerance ? 'success' : 'danger'}>
+                    {/* AMON40 — sans relevé, `within_tolerance` est null : « Non mesuré ». */}
+                    <Badge tone={status.within_tolerance == null ? 'neutral' : (status.within_tolerance ? 'success' : 'danger')}>
                       <BadgeCheck className="size-3.5" aria-hidden="true" />
-                      {status.within_tolerance ? 'Dans la tolérance' : 'Hors tolérance'}
+                      {status.within_tolerance == null ? 'Non mesuré'
+                        : (status.within_tolerance ? 'Dans la tolérance' : 'Hors tolérance')}
                     </Badge>
                   </CardContent>
                 </Card>

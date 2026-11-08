@@ -83,6 +83,22 @@ describe('WarrantiesPage (WR6 — garanties de production)', () => {
     expect(monitoringApi.getWarrantyCurve).toHaveBeenCalledWith(3)
   })
 
+  it('AMON40 — sans relevé (within_tolerance null) le badge dit « Non mesuré »', async () => {
+    monitoringApi.getWarrantyStatus.mockResolvedValueOnce({
+      data: {
+        has_warranty: true, year: 2026, guaranteed_kwh: '13930.00',
+        actual_kwh: null, shortfall_kwh: null,
+        within_tolerance: null, compensation_mad: null,
+      },
+    })
+    renderPage(<WarrantiesPage />)
+    await screen.findAllByText('INST-2026-001 — Amrani')
+    await userEvent.click(screen.getAllByRole('button', { name: 'Statut et courbe' })[0])
+
+    expect(await screen.findByText('Non mesuré')).toBeInTheDocument()
+    expect(screen.queryByText('Hors tolérance')).not.toBeInTheDocument()
+  })
+
   it('ouvre le dialogue de création avec des champs libres (step="any")', async () => {
     renderPage(<WarrantiesPage />)
     await screen.findAllByText('INST-2026-001 — Amrani')
