@@ -41,12 +41,30 @@ h1 { font-size: 20px; margin: 0 0 2px; }
 """
 
 
-def _methodologie(co2_kg_par_kwh, periode_label):
+def _facteur_imprime(company, co2_kg_par_kwh):
+    """AMON41 — « 630 gCO₂/kWh — source ONEE, 15/01/2026 » (facteur réglé par
+    la société), la valeur explicite de l'appelant, ou None sans facteur."""
+    if co2_kg_par_kwh is None:
+        from apps.parametres.selectors import facteur_co2_reseau
+        reglage = facteur_co2_reseau(company)
+        if reglage is None:
+            return None
+        date = reglage['date']
+        return (f'{reglage["g_kwh"].normalize():f} gCO₂/kWh — source '
+                f'{reglage["source"]}'
+                + (f', {date:%d/%m/%Y}' if date else ''))
+    return f'{co2_kg_par_kwh} kg CO₂/kWh'
+
+
+def _methodologie(facteur_imprime, periode_label):
+    if facteur_imprime is None:
+        return ('Facteur d\'émission du réseau non réglé (Paramètres) : aucun '
+                f'tonnage de CO₂ n\'est établi pour la période {periode_label}.')
     return (
         f'Méthodologie : le CO₂ évité est calculé en multipliant la '
         f'production photovoltaïque mesurée (kWh) par le facteur '
         f'd\'émission du réseau électrique marocain retenu '
-        f'({co2_kg_par_kwh} kg CO₂/kWh) sur la période {periode_label}. '
+        f'({facteur_imprime}) sur la période {periode_label}. '
         f'Référence de calcul : kWh produits × facteur réseau = kg CO₂ '
         f'évités, converti en tonnes (÷ 1000). Aucune double-comptabilisation '
         f'inter-sites — chaque relevé de production n\'est compté qu\'une fois.'
@@ -78,7 +96,9 @@ def build_carbon_report_data_site(installation, *, since=None, until=None,
         'co2_tonnes': data['co2_tonnes'],
         'co2_kg_par_kwh': facteur,
         'has_data': data['production_kwh'] > 0,
-        'methodologie': _methodologie(facteur, periode_label),
+        'methodologie': _methodologie(
+            _facteur_imprime(installation.company, co2_kg_par_kwh),
+            periode_label),
         'date_edition': today.isoformat(),
     }
 
@@ -110,7 +130,8 @@ def build_carbon_report_data_client(company, client_id, *,
         'co2_tonnes': data['co2_tonnes'],
         'co2_kg_par_kwh': facteur,
         'has_data': data['total_production_kwh'] > 0,
-        'methodologie': _methodologie(facteur, periode_label),
+        'methodologie': _methodologie(
+            _facteur_imprime(company, co2_kg_par_kwh), periode_label),
         'date_edition': today.isoformat(),
     }
 
@@ -132,15 +153,17 @@ def _build_html(data, *, entreprise_nom=''):
         cards = ''
     else:
         corps_vide = ''
+        # AMON41 — sans facteur réglé, aucune tonne imprimée.
+        cartes_co2 = '' if data['co2_kg'] is None else (
+            f'<div class="card"><div class="k">CO₂ évité</div>'
+            f'<div class="big">{_v(data["co2_kg"])} kg</div></div>'
+            f'<div class="card"><div class="k">CO₂ évité (t)</div>'
+            f'<div class="big">{_v(data["co2_tonnes"])} t</div></div>')
         cards = (
             '<div class="cards">'
             f'<div class="card"><div class="k">Production</div>'
             f'<div class="big">{_v(data["production_kwh"])} kWh</div></div>'
-            f'<div class="card"><div class="k">CO₂ évité</div>'
-            f'<div class="big">{_v(data["co2_kg"])} kg</div></div>'
-            f'<div class="card"><div class="k">CO₂ évité (t)</div>'
-            f'<div class="big">{_v(data["co2_tonnes"])} t</div></div>'
-            '</div>'
+            + cartes_co2 + '</div>'
         )
 
     body = (
@@ -200,5 +223,7 @@ def tco2_evitees_periode(company, *, installation=None, client_id=None,
     else:
         data = build_carbon_report_data_client(
             company, client_id, since=since, until=until)
+    if data['co2_tonnes'] is None:  # AMON41 — aucun facteur réglé
+        return None, bool(data['has_data'])
     tonnes = Decimal(str(data['co2_tonnes'])).quantize(Decimal('0.001'))
     return tonnes, bool(data['has_data'])

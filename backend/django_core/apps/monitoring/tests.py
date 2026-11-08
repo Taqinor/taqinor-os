@@ -28,6 +28,7 @@ from authentication.models import Company
 from apps.crm.models import Client
 from apps.installations.models import Installation
 from apps.sav.models import Ticket
+from apps.monitoring.test_ntnrg27_registre_certificats import regler_facteur
 
 from apps.monitoring import providers, services, tasks
 from apps.monitoring.models import (
@@ -1242,6 +1243,7 @@ class TestCo2Reporting(TestCase):
         self.api = auth(self.user)
         self.inst1, _ = make_installation(self.company, ref='CO2-1', kwc='5')
         self.inst2, _ = make_installation(self.company, ref='CO2-2', kwc='10')
+        regler_facteur(self.company)  # AMON41 — facteur réglé (810 g)
         for inst in (self.inst1, self.inst2):
             self.config = MonitoringConfig.objects.create(
                 company=self.company, installation=inst)
@@ -1252,14 +1254,12 @@ class TestCo2Reporting(TestCase):
 
     def test_co2_per_system(self):
         from apps.monitoring.selectors import co2_for_installation
-        r = co2_for_installation(self.inst1)
-        # 1000 kWh × 0.81 = 810 kg.
+        r = co2_for_installation(self.inst1)  # 1000 kWh × 0.81 = 810 kg.
         self.assertEqual(r['co2_kg'], Decimal('810.00'))
 
     def test_co2_fleet_cumulative(self):
         from apps.monitoring.selectors import co2_fleet
-        r = co2_fleet(self.company)
-        # 2000 kWh × 0.81 = 1620 kg.
+        r = co2_fleet(self.company)  # 2000 kWh × 0.81 = 1620 kg.
         self.assertEqual(r['total_co2_kg'], Decimal('1620.00'))
         self.assertEqual(len(r['systems']), 2)
 
@@ -1274,6 +1274,7 @@ class TestClientEnvironmentalPortal(TestCase):
 
     def setUp(self):
         self.company = make_company('portal-co', 'Portal Co')
+        regler_facteur(self.company)  # AMON41
         self.user = User.objects.create_user(
             username='portal_admin', password='x', role_legacy='admin',
             company=self.company)

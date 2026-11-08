@@ -295,7 +295,7 @@
 - frontend/src/api/monitoringApi.js :: getClientPortal -> /api/django/monitoring/configs/client-portal
     client:nombre, co2_kg:inconnu, co2_kg_par_kwh:inconnu, co2_tonnes:inconnu, detail:texte, economies_mad:inconnu, systems_count:inconnu, tarif_mad_par_kwh:inconnu, total_production_kwh:inconnu
 - frontend/src/api/monitoringApi.js :: getCo2 -> /api/django/monitoring/configs/<>/co2
-    co2_kg:inconnu, co2_kg_par_kwh:inconnu, co2_tonnes:nombre, installation:inconnu, production_kwh:inconnu
+    co2_kg:inconnu, co2_kg_par_kwh:inconnu, co2_tonnes:inconnu, installation:inconnu, production_kwh:inconnu
 - frontend/src/api/monitoringApi.js :: getCo2Fleet -> /api/django/monitoring/configs/co2-fleet
     co2_kg_par_kwh:inconnu, systems:inconnu, total_co2_kg:inconnu, total_co2_tonnes:inconnu, total_production_kwh:inconnu
 - frontend/src/api/monitoringApi.js :: getFleet -> /api/django/monitoring/configs/fleet

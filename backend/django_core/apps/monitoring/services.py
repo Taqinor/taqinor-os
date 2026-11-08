@@ -1005,6 +1005,11 @@ def emettre_certificat_carbone_mesure(company, *, installation_id=None,
     tonnes, has_data = tco2_evitees_periode(
         company, installation=installation, client_id=client_id,
         since=periode_debut, until=periode_fin)
+    if has_data and tonnes is None:
+        # AMON41 — jamais un certificat chiffré sur un facteur supposé.
+        raise CertificatCarboneError(
+            'Facteur d’émission du réseau non réglé (Paramètres) : aucun '
+            'certificat chiffré.', etat=True)
     if not has_data:
         raise CertificatCarboneError(
             'Aucune production mesurée sur la période : aucun certificat '

@@ -18,14 +18,25 @@ from .models import (
 )
 from .services import _expected_recent_kwh, premiers_releves
 
-# FG286 — facteur d'émission du réseau marocain (kg CO₂ évité par kWh
-# autoproduit). Même hypothèse que l'energy report (apps.installations) : on la
-# RECOPIE ici plutôt que d'importer un autre app domaine (frontière services).
-DEFAULT_CO2_KG_PAR_KWH = Decimal('0.81')
-
 
 def _q(value, places='0.01'):
     return Decimal(str(value)).quantize(Decimal(places)) if value is not None else None
+
+
+def _facteur_kg(company, co2_kg_par_kwh=None):
+    """AMON41 — facteur CO₂ (kg/kWh) : valeur explicite de l'appelant, sinon
+    celle RÉGLÉE par la société (``parametres.selectors.facteur_co2_reseau``,
+    AMON90) ; ``None`` quand rien n'est réglé — jamais un 0,81 supposé."""
+    if co2_kg_par_kwh is not None:
+        return Decimal(str(co2_kg_par_kwh))
+    from apps.parametres.selectors import facteur_co2_reseau
+    reglage = facteur_co2_reseau(company)
+    return reglage['kg_kwh'] if reglage else None
+
+
+def _fois(kwh, facteur):
+    """AMON41 — kg CO₂ = kWh × facteur, ``None`` sans facteur."""
+    return None if facteur is None else kwh * facteur
 
 
 def fleet_overview(company, *, window_days=365, today=None):
@@ -123,10 +134,9 @@ def co2_for_installation(installation, *, since=None, until=None,
     """CO₂ évité (kg + tonnes) d'un système sur une période (toutes sources).
 
     `since`/`until` (dates) bornent la période ; sinon toute la production.
-    Réutilise le facteur réseau marocain par défaut.
+    AMON41 — facteur réglé par la société ; sans facteur, clés CO₂ ``None``.
     """
-    factor = Decimal(str(co2_kg_par_kwh)) if co2_kg_par_kwh is not None \
-        else DEFAULT_CO2_KG_PAR_KWH
+    factor = _facteur_kg(installation.company, co2_kg_par_kwh)
     qs = ProductionReading.objects.filter(installation=installation)
     if since is not None:
         qs = qs.filter(date__gte=since)
@@ -134,12 +144,12 @@ def co2_for_installation(installation, *, since=None, until=None,
         qs = qs.filter(date__lte=until)
     total_kwh = qs.aggregate(s=Sum('energy_kwh'))['s'] or Decimal('0')
     total_kwh = Decimal(str(total_kwh))
-    co2_kg = total_kwh * factor
+    co2_kg = _fois(total_kwh, factor)
     return {
         'installation': installation.id,
         'production_kwh': _q(total_kwh),
         'co2_kg': _q(co2_kg),
-        'co2_tonnes': co2_kg / Decimal('1000'),
+        'co2_tonnes': None if co2_kg is None else co2_kg / Decimal('1000'),
         'co2_kg_par_kwh': factor,
     }
 
@@ -155,8 +165,7 @@ def co2_fleet(company, *, since=None, until=None, co2_kg_par_kwh=None):
     ``co2_for_installation`` reste inchangée pour son propre usage
     mono-système (ex. la fiche d'un chantier).
     """
-    factor = Decimal(str(co2_kg_par_kwh)) if co2_kg_par_kwh is not None \
-        else DEFAULT_CO2_KG_PAR_KWH
+    factor = _facteur_kg(company, co2_kg_par_kwh)  # AMON41
     configs = list(MonitoringConfig.objects
                    .filter(company=company)
                    .select_related('installation'))
@@ -179,22 +188,23 @@ def co2_fleet(company, *, since=None, until=None, co2_kg_par_kwh=None):
         if not getattr(inst, 'parc_actif', True):
             continue
         prod = Decimal(str(prod_par_installation.get(inst.id) or 0))
-        co2_kg = prod * factor
+        co2_kg = _fois(prod, factor)
         total_kwh += prod
         systems.append({
             'installation': inst.id,
             'reference': getattr(inst, 'reference', None),
             'production_kwh': _q(prod),
             'co2_kg': _q(co2_kg),
-            'co2_tonnes': (co2_kg / Decimal('1000')).quantize(Decimal('0.001')),
+            'co2_tonnes': _q(None if co2_kg is None else co2_kg / 1000,
+                             '0.001'),
         })
-    total_co2_kg = total_kwh * factor
+    total_co2_kg = _fois(total_kwh, factor)
     return {
         'co2_kg_par_kwh': factor,
         'total_production_kwh': _q(total_kwh),
         'total_co2_kg': _q(total_co2_kg),
-        'total_co2_tonnes': (total_co2_kg / Decimal('1000')).quantize(
-            Decimal('0.001')),
+        'total_co2_tonnes': _q(
+            None if total_co2_kg is None else total_co2_kg / 1000, '0.001'),
         'systems': systems,
     }
 
@@ -215,8 +225,7 @@ def client_environmental_dashboard(company, client_id, *,
         from apps.parametres.selectors import tariff_for
         tarif_mad_par_kwh = tariff_for(company)['onee_tarif_kwh']
     tarif = Decimal(str(tarif_mad_par_kwh))
-    factor = Decimal(str(co2_kg_par_kwh)) if co2_kg_par_kwh is not None \
-        else DEFAULT_CO2_KG_PAR_KWH
+    factor = _facteur_kg(company, co2_kg_par_kwh)  # AMON41
 
     qs = ProductionReading.objects.filter(
         company=company, installation__client_id=client_id)
@@ -229,7 +238,7 @@ def client_environmental_dashboard(company, client_id, *,
     total_kwh = Decimal(str(total_kwh))
 
     economies = total_kwh * tarif
-    co2_kg = total_kwh * factor
+    co2_kg = _fois(total_kwh, factor)
 
     # Nombre de systèmes du client (distincts) dans le périmètre.
     systems_count = (qs.values('installation_id').distinct().count())
@@ -240,7 +249,7 @@ def client_environmental_dashboard(company, client_id, *,
         'total_production_kwh': _q(total_kwh),
         'economies_mad': _q(economies),
         'co2_kg': _q(co2_kg),
-        'co2_tonnes': (co2_kg / Decimal('1000')).quantize(Decimal('0.001')),
+        'co2_tonnes': _q(None if co2_kg is None else co2_kg / 1000, '0.001'),
         'tarif_mad_par_kwh': tarif,
         'co2_kg_par_kwh': factor,
     }
