@@ -28,7 +28,8 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     OpenApiParameter, extend_schema, inline_serializer,
 )
-from rest_framework import generics, serializers, status
+from rest_framework import generics, serializers, status
+
 from core.serializers import CompanyScopedRelationsMixin
 from rest_framework.decorators import (
     api_view, parser_classes, permission_classes,
@@ -469,8 +470,8 @@ class SlaSnapshotSerializer(CompanyScopedRelationsMixin, serializers.ModelSerial
 
 
 class SlaCreditDuSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
-    """NTOBS4 — un crédit dû, avec le nom de la société (vue cross-tenant
-    Directeur uniquement)."""
+    """NTOBS4 — un crédit dû, avec le nom de la société (lu par le seul
+    superutilisateur de la plateforme sur plusieurs sociétés — AMON20)."""
 
     company_nom = serializers.SerializerMethodField()
 
@@ -582,11 +583,11 @@ class FiabilitePermission(BasePermission):
 
 
 class SlaCreditsDusListView(generics.ListAPIView):
-    """GET /api/django/core/sla/credits/ — Directeur/Administrateur : crédits
-    SLA dus TOUTES sociétés (pilotage cross-tenant, inchangé — NTOBS22). Un
-    compte ``fiabilite_voir`` non-admin reste BORNÉ à SA société : une
-    permission de lecture pensée pour consulter SES PROPRES données
-    Fiabilité n'élargit jamais l'accès à une vue cross-tenant."""
+    """GET /api/django/core/sla/credits/ — crédits SLA dus, BORNÉS à la
+    société de l'appelant (AMON20) : Directeur, Administrateur et
+    ``fiabilite_voir`` d'un tenant ne lisent que SA société. Seul le
+    superutilisateur de la plateforme (opérateur, ``is_superuser``) voit
+    toutes les sociétés — un admin de tenant n'est jamais l'opérateur."""
 
     serializer_class = SlaCreditDuSerializer
     permission_classes = [IsAuthenticated, FiabilitePermission]
@@ -599,7 +600,7 @@ class SlaCreditsDusListView(generics.ListAPIView):
             .select_related('company')
             .order_by('-periode')
         )
-        if not _est_admin(self.request.user):
+        if not getattr(self.request.user, 'is_superuser', False):
             qs = qs.filter(company=self.request.user.company)
         return qs
 
@@ -621,8 +622,8 @@ def sla_credit_statut(request, pk):
 
     Bornée à LA SOCIÉTÉ de l'appelant, SANS exception admin : un crédit SLA
     est par-tenant, et personne — même Directeur — n'édite légitimement celui
-    d'un autre tenant (contrairement à ``SlaCreditsDusListView`` ci-dessus,
-    une LECTURE de pilotage cross-tenant, inchangée). Un pk d'une autre
+    d'un autre tenant (``SlaCreditsDusListView`` ci-dessus est elle aussi
+    bornée à la société, AMON20). Un pk d'une autre
     société est 404 (introuvable), jamais un 403 qui révélerait son
     existence."""
     # ERR-ENF11-FUZZ-CORE — corps validé par le serializer déclaré (un corps
