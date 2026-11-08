@@ -955,6 +955,9 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         patron `motif_override_acompte`), journalisé au chatter. Les
         changements eux-mêmes sont désormais suivis (`TRACKED_FIELDS`)."""
         inst = self.get_object()
+        if inst.annule:  # ACSV34 (D-ACSV-4) — rien écrit ni figé sur un chantier annulé
+            from apps.documents.views import MSG_CHANTIER_ANNULE
+            return Response({'detail': MSG_CHANTIER_ANNULE}, status=status.HTTP_409_CONFLICT)
         # ADOC78 — data-URL PNG/JPEG base64 bornée seulement (plus aucune
         # URL http/file injectée dans <img src> du PV/BL, ni « null ») :
         # ERR-ENF11, contrôlée par le sérialiseur qui la publie.
