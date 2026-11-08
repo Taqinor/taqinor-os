@@ -1468,6 +1468,13 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
                 ticket={current}
                 statutCible={clotureCible}
                 onAnnuler={() => setClotureCible(null)}
+                onRefusNonFacture={(message) => {
+                  // ACSV105 — refus « non facturé » : forçage dans la fiche.
+                  setClotureCible(null)
+                  setSaveError(message)
+                  setForcerSansFacture(true)
+                  set('statut', current.statut)
+                }}
                 onTermine={async () => {
                   setClotureCible(null)
                   toast.success('Ticket mis à jour')
