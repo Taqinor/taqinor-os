@@ -774,6 +774,7 @@ def annuler_chantiers_desaccepte(devis, user, company):
         inst.annule = True
         inst.motif_annulation = MOTIF_ANNULATION_DESACCEPTATION[:255]
         inst.save(update_fields=['annule', 'motif_annulation'])
+        annuler_interventions_ouvertes(inst, user)  # ACSV90 : non datées
         activity.log_note(
             inst, user,
             f"Chantier annulé automatiquement : l'acceptation du devis "
@@ -802,6 +803,7 @@ def _reactiver_chantier_reaccepte(inst, devis, user):
         inst.date_signature = date_acc
         champs.append('date_signature')
     inst.save(update_fields=champs)
+    reactiver_interventions_annulees(inst, user)  # ACSV90
     activity.log_note(inst, user, f'Chantier réactivé : le devis '
                       f'{devis.reference} a été accepté de nouveau.')
     if not realigner_nomenclature_si_divergente(
