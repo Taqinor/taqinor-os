@@ -2005,21 +2005,29 @@ class TicketViewSet(CompanyScopedModelViewSet):
         except (produit_does_not_exist(), ValueError, TypeError):
             return Response({'detail': 'Produit inconnu.'}, status=404)
         decrement = bool(corps.get('decrement'))
-        if decrement:
-            # ERR80 — garde plancher : ne jamais piloter le stock en négatif.
-            # On bloque le décrément qui dépasserait le stock en main.
-            produit.refresh_from_db()
-            if quantite > produit.quantite_stock:
-                return Response(
-                    {'detail': 'Stock insuffisant : '
-                     f'{produit.quantite_stock} en main, {quantite} demandé(s).'},
-                    status=status.HTTP_409_CONFLICT)  # ENF11 : état du stock
         with transaction.atomic():
+            if decrement:
+                # ACSV52 - verrou de ligne AVANT la lecture du stock (deux
+                # poses concurrentes ne lisent plus la meme valeur) ; ERR80 -
+                # garde plancher : ne jamais piloter le stock en negatif ;
+                # ASTK248 - la part en quarantaine n'est jamais prelevee.
+                from apps.stock.services import verrouiller_produit
+                from apps.stock.services_wms import exiger_hors_quarantaine
+                from apps.stock.erreurs_achats import EtatIncompatible
+                produit = verrouiller_produit(produit.pk)
+                if quantite > produit.quantite_stock:
+                    return Response(
+                        {'detail': 'Stock insuffisant : '
+                         f'{produit.quantite_stock} en main, {quantite} demandé(s).'},
+                        status=status.HTTP_409_CONFLICT)  # ENF11 : état du stock
+                try:
+                    exiger_hors_quarantaine(ticket.company, produit, quantite)
+                except EtatIncompatible as exc:
+                    raise ConflitEtat(str(exc)) from exc
             piece = PieceConsommee.objects.create(
                 company=ticket.company, ticket=ticket, produit=produit,
                 quantite=quantite, created_by=request.user)
             if decrement:
-                produit.refresh_from_db()
                 try:
                     record_stock_movement(
                         company=ticket.company, produit=produit,
@@ -2060,8 +2068,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
             return Response({'detail': 'Introuvable.'}, status=404)
         with transaction.atomic():
             if piece.stock_decremente:
-                produit = piece.produit
-                produit.refresh_from_db()
+                from apps.stock.services import verrouiller_produit
+                produit = verrouiller_produit(piece.produit_id)  # ACSV52
                 qte_avant = produit.quantite_stock
                 qte_apres = qte_avant + piece.quantite
                 record_stock_movement(
