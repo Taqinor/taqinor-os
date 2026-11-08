@@ -1,0 +1,28 @@
+# Preuve en direct ACSV16 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Écran : front du worktree servi par vite (127.0.0.1:3000) -> conteneur privé accept-w29-web (runserver, base
+# erp_accept_w29, stockage objet PRIVÉ accept-w29-minio, SMTP 127.0.0.1:1 puis mail en mémoire pour AMON47), piloté par
+# Playwright MCP. Données : seed_demo « TAQINOR Démo » + fixtures FIX-W29* ou états des sondes rejouées SANS rollback
+# (comptes de test, mot de passe de test).
+# Verdict : PASS — Sonde C-ACSV-021 : repro False ; écran Ma journée › Sécurité : signature impossible tant qu'un point manque, cases figées après.
+
+== C-ACSV-021 (sha f57951e87)
+attendu : repro si T refusé (409) et R : signer 200 avec 0/N cochés puis PATCH sur_site 200 ; décocher après signature 200, signe reste vrai
+observé : {'T_patch_sur_site': 409, 'R_points': 4, 'R_coches_avant': 0, 'R_signer': 409, 'R_patch_sur_site': 409, 'R_statut': 'en_route', 'R_decocher_en_ligne': 200, 'R_sync': 200, 'R_sync_status': 'applied', 'R_signe_apres_decochage': False, 'R_coches_final': 0}
+{"T_patch_sur_site": 409, "R_points": 4, "R_coches_avant": 0, "R_signer": 409, "R_patch_sur_site": 409, "R_statut": "en_route", "R_decocher_en_ligne": 200, "R_sync": 200, "R_sync_status": "applied", "R_signe_apres_decochage": false, "R_coches_final": 0, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0
+
+## ACSV16 — PASS (écran)
+État de la sonde C-ACSV-021 rejouée SANS rollback (réglage securite_obligatoire_avant_demarrage vrai, intervention CHT-A021 « En route »,
+4 consignes, 0 cochée, non signées) ; FIX-W29f : interventions datées d'aujourd'hui pour « Ma journée ». Compte sonde_acsv_021.
+Ma journée › « Client A021 — En route — Pose » › onglet « Sécurité » : 4 points listés, bouton « Signer les consignes » DÉSACTIVÉ ;
+cocher 1, 2, 3 points (POST …/27/cocher-safety/ 200 chacun) : bouton toujours désactivé ; 4ᵉ point coché : bouton actif ;
+« Signer les consignes » => POST …/27/signer-safety/ 200 (signe true), message « Consignes signées. », « Signé par sonde_acsv_021 le
+08/11/2026 11:04 » ; après signature les cases sont DÉSACTIVÉES (décochage impossible à l'écran). Le refus serveur à 0/4 (409) et
+« Sur site » refusé sont prouvés par la sonde C-ACSV-021 (R_signer 409, R_patch_sur_site 409). Console 0 erreur.

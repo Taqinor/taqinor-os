@@ -1,0 +1,14 @@
+# Preuve en direct ACSV1 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Verdict : PASS — Sonde C-ACSV-001 : repro False.
+
+== C-ACSV-001 (sha f57951e87)
+attendu : repro si R : chantier rattaché à V2 mais annule=True (motif désacceptation), 0 réservation active ; T : réactivé
+observé : {"repro": false, "observe": {"R_accepter_v1": 200, "R_apres_acceptation": {"id": 68, "annule": false, "motif": null, "devis_id": 2275, "bom": {"22797": 10.0}, "resa_actives": 10}, "R_sortie_signe": [200, null], "R_apres_sortie": {"v1": "envoye", "chantier": {"id": 68, "annule": true, "motif": "Acceptation du devis annulée (lead sorti de « Signé »)", "devis_id": 2275, "bom": {"22797": 10.0}, "resa_actives": 0}}, "R_reviser": [201, 2276], "R_accepter_v2": [200, "accepte", "SIGNED", null], "R_chantiers_affaire": [68], "R_final": {"id": 68, "annule": false, "motif": null, "devis_id": 2276, "bom": {"22797": 12.0}, "resa_actives": 12}, "T": {"sortie": 200, "reaccepter": 200, "final": {"id": 69, "annule": false, "motif": null, "devis_id": 2277, "bom": {"22797": 12.0}, "resa_actives": 12}}, "temoin_ok": true}}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0

@@ -1,0 +1,14 @@
+# Preuve en direct AMON35 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Verdict : PASS — Sonde C-AMON-032 : 1 notification « Crédit SLA recalculé — August 2026 » (août 500 → 2 500). La 2e notification (September) est celle d'AMON89 (crédit d'une décision déjà prise recalculé, décision et montant figés inchangés), pas un doublon d'août.
+
+== C-AMON-032 (sha 39313d48e)
+attendu : repro si (1) 200 et ligne emis sans montant ; (2) sept reste 5 % refuse ; témoin août recalculé 25 % ; notif de recalcul relevée à part
+observé : {"1_non_applicable_vers_emis_http": 409, "1_statut": "non_applicable", "1_ligne_liste": null, "avant": {"aout": ["5", "500.00", "a_emettre"], "sept": ["5", "500.00", "a_emettre"]}, "refuse_http": 200, "regeneres_co": ["2026-08-01", "2026-09-01"], "apres": {"aout": ["92.8763", "25.00", "2500.00", "a_emettre"], "sept": ["92.5000", "5.00", "500.00", "refuse"]}, "notifications_co": ["Crédit SLA recalculé — August 2026", "Crédit SLA recalculé — September 2026"], "notif_recalcul_morte": false, "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 6, après 6) ; mails 0 ; tâches Celery bloquées 0

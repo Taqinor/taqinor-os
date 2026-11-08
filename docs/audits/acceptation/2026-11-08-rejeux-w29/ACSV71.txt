@@ -1,0 +1,20 @@
+# Preuve en direct ACSV71 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Écran : front du worktree servi par vite (127.0.0.1:3000) -> conteneur privé accept-w29-web (runserver, base
+# erp_accept_w29, stockage objet PRIVÉ accept-w29-minio, SMTP 127.0.0.1:1 puis mail en mémoire pour AMON47), piloté par
+# Playwright MCP. Données : seed_demo « TAQINOR Démo » + fixtures FIX-W29* ou états des sondes rejouées SANS rollback
+# (comptes de test, mot de passe de test).
+# Verdict : PASS — Écran public /e/<token> du QR de SN-OLD remplacé : 410 et message, 0 ticket créé.
+
+## ACSV71 — PASS
+État de la sonde C-ACSV-065 rejouée SANS rollback : onduleur SN-065-OLD remplacé (statut « remplace ») ; FIX-W29j : jeton public de
+son QR (Equipement.ensure_public_token, même appel que l'impression d'étiquette). Page publique sans connexion
+/e/3Q8x…Uw24 (« Signaler un problème ») : description « Plus de production depuis ce matin (acceptation ACSV71). » → « Envoyer le
+signalement » => POST public/sav/equipement/<token>/signaler/ 410 {"detail":"Cet appareil n'est plus en service chez vous :
+contactez-nous."} ; message affiché tel quel sous le formulaire. Tickets de la société relus avant/après : 2 / 2 (aucun ticket créé).
+Console : seule erreur = la 410 attendue.

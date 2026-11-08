@@ -1,0 +1,20 @@
+# Preuve en direct AMON20 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Verdict : PASS — Sondes C-AMON-020 et -020-L2 : repro False (API seule).
+
+== C-AMON-020 (sha 39313d48e)
+attendu : repro si le Directeur ET l'Administrateur système de A lisent le crédit de B (montant = % du TTC de B), et le Directeur de B celui de A ; témoin Commercial A : 0 ligne de B
+observé : {"snapshots": {"A": {"statut": "a_emettre", "pct": "10", "montant": "5000.00"}, "B": {"statut": "a_emettre", "pct": "10", "montant": "10000.00"}}, "directeur_A_lit_B": {"http": 200, "voit_autre": false, "ligne_autre": null, "nb_societes_vues": 1}, "administrateur_A_lit_B": {"http": 200, "voit_autre": false, "ligne_autre": null, "nb_societes_vues": 1}, "directeur_B_lit_A": {"http": 200, "voit_autre": false, "ligne_autre": null, "nb_societes_vues": 1}, "commercial_A_lit_B": {"http": 403, "voit_autre": false, "ligne_autre": null, "nb_societes_vues": 0}, "is_admin_role_directeur_A": true, "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0
+
+== C-AMON-020 (sha 39313d48e)
+attendu : repro si le Directeur et l'admin de A lisent le snapshot de B (company_nom, credit_du_montant)
+observé : {"snapshot_B": {"id": 4, "uptime": "98.6559", "pct": "10", "montant": "10000.00", "statut": "a_emettre"}, "directeur_A": {"http": 200, "voit_B": false, "ligne_B": null, "societes_vues": [], "n": 0}, "admin_legacy_A": {"http": 200, "voit_B": false, "ligne_B": null, "societes_vues": [], "n": 0}, "fiabilite_voir_A": {"http": 200, "voit_B": false, "ligne_B": null, "societes_vues": [], "n": 0}, "is_admin_role_adm": true, "K31_brouillon_dans_base": false, "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0

@@ -1,0 +1,23 @@
+# Preuve en direct AMON42 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Écran : front du worktree servi par vite (127.0.0.1:3000) -> conteneur privé accept-w29-web (runserver, base
+# erp_accept_w29, stockage objet PRIVÉ accept-w29-minio, SMTP 127.0.0.1:1 puis mail en mémoire pour AMON47), piloté par
+# Playwright MCP. Données : seed_demo « TAQINOR Démo » + fixtures FIX-W29* ou états des sondes rejouées SANS rollback
+# (comptes de test, mot de passe de test).
+# Verdict : PASS — Sonde C-AMON-042 : repro False ; écran : recouvrement 409 et fin future 409 affichés.
+
+== C-AMON-042 (sha 51dac387b)
+attendu : repro si A,B,C,D = 201 (somme 2025 = 10.125 t), témoin A bis 409, après DELETE juin : B 0.405 inchangé, ré-émission juin 409, attestation juin sans donnée, aucune référence dans le HTML de l'attestation
+observé : {"A_site_2025": {"http": 409, "tco2": null, "id": null, "reference": null, "detail": "{\"detail\":\"Facteur d’émission du réseau non réglé (Paramètres) : aucun certificat chiffré.\",\"error\":{\"code\":\"state_confl"}, "B_site_juin": {"http": 409, "tco2": null, "id": null, "reference": null, "detail": "{\"detail\":\"Facteur d’émission du réseau non réglé (Paramètres) : aucun certificat chiffré.\",\"error\":{\"code\":\"state_confl"}, "C_client_2025": {"http": 409, "tco2": null, "id": null, "reference": null, "detail": "{\"detail\":\"Facteur d’émission du réseau non réglé (Paramètres) : aucun certificat chiffré.\",\"error\":{\"code\":\"state_confl"}, "D_site_fin_future": {"http": 409, "tco2": null, "id": null, "reference": null, "detail": "{\"detail\":\"La fin de période ne peut pas être dans le futur.\",\"periode_fin\":[\"La fin de période ne peut pas être dans le"}, "temoin_A_bis": {"http": 409, "tco2": null, "id": null, "reference": null, "detail": "{\"detail\":\"Facteur d’émission du réseau non réglé (Paramètres) : aucun certificat chiffré.\",\"error\":{\"code\":\"state_confl"}, "registre_somme_2025_t": "0", "delete_releve_juin_http": 204, "B_apres_suppression_tco2": null, "reemission_juin": {"http": 409, "tco2": null, "id": null, "reference": null, "detail": "{\"detail\":\"Aucune production mesurée sur la période : aucun certificat chiffré ne peut être émis.\",\"error\":{\"code\":\"stat"}, "attestation_juin_has_data": false, "attestation_2025_tonnes_apres": "None", "attestation_html_contient_reference": false, "attestation_html_contient_CERT": false, "fichier_key_A": null, "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0
+
+## AMON42 — PASS (écran)
+Compte sonde-amon-041-a-resp (certificat site 2025 émis) : émission juin 2025 du même système => POST 409, affiché sous le formulaire
+« La période recouvre CERT-CO2-202611-0001 (même cible ou relevés partagés site ↔ client) : anti-double-comptage. » ; émission
+2026-01-01 → 2027-12-31 => 409, affiché « La fin de période ne peut pas être dans le futur. ». Sonde C-AMON-042 : repro False.

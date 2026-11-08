@@ -1,0 +1,15 @@
+# Preuve en direct AMON87 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Verdict : PASS — Sonde C-AMON-024 (variante on_commit) : notifications_creees 1 (drapeau ouvert) ; en transaction annulée stricte : 0 (abonné après commit).
+
+# variante sonde_oc.py (transaction.on_commit exécuté immédiatement)
+== C-AMON-024 (sha 39313d48e)
+attendu : repro si drapeau ouvert, 0 Notification, aucune route drapeau au routeur, portail alertes_ouvertes=1, fleet sans id de système en alerte
+observé : {"auto_create_ticket_defaut": false, "ratio": "61.22", "drapeau_ouvert": true, "ticket": false, "notifications_creees": 1, "routes_monitoring": ["abonnements", "certificats-carbone", "cleanings", "configs", "drapeaux", "readings", "settings", "sla-disponibilite", "warranties"], "routes_drapeau_http": {"/api/django/monitoring/flags/": 404, "/api/django/monitoring/underperformance-flags/": 404, "/api/django/monitoring/drapeaux/": 200}, "fleet": {"route": "/api/django/monitoring/configs/fleet/", "open_alerts": 1, "cles_systeme": ["installation", "pr_pct", "production_kwh", "puissance_kwc", "reference", "sans_reference"]}, "portail_http": 200, "portail_alertes_ouvertes": 1, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 65, après 65) ; mails 0 ; tâches Celery bloquées 0

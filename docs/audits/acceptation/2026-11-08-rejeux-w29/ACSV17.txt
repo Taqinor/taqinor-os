@@ -1,0 +1,15 @@
+# Preuve en direct ACSV17 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Verdict : PASS — Sonde C-ACSV-022 : repro False.
+
+== C-ACSV-022 (sha f57951e87)
+attendu : repro si A = 500 et B = 400 avec, pour chacun, op1 mémorisée et op3 absente ; T = 200
+observé : {'A': {'http': 200, 'memorisees': [True, False, True], 'corps': '{"applied":2,"replayed":0,"errors":1,"results":[{"client_op_id":"a022-c71a093cf10a4c1caf1c3b7ea2c4073f","op_type":"intervention.reserve","status":"applied","result":{"reserve":1}},{"client_op_id":"a02'}, 'B': {'http': 200, 'memorisees': [True, False, True], 'corps': '{"applied":2,"replayed":0,"errors":1,"results":[{"client_op_id":"a022-98489cc86d9c40df8093968577f9d938","op_type":"intervention.reserve","status":"applied","result":{"reserve":3}},{"client_op_id":"a02'}, 'T': {'http': 200, 'memorisees': [True, True], 'corps': '{"applied":2,"replayed":0,"errors":0,"results":[{"client_op_id":"a022-0e7de3fdc7924887ad4beacf1f626bac","op_type":"intervention.reserve","status":"applied","result":{"reserve":5}},{"client_op_id":"a02'}, 'reserves': ['ok1', 'ok2', 'ok3', 'ok4', 'ok5']}
+{"A": {"http": 200, "memorisees": [true, false, true], "corps": "{\"applied\":2,\"replayed\":0,\"errors\":1,\"results\":[{\"client_op_id\":\"a022-c71a093cf10a4c1caf1c3b7ea2c4073f\",\"op_type\":\"intervention.reserve\",\"status\":\"applied\",\"result\":{\"reserve\":1}},{\"client_op_id\":\"a02"}, "B": {"http": 200, "memorisees": [true, false, true], "corps": "{\"applied\":2,\"replayed\":0,\"errors\":1,\"results\":[{\"client_op_id\":\"a022-98489cc86d9c40df8093968577f9d938\",\"op_type\":\"intervention.reserve\",\"status\":\"applied\",\"result\":{\"reserve\":3}},{\"client_op_id\":\"a02"}, "T": {"http": 200, "memorisees": [true, true], "corps": "{\"applied\":2,\"replayed\":0,\"errors\":0,\"results\":[{\"client_op_id\":\"a022-0e7de3fdc7924887ad4beacf1f626bac\",\"op_type\":\"intervention.reserve\",\"status\":\"applied\",\"result\":{\"reserve\":5}},{\"client_op_id\":\"a02"}, "reserves": ["ok1", "ok2", "ok3", "ok4", "ok5"], "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0

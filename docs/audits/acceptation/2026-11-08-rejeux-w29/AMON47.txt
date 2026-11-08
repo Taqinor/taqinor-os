@@ -1,0 +1,19 @@
+# Preuve en direct AMON47 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Écran : front du worktree servi par vite (127.0.0.1:3000) -> conteneur privé accept-w29-web (runserver, base
+# erp_accept_w29, stockage objet PRIVÉ accept-w29-minio, SMTP 127.0.0.1:1 puis mail en mémoire pour AMON47), piloté par
+# Playwright MCP. Données : seed_demo « TAQINOR Démo » + fixtures FIX-W29* ou états des sondes rejouées SANS rollback
+# (comptes de test, mot de passe de test).
+# Verdict : PASS — Écran Rapports : envoi tiers 400 affiché ; envoi client 200 (mail en mémoire), retrouvé en GED.
+
+## AMON47 — PASS
+Conteneur web privé passé en mail EN MÉMOIRE (locmem, aucun envoi réel). Compte sonde-amon-041-a-resp › Production › Rapports O&M ›
+CHT-sonde-amon-041-a › « Envoyer par e-mail » : destinataire « tiers@example.invalid » => POST …/email-om-report/ 400, affiché
+« Le rapport ne part qu'aux adresses du client du système. » ; sans destinataire => 200 {sent: true}, « Rapport envoyé par
+e-mail. ». GED › recherche « Rapport O&M » : 1 résultat « Rapport O&M mensuel — système CHT-sonde-amon-041-a » (dossier
+« Rapports O&M », custom_data source_type monitoring.rapport_om, source_id 194).
