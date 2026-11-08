@@ -293,6 +293,9 @@ class FicheRemisePremiumMultivilla(TestCase):
             {'reference': chantier.reference}, composants)
         self.assertIn('24', html)
         self.assertNotIn('prix_achat', html)
+        # ACSV99 — la route applique la garde d'état : chantier installé.
+        chantier.statut = 'installe'
+        chantier.save(update_fields=['statut'])
         api = APIClient()
         api.force_authenticate(user)
         resp = api.get(
@@ -300,3 +303,45 @@ class FicheRemisePremiumMultivilla(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp['Content-Type'], 'application/pdf')
         self.assertNotIn(b'prix_achat', resp.content)
+
+    def test_parc_pose_et_date_de_reception(self):
+        """ACSV37 : la fiche liste le parc posé (n° de série, fin de garantie
+        calculée) et date la remise de la réception, pas du jour d'impression."""
+        from datetime import date
+        from apps.installations.models import Installation
+        from apps.sav.models import Equipement
+        from apps.stock.models import Produit
+        from apps.ventes.quote_engine.extra_docs import (
+            _chantier_composants, build_fiche_remise_html,
+        )
+        company = make_company()
+        chantier = Installation.objects.create(
+            company=company, reference='CH-ACSV37', client=make_client(company),
+            statut='installe', date_reception=date(2026, 8, 8))
+        onduleur = Produit.objects.create(
+            company=company, nom='Onduleur 5kW', sku='OND-ACSV37',
+            marque='Huawei', prix_vente=9000, prix_achat=6000)
+        panneau = Produit.objects.create(
+            company=company, nom='Panneau 550W', sku='PAN-ACSV37',
+            prix_vente=1000, prix_achat=700)
+        Equipement.objects.create(
+            company=company, produit=onduleur, installation=chantier,
+            numero_serie='SN-1', date_pose=date(2026, 8, 8),
+            date_fin_garantie=date(2036, 8, 8))
+        for _ in range(10):
+            Equipement.objects.create(
+                company=company, produit=panneau, installation=chantier,
+                date_pose=date(2026, 8, 8))
+        composants = _chantier_composants(chantier)
+        self.assertEqual(
+            sorted((c['designation'], c['quantite']) for c in composants),
+            [('Onduleur 5kW (N° SN-1)', 1), ('Panneau 550W', 10)])
+        html = build_fiche_remise_html(
+            {'entreprise_nom': 'ACSV37'}, {'nom': 'Alaoui'},
+            {'reference': chantier.reference, 'date_reception': '08/08/2026'},
+            composants)
+        self.assertIn('SN-1', html)
+        self.assertIn('08/08/2036', html)
+        self.assertIn('Remis au client le 08/08/2026', html)
+        self.assertNotIn('prix_achat', html)
+        self.assertNotIn(date.today().strftime('%d/%m/%Y'), html)
