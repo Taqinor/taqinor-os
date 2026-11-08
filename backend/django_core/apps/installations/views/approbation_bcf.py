@@ -100,6 +100,13 @@ class ApprobationBCFViewSet(oa.JsonOnlyMixin, TenantMixin, viewsets.ReadOnlyMode
                 {'bcf': 'Bon de commande inconnu pour cette société.'},
                 status=status.HTTP_404_NOT_FOUND)
 
+        # AAPV48 — séparation des tâches (réglage `sod_stricte`, NTP2P37).
+        from apps.stock.selectors import sod_stricte_active
+        if bcf.created_by_id == request.user.pk and sod_stricte_active(company):
+            return Response(
+                {'detail': "Séparation des tâches : le créateur d'un BCF ne "
+                           "peut pas l'approuver."},
+                status=status.HTTP_409_CONFLICT)
         montant = selectors.bcf_montant_achat(company, bcf_id)
         palier = selectors.palier_requis_bcf(company, montant)
 

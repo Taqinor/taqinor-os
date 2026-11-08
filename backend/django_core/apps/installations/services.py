@@ -1193,6 +1193,9 @@ def quantite_deja_sortie_chantier(installation, produit_id):
     from decimal import ROUND_HALF_UP
     from django.db.models import Sum
     from .models import ConsommationLigne
+    if installation.devis_id:  # AAPV18 — les sorties de la vente font foi
+        total = _sorties_vente_du_chantier(installation, produit_id)
+        return int(total.quantize(Decimal('1'), rounding=ROUND_HALF_UP))
     f11 = (
         ConsommationLigne.objects
         .filter(consommation__intervention__installation=installation,
@@ -1201,11 +1204,20 @@ def quantite_deja_sortie_chantier(installation, produit_id):
     ) or Decimal('0')
     total = Decimal(str(f11)) + _quantite_soldee_par_vente(
         installation, produit_id)
-    if installation.devis_id:  # ASTK258 — max(actuel, sorties de la vente)
-        from apps.ventes.selectors import sorties_de_la_vente
-        total = max(total, Decimal(str(sorties_de_la_vente(
-            installation.devis_id, installation.company).get(produit_id, 0))))
     return int(total.quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+
+
+def _sorties_vente_du_chantier(installation, produit_id):
+    """AAPV18 — chantier né d'un devis : ``sorties_de_la_vente`` (F11, N14,
+    livraison directe sous la référence du chantier ; vente sous devis et BC)
+    est LA mesure du déjà-sorti — jamais « F11 + soldé vente » (double compte
+    de la pose nettée par ASTK258). Plancher : le solde-vente des
+    réservations (un marqueur sans mouvement sous les références de la vente
+    reste compté, jamais additionné)."""
+    from apps.ventes.selectors import sorties_de_la_vente
+    return max(Decimal(str(sorties_de_la_vente(
+        installation.devis_id, installation.company).get(produit_id, 0))),
+        Decimal(str(_quantite_soldee_par_vente(installation, produit_id))))
 
 
 def _poser_reservation_ecart(installation, produit_id, besoin,
@@ -1370,13 +1382,16 @@ def consume_reservations(installation, user):
     return consumed
 
 
-def release_reservations(installation):
+def release_reservations(installation, produits=None):
     """N14 — libère les réservations NON consommées du chantier (annulation /
     clôture). Une réservation consommée n'est jamais touchée (le stock a déjà
-    été sorti). Renvoie le nombre de réservations libérées."""
-    return (StockReservation.objects
-            .filter(installation=installation, active=True, consomme=False)
-            .update(active=False))
+    été sorti). AAPV31 (D-AAPV-3) — ``produits`` borne la libération aux
+    produits réconciliés par une F11. Renvoie le nombre libéré."""
+    qs = StockReservation.objects.filter(
+        installation=installation, active=True, consomme=False)
+    if produits is not None:
+        qs = qs.filter(produit_id__in=list(produits))
+    return qs.update(active=False)
 
 
 _MARQUEUR_SOLDE_VENTE = 'reservation_soldee_vente'
@@ -1487,6 +1502,8 @@ def _quantite_sortie_chantier(installation, produit_id):
     from apps.stock.selectors import mouvements_par_reference
     from apps.stock.services import mouvement_type_sortie
     from .models import ConsommationLigne
+    if installation.devis_id:  # AAPV18
+        return _sorties_vente_du_chantier(installation, produit_id)
     f11 = (
         ConsommationLigne.objects
         .filter(consommation__intervention__installation=installation,
@@ -1558,10 +1575,15 @@ def valider_retour_materiel(retour, user):
 
     installation = retour.installation
     lignes = list(retour.lignes.select_related('produit').all())
+    cumul = {}  # AAPV49 — le retournable se compare au CUMUL par produit
+    for ligne in lignes:
+        if ligne.produit_id is not None:
+            cumul[ligne.produit_id] = cumul.get(ligne.produit_id, Decimal('0')) + (
+                ligne.quantite or Decimal('0'))
     for ligne in lignes:
         if ligne.produit_id is None:
             continue
-        qte = ligne.quantite or Decimal('0')
+        qte = cumul[ligne.produit_id]
         retournable = quantite_retournable(installation, ligne.produit_id)
         if qte > retournable:
             raise ValueError(
@@ -4563,14 +4585,28 @@ def decider_demande_achat(demande_achat, *, approuver, user, motif_refus=''):
     NTP2P2 (N approbateurs séquentiels) était approuvée EN UN COUP depuis
     l'écran d'approbations générique, laissant des ``EtapeApprobationAchat``
     ``en_attente`` orphelines et perdant la séparation des tâches
-    (``sod_stricte``) — ce n'était PAS un franchissement de rôle (le rôle
-    exigé est identique des deux côtés) mais une perte d'intégrité.
+    (``sod_stricte``) — perte d'intégrité.
+
+    AAPV32 — la boîte d'approbations n'exigeait que le palier Responsable :
+    le service exige désormais ``approuver_demande_achat`` (``PermissionDenied``,
+    403) et la séparation créateur/décideur sous ``sod_stricte`` (409).
     """
+    from django.core.exceptions import PermissionDenied
     from django.utils import timezone
 
     from core.documents import TransitionRefusee
+    from core.permissions import _user_has_or_legacy
 
     from .models import DemandeAchat, EtapeApprobationAchat
+
+    if not _user_has_or_legacy(user, 'approuver_demande_achat'):
+        raise PermissionDenied(
+            "Permission « approuver_demande_achat » requise pour décider une "
+            "demande d'achat.")
+    try:
+        verifier_separation_taches_achat(demande_achat, user)
+    except ApprobationAchatError as exc:
+        raise DecisionError(str(exc))
 
     # ENF15 — deux décisions concurrentes passaient toutes deux la garde de
     # statut (lue avant la transaction) : ``sous_verrou`` verrouille et RELIT
@@ -5152,13 +5188,21 @@ def provisionner_gr_ir_reception(*, reception, company, user):
     if date_reception is None and reception.date_creation:
         date_reception = reception.date_creation.date()
 
-    return ReceptionNonFacturee.objects.create(
+    provision = ReceptionNonFacturee.objects.create(
         company=company, reception=reception, bon_commande=bc,
         libelle=f'Réception {reception.reference}',
         montant_provision=montant,
         date_reception=date_reception,
         created_by=user,
     )
+    # AAPV7 — provision née APRÈS la facture du BCF (« sur commande ») :
+    # lettrée à sa création par cette facture si le cumul facturé la couvre.
+    from apps.stock.selectors import derniere_facture_bcf
+    facture = derniere_facture_bcf(bc)
+    if facture is not None:
+        lettrer_gr_ir_facture(facture=facture, company=company, user=user)
+        provision.refresh_from_db()
+    return provision
 
 
 def lettrer_gr_ir_facture(*, facture, company, user):
@@ -5197,9 +5241,13 @@ def lettrer_gr_ir_facture(*, facture, company, user):
     montant_restant = (Decimal(str(montant_facture_bcf(bc) or 0))
                        - Decimal(str(deja_lettre)))
     lettres = []
-    provisions = ReceptionNonFacturee.objects.filter(
-        company=company, bon_commande=bc, lettre=False).order_by(
-        'date_creation', 'pk')
+    # AAPV7 — la facture d'une réception lettre d'abord SA provision, puis FIFO.
+    reception_id = getattr(facture, 'reception_id', None)
+    provisions = sorted(
+        ReceptionNonFacturee.objects.filter(
+            company=company, bon_commande=bc, lettre=False),
+        key=lambda p: (not (reception_id and p.reception_id == reception_id),
+                       p.date_creation, p.pk))
     for prov in provisions:
         montant_prov = prov.montant_provision or Decimal('0')
         if montant_restant < montant_prov or montant_restant <= 0:
@@ -5262,6 +5310,11 @@ def peupler_series_entrepot_reception(*, reception, company, user):
     if company is None or reception is None:
         return 0
     depot_principal = ensure_emplacements(company)
+    # AAPV66 — livraison directe au chantier : séries « sorti » sur CH.
+    chantier_id = getattr(reception.bon_commande, 'chantier_livraison_id', None)
+    defaut = ({'statut': SerieEntrepot.Statut.SORTI, 'installation_id': chantier_id}
+              if chantier_id else {'statut': SerieEntrepot.Statut.EN_STOCK,
+                                   'emplacement': depot_principal})
     created = 0
     for ligne in reception.lignes.select_related('produit').all():
         if ligne.produit_id is None:
@@ -5279,8 +5332,7 @@ def peupler_series_entrepot_reception(*, reception, company, user):
                 company=company, produit_id=ligne.produit_id,
                 numero_serie=numero,
                 defaults={
-                    'statut': SerieEntrepot.Statut.EN_STOCK,
-                    'emplacement': depot_principal,
+                    **defaut,
                     'reference_reception': reception.reference,
                     'created_by': user,
                 })
@@ -5310,6 +5362,17 @@ def extourner_gr_ir_reception(*, reception, company):
         return 0
     deleted, _ = ReceptionNonFacturee.objects.filter(
         company=company, reception=reception, lettre=False).delete()
+    # AAPV7 — provision lettrée par la facture d'une AUTRE réception :
+    # supprimée, puis cette facture re-lettre la provision sœur. Un lettrage
+    # manuel (facture nulle) ou par sa propre facture n'est jamais touché.
+    for prov in list(ReceptionNonFacturee.objects.filter(
+            company=company, reception=reception, lettre=True,
+            facture__reception__isnull=False).exclude(
+            facture__reception_id=reception.pk).select_related('facture')):
+        facture = prov.facture
+        prov.delete()
+        deleted += 1
+        lettrer_gr_ir_facture(facture=facture, company=company, user=None)
     return deleted
 
 
@@ -5335,6 +5398,29 @@ def retourner_series_entrepot_reception(*, reception, company):
         count += SerieEntrepot.objects.filter(
             company=company, produit_id=ligne.produit_id,
             numero_serie__in=numeros,
+            # AAPV22 — seules les séries que CETTE réception a mises en stock.
+            reference_reception=reception.reference,
+            statut=SerieEntrepot.Statut.EN_STOCK,
+        ).update(statut=SerieEntrepot.Statut.RETOURNE)
+    return count
+
+
+def retourner_series_retour(*, retour, company):
+    """AAPV65 — sœur de ``retourner_series_entrepot_reception`` pour un
+    RETOUR fournisseur validé : les séries citées sur ses lignes encore « en
+    stock » passent « retourné » (sortie/réservée : intactes). Idempotent.
+    Renvoie le nombre de séries modifiées."""
+    from .models_serie_entrepot import SerieEntrepot
+    if company is None or retour is None:
+        return 0
+    count = 0
+    for ligne in retour.lignes.all():
+        numeros = [n.strip() for n in (getattr(ligne, 'numeros_serie', None) or [])
+                   if isinstance(n, str) and n.strip()]
+        if not numeros or ligne.produit_id is None:
+            continue
+        count += SerieEntrepot.objects.filter(
+            company=company, produit_id=ligne.produit_id, numero_serie__in=numeros,
             statut=SerieEntrepot.Statut.EN_STOCK,
         ).update(statut=SerieEntrepot.Statut.RETOURNE)
     return count
@@ -5350,7 +5436,20 @@ def replafonner_reservation_recue_pour_chantier(*, reception, company=None):
     Fonction pure de l'état persisté → idempotente. Renvoie le nombre de
     réservations modifiées."""
     bc = reception.bon_commande
-    if bc is None or not getattr(bc, 'chantier_origine_id', None):
+    if bc is None:
+        return 0
+    produit_ids = {lg.produit_id for lg in reception.lignes.all()
+                   if lg.produit_id is not None and lg.ligne_commande_id is not None}
+    return _replafonner_reservation_bcf(bc, produit_ids, company)
+
+
+def _replafonner_reservation_bcf(bc, produit_ids, company):
+    """ASTK57/AAPV9 — cœur PAR BCF : la réservation du chantier d'origine
+    (YPROC10) ne dépasse plus le reçu NET des lignes du BCF pour
+    ``produit_ids`` (`quantite_recue`), sauf le besoin propre de la
+    nomenclature (N14, jamais réduit). Ne fait que BAISSER ; à 0, désactivée.
+    Idempotent (état persisté)."""
+    if bc is None or not getattr(bc, 'chantier_origine_id', None) or not produit_ids:
         return 0
     installation = bc.chantier_origine
     if installation is None:
@@ -5359,15 +5458,11 @@ def replafonner_reservation_recue_pour_chantier(*, reception, company=None):
         return 0
 
     recu_net = {}
-    for ligne in reception.lignes.select_related('ligne_commande').all():
-        if ligne.produit_id is None or ligne.ligne_commande_id is None:
-            continue
-        ligne_cmd = ligne.ligne_commande
-        ligne_cmd.refresh_from_db()
+    for ligne_cmd in bc.lignes.filter(produit_id__in=list(produit_ids)):
         cap = min(int(ligne_cmd.quantite_recue or 0),
                   int(ligne_cmd.quantite or 0))
-        recu_net[ligne.produit_id] = max(
-            recu_net.get(ligne.produit_id, 0), max(cap, 0))
+        recu_net[ligne_cmd.produit_id] = max(
+            recu_net.get(ligne_cmd.produit_id, 0), max(cap, 0))
     if not recu_net:
         return 0
 
@@ -5388,6 +5483,50 @@ def replafonner_reservation_recue_pour_chantier(*, reception, company=None):
         resa.save(update_fields=changed)
         count += 1
     return count
+
+
+def replafonner_reservation_retour(*, retour, company=None):
+    """AAPV9 — après un retour fournisseur validé : même re-plafonnement que
+    l'annulation de réception, sur les produits retournés du BCF."""
+    produit_ids = {lg.produit_id for lg in retour.lignes.all() if lg.produit_id}
+    return _replafonner_reservation_bcf(retour.bon_commande, produit_ids, company)
+
+
+def reduire_gr_ir_retour(*, retour, company):
+    """AAPV9 — un retour fournisseur validé baisse la provision GR/IR
+    OUVERTE de son BCF de la valeur retournée (qté × PU de la ligne BCF), de
+    la plus récente à la plus ancienne (supprimée à 0). Lu sur l'état
+    persisté : la baisse est plafonnée à l'excédent Σ provisions − reçu NET
+    valorisé du BCF, donc un second envoi ne change rien. Une provision
+    lettrée n'est jamais touchée. Renvoie le montant réduit."""
+    from .models_gr_ir import ReceptionNonFacturee
+    bc = getattr(retour, 'bon_commande', None)
+    if bc is None or company is None:
+        return Decimal('0')
+    pu = {}
+    attendu = Decimal('0')
+    for lc in bc.lignes.all():
+        prix = lc.prix_achat_unitaire or Decimal('0')
+        pu.setdefault(lc.produit_id, prix)
+        attendu += Decimal(int(lc.quantite_recue or 0)) * prix
+    valeur = sum((Decimal(int(lg.quantite or 0)) * pu.get(lg.produit_id, Decimal('0'))
+                  for lg in retour.lignes.all()), Decimal('0'))
+    provisions = ReceptionNonFacturee.objects.filter(company=company, bon_commande=bc)
+    total = sum((p.montant_provision or Decimal('0') for p in provisions), Decimal('0'))
+    reste = min(valeur, total - attendu)
+    reduit = Decimal('0')
+    for prov in provisions.select_for_update().filter(lettre=False).order_by('-date_creation', '-pk'):
+        if reste <= 0:
+            break
+        part = min(reste, prov.montant_provision or Decimal('0'))
+        prov.montant_provision = (prov.montant_provision or Decimal('0')) - part
+        if prov.montant_provision <= 0:
+            prov.delete()
+        else:
+            prov.save(update_fields=['montant_provision', 'date_modification'])
+        reste -= part
+        reduit += part
+    return reduit
 
 
 # ── YSERV1 — Gate « acompte encaissé » avant planification (opt-in) ────────
@@ -7239,17 +7378,17 @@ def prochaine_etape_approbation_achat(demande):
     ).order_by('niveau', 'id').first()
 
 
-def verifier_separation_taches_achat(etape, approbateur):
+def verifier_separation_taches_achat(demande, approbateur):
     """NTP2P37 — SoD : le demandeur ne peut pas approuver sa propre demande.
 
     Contrôle SERVEUR (jamais un simple masquage d'écran), activé par
     ``stock.AchatsParametres.sod_stricte`` — défaut ``False`` pour ne pas
     casser les petites structures à un seul décideur. Lecture cross-app via
-    ``stock.selectors`` uniquement.
+    ``stock.selectors`` uniquement. AAPV32 — prend la DEMANDE (les étapes
+    passent ``etape.demande``) : décision directe et boîte comprises.
     """
     if approbateur is None or not getattr(approbateur, 'pk', None):
         return
-    demande = etape.demande
     createur_id = getattr(demande, 'created_by_id', None)
     if createur_id is None or createur_id != approbateur.pk:
         return
@@ -7257,7 +7396,7 @@ def verifier_separation_taches_achat(etape, approbateur):
     if sod_stricte_active(demande.company):
         raise ApprobationAchatError(
             "Séparation des tâches : le créateur d'une demande d'achat ne "
-            'peut pas approuver sa propre étape.')
+            'peut pas la décider lui-même.')
 
 
 def _decider_etape_approbation_achat(etape, *, statut_cible, approbateur,
@@ -7283,7 +7422,8 @@ def _decider_etape_approbation_achat(etape, *, statut_cible, approbateur,
             raise ApprobationAchatError(
                 "Les étapes se décident dans l'ordre : l'étape "
                 f'{attendue.niveau} est encore en attente.')
-        verifier_separation_taches_achat(etape, approbateur)
+        verifier_separation_taches_achat(etape.demande, approbateur)
+        _verifier_palier_etape_achat(etape, approbateur)
         etape.statut = statut_cible
         etape.approbateur = approbateur
         etape.decision_le = timezone.now()
@@ -7291,6 +7431,25 @@ def _decider_etape_approbation_achat(etape, *, statut_cible, approbateur,
         etape.save(update_fields=['statut', 'approbateur', 'decision_le',
                                   'commentaire', 'updated_at'])
     return etape
+
+
+def _verifier_palier_etape_achat(etape, approbateur):
+    """AAPV33 — palier ``niveau_approbation`` de l'étape (responsable ⇒
+    responsable ou admin ; administrateur/direction ⇒ admin) et approbateurs
+    DISTINCTS d'une étape à l'autre de la même demande."""
+    if approbateur is None or approbateur.is_superuser:
+        return
+    niveau = etape.niveau_approbation or 'responsable'
+    admis = (approbateur.is_admin_role if niveau != 'responsable'
+             else (approbateur.is_responsable or approbateur.is_admin_role))
+    if not admis:
+        raise ApprobationAchatError(
+            f'Étape réservée au palier {etape.get_niveau_approbation_display()}.')
+    if etape.demande.etapes_approbation.filter(
+            statut=type(etape).Statut.APPROUVE, approbateur=approbateur
+    ).exclude(pk=etape.pk).exists():
+        raise ApprobationAchatError(
+            'Vous avez déjà approuvé une étape de cette demande.')
 
 
 def _notifier_prochaine_etape_approbation_achat(demande):
@@ -7883,3 +8042,27 @@ def appliquer_mouvement_casier(company, produit_id, quantite,
                     changed.append('company')
                 dest.save(update_fields=changed)
     return ecart
+
+
+def rouvrir_demande_achat_bcf_annule(*, bon_commande_id, company, user=None, supprime=False):
+    """AAPV71 — abonné de ``bon_commande_fournisseur_annule`` : la demande
+    d'achat commandée par ce BCF redevient « approuvée » (lien effacé) pour
+    qu'un nouveau BCF puisse être généré. Relue sous verrou ; renvoie la DA
+    rouverte ou ``None``."""
+    from django.db import transaction
+    from .models import DemandeAchat
+    with transaction.atomic():
+        da = (DemandeAchat.objects.select_for_update()
+              .filter(company=company, bon_commande_id=bon_commande_id,
+                      statut=DemandeAchat.Statut.COMMANDEE).first())
+        if da is None:
+            return None
+        ref_bcf = da.bon_commande.reference if da.bon_commande_id else bon_commande_id
+        appliquer_statut_document(
+            da, DemandeAchat.Statut.APPROUVEE, user=user, champs={'bon_commande': None})
+    try:
+        from apps.records.services import log_note
+        log_note(da, user, f'BCF {ref_bcf} annulé : demande rouverte', company=company)
+    except Exception:  # noqa: BLE001 — chatter best-effort (D-ENF22-BLE001)
+        logger.warning('AAPV71 : note de réouverture non journalisée (DA %s)', da.pk)
+    return da

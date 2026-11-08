@@ -270,6 +270,11 @@ const stockApi = {
     api.post(`/stock/receptions-fournisseur/${id}/confirmer/`),
   annulerReceptionFournisseur: (id) =>
     api.post(`/stock/receptions-fournisseur/${id}/annuler/`),
+  // AAPV24 — contrôle qualité à réception (NTWMS34) : plan applicable / verdict.
+  getEchantillonnageReception: (id) =>
+    api.get(`/stock/receptions-fournisseur/${id}/echantillonnage/`),
+  saisirControleQualiteReception: (id, data) =>
+    api.post(`/stock/receptions-fournisseur/${id}/controle-qualite/`, data),
   // XSTK4/XSTK5 — décompose un code GS1-128/DataMatrix scanné et résout le
   // produit + série/lot/péremption préremplis pour la réception scan-first.
   scanGs1ReceptionFournisseur: (code) =>

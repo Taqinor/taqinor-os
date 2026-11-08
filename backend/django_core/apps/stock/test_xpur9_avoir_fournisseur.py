@@ -150,6 +150,32 @@ class TestImputationAvoir(Xpur9Base):
         self.assertEqual(avoir.montant_impute, Decimal('5400.00'))
         self.assertEqual(avoir.statut, AvoirFournisseur.Statut.IMPUTE)
 
+    def test_imputation_verrouille_la_facture_avant_l_avoir(self):
+        """AAPV27 — le premier FOR UPDATE vise la facture, puis l'avoir ; un
+        paiement déjà posé ramène le plafond à 0 (« Rien à imputer »)."""
+        import datetime
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from apps.stock.models import ImputationAvoirFournisseur, PaiementFournisseur
+        avoir = self._avoir_valide(montant_ttc=Decimal('1000'))
+        facture = FactureFournisseur.objects.create(
+            company=self.company, reference='FF-AAPV27', fournisseur=self.fournisseur,
+            montant_ht=Decimal('1000'), montant_tva=Decimal('0'),
+            montant_ttc=Decimal('1000'))
+        PaiementFournisseur.objects.create(
+            company=self.company, facture=facture, montant=Decimal('1000'),
+            date_paiement=datetime.date(2026, 10, 1))
+        with CaptureQueriesContext(connection) as ctx:
+            with self.assertRaises(ValueError) as err:
+                imputer_avoir_fournisseur(avoir, facture, user=self.user)
+        verrous = [q['sql'] for q in ctx.captured_queries
+                   if 'FOR UPDATE' in q['sql'].upper()]
+        self.assertIn(FactureFournisseur._meta.db_table, verrous[0])
+        self.assertIn(AvoirFournisseur._meta.db_table, verrous[1])
+        self.assertIn('Rien à imputer', str(err.exception))
+        self.assertEqual(ImputationAvoirFournisseur.objects.filter(
+            facture=facture).count(), 0)
+
     def test_solde_du_never_negative(self):
         avoir = self._avoir_valide(montant_ttc=Decimal('99999'))
         facture = FactureFournisseur.objects.create(

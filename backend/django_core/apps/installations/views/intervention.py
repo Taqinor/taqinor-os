@@ -153,6 +153,17 @@ def seed_types_intervention(company):
 # package __init__ ré-exporte toutes les vues publiques.
 
 
+def _quantite_f11(request):
+    """AAPV52 — quantité F11 bornée ET entière (le stock se compte en unités) :
+    refusée dès la saisie, jamais à la validation de toute la F11. Corps
+    conforme au schéma (décimal publié) ⇒ règle d'état 409 (ENF11), au champ."""
+    qte = oa.quantite_bornee(request, 'quantite_utilisee')
+    if qte != qte.to_integral_value():
+        from core.conflit_etat import ConflitEtat
+        raise ConflitEtat({'quantite_utilisee': [field_capture.MESSAGE_QTE_ENTIERE_F11]})
+    return qte
+
+
 @oa.listing(
     p0=oa.qs('annulee'),
     p1=oa.qs('priorite'),
@@ -751,6 +762,7 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
         from apps.stock.services import (
             draft_bcf_for_shortfall, resolve_fournisseur,
         )
+        from django.db import transaction
         from apps.stock.serializers import BonCommandeFournisseurSerializer
         interv = self.get_object()
         inst = interv.installation
@@ -767,9 +779,10 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
                     'par défaut sur les produits manquants.')},
                 status=oa.statut_inconnu(request.data.get('fournisseur'))
                 if request.data.get('fournisseur') else status.HTTP_409_CONFLICT)
-        try:
-            bon, nb = draft_bcf_for_shortfall(
-                inst, fournisseur, request.user, company)
+        try:  # AAPV28 — chantier verrouillé AVANT le calcul des manques
+            with transaction.atomic():
+                inst = Installation.objects.select_for_update().get(pk=inst.pk)
+                bon, nb = draft_bcf_for_shortfall(inst, fournisseur, request.user, company)
         except ValueError as exc:
             # api-fuzz-full 27/10 (ENF11) : rien à commander / BCF ouvert qui
             # couvre déjà les manques = refus d'ÉTAT.
@@ -1357,7 +1370,7 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
         produit_id = oa.id_corps(request, 'produit')  # liste/objet → 400, plus 500
         produit = get_produit_scoped(interv.company, produit_id) if produit_id else None
         from decimal import Decimal
-        qte = oa.quantite_bornee(request, 'quantite_utilisee')  # (12, 2) : 1e15 → 500
+        qte = _quantite_f11(request)  # (12, 2) : 1e15 → 500 ; AAPV52 entière
         ligne = ConsommationLigne.objects.create(
             company=interv.company, consommation=cons, produit=produit,
             designation=designation, quantite_prevue=Decimal('0'),
@@ -1395,7 +1408,7 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
                             status=oa.statut_inconnu(request.data.get('ligne')))
         fields = []
         if 'quantite_utilisee' in request.data:
-            ligne.quantite_utilisee = oa.quantite_bornee(request, 'quantite_utilisee')
+            ligne.quantite_utilisee = _quantite_f11(request)
             fields.append('quantite_utilisee')
         if 'justification' in request.data:
             ligne.justification = (request.data.get('justification') or '').strip()

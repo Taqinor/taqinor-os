@@ -94,6 +94,34 @@ class Rapprochement3VoiesTests(TestCase):
         self.assertIn(facture.id, [
             f.id for f in factures_en_exception(self.company)])
 
+    def test_ht_nul_ou_incoherent_exception(self):
+        """AAPV2 — HT nul (OCR TTC seul) ou HT + TVA ≠ TTC : exception au lien
+        BCF, paiement 409 ; une facture cohérente dans la tolérance reste
+        normale."""
+        cas = (
+            (Decimal('0'), Decimal('0'), Decimal('12000'), 'exception'),
+            (Decimal('1000'), Decimal('200'), Decimal('12000'), 'exception'),
+            (Decimal('1000'), Decimal('200'), Decimal('1200'), 'normale'),
+        )
+        for ht, tva, ttc, attendu in cas:
+            with self.subTest(ht=ht, ttc=ttc):
+                FactureFournisseur.objects.filter(bon_commande=self.bcf).update(
+                    bon_commande=None)
+                facture = FactureFournisseur.objects.create(
+                    company=self.company, reference=f'FF-AAPV2-{ht}-{ttc}',
+                    fournisseur=self.fournisseur, montant_ht=ht,
+                    montant_tva=tva, montant_ttc=ttc)
+                self.assertEqual(self._lier(facture).status_code, 200)
+                facture = FactureFournisseur.objects.get(pk=facture.pk)
+                self.assertEqual(facture.statut_controle, attendu)
+        facture = FactureFournisseur.objects.get(reference='FF-AAPV2-0-12000')
+        self.assertEqual(facture.motif_ecart,
+                         'Montants incohérents : HT 0,00 + TVA 0,00 ≠ TTC 12 000,00')
+        resp = self.api.post(
+            f'/api/django/stock/factures-fournisseur/{facture.id}/paiements/',
+            {'montant': '12000', 'date_paiement': '2026-10-02'}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+
     def test_paiement_bloque(self):
         facture = self._facture_ocr(Decimal('1500'))
         self._lier(facture)

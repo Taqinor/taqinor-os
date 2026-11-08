@@ -200,6 +200,46 @@ class ResolutionEtConsommationTests(TestCase):
         resolu = stock_selectors.resoudre_budget_departement(self.company)
         self.assertEqual(resolu.pk, mensuel.pk)
 
+    def test_annuler_ou_supprimer_bcf_rend_la_consommation(self):
+        """AAPV17 — annuler (ou supprimer le brouillon d') un BCF ramène ses
+        engagements CONSOMMÉS à ACTIF (réalisé 0), lien BCF effacé, et émet
+        `bon_commande_fournisseur_annule` une fois par geste."""
+        from apps.stock.models import BonCommandeFournisseur, Fournisseur
+        from core.events import bon_commande_fournisseur_annule
+        emissions = []
+
+        def capter(sender, **kwargs):
+            emissions.append(kwargs)
+        bon_commande_fournisseur_annule.connect(capter)
+        self.addCleanup(bon_commande_fournisseur_annule.disconnect, capter)
+        admin = make_user(self.company, role='admin')
+        api = auth(admin)
+        budget = BudgetDepartement.objects.create(
+            company=self.company, periodicite=BudgetDepartement.Periodicite.ANNUELLE,
+            annee=self.annee, montant_alloue=50000)
+        fournisseur = Fournisseur.objects.create(company=self.company, nom='F AAPV17')
+        bcfs = [BonCommandeFournisseur.objects.create(
+            company=self.company, reference=f'BCF-AAPV17-{i}', fournisseur=fournisseur,
+            statut=statut) for i, statut in enumerate(
+                (BonCommandeFournisseur.Statut.ENVOYE, BonCommandeFournisseur.Statut.BROUILLON))]
+        for bc in bcfs:
+            EngagementBudget.objects.create(
+                company=self.company, budget=budget, montant=10000, bon_commande=bc,
+                statut=EngagementBudget.Statut.CONSOMME)
+        rep = api.post(f'{STOCK}/bons-commande-fournisseur/{bcfs[0].id}/annuler/',
+                       {'motif_annulation': 'Plus nécessaire'}, format='json')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        rep = api.delete(f'{STOCK}/bons-commande-fournisseur/{bcfs[1].id}/')
+        self.assertEqual(rep.status_code, 204, getattr(rep, 'content', rep))
+        self.assertEqual([(e['bon_commande_id'], e['supprime']) for e in emissions],
+                         [(bcfs[0].id, False), (bcfs[1].id, True)])
+        self.assertFalse(EngagementBudget.objects.filter(
+            company=self.company, statut=EngagementBudget.Statut.CONSOMME).exists())
+        self.assertEqual(EngagementBudget.objects.filter(
+            company=self.company, statut=EngagementBudget.Statut.ACTIF,
+            bon_commande__isnull=True).count(), 2)
+        self.assertEqual(stock_selectors.consommation_budget(budget)['realise'], Decimal('0'))
+
     def test_consommation_engage_realise_restant(self):
         budget = BudgetDepartement.objects.create(
             company=self.company,

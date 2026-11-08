@@ -13,10 +13,15 @@ from django.utils import timezone
 
 
 def imputer_avoir_sous_verrou(avoir, facture, montant):
-    from .models import AvoirFournisseur, ImputationAvoirFournisseur
+    from .models import (
+        AvoirFournisseur, FactureFournisseur, ImputationAvoirFournisseur,
+    )
     from .services import recompute_facture_fournisseur_statut
 
     with transaction.atomic():
+        # AAPV27 — facture PUIS avoir (ordre de la porte paiement), solde relu
+        # sous le verrou de la facture.
+        facture = FactureFournisseur.objects.select_for_update().get(pk=facture.pk)
         verrou = AvoirFournisseur.objects.select_for_update().get(pk=avoir.pk)
         if verrou.fournisseur_id != facture.fournisseur_id:
             raise ValueError(
@@ -34,6 +39,8 @@ def imputer_avoir_sous_verrou(avoir, facture, montant):
         imputation = ImputationAvoirFournisseur.objects.create(
             company=verrou.company, avoir=verrou, facture=facture,
             montant=montant_impute)
+        from .services import poser_ras_au_solde
+        poser_ras_au_solde(imputation)  # AAPV5 (D-AAPV-2)
         verrou.montant_impute = (
             verrou.montant_impute or Decimal('0')) + montant_impute
         verrou.statut = (AvoirFournisseur.Statut.IMPUTE

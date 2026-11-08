@@ -90,6 +90,78 @@ class RasTests(TestCase):
         self.assertEqual(resp.status_code, 201, resp.data)
         return PaiementFournisseur.objects.get(pk=resp.data['id'])
 
+    def test_avoir_impute_reduit_la_base(self):
+        """AAPV4 (D-AAPV-1) — facture TTC 1 200 / TVA 200, avoir 600 TTC (TVA
+        100) imputé : le paiement de 600 retient 100,00 (TVA nette)."""
+        from apps.stock.models import AvoirFournisseur
+        facture = FactureFournisseur.objects.create(
+            company=self.company, reference='FF-AAPV4', fournisseur=self.fournisseur,
+            montant_ht=Decimal('1000'), montant_tva=Decimal('200'),
+            montant_ttc=Decimal('1200'))
+        avoir = AvoirFournisseur.objects.create(
+            company=self.company, reference='AVF-AAPV4', fournisseur=self.fournisseur,
+            montant_ht=Decimal('500'), montant_tva=Decimal('100'),
+            montant_ttc=Decimal('600'), statut=AvoirFournisseur.Statut.VALIDE)
+        r = self.api.post(f'/api/django/stock/avoirs-fournisseur/{avoir.id}/imputer/',
+                          {'facture': facture.id}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        paiement = self._payer(facture, '600')
+        self.assertEqual(paiement.montant_ras_tva, Decimal('100.00'))
+        self.assertEqual(paiement.montant_net_paye, Decimal('500.00'))
+        facture.refresh_from_db()
+        self.assertEqual(facture.statut, FactureFournisseur.Statut.PAYEE)
+
+    def _facture_sans_acompte(self):
+        bcf = BonCommandeFournisseur.objects.create(
+            company=self.company, reference='BCF-AAPV5-1', fournisseur=self.fournisseur,
+            statut=BonCommandeFournisseur.Statut.ENVOYE)
+        ligne = LigneBonCommandeFournisseur.objects.create(
+            bon_commande=bcf, produit=self.produit, quantite=10,
+            prix_achat_unitaire=Decimal('100'))
+        rec = ReceptionFournisseur.objects.create(
+            company=self.company, reference='REC-AAPV5-1', bon_commande=bcf,
+            statut=ReceptionFournisseur.Statut.CONFIRME,
+            date_reception=datetime.date(2026, 10, 1))
+        LigneReceptionFournisseur.objects.create(
+            reception=rec, ligne_commande=ligne, produit=self.produit, quantite=10)
+        facture = facturer_reception(self.company, self.user, rec)
+        return bcf, FactureFournisseur.objects.get(pk=facture.pk)
+
+    def test_paiement_puis_acompte_somme_exacte(self):
+        """AAPV5 (D-AAPV-2) — paiement 840 (RAS 140) puis acompte 360 qui
+        solde : l'imputation porte 60,00, Σ 200,00 ; le relevé liste 140 et 60."""
+        from apps.stock.models import ImputationAcompteFournisseur
+        from apps.stock.services import relevé_ras_tva
+        bcf, facture = self._facture_sans_acompte()
+        self.assertEqual(self._payer(facture, '840').montant_ras_tva, Decimal('140.00'))
+        r = self.api.post('/api/django/stock/acomptes-fournisseur/', {
+            'bon_commande': bcf.id, 'montant': '360',
+            'date_versement': '2026-10-06'}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        facture.refresh_from_db()
+        self.assertEqual(facture.statut, FactureFournisseur.Statut.PAYEE)
+        imp = ImputationAcompteFournisseur.objects.get(facture=facture)
+        self.assertEqual(imp.montant_ras_tva, Decimal('60.00'))
+        montants = sorted(r['montant_ras_tva'] for r in relevé_ras_tva(self.company))
+        self.assertEqual(montants, [Decimal('60.00'), Decimal('140.00')])
+
+    def test_paiement_puis_avoir_qui_solde(self):
+        """AAPV5 — même chaîne par un avoir 360 (sans TVA propre) : 60,00 ;
+        une imputation qui ne solde pas ne porte rien."""
+        from apps.stock.models import AvoirFournisseur, ImputationAvoirFournisseur
+        from apps.stock.services import imputer_avoir_fournisseur
+        _bcf, facture = self._facture_sans_acompte()
+        self._payer(facture, '840')
+        avoir = AvoirFournisseur.objects.create(
+            company=self.company, reference='AVF-AAPV5', fournisseur=self.fournisseur,
+            montant_ht=Decimal('360'), montant_tva=Decimal('0'),
+            montant_ttc=Decimal('360'), statut=AvoirFournisseur.Statut.VALIDE)
+        imputer_avoir_fournisseur(avoir, facture, Decimal('100'), user=self.user)
+        imputer_avoir_fournisseur(avoir, facture, None, user=self.user)
+        ras = list(ImputationAvoirFournisseur.objects.filter(
+            facture=facture).order_by('id').values_list('montant_ras_tva', flat=True))
+        self.assertEqual(ras, [Decimal('0.00'), Decimal('60.00')])
+
     def test_ras_totale_facture(self):
         """Sonde FACF-12 rejouée : 140,00 observé au prorata, 200,00 sous (a)."""
         facture = self._facture_avec_acompte(Decimal('360'))

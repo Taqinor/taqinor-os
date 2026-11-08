@@ -143,7 +143,7 @@ class TestParseUblInvoice(TestCase):
 
 class TestCreerFactureDepuisUbl(Xpur26Base):
     def test_cree_brouillon_correct_avec_clearance(self):
-        facture = creer_facture_fournisseur_depuis_ubl(
+        facture, _doublons = creer_facture_fournisseur_depuis_ubl(
             company=self.company, user=self.user,
             xml_bytes=_UBL_SAMPLE.encode('utf-8'))
         self.assertEqual(facture.fournisseur_id, self.fournisseur.id)
@@ -164,7 +164,7 @@ class TestCreerFactureDepuisUbl(Xpur26Base):
         self.assertIn('UBL', facture.note)
 
     def test_sans_numero_clearance_statut_non_cleared(self):
-        facture = creer_facture_fournisseur_depuis_ubl(
+        facture, _doublons = creer_facture_fournisseur_depuis_ubl(
             company=self.company, user=self.user,
             xml_bytes=_UBL_NO_CLEARANCE.encode('utf-8'))
         self.assertIsNone(facture.numero_clearance_dgi)
@@ -212,6 +212,20 @@ class TestDepuisUblEndpoint(Xpur26Base):
         self.assertEqual(Decimal(resp.data['montant_ttc']), Decimal('12000'))
         self.assertEqual(resp.data['numero_clearance_dgi'], 'DGI-CLR-0099')
         self.assertEqual(resp.data['statut_conformite_dgi'], 'cleared')
+
+    def test_meme_xml_deux_fois_doublon_warning(self):
+        """AAPV55 — le même XML importé deux fois : 201 et 201, le second
+        porte `doublon_warning` (non bloquant, comme l'OCR)."""
+        parametres = AchatsParametres.for_company(self.company)
+        parametres.einvoicing_entrant_actif = True
+        parametres.save()
+        url = '/api/django/stock/factures-fournisseur/depuis-ubl/'
+        r1 = self.api.post(url, {'file': _ubl_file()}, format='multipart')
+        self.assertEqual(r1.status_code, 201, r1.data)
+        self.assertNotIn('doublon_warning', r1.data)
+        r2 = self.api.post(url, {'file': _ubl_file()}, format='multipart')
+        self.assertEqual(r2.status_code, 201, r2.data)
+        self.assertTrue(r2.data['doublon_warning'])
 
     def test_endpoint_sans_fichier_400(self):
         parametres = AchatsParametres.for_company(self.company)

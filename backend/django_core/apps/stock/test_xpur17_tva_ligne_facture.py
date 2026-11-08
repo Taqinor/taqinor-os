@@ -215,6 +215,37 @@ class TestReleveDeductionsTva(Xpur17Base):
         self.assertEqual(par_taux[Decimal('10')]['total_ht'], Decimal('500'))
         self.assertNotIn(Decimal('100'), [e['total_ht'] for e in releve])
 
+    def test_releve_reprend_entete_et_deduit_avoirs(self):
+        """AAPV3 — facture ventilée (TVA 2 000) + facture SANS ligne (en-tête
+        TVA 400) − avoir validé (TVA 200) = 2 200 à 20 % ; un avoir brouillon
+        n'est pas retranché."""
+        from django.utils import timezone
+        from apps.stock.models import AvoirFournisseur
+        jour = timezone.localdate()
+        f1 = FactureFournisseur.objects.create(
+            company=self.company, reference='FF-AAPV3-1', fournisseur=self.fournisseur,
+            date_facture=jour, montant_ht=Decimal('10000'),
+            montant_tva=Decimal('2000'), montant_ttc=Decimal('12000'))
+        f1.lignes.create(designation='A', quantite=1,
+                         prix_unitaire_ht=Decimal('10000'), taux_tva=Decimal('20'))
+        FactureFournisseur.objects.create(
+            company=self.company, reference='FF-AAPV3-2', fournisseur=self.fournisseur,
+            date_facture=jour, montant_ht=Decimal('2000'),
+            montant_tva=Decimal('400'), montant_ttc=Decimal('2400'))
+        for ref, statut in (('AVF-AAPV3-1', AvoirFournisseur.Statut.IMPUTE),
+                            ('AVF-AAPV3-2', AvoirFournisseur.Statut.BROUILLON)):
+            AvoirFournisseur.objects.create(
+                company=self.company, reference=ref, fournisseur=self.fournisseur,
+                montant_ht=Decimal('1000'), montant_tva=Decimal('200'),
+                montant_ttc=Decimal('1200'), statut=statut)
+        releve = releve_deductions_tva_par_taux(
+            self.company, date_debut=jour, date_fin=jour)
+        self.assertEqual(len(releve), 1)
+        self.assertEqual(releve[0]['taux_tva'], Decimal('20'))
+        self.assertEqual(releve[0]['total_ht'], Decimal('11000'))
+        self.assertEqual(releve[0]['total_tva'], Decimal('2200'))
+        self.assertEqual(releve[0]['nombre_factures'], 2)
+
     def test_endpoint_releve_deductions(self):
         facture = FactureFournisseur.objects.create(
             company=self.company, reference='FF-X17-R4',

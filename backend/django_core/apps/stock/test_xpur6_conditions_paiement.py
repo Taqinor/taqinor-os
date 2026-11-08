@@ -115,6 +115,38 @@ class TestFactureAutoDeriveEndpoint(Xpur6Base):
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertIsNone(resp.data['date_echeance'])
 
+    def test_facture_nee_du_bcf_derive_echeance(self):
+        """AAPV54 — « Facturer cette réception » chez un fournisseur à 60 j :
+        échéance J+60, présente dans les factures ouvertes à J+90."""
+        from django.utils import timezone
+        from apps.stock.models import (
+            BonCommandeFournisseur, LigneBonCommandeFournisseur,
+            LigneReceptionFournisseur, Produit, ReceptionFournisseur,
+        )
+        from apps.stock.selectors import factures_fournisseur_ouvertes
+        from apps.stock.services import facturer_reception
+        f = Fournisseur.objects.create(
+            company=self.company, nom='Fournisseur 60j AAPV54', delai_paiement_jours=60)
+        bcf = BonCommandeFournisseur.objects.create(
+            company=self.company, reference='BCF-AAPV54', fournisseur=f,
+            statut=BonCommandeFournisseur.Statut.ENVOYE)
+        produit = Produit.objects.create(
+            company=self.company, nom='Câble AAPV54', prix_vente=Decimal('1'))
+        ligne = LigneBonCommandeFournisseur.objects.create(
+            bon_commande=bcf, produit=produit, quantite=2, prix_achat_unitaire=Decimal('100'))
+        rec = ReceptionFournisseur.objects.create(
+            company=self.company, reference='REC-AAPV54', bon_commande=bcf,
+            statut=ReceptionFournisseur.Statut.CONFIRME)
+        LigneReceptionFournisseur.objects.create(
+            reception=rec, ligne_commande=ligne, produit=produit, quantite=2)
+        facture = FactureFournisseur.objects.get(
+            pk=facturer_reception(self.company, self.user, rec).pk)
+        aujourd_hui = timezone.now().date()
+        self.assertEqual(facture.date_echeance, aujourd_hui + datetime.timedelta(days=60))
+        ouvertes = factures_fournisseur_ouvertes(
+            self.company, date_limite=aujourd_hui + datetime.timedelta(days=90))
+        self.assertIn(facture.reference, [o['reference'] for o in ouvertes])
+
 
 class TestEcheancierMultiTranches(Xpur6Base):
     def test_30_70_generates_two_tranches(self):

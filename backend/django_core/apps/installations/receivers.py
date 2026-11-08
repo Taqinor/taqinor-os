@@ -17,7 +17,7 @@ from django.dispatch import receiver
 from core.events import (
     abonne_best_effort, bon_commande_cree, devis_acceptation_annulee,
     devis_accepted, facture_annulee,
-    reception_fournisseur_annulee,
+    reception_fournisseur_annulee, retour_fournisseur_valide, bon_commande_fournisseur_annule,
     reception_fournisseur_confirmee, facture_fournisseur_creee,
 )
 
@@ -27,7 +27,8 @@ from .services import (
     extourner_gr_ir_reception,
     provisionner_gr_ir_reception, lettrer_gr_ir_facture,
     peupler_series_entrepot_reception,
-    replafonner_reservation_recue_pour_chantier,
+    reduire_gr_ir_retour, replafonner_reservation_recue_pour_chantier,
+    replafonner_reservation_retour, retourner_series_retour,
     reserver_stock_recu_pour_chantier, retourner_series_entrepot_reception,
 )
 
@@ -153,6 +154,32 @@ def _replafonner_reservation_on_reception_annulee(sender, reception, company,
         reception=reception, company=company)
 
 
+@receiver(retour_fournisseur_valide,
+          dispatch_uid="installations_reduire_gr_ir_on_retour_valide")
+@abonne_best_effort
+def _reduire_gr_ir_on_retour_valide(sender, retour, company, user=None, **kwargs):
+    """AAPV9 — la provision GR/IR ouverte du BCF baisse de la valeur
+    retournée (idempotent, état persisté)."""
+    reduire_gr_ir_retour(retour=retour, company=company)
+
+
+@receiver(retour_fournisseur_valide,
+          dispatch_uid="installations_replafonner_resa_on_retour_valide")
+@abonne_best_effort
+def _replafonner_reservation_on_retour_valide(sender, retour, company, user=None, **kwargs):
+    """AAPV9 — la réservation du chantier d'origine ne dépasse plus le reçu
+    net du BCF après le retour (idempotent)."""
+    replafonner_reservation_retour(retour=retour, company=company)
+
+
+@receiver(retour_fournisseur_valide,
+          dispatch_uid="installations_retourner_series_on_retour_valide")
+@abonne_best_effort
+def _retourner_series_on_retour_valide(sender, retour, company, user=None, **kwargs):
+    """AAPV65 — les séries citées par le retour passent « retourné »."""
+    retourner_series_retour(retour=retour, company=company)
+
+
 @receiver(bon_commande_cree,
           dispatch_uid="installations_rattacher_chantier_on_bon_commande_cree")
 @abonne_best_effort
@@ -202,3 +229,14 @@ def _lettrer_gr_ir_on_facture(sender, instance, company, user=None, **kwargs):
     stock.FactureFournisseur, ``user`` optionnel (None pour une création
     système/hors-requête, ex. saisie manuelle via la vue)."""
     lettrer_gr_ir_facture(facture=instance, company=company, user=user)
+
+
+@receiver(bon_commande_fournisseur_annule,
+          dispatch_uid="installations_rouvrir_da_on_bcf_annule")
+def _rouvrir_da_on_bcf_annule(sender, bon_commande_id, company, user=None,
+                              supprime=False, **kwargs):
+    """AAPV71 — abonné OBLIGATOIRE (pas best-effort) : la DA suit le BCF
+    annulé/supprimé dans la même transaction."""
+    from .services import rouvrir_demande_achat_bcf_annule
+    rouvrir_demande_achat_bcf_annule(
+        bon_commande_id=bon_commande_id, company=company, user=user, supprime=supprime)

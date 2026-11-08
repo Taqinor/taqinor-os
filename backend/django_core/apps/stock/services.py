@@ -410,15 +410,14 @@ def transfer_stock(*, company, user, produit_id, source_id, destination_id,
             raise ValueError('Emplacement introuvable dans cette société.')
 
         # NTWMS21 — garde d'approbation (no-op tant que le seuil vaut 0).
-        # Une demande FG325 (`installations.DemandeTransfert`) APPROUVÉE
-        # traverse la garde : son action `executer` appelle ce service sans
-        # drapeau, et elle ne doit évidemment pas être re-bloquée.
+        # AAPV74 — seule l'EXÉCUTION d'une demande FG325 approuvée
+        # (`executer`, qui passe demande_approuvee=True) traverse la garde.
         if not demande_approuvee and transfert_exige_approbation(
                 company, produit, quantite, source_id=source.id,
                 destination_id=destination.id):
             raise EtatIncompatible(
                 'Ce transfert dépasse le seuil d\'approbation de la société : '
-                'ouvrez une demande de transfert et faites-la approuver.')
+                'exécutez la demande de transfert approuvée.')
 
         records = {se.emplacement_id: se for se in
                    produit.stocks_emplacement.select_for_update()}
@@ -468,9 +467,23 @@ def transfer_stock(*, company, user, produit_id, source_id, destination_id,
 
 def cheapest_prix_fournisseur(produit):
     """Renvoie le PrixFournisseur le moins cher (prix > 0) pour ce produit, ou
-    None s'il n'existe aucun prix multi-fournisseur renseigné."""
+    None s'il n'existe aucun prix multi-fournisseur renseigné. AAPV16 —
+    seuls les tarifs EN VIGUEUR (bornes nulles ouvertes, comme
+    ``PrixFournisseur.est_en_vigueur``)."""
+    from django.db.models import Q
+    from django.utils import timezone
+    jour = timezone.localdate()
     return (produit.prix_fournisseurs.filter(prix_achat__gt=0)
+            .filter(Q(date_debut__isnull=True) | Q(date_debut__lte=jour))
+            .filter(Q(date_fin__isnull=True) | Q(date_fin__gte=jour))
             .select_related('fournisseur').order_by('prix_achat').first())
+
+
+def prix_bcf_en_vigueur(produit, fournisseur, quantite):
+    """AAPV16 — PU d'une ligne de BCF générée : tarif EN VIGUEUR du
+    fournisseur (palier de la quantité, XPUR14), repli prix catalogue."""
+    prix = prix_effectif_fournisseur(produit, fournisseur, quantite=quantite or 1)
+    return prix if prix else (produit.prix_achat or Decimal('0'))
 
 
 def record_purchase_price(*, company, produit, fournisseur, prix_achat, date):
@@ -1421,6 +1434,11 @@ def apply_retour_fournisseur(retour, user):
     lignes = list(retour.lignes.select_related('produit'))
     if not lignes:
         raise ValueError('Le retour ne contient aucune ligne.')
+    bc_direct = retour.bon_commande if retour.bon_commande_id else None
+    if bc_direct is not None and bc_direct.chantier_livraison_id:  # AAPV10 — jumeau ASTK54
+        raise EtatIncompatible(
+            f'Marchandise livrée au chantier {bc_direct.chantier_livraison.reference} : ce '
+            "retour sortirait du stock du dépôt, qui ne l'a jamais reçue.")
     with transaction.atomic():
         # ASTK49 — le retour est relu SOUS verrou et son statut re-contrôlé :
         # une 2e validation sur une instance périmée ne sort rien.
@@ -1454,12 +1472,31 @@ def apply_retour_fournisseur(retour, user):
                              if bc_retour is not None
                              and bc_retour.emplacement_destination_id
                              else None),
-                numero_lot=None, quantite=ligne.quantite)
+                numero_lot=ligne.numero_lot or None, quantite=ligne.quantite)  # AAPV20
             if retour.bon_commande_id:
                 _reouvrir_quantite_recue_bcf(
                     retour.bon_commande, ligne.produit_id, ligne.quantite)
+            from .services_wms import imputer_sortie_sur_quarantaine  # AAPV37
+            imputer_sortie_sur_quarantaine(
+                company=retour.company, produit=produit, quantite=ligne.quantite,
+                bon_commande=bc_retour, user=user,
+                motif=f'évacué par le retour {retour.reference}')
         retour.statut = RetourFournisseur.Statut.VALIDE
         retour.save(update_fields=['statut'])
+        lignes_retour = [{'ligne': lg, 'produit': lg.produit, 'quantite': lg.quantite}
+                         for lg in lignes]
+
+        def _emettre_retour():  # AAPV8 — une fois, après commit
+            from core.events import retour_fournisseur_valide
+            try:
+                retour_fournisseur_valide.send(
+                    sender=RetourFournisseur, retour=retour, company=retour.company,
+                    user=user, lignes=lignes_retour)
+            except Exception:  # noqa: BLE001 — après commit : journalisé (D-ENF22-BLE001)
+                logger.exception('AAPV8: abonné de retour_fournisseur_valide en '
+                                 'échec pour le retour %s', retour.pk)
+
+        transaction.on_commit(_emettre_retour)
     return retour
 
 
@@ -1533,6 +1570,28 @@ def reste_du_net_ligne_bcf(ligne_cmd, *, exclure_reception_id=None):
     return max(ligne_cmd.quantite_restante - en_brouillon, 0)
 
 
+def motif_series_en_trop(nb, qte):
+    """AAPV68 — règle ACHT122 unique : plus de n° de série que d'unités ⇒
+    message (jamais une troncature muette), sinon ``None``."""
+    qte = max(int(qte or 0), 0)
+    if nb > qte:
+        return f'{nb} n° de série saisis pour {qte} reçu(s) : retirez-en {nb - qte}.'
+    return None
+
+
+def _refuser_series_deja_en_stock(company, lignes):
+    """AAPV67 — un n° de série déjà « en stock »/« réservé » pour le produit
+    (registre installations, lu par son sélecteur) ne se reçoit pas deux
+    fois : ``EtatIncompatible`` (409). Une série « retournée » repasse."""
+    from apps.installations.selectors import series_en_stock
+    for ligne in lignes:
+        numeros = [n.strip() for n in (ligne.numeros_serie or []) if isinstance(n, str) and n.strip()]
+        deja = series_en_stock(company, ligne.produit_id, numeros) if numeros else {}
+        for numero, ref in deja.items():
+            raise EtatIncompatible(
+                f'N° de série {numero} déjà en stock ({ref}) pour {ligne.produit.nom}.')
+
+
 def confirm_reception_fournisseur(reception, user):
     """Confirme une réception fournisseur : crée un MouvementStock ENTREE par
     ligne reçue, incrémente le stock + `quantite_recue` du BCF, puis avance le
@@ -1578,6 +1637,7 @@ def confirm_reception_fournisseur(reception, user):
             raise EtatIncompatible(
                 'Seule une réception en brouillon peut être confirmée '
                 '(déjà confirmée ou annulée).')
+        _refuser_series_deja_en_stock(reception.company, lignes)  # AAPV67
         applique_total = 0
         for ligne in lignes:
             qte = int(ligne.quantite or 0)
@@ -1590,6 +1650,9 @@ def confirm_reception_fournisseur(reception, user):
             # refresh_from_db) : le reste dû est décidé sur une valeur sûre.
             ligne_cmd = _verrouiller_ligne_bcf(ligne.ligne_commande)
             qte = min(qte, ligne_cmd.quantite_restante)
+            motif = motif_series_en_trop(len(ligne.numeros_serie or []), qte)  # AAPV68
+            if motif:
+                raise EtatIncompatible(motif)
             # ASTK59 — la quantité RÉELLEMENT appliquée est persistée : la
             # facturation et l'annulation la relisent (jamais `quantite`).
             _poser_quantite_appliquee(ligne, max(qte, 0))
@@ -1638,8 +1701,9 @@ def confirm_reception_fournisseur(reception, user):
                     qte)
             # XSTK6 — alimente le registre de lots quand la ligne porte un
             # numero_lot (FG64). Sans lot renseigné : comportement historique
-            # inchangé (aucune écriture LotEntrepot).
-            if getattr(ligne, 'numero_lot', None):
+            # inchangé (aucune écriture LotEntrepot). AAPV23 — livraison
+            # directe au chantier : rien n'entre au dépôt, aucun lot crédité.
+            if getattr(ligne, 'numero_lot', None) and not (bc is not None and bc.chantier_livraison_id):
                 alimenter_lot_entrepot(
                     company=reception.company, produit=produit,
                     numero_lot=ligne.numero_lot,
@@ -1787,6 +1851,39 @@ def _liberer_cross_dock_reception_annulee(reception):
     return len(affectations)
 
 
+def _garde_annulation_reception_entiere(bc, lignes_stockees, lignes):
+    """AAPV12 — une réception ne s'annule que si elle peut être défaite
+    ENTIÈREMENT : refus (``EtatIncompatible``, 409) si des unités entrées ne
+    sont plus en stock, ou si le BCF est facturé au-delà de ce qui
+    resterait reçu (facture liée par PATCH/OCR comprise)."""
+    from .models import FactureFournisseur, Produit
+    from .selectors import montant_recu_bcf
+    entrees = {}
+    for lg in lignes_stockees:
+        entrees[lg.produit_id] = entrees.get(lg.produit_id, 0) + quantite_entree_ligne_reception(lg)
+    for produit_id, qte in entrees.items():
+        produit = Produit.objects.select_for_update().get(pk=produit_id)
+        en_main = max(int(produit.quantite_stock or 0), 0)
+        if qte > en_main:
+            raise EtatIncompatible(
+                f'{qte - en_main} unité(s) de {produit.nom} ne sont plus en stock : '
+                f'enregistrez un retour fournisseur pour les {en_main} restantes.')
+    if bc is None:
+        return
+    valeur = sum((Decimal(quantite_entree_ligne_reception(lg)) * (
+        lg.ligne_commande.prix_achat_unitaire or Decimal('0'))
+        for lg in lignes if lg.ligne_commande_id), Decimal('0'))
+    # Factures du BCF encore dues (une facture neutralisée par un avoir
+    # couvrant tout son TTC ne compte plus — même règle qu'ERR-ASTK54).
+    dues = [f for f in FactureFournisseur.objects.filter(bon_commande=bc)
+            if f.total_avoirs_imputes < (f.montant_ttc or 0)]
+    if sum((f.montant_ht or Decimal('0') for f in dues), Decimal('0')) > montant_recu_bcf(bc) - valeur:
+        refs = ', '.join(f.reference for f in dues)
+        raise EtatIncompatible(
+            f'Le BCF est facturé ({refs}) au-delà de ce qui resterait reçu : '
+            "émettez un avoir avant d'annuler.")
+
+
 def annuler_reception_confirmee(reception, user):
     """YSTCK6 — annule une réception CONFIRMÉE par une CONTRE-PASSATION
     (reversal référencé, jamais un blocage ni une suppression — pattern SAP
@@ -1849,6 +1946,7 @@ def annuler_reception_confirmee(reception, user):
                         for lg in lignes)):
             raise ValueError(
                 'Marchandise livrée au chantier — passer par un retour.')
+        _garde_annulation_reception_entiere(bc, [lg for lg in lignes if _est_stockee(lg)], lignes)
         # ERR-ASTK58 — jumeaux de la confirmation : l'ajustement de pesée
         # `PESEE-<réf>` est contre-passé AVANT la sortie (la sortie est
         # plafonnée au stock en main : l'ordre inverse laisserait un reste),
@@ -2427,6 +2525,9 @@ def compute_besoin_materiel(installation):
     # chantier (pour ne pas la décompter deux fois de son propre disponible).
     reserved_all = reserved_quantities(installation.company)
     own_reserved = _own_reservation_map(installation)
+    # AAPV15 — le stock sert les réservations par ancienneté (AAPV70).
+    from apps.installations.selectors import reservations_anterieures_map
+    anterieures = reservations_anterieures_map(installation)
     en_commande, en_commande_brouillon = en_commande_chantier_par_statut(
         installation)
     deja_sorti = quantites_deja_sorties_chantier(
@@ -2457,7 +2558,8 @@ def compute_besoin_materiel(installation):
                 'stock_total': produit.quantite_stock,
                 'reserve_autres': reserve_autres,
                 'reserve_chantier': own_reserved.get(produit.id, 0),
-                'disponible': produit.quantite_stock - reserve_autres,
+                'disponible': max(produit.quantite_stock
+                                  - anterieures.get(produit.id, 0), 0),
                 'reserve': reserved_all.get(produit.id, 0),
                 'fournisseur_id': produit.fournisseur_id,
                 'fournisseur_nom': (produit.fournisseur.nom
@@ -2640,6 +2742,8 @@ def _creer_bcfs_groupes(installation, user, company, groupes, fournisseurs):
     from apps.ventes.utils.references import create_with_reference
     from .models import BonCommandeFournisseur, LigneBonCommandeFournisseur
     crees = []
+    for fid in groupes:  # AAPV29 — aucun BCF tant qu'un fournisseur est bloqué
+        exiger_fournisseur_commandable(company, fournisseurs[fid])
     for fid, lignes in groupes.items():
         def _save(ref, fid=fid, lignes=lignes):
             bon = BonCommandeFournisseur.objects.create(
@@ -2657,7 +2761,8 @@ def _creer_bcfs_groupes(installation, user, company, groupes, fournisseurs):
                     bon_commande=bon,
                     produit=produit,
                     quantite=qte,
-                    prix_achat_unitaire=produit.prix_achat,
+                    prix_achat_unitaire=prix_bcf_en_vigueur(  # AAPV16
+                        produit, fournisseurs[fid], qte),
                 )
             return bon
 
@@ -2740,6 +2845,7 @@ def creer_bcf_depuis_lignes(*, company, user, fournisseur, lignes, note='',
             getattr(chantier_origine, 'company_id', None) != company.pk):
         raise ValueError(
             "Le chantier d'origine n'appartient pas à cette société.")
+    exiger_fournisseur_commandable(company, fournisseur)  # AAPV29
 
     def _save(ref):
         bon = BonCommandeFournisseur.objects.create(
@@ -2748,6 +2854,9 @@ def creer_bcf_depuis_lignes(*, company, user, fournisseur, lignes, note='',
             note=note or '', created_by=user,
             chantier_origine=chantier_origine)
         for produit_id, designation, qte, prix in normalisees:
+            if produit_id and not prix:  # AAPV16 — prix estimé nul : tarif en vigueur
+                from .models import Produit
+                prix = prix_bcf_en_vigueur(Produit.objects.get(pk=produit_id), fournisseur, qte)
             LigneBonCommandeFournisseur.objects.create(
                 bon_commande=bon, produit_id=produit_id,
                 designation=designation, quantite=qte,
@@ -3218,6 +3327,10 @@ def rebuter_produit(
             quantite=quantite, quantite_avant=avant, quantite_apres=apres,
             reference=reference_chantier or 'REBUT', note=note,
             motif_rebut=motif, created_by=user)
+        from .services_wms import imputer_sortie_sur_quarantaine  # AAPV37
+        imputer_sortie_sur_quarantaine(
+            company=company, produit=p, quantite=quantite, user=user,
+            motif=f'évacué par le rebut ({motif})')
         if emplacement is not None and not emplacement.is_principal:
             se, _ = StockEmplacement.objects.select_for_update().get_or_create(
                 company=company, produit=p, emplacement=emplacement,
@@ -3672,11 +3785,14 @@ def generer_bcf_reappro(company, user, fournisseur_id):
 
     if not lignes:
         raise ValueError("Aucun produit à réapprovisionner.")
+    exiger_fournisseur_commandable(company, fournisseur)  # AAPV29
 
     from .models import Produit
     lignes_produits = [
-        (Produit.objects.get(id=pid, company=company), qte, prix)
-        for pid, qte, prix in lignes
+        (produit, qte, prix_bcf_en_vigueur(produit, fournisseur, qte))  # AAPV16
+        for produit, qte, prix in (
+            (Produit.objects.get(id=pid, company=company), qte, prix)
+            for pid, qte, prix in lignes)
     ]
 
     # Dernier BROUILLON réappro auto du MÊME fournisseur (le plus récent).
@@ -3852,10 +3968,17 @@ def _construire_facture_fournisseur(company, user, bon_commande, lignes, *,
             company=company, reference=ref,
             fournisseur=bon_commande.fournisseur,
             bon_commande=bon_commande,
+            type_achat=type_achat_par_defaut(bon_commande.fournisseur),  # AAPV6
             montant_ht=montant_ht, montant_tva=montant_tva,
             montant_ttc=montant_ttc,
+            # AAPV44 — la facture née d'un BCF en devise en porte devise et taux.
+            devise=bon_commande.devise, taux_change=bon_commande.taux_change,
+            montant_ttc_devise=_ttc_en_devise(montant_ttc, bon_commande),
             statut=FactureFournisseur.Statut.A_PAYER,
             date_facture=timezone.now().date(),
+            # AAPV54 — échéance dérivée du délai du fournisseur (XPUR6).
+            date_echeance=derive_date_echeance(
+                bon_commande.fournisseur, timezone.now().date()),
             note=note, created_by=user)
         for designation, qte, pu, taux_ligne in lignes_data:
             LigneFactureFournisseur.objects.create(
@@ -3929,6 +4052,38 @@ def ventiler_tva_achats(lignes):
 
 # ── FG56 — Facturer une réception ────────────────────────────────────────────
 
+def _retourne_valide_ligne_bcf(lc):
+    """AAPV25 — quantité du produit de la ligne BCF sortie par les retours
+    fournisseur VALIDÉS de ce BCF (YPROC8)."""
+    from django.db.models import Sum
+    from .models import LigneRetourFournisseur
+    if lc.produit_id is None:
+        return Decimal('0')
+    return Decimal(str(LigneRetourFournisseur.objects.filter(
+        retour__bon_commande_id=lc.bon_commande_id, retour__statut='valide',
+        produit_id=lc.produit_id).aggregate(t=Sum('quantite'))['t'] or 0))
+
+
+def _quantite_facturable_reception(ligne):
+    """AAPV25 — entrée de la ligne, plafonnée au reçu NET de la ligne BCF
+    (entrées confirmées − retours validés) moins ce que les AUTRES réceptions
+    déjà facturées de cette ligne ont fait entrer."""
+    from .models import LigneReceptionFournisseur
+    entree = quantite_entree_ligne_reception(ligne)
+    lc = ligne.ligne_commande
+    if lc is None:
+        return entree
+    recu = deja = 0
+    for autre in (LigneReceptionFournisseur.objects
+                  .filter(ligne_commande=lc, reception__statut='confirme')
+                  .select_related('reception')):
+        q = quantite_entree_ligne_reception(autre)
+        recu += q
+        if autre.reception_id != ligne.reception_id and autre.reception.factures_issues.exists():
+            deja += q
+    return max(min(entree, int(recu - _retourne_valide_ligne_bcf(lc) - deja)), 0)
+
+
 def facturer_reception(company, user, reception):
     """Crée une FactureFournisseur à partir d'une réception confirmée.
 
@@ -3979,7 +4134,7 @@ def facturer_reception(company, user, reception):
         for ligne in lignes_reception:
             # ASTK59 — facture ce qui est RÉELLEMENT entré (quantite_appliquee),
             # jamais la saisie : une ligne plafonnée à 0 ne facture rien.
-            qte_facturee = quantite_entree_ligne_reception(ligne)
+            qte_facturee = _quantite_facturable_reception(ligne)  # AAPV25 net des retours
             if qte_facturee <= 0:
                 continue
             pu = ligne.ligne_commande.prix_achat_unitaire if ligne.ligne_commande else Decimal('0')
@@ -4053,6 +4208,21 @@ def facturer_bcf_sur_commande(company, user, bon_commande):
     `sur_reception` restent hors de ce chemin — direction vers FG56), ou si
     ce BCF est déjà entièrement facturé par ce chemin (idempotence : jamais
     deux factures pour la même quantité `sur_commande`)."""
+    from django.db import transaction
+    from .models import BonCommandeFournisseur
+
+    with transaction.atomic():  # AAPV26 — statut et marqueur relus sous verrou
+        bon_commande = BonCommandeFournisseur.objects.select_for_update().get(
+            pk=bon_commande.pk)
+        if bon_commande.statut == BonCommandeFournisseur.Statut.ANNULE:
+            raise EtatIncompatible('Un bon de commande annulé ne se facture pas.')
+        if bon_commande.statut == BonCommandeFournisseur.Statut.BROUILLON:
+            raise EtatIncompatible('Envoyez le bon de commande avant de le facturer.')
+        return _facturer_bcf_sur_commande_verrouille(company, user, bon_commande)
+
+
+def _facturer_bcf_sur_commande_verrouille(company, user, bon_commande):
+    """ZPUR1 — corps de ``facturer_bcf_sur_commande``, BCF verrouillé."""
     from decimal import Decimal
     from .models import FactureFournisseur, Produit
 
@@ -4134,6 +4304,7 @@ def dupliquer_bcf(company, user, bon_commande):
     from apps.ventes.utils.references import create_with_reference
     from .models import BonCommandeFournisseur, LigneBonCommandeFournisseur
 
+    exiger_fournisseur_commandable(company, bon_commande.fournisseur)  # AAPV29
     lignes_source = list(bon_commande.lignes.all())
     created = {}
 
@@ -4195,6 +4366,7 @@ def fusionner_bcf(company, user, bon_commande_ids):
     if len(fournisseur_ids) > 1:
         raise EtatIncompatible(
             'Tous les bons de commande doivent être du même fournisseur.')
+    exiger_fournisseur_commandable(company, bcs[0].fournisseur)  # AAPV29
     non_brouillon = [
         bc for bc in bcs
         if bc.statut != BonCommandeFournisseur.Statut.BROUILLON]
@@ -5606,6 +5778,29 @@ def taux_ras_tva(facture):
     return Decimal('0') if a_arf else Decimal('100')
 
 
+def type_achat_par_defaut(fournisseur):
+    """AAPV6 (D-AAPV-4 = defaut_fournisseur_et_ecran) — nature d'achat d'une
+    facture fournisseur pré-remplie depuis le type du fournisseur :
+    sous-traitant (``service``) ⇒ prestations de services, sinon biens."""
+    from .models import FactureFournisseur, Fournisseur
+    if getattr(fournisseur, 'type', None) == Fournisseur.Type.SERVICE:
+        return FactureFournisseur.TypeAchat.SERVICES
+    return FactureFournisseur.TypeAchat.BIENS
+
+
+def _tva_avoirs_imputes(facture):
+    """AAPV4 — (TVA, TTC) des avoirs fournisseur imputés sur la facture : TVA
+    au prorata de chaque imputation (montant × TVA avoir / TTC avoir)."""
+    if facture.pk is None:
+        return Decimal('0'), Decimal('0')
+    tva = ttc = Decimal('0')
+    for imp in facture.avoirs_imputes.select_related('avoir'):
+        ttc += imp.montant or Decimal('0')
+        if imp.avoir.montant_ttc:
+            tva += imp.montant * (imp.avoir.montant_tva or 0) / imp.avoir.montant_ttc
+    return tva.quantize(Decimal('0.01')), ttc
+
+
 def compute_ras_tva(company, facture, montant_paiement):
     """XPUR2/ASTK175 — calcule (taux, montant_ras) pour un paiement de
     ``montant_paiement`` sur ``facture``. No-op (0, 0) si la société n'a pas
@@ -5637,6 +5832,13 @@ def compute_ras_tva(company, facture, montant_paiement):
     montant_paiement = Decimal(montant_paiement or 0)
     if montant_paiement <= 0:
         return taux, Decimal('0')
+    # AAPV4 (D-AAPV-1 = tva_nette) — base = TVA − TVA des avoirs imputés ;
+    # prorata sur le TTC net des avoirs imputés.
+    tva_avoirs, ttc_avoirs = _tva_avoirs_imputes(facture)
+    montant_tva -= tva_avoirs
+    montant_ttc -= ttc_avoirs
+    if montant_tva <= 0 or montant_ttc <= 0:
+        return taux, Decimal('0')
     ras_totale = (montant_tva * taux / Decimal('100')).quantize(
         Decimal('0.01'))
     if facture.pk is None:
@@ -5646,9 +5848,7 @@ def compute_ras_tva(company, facture, montant_paiement):
     else:
         fraiche = FactureFournisseur.objects.get(pk=facture.pk)
         solde_avant = fraiche.solde_du
-        deja_retenu = sum(
-            (p.montant_ras_tva or Decimal('0')
-             for p in fraiche.paiements.all()), Decimal('0'))
+        deja_retenu = ras_retenue_facture(fraiche)  # AAPV5 imputations comprises
     if montant_paiement >= solde_avant:
         # Dernier règlement : il porte le solde de retenue au centime.
         due_cumulee = ras_totale
@@ -5660,6 +5860,40 @@ def compute_ras_tva(company, facture, montant_paiement):
     montant_ras = max(due_cumulee - deja_retenu, Decimal('0'))
     montant_ras = min(montant_ras, montant_paiement)
     return taux, montant_ras
+
+
+def ras_retenue_facture(facture):
+    """AAPV5 — Σ RAS-TVA déjà retenue sur la facture : paiements ET
+    imputations (acompte, avoir) qui l'ont soldée."""
+    total = Decimal('0')
+    for rel in (facture.paiements, facture.imputations_acompte, facture.avoirs_imputes):
+        total += sum((x.montant_ras_tva or Decimal('0') for x in rel.all()), Decimal('0'))
+    return total
+
+
+def ras_restante_au_solde(company, facture):
+    """AAPV5 (D-AAPV-2 = imputation_porte_le_reste) — quand une imputation
+    d'acompte ou d'avoir SOLDE la facture, la retenue restante (retenue due
+    − déjà retenue) qu'elle porte ; 0 si la facture n'est pas soldée, RAS
+    inactive ou rien ne reste."""
+    from .models import AchatsParametres, FactureFournisseur
+    if facture is None or not AchatsParametres.for_company(company).ras_tva_actif:
+        return Decimal('0')
+    fraiche = FactureFournisseur.objects.get(pk=facture.pk)
+    taux = taux_ras_tva(fraiche)
+    base = (fraiche.montant_tva or Decimal('0')) - _tva_avoirs_imputes(fraiche)[0]
+    if fraiche.solde_du > 0 or taux <= 0 or base <= 0:
+        return Decimal('0')
+    due = (base * taux / Decimal('100')).quantize(Decimal('0.01'))
+    return max(due - ras_retenue_facture(fraiche), Decimal('0'))
+
+
+def poser_ras_au_solde(imputation):
+    """AAPV5 — pose sur ``imputation`` la RAS restante si elle solde."""
+    ras = ras_restante_au_solde(imputation.facture.company, imputation.facture)
+    if ras > 0:
+        imputation.montant_ras_tva = ras
+        imputation.save(update_fields=['montant_ras_tva'])
 
 
 def relevé_ras_tva(company, *, date_debut=None, date_fin=None):
@@ -5686,6 +5920,35 @@ def relevé_ras_tva(company, *, date_debut=None, date_fin=None):
             'montant_ras_tva': p.montant_ras_tva,
             'montant_net_paye': p.montant_net_paye,
         })
+    rows += _releve_ras_imputations(company, date_debut, date_fin)  # AAPV5
+    from datetime import date
+    return sorted(rows, key=lambda r: r['date_paiement'] or date.min)
+
+
+def _releve_ras_imputations(company, date_debut, date_fin):
+    """AAPV5 — lignes du relevé RAS portées par une imputation (acompte ou
+    avoir) qui a soldé la facture (date = date de l'imputation)."""
+    from django.utils import timezone
+    from .models import ImputationAcompteFournisseur, ImputationAvoirFournisseur
+    rows = []
+    for imp, quand in (
+            [(i, i.created_at) for i in ImputationAcompteFournisseur.objects.filter(
+                facture__company=company, montant_ras_tva__gt=0).select_related(
+                'facture', 'facture__fournisseur')]
+            + [(i, i.date_creation) for i in ImputationAvoirFournisseur.objects.filter(
+                facture__company=company, montant_ras_tva__gt=0).select_related(
+                'facture', 'facture__fournisseur')]):
+        jour = timezone.localdate(quand) if quand else None
+        if (date_debut and jour and jour < date_debut) or (date_fin and jour and jour > date_fin):
+            continue
+        rows.append({
+            'date_paiement': jour, 'fournisseur': imp.facture.fournisseur.nom,
+            'facture': imp.facture.reference,
+            'type_achat': imp.facture.get_type_achat_display(),
+            'montant_paiement': imp.montant, 'taux_ras': taux_ras_tva(imp.facture),
+            'montant_ras_tva': imp.montant_ras_tva,
+            'montant_net_paye': imp.montant - imp.montant_ras_tva,
+        })
     return rows
 
 
@@ -5710,6 +5973,15 @@ def export_ras_tva_xlsx(company, *, date_debut=None, date_fin=None):
 
 
 # ── XPUR3 — Multi-devises sur les achats ────────────────────────────────────
+
+def _ttc_en_devise(montant_ttc_mad, bon_commande):
+    """AAPV44 — TTC dans la devise du BCF (MAD / taux, 0,01) ; None en MAD."""
+    from .models import DeviseAchat
+    taux = _dec(bon_commande.taux_change)
+    if bon_commande.devise == DeviseAchat.MAD or not taux:
+        return None
+    return (Decimal(str(montant_ttc_mad)) / taux).quantize(Decimal('0.01'))
+
 
 def contre_valeur_mad(montant_devise, taux_change):
     """XPUR3 — convertit un montant en devise vers sa contre-valeur MAD au
@@ -5759,6 +6031,24 @@ def check_fournisseur_statut_commande(fournisseur):
             f"Impossible de créer un bon de commande : {fournisseur.nom} est "
             f"{fournisseur.get_statut_display().lower()}"
             f"{' (' + fournisseur.motif_blocage + ')' if fournisseur.motif_blocage else ''}.")
+
+
+def exiger_fournisseur_commandable(company, fournisseur):
+    """AAPV29 — garde UNIQUE de toute porte qui crée, réaffecte ou envoie un
+    BCF : statut bloqué (XPUR4) puis onboarding obligatoire (NTP2P7).
+    Lève ``EtatIncompatible`` (409) ; no-op pour un fournisseur commandable."""
+    if fournisseur is None:
+        return
+    try:
+        check_fournisseur_statut_commande(fournisseur)
+    except EtatIncompatible:
+        raise
+    except ValueError as exc:
+        raise EtatIncompatible(str(exc))
+    from .selectors import fournisseur_peut_recevoir_bcf
+    autorise, motif = fournisseur_peut_recevoir_bcf(company, fournisseur.pk)
+    if not autorise:
+        raise EtatIncompatible(motif)
 
 
 def check_fournisseur_statut_paiement(fournisseur):
@@ -6028,6 +6318,15 @@ def bcf_en_retard_list(company, *, a_la_date=None):
     return [bc for bc in qs if bcf_en_retard(bc, a_la_date=a_la_date)]
 
 
+def destinataires_achats(company):
+    """AAPV51 — internes actifs qui portent ``achats_commander`` (comptes
+    hérités responsable/admin compris, repli ``_user_has_or_legacy``)."""
+    from apps.notifications.selectors import utilisateurs_internes_actifs
+    from core.permissions import _user_has_or_legacy
+    return [u for u in utilisateurs_internes_actifs(company).select_related('role')
+            if _user_has_or_legacy(u, 'achats_commander')]
+
+
 def notify_bcf_en_retard(company):
     """XPUR7 — notifie les responsables/admins des BCF ENVOYE en retard.
     Best-effort : une erreur de notification n'interrompt jamais l'appelant.
@@ -6038,11 +6337,7 @@ def notify_bcf_en_retard(company):
         try:
             from apps.notifications.services import notify_many
             from apps.notifications.types_evenements import EventType
-            from django.contrib.auth import get_user_model
-            User = get_user_model()
-            recipients = User.objects.filter(
-                company=company, is_active=True,
-                role_legacy__in=['responsable', 'admin'])
+            recipients = destinataires_achats(company)  # AAPV51
             notify_many(
                 recipients, EventType.BCF_LATE,
                 title=f'BCF en retard ({bc.reference})',
@@ -6064,10 +6359,13 @@ def annuler_receptions_brouillon_bcf(bc, user=None):
     from django.utils import timezone
     from .models import ReceptionFournisseur
 
+    from django.db import transaction
+
     today = timezone.now().date()
-    receptions = bc.receptions.filter(
-        statut=ReceptionFournisseur.Statut.BROUILLON)
     count = 0
+    with transaction.atomic():  # AAPV11 — brouillons relus sous verrou
+        receptions = list(bc.receptions.select_for_update().filter(
+            statut=ReceptionFournisseur.Statut.BROUILLON))
     for reception in receptions:
         note_annulation = (
             f'[{today.isoformat()}] Annulée automatiquement (BCF '
@@ -6081,9 +6379,44 @@ def annuler_receptions_brouillon_bcf(bc, user=None):
     return count
 
 
+def annuler_reception_brouillon(reception):
+    """AAPV11 — annule une réception BROUILLON sous verrou, statut relu : une
+    réception confirmée entre-temps est refusée (``EtatIncompatible``, 409)
+    — son stock et sa provision restent intacts."""
+    from django.db import transaction
+    from .models import ReceptionFournisseur
+    with transaction.atomic():
+        verrou = ReceptionFournisseur.objects.select_for_update().get(pk=reception.pk)
+        if verrou.statut == ReceptionFournisseur.Statut.CONFIRME:
+            raise EtatIncompatible(
+                "Réception confirmée entre-temps : rouvrez-la pour l'annuler.")
+        verrou.statut = ReceptionFournisseur.Statut.ANNULE
+        verrou.save(update_fields=['statut'])
+    reception.statut = verrou.statut
+    return reception
+
+
+def annuler_retour_brouillon(retour):
+    """AAPV11 — annule un retour fournisseur non validé sous verrou, statut
+    relu : un retour validé entre-temps est refusé (409)."""
+    from django.db import transaction
+    from .models import RetourFournisseur
+    with transaction.atomic():
+        verrou = RetourFournisseur.objects.select_for_update().get(pk=retour.pk)
+        if verrou.statut == RetourFournisseur.Statut.VALIDE:
+            raise EtatIncompatible(
+                'Un retour validé ne peut pas être annulé (le stock a déjà '
+                'été décrémenté).')
+        verrou.statut = RetourFournisseur.Statut.ANNULE
+        verrou.save(update_fields=['statut'])
+    retour.statut = verrou.statut
+    return retour
+
+
 def notify_bcf_annule(bc):
-    """YPROC7 — notifie best-effort le créateur du BCF (et de la DA liée si
-    connue) qu'un BCF vient d'être annulé. N'échoue jamais l'annulation."""
+    """YPROC7 — notifie best-effort le CRÉATEUR du BCF qu'il vient d'être
+    annulé (la DA liée est rouverte par l'abonné de
+    ``bon_commande_fournisseur_annule``, AAPV71). N'échoue jamais l'annulation."""
     try:
         from apps.notifications.services import notify
         from apps.notifications.types_evenements import EventType
@@ -6099,6 +6432,18 @@ def notify_bcf_annule(bc):
         logger.warning('notify_bcf_annule: échec pour BCF %s', bc.pk)
 
 
+def emettre_bcf_annule(bc, user, supprime):
+    """AAPV17 — défait la consommation budgétaire du BCF (engagements
+    CONSOMMÉ → ACTIF) puis émet ``bon_commande_fournisseur_annule``
+    (SYNCHRONE : l'abonné obligatoire relit la DA avant le SET_NULL)."""
+    from core.events import bon_commande_fournisseur_annule
+    from .models import BonCommandeFournisseur
+    rendre_engagements_bcf(bc.company, bc.pk)
+    bon_commande_fournisseur_annule.send(
+        sender=BonCommandeFournisseur, bon_commande_id=bc.pk,
+        company=bc.company, user=user, supprime=supprime)
+
+
 def annuler_bcf_cascade(bc, user=None):
     """YPROC7 — annulation d'un BCF : annule en cascade ses réceptions
     brouillon (`annuler_receptions_brouillon_bcf`) puis notifie
@@ -6108,6 +6453,7 @@ def annuler_bcf_cascade(bc, user=None):
     (utile si l'annulation concerne un BCF partiellement reçu) pour décision
     éventuelle de retour fournisseur."""
     nb_receptions_annulees = annuler_receptions_brouillon_bcf(bc, user=user)
+    emettre_bcf_annule(bc, user, supprime=False)  # AAPV17
     notify_bcf_annule(bc)
     quantites_deja_recues = [
         {
@@ -6185,7 +6531,8 @@ def imputer_acomptes_bcf(bon_commande):
     with transaction.atomic():
         factures = list(
             FactureFournisseur.objects.select_for_update()
-            .filter(bon_commande=bon_commande)
+            # AAPV53 — seules les factures du fournisseur du BCF.
+            .filter(bon_commande=bon_commande, fournisseur_id=bon_commande.fournisseur_id)
             .order_by('date_creation', 'id'))
         if not factures:
             return []
@@ -6205,6 +6552,7 @@ def imputer_acomptes_bcf(bon_commande):
                 creees.append(ImputationAcompteFournisseur.objects.create(
                     company=acompte.company or facture.company,
                     acompte=acompte, facture=facture, montant=montant))
+                poser_ras_au_solde(creees[-1])  # AAPV5 (D-AAPV-2)
                 reste -= montant
                 acompte.montant_consomme = (
                     (acompte.montant_consomme or Decimal('0')) + montant)
@@ -6382,7 +6730,9 @@ def _montant_attendu_bcf_ht(bon_commande_id):
                 == Produit.PolitiqueFacturationAchat.SUR_COMMANDE):
             quantite = Decimal(str(ligne.quantite or 0))
         else:
-            quantite = recu.get(ligne.id, Decimal('0'))
+            # AAPV25 — le reçu NET des retours fournisseur validés.
+            quantite = max(recu.get(ligne.id, Decimal('0'))
+                           - _retourne_valide_ligne_bcf(ligne), Decimal('0'))
         attendu += quantite * pu
     return attendu.quantize(Decimal('0.01'))
 
@@ -6408,6 +6758,16 @@ def evaluer_rapprochement_3_voies(facture):
     if facture is None or facture.bon_commande_id is None:
         return None
     if facture.statut_controle != FactureFournisseur.StatutControle.NORMALE:
+        return facture.statut_controle
+    ht, tva, ttc = (facture.montant_ht or Decimal('0'), facture.montant_tva or Decimal('0'),
+                    facture.montant_ttc or Decimal('0'))
+    if ht <= 0 or abs(ht + tva - ttc) > Decimal('0.01'):  # AAPV2 — montants incohérents
+        facture.statut_controle = FactureFournisseur.StatutControle.EXCEPTION
+        facture.motif_ecart = (
+            f'Montants incohérents : HT {_fmt_montant_pdf(ht)} + TVA '
+            f'{_fmt_montant_pdf(tva)} ≠ TTC {_fmt_montant_pdf(ttc)}')
+        FactureFournisseur.objects.filter(pk=facture.pk).update(
+            statut_controle=facture.statut_controle, motif_ecart=facture.motif_ecart)
         return facture.statut_controle
     company = facture.company
     facture_ht = (FactureFournisseur.objects
@@ -6698,7 +7058,9 @@ def creer_facture_fournisseur_depuis_ocr(
         return FactureFournisseur.objects.create(
             company=company, reference=ref, fournisseur=fournisseur,
             ref_fournisseur=ref_fournisseur,
-            date_facture=date_facture, date_echeance=date_echeance,
+            type_achat=type_achat_par_defaut(fournisseur),  # AAPV6
+            date_facture=date_facture,
+            date_echeance=date_echeance or derive_date_echeance(fournisseur, date_facture),  # AAPV54
             montant_ht=montant_ht or Decimal('0'),
             montant_tva=montant_tva or Decimal('0'),
             montant_ttc=montant_ttc or Decimal('0'),
@@ -8694,7 +9056,7 @@ def creer_facture_fournisseur_depuis_ubl(*, company, user, xml_bytes):
     `cleared` si un numéro de clearance est présent dans le document, sinon
     `non_cleared` (aucune validation plateforme réelle : préparation mandat
     uniquement). Lève ValueError si aucun fournisseur ne matche ou le XML est
-    invalide. Renvoie la facture créée."""
+    invalide. Renvoie ``(facture, doublons)`` (AAPV55)."""
     from datetime import date as _date
     from .models import FactureFournisseur, LigneFactureFournisseur
 
@@ -8717,6 +9079,10 @@ def creer_facture_fournisseur_depuis_ubl(*, company, user, xml_bytes):
         except ValueError:
             return None
 
+    # AAPV55 — même avertissement de doublon que l'OCR (XPUR11, non bloquant).
+    doublons = detect_facture_fournisseur_doublon(
+        company, fournisseur_id=fournisseur.id, ref_fournisseur=fields.get('numero'),
+        montant_ttc=fields.get('montant_ttc'), date_facture=_parsed_date(fields.get('date_facture')))
     numero_clearance = fields.get('numero_clearance_dgi')
     statut_dgi = (
         FactureFournisseur.StatutConformiteDgi.CLEARED if numero_clearance
@@ -8726,8 +9092,10 @@ def creer_facture_fournisseur_depuis_ubl(*, company, user, xml_bytes):
         facture = FactureFournisseur.objects.create(
             company=company, reference=ref, fournisseur=fournisseur,
             ref_fournisseur=fields.get('numero'),
+            type_achat=type_achat_par_defaut(fournisseur),  # AAPV6
             date_facture=_parsed_date(fields.get('date_facture')),
-            date_echeance=_parsed_date(fields.get('date_echeance')),
+            date_echeance=(_parsed_date(fields.get('date_echeance')) or derive_date_echeance(  # AAPV54
+                fournisseur, _parsed_date(fields.get('date_facture')))),
             montant_ht=fields.get('montant_ht') or Decimal('0'),
             montant_tva=fields.get('montant_tva') or Decimal('0'),
             montant_ttc=fields.get('montant_ttc') or Decimal('0'),
@@ -8753,7 +9121,7 @@ def creer_facture_fournisseur_depuis_ubl(*, company, user, xml_bytes):
     # PATCH (no-op sans BCF).
     evaluer_rapprochement_3_voies(facture)
     _emettre_facture_creee(facture, user)
-    return facture
+    return facture, doublons
 
 
 # ── XSTK15 — Unités de mesure & conditionnements (touret/carton…) ───────────
@@ -9109,6 +9477,16 @@ def consommer_engagements_demande(company, demande_achat_id,
     return qs.update(**valeurs)
 
 
+def rendre_engagements_bcf(company, bon_commande_id):
+    """AAPV17 — BCF annulé/supprimé : ses engagements CONSOMMÉS redeviennent
+    ACTIFS (l'enveloppe reste engagée par la DA), lien BCF effacé."""
+    from .models import EngagementBudget
+    return EngagementBudget.objects.filter(
+        company=company, bon_commande_id=bon_commande_id,
+        statut=EngagementBudget.Statut.CONSOMME,
+    ).update(statut=EngagementBudget.Statut.ACTIF, bon_commande_id=None)
+
+
 # ── NTDATA19 — FUSION SUPERVISÉE : FOURNISSEURS & PRODUITS ──────────────────
 #
 # Même contrat que `crm.services.merge_clients` (NTDATA18), et la MÊME
@@ -9201,6 +9579,16 @@ def merge_produits(survivor, others, user):
                       etiquette='NTDATA19 fusion produit')
 
 
+def motif_archivage_refuse(produit):
+    """AAPV19 — motif du refus d'archiver un produit qui a encore du stock
+    (sa valeur sortirait de la Valorisation), ``None`` si archivable."""
+    qte = int(produit.quantite_stock or 0)
+    if qte > 0:
+        return (f'{qte} unité(s) en stock : sortez-les ou inventoriez à 0 '
+                "avant d'archiver ce produit.")
+    return None
+
+
 def fournisseurs_par_ids(company, ids):
     """NTDATA19 — fournisseurs d'une société par id (point d'entrée cross-app).
 
@@ -9268,7 +9656,6 @@ from .services_wms import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF2
     sceller_unite_logistique,
     solde_portail_tiers,
     suggestions_rangement_reception,
-    demande_transfert_approuvee_existe,
     transfert_exige_approbation,
     valeur_transfert,
     verifier_capacite_plan,
@@ -9281,7 +9668,7 @@ __all__ = [
     'controler_scan_emballage', 'creer_expedition_transporteur', 'creer_plan_chargement',
     'creer_retour_client', 'creer_unite_logistique', 'creer_vague_depuis_besoins',
     'declarer_mouvement_rebut', 'decrementer_stock_expedition',
-    'demande_transfert_approuvee_existe', 'deplacer_unite_logistique',
+    'deplacer_unite_logistique',
     'enregistrer_arrivee_chauffeur', 'enregistrer_mouvement_scanne', 'exporter_asn',
     'generer_comptages_tournants', 'generer_etiquette_expedition', 'get_or_create_produit',
     'impact_rappel', 'importer_asn',

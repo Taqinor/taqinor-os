@@ -90,6 +90,34 @@ class TestBcfBlockedStatuses(Xpur4Base):
         self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('Litige qualité', resp.data['detail'])
 
+    def test_toutes_les_portes_refusent_un_fournisseur_bloque(self):
+        """AAPV29 — DA → BCF, PATCH {fournisseur}, dupliquer, envoyer chez un
+        fournisseur « bloqué total » : 409, aucun BCF chez lui."""
+        from apps.stock.erreurs_achats import EtatIncompatible
+        from apps.stock.models import BonCommandeFournisseur
+        from apps.stock.services import creer_bcf_depuis_lignes
+        bloque = Fournisseur.objects.create(
+            company=self.company, nom='Bloqué AAPV29',
+            statut=Fournisseur.Statut.BLOQUE_TOTAL, motif_blocage='litige qualité')
+        ok = Fournisseur.objects.create(company=self.company, nom='OK AAPV29')
+        with self.assertRaises(EtatIncompatible):
+            creer_bcf_depuis_lignes(company=self.company, user=self.user, fournisseur=bloque,
+                                    lignes=[(self.produit.id, 'Onduleur', 2, 1200)])
+        base = '/api/django/stock/bons-commande-fournisseur/'
+        rep = self.api.post(base, self._bcf_payload(ok), format='json')
+        self.assertEqual(rep.status_code, 201, rep.data)
+        bcf_id = rep.data['id']
+        rep = self.api.patch(f'{base}{bcf_id}/', {'fournisseur': bloque.id}, format='json')
+        self.assertEqual(rep.status_code, 409, rep.data)
+        self.assertIn('litige qualité', rep.data['detail'])
+        BonCommandeFournisseur.objects.filter(pk=bcf_id).update(fournisseur=bloque)
+        for action in ('envoyer', 'dupliquer'):
+            rep = self.api.post(f'{base}{bcf_id}/{action}/', {}, format='json')
+            self.assertEqual(rep.status_code, 409, (action, rep.data))
+        self.assertEqual(BonCommandeFournisseur.objects.get(pk=bcf_id).statut,
+                         BonCommandeFournisseur.Statut.BROUILLON)
+        self.assertEqual(BonCommandeFournisseur.objects.filter(fournisseur=bloque).count(), 1)
+
     def test_bloque_total_refuses_bcf(self):
         f = Fournisseur.objects.create(
             company=self.company, nom='Bloqué Total',

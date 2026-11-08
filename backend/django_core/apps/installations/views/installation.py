@@ -1094,6 +1094,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         « Signé » avance à « Matériel commandé » par le service unique."""
         from apps.stock.selectors import get_fournisseur_by_id
         from apps.stock.services import draft_bcfs_for_shortfall
+        from django.db import transaction
         from apps.stock.serializers import BonCommandeFournisseurSerializer
         inst = self.get_object()
         company = request.user.company
@@ -1115,10 +1116,12 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                         str(produit_id): 'Fournisseur inconnu.'}},
                     status=status.HTTP_404_NOT_FOUND)
             overrides[int(produit_id)] = fournisseur_id
-        try:
-            crees, sans_fournisseur = draft_bcfs_for_shortfall(
-                inst, request.user, company, overrides=overrides,
-                produits=demande.get('produits'), fournisseur=fournisseur)
+        try:  # AAPV28 — chantier verrouillé AVANT le calcul du besoin
+            with transaction.atomic():
+                inst = Installation.objects.select_for_update().get(pk=inst.pk)
+                crees, sans_fournisseur = draft_bcfs_for_shortfall(
+                    inst, request.user, company, overrides=overrides,
+                    produits=demande.get('produits'), fournisseur=fournisseur)
         except ValueError as exc:
             # api-fuzz full : « aucun manque » / « BCF déjà ouvert » = état du
             # chantier (409), le corps était conforme.

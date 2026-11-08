@@ -128,8 +128,24 @@ class AnnulationReceptionFactureeTests(TestCase):
         FactureFournisseur.objects.filter(pk=self.facture.pk).update(
             reception=None,
             note=f'Facture réception {self.reception.reference}0')
+        # AAPV12 — cette « autre réception » a bien reçu ses 4 unités sur le
+        # BCF : la facture reste couverte par ce qui resterait reçu.
+        self.bcf.lignes.update(quantite=8, quantite_recue=8)
         resp = self._annuler()
         self.assertEqual(resp.status_code, 200, resp.data)
+
+    def test_facture_liee_par_patch_bloque_l_annulation(self):
+        """AAPV12 — facture liée au BCF par PATCH (sans FK réception) au-delà
+        de ce qui resterait reçu : 409, réception confirmée, BCF reçu 4."""
+        FactureFournisseur.objects.filter(pk=self.facture.pk).update(
+            reception=None, note='Facture OCR liée par PATCH')
+        resp = self._annuler()
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertIn('au-delà de ce qui resterait reçu', resp.data['detail'])
+        self.assertIn(self.facture.reference, resp.data['detail'])
+        self.reception.refresh_from_db()
+        self.assertEqual(self.reception.statut, ReceptionFournisseur.Statut.CONFIRME)
+        self.assertEqual(self.bcf.lignes.get().quantite_recue, 4)
 
     def test_facture_historique_sans_fk_bloque_par_note(self):
         FactureFournisseur.objects.filter(pk=self.facture.pk).update(

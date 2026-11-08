@@ -115,6 +115,10 @@ class SessionComptageViewSet(oa.CorpsObjetMixin, oa.JsonOnlyMixin, CompanyScoped
     def demarrer(self, request, pk=None):
         """FG324 — passe la session en cours."""
         session = self.get_object()
+        if session.statut != SessionComptage.Statut.PLANIFIE:  # AAPV50
+            return Response(
+                {'detail': 'Seule une session planifiée peut démarrer.'},
+                status=status.HTTP_409_CONFLICT)
         session.statut = SessionComptage.Statut.EN_COURS
         session.save(update_fields=['statut', 'date_modification'])
         return Response(self.get_serializer(session).data)

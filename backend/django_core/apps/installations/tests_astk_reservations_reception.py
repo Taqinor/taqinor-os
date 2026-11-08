@@ -341,6 +341,16 @@ class RetournableTests(ResaBase):
     def test_reservation_soldee_par_une_vente_compte(self):
         panneau = self.produit('Panneau ASTK128 B', stock=30)
         inst = self.chantier([(panneau, 10)])
+        # AAPV18 — chantier né d'un devis : la SORTIE de la vente (sous la
+        # référence du devis) est LA mesure du déjà-sorti.
+        from apps.stock.services import (
+            mouvement_type_sortie, record_stock_movement,
+        )
+        record_stock_movement(
+            company=self.company, produit=panneau,
+            type_mouvement=mouvement_type_sortie(), quantite=10,
+            quantite_avant=30, quantite_apres=20,
+            reference=inst.devis.reference, note='vente', created_by=self.user)
         solder_reservations_vente(inst, {panneau.id: 10}, 'FAC-ASTK128')
         self.installer(inst)
         self.assertEqual(quantite_retournable(inst, panneau.id), 10)

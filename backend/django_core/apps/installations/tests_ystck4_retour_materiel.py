@@ -176,6 +176,43 @@ class TestRetourMaterielEndpoint(TestCase):
         make_consommation_validee(self.company, self.inst, self.produit,
                                   Decimal('5'))
 
+    def test_retour_valide_fige_et_cumul_par_produit(self):
+        """AAPV49 — deux lignes 3 + 3 pour 5 sortis : 409 (cumul) ; un retour
+        validé est figé (PATCH/DELETE ligne, POST ligne, PATCH/DELETE retour :
+        409), stock inchangé."""
+        def retour():
+            return self.api.post(f'{BASE}/retours-materiel/', {
+                'installation': self.inst.id}, format='json').data['id']
+
+        def ligne(rid, q):
+            return self.api.post(f'{BASE}/retour-materiel-lignes/', {
+                'retour': rid, 'produit': self.produit.id, 'quantite': q},
+                format='json')
+        r3 = retour()
+        ligne(r3, '3')
+        ligne(r3, '3')
+        r = self.api.post(f'{BASE}/retours-materiel/{r3}/valider/')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.quantite_stock, Decimal('0'))
+        self.api.delete(f'{BASE}/retours-materiel/{r3}/')
+
+        r1 = retour()
+        lid = ligne(r1, '5').data['id']
+        self.assertEqual(self.api.post(
+            f'{BASE}/retours-materiel/{r1}/valider/').status_code, 200)
+        for rep in (
+                self.api.patch(f'{BASE}/retour-materiel-lignes/{lid}/',
+                               {'quantite': '0'}, format='json'),
+                self.api.delete(f'{BASE}/retour-materiel-lignes/{lid}/'),
+                ligne(r1, '1'),
+                self.api.patch(f'{BASE}/retours-materiel/{r1}/',
+                               {'note': 'x'}, format='json'),
+                self.api.delete(f'{BASE}/retours-materiel/{r1}/')):
+            self.assertEqual(rep.status_code, 409, getattr(rep, 'data', rep))
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.quantite_stock, Decimal('5'))
+
     def test_creer_et_valider_via_api(self):
         r = self.api.post(
             f'{BASE}/retours-materiel/',

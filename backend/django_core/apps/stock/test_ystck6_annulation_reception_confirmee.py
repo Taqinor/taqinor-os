@@ -142,11 +142,30 @@ class TestContrePassation(Ystck6Base):
         self.produit.quantite_stock = 3
         self.produit.save(update_fields=['quantite_stock'])
 
-        annuler_reception_confirmee(rec, self.user)
+        # AAPV12 — la réception ne peut plus être défaite entièrement : refus,
+        # rien n'est contre-passé (stock 3, BCF reçu 10).
+        from apps.stock.erreurs_achats import EtatIncompatible
+        with self.assertRaises(EtatIncompatible):
+            annuler_reception_confirmee(rec, self.user)
 
         self.produit.refresh_from_db()
-        self.assertEqual(self.produit.quantite_stock, 0)
-        self.assertGreaterEqual(self.produit.quantite_stock, 0)
+        self.assertEqual(self.produit.quantite_stock, 3)
+        ligne_cmd.refresh_from_db()
+        self.assertEqual(ligne_cmd.quantite_recue, 10)
+
+    def test_annulation_refusee_si_unites_deja_sorties(self):
+        """AAPV12 — 7 unités sorties sur 10 reçues : 409 nommant les 3
+        restantes ; réception confirmée, provision intacte."""
+        bc, ligne_cmd, rec = self._bcf_et_reception_confirmee(quantite=10)
+        self.produit.quantite_stock = 3
+        self.produit.save(update_fields=['quantite_stock'])
+        resp = self.api.post(
+            f'/api/django/stock/receptions-fournisseur/{rec.id}/annuler/')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertIn('7 unité(s)', resp.data['detail'])
+        self.assertIn('pour les 3 restantes', resp.data['detail'])
+        rec.refresh_from_db()
+        self.assertEqual(rec.statut, ReceptionFournisseur.Statut.CONFIRME)
 
 
 class TestVueApiAnnuler(Ystck6Base):
