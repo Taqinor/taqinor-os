@@ -60,6 +60,8 @@
     detache:booleen, detail:inconnu
 - frontend/src/api/coreApi.js :: desactiver -> /api/django/core/modules/<>/desactiver
     dependants:inconnu, desactives:inconnu, detail:texte
+- frontend/src/api/coreApi.js :: donnees -> /api/django/core/dashboards/<>/donnees
+    detail:texte, filtres_globaux:inconnu, widgets:inconnu
 - frontend/src/api/coreApi.js :: getPublic -> /api/django/core/dashboards-partages/public/<>
     description:inconnu, detail:texte, layout:inconnu, titre:inconnu
 - frontend/src/api/coreApi.js :: installer -> /api/django/core/workflow-templates/installer

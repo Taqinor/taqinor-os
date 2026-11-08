@@ -2,7 +2,7 @@
 
 ``GET /api/public/v1/clients/<id>/langue/`` : pour une intégration tierce qui
 génère ses propres communications (courriers, SMS, e-mails) et veut les écrire
-dans la langue que TAQINOR utiliserait pour les documents de ce client.
+dans la langue que la société utiliserait pour les documents de ce client.
 
 Authentifiée par clé d'API (scope dédié ``read:clients``), société TOUJOURS
 prise sur la clé. Le client est lu par le ``selectors.py`` de l'app ``crm``
