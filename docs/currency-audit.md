@@ -118,5 +118,5 @@ with no rate column at all — mono-MAD in practice.
 | achats | FactureFournisseur | `apps/achats/models.py:472` | montant_ht, montant_ttc, montant_ttc_devise, montant_tva | yes |
 | crm | ConcurrentPerte | `apps/crm/models_clients.py:1264` | concurrent_prix | no |
 | facturation | Facture | `apps/facturation/models.py:33` | abandon_montant, acompte_auto_le, montant_ht, montant_ttc, montant_tva, remise_globale, taux_tva, total_ht_stocke, total_ttc_stocke, ventilation_tva | yes |
-| parametres | CompanyProfile | `apps/parametres/models_company.py:14` | bande_prix_kwc_ci, exiger_acompte_avant_planification, prix_cible_kwc_defaut, remise_max_pct, tva_intra, tva_panneaux, tva_standard | no |
+| parametres | CompanyProfile | `apps/parametres/models_company.py:15` | bande_prix_kwc_ci, exiger_acompte_avant_planification, prix_cible_kwc_defaut, remise_max_pct, tva_intra, tva_panneaux, tva_standard | no |
 | ventes | Devis | `apps/ventes/models.py:36` | penalites_retard_livraison, prix_cible_kwc, prix_par_kwc, remise_approuvee, remise_approuvee_pct, remise_globale, taux_tva | yes |

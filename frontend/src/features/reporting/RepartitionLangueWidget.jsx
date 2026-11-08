@@ -11,7 +11,7 @@ import { ChartEmpty, ChartTooltip, resolveColor } from '../../ui/charts'
    `layout.widgets` ; les comptes viennent de `GET /core/dashboards/{id}/donnees/`
    (company-scopé serveur, relus à chaque ouverture — aucun cache). */
 
-// Miroir de core.dashboard_data.TYPE_REPARTITION_LANGUE (type de widget serveur).
+// Type de widget servi par core.dashboard_data (TYPE_REPARTITION_LANGUE).
 export const TYPE_REPARTITION_LANGUE = 'repartition_langue_clients'
 const TITRE = 'Répartition des clients par langue documentaire'
 const LIBELLES = { fr: 'Français', ar: 'Arabe', en: 'Anglais' }
