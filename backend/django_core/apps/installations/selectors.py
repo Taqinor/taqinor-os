@@ -2722,6 +2722,20 @@ def suggestion_pieces_intervention(
     ]
 
 
+def consommations_appliquees_du_ticket(company, ticket_id):
+    """ACSV101 — lignes F11 catalogue appliquées au stock des interventions NON
+    annulées du ticket (bornées à ``company``) : entrée ``pieces`` de sa facture."""
+    from types import SimpleNamespace
+    from .models import ConsommationLigne
+    lignes = (ConsommationLigne.objects
+              .filter(company=company, consommation__intervention__ticket_id=ticket_id,
+                      consommation__intervention__annulee=False,
+                      stock_applique=True, produit__isnull=False)
+              .select_related('produit').order_by('pk'))
+    return [SimpleNamespace(produit=li.produit, quantite=li.quantite_utilisee)
+            for li in lignes]
+
+
 def intervention_export_row(interv):
     """ZFSM7 — une ligne PLATE de l'export xlsx des interventions : chantier,
     client, ville, type, statut, priorité, dates, technicien, équipe, durée
