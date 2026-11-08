@@ -4681,7 +4681,8 @@ def previsualiser_replanification_masse(company, *, jour, technicien_id=None,
     from .models import Intervention
     from .planification_lot import suggerer_creneaux_lot
 
-    qs = Intervention.objects.filter(company=company, date_prevue=jour)
+    qs = Intervention.objects.filter(company=company, date_prevue=jour, annulee=False).exclude(  # ACSV10
+        statut__in=(Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE))
     if technicien_id is not None:
         qs = qs.filter(technicien_id=technicien_id)
     if intervention_ids:
