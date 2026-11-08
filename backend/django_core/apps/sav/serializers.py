@@ -84,6 +84,7 @@ class EquipementSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
             'company', 'created_by', 'equipement_token', 'public_token',
             'date_fin_garantie', 'date_fin_garantie_production',
             'date_creation', 'date_modification',
+            'garantie_plancher',  # ACSV55 - pose par le remplacement seul
         ]
         # L636 — l'unicité (company, numero_serie) est CONDITIONNELLE (séries
         # vides exclues). On désactive le UniqueTogetherValidator auto de DRF

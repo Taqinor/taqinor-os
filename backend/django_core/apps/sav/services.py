@@ -225,7 +225,7 @@ def _balayer_produit(*, company, installation, produit, quantite_ligne,
     series, placeholders = _equipements_produit(company, installation, produit)
     nb_series = series.count()
     if date_pose:
-        for eq in series:
+        for eq in series.filter(garantie_plancher__isnull=True):  # ACSV55
             machine = {getattr(installation, 'date_pose_reelle', None),  # ACHT125
                        eq.date_creation and timezone.localtime(eq.date_creation).date()}
             if eq.date_pose and eq.date_pose in machine and eq.date_pose != date_pose:
@@ -295,7 +295,8 @@ def recaler_garanties_chantier(*, company, installation, ancienne_date,
     recales = 0
     for eq in Equipement.objects.filter(
             company=company, installation=installation,
-            date_pose=ancienne_date, mis_au_rebut=False):
+            date_pose=ancienne_date, mis_au_rebut=False,
+            garantie_plancher__isnull=True):  # ACSV55
         eq.date_pose = nouvelle_date
         eq.recompute_garanties()
         eq.save(update_fields=[
@@ -929,6 +930,9 @@ def remplacer_equipement(*, ticket, ancien, produit_neuf, serie_neuve,
         neuf.client_vente_id = ancien.client_vente_id
         champs.append('client_vente')
     reste = ancien.date_fin_garantie_effective
+    # ACSV55 - le plancher survit aux recalculs (retour en Receptionne, PATCH).
+    neuf.garantie_plancher = max(reste or date_pose, date_pose)
+    champs.append('garantie_plancher')
     if reste and reste > date_pose:
         if neuf.date_fin_garantie is None or neuf.date_fin_garantie < reste:
             neuf.date_fin_garantie = reste
