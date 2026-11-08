@@ -291,7 +291,7 @@
 - frontend/src/api/installationsApi.js :: syncField -> /api/django/installations/sync
     applied:inconnu, detail:texte, errors:inconnu, replayed:inconnu, results:inconnu
 - frontend/src/api/monitoringApi.js :: emailOmReport -> /api/django/monitoring/configs/<>/email-om-report
-    detail:texte, recipient:liste, sent:inconnu
+    detail:texte, sent:inconnu
 - frontend/src/api/monitoringApi.js :: getClientPortal -> /api/django/monitoring/configs/client-portal
     client:nombre, co2_kg:inconnu, co2_kg_par_kwh:inconnu, co2_tonnes:inconnu, detail:texte, economies_mad:inconnu, systems_count:inconnu, tarif_mad_par_kwh:inconnu, total_production_kwh:inconnu
 - frontend/src/api/monitoringApi.js :: getCo2 -> /api/django/monitoring/configs/<>/co2
