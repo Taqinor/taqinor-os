@@ -267,12 +267,13 @@ class TestPariteAucunEmetteurHorsService(TestCase):
 
     def test_aucune_ecriture_emise_hors_du_service(self):
         racine = Path(__file__).resolve().parents[1]
-        # ODX18 — les vues de facturation et le recouvrement ont déménagé
-        # vers apps/facturation : ils restent sous la garde (chemins relatifs
-        # préfixés ``../facturation/``).
+        # ODX18 — les vues de facturation, le recouvrement, les sérialiseurs
+        # et la façade de services ont déménagé vers apps/facturation : ils
+        # restent sous la garde (chemins relatifs préfixés ``../facturation/``).
         facturation = racine.parent / 'facturation'
         demenages = sorted((facturation / 'views').glob('*.py')) + [
-            facturation / 'recouvrement.py']
+            facturation / 'recouvrement.py', facturation / 'serializers.py',
+            facturation / 'services.py']
         coupables = []
         for chemin in sorted(racine.rglob('*.py')) + demenages:
             rel = (chemin.relative_to(racine).as_posix()

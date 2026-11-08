@@ -13,7 +13,7 @@ Run :
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -142,6 +142,17 @@ class TestODX18Routes(TestCase):
                 v_new = resolve('/api/django/facturation/' + suffixe).func
                 self.assertIs(getattr(v_old, 'cls', v_old), getattr(v_new, 'cls', v_new))
 
+    def test_remises_encaissement_route_historique_servie(self):
+        """ODX18 (suite) — la remise d'encaissement (XFSM19) a déménagé dans
+        apps.facturation.views ; sa route historique ventes/ la sert toujours,
+        par la classe déménagée."""
+        from django.urls import resolve
+        from apps.facturation.views import RemiseEncaissementViewSet
+        r = self.api.get('/api/django/ventes/remises-encaissement/')
+        self.assertEqual(r.status_code, 200, r.content)
+        vue = resolve('/api/django/ventes/remises-encaissement/').func
+        self.assertIs(vue.cls, RemiseEncaissementViewSet)
+
     def test_tenant_isolation_on_new_route(self):
         other = make_company('odx18-other', 'Autre Co')
         other_client = make_client(other, email='other18@example.com')
@@ -152,3 +163,60 @@ class TestODX18Routes(TestCase):
         r = self.api.get('/api/django/facturation/factures/')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(ids_of(r), [])
+
+
+class TestODX18DemenagementSuite(SimpleTestCase):
+    """ODX18 (suite) — sérialiseurs, avoirs/notes de débit, remises
+    d'encaissement et façade de services : les anciens chemins ventes renvoient
+    les MÊMES objets que apps.facturation (déplacement pur, aucune copie)."""
+
+    def test_serialiseurs_deplaces_et_reexportes(self):
+        from apps.facturation import serializers as nouveaux
+        from apps.ventes import serializers_facturation as anciens
+        for nom in ('FactureSerializer', 'FactureWriteSerializer',
+                    'PaiementSerializer', 'AvoirSerializer',
+                    'NoteDebitSerializer', 'RemiseEncaissementSerializer',
+                    'MandatPaiementSerializer', 'FactureListeSerializer'):
+            with self.subTest(nom=nom):
+                cls = getattr(nouveaux, nom)
+                self.assertIs(getattr(anciens, nom), cls)
+                self.assertEqual(cls.__module__, 'apps.facturation.serializers')
+        # Le bon de commande relève de ventes : il n'a pas bougé.
+        self.assertEqual(anciens.BonCommandeSerializer.__module__,
+                         'apps.ventes.serializers_facturation')
+        self.assertFalse(hasattr(nouveaux, 'BonCommandeSerializer'))
+
+    def test_vues_avoir_et_remise_deplacees(self):
+        from apps.facturation import views as nouvelles
+        from apps.ventes import views as anciennes
+        attendus = {
+            'AvoirViewSet': 'apps.facturation.views.avoir',
+            'NoteDebitViewSet': 'apps.facturation.views.avoir',
+            'RemiseEncaissementViewSet':
+                'apps.facturation.views.remise_encaissement',
+        }
+        for nom, module in attendus.items():
+            with self.subTest(nom=nom):
+                cls = getattr(nouvelles, nom)
+                self.assertIs(getattr(anciennes, nom), cls)
+                self.assertEqual(cls.__module__, module)
+
+    def test_avoirs_notes_debit_meme_classe_sous_les_deux_prefixes(self):
+        from django.urls import resolve
+        for suffixe in ('avoirs/', 'avoirs/1/', 'notes-debit/', 'notes-debit/1/'):
+            with self.subTest(route=suffixe):
+                v_old = resolve('/api/django/ventes/' + suffixe).func
+                v_new = resolve('/api/django/facturation/' + suffixe).func
+                self.assertIs(v_old.cls, v_new.cls)
+                self.assertEqual(v_old.actions, v_new.actions)
+
+    def test_facade_services_memes_objets_que_ventes(self):
+        from apps.facturation import services as facade
+        from apps.ventes import services as ventes_services
+        self.assertTrue(facade.__all__)
+        for nom in facade.__all__:
+            with self.subTest(nom=nom):
+                self.assertIs(getattr(facade, nom),
+                              getattr(ventes_services, nom))
+        # « Facturer la vente » (VNT26) n'est jamais ré-exporté par la façade.
+        self.assertFalse(hasattr(facade, 'facturer_vente'))
