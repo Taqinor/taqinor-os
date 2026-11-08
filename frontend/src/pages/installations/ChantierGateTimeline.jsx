@@ -926,14 +926,16 @@ export default function ChantierGateTimeline({ installationId, installation, onA
         {/* WIR202 — le bouton OUVRE le formulaire ; il ne crée plus une fiche
             vide que rien ne pouvait remplir. Une fiche existante se rouvre
             avec les mêmes essais pour correction. */}
-        <Button
+        {recetteRecord?.verrouillee && !agricole ? (  /* ACSV19 — IEC verrouillée */
+          <Badge tone="neutral" className="ml-auto">Recette verrouillée (PV signé)</Badge>
+        ) : (<Button
           size="sm"
           variant="outline"
           className="ml-auto"
           onClick={() => setRecetteOuverte(true)}
         >
           {recetteRecord ? 'Modifier la fiche de recette' : 'Ouvrir la fiche de recette'}
-        </Button>
+        </Button>)}
       </div>
 
       {recetteOuverte && agricole && (
