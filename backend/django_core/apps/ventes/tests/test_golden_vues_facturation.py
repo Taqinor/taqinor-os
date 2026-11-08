@@ -31,7 +31,7 @@ from pathlib import Path
 
 from django.test import SimpleTestCase
 
-VUES = Path(__file__).resolve().parent.parent / 'views'
+VUES = Path(__file__).resolve().parents[2] / 'facturation' / 'views'  # ODX18
 FIXTURE = Path(__file__).resolve().parent / 'fixtures' / \
     'golden_vues_facturation.json'
 
@@ -123,7 +123,7 @@ def _symboles():
 
 
 def capturer_routes():
-    from apps.ventes.views.facture import FactureViewSet
+    from apps.facturation.views.facture import FactureViewSet
     routes = [{
         'nom': fn.__name__,
         'url_path': fn.url_path,
@@ -135,13 +135,13 @@ def capturer_routes():
 
 
 def capturer_noms_publics():
-    from apps.ventes.views.facture import FactureViewSet
+    from apps.facturation.views.facture import FactureViewSet
     return sorted(n for n in dir(FactureViewSet)
                   if not n.startswith('__') and n not in POSES_PAR_AS_VIEW)
 
 
 def capturer_permissions():
-    from apps.ventes.views.facture import FactureViewSet
+    from apps.facturation.views.facture import FactureViewSet
     actions = ACTIONS_CRUD + [r['nom'] for r in capturer_routes()]
     gardes = {}
     for action in actions:
@@ -201,7 +201,7 @@ class GoldenVuesFacturation(SimpleTestCase):
                          ['noms_publics', 'permissions', 'routes'])
 
     def test_chaque_groupe_vit_a_sa_place(self):
-        from apps.ventes.views.facture import FactureViewSet
+        from apps.facturation.views.facture import FactureViewSet
         trouves = _symboles()
         for groupe, noms in GROUPES.items():
             for nom in noms:

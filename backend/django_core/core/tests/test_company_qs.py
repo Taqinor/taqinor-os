@@ -52,6 +52,9 @@ class CompanyQsTest(TestCase):
 
 class AucuneCopieDansLesVuesVentes(SimpleTestCase):
     def test_aucun_def_company_qs_sous_ventes_views(self):
-        coupables = [p.name for p in sorted(VUES_VENTES.glob('*.py'))
+        # ODX18 — les vues de facturation sorties de ventes restent couvertes.
+        vues = sorted(VUES_VENTES.glob('*.py')) + sorted(
+            (VUES_VENTES.parents[1] / 'facturation' / 'views').glob('*.py'))
+        coupables = [p.name for p in vues
                      if 'def _company_qs' in p.read_text(encoding='utf-8')]
         self.assertEqual(coupables, [])

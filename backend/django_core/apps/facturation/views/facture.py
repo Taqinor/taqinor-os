@@ -1,10 +1,10 @@
-from ..openapi_params import ENTITE, entier_requete, qint
+from apps.ventes.openapi_params import ENTITE, entier_requete, qint
 from drf_spectacular.utils import extend_schema, extend_schema_view
-from . import openapi_docs as D
+from apps.ventes.views import openapi_docs as D
 from rest_framework.parsers import JSONParser
 from rest_framework import filters
-from ..models import Facture
-from ..serializers_facturation import (
+from apps.ventes.models import Facture
+from apps.ventes.serializers_facturation import (
     FactureListeSerializer, FactureSerializer, FactureWriteSerializer)
 from .facture_cycle import PEUT_ANNULER, FactureCycleActionsMixin
 from .facture_documents import FactureDocumentsActionsMixin
@@ -13,7 +13,7 @@ from .facture_lot import FactureLotActionsMixin
 from .facture_recouvrement import FactureRecouvrementActionsMixin
 from .facture_rectificatifs import FactureRectificatifsActionsMixin
 from .facture_portes import refuser_portes_fermees  # AFAC66 / VNT89
-from ..gardes_lecture import LectureFactures  # ERR-ASEC11-LISTE-FACTURES
+from apps.ventes.gardes_lecture import LectureFactures  # ERR-ASEC11-LISTE-FACTURES
 from authentication.permissions import (
     IsAnyRole,
     IsResponsableOrAdmin,
@@ -24,12 +24,12 @@ from core.conflit_etat import ConflitEtat
 from core.permissions import declared_action_permissions
 
 # ZFAC11 — `arrondir_au_pas` ré-exporté (déplacé dans domain/encaissements.py).
-from ..domain.encaissements import arrondir_au_pas
+from apps.ventes.domain.encaissements import arrondir_au_pas
 from authentication.scoping import scope_queryset
 from core.viewsets import CompanyScopedModelViewSet
 from core.pagination import OrdreTotalMixin  # ERR-FACTURES-LISTE-ORDRE-INSTABLE
 from core.entite_scoping import EntiteScopeMixin
-from ..utils.company_settings import create_provisoire
+from apps.ventes.utils.company_settings import create_provisoire
 
 __all__ = ['arrondir_au_pas']  # ré-export ZFAC11
 READ_ACTIONS = ['list', 'retrieve']
@@ -282,7 +282,7 @@ class FactureViewSet(OrdreTotalMixin, FactureCycleActionsMixin,
         # AFAC66 / VNT89 — mêmes portes fermées en modification (BC d'un
         # devis, devis posé ou changé par le corps).
         refuser_portes_fermees(serializer.validated_data, facture)
-        from ..domain.facturation_ops import argent_modifie  # ATOT35
+        from apps.ventes.domain.facturation_ops import argent_modifie  # ATOT35
         argent_touche = argent_modifie(
             facture, serializer.validated_data, FACTURE_CHAMPS_FINANCIERS)
         if facture.statut != Facture.Statut.BROUILLON and argent_touche:
@@ -304,7 +304,7 @@ class FactureViewSet(OrdreTotalMixin, FactureCycleActionsMixin,
         serializer.save(updated_by=self.request.user, **(
             {'acompte_auto_le': None} if facture.acompte_auto_le else {}))
         if argent_touche:
-            from ..models import FactureActivity
+            from apps.ventes.models import FactureActivity
             instance = serializer.instance
             for champ in sorted(argent_touche):
                 apres = getattr(instance, champ)

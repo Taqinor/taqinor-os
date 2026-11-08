@@ -329,7 +329,7 @@ class EtatVenteVNT23Tests(TestCase):
     def test_parite_des_peut_sur_quatre_roles(self):
         from types import SimpleNamespace
         from apps.ventes.vente_facturation import etat_vente
-        from apps.ventes.views.facture import FactureViewSet
+        from apps.facturation.views.facture import FactureViewSet
         from authentication.permissions import (
             IsAdminOrResponsableTier, IsResponsableOrAdmin)
         devis = self._devis()

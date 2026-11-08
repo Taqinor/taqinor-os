@@ -120,7 +120,7 @@ LISTE_BLANCHE: dict[str, str] = {
     "backend/django_core/apps/ventes/views/devis_envoi.py::DevisEnvoiActionsMixin.whatsapp_preview::wa.me":
         _AMONT_DEVIS,
     "backend/django_core/apps/ventes/views/devis_envoi.py::DevisEnvoiActionsMixin.whatsapp::wa.me": _AMONT_DEVIS,
-    "backend/django_core/apps/ventes/views/facture_documents.py::FactureDocumentsActionsMixin.whatsapp::wa.me":
+    "backend/django_core/apps/facturation/views/facture_documents.py::FactureDocumentsActionsMixin.whatsapp::wa.me":
         _TRANSACTIONNEL,
 }
 

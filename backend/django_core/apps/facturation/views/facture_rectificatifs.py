@@ -18,16 +18,16 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from authentication.permissions import IsAdminRole
-from . import openapi_docs as D
+from apps.ventes.views import openapi_docs as D
 from .facture_cycle import PEUT_ANNULER
 from .facture_gardes import PeutEncaisser
-from ..models import Facture, LigneNoteDebit, NoteDebit
-from ..serializers_facturation import (
+from apps.ventes.models import Facture, LigneNoteDebit, NoteDebit
+from apps.ventes.serializers_facturation import (
     AvoirSerializer, FactureListeSerializer, FactureSerializer,
     NoteDebitSerializer,
 )
-from ..utils.company_settings import create_numbered, create_provisoire
-from ..utils.corps import valider_corps, valider_corps_lignes
+from apps.ventes.utils.company_settings import create_numbered, create_provisoire
+from apps.ventes.utils.corps import valider_corps, valider_corps_lignes
 
 logger = logging.getLogger('apps.ventes.views.facture')
 
@@ -132,7 +132,7 @@ def _avoir_cree(avoir):
     """Réponse 201 de ``creer-avoir`` (hors du mixin : noms figés, VNT96)."""
     # Le PDF est de l'I/O : hors transaction, verrou déjà relâché.
     try:
-        from ..utils.pdf import generate_avoir_pdf
+        from apps.ventes.utils.pdf import generate_avoir_pdf
         generate_avoir_pdf(avoir.id)
         avoir.refresh_from_db()
     except Exception:
@@ -143,7 +143,7 @@ def _avoir_cree(avoir):
 
 def _contre_passer_par_annulation(facture, user, motif):
     """AARG39 — la contre-passation EST l'annulation sans directive."""
-    from ..domain.annulation_facture import AnnulationRefusee, annuler_facture
+    from apps.ventes.domain.annulation_facture import AnnulationRefusee, annuler_facture
     try:
         facture = annuler_facture(facture, user=user, motif=motif)
     except AnnulationRefusee as refus:
@@ -284,7 +284,7 @@ class FactureRectificatifsActionsMixin:
         # la facture, plafond lu SOUS le verrou (AUD126), remise globale et
         # palier repris, ventilation TVA (ATOT6), chatter, `avoir_cree`,
         # contre-passation (ZFAC5) et recalcul du statut (ATOT8).
-        from ..domain.facturation_ops import (
+        from apps.ventes.domain.facturation_ops import (
             AvoirPlafondDepasse, AvoirRefuse, creer_avoir_facture,
         )
         try:
@@ -430,7 +430,7 @@ class FactureRectificatifsActionsMixin:
                     'montant_tva', 'montant_ttc'])
                 return note_debit
             # ATOT6 — même règle que l'avoir : paniers de la facture.
-            from ..domain.facturation_ops import (
+            from apps.ventes.domain.facturation_ops import (
                 ventiler_document_depuis_facture,
             )
             ventiler_document_depuis_facture(
@@ -443,11 +443,11 @@ class FactureRectificatifsActionsMixin:
         # AFAC29 (C-AFAC-027) — une note de débit AUGMENTE le reste dû : le
         # statut de paiement est re-dérivé par LE service d'ATOT8 (une facture
         # PAYÉE majorée revient au recouvrement, émise ou en retard).
-        from ..domain.encaissements import recalculer_statut_paiement
+        from apps.ventes.domain.encaissements import recalculer_statut_paiement
         recalculer_statut_paiement(
             facture, user=request.user, source='note_debit')
         try:
-            from ..utils.pdf import generate_note_debit_pdf
+            from apps.ventes.utils.pdf import generate_note_debit_pdf
             generate_note_debit_pdf(note_debit.id)
             note_debit.refresh_from_db()
         except Exception:
@@ -488,7 +488,7 @@ class FactureRectificatifsActionsMixin:
         # d'arrondi de la facture (au prorata, le dernier retour porte le
         # solde au centime), plafond SOUS verrou, re-stockage dans la même
         # transaction, `avoir_cree`, recalcul du statut (ATOT8).
-        from ..domain.facturation_ops import (
+        from apps.ventes.domain.facturation_ops import (
             AvoirPlafondDepasse, AvoirProduitInconnu, AvoirRefuse,
             creer_avoir_facture,
         )
@@ -509,7 +509,7 @@ class FactureRectificatifsActionsMixin:
             return Response({'detail': exc.motif},
                             status=status.HTTP_400_BAD_REQUEST)
         try:
-            from ..utils.pdf import generate_avoir_pdf
+            from apps.ventes.utils.pdf import generate_avoir_pdf
             generate_avoir_pdf(avoir.id)
             avoir.refresh_from_db()
         except Exception:
@@ -534,7 +534,7 @@ class FactureRectificatifsActionsMixin:
         # la pénalité INDICATIVE de la lettre et de la liste des relances
         # (`recouvrement._current_level`), calculée sur l'EXIGIBLE (CIQ214),
         # jamais sur `montant_du` (qui compte la retenue de garantie).
-        from ..recouvrement import _current_level, _levels, montant_exigible
+        from apps.facturation.recouvrement import _current_level, _levels, montant_exigible
         jr = facture.jours_retard
         niveau = _current_level(
             jr, _levels(facture.company),
@@ -569,9 +569,9 @@ class FactureRectificatifsActionsMixin:
         # AUD101 — la facture de pénalités passe par LE service unique : elle
         # posait EMISE sans jamais émettre `facture_emise`, donc sans écriture
         # au grand livre, et sans consulter le blocage crédit du client.
-        from ..domain.facturation_ops import EmissionRefusee, emettre_facture
-        from ..domain.recouvrement import CreditHoldError
-        from ..models import FacturePenalite
+        from apps.ventes.domain.facturation_ops import EmissionRefusee, emettre_facture
+        from apps.ventes.domain.recouvrement import CreditHoldError
+        from apps.ventes.models import FacturePenalite
         from django.db import IntegrityError
 
         def _deja_facturee(liaison):
@@ -627,7 +627,7 @@ class FactureRectificatifsActionsMixin:
             if liaison is None:
                 raise
             return _deja_facturee(liaison)
-        from .. import activity
+        from apps.ventes import activity
         activity.log_facture_penalite_facturee(
             facture, request.user, facture_penalite, penalite)
         return Response(

@@ -8,10 +8,7 @@ l'identique. Aucun changement de comportement ni d'endpoint."""
 from .devis import DevisViewSet
 from .ligne_devis import LigneDevisViewSet
 from .bon_commande import BonCommandeViewSet
-from .facture import FactureViewSet
 from .avoir import AvoirViewSet, NoteDebitViewSet  # ZFAC4
-from .paiement import PaiementViewSet
-from .ligne_facture import LigneFactureViewSet
 from .email import email_config
 from .credit_warning import client_credit_warning
 from .releve_import import releve_dry_run, releve_commit
@@ -57,3 +54,21 @@ from . import economie_pompage as _economie_pompage_action
 # CIQ210 — rattache l'action ``economie_ci`` au ``DevisViewSet`` (même
 # patron : import DERNIER, avant ``router.register``).
 from . import economie_ci as _economie_ci_action
+
+
+# ODX18 — les ViewSets de facturation vivent dans ``apps.facturation.views``
+# (déplacés tels quels) ; ``from apps.ventes.views import FactureViewSet`` (et
+# ``urls.py``) continuent de renvoyer les MÊMES classes. Résolution PARESSEUSE
+# (PEP 562) : ``apps.facturation.views`` importe le sous-module
+# ``apps.ventes.views.openapi_docs``, donc un import en tête ici formerait un
+# cycle quand facturation est chargée la première.
+_NOMS_FACTURATION = frozenset({
+    'FactureViewSet', 'PaiementViewSet', 'LigneFactureViewSet',
+})
+
+
+def __getattr__(nom):
+    if nom in _NOMS_FACTURATION:
+        from apps.facturation import views as vues_facturation
+        return getattr(vues_facturation, nom)
+    raise AttributeError(f"module {__name__!r} has no attribute {nom!r}")
