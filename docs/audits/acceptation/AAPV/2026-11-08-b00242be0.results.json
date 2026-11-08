@@ -1,0 +1,1092 @@
+{
+  "sha": "b00242be04fe22bd920918a75e734221b3cb2f3a",
+  "date": "2026-11-08",
+  "groupe": "AAPV",
+  "verdict": "PASS",
+  "couvre": [
+    "AAPV1",
+    "AAPV2",
+    "AAPV3",
+    "AAPV4",
+    "AAPV5",
+    "AAPV6",
+    "AAPV9",
+    "AAPV10",
+    "AAPV12",
+    "AAPV13",
+    "AAPV14",
+    "AAPV15",
+    "AAPV16",
+    "AAPV17",
+    "AAPV18",
+    "AAPV19",
+    "AAPV20",
+    "AAPV21",
+    "AAPV22",
+    "AAPV23",
+    "AAPV24",
+    "AAPV25",
+    "AAPV26",
+    "AAPV27",
+    "AAPV28",
+    "AAPV29",
+    "AAPV31",
+    "AAPV32",
+    "AAPV33",
+    "AAPV34",
+    "AAPV36",
+    "AAPV37",
+    "AAPV38",
+    "AAPV39",
+    "AAPV40",
+    "AAPV44",
+    "AAPV45",
+    "AAPV46",
+    "AAPV49",
+    "AAPV50",
+    "AAPV52",
+    "AAPV62",
+    "AAPV65",
+    "AAPV66",
+    "AAPV67",
+    "AAPV71",
+    "AAPV73"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "W28.AAPV1.preuve_en_direct",
+      "taches": [
+        "AAPV1"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV1.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AAPV-040-L2 (oc) : acompte 3 600 imputé au lien BCF, solde_du 8 400, acompte non consommé 0 => repro False."
+    },
+    {
+      "id": "W28.AAPV2.preuve_en_direct",
+      "taches": [
+        "AAPV2"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV2.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AAPV-041 (oc) : R1 (OCR TTC seul) et R2 (HT+TVA≠TTC) en « exception », paiement 409 ; témoin exception => repro False."
+    },
+    {
+      "id": "W28.AAPV3.preuve_en_direct",
+      "taches": [
+        "AAPV3"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV3.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AAPV-042 (oc) : relevé TVA total 2 200 (facture sans ligne ventilée comprise) = attendu => repro False."
+    },
+    {
+      "id": "W28.AAPV4.preuve_en_direct",
+      "taches": [
+        "AAPV4"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV4.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AAPV-043 cas (a) : RAS de A = 100 (TVA nette de l'avoir, D-AAPV-1) — écart à tva_nette 0. Le verdict global REPRO de la sonde vient du cas (b), qu'elle lit sur les seuls paiements ; C-LIVE-AAPV5 (lecture ras_retenue_facture) : A = 100 => PASS."
+    },
+    {
+      "id": "W28.AAPV5.preuve_en_direct",
+      "taches": [
+        "AAPV5"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV5.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AAPV-043 cas (b) : REPRO apparent car elle somme montant_ras_tva des seuls paiements (140) ; AAPV5 pose la RAS restante (60) sur l'imputation qui solde. C-LIVE-AAPV5 = même scénario lu par ras_retenue_facture : B = 140 (paiement) + 60 (imputation) = 200 = témoin => PASS."
+    },
+    {
+      "id": "W28.AAPV6.preuve_en_direct",
+      "taches": [
+        "AAPV6"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV6.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AAPV-120 : type_achat services posé par la porte écran, taux 75, RAS 1 500, au relevé => repro False ; écran « Prestations de services » pré-choisi."
+    },
+    {
+      "id": "W28.AAPV9.preuve_en_direct",
+      "taches": [
+        "AAPV9"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV9.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "C-AAPV-002 et C-AAPV-021 cas B en transaction annulée : REPRO car l'abonné retour_fournisseur_valide est émis après commit ; variante oc : provision 1 000 -> 600 puis lettrée (ouvert 0), réservation 10 -> 6 => repro False ; écran GR/IR relu à 600 => PASS."
+    },
+    {
+      "id": "W28.AAPV10.preuve_en_direct",
+      "taches": [
+        "AAPV10"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV10.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AAPV-021 cas A : retour d'un BCF livré au chantier 409 => repro_A False ; écran : message affiché."
+    },
+    {
+      "id": "W28.AAPV12.preuve_en_direct",
+      "taches": [
+        "AAPV12"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV12.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sondes C-AAPV-001 (annulation 409, 7 unités sorties) et C-AAPV-003 (R : 409 BCF facturé) => repro False."
+    },
+    {
+      "id": "W28.AAPV13.preuve_en_direct",
+      "taches": [
+        "AAPV13"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV13.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Écran : réception confirmée annulée (contre-passation, stock 0) ; refus 409 affiché sur une réception à unités sorties."
+    },
+    {
+      "id": "W28.AAPV14.preuve_en_direct",
+      "taches": [
+        "AAPV14"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV14.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AAPV-006 : DELETE réception confirmée et retour validé => 409 => repro False."
+    },
+    {
+      "id": "W28.AAPV15.preuve_en_direct",
+      "taches": [
+        "AAPV15"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV15.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AAPV-060 : B manque 10, 10 unités commandées au total => repro False ; écran Matériel & BC des deux chantiers."
+    },
+    {
+      "id": "W28.AAPV16.preuve_en_direct",
+      "taches": [
+        "AAPV16"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV16.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sondes C-AAPV-061 et -L2 (oc) : BCF chez F2 à 1 150 => repro False ; écran : Commander le besoin => BCF F2 PU 1 100 (palier 10+)."
+    },
+    {
+      "id": "W28.AAPV17.preuve_en_direct",
+      "taches": [
+        "AAPV17"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV17.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sondes C-AAPV-063 / -122 : annulation et suppression du BCF défont la consommation => repro False ; écran : annulation, restant 30 000."
+    },
+    {
+      "id": "W28.AAPV18.preuve_en_direct",
+      "taches": [
+        "AAPV18"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV18.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AAPV-082 : déjà-sorti 10 partout, retour 15 refusé => repro False ; écran : Déjà sorti = 10."
+    },
+    {
+      "id": "W28.AAPV19.preuve_en_direct",
+      "taches": [
+        "AAPV19"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV19.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AAPV-121 : DELETE/PATCH archive 409, valorisation 24 000 inchangée => repro False ; écran : message, valorisation inchangée."
+    },
+    {
+      "id": "W28.AAPV20.preuve_en_direct",
+      "taches": [
+        "AAPV20"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV20.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "C-AAPV-022 envoie le seul corps possible À L'AUDIT (sans lot) => lot 10 inchangé, attendu. AAPV20 ajoute lot/séries à la ligne de retour : C-LIVE-AAPV20 (même scénario, ligne portant lot + séries) => lot 7, 3 séries retourné ; écran Lots relu à 7 => PASS."
+    },
+    {
+      "id": "W28.AAPV21.preuve_en_direct",
+      "taches": [
+        "AAPV21"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV21.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AAPV-024 : sortie du lot bloqué 409 => repro False ; écran : « Sortir » refusé."
+    },
+    {
+      "id": "W28.AAPV22.preuve_en_direct",
+      "taches": [
+        "AAPV22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV22.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "C-AAPV-025 ne peut plus créer REC-2 (refus AAPV67) ; C-LIVE-AAPV67 volet AAPV22 : annuler une réception dont la ligne cite aussi SN-100 => SN-100 reste en_stock, SN-101 retourné => PASS."
+    },
+    {
+      "id": "W28.AAPV23.preuve_en_direct",
+      "taches": [
+        "AAPV23"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV23.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AAPV-026 : aucun lot L-9, aucun blocage, sortie des 4 sains 201 => repro False ; écran Lots sans L-9."
+    },
+    {
+      "id": "W28.AAPV24.preuve_en_direct",
+      "taches": [
+        "AAPV24"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV24.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Écran : réception d'un produit à plan, verdict « Conforme » saisi dans le bloc Contrôle qualité, confirmée => stock 5."
+    },
+    {
+      "id": "W28.AAPV25.preuve_en_direct",
+      "taches": [
+        "AAPV25"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV25.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AAPV-048 (oc) : facture FG56 7 000 HT (reçu net des retours), paiement TTC 8 400 => repro False."
+    },
+    {
+      "id": "W28.AAPV26.preuve_en_direct",
+      "taches": [
+        "AAPV26"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV26.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AAPV-050 (oc) R1 : facturer un BCF annulé 409 ; R2 : brouillon 409 => repro False."
+    },
+    {
+      "id": "W28.AAPV27.preuve_en_direct",
+      "taches": [
+        "AAPV27"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV27.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "La sonde C-AAPV-054 rejoue l'entrelacement sur UNE connexion : le verrou de facture ne peut pas y sérialiser le paiement (même transaction) => REPRO structurel. LIVE-AAPV27 = deux connexions réelles : le paiement reste bloqué sur le verrou de la facture pendant l'imputation, puis relit le solde 0 et est refusé 409 ; Σ paiements + avoirs = 1 000 = TTC => PASS."
+    },
+    {
+      "id": "W28.AAPV28.preuve_en_direct",
+      "taches": [
+        "AAPV28"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV28.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "C-AAPV-064 volet A (generer-bcf entrelacé) : 200 puis 409, 1 BCF => critère « fini quand » atteint. Volet B (commander-besoin) REPRO structurel : un verrou select_for_update ne sérialise pas deux requêtes sur UNE connexion. LIVE-AAPV28-B (deux connexions réelles) : la 2e requête reste bloquée sur le verrou du chantier puis 409, 1 BCF de 10 => PASS."
+    },
+    {
+      "id": "W28.AAPV29.preuve_en_direct",
+      "taches": [
+        "AAPV29"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV29.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AAPV-065 : aucune porte ne crée/envoie de BCF chez F bloqué => repro False ; écran : « Envoyer » refusé."
+    },
+    {
+      "id": "W28.AAPV31.preuve_en_direct",
+      "taches": [
+        "AAPV31"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV31.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AAPV-086 : onduleur de A toujours réservé, B manque 1 => repro False ; écran F11 intervention 2 à 0 panneau."
+    },
+    {
+      "id": "W28.AAPV32.preuve_en_direct",
+      "taches": [
+        "AAPV32"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV32.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sondes C-AAPV-100/101/103 : décisions 403/409 => repro False ; écran Approbations : refus."
+    },
+    {
+      "id": "W28.AAPV33.preuve_en_direct",
+      "taches": [
+        "AAPV33"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV33.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AAPV-102 : approbations d'étape 409 (niveau direction non tenu par le responsable) => repro False."
+    },
+    {
+      "id": "W28.AAPV34.preuve_en_direct",
+      "taches": [
+        "AAPV34"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV34.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AAPV-104 : écriture des règles 403 pour Technicien/Commercial => repro False ; écran Responsable : refus."
+    },
+    {
+      "id": "W28.AAPV36.preuve_en_direct",
+      "taches": [
+        "AAPV36"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV36.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AAPV-108 : rebut 403 pour Commercial/Viewer, valeur_perte masquée => repro False ; écran : refus."
+    },
+    {
+      "id": "W28.AAPV37.preuve_en_direct",
+      "taches": [
+        "AAPV37"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV37.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AAPV-023 : retour et rebut lèvent le blocage => repro False ; écran Qualité : blocages « Levé »."
+    },
+    {
+      "id": "W28.AAPV38.preuve_en_direct",
+      "taches": [
+        "AAPV38"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV38.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AAPV-027 : cross-dock d'une réception brouillon 409 => repro False."
+    },
+    {
+      "id": "W28.AAPV39.preuve_en_direct",
+      "taches": [
+        "AAPV39"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV39.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Écran : péremption saisie à la réception, affichée 30/06/2027 dans Lots en entrepôt."
+    },
+    {
+      "id": "W28.AAPV40.preuve_en_direct",
+      "taches": [
+        "AAPV40"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV40.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Écran : sur-livraison 12 sur 10 confirmée => liste 10, détail « 10 entré(s) (saisi 12) »."
+    },
+    {
+      "id": "W28.AAPV44.preuve_en_direct",
+      "taches": [
+        "AAPV44"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV44.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AAPV-053 (oc) : facture en EUR (taux 10,8), HT/TVA convertis 10 800/2 160, RAS 2 160 => repro False."
+    },
+    {
+      "id": "W28.AAPV45.preuve_en_direct",
+      "taches": [
+        "AAPV45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV45.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sondes C-AAPV-062 (taux seul : PU MAD suit) et C-AAPV-066 (saisie MAD conservée) => repro False."
+    },
+    {
+      "id": "W28.AAPV46.preuve_en_direct",
+      "taches": [
+        "AAPV46"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV46.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Écran : messagerie coupée => message, BCF reste brouillon."
+    },
+    {
+      "id": "W28.AAPV49.preuve_en_direct",
+      "taches": [
+        "AAPV49"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV49.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sondes C-AAPV-080 (gestes 409 sur retour validé, R2 409) et C-AAPV-081 (plafond au sorti 409) => repro False."
+    },
+    {
+      "id": "W28.AAPV50.preuve_en_direct",
+      "taches": [
+        "AAPV50"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV50.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AAPV-083 : demarrer une session terminée 409, aucun ajustement en double => repro False."
+    },
+    {
+      "id": "W28.AAPV52.preuve_en_direct",
+      "taches": [
+        "AAPV52"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV52.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Écran F11 : 12.5 => « Quantité entière exigée » ; 12 => consommation validée."
+    },
+    {
+      "id": "W28.AAPV62.preuve_en_direct",
+      "taches": [
+        "AAPV62"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV62.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AAPV-050 (oc) R3 : annulation 409 nommant facture + acompte ; écran : message affiché."
+    },
+    {
+      "id": "W28.AAPV65.preuve_en_direct",
+      "taches": [
+        "AAPV65"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV65.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "C-AAPV-022 ne transmet pas de séries (corps de l'audit) ; C-LIVE-AAPV20 (ligne de retour avec séries) : R-SN3/R-SN7/R-SN9 « retourné », 7 en_stock => PASS."
+    },
+    {
+      "id": "W28.AAPV66.preuve_en_direct",
+      "taches": [
+        "AAPV66"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV66.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "C-AAPV-026 ne lit pas le statut des séries ; C-LIVE-AAPV66 : 10 séries « sorti » rattachées au chantier CH-AAPV26-12 => PASS."
+    },
+    {
+      "id": "W28.AAPV67.preuve_en_direct",
+      "taches": [
+        "AAPV67"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV67.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "C-AAPV-025 s'arrête en erreur sur le code corrigé (REC-2 refusée 409 => objet absent) ; C-LIVE-AAPV67 : REC-2 avec SN-100 déjà en stock 409 ; écran : message."
+    },
+    {
+      "id": "W28.AAPV71.preuve_en_direct",
+      "taches": [
+        "AAPV71"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV71.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sondes C-AAPV-063 / -122 : DA rouverte (approuvée, BCF null) => repro False ; écran : DA « Approuvée »."
+    },
+    {
+      "id": "W28.AAPV73.preuve_en_direct",
+      "taches": [
+        "AAPV73"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV73.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AAPV-107 : Technicien responsable et Admin Ventes 403 => repro False ; écran : refus affiché."
+    }
+  ]
+}

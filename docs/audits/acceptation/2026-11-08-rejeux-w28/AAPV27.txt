@@ -1,0 +1,122 @@
+# Preuve en direct AAPV27 — rejeu w28, code b00242be0 (dev-plan-6a6fc9-w28), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w28-django (conteneur privé : code de CE worktree, base privée
+# erp_accept_w28, transaction annulée, mail en mémoire, Celery coupé, HTTP sortant bloqué). « oc » = variante
+# scratchpad sonde_oc.py identique sauf transaction.on_commit exécuté immédiatement (événements « après commit »
+# qui ne partiraient jamais dans la transaction annulée). Sur le code corrigé, verdict ÉCART = repro False = attendu.
+# Sondes C-LIVE-* (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Verdict : PASS — La sonde C-AAPV-054 rejoue l'entrelacement sur UNE connexion : le verrou de facture ne peut pas y sérialiser le paiement (même transaction) => REPRO structurel. LIVE-AAPV27 = deux connexions réelles : le paiement reste bloqué sur le verrou de la facture pendant l'imputation, puis relit le solde 0 et est refusé 409 ; Σ paiements + avoirs = 1 000 = TTC => PASS.
+
+== C-AAPV-054 (sha 5f603acce)
+attendu : repro si R : paiement 201 + imputation 200 → Σ paiements + avoirs imputés 2000 pour TTC 1000 ; T : 409
+observé : {'R': {'paiement_pendant': 201, 'imputer': 200, 'ttc': '1000.00', 'paye': '1000.00', 'avoirs': '1000.00', 'regle_total': '2000.00', 'solde_du': '0', 'statut': 'payee'}, 'T': {'paiement': 201, 'imputer': 409, 'ttc': '1000.00', 'paye': '1000.00', 'avoirs': '0', 'regle_total': '1000.00', 'solde_du': '0.00', 'statut': 'payee'}}
+{"R": {"paiement_pendant": 201, "imputer": 200, "ttc": "1000.00", "paye": "1000.00", "avoirs": "1000.00", "regle_total": "2000.00", "solde_du": "0", "statut": "payee"}, "T": {"paiement": 201, "imputer": 409, "ttc": "1000.00", "paye": "1000.00", "avoirs": "0", "regle_total": "1000.00", "solde_du": "0.00", "statut": "payee"}, "temoin_ok": true, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0
+
+/app/erp_agentique/settings/base.py:43: UserWarning: SECRET_KEY par défaut détectée. Générez une vraie clé avec :
+  python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+  warnings.warn(
+673 objects imported automatically (use -v 2 for details).
+
+/usr/local/lib/python3.11/site-packages/rest_framework/fields.py:990: UserWarning: max_value should be a Decimal instance.
+  warnings.warn("max_value should be a Decimal instance.")
+/usr/local/lib/python3.11/site-packages/rest_framework/fields.py:992: UserWarning: min_value should be a Decimal instance.
+  warnings.warn("min_value should be a Decimal instance.")
+/usr/local/lib/python3.11/site-packages/rest_framework/fields.py:992: UserWarning: min_value should be a Decimal instance.
+  warnings.warn("min_value should be a Decimal instance.")
+Conflict: /api/django/stock/paiements-fournisseur/
+@@LIVE {"creation": [201, 201, 200], "imputer": {"http": 200, "fin_s": 5.14, "detail": null}, "payer": {"http": 409, "fin_s": 5.08, "detail": "{'detail': ErrorDetail(string='Le montant dépasse le solde dû (0.00).', code='state_conflict'), 'error': {'code': 'state_conflict', 'message': ErrorDetail(string='Le montant dépasse le solde dû (0.00)"}, "paiement_bloque_pendant_imputation": true, "ttc": "1000.00", "paye": "0", "avoirs_imputes": "1000.00", "regle_total": "1000.00", "solde_du": "0.00", "statut": "payee", "repro": true}
+
+# LIVE-AAPV27 — vraie concurrence (deux threads = deux connexions Postgres) : imputation d'avoir vs paiement.
+# La sonde C-AAPV-054 rejoue l'entrelacement sur UNE connexion (crochet) : un verrou `select_for_update`
+# ne peut pas y sérialiser la 2e requête (même transaction). Ici : l'imputation (facture puis avoir
+# verrouillés) s'arrête juste avant d'écrire ; le paiement complet part sur une autre connexion ; il doit
+# rester bloqué sur le verrou de la facture puis relire le solde 0 et être refusé : Σ paiements + avoirs = 1 000.
+# Base privée erp_accept_w28 (données commitées dans la société « Live AAPV 27 »), mail en mémoire,
+# HTTP sortant bloqué, Celery coupé. Lancé par `manage.py shell` dans le conteneur accept-w28-django.
+import json, socket, threading, time
+from decimal import Decimal
+from django.conf import settings
+from django.db import connection
+settings.EMAIL_BACKEND = 'django.core.mail.backends.locmem.EmailBackend'
+settings.ALLOWED_HOSTS = list(settings.ALLOWED_HOSTS) + ['localhost', 'testserver']
+def _http(*a, **k):
+    raise RuntimeError('HTTP sortant bloque')
+socket.create_connection = _http
+import celery.app.task as _ct
+_ct.Task.apply_async = lambda self, *a, **k: None
+_ct.Task.delay = lambda self, *a, **k: None
+from unittest import mock
+from django.contrib.auth import get_user_model
+from rest_framework.test import APIClient
+from authentication.models import Company
+from apps.stock.models import Fournisseur, ImputationAvoirFournisseur
+from apps.achats.models import FactureFournisseur
+
+H = {'HTTP_HOST': 'localhost'}
+t = int(time.time())
+co = Company.objects.create(nom='Live AAPV 27', slug='live-aapv-27-%d' % t)
+u = get_user_model().objects.create_user(username='live_aapv27_%d' % t, password='x', role_legacy='admin', company=co)
+api0 = APIClient()
+api0.force_authenticate(u)
+f = Fournisseur.objects.create(company=co, nom='F-LIVE27')
+rf = api0.post('/api/django/stock/factures-fournisseur/',
+               {'fournisseur': f.id, 'ref_fournisseur': 'F-LIVE27', 'date_facture': '2026-11-02',
+                'montant_ht': '1000.00', 'montant_tva': '0.00', 'montant_ttc': '1000.00'}, format='json', **H)
+ra = api0.post('/api/django/stock/avoirs-fournisseur/',
+               {'fournisseur': f.id, 'montant_ht': '1000.00', 'montant_tva': '0.00', 'montant_ttc': '1000.00'},
+               format='json', **H)
+rv = api0.post(f'/api/django/stock/avoirs-fournisseur/{ra.data["id"]}/valider/', {}, format='json', **H)
+fid, aid = rf.data['id'], ra.data['id']
+orig = ImputationAvoirFournisseur.objects.create
+dans_crochet = threading.Event()
+liberer = threading.Event()
+res = {}
+appels = {'n': 0}
+
+
+def crochet(*a, **k):
+    appels['n'] += 1
+    if appels['n'] == 1:
+        dans_crochet.set()
+        liberer.wait(60)
+    return orig(*a, **k)
+
+
+def requete(nom, url, corps):
+    try:
+        api = APIClient()
+        api.force_authenticate(u)
+        t0 = time.time()
+        r = api.post(url, corps, format='json', **H)
+        res[nom] = {'http': r.status_code, 'fin_s': round(time.time() - t0, 2),
+                    'detail': None if r.status_code < 400 else str(getattr(r, 'data', ''))[:200]}
+    finally:
+        connection.close()
+
+
+with mock.patch.object(ImputationAvoirFournisseur.objects, 'create', crochet):
+    t1 = threading.Thread(target=requete, args=('imputer', f'/api/django/stock/avoirs-fournisseur/{aid}/imputer/',
+                                                {'facture': fid}))
+    t1.start()
+    assert dans_crochet.wait(120), 'imputation jamais entree dans le crochet'
+    t2 = threading.Thread(target=requete, args=('payer', '/api/django/stock/paiements-fournisseur/',
+                                                {'facture': fid, 'montant': '1000.00', 'date_paiement': '2026-11-03',
+                                                 'mode': 'virement'}))
+    t2.start()
+    time.sleep(5)
+    paiement_bloque = t2.is_alive() and 'payer' not in res
+    liberer.set()
+    t1.join(120)
+    t2.join(120)
+
+fac = FactureFournisseur.objects.get(pk=fid)
+paye = sum((p.montant for p in fac.paiements.all()), Decimal('0'))
+avoirs = sum((i.montant for i in fac.avoirs_imputes.all()), Decimal('0'))
+obs = {'creation': [rf.status_code, ra.status_code, rv.status_code], 'imputer': res.get('imputer'),
+       'payer': res.get('payer'), 'paiement_bloque_pendant_imputation': paiement_bloque,
+       'ttc': str(fac.montant_ttc), 'paye': str(paye), 'avoirs_imputes': str(avoirs),
+       'regle_total': str(paye + avoirs), 'solde_du': str(fac.solde_du), 'statut': fac.statut}
+obs['repro'] = bool((res.get('imputer') or {}).get('http') == 200 and (res.get('payer') or {}).get('http', 0) >= 400
+                    and paiement_bloque and paye + avoirs == Decimal('1000'))
+print('@@LIVE ' + json.dumps(obs, ensure_ascii=False))

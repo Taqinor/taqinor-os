@@ -358,7 +358,7 @@ export function ReceptionDetail({ reception, onClose, onSaved, peutReceptionner 
     }))) return
     setBusy(true); setError(null)
     try {
-      await stockApi.annulerReceptionFournisseur(reception.id)
+      await stockApi.annulerReceptionFournisseur(reception.id, reception.statut)
       onSaved?.(isConfirme ? 'Réception annulée (contre-passation).' : 'Réception annulée.')
       onClose()
     } catch (err) {

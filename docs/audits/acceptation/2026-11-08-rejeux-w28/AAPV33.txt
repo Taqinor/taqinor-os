@@ -1,0 +1,14 @@
+# Preuve en direct AAPV33 — rejeu w28, code b00242be0 (dev-plan-6a6fc9-w28), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w28-django (conteneur privé : code de CE worktree, base privée
+# erp_accept_w28, transaction annulée, mail en mémoire, Celery coupé, HTTP sortant bloqué). « oc » = variante
+# scratchpad sonde_oc.py identique sauf transaction.on_commit exécuté immédiatement (événements « après commit »
+# qui ne partiraient jamais dans la transaction annulée). Sur le code corrigé, verdict ÉCART = repro False = attendu.
+# Sondes C-LIVE-* (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Verdict : PASS — Sonde C-AAPV-102 : approbations d'étape 409 (niveau direction non tenu par le responsable) => repro False.
+
+== C-AAPV-102 (sha c6bd9b5d52)
+attendu : repro si 3 × 200, DA approuvee, 3 étapes au même approbateur (niveau direction)
+observé : {'montant_estime': '80000.0000', 'soumettre_http': 200, 'resp_is_admin_role': False, 'resp_role_legacy': 'responsable', 'approuver_etape_http': [409, 409, 409], 'statut': 'soumise', 'etapes': [{'niveau': 1, 'niveau_approbation': 'direction', 'statut': 'en_attente', 'approbateur_id': None}, {'niveau': 2, 'niveau_approbation': 'direction', 'statut': 'en_attente', 'approbateur_id': None}, {'niveau': 3, 'niveau_approbation': 'direction', 'statut': 'en_attente', 'approbateur_id': None}], 'approbateurs_distincts': 1, 'approbateur_est_resp': False}
+{"montant_estime": "80000.0000", "soumettre_http": 200, "resp_is_admin_role": false, "resp_role_legacy": "responsable", "approuver_etape_http": [409, 409, 409], "statut": "soumise", "etapes": [{"niveau": 1, "niveau_approbation": "direction", "statut": "en_attente", "approbateur_id": null}, {"niveau": 2, "niveau_approbation": "direction", "statut": "en_attente", "approbateur_id": null}, {"niveau": 3, "niveau_approbation": "direction", "statut": "en_attente", "approbateur_id": null}], "approbateurs_distincts": 1, "approbateur_est_resp": false, "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 1, après 1) ; mails 0 ; tâches Celery bloquées 0

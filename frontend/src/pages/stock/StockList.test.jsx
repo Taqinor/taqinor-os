@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
@@ -358,5 +359,41 @@ describe('StockList — derniers transferts : page 1 demandée, total affiché (
     expect(http.get).toHaveBeenCalledWith('/stock/transferts/', {
       params: { ordering: '-date', page: 1, page_size: 8 },
     })
+  })
+})
+
+describe('StockList — dialogue « Transférer » : identifiants envoyés en entiers (AAPV74)', () => {
+  it('POST stock/transferts/ porte produit/source/destination en nombres, jamais en chaînes', async () => {
+    http.get.mockImplementation(async (url) => {
+      if (url === '/stock/emplacements/') {
+        return { data: { count: 2, next: null, results: [
+          { id: 5, nom: 'Dépôt principal', is_principal: true, archived: false },
+          { id: 6, nom: 'Camionnette', is_principal: false, archived: false },
+        ] } }
+      }
+      if (url === '/stock/produits/1/emplacements/') {
+        return { data: [
+          { emplacement_id: 5, emplacement_nom: 'Dépôt principal', is_principal: true, quantite: 10 },
+          { emplacement_id: 6, emplacement_nom: 'Camionnette', is_principal: false, quantite: 0 },
+        ] }
+      }
+      return { data: [] }
+    })
+    renderPage()
+    fireEvent.click(screen.getAllByRole('button', { name: /Transférer/ })[0])
+    const dialog = await screen.findByRole('dialog')
+    const choisir = async (nom, option) => {
+      await userEvent.click(within(dialog).getByRole('combobox', { name: nom }))
+      await userEvent.click(await screen.findByRole('option', { name: option }))
+    }
+    await choisir('Produit', /Panneau 550 Wc/)
+    await waitFor(() => expect(http.get).toHaveBeenCalledWith('/stock/produits/1/emplacements/'))
+    await choisir('De', 'Dépôt principal')
+    await choisir('Vers', 'Camionnette')
+    fireEvent.change(within(dialog).getByLabelText('Quantité'), { target: { value: '3' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Transférer' }))
+    await waitFor(() => expect(http.post).toHaveBeenCalledWith('/stock/transferts/', {
+      produit: 1, source: 5, destination: 6, quantite: 3, note: '',
+    }))
   })
 })

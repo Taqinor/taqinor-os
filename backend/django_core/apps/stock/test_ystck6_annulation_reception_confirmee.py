@@ -179,6 +179,27 @@ class TestVueApiAnnuler(Ystck6Base):
         self.produit.refresh_from_db()
         self.assertEqual(self.produit.quantite_stock, 0)
 
+    def test_annuler_depuis_vue_brouillon_perimee_409(self):
+        """AAPV11 — deux onglets : confirmée dans l'un, « Annuler » depuis
+        l'autre qui la voit encore brouillon (`statut_vu`) ⇒ 409, réception
+        confirmée, stock intact ; vue à jour (`statut_vu` confirme) ⇒
+        contre-passation (YSTCK6)."""
+        bc, ligne_cmd, rec = self._bcf_et_reception_confirmee(quantite=5)
+        url = f'/api/django/stock/receptions-fournisseur/{rec.id}/annuler/'
+        resp = self.api.post(url, {'statut_vu': 'brouillon'}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertEqual(
+            resp.data['detail'],
+            "Réception confirmée entre-temps : rouvrez-la pour l'annuler.")
+        rec.refresh_from_db()
+        self.assertEqual(rec.statut, ReceptionFournisseur.Statut.CONFIRME)
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.quantite_stock, 5)
+        resp = self.api.post(url, {'statut_vu': 'confirme'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        rec.refresh_from_db()
+        self.assertEqual(rec.statut, ReceptionFournisseur.Statut.ANNULE)
+
     def test_annuler_reception_brouillon_chemin_historique_inchange(self):
         bc = BonCommandeFournisseur.objects.create(
             company=self.company, reference='BCF-YSTCK6-2',

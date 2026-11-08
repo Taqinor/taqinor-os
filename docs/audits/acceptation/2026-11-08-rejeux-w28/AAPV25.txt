@@ -1,0 +1,14 @@
+# Preuve en direct AAPV25 — rejeu w28, code b00242be0 (dev-plan-6a6fc9-w28), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w28-django (conteneur privé : code de CE worktree, base privée
+# erp_accept_w28, transaction annulée, mail en mémoire, Celery coupé, HTTP sortant bloqué). « oc » = variante
+# scratchpad sonde_oc.py identique sauf transaction.on_commit exécuté immédiatement (événements « après commit »
+# qui ne partiraient jamais dans la transaction annulée). Sur le code corrigé, verdict ÉCART = repro False = attendu.
+# Sondes C-LIVE-* (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Verdict : PASS — Sonde C-AAPV-048 (oc) : facture FG56 7 000 HT (reçu net des retours), paiement TTC 8 400 => repro False.
+
+== C-AAPV-048 (sha 5f603acce)
+attendu : repro si la facture FG56 vaut 10000 HT, reste « normale » et se paie 12000 alors que quantite_recue = 7
+observé : {'retour_valider': (200, None), 'quantite_recue_bcf': 7, 'stock': 7, 'montant_recu_bcf_YPROC8': '7000.00', 'facturer': 201, 'facture': {'ht': '7000.00', 'ttc': '8400.00', 'statut_controle': 'normale'}, 'attendu_3voies': '7000.00', 'paiement_ttc_http': 201}
+{"retour_valider": [200, null], "quantite_recue_bcf": 7, "stock": 7, "montant_recu_bcf_YPROC8": "7000.00", "facturer": 201, "facture": {"ht": "7000.00", "ttc": "8400.00", "statut_controle": "normale"}, "attendu_3voies": "7000.00", "paiement_ttc_http": 201, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0

@@ -1,0 +1,14 @@
+# Preuve en direct AAPV3 — rejeu w28, code b00242be0 (dev-plan-6a6fc9-w28), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w28-django (conteneur privé : code de CE worktree, base privée
+# erp_accept_w28, transaction annulée, mail en mémoire, Celery coupé, HTTP sortant bloqué). « oc » = variante
+# scratchpad sonde_oc.py identique sauf transaction.on_commit exécuté immédiatement (événements « après commit »
+# qui ne partiraient jamais dans la transaction annulée). Sur le code corrigé, verdict ÉCART = repro False = attendu.
+# Sondes C-LIVE-* (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Verdict : PASS — Sonde C-AAPV-042 (oc) : relevé TVA total 2 200 (facture sans ligne ventilée comprise) = attendu => repro False.
+
+== C-AAPV-042 (sha 5f603acce)
+attendu : repro si le relevé affiche total_tva 2000 (B et l'avoir ignorés) au lieu de 2200
+observé : {'A': (201, '2000.00', 1), 'B': (201, '400.00', 0), 'avoir': (201, 200, 200, 'impute'), 'releve_http': 200, 'releve': [{'taux_tva': '20.00', 'total_ht': '11000.0000', 'total_tva': '2200.00', 'nombre_factures': '2'}], 'releve_total_tva': '2200.00', 'attendu_total_tva': '2200.00'}
+{"A": [201, "2000.00", 1], "B": [201, "400.00", 0], "avoir": [201, 200, 200, "impute"], "releve_http": 200, "releve": [{"taux_tva": "20.00", "total_ht": "11000.0000", "total_tva": "2200.00", "nombre_factures": "2"}], "releve_total_tva": "2200.00", "attendu_total_tva": "2200.00", "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0

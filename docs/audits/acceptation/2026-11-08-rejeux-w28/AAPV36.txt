@@ -1,0 +1,23 @@
+# Preuve en direct AAPV36 — rejeu w28, code b00242be0 (dev-plan-6a6fc9-w28), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w28-django (conteneur privé : code de CE worktree, base privée
+# erp_accept_w28, transaction annulée, mail en mémoire, Celery coupé, HTTP sortant bloqué). « oc » = variante
+# scratchpad sonde_oc.py identique sauf transaction.on_commit exécuté immédiatement (événements « après commit »
+# qui ne partiraient jamais dans la transaction annulée). Sur le code corrigé, verdict ÉCART = repro False = attendu.
+# Sondes C-LIVE-* (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Écran : front de CE worktree servi par vite (127.0.0.1:5199) -> conteneur privé accept-w28-web (runserver, base
+# erp_accept_w28, SMTP 127.0.0.1:1 = aucune messagerie), piloté par Playwright MCP. Données d'écran = états des sondes
+# rejouées SANS rollback dans la base privée (comptes de test des sondes, mot de passe de test) ou fixtures FIX-*.
+# Verdict : PASS — Sonde C-AAPV-108 : rebut 403 pour Commercial/Viewer, valeur_perte masquée => repro False ; écran : refus.
+
+== C-AAPV-108 (sha c6bd9b5d52)
+attendu : repro si témoin mouvements/ 403 ET mouvements-rebut/ 201 pour Commercial/Viewer avec stock −30 et valeur_perte servie
+observé : {'Commercial': {'stock_mouvement': False, 'prix_achat_voir': False, 'temoin_mouvements_http': 403, 'stock_apres_temoin': 100, 'rebut_http': 403, 'rebut_valeur_perte': '{\'detail\': ErrorDetail(string="Vous n\'avez pas la permission d\'effectuer cette action.", code=\'permi', 'stock_final': 100, 'mvt_rebut': None, 'liste_http': 200, 'liste_valeur_perte': []}, 'Viewer': {'stock_mouvement': False, 'prix_achat_voir': False, 'temoin_mouvements_http': 403, 'stock_apres_temoin': 100, 'rebut_http': 403, 'rebut_valeur_perte': '{\'detail\': ErrorDetail(string="Vous n\'avez pas la permission d\'effectuer cette action.", code=\'permi', 'stock_final': 100, 'mvt_rebut': None, 'liste_http': 200, 'liste_valeur_perte': []}}
+{"Commercial": {"stock_mouvement": false, "prix_achat_voir": false, "temoin_mouvements_http": 403, "stock_apres_temoin": 100, "rebut_http": 403, "rebut_valeur_perte": "{'detail': ErrorDetail(string=\"Vous n'avez pas la permission d'effectuer cette action.\", code='permi", "stock_final": 100, "mvt_rebut": null, "liste_http": 200, "liste_valeur_perte": []}, "Viewer": {"stock_mouvement": false, "prix_achat_voir": false, "temoin_mouvements_http": 403, "stock_apres_temoin": 100, "rebut_http": 403, "rebut_valeur_perte": "{'detail': ErrorDetail(string=\"Vous n'avez pas la permission d'effectuer cette action.\", code='permi", "stock_final": 100, "mvt_rebut": null, "liste_http": 200, "liste_valeur_perte": []}, "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : non (avant 22, après 23) ; mails 0 ; tâches Celery bloquées 0
+
+## AAPV36 — PASS (partie écran)
+État de la sonde C-AAPV-108 rejouée sans rollback, compte s108-commercial (Commercial, sans stock_mouvement). Stock › Entrepôt ›
+Expéditions (/stock/entrepot/expeditions), section « Rebuts » : produit « Onduleur S108 Commercial », quantité 30 → « Déclarer le rebut »
+=> refus affiché « Vous n'avez pas la permission d'effectuer cette action. » (403) ; liste « Aucun rebut déclaré. ». Console : seule
+erreur = la 403 attendue.

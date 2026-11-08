@@ -1,0 +1,14 @@
+# Preuve en direct AAPV14 — rejeu w28, code b00242be0 (dev-plan-6a6fc9-w28), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w28-django (conteneur privé : code de CE worktree, base privée
+# erp_accept_w28, transaction annulée, mail en mémoire, Celery coupé, HTTP sortant bloqué). « oc » = variante
+# scratchpad sonde_oc.py identique sauf transaction.on_commit exécuté immédiatement (événements « après commit »
+# qui ne partiraient jamais dans la transaction annulée). Sur le code corrigé, verdict ÉCART = repro False = attendu.
+# Sondes C-LIVE-* (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Verdict : PASS — Sonde C-AAPV-006 : DELETE réception confirmée et retour validé => 409 => repro False.
+
+== C-AAPV-006 (sha 5f603acce0)
+attendu : repro si DELETE reception confirmee -> 204 avec stock 10 / recu 10 / provision 1000 ouverte reception NULL ; DELETE retour valide -> 204 avec stock 6
+observé : {'A_reception_confirmee': {'confirmer': 200, 'delete_http': 409, 'detail': "{'detail': 'Réception confirmée : non modifiable.'}", 'reception_existe': True, 'stock': 10, 'mouvements_entree': 1, 'bcf_recu': 10, 'bcf_statut': 'recu', 'rappels_on_commit': 0, 'gr_ir': [{'montant_provision': '1000.00', 'lettre': 'False', 'reception_id': '8'}]}, 'B_retour_valide': {'retour_valider': 200, 'delete_http': 409, 'detail': "{'detail': 'Retour validé : non modifiable.'}", 'retour_existe': True, 'stock': 6, 'bcf_recu': 6, 'mouvements_retour_orphelins': 1}}
+{"A_reception_confirmee": {"confirmer": 200, "delete_http": 409, "detail": "{'detail': 'Réception confirmée : non modifiable.'}", "reception_existe": true, "stock": 10, "mouvements_entree": 1, "bcf_recu": 10, "bcf_statut": "recu", "rappels_on_commit": 0, "gr_ir": [{"montant_provision": "1000.00", "lettre": "False", "reception_id": "8"}]}, "B_retour_valide": {"retour_valider": 200, "delete_http": 409, "detail": "{'detail': 'Retour validé : non modifiable.'}", "retour_existe": true, "stock": 6, "bcf_recu": 6, "mouvements_retour_orphelins": 1}, "temoin_ok": true, "defaut_A": false, "defaut_B": false, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0

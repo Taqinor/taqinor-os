@@ -1,0 +1,44 @@
+# Preuve en direct AAPV9 — rejeu w28, code b00242be0 (dev-plan-6a6fc9-w28), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w28-django (conteneur privé : code de CE worktree, base privée
+# erp_accept_w28, transaction annulée, mail en mémoire, Celery coupé, HTTP sortant bloqué). « oc » = variante
+# scratchpad sonde_oc.py identique sauf transaction.on_commit exécuté immédiatement (événements « après commit »
+# qui ne partiraient jamais dans la transaction annulée). Sur le code corrigé, verdict ÉCART = repro False = attendu.
+# Sondes C-LIVE-* (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Écran : front de CE worktree servi par vite (127.0.0.1:5199) -> conteneur privé accept-w28-web (runserver, base
+# erp_accept_w28, SMTP 127.0.0.1:1 = aucune messagerie), piloté par Playwright MCP. Données d'écran = états des sondes
+# rejouées SANS rollback dans la base privée (comptes de test des sondes, mot de passe de test) ou fixtures FIX-*.
+# Verdict : PASS — C-AAPV-002 et C-AAPV-021 cas B en transaction annulée : REPRO car l'abonné retour_fournisseur_valide est émis après commit ; variante oc : provision 1 000 -> 600 puis lettrée (ouvert 0), réservation 10 -> 6 => repro False ; écran GR/IR relu à 600 => PASS.
+
+== C-AAPV-002 (sha 5f603acce0)
+attendu : repro si apres retour 4 + facture 600 HT liee : provision 1000 toujours ouverte (lettre=False), GR/IR ouvert 1000 au lieu de 0
+observé : {'confirmer': 200, 'gr_ir_apres_reception': [{'montant_provision': '1000.00', 'lettre': 'False', 'facture_id': 'None'}], 'retour_creation': 201, 'retour_valider': 200, 'stock_apres_retour': 6, 'bcf_recu_apres_retour': 6, 'gr_ir_apres_retour': [{'montant_provision': '1000.00', 'lettre': 'False', 'facture_id': 'None'}], 'facture_creation': 201, 'facture_lien_bcf': 200, 'facture_statut_controle': 'normale', 'gr_ir_final': [{'montant_provision': '1000.00', 'lettre': 'False', 'facture_id': 'None'}], 'gr_ir_ouvert': '1000.00'}
+{"confirmer": 200, "gr_ir_apres_reception": [{"montant_provision": "1000.00", "lettre": "False", "facture_id": "None"}], "retour_creation": 201, "retour_valider": 200, "stock_apres_retour": 6, "bcf_recu_apres_retour": 6, "gr_ir_apres_retour": [{"montant_provision": "1000.00", "lettre": "False", "facture_id": "None"}], "facture_creation": 201, "facture_lien_bcf": 200, "facture_statut_controle": "normale", "gr_ir_final": [{"montant_provision": "1000.00", "lettre": "False", "facture_id": "None"}], "gr_ir_ouvert": "1000.00", "temoin_ok": true, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0
+
+== C-AAPV-002 (sha 5f603acce0)
+attendu : repro si apres retour 4 + facture 600 HT liee : provision 1000 toujours ouverte (lettre=False), GR/IR ouvert 1000 au lieu de 0
+observé : {'confirmer': 200, 'gr_ir_apres_reception': [{'montant_provision': '1000.00', 'lettre': 'False', 'facture_id': 'None'}], 'retour_creation': 201, 'retour_valider': 200, 'stock_apres_retour': 6, 'bcf_recu_apres_retour': 6, 'gr_ir_apres_retour': [{'montant_provision': '600.00', 'lettre': 'False', 'facture_id': 'None'}], 'facture_creation': 201, 'facture_lien_bcf': 200, 'facture_statut_controle': 'normale', 'gr_ir_final': [{'montant_provision': '600.00', 'lettre': 'True', 'facture_id': '7'}], 'gr_ir_ouvert': '0'}
+{"confirmer": 200, "gr_ir_apres_reception": [{"montant_provision": "1000.00", "lettre": "False", "facture_id": "None"}], "retour_creation": 201, "retour_valider": 200, "stock_apres_retour": 6, "bcf_recu_apres_retour": 6, "gr_ir_apres_retour": [{"montant_provision": "600.00", "lettre": "False", "facture_id": "None"}], "facture_creation": 201, "facture_lien_bcf": 200, "facture_statut_controle": "normale", "gr_ir_final": [{"montant_provision": "600.00", "lettre": "True", "facture_id": "7"}], "gr_ir_ouvert": "0", "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0
+
+== C-AAPV-021 (sha b432084786)
+attendu : repro si A : retour 200 et stock libre 5 -> 3 ; B : stock 6 mais réservation chantier toujours 10
+observé : {'A': {'recevoir': 200, 'stock_libre_apres_reception': 5, 'annuler_reception': 400, 'annuler_detail': "{'detail': 'Marchandise livrée au chantier — passer par un retour.'}", 'retour_creation': 201, 'retour_valider': 409, 'retour_detail': '{\'detail\': "Marchandise livrée au chantier CH-AAPV21-A : ce retour sortirait du stock du dépôt, qui ne l\'a jamais reçue."}', 'stock_libre_final': 5, 'bcf_recu': 10, 'mouvements': [('entree', 10, 'REC-202611-0001'), ('sortie', 10, 'REC-202611-0001')]}, 'B': {'recevoir': 200, 'reservation_apres_reception': (10, True, False), 'retour_valider': 200, 'retour_detail': None, 'stock': 6, 'bcf_recu': 6, 'reservation_apres_retour': (10, True, False)}}
+{"A": {"recevoir": 200, "stock_libre_apres_reception": 5, "annuler_reception": 400, "annuler_detail": "{'detail': 'Marchandise livrée au chantier — passer par un retour.'}", "retour_creation": 201, "retour_valider": 409, "retour_detail": "{'detail': \"Marchandise livrée au chantier CH-AAPV21-A : ce retour sortirait du stock du dépôt, qui ne l'a jamais reçue.\"}", "stock_libre_final": 5, "bcf_recu": 10, "mouvements": [["entree", 10, "REC-202611-0001"], ["sortie", 10, "REC-202611-0001"]]}, "B": {"recevoir": 200, "reservation_apres_reception": [10, true, false], "retour_valider": 200, "retour_detail": null, "stock": 6, "bcf_recu": 6, "reservation_apres_retour": [10, true, false]}, "temoin_ok": true, "repro_A": false, "repro_B": true, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0
+
+== C-AAPV-021 (sha b432084786)
+attendu : repro si A : retour 200 et stock libre 5 -> 3 ; B : stock 6 mais réservation chantier toujours 10
+observé : {'A': {'recevoir': 200, 'stock_libre_apres_reception': 5, 'annuler_reception': 400, 'annuler_detail': "{'detail': 'Marchandise livrée au chantier — passer par un retour.'}", 'retour_creation': 201, 'retour_valider': 409, 'retour_detail': '{\'detail\': "Marchandise livrée au chantier CH-AAPV21-A : ce retour sortirait du stock du dépôt, qui ne l\'a jamais reçue."}', 'stock_libre_final': 5, 'bcf_recu': 10, 'mouvements': [('entree', 10, 'REC-202611-0001'), ('sortie', 10, 'REC-202611-0001')]}, 'B': {'recevoir': 200, 'reservation_apres_reception': (10, True, False), 'retour_valider': 200, 'retour_detail': None, 'stock': 6, 'bcf_recu': 6, 'reservation_apres_retour': (6, True, False)}}
+{"A": {"recevoir": 200, "stock_libre_apres_reception": 5, "annuler_reception": 400, "annuler_detail": "{'detail': 'Marchandise livrée au chantier — passer par un retour.'}", "retour_creation": 201, "retour_valider": 409, "retour_detail": "{'detail': \"Marchandise livrée au chantier CH-AAPV21-A : ce retour sortirait du stock du dépôt, qui ne l'a jamais reçue.\"}", "stock_libre_final": 5, "bcf_recu": 10, "mouvements": [["entree", 10, "REC-202611-0001"], ["sortie", 10, "REC-202611-0001"]]}, "B": {"recevoir": 200, "reservation_apres_reception": [10, true, false], "retour_valider": 200, "retour_detail": null, "stock": 6, "bcf_recu": 6, "reservation_apres_retour": [6, true, false]}, "temoin_ok": true, "repro_A": false, "repro_B": false, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0
+
+## AAPV9 — PASS
+Société dédiée Live GRIR W28 (compte live_grir). BCF-G09 10 × 100 HT reçu 10 (API ; GR/IR : provision 1 000 ouverte).
+Bons de commande › BCF-G09 › « Retour fournisseur » → À retourner 4, motif « acceptation AAPV9 » → « Valider le retour » (sans erreur).
+Chantiers › Approvisionnement avancé (/chantiers/approvisionnement) › onglet « Réceptions non facturées » (GR/IR) relu :
+« Réception REC-202611-0001  110  600 MAD  Non  08/11/2026 » (provision ramenée à 600). Console 0 erreur.
