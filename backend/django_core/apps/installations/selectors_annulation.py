@@ -7,8 +7,8 @@ def blocage_annulation_acceptation(devis_id, company):
     devis ``devis_id`` empêche-t-il d'annuler cette acceptation ?
 
     Raison en français, ou ``None`` si chaque chantier non annulé est INITIAL :
-    « Signé », ni pose, ni intervention DATÉE (ACSV90), ni stock SORTI, ni BCF ENVOYÉ
-    (D-ADVS-5). Une réservation non consommée est libérée par l'annulation.
+    « Signé », ni pose, ni intervention DATÉE (ACSV90), ni stock SORTI, ni BCF envoyé ou
+    reçu tant qu'il n'est pas annulé (D-ADVS-5, ACSV6). Une réservation non consommée est libérée par l'annulation.
     Lecture seule, bornée à ``company`` (jamais de fuite cross-tenant)."""
     from apps.achats.selectors import bcf_du_chantier
     from .models import Installation
@@ -32,7 +32,8 @@ def blocage_annulation_acceptation(devis_id, company):
             return (f'du stock a déjà été sorti pour le chantier '
                     f'{inst.reference}.')
         for bon in bcf_du_chantier(inst):
-            if bon['statut'] == 'envoye':
+            if bon['statut'] in ('envoye', 'recu'):
+                etat = 'reçu' if bon['statut'] == 'recu' else 'envoyé'
                 return (f"le bon de commande fournisseur {bon['reference']} "
-                        "est envoyé : annulez-le d'abord.")
+                        f"est {etat} : annulez-le d'abord.")
     return None

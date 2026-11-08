@@ -307,3 +307,18 @@ class ReactivationV2Tests(TestCase):
         r = self._sortir_de_signe(lead)
         self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('1 intervention(s) planifiée(s)', r.data['detail'])
+
+    def test_bcf_recu_bloque_la_sortie_de_signe(self):
+        """ACSV6 (C-ACSV-003, D-ADVS-5) — un BCF REÇU bloque la sortie de
+        « Signé » comme un BCF envoyé. ROUGE AVANT : 200, chantier annulé."""
+        lead, devis, inst, bon = self._devis_accepte_avec_bcf('DEV-ACSV6-1')
+        BonCommandeFournisseur.objects.filter(pk=bon.pk).update(
+            statut=BonCommandeFournisseur.Statut.RECU)
+        r = self._sortir_de_signe(lead)
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn(f'le bon de commande fournisseur {bon.reference} '
+                      "est reçu : annulez-le d'abord.", r.data['detail'])
+        devis.refresh_from_db()
+        inst.refresh_from_db()
+        self.assertEqual(devis.statut, Devis.Statut.ACCEPTE)
+        self.assertFalse(inst.annule)
