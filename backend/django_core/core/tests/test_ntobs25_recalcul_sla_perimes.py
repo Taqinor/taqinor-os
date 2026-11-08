@@ -62,18 +62,47 @@ class RecalculerSlaPerimesTest(TestCase):
         self.assertLess(snapshot.uptime_pct, 100)
 
     def test_notifies_directeur_when_credit_amount_changes(self):
-        snapshot = generer_snapshot_societe(self.company, PERIODE)
+        """AMON35 — sans mock de la source : août à 5 % (500) passe à 25 %
+        (2 500) après un incident tardif de 48 h ⇒ 1 ``Notification``
+        ``sla_credit_recalcule`` pour le Directeur ; sans changement ⇒ 0."""
+        from decimal import Decimal
+
+        from django.contrib.auth import get_user_model
+
+        Notification = django_apps.get_model('notifications', 'Notification')
+        Role = django_apps.get_model('roles', 'Role')
+        directeur = get_user_model().objects.create_user(
+            'directeur_amon35', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom='Directeur'))
+        aout = datetime.date(2026, 8, 1)
+        with mock.patch('core.sla.uptime_pct_periode', return_value=99.2), \
+                mock.patch('core.sla.montant_facture_mois',
+                           return_value=Decimal('10000')):
+            snapshot = generer_snapshot_societe(self.company, aout)
+        self.assertEqual(snapshot.credit_du_montant, Decimal('500.00'))
         self._figer_genere_le(snapshot, timezone.now() - datetime.timedelta(days=5))
         IncidentPublic.objects.create(
-            titre='Panne majeure', company=None, severite='critique',
-            debute_le=timezone.make_aware(
-                datetime.datetime(2026, 6, 10, 0, 0)),
-            resolu_le=timezone.make_aware(
-                datetime.datetime(2026, 6, 20, 0, 0)))
+            titre='Panne tardive', company=None, severite='critique',
+            debute_le=timezone.make_aware(datetime.datetime(2026, 8, 10)),
+            resolu_le=timezone.make_aware(datetime.datetime(2026, 8, 12)))
 
-        with mock.patch('core.sla._notifier_recalcul_credit') as notifier:
+        with mock.patch('core.sla.montant_facture_mois',
+                        return_value=Decimal('10000')):
             recalculer_sla_perimes()
-        self.assertTrue(notifier.called)
+        snapshot.refresh_from_db()
+        self.assertEqual(snapshot.credit_du_montant, Decimal('2500.00'))
+        notifs = Notification.objects.filter(
+            recipient=directeur, event_type='sla_credit_recalcule')
+        self.assertEqual(notifs.count(), 1)
+        self.assertIn('Crédit SLA recalculé', notifs.get().title)
+        self.assertIn('2500.00', notifs.get().body)
+        # Second passage sans changement de crédit : aucune notification de plus.
+        IncidentPublic.objects.filter(titre='Panne tardive').update(
+            titre='Panne tardive (libellé)', updated_at=timezone.now())
+        with mock.patch('core.sla.montant_facture_mois',
+                        return_value=Decimal('10000')):
+            recalculer_sla_perimes()
+        self.assertEqual(notifs.count(), 1)
 
     def test_never_overwrites_a_human_decided_credit(self):
         """Un crédit déjà émis/refusé par un humain n'est jamais réécrit par

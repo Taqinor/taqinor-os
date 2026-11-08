@@ -413,14 +413,11 @@ def _snapshots_perimes_par_incident_tardif(company):
 def _notifier_recalcul_credit(company, snapshot, ancien_montant):
     """Notifie le Directeur qu'un recalcul a fait bouger le crédit SLA dû.
 
-    ``'sla_credit_recalcule'`` (string littéral, jamais un import
+    ``'sla_credit_recalcule'`` est un littéral (jamais un import
     ``apps.notifications`` — contrat import-linter
-    ``core-foundation-is-a-base-layer``) reflète un ``EventType.
-    SLA_CREDIT_RECALCULE`` PAS ENCORE catalogué (migration ``apps.
-    notifications`` hors périmètre de cette lane) : le stockage fonctionne
-    (``Notification.event_type`` n'est pas contraint en base par les
-    ``choices`` Django), seul l'affichage libellé attend cette migration
-    future."""
+    ``core-foundation-is-a-base-layer``) qui désigne ``EventType.
+    SLA_CREDIT_RECALCULE``, catalogué par AMON85 : sans ce membre,
+    ``notify`` rejetait le type et aucune notification n'était créée."""
     from . import notify_registry
     from .maintenance_windows import admins_cibles
 
