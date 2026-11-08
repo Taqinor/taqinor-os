@@ -3857,7 +3857,7 @@ decisions:
     reponse: code_dedie_ou_domaine
     date: "2026-11-08"
     source: "Reda, question interactive, audit de parcours PF1"
-    taches: []
+    taches: [APFS40]
   - id: D-APFS-2
     question: "Un superutilisateur rattaché à la société A peut renommer ou suspendre la société B (opérateur plateforme partout), alors qu'ailleurs il est borné à A. Quelle règle ?"
     options:
@@ -3868,7 +3868,7 @@ decisions:
     reponse: borne_a_sa_societe
     date: "2026-11-08"
     source: "Reda, question interactive, audit de parcours PF1"
-    taches: []
+    taches: [APFS61]
   - id: D-APFS-3
     question: "Un utilisateur membre de plusieurs sociétés garde le rôle de sa société d'origine après bascule (un Administrateur de A est administrateur dans B sans que B le voie). Quelle règle ?"
     options:
@@ -3879,7 +3879,7 @@ decisions:
     reponse: role_par_societe
     date: "2026-11-08"
     source: "Reda, question interactive, audit de parcours PF1"
-    taches: []
+    taches: [APFS66]
   - id: D-APFS-4
     question: "160 vues de liste / détail métier (chantiers, fournisseurs, lignes de devis, remises, contrats SAV…) sont lisibles par tout rôle interne, quels que soient ses droits de module. Exiger le droit de lecture du module couperait aussi le Commercial des chantiers et le Technicien des ventes / du CRM. Quelle règle ?"
     options:
@@ -3892,4 +3892,4 @@ decisions:
     reponse: droit_du_module_et_octrois
     date: "2026-11-08"
     source: "Reda, question interactive, audit de parcours PF1"
-    taches: []
+    taches: [APFS28]
