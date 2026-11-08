@@ -5613,18 +5613,21 @@ _STATUT_DATE_FIELD = {
 }
 
 
-def _stamp_statut_dates(inst, old_statut):
+def _stamp_statut_dates(inst, old_statut, date_saisie=None):
     """Pose la date du jalon atteint si elle est vide (jamais d'écrasement).
     Travaille sur le statut CANONIQUE pour couvrir aussi les statuts hérités.
     AUD316 — migré de `views/installation.py` : un effet de bord de statut ne
     s'appelle plus « à la carte » depuis une vue."""
     from django.utils import timezone
+    from django.utils.dateparse import parse_date
     canon = Installation.canonical_statut(inst.statut)
     if Installation.canonical_statut(old_statut) == canon:
         return None
     field = _STATUT_DATE_FIELD.get(canon)
     if field and getattr(inst, field, None) is None:
-        setattr(inst, field, timezone.localdate())
+        # ACSV21 — réception prononcée par la mise en service : sa date saisie.
+        saisie = parse_date(str(date_saisie)) if date_saisie and field == 'date_reception' else None
+        setattr(inst, field, saisie or timezone.localdate())
         inst.save(update_fields=[field])
         return field
     return None
@@ -6043,7 +6046,8 @@ def changer_statut_chantier(installation, nouveau_statut, user, *, etape=None,
     canon_new = Installation.canonical_statut(installation.statut)
 
     effets = {}
-    effets['date_jalon'] = _stamp_statut_dates(installation, ancien_statut)
+    effets['date_jalon'] = _stamp_statut_dates(  # ACSV21
+        installation, ancien_statut, (champs_supplementaires or {}).get('date_mise_en_service'))
     # ADOC172 — « Matériel » / « Installation » du suivi client.
     effets['jalon_suivi'] = _publier_jalon_statut(
         installation, canon_old, canon_new, user)

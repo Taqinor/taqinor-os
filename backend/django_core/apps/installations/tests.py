@@ -264,6 +264,21 @@ class TestStatusAndMES(TestCase):
         self.assertEqual(str(self.inst.date_mise_en_service), '2026-06-20')
         self.assertIn(self.inst.pk, [c[0] for c in chantiers_receptionnes(self.company)])
 
+    def test_mise_en_service_date_saisie_date_la_reception(self):
+        """ACSV21 (C-ACSV-136) — une mise en service saisie au 20/10 et
+        enregistrée plus tard date la réception (et le parc) au 20/10 ; sans
+        date saisie : jour du clic. ROUGE AVANT : `date_reception` = aujourd'hui."""
+        import datetime
+        Installation.objects.filter(pk=self.inst.pk).update(statut='installe')
+        r = self.api.post(
+            f'/api/django/installations/chantiers/{self.inst.id}/mise-en-service/',
+            {'date_mise_en_service': '2026-10-20'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.inst.refresh_from_db()
+        self.assertEqual(self.inst.date_reception, datetime.date(2026, 10, 20))
+        for equipement in self.inst.equipements.all():
+            self.assertEqual(equipement.date_pose, datetime.date(2026, 10, 20))
+
     def test_cancel_is_a_flag_with_reason(self):
         r = self.api.post(
             f'/api/django/installations/chantiers/{self.inst.id}/annuler/',
