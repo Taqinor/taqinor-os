@@ -1412,7 +1412,22 @@ class TestAsav100Abonnements(TestCase):
         ligne = lst.data['results'][0]
         self.assertEqual(ligne['client_id'], self.client.id)
         self.assertEqual(ligne['statut'], 'actif')
-        self.assertEqual(ligne['prochaine_echeance'], '2026-11-01')
+        self.assertNotIn('prochaine_echeance', ligne)
+
+    def test_aucune_echeance_servie(self):
+        """AMON2 (D-AMON-1 vendu_une_fois) — aucune échéance posée ni servie."""
+        from django.utils import timezone
+
+        from apps.monitoring.models import AbonnementMonitoring
+        debut = (timezone.localdate() - timedelta(days=40)).isoformat()
+        r = self._creer(date_debut=debut)
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertNotIn('prochaine_echeance', r.data)
+        lst = self.api.get(self.URL)
+        self.assertTrue(all('prochaine_echeance' not in ligne
+                            for ligne in lst.data['results']))
+        self.assertIsNone(AbonnementMonitoring.objects.get(
+            pk=r.data['id']).prochaine_echeance)
 
     def test_creation_force_societe_et_client(self):
         autre_inst, autre_client = make_installation(self.autre, ref='CHT-B')

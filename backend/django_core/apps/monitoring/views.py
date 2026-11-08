@@ -976,10 +976,8 @@ class AbonnementMonitoringViewSet(CompanyScopedModelViewSet):
     serializer_class = AbonnementMonitoringSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['periodicite', 'statut', 'motif_resiliation']
-    ordering_fields = [
-        'prochaine_echeance', 'date_debut', 'date_creation', 'montant',
-        'statut', 'id']
-    ordering = ['prochaine_echeance', 'id']
+    ordering_fields = ['date_debut', 'date_creation', 'montant', 'statut', 'id']
+    ordering = ['-date_debut', 'id']
     parser_classes = [JSONParser]
     permission_classes = [IsResponsableOrAdmin]
     http_method_names = ['get', 'post', 'head', 'options']
@@ -1218,7 +1216,8 @@ class CertificatCarboneViewSet(CompanyScopedModelViewSet):
                 periode_fin=data['periode_fin'])
         except CertificatCarboneError as exc:
             if exc.etat:
-                raise ConflitEtat(exc.message)
+                # AMON42 — un refus d'état nommé (fin future) garde son champ.
+                raise ConflitEtat(_erreur_service(exc))
             if exc.introuvable:
                 raise NotFound(_erreur_service(exc))
             raise serializers.ValidationError(_erreur_service(exc))

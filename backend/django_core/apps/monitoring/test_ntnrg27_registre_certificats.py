@@ -234,6 +234,41 @@ class TestAsav102RegistreApi(TestCase):
         self.assertEqual(r.status_code, 201, r.data)
         self.assertEqual(r.data['tco2_evitees'], '0.810')
 
+    def test_recouvrement_et_fin_future_409(self):
+        """AMON42 — recouvrement sur la cible ou une cible qui partage ses
+        relevés (site ↔ client consolidé) et fin future : 409."""
+        from apps.installations.models import Installation
+        from apps.monitoring.models import ProductionReading
+
+        s2 = Installation.objects.create(
+            company=self.company, reference='ASAV102-2',
+            client_id=self.inst.client_id,
+            puissance_installee_kwc=Decimal('10'))
+        for site in (self.inst, s2):
+            ProductionReading.objects.create(
+                company=self.company, installation=site,
+                date=date(2025, 6, 1), period_days=30,
+                energy_kwh=Decimal('1000'))
+        an = {'periode_debut': '2025-01-01', 'periode_fin': '2025-12-31'}
+        r = self._emettre(**an)
+        self.assertEqual(r.status_code, 201, r.data)
+        ref = r.data['reference']
+        r = self._emettre(periode_debut='2025-06-01', periode_fin='2025-06-30')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn(ref, str(r.data['detail']))
+        r = self._emettre(installation_id=None,
+                          client_id=self.inst.client_id, **an)
+        self.assertEqual(r.status_code, 409, r.data)
+        r = self._emettre(periode_debut='2026-01-01', periode_fin='2027-12-31')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('futur', str(r.data['detail']))
+        self.assertIn('periode_fin', r.data)
+        r = self._emettre(installation_id=s2.id, **an)
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(
+            set(CertificatCarbone.objects.values_list(
+                'installation_id', flat=True)), {self.inst.id, s2.id})
+
     def test_autre_societe_404_et_normal_403(self):
         cid = self._emettre().data['id']
         self.assertEqual(self.api_b.get(f'{self.URL}{cid}/').status_code, 404)

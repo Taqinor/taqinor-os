@@ -62,3 +62,35 @@ class SlaSnapshotRecalculTests(TestCase):
         champs = set(SlaSnapshotSerializer(snapshot).data)
         self.assertNotIn('recalcule_le', champs)
         self.assertNotIn('raison_recalcul', champs)
+
+    def test_recalcul_pose_la_trace_et_garde_genere_le(self):
+        """AMON34 — un recalcul garde ``genere_le``, date le recalcul et pose
+        sa raison ; un second passage ne régénère pas le même snapshot ; une
+        génération neuve garde ``recalcule_le`` vide."""
+        from django.apps import apps as django_apps
+        from django.utils import timezone
+
+        from core.sla import (
+            RAISON_RECALCUL_INCIDENT_TARDIF, generer_snapshot_societe,
+            recalculer_sla_perimes,
+        )
+
+        periode = datetime.date(2026, 9, 1)
+        snapshot = generer_snapshot_societe(self.company, periode)
+        self.assertIsNone(snapshot.recalcule_le)
+        il_y_a_5_jours = timezone.now() - datetime.timedelta(days=5)
+        SlaSnapshot.objects.filter(pk=snapshot.pk).update(
+            genere_le=il_y_a_5_jours)
+        django_apps.get_model('statuspage', 'IncidentPublic').objects.create(
+            titre='Panne tardive', company=None, severite='critique',
+            debute_le=timezone.make_aware(datetime.datetime(2026, 9, 10)),
+            resolu_le=timezone.make_aware(datetime.datetime(2026, 9, 11)))
+
+        avant = timezone.now()
+        self.assertEqual(len(recalculer_sla_perimes()), 1)
+        snapshot.refresh_from_db()
+        self.assertEqual(snapshot.genere_le, il_y_a_5_jours)
+        self.assertGreaterEqual(snapshot.recalcule_le, avant)
+        self.assertEqual(snapshot.raison_recalcul,
+                         RAISON_RECALCUL_INCIDENT_TARDIF)
+        self.assertEqual(recalculer_sla_perimes(), [])
