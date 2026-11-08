@@ -3891,3 +3891,47 @@ decisions:
     date: "2026-11-08"
     source: "Reda, question interactive, audit de parcours PF2"
     taches: []
+  - id: D-ASOC-5
+    question: "Les métriques gouvernées de CA ignorent les avoirs alors que le tableau de bord les déduit (11 000 contre 8 000 sur les mêmes factures). Qu'est-ce que le « CA facturé » ?"
+    options:
+      - cle: net_d_avoirs
+        texte: "CA = factures moins avoirs partout (métriques, tableau de bord, rapports) ; une facture soldée par avoir total compte 0"
+      - cle: brut
+        texte: "CA = facturé brut ; avoirs montrés à part ; le tableau de bord s'aligne sur le brut"
+    reponse: net_d_avoirs
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PF2"
+    taches: []
+  - id: D-ASOC-6
+    question: "Un effacement 09-08 qui échoue sur une source est marqué « traitée » (final), erreur enfouie, sans relance possible. Quelle règle ?"
+    options:
+      - cle: statut_partielle
+        texte: "Statut « partielle » : sources en échec affichées, relance possible jusqu'à complétude"
+      - cle: tout_ou_rien
+        texte: "Effacement atomique : tout échec annule tout, la demande reste à traiter"
+    reponse: statut_partielle
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PF2"
+    taches: []
+  - id: D-ASOC-7
+    question: "Le réglage « Parrainage activé » n'a aucun lecteur : création automatique et notifications de parrainage tournent même éteint. Que faire ?"
+    options:
+      - cle: cabler_le_reglage
+        texte: "Éteint : aucun parrainage créé automatiquement, aucune notification, écrans et liens de parrainage masqués"
+      - cle: retirer_le_reglage
+        texte: "Retirer l'interrupteur : parrainage toujours actif"
+    reponse: cabler_le_reglage
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PF2"
+    taches: []
+  - id: D-ASOC-8
+    question: "Le fuseau horaire de la société est « affichage seulement » : fenêtres de cadence, heures calmes et récapitulatifs suivent toujours Casablanca, même pour une société à Dakar. Quelle règle ?"
+    options:
+      - cle: fuseau_de_la_societe
+        texte: "Plannings, fenêtres et « aujourd'hui » suivent le fuseau de la société"
+      - cle: casablanca_partout
+        texte: "Casablanca partout ; réglage de fuseau limité au Maroc tant que les autres pays ne sont pas pris en charge"
+    reponse: fuseau_de_la_societe
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PF2"
+    taches: []
