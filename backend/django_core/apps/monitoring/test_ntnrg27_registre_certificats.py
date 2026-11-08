@@ -308,6 +308,38 @@ class TestAsav102RegistreApi(TestCase):
         self.assertIsNone(sans['co2_tonnes'])
         self.assertIsNone(sans['co2_kg_par_kwh'])
 
+    def test_pdf_du_certificat_reference_et_ged(self):
+        """AMON94 — l'émission dépose le PDF en GED (`fichier_key`) ; GET
+        …/pdf/ rend ce PDF (référence, tonnes figées, facteur et source)."""
+        from unittest import mock
+
+        from apps.ged.services import find_document_by_source
+        from apps.monitoring.models import ProductionReading
+        regler_facteur(self.company, g_kwh='630')
+        ProductionReading.objects.create(
+            company=self.company, installation=self.inst,
+            date=date(2025, 1, 1), period_days=365, energy_kwh=Decimal('6000'))
+        faux_pdf = (lambda html: b'%PDF-1.4 ' + html.encode('utf-8'))
+        with mock.patch('apps.monitoring.report_carbon.render_pdf',
+                        side_effect=faux_pdf):
+            r = self._emettre(periode_debut='2025-01-01',
+                              periode_fin='2025-12-31')
+            self.assertEqual(r.status_code, 201, r.data)
+            certif = CertificatCarbone.objects.get(pk=r.data['id'])
+            self.assertTrue(certif.fichier_key)
+            self.assertIsNotNone(find_document_by_source(
+                self.company, source_type='monitoring.certificat_carbone',
+                source_id=certif.pk))
+            pdf = self.api.get(f'{self.URL}{certif.pk}/pdf/')
+        self.assertEqual(pdf.status_code, 200)
+        self.assertEqual(pdf['Content-Type'], 'application/pdf')
+        contenu = pdf.content.decode('utf-8', errors='ignore')
+        self.assertIn(certif.reference, contenu)
+        self.assertIn('3.780', contenu)
+        self.assertIn('630 gCO₂/kWh — source ONEE', contenu)
+        self.assertEqual(self.api_b.get(
+            f'{self.URL}{certif.pk}/pdf/').status_code, 404)
+
     def test_annuler_puis_reemettre(self):
         """AMON93 — annulation (motif, auteur, date) puis ré-émission de la
         même cible et période ; second « annuler » 409 ; motif vide 400."""

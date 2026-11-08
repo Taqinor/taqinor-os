@@ -19,6 +19,7 @@ vi.mock('../../../api/monitoringApi', () => ({
     getCertificatsCarbone: vi.fn(() => Promise.resolve({ data: { count: 1, next: null, results: [emis] } })),
     annulerCertificatCarbone: vi.fn(() => Promise.resolve({ data: {} })),
     emettreCertificatCarbone: vi.fn(),
+    getCertificatCarbonePdf: vi.fn(() => Promise.resolve({ data: new Blob(['%PDF']) })),
   },
 }))
 
@@ -26,6 +27,16 @@ import monitoringApi from '../../../api/monitoringApi'
 import CertificatsCarboneSection from './CertificatsCarboneSection'
 
 describe('CertificatsCarboneSection (AMON93 — annulation)', () => {
+  it('AMON94 — télécharge le PDF du certificat', async () => {
+    URL.createObjectURL = vi.fn(() => 'blob:certificat')
+    URL.revokeObjectURL = vi.fn()
+    render(<MemoryRouter><ThemeProvider><CertificatsCarboneSection systems={[]} loadingSystems={false} /></ThemeProvider></MemoryRouter>)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'PDF' }))
+    await waitFor(() => expect(monitoringApi.getCertificatCarbonePdf).toHaveBeenCalledWith(4))
+    expect(URL.createObjectURL).toHaveBeenCalled()
+  })
+
   it('annule un certificat avec motif puis l’affiche barré', async () => {
     monitoringApi.getCertificatsCarbone
       .mockResolvedValueOnce({ data: { count: 1, next: null, results: [emis] } })

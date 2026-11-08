@@ -1015,10 +1015,19 @@ def emettre_certificat_carbone_mesure(company, *, installation_id=None,
             'Aucune production mesurée sur la période : aucun certificat '
             'chiffré ne peut être émis.', etat=True)
     try:
-        return emettre_certificat_carbone(
+        certificat = emettre_certificat_carbone(
             company, installation_id=installation_id or None,
             client_id=client_id or None, periode_debut=periode_debut,
             periode_fin=periode_fin, tco2_evitees=tonnes)
     except ValueError as exc:
         raise CertificatCarboneError(
             str(exc), etat=isinstance(exc, CertificatCarboneDoublon)) from exc
+    # AMON94 — le certificat devient un document : PDF déposé en GED
+    # (`fichier_key`), best-effort.
+    try:
+        from .report_carbon import deposer_certificat_ged, render_certificat_pdf
+        deposer_certificat_ged(certificat, render_certificat_pdf(certificat))
+    except Exception:
+        logger.warning('AMON94 : PDF du certificat %s non rendu',
+                       certificat.reference, exc_info=True)
+    return certificat

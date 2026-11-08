@@ -142,6 +142,8 @@ def _build_html(data, *, entreprise_nom=''):
 
     titre = ('Attestation carbone — site' if data['scope'] == 'site'
              else 'Attestation carbone — consolidée client')
+    if data.get('certificat'):  # AMON94 — certificat du registre
+        titre = f'Certificat carbone {data["certificat"]}'
     sous_titre = (
         f'Système {_v(data.get("reference"))}' if data['scope'] == 'site'
         else f'{_v(data.get("systems_count"))} système(s) · client #{_v(data.get("client"))}')
@@ -205,6 +207,88 @@ def render_carbon_report_pdf_client(company, client_id, *,
         until=until)
     entreprise_nom = getattr(company, 'nom', '') or ''
     return render_pdf(html=_build_html(data, entreprise_nom=entreprise_nom))
+
+
+# ── AMON94 — le certificat du registre comme document ────────────────────
+
+SOURCE_GED_CERTIFICAT = 'monitoring.certificat_carbone'
+
+
+def render_certificat_pdf(certificat):
+    """AMON94 — PDF d'un certificat ÉMIS : sa référence, sa période et ses
+    tonnes FIGÉES (jamais recalculées), le facteur réglé avec source et date.
+    Réutilise ``_build_html`` (même gabarit que l'attestation)."""
+    from decimal import Decimal
+
+    from apps.installations import selectors as installations_selectors
+
+    company = certificat.company
+    periode_label = (f'{certificat.periode_debut.isoformat()} → '
+                     f'{certificat.periode_fin.isoformat()}')
+    tonnes = Decimal(str(certificat.tco2_evitees))
+    installation = (installations_selectors.installation_scoped(
+        company, certificat.installation_id)
+        if certificat.installation_id else None)
+    data = {
+        'scope': 'site' if certificat.installation_id else 'client',
+        'certificat': certificat.reference,
+        'reference': getattr(installation, 'reference', None),
+        'client': certificat.client_id, 'systems_count': None,
+        'periode_label': periode_label, 'production_kwh': None,
+        'co2_kg': (tonnes * 1000).quantize(Decimal('0.01')),
+        'co2_tonnes': tonnes, 'has_data': True,
+        'methodologie': _methodologie(
+            _facteur_imprime(company, None), periode_label),
+        'date_edition': timezone.localdate().isoformat(),
+    }
+    entreprise_nom = getattr(company, 'nom', '') or ''
+    return render_pdf(html=_build_html(data, entreprise_nom=entreprise_nom))
+
+
+def deposer_certificat_ged(certificat, pdf):
+    """AMON94 — dépose le PDF du certificat en GED et pose ``fichier_key``
+    (clé de la version en vigueur). Best-effort journalisé : l'émission reste
+    acquise même si le stockage est indisponible. Renvoie la clé ou ''."""
+    import logging
+    try:
+        from apps.ged.services import deposit_document
+        document, _created = deposit_document(
+            company=certificat.company, nom=f'Certificat {certificat.reference}',
+            source_type=SOURCE_GED_CERTIFICAT, source_id=certificat.pk,
+            contenu_bytes=pdf, filename=f'{certificat.reference}.pdf',
+            mime='application/pdf', cabinet_nom='Supervision',
+            folder_nom='Certificats carbone', versionner_si_modifie=True)
+        version = document.versions.order_by('-version').first()
+        cle = getattr(version, 'file_key', '') or ''
+        if cle:
+            type(certificat).objects.filter(pk=certificat.pk).update(
+                fichier_key=cle)
+            certificat.fichier_key = cle
+        return cle
+    except Exception:
+        logging.getLogger(__name__).warning(
+            'AMON94 : dépôt GED du certificat %s ignoré', certificat.reference,
+            exc_info=True)
+        return ''
+
+
+def pdf_certificat(certificat):
+    """AMON94 — octets du PDF du certificat : la version GED en vigueur, ou
+    (absente) un rendu re-déposé."""
+    from apps.ged import services as ged_services
+    document = ged_services.find_document_by_source(
+        certificat.company, source_type=SOURCE_GED_CERTIFICAT,
+        source_id=certificat.pk)
+    version = (document.versions.order_by('-version').first()
+               if document is not None else None)
+    if version is not None and version.file_key:
+        # ASEC58 — lecture gardée (clé hors société refusée).
+        data, err = ged_services._fetch_version_bytes(version)
+        if data and not err:
+            return data
+    pdf = render_certificat_pdf(certificat)
+    deposer_certificat_ged(certificat, pdf)
+    return pdf
 
 
 def tco2_evitees_periode(company, *, installation=None, client_id=None,

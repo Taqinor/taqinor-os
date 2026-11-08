@@ -1277,6 +1277,20 @@ class CertificatCarboneViewSet(CompanyScopedModelViewSet):
                 raise NotFound(_erreur_service(exc))
             raise serializers.ValidationError(_erreur_service(exc))
 
+    @extend_schema(responses=_PDF)
+    @action(detail=True, methods=['get'], url_path='pdf',
+            permission_classes=[IsResponsableOrAdmin])
+    def pdf(self, request, pk=None):
+        """AMON94 — PDF du certificat (référence, période, tonnes figées,
+        facteur) : la version GED déposée à l'émission, re-déposée si absente."""
+        from .report_carbon import pdf_certificat
+        certificat = self.get_object()
+        resp = HttpResponse(pdf_certificat(certificat),
+                            content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="{certificat.reference}.pdf"')
+        return resp
+
     @extend_schema(request=_ClasserDrapeauCorps,
                    responses={200: CertificatCarboneSerializer})
     @action(detail=True, methods=['post'], url_path='annuler',

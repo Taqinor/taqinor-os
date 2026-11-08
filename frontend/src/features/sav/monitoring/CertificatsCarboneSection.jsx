@@ -39,6 +39,23 @@ export default function CertificatsCarboneSection({ systems, loadingSystems }) {
     } finally { setBusy(false) }
   }
 
+  // AMON94 — téléchargement du PDF du certificat.
+  const telechargerPdf = async (certificat) => {
+    try {
+      const r = await monitoringApi.getCertificatCarbonePdf(certificat.id)
+      const url = URL.createObjectURL(new Blob([r.data], { type: 'application/pdf' }))
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${certificat.reference}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch {
+      toast.error('Téléchargement du PDF impossible.')
+    }
+  }
+
   const cible = (c) => (c.installation_id
     ? libelleSysteme(systems, c.installation_id)
     :`Client #${c.client_id} (consolidé)`)
@@ -95,6 +112,7 @@ export default function CertificatsCarboneSection({ systems, loadingSystems }) {
                 <span className={`font-medium ${c.statut === 'annule' ? 'line-through' : ''}`}>{c.reference}</span>
                 <span className="text-sm text-muted-foreground">{cible(c)}</span>
                 <span className="text-sm">{formatNumber(c.tco2_evitees, { decimals: 3 })} tCO₂ évitées</span>
+                <Button size="sm" variant="ghost" onClick={() => telechargerPdf(c)}>PDF</Button>
                 {c.statut !== 'annule' && aAnnuler !== c.id && (
                   <Button size="sm" variant="outline" onClick={() => { setAAnnuler(c.id); setMotif(''); setErreurAnnulation(null) }}>
                     Annuler

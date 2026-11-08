@@ -106,6 +106,9 @@ const monitoringApi = {
   getCertificatsCarbone: (params) => api.get('/monitoring/certificats-carbone/', { params }),
   emettreCertificatCarbone: (data) => api.post('/monitoring/certificats-carbone/', data),
   // AMON93 — annulation (motif obligatoire) ; la période redevient émissible.
+  // AMON94 — PDF du certificat (version GED déposée à l'émission).
+  getCertificatCarbonePdf: (id) =>
+    api.get(`/monitoring/certificats-carbone/${id}/pdf/`, { responseType: 'blob' }),
   annulerCertificatCarbone: (id, motif) =>
     api.post(`/monitoring/certificats-carbone/${id}/annuler/`, { motif }),
 

@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4941, operations: 7739, components: 3637}
+counts: {paths: 4943, operations: 7741, components: 3637}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -2256,6 +2256,7 @@ operations:
 - post /api/django/monitoring/certificats-carbone/ -> django_monitoring_certificats_carbone_create
 - get /api/django/monitoring/certificats-carbone/{id}/ -> django_monitoring_certificats_carbone_retrieve
 - post /api/django/monitoring/certificats-carbone/{id}/annuler/ -> django_monitoring_certificats_carbone_annuler_create
+- get /api/django/monitoring/certificats-carbone/{id}/pdf/ -> django_monitoring_certificats_carbone_pdf_retrieve
 - get /api/django/monitoring/cleanings/ -> django_monitoring_cleanings_list
 - post /api/django/monitoring/cleanings/ -> django_monitoring_cleanings_create
 - delete /api/django/monitoring/cleanings/{id}/ -> django_monitoring_cleanings_destroy
@@ -6166,6 +6167,7 @@ operations:
 - post /api/v1/monitoring/certificats-carbone/ -> v1_monitoring_certificats_carbone_create
 - get /api/v1/monitoring/certificats-carbone/{id}/ -> v1_monitoring_certificats_carbone_retrieve
 - post /api/v1/monitoring/certificats-carbone/{id}/annuler/ -> v1_monitoring_certificats_carbone_annuler_create
+- get /api/v1/monitoring/certificats-carbone/{id}/pdf/ -> v1_monitoring_certificats_carbone_pdf_retrieve
 - get /api/v1/monitoring/cleanings/ -> v1_monitoring_cleanings_list
 - post /api/v1/monitoring/cleanings/ -> v1_monitoring_cleanings_create
 - delete /api/v1/monitoring/cleanings/{id}/ -> v1_monitoring_cleanings_destroy
