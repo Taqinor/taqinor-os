@@ -1466,7 +1466,7 @@ def affecter_reception_cross_dock(*, reception, user=None, lignes=None,
 
     if reception is None:
         raise ValueError('Réception introuvable.')
-    if reception.statut != 'confirme':  # AAPV38
+    if not type(reception).objects.filter(pk=reception.pk, statut='confirme').exists():  # AAPV38
         raise EtatIncompatible('Seule une réception confirmée part en cross-dock.')
     company = reception.company
     filtre = {int(x) for x in (lignes or []) if str(x).isdigit()}

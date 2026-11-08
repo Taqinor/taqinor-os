@@ -177,8 +177,6 @@ class GenererBcfTests(TestCase):
         from django.db import connection
         from django.test.utils import CaptureQueriesContext
         from apps.installations.models import Installation
-        if not connection.features.has_select_for_update:  # pragma: no cover
-            self.skipTest('SELECT FOR UPDATE non supporté.')
         inst = Installation.objects.create(
             company=self.company, reference='CH-AAPV28')
         table = Installation._meta.db_table

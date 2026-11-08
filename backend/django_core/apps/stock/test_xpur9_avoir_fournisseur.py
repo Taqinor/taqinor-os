@@ -165,15 +165,14 @@ class TestImputationAvoir(Xpur9Base):
         PaiementFournisseur.objects.create(
             company=self.company, facture=facture, montant=Decimal('1000'),
             date_paiement=datetime.date(2026, 10, 1))
-        if connection.features.has_select_for_update:
-            with CaptureQueriesContext(connection) as ctx:
-                with self.assertRaises(ValueError) as err:
-                    imputer_avoir_fournisseur(avoir, facture, user=self.user)
-            verrous = [q['sql'] for q in ctx.captured_queries
-                       if 'FOR UPDATE' in q['sql'].upper()]
-            self.assertIn(FactureFournisseur._meta.db_table, verrous[0])
-            self.assertIn(AvoirFournisseur._meta.db_table, verrous[1])
-            self.assertIn('Rien à imputer', str(err.exception))
+        with CaptureQueriesContext(connection) as ctx:
+            with self.assertRaises(ValueError) as err:
+                imputer_avoir_fournisseur(avoir, facture, user=self.user)
+        verrous = [q['sql'] for q in ctx.captured_queries
+                   if 'FOR UPDATE' in q['sql'].upper()]
+        self.assertIn(FactureFournisseur._meta.db_table, verrous[0])
+        self.assertIn(AvoirFournisseur._meta.db_table, verrous[1])
+        self.assertIn('Rien à imputer', str(err.exception))
         self.assertEqual(ImputationAvoirFournisseur.objects.filter(
             facture=facture).count(), 0)
 
