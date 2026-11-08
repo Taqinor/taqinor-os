@@ -534,7 +534,9 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             permission_classes=[IsResponsableOrAdmin])
     def mise_en_service(self, request, pk=None):
         """Enregistre la mise en service : date, PV/notes, valeurs mesurées
-        optionnelles, et passe le statut à « Mise en service ».
+        optionnelles, et passe le statut au canonique « Réceptionné » (ACSV20 :
+        jamais la valeur héritée ``mise_en_service``, que les lecteurs bruts
+        — taux d'attache, intégrité — ne voient pas).
 
         NOTE — point d'accroche FUTUR : c'est ici que démarrera la garantie
         une fois qu'un registre d'équipements (n° de série) existera. Aucune
@@ -562,7 +564,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             champs['mes_tension'] = data['mes_tension']
         try:
             changer_statut_chantier(
-                inst, Installation.Statut.MISE_EN_SERVICE, request.user,
+                inst, Installation.Statut.RECEPTIONNE, request.user,
                 champs_supplementaires=champs)
         except TransitionRefusee as exc:  # ERR-ENF11 : refus d'état = 409
             return Response(

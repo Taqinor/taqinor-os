@@ -237,7 +237,7 @@ class TestStatusAndMES(TestCase):
              'mes_production_test': '32.5', 'mes_tension': '230'},
             format='json')
         self.assertEqual(r.status_code, 200, r.data)
-        self.assertEqual(r.data['statut'], 'mise_en_service')
+        self.assertEqual(r.data['statut'], 'receptionne')  # ACSV20 : canonique
         self.assertEqual(r.data['date_mise_en_service'], '2026-06-20')
         self.assertEqual(Decimal(r.data['mes_production_test']), Decimal('32.50'))
         # La note de chatter inclut les valeurs mesurées (production + tension).
@@ -245,6 +245,24 @@ class TestStatusAndMES(TestCase):
         self.assertIsNotNone(note)
         self.assertIn('32.5', note.body)
         self.assertIn('230', note.body)
+
+    def test_mise_en_service_compte_au_taux_attache(self):
+        """ACSV20 (C-ACSV-025) — un chantier réceptionné par la mise en
+        service est stocké « receptionne » et compte dans
+        `chantiers_receptionnes`. ROUGE AVANT : statut `mise_en_service`,
+        absent."""
+        from apps.installations.selectors import chantiers_receptionnes
+        Installation.objects.filter(pk=self.inst.pk).update(statut='installe')
+        r = self.api.post(
+            f'/api/django/installations/chantiers/{self.inst.id}/mise-en-service/',
+            {'date_mise_en_service': '2026-06-20', 'mes_pv_notes': 'PV',
+             'mes_production_test': 32.5, 'mes_tension': 230},
+            format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.inst.refresh_from_db()
+        self.assertEqual(self.inst.statut, Installation.Statut.RECEPTIONNE)
+        self.assertEqual(str(self.inst.date_mise_en_service), '2026-06-20')
+        self.assertIn(self.inst.pk, [c[0] for c in chantiers_receptionnes(self.company)])
 
     def test_cancel_is_a_flag_with_reason(self):
         r = self.api.post(
