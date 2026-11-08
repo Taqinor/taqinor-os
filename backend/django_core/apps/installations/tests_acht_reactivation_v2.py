@@ -274,3 +274,37 @@ class ReactivationV2Tests(TestCase):
         self.assertEqual(dict(StockReservation.objects.filter(
             installation=inst, active=True).values_list(
                 'produit_id', 'quantite')), {self.panneau.id: 14})
+
+    def test_v2_acceptee_apres_sortie_signe_reactive(self):
+        """ACSV1 (C-ACSV-001) — V1 (PAN × 10) acceptée, lead sorti de
+        « Signé » (chantier annulé, motif-marqueur), révisée en V2 (× 12)
+        acceptée ⇒ UN chantier actif rattaché à V2, bom et réservations à 12,
+        note « Chantier réactivé ». ROUGE AVANT : `annule` True, bom 10."""
+        lead, devis, inst, _bon = self._devis_accepte_avec_bcf('DEV-ACSV1-1')
+        r = self._sortir_de_signe(lead)
+        self.assertEqual(r.status_code, 200, r.data)
+        inst.refresh_from_db()
+        self.assertTrue(inst.annule)
+        devis.refresh_from_db()
+        v2 = reviser_devis(devis, user=self.user)
+        LigneDevis.objects.filter(devis=v2, produit=self.panneau).update(
+            quantite=Decimal('12'))
+        Devis.objects.filter(pk=v2.pk).update(
+            statut=Devis.Statut.ENVOYE, date_envoi=timezone.now())
+        r = self.api.post(f'/api/django/ventes/devis/{v2.id}/accepter/',
+                          {'nom': 'M. Client'}, format='json')
+        self.assertEqual(r.status_code, 200, getattr(r, 'data', r))
+        chantiers = Installation.objects.filter(
+            company=self.company, devis_id__in=[devis.id, v2.id])
+        self.assertEqual(chantiers.count(), 1)
+        inst.refresh_from_db()
+        self.assertFalse(inst.annule)
+        self.assertIsNone(inst.motif_annulation)
+        self.assertEqual(inst.devis_id, v2.id)
+        self.assertEqual({li['produit_id']: li['quantite'] for li in inst.bom},
+                         {self.panneau.id: 12.0})
+        self.assertEqual(dict(StockReservation.objects.filter(
+            installation=inst, active=True).values_list(
+                'produit_id', 'quantite')), {self.panneau.id: 12})
+        self.assertTrue(InstallationActivity.objects.filter(
+            installation=inst, body__startswith='Chantier réactivé').exists())

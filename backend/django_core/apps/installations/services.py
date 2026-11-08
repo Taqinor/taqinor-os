@@ -675,7 +675,12 @@ def _rattacher_chantier_de_revision(devis, user, company):
         ancienne_ref = getattr(chantier.devis, 'reference', None) or pred_id
         chantier.devis = devis
         chantier.save(update_fields=['devis'])
-        realigne = _realigner_nomenclature_revision(chantier, devis)
+        # ACSV1 — annulé par la désacceptation : réactivé (réaligne lui-même).
+        if chantier.annule and chantier.motif_annulation == MOTIF_ANNULATION_DESACCEPTATION:
+            _reactiver_chantier_reaccepte(chantier, devis, user)
+            realigne = True
+        else:
+            realigne = _realigner_nomenclature_revision(chantier, devis)
         suite = ('nomenclature et réservations réalignées sur la révision'
                  if realigne else 'nomenclature gelée inchangée')
         from . import activity
