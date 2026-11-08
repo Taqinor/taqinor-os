@@ -215,9 +215,11 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(
         request=BcfEnvoyerEmailCorps,
-        responses={code: corps(
+        # AAPV46 — UN seul composant partagé par 200 et 502 (deux appels à
+        # ``corps`` = deux classes homonymes → avertissement de schéma).
+        responses=dict.fromkeys((200, 502), corps(
             'BcfEnvoyerEmailReponse', detail=serializers.CharField(), log_id=serializers.IntegerField(),
-            email_statut=serializers.CharField(), statut=serializers.CharField()) for code in (200, 502)})
+            email_statut=serializers.CharField(), statut=serializers.CharField())))
     @action(detail=True, methods=['post'], url_path='envoyer-email')
     def envoyer_email(self, request, pk=None):
         """QS3 — Envoie le BCF (PDF joint) au FOURNISSEUR par email + EmailLog.
