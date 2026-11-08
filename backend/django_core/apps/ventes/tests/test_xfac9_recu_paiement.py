@@ -142,7 +142,7 @@ class EnvoyerRecuEntreeTests(SimpleTestCase):
     """CI #1001 (fuzz) — `to_email` : vraie chaîne, `null` ou absent (sans base)."""
 
     def _valide(self, corps):
-        from apps.ventes.serializers_facturation import (
+        from apps.facturation.serializers import (
             PaiementEnvoyerRecuRequestSerializer)
         return PaiementEnvoyerRecuRequestSerializer(data=corps).is_valid()
 
