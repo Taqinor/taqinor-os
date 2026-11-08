@@ -109,6 +109,9 @@ describe('InstallationDetail — ACHT3 gestes refusés masqués', () => {
     expect(await screen.findByRole('alertdialog')).toHaveTextContent(/réceptionne le chantier.*60 %/)
     await user.click(screen.getByRole('button', { name: 'Annuler' }))
     expect(installationsApi.miseEnService).not.toHaveBeenCalled()
+    // CAD177 — le verrou anti-double-clic du Button tombe après 400 ms sans
+    // rendu (confirmation annulée) : un humain ne re-clique pas plus vite.
+    await new Promise((r) => setTimeout(r, 450))
     await user.click(screen.getByRole('button', BTN))
     await user.click(await screen.findByRole('button', { name: 'Continuer' }))
     await waitFor(() => expect(installationsApi.miseEnService).toHaveBeenCalledTimes(1))
