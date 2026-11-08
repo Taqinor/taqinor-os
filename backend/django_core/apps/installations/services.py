@@ -6565,11 +6565,12 @@ def _notifier_client_jalon_atteint(installation, jalon):
                 "\n\nLe procès-verbal de réception et le bon de livraison "
                 "sont disponibles dans la rubrique « Mes documents » de "
                 "votre espace client dès leur signature.")
-        send_mail(
+        from django.db import transaction  # ACSV98 — au commit, jamais avant (patron QJR422)
+        transaction.on_commit(lambda: send_mail(
             f'Chantier {installation.reference} — {jalon.libelle} atteint',
             corps,
             getattr(settings, 'DEFAULT_FROM_EMAIL', None),
-            [email_addr], fail_silently=True)
+            [email_addr], fail_silently=True))
     except Exception:  # pragma: no cover - défensif, best-effort
         logger.warning(
             'CHT11 — email jalon portail (jalon %s) échoué', jalon.pk,

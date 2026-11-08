@@ -307,7 +307,8 @@ class PortailDocumentsRemiseTests(TestCase):
         with patch('apps.ventes.email_service.is_email_configured',
                    return_value=True), \
                 patch('apps.portail.selectors.compte_portail_client_actif',
-                      return_value=True):
+                      return_value=True), \
+                self.captureOnCommitCallbacks(execute=True):  # ACSV98
             _notifier_client_jalon_atteint(self.inst, jalon)
         self.assertEqual(len(mail.outbox), 1)
         corps = mail.outbox[0].body
@@ -319,10 +320,31 @@ class PortailDocumentsRemiseTests(TestCase):
         with patch('apps.ventes.email_service.is_email_configured',
                    return_value=True), \
                 patch('apps.portail.selectors.compte_portail_client_actif',
-                      return_value=True):
+                      return_value=True), \
+                self.captureOnCommitCallbacks(execute=True):  # ACSV98
             _notifier_client_jalon_atteint(self.inst, jalon)
         self.assertEqual(len(mail.outbox), 1)
         self.assertNotIn('Mes documents', mail.outbox[0].body)
+
+    def test_email_jalon_aucun_envoi_si_rollback(self):
+        """ACSV98 (C-ACSV-046) — l'e-mail « jalon atteint » part au commit :
+        une transaction annulée après l'atteinte n'envoie rien.
+        ROUGE AVANT : 1 e-mail."""
+        from django.db import transaction
+        jalon = self._jalon(JalonProjet.Phase.RECEPTION, 'Réception')
+        with patch('apps.ventes.email_service.is_email_configured',
+                   return_value=True), \
+                patch('apps.portail.selectors.compte_portail_client_actif',
+                      return_value=True), \
+                self.captureOnCommitCallbacks(execute=True) as rappels:
+            try:
+                with transaction.atomic():
+                    _notifier_client_jalon_atteint(self.inst, jalon)
+                    raise RuntimeError('transition annulée')
+            except RuntimeError:
+                pass
+        self.assertEqual(rappels, [])
+        self.assertEqual(len(mail.outbox), 0)
 
 
 class ChatterCreationTests(TestCase):
