@@ -691,6 +691,33 @@ def resilier_abonnement_monitoring(abonnement, *, motif, user=None):
     return abonnement
 
 
+def repointer_client_monitoring(company, *, ancien_client_id,
+                                nouveau_client_id):
+    """AMON12 — repointe les ``client_id`` entiers du monitoring (abonnements,
+    certificats carbone) d'un client absorbé vers le survivant, dans la seule
+    société ``company``. Même forme de rapport que
+    ``core.merge.repointer_relations`` : ``(repointes, non_repointes)`` ; un
+    point de sauvegarde par modèle, un conflit d'unicité est rapporté."""
+    from django.db import IntegrityError
+
+    from .models import AbonnementMonitoring, CertificatCarbone
+
+    repointes, non_repointes = {}, []
+    for modele in (AbonnementMonitoring, CertificatCarbone):
+        etiquette = 'monitoring.%s.client_id' % modele.__name__
+        try:
+            with transaction.atomic():
+                n = modele._base_manager.filter(
+                    company=company, client_id=ancien_client_id,
+                ).update(client_id=nouveau_client_id)
+        except IntegrityError as exc:
+            non_repointes.append({'relation': etiquette, 'motif': str(exc)})
+            continue
+        if n:
+            repointes[etiquette] = n
+    return repointes, non_repointes
+
+
 # ── ASAV102 — émission d'un certificat carbone depuis l'écran ───────────────
 
 class CertificatCarboneError(ValueError):

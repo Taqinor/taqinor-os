@@ -1377,6 +1377,39 @@ class TestAsav100Abonnements(TestCase):
         self.assertEqual(api_b.get(self.URL).data['count'], 0)
         self.assertEqual(auth(self.normal).get(self.URL).status_code, 403)
 
+    def test_repointer_client_monitoring(self):
+        """AMON12 — abonnement et certificats suivent le client survivant ;
+        conflit d'unicité rapporté ; autre société jamais touchée."""
+        from apps.monitoring.models import (
+            AbonnementMonitoring, CertificatCarbone)
+        ab_id = self._creer().data['id']
+        survivant = Client.objects.create(
+            company=self.company, nom='Survivant', prenom='B',
+            email='survivant-a100@example.invalid')
+        periode = {'periode_debut': date(2026, 1, 1),
+                   'periode_fin': date(2026, 12, 31)}
+        cert_a = CertificatCarbone.objects.create(
+            company=self.company, client_id=self.client.id,
+            tco2_evitees=Decimal('1.000'), reference='CERT-A', **periode)
+        CertificatCarbone.objects.create(
+            company=self.company, client_id=survivant.id,
+            tco2_evitees=Decimal('2.000'), reference='CERT-B', **periode)
+        ab_autre = AbonnementMonitoring.objects.create(
+            company=self.autre, client_id=self.client.id, montant=10)
+        repointes, non_repointes = services.repointer_client_monitoring(
+            self.company, ancien_client_id=self.client.id,
+            nouveau_client_id=survivant.id)
+        self.assertEqual(
+            repointes, {'monitoring.AbonnementMonitoring.client_id': 1})
+        self.assertEqual([n['relation'] for n in non_repointes],
+                         ['monitoring.CertificatCarbone.client_id'])
+        self.assertEqual(AbonnementMonitoring.objects.get(id=ab_id).client_id,
+                         survivant.id)
+        cert_a.refresh_from_db()
+        self.assertEqual(cert_a.client_id, self.client.id)
+        ab_autre.refresh_from_db()
+        self.assertEqual(ab_autre.client_id, self.client.id)
+
 
 class MonitoringConfigSchemaTests(TestCase):
     """CI #993 (api-fuzz-pr) — `has_credentials` est servi en booléen : le
