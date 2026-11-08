@@ -3880,3 +3880,16 @@ decisions:
     date: "2026-11-08"
     source: "Reda, question interactive, audit de parcours PF1"
     taches: []
+  - id: D-APFS-4
+    question: "160 vues de liste / détail métier (chantiers, fournisseurs, lignes de devis, remises, contrats SAV…) sont lisibles par tout rôle interne, quels que soient ses droits de module. Exiger le droit de lecture du module couperait aussi le Commercial des chantiers et le Technicien des ventes / du CRM. Quelle règle ?"
+    options:
+      - cle: droit_du_module_et_octrois
+        texte: "La lecture exige un droit du module ; les lectures inter-modules réellement nécessaires (Commercial → chantiers de ses ventes, Technicien → devis de son chantier) sont octroyées explicitement dans le registre des rôles"
+      - cle: droit_du_module_strict
+        texte: "La lecture exige un droit du module, rien de plus"
+      - cle: ouvert_champs_masques
+        texte: "Lecture ouverte aux rôles internes, champs sensibles (PII, RIB, prix) masqués sans le droit"
+    reponse: droit_du_module_et_octrois
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PF1"
+    taches: []
