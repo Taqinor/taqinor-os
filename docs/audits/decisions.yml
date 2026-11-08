@@ -3857,7 +3857,7 @@ decisions:
     reponse: figer_a_l_envoi
     date: "2026-11-08"
     source: "Reda, question interactive, audit de parcours PF2 (prolonge D-ECH-FIGE)"
-    taches: []
+    taches: [ASOC95]
   - id: D-ASOC-2
     question: "Le module « Chantiers » désinstallé, accepter un devis crée quand même un chantier et des réservations de stock (chantier invisible ensuite). Quelle règle ?"
     options:
@@ -3868,7 +3868,7 @@ decisions:
     reponse: rien_creer
     date: "2026-11-08"
     source: "Reda, question interactive, audit de parcours PF2"
-    taches: []
+    taches: [ASOC2]
   - id: D-ASOC-3
     question: "Après un effacement loi 09-08, l'historique des modifications du lead (LeadActivity) garde en clair les anciennes et nouvelles valeurs d'identité. Quelle règle ?"
     options:
@@ -3879,7 +3879,7 @@ decisions:
     reponse: caviarder
     date: "2026-11-08"
     source: "Reda, question interactive, audit de parcours PF2"
-    taches: []
+    taches: [ASOC62]
   - id: D-ASOC-4
     question: "La rétention de 3 ans des prospects exclut tout lead qui a un client — or le client est créé au premier devis : tout prospect ayant reçu un devis est gardé à vie, et les clients n'ont aucune rétention. Quelle règle ?"
     options:
@@ -3890,7 +3890,7 @@ decisions:
     reponse: client_sans_facture_est_prospect
     date: "2026-11-08"
     source: "Reda, question interactive, audit de parcours PF2"
-    taches: []
+    taches: [ASOC74]
   - id: D-ASOC-5
     question: "Les métriques gouvernées de CA ignorent les avoirs alors que le tableau de bord les déduit (11 000 contre 8 000 sur les mêmes factures). Qu'est-ce que le « CA facturé » ?"
     options:
@@ -3901,7 +3901,7 @@ decisions:
     reponse: net_d_avoirs
     date: "2026-11-08"
     source: "Reda, question interactive, audit de parcours PF2"
-    taches: []
+    taches: [ASOC73]
   - id: D-ASOC-6
     question: "Un effacement 09-08 qui échoue sur une source est marqué « traitée » (final), erreur enfouie, sans relance possible. Quelle règle ?"
     options:
@@ -3912,7 +3912,7 @@ decisions:
     reponse: statut_partielle
     date: "2026-11-08"
     source: "Reda, question interactive, audit de parcours PF2"
-    taches: []
+    taches: [ASOC65]
   - id: D-ASOC-7
     question: "Le réglage « Parrainage activé » n'a aucun lecteur : création automatique et notifications de parrainage tournent même éteint. Que faire ?"
     options:
@@ -3923,7 +3923,7 @@ decisions:
     reponse: cabler_le_reglage
     date: "2026-11-08"
     source: "Reda, question interactive, audit de parcours PF2"
-    taches: []
+    taches: [ASOC70]
   - id: D-ASOC-8
     question: "Le fuseau horaire de la société est « affichage seulement » : fenêtres de cadence, heures calmes et récapitulatifs suivent toujours Casablanca, même pour une société à Dakar. Quelle règle ?"
     options:
@@ -3934,7 +3934,7 @@ decisions:
     reponse: fuseau_de_la_societe
     date: "2026-11-08"
     source: "Reda, question interactive, audit de parcours PF2"
-    taches: []
+    taches: [ASOC84]
   - id: D-APFS-1
     question: "Les rôles porteurs de `users_voir` (Admin RH, Admin Ventes, Technicien responsable, Commercial responsable) comptent comme palier « responsable » : clés d'API / webhooks, désactivation de module, matrices et workflows, décision des demandes d'approbation, demandes loi 09-08 (accès / effacement), restauration de la corbeille. Quelle garde ?"
     options:
