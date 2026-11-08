@@ -1754,6 +1754,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
             activity.log_note(
                 ticket, request.user,
                 f"Ticket annulé{(' : ' + motif) if motif else ''}")
+            from apps.installations.services import annuler_interventions_du_ticket  # ACSV65
+            annuler_interventions_du_ticket(ticket.pk, request.user, f'Ticket {ticket.reference} annulé')
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
 
@@ -1769,6 +1771,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
             ticket.save(update_fields=[
                 'annule', 'motif_annulation', *_CHAMPS_PAUSE])
             activity.log_note(ticket, request.user, "Ticket réactivé")
+            from apps.installations.services import reactiver_interventions_du_ticket  # ACSV65
+            reactiver_interventions_du_ticket(ticket.pk, request.user)
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
 
@@ -2728,6 +2732,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
             Attachment.objects.filter(
                 content_type=ct, object_id=doublon.pk,
             ).update(object_id=principal.pk, company=principal.company)
+            from apps.installations.services import rattacher_interventions_au_ticket  # ACSV65
+            rattacher_interventions_au_ticket(doublon.pk, principal.pk)
 
             # Note sur le doublon APRÈS le déplacement de ses activités
             # (sinon elle partirait elle-même vers le principal et le
