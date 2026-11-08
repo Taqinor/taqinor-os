@@ -692,3 +692,24 @@ def transcribe_memo(memo):
     memo.transcrit = bool(configure)
     memo.save(update_fields=['transcript', 'transcrit'])
     return memo
+
+
+def preuve_checklist_retiree(meta):
+    """ACSV18 — une photo d'étape de checklist supprimée (pièce jointe et sa
+    méta en cascade) : l'étape à photo obligatoire restée cochée SANS photo est
+    décochée (la garde ``raison_refus_cocher_etape`` la redemandera) ; la
+    suppression est notée au chatter du chantier. Rend vrai si décochée."""
+    from . import activity
+    from .models import ChantierChecklistItem
+    item = (ChantierChecklistItem.objects.select_related('installation')
+            .filter(pk=meta.checklist_item_id).first())
+    if item is None:
+        return False
+    decoche = item.photo_obligatoire and item.fait and not item.photos.exists()
+    if decoche:
+        item.fait, item.fait_par, item.fait_le = False, None, None
+        item.save(update_fields=['fait', 'fait_par', 'fait_le'])
+    activity.log_note(item.installation, None, (
+        f"Photo de l'étape « {item.libelle} » supprimée"
+        + (' — étape décochée (aucune photo restante).' if decoche else '.')))
+    return decoche
