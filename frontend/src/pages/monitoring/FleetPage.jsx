@@ -5,6 +5,7 @@ import monitoringApi from '../../api/monitoringApi'
 import { Badge, Button, Card, EmptyState, IconButton, Input } from '../../ui'
 import { formatDate, formatNumber, formatPercent } from '../../lib/format'
 import { getApiError } from '../../lib/apiError'
+import { lireToutesLesPages } from '../../utils/fetchAllPages'
 import { METRIC_ICONS } from '../../ui/metricIcons'
 import useVisibilityAwarePoll from './useVisibilityAwarePoll'
 import FreshnessBadge from './FreshnessBadge'
@@ -61,8 +62,8 @@ function AlertesOuvertes({ version, onClasse }) {
   const [busy, setBusy] = useState(false)
   useEffect(() => {
     let actif = true
-    monitoringApi.getDrapeaux({ is_open: 'true' })
-      .then((r) => { if (actif) setAlertes(r.data?.results ?? []) })
+    lireToutesLesPages((p) => monitoringApi.getDrapeaux({ is_open: 'true', ...p }))
+      .then((rows) => { if (actif) setAlertes(rows) })
       .catch(() => { if (actif) setAlertes([]) })
     return () => { actif = false }
   }, [version])

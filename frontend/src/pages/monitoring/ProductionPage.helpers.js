@@ -17,5 +17,6 @@ export function debutParDefaut(periode, aujourdhui = todayLocalIso()) {
   const jours = Math.max(Math.floor(Number(periode) || 1), 1)
   const d = new Date(`${aujourdhui}T00:00:00Z`)
   d.setUTCDate(d.getUTCDate() - jours)
-  return d.toISOString().slice(0, 10)
+  const deux = (n) => String(n).padStart(2, '0')
+  return `${d.getUTCFullYear()}-${deux(d.getUTCMonth() + 1)}-${deux(d.getUTCDate())}`
 }
