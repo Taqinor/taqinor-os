@@ -363,10 +363,14 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
         (mouvement de reversal référencé à l'original, jamais un blocage) via
         `annuler_reception_confirmee`. Une réception encore en brouillon
         garde le chemin historique (simple passage à ANNULE, rien à
-        contre-passer)."""
+        contre-passer). AAPV11 — l'écran envoie `statut_vu` : une annulation
+        émise depuis une vue « brouillon » prend le chemin brouillon (relu
+        sous verrou ⇒ 409 si confirmée), jamais la contre-passation."""
         from ..services import annuler_reception_confirmee
         reception = self.get_object()
-        if reception.statut == ReceptionFournisseur.Statut.CONFIRME:
+        statut_vu = request.data.get('statut_vu') if hasattr(request.data, 'get') else None
+        if (reception.statut == ReceptionFournisseur.Statut.CONFIRME
+                and statut_vu != ReceptionFournisseur.Statut.BROUILLON):
             try:
                 annuler_reception_confirmee(reception, request.user)
             except ValueError as exc:  # AAPV12 — EtatIncompatible : 409
