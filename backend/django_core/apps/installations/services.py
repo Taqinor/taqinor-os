@@ -6606,7 +6606,7 @@ def chantiers_a_facturer(company, user=None):
     out = []
     jalons = (
         JalonProjet.objects
-        .filter(company=company, atteint=True,
+        .filter(company=company, atteint=True, installation__annule=False,  # ACSV9
                 tranche_echeancier__isnull=False)
         .exclude(tranche_echeancier='')
         .select_related('installation', 'installation__devis')
