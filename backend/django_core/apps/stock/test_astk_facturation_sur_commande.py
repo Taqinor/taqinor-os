@@ -162,6 +162,27 @@ class BuilderUniqueTests(_Base):
             montant_ht=Decimal('10'), montant_tva=Decimal('2'), montant_ttc=Decimal('12'))
         self.assertEqual(derniere_facture_bcf(self.bcf).pk, f2.pk)
 
+    def test_facturer_reception_lettre_sa_propre_provision(self):
+        """AAPV79 — R1 puis R2 confirmées (P1, P2 = 1 000) : « Facturer » R2
+        lettre P2 (la réception est posée AVANT l'événement), P1 reste
+        ouverte ; « Facturer » R1 lettre ensuite P1."""
+        from apps.installations.models_gr_ir import ReceptionNonFacturee
+        ligne = LigneBonCommandeFournisseur.objects.create(
+            bon_commande=self.bcf, produit=self.p_reception, quantite=20,
+            prix_achat_unitaire=Decimal('100'))
+        r1, r2 = (self._reception([(ligne, 10)]) for _ in 'ab')
+        p1, p2 = (ReceptionNonFacturee.objects.create(
+            company=self.company, bon_commande=self.bcf, reception=r,
+            montant_provision=Decimal('1000')) for r in (r1, r2))
+        f2 = facturer_reception(self.company, self.user, r2)
+        self.assertEqual(FactureFournisseur.objects.get(pk=f2.pk).reception_id, r2.pk)
+        p1.refresh_from_db()
+        p2.refresh_from_db()
+        self.assertEqual((p1.lettre, p2.lettre, p2.facture_id), (False, True, f2.pk))
+        f1 = facturer_reception(self.company, self.user, r1)
+        p1.refresh_from_db()
+        self.assertEqual((p1.lettre, p1.facture_id), (True, f1.pk))
+
     def test_sur_commande_porte_date_facture(self):
         with frozen('2026-10-06 10:00:00'):
             facture = facturer_bcf_sur_commande(

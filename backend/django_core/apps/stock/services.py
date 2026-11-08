@@ -3934,7 +3934,7 @@ def _politique_ligne(ligne):
 
 
 def _construire_facture_fournisseur(company, user, bon_commande, lignes, *,
-                                    note):
+                                    note, reception=None):
     """ASTK109 — constructeur UNIQUE des factures fournisseur nées d'un BCF
     (FG56 ``facturer_reception`` et ZPUR1 ``facturer_bcf_sur_commande``).
 
@@ -3967,7 +3967,7 @@ def _construire_facture_fournisseur(company, user, bon_commande, lignes, *,
         ff = FactureFournisseur.objects.create(
             company=company, reference=ref,
             fournisseur=bon_commande.fournisseur,
-            bon_commande=bon_commande,
+            bon_commande=bon_commande, reception=reception,  # AAPV79 — posée AVANT l'événement
             type_achat=type_achat_par_defaut(bon_commande.fournisseur),  # AAPV6
             montant_ht=montant_ht, montant_tva=montant_tva,
             montant_ttc=montant_ttc,
@@ -4156,10 +4156,8 @@ def facturer_reception(company, user, reception):
         # ASTK109 — constructeur UNIQUE (date, rapprochement, acomptes, événement).
         facture = _construire_facture_fournisseur(
             company, user, reception.bon_commande, lignes,
-            note=f'Facture réception {reception.reference}')
-        # ERR-ASTK54 — lien réel réception → facture (garde d'annulation).
-        facture.reception = reception
-        facture.save(update_fields=['reception'])
+            note=f'Facture réception {reception.reference}',
+            reception=reception)  # ERR-ASTK54 — lien réel réception → facture
         return facture
 
 
