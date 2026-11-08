@@ -4053,15 +4053,21 @@ def ventiler_tva_achats(lignes):
 # ── FG56 — Facturer une réception ────────────────────────────────────────────
 
 def _retourne_valide_ligne_bcf(lc):
-    """AAPV25 — quantité du produit de la ligne BCF sortie par les retours
-    fournisseur VALIDÉS de ce BCF (YPROC8)."""
+    """AAPV25/AAPV80 — part de la ligne BCF dans les retours VALIDÉS de son
+    produit, répartie LIGNE PAR LIGNE comme YPROC8 les a rouverts : la ligne la
+    plus récente d'abord, chacune plafonnée à son entrée confirmée."""
     from django.db.models import Sum
-    from .models import LigneRetourFournisseur
+    from .models import LigneReceptionFournisseur, LigneRetourFournisseur
     if lc.produit_id is None:
         return Decimal('0')
-    return Decimal(str(LigneRetourFournisseur.objects.filter(
+    reste = int(LigneRetourFournisseur.objects.filter(
         retour__bon_commande_id=lc.bon_commande_id, retour__statut='valide',
-        produit_id=lc.produit_id).aggregate(t=Sum('quantite'))['t'] or 0))
+        produit_id=lc.produit_id).aggregate(t=Sum('quantite'))['t'] or 0)
+    for lr in LigneReceptionFournisseur.objects.filter(  # lignes plus récentes du même produit
+            ligne_commande__bon_commande_id=lc.bon_commande_id, ligne_commande__produit_id=lc.produit_id,
+            ligne_commande_id__gt=lc.pk, reception__statut='confirme'):
+        reste -= min(reste, quantite_entree_ligne_reception(lr))
+    return Decimal(max(reste, 0))
 
 
 def _quantite_facturable_reception(ligne):
