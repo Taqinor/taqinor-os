@@ -2854,19 +2854,24 @@ def lever_reserve_chantier(reserve, user, *, resolution=''):
     """CIQ628 — lève une réserve (statut résolue, date, auteur)."""
     from django.utils import timezone
 
+    from django.db import transaction
+
     from . import activity
     from .models import Reserve
-    if reserve.statut == Reserve.Statut.RESOLUE:  # ACSV40 — jamais levée deux fois
-        from core.conflit_etat import ConflitEtat
-        raise ConflitEtat(f'Réserve déjà levée le {timezone.localtime(reserve.resolue_le):%d/%m/%Y}.'
-                          if reserve.resolue_le else 'Réserve déjà levée.')
-    reserve.statut = Reserve.Statut.RESOLUE
-    reserve.resolue_le = timezone.now()
-    reserve.levee_par = user if getattr(user, 'pk', None) else None
-    if resolution:
-        reserve.resolution = resolution
-    reserve.save(update_fields=['statut', 'resolue_le', 'levee_par',
-                                'resolution', 'date_modification'])
+    with transaction.atomic():  # ACSV40 — relue sous verrou : jamais levée deux fois
+        verrou = Reserve.objects.select_for_update().get(pk=reserve.pk)
+        if verrou.statut == Reserve.Statut.RESOLUE:
+            from core.conflit_etat import ConflitEtat
+            raise ConflitEtat(f'Réserve déjà levée le {timezone.localtime(verrou.resolue_le):%d/%m/%Y}.'
+                              if verrou.resolue_le else 'Réserve déjà levée.')
+        verrou.statut = Reserve.Statut.RESOLUE
+        verrou.resolue_le = timezone.now()
+        verrou.levee_par = user if getattr(user, 'pk', None) else None
+        if resolution:
+            verrou.resolution = resolution
+        verrou.save(update_fields=['statut', 'resolue_le', 'levee_par',
+                                   'resolution', 'date_modification'])
+    reserve.refresh_from_db()
     chantier = reserve.installation or getattr(
         reserve.intervention, 'installation', None)
     if chantier is not None:
