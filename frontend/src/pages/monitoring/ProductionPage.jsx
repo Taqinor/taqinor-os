@@ -175,7 +175,8 @@ export default function ProductionPage() {
         toast.success('Relevé supprimé.')
         reloadReadings(selectedId)
       })
-      .catch(() => toast.error('Suppression impossible.'))
+      // AMON46 — le refus du serveur (relevé certifié) est lu.
+      .catch((err) => toast.error(errorMessageFrom(err, 'Suppression impossible.')))
   }
 
   const saveConfig = (patch) => {

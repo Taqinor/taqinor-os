@@ -307,6 +307,12 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
             qs = qs.filter(installation_id=inst)
         return qs
 
+    def perform_destroy(self, instance):
+        # AMON46 — supprimer la config la recréerait vide (get_or_create) :
+        # on la désactive, jamais on ne l'efface.
+        raise ConflitEtat('La configuration de supervision ne se supprime '
+                          'pas : désactivez-la.')
+
     @extend_schema(responses=inline_serializer('MonitoringProvider', {
         'key': serializers.CharField(),
         'label': serializers.CharField(),
@@ -848,6 +854,32 @@ class ProductionReadingViewSet(TenantMixin, viewsets.ModelViewSet):
             created_by=self.request.user)
         # Après une saisie manuelle, ré-évaluer la sous-performance (N52).
         installation = serializer.instance.installation
+        evaluate_underperformance(installation, user=self.request.user)
+
+    def perform_destroy(self, instance):
+        # AMON46 — un relevé qui fonde un certificat ÉMIS (du site ou de son
+        # client consolidé) ne se supprime pas ; sinon, suppression puis
+        # ré-évaluation de la sous-performance.
+        from datetime import timedelta
+
+        from django.db.models import Q
+
+        installation = instance.installation
+        fin = instance.date + timedelta(
+            days=max(int(instance.period_days or 1), 1) - 1)
+        cible = Q(installation_id=installation.pk)
+        if installation.client_id:
+            cible |= Q(client_id=installation.client_id)
+        certificat = CertificatCarbone.objects.filter(
+            cible, company_id=installation.company_id,
+            statut=CertificatCarbone.Statut.EMIS,
+            periode_debut__lte=fin, periode_fin__gte=instance.date,
+        ).order_by('periode_debut').first()
+        if certificat is not None:
+            raise ConflitEtat(
+                f'Ce relevé fonde le certificat {certificat.reference} : '
+                'annulez le certificat avant de le supprimer.')
+        instance.delete()
         evaluate_underperformance(installation, user=self.request.user)
 
 

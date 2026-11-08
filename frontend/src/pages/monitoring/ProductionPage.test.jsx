@@ -139,6 +139,23 @@ describe('ProductionPage (WIR122 — suppression de relevé + historique mensuel
     expect(screen.getByRole('option', { name: 'Aucun' })).toBeInTheDocument()
   })
 
+  it('AMON46 — une suppression refusée (409) affiche le message du serveur', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const { toast } = await import('../../ui/confirm')
+    monitoringApi.deleteReading.mockRejectedValueOnce({
+      response: { status: 409, data: { detail: 'Ce relevé fonde le certificat CERT-CO2-202611-0001 : annulez le certificat avant de le supprimer.' } },
+    })
+    renderPage(<ProductionPage />)
+
+    const select = await screen.findByRole('combobox', { name: 'Choisir un système installé' })
+    await userEvent.selectOptions(select, '11')
+    await waitFor(() => expect(screen.getAllByText('120.5 kWh').length).toBeGreaterThan(0))
+    await userEvent.click(screen.getAllByLabelText('Supprimer')[0])
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(
+      'Ce relevé fonde le certificat CERT-CO2-202611-0001 : annulez le certificat avant de le supprimer.'))
+  })
+
   it('AMON1 — un relevé refusé (409) affiche le message du serveur', async () => {
     const { default: userEvent } = await import('@testing-library/user-event')
     renderPage(<ProductionPage />)

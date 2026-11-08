@@ -87,6 +87,51 @@ class TestManualEntry(TestCase):
         self.assertEqual(obj.created_by_id, self.user.id)
         self.assertEqual(obj.external_id, '')
 
+    def test_gestes_arriere_traces_et_compenses(self):
+        """AMON46 — écritures monitoring au Journal ; DELETE config 409 ;
+        DELETE d'un relevé certifié 409 ; sinon 204 + ré-évaluation."""
+        from apps.audit.models import AuditLog
+        from apps.monitoring.models import CertificatCarbone
+        cfg = MonitoringConfig.objects.create(
+            company=self.company, installation=self.inst,
+            expected_annual_kwh=Decimal('12000'))
+        juin = ProductionReading.objects.create(
+            company=self.company, installation=self.inst,
+            date=date(2025, 6, 1), period_days=30, energy_kwh=Decimal('900'))
+        octobre = ProductionReading.objects.create(
+            company=self.company, installation=self.inst,
+            date=date(2025, 10, 1), period_days=31, energy_kwh=Decimal('800'))
+        certif = services.emettre_certificat_carbone(
+            self.company, installation_id=self.inst.id,
+            periode_debut=date(2025, 6, 1), periode_fin=date(2025, 6, 30),
+            tco2_evitees=Decimal('0.729'))
+        url_cfg = f'/api/django/monitoring/configs/{cfg.id}/'
+        r = self.api.patch(url_cfg, {'expected_annual_kwh': '9000'},
+                           format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        maj = AuditLog.objects.filter(
+            action='update', object_id=str(cfg.id),
+            content_type__app_label='monitoring').first()
+        self.assertIsNotNone(maj)
+        self.assertEqual(maj.user_id, self.user.id)
+        r = self.api.delete(url_cfg)
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertTrue(MonitoringConfig.objects.filter(pk=cfg.pk).exists())
+        r = self.api.delete(f'/api/django/monitoring/readings/{juin.id}/')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn(certif.reference, str(r.data))
+        with mock.patch('apps.monitoring.views.evaluate_underperformance') as ev:
+            r = self.api.delete(
+                f'/api/django/monitoring/readings/{octobre.id}/')
+        self.assertEqual(r.status_code, 204)
+        ev.assert_called_once()
+        self.assertTrue(AuditLog.objects.filter(
+            action='delete', object_id=str(octobre.id),
+            content_type__app_label='monitoring').exists())
+        CertificatCarbone.objects.filter(pk=certif.pk).update(statut='annule')
+        r = self.api.delete(f'/api/django/monitoring/readings/{juin.id}/')
+        self.assertEqual(r.status_code, 204)
+
     def test_negative_energy_rejected(self):
         r = self.api.post('/api/django/monitoring/readings/', {
             'installation': self.inst.id, 'date': '2026-06-01',
