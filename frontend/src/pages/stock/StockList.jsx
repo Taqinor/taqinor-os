@@ -465,8 +465,10 @@ function TransfertModal({ produits, isAdmin, onClose, onDone }) {
     if (msg) { setError(msg); return }
     setSaving(true); setError(null)
     try {
+      // AAPV74 (rejeu 08/11) — les Select rendent des chaînes ; le corps du
+      // transfert exige des identifiants ENTIERS (garde stricte côté serveur).
       await stockApi.createTransfert({
-        produit: produitId, source, destination,
+        produit: Number(produitId), source: Number(source), destination: Number(destination),
         quantite: parseInt(quantite, 10), note,
       })
       await loadBreakdown(produitId)

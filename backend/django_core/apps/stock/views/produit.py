@@ -426,6 +426,14 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             return [HasPermissionOrLegacy('stock_modifier')()]
         elif self.action in ('destroy', 'force_delete'):
             return [IsAdminRole()]
+        elif self.action == 'emplacements':
+            # AAPV74 (rejeu 08/11) — la ventilation par emplacement alimente le
+            # dialogue « Transférer » : même droit que le transfert lui-même
+            # (`stock_mouvement`, cf. TransfertStockViewSet). Aucun prix ni
+            # valorisation dans la réponse (`stock_breakdown`), donc rien à
+            # masquer. Cas explicite OBLIGATOIRE (sinon repli IsAdminRole →
+            # un responsable ne voyait que « dispo 0 »).
+            return [HasPermissionOrLegacy('stock_mouvement')()]
         elif self.action in ('prix_fournisseurs', 'historique_prix'):
             # AUD213 — cette action ne renvoie QUE des prix d'ACHAT (et leurs
             # paliers) : même gate `prix_achat_voir` que le ViewSet dédié et
@@ -800,7 +808,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
 
     @extend_schema(responses=LISTE)
     @action(detail=True, methods=['get'], url_path='emplacements',
-            permission_classes=[IsAdminRole])
+            permission_classes=[HasPermissionOrLegacy('stock_mouvement')])
     def emplacements(self, request, *args, **kwargs):
         """N15 — ventilation du stock de ce produit par emplacement (le dépôt
         principal détient le reste = total − somme des autres)."""
