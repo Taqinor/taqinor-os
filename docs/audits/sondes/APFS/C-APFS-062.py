@@ -50,9 +50,18 @@ def sonde(ctx):
             corps = str(r.content)[:200]
         return {'http': r.status_code, 'corps': corps}
 
+    import re
+
+    def norme(x):
+        # l'écho de l'id et le request_id diffèrent par construction : on compare statut + gabarit du corps
+        corps = x['corps']
+        if isinstance(corps, dict):
+            corps = {k: v for k, v in corps.items() if k != 'error'}
+        return (x['http'], re.sub(r'\d+', 'N', str(corps)))
+
     def paire(appel):
         b, a = rep(appel('B')), rep(appel('ABSENT'))
-        return {'id_B': b, 'id_absent': a, 'identiques': b == a}
+        return {'id_B': b, 'id_absent': a, 'identiques': norme(b) == norme(a)}
 
     obs = {}
     obs['temoin_client_devis'] = paire(lambda k: c.patch(
