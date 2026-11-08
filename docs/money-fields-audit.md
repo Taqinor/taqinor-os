@@ -69,10 +69,10 @@ Généré par `python scripts/check_money_fields.py --decimal-places`. Tableau d
 | `backend/django_core/apps/parametres/models_company.py:236` | CompanyProfile.tva_panneaux | 5 | 2 |
 | `backend/django_core/apps/parametres/models_company.py:268` | CompanyProfile.remise_max_pct | 5 | 2 |
 | `backend/django_core/apps/portail/models.py:266` | PaiementFacturePortail.montant | 14 | 2 |
-| `backend/django_core/apps/sav/models.py:752` | Ticket.cout | 10 | 2 |
-| `backend/django_core/apps/sav/models.py:1497` | WarrantyClaim.cout_recupere | 10 | 2 |
-| `backend/django_core/apps/sav/models.py:1599` | ContratMaintenance.prix | 10 | 2 |
-| `backend/django_core/apps/sav/models.py:1928` | PrestationContrat.prix_ht | 10 | 2 |
+| `backend/django_core/apps/sav/models.py:758` | Ticket.cout | 10 | 2 |
+| `backend/django_core/apps/sav/models.py:1503` | WarrantyClaim.cout_recupere | 10 | 2 |
+| `backend/django_core/apps/sav/models.py:1605` | ContratMaintenance.prix | 10 | 2 |
+| `backend/django_core/apps/sav/models.py:1934` | PrestationContrat.prix_ht | 10 | 2 |
 | `backend/django_core/apps/stock/models.py:450` | AchatsParametres.tolerance_prix_pct | 5 | 2 |
 | `backend/django_core/apps/stock/models.py:452` | AchatsParametres.tolerance_prix_absolu_mad | 12 | 2 |
 | `backend/django_core/apps/stock/models.py:478` | AchatsParametres.seuil_deviation_prix_pct | 5 | 2 |

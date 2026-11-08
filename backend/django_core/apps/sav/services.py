@@ -1577,6 +1577,16 @@ def appliquer_transition_ticket(ticket, cible, user, *, systeme=False,
                            'ouverte(s) sur ce ticket.'),
                 'interventions_ouvertes': ouvertes,
             })
+    # ACSV67 - garde soeur de YSERV2 : un pret d'equipement encore dehors
+    # (stock sorti) empeche la cloture.
+    if cible == Ticket.Statut.CLOTURE and old.statut != Ticket.Statut.CLOTURE:
+        prets = list(old.prets_equipement.filter(statut='en_cours')
+                     .values_list('pk', flat=True))
+        if prets:
+            raise TransitionTicketRefusee({
+                'statut': ('Impossible de cl\u00f4turer : pr\u00eat(s) '
+                           "d'\u00e9quipement encore en cours sur ce ticket."),
+                'prets_en_cours': prets})
     # ACSV60 - cloture d'un ticket facturable non facture : refusee, sauf
     # forcage responsable motive (``sans_facture``) ; le balayage (systeme)
     # laisse le ticket Resolu.

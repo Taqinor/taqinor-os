@@ -72,10 +72,10 @@ with no rate column at all — mono-MAD in practice.
 | parametres | TariffSettings | `apps/parametres/models_tariff.py:76` | force_motrice_prix_kwh_ttc, prix_incluent_taxes, prix_unique_kwh, surplus_prix_kwh_ttc |
 | portail | PaiementFacturePortail | `apps/portail/models.py:229` | montant |
 | publicapi | BulkJob | `apps/publicapi/models.py:543` | total |
-| sav | Ticket | `apps/sav/models.py:665` | cout |
-| sav | WarrantyClaim | `apps/sav/models.py:1448` | cout_recupere |
-| sav | ContratMaintenance | `apps/sav/models.py:1566` | prix |
-| sav | PrestationContrat | `apps/sav/models.py:1895` | prix_ht |
+| sav | Ticket | `apps/sav/models.py:671` | cout |
+| sav | WarrantyClaim | `apps/sav/models.py:1454` | cout_recupere |
+| sav | ContratMaintenance | `apps/sav/models.py:1572` | prix |
+| sav | PrestationContrat | `apps/sav/models.py:1901` | prix_ht |
 | statuspage | UptimeDayBucket | `apps/statuspage/models.py:164` | echantillons_total |
 | stock | AchatsParametres | `apps/stock/models.py:426` | ras_tva_actif, seuil_deviation_prix_pct, tolerance_prix_absolu_mad, tolerance_prix_pct |
 | stock | ToleranceRapprochementCategorie | `apps/stock/models.py:576` | tolerance_prix_absolu_mad, tolerance_prix_pct |

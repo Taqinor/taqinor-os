@@ -476,6 +476,21 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
         # catalogue et deux jumeaux divergeaient).
         avant = serializer.instance
         pose_avant, produit_avant = avant.date_pose, avant.produit_id
+        donnees = serializer.validated_data
+        if 'installation' in donnees and (
+                getattr(donnees['installation'], 'pk', None)
+                != avant.installation_id):
+            # ACSV68 — déplacer un équipement de chantier : refus tant qu'un
+            # ticket ouvert le vise, sinon pose recalée sur la réception du
+            # nouveau chantier (sauf date_pose saisie dans le même PATCH).
+            if avant.tickets.filter(statut__in=Ticket.OPEN_STATUTS,
+                                    annule=False).exists():
+                raise ConflitEtat({'installation': [
+                    'Un ticket ouvert vise cet équipement : clôturez-le '
+                    'avant de le déplacer.']})
+            reception = getattr(donnees['installation'], 'date_reception', None)
+            if reception and 'date_pose' not in donnees:
+                donnees['date_pose'] = reception
         try:
             super().perform_update(serializer)
         except IntegrityError:
@@ -497,6 +512,22 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
             update_fields.append('equipement_token')
         if update_fields:
             inst.save(update_fields=update_fields)
+
+    def perform_destroy(self, instance):
+        """ACSV70 — un équipement référencé (ticket, pièce retirée, arrêt,
+        relevé, RMA) ne se supprime pas : 409, le rebut reste le chemin."""
+        refs = [(n, un, plusieurs) for n, un, plusieurs in (
+            (instance.tickets.count(), 'ticket', 'tickets'),
+            (instance.pieces_retirees.count(), 'pièce retirée', 'pièces retirées'),
+            (instance.downtimes.count(), 'arrêt', 'arrêts'),
+            (instance.releves_compteur.count(), 'relevé', 'relevés'),
+            (instance.warranty_claims.count(), 'RMA', 'RMA')) if n]
+        if refs:
+            raise ConflitEtat(
+                'Équipement référencé ('
+                + ', '.join(f'{n} {un if n == 1 else plusieurs}' for n, un, plusieurs in refs)
+                + ') : mettez-le au rebut.')
+        super().perform_destroy(instance)
 
     @extend_schema(
         request=_SCHEMA_REBUT, responses=EquipementSerializer)
@@ -1738,6 +1769,10 @@ class TicketViewSet(CompanyScopedModelViewSet):
         motif = (_valider_corps(_SCHEMA_ANNULER, request.data).get('motif')
                  or '').strip()
         if not ticket.annule:
+            if ticket.prets_equipement.filter(statut='en_cours').exists():
+                raise ConflitEtat(  # ACSV67
+                    "Impossible d'annuler : un pr\u00eat d'\u00e9quipement est "
+                    'encore en cours (retournez-le d\u0027abord).')
             ticket.annule = True
             ticket.motif_annulation = motif or None
             ticket.reprendre_apres_attente()
@@ -2733,6 +2768,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
 
             doublon.activites.update(ticket=principal, company=principal.company)
             doublon.pieces.update(ticket=principal, company=principal.company)
+            doublon.prets_equipement.update(  # ACSV67
+                ticket=principal, company=principal.company)
             TicketChecklistItem.objects.filter(ticket=doublon).update(
                 ticket=principal, company=principal.company)
             ct = ContentType.objects.get_for_model(Ticket)

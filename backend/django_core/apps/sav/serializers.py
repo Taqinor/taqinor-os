@@ -733,6 +733,16 @@ class TicketSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
     def get_canal_resolution_propose(self, obj):
         return obj.canal_resolution_propose()
 
+    def validate_equipement(self, value):
+        """ACSV71 — un équipement retiré (remplacé, rebut) n'ouvre plus de
+        NOUVEAU ticket ; un ticket existant garde le sien."""
+        if (value is not None and value.est_retire and (
+                self.instance is None
+                or value.pk != self.instance.equipement_id)):
+            raise serializers.ValidationError(
+                "Cet équipement n'est plus en service (remplacé ou mis au rebut).")
+        return value
+
     def _palier_responsable(self):
         """ACSV54 - palier Administrateur/Responsable (hors requete : vrai)."""
         from authentication.models import CustomUser

@@ -533,6 +533,12 @@ class Equipement(models.Model):
         return max(candidates) if candidates else None
 
     @property
+    def est_retire(self):
+        """ACSV71 — appareil retiré du parc (remplacé ou mis au rebut) :
+        fermé à tout NOUVEAU ticket (QR public, création staff)."""
+        return self.statut == self.Statut.REMPLACE or bool(self.mis_au_rebut)
+
+    @property
     def sous_garantie_legale_seule(self):
         """XSAV13 — True si SEULE la garantie légale (loi 31-08) couvre
         encore l'équipement — la garantie commerciale est absente ou déjà
