@@ -17,7 +17,7 @@ from authentication.permissions import IsResponsableOrAdmin
 from apps.ventes.gardes_lecture import LectureFactures  # ERR-ASEC11-LISTE-FACTURES
 from apps.ventes.views import openapi_docs as D
 from apps.ventes.models import Facture
-from apps.ventes.serializers_facturation import FactureListeSerializer, FactureSerializer
+from apps.facturation.serializers import FactureListeSerializer, FactureSerializer
 
 logger = logging.getLogger('apps.ventes.views.facture')
 

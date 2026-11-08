@@ -4,7 +4,7 @@ from apps.ventes.views import openapi_docs as D
 from rest_framework.parsers import JSONParser
 from rest_framework import filters
 from apps.ventes.models import Facture
-from apps.ventes.serializers_facturation import (
+from apps.facturation.serializers import (
     FactureListeSerializer, FactureSerializer, FactureWriteSerializer)
 from .facture_cycle import PEUT_ANNULER, FactureCycleActionsMixin
 from .facture_documents import FactureDocumentsActionsMixin

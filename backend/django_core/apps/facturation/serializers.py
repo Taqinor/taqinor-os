@@ -1,9 +1,1044 @@
-"""Serializers du module Facturation (``apps.facturation``).
+"""Sérialiseurs du module Facturation (``apps.facturation``) — factures,
+lignes, paiements, avoirs, notes de débit, relances, remises, mandats.
 
-ODX18 — ré-export TRANSITOIRE des serializers de facturation qui vivent encore
-dans ``apps.ventes.serializers`` (interleavés avec les serializers ventes). Ce
-module expose ``apps.facturation.serializers`` pour les ViewSets de facturation
-et les nouvelles routes ``/api/django/facturation/…`` ; ODX22 re-logera leur
-corps ici. Les routes historiques ``/api/django/ventes/…`` continuent d'utiliser
-les MÊMES classes.
-"""
+ODX18 (étape 2) : déplacés TELS QUELS (corps inchangés) depuis
+``apps/ventes/serializers_facturation.py`` ; seuls les imports relatifs sont
+réécrits en ``apps.ventes.*``. ``BonCommandeSerializer`` (bon de commande =
+ventes) reste dans ``apps.ventes.serializers_facturation``, qui ré-exporte les
+classes d'ici : ``from apps.ventes.serializers_facturation import …`` renvoie
+les MÊMES objets (aucune copie, aucun changement de forme d'API)."""
+from decimal import Decimal
+
+from django.core.validators import RegexValidator
+from django.db import models
+from drf_spectacular.drainage import set_override
+from drf_spectacular.utils import extend_schema_field
+from rest_framework import serializers
+from rest_framework.validators import UniqueTogetherValidator
+from apps.ventes.models import (
+    Facture, LigneFacture, Paiement,
+    Avoir, LigneAvoir,
+    RemiseEncaissement, LigneRemiseEncaissement,
+    MandatPaiement, RetenueSubie,
+)
+from apps.ventes.serializers import _fallback_taux_tva
+from core.champs_stricts import (
+    BooleenStrict, ChaineStricte, ChampsStrictsMixin,
+    DecimalSouple, EntierStrict, IdInconnu404Mixin, MOTIF_NON_BLANC_SANS_NUL,
+)
+from core.conflit_etat import ConflitEtat
+from core.mixins import SameCompanyFKSerializerMixin
+from core.unicite import UniciteEn409Mixin
+from apps.ventes.domain.bornes import (
+    MOTIF_MONTANT_POSITIF, montant_saisi, pourcentage_saisi,
+    total_ligne_hors_capacite,
+)
+from apps.ventes.domain.conditions_ci import (
+    MOTIF_ACOMPTE, MOTIF_REMISE, _decimal_borne, _zero_negatif)
+
+
+def _retirer_unicite_tranche(serializer):
+    """VNT15 — ``uq_facture_tranche_vivante`` (devis, cle_tranche) fait
+    générer par DRF un ``UniqueTogetherValidator`` AUTO qui IMPOSE ``devis``
+    au POST (CI M1 : 400 « devis obligatoire » sur toute facture manuelle
+    sans devis). ``cle_tranche`` est posée par le serveur, jamais par le
+    corps : la contrainte base reste l'arbitre du double clic, et ``devis``
+    redevient FACULTATIF (``extra_kwargs`` de chaque Meta)."""
+    serializer.validators = [
+        v for v in serializer.validators
+        if not (isinstance(v, UniqueTogetherValidator)
+                and 'cle_tranche' in getattr(v, 'fields', ()))]
+
+
+class _BornesArgentMixin:
+    """AFAC69 (C-AFAC-059) — bornes d'argent d'une facture / d'un avoir
+    validées AU SÉRIALISEUR par la garde unique ``domain/bornes`` (ATOT21) :
+    un 400 nommé par champ, jamais un 500 ``CheckViolation``. Les
+    ``CheckConstraint`` du modèle restent le filet base."""
+
+    _MSG_REMISE = 'La remise doit être comprise entre 0 et 100 %.'
+
+    @staticmethod
+    def _borne_pourcentage(valeur, champ, message):
+        if valeur is None:
+            return valeur
+        _, erreur = pourcentage_saisi({champ: valeur}, champ, valeur)
+        if erreur:
+            raise serializers.ValidationError(message)
+        return valeur
+
+    @staticmethod
+    def _borne_montant(valeur, champ, message):
+        _, erreur = montant_saisi(valeur, champ)
+        if erreur:
+            raise serializers.ValidationError(message)
+        return valeur
+
+    def validate_remise(self, valeur):
+        return self._borne_pourcentage(valeur, 'remise', self._MSG_REMISE)
+
+    def validate_remise_globale(self, valeur):
+        return self._borne_pourcentage(
+            valeur, 'remise_globale', self._MSG_REMISE)
+
+    def validate_quantite(self, valeur):
+        return self._borne_montant(
+            valeur, 'quantite', 'La quantité ne peut pas être négative.')
+
+    def validate_prix_unitaire(self, valeur):
+        return self._borne_montant(
+            valeur, 'prix_unitaire',
+            'Le prix unitaire ne peut pas être négatif.')
+
+
+_MOTIF_LIGNE_POSITIF = (r'^(?:\d{1,8}(?:\.\d{0,2})?|\.\d{1,2}|'
+                        + _zero_negatif(8) + ')$')
+_MOTIFS_LIGNE_FACTURE = {'quantite': _MOTIF_LIGNE_POSITIF,
+                         'prix_unitaire': _MOTIF_LIGNE_POSITIF,
+                         'remise': MOTIF_REMISE}
+
+
+class LigneFactureSerializer(_BornesArgentMixin, SameCompanyFKSerializerMixin,
+                             serializers.ModelSerializer):
+    # ASEC27 (C-ASEC-005) — `produit` et `source_devis` bornés à la société
+    # de la requête : un id étranger = 400 « objet inexistant » (ACAL298).
+    # ENF17 — `facture` de même (plus « Facture inconnue. » de la vue).
+    same_company_fields = ('facture', 'produit', 'source_devis')
+
+    total_ht = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = LigneFacture
+        fields = '__all__'
+        # ENF11 (nocturne 15/10) — DRF refuse le caractère nul dans tout texte :
+        # le motif PUBLIÉ le dit (non blanc, sans nul), même prédicat appliqué.
+        extra_kwargs = {'designation': {'validators': [RegexValidator(MOTIF_NON_BLANC_SANS_NUL)]}}
+
+    def get_fields(self):
+        # api-fuzz-full 28/10 — quantité / prix ≥ 0 et remise 0-100 publiés
+        # SUR LE CHAMP (un seul motif) : doublés en ``allOf`` du motif signé
+        # de drf-spectacular, le corps du PUT était ingénérable (« Failed
+        # Health Check », filter_too_much). ``-0`` vaut zéro, accepté.
+        fields = super().get_fields()
+        for nom, motif in _MOTIFS_LIGNE_FACTURE.items():
+            if nom in fields:
+                set_override(fields[nom], 'field', {
+                    'type': 'string', 'format': 'decimal', 'pattern': motif})
+        return fields
+
+    def validate(self, attrs):
+        """api-fuzz — quantité et prix valent chacun jusqu'à 8 chiffres
+        entiers, mais leur produit, lui, est SERVI par ``total_ht`` (10
+        chiffres) : une ligne enregistrée au-delà faisait lever
+        ``InvalidOperation`` à CHAQUE lecture (GET, PATCH, PUT → 500). Un
+        corps conforme au schéma dont le montant de ligne ne tient pas est un
+        refus d'état de la capacité du document : 409, même corps par champ ;
+        sur une modification, les valeurs absentes du corps sont celles de la
+        ligne."""
+        instance = self.instance
+
+        def _valeur(nom):
+            return attrs[nom] if nom in attrs else getattr(instance, nom, None)
+
+        if total_ligne_hors_capacite(_valeur('quantite'),
+                                     _valeur('prix_unitaire'),
+                                     _valeur('remise')):
+            raise ConflitEtat({'quantite': (
+                'Montant de ligne trop élevé : la quantité multipliée par le '
+                'prix unitaire dépasse 99 999 999,99.')})
+        return attrs
+
+    def create(self, validated_data):
+        # Réforme TVA : taux par ligne, copié du produit, repli sur le taux
+        # STANDARD éditable de la société (défaut 20 % → identique).
+        if validated_data.get('taux_tva') is None:
+            produit = validated_data.get('produit')
+            produit_tva = getattr(produit, 'tva', None)
+            if produit_tva is not None:
+                validated_data['taux_tva'] = produit_tva
+            else:
+                company = getattr(validated_data.get('facture'), 'company', None)
+                validated_data['taux_tva'] = _fallback_taux_tva(
+                    company, validated_data.get('designation'))
+        return super().create(validated_data)
+
+
+class PaiementSerializer(serializers.ModelSerializer):
+    # api-fuzz — champs texte du modèle (``numero_cheque``, ``reference``,
+    # ``note``…) en ``ChaineStricte`` : le schéma publie « sans caractère nul »
+    # (DRF le refuse en 400, ``enregistrer-paiement``).
+    serializer_field_mapping = {
+        **serializers.ModelSerializer.serializer_field_mapping,
+        models.CharField: ChaineStricte,
+        models.TextField: ChaineStricte,
+    }
+    mode_display = serializers.CharField(source='get_mode_display', read_only=True)
+    # Champs d'affichage (lecture seule) pour la page Encaissements : référence
+    # de la facture, nom du client et auteur de l'encaissement (« par qui »).
+    facture_reference = serializers.CharField(
+        source='facture.reference', read_only=True, allow_null=True)
+    client_nom = serializers.SerializerMethodField()
+    created_by_username = serializers.CharField(
+        source='created_by.username', read_only=True, allow_null=True)
+    # XFAC1 — avance non affectée : solde encore disponible pour ventilation.
+    montant_disponible = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+    statut_affectation_display = serializers.CharField(
+        source='get_statut_affectation_display', read_only=True)
+    # AUD132 (PAY-10) — l'écran Encaissements n'avait AUCUNE colonne statut :
+    # un paiement rejeté (chèque impayé) y était affiché comme un encaissement
+    # valide. Le libellé est servi ici pour que l'écran ne le réinvente pas.
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    # AFAC17 — auteur de l'annulation de saisie (contrat
+    # ``paiement_annuler_saisie.json``).
+    annule_par_nom = serializers.CharField(
+        source='annule_par.username', read_only=True, allow_null=True)
+
+    # SCA45 — ``idempotency_key`` est OPTIONNEL : un encaissement MANUEL n'en a
+    # pas (seuls les appels idempotents webhook/API en fournissent une). Il DOIT
+    # être déclaré EXPLICITEMENT ``required=False`` : la contrainte d'unicité
+    # (company, idempotency_key) — CONDITIONNELLE côté DB (WHERE clé non nulle) —
+    # fait générer par DRF un validateur unique-together AUTO qui, en ignorant la
+    # condition, marque le champ ``required=True`` au MOMENT de la construction du
+    # champ (dans ``super().__init__``). Retirer seulement le validateur ensuite
+    # (ci-dessous) NE réinitialise PAS ``field.required`` déjà calculé → 400 « Ce
+    # champ est obligatoire » sur chaque encaissement manuel. La déclaration
+    # explicite court-circuite cette logique auto ; la contrainte DB reste
+    # l'arbitre de l'unicité pour les vrais appels idempotents.
+    idempotency_key = ChaineStricte(
+        required=False, allow_null=True, allow_blank=True)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Retire AUSSI le validateur unique-together AUTO (en plus de la
+        # déclaration explicite ci-dessus) pour qu'il ne tente pas la vérif
+        # d'unicité sur la clé nulle d'un paiement manuel ; la contrainte DB
+        # conditionnelle reste l'arbitre.
+        self.validators = [
+            v for v in self.validators
+            if not (isinstance(v, UniqueTogetherValidator)
+                    and 'idempotency_key' in getattr(v, 'fields', ()))]
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_client_nom(self, obj):
+        c = obj.facture.client if obj.facture_id else obj.client
+        if c is None:
+            return None
+        return f"{c.nom} {c.prenom or ''}".strip()
+
+    class Meta:
+        model = Paiement
+        fields = '__all__'
+        # company/created_by forcés côté serveur — jamais depuis le corps.
+        # escompte_montant (XFAC12) est calculé côté serveur (fenêtre + net
+        # réglé), jamais accepté du corps de requête.
+        #
+        # AUD134 — `fields='__all__'` laissait SEPT champs de plus en écriture.
+        # `enregistrer-paiement` fait `PaiementSerializer(data=request.data)`
+        # puis `save(facture=…, company=…, created_by=…, escompte_montant=…)` :
+        # tout champ non surchargé passait tel quel. Concrètement, un corps
+        # pouvait poser `statut='rejete'` — contournant l'action `rejeter` et
+        # sa permission `IsResponsableOrAdmin` — et un `client` pointant sur
+        # une AUTRE société. Chacun de ces champs a son propriétaire serveur :
+        #   - `client`             → résolu depuis la facture, ou scopé société
+        #                            sur le chemin avance (`enregistrer-avance`
+        #                            passe par `crm.selectors.client_base_qs`) ;
+        #   - `statut` + `motif_rejet`/`frais_rejet`/`date_rejet`
+        #                          → l'action `rejeter` (YLEDG5) et elle seule ;
+        #   - `statut_affectation` → le service de ventilation (XFAC1) ;
+        #   - `provider_ref`       → le webhook PSP.
+        read_only_fields = ['company', 'created_by', 'date_creation', 'facture',
+                            'escompte_montant', 'client', 'statut',
+                            'statut_affectation', 'provider_ref',
+                            'motif_rejet', 'frais_rejet', 'date_rejet',
+                            # APDF30 — numéro de reçu posé par le serveur.
+                            'numero_recu',
+                            # AFAC17 — posés par `annuler-saisie` seul.
+                            'annule_le', 'annule_par', 'motif_annulation']
+
+
+class AffectationPaiementSerializer(SameCompanyFKSerializerMixin,
+                                    serializers.ModelSerializer):
+    # ENF17 — paiement / facture d'une AUTRE société = id absent (400).
+    same_company_fields = ('paiement', 'facture')
+    facture_reference = serializers.CharField(
+        source='facture.reference', read_only=True)
+
+    class Meta:
+        from apps.ventes.models import AffectationPaiement
+        model = AffectationPaiement
+        fields = ['id', 'paiement', 'facture', 'facture_reference',
+                  'montant', 'date_affectation', 'created_by']
+        read_only_fields = ['company', 'created_by', 'date_affectation']
+
+
+class RetenueSubieSerializer(serializers.ModelSerializer):
+    """XFAC4 — RAS subie (TVA/IS) constatée sur une facture client."""
+    type_retenue_display = serializers.CharField(
+        source='get_type_retenue_display', read_only=True)
+    facture_reference = serializers.CharField(
+        source='facture.reference', read_only=True)
+
+    class Meta:
+        from apps.ventes.models import RetenueSubie
+        model = RetenueSubie
+        fields = '__all__'
+        read_only_fields = ['company', 'created_by', 'date_creation', 'facture',
+                            'paiement', 'annulee']
+
+
+class PaiementVentilerRequestSerializer(serializers.Serializer):
+    """CI #1001 (fuzz) — ENTRÉE de `ventiler` : `facture` entier et `montant`
+    décimal > 0 requis, validés ICI (400 sous le champ fautif) au lieu d'un
+    `Decimal(None)` → 500."""
+
+    facture = EntierStrict()
+    montant = DecimalSouple(
+        max_digits=12, decimal_places=2, min_value=Decimal('0.01'),
+        error_messages={'min_value': 'Le montant ventilé doit être positif.'})
+
+
+class PaiementEnvoyerRecuRequestSerializer(serializers.Serializer):
+    """CI #1001 (fuzz) — ENTRÉE de `envoyer-recu` : `to_email` est une vraie
+    chaîne (ou absent / `null`) ; `{}` ou un nombre était accepté en silence."""
+
+    to_email = ChaineStricte(
+        required=False, allow_blank=True, allow_null=True)
+
+
+@extend_schema_field(_decimal_borne(MOTIF_REMISE, 100))
+class PourcentSouple(DecimalSouple):
+    """api-fuzz — ``remise_globale`` d'une facture : chaîne au motif 0-100 à
+    2 décimales OU nombre JSON 0-100 arrondi au centième (``DecimalSouple``),
+    publié ainsi. Un flottant (``0.3333333333333333``) était refusé « pas plus
+    de 5 chiffres » alors qu'il est conforme ; la borne 0-100 reste jugée par
+    ``validate_remise_globale`` (message français de la garde unique)."""
+
+
+class PaiementAvecRetenueEntreeSerializer(serializers.Serializer):
+    """AFAC30 (C-AFAC-029) — valide l'ENTRÉE de `paiement-avec-retenue` :
+    montant décimal > 0, date requise, `mode` ∈ `Paiement.Mode`,
+    `type_retenue` ∈ `TypeRetenue`, taux 0-100. Une entrée invalide donne un
+    400 en français SOUS le champ fautif — plus jamais un 500
+    (`InvalidOperation`/`TypeError`/`IntegrityError`) ni un `zzz` enregistré."""
+
+    montant = serializers.DecimalField(
+        max_digits=12, decimal_places=2, min_value=Decimal('0.01'),
+        error_messages={
+            'required': 'Le montant est requis.',
+            'invalid': 'Montant invalide : un nombre décimal est attendu.',
+            'min_value': 'Le montant doit être positif.',
+            'max_decimal_places': 'Montant : deux décimales au plus.',
+        })
+    date_paiement = serializers.DateField(error_messages={
+        'required': 'La date de paiement est requise.',
+        'invalid': 'Date de paiement invalide (AAAA-MM-JJ).',
+    })
+    mode = serializers.ChoiceField(
+        choices=Paiement.Mode.choices, default=Paiement.Mode.VIREMENT,
+        error_messages={'invalid_choice': 'Mode de paiement inconnu.'})
+    type_retenue = serializers.ChoiceField(
+        choices=RetenueSubie.TypeRetenue.choices,
+        default=RetenueSubie.TypeRetenue.RAS_TVA,
+        error_messages={'invalid_choice': 'Type de retenue inconnu.'})
+    # api-fuzz — publié « pourcentage 0-100 » (chaîne au motif OU nombre) :
+    # le schéma annonçait tout décimal et ``-317.88`` répondait 400.
+    taux = PourcentSouple(
+        max_digits=5, decimal_places=2, min_value=Decimal('0'),
+        max_value=Decimal('100'),
+        error_messages={
+            'required': 'Le taux de RAS est requis.',
+            'invalid': 'Taux de RAS invalide : un nombre est attendu.',
+            'min_value': 'Le taux de RAS doit être compris entre 0 et 100 %%.',
+            'max_value': 'Le taux de RAS doit être compris entre 0 et 100 %%.',
+        })
+    reference = ChaineStricte(
+        required=False, allow_blank=True, default='', max_length=120)
+    note = ChaineStricte(required=False, allow_blank=True, default='')
+
+    def get_fields(self):
+        # api-fuzz-full 27/10 (moteur, « Failed Health Check ») — le montant
+        # publiait le motif décimal générique (signe, 10 chiffres) ET la vue
+        # resserrait en ``allOf`` au motif STRICTEMENT positif : deux motifs
+        # différents sur le même champ, que le générateur ne sait pas fusionner
+        # (il filtre, puis abandonne). Le montant publie directement le motif
+        # positif (min 0,01, 12 chiffres dont 2 décimales = ce que le champ
+        # applique) ; la vue ne le resserre plus.
+        fields = super().get_fields()
+        set_override(fields['montant'], 'field', {
+            'type': 'string', 'format': 'decimal',
+            'pattern': MOTIF_MONTANT_POSITIF})
+        return fields
+
+
+class FactureSerializer(SameCompanyFKSerializerMixin,
+                        serializers.ModelSerializer):
+    # ENF17 — mêmes bornes que FactureWriteSerializer (ASEC27) + l'auteur de
+    # l'abandon : un id d'une AUTRE société = id absent (400).
+    same_company_fields = ('client', 'devis', 'bon_commande', 'lead',
+                           'entite', 'condition_paiement_ref', 'abandon_par')
+    lignes = LigneFactureSerializer(many=True, read_only=True)
+    paiements = PaiementSerializer(many=True, read_only=True)
+    total_ht = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    total_tva = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    total_ttc = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    montant_paye = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    # ERR-QAH-VENTES-FACTURES-KPI-ENCAISSER — reste dû AFFICHÉ : 0 pour une
+    # facture payée ou annulée (plus de « Dû » ni d'« Encaisser » sur une ligne
+    # soldée), sinon ``Facture.montant_du``. Même règle que ``kpis_factures``.
+    montant_du = serializers.SerializerMethodField()
+    # CIQ214 — reste EXIGIBLE (retenue de garantie non libérée exclue).
+    montant_exigible = serializers.SerializerMethodField()
+    avoirs_total = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    avoirs = serializers.SerializerMethodField()
+    client_nom = serializers.CharField(source='client.nom', read_only=True)
+    # L853 — téléphone du client (lecture seule) : permet de valider/désactiver
+    # le bouton WhatsApp côté front sans aller-retour 400. Jamais en écriture.
+    client_telephone = serializers.CharField(
+        source='client.telephone', read_only=True, allow_null=True)
+    statut_display = serializers.CharField(source='get_statut_display', read_only=True)
+    type_facture_display = serializers.CharField(source='get_type_facture_display', read_only=True)
+    devis_reference = serializers.CharField(source='devis.reference', read_only=True, allow_null=True)
+    # VX98 — auteur de la dernière modification (puce de fraîcheur). Lecture seule.
+    updated_by_nom = serializers.CharField(
+        source='updated_by.username', read_only=True, allow_null=True)
+    # Ventilation TVA par taux (10 %/20 %), réconciliée au centime.
+    tva_par_taux = serializers.SerializerMethodField()
+    is_overdue = serializers.SerializerMethodField()
+    jours_retard = serializers.IntegerField(read_only=True)
+    # Conformité Article 145 CGI (N11) : mentions légales manquantes — pur
+    # AVERTISSEMENT, ne bloque jamais l'émission.
+    mentions_manquantes = serializers.ListField(
+        child=serializers.CharField(), read_only=True)
+    # AFAC9 — contrat `facturation/contract_samples/facture_encaissable.json` :
+    # la règle « encaissable » vit au serveur (LA porte unique), l'écran la lit.
+    encaissable = serializers.SerializerMethodField()
+    motif_non_encaissable = serializers.SerializerMethodField()
+    # VNT91 — les blocs de la vente du PDF facture, lus par LA fonction du PDF
+    # (``utils/pdf.contexte_vente_facture``), servis au DÉTAIL seulement
+    # (``retrieve``) — jamais sur la liste paginée (un calcul par ligne = N+1).
+    # Au détail, ``objet_vente`` / ``garanties`` (instantanés du modèle)
+    # prennent la valeur imprimée (instantané d'une émise, vivante sinon).
+    situation_vente = serializers.SerializerMethodField()
+    prochaines_echeances = serializers.SerializerMethodField()
+
+    def _vente_pdf(self, obj):
+        if self.parent is not None or getattr(
+                self.context.get('view'), 'action', None) != 'retrieve':
+            return None
+        cache = self.context.setdefault('_vente_pdf', {})
+        if obj.pk not in cache:
+            from apps.ventes.utils.pdf import contexte_vente_facture
+            cache[obj.pk] = contexte_vente_facture(obj)
+        return cache[obj.pk]
+
+    @extend_schema_field(serializers.DictField(allow_null=True))
+    def get_situation_vente(self, obj):
+        return (self._vente_pdf(obj) or {}).get('situation_vente')
+
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
+    def get_prochaines_echeances(self, obj):
+        return (self._vente_pdf(obj) or {}).get('prochaines_echeances', [])
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        vente = self._vente_pdf(instance)
+        if vente is None:  # liste, ou toute action autre que le détail
+            data.pop('situation_vente', None)
+            data.pop('prochaines_echeances', None)
+        elif vente:  # facture rattachée à un devis : les blocs du PDF
+            data['objet_vente'] = vente['objet_vente']
+            data['garanties'] = vente['garanties_vente']
+        return data
+
+    def _motif_encaissement(self, obj):
+        # Même fonction que la porte serveur ; aucune requête hors le
+        # `devis.bon_commande` d'un ACOMPTE (préchargé par la liste).
+        from apps.ventes.domain.encaissements import motif_non_encaissable
+        return motif_non_encaissable(obj)
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_encaissable(self, obj):
+        return self._motif_encaissement(obj) is None
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_motif_non_encaissable(self, obj):
+        return self._motif_encaissement(obj)
+
+    @extend_schema_field(serializers.ListField(child=serializers.DictField(child=serializers.CharField())))
+    def get_tva_par_taux(self, obj):
+        return [
+            {'taux': str(b['taux']), 'base_ht': str(b['base_ht']),
+             'montant': str(b['montant'])}
+            for b in obj.tva_par_taux
+        ]
+
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
+    def get_avoirs(self, obj):
+        return [
+            {'id': a.id, 'reference': a.reference, 'statut': a.statut,
+             'total_ttc': str(a.total_ttc), 'motif': a.motif}
+            for a in obj.avoirs.all()
+        ]
+
+    class Meta:
+        model = Facture
+        fields = '__all__'
+        read_only_fields = ['reference', 'created_by', 'fichier_pdf', 'date_emission',
+                            'updated_at', 'updated_by',  # VX98 — server-side only
+                            # ARRONDI-100 — hérités du devis côté serveur.
+                            'arrondi_pas', 'arrondi_unites',
+                            # CIQ214 — posés par la tranche / ``liberer-retenue``.
+                            'retenue_garantie_mad', 'retenue_liberee_le',
+                            # ATOT5 — clé de tranche posée par le serveur.
+                            'cle_tranche',
+                            # AMET4 — marque du brouillon d'acompte provisoire.
+                            'acompte_auto_le',
+                            # APAR61 — identité vendeur figée à l'émission.
+                            'identite_vendeur',
+                            # AARG27 — identité acheteur figée à l'émission.
+                            'identite_acheteur',
+                            # VNT15 — blocs figés à l'émission par le serveur.
+                            'objet_vente', 'garanties']
+        # VNT15 — ``devis`` facultatif malgré ``uq_facture_tranche_vivante``.
+        extra_kwargs = {'devis': {'required': False}}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        _retirer_unicite_tranche(self)
+
+    @extend_schema_field(serializers.DecimalField(max_digits=12, decimal_places=2))
+    def get_montant_du(self, obj):
+        from decimal import Decimal
+        if obj.statut in (Facture.Statut.PAYEE, Facture.Statut.ANNULEE):
+            return '0.00'
+        return str(Decimal(obj.montant_du).quantize(Decimal('0.01')))
+
+    @extend_schema_field(serializers.DecimalField(max_digits=12, decimal_places=2))
+    def get_montant_exigible(self, obj):
+        """CIQ214 — ``montant_du`` moins la retenue de garantie non
+        libérée : ce que les relances réclament."""
+        from decimal import Decimal
+        if obj.statut in (Facture.Statut.PAYEE, Facture.Statut.ANNULEE):
+            return '0.00'
+        return str(Decimal(obj.montant_exigible).quantize(Decimal('0.01')))
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_is_overdue(self, obj):
+        # S'appuie sur jours_retard du modèle (échéance dépassée + reste dû,
+        # hors payée/annulée) — cohérent avec FactureList, Relances et la
+        # balance âgée. ERR-QAH-VENTES-FACTURES-KPI-ENCAISSER : une facture au
+        # STATUT « En retard » (même sans échéance) l'est aussi tant qu'un reste
+        # est dû — l'onglet « En retard » et la tuile KPI la voient.
+        if obj.jours_retard > 0:
+            return True
+        return obj.statut == Facture.Statut.EN_RETARD and obj.montant_du > 0
+
+
+#: api-fuzz — montant d'une tranche : positif ou nul (``ck_facture_montants_
+#: positifs``), 10 chiffres entiers, 2 décimales ; la chaîne ``"-0"`` vaut 0.
+_MONTANT_FACTURE_PUBLIE = {'type': 'string', 'format': 'decimal',
+                           'pattern': MOTIF_ACOMPTE, 'nullable': True}
+
+
+class FactureWriteSerializer(IdInconnu404Mixin, UniciteEn409Mixin, _BornesArgentMixin,
+                             SameCompanyFKSerializerMixin,
+                             serializers.ModelSerializer):
+    """Création/modification sans lignes imbriquées.
+
+    ASEC27 (C-ASEC-005/009) — chaque FK inscriptible est BORNÉE à la société
+    de la requête (un id d'une autre société = 400 « objet inexistant »,
+    indiscernable d'un id absent) et les champs posés par le SERVEUR sont en
+    lecture seule : `statut` ne bouge que par les actions dédiées
+    (validation, paiement, abandon — AUD124/XFAC18). Liste `fields`
+    EXPLICITE (plus d'`exclude=`) : tout nouveau champ du modèle doit y être
+    ajouté consciemment. CI #997 — un BC déjà facturé (unicité de
+    ``bon_commande``) répond 409 ``unique_conflict``, plus 400."""
+    same_company_fields = ('client', 'devis', 'bon_commande', 'lead',
+                           'entite', 'condition_paiement_ref')
+    # api-fuzz — les champs TEXTE du modèle (``libelle``, ``note``,
+    # ``conditions_paiement``, ``reference_commande_client``, ``devise``) sont
+    # générés en ``ChaineStricte`` : le schéma publie « sans caractère nul »
+    # (DRF le refuse en 400) ; les décimaux et booléens restent inchangés.
+    serializer_field_mapping = {
+        **serializers.ModelSerializer.serializer_field_mapping,
+        models.CharField: ChaineStricte,
+        models.TextField: ChaineStricte,
+    }
+
+    # ENF11 — lecture seule, posés par les actions dédiées : DRF retire
+    # ``allow_blank`` d'un champ de modèle en lecture seule, le schéma
+    # n'annonçait donc pas le ``""`` que le serveur sert tant que la facture
+    # n'est ni en revue ni abandonnée. Déclarés explicitement.
+    revue_statut = serializers.ChoiceField(
+        choices=Facture.RevueStatut.choices, allow_blank=True, read_only=True)
+    abandon_motif = serializers.ChoiceField(
+        choices=Facture.MotifAbandon.choices, allow_blank=True,
+        read_only=True)
+    remise_globale = PourcentSouple(
+        max_digits=5, decimal_places=2, required=False)
+
+    class Meta:
+        model = Facture
+        fields = [
+            'id', 'bon_commande', 'devis', 'lead', 'type_facture',
+            'pourcentage', 'libelle', 'montant_ht', 'montant_tva',
+            'montant_ttc', 'client', 'statut', 'date_emission',
+            'date_echeance', 'taux_tva', 'remise_globale', 'arrondi_pas',
+            'arrondi_unites', 'note', 'date_livraison', 'conditions_paiement',
+            'retenue_garantie_mad', 'retenue_liberee_le', 'ventilation_tva',
+            'cle_tranche', 'reference_commande_client',
+            'condition_paiement_ref', 'prochaine_relance', 'exclu_relances',
+            'exclu_relances_jusquau', 'contestee_le', 'motif_contestation',
+            'escompte_pct', 'escompte_jours', 'abandon_motif', 'abandon_montant', 'abandon_date',
+            'abandon_auto', 'abandon_par', 'revue_statut',
+            'statut_teledeclaration', 'created_by', 'pdf_render_meta',
+            'fichier_ubl', 'devise', 'taux_change', 'dgi_statut',
+            'dgi_reference', 'dgi_motif_rejet', 'periode_service_debut',
+            'periode_service_fin', 'updated_at', 'updated_by', 'entite',
+            'company',
+        ]
+        # company is force-assigned in perform_create — never accept it from the body.
+        # XFAC29 : dgi_statut/reference/motif_rejet sont posés UNIQUEMENT par
+        # `transmettre_facture` (action serveur), jamais depuis le corps.
+        read_only_fields = [
+            'created_by', 'date_emission', 'company',
+            'dgi_statut', 'dgi_reference', 'dgi_motif_rejet',
+            # CIQ215 — ventilation posée par le serveur à la création d'une
+            # tranche, jamais depuis le corps.
+            'ventilation_tva',
+            # ATOT5 — clé de tranche posée par le serveur, jamais le corps.
+            'cle_tranche',
+            # ASEC27 — champs posés par le serveur (actions dédiées), jamais
+            # depuis le corps : un PATCH qui les porte est sans effet.
+            'statut', 'revue_statut', 'abandon_motif', 'abandon_montant',
+            'abandon_date', 'abandon_auto', 'abandon_par',
+            'retenue_liberee_le', 'statut_teledeclaration', 'fichier_ubl',
+            'pdf_render_meta', 'updated_by',
+        ]
+        # VNT15 — ``devis`` facultatif malgré ``uq_facture_tranche_vivante`` :
+        # une facture manuelle SANS devis reste permise ; la porte d'émission
+        # ne s'applique qu'à une facture AVEC devis.
+        extra_kwargs = {'devis': {'required': False}}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        _retirer_unicite_tranche(self)
+
+    def get_fields(self):
+        # CI #997 fuzz (24/10) : la remise globale (0-100, 2 décimales) est
+        # PUBLIÉE telle que ``validate_remise_globale`` l'applique — le schéma
+        # annonçait tout décimal et ``101`` répondait 400. Même publication que
+        # l'en-tête du devis (``conditions_ci.publier``).
+        from apps.ventes.domain.conditions_ci import publier
+        fields = super().get_fields()
+        publier(fields)
+        for nom in ('montant_ht', 'montant_tva', 'montant_ttc'):
+            if nom in fields:
+                set_override(fields[nom], 'field', _MONTANT_FACTURE_PUBLIE)
+        return fields
+
+    # api-fuzz — ``ck_facture_montants_positifs`` : un montant négatif était
+    # écrit tel quel et heurtait la contrainte base (IntegrityError → 500).
+    def _montant_facture(self, valeur, champ):
+        return self._borne_montant(
+            valeur, champ, 'Le montant ne peut pas être négatif.')
+
+    def validate_montant_ht(self, valeur):
+        return self._montant_facture(valeur, 'montant_ht')
+
+    def validate_montant_tva(self, valeur):
+        return self._montant_facture(valeur, 'montant_tva')
+
+    def validate_montant_ttc(self, valeur):
+        return self._montant_facture(valeur, 'montant_ttc')
+
+
+class LigneAvoirSerializer(_BornesArgentMixin, SameCompanyFKSerializerMixin,
+                           serializers.ModelSerializer):
+    # ENF17 — produit d'une AUTRE société = id absent (400), comme la ligne
+    # de facture (ASEC27).
+    same_company_fields = ('produit',)
+    total_ht = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = LigneAvoir
+        fields = ['id', 'produit', 'designation', 'quantite', 'prix_unitaire',
+                  'remise', 'taux_tva', 'total_ht']
+        # DC10 — le produit est REQUIS à la création d'une ligne d'avoir (le FK
+        # reste nullable en base pour les lignes historiques ; l'API exige un
+        # produit sur toute NOUVELLE ligne).
+        extra_kwargs = {'produit': {'required': True, 'allow_null': False}}
+
+
+class AvoirSerializer(_BornesArgentMixin, SameCompanyFKSerializerMixin,
+                      serializers.ModelSerializer):
+    # ENF17 — client / facture d'une AUTRE société = id absent (400).
+    same_company_fields = ('client', 'facture')
+    lignes = LigneAvoirSerializer(many=True, read_only=True)
+    total_ht = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+    total_tva = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+    total_ttc = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+    tva_par_taux = serializers.SerializerMethodField()
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    facture_reference = serializers.CharField(
+        source='facture.reference', read_only=True)
+    client_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Avoir
+        fields = '__all__'
+        read_only_fields = ['reference', 'created_by', 'fichier_pdf',
+                            'date_emission', 'company',
+                            # ARRONDI-100 — repris de la facture côté serveur.
+                            'arrondi_pas', 'arrondi_unites',
+                            # ATOT6 — ventilation recopiée par le serveur.
+                            'ventilation_tva',
+                            # AFAC32 — avoir de note de débit (serveur).
+                            'note_debit']
+
+    @extend_schema_field(serializers.ListField(child=serializers.DictField(child=serializers.CharField())))
+    def get_tva_par_taux(self, obj):
+        return [
+            {'taux': str(b['taux']), 'base_ht': str(b['base_ht']),
+             'montant': str(b['montant'])}
+            for b in obj.tva_par_taux
+        ]
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_client_nom(self, obj):
+        c = obj.client
+        return f"{c.nom} {c.prenom or ''}".strip() if c else None
+
+
+class LigneNoteDebitSerializer(SameCompanyFKSerializerMixin,
+                               serializers.ModelSerializer):
+    # ENF17 — produit d'une AUTRE société = id absent (400).
+    same_company_fields = ('produit',)
+    total_ht = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+
+    class Meta:
+        from apps.ventes.models import LigneNoteDebit
+        model = LigneNoteDebit
+        fields = ['id', 'produit', 'designation', 'quantite', 'prix_unitaire',
+                  'remise', 'taux_tva', 'total_ht']
+
+
+class NoteDebitSerializer(SameCompanyFKSerializerMixin,
+                          serializers.ModelSerializer):
+    # ENF17 — client / facture d'une AUTRE société = id absent (400).
+    same_company_fields = ('client', 'facture')
+    lignes = LigneNoteDebitSerializer(many=True, read_only=True)
+    total_ht = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+    total_tva = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+    total_ttc = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    facture_reference = serializers.CharField(
+        source='facture.reference', read_only=True)
+    client_nom = serializers.SerializerMethodField()
+    # AFAC33 — une ND s'annule par AVOIR (D-AFAC-C4) : son statut reste « émise »,
+    # l'écran lit ce booléen pour la montrer « Annulée » après rechargement.
+    annulee = serializers.SerializerMethodField()
+
+    class Meta:
+        from apps.ventes.models import NoteDebit
+        model = NoteDebit
+        fields = '__all__'
+        read_only_fields = ['reference', 'created_by', 'fichier_pdf',
+                            'date_emission', 'company',
+                            # ATOT6 — ventilation recopiée par le serveur.
+                            'ventilation_tva']
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_client_nom(self, obj):
+        c = obj.client
+        return f"{c.nom} {c.prenom or ''}".strip() if c else None
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_annulee(self, obj):
+        from apps.ventes.models import Avoir
+        return obj.avoirs_annulation.filter(statut=Avoir.Statut.EMISE).exists()
+
+
+class PromessePaiementSerializer(ChampsStrictsMixin,
+                                 SameCompanyFKSerializerMixin,
+                                 serializers.ModelSerializer):
+    """XFAC5 — engagement de paiement client (« je paie le 15 »).
+
+    AUD133 — ``date_promise`` n'était BORNÉE nulle part : la valeur du corps
+    était écrite telle quelle dans ``facture.exclu_relances_jusquau``, et
+    ``relance_reminders`` exclut ``exclu_relances_jusquau__gte=today``. Une
+    promesse au 31/12/2030 gelait donc la relance pour toujours. Elle doit
+    désormais être FUTURE et rester sous le plafond société
+    (``recouvrement.PROMESSE_HORIZON_JOURS_MAX``, 90 j par défaut).
+
+    ENF17 — ``facture`` d'une AUTRE société = id absent (400 « objet
+    inexistant »), avant la garde de la vue (« Facture inconnue. »).
+
+    CI #997 fuzz — montant (décimal-chaîne) et note STRICTS ; une date bien
+    formée hors fenêtre du jour répond 409 (voir ``validate``).
+    """
+    same_company_fields = ('facture',)
+    facture_reference = serializers.CharField(
+        source='facture.reference', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    created_by_username = serializers.CharField(
+        source='created_by.username', read_only=True, allow_null=True)
+
+    def validate(self, attrs):
+        # CI #997 fuzz — la fenêtre ]aujourd'hui ; +horizon] dépend de la DATE
+        # DU JOUR, que le schéma (``format: date``) ne peut pas porter : une
+        # date bien formée hors fenêtre est un refus d'ÉTAT (409, corps
+        # ``{date_promise: [...]}`` et textes inchangés), corps entier valide.
+        from datetime import timedelta
+
+        from core.conflit_etat import ConflitEtat
+        from apps.facturation.recouvrement import PROMESSE_HORIZON_JOURS_MAX
+        from apps.ventes.scheduled import casablanca_today
+
+        value = attrs.get('date_promise')
+        today = casablanca_today()
+        if value is not None and value <= today:
+            raise ConflitEtat({'date_promise': [
+                "Une promesse de paiement porte sur une date FUTURE."]})
+        plafond = today + timedelta(days=PROMESSE_HORIZON_JOURS_MAX)
+        if value is not None and value > plafond:
+            raise ConflitEtat({'date_promise': [
+                f'Une promesse ne peut pas dépasser {PROMESSE_HORIZON_JOURS_MAX} '
+                f'jours (soit le {plafond.isoformat()}) : au-delà, elle gèle la '
+                f'relance au lieu d\'engager le client.']})
+        return attrs
+
+    class Meta:
+        from apps.ventes.models import PromessePaiement
+        model = PromessePaiement
+        fields = '__all__'
+        read_only_fields = ['company', 'created_by', 'date_creation', 'statut']
+
+
+class RelancerFactureSerializer(serializers.Serializer):
+    """AUD131 (PAY-18) — validation du corps de l'action ``relancer``.
+
+    Le corps était lu à cru : `niveau` non validé (un ordre inexistant laissait
+    `lvl` à None et la relance était consignée quand même) et
+    `prochaine_relance` affecté brut à la facture (une chaîne non-date
+    remontait en erreur base — un 500 — au lieu d'un 400).
+
+    La société est passée en contexte : un `niveau` est un ORDRE de
+    ``FollowupLevel``, résolu et donc scopé à la société de la facture.
+    """
+    # CI #997 fuzz — entier et texte STRICTS (``"note": 0`` était converti).
+    niveau = EntierStrict(required=False, allow_null=True)
+    note = ChaineStricte(
+        required=False, allow_blank=True, trim_whitespace=True,
+        max_length=2000)
+    prochaine_relance = serializers.DateField(
+        required=False, allow_null=True)
+    # CI #997 (5) : booléen STRICT — `0` était lu False et accepté (schéma : boolean).
+    envoyer_email = BooleenStrict(default=False)
+
+    def validate(self, attrs):
+        # CI #997 fuzz — un ``niveau`` bien formé (un ORDRE, pas un id) qui
+        # n'existe pas dans la cadence réglée par la société : refus d'ÉTAT
+        # (409, corps {niveau} inchangé), jugé une fois le corps valide.
+        value = attrs.get('niveau')
+        if value is None:
+            return attrs
+        from core.conflit_etat import ConflitEtat
+        from apps.ventes.models import FollowupLevel
+        company = self.context.get('company')
+        niveau = FollowupLevel.objects.filter(
+            company=company, ordre=value).first()
+        if niveau is None:
+            raise ConflitEtat({'niveau': [
+                'Niveau de relance inconnu pour cette société.']})
+        self.context['followup_level'] = niveau
+        return attrs
+
+
+class FollowupLevelSerializer(ChampsStrictsMixin,
+                              serializers.ModelSerializer):
+    # ENF11 — taux et frais sont des décimaux transportés en CHAÎNE (le
+    # schéma le déclare) : un nombre JSON est refusé en 400, plus converti.
+    # CI #997 — texte et booléens aussi (``message: 0`` était converti).
+
+    class Meta:
+        from apps.ventes.models import FollowupLevel
+        model = FollowupLevel
+        fields = ['id', 'ordre', 'nom', 'delai_jours', 'message',
+                  'taux_interet_annuel', 'frais_fixes', 'canal']
+
+
+class ParametrageRelanceClientSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
+                                         serializers.ModelSerializer):
+    """ZFAC8 — réglage par client du responsable/mode de relance.
+
+    ASEC28 — `client` et `responsable` bornés à la société de la requête."""
+    same_company_fields = ('client', 'responsable')
+    mode_display = serializers.CharField(
+        source='get_mode_display', read_only=True)
+    responsable_username = serializers.CharField(
+        source='responsable.username', read_only=True, allow_null=True)
+
+    class Meta:
+        from apps.ventes.models import ParametrageRelanceClient
+        model = ParametrageRelanceClient
+        fields = ['id', 'client', 'responsable', 'responsable_username',
+                  'mode', 'mode_display', 'prochaine_relance_manuelle']
+        read_only_fields = ['company']
+
+    def run_validation(self, data=serializers.empty):
+        """ENF11 (api-fuzz « rejected schema-compliant ») — un client DÉJÀ
+        paramétré, refusé par le seul validateur d'unicité de DRF, est un
+        refus d'ÉTAT : 409 ``unique_conflict`` (le corps est conforme). Mêlé
+        à une autre erreur, le 400 reste."""
+        try:
+            return super().run_validation(data)
+        except serializers.ValidationError as exc:
+            if exc.get_codes() != {'client': ['unique']}:
+                raise
+            from core.unicite import ConflitUnicite
+            raise ConflitUnicite(detail=str(exc.detail['client'][0]),
+                                 champs=['client']) from exc
+
+
+class RelanceLogSerializer(SameCompanyFKSerializerMixin,
+                           serializers.ModelSerializer):
+    # ENF17 — FK en lecture seule (read_only_fields = fields) ; bornée
+    # société si elle redevient inscriptible.
+    same_company_fields = ('facture',)
+    created_by_nom = serializers.CharField(
+        source='created_by.username', read_only=True, allow_null=True)
+
+    class Meta:
+        from apps.ventes.models import RelanceLog
+        model = RelanceLog
+        fields = ['id', 'facture', 'niveau', 'niveau_nom', 'note', 'canal',
+                  'courrier_pdf_key', 'date', 'created_by_nom']
+        read_only_fields = fields
+
+
+class FactureActivitySerializer(SameCompanyFKSerializerMixin,
+                                serializers.ModelSerializer):
+    """Chatter d'une facture — lecture seule côté API."""
+    # ENF17 — FK en lecture seule (read_only_fields = fields) ; bornée
+    # société si elle redevient inscriptible.
+    same_company_fields = ('facture',)
+    user_nom = serializers.CharField(
+        source='user.username', read_only=True, allow_null=True)
+
+    class Meta:
+        from apps.ventes.models import FactureActivity
+        model = FactureActivity
+        fields = ['id', 'facture', 'kind', 'field', 'field_label',
+                  'old_value', 'new_value', 'body', 'user_nom', 'created_at']
+        read_only_fields = fields
+
+
+class LigneRemiseEncaissementSerializer(SameCompanyFKSerializerMixin,
+                                        serializers.ModelSerializer):
+    """XFSM19 — une ligne = un Paiement rattaché à la remise. Lecture seule
+    des attributs utiles du paiement (montant/mode/date/facture) pour
+    l'écran du responsable, sans jamais dupliquer le modèle Paiement.
+
+    ENF17 — ``paiement`` d'une AUTRE société = id absent (400)."""
+    same_company_fields = ('paiement',)
+    montant = serializers.DecimalField(
+        source='paiement.montant', max_digits=12, decimal_places=2,
+        read_only=True)
+    mode = serializers.CharField(source='paiement.mode', read_only=True)
+    date_paiement = serializers.DateField(
+        source='paiement.date_paiement', read_only=True)
+    facture_reference = serializers.CharField(
+        source='paiement.facture.reference', read_only=True, allow_null=True)
+
+    class Meta:
+        model = LigneRemiseEncaissement
+        fields = ['id', 'paiement', 'montant', 'mode', 'date_paiement',
+                  'facture_reference']
+        read_only_fields = ['id']
+
+
+class RemiseEncaissementSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
+                                   SameCompanyFKSerializerMixin,
+                                   serializers.ModelSerializer):
+    # CI #997 — texte/booléens stricts (``note: 0`` était converti) ; (2) le
+    # décimal aussi : ``montant_declare: 0`` (nombre JSON) → 400, l'écran
+    # envoie la chaîne saisie.
+    # ENF11 — un technicien inconnu (ou d'une autre société) = 404 au même
+    # corps ``{technicien: [...]}`` (``IdInconnu404Mixin``), plus 400.
+    # ASEC28 — le technicien d'une remise est un utilisateur de la société.
+    same_company_fields = ('technicien',)
+
+    lignes = LigneRemiseEncaissementSerializer(many=True, read_only=True)
+    technicien_nom = serializers.CharField(
+        source='technicien.username', read_only=True, allow_null=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    montant_lignes = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+    ecart = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = RemiseEncaissement
+        fields = '__all__'
+        # AFAC16 (C-AFAC-012) — `statut` en lecture seule : seule l'action
+        # `cloturer` le change (un technicien ne « valide » plus sa propre
+        # remise par PATCH, une remise ne naît plus clôturée).
+        read_only_fields = [
+            'id', 'reference', 'fichier_pdf', 'created_by', 'date_creation',
+            'company', 'cloture_par', 'date_cloture', 'statut',
+        ]
+        # AFAC60 (C-AFAC-054) — `technicien` FACULTATIF en entrée : l'écran
+        # ne l'envoie pas, `perform_create` le pose à l'appelant ; un
+        # technicien d'une autre société reste refusé (ASEC28).
+        extra_kwargs = {'technicien': {'required': False}}
+
+
+class MandatPaiementSerializer(SameCompanyFKSerializerMixin,
+                               serializers.ModelSerializer):
+    """XCTR22 — mandat de prélèvement carte. `token` n'est JAMAIS accepté en
+    écriture directe (posé uniquement par le service de tokenisation) ; seuls
+    les 4 derniers chiffres/expiration sont exposés pour l'affichage.
+
+    ASEC28 — `client` borné à la société ; `statut` et
+    `consentement_horodate` en lecture seule : seules les actions dédiées
+    (tokenisation, `revoquer`) les changent — un mandat révoqué ne redevient
+    jamais actif par PATCH."""
+    same_company_fields = ('client',)
+    client_nom = serializers.CharField(source='client.nom', read_only=True)
+
+    class Meta:
+        model = MandatPaiement
+        fields = '__all__'
+        read_only_fields = [
+            'id', 'token', 'company', 'created_at', 'revoked_at',
+            'statut', 'consentement_horodate',
+        ]
+
+
+class FactureListeSerializer(FactureSerializer):
+    """CI #997 (api-fuzz « Response violates schema » sur ``GET factures/``) —
+    la LISTE paginée ne sert jamais les blocs de vente du détail (VNT91 :
+    ``situation_vente`` / ``prochaines_echeances``, un calcul par ligne) ;
+    le schéma de la liste ne les promet donc pas. Même lecture que le
+    détail pour tout le reste."""
+
+    situation_vente = None
+    prochaines_echeances = None
+
+    class Meta(FactureSerializer.Meta):
+        pass

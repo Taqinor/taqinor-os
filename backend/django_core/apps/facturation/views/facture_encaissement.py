@@ -18,7 +18,7 @@ from .facture_gardes import PeutEncaisser
 from apps.ventes.domain.encaissements import proposer_arrondi_caisse
 from apps.ventes.models import Facture, Paiement
 from apps.ventes.openapi_params import qstr
-from apps.ventes.serializers_facturation import (
+from apps.facturation.serializers import (
     FactureListeSerializer, FactureSerializer, PaiementSerializer)
 
 #: Plus grand identifiant d'une clé ``integer`` PostgreSQL (publié en borne).
