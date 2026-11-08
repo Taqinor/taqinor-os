@@ -815,7 +815,7 @@ unites:
     groupe: ACON
     plan: docs/plans/PLAN_AUDIT_CALEPINAGE.md
     plans_alimentes: [docs/plans/PLAN_AUDIT_CALEPINAGE.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_PARAMETRES.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/WEB_PLAN.md]
-    pr: 0
+    pr: 1300
     date: 2026-11-08
     dossier: docs/audits/2026-11-08-parcours-PA2.md
     notes: "Septième audit de PARCOURS (L3, 08/11/2026, base 8b62d8c, fraîcheur 76344a2) : 39 constats, 21 prouvés par sonde et 18 lus (13 S3, 5 S4) ; gravités 3 S1, 10 S2, 20 S3, 6 S4. S1 : la page publique d'un devis envoyé lit l'ombrage VIVANT du calepinage pendant que le PDF lit le bloc rangé (deux chiffres client ; un devis né de « Générer le devis » les a dès le premier envoi), l'ombrage d'une autre conception appliqué à la production d'un brouillon non resynchronisé (−17 %), un devis C&I construit au marché résidentiel avec les économies du layout (2 brouillons en prod : devis 418 et 154, signalés, non réparés). Seconde lentille sur les 3 S1 : 3 maintenus dont 1 élargi, 0 réfuté. D-ACON-1..4 (devis au marché du lead, second devis actif = variante de C1, approbation = conception imprimée seule, page publique et visionneuse jusqu'à 2 000 panneaux par zone). 1 critique Fable (7 trous dont 4 sondés : Dupliquer vers un autre lead, archivage qui détache un brouillon, devis refusé ou expiré, temps de rendu). Tâches ACON1-93 (45 posées : CALEPINAGE 35, DEVIS 6, TRANSVERSE 2, PARAMETRES 1, WEB 1)."

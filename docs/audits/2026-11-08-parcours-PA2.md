@@ -120,4 +120,4 @@ Porte : 0 constat réfuté sur 30 candidats de découverte et 7 trous de la crit
 ## 9. Coût et routage
 Coût : H0 S1 O14 F1 · jetons sous-agents ≈ 5,5 M · tâches 45 (P0 6 P2 11 P3 28 GATED 0).
 Fable : une critique de complétude, 7 trous (2 S2, 4 S3, 1 S4) dont 4 sondés (Dupliquer vers un autre lead, archivage qui détache, devis refusé, temps de rendu) et 3 lus (page publique à 600 panneaux, remise de documents, photos hors verrou) ; elle a trouvé deux S2 que la découverte n'avait pas (copie du foyer d'un client vers un autre, archivage qui change la production d'un brouillon).
-Routage : `PLAN_AUDIT_CALEPINAGE.md` 35 · `PLAN_AUDIT_DEVIS.md` 6 · `PLAN_AUDIT_TRANSVERSE.md` 2 · `PLAN_AUDIT_PARAMETRES.md` 1 · `WEB_PLAN.md` 1 · aucune tâche d'acceptation posée · PR #0.
+Routage : `PLAN_AUDIT_CALEPINAGE.md` 35 · `PLAN_AUDIT_DEVIS.md` 6 · `PLAN_AUDIT_TRANSVERSE.md` 2 · `PLAN_AUDIT_PARAMETRES.md` 1 · `WEB_PLAN.md` 1 · aucune tâche d'acceptation posée · PR #1300.
