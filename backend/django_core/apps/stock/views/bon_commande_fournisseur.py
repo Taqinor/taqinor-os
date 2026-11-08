@@ -534,15 +534,11 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                 status=status.HTTP_409_CONFLICT,
             )
         # AAPV62 — un BCF facturé ou acompté ne s'annule pas (AP orpheline).
-        from ..services import _fmt_montant_pdf
-        engagements = [f'la facture {ref}' for ref in bc.factures_fournisseur.values_list('reference', flat=True)]
-        engagements += [f"l'acompte de {_fmt_montant_pdf(m)}"
-                        for m in bc.acomptes.values_list('montant', flat=True)]
-        if engagements:
-            return Response(
-                {'detail': f"Ce bon de commande porte {' et '.join(engagements)} : "
-                           'annulation refusée.'},
-                status=status.HTTP_409_CONFLICT)
+        from ..services import motif_bcf_engage
+        engage = motif_bcf_engage(bc)
+        if engage:
+            return Response({'detail': f'{engage} : annulation refusée.'},
+                            status=status.HTTP_409_CONFLICT)
         # ZPUR11 — motif OBLIGATOIRE (400 si vide), tracé horodaté + acteur.
         # ENF11 (nocturne 15/10) — même prédicat que le motif publié (texte
         # non blanc, sans caractère nul) : un nul faisait un ValueError SQL (500).
@@ -595,8 +591,11 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         refus = self._refus_fournisseur(request, bc.fournisseur_id)  # AAPV29
         if refus is not None:
             return refus
-        bc.statut = BonCommandeFournisseur.Statut.BROUILLON
-        bc.save(update_fields=['statut'])
+        from apps.installations.services import recommander_demande_achat_bcf_rouvert
+        with transaction.atomic():  # AAPV85 (D-AAPV-5) : DA re-commandée ou 409 nommé
+            recommander_demande_achat_bcf_rouvert(bc, user=request.user)
+            bc.statut = BonCommandeFournisseur.Statut.BROUILLON
+            bc.save(update_fields=['statut'])
         from ..services import log_bcf_chatter
         log_bcf_chatter(
             bc, user=request.user,

@@ -66,6 +66,19 @@ describe('WarrantiesPage (WR6 — garanties de production)', () => {
     expect(screen.getAllByText(/14\s*000\s*kWh/).length).toBeGreaterThan(0)
   })
 
+  it('AMON96 — système hors parc : la référence servie remplace « Système #id »', async () => {
+    monitoringApi.getWarranties.mockResolvedValueOnce({
+      data: [{
+        id: 4, installation: 99, installation_reference: 'CHT-202611-0099', guaranteed_year1_kwh: '9000.00',
+        degradation_pct_per_year: '0.50', start_year: 2025, tolerance_pct: '5.00',
+        compensation_mad_per_kwh: '1.0000', note: '',
+      }],
+    })
+    renderPage(<WarrantiesPage />)
+    expect((await screen.findAllByText('CHT-202611-0099')).length).toBeGreaterThan(0)
+    expect(screen.queryByText('Système #99')).not.toBeInTheDocument()
+  })
+
   it('affiche statut + courbe (recours fabricant) au clic « Statut et courbe »', async () => {
     renderPage(<WarrantiesPage />)
     await screen.findAllByText('INST-2026-001 — Amrani')
@@ -81,6 +94,22 @@ describe('WarrantiesPage (WR6 — garanties de production)', () => {
 
     expect(monitoringApi.getWarrantyStatus).toHaveBeenCalledWith(3)
     expect(monitoringApi.getWarrantyCurve).toHaveBeenCalledWith(3)
+  })
+
+  it('AMON40 — sans relevé (within_tolerance null) le badge dit « Non mesuré »', async () => {
+    monitoringApi.getWarrantyStatus.mockResolvedValueOnce({
+      data: {
+        has_warranty: true, year: 2026, guaranteed_kwh: '13930.00',
+        actual_kwh: null, shortfall_kwh: null,
+        within_tolerance: null, compensation_mad: null,
+      },
+    })
+    renderPage(<WarrantiesPage />)
+    await screen.findAllByText('INST-2026-001 — Amrani')
+    await userEvent.click(screen.getAllByRole('button', { name: 'Statut et courbe' })[0])
+
+    expect(await screen.findByText('Non mesuré')).toBeInTheDocument()
+    expect(screen.queryByText('Hors tolérance')).not.toBeInTheDocument()
   })
 
   it('ouvre le dialogue de création avec des champs libres (step="any")', async () => {

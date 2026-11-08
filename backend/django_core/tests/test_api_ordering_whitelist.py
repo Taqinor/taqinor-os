@@ -276,6 +276,7 @@ ORDERING_WHITELIST_EXEMPT: set[str] = {
     "ventes.IVCurveCaptureViewSet",
     "ventes.LigneDevisViewSet",
     "facturation.LigneFactureViewSet",
+    "ventes.LigneFactureViewSet",  # ODX18 — même classe, route historique ventes/
     "ventes.ListePrixViewSet",
     "ventes.PlanCommissionViewSet",
     "ventes.Regularisation8221ViewSet",

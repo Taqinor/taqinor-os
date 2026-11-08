@@ -1,0 +1,22 @@
+# Preuve en direct ACSV38 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Écran : front du worktree servi par vite (127.0.0.1:3000) -> conteneur privé accept-w29-web (runserver, base
+# erp_accept_w29, stockage objet PRIVÉ accept-w29-minio, SMTP 127.0.0.1:1 puis mail en mémoire pour AMON47), piloté par
+# Playwright MCP. Données : seed_demo « TAQINOR Démo » + fixtures FIX-W29* ou états des sondes rejouées SANS rollback
+# (comptes de test, mot de passe de test).
+# Verdict : PASS — Écran : après dépôt de l'as-built, carte Pack de remise 2/14, as_built present, dossier de remise « Oui ».
+
+## ACSV38 — PASS (écran)
+Fixture FIX-W29n : CHT-E29-38 industriel réceptionné, pose réelle 03/11/2026. Compte demo_admin. Chantiers › CHT-E29-38 › Jalons &
+gates : carte « Pack de remise client 1/14 pièce(s) » → « Générer le pack de remise » => POST …/186/pack-remise/ 201 (pack persisté,
+as_built present false). Dépôt (FIX-W29n mode dépôt) d'un document de projet « Schéma unifilaire as-built E38 » (type
+schema_unifilaire, révision B du 08/11/2026, après la pose). Fiche rechargée : carte « Pack de remise client 2/14 pièce(s) » ;
+GET …/186/pack-remise/ 200 : as_built {reference « Schéma unifilaire as-built E38 », present true}, persiste true,
+date_generation 2026-11-08T11:31:32Z (celle du pack persisté, gardée), complet false (verdict du gate). Dossier de remise (même
+route documents/chantiers/186/dossier-remise/, texte PyMuPDF) : « Pièces du dossier de remise (2/14) — dossier incomplet »,
+ligne « Dossier as-built / schéma unifilaire — Schéma unifilaire as-built E38 — Oui ». Console 0 erreur.

@@ -50,7 +50,7 @@ import {
 } from '../../features/installations/InterventionFieldExecution'
 import {
   SerialsPanel, ConsommationPanel, MemosPanel, ReservesPanel,
-  ToolReturnPanel, SafetyPanel, CompteRenduButton, CodePanel,
+  ToolReturnPanel, SafetyPanel, FichePanel, CompteRenduButton, CodePanel,
 } from '../../features/installations/InterventionCapturePanels'
 import { SignatureClientPanel } from '../../features/installations/SignatureClientPanel'
 // APX29 — carte des arrêts, partagée avec l'onglet « Ma tournée » (planification).
@@ -560,6 +560,7 @@ const FLOW_TABS = [
   { value: 'prep', label: 'Prépa', Icon: ClipboardList },
   { value: 'trajet', label: 'Trajet', Icon: Navigation },
   { value: 'safety', label: 'Sécurité', Icon: ShieldCheck },
+  { value: 'fiche', label: 'Fiche', Icon: ClipboardList },
   { value: 'photos', label: 'Photos', Icon: Camera },
   { value: 'serials', label: 'N° série', Icon: Tag },
   { value: 'conso', label: 'Conso', Icon: ListChecks },
@@ -737,6 +738,7 @@ function InterventionFlowSheet({
           <TabsContent value="prep" forceMount hidden={tab !== 'prep'}><PreparationPanel intervention={interv} onChanged={panelChanged} /></TabsContent>
           <TabsContent value="trajet" forceMount hidden={tab !== 'trajet'}><TrajetPanel intervention={interv} onChanged={panelChanged} /></TabsContent>
           <TabsContent value="safety" forceMount hidden={tab !== 'safety'}><SafetyPanel intervention={interv} onChanged={panelChanged} /></TabsContent>
+          <TabsContent value="fiche" forceMount hidden={tab !== 'fiche'}><FichePanel intervention={interv} onChanged={panelChanged} /></TabsContent>
           <TabsContent value="photos" forceMount hidden={tab !== 'photos'}><PhotosPanel intervention={interv} onChanged={panelChanged} /></TabsContent>
           <TabsContent value="serials" forceMount hidden={tab !== 'serials'}><SerialsPanel intervention={interv} onChanged={panelChanged} /></TabsContent>
           <TabsContent value="conso" forceMount hidden={tab !== 'conso'}><ConsommationPanel intervention={interv} onChanged={panelChanged} /></TabsContent>

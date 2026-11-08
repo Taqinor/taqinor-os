@@ -28,11 +28,12 @@ from authentication.models import Company
 from apps.crm.models import Client
 from apps.installations.models import Installation
 from apps.sav.models import Ticket
+from apps.monitoring.test_ntnrg27_registre_certificats import regler_facteur
 
 from apps.monitoring import providers, services, tasks
 from apps.monitoring.models import (
     CleaningEvent, MonitoringConfig, MonitoringSettings, ProductionReading,
-    UnderperformanceFlag,
+    AbonnementMonitoring, UnderperformanceFlag,
 )
 
 User = get_user_model()
@@ -86,6 +87,51 @@ class TestManualEntry(TestCase):
         self.assertEqual(obj.company_id, self.company.id)
         self.assertEqual(obj.created_by_id, self.user.id)
         self.assertEqual(obj.external_id, '')
+
+    def test_gestes_arriere_traces_et_compenses(self):
+        """AMON46 — écritures monitoring au Journal ; DELETE config 409 ;
+        DELETE d'un relevé certifié 409 ; sinon 204 + ré-évaluation."""
+        from apps.audit.models import AuditLog
+        from apps.monitoring.models import CertificatCarbone
+        cfg = MonitoringConfig.objects.create(
+            company=self.company, installation=self.inst,
+            expected_annual_kwh=Decimal('12000'))
+        juin = ProductionReading.objects.create(
+            company=self.company, installation=self.inst,
+            date=date(2025, 6, 1), period_days=30, energy_kwh=Decimal('900'))
+        octobre = ProductionReading.objects.create(
+            company=self.company, installation=self.inst,
+            date=date(2025, 10, 1), period_days=31, energy_kwh=Decimal('800'))
+        certif = services.emettre_certificat_carbone(
+            self.company, installation_id=self.inst.id,
+            periode_debut=date(2025, 6, 1), periode_fin=date(2025, 6, 30),
+            tco2_evitees=Decimal('0.729'))
+        url_cfg = f'/api/django/monitoring/configs/{cfg.id}/'
+        r = self.api.patch(url_cfg, {'expected_annual_kwh': '9000'},
+                           format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        maj = AuditLog.objects.filter(
+            action='update', object_id=str(cfg.id),
+            content_type__app_label='monitoring').first()
+        self.assertIsNotNone(maj)
+        self.assertEqual(maj.user_id, self.user.id)
+        r = self.api.delete(url_cfg)
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertTrue(MonitoringConfig.objects.filter(pk=cfg.pk).exists())
+        r = self.api.delete(f'/api/django/monitoring/readings/{juin.id}/')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn(certif.reference, str(r.data))
+        with mock.patch('apps.monitoring.views.evaluate_underperformance') as ev:
+            r = self.api.delete(
+                f'/api/django/monitoring/readings/{octobre.id}/')
+        self.assertEqual(r.status_code, 204)
+        ev.assert_called_once()
+        self.assertTrue(AuditLog.objects.filter(
+            action='delete', object_id=str(octobre.id),
+            content_type__app_label='monitoring').exists())
+        CertificatCarbone.objects.filter(pk=certif.pk).update(statut='annule')
+        r = self.api.delete(f'/api/django/monitoring/readings/{juin.id}/')
+        self.assertEqual(r.status_code, 204)
 
     def test_negative_energy_rejected(self):
         r = self.api.post('/api/django/monitoring/readings/', {
@@ -146,6 +192,67 @@ class TestTenantIsolation(TestCase):
         # Défaut : auto-ticket OFF (comportement d'aujourd'hui).
         self.assertFalse(r1.data['auto_create_ticket'])
         self.assertEqual(MonitoringSettings.objects.count(), 2)
+
+    def test_ecritures_reservees_au_module_sav(self):
+        """AMON45 — les écritures monitoring relèvent du module ``sav`` : un
+        Admin RH (responsable sans code sav) reçoit 403, un rôle portant
+        ``sav_gerer`` passe ; lectures ``IsAnyRole`` inchangées."""
+        from django.core.management import call_command
+
+        from apps.monitoring.models import (
+            AbonnementMonitoring, CertificatCarbone)
+        from apps.roles.models import Role
+
+        call_command('init_roles', verbosity=0)
+        admin_rh = User.objects.create_user(
+            username='amon45_rh', password='x', company=self.c1,
+            role=Role.objects.get(company=self.c1, nom='Admin RH'))
+        role_sav = Role.objects.create(
+            company=self.c1, nom='AMON45 SAV',
+            permissions=['sav_voir', 'sav_gerer'])
+        agent_sav = User.objects.create_user(
+            username='amon45_sav', password='x', company=self.c1,
+            role=role_sav)
+        config = MonitoringConfig.objects.create(
+            company=self.c1, installation=self.inst1,
+            expected_annual_kwh=Decimal('6000'))
+        ProductionReading.objects.create(
+            company=self.c1, installation=self.inst1,
+            date=date(2025, 6, 1), period_days=30, energy_kwh=Decimal('500'))
+        a_supprimer = ProductionReading.objects.create(
+            company=self.c1, installation=self.inst1,
+            date=date(2026, 6, 1), energy_kwh=Decimal('10'))
+        abonnement = AbonnementMonitoring.objects.create(
+            company=self.c1, client_id=self.inst1.client_id,
+            installation_id=self.inst1.pk, montant=150)
+        regler_facteur(self.c1)  # AMON41 — sans facteur réglé : 409
+        base = '/api/django/monitoring/'
+        gestes = [
+            ('post', 'certificats-carbone/', {
+                'installation_id': self.inst1.pk,
+                'periode_debut': '2025-01-01', 'periode_fin': '2025-12-31'},
+             201),
+            ('post', f'abonnements/{abonnement.pk}/resilier/',
+             {'motif': 'Client a vendu la maison.'}, 200),
+            ('delete', f'readings/{a_supprimer.pk}/', None, 204),
+            ('post', 'settings/', {'underperf_threshold_pct': '30'}, 200),
+            ('post', f'configs/{config.pk}/email-om-report/',
+             {'period': 'monthly'}, 200),
+        ]
+        api_rh = auth(admin_rh)
+        for methode, chemin, corps, _ok in gestes:
+            r = getattr(api_rh, methode)(base + chemin, corps, format='json')
+            self.assertEqual(r.status_code, 403, (chemin, r.content))
+        self.assertEqual(api_rh.get(base + 'readings/').status_code, 200)
+        self.assertFalse(CertificatCarbone.objects.exists())
+        abonnement.refresh_from_db()
+        self.assertEqual(abonnement.statut, 'actif')
+        self.assertTrue(ProductionReading.objects.filter(
+            pk=a_supprimer.pk).exists())
+        api_sav = auth(agent_sav)
+        for methode, chemin, corps, ok in gestes:
+            r = getattr(api_sav, methode)(base + chemin, corps, format='json')
+            self.assertEqual(r.status_code, ok, (chemin, r.content))
 
 
 class TestSyncNoProvider(TestCase):
@@ -220,6 +327,67 @@ class TestSwappableProvider(TestCase):
             ProductionReading.objects.filter(source='auto').count(), 2)
 
 
+class TestSyncValidation(TestCase):
+    """AMON9 — chaque relevé fournisseur est validé comme la saisie."""
+
+    def setUp(self):
+        self.company = make_company('sync-val-co', 'Sync Val Co')
+        from django.utils import timezone
+        self.inst, _ = make_installation(self.company, ref='CHT-SYNCVAL')
+        jour = timezone.localdate()
+        self.jour = jour
+
+        class Fournisseur(providers.MonitoringProvider):
+            key = 'fake_val'
+            label = 'Fake validation'
+
+            def fetch_recent(self, system, config):
+                return [
+                    {'date': (jour - timedelta(days=3)).isoformat(),
+                     'energy_kwh': 10, 'period_days': 1},
+                    {'date': (jour - timedelta(days=2)).isoformat(),
+                     'energy_kwh': 12, 'period_days': 1},
+                    {'date': f'{(jour - timedelta(days=1)).isoformat()}'
+                             'T23:30:00+00:00',
+                     'energy_kwh': 9, 'period_days': 1, 'external_id': 'h'},
+                    {'date': (jour - timedelta(days=4)).isoformat(),
+                     'energy_kwh': -5, 'period_days': 1, 'external_id': 'n'},
+                ]
+
+        self._orig = dict(providers._REGISTRY)
+        providers.register_provider(Fournisseur)
+        MonitoringConfig.objects.create(
+            company=self.company, installation=self.inst,
+            provider='fake_val', enabled=True, credentials={'x': 1})
+
+    def tearDown(self):
+        providers._REGISTRY.clear()
+        providers._REGISTRY.update(self._orig)
+
+    def test_sync_valide_les_releves(self):
+        from datetime import datetime
+
+        from django.utils import timezone
+        services.sync_system(self.inst)
+        services.sync_system(self.inst)
+        releves = ProductionReading.objects.filter(installation=self.inst)
+        self.assertEqual(releves.count(), 3)
+        self.assertFalse(releves.filter(energy_kwh__lt=0).exists())
+        horodate = releves.get(external_id='h')
+        utc = datetime.fromisoformat(
+            f'{(self.jour - timedelta(days=1)).isoformat()}T23:30:00+00:00')
+        self.assertEqual(horodate.date, timezone.localtime(utc).date())
+
+    def test_releve_manuel_existant_ecarte(self):
+        ProductionReading.objects.create(
+            company=self.company, installation=self.inst,
+            date=self.jour - timedelta(days=3), period_days=1,
+            energy_kwh=Decimal('11'))
+        services.sync_system(self.inst)
+        self.assertEqual(ProductionReading.objects.filter(
+            installation=self.inst, source='auto').count(), 2)
+
+
 class TestUnderperformance(TestCase):
     def setUp(self):
         self.company = make_company('perf-co', 'Perf Co')
@@ -259,7 +427,7 @@ class TestUnderperformance(TestCase):
         vraie sous-performance mesurée."""
         ProductionReading.objects.create(
             company=self.company, installation=self.inst,
-            date=self.today - timedelta(days=400), energy_kwh=Decimal('9000'),
+            date=self.today - timedelta(days=800), energy_kwh=Decimal('9000'),
             period_days=365)
         res = services.evaluate_underperformance(self.inst, today=self.today)
         self.assertFalse(res['evaluated'])
@@ -276,7 +444,7 @@ class TestUnderperformance(TestCase):
         s.save()
         ProductionReading.objects.create(
             company=self.company, installation=self.inst,
-            date=self.today - timedelta(days=400), energy_kwh=Decimal('9000'),
+            date=self.today - timedelta(days=800), energy_kwh=Decimal('9000'),
             period_days=365)
         res = services.evaluate_underperformance(
             self.inst, user=self.user, today=self.today)
@@ -321,6 +489,38 @@ class TestUnderperformance(TestCase):
         self.assertEqual(
             UnderperformanceFlag.objects.filter(is_open=True).count(), 1)
 
+    def test_rechute_reutilise_le_ticket_preventif_ouvert(self):
+        """AMON26 — D1 + T1, production rétablie (D1 fermé, T1 ouvert), puis
+        rechute : D2 lié à T1, un seul ticket ; T1 clôturé ⇒ T2 (témoin)."""
+        from django.utils import timezone
+        s = MonitoringSettings.get(self.company)
+        s.auto_create_ticket = True
+        s.save()
+        self._add_reading(3750)
+
+        def evaluer_puis_retablir():
+            res = services.evaluate_underperformance(
+                self.inst, user=self.user, today=self.today)
+            UnderperformanceFlag.objects.filter(is_open=True).update(
+                is_open=False, date_cloture=timezone.now(),
+                motif_cloture='performance_retablie')
+            return res['ticket']
+        t1 = evaluer_puis_retablir()
+        res = services.evaluate_underperformance(
+            self.inst, user=self.user, today=self.today)
+        self.assertEqual(res['ticket'].id, t1.id)
+        d2 = UnderperformanceFlag.objects.get(is_open=True)
+        self.assertEqual(d2.ticket_id, t1.id)
+        self.assertEqual(Ticket.objects.count(), 1)
+        UnderperformanceFlag.objects.filter(pk=d2.pk).update(
+            is_open=False, date_cloture=timezone.now(),
+            motif_cloture='performance_retablie')
+        Ticket.objects.filter(pk=t1.pk).update(statut=Ticket.Statut.CLOTURE)
+        res = services.evaluate_underperformance(
+            self.inst, user=self.user, today=self.today)
+        self.assertNotEqual(res['ticket'].id, t1.id)
+        self.assertEqual(Ticket.objects.count(), 2)
+
     def test_underperf_ticket_goes_through_sav_services_boundary(self):
         """WIR88 — le ticket préventif est créé via apps.sav.services (frontière
         M3), avec les mêmes attributs qu'avant (comportement inchangé)."""
@@ -351,10 +551,11 @@ class TestUnderperformance(TestCase):
             self.inst, user=self.user, today=self.today)
         self.assertEqual(
             UnderperformanceFlag.objects.filter(is_open=True).count(), 1)
-        # Production correcte ensuite → drapeau fermé.
-        ProductionReading.objects.create(
-            company=self.company, installation=self.inst,
-            date=self.today, energy_kwh=Decimal('7000'), period_days=365)
+        # Production correcte ensuite → drapeau fermé. AMON22 : le relevé
+        # corrigé couvre la même période (un relevé daté d'aujourd'hui sur
+        # 365 j ne compterait que son premier jour).
+        ProductionReading.objects.filter(installation=self.inst).update(
+            energy_kwh=Decimal('7000'))
         res = services.evaluate_underperformance(
             self.inst, user=self.user, today=self.today)
         self.assertFalse(res['underperforming'])
@@ -510,6 +711,7 @@ class TestAud523FleetQueryBudget(TestCase):
 
     def setUp(self):
         self.company = make_company('aud523-co', 'AUD523 Co')
+        regler_facteur(self.company)  # AMON41 — profil créé hors mesure (sinon faux N+1)
         self.today = date(2026, 6, 30)
         self._n = 0
 
@@ -593,9 +795,10 @@ class TestProductionWarranty(TestCase):
 
     def test_shortfall_and_compensation(self):
         self._make_warranty()
+        # AMON40 — relevé daté du 01/01 : la période couverte est l'année.
         ProductionReading.objects.create(
             company=self.company, installation=self.inst,
-            date=date(2026, 6, 1), period_days=365, energy_kwh=Decimal('10000'))
+            date=date(2026, 1, 1), period_days=365, energy_kwh=Decimal('10000'))
         from apps.monitoring.services import production_warranty_status
         # AUD508 — 2026 doit être une année CLOSE pour ce calcul (le garanti
         # annuel complet 11940 est la bonne référence uniquement une fois
@@ -680,7 +883,7 @@ class TestAud508WarrantyProrationAnneeEnCours(TestCase):
     def test_systeme_conforme_aucune_compensation_en_cours_annee(self):
         ProductionReading.objects.create(
             company=self.company, installation=self.inst,
-            date=date(2026, 6, 1), period_days=180, energy_kwh=Decimal('8000'))
+            date=date(2026, 1, 1), period_days=180, energy_kwh=Decimal('8000'))
         from apps.monitoring.services import production_warranty_status
         st = production_warranty_status(
             self.inst, year=2026, today=self.today)
@@ -697,7 +900,7 @@ class TestAud508WarrantyProrationAnneeEnCours(TestCase):
         contre la bonne cible (le garanti ÉCOULÉ, pas l'objectif annuel)."""
         ProductionReading.objects.create(
             company=self.company, installation=self.inst,
-            date=date(2026, 6, 1), period_days=180, energy_kwh=Decimal('5000'))
+            date=date(2026, 1, 1), period_days=180, energy_kwh=Decimal('5000'))
         from apps.monitoring.services import production_warranty_status
         st = production_warranty_status(
             self.inst, year=2026, today=self.today)
@@ -709,13 +912,57 @@ class TestAud508WarrantyProrationAnneeEnCours(TestCase):
         complet comme référence (aucune proration à appliquer)."""
         ProductionReading.objects.create(
             company=self.company, installation=self.inst,
-            date=date(2026, 6, 1), period_days=365, energy_kwh=Decimal('8000'))
+            date=date(2026, 1, 1), period_days=365, energy_kwh=Decimal('8000'))
         from apps.monitoring.services import production_warranty_status
         st = production_warranty_status(
             self.inst, year=2026, today=date(2027, 1, 10))
         self.assertFalse(st['year_in_progress'])
         self.assertEqual(st['guaranteed_kwh'], Decimal('12000.00'))
         self.assertEqual(st['compensation_mad'], Decimal('4760.00'))
+
+    def test_garanti_borne_a_la_couverture_et_a_start_year(self):
+        """AMON40 — mis en service le 08/09/2026 et bien relevé : garanti
+        couru depuis la mise en service, aucune compensation ; rapport de
+        janvier à août à 0 ; année antérieure à ``start_year`` : pas de
+        garantie ; sans relevé : réel et compensation null."""
+        from apps.monitoring.models import ProductionWarranty
+        from apps.monitoring.report_warranty import build_warranty_report_data
+        from apps.monitoring.services import (
+            production_warranty_status, warranty_curve_overlay,
+        )
+        aujourdhui = date(2026, 11, 7)
+        inst, _ = make_installation(self.company, ref='AMON40-1', kwc='7.00')
+        Installation.objects.filter(pk=inst.pk).update(
+            date_mise_en_service=date(2026, 9, 8))
+        inst.refresh_from_db()
+        ProductionWarranty.objects.create(
+            company=self.company, installation=inst,
+            guaranteed_year1_kwh=Decimal('12000'),
+            degradation_pct_per_year=Decimal('0'), start_year=2026,
+            tolerance_pct=Decimal('5'),
+            compensation_mad_per_kwh=Decimal('1.1000'))
+        st = production_warranty_status(inst, year=2026, today=aujourdhui)
+        self.assertIsNone(st['actual_kwh'])
+        self.assertIsNone(st['compensation_mad'])
+        for i in range(61):
+            ProductionReading.objects.create(
+                company=self.company, installation=inst,
+                date=date(2026, 9, 8) + timedelta(days=i), period_days=1,
+                energy_kwh=Decimal('32.88'))
+        st = production_warranty_status(inst, year=2026, today=aujourdhui)
+        self.assertEqual(st['guaranteed_kwh'], Decimal('2005.48'))
+        self.assertEqual(st['compensation_mad'], Decimal('0.00'))
+        self.assertTrue(st['within_tolerance'])
+        courbe = warranty_curve_overlay(inst, today=aujourdhui)
+        p2026 = next(p for p in courbe['points'] if p['year'] == 2026)
+        self.assertFalse(p2026['anomalous'])
+        rapport = build_warranty_report_data(inst, year=2026, today=aujourdhui)
+        for mois in rapport['monthly'][:8]:
+            self.assertEqual(mois['penalite_cumulee_mad'], Decimal('0.00'))
+        self.assertFalse(production_warranty_status(
+            inst, year=2025, today=aujourdhui)['has_warranty'])
+        self.assertFalse(build_warranty_report_data(
+            inst, year=2025, today=aujourdhui)['has_warranty'])
 
 
 class TestSoiling(TestCase):
@@ -742,10 +989,72 @@ class TestSoiling(TestCase):
 
     def test_pr_drop_recommends_cleaning(self):
         # PR descend de 1000 → 700 (≈ -25 pts de PR), chute > seuil.
-        self._seed([1000, 950, 850, 700])
+        # AMON44 — relevés datés du 1er (convention AMON3 : mois complets).
+        for mois, kwh in enumerate([1000, 950, 850, 700], start=1):
+            ProductionReading.objects.create(
+                company=self.company, installation=self.inst,
+                date=date(2026, mois, 1), period_days=30,
+                energy_kwh=Decimal(str(kwh)))
         from apps.monitoring.analytics import soiling_assessment
         a = soiling_assessment(self.inst, today=self.today)
         self.assertIsNotNone(a['estimated_soiling_loss_pct'])
+        self.assertTrue(a['recommend_cleaning'])
+
+    def _saison(self, inst, mois_annee, facteurs=None):
+        import calendar
+        facteurs = facteurs or {}
+        for annee, mois in mois_annee:
+            premier = date(annee, mois, 1)
+            nb = calendar.monthrange(annee, mois)[1]
+            kwh = services.attendu_entre(
+                Decimal('12000'), premier, date(annee, mois, nb))
+            ProductionReading.objects.create(
+                company=self.company, installation=inst, date=premier,
+                period_days=nb, energy_kwh=(
+                    kwh * facteurs.get(mois, Decimal('1'))).quantize(
+                        Decimal('0.01')))
+
+    def test_saison_saine_sans_reco_et_nettoyage_sav_remet_la_base(self):
+        """AMON44 — une saison saine n'est pas une salissure ; un nettoyage
+        coché sur un ticket SAV devient le dernier nettoyage (< 3 mois
+        complets ⇒ aucune estimation) ; témoin : 2 mois propres puis −20 %."""
+        from datetime import datetime
+
+        from django.utils import timezone
+
+        from apps.monitoring.analytics import soiling_assessment
+        from apps.monitoring.report import build_om_report_data
+        from apps.sav.models import TicketChecklistItem
+        jour = date(2025, 12, 31)
+        self._saison(self.inst, [(2025, m) for m in range(1, 13)])
+        a = soiling_assessment(self.inst, today=jour)
+        self.assertFalse(a['recommend_cleaning'])
+        self.assertLess(abs(float(a['estimated_soiling_loss_pct'])), 1.0)
+        ticket = Ticket.objects.create(
+            company=self.company, reference='SAV-AMON44',
+            client=self.inst.client, installation=self.inst)
+        TicketChecklistItem.objects.create(
+            company=self.company, ticket=ticket,
+            cle='ci_panneaux_etat_nettoyage', libelle='Nettoyage', coche=True,
+            date_coche=timezone.make_aware(datetime(2025, 11, 20, 10)))
+        a = soiling_assessment(self.inst, today=jour)
+        self.assertEqual(a['last_cleaning_date'], '2025-11-20')
+        self.assertIsNone(a['estimated_soiling_loss_pct'])
+        self.assertFalse(a['recommend_cleaning'])
+        self.assertNotIn('Nettoyage des panneaux recommandé.',
+                         build_om_report_data(self.inst, today=jour)[
+                             'recommendations'])
+        temoin, _ = make_installation(self.company, ref='S-2', kwc='10.00')
+        MonitoringConfig.objects.create(
+            company=self.company, installation=temoin,
+            expected_annual_kwh=Decimal('12000'))
+        CleaningEvent.objects.create(
+            company=self.company, installation=temoin, date=date(2025, 8, 31))
+        self._saison(temoin, [(2025, 9), (2025, 10), (2025, 11)],
+                     {11: Decimal('0.8')})
+        a = soiling_assessment(temoin, today=date(2025, 11, 30))
+        self.assertAlmostEqual(
+            float(a['estimated_soiling_loss_pct']), 20.0, delta=0.5)
         self.assertTrue(a['recommend_cleaning'])
 
     def test_recent_cleaning_no_days_alert(self):
@@ -810,7 +1119,7 @@ class TestWarrantyCurveOverlay(TestCase):
         # à 8000 kWh au 30 juin est en AVANCE sur sa trajectoire annuelle).
         ProductionReading.objects.create(
             company=self.company, installation=self.inst,
-            date=date(2026, 6, 1), period_days=365, energy_kwh=Decimal('3000'))
+            date=date(2026, 1, 1), period_days=365, energy_kwh=Decimal('3000'))
         from apps.monitoring.services import warranty_curve_overlay
         ov = warranty_curve_overlay(self.inst, today=self.today)
         self.assertTrue(ov['has_warranty'])
@@ -881,9 +1190,24 @@ class TestAdditionalProviders(TestCase):
         self.inst, _ = make_installation(self.company, ref='ADP-1')
 
     def test_new_providers_registered(self):
-        keys = dict(providers.available_providers())
+        keys = {k for k, _lbl, _dispo in providers.available_providers()}
         for key in ('solaredge', 'sungrow', 'solis'):
             self.assertIn(key, keys)
+
+    def test_squelettes_non_disponibles(self):
+        """AMON8 — les connecteurs squelettes sont servis non disponibles et
+        une config qui en porte un n'est jamais une supervision auto."""
+        r = self.api.get('/api/django/monitoring/configs/providers/')
+        self.assertEqual(r.status_code, 200, r.data)
+        dispo = {p['key']: p['disponible'] for p in r.data}
+        for key in ('fusionsolar', 'solaredge', 'sungrow', 'solis'):
+            self.assertIs(dispo[key], False, key)
+        self.assertIs(dispo['noop'], True)
+        cfg = MonitoringConfig.objects.create(
+            company=self.company, installation=self.inst,
+            provider='fusionsolar', enabled=True,
+            credentials={'username': 'u', 'password': 'p'})
+        self.assertFalse(cfg.is_auto)
 
     def test_provider_noop_without_credentials(self):
         for key in ('solaredge', 'sungrow', 'solis'):
@@ -921,6 +1245,7 @@ class TestCo2Reporting(TestCase):
         self.api = auth(self.user)
         self.inst1, _ = make_installation(self.company, ref='CO2-1', kwc='5')
         self.inst2, _ = make_installation(self.company, ref='CO2-2', kwc='10')
+        regler_facteur(self.company)  # AMON41 — facteur réglé (810 g)
         for inst in (self.inst1, self.inst2):
             self.config = MonitoringConfig.objects.create(
                 company=self.company, installation=inst)
@@ -931,14 +1256,12 @@ class TestCo2Reporting(TestCase):
 
     def test_co2_per_system(self):
         from apps.monitoring.selectors import co2_for_installation
-        r = co2_for_installation(self.inst1)
-        # 1000 kWh × 0.81 = 810 kg.
+        r = co2_for_installation(self.inst1)  # 1000 kWh × 0.81 = 810 kg.
         self.assertEqual(r['co2_kg'], Decimal('810.00'))
 
     def test_co2_fleet_cumulative(self):
         from apps.monitoring.selectors import co2_fleet
-        r = co2_fleet(self.company)
-        # 2000 kWh × 0.81 = 1620 kg.
+        r = co2_fleet(self.company)  # 2000 kWh × 0.81 = 1620 kg.
         self.assertEqual(r['total_co2_kg'], Decimal('1620.00'))
         self.assertEqual(len(r['systems']), 2)
 
@@ -953,6 +1276,7 @@ class TestClientEnvironmentalPortal(TestCase):
 
     def setUp(self):
         self.company = make_company('portal-co', 'Portal Co')
+        regler_facteur(self.company)  # AMON41
         self.user = User.objects.create_user(
             username='portal_admin', password='x', role_legacy='admin',
             company=self.company)
@@ -1022,6 +1346,29 @@ class TestOmReport(TestCase):
         self.assertEqual(d['period_kwh'], Decimal('900.00'))
         self.assertIn('recommendations', d)
         self.assertTrue(len(d['recommendations']) >= 1)
+
+    def test_alarme_onduleur_escaladee_comptee(self):
+        """AMON43 — une alarme onduleur escaladée compte dans « Alarmes »."""
+        from apps.monitoring.report import (
+            build_om_report_data, build_om_report_html,
+        )
+        from apps.sav.models import AlarmeOnduleur, Equipement
+        from apps.stock.models import Produit
+        produit = Produit.objects.create(
+            company=self.company, nom='Onduleur', sku='OND-AMON43-R',
+            prix_achat=1, prix_vente=2)
+        onduleur = Equipement.objects.create(
+            company=self.company, produit=produit, installation=self.inst)
+        AlarmeOnduleur.objects.create(
+            company=self.company, equipement=onduleur, code='F01',
+            gravite=AlarmeOnduleur.Gravite.CRITIQUE,
+            statut=AlarmeOnduleur.Statut.ESCALADEE)
+        AlarmeOnduleur.objects.create(
+            company=self.company, equipement=onduleur, code='F02',
+            statut=AlarmeOnduleur.Statut.RESOLUE)
+        d = build_om_report_data(self.inst, period='monthly', today=self.today)
+        self.assertEqual(d['open_alarms'], 1)
+        self.assertIn('1 alarme(s) ouverte(s)', build_om_report_html(d))
 
     def test_report_quarterly_window(self):
         from apps.monitoring.report import build_om_report_data
@@ -1285,6 +1632,7 @@ class TestAsav100Abonnements(TestCase):
             company=self.autre)
         self.api = auth(self.resp)
         self.inst, self.client = make_installation(self.company, ref='CHT-A100')
+        Installation.objects.filter(pk=self.inst.pk).update(statut='receptionne')  # AMON11
         self.config = MonitoringConfig.objects.create(
             company=self.company, installation=self.inst, enabled=True)
 
@@ -1306,13 +1654,26 @@ class TestAsav100Abonnements(TestCase):
         ligne = lst.data['results'][0]
         self.assertEqual(ligne['client_id'], self.client.id)
         self.assertEqual(ligne['statut'], 'actif')
-        self.assertEqual(ligne['prochaine_echeance'], '2026-11-01')
+        self.assertNotIn('prochaine_echeance', ligne)
+
+    def test_aucune_echeance_servie(self):
+        """AMON2 (D-AMON-1 vendu_une_fois) — aucune échéance posée ni servie."""
+        from django.utils import timezone
+
+        debut = (timezone.localdate() - timedelta(days=40)).isoformat()
+        r = self._creer(date_debut=debut)
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertNotIn('prochaine_echeance', r.data)
+        lst = self.api.get(self.URL)
+        self.assertTrue(all('prochaine_echeance' not in ligne
+                            for ligne in lst.data['results']))
+        self.assertIsNone(AbonnementMonitoring.objects.get(
+            pk=r.data['id']).prochaine_echeance)
 
     def test_creation_force_societe_et_client(self):
         autre_inst, autre_client = make_installation(self.autre, ref='CHT-B')
         r = self._creer(client_id=autre_client.id, company=self.autre.id)
         self.assertEqual(r.status_code, 201, r.data)
-        from apps.monitoring.models import AbonnementMonitoring
         ab = AbonnementMonitoring.objects.get(id=r.data['id'])
         self.assertEqual(ab.company_id, self.company.id)
         self.assertEqual(ab.client_id, self.client.id)
@@ -1349,6 +1710,60 @@ class TestAsav100Abonnements(TestCase):
         # ENF11 : déjà résilié = refus d'ÉTAT -> 409 (plus 400).
         self.assertEqual(r.status_code, 409)
 
+    def test_resiliation_trace_date_et_auteur(self):
+        """AMON7 — la résiliation sert sa date et son auteur ; actif : null."""
+        from django.utils import timezone
+        r = self._creer()
+        self.assertIsNone(r.data['date_resiliation'])
+        self.assertIsNone(r.data['resilie_par_nom'])
+        r = self.api.post(f'{self.URL}{r.data["id"]}/resilier/',
+                          {'motif': 'Client a vendu la maison.'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['resilie_par_nom'], 'asav100_resp')
+        ab = AbonnementMonitoring.objects.get(pk=r.data['id'])
+        self.assertEqual(timezone.localtime(ab.date_resiliation).date(),
+                         timezone.localdate())
+        self.assertEqual(ab.resilie_par.username, 'asav100_resp')
+
+    def test_recreation_rallume_la_supervision(self):
+        # AMON84 — rallumée à la recréation ; jamais abonné : reste coupée.
+        ab = self._creer().data['id']
+        self.api.post(f'{self.URL}{ab}/resilier/', {'motif': 'F'}, format='json')
+        self.assertEqual(self._creer().status_code, 201)
+        self.config.refresh_from_db()
+        self.assertTrue(self.config.enabled)
+        autre, _ = make_installation(self.company, ref='CHT-A100-2')
+        Installation.objects.filter(pk=autre.pk).update(statut='receptionne')
+        cfg = MonitoringConfig.objects.create(
+            company=self.company, installation=autre, enabled=False)
+        self.assertEqual(self._creer(installation_id=autre.id).status_code, 201)
+        cfg.refresh_from_db()
+        self.assertFalse(cfg.enabled)
+
+    def test_second_abonnement_actif_409(self):
+        """AMON5 — un seul actif par système ; résilier l'un de deux actifs
+        hérités ne coupe pas la supervision ; après résiliation : 201."""
+        premier = self._creer()
+        self.assertEqual(premier.status_code, 201, premier.data)
+        r = self._creer(periodicite='annuel', montant='1500.00')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual(
+            str(r.data['detail']),
+            'Ce système a déjà un abonnement actif : résiliez-le d’abord.')
+        herite = AbonnementMonitoring.objects.create(
+            company=self.company, client_id=self.client.id,
+            installation_id=self.inst.id, montant=Decimal('1500'),
+            periodicite='annuel', statut='actif')
+        r = self.api.post(f'{self.URL}{premier.data["id"]}/resilier/',
+                          {'motif': 'Doublon'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.config.refresh_from_db()
+        self.assertTrue(self.config.enabled)
+        r = self.api.post(f'{self.URL}{herite.id}/resilier/',
+                          {'motif': 'Fin'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(self._creer().status_code, 201)
+
     def test_resiliation_corps_non_objet_400(self):
         # api-fuzz-full 41773314544 : `null` en corps levait AttributeError (500).
         ab_id = self._creer().data['id']
@@ -1376,6 +1791,39 @@ class TestAsav100Abonnements(TestCase):
         self.assertEqual(r.status_code, 404)
         self.assertEqual(api_b.get(self.URL).data['count'], 0)
         self.assertEqual(auth(self.normal).get(self.URL).status_code, 403)
+
+    def test_repointer_client_monitoring(self):
+        """AMON12 — abonnement et certificats suivent le client survivant ;
+        conflit d'unicité rapporté ; autre société jamais touchée."""
+        from apps.monitoring.models import (
+            AbonnementMonitoring, CertificatCarbone)
+        ab_id = self._creer().data['id']
+        survivant = Client.objects.create(
+            company=self.company, nom='Survivant', prenom='B',
+            email='survivant-a100@example.invalid')
+        periode = {'periode_debut': date(2026, 1, 1),
+                   'periode_fin': date(2026, 12, 31)}
+        cert_a = CertificatCarbone.objects.create(
+            company=self.company, client_id=self.client.id,
+            tco2_evitees=Decimal('1.000'), reference='CERT-A', **periode)
+        CertificatCarbone.objects.create(
+            company=self.company, client_id=survivant.id,
+            tco2_evitees=Decimal('2.000'), reference='CERT-B', **periode)
+        ab_autre = AbonnementMonitoring.objects.create(
+            company=self.autre, client_id=self.client.id, montant=10)
+        repointes, non_repointes = services.repointer_client_monitoring(
+            self.company, ancien_client_id=self.client.id,
+            nouveau_client_id=survivant.id)
+        self.assertEqual(
+            repointes, {'monitoring.AbonnementMonitoring.client_id': 1})
+        self.assertEqual([n['relation'] for n in non_repointes],
+                         ['monitoring.CertificatCarbone.client_id'])
+        self.assertEqual(AbonnementMonitoring.objects.get(id=ab_id).client_id,
+                         survivant.id)
+        cert_a.refresh_from_db()
+        self.assertEqual(cert_a.client_id, self.client.id)
+        ab_autre.refresh_from_db()
+        self.assertEqual(ab_autre.client_id, self.client.id)
 
 
 class MonitoringConfigSchemaTests(TestCase):

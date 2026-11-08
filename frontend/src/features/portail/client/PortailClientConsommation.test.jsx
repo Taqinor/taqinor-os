@@ -46,4 +46,37 @@ describe('PortailClientConsommation — ADOC140', () => {
     expect(screen.queryByRole('table')).toBeNull()
     expect(screen.getByTestId('consommation-alertes').textContent).toBe('Aucune alerte ouverte')
   })
+
+  it('relevés servis sans fournisseur : tableau affiché (AMON6)', async () => {
+    portailApi.consommation.mockResolvedValue({ data: {
+      window_days: 90,
+      points: [
+        { date: '2026-08-01', energy_kwh: '410.0' },
+        { date: '2026-09-01', energy_kwh: '395.5' },
+        { date: '2026-10-01', energy_kwh: '402.2' },
+      ],
+      provider_configure: false,
+      alertes_ouvertes: 0,
+    } })
+    renderPage()
+    expect(await screen.findByText('Production des 90 derniers jours')).toBeTruthy()
+    expect(screen.getAllByRole('row')).toHaveLength(4)
+    expect(screen.queryByText('Suivi de production non raccordé')).toBeNull()
+  })
+
+  it('AMON83 — chaque relevé affiche sa période (mensuel ≠ journée)', async () => {
+    portailApi.consommation.mockResolvedValue({ data: {
+      window_days: 90,
+      points: [
+        { date: '2026-09-01', period_days: 30, energy_kwh: '450.00' },
+        { date: '2026-10-01', period_days: 1, energy_kwh: '15.00' },
+      ],
+      provider_configure: false,
+      alertes_ouvertes: 0,
+    } })
+    renderPage()
+    expect(await screen.findByText('Période (j)')).toBeTruthy()
+    expect(screen.getByText('30 j')).toBeTruthy()
+    expect(screen.getByText('1 j')).toBeTruthy()
+  })
 })

@@ -33,8 +33,9 @@ import { ticketStore, TICKET_BASE } from './__tests__/ticketDetailMocks.js'
 
 afterEach(() => { cleanup(); serveur.factures.length = 0 })
 
-function renderDetail(ticket, role) {
-  return render(<Provider store={ticketStore(role)}>
+function renderDetail(ticket, role, permissions) {
+  const extra = permissions ? { auth: () => ({ role, permissions }) } : {}
+  return render(<Provider store={ticketStore(role, extra)}>
     <TicketDetail ticket={ticket} onClose={() => {}} onSaved={() => {}} />
   </Provider>)
 }
@@ -65,7 +66,9 @@ describe('TicketDetail — ASAV3 une seule porte de facture', () => {
   })
 
   it('récidive, technicien : refus sans bouton d\'override', async () => {
-    renderDetail(base(2), 'technicien')
+    // ACSV62 / D-ACSV-3 — « Facturer » exige `ventes_creer` : ce technicien le
+    // porte, mais l'override récidive reste réservé au responsable.
+    renderDetail(base(2), 'technicien', ['sav_gerer', 'ventes_creer'])
     fireEvent.click(await screen.findByRole('button', { name: /^Facturer$/ }))
     expect(await screen.findByText(/override responsable requis/i)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Facturer quand même/ })).toBeNull()

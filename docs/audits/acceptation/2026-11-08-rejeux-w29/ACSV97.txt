@@ -1,0 +1,82 @@
+# Preuve en direct ACSV97 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Verdict : PASS — C-ACSV-045 (c) n'est plus concluant (la définitive (b) est refusée, la réserve s'ajoute donc AVANT la définitive) ; C-LIVE-ACSV97 : définitive prononcée puis réserve bloquante 409 « Réception définitive prononcée le … : ouvrez un ticket SAV. », 0 créée ; non bloquante 201 => PASS.
+
+== C-ACSV-045 (sha ddf1f97a1)
+attendu : repro si (a) 200 sur annulé, (b) 200 avant date_definitive_prevue, (c) 201 réserve après définitive
+observé : {"a_annule": {"http": 409, "date_reception_definitive": "None"}, "b_delai": {"date_provisoire": "2026-11-07", "date_definitive_prevue": "2027-11-07", "http": 409, "date_reception_definitive": "None"}, "c_reserve_apres_definitive": {"http": 201, "reserves_ouvertes": 1, "reception_contrat": {"date_reception_provisoire": "2026-11-07", "date_reception_definitive": null, "date_definitive_prevue": "2027-11-07", "definitive_possible": false}}, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 1, après 1) ; mails 0 ; tâches Celery bloquées 0
+
+== C-LIVE-ACSV97 (sha 42d1886b8)
+attendu : définitive 200 puis réserve bloquante 409 (0 créée), non bloquante 201 ; témoin avant définitive 201
+observé : {"temoin_avant_definitive": 201, "definitive": {"http": 200, "date": "2026-11-08"}, "bloquante_apres": {"http": 409, "detail": "Réception définitive prononcée le 08/11/2026 : ouvrez un ticket SAV.", "reserves_ouvertes_apres": 0}, "non_bloquante_apres": 201, "contrat": {"date_reception_provisoire": "2025-10-04", "date_reception_definitive": "2026-11-08", "date_definitive_prevue": "2026-10-04", "definitive_possible": false}, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0
+
+# ---- source : C-LIVE-ACSV97.py ----
+# flake8: noqa  (sonde LIVE du rejeu d'acceptation w29 — écrite parce que C-ACSV-045 (c) n'est plus concluant :
+# sur le code corrigé, la définitive (b) est refusée 409 avant la date prévue, donc (c) ajoute une réserve sur un
+# chantier SANS définitive — 201 légitime.)
+"""ACSV97 — définitive réellement PRONONCÉE (provisoire il y a 400 jours, délai 12 mois), puis
+POST reserves/ bloquante => attendu 409 « Réception définitive prononcée le … : ouvrez un ticket SAV. », 0 réserve ;
+non bloquante => 201 (inchangé). Témoin : avant la définitive, bloquante => 201.
+repro=True signifie ICI que le comportement ATTENDU par la tâche est observé."""
+SONDE = {"constat": "C-LIVE-ACSV97", "sha": "42d1886b8",
+         "attendu": "définitive 200 puis réserve bloquante 409 (0 créée), non bloquante 201 ; témoin avant définitive 201",
+         "modeles": ["installations.Installation", "installations.Reserve"]}
+
+
+def sonde(ctx):
+    import datetime
+    from decimal import Decimal
+    from django.contrib.auth import get_user_model
+    from django.utils import timezone
+    from rest_framework.test import APIClient
+    from authentication.models import Company
+    from apps.crm.models import Client
+    from apps.installations.models import Installation
+    from apps.installations.services import reception_contrat, reserves_ouvertes
+    from apps.parametres.models import CompanyProfile
+    H = {'HTTP_HOST': 'localhost'}
+    co = Company.objects.create(nom='Live ACSV 97', slug='live-acsv-97')
+    u = get_user_model().objects.create_user(username='live_acsv_97', password='x', role_legacy='admin', company=co)
+    api = APIClient()
+    api.force_authenticate(u)
+    cl = Client.objects.create(company=co, nom='Usine L97 SARL', type_client='entreprise', email='l97@example.invalid')
+    prof = CompanyProfile.get(co)
+    prof.delai_reception_definitive_mois = 12
+    prof.save()
+    today = timezone.localdate()
+    base = '/api/django/installations/chantiers'
+
+    def mk(ref):
+        return Installation.objects.create(company=co, reference=ref, client=cl, type_installation='industriel',
+                                           statut='receptionne', date_reception=today - datetime.timedelta(days=400),
+                                           puissance_installee_kwc=Decimal('100'))
+    t = mk('CHT-L97-T')
+    rt = api.post(f'{base}/{t.pk}/reserves/', {'description': 'Témoin avant définitive', 'origine': 'reception',
+                                               'bloquante': True}, format='json', **H)
+    c = mk('CHT-L97-C')
+    rd = api.post(f'{base}/{c.pk}/reception-definitive/', {}, format='json', **H)
+    c.refresh_from_db()
+    rb = api.post(f'{base}/{c.pk}/reserves/', {'description': 'Fuite boîte de jonction', 'origine': 'reception',
+                                               'bloquante': True}, format='json', **H)
+    n_apres_bloquante = len(reserves_ouvertes(c))
+    rn = api.post(f'{base}/{c.pk}/reserves/', {'description': 'Étiquette à reposer', 'origine': 'reception',
+                                               'bloquante': False}, format='json', **H)
+    c.refresh_from_db()
+    obs = {'temoin_avant_definitive': rt.status_code,
+           'definitive': {'http': rd.status_code, 'date': str(c.date_reception_definitive)},
+           'bloquante_apres': {'http': rb.status_code, 'detail': (rb.data or {}).get('detail') if rb.status_code >= 400 else None,
+                               'reserves_ouvertes_apres': n_apres_bloquante},
+           'non_bloquante_apres': rn.status_code,
+           'contrat': reception_contrat(c)}
+    obs['repro'] = bool(rt.status_code == 201 and rd.status_code == 200 and rb.status_code == 409
+                        and n_apres_bloquante == 0 and rn.status_code == 201)
+    return obs

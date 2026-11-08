@@ -11,7 +11,8 @@ panneaux accepté (chantier, réservation 10, stock 30) :
     directe qui reçoit puis sort 10).
 
 LA TABLE DES CHEMINS. Les appelants de ``decompter_stock_lignes`` /
-``record_stock_movement`` de type SORTIE dans ``apps/ventes`` et
+``record_stock_movement`` de type SORTIE dans ``apps/ventes``,
+``apps/facturation`` (ODX18 : vues de facturation déménagées) et
 ``apps/stock`` sont RELUS dans le source (AST) et comparés à la table
 ci-dessous : un chemin de sortie ajouté sans y être classé (couvert ici, ou
 hors vente avec sa raison) fait échouer la garde EN LE NOMMANT.
@@ -93,7 +94,7 @@ HORS_VENTE = {
         'sortie manuelle d\'un lot d\'entrepôt',
     'apps/stock/views/mouvement.py::MouvementStockViewSet.perform_create':
         'mouvement manuel saisi au stock',
-    'apps/ventes/views/avoir.py::AvoirViewSet._contre_passer_restockage':
+    'apps/facturation/views/avoir.py::AvoirViewSet._contre_passer_restockage':
         "annulation d'un avoir de retour (AFAC28) : SORTIE miroir des "
         'ENTRÉES du retour, aucune vente de chantier',
 }
@@ -112,10 +113,11 @@ _TYPES_NON_SORTIE = ('ENTREE', 'AJUSTEMENT', 'REBUT', 'TRANSFERT',
 def appelants_sortie():
     """``{'apps/<app>/<fichier>.py::<Classe.fonction>'}`` des appelants de
     ``decompter_stock_lignes`` / ``record_stock_movement`` de type SORTIE
-    (ou de type non littéral) dans ``apps/ventes`` et ``apps/stock``."""
+    (ou de type non littéral) dans ``apps/ventes``, ``apps/facturation``
+    (ODX18 — vues de facturation déménagées de ventes) et ``apps/stock``."""
     racine = Path(settings.BASE_DIR)
     sites = set()
-    for app in ('ventes', 'stock'):
+    for app in ('ventes', 'facturation', 'stock'):
         for chemin in sorted((racine / 'apps' / app).rglob('*.py')):
             parties = set(chemin.relative_to(racine).parts)
             if (parties & {'migrations', 'tests', 'management'}

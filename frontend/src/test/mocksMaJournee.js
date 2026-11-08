@@ -17,6 +17,7 @@ export function panneauxRejetes() {
     getSafety: vi.fn(rejet),
     getToolReturn: vi.fn(rejet),
     getCode: vi.fn(rejet),
+    getFiche: vi.fn(rejet), // ACSV91 — panneau « Fiche d'intervention »
     compteRenduUrl: vi.fn(() => ''),
   }
 }

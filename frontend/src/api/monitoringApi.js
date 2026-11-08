@@ -86,6 +86,12 @@ const monitoringApi = {
   resilierAbonnement: (id, motif) =>
     api.post(`/monitoring/abonnements/${id}/resilier/`, { motif }),
 
+  // ── AMON88 — alertes de sous-performance (vue parc) ──
+  // Contrat : backend/django_core/apps/monitoring/contract_samples/drapeaux_sous_performance.json
+  getDrapeaux: (params) => api.get('/monitoring/drapeaux/', { params }),
+  classerDrapeau: (id, motif) =>
+    api.post(`/monitoring/drapeaux/${id}/classer/`, { motif }),
+
   // ── ASAV101 — SLA de disponibilité (écran SAV/monitoring) ──
   // Contrat : backend/django_core/apps/monitoring/contract_samples/sla_disponibilite.json
   getSlasDisponibilite: (params) => api.get('/monitoring/sla-disponibilite/', { params }),
@@ -99,6 +105,12 @@ const monitoringApi = {
   // Contrat : backend/django_core/apps/monitoring/contract_samples/certificats_carbone.json
   getCertificatsCarbone: (params) => api.get('/monitoring/certificats-carbone/', { params }),
   emettreCertificatCarbone: (data) => api.post('/monitoring/certificats-carbone/', data),
+  // AMON93 — annulation (motif obligatoire) ; la période redevient émissible.
+  // AMON94 — PDF du certificat (version GED déposée à l'émission).
+  getCertificatCarbonePdf: (id) =>
+    api.get(`/monitoring/certificats-carbone/${id}/pdf/`, { responseType: 'blob' }),
+  annulerCertificatCarbone: (id, motif) =>
+    api.post(`/monitoring/certificats-carbone/${id}/annuler/`, { motif }),
 
   // ── ASAV103 — pertes catégorisées d'un système (écran SAV/monitoring) ──
   // Contrat : backend/django_core/apps/monitoring/contract_samples/pertes_categorisees.json

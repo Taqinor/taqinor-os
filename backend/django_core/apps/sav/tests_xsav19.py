@@ -73,6 +73,31 @@ class XSAV19PublicSignalerTest(TestCase):
             {'description': 'Panne'})
         self.assertEqual(resp.status_code, 404, resp.content)
 
+    def test_equipement_retire_410(self):
+        """ACSV71 : l'appareil remplacé ou au rebut n'ouvre plus de ticket
+        (QR public 410, création staff 400) ; remis en service : 201."""
+        token = self.equip.ensure_public_token()
+        Equipement.objects.filter(pk=self.equip.pk).update(
+            statut=Equipement.Statut.REMPLACE)
+        nb_avant = Ticket.objects.count()
+        corps = {'description': 'Panne'}
+        url = f'/api/django/public/sav/equipement/{token}/signaler/'
+        resp = self.public_client.post(url, corps)
+        self.assertEqual(resp.status_code, 410, resp.content)
+        self.assertEqual(Ticket.objects.count(), nb_avant)
+        Equipement.objects.filter(pk=self.equip.pk).update(
+            statut=Equipement.Statut.EN_SERVICE, mis_au_rebut=True)
+        self.assertEqual(self.public_client.post(url, corps).status_code, 410)
+        resp = auth(self.admin).post('/api/django/sav/tickets/', {
+            'client': self.client_obj.id, 'equipement': self.equip.id,
+            'type': Ticket.Type.CORRECTIF}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('equipement', resp.data)
+        Equipement.objects.filter(pk=self.equip.pk).update(
+            mis_au_rebut=False, statut=Equipement.Statut.HORS_SERVICE)
+        self.assertEqual(self.public_client.post(url, corps).status_code, 201)
+        self.assertEqual(Ticket.objects.count(), nb_avant + 1)
+
     def test_token_absent_404(self):
         resp = self.public_client.post(
             '/api/django/public/sav/equipement//signaler/',

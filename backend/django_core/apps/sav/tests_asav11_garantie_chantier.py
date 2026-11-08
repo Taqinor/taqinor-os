@@ -103,3 +103,26 @@ class GarantieChantierTests(TestCase):
         self.assertEqual(r.status_code, 200, r.content)
         self.assertEqual(r.data['sous_garantie_effectif_display'],
                          'À déterminer')
+
+    def test_chantier_installe_non_receptionne_a_confirmer(self):
+        """ACSV50 (C-ACSV-060) — chantier en pose ou posé, pas encore
+        réceptionné : garantie « à confirmer », ``facturer`` 409 ; chantier
+        seulement signé ou ``sous_garantie`` posé « non » : facturable.
+        ROUGE AVANT : facturable, 201."""
+        def chantier(ref, statut):
+            return Installation.objects.create(
+                company=self.company, reference=ref, client=self.client_obj,
+                statut=statut)
+        for i, statut in enumerate(('installe', 'en_cours', 'pose')):
+            ticket = self._ticket(f'SAV-ACSV50-{i}', chantier(f'CHT-ACSV50-{i}', statut))
+            self.assertEqual(ticket.couverture_calculee(), Ticket.Couverture.A_DETERMINER, statut)
+        r = self.api.post(f'/api/django/sav/tickets/{ticket.pk}/facturer/', {}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertEqual(r.data['detail'], 'Garantie de chantier à confirmer avant de facturer.')
+        ticket.refresh_from_db()
+        self.assertIsNone(ticket.facture_id_ext)
+        signe = self._ticket('SAV-ACSV50-S', chantier('CHT-ACSV50-S', 'signe'))
+        self.assertEqual(signe.couverture_calculee(), Ticket.Couverture.FACTURABLE)
+        non = self._ticket('SAV-ACSV50-N', chantier('CHT-ACSV50-N', 'installe'),
+                           sous_garantie=Ticket.SousGarantie.NON)
+        self.assertEqual(non.couverture_calculee(), Ticket.Couverture.FACTURABLE)

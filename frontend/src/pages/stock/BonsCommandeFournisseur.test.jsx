@@ -33,6 +33,7 @@ vi.mock('../../api/stockApi', () => ({
     dupliquerBcf: vi.fn(),
     facturerBcf: vi.fn(),
     updateBonCommandeFournisseur: vi.fn(),
+    createBonCommandeFournisseur: vi.fn(),
     reviserBcf: vi.fn(),
     confirmerBcf: vi.fn(),
     getBcfSimilaires: vi.fn(() => Promise.resolve({ data: [] })),
@@ -624,5 +625,26 @@ describe('BcfDetail — avertissements prix (AAPV16)', () => {
     expect(stockApi.envoyerBcf).not.toHaveBeenCalled()
     fireEvent.click(within(dialog).getByRole('button', { name: 'Envoyer' }))
     await waitFor(() => expect(stockApi.envoyerBcf).toHaveBeenCalledWith(77))
+  })
+
+  it("refus de l'avertissement d'un nouveau BCF : un seul brouillon créé", async () => {
+    // AAPV84 — le brouillon est créé avant la confirmation : au refus, la fenêtre
+    // se ferme (la liste relit le serveur), un second « Envoyer » ne recrée rien.
+    stockApi.createBonCommandeFournisseur.mockResolvedValue({
+      data: { id: 88, statut: 'brouillon', prix_warnings: [{ ligne_id: 1, produit: 5, warnings: ['Prix au-dessus du contrat (1 150).'] }] },
+    })
+    const onClose = vi.fn()
+    const onSaved = vi.fn()
+    renderDetail({
+      bcf: { fournisseur: 1, lignes: [{ produit: 5, quantite: 10, prix_achat_unitaire: '1400' }] },
+      fournisseurs: [{ id: 1, nom: 'F2' }], produits: [{ id: 5, nom: 'Onduleur' }], onClose, onSaved,
+    }, { role_nom: 'Directeur', permissions: ['achats_commander', 'prix_achat_voir'] })
+    fireEvent.click(screen.getByRole('button', { name: /Envoyer au fournisseur/ }))
+    const dialog = await screen.findByRole('alertdialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
+    expect(onSaved).toHaveBeenCalled()
+    expect(stockApi.createBonCommandeFournisseur).toHaveBeenCalledTimes(1)
+    expect(stockApi.envoyerBcf).not.toHaveBeenCalled()
   })
 })

@@ -345,6 +345,11 @@ class CommissioningRecord(models.Model):
         return self.resultat in (self.Resultat.CONFORME, self.Resultat.RESERVES)
 
     @property
+    def verrouillee(self):
+        """ACSV19 — règle de ``RecettePompage.verrouillee`` : PV du chantier signé."""
+        return bool(getattr(self.installation, 'signe_le', None))
+
+    @property
     def instrument(self):
         """XFSM12 — instrument de mesure référencé (résolu par id, jamais un
         import au niveau module — ``apps.outillage.models`` reste une lecture

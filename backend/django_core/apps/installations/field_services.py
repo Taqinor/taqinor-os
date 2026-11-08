@@ -230,14 +230,11 @@ def _kit_for_intervention(intervention):
             .order_by('ordre', 'id').first())
 
 
-def _shortfall_for(produit, requis, company, own_reserved, en_commande=None,
+def _shortfall_for(produit, requis, company, anterieures, en_commande=None,
                    deja_sorti=None, couverture=None):
     """F5 — manque sur un SKU au moment de la préparation : requis − disponible.
-    Le disponible tient compte de la réservation de stock existante (engagé non
-    consommé), MAIS pas de la réservation propre à CE chantier (sinon le besoin
-    serait compté deux fois — le chantier a déjà réservé sa nomenclature à la
-    création). 0 si pas de produit catalogue ou pas de pénurie. Réutilise la
-    réservation de stock du module stock.
+    Disponible = stock − réservations ANTÉRIEURES des autres chantiers, plancher
+    0 (AAPV78). 0 si pas de produit catalogue ou pas de pénurie.
 
     Revue chantier 26/10/2026 — même formule que le besoin matériel du
     chantier (``compute_besoin_materiel``) : ``max(requis − déjà sorti −
@@ -257,12 +254,9 @@ def _shortfall_for(produit, requis, company, own_reserved, en_commande=None,
     if couverture is None:
         couverture = {}
     if produit.id not in couverture:
-        from apps.stock.services import reserved_quantity
-        # Réservé par les AUTRES chantiers = total réservé − réservé par
-        # celui-ci.
-        reserve_autres = max(
-            reserved_quantity(produit) - own_reserved.get(produit.id, 0), 0)
-        dispo = produit.quantite_stock - reserve_autres
+        # AAPV78 — comme le besoin matériel (AAPV15) : le stock sert d'abord les
+        # réservations ANTÉRIEURES (``reservations_anterieures_map``), plancher 0.
+        dispo = max(produit.quantite_stock - anterieures.get(produit.id, 0), 0)
         couverture[produit.id] = (
             dispo + (deja_sorti or {}).get(produit.id, 0)
             + (en_commande or {}).get(produit.id, 0))
@@ -305,8 +299,8 @@ def _sync_materiel(prep):
     seen = set()
     from apps.stock.selectors import get_produit_scoped
     from apps.stock.services import en_commande_chantier_par_statut
-    from .selectors import own_reservation_map, quantites_deja_sorties_chantier
-    own_reserved = own_reservation_map(installation)
+    from .selectors import quantites_deja_sorties_chantier, reservations_anterieures_map
+    anterieures = reservations_anterieures_map(installation)
     en_commande_envoye, _brouillon = en_commande_chantier_par_statut(
         installation)
     deja_sorti = quantites_deja_sorties_chantier(
@@ -319,7 +313,7 @@ def _sync_materiel(prep):
             produit = get_produit_scoped(company, b['produit_id'])
         key = (produit.id if produit else None, b['designation'])
         seen.add(key)
-        manque = _shortfall_for(produit, b['quantite'], company, own_reserved,
+        manque = _shortfall_for(produit, b['quantite'], company, anterieures,
                                 en_commande=en_commande_envoye,
                                 deja_sorti=deja_sorti, couverture=couverture)
         li = existing.get(key)
@@ -721,9 +715,43 @@ def missing_required_fiche_champs(intervention):
             continue
         if not val.champ.obligatoire:
             continue
-        if not (val.valeur or '').strip():
+        valeur = (val.valeur or '').strip()
+        # ACSV15 — une case obligatoire n'est renseignée qu'à « true ».
+        if not valeur or (val.champ.type_champ == val.champ.TypeChamp.CASE and valeur != 'true'):
             missing.append(val.champ)
     return missing
+
+
+#: ACSV15 — saisies admises pour une case à cocher (insensibles à la casse).
+CASE_VRAI = frozenset({'true', '1', 'oui', 'vrai', 'yes', 'on', 'x'})
+CASE_FAUX = frozenset({'false', '0', 'non', 'faux', 'no', 'off'})
+
+
+def normaliser_valeur_fiche(champ, brute):
+    """ACSV15 — valeur d'un champ de fiche contrôlée par son type : case ⇒
+    « true » / « false » ; nombre et mesure ⇒ décimal fini (virgule admise) ;
+    texte ⇒ ``strip``. Vide = effacement (champ non renseigné). Lève
+    ``ValueError`` (message français) sur une saisie illisible."""
+    from decimal import Decimal, InvalidOperation
+    texte = str('' if brute is None else brute).strip()
+    if not texte:
+        return ''
+    TypeChamp = champ.TypeChamp
+    if champ.type_champ == TypeChamp.CASE:
+        if texte.lower() in CASE_VRAI:
+            return 'true'
+        if texte.lower() in CASE_FAUX:
+            return 'false'
+        raise ValueError(f'« {champ.libelle} » est une case : oui ou non attendu.')
+    if champ.type_champ in (TypeChamp.NOMBRE, TypeChamp.MESURE):
+        try:
+            nombre = Decimal(texte.replace(',', '.').replace(' ', ''))
+        except InvalidOperation:
+            nombre = None
+        if nombre is None or not nombre.is_finite():
+            raise ValueError(f'« {champ.libelle} » attend un nombre.')
+        return str(nombre)
+    return texte
 
 
 # ── Garde de transition de statut (F5 départ + F8 arrivée + ZFSM1 fiche) ─────

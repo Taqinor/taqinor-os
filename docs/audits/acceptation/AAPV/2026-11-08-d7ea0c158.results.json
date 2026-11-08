@@ -1,0 +1,149 @@
+{
+  "sha": "d7ea0c158536c85599d455724f6dd9183ec3d4d1",
+  "date": "2026-11-08",
+  "groupe": "AAPV",
+  "verdict": "PASS",
+  "couvre": [
+    "AAPV75",
+    "AAPV76",
+    "AAPV79",
+    "AAPV84",
+    "AAPV85",
+    "AAPV86"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "W29B.AAPV75.preuve_en_direct",
+      "taches": [
+        "AAPV75"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29b/AAPV75.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AAPV-VER-001 : repro False — facture 600 liée AVANT le retour de 4 : provision ramenée à 600,00 lettrée par la facture, GR/IR ouvert 0."
+    },
+    {
+      "id": "W29B.AAPV76.preuve_en_direct",
+      "taches": [
+        "AAPV76"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29b/AAPV76.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AAPV-VER-002 : repro False — après « Facturer » + retour 4 + suppression de la facture : provision rouverte à 600,00 (net), puis lettrée par la facture 600, GR/IR ouvert 0."
+    },
+    {
+      "id": "W29B.AAPV79.preuve_en_direct",
+      "taches": [
+        "AAPV79"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29b/AAPV79.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde d'origine AAPV7 (C-AAPV-004) : gr_ir_apres_facture_R2 = P2 lettrée par FF(R2), P1 ouverte ; C-LIVE-AAPV79 REPRO ; écran « Facturer » R2 puis R1 : onglet « Réceptions non facturées » R1 seule puis vide."
+    },
+    {
+      "id": "W29B.AAPV84.preuve_en_direct",
+      "taches": [
+        "AAPV84"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29b/AAPV84.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Écran : nouveau BCF hors contrat, « Envoyer », refus de l'avertissement => fenêtre fermée, un seul brouillon, aucun envoi."
+    },
+    {
+      "id": "W29B.AAPV85.preuve_en_direct",
+      "taches": [
+        "AAPV85"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29b/AAPV85.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AAPV-VER-007 : repro False (rouvrir 200 re-commande la DA, generer-bcf B 409, 1 BCF vivant, réalisé 20 000) ; écran « Réouvrir » 200, DA commandée."
+    },
+    {
+      "id": "W29B.AAPV86.preuve_en_direct",
+      "taches": [
+        "AAPV86"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29b/AAPV86.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "C-LIVE-AAPV86 REPRO : paiement 840 (RAS 140) puis acompte 360 : imputation 60,00 + avoir VALIDÉ 60,00 TTC/TVA 0 lié à la facture ; témoin acompte avant paiement : RAS 200, 0 avoir ; écran Avoirs : 60,00 disponible."
+    }
+  ]
+}

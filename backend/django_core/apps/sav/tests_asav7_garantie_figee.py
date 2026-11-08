@@ -92,3 +92,30 @@ class GarantieFigeeTests(TestCase):
         self._patch(self.jumeau_b, {'date_pose': nouvelle.isoformat()})
         self.assertEqual(
             self.jumeau_b.date_fin_garantie, add_months(nouvelle, 12))
+
+    def test_deplacement_recale_sur_la_reception(self):
+        """ACSV68 : déplacer un équipement de chantier le date de la réception
+        du nouveau chantier ; refusé (409) tant qu'un ticket ouvert le vise ;
+        une date_pose saisie dans le même PATCH prime."""
+        from apps.sav.models import Ticket
+        reception = add_months(timezone.localdate(), -3)
+        autre = Installation.objects.create(
+            company=self.company, reference='CHT-ASAV7-B',
+            client=self.installation.client, date_reception=reception)
+        Ticket.objects.create(
+            company=self.company, reference='SAV-ASAV7-1',
+            client=self.installation.client, equipement=self.jumeau_b)
+        r = self.api.patch(
+            f'{BASE}/{self.jumeau_b.pk}/', {'installation': autre.pk},
+            format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertIn('installation', r.data)
+        self._patch(self.jumeau_a, {'installation': autre.pk})
+        self.assertEqual(self.jumeau_a.installation_id, autre.pk)
+        self.assertEqual(self.jumeau_a.date_pose, reception)
+        self.assertEqual(
+            self.jumeau_a.date_fin_garantie, add_months(reception, 12))
+        saisie = reception + timedelta(days=5)
+        self._patch(self.rebut, {'installation': autre.pk,
+                                 'date_pose': saisie.isoformat()})
+        self.assertEqual(self.rebut.date_pose, saisie)

@@ -22,7 +22,7 @@ from apps.ventes.views import openapi_docs as D
 from .facture_cycle import PEUT_ANNULER
 from .facture_gardes import PeutEncaisser
 from apps.ventes.models import Facture, LigneNoteDebit, NoteDebit
-from apps.ventes.serializers_facturation import (
+from apps.facturation.serializers import (
     AvoirSerializer, FactureListeSerializer, FactureSerializer,
     NoteDebitSerializer,
 )

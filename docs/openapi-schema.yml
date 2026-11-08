@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4933, operations: 7731, components: 3635}
+counts: {paths: 4945, operations: 7743, components: 3642}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -1908,6 +1908,7 @@ operations:
 - post /api/django/installations/interventions/{id}/ajouter-reserve/ -> django_installations_interventions_ajouter_reserve_create
 - post /api/django/installations/interventions/{id}/ajouter-serial/ -> django_installations_interventions_ajouter_serial_create
 - post /api/django/installations/interventions/{id}/annoter-photo/ -> django_installations_interventions_annoter_photo_create
+- post /api/django/installations/interventions/{id}/annuler/ -> django_installations_interventions_annuler_create
 - post /api/django/installations/interventions/{id}/checkin/ -> django_installations_interventions_checkin_create
 - post /api/django/installations/interventions/{id}/choisir-kit/ -> django_installations_interventions_choisir_kit_create
 - post /api/django/installations/interventions/{id}/cocher-materiel/ -> django_installations_interventions_cocher_materiel_create
@@ -2255,6 +2256,8 @@ operations:
 - get /api/django/monitoring/certificats-carbone/ -> django_monitoring_certificats_carbone_list
 - post /api/django/monitoring/certificats-carbone/ -> django_monitoring_certificats_carbone_create
 - get /api/django/monitoring/certificats-carbone/{id}/ -> django_monitoring_certificats_carbone_retrieve
+- post /api/django/monitoring/certificats-carbone/{id}/annuler/ -> django_monitoring_certificats_carbone_annuler_create
+- get /api/django/monitoring/certificats-carbone/{id}/pdf/ -> django_monitoring_certificats_carbone_pdf_retrieve
 - get /api/django/monitoring/cleanings/ -> django_monitoring_cleanings_list
 - post /api/django/monitoring/cleanings/ -> django_monitoring_cleanings_create
 - delete /api/django/monitoring/cleanings/{id}/ -> django_monitoring_cleanings_destroy
@@ -2284,6 +2287,9 @@ operations:
 - get /api/django/monitoring/configs/{id}/rapport-garantie-pdf/ -> django_monitoring_configs_rapport_garantie_pdf_retrieve
 - get /api/django/monitoring/configs/{id}/soiling/ -> django_monitoring_configs_soiling_retrieve
 - post /api/django/monitoring/configs/{id}/sync-now/ -> django_monitoring_configs_sync_now_create
+- get /api/django/monitoring/drapeaux/ -> django_monitoring_drapeaux_list
+- get /api/django/monitoring/drapeaux/{id}/ -> django_monitoring_drapeaux_retrieve
+- post /api/django/monitoring/drapeaux/{id}/classer/ -> django_monitoring_drapeaux_classer_create
 - get /api/django/monitoring/readings/ -> django_monitoring_readings_list
 - post /api/django/monitoring/readings/ -> django_monitoring_readings_create
 - delete /api/django/monitoring/readings/{id}/ -> django_monitoring_readings_destroy
@@ -5814,6 +5820,7 @@ operations:
 - post /api/v1/installations/interventions/{id}/ajouter-reserve/ -> v1_installations_interventions_ajouter_reserve_create
 - post /api/v1/installations/interventions/{id}/ajouter-serial/ -> v1_installations_interventions_ajouter_serial_create
 - post /api/v1/installations/interventions/{id}/annoter-photo/ -> v1_installations_interventions_annoter_photo_create
+- post /api/v1/installations/interventions/{id}/annuler/ -> v1_installations_interventions_annuler_create
 - post /api/v1/installations/interventions/{id}/checkin/ -> v1_installations_interventions_checkin_create
 - post /api/v1/installations/interventions/{id}/choisir-kit/ -> v1_installations_interventions_choisir_kit_create
 - post /api/v1/installations/interventions/{id}/cocher-materiel/ -> v1_installations_interventions_cocher_materiel_create
@@ -6161,6 +6168,8 @@ operations:
 - get /api/v1/monitoring/certificats-carbone/ -> v1_monitoring_certificats_carbone_list
 - post /api/v1/monitoring/certificats-carbone/ -> v1_monitoring_certificats_carbone_create
 - get /api/v1/monitoring/certificats-carbone/{id}/ -> v1_monitoring_certificats_carbone_retrieve
+- post /api/v1/monitoring/certificats-carbone/{id}/annuler/ -> v1_monitoring_certificats_carbone_annuler_create
+- get /api/v1/monitoring/certificats-carbone/{id}/pdf/ -> v1_monitoring_certificats_carbone_pdf_retrieve
 - get /api/v1/monitoring/cleanings/ -> v1_monitoring_cleanings_list
 - post /api/v1/monitoring/cleanings/ -> v1_monitoring_cleanings_create
 - delete /api/v1/monitoring/cleanings/{id}/ -> v1_monitoring_cleanings_destroy
@@ -6190,6 +6199,9 @@ operations:
 - get /api/v1/monitoring/configs/{id}/rapport-garantie-pdf/ -> v1_monitoring_configs_rapport_garantie_pdf_retrieve
 - get /api/v1/monitoring/configs/{id}/soiling/ -> v1_monitoring_configs_soiling_retrieve
 - post /api/v1/monitoring/configs/{id}/sync-now/ -> v1_monitoring_configs_sync_now_create
+- get /api/v1/monitoring/drapeaux/ -> v1_monitoring_drapeaux_list
+- get /api/v1/monitoring/drapeaux/{id}/ -> v1_monitoring_drapeaux_retrieve
+- post /api/v1/monitoring/drapeaux/{id}/classer/ -> v1_monitoring_drapeaux_classer_create
 - get /api/v1/monitoring/readings/ -> v1_monitoring_readings_list
 - post /api/v1/monitoring/readings/ -> v1_monitoring_readings_create
 - delete /api/v1/monitoring/readings/{id}/ -> v1_monitoring_readings_destroy
@@ -7985,6 +7997,7 @@ query_params:
   get /api/django/custom-fields/objects/: ordering page page_size search
   get /api/django/custom-fields/permissions-role/: field_def ordering page page_size search
   get /api/django/documents/chantiers/{id}/attestation/: regenerer type
+  get /api/django/documents/chantiers/{id}/pv-reception/: definitive
   get /api/django/entites/entites/: ordering page page_size search tree
   get /api/django/entites/entites/mes-entites/: ordering search
   get /api/django/entites/entites/{id}/historique/: ordering search
@@ -8203,6 +8216,7 @@ query_params:
   get /api/django/monitoring/configs/{id}/pertes/: window_days
   get /api/django/monitoring/configs/{id}/rapport-garantie-pdf/: annee
   get /api/django/monitoring/configs/{id}/soiling/: window_days
+  get /api/django/monitoring/drapeaux/: installation is_open ordering page page_size
   get /api/django/monitoring/readings/: installation ordering page page_size search
   get /api/django/monitoring/settings/: ordering search
   get /api/django/monitoring/sla-disponibilite/: installation ordering page page_size search
@@ -8782,6 +8796,7 @@ query_params:
   get /api/v1/custom-fields/objects/: ordering page page_size search
   get /api/v1/custom-fields/permissions-role/: field_def ordering page page_size search
   get /api/v1/documents/chantiers/{id}/attestation/: regenerer type
+  get /api/v1/documents/chantiers/{id}/pv-reception/: definitive
   get /api/v1/entites/entites/: ordering page page_size search tree
   get /api/v1/entites/entites/mes-entites/: ordering search
   get /api/v1/entites/entites/{id}/historique/: ordering search
@@ -9000,6 +9015,7 @@ query_params:
   get /api/v1/monitoring/configs/{id}/pertes/: window_days
   get /api/v1/monitoring/configs/{id}/rapport-garantie-pdf/: annee
   get /api/v1/monitoring/configs/{id}/soiling/: window_days
+  get /api/v1/monitoring/drapeaux/: installation is_open ordering page page_size
   get /api/v1/monitoring/readings/: installation ordering page page_size search
   get /api/v1/monitoring/settings/: ordering search
   get /api/v1/monitoring/sla-disponibilite/: installation ordering page page_size search
@@ -9558,6 +9574,7 @@ components:
 - AnnotationRequest
 - AnnoterPhotoRequeteRequest
 - AnnulerChantierRequeteRequest
+- AnnulerInterventionRequeteRequest
 - AnnulerOrdreAssemblageRequeteRequest
 - AnomalyEvent
 - AnomalyEventKindEnum
@@ -9914,6 +9931,7 @@ components:
 - CauseDefaillance
 - CauseDefaillanceRequest
 - CertificatCarbone
+- CertificatCarboneStatutEnum
 - CertificatDestruction
 - ChampSignature
 - ChampSignatureRequest
@@ -11511,6 +11529,7 @@ components:
 - PaginatedTypeChampSignatureList
 - PaginatedTypeInterventionList
 - PaginatedUiActionBoutonList
+- PaginatedUnderperformanceFlagList
 - PaginatedUniteLogistiqueList
 - PaginatedUniteMesureList
 - PaginatedUserList
@@ -12212,6 +12231,7 @@ components:
 - Realisation
 - RealisationRequest
 - ReceptionCrossDockCorpsRequest
+- ReceptionDefinitiveRequeteRequest
 - ReceptionFournisseur
 - ReceptionFournisseurRequest
 - ReceptionFournisseurStatutEnum
@@ -12420,6 +12440,7 @@ components:
 - SavAnnulerRequeteRequest
 - SavChecklistInitRequeteRequest
 - SavCloturerDowntimeRequeteRequest
+- SavCloturerRequeteRequest
 - SavCreerDevisReponse
 - SavCreerDevisRequeteRequest
 - SavCreerLeadReponse
@@ -12825,6 +12846,7 @@ components:
 - UiBoutonDeclencherRequestRequest
 - UiOngletCustom
 - UiOngletCustomRequest
+- UnderperformanceFlag
 - UniteAjouterLigneCorpsRequest
 - UniteControlerScanCorpsRequest
 - UniteDeplacerCorpsRequest
@@ -12960,6 +12982,7 @@ components:
 - WorkingHoursConfigRequest
 - WorksheetMaintenanceModele
 - WorksheetMaintenanceModeleRequest
+- _ClasserDrapeauCorpsRequest
 - _CoinsCalageRequest
 - _CompanyProfileSchema
 - _DecisionGabaritRequest

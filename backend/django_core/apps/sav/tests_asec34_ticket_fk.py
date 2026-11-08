@@ -116,6 +116,46 @@ class TicketFkEtChampsServeurTests(TestCase):
         self.assertFalse(self.ticket.non_facturable)
         self.assertFalse(self.ticket.est_recidive)
 
+    def test_pointeurs_facturation_figes(self):
+        """ACSV54 : un Technicien ne change ni les pointeurs de facturation,
+        ni la date d'ouverture ; la couverture lui est refusée (403) et le
+        responsable la change avec une note au chatter."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
+        from apps.sav.models import TicketActivity
+        role = Role.objects.create(
+            company=self.a, nom='Technicien ACSV54',
+            permissions=list(TECHNICIEN_PERMISSIONS))
+        tech = User.objects.create_user(
+            username='acsv54_tech', password='x', company=self.a, role=role)
+        # Portée « équipe » du Technicien : le ticket lui est affecté.
+        Ticket.objects.filter(pk=self.ticket.pk).update(
+            technicien_responsable=tech,
+            facture_id_ext=7, devis_id_ext=8, lead_id_ext=9,
+            date_ouverture=date(2026, 1, 5))
+        api_tech = _api(tech)
+        for corps in ({'facture_id_ext': None}, {'devis_id_ext': 9},
+                      {'lead_id_ext': 9}, {'intervention_origine_id': 9},
+                      {'date_ouverture': '2020-01-01'}):
+            r = api_tech.patch(f'{URL}{self.ticket.id}/', corps, format='json')
+            self.assertEqual(r.status_code, 200, r.data)
+        self.ticket.refresh_from_db()
+        self.assertEqual((self.ticket.facture_id_ext, self.ticket.devis_id_ext,
+                          self.ticket.lead_id_ext), (7, 8, 9))
+        self.assertIsNone(self.ticket.intervention_origine_id)
+        self.assertEqual(self.ticket.date_ouverture, date(2026, 1, 5))
+        r = api_tech.patch(f'{URL}{self.ticket.id}/',
+                           {'couverture': 'garantie'}, format='json')
+        self.assertEqual(r.status_code, 403, r.data)
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.couverture, 'a_determiner')
+        r = self._patch({'couverture': 'garantie'})
+        self.assertEqual(r.status_code, 200, r.data)
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.couverture, 'garantie')
+        self.assertTrue(TicketActivity.objects.filter(
+            ticket=self.ticket, body__contains='Couverture :').exists())
+
     def test_cout_fige(self):
         r = self._patch({'cout': '999.00'})
         self.assertEqual(r.status_code, 200, r.data)
@@ -212,8 +252,7 @@ class FkSavBorneesSocieteTests(TestCase):
     def test_equipement(self):
         for champ, attribut in (
                 ('categorie', 'categorie'), ('client_vente', 'client'),
-                ('installation', 'installation'), ('produit', 'produit'),
-                ('remplace_par_ticket', 'ticket')):
+                ('installation', 'installation'), ('produit', 'produit')):
             self._assert_borne(S.EquipementSerializer, champ, attribut)
 
     def test_ticket(self):

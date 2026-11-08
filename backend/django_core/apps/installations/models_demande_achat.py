@@ -123,6 +123,11 @@ class DemandeAchat(DocumentMetier):
         'achats.BonCommandeFournisseur', on_delete=models.SET_NULL,
         null=True, blank=True,
         related_name='installations_demandes_achat')
+    # AAPV85 (D-AAPV-5 = recommander) — BCF dont l'annulation a rouvert cette
+    # DA (AAPV71) : « Réouvrir » ce BCF re-commande la DA. String-FK.
+    bcf_annule = models.ForeignKey(
+        'achats.BonCommandeFournisseur', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+')
     priorite = models.CharField(
         max_length=10, choices=Priorite.choices, default=Priorite.NORMALE)
     date_besoin = models.DateField(null=True, blank=True)

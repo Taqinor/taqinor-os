@@ -43,8 +43,13 @@ SERIALISEURS = [
 ]
 
 MODULE_CIBLE = 'apps.ventes.serializers_facturation'
-# Module attendu par classe APRÈS SPL148.
-PLACE = {nom: MODULE_CIBLE for nom in SERIALISEURS}
+# Module attendu par classe APRÈS SPL148, puis ODX18 (étape 2) : les
+# sérialiseurs de facture/paiement/avoir/relance/remise/mandat vivent dans
+# `apps.facturation.serializers` (déplacés tels quels, ré-exportés par
+# `apps.ventes.serializers_facturation`) ; seul le bon de commande reste ventes.
+MODULE_FACTURATION = 'apps.facturation.serializers'
+PLACE = {nom: (MODULE_CIBLE if nom == 'BonCommandeSerializer'
+               else MODULE_FACTURATION) for nom in SERIALISEURS}
 
 FIXTURE = (Path(__file__).parent / 'fixtures'
            / 'golden_serializers_facturation.json')

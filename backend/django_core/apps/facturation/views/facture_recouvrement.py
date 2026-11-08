@@ -16,7 +16,7 @@ from apps.ventes.views import openapi_docs as D
 from apps.ventes import openapi_shapes as SH
 from apps.ventes.models import RelanceLog
 from apps.ventes.serializers import EmailLogSerializer
-from apps.ventes.serializers_facturation import (
+from apps.facturation.serializers import (
     FactureActivitySerializer, FactureListeSerializer, FactureSerializer, RelanceLogSerializer,
     RelancerFactureSerializer,
 )
@@ -172,7 +172,7 @@ class FactureRecouvrementActionsMixin:
     def historique(self, request, pk=None):
         """Chatter de la facture : avoirs créés + paiements encaissés (qui,
         quand, montant). Lecture seule ; acteur et société posés côté serveur."""
-        from apps.ventes.serializers_facturation import FactureActivitySerializer
+        from apps.facturation.serializers import FactureActivitySerializer
         facture = self.get_object()
         return Response(
             FactureActivitySerializer(

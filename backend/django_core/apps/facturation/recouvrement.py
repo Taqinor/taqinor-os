@@ -25,7 +25,7 @@ from apps.ventes.models import (
     Facture, FollowupLevel, Paiement, ParametrageRelanceClient,
     PromessePaiement,
 )
-from apps.ventes.serializers_facturation import (
+from apps.facturation.serializers import (
     FollowupLevelSerializer,
     ParametrageRelanceClientSerializer,
     PromessePaiementSerializer,

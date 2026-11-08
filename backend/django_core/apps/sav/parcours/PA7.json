@@ -21,9 +21,9 @@
       "libelle": "Création de l'abonnement monitoring du client",
       "declencheur": {"type": "http", "source": "apps/monitoring/views.py::AbonnementMonitoringViewSet.perform_create"},
       "fonction_entree": "apps/monitoring/services.py::creer_abonnement_monitoring",
-      "checkpoint": {"persistance": "apps/monitoring/models.py::AbonnementMonitoring", "description": "Abonnement actif/suspendu/résilié, périodicité, prochaine échéance."},
+      "checkpoint": {"persistance": "apps/monitoring/models.py::AbonnementMonitoring", "description": "Abonnement actif/suspendu/résilié, périodicité, date de début (aucune échéance : D-AMON-1)."},
       "regles_aval": [
-        {"regle": "La prochaine échéance est posée à une période après la date de début (mensuel +1 mois, annuel +12 mois) ; le client est résolu depuis le système (ASAV100).", "source": "apps/monitoring/services.py::prochaine_echeance_abonnement"},
+        {"regle": "Aucune échéance n'est posée (D-AMON-1, vendu une fois) ; le client est résolu depuis le système (ASAV100).", "source": "apps/monitoring/services.py::creer_abonnement_monitoring"},
         {"regle": "La résiliation coupe la supervision automatique du système lié (voir l'étape résiliation).", "source": "apps/monitoring/receivers.py::_arreter_supervision_a_la_resiliation"}
       ]
     },
@@ -44,7 +44,7 @@
       "fonction_entree": "apps/monitoring/services.py::evaluate_underperformance",
       "checkpoint": {"persistance": "apps/monitoring/models.py::UnderperformanceFlag", "description": "Un drapeau ouvert par épisode de sous-performance, fermé avec motif."},
       "regles_aval": [
-        {"regle": "Un épisode ouvert crée un ticket SAV correctif (une seule fois par épisode).", "source": "apps/monitoring/services.py::_create_underperf_ticket"}
+        {"regle": "Un épisode ouvert crée un ticket SAV préventif (une seule fois par épisode).", "source": "apps/monitoring/services.py::_create_underperf_ticket"}
       ]
     },
     {
@@ -54,12 +54,13 @@
       "fonction_entree": "apps/monitoring/selectors.py::disponibilite_vs_garantie",
       "checkpoint": {"persistance": "apps/monitoring/models.py::SlaDisponibilite", "description": "Taux garanti par système, sans valeur par défaut (CIQ644), saisi depuis l'écran SAV/monitoring (ASAV101)."},
       "regles_aval": [
-        {"regle": "La pénalité (tarif saisi par jour d'indisponibilité excédentaire) n'est chiffrée que si la société a validé l'engagement de production.", "source": "apps/monitoring/selectors.py::_garantie_production_autorisee"}
+        {"regle": "La pénalité (tarif saisi par jour d'indisponibilité excédentaire) n'est chiffrée que si la société a validé l'engagement de production.", "source": "apps/monitoring/selectors.py::_garantie_production_autorisee"},
+        {"regle": "La pénalité est un indicateur interne (D-AMON-2) : jamais stockée, décidée ni imprimée au rapport client.", "source": "apps/monitoring/selectors.py::disponibilite_vs_garantie"}
       ]
     },
     {
       "id": "credit_sla_genere",
-      "libelle": "Instantané SLA mensuel et crédit dû calculés",
+      "libelle": "SLA de la plateforme (TAQINOR OS envers la société) : instantané mensuel et crédit dû calculés",
       "declencheur": {"type": "tache", "source": "core/tasks.py::generer_sla_mensuel_task"},
       "fonction_entree": "core/sla.py::generer_sla_mensuel",
       "checkpoint": {"persistance": "core/sla.py::SlaSnapshot", "description": "Un instantané par société et par mois, avec uptime et crédit dû."},
@@ -69,13 +70,30 @@
     },
     {
       "id": "credit_sla_decision",
-      "libelle": "Décision humaine sur le crédit SLA (émis ou refusé)",
+      "libelle": "SLA de la plateforme (TAQINOR OS envers la société) : décision humaine sur le crédit (émis ou refusé)",
       "declencheur": {"type": "http", "source": "core/sla.py::sla_credit_statut"},
       "fonction_entree": "core/sla.py::sla_credit_statut",
       "checkpoint": {"persistance": "core/sla.py::SlaSnapshot", "description": "Statut du crédit tracé ; aucun avoir n'est créé par cette action."},
       "regles_aval": [
         {"regle": "La décision est émise sur le bus et inscrite au journal d'audit.", "source": "core/sla.py::_emettre_sla_credit_statut_change"},
         {"regle": "L'abonné d'audit enregistre la ligne du journal.", "source": "apps/audit/receivers.py::_record_sla_credit_statut_change"}
+      ]
+    },
+    {
+      "id": "credit_sla_client",
+      "libelle": "Crédit ou pénalité de disponibilité envers le client de l'installation",
+      "manquante": true,
+      "raison": "Décision D-AMON-2 : la pénalité de disponibilité de l'installation du client reste un indicateur interne ; aucune facturation ni avoir n'en découle. Les étapes crédit SLA ci-dessus mesurent TAQINOR OS envers la société, pas l'installation du client.",
+      "attendu": "Rien (affichage interne seulement) : tout lecteur de `penalite_mad` dans `apps/facturation` ou `apps/ventes` signale une dérive de la décision.",
+      "declencheur": {"manquant": true},
+      "fonction_entree": {"manquant": true},
+      "checkpoint": {"persistance": "apps/monitoring/models.py::SlaDisponibilite", "description": "Taux garanti par système : seul état stocké, aucune pénalité."},
+      "regles_aval": [
+        {"regle": "La pénalité n'est calculée qu'à la lecture, par le sélecteur de monitoring.", "source": "apps/monitoring/selectors.py::disponibilite_vs_garantie"}
+      ],
+      "preuves_absence": [
+        {"motif": "penalite_mad", "racine": "apps/facturation", "fichiers_autorises": []},
+        {"motif": "penalite_mad", "racine": "apps/ventes", "fichiers_autorises": []}
       ]
     },
     {
@@ -91,17 +109,12 @@
     {
       "id": "monitoring_suit_remplacement",
       "libelle": "Le monitoring suit le remplacement d'un équipement",
-      "manquante": true,
-      "raison": "`equipement_remplace` est émis et notifié, mais le satellite monitoring n'y est pas abonné : la configuration de supervision et les relevés ne suivent pas l'équipement remplacé.",
-      "attendu": "Un récepteur dans `apps/monitoring/receivers.py` (tâche ASAV).",
-      "declencheur": {"manquant": true},
-      "fonction_entree": {"manquant": true},
-      "checkpoint": {"persistance": "apps/monitoring/models.py::MonitoringConfig", "description": "Configuration de supervision du système."},
+      "declencheur": {"type": "signal", "source": "apps/monitoring/receivers.py::_clore_episode_au_remplacement"},
+      "fonction_entree": "apps/monitoring/services.py::_fermer_episode",
+      "checkpoint": {"persistance": "apps/monitoring/models.py::UnderperformanceFlag", "description": "Épisode de sous-performance ouvert clos avec le motif `equipement_remplace` (AMON4)."},
       "regles_aval": [
-        {"regle": "L'émetteur existe déjà côté SAV.", "source": "apps/sav/services.py::retirer_piece"}
-      ],
-      "preuves_absence": [
-        {"motif": "equipement_remplace", "racine": "apps/monitoring", "fichiers_autorises": []}
+        {"regle": "L'émetteur existe côté SAV.", "source": "apps/sav/services.py::retirer_piece"},
+        {"regle": "L'évaluation suivante ne lit que les relevés postérieurs au remplacement : un nouvel épisode réel ouvre un drapeau et un ticket neufs.", "source": "apps/monitoring/services.py::evaluate_underperformance"}
       ]
     },
     {
@@ -111,7 +124,8 @@
       "fonction_entree": "apps/monitoring/services.py::resilier_abonnement_monitoring",
       "checkpoint": {"persistance": "apps/monitoring/models.py::AbonnementMonitoring", "description": "Statut résilié et motif de résiliation."},
       "regles_aval": [
-        {"regle": "À la résiliation, la supervision automatique du système lié est coupée (abonné de `abonnement_monitoring_resilie`, émis par le service ASAV100).", "source": "apps/monitoring/receivers.py::_arreter_supervision_a_la_resiliation"}
+        {"regle": "À la résiliation, la supervision automatique du système lié est coupée (abonné de `abonnement_monitoring_resilie`, émis par le service ASAV100).", "source": "apps/monitoring/receivers.py::_arreter_supervision_a_la_resiliation"},
+        {"regle": "Sans abonnement actif restant, l'épisode ouvert est clos (motif `supervision_resiliee`) et le système n'est plus évalué (AMON10).", "source": "apps/monitoring/services.py::evaluate_underperformance"}
       ]
     }
   ]

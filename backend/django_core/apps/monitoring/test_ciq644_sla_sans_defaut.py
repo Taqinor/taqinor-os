@@ -62,7 +62,9 @@ class SlaSansDefautTest(TestCase):
             company=self.company, installation=inst,
             disponibilite_garantie_pct=Decimal('98'),
             compensation_mad_par_jour_indispo=Decimal('500'))
-        for i in range(8):
+        # AMON21 — fenêtre bornée au premier relevé : 8 relevés sur les 10
+        # jours qui le suivent (deux trous), soit 80 % d'indice de suivi.
+        for i in (0, 1, 2, 4, 6, 7, 8, 9):
             ProductionReading.objects.create(
                 company=self.company, installation=inst,
                 date=self.today - timedelta(days=i), energy_kwh=Decimal('10'))

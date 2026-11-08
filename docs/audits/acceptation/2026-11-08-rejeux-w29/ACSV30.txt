@@ -1,0 +1,35 @@
+# Preuve en direct ACSV30 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Écran : front du worktree servi par vite (127.0.0.1:3000) -> conteneur privé accept-w29-web (runserver, base
+# erp_accept_w29, stockage objet PRIVÉ accept-w29-minio, SMTP 127.0.0.1:1 puis mail en mémoire pour AMON47), piloté par
+# Playwright MCP. Données : seed_demo « TAQINOR Démo » + fixtures FIX-W29* ou états des sondes rejouées SANS rollback
+# (comptes de test, mot de passe de test).
+# Verdict : PASS — Sondes C-ACSV-040 et -040-L2 : repro False ; écran : PV après la levée = octets de la signature (sha256 identique), 1 version GED.
+
+== C-ACSV-040 (sha ddf1f97a1)
+attendu : repro (élargi) si après l'ajout d'une réserve SAV par le technicien, le PV figé du chantier signé reçoit une NOUVELLE version portant le trait de signature ET la réserve SAV, et que cette version est celle partagée au client
+observé : {'get_pv_1_http': 200, 'v1': {'nb_versions': 1, 'contient_trait': True, 'contient_reserve_sav': False, 'mention': 'Figé le'}, 'tech_ajouter_reserve_http': 201, 'get_pv_2_http': 200, 'apres_reserve_sav': {'nb_versions_pv': 1, 'vN_contient_trait': True, 'vN_contient_reserve_sav': False, 'vN_mention': 'Figé le', 'pdf_servi_contient_reserve_sav': False}, 'portail': {'pv_partage_au_client': True, 'version_servie_au_client': 1}, 'repro': False}
+{"get_pv_1_http": 200, "v1": {"nb_versions": 1, "contient_trait": true, "contient_reserve_sav": false, "mention": "Figé le"}, "tech_ajouter_reserve_http": 201, "get_pv_2_http": 200, "apres_reserve_sav": {"nb_versions_pv": 1, "vN_contient_trait": true, "vN_contient_reserve_sav": false, "vN_mention": "Figé le", "pdf_servi_contient_reserve_sav": false}, "portail": {"pv_partage_au_client": true, "version_servie_au_client": 1}, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0
+
+== C-ACSV-040 (sha ddf1f97a1)
+attendu : repro si la GED du PV a 2 versions après la levée, v2 porte le trait de signature et ne liste plus la réserve, et la version en vigueur partagée au client est v2
+observé : {"signer_http": 200, "v1": {"nb_versions": 1, "contient_trait": true, "contient_reserve": true, "mention": "Signé le"}, "lever_http": 200, "get_pv_http": 200, "apres_levee": {"nb_versions_pv": 1, "v2_contient_trait": true, "v2_contient_reserve": true, "v2_mention": "Signé le", "pdf_servi_egal_v2": true, "pdf_servi_contient_reserve": true}, "portail": {"documents_partages_client": [[3, "Bon de livraison CHT-ACSV-040"], [2, "PV de réception CHT-ACSV-040"]], "version_en_vigueur_servie_au_client": 1}, "moteur_pdf": "moqué (_html_to_pdf -> HTML)", "stockage": "moqué en mémoire", "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0
+
+## ACSV30 — PASS (écran)
+Fixture FIX-W29g (moteur PDF RÉEL, stockage objet PRIVÉ accept-w29-minio) : CHT-E29-30 industriel réceptionné, recette « réserves »,
+réserve « Serrage coffret DC E30 » ; POST signer-client/ (trait, « M. Client E30ʼ) => PV gelé en GED v1, 16 836 octets,
+sha256 9b1db352f3b0561c2410689f84847bf23582cb062bea76f24dfd0969d6623685. FIX-W29h : POST reserves/<rid>/lever/ 200 (réserve
+« resolue »), GED du PV toujours [v1]. Compte demo_admin. Chantiers › CHT-E29-30 › Documents & historique › « PV de réception » =>
+GET documents/chantiers/180/pv-reception/ 200, 16 836 octets, sha256 9b1db352…3685 = octets de la signature (aucune version
+re-rendue) ; aperçu « PV de réception CHT-E29-30 » affiché. GED relue après l'ouverture : « PV de réception CHT-E29-30 » 1 version,
+« Bon de livraison CHT-E29-30 » 1 version. (Le panneau des réserves n'est pas visible sur cette fiche sans étapes de cycle de vie
+configurées : la levée a été jouée par la vraie route API.) Console 0 erreur.

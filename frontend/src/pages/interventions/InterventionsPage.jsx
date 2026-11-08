@@ -57,7 +57,7 @@ import {
 } from '../../features/installations/InterventionFieldExecution'
 import {
   SerialsPanel, ConsommationPanel, MemosPanel, ReservesPanel,
-  ToolReturnPanel, SafetyPanel, CompteRenduButton, CodePanel,
+  ToolReturnPanel, SafetyPanel, FichePanel, CompteRenduButton, CodePanel,
 } from '../../features/installations/InterventionCapturePanels'
 // WIR264 — boutons « Partager » des deux liens publics (suivi + compte-rendu).
 import InterventionLiensPublicsPanel from '../../features/installations/InterventionLiensPublicsPanel'
@@ -352,6 +352,7 @@ function DetailSheet({ intervention, users, onClose, onChanged }) {
             </TabsTrigger>
             <TabsTrigger value="trajet" className="shrink-0">Trajet</TabsTrigger>
             <TabsTrigger value="securite" className="shrink-0">Sécurité</TabsTrigger>
+            <TabsTrigger value="fiche" className="shrink-0">Fiche</TabsTrigger>
             <TabsTrigger value="photos" className="shrink-0">
               Photos
               {photosManquantes > 0 && (
@@ -374,6 +375,9 @@ function DetailSheet({ intervention, users, onClose, onChanged }) {
           </TabsContent>
           <TabsContent value="securite">
             <SafetyPanel intervention={intervention} onChanged={onChanged} />
+          </TabsContent>
+          <TabsContent value="fiche">
+            <FichePanel intervention={intervention} onChanged={onChanged} />
           </TabsContent>
           <TabsContent value="photos">
             <PhotosPanel intervention={intervention} onChanged={onChanged} />

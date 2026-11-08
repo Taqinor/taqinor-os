@@ -193,6 +193,35 @@ class AnnulationReceptionAbonnesTests(TestCase):
         lettrer_gr_ir_facture(facture=facture, company=self.company, user=self.user)
         self.assertEqual(etat()[1], True)
 
+    def test_facture_avant_retour_lettre_la_provision_reduite(self):
+        """AAPV75 — facture de 300 HT liée AVANT le retour de 4 (provision
+        500 encore ouverte) : le retour ramène la provision à 300 et la
+        lettre par cette facture ; renvoyer le signal ne change rien."""
+        from apps.stock.models import FactureFournisseur, RetourFournisseur
+        from apps.stock.services import apply_retour_fournisseur
+        from core.events import retour_fournisseur_valide
+        facture = FactureFournisseur.objects.create(
+            company=self.company, reference='FF-AAPV75', fournisseur=self.bc.fournisseur,
+            bon_commande=self.bc, montant_ht=Decimal('300'),
+            montant_tva=Decimal('60'), montant_ttc=Decimal('360'))
+        prov = ReceptionNonFacturee.objects.get(bon_commande=self.bc)
+        self.assertEqual((prov.montant_provision, prov.lettre), (Decimal('500.00'), False))
+        retour = RetourFournisseur.objects.create(
+            company=self.company, reference='RF-AAPV75', fournisseur=self.bc.fournisseur,
+            bon_commande=self.bc, statut=RetourFournisseur.Statut.BROUILLON)
+        retour.lignes.create(produit=self.panneau, quantite=4)
+        with self.captureOnCommitCallbacks(execute=True):
+            apply_retour_fournisseur(retour, self.user)
+
+        def etat():
+            p = ReceptionNonFacturee.objects.get(bon_commande=self.bc)
+            return p.montant_provision, p.lettre, p.facture_id
+        self.assertEqual(etat(), (Decimal('300.00'), True, facture.pk))
+        retour_fournisseur_valide.send(
+            sender=RetourFournisseur, retour=retour, company=self.company,
+            user=self.user, lignes=[])
+        self.assertEqual(etat(), (Decimal('300.00'), True, facture.pk))
+
     def test_retour_valide_retourne_les_series_citees(self):
         """AAPV65 — un retour citant S1 la passe « retourné » ; renvoyer le
         signal ne change rien."""

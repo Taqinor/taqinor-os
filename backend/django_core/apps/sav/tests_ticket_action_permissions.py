@@ -40,8 +40,10 @@ def _tiers(action):
 
 
 def _tier_name(action):
+    # ACSV62 : le premier garde est le palier ``sav_*`` ; un droit métier
+    # (``DroitDeLaGrille``) peut s'y ajouter derrière.
     perms = _tiers(action)
-    assert len(perms) == 1, f"{action}: {len(perms)} permission(s)"
+    assert perms, f"{action}: aucune permission"
     return perms[0]
 
 
@@ -91,3 +93,81 @@ class TicketActionPermissionTierTests(TestCase):
         for name in ['historique', 'rapport_pdf', 'lien_client', 'similaires']:
             with self.subTest(action=name):
                 self.assertEqual(_tier_name(name), 'HasPermissionOrLegacy_sav_voir')
+
+    def test_gestes_ventes_et_stock_exigent_leur_droit(self):
+        """ACSV62 / D-ACSV-3 : en plus de ``sav_gerer``, facturer / devis exigent
+        ``ventes_creer`` et tout mouvement de stock d'un ticket
+        ``stock_mouvement`` (403 nommé, rien d'écrit)."""
+        from decimal import Decimal
+
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+
+        from apps.crm.models import Client
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
+        from apps.sav.models import PieceConsommee, Ticket
+        from apps.stock.models import Produit
+        from authentication.models import Company
+
+        User = get_user_model()
+        societe = Company.objects.create(nom='ACSV62', slug='acsv62')
+        client = Client.objects.create(company=societe, nom='C')
+        ticket = Ticket.objects.create(
+            company=societe, reference='SAV-ACSV62', client=client,
+            couverture='facturable')
+        produit = Produit.objects.create(
+            company=societe, nom='Onduleur', sku='OND-ACSV62',
+            prix_vente=Decimal('5000'), quantite_stock=Decimal('5'))
+
+        def _api(nom, permissions):
+            # Le test porte sur les DROITS, pas sur la portée : le marqueur
+            # « records_scope_equipe » du Technicien masquerait le ticket (404).
+            role = Role.objects.create(
+                company=societe, nom=nom, permissions=[
+                    p for p in permissions if not p.startswith('records_scope_')])
+            user = User.objects.create_user(
+                username=f'acsv62_{nom}', password='x', company=societe,
+                role=role)
+            api = APIClient()
+            api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+            return api
+
+        base = f'/api/django/sav/tickets/{ticket.pk}'
+        technicien = _api('Technicien', [
+            p for p in TECHNICIEN_PERMISSIONS if p != 'ventes_creer'])
+        commercial = _api('Commercial', [
+            p for p in TECHNICIEN_PERMISSIONS if p != 'stock_mouvement'
+        ] + ['ventes_creer'])
+        for porte in ('facturer', 'generer-facture', 'creer-devis'):
+            r = _api_post(technicien, f'{base}/{porte}/', {})
+            self.assertEqual(r.status_code, 403, (porte, r.data))
+            self.assertEqual(r.data['code'], 'droit_manquant')
+        r = _api_post(commercial, f'{base}/pieces/', {
+            'produit': produit.pk, 'quantite': '1', 'decrement': True})
+        self.assertEqual(r.status_code, 403, r.data)
+        r = _api_post(commercial, f'{base}/pieces-retirees/', {
+            'produit': produit.pk, 'quantite': '1',
+            'destination': 'stock_occasion'})
+        self.assertEqual(r.status_code, 403, r.data)
+        r = _api_post(commercial, f'{base}/prets-equipement/', {
+            'produit': produit.pk})
+        self.assertEqual(r.status_code, 403, r.data)
+        produit.refresh_from_db()
+        self.assertEqual(produit.quantite_stock, Decimal('5'))
+        r = _api_post(commercial, f'{base}/pieces/', {
+            'produit': produit.pk, 'quantite': '1', 'decrement': False})
+        self.assertEqual(r.status_code, 201, r.data)
+        r = _api_post(technicien, f'{base}/pieces/', {
+            'produit': produit.pk, 'quantite': '1', 'decrement': True})
+        self.assertEqual(r.status_code, 201, r.data)
+        piece = PieceConsommee.objects.get(ticket=ticket, stock_decremente=True)
+        r = commercial.delete(f'{base}/pieces/{piece.pk}/')
+        self.assertEqual(r.status_code, 403, r.data)
+        produit.refresh_from_db()
+        self.assertEqual(produit.quantite_stock, Decimal('4'))
+
+
+def _api_post(api, url, corps):
+    return api.post(url, corps, format='json')

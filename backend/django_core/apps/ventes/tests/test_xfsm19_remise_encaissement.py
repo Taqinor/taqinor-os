@@ -106,7 +106,7 @@ class TestDeclarationRemise(Xfsm19TestBase):
         from django.core.management import call_command
         from apps.roles.models import Role
         from apps.ventes.models import LigneRemiseEncaissement
-        from apps.ventes.views.remise_encaissement import paiements_remisables
+        from apps.facturation.views.remise_encaissement import paiements_remisables
         call_command('init_roles', verbosity=0)
         roles = {r.nom: r for r in Role.objects.filter(company=self.company)}
         comptes = {nom: User.objects.create_user(

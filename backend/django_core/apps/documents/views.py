@@ -123,12 +123,24 @@ class PVReceptionView(_BaseDocumentView):
     """N21 — PV de réception des travaux (ADOC70 : figé en GED une fois
     signé, servi tel quel ensuite)."""
 
-    @extend_schema(responses=_PDF)
+    @extend_schema(
+        parameters=[OpenApiParameter('definitive', OpenApiTypes.STR,
+                                     required=False,
+                                     enum=['1', 'true', 'oui', '0', 'false'])],
+        responses=_PDF)
     def get(self, request, pk):
         chantier = _get_chantier_or_404(request, pk)
         refus = _refus_etat(chantier)
         if refus is not None:
             return refus
+        if str(request.query_params.get('definitive', '')).lower() in (
+                '1', 'true', 'oui'):  # ACSV32 : PV de réception définitive
+            if not chantier.date_reception_definitive:
+                return Response({'detail': 'Réception définitive non prononcée'},
+                                status=status.HTTP_409_CONFLICT)
+            pdf = builders.pv_reception_definitive_pour_client(chantier)
+            return _pdf_response(
+                pdf, f'pv-reception-definitive-{chantier.reference}.pdf')
         pdf = builders.pv_reception_pour_client(chantier)
         return _pdf_response(pdf, f'pv-reception-{chantier.reference}.pdf')
 

@@ -7,7 +7,7 @@ scoping société assuré par l'appelant (viewset filtre déjà par company).
 """
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
 from django.db.models import Sum
@@ -18,14 +18,25 @@ from .models import (
 )
 from .services import _expected_recent_kwh, premiers_releves
 
-# FG286 — facteur d'émission du réseau marocain (kg CO₂ évité par kWh
-# autoproduit). Même hypothèse que l'energy report (apps.installations) : on la
-# RECOPIE ici plutôt que d'importer un autre app domaine (frontière services).
-DEFAULT_CO2_KG_PAR_KWH = Decimal('0.81')
-
 
 def _q(value, places='0.01'):
     return Decimal(str(value)).quantize(Decimal(places)) if value is not None else None
+
+
+def _facteur_kg(company, co2_kg_par_kwh=None):
+    """AMON41 — facteur CO₂ (kg/kWh) : valeur explicite de l'appelant, sinon
+    celle RÉGLÉE par la société (``parametres.selectors.facteur_co2_reseau``,
+    AMON90) ; ``None`` quand rien n'est réglé — jamais un 0,81 supposé."""
+    if co2_kg_par_kwh is not None:
+        return Decimal(str(co2_kg_par_kwh))
+    from apps.parametres.selectors import facteur_co2_reseau
+    reglage = facteur_co2_reseau(company)
+    return reglage['kg_kwh'] if reglage else None
+
+
+def _fois(kwh, facteur):
+    """AMON41 — kg CO₂ = kWh × facteur, ``None`` sans facteur."""
+    return None if facteur is None else kwh * facteur
 
 
 def fleet_overview(company, *, window_days=365, today=None):
@@ -123,10 +134,9 @@ def co2_for_installation(installation, *, since=None, until=None,
     """CO₂ évité (kg + tonnes) d'un système sur une période (toutes sources).
 
     `since`/`until` (dates) bornent la période ; sinon toute la production.
-    Réutilise le facteur réseau marocain par défaut.
+    AMON41 — facteur réglé par la société ; sans facteur, clés CO₂ ``None``.
     """
-    factor = Decimal(str(co2_kg_par_kwh)) if co2_kg_par_kwh is not None \
-        else DEFAULT_CO2_KG_PAR_KWH
+    factor = _facteur_kg(installation.company, co2_kg_par_kwh)
     qs = ProductionReading.objects.filter(installation=installation)
     if since is not None:
         qs = qs.filter(date__gte=since)
@@ -134,12 +144,12 @@ def co2_for_installation(installation, *, since=None, until=None,
         qs = qs.filter(date__lte=until)
     total_kwh = qs.aggregate(s=Sum('energy_kwh'))['s'] or Decimal('0')
     total_kwh = Decimal(str(total_kwh))
-    co2_kg = total_kwh * factor
+    co2_kg = _fois(total_kwh, factor)
     return {
         'installation': installation.id,
         'production_kwh': _q(total_kwh),
         'co2_kg': _q(co2_kg),
-        'co2_tonnes': co2_kg / Decimal('1000'),
+        'co2_tonnes': None if co2_kg is None else co2_kg / Decimal('1000'),
         'co2_kg_par_kwh': factor,
     }
 
@@ -155,8 +165,7 @@ def co2_fleet(company, *, since=None, until=None, co2_kg_par_kwh=None):
     ``co2_for_installation`` reste inchangée pour son propre usage
     mono-système (ex. la fiche d'un chantier).
     """
-    factor = Decimal(str(co2_kg_par_kwh)) if co2_kg_par_kwh is not None \
-        else DEFAULT_CO2_KG_PAR_KWH
+    factor = _facteur_kg(company, co2_kg_par_kwh)  # AMON41
     configs = list(MonitoringConfig.objects
                    .filter(company=company)
                    .select_related('installation'))
@@ -179,22 +188,23 @@ def co2_fleet(company, *, since=None, until=None, co2_kg_par_kwh=None):
         if not getattr(inst, 'parc_actif', True):
             continue
         prod = Decimal(str(prod_par_installation.get(inst.id) or 0))
-        co2_kg = prod * factor
+        co2_kg = _fois(prod, factor)
         total_kwh += prod
         systems.append({
             'installation': inst.id,
             'reference': getattr(inst, 'reference', None),
             'production_kwh': _q(prod),
             'co2_kg': _q(co2_kg),
-            'co2_tonnes': (co2_kg / Decimal('1000')).quantize(Decimal('0.001')),
+            'co2_tonnes': _q(None if co2_kg is None else co2_kg / 1000,
+                             '0.001'),
         })
-    total_co2_kg = total_kwh * factor
+    total_co2_kg = _fois(total_kwh, factor)
     return {
         'co2_kg_par_kwh': factor,
         'total_production_kwh': _q(total_kwh),
         'total_co2_kg': _q(total_co2_kg),
-        'total_co2_tonnes': (total_co2_kg / Decimal('1000')).quantize(
-            Decimal('0.001')),
+        'total_co2_tonnes': _q(
+            None if total_co2_kg is None else total_co2_kg / 1000, '0.001'),
         'systems': systems,
     }
 
@@ -215,8 +225,7 @@ def client_environmental_dashboard(company, client_id, *,
         from apps.parametres.selectors import tariff_for
         tarif_mad_par_kwh = tariff_for(company)['onee_tarif_kwh']
     tarif = Decimal(str(tarif_mad_par_kwh))
-    factor = Decimal(str(co2_kg_par_kwh)) if co2_kg_par_kwh is not None \
-        else DEFAULT_CO2_KG_PAR_KWH
+    factor = _facteur_kg(company, co2_kg_par_kwh)  # AMON41
 
     qs = ProductionReading.objects.filter(
         company=company, installation__client_id=client_id)
@@ -229,7 +238,7 @@ def client_environmental_dashboard(company, client_id, *,
     total_kwh = Decimal(str(total_kwh))
 
     economies = total_kwh * tarif
-    co2_kg = total_kwh * factor
+    co2_kg = _fois(total_kwh, factor)
 
     # Nombre de systèmes du client (distincts) dans le périmètre.
     systems_count = (qs.values('installation_id').distinct().count())
@@ -240,7 +249,7 @@ def client_environmental_dashboard(company, client_id, *,
         'total_production_kwh': _q(total_kwh),
         'economies_mad': _q(economies),
         'co2_kg': _q(co2_kg),
-        'co2_tonnes': (co2_kg / Decimal('1000')).quantize(Decimal('0.001')),
+        'co2_tonnes': _q(None if co2_kg is None else co2_kg / 1000, '0.001'),
         'tarif_mad_par_kwh': tarif,
         'co2_kg_par_kwh': factor,
     }
@@ -275,11 +284,14 @@ def production_kwh_series_client_portail(company, client_id, *,
     lignes = (ProductionReading.objects
               .filter(company=company, installation__client_id=client_id,
                       date__gte=since, date__lte=today)
-              .values('date')
+              .values('date', 'period_days')
               .annotate(total=Sum('energy_kwh'))
-              .order_by('date'))
+              .order_by('date', 'period_days'))
+    # AMON83 — chaque point porte sa période (un mensuel n'est pas un jour).
     points = [
-        {'date': ligne['date'].isoformat(), 'energy_kwh': _q(ligne['total'])}
+        {'date': ligne['date'].isoformat(),
+         'period_days': ligne['period_days'],
+         'energy_kwh': _q(ligne['total'])}
         for ligne in lignes
     ]
     provider_configure = MonitoringConfig.objects.filter(
@@ -305,6 +317,60 @@ def underperformance_flags_client_portail(company, client_id):
             .order_by('-date_creation'))
 
 
+def recouvre(jour, periode, autre_jour, autre_periode):
+    """AMON1 — ``[jour, jour + période)`` recouvre-t-il l'autre relevé ?
+    (convention de ``analytics.jours_couverts_par_releves``)."""
+    fin = jour + timedelta(days=max(int(periode or 1), 1))
+    autre_fin = autre_jour + timedelta(days=max(int(autre_periode or 1), 1))
+    return jour < autre_fin and autre_jour < fin
+
+
+def message_recouvrement(jour, periode):
+    """AMON1 — refus lisible d'un relevé qui en recouvre un autre."""
+    return f'Ce relevé recouvre celui du {jour:%d/%m/%Y} ({periode} j).'
+
+
+def depassement_aujourdhui(jour, periode, aujourdhui=None):
+    """AMON3 — la date d'un relevé est son PREMIER jour couvert : refus
+    lisible quand ``jour + période − 1 j`` dépasse aujourd'hui, sinon None."""
+    jours = max(int(periode or 1), 1) - 1
+    aujourdhui = aujourdhui or timezone.localdate()
+    if (aujourdhui - jour).days >= jours:
+        return None
+    # api-fuzz — période démesurée : la fin dépasse le calendrier (OverflowError → 500).
+    fin = jour + timedelta(days=min(jours, (date.max - jour).days))
+    return (f'La période couverte (jusqu’au {fin:%d/%m/%Y}) dépasse '
+            'aujourd’hui.')
+
+
+def releve_chevauchant(installation, debut, periode, exclure=None):
+    """AMON1 — premier relevé du système dont la période recouvre
+    ``[debut, debut + periode)``, toutes sources ; ``None`` sinon."""
+    from django.db.models import Max
+    qs = ProductionReading.objects.filter(installation=installation)
+    if exclure is not None:
+        qs = qs.exclude(pk=exclure)
+    plus_longue = qs.aggregate(m=Max('period_days'))['m'] or 1
+    candidats = qs.filter(  # borne basse ramenée au calendrier (jamais d'OverflowError)
+        date__gt=debut - timedelta(days=min(plus_longue, (debut - date.min).days)),
+        date__lt=debut + timedelta(days=min(max(int(periode or 1), 1), (date.max - debut).days)),
+    ).order_by('date', 'id')
+    return next((r for r in candidats
+                 if recouvre(debut, periode, r.date, r.period_days)), None)
+
+
+def supervision_resiliee(installation):
+    """AMON10 — vrai quand le système a au moins un abonnement de supervision
+    résilié et AUCUN actif : il n'est plus évalué. Ne lit JAMAIS
+    ``MonitoringConfig.enabled`` (un système manuel jamais abonné reste évalué)."""
+    from .models import AbonnementMonitoring
+    abonnements = AbonnementMonitoring.objects.filter(
+        company_id=installation.company_id, installation_id=installation.pk)
+    statut = AbonnementMonitoring.Statut
+    return (abonnements.filter(statut=statut.RESILIE).exists()
+            and not abonnements.filter(statut=statut.ACTIF).exists())
+
+
 def disponibilite_vs_garantie(installation, *, window_days=365, today=None):
     """NTNRG14 — disponibilité MESURÉE (``analytics.om_metrics``) vs
     disponibilité contractuelle GARANTIE (``SlaDisponibilite``) d'un système.
@@ -328,8 +394,17 @@ def disponibilite_vs_garantie(installation, *, window_days=365, today=None):
     if sla is None:
         return {'has_sla': False}
 
-    metrics = om_metrics(installation, window_days=window_days, today=today)
+    # AMON10 — supervision résiliée : forme sans données (aucun écart).
+    metrics = ({} if supervision_resiliee(installation) else
+               om_metrics(installation, window_days=window_days, today=today))
     mesuree_pct = metrics.get('availability_pct')
+    libelle = LIBELLE_INDICE_SUIVI
+    if metrics:
+        # AMON43 — immobilisations SAV des équipements du système quand il en
+        # a au parc ; sinon l'indice relevés (libellé inchangé).
+        dispo_sav = _disponibilite_sav(installation, window_days, today)
+        if dispo_sav is not None:
+            mesuree_pct, libelle = dispo_sav, LIBELLE_DISPO_SAV
     # CIQ644 — taux SANS défaut : une ligne sans taux garanti n'a ni écart ni
     # pénalité (jamais un 98 % supposé).
     garantie_pct = (None if sla.disponibilite_garantie_pct is None
@@ -340,7 +415,7 @@ def disponibilite_vs_garantie(installation, *, window_days=365, today=None):
             'has_sla': True,
             'installation': installation.id,
             'window_days': window_days,
-            'libelle_indicateur': LIBELLE_INDICE_SUIVI,
+            'libelle_indicateur': libelle,
             'disponibilite_garantie_pct': garantie_pct,
             'disponibilite_mesuree_pct': (
                 None if mesuree_pct is None else Decimal(str(mesuree_pct))),
@@ -353,7 +428,15 @@ def disponibilite_vs_garantie(installation, *, window_days=365, today=None):
     ecart_pct = garantie_pct - Decimal(str(mesuree_pct))
     sous_garantie = ecart_pct > 0
     if sous_garantie:
-        jours_excedentaires = (ecart_pct / Decimal('100')) * Decimal(window_days)
+        # AMON21 — jours excédentaires sur la fenêtre BORNÉE (mise en
+        # service / premier relevé), celle de la disponibilité mesurée.
+        from .analytics import fenetre_mesuree
+        jour = today or timezone.localdate()
+        _debut, jours_fenetre = fenetre_mesuree(
+            installation, jour - timedelta(days=window_days), jour,
+            window_days)
+        jours_excedentaires = (
+            (ecart_pct / Decimal('100')) * Decimal(jours_fenetre))
         penalite = jours_excedentaires * Decimal(
             str(sla.compensation_mad_par_jour_indispo))
     else:
@@ -364,7 +447,7 @@ def disponibilite_vs_garantie(installation, *, window_days=365, today=None):
         'has_sla': True,
         'installation': installation.id,
         'window_days': window_days,
-        'libelle_indicateur': LIBELLE_INDICE_SUIVI,
+        'libelle_indicateur': libelle,
         'disponibilite_garantie_pct': garantie_pct,
         'disponibilite_mesuree_pct': Decimal(str(mesuree_pct)),
         'ecart_pct': _q(ecart_pct),
@@ -381,6 +464,28 @@ def disponibilite_vs_garantie(installation, *, window_days=365, today=None):
 #: CIQ644 — l'indicateur compte les jours AVEC RELEVÉ : c'est un indice de
 #: suivi, jamais une « disponibilité contractuelle ».
 LIBELLE_INDICE_SUIVI = 'indice de suivi (jours avec relevé)'
+#: AMON43 — libellé quand l'indicateur vient des immobilisations SAV.
+LIBELLE_DISPO_SAV = 'disponibilité (immobilisations SAV)'
+
+
+def _disponibilite_sav(installation, window_days, today):
+    """AMON43 — disponibilité SAV sur la fenêtre de l'indicateur (bornée au
+    début de couverture, AMON21), jours entiers jusqu'à la fin de ``today``."""
+    from datetime import datetime, time
+
+    from apps.sav.selectors_supervision import disponibilite_installation
+
+    from .analytics import fenetre_mesuree
+    jour = today or timezone.localdate()
+    _debut, jours = fenetre_mesuree(
+        installation, jour - timedelta(days=window_days), jour, window_days)
+    tz = timezone.get_current_timezone()
+    fin = timezone.make_aware(
+        datetime.combine(jour + timedelta(days=1), time.min), tz)
+    dispo = disponibilite_installation(
+        installation.company_id, installation.pk,
+        debut=fin - timedelta(days=jours), fin=fin)
+    return None if dispo is None else Decimal(str(dispo))
 
 
 def _garantie_production_autorisee(installation):

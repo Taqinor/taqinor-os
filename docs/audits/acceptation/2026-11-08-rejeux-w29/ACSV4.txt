@@ -1,0 +1,25 @@
+# Preuve en direct ACSV4 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Écran : front du worktree servi par vite (127.0.0.1:3000) -> conteneur privé accept-w29-web (runserver, base
+# erp_accept_w29, stockage objet PRIVÉ accept-w29-minio, SMTP 127.0.0.1:1 puis mail en mémoire pour AMON47), piloté par
+# Playwright MCP. Données : seed_demo « TAQINOR Démo » + fixtures FIX-W29* ou états des sondes rejouées SANS rollback
+# (comptes de test, mot de passe de test).
+# Verdict : PASS — Sonde C-ACSV-005 : repro False ; écran : « Annuler l'intervention » (motif) => planning sans elle.
+
+== C-ACSV-005 (sha f57951e87)
+attendu : repro si 409 « Annulez-les d'abord » alors qu'aucune route ne pose `annulee` sur une intervention (PATCH ignoré, annuler 404/405)
+observé : {"repro": false, "observe": {"accepter": 200, "standard": {"http": 201, "interventions": [{"id": 4, "type_intervention": "mise_en_service", "date_prevue": null, "statut": "a_preparer", "annulee": false}, {"id": 3, "type_intervention": "raccordement", "date_prevue": null, "statut": "a_preparer", "annulee": false}, {"id": 2, "type_intervention": "pose", "date_prevue": null, "statut": "a_preparer", "annulee": false}]}, "sortie_signe": [200, null], "patch_annulee": {"http": 200, "annulee_apres": true, "motif_apres": "Chantier CHT-202611-0001 annulé", "detail": null}, "post_annuler": 409, "delete_api": [204, null]}}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0
+
+## ACSV4 — PASS (écran)
+Fixture FIX-W29, compte demo_admin. Chantiers › CHT-E29-04 › Interventions, ligne « Pose 13/11/2026 » › « Annuler l'intervention »
+→ dialogue « Annuler l'intervention ? Pose — elle quittera le planning. Le motif est obligatoire. » → motif « Client absent
+(acceptation ACSV4) » → « Annuler l'intervention » => POST installations/interventions/29/annuler/ {"motif":…} 200 ; la ligne Pose
+n'offre plus « Annuler l'intervention ». Planification › Semaine 09–15/11 : seules « CHT-E29-14 11/11 » et « CHT-E29-04 15/11 »
+(raccordement) — la pose du 13/11 a quitté le planning. Console : 0 erreur.

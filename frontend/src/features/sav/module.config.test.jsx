@@ -142,6 +142,8 @@ describe('SavMonitoringPage — ASAV100 abonnements de supervision', () => {
       { id: ABONNEMENTS.exemple.results[0].id, motif: 'Client a vendu la maison.' },
     ]))
     await waitFor(() => expect(within(section).getByRole('listitem')).toHaveTextContent('Résilié'))
+    // AMON7 — date et auteur de la résiliation affichés.
+    expect(within(section).getByRole('listitem')).toHaveTextContent(/Résilié le .* par Responsable SAV/)
     expect(screen.queryByRole('button', { name: 'Résilier' })).not.toBeInTheDocument()
   }, 60000)
 })

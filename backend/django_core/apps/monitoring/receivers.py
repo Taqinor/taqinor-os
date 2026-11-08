@@ -16,7 +16,9 @@ import logging
 
 from django.dispatch import receiver
 
-from core.events import abonnement_monitoring_resilie, chantier_receptionne
+from core.events import (
+    abonnement_monitoring_resilie, chantier_receptionne, equipement_remplace,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -25,14 +27,29 @@ logger = logging.getLogger(__name__)
           dispatch_uid="monitoring_arret_supervision_resiliation")
 def _arreter_supervision_a_la_resiliation(sender, abonnement, motif, company,
                                           **kwargs):
-    from .models import MonitoringConfig
+    from .models import AbonnementMonitoring, MonitoringConfig
 
     installation_id = getattr(abonnement, 'installation_id', None)
     if not installation_id:
         return
+    # AMON5 — un autre abonnement ACTIF sur le système : la supervision continue.
+    if AbonnementMonitoring.objects.filter(
+            company=company, installation_id=installation_id,
+            statut=AbonnementMonitoring.Statut.ACTIF).exists():
+        return
     MonitoringConfig.objects.filter(
         company=company, installation_id=installation_id, enabled=True,
     ).update(enabled=False)
+    # AMON10 — plus aucun abonnement actif : l'épisode ouvert est clos.
+    from apps.installations import selectors as installations_selectors
+
+    from .selectors import supervision_resiliee
+    from .services import MOTIF_SUPERVISION_RESILIEE, _fermer_episode
+    installation = installations_selectors.installation_scoped(
+        company, installation_id)
+    if installation is not None and supervision_resiliee(installation):
+        _fermer_episode(installation, MOTIF_SUPERVISION_RESILIEE,
+                        'Supervision résiliée : système plus évalué.')
 
 
 @receiver(chantier_receptionne,
@@ -58,3 +75,27 @@ def _semer_attendu_a_reception(sender, installation, user, ancien_statut,
         logger.warning(
             'YSERV8 : semis production attendue ignoré pour installation %s',
             getattr(installation, 'pk', '?'), exc_info=True)
+
+
+@receiver(equipement_remplace,
+          dispatch_uid="monitoring_fin_episode_remplacement")
+def _clore_episode_au_remplacement(sender, equipement, ticket, company, user,
+                                   **kwargs):
+    """AMON4 — un équipement du système est remplacé (``retirer_piece``) :
+    l'épisode de sous-performance ouvert est clos (motif
+    ``equipement_remplace``) ; l'évaluation repart du remplacement. Best-effort
+    (patron ``_semer_attendu_a_reception``) : jamais bloquant pour le SAV."""
+    installation_id = getattr(equipement, 'installation_id', None)
+    if not installation_id:
+        return
+    from .services import MOTIF_EQUIPEMENT_REMPLACE, _fermer_episode
+    try:
+        _fermer_episode(
+            installation_id, MOTIF_EQUIPEMENT_REMPLACE,
+            'Équipement remplacé (ticket '
+            f'{getattr(ticket, "reference", "")}) : évaluation repartie '
+            'du remplacement.')
+    except Exception:  # effet aval best-effort, jamais bloquant
+        logger.warning(
+            'AMON4 : clôture de l’épisode ignorée pour installation %s',
+            installation_id, exc_info=True)

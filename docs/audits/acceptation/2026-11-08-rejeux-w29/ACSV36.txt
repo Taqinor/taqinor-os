@@ -1,0 +1,20 @@
+# Preuve en direct ACSV36 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Écran : front du worktree servi par vite (127.0.0.1:3000) -> conteneur privé accept-w29-web (runserver, base
+# erp_accept_w29, stockage objet PRIVÉ accept-w29-minio, SMTP 127.0.0.1:1 puis mail en mémoire pour AMON47), piloté par
+# Playwright MCP. Données : seed_demo « TAQINOR Démo » + fixtures FIX-W29* ou états des sondes rejouées SANS rollback
+# (comptes de test, mot de passe de test).
+# Verdict : PASS — Écran : « Enregistrer la mise en service » à 62 % => dialogue « … réceptionne le chantier … 62 % », Annuler => 0 appel.
+
+## ACSV36 — PASS
+Fixture FIX-W29/-b : CHT-E29-36 « Installé », checklist 62 % (vrai service). Compte demo_admin. Chantiers › CHT-E29-36 ›
+Jalons & gates › bloc « Mise en service » : « Date de mise en service » 2026-11-08 → « Enregistrer la mise en service » =>
+dialogue applicatif « Réception du chantier — Enregistrer la mise en service réceptionne le chantier (parc, garanties, avis au
+client). La checklist n'est complétée qu'à 62 %. Continuer ? » [Annuler | Continuer] → « Annuler ». Requêtes non-GET relevées
+pendant tout le geste : seulement POST adminops/tracker-usage/ (télémétrie) — 0 appel mise-en-service/. Liste relue :
+CHT-E29-36 « Installé » (inchangé). Aucun dialogue natif, console 0 erreur.

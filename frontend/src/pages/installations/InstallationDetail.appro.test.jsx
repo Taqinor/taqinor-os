@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
-import { screen, cleanup, waitFor } from '@testing-library/react'
+import { screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { render } from '@testing-library/react'
 import { Provider } from 'react-redux'
@@ -21,6 +21,7 @@ beforeAll(polyfillResizeObserver)
 const mocks = vi.hoisted(() => ({
   getApprovisionnement: vi.fn(),
   creerInterventionsStandard: vi.fn(),
+  updateIntervention: vi.fn(),
 }))
 
 vi.mock('../../api/savApi', async () => (await import('../../test/selectNatif')).savApiMock)
@@ -32,6 +33,7 @@ vi.mock('../../api/installationsApi', async () => ({
     ...(await import('../../test/selectNatif')).installationsLecturesVides,
     getApprovisionnement: (...a) => mocks.getApprovisionnement(...a),
     creerInterventionsStandard: (...a) => mocks.creerInterventionsStandard(...a),
+    updateIntervention: (...a) => mocks.updateIntervention(...a),
   },
 }))
 vi.mock('./ChantierChecklist', async () => (await import('../../test/selectNatif')).composantNul)
@@ -124,6 +126,18 @@ describe('InstallationDetail — interventions standard', () => {
     await waitFor(() => expect(mocks.creerInterventionsStandard).toHaveBeenCalledWith(43))
     expect(screen.getByRole('button', { name: 'Ouvrir la planification' })).toBeTruthy()
     expect(screen.getByLabelText('Technicien')).toBeTruthy()
+  })
+
+  it('« Éditer » envoie la date prévue', async () => {
+    mocks.updateIntervention.mockResolvedValue({ data: {} })
+    const user = userEvent.setup()
+    rendre({ ...CHANTIER, interventions: [{ id: 5, type_intervention: 'pose', date_prevue: null }] })
+    await user.click(await screen.findByRole('tab', { name: /Interventions/ }))
+    await user.click(await screen.findByRole('button', { name: 'Éditer' }))
+    fireEvent.change(screen.getByLabelText('Prévue'), { target: { value: '2026-11-15' } })
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(mocks.updateIntervention).toHaveBeenCalledWith(
+      5, expect.objectContaining({ date_prevue: '2026-11-15' })))
   })
 
   it('le bouton est désactivé quand des interventions existent déjà', async () => {

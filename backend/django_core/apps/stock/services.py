@@ -3934,7 +3934,7 @@ def _politique_ligne(ligne):
 
 
 def _construire_facture_fournisseur(company, user, bon_commande, lignes, *,
-                                    note):
+                                    note, reception=None):
     """ASTK109 — constructeur UNIQUE des factures fournisseur nées d'un BCF
     (FG56 ``facturer_reception`` et ZPUR1 ``facturer_bcf_sur_commande``).
 
@@ -3967,7 +3967,7 @@ def _construire_facture_fournisseur(company, user, bon_commande, lignes, *,
         ff = FactureFournisseur.objects.create(
             company=company, reference=ref,
             fournisseur=bon_commande.fournisseur,
-            bon_commande=bon_commande,
+            bon_commande=bon_commande, reception=reception,  # AAPV79 — posée AVANT l'événement
             type_achat=type_achat_par_defaut(bon_commande.fournisseur),  # AAPV6
             montant_ht=montant_ht, montant_tva=montant_tva,
             montant_ttc=montant_ttc,
@@ -4053,15 +4053,21 @@ def ventiler_tva_achats(lignes):
 # ── FG56 — Facturer une réception ────────────────────────────────────────────
 
 def _retourne_valide_ligne_bcf(lc):
-    """AAPV25 — quantité du produit de la ligne BCF sortie par les retours
-    fournisseur VALIDÉS de ce BCF (YPROC8)."""
+    """AAPV25/AAPV80 — part de la ligne BCF dans les retours VALIDÉS de son
+    produit, répartie LIGNE PAR LIGNE comme YPROC8 les a rouverts : la ligne la
+    plus récente d'abord, chacune plafonnée à son entrée confirmée."""
     from django.db.models import Sum
-    from .models import LigneRetourFournisseur
+    from .models import LigneReceptionFournisseur, LigneRetourFournisseur
     if lc.produit_id is None:
         return Decimal('0')
-    return Decimal(str(LigneRetourFournisseur.objects.filter(
+    reste = int(LigneRetourFournisseur.objects.filter(
         retour__bon_commande_id=lc.bon_commande_id, retour__statut='valide',
-        produit_id=lc.produit_id).aggregate(t=Sum('quantite'))['t'] or 0))
+        produit_id=lc.produit_id).aggregate(t=Sum('quantite'))['t'] or 0)
+    for lr in LigneReceptionFournisseur.objects.filter(  # lignes plus récentes du même produit
+            ligne_commande__bon_commande_id=lc.bon_commande_id, ligne_commande__produit_id=lc.produit_id,
+            ligne_commande_id__gt=lc.pk, reception__statut='confirme'):
+        reste -= min(reste, quantite_entree_ligne_reception(lr))
+    return Decimal(max(reste, 0))
 
 
 def _quantite_facturable_reception(ligne):
@@ -4156,10 +4162,8 @@ def facturer_reception(company, user, reception):
         # ASTK109 — constructeur UNIQUE (date, rapprochement, acomptes, événement).
         facture = _construire_facture_fournisseur(
             company, user, reception.bon_commande, lignes,
-            note=f'Facture réception {reception.reference}')
-        # ERR-ASTK54 — lien réel réception → facture (garde d'annulation).
-        facture.reception = reception
-        facture.save(update_fields=['reception'])
+            note=f'Facture réception {reception.reference}',
+            reception=reception)  # ERR-ASTK54 — lien réel réception → facture
         return facture
 
 
@@ -4341,6 +4345,14 @@ def dupliquer_bcf(company, user, bon_commande):
 # de réappro (FG54) ou besoins chantier créent aujourd'hui des BCF séparés
 # vers le même fournisseur — l'acheteur finit par multiplier les commandes.
 
+def motif_bcf_engage(bc):
+    """AAPV62/AAPV81 — « Ce bon de commande porte la facture … et l'acompte de … »
+    quand le BCF est facturé ou acompté (ni annulable ni fusionnable), sinon None."""
+    engagements = [f'la facture {ref}' for ref in bc.factures_fournisseur.values_list('reference', flat=True)]
+    engagements += [f"l'acompte de {_fmt_montant_pdf(m)}" for m in bc.acomptes.values_list('montant', flat=True)]
+    return f"Ce bon de commande porte {' et '.join(engagements)}" if engagements else None
+
+
 def fusionner_bcf(company, user, bon_commande_ids):
     """ZPUR6 — fusionne PLUSIEURS BCF BROUILLON du MÊME fournisseur (et de la
     MÊME société) en un BCF cible neuf : lignes additionnées par produit
@@ -4374,6 +4386,10 @@ def fusionner_bcf(company, user, bon_commande_ids):
         raise EtatIncompatible(
             'Seuls des bons de commande en BROUILLON peuvent être fusionnés '
             f'({non_brouillon[0].reference} ne l\'est pas).')
+    for bc in bcs:  # AAPV81 — même garde que l'annulation (AAPV62)
+        engage = motif_bcf_engage(bc)
+        if engage:
+            raise EtatIncompatible(f'{engage} ({bc.reference}) : fusion refusée.')
     # ASTK66 — des BCF rattachés à des chantiers / destinations / devises
     # différents ne se fusionnent pas : la cible perdrait le rattachement
     # (réservation chantier à la réception, contre-valeur MAD).
@@ -6526,6 +6542,7 @@ def imputer_acomptes_bcf(bon_commande):
     from .models import (
         AcompteFournisseur, FactureFournisseur, ImputationAcompteFournisseur,
     )
+    from .services_verrous import constater_creance_ras_acompte
     creees = []
     touchees = {}
     with transaction.atomic():
@@ -6553,6 +6570,7 @@ def imputer_acomptes_bcf(bon_commande):
                     company=acompte.company or facture.company,
                     acompte=acompte, facture=facture, montant=montant))
                 poser_ras_au_solde(creees[-1])  # AAPV5 (D-AAPV-2)
+                constater_creance_ras_acompte(creees[-1])  # AAPV86 (D-AAPV-6)
                 reste -= montant
                 acompte.montant_consomme = (
                     (acompte.montant_consomme or Decimal('0')) + montant)

@@ -43,8 +43,7 @@ class EquipementSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
     # ENF17 — FK inscriptibles bornées à la société : un id d'ailleurs reçoit
     # la réponse d'un id absent (400), à la création comme au PATCH.
     same_company_fields = (
-        'categorie', 'client_vente', 'installation', 'produit',
-        'remplace_par_ticket')
+        'categorie', 'client_vente', 'installation', 'produit')
     produit_nom = serializers.CharField(source='produit.nom', read_only=True, allow_null=True)
     produit_marque = serializers.CharField(source='produit.marque', read_only=True, allow_null=True)
     produit_sku = serializers.CharField(source='produit.sku', read_only=True, allow_null=True)
@@ -84,12 +83,47 @@ class EquipementSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
             'company', 'created_by', 'equipement_token', 'public_token',
             'date_fin_garantie', 'date_fin_garantie_production',
             'date_creation', 'date_modification',
+            'garantie_plancher',  # ACSV55 - pose par le remplacement seul
+            # ACSV56 - reserves a retirer_piece / mettre-au-rebut /
+            # reactiver-rebut : jamais ecrits par un PATCH generique.
+            'remplace_par_ticket', 'mis_au_rebut', 'date_rebut', 'motif_rebut',
         ]
         # L636 — l'unicité (company, numero_serie) est CONDITIONNELLE (séries
         # vides exclues). On désactive le UniqueTogetherValidator auto de DRF
         # (qui rendrait numero_serie obligatoire et casserait une série omise)
         # et on s'appuie sur validate_numero_serie + la contrainte DB.
         validators = []
+
+    _RESERVES_PARC = ('mis_au_rebut', 'date_rebut', 'motif_rebut')
+
+    def validate_statut(self, value):
+        """ACSV56 - on n'entre ni ne sort de « Remplacé » par un PATCH :
+        seul un nouveau remplacement (retirer_piece) le fait."""
+        actuel = getattr(self.instance, 'statut', None)
+        if value != actuel and Equipement.Statut.REMPLACE in (value, actuel):
+            raise ConflitEtat({'statut': [
+                'Un équipement remplacé ne revient au parc que par un '
+                'nouveau remplacement.']})
+        return value
+
+    def validate(self, attrs):
+        """ACSV56 - le rebut ne s'ecrit que par ses actions dediees (400 si
+        un PATCH tente de le changer ; la valeur inchangee reste acceptee)."""
+        if self.instance is not None:
+            for champ in self._RESERVES_PARC:
+                if champ not in self.initial_data:
+                    continue
+                actuel = getattr(self.instance, champ)
+                voulu = self.initial_data[champ]
+                if champ == 'mis_au_rebut':
+                    change = (str(voulu).lower() in ('true', '1')) != bool(actuel)
+                else:
+                    change = str(voulu or '') != str(actuel or '')
+                if change:
+                    raise serializers.ValidationError({champ: [
+                        'Champ réservé : utilisez mettre-au-rebut / '
+                        'reactiver-rebut.']})
+        return attrs
 
     def validate_numero_serie(self, value):
         """L636 — unicité du n° de série par société (les vides sont permis).
@@ -591,6 +625,10 @@ class TicketSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
             'non_facturable', 'est_recidive', 'cout',
             # ASAV14 — posée/vidée par le service de transition uniquement.
             'date_resolution',
+            # ACSV54 — pointeurs de facturation / provenance : posés par les
+            # services (facturer, creer-devis, récidive), jamais du corps.
+            'facture_id_ext', 'devis_id_ext', 'lead_id_ext',
+            'intervention_origine_id',
         ]
         # client peut être déduit côté serveur d'un équipement lié (ticket
         # ouvert depuis le parc) ; sinon il reste exigé — voir
@@ -694,6 +732,49 @@ class TicketSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
     @extend_schema_field(serializers.CharField())
     def get_canal_resolution_propose(self, obj):
         return obj.canal_resolution_propose()
+
+    def validate_equipement(self, value):
+        """ACSV71 — un équipement retiré (remplacé, rebut) n'ouvre plus de
+        NOUVEAU ticket ; un ticket existant garde le sien."""
+        if (value is not None and value.est_retire and (
+                self.instance is None
+                or value.pk != self.instance.equipement_id)):
+            raise serializers.ValidationError(
+                "Cet équipement n'est plus en service (remplacé ou mis au rebut).")
+        return value
+
+    def _palier_responsable(self):
+        """ACSV54 - palier Administrateur/Responsable (hors requete : vrai)."""
+        from authentication.models import CustomUser
+        request = self.context.get('request')
+        if request is None:
+            return True
+        return getattr(request.user, 'menu_tier', None) in (
+            CustomUser.ROLE_ADMIN, CustomUser.ROLE_RESPONSABLE)
+
+    def validate_couverture(self, value):
+        """ACSV54 - la couverture decide qui paie : changement reserve au
+        palier responsable/admin (403 sinon)."""
+        if (self.instance is not None and value != self.instance.couverture
+                and not self._palier_responsable()):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied(
+                'Seul un responsable ou un administrateur change la couverture.')
+        return value
+
+    def update(self, instance, validated_data):
+        # ACSV54 - la date d'ouverture (donc la couverture/le SLA) n'est
+        # corrigee que par le palier responsable/admin (ASAV15).
+        if not self._palier_responsable():
+            validated_data.pop('date_ouverture', None)
+        ancienne = instance.couverture
+        instance = super().update(instance, validated_data)
+        if instance.couverture != ancienne:
+            from . import activity
+            activity.log_note(
+                instance, getattr(self.context.get('request'), 'user', None),
+                f'Couverture : {ancienne} → {instance.couverture}')
+        return instance
 
 
 # ── FG81 — Réglages SLA ────────────────────────────────────────────────────────

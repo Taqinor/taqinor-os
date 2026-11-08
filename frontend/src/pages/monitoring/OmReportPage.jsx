@@ -6,6 +6,7 @@ import {
 } from '../../ui'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { toast } from '../../ui/confirm'
+import { errorMessageFrom } from '../../lib/toast'
 import { formatNumber, formatPercent } from '../../lib/format'
 import BarreSysteme from './BarreSysteme'
 import useSupervisedSystems from './useSupervisedSystems'
@@ -82,7 +83,8 @@ export default function OmReportPage() {
           toast.error('Aucun destinataire : renseignez une adresse e-mail.')
         }
       })
-      .catch(() => toast.error('Échec de l’envoi du rapport.'))
+      // AMON47 — le refus du serveur (destinataire hors client) est lu.
+      .catch((err) => toast.error(errorMessageFrom(err, 'Échec de l’envoi du rapport.')))
       .finally(() => setSending(false))
   }
 

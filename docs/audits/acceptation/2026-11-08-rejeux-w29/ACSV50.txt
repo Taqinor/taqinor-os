@@ -1,0 +1,15 @@
+# Preuve en direct ACSV50 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Verdict : PASS — Sonde C-ACSV-060 : repro False.
+
+== C-ACSV-060 (sha f57951e87)
+attendu : repro si R : facturer 201 couverture facturable, facture au prix de vente (5000) ; T : 409 garantie de chantier à confirmer
+observé : {'R': {'reserve_http': 201, 'ticket_couverture': 'a_determiner', 'sous_garantie': 'a_determiner', 'equipement': None, 'couverture_calculee': Ticket.Couverture.A_DETERMINER, 'garantie_a_confirmer': True, 'facturer_http': 409, 'facturer': {'detail': 'Garantie de chantier à confirmer avant de facturer.'}}, 'T': {'reserve_http': 201, 'ticket_couverture': 'a_determiner', 'sous_garantie': 'a_determiner', 'equipement': None, 'couverture_calculee': Ticket.Couverture.A_DETERMINER, 'garantie_a_confirmer': True, 'facturer_http': 409, 'facturer': {'detail': 'Garantie de chantier à confirmer avant de facturer.'}}}
+{"repro": false, "temoin_ok": true, "R": {"reserve_http": 201, "ticket_couverture": "a_determiner", "sous_garantie": "a_determiner", "equipement": null, "couverture_calculee": "a_determiner", "garantie_a_confirmer": true, "facturer_http": 409, "facturer": {"detail": "Garantie de chantier à confirmer avant de facturer."}}, "T": {"reserve_http": 201, "ticket_couverture": "a_determiner", "sous_garantie": "a_determiner", "equipement": null, "couverture_calculee": "a_determiner", "garantie_a_confirmer": true, "facturer_http": 409, "facturer": {"detail": "Garantie de chantier à confirmer avant de facturer."}}}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0

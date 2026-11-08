@@ -787,12 +787,7 @@ class InstallationSerializer(IdInconnu404Mixin, ChampsStrictsEntiersMixin,  # id
 
     @extend_schema_field(serializers.BooleanField())
     def get_est_parc(self, obj):
-        # Système installé = chantier réceptionné (ou clôturé) et toujours
-        # actif dans le parc, hors chantier annulé.
-        canon = Installation.canonical_statut(obj.statut)
-        reached = canon in (
-            Installation.Statut.RECEPTIONNE, Installation.Statut.CLOTURE)
-        return bool(reached and obj.parc_actif and not obj.annule)
+        return obj.est_du_parc  # AMON80 — règle unique sur le modèle
 
     @extend_schema_field(serializers.IntegerField(allow_null=True))
     def get_checklist_completion(self, obj):

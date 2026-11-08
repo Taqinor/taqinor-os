@@ -1,0 +1,20 @@
+# Preuve en direct AMON88 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Écran : front du worktree servi par vite (127.0.0.1:3000) -> conteneur privé accept-w29-web (runserver, base
+# erp_accept_w29, stockage objet PRIVÉ accept-w29-minio, SMTP 127.0.0.1:1 puis mail en mémoire pour AMON47), piloté par
+# Playwright MCP. Données : seed_demo « TAQINOR Démo » + fixtures FIX-W29* ou états des sondes rejouées SANS rollback
+# (comptes de test, mot de passe de test).
+# Verdict : PASS — Écran Vue parc : « Classer » (motif) => ligne retirée, « Aucune alerte ouverte » ; portail 0 alerte.
+
+## AMON88 — PASS
+État de la sonde C-AMON-024 rejouée SANS rollback (CHT-AMON024 à 61,2 %, drapeau ouvert, portail alertes_ouvertes 1 avant). Compte
+amon024_adm › Production › Vue parc : « 1 alerte(s) de sous-performance — CHT-AMON024 · 61,2 % de l'attendu · depuis le 08/11/2026 ·
+sans ticket » › « Classer » → bouton de validation INACTIF tant que « Motif du classement » est vide → « Relevés en retard » →
+valider => POST monitoring/drapeaux/5/classer/ {"motif":"Relevés en retard"} 200 (is_open false, motif_cloture classe_manuellement) ;
+ligne retirée, KPI « Aucune alerte ouverte », « Aucune alerte de sous-performance ouverte. ». Compte portail amon024_portail ›
+Consommation : « Aucune alerte ouverte » (alertes_ouvertes 0) et les 3 relevés (01/09, 01/10, 01/11 · 30 j · 450).

@@ -1,4 +1,3 @@
-from django.utils import timezone
 from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
 
@@ -14,7 +13,7 @@ from core.unicite import UniciteEn409Mixin
 from .models import (
     AbonnementMonitoring, CertificatCarbone, CleaningEvent, MonitoringConfig,
     MonitoringSettings, ProductionReading, ProductionWarranty,
-    SlaDisponibilite,
+    SlaDisponibilite, UnderperformanceFlag,
 )
 from .providers import available_providers
 
@@ -47,7 +46,8 @@ class MonitoringConfigSerializer(IdInconnu404Mixin, UniciteEn409Mixin, CompanySc
         read_only_fields = ['last_sync', 'date_modification']
 
     def get_provider_label(self, obj) -> str:  # ENF11 — type au schéma
-        return dict(available_providers()).get(obj.provider, obj.provider)
+        libelles = {cle: lbl for cle, lbl, _dispo in available_providers()}
+        return libelles.get(obj.provider, obj.provider)
 
     # CI #993 — booléen publié (SerializerMethodField sans type = chaîne :
     # `false` servi était « hors schéma » sur configs/ et configs/{id}/).
@@ -125,17 +125,25 @@ class ProductionReadingSerializer(IdInconnu404Mixin, CompanyScopedRelationsMixin
             'installation', getattr(instance, 'installation', None))
         # ERR-ENF11-FUZZ-MONITORING — deux refus qui dépendent de l'HORLOGE et
         # des relevés DÉJÀ saisis (le schéma ne peut les dire) : 409.
-        if jour is not None and jour > timezone.localdate():
-            raise ConflitEtat(
-                {'date': ['La date du relevé ne peut pas être dans le futur.']})
+        # AMON3 — date = premier jour couvert : la période ne dépasse pas
+        # aujourd'hui (« aujourd'hui sur 30 j » couvrait 29 jours futurs).
+        from .selectors import depassement_aujourdhui
+        refus = (depassement_aujourdhui(jour, periode or 1)
+                 if jour is not None else None)
+        if refus:
+            raise ConflitEtat({'date': [refus]})
         if jour is not None and periode is not None and installation:
-            doublons = ProductionReading.objects.filter(
-                installation=installation, date=jour, period_days=periode)
-            if instance is not None:
-                doublons = doublons.exclude(pk=instance.pk)
-            if doublons.exists():
-                raise ConflitEtat(
-                    {'date': ['Relevé déjà saisi pour cette période.']})
+            # AMON1 — tout RECOUVREMENT est refusé (les lecteurs d'énergie
+            # somment), pas seulement le doublon exact (date, période).
+            from .selectors import message_recouvrement, releve_chevauchant
+            autre = releve_chevauchant(
+                installation, jour, periode,
+                exclure=instance.pk if instance is not None else None)
+            if autre is not None:
+                raise ConflitEtat({'date': [
+                    'Relevé déjà saisi pour cette période.'
+                    if (autre.date, autre.period_days) == (jour, periode)
+                    else message_recouvrement(autre.date, autre.period_days)]})
         return attrs
 
 
@@ -197,11 +205,14 @@ class ProductionWarrantySerializer(IdInconnu404Mixin, UniciteEn409Mixin, Company
         max_digits=8, decimal_places=4, required=False)
     start_year = serializers.IntegerField(
         min_value=ANNEE_GARANTIE_MIN, max_value=ANNEE_GARANTIE_MAX)
+    # AMON96 — référence du système (libellé des cartes, repli « Système #id »).
+    installation_reference = serializers.CharField(
+        source='installation.reference', read_only=True, allow_null=True)
 
     class Meta:
         model = ProductionWarranty
         fields = [
-            'id', 'installation', 'guaranteed_year1_kwh',
+            'id', 'installation', 'installation_reference', 'guaranteed_year1_kwh',
             'degradation_pct_per_year', 'start_year',
             'compensation_mad_per_kwh', 'tolerance_pct', 'note',
             'date_creation', 'date_modification',
@@ -215,11 +226,14 @@ class ProductionWarrantySerializer(IdInconnu404Mixin, UniciteEn409Mixin, Company
         return value
 
 
-#: ERR-ENF11-FUZZ-MONITORING — la forme que ``DecimalLitteral`` accepte
-#: (``-?[0-9]+(.[0-9]+)?``), bornée par le champ (5 chiffres dont 2
-#: décimales). Le motif générique publiait aussi ``-.3`` / ``12.``, refusés
-#: en 400 (« conforme refusée », PUT settings/{id} du 13/10/2026).
-MOTIF_SEUIL_POURCENT = r'^-?0*[0-9]{1,3}(\.[0-9]{1,2})?$'
+#: ERR-ENF11-FUZZ-MONITORING — la forme que ``DecimalLitteral`` accepte,
+#: bornée par le champ (2 décimales). Le motif générique publiait aussi
+#: ``-.3`` / ``12.``, refusés en 400 (« conforme refusée », 13/10/2026).
+#: AMON28 — seuil borné à [1 ; 99] (« -10 » signalait tout le parc, « 120 »
+#: ne détectait plus rien) : le motif publié ne décrit plus que cet intervalle.
+MOTIF_SEUIL_POURCENT = (
+    r'^0*(?:[1-9](?:\.[0-9]{1,2})?|(?:[1-8][0-9]|9[0-8])(?:\.[0-9]{1,2})?'
+    r'|99(?:\.0{1,2})?)$')
 
 
 @extend_schema_field({'type': 'string', 'format': 'decimal',
@@ -243,6 +257,13 @@ class MonitoringSettingsSerializer(ChampsStrictsLitterauxMixin,
             'date_modification',
         ]
         read_only_fields = ['date_modification']
+
+    def validate_underperf_threshold_pct(self, value):
+        # AMON28 — seuil de sous-performance dans [1 ; 99] % de l'attendu.
+        if value is not None and not (1 <= value <= 99):
+            raise serializers.ValidationError(
+                'Le seuil doit être compris entre 1 et 99 %.')
+        return value
 
 
 #: CI #997 fuzz — les décimaux dont le serveur refuse la valeur NULLE ou hors
@@ -287,19 +308,28 @@ class AbonnementMonitoringSerializer(serializers.ModelSerializer):
     # Aucun chiffre inventé : le montant est obligatoire à la saisie.
     montant = _MontantPositifLitteral(
         max_digits=12, decimal_places=2, required=True)
+    resilie_par_nom = serializers.SerializerMethodField()
 
     class Meta:
         model = AbonnementMonitoring
         fields = [
             'id', 'client_id', 'installation_id', 'periodicite',
             'periodicite_display', 'montant', 'statut', 'statut_display',
-            'date_debut', 'prochaine_echeance', 'motif_resiliation',
-            'date_creation',
+            'date_debut', 'motif_resiliation', 'date_creation',
+            'date_resiliation', 'resilie_par_nom',
         ]
         read_only_fields = [
-            'client_id', 'statut', 'prochaine_echeance', 'motif_resiliation',
-            'date_creation',
+            'client_id', 'statut', 'motif_resiliation', 'date_creation',
+            'date_resiliation',
         ]
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_resilie_par_nom(self, obj):
+        """AMON7 — auteur de la résiliation (None tant qu'actif)."""
+        user = obj.resilie_par
+        if user is None:
+            return None
+        return user.get_full_name() or user.get_username()
 
     def validate_montant(self, value):
         # La règle est AUSSI publiée dans le motif du champ (corps conforme).
@@ -318,11 +348,13 @@ class SlaDisponibiliteSerializer(IdInconnu404Mixin, UniciteEn409Mixin, CompanySc
         max_digits=5, decimal_places=2)
     compensation_mad_par_jour_indispo = _CompensationLitterale(
         max_digits=10, decimal_places=2, required=False)
+    installation_reference = serializers.CharField(  # AMON96
+        source='installation.reference', read_only=True, allow_null=True)
 
     class Meta:
         model = SlaDisponibilite
         fields = [
-            'id', 'installation', 'disponibilite_garantie_pct',
+            'id', 'installation', 'installation_reference', 'disponibilite_garantie_pct',
             'compensation_mad_par_jour_indispo', 'note', 'created_at',
             'updated_at',
         ]
@@ -354,11 +386,64 @@ class CertificatCarboneSerializer(serializers.ModelSerializer):
         min_value=1, required=False, allow_null=True)
     client_id = serializers.IntegerField(
         min_value=1, required=False, allow_null=True)
+    annule_par_nom = serializers.SerializerMethodField()
+    installation_reference = serializers.SerializerMethodField()
 
     class Meta:
         model = CertificatCarbone
         fields = [
-            'id', 'installation_id', 'client_id', 'periode_debut',
+            'id', 'installation_id', 'installation_reference', 'client_id', 'periode_debut',
             'periode_fin', 'tco2_evitees', 'reference', 'created_at',
+            'statut', 'motif_annulation', 'annule_le', 'annule_par_nom',
         ]
-        read_only_fields = ['tco2_evitees', 'reference', 'created_at']
+        read_only_fields = ['tco2_evitees', 'reference', 'created_at',
+                            'statut', 'motif_annulation', 'annule_le']
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_installation_reference(self, obj):
+        """AMON96 — référence du site (``installation_id`` est un entier, pas
+        une FK) : lue en UNE requête pour toute la page via le sélecteur
+        installations, mise en cache dans le contexte."""
+        if not obj.installation_id:
+            return None
+        refs = self.context.get('_references_installations')
+        if refs is None or obj.installation_id not in refs:
+            from apps.installations.selectors import references_installations
+            lot = getattr(self.parent, 'instance', None) or [obj]
+            ids = {o.installation_id for o in lot if getattr(o, 'installation_id', None)} | {obj.installation_id}
+            refs = {**(refs or {}), **dict.fromkeys(ids), **references_installations(obj.company_id, ids)}
+            self.context['_references_installations'] = refs
+        return refs.get(obj.installation_id)
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_annule_par_nom(self, obj):
+        """AMON93 — auteur de l'annulation (None tant qu'émis)."""
+        user = obj.annule_par
+        if user is None:
+            return None
+        return user.get_full_name() or user.get_username()
+
+
+class UnderperformanceFlagSerializer(serializers.ModelSerializer):
+    """AMON24 — drapeau de sous-performance (lecture seule) : système, ratio,
+    ouverture, ticket lié ; clôture (motif, note, auteur) une fois classé.
+    Contrat : ``contract_samples/drapeaux_sous_performance.json``."""
+    reference = serializers.CharField(
+        source='installation.reference', read_only=True)
+    cloture_par_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = UnderperformanceFlag
+        fields = [
+            'id', 'installation', 'reference', 'ratio_pct', 'date_creation',
+            'ticket', 'is_open', 'date_cloture', 'motif_cloture',
+            'note_cloture', 'cloture_par_nom',
+        ]
+        read_only_fields = fields
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_cloture_par_nom(self, obj):
+        user = obj.cloture_par
+        if user is None:
+            return None
+        return user.get_full_name() or user.get_username()

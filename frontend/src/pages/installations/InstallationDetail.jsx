@@ -55,6 +55,7 @@ import ChantierGateTimeline from './ChantierGateTimeline'
 import ChantierPhotos from './ChantierPhotos'
 // NTMOB16 — signature client tracée sur le bon de livraison chantier.
 import SignatureLivraisonDialog from './SignatureLivraisonDialog'
+import AnnulerInterventionDialog from '../../features/installations/AnnulerInterventionDialog'
 // FG386 — même bandeau d'état de synchro terrain que la page Interventions
 // (N91/F21) : la checklist chantier file déjà ses cochages hors-ligne via
 // `withOfflineFallback`, il ne restait qu'à rendre l'état visible ici aussi.
@@ -261,6 +262,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   // CIQ637 — réception définitive : refus serveur (liste des réserves).
   const [receptionBusy, setReceptionBusy] = useState(false)
   const [receptionRefus, setReceptionRefus] = useState(null)
+  const [motifDefinitive, setMotifDefinitive] = useState('') // ACSV35 — dérogation Directeur
   // Retour FR explicite pour les actions secondaires (équipement / intervention
   // / ticket / besoin) dont les échecs étaient avalés (catch vides).
   const [actionError, setActionError] = useState(null)
@@ -281,7 +283,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   const [interv, setInterv] = useState({ type_intervention: '', date_prevue: '', compte_rendu: '', technicien: '' })
   const [intervBusy, setIntervBusy] = useState(false)
   // N5 — édition en place d'une intervention existante (ligne du tableau).
-  const [editInterv, setEditInterv] = useState(null) // { id, date_realisee, compte_rendu, technicien }
+  const [editInterv, setEditInterv] = useState(null) // { id, date_prevue, date_realisee, compte_rendu, technicien }
   const [editIntervBusy, setEditIntervBusy] = useState(false)
   const [users, setUsers] = useState([])
   const peutListerUsers = useCanListAssignableUsers()
@@ -289,6 +291,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   const { confirm: confirmerMes } = useConfirmDialog()
   const startEditInterv = (iv) => setEditInterv({
     id: iv.id,
+    date_prevue: iv.date_prevue ?? '',
     date_realisee: iv.date_realisee ?? '',
     compte_rendu: iv.compte_rendu ?? '',
     technicien: iv.technicien ? String(iv.technicien) : '',
@@ -299,6 +302,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     try {
       const nullable = (v) => (v === '' || v === undefined) ? null : v
       await installationsApi.updateIntervention(editInterv.id, {
+        date_prevue: nullable(editInterv.date_prevue),
         date_realisee: nullable(editInterv.date_realisee),
         compte_rendu: nullable(editInterv.compte_rendu),
         technicien: nullable(editInterv.technicien),
@@ -308,7 +312,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
       await refreshInstallation()
       loadHistorique()
     } catch (err) {
-      setActionError(actionMsg(err, "Édition de l'intervention impossible."))
+      setActionError(errorMessageFrom(err, "Édition de l'intervention impossible."))
     } finally { setEditIntervBusy(false) }
   }
 
@@ -367,6 +371,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
 
   // Confirmations
   const [annulerOpen, setAnnulerOpen] = useState(false)
+  const [annulerInterv, setAnnulerInterv] = useState(null) // ACSV4
   const [annulerMotif, setAnnulerMotif] = useState('')
   // N7 — confirmation supplémentaire si le système est actif au parc.
   const [annulerParcConfirm, setAnnulerParcConfirm] = useState(false)
@@ -555,7 +560,9 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     setReceptionBusy(true)
     setReceptionRefus(null)
     try {
-      await installationsApi.prononcerReceptionDefinitive(id)
+      await (motifDefinitive.trim()
+        ? installationsApi.prononcerReceptionDefinitive(id, motifDefinitive.trim())
+        : installationsApi.prononcerReceptionDefinitive(id))
       await refreshInstallation()
       loadHistorique()
     } catch (err) {
@@ -621,6 +628,14 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
       setActionError('Indiquez une date de mise en service avant d’enregistrer.')
       return
     }
+    // ACSV36 — le serveur rabat la mise en service sur « réceptionné » : on l'annonce.
+    const comp = current.checklist_completion
+    if (Number.isInteger(comp) && comp < 100
+        && !(await confirmerMes({ title: 'Réception du chantier', destructive: false,
+          confirmLabel: 'Continuer',
+          description: 'Enregistrer la mise en service réceptionne le chantier '
+            + `(parc, garanties, avis au client). La checklist n'est complétée qu'à ${comp} %. `
+            + 'Continuer ?' }))) return
     const manques = []
     if (mes.mes_production_test === '' || mes.mes_production_test == null) manques.push('test de production')
     if (mes.mes_tension === '' || mes.mes_tension == null) manques.push('tension')
@@ -1424,7 +1439,14 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
               {current.type_installation === 'industriel' && (
                 <div className="flex flex-col gap-1" data-testid="reception-definitive">
                   {current.date_reception_definitive ? (
-                    <Hint>Réception définitive prononcée le {formatDate(current.date_reception_definitive)}.</Hint>
+                    <>
+                      <Hint>Réception définitive prononcée le {formatDate(current.date_reception_definitive)}.</Hint>
+                      {/* ACSV95 — PV de réception définitive (figé côté serveur, ACSV32). */}
+                      <Button variant="outline" className="self-start"
+                              onClick={() => openDocument('pvReceptionDefinitive', `pv-reception-definitive-${current.reference}.pdf`, 'PV de réception définitive')}>
+                        PV de réception définitive
+                      </Button>
+                    </>
                   ) : (
                     <Button variant="outline" loading={receptionBusy}
                             onClick={prononcerReceptionDefinitive} className="self-start">
@@ -1436,6 +1458,10 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                          className="rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
                       {receptionRefus}
                     </div>
+                  )}
+                  {receptionRefus && !current.annule && (
+                    <Input aria-label="Motif de dérogation (Directeur)" placeholder="Motif de dérogation (Directeur)"
+                           value={motifDefinitive} onChange={(e) => setMotifDefinitive(e.target.value)} />
                   )}
                 </div>
               )}
@@ -1635,7 +1661,12 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                     return (
                       <tr key={iv.id} className="border-t border-border">
                         <td className="px-3 py-2">{iv.type_intervention_display ?? iv.type_intervention}</td>
-                        <td className="px-3 py-2">{formatDate(iv.date_prevue)}</td>
+                        <td className="px-3 py-2">
+                          {editing ? (
+                            <Input type="date" aria-label="Prévue" value={editInterv.date_prevue}
+                                   onChange={(e) => setEditInterv(s => ({ ...s, date_prevue: e.target.value }))} />
+                          ) : formatDate(iv.date_prevue)}
+                        </td>
                         <td className="px-3 py-2">
                           {editing ? (
                             <Input type="date" value={editInterv.date_realisee}
@@ -1675,9 +1706,10 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                               </Button>
                             </span>
                           ) : (
-                            <Button size="sm" variant="outline" onClick={() => startEditInterv(iv)}>
-                              Éditer
-                            </Button>
+                            <span className="flex gap-1">
+                              <Button size="sm" variant="outline" onClick={() => startEditInterv(iv)}>Éditer</Button>
+                              {!iv.annulee && <Button size="sm" variant="ghost" onClick={() => setAnnulerInterv(iv)}>Annuler l&apos;intervention</Button>}
+                            </span>
                           )}
                         </td>
                       </tr>
@@ -1945,6 +1977,8 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
         </AlertDialogContent>
       </AlertDialog>
 
+      <AnnulerInterventionDialog intervention={annulerInterv} onClose={() => setAnnulerInterv(null)}
+        onDone={async () => { setAnnulerInterv(null); await refreshInstallation(); loadHistorique() }} />
       {/* NTMOB16 — signature client tracée sur le bon de livraison chantier. */}
       <SignatureLivraisonDialog
         open={signatureOpen}

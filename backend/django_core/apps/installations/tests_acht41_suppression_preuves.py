@@ -180,3 +180,56 @@ class CleLibereeParLaLigneTests(TestCase):
             [p.file_key])
         self.assertTrue(CreativeAsset.objects.filter(
             file_key='k/creatif').exists())
+
+    def test_photo_checklist_supprimee_decoche_et_trace(self):
+        """ACSV18 (C-ACSV-023) — supprimer l'unique photo d'une étape à photo
+        obligatoire cochée la décoche (gate photos la redemande) et le note au
+        chatter ; avec une seconde photo restante : cochée, note seule.
+        ROUGE AVANT : `fait` vrai, 0 note."""
+        from django.utils import timezone
+
+        from apps.installations.models import (
+            ChantierChecklistItem, InstallationActivity, PhotoChecklistMeta,
+        )
+        from apps.installations.services import raison_refus_cocher_etape
+        admin = User.objects.create_user(
+            username='admin-acsv18', password='x', company=self.company,
+            role_legacy='admin')
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(admin)}')
+        inst = Installation.objects.create(company=self.company, reference='CH-ACSV18')
+        item = ChantierChecklistItem.objects.create(
+            company=self.company, installation=inst, cle='tableau',
+            libelle='Photo du tableau', photo_obligatoire=True, fait=True,
+            fait_par=self.user, fait_le=timezone.now())
+        ct = ContentType.objects.get_for_model(Installation)
+
+        def photo(n):
+            att = Attachment.objects.create(
+                company=self.company, content_type=ct, object_id=inst.id,
+                file_key=f'k/acsv18-{n}', filename=f'tableau-{n}.png',
+                uploaded_by=self.user)
+            PhotoChecklistMeta.objects.create(
+                company=self.company, attachment=att, checklist_item=item)
+            return att
+
+        def notes():
+            return list(InstallationActivity.objects.filter(
+                installation=inst, body__startswith="Photo de l'étape").values_list('body', flat=True))
+
+        p1, p2 = photo(1), photo(2)
+        with mock.patch('apps.records.views.delete_attachment'):
+            r = api.delete(f'/api/django/records/attachments/{p1.id}/')
+            self.assertEqual(r.status_code, 204, getattr(r, 'data', r))
+            item.refresh_from_db()
+            self.assertTrue(item.fait)
+            self.assertEqual(notes(), ["Photo de l'étape « Photo du tableau » supprimée."])
+            r = api.delete(f'/api/django/records/attachments/{p2.id}/')
+            self.assertEqual(r.status_code, 204, getattr(r, 'data', r))
+        item.refresh_from_db()
+        self.assertFalse(item.fait)
+        self.assertIsNone(item.fait_par)
+        self.assertIsNone(item.fait_le)
+        self.assertIn("Photo de l'étape « Photo du tableau » supprimée — étape décochée "
+                      '(aucune photo restante).', notes())
+        self.assertIsNotNone(raison_refus_cocher_etape(item, True))

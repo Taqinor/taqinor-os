@@ -27,8 +27,8 @@ from html import escape
 DEFAULT_RENDEMENT_KWH_PAR_KWC_AN = Decimal('1600')
 # Tarif électricité moyen indicatif (MAD/kWh TTC) — surchargeable par client.
 DEFAULT_TARIF_MAD_PAR_KWH = Decimal('1.40')
-# Facteur d'émission du réseau marocain (kg CO₂ évité par kWh autoproduit).
-DEFAULT_CO2_KG_PAR_KWH = Decimal('0.81')
+# AMON91 — plus de facteur CO₂ par défaut : celui de la société (Paramètres,
+# ``facteur_co2_reseau``) ou une surcharge ``?co2=`` ; sinon aucun CO₂ chiffré.
 # Période par défaut si rien n'est fourni : 12 mois.
 DEFAULT_NB_MOIS = 12
 
@@ -181,9 +181,7 @@ def compute_energy_estimate(
     rendement = (_to_decimal(rendement_kwh_par_kwc_an)
                  or DEFAULT_RENDEMENT_KWH_PAR_KWC_AN)
     tarif = _to_decimal(tarif_mad_par_kwh) or DEFAULT_TARIF_MAD_PAR_KWH
-    co2 = _to_decimal(co2_kg_par_kwh)
-    if co2 is None:
-        co2 = DEFAULT_CO2_KG_PAR_KWH
+    co2 = _to_decimal(co2_kg_par_kwh)  # None ⇒ aucun CO₂ chiffré (AMON91)
 
     # Production ANNUELLE de référence : saisie manuelle si fournie, sinon
     # kWc × rendement spécifique.
@@ -208,8 +206,7 @@ def compute_energy_estimate(
     fraction_annee = mois / Decimal('12')
     production_kwh = prod_annuelle * fraction_annee
     economies_mad = production_kwh * tarif
-    co2_kg = production_kwh * co2
-    co2_tonnes = co2_kg / Decimal('1000')
+    co2_kg = production_kwh * co2 if co2 is not None else None
 
     q0 = Decimal('1')
     q2 = Decimal('0.01')
@@ -220,12 +217,12 @@ def compute_energy_estimate(
         'nb_mois': mois.quantize(q2),
         'production_kwh': production_kwh.quantize(q0),
         'economies_mad': economies_mad.quantize(q2),
-        'co2_kg': co2_kg.quantize(q0),
-        'co2_tonnes': co2_tonnes.quantize(q3),
+        'co2_kg': co2_kg.quantize(q0) if co2 is not None else None,
+        'co2_tonnes': (co2_kg / Decimal('1000')).quantize(q3) if co2 is not None else None,
         # Hypothèses effectivement retenues (libellées « estimation » au rendu).
         'rendement_kwh_par_kwc_an': rendement.quantize(q0),
         'tarif_mad_par_kwh': tarif.quantize(q2),
-        'co2_kg_par_kwh': co2.quantize(q3),
+        'co2_kg_par_kwh': co2.quantize(q3) if co2 is not None else None,
         'production_manuelle': manuelle,
     }
 
@@ -397,7 +394,8 @@ def build_energy_report_html(ctx, system, client, est, period):
         ('Tarif électricité (hypothèse)',
          f"{_fr_num(est['tarif_mad_par_kwh'], 2)} MAD/kWh"),
         ('Facteur CO₂ réseau (hypothèse)',
-         f"{_fr_num(est['co2_kg_par_kwh'], 3)} kg CO₂/kWh"),
+         f"{_fr_num(est['co2_kg_par_kwh'], 3)} kg CO₂/kWh" if est['co2_kg_par_kwh'] is not None
+         else "Facteur d'émission du réseau non réglé"),
     ]
     if not est['production_manuelle']:
         hyp_rows.insert(1, ('Rendement spécifique (hypothèse)',
@@ -416,10 +414,11 @@ def build_energy_report_html(ctx, system, client, est, period):
         f'<div class="card"><div class="k">Économies estimées</div>'
         f'<div class="big">{_fr_num(est["economies_mad"], 2)}</div>'
         f'<div class="u">MAD sur la période</div></div>'
-        f'<div class="card"><div class="k">CO₂ évité (estimé)</div>'
-        f'<div class="big">{_fr_num(est["co2_tonnes"], 3)}</div>'
-        f'<div class="u">tonnes ({_fr_num(est["co2_kg"])} kg)</div></div>'
-        f'</div>'
+        + (f'<div class="card"><div class="k">CO₂ évité (estimé)</div>'
+           f'<div class="big">{_fr_num(est["co2_tonnes"], 3)}</div>'
+           f'<div class="u">tonnes ({_fr_num(est["co2_kg"])} kg)</div></div>'
+           if est['co2_tonnes'] is not None else '')
+        + '</div>'
     )
 
     footer = (
@@ -461,7 +460,7 @@ def render_energy_report_pdf(installation, params):
     CompanyProfile (multi-tenant) ; le client vient du chantier. Aucun prix
     d'achat n'est lu — strictement client-facing.
     """
-    from apps.parametres.selectors import tariff_for
+    from apps.parametres.selectors import facteur_co2_reseau, tariff_for
     from apps.ventes.utils.pdf import _company_context, _html_to_pdf
 
     # APDF39 — sans surcharge explicite, le rendement et le tarif sont ceux de
@@ -475,6 +474,9 @@ def render_energy_report_pdf(installation, params):
     tarif = params.get('tarif_mad_par_kwh')
     if tarif is None:
         tarif = reperes.get('onee_tarif_kwh')
+    co2 = params.get('co2_kg_par_kwh')
+    if co2 is None:  # AMON91 — facteur réglé par la société, jamais un défaut
+        co2 = (facteur_co2_reseau(installation.company) or {}).get('kg_kwh')
 
     est = compute_energy_estimate(
         installation.puissance_installee_kwc,
@@ -484,7 +486,7 @@ def render_energy_report_pdf(installation, params):
         production_annuelle_kwh=params.get('production_annuelle_kwh'),
         rendement_kwh_par_kwc_an=rendement,
         tarif_mad_par_kwh=tarif,
-        co2_kg_par_kwh=params.get('co2_kg_par_kwh'),
+        co2_kg_par_kwh=co2,
     )
 
     ctx = _company_context(company=installation.company)

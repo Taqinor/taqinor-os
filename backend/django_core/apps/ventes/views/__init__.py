@@ -8,7 +8,6 @@ l'identique. Aucun changement de comportement ni d'endpoint."""
 from .devis import DevisViewSet
 from .ligne_devis import LigneDevisViewSet
 from .bon_commande import BonCommandeViewSet
-from .avoir import AvoirViewSet, NoteDebitViewSet  # ZFAC4
 from .email import email_config
 from .credit_warning import client_credit_warning
 from .releve_import import releve_dry_run, releve_commit
@@ -29,7 +28,6 @@ from .commissioning import (  # FG274-FG278, FG287
     TestPerformanceReceptionViewSet,
     AttestationREViewSet,
 )
-from .remise_encaissement import RemiseEncaissementViewSet  # XFSM19
 from .liste_prix import ListePrixViewSet, prix_applicable_view  # XSAL1-3
 from .parametres_gammes import ParametresGammesView  # PVMRQ
 from .plan_commission import PlanCommissionViewSet  # WIR281/XSAL6
@@ -64,6 +62,9 @@ from . import economie_ci as _economie_ci_action
 # cycle quand facturation est chargée la première.
 _NOMS_FACTURATION = frozenset({
     'FactureViewSet', 'PaiementViewSet', 'LigneFactureViewSet',
+    # ODX18 (suite) — avoirs/notes de débit (ZFAC4) et remises d'encaissement
+    # (XFSM19) ont rejoint ``apps.facturation.views`` (déplacés tels quels).
+    'AvoirViewSet', 'NoteDebitViewSet', 'RemiseEncaissementViewSet',
 })
 
 

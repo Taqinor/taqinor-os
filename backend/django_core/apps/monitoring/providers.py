@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+from decimal import Decimal
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,9 @@ class MonitoringProvider:
 
     key = 'base'
     label = 'Fournisseur'
+    #: AMON8 — faux tant que la récupération (``_fetch``) est un squelette :
+    #: le connecteur n'est pas proposé comme supervision automatique.
+    disponible = True
 
     def fetch_recent(self, system, config):
         """Renvoie une liste de dicts de relevés récents pour `system`.
@@ -68,6 +72,7 @@ class FusionSolarProvider(MonitoringProvider):
     label = 'Huawei FusionSolar'
     # Base NorthBound par défaut (surchargeable via credentials['base_url']).
     DEFAULT_BASE_URL = 'https://eu5.fusionsolar.huawei.com/thirdData'
+    disponible = False  # AMON8 — `_fetch` squelette (renvoie []).
 
     def fetch_recent(self, system, config):
         creds = getattr(config, 'credentials', None) or {}
@@ -106,6 +111,8 @@ class _CredentialGatedProvider(MonitoringProvider):
     manuelle. Aucun appel réseau, aucun coût, aucune dépendance pip nouvelle
     tant que le `_fetch` n'est pas câblé (squelette). Désactivés par défaut.
     """
+
+    disponible = False  # AMON8 — `_fetch` squelette (renvoie []).
 
     def fetch_recent(self, system, config):
         creds = getattr(config, 'credentials', None) or {}
@@ -168,8 +175,9 @@ def register_provider(cls):
 
 
 def available_providers():
-    """Liste [(clé, libellé)] des fournisseurs pour l'UI/les choix."""
-    return [(cls.key, cls.label) for cls in _REGISTRY.values()]
+    """Liste [(clé, libellé, disponible)] des fournisseurs pour l'UI/les
+    choix (AMON8 : un squelette est servi ``disponible`` faux)."""
+    return [(cls.key, cls.label, cls.disponible) for cls in _REGISTRY.values()]
 
 
 def get_provider(key):
@@ -182,10 +190,19 @@ def _coerce_reading(raw):
     """Normalise un dict de relevé fournisseur (tolérant)."""
     d = raw.get('date')
     if isinstance(d, str):
-        d = datetime.date.fromisoformat(d)
+        # AMON9 — un horodatage ISO devient le jour Africa/Casablanca (heure
+        # locale de la société), jamais un relevé ignoré en silence.
+        d = (datetime.date.fromisoformat(d) if len(d) == 10
+             else datetime.datetime.fromisoformat(d))
+    if isinstance(d, datetime.datetime):
+        from django.utils import timezone
+        d = (timezone.localtime(d) if timezone.is_aware(d) else d).date()
+    energie = Decimal(str(raw.get('energy_kwh', 0)))
+    if energie < 0:
+        raise ValueError('Énergie négative refusée.')  # AMON9
     return {
         'date': d,
-        'energy_kwh': raw.get('energy_kwh', 0),
+        'energy_kwh': energie,
         'period_days': int(raw.get('period_days', 1) or 1),
         'external_id': str(raw.get('external_id', '') or ''),
     }

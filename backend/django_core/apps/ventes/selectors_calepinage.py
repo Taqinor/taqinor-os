@@ -705,3 +705,11 @@ def logo_entete_html(uri):
     if not b64:
         return None
     return logo.img_html(logo.pour_role(b64, 'entete'), 'entete', alt='logo')
+
+
+def poids_solaires_mensuels():
+    """AMON29 / règle #4 — profil mensuel de production imprimé au devis
+    (``MOROCCO_SOLAR_MONTHLY_WEIGHTS``, somme = 1), lu par le monitoring sans
+    importer le moteur hors d'``apps.ventes``."""
+    from .quote_engine.constants import MOROCCO_SOLAR_MONTHLY_WEIGHTS
+    return MOROCCO_SOLAR_MONTHLY_WEIGHTS

@@ -1,0 +1,23 @@
+# Preuve en direct AMON46 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Écran : front du worktree servi par vite (127.0.0.1:3000) -> conteneur privé accept-w29-web (runserver, base
+# erp_accept_w29, stockage objet PRIVÉ accept-w29-minio, SMTP 127.0.0.1:1 puis mail en mémoire pour AMON47), piloté par
+# Playwright MCP. Données : seed_demo « TAQINOR Démo » + fixtures FIX-W29* ou états des sondes rejouées SANS rollback
+# (comptes de test, mot de passe de test).
+# Verdict : PASS — Écran Production : suppression d'un relevé certifié 409 affiché ; Journal d'activité : changement d'attendu (diff en base).
+
+## AMON46 — PASS (écran)
+Compte sonde-amon-041-a-resp (certificat CERT-CO2-202611-0002 émis sur 2025) › Production › CHT-sonde-amon-041-a › relevé
+« 2025-06-01 500.00 kWh » › « Supprimer » → « Supprimer ce relevé ? » → Supprimer => DELETE monitoring/readings/2404/ 409 ; message
+affiché « Ce relevé fonde le certificat CERT-CO2-202611-0002 : annulez le certificat avant de le supprimer. », ligne conservée.
+Changement d'attendu par la vraie route PATCH monitoring/configs/<id>/ {expected_annual_kwh: 9000} 200 (aucun écran n'édite
+l'attendu) ; DELETE de la config => 409 « La configuration de supervision ne se supprime pas : désactivez-la. ». Compte
+amon041a_dir (rôle Directeur, journal_activite_voir) › Journal d'activité : ligne « 08/11/2026 12:01 sonde-amon-041-a-resp
+Modification Monitoring #194 (noop) ». AuditLog relu en base : action update, changes [{field expected_annual_kwh, old 6000.00, new
+9000.00}], auteur sonde-amon-041-a-resp. Observation hors clause : la colonne « Détail » du Journal affiche « — » (le diff stocké
+n'est pas rendu) et « Historique à cette date » répond « Aucun champ reconstruit ».

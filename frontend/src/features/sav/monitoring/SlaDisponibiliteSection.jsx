@@ -23,7 +23,7 @@ export default function SlaDisponibiliteSection({ systems, loadingSystems }) {
   const [erreur, setErreur] = useState(null)
   const [ecarts, setEcarts] = useState({})
 
-  const libelleSysteme = (installationId) => libelle(systems, installationId)
+  const libelleSysteme = (installationId, reference) => libelle(systems, installationId, reference)
 
   const enregistrer = async () => {
     const systeme = systems.find((s) => String(s.id) === form.systeme)
@@ -85,7 +85,7 @@ export default function SlaDisponibiliteSection({ systems, loadingSystems }) {
               <li key={s.id} className="rounded-lg border border-border bg-card p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-medium">{libelleSysteme(s.installation)}</span>
+                    <span className="font-medium">{libelleSysteme(s.installation, s.installation_reference)}</span>
                     <span className="text-sm text-muted-foreground">
                       garanti {pct(s.disponibilite_garantie_pct)} · {formatMAD(s.compensation_mad_par_jour_indispo)} / jour
                     </span>

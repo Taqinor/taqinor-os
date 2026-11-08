@@ -6,6 +6,7 @@ from .views import (
     MonitoringConfigViewSet, MonitoringSettingsViewSet,
     ProductionReadingViewSet, ProductionWarrantyViewSet,
     SlaDisponibiliteViewSet, CertificatCarboneViewSet,
+    UnderperformanceFlagViewSet,
 )
 
 router = DefaultRouter()
@@ -20,6 +21,8 @@ router.register(r'abonnements', AbonnementMonitoringViewSet)
 router.register(r'sla-disponibilite', SlaDisponibiliteViewSet)
 # ASAV102 — registre des certificats carbone (émission mesurée).
 router.register(r'certificats-carbone', CertificatCarboneViewSet)
+# AMON24 — drapeaux de sous-performance (liste + classement manuel).
+router.register(r'drapeaux', UnderperformanceFlagViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

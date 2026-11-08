@@ -154,3 +154,23 @@ class ChampsServeurTests(TestCase):
         self.inst.refresh_from_db()
         self.assertFalse(self.inst.annule)
         self.assertEqual(self._resas_actives(), 1)
+
+    def test_patch_installation_intervention_refuse(self):
+        """ACSV11 (C-ACSV-132) — le chantier d'une intervention est figé
+        après sa création : 409, intervention restée sur son chantier ;
+        renvoyer le même chantier reste 200. ROUGE AVANT : 200, re-pointée."""
+        autre = Installation.objects.create(
+            company=self.company, reference='CH-ACSV11', annule=True)
+        iv = Intervention.objects.create(
+            company=self.company, installation=self.inst,
+            type_intervention='pose', created_by=self.user)
+        url = f'{BASE}/interventions/{iv.id}/'
+        r = self.api.patch(url, {'installation': autre.id}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual(
+            r.data['installation'],
+            ["Le chantier d'une intervention ne change pas après sa création."])
+        iv.refresh_from_db()
+        self.assertEqual(iv.installation_id, self.inst.id)
+        r = self.api.patch(url, {'installation': self.inst.id}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)

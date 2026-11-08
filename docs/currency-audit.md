@@ -62,20 +62,20 @@ with no rate column at all — mono-MAD in practice.
 | installations | ApprobationBCF | `apps/installations/models_approbation_bcf.py:73` | montant_approuve |
 | installations | CommandeCadreLigne | `apps/installations/models_commande_cadre.py:71` | prix_negocie |
 | installations | ContratPrixLigne | `apps/installations/models_contrat_prix.py:83` | prix_convenu, remise_pct |
-| installations | DemandeAchatLigne | `apps/installations/models_demande_achat.py:195` | prix_estime |
+| installations | DemandeAchatLigne | `apps/installations/models_demande_achat.py:200` | prix_estime |
 | installations | ReceptionNonFacturee | `apps/installations/models_gr_ir.py:22` | montant_provision |
 | installations | FraisImport | `apps/installations/models_landed_cost.py:28` | montant |
 | installations | Livraison | `apps/installations/models_livraison.py:19` | cout_transport |
 | installations | OrdreSousTraitance | `apps/installations/models_ordre_soustraitance.py:66` | montant, montant_realise |
 | installations | RFQOffre | `apps/installations/models_rfq.py:82` | montant_ht |
-| monitoring | AbonnementMonitoring | `apps/monitoring/models.py:435` | montant |
+| monitoring | AbonnementMonitoring | `apps/monitoring/models.py:457` | montant |
 | parametres | TariffSettings | `apps/parametres/models_tariff.py:76` | force_motrice_prix_kwh_ttc, prix_incluent_taxes, prix_unique_kwh, surplus_prix_kwh_ttc |
 | portail | PaiementFacturePortail | `apps/portail/models.py:229` | montant |
 | publicapi | BulkJob | `apps/publicapi/models.py:543` | total |
-| sav | Ticket | `apps/sav/models.py:656` | cout |
-| sav | WarrantyClaim | `apps/sav/models.py:1439` | cout_recupere |
-| sav | ContratMaintenance | `apps/sav/models.py:1557` | prix |
-| sav | PrestationContrat | `apps/sav/models.py:1886` | prix_ht |
+| sav | Ticket | `apps/sav/models.py:671` | cout |
+| sav | WarrantyClaim | `apps/sav/models.py:1455` | cout_recupere |
+| sav | ContratMaintenance | `apps/sav/models.py:1573` | prix |
+| sav | PrestationContrat | `apps/sav/models.py:1902` | prix_ht |
 | statuspage | UptimeDayBucket | `apps/statuspage/models.py:164` | echantillons_total |
 | stock | AchatsParametres | `apps/stock/models.py:426` | ras_tva_actif, seuil_deviation_prix_pct, tolerance_prix_absolu_mad, tolerance_prix_pct |
 | stock | ToleranceRapprochementCategorie | `apps/stock/models.py:576` | tolerance_prix_absolu_mad, tolerance_prix_pct |

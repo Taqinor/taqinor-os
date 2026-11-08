@@ -465,3 +465,12 @@ class EventType(models.TextChoices):
     # ``notify_many`` (fenêtre de notification, préférences, module) au lieu
     # d'une écriture directe de ``Notification``.
     ADSENGINE_ALERT = ('adsengine_alert', 'Alerte du moteur de publicité')
+    # AMON85 — un recalcul de rattrapage a fait bouger le crédit SLA dû d'un
+    # snapshot (``core.sla._notifier_recalcul_credit``). Transverse : aucun
+    # module (comme ``security_alert``).
+    SLA_CREDIT_RECALCULE = ('sla_credit_recalcule', 'Crédit SLA recalculé')
+    # AMON86 — ouverture d'un épisode de sous-performance sur un système
+    # supervisé (émis par AMON87). Rattaché au module ``monitoring``.
+    MONITORING_SOUS_PERFORMANCE = (
+        'monitoring_sous_performance',
+        'Sous-performance détectée sur un système')

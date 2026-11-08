@@ -138,3 +138,36 @@ class XFSM15RecidiveTest(TestCase):
             f'/api/django/sav/tickets/{ticket_id}/generer-facture/',
             {'override': True})
         self.assertEqual(resp.status_code, 201, resp.content)
+
+    def test_qr_public_et_escalade_marquent_recidive(self):
+        """ACSV51 : toute porte d'INSERT d'un ticket correctif marque la
+        récidive ; la facturation sans override est refusée (403)."""
+        from apps.sav.models import AlarmeOnduleur, Equipement
+        self._intervention(date.today() - timedelta(days=10))
+        produit = Produit.objects.create(
+            company=self.company, nom='Onduleur ACSV51', sku='OND-ACSV51',
+            prix_achat=100, prix_vente=200)
+        equip = Equipement.objects.create(
+            company=self.company, produit=produit, installation=self.inst,
+            created_by=self.admin)
+        api = auth(self.admin)
+        resp = APIClient().post(
+            f'/api/django/public/sav/equipement/{equip.ensure_public_token()}'
+            '/signaler/', {'description': 'La pompe ne démarre plus.'})
+        self.assertEqual(resp.status_code, 201, resp.content)
+        alarme = AlarmeOnduleur.objects.create(
+            company=self.company, equipement=equip, code='E07',
+            gravite=AlarmeOnduleur.Gravite.CRITIQUE, libelle='Défaut')
+        resp_esc = api.post(
+            f'/api/django/sav/alarmes-onduleur/{alarme.pk}/escalader/', {},
+            format='json')
+        self.assertEqual(resp_esc.status_code, 200, resp_esc.data)
+        alarme.refresh_from_db()
+        for ticket in (Ticket.objects.get(reference=resp.data['reference']),
+                       Ticket.objects.get(pk=alarme.ticket_id)):
+            self.assertTrue(ticket.est_recidive)
+            self.assertTrue(ticket.non_facturable)
+            self.assertIsNotNone(ticket.intervention_origine_id)
+            self.assertEqual(api.post(
+                f'/api/django/sav/tickets/{ticket.pk}/facturer/').status_code,
+                403)

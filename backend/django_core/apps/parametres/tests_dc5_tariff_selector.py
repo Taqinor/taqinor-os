@@ -50,6 +50,30 @@ class TestDC5TariffSelector(TestCase):
         self.assertAlmostEqual(t['productible_kwh_kwc'], 1750.0, places=1)
         self.assertAlmostEqual(t['rendement_global'], 0.85, places=3)
 
+    def test_facteur_co2_reseau_regle_ou_none(self):
+        """AMON90 — valeur ET source saisies ⇒ dict Decimal ; sinon None."""
+        import datetime
+
+        from apps.parametres.selectors import facteur_co2_reseau
+
+        a, b, c = _company(), _company(), _company()
+        pa = CompanyProfile.get(company=a)
+        pa.facteur_co2_reseau_g_kwh = Decimal('630')
+        pa.facteur_co2_reseau_source = 'ONEE'
+        pa.facteur_co2_reseau_date = datetime.date(2026, 1, 15)
+        pa.save()
+        pb = CompanyProfile.get(company=b)
+        pb.facteur_co2_reseau_g_kwh = Decimal('630')
+        pb.facteur_co2_reseau_source = '  '
+        pb.save()
+        self.assertEqual(facteur_co2_reseau(a), {
+            'g_kwh': Decimal('630'), 'kg_kwh': Decimal('0.63'),
+            'source': 'ONEE', 'date': datetime.date(2026, 1, 15)})
+        self.assertIsInstance(facteur_co2_reseau(a)['kg_kwh'], Decimal)
+        self.assertIsNone(facteur_co2_reseau(b))
+        self.assertIsNone(facteur_co2_reseau(c))
+        self.assertIsNone(facteur_co2_reseau(None))
+
     def test_tariff_for_defaults_when_no_profile_fields(self):
         # profil vierge (défauts du modèle : 1.75 / vide / 0.8) — AMOT64 :
         # productible vide ⇒ None (le moteur lit le PVGIS de la ville).

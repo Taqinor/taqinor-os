@@ -64,3 +64,53 @@ class DisponibiliteTests(TestCase):
         self._releve(self.since + timedelta(days=15), periode=30)
         # Union = 45 jours.
         self.assertAlmostEqual(float(self._dispo()), 45 / 365 * 100, delta=0.05)
+
+    def test_systeme_neuf_fenetre_bornee_et_sans_releve_none(self):
+        """AMON21 — fenêtre bornée au début de couverture : un système neuf
+        bien relevé tient la garantie ; sans relevé, indicateurs ``None`` ;
+        relevé à cheval sur le début de fenêtre compté au prorata."""
+        from apps.monitoring.models import SlaDisponibilite
+        from apps.monitoring.report import build_om_report_data
+        from apps.monitoring.selectors import disponibilite_vs_garantie
+
+        # (N) mis en service J−60, 60 relevés journaliers sains.
+        Installation.objects.filter(pk=self.inst.pk).update(
+            date_mise_en_service=TODAY - timedelta(days=60))
+        self.inst.refresh_from_db()
+        for i in range(60):
+            self._releve(TODAY - timedelta(days=i))
+        SlaDisponibilite.objects.create(
+            company=self.company, installation=self.inst,
+            disponibilite_garantie_pct=Decimal('98'))
+        ecart = disponibilite_vs_garantie(self.inst, today=TODAY)
+        self.assertGreaterEqual(ecart['disponibilite_mesuree_pct'], 98)
+        self.assertFalse(ecart['sous_garantie'])
+        rapport = build_om_report_data(
+            self.inst, period='monthly', today=TODAY)
+        self.assertEqual(rapport['availability_pct'], Decimal('100.00'))
+
+        # (V) aucun relevé : None partout, jamais 0 %.
+        vide = Installation.objects.create(
+            company=self.company, reference='CHT-AMON21-V',
+            client=self.inst.client, puissance_installee_kwc=Decimal('5'))
+        MonitoringConfig.objects.create(
+            company=self.company, installation=vide,
+            expected_annual_kwh=Decimal('9000'))
+        SlaDisponibilite.objects.create(
+            company=self.company, installation=vide,
+            disponibilite_garantie_pct=Decimal('98'))
+        ecart = disponibilite_vs_garantie(vide, today=TODAY)
+        self.assertIsNone(ecart['disponibilite_mesuree_pct'])
+        self.assertIsNone(ecart['ecart_pct'])
+        self.assertIsNone(ecart['penalite_mad'])
+        rapport = build_om_report_data(vide, period='monthly', today=TODAY)
+        self.assertIsNone(rapport['availability_pct'])
+        self.assertIsNone(rapport['pr_pct'])
+
+    def test_treize_mensuels_contigus_cent_pour_cent(self):
+        """AMON21 — témoin : 13 mensuels contigus jusqu'à aujourd'hui, le
+        premier à cheval sur le début de fenêtre ⇒ 100 %."""
+        premier = TODAY - timedelta(days=30 * 13 - 1)
+        for i in range(13):
+            self._releve(premier + timedelta(days=30 * i), periode=30)
+        self.assertEqual(self._dispo(), Decimal('100.00'))

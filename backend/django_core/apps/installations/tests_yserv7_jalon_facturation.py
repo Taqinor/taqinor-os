@@ -251,6 +251,19 @@ class TestChantiersAFacturerSelector(TestCase):
         result = chantiers_a_facturer(self.company)
         self.assertEqual(result, [])
 
+    def test_chantier_annule_exclu(self):
+        """ACSV9 (C-ACSV-009) — chantier réceptionné (solde dû) puis annulé :
+        absent ; réactivé : de nouveau listé. ROUGE AVANT : listé."""
+        JalonProjet.objects.create(
+            company=self.company, installation=self.inst,
+            phase=JalonProjet.Phase.RECEPTION, libelle='Réception',
+            atteint=True, tranche_echeancier=JalonProjet.TRANCHE_SOLDE)
+        self.assertEqual(len(chantiers_a_facturer(self.company)), 1)
+        Installation.objects.filter(pk=self.inst.pk).update(annule=True)
+        self.assertEqual(chantiers_a_facturer(self.company), [])
+        Installation.objects.filter(pk=self.inst.pk).update(annule=False)
+        self.assertEqual(len(chantiers_a_facturer(self.company)), 1)
+
 
 class TestChantiersAFacturerPortee(TestCase):
     """ERR-CHANTIERS-A-FACTURER-SANS-PORTEE : la liste suit la portée de

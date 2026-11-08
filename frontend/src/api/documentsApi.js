@@ -5,6 +5,10 @@ import api from './axios'
 const documentsApi = {
   pvReception: (chantierId) =>
     api.get(`/documents/chantiers/${chantierId}/pv-reception/`, { responseType: 'blob' }),
+  // ACSV32 — PV de réception DÉFINITIVE (figé en GED, 409 tant que non prononcée).
+  pvReceptionDefinitive: (chantierId) =>
+    api.get(`/documents/chantiers/${chantierId}/pv-reception/`, {
+      params: { definitive: 1 }, responseType: 'blob' }),
   bonLivraison: (chantierId) =>
     api.get(`/documents/chantiers/${chantierId}/bon-livraison/`, { responseType: 'blob' }),
   dossierRemise: (chantierId) =>

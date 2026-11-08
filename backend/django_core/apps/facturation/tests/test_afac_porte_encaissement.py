@@ -308,8 +308,10 @@ class PorteEncaissementTests(TestCase):
 
         apps_ventes = Path(__file__).resolve().parents[2] / 'ventes'
         facturation = Path(__file__).resolve().parents[1]
-        # ODX18 — vues de facturation + recouvrement déménagés : toujours scannés.
-        demenages = list((facturation / 'views').glob('*.py')) + [facturation / 'recouvrement.py']
+        # ODX18 — vues de facturation, recouvrement, sérialiseurs et façade de
+        # services déménagés : toujours scannés.
+        demenages = list((facturation / 'views').glob('*.py')) + [
+            facturation / n for n in ('recouvrement.py', 'serializers.py', 'services.py')]
         sites = [str(p) for p in list(apps_ventes.rglob('*.py')) + demenages
                  if not re.search(r'[\\/]tests[\\/]|[\\/]tests?_[^\\/]*$|[\\/]migrations[\\/]', str(p))
                  for _ in re.findall(r'\bPaiement\.objects\.create\(', p.read_text(encoding='utf-8'))]

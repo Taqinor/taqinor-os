@@ -13,6 +13,8 @@ import {
   EMPTY_TICKET_FILTERS,
   ticketAgeDays,
   statusCounts,
+  statusCountsIndependants,
+  filtresPourStatut,
 } from './ticketStatuses.js'
 
 test("les 5 statuts ticket, dans l'ordre d'entonnoir", () => {
@@ -129,4 +131,22 @@ test('statusCounts retourne les 5 statuts triés funnel', () => {
   assert.equal(c.find((x) => x.key === 'en_cours').count, 1)
   assert.equal(c.find((x) => x.key === 'cloture').count, 1)
   assert.equal(c.find((x) => x.key === 'resolu').count, 0)
+})
+
+test('ACSV106 — compteurs indépendants du filtre de statut et de « Ouverts seulement »', () => {
+  const items = [
+    { statut: 'nouveau', type: 'correctif' }, { statut: 'resolu', type: 'correctif' },
+    { statut: 'resolu', type: 'preventif' }, { statut: 'cloture', type: 'correctif', annule: true },
+  ]
+  const filtres = { ...EMPTY_TICKET_FILTERS, type: 'correctif', statut: 'nouveau' }
+  assert.equal(filterTickets(items, filtres).length, 1)
+  const c = statusCountsIndependants(items, filtres)
+  assert.equal(c.find((x) => x.key === 'nouveau').count, 1)
+  assert.equal(c.find((x) => x.key === 'resolu').count, 1) // le type filtre toujours
+  assert.equal(c.find((x) => x.key === 'cloture').count, 0) // annulé exclu
+  const f = filtresPourStatut(EMPTY_TICKET_FILTERS, 'resolu')
+  assert.deepEqual([f.statut, f.ouvert], ['resolu', 'tous'])
+  assert.equal(filterTickets(items, f).length, 2)
+  assert.deepEqual([filtresPourStatut(f, 'resolu').statut, filtresPourStatut(EMPTY_TICKET_FILTERS, 'nouveau').ouvert],
+    ['', 'ouverts'])
 })

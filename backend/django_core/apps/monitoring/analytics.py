@@ -32,7 +32,8 @@ from core.analytics_db import analytics_queryset
 
 from .models import CleaningEvent, ProductionReading, UnderperformanceFlag
 from .services import (
-    _expected_recent_kwh, debut_couverture, get_or_create_config,
+    _expected_recent_kwh, attendu_entre, debut_couverture,
+    get_or_create_config, production_couverte, releves_recouvrant,
 )
 
 # Fenêtre par défaut (jours) d'analyse O&M.
@@ -67,6 +68,15 @@ def jours_couverts_par_releves(releves, since, today):
     des intervalles ``[date, date + period_days)`` des relevés (``releves`` =
     itérable de ``(date, period_days)``). Un relevé mensuel couvre ses 30
     jours ; deux relevés qui se chevauchent ne se comptent jamais deux fois."""
+    return sum((fin - debut).days for debut, fin
+               in intervalles_couverts_par_releves(releves, since, today))
+
+
+def intervalles_couverts_par_releves(releves, since, today):
+    """AMON22 — l'UNION des intervalles ``[date, date + period_days)`` des
+    relevés, bornée à ``[since, today]`` : liste triée de ``(debut, fin)``
+    disjoints, ``fin`` exclusive (base de ``jours_couverts_par_releves`` et
+    de l'attendu de sous-performance sur les seuls jours couverts)."""
     fin_fenetre = today + timedelta(days=1)  # borne haute exclusive
     intervalles = []
     for jour, periode in releves:
@@ -76,18 +86,23 @@ def jours_couverts_par_releves(releves, since, today):
         if fin > debut:
             intervalles.append((debut, fin))
     intervalles.sort()
-    total = 0
-    courant_debut = courant_fin = None
+    fusion = []
     for debut, fin in intervalles:
-        if courant_fin is None or debut > courant_fin:
-            if courant_fin is not None:
-                total += (courant_fin - courant_debut).days
-            courant_debut, courant_fin = debut, fin
-        elif fin > courant_fin:
-            courant_fin = fin
-    if courant_fin is not None:
-        total += (courant_fin - courant_debut).days
-    return total
+        if fusion and debut <= fusion[-1][1]:
+            fusion[-1] = (fusion[-1][0], max(fin, fusion[-1][1]))
+        else:
+            fusion.append((debut, fin))
+    return fusion
+
+
+def fenetre_mesuree(installation, since, today, window_days):
+    """AMON21 — ``(début, jours)`` de la fenêtre d'un indicateur : bornée au
+    début de couverture (``debut_couverture`` : mise en service / premier
+    relevé, comme l'attendu ASAV62) ; fenêtre entière si non bornée."""
+    debut = debut_couverture(installation, since)
+    if debut == since:
+        return debut, window_days
+    return debut, max((today - debut).days + 1, 0)
 
 
 def jours_couverts_mois(mois, debut_effectif, today):
@@ -129,34 +144,38 @@ def om_metrics(installation, *, window_days=DEFAULT_WINDOW_DAYS, today=None):
     config = get_or_create_config(installation)
 
     # YHARD9 — lecture BI (relevés de production sur la fenêtre) : réplica si
-    # configuré, no-op strict sinon. 100 % lecture.
-    readings = analytics_queryset(ProductionReading.objects).filter(
-        installation=installation, date__gte=since, date__lte=today)
-    total_kwh = Decimal('0')
-    releves_couverture = []
-    for r in readings.values_list('energy_kwh', 'date', 'period_days'):
-        total_kwh += Decimal(str(r[0]))
-        releves_couverture.append((r[1], r[2]))
+    # configuré, no-op strict sinon. 100 % lecture. AMON21 — les relevés qui
+    # RECOUVRENT la fenêtre, au prorata (``production_couverte``), et une
+    # fenêtre bornée au début de couverture (mise en service / 1er relevé).
+    releves = releves_recouvrant(
+        installation, since, today,
+        base=analytics_queryset(ProductionReading.objects))
+    debut, jours_fenetre = fenetre_mesuree(installation, since, today,
+                                           window_days)
+    total_kwh = production_couverte(releves, debut, today)
 
     expected = _expected_recent_kwh(
         installation, config, window_days, today=today)
-    pr_pct = None
-    if expected and expected > 0:
+    pr_pct = availability_pct = None
+    if releves and expected and expected > 0:
         pr_pct = _q((total_kwh / expected) * Decimal('100'))
 
     # Disponibilité : jours couverts (UNION des intervalles des relevés,
-    # ASAV64) / jours de la fenêtre, plafonnée à 100 %.
-    jours_couverts = jours_couverts_par_releves(
-        releves_couverture, since, today)
-    availability_pct = _q(min(
-        Decimal(jours_couverts) / Decimal(window_days) * Decimal('100'),
-        Decimal('100')))
+    # ASAV64) / jours de la fenêtre BORNÉE, plafonnée à 100 % ; ``None``
+    # sans relevé (jamais un faux 0 %).
+    if releves and jours_fenetre > 0:
+        jours_couverts = jours_couverts_par_releves(
+            [(jour, periode) for jour, periode, _kwh in releves],
+            debut, today)
+        availability_pct = _q(min(
+            Decimal(jours_couverts) / Decimal(jours_fenetre)
+            * Decimal('100'), Decimal('100')))
 
     # PR mensuel pour soiling + dégradation.
     monthly = _monthly_series(installation, since, today)
-    # ASAV63 — attendu de CHAQUE mois sur ses jours réellement couverts
-    # (annuel × jours / 365) : le premier et le dernier mois partiels sont
-    # normalisés, plus jamais comparés à un mois plein.
+    # ASAV63 — attendu de CHAQUE mois sur ses jours réellement couverts : le
+    # premier et le dernier mois partiels sont normalisés, plus jamais
+    # comparés à un mois plein. AMON29 — au profil mensuel (``attendu_entre``).
     annual = config.expected_annual_kwh
     debut_eff = debut_couverture(installation, since)
 
@@ -166,7 +185,9 @@ def om_metrics(installation, *, window_days=DEFAULT_WINDOW_DAYS, today=None):
         ratio = None
         couverts = jours_couverts_mois(month, debut_eff, today)
         if annual and couverts > 0:
-            attendu_mois = Decimal(str(annual)) * couverts / Decimal('365')
+            attendu_mois = attendu_entre(
+                annual, max(month, debut_eff),
+                max(month, debut_eff) + timedelta(days=couverts - 1))
             ratio = (kwh / attendu_mois) * Decimal('100')
             pr_points.append((idx, float(ratio)))
         monthly_pr.append({
@@ -194,6 +215,14 @@ def om_metrics(installation, *, window_days=DEFAULT_WINDOW_DAYS, today=None):
     }
 
 
+def _mois_complet(mois, debut, today):
+    """AMON44 — le mois ``'AAAA-MM'`` est-il entier dans [debut ; today] ?"""
+    annee, num = (int(x) for x in mois.split('-'))
+    premier = date(annee, num, 1)
+    dernier = date(annee, num, calendar.monthrange(annee, num)[1])
+    return premier >= debut and dernier <= today
+
+
 def soiling_assessment(installation, *, window_days=DEFAULT_WINDOW_DAYS,
                        today=None):
     """FG283 — estime la perte par salissure et recommande un nettoyage.
@@ -206,20 +235,32 @@ def soiling_assessment(installation, *, window_days=DEFAULT_WINDOW_DAYS,
     """
     today = today or timezone.localdate()
     metrics = om_metrics(installation, window_days=window_days, today=today)
-    monthly_pr = [m for m in metrics['monthly_pr'] if m['pr_pct'] is not None]
 
+    # AMON44 — dernier nettoyage = saisi au monitoring OU étape de nettoyage
+    # cochée sur un ticket SAV du système.
+    from apps.sav.selectors_supervision import dernier_nettoyage_sav
     last_clean = (CleaningEvent.objects
                   .filter(installation=installation, date__lte=today)
-                  .order_by('-date').first())
-    days_since_clean = (
-        (today - last_clean.date).days if last_clean else None)
+                  .order_by('-date').values_list('date', flat=True).first())
+    nettoyage_sav = dernier_nettoyage_sav(
+        installation.company_id, installation.pk, today)
+    if nettoyage_sav and (last_clean is None or nettoyage_sav > last_clean):
+        last_clean = nettoyage_sav
+    days_since_clean = (today - last_clean).days if last_clean else None
 
-    pr_drop = None
-    current_pr = None
-    baseline_pr = None
-    if monthly_pr:
-        current_pr = monthly_pr[-1]['pr_pct']
-        baseline_pr = max(m['pr_pct'] for m in monthly_pr)
+    # AMON44 — mois COMPLETS depuis le dernier nettoyage (au profil mensuel,
+    # AMON29) : base = moyenne des deux premiers, courant = le dernier ;
+    # moins de 3 mois ⇒ aucune estimation (jamais une saison prise pour
+    # une salissure).
+    debut = last_clean + timedelta(days=1) if last_clean else (
+        today - timedelta(days=window_days))
+    complets = [
+        m['pr_pct'] for m in metrics['monthly_pr']
+        if m['pr_pct'] is not None and _mois_complet(m['month'], debut, today)]
+    pr_drop = current_pr = baseline_pr = None
+    if len(complets) >= 3:
+        current_pr = complets[-1]
+        baseline_pr = _q((complets[0] + complets[1]) / 2)
         pr_drop = _q(baseline_pr - current_pr)
 
     recommend = False
@@ -231,7 +272,7 @@ def soiling_assessment(installation, *, window_days=DEFAULT_WINDOW_DAYS,
             and days_since_clean >= SOILING_MAX_DAYS_SINCE_CLEAN):
         recommend = True
         reasons.append('délai depuis le dernier nettoyage')
-    if last_clean is None and (days_since_clean is None) and monthly_pr:
+    if last_clean is None and complets:
         # Jamais nettoyé et PR dégradé : on recommande aussi.
         if pr_drop is not None and pr_drop >= SOILING_PR_DROP_PCT:
             reasons.append('aucun nettoyage enregistré')
@@ -241,8 +282,7 @@ def soiling_assessment(installation, *, window_days=DEFAULT_WINDOW_DAYS,
         'current_pr_pct': current_pr,
         'baseline_pr_pct': baseline_pr,
         'estimated_soiling_loss_pct': pr_drop,
-        'last_cleaning_date': (
-            last_clean.date.isoformat() if last_clean else None),
+        'last_cleaning_date': last_clean.isoformat() if last_clean else None,
         'days_since_cleaning': days_since_clean,
         'recommend_cleaning': recommend,
         'reasons': reasons,

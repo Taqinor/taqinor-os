@@ -531,7 +531,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
       if (avertissement && !(await confirmer({
         title: 'Envoyer malgré l\'avertissement prix ?', description: avertissement,
         confirmLabel: 'Envoyer',
-      }))) { onSaved?.(); return }
+      }))) { onSaved?.(); if (isNew) onClose(); return } // AAPV84 — nouveau : brouillon déjà créé
       await stockApi.envoyerBcf(id)
       onSaved?.()
       onClose()

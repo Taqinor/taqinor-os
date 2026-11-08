@@ -113,6 +113,21 @@ class AnnulationSansDevisTests(TestCase):
         self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(DevisActivity.objects.count(), 0)
 
+    def test_annule_hors_chantiers_receptionnes(self):
+        """ACSV103 (C-ACSV-080) — un chantier réceptionné puis annulé ne
+        compte plus au dénominateur du taux d'attache. ROUGE AVANT : 2."""
+        from datetime import date
+        from apps.installations.selectors import chantiers_receptionnes
+        Installation.objects.filter(pk=self.inst.pk).update(
+            statut=Installation.Statut.RECEPTIONNE, date_reception=date.today())
+        autre = Installation.objects.create(
+            company=self.company, reference=f'INST-{next(_seq)}',
+            statut=Installation.Statut.RECEPTIONNE, date_reception=date.today())
+        self.assertEqual(len(chantiers_receptionnes(self.company)), 2)
+        Installation.objects.filter(pk=autre.pk).update(annule=True)
+        self.assertEqual([t[0] for t in chantiers_receptionnes(self.company)],
+                         [self.inst.pk])
+
 
 class IsolationSocieteTests(TestCase):
     def test_activite_scopee_societe(self):

@@ -1,0 +1,26 @@
+# Preuve en direct ACSV19 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Écran : front du worktree servi par vite (127.0.0.1:3000) -> conteneur privé accept-w29-web (runserver, base
+# erp_accept_w29, stockage objet PRIVÉ accept-w29-minio, SMTP 127.0.0.1:1 puis mail en mémoire pour AMON47), piloté par
+# Playwright MCP. Données : seed_demo « TAQINOR Démo » + fixtures FIX-W29* ou états des sondes rejouées SANS rollback
+# (comptes de test, mot de passe de test).
+# Verdict : PASS — Sonde C-ACSV-024 : repro False ; écran : « Recette verrouillée (PV signé) », bouton absent.
+
+== C-ACSV-024 (sha f57951e87)
+attendu : repro si T = 400 (verrouillee) et R : PATCH 200, resultat conforme -> non_conforme, _recette_summary['resultat'] change, chantier toujours réceptionné
+observé : {'avant': CommissioningRecord.Resultat.CONFORME, 'summary_avant': 'Conforme', 'R_patch': 400, 'R_detail': '{"verrouillee":"Recette IEC 62446-1 verrouillée : le PV de réception est signé.","error":{"code":"validation_error","message":"Recette IEC 62446-1 verrouillée : le PV de réception est signé.","f', 'apres': 'conforme', 'summary_apres': 'Conforme', 'statut_chantier': 'receptionne', 'T_patch': 400, 'T_detail': '{"verrouillee":"Recette pompage verrouillée : le PV de réception du chantier est signé, la fiche ne peut plus être modifiée.","error":{"code":"validation_e'}
+{"avant": "conforme", "summary_avant": "Conforme", "R_patch": 400, "R_detail": "{\"verrouillee\":\"Recette IEC 62446-1 verrouillée : le PV de réception est signé.\",\"error\":{\"code\":\"validation_error\",\"message\":\"Recette IEC 62446-1 verrouillée : le PV de réception est signé.\",\"f", "apres": "conforme", "summary_apres": "Conforme", "statut_chantier": "receptionne", "T_patch": 400, "T_detail": "{\"verrouillee\":\"Recette pompage verrouillée : le PV de réception du chantier est signé, la fiche ne peut plus être modifiée.\",\"error\":{\"code\":\"validation_e", "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0
+
+## ACSV19 — PASS (écran)
+État de la sonde C-ACSV-024 rejouée SANS rollback (CHT-A024 réceptionné, PV signé, fiche IEC conforme ; le PATCH de la sonde a rendu 400
+`verrouillee`). Compte sonde_acsv_024. Chantiers › CHT-A024 › Jalons & gates : bloc « Recette de mise en service (IEC 62446-1) —
+Conforme — Recette verrouillée (PV signé) », AUCUN bouton « Ouvrir la fiche de recette » (présent sur un chantier non signé, ex.
+CHT-E29-36 de la fixture). Boutons du panneau : Générer le pack de remise | Imprimer la checklist | Enregistrer la mise en service |
+Annuler le chantier. Résumé « Conforme » inchangé. Console 0 erreur.

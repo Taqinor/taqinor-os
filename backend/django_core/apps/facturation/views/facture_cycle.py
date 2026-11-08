@@ -15,7 +15,7 @@ from authentication.permissions import (
 )
 from apps.ventes.views import openapi_docs as D
 from apps.ventes.models import Avoir, EmailLog, Facture
-from apps.ventes.serializers_facturation import FactureListeSerializer, FactureSerializer
+from apps.facturation.serializers import FactureListeSerializer, FactureSerializer
 from apps.ventes.utils.corps import valider_corps
 
 #: VNT13 (D-VNT-1, arbitrage 5) — annuler une facture / supprimer un

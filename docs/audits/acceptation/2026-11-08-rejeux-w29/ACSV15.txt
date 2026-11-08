@@ -1,0 +1,15 @@
+# Preuve en direct ACSV15 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Verdict : PASS — Sonde C-ACSV-020 : repro False.
+
+== C-ACSV-020 (sha f57951e87)
+attendu : repro si PATCH terminee refusé (4xx) nommant le champ, puis renseigner-fiche valeur 'false' sur la case obligatoire = 200 et PATCH terminee = 200
+observé : {'patch_terminee_1': 409, 'patch_terminee_1_detail': '{"detail":"Champs obligatoires de la fiche d\'intervention manquants avant « Terminée » : Disjoncteur testé.","statut":["Champs obligatoires de la fiche d\'intervention manquants avant « Terminée » : Disjoncteur testé."],"error":{"code":"state_conflict","message":"Champs obligatoires de la fic', 'statut_apres_1': 'sur_site', 'renseigner_false': 200, 'valeur_stockee': 'false', 'patch_terminee_2': 409, 'statut_apres_2': 'sur_site'}
+{"patch_terminee_1": 409, "patch_terminee_1_detail": "{\"detail\":\"Champs obligatoires de la fiche d'intervention manquants avant « Terminée » : Disjoncteur testé.\",\"statut\":[\"Champs obligatoires de la fiche d'intervention manquants avant « Terminée » : Disjoncteur testé.\"],\"error\":{\"code\":\"state_conflict\",\"message\":\"Champs obligatoires de la fic", "statut_apres_1": "sur_site", "renseigner_false": 200, "valeur_stockee": "false", "patch_terminee_2": 409, "statut_apres_2": "sur_site", "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0

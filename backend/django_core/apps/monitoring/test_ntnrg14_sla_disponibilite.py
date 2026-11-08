@@ -45,6 +45,54 @@ class TestDisponibiliteVsGarantie(TestCase):
         profil.garantie_production_validation = 'Juriste, 01/10/2026'
         profil.save()
 
+    def test_immobilisation_sav_fait_la_disponibilite(self):
+        """AMON43 — un onduleur immobilisé du 01/10 au 16/10 : 51,61 % sur
+        octobre ; témoin sans immobilisation 100 ; sans équipement : indice
+        relevés et libellé inchangé."""
+        from datetime import datetime
+
+        from django.utils import timezone
+
+        from apps.sav.models import Equipement, EquipementDowntime
+        from apps.stock.models import Produit
+        produit = Produit.objects.create(
+            company=self.company, nom='Onduleur', sku='OND-AMON43',
+            prix_achat=1, prix_vente=2)
+        jour = date(2026, 10, 31)
+
+        def systeme(ref, equipement=True):
+            inst = make_inst(self.company, ref)
+            SlaDisponibilite.objects.create(
+                company=self.company, installation=inst,
+                disponibilite_garantie_pct=Decimal('98'))
+            ProductionReading.objects.create(
+                company=self.company, installation=inst,
+                date=date(2026, 10, 1), period_days=30,
+                energy_kwh=Decimal('450'))
+            if equipement:
+                return inst, Equipement.objects.create(
+                    company=self.company, produit=produit, installation=inst)
+            return inst, None
+
+        inst, onduleur = systeme('AMON43-1')
+        EquipementDowntime.objects.create(
+            company=self.company, equipement=onduleur,
+            debut=timezone.make_aware(datetime(2026, 10, 1)),
+            fin=timezone.make_aware(datetime(2026, 10, 16)))
+        r = disponibilite_vs_garantie(inst, window_days=31, today=jour)
+        self.assertEqual(r['disponibilite_mesuree_pct'], Decimal('51.61'))
+        self.assertEqual(r['libelle_indicateur'],
+                         'disponibilité (immobilisations SAV)')
+        self.assertTrue(r['sous_garantie'])
+        temoin, _ = systeme('AMON43-2')
+        self.assertEqual(disponibilite_vs_garantie(
+            temoin, window_days=31, today=jour)['disponibilite_mesuree_pct'],
+            Decimal('100.0'))
+        nu, _ = systeme('AMON43-3', equipement=False)
+        self.assertEqual(disponibilite_vs_garantie(
+            nu, window_days=31, today=jour)['libelle_indicateur'],
+            'indice de suivi (jours avec relevé)')
+
     def test_no_sla_is_graceful_noop(self):
         inst = make_inst(self.company, 'NTNRG14-1')
         result = disponibilite_vs_garantie(inst, window_days=10, today=self.today)
@@ -57,7 +105,12 @@ class TestDisponibiliteVsGarantie(TestCase):
             disponibilite_garantie_pct=Decimal('98'),
             compensation_mad_par_jour_indispo=Decimal('500'))
         # 8 jours avec relevé sur une fenêtre de 10 jours → 80 % mesurée.
-        for i in range(8):
+        # AMON21 — fenêtre bornée à la mise en service (J−9, premier relevé
+        # le même jour) : 10 jours, 2 sans relevé (J−8, J−7).
+        Installation.objects.filter(pk=inst.pk).update(
+            date_mise_en_service=self.today - timedelta(days=9))
+        inst.refresh_from_db()
+        for i in (9, 6, 5, 4, 3, 2, 1, 0):
             ProductionReading.objects.create(
                 company=self.company, installation=inst,
                 date=self.today - timedelta(days=i), energy_kwh=Decimal('10'))
@@ -93,11 +146,12 @@ class TestDisponibiliteVsGarantie(TestCase):
             disponibilite_garantie_pct=Decimal('98'))
         result = disponibilite_vs_garantie(inst, window_days=10, today=self.today)
         self.assertTrue(result['has_sla'])
-        # Aucun relevé du tout ⇒ disponibilité mesurée 0 % (jours couverts /
-        # fenêtre) ⇒ écart = le seuil garanti entier. Jamais d'exception.
-        self.assertEqual(result['disponibilite_mesuree_pct'], Decimal('0'))
-        self.assertEqual(result['ecart_pct'], Decimal('98.00'))
-        self.assertTrue(result['sous_garantie'])
+        # AMON21 — aucun relevé ⇒ disponibilité NON mesurée (null), ni écart
+        # ni pénalité : jamais un faux 0 %. Jamais d'exception.
+        self.assertIsNone(result['disponibilite_mesuree_pct'])
+        self.assertIsNone(result['ecart_pct'])
+        self.assertIsNone(result['penalite_mad'])
+        self.assertFalse(result['sous_garantie'])
 
 
 class TestAsav101SlaApi(TestCase):
@@ -156,6 +210,8 @@ class TestAsav101SlaApi(TestCase):
         self.assertEqual(set(lst.data), set(attendu))
         self.assertEqual(set(lst.data['results'][0]),
                          set(attendu['results'][0]))
+        # AMON96 — la carte nomme le système par sa référence.
+        self.assertEqual(lst.data['results'][0]['installation_reference'], 'ASAV101-1')
         # Un seul SLA par système : refus d'ÉTAT (corps conforme) = 409.
         self.assertEqual(self._creer().status_code, 409)
 
@@ -174,7 +230,8 @@ class TestAsav101SlaApi(TestCase):
     def test_ecart_affirme_le_contrat_partage(self):
         from django.utils import timezone
         aujourdhui = timezone.localdate()
-        for i in range(5):
+        # AMON21 — fenêtre bornée au premier relevé (J−9) : 5 jours sur 10.
+        for i in (9, 3, 2, 1, 0):
             ProductionReading.objects.create(
                 company=self.company, installation=self.inst,
                 date=aujourdhui - timedelta(days=i), energy_kwh=Decimal('10'))

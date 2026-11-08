@@ -1,0 +1,26 @@
+# Preuve en direct ACSV3 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Écran : front du worktree servi par vite (127.0.0.1:3000) -> conteneur privé accept-w29-web (runserver, base
+# erp_accept_w29, stockage objet PRIVÉ accept-w29-minio, SMTP 127.0.0.1:1 puis mail en mémoire pour AMON47), piloté par
+# Playwright MCP. Données : seed_demo « TAQINOR Démo » + fixtures FIX-W29* ou états des sondes rejouées SANS rollback
+# (comptes de test, mot de passe de test).
+# Verdict : PASS — Sonde C-ACSV-004 : repro False ; écran portail « Suivi » : appro/pose gris après recul à « Signé ».
+
+== C-ACSV-004 (sha f57951e87)
+attendu : repro si après recul à « En cours » le jalon pose reste atteint (interne + portail), et appro après recul à « Signé »
+observé : {"repro": false, "observe": {"R_installe": {"interne": {"appro": true, "pose": true}, "portail": {"appro": true, "pose": true}}, "R_recul_en_cours": {"http": 200, "voie": "PATCH", "statut": "en_cours", "jalons": {"interne": {"appro": true, "pose": false}, "portail": {"appro": true, "pose": false}}}, "R_recul_planifie": {"http": 200, "voie": "PATCH", "statut": "planifie", "jalons": {"interne": {"appro": true, "pose": false}, "portail": {"appro": true, "pose": false}}}, "R_recul_materiel": {"http": 200, "voie": "PATCH", "statut": "materiel_commande", "jalons": {"interne": {"appro": true, "pose": false}, "portail": {"appro": true, "pose": false}}}, "R_recul_signe": {"http": 200, "voie": "PATCH", "statut": "signe", "jalons": {"interne": {"appro": false, "pose": false}, "portail": {"appro": false, "pose": false}}}, "T_receptionne": {"interne": {"appro": true, "pose": true, "reception": true}, "portail": {"appro": true, "pose": true, "reception": true}}, "T_recul_installe": {"http": 200, "voie": "PATCH", "statut": "installe", "jalons": {"interne": {"appro": true, "pose": true, "reception": false}, "portail": {"appro": true, "pose": true, "reception": false}}}, "temoin_ok": true}}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0
+
+## ACSV3 — PASS (écran)
+État de la sonde C-ACSV-004 rejouée SANS rollback ; comptes portail (FIX-W29e, portée portail_client) p004_r1 (client du chantier R)
+et p004_t1 (client du témoin T). Espace client › Chantiers › « Voir le suivi » :
+- p004_r1, CHT-202611-0001 ramené « Installé » → … → « Signé » : « Matériel commandé » et « Installation » à pastille GRISE
+  (background var(--border)) = non atteints (les dates 08/11/2026 restent affichées sous les libellés).
+- p004_t1 (témoin), CHT-202611-0002 « Installé » (après recul depuis Réceptionné) : « Matériel commandé » et « Installation » VERTS
+  (var(--success)), « Réception » gris. Console 0 erreur, aucune erreur API.

@@ -134,4 +134,17 @@ describe('TicketClotureWizard (NTSRV30)', () => {
     expect(await screen.findByText('Transition interdite depuis Nouveau.'))
       .toBeInTheDocument()
   })
+
+  it('ACSV105 — refus « non facturé » renvoyé à la fiche (forçage sans cause/remède)', async () => {
+    const message = 'Impossible de clôturer : ticket facturable sans facture.'
+    savApi.cloturerTicket.mockRejectedValueOnce({
+      response: { status: 409, data: { code: 'ticket_non_facture', detail: message } },
+    })
+    const onRefusNonFacture = vi.fn()
+    const onTermine = vi.fn()
+    await rendreEtChargerReferentiels({ onRefusNonFacture, onTermine })
+    fireEvent.click(screen.getByRole('button', { name: 'Clôture rapide' }))
+    await waitFor(() => expect(onRefusNonFacture).toHaveBeenCalledWith(message))
+    expect(onTermine).not.toHaveBeenCalled()
+  })
 })

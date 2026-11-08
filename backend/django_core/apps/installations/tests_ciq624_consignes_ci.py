@@ -95,9 +95,50 @@ class ConsignesCITest(TestCase):
         signoff = ensure_safety_signoff(intervention)
         signoff.signe = True
         signoff.save(update_fields=['signe'])
+        # ACSV16 — un sign-off signé mais incomplet ne suffit plus.
+        with self.assertRaises(TransitionRefusee):
+            changer_statut_intervention(
+                intervention, Intervention.Statut.SUR_SITE, self.user)
+        signoff.items.update(coche=True)
         recu = changer_statut_intervention(
             intervention, Intervention.Statut.SUR_SITE, self.user)
         self.assertEqual(recu['nouveau'], 'sur_site')
+
+    def test_signer_refuse_tant_qu_un_point_manque(self):
+        """ACSV16 (C-ACSV-021) — signer des consignes non cochées : 409,
+        « Sur site » toujours refusé ; tout coché : 200 ; décocher ensuite :
+        409 en ligne, `error` hors-ligne. ROUGE AVANT : 200."""
+        import uuid
+
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+        self._reglage(True)
+        intervention = self._intervention('industriel', 'bt')
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        base = f'/api/django/installations/interventions/{intervention.id}'
+        r = api.post(f'{base}/signer-safety/', {}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertTrue(r.data['detail'].startswith('Points non cochés : '))
+        signoff = ensure_safety_signoff(intervention)
+        self.assertFalse(signoff.signe)
+        with self.assertRaises(TransitionRefusee):
+            changer_statut_intervention(intervention, Intervention.Statut.SUR_SITE, self.user)
+        for item in signoff.items.all():
+            r = api.post(f'{base}/cocher-safety/', {'cle': item.cle, 'coche': True}, format='json')
+            self.assertEqual(r.status_code, 200, r.data)
+        r = api.post(f'{base}/signer-safety/', {}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        cle = signoff.items.first().cle
+        r = api.post(f'{base}/cocher-safety/', {'cle': cle, 'coche': False}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual(r.data['detail'], 'Consignes signées : décochage refusé.')
+        r = api.post('/api/django/installations/sync/', {'ops': [{
+            'client_op_id': str(uuid.uuid4()), 'op_type': 'intervention.cocher_safety',
+            'payload': {'intervention': intervention.id, 'cle': cle, 'coche': False}}]}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['results'][0]['status'], 'error')
+        self.assertFalse(signoff.items.filter(coche=False).exists())
 
     def test_reglage_faux_comportement_actuel(self):
         self._reglage(False)

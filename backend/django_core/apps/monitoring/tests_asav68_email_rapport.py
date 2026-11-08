@@ -97,11 +97,40 @@ class EmailRapportTests(TestCase):
     @override_settings(
         EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
     def test_periode_trimestrielle_et_destinataire_explicite(self):
+        # AMON47 — destinataire explicite = adresse du client (casse ignorée).
         with mock.patch('apps.monitoring.report.render_om_report_pdf',
                         return_value=b'%PDF-1.4'):
             r = self.api.post(self.url, {
-                'period': 'quarterly', 'recipient': 'autre@example.com',
+                'period': 'quarterly',
+                'recipient': 'ASAV68-Client@example.invalid',
             }, format='json')
         self.assertEqual(r.status_code, 200, r.content)
-        self.assertEqual(mail.outbox[0].to, ['autre@example.com'])
+        self.assertEqual(mail.outbox[0].to, ['ASAV68-Client@example.invalid'])
         self.assertIn('trimestriel', mail.outbox[0].subject)
+
+    @override_settings(
+        EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    def test_destinataire_du_client_reply_to_et_copie_ged(self):
+        """AMON47 — tiers refusé (409, 0 mail) ; envoi au client : reply_to =
+        e-mail de la société, PDF envoyé archivé en GED."""
+        from apps.ged.services import find_document_by_source
+        from apps.parametres.models import CompanyProfile
+        profil = CompanyProfile.get(company=self.company)
+        profil.email = 'contact@soc.example'
+        profil.save()
+        with mock.patch('apps.monitoring.report.render_om_report_pdf',
+                        return_value=b'%PDF-1.4 rapport'):
+            r = self.api.post(self.url, {
+                'period': 'monthly', 'recipient': 'tiers@example.invalid',
+            }, format='json')
+            self.assertEqual(r.status_code, 409, r.content)  # ENF40 : refus d'état
+            self.assertEqual(r.data['recipient'], [
+                'Le rapport ne part qu’aux adresses du client du système.'])
+            self.assertEqual(len(mail.outbox), 0)
+            r = self.api.post(self.url, {'period': 'monthly'}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(mail.outbox[0].to, ['asav68-client@example.invalid'])
+        self.assertEqual(mail.outbox[0].reply_to, ['contact@soc.example'])
+        self.assertIsNotNone(find_document_by_source(
+            self.company, source_type='monitoring.rapport_om',
+            source_id=self.config.installation_id))

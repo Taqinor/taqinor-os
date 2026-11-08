@@ -90,6 +90,10 @@ class TestWarrantyReportData(TestCase):
             degradation_pct_per_year=Decimal('0'),
             start_year=2026, tolerance_pct=Decimal('100'),
             compensation_mad_per_kwh=Decimal('1'))
+        # AMON40 — un relevé au 01/01 : la période couverte est l'année.
+        ProductionReading.objects.create(
+            company=self.company, installation=self.inst,
+            date=date(2026, 1, 1), period_days=1, energy_kwh=Decimal('1'))
         from apps.monitoring.report_warranty import build_warranty_report_data
         data = build_warranty_report_data(
             self.inst, year=2026, today=self.today)

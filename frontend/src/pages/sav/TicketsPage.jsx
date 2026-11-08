@@ -37,7 +37,7 @@ import AttachmentsPanel from '../../components/AttachmentsPanel'
 // `records-panels.css`. Écriture réservée responsable/admin côté serveur, d'où
 // le `readOnly` piloté par le rôle.
 import TagChipInput from '../../components/TagChipInput'
-import { useCanListUsers, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
+import { useCanListUsers, useHasPermission, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 // WIR19 — historique AuditLog record-scopé (visible au propriétaire du ticket
 // sans la permission globale journal_activite_voir).
 import ObjectHistoryButton from '../../features/audit/ObjectHistoryButton'
@@ -68,7 +68,8 @@ import {
   sortTickets,
   statusLabel,
   ticketAgeDays,
-  statusCounts,
+  statusCountsIndependants,
+  filtresPourStatut,
 } from '../../features/sav/ticketStatuses'
 import {
   TooltipProvider,
@@ -253,6 +254,15 @@ export function TicketPremiereReponseChip({ ticket }) {
   )
 }
 
+// ACSV62 / D-ACSV-3 — droit métier exigé en plus de `sav_gerer` : le code fin
+// quand le compte en porte, sinon le palier responsable (comptes hérités).
+function useDroitMetier(code) {
+  const fins = useSelector((s) => (s.auth.permissions || []).length > 0)
+  const parCode = useHasPermission(code)
+  const parPalier = useIsAdminOrResponsable()
+  return fins ? parCode : parPalier
+}
+
 export function TicketDetail({ ticket, onClose, onSaved }) {
   const [fusions, setFusions] = useState(0)
   const dispatch = useDispatch()
@@ -265,6 +275,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
   // ERR-SAV-TECH-USERS-403 — `GET /users/` n'est appelé que si la permission
   // servie le permet (sinon repli direct sur les techniciens assignés).
   const peutTaguer = useIsAdminOrResponsable(), peutListerUsers = useCanListUsers()
+  const peutVentes = useDroitMetier('ventes_creer'), peutStock = useDroitMetier('stock_mouvement')
   const F =(k, d = '') => current?.[k] ?? d
 
   // VX216(b) — l'intervention qui a RÉSOLU ce ticket : la plus récemment
@@ -303,6 +314,9 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
   const set = (k, v) => setFields((f) => ({ ...f, [k]: v }))
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState(null)
+  // ACSV60 — clôture d'un ticket facturable non facturé : forçage motivé.
+  const [forcerSansFacture, setForcerSansFacture] = useState(false)
+  const [motifSansFacture, setMotifSansFacture] = useState('')
 
   const dirty = useMemo(
     () => Object.keys(initialFields).some((k) => String(fields[k] ?? '') !== String(initialFields[k] ?? '')),
@@ -517,6 +531,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
     }
     setSaving(true)
     setSaveError(null)
+    setForcerSansFacture(false)
     try {
       const nullable = (v) => (v === '' || v === undefined ? null : v)
       const data = {
@@ -546,6 +561,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
       onSaved?.()
     } catch (err) {
       setSaveError(frError(err, 'Échec de la mise à jour.'))
+      setForcerSansFacture(err?.response?.data?.code === 'ticket_non_facture')
       // ASAV42 — refus : rien n'a été écrit, la fiche reprend l'état serveur.
       try {
         const r = await savApi.getTicket(id)
@@ -554,6 +570,29 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
       } catch (errRecharge) {
         toast.error(frError(errRecharge, 'Rechargement du ticket impossible.'))
       }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // ACSV60 — « Clôturer sans facture » (responsable/admin) : motif obligatoire.
+  const cloturerSansFacture = async () => {
+    const motifForce = motifSansFacture.trim()
+    if (!motifForce) return
+    setSaving(true)
+    setSaveError(null)
+    try {
+      await savApi.cloturerTicket(id, { sans_facture: true, motif: motifForce })
+      const r = await savApi.getTicket(id)
+      setCurrent(r.data)
+      set('statut', r.data?.statut ?? current.statut)
+      setForcerSansFacture(false)
+      setMotifSansFacture('')
+      loadHistorique()
+      toast.success('Ticket clôturé sans facture')
+      onSaved?.()
+    } catch (err) {
+      setSaveError(frError(err, 'Échec de la clôture sans facture.'))
     } finally {
       setSaving(false)
     }
@@ -1025,6 +1064,18 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
                 <span className="break-all">{saveError}</span>
               </div>
             )}
+            {forcerSansFacture && peutTaguer && (
+              <div className="sm:col-span-2 flex flex-col gap-2 rounded-lg border p-3 text-sm" data-testid="cloture-sans-facture">
+                <label htmlFor="motif-sans-facture" className="font-medium">Motif de la clôture sans facture</label>
+                <Textarea id="motif-sans-facture" rows={2} value={motifSansFacture}
+                          onChange={(e) => setMotifSansFacture(e.target.value)}
+                          placeholder="Ex. : geste commercial" />
+                <Button type="button" variant="outline" loading={saving}
+                        disabled={!motifSansFacture.trim()} onClick={cloturerSansFacture}>
+                  Clôturer sans facture
+                </Button>
+              </div>
+            )}
           </FormSection>
         </Form>
 
@@ -1191,11 +1242,13 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
               <Input type="number" min="0" step="any" value={pieceForm.quantite}
                      onChange={(e) => setPieceForm((s) => ({ ...s, quantite: e.target.value }))} />
             </FormField>
-            <label className="flex h-[var(--control-h)] items-center gap-2 text-sm">
-              <Checkbox checked={pieceForm.decrement}
-                        onCheckedChange={(v) => setPieceForm((s) => ({ ...s, decrement: !!v }))} />
-              Décrémenter le stock
-            </label>
+            {peutStock && (
+              <label className="flex h-[var(--control-h)] items-center gap-2 text-sm">
+                <Checkbox checked={pieceForm.decrement}
+                          onCheckedChange={(v) => setPieceForm((s) => ({ ...s, decrement: !!v }))} />
+                Décrémenter le stock
+              </label>
+            )}
           </div>
           <div>
             <Button type="button" variant="outline" size="sm"
@@ -1375,7 +1428,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
           )}
           {/* XSAV3 — devis de réparation hors garantie (refusé côté serveur
               si le ticket est sous garantie calculée). */}
-          {current.sous_garantie_effectif !== 'oui' && (
+          {peutVentes && current.sous_garantie_effectif !== 'oui' && (
             current.devis_id_ext ? (
               <Badge tone="success">Devis créé</Badge>
             ) : (
@@ -1389,7 +1442,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
               générique sinon. Idempotent (facture_id_ext déjà posé). */}
           {current.facture_id_ext ? (
             <Badge tone="success">Facture générée</Badge>
-          ) : (
+          ) : peutVentes && (
             <>
               <Button type="button" variant="outline" loading={factureBusy} onClick={() => facturer(false)}>
                 <FileText /> Facturer
@@ -1416,6 +1469,13 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
                 ticket={current}
                 statutCible={clotureCible}
                 onAnnuler={() => setClotureCible(null)}
+                onRefusNonFacture={(message) => {
+                  // ACSV105 — refus « non facturé » : forçage dans la fiche.
+                  setClotureCible(null)
+                  setSaveError(message)
+                  setForcerSansFacture(true)
+                  set('statut', current.statut)
+                }}
                 onTermine={async () => {
                   setClotureCible(null)
                   toast.success('Ticket mis à jour')
@@ -1883,8 +1943,8 @@ export default function TicketsPage() {
     () => sortTickets(filterTickets(items, filters), 'statut', 'asc'),
     [items, filters])
 
-  // L306/L314 — comptes par statut (ordre funnel) sur le jeu filtré.
-  const counts = useMemo(() => statusCounts(rows), [rows])
+  // L306/L314 — comptes par statut (ordre funnel) ; ACSV106 : hors filtres statut/ouverts.
+  const counts = useMemo(() => statusCountsIndependants(items, filters), [items, filters])
 
   /* APX31 — J/K + Entrée/Échap sur la liste des tickets.
      -------------------------------------------------------------------------
@@ -2169,7 +2229,7 @@ export default function TicketsPage() {
           <div className="flex flex-wrap gap-2">
             {counts.map((c) => (
               <button key={c.key} type="button"
-                      onClick={() => setF('statut', filters.statut === c.key ? '' : c.key)}
+                      onClick={() => setFilters((f) => filtresPourStatut(f, c.key))}
                       className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors ${
                         filters.statut === c.key ? 'border-primary bg-primary/10' : 'border-border bg-card'}`}>
                 <span className="size-2 rounded-full" style={{ background: TICKET_STATUS_COLORS[c.key] }} />

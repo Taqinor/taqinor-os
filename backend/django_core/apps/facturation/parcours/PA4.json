@@ -424,7 +424,7 @@
     "composant": "(aucun)",
     "action": "route mandats-paiement parquée (AFAC19)"
    },
-   "fonction_entree": "backend/django_core/apps/ventes/serializers_facturation.py::MandatPaiementSerializer",
+   "fonction_entree": "backend/django_core/apps/facturation/serializers.py::MandatPaiementSerializer",
    "checkpoint": {
     "modifiable": true,
     "champs": [],

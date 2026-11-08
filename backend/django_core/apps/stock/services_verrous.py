@@ -72,3 +72,34 @@ def resoudre_exception_sous_verrou(facture, user, commentaire=''):
         verrou.save(update_fields=champs)
     facture.refresh_from_db(fields=champs)
     return facture
+
+
+def constater_creance_ras_acompte(imputation):
+    """AAPV86 (D-AAPV-6 = creance_fournisseur) — l'imputation d'acompte qui
+    SOLDE une facture porte la RAS-TVA restante (AAPV5) ; l'acompte ayant été
+    versé BRUT, cette retenue déclarée n'a jamais été retenue : elle devient une
+    créance sur le fournisseur, constatée à l'imputation comme un avoir
+    fournisseur VALIDÉ (le grand livre des créances fournisseur existant, jamais
+    un second), imputable sur sa prochaine facture. Rien si la RAS portée est
+    nulle. Appelée sous le verrou de ``imputer_acomptes_bcf``."""
+    ras = imputation.montant_ras_tva or Decimal('0')
+    if ras <= 0:
+        return None
+    from core.numbering import create_with_reference
+    from .models import AvoirFournisseur
+    facture = imputation.facture
+    company = imputation.company or facture.company
+    avoir = AvoirFournisseur(
+        company=company, fournisseur_id=facture.fournisseur_id, facture_origine=facture,
+        montant_ht=ras, montant_tva=Decimal('0'), montant_ttc=ras,
+        statut=AvoirFournisseur.Statut.VALIDE,
+        note=(f'Créance RAS-TVA : {ras} déclarés sur la facture {facture.reference} '
+              f"par l'imputation de l'acompte versé brut (non retenus) — à réclamer "
+              'au fournisseur.'))
+
+    def _save(ref):
+        avoir.reference = ref
+        avoir.save()
+        return avoir
+
+    return create_with_reference(AvoirFournisseur, 'AVF', company, _save)

@@ -223,6 +223,30 @@ def tariff_for(company) -> dict:
     }
 
 
+def facteur_co2_reseau(company) -> dict | None:
+    """AMON90 — facteur CO₂ du réseau RÉGLÉ par la société (Paramètres) :
+    ``{g_kwh, kg_kwh, source, date}`` en ``Decimal`` quand la valeur ET sa
+    source sont saisies, sinon ``None`` — jamais un facteur par défaut (même
+    règle que le moteur devis). Lecteurs : monitoring (AMON41), chantiers
+    (AMON91)."""
+    if company is None:
+        return None
+    p = _profile(company)
+    if p is None:
+        return None
+    valeur = p.facteur_co2_reseau_g_kwh
+    source = str(p.facteur_co2_reseau_source or "").strip()
+    if not valeur or not source:
+        return None
+    g_kwh = Decimal(str(valeur))
+    return {
+        "g_kwh": g_kwh,
+        "kg_kwh": g_kwh / Decimal("1000"),
+        "source": source,
+        "date": p.facteur_co2_reseau_date,
+    }
+
+
 def residential_tranches_for(company) -> dict | None:
     """Barème résidentiel ONEE (paliers TTC) RÉGLÉ par une société — ordre
     fondateur 19/08/2026 (« correct all prices and keep them changable in the
