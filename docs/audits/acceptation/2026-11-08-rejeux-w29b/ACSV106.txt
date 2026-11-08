@@ -1,0 +1,19 @@
+# Preuve en direct ACSV106 — rejeu w29b, code joué d7ea0c158 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29b-dj (conteneur privé, code backend du commit joué copié
+# dans le conteneur, base privée erp_accept_w29b clonée de test_erp_db_base puis migrée ; transaction annulée, mail en
+# mémoire, Celery coupé, HTTP sortant bloqué). Audit : verdict ÉCART = repro False = attendu sur le code corrigé. Sondes
+# C-LIVE-* (écrites pour ce rejeu, source jointe ; transaction.on_commit exécuté immédiatement) : repro=true signifie ICI
+# que le comportement attendu par la tâche est observé.
+# Code joué : d7ea0c158 (dev-plan-6a6fc9-w29, aucun commit du correcteur CI arrivé pendant ~75 min d'attente).
+# Écran : front du worktree servi par vite (127.0.0.1:3000, proxy /api/django) -> conteneur privé accept-w29b-web
+# (runserver, base erp_accept_w29b, stockage objet PRIVÉ accept-w29b-minio dès le départ, mail en mémoire, SMTP
+# 127.0.0.1:1), piloté par Playwright MCP. Données : fixtures FIX-W29B (société « Acceptation W29B », compte
+# acc_w29b_adm) ou états des sondes rejouées SANS rollback (comptes de test, mot de passe de test).
+# Verdict : PASS — Écran : au filtre par défaut « Résolu 2 » (indépendant du filtre ouverts), clic => la liste montre les résolus ; priorité Haute => compteurs 0.
+
+## ACSV106 — PASS (écran)
+Même société (C-ACSV-070 persistée) + ticket SAV-W29B-NOUVEAU « Nouveau » (FIX-W29B-T) : 1 Nouveau, 2 Résolu. Compte sonde-acsv-070
+› SAV, filtre par défaut (ouverts) : compteurs « Nouveau 1 · Planifié 0 · En cours 0 · Résolu 2 · Clôturé 0 », liste = le seul
+SAV-W29B-NOUVEAU. Clic « Résolu » => filtres « Résolu » + « Tous (incl. clôturés/annulés) », liste = SAV-ACSV-070-A et -M,
+compteurs inchangés. Priorité « Haute » (aucun ticket) => tous les compteurs à 0 (les autres filtres restreignent toujours).
+Console : seules erreurs = 401 auth/me + token/refresh d'avant connexion.

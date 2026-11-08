@@ -1,0 +1,57 @@
+{
+  "sha": "d7ea0c158536c85599d455724f6dd9183ec3d4d1",
+  "date": "2026-11-08",
+  "groupe": "ACSV",
+  "verdict": "PASS",
+  "couvre": [
+    "ACSV105",
+    "ACSV106"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "W29B.ACSV105.preuve_en_direct",
+      "taches": [
+        "ACSV105"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29b/ACSV105.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Écran : « Clôture rapide » refusée 409 ticket_non_facture => assistant fermé, bloc « Clôturer sans facture » dans la fiche, motif => clos (cause vide), sans référentiel cause/remède."
+    },
+    {
+      "id": "W29B.ACSV106.preuve_en_direct",
+      "taches": [
+        "ACSV106"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29b/ACSV106.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Écran : au filtre par défaut « Résolu 2 » (indépendant du filtre ouverts), clic => la liste montre les résolus ; priorité Haute => compteurs 0."
+    }
+  ]
+}

@@ -1,0 +1,101 @@
+# Preuve en direct AAPV79 — rejeu w29b, code joué d7ea0c158 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29b-dj (conteneur privé, code backend du commit joué copié
+# dans le conteneur, base privée erp_accept_w29b clonée de test_erp_db_base puis migrée ; transaction annulée, mail en
+# mémoire, Celery coupé, HTTP sortant bloqué). Audit : verdict ÉCART = repro False = attendu sur le code corrigé. Sondes
+# C-LIVE-* (écrites pour ce rejeu, source jointe ; transaction.on_commit exécuté immédiatement) : repro=true signifie ICI
+# que le comportement attendu par la tâche est observé.
+# Code joué : d7ea0c158 (dev-plan-6a6fc9-w29, aucun commit du correcteur CI arrivé pendant ~75 min d'attente).
+# Écran : front du worktree servi par vite (127.0.0.1:3000, proxy /api/django) -> conteneur privé accept-w29b-web
+# (runserver, base erp_accept_w29b, stockage objet PRIVÉ accept-w29b-minio dès le départ, mail en mémoire, SMTP
+# 127.0.0.1:1), piloté par Playwright MCP. Données : fixtures FIX-W29B (société « Acceptation W29B », compte
+# acc_w29b_adm) ou états des sondes rejouées SANS rollback (comptes de test, mot de passe de test).
+# Verdict : PASS — Sonde d'origine AAPV7 (C-AAPV-004) : gr_ir_apres_facture_R2 = P2 lettrée par FF(R2), P1 ouverte ; C-LIVE-AAPV79 REPRO ; écran « Facturer » R2 puis R1 : onglet « Réceptions non facturées » R1 seule puis vide.
+
+== C-AAPV-004 (sha 5f603acce0)
+attendu : repro si apres annulation de R1 : P1 lettree (facture F2, reception R1 annulee) et P2 ouverte 1000 -> GR/IR ouvert 1000 au lieu de 0
+observé : {'gr_ir_apres_receptions': [{'reception': 'R1', 'montant': '1000.00', 'lettre': False, 'facture_id': None}, {'reception': 'R2', 'montant': '1000.00', 'lettre': False, 'facture_id': None}], 'facturer_R2': 201, 'f2_ht': '1000.00', 'gr_ir_apres_facture_R2': [{'reception': 'R1', 'montant': '1000.00', 'lettre': False, 'facture_id': None}, {'reception': 'R2', 'montant': '1000.00', 'lettre': True, 'facture_id': 149}], 'annuler_R1': 200, 'statuts': {'R1': 'annule', 'R2': 'confirme'}, 'gr_ir_final': [{'reception': 'R2', 'montant': '1000.00', 'lettre': True, 'facture_id': 149}], 'gr_ir_ouvert': '0', 'provision_lettree_sur_R1_annulee': False}
+{"gr_ir_apres_receptions": [{"reception": "R1", "montant": "1000.00", "lettre": false, "facture_id": null}, {"reception": "R2", "montant": "1000.00", "lettre": false, "facture_id": null}], "facturer_R2": 201, "f2_ht": "1000.00", "gr_ir_apres_facture_R2": [{"reception": "R1", "montant": "1000.00", "lettre": false, "facture_id": null}, {"reception": "R2", "montant": "1000.00", "lettre": true, "facture_id": 149}], "annuler_R1": 200, "statuts": {"R1": "annule", "R2": "confirme"}, "gr_ir_final": [{"reception": "R2", "montant": "1000.00", "lettre": true, "facture_id": 149}], "gr_ir_ouvert": "0", "provision_lettree_sur_R1_annulee": false, "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 6, après 6) ; mails 0 ; tâches Celery bloquées 0
+
+== C-LIVE-AAPV79 (sha d7ea0c158)
+attendu : facturer R2 201 : P2 lettree par FF(R2), P1 ouverte ; FF(R2).reception = R2 ; facturer R1 201 : P1 lettree par FF(R1), GR/IR ouvert 0
+observé : {"gr_ir_apres_receptions": {"R2": {"montant": "1000.00", "lettre": false, "facture_id": null}, "R1": {"montant": "1000.00", "lettre": false, "facture_id": null}}, "facturer_R2": {"http": 201, "id": 150, "ht": "1000.00"}, "gr_ir_apres_facture_R2": {"R2": {"montant": "1000.00", "lettre": true, "facture_id": 150}, "R1": {"montant": "1000.00", "lettre": false, "facture_id": null}}, "ff_R2_reception_relue": "R2", "facturer_R1": {"http": 201, "id": 151}, "gr_ir_final": {"R2": {"montant": "1000.00", "lettre": true, "facture_id": 150}, "R1": {"montant": "1000.00", "lettre": true, "facture_id": 151}}, "gr_ir_ouvert": "0", "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 2, après 2) ; mails 0 ; tâches Celery bloquées 0
+
+# ---- source : C-LIVE-AAPV79.py ----
+# flake8: noqa  (sonde LIVE du rejeu d'acceptation w29b — scénario exact d'AAPV79, vraies routes)
+"""AAPV79 — BCF 20 × 100 HT, R1 puis R2 confirmées (P1, P2 = 1 000). « Facturer » R2 par la vraie porte
+(POST receptions-fournisseur/<R2>/facturer/) : attendu P2 lettrée par FF(R2), P1 ouverte ; puis « Facturer » R1 :
+P1 lettrée par FF(R1). Persistance : relire la facture ⇒ reception = R2. transaction.on_commit exécuté
+immédiatement. repro=True signifie ICI que le comportement ATTENDU par la tâche est observé."""
+SONDE = {"constat": "C-LIVE-AAPV79", "sha": "d7ea0c158",
+         "attendu": "facturer R2 201 : P2 lettree par FF(R2), P1 ouverte ; FF(R2).reception = R2 ; facturer R1 201 : P1 lettree par FF(R1), GR/IR ouvert 0",
+         "modeles": ["stock.ReceptionFournisseur", "stock.FactureFournisseur", "installations.ReceptionNonFacturee"]}
+
+
+def sonde(ctx):
+    from decimal import Decimal
+    from django.db import transaction
+    transaction.on_commit = lambda func, using=None, robust=False: func()
+    from django.contrib.auth import get_user_model
+    from rest_framework.test import APIClient
+    from authentication.models import Company
+    from apps.stock.models import (Fournisseur, BonCommandeFournisseur, LigneBonCommandeFournisseur, Produit,
+                                   FactureFournisseur)
+    from apps.installations.models_gr_ir import ReceptionNonFacturee
+    H = {'HTTP_HOST': 'localhost'}
+    co = Company.objects.create(nom='Live AAPV 79', slug='live-aapv-79')
+    u = get_user_model().objects.create_user(username='live_aapv_79', password='x', role_legacy='admin', company=co)
+    api = APIClient()
+    api.force_authenticate(u)
+    p = Produit.objects.create(company=co, nom='Structure L79', sku='LAAPV-079', prix_vente=Decimal('200'),
+                               quantite_stock=0)
+    f = Fournisseur.objects.create(company=co, nom='F-LAAPV79')
+    bc = BonCommandeFournisseur.objects.create(company=co, fournisseur=f, reference='BCF-LAAPV-079',
+                                               statut=BonCommandeFournisseur.Statut.ENVOYE)
+    lc = LigneBonCommandeFournisseur.objects.create(bon_commande=bc, produit=p, quantite=20,
+                                                    prix_achat_unitaire=Decimal('100'))
+    url = '/api/django/stock/receptions-fournisseur/'
+    ids = []
+    for _ in range(2):
+        r = api.post(url, {'bon_commande': bc.id, 'lignes': [{'ligne_commande': lc.id, 'quantite': 10}]},
+                     format='json', **H)
+        ids.append(r.data['id'])
+        api.post(f"{url}{r.data['id']}/confirmer/", {}, format='json', **H)
+    r1, r2 = ids
+
+    def gr_ir():
+        return {('R1' if d['reception_id'] == r1 else 'R2'): {'montant': str(d['montant_provision']),
+                                                              'lettre': d['lettre'], 'facture_id': d['facture_id']}
+                for d in ReceptionNonFacturee.objects.filter(company=co, bon_commande=bc).values(
+                    'reception_id', 'montant_provision', 'lettre', 'facture_id')}
+    obs = {'gr_ir_apres_receptions': gr_ir()}
+    rf2 = api.post(f'{url}{r2}/facturer/', {}, format='json', **H)
+    ff2 = rf2.data.get('id')
+    obs['facturer_R2'] = {'http': rf2.status_code, 'id': ff2, 'ht': rf2.data.get('montant_ht')}
+    obs['gr_ir_apres_facture_R2'] = gr_ir()
+    obs['ff_R2_reception_relue'] = 'R2' if FactureFournisseur.objects.get(pk=ff2).reception_id == r2 else 'autre'
+    rf1 = api.post(f'{url}{r1}/facturer/', {}, format='json', **H)
+    ff1 = rf1.data.get('id')
+    obs['facturer_R1'] = {'http': rf1.status_code, 'id': ff1}
+    obs['gr_ir_final'] = gr_ir()
+    ouvert = sum(Decimal(d['montant']) for d in obs['gr_ir_final'].values() if not d['lettre'])
+    obs['gr_ir_ouvert'] = str(ouvert)
+    a = obs['gr_ir_apres_facture_R2']
+    b = obs['gr_ir_final']
+    obs['repro'] = bool(rf2.status_code == 201 and a.get('R2', {}).get('lettre') is True
+                        and a['R2']['facture_id'] == ff2 and a.get('R1', {}).get('lettre') is False
+                        and obs['ff_R2_reception_relue'] == 'R2' and rf1.status_code == 201
+                        and b['R1']['lettre'] is True and b['R1']['facture_id'] == ff1 and ouvert == 0)
+    return obs
+
+## AAPV79 — PASS (écran)
+FIX-W29B : BCF-W29B-79 20 × 100 HT, REC-202611-0001 (R1) puis REC-202611-0002 (R2) confirmées par les vraies routes.
+Compte acc_w29b_adm › Réceptions fournisseur › REC-202611-0002 › « Facturer cette réception » => « Facture fournisseur
+FF-202611-0001 créée (1 200,00 MAD TTC). » ; Chantiers › Approvisionnement › onglet « Réceptions non facturées » : une seule ligne
+« Réception REC-202611-0001 · 580 · 1 000 MAD · Non » (P1 ouverte, P2 lettrée hors liste). Puis REC-202611-0001 › « Facturer
+cette réception » => « FF-202611-0002 créée (1 200,00 MAD TTC) » ; onglet relu : « Aucune réception non facturée ».
+Base relue : REC-0002 ← FF-202611-0001 (facture.reception = R2), provision 1000.00 lettrée par FF-202611-0001 ; REC-0001 ←
+FF-202611-0002, provision lettrée par FF-202611-0002 (aucun lettrage croisé). Console : 0 erreur.
