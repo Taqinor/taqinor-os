@@ -48,6 +48,8 @@ const api = vi.hoisted(() => ({
   modifierLigneConsommation: vi.fn(),
   ajouterLigneConsommation: vi.fn(),
   validerConsommation: vi.fn(),
+  getFiche: vi.fn(),
+  renseignerFiche: vi.fn(),
 }))
 vi.mock('../../api/installationsApi', () => ({ default: api }))
 
@@ -61,7 +63,7 @@ vi.mock('../../ui', async (importOriginal) => {
   return { ...actual, toast: { ...actual.toast, success: toasts.success, error: toasts.error } }
 })
 
-import { SerialsPanel, ConsommationPanel } from './InterventionCapturePanels'
+import { SerialsPanel, ConsommationPanel, FichePanel } from './InterventionCapturePanels'
 
 const INTERVENTION = { id: 42 }
 
@@ -180,5 +182,44 @@ describe('SerialsPanel — WIR210 hors-ligne (F9)', () => {
 
     await waitFor(() => expect(toasts.error).toHaveBeenCalledWith('N° déjà relevé.'))
     expect(outbox.enqueue).not.toHaveBeenCalled()
+  })
+})
+
+// ACSV91 — panneau « Fiche d'intervention » (relevé du gabarit).
+describe('FichePanel', () => {
+  const RELEVE = {
+    id: 1,
+    valeurs: [
+      { id: 11, champ_libelle: 'Disjoncteur testé', champ_type: 'case', champ_obligatoire: true, valeur: '' },
+      { id: 12, champ_libelle: 'Tension DC', champ_type: 'mesure', champ_unite: 'V', champ_obligatoire: false, valeur: '' },
+    ],
+  }
+  beforeEach(() => {
+    api.getFiche.mockResolvedValue({ data: RELEVE })
+    api.renseignerFiche.mockResolvedValue({ data: RELEVE })
+  })
+
+  it('cocher la case obligatoire envoie « true »', async () => {
+    const user = userEvent.setup()
+    render(<FichePanel intervention={INTERVENTION} />)
+    await user.click(await screen.findByRole('checkbox'))
+    await waitFor(() => expect(api.renseignerFiche).toHaveBeenCalledWith(42, 11, 'true'))
+  })
+
+  it('la mesure saisie part telle quelle à la sortie du champ, le refus serveur s\'affiche', async () => {
+    const user = userEvent.setup()
+    api.renseignerFiche.mockRejectedValue({ response: { status: 400, data: { valeur: ['« Tension DC » attend un nombre.'] } } })
+    render(<FichePanel intervention={INTERVENTION} />)
+    await user.type(await screen.findByLabelText(/Tension DC/), '235,4')
+    await user.tab()
+    await waitFor(() => expect(api.renseignerFiche).toHaveBeenCalledWith(42, 12, '235,4'))
+    expect(await screen.findByRole('alert')).toBeTruthy()
+  })
+
+  it('aucun gabarit : panneau masqué', async () => {
+    api.getFiche.mockResolvedValue({ data: null })
+    const { container } = render(<FichePanel intervention={INTERVENTION} />)
+    await waitFor(() => expect(api.getFiche).toHaveBeenCalled())
+    expect(container.textContent).toBe('')
   })
 })

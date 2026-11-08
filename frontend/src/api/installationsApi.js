@@ -324,6 +324,10 @@ const installationsApi = {
     api.post(`/installations/interventions/${id}/cocher-safety/`, { cle, coche }),
   signerSafety: (id) =>
     api.post(`/installations/interventions/${id}/signer-safety/`, {}),
+  // ACSV91 — fiche d'intervention (relevé du gabarit) : lecture + saisie par champ.
+  getFiche: (id) => api.get(`/installations/interventions/${id}/fiche/`),
+  renseignerFiche: (id, valeurId, valeur) =>
+    api.post(`/installations/interventions/${id}/renseigner-fiche/`, { valeur_id: valeurId, valeur }),
   // ── FG69 — signature client sur le compte-rendu d'intervention ──
   signerClient: (id, { signature_client, signataire_nom }) =>
     api.post(`/installations/interventions/${id}/signer-client/`,

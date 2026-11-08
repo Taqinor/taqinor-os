@@ -762,6 +762,58 @@ export function SafetyPanel({ intervention, onChanged }) {
   )
 }
 
+// ── ACSV91 — Fiche d'intervention (relevé du gabarit, saisie par champ typé) ──
+export function FichePanel({ intervention, onChanged }) {
+  const id = intervention.id
+  const [releve, setReleve] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [erreurs, setErreurs] = useState({})
+  const [brouillons, setBrouillons] = useState({})
+
+  const load = useCallback(() => installationsApi.getFiche(id)
+    .then((r) => { setReleve(r.data); setBrouillons({}) })
+    .catch(() => setReleve(null))
+    .finally(() => setLoading(false)), [id])
+  useEffect(() => { load() }, [load])
+
+  const envoyer = async (v, valeur) => {
+    try {
+      await installationsApi.renseignerFiche(id, v.id, valeur)
+      setErreurs((e) => ({ ...e, [v.id]: null }))
+      await load()
+      onChanged?.()
+    } catch (err) { setErreurs((e) => ({ ...e, [v.id]: apiErrorMessage(err, 'Enregistrement impossible.') })) }
+  }
+
+  if (loading) return <PanelLoading label="la fiche" />
+  if (!releve) return null
+  return (
+    <ErrorBoundary>
+    <div className="flex flex-col gap-2 py-2 text-sm">
+      {(releve.valeurs || []).map((v) => (
+        <div key={v.id} className="flex flex-col gap-1 rounded border border-border p-2">
+          {v.champ_type === 'case' ? (
+            <label className="flex items-center gap-2">
+              <Checkbox checked={v.valeur === 'true'} onCheckedChange={(c) => envoyer(v, c ? 'true' : 'false')} />
+              <span>{v.champ_libelle}{v.champ_obligatoire ? ' *' : ''}</span>
+            </label>
+          ) : (
+            <label className="flex flex-col gap-1">
+              <span>{v.champ_libelle}{v.champ_unite ? ` (${v.champ_unite})` : ''}{v.champ_obligatoire ? ' *' : ''}</span>
+              <Input value={brouillons[v.id] ?? v.valeur ?? ''}
+                     inputMode={v.champ_type === 'texte' ? undefined : 'decimal'}
+                     onChange={(e) => setBrouillons((b) => ({ ...b, [v.id]: e.target.value }))}
+                     onBlur={() => brouillons[v.id] !== undefined && envoyer(v, brouillons[v.id])} />
+            </label>
+          )}
+          {erreurs[v.id] && <p role="alert" className="text-[12px] text-destructive">{erreurs[v.id]}</p>}
+        </div>
+      ))}
+    </div>
+    </ErrorBoundary>
+  )
+}
+
 // ── F19 — Compte-rendu PDF (client-facing) ───────────────────────────────────
 export function CompteRenduButton({ intervention }) {
   const url = installationsApi.compteRenduUrl(intervention.id)
