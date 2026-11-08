@@ -2270,7 +2270,9 @@ class TicketViewSet(CompanyScopedModelViewSet):
                             status=decision['http'])
         couverture = decision['couverture']
         sous_garantie = decision['couvert']
-        pieces = list(ticket.pieces.select_related('produit'))
+        from apps.installations.selectors import consommations_appliquees_du_ticket
+        pieces = list(ticket.pieces.select_related('produit')) + (  # ACSV53 — F11 appliquée
+            consommations_appliquees_du_ticket(ticket.company, ticket.id))
         facture = generer_facture_ticket_sav(
             ticket=ticket, sous_garantie=sous_garantie, pieces=pieces,
             user=request.user)

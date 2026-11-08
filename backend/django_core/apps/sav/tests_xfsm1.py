@@ -140,3 +140,33 @@ class XFSM1FacturationTicketTest(TestCase):
         self.assertEqual(
             Facture.objects.filter(
                 company=self.company, client=self.client_obj).count(), 1)
+
+    def test_consommation_f11_du_ticket_facturee(self):
+        """ACSV53 (C-ACSV-063) — la pièce catalogue consommée (F11 appliquée)
+        par l'intervention du ticket figure sur sa facture, à côté de la
+        ``PieceConsommee``, sans doublon. ROUGE AVANT : ligne F11 absente."""
+        from apps.installations.models import (
+            ConsommationLigne, Intervention, MaterielConsommation,
+        )
+        from apps.ventes.models import Facture
+        ticket = self._ticket_hors_garantie()
+        fusible = Produit.objects.create(
+            company=self.company, nom='Fusible F11', sku='FUS-ACSV53',
+            prix_achat=Decimal('4'), prix_vente=Decimal('40'))
+        iv = Intervention.objects.create(
+            company=self.company, installation=self.inst, ticket=ticket,
+            type_intervention='depannage', created_by=self.admin)
+        conso = MaterielConsommation.objects.create(
+            company=self.company, intervention=iv, valide=True)
+        ConsommationLigne.objects.create(
+            company=self.company, consommation=conso, produit=fusible,
+            designation='Fusible F11', quantite_utilisee=Decimal('1'),
+            justification='remplacé', stock_applique=True)
+        resp = auth(self.admin).post(f'/api/django/sav/tickets/{ticket.id}/facturer/')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        lignes = Facture.objects.get(pk=resp.data['facture_id']).lignes.all()
+        par_produit = {ln.produit_id: ln for ln in lignes}
+        self.assertEqual(len(lignes), 3)  # pièce, F11, main-d'œuvre
+        self.assertEqual(par_produit[fusible.id].quantite, Decimal('1'))
+        self.assertEqual(par_produit[fusible.id].prix_unitaire, Decimal('40'))
+        self.assertEqual(par_produit[self.piece.id].quantite, Decimal('3'))
