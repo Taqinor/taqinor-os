@@ -170,3 +170,26 @@ class XFSM1FacturationTicketTest(TestCase):
         self.assertEqual(par_produit[fusible.id].quantite, Decimal('1'))
         self.assertEqual(par_produit[fusible.id].prix_unitaire, Decimal('40'))
         self.assertEqual(par_produit[self.piece.id].quantite, Decimal('3'))
+
+    def test_facture_annulee_libere_le_ticket(self):
+        """ACSV63 (C-ACSV-147) — annuler la facture d'un ticket vide
+        ``facture_id_ext`` (note au chatter) et une nouvelle facture se génère.
+        ROUGE AVANT : ``facture_id_ext`` resté sur F1."""
+        from apps.sav.models import TicketActivity
+        from apps.ventes.domain.annulation_facture import annuler_facture
+        from apps.ventes.models import Facture
+        api = auth(self.admin)
+        ticket = self._ticket_hors_garantie()
+        r1 = api.post(f'/api/django/sav/tickets/{ticket.id}/facturer/')
+        self.assertEqual(r1.status_code, 201, r1.content)
+        f1 = Facture.objects.get(pk=r1.data['facture_id'])
+        annuler_facture(f1, user=self.admin)
+        ticket.refresh_from_db()
+        self.assertIsNone(ticket.facture_id_ext)
+        self.assertTrue(TicketActivity.objects.filter(
+            ticket=ticket, body=f'Facture {f1.reference} annulée : le ticket est à refacturer.').exists())
+        r2 = api.post(f'/api/django/sav/tickets/{ticket.id}/facturer/')
+        self.assertEqual(r2.status_code, 201, r2.content)
+        self.assertNotEqual(r2.data['facture_id'], f1.pk)
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.facture_id_ext, r2.data['facture_id'])

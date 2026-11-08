@@ -18,7 +18,8 @@ from django.utils import timezone
 
 from core.events import (
     abonne_best_effort, chantier_annule, chantier_receptionne,
-    devis_acceptation_annulee, devis_accepted, intervention_completed,
+    devis_acceptation_annulee, devis_accepted, facture_annulee,
+    intervention_completed,
 )
 from .models import Ticket
 
@@ -126,6 +127,18 @@ def _desactiver_contrat_on_acceptation_annulee(sender, devis, user,
     from .services import desactiver_contrat_desaccepte
 
     desactiver_contrat_desaccepte(devis=devis, user=user)
+
+
+@receiver(facture_annulee, dispatch_uid="sav_liberer_ticket_on_facture_annulee")
+@abonne_best_effort
+def _liberer_ticket_on_facture_annulee(sender, instance, company, **kwargs):
+    """ACSV63 — la facture d'un ticket est annulée : ``facture_id_ext`` est
+    vidé (« Facturer » revient, une nouvelle facture se génère), note au chatter."""
+    from . import activity
+    for ticket in Ticket.objects.filter(company=company, facture_id_ext=instance.pk):
+        ticket.facture_id_ext = None
+        ticket.save(update_fields=['facture_id_ext'])
+        activity.log_note(ticket, None, f'Facture {instance.reference} annulée : le ticket est à refacturer.')
 
 
 @receiver(chantier_annule, dispatch_uid="sav_desactiver_contrats_on_chantier_annule")
