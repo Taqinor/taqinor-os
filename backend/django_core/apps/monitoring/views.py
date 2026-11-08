@@ -683,7 +683,9 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
     def email_om_report(self, request, pk=None):
         """FG289 — envoie le rapport O&M périodique par e-mail (PDF joint).
         Destinataire : body `recipient` sinon l'e-mail du client du système."""
-        from .report import EnvoiRapportImpossible, email_om_report
+        from .report import (
+            DestinataireHorsClient, EnvoiRapportImpossible, email_om_report,
+        )
         config = self.get_object()
         corps = MonitoringEmailOmReportSerializer(data=request.data)
         corps.is_valid(raise_exception=True)
@@ -692,6 +694,10 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         try:
             sent = email_om_report(
                 config.installation, period=period, recipient=recipient)
+        except DestinataireHorsClient as exc:
+            # AMON47 — un tiers n'est jamais destinataire : 400 nommé.
+            return Response({'recipient': [str(exc)]},
+                            status=status.HTTP_400_BAD_REQUEST)
         except EnvoiRapportImpossible as exc:
             # ASAV68 — l'e-mail n'est pas parti : jamais {sent: true}.
             return Response(

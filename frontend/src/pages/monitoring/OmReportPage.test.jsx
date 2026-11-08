@@ -42,6 +42,7 @@ vi.mock('../../api/installationsApi', () => ({
 
 import monitoringApi from '../../api/monitoringApi'
 import OmReportPage from './OmReportPage'
+import { toast } from '../../ui/confirm'
 import { polyfillResizeObserver } from '../../test/selectNatif'
 
 describe('OmReportPage (WR7 — rapport O&M)', () => {
@@ -64,5 +65,21 @@ describe('OmReportPage (WR7 — rapport O&M)', () => {
     await waitFor(() => expect(monitoringApi.emailOmReport).toHaveBeenCalledWith('5', {
       period: 'monthly', recipient: 'client@exemple.ma',
     }))
+  })
+
+  it('AMON47 — un destinataire refusé affiche le message du serveur', async () => {
+    const erreur = vi.spyOn(toast, 'error')
+    monitoringApi.emailOmReport.mockRejectedValueOnce({
+      response: { status: 400, data: { recipient: ['Le rapport ne part qu’aux adresses du client du système.'] } },
+    })
+    renderPage(<OmReportPage />)
+
+    expect(await screen.findByTestId('om-report')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /Envoyer par e-mail/ }))
+    await userEvent.type(await screen.findByLabelText('Destinataire (optionnel)'), 'tiers@exemple.ma')
+    await userEvent.click(screen.getByRole('button', { name: /^Envoyer$/ }))
+
+    await waitFor(() => expect(erreur).toHaveBeenCalledWith(
+      'Le rapport ne part qu’aux adresses du client du système.'))
   })
 })
