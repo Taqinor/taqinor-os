@@ -25,7 +25,8 @@ from rest_framework.views import APIView
 
 from core.throttling import IdentIpPartageeMixin
 
-from .docs import public_api_reference
+from .docs import reference_langue
+from .docs_i18n import langue_doc
 
 OPENAPI_VERSION = '3.1.0'
 
@@ -185,7 +186,16 @@ def _simple_read_operation(entry):
     """NTADM42 — opération pour un endpoint `endpoints_lecture_simple` : un
     OBJET UNIQUE (jamais une liste), sans pagination/tri/filtre — contrairement
     à `_list_operation`/`_retrieve_operation` (ressources paginées avec `<id>`)."""
-    return {
+    # NTI18N42 — un chemin `{id}` déclare son paramètre de chemin (un objet
+    # unique reste un objet unique : seul l'identifiant du parent varie).
+    path_params = [
+        {
+            'name': name, 'in': 'path', 'required': True,
+            'schema': {'type': 'integer' if name == 'id' else 'string'},
+        }
+        for name in re.findall(r'\{(\w+)\}', entry['chemin'])
+    ]
+    operation = {
         'summary': entry['description'],
         'security': [{'ApiKeyAuth': []}],
         'responses': {
@@ -197,6 +207,9 @@ def _simple_read_operation(entry):
             **_common_error_responses(),
         },
     }
+    if path_params:
+        operation['parameters'] = path_params
+    return operation
 
 
 def _bulk_operation(entry):
@@ -316,10 +329,21 @@ def _webhooks(ref):
     return webhooks
 
 
-def build_openapi_schema():
+def build_openapi_document(langue):
+    """NTI18N44 — le document OpenAPI dans ``langue`` (``'fr'`` ou ``'en'``) :
+    mêmes chemins, mêmes schémas, mêmes champs ; seuls les textes descriptifs
+    passent en anglais (`docs_i18n`). ``build_openapi_schema()`` reste le
+    constructeur FR, lisible statiquement par la garde de forme."""
+    from .docs_i18n import traduire_openapi
+    return traduire_openapi(build_openapi_schema(langue), langue)
+
+
+def build_openapi_schema(langue='fr'):
     """Construit le document OpenAPI 3.1 complet — 100 % dérivé de
-    `docs.public_api_reference()` (source de vérité unique, FG105)."""
-    ref = public_api_reference()
+    `docs.public_api_reference()` (source de vérité unique, FG105). ``langue``
+    ne traduit que les textes issus de la référence (voir
+    `build_openapi_document` pour les chaînes statiques)."""
+    ref = reference_langue(langue)
     paths = {}
 
     for endpoint in ref['endpoints']:
@@ -405,4 +429,13 @@ class PublicOpenApiSchemaView(APIView):
         'paths': serializers.JSONField(),
         'webhooks': serializers.JSONField()}))
     def get(self, request):
+        # NTI18N44 — `?lang=en` : descriptions en anglais (même structure).
         return Response(build_openapi_schema())
+
+    def finalize_response(self, request, response, *args, **kwargs):
+        # NTI18N44 — `?lang=en` : mêmes chemins et schémas, textes en anglais
+        # (le `get` reste le constructeur FR lisible par la garde de forme).
+        if (response.status_code == 200
+                and langue_doc(request.query_params.get('lang')) == 'en'):
+            response.data = build_openapi_document('en')
+        return super().finalize_response(request, response, *args, **kwargs)

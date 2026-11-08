@@ -30,7 +30,7 @@ from rest_framework.exceptions import NotFound, PermissionDenied, ValidationErro
 from core.conflit_etat import ConflitEtat
 
 from . import horaires
-from .leads_attribution import _leads_ouverts_count
+from .leads_attribution import _leads_ouverts_count, rotation_equilibree
 from .models import Lead
 from .models_clients import (
     AttributionEnAttente, EquipeCommerciale, PermanenceEquipe, RegleAttribution)
@@ -130,15 +130,14 @@ def rotation(equipe):
     compte AUSSI les propositions en attente : sans cela, tous les leads
     arrivés pendant le délai seraient proposés au même membre (ils sont
     encore au nom du responsable). None si personne d'éligible."""
-    plafond = _plafond(equipe.company_id)
-    charges = []
-    for membre in equipe.membres.filter(
-            is_active=True, company_id=equipe.company_id).order_by('id'):
-        charge = _leads_ouverts_count(membre) + AttributionEnAttente.objects.filter(
+    def charge(membre):
+        return _leads_ouverts_count(membre) + AttributionEnAttente.objects.filter(
             proposee=membre, company_id=equipe.company_id).count()
-        if charge < plafond:
-            charges.append((charge, membre.pk, membre))
-    return min(charges)[2] if charges else None
+
+    return rotation_equilibree(  # CRXB4 — LE round-robin, charge propre
+        equipe.membres.filter(
+            is_active=True, company_id=equipe.company_id).order_by('id'),
+        charge, _plafond(equipe.company_id))
 
 
 def _regle_correspond(regle, lead):

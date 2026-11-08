@@ -13,6 +13,7 @@ import { useConfirmDialog, toast } from '../../ui/confirm'
 import { isDirty } from '../../ui/form-utils'
 import { useNavigationGuard } from '../../hooks/useNavigationGuard'
 import DashboardFilterBar from '../../features/reporting/DashboardFilterBar'
+import RepartitionLangueWidget from '../../features/reporting/RepartitionLangueWidget'
 import { ChargementPage } from '../../ui/ChargementPage'
 
 /* WR8 — Gestionnaire de configuration de tableau de bord (FG96).
@@ -245,6 +246,14 @@ export default function DashboardConfigPage() {
                 layout={selectedLayout}
                 onLayoutChange={setSelectedLayout}
                 onReload={() => {}}
+              />
+            )}
+            {/* NTI18N53 — widget « Répartition des clients par langue documentaire ». */}
+            {selectedDashboardId && (
+              <RepartitionLangueWidget
+                dashboardId={Number(selectedDashboardId)}
+                layout={selectedLayout}
+                onLayoutChange={setSelectedLayout}
               />
             )}
           </CardContent>

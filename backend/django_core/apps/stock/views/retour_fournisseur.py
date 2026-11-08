@@ -156,14 +156,12 @@ class RetourFournisseurViewSet(DocumentFigeMixin, CompanyScopedModelViewSet):
     @extend_schema(request=None, responses=RetourFournisseurSerializer)
     @action(detail=True, methods=['post'], url_path='annuler')
     def annuler(self, request, pk=None):
+        from ..services import annuler_retour_brouillon
         retour = self.get_object()
-        if retour.statut == RetourFournisseur.Statut.VALIDE:
-            return Response(
-                {'detail': 'Un retour validé ne peut pas être annulé '
-                           '(le stock a déjà été décrémenté).'},
-                status=status.HTTP_409_CONFLICT)  # ENF11 : état
-        retour.statut = RetourFournisseur.Statut.ANNULE
-        retour.save(update_fields=['statut'])
+        try:  # AAPV11 — relu sous verrou ; validé : 409 (ENF11 : état)
+            annuler_retour_brouillon(retour)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=statut_refus_metier(exc))
         return Response(self.get_serializer(retour).data)
 
     @extend_schema(request=None, responses={201: AvoirFournisseurSerializer})

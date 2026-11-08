@@ -68,9 +68,9 @@ class ApprouverEtapeCodeFinTests(TestCase):
         self.demandeur = make_user(self.company)
         RegleApprobationAchat.objects.create(
             company=self.company, libelle='Au-delà de 20 000 MAD',
-            montant_min=20000, nombre_approbateurs=1,
-            niveau_approbation=(
-                RegleApprobationAchat.NiveauApprobation.DIRECTION))
+            montant_min=20000, nombre_approbateurs=1)
+        # AAPV33 — palier par défaut « responsable » : ce module teste le
+        # CODE FIN ; le palier Direction (désormais appliqué) a son test.
 
     def _soumettre(self, montant=50000):
         da = DemandeAchat.objects.create(

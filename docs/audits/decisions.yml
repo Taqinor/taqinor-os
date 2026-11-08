@@ -167,6 +167,7 @@ decisions:
     source: "session 2026-10-09 « loop work on all plans » (Reda_Laptop) — lot AskUserQuestion, 6 lots de 4 questions"
     taches: [VTAG1]
 
+  # 09/10/2026 : a (pas maintenant)
   - id: D-CRXB
     question: "Lancer le sous-groupe d'architecture CRXB (contrat-d'abord leads-list + workspace, 8 tâches) ?"
     options:
@@ -174,9 +175,9 @@ decisions:
         texte: "pas maintenant — re-poser après la vague SPL de scission du crm (PR #918)"
       - cle: b
         texte: "lancer CRXB"
-    reponse: a
-    date: "2026-10-09"
-    source: "session 2026-10-09 « loop work on all plans » (Reda_Laptop) — lot AskUserQuestion, 6 lots de 4 questions"
+    reponse: b
+    date: "2026-11-07"
+    source: "Reda, 07/11/2026 « Yes, launch CRXB » (boucle work on the plan, après la vague SPL)"
     taches: [CRXB1, CRXB2, CRXB3, CRXB4, CRXB5, CRXB6, CRXB8]
 
   - id: D-QJW16

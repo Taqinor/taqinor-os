@@ -1,0 +1,23 @@
+# Preuve en direct AAPV31 — rejeu w28, code b00242be0 (dev-plan-6a6fc9-w28), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w28-django (conteneur privé : code de CE worktree, base privée
+# erp_accept_w28, transaction annulée, mail en mémoire, Celery coupé, HTTP sortant bloqué). « oc » = variante
+# scratchpad sonde_oc.py identique sauf transaction.on_commit exécuté immédiatement (événements « après commit »
+# qui ne partiraient jamais dans la transaction annulée). Sur le code corrigé, verdict ÉCART = repro False = attendu.
+# Sondes C-LIVE-* (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Écran : front de CE worktree servi par vite (127.0.0.1:5199) -> conteneur privé accept-w28-web (runserver, base
+# erp_accept_w28, SMTP 127.0.0.1:1 = aucune messagerie), piloté par Playwright MCP. Données d'écran = états des sondes
+# rejouées SANS rollback dans la base privée (comptes de test des sondes, mot de passe de test) ou fixtures FIX-*.
+# Verdict : PASS — Sonde C-AAPV-086 : onduleur de A toujours réservé, B manque 1 => repro False ; écran F11 intervention 2 à 0 panneau.
+
+== C-AAPV-086 (sha 6ffa876688)
+attendu : repro si après F11 de l'intervention 1 : réservations onduleur/batterie de A active=False ; B voit l'onduleur disponible (manque 0) ; A affiche l'onduleur non réservé
+observé : {'resas_A_avant': {'AAPV-086-PAN': (10, True, False), 'AAPV-086-OND': (1, True, False), 'AAPV-086-BAT': (1, True, False)}, 'resas_B_avant': {'AAPV-086-OND': (1, True, False)}, 'besoin_B_onduleur_avant': {'requis': 1, 'disponible': 0, 'reserve_chantier': 1, 'reserve_autres': 1, 'deja_sorti': 0, 'manque_brut': 1, 'manque': 1}, 'f11_itv1_amorcee': [('Panneau AAPV86', '10.00', '10.00'), ('Onduleur AAPV86', '1.00', '1.00'), ('Batterie AAPV86', '1.00', '1.00')], 'modifier_lignes': [200, 200], 'valider_itv1': 200, 'valider_detail': None, 'stock_apres': {'PAN': '20', 'OND': '1', 'BAT': '1'}, 'resas_A_apres': {'AAPV-086-PAN': (0, True, True), 'AAPV-086-OND': (1, True, False), 'AAPV-086-BAT': (1, True, False)}, 'besoin_A_onduleur_apres': {'requis': 1, 'disponible': 1, 'reserve_chantier': 1, 'reserve_autres': 1, 'deja_sorti': 0, 'manque_brut': 0, 'manque': 0}, 'besoin_B_onduleur_apres': {'requis': 1, 'disponible': 0, 'reserve_chantier': 1, 'reserve_autres': 1, 'deja_sorti': 0, 'manque_brut': 1, 'manque': 1}, 'f11_itv2_amorcee': [('Panneau AAPV86', '10.00', '0.00'), ('Onduleur AAPV86', '1.00', '1.00'), ('Batterie AAPV86', '1.00', '1.00')]}
+{"resas_A_avant": {"AAPV-086-PAN": [10, true, false], "AAPV-086-OND": [1, true, false], "AAPV-086-BAT": [1, true, false]}, "resas_B_avant": {"AAPV-086-OND": [1, true, false]}, "besoin_B_onduleur_avant": {"requis": 1, "disponible": 0, "reserve_chantier": 1, "reserve_autres": 1, "deja_sorti": 0, "manque_brut": 1, "manque": 1}, "f11_itv1_amorcee": [["Panneau AAPV86", "10.00", "10.00"], ["Onduleur AAPV86", "1.00", "1.00"], ["Batterie AAPV86", "1.00", "1.00"]], "modifier_lignes": [200, 200], "valider_itv1": 200, "valider_detail": null, "stock_apres": {"PAN": "20", "OND": "1", "BAT": "1"}, "resas_A_apres": {"AAPV-086-PAN": [0, true, true], "AAPV-086-OND": [1, true, false], "AAPV-086-BAT": [1, true, false]}, "besoin_A_onduleur_apres": {"requis": 1, "disponible": 1, "reserve_chantier": 1, "reserve_autres": 1, "deja_sorti": 0, "manque_brut": 0, "manque": 0}, "besoin_B_onduleur_apres": {"requis": 1, "disponible": 0, "reserve_chantier": 1, "reserve_autres": 1, "deja_sorti": 0, "manque_brut": 1, "manque": 1}, "f11_itv2_amorcee": [["Panneau AAPV86", "10.00", "0.00"], ["Onduleur AAPV86", "1.00", "1.00"], ["Batterie AAPV86", "1.00", "1.00"]], "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 3, après 3) ; mails 0 ; tâches Celery bloquées 0
+
+## AAPV31 — PASS (partie écran)
+État de la sonde C-AAPV-086 rejouée sans rollback, compte sonde_aapv_086. Interventions › liste › intervention 2 (id 14, CHT-202611-0001
+Site A, « Aucune activité ») › onglet « Consommé » (panneau F11, InterventionCapturePanels) : « Panneau AAPV86 Prévu : 10.00 » champ
+Utilisé = 0.00 ; « Onduleur AAPV86 Prévu : 1.00 » Utilisé = 1.00 ; « Batterie AAPV86 Prévu : 1.00 » Utilisé = 1.00 — pré-rempli à
+0 panneau (les panneaux posés à l'intervention 1 ne sont pas re-proposés), onduleur et batterie de A toujours réservés. Console 0 erreur.

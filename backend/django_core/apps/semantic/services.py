@@ -59,6 +59,14 @@ class MetriqueIndisponible(MetriqueNonResolvable):
     de la métrique, pas une requête fautive (la vue répond 409)."""
 
 
+class MetriqueNonRegroupable(MetriqueNonResolvable):
+    """ENF51 — un ``group_by`` demandé sur une métrique ENREGISTRÉE comme
+    adaptateur (un scalaire, sans dimension) : la requête ne peut pas savoir
+    la nature de la définition, c'est un état de la métrique (la vue répond
+    409 ; les appelants qui attrapent ``MetriqueNonResolvable`` sont
+    inchangés)."""
+
+
 def get_metric(company, cle):
     """La définition ACTIVE de ``cle`` pour ``company`` (ou ``MetriqueInconnue``)."""
     from .models import MetricDefinition
@@ -223,7 +231,7 @@ def resolve_metric(company, user, cle, *, filters=None, group_by=None,
     # série possible — un scalaire n'a pas de dimensions.
     if definition.est_adaptateur:
         if group_by:
-            raise MetriqueNonResolvable(
+            raise MetriqueNonRegroupable(
                 'Métrique « %s » : elle est calculée par un adaptateur '
                 '(%s) et ne peut pas être regroupée par %s.'
                 % (cle, definition.mesure['adapter'], ', '.join(group_by)))

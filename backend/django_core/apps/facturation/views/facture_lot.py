@@ -14,10 +14,10 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
-from ..gardes_lecture import LectureFactures  # ERR-ASEC11-LISTE-FACTURES
-from . import openapi_docs as D
-from ..models import Facture
-from ..serializers_facturation import FactureListeSerializer, FactureSerializer
+from apps.ventes.gardes_lecture import LectureFactures  # ERR-ASEC11-LISTE-FACTURES
+from apps.ventes.views import openapi_docs as D
+from apps.ventes.models import Facture
+from apps.ventes.serializers_facturation import FactureListeSerializer, FactureSerializer
 
 logger = logging.getLogger('apps.ventes.views.facture')
 
@@ -66,7 +66,7 @@ class FactureLotActionsMixin:
 
         Contrat PACT10 : `apps/ventes/contract_samples/factures_kpis.json`.
         """
-        from ..selectors import kpis_factures
+        from apps.ventes.selectors import kpis_factures
         return Response(kpis_factures(self.filter_queryset(
             self.get_queryset())))
 
@@ -82,12 +82,12 @@ class FactureLotActionsMixin:
         if not PeutEncaisser().has_permission(request, self):  # ASEC67
             return Response({'detail': MOTIF_SANS_ENCAISSER},
                             status=status.HTTP_403_FORBIDDEN)
-        from ..services import SaleWarningError, consolider_factures
+        from apps.ventes.services import SaleWarningError, consolider_factures
 
         # CI #997 fuzz — corps validé par le sérialiseur PUBLIÉ (ids entiers
         # JSON ≥ 1, au moins deux) : ``"5"`` ou ``5.0`` étaient relus en
         # silence par ``int()``.
-        from ..utils.corps import valider_corps
+        from apps.ventes.utils.corps import valider_corps
         corps = valider_corps(request, D.ConsoliderRequest)
         devis_ids = corps['devis_ids']
         # ENF11 — ids publiés uniques et positifs : un doublon (consolidait
@@ -193,7 +193,7 @@ class FactureLotActionsMixin:
                         # sans workflow de revue XFAC18, sans dérivation
                         # d'échéance et sans `facture_emise` (donc sans
                         # écriture au grand livre).
-                        from ..domain.facturation_ops import emettre_facture
+                        from apps.ventes.domain.facturation_ops import emettre_facture
                         emettre_facture(
                             facture, user=request.user, source='bulk')
                         results[fid_int] = {
@@ -204,15 +204,15 @@ class FactureLotActionsMixin:
                 elif action_name == 'relancer':
                     # AFAC46 — LE prédicat partagé (`facture_relancable`) et
                     # LE prochain niveau de la cadence (jamais `niveau=NULL`).
-                    from ..recouvrement import (
+                    from apps.facturation.recouvrement import (
                         ensure_default_followup_levels, facture_relancable,
                     )
                     relancable, motif_refus = facture_relancable(facture)
                     if not relancable:
                         results[fid_int] = {'ok': False, 'detail': motif_refus}
                     else:
-                        from ..domain.recouvrement import prochain_niveau
-                        from ..models import RelanceLog
+                        from apps.ventes.domain.recouvrement import prochain_niveau
+                        from apps.ventes.models import RelanceLog
                         ensure_default_followup_levels(facture.company)
                         lvl, _tous = prochain_niveau(facture)
                         RelanceLog.objects.create(
@@ -226,8 +226,8 @@ class FactureLotActionsMixin:
                             'reference': facture.reference}
 
                 elif action_name == 'envoyer-email':
-                    from ..email_service import send_document_email
-                    from ..models import EmailLog
+                    from apps.ventes.email_service import send_document_email
+                    from apps.ventes.models import EmailLog
                     log = send_document_email(
                         facture, user=request.user, attach_pdf=True)
                     if log.statut == EmailLog.Statut.ECHEC:
@@ -241,7 +241,7 @@ class FactureLotActionsMixin:
                             'reference': facture.reference}
 
                 elif action_name == 'generer-pdf':
-                    from ..tasks import task_generate_facture_pdf
+                    from apps.ventes.tasks import task_generate_facture_pdf
                     task = task_generate_facture_pdf.delay(facture.id)
                     results[fid_int] = {
                         'ok': True,

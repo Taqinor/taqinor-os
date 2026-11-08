@@ -69,6 +69,34 @@ class LivraisonDirecteReservationTests(TestCase):
             {'receptions': [{'ligne': self.ligne.id, 'quantite': 10}]},
             format='json')
 
+    def test_livraison_directe_ni_lot_ni_quarantaine_au_depot(self):
+        """AAPV23 — réception 10 lot L-9 non conforme livrée au chantier :
+        aucun lot crédité au dépôt, aucun blocage, le stock libre (5) reste
+        sortable."""
+        from apps.stock.models import (
+            BlocageQualite, ControleReception, LigneReceptionFournisseur,
+            LotEntrepot, ReceptionFournisseur,
+        )
+        from apps.stock.services import confirm_reception_fournisseur
+        from apps.stock.services_qualite_reception import (
+            enregistrer_controle_reception, router_apres_controle,
+        )
+        rec = ReceptionFournisseur.objects.create(
+            company=self.company, reference='REC-AAPV23', bon_commande=self.bc)
+        LigneReceptionFournisseur.objects.create(
+            reception=rec, ligne_commande=self.ligne, produit=self.produit,
+            quantite=10, numero_lot='L-9')
+        enregistrer_controle_reception(
+            reception=rec, user=self.user,
+            resultat=ControleReception.Resultat.NON_CONFORME, unites_controlees=1)
+        confirm_reception_fournisseur(rec, self.user)
+        self.assertEqual(router_apres_controle(rec, self.user), [])
+        self.assertFalse(LotEntrepot.objects.filter(
+            company=self.company, numero_lot='L-9').exists())
+        self.assertFalse(BlocageQualite.objects.filter(reception=rec).exists())
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.quantite_stock, 5)
+
     def test_une_seule_sortie(self):
         rep = self._recevoir()
         self.assertEqual(rep.status_code, 200, rep.data)

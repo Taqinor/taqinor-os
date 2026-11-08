@@ -33,6 +33,7 @@ from .models import Lead, LeadActivity, WebsiteLeadPayload
 from .public_lead_ref_views import _IDEMPOTENCY_KEY_RE, _OPAQUE_404
 from .stages import NEW
 from .webhooks import _resolve_company
+from .activity import journal_systeme
 
 #: Texte de la note posée à la création du lien.
 NOTE_LIEN_AFFINER = 'Lien Affiner ouvert depuis le site (questionnaire pro).'
@@ -112,7 +113,7 @@ def lead_affiner_pro(request, idempotency_key):
         return Response(_OPAQUE_404, status=status.HTTP_404_NOT_FOUND)
     lien, _change, cree = mint_lien(lead)
     if cree:
-        LeadActivity.objects.create(
-            company=lead.company, lead=lead, user=None,
+        journal_systeme(
+            company=lead.company, lead=lead,
             kind=LeadActivity.Kind.NOTE, body=NOTE_LIEN_AFFINER)
     return Response({'questionnaire_token': lien.token})

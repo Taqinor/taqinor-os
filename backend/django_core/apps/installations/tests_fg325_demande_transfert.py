@@ -155,6 +155,40 @@ class TestDemandeTransfert(TestCase):
             produit=self.produit, emplacement=self.dst)
         self.assertEqual(se_dst.quantite, 3)
 
+    def test_demande_approuvee_non_modifiable(self):
+        """AAPV30 — PATCH d'une demande approuvée : 409, quantité 5 ; executer
+        au-dessus du seuil transfère les 5 approuvées."""
+        from decimal import Decimal
+        from apps.stock.models import AchatsParametres, StockEmplacement
+        AchatsParametres.objects.update_or_create(
+            company=self.company,
+            defaults={'seuil_approbation_transfert': Decimal('10000')})
+        self.src.is_principal = True
+        self.src.save(update_fields=['is_principal'])
+        self.produit.prix_achat = Decimal('3000')
+        self.produit.quantite_stock = 60
+        self.produit.save(update_fields=['prix_achat', 'quantite_stock'])
+        dt = DemandeTransfert.objects.create(
+            company=self.company, reference='DTR-AAPV30', produit=self.produit,
+            source=self.src, destination=self.dst, quantite=5)
+        r = self.api.patch(f'{BASE}/demandes-transfert/{dt.id}/',
+                           {'quantite': 4}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)  # « demandé » : modifiable
+        DemandeTransfert.objects.filter(pk=dt.pk).update(quantite=5)
+        self.api.post(f'{BASE}/demandes-transfert/{dt.id}/approuver/', {},
+                      format='json')
+        r = self.api.patch(f'{BASE}/demandes-transfert/{dt.id}/',
+                           {'quantite': 50}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertEqual(r.json()['detail'], 'Demande approuvée : non modifiable.')
+        dt.refresh_from_db()
+        self.assertEqual(dt.quantite, 5)
+        r = self.api.post(f'{BASE}/demandes-transfert/{dt.id}/executer/', {},
+                          format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(StockEmplacement.objects.get(
+            produit=self.produit, emplacement=self.dst).quantite, 5)
+
     def test_refuser(self):
         dt = DemandeTransfert.objects.create(
             company=self.company, reference='DTR-Y', produit=self.produit,

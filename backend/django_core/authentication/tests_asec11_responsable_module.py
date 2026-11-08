@@ -175,6 +175,14 @@ class ResponsableParModuleTests(TestCase):
             'Vue IsResponsableOrAdmin sans module résolu : poser '
             '`permission_module` ou un code au registre.')
 
+    def test_vues_facturation_relevent_du_module_ventes(self):
+        """ODX18 — les vues déménagées sous ``apps.facturation`` gardent la
+        garde du module ``ventes`` (sinon « module non résolu » : écritures
+        refusées à tout rôle fin, Commercial à ``ventes_creer`` compris)."""
+        vue = type('VueFacture', (),
+                   {'__module__': 'apps.facturation.views.facture'})()
+        self.assertEqual(module_de_la_vue(vue), 'ventes')
+
     def test_ecriture_sans_module_hors_fondation_refusee(self):
         """AARG52 — vue sans module d'une app hors ``APPS_SANS_MODULE``
         (portail) : écriture refusée à un rôle fin non administrateur

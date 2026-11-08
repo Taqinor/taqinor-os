@@ -53,7 +53,6 @@ UNSCOPED_DEBT_BASELINE = {
     "installations": 3,
     "sav": 5,
     "stock": 1,
-    "ventes": 1,
 }
 
 

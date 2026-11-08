@@ -11,6 +11,7 @@ from .cadence_filet import assurer_prochaine_etape_apres_succes
 from .leads_doublons import _MERGE_FILL_FIELDS, _est_vide
 from .leads_score import recompute_lead_score
 from .models import Lead, LeadActivity, RelanceEtape
+from .activity import creer_activite
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +94,7 @@ def _transferer_calepinages_apres_fusion(absorbed, survivor, user):
         logger.exception(
             'ACAL177 : calepinages du lead #%s non transférés vers #%s',
             absorbed.pk, survivor.pk)
-        LeadActivity.objects.create(
+        creer_activite(
             company=survivor.company, lead=survivor, user=user,
             kind=LeadActivity.Kind.NOTE,
             body=(f'Fusion : les calepinages du lead #{absorbed.pk} n\'ont '
@@ -285,7 +286,7 @@ def merge_leads(survivor, others, user):
                              f'\n[Fusionné dans le lead #{survivor.id} '
                              f'par {getattr(user, "username", "?")}]').strip()
             absorbed.save()
-            LeadActivity.objects.create(
+            creer_activite(
                 company=survivor.company, lead=survivor, user=user,
                 kind=LeadActivity.Kind.NOTE,
                 body=(f"Fusion : lead « {absorbed.nom} {absorbed.prenom or ''} »"
@@ -302,7 +303,7 @@ def merge_leads(survivor, others, user):
             for client, refs in deux_clients:
                 devis_txt = (f"devis {', '.join(refs)} rattachés" if refs
                              else 'aucun devis rattaché')
-                LeadActivity.objects.create(
+                creer_activite(
                     company=survivor.company, lead=survivor, user=user,
                     kind=LeadActivity.Kind.NOTE,
                     body=(f'Deux fiches client pour ce lead : '
@@ -328,7 +329,7 @@ def merge_leads(survivor, others, user):
     if relances_reprises and not survivor.ne_plus_contacter:
         # CAD106 — la fusion DIT ce qu'elle a fait des relances : sans cette
         # ligne, des touches disparaissaient du plan sans un mot.
-        LeadActivity.objects.create(
+        creer_activite(
             company=survivor.company, lead=survivor, user=user,
             kind=LeadActivity.Kind.NOTE,
             body=(f'Fusion : {relances_reprises} relance(s) reprise(s) — '

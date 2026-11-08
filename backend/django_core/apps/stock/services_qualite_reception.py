@@ -172,6 +172,9 @@ def router_apres_controle(reception, user):
     from .services import quantite_entree_ligne_reception
 
     blocages = []
+    bc = reception.bon_commande
+    if bc is not None and bc.chantier_livraison_id:
+        return []  # AAPV23 — livré au chantier : rien en quarantaine au dépôt
     for ligne in reception.lignes.select_related('produit'):
         # ERR-ASTK59 — on bloque ce qui est RÉELLEMENT entré (plafonné au
         # reste dû, ASTK59), jamais la saisie : sur-livraison 12/10 ⇒ 10
@@ -179,8 +182,13 @@ def router_apres_controle(reception, user):
         qte = int(quantite_entree_ligne_reception(ligne) or 0)
         if ligne.produit_id is None or qte <= 0:
             continue
+        # AAPV21 — le blocage porte le lot reçu (FEFO et « Sortir » le voient).
+        from .models import LotEntrepot
+        lot = (LotEntrepot.objects.filter(
+            company=reception.company, produit_id=ligne.produit_id,
+            numero_lot=ligne.numero_lot).first() if getattr(ligne, 'numero_lot', None) else None)
         blocages.append(BlocageQualite.objects.create(
-            company=reception.company, produit=ligne.produit, quantite=qte,
+            company=reception.company, produit=ligne.produit, quantite=qte, lot=lot,
             reception=reception, bloque_par=user,
             statut=BlocageQualite.Statut.EN_QUARANTAINE,
             motif=(f'NTWMS34 — contrôle à réception non conforme '

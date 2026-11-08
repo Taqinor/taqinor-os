@@ -14,6 +14,9 @@ vi.mock('../../api/stockApi', () => ({
     factureFournisseurPdf: vi.fn(),
     ajouterPaiementFournisseur: vi.fn(),
     receptionEtiquettes: vi.fn(),
+    // AAPV24 — contrôle qualité à réception.
+    getEchantillonnageReception: vi.fn(() => Promise.resolve({ data: { echantillon_requis: false } })),
+    saisirControleQualiteReception: vi.fn(),
   },
 }))
 
@@ -154,7 +157,7 @@ describe('ReceptionDetail — annulation confirmée par AlertDialog (ASTK231)', 
     const dialog = await screen.findByRole('alertdialog')
     expect(stockApi.annulerReceptionFournisseur).not.toHaveBeenCalled()
     fireEvent.click(within(dialog).getByRole('button', { name: 'Annuler la réception' }))
-    await waitFor(() => expect(stockApi.annulerReceptionFournisseur).toHaveBeenCalledWith(12))
+    await waitFor(() => expect(stockApi.annulerReceptionFournisseur).toHaveBeenCalledWith(12, 'brouillon'))
     expect(onSaved).toHaveBeenCalledWith('Réception annulée.')
     expect(natif).not.toHaveBeenCalled()
     natif.mockRestore()
@@ -167,5 +170,44 @@ describe('ReceptionDetail — annulation confirmée par AlertDialog (ASTK231)', 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Annuler' }))
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
     expect(stockApi.annulerReceptionFournisseur).not.toHaveBeenCalled()
+  })
+
+  it("une réception confirmée propose l'annulation et affiche le refus serveur", async () => {
+    // AAPV13 — contre-passation annoncée ; un 409 (AAPV12) affiche son detail.
+    const confirmee = { ...brouillon, statut: 'confirme' }
+    stockApi.annulerReceptionFournisseur.mockRejectedValueOnce({
+      response: { status: 409, data: { detail: '7 unité(s) de Panneau ne sont plus en stock.' } },
+    })
+    const onSaved = vi.fn()
+    wrap(<ReceptionDetail reception={confirmee} onClose={() => {}} onSaved={onSaved} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Annuler la réception' }))
+    const dialog = await screen.findByRole('alertdialog')
+    expect(within(dialog).getByText(/contre-passée/)).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Annuler la réception' }))
+    await waitFor(() => expect(stockApi.annulerReceptionFournisseur).toHaveBeenCalledWith(12, 'confirme'))
+    expect(await screen.findByText(/ne sont plus en stock/)).toBeInTheDocument()
+    expect(onSaved).not.toHaveBeenCalled()
+  })
+})
+
+describe('ReceptionDetail — contrôle qualité', () => {
+  it('saisit le verdict puis autorise la confirmation', async () => {
+    // AAPV24 — plan applicable : « Confirmer » bloqué jusqu'au verdict.
+    const brouillon = {
+      id: 21, reference: 'REC-21', statut: 'brouillon', bon_commande_reference: 'BCF-21',
+      lignes: [{ id: 1, produit_nom: 'Batterie', quantite: 5 }],
+    }
+    stockApi.getEchantillonnageReception.mockResolvedValueOnce({
+      data: { echantillon_requis: true, unites_attendues: 1, controle: null } })
+    stockApi.saisirControleQualiteReception.mockResolvedValueOnce({
+      data: { id: 7, resultat: 'conforme', unites_controlees: 1 } })
+    wrap(<ReceptionDetail reception={brouillon} onClose={() => {}} onSaved={() => {}} />)
+    const confirmer = screen.getByRole('button', { name: /Confirmer \(incrémente le stock\)/ })
+    await screen.findByRole('region', { name: 'Contrôle qualité' })
+    expect(confirmer).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Conforme' }))
+    await waitFor(() => expect(stockApi.saisirControleQualiteReception).toHaveBeenCalledWith(
+      21, { resultat: 'conforme', unites_controlees: 1 }))
+    await waitFor(() => expect(confirmer).not.toBeDisabled())
   })
 })

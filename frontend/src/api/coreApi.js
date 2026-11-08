@@ -186,6 +186,8 @@ const coreApi = {
     list: () => api.get('/core/dashboards/'),
     updateLayout: (id, layout) =>
       api.patch(`/core/dashboards/${id}/`, { layout }),
+    // NTI18N53 — données de tous les widgets (NTDATA32 `donnees`).
+    donnees: (id) => api.get(`/core/dashboards/${id}/donnees/`),
   },
 
   // XPLT10 — partage de dashboard : lien public tokenisé (créer/révoquer) +

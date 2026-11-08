@@ -174,6 +174,23 @@ class LigneViewSetTests(_Base):
         self.assertFalse(ser.is_valid())
         self.assertIn('tva_base_legale', ser.errors)
 
+    def test_modification_base_videe_sur_ligne_a_zero_409(self):
+        """ENF51 — la règle publiée ne juge le corps que s'il porte le taux :
+        vider la base d'une ligne DÉJÀ à 0 % est un refus d'état (409)."""
+        from core.conflit_etat import ConflitEtat
+        from apps.ventes.serializers import LigneDevisSerializer
+        r = self._replace([self._ligne(taux_tva='0.00', tva_base_legale=BASE)])
+        self.assertEqual(r.status_code, 200, r.content)
+        ligne = self.devis.lignes.get()
+        ser = LigneDevisSerializer(ligne, data={'tva_base_legale': ''},
+                                   partial=True)
+        with self.assertRaises(ConflitEtat):
+            ser.is_valid()
+        ser = LigneDevisSerializer(ligne, data={'tva_base_legale': '',
+                                                'taux_tva': '0'}, partial=True)
+        self.assertFalse(ser.is_valid())
+        self.assertIn('tva_base_legale', ser.errors)
+
     def test_serialiseur_accepte_zero_avec_base(self):
         from apps.ventes.serializers import LigneDevisSerializer
         ser = LigneDevisSerializer(data={

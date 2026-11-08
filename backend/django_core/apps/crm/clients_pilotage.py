@@ -11,6 +11,7 @@ from . import stages
 from .leads_doublons import normalize_email, normalize_phone
 from .leads_socle import _company_fallback_managers
 from .models import Client, LeadActivity
+from .activity import creer_activite, journal_systeme
 
 logger = logging.getLogger(__name__)
 
@@ -76,8 +77,8 @@ def detecter_signal_interet_salle_vente(salle):
         ).exists()
         if deja_note:
             return None
-        note = LeadActivity.objects.create(
-            company=lead.company, lead=lead, user=None,
+        note = journal_systeme(
+            company=lead.company, lead=lead,
             kind=LeadActivity.Kind.NOTE,
             body=(
                 f"signal d'intérêt fort — {nb_vues} consultations distinctes "
@@ -204,8 +205,8 @@ def handle_parrainage_signup(lead) -> None:
                 # tombent ici : sans trace, la 2e recommandation disparaissait
                 # du CRM sans que personne ne puisse savoir qu'elle a existé.
                 # Une note sobre sur le NOUVEAU lead, jamais un 2e Parrainage.
-                LeadActivity.objects.create(
-                    company=lead.company, lead=lead, user=None,
+                journal_systeme(
+                    company=lead.company, lead=lead,
                     kind=LeadActivity.Kind.NOTE,
                     body=(f'{PARRAINAGE_DEJA_ENREGISTRE_MARKER} (parrain '
                           f'{parrain.nom}, '
@@ -215,8 +216,8 @@ def handle_parrainage_signup(lead) -> None:
                 return
             # Parrain DIFFÉRENT sur re-soumission : cas ambigu — on GARDE le
             # premier parrainage (jamais réattribué), on note l'ignoré.
-            LeadActivity.objects.create(
-                company=lead.company, lead=lead, user=None,
+            journal_systeme(
+                company=lead.company, lead=lead,
                 kind=LeadActivity.Kind.NOTE,
                 body=(f'{PARRAINAGE_IGNORED_MARKER} (déjà parrainé par '
                       f'{existing_signup.parrain.nom}).'),
@@ -228,8 +229,8 @@ def handle_parrainage_signup(lead) -> None:
             filleul_lead=lead, filleul_nom=lead.nom or '',
             statut=Parrainage.Statut.EN_ATTENTE,
         )
-        LeadActivity.objects.create(
-            company=lead.company, lead=lead, user=None,
+        journal_systeme(
+            company=lead.company, lead=lead,
             kind=LeadActivity.Kind.NOTE,
             body=f'{PARRAINAGE_SIGNUP_MARKER} — parrain : {parrain.nom}.',
         )
@@ -459,7 +460,7 @@ def _transitionner_deal(deal, geste, user):
                 deal.statut = ancien
                 raise ValidationError({'statut': exc.messages}) from exc
         deal.save(update_fields=['statut'])
-        LeadActivity.objects.create(
+        creer_activite(
             company=deal.lead.company, lead=deal.lead, user=user,
             kind=LeadActivity.Kind.NOTE,
             body=(f"Deal apporteur « {deal.apporteur.nom} » : "

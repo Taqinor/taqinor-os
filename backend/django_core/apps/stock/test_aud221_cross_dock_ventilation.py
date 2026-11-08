@@ -58,13 +58,14 @@ class Aud221Base(TestCase):
     def _reception(self, quantite):
         reception = ReceptionFournisseur.objects.create(
             company=self.company, reference=f'REC-AUD221-{quantite}',
-            bon_commande=self.bcf, date_reception=DATE_REF)
+            bon_commande=self.bcf, date_reception=DATE_REF,
+            statut=ReceptionFournisseur.Statut.CONFIRME)  # AAPV38
         ligne_bcf = LigneBonCommandeFournisseur.objects.create(
             bon_commande=self.bcf, produit=self.produit, quantite=quantite,
             prix_achat_unitaire=self.produit.prix_achat)
         LigneReceptionFournisseur.objects.create(
             reception=reception, ligne_commande=ligne_bcf,
-            produit=self.produit, quantite=quantite)
+            produit=self.produit, quantite=quantite, quantite_appliquee=quantite)
         return reception
 
     def _vague(self, quantite):

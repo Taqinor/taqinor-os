@@ -144,6 +144,20 @@ class ImputationAcompteTests(TestCase):
             {'montant': '600'}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
 
+    def test_bcf_verrouille_apres_imputation(self):
+        """AAPV63 — PATCH du BCF d'un acompte imputé : 400, BCF d'origine."""
+        acompte = self._acompte(Decimal('1200'))
+        self._facturer(25)
+        autre = BonCommandeFournisseur.objects.create(
+            company=self.company, reference='BCF-AAPV63', fournisseur=self.fournisseur)
+        resp = self.api.patch(
+            f'/api/django/stock/acomptes-fournisseur/{acompte.id}/',
+            {'bon_commande': autre.id}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('bon de commande', str(resp.data['bon_commande']))
+        acompte.refresh_from_db()
+        self.assertEqual(acompte.bon_commande_id, self.bcf.id)
+
 
 class AcompteApresFactureTests(ImputationAcompteTests):
     """ERR-ASTK106-ACOMPTE-APRES-FACTURE-NON-IMPUTE — un acompte saisi APRÈS

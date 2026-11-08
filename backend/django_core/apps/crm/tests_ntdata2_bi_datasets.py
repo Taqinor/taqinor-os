@@ -98,3 +98,45 @@ class CrmBiDatasetsTests(TestCase):
             CLIENTS_DATASET, self.company, self.user,
             {'select': ['ville', 'type']})
         self.assertEqual(lignes[0]['ville'], 'Casablanca')
+
+    def test_widget_repartition_langue_documentaire(self):
+        """NTI18N53 — acceptation : le widget se configure dans le ``layout``
+        d'un ``core.Dashboard`` existant (aucun nouveau modèle), compte les
+        clients DE LA SOCIÉTÉ par langue documentaire, zéros compris, et
+        reflète l'état de la base à chaque ouverture (aucun cache)."""
+        from core import dashboard_data
+        from core.models import Dashboard
+
+        Client.objects.create(company=self.company, nom='CF',
+                              langue_document='fr')
+        Client.objects.create(company=self.company, nom='CA1',
+                              langue_document='ar')
+        Client.objects.create(company=self.company, nom='CA2',
+                              langue_document='ar')
+        Client.objects.create(company=self.autre, nom='CX',
+                              langue_document='ar')
+        dash = Dashboard.objects.create(
+            company=self.company, titre='Langues', layout={'widgets': [
+                {'id': 'langues',
+                 'type': dashboard_data.TYPE_REPARTITION_LANGUE}]})
+
+        def ouvrir():
+            res = dashboard_data.executer_dashboard(
+                dash, self.company, self.user)['widgets'][0]
+            self.assertNotIn('erreur', res)
+            return res
+
+        res = ouvrir()
+        self.assertEqual(res['graphique'], 'camembert')
+        self.assertEqual(res['titre'],
+                         dashboard_data.REPARTITION_LANGUE['titre'])
+        self.assertEqual(res['rows'], [
+            {'langue': 'fr', 'nombre': 1},
+            {'langue': 'ar', 'nombre': 2},
+            {'langue': 'en', 'nombre': 0},
+        ])
+        self.assertEqual(res['total'], 3)
+
+        Client.objects.create(company=self.company, nom='CF2',
+                              langue_document='fr')
+        self.assertEqual(ouvrir()['rows'][0], {'langue': 'fr', 'nombre': 2})

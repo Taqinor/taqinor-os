@@ -85,6 +85,32 @@ class FactureVerrouTests(TestCase):
         cap = self.api.get(f'{URL}comptes-a-payer/').data['results']
         self.assertNotIn(self.payee.pk, [f['id'] for f in cap])
 
+    def test_seconde_facture_imputee_par_acompte_verrouillee(self):
+        """AAPV42 — une facture imputée d'acompte SANS porter la FK
+        `facture_imputee` (seconde facture du BCF) reste verrouillée."""
+        from apps.stock.models import (
+            AcompteFournisseur, BonCommandeFournisseur, ImputationAcompteFournisseur,
+        )
+        bcf = BonCommandeFournisseur.objects.create(
+            company=self.company, reference='BCF-AAPV42', fournisseur=self.fournisseur,
+            statut=BonCommandeFournisseur.Statut.ENVOYE)
+        f2 = FactureFournisseur.objects.create(
+            company=self.company, reference='FF-AAPV42-2', fournisseur=self.fournisseur,
+            bon_commande=bcf, date_facture=datetime.date(2026, 9, 3),
+            montant_ttc=Decimal('3000'))
+        acompte = AcompteFournisseur.objects.create(
+            company=self.company, bon_commande=bcf, montant=Decimal('5000'),
+            facture_imputee=self.non_reglee)
+        ImputationAcompteFournisseur.objects.create(
+            company=self.company, acompte=acompte, facture=f2, montant=Decimal('2000'))
+        for body in ({'bon_commande': None}, {'montant_ttc': '500'}):
+            rep = self._patch(f2, body)
+            self.assertEqual(rep.status_code, 409, (body, rep.data))
+            self.assertIn('montants verrouillés', str(rep.data))
+        f2.refresh_from_db()
+        self.assertEqual(f2.montant_ttc, Decimal('3000'))
+        self.assertEqual(f2.bon_commande_id, bcf.pk)
+
     def test_champ_non_monetaire_reste_editable(self):
         rep = self._patch(self.payee, {'note': 'archivée',
                                        'montant_ttc': '1000.00'})

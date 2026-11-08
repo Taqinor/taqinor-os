@@ -355,6 +355,21 @@ def serie_entrepot_scoped_by_serial(company, produit_id, numero_serie):
             .first())
 
 
+def series_en_stock(company, produit_id, numeros):
+    """AAPV22 — {numéro: référence de réception} des séries de ``numeros``
+    déjà en rayon (EN_STOCK ou RESERVE) pour ce produit, scopé société.
+    Lecture cross-app consommée par stock (refus d'un doublon à l'entrée)."""
+    from .models import SerieEntrepot
+    numeros = [n for n in (numeros or []) if n]
+    if company is None or produit_id is None or not numeros:
+        return {}
+    return dict(SerieEntrepot.objects.filter(
+        company=company, produit_id=produit_id, numero_serie__in=numeros,
+        statut__in=[SerieEntrepot.Statut.EN_STOCK,
+                    SerieEntrepot.Statut.RESERVE],
+    ).values_list('numero_serie', 'reference_reception'))
+
+
 def reserved_quantities_for_company(company):
     """Map {produit_id: quantité réservée active} pour toute la société —
     chantier (N14) + ordre d'assemblage (XMFG2), un seul agrégat par source
@@ -385,6 +400,26 @@ def own_reservation_map(installation):
             .filter(installation=installation)
             .values_list('produit_id', 'quantite'))
     return {pid: qte for pid, qte in rows}
+
+
+def reservations_anterieures_map(installation):
+    """AAPV70 — {produit_id: quantité} déjà promise par les réservations
+    actives non consommées des AUTRES chantiers posées AVANT celle de ce
+    chantier (ordre ``(date_creation, id)`` ; toutes si le chantier n'en a
+    pas pour ce produit), + les réservations d'assemblage actives. Le stock
+    sert d'abord ces réservations antérieures (contrat lu par AAPV15)."""
+    base = _active_reservations().filter(company=installation.company_id)
+    propres = {pid: (dc, rid) for pid, dc, rid in base.filter(
+        installation=installation).values_list('produit_id', 'date_creation', 'id')}
+    out = {pid: 0 for pid in propres}
+    for pid, qte, dc, rid in base.exclude(installation=installation).values_list(
+            'produit_id', 'quantite', 'date_creation', 'id'):
+        if pid not in propres or (dc, rid) < propres[pid]:
+            out[pid] = out.get(pid, 0) + (qte or 0)
+    for pid, qte in _active_reservations_assemblage().filter(
+            company=installation.company_id).values_list('produit_id', 'quantite'):
+        out[pid] = out.get(pid, 0) + (qte or 0)
+    return out
 
 
 def update_installation_lead(absorbed_lead, survivor_lead):
@@ -1717,7 +1752,9 @@ def bcf_approbation_valide(company, bcf_id, montant):
     total du BCF depuis l'approbation invalide celle-ci (cohérent avec la
     ré-approbation XPUR18). Lecture seule, jamais d'écriture ici."""
     from decimal import Decimal
-    from .models_approbation_bcf import ApprobationBCF
+    from .models_approbation_bcf import (
+        PALIER_ADMIN, PALIER_RESPONSABLE, ApprobationBCF,
+    )
 
     seuil = seuil_approbation_bcf_actif(company)
     if seuil is None:
@@ -1731,7 +1768,9 @@ def bcf_approbation_valide(company, bcf_id, montant):
                    .first())
     if approbation is None:
         return False
-    if approbation.palier != palier_requis:
+    # AAPV48 — un palier SUPÉRIEUR OU ÉGAL au requis reste valide.
+    rang = {PALIER_RESPONSABLE: 0, PALIER_ADMIN: 1}
+    if rang.get(approbation.palier, -1) < rang.get(palier_requis, 0):
         return False
     if (approbation.montant_approuve or Decimal('0')) < montant:
         return False

@@ -416,7 +416,7 @@ def journaliser_message_visite_ouvert(lead, user, *, cle, langue, etape=None):
     else:
         corps = (f'WhatsApp ouvert — message de visite « {quoi} » en '
                  f'{langue_txt} : message préparé, rien n’est marqué fait.')
-    activite = LeadActivity.objects.create(
+    activite = activity.creer_activite(
         company=lead.company, lead=lead, user=user,
         kind=LeadActivity.Kind.WHATSAPP, body=corps)
     marquer_premier_contact(lead)

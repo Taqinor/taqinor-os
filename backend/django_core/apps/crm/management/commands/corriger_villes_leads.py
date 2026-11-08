@@ -13,6 +13,7 @@ from django.core.management.base import BaseCommand
 
 from apps.crm.models import Lead, LeadActivity
 from apps.parametres.villes_resolution import resoudre_ville
+from apps.crm.activity import journal_systeme
 
 
 class Command(BaseCommand):
@@ -54,8 +55,8 @@ class Command(BaseCommand):
             avant = lead.ville
             lead.ville = canon
             lead.save(update_fields=['ville'])
-            LeadActivity.objects.create(
-                company=lead.company, lead=lead, user=None,
+            journal_systeme(
+                company=lead.company, lead=lead,
                 kind=LeadActivity.Kind.NOTE,
                 body=f'Ville corrigée automatiquement : '
                      f'« {avant} » → « {canon} » (gazetier).')

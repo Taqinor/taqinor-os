@@ -160,7 +160,44 @@ class TestEndpointsRebut(Ntwms24Base):
     URL = '/api/django/stock/mouvements-rebut/'
     URL_PERTES = '/api/django/stock/entrepot/pertes/'
 
+    def _roled(self, nom, permissions):
+        from apps.roles.models import Role
+        role = Role.objects.create(
+            company=self.company, nom=nom, permissions=permissions)
+        return User.objects.create_user(
+            username=f'ntwms24_{nom}', password='x', role_legacy='normal',
+            company=self.company, role=role)
+
+    def test_rebut_sous_stock_mouvement_et_valeur_masquee(self):
+        # AAPV36 : Commercial/Viewer 403 (stock inchangé) ; Technicien 201
+        # sans valeur_perte faute de prix_achat_voir ; admin la voit.
+        corps = {'produit': self.produit.id, 'quantite': 30, 'motif': 'casse'}
+        commercial = self._roled('commercial', ['stock_voir'])
+        viewer = self._roled('viewer', [])
+        for intrus in (commercial, viewer):
+            self.assertEqual(auth(intrus).post(
+                self.URL, corps, format='json').status_code, 403)
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.quantite_stock, 50)
+        technicien = self._roled('technicien', ['stock_mouvement'])
+        reponse = auth(technicien).post(self.URL, corps, format='json')
+        self.assertEqual(reponse.status_code, 201, reponse.content)
+        self.assertNotIn('valeur_perte', reponse.data)
+        liste = auth(technicien).get(self.URL)
+        for ligne in liste.data.get('results', liste.data):
+            self.assertNotIn('valeur_perte', ligne)
+        # 50 − 30 = 20 en stock : le second rebut en déclare 10.
+        voit = self._roled('direction', ['stock_mouvement', 'prix_achat_voir'])
+        reponse = auth(voit).post(
+            self.URL, {**corps, 'quantite': 10}, format='json')
+        self.assertEqual(reponse.status_code, 201, reponse.content)
+        self.assertEqual(reponse.data['valeur_perte'], '10000.00')
+
     def test_magasinier_peut_declarer(self):
+        # Réaligné AAPV36 : le magasinier porte `stock_mouvement` (+ le droit
+        # de voir les prix d'achat pour lire la valeur de la perte).
+        self.magasinier = self._roled(
+            'magasinier_roled', ['stock_mouvement', 'prix_achat_voir'])
         reponse = auth(self.magasinier).post(self.URL, {
             'produit': self.produit.id, 'quantite': 2, 'motif': 'casse',
             'bin': self.casier.id, 'note': 'Casse chariot',

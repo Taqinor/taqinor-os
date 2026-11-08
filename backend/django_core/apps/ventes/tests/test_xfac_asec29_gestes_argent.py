@@ -379,8 +379,8 @@ class GestesArgentTests(TestCase):
                 self.assertEqual(r.status_code, 200, getattr(r, 'data', None))
 
     def test_get_permissions_respecte_action(self):
-        from apps.ventes.views.facture import FactureViewSet
-        from apps.ventes.views.facture_gardes import PeutEncaisser
+        from apps.facturation.views.facture import FactureViewSet
+        from apps.facturation.views.facture_gardes import PeutEncaisser
         fabrique = APIRequestFactory()
         for action in ('enregistrer_paiement', 'abandonner_solde',
                        'creer_avoir', 'encaissement_groupe'):

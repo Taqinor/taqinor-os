@@ -193,10 +193,11 @@ class TestEmplacementApi(EmplacementBase):
         total = sum(b['quantite'] for b in r.json())
         self.assertEqual(total, 10)
 
-    def test_lectures_declarees_admin_refusees_a_un_commercial(self):
-        # ENF15 — `emplacements` (produit) et `van-stock/a-reapprovisionner`
-        # DÉCLARENT IsAdminRole, la règle réelle : un Commercial reçoit le 403
-        # de cette permission déclarée (garde ASTK243 du balayage stock).
+    def test_lectures_declarees_refusees_a_un_commercial(self):
+        # ENF15 — `van-stock/a-reapprovisionner` DÉCLARE IsAdminRole et
+        # `emplacements` (produit) le droit du transfert `stock_mouvement`
+        # (AAPV74) : un Commercial hérité reçoit le 403 de la permission
+        # déclarée (garde ASTK243 du balayage stock).
         commercial = User.objects.create_user(
             username='emp_commercial', password='x', role_legacy='commercial',
             company=self.company)
@@ -206,6 +207,38 @@ class TestEmplacementApi(EmplacementBase):
         self.assertEqual(r.status_code, 403)
         r = api.get('/api/django/stock/emplacements/van-stock/a-reapprovisionner/')
         self.assertEqual(r.status_code, 403)
+
+    def _role_user(self, nom, username):
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        role = Role.objects.create(company=self.company, nom=nom,
+                                   permissions=dict(CANONICAL_SYSTEM_ROLES)[nom])
+        return User.objects.create_user(username=username, password='x',
+                                        company=self.company, role=role)
+
+    def test_ventilation_lisible_avec_le_droit_du_transfert(self):
+        # AAPV74 (rejeu 08/11) — le dialogue « Transférer » lit la ventilation :
+        # quiconque peut POSTer un transfert (`stock_mouvement`) doit la lire.
+        # Avant : IsAdminRole → 403 pour un Responsable → « dispo 0 ».
+        resp = self._role_user('Responsable', 'emp_resp')
+        self.assertTrue(resp.has_erp_permission('stock_mouvement'))
+        url = f'/api/django/stock/produits/{self.produit.id}/emplacements/'
+        r = auth(resp).get(url)
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(sum(b['quantite'] for b in r.json()), 10)
+        # Un rôle sans le droit du transfert reste refusé.
+        viewer = self._role_user('Viewer', 'emp_viewer')
+        self.assertFalse(viewer.has_erp_permission('stock_mouvement'))
+        self.assertEqual(auth(viewer).get(url).status_code, 403)
+
+    def test_ventilation_autre_societe_404(self):
+        other = make_company(slug='emp-autre', nom='Emp Autre')
+        etranger = Produit.objects.create(
+            company=other, nom='Panneau autre', sku='PAN-AUTRE',
+            prix_vente=Decimal('150'), quantite_stock=5)
+        resp = self._role_user('Responsable', 'emp_resp2')
+        r = auth(resp).get(f'/api/django/stock/produits/{etranger.id}/emplacements/')
+        self.assertEqual(r.status_code, 404, r.content)
 
     def test_transfert_endpoint(self):
         ensure_emplacements(self.company)

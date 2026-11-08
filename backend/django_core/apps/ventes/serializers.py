@@ -272,13 +272,16 @@ class LigneDevisSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
                        'Une ligne produit doit référencer un produit.')
             # AGR217 (contrat AGR200) — une ligne enregistrée à 0 % porte sa
             # base légale (création comme modification). Aucun taux changé.
+            # ENF51 : en modification le refus vient du corps seulement quand
+            # le corps porte le TAUX (règle publiée ``_REGLES_LIGNE_DEVIS``) ;
+            # une base vidée sur une ligne déjà à 0 % = refus d'état, 409.
             taux = attrs.get('taux_tva', getattr(instance, 'taux_tva', None))
             base = attrs.get('tva_base_legale',
                              getattr(instance, 'tva_base_legale', ''))
             if taux is not None and taux == 0 and not (base or '').strip():
                 _refus('tva_base_legale',
                        'Une base légale est obligatoire pour un taux de TVA '
-                       'de 0 %.', corps=('taux_tva', 'tva_base_legale'))
+                       'de 0 %.', corps=('taux_tva',))
             self._poser_marqueurs_saisie(attrs, instance)
         return attrs
 

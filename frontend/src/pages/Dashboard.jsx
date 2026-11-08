@@ -46,6 +46,7 @@ import { ModuleHero } from '../ui/module/ModuleHero.jsx'
 import { fetchProduits } from '../features/stock/store/stockSlice'
 import { fetchClients, fetchLeads } from '../features/crm/store/crmSlice'
 import { fetchDevis, fetchFactures } from '../features/ventes/store/ventesSlice'
+import { useDeviseTenant } from '../hooks/useDeviseTenant'
 import { useCanLireVentes, useCanLireEquipesCrm } from '../hooks/useHasPermission'
 import { fetchInstallations } from '../features/installations/store/installationsSlice'
 // VX27 — cockpit du matin par rôle : le SAV réutilise les helpers de statut/SLA
@@ -68,7 +69,7 @@ import {
 } from '../ui'
 import { StateBlock } from '../components/StateBlock'
 import { cn } from '../lib/cn'
-import { formatMAD, formatNumber, formatPercent, formatDate } from '../lib/format'
+import { formatMAD, formatMontant, formatNumber, formatPercent, formatDate } from '../lib/format'
 import { STATUT_DEVIS_LABELS } from '../features/ventes/devisStatuts'
 // ODY27 — le Dashboard est une surface TRANSVERSE : ses cartes, KPI et
 // segments pointent vers plusieurs apps. Ils sont filtrés par la source
@@ -457,6 +458,9 @@ export function Component() {
   const navigate = useNavigate()
   // ODY27 — source UNIQUE de la visibilité des apps (ODY1).
   const { isPathVisible } = useAppVisibility()
+  // NTI18N9 — montants agrégés (KPI/graphiques) dans la devise société ; les
+  // lignes de documents (factures, alertes) gardent leur propre devise (FG52).
+  const devise = useDeviseTenant()
   const { produits, loading: stockLoading, error: stockError } = useSelector((s) => s.stock)
   const { clients, leads, loading: crmLoading, error: crmError } = useSelector((s) => s.crm)
   const { devis, factures, loading: ventesLoading, error: ventesError } = useSelector((s) => s.ventes)
@@ -1069,7 +1073,7 @@ export function Component() {
                     Chiffre d'affaires · 6 mois
                   </span>
                   <div className="num mt-1 text-4xl font-semibold leading-none text-foreground">
-                    {formatMAD(caTotal, { decimals: 0 })}
+                    {formatMontant(caTotal, { decimals: 0, devise })}
                   </div>
                 </div>
                 <Badge tone="success">
@@ -1101,7 +1105,7 @@ export function Component() {
           <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-2">
             <ChartCard
               title="Chiffre d'affaires mensuel"
-              description={`Paiements reçus HT · ${formatMAD(caTotal, { decimals: 0 })} sur 6 mois`}
+              description={`Paiements reçus HT · ${formatMontant(caTotal, { decimals: 0, devise })} sur 6 mois`}
               isEmpty={servis.refuseReporting || caMensuel.every((m) => m.ca === 0)}
               emptyLabel={servis.refuseReporting
                 ? "Accès réservé : chiffre d'affaires visible par la direction."
@@ -1117,7 +1121,7 @@ export function Component() {
                       courante en trait plein (palette CA), précédente en
                       pointillé (CHART_COMPARISON_STYLE). */}
                   <CaCompareChart data={caMensuelCompare} height={180}
-                    format={(v) => formatMAD(v, { decimals: 0 })} />
+                    format={(v) => formatMontant(v, { decimals: 0, devise })} />
                 </>
               ) : (
                 <AreaSansAxe
@@ -1127,7 +1131,7 @@ export function Component() {
                   tone="primary"
                   name="CA HT"
                   height={180}
-                  tooltipFormat={(v) => formatMAD(v, { decimals: 0 })}
+                  tooltipFormat={(v) => formatMontant(v, { decimals: 0, devise })}
                 />
               )}
             </ChartCard>
@@ -1175,7 +1179,7 @@ export function Component() {
 
             <ChartCard
               title="Encours clients (balance âgée)"
-              description={`${formatMAD(encoursTotal, { decimals: 0 })} à recouvrer`}
+              description={`${formatMontant(encoursTotal, { decimals: 0, devise })} à recouvrer`}
               isEmpty={encoursTotal === 0}
               emptyLabel="Aucun encours client à recouvrer."
             >
@@ -1187,7 +1191,7 @@ export function Component() {
                 name="Montant dû"
                 height={180}
                 barSize={40}
-                tooltipFormat={(v) => formatMAD(v, { decimals: 0 })}
+                tooltipFormat={(v) => formatMontant(v, { decimals: 0, devise })}
               />
             </ChartCard>
           </div>

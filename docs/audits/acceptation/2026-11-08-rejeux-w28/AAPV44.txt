@@ -1,0 +1,14 @@
+# Preuve en direct AAPV44 — rejeu w28, code b00242be0 (dev-plan-6a6fc9-w28), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w28-django (conteneur privé : code de CE worktree, base privée
+# erp_accept_w28, transaction annulée, mail en mémoire, Celery coupé, HTTP sortant bloqué). « oc » = variante
+# scratchpad sonde_oc.py identique sauf transaction.on_commit exécuté immédiatement (événements « après commit »
+# qui ne partiraient jamais dans la transaction annulée). Sur le code corrigé, verdict ÉCART = repro False = attendu.
+# Sondes C-LIVE-* (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Verdict : PASS — Sonde C-AAPV-053 (oc) : facture en EUR (taux 10,8), HT/TVA convertis 10 800/2 160, RAS 2 160 => repro False.
+
+== C-AAPV-053 (sha 5f603acce)
+attendu : repro si R1 facture.devise == MAD (EUR perdu) et paiement 13200 refusé ; R2 HT/TVA restent 1000/200 pour TTC 12960 MAD et RAS 200
+observé : {'R1_bcf': ('EUR', '10.800000'), 'R1_facture': {'devise': 'EUR', 'taux': '10.800000', 'ttc_devise': '1200.00', 'ht': '10800.00', 'ttc': '12960.00'}, 'R1_paiement_taux_11': (409, "{'detail': ErrorDetail(string='Le montant dépasse le solde dû (12960.00).', code='state_conflict'), 'error': {'code': 'state_conflict', 'mes"), 'R2_creation': 201, 'R2_facture': {'ht': '10800.00', 'tva': '2160.00', 'ttc': '12960.00', 'devise': 'EUR'}, 'R2_paiement': (201, '2160.00'), 'R2_ras_attendue': '2160.00'}
+{"R1_bcf": ["EUR", "10.800000"], "R1_facture": {"devise": "EUR", "taux": "10.800000", "ttc_devise": "1200.00", "ht": "10800.00", "ttc": "12960.00"}, "R1_paiement_taux_11": [409, "{'detail': ErrorDetail(string='Le montant dépasse le solde dû (12960.00).', code='state_conflict'), 'error': {'code': 'state_conflict', 'mes"], "R2_creation": 201, "R2_facture": {"ht": "10800.00", "tva": "2160.00", "ttc": "12960.00", "devise": "EUR"}, "R2_paiement": [201, "2160.00"], "R2_ras_attendue": "2160.00", "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0

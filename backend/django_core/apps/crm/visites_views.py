@@ -461,7 +461,9 @@ class LeadVisitesActionsMixin:
         (tentative + premier contact + AuditLog) — JAMAIS « fait » : aucune
         issue, aucune touche avancée. ``etape`` (une touche à faire de CE lead)
         rattache l'ouverture à la touche, que son panneau « Fait » reconnaît.
-        Refus 400 nommant le champ (``cle``, ``langue``, ``etape``)."""
+        Refus 400 nommant le champ (``cle``, ``langue``, ``etape``) ; une
+        ``etape`` numérique qui ne désigne aucune touche à faire de CE lead
+        = 409 nommé (ENF51)."""
         from .cadence_messages import (
             LANGUES_MESSAGE_VISITE,
             cle_message_visite_autorisee,
@@ -497,9 +499,9 @@ class LeadVisitesActionsMixin:
                          .filter(pk=int(brut), lead=lead, company=lead.company,
                                  statut=RelanceEtape.Statut.A_FAIRE)
                          .first())
-            if etape is None:  # ERR-ENF11-FUZZ-CRM : id inconnu → 404
-                from rest_framework.exceptions import NotFound
-                refus = NotFound if brut.isdigit() else DRFValidationError
+            if etape is None:  # ENF51 : le lead existe, la touche nommée non → 409 (règle d'ENF40)
+                from core.conflit_etat import ConflitEtat
+                refus = ConflitEtat if brut.isdigit() else DRFValidationError
                 raise refus({'erreurs': {'etape': (
                     '« Touche » : aucune touche à faire de ce lead ne porte '
                     f'l’identifiant « {brut} ».')}})

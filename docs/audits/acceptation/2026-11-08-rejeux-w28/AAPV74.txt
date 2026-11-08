@@ -1,0 +1,27 @@
+# Preuve en direct AAPV74 — rejeu w28, code b00242be0 (dev-plan-6a6fc9-w28), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w28-django (conteneur privé : code de CE worktree, base privée
+# erp_accept_w28, transaction annulée, mail en mémoire, Celery coupé, HTTP sortant bloqué). « oc » = variante
+# scratchpad sonde_oc.py identique sauf transaction.on_commit exécuté immédiatement (événements « après commit »
+# qui ne partiraient jamais dans la transaction annulée). Sur le code corrigé, verdict ÉCART = repro False = attendu.
+# Sondes C-LIVE-* (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Écran : front de CE worktree servi par vite (127.0.0.1:5199) -> conteneur privé accept-w28-web (runserver, base
+# erp_accept_w28, SMTP 127.0.0.1:1 = aucune messagerie), piloté par Playwright MCP. Données d'écran = états des sondes
+# rejouées SANS rollback dans la base privée (comptes de test des sondes, mot de passe de test) ou fixtures FIX-*.
+# Verdict : FAIL — Sonde C-AAPV-084 : PASS. Écran NON JOUABLE : aucun bouton « Transférer » pour le Technicien (StockList conditionné à stock_modifier).
+
+== C-AAPV-084 (sha 6ffa876688)
+attendu : repro si A : PATCH 200 et executer 200 (50 transférés) ; B : 3 × 201 ; T : 409
+observé : {'tech_a_stock_mouvement': True, 'T_direct_sans_demande': (409, '{\'detail\': "Ce transfert dépasse le seuil d\'approbation de la société : exécutez la demande de transfert approuvée."}'), 'A': {'creer': 201, 'approuver': 200, 'patch_apres_approbation': 409, 'quantite_apres_patch': None, 'executer': 200, 'detail': None, 'au_van': 5}, 'B': {'creer': 201, 'approuver': 200, 'directs_technicien': [(409, '{\'detail\': "Ce transfert dépasse le seuil d\'approbation de la société : exécutez la demande de transfert approuvée."}'), (409, '{\'detail\': "Ce transfert dépasse le seuil d\'approbation de la société : exécutez la demande de transfert approuvée."}'), (409, '{\'detail\': "Ce transfert dépasse le seuil d\'approbation de la société : exécutez la demande de transfert approuvée."}')], 'transferts_ajoutes_au_van': 0, 'demande_statut': 'approuve', 'nb_transferts_total': 1}}
+{"tech_a_stock_mouvement": true, "T_direct_sans_demande": [409, "{'detail': \"Ce transfert dépasse le seuil d'approbation de la société : exécutez la demande de transfert approuvée.\"}"], "A": {"creer": 201, "approuver": 200, "patch_apres_approbation": 409, "quantite_apres_patch": null, "executer": 200, "detail": null, "au_van": 5}, "B": {"creer": 201, "approuver": 200, "directs_technicien": [[409, "{'detail': \"Ce transfert dépasse le seuil d'approbation de la société : exécutez la demande de transfert approuvée.\"}"], [409, "{'detail': \"Ce transfert dépasse le seuil d'approbation de la société : exécutez la demande de transfert approuvée.\"}"], [409, "{'detail': \"Ce transfert dépasse le seuil d'approbation de la société : exécutez la demande de transfert approuvée.\"}"]], "transferts_ajoutes_au_van": 0, "demande_statut": "approuve", "nb_transferts_total": 1}, "temoin_ok": true, "defaut_A": false, "defaut_B": false, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 1, après 1) ; mails 0 ; tâches Celery bloquées 0
+
+## AAPV74 — NOT-PLAYABLE (partie écran)
+État de la sonde C-AAPV-084 rejouée sans rollback. Compte sonde_aapv_084_tech (rôle système Technicien, stock_mouvement sans
+stock_modifier) : Stock (/stock) n'offre AUCUN bouton « Transférer » (ni dans la barre ni dans le menu « Actions » : seulement
+« Pilotage », « Scanner ») — `frontend/src/pages/stock/StockList.jsx` le conditionne à `canWrite` = permission stock_modifier. Le
+chemin d'écran nommé par la clause (« StockList.jsx (transfert) en Technicien ⇒ message ») n'existe pas pour ce rôle. Essai annexe
+en Responsable (sonde_aapv_084_resp) : le dialogue de transfert refuse côté client « Quantité insuffisante à la source (0 disponible) »
+(les données de la sonde n'ont pas de répartition par emplacement) — non concluant. Le refus serveur est prouvé par la sonde
+C-AAPV-084 (T et B : 409 « Ce transfert dépasse le seuil d'approbation… »). Écart d'oracle 2 antérieur constaté sur /stock pour
+Technicien/Responsable : 4 GET produits/{previsions-reappro,expirant-bientot,rotation,a-reapprovisionner}/ en 403 (panneau Pilotage).

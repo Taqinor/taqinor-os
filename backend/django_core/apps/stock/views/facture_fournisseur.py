@@ -22,7 +22,6 @@ from ..serializers import (
 from authentication.permissions import (
     IsAnyRole,
     IsAdminRole,
-    IsResponsableOrAdmin,
     HasPermissionOrLegacy,
 )
 
@@ -89,7 +88,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
     parser_classes = [JSONParser]
 
     def get_permissions(self):
-        if self.action in ('comptes_a_payer', 'en_exception'):
+        if self.action in ('comptes_a_payer', 'en_exception', 'releve_deductions_tva'):
             # ASTK11 (D-ASTK-2) — files dont l'objet est un montant d'achat :
             # `prix_achat_voir` requis (repli légacy can_view_buy_prices).
             from ..permissions import PeutVoirPrixAchat
@@ -108,8 +107,6 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
             # régler, son échéancier, résoudre une exception, l'importer
             # (OCR/UBL) = « payer » : ``achats_payer`` (repli légacy).
             return [HasPermissionOrLegacy('achats_payer')()]
-        elif self.action == 'releve_deductions_tva':
-            return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
         return [IsAdminRole()]
@@ -165,6 +162,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         change pas `bon_commande` n'émet rien."""
         from ..services import (
             _emettre_facture_creee, evaluer_rapprochement_3_voies,
+            imputer_acomptes_bcf,
         )
         ancien_bcf_id = serializer.instance.bon_commande_id
         # ENF11 (nocturne 15/10) — en PATCH l'imbriqué `lignes` est partiel :
@@ -177,10 +175,16 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
             complet.is_valid(raise_exception=True)
         with transaction.atomic():
             facture = serializer.save()
+            if ancien_bcf_id is not None and facture.bon_commande_id != ancien_bcf_id:
+                # AAPV43 — re-pointée ou déliée : l'ancien GR/IR est rouvert.
+                from apps.installations.services import delettrer_gr_ir_facture
+                delettrer_gr_ir_facture(facture)
             if (facture.bon_commande_id is not None
                     and facture.bon_commande_id != ancien_bcf_id):
                 evaluer_rapprochement_3_voies(facture)
                 _emettre_facture_creee(facture, self.request.user)
+                # AAPV1 — les acomptes ouverts du BCF acquis s'imputent ici.
+                imputer_acomptes_bcf(facture.bon_commande)
 
     def perform_destroy(self, instance):
         """AUD207 — `PaiementFournisseur.facture` est désormais PROTECT (une
@@ -413,7 +417,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            facture = creer_facture_fournisseur_depuis_ubl(
+            facture, doublons = creer_facture_fournisseur_depuis_ubl(
                 company=request.user.company, user=request.user,
                 xml_bytes=upload.read())
         except IntrouvableMetier as exc:
@@ -423,9 +427,10 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
-        return Response(
-            self.get_serializer(facture).data,
-            status=status.HTTP_201_CREATED)
+        data = self.get_serializer(facture).data
+        if doublons:  # AAPV55 — comme depuis-ocr/
+            data['doublon_warning'] = doublons
+        return Response(data, status=status.HTTP_201_CREATED)
 
     @extend_schema(parameters=[P('date_debut', DATE_OU_VIDE), P('date_fin', DATE_OU_VIDE)], responses=LISTE)
     @action(detail=False, methods=['get'], url_path='releve-deductions-tva')

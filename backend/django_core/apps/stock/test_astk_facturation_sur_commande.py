@@ -95,6 +95,26 @@ class SurCommandeTests(_Base):
                 company=self.company, bon_commande=self.bcf).count(), 1)
         self.assertEqual(self._total_ht_bcf(), Decimal('1000.00'))
 
+    def test_bcf_brouillon_ou_annule_refuse(self):
+        """AAPV26 — BCF annulé ou brouillon : 409, aucune facture ; envoyé :
+        201 puis 409 au second appel."""
+        from rest_framework.test import APIClient
+        api = APIClient()
+        api.force_authenticate(self.user)
+        url = f'/api/django/stock/bons-commande-fournisseur/{self.bcf.id}/facturer/'
+        for statut, message in (
+                (BonCommandeFournisseur.Statut.ANNULE, 'annulé ne se facture pas'),
+                (BonCommandeFournisseur.Statut.BROUILLON, 'Envoyez le bon de commande')):
+            BonCommandeFournisseur.objects.filter(pk=self.bcf.pk).update(statut=statut)
+            r = api.post(url, {}, format='json')
+            self.assertEqual(r.status_code, 409, r.content)
+            self.assertIn(message, str(r.data))
+            self.assertEqual(self._total_ht_bcf(), None)
+        BonCommandeFournisseur.objects.filter(pk=self.bcf.pk).update(
+            statut=BonCommandeFournisseur.Statut.ENVOYE)
+        self.assertEqual(api.post(url, {}, format='json').status_code, 201)
+        self.assertEqual(api.post(url, {}, format='json').status_code, 409)
+
     def test_reception_mixte_ne_facture_que_sur_reception(self):
         l_reception = LigneBonCommandeFournisseur.objects.create(
             bon_commande=self.bcf, produit=self.p_reception, quantite=50,
@@ -127,6 +147,20 @@ class BuilderUniqueTests(_Base):
         self.addCleanup(
             facture_fournisseur_creee.disconnect,
             dispatch_uid='astk109-capte')
+
+    def test_derniere_facture_bcf(self):
+        """AAPV69 — la facture la plus récente du BCF ; None sans facture ou
+        sans BCF."""
+        from apps.stock.selectors import derniere_facture_bcf
+        self.assertIsNone(derniere_facture_bcf(self.bcf))
+        self.assertIsNone(derniere_facture_bcf(None))
+        f1 = facturer_bcf_sur_commande(self.company, self.user, self.bcf)
+        self.assertEqual(derniere_facture_bcf(self.bcf).pk, f1.pk)
+        f2 = FactureFournisseur.objects.create(
+            company=self.company, reference=f'FF-{self.slug}-AAPV69',
+            fournisseur=self.fournisseur, bon_commande=self.bcf,
+            montant_ht=Decimal('10'), montant_tva=Decimal('2'), montant_ttc=Decimal('12'))
+        self.assertEqual(derniere_facture_bcf(self.bcf).pk, f2.pk)
 
     def test_sur_commande_porte_date_facture(self):
         with frozen('2026-10-06 10:00:00'):

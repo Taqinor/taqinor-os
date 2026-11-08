@@ -1,0 +1,14 @@
+# Preuve en direct AAPV2 — rejeu w28, code b00242be0 (dev-plan-6a6fc9-w28), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w28-django (conteneur privé : code de CE worktree, base privée
+# erp_accept_w28, transaction annulée, mail en mémoire, Celery coupé, HTTP sortant bloqué). « oc » = variante
+# scratchpad sonde_oc.py identique sauf transaction.on_commit exécuté immédiatement (événements « après commit »
+# qui ne partiraient jamais dans la transaction annulée). Sur le code corrigé, verdict ÉCART = repro False = attendu.
+# Sondes C-LIVE-* (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Verdict : PASS — Sonde C-AAPV-041 (oc) : R1 (OCR TTC seul) et R2 (HT+TVA≠TTC) en « exception », paiement 409 ; témoin exception => repro False.
+
+== C-AAPV-041 (sha 5f603acce)
+attendu : repro si R1 et R2 restent « normale » et le paiement 12000 passe (201) pour 6000 TTC reçus ; T : exception
+observé : {'R1_ocr_ttc_seul': {'patch': 200, 'ht': '0.00', 'tva': '0.00', 'ttc': '12000.00', 'statut_controle': 'exception', 'solde_du': '12000.00', 'paiement_http': 409, 'paiement_detail': "{'detail': 'Paiement bloqué : facture FF-202611-0001 en exception de rapprochement 3 voies (Montants incohérents : HT 0,00 + TVA 0,00 ≠ TTC "}, 'R2_creation_http': 201, 'R2_ht_1000_ttc_12000': {'patch': 200, 'ht': '1000.00', 'tva': '200.00', 'ttc': '12000.00', 'statut_controle': 'exception', 'solde_du': '12000.00', 'paiement_http': 409, 'paiement_detail': "{'detail': 'Paiement bloqué : facture FF-202611-0002 en exception de rapprochement 3 voies (Montants incohérents : HT 1 000,00 + TVA 200,00 "}, 'T_statut_controle': 'exception', 'recu_ttc_attendu': '6000.00'}
+{"R1_ocr_ttc_seul": {"patch": 200, "ht": "0.00", "tva": "0.00", "ttc": "12000.00", "statut_controle": "exception", "solde_du": "12000.00", "paiement_http": 409, "paiement_detail": "{'detail': 'Paiement bloqué : facture FF-202611-0001 en exception de rapprochement 3 voies (Montants incohérents : HT 0,00 + TVA 0,00 ≠ TTC "}, "R2_creation_http": 201, "R2_ht_1000_ttc_12000": {"patch": 200, "ht": "1000.00", "tva": "200.00", "ttc": "12000.00", "statut_controle": "exception", "solde_du": "12000.00", "paiement_http": 409, "paiement_detail": "{'detail': 'Paiement bloqué : facture FF-202611-0002 en exception de rapprochement 3 voies (Montants incohérents : HT 1 000,00 + TVA 200,00 "}, "T_statut_controle": "exception", "recu_ttc_attendu": "6000.00", "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0

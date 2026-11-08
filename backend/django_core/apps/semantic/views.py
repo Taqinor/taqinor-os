@@ -335,8 +335,10 @@ class MetriqueValeurView(APIView):
                 'lignes': serializers.JSONField(),
             }),
             409: OpenApiResponse(
-                description='Métrique désactivée, ou adaptateur/dataset de la '
-                            'métrique absent de ce serveur (module désactivé).'),
+                description='Métrique désactivée, adaptateur/dataset de la '
+                            'métrique absent de ce serveur (module désactivé), '
+                            'ou regroupement demandé sur une métrique '
+                            'd’adaptateur.'),
         })
     def get(self, request, cle=None):
         group_by, period, filters = parametres_de_resolution(
@@ -353,10 +355,12 @@ class MetriqueValeurView(APIView):
         except services.MetriqueInconnue as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_404_NOT_FOUND)
-        except services.MetriqueIndisponible as exc:
+        except (services.MetriqueIndisponible,
+                services.MetriqueNonRegroupable) as exc:
             # ENF49 (api-fuzz-full 42128456456, UDnVtL) — adaptateur/dataset
             # ENREGISTRÉ mais absent de ce serveur : état de la métrique (409),
-            # la requête « GET sans paramètre » était conforme.
+            # la requête « GET sans paramètre » était conforme. ENF51 (VfcS6G) :
+            # `group_by` sur une métrique d'adaptateur, même nature (409).
             return Response({'detail': str(exc)},
                             status=status.HTTP_409_CONFLICT)
         except services.MetriqueNonResolvable as exc:

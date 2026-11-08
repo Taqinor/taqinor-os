@@ -136,6 +136,34 @@ class QuantiteAppliqueeTests(TestCase):
         facture = facturer_reception(self.company, self.user, rec)
         self.assertEqual(facture.montant_ht, Decimal('600.00'))
 
+    def test_total_recu_sert_la_quantite_appliquee(self):
+        """AAPV40 — sur-livraison 12 sur un reste 10 : `total_recu` servi 10."""
+        bc, ligne = self._bcf(quantite=10)
+        rec = self._creer_orm(bc, ligne, 12)
+        confirm_reception_fournisseur(rec, self.user)
+        resp = self.api.get(f'/api/django/stock/receptions-fournisseur/{rec.id}/')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.data['total_recu'], 10)
+
+    def test_series_en_trop_refusees(self):
+        """AAPV68 — 3 séries pour 2 unités à la création : 400 ; 12 séries
+        pour 10 unités entrées à la confirmation : 409, stock inchangé."""
+        from apps.stock.erreurs_achats import EtatIncompatible
+        bc, ligne = self._bcf(quantite=10)
+        resp = self.api.post(f'{BASE}/', {'bon_commande': bc.id, 'lignes': [
+            {'ligne_commande': ligne.id, 'quantite': 2, 'numeros_serie': ['S1', 'S2', 'S3']}]},
+            format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('retirez-en 1', str(resp.data))
+        rec = self._creer_orm(bc, ligne, 12)
+        rec.lignes.update(numeros_serie=[f'S{i}' for i in range(12)])
+        with self.assertRaises(EtatIncompatible) as err:
+            confirm_reception_fournisseur(rec, self.user)
+        self.assertIn('12 n° de série saisis pour 10 reçu(s) : retirez-en 2.', str(err.exception))
+        self.produit.refresh_from_db()
+        rec.refresh_from_db()
+        self.assertEqual(rec.statut, ReceptionFournisseur.Statut.BROUILLON)
+
     def test_annulation_relit_quantite_appliquee(self):
         Produit.objects.filter(pk=self.produit.pk).update(quantite_stock=5)
         bc, ligne = self._bcf(quantite=10)

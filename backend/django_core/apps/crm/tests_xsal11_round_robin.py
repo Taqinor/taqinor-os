@@ -643,3 +643,68 @@ class AttributionParResponsableWebhookTests(TestCase):
         lead = Lead.objects.get(pk=r.json()['lead_id'])
         self.assertEqual(lead.owner, chef)
         self.assertEqual(lead.attribution_en_attente.proposee, membre)
+
+
+class UnSeulRoundRobinTests(TestCase):
+    """CRXB4 — les six round-robin passent par ``rotation_equilibree`` et le
+    filtre « attribuable » est UNIQUE (``commerciaux_habilites``)."""
+
+    def test_rotation_moins_charge_puis_pk_en_sautant_le_plafond(self):
+        from types import SimpleNamespace
+
+        from apps.crm.leads_attribution import rotation_equilibree
+        a, b, c = (SimpleNamespace(pk=i) for i in (3, 1, 2))
+        charges = {3: 0, 1: 5, 2: 0}
+        self.assertIs(rotation_equilibree([a, b, c], lambda u: charges[u.pk]), c)
+        self.assertIs(
+            rotation_equilibree([a, b, c], lambda u: 5 - charges[u.pk], plafond=5), b)
+        self.assertIsNone(
+            rotation_equilibree([a, b, c], lambda u: 9, plafond=9))
+        self.assertIsNone(rotation_equilibree([], lambda u: 0))
+
+    def test_filtre_attribuable_unique_webhook_et_qw6(self):
+        from apps.crm import webhooks
+        from apps.crm.leads_attribution import (
+            commerciaux_habilites, pick_round_robin_owner)
+        company = Company.objects.create(nom='CRXB4', slug='crxb4-rr')
+        autre = Company.objects.create(nom='CRXB4 autre', slug='crxb4-rr-autre')
+        habilite = Role.objects.create(
+            company=company, nom='Commercial', permissions=['crm_creer'])
+        lecteur = Role.objects.create(
+            company=company, nom='Lecteur', permissions=['crm_voir'])
+        ok = make_commercial(company, 'crxb4_ok', habilite)
+        make_commercial(company, 'crxb4_lecteur', lecteur)
+        inactif = make_commercial(company, 'crxb4_inactif', habilite)
+        inactif.is_active = False
+        inactif.save(update_fields=['is_active'])
+        legacy = User.objects.create_user(
+            username='crxb4_legacy', password='x', company=company,
+            role_legacy='responsable')
+        etranger = User.objects.create_user(
+            username='crxb4_etranger', password='x', company=autre,
+            role_legacy='admin')
+        attendus = {ok.pk, legacy.pk}
+        self.assertEqual(
+            set(commerciaux_habilites(company).values_list('pk', flat=True)),
+            attendus)
+        tous = set(User.objects.values_list('pk', flat=True))
+        self.assertEqual(webhooks._owners_habilites(company, tous), attendus)
+        self.assertNotIn(etranger.pk, webhooks._owners_habilites(company, tous))
+        # QW6 : à charge égale (0 lead), le plus petit pk.
+        self.assertEqual(pick_round_robin_owner(company),
+                         min((ok, legacy), key=lambda u: u.pk))
+
+    def test_aucune_copie_du_filtre_ni_du_tri(self):
+        """Garde machine : le filtre ``crm_creer``/legacy et le tri « moins
+        chargé » ne vivent qu'une fois dans le code d'attribution."""
+        import pathlib
+        ici = pathlib.Path(__file__).resolve().parent
+        for nom in ('webhooks.py', 'leads_score.py', 'dispatch.py',
+                    'leads_attribution.py'):
+            source = (ici / nom).read_text(encoding='utf-8')
+            attendu = 1 if nom == 'leads_attribution.py' else 0
+            self.assertEqual(
+                source.count("role__permissions__contains=['crm_creer']"),
+                attendu, nom)
+            self.assertNotIn('eligibles.sort(', source, nom)
+            self.assertNotIn('min(charges)', source, nom)

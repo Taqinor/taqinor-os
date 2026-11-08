@@ -67,6 +67,39 @@ class EvenementAnnulationTests(TestCase):
         reception_fournisseur_annulee.connect(_capter)
         self.addCleanup(reception_fournisseur_annulee.disconnect, _capter)
 
+    def test_retour_valide_emis_une_fois_apres_commit(self):
+        """AAPV8 — valider un retour lié au BCF émet `retour_fournisseur_valide`
+        une fois après commit (retour, lignes) ; une 2e validation refusée
+        n'émet rien."""
+        from core.events import retour_fournisseur_valide
+        from apps.stock.models import RetourFournisseur
+        from apps.stock.services import apply_retour_fournisseur
+        emissions = []
+
+        def capter(sender, **kwargs):
+            emissions.append(kwargs)
+        retour_fournisseur_valide.connect(capter)
+        self.addCleanup(retour_fournisseur_valide.disconnect, capter)
+        retour = RetourFournisseur.objects.create(
+            company=self.company, reference='RF-AAPV8', fournisseur=self.fournisseur,
+            bon_commande=self.ligne_cmd.bon_commande,
+            statut=RetourFournisseur.Statut.BROUILLON)
+        ligne = retour.lignes.create(produit=self.produit, quantite=4)
+        with self.captureOnCommitCallbacks(execute=False) as rappels:
+            apply_retour_fournisseur(retour, self.user)
+        self.assertEqual(emissions, [])
+        for rappel in rappels:
+            rappel()
+        self.assertEqual(len(emissions), 1)
+        self.assertEqual(emissions[0]['retour'].pk, retour.pk)
+        self.assertEqual(emissions[0]['company'], self.company)
+        self.assertEqual(emissions[0]['lignes'],
+                         [{'ligne': ligne, 'produit': self.produit, 'quantite': 4}])
+        with self.captureOnCommitCallbacks(execute=True):
+            with self.assertRaises(Exception):
+                apply_retour_fournisseur(retour, self.user)
+        self.assertEqual(len(emissions), 1)
+
     def test_emis_une_fois_apres_commit(self):
         with self.captureOnCommitCallbacks(execute=False) as rappels:
             annuler_reception_confirmee(self.reception, self.user)

@@ -183,6 +183,12 @@ def _cible_unique(a, b):
 #: ERR-ENF11-FUZZ-CRM — une salle de vente référence exactement un lead OU un
 #: client (``SalleVenteSerializer.validate``), à la création.
 SALLE_CIBLE_UNIQUE = {EXTENSION_CORPS_RESSERRE: _cible_unique('lead', 'client')}
+#: ENF51 — PATCH : le corps qui porte les DEUX relations les porte
+#: exactement-une ; une relation absente se replie sur la salle (refus d'état,
+#: 409). Sous ``allOf`` : la règle n'exige rien, ``{}`` reste conforme.
+SALLE_CIBLE_PARTIELLE = {EXTENSION_CORPS_RESSERRE: {'allOf': [{'anyOf': [
+    {'not': {'required': ['lead', 'client']}}, _cible_unique('lead', 'client'),
+]}]}}
 
 #: ERR-ENF11-FUZZ-CRM — un objectif mensuel (défaut) porte son mois, un
 #: trimestriel son trimestre (``ObjectifCommercialSerializer.validate``) ;

@@ -79,6 +79,33 @@ class BudgetRefusTests(TestCase):
         # L'enveloppe rendue permet une seconde demande de 600.
         self._da(600)
 
+    def test_annuler_ou_supprimer_bcf_rouvre_la_demande(self):
+        """AAPV71 — annuler (puis supprimer) le BCF né d'une DA la rend
+        « approuvée », lien effacé, et un nouveau generer-bcf répond 200."""
+        from apps.stock.models import Fournisseur
+        da = self._da(600)
+        services.decider_demande_achat(da, approuver=True, user=self.approbateur)
+        da.refresh_from_db()
+        da.fournisseur_suggere = Fournisseur.objects.create(company=self.company, nom='F AAPV71')
+        da.save(update_fields=['fournisseur_suggere'])
+        admin = APIClient()
+        admin.force_authenticate(self.approbateur)
+        url = f'{BASE}/demandes-achat/{da.pk}/generer-bcf/'
+        self.assertEqual(admin.post(url, {}, format='json').status_code, 200)
+        da.refresh_from_db()
+        bcf_id = da.bon_commande_id
+        rep = admin.post(f'/api/django/stock/bons-commande-fournisseur/{bcf_id}/annuler/',
+                         {'motif_annulation': 'Erreur de fournisseur'}, format='json')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        da.refresh_from_db()
+        self.assertEqual((da.statut, da.bon_commande_id), (DemandeAchat.Statut.APPROUVEE, None))
+        self.assertEqual(admin.post(url, {}, format='json').status_code, 200)
+        da.refresh_from_db()
+        rep = admin.delete(f'/api/django/stock/bons-commande-fournisseur/{da.bon_commande_id}/')
+        self.assertEqual(rep.status_code, 204, getattr(rep, 'content', rep))
+        da.refresh_from_db()
+        self.assertEqual((da.statut, da.bon_commande_id), (DemandeAchat.Statut.APPROUVEE, None))
+
     def test_rejeter_etape_libere(self):
         RegleApprobationAchat.objects.create(
             company=self.company, libelle='Une étape', montant_min=0,

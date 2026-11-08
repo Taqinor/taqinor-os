@@ -1,0 +1,22 @@
+# Preuve en direct AAPV37 — rejeu w28, code b00242be0 (dev-plan-6a6fc9-w28), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w28-django (conteneur privé : code de CE worktree, base privée
+# erp_accept_w28, transaction annulée, mail en mémoire, Celery coupé, HTTP sortant bloqué). « oc » = variante
+# scratchpad sonde_oc.py identique sauf transaction.on_commit exécuté immédiatement (événements « après commit »
+# qui ne partiraient jamais dans la transaction annulée). Sur le code corrigé, verdict ÉCART = repro False = attendu.
+# Sondes C-LIVE-* (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Écran : front de CE worktree servi par vite (127.0.0.1:5199) -> conteneur privé accept-w28-web (runserver, base
+# erp_accept_w28, SMTP 127.0.0.1:1 = aucune messagerie), piloté par Playwright MCP. Données d'écran = états des sondes
+# rejouées SANS rollback dans la base privée (comptes de test des sondes, mot de passe de test) ou fixtures FIX-*.
+# Verdict : PASS — Sonde C-AAPV-023 : retour et rebut lèvent le blocage => repro False ; écran Qualité : blocages « Levé ».
+
+== C-AAPV-023 (sha b432084786)
+attendu : repro si RF/RB : stock 5, blocage 10 toujours en quarantaine, disponible 0, sortie de 5 refusée 409 ; T : sortie 5 acceptée
+observé : {'RF': {'init': {'creation': 201, 'controle': 200, 'confirmer': 200, 'stock': 15, 'dispo': 5, 'blocages': [(10, 'en_quarantaine')]}, 'retour_valider': 200, 'apres_retour': {'stock': 5, 'dispo': 5, 'blocages': [(10, 'levee')]}, 'sortie_5_sains': (201, None)}, 'RB': {'init': {'creation': 201, 'controle': 200, 'confirmer': 200, 'stock': 15, 'dispo': 5, 'blocages': [(10, 'en_quarantaine')]}, 'rebut': 201, 'rebut_detail': None, 'apres_rebut': {'stock': 5, 'dispo': 5, 'blocages': [(10, 'levee')]}, 'sortie_5_sains': (201, None)}, 'T': {'init': {'creation': 201, 'controle': 200, 'confirmer': 200, 'stock': 15, 'dispo': 5, 'blocages': [(10, 'en_quarantaine')]}, 'sortie_5_sains': (201, None), 'apres': {'stock': 10, 'dispo': 0, 'blocages': [(10, 'en_quarantaine')]}}}
+{"RF": {"init": {"creation": 201, "controle": 200, "confirmer": 200, "stock": 15, "dispo": 5, "blocages": [[10, "en_quarantaine"]]}, "retour_valider": 200, "apres_retour": {"stock": 5, "dispo": 5, "blocages": [[10, "levee"]]}, "sortie_5_sains": [201, null]}, "RB": {"init": {"creation": 201, "controle": 200, "confirmer": 200, "stock": 15, "dispo": 5, "blocages": [[10, "en_quarantaine"]]}, "rebut": 201, "rebut_detail": null, "apres_rebut": {"stock": 5, "dispo": 5, "blocages": [[10, "levee"]]}, "sortie_5_sains": [201, null]}, "T": {"init": {"creation": 201, "controle": 200, "confirmer": 200, "stock": 15, "dispo": 5, "blocages": [[10, "en_quarantaine"]]}, "sortie_5_sains": [201, null], "apres": {"stock": 10, "dispo": 0, "blocages": [[10, "en_quarantaine"]]}}, "temoin_ok": true, "repro_retour": false, "repro_rebut": false, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0
+
+## AAPV37 — PASS (partie écran)
+État de la sonde C-AAPV-023 rejouée sans rollback, compte sonde_aapv_023. Stock › Entrepôt › Qualité et rappels, « Blocages qualité » :
+« Batterie AAPV23-RF 10 unité(s) Levé … — évacué par le retour RF-202611-0001 » ; « Batterie AAPV23-RB 10 unité(s) Levé … — évacué
+par le rebut (casse) » ; témoin « Batterie AAPV23-T 10 unité(s) En quarantaine ». Console 0 erreur.

@@ -27,6 +27,7 @@ TROIS PRINCIPES NON NÉGOCIABLES :
 import logging
 
 from .models import Lead, LeadActivity, QuestionnaireLien
+from .activity import journal_systeme
 
 logger = logging.getLogger(__name__)
 
@@ -836,8 +837,8 @@ def _sans_ecrasement_equipe(lead, section, champs, prefill_vu, ignorees):
             if actuel != vu[cle]:
                 if ignorees is not None:
                     ignorees.append(cle)
-                LeadActivity.objects.create(
-                    company=lead.company, lead=lead, user=None,
+                journal_systeme(
+                    company=lead.company, lead=lead,
                     kind=LeadActivity.Kind.NOTE,
                     body=('Réponse client non appliquée : valeur modifiée '
                           "par l'équipe depuis l'ouverture du lien "
@@ -997,8 +998,8 @@ def _devis_debloque(lead):
     if not (est_pro(lead) or est_agricole(lead)):
         _mettre_en_file_devis(lead)
         return
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
+    journal_systeme(
+        company=lead.company, lead=lead,
         kind=LeadActivity.Kind.NOTE,
         body=('Questionnaire — les réponses du client suffisent au devis '
               'automatique : à lancer depuis la fiche.'))
@@ -1084,8 +1085,8 @@ def appliquer_section(lien, section, reponses=None, photo=None,
     if not enregistrees:
         return []
 
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
+    journal_systeme(
+        company=lead.company, lead=lead,
         kind=LeadActivity.Kind.NOTE,
         body=('Questionnaire — section '
               f'{LIBELLE_SECTION[section]} répondue par le client'),

@@ -113,6 +113,25 @@ class TestAlimentationReception(Xstk6Base):
         self.assertEqual(lot.quantite_recue, 10)
         self.assertEqual(lot.quantite_restante, 10)
 
+    def test_recevoir_bcf_avec_peremption_alimente_le_lot(self):
+        """AAPV39 — « Recevoir » du BCF avec lot L-1 et péremption 31/03/2027 :
+        le lot porte cette date ; une date illisible : 400 nommé."""
+        import datetime
+        bc = self._bcf(quantite=10)
+        ligne = bc.lignes.first()
+        url = f'/api/django/stock/bons-commande-fournisseur/{bc.id}/recevoir/'
+        rep = self.api.post(url, {'receptions': [{
+            'ligne': ligne.id, 'quantite': 10, 'numero_lot': 'L-1',
+            'date_peremption': 'pas-une-date'}]}, format='json')
+        self.assertEqual(rep.status_code, 400, rep.content)
+        self.assertIn('date_peremption', str(rep.data))
+        rep = self.api.post(url, {'receptions': [{
+            'ligne': ligne.id, 'quantite': 10, 'numero_lot': 'L-1',
+            'date_peremption': '2027-03-31'}]}, format='json')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        lot = LotEntrepot.objects.get(company=self.company, numero_lot='L-1')
+        self.assertEqual(lot.date_peremption, datetime.date(2027, 3, 31))
+
     def test_reception_sans_lot_ne_cree_rien(self):
         bc = self._bcf(quantite=5)
         ligne = bc.lignes.first()

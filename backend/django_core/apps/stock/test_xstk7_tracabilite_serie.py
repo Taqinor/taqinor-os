@@ -110,6 +110,35 @@ class TestChaineComplete(Xstk7Base):
             result['equipement']['chantier_reference'], 'CH-XSTK7-0001')
         self.assertIn('XSTK7', result['equipement']['client_nom'])
 
+    def test_serie_deja_en_stock_refusee_a_la_reception(self):
+        """AAPV67 — SN-100 déjà en stock (REC-1) : une 2e réception la citant
+        est refusée (409), stock 1, une seule série au registre."""
+        from apps.installations.models import SerieEntrepot
+        from apps.stock.erreurs_achats import EtatIncompatible
+        from apps.stock.services import confirm_reception_fournisseur
+
+        def reception(ref):
+            bcf = BonCommandeFournisseur.objects.create(
+                company=self.company, reference=f'BCF-{ref}', fournisseur=self.fournisseur,
+                statut=BonCommandeFournisseur.Statut.ENVOYE)
+            ligne = LigneBonCommandeFournisseur.objects.create(
+                bon_commande=bcf, produit=self.produit, quantite=1,
+                prix_achat_unitaire=Decimal('1000'))
+            rec = ReceptionFournisseur.objects.create(
+                company=self.company, reference=ref, bon_commande=bcf)
+            LigneReceptionFournisseur.objects.create(
+                reception=rec, ligne_commande=ligne, produit=self.produit,
+                quantite=1, numeros_serie=['SN-100'])
+            return rec
+        confirm_reception_fournisseur(reception('REC-AAPV67-1'), self.user)
+        with self.assertRaises(EtatIncompatible) as err:
+            confirm_reception_fournisseur(reception('REC-AAPV67-2'), self.user)
+        self.assertIn('SN-100 déjà en stock (REC-AAPV67-1)', str(err.exception))
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.quantite_stock, 1)
+        self.assertEqual(SerieEntrepot.objects.filter(
+            company=self.company, numero_serie='SN-100').count(), 1)
+
     def test_serie_inconnue_404(self):
         result = trace_serie(self.company, numero_serie='SN-INCONNUE')
         self.assertIsNone(result)

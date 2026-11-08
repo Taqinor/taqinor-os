@@ -1,0 +1,21 @@
+# Preuve en direct AAPV45 — rejeu w28, code b00242be0 (dev-plan-6a6fc9-w28), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w28-django (conteneur privé : code de CE worktree, base privée
+# erp_accept_w28, transaction annulée, mail en mémoire, Celery coupé, HTTP sortant bloqué). « oc » = variante
+# scratchpad sonde_oc.py identique sauf transaction.on_commit exécuté immédiatement (événements « après commit »
+# qui ne partiraient jamais dans la transaction annulée). Sur le code corrigé, verdict ÉCART = repro False = attendu.
+# Sondes C-LIVE-* (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Verdict : PASS — Sondes C-AAPV-062 (taux seul : PU MAD suit) et C-AAPV-066 (saisie MAD conservée) => repro False.
+
+== C-AAPV-062 (sha 6ffa876688)
+attendu : repro si PATCH taux seul → 200, PU MAD 1080 et total_achat 10800 au taux 20 (témoin avec lignes : 2000 / 20000)
+observé : {'R_avant': {'taux': '10.800000', 'pu_mad': '1080.00', 'pu_devise': '100.00', 'total_achat': '10800.00', 'pdf': {'contre_valeur_mad': '10 800.00', 'taux': '10,8', 'total_document': '1000.00'}}, 'R_patch_http': 200, 'R_apres': {'taux': '20.000000', 'pu_mad': '2000.00', 'pu_devise': '100.00', 'total_achat': '20000.00', 'pdf': {'contre_valeur_mad': '20 000.00', 'taux': '20', 'total_document': '1000.00'}}, 'T_patch_http': 200, 'T_apres': {'taux': '20.000000', 'pu_mad': '2000.00', 'pu_devise': '100.00', 'total_achat': '20000.00', 'pdf': {'contre_valeur_mad': '20 000.00', 'taux': '20', 'total_document': '1000.00'}}}
+{"R_avant": {"taux": "10.800000", "pu_mad": "1080.00", "pu_devise": "100.00", "total_achat": "10800.00", "pdf": {"contre_valeur_mad": "10 800.00", "taux": "10,8", "total_document": "1000.00"}}, "R_patch_http": 200, "R_apres": {"taux": "20.000000", "pu_mad": "2000.00", "pu_devise": "100.00", "total_achat": "20000.00", "pdf": {"contre_valeur_mad": "20 000.00", "taux": "20", "total_document": "1000.00"}}, "T_patch_http": 200, "T_apres": {"taux": "20.000000", "pu_mad": "2000.00", "pu_devise": "100.00", "total_achat": "20000.00", "pdf": {"contre_valeur_mad": "20 000.00", "taux": "20", "total_document": "1000.00"}}, "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0
+
+== C-AAPV-066 (sha 6ffa876688)
+attendu : repro si PATCH 200 et PU MAD relu 1080 (saisie 1000 écrasée en silence) ; témoin MAD : 1000
+observé : {'T_mad': {'pu_avant': '1080.00', 'patch_http': 200, 'detail': None, 'reponse_pu': '1000.00', 'pu_relu': '1000.00', 'pu_devise_relu': 'None', 'total_achat': '10000.00'}, 'R_eur': {'pu_avant': '1080.00', 'patch_http': 200, 'detail': None, 'reponse_pu': '1000.00', 'pu_relu': '1000.00', 'pu_devise_relu': '92.59', 'total_achat': '10000.00'}}
+{"T_mad": {"pu_avant": "1080.00", "patch_http": 200, "detail": null, "reponse_pu": "1000.00", "pu_relu": "1000.00", "pu_devise_relu": "None", "total_achat": "10000.00"}, "R_eur": {"pu_avant": "1080.00", "patch_http": 200, "detail": null, "reponse_pu": "1000.00", "pu_relu": "1000.00", "pu_devise_relu": "92.59", "total_achat": "10000.00"}, "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0

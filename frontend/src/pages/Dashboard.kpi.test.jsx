@@ -1,5 +1,9 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, renderHook } from '@testing-library/react'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
+import { useDeviseTenant } from '../hooks/useDeviseTenant'
+import { formatMontant } from '../lib/format'
 import userEvent from '@testing-library/user-event'
 import { Package } from 'lucide-react'
 import { KpiCard } from './Dashboard.jsx'
@@ -54,5 +58,25 @@ describe('KpiCard (K148)', () => {
     // Série tout-à-zéro → pas de sparkline (et donc aucun rendu recharts).
     render(<KpiCard kpi={{ ...baseKpi, spark: [0, 0, 0] }} navigate={() => {}} />)
     expect(screen.getByText('Devis acceptés')).toBeInTheDocument()
+  })
+})
+
+// NTI18N9 — le dashboard affiche ses totaux dans la devise de la société.
+const wrap = (profile) => ({ children }) => (
+  <Provider store={configureStore({ reducer: { parametres: () => ({ profile }) } })}>{children}</Provider>
+)
+
+describe('useDeviseTenant (NTI18N9)', () => {
+  it('société XOF -> totaux en XOF', () => {
+    const { result } = renderHook(() => useDeviseTenant(), { wrapper: wrap({ devise_tenant: 'XOF' }) })
+    expect(result.current).toBe('XOF')
+    expect(formatMontant(1500, { decimals: 0, devise: result.current })).toMatch(/XOF$/)
+  })
+
+  it('profil non chargé ou champ absent -> MAD', () => {
+    const a = renderHook(() => useDeviseTenant(), { wrapper: wrap(null) })
+    const b = renderHook(() => useDeviseTenant(), { wrapper: wrap({}) })
+    expect(a.result.current).toBe('MAD')
+    expect(b.result.current).toBe('MAD')
   })
 })

@@ -98,6 +98,16 @@ class DocsView(APIView):
         from .docs import public_api_reference
         return Response(public_api_reference())
 
+    def finalize_response(self, request, response, *args, **kwargs):
+        # NTI18N44 — `?lang=en` : mêmes clés, textes descriptifs en anglais
+        # (le `get` reste la source FR lisible par la garde de forme).
+        from .docs import reference_langue
+        from .docs_i18n import langue_doc
+        if (response.status_code == 200
+                and langue_doc(request.query_params.get('lang')) == 'en'):
+            response.data = reference_langue('en')
+        return super().finalize_response(request, response, *args, **kwargs)
+
 
 class ApiKeyCreeSerializer(ApiKeySerializer):
     """Clé créée : le secret en clair n'est servi QUE dans cette réponse."""

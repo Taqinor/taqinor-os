@@ -78,6 +78,15 @@ class SavedReportModelTests(TestCase):
                                   'cible_id': 987654}, format='json')
         self.assertEqual(res.status_code, 404, res.data)
         self.assertIn('cible_id', res.data)
+        # ENF51 : en MODIFICATION le rapport existe -> 409, même corps.
+        rapport = SavedReport.objects.create(company=self.company, name='R')
+        for methode in (self.api.patch, self.api.put):
+            res = methode(f'{url}{rapport.pk}/', {
+                'name': 'X', 'target_kind': 'dashboard', 'cible_id': 987654},
+                format='json')
+            self.assertEqual(res.status_code, 409, res.data)
+            self.assertEqual(res.data['cible_id'],
+                             ["Cette cible n'existe pas dans votre société."])
 
     def test_recipient_list_parsing(self):
         sr = SavedReport.objects.create(
