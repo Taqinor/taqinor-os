@@ -711,9 +711,7 @@ class TestAud523FleetQueryBudget(TestCase):
 
     def setUp(self):
         self.company = make_company('aud523-co', 'AUD523 Co')
-        # AMON41 — co2_fleet lit le facteur au profil société : profil créé
-        # ici, pas pendant la 1re mesure (sinon 6 requêtes vs 3, faux N+1).
-        regler_facteur(self.company)
+        regler_facteur(self.company)  # AMON41 — profil créé hors mesure (sinon faux N+1)
         self.today = date(2026, 6, 30)
         self._n = 0
 

@@ -189,7 +189,7 @@ def attendu_entre(annuel, debut, fin):
     plat (un premier hiver n'est plus jugé contre la moyenne annuelle)."""
     import calendar
 
-    from apps.ventes.selectors import poids_solaires_mensuels
+    from apps.ventes.selectors_calepinage import poids_solaires_mensuels
 
     poids = poids_solaires_mensuels()
 
