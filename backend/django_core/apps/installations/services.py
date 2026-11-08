@@ -5102,6 +5102,10 @@ class TicketSansInstallationError(Exception):
     création d'une intervention (rien à planifier sans Installation)."""
 
 
+class ChantierAnnuleError(TicketSansInstallationError):
+    """ACSV69 — chantier du ticket annulé (traduit en 409 par l'appelant)."""
+
+
 def creer_intervention_depuis_ticket(*, ticket, user, company,
                                      type_intervention=None):
     """YSERV2 — Point d'entrée cross-app (services.py cible) pour créer une
@@ -5125,6 +5129,9 @@ def creer_intervention_depuis_ticket(*, ticket, user, company,
         raise TicketSansInstallationError(
             "Ce ticket n'a pas de chantier lié — impossible de planifier "
             'une intervention.')
+    if Installation.objects.filter(pk=ticket.installation_id, annule=True).exists():
+        raise ChantierAnnuleError(
+            'Ce chantier est annulé — impossible de créer une nouvelle intervention.')
 
     interv = Intervention.objects.create(
         company=company,
@@ -5135,6 +5142,7 @@ def creer_intervention_depuis_ticket(*, ticket, user, company,
         date_prevue=ticket.date_tournee,
         created_by=user,
     )
+    _notifier_intervention_assignee(interv, user)  # ACSV69 — effet de la porte principale (CHT9)
     return interv
 
 

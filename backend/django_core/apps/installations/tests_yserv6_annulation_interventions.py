@@ -186,6 +186,35 @@ class AnnulationSoldeInterventionsTests(TestCase):
         self.i2.refresh_from_db()
         self.assertEqual(self.i2.ticket_id, t.id)
 
+    def test_intervention_depuis_ticket_chantier_annule_409_et_notification(self):
+        """ACSV69 (C-ACSV-149) — « Planifier une intervention » d'un ticket :
+        chantier annulé ⇒ 409 (texte YSERV6), 0 intervention ; chantier vivant
+        ⇒ 201 et le technicien reçoit INTERVENTION_ASSIGNEE.
+        ROUGE AVANT : 201, 0 notification."""
+        from apps.notifications.models import Notification
+        from apps.notifications.types_evenements import EventType
+        from apps.sav.models import Ticket
+        tech = make_user(self.company, role='technicien')
+        annule = make_chantier(self.company, self.user)
+        Installation = type(annule)
+        Installation.objects.filter(pk=annule.pk).update(annule=True)
+        t = Ticket.objects.create(
+            company=self.company, reference='SAV-ACSV69-1',
+            client=annule.client, installation=annule, technicien_responsable=tech)
+        t2 = Ticket.objects.create(
+            company=self.company, reference='SAV-ACSV69-2',
+            client=self.inst.client, installation=self.inst, technicien_responsable=tech)
+        r = self.api.post(f'/api/django/sav/tickets/{t.id}/planifier-intervention/', {}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual(
+            r.data['detail'], 'Ce chantier est annulé — impossible de créer une nouvelle intervention.')
+        self.assertFalse(Intervention.objects.filter(ticket=t).exists())
+        with self.captureOnCommitCallbacks(execute=True):
+            r = self.api.post(f'/api/django/sav/tickets/{t2.id}/planifier-intervention/', {}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(Notification.objects.filter(
+            recipient=tech, event_type=EventType.INTERVENTION_ASSIGNEE).count(), 1)
+
 
 class ReactivationTests(TestCase):
     def setUp(self):
