@@ -1261,6 +1261,23 @@ def _partager_au_client_portail(chantier, source_type):
         return None
 
 
+def aligner_partage_portail_chantier(chantier):
+    """ACSV33 — PV et BL figés partagés avec le seul client COURANT d'un
+    chantier non annulé : tout autre client perd la lecture, un chantier annulé
+    n'en partage aucun. Idempotent, best-effort (journalisé, ne lève jamais)."""
+    from apps.ged import services as ged_services
+    garder = None if chantier.annule else getattr(chantier, 'client_id', None)
+    for source_type in (SOURCE_PV_RECEPTION, SOURCE_BON_LIVRAISON):
+        try:
+            ged_services.retirer_partage_client_portail(
+                _document_ged(chantier, source_type), sauf_client_id=garder)
+        except Exception:
+            logger.exception('ACSV33 — retrait du partage portail impossible (%s, chantier %s)',
+                             source_type, chantier.pk)
+        if garder:
+            _partager_au_client_portail(chantier, source_type)
+
+
 def _servir_pv(chantier, maintenant=None):
     return _servir_signe(
         chantier, source_type=SOURCE_PV_RECEPTION,
