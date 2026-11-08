@@ -3847,6 +3847,94 @@ decisions:
     date: "2026-11-08"
     source: "Reda, question interactive, audit de parcours PA2"
     taches: [ACON50]
+  - id: D-ASOC-1
+    question: "Un devis envoyé sans échéancier propre lit l'échéancier société EN DIRECT jusqu'à l'acceptation : passer le réglage de 30 % à 40 % d'acompte après l'envoi fait figer 40 % à l'acceptation (acompte 8 920 au lieu de 6 690, alors que le PDF client disait 30 %). Quelle règle ?"
+    options:
+      - cle: figer_a_l_envoi
+        texte: "Figer l'échéancier (et le % des CGV) à l'envoi du devis, comme les autres champs d'un document engagé ; l'acceptation reprend le figé"
+      - cle: refuser_si_change
+        texte: "Garder le gel à l'acceptation, mais refuser l'acceptation (409) si l'échéancier société a changé depuis l'envoi"
+    reponse: figer_a_l_envoi
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PF2 (prolonge D-ECH-FIGE)"
+    taches: [ASOC95]
+  - id: D-ASOC-2
+    question: "Le module « Chantiers » désinstallé, accepter un devis crée quand même un chantier et des réservations de stock (chantier invisible ensuite). Quelle règle ?"
+    options:
+      - cle: rien_creer
+        texte: "Les abonnés d'un module désinstallé ne font rien : ni chantier, ni réservation, ni contrat SAV"
+      - cle: non_desinstallable
+        texte: "Un module dont dépend un abonné obligatoire ne peut pas être désinstallé tant que le module dépendant est actif"
+    reponse: rien_creer
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PF2"
+    taches: [ASOC2]
+  - id: D-ASOC-3
+    question: "Après un effacement loi 09-08, l'historique des modifications du lead (LeadActivity) garde en clair les anciennes et nouvelles valeurs d'identité. Quelle règle ?"
+    options:
+      - cle: caviarder
+        texte: "Garder chaque ligne d'historique (qui, quand, quel champ) mais remplacer les valeurs d'identité par « Anonymisé » à l'effacement"
+      - cle: garder_tel_quel
+        texte: "Historique conservé tel quel (doctrine « historique conservé »)"
+    reponse: caviarder
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PF2"
+    taches: [ASOC62]
+  - id: D-ASOC-4
+    question: "La rétention de 3 ans des prospects exclut tout lead qui a un client — or le client est créé au premier devis : tout prospect ayant reçu un devis est gardé à vie, et les clients n'ont aucune rétention. Quelle règle ?"
+    options:
+      - cle: client_sans_facture_est_prospect
+        texte: "Un client sans aucune facture est un prospect pour la rétention : purgé après 3 ans d'inactivité ; les clients facturés gardent la rétention comptable légale"
+      - cle: garder_actuel
+        texte: "Garder la règle actuelle"
+    reponse: client_sans_facture_est_prospect
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PF2"
+    taches: [ASOC74]
+  - id: D-ASOC-5
+    question: "Les métriques gouvernées de CA ignorent les avoirs alors que le tableau de bord les déduit (11 000 contre 8 000 sur les mêmes factures). Qu'est-ce que le « CA facturé » ?"
+    options:
+      - cle: net_d_avoirs
+        texte: "CA = factures moins avoirs partout (métriques, tableau de bord, rapports) ; une facture soldée par avoir total compte 0"
+      - cle: brut
+        texte: "CA = facturé brut ; avoirs montrés à part ; le tableau de bord s'aligne sur le brut"
+    reponse: net_d_avoirs
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PF2"
+    taches: [ASOC73]
+  - id: D-ASOC-6
+    question: "Un effacement 09-08 qui échoue sur une source est marqué « traitée » (final), erreur enfouie, sans relance possible. Quelle règle ?"
+    options:
+      - cle: statut_partielle
+        texte: "Statut « partielle » : sources en échec affichées, relance possible jusqu'à complétude"
+      - cle: tout_ou_rien
+        texte: "Effacement atomique : tout échec annule tout, la demande reste à traiter"
+    reponse: statut_partielle
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PF2"
+    taches: [ASOC65]
+  - id: D-ASOC-7
+    question: "Le réglage « Parrainage activé » n'a aucun lecteur : création automatique et notifications de parrainage tournent même éteint. Que faire ?"
+    options:
+      - cle: cabler_le_reglage
+        texte: "Éteint : aucun parrainage créé automatiquement, aucune notification, écrans et liens de parrainage masqués"
+      - cle: retirer_le_reglage
+        texte: "Retirer l'interrupteur : parrainage toujours actif"
+    reponse: cabler_le_reglage
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PF2"
+    taches: [ASOC70]
+  - id: D-ASOC-8
+    question: "Le fuseau horaire de la société est « affichage seulement » : fenêtres de cadence, heures calmes et récapitulatifs suivent toujours Casablanca, même pour une société à Dakar. Quelle règle ?"
+    options:
+      - cle: fuseau_de_la_societe
+        texte: "Plannings, fenêtres et « aujourd'hui » suivent le fuseau de la société"
+      - cle: casablanca_partout
+        texte: "Casablanca partout ; réglage de fuseau limité au Maroc tant que les autres pays ne sont pas pris en charge"
+    reponse: fuseau_de_la_societe
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PF2"
+    taches: [ASOC84]
   - id: D-APFS-1
     question: "Les rôles porteurs de `users_voir` (Admin RH, Admin Ventes, Technicien responsable, Commercial responsable) comptent comme palier « responsable » : clés d'API / webhooks, désactivation de module, matrices et workflows, décision des demandes d'approbation, demandes loi 09-08 (accès / effacement), restauration de la corbeille. Quelle garde ?"
     options:
