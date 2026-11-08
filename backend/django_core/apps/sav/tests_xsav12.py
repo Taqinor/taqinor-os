@@ -101,6 +101,26 @@ class XSAV12FusionTest(TestCase):
             self.doublon.activites.filter(
                 body__icontains=self.principal.reference).exists())
 
+    def test_doublon_facture_refuse(self):
+        # ACSV57 — doublon facturé : 409, rien n'est déplacé ; facture annulée
+        # (facture_id_ext vidé par ACSV63) : la fusion passe.
+        self.doublon.facture_id_ext = 4242
+        self.doublon.save(update_fields=['facture_id_ext'])
+        url = f'/api/django/sav/tickets/{self.principal.pk}/fusionner/'
+        resp = self.api.post(url, {'doublon_id': self.doublon.pk}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+        self.assertIn('déjà facturé', resp.json()['detail'])
+        self.doublon.refresh_from_db()
+        self.assertFalse(self.doublon.annule)
+        self.assertEqual(
+            PieceConsommee.objects.filter(ticket=self.principal).count(), 0)
+        self.doublon.facture_id_ext = None
+        self.doublon.save(update_fields=['facture_id_ext'])
+        resp = self.api.post(url, {'doublon_id': self.doublon.pk}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(
+            PieceConsommee.objects.filter(ticket=self.principal).count(), 1)
+
     def test_doublon_marque_annule_avec_motif(self):
         self.api.post(
             f'/api/django/sav/tickets/{self.principal.pk}/fusionner/',

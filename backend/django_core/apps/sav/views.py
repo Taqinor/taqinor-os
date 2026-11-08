@@ -2778,6 +2778,10 @@ class TicketViewSet(CompanyScopedModelViewSet):
             pk=doublon_id, company=principal.company).first()
         if doublon is None:
             return Response({'detail': 'Ticket doublon introuvable.'}, status=404)
+        if doublon.facture_id_ext:  # ACSV57 — la facture resterait sur le doublon
+            raise ConflitEtat(
+                f'Ce doublon est déjà facturé (facture n°{doublon.facture_id_ext}) '
+                ': annulez sa facture avant de fusionner.')
 
         from django.contrib.contenttypes.models import ContentType
         from apps.records.models import Attachment
