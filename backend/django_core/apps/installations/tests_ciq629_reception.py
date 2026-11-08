@@ -56,6 +56,37 @@ class ReceptionDefinitiveTests(TestCase):
         self.assertEqual(r.status_code, 409)  # ERR-ENF11 : refus d'état = 409
         self.assertIn('provisoire', r.data['detail'])
 
+    def _reserve_avec_ticket(self, description):
+        from apps.sav.services import create_corrective_ticket
+        reserve = creer_reserve_chantier(
+            self.inst, self.user, description=description, origine='reception')
+        reserve.ticket = create_corrective_ticket(
+            company=self.company, client=self.inst.client,
+            installation=self.inst, description=description,
+            created_by=self.user)
+        reserve.save(update_fields=['ticket'])
+        return reserve
+
+    def test_reserve_et_ticket_se_ferment_ensemble(self):
+        """ACSV66 — résoudre le ticket lève la réserve ; lever la réserve
+        résout le ticket (transition système) ; ticket déjà clos : rien."""
+        from apps.sav.models import Ticket
+        r1 = self._reserve_avec_ticket('Onduleur mal fixé A')
+        r2 = self._reserve_avec_ticket('Onduleur mal fixé B')
+        for action in ('resoudre', 'cloturer'):
+            rep = self.api.post(
+                f'/api/django/sav/tickets/{r1.ticket_id}/{action}/', {}, format='json')
+            self.assertEqual(rep.status_code, 200, rep.data)
+        r1.refresh_from_db()
+        self.assertEqual(r1.statut, Reserve.Statut.RESOLUE)
+        self.assertEqual(r1.levee_par, self.user)
+        self.assertIn(r1.ticket.reference, r1.resolution)
+        rep = self.api.post(f'{BASE}/chantiers/{self.inst.id}/reserves/{r2.id}/lever/', {}, format='json')
+        self.assertEqual(rep.status_code, 200, rep.data)
+        r2.ticket.refresh_from_db()
+        self.assertEqual(r2.ticket.statut, Ticket.Statut.RESOLU)
+        self.assertEqual(self.api.post(self.url, {}, format='json').status_code, 200)
+
     def test_toutes_levees_date_posee_et_journalisee(self):
         reserve = creer_reserve_chantier(
             self.inst, self.user, description='Coffret AC',

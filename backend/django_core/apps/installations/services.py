@@ -2877,7 +2877,24 @@ def lever_reserve_chantier(reserve, user, *, resolution=''):
     if chantier is not None:
         activity.log_note(chantier, user,
                           f"Réserve levée : {reserve.description}")
+    _resoudre_ticket_de_reserve(reserve, user, chantier)
     return reserve
+
+
+def _resoudre_ticket_de_reserve(reserve, user, chantier):
+    """ACSV66 — lever une réserve résout le ticket SAV né d'elle (transition
+    système) ; ticket déjà résolu/clos : rien ; transition refusée : note au
+    chantier (la réserve reste levée)."""
+    from . import activity
+    ticket = reserve.ticket
+    if ticket is None or ticket.statut in ('resolu', 'cloture'):
+        return
+    from apps.sav.services import TransitionTicketRefusee, appliquer_transition_ticket
+    try:
+        appliquer_transition_ticket(ticket, 'resolu', user, systeme=True)
+    except TransitionTicketRefusee as exc:
+        if chantier is not None:
+            activity.log_note(chantier, user, f"Ticket {ticket.reference} non résolu : {exc}")
 
 
 # ── CIQ629 — réception provisoire puis définitive ──────────────────────────

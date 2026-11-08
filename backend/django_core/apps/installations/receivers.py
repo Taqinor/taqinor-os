@@ -19,7 +19,7 @@ from core.events import (
     abonne_best_effort, bon_commande_cree, devis_acceptation_annulee,
     devis_accepted, facture_annulee,
     reception_fournisseur_annulee, retour_fournisseur_valide, bon_commande_fournisseur_annule,
-    reception_fournisseur_confirmee, facture_fournisseur_creee,
+    reception_fournisseur_confirmee, facture_fournisseur_creee, ticket_resolu,
 )
 
 from .models import Installation, PhotoChecklistMeta
@@ -217,6 +217,21 @@ def _rouvrir_reservation_on_facture_annulee(sender, instance, company,
     if devis is not None:
         rouvrir_reservations_vente(installation_for_devis(
             devis, company=company), devis.reference)
+
+
+@receiver(ticket_resolu,
+          dispatch_uid="installations_lever_reserves_on_ticket_resolu")
+@abonne_best_effort
+def _lever_reserves_on_ticket_resolu(sender, ticket, company, user=None,
+                                     **kwargs):
+    """ACSV66 — le ticket SAV né d'une réserve est résolu : la réserve est
+    levée (boucle évitée : une réserve déjà levée n'est pas retouchée)."""
+    from .models import Reserve
+    from .services import lever_reserve_chantier
+    for reserve in Reserve.objects.filter(ticket=ticket, company=company).exclude(
+            statut=Reserve.Statut.RESOLUE):
+        lever_reserve_chantier(
+            reserve, user, resolution=f'Résolue par le ticket {ticket.reference}')
 
 
 @receiver(facture_fournisseur_creee,
