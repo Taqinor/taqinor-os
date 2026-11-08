@@ -310,6 +310,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
     @extend_schema(responses=inline_serializer('MonitoringProvider', {
         'key': serializers.CharField(),
         'label': serializers.CharField(),
+        'disponible': serializers.BooleanField(),
     }, many=True))
     # ENF11 — liste PLATE (registre de fournisseurs), non paginée : sans
     # `pagination_class=None` drf-spectacular publiait un schéma paginé
@@ -319,7 +320,8 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
     def providers(self, request):
         """Liste des fournisseurs disponibles (registre swappable)."""
         return Response([
-            {'key': k, 'label': lbl} for k, lbl in available_providers()
+            {'key': k, 'label': lbl, 'disponible': dispo}
+            for k, lbl, dispo in available_providers()
         ])
 
     @extend_schema(request=None, responses=inline_serializer(

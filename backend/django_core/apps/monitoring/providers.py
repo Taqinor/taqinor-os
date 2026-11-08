@@ -36,6 +36,9 @@ class MonitoringProvider:
 
     key = 'base'
     label = 'Fournisseur'
+    #: AMON8 — faux tant que la récupération (``_fetch``) est un squelette :
+    #: le connecteur n'est pas proposé comme supervision automatique.
+    disponible = True
 
     def fetch_recent(self, system, config):
         """Renvoie une liste de dicts de relevés récents pour `system`.
@@ -68,6 +71,7 @@ class FusionSolarProvider(MonitoringProvider):
     label = 'Huawei FusionSolar'
     # Base NorthBound par défaut (surchargeable via credentials['base_url']).
     DEFAULT_BASE_URL = 'https://eu5.fusionsolar.huawei.com/thirdData'
+    disponible = False  # AMON8 — `_fetch` squelette (renvoie []).
 
     def fetch_recent(self, system, config):
         creds = getattr(config, 'credentials', None) or {}
@@ -106,6 +110,8 @@ class _CredentialGatedProvider(MonitoringProvider):
     manuelle. Aucun appel réseau, aucun coût, aucune dépendance pip nouvelle
     tant que le `_fetch` n'est pas câblé (squelette). Désactivés par défaut.
     """
+
+    disponible = False  # AMON8 — `_fetch` squelette (renvoie []).
 
     def fetch_recent(self, system, config):
         creds = getattr(config, 'credentials', None) or {}
@@ -168,8 +174,9 @@ def register_provider(cls):
 
 
 def available_providers():
-    """Liste [(clé, libellé)] des fournisseurs pour l'UI/les choix."""
-    return [(cls.key, cls.label) for cls in _REGISTRY.values()]
+    """Liste [(clé, libellé, disponible)] des fournisseurs pour l'UI/les
+    choix (AMON8 : un squelette est servi ``disponible`` faux)."""
+    return [(cls.key, cls.label, cls.disponible) for cls in _REGISTRY.values()]
 
 
 def get_provider(key):

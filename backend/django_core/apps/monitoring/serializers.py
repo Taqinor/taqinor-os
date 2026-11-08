@@ -46,7 +46,8 @@ class MonitoringConfigSerializer(IdInconnu404Mixin, UniciteEn409Mixin, CompanySc
         read_only_fields = ['last_sync', 'date_modification']
 
     def get_provider_label(self, obj) -> str:  # ENF11 — type au schéma
-        return dict(available_providers()).get(obj.provider, obj.provider)
+        libelles = {cle: lbl for cle, lbl, _dispo in available_providers()}
+        return libelles.get(obj.provider, obj.provider)
 
     # CI #993 — booléen publié (SerializerMethodField sans type = chaîne :
     # `false` servi était « hors schéma » sur configs/ et configs/{id}/).

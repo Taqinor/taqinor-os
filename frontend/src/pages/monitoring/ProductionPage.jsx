@@ -340,7 +340,10 @@ export default function ProductionPage() {
                     <SelectTrigger aria-label="Fournisseur de supervision"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {providers.map((p) => (
-                        <SelectItem key={p.key} value={p.key}>{p.label}</SelectItem>
+                        // AMON8 — un connecteur non câblé est grisé, jamais proposé.
+                        <SelectItem key={p.key} value={p.key} disabled={p.disponible === false}>
+                          {p.disponible === false ? `${p.label} (non disponible)` : p.label}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

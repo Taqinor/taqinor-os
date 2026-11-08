@@ -1081,9 +1081,24 @@ class TestAdditionalProviders(TestCase):
         self.inst, _ = make_installation(self.company, ref='ADP-1')
 
     def test_new_providers_registered(self):
-        keys = dict(providers.available_providers())
+        keys = {k for k, _lbl, _dispo in providers.available_providers()}
         for key in ('solaredge', 'sungrow', 'solis'):
             self.assertIn(key, keys)
+
+    def test_squelettes_non_disponibles(self):
+        """AMON8 — les connecteurs squelettes sont servis non disponibles et
+        une config qui en porte un n'est jamais une supervision auto."""
+        r = self.api.get('/api/django/monitoring/configs/providers/')
+        self.assertEqual(r.status_code, 200, r.data)
+        dispo = {p['key']: p['disponible'] for p in r.data}
+        for key in ('fusionsolar', 'solaredge', 'sungrow', 'solis'):
+            self.assertIs(dispo[key], False, key)
+        self.assertIs(dispo['noop'], True)
+        cfg = MonitoringConfig.objects.create(
+            company=self.company, installation=self.inst,
+            provider='fusionsolar', enabled=True,
+            credentials={'username': 'u', 'password': 'p'})
+        self.assertFalse(cfg.is_auto)
 
     def test_provider_noop_without_credentials(self):
         for key in ('solaredge', 'sungrow', 'solis'):

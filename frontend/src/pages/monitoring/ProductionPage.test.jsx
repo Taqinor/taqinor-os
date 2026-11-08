@@ -56,7 +56,10 @@ vi.mock('../../ui', async (importActual) => (await import('../../test/selectNati
 
 vi.mock('../../api/monitoringApi', () => ({
   default: {
-    getProviders: vi.fn(() => Promise.resolve({ data: [{ key: 'noop', label: 'Aucun' }] })),
+    getProviders: vi.fn(() => Promise.resolve({ data: [
+      { key: 'noop', label: 'Aucun', disponible: true },
+      { key: 'fusionsolar', label: 'Huawei FusionSolar', disponible: false },
+    ] })),
     getReadings: vi.fn(() => Promise.resolve({
       data: [{ id: 9, date: '2026-06-01', energy_kwh: '120.5', period_days: 30, source_display: 'Manuel', note: '' }],
     })),
@@ -123,6 +126,17 @@ describe('ProductionPage (WIR122 — suppression de relevé + historique mensuel
     expect(await screen.findByLabelText('Début de la période')).toHaveValue(debutParDefaut(30))
     expect(debutParDefaut(30, '2026-11-08')).toBe('2026-10-09')
     expect(debutParDefaut(1, '2026-11-08')).toBe('2026-11-07')
+  })
+
+  it('AMON8 — un connecteur non câblé est grisé « (non disponible) »', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    renderPage(<ProductionPage />)
+
+    const select = await screen.findByRole('combobox', { name: 'Choisir un système installé' })
+    await userEvent.selectOptions(select, '11')
+    // Le <select> natif du test ne relaie pas `disabled` : le libellé le dit.
+    expect(await screen.findByRole('option', { name: 'Huawei FusionSolar (non disponible)' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Aucun' })).toBeInTheDocument()
   })
 
   it('AMON1 — un relevé refusé (409) affiche le message du serveur', async () => {

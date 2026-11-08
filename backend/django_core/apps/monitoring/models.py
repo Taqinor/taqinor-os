@@ -95,8 +95,11 @@ class MonitoringConfig(models.Model):
     @property
     def is_auto(self):
         """Vrai si une récupération automatique est réellement possible :
-        activé, fournisseur non-noop ET identifiants présents."""
-        return bool(self.enabled and self.provider != 'noop' and self.credentials)
+        activé, fournisseur non-noop, identifiants présents ET connecteur
+        réellement câblé (AMON8 : un squelette n'est jamais « auto »)."""
+        from .providers import get_provider
+        return bool(self.enabled and self.provider != 'noop' and self.credentials
+                    and get_provider(self.provider).disponible)
 
 
 class ProductionReading(models.Model):
