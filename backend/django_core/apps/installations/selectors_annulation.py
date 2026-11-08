@@ -12,18 +12,22 @@ def blocage_annulation_acceptation(devis_id, company):
     Lecture seule, bornée à ``company`` (jamais de fuite cross-tenant)."""
     from apps.achats.selectors import bcf_du_chantier
     from .models import Installation
-    qs = Installation.objects.filter(devis_id=devis_id, annule=False)
+    from .services import MOTIF_ANNULATION_DESACCEPTATION
+    # ACSV7 — un chantier annulé À LA MAIN reste examiné pour ses suites réelles
+    # (stock sorti, BCF envoyé ou reçu) ; seul l'annulé par désacceptation est ignoré.
+    qs = Installation.objects.filter(devis_id=devis_id).exclude(
+        annule=True, motif_annulation=MOTIF_ANNULATION_DESACCEPTATION[:255])
     if company is not None:
         qs = qs.filter(company=company)
     for inst in qs.order_by('pk'):
-        if (Installation.canonical_statut(inst.statut)
-                != Installation.Statut.SIGNE):
+        if not inst.annule and (Installation.canonical_statut(inst.statut)
+                                != Installation.Statut.SIGNE):
             return (f'le chantier {inst.reference} est déjà à l’étape '
                     f'« {inst.get_statut_display()} ».')
-        if inst.date_pose_prevue is not None:
+        if not inst.annule and inst.date_pose_prevue is not None:
             return (f'la pose du chantier {inst.reference} est déjà '
                     'planifiée.')
-        nb = inst.interventions.filter(
+        nb = 0 if inst.annule else inst.interventions.filter(
             annulee=False, date_prevue__isnull=False).count()
         if nb:
             return (f'le chantier {inst.reference} a déjà {nb} '

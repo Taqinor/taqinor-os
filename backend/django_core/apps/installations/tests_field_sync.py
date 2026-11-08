@@ -240,6 +240,44 @@ class MalformedBatchTests(FieldSyncBaseTest):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.data['errors'], 1)
 
+    def test_op_en_erreur_n_interrompt_pas_le_lot(self):
+        """ACSV17 (C-ACSV-022) — [réserve, série de 141 signes, réserve] ⇒
+        200 [applied, error nommée, applied] ; NUL ⇒ même chose ; rejeu ⇒
+        [replayed, error, replayed]. ROUGE AVANT : 500 / 400 pour le lot."""
+        from apps.installations.models import FieldOp, Reserve
+
+        def lot(prefixe, op_fautive):
+            return [
+                {'client_op_id': f'{prefixe}-1', 'op_type': 'intervention.reserve',
+                 'payload': {'intervention': self.iv.id, 'description': f'{prefixe} ok1'}},
+                op_fautive,
+                {'client_op_id': f'{prefixe}-3', 'op_type': 'intervention.reserve',
+                 'payload': {'intervention': self.iv.id, 'description': f'{prefixe} ok2'}},
+            ]
+
+        ops_a = lot('a', {'client_op_id': 'a-2', 'op_type': 'intervention.serial',
+                          'payload': {'intervention': self.iv.id, 'numero_serie': 'S' * 141}})
+        r = self.api.post(SYNC_URL, {'ops': ops_a}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual([x['status'] for x in r.data['results']],
+                         ['applied', 'error', 'applied'])
+        self.assertEqual(r.data['results'][1]['error'],
+                         'N° de série trop long (120 caractères au plus).')
+        self.assertEqual(Reserve.objects.filter(
+            intervention=self.iv, description__in=['a ok1', 'a ok2']).count(), 2)
+        self.assertEqual(FieldOp.objects.filter(
+            company=self.company, client_op_id__startswith='a-').count(), 2)
+        r = self.api.post(SYNC_URL, {'ops': ops_a}, format='json')
+        self.assertEqual([x['status'] for x in r.data['results']],
+                         ['replayed', 'error', 'replayed'])
+
+        ops_b = lot('b', {'client_op_id': 'b-2', 'op_type': 'intervention.reserve',
+                          'payload': {'intervention': self.iv.id, 'description': 'avec\u0000nul'}})
+        r = self.api.post(SYNC_URL, {'ops': ops_b}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual([x['status'] for x in r.data['results']],
+                         ['applied', 'error', 'applied'])
+
 
 class FullFlowTests(FieldSyncBaseTest):
     def test_full_intervention_flow_in_one_batch(self):

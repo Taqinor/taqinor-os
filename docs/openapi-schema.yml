@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4939, operations: 7737, components: 3639}
+counts: {paths: 4941, operations: 7739, components: 3641}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -1908,6 +1908,7 @@ operations:
 - post /api/django/installations/interventions/{id}/ajouter-reserve/ -> django_installations_interventions_ajouter_reserve_create
 - post /api/django/installations/interventions/{id}/ajouter-serial/ -> django_installations_interventions_ajouter_serial_create
 - post /api/django/installations/interventions/{id}/annoter-photo/ -> django_installations_interventions_annoter_photo_create
+- post /api/django/installations/interventions/{id}/annuler/ -> django_installations_interventions_annuler_create
 - post /api/django/installations/interventions/{id}/checkin/ -> django_installations_interventions_checkin_create
 - post /api/django/installations/interventions/{id}/choisir-kit/ -> django_installations_interventions_choisir_kit_create
 - post /api/django/installations/interventions/{id}/cocher-materiel/ -> django_installations_interventions_cocher_materiel_create
@@ -5817,6 +5818,7 @@ operations:
 - post /api/v1/installations/interventions/{id}/ajouter-reserve/ -> v1_installations_interventions_ajouter_reserve_create
 - post /api/v1/installations/interventions/{id}/ajouter-serial/ -> v1_installations_interventions_ajouter_serial_create
 - post /api/v1/installations/interventions/{id}/annoter-photo/ -> v1_installations_interventions_annoter_photo_create
+- post /api/v1/installations/interventions/{id}/annuler/ -> v1_installations_interventions_annuler_create
 - post /api/v1/installations/interventions/{id}/checkin/ -> v1_installations_interventions_checkin_create
 - post /api/v1/installations/interventions/{id}/choisir-kit/ -> v1_installations_interventions_choisir_kit_create
 - post /api/v1/installations/interventions/{id}/cocher-materiel/ -> v1_installations_interventions_cocher_materiel_create
@@ -9568,6 +9570,7 @@ components:
 - AnnotationRequest
 - AnnoterPhotoRequeteRequest
 - AnnulerChantierRequeteRequest
+- AnnulerInterventionRequeteRequest
 - AnnulerOrdreAssemblageRequeteRequest
 - AnomalyEvent
 - AnomalyEventKindEnum
@@ -12223,6 +12226,7 @@ components:
 - Realisation
 - RealisationRequest
 - ReceptionCrossDockCorpsRequest
+- ReceptionDefinitiveRequeteRequest
 - ReceptionFournisseur
 - ReceptionFournisseurRequest
 - ReceptionFournisseurStatutEnum

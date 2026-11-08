@@ -12,6 +12,7 @@ sans en créer un second. Ré-accepter un devis (ou ré-émettre l'événement) 
 duplique donc jamais le chantier. La création est company-scopée
 (``devis.company``). Le signal est synchrone, comme les autres récepteurs.
 """
+from django.db.models.signals import post_delete
 from django.dispatch import receiver
 
 from core.events import (
@@ -21,7 +22,7 @@ from core.events import (
     reception_fournisseur_confirmee, facture_fournisseur_creee,
 )
 
-from .models import Installation
+from .models import Installation, PhotoChecklistMeta
 from .services import (
     annuler_chantiers_desaccepte, create_installation_from_devis,
     extourner_gr_ir_reception,
@@ -240,3 +241,13 @@ def _rouvrir_da_on_bcf_annule(sender, bon_commande_id, company, user=None,
     from .services import rouvrir_demande_achat_bcf_annule
     rouvrir_demande_achat_bcf_annule(
         bon_commande_id=bon_commande_id, company=company, user=user, supprime=supprime)
+
+
+@receiver(post_delete, sender=PhotoChecklistMeta,
+          dispatch_uid="installations_preuve_checklist_retiree")
+def _preuve_checklist_retiree(sender, instance, **kwargs):
+    """ACSV18 — photo d'étape supprimée : l'étape à photo obligatoire sans
+    photo restante est décochée et la suppression notée au chatter."""
+    if instance.checklist_item_id:
+        from .field_capture import preuve_checklist_retiree
+        preuve_checklist_retiree(instance)

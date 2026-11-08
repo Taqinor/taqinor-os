@@ -237,7 +237,7 @@ class TestStatusAndMES(TestCase):
              'mes_production_test': '32.5', 'mes_tension': '230'},
             format='json')
         self.assertEqual(r.status_code, 200, r.data)
-        self.assertEqual(r.data['statut'], 'mise_en_service')
+        self.assertEqual(r.data['statut'], 'receptionne')  # ACSV20 : canonique
         self.assertEqual(r.data['date_mise_en_service'], '2026-06-20')
         self.assertEqual(Decimal(r.data['mes_production_test']), Decimal('32.50'))
         # La note de chatter inclut les valeurs mesurées (production + tension).
@@ -245,6 +245,39 @@ class TestStatusAndMES(TestCase):
         self.assertIsNotNone(note)
         self.assertIn('32.5', note.body)
         self.assertIn('230', note.body)
+
+    def test_mise_en_service_compte_au_taux_attache(self):
+        """ACSV20 (C-ACSV-025) — un chantier réceptionné par la mise en
+        service est stocké « receptionne » et compte dans
+        `chantiers_receptionnes`. ROUGE AVANT : statut `mise_en_service`,
+        absent."""
+        from apps.installations.selectors import chantiers_receptionnes
+        Installation.objects.filter(pk=self.inst.pk).update(statut='installe')
+        r = self.api.post(
+            f'/api/django/installations/chantiers/{self.inst.id}/mise-en-service/',
+            {'date_mise_en_service': '2026-06-20', 'mes_pv_notes': 'PV',
+             'mes_production_test': 32.5, 'mes_tension': 230},
+            format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.inst.refresh_from_db()
+        self.assertEqual(self.inst.statut, Installation.Statut.RECEPTIONNE)
+        self.assertEqual(str(self.inst.date_mise_en_service), '2026-06-20')
+        self.assertIn(self.inst.pk, [c[0] for c in chantiers_receptionnes(self.company)])
+
+    def test_mise_en_service_date_saisie_date_la_reception(self):
+        """ACSV21 (C-ACSV-136) — une mise en service saisie au 20/10 et
+        enregistrée plus tard date la réception (et le parc) au 20/10 ; sans
+        date saisie : jour du clic. ROUGE AVANT : `date_reception` = aujourd'hui."""
+        import datetime
+        Installation.objects.filter(pk=self.inst.pk).update(statut='installe')
+        r = self.api.post(
+            f'/api/django/installations/chantiers/{self.inst.id}/mise-en-service/',
+            {'date_mise_en_service': '2026-10-20'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.inst.refresh_from_db()
+        self.assertEqual(self.inst.date_reception, datetime.date(2026, 10, 20))
+        for equipement in self.inst.equipements.all():
+            self.assertEqual(equipement.date_pose, datetime.date(2026, 10, 20))
 
     def test_cancel_is_a_flag_with_reason(self):
         r = self.api.post(
@@ -705,6 +738,21 @@ class TestInterventionF3(TestCase):
         r = self._create_interv(equipe=[other.id])
         self.assertEqual(r.status_code, 201, r.data)
         self.assertEqual(set(r.data['equipe']), {other.id})
+
+    def test_technicien_fourni_sans_equipe_par_defaut(self):
+        """ACSV8 (C-ACSV-130) — technicien B fourni sur un chantier de A :
+        équipe vide, membres {B}. ROUGE AVANT : `equipe` [A]."""
+        from apps.installations.models import Intervention
+        from apps.installations.selectors import membres_intervention
+        tech_b = User.objects.create_user(
+            username='interv_tech_b', password='x', role_legacy='normal',
+            company=self.company)
+        r = self._create_interv(technicien=tech_b.id)
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data['equipe'], [])
+        interv = Intervention.objects.get(pk=r.data['id'])
+        self.assertEqual(interv.equipe.count(), 0)
+        self.assertEqual(membres_intervention(interv), {tech_b.pk})
 
     def test_gps_client_devis_pulled_from_chantier(self):
         r = self._create_interv()

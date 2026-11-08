@@ -537,7 +537,9 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             permission_classes=[IsResponsableOrAdmin])
     def mise_en_service(self, request, pk=None):
         """Enregistre la mise en service : date, PV/notes, valeurs mesurées
-        optionnelles, et passe le statut à « Mise en service ».
+        optionnelles, et passe le statut au canonique « Réceptionné » (ACSV20 :
+        jamais la valeur héritée ``mise_en_service``, que les lecteurs bruts
+        — taux d'attache, intégrité — ne voient pas).
 
         NOTE — point d'accroche FUTUR : c'est ici que démarrera la garantie
         une fois qu'un registre d'équipements (n° de série) existera. Aucune
@@ -565,7 +567,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             champs['mes_tension'] = data['mes_tension']
         try:
             changer_statut_chantier(
-                inst, Installation.Statut.MISE_EN_SERVICE, request.user,
+                inst, Installation.Statut.RECEPTIONNE, request.user,
                 champs_supplementaires=champs)
         except TransitionRefusee as exc:  # ERR-ENF11 : refus d'état = 409
             return Response(
@@ -649,12 +651,18 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response(
             InstallationSerializer(inst, context={'request': request}).data)
 
-    @oa.extend_schema(request=None, responses=InstallationSerializer)
+    @oa.extend_schema(request=None, responses={200: InstallationSerializer, 409: oa.OBJ})
     @action(detail=True, methods=['post'], url_path='reactiver',
             permission_classes=[IsResponsableOrAdmin])
     def reactiver(self, request, pk=None):
         inst = self.get_object()
         if inst.annule:
+            # ACSV2 — un devis qui n'est plus accepté ne rallume pas le chantier.
+            from apps.ventes.selectors import is_devis_accepte
+            if inst.devis_id and not is_devis_accepte(inst.devis):
+                from core.conflit_etat import ConflitEtat
+                raise ConflitEtat(f"Le devis {inst.devis.reference} n'est plus accepté : "
+                                  'ré-acceptez-le pour réactiver le chantier.')
             inst.annule = False
             inst.motif_annulation = None
             inst.save(update_fields=['annule', 'motif_annulation'])
@@ -1366,7 +1374,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     # ── FG79 — scaffold chaîne d'interventions standard ──────────────────────
-    @oa.extend_schema(request=None, responses={200: oa.OBJ, 201: oa.OBJ})
+    @oa.extend_schema(request=None, responses={200: oa.OBJ, 201: oa.OBJ, 409: oa.OBJ})
     @action(detail=True, methods=['post'], url_path='creer-interventions-standard',
             permission_classes=[IsResponsableOrAdmin])
     def creer_interventions_standard(self, request, pk=None):
@@ -1376,6 +1384,9 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         créées + celles déjà existantes."""
         from ..models import TypeInterventionPlan
         inst = self.get_object()
+        if inst.annule:  # ACSV13 — même refus que la création unitaire (YSERV6)
+            return Response({'detail': 'Ce chantier est annulé — impossible de créer une nouvelle intervention.'},
+                            status=status.HTTP_409_CONFLICT)
         company = request.user.company
         type_inst = inst.type_installation
         if not type_inst:
@@ -1600,7 +1611,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     # ── CIQ628 — réserves de réception au niveau du chantier ────────────────
     @oa.extend_schema(
         request=oa.ReserveChantierRequete,
-        responses={200: oa.LIST, 201: oa.OBJ},
+        responses={200: oa.LIST, 201: oa.OBJ, 409: oa.OBJ},
     )
     @action(pagination_class=None, detail=True, methods=['get', 'post'], url_path='reserves',
             permission_classes=[IsAnyRole])
@@ -1630,7 +1641,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     @oa.extend_schema(
         parameters=[oa.OpenApiParameter('rid', oa.ID_SCHEMA, oa.OpenApiParameter.PATH)],
         request=oa.body('LeverReserveRequete', resolution=oa.s()),
-        responses=oa.OBJ,
+        responses={200: oa.OBJ, 409: oa.OBJ},
     )
     @action(detail=True, methods=['post'],
             url_path=r'reserves/(?P<rid>\d+)/lever',
@@ -1658,7 +1669,8 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response(reserve_contrat(reserve))
 
     # ── CIQ629 — réception définitive (après levée de toutes les réserves) ──
-    @oa.extend_schema(request=None, responses=oa.OBJ)
+    @oa.extend_schema(request=oa.body('ReceptionDefinitiveRequete', motif_derogation=oa.s()),
+                      responses={200: oa.OBJ, 403: oa.OBJ, 409: oa.OBJ})
     @action(detail=True, methods=['post'], url_path='reception-definitive',
             permission_classes=[IsResponsableOrAdmin])
     def reception_definitive(self, request, pk=None):
@@ -1670,9 +1682,14 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             ReceptionDefinitiveRefusee, prononcer_reception_definitive,
             reception_contrat,
         )
+        from ..services import est_directeur
         inst = self.get_object()
+        motif = oa.texte_corps(request, 'motif_derogation')  # ACSV35 (D-ACSV-1)
+        if motif and not est_directeur(request.user):
+            return Response({'detail': 'Seul un Directeur peut déroger à la date prévue.'},
+                            status=status.HTTP_403_FORBIDDEN)
         try:
-            prononcer_reception_definitive(inst, request.user)
+            prononcer_reception_definitive(inst, request.user, motif_derogation=motif)
         except ReceptionDefinitiveRefusee as exc:  # ERR-ENF11 : état = 409
             return Response({'detail': str(exc)},
                             status=status.HTTP_409_CONFLICT)

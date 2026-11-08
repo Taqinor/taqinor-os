@@ -206,6 +206,50 @@ class TestFicheReleveMaterialisation(TestCase):
             self.interv, Intervention.Statut.TERMINEE)
         self.assertIsNone(reason)
 
+    def test_case_obligatoire_false_bloque_terminee(self):
+        """ACSV15 (C-ACSV-020) — une case obligatoire à « false » bloque
+        encore « Terminée » ; « oui » ⇒ « true » la débloque ; mesure « abc »
+        ⇒ 400 ; intervention validée ⇒ 409 ; chaque saisie notée au chatter.
+        ROUGE AVANT : « false » comptée comme renseignée."""
+        FicheInterventionChamp.objects.create(
+            company=self.company, template=self.template,
+            cle='disjoncteur', libelle='Disjoncteur testé', type_champ='case',
+            ordre=3, obligatoire=True)
+        r0 = self.api.get(f'{BASE}/interventions/{self.interv.id}/fiche/')
+        ids = {v['champ_cle']: v['id'] for v in r0.data['valeurs']}
+        url = f'{BASE}/interventions/{self.interv.id}/renseigner-fiche/'
+
+        def renseigner(cle, valeur):
+            return self.api.post(url, {'valeur_id': ids[cle], 'valeur': valeur}, format='json')
+
+        self.assertEqual(renseigner('tension_dc', '230,5').status_code, 200)
+        r = renseigner('disjoncteur', 'false')
+        self.assertEqual(r.status_code, 200, r.content)
+        prep = field_services.ensure_preparation(self.interv)
+        field_services.confirm_charge(prep, self.user)
+        reason = field_services.transition_block_reason(
+            self.interv, Intervention.Statut.TERMINEE)
+        self.assertIsNotNone(reason)
+        self.assertIn('Disjoncteur testé', reason)
+        r = renseigner('disjoncteur', 'oui')
+        val = next(v for v in r.data['valeurs'] if v['id'] == ids['disjoncteur'])
+        self.assertEqual(val['valeur'], 'true')
+        self.assertIsNone(field_services.transition_block_reason(
+            self.interv, Intervention.Statut.TERMINEE))
+        r = renseigner('tension_dc', 'abc')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('valeur', r.json())
+        r1 = self.api.get(f'{BASE}/interventions/{self.interv.id}/fiche/')
+        tension = next(v for v in r1.data['valeurs'] if v['id'] == ids['tension_dc'])
+        self.assertEqual(tension['valeur'], '230.5')
+        self.assertEqual(self.interv.activites.filter(
+            kind='note', body__startswith='Fiche : ').count(), 3)
+        Intervention.objects.filter(pk=self.interv.pk).update(
+            statut=Intervention.Statut.VALIDEE)
+        r = renseigner('disjoncteur', 'non')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertEqual(r.json()['detail'], 'Intervention validée.')
+
     def test_idempotent_materialization_keeps_existing_values(self):
         releve = field_services.ensure_fiche_releve(self.interv)
         val = releve.valeurs.get(champ=self.champ_obligatoire)

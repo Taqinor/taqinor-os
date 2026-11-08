@@ -27,7 +27,6 @@ from apps.installations.models import Installation
 from apps.installations.energy_report import (
     compute_energy_estimate, render_energy_report_pdf,
     DEFAULT_RENDEMENT_KWH_PAR_KWC_AN, DEFAULT_TARIF_MAD_PAR_KWH,
-    DEFAULT_CO2_KG_PAR_KWH,
 )
 
 User = get_user_model()
@@ -66,14 +65,14 @@ class TestComputeEstimate(TestCase):
         # Économies = 10 400 × tarif défaut (1,40) = 14 560 MAD.
         expected_eco = (Decimal('10400') * DEFAULT_TARIF_MAD_PAR_KWH)
         self.assertEqual(est['economies_mad'], expected_eco.quantize(Decimal('0.01')))
-        # CO₂ = 10 400 × 0,81 = 8 424 kg = 8,424 t.
-        self.assertEqual(est['co2_kg'], Decimal('8424'))
-        self.assertEqual(est['co2_tonnes'], Decimal('8.424'))
+        # AMON91 — sans facteur fourni : aucun CO₂ chiffré (plus de 0,81).
+        self.assertIsNone(est['co2_kg'])
+        self.assertIsNone(est['co2_tonnes'])
         # Hypothèses retenues = défauts.
         self.assertEqual(est['rendement_kwh_par_kwc_an'],
                          DEFAULT_RENDEMENT_KWH_PAR_KWC_AN)
         self.assertEqual(est['tarif_mad_par_kwh'], DEFAULT_TARIF_MAD_PAR_KWH)
-        self.assertEqual(est['co2_kg_par_kwh'], DEFAULT_CO2_KG_PAR_KWH)
+        self.assertIsNone(est['co2_kg_par_kwh'])
         self.assertFalse(est['production_manuelle'])
 
     def test_six_months_halves_production(self):
@@ -117,6 +116,37 @@ class TestRenderPdf(TestCase):
         pdf = render_energy_report_pdf(inst, {'nb_mois': 12})
         self.assertTrue(pdf.startswith(b'%PDF'))
         self.assertGreater(len(pdf), 1000)
+
+    def test_facteur_co2_de_la_societe(self):
+        """AMON91 (C-AMON-041) — le rapport lit le facteur CO₂ réglé par la
+        société (630 g ⇒ « 0,630 kg CO₂/kWh », tonnes = kWh × 0,63) ;
+        `?co2=0.5` reste une surcharge ; sans facteur : aucune carte CO₂,
+        mention « non réglé ». ROUGE AVANT : 0,81 imprimé."""
+        from unittest import mock
+
+        from apps.parametres.models import CompanyProfile
+        a = make_company('rap-co-amon91a', 'Rap Co AMON91 A')
+        b = make_company('rap-co-amon91b', 'Rap Co AMON91 B')
+        profil = CompanyProfile.get(company=a)
+        profil.facteur_co2_reseau_g_kwh = Decimal('630')
+        profil.facteur_co2_reseau_source = 'ONEE'
+        profil.save()
+        rendus = []
+        with mock.patch('apps.ventes.utils.pdf._html_to_pdf',
+                        side_effect=lambda html: rendus.append(html) or b'%PDF'):
+            render_energy_report_pdf(make_installation(a, 'CHT-AMON91-A'), {'nb_mois': 12})
+            render_energy_report_pdf(make_installation(a, 'CHT-AMON91-A2'),
+                                     {'nb_mois': 12, 'co2_kg_par_kwh': Decimal('0.5')})
+            render_energy_report_pdf(make_installation(b, 'CHT-AMON91-B'), {'nb_mois': 12})
+        html_a, html_surcharge, html_b = rendus
+        self.assertIn('0,630 kg CO₂/kWh', html_a)
+        self.assertIn('CO₂ évité (estimé)', html_a)
+        self.assertNotIn('0,810', html_a)
+        self.assertIn('0,500 kg CO₂/kWh', html_surcharge)
+        self.assertNotIn('CO₂ évité (estimé)', html_b)
+        self.assertIn('émission du réseau non réglé', html_b)
+        est = compute_energy_estimate(Decimal('6.5'), nb_mois=12, co2_kg_par_kwh=Decimal('0.63'))
+        self.assertEqual(est['co2_kg'], Decimal('6552'))
 
 
 class TestEnergyReportEndpoint(TestCase):

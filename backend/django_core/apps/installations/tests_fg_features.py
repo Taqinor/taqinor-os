@@ -623,6 +623,23 @@ class TestFG79InterventionPlan(TestCase):
         self.assertEqual(r.data['created'], [])
         self.assertEqual(set(r.data['existants']), {'pose', 'raccordement'})
 
+    def test_creer_interventions_standard_chantier_annule_409(self):
+        """ACSV13 (C-ACSV-134) — chantier annulé : 409, 0 intervention.
+        ROUGE AVANT : 201."""
+        from apps.installations.models import Installation, Intervention
+        Installation.objects.filter(pk=self.inst.pk).update(annule=True)
+        r = self.api.post(
+            f'/api/django/installations/chantiers/{self.inst.id}/'
+            f'creer-interventions-standard/',
+            format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual(
+            r.data['detail'],
+            'Ce chantier est annulé — impossible de créer une nouvelle '
+            'intervention.')
+        self.assertFalse(
+            Intervention.objects.filter(installation=self.inst).exists())
+
     def test_no_plan_returns_empty(self):
         """FG79 — pas de plan → 200 avec listes vides.
 

@@ -721,9 +721,43 @@ def missing_required_fiche_champs(intervention):
             continue
         if not val.champ.obligatoire:
             continue
-        if not (val.valeur or '').strip():
+        valeur = (val.valeur or '').strip()
+        # ACSV15 — une case obligatoire n'est renseignée qu'à « true ».
+        if not valeur or (val.champ.type_champ == val.champ.TypeChamp.CASE and valeur != 'true'):
             missing.append(val.champ)
     return missing
+
+
+#: ACSV15 — saisies admises pour une case à cocher (insensibles à la casse).
+CASE_VRAI = frozenset({'true', '1', 'oui', 'vrai', 'yes', 'on', 'x'})
+CASE_FAUX = frozenset({'false', '0', 'non', 'faux', 'no', 'off'})
+
+
+def normaliser_valeur_fiche(champ, brute):
+    """ACSV15 — valeur d'un champ de fiche contrôlée par son type : case ⇒
+    « true » / « false » ; nombre et mesure ⇒ décimal fini (virgule admise) ;
+    texte ⇒ ``strip``. Vide = effacement (champ non renseigné). Lève
+    ``ValueError`` (message français) sur une saisie illisible."""
+    from decimal import Decimal, InvalidOperation
+    texte = str('' if brute is None else brute).strip()
+    if not texte:
+        return ''
+    TypeChamp = champ.TypeChamp
+    if champ.type_champ == TypeChamp.CASE:
+        if texte.lower() in CASE_VRAI:
+            return 'true'
+        if texte.lower() in CASE_FAUX:
+            return 'false'
+        raise ValueError(f'« {champ.libelle} » est une case : oui ou non attendu.')
+    if champ.type_champ in (TypeChamp.NOMBRE, TypeChamp.MESURE):
+        try:
+            nombre = Decimal(texte.replace(',', '.').replace(' ', ''))
+        except InvalidOperation:
+            nombre = None
+        if nombre is None or not nombre.is_finite():
+            raise ValueError(f'« {champ.libelle} » attend un nombre.')
+        return str(nombre)
+    return texte
 
 
 # ── Garde de transition de statut (F5 départ + F8 arrivée + ZFSM1 fiche) ─────
