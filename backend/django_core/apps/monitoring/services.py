@@ -105,6 +105,12 @@ def sync_system(installation, *, user=None):
                 external_id=ext).exists()
             if exists:
                 continue
+        # AMON9 — même règle que la saisie (AMON1) : un relevé fournisseur qui
+        # recouvre un relevé existant (manuel, CSV, auto) est écarté.
+        from .selectors import releve_chevauchant
+        if releve_chevauchant(installation, data['date'],
+                              data['period_days']) is not None:
+            continue
         ProductionReading.objects.create(
             company=installation.company, installation=installation,
             date=data['date'], period_days=data['period_days'],

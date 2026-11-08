@@ -280,6 +280,67 @@ class TestSwappableProvider(TestCase):
             ProductionReading.objects.filter(source='auto').count(), 2)
 
 
+class TestSyncValidation(TestCase):
+    """AMON9 — chaque relevé fournisseur est validé comme la saisie."""
+
+    def setUp(self):
+        self.company = make_company('sync-val-co', 'Sync Val Co')
+        from django.utils import timezone
+        self.inst, _ = make_installation(self.company, ref='CHT-SYNCVAL')
+        jour = timezone.localdate()
+        self.jour = jour
+
+        class Fournisseur(providers.MonitoringProvider):
+            key = 'fake_val'
+            label = 'Fake validation'
+
+            def fetch_recent(self, system, config):
+                return [
+                    {'date': (jour - timedelta(days=3)).isoformat(),
+                     'energy_kwh': 10, 'period_days': 1},
+                    {'date': (jour - timedelta(days=2)).isoformat(),
+                     'energy_kwh': 12, 'period_days': 1},
+                    {'date': f'{(jour - timedelta(days=1)).isoformat()}'
+                             'T23:30:00+00:00',
+                     'energy_kwh': 9, 'period_days': 1, 'external_id': 'h'},
+                    {'date': (jour - timedelta(days=4)).isoformat(),
+                     'energy_kwh': -5, 'period_days': 1, 'external_id': 'n'},
+                ]
+
+        self._orig = dict(providers._REGISTRY)
+        providers.register_provider(Fournisseur)
+        MonitoringConfig.objects.create(
+            company=self.company, installation=self.inst,
+            provider='fake_val', enabled=True, credentials={'x': 1})
+
+    def tearDown(self):
+        providers._REGISTRY.clear()
+        providers._REGISTRY.update(self._orig)
+
+    def test_sync_valide_les_releves(self):
+        from datetime import datetime
+
+        from django.utils import timezone
+        services.sync_system(self.inst)
+        services.sync_system(self.inst)
+        releves = ProductionReading.objects.filter(installation=self.inst)
+        self.assertEqual(releves.count(), 3)
+        self.assertFalse(releves.filter(energy_kwh__lt=0).exists())
+        horodate = releves.get(external_id='h')
+        utc = datetime.fromisoformat(
+            f'{(self.jour - timedelta(days=1)).isoformat()}T23:30:00+00:00')
+        self.assertEqual(horodate.date, timezone.localtime(utc).date())
+
+    def test_releve_manuel_existant_ecarte(self):
+        ProductionReading.objects.create(
+            company=self.company, installation=self.inst,
+            date=self.jour - timedelta(days=3), period_days=1,
+            energy_kwh=Decimal('11'))
+        services.sync_system(self.inst)
+        self.assertEqual(ProductionReading.objects.filter(
+            installation=self.inst, source='auto').count(), 2)
+
+
 class TestUnderperformance(TestCase):
     def setUp(self):
         self.company = make_company('perf-co', 'Perf Co')

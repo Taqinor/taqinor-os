@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+from decimal import Decimal
 
 logger = logging.getLogger(__name__)
 
@@ -189,10 +190,19 @@ def _coerce_reading(raw):
     """Normalise un dict de relevé fournisseur (tolérant)."""
     d = raw.get('date')
     if isinstance(d, str):
-        d = datetime.date.fromisoformat(d)
+        # AMON9 — un horodatage ISO devient le jour Africa/Casablanca (heure
+        # locale de la société), jamais un relevé ignoré en silence.
+        d = (datetime.date.fromisoformat(d) if len(d) == 10
+             else datetime.datetime.fromisoformat(d))
+    if isinstance(d, datetime.datetime):
+        from django.utils import timezone
+        d = (timezone.localtime(d) if timezone.is_aware(d) else d).date()
+    energie = Decimal(str(raw.get('energy_kwh', 0)))
+    if energie < 0:
+        raise ValueError('Énergie négative refusée.')  # AMON9
     return {
         'date': d,
-        'energy_kwh': raw.get('energy_kwh', 0),
+        'energy_kwh': energie,
         'period_days': int(raw.get('period_days', 1) or 1),
         'external_id': str(raw.get('external_id', '') or ''),
     }
