@@ -1,6 +1,6 @@
 from drf_spectacular.utils import extend_schema_view, extend_schema
-from . import openapi_docs as D
-from ..openapi_params import qint
+from apps.ventes.views import openapi_docs as D
+from apps.ventes.openapi_params import qint
 from django.db import transaction
 from django.http import HttpResponse
 from rest_framework.parsers import JSONParser
@@ -10,20 +10,20 @@ from rest_framework.response import Response
 from apps.stock.services import (
     mouvement_type_sortie, record_stock_movement,
 )
-from ..models import Facture, Avoir, NoteDebit
-from ..serializers_facturation import AvoirSerializer, NoteDebitSerializer
+from apps.ventes.models import Facture, Avoir, NoteDebit
+from apps.facturation.serializers import AvoirSerializer, NoteDebitSerializer
 from apps.roles.permissions import DroitDeLaGrille  # AARG41
 from authentication.permissions import (
     IsResponsableOrAdmin,
     IsAdminRole,
 )
-from ..gardes_lecture import LectureFactures  # AARG12
+from apps.ventes.gardes_lecture import LectureFactures  # AARG12
 from authentication.scoping import scope_queryset
 from core.mixins import company_qs
 from core.pagination import OrdreTotalMixin  # ERR-FACTURES-LISTE-ORDRE-INSTABLE
 import logging
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('apps.ventes.views.avoir')
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -96,7 +96,7 @@ class AvoirViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
         la facture avait AVANT d'être annulée. C'est exactement ce qu'il faut
         pour la restaurer.
         """
-        from ..models import FactureActivity
+        from apps.ventes.models import FactureActivity
         if avoir.facture_id is None:
             return None
         return (FactureActivity.objects
@@ -210,12 +210,12 @@ class AvoirViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
                 if facture.statut == Facture.Statut.ANNULEE:
                     # AARG63 — LA porte : vente verrouillée, refacturée ou
                     # devis non accepté ⇒ 409 ; AARG2 : l'avance revient.
-                    from ..domain.annulation_facture import restaurer_facture
+                    from apps.ventes.domain.annulation_facture import restaurer_facture
                     restaurer_facture(facture, avoir=avoir, trace=trace,
                                       user=request.user)
             # AARG59 — le trop-perçu parti en avance revient à la facture (409
             # si l'avance a servi), avant tout événement.
-            from ..domain.encaissements import (
+            from apps.ventes.domain.encaissements import (
                 recalculer_statut_paiement, rendre_trop_percu_de_avoir,
             )
             rendre_trop_percu_de_avoir(
@@ -236,7 +236,7 @@ class AvoirViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
         # AARG37 — le PDF servi ne doit plus montrer un avoir actif (rendu hors
         # transaction, best-effort comme NoteDebitViewSet.annuler).
         try:
-            from ..utils.pdf import generate_avoir_pdf
+            from apps.ventes.utils.pdf import generate_avoir_pdf
             generate_avoir_pdf(avoir.id)
             avoir.refresh_from_db()
         except Exception:  # noqa: BLE001 — PDF best-effort (D-ENF22-BLE001)
@@ -247,7 +247,7 @@ class AvoirViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
     @action(detail=True, methods=['get'], url_path='telecharger-pdf')
     def telecharger_pdf(self, request, pk=None):
         avoir = self.get_object()
-        from ..utils.pdf import download_pdf, generate_avoir_pdf
+        from apps.ventes.utils.pdf import download_pdf, generate_avoir_pdf
         try:
             if not avoir.fichier_pdf:
                 generate_avoir_pdf(avoir.id)
@@ -259,7 +259,7 @@ class AvoirViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
                             status=status.HTTP_404_NOT_FOUND)
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
         # QD2 — nom cohérent (société _ type _ client _ référence).
-        from ..utils.filenames import document_filename
+        from apps.ventes.utils.filenames import document_filename
         filename = document_filename(
             'Avoir', avoir.reference,
             client=avoir.client if avoir.client_id else None,
@@ -315,7 +315,7 @@ class NoteDebitViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
         note de débit (jamais en place) : le reste dû revient, chatter tracé.
         Idempotente : rejouée, elle renvoie le même avoir (200, rien créé)."""
         note_debit = self.get_object()
-        from ..domain.facturation_ops import (
+        from apps.ventes.domain.facturation_ops import (
             AvoirRefuse, annuler_note_debit_par_avoir,
         )
         try:
@@ -326,7 +326,7 @@ class NoteDebitViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
         if cree:
             try:
-                from ..utils.pdf import generate_avoir_pdf
+                from apps.ventes.utils.pdf import generate_avoir_pdf
                 generate_avoir_pdf(avoir.id)
                 avoir.refresh_from_db()
             except Exception:  # noqa: BLE001 — PDF best-effort (D-ENF22-BLE001)
@@ -340,7 +340,7 @@ class NoteDebitViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
     @action(detail=True, methods=['get'], url_path='telecharger-pdf')
     def telecharger_pdf(self, request, pk=None):
         note_debit = self.get_object()
-        from ..utils.pdf import download_pdf, generate_note_debit_pdf
+        from apps.ventes.utils.pdf import download_pdf, generate_note_debit_pdf
         try:
             if not note_debit.fichier_pdf:
                 generate_note_debit_pdf(note_debit.id)
@@ -351,7 +351,7 @@ class NoteDebitViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
             return Response({'detail': 'PDF indisponible.'},
                             status=status.HTTP_404_NOT_FOUND)
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
-        from ..utils.filenames import document_filename
+        from apps.ventes.utils.filenames import document_filename
         filename = document_filename(
             'NoteDebit', note_debit.reference,
             client=note_debit.client if note_debit.client_id else None,

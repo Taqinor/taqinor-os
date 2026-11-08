@@ -18,12 +18,12 @@ from core.pagination import OrdreTotalMixin  # ERR-FACTURES-LISTE-ORDRE-INSTABLE
 from core.conflit_etat import ConflitEtat
 from core.parseurs import corps_valide
 from apps.ventes.models import Facture, Paiement, RetenueSubie
-from apps.ventes.serializers_facturation import (
+from apps.facturation.serializers import (
     FactureSerializer, PaiementSerializer, AffectationPaiementSerializer,
     PaiementEnvoyerRecuRequestSerializer, PaiementVentilerRequestSerializer,
     RetenueSubieSerializer,
 )
-from apps.ventes.serializers_facturation import (  # ENF11 : utilisé par @extend_schema
+from apps.facturation.serializers import (  # ENF11 : utilisé par @extend_schema
     PaiementAvecRetenueEntreeSerializer,
 )
 from authentication.permissions import IsResponsableOrAdmin
@@ -103,7 +103,7 @@ class PaiementViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
         # remise d'encaissement accepterait (MÊME prédicat que la déclaration).
         if str(self.request.query_params.get('remisable') or '').strip() in (
                 '1', 'true', 'True'):
-            from apps.ventes.views.remise_encaissement import paiements_remisables
+            from .remise_encaissement import paiements_remisables
             qs = paiements_remisables(qs)
         return qs
 
@@ -400,7 +400,7 @@ class PaiementViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
         # AFAC30 (C-AFAC-029) — l'ENTRÉE est validée par un sérialiseur :
         # 400 en français sous le champ fautif, plus jamais un 500 ni un
         # `mode`/`type_retenue` inconnu enregistré.
-        from apps.ventes.serializers_facturation import (
+        from apps.facturation.serializers import (
             PaiementAvecRetenueEntreeSerializer,
         )
         entree = PaiementAvecRetenueEntreeSerializer(data=request.data)

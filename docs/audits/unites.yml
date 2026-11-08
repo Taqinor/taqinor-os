@@ -78,8 +78,6 @@ unites:
       - "backend/django_core/apps/ventes/domain/argent.py"
       - "backend/django_core/apps/ventes/domain/bordereau.py"
       - "backend/django_core/apps/ventes/views/bon_commande.py"
-      - "backend/django_core/apps/ventes/views/avoir.py"
-      - "backend/django_core/apps/ventes/views/remise_encaissement.py"
       - "backend/django_core/apps/ventes/views/mandat_paiement.py"
       - "backend/django_core/apps/ventes/views/releve_import.py"
       - "frontend/src/pages/ventes/{AvoirsPage,BonCommandeList,FactureForm,FactureKanbanBoard,FactureList,MandatsPaiementPage,NoteDebitDialog,PaiementDialog,PaiementsPage,RelancesPage,RemisesEncaissementPage}.jsx"

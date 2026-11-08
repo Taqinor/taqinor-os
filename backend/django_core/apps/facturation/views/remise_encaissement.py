@@ -12,7 +12,7 @@ espèces/chèque) ; le responsable la clôture avec un bordereau PDF. L'écart
 (déclaré vs somme des lignes) est calculé et exposé, jamais masqué."""
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_view, extend_schema
-from ..openapi_params import entier_requete, qint
+from apps.ventes.openapi_params import entier_requete, qint
 from django.db import transaction
 from django.utils import timezone
 from django.http import HttpResponse
@@ -24,12 +24,12 @@ from rest_framework.response import Response
 from authentication.permissions import IsAnyRole
 from core.conflit_etat import ConflitEtat
 from core.viewsets import CompanyScopedModelViewSet  # ARC5
-from ..models import Paiement, RemiseEncaissement, LigneRemiseEncaissement
-from ..serializers_facturation import RemiseEncaissementSerializer
+from apps.ventes.models import Paiement, RemiseEncaissement, LigneRemiseEncaissement
+from apps.facturation.serializers import RemiseEncaissementSerializer
 from apps.facturation.views.facture_gardes import PeutEncaisser
 import logging
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('apps.ventes.views.remise_encaissement')
 
 READ_ACTIONS = ['list', 'retrieve']
 
@@ -162,7 +162,7 @@ class RemiseEncaissementViewSet(CompanyScopedModelViewSet):
             self._creer_remise(serializer, company, technicien, paiements)
 
     def _creer_remise(self, serializer, company, technicien, paiements):
-        from ..utils.references import create_with_reference
+        from apps.ventes.utils.references import create_with_reference
 
         def _save(ref):
             return serializer.save(
@@ -222,7 +222,7 @@ class RemiseEncaissementViewSet(CompanyScopedModelViewSet):
         remise.date_cloture = timezone.now()
         remise.save(update_fields=['statut', 'cloture_par', 'date_cloture'])
         try:
-            from ..utils.pdf import generate_bordereau_remise_pdf
+            from apps.ventes.utils.pdf import generate_bordereau_remise_pdf
             generate_bordereau_remise_pdf(remise.id)
             remise.refresh_from_db()
         except Exception:  # noqa: BLE001 — best-effort, la clôture reste valide (D-ENF22-BLE001)
@@ -237,7 +237,7 @@ class RemiseEncaissementViewSet(CompanyScopedModelViewSet):
     @action(detail=True, methods=['get'], url_path='pdf')
     def pdf(self, request, pk=None):
         remise = self.get_object()
-        from ..utils.pdf import generate_bordereau_remise_pdf
+        from apps.ventes.utils.pdf import generate_bordereau_remise_pdf
         pdf_bytes = generate_bordereau_remise_pdf(remise.id)
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
         response['Content-Disposition'] = (
