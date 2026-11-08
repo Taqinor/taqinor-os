@@ -24,6 +24,7 @@ import re
 
 from django.conf import settings
 from django.core.files.base import ContentFile
+from .activity import journal_systeme
 
 logger = logging.getLogger(__name__)
 
@@ -157,8 +158,8 @@ def attach_capture_photo(lead, data: dict):
             uploaded_by=None,
             **meta,
         )
-        LeadActivity.objects.create(
-            company=lead.company, lead=lead, user=None,
+        journal_systeme(
+            company=lead.company, lead=lead,
             kind=LeadActivity.Kind.NOTE,
             body='Photo de facture/compteur jointe via le site web',
         )
@@ -231,8 +232,8 @@ def _run_capture_ocr(lead, content: bytes, filename: str, mime: str) -> None:
         if updates:
             lead.save(update_fields=updates)
             from .models import LeadActivity
-            LeadActivity.objects.create(
-                company=lead.company, lead=lead, user=None,
+            journal_systeme(
+                company=lead.company, lead=lead,
                 kind=LeadActivity.Kind.NOTE,
                 body='OCR de la photo : ' + ', '.join(
                     'consommation ≈ %s kWh/mois' % lead.conso_mensuelle_kwh

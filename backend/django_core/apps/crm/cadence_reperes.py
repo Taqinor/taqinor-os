@@ -20,6 +20,7 @@ from .cadence_config import (
 )
 from .leads_doublons import _strip_accents
 from .models import LeadActivity, RelanceEtape
+from .activity import creer_activite
 
 
 def _lead_porte_tag(lead, tag) -> bool:
@@ -602,7 +603,7 @@ def journaliser_whatsapp_ouvert(etape, user):
     touche faite (décision D5 du 07/09) : une conversation ouverte n'est pas
     une réponse du client. Aucune issue posée → aucune cadence arrêtée,
     aucune avance d'étape."""
-    return LeadActivity.objects.create(
+    return creer_activite(
         company=etape.company, lead=etape.lead, user=user,
         kind=LeadActivity.Kind.WHATSAPP,
         body=(f'{prefixe_activite_message_ouvert(etape)} (cadence '

@@ -358,6 +358,31 @@ def _display(lead: Lead, field: str, value):
     return str(value)
 
 
+def creer_activite(**champs) -> LeadActivity:
+    """CRXB5 — LA porte d'écriture du chatter lead (``LeadActivity``).
+
+    Aucun ``LeadActivity.objects.create`` brut hors de ce module (garde
+    ``tests_alea_garde_chatter_complet.py``). ``user`` est OBLIGATOIRE et explicite :
+    l'auteur d'une ligne est toujours dit, jamais deviné. Un chemin SYSTÈME
+    (webhook, récepteur, tâche, commande, synchro) passe par
+    ``journal_systeme`` — jamais par ici avec un utilisateur inventé."""
+    if 'user' not in champs:
+        raise TypeError("creer_activite : 'user' doit être explicite "
+                        "(journal_systeme pour un chemin système)")
+    return LeadActivity.objects.create(**champs)
+
+
+def journal_systeme(**champs) -> LeadActivity:
+    """CRXB5 — ligne de chatter écrite par un chemin SYSTÈME : ``user`` est
+    TOUJOURS ``None`` (invariant machine-vérifié : passer un utilisateur ici
+    lève, et les modules système n'appellent que cette porte — garde
+    ``tests_alea_garde_chatter_complet.py``)."""
+    if 'user' in champs:
+        raise TypeError("journal_systeme : un chemin système n'a pas "
+                        "d'utilisateur (user est toujours None)")
+    return creer_activite(user=None, **champs)
+
+
 def log_creation(lead: Lead, user, *, origine: str = ''):
     """Ligne « création » du chatter.
 
