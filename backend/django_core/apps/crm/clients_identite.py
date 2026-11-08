@@ -720,6 +720,13 @@ def merge_clients(survivor, others, user):
     with transaction.atomic():
         for absorbed in others:
             repointes, non_repointes = repointer_relations(absorbed, survivor)
+            # AMON82 — ids entiers du monitoring (abonnements, certificats).
+            from apps.monitoring.services import repointer_client_monitoring
+            rep_mon, non_rep_mon = repointer_client_monitoring(
+                survivor.company, ancien_client_id=absorbed.pk,
+                nouveau_client_id=survivor.pk)
+            repointes = {**repointes, **rep_mon}
+            non_repointes = non_repointes + non_rep_mon
             for etiquette, n in repointes.items():
                 rapport['repointes'][etiquette] = (
                     rapport['repointes'].get(etiquette, 0) + n)

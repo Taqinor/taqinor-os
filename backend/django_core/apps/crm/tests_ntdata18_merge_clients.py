@@ -146,3 +146,28 @@ class MergeClientsTests(TestCase):
         merge_clients(self.survivant, [self.doublon], self.user)
         facture.refresh_from_db()
         self.assertEqual(facture.client_id, self.survivant.pk)
+
+    def test_abonnement_monitoring_suit_le_survivant(self):
+        """AMON82 — les ids entiers du monitoring suivent la fusion ; un
+        certificat en conflit d'unicité est rapporté, jamais perdu."""
+        from datetime import date
+
+        from apps.monitoring.models import (
+            AbonnementMonitoring, CertificatCarbone)
+        abonnement = AbonnementMonitoring.objects.create(
+            company=self.company, client_id=self.doublon.pk, montant=150)
+        periode = {'periode_debut': date(2026, 1, 1),
+                   'periode_fin': date(2026, 12, 31)}
+        for client, ref in ((self.doublon, 'CERT-A82'),
+                            (self.survivant, 'CERT-B82')):
+            CertificatCarbone.objects.create(
+                company=self.company, client_id=client.pk, reference=ref,
+                tco2_evitees=Decimal('1.000'), **periode)
+        rapport = merge_clients(self.survivant, [self.doublon], self.user)
+        abonnement.refresh_from_db()
+        self.assertEqual(abonnement.client_id, self.survivant.pk)
+        self.assertEqual(
+            rapport['repointes']['monitoring.AbonnementMonitoring.client_id'],
+            1)
+        self.assertIn('monitoring.CertificatCarbone.client_id',
+                      [n['relation'] for n in rapport['non_repointes']])
