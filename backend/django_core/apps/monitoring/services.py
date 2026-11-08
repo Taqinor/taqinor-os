@@ -836,11 +836,21 @@ def creer_abonnement_monitoring(company, *, installation_id, periodicite,
             raise AbonnementMonitoringError(
                 'Ce système a déjà un abonnement actif : résiliez-le d’abord.',
                 etat=True)
-        return AbonnementMonitoring.objects.create(
+        abonnement = AbonnementMonitoring.objects.create(
             company=company, client_id=client_id,
             installation_id=installation_id, periodicite=periodicite,
             montant=montant, statut=AbonnementMonitoring.Statut.ACTIF,
             date_debut=debut)
+        # AMON84 — la supervision coupée par une résiliation est rallumée
+        # (pendant du récepteur) ; un système jamais abonné reste tel quel.
+        if AbonnementMonitoring.objects.filter(
+                company=company, installation_id=installation_id,
+                statut=AbonnementMonitoring.Statut.RESILIE).exists():
+            from .models import MonitoringConfig
+            MonitoringConfig.objects.filter(
+                company=company, installation_id=installation_id,
+                enabled=False).update(enabled=True)
+        return abonnement
 
 
 def resilier_abonnement_monitoring(abonnement, *, motif, user=None):

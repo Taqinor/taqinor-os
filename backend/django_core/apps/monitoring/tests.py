@@ -1724,6 +1724,20 @@ class TestAsav100Abonnements(TestCase):
                          timezone.localdate())
         self.assertEqual(ab.resilie_par.username, 'asav100_resp')
 
+    def test_recreation_rallume_la_supervision(self):
+        # AMON84 — rallumée à la recréation ; jamais abonné : reste coupée.
+        ab = self._creer().data['id']
+        self.api.post(f'{self.URL}{ab}/resilier/', {'motif': 'F'}, format='json')
+        self.assertEqual(self._creer().status_code, 201)
+        self.config.refresh_from_db()
+        self.assertTrue(self.config.enabled)
+        autre, _ = make_installation(self.company, ref='CHT-A100-2')
+        cfg = MonitoringConfig.objects.create(
+            company=self.company, installation=autre, enabled=False)
+        self.assertEqual(self._creer(installation_id=autre.id).status_code, 201)
+        cfg.refresh_from_db()
+        self.assertFalse(cfg.enabled)
+
     def test_second_abonnement_actif_409(self):
         """AMON5 — un seul actif par système ; résilier l'un de deux actifs
         hérités ne coupe pas la supervision ; après résiliation : 201."""
