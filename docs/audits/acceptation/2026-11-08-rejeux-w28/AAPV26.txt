@@ -1,0 +1,14 @@
+# Preuve en direct AAPV26 — rejeu w28, code b00242be0 (dev-plan-6a6fc9-w28), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w28-django (conteneur privé : code de CE worktree, base privée
+# erp_accept_w28, transaction annulée, mail en mémoire, Celery coupé, HTTP sortant bloqué). « oc » = variante
+# scratchpad sonde_oc.py identique sauf transaction.on_commit exécuté immédiatement (événements « après commit »
+# qui ne partiraient jamais dans la transaction annulée). Sur le code corrigé, verdict ÉCART = repro False = attendu.
+# Sondes C-LIVE-* (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Verdict : PASS — Sonde C-AAPV-050 (oc) R1 : facturer un BCF annulé 409 ; R2 : brouillon 409 => repro False.
+
+== C-AAPV-050 (sha 5f603acce)
+attendu : repro si R1 facturer = 201 sur un BCF annulé (FF payable) ; R3 annulation 200 sans signaler la facture ni l'acompte
+observé : {'R1': {'annuler': 200, 'statut_bcf': 'annule', 'facturer': 409, 'ttc': "{'detail': 'Un bon de commande annulé ne se facture pas.'}", 'solde_du': None}, 'R2_brouillon_facturer': 409, 'R3': {'facturer': 201, 'acompte': 201, 'annuler': 409, 'cascade': '{\'detail\': "Ce bon de commande porte la facture FF-202611-0001 et l\'acompte de 7 200,00 : annulation refusée."}', 'facture_apres': ('partiellement_payee', '24000.00', '16800.00', '7200.00')}, 'R3_refacturer_sequentiel': 409}
+{"R1": {"annuler": 200, "statut_bcf": "annule", "facturer": 409, "ttc": "{'detail': 'Un bon de commande annulé ne se facture pas.'}", "solde_du": null}, "R2_brouillon_facturer": 409, "R3": {"facturer": 201, "acompte": 201, "annuler": 409, "cascade": "{'detail': \"Ce bon de commande porte la facture FF-202611-0001 et l'acompte de 7 200,00 : annulation refusée.\"}", "facture_apres": ["partiellement_payee", "24000.00", "16800.00", "7200.00"]}, "R3_refacturer_sequentiel": 409, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 1, après 1) ; mails 0 ; tâches Celery bloquées 0

@@ -1,0 +1,23 @@
+# Preuve en direct AAPV29 — rejeu w28, code b00242be0 (dev-plan-6a6fc9-w28), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w28-django (conteneur privé : code de CE worktree, base privée
+# erp_accept_w28, transaction annulée, mail en mémoire, Celery coupé, HTTP sortant bloqué). « oc » = variante
+# scratchpad sonde_oc.py identique sauf transaction.on_commit exécuté immédiatement (événements « après commit »
+# qui ne partiraient jamais dans la transaction annulée). Sur le code corrigé, verdict ÉCART = repro False = attendu.
+# Sondes C-LIVE-* (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Écran : front de CE worktree servi par vite (127.0.0.1:5199) -> conteneur privé accept-w28-web (runserver, base
+# erp_accept_w28, SMTP 127.0.0.1:1 = aucune messagerie), piloté par Playwright MCP. Données d'écran = états des sondes
+# rejouées SANS rollback dans la base privée (comptes de test des sondes, mot de passe de test) ou fixtures FIX-*.
+# Verdict : PASS — Sonde C-AAPV-065 : aucune porte ne crée/envoie de BCF chez F bloqué => repro False ; écran : « Envoyer » refusé.
+
+== C-AAPV-065 (sha 6ffa876688)
+attendu : repro si création directe 409 mais ≥ 1 BCF ENVOYÉ chez F bloqué par generer-bcf / PATCH / commander-besoin
+observé : {'T_creation_directe': {'http': 409, 'detail': "{'detail': 'Impossible de créer un bon de commande : F-BLOQUE-AAPV65 est bloqué (total) (litige qualité).'}"}, 'R1_creation_da': 201, 'R1': {'soumettre': 200, 'approuver': 200, 'generer_bcf': 409, 'envoyer': None}, 'R2': {'creation_ok': 201, 'patch_fournisseur': 409, 'envoyer': None}, 'R3': {'commander_besoin': 409, 'envoyer': None}, 'bcf_envoyes_chez_F_bloque': []}
+{"T_creation_directe": {"http": 409, "detail": "{'detail': 'Impossible de créer un bon de commande : F-BLOQUE-AAPV65 est bloqué (total) (litige qualité).'}"}, "R1_creation_da": 201, "R1": {"soumettre": 200, "approuver": 200, "generer_bcf": 409, "envoyer": null}, "R2": {"creation_ok": 201, "patch_fournisseur": 409, "envoyer": null}, "R3": {"commander_besoin": 409, "envoyer": null}, "bcf_envoyes_chez_F_bloque": [], "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0
+
+## AAPV29 — PASS (partie écran)
+Société de la sonde C-AAPV-065 (rejouée sans rollback), compte sonde_aapv_065 ; brouillon BCF-ECR-29 créé chez F-SUSPENDU-29 puis
+fournisseur passé « bloque_total » (litige qualité). Bons de commande › BCF-ECR-29 (Brouillon) › « Envoyer au fournisseur » => refus
+affiché « Impossible de créer un bon de commande : F-SUSPENDU-29 est bloqué (total) (litige qualité). » ; le BCF reste « Brouillon ».
+Console : seule erreur = la 409 attendue.

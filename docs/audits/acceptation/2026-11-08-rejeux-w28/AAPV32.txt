@@ -1,0 +1,36 @@
+# Preuve en direct AAPV32 — rejeu w28, code b00242be0 (dev-plan-6a6fc9-w28), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w28-django (conteneur privé : code de CE worktree, base privée
+# erp_accept_w28, transaction annulée, mail en mémoire, Celery coupé, HTTP sortant bloqué). « oc » = variante
+# scratchpad sonde_oc.py identique sauf transaction.on_commit exécuté immédiatement (événements « après commit »
+# qui ne partiraient jamais dans la transaction annulée). Sur le code corrigé, verdict ÉCART = repro False = attendu.
+# Sondes C-LIVE-* (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Écran : front de CE worktree servi par vite (127.0.0.1:5199) -> conteneur privé accept-w28-web (runserver, base
+# erp_accept_w28, SMTP 127.0.0.1:1 = aucune messagerie), piloté par Playwright MCP. Données d'écran = états des sondes
+# rejouées SANS rollback dans la base privée (comptes de test des sondes, mot de passe de test) ou fixtures FIX-*.
+# Verdict : PASS — Sondes C-AAPV-100/101/103 : décisions 403/409 => repro False ; écran Approbations : refus.
+
+== C-AAPV-100 (sha c6bd9b5d52)
+attendu : repro si témoin approuver/ = 403 ET boîte decider = 200 avec DA approuvee/refusee par le technicien / commercial
+observé : {'perms': {'tech_a_approuver_demande_achat': False, 'com_a_approuver_demande_achat': False, 'tech_is_responsable': True, 'com_is_responsable': True}, 'technicien': {'temoin_approuver_http': 403, 'boite_http': 403, 'boite_detail': '{\'detail\': "Permission « approuver_demande_achat » requise pour décider une demande d\'achat."}', 'statut': 'soumise', 'approuvee_par_est_tech': False}, 'commercial': {'temoin_approuver_http': 403, 'boite_http': 403, 'statut': 'soumise', 'approuvee_par_est_com': False, 'refus_boite_http': 403, 'statut_refus': 'soumise'}}
+{"perms": {"tech_a_approuver_demande_achat": false, "com_a_approuver_demande_achat": false, "tech_is_responsable": true, "com_is_responsable": true}, "technicien": {"temoin_approuver_http": 403, "boite_http": 403, "boite_detail": "{'detail': \"Permission « approuver_demande_achat » requise pour décider une demande d'achat.\"}", "statut": "soumise", "approuvee_par_est_tech": false}, "commercial": {"temoin_approuver_http": 403, "boite_http": 403, "statut": "soumise", "approuvee_par_est_com": false, "refus_boite_http": 403, "statut_refus": "soumise"}, "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 1, après 1) ; mails 0 ; tâches Celery bloquées 0
+
+== C-AAPV-101 (sha c6bd9b5d52)
+attendu : repro si témoin approuver-etape 403 ET rejeter-etape/refuser/marquer_commandee 200 par le technicien
+observé : {'rejeter_etape': {'soumettre_http': 200, 'etapes_creees': 2, 'temoin_approuver_etape_http': 403, 'rejeter_http': 403, 'statut': 'soumise', 'etapes': ['en_attente', 'en_attente'], 'decideur_est_tech': False}, 'refuser': {'http': 403, 'statut': 'soumise', 'decideur_est_tech': False}, 'marquer_commandee': {'http': 403, 'url_ok': True, 'statut': 'approuvee', 'bcf_lie': None, 'admin_generer_bcf_http': 200, 'admin_generer_bcf_detail': "{'id': 11, 'reference': 'DA-S101-3', 'objet': 'Onduleurs', 'chantier': None, 'programme': None, 'fou"}}
+{"rejeter_etape": {"soumettre_http": 200, "etapes_creees": 2, "temoin_approuver_etape_http": 403, "rejeter_http": 403, "statut": "soumise", "etapes": ["en_attente", "en_attente"], "decideur_est_tech": false}, "refuser": {"http": 403, "statut": "soumise", "decideur_est_tech": false}, "marquer_commandee": {"http": 403, "url_ok": true, "statut": "approuvee", "bcf_lie": null, "admin_generer_bcf_http": 200, "admin_generer_bcf_detail": "{'id': 11, 'reference': 'DA-S101-3', 'objet': 'Onduleurs', 'chantier': None, 'programme': None, 'fou"}, "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 1, après 1) ; mails 0 ; tâches Celery bloquées 0
+
+== C-AAPV-103 (sha c6bd9b5d52)
+attendu : repro si témoin approuver-etape 409 SoD ET approuver/ + boîte = 200 approuvee par le créateur
+observé : {'sod_stricte': True, 'sans_regle': {'soumettre': [200, 200], 'etapes': [0, 0], 'approuver_http': 409, 'statut_1': 'soumise', 'approuvee_par_createur_1': False, 'boite_http': 400, 'statut_2': 'soumise', 'approuvee_par_createur_2': False}, 'temoin_plan': {'soumettre': 200, 'etapes': 1, 'approuver_etape_http': 409, 'detail': '{\'detail\': "Séparation des tâches : le créateur d\'une demande d\'achat ne peut pas la décider lui-même."}', 'statut': 'soumise'}}
+{"sod_stricte": true, "sans_regle": {"soumettre": [200, 200], "etapes": [0, 0], "approuver_http": 409, "statut_1": "soumise", "approuvee_par_createur_1": false, "boite_http": 400, "statut_2": "soumise", "approuvee_par_createur_2": false}, "temoin_plan": {"soumettre": 200, "etapes": 1, "approuver_etape_http": 409, "detail": "{'detail': \"Séparation des tâches : le créateur d'une demande d'achat ne peut pas la décider lui-même.\"}", "statut": "soumise"}, "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 1, après 1) ; mails 0 ; tâches Celery bloquées 0
+
+## AAPV32 — PASS (partie écran)
+État de la sonde C-AAPV-100 rejouée sans rollback, compte s100-technicien (rôle Technicien, sans approuver_demande_achat).
+Approbations (/approbations) : 3 réquisitions DA-S100-1..3 en file ; « Approuver » sur DA-S100-1 => refus affiché : « Permission
+« approuver_demande_achat » requise pour décider une demande d'achat. » ; les 3 DA restent en file. Console : seule erreur = la 403.

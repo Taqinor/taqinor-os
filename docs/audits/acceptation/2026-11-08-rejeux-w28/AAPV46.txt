@@ -1,0 +1,16 @@
+# Preuve en direct AAPV46 — rejeu w28, code b00242be0 (dev-plan-6a6fc9-w28), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w28-django (conteneur privé : code de CE worktree, base privée
+# erp_accept_w28, transaction annulée, mail en mémoire, Celery coupé, HTTP sortant bloqué). « oc » = variante
+# scratchpad sonde_oc.py identique sauf transaction.on_commit exécuté immédiatement (événements « après commit »
+# qui ne partiraient jamais dans la transaction annulée). Sur le code corrigé, verdict ÉCART = repro False = attendu.
+# Sondes C-LIVE-* (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Écran : front de CE worktree servi par vite (127.0.0.1:5199) -> conteneur privé accept-w28-web (runserver, base
+# erp_accept_w28, SMTP 127.0.0.1:1 = aucune messagerie), piloté par Playwright MCP. Données d'écran = états des sondes
+# rejouées SANS rollback dans la base privée (comptes de test des sondes, mot de passe de test) ou fixtures FIX-*.
+# Verdict : PASS — Écran : messagerie coupée => message, BCF reste brouillon.
+
+## AAPV46 — PASS
+Compte live_ecrans (société Live Ecrans W28). Stock › Bons de commande fournisseur › BCF-ECR-46 (Brouillon, fournisseur F-ECRANS avec e-mail) › « Envoyer par email ».
+Messagerie coupée (SMTP du conteneur web = 127.0.0.1:1, aucun envoi possible) => POST .../80/envoyer-email/ 502 (échec injecté attendu),
+alerte affichée dans le dialogue : « L'e-mail n'est pas parti : le bon de commande reste en brouillon. » ; pastille du dialogue « Brouillon ».
+Rechargement de la liste : BCF-ECR-46 toujours « Brouillon ». Console : seule erreur = la ressource 502 attendue. Aucun dialogue natif.

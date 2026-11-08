@@ -1,0 +1,14 @@
+# Preuve en direct AAPV1 — rejeu w28, code b00242be0 (dev-plan-6a6fc9-w28), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w28-django (conteneur privé : code de CE worktree, base privée
+# erp_accept_w28, transaction annulée, mail en mémoire, Celery coupé, HTTP sortant bloqué). « oc » = variante
+# scratchpad sonde_oc.py identique sauf transaction.on_commit exécuté immédiatement (événements « après commit »
+# qui ne partiraient jamais dans la transaction annulée). Sur le code corrigé, verdict ÉCART = repro False = attendu.
+# Sondes C-LIVE-* (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Verdict : PASS — Sonde C-AAPV-040-L2 (oc) : acompte 3 600 imputé au lien BCF, solde_du 8 400, acompte non consommé 0 => repro False.
+
+== C-AAPV-040 (sha ff075ef7d4)
+attendu : repro si (responsable, route OCR) solde_du 12000 apres lien, BCF propose par suggestions, paiement ecran 12000 accepte, acompte 3600 non consomme
+observé : {'role': 'responsable', 'acompte_http': 201, 'acompte_detail': None, 'confirmer_http': 200, 'ocr_http': 201, 'ocr_detail': None, 'suggestions_http': 200, 'bcf_propose': True, 'patch_http': 200, 'patch_detail': None, 'solde_du_affiche': '8400.00', 'statut_controle': 'normale', 'paiement_ecran_http': 201, 'paiement_detail': None, 'facture_statut': 'payee', 'total_paye': '8400.00', 'acompte_non_consomme': '0.00', 'decaisse_total': '12000.00'}
+{"role": "responsable", "acompte_http": 201, "acompte_detail": null, "confirmer_http": 200, "ocr_http": 201, "ocr_detail": null, "suggestions_http": 200, "bcf_propose": true, "patch_http": 200, "patch_detail": null, "solde_du_affiche": "8400.00", "statut_controle": "normale", "paiement_ecran_http": 201, "paiement_detail": null, "facture_statut": "payee", "total_paye": "8400.00", "acompte_non_consomme": "0.00", "decaisse_total": "12000.00", "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0

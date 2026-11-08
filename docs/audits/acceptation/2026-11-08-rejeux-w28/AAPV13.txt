@@ -1,0 +1,19 @@
+# Preuve en direct AAPV13 — rejeu w28, code b00242be0 (dev-plan-6a6fc9-w28), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w28-django (conteneur privé : code de CE worktree, base privée
+# erp_accept_w28, transaction annulée, mail en mémoire, Celery coupé, HTTP sortant bloqué). « oc » = variante
+# scratchpad sonde_oc.py identique sauf transaction.on_commit exécuté immédiatement (événements « après commit »
+# qui ne partiraient jamais dans la transaction annulée). Sur le code corrigé, verdict ÉCART = repro False = attendu.
+# Sondes C-LIVE-* (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Écran : front de CE worktree servi par vite (127.0.0.1:5199) -> conteneur privé accept-w28-web (runserver, base
+# erp_accept_w28, SMTP 127.0.0.1:1 = aucune messagerie), piloté par Playwright MCP. Données d'écran = états des sondes
+# rejouées SANS rollback dans la base privée (comptes de test des sondes, mot de passe de test) ou fixtures FIX-*.
+# Verdict : PASS — Écran : réception confirmée annulée (contre-passation, stock 0) ; refus 409 affiché sur une réception à unités sorties.
+
+## AAPV13 — PASS
+Compte live_ecrans. (1) Bons de commande › BCF-ECR-13A › « Recevoir les quantités » 3 (Onduleur ECRANS) => BCF « Reçu ».
+Réceptions › REC-202611-0001 (Confirmé) › « Annuler la réception » → dialogue « Annuler cette réception ? » + « La réception est confirmée :
+son entrée de stock sera contre-passée. » → confirmer => statut « Réception annulée (contre-passation). », liste « Annulé » ;
+stock ECR-OND relu en base = 0 (stock rendu).
+(2) BCF-ECR-13B reçu 10 puis 7 sorties (API, compte live_ecrans : recevoir 200, sortie 201, stock 3). Réceptions › REC-202611-0002
+(Confirmé) › « Annuler la réception » → confirmer => 409 affiché (alerte + toast) : « 7 unité(s) de Cable ECRANS ne sont plus en stock :
+enregistrez un retour fournisseur pour les 3 restantes. » Console : seule erreur = la 409 attendue (refus métier sous test).

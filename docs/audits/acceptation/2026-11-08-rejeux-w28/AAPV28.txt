@@ -1,0 +1,111 @@
+# Preuve en direct AAPV28 — rejeu w28, code b00242be0 (dev-plan-6a6fc9-w28), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w28-django (conteneur privé : code de CE worktree, base privée
+# erp_accept_w28, transaction annulée, mail en mémoire, Celery coupé, HTTP sortant bloqué). « oc » = variante
+# scratchpad sonde_oc.py identique sauf transaction.on_commit exécuté immédiatement (événements « après commit »
+# qui ne partiraient jamais dans la transaction annulée). Sur le code corrigé, verdict ÉCART = repro False = attendu.
+# Sondes C-LIVE-* (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Verdict : PASS — C-AAPV-064 volet A (generer-bcf entrelacé) : 200 puis 409, 1 BCF => critère « fini quand » atteint. Volet B (commander-besoin) REPRO structurel : un verrou select_for_update ne sérialise pas deux requêtes sur UNE connexion. LIVE-AAPV28-B (deux connexions réelles) : la 2e requête reste bloquée sur le verrou du chantier puis 409, 1 BCF de 10 => PASS.
+
+== C-AAPV-064 (sha 6ffa876688)
+attendu : repro si l'entrelacement donne 2 BCF (200+200 / 201+201) alors que le clic séquentiel est refusé 409
+observé : {'A_temoin_sequentiel': {'1': 200, '2': 409, 'nb_bcf': 1}, 'A_entrelace': {'http1': 200, 'http2': 409, 'bcfs': [(41, 'brouillon')], 'da_statut': 'commandee', 'da_bon_commande': 41, 'orphelins': []}, 'B_temoin_sequentiel': {'1': 201, '2': 409, 'nb_bcf': 1}, 'B_entrelace': {'http1': 201, 'http2': 201, 'nb_bcf': 2, 'unites': 20}}
+{"A_temoin_sequentiel": {"1": 200, "2": 409, "nb_bcf": 1}, "A_entrelace": {"http1": 200, "http2": 409, "bcfs": [[41, "brouillon"]], "da_statut": "commandee", "da_bon_commande": 41, "orphelins": []}, "B_temoin_sequentiel": {"1": 201, "2": 409, "nb_bcf": 1}, "B_entrelace": {"http1": 201, "http2": 201, "nb_bcf": 2, "unites": 20}, "temoin_ok": true, "defaut_A": false, "defaut_B": true, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0
+
+/app/erp_agentique/settings/base.py:43: UserWarning: SECRET_KEY par défaut détectée. Générez une vraie clé avec :
+  python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+  warnings.warn(
+673 objects imported automatically (use -v 2 for details).
+
+/usr/local/lib/python3.11/site-packages/rest_framework/fields.py:990: UserWarning: max_value should be a Decimal instance.
+  warnings.warn("max_value should be a Decimal instance.")
+/usr/local/lib/python3.11/site-packages/rest_framework/fields.py:992: UserWarning: min_value should be a Decimal instance.
+  warnings.warn("min_value should be a Decimal instance.")
+/usr/local/lib/python3.11/site-packages/rest_framework/fields.py:992: UserWarning: min_value should be a Decimal instance.
+  warnings.warn("min_value should be a Decimal instance.")
+Conflict: /api/django/installations/chantiers/22/commander-besoin/
+@@LIVE {"r1": {"http": 201, "fin_s": 35.58, "detail": null}, "r2": {"http": 409, "fin_s": 4.24, "detail": "{'detail': 'Un BCF ouvert couvre déjà ces manques : BCF-202611-0001.'}"}, "r2_bloquee_pendant_r1": true, "nb_bcf": 1, "unites": 10.0, "repro": true}
+
+# LIVE-AAPV28-B — vraie concurrence (deux threads = deux connexions Postgres) sur `commander-besoin`.
+# La sonde C-AAPV-064 rejoue l'entrelacement sur UNE connexion (crochet) : un verrou `select_for_update`
+# ne peut pas y sérialiser la 2e requête (même transaction). Ici : requête 1 entre dans `_creer_bcfs_groupes`
+# (chantier verrouillé) et s'y arrête ; requête 2 part sur une autre connexion ; on observe qu'elle reste
+# bloquée tant que la 1 n'a pas commité, puis qu'elle relit le besoin couvert => 409, 1 seul BCF.
+# Base privée erp_accept_w28 (données commitées dans la société « Live AAPV 28 B »), mail en mémoire,
+# HTTP sortant bloqué, Celery coupé. Lancé par `manage.py shell` dans le conteneur accept-w28-django.
+import json, socket, threading, time
+from decimal import Decimal
+from django.conf import settings
+from django.db import connection
+settings.EMAIL_BACKEND = 'django.core.mail.backends.locmem.EmailBackend'
+settings.ALLOWED_HOSTS = list(settings.ALLOWED_HOSTS) + ['localhost', 'testserver']
+def _http(*a, **k):
+    raise RuntimeError('HTTP sortant bloque')
+socket.create_connection = _http
+import celery.app.task as _ct
+_ct.Task.apply_async = lambda self, *a, **k: None
+_ct.Task.delay = lambda self, *a, **k: None
+from unittest import mock
+from django.contrib.auth import get_user_model
+from rest_framework.test import APIClient
+from authentication.models import Company
+from apps.stock import services as stock_services
+from apps.stock.models import Fournisseur, Produit, BonCommandeFournisseur
+from apps.installations.models import Installation
+from apps.installations.services import seed_reservations
+
+H = {'HTTP_HOST': 'localhost'}
+co = Company.objects.create(nom='Live AAPV 28 B', slug='live-aapv-28-b-%d' % int(time.time()))
+u = get_user_model().objects.create_user(username='live_aapv28b_%d' % int(time.time()), password='x',
+                                         role_legacy='admin', company=co)
+f = Fournisseur.objects.create(company=co, nom='F-LIVE28')
+p = Produit.objects.create(company=co, nom='Cable LIVE28', sku='LIVE-028-%d' % int(time.time()),
+                           prix_vente=Decimal('50'), prix_achat=Decimal('30'), quantite_stock=0, fournisseur=f)
+bom = [{'produit_id': p.id, 'designation': p.nom, 'quantite': 10.0}]
+ch = Installation.objects.create(company=co, reference='CH-LIVE28-B', bom=bom, statut='signe')
+seed_reservations(ch)
+url = f'/api/django/installations/chantiers/{ch.id}/commander-besoin/'
+
+orig = stock_services._creer_bcfs_groupes
+dans_crochet = threading.Event()
+liberer = threading.Event()
+res = {}
+appels = {'n': 0}
+
+def crochet(*a, **k):
+    appels['n'] += 1
+    if appels['n'] == 1:
+        dans_crochet.set()
+        liberer.wait(30)
+    return orig(*a, **k)
+
+def requete(nom):
+    try:
+        api = APIClient()
+        api.force_authenticate(u)
+        t0 = time.time()
+        r = api.post(url, {}, format='json', **H)
+        res[nom] = {'http': r.status_code, 'fin_s': round(time.time() - t0, 2),
+                    'detail': None if r.status_code < 400 else str(getattr(r, 'data', ''))[:160]}
+    finally:
+        connection.close()
+
+with mock.patch.object(stock_services, '_creer_bcfs_groupes', crochet):
+    t1 = threading.Thread(target=requete, args=('r1',))
+    t1.start()
+    assert dans_crochet.wait(60), 'requete 1 jamais entree dans le crochet'
+    t2 = threading.Thread(target=requete, args=('r2',))
+    t2.start()
+    time.sleep(4)
+    r2_bloquee = t2.is_alive() and 'r2' not in res
+    liberer.set()
+    t1.join(60)
+    t2.join(60)
+
+bcfs = BonCommandeFournisseur.objects.filter(chantier_origine=ch)
+obs = {'r1': res.get('r1'), 'r2': res.get('r2'), 'r2_bloquee_pendant_r1': r2_bloquee,
+       'nb_bcf': bcfs.count(), 'unites': sum(float(l.quantite) for b in bcfs for l in b.lignes.all())}
+obs['repro'] = bool(obs['r1'] and obs['r1']['http'] == 201 and obs['r2'] and obs['r2']['http'] == 409
+                    and r2_bloquee and obs['nb_bcf'] == 1 and obs['unites'] == 10.0)
+print('@@LIVE ' + json.dumps(obs, ensure_ascii=False))
