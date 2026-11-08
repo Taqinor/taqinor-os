@@ -155,6 +155,23 @@ export function statusCounts(items) {
     .map((key) => ({ key, label: statusLabel(key), count: counts[key] }))
 }
 
+// ACSV106 — les compteurs comptent INDÉPENDAMMENT du filtre de statut et du
+// filtre « Ouverts seulement » (sinon « Résolu » lisait toujours 0) ; les autres
+// filtres s'appliquent, les annulés restent exclus sauf filtre d'annulation.
+export function statusCountsIndependants(items, filters) {
+  const f = { ...EMPTY_TICKET_FILTERS, ...(filters ?? {}) }
+  const annule = f.annule || (f.ouvert === 'ouverts' ? 'sans' : '')
+  return statusCounts(filterTickets(items, { ...f, statut: '', ouvert: 'tous', annule }))
+}
+
+// ACSV106 — clic sur un compteur : (dé)sélectionne le statut ; un statut hors
+// « ouverts » bascule l'affichage sur « Tous » pour que la liste le montre.
+export function filtresPourStatut(filters, statut) {
+  const cible = filters.statut === statut ? '' : statut
+  const ouvert = cible && !TICKET_OPEN_STATUSES.includes(cible) ? 'tous' : filters.ouvert
+  return { ...filters, statut: cible, ouvert }
+}
+
 // Tri funnel-aware : par statut (ordre d'entonnoir) ou par priorité, sinon clé.
 export function sortTickets(items, key, dir) {
   if (key === 'statut') return trierPar(items, dir, (t) => statusOrder(t.statut))
