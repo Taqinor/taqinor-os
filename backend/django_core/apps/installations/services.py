@@ -8183,10 +8183,41 @@ def rouvrir_demande_achat_bcf_annule(*, bon_commande_id, company, user=None, sup
             return None
         ref_bcf = da.bon_commande.reference if da.bon_commande_id else bon_commande_id
         appliquer_statut_document(
-            da, DemandeAchat.Statut.APPROUVEE, user=user, champs={'bon_commande': None})
+            da, DemandeAchat.Statut.APPROUVEE, user=user,
+            champs={'bon_commande': None, 'bcf_annule_id': None if supprime else bon_commande_id})
     try:
         from apps.records.services import log_note
         log_note(da, user, f'BCF {ref_bcf} annulé : demande rouverte', company=company)
     except Exception:  # noqa: BLE001 — chatter best-effort (D-ENF22-BLE001)
         logger.warning('AAPV71 : note de réouverture non journalisée (DA %s)', da.pk)
+    return da
+
+
+def recommander_demande_achat_bcf_rouvert(bc, *, user=None):
+    """AAPV85 (D-AAPV-5 = recommander) — « Réouvrir » le BCF ``bc`` dont
+    l'annulation a rouvert une DA (AAPV71) : la DA, encore approuvée sans autre
+    BCF, est re-commandée par ``bc`` et son engagement re-consommé (AAPV17
+    défait). DA commandée ailleurs ou sortie d'« approuvée » : 409 nommé
+    (``ConflitEtat``). BCF sans DA rouverte : ``None`` (réouverture inchangée).
+    À appeler dans la transaction de la réouverture."""
+    from core.conflit_etat import ConflitEtat
+    from .models import DemandeAchat
+    da = (DemandeAchat.objects.select_for_update()
+          .filter(company=bc.company, bcf_annule_id=bc.pk).first())
+    if da is None:
+        return None
+    if da.bon_commande_id or da.statut != DemandeAchat.Statut.APPROUVEE:
+        etat = (f'commandée par {da.bon_commande.reference}' if da.bon_commande_id
+                else f'« {da.get_statut_display()} »')
+        raise ConflitEtat({'detail': (
+            f"La demande d'achat {da.reference} est déjà {etat} : ce BCF ne peut "
+            'pas être réouvert.')})
+    appliquer_statut_document(da, DemandeAchat.Statut.COMMANDEE, user=user,
+                              champs={'bon_commande_id': bc.pk, 'bcf_annule_id': None})
+    consommer_budget_demande_achat(da, bon_commande_id=bc.pk)
+    try:
+        from apps.records.services import log_note
+        log_note(da, user, f'BCF {bc.reference} réouvert : demande re-commandée', company=bc.company)
+    except Exception:  # noqa: BLE001 — chatter best-effort (D-ENF22-BLE001)
+        logger.warning('AAPV85 : note de re-commande non journalisée (DA %s)', da.pk)
     return da

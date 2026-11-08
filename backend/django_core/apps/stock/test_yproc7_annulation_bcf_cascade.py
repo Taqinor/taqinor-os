@@ -199,3 +199,78 @@ class TestCascadeAnnulationBcf(Yproc7Base):
             {'motif_annulation': 'Confirmation ré-annulation'}, format='json')
         self.assertEqual(resp2.status_code, 200)
         self.assertEqual(resp2.data['cascade']['receptions_annulees'], 0)
+
+    def _da_commandee_puis_annulee(self):
+        """AAPV85 — budget 50 000 allumé, DA 20 000 approuvée → generer-bcf
+        (BCF-A) → annuler (DA rouverte, réalisé 0)."""
+        import datetime
+        from apps.installations import services as inst_services
+        from apps.installations.models import DemandeAchat, DemandeAchatLigne
+        from apps.stock.models import AchatsParametres, BudgetDepartement
+        from apps.stock.selectors import consommation_budget
+        params = AchatsParametres.for_company(self.company)
+        params.budget_departement_actif = True
+        params.save(update_fields=['budget_departement_actif'])
+        budget = BudgetDepartement.objects.create(
+            company=self.company, periodicite=BudgetDepartement.Periodicite.ANNUELLE,
+            annee=datetime.date.today().year, montant_alloue=Decimal('50000'))
+        admin = User.objects.create_user(username='aapv85-admin', password='x', company=self.company,
+                                         role_legacy='admin')
+        api = APIClient()
+        api.force_authenticate(admin)
+        da = DemandeAchat.objects.create(company=self.company, reference='DA-AAPV85-1', objet='Câbles',
+                                         created_by=admin, fournisseur_suggere=self.fournisseur)
+        DemandeAchatLigne.objects.create(demande=da, designation='Lot câbles', quantite=1,
+                                         prix_estime=Decimal('20000'))
+        base = '/api/django/installations/demandes-achat/'
+        self.assertEqual(api.post(f'{base}{da.pk}/soumettre/').status_code, 200)
+        inst_services.decider_demande_achat(da, approuver=True, user=admin)
+        self.assertEqual(api.post(f'{base}{da.pk}/generer-bcf/', {}, format='json').status_code, 200)
+        da.refresh_from_db()
+        bcf_a = da.bon_commande_id
+        r = api.post(f'/api/django/stock/bons-commande-fournisseur/{bcf_a}/annuler/',
+                     {'motif_annulation': 'erreur'}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(consommation_budget(budget)['realise'], Decimal('0'))
+        return api, da, bcf_a, (lambda: consommation_budget(budget)['realise'])
+
+    def test_rouvrir_bcf_ne_d_une_da_recommande(self):
+        """AAPV85 (D-AAPV-5 = recommander) — « Réouvrir » le BCF annulé né d'une
+        DA re-commande la DA et re-consomme l'engagement ; generer-bcf alors 409,
+        un seul BCF vivant pour la DA (C-AAPV-VER-007)."""
+        from apps.installations.models import DemandeAchat
+        api, da, bcf_a, realise = self._da_commandee_puis_annulee()
+        r = api.post(f'/api/django/stock/bons-commande-fournisseur/{bcf_a}/rouvrir/', {}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        da.refresh_from_db()
+        self.assertEqual((da.statut, da.bon_commande_id, da.bcf_annule_id),
+                         (DemandeAchat.Statut.COMMANDEE, bcf_a, None))
+        self.assertEqual(realise(), Decimal('20000'))
+        rb = api.post(f'/api/django/installations/demandes-achat/{da.pk}/generer-bcf/', {}, format='json')
+        self.assertGreaterEqual(rb.status_code, 400)
+        vivants = BonCommandeFournisseur.objects.filter(company=self.company).exclude(
+            statut=BonCommandeFournisseur.Statut.ANNULE)
+        self.assertEqual(list(vivants.values_list('id', flat=True)), [bcf_a])
+
+    def test_rouvrir_bcf_dont_la_da_a_un_autre_bcf_refuse(self):
+        """AAPV85 — la DA rouverte a déjà généré BCF-B : « Réouvrir » A rend 409
+        nommant la DA et BCF-B ; A reste annulé."""
+        api, da, bcf_a, _ = self._da_commandee_puis_annulee()
+        self.assertEqual(api.post(f'/api/django/installations/demandes-achat/{da.pk}/generer-bcf/', {},
+                                  format='json').status_code, 200)
+        da.refresh_from_db()
+        ref_b = BonCommandeFournisseur.objects.get(pk=da.bon_commande_id).reference
+        r = api.post(f'/api/django/stock/bons-commande-fournisseur/{bcf_a}/rouvrir/', {}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertIn('DA-AAPV85-1', str(r.data))
+        self.assertIn(ref_b, str(r.data))
+        self.assertEqual(BonCommandeFournisseur.objects.get(pk=bcf_a).statut,
+                         BonCommandeFournisseur.Statut.ANNULE)
+
+    def test_rouvrir_bcf_annule_sans_da_inchange(self):
+        """AAPV85 — témoin : un BCF annulé sans DA se réouvre (200, brouillon)."""
+        bc = self._bcf(statut=BonCommandeFournisseur.Statut.ANNULE)
+        r = self.api.post(f'/api/django/stock/bons-commande-fournisseur/{bc.id}/rouvrir/', {}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        bc.refresh_from_db()
+        self.assertEqual(bc.statut, BonCommandeFournisseur.Statut.BROUILLON)

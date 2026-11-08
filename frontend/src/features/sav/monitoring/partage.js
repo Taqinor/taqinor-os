@@ -25,6 +25,8 @@ export function useListeServeur(lire) {
   return { rows, loading, load }
 }
 
-export const libelleSysteme = (systems, installationId) => systems
-  .find((s) => s.installation === installationId)?.label ?? `Système #${installationId}`
+// AMON96 — repli sur la référence servie avec la ligne (`installation_reference`)
+// avant l'identifiant brut.
+export const libelleSysteme = (systems, installationId, reference) => systems
+  .find((s) => s.installation === installationId)?.label ?? reference ?? `Système #${installationId}`
 

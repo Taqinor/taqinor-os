@@ -42,7 +42,7 @@ function messageErreur(erreur, repli) {
 }
 
 export default function TicketClotureWizard({
-  ticket, onTermine, onAnnuler, statutCible = 'cloture',
+  ticket, onTermine, onAnnuler, statutCible = 'cloture', onRefusNonFacture,
 }) {
   // ASAV54 — monté sur le passage à « Résolu » OU « Clôturé » de la fiche.
   const enRevision = statutCible === 'resolu'
@@ -94,6 +94,14 @@ export default function TicketClotureWizard({
     setEtape(2)
   }
 
+  // ACSV105 — ticket facturable sans facture : la fiche propose le forçage
+  // motivé (« Clôturer sans facture »), sans exiger de référentiel cause/remède.
+  const renvoyerRefusNonFacture = (e) => {
+    if (!onRefusNonFacture || e?.response?.data?.code !== 'ticket_non_facture') return false
+    onRefusNonFacture(messageErreur(e, 'Ticket facturable sans facture.'))
+    return true
+  }
+
   const clotureRapide = async () => {
     setEnCours(true)
     setErreur('')
@@ -101,6 +109,7 @@ export default function TicketClotureWizard({
       await transition(ticket.id)
       onTermine?.({ rapide: true })
     } catch (e) {
+      if (renvoyerRefusNonFacture(e)) return
       setErreur(messageErreur(e, 'La clôture a échoué. Réessayez.'))
     } finally {
       setEnCours(false)
@@ -127,6 +136,7 @@ export default function TicketClotureWizard({
       }
       onTermine?.({ rapide: false, lienEnquete: lien })
     } catch (e) {
+      if (renvoyerRefusNonFacture(e)) return
       setErreur(messageErreur(e, 'La clôture a échoué. Réessayez.'))
     } finally {
       setEnCours(false)

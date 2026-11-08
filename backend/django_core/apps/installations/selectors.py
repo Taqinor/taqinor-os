@@ -205,6 +205,14 @@ def installation_gps_map(installation_ids):
     return {iid: (lat, lng) for iid, lat, lng in rows}
 
 
+def references_installations(company_id, installation_ids):
+    """AMON96 — {installation_id: référence} d'un lot de chantiers de la
+    société, en une requête (libellé lisible d'un système hors installations)."""
+    from .models import Installation
+    return dict(Installation.objects.filter(company_id=company_id, id__in=list(installation_ids))
+                .values_list('id', 'reference'))
+
+
 def active_installation_locations(company):
     """PUB79 — Chantiers ACTIFS (hors ``CLOTURE``) avec GPS + ville, pour les
     déclencheurs cross-app lisant la météo par emplacement (ex.

@@ -6542,6 +6542,7 @@ def imputer_acomptes_bcf(bon_commande):
     from .models import (
         AcompteFournisseur, FactureFournisseur, ImputationAcompteFournisseur,
     )
+    from .services_verrous import constater_creance_ras_acompte
     creees = []
     touchees = {}
     with transaction.atomic():
@@ -6569,6 +6570,7 @@ def imputer_acomptes_bcf(bon_commande):
                     company=acompte.company or facture.company,
                     acompte=acompte, facture=facture, montant=montant))
                 poser_ras_au_solde(creees[-1])  # AAPV5 (D-AAPV-2)
+                constater_creance_ras_acompte(creees[-1])  # AAPV86 (D-AAPV-6)
                 reste -= montant
                 acompte.montant_consomme = (
                     (acompte.montant_consomme or Decimal('0')) + montant)

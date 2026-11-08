@@ -211,6 +211,9 @@ class TestAsav102RegistreApi(TestCase):
         self.assertEqual(set(lst.data), set(exemple))
         self.assertEqual(set(lst.data['results'][0]),
                          set(exemple['results'][0]))
+        # AMON96 — la carte nomme le site par sa référence, pas « Système #id ».
+        self.assertEqual(lst.data['results'][0]['installation_reference'], 'ASAV102-1')
+        self.assertEqual(r.data['installation_reference'], 'ASAV102-1')
         # Doublon exact refusé (anti-double-comptage) : refus d'ÉTAT = 409.
         self.assertEqual(self._emettre().status_code, 409)
 

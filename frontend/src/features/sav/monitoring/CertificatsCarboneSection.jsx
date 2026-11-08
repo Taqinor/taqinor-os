@@ -57,7 +57,7 @@ export default function CertificatsCarboneSection({ systems, loadingSystems }) {
   }
 
   const cible = (c) => (c.installation_id
-    ? libelleSysteme(systems, c.installation_id)
+    ? libelleSysteme(systems, c.installation_id, c.installation_reference)
     :`Client #${c.client_id} (consolidé)`)
 
   const emettre = async () => {

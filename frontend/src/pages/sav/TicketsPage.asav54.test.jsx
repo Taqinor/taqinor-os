@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
@@ -14,6 +14,7 @@ const serveur = vi.hoisted(() => ({
     1: { id: 1, reference: 'SAV-1', statut: 'en_cours', equipement: 977, cause: null, remede: null },
     2: { id: 2, reference: 'SAV-2', statut: 'nouveau', equipement: 977, cause: null, remede: null },
     3: { id: 3, reference: 'SAV-3', statut: 'nouveau', equipement: 977, cause: null, remede: null },
+    4: { id: 4, reference: 'SAV-4', statut: 'resolu', equipement: 978, cause: null, remede: null },
   },
   journal: [],
 }))
@@ -47,6 +48,15 @@ vi.mock('../../api/savApi', async () => (await import('./__tests__/ticketDetailM
     return Promise.resolve({ data: serveur.tickets[id] })
   }),
   lienClientTicket: vi.fn(() => Promise.resolve({ data: { url: 'https://x.test/s' } })),
+  cloturerTicket: vi.fn((id, corps) => {
+    serveur.journal.push(`POST cloturer ${id}${corps?.sans_facture ? ' sans_facture' : ''}`)
+    if (!corps?.sans_facture) {
+      return Promise.reject({ response: { status: 409, data: {
+        code: 'ticket_non_facture', detail: 'Impossible de clôturer : ticket facturable sans facture.' } } })
+    }
+    serveur.tickets[id] = { ...serveur.tickets[id], statut: 'cloture' }
+    return Promise.resolve({ data: serveur.tickets[id] })
+  }),
 }))
 vi.mock('../../api/axios', async () => (await import('./__tests__/ticketDetailMocks.js')).axiosMock())
 vi.mock('../../api/installationsApi', async () => (await import('./__tests__/ticketDetailMocks.js')).installationsApiMock())
@@ -98,4 +108,21 @@ describe('TicketDetail — ASAV54 assistant de résolution + cause à la fiche',
     }
     expect(regroupements()).toHaveLength(1)
   }, 180000)
+
+  it('ACSV105 — « Clôture rapide » refusée (non facturé) : le forçage motivé est offert sans cause/remède', async () => {
+    const user = userEvent.setup()
+    rendre(4)
+    await screen.findByText('Ticket SAV — SAV-4', { exact: false })
+    const statut = screen.getAllByRole('combobox').find((c) => c.textContent === 'Résolu')
+    await user.click(statut)
+    await user.click(await screen.findByRole('option', { name: 'Clôturé' }))
+    await user.click(screen.getByRole('button', { name: /Mettre à jour/ }))
+    await user.click(await screen.findByRole('button', { name: 'Clôture rapide' }))
+    const bloc = await screen.findByTestId('cloture-sans-facture')
+    expect(screen.queryByText(/étape 1 sur 2/)).not.toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Motif de la clôture sans facture'), { target: { value: 'Geste commercial' } })
+    fireEvent.click(within(bloc).getByRole('button', { name: 'Clôturer sans facture' }))
+    await waitFor(() => expect(serveur.tickets[4].statut).toBe('cloture'))
+    expect(serveur.tickets[4].cause).toBeNull()
+  }, 60000)
 })

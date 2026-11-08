@@ -35,6 +35,7 @@
         {
           "id": 3,
           "installation": 87,
+          "installation_reference": "CHT-202610-0087",
           "disponibilite_garantie_pct": "98.00",
           "compensation_mad_par_jour_indispo": "50.00",
           "note": "",

@@ -68,7 +68,8 @@ import {
   sortTickets,
   statusLabel,
   ticketAgeDays,
-  statusCounts,
+  statusCountsIndependants,
+  filtresPourStatut,
 } from '../../features/sav/ticketStatuses'
 import {
   TooltipProvider,
@@ -1468,6 +1469,13 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
                 ticket={current}
                 statutCible={clotureCible}
                 onAnnuler={() => setClotureCible(null)}
+                onRefusNonFacture={(message) => {
+                  // ACSV105 — refus « non facturé » : forçage dans la fiche.
+                  setClotureCible(null)
+                  setSaveError(message)
+                  setForcerSansFacture(true)
+                  set('statut', current.statut)
+                }}
                 onTermine={async () => {
                   setClotureCible(null)
                   toast.success('Ticket mis à jour')
@@ -1935,8 +1943,8 @@ export default function TicketsPage() {
     () => sortTickets(filterTickets(items, filters), 'statut', 'asc'),
     [items, filters])
 
-  // L306/L314 — comptes par statut (ordre funnel) sur le jeu filtré.
-  const counts = useMemo(() => statusCounts(rows), [rows])
+  // L306/L314 — comptes par statut (ordre funnel) ; ACSV106 : hors filtres statut/ouverts.
+  const counts = useMemo(() => statusCountsIndependants(items, filters), [items, filters])
 
   /* APX31 — J/K + Entrée/Échap sur la liste des tickets.
      -------------------------------------------------------------------------
@@ -2221,7 +2229,7 @@ export default function TicketsPage() {
           <div className="flex flex-wrap gap-2">
             {counts.map((c) => (
               <button key={c.key} type="button"
-                      onClick={() => setF('statut', filters.statut === c.key ? '' : c.key)}
+                      onClick={() => setFilters((f) => filtresPourStatut(f, c.key))}
                       className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors ${
                         filters.statut === c.key ? 'border-primary bg-primary/10' : 'border-border bg-card'}`}>
                 <span className="size-2 rounded-full" style={{ background: TICKET_STATUS_COLORS[c.key] }} />

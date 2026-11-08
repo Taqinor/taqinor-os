@@ -56,11 +56,12 @@ export default function WarrantiesPage() {
 
   const nameOf = useMemo(() => {
     const map = new Map(installations.map((i) => [i.id, i]))
-    return (id) => {
+    // AMON96 — repli sur la référence servie avec la garantie avant l'id brut.
+    return (id, reference) => {
       const inst = map.get(id)
       return inst
         ? `${inst.reference}${inst.client_nom ? ` — ${inst.client_nom}` : ''}`
-        : `Système #${id}`
+        : (reference ?? `Système #${id}`)
     }
   }, [installations])
 
@@ -146,7 +147,7 @@ export default function WarrantiesPage() {
   const remove = async (w) => {
     const ok = await confirmDelete({
       title: 'Supprimer cette garantie ?',
-      description: `La garantie de production de « ${nameOf(w.installation)} » sera supprimée.`,
+      description: `La garantie de production de « ${nameOf(w.installation, w.installation_reference)} » sera supprimée.`,
     })
     if (!ok) return
     monitoringApi.deleteWarranty(w.id)
@@ -159,7 +160,7 @@ export default function WarrantiesPage() {
   }
 
   const columns = useMemo(() => [
-    { id: 'installation', header: 'Système', accessor: (r) => nameOf(r.installation) },
+    { id: 'installation', header: 'Système', accessor: (r) => nameOf(r.installation, r.installation_reference) },
     {
       id: 'guaranteed_year1_kwh', header: 'Garanti année 1', width: 150, align: 'right',
       accessor: (r) => Number(r.guaranteed_year1_kwh) || 0,
@@ -265,7 +266,7 @@ export default function WarrantiesPage() {
       {selected && (
         <div className="mt-6 flex flex-col gap-4" data-testid="warranty-detail">
           <h2 className="font-display text-base font-semibold tracking-tight">
-            {nameOf(selected.installation)}
+            {nameOf(selected.installation, selected.installation_reference)}
           </h2>
           {loadingDetail ? (
             showDetailSpinner && (

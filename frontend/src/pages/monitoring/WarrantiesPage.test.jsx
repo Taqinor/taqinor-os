@@ -66,6 +66,19 @@ describe('WarrantiesPage (WR6 — garanties de production)', () => {
     expect(screen.getAllByText(/14\s*000\s*kWh/).length).toBeGreaterThan(0)
   })
 
+  it('AMON96 — système hors parc : la référence servie remplace « Système #id »', async () => {
+    monitoringApi.getWarranties.mockResolvedValueOnce({
+      data: [{
+        id: 4, installation: 99, installation_reference: 'CHT-202611-0099', guaranteed_year1_kwh: '9000.00',
+        degradation_pct_per_year: '0.50', start_year: 2025, tolerance_pct: '5.00',
+        compensation_mad_per_kwh: '1.0000', note: '',
+      }],
+    })
+    renderPage(<WarrantiesPage />)
+    expect((await screen.findAllByText('CHT-202611-0099')).length).toBeGreaterThan(0)
+    expect(screen.queryByText('Système #99')).not.toBeInTheDocument()
+  })
+
   it('affiche statut + courbe (recours fabricant) au clic « Statut et courbe »', async () => {
     renderPage(<WarrantiesPage />)
     await screen.findAllByText('INST-2026-001 — Amrani')

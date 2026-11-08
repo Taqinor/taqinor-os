@@ -210,6 +210,8 @@ class TestAsav101SlaApi(TestCase):
         self.assertEqual(set(lst.data), set(attendu))
         self.assertEqual(set(lst.data['results'][0]),
                          set(attendu['results'][0]))
+        # AMON96 — la carte nomme le système par sa référence.
+        self.assertEqual(lst.data['results'][0]['installation_reference'], 'ASAV101-1')
         # Un seul SLA par système : refus d'ÉTAT (corps conforme) = 409.
         self.assertEqual(self._creer().status_code, 409)
 

@@ -145,6 +145,34 @@ class RasTests(TestCase):
         montants = sorted(r['montant_ras_tva'] for r in relevé_ras_tva(self.company))
         self.assertEqual(montants, [Decimal('60.00'), Decimal('140.00')])
 
+    def test_acompte_brut_qui_solde_constate_une_creance(self):
+        """AAPV86 (D-AAPV-6 = creance_fournisseur) — paiement 840 puis acompte
+        360 versé brut qui solde : la RAS de 60 déclarée sur l'imputation n'a pas
+        été retenue ⇒ créance de 60 sur le fournisseur (avoir validé, imputable,
+        lié à la facture). Acompte imputé AVANT le paiement : aucune créance."""
+        from apps.stock.models import AvoirFournisseur
+        bcf, facture = self._facture_sans_acompte()
+        self._payer(facture, '840')
+        self.assertFalse(AvoirFournisseur.objects.filter(company=self.company).exists())
+        r = self.api.post('/api/django/stock/acomptes-fournisseur/', {
+            'bon_commande': bcf.id, 'montant': '360',
+            'date_versement': '2026-10-06'}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        creance = AvoirFournisseur.objects.get(company=self.company)
+        self.assertEqual((creance.montant_ttc, creance.montant_tva, creance.montant_disponible),
+                         (Decimal('60.00'), Decimal('0.00'), Decimal('60.00')))
+        self.assertEqual((creance.statut, creance.fournisseur_id, creance.facture_origine_id),
+                         (AvoirFournisseur.Statut.VALIDE, self.fournisseur.id, facture.id))
+        self.assertIn('RAS-TVA', creance.note)
+        self._facture_avec_acompte_temoin()
+
+    def _facture_avec_acompte_temoin(self):
+        from apps.stock.models import AvoirFournisseur
+        avant = AvoirFournisseur.objects.filter(company=self.company).count()
+        facture = self._facture_avec_acompte(Decimal('360'))
+        self.assertEqual(self._payer(facture, '840').montant_ras_tva, Decimal('200.00'))
+        self.assertEqual(AvoirFournisseur.objects.filter(company=self.company).count(), avant)
+
     def test_paiement_puis_avoir_qui_solde(self):
         """AAPV5 — même chaîne par un avoir 360 (sans TVA propre) : 60,00 ;
         une imputation qui ne solde pas ne porte rien."""

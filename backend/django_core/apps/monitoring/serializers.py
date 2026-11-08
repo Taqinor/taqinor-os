@@ -205,11 +205,14 @@ class ProductionWarrantySerializer(IdInconnu404Mixin, UniciteEn409Mixin, Company
         max_digits=8, decimal_places=4, required=False)
     start_year = serializers.IntegerField(
         min_value=ANNEE_GARANTIE_MIN, max_value=ANNEE_GARANTIE_MAX)
+    # AMON96 — référence du système (libellé des cartes, repli « Système #id »).
+    installation_reference = serializers.CharField(
+        source='installation.reference', read_only=True, allow_null=True)
 
     class Meta:
         model = ProductionWarranty
         fields = [
-            'id', 'installation', 'guaranteed_year1_kwh',
+            'id', 'installation', 'installation_reference', 'guaranteed_year1_kwh',
             'degradation_pct_per_year', 'start_year',
             'compensation_mad_per_kwh', 'tolerance_pct', 'note',
             'date_creation', 'date_modification',
@@ -345,11 +348,13 @@ class SlaDisponibiliteSerializer(IdInconnu404Mixin, UniciteEn409Mixin, CompanySc
         max_digits=5, decimal_places=2)
     compensation_mad_par_jour_indispo = _CompensationLitterale(
         max_digits=10, decimal_places=2, required=False)
+    installation_reference = serializers.CharField(  # AMON96
+        source='installation.reference', read_only=True, allow_null=True)
 
     class Meta:
         model = SlaDisponibilite
         fields = [
-            'id', 'installation', 'disponibilite_garantie_pct',
+            'id', 'installation', 'installation_reference', 'disponibilite_garantie_pct',
             'compensation_mad_par_jour_indispo', 'note', 'created_at',
             'updated_at',
         ]
@@ -382,16 +387,33 @@ class CertificatCarboneSerializer(serializers.ModelSerializer):
     client_id = serializers.IntegerField(
         min_value=1, required=False, allow_null=True)
     annule_par_nom = serializers.SerializerMethodField()
+    installation_reference = serializers.SerializerMethodField()
 
     class Meta:
         model = CertificatCarbone
         fields = [
-            'id', 'installation_id', 'client_id', 'periode_debut',
+            'id', 'installation_id', 'installation_reference', 'client_id', 'periode_debut',
             'periode_fin', 'tco2_evitees', 'reference', 'created_at',
             'statut', 'motif_annulation', 'annule_le', 'annule_par_nom',
         ]
         read_only_fields = ['tco2_evitees', 'reference', 'created_at',
                             'statut', 'motif_annulation', 'annule_le']
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_installation_reference(self, obj):
+        """AMON96 — référence du site (``installation_id`` est un entier, pas
+        une FK) : lue en UNE requête pour toute la page via le sélecteur
+        installations, mise en cache dans le contexte."""
+        if not obj.installation_id:
+            return None
+        refs = self.context.get('_references_installations')
+        if refs is None or obj.installation_id not in refs:
+            from apps.installations.selectors import references_installations
+            lot = getattr(self.parent, 'instance', None) or [obj]
+            ids = {o.installation_id for o in lot if getattr(o, 'installation_id', None)} | {obj.installation_id}
+            refs = {**(refs or {}), **dict.fromkeys(ids), **references_installations(obj.company_id, ids)}
+            self.context['_references_installations'] = refs
+        return refs.get(obj.installation_id)
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_annule_par_nom(self, obj):
