@@ -381,6 +381,38 @@ class TestUnderperformance(TestCase):
         self.assertEqual(
             UnderperformanceFlag.objects.filter(is_open=True).count(), 1)
 
+    def test_rechute_reutilise_le_ticket_preventif_ouvert(self):
+        """AMON26 — D1 + T1, production rétablie (D1 fermé, T1 ouvert), puis
+        rechute : D2 lié à T1, un seul ticket ; T1 clôturé ⇒ T2 (témoin)."""
+        from django.utils import timezone
+        s = MonitoringSettings.get(self.company)
+        s.auto_create_ticket = True
+        s.save()
+        self._add_reading(3750)
+
+        def evaluer_puis_retablir():
+            res = services.evaluate_underperformance(
+                self.inst, user=self.user, today=self.today)
+            UnderperformanceFlag.objects.filter(is_open=True).update(
+                is_open=False, date_cloture=timezone.now(),
+                motif_cloture='performance_retablie')
+            return res['ticket']
+        t1 = evaluer_puis_retablir()
+        res = services.evaluate_underperformance(
+            self.inst, user=self.user, today=self.today)
+        self.assertEqual(res['ticket'].id, t1.id)
+        d2 = UnderperformanceFlag.objects.get(is_open=True)
+        self.assertEqual(d2.ticket_id, t1.id)
+        self.assertEqual(Ticket.objects.count(), 1)
+        UnderperformanceFlag.objects.filter(pk=d2.pk).update(
+            is_open=False, date_cloture=timezone.now(),
+            motif_cloture='performance_retablie')
+        Ticket.objects.filter(pk=t1.pk).update(statut=Ticket.Statut.CLOTURE)
+        res = services.evaluate_underperformance(
+            self.inst, user=self.user, today=self.today)
+        self.assertNotEqual(res['ticket'].id, t1.id)
+        self.assertEqual(Ticket.objects.count(), 2)
+
     def test_underperf_ticket_goes_through_sav_services_boundary(self):
         """WIR88 — le ticket préventif est créé via apps.sav.services (frontière
         M3), avec les mêmes attributs qu'avant (comportement inchangé)."""

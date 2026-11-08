@@ -646,6 +646,19 @@ def _create_underperf_ticket(installation, flag, user):
     client = getattr(installation, 'client', None)
     if client is None:
         return None
+    # AMON26 — rechute : le ticket préventif encore OUVERT de l'épisode
+    # précédent est repris, jamais un second à côté.
+    from apps.sav import selectors as sav_selectors
+    precedent = (UnderperformanceFlag.objects
+                 .filter(installation=installation, is_open=False,
+                         ticket__isnull=False)
+                 .order_by('-date_cloture', '-id')
+                 .values_list('ticket_id', flat=True).first())
+    ticket = (sav_selectors.ticket_scoped(installation.company, precedent)
+              if precedent else None)
+    if (ticket is not None and ticket.statut in type(ticket).OPEN_STATUTS
+            and not ticket.annule):
+        return ticket
     ratio = flag.ratio_pct
 
     return sav_services.creer_ticket_preventif(
