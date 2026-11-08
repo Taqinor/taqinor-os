@@ -58,3 +58,29 @@ def alarmes_onduleur_ouvertes(company, installation_id):
     return AlarmeOnduleur.objects.filter(
         company=company, equipement__installation_id=installation_id,
         statut__in=[statut.ACTIVE, statut.ESCALADEE]).count()
+
+
+def dernier_nettoyage_sav(company, installation_id, avant):
+    """AMON44 — date (locale) de la dernière étape de nettoyage des panneaux
+    cochée sur un ticket SAV du système, au plus tard le jour ``avant`` ;
+    ``None`` sinon. Clés = celles des modèles d'entretien SAV."""
+    from datetime import datetime, time, timedelta
+
+    from django.db.models import Max
+    from django.utils import timezone
+
+    from .models import TicketChecklistItem
+    from .services import (
+        MODELE_ENTRETIEN_CI_ETAPES, MODELE_ENTRETIEN_POMPAGE_ETAPES,
+    )
+
+    cles = [cle for cle, _libelle in (MODELE_ENTRETIEN_POMPAGE_ETAPES
+                                      + MODELE_ENTRETIEN_CI_ETAPES)
+            if 'nettoyage' in cle]
+    borne = timezone.make_aware(
+        datetime.combine(avant + timedelta(days=1), time.min))
+    dernier = TicketChecklistItem.objects.filter(
+        company=company, ticket__installation_id=installation_id,
+        cle__in=cles, coche=True, date_coche__lt=borne,
+    ).aggregate(d=Max('date_coche'))['d']
+    return None if dernier is None else timezone.localtime(dernier).date()

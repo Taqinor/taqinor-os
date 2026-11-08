@@ -215,6 +215,14 @@ def om_metrics(installation, *, window_days=DEFAULT_WINDOW_DAYS, today=None):
     }
 
 
+def _mois_complet(mois, debut, today):
+    """AMON44 — le mois ``'AAAA-MM'`` est-il entier dans [debut ; today] ?"""
+    annee, num = (int(x) for x in mois.split('-'))
+    premier = date(annee, num, 1)
+    dernier = date(annee, num, calendar.monthrange(annee, num)[1])
+    return premier >= debut and dernier <= today
+
+
 def soiling_assessment(installation, *, window_days=DEFAULT_WINDOW_DAYS,
                        today=None):
     """FG283 — estime la perte par salissure et recommande un nettoyage.
@@ -227,20 +235,32 @@ def soiling_assessment(installation, *, window_days=DEFAULT_WINDOW_DAYS,
     """
     today = today or timezone.localdate()
     metrics = om_metrics(installation, window_days=window_days, today=today)
-    monthly_pr = [m for m in metrics['monthly_pr'] if m['pr_pct'] is not None]
 
+    # AMON44 — dernier nettoyage = saisi au monitoring OU étape de nettoyage
+    # cochée sur un ticket SAV du système.
+    from apps.sav.selectors_supervision import dernier_nettoyage_sav
     last_clean = (CleaningEvent.objects
                   .filter(installation=installation, date__lte=today)
-                  .order_by('-date').first())
-    days_since_clean = (
-        (today - last_clean.date).days if last_clean else None)
+                  .order_by('-date').values_list('date', flat=True).first())
+    nettoyage_sav = dernier_nettoyage_sav(
+        installation.company_id, installation.pk, today)
+    if nettoyage_sav and (last_clean is None or nettoyage_sav > last_clean):
+        last_clean = nettoyage_sav
+    days_since_clean = (today - last_clean).days if last_clean else None
 
-    pr_drop = None
-    current_pr = None
-    baseline_pr = None
-    if monthly_pr:
-        current_pr = monthly_pr[-1]['pr_pct']
-        baseline_pr = max(m['pr_pct'] for m in monthly_pr)
+    # AMON44 — mois COMPLETS depuis le dernier nettoyage (au profil mensuel,
+    # AMON29) : base = moyenne des deux premiers, courant = le dernier ;
+    # moins de 3 mois ⇒ aucune estimation (jamais une saison prise pour
+    # une salissure).
+    debut = last_clean + timedelta(days=1) if last_clean else (
+        today - timedelta(days=window_days))
+    complets = [
+        m['pr_pct'] for m in metrics['monthly_pr']
+        if m['pr_pct'] is not None and _mois_complet(m['month'], debut, today)]
+    pr_drop = current_pr = baseline_pr = None
+    if len(complets) >= 3:
+        current_pr = complets[-1]
+        baseline_pr = _q((complets[0] + complets[1]) / 2)
         pr_drop = _q(baseline_pr - current_pr)
 
     recommend = False
@@ -252,7 +272,7 @@ def soiling_assessment(installation, *, window_days=DEFAULT_WINDOW_DAYS,
             and days_since_clean >= SOILING_MAX_DAYS_SINCE_CLEAN):
         recommend = True
         reasons.append('délai depuis le dernier nettoyage')
-    if last_clean is None and (days_since_clean is None) and monthly_pr:
+    if last_clean is None and complets:
         # Jamais nettoyé et PR dégradé : on recommande aussi.
         if pr_drop is not None and pr_drop >= SOILING_PR_DROP_PCT:
             reasons.append('aucun nettoyage enregistré')
@@ -262,8 +282,7 @@ def soiling_assessment(installation, *, window_days=DEFAULT_WINDOW_DAYS,
         'current_pr_pct': current_pr,
         'baseline_pr_pct': baseline_pr,
         'estimated_soiling_loss_pct': pr_drop,
-        'last_cleaning_date': (
-            last_clean.date.isoformat() if last_clean else None),
+        'last_cleaning_date': last_clean.isoformat() if last_clean else None,
         'days_since_cleaning': days_since_clean,
         'recommend_cleaning': recommend,
         'reasons': reasons,

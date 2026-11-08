@@ -848,10 +848,72 @@ class TestSoiling(TestCase):
 
     def test_pr_drop_recommends_cleaning(self):
         # PR descend de 1000 → 700 (≈ -25 pts de PR), chute > seuil.
-        self._seed([1000, 950, 850, 700])
+        # AMON44 — relevés datés du 1er (convention AMON3 : mois complets).
+        for mois, kwh in enumerate([1000, 950, 850, 700], start=1):
+            ProductionReading.objects.create(
+                company=self.company, installation=self.inst,
+                date=date(2026, mois, 1), period_days=30,
+                energy_kwh=Decimal(str(kwh)))
         from apps.monitoring.analytics import soiling_assessment
         a = soiling_assessment(self.inst, today=self.today)
         self.assertIsNotNone(a['estimated_soiling_loss_pct'])
+        self.assertTrue(a['recommend_cleaning'])
+
+    def _saison(self, inst, mois_annee, facteurs=None):
+        import calendar
+        facteurs = facteurs or {}
+        for annee, mois in mois_annee:
+            premier = date(annee, mois, 1)
+            nb = calendar.monthrange(annee, mois)[1]
+            kwh = services.attendu_entre(
+                Decimal('12000'), premier, date(annee, mois, nb))
+            ProductionReading.objects.create(
+                company=self.company, installation=inst, date=premier,
+                period_days=nb, energy_kwh=(
+                    kwh * facteurs.get(mois, Decimal('1'))).quantize(
+                        Decimal('0.01')))
+
+    def test_saison_saine_sans_reco_et_nettoyage_sav_remet_la_base(self):
+        """AMON44 — une saison saine n'est pas une salissure ; un nettoyage
+        coché sur un ticket SAV devient le dernier nettoyage (< 3 mois
+        complets ⇒ aucune estimation) ; témoin : 2 mois propres puis −20 %."""
+        from datetime import datetime
+
+        from django.utils import timezone
+
+        from apps.monitoring.analytics import soiling_assessment
+        from apps.monitoring.report import build_om_report_data
+        from apps.sav.models import TicketChecklistItem
+        jour = date(2025, 12, 31)
+        self._saison(self.inst, [(2025, m) for m in range(1, 13)])
+        a = soiling_assessment(self.inst, today=jour)
+        self.assertFalse(a['recommend_cleaning'])
+        self.assertLess(abs(float(a['estimated_soiling_loss_pct'])), 1.0)
+        ticket = Ticket.objects.create(
+            company=self.company, reference='SAV-AMON44',
+            client=self.inst.client, installation=self.inst)
+        TicketChecklistItem.objects.create(
+            company=self.company, ticket=ticket,
+            cle='ci_panneaux_etat_nettoyage', libelle='Nettoyage', coche=True,
+            date_coche=timezone.make_aware(datetime(2025, 11, 20, 10)))
+        a = soiling_assessment(self.inst, today=jour)
+        self.assertEqual(a['last_cleaning_date'], '2025-11-20')
+        self.assertIsNone(a['estimated_soiling_loss_pct'])
+        self.assertFalse(a['recommend_cleaning'])
+        self.assertNotIn('Nettoyage des panneaux recommandé.',
+                         build_om_report_data(self.inst, today=jour)[
+                             'recommendations'])
+        temoin, _ = make_installation(self.company, ref='S-2', kwc='10.00')
+        MonitoringConfig.objects.create(
+            company=self.company, installation=temoin,
+            expected_annual_kwh=Decimal('12000'))
+        CleaningEvent.objects.create(
+            company=self.company, installation=temoin, date=date(2025, 8, 31))
+        self._saison(temoin, [(2025, 9), (2025, 10), (2025, 11)],
+                     {11: Decimal('0.8')})
+        a = soiling_assessment(temoin, today=date(2025, 11, 30))
+        self.assertAlmostEqual(
+            float(a['estimated_soiling_loss_pct']), 20.0, delta=0.5)
         self.assertTrue(a['recommend_cleaning'])
 
     def test_recent_cleaning_no_days_alert(self):
