@@ -4345,6 +4345,14 @@ def dupliquer_bcf(company, user, bon_commande):
 # de réappro (FG54) ou besoins chantier créent aujourd'hui des BCF séparés
 # vers le même fournisseur — l'acheteur finit par multiplier les commandes.
 
+def motif_bcf_engage(bc):
+    """AAPV62/AAPV81 — « Ce bon de commande porte la facture … et l'acompte de … »
+    quand le BCF est facturé ou acompté (ni annulable ni fusionnable), sinon None."""
+    engagements = [f'la facture {ref}' for ref in bc.factures_fournisseur.values_list('reference', flat=True)]
+    engagements += [f"l'acompte de {_fmt_montant_pdf(m)}" for m in bc.acomptes.values_list('montant', flat=True)]
+    return f"Ce bon de commande porte {' et '.join(engagements)}" if engagements else None
+
+
 def fusionner_bcf(company, user, bon_commande_ids):
     """ZPUR6 — fusionne PLUSIEURS BCF BROUILLON du MÊME fournisseur (et de la
     MÊME société) en un BCF cible neuf : lignes additionnées par produit
@@ -4378,6 +4386,10 @@ def fusionner_bcf(company, user, bon_commande_ids):
         raise EtatIncompatible(
             'Seuls des bons de commande en BROUILLON peuvent être fusionnés '
             f'({non_brouillon[0].reference} ne l\'est pas).')
+    for bc in bcs:  # AAPV81 — même garde que l'annulation (AAPV62)
+        engage = motif_bcf_engage(bc)
+        if engage:
+            raise EtatIncompatible(f'{engage} ({bc.reference}) : fusion refusée.')
     # ASTK66 — des BCF rattachés à des chantiers / destinations / devises
     # différents ne se fusionnent pas : la cible perdrait le rattachement
     # (réservation chantier à la réception, contre-valeur MAD).
