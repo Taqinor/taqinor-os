@@ -1244,3 +1244,26 @@ class CertificatCarboneViewSet(CompanyScopedModelViewSet):
             if exc.introuvable:
                 raise NotFound(_erreur_service(exc))
             raise serializers.ValidationError(_erreur_service(exc))
+
+    @extend_schema(request=_ClasserDrapeauCorps,
+                   responses={200: CertificatCarboneSerializer})
+    @action(detail=True, methods=['post'], url_path='annuler',
+            permission_classes=[IsResponsableOrAdmin])
+    def annuler(self, request, pk=None):
+        """AMON93 — annule le certificat (motif obligatoire, auteur et date
+        tracés) ; la même cible et période redeviennent émissibles. Motif
+        vide : 400 ; déjà annulé : 409 ; autre société : 404."""
+        from .services import CertificatCarboneError, annuler_certificat_carbone
+        certificat = self.get_object()
+        corps = _ClasserDrapeauCorps(data=request.data if hasattr(
+            request.data, 'get') else {})
+        corps.is_valid(raise_exception=True)
+        try:
+            annule = annuler_certificat_carbone(
+                certificat, motif=corps.validated_data['motif'],
+                user=request.user)
+        except CertificatCarboneError as exc:
+            if exc.etat:
+                raise ConflitEtat(_erreur_service(exc))
+            raise serializers.ValidationError(_erreur_service(exc))
+        return Response(self.get_serializer(annule).data)

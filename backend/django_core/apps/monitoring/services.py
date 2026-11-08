@@ -747,10 +747,36 @@ def _certificat_recouvrant(company, installation_id, client_id, debut, fin):
             company=company, installation__client_id=client_id,
         ).values_list('installation_id', flat=True).distinct()
         cible = Q(client_id=client_id) | Q(installation_id__in=list(sites))
+    # AMON93 — un certificat ANNULÉ ne compte plus.
     return (CertificatCarbone.objects.select_for_update()
             .filter(cible, company=company, periode_debut__lte=fin,
-                    periode_fin__gte=debut)
+                    periode_fin__gte=debut,
+                    statut=CertificatCarbone.Statut.EMIS)
             .order_by('periode_debut', 'id').first())
+
+
+def annuler_certificat_carbone(certificat, *, motif, user=None):
+    """AMON93 — annule un certificat émis (motif obligatoire, auteur et date
+    tracés) sous verrou de ligne ; la même cible et période redeviennent
+    émissibles. Déjà annulé : ``CertificatCarboneError`` d'état (409)."""
+    from .models import CertificatCarbone
+
+    motif = motif.replace('\x00', '').strip() if isinstance(motif, str) else ''
+    if not motif:
+        raise CertificatCarboneError(
+            'Indiquez le motif de l’annulation.', champ='motif')
+    with transaction.atomic():
+        verrou = CertificatCarbone.objects.select_for_update().get(
+            pk=certificat.pk)
+        if verrou.statut == CertificatCarbone.Statut.ANNULE:
+            raise CertificatCarboneError('Certificat déjà annulé.', etat=True)
+        verrou.statut = CertificatCarbone.Statut.ANNULE
+        verrou.motif_annulation = motif[:500]
+        verrou.annule_le = timezone.now()
+        verrou.annule_par = user
+        verrou.save(update_fields=[
+            'statut', 'motif_annulation', 'annule_le', 'annule_par'])
+    return verrou
 
 
 # ── ASAV100 — Abonnements de supervision (D-ASAV-4 option (b), ASAV93) ──────

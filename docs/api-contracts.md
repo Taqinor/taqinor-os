@@ -291,7 +291,7 @@
 - frontend/src/api/installationsApi.js :: syncField -> /api/django/installations/sync
     applied:inconnu, detail:texte, errors:inconnu, replayed:inconnu, results:inconnu
 - frontend/src/api/monitoringApi.js :: emailOmReport -> /api/django/monitoring/configs/<>/email-om-report
-    detail:texte, sent:inconnu
+    detail:texte, recipient:liste, sent:inconnu
 - frontend/src/api/monitoringApi.js :: getClientPortal -> /api/django/monitoring/configs/client-portal
     client:nombre, co2_kg:inconnu, co2_kg_par_kwh:inconnu, co2_tonnes:inconnu, detail:texte, economies_mad:inconnu, systems_count:inconnu, tarif_mad_par_kwh:inconnu, total_production_kwh:inconnu
 - frontend/src/api/monitoringApi.js :: getCo2 -> /api/django/monitoring/configs/<>/co2
@@ -1345,13 +1345,15 @@
 - frontend/src/api/monitoringApi.js :: deleteWarranty -> /api/django/monitoring/warranties/<>  [ProductionWarrantySerializer]
     champs: compensation_mad_per_kwh, date_creation, date_modification, degradation_pct_per_year, guaranteed_year1_kwh, id, installation, note, start_year, tolerance_pct
 - frontend/src/api/monitoringApi.js :: emettreCertificatCarbone -> /api/django/monitoring/certificats-carbone  [CertificatCarboneSerializer]
-    champs: client_id, created_at, id, installation_id, periode_debut, periode_fin, reference, tco2_evitees
+    champs: annule_le, annule_par_nom, client_id, created_at, id, installation_id, motif_annulation, periode_debut, periode_fin, reference, statut, tco2_evitees
+    statut ∈ {annule, emis}
 - frontend/src/api/monitoringApi.js :: getAbonnements -> /api/django/monitoring/abonnements  [AbonnementMonitoringSerializer]
     champs: client_id, date_creation, date_debut, id, installation_id, montant, motif_resiliation, periodicite, periodicite_display, statut, statut_display
     periodicite ∈ {annuel, mensuel}
     statut ∈ {actif, resilie, suspendu}
 - frontend/src/api/monitoringApi.js :: getCertificatsCarbone -> /api/django/monitoring/certificats-carbone  [CertificatCarboneSerializer]
-    champs: client_id, created_at, id, installation_id, periode_debut, periode_fin, reference, tco2_evitees
+    champs: annule_le, annule_par_nom, client_id, created_at, id, installation_id, motif_annulation, periode_debut, periode_fin, reference, statut, tco2_evitees
+    statut ∈ {annule, emis}
 - frontend/src/api/monitoringApi.js :: getCleanings -> /api/django/monitoring/cleanings  [CleaningEventSerializer]
     champs: date, date_creation, id, installation, note
 - frontend/src/api/monitoringApi.js :: getConfigForInstallation -> /api/django/monitoring/configs  [MonitoringConfigSerializer]

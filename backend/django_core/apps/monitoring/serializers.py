@@ -370,14 +370,25 @@ class CertificatCarboneSerializer(serializers.ModelSerializer):
         min_value=1, required=False, allow_null=True)
     client_id = serializers.IntegerField(
         min_value=1, required=False, allow_null=True)
+    annule_par_nom = serializers.SerializerMethodField()
 
     class Meta:
         model = CertificatCarbone
         fields = [
             'id', 'installation_id', 'client_id', 'periode_debut',
             'periode_fin', 'tco2_evitees', 'reference', 'created_at',
+            'statut', 'motif_annulation', 'annule_le', 'annule_par_nom',
         ]
-        read_only_fields = ['tco2_evitees', 'reference', 'created_at']
+        read_only_fields = ['tco2_evitees', 'reference', 'created_at',
+                            'statut', 'motif_annulation', 'annule_le']
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_annule_par_nom(self, obj):
+        """AMON93 — auteur de l'annulation (None tant qu'émis)."""
+        user = obj.annule_par
+        if user is None:
+            return None
+        return user.get_full_name() or user.get_username()
 
 
 class UnderperformanceFlagSerializer(serializers.ModelSerializer):

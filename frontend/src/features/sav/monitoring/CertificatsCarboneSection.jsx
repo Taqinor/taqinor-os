@@ -20,6 +20,24 @@ export default function CertificatsCarboneSection({ systems, loadingSystems }) {
   const [form, setForm] = useState(FORM_VIDE)
   const [busy, setBusy] = useState(false)
   const [erreur, setErreur] = useState(null)
+  // AMON93 — annulation d'un certificat (motif obligatoire).
+  const [aAnnuler, setAAnnuler] = useState(null)
+  const [motif, setMotif] = useState('')
+  const [erreurAnnulation, setErreurAnnulation] = useState(null)
+
+  const annuler = async (certificat) => {
+    setBusy(true)
+    setErreurAnnulation(null)
+    try {
+      await monitoringApi.annulerCertificatCarbone(certificat.id, motif.trim())
+      toast.success(`Certificat ${certificat.reference} annulé`)
+      setAAnnuler(null)
+      setMotif('')
+      load()
+    } catch (e) {
+      setErreurAnnulation(getApiError(e, 'Annulation impossible.').message)
+    } finally { setBusy(false) }
+  }
 
   const cible = (c) => (c.installation_id
     ? libelleSysteme(systems, c.installation_id)
@@ -74,13 +92,30 @@ export default function CertificatsCarboneSection({ systems, loadingSystems }) {
           {rows.map((c) => (
             <li key={c.id} className="rounded-lg border border-border bg-card p-3">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="font-medium">{c.reference}</span>
+                <span className={`font-medium ${c.statut === 'annule' ? 'line-through' : ''}`}>{c.reference}</span>
                 <span className="text-sm text-muted-foreground">{cible(c)}</span>
                 <span className="text-sm">{formatNumber(c.tco2_evitees, { decimals: 3 })} tCO₂ évitées</span>
+                {c.statut !== 'annule' && aAnnuler !== c.id && (
+                  <Button size="sm" variant="outline" onClick={() => { setAAnnuler(c.id); setMotif(''); setErreurAnnulation(null) }}>
+                    Annuler
+                  </Button>
+                )}
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
                 Période {formatDate(c.periode_debut)} → {formatDate(c.periode_fin)} · émis le {formatDate(c.created_at)}
+                {c.statut === 'annule' && ` · annulé le ${formatDate(c.annule_le)}${c.annule_par_nom ? ` par ${c.annule_par_nom}` : ''}${c.motif_annulation ? ` (${c.motif_annulation})` : ''}`}
               </p>
+              {aAnnuler === c.id && (
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <Input aria-label="Motif de l’annulation" className="w-72" placeholder="Motif de l’annulation"
+                         value={motif} onChange={(e) => setMotif(e.target.value)} />
+                  <Button size="sm" variant="destructive" loading={busy} disabled={!motif.trim()} onClick={() => annuler(c)}>
+                    Confirmer l’annulation
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setAAnnuler(null)}>Fermer</Button>
+                  {erreurAnnulation && <p role="alert" className="w-full text-sm text-destructive">{erreurAnnulation}</p>}
+                </div>
+              )}
             </li>
           ))}
         </ul>

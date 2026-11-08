@@ -381,6 +381,20 @@ class CertificatCarbone(TenantModel):
     reference = models.CharField(max_length=50)
     fichier_key = models.CharField(max_length=500, blank=True, default='')
 
+    class Statut(models.TextChoices):
+        EMIS = 'emis', 'Émis'
+        ANNULE = 'annule', 'Annulé'
+
+    # AMON93 — un certificat émis s'ANNULE (motif, auteur, date), jamais ne
+    # se supprime ; seule l'émission en vigueur bloque la période.
+    statut = models.CharField(
+        max_length=8, choices=Statut.choices, default=Statut.EMIS)
+    motif_annulation = models.CharField(max_length=500, blank=True, default='')
+    annule_le = models.DateTimeField(null=True, blank=True)
+    annule_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+')
+
     class Meta:
         verbose_name = 'Certificat carbone'
         verbose_name_plural = 'Certificats carbone'
@@ -409,11 +423,12 @@ class CertificatCarbone(TenantModel):
             # partageant `installation_id=NULL` ne collisionneraient jamais).
             models.UniqueConstraint(
                 fields=['company', 'installation_id', 'periode_debut', 'periode_fin'],
-                condition=models.Q(installation_id__isnull=False),
+                condition=models.Q(installation_id__isnull=False,
+                                   statut='emis'),
                 name='monitoring_certifco2_site_uniq'),
             models.UniqueConstraint(
                 fields=['company', 'client_id', 'periode_debut', 'periode_fin'],
-                condition=models.Q(client_id__isnull=False),
+                condition=models.Q(client_id__isnull=False, statut='emis'),
                 name='monitoring_certifco2_cli_uniq'),
             # Référence race-safe (`core.numbering`) — unique par société,
             # même patron que `AppelOffre`/`Devis` : c'est CETTE contrainte

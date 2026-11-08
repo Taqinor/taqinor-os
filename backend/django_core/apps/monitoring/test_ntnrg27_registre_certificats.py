@@ -269,6 +269,33 @@ class TestAsav102RegistreApi(TestCase):
             set(CertificatCarbone.objects.values_list(
                 'installation_id', flat=True)), {self.inst.id, s2.id})
 
+    def test_annuler_puis_reemettre(self):
+        """AMON93 — annulation (motif, auteur, date) puis ré-émission de la
+        même cible et période ; second « annuler » 409 ; motif vide 400."""
+        a = self._emettre().data
+        url = f'{self.URL}{a["id"]}/annuler/'
+        r = self.api.post(url, {'motif': '  '}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('motif', r.data)
+        self.assertEqual(self.api_b.post(
+            url, {'motif': 'x'}, format='json').status_code, 404)
+        r = self.api.post(url, {'motif': 'Relevé de juin corrigé'},
+                          format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['statut'], 'annule')
+        self.assertEqual(r.data['motif_annulation'], 'Relevé de juin corrigé')
+        self.assertIsNotNone(r.data['annule_le'])
+        self.assertEqual(r.data['annule_par_nom'], 'asav102_resp')
+        self.assertEqual(set(r.data),
+                         set(self.contrat['exemple_annulation']['reponse']))
+        self.assertEqual(self.api.post(
+            url, {'motif': 'encore'}, format='json').status_code, 409)
+        b = self._emettre()
+        self.assertEqual(b.status_code, 201, b.data)
+        self.assertNotEqual(b.data['reference'], a['reference'])
+        self.assertEqual(CertificatCarbone.objects.filter(
+            statut='emis', installation_id=self.inst.id).count(), 1)
+
     def test_autre_societe_404_et_normal_403(self):
         cid = self._emettre().data['id']
         self.assertEqual(self.api_b.get(f'{self.URL}{cid}/').status_code, 404)
