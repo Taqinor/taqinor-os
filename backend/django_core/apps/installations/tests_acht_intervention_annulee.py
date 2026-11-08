@@ -109,3 +109,52 @@ class InterventionAnnuleeTests(TestCase):
             f'/api/django/installations/interventions/{self.iv.id}/',
             {'statut': Intervention.Statut.TERMINEE}, format='json')
         self.assertEqual(self.evenements, [])
+
+    def test_consommations_appliquees_du_ticket(self):
+        """ACSV101 (C-ACSV-063) — les lignes F11 catalogue appliquées au stock
+        des interventions non annulées d'un ticket, une fois chacune ; autre
+        société, ligne non appliquée, hors catalogue, intervention annulée ou
+        d'un autre ticket : exclues."""
+        from decimal import Decimal
+        from apps.crm.models import Client
+        from apps.installations.models import (
+            ConsommationLigne, MaterielConsommation,
+        )
+        from apps.installations.selectors import (
+            consommations_appliquees_du_ticket,
+        )
+        from apps.sav.models import Ticket
+        from apps.stock.models import Produit
+        client = Client.objects.create(
+            company=self.company, nom='Sav', prenom='Client',
+            email='acsv101@example.invalid')
+        ticket = Ticket.objects.create(
+            company=self.company, reference='SAV-ACSV101-1', client=client)
+        autre_ticket = Ticket.objects.create(
+            company=self.company, reference='SAV-ACSV101-2', client=client)
+        fusible = Produit.objects.create(
+            company=self.company, nom='Fusible', sku='FUS-ACSV101',
+            prix_vente=Decimal('10'), quantite_stock=5)
+
+        def f11(tkt, annulee, lignes):
+            iv = Intervention.objects.create(
+                company=self.company, installation=self.iv.installation,
+                ticket=tkt, type_intervention='depannage',
+                created_by=self.user, annulee=annulee)
+            conso = MaterielConsommation.objects.create(
+                company=self.company, intervention=iv, valide=True)
+            for produit, qte, applique in lignes:
+                ConsommationLigne.objects.create(
+                    company=self.company, consommation=conso, produit=produit,
+                    designation=getattr(produit, 'nom', 'Câble'),
+                    quantite_utilisee=Decimal(qte), stock_applique=applique)
+
+        f11(ticket, False, [(fusible, '1', True), (None, '3', True),
+                            (fusible, '2', False)])
+        f11(ticket, True, [(fusible, '4', True)])
+        f11(autre_ticket, False, [(fusible, '5', True)])
+        rendu = consommations_appliquees_du_ticket(self.company, ticket.id)
+        self.assertEqual([(p.produit, p.quantite) for p in rendu],
+                         [(fusible, Decimal('1'))])
+        autre = Company.objects.create(nom='Autre ACSV101', slug='autre-acsv101')
+        self.assertEqual(consommations_appliquees_du_ticket(autre, ticket.id), [])

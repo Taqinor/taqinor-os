@@ -68,6 +68,7 @@ class CommissioningRecordSerializer(IdInconnu404Mixin, UniciteEn409Mixin, Champs
     resultat_display = serializers.CharField(
         source='get_resultat_display', read_only=True)
     passe = serializers.BooleanField(read_only=True)
+    verrouillee = serializers.BooleanField(read_only=True)  # ACSV19 — PV signé
     # XFSM12 — instrument de mesure (traçabilité d'étalonnage IEC 62446-1).
     instrument_nom = serializers.SerializerMethodField()
     instrument_numero_serie = serializers.SerializerMethodField()
@@ -97,7 +98,7 @@ class CommissioningRecordSerializer(IdInconnu404Mixin, UniciteEn409Mixin, Champs
             'isolement_mohm', 'isolement_ok',
             'production_test_kw', 'production_attendue_kw', 'performance_ok',
             'securite_coupure_ok', 'securite_signalisation_ok',
-            'resultat', 'resultat_display', 'passe', 'observations',
+            'resultat', 'resultat_display', 'passe', 'verrouillee', 'observations',
             'ventes_recette_id', 'iv_readings',
             # CIQ626 — sections C&I (saisies à plat ; servies groupées).
             'irradiance_poa_wm2', 'irradiance_source', 'temperature_module_c',

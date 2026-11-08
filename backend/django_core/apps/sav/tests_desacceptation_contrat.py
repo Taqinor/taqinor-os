@@ -77,3 +77,45 @@ class TestContratDesacceptation(TestCase):
         self.contrat.refresh_from_db()
         self.assertEqual(self.devis.statut, Devis.Statut.ACCEPTE)
         self.assertTrue(self.contrat.actif)
+
+    def test_chantier_annule_desactive_et_reactive(self):
+        """ACSV64 (C-ACSV-080) — annuler un chantier éteint ses contrats
+        (marqueur ``[chantier-annule:<id>]``) : plus de visite préventive ;
+        ``reactiver_contrats_chantier`` les rallume ; un contrat déjà inactif
+        n'est jamais rallumé. ROUGE AVANT : actif, 2 tickets."""
+        from rest_framework.test import APIClient
+        from apps.installations.models import Installation
+        from apps.sav.maintenance import generer_visites_dues
+        from apps.sav.models import Ticket
+        from apps.sav.services import reactiver_contrats_chantier
+        ContratMaintenance.objects.filter(pk=self.contrat.pk).update(actif=False)
+        a = Installation.objects.create(
+            company=self.company, client=self.client_obj, reference='CH-ACSV64-A')
+        b = Installation.objects.create(
+            company=self.company, client=self.client_obj, reference='CH-ACSV64-B')
+
+        def contrat(inst, actif=True):
+            return ContratMaintenance.objects.create(
+                company=self.company, client=self.client_obj, installation=inst,
+                date_debut=timezone.localdate(), actif=actif)
+        ca, cb, deja_inactif = contrat(a), contrat(b), contrat(a, actif=False)
+        api = APIClient()
+        api.force_authenticate(self.user)
+        r = api.post(f'/api/django/installations/chantiers/{a.id}/annuler/',
+                     {'motif': 'client parti'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        ca.refresh_from_db()
+        self.assertFalse(ca.actif)
+        self.assertIn(f'[chantier-annule:{a.id}]', ca.notes)
+        self.assertEqual(generer_visites_dues(self.company, self.user, avance_jours=400), 1)
+        self.assertEqual(set(Ticket.objects.filter(
+            company=self.company, type=Ticket.Type.PREVENTIF).values_list(
+                'installation_id', flat=True)), {b.id})
+        self.assertEqual(reactiver_contrats_chantier(a, self.user), 1)
+        ca.refresh_from_db()
+        deja_inactif.refresh_from_db()
+        cb.refresh_from_db()
+        self.assertTrue(ca.actif)
+        self.assertNotIn(f'[chantier-annule:{a.id}]', ca.notes)
+        self.assertFalse(deja_inactif.actif)
+        self.assertTrue(cb.actif)

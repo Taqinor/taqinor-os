@@ -344,9 +344,13 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
                     filter=Q(tickets__type=Ticket.Type.CORRECTIF,
                              tickets__date_creation__date__gte=depuis)),
             )
-        # Portée de visibilité (Feature F) — équipements créés par soi / l'équipe.
-        from authentication.scoping import scope_queryset
-        qs = scope_queryset(qs, self.request.user, ['created_by'])
+        # Portée de visibilité (Feature F) — équipements créés par soi / l'équipe,
+        # OU parc d'un chantier visible (ACSV58, D-ACSV-2).
+        from authentication.scoping import visible_user_ids
+        ids = visible_user_ids(self.request.user)
+        if ids is not None:
+            from apps.installations.selectors import chantiers_visibles
+            qs = qs.filter(Q(created_by__in=ids) | Q(installation__in=chantiers_visibles(self.request.user)))
         params = self.request.query_params
         # ENF11 — filtres d'identifiants validés (400, jamais 500).
         produit = entier_param(self.request, 'produit')
@@ -451,8 +455,21 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
     def perform_create(self, serializer):
         self._check_tenant(serializer)
         company = self.request.user.company
+        vd, rempli = serializer.validated_data, False
         try:
-            serializer.save(company=company, created_by=self.request.user)
+            if vd.get('installation') is None:
+                serializer.save(company=company, created_by=self.request.user)
+            else:  # ACSV59 — écrivain unique du parc d'un chantier (ACHT46)
+                from apps.installations.selectors import quantites_nomenclature_chantier
+                from .services import assurer_equipement_chantier
+                chantier, produit = vd['installation'], vd.get('produit')
+                statut, serializer.instance = assurer_equipement_chantier(
+                    company=company, installation=chantier, produit=produit, numero_serie=vd.get('numero_serie'),
+                    quantite_ligne=quantites_nomenclature_chantier(chantier).get(getattr(produit, 'pk', None), 1),
+                    date_pose=chantier.date_reception or vd.get('date_pose'), created_by=self.request.user)
+                if statut == 'doublon':
+                    raise IntegrityError
+                rempli = statut == 'rempli'
         except IntegrityError:
             # L636 — filet de course si la contrainte d'unicité DB se déclenche
             # entre la validation serializer et l'écriture.
@@ -461,7 +478,8 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
                  'Ce numéro de série existe déjà dans votre société.'})
         # Calcul des horloges de garantie après la pose des FK.
         inst = serializer.instance
-        inst.recompute_garanties()
+        if not rempli:  # placeholder rempli : horloges figées (ASAV7)
+            inst.recompute_garanties()
         # FG85 — jeton QR EQUIP:<id> posé à la création.
         inst.equipement_token = f'EQUIP:{inst.pk}'
         inst.save(update_fields=[
@@ -1781,6 +1799,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
             activity.log_note(
                 ticket, request.user,
                 f"Ticket annulé{(' : ' + motif) if motif else ''}")
+            from apps.installations.services import annuler_interventions_du_ticket  # ACSV65
+            annuler_interventions_du_ticket(ticket.pk, request.user, f'Ticket {ticket.reference} annulé')
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
 
@@ -1796,6 +1816,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
             ticket.save(update_fields=[
                 'annule', 'motif_annulation', *_CHAMPS_PAUSE])
             activity.log_note(ticket, request.user, "Ticket réactivé")
+            from apps.installations.services import reactiver_interventions_du_ticket  # ACSV65
+            reactiver_interventions_du_ticket(ticket.pk, request.user)
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
 
@@ -2334,7 +2356,9 @@ class TicketViewSet(CompanyScopedModelViewSet):
                             status=decision['http'])
         couverture = decision['couverture']
         sous_garantie = decision['couvert']
-        pieces = list(ticket.pieces.select_related('produit'))
+        from apps.installations.selectors import consommations_appliquees_du_ticket
+        pieces = list(ticket.pieces.select_related('produit')) + (  # ACSV53 — F11 appliquée
+            consommations_appliquees_du_ticket(ticket.company, ticket.id))
         facture = generer_facture_ticket_sav(
             ticket=ticket, sous_garantie=sous_garantie, pieces=pieces,
             user=request.user)
@@ -2776,6 +2800,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
             Attachment.objects.filter(
                 content_type=ct, object_id=doublon.pk,
             ).update(object_id=principal.pk, company=principal.company)
+            from apps.installations.services import rattacher_interventions_au_ticket  # ACSV65
+            rattacher_interventions_au_ticket(doublon.pk, principal.pk)
 
             # Note sur le doublon APRÈS le déplacement de ses activités
             # (sinon elle partirait elle-même vers le principal et le

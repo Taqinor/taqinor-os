@@ -398,6 +398,9 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             from ..services import recaler_parc_apres_correction_reception
             recaler_parc_apres_correction_reception(
                 inst, old.date_reception, self.request.user)
+            if inst.client_id != old.client_id:
+                from apps.documents.builders import aligner_partage_portail_chantier  # ACSV96
+                aligner_partage_portail_chantier(inst)
             if nouveau_statut is None or nouveau_statut == old.statut:
                 # Pas de transition : le chatter trace les autres champs.
                 activity.log_changes(old, inst, self.request.user)
@@ -621,6 +624,8 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                     inst, request.user,
                     f"Réservation de stock libérée — {nb} référence(s) "
                     f"(chantier annulé).")
+            from apps.documents.builders import aligner_partage_portail_chantier  # ACSV96
+            aligner_partage_portail_chantier(inst)
             # YSERV6 — solde les interventions non terminées (drapeau
             # orthogonal, jamais un statut supplémentaire), notifie les
             # techniciens assignés et les sort des vues kanban/calendrier.
@@ -683,6 +688,10 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             # annulées PAR cette annulation (traçabilité de provenance).
             from ..services import reactiver_interventions_annulees
             reactiver_interventions_annulees(inst, request.user)
+            from apps.sav.services import reactiver_contrats_chantier  # ACSV100
+            reactiver_contrats_chantier(inst, request.user)
+            from apps.documents.builders import aligner_partage_portail_chantier  # ACSV96
+            aligner_partage_portail_chantier(inst)
         return Response(
             InstallationSerializer(inst, context={'request': request}).data)
 
@@ -953,6 +962,9 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         patron `motif_override_acompte`), journalisé au chatter. Les
         changements eux-mêmes sont désormais suivis (`TRACKED_FIELDS`)."""
         inst = self.get_object()
+        if inst.annule:  # ACSV34 (D-ACSV-4) — rien écrit ni figé sur un chantier annulé
+            from apps.documents.views import MSG_CHANTIER_ANNULE
+            return Response({'detail': MSG_CHANTIER_ANNULE}, status=status.HTTP_409_CONFLICT)
         # ADOC78 — data-URL PNG/JPEG base64 bornée seulement (plus aucune
         # URL http/file injectée dans <img src> du PV/BL, ni « null ») :
         # ERR-ENF11, contrôlée par le sérialiseur qui la publie.
@@ -1687,10 +1699,10 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             return Response(
                 HandoverPackSerializer(pack).data,
                 status=status.HTTP_201_CREATED)
-        # GET — aperçu à blanc (ou le pack persisté s'il existe).
-        pack = getattr(inst, 'handover_pack', None)
-        if pack is not None:
-            return Response(HandoverPackSerializer(pack).data)
+        from ..selectors import pack_remise_vivant  # ACSV38 — pack persisté, pièces VIVANTES
+        vivant = pack_remise_vivant(inst)
+        if vivant is not None:
+            return Response({**HandoverPackSerializer(vivant.pop('pack')).data, **vivant})
         resume = assemble_handover_pieces(inst)
         return Response({
             'installation': inst.id,

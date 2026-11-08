@@ -267,6 +267,22 @@ class PortailDocumentsRemiseTests(TestCase):
             AclGed.objects.filter(
                 company=self.company, client=self.client_obj).count(), 2)
 
+    def test_changement_de_client_et_annulation_retirent_le_partage(self):
+        """ACSV96 (C-ACSV-043) — PATCH client A→B : A ne voit plus PV ni BL,
+        B les voit ; annuler : personne ; réactiver : le client courant.
+        ROUGE AVANT : A garde les 2 documents."""
+        self.assertEqual(self._signer().status_code, 200)
+        b = make_client(self.company)
+        r = self.api.patch(f'{BASE}/{self.inst.pk}/', {'client': b.pk}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(self._documents_portail(self.company, self.client_obj), [])
+        self.assertEqual(len(self._documents_portail(self.company, b)), 2)
+        self.assertEqual(self.api.post(f'{BASE}/{self.inst.pk}/annuler/', {}, format='json').status_code, 200)
+        self.assertEqual(self._documents_portail(self.company, b), [])
+        self.assertEqual(self._documents_portail(self.company, self.client_obj), [])
+        self.assertEqual(self.api.post(f'{BASE}/{self.inst.pk}/reactiver/', {}, format='json').status_code, 200)
+        self.assertEqual(len(self._documents_portail(self.company, b)), 2)
+
     def test_un_autre_client_ou_une_autre_societe_ne_voit_rien(self):
         self.assertEqual(self._signer().status_code, 200)
         autre_client = make_client(self.company)

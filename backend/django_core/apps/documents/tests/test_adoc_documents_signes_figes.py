@@ -269,3 +269,34 @@ class DocumentsSignesFigesTests(TestCase):
         # Les deux types d'attestation ne se versionnent pas l'un sur l'autre.
         self.assertIsNone(self._document(
             builders._source_attestation('fin_travaux')))
+
+    def test_aligner_partage_retire_l_ancien_client_et_l_annule(self):
+        """ACSV33 (C-ACSV-043) — PV et BL figés partagés avec le seul client
+        courant d'un chantier non annulé ; idempotent.
+        ROUGE AVANT : ImportError (primitive absente)."""
+        from apps.ged.models import AclGed
+        from apps.ged.selectors import documents_partages_client_portail as partages
+        self._signer()
+        builders.figer_documents_signes(self.chantier)
+        a = self.chantier.client_id
+        b = Client.objects.create(company=self.company, nom='Alaoui', prenom='Sara').pk
+        pv = self._document(builders.SOURCE_PV_RECEPTION)
+        bl = self._document(builders.SOURCE_BON_LIVRAISON)
+        self.assertEqual({d.pk for d in partages(self.company, a)}, {pv.pk, bl.pk})
+        Installation.objects.filter(pk=self.chantier.pk).update(client_id=b)
+        self.chantier.refresh_from_db()
+        builders.aligner_partage_portail_chantier(self.chantier)
+        self.assertFalse(partages(self.company, a).filter(pk__in=[pv.pk, bl.pk]).exists())
+        self.assertEqual({d.pk for d in partages(self.company, b)}, {pv.pk, bl.pk})
+        nb = AclGed.objects.filter(company=self.company).count()
+        builders.aligner_partage_portail_chantier(self.chantier)  # second appel : rien
+        self.assertEqual(AclGed.objects.filter(company=self.company).count(), nb)
+        Installation.objects.filter(pk=self.chantier.pk).update(annule=True)
+        self.chantier.refresh_from_db()
+        builders.aligner_partage_portail_chantier(self.chantier)
+        self.assertFalse(partages(self.company, b).exists())
+        self.assertFalse(partages(self.company, a).exists())
+        Installation.objects.filter(pk=self.chantier.pk).update(annule=False)
+        self.chantier.refresh_from_db()
+        builders.aligner_partage_portail_chantier(self.chantier)
+        self.assertEqual({d.pk for d in partages(self.company, b)}, {pv.pk, bl.pk})

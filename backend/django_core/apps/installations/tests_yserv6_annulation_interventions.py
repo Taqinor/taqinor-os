@@ -139,6 +139,82 @@ class AnnulationSoldeInterventionsTests(TestCase):
         }, format='json')
         self.assertEqual(r.status_code, 409, r.data)
 
+    def test_interventions_du_ticket(self):
+        """ACSV102 (C-ACSV-081) — annuler / relever / rattacher les
+        interventions d'un ticket SAV : la planifiée est annulée (motif, note,
+        technicien notifié) puis relevée ; la terminée et celle annulée par
+        son chantier restent intouchées ; celles du doublon passent au ticket."""
+        from apps.installations.services import (
+            annuler_interventions_du_ticket, rattacher_interventions_au_ticket,
+            reactiver_interventions_du_ticket,
+        )
+        from apps.notifications.models import Notification
+        from apps.notifications.types_evenements import EventType
+        from apps.sav.models import Ticket
+        tech = make_user(self.company, role='technicien')
+        client = self.inst.client
+        t = Ticket.objects.create(
+            company=self.company, reference='SAV-ACSV102-T', client=client)
+        d = Ticket.objects.create(
+            company=self.company, reference='SAV-ACSV102-D', client=client)
+        Intervention.objects.filter(pk=self.i1.pk).update(
+            ticket=t, technicien=tech)
+        Intervention.objects.filter(pk=self.i3_terminee.pk).update(ticket=t)
+        du_chantier = make_intervention(self.company, self.inst)
+        Intervention.objects.filter(pk=du_chantier.pk).update(
+            ticket=t, annulee=True,
+            motif_annulation=f'Chantier {self.inst.reference} annulé')
+        Intervention.objects.filter(pk=self.i2.pk).update(ticket=d)
+
+        self.assertEqual(annuler_interventions_du_ticket(
+            t.id, self.user, 'Ticket SAV-ACSV102-T annulé'), 1)
+        self.i1.refresh_from_db()
+        self.assertTrue(self.i1.annulee)
+        self.assertEqual(self.i1.motif_annulation, 'Ticket SAV-ACSV102-T annulé')
+        self.assertTrue(Notification.objects.filter(
+            recipient=tech, event_type=EventType.INTERVENTION_ANNULEE).exists())
+        self.i3_terminee.refresh_from_db()
+        self.assertFalse(self.i3_terminee.annulee)
+
+        self.assertEqual(reactiver_interventions_du_ticket(t.id, self.user), 1)
+        self.i1.refresh_from_db()
+        self.assertFalse(self.i1.annulee)
+        du_chantier.refresh_from_db()
+        self.assertTrue(du_chantier.annulee)
+
+        self.assertEqual(rattacher_interventions_au_ticket(d.id, t.id), 1)
+        self.i2.refresh_from_db()
+        self.assertEqual(self.i2.ticket_id, t.id)
+
+    def test_intervention_depuis_ticket_chantier_annule_409_et_notification(self):
+        """ACSV69 (C-ACSV-149) — « Planifier une intervention » d'un ticket :
+        chantier annulé ⇒ 409 (texte YSERV6), 0 intervention ; chantier vivant
+        ⇒ 201 et le technicien reçoit INTERVENTION_ASSIGNEE.
+        ROUGE AVANT : 201, 0 notification."""
+        from apps.notifications.models import Notification
+        from apps.notifications.types_evenements import EventType
+        from apps.sav.models import Ticket
+        tech = make_user(self.company, role='technicien')
+        annule = make_chantier(self.company, self.user)
+        Installation = type(annule)
+        Installation.objects.filter(pk=annule.pk).update(annule=True)
+        t = Ticket.objects.create(
+            company=self.company, reference='SAV-ACSV69-1',
+            client=annule.client, installation=annule, technicien_responsable=tech)
+        t2 = Ticket.objects.create(
+            company=self.company, reference='SAV-ACSV69-2',
+            client=self.inst.client, installation=self.inst, technicien_responsable=tech)
+        r = self.api.post(f'/api/django/sav/tickets/{t.id}/planifier-intervention/', {}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual(
+            r.data['detail'], 'Ce chantier est annulé — impossible de créer une nouvelle intervention.')
+        self.assertFalse(Intervention.objects.filter(ticket=t).exists())
+        with self.captureOnCommitCallbacks(execute=True):
+            r = self.api.post(f'/api/django/sav/tickets/{t2.id}/planifier-intervention/', {}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(Notification.objects.filter(
+            recipient=tech, event_type=EventType.INTERVENTION_ASSIGNEE).count(), 1)
+
 
 class ReactivationTests(TestCase):
     def setUp(self):
@@ -168,6 +244,32 @@ class ReactivationTests(TestCase):
         autre.refresh_from_db()
         self.assertTrue(autre.annulee)
         self.assertEqual(autre.motif_annulation, 'Annulée pour une autre raison')
+
+    def test_reactivation_rallume_contrat(self):
+        """ACSV100 (C-ACSV-080) — « Réactiver » rallume le contrat éteint par
+        l'annulation (marqueur retiré) ; un contrat éteint avant reste éteint.
+        ROUGE AVANT : contrat resté inactif."""
+        from django.utils import timezone
+        from apps.sav.models import ContratMaintenance
+
+        def contrat(actif):
+            return ContratMaintenance.objects.create(
+                company=self.company, client=self.inst.client,
+                installation=self.inst, date_debut=timezone.localdate(),
+                actif=actif)
+        actif, eteint = contrat(True), contrat(False)
+        base = f'{BASE}/chantiers/{self.inst.id}'
+        self.assertEqual(self.api.post(f'{base}/annuler/', {}, format='json').status_code, 200)
+        actif.refresh_from_db()
+        self.assertFalse(actif.actif)
+        r = self.api.post(f'{base}/reactiver/', {}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        actif.refresh_from_db()
+        eteint.refresh_from_db()
+        self.assertTrue(actif.actif)
+        self.assertNotIn(f'[chantier-annule:{self.inst.id}]', actif.notes)
+        self.assertIn('Réactivé', actif.notes)
+        self.assertFalse(eteint.actif)
 
 
 class IsolationSocieteTests(TestCase):

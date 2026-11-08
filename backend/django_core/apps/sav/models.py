@@ -1094,8 +1094,9 @@ class Ticket(models.Model):
             return False
         chantier = self.installation
         reception = getattr(chantier, 'date_reception', None)
-        if reception is None:
-            return False
+        if reception is None:  # ACSV50 — en pose ou posé, pas encore réceptionné
+            statut = getattr(chantier, 'statut', None)
+            return getattr(chantier, 'LEGACY_STATUT_MAP', {}).get(statut, statut) in ('en_cours', 'installe')
         fin = add_months(reception, Equipement.GARANTIE_LEGALE_MOIS)
         pose = getattr(chantier, 'garantie_installation_mois', None)
         if pose:
