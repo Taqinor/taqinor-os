@@ -47,6 +47,7 @@
     "montant_saisi": "Un montant absent ou <= 0 est refusé (400, champ `montant`) : aucun chiffre inventé.",
     "systeme_sans_client": "Un système inconnu, d'une autre société ou sans client est refusé (400, champ `installation_id`).",
     "resiliation_unique": "Résilier un abonnement déjà résilié renvoie 400 ; le motif est obligatoire (400, champ `motif`).",
-    "autre_societe": "Le détail ou la résiliation d'un abonnement d'une autre société renvoie 404."
+    "autre_societe": "Le détail ou la résiliation d'un abonnement d'une autre société renvoie 404.",
+    "un_actif_par_systeme": "AMON5 — second abonnement ACTIF sur le même système → 409 (`detail` « Ce système a déjà un abonnement actif : résiliez-le d’abord. ») ; un système dont les abonnements sont tous résiliés accepte une nouvelle création. Résilier l'un de deux actifs hérités ne coupe pas la supervision."
   }
 }

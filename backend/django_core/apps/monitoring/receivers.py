@@ -27,10 +27,15 @@ logger = logging.getLogger(__name__)
           dispatch_uid="monitoring_arret_supervision_resiliation")
 def _arreter_supervision_a_la_resiliation(sender, abonnement, motif, company,
                                           **kwargs):
-    from .models import MonitoringConfig
+    from .models import AbonnementMonitoring, MonitoringConfig
 
     installation_id = getattr(abonnement, 'installation_id', None)
     if not installation_id:
+        return
+    # AMON5 — un autre abonnement ACTIF sur le système : la supervision continue.
+    if AbonnementMonitoring.objects.filter(
+            company=company, installation_id=installation_id,
+            statut=AbonnementMonitoring.Statut.ACTIF).exists():
         return
     MonitoringConfig.objects.filter(
         company=company, installation_id=installation_id, enabled=True,

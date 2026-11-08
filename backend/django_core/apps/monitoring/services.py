@@ -827,10 +827,20 @@ def creer_abonnement_monitoring(company, *, installation_id, periodicite,
         raise AbonnementMonitoringError(
             'Saisir le montant par période.', champ='montant')
     debut = date_debut or timezone.localdate()
-    return AbonnementMonitoring.objects.create(
-        company=company, client_id=client_id, installation_id=installation_id,
-        periodicite=periodicite, montant=montant,
-        statut=AbonnementMonitoring.Statut.ACTIF, date_debut=debut)
+    with transaction.atomic():
+        # AMON5 — un seul abonnement ACTIF par système (verrou de lignes).
+        actifs = list(AbonnementMonitoring.objects.select_for_update().filter(
+            company=company, installation_id=installation_id,
+            statut=AbonnementMonitoring.Statut.ACTIF).values_list('pk', flat=True))
+        if actifs:
+            raise AbonnementMonitoringError(
+                'Ce système a déjà un abonnement actif : résiliez-le d’abord.',
+                etat=True)
+        return AbonnementMonitoring.objects.create(
+            company=company, client_id=client_id,
+            installation_id=installation_id, periodicite=periodicite,
+            montant=montant, statut=AbonnementMonitoring.Statut.ACTIF,
+            date_debut=debut)
 
 
 def resilier_abonnement_monitoring(abonnement, *, motif, user=None):

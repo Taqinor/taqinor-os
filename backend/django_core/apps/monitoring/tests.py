@@ -1708,6 +1708,31 @@ class TestAsav100Abonnements(TestCase):
         # ENF11 : déjà résilié = refus d'ÉTAT -> 409 (plus 400).
         self.assertEqual(r.status_code, 409)
 
+    def test_second_abonnement_actif_409(self):
+        """AMON5 — un seul actif par système ; résilier l'un de deux actifs
+        hérités ne coupe pas la supervision ; après résiliation : 201."""
+        from apps.monitoring.models import AbonnementMonitoring
+        premier = self._creer()
+        self.assertEqual(premier.status_code, 201, premier.data)
+        r = self._creer(periodicite='annuel', montant='1500.00')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual(
+            str(r.data['detail']),
+            'Ce système a déjà un abonnement actif : résiliez-le d’abord.')
+        herite = AbonnementMonitoring.objects.create(
+            company=self.company, client_id=self.client.id,
+            installation_id=self.inst.id, montant=Decimal('1500'),
+            periodicite='annuel', statut='actif')
+        r = self.api.post(f'{self.URL}{premier.data["id"]}/resilier/',
+                          {'motif': 'Doublon'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.config.refresh_from_db()
+        self.assertTrue(self.config.enabled)
+        r = self.api.post(f'{self.URL}{herite.id}/resilier/',
+                          {'motif': 'Fin'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(self._creer().status_code, 201)
+
     def test_resiliation_corps_non_objet_400(self):
         # api-fuzz-full 41773314544 : `null` en corps levait AttributeError (500).
         ab_id = self._creer().data['id']
