@@ -145,6 +145,48 @@ class JalonsStatutTests(TestCase):
             self.assertEqual(JalonProjet.objects.filter(
                 installation=self.chantier, phase=phase).count(), 1)
 
+    def test_recul_efface_la_reception_et_re_reception_recale_le_parc(self):
+        """ACSV31 (C-ACSV-041) — recul depuis « Réceptionné » : dates de
+        réception remises à nul (note), définitive refusée (409) ; une
+        re-réception du jour recale pose et fin de garantie du parc.
+        ROUGE AVANT : date du 08/08 gardée, définitive 200."""
+        from apps.installations.models import InstallationActivity
+        from apps.sav.models import Equipement
+        from apps.stock.models import Produit
+        admin = User.objects.create_user(
+            username='adoc172-admin', password='x', company=self.company,
+            role_legacy='admin')
+        self.api.force_authenticate(admin)
+        ancienne = datetime.date(2026, 8, 8)
+        self._passer(Installation.Statut.INSTALLE)
+        self._passer(Installation.Statut.RECEPTIONNE)
+        Installation.objects.filter(pk=self.chantier.pk).update(date_reception=ancienne)
+        produit = Produit.objects.create(
+            company=self.company, nom='Onduleur ACSV31', sku='OND-ACSV31',
+            prix_achat=0, prix_vente=10, garantie_mois=120)
+        eq = Equipement.objects.create(
+            company=self.company, produit=produit, installation=self.chantier,
+            numero_serie='SN-ACSV31', date_pose=ancienne)
+        eq.recompute_garanties()
+        eq.save()
+        self._passer(Installation.Statut.INSTALLE)
+        inst = Installation.objects.get(pk=self.chantier.pk)
+        self.assertIsNone(inst.date_reception)
+        self.assertIsNone(inst.date_reception_definitive)
+        self.assertTrue(InstallationActivity.objects.filter(
+            installation=inst, body='Réception du 08/08/2026 défaite.').exists())
+        r = self.api.post(
+            f'/api/django/installations/chantiers/{inst.pk}/reception-definitive/')
+        self.assertEqual(r.status_code, 409, getattr(r, 'data', r))
+        self._passer(Installation.Statut.RECEPTIONNE)
+        inst.refresh_from_db()
+        aujourdhui = timezone.localdate()
+        self.assertEqual(inst.date_reception, aujourdhui)
+        eq.refresh_from_db()
+        self.assertEqual(eq.date_pose, aujourdhui)
+        self.assertEqual(eq.date_fin_garantie.year, aujourdhui.year + 10)
+        self.assertNotIn('date_reception_defaite', inst.custom_data or {})
+
     def test_retour_arriere_ne_coche_rien(self):
         self._passer(Installation.Statut.INSTALLE)
         self._passer(Installation.Statut.SIGNE)

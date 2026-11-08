@@ -22,6 +22,8 @@ def defaire_jalons_quittes(installation, canon_old, canon_new):
     if canon_old not in ordre or canon_new not in ordre:
         return False
     quittes = ordre[ordre.index(canon_new) + 1:ordre.index(canon_old) + 1]
+    if Statut.RECEPTIONNE in quittes:
+        _defaire_dates_reception(installation)
     jalons = list(JalonProjet.objects.filter(
         installation=installation, atteint=True,
         phase__in=[table[s] for s in quittes if s in table]))
@@ -31,3 +33,20 @@ def defaire_jalons_quittes(installation, canon_old, canon_new):
         portail_services.upsert_jalon_chantier(
             installation.company, installation.id, jalon.phase, jalon.libelle)
     return bool(jalons)
+
+
+def _defaire_dates_reception(installation):
+    """ACSV31 — recul depuis « Réceptionné » : ``date_reception`` et
+    ``date_reception_definitive`` remises à nul (le diff du chatter les trace),
+    l'ancienne réception gardée dans ``custom_data['date_reception_defaite']``
+    pour recaler le parc à la prochaine réception (``_apply_reception_handover``)."""
+    from . import activity
+    ancienne = installation.date_reception
+    if ancienne is None and installation.date_reception_definitive is None:
+        return
+    if ancienne is not None:
+        installation.custom_data = {**(installation.custom_data or {}),
+                                    'date_reception_defaite': ancienne.isoformat()}
+        activity.log_note(installation, None, f'Réception du {ancienne:%d/%m/%Y} défaite.')
+    installation.date_reception = installation.date_reception_definitive = None
+    installation.save(update_fields=['date_reception', 'date_reception_definitive', 'custom_data'])

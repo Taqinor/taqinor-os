@@ -5728,6 +5728,10 @@ def _apply_reception_handover(inst, canon_old, canon_new, user):
         return None
     from apps.sav.services import sweep_bom_to_parc
     from apps.stock.selectors import get_produit_scoped
+    defaite = (inst.custom_data or {}).pop('date_reception_defaite', None)  # ACSV31
+    if defaite:
+        inst.save(update_fields=['custom_data'])
+        recaler_parc_apres_correction_reception(inst, _dt.date.fromisoformat(defaite), user)
 
     def _resolve(produit_id):
         return get_produit_scoped(inst.company, produit_id)
