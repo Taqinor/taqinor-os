@@ -841,10 +841,16 @@ def creer_abonnement_monitoring(company, *, installation_id, periodicite,
 
     from .models import AbonnementMonitoring
 
-    if installations_selectors.installation_scoped(company, installation_id) is None:
+    installation = installations_selectors.installation_scoped(
+        company, installation_id)
+    if installation is None:
         raise AbonnementMonitoringError(
             'Système inconnu ou sans client.', champ='installation_id',
             introuvable=True)
+    if not installation.est_du_parc:  # AMON11 — règle unique AMON80
+        raise AbonnementMonitoringError(
+            'Seul un système du parc (réceptionné, actif, non annulé) peut '
+            'être abonné.', etat=True)
     client_id = installations_selectors.chantier_client_id(
         company, installation_id)
     if client_id is None:

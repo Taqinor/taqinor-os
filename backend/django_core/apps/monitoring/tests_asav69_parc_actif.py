@@ -49,6 +49,33 @@ class ParcActifTests(TestCase):
                 energy_kwh=Decimal('5'))
         return inst
 
+    def test_systeme_hors_parc_409(self):
+        """AMON11 — abonnement refusé (409) sur un chantier annulé « signé »,
+        installé non réceptionné ou réceptionné retiré ; admis (201) sur un
+        réceptionné actif."""
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+
+        from apps.monitoring.models import AbonnementMonitoring
+        api = APIClient()
+        api.force_authenticate(get_user_model().objects.create_user(
+            username='amon11_resp', password='x', role_legacy='responsable',
+            company=self.company))
+        cas = [('AMON11-ANNULE', {'statut': 'signe', 'annule': True}, 409),
+               ('AMON11-INSTALLE', {'statut': 'installe'}, 409),
+               ('AMON11-RETIRE', {'statut': 'receptionne', 'parc_actif': False}, 409),
+               ('AMON11-ACTIF', {'statut': 'receptionne'}, 201)]
+        for ref, champs, attendu in cas:
+            with self.subTest(ref=ref):
+                inst = self._systeme(ref, parc_actif=True)
+                Installation.objects.filter(pk=inst.pk).update(**champs)
+                r = api.post('/api/django/monitoring/abonnements/', {
+                    'installation_id': inst.pk, 'periodicite': 'mensuel',
+                    'montant': '150.00'}, format='json')
+                self.assertEqual(r.status_code, attendu, r.data)
+        self.assertEqual(AbonnementMonitoring.objects.filter(
+            company=self.company).count(), 1)
+
     def test_site_retire_non_evalue(self):
         retire = self._systeme('ASAV69-RETIRE', parc_actif=False)
         actif = self._systeme('ASAV69-ACTIF', parc_actif=True)

@@ -33,7 +33,7 @@ from apps.monitoring.test_ntnrg27_registre_certificats import regler_facteur
 from apps.monitoring import providers, services, tasks
 from apps.monitoring.models import (
     CleaningEvent, MonitoringConfig, MonitoringSettings, ProductionReading,
-    UnderperformanceFlag,
+    AbonnementMonitoring, UnderperformanceFlag,
 )
 
 User = get_user_model()
@@ -1630,6 +1630,7 @@ class TestAsav100Abonnements(TestCase):
             company=self.autre)
         self.api = auth(self.resp)
         self.inst, self.client = make_installation(self.company, ref='CHT-A100')
+        Installation.objects.filter(pk=self.inst.pk).update(statut='receptionne')  # AMON11
         self.config = MonitoringConfig.objects.create(
             company=self.company, installation=self.inst, enabled=True)
 
@@ -1657,7 +1658,6 @@ class TestAsav100Abonnements(TestCase):
         """AMON2 (D-AMON-1 vendu_une_fois) — aucune échéance posée ni servie."""
         from django.utils import timezone
 
-        from apps.monitoring.models import AbonnementMonitoring
         debut = (timezone.localdate() - timedelta(days=40)).isoformat()
         r = self._creer(date_debut=debut)
         self.assertEqual(r.status_code, 201, r.data)
@@ -1672,7 +1672,6 @@ class TestAsav100Abonnements(TestCase):
         autre_inst, autre_client = make_installation(self.autre, ref='CHT-B')
         r = self._creer(client_id=autre_client.id, company=self.autre.id)
         self.assertEqual(r.status_code, 201, r.data)
-        from apps.monitoring.models import AbonnementMonitoring
         ab = AbonnementMonitoring.objects.get(id=r.data['id'])
         self.assertEqual(ab.company_id, self.company.id)
         self.assertEqual(ab.client_id, self.client.id)
@@ -1719,7 +1718,6 @@ class TestAsav100Abonnements(TestCase):
                           {'motif': 'Client a vendu la maison.'}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(r.data['resilie_par_nom'], 'asav100_resp')
-        from apps.monitoring.models import AbonnementMonitoring
         ab = AbonnementMonitoring.objects.get(pk=r.data['id'])
         self.assertEqual(timezone.localtime(ab.date_resiliation).date(),
                          timezone.localdate())
@@ -1733,6 +1731,7 @@ class TestAsav100Abonnements(TestCase):
         self.config.refresh_from_db()
         self.assertTrue(self.config.enabled)
         autre, _ = make_installation(self.company, ref='CHT-A100-2')
+        Installation.objects.filter(pk=autre.pk).update(statut='receptionne')
         cfg = MonitoringConfig.objects.create(
             company=self.company, installation=autre, enabled=False)
         self.assertEqual(self._creer(installation_id=autre.id).status_code, 201)
@@ -1742,7 +1741,6 @@ class TestAsav100Abonnements(TestCase):
     def test_second_abonnement_actif_409(self):
         """AMON5 — un seul actif par système ; résilier l'un de deux actifs
         hérités ne coupe pas la supervision ; après résiliation : 201."""
-        from apps.monitoring.models import AbonnementMonitoring
         premier = self._creer()
         self.assertEqual(premier.status_code, 201, premier.data)
         r = self._creer(periodicite='annuel', montant='1500.00')

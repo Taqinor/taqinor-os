@@ -89,6 +89,9 @@ class FinEpisodeTests(TestCase):
         from apps.sav.models import Ticket
 
         self.assertFalse(self.config.enabled)
+        Installation.objects.filter(pk=self.inst.pk).update(
+            statut='receptionne')  # AMON11 — abonnement réservé au parc
+        self.inst.refresh_from_db()
         abonnement = services.creer_abonnement_monitoring(
             self.company, installation_id=self.inst.pk,
             periodicite='mensuel', montant=Decimal('100'))
