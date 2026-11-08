@@ -819,3 +819,25 @@ unites:
     date: 2026-11-08
     dossier: docs/audits/2026-11-08-parcours-PA2.md
     notes: "Septième audit de PARCOURS (L3, 08/11/2026, base 8b62d8c, fraîcheur 76344a2) : 39 constats, 21 prouvés par sonde et 18 lus (13 S3, 5 S4) ; gravités 3 S1, 10 S2, 20 S3, 6 S4. S1 : la page publique d'un devis envoyé lit l'ombrage VIVANT du calepinage pendant que le PDF lit le bloc rangé (deux chiffres client ; un devis né de « Générer le devis » les a dès le premier envoi), l'ombrage d'une autre conception appliqué à la production d'un brouillon non resynchronisé (−17 %), un devis C&I construit au marché résidentiel avec les économies du layout (2 brouillons en prod : devis 418 et 154, signalés, non réparés). Seconde lentille sur les 3 S1 : 3 maintenus dont 1 élargi, 0 réfuté. D-ACON-1..4 (devis au marché du lead, second devis actif = variante de C1, approbation = conception imprimée seule, page publique et visionneuse jusqu'à 2 000 panneaux par zone). 1 critique Fable (7 trous dont 4 sondés : Dupliquer vers un autre lead, archivage qui détache un brouillon, devis refusé ou expiré, temps de rendu). Tâches ACON1-93 (45 posées : CALEPINAGE 35, DEVIS 6, TRANSVERSE 2, PARAMETRES 1, WEB 1)."
+
+  - id: PF1
+    rang: 27
+    declencheur: securite-multi-societe
+    titre: "Parcours PF1 « Sécurité / multi-société » : rôles × toutes les portes, deux sociétés — compte portail et services IA, identité et session, moteur de données et exports, lectures transverses (recherche, carte, pièces, gabarits, approbations), lecture des objets métier, palier « responsable » et administration, corbeille et loi 09-08, superutilisateur et accès support, multi-société et balayages, gardes de CI (METHODE §D.1)"
+    possede: []
+    perimetre_lu:
+      - "backend/django_core/authentication (permissions, cookie_auth, models, views, active_company), core (views, data_explorer, scheduled_export, mixins, dsr), apps roles / records / reporting / dataimport / publicapi / automation / adminops / identity / portail / crm / installations / stock / sav / ventes / parametres / ged, backend/fastapi_ia/app, gardes scripts/check_*"
+    coutures:
+      - "compte externe (portail) ↔ vues internes à IsAuthenticated explicite ↔ moteur de données ↔ services FastAPI ; rôles fins × droit de module ↔ lectures transverses (recherche, carte, exports, pièces, gabarits) ; palier « responsable » dérivé de users_voir ↔ gestes d'administration ; superutilisateur et appartenance multi-société ↔ rôle de la société active ; extraits et balayages planifiés sans identité"
+    P: 4
+    I: 5
+    score: 20
+    niveau: L3
+    statut: audité
+    groupe: APFS
+    plan: docs/plans/PLAN_AUDIT_SECURITE.md
+    plans_alimentes: [docs/plans/PLAN_AUDIT_SECURITE.md, docs/plans/PLAN_AUDIT_ANALYSE.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_PARAMETRES.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_STOCK.md, docs/plans/PLAN_AUDIT_SAV.md, docs/plans/PLAN_AUDIT_CALEPINAGE.md, docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_DOCUMENTS.md, docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_DEPLOY.md]
+    pr: 1302
+    date: 2026-11-08
+    dossier: docs/audits/2026-11-08-parcours-PF1.md
+    notes: "Huitième audit de PARCOURS (L3, 08/11/2026, base 57d3fd3, fraîcheur 31a4bce) : 30 constats, 26 prouvés par sonde et 4 lus (S3) ; gravités 1 S1, 14 S2, 15 S3. S1 : un compte portail (client, fournisseur, partenaire) traverse 89 vues à IsAuthenticated explicite dont 31 servent des données internes, et le service FastAPI (agent SQL, OCR) accepte son jeton : 139 clients, 7 factures, appels payants, questions jamais journalisées. Classes S2 : lecture de 160 routes sur 200 sans droit du module (chantiers, fournisseurs avec RIB, lignes de devis, remises), moteur de données et lectures transverses (recherche, carte, exports, pièces, boîte d'approbations) sans droit de module ni portée, palier « responsable » via users_voir (clés d'API, modules, demandes loi 09-08, corbeille), prix d'achat de installations hors garde ASTK14, superutilisateur qui consent à sa propre session support. Une seule garde au point commun par classe, plus un test d'inventaire. Seconde lentille sur le S1 : maintenu, élargi, gravité revue S2 → S1. Prod lue le 08/11 : 1 société, 5 internes, 0 portail, 0 superutilisateur, 0 support, 1 clé d'API : exposition nulle. D-APFS-1..4 (code dédié ou code du domaine, superutilisateur borné à sa société, rôle par société, lecture = droit du module + octrois explicites). 1 critique Fable (3 trous, la classe de 160 routes en tête). Tâches APFS1-117 (49 posées : SECURITE 18, ANALYSE 8, TRANSVERSE 6, PARAMETRES 4, CHANTIERS 2, DEPLOY 2, DEVIS 2, DOCUMENTS 2, CALEPINAGE 1, FACTURATION 1, LEAD 1, SAV 1, STOCK 1)."
