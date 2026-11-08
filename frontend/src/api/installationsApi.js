@@ -49,8 +49,8 @@ const installationsApi = {
       { signature_client, signataire_nom, ...extra }),
   // CIQ637 — réception définitive (réserves toutes levées) : 400 FR listant
   // les réserves ouvertes en cas de refus.
-  prononcerReceptionDefinitive: (id) =>
-    api.post(`/installations/chantiers/${id}/reception-definitive/`, {}),
+  prononcerReceptionDefinitive: (id, motif) => // ACSV35 — motif de dérogation Directeur (facultatif)
+    api.post(`/installations/chantiers/${id}/reception-definitive/`, motif ? { motif_derogation: motif } : {}),
   // N4 — étapes modèle de checklist (Paramètres → Chantiers).
   getChecklistEtapes: (templateId, params) =>
     api.get('/installations/checklist-etapes/',

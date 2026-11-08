@@ -262,6 +262,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   // CIQ637 — réception définitive : refus serveur (liste des réserves).
   const [receptionBusy, setReceptionBusy] = useState(false)
   const [receptionRefus, setReceptionRefus] = useState(null)
+  const [motifDefinitive, setMotifDefinitive] = useState('') // ACSV35 — dérogation Directeur
   // Retour FR explicite pour les actions secondaires (équipement / intervention
   // / ticket / besoin) dont les échecs étaient avalés (catch vides).
   const [actionError, setActionError] = useState(null)
@@ -557,7 +558,9 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     setReceptionBusy(true)
     setReceptionRefus(null)
     try {
-      await installationsApi.prononcerReceptionDefinitive(id)
+      await (motifDefinitive.trim()
+        ? installationsApi.prononcerReceptionDefinitive(id, motifDefinitive.trim())
+        : installationsApi.prononcerReceptionDefinitive(id))
       await refreshInstallation()
       loadHistorique()
     } catch (err) {
@@ -1438,6 +1441,10 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                          className="rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
                       {receptionRefus}
                     </div>
+                  )}
+                  {receptionRefus && !current.annule && (
+                    <Input aria-label="Motif de dérogation (Directeur)" placeholder="Motif de dérogation (Directeur)"
+                           value={motifDefinitive} onChange={(e) => setMotifDefinitive(e.target.value)} />
                   )}
                 </div>
               )}

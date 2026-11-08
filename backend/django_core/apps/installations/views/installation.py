@@ -1669,7 +1669,8 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response(reserve_contrat(reserve))
 
     # ── CIQ629 — réception définitive (après levée de toutes les réserves) ──
-    @oa.extend_schema(request=None, responses=oa.OBJ)
+    @oa.extend_schema(request=oa.body('ReceptionDefinitiveRequete', motif_derogation=oa.s()),
+                      responses={200: oa.OBJ, 403: oa.OBJ, 409: oa.OBJ})
     @action(detail=True, methods=['post'], url_path='reception-definitive',
             permission_classes=[IsResponsableOrAdmin])
     def reception_definitive(self, request, pk=None):
@@ -1681,9 +1682,14 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             ReceptionDefinitiveRefusee, prononcer_reception_definitive,
             reception_contrat,
         )
+        from ..services import est_directeur
         inst = self.get_object()
+        motif = oa.texte_corps(request, 'motif_derogation')  # ACSV35 (D-ACSV-1)
+        if motif and not est_directeur(request.user):
+            return Response({'detail': 'Seul un Directeur peut déroger à la date prévue.'},
+                            status=status.HTTP_403_FORBIDDEN)
         try:
-            prononcer_reception_definitive(inst, request.user)
+            prononcer_reception_definitive(inst, request.user, motif_derogation=motif)
         except ReceptionDefinitiveRefusee as exc:  # ERR-ENF11 : état = 409
             return Response({'detail': str(exc)},
                             status=status.HTTP_409_CONFLICT)

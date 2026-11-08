@@ -2898,15 +2898,23 @@ def date_definitive_prevue(installation):
         return None
 
 
-def raison_refus_reception_definitive(installation):
+def raison_refus_reception_definitive(installation, *, user=None, motif_derogation=''):
     """CIQ629 — raison FR qui refuse la définitive (pas de provisoire, ou
-    réserves ouvertes listées), sinon ``None``."""
+    réserves ouvertes listées), sinon ``None``. ACSV35 (D-ACSV-1) — aussi un
+    chantier annulé, et avant la date prévue sauf dérogation Directeur motivée."""
+    if installation.annule:
+        return 'Réception définitive impossible : chantier annulé.'
     if installation.date_reception is None:
         return RAISON_DEFINITIVE_SANS_PROVISOIRE
     ouvertes = reserves_ouvertes(installation)
     if ouvertes:
         return ("Réception définitive impossible : réserve(s) non "
                 "levée(s) : " + _descriptions_reserves(ouvertes) + ".")
+    prevue = date_definitive_prevue(installation)
+    from django.utils import timezone
+    if prevue and timezone.localdate() < prevue and not (motif_derogation and est_directeur(user)):
+        return (f'Réception définitive possible à partir du {prevue:%d/%m/%Y} ; '
+                "avant, dérogation d'un Directeur avec motif.")
     return None
 
 
@@ -2925,7 +2933,7 @@ def reception_contrat(installation):
     }
 
 
-def prononcer_reception_definitive(installation, user, *, date=None):
+def prononcer_reception_definitive(installation, user, *, date=None, motif_derogation=''):
     """CIQ629 — pose ``date_reception_definitive`` (journalisée) ; lève
     :class:`ReceptionDefinitiveRefusee` avant la provisoire ou tant qu'une
     réserve est ouverte. Aucune écriture financière ici (la partie D2 lit
@@ -2933,13 +2941,17 @@ def prononcer_reception_definitive(installation, user, *, date=None):
     from django.utils import timezone
 
     from . import activity
-    raison = raison_refus_reception_definitive(installation)
+    raison = raison_refus_reception_definitive(installation, user=user, motif_derogation=motif_derogation)
     if raison:
         raise ReceptionDefinitiveRefusee(raison)
     if installation.date_reception_definitive is not None:
         return installation
     installation.date_reception_definitive = date or timezone.localdate()
     installation.save(update_fields=['date_reception_definitive'])
+    prevue = date_definitive_prevue(installation)  # ACSV35 — dérogation tracée
+    if prevue and installation.date_reception_definitive < prevue:
+        activity.log_note(installation, user, 'Réception définitive prononcée par dérogation Directeur avant le '
+                          f'{prevue:%d/%m/%Y} — motif : {motif_derogation}')
     activity.log_note(
         installation, user,
         "Réception définitive prononcée le "
