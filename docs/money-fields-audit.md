@@ -64,10 +64,10 @@ Généré par `python scripts/check_money_fields.py --decimal-places`. Tableau d
 | `backend/django_core/apps/installations/models_ordre_soustraitance.py:137` | OrdreSousTraitance.montant | 12 | 2 |
 | `backend/django_core/apps/installations/models_ordre_soustraitance.py:140` | OrdreSousTraitance.montant_realise | 12 | 2 |
 | `backend/django_core/apps/installations/models_rfq.py:104` | RFQOffre.montant_ht | 12 | 2 |
-| `backend/django_core/apps/monitoring/models.py:464` | AbonnementMonitoring.montant | 12 | 2 |
-| `backend/django_core/apps/parametres/models_company.py:233` | CompanyProfile.tva_standard | 5 | 2 |
-| `backend/django_core/apps/parametres/models_company.py:235` | CompanyProfile.tva_panneaux | 5 | 2 |
-| `backend/django_core/apps/parametres/models_company.py:267` | CompanyProfile.remise_max_pct | 5 | 2 |
+| `backend/django_core/apps/monitoring/models.py:468` | AbonnementMonitoring.montant | 12 | 2 |
+| `backend/django_core/apps/parametres/models_company.py:234` | CompanyProfile.tva_standard | 5 | 2 |
+| `backend/django_core/apps/parametres/models_company.py:236` | CompanyProfile.tva_panneaux | 5 | 2 |
+| `backend/django_core/apps/parametres/models_company.py:268` | CompanyProfile.remise_max_pct | 5 | 2 |
 | `backend/django_core/apps/portail/models.py:266` | PaiementFacturePortail.montant | 14 | 2 |
 | `backend/django_core/apps/sav/models.py:743` | Ticket.cout | 10 | 2 |
 | `backend/django_core/apps/sav/models.py:1488` | WarrantyClaim.cout_recupere | 10 | 2 |

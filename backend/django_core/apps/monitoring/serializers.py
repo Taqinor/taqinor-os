@@ -14,7 +14,7 @@ from core.unicite import UniciteEn409Mixin
 from .models import (
     AbonnementMonitoring, CertificatCarbone, CleaningEvent, MonitoringConfig,
     MonitoringSettings, ProductionReading, ProductionWarranty,
-    SlaDisponibilite,
+    SlaDisponibilite, UnderperformanceFlag,
 )
 from .providers import available_providers
 
@@ -215,11 +215,14 @@ class ProductionWarrantySerializer(IdInconnu404Mixin, UniciteEn409Mixin, Company
         return value
 
 
-#: ERR-ENF11-FUZZ-MONITORING — la forme que ``DecimalLitteral`` accepte
-#: (``-?[0-9]+(.[0-9]+)?``), bornée par le champ (5 chiffres dont 2
-#: décimales). Le motif générique publiait aussi ``-.3`` / ``12.``, refusés
-#: en 400 (« conforme refusée », PUT settings/{id} du 13/10/2026).
-MOTIF_SEUIL_POURCENT = r'^-?0*[0-9]{1,3}(\.[0-9]{1,2})?$'
+#: ERR-ENF11-FUZZ-MONITORING — la forme que ``DecimalLitteral`` accepte,
+#: bornée par le champ (2 décimales). Le motif générique publiait aussi
+#: ``-.3`` / ``12.``, refusés en 400 (« conforme refusée », 13/10/2026).
+#: AMON28 — seuil borné à [1 ; 99] (« -10 » signalait tout le parc, « 120 »
+#: ne détectait plus rien) : le motif publié ne décrit plus que cet intervalle.
+MOTIF_SEUIL_POURCENT = (
+    r'^0*(?:[1-9](?:\.[0-9]{1,2})?|(?:[1-8][0-9]|9[0-8])(?:\.[0-9]{1,2})?'
+    r'|99(?:\.0{1,2})?)$')
 
 
 @extend_schema_field({'type': 'string', 'format': 'decimal',
@@ -243,6 +246,13 @@ class MonitoringSettingsSerializer(ChampsStrictsLitterauxMixin,
             'date_modification',
         ]
         read_only_fields = ['date_modification']
+
+    def validate_underperf_threshold_pct(self, value):
+        # AMON28 — seuil de sous-performance dans [1 ; 99] % de l'attendu.
+        if value is not None and not (1 <= value <= 99):
+            raise serializers.ValidationError(
+                'Le seuil doit être compris entre 1 et 99 %.')
+        return value
 
 
 #: CI #997 fuzz — les décimaux dont le serveur refuse la valeur NULLE ou hors
@@ -293,12 +303,10 @@ class AbonnementMonitoringSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'client_id', 'installation_id', 'periodicite',
             'periodicite_display', 'montant', 'statut', 'statut_display',
-            'date_debut', 'prochaine_echeance', 'motif_resiliation',
-            'date_creation',
+            'date_debut', 'motif_resiliation', 'date_creation',
         ]
         read_only_fields = [
-            'client_id', 'statut', 'prochaine_echeance', 'motif_resiliation',
-            'date_creation',
+            'client_id', 'statut', 'motif_resiliation', 'date_creation',
         ]
 
     def validate_montant(self, value):
@@ -362,3 +370,28 @@ class CertificatCarboneSerializer(serializers.ModelSerializer):
             'periode_fin', 'tco2_evitees', 'reference', 'created_at',
         ]
         read_only_fields = ['tco2_evitees', 'reference', 'created_at']
+
+
+class UnderperformanceFlagSerializer(serializers.ModelSerializer):
+    """AMON24 — drapeau de sous-performance (lecture seule) : système, ratio,
+    ouverture, ticket lié ; clôture (motif, note, auteur) une fois classé.
+    Contrat : ``contract_samples/drapeaux_sous_performance.json``."""
+    reference = serializers.CharField(
+        source='installation.reference', read_only=True)
+    cloture_par_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = UnderperformanceFlag
+        fields = [
+            'id', 'installation', 'reference', 'ratio_pct', 'date_creation',
+            'ticket', 'is_open', 'date_cloture', 'motif_cloture',
+            'note_cloture', 'cloture_par_nom',
+        ]
+        read_only_fields = fields
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_cloture_par_nom(self, obj):
+        user = obj.cloture_par
+        if user is None:
+            return None
+        return user.get_full_name() or user.get_username()

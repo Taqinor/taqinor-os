@@ -11,12 +11,11 @@ from django.test import TestCase
 
 from apps.crm.models import Client
 from apps.installations.models import Installation
-from apps.monitoring import analytics
+from apps.monitoring import analytics, services
 from apps.monitoring.models import MonitoringConfig, ProductionReading
 from authentication.models import Company
 
 TODAY = date(2026, 10, 8)
-NOMINAL = Decimal('32.88')  # 12 000 kWh / 365 j
 
 
 class MoisPartielsTests(TestCase):
@@ -34,11 +33,14 @@ class MoisPartielsTests(TestCase):
             expected_annual_kwh=Decimal('12000'))
 
     def _releves(self, chute_dernier_mois=None):
+        # AMON29 — journaliers au profil mensuel du devis (l'attendu n'est
+        # plus annuel / 365 à plat).
         for i in range(366):
             jour = TODAY - timedelta(days=365 - i)
-            kwh = NOMINAL
+            kwh = services.attendu_entre(Decimal('12000'), jour, jour)
             if chute_dernier_mois and jour.month == 9 and jour.year == 2026:
-                kwh = NOMINAL * Decimal('0.8')
+                kwh = kwh * Decimal('0.8')
+            kwh = kwh.quantize(Decimal('0.01'))
             ProductionReading.objects.create(
                 company=self.company, installation=self.inst, date=jour,
                 energy_kwh=kwh, period_days=1)

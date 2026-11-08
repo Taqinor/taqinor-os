@@ -72,3 +72,70 @@ class ParcActifTests(TestCase):
                 ratio_pct=Decimal('10'))
         ov = fleet_overview(self.company, today=self.today)
         self.assertEqual(ov['open_alerts'], 1)
+
+    def test_balayage_ferme_le_drapeau_du_site_retire(self):
+        """AMON25 — le balayage nocturne ferme l'épisode ouvert d'un site
+        retiré du parc (sans le synchroniser) : il sort du portail client."""
+        from apps.monitoring.selectors import (
+            underperformance_flags_client_portail,
+        )
+        site = self._systeme('AMON25-S', parc_actif=True)
+        drapeau = UnderperformanceFlag.objects.create(
+            company=self.company, installation=site, is_open=True,
+            ratio_pct=Decimal('15'))
+        Installation.objects.filter(pk=site.pk).update(parc_actif=False)
+        with mock.patch('apps.monitoring.services.sync_system',
+                        return_value=(0, 'noop')) as synchro:
+            balayage_quotidien()
+            synchro.assert_not_called()
+        drapeau.refresh_from_db()
+        self.assertFalse(drapeau.is_open)
+        self.assertEqual(drapeau.motif_cloture, 'donnees_indisponibles')
+        self.assertIn('retiré du parc', drapeau.note_cloture)
+        self.assertFalse(underperformance_flags_client_portail(
+            self.company, site.client_id).exists())
+        # Second balayage : no-op (aucun drapeau neuf).
+        balayage_quotidien()
+        self.assertEqual(UnderperformanceFlag.objects.filter(
+            installation=site).count(), 1)
+
+    def test_site_retire_resilie_l_abonnement(self):
+        """AMON81 — le balayage résilie l'abonnement actif d'un système sorti
+        du parc (motif « Système retiré du parc ») et coupe sa config ; un
+        seul événement ; second balayage sans effet ; site actif intact."""
+        from apps.monitoring.models import AbonnementMonitoring
+        from core.events import abonnement_monitoring_resilie
+
+        retire = self._systeme('AMON81-R', parc_actif=True)
+        actif = self._systeme('AMON81-A', parc_actif=True)
+        MonitoringConfig.objects.filter(
+            installation__in=[retire, actif]).update(enabled=True)
+        abonnements = {
+            inst.pk: AbonnementMonitoring.objects.create(
+                company=self.company, client_id=inst.client_id,
+                installation_id=inst.pk, montant=150)
+            for inst in (retire, actif)}
+        Installation.objects.filter(pk=retire.pk).update(parc_actif=False)
+        emis = []
+
+        def _compter(sender, **kwargs):
+            emis.append(kwargs['abonnement'].pk)
+        abonnement_monitoring_resilie.connect(_compter)
+        try:
+            with mock.patch('apps.monitoring.services.sync_system',
+                            return_value=(0, 'noop')):
+                balayage_quotidien()
+                balayage_quotidien()
+        finally:
+            abonnement_monitoring_resilie.disconnect(_compter)
+        ab = abonnements[retire.pk]
+        ab.refresh_from_db()
+        self.assertEqual(ab.statut, 'resilie')
+        self.assertEqual(ab.motif_resiliation, 'Système retiré du parc')
+        self.assertEqual(emis, [ab.pk])
+        self.assertFalse(MonitoringConfig.objects.get(
+            installation=retire).enabled)
+        abonnements[actif.pk].refresh_from_db()
+        self.assertEqual(abonnements[actif.pk].statut, 'actif')
+        self.assertTrue(MonitoringConfig.objects.get(
+            installation=actif).enabled)

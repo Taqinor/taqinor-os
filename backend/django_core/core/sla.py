@@ -18,6 +18,7 @@ from __future__ import annotations
 import calendar
 import logging
 from datetime import datetime, timedelta
+from decimal import ROUND_HALF_UP, Decimal
 
 from django.apps import apps as django_apps
 from django.db import models
@@ -26,9 +27,10 @@ from django.http import HttpResponse
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
-    OpenApiParameter, extend_schema, inline_serializer,
+    OpenApiParameter, OpenApiResponse, extend_schema, inline_serializer,
 )
-from rest_framework import generics, serializers, status
+from rest_framework import generics, serializers, status
+
 from core.serializers import CompanyScopedRelationsMixin
 from rest_framework.decorators import (
     api_view, parser_classes, permission_classes,
@@ -204,8 +206,9 @@ def montant_facture_mois(company, periode):
     ``django.apps.apps.get_model`` — ``core`` reste une couche de base,
     contrat import-linter ``core-foundation-is-a-base-layer``). Réutilise la
     propriété ``total_ttc`` DÉJÀ définie côté facturation (jamais un calcul de
-    TVA dupliqué ici). ``None`` — jamais 0 maquillé — si l'app n'est pas
-    disponible ou si le calcul échoue pour une facture (best-effort)."""
+    TVA dupliqué ici). Seules les factures ÉMISES comptent (brouillons et
+    annulées exclus — AMON31), sommées en ``Decimal``. ``None`` — jamais 0
+    maquillé — si l'app n'est pas disponible (best-effort)."""
     try:
         facture_model = django_apps.get_model('facturation', 'Facture')
     except LookupError:
@@ -216,12 +219,13 @@ def montant_facture_mois(company, periode):
         facture_model.objects
         .filter(company=company, date_emission__gte=debut.date(),
                 date_emission__lte=fin.date())
-        .exclude(statut=facture_model.Statut.ANNULEE)
+        .exclude(statut__in=[facture_model.Statut.BROUILLON,
+                             facture_model.Statut.ANNULEE])
     )
-    total = 0.0
+    total = Decimal('0')
     for facture in qs:
         try:
-            total += float(facture.total_ttc or 0)
+            total += Decimal(str(facture.total_ttc or 0))
         except Exception:  # noqa: BLE001 — best-effort, une facture KO n'en bloque pas d'autres (D-ENF22-BLE001)
             logger.warning("montant facture mois : échec ignoré, comportement dégradé", exc_info=True)
             continue
@@ -307,17 +311,21 @@ def _calculer_credit(company, periode, uptime):
 
     montant_facture = montant_facture_mois(company, periode)
     credit_montant = (
-        round(montant_facture * credit_pct / 100.0, 2)
+        (Decimal(str(montant_facture)) * Decimal(str(credit_pct)) / 100)
+        .quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
         if montant_facture is not None else None)
     return credit_pct, credit_montant, SlaSnapshot.CreditStatut.A_EMETTRE
 
 
-def generer_snapshot_societe(company, periode):
+def generer_snapshot_societe(company, periode, raison=''):
     """Calcule et persiste (upsert) le snapshot SLA d'une société pour ``periode``.
 
     Ne réémet JAMAIS un crédit déjà ``emis``/``refuse`` (une régénération —
     ex. recalcul après incident tardif — ne doit pas effacer une décision déjà
-    prise par un humain sur le crédit)."""
+    prise par un humain sur le crédit). AMON34 — sur un snapshot EXISTANT,
+    ``genere_le`` (date de première publication) est gardé et le recalcul est
+    tracé (``recalcule_le`` / ``raison_recalcul``) ; un snapshot neuf garde
+    ``recalcule_le`` vide."""
     from . import metrics as metrics_infra
 
     uptime = uptime_pct_periode(company, periode)
@@ -333,17 +341,20 @@ def generer_snapshot_societe(company, periode):
             existant.credit_du_pct, existant.credit_du_montant)
         credit_statut = existant.credit_statut
 
+    defaults = {
+        'uptime_pct': uptime,
+        'latence_p95_ms': p95,
+        'credit_du_pct': credit_pct,
+        'credit_du_montant': credit_montant,
+        'credit_statut': credit_statut,
+    }
+    if existant:
+        defaults.update(recalcule_le=timezone.now(),
+                        raison_recalcul=raison or 'Régénération du rapport')
+    else:
+        defaults['genere_le'] = timezone.now()
     snapshot, _created = SlaSnapshot.objects.update_or_create(
-        company=company, periode=periode,
-        defaults={
-            'uptime_pct': uptime,
-            'latence_p95_ms': p95,
-            'genere_le': timezone.now(),
-            'credit_du_pct': credit_pct,
-            'credit_du_montant': credit_montant,
-            'credit_statut': credit_statut,
-        },
-    )
+        company=company, periode=periode, defaults=defaults)
     return snapshot
 
 
@@ -366,23 +377,19 @@ def generer_sla_mensuel(periode=None):
 # calculé ne reflète plus l'incident tardif). ``generer_snapshot_societe``
 # sait déjà régénérer un snapshot existant SANS écraser une décision humaine
 # déjà prise sur le crédit (``emis``/``refuse``) — ce module ne fait que
-# DÉTECTER quels snapshots sont périmés et les régénérer.
-#
-# LIMITE ASSUMÉE DE CE LOT (lane isolée ``core/{sla.py,tasks.py}`` — le
-# schéma ``core/models.py``/``core/migrations`` appartient à une autre lane en
-# ce moment) : le plan nommait deux nouveaux champs de traçabilité
-# (``SlaSnapshot.recalcule_le``, ``SlaSnapshot.raison_recalcul``), non posés
-# ici — le recalcul est journalisé via le logger applicatif (voir
-# ``logger.info`` ci-dessous) plutôt que persistés en base. Migration exacte
-# à poser par l'orchestrateur :
-#
-#     recalcule_le = models.DateTimeField(null=True, blank=True)
-#     raison_recalcul = models.CharField(max_length=255, blank=True, default='')
+# DÉTECTER quels snapshots sont périmés et les régénérer. AMON34 — le
+# recalcul est tracé sur le snapshot (``recalcule_le``, ``raison_recalcul``) et
+# la péremption est jugée sur la date la plus récente (recalcul ou génération).
+
+RAISON_RECALCUL_INCIDENT_TARDIF = (
+    'Incident déclaré ou modifié après la génération')
+
 
 def _snapshots_perimes_par_incident_tardif(company):
-    """``SlaSnapshot`` de ``company`` dont ``genere_le`` précède la dernière
-    modification (``updated_at``) d'un ``IncidentPublic`` touchant sa
-    période — système (``company=None``) ou propre à elle."""
+    """``SlaSnapshot`` de ``company`` dont le dernier calcul (``recalcule_le``,
+    sinon ``genere_le``) précède la dernière modification (``updated_at``)
+    d'un ``IncidentPublic`` touchant sa période — système (``company=None``)
+    ou propre à elle."""
     try:
         incident_model = django_apps.get_model('statuspage', 'IncidentPublic')
     except LookupError:
@@ -396,23 +403,25 @@ def _snapshots_perimes_par_incident_tardif(company):
             debute_le__lt=fin,
         ).filter(
             Q(resolu_le__gte=debut) | Q(resolu_le__isnull=True),
-        ).filter(updated_at__gt=snapshot.genere_le).exists()
+        ).filter(updated_at__gt=(
+            snapshot.recalcule_le or snapshot.genere_le)).exists()
         if touche_tardivement:
             perimes.append(snapshot)
     return perimes
 
 
-def _notifier_recalcul_credit(company, snapshot, ancien_montant):
+def _notifier_recalcul_credit(company, snapshot, ancien_montant,
+                              credit_recalcule=None):
     """Notifie le Directeur qu'un recalcul a fait bouger le crédit SLA dû.
 
-    ``'sla_credit_recalcule'`` (string littéral, jamais un import
+    ``'sla_credit_recalcule'`` est un littéral (jamais un import
     ``apps.notifications`` — contrat import-linter
-    ``core-foundation-is-a-base-layer``) reflète un ``EventType.
-    SLA_CREDIT_RECALCULE`` PAS ENCORE catalogué (migration ``apps.
-    notifications`` hors périmètre de cette lane) : le stockage fonctionne
-    (``Notification.event_type`` n'est pas contraint en base par les
-    ``choices`` Django), seul l'affichage libellé attend cette migration
-    future."""
+    ``core-foundation-is-a-base-layer``) qui désigne ``EventType.
+    SLA_CREDIT_RECALCULE``, catalogué par AMON85 : sans ce membre,
+    ``notify`` rejetait le type et aucune notification n'était créée.
+    AMON89 — ``credit_recalcule`` (``(pct, montant)``) signale un snapshot
+    DÉJÀ décidé (émis / refusé) dont le crédit dû change : la décision et le
+    montant figé restent intacts, seul le Directeur en est averti."""
     from . import notify_registry
     from .maintenance_windows import admins_cibles
 
@@ -420,6 +429,12 @@ def _notifier_recalcul_credit(company, snapshot, ancien_montant):
     body = (
         f'Ancien montant : {ancien_montant}. '
         f'Nouveau montant : {snapshot.credit_du_montant}.')
+    if credit_recalcule is not None:
+        pct, montant = credit_recalcule
+        body = (
+            f'Crédit dû recalculé : {pct or 0} % ({montant}) sur une décision '
+            f'déjà prise ({snapshot.get_credit_statut_display()}) ; décision '
+            f'et montant figé ({ancien_montant}) inchangés.')
     for admin in admins_cibles(company):
         notify_registry.notify(
             admin, 'sla_credit_recalcule', titre, body=body, company=company)
@@ -435,14 +450,27 @@ def recalculer_sla_perimes():
     for company in Company.objects.filter(actif=True):
         for snapshot in _snapshots_perimes_par_incident_tardif(company):
             ancien_montant = snapshot.credit_du_montant
-            nouveau = generer_snapshot_societe(company, snapshot.periode)
+            nouveau = generer_snapshot_societe(
+                company, snapshot.periode,
+                raison=RAISON_RECALCUL_INCIDENT_TARDIF)
             regeneres.append(nouveau)
             logger.info(
                 'core.recalculer_sla_perimes: société=%s périodeMoi=%s '
                 'ancien_credit=%s nouveau_credit=%s',
                 company.id, snapshot.periode, ancien_montant,
                 nouveau.credit_du_montant)
-            if nouveau.credit_du_montant != ancien_montant:
+            if nouveau.credit_statut in (
+                    SlaSnapshot.CreditStatut.EMIS,
+                    SlaSnapshot.CreditStatut.REFUSE):
+                # AMON89 — le montant d'un crédit décidé est figé : comparer
+                # le crédit que le nouvel uptime donnerait au montant figé.
+                pct, montant, _statut = _calculer_credit(
+                    company, nouveau.periode, nouveau.uptime_pct)
+                if montant != ancien_montant:
+                    _notifier_recalcul_credit(
+                        company, nouveau, ancien_montant,
+                        credit_recalcule=(pct, montant))
+            elif nouveau.credit_du_montant != ancien_montant:
                 _notifier_recalcul_credit(company, nouveau, ancien_montant)
     return regeneres
 
@@ -469,8 +497,8 @@ class SlaSnapshotSerializer(CompanyScopedRelationsMixin, serializers.ModelSerial
 
 
 class SlaCreditDuSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
-    """NTOBS4 — un crédit dû, avec le nom de la société (vue cross-tenant
-    Directeur uniquement)."""
+    """NTOBS4 — un crédit dû, avec le nom de la société (lu par le seul
+    superutilisateur de la plateforme sur plusieurs sociétés — AMON20)."""
 
     company_nom = serializers.SerializerMethodField()
 
@@ -582,11 +610,11 @@ class FiabilitePermission(BasePermission):
 
 
 class SlaCreditsDusListView(generics.ListAPIView):
-    """GET /api/django/core/sla/credits/ — Directeur/Administrateur : crédits
-    SLA dus TOUTES sociétés (pilotage cross-tenant, inchangé — NTOBS22). Un
-    compte ``fiabilite_voir`` non-admin reste BORNÉ à SA société : une
-    permission de lecture pensée pour consulter SES PROPRES données
-    Fiabilité n'élargit jamais l'accès à une vue cross-tenant."""
+    """GET /api/django/core/sla/credits/ — crédits SLA dus, BORNÉS à la
+    société de l'appelant (AMON20) : Directeur, Administrateur et
+    ``fiabilite_voir`` d'un tenant ne lisent que SA société. Seul le
+    superutilisateur de la plateforme (opérateur, ``is_superuser``) voit
+    toutes les sociétés — un admin de tenant n'est jamais l'opérateur."""
 
     serializer_class = SlaCreditDuSerializer
     permission_classes = [IsAuthenticated, FiabilitePermission]
@@ -599,7 +627,7 @@ class SlaCreditsDusListView(generics.ListAPIView):
             .select_related('company')
             .order_by('-periode')
         )
-        if not _est_admin(self.request.user):
+        if not getattr(self.request.user, 'is_superuser', False):
             qs = qs.filter(company=self.request.user.company)
         return qs
 
@@ -609,7 +637,10 @@ _REQUETE_CREDIT_STATUT = inline_serializer('SlaCreditStatutRequete', {
 })
 
 
-@extend_schema(request=_REQUETE_CREDIT_STATUT, responses=SlaSnapshotSerializer)
+@extend_schema(request=_REQUETE_CREDIT_STATUT, responses={
+    200: SlaSnapshotSerializer,
+    409: OpenApiResponse(description=(
+        "Conflit d'état : seul un crédit « à émettre » se décide (AMON32)."))})
 @api_view(['POST'])
 @permission_classes([IsAuthenticated, FiabilitePermission])
 @parser_classes([JSONParser])  # ENF8 (D2) — aucun upload
@@ -621,8 +652,8 @@ def sla_credit_statut(request, pk):
 
     Bornée à LA SOCIÉTÉ de l'appelant, SANS exception admin : un crédit SLA
     est par-tenant, et personne — même Directeur — n'édite légitimement celui
-    d'un autre tenant (contrairement à ``SlaCreditsDusListView`` ci-dessus,
-    une LECTURE de pilotage cross-tenant, inchangée). Un pk d'une autre
+    d'un autre tenant (``SlaCreditsDusListView`` ci-dessus est elle aussi
+    bornée à la société, AMON20). Un pk d'une autre
     société est 404 (introuvable), jamais un 403 qui révélerait son
     existence."""
     # ERR-ENF11-FUZZ-CORE — corps validé par le serializer déclaré (un corps
@@ -631,16 +662,24 @@ def sla_credit_statut(request, pk):
     from .parseurs import corps_valide
     nouveau_statut = corps_valide(request, _REQUETE_CREDIT_STATUT)['statut']
 
-    try:
-        snapshot = SlaSnapshot.objects.get(
-            pk=pk, company=request.user.company)
-    except SlaSnapshot.DoesNotExist:
-        return Response({'detail': 'Crédit SLA introuvable.'},
-                        status=status.HTTP_404_NOT_FOUND)
+    from django.db import transaction
 
-    ancien_statut = snapshot.credit_statut
-    snapshot.credit_statut = nouveau_statut
-    snapshot.save(update_fields=['credit_statut', 'updated_at'])
+    from .conflit_etat import ConflitEtat
+
+    with transaction.atomic():
+        snapshot = (SlaSnapshot.objects.select_for_update()
+                    .filter(pk=pk, company=request.user.company).first())
+        if snapshot is None:
+            return Response({'detail': 'Crédit SLA introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        ancien_statut = snapshot.credit_statut
+        # AMON32 — une décision ne se prend que sur un crédit « à émettre ».
+        if ancien_statut != SlaSnapshot.CreditStatut.A_EMETTRE:
+            raise ConflitEtat(
+                'Seul un crédit SLA « à émettre » peut être émis ou refusé '
+                f'(statut actuel : {snapshot.get_credit_statut_display()}).')
+        snapshot.credit_statut = nouveau_statut
+        snapshot.save(update_fields=['credit_statut', 'updated_at'])
     _emettre_sla_credit_statut_change(
         snapshot, ancien_statut, nouveau_statut, request.user)
     return Response(SlaSnapshotSerializer(snapshot).data)

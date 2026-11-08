@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/monitoring/abonnements/",
-  "pourquoi": "ASAV100 (D-ASAV-4 option (b), ASAV93) — abonnements de supervision de la société, servis par AbonnementMonitoringViewSet.list (enveloppe paginée DRF count/next/previous/results). Rôle responsable/admin ; société forcée côté serveur ; le client est résolu côté serveur depuis le système supervisé (jamais lu du corps). Le montant vient de la saisie (jamais un défaut). La résiliation (POST .../{id}/resilier/ {motif}) passe par apps.monitoring.services.resilier_abonnement_monitoring, qui émet abonnement_monitoring_resilie : l'abonné coupe la supervision automatique du système lié.",
+  "pourquoi": "ASAV100 (D-ASAV-4 option (b), ASAV93) — abonnements de supervision de la société, servis par AbonnementMonitoringViewSet.list (enveloppe paginée DRF count/next/previous/results). Rôle responsable/admin ; société forcée côté serveur ; le client est résolu côté serveur depuis le système supervisé (jamais lu du corps). Le montant vient de la saisie (jamais un défaut). D-AMON-1 (vendu_une_fois, AMON2) : aucune échéance servie — l'abonnement n'est ni avancé ni facturé par période. La résiliation (POST .../{id}/resilier/ {motif}) passe par apps.monitoring.services.resilier_abonnement_monitoring, qui émet abonnement_monitoring_resilie : l'abonné coupe la supervision automatique du système lié.",
   "exemple": {
     "count": 1,
     "next": null,
@@ -16,7 +16,6 @@
         "statut": "actif",
         "statut_display": "Actif",
         "date_debut": "2026-10-01",
-        "prochaine_echeance": "2026-11-01",
         "motif_resiliation": "",
         "date_creation": "2026-10-01T09:30:00Z"
       }
@@ -40,7 +39,6 @@
       "statut": "resilie",
       "statut_display": "Résilié",
       "date_debut": "2026-10-01",
-      "prochaine_echeance": "2026-11-01",
       "motif_resiliation": "Client a vendu la maison.",
       "date_creation": "2026-10-01T09:30:00Z"
     }

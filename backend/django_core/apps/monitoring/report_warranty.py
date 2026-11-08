@@ -98,10 +98,11 @@ def build_warranty_report_data(installation, *, year=None, today=None):
     if warranty is None:
         warranty = (ProductionWarranty.objects
                     .filter(installation=installation).first())
-    if warranty is None:
+    if warranty is None or year < int(warranty.start_year):
+        # AMON40 — aucune garantie avant son année de départ (404 en vue).
         return {'has_warranty': False}
+    from .services import _guaranteed_kwh_for_period
 
-    days_in_year = (_date(year, 12, 31) - _date(year, 1, 1)).days + 1
     guaranteed_full = warranty.guaranteed_kwh_for_year(year)
     tolerance_rate = Decimal(str(warranty.tolerance_pct)) / Decimal('100')
     tarif = Decimal(str(warranty.compensation_mad_per_kwh))
@@ -123,9 +124,11 @@ def build_warranty_report_data(installation, *, year=None, today=None):
             month_kwh += Decimal(str(energie))
         cumulative_actual += month_kwh
 
-        jours_ecoules = (fin_mois - _date(year, 1, 1)).days + 1
-        guaranteed_cum = guaranteed_full * (
-            Decimal(jours_ecoules) / Decimal(days_in_year))
+        # AMON40 — garanti cumulé sur la seule période couverte (mise en
+        # service / premier relevé / ``start_year``), même helper que le
+        # statut : 0 avant le début de couverture.
+        guaranteed_cum, _en_cours = _guaranteed_kwh_for_period(
+            warranty, year, fin_mois, installation)
 
         shortfall_cum = guaranteed_cum - cumulative_actual
         if shortfall_cum < 0:

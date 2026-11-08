@@ -75,6 +75,9 @@ def build_om_report_data(installation, *, period='monthly', today=None):
         period_kwh += Decimal(str(r))
 
     metrics = om_metrics(installation, today=today)
+    # AMON21 — PR et disponibilité DE LA PÉRIODE du rapport (30 / 91 j),
+    # jamais ceux de 365 j ; la dérive reste lue sur l'année.
+    metrics_periode = om_metrics(installation, window_days=window, today=today)
     soiling = soiling_assessment(installation, today=today)
     # CIQ646 (D-CIQ-12) — aucune ligne de garantie de production dans un
     # rapport client tant que la société n'a pas validé l'engagement
@@ -106,8 +109,8 @@ def build_om_report_data(installation, *, period='monthly', today=None):
         'period': period,
         'period_days': window,
         'period_kwh': period_kwh.quantize(Decimal('0.01')),
-        'pr_pct': metrics['pr_pct'],
-        'availability_pct': metrics['availability_pct'],
+        'pr_pct': metrics_periode['pr_pct'],
+        'availability_pct': metrics_periode['availability_pct'],
         'degradation_pct_per_year': metrics['degradation_pct_per_year'],
         'soiling_suspected': metrics['soiling_suspected'],
         'open_alarms': open_flags,

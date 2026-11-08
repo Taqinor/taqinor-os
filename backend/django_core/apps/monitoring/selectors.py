@@ -353,7 +353,15 @@ def disponibilite_vs_garantie(installation, *, window_days=365, today=None):
     ecart_pct = garantie_pct - Decimal(str(mesuree_pct))
     sous_garantie = ecart_pct > 0
     if sous_garantie:
-        jours_excedentaires = (ecart_pct / Decimal('100')) * Decimal(window_days)
+        # AMON21 — jours excédentaires sur la fenêtre BORNÉE (mise en
+        # service / premier relevé), celle de la disponibilité mesurée.
+        from .analytics import fenetre_mesuree
+        jour = today or timezone.localdate()
+        _debut, jours_fenetre = fenetre_mesuree(
+            installation, jour - timedelta(days=window_days), jour,
+            window_days)
+        jours_excedentaires = (
+            (ecart_pct / Decimal('100')) * Decimal(jours_fenetre))
         penalite = jours_excedentaires * Decimal(
             str(sla.compensation_mad_par_jour_indispo))
     else:

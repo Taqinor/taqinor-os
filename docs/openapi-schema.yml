@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4933, operations: 7731, components: 3635}
+counts: {paths: 4939, operations: 7737, components: 3638}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -2284,6 +2284,9 @@ operations:
 - get /api/django/monitoring/configs/{id}/rapport-garantie-pdf/ -> django_monitoring_configs_rapport_garantie_pdf_retrieve
 - get /api/django/monitoring/configs/{id}/soiling/ -> django_monitoring_configs_soiling_retrieve
 - post /api/django/monitoring/configs/{id}/sync-now/ -> django_monitoring_configs_sync_now_create
+- get /api/django/monitoring/drapeaux/ -> django_monitoring_drapeaux_list
+- get /api/django/monitoring/drapeaux/{id}/ -> django_monitoring_drapeaux_retrieve
+- post /api/django/monitoring/drapeaux/{id}/classer/ -> django_monitoring_drapeaux_classer_create
 - get /api/django/monitoring/readings/ -> django_monitoring_readings_list
 - post /api/django/monitoring/readings/ -> django_monitoring_readings_create
 - delete /api/django/monitoring/readings/{id}/ -> django_monitoring_readings_destroy
@@ -6190,6 +6193,9 @@ operations:
 - get /api/v1/monitoring/configs/{id}/rapport-garantie-pdf/ -> v1_monitoring_configs_rapport_garantie_pdf_retrieve
 - get /api/v1/monitoring/configs/{id}/soiling/ -> v1_monitoring_configs_soiling_retrieve
 - post /api/v1/monitoring/configs/{id}/sync-now/ -> v1_monitoring_configs_sync_now_create
+- get /api/v1/monitoring/drapeaux/ -> v1_monitoring_drapeaux_list
+- get /api/v1/monitoring/drapeaux/{id}/ -> v1_monitoring_drapeaux_retrieve
+- post /api/v1/monitoring/drapeaux/{id}/classer/ -> v1_monitoring_drapeaux_classer_create
 - get /api/v1/monitoring/readings/ -> v1_monitoring_readings_list
 - post /api/v1/monitoring/readings/ -> v1_monitoring_readings_create
 - delete /api/v1/monitoring/readings/{id}/ -> v1_monitoring_readings_destroy
@@ -8203,6 +8209,7 @@ query_params:
   get /api/django/monitoring/configs/{id}/pertes/: window_days
   get /api/django/monitoring/configs/{id}/rapport-garantie-pdf/: annee
   get /api/django/monitoring/configs/{id}/soiling/: window_days
+  get /api/django/monitoring/drapeaux/: installation is_open ordering page page_size
   get /api/django/monitoring/readings/: installation ordering page page_size search
   get /api/django/monitoring/settings/: ordering search
   get /api/django/monitoring/sla-disponibilite/: installation ordering page page_size search
@@ -9000,6 +9007,7 @@ query_params:
   get /api/v1/monitoring/configs/{id}/pertes/: window_days
   get /api/v1/monitoring/configs/{id}/rapport-garantie-pdf/: annee
   get /api/v1/monitoring/configs/{id}/soiling/: window_days
+  get /api/v1/monitoring/drapeaux/: installation is_open ordering page page_size
   get /api/v1/monitoring/readings/: installation ordering page page_size search
   get /api/v1/monitoring/settings/: ordering search
   get /api/v1/monitoring/sla-disponibilite/: installation ordering page page_size search
@@ -11511,6 +11519,7 @@ components:
 - PaginatedTypeChampSignatureList
 - PaginatedTypeInterventionList
 - PaginatedUiActionBoutonList
+- PaginatedUnderperformanceFlagList
 - PaginatedUniteLogistiqueList
 - PaginatedUniteMesureList
 - PaginatedUserList
@@ -12825,6 +12834,7 @@ components:
 - UiBoutonDeclencherRequestRequest
 - UiOngletCustom
 - UiOngletCustomRequest
+- UnderperformanceFlag
 - UniteAjouterLigneCorpsRequest
 - UniteControlerScanCorpsRequest
 - UniteDeplacerCorpsRequest
@@ -12960,6 +12970,7 @@ components:
 - WorkingHoursConfigRequest
 - WorksheetMaintenanceModele
 - WorksheetMaintenanceModeleRequest
+- _ClasserDrapeauCorpsRequest
 - _CoinsCalageRequest
 - _CompanyProfileSchema
 - _DecisionGabaritRequest

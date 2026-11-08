@@ -46,4 +46,21 @@ describe('PortailClientConsommation — ADOC140', () => {
     expect(screen.queryByRole('table')).toBeNull()
     expect(screen.getByTestId('consommation-alertes').textContent).toBe('Aucune alerte ouverte')
   })
+
+  it('relevés servis sans fournisseur : tableau affiché (AMON6)', async () => {
+    portailApi.consommation.mockResolvedValue({
+      window_days: 90,
+      points: [
+        { date: '2026-08-01', energy_kwh: '410.0' },
+        { date: '2026-09-01', energy_kwh: '395.5' },
+        { date: '2026-10-01', energy_kwh: '402.2' },
+      ],
+      provider_configure: false,
+      alertes_ouvertes: 0,
+    })
+    renderPage()
+    expect(await screen.findByText('Production des 90 derniers jours')).toBeTruthy()
+    expect(screen.getAllByRole('row')).toHaveLength(4)
+    expect(screen.queryByText('Suivi de production non raccordé')).toBeNull()
+  })
 })

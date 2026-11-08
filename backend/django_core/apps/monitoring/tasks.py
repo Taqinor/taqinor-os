@@ -29,6 +29,9 @@ from celery import shared_task
 
 logger = logging.getLogger(__name__)
 
+#: AMON81 — motif de la résiliation posée par le balayage.
+MOTIF_RETRAIT_DU_PARC = 'Système retiré du parc'
+
 
 @shared_task(name='monitoring.balayage_quotidien')
 def balayage_quotidien():
@@ -41,8 +44,11 @@ def balayage_quotidien():
     """
     from authentication.selectors import active_companies
 
-    from .models import MonitoringConfig
-    from .services import evaluate_underperformance, sync_system
+    from .models import AbonnementMonitoring, MonitoringConfig
+    from .services import (
+        evaluate_underperformance, resilier_abonnement_monitoring,
+        sync_system,
+    )
 
     total_systemes = 0
     total_importes = 0
@@ -60,10 +66,20 @@ def balayage_quotidien():
                    .select_related('installation'))
         for config in configs:
             installation = config.installation
-            # ASAV69 — site retiré du parc : ni synchro ni évaluation.
-            if getattr(installation, 'parc_actif', True) is False:
-                continue
             try:
+                # ASAV69 — site retiré du parc : ni synchro ni évaluation.
+                # AMON25 — sauf la branche `site_retire` de l'évaluation, qui
+                # FERME l'épisode ouvert (elle ne crée jamais rien).
+                if getattr(installation, 'parc_actif', True) is False:
+                    evaluate_underperformance(installation)
+                    # AMON81 — ses abonnements actifs sont résiliés (le
+                    # service émet l'événement qui coupe la supervision).
+                    for abonnement in AbonnementMonitoring.objects.filter(
+                            company=company, installation_id=installation.pk,
+                            statut=AbonnementMonitoring.Statut.ACTIF):
+                        resilier_abonnement_monitoring(
+                            abonnement, motif=MOTIF_RETRAIT_DU_PARC)
+                    continue
                 imported, _provider = sync_system(installation)
                 total_importes += imported
                 result = evaluate_underperformance(installation)

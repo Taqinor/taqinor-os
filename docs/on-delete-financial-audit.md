@@ -269,9 +269,9 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/monitoring/models.py::CleaningEvent.company` | backend/django_core/apps/monitoring/models.py:171 | authentication.Company | CASCADE |
 | `backend/django_core/apps/monitoring/models.py::MonitoringSettings.company` | backend/django_core/apps/monitoring/models.py:207 | authentication.Company | CASCADE |
 | `backend/django_core/apps/monitoring/models.py::UnderperformanceFlag.company` | backend/django_core/apps/monitoring/models.py:237 | authentication.Company | CASCADE |
-| `backend/django_core/apps/monitoring/models.py::SlaDisponibilite.company` | backend/django_core/apps/monitoring/models.py:301 | authentication.Company | CASCADE |
-| `backend/django_core/apps/monitoring/models.py::CertificatCarbone.company` | backend/django_core/apps/monitoring/models.py:360 | authentication.Company | CASCADE |
-| `backend/django_core/apps/monitoring/models.py::AbonnementMonitoring.company` | backend/django_core/apps/monitoring/models.py:452 | authentication.Company | CASCADE |
+| `backend/django_core/apps/monitoring/models.py::SlaDisponibilite.company` | backend/django_core/apps/monitoring/models.py:305 | authentication.Company | CASCADE |
+| `backend/django_core/apps/monitoring/models.py::CertificatCarbone.company` | backend/django_core/apps/monitoring/models.py:364 | authentication.Company | CASCADE |
+| `backend/django_core/apps/monitoring/models.py::AbonnementMonitoring.company` | backend/django_core/apps/monitoring/models.py:456 | authentication.Company | CASCADE |
 | `backend/django_core/apps/monitoring/models_warranty.py::ProductionWarranty.company` | backend/django_core/apps/monitoring/models_warranty.py:27 | authentication.Company | CASCADE |
 | `backend/django_core/apps/notifications/models.py::Notification.company` | backend/django_core/apps/notifications/models.py:62 | authentication.Company | CASCADE |
 | `backend/django_core/apps/notifications/models.py::NotificationPreference.company` | backend/django_core/apps/notifications/models.py:123 | authentication.Company | CASCADE |
@@ -296,7 +296,7 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/outillage/models.py::KitOutillageItem.company` | backend/django_core/apps/outillage/models.py:129 | authentication.Company | CASCADE |
 | `backend/django_core/apps/parametres/models_approvals.py::ApprovalPolicy.company` | backend/django_core/apps/parametres/models_approvals.py:38 | authentication.Company | CASCADE |
 | `backend/django_core/apps/parametres/models_audit.py::SettingsAuditLog.company` | backend/django_core/apps/parametres/models_audit.py:18 | authentication.Company | CASCADE |
-| `backend/django_core/apps/parametres/models_company.py::CompanyProfile.company` | backend/django_core/apps/parametres/models_company.py:20 | authentication.Company | CASCADE |
+| `backend/django_core/apps/parametres/models_company.py::CompanyProfile.company` | backend/django_core/apps/parametres/models_company.py:21 | authentication.Company | CASCADE |
 | `backend/django_core/apps/parametres/models_documents.py::DocumentTemplates.company` | backend/django_core/apps/parametres/models_documents.py:48 | authentication.Company | CASCADE |
 | `backend/django_core/apps/parametres/models_email.py::EmailTemplate.company` | backend/django_core/apps/parametres/models_email.py:203 | authentication.Company | CASCADE |
 | `backend/django_core/apps/parametres/models_messages.py::MessageTemplate.company` | backend/django_core/apps/parametres/models_messages.py:783 | authentication.Company | CASCADE |

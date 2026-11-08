@@ -21,9 +21,9 @@
       "libelle": "Création de l'abonnement monitoring du client",
       "declencheur": {"type": "http", "source": "apps/monitoring/views.py::AbonnementMonitoringViewSet.perform_create"},
       "fonction_entree": "apps/monitoring/services.py::creer_abonnement_monitoring",
-      "checkpoint": {"persistance": "apps/monitoring/models.py::AbonnementMonitoring", "description": "Abonnement actif/suspendu/résilié, périodicité, prochaine échéance."},
+      "checkpoint": {"persistance": "apps/monitoring/models.py::AbonnementMonitoring", "description": "Abonnement actif/suspendu/résilié, périodicité, date de début (aucune échéance : D-AMON-1)."},
       "regles_aval": [
-        {"regle": "La prochaine échéance est posée à une période après la date de début (mensuel +1 mois, annuel +12 mois) ; le client est résolu depuis le système (ASAV100).", "source": "apps/monitoring/services.py::prochaine_echeance_abonnement"},
+        {"regle": "Aucune échéance n'est posée (D-AMON-1, vendu une fois) ; le client est résolu depuis le système (ASAV100).", "source": "apps/monitoring/services.py::creer_abonnement_monitoring"},
         {"regle": "La résiliation coupe la supervision automatique du système lié (voir l'étape résiliation).", "source": "apps/monitoring/receivers.py::_arreter_supervision_a_la_resiliation"}
       ]
     },

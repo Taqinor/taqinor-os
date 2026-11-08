@@ -133,4 +133,6 @@ class SeedExpectedFromReceptionTest(TestCase):
             inst, config, services.RECENT_WINDOW_DAYS)
         self.assertIsNotNone(expected)
         annuel = expected * Decimal('365') / Decimal(services.RECENT_WINDOW_DAYS)
-        self.assertEqual(annuel.quantize(Decimal('1')), Decimal('7300'))
+        # AMON29 — attendu au profil mensuel : 365 j glissants = l'annuel, à
+        # l'écart près d'un 29 février dans la fenêtre (< 0,5 %).
+        self.assertAlmostEqual(float(annuel), 7300, delta=7300 * 0.005)

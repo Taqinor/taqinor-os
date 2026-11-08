@@ -105,6 +105,9 @@ class SlaCreditStatutChangeAuditTests(TestCase):
             self.company, timezone.now().date().replace(day=1))
 
     def test_decision_via_api_journalise_un_diff_structure(self):
+        # AMON32 — seule une décision sur un crédit « à émettre » est admise.
+        self.snapshot.credit_statut = SlaSnapshot.CreditStatut.A_EMETTRE
+        self.snapshot.save(update_fields=['credit_statut'])
         ancien = self.snapshot.credit_statut
         resp = self.api.post(
             f'/api/django/core/sla/credits/{self.snapshot.pk}/statut/',

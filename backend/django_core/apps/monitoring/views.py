@@ -47,7 +47,7 @@ from core.viewsets import CompanyScopedModelViewSet
 from .models import (
     AbonnementMonitoring, CertificatCarbone, CleaningEvent, MonitoringConfig,
     MonitoringSettings, ProductionReading, ProductionWarranty,
-    SlaDisponibilite,
+    SlaDisponibilite, UnderperformanceFlag,
 )
 from .providers import available_providers
 from .serializers import (
@@ -55,7 +55,7 @@ from .serializers import (
     CertificatCarboneSerializer, MonitoringConfigSerializer,
     SlaDisponibiliteSerializer,
     MonitoringSettingsSerializer, ProductionReadingSerializer,
-    ProductionWarrantySerializer,
+    ProductionWarrantySerializer, UnderperformanceFlagSerializer,
 )
 from .analytics import om_metrics, soiling_assessment
 from .query_params import (
@@ -290,6 +290,7 @@ class MonitoringImportRelevesCsv(serializers.Serializer):
 class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
     """Config de supervision par système installé (N50). Lecture tout rôle ;
     écriture responsable/admin. ?installation= pour filtrer."""
+    permission_module = 'sav'  # AMON45 — écritures bornées au module sav (ASEC11)
     queryset = MonitoringConfig.objects.select_related('installation').all()
     serializer_class = MonitoringConfigSerializer
     parser_classes = [JSONParser]
@@ -770,6 +771,7 @@ class CleaningEventViewSet(TenantMixin, viewsets.ModelViewSet):
     """FG283 — nettoyages de panneaux (bornes pour l'estimation de salissure).
     Lecture tout rôle (filtrable par ?installation=) ; écriture
     responsable/admin. `company` et `created_by` posés côté serveur."""
+    permission_module = 'sav'  # AMON45 — écritures bornées au module sav (ASEC11)
     queryset = CleaningEvent.objects.select_related('installation').all()
     serializer_class = CleaningEventSerializer
     parser_classes = [JSONParser]
@@ -797,6 +799,7 @@ class CleaningEventViewSet(TenantMixin, viewsets.ModelViewSet):
 class ProductionReadingViewSet(TenantMixin, viewsets.ModelViewSet):
     """Relevés de production (N51). Lecture tout rôle (filtrable par
     ?installation=) ; saisie manuelle (POST) responsable/admin."""
+    permission_module = 'sav'  # AMON45 — écritures bornées au module sav (ASEC11)
     queryset = ProductionReading.objects.select_related('installation').all()
     serializer_class = ProductionReadingSerializer
     parser_classes = [JSONParser]
@@ -852,6 +855,7 @@ class ProductionWarrantyViewSet(TenantMixin, viewsets.ModelViewSet):
     """FG282 — garantie de production par système. Lecture tout rôle
     (filtrable par ?installation=) ; écriture responsable/admin. Action
     `status` : production réelle vs garanti dégradé → manque/compensation."""
+    permission_module = 'sav'  # AMON45 — écritures bornées au module sav (ASEC11)
     queryset = ProductionWarranty.objects.select_related('installation').all()
     serializer_class = ProductionWarrantySerializer
     parser_classes = [JSONParser]
@@ -919,6 +923,7 @@ class ProductionWarrantyViewSet(TenantMixin, viewsets.ModelViewSet):
 class MonitoringSettingsViewSet(TenantMixin, viewsets.ModelViewSet):
     """Réglage société de sous-performance (N52). Singleton par société :
     `list` renvoie l'unique enregistrement ; écriture responsable/admin."""
+    permission_module = 'sav'  # AMON45 — écritures bornées au module sav (ASEC11)
     queryset = MonitoringSettings.objects.all()
     serializer_class = MonitoringSettingsSerializer
     parser_classes = [JSONParser]
@@ -966,14 +971,13 @@ class AbonnementMonitoringViewSet(CompanyScopedModelViewSet):
     modification libre ni suppression : un abonnement se crée, puis se résilie
     par l'action ``resilier`` (motif obligatoire) qui coupe la supervision du
     système lié. Contrat : ``contract_samples/abonnements_monitoring.json``."""
+    permission_module = 'sav'  # AMON45 — écritures bornées au module sav (ASEC11)
     queryset = AbonnementMonitoring.objects.all()
     serializer_class = AbonnementMonitoringSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['periodicite', 'statut', 'motif_resiliation']
-    ordering_fields = [
-        'prochaine_echeance', 'date_debut', 'date_creation', 'montant',
-        'statut', 'id']
-    ordering = ['prochaine_echeance', 'id']
+    ordering_fields = ['date_debut', 'date_creation', 'montant', 'statut', 'id']
+    ordering = ['-date_debut', 'id']
     parser_classes = [JSONParser]
     permission_classes = [IsResponsableOrAdmin]
     http_method_names = ['get', 'post', 'head', 'options']
@@ -1038,6 +1042,7 @@ class SlaDisponibiliteViewSet(CompanyScopedModelViewSet):
     (``selectors.disponibilite_vs_garantie``). Responsable/admin seulement ;
     société forcée côté serveur (TenantMixin.perform_create). Contrat :
     ``contract_samples/sla_disponibilite.json``."""
+    permission_module = 'sav'  # AMON45 — écritures bornées au module sav (ASEC11)
     queryset = SlaDisponibilite.objects.select_related('installation').all()
     serializer_class = SlaDisponibiliteSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -1089,6 +1094,67 @@ class SlaDisponibiliteViewSet(CompanyScopedModelViewSet):
             sla.installation, window_days=window))
 
 
+class _ClasserDrapeauCorps(serializers.Serializer):
+    motif = RegexStricte(MOTIF_NON_BLANC_SANS_NUL, max_length=500)
+
+
+@extend_schema_view(list=extend_schema(parameters=_FILTRE_INSTALLATION + [
+    OpenApiParameter('is_open', OpenApiTypes.BOOL, required=False)]))
+class UnderperformanceFlagViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+    """AMON24 — drapeaux de sous-performance : liste (tout rôle, filtrable
+    ?installation= / ?is_open=) et classement par le personnel (action
+    ``classer``, responsable/admin, motif obligatoire, auteur tracé) — un
+    faux drapeau sort du compteur du parc et du portail client ; une rechute
+    réelle rouvre un drapeau NEUF. Contrat :
+    ``contract_samples/drapeaux_sous_performance.json``."""
+    permission_module = 'sav'  # AMON45 — écritures bornées au module sav (ASEC11)
+    queryset = (UnderperformanceFlag.objects
+                .select_related('installation', 'cloture_par').all())
+    serializer_class = UnderperformanceFlagSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation', 'ratio_pct', 'id']
+    ordering = ['-date_creation', '-id']
+    parser_classes = [JSONParser]
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        inst = identifiant(self.request, 'installation')
+        if inst:
+            qs = qs.filter(installation_id=inst)
+        ouvert = (self.request.query_params.get('is_open') or '').lower()
+        if ouvert in ('true', '1', 'false', '0'):
+            qs = qs.filter(is_open=ouvert in ('true', '1'))
+        return qs
+
+    @extend_schema(request=_ClasserDrapeauCorps,
+                   responses={200: UnderperformanceFlagSerializer})
+    @action(detail=True, methods=['post'], url_path='classer',
+            permission_classes=[IsResponsableOrAdmin])
+    def classer(self, request, pk=None):
+        """Ferme le drapeau (motif ``classe_manuellement``, note = motif,
+        auteur = l'utilisateur). Motif vide : 400 ; déjà fermé : 409 ;
+        autre société : 404."""
+        from .services import MOTIF_CLASSE_MANUELLEMENT, _fermer_episode
+        drapeau = self.get_object()
+        corps = _ClasserDrapeauCorps(data=request.data if hasattr(
+            request.data, 'get') else {})
+        corps.is_valid(raise_exception=True)
+        if not drapeau.is_open:
+            raise ConflitEtat('Ce drapeau est déjà fermé.')
+        ferme = _fermer_episode(
+            drapeau.installation, MOTIF_CLASSE_MANUELLEMENT,
+            corps.validated_data['motif'].strip(), user=request.user,
+            drapeau_id=drapeau.pk)
+        if ferme is None:
+            raise ConflitEtat('Ce drapeau est déjà fermé.')
+        return Response(self.get_serializer(ferme).data)
+
+
 #: CI #997 fuzz (2) — un certificat vise UN système OU UN client, jamais les
 #: deux ni aucun (400 ``Choisissez soit un système, soit un client``). La
 #: période est OBLIGATOIRE dans tous les cas : ``required`` à la RACINE (une
@@ -1121,6 +1187,7 @@ class CertificatCarboneViewSet(CompanyScopedModelViewSet):
     (production mesurée de la période), jamais lues du corps ; un certificat
     émis ne se modifie ni ne se supprime (traçabilité). Contrat :
     ``contract_samples/certificats_carbone.json``."""
+    permission_module = 'sav'  # AMON45 — écritures bornées au module sav (ASEC11)
     queryset = CertificatCarbone.objects.all()
     serializer_class = CertificatCarboneSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -1149,7 +1216,8 @@ class CertificatCarboneViewSet(CompanyScopedModelViewSet):
                 periode_fin=data['periode_fin'])
         except CertificatCarboneError as exc:
             if exc.etat:
-                raise ConflitEtat(exc.message)
+                # AMON42 — un refus d'état nommé (fin future) garde son champ.
+                raise ConflitEtat(_erreur_service(exc))
             if exc.introuvable:
                 raise NotFound(_erreur_service(exc))
             raise serializers.ValidationError(_erreur_service(exc))

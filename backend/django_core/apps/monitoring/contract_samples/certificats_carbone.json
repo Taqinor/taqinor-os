@@ -26,7 +26,8 @@
   "notes": {
     "cible_xor": "Ni système ni client, ou les deux → 400 (`detail`).",
     "sans_production": "Aucune production mesurée sur la période → 400 (`detail`) : aucun certificat chiffré n'est émis.",
-    "doublon": "Même cible + même période déjà émise → 400 (`detail`, anti-double-comptage).",
+    "doublon": "Période qui recouvre un certificat de la même cible ou d'une cible qui partage ses relevés (site ↔ client consolidé) → 409 (`detail` « … recouvre CERT-CO2-… », anti-double-comptage, AMON42).",
+    "fin_future": "Fin de période postérieure à aujourd'hui → 409 (`detail`, AMON42).",
     "systeme_inconnu": "Système d'une autre société → 400 (champ `installation_id`)."
   }
 }

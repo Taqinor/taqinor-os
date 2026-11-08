@@ -57,7 +57,12 @@ class TestDisponibiliteVsGarantie(TestCase):
             disponibilite_garantie_pct=Decimal('98'),
             compensation_mad_par_jour_indispo=Decimal('500'))
         # 8 jours avec relevé sur une fenêtre de 10 jours → 80 % mesurée.
-        for i in range(8):
+        # AMON21 — fenêtre bornée à la mise en service (J−9, premier relevé
+        # le même jour) : 10 jours, 2 sans relevé (J−8, J−7).
+        Installation.objects.filter(pk=inst.pk).update(
+            date_mise_en_service=self.today - timedelta(days=9))
+        inst.refresh_from_db()
+        for i in (9, 6, 5, 4, 3, 2, 1, 0):
             ProductionReading.objects.create(
                 company=self.company, installation=inst,
                 date=self.today - timedelta(days=i), energy_kwh=Decimal('10'))
@@ -93,11 +98,12 @@ class TestDisponibiliteVsGarantie(TestCase):
             disponibilite_garantie_pct=Decimal('98'))
         result = disponibilite_vs_garantie(inst, window_days=10, today=self.today)
         self.assertTrue(result['has_sla'])
-        # Aucun relevé du tout ⇒ disponibilité mesurée 0 % (jours couverts /
-        # fenêtre) ⇒ écart = le seuil garanti entier. Jamais d'exception.
-        self.assertEqual(result['disponibilite_mesuree_pct'], Decimal('0'))
-        self.assertEqual(result['ecart_pct'], Decimal('98.00'))
-        self.assertTrue(result['sous_garantie'])
+        # AMON21 — aucun relevé ⇒ disponibilité NON mesurée (null), ni écart
+        # ni pénalité : jamais un faux 0 %. Jamais d'exception.
+        self.assertIsNone(result['disponibilite_mesuree_pct'])
+        self.assertIsNone(result['ecart_pct'])
+        self.assertIsNone(result['penalite_mad'])
+        self.assertFalse(result['sous_garantie'])
 
 
 class TestAsav101SlaApi(TestCase):
@@ -174,7 +180,8 @@ class TestAsav101SlaApi(TestCase):
     def test_ecart_affirme_le_contrat_partage(self):
         from django.utils import timezone
         aujourdhui = timezone.localdate()
-        for i in range(5):
+        # AMON21 — fenêtre bornée au premier relevé (J−9) : 5 jours sur 10.
+        for i in (9, 3, 2, 1, 0):
             ProductionReading.objects.create(
                 company=self.company, installation=self.inst,
                 date=aujourdhui - timedelta(days=i), energy_kwh=Decimal('10'))
