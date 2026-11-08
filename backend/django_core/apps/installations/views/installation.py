@@ -683,6 +683,8 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             # annulées PAR cette annulation (traçabilité de provenance).
             from ..services import reactiver_interventions_annulees
             reactiver_interventions_annulees(inst, request.user)
+            from apps.sav.services import reactiver_contrats_chantier  # ACSV100
+            reactiver_contrats_chantier(inst, request.user)
         return Response(
             InstallationSerializer(inst, context={'request': request}).data)
 

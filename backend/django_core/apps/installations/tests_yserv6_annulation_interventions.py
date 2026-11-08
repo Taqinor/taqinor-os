@@ -216,6 +216,32 @@ class ReactivationTests(TestCase):
         self.assertTrue(autre.annulee)
         self.assertEqual(autre.motif_annulation, 'Annulée pour une autre raison')
 
+    def test_reactivation_rallume_contrat(self):
+        """ACSV100 (C-ACSV-080) — « Réactiver » rallume le contrat éteint par
+        l'annulation (marqueur retiré) ; un contrat éteint avant reste éteint.
+        ROUGE AVANT : contrat resté inactif."""
+        from django.utils import timezone
+        from apps.sav.models import ContratMaintenance
+
+        def contrat(actif):
+            return ContratMaintenance.objects.create(
+                company=self.company, client=self.inst.client,
+                installation=self.inst, date_debut=timezone.localdate(),
+                actif=actif)
+        actif, eteint = contrat(True), contrat(False)
+        base = f'{BASE}/chantiers/{self.inst.id}'
+        self.assertEqual(self.api.post(f'{base}/annuler/', {}, format='json').status_code, 200)
+        actif.refresh_from_db()
+        self.assertFalse(actif.actif)
+        r = self.api.post(f'{base}/reactiver/', {}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        actif.refresh_from_db()
+        eteint.refresh_from_db()
+        self.assertTrue(actif.actif)
+        self.assertNotIn(f'[chantier-annule:{self.inst.id}]', actif.notes)
+        self.assertIn('Réactivé', actif.notes)
+        self.assertFalse(eteint.actif)
+
 
 class IsolationSocieteTests(TestCase):
     def test_annulation_scopee_societe(self):
