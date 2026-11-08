@@ -44,6 +44,13 @@ def _log_creation_on_ticket_created(sender, instance, created, **kwargs):
         logger.warning(
             'sav: échec journalisation création ticket #%s',
             getattr(instance, 'pk', None), exc_info=True)
+    try:  # ACSV51 — récidive XFSM15 pour toute porte d'INSERT (best-effort)
+        from .services import marquer_recidive
+        marquer_recidive(instance)
+    except Exception:  # pragma: no cover - défensif
+        logger.warning(
+            'sav: échec détection de récidive ticket #%s',
+            getattr(instance, 'pk', None), exc_info=True)
 
 
 @receiver(intervention_completed, dispatch_uid="sav_advance_ticket_on_intervention_completed")

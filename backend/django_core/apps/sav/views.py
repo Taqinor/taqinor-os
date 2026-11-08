@@ -1157,22 +1157,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 if technicien is not None:
                     inst.technicien_responsable = technicien
                     inst.save(update_fields=['technicien_responsable'])
-        # XFSM15 — suggestion de récidive : une intervention TERMINÉE/VALIDÉE
-        # récente sur le MÊME chantier marque le ticket récidive + non
-        # facturable par défaut (override responsable possible ensuite).
-        if inst.installation_id and not inst.est_recidive:
-            from .services import suggerer_recidive
-            interv_id, motif = suggerer_recidive(
-                company=company, installation_id=inst.installation_id,
-                exclure_ticket_id=inst.id, a_la_date=date_ouverture)
-            if interv_id is not None:
-                inst.est_recidive = True
-                inst.intervention_origine_id = interv_id
-                inst.motif_recidive = motif
-                inst.non_facturable = True
-                inst.save(update_fields=[
-                    'est_recidive', 'intervention_origine_id',
-                    'motif_recidive', 'non_facturable'])
+        # XFSM15 / ACSV51 — la récidive est marquée par le récepteur
+        # `post_save` (`services.marquer_recidive`), pour toute porte d'INSERT.
         # XSAV24 — la trace de création (CREATION) est désormais posée
         # automatiquement par le récepteur `post_save` de `receivers.py`
         # (voir `_log_creation_on_ticket_created`), pour TOUT chemin de

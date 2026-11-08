@@ -1169,6 +1169,26 @@ def suggerer_recidive(*, company, installation_id, exclure_ticket_id=None,
     return interv.id, motif
 
 
+def marquer_recidive(ticket):
+    """ACSV51 — marque ``ticket`` récidive + non facturable (XFSM15) à
+    l'INSERT de tout ticket CORRECTIF lié à un chantier, quelle que soit la
+    porte (API, QR public, escalade d'alarme...) ; appelée par le récepteur
+    ``post_save`` ``created`` de ``receivers.py``."""
+    if (ticket.type != ticket.Type.CORRECTIF or not ticket.installation_id
+            or ticket.est_recidive):
+        return
+    interv_id, motif = suggerer_recidive(
+        company=ticket.company, installation_id=ticket.installation_id,
+        exclure_ticket_id=ticket.id,
+        a_la_date=ticket.date_ouverture or timezone.localdate())
+    if interv_id is not None:
+        ticket.est_recidive, ticket.intervention_origine_id = True, interv_id
+        ticket.motif_recidive, ticket.non_facturable = motif, True
+        ticket.save(update_fields=[
+            'est_recidive', 'intervention_origine_id', 'motif_recidive',
+            'non_facturable'])
+
+
 # ── XSAV26 — WhatsApp entrant → ticket SAV (gated BSP) ──────────────────────
 
 def router_whatsapp_entrant_vers_ticket(*, company, expediteur, texte):
