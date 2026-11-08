@@ -1147,7 +1147,8 @@ class CertificatCarboneViewSet(CompanyScopedModelViewSet):
                 periode_fin=data['periode_fin'])
         except CertificatCarboneError as exc:
             if exc.etat:
-                raise ConflitEtat(exc.message)
+                # AMON42 — un refus d'état nommé (fin future) garde son champ.
+                raise ConflitEtat(_erreur_service(exc))
             if exc.introuvable:
                 raise NotFound(_erreur_service(exc))
             raise serializers.ValidationError(_erreur_service(exc))

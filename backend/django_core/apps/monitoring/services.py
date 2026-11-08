@@ -544,9 +544,10 @@ def emettre_certificat_carbone(company, *, installation_id=None, client_id=None,
 
     Exactement UNE cible : `installation_id` (certificat PAR SITE) OU
     `client_id` (certificat CONSOLIDÉ multi-sites) — jamais les deux, jamais
-    aucune. Un certificat EXACTEMENT identique (même société + même cible +
-    même période) est REFUSÉ (``ValueError``) — jamais un doublon silencieux
-    qui compterait deux fois le même CO₂ évité.
+    aucune. Un certificat dont la période RECOUVRE celle d'un certificat de
+    la même cible, ou d'une cible qui partage ses relevés (site ↔ client
+    consolidé), est REFUSÉ (``CertificatCarboneDoublon``, AMON42) — jamais un
+    doublon silencieux qui compterait deux fois le même CO₂ évité.
 
     La référence (``CERT-CO2-YYYYMM-NNNN``) est posée côté serveur, race-safe
     (``core.numbering`` — plus-haut-utilisé+1 par société/mois, jamais un
@@ -561,14 +562,6 @@ def emettre_certificat_carbone(company, *, installation_id=None, client_id=None,
     if periode_fin < periode_debut:
         raise ValueError('periode_fin doit être postérieure ou égale à periode_debut.')
 
-    deja_emis = CertificatCarbone.objects.filter(
-        company=company, installation_id=installation_id, client_id=client_id,
-        periode_debut=periode_debut, periode_fin=periode_fin).exists()
-    if deja_emis:
-        raise CertificatCarboneDoublon(
-            'Un certificat carbone existe déjà pour cette cible et cette '
-            'période exacte (anti-double-comptage).')
-
     from core.numbering import create_with_reference
 
     def _creer(reference):
@@ -578,8 +571,43 @@ def emettre_certificat_carbone(company, *, installation_id=None, client_id=None,
             periode_fin=periode_fin, tco2_evitees=tco2_evitees,
             reference=reference, fichier_key=fichier_key or '')
 
-    return create_with_reference(
-        CertificatCarbone, PREFIXE_REFERENCE_CERTIFICAT_CO2, company, _creer)
+    with transaction.atomic():
+        existant = _certificat_recouvrant(
+            company, installation_id, client_id, periode_debut, periode_fin)
+        if existant is not None:
+            raise CertificatCarboneDoublon(
+                f'La période recouvre {existant.reference} (même cible ou '
+                'relevés partagés site ↔ client) : anti-double-comptage.')
+        return create_with_reference(
+            CertificatCarbone, PREFIXE_REFERENCE_CERTIFICAT_CO2, company,
+            _creer)
+
+
+def _certificat_recouvrant(company, installation_id, client_id, debut, fin):
+    """AMON42 — premier certificat (verrouillé) dont la période recouvre
+    [debut ; fin] sur la cible OU sur une cible qui partage ses relevés :
+    le client consolidé d'un site, les sites (relevés) d'un client."""
+    from django.db.models import Q
+
+    from apps.installations import selectors as installations_selectors
+
+    from .models import CertificatCarbone
+
+    if installation_id:
+        cible = Q(installation_id=installation_id)
+        client_du_site = installations_selectors.chantier_client_id(
+            company, installation_id)
+        if client_du_site:
+            cible |= Q(client_id=client_du_site)
+    else:
+        sites = ProductionReading.objects.filter(
+            company=company, installation__client_id=client_id,
+        ).values_list('installation_id', flat=True).distinct()
+        cible = Q(client_id=client_id) | Q(installation_id__in=list(sites))
+    return (CertificatCarbone.objects.select_for_update()
+            .filter(cible, company=company, periode_debut__lte=fin,
+                    periode_fin__gte=debut)
+            .order_by('periode_debut', 'id').first())
 
 
 # ── ASAV100 — Abonnements de supervision (D-ASAV-4 option (b), ASAV93) ──────
@@ -714,6 +742,10 @@ def emettre_certificat_carbone_mesure(company, *, installation_id=None,
         raise CertificatCarboneError(
             'La fin de période doit suivre son début.', champ='periode_fin',
             etat=True)
+    if periode_fin > timezone.localdate():
+        raise CertificatCarboneError(
+            'La fin de période ne peut pas être dans le futur.',
+            champ='periode_fin', etat=True)
     installation = None
     if installation_id:
         installation = installations_selectors.installation_scoped(
