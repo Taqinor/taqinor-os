@@ -110,13 +110,15 @@ const RECEPTIONS_COLS = [
   { key: 'date_reception', label: 'Réceptionné le', render: (r) => formatDate(r.date_reception) },
 ]
 
+// AAPV7 — « non facturées » = provisions GR/IR encore ouvertes : les lettrées
+// (facturées, 0 MAD restant) sortent de l'onglet.
 const TABS = [
   { value: 'seuils', label: 'Seuils BCF', fetcher: (p) => installationsApi.getSeuilsApprobationBcf(p), columns: SEUILS_COLS, empty: 'Aucun seuil configuré' },
   { value: 'approbations', label: 'Approbations BCF', fetcher: (p) => installationsApi.getApprobationsBcf(p), columns: APPROBATIONS_COLS, empty: 'Aucune approbation' },
   { value: 'cadre', label: 'Contrats-cadre', fetcher: (p) => installationsApi.getCommandesCadre(p), columns: CADRE_COLS, empty: 'Aucun contrat-cadre' },
   { value: 'appels', label: "Commandes d'appel", fetcher: (p) => installationsApi.getAppelsCommande(p), columns: APPELS_COLS, empty: "Aucune commande d'appel" },
   { value: 'contrats', label: 'Contrats de prix', fetcher: (p) => installationsApi.getContratsPrixFournisseur(p), columns: CONTRATS_COLS, empty: 'Aucun contrat de prix' },
-  { value: 'receptions', label: 'Réceptions non facturées', fetcher: (p) => installationsApi.getReceptionsNonFacturees(p), columns: RECEPTIONS_COLS, empty: 'Aucune réception non facturée' },
+  { value: 'receptions', label: 'Réceptions non facturées', fetcher: (p) => installationsApi.getReceptionsNonFacturees({ ...p, lettre: false }), columns: RECEPTIONS_COLS, empty: 'Aucune réception non facturée' },
 ]
 
 export default function ApprovisionnementPage() {
