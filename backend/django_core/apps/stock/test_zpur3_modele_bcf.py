@@ -116,6 +116,24 @@ class TestGardes(Zpur3Base):
             f'/api/django/stock/modeles-bcf/{modele.id}/generer/')
         self.assertEqual(resp.status_code, 409)
 
+    def test_generer_fournisseur_bloque_409(self):
+        """AAPV82 — un fournisseur « bloqué total » : 409 {detail}, aucun BCF ;
+        actif : 201 (inchangé)."""
+        bloque = Fournisseur.objects.create(
+            company=self.company, nom='Fournisseur bloqué AAPV82',
+            statut=Fournisseur.Statut.BLOQUE_TOTAL, motif_blocage='litige qualité')
+        modele = ModeleBonCommandeFournisseur.objects.create(
+            company=self.company, nom='Kit AAPV82', fournisseur=bloque)
+        modele.lignes.create(produit=self.mc4, quantite=10)
+        modele.lignes.create(produit=self.visserie, quantite=5)
+        url = f'/api/django/stock/modeles-bcf/{modele.id}/generer/'
+        resp = self.api.post(url)
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertIn('detail', resp.data)
+        self.assertFalse(BonCommandeFournisseur.objects.filter(fournisseur=bloque).exists())
+        resp = self.api.post(url, {'fournisseur': self.fournisseur.id}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+
     def test_generer_modele_vide_refuse(self):
         modele = ModeleBonCommandeFournisseur.objects.create(
             company=self.company, nom='Vide', fournisseur=self.fournisseur)

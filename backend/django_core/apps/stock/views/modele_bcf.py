@@ -82,6 +82,11 @@ class ModeleBonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             return Response(
                 {'detail': 'Fournisseur introuvable dans cette société.'},
                 status=status.HTTP_400_BAD_REQUEST)
+        from ..services import EtatIncompatible, exiger_fournisseur_commandable
+        try:  # AAPV82 — garde AAPV29 de toute porte qui crée un BCF
+            exiger_fournisseur_commandable(company, fournisseur)
+        except EtatIncompatible as exc:
+            raise ConflitEtat(str(exc))
 
         # ASTK2 — seules les lignes dont le produit est de la société du
         # modèle sont reprises : jamais le prix d'achat d'une autre société.
