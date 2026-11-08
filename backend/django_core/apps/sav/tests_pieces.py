@@ -115,6 +115,33 @@ class TestSavPieces(TestCase):
         self.assertFalse(PieceConsommee.objects.filter(
             ticket=self.ticket).exists())
 
+    def test_pose_concurrente_et_quarantaine(self):
+        """ACSV52 : le stock est relu sous verrou (poses enchaînées 10 → 8 → 7,
+        remise 7 → 8) et la part en quarantaine n'est jamais prélevée (409)."""
+        from apps.stock.models import MouvementStock
+        from apps.stock.services_wms import mettre_en_quarantaine
+        premiere = self._add(quantite='2', decrement=True)
+        seconde = self._add(quantite='1', decrement=True)
+        self.assertEqual((premiere.status_code, seconde.status_code), (201, 201))
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.quantite_stock, Decimal('7'))
+        avant_apres = list(MouvementStock.objects.filter(
+            produit=self.produit).order_by('id').values_list(
+            'quantite_avant', 'quantite_apres'))
+        self.assertEqual(avant_apres, [(10, 8), (8, 7)])
+        mettre_en_quarantaine(
+            company=self.company, produit=self.produit, quantite=5)
+        refus = self._add(quantite='3', decrement=True)  # 2 disponibles
+        self.assertEqual(refus.status_code, 409, refus.data)
+        self.assertEqual(PieceConsommee.objects.filter(
+            ticket=self.ticket).count(), 2)
+        retrait = self.api.delete(
+            f'/api/django/sav/tickets/{self.ticket.id}/pieces/'
+            f'{seconde.data["id"]}/')
+        self.assertEqual(retrait.status_code, 204)
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.quantite_stock, Decimal('8'))
+
     def test_remove_decremented_piece_restores_stock(self):
         r = self._add(quantite='3', decrement=True)
         pid = r.data['id']

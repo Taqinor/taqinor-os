@@ -99,6 +99,26 @@ class PorteeSortiesTests(TestCase):
     def test_credit_warning_hors_portee_404(self):
         self.assertEqual(self._credit(self.a).status_code, 404)
 
+    def test_fiche_remise_chantier_annule_ou_non_installe_409(self):
+        """ACSV99 : la fiche de remise / garantie applique la garde d'état des
+        documents de chantier (annulé ou pas installé ⇒ 409 nommé)."""
+        from apps.installations.models import Installation
+        chantier = Installation.objects.create(
+            company=self.company, reference='CH-ACSV99', client=self.client_b,
+            statut=Installation.Statut.SIGNE)
+        url = f'/api/django/ventes/chantiers/{chantier.id}/fiche-remise-premium/'
+        r = self._api(self.admin).get(url)
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertIn('installé', r.data['detail'])
+        Installation.objects.filter(pk=chantier.pk).update(
+            statut=Installation.Statut.INSTALLE, annule=True)
+        r = self._api(self.admin).get(url)
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertEqual(r.data['detail'], 'Chantier annulé')
+        Installation.objects.filter(pk=chantier.pk).update(
+            annule=False, statut=Installation.Statut.RECEPTIONNE)
+        self.assertEqual(self._api(self.admin).get(url).status_code, 200)
+
     def test_admin_inchange(self):
         self.assertIn('FAC-AFAC54-B', self._cash_flow_refs(self.admin))
         self.assertEqual(self._credit(self.admin).status_code, 200)

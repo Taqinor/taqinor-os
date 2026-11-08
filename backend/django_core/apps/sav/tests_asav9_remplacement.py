@@ -192,3 +192,41 @@ class RemplacementTests(TestCase):
         self.assertEqual(r.status_code, 200, r.content)
         self.assertEqual(Equipement.objects.filter(
             company=self.company, numero_serie='SN-A2').count(), 1)
+
+    def test_plancher_survit_aux_recalculs(self):
+        """ACSV55 : le plancher D-ASAV-1 du neuf survit au retour en
+        Réceptionné (balayage du parc) et à la correction de sa date de pose."""
+        from apps.sav.services import _balayer_produit
+        longue = Produit.objects.create(
+            company=self.company, nom='Pompe', sku='POMPE-ACSV55',
+            prix_achat=0, prix_vente=900, garantie_mois=120)
+        court = Produit.objects.create(
+            company=self.company, nom='Pompe neuve', sku='POMPE-N-ACSV55',
+            prix_achat=0, prix_vente=900, garantie_mois=12)
+        ancien = Equipement.objects.create(
+            company=self.company, produit=longue, installation=self.inst,
+            numero_serie='SN-L', date_pose=add_months(self.today, -6))
+        ancien.recompute_garanties()
+        ancien.save(update_fields=[
+            'date_fin_garantie', 'date_fin_garantie_production'])
+        r = self._post(
+            produit=longue.id, numero_serie='SN-L', serie_neuve='SN-L2',
+            produit_neuf=court.id)
+        self.assertEqual(r.status_code, 201, r.content)
+        neuf = Equipement.objects.get(
+            company=self.company, numero_serie='SN-L2')
+        self.assertEqual(neuf.garantie_plancher, ancien.date_fin_garantie)
+        self.assertGreaterEqual(neuf.date_fin_garantie, ancien.date_fin_garantie)
+        _balayer_produit(
+            company=self.company, installation=self.inst, produit=court,
+            quantite_ligne=1, date_pose=add_months(self.today, -18),
+            created_by=self.user)
+        neuf.refresh_from_db()
+        self.assertEqual(neuf.date_pose, self.today)
+        r = self.api.patch(
+            f'/api/django/sav/equipements/{neuf.pk}/',
+            {'date_pose': (self.today - timedelta(days=1)).isoformat()},
+            format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        neuf.refresh_from_db()
+        self.assertGreaterEqual(neuf.date_fin_garantie, ancien.date_fin_garantie)

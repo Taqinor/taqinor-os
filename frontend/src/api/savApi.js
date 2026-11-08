@@ -72,7 +72,8 @@ const savApi = {
   resoudreTicket: (id, canalResolution) =>
     api.post(`/sav/tickets/${id}/resoudre/`,
       canalResolution ? { canal_resolution: canalResolution } : {}),
-  cloturerTicket: (id) => api.post(`/sav/tickets/${id}/cloturer/`),
+  // ACSV60 — `corps` = { sans_facture: true, motif } : forçage responsable.
+  cloturerTicket: (id, corps) => api.post(`/sav/tickets/${id}/cloturer/`, corps),
   // XSAV11 — réouverture d'un ticket vers « nouveau » (transition gardée ;
   // autorisée depuis planifié/résolu/clôturé, refusée depuis en_cours).
   reouvrirTicket: (id) => api.post(`/sav/tickets/${id}/reouvrir/`),

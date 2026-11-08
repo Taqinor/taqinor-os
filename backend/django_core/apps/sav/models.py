@@ -413,6 +413,10 @@ class Equipement(models.Model):
     # ── Horloges de garantie — CALCULÉES (date_pose + durée du produit). ──
     date_fin_garantie = models.DateField(null=True, blank=True)
     date_fin_garantie_production = models.DateField(null=True, blank=True)
+    # ACSV55 - plancher de garantie D-ASAV-1 du NEUF pose en remplacement :
+    # tout recalcul garde la fin au moins a ce plancher (jamais moins que ce
+    # que le client avait). Pose par ``remplacer_equipement`` uniquement.
+    garantie_plancher = models.DateField(null=True, blank=True)
 
     statut = models.CharField(
         max_length=15, choices=Statut.choices, default=Statut.EN_SERVICE)
@@ -495,6 +499,11 @@ class Equipement(models.Model):
             add_months(self.date_pose, gpm)
             if (self.date_pose and gpm) else None
         )
+        plancher = self.garantie_plancher  # ACSV55
+        if (plancher and self.date_pose and plancher > self.date_pose
+                and (self.date_fin_garantie is None
+                     or self.date_fin_garantie < plancher)):
+            self.date_fin_garantie = plancher
 
     # ── XSAV13 — garantie légale de conformité (loi 31-08, biens meubles) ──
     # Durée légale marocaine, impérative et non négociable : 12 mois à
@@ -522,6 +531,12 @@ class Equipement(models.Model):
             if d is not None
         ]
         return max(candidates) if candidates else None
+
+    @property
+    def est_retire(self):
+        """ACSV71 — appareil retiré du parc (remplacé ou mis au rebut) :
+        fermé à tout NOUVEAU ticket (QR public, création staff)."""
+        return self.statut == self.Statut.REMPLACE or bool(self.mis_au_rebut)
 
     @property
     def sous_garantie_legale_seule(self):

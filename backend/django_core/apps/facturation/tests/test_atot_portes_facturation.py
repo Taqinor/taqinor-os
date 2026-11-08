@@ -541,6 +541,42 @@ class PortesSavInterventionConcurrenceTests(TestCase):
         self.assertEqual(
             Ticket.objects.get(pk=ticket.pk).facture_id_ext, f1.pk)
 
+    def test_brouillon_complete_des_pieces_ajoutees(self):
+        """ACSV104 : facturer, ajouter un câble, refacturer = UN brouillon à
+        deux lignes ; rappel inchangé ; facture émise renvoyée telle quelle."""
+        from apps.sav.models import PieceConsommee, Ticket
+        from apps.stock.models import Produit
+        from apps.ventes.models import Facture
+        from apps.ventes.services import generer_facture_ticket_sav
+        ticket = self._ticket(self._onduleur())
+
+        def _facturer():
+            courant = Ticket.objects.get(pk=ticket.pk)
+            return generer_facture_ticket_sav(
+                ticket=courant, sous_garantie=False, user=self.user,
+                pieces=list(courant.pieces.select_related('produit')))
+
+        f1 = _facturer()
+        self.assertEqual(f1.lignes.count(), 1)
+        cable = Produit.objects.create(
+            company=self.company, nom='Câble ACSV104', sku=f'ACSV104-{_nxt()}',
+            prix_vente=Decimal('50'), prix_achat=Decimal('20'),
+            tva=Decimal('20'), quantite_stock=10)
+        PieceConsommee.objects.create(
+            company=self.company, ticket=ticket, produit=cable,
+            quantite=Decimal('1'), created_by=self.user)
+        f2 = _facturer()
+        self.assertEqual(f2.pk, f1.pk)
+        self.assertEqual(
+            sorted((x.produit.nom, x.quantite) for x in f2.lignes.all()),
+            [('Câble ACSV104', Decimal('1.00')),
+             ('Onduleur AFAC90', Decimal('1.00'))])
+        self.assertEqual(_facturer().lignes.count(), 2)
+        Facture.objects.filter(pk=f1.pk).update(statut=Facture.Statut.EMISE)
+        PieceConsommee.objects.filter(ticket=ticket, produit=cable).update(
+            quantite=Decimal('3'))
+        self.assertEqual(_facturer().lignes.count(), 2)
+
     def test_intervention_deux_instances_une_facture(self):
         from apps.installations.models import Intervention
         from apps.ventes.services import generer_facture_intervention

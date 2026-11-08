@@ -225,7 +225,7 @@ def _balayer_produit(*, company, installation, produit, quantite_ligne,
     series, placeholders = _equipements_produit(company, installation, produit)
     nb_series = series.count()
     if date_pose:
-        for eq in series:
+        for eq in series.filter(garantie_plancher__isnull=True):  # ACSV55
             machine = {getattr(installation, 'date_pose_reelle', None),  # ACHT125
                        eq.date_creation and timezone.localtime(eq.date_creation).date()}
             if eq.date_pose and eq.date_pose in machine and eq.date_pose != date_pose:
@@ -295,7 +295,8 @@ def recaler_garanties_chantier(*, company, installation, ancienne_date,
     recales = 0
     for eq in Equipement.objects.filter(
             company=company, installation=installation,
-            date_pose=ancienne_date, mis_au_rebut=False):
+            date_pose=ancienne_date, mis_au_rebut=False,
+            garantie_plancher__isnull=True):  # ACSV55
         eq.date_pose = nouvelle_date
         eq.recompute_garanties()
         eq.save(update_fields=[
@@ -929,6 +930,9 @@ def remplacer_equipement(*, ticket, ancien, produit_neuf, serie_neuve,
         neuf.client_vente_id = ancien.client_vente_id
         champs.append('client_vente')
     reste = ancien.date_fin_garantie_effective
+    # ACSV55 - le plancher survit aux recalculs (retour en Receptionne, PATCH).
+    neuf.garantie_plancher = max(reste or date_pose, date_pose)
+    champs.append('garantie_plancher')
     if reste and reste > date_pose:
         if neuf.date_fin_garantie is None or neuf.date_fin_garantie < reste:
             neuf.date_fin_garantie = reste
@@ -957,6 +961,18 @@ def _equipement_dans_perimetre_ticket(equipement, ticket):
     installation = equipement.installation
     return bool(installation is not None
                 and installation.client_id == ticket.client_id)
+
+
+def equipement_vise_par_ticket(ticket, produit, verrou=False):
+    """ACSV61 - repli quand la serie retiree est vide ou inconnue :
+    l'equipement vise par le ticket (meme produit, non remplace) ou None."""
+    from .models import Equipement
+    if not ticket.equipement_id:
+        return None
+    qs = Equipement.objects.filter(
+        pk=ticket.equipement_id, produit_id=produit.pk,
+        company=ticket.company).exclude(statut=Equipement.Statut.REMPLACE)
+    return (qs.select_for_update() if verrou else qs).first()
 
 
 def retirer_piece(*, company, ticket, produit, quantite, numero_serie,
@@ -988,7 +1004,7 @@ def retirer_piece(*, company, ticket, produit, quantite, numero_serie,
             "'stock_occasion'.")
 
     equipement_remplace = None
-    if numero_serie:
+    if numero_serie or ticket.equipement_id:
         # ASAV8 — verrou de ligne : deux retraits concurrents de la même
         # série ne peuvent pas basculer (ni restocker) deux fois.
         from django.db import connection
@@ -996,7 +1012,10 @@ def retirer_piece(*, company, ticket, produit, quantite, numero_serie,
             company=company, numero_serie=numero_serie)
         if connection.in_atomic_block:
             equipements = equipements.select_for_update()
-        equipement_remplace = equipements.first()
+        equipement_remplace = equipements.first() if numero_serie else None
+        if equipement_remplace is None:  # ACSV61 : série vide ou inconnue
+            equipement_remplace = equipement_vise_par_ticket(
+                ticket, produit, verrou=connection.in_atomic_block)
         if equipement_remplace is not None:
             if not _equipement_dans_perimetre_ticket(
                     equipement_remplace, ticket):
@@ -1167,6 +1186,26 @@ def suggerer_recidive(*, company, installation_id, exclure_ticket_id=None,
         f'Intervention #{interv.id} ({type_label}) réalisée le '
         f'{interv.date_realisee} sur le même chantier (< {fenetre} j).')
     return interv.id, motif
+
+
+def marquer_recidive(ticket):
+    """ACSV51 — marque ``ticket`` récidive + non facturable (XFSM15) à
+    l'INSERT de tout ticket CORRECTIF lié à un chantier, quelle que soit la
+    porte (API, QR public, escalade d'alarme...) ; appelée par le récepteur
+    ``post_save`` ``created`` de ``receivers.py``."""
+    if (ticket.type != ticket.Type.CORRECTIF or not ticket.installation_id
+            or ticket.est_recidive):
+        return
+    interv_id, motif = suggerer_recidive(
+        company=ticket.company, installation_id=ticket.installation_id,
+        exclure_ticket_id=ticket.id,
+        a_la_date=ticket.date_ouverture or timezone.localdate())
+    if interv_id is not None:
+        ticket.est_recidive, ticket.intervention_origine_id = True, interv_id
+        ticket.motif_recidive, ticket.non_facturable = motif, True
+        ticket.save(update_fields=[
+            'est_recidive', 'intervention_origine_id', 'motif_recidive',
+            'non_facturable'])
 
 
 # ── XSAV26 — WhatsApp entrant → ticket SAV (gated BSP) ──────────────────────
@@ -1494,8 +1533,19 @@ class TransitionTicketRefusee(Exception):
         self.detail = detail
 
 
+def ticket_a_facturer_non_facture(ticket, user=None):
+    """ACSV60 - ticket facturable (ni garantie, ni contrat, ni recidive non
+    facturable) qui porte pieces ou main-d'oeuvre et aucune facture."""
+    if ticket.facture_id_ext or not (
+            ticket.pieces.exists() or (ticket.heures_main_oeuvre or 0) > 0):
+        return False
+    decision = decision_facturation(ticket, user, False)
+    return not decision['refuse'] and not decision['couvert']
+
+
 def appliquer_transition_ticket(ticket, cible, user, *, systeme=False,
-                                request=None, canal_resolution_defaut=None):
+                                request=None, canal_resolution_defaut=None,
+                                sans_facture=''):
     """ASAV12 — applique UNE transition de statut GARDÉE et TOUS ses effets.
 
     Chemin unique pour la vue (actions ``planifier/demarrer/resoudre/
@@ -1527,6 +1577,29 @@ def appliquer_transition_ticket(ticket, cible, user, *, systeme=False,
                            'ouverte(s) sur ce ticket.'),
                 'interventions_ouvertes': ouvertes,
             })
+    # ACSV67 - garde soeur de YSERV2 : un pret d'equipement encore dehors
+    # (stock sorti) empeche la cloture.
+    if cible == Ticket.Statut.CLOTURE and old.statut != Ticket.Statut.CLOTURE:
+        prets = list(old.prets_equipement.filter(statut='en_cours')
+                     .values_list('pk', flat=True))
+        if prets:
+            raise TransitionTicketRefusee({
+                'statut': ('Impossible de cl\u00f4turer : pr\u00eat(s) '
+                           "d'\u00e9quipement encore en cours sur ce ticket."),
+                'prets_en_cours': prets})
+    # ACSV60 - cloture d'un ticket facturable non facture : refusee, sauf
+    # forcage responsable motive (``sans_facture``) ; le balayage (systeme)
+    # laisse le ticket Resolu.
+    forcage = ''
+    if cible == Ticket.Statut.CLOTURE and old.statut != Ticket.Statut.CLOTURE \
+            and ticket_a_facturer_non_facture(old, user):
+        forcage = (sans_facture or '').strip()
+        if not forcage or systeme:
+            raise TransitionTicketRefusee({
+                'statut': ('Impossible de cl\u00f4turer : ticket facturable '
+                           'sans facture (pi\u00e8ces ou main-d\u0027\u0153uvre '
+                           '\u00e0 facturer).'),
+                'code': 'ticket_non_facture'})
     try:
         machine_etats.changer_statut(
             ticket, cible, persister=False, systeme=systeme)
@@ -1593,6 +1666,8 @@ def appliquer_transition_ticket(ticket, cible, user, *, systeme=False,
         ticket.refresh_from_db(fields=['reopen_count'])
     ticket.save(update_fields=['sla_breach'])
     activity.log_changes(old, ticket, user)
+    if forcage:
+        activity.log_note(ticket, user, f'Cl\u00f4tur\u00e9 sans facture : {forcage}')
     if old.statut != ticket.statut:
         # XSAV4 — notification client best-effort (toggle OFF = no-op).
         from .notifications_client import notify_ticket_transition

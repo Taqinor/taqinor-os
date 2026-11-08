@@ -23,3 +23,6 @@
 #
 # Regenerer apres une revue :
 #   python scripts/check_override_registry.py --regenerate
+
+# ACSV104 : ligne de FACTURE (LigneFacture) de main-d oeuvre recalee sur les heures du ticket SAV - hors devis, hors famille override.
+backend/django_core/apps/ventes/domain/facturation_ticket_sav.py::completer_brouillon_ticket_sav::ligne::mo.quantite | ACSV104 : ligne de facture (LigneFacture) de main-d oeuvre recalee sur les heures du ticket SAV, brouillon seulement ; aucun lien avec les overrides de devis

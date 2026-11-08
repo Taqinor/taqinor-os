@@ -66,6 +66,48 @@ class ZMFG12MiseAuRebutTest(TestCase):
         defaults.update(kwargs)
         return Equipement.objects.create(**defaults)
 
+    def test_suppression_equipement_reference_refusee(self):
+        """ACSV70 : un équipement porteur d'un ticket ne se supprime pas
+        (409, le ticket garde son équipement) ; sans référence : 204."""
+        eq = self._equip(numero_serie='SN-ACSV70')
+        ticket = Ticket.objects.create(
+            company=self.company, reference='SAV-ACSV70', equipement=eq,
+            client=self.client_obj)
+        url = f'/api/django/sav/equipements/{eq.id}/'
+        r = self.api.delete(url)
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('1 ticket', str(r.data))
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.equipement_id, eq.id)
+        libre = self._equip(numero_serie='SN-ACSV70-LIBRE')
+        r = self.api.delete(f'/api/django/sav/equipements/{libre.id}/')
+        self.assertEqual(r.status_code, 204)
+
+    def test_statut_et_rebut_hors_patch(self):
+        """ACSV56 : « Remplacé » ne s'entre ni ne se quitte par PATCH (409),
+        le rebut ne s'écrit que par ses actions (400), la valeur inchangée
+        reste acceptée (écran « Corriger »)."""
+        eq = self._equip(statut=Equipement.Statut.REMPLACE)
+        url = f'/api/django/sav/equipements/{eq.id}/'
+        r = self.api.patch(url, {'statut': 'en_service'}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        r = self.api.patch(url, {'mis_au_rebut': True}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('mis_au_rebut', r.data)
+        r = self.api.patch(
+            url, {'statut': 'remplace', 'mis_au_rebut': False}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        eq.refresh_from_db()
+        self.assertEqual(eq.statut, Equipement.Statut.REMPLACE)
+        self.assertFalse(eq.mis_au_rebut)
+        autre = self._equip(numero_serie='SN-ACSV56')
+        url = f'/api/django/sav/equipements/{autre.id}/'
+        r = self.api.patch(url, {'statut': 'remplace'}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        for statut in ('hors_service', 'en_service'):
+            r = self.api.patch(url, {'statut': statut}, format='json')
+            self.assertEqual(r.status_code, 200, r.data)
+
     def test_motif_obligatoire(self):
         eq = self._equip()
         r = self.api.post(

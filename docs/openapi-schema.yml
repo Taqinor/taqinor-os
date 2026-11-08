@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4939, operations: 7737, components: 3638}
+counts: {paths: 4939, operations: 7737, components: 3639}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -7991,6 +7991,7 @@ query_params:
   get /api/django/custom-fields/objects/: ordering page page_size search
   get /api/django/custom-fields/permissions-role/: field_def ordering page page_size search
   get /api/django/documents/chantiers/{id}/attestation/: regenerer type
+  get /api/django/documents/chantiers/{id}/pv-reception/: definitive
   get /api/django/entites/entites/: ordering page page_size search tree
   get /api/django/entites/entites/mes-entites/: ordering search
   get /api/django/entites/entites/{id}/historique/: ordering search
@@ -8789,6 +8790,7 @@ query_params:
   get /api/v1/custom-fields/objects/: ordering page page_size search
   get /api/v1/custom-fields/permissions-role/: field_def ordering page page_size search
   get /api/v1/documents/chantiers/{id}/attestation/: regenerer type
+  get /api/v1/documents/chantiers/{id}/pv-reception/: definitive
   get /api/v1/entites/entites/: ordering page page_size search tree
   get /api/v1/entites/entites/mes-entites/: ordering search
   get /api/v1/entites/entites/{id}/historique/: ordering search
@@ -12429,6 +12431,7 @@ components:
 - SavAnnulerRequeteRequest
 - SavChecklistInitRequeteRequest
 - SavCloturerDowntimeRequeteRequest
+- SavCloturerRequeteRequest
 - SavCreerDevisReponse
 - SavCreerDevisRequeteRequest
 - SavCreerLeadReponse

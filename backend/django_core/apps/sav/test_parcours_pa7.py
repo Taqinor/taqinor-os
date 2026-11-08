@@ -122,7 +122,7 @@ class ParcoursPA7Tests(unittest.TestCase):
         # elles sont désormais PRÉSENTES.
         self.assertEqual(
             {e['id'] for e in manquantes},
-            {'monitoring_suit_remplacement'})
+            {'monitoring_suit_remplacement', 'credit_sla_client'})
         for etape in manquantes:
             self.assertTrue(etape['raison'].strip(), etape['id'])
             self.assertTrue(etape['attendu'].strip(), etape['id'])
@@ -135,6 +135,21 @@ class ParcoursPA7Tests(unittest.TestCase):
                     f'{etape["id"]} : l\'étape semble câblée '
                     f'({sorted(trouves - set(preuve["fichiers_autorises"]))})'
                     ' — mettre la table PA7 à jour')
+
+    def test_penalite_disponibilite_reste_interne(self):
+        """AMON30 / D-AMON-2 : la pénalité de disponibilité reste un indicateur
+        interne ; l'étape ``credit_sla_client`` manque VRAIMENT (aucun
+        lecteur de ``penalite_mad`` dans facturation ni ventes) et le libellé
+        des crédits SLA dit qu'ils mesurent la plateforme."""
+        etapes = {e['id']: e for e in TABLE['etapes']}
+        client = etapes['credit_sla_client']
+        self.assertTrue(client['manquante'])
+        racines = {p['racine'] for p in client['preuves_absence']
+                   if p['motif'] == 'penalite_mad'}
+        self.assertEqual(racines, {'apps/facturation', 'apps/ventes'})
+        for ident in ('credit_sla_genere', 'credit_sla_decision'):
+            self.assertIn('SLA de la plateforme', etapes[ident]['libelle'])
+        self.assertIn('préventif', etapes['sous_performance']['regles_aval'][0]['regle'])
 
     def test_les_etapes_presentes_ne_portent_pas_de_preuve_d_absence(self):
         for etape in TABLE['etapes']:
