@@ -398,6 +398,9 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             from ..services import recaler_parc_apres_correction_reception
             recaler_parc_apres_correction_reception(
                 inst, old.date_reception, self.request.user)
+            if inst.client_id != old.client_id:
+                from apps.documents.builders import aligner_partage_portail_chantier  # ACSV96
+                aligner_partage_portail_chantier(inst)
             if nouveau_statut is None or nouveau_statut == old.statut:
                 # Pas de transition : le chatter trace les autres champs.
                 activity.log_changes(old, inst, self.request.user)
@@ -621,6 +624,8 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                     inst, request.user,
                     f"Réservation de stock libérée — {nb} référence(s) "
                     f"(chantier annulé).")
+            from apps.documents.builders import aligner_partage_portail_chantier  # ACSV96
+            aligner_partage_portail_chantier(inst)
             # YSERV6 — solde les interventions non terminées (drapeau
             # orthogonal, jamais un statut supplémentaire), notifie les
             # techniciens assignés et les sort des vues kanban/calendrier.
@@ -685,6 +690,8 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             reactiver_interventions_annulees(inst, request.user)
             from apps.sav.services import reactiver_contrats_chantier  # ACSV100
             reactiver_contrats_chantier(inst, request.user)
+            from apps.documents.builders import aligner_partage_portail_chantier  # ACSV96
+            aligner_partage_portail_chantier(inst)
         return Response(
             InstallationSerializer(inst, context={'request': request}).data)
 
