@@ -290,6 +290,7 @@ class MonitoringImportRelevesCsv(serializers.Serializer):
 class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
     """Config de supervision par système installé (N50). Lecture tout rôle ;
     écriture responsable/admin. ?installation= pour filtrer."""
+    permission_module = 'sav'  # AMON45 — écritures bornées au module sav (ASEC11)
     queryset = MonitoringConfig.objects.select_related('installation').all()
     serializer_class = MonitoringConfigSerializer
     parser_classes = [JSONParser]
@@ -770,6 +771,7 @@ class CleaningEventViewSet(TenantMixin, viewsets.ModelViewSet):
     """FG283 — nettoyages de panneaux (bornes pour l'estimation de salissure).
     Lecture tout rôle (filtrable par ?installation=) ; écriture
     responsable/admin. `company` et `created_by` posés côté serveur."""
+    permission_module = 'sav'  # AMON45 — écritures bornées au module sav (ASEC11)
     queryset = CleaningEvent.objects.select_related('installation').all()
     serializer_class = CleaningEventSerializer
     parser_classes = [JSONParser]
@@ -797,6 +799,7 @@ class CleaningEventViewSet(TenantMixin, viewsets.ModelViewSet):
 class ProductionReadingViewSet(TenantMixin, viewsets.ModelViewSet):
     """Relevés de production (N51). Lecture tout rôle (filtrable par
     ?installation=) ; saisie manuelle (POST) responsable/admin."""
+    permission_module = 'sav'  # AMON45 — écritures bornées au module sav (ASEC11)
     queryset = ProductionReading.objects.select_related('installation').all()
     serializer_class = ProductionReadingSerializer
     parser_classes = [JSONParser]
@@ -852,6 +855,7 @@ class ProductionWarrantyViewSet(TenantMixin, viewsets.ModelViewSet):
     """FG282 — garantie de production par système. Lecture tout rôle
     (filtrable par ?installation=) ; écriture responsable/admin. Action
     `status` : production réelle vs garanti dégradé → manque/compensation."""
+    permission_module = 'sav'  # AMON45 — écritures bornées au module sav (ASEC11)
     queryset = ProductionWarranty.objects.select_related('installation').all()
     serializer_class = ProductionWarrantySerializer
     parser_classes = [JSONParser]
@@ -919,6 +923,7 @@ class ProductionWarrantyViewSet(TenantMixin, viewsets.ModelViewSet):
 class MonitoringSettingsViewSet(TenantMixin, viewsets.ModelViewSet):
     """Réglage société de sous-performance (N52). Singleton par société :
     `list` renvoie l'unique enregistrement ; écriture responsable/admin."""
+    permission_module = 'sav'  # AMON45 — écritures bornées au module sav (ASEC11)
     queryset = MonitoringSettings.objects.all()
     serializer_class = MonitoringSettingsSerializer
     parser_classes = [JSONParser]
@@ -966,6 +971,7 @@ class AbonnementMonitoringViewSet(CompanyScopedModelViewSet):
     modification libre ni suppression : un abonnement se crée, puis se résilie
     par l'action ``resilier`` (motif obligatoire) qui coupe la supervision du
     système lié. Contrat : ``contract_samples/abonnements_monitoring.json``."""
+    permission_module = 'sav'  # AMON45 — écritures bornées au module sav (ASEC11)
     queryset = AbonnementMonitoring.objects.all()
     serializer_class = AbonnementMonitoringSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -1038,6 +1044,7 @@ class SlaDisponibiliteViewSet(CompanyScopedModelViewSet):
     (``selectors.disponibilite_vs_garantie``). Responsable/admin seulement ;
     société forcée côté serveur (TenantMixin.perform_create). Contrat :
     ``contract_samples/sla_disponibilite.json``."""
+    permission_module = 'sav'  # AMON45 — écritures bornées au module sav (ASEC11)
     queryset = SlaDisponibilite.objects.select_related('installation').all()
     serializer_class = SlaDisponibiliteSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -1102,6 +1109,7 @@ class UnderperformanceFlagViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     faux drapeau sort du compteur du parc et du portail client ; une rechute
     réelle rouvre un drapeau NEUF. Contrat :
     ``contract_samples/drapeaux_sous_performance.json``."""
+    permission_module = 'sav'  # AMON45 — écritures bornées au module sav (ASEC11)
     queryset = (UnderperformanceFlag.objects
                 .select_related('installation', 'cloture_par').all())
     serializer_class = UnderperformanceFlagSerializer
@@ -1181,6 +1189,7 @@ class CertificatCarboneViewSet(CompanyScopedModelViewSet):
     (production mesurée de la période), jamais lues du corps ; un certificat
     émis ne se modifie ni ne se supprime (traçabilité). Contrat :
     ``contract_samples/certificats_carbone.json``."""
+    permission_module = 'sav'  # AMON45 — écritures bornées au module sav (ASEC11)
     queryset = CertificatCarbone.objects.all()
     serializer_class = CertificatCarboneSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]

@@ -147,6 +147,66 @@ class TestTenantIsolation(TestCase):
         self.assertFalse(r1.data['auto_create_ticket'])
         self.assertEqual(MonitoringSettings.objects.count(), 2)
 
+    def test_ecritures_reservees_au_module_sav(self):
+        """AMON45 — les écritures monitoring relèvent du module ``sav`` : un
+        Admin RH (responsable sans code sav) reçoit 403, un rôle portant
+        ``sav_gerer`` passe ; lectures ``IsAnyRole`` inchangées."""
+        from django.core.management import call_command
+
+        from apps.monitoring.models import (
+            AbonnementMonitoring, CertificatCarbone)
+        from apps.roles.models import Role
+
+        call_command('init_roles', verbosity=0)
+        admin_rh = User.objects.create_user(
+            username='amon45_rh', password='x', company=self.c1,
+            role=Role.objects.get(company=self.c1, nom='Admin RH'))
+        role_sav = Role.objects.create(
+            company=self.c1, nom='AMON45 SAV',
+            permissions=['sav_voir', 'sav_gerer'])
+        agent_sav = User.objects.create_user(
+            username='amon45_sav', password='x', company=self.c1,
+            role=role_sav)
+        config = MonitoringConfig.objects.create(
+            company=self.c1, installation=self.inst1,
+            expected_annual_kwh=Decimal('6000'))
+        ProductionReading.objects.create(
+            company=self.c1, installation=self.inst1,
+            date=date(2025, 6, 1), period_days=30, energy_kwh=Decimal('500'))
+        a_supprimer = ProductionReading.objects.create(
+            company=self.c1, installation=self.inst1,
+            date=date(2026, 6, 1), energy_kwh=Decimal('10'))
+        abonnement = AbonnementMonitoring.objects.create(
+            company=self.c1, client_id=self.inst1.client_id,
+            installation_id=self.inst1.pk, montant=150)
+        base = '/api/django/monitoring/'
+        gestes = [
+            ('post', 'certificats-carbone/', {
+                'installation_id': self.inst1.pk,
+                'periode_debut': '2025-01-01', 'periode_fin': '2025-12-31'},
+             201),
+            ('post', f'abonnements/{abonnement.pk}/resilier/',
+             {'motif': 'Client a vendu la maison.'}, 200),
+            ('delete', f'readings/{a_supprimer.pk}/', None, 204),
+            ('post', 'settings/', {'underperf_threshold_pct': '30'}, 200),
+            ('post', f'configs/{config.pk}/email-om-report/',
+             {'period': 'monthly'}, 200),
+        ]
+        api_rh = auth(admin_rh)
+        for methode, chemin, corps, _ok in gestes:
+            r = getattr(api_rh, methode)(base + chemin, corps, format='json')
+            self.assertEqual(r.status_code, 403, (chemin, r.content))
+        self.assertEqual(api_rh.get(base + 'readings/').status_code, 200)
+        self.assertFalse(CertificatCarbone.objects.exists())
+        abonnement.refresh_from_db()
+        self.assertEqual(abonnement.statut, 'actif')
+        self.assertTrue(ProductionReading.objects.filter(
+            pk=a_supprimer.pk).exists())
+        api_sav = auth(agent_sav)
+        for methode, chemin, corps, ok in gestes:
+            r = getattr(api_sav, methode)(base + chemin, corps, format='json')
+            self.assertEqual(r.status_code, ok, (chemin, r.content))
+
 
 class TestSyncNoProvider(TestCase):
     def setUp(self):
