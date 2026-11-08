@@ -644,12 +644,18 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response(
             InstallationSerializer(inst, context={'request': request}).data)
 
-    @oa.extend_schema(request=None, responses=InstallationSerializer)
+    @oa.extend_schema(request=None, responses={200: InstallationSerializer, 409: oa.OBJ})
     @action(detail=True, methods=['post'], url_path='reactiver',
             permission_classes=[IsResponsableOrAdmin])
     def reactiver(self, request, pk=None):
         inst = self.get_object()
         if inst.annule:
+            # ACSV2 — un devis qui n'est plus accepté ne rallume pas le chantier.
+            from apps.ventes.selectors import is_devis_accepte
+            if inst.devis_id and not is_devis_accepte(inst.devis):
+                from core.conflit_etat import ConflitEtat
+                raise ConflitEtat(f"Le devis {inst.devis.reference} n'est plus accepté : "
+                                  'ré-acceptez-le pour réactiver le chantier.')
             inst.annule = False
             inst.motif_annulation = None
             inst.save(update_fields=['annule', 'motif_annulation'])

@@ -308,3 +308,25 @@ class ReactivationV2Tests(TestCase):
                 'produit_id', 'quantite')), {self.panneau.id: 12})
         self.assertTrue(InstallationActivity.objects.filter(
             installation=inst, body__startswith='Chantier réactivé').exists())
+
+    def test_reactiver_refuse_devis_non_accepte(self):
+        """ACSV2 (C-ACSV-002) — après la sortie de « Signé » (devis
+        « envoyé »), « Réactiver » rend 409 nommant le devis : le chantier
+        reste annulé, 0 réservation active. ROUGE AVANT : 200, 10 réservés."""
+        lead, devis, inst, _bon = self._devis_accepte_avec_bcf('DEV-ACSV2-1')
+        r = self._sortir_de_signe(lead)
+        self.assertEqual(r.status_code, 200, r.data)
+        r = self.api.post(
+            f'/api/django/installations/chantiers/{inst.id}/reactiver/', {},
+            format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual(
+            r.data['detail'],
+            f"Le devis {devis.reference} n'est plus accepté : ré-acceptez-le "
+            'pour réactiver le chantier.')
+        inst.refresh_from_db()
+        devis.refresh_from_db()
+        self.assertTrue(inst.annule)
+        self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
+        self.assertFalse(StockReservation.objects.filter(
+            installation=inst, active=True).exists())
