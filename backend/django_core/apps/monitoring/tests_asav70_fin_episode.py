@@ -173,6 +173,25 @@ class FinEpisodeTests(TestCase):
         self.assertFalse(UnderperformanceFlag.objects.filter(
             installation=self.inst, is_open=True).exists())
 
+    def test_ouverture_notifie_les_responsables_une_fois(self):
+        """AMON87 — une notification à l'ouverture d'un épisode, aucune à la
+        réévaluation du même épisode (module test : `tests.py` à 2 000 l.)."""
+        from django.contrib.auth import get_user_model
+
+        from apps.notifications.models import Notification
+        get_user_model().objects.create_user(
+            username='amon87_resp', password='x', role_legacy='responsable',
+            company=self.company)
+        UnderperformanceFlag.objects.all().delete()
+        with self.captureOnCommitCallbacks(execute=True):
+            services.evaluate_underperformance(self.inst, today=self.today)
+        with self.captureOnCommitCallbacks(execute=True):
+            services.evaluate_underperformance(self.inst, today=self.today)
+        notifs = Notification.objects.filter(
+            company=self.company, event_type='monitoring_sous_performance')
+        self.assertEqual(notifs.count(), 1)
+        self.assertIn('CHT-ASAV70', notifs.first().title)
+
     def test_nouvel_episode(self):
         ProductionReading.objects.filter(installation=self.inst).delete()
         services.evaluate_underperformance(self.inst, today=self.today)

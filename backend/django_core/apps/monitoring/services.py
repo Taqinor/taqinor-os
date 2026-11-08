@@ -21,6 +21,7 @@ evaluated} : seul `evaluated` déclenche un drapeau/ticket, les deux autres
 sont des no-op tracés (le rapport O&M / le fleet dashboard peuvent afficher
 « données manquantes » au lieu d'une fausse alarme production).
 """
+import logging
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
@@ -32,6 +33,8 @@ from .models import (
     ProductionWarranty, UnderperformanceFlag,
 )
 from .providers import _coerce_reading, get_provider
+
+logger = logging.getLogger(__name__)
 
 # CIQ643 — plus d'attendu inventé : sans ``expected_annual_kwh`` semé (recette
 # FG278 ou étude du devis), aucune évaluation ni drapeau.
@@ -418,6 +421,11 @@ def evaluate_underperformance(installation, *, user=None, today=None):
                 if not _created:
                     open_flag.ratio_pct = result['ratio_pct']
                     open_flag.save(update_fields=['ratio_pct'])
+                else:
+                    # AMON87 — une notification à l'OUVERTURE de l'épisode.
+                    drapeau = open_flag
+                    transaction.on_commit(
+                        lambda: _notifier_drapeau(installation, drapeau))
             else:
                 open_flag.ratio_pct = result['ratio_pct']
                 open_flag.save(update_fields=['ratio_pct'])
@@ -637,6 +645,26 @@ def warranty_curve_overlay(installation, *, years=None, today=None,
         'manufacturer_recourse': recourse,
         'points': points,
     }
+
+
+def _notifier_drapeau(installation, flag):
+    """AMON87 — notifie les responsables (``monitoring_sous_performance``)
+    qu'un épisode de sous-performance s'ouvre. Best-effort : un échec d'envoi
+    ne change jamais l'évaluation (patron ``report._notify_rapport_envoye``)."""
+    try:
+        from apps.notifications import services as notif_services
+        company = installation.company
+        ref = getattr(installation, 'reference', None) or f'#{installation.pk}'
+        notif_services.notify_many(
+            notif_services.resolve_recipients(
+                company, 'monitoring_sous_performance'),
+            'monitoring_sous_performance',
+            title=f'Sous-performance — {ref} : {flag.ratio_pct} % de l’attendu',
+            body='Production sous le seuil de la supervision : vérification '
+                 'à prévoir.', company=company)
+    except Exception:
+        logger.warning('AMON87 : notification de sous-performance ignorée '
+                       '(installation %s)', installation.pk, exc_info=True)
 
 
 def _create_underperf_ticket(installation, flag, user):
