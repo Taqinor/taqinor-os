@@ -257,6 +257,10 @@ class UnderperformanceFlag(models.Model):
     # « donnees_indisponibles »…) et la note lisible associée.
     motif_cloture = models.CharField(max_length=40, blank=True, default='')
     note_cloture = models.TextField(blank=True, default='')
+    # AMON24 — qui a classé l'épisode à la main (NULL = fermeture automatique).
+    cloture_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+')
 
     class Meta:
         verbose_name = 'Drapeau de sous-performance'

@@ -47,7 +47,7 @@ from core.viewsets import CompanyScopedModelViewSet
 from .models import (
     AbonnementMonitoring, CertificatCarbone, CleaningEvent, MonitoringConfig,
     MonitoringSettings, ProductionReading, ProductionWarranty,
-    SlaDisponibilite,
+    SlaDisponibilite, UnderperformanceFlag,
 )
 from .providers import available_providers
 from .serializers import (
@@ -55,7 +55,7 @@ from .serializers import (
     CertificatCarboneSerializer, MonitoringConfigSerializer,
     SlaDisponibiliteSerializer,
     MonitoringSettingsSerializer, ProductionReadingSerializer,
-    ProductionWarrantySerializer,
+    ProductionWarrantySerializer, UnderperformanceFlagSerializer,
 )
 from .analytics import om_metrics, soiling_assessment
 from .query_params import (
@@ -1087,6 +1087,66 @@ class SlaDisponibiliteViewSet(CompanyScopedModelViewSet):
             request, 'window_days', 365, mini=1, maxi=1825)
         return Response(disponibilite_vs_garantie(
             sla.installation, window_days=window))
+
+
+class _ClasserDrapeauCorps(serializers.Serializer):
+    motif = RegexStricte(MOTIF_NON_BLANC_SANS_NUL, max_length=500)
+
+
+@extend_schema_view(list=extend_schema(parameters=_FILTRE_INSTALLATION + [
+    OpenApiParameter('is_open', OpenApiTypes.BOOL, required=False)]))
+class UnderperformanceFlagViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+    """AMON24 — drapeaux de sous-performance : liste (tout rôle, filtrable
+    ?installation= / ?is_open=) et classement par le personnel (action
+    ``classer``, responsable/admin, motif obligatoire, auteur tracé) — un
+    faux drapeau sort du compteur du parc et du portail client ; une rechute
+    réelle rouvre un drapeau NEUF. Contrat :
+    ``contract_samples/drapeaux_sous_performance.json``."""
+    queryset = (UnderperformanceFlag.objects
+                .select_related('installation', 'cloture_par').all())
+    serializer_class = UnderperformanceFlagSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation', 'ratio_pct', 'id']
+    ordering = ['-date_creation', '-id']
+    parser_classes = [JSONParser]
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        inst = identifiant(self.request, 'installation')
+        if inst:
+            qs = qs.filter(installation_id=inst)
+        ouvert = (self.request.query_params.get('is_open') or '').lower()
+        if ouvert in ('true', '1', 'false', '0'):
+            qs = qs.filter(is_open=ouvert in ('true', '1'))
+        return qs
+
+    @extend_schema(request=_ClasserDrapeauCorps,
+                   responses={200: UnderperformanceFlagSerializer})
+    @action(detail=True, methods=['post'], url_path='classer',
+            permission_classes=[IsResponsableOrAdmin])
+    def classer(self, request, pk=None):
+        """Ferme le drapeau (motif ``classe_manuellement``, note = motif,
+        auteur = l'utilisateur). Motif vide : 400 ; déjà fermé : 409 ;
+        autre société : 404."""
+        from .services import MOTIF_CLASSE_MANUELLEMENT, _fermer_episode
+        drapeau = self.get_object()
+        corps = _ClasserDrapeauCorps(data=request.data if hasattr(
+            request.data, 'get') else {})
+        corps.is_valid(raise_exception=True)
+        if not drapeau.is_open:
+            raise ConflitEtat('Ce drapeau est déjà fermé.')
+        ferme = _fermer_episode(
+            drapeau.installation, MOTIF_CLASSE_MANUELLEMENT,
+            corps.validated_data['motif'].strip(), user=request.user,
+            drapeau_id=drapeau.pk)
+        if ferme is None:
+            raise ConflitEtat('Ce drapeau est déjà fermé.')
+        return Response(self.get_serializer(ferme).data)
 
 
 #: CI #997 fuzz (2) — un certificat vise UN système OU UN client, jamais les

@@ -14,7 +14,7 @@ from core.unicite import UniciteEn409Mixin
 from .models import (
     AbonnementMonitoring, CertificatCarbone, CleaningEvent, MonitoringConfig,
     MonitoringSettings, ProductionReading, ProductionWarranty,
-    SlaDisponibilite,
+    SlaDisponibilite, UnderperformanceFlag,
 )
 from .providers import available_providers
 
@@ -362,3 +362,28 @@ class CertificatCarboneSerializer(serializers.ModelSerializer):
             'periode_fin', 'tco2_evitees', 'reference', 'created_at',
         ]
         read_only_fields = ['tco2_evitees', 'reference', 'created_at']
+
+
+class UnderperformanceFlagSerializer(serializers.ModelSerializer):
+    """AMON24 — drapeau de sous-performance (lecture seule) : système, ratio,
+    ouverture, ticket lié ; clôture (motif, note, auteur) une fois classé.
+    Contrat : ``contract_samples/drapeaux_sous_performance.json``."""
+    reference = serializers.CharField(
+        source='installation.reference', read_only=True)
+    cloture_par_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = UnderperformanceFlag
+        fields = [
+            'id', 'installation', 'reference', 'ratio_pct', 'date_creation',
+            'ticket', 'is_open', 'date_cloture', 'motif_cloture',
+            'note_cloture', 'cloture_par_nom',
+        ]
+        read_only_fields = fields
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_cloture_par_nom(self, obj):
+        user = obj.cloture_par
+        if user is None:
+            return None
+        return user.get_full_name() or user.get_username()

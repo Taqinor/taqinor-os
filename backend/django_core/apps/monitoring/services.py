@@ -247,24 +247,32 @@ MOTIF_DONNEES_INDISPONIBLES = 'donnees_indisponibles'
 MOTIF_PERFORMANCE_RETABLIE = 'performance_retablie'
 
 
-def _fermer_episode(installation, motif, note):
+def _fermer_episode(installation, motif, note, user=None, drapeau_id=None):
     """ASAV70 — termine l'épisode de sous-performance : ferme le drapeau
     OUVERT du système (verrou de ligne) avec son motif et sa note. No-op
-    s'il n'y en a pas. Un nouvel épisode réel rouvrira un drapeau neuf."""
+    s'il n'y en a pas. Un nouvel épisode réel rouvrira un drapeau neuf.
+    AMON24 — ``user`` : auteur d'un classement manuel (``cloture_par``) ;
+    ``drapeau_id`` : ne ferme que CE drapeau (classement d'une ligne)."""
     with transaction.atomic():
-        drapeau = (UnderperformanceFlag.objects
-                   .select_for_update()
-                   .filter(installation=installation, is_open=True)
-                   .first())
+        ouverts = (UnderperformanceFlag.objects.select_for_update()
+                   .filter(installation=installation, is_open=True))
+        if drapeau_id is not None:
+            ouverts = ouverts.filter(pk=drapeau_id)
+        drapeau = ouverts.first()
         if drapeau is None:
             return None
         drapeau.is_open = False
         drapeau.date_cloture = timezone.now()
         drapeau.motif_cloture = motif
         drapeau.note_cloture = note
+        drapeau.cloture_par = user
         drapeau.save(update_fields=[
-            'is_open', 'date_cloture', 'motif_cloture', 'note_cloture'])
+            'is_open', 'date_cloture', 'motif_cloture', 'note_cloture',
+            'cloture_par'])
         return drapeau
+
+
+MOTIF_CLASSE_MANUELLEMENT = 'classe_manuellement'
 
 
 def evaluate_underperformance(installation, *, user=None, today=None):
