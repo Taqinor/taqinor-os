@@ -86,6 +86,23 @@ class ParcoursPA5Tests(unittest.TestCase):
             if not etape['effet_automatique']:
                 self.assertNotIn('compensation', etape, etape['id'])
 
+    def test_reception_provisoire_est_un_effet_automatique_compense(self):
+        """ACSV41 (C-ACSV-145) — la réception provisoire est un effet
+        automatique du changement de statut (compensé au recul), la
+        définitive une étape à part, et la mise en service réceptionne."""
+        etapes = {e['id']: e for e in TABLE['etapes']}
+        self.assertNotIn('reception_chantier', etapes)
+        provisoire = etapes['reception_provisoire']
+        self.assertTrue(provisoire['effet_automatique'])
+        self.assertTrue(provisoire['fonction_entree'].endswith('::changer_statut_chantier'))
+        self.assertTrue(provisoire['compensation']['source'].endswith('::defaire_jalons_quittes'))
+        self.assertTrue(etapes['reception_definitive']['fonction_entree'].endswith(
+            '::prononcer_reception_definitive'))
+        mes = etapes['mise_en_service']
+        self.assertTrue(mes['effet_automatique'])
+        self.assertIn('apps/installations/services.py::_apply_reception_handover',
+                      [r['source'] for r in mes['regles_aval']])
+
     def test_les_references_pointent_des_fichiers_existants(self):
         self.assertTrue(TABLE['references'])
         for chemin in TABLE['references']:
