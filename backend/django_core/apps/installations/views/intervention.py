@@ -501,6 +501,10 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
         )
         self._check_tenant(serializer)
         old = Intervention.objects.get(pk=serializer.instance.pk)
+        cible = serializer.validated_data.get('installation', old.installation)
+        if getattr(cible, 'pk', None) != old.installation_id:  # ACSV11
+            raise ConflitEtat({'installation': [
+                "Le chantier d'une intervention ne change pas après sa création."]})
         intervention_activity.capturer_equipe(old)  # ACHT35
         nouveau_statut = serializer.validated_data.pop('statut', None)
         # Notification CHT9 : seulement quand le technicien CHANGE (pas de

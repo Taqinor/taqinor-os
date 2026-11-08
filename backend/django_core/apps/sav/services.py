@@ -1663,6 +1663,39 @@ def desactiver_contrat_desaccepte(*, devis, user=None):
     return nb
 
 
+def _basculer_contrats_chantier(installation, actif, phrase):
+    """ACSV64 — éteint les contrats actifs du chantier (``installation`` ou ``[devis:<id>]``) ou
+    rallume ceux marqués ``[chantier-annule:<id>]`` ; rend leur nombre."""
+    from django.db import transaction
+    from django.db.models import Q
+    from .models import ContratMaintenance
+    marqueur = f'[chantier-annule:{installation.pk}]'
+    q = Q(notes__contains=marqueur) if actif else Q(actif=True) & (
+        Q(installation_id=installation.pk)
+        | Q(notes__contains=f'[devis:{installation.devis_id}]'))  # '[devis:None]' : aucun
+    jour = timezone.localdate().strftime('%d/%m/%Y')
+    with transaction.atomic():
+        contrats = list(ContratMaintenance.objects.select_for_update().filter(
+            q, company_id=installation.company_id).order_by('pk'))
+        for contrat in contrats:
+            notes = (contrat.notes or '').replace(marqueur, '')
+            contrat.notes = notes + ('' if actif else f'\n{marqueur}') + (
+                f'\n{phrase} le {jour} : chantier {installation.reference}.')
+            contrat.actif = actif
+            contrat.save(update_fields=['actif', 'notes'])
+    return len(contrats)
+
+
+def desactiver_contrats_chantier(installation, user=None):
+    """ACSV64 — abonné de ``chantier_annule`` : éteint les contrats du chantier."""
+    return _basculer_contrats_chantier(installation, False, 'Désactivé (chantier annulé)')
+
+
+def reactiver_contrats_chantier(installation, user=None):
+    """ACSV64 — rallume les seuls contrats éteints par l'annulation du chantier."""
+    return _basculer_contrats_chantier(installation, True, 'Réactivé (chantier réactivé)')
+
+
 def _reactiver_contrat_reaccepte(devis):
     """Ré-acceptation : réactive le contrat désactivé par la dés-acceptation
     de ce devis (marqueur restauré), ou rend ``None`` s'il n'y en a pas."""

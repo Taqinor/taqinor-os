@@ -361,6 +361,22 @@ class TestChantierFunnelParcChecklist(TestCase):
         parc = self.api.get('/api/django/installations/chantiers/?parc=1')
         self.assertIn(self.inst.id, ids_of(parc))
 
+    def test_est_du_parc_regle_unique(self):
+        """AMON80 (C-AMON-011) — ``Installation.est_du_parc`` porte la règle
+        « système du parc » ; ``est_parc`` servi la relit, inchangé.
+        ROUGE AVANT : attribut absent."""
+        from apps.installations.selectors import installation_scoped
+        cas = [({'statut': 'receptionne'}, True), ({'statut': 'cloture'}, True),
+               ({'statut': 'signe', 'annule': True}, False),
+               ({'statut': 'receptionne', 'parc_actif': False}, False),
+               ({'statut': 'installe'}, False)]
+        for champs, attendu in cas:
+            Installation.objects.filter(pk=self.inst.pk).update(
+                annule=False, parc_actif=True, **champs)
+            self.assertEqual(installation_scoped(self.inst.company, self.inst.pk).est_du_parc, attendu, champs)
+            r = self.api.get(f'/api/django/installations/chantiers/{self.inst.id}/')
+            self.assertEqual(r.data['est_parc'], attendu, champs)
+
     def test_legacy_status_maps_to_canonical_column(self):
         self.inst.statut = 'mise_en_service'
         self.inst.save(update_fields=['statut'])

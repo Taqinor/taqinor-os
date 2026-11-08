@@ -24,7 +24,7 @@ from authentication.models import Company
 import apps.crm.stages as stages
 from apps.crm.models import Client, Lead
 from apps.installations.models import (
-    Installation, InstallationActivity, StockReservation,
+    Installation, InstallationActivity, Intervention, StockReservation,
 )
 from apps.stock.models import BonCommandeFournisseur, Fournisseur, Produit
 from apps.stock.services import creer_bcf_depuis_lignes
@@ -330,3 +330,51 @@ class ReactivationV2Tests(TestCase):
         self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
         self.assertFalse(StockReservation.objects.filter(
             installation=inst, active=True).exists())
+
+    def test_interventions_non_datees_ne_bloquent_pas_la_sortie(self):
+        """ACSV90 (C-ACSV-005) — 3 interventions standard sans date ne
+        bloquent pas la sortie de « Signé » : elles sont annulées avec le
+        chantier, puis relevées à la ré-acceptation ; une intervention DATÉE
+        bloque (409). ROUGE AVANT : 409 « … 3 intervention(s) planifiée(s) »."""
+        lead, devis, inst, _bon = self._devis_accepte_avec_bcf('DEV-ACSV90-1')
+        types = [Intervention.Type.POSE] * 3
+        ivs = [Intervention.objects.create(
+            company=self.company, installation=inst, type_intervention=t)
+            for t in types]
+        r = self._sortir_de_signe(lead)
+        self.assertEqual(r.status_code, 200, r.data)
+        inst.refresh_from_db()
+        self.assertTrue(inst.annule)
+        for iv in ivs:
+            iv.refresh_from_db()
+            self.assertTrue(iv.annulee)
+            self.assertEqual(iv.motif_annulation,
+                             f'Chantier {inst.reference} annulé')
+        r = self.api.post(f'/api/django/ventes/devis/{devis.id}/accepter/',
+                          {'nom': 'M. Client'}, format='json')
+        self.assertEqual(r.status_code, 200, getattr(r, 'data', r))
+        inst.refresh_from_db()
+        self.assertFalse(inst.annule)
+        for iv in ivs:
+            iv.refresh_from_db()
+            self.assertFalse(iv.annulee)
+        Intervention.objects.filter(pk=ivs[0].pk).update(
+            date_prevue=timezone.localdate())
+        r = self._sortir_de_signe(lead)
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('1 intervention(s) planifiée(s)', r.data['detail'])
+
+    def test_bcf_recu_bloque_la_sortie_de_signe(self):
+        """ACSV6 (C-ACSV-003, D-ADVS-5) — un BCF REÇU bloque la sortie de
+        « Signé » comme un BCF envoyé. ROUGE AVANT : 200, chantier annulé."""
+        lead, devis, inst, bon = self._devis_accepte_avec_bcf('DEV-ACSV6-1')
+        BonCommandeFournisseur.objects.filter(pk=bon.pk).update(
+            statut=BonCommandeFournisseur.Statut.RECU)
+        r = self._sortir_de_signe(lead)
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn(f'le bon de commande fournisseur {bon.reference} '
+                      "est reçu : annulez-le d'abord.", r.data['detail'])
+        devis.refresh_from_db()
+        inst.refresh_from_db()
+        self.assertEqual(devis.statut, Devis.Statut.ACCEPTE)
+        self.assertFalse(inst.annule)

@@ -99,7 +99,7 @@ def chantiers_receptionnes(company, *, date_debut=None, date_fin=None):
 
     qs = Installation.objects.filter(
         company=company, statut=Installation.Statut.RECEPTIONNE,
-        date_reception__isnull=False)
+        date_reception__isnull=False, annule=False)  # ACSV103
     if date_debut is not None:
         qs = qs.filter(date_reception__gte=date_debut)
     if date_fin is not None:
@@ -258,6 +258,18 @@ def installation_qs_for_remise():
             .select_related('client', 'devis', 'company',
                             'technicien_responsable')
             .prefetch_related('devis__lignes__produit'))
+
+
+def pack_remise_vivant(installation):
+    """ACSV38 — pack de remise PERSISTÉ relu vivant : pièces et verdict de
+    ``services.assemble_handover_pieces`` (ceux du gate), méta du pack gardée
+    (``pack``, ``monitoring_acces``) ; ``None`` sans pack persisté."""
+    pack = getattr(installation, 'handover_pack', None)
+    if pack is None:
+        return None
+    from .services import assemble_handover_pieces
+    return {**assemble_handover_pieces(installation), 'pack': pack,
+            'monitoring_acces': pack.monitoring_acces or '', 'persiste': True}
 
 
 def intervention_scoped(company, pk):
@@ -2720,6 +2732,20 @@ def suggestion_pieces_intervention(
         }
         for row in lignes[:max(int(top_n or _TOP_N_PIECES_DEFAUT), 1)]
     ]
+
+
+def consommations_appliquees_du_ticket(company, ticket_id):
+    """ACSV101 — lignes F11 catalogue appliquées au stock des interventions NON
+    annulées du ticket (bornées à ``company``) : entrée ``pieces`` de sa facture."""
+    from types import SimpleNamespace
+    from .models import ConsommationLigne
+    lignes = (ConsommationLigne.objects
+              .filter(company=company, consommation__intervention__ticket_id=ticket_id,
+                      consommation__intervention__annulee=False,
+                      stock_applique=True, produit__isnull=False)
+              .select_related('produit').order_by('pk'))
+    return [SimpleNamespace(produit=li.produit, quantite=li.quantite_utilisee)
+            for li in lignes]
 
 
 def intervention_export_row(interv):

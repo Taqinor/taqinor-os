@@ -130,3 +130,38 @@ class PorteeEquipeTests(TestCase):
             'priorite': 'haute'}, format='json')
         self.assertEqual(r.status_code, 200, r.content)
         self.assertEqual(sorted(r.data['traites']), sorted([self.a.pk, self.m.pk]))
+
+    def test_parc_visible_du_chantier_visible(self):
+        """ACSV58 (C-ACSV-068, D-ACSV-2) — qui voit un chantier voit tout son
+        parc, même créé par un autre ; l'équipement de comptoir du technicien
+        reste visible ; le parc d'un chantier hors portée : 0 et 404.
+        ROUGE AVANT : 0 équipement du chantier visible."""
+        from apps.installations.models import Installation
+        from apps.sav.models import Equipement
+        from apps.stock.models import Produit
+        produit = Produit.objects.create(
+            company=self.company, nom='Onduleur', sku='OND-ACSV58', prix_achat=0, prix_vente=0)
+        ch1 = Installation.objects.create(
+            company=self.company, reference='CH-ACSV58-1', client=self.client_obj,
+            technicien_responsable=self.tech, created_by=self.autre)
+        ch2 = Installation.objects.create(
+            company=self.company, reference='CH-ACSV58-2', client=self.client_obj,
+            created_by=self.autre)
+
+        def equipement(sn, inst, auteur):
+            return Equipement.objects.create(
+                company=self.company, produit=produit, installation=inst,
+                numero_serie=sn, created_by=auteur)
+        e1, e2 = equipement('SN-1', ch1, self.autre), equipement('SN-2', ch1, self.autre)
+        comptoir = equipement('SN-C', None, self.tech)
+        cache = equipement('SN-X', ch2, self.autre)
+        r = self.api.get(f'{BASE}/equipements/?installation={ch1.pk}')
+        self.assertEqual(r.status_code, 200, r.content)
+        rows = r.data['results'] if 'results' in r.data else r.data
+        self.assertEqual(sorted(row['id'] for row in rows), sorted([e1.pk, e2.pk]))
+        self.assertEqual(self.api.get(f'{BASE}/equipements/{e1.pk}/').status_code, 200)
+        self.assertEqual(self.api.get(f'{BASE}/equipements/{comptoir.pk}/').status_code, 200)
+        r = self.api.get(f'{BASE}/equipements/?installation={ch2.pk}')
+        rows = r.data['results'] if 'results' in r.data else r.data
+        self.assertEqual(list(rows), [])
+        self.assertEqual(self.api.get(f'{BASE}/equipements/{cache.pk}/').status_code, 404)

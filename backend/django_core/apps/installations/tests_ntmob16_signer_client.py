@@ -142,3 +142,21 @@ class SignerClientEndpointTests(TestCase):
             kind='note', body__icontains='Signature client').order_by('-id').first()
         self.assertIsNotNone(note)
         self.assertIn('Karim Bennani', note.body)
+
+    def test_chantier_annule_409_rien_fige(self):
+        """ACSV34 (C-ACSV-140, D-ACSV-4) — un chantier ANNULÉ refuse la
+        signature (409 « Chantier annulé ») : rien écrit, rien figé ; réactivé,
+        il se signe. ROUGE AVANT : 200, PV figé."""
+        from apps.ged.models import Document
+        corps = {'signature_client': 'data:image/png;base64,AAAA', 'signataire_nom': 'K'}
+        base = f'/api/django/installations/chantiers/{self.inst.id}'
+        self.assertEqual(self.api.post(f'{base}/annuler/', {}, format='json').status_code, 200)
+        nb_docs = Document.objects.filter(company=self.company).count()
+        resp = self.api.post(self._url(), corps, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertEqual(resp.data['detail'], 'Chantier annulé')
+        self.inst.refresh_from_db()
+        self.assertIsNone(self.inst.signe_le)
+        self.assertEqual(Document.objects.filter(company=self.company).count(), nb_docs)
+        self.assertEqual(self.api.post(f'{base}/reactiver/', {}, format='json').status_code, 200)
+        self.assertEqual(self.api.post(self._url(), corps, format='json').status_code, 200)

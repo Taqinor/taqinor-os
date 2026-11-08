@@ -768,19 +768,15 @@ def generate_bon_livraison(chantier):
 
 
 def _handover_pack_summary(chantier):
-    """AUD307 — pièces du pack de remise CH4 (`installations.HandoverPack`).
-
-    Même patron défensif que `_checklist_summary` : ``None`` quand le chantier
-    n'a pas encore de pack persisté (l'accesseur inverse OneToOne lève une
-    exception qui hérite d'``AttributeError``, donc ``getattr(..., None)``
-    suffit), et chaque pièce dégrade proprement — une entrée malformée est
-    ignorée plutôt que de casser la génération du document client.
-    """
-    pack = getattr(chantier, 'handover_pack', None)
+    """AUD307 — pièces du pack de remise CH4, relues VIVANTES (ACSV38 :
+    ``installations.selectors.pack_remise_vivant``, celles du gate) ; ``None``
+    sans pack persisté ; une entrée malformée est ignorée, jamais fatale."""
+    from apps.installations.selectors import pack_remise_vivant
+    pack = pack_remise_vivant(chantier)
     if pack is None:
         return None
     pieces = []
-    for piece in (pack.pieces or []):
+    for piece in (pack['pieces'] or []):
         if not isinstance(piece, dict):
             continue
         pieces.append({
@@ -791,10 +787,10 @@ def _handover_pack_summary(chantier):
         })
     return {
         'pieces': pieces,
-        'complet': bool(pack.complet),
+        'complet': bool(pack['complet']),
         'presentes': sum(1 for p in pieces if p['present']),
         'total': len(pieces),
-        'monitoring_acces': pack.monitoring_acces or '',
+        'monitoring_acces': pack['monitoring_acces'],
     }
 
 
@@ -1259,6 +1255,23 @@ def _partager_au_client_portail(chantier, source_type):
             'G5 — partage portail impossible (%s, chantier %s)',
             source_type, chantier.pk)
         return None
+
+
+def aligner_partage_portail_chantier(chantier):
+    """ACSV33 — PV et BL figés partagés avec le seul client COURANT d'un
+    chantier non annulé : tout autre client perd la lecture, un chantier annulé
+    n'en partage aucun. Idempotent, best-effort (journalisé, ne lève jamais)."""
+    from apps.ged import services as ged_services
+    garder = None if chantier.annule else getattr(chantier, 'client_id', None)
+    for source_type in (SOURCE_PV_RECEPTION, SOURCE_BON_LIVRAISON):
+        try:
+            ged_services.retirer_partage_client_portail(
+                _document_ged(chantier, source_type), sauf_client_id=garder)
+        except Exception:
+            logger.exception('ACSV33 — retrait du partage portail impossible (%s, chantier %s)',
+                             source_type, chantier.pk)
+        if garder:
+            _partager_au_client_portail(chantier, source_type)
 
 
 def _servir_pv(chantier, maintenant=None):
