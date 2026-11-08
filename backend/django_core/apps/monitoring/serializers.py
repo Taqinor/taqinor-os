@@ -215,11 +215,14 @@ class ProductionWarrantySerializer(IdInconnu404Mixin, UniciteEn409Mixin, Company
         return value
 
 
-#: ERR-ENF11-FUZZ-MONITORING — la forme que ``DecimalLitteral`` accepte
-#: (``-?[0-9]+(.[0-9]+)?``), bornée par le champ (5 chiffres dont 2
-#: décimales). Le motif générique publiait aussi ``-.3`` / ``12.``, refusés
-#: en 400 (« conforme refusée », PUT settings/{id} du 13/10/2026).
-MOTIF_SEUIL_POURCENT = r'^-?0*[0-9]{1,3}(\.[0-9]{1,2})?$'
+#: ERR-ENF11-FUZZ-MONITORING — la forme que ``DecimalLitteral`` accepte,
+#: bornée par le champ (2 décimales). Le motif générique publiait aussi
+#: ``-.3`` / ``12.``, refusés en 400 (« conforme refusée », 13/10/2026).
+#: AMON28 — seuil borné à [1 ; 99] (« -10 » signalait tout le parc, « 120 »
+#: ne détectait plus rien) : le motif publié ne décrit plus que cet intervalle.
+MOTIF_SEUIL_POURCENT = (
+    r'^0*(?:[1-9](?:\.[0-9]{1,2})?|(?:[1-8][0-9]|9[0-8])(?:\.[0-9]{1,2})?'
+    r'|99(?:\.0{1,2})?)$')
 
 
 @extend_schema_field({'type': 'string', 'format': 'decimal',
@@ -243,6 +246,13 @@ class MonitoringSettingsSerializer(ChampsStrictsLitterauxMixin,
             'date_modification',
         ]
         read_only_fields = ['date_modification']
+
+    def validate_underperf_threshold_pct(self, value):
+        # AMON28 — seuil de sous-performance dans [1 ; 99] % de l'attendu.
+        if value is not None and not (1 <= value <= 99):
+            raise serializers.ValidationError(
+                'Le seuil doit être compris entre 1 et 99 %.')
+        return value
 
 
 #: CI #997 fuzz — les décimaux dont le serveur refuse la valeur NULLE ou hors

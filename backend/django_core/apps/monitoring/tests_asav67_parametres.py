@@ -180,8 +180,9 @@ class ParametresRequeteTests(TestCase):
 
         from apps.monitoring.serializers import MOTIF_SEUIL_POURCENT
 
-        for valeur, accepte in (('15.50', True), ('-3', True), ('007.5', True),
-                                ('100', True), ('-.3', False), ('12.', False),
+        # AMON28 — « -3 » et « 100 » sortent de [1 ; 99] : refusés.
+        for valeur, accepte in (('15.50', True), ('-3', False), ('007.5', True),
+                                ('100', False), ('-.3', False), ('12.', False),
                                 ('1.234', False), ('1234', False)):
             with self.subTest(valeur=valeur):
                 self.assertEqual(
@@ -190,3 +191,20 @@ class ParametresRequeteTests(TestCase):
                     'underperf_threshold_pct': valeur}, format='json')
                 self.assertEqual(r.status_code, 200 if accepte else 400,
                                  (valeur, r.content))
+
+    def test_seuil_borne_1_99(self):
+        """AMON28 — seuil hors [1 ; 99] : 400 nommant le champ, valeur
+        stockée inchangée ; bornes et valeur usuelle acceptées."""
+        for valeur in ('1', '20', '99'):
+            r = self.api.post(f'{BASE}/settings/', {
+                'underperf_threshold_pct': valeur}, format='json')
+            self.assertEqual(r.status_code, 200, (valeur, r.content))
+        for valeur in ('-10', '0', '100', '120'):
+            r = self.api.post(f'{BASE}/settings/', {
+                'underperf_threshold_pct': valeur}, format='json')
+            self.assertEqual(r.status_code, 400, (valeur, r.content))
+            self.assertIn('underperf_threshold_pct', r.json())
+        lu = self.api.get(f'{BASE}/settings/')
+        self.assertEqual(lu.status_code, 200)
+        self.assertEqual(
+            Decimal(str(lu.json()['underperf_threshold_pct'])), Decimal('99'))
