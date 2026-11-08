@@ -690,6 +690,21 @@ class TestInterventionF3(TestCase):
         self.assertEqual(r.status_code, 201, r.data)
         self.assertEqual(set(r.data['equipe']), {other.id})
 
+    def test_technicien_fourni_sans_equipe_par_defaut(self):
+        """ACSV8 (C-ACSV-130) — technicien B fourni sur un chantier de A :
+        équipe vide, membres {B}. ROUGE AVANT : `equipe` [A]."""
+        from apps.installations.models import Intervention
+        from apps.installations.selectors import membres_intervention
+        tech_b = User.objects.create_user(
+            username='interv_tech_b', password='x', role_legacy='normal',
+            company=self.company)
+        r = self._create_interv(technicien=tech_b.id)
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data['equipe'], [])
+        interv = Intervention.objects.get(pk=r.data['id'])
+        self.assertEqual(interv.equipe.count(), 0)
+        self.assertEqual(membres_intervention(interv), {tech_b.pk})
+
     def test_gps_client_devis_pulled_from_chantier(self):
         r = self._create_interv()
         self.assertEqual(r.data['installation_reference'], self.inst.reference)

@@ -463,8 +463,8 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
         # _stamp_statut_dates du chantier — ERR-QAH-…-DATE-REALISEE-AUTO).
         self._stamp_date_realisee(interv)
         # F3 — équipe par défaut = l'installateur du chantier quand aucune
-        # équipe n'a été fournie (posé côté serveur).
-        if not interv.equipe.exists() and installation is not None:
+        # équipe n'a été fournie (posé côté serveur) ; ACSV8 — ni technicien.
+        if not interv.equipe.exists() and installation is not None and technicien is None:
             installer = installation.technicien_responsable
             if installer is not None:
                 interv.equipe.add(installer)
