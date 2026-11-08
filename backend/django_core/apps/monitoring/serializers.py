@@ -293,12 +293,10 @@ class AbonnementMonitoringSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'client_id', 'installation_id', 'periodicite',
             'periodicite_display', 'montant', 'statut', 'statut_display',
-            'date_debut', 'prochaine_echeance', 'motif_resiliation',
-            'date_creation',
+            'date_debut', 'motif_resiliation', 'date_creation',
         ]
         read_only_fields = [
-            'client_id', 'statut', 'prochaine_echeance', 'motif_resiliation',
-            'date_creation',
+            'client_id', 'statut', 'motif_resiliation', 'date_creation',
         ]
 
     def validate_montant(self, value):

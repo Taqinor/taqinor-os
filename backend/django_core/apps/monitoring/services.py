@@ -605,26 +605,6 @@ class AbonnementMonitoringError(ValueError):
         self.introuvable = introuvable
 
 
-def _ajouter_mois(jour, nb_mois):
-    """``jour`` + ``nb_mois`` mois, borné au dernier jour du mois cible."""
-    import calendar
-
-    mois_total = jour.month - 1 + nb_mois
-    annee = jour.year + mois_total // 12
-    mois = mois_total % 12 + 1
-    return jour.replace(
-        year=annee, month=mois,
-        day=min(jour.day, calendar.monthrange(annee, mois)[1]))
-
-
-def prochaine_echeance_abonnement(depuis, periodicite):
-    """Mensuel → +1 mois ; annuel → +12 mois (même règle que FG244)."""
-    from .models import AbonnementMonitoring
-
-    pas = 12 if periodicite == AbonnementMonitoring.Periodicite.ANNUEL else 1
-    return _ajouter_mois(depuis, pas)
-
-
 def creer_abonnement_monitoring(company, *, installation_id, periodicite,
                                 montant, date_debut=None, user=None):
     """ASAV100 — crée un abonnement ACTIF pour un système de la société.
@@ -653,8 +633,7 @@ def creer_abonnement_monitoring(company, *, installation_id, periodicite,
     return AbonnementMonitoring.objects.create(
         company=company, client_id=client_id, installation_id=installation_id,
         periodicite=periodicite, montant=montant,
-        statut=AbonnementMonitoring.Statut.ACTIF, date_debut=debut,
-        prochaine_echeance=prochaine_echeance_abonnement(debut, periodicite))
+        statut=AbonnementMonitoring.Statut.ACTIF, date_debut=debut)
 
 
 def resilier_abonnement_monitoring(abonnement, *, motif, user=None):

@@ -970,10 +970,8 @@ class AbonnementMonitoringViewSet(CompanyScopedModelViewSet):
     serializer_class = AbonnementMonitoringSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['periodicite', 'statut', 'motif_resiliation']
-    ordering_fields = [
-        'prochaine_echeance', 'date_debut', 'date_creation', 'montant',
-        'statut', 'id']
-    ordering = ['prochaine_echeance', 'id']
+    ordering_fields = ['date_debut', 'date_creation', 'montant', 'statut', 'id']
+    ordering = ['-date_debut', 'id']
     parser_classes = [JSONParser]
     permission_classes = [IsResponsableOrAdmin]
     http_method_names = ['get', 'post', 'head', 'options']

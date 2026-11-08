@@ -1334,7 +1334,7 @@
     champs: date, date_creation, energy_kwh, external_id, id, installation, note, period_days, source, source_display
     source ∈ {auto, import, manual}
 - frontend/src/api/monitoringApi.js :: creerAbonnement -> /api/django/monitoring/abonnements  [AbonnementMonitoringSerializer]
-    champs: client_id, date_creation, date_debut, id, installation_id, montant, motif_resiliation, periodicite, periodicite_display, prochaine_echeance, statut, statut_display
+    champs: client_id, date_creation, date_debut, id, installation_id, montant, motif_resiliation, periodicite, periodicite_display, statut, statut_display
     periodicite ∈ {annuel, mensuel}
     statut ∈ {actif, resilie, suspendu}
 - frontend/src/api/monitoringApi.js :: deleteCleaning -> /api/django/monitoring/cleanings/<>  [CleaningEventSerializer]
@@ -1347,7 +1347,7 @@
 - frontend/src/api/monitoringApi.js :: emettreCertificatCarbone -> /api/django/monitoring/certificats-carbone  [CertificatCarboneSerializer]
     champs: client_id, created_at, id, installation_id, periode_debut, periode_fin, reference, tco2_evitees
 - frontend/src/api/monitoringApi.js :: getAbonnements -> /api/django/monitoring/abonnements  [AbonnementMonitoringSerializer]
-    champs: client_id, date_creation, date_debut, id, installation_id, montant, motif_resiliation, periodicite, periodicite_display, prochaine_echeance, statut, statut_display
+    champs: client_id, date_creation, date_debut, id, installation_id, montant, motif_resiliation, periodicite, periodicite_display, statut, statut_display
     periodicite ∈ {annuel, mensuel}
     statut ∈ {actif, resilie, suspendu}
 - frontend/src/api/monitoringApi.js :: getCertificatsCarbone -> /api/django/monitoring/certificats-carbone  [CertificatCarboneSerializer]
