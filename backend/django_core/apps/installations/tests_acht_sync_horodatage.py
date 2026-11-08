@@ -156,3 +156,45 @@ class SyncHorodatageTests(TestCase):
         res = self._sync('intervention.consommation_ligne',
                          {'ligne': self.ligne.id, 'quantite_utilisee': '3'})
         self.assertEqual(res['status'], 'applied', res)
+
+    def test_retour_hors_ligne_derive_terminee(self):
+        """ACSV22 (C-ACSV-137) — un retour dépôt synchronisé passe « Sur
+        site » à « Terminée » (un `intervention_completed`) ; photo obligatoire
+        manquante : `statut_refuse` nommé, horodatage gardé ; départ dépôt sur
+        « À préparer » chargée : « En route ». ROUGE AVANT : « sur_site »."""
+        from apps.installations import field_services
+        from apps.installations.models import ShotListSlot
+        from core.events import intervention_completed
+        evenements = []
+
+        def _abonne(sender, **kwargs):
+            evenements.append(kwargs)
+
+        intervention_completed.connect(_abonne, dispatch_uid='acsv22-temoin')
+        self.addCleanup(intervention_completed.disconnect, dispatch_uid='acsv22-temoin')
+        Intervention.objects.filter(pk=self.iv.pk).update(statut=Intervention.Statut.SUR_SITE)
+        slot = ShotListSlot.objects.create(
+            company=self.company, cle='onduleur', libelle='Onduleur', obligatoire=True)
+        res = self._sync('intervention.retour', {})
+        self.assertEqual(res['status'], 'applied', res)
+        self.assertIn('Onduleur', res['result']['statut_refuse'])
+        self.iv.refresh_from_db()
+        self.assertEqual(self.iv.statut, Intervention.Statut.SUR_SITE)
+        self.assertIsNotNone(self.iv.retour_depot_le)
+        slot.delete()
+        with self.captureOnCommitCallbacks(execute=True):
+            res = self._sync('intervention.retour', {})
+        self.assertEqual(res['status'], 'applied', res)
+        self.assertEqual(res['result']['statut'], Intervention.Statut.TERMINEE)
+        self.iv.refresh_from_db()
+        self.assertEqual(self.iv.statut, Intervention.Statut.TERMINEE)
+        self.assertEqual(len(evenements), 1)
+        # Départ dépôt : « À préparer » (chargée) ⇒ « En route », jamais de recul.
+        autre = Intervention.objects.create(
+            company=self.company, installation=self.iv.installation,
+            type_intervention='pose', created_by=self.user, technicien=self.user)
+        field_services.confirm_charge(field_services.ensure_preparation(autre), self.user)
+        res = self._sync('intervention.depart_depot', {'intervention': autre.id})
+        self.assertEqual(res['result']['statut'], Intervention.Statut.EN_ROUTE)
+        res = self._sync('intervention.depart_depot', {})
+        self.assertEqual(res['result']['statut'], Intervention.Statut.TERMINEE)

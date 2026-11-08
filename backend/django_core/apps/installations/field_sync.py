@@ -153,7 +153,24 @@ def _h_depart_depot(company, user, payload):
     field_services.enregistrer_depart_depot(
         iv, instant, payload.get('lat'), payload.get('lng'),
         user, suffixe=_suffixe(payload))
-    return {'intervention': iv.id, 'depart_depot_le': iv.depart_depot_le.isoformat()}
+    return _deriver_statut(iv, Intervention.Statut.EN_ROUTE, user, {  # ACSV22
+        'intervention': iv.id, 'depart_depot_le': iv.depart_depot_le.isoformat()})
+
+
+def _deriver_statut(iv, cible, user, res):
+    """EZ6 / ACSV22 — en ligne, l'écran dérive le statut de l'horodatage
+    (départ → « En route », arrivée → « Sur site », retour → « Terminée ») ;
+    rejoué hors-ligne, même service que le PATCH (gardes + cascade), jamais de
+    recul ; un refus de garde garde l'horodatage (``statut_refuse`` nommé)."""
+    from .services import TransitionRefusee, changer_statut_intervention
+    ordre = Intervention.STATUT_ORDER
+    if iv.statut in ordre and ordre.index(iv.statut) < ordre.index(cible):
+        try:
+            changer_statut_intervention(iv, cible, user)
+        except TransitionRefusee as exc:
+            res['statut_refuse'] = ' ; '.join(exc.raisons)
+    res['statut'] = iv.statut
+    return res
 
 
 def _h_checkin(company, user, payload):
@@ -167,21 +184,9 @@ def _h_checkin(company, user, payload):
             payload.get('lng'), user, suffixe=_suffixe(payload))
     except field_services.CoordonneesInvalides:
         raise FieldOpError('Coordonnées invalides.')
-    res = {'intervention': iv.id, 'arrivee_site_le': iv.arrivee_site_le.isoformat()}
-    # ERR-CHT-CHECKIN-HORS-LIGNE-STATUT (EZ6) — en ligne, l'écran dérive
-    # « Sur site » du check-in ; rejoué hors-ligne, personne ne le faisait.
-    # Même service que le PATCH (gardes + cascade), jamais de recul ; un
-    # refus de garde garde l'arrivée (NO-OP du statut, comme l'écran).
-    from .services import TransitionRefusee, changer_statut_intervention
-    ordre = Intervention.STATUT_ORDER
-    sur_site = Intervention.Statut.SUR_SITE
-    if iv.statut in ordre and ordre.index(iv.statut) < ordre.index(sur_site):
-        try:
-            changer_statut_intervention(iv, sur_site, user)
-        except TransitionRefusee as exc:
-            res['statut_refuse'] = ' ; '.join(exc.raisons)
-    res['statut'] = iv.statut
-    return res
+    # ERR-CHT-CHECKIN-HORS-LIGNE-STATUT (EZ6) — « Sur site » dérivé du check-in.
+    return _deriver_statut(iv, Intervention.Statut.SUR_SITE, user, {
+        'intervention': iv.id, 'arrivee_site_le': iv.arrivee_site_le.isoformat()})
 
 
 def _h_retour(company, user, payload):
@@ -191,7 +196,8 @@ def _h_retour(company, user, payload):
     iv.save(update_fields=['retour_depot_le'])
     intervention_activity.log_note(
         iv, user, 'Retour dépôt enregistré' + _suffixe(payload) + '.')
-    return {'intervention': iv.id, 'retour_depot_le': iv.retour_depot_le.isoformat()}
+    return _deriver_statut(iv, Intervention.Statut.TERMINEE, user, {  # ACSV22
+        'intervention': iv.id, 'retour_depot_le': iv.retour_depot_le.isoformat()})
 
 
 def _h_cocher_materiel(company, user, payload):
