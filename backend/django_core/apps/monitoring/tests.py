@@ -225,6 +225,7 @@ class TestTenantIsolation(TestCase):
         abonnement = AbonnementMonitoring.objects.create(
             company=self.c1, client_id=self.inst1.client_id,
             installation_id=self.inst1.pk, montant=150)
+        regler_facteur(self.c1)  # AMON41 — sans facteur réglé : 409
         base = '/api/django/monitoring/'
         gestes = [
             ('post', 'certificats-carbone/', {
@@ -710,6 +711,9 @@ class TestAud523FleetQueryBudget(TestCase):
 
     def setUp(self):
         self.company = make_company('aud523-co', 'AUD523 Co')
+        # AMON41 — co2_fleet lit le facteur au profil société : profil créé
+        # ici, pas pendant la 1re mesure (sinon 6 requêtes vs 3, faux N+1).
+        regler_facteur(self.company)
         self.today = date(2026, 6, 30)
         self._n = 0
 
