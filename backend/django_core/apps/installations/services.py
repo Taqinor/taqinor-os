@@ -5433,12 +5433,13 @@ def extourner_gr_ir_reception(*, reception, company):
         return 0
     deleted, _ = ReceptionNonFacturee.objects.filter(
         company=company, reception=reception, lettre=False).delete()
-    # AAPV7 — provision lettrée par la facture d'une AUTRE réception :
-    # supprimée, puis cette facture re-lettre la provision sœur. Un lettrage
-    # manuel (facture nulle) ou par sa propre facture n'est jamais touché.
+    # AAPV7/AAPV77 — provision lettrée par la facture d'une AUTRE réception ou
+    # SANS réception (OCR, UBL, PATCH) : supprimée, puis cette facture re-lettre
+    # la provision sœur. Un lettrage manuel (facture nulle) ou par sa propre
+    # facture n'est jamais touché.
     for prov in list(ReceptionNonFacturee.objects.filter(
             company=company, reception=reception, lettre=True,
-            facture__reception__isnull=False).exclude(
+            facture__isnull=False).exclude(
             facture__reception_id=reception.pk).select_related('facture')):
         facture = prov.facture
         prov.delete()

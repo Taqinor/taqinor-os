@@ -154,6 +154,29 @@ class LettragePartielTests(GrIrBase):
             reception=rec, company=self.company, user=self.user)
         self.assertEqual((prov.lettre, prov.facture_id), (True, ff.id))
 
+    def test_annulation_reporte_le_lettrage_d_une_facture_sans_reception(self):
+        """AAPV77 — facture OCR de 1 000 sans réception lettre P1 (FIFO) ;
+        annuler R1 supprime P1 et reporte le lettrage sur P2 (GR/IR ouvert 0)."""
+        from apps.installations.services import extourner_gr_ir_reception
+        from apps.stock.models import ReceptionFournisseur
+        r1, r2 = (ReceptionFournisseur.objects.create(
+            company=self.company, reference=f'REC-AAPV77-{i}', bon_commande=self.bc,
+            statut=ReceptionFournisseur.Statut.CONFIRME) for i in (1, 2))
+        p1, p2 = (ReceptionNonFacturee.objects.create(
+            company=self.company, bon_commande=self.bc, reception=r,
+            montant_provision=Decimal('1000')) for r in (r1, r2))
+        ocr = self.facture('1000')
+        self.lettrer(ocr)
+        p1.refresh_from_db()
+        self.assertEqual((p1.lettre, p1.facture_id), (True, ocr.id))
+        self.assertEqual(extourner_gr_ir_reception(reception=r1, company=self.company), 1)
+        self.assertFalse(ReceptionNonFacturee.objects.filter(pk=p1.pk).exists())
+        p2.refresh_from_db()
+        self.assertEqual((p2.lettre, p2.facture_id), (True, ocr.id))
+        self.assertFalse(ReceptionNonFacturee.objects.filter(
+            company=self.company, lettre=False).exists())
+        self.assertEqual(extourner_gr_ir_reception(reception=r1, company=self.company), 0)
+
 
 class DelettrageTests(GrIrBase):
     SLUG = 'co-astk126'
