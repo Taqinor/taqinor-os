@@ -24,6 +24,13 @@ from authentication.models import Company
 NOMINAL = Decimal('32.88')  # 12 000 kWh / 365 j
 
 
+def _au_profil(annuel, debut, fin, facteur=1):
+    """AMON29 — production nominale de ``[debut, fin]`` au profil mensuel
+    du devis, × ``facteur``."""
+    return (services.attendu_entre(Decimal(annuel), debut, fin)
+            * Decimal(str(facteur))).quantize(Decimal('0.01'))
+
+
 class AttenduPeriodeTests(TestCase):
 
     def setUp(self):
@@ -44,11 +51,15 @@ class AttenduPeriodeTests(TestCase):
         reglages.save()
 
     def _releves(self, kwh_par_jour, jours=30):
+        # AMON29 — journaliers au profil mensuel (``kwh_par_jour / NOMINAL``
+        # = part du nominal produite).
         for i in range(jours):
+            jour = self.today - timedelta(days=jours - 1 - i)
             ProductionReading.objects.create(
-                company=self.company, installation=self.inst,
-                date=self.today - timedelta(days=jours - 1 - i),
-                energy_kwh=kwh_par_jour, period_days=1)
+                company=self.company, installation=self.inst, date=jour,
+                energy_kwh=_au_profil('12000', jour, jour,
+                                      kwh_par_jour / NOMINAL),
+                period_days=1)
 
     def test_systeme_neuf_nominal_sans_drapeau(self):
         self._releves(NOMINAL)
@@ -85,11 +96,13 @@ class AttenduPeriodeTests(TestCase):
             expected_annual_kwh=Decimal(annuel))
         return inst
 
-    def _releve(self, inst, jours_avant, kwh, periode=30):
+    def _releve(self, inst, jours_avant, facteur=1, periode=30):
+        jour = self.today - timedelta(days=jours_avant)
         ProductionReading.objects.create(
-            company=self.company, installation=inst,
-            date=self.today - timedelta(days=jours_avant),
-            energy_kwh=Decimal(kwh), period_days=periode)
+            company=self.company, installation=inst, date=jour,
+            energy_kwh=_au_profil(
+                '9000', jour, jour + timedelta(days=periode - 1), facteur),
+            period_days=periode)
 
     def test_retard_de_saisie_sans_drapeau(self):
         """AMON22 — réel et attendu sur les seuls jours couverts : deux
@@ -98,23 +111,56 @@ class AttenduPeriodeTests(TestCase):
         témoin à la moitié du nominal ⇒ drapeau."""
         inst = self._systeme(
             'CHT-AMON22', '9000', self.today - timedelta(days=75))
-        self._releve(inst, 75, '739.73')
-        self._releve(inst, 45, '739.73')
+        self._releve(inst, 75)
+        self._releve(inst, 45)
         res = services.evaluate_underperformance(inst, today=self.today)
         self.assertEqual(res['data_status'], 'evaluated')
         self.assertAlmostEqual(float(res['ratio_pct']), 100.0, delta=1.0)
         self.assertFalse(
             UnderperformanceFlag.objects.filter(installation=inst).exists())
-        # Relevé [J−15 ; J+15) : seule la part ≤ aujourd'hui compte.
-        self._releve(inst, 15, '739.73')
+        # Relevé [J−15 ; J+15) : seule la part ≤ aujourd'hui compte (au
+        # prorata des jours ; l'écart au profil mensuel reste < 3 points).
+        self._releve(inst, 15)
         res = services.evaluate_underperformance(inst, today=self.today)
-        self.assertAlmostEqual(float(res['ratio_pct']), 100.0, delta=1.0)
+        self.assertAlmostEqual(float(res['ratio_pct']), 100.0, delta=3.0)
         # Témoin : moitié du nominal ⇒ drapeau.
         temoin = self._systeme(
             'CHT-AMON22-T', '9000', self.today - timedelta(days=75))
-        self._releve(temoin, 75, '369.86')
-        self._releve(temoin, 45, '369.86')
+        self._releve(temoin, 75, facteur='0.5')
+        self._releve(temoin, 45, facteur='0.5')
         res = services.evaluate_underperformance(temoin, today=self.today)
         self.assertTrue(res['underperforming'])
         self.assertTrue(UnderperformanceFlag.objects.filter(
             installation=temoin, is_open=True).exists())
+
+    def test_premier_hiver_au_profil_sans_drapeau(self):
+        """AMON29 — l'attendu suit le profil mensuel du devis : un système
+        conforme au profil, mis en service le 01/09, n'est pas signalé au
+        15/01 ; le même à 70 % du profil l'est (témoin)."""
+        from datetime import date
+
+        quinze_janvier = date(2027, 1, 15)
+        for ref, facteur, signale in (('CHT-AMON29', 1, False),
+                                      ('CHT-AMON29-T', '0.7', True)):
+            inst = self._systeme(ref, '12000', date(2026, 9, 1))
+            debuts = [date(2026, m, 1) for m in (9, 10, 11, 12)]
+            periodes = [(d, (date(d.year + d.month // 12, d.month % 12 + 1, 1)
+                             - d).days) for d in debuts]
+            periodes.append((date(2027, 1, 1), 14))
+            for jour, periode in periodes:
+                ProductionReading.objects.create(
+                    company=self.company, installation=inst, date=jour,
+                    energy_kwh=_au_profil(
+                        '12000', jour, jour + timedelta(days=periode - 1),
+                        facteur),
+                    period_days=periode)
+            res = services.evaluate_underperformance(
+                inst, today=quinze_janvier)
+            self.assertEqual(res['underperforming'], signale, ref)
+            if not signale:
+                self.assertAlmostEqual(
+                    float(res['ratio_pct']), 100.0, delta=1.0)
+        # Fenêtre de 365 j pleine : l'attendu est l'annuel (Σ poids = 1).
+        self.assertAlmostEqual(float(services.attendu_entre(
+            Decimal('12000'), date(2026, 1, 1), date(2026, 12, 31))),
+            12000.0, delta=0.5)

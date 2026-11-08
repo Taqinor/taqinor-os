@@ -165,12 +165,35 @@ def attendu_periode(installation, config, debut, fin,
         return None
     debut_effectif = debut_couverture(installation, debut, premier_releve)
     if debut_effectif == debut:
-        jours = (fin - debut).days  # fenêtre entière (comportement d'origine)
-    else:
-        # Période bornée : le jour de départ compte (un relevé par jour).
-        jours = (fin - debut_effectif).days + 1
-    jours = max(jours, 0)
-    return Decimal(str(annual)) * Decimal(jours) / Decimal('365')
+        # Fenêtre entière (comportement d'origine : ``(fin - debut).days``
+        # jours, soit ]debut ; fin]).
+        debut_effectif = debut + timedelta(days=1)
+    # Période bornée : le jour de départ compte (un relevé par jour).
+    return attendu_entre(annual, debut_effectif, fin)
+
+
+def attendu_entre(annuel, debut, fin):
+    """AMON29 — attendu (kWh) de ``[debut, fin]`` (bornes incluses) réparti
+    selon le profil mensuel déjà imprimé au devis
+    (``MOROCCO_SOLAR_MONTHLY_WEIGHTS``, somme = 1) : annuel × Σ mois (poids ×
+    jours du mois dans la période / jours du mois) — jamais annuel / 365 à
+    plat (un premier hiver n'est plus jugé contre la moyenne annuelle)."""
+    import calendar
+
+    from apps.ventes.quote_engine.constants import (
+        MOROCCO_SOLAR_MONTHLY_WEIGHTS,
+    )
+
+    total = Decimal('0')
+    jour = debut
+    while jour <= fin:
+        nb_mois = calendar.monthrange(jour.year, jour.month)[1]
+        fin_mois = jour.replace(day=nb_mois)
+        jours = (min(fin_mois, fin) - jour).days + 1
+        total += (Decimal(str(MOROCCO_SOLAR_MONTHLY_WEIGHTS[jour.month - 1]))
+                  * Decimal(jours) / Decimal(nb_mois))
+        jour = fin_mois + timedelta(days=1)
+    return Decimal(str(annuel)) * total
 
 
 def _expected_recent_kwh(installation, config, window_days, today=None,
@@ -234,13 +257,14 @@ def fenetre_couverte(installation, releves, since, today):
 
 
 def attendu_intervalles(config, intervalles):
-    """AMON22 — attendu (kWh) sur les seuls jours couverts : annuel × jours
-    couverts / 365. ``None`` sans référence annuelle (CIQ643)."""
+    """AMON22 — attendu (kWh) sur les seuls jours couverts (intervalles
+    ``[debut, fin)``), au profil mensuel (AMON29, ``attendu_entre``).
+    ``None`` sans référence annuelle (CIQ643)."""
     annual = config.expected_annual_kwh
     if annual is None:
         return None
-    jours = sum((fin - debut).days for debut, fin in intervalles)
-    return Decimal(str(annual)) * Decimal(jours) / Decimal('365')
+    return sum((attendu_entre(annual, debut, fin - timedelta(days=1))
+                for debut, fin in intervalles), Decimal('0'))
 
 
 MOTIF_DONNEES_INDISPONIBLES = 'donnees_indisponibles'

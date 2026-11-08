@@ -32,8 +32,8 @@ from core.analytics_db import analytics_queryset
 
 from .models import CleaningEvent, ProductionReading, UnderperformanceFlag
 from .services import (
-    _expected_recent_kwh, debut_couverture, get_or_create_config,
-    production_couverte, releves_recouvrant,
+    _expected_recent_kwh, attendu_entre, debut_couverture,
+    get_or_create_config, production_couverte, releves_recouvrant,
 )
 
 # Fenêtre par défaut (jours) d'analyse O&M.
@@ -173,9 +173,9 @@ def om_metrics(installation, *, window_days=DEFAULT_WINDOW_DAYS, today=None):
 
     # PR mensuel pour soiling + dégradation.
     monthly = _monthly_series(installation, since, today)
-    # ASAV63 — attendu de CHAQUE mois sur ses jours réellement couverts
-    # (annuel × jours / 365) : le premier et le dernier mois partiels sont
-    # normalisés, plus jamais comparés à un mois plein.
+    # ASAV63 — attendu de CHAQUE mois sur ses jours réellement couverts : le
+    # premier et le dernier mois partiels sont normalisés, plus jamais
+    # comparés à un mois plein. AMON29 — au profil mensuel (``attendu_entre``).
     annual = config.expected_annual_kwh
     debut_eff = debut_couverture(installation, since)
 
@@ -185,7 +185,9 @@ def om_metrics(installation, *, window_days=DEFAULT_WINDOW_DAYS, today=None):
         ratio = None
         couverts = jours_couverts_mois(month, debut_eff, today)
         if annual and couverts > 0:
-            attendu_mois = Decimal(str(annual)) * couverts / Decimal('365')
+            attendu_mois = attendu_entre(
+                annual, max(month, debut_eff),
+                max(month, debut_eff) + timedelta(days=couverts - 1))
             ratio = (kwh / attendu_mois) * Decimal('100')
             pr_points.append((idx, float(ratio)))
         monthly_pr.append({
