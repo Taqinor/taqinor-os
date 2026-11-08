@@ -621,6 +621,14 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
       setActionError('Indiquez une date de mise en service avant d’enregistrer.')
       return
     }
+    // ACSV36 — le serveur rabat la mise en service sur « réceptionné » : on l'annonce.
+    const comp = current.checklist_completion
+    if (Number.isInteger(comp) && comp < 100
+        && !(await confirmerMes({ title: 'Réception du chantier', destructive: false,
+          confirmLabel: 'Continuer',
+          description: 'Enregistrer la mise en service réceptionne le chantier '
+            + `(parc, garanties, avis au client). La checklist n'est complétée qu'à ${comp} %. `
+            + 'Continuer ?' }))) return
     const manques = []
     if (mes.mes_production_test === '' || mes.mes_production_test == null) manques.push('test de production')
     if (mes.mes_tension === '' || mes.mes_tension == null) manques.push('tension')
