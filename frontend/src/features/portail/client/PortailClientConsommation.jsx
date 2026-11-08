@@ -89,7 +89,9 @@ export default function PortailClientConsommation() {
           : `${alertes} alerte${alertes > 1 ? 's' : ''} ouverte${alertes > 1 ? 's' : ''}`}
       </p>
 
-      {!data.provider_configure ? (
+      {/* AMON6 — les relevés servis (manuels, import) s'affichent quel que
+          soit le fournisseur ; « non raccordé » seulement sans aucun relevé. */}
+      {points.length === 0 && !data.provider_configure ? (
         <EmptyState
           title="Suivi de production non raccordé"
           description="Le suivi de production de votre installation n’est pas encore raccordé."
