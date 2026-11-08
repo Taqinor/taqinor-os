@@ -176,8 +176,10 @@ class XFSM1FacturationTicketTest(TestCase):
         ``facture_id_ext`` (note au chatter) et une nouvelle facture se génère.
         ROUGE AVANT : ``facture_id_ext`` resté sur F1."""
         from apps.sav.models import TicketActivity
-        from apps.ventes.domain.annulation_facture import annuler_facture
+        import importlib
         from apps.ventes.models import Facture
+        # Test boîte blanche (politique QJR645) : le domaine n'est pas exporté par la façade.
+        annuler_facture = importlib.import_module('apps.ventes.domain.annulation_facture').annuler_facture
         api = auth(self.admin)
         ticket = self._ticket_hors_garantie()
         r1 = api.post(f'/api/django/sav/tickets/{ticket.id}/facturer/')
