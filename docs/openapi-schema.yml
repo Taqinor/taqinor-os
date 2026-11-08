@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4933, operations: 7731, components: 3635}
+counts: {paths: 4933, operations: 7731, components: 3636}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -12422,6 +12422,7 @@ components:
 - SavAnnulerRequeteRequest
 - SavChecklistInitRequeteRequest
 - SavCloturerDowntimeRequeteRequest
+- SavCloturerRequeteRequest
 - SavCreerDevisReponse
 - SavCreerDevisRequeteRequest
 - SavCreerLeadReponse
