@@ -591,8 +591,11 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         refus = self._refus_fournisseur(request, bc.fournisseur_id)  # AAPV29
         if refus is not None:
             return refus
-        bc.statut = BonCommandeFournisseur.Statut.BROUILLON
-        bc.save(update_fields=['statut'])
+        from apps.installations.services import recommander_demande_achat_bcf_rouvert
+        with transaction.atomic():  # AAPV85 (D-AAPV-5) : DA re-commandée ou 409 nommé
+            recommander_demande_achat_bcf_rouvert(bc, user=request.user)
+            bc.statut = BonCommandeFournisseur.Statut.BROUILLON
+            bc.save(update_fields=['statut'])
         from ..services import log_bcf_chatter
         log_bcf_chatter(
             bc, user=request.user,
