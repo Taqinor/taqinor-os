@@ -283,7 +283,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   const [interv, setInterv] = useState({ type_intervention: '', date_prevue: '', compte_rendu: '', technicien: '' })
   const [intervBusy, setIntervBusy] = useState(false)
   // N5 — édition en place d'une intervention existante (ligne du tableau).
-  const [editInterv, setEditInterv] = useState(null) // { id, date_realisee, compte_rendu, technicien }
+  const [editInterv, setEditInterv] = useState(null) // { id, date_prevue, date_realisee, compte_rendu, technicien }
   const [editIntervBusy, setEditIntervBusy] = useState(false)
   const [users, setUsers] = useState([])
   const peutListerUsers = useCanListAssignableUsers()
@@ -291,6 +291,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   const { confirm: confirmerMes } = useConfirmDialog()
   const startEditInterv = (iv) => setEditInterv({
     id: iv.id,
+    date_prevue: iv.date_prevue ?? '',
     date_realisee: iv.date_realisee ?? '',
     compte_rendu: iv.compte_rendu ?? '',
     technicien: iv.technicien ? String(iv.technicien) : '',
@@ -301,6 +302,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     try {
       const nullable = (v) => (v === '' || v === undefined) ? null : v
       await installationsApi.updateIntervention(editInterv.id, {
+        date_prevue: nullable(editInterv.date_prevue),
         date_realisee: nullable(editInterv.date_realisee),
         compte_rendu: nullable(editInterv.compte_rendu),
         technicien: nullable(editInterv.technicien),
@@ -310,7 +312,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
       await refreshInstallation()
       loadHistorique()
     } catch (err) {
-      setActionError(actionMsg(err, "Édition de l'intervention impossible."))
+      setActionError(errorMessageFrom(err, "Édition de l'intervention impossible."))
     } finally { setEditIntervBusy(false) }
   }
 
@@ -1659,7 +1661,12 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                     return (
                       <tr key={iv.id} className="border-t border-border">
                         <td className="px-3 py-2">{iv.type_intervention_display ?? iv.type_intervention}</td>
-                        <td className="px-3 py-2">{formatDate(iv.date_prevue)}</td>
+                        <td className="px-3 py-2">
+                          {editing ? (
+                            <Input type="date" aria-label="Prévue" value={editInterv.date_prevue}
+                                   onChange={(e) => setEditInterv(s => ({ ...s, date_prevue: e.target.value }))} />
+                          ) : formatDate(iv.date_prevue)}
+                        </td>
                         <td className="px-3 py-2">
                           {editing ? (
                             <Input type="date" value={editInterv.date_realisee}
