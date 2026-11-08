@@ -963,6 +963,18 @@ def _equipement_dans_perimetre_ticket(equipement, ticket):
                 and installation.client_id == ticket.client_id)
 
 
+def equipement_vise_par_ticket(ticket, produit, verrou=False):
+    """ACSV61 - repli quand la serie retiree est vide ou inconnue :
+    l'equipement vise par le ticket (meme produit, non remplace) ou None."""
+    from .models import Equipement
+    if not ticket.equipement_id:
+        return None
+    qs = Equipement.objects.filter(
+        pk=ticket.equipement_id, produit_id=produit.pk,
+        company=ticket.company).exclude(statut=Equipement.Statut.REMPLACE)
+    return (qs.select_for_update() if verrou else qs).first()
+
+
 def retirer_piece(*, company, ticket, produit, quantite, numero_serie,
                   destination, user, operation=None):
     """Trace une pièce RETIRÉE du ticket (`PieceRetiree`) et applique les
@@ -992,7 +1004,7 @@ def retirer_piece(*, company, ticket, produit, quantite, numero_serie,
             "'stock_occasion'.")
 
     equipement_remplace = None
-    if numero_serie:
+    if numero_serie or ticket.equipement_id:
         # ASAV8 — verrou de ligne : deux retraits concurrents de la même
         # série ne peuvent pas basculer (ni restocker) deux fois.
         from django.db import connection
@@ -1000,7 +1012,10 @@ def retirer_piece(*, company, ticket, produit, quantite, numero_serie,
             company=company, numero_serie=numero_serie)
         if connection.in_atomic_block:
             equipements = equipements.select_for_update()
-        equipement_remplace = equipements.first()
+        equipement_remplace = equipements.first() if numero_serie else None
+        if equipement_remplace is None:  # ACSV61 : série vide ou inconnue
+            equipement_remplace = equipement_vise_par_ticket(
+                ticket, produit, verrou=connection.in_atomic_block)
         if equipement_remplace is not None:
             if not _equipement_dans_perimetre_ticket(
                     equipement_remplace, ticket):

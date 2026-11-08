@@ -2135,9 +2135,11 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 return Response(
                     {'serie_neuve': ['Ce numéro de série est déjà au parc.']},
                     status=409)  # ENF11 : état du parc
-            if not numero_serie or not Equipement.objects.filter(
+            from .services import equipement_vise_par_ticket
+            if (not numero_serie or not Equipement.objects.filter(
                     company=ticket.company,
-                    numero_serie=numero_serie).exists():
+                    numero_serie=numero_serie).exists()) and (
+                    equipement_vise_par_ticket(ticket, produit) is None):
                 return Response(
                     {'serie_neuve': ["Le numéro de série de l'appareil "
                                      'remplacé doit exister au parc.']},
