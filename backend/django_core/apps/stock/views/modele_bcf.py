@@ -17,7 +17,7 @@ from apps.ventes.utils.references import create_with_reference
 
 from ..models import (
     ModeleBonCommandeFournisseur, BonCommandeFournisseur,
-    LigneBonCommandeFournisseur, PrixFournisseur,
+    LigneBonCommandeFournisseur,
 )
 from ..serializers import ModeleBonCommandeFournisseurSerializer
 
@@ -62,8 +62,8 @@ class ModeleBonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         """ZPUR3 — matérialise un BCF BROUILLON pré-rempli depuis les lignes
         du modèle. Le fournisseur du corps de requête (optionnel) prime sur
         celui du modèle ; l'un des deux doit être renseigné. Prix d'achat
-        auto-rempli depuis `PrixFournisseur`/dernier achat, éditable après
-        génération."""
+        auto-rempli au tarif fournisseur en vigueur (paliers, repli catalogue),
+        éditable après génération."""
         modele = self.get_object()
         company = request.user.company
         donnees = corps_objet(request)
@@ -82,7 +82,7 @@ class ModeleBonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             return Response(
                 {'detail': 'Fournisseur introuvable dans cette société.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        from ..services import EtatIncompatible, exiger_fournisseur_commandable
+        from ..services import EtatIncompatible, exiger_fournisseur_commandable, prix_bcf_en_vigueur
         try:  # AAPV82 — garde AAPV29 de toute porte qui crée un BCF
             exiger_fournisseur_commandable(company, fournisseur)
         except EtatIncompatible as exc:
@@ -107,14 +107,8 @@ class ModeleBonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                 note=f'Généré depuis le modèle « {modele.nom} »',
                 created_by=request.user)
             for ligne in lignes_modele:
-                prix_fournisseur = (
-                    PrixFournisseur.objects
-                    .filter(company=company, produit=ligne.produit,
-                            fournisseur=fournisseur)
-                    .order_by('-date_dernier_achat')
-                    .first())
-                prix = (prix_fournisseur.prix_achat if prix_fournisseur
-                        else (ligne.produit.prix_achat or Decimal('0')))
+                # AAPV83 — tarif EN VIGUEUR avec paliers (AAPV16), repli catalogue.
+                prix = prix_bcf_en_vigueur(ligne.produit, fournisseur, ligne.quantite)
                 if ligne.quantite * prix >= TOTAL_LIGNE_MAX:
                     # api-fuzz : InvalidOperation au rendu de total_achat (500).
                     raise ConflitEtat(
