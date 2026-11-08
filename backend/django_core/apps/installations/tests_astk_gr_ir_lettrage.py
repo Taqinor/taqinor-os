@@ -189,6 +189,54 @@ class DelettrageTests(GrIrBase):
         self.assertTrue(prov_b.lettre)
         self.assertEqual(prov_b.facture_id, f1.id)
 
+    def test_delettrage_apres_retour_rouvre_au_recu_net(self):
+        """AAPV76 — réception 10 × 100 facturée (1 000, lettrée), retour de 4
+        validé : supprimer la facture rouvre la provision à 600, qu'une
+        facture de 600 lettre ensuite (GR/IR ouvert 0)."""
+        from apps.stock.models import (
+            LigneBonCommandeFournisseur, LigneReceptionFournisseur, Produit,
+            ReceptionFournisseur, RetourFournisseur,
+        )
+        from apps.stock.services import apply_retour_fournisseur, confirm_reception_fournisseur
+        BonCommandeFournisseur.objects.filter(pk=self.bc.pk).update(
+            statut=BonCommandeFournisseur.Statut.ENVOYE)
+        self.bc.refresh_from_db()
+        produit = Produit.objects.create(
+            company=self.company, nom='Panneau AAPV76', sku='SKU-AAPV76',
+            prix_vente=Decimal('150'), quantite_stock=0)
+        ligne = LigneBonCommandeFournisseur.objects.create(
+            bon_commande=self.bc, produit=produit, quantite=10,
+            prix_achat_unitaire=Decimal('100'))
+        rec = ReceptionFournisseur.objects.create(
+            company=self.company, reference='REC-AAPV76', bon_commande=self.bc)
+        LigneReceptionFournisseur.objects.create(
+            reception=rec, ligne_commande=ligne, produit=produit, quantite=10)
+        with self.captureOnCommitCallbacks(execute=True):
+            confirm_reception_fournisseur(rec, self.user)
+        f1 = self.facture('1000')
+        f1.reception = rec
+        f1.save(update_fields=['reception'])
+        self.lettrer(f1)
+        prov = ReceptionNonFacturee.objects.get(reception=rec)
+        self.assertEqual((prov.montant_provision, prov.lettre), (Decimal('1000.00'), True))
+        retour = RetourFournisseur.objects.create(
+            company=self.company, reference='RF-AAPV76', fournisseur=self.fournisseur,
+            bon_commande=self.bc, statut=RetourFournisseur.Statut.BROUILLON)
+        retour.lignes.create(produit=produit, quantite=4)
+        with self.captureOnCommitCallbacks(execute=True):
+            apply_retour_fournisseur(retour, self.user)
+
+        self.assertEqual(delettrer_gr_ir_facture(f1), 1)
+        prov.refresh_from_db()
+        self.assertEqual((prov.montant_provision, prov.lettre), (Decimal('600.00'), False))
+        f1.delete()
+        f2 = self.facture('600')
+        self.lettrer(f2)
+        prov.refresh_from_db()
+        self.assertEqual((prov.lettre, prov.facture_id), (True, f2.id))
+        self.assertFalse(ReceptionNonFacturee.objects.filter(
+            company=self.company, lettre=False).exists())
+
     def test_facture_sans_provision_no_op(self):
         self.assertEqual(delettrer_gr_ir_facture(self.facture('50')), 0)
         self.assertEqual(delettrer_gr_ir_facture(None), 0)

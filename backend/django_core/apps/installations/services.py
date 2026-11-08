@@ -5340,9 +5340,16 @@ def delettrer_gr_ir_facture(facture):
     company_id = getattr(facture, 'company_id', None)
     if company_id is None:
         return 0
-    return ReceptionNonFacturee.objects.filter(
-        company_id=company_id, facture_id=facture.pk, lettre=True,
-    ).update(lettre=False, date_lettrage=None, facture=None)
+    qs = ReceptionNonFacturee.objects.filter(
+        company_id=company_id, facture_id=facture.pk, lettre=True)
+    rouvertes = list(qs.select_related('bon_commande'))
+    n = qs.update(lettre=False, date_lettrage=None, facture=None)
+    # AAPV76 — provision de réception rouverte au reçu NET de son BCF (retours déduits).
+    for bc in {p.bon_commande for p in rouvertes if p.bon_commande_id and p.reception_id}:
+        _baisser_provisions_ouvertes(ReceptionNonFacturee.objects.filter(
+            pk__in=[p.pk for p in rouvertes], bon_commande=bc, reception__isnull=False),
+            _excedent_gr_ir_bcf(bc)[0])
+    return n
 
 
 # ── YSTCK7 — peuplement auto du registre entrepôt (SerieEntrepot) à la
@@ -5556,6 +5563,37 @@ def replafonner_reservation_retour(*, retour, company=None):
     return _replafonner_reservation_bcf(retour.bon_commande, produit_ids, company)
 
 
+def _excedent_gr_ir_bcf(bc):
+    """AAPV9/AAPV76 — (Σ provisions − reçu NET `quantite_recue` × PU, PU par produit) du BCF."""
+    from .models_gr_ir import ReceptionNonFacturee
+    pu = {}
+    attendu = Decimal('0')
+    for lc in bc.lignes.all():
+        prix = lc.prix_achat_unitaire or Decimal('0')
+        pu.setdefault(lc.produit_id, prix)
+        attendu += Decimal(int(lc.quantite_recue or 0)) * prix
+    provisions = ReceptionNonFacturee.objects.filter(company_id=bc.company_id, bon_commande=bc)
+    total = sum((p.montant_provision or Decimal('0') for p in provisions), Decimal('0'))
+    return total - attendu, pu
+
+
+def _baisser_provisions_ouvertes(cibles, reste):
+    """AAPV9/AAPV76 — baisse de ``reste`` les ``cibles`` ouvertes, la plus récente d'abord (0 ⇒ supprimée)."""
+    reduit = Decimal('0')
+    for prov in cibles.select_for_update().filter(lettre=False).order_by('-date_creation', '-pk'):
+        if reste <= 0:
+            break
+        part = min(reste, prov.montant_provision or Decimal('0'))
+        prov.montant_provision = (prov.montant_provision or Decimal('0')) - part
+        if prov.montant_provision <= 0:
+            prov.delete()
+        else:
+            prov.save(update_fields=['montant_provision', 'date_modification'])
+        reste -= part
+        reduit += part
+    return reduit
+
+
 def reduire_gr_ir_retour(*, retour, company):
     """AAPV9 — un retour fournisseur validé baisse la provision GR/IR
     OUVERTE de son BCF de la valeur retournée (qté × PU de la ligne BCF), de
@@ -5567,29 +5605,11 @@ def reduire_gr_ir_retour(*, retour, company):
     bc = getattr(retour, 'bon_commande', None)
     if bc is None or company is None:
         return Decimal('0')
-    pu = {}
-    attendu = Decimal('0')
-    for lc in bc.lignes.all():
-        prix = lc.prix_achat_unitaire or Decimal('0')
-        pu.setdefault(lc.produit_id, prix)
-        attendu += Decimal(int(lc.quantite_recue or 0)) * prix
+    excedent, pu = _excedent_gr_ir_bcf(bc)
     valeur = sum((Decimal(int(lg.quantite or 0)) * pu.get(lg.produit_id, Decimal('0'))
                   for lg in retour.lignes.all()), Decimal('0'))
-    provisions = ReceptionNonFacturee.objects.filter(company=company, bon_commande=bc)
-    total = sum((p.montant_provision or Decimal('0') for p in provisions), Decimal('0'))
-    reste = min(valeur, total - attendu)
-    reduit = Decimal('0')
-    for prov in provisions.select_for_update().filter(lettre=False).order_by('-date_creation', '-pk'):
-        if reste <= 0:
-            break
-        part = min(reste, prov.montant_provision or Decimal('0'))
-        prov.montant_provision = (prov.montant_provision or Decimal('0')) - part
-        if prov.montant_provision <= 0:
-            prov.delete()
-        else:
-            prov.save(update_fields=['montant_provision', 'date_modification'])
-        reste -= part
-        reduit += part
+    reduit = _baisser_provisions_ouvertes(
+        ReceptionNonFacturee.objects.filter(company=company, bon_commande=bc), min(valeur, excedent))
     # AAPV75 — facture liée AVANT le retour : relance le lettrage de la provision réduite.
     from apps.stock.selectors import derniere_facture_bcf
     facture = derniere_facture_bcf(bc) if reduit else None
