@@ -1699,10 +1699,10 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             return Response(
                 HandoverPackSerializer(pack).data,
                 status=status.HTTP_201_CREATED)
-        # GET — aperçu à blanc (ou le pack persisté s'il existe).
-        pack = getattr(inst, 'handover_pack', None)
-        if pack is not None:
-            return Response(HandoverPackSerializer(pack).data)
+        from ..selectors import pack_remise_vivant  # ACSV38 — pack persisté, pièces VIVANTES
+        vivant = pack_remise_vivant(inst)
+        if vivant is not None:
+            return Response({**HandoverPackSerializer(vivant.pop('pack')).data, **vivant})
         resume = assemble_handover_pieces(inst)
         return Response({
             'installation': inst.id,

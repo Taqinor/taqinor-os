@@ -89,20 +89,25 @@ class DossierRemisePackTests(TestCase):
         self.assertIn('DOSSIER DE REMISE', html)
 
     def test_pack_complet_liste_ses_pieces_dans_le_pdf(self, mock_pdf, _dl):
-        """LE scénario de la fiche : `complet=True` doit se voir dans le PDF."""
+        """Le PDF liste les pièces VIVANTES du chantier (ACSV38 : celles du
+        gate, jamais celles figées au dernier POST), avec l'accès monitoring
+        du pack persisté."""
+        from apps.installations.services import assemble_handover_pieces
         chantier = _chantier(self.company, 'CH-AUD307-FULL')
         HandoverPack.objects.create(
             company=self.company, installation=chantier, pieces=PIECES,
             complet=True, monitoring_acces='https://monitoring.example.com/abc')
+        vivant = assemble_handover_pieces(chantier)
+        presentes = sum(1 for p in vivant['pieces'] if p['present'])
 
         html = self._html(mock_pdf, chantier)
 
-        self.assertIn('Pièces du dossier de remise (3/4)', html)
-        self.assertIn('dossier complet', html)
-        self.assertIn('Certificat de recette IEC 62446-1', html)
-        self.assertIn('REC-2026-009', html)
-        self.assertIn('Dossier réglementaire loi 82-21', html)
-        self.assertIn('Dossier as-built', html)
+        self.assertIn(f"Pièces du dossier de remise ({presentes}/{len(vivant['pieces'])})", html)
+        self.assertIn('dossier complet' if vivant['complet'] else 'dossier incomplet', html)
+        from html import escape
+        for piece in vivant['pieces']:  # libellé brut ou échappé (« & »)
+            self.assertTrue(piece['libelle'] in html or escape(piece['libelle']) in html, piece)
+        self.assertNotIn('REC-2026-009', html)  # pièce figée, plus jamais lue
         self.assertIn('https://monitoring.example.com/abc', html)
 
     def test_pack_incomplet_est_annonce_comme_tel(self, mock_pdf, _dl):
@@ -113,7 +118,8 @@ class DossierRemisePackTests(TestCase):
 
         html = self._html(mock_pdf, chantier)
 
-        self.assertIn('Pièces du dossier de remise (1/2)', html)
+        # ACSV38 — pièces vivantes : chantier sans as-built ⇒ incomplet.
+        self.assertIn('Pièces du dossier de remise (', html)
         self.assertIn('dossier incomplet', html)
 
     def test_pieces_malformees_ignorees_sans_casser_la_generation(
@@ -127,8 +133,10 @@ class DossierRemisePackTests(TestCase):
         resume = builders._handover_pack_summary(chantier)
         html = self._html(mock_pdf, chantier)
 
-        self.assertEqual(resume['total'], 1)
-        self.assertIn('Certificat de recette IEC 62446-1', html)
+        # ACSV38 — les pièces persistées (malformées) ne sont plus lues.
+        from apps.installations.services import assemble_handover_pieces
+        self.assertEqual(resume['total'], len(assemble_handover_pieces(chantier)['pieces']))
+        self.assertIn('Pièces du dossier de remise', html)
 
     def test_aucun_prix_achat_ne_fuit(self, mock_pdf, _dl):
         chantier = _chantier(self.company, 'CH-AUD307-LEAK')

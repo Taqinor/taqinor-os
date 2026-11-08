@@ -260,6 +260,18 @@ def installation_qs_for_remise():
             .prefetch_related('devis__lignes__produit'))
 
 
+def pack_remise_vivant(installation):
+    """ACSV38 — pack de remise PERSISTÉ relu vivant : pièces et verdict de
+    ``services.assemble_handover_pieces`` (ceux du gate), méta du pack gardée
+    (``pack``, ``monitoring_acces``) ; ``None`` sans pack persisté."""
+    pack = getattr(installation, 'handover_pack', None)
+    if pack is None:
+        return None
+    from .services import assemble_handover_pieces
+    return {**assemble_handover_pieces(installation), 'pack': pack,
+            'monitoring_acces': pack.monitoring_acces or '', 'persiste': True}
+
+
 def intervention_scoped(company, pk):
     """Intervention scopée société, par id, avec chantier + client préchargés."""
     from .models import Intervention
