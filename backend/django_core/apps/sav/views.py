@@ -338,9 +338,13 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
                     filter=Q(tickets__type=Ticket.Type.CORRECTIF,
                              tickets__date_creation__date__gte=depuis)),
             )
-        # Portée de visibilité (Feature F) — équipements créés par soi / l'équipe.
-        from authentication.scoping import scope_queryset
-        qs = scope_queryset(qs, self.request.user, ['created_by'])
+        # Portée de visibilité (Feature F) — équipements créés par soi / l'équipe,
+        # OU parc d'un chantier visible (ACSV58, D-ACSV-2).
+        from authentication.scoping import visible_user_ids
+        ids = visible_user_ids(self.request.user)
+        if ids is not None:
+            from apps.installations.selectors import chantiers_visibles
+            qs = qs.filter(Q(created_by__in=ids) | Q(installation__in=chantiers_visibles(self.request.user)))
         params = self.request.query_params
         # ENF11 — filtres d'identifiants validés (400, jamais 500).
         produit = entier_param(self.request, 'produit')
