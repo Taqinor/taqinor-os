@@ -342,7 +342,7 @@ def _h_cocher_safety(company, user, payload):
     coche = bool(payload.get('coche', True))
     item.coche = coche
     item.coche_par = user if coche else None
-    item.coche_le = _instant_saisie(payload) if coche else None
+    item.coche_le = _instant_saisie(payload, _plancher(iv, 'arrivee_site_le')) if coche else None  # ACSV23
     item.save(update_fields=['coche', 'coche_par', 'coche_le'])
     return {'cle': item.cle, 'coche': item.coche}
 
@@ -366,7 +366,7 @@ def _h_signer_client(company, user, payload):
         raise FieldOpError(exc.message)
     # ACHT32 — `signe_le` = instant de saisie (borné au présent).
     if payload.get('_client_ts') is not None:
-        iv.signe_le = _instant_saisie(payload)
+        iv.signe_le = _instant_saisie(payload, _plancher(iv, 'arrivee_site_le'))  # ACSV23
         iv.save(update_fields=['signe_le'])
     intervention_activity.log_note(
         iv, user, f"Signature client enregistrée ({nom or 'anonyme'}, synchro hors-ligne).")
@@ -433,8 +433,10 @@ def _h_cocher_checklist(company, user, payload):
         raise FieldOpError(refus)
     item.fait = fait
     item.fait_par = user if fait else None
-    item.fait_le = _instant_saisie(payload) if fait else None
+    item.fait_le = _instant_saisie(payload, _plancher(inst)) if fait else None  # ACSV23
     item.save(update_fields=['fait', 'fait_par', 'fait_le'])
+    from . import activity
+    activity.log_note(inst, user, f"Étape « {item.libelle} » {'cochée' if fait else 'décochée'}{_suffixe(payload)}")
     lignes = [eq for eq in (payload.get('equipements') or [])
               if isinstance(eq, dict) and eq.get('produit')]
     if lignes:
