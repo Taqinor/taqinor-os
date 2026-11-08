@@ -1,0 +1,1115 @@
+{
+  "sha": "ede87ccb57b3ef92a9f9ef8bd45450721ea82d0d",
+  "date": "2026-11-08",
+  "groupe": "ACSV",
+  "verdict": "PASS",
+  "couvre": [
+    "ACSV1",
+    "ACSV2",
+    "ACSV3",
+    "ACSV4",
+    "ACSV5",
+    "ACSV6",
+    "ACSV7",
+    "ACSV9",
+    "ACSV14",
+    "ACSV15",
+    "ACSV16",
+    "ACSV17",
+    "ACSV18",
+    "ACSV19",
+    "ACSV20",
+    "ACSV30",
+    "ACSV31",
+    "ACSV32",
+    "ACSV34",
+    "ACSV35",
+    "ACSV36",
+    "ACSV37",
+    "ACSV38",
+    "ACSV39",
+    "ACSV40",
+    "ACSV50",
+    "ACSV51",
+    "ACSV52",
+    "ACSV53",
+    "ACSV54",
+    "ACSV55",
+    "ACSV56",
+    "ACSV57",
+    "ACSV58",
+    "ACSV59",
+    "ACSV60",
+    "ACSV62",
+    "ACSV64",
+    "ACSV65",
+    "ACSV66",
+    "ACSV67",
+    "ACSV71",
+    "ACSV90",
+    "ACSV91",
+    "ACSV95",
+    "ACSV96",
+    "ACSV97",
+    "ACSV99"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "W29.ACSV1.preuve_en_direct",
+      "taches": [
+        "ACSV1"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV1.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ACSV-001 : repro False."
+    },
+    {
+      "id": "W29.ACSV2.preuve_en_direct",
+      "taches": [
+        "ACSV2"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV2.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ACSV-002 : repro False ; écran : « Réactiver » => 409 affiché « Le devis … n'est plus accepté »."
+    },
+    {
+      "id": "W29.ACSV3.preuve_en_direct",
+      "taches": [
+        "ACSV3"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV3.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ACSV-004 : repro False ; écran portail « Suivi » : appro/pose gris après recul à « Signé »."
+    },
+    {
+      "id": "W29.ACSV4.preuve_en_direct",
+      "taches": [
+        "ACSV4"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV4.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ACSV-005 : repro False ; écran : « Annuler l'intervention » (motif) => planning sans elle."
+    },
+    {
+      "id": "W29.ACSV5.preuve_en_direct",
+      "taches": [
+        "ACSV5"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV5.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Écran : Éditer → Prévue J+7 → PATCH date_prevue 200 → visible au calendrier."
+    },
+    {
+      "id": "W29.ACSV6.preuve_en_direct",
+      "taches": [
+        "ACSV6"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV6.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ACSV-003 : repro False."
+    },
+    {
+      "id": "W29.ACSV7.preuve_en_direct",
+      "taches": [
+        "ACSV7"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV7.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ACSV-007 : repro False."
+    },
+    {
+      "id": "W29.ACSV9.preuve_en_direct",
+      "taches": [
+        "ACSV9"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV9.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ACSV-009 : repro False ; écran Pilotage chantiers : 0 tranche (chantier annulé absent)."
+    },
+    {
+      "id": "W29.ACSV14.preuve_en_direct",
+      "taches": [
+        "ACSV14"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV14.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Écran : déplacer puis « Annuler » => rdv_reschedule_count 0, date d'origine."
+    },
+    {
+      "id": "W29.ACSV15.preuve_en_direct",
+      "taches": [
+        "ACSV15"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV15.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ACSV-020 : repro False."
+    },
+    {
+      "id": "W29.ACSV16.preuve_en_direct",
+      "taches": [
+        "ACSV16"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV16.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ACSV-021 : repro False ; écran Ma journée › Sécurité : signature impossible tant qu'un point manque, cases figées après."
+    },
+    {
+      "id": "W29.ACSV17.preuve_en_direct",
+      "taches": [
+        "ACSV17"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV17.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ACSV-022 : repro False."
+    },
+    {
+      "id": "W29.ACSV18.preuve_en_direct",
+      "taches": [
+        "ACSV18"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV18.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ACSV-023 : repro False."
+    },
+    {
+      "id": "W29.ACSV19.preuve_en_direct",
+      "taches": [
+        "ACSV19"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV19.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ACSV-024 : repro False ; écran : « Recette verrouillée (PV signé) », bouton absent."
+    },
+    {
+      "id": "W29.ACSV20.preuve_en_direct",
+      "taches": [
+        "ACSV20"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV20.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ACSV-025 : repro False."
+    },
+    {
+      "id": "W29.ACSV30.preuve_en_direct",
+      "taches": [
+        "ACSV30"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV30.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sondes C-ACSV-040 et -040-L2 : repro False ; écran : PV après la levée = octets de la signature (sha256 identique), 1 version GED."
+    },
+    {
+      "id": "W29.ACSV31.preuve_en_direct",
+      "taches": [
+        "ACSV31"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV31.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ACSV-041 : repro False."
+    },
+    {
+      "id": "W29.ACSV32.preuve_en_direct",
+      "taches": [
+        "ACSV32"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV32.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ACSV-042 : repro False."
+    },
+    {
+      "id": "W29.ACSV34.preuve_en_direct",
+      "taches": [
+        "ACSV34"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV34.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Écran : « Signer la réception » d'un chantier annulé => 409 « Chantier annulé », signe_le vide, historique sans signature."
+    },
+    {
+      "id": "W29.ACSV35.preuve_en_direct",
+      "taches": [
+        "ACSV35"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV35.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ACSV-045 : cas (a) et (b) non reproduits (409) ; écran : refus affiché (Responsable), dérogation Directeur avec motif => définitive + note."
+    },
+    {
+      "id": "W29.ACSV36.preuve_en_direct",
+      "taches": [
+        "ACSV36"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV36.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Écran : « Enregistrer la mise en service » à 62 % => dialogue « … réceptionne le chantier … 62 % », Annuler => 0 appel."
+    },
+    {
+      "id": "W29.ACSV37.preuve_en_direct",
+      "taches": [
+        "ACSV37"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV37.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Écran + texte PDF : « Remis au client le 08/08/2026 », SN-E37-1, fin de garantie 08/08/2036, identique à deux dates."
+    },
+    {
+      "id": "W29.ACSV38.preuve_en_direct",
+      "taches": [
+        "ACSV38"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV38.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Écran : après dépôt de l'as-built, carte Pack de remise 2/14, as_built present, dossier de remise « Oui »."
+    },
+    {
+      "id": "W29.ACSV39.preuve_en_direct",
+      "taches": [
+        "ACSV39"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV39.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Écran portail : chantier sans devis réceptionné, étape « Réception » atteinte."
+    },
+    {
+      "id": "W29.ACSV40.preuve_en_direct",
+      "taches": [
+        "ACSV40"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV40.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Écran : Ma journée › Réserves › « Résoudre » => historique du chantier « Réserve levée »."
+    },
+    {
+      "id": "W29.ACSV50.preuve_en_direct",
+      "taches": [
+        "ACSV50"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV50.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ACSV-060 : repro False."
+    },
+    {
+      "id": "W29.ACSV51.preuve_en_direct",
+      "taches": [
+        "ACSV51"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV51.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ACSV-061 : repro False."
+    },
+    {
+      "id": "W29.ACSV52.preuve_en_direct",
+      "taches": [
+        "ACSV52"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV52.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "C-ACSV-062 (C) et -062-L2 restent REPRO structurels : le crochet rejoue la 2e requête sur la MÊME connexion, qu'un verrou select_for_update ne peut pas sérialiser ; (Q) quarantaine 409 = corrigé. LIVE-ACSV52 (deux connexions réelles) : la 2e pose reste bloquée sur le verrou du produit puis stock 5→4→3 ; remise pendant une pose : stock final 4 => PASS."
+    },
+    {
+      "id": "W29.ACSV53.preuve_en_direct",
+      "taches": [
+        "ACSV53"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV53.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ACSV-063 : repro False."
+    },
+    {
+      "id": "W29.ACSV54.preuve_en_direct",
+      "taches": [
+        "ACSV54"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV54.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ACSV-064 : repro False."
+    },
+    {
+      "id": "W29.ACSV55.preuve_en_direct",
+      "taches": [
+        "ACSV55"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV55.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ACSV-065 : repro False."
+    },
+    {
+      "id": "W29.ACSV56.preuve_en_direct",
+      "taches": [
+        "ACSV56"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV56.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ACSV-066 : repro False."
+    },
+    {
+      "id": "W29.ACSV57.preuve_en_direct",
+      "taches": [
+        "ACSV57"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV57.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ACSV-067 : repro False."
+    },
+    {
+      "id": "W29.ACSV58.preuve_en_direct",
+      "taches": [
+        "ACSV58"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV58.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ACSV-068 : repro False."
+    },
+    {
+      "id": "W29.ACSV59.preuve_en_direct",
+      "taches": [
+        "ACSV59"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV59.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ACSV-069 : repro False."
+    },
+    {
+      "id": "W29.ACSV60.preuve_en_direct",
+      "taches": [
+        "ACSV60"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV60.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ACSV-070 : repro False ; écran : « Clôturer » => 409 affiché, « Clôturer sans facture » (motif) => clos + note."
+    },
+    {
+      "id": "W29.ACSV62.preuve_en_direct",
+      "taches": [
+        "ACSV62"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV62.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ACSV-072 : repro False ; écran Technicien : ni « Facturer » ni « Créer un devis »."
+    },
+    {
+      "id": "W29.ACSV64.preuve_en_direct",
+      "taches": [
+        "ACSV64"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV64.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ACSV-080 : repro False."
+    },
+    {
+      "id": "W29.ACSV65.preuve_en_direct",
+      "taches": [
+        "ACSV65"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV65.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ACSV-081 : repro False."
+    },
+    {
+      "id": "W29.ACSV66.preuve_en_direct",
+      "taches": [
+        "ACSV66"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV66.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ACSV-082 : repro False. Son témoin (« levée manuelle après clôture » = 200) est rendu sans objet par la correction : la clôture du ticket a déjà levé la réserve (statut resolue), d'où lever 409 ; (A) définitive 200, (B) lever la réserve résout le ticket."
+    },
+    {
+      "id": "W29.ACSV67.preuve_en_direct",
+      "taches": [
+        "ACSV67"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV67.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ACSV-083 : repro False."
+    },
+    {
+      "id": "W29.ACSV71.preuve_en_direct",
+      "taches": [
+        "ACSV71"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV71.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Écran public /e/<token> du QR de SN-OLD remplacé : 410 et message, 0 ticket créé."
+    },
+    {
+      "id": "W29.ACSV90.preuve_en_direct",
+      "taches": [
+        "ACSV90"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV90.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ACSV-005 : sortie de « Signé » (PATCH lead) 200 malgré les interventions standard (annulées) => repro False."
+    },
+    {
+      "id": "W29.ACSV91.preuve_en_direct",
+      "taches": [
+        "ACSV91"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV91.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Écran Ma journée › Fiche : case cochée => renseigner-fiche 200 ; « Terminée » acceptée (après les photos obligatoires, autre garde)."
+    },
+    {
+      "id": "W29.ACSV95.preuve_en_direct",
+      "taches": [
+        "ACSV95"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV95.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Écran : « Prononcer la réception définitive » puis « PV de réception définitive » : PDF titré « … DÉFINITIVE » ; bouton absent avant."
+    },
+    {
+      "id": "W29.ACSV96.preuve_en_direct",
+      "taches": [
+        "ACSV96"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV96.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ACSV-043 : repro False ; portail de A « Mes documents » vide, B voit PV + BL."
+    },
+    {
+      "id": "W29.ACSV97.preuve_en_direct",
+      "taches": [
+        "ACSV97"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV97.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "C-ACSV-045 (c) n'est plus concluant (la définitive (b) est refusée, la réserve s'ajoute donc AVANT la définitive) ; C-LIVE-ACSV97 : définitive prononcée puis réserve bloquante 409 « Réception définitive prononcée le … : ouvrez un ticket SAV. », 0 créée ; non bloquante 201 => PASS."
+    },
+    {
+      "id": "W29.ACSV99.preuve_en_direct",
+      "taches": [
+        "ACSV99"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/ACSV99.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Écran : « Fiche de remise / garantie » d'un chantier annulé => 409 « Chantier annulé » affiché."
+    }
+  ]
+}

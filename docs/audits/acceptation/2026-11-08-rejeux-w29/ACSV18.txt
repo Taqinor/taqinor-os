@@ -1,0 +1,15 @@
+# Preuve en direct ACSV18 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Verdict : PASS — Sonde C-ACSV-023 : repro False.
+
+== C-ACSV-023 (sha f57951e87)
+attendu : repro si DELETE = 204 sans motif, item.fait reste vrai, 0 photo liée, _gate_check_photos None et 0 InstallationActivity ajoutée par la suppression
+observé : {'T_cocher_sans_photo': 409, 'meta': 201, 'cocher_avec_photo': 200, 'fait_avant': True, 'gate_avant': None, 'delete': 204, 'fait_apres': False, 'photos_liees_apres': 0, 'gate_apres': 'Photos requises manquantes : Câblage.', 'activites_ajoutees': 1}
+{"T_cocher_sans_photo": 409, "meta": 201, "cocher_avec_photo": 200, "fait_avant": true, "gate_avant": null, "delete": 204, "fait_apres": false, "photos_liees_apres": 0, "gate_apres": "Photos requises manquantes : Câblage.", "activites_ajoutees": 1, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0

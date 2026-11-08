@@ -1,0 +1,103 @@
+# Preuve en direct AMON10 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Verdict : PASS — Résiliation jouée à l'écran (AMON7). C-AMON-023 (beat) : repro False. C-AMON-010 s'arrête sur le code corrigé (système hors parc ⇒ abonnement 409 AMON11 ⇒ KeyError 'id') ; C-LIVE-AMON10 (système réceptionné) : J+120 sans drapeau ni ticket, data_status supervision_resiliee, sous_garantie false => PASS.
+
+== C-AMON-010 (sha 3007f3f04)
+attendu : repro si témoin (avant résiliation) non sous-performant, puis à J+120 après résiliation : underperforming, drapeau ouvert et ticket créé ; SLA sous garantie
+observé : ERREUR : Traceback (most recent call last):
+  File "<string>", line 50, in _rejouer
+  File "sonde", line 51, in sonde
+KeyError: 'id'
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0
+
+== C-AMON-023 (sha 39313d48e)
+attendu : repro si enabled=False après résiliation ET drapeau ouvert + ticket préventif à une date J+n par le beat
+observé : {"resilier_http": 200, "abonnement_statut": "resilie", "config_enabled": false, "J0": {"jour": "2026-11-08", "drapeau_ouvert": false, "ratio": null, "ticket": null}, "suivi": [{"jour": "2026-12-08", "drapeau_ouvert": false, "ratio": null, "ticket": null}, {"jour": "2027-01-07", "drapeau_ouvert": false, "ratio": null, "ticket": null}, {"jour": "2027-02-06", "drapeau_ouvert": false, "ratio": null, "ticket": null}, {"jour": "2027-03-08", "drapeau_ouvert": false, "ratio": null, "ticket": null}], "premier_drapeau": null, "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 4, après 4) ; mails 0 ; tâches Celery bloquées 0
+
+== C-LIVE-AMON10 (sha 42d1886b8)
+attendu : résilier 200 ; J+120 : underperforming False, 0 drapeau ouvert, 0 ticket, data_status supervision_resiliee, sous_garantie False
+observé : {"temoin": {"ratio_pct": "85.20", "underperforming": false}, "creation_http": 201, "resilier_http": 200, "config_enabled_apres": false, "J+120": {"ratio_pct": "None", "underperforming": false, "data_status": "supervision_resiliee"}, "drapeau_ouvert": false, "tickets_systeme": 0, "sla_J+120": {"sous_garantie": false, "penalite": "None"}, "ecart_api": {"http": 200, "sous_garantie": false}, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 4, après 4) ; mails 0 ; tâches Celery bloquées 0
+
+# ---- source : C-LIVE-AMON10.py ----
+# flake8: noqa  (sonde LIVE du rejeu d'acceptation w29 — C-AMON-010 s'arrête en erreur sur le code corrigé :
+# son système n'est pas « du parc » (statut par défaut), l'abonnement est donc refusé 409 par AMON11 et
+# `r.data["id"]` lève KeyError. Ici : même scénario sur un système RÉCEPTIONNÉ (parc_actif, non annulé).)
+"""AMON10 — système sain 200 j, abonnement créé puis résilié (vraies routes) ; à J+120 sans nouveau relevé :
+attendu aucun drapeau, aucun ticket, data_status `supervision_resiliee`, écart SLA `sous_garantie` false.
+transaction.on_commit exécuté immédiatement (les abonnés « après commit » ne partiraient jamais dans la
+transaction annulée). repro=True signifie ICI que le comportement ATTENDU par la tâche est observé."""
+SONDE = {"constat": "C-LIVE-AMON10", "sha": "42d1886b8",
+         "attendu": "résilier 200 ; J+120 : underperforming False, 0 drapeau ouvert, 0 ticket, data_status supervision_resiliee, sous_garantie False",
+         "modeles": ["monitoring.UnderperformanceFlag", "sav.Ticket", "monitoring.AbonnementMonitoring"]}
+
+
+def sonde(ctx):
+    from datetime import timedelta
+    from decimal import Decimal
+    from django.db import transaction
+    transaction.on_commit = lambda func, using=None, robust=False: func()
+    from django.contrib.auth import get_user_model
+    from django.utils import timezone
+    from rest_framework.test import APIClient
+    from authentication.models import Company
+    from apps.crm.models import Client
+    from apps.installations.models import Installation
+    from apps.monitoring.models import (MonitoringConfig, MonitoringSettings, ProductionReading, SlaDisponibilite,
+                                        UnderperformanceFlag)
+    from apps.monitoring.services import evaluate_underperformance
+    from apps.monitoring.selectors import disponibilite_vs_garantie
+    from apps.sav.models import Ticket
+    H = {'HTTP_HOST': 'localhost'}
+    co = Company.objects.create(nom='Live AMON 10', slug='live-amon-10')
+    u = get_user_model().objects.create_user(username='live_amon_10', password='x', role_legacy='responsable', company=co)
+    api = APIClient()
+    api.force_authenticate(u)
+    s = MonitoringSettings.get(co)
+    s.auto_create_ticket = True
+    s.underperf_threshold_pct = Decimal('20')
+    s.save()
+    today = timezone.localdate()
+    cl = Client.objects.create(company=co, nom='Client', prenom='LAMON10', email='lamon10@example.invalid')
+    inst = Installation.objects.create(company=co, reference='CH-LAMON-010', client=cl, statut='receptionne',
+                                       date_reception=today - timedelta(days=210),
+                                       puissance_installee_kwc=Decimal('4'))
+    cfg = MonitoringConfig.objects.create(company=co, installation=inst, enabled=True, expected_annual_kwh=Decimal('6000'))
+    sla = SlaDisponibilite.objects.create(company=co, installation=inst, disponibilite_garantie_pct=Decimal('98'))
+    jour = (Decimal('6000') / Decimal('365')).quantize(Decimal('0.01'))
+    for i in range(200, 0, -1):
+        ProductionReading.objects.create(company=co, installation=inst, date=today - timedelta(days=i),
+                                         period_days=1, energy_kwh=jour)
+    temoin = evaluate_underperformance(inst, user=u, today=today)
+    r = api.post('/api/django/monitoring/abonnements/', {'installation_id': inst.id, 'periodicite': 'mensuel',
+                                                         'montant': '150'}, format='json', **H)
+    rr = api.post(f'/api/django/monitoring/abonnements/{r.data.get("id")}/resilier/', {'motif': 'client parti'},
+                  format='json', **H)
+    cfg.refresh_from_db()
+    plus120 = today + timedelta(days=120)
+    apres = evaluate_underperformance(inst, today=plus120)
+    flag = UnderperformanceFlag.objects.filter(installation=inst, is_open=True).first()
+    dv = disponibilite_vs_garantie(inst, today=plus120)
+    ecart_api = api.get(f'/api/django/monitoring/sla-disponibilite/{sla.id}/ecart/', **H)
+    obs = {'temoin': {'ratio_pct': str(temoin['ratio_pct']), 'underperforming': temoin['underperforming']},
+           'creation_http': r.status_code, 'resilier_http': rr.status_code, 'config_enabled_apres': cfg.enabled,
+           'J+120': {'ratio_pct': str(apres.get('ratio_pct')), 'underperforming': apres.get('underperforming'),
+                     'data_status': apres.get('data_status')},
+           'drapeau_ouvert': bool(flag), 'tickets_systeme': Ticket.objects.filter(installation=inst).count(),
+           'sla_J+120': {'sous_garantie': dv.get('sous_garantie'), 'penalite': str(dv.get('penalite_montant', dv.get('penalite')))},
+           'ecart_api': {'http': ecart_api.status_code,
+                         'sous_garantie': (ecart_api.data or {}).get('sous_garantie') if ecart_api.status_code == 200 else None}}
+    obs['repro'] = bool(not temoin['underperforming'] and r.status_code == 201 and rr.status_code == 200
+                        and not apres.get('underperforming') and flag is None
+                        and obs['tickets_systeme'] == 0 and apres.get('data_status') == 'supervision_resiliee'
+                        and dv.get('sous_garantie') is False)
+    return obs

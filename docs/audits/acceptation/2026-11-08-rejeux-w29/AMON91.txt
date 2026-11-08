@@ -1,0 +1,19 @@
+# Preuve en direct AMON91 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Écran : front du worktree servi par vite (127.0.0.1:3000) -> conteneur privé accept-w29-web (runserver, base
+# erp_accept_w29, stockage objet PRIVÉ accept-w29-minio, SMTP 127.0.0.1:1 puis mail en mémoire pour AMON47), piloté par
+# Playwright MCP. Données : seed_demo « TAQINOR Démo » + fixtures FIX-W29* ou états des sondes rejouées SANS rollback
+# (comptes de test, mot de passe de test).
+# Verdict : PASS — Écran Parc installé › rapport énergie : 0,630 kg CO₂/kWh imprimé ; sans facteur : mention.
+
+## AMON91 — PASS
+États persistés C-AMON-041 (A : facteur 630 gCO₂/kWh ONEE ; B : aucun facteur), FIX-W29o : systèmes passés « Réceptionné » pour
+figurer au parc. Compte sonde-amon-041-a-resp › Parc installé › « Rapport de production (estimé) » de CHT-sonde-amon-041-a →
+« Télécharger le PDF » => GET installations/chantiers/194/rapport-energie/?nb_mois=12 200 application/pdf. Texte (même route,
+PyMuPDF) : A « CO₂ ÉVITÉ (ESTIMÉ) … tonnes (4 032 kg) — Facteur CO₂ réseau 0,630 kg CO₂/kWh » ; A ?co2=0.5 : « 0,500 kg CO₂/kWh »,
+3 200 kg (surcharge gardée) ; B : PDF 200 sans carte CO₂, « Facteur d'émission du réseau non réglé ».

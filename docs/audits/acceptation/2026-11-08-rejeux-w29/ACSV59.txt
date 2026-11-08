@@ -1,0 +1,15 @@
+# Preuve en direct ACSV59 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Verdict : PASS — Sonde C-ACSV-069 : repro False.
+
+== C-ACSV-069 (sha f57951e87)
+attendu : repro si 2 onduleurs au parc (placeholder sans série + SN-9) et SN-9 daté de la pose réelle ; témoin : 1 équipement « rempli », daté de la réception
+observé : {'transition_A': 'ok', 'transition_B': 'ok', 'pose_reelle': '2026-09-04', 'reception': '2026-09-09', 'A_apres_sweep': [(None, datetime.date(2026, 9, 9), 'en_service')], 'post_http': 201, 'A_apres_post': [('SN-9', datetime.date(2026, 9, 9), 'en_service')], 'recalage_reception': {'nouvelle': '2026-09-07', 'recales': 1, 'parc': [('SN-9', datetime.date(2026, 9, 7), 'en_service')]}, 'temoin_B': {'statut': 'rempli', 'parc': [('SN-9B', datetime.date(2026, 9, 9), 'en_service')]}}
+{"transition_A": "ok", "transition_B": "ok", "pose_reelle": "2026-09-04", "reception": "2026-09-09", "A_apres_sweep": [[null, "2026-09-09", "en_service"]], "post_http": 201, "A_apres_post": [["SN-9", "2026-09-09", "en_service"]], "recalage_reception": {"nouvelle": "2026-09-07", "recales": 1, "parc": [["SN-9", "2026-09-07", "en_service"]]}, "temoin_B": {"statut": "rempli", "parc": [["SN-9B", "2026-09-09", "en_service"]]}, "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0

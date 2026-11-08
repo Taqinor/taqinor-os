@@ -1,0 +1,23 @@
+# Preuve en direct ACSV91 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Écran : front du worktree servi par vite (127.0.0.1:3000) -> conteneur privé accept-w29-web (runserver, base
+# erp_accept_w29, stockage objet PRIVÉ accept-w29-minio, SMTP 127.0.0.1:1 puis mail en mémoire pour AMON47), piloté par
+# Playwright MCP. Données : seed_demo « TAQINOR Démo » + fixtures FIX-W29* ou états des sondes rejouées SANS rollback
+# (comptes de test, mot de passe de test).
+# Verdict : PASS — Écran Ma journée › Fiche : case cochée => renseigner-fiche 200 ; « Terminée » acceptée (après les photos obligatoires, autre garde).
+
+## ACSV91 — PASS
+État de la sonde C-ACSV-020 rejouée SANS rollback (gabarit « Pose » à un champ obligatoire « Disjoncteur testé » (case), intervention
+CHT-A020 « Sur site », valeur stockée « false » ; sonde : PATCH terminee 409 « Champs obligatoires … : Disjoncteur testé. ») ;
+FIX-W29k : intervention datée d'aujourd'hui. Compte sonde_acsv_020. Ma journée › « Client A020 — Sur site — Pose » › onglet
+« Fiche » : panneau « Disjoncteur testé * » (case) → coché => POST installations/interventions/32/renseigner-fiche/
+{"valeur_id":4,"valeur":"true"} 200 (relevé rechargé, valeur « true »). Statut « Terminée » => PATCH …/32/ 409 dont le motif ne cite
+PLUS la fiche mais les 6 photos obligatoires (autre garde, hors tâche) ; les 6 photos obligatoires déposées à l'écran (onglet Photos,
+stockage objet PRIVÉ accept-w29-minio) ; statut « Terminée » => PATCH …/32/ {"statut":"terminee"} 200, « Statut mis à jour. »,
+statut_display « Terminée ». Note : le gabarit de la sonde n'a pas de champ « Tension DC » (seul le champ case a été saisi).
+Console : seule erreur = la 409 (photos) attendue.

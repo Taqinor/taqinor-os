@@ -1,0 +1,21 @@
+# Preuve en direct ACSV40 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Écran : front du worktree servi par vite (127.0.0.1:3000) -> conteneur privé accept-w29-web (runserver, base
+# erp_accept_w29, stockage objet PRIVÉ accept-w29-minio, SMTP 127.0.0.1:1 puis mail en mémoire pour AMON47), piloté par
+# Playwright MCP. Données : seed_demo « TAQINOR Démo » + fixtures FIX-W29* ou états des sondes rejouées SANS rollback
+# (comptes de test, mot de passe de test).
+# Verdict : PASS — Écran : Ma journée › Réserves › « Résoudre » => historique du chantier « Réserve levée ».
+
+## ACSV40 — PASS (écran)
+Fixture FIX-W29l : réserve d'intervention « Serre-câble manquant E40 (acceptation ACSV40) » créée par la vraie route
+POST interventions/28/ajouter-reserve/ 201 sur la Pose du jour (seed_demo, chantier CHT-202611-0001) ; FIX-W29m : intervention
+assignée à demo_admin (l'écran de demo_tech exige d'abord d'accepter les conditions de géolocalisation — consentement que le rejeu
+n'accepte pas au nom d'une personne). Compte demo_admin. Ma journée › « Pose » › onglet « Réserves » : réserve « Ouverte » →
+« Résoudre » => POST installations/interventions/28/resoudre-reserve/ {"reserve":17,"resolution":""} 200 (statut « resolue ») ;
+ligne relue « Résolue ». Chantiers › CHT-202611-0001 › Documents & historique : « Note : Réserve levée : Serre-câble manquant E40
+(acceptation ACSV40) — par demo_admin ». Console 0 erreur.

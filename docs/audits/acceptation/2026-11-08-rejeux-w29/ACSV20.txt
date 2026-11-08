@@ -1,0 +1,15 @@
+# Preuve en direct ACSV20 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Verdict : PASS — Sonde C-ACSV-025 : repro False.
+
+== C-ACSV-025 (sha f57951e87)
+attendu : repro si R : statut stocké mise_en_service, date_reception posée, absent de chantiers_receptionnes et de taux_attache.total ; T (PATCH receptionne) compté
+observé : {'R_http': 200, 'R_detail': None, 'R_statut': 'receptionne', 'R_canon': 'receptionne', 'R_date_reception': '2026-11-08', 'T_http': 200, 'T_detail': None, 'T_statut': 'receptionne', 'receptionnes_ids': {'R': True, 'T': True}, 'taux_attache_total': 2, 'integrite_voit': {'R': True, 'T': True}, 'equipements': {'R': 0, 'T': 0}}
+{"R_http": 200, "R_detail": null, "R_statut": "receptionne", "R_canon": "receptionne", "R_date_reception": "2026-11-08", "T_http": 200, "T_detail": null, "T_statut": "receptionne", "receptionnes_ids": {"R": true, "T": true}, "taux_attache_total": 2, "integrite_voit": {"R": true, "T": true}, "equipements": {"R": 0, "T": 0}, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0

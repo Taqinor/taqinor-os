@@ -1,0 +1,32 @@
+# Preuve en direct AMON1 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Écran : front du worktree servi par vite (127.0.0.1:3000) -> conteneur privé accept-w29-web (runserver, base
+# erp_accept_w29, stockage objet PRIVÉ accept-w29-minio, SMTP 127.0.0.1:1 puis mail en mémoire pour AMON47), piloté par
+# Playwright MCP. Données : seed_demo « TAQINOR Démo » + fixtures FIX-W29* ou états des sondes rejouées SANS rollback
+# (comptes de test, mot de passe de test).
+# Verdict : PASS — Sonde C-AMON-001-L2 : repro False (C-AMON-001 v1 s'arrête : recent_production_kwh retirée par AMON22) ; écran Production : recouvrement 409 affiché.
+
+== C-AMON-001 (sha 39313d48e)
+attendu : repro si les relevés chevauchants de l'écran sont acceptés (201) et que l'énergie est sommée deux fois (année 2026 / CO2 > énergie réelle, disponibilité = union) ; témoin : double clic exact 409
+observé : {"role_http": {"A_01_10": 201, "A_15_10": 409, "A_double_clic": 409, "B_journalier_05_09": 201, "B_mensuel_meme_date": 409}, "releves": [["2026-10-01", 30, "450.00"], ["2026-09-05", 1, "15.00"]], "jours_couverts_union": 31, "jours_couverts_somme_lignes": 31, "annee_2026_kwh": "465.00", "co2_octobre_kwh": "450.00", "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0
+
+== C-AMON-001 (sha 3007f3f04)
+attendu : repro si le mensuel chevauchant est accepté (201) et que octobre compte 930 kWh au lieu de 465 (co2, année calendaire, fenêtre récente, tCO2 doublées) ; témoin : doublon exact 409
+observé : ERREUR : Traceback (most recent call last):
+  File "<string>", line 50, in _rejouer
+  File "sonde", line 22, in sonde
+ImportError: cannot import name 'recent_production_kwh' from 'apps.monitoring.services' (/app/apps/monitoring/services.py)
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0
+
+## AMON1 — PASS (écran)
+Même système : relevé journalier 15 kWh débutant le 2026-10-15 (dans le mensuel du 09/10, 30 j) => POST monitoring/readings/ 409 ;
+message affiché à l'écran Production « Ce relevé recouvre celui du 09/10/2026 (30 j). ». Relevé journalier du 2026-09-15 (hors
+période) => 201. Sonde C-AMON-001-L2 : repro False.

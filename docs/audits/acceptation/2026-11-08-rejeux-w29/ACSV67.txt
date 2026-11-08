@@ -1,0 +1,15 @@
+# Preuve en direct ACSV67 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Verdict : PASS — Sonde C-ACSV-083 : repro False.
+
+== C-ACSV-083 (sha 7f4ba787d)
+attendu : repro si C : cloturer 200 et prêt en_cours ; F : principal 0 prêt ; témoin : 409 intervention ouverte
+observé : {'C': {'preter': (201, 1), 'stock_apres_pret': 4, 'demarrer': 200, 'resoudre': 200, 'cloturer': 409, 'ticket_statut': 'resolu', 'pret_statut': 'en_cours', 'contournement_retour_sur_ticket_clos': 200}, 'A': {'preter': (201, 2), 'annuler': 409, 'pret_statut': 'en_cours'}, 'F': {'preter_doublon': (201, 3), 'fusion': 200, 'doublon_annule': True, 'prets_principal': 1, 'prets_doublon': 0, 'contournement_retour_sur_doublon': 404}, 'T': {'cloturer': 409}, 'stock_final': 3}
+{"C": {"preter": [201, 1], "stock_apres_pret": 4, "demarrer": 200, "resoudre": 200, "cloturer": 409, "ticket_statut": "resolu", "pret_statut": "en_cours", "contournement_retour_sur_ticket_clos": 200}, "A": {"preter": [201, 2], "annuler": 409, "pret_statut": "en_cours"}, "F": {"preter_doublon": [201, 3], "fusion": 200, "doublon_annule": true, "prets_principal": 1, "prets_doublon": 0, "contournement_retour_sur_doublon": 404}, "T": {"cloturer": 409}, "stock_final": 3, "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 3, après 3) ; mails 0 ; tâches Celery bloquées 0

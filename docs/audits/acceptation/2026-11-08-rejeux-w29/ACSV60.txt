@@ -1,0 +1,34 @@
+# Preuve en direct ACSV60 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Écran : front du worktree servi par vite (127.0.0.1:3000) -> conteneur privé accept-w29-web (runserver, base
+# erp_accept_w29, stockage objet PRIVÉ accept-w29-minio, SMTP 127.0.0.1:1 puis mail en mémoire pour AMON47), piloté par
+# Playwright MCP. Données : seed_demo « TAQINOR Démo » + fixtures FIX-W29* ou états des sondes rejouées SANS rollback
+# (comptes de test, mot de passe de test).
+# Verdict : PASS — Sonde C-ACSV-070 : repro False ; écran : « Clôturer » => 409 affiché, « Clôturer sans facture » (motif) => clos + note.
+
+== C-ACSV-070 (sha f57951e87)
+attendu : repro si les deux tickets finissent « cloture » sans facture (facture_id_ext vide) alors que la pièce est sortie du stock, et que cloturer répond 200 sans avertissement
+observé : {'couverture_calculee': Ticket.Couverture.FACTURABLE, 'M': {'pieces_http': 201, 'resoudre_http': 200, 'cloturer_http': 409, 'statut': 'resolu', 'facture_id_ext': None, 'avertissement': []}, 'A': {'pieces_http': 201, 'resoudre_http': 200, 'statut_avant_scan': 'resolu', 'scan_retour': 0, 'statut': 'resolu', 'facture_id_ext': None}, 'stock_final': 3}
+{"couverture_calculee": "facturable", "M": {"pieces_http": 201, "resoudre_http": 200, "cloturer_http": 409, "statut": "resolu", "facture_id_ext": null, "avertissement": []}, "A": {"pieces_http": 201, "resoudre_http": 200, "statut_avant_scan": "resolu", "scan_retour": 0, "statut": "resolu", "facture_id_ext": null}, "stock_final": 3, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 3, après 3) ; mails 0 ; tâches Celery bloquées 0
+
+## ACSV60 — PASS (écran)
+État de la sonde C-ACSV-070 rejouée SANS rollback : ticket SAV-ACSV-070-M facturable, « Résolu », 1 pièce posée (stock 5 → 4),
+2 h de main-d'œuvre, sans facture ; témoin A resté « Résolu » après le balayage d'auto-clôture (sonde : scan_retour 0). Compte
+sonde-acsv-070 (admin). FIX-W29i : référentiel cause/remède (« Défaut composant », « Remplacement pièce ») de cette société.
+SAV (/sav), filtre « Tous (incl. clôturés/annulés) » › SAV-ACSV-070-M :
+(1) Statut « Clôturé » sans cause/remède → « Assistant de clôture » → « Clôture rapide » => POST sav/tickets/54/cloturer/ 409
+{code: ticket_non_facture} ; message affiché « Impossible de clôturer : ticket facturable sans facture (pièces ou main-d'œuvre à
+facturer). ».
+(2) Cause « Défaut composant », remède « Remplacement pièce », statut « Clôturé » → « Mettre à jour » => même 409, message affiché
+ET bloc « Motif de la clôture sans facture » ; motif « Geste commercial (acceptation ACSV60) » → « Clôturer sans facture » =>
+POST …/54/cloturer/ {"sans_facture":true,"motif":…} 200 ; statut relu « Clôturé » ; historique : « Note : Clôturé sans facture :
+Geste commercial (acceptation ACSV60) — par sonde-acsv-070 », « Statut : Résolu → Clôturé ». Console : seules erreurs = les 409.
+Observation hors clause : par l'assistant (cas 1), le bloc « Clôturer sans facture » n'est pas proposé — il n'apparaît que par
+« Mettre à jour » avec cause + remède renseignés ; une société sans référentiel cause/remède ne peut donc pas forcer depuis l'écran.

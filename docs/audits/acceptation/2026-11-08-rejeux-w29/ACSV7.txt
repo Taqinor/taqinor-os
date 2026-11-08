@@ -1,0 +1,14 @@
+# Preuve en direct ACSV7 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Verdict : PASS — Sonde C-ACSV-007 : repro False.
+
+== C-ACSV-007 (sha f57951e87)
+attendu : repro si T = 409 puis R = 200 (devis « envoyé », BCF « envoyé » orphelin) après annulation manuelle du chantier
+observé : {"repro": false, "observe": {"accepter": 200, "envoyer_bcf": 200, "chantier_avant": "signe", "T_sortie": [409, "Impossible de sortir ce lead de « Signé » : le bon de commande fournisseur BCF-202611-0001 est envoyé : annulez-le d'abord."], "annuler_chantier": [200, true, "client parti"], "R_sortie": [409, "Impossible de sortir ce lead de « Signé » : le bon de commande fournisseur BCF-202611-0001 est envoyé : annulez-le d'abord."], "R_final": {"devis": "accepte", "bcf": "envoye", "bcf_chantier": true, "lead": "SIGNED"}, "reaccepter": 409, "apres_reacceptation": {"annule": true, "motif": "client parti", "chantiers_du_devis": 1}}}
+verdict : ÉCART
+base inchangée : oui (avant 4, après 4) ; mails 0 ; tâches Celery bloquées 0

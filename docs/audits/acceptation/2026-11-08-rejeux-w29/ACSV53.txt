@@ -1,0 +1,15 @@
+# Preuve en direct ACSV53 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Verdict : PASS — Sonde C-ACSV-063 : repro False.
+
+== C-ACSV-063 (sha f57951e87)
+attendu : repro si : stock du fusible 10 -> 9 (sorti par F11), facture du ticket sans ligne fusible, et generer_facture_intervention refusée (intervention rattachée au ticket)
+observé : {'couverture_calculee': Ticket.Couverture.FACTURABLE, 'planifier_http': 201, 'intervention': {'type': 'depannage', 'ticket_id': 15}, 'ligne_http': 201, 'lignes_semees_hors_fusible': 0, 'valider_http': 200, 'stock_fusible': 9, 'facturer_http': 201, 'facturer': "{'facture_id': 106, 'facture_reference': 'BROUILLON-106', 'couverture': Ticket.Couverture.FACTURABLE, 'sous_garantie': False}", 'lignes_facture_ticket': [('Fusible', '1.00', '80.00')], 'facture_intervention': 'refus ValueError: Intervention rattachée à un ticket SAV : facturez depuis le ticket.'}
+{"couverture_calculee": "facturable", "planifier_http": 201, "intervention": {"type": "depannage", "ticket_id": 15}, "ligne_http": 201, "lignes_semees_hors_fusible": 0, "valider_http": 200, "stock_fusible": 9, "facturer_http": 201, "facturer": "{'facture_id': 106, 'facture_reference': 'BROUILLON-106', 'couverture': Ticket.Couverture.FACTURABLE, 'sous_garantie': False}", "lignes_facture_ticket": [["Fusible", "1.00", "80.00"]], "facture_intervention": "refus ValueError: Intervention rattachée à un ticket SAV : facturez depuis le ticket.", "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 3, après 3) ; mails 0 ; tâches Celery bloquées 0

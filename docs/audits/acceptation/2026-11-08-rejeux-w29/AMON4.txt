@@ -1,0 +1,19 @@
+# Preuve en direct AMON4 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Verdict : PASS — Sonde C-AMON-004 : repro False ; étapes PA7 equipement_remplace (checkpoint PASS) et monitoring_suit_remplacement (auto PASS, checkpoint PASS, motif equipement_remplace).
+
+== C-AMON-004 (sha 3007f3f04)
+attendu : repro si après retrait + T1 résolu + réévaluation : drapeau toujours ouvert, ticket_id == T1, 1 seul ticket sur le système, aucun récepteur monitoring de equipement_remplace
+observé : {"evaluation_1": {"ratio_pct": "49.31", "underperforming": true}, "ticket_T1": "SAV-202611-0001", "retrait_piece": "ok", "equipement_statut": "remplace", "apres_retrait_et_T1_resolu": {"flag_ouvert": false, "ticket_id": 46, "motif_cloture": "equipement_remplace"}, "evaluation_2": {"ratio_pct": "None", "underperforming": false}, "drapeau_ouvert_apres_reeval": false, "drapeau_ticket_id": null, "T1_id": 46, "T1_statut": "resolu", "tickets_sur_systeme": 1, "alertes_portail_client": 0, "receveurs_equipement_remplace": ["apps.monitoring.receivers._clore_episode_au_remplacement", "apps.notifications.signals.equipement_remplace_receiver"], "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0
+
+== Étapes PA7 rejouées (python scripts/rejouer_parcours.py PA7 --enregistrement 188 --modele installations.Installation --utilisateur sonde_amon_004 --conteneur accept-w29-dj --sans-enregistrement, état persisté C-AMON-004)
+equipement_remplace : GET /api/django/sav/tickets/62/pieces-retirees/ -> 200 ; parcours {'auto': 'NA', 'checkpoint': 'PASS', 'aval': 'NA'} ; règles aval à observer : Le signal `equipement_remplace` (émis par `retirer_piece`) notifie les managers.
+monitoring_suit_remplacement : auto (signal) : artefact UnderperformanceFlag ; parcours {'auto': 'PASS', 'checkpoint': 'PASS', 'aval': 'NA'} ; règles aval à observer : L'émetteur existe côté SAV. ; L'évaluation suivante ne lit que les relevés postérieurs au remplacement : un nouvel épisode réel ouvre un drapeau et un ticket neufs.
+Base inchangée (transaction annulée) : 42 lignes avant et après.

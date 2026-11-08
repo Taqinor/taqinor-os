@@ -1,0 +1,14 @@
+# Preuve en direct ACSV31 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Verdict : PASS — Sonde C-ACSV-041 : repro False.
+
+== C-ACSV-041 (sha ddf1f97a1)
+attendu : repro si (A) définitive 200 sur chantier installé ou (B) date_reception/date_pose restent à J-90 après la re-réception du jour
+observé : {"A": {"patch_arriere_http": 200, "patch_detail": null, "statut_apres_recul": "installe", "date_reception_apres_recul": "None", "jalon_reception_atteint": [false], "definitive_http": 409, "date_reception_definitive": "None", "reception_contrat": {"date_reception_provisoire": null, "date_reception_definitive": null, "date_definitive_prevue": null, "definitive_possible": false}}, "B": {"parc_a_la_1re_reception": [["2026-08-10", "2036-08-10"]], "patch_arriere_http": 200, "statut_apres_recul": "installe", "re_reception_le": "2026-11-08", "date_reception_apres_re_reception": "2026-11-08", "parc_apres_re_reception": [["2026-11-08", "2036-11-08"]], "statut_final": "receptionne"}, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0
