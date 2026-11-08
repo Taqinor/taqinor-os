@@ -1406,7 +1406,9 @@ class TicketViewSet(CompanyScopedModelViewSet):
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
 
-    @extend_schema(request=SavCloturerRequete)
+    @extend_schema(request=SavCloturerRequete, extensions={EXTENSION_CORPS_RESSERRE: {'allOf': [{'anyOf': [
+        {'properties': {'sans_facture': {'enum': [False]}}},  # ACSV60 : forçage = motif non blanc
+        {'required': ['motif'], 'properties': {'motif': {'pattern': MOTIF_NON_BLANC_SANS_NUL}}}]}]}})
     @action(detail=True, methods=['post'], url_path='cloturer',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def cloturer(self, request, pk=None):
