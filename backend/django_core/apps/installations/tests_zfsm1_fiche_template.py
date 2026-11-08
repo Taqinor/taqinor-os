@@ -298,3 +298,72 @@ class TestFicheReleveResponsablePermissions(TestCase):
             f'{BASE}/interventions/{self.interv.id}/renseigner-fiche/',
             {'valeur_id': valeur_id, 'valeur': '235.4'}, format='json')
         self.assertEqual(r.status_code, 200, r.content)
+
+
+class TestFicheTechnicienAffecte(TestCase):
+    """Fold 08/11 (ACSV91) — le technicien affecté renseigne la fiche depuis
+    « Ma journée » avec la MÊME garde que les autres saisies terrain
+    (`ajouter-photo`, `cocher-safety`, `signer-client`, `checkin`…) :
+    ``get_permissions`` → ``IsResponsableOrAdmin`` (rôle fin portant une
+    écriture du module) + ``intervention_gerer`` (porté par le rôle
+    Technicien), puis la portée ``scoper_interventions`` au niveau objet. Un
+    technicien non affecté (hors équipe) ne voit pas l'intervention (404),
+    une autre société non plus ; le verrou ACSV15 (validée ⇒ 409) tient."""
+
+    def setUp(self):
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
+        self.company = make_company()
+        self.admin = make_user(self.company)
+        role = Role.objects.create(
+            company=self.company, nom='Technicien', est_systeme=True,
+            permissions=list(TECHNICIEN_PERMISSIONS))
+        self.tech = User.objects.create_user(
+            username=f'zfsm1-tech-{next(_seq)}', password='x',
+            role_legacy='normal', company=self.company, role=role)
+        self.autre_tech = User.objects.create_user(
+            username=f'zfsm1-tech-{next(_seq)}', password='x',
+            role_legacy='normal', company=self.company, role=role)
+        inst = make_installation(self.company)
+        template = make_template(self.company, type_intervention='controle')
+        FicheInterventionChamp.objects.create(
+            company=self.company, template=template,
+            cle='tension_dc', libelle='Tension DC', type_champ='mesure',
+            unite='V', ordre=1, obligatoire=True)
+        self.interv = Intervention.objects.create(
+            company=self.company, installation=inst,
+            type_intervention='controle', technicien=self.tech,
+            created_by=self.admin)
+        releve = field_services.ensure_fiche_releve(self.interv)
+        self.valeur_id = releve.valeurs.get(champ__cle='tension_dc').id
+        self.url = f'{BASE}/interventions/{self.interv.id}/renseigner-fiche/'
+
+    def _poster(self, user, valeur='235,4'):
+        return auth(user).post(
+            self.url, {'valeur_id': self.valeur_id, 'valeur': valeur}, format='json')
+
+    def _notes_fiche(self):
+        return self.interv.activites.filter(kind='note', body__startswith='Fiche : ')
+
+    def test_technicien_affecte_renseigne_200_trace_a_son_nom(self):
+        r = self._poster(self.tech)
+        self.assertEqual(r.status_code, 200, r.content)
+        val = next(v for v in r.data['valeurs'] if v['id'] == self.valeur_id)
+        self.assertEqual(val['valeur'], '235.4')
+        self.assertEqual(self._notes_fiche().get().user_id, self.tech.id)
+
+    def test_technicien_non_affecte_refuse(self):
+        r = self._poster(self.autre_tech)
+        self.assertEqual(r.status_code, 404, r.content)
+        self.assertFalse(self._notes_fiche().exists())
+
+    def test_autre_societe_404(self):
+        r = self._poster(make_user(make_company(), role='responsable'))
+        self.assertEqual(r.status_code, 404, r.content)
+
+    def test_intervention_validee_refusee_au_technicien(self):
+        Intervention.objects.filter(pk=self.interv.pk).update(
+            statut=Intervention.Statut.VALIDEE)
+        r = self._poster(self.tech, 'oui')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertEqual(r.json()['detail'], 'Intervention validée.')
