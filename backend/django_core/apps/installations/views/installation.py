@@ -1360,7 +1360,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     # ── FG79 — scaffold chaîne d'interventions standard ──────────────────────
-    @oa.extend_schema(request=None, responses={200: oa.OBJ, 201: oa.OBJ})
+    @oa.extend_schema(request=None, responses={200: oa.OBJ, 201: oa.OBJ, 409: oa.OBJ})
     @action(detail=True, methods=['post'], url_path='creer-interventions-standard',
             permission_classes=[IsResponsableOrAdmin])
     def creer_interventions_standard(self, request, pk=None):
@@ -1370,6 +1370,9 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         créées + celles déjà existantes."""
         from ..models import TypeInterventionPlan
         inst = self.get_object()
+        if inst.annule:  # ACSV13 — même refus que la création unitaire (YSERV6)
+            return Response({'detail': 'Ce chantier est annulé — impossible de créer une nouvelle intervention.'},
+                            status=status.HTTP_409_CONFLICT)
         company = request.user.company
         type_inst = inst.type_installation
         if not type_inst:
