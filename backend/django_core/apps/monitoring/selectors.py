@@ -284,11 +284,14 @@ def production_kwh_series_client_portail(company, client_id, *,
     lignes = (ProductionReading.objects
               .filter(company=company, installation__client_id=client_id,
                       date__gte=since, date__lte=today)
-              .values('date')
+              .values('date', 'period_days')
               .annotate(total=Sum('energy_kwh'))
-              .order_by('date'))
+              .order_by('date', 'period_days'))
+    # AMON83 — chaque point porte sa période (un mensuel n'est pas un jour).
     points = [
-        {'date': ligne['date'].isoformat(), 'energy_kwh': _q(ligne['total'])}
+        {'date': ligne['date'].isoformat(),
+         'period_days': ligne['period_days'],
+         'energy_kwh': _q(ligne['total'])}
         for ligne in lignes
     ]
     provider_configure = MonitoringConfig.objects.filter(

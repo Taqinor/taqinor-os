@@ -110,13 +110,16 @@ export default function PortailClientConsommation() {
             <thead>
               <tr className="text-left text-muted-foreground">
                 <th className="py-1 font-normal">Date</th>
+                <th className="py-1 text-right font-normal">Période (j)</th>
                 <th className="py-1 text-right font-normal">Production (kWh)</th>
               </tr>
             </thead>
             <tbody>
               {points.map((p) => (
-                <tr key={p.date}>
+                // AMON83 — la période de chaque relevé (mensuel ≠ journée).
+                <tr key={`${p.date}-${p.period_days}`}>
                   <td className="py-1">{formatDate(p.date)}</td>
+                  <td className="py-1 text-right">{p.period_days != null ? `${p.period_days} j` : '—'}</td>
                   <td className="py-1 text-right">{p.energy_kwh}</td>
                 </tr>
               ))}
