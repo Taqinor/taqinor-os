@@ -116,4 +116,4 @@ Porte : 0 constat réfuté sur 37 candidats bruts (36 jugés, 1 non vérifié, �
 ## 9. Coût et routage
 Coût : H0 S1 O16 F1 · jetons sous-agents ≈ 6 M · tâches 49 (P0 4 P2 25 P3 20 GATED 0) · constats S1 1 S2 14 S3 15.
 Fable : une critique de complétude, 3 trous (2 S2 sondés, 1 S3 lu) ; elle a trouvé la classe la plus large, laissée de côté par quatre lanes : 160 routes de lecture sur 200 ouvertes sans droit du module (C-APFS-080) et les prix d'achat de `installations` hors garde ASTK14 (C-APFS-082).
-Routage : `PLAN_AUDIT_*.md` SECURITE 18 · ANALYSE 8 · TRANSVERSE 6 · PARAMETRES 4 · CHANTIERS 2 · DEPLOY 2 · DEVIS 2 · DOCUMENTS 2 · CALEPINAGE 1 · FACTURATION 1 · LEAD 1 · SAV 1 · STOCK 1 · aucune tâche d'acceptation posée · PR #0.
+Routage : `PLAN_AUDIT_*.md` SECURITE 18 · ANALYSE 8 · TRANSVERSE 6 · PARAMETRES 4 · CHANTIERS 2 · DEPLOY 2 · DEVIS 2 · DOCUMENTS 2 · CALEPINAGE 1 · FACTURATION 1 · LEAD 1 · SAV 1 · STOCK 1 · aucune tâche d'acceptation posée · PR #1302.
