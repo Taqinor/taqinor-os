@@ -140,18 +140,19 @@ CHARGE_CALEPINAGE_SIMULE = [
 ]
 
 
-def public_api_reference(langue='fr'):
-    """Référence de l'API publique (dict sérialisable en JSON).
+def reference_langue(langue):
+    """NTI18N44 — la référence dans ``langue`` (``'fr'`` ou ``'en'``).
 
-    NTI18N44 — ``langue='en'`` traduit les TEXTES descriptifs (couche
-    ``docs_i18n``) ; la structure et toutes les clés restent identiques, une
-    langue inconnue donne le français historique."""
+    Traduit les TEXTES descriptifs (couche ``docs_i18n``) ; la structure et
+    toutes les clés restent identiques, une langue inconnue donne le français
+    historique. ``public_api_reference()`` reste la source FR, lisible
+    statiquement par la garde de forme (`check_api_shapes.py`)."""
     from .docs_i18n import traduire_reference
-    return traduire_reference(_reference_fr(), langue)
+    return traduire_reference(public_api_reference(), langue)
 
 
-def _reference_fr():
-    """Construit la référence FR de l'API publique (source de vérité)."""
+def public_api_reference():
+    """Construit la référence FR de l'API publique (dict sérialisable en JSON)."""
     return {
         'titre': "API publique Taqinor — Référence",
         'version': '1',

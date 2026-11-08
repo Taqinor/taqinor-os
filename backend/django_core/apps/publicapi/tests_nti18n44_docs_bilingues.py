@@ -14,8 +14,8 @@ from rest_framework.test import APIClient
 
 from . import docs_i18n
 from .constants import EVENT_CHOICES
-from .docs import public_api_reference
-from .openapi import build_openapi_schema
+from .docs import public_api_reference, reference_langue
+from .openapi import build_openapi_document, build_openapi_schema
 from .portees import SCOPE_CHOICES
 
 GROUPES = ('endpoints_ecriture', 'endpoints_bulk', 'endpoints_lecture_simple',
@@ -51,21 +51,21 @@ def _entrees(ref):
 class Nti18n44ReferenceTests(SimpleTestCase):
     def test_langue_par_defaut_et_inconnue_restent_francaises(self):
         fr = public_api_reference()
-        self.assertEqual(fr, public_api_reference('fr'))
-        self.assertEqual(fr, public_api_reference('xx'))
-        self.assertEqual(fr, public_api_reference(None))
+        self.assertEqual(fr, reference_langue('fr'))
+        self.assertEqual(fr, reference_langue('xx'))
+        self.assertEqual(fr, reference_langue(None))
         self.assertTrue(fr['titre'].startswith('API publique'))
 
     def test_la_reference_anglaise_garde_toute_la_structure(self):
-        _meme_arbre(self, public_api_reference('fr'), public_api_reference('en'))
+        _meme_arbre(self, reference_langue('fr'), reference_langue('en'))
 
     def test_les_textes_sont_reellement_traduits(self):
-        en = public_api_reference('en')
+        en = reference_langue('en')
         self.assertEqual(en['titre'], 'Taqinor public API — Reference')
         self.assertTrue(en['introduction'].startswith('REST API'))
 
     def test_chemins_scopes_et_codes_ne_sont_jamais_traduits(self):
-        fr, en = public_api_reference('fr'), public_api_reference('en')
+        fr, en = reference_langue('fr'), reference_langue('en')
         for a, b in zip(_entrees(fr), _entrees(en)):
             self.assertEqual(a['chemin'], b['chemin'])
             self.assertEqual(a.get('scope'), b.get('scope'))
@@ -77,7 +77,7 @@ class Nti18n44ReferenceTests(SimpleTestCase):
                          [e['code'] for e in en['webhooks']['evenements']])
 
     def test_chaque_description_dendpoint_a_sa_version_anglaise(self):
-        fr, en = public_api_reference('fr'), public_api_reference('en')
+        fr, en = reference_langue('fr'), reference_langue('en')
         for a, b in zip(_entrees(fr), _entrees(en)):
             self.assertIn(a['chemin'], docs_i18n.ENDPOINTS_EN, a['chemin'])
             self.assertNotEqual(a['description'], b['description'], a['chemin'])
@@ -89,7 +89,7 @@ class Nti18n44ReferenceTests(SimpleTestCase):
             self.assertIn(code, docs_i18n.EVENEMENTS_EN, code)
 
     def test_chaque_champ_decrit_a_sa_version_anglaise(self):
-        fr = public_api_reference('fr')
+        fr = reference_langue('fr')
         for entree in fr['sous_ressources']['liste']:
             for champ in entree['champs']:
                 self.assertIn((entree['chemin'], champ['nom']),
@@ -103,7 +103,7 @@ class Nti18n44ReferenceTests(SimpleTestCase):
     def test_aucune_traduction_orpheline(self):
         """Une clé de traduction qui ne vise plus rien (endpoint renommé)
         serait une doc EN fantôme : on l'attrape ici."""
-        fr = public_api_reference('fr')
+        fr = reference_langue('fr')
         chemins = {e['chemin'] for e in _entrees(fr)}
         self.assertEqual(set(docs_i18n.ENDPOINTS_EN) - chemins, set())
         for cle in docs_i18n.TEXTES_EN:
@@ -116,14 +116,14 @@ class Nti18n44ReferenceTests(SimpleTestCase):
 
 class Nti18n44OpenApiTests(SimpleTestCase):
     def test_le_schema_anglais_garde_tous_les_chemins_et_champs(self):
-        _meme_arbre(self, build_openapi_schema('fr'), build_openapi_schema('en'))
+        _meme_arbre(self, build_openapi_document('fr'), build_openapi_document('en'))
 
     def test_le_defaut_est_inchange(self):
-        self.assertEqual(build_openapi_schema(), build_openapi_schema('fr'))
-        self.assertEqual(build_openapi_schema('xx'), build_openapi_schema('fr'))
+        self.assertEqual(build_openapi_schema(), build_openapi_document('fr'))
+        self.assertEqual(build_openapi_document('xx'), build_openapi_document('fr'))
 
     def test_plus_aucune_chaine_statique_francaise_en_anglais(self):
-        rendu = json.dumps(build_openapi_schema('en'), ensure_ascii=False)
+        rendu = json.dumps(build_openapi_document('en'), ensure_ascii=False)
         for texte_fr in docs_i18n.OPENAPI_EXACT_EN:
             self.assertNotIn(json.dumps(texte_fr, ensure_ascii=False), rendu)
         self.assertNotIn('(détail)', rendu)
