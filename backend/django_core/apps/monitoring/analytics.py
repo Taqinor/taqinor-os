@@ -67,6 +67,15 @@ def jours_couverts_par_releves(releves, since, today):
     des intervalles ``[date, date + period_days)`` des relevés (``releves`` =
     itérable de ``(date, period_days)``). Un relevé mensuel couvre ses 30
     jours ; deux relevés qui se chevauchent ne se comptent jamais deux fois."""
+    return sum((fin - debut).days for debut, fin
+               in intervalles_couverts_par_releves(releves, since, today))
+
+
+def intervalles_couverts_par_releves(releves, since, today):
+    """AMON22 — l'UNION des intervalles ``[date, date + period_days)`` des
+    relevés, bornée à ``[since, today]`` : liste triée de ``(debut, fin)``
+    disjoints, ``fin`` exclusive (base de ``jours_couverts_par_releves`` et
+    de l'attendu de sous-performance sur les seuls jours couverts)."""
     fin_fenetre = today + timedelta(days=1)  # borne haute exclusive
     intervalles = []
     for jour, periode in releves:
@@ -76,18 +85,13 @@ def jours_couverts_par_releves(releves, since, today):
         if fin > debut:
             intervalles.append((debut, fin))
     intervalles.sort()
-    total = 0
-    courant_debut = courant_fin = None
+    fusion = []
     for debut, fin in intervalles:
-        if courant_fin is None or debut > courant_fin:
-            if courant_fin is not None:
-                total += (courant_fin - courant_debut).days
-            courant_debut, courant_fin = debut, fin
-        elif fin > courant_fin:
-            courant_fin = fin
-    if courant_fin is not None:
-        total += (courant_fin - courant_debut).days
-    return total
+        if fusion and debut <= fusion[-1][1]:
+            fusion[-1] = (fusion[-1][0], max(fin, fusion[-1][1]))
+        else:
+            fusion.append((debut, fin))
+    return fusion
 
 
 def jours_couverts_mois(mois, debut_effectif, today):

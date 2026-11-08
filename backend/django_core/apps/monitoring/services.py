@@ -183,17 +183,62 @@ def _expected_recent_kwh(installation, config, window_days, today=None,
         premier_releve)
 
 
-def recent_production_kwh(installation, *, window_days=RECENT_WINDOW_DAYS,
-                          today=None):
-    """Somme des relevés sur la fenêtre récente (toutes sources)."""
-    today = today or timezone.localdate()
-    since = today - timedelta(days=window_days)
-    agg = ProductionReading.objects.filter(
-        installation=installation, date__gte=since, date__lte=today)
+def releves_recouvrant(installation, debut, fin):
+    """AMON22 — ``[(date, period_days, energy_kwh)]`` des relevés dont la
+    période ``[date, date + period_days)`` RECOUVRE ``[debut, fin]`` (un
+    relevé à cheval sur un bord compte, un relevé reçu en retard aussi)."""
+    from django.db.models import Max
+    qs = ProductionReading.objects.filter(installation=installation)
+    plus_longue = qs.aggregate(m=Max('period_days'))['m'] or 1
+    lignes = qs.filter(
+        date__gt=debut - timedelta(days=plus_longue), date__lte=fin,
+    ).values_list('date', 'period_days', 'energy_kwh')
+    return [(jour, periode, kwh) for jour, periode, kwh in lignes
+            if jour + timedelta(days=max(int(periode or 1), 1)) > debut]
+
+
+def production_couverte(releves, debut, fin):
+    """AMON22 — production (kWh) de ``releves`` dans ``[debut, fin]`` : chaque
+    relevé compte au prorata de ses jours dans la fenêtre (``kWh × jours
+    dedans / period_days``), jamais en entier quand il déborde."""
     total = Decimal('0')
-    for r in agg.values_list('energy_kwh', flat=True):
-        total += Decimal(str(r))
+    fin_excl = fin + timedelta(days=1)
+    for jour, periode, kwh in releves:
+        periode = max(int(periode or 1), 1)
+        dedans = (min(jour + timedelta(days=periode), fin_excl)
+                  - max(jour, debut)).days
+        if dedans > 0:
+            total += Decimal(str(kwh)) * Decimal(dedans) / Decimal(periode)
     return total
+
+
+def fenetre_couverte(installation, releves, since, today):
+    """AMON22 — ``(debut, fin, intervalles)`` de la fenêtre réellement
+    couverte : début = ``debut_couverture`` (mise en service / premier
+    relevé), fin = min(aujourd'hui, dernier jour couvert par un relevé),
+    intervalles = union des périodes des relevés dedans. ``None`` si aucun
+    jour couvert."""
+    from .analytics import intervalles_couverts_par_releves
+    if not releves:
+        return None
+    debut = debut_couverture(installation, since)
+    fin = min(today, max(jour + timedelta(days=max(int(periode or 1), 1) - 1)
+                         for jour, periode, _kwh in releves))
+    intervalles = intervalles_couverts_par_releves(
+        [(jour, periode) for jour, periode, _kwh in releves], debut, fin)
+    if not intervalles:
+        return None
+    return debut, fin, intervalles
+
+
+def attendu_intervalles(config, intervalles):
+    """AMON22 — attendu (kWh) sur les seuls jours couverts : annuel × jours
+    couverts / 365. ``None`` sans référence annuelle (CIQ643)."""
+    annual = config.expected_annual_kwh
+    if annual is None:
+        return None
+    jours = sum((fin - debut).days for debut, fin in intervalles)
+    return Decimal(str(annual)) * Decimal(jours) / Decimal('365')
 
 
 MOTIF_DONNEES_INDISPONIBLES = 'donnees_indisponibles'
@@ -249,18 +294,15 @@ def evaluate_underperformance(installation, *, user=None, today=None):
             'Système retiré du parc : évaluation impossible.')
         return result
 
-    expected = _expected_recent_kwh(
-        installation, config, RECENT_WINDOW_DAYS, today=today)
-    # AUD522 — bornée à la MÊME fenêtre que `actual` (recent_production_kwh) :
-    # un système dont le SEUL relevé date de plus d'un an n'a AUCUNE donnée
-    # récente, même si `ProductionReading.objects.filter(installation=...)`
-    # (sans borne de date) renvoyait vrai. `has_recent_data=False` avec un
-    # relevé plus ancien existant ⇒ `stale_data` (pas `no_data_ever`) : la
-    # distinction reste tracée pour le rapport O&M / le fleet dashboard.
+    # AMON22 — réel ET attendu sur les seuls jours COUVERTS par les relevés
+    # ([début de couverture ; min(aujourd'hui, fin du dernier relevé)],
+    # relevés au prorata aux bords) : une saisie en retard n'est plus une
+    # sous-performance. AUD522 — « donnée récente » = un relevé recouvre la
+    # fenêtre ; sinon `stale_data` (relevé plus ancien) ou `no_data_ever`.
     since = today - timedelta(days=RECENT_WINDOW_DAYS)
-    has_recent_data = ProductionReading.objects.filter(
-        installation=installation, date__gte=since, date__lte=today).exists()
-    if not has_recent_data:
+    releves = releves_recouvrant(installation, since, today)
+    fenetre = fenetre_couverte(installation, releves, since, today)
+    if fenetre is None:
         has_ever = ProductionReading.objects.filter(
             installation=installation).exists()
         result['data_status'] = 'stale_data' if has_ever else 'no_data_ever'
@@ -270,6 +312,8 @@ def evaluate_underperformance(installation, *, user=None, today=None):
             'Aucun relevé récent : évaluation impossible '
             f'({result["data_status"]}).')
         return result
+    debut, fin, intervalles = fenetre
+    expected = attendu_intervalles(config, intervalles)
     if not expected or expected <= 0:
         # CIQ643 — des relevés récents existent mais aucune référence n'a été
         # semée : aucune évaluation, aucun drapeau.
@@ -280,7 +324,7 @@ def evaluate_underperformance(installation, *, user=None, today=None):
             'Référence de production retirée : évaluation impossible.')
         return result
 
-    actual = recent_production_kwh(installation, today=today)
+    actual = production_couverte(releves, debut, fin)
     ratio = (actual / expected) * Decimal('100')
     result.update(evaluated=True, ratio_pct=ratio.quantize(Decimal('0.01')),
                   data_status='evaluated')

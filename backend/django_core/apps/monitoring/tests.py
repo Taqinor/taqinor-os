@@ -259,7 +259,7 @@ class TestUnderperformance(TestCase):
         vraie sous-performance mesurée."""
         ProductionReading.objects.create(
             company=self.company, installation=self.inst,
-            date=self.today - timedelta(days=400), energy_kwh=Decimal('9000'),
+            date=self.today - timedelta(days=800), energy_kwh=Decimal('9000'),
             period_days=365)
         res = services.evaluate_underperformance(self.inst, today=self.today)
         self.assertFalse(res['evaluated'])
@@ -276,7 +276,7 @@ class TestUnderperformance(TestCase):
         s.save()
         ProductionReading.objects.create(
             company=self.company, installation=self.inst,
-            date=self.today - timedelta(days=400), energy_kwh=Decimal('9000'),
+            date=self.today - timedelta(days=800), energy_kwh=Decimal('9000'),
             period_days=365)
         res = services.evaluate_underperformance(
             self.inst, user=self.user, today=self.today)
@@ -351,10 +351,11 @@ class TestUnderperformance(TestCase):
             self.inst, user=self.user, today=self.today)
         self.assertEqual(
             UnderperformanceFlag.objects.filter(is_open=True).count(), 1)
-        # Production correcte ensuite → drapeau fermé.
-        ProductionReading.objects.create(
-            company=self.company, installation=self.inst,
-            date=self.today, energy_kwh=Decimal('7000'), period_days=365)
+        # Production correcte ensuite → drapeau fermé. AMON22 : le relevé
+        # corrigé couvre la même période (un relevé daté d'aujourd'hui sur
+        # 365 j ne compterait que son premier jour).
+        ProductionReading.objects.filter(installation=self.inst).update(
+            energy_kwh=Decimal('7000'))
         res = services.evaluate_underperformance(
             self.inst, user=self.user, today=self.today)
         self.assertFalse(res['underperforming'])

@@ -74,3 +74,47 @@ class AttenduPeriodeTests(TestCase):
         self.assertTrue(res['underperforming'])
         self.assertEqual(
             UnderperformanceFlag.objects.filter(is_open=True).count(), 1)
+
+    def _systeme(self, ref, annuel, mise_en_service):
+        inst = Installation.objects.create(
+            company=self.company, reference=ref,
+            client=self.inst.client, puissance_installee_kwc=Decimal('5.00'),
+            date_mise_en_service=mise_en_service)
+        MonitoringConfig.objects.create(
+            company=self.company, installation=inst,
+            expected_annual_kwh=Decimal(annuel))
+        return inst
+
+    def _releve(self, inst, jours_avant, kwh, periode=30):
+        ProductionReading.objects.create(
+            company=self.company, installation=inst,
+            date=self.today - timedelta(days=jours_avant),
+            energy_kwh=Decimal(kwh), period_days=periode)
+
+    def test_retard_de_saisie_sans_drapeau(self):
+        """AMON22 — réel et attendu sur les seuls jours couverts : deux
+        mensuels sains saisis avec 15 j de retard ⇒ ≈ 100 %, aucun drapeau ;
+        un relevé à cheval sur aujourd'hui ne compte que sa part passée ;
+        témoin à la moitié du nominal ⇒ drapeau."""
+        inst = self._systeme(
+            'CHT-AMON22', '9000', self.today - timedelta(days=75))
+        self._releve(inst, 75, '739.73')
+        self._releve(inst, 45, '739.73')
+        res = services.evaluate_underperformance(inst, today=self.today)
+        self.assertEqual(res['data_status'], 'evaluated')
+        self.assertAlmostEqual(float(res['ratio_pct']), 100.0, delta=1.0)
+        self.assertFalse(
+            UnderperformanceFlag.objects.filter(installation=inst).exists())
+        # Relevé [J−15 ; J+15) : seule la part ≤ aujourd'hui compte.
+        self._releve(inst, 15, '739.73')
+        res = services.evaluate_underperformance(inst, today=self.today)
+        self.assertAlmostEqual(float(res['ratio_pct']), 100.0, delta=1.0)
+        # Témoin : moitié du nominal ⇒ drapeau.
+        temoin = self._systeme(
+            'CHT-AMON22-T', '9000', self.today - timedelta(days=75))
+        self._releve(temoin, 75, '369.86')
+        self._releve(temoin, 45, '369.86')
+        res = services.evaluate_underperformance(temoin, today=self.today)
+        self.assertTrue(res['underperforming'])
+        self.assertTrue(UnderperformanceFlag.objects.filter(
+            installation=temoin, is_open=True).exists())
