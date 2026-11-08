@@ -17,7 +17,9 @@
         "statut_display": "Actif",
         "date_debut": "2026-10-01",
         "motif_resiliation": "",
-        "date_creation": "2026-10-01T09:30:00Z"
+        "date_creation": "2026-10-01T09:30:00Z",
+        "date_resiliation": null,
+        "resilie_par_nom": null
       }
     ]
   },
@@ -40,7 +42,9 @@
       "statut_display": "Résilié",
       "date_debut": "2026-10-01",
       "motif_resiliation": "Client a vendu la maison.",
-      "date_creation": "2026-10-01T09:30:00Z"
+      "date_creation": "2026-10-01T09:30:00Z",
+      "date_resiliation": "2026-11-08T09:30:00Z",
+      "resilie_par_nom": "Responsable SAV"
     }
   },
   "notes": {

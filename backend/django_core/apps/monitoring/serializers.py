@@ -305,6 +305,7 @@ class AbonnementMonitoringSerializer(serializers.ModelSerializer):
     # Aucun chiffre inventé : le montant est obligatoire à la saisie.
     montant = _MontantPositifLitteral(
         max_digits=12, decimal_places=2, required=True)
+    resilie_par_nom = serializers.SerializerMethodField()
 
     class Meta:
         model = AbonnementMonitoring
@@ -312,10 +313,20 @@ class AbonnementMonitoringSerializer(serializers.ModelSerializer):
             'id', 'client_id', 'installation_id', 'periodicite',
             'periodicite_display', 'montant', 'statut', 'statut_display',
             'date_debut', 'motif_resiliation', 'date_creation',
+            'date_resiliation', 'resilie_par_nom',
         ]
         read_only_fields = [
             'client_id', 'statut', 'motif_resiliation', 'date_creation',
+            'date_resiliation',
         ]
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_resilie_par_nom(self, obj):
+        """AMON7 — auteur de la résiliation (None tant qu'actif)."""
+        user = obj.resilie_par
+        if user is None:
+            return None
+        return user.get_full_name() or user.get_username()
 
     def validate_montant(self, value):
         # La règle est AUSSI publiée dans le motif du champ (corps conforme).

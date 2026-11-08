@@ -506,6 +506,12 @@ class AbonnementMonitoring(models.Model):
     motif_resiliation = models.CharField(
         max_length=255, blank=True, default='',
         verbose_name='Motif de résiliation')
+    # AMON7 — date et auteur de la résiliation (posés par le service).
+    date_resiliation = models.DateTimeField(
+        null=True, blank=True, verbose_name='Résilié le')
+    resilie_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+', verbose_name='Résilié par')
 
     class Meta:
         verbose_name = 'Abonnement de monitoring'

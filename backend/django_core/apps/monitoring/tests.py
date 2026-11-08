@@ -1708,6 +1708,22 @@ class TestAsav100Abonnements(TestCase):
         # ENF11 : déjà résilié = refus d'ÉTAT -> 409 (plus 400).
         self.assertEqual(r.status_code, 409)
 
+    def test_resiliation_trace_date_et_auteur(self):
+        """AMON7 — la résiliation sert sa date et son auteur ; actif : null."""
+        from django.utils import timezone
+        r = self._creer()
+        self.assertIsNone(r.data['date_resiliation'])
+        self.assertIsNone(r.data['resilie_par_nom'])
+        r = self.api.post(f'{self.URL}{r.data["id"]}/resilier/',
+                          {'motif': 'Client a vendu la maison.'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['resilie_par_nom'], 'asav100_resp')
+        from apps.monitoring.models import AbonnementMonitoring
+        ab = AbonnementMonitoring.objects.get(pk=r.data['id'])
+        self.assertEqual(timezone.localtime(ab.date_resiliation).date(),
+                         timezone.localdate())
+        self.assertEqual(ab.resilie_par.username, 'asav100_resp')
+
     def test_second_abonnement_actif_409(self):
         """AMON5 — un seul actif par système ; résilier l'un de deux actifs
         hérités ne coupe pas la supervision ; après résiliation : 201."""

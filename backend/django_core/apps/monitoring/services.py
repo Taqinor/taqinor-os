@@ -870,7 +870,11 @@ def resilier_abonnement_monitoring(abonnement, *, motif, user=None):
                 'Abonnement déjà résilié.', etat=True)
         abonnement.statut = AbonnementMonitoring.Statut.RESILIE
         abonnement.motif_resiliation = motif[:255]
-        abonnement.save(update_fields=['statut', 'motif_resiliation'])
+        # AMON7 — date et auteur tracés.
+        abonnement.date_resiliation = timezone.now()
+        abonnement.resilie_par = user
+        abonnement.save(update_fields=[
+            'statut', 'motif_resiliation', 'date_resiliation', 'resilie_par'])
         abonnement_monitoring_resilie.send(
             sender=AbonnementMonitoring, abonnement=abonnement, motif=motif,
             company=abonnement.company)
