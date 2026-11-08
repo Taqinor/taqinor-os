@@ -189,9 +189,9 @@ def attendu_entre(annuel, debut, fin):
     plat (un premier hiver n'est plus jugé contre la moyenne annuelle)."""
     import calendar
 
-    from apps.ventes.quote_engine.constants import (
-        MOROCCO_SOLAR_MONTHLY_WEIGHTS,
-    )
+    from apps.ventes.selectors import poids_solaires_mensuels
+
+    poids = poids_solaires_mensuels()
 
     total = Decimal('0')
     jour = debut
@@ -199,7 +199,7 @@ def attendu_entre(annuel, debut, fin):
         nb_mois = calendar.monthrange(jour.year, jour.month)[1]
         fin_mois = jour.replace(day=nb_mois)
         jours = (min(fin_mois, fin) - jour).days + 1
-        total += (Decimal(str(MOROCCO_SOLAR_MONTHLY_WEIGHTS[jour.month - 1]))
+        total += (Decimal(str(poids[jour.month - 1]))
                   * Decimal(jours) / Decimal(nb_mois))
         jour = fin_mois + timedelta(days=1)
     return Decimal(str(annuel)) * total

@@ -2017,3 +2017,10 @@ def postes_pret_devis_residentiel(company):
     """RSIZ11 — tableau « prêt pour le devis résidentiel » (lecture seule)."""
     from .domain.pret_devis_residentiel import postes_pret_devis_residentiel as f
     return f(company)
+
+
+def poids_solaires_mensuels():
+    """AMON29 / règle #4 — profil mensuel de production imprimé au devis
+    (``MOROCCO_SOLAR_MONTHLY_WEIGHTS``, somme = 1), servi aux autres apps."""
+    from .quote_engine.constants import MOROCCO_SOLAR_MONTHLY_WEIGHTS
+    return MOROCCO_SOLAR_MONTHLY_WEIGHTS
