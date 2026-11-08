@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import installationsApi from '../../api/installationsApi'
 import { errorMessageFrom } from '../../lib/toast'
 import { toast } from '../../ui/confirm'
@@ -14,7 +14,13 @@ import {
 export default function AnnulerInterventionDialog({ intervention, onClose, onDone }) {
   const [motif, setMotif] = useState('')
   const [busy, setBusy] = useState(false)
-  useEffect(() => { setMotif('') }, [intervention?.id])
+  // Motif remis à zéro quand l'intervention change (pendant le rendu, pas
+  // dans un effet — react-hooks/set-state-in-effect).
+  const [pourId, setPourId] = useState(intervention?.id)
+  if (pourId !== intervention?.id) {
+    setPourId(intervention?.id)
+    setMotif('')
+  }
 
   const confirmer = async (e) => {
     e.preventDefault()
