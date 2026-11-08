@@ -343,7 +343,7 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
             'ajouter_ligne_consommation', 'modifier_ligne_consommation',
             'supprimer_ligne_consommation',
             'ajouter_memo', 'modifier_memo', 'supprimer_memo',
-            'ajouter_reserve', 'modifier_reserve', 'resoudre_reserve',
+            'ajouter_reserve', 'modifier_reserve', 'resoudre_reserve', 'annuler',  # ACSV4
             'cocher_tool_return', 'confirmer_tool_return',
             'cocher_safety', 'signer_safety',
             # FG78 — confirmation RDV.
@@ -562,6 +562,16 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
                 # comme la création (`perform_create`). Une valeur de statut
                 # hors choix reste un 400 du sérialiseur.
                 raise ConflitEtat(corps)
+
+    @oa.extend_schema(request=oa.body('AnnulerInterventionRequete', motif=oa.s(True)),
+                      responses={200: InterventionSerializer, 400: oa.OBJ, 409: oa.OBJ})
+    @action(detail=True, methods=['post'], url_path='annuler', permission_classes=[IsResponsableOrAdmin])
+    def annuler(self, request, pk=None):
+        """ACSV4 — annule UNE intervention (motif obligatoire, 409 si terminée,
+        validée ou déjà annulée) ; elle quitte planning et calendrier."""
+        from ..annulation_intervention import annuler_intervention_motivee
+        interv = annuler_intervention_motivee(self.get_object(), request.user, oa.texte_corps(request, 'motif'))
+        return Response(InterventionSerializer(interv, context={'request': request}).data)
 
     def destroy_guard_message(self, interv):
         """AUD302 — message FR de blocage de la suppression, ou None.

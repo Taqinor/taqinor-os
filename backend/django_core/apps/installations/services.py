@@ -6387,17 +6387,12 @@ def annuler_interventions_ouvertes(installation, user):
 def _annuler_interventions(qs, user, motif, cause):
     """YSERV6/ACSV102 — annule les interventions ouvertes de ``qs`` (motif, note, notification)."""
     from .models_intervention import Intervention
-    from . import intervention_activity
+    from .annulation_intervention import annuler_intervention  # ACSV4 — 1 implémentation
     count = 0
     for interv in qs.exclude(statut__in=[
             Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE]
     ).filter(annulee=False):
-        interv.annulee = True
-        interv.motif_annulation = motif[:255]
-        interv.save(update_fields=['annulee', 'motif_annulation'])
-        intervention_activity.log_note(
-            interv, user, f'Intervention annulée automatiquement — {cause}.')
-        _notifier_intervention_annulee(interv, user)
+        annuler_intervention(interv, user, motif, f'Intervention annulée automatiquement — {cause}.')
         count += 1
     return count
 

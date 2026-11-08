@@ -30,6 +30,8 @@ const installationsApi = {
     api.post(`/installations/chantiers/${id}/mise-en-service/`, data),
   annuler: (id, motif) => api.post(`/installations/chantiers/${id}/annuler/`, { motif }),
   reactiver: (id) => api.post(`/installations/chantiers/${id}/reactiver/`),
+  // ACSV4 — annule UNE intervention (motif obligatoire).
+  annulerIntervention: (id, motif) => api.post(`/installations/interventions/${id}/annuler/`, { motif }),
   // N4/N9 — checklist d'exécution + saisie de n° de série.
   getChecklist: (id) => api.get(`/installations/chantiers/${id}/checklist/`),
   cocherChecklist: (id, payload) =>

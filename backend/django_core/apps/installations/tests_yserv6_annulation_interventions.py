@@ -100,6 +100,43 @@ class AnnulationSoldeInterventionsTests(TestCase):
         self.inst.refresh_from_db()
         self.assertFalse(self.inst.annule)
 
+    def test_annuler_une_intervention_avec_motif(self):
+        """ACSV4 (C-ACSV-005) — « Annuler l'intervention » : motif gardé,
+        notes au chatter, sortie du calendrier ; motif vide 400 ; terminée ou
+        déjà annulée 409. ROUGE AVANT : 404."""
+        import datetime
+
+        from apps.installations.models import InstallationActivity
+        jour = datetime.date.today()
+        Intervention.objects.filter(pk=self.i1.pk).update(technicien=self.user, date_prevue=jour)
+        url = f'{BASE}/interventions/{self.i1.id}/annuler/'
+        r = self.api.post(url, {'motif': '   '}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('motif', r.data)
+        r = self.api.post(url, {'motif': 'client absent'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertTrue(r.data['annulee'])
+        self.i1.refresh_from_db()
+        self.assertTrue(self.i1.annulee)
+        self.assertEqual(self.i1.motif_annulation, 'client absent')
+        self.assertEqual(self.i1.statut, Intervention.Statut.PRETE)
+        self.assertTrue(self.i1.activites.filter(body__contains='client absent').exists())
+        self.assertTrue(InstallationActivity.objects.filter(
+            installation=self.inst, body__contains='client absent').exists())
+        fenetre = {'date_from': str(jour - datetime.timedelta(days=1)),
+                   'date_to': str(jour + datetime.timedelta(days=1))}
+        r = self.api.get(f'{BASE}/interventions/calendrier/', fenetre)
+        self.assertEqual(r.status_code, 200, r.data)
+        ids = {iv['id'] for groupe in r.data for iv in groupe['interventions']}
+        self.assertNotIn(self.i1.id, ids)
+        r = self.api.post(url, {'motif': 'encore'}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        r = self.api.post(f'{BASE}/interventions/{self.i3_terminee.id}/annuler/',
+                          {'motif': 'trop tard'}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.i2.refresh_from_db()
+        self.assertFalse(self.i2.annulee)
+
     def test_annuler_marque_interventions_ouvertes(self):
         r = self.api.post(f'{BASE}/chantiers/{self.inst.id}/annuler/', {}, format='json')
         self.assertEqual(r.status_code, 200, r.data)

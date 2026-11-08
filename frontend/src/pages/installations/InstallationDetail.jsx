@@ -55,6 +55,7 @@ import ChantierGateTimeline from './ChantierGateTimeline'
 import ChantierPhotos from './ChantierPhotos'
 // NTMOB16 — signature client tracée sur le bon de livraison chantier.
 import SignatureLivraisonDialog from './SignatureLivraisonDialog'
+import AnnulerInterventionDialog from '../../features/installations/AnnulerInterventionDialog'
 // FG386 — même bandeau d'état de synchro terrain que la page Interventions
 // (N91/F21) : la checklist chantier file déjà ses cochages hors-ligne via
 // `withOfflineFallback`, il ne restait qu'à rendre l'état visible ici aussi.
@@ -367,6 +368,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
 
   // Confirmations
   const [annulerOpen, setAnnulerOpen] = useState(false)
+  const [annulerInterv, setAnnulerInterv] = useState(null) // ACSV4
   const [annulerMotif, setAnnulerMotif] = useState('')
   // N7 — confirmation supplémentaire si le système est actif au parc.
   const [annulerParcConfirm, setAnnulerParcConfirm] = useState(false)
@@ -1675,9 +1677,10 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                               </Button>
                             </span>
                           ) : (
-                            <Button size="sm" variant="outline" onClick={() => startEditInterv(iv)}>
-                              Éditer
-                            </Button>
+                            <span className="flex gap-1">
+                              <Button size="sm" variant="outline" onClick={() => startEditInterv(iv)}>Éditer</Button>
+                              {!iv.annulee && <Button size="sm" variant="ghost" onClick={() => setAnnulerInterv(iv)}>Annuler l&apos;intervention</Button>}
+                            </span>
                           )}
                         </td>
                       </tr>
@@ -1945,6 +1948,8 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
         </AlertDialogContent>
       </AlertDialog>
 
+      <AnnulerInterventionDialog intervention={annulerInterv} onClose={() => setAnnulerInterv(null)}
+        onDone={async () => { setAnnulerInterv(null); await refreshInstallation(); loadHistorique() }} />
       {/* NTMOB16 — signature client tracée sur le bon de livraison chantier. */}
       <SignatureLivraisonDialog
         open={signatureOpen}
