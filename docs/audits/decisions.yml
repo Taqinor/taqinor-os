@@ -3802,7 +3802,7 @@ decisions:
     reponse: creance_fournisseur
     date: "2026-11-08"
     source: "Reda, question interactive du 08/11/2026 (boucle work on the plan) — « Supplier receivable » ; question posée par la vérifie AAPV du 08/11"
-    taches: []
+    taches: [AAPV86]
   - id: D-AMON-1
     question: "Un abonnement de supervision (mensuel ou annuel, SAV → Supervision → Abonnements) n'est jamais facturé : sa « prochaine échéance » est posée une fois et reste dans le passé. L'ERP doit-il le facturer ?"
     options:
