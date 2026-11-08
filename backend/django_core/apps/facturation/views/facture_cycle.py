@@ -13,10 +13,10 @@ from rest_framework.response import Response
 from authentication.permissions import (
     IsAdminOrResponsableTier, IsAdminRole, IsResponsableOrAdmin,
 )
-from . import openapi_docs as D
-from ..models import Avoir, EmailLog, Facture
-from ..serializers_facturation import FactureListeSerializer, FactureSerializer
-from ..utils.corps import valider_corps
+from apps.ventes.views import openapi_docs as D
+from apps.ventes.models import Avoir, EmailLog, Facture
+from apps.ventes.serializers_facturation import FactureListeSerializer, FactureSerializer
+from apps.ventes.utils.corps import valider_corps
 
 #: VNT13 (D-VNT-1, arbitrage 5) — annuler une facture / supprimer un
 #: brouillon : palier responsable/admin ET un code d'écriture ``ventes_*``.
@@ -52,8 +52,8 @@ class FactureCycleActionsMixin:
         # blocage crédit XFAC28, dérivation d'échéance XFAC23, pose du statut
         # et émission de `facture_emise`) vit DANS le service unique. L'écran
         # ne fait plus que traduire ses refus en 400/403 français.
-        from ..domain.facturation_ops import EmissionRefusee, emettre_facture
-        from ..domain.recouvrement import CreditHoldError
+        from apps.ventes.domain.facturation_ops import EmissionRefusee, emettre_facture
+        from apps.ventes.domain.recouvrement import CreditHoldError
         try:
             anomalies = emettre_facture(  # VNT32 : lignes OU libellé
                 facture, user=request.user, source='ecran_facture',
@@ -89,7 +89,7 @@ class FactureCycleActionsMixin:
         comptable n'est fait ici — YLEDG3 hors périmètre.)"""
         from django.db import transaction
 
-        from ..domain.encaissements import (
+        from apps.ventes.domain.encaissements import (
             argent_rattache, decrire_argent_rattache, revoquer_lien_paiement,
         )
         facture = self.get_object()
@@ -157,7 +157,7 @@ class FactureCycleActionsMixin:
             facture.identite_acheteur = None
             facture.save(update_fields=['statut', 'identite_acheteur'])
             revoquer_lien_paiement(facture=facture, user=request.user)
-        from .. import activity
+        from apps.ventes import activity
         activity.log_facture_remise_brouillon(facture, request.user, ancien)
         return Response(FactureSerializer(facture).data)
 
@@ -200,7 +200,7 @@ class FactureCycleActionsMixin:
                 status=status.HTTP_409_CONFLICT,
             )
         # AFAC9 — LA porte unique (acompte CAD122 avant J+7).
-        from ..domain.encaissements import motif_non_encaissable
+        from apps.ventes.domain.encaissements import motif_non_encaissable
         motif_refus = motif_non_encaissable(facture)
         if motif_refus:
             return Response({'detail': motif_refus},
@@ -232,13 +232,13 @@ class FactureCycleActionsMixin:
         # délibéré qui solde sans encaissement — l'un des deux seuls cas
         # autorisés à sauter la garde centime-près. Le montant informatif
         # porté par l'événement reste le TTC du document, comme avant.
-        from ..domain.encaissements import marquer_facture_soldee
+        from apps.ventes.domain.encaissements import marquer_facture_soldee
         marquer_facture_soldee(
             facture, montant=facture.total_ttc, user=request.user,
             source='marquer_payee_manuel', force=True)
         facture.refresh_from_db()
         # AUD124 — trace systématique : qui, quand, pourquoi.
-        from .. import activity
+        from apps.ventes import activity
         activity.log_facture_marquee_payee(facture, request.user, motif)
         return Response(FactureSerializer(facture).data)
 
@@ -253,7 +253,7 @@ class FactureCycleActionsMixin:
         ENF11 : corps validé par son sérialiseur déclaré (400, jamais 500) ;
         réponse = facture + ``avoir`` (contrat ``facture_annulation.json``).
         """
-        from ..domain.annulation_facture import (
+        from apps.ventes.domain.annulation_facture import (
             AnnulationRefusee, annuler_facture, avoir_annulation_corps,
         )
         facture = self.get_object()
@@ -299,7 +299,7 @@ class FactureCycleActionsMixin:
     def montant_tranche(self, request, pk=None):
         """VNT67 — le TTC d'un brouillon de tranche : HT / TVA / ventilation
         au prorata du plan, échéancier réécrit ; 409 sur une émise."""
-        from ..domain.facturation_vente import (
+        from apps.ventes.domain.facturation_vente import (
             FacturationVenteRefusee, modifier_montant_tranche)
         corps = request.data if isinstance(request.data, dict) else {}
         try:

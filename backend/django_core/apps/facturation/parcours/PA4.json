@@ -354,7 +354,7 @@
     "composant": "NoteDebitDialog",
     "action": "Note de débit"
    },
-   "fonction_entree": "backend/django_core/apps/ventes/views/facture_rectificatifs.py::FactureRectificatifsActionsMixin.creer_note_debit",
+   "fonction_entree": "backend/django_core/apps/facturation/views/facture_rectificatifs.py::FactureRectificatifsActionsMixin.creer_note_debit",
    "checkpoint": {
     "modifiable": true,
     "champs": [
@@ -380,7 +380,7 @@
    "proprietaire": "facturation",
    "declencheur": {
     "type": "manuel",
-    "source": "backend/django_core/apps/ventes/views/paiement.py::PaiementViewSet.paiement_avec_retenue"
+    "source": "backend/django_core/apps/facturation/views/paiement.py::PaiementViewSet.paiement_avec_retenue"
    },
    "ecran": {
     "route": "(aucune)",
@@ -625,7 +625,7 @@
     "etape": "PA4.04"
    },
    {
-    "source": "backend/django_core/apps/ventes/views/facture_rectificatifs.py::FactureRectificatifsActionsMixin.facturer_penalites._create",
+    "source": "backend/django_core/apps/facturation/views/facture_rectificatifs.py::FactureRectificatifsActionsMixin.facturer_penalites._create",
     "etape": "PA4.16"
    },
    {
@@ -637,7 +637,7 @@
     "etape": "PA4.16"
    },
    {
-    "source": "backend/django_core/apps/ventes/views/facture.py::FactureViewSet.perform_create",
+    "source": "backend/django_core/apps/facturation/views/facture.py::FactureViewSet.perform_create",
     "etape": "PA4.16"
    }
   ],

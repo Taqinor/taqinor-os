@@ -171,7 +171,7 @@ class DevisFacturationActionsMixin:
         la sortie de stock suit l'ÉMISSION (VNT21), jamais la création.
         Retrait programmé dès que le panneau de vente (VNT75/VNT79) la
         remplace."""
-        from .facture_gardes import MOTIF_SANS_ENCAISSER, PeutEncaisser
+        from apps.facturation.views.facture_gardes import MOTIF_SANS_ENCAISSER, PeutEncaisser
         if not PeutEncaisser().has_permission(request, self):  # ASEC67
             return Response({'detail': MOTIF_SANS_ENCAISSER},
                             status=status.HTTP_403_FORBIDDEN)

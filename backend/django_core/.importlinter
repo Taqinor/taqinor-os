@@ -650,7 +650,11 @@ forbidden_modules =
 name = ventes non-model modules never import crm/stock/installations/sav models or views (ADEV71)
 type = forbidden
 allow_indirect_imports = True
+# ODX18 — les vues de facturation et le recouvrement, sortis de `apps.ventes`
+# vers `apps.facturation` (déplacement pur), restent sous cette garde.
 source_modules =
+    apps.facturation.recouvrement
+    apps.facturation.views
     apps.ventes.activity
     apps.ventes.agent_actions
     apps.ventes.apps

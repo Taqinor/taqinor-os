@@ -12,13 +12,13 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from . import openapi_docs as D
-from ..gardes_lecture import LectureFactures
+from apps.ventes.views import openapi_docs as D
+from apps.ventes.gardes_lecture import LectureFactures
 from .facture_gardes import PeutEncaisser
-from ..domain.encaissements import proposer_arrondi_caisse
-from ..models import Facture, Paiement
-from ..openapi_params import qstr
-from ..serializers_facturation import (
+from apps.ventes.domain.encaissements import proposer_arrondi_caisse
+from apps.ventes.models import Facture, Paiement
+from apps.ventes.openapi_params import qstr
+from apps.ventes.serializers_facturation import (
     FactureListeSerializer, FactureSerializer, PaiementSerializer)
 
 #: Plus grand identifiant d'une clé ``integer`` PostgreSQL (publié en borne).
@@ -97,7 +97,7 @@ class FactureEncaissementActionsMixin:
         # événement, bascule « Payée » AUD102, arrondi ZFAC11, tolérance
         # XFAC13) vit dans LE service d'encaissement, partagé avec
         # `devis/{id}/facturer-complet/` — un seul chemin pour l'argent reçu.
-        from ..domain.encaissements import (
+        from apps.ventes.domain.encaissements import (
             EncaissementRefuse, encaisser_sur_facture,
         )
         try:
@@ -150,8 +150,8 @@ class FactureEncaissementActionsMixin:
                                'abandonner.'},
                     status=status.HTTP_409_CONFLICT,
                 )
-            from ..services import abandonner_solde_facture
-            from ..domain.encaissements import FactureNonEncaissable
+            from apps.ventes.services import abandonner_solde_facture
+            from apps.ventes.domain.encaissements import FactureNonEncaissable
             try:
                 montant = abandonner_solde_facture(
                     locked, motif=motif, user=request.user, auto=False,
@@ -175,7 +175,7 @@ class FactureEncaissementActionsMixin:
         L'abandon garde sa trace (``annule_le``) ; la facture revient au
         recouvrement, un paiement tardif s'encaisse ensuite normalement."""
         facture = self.get_object()
-        from ..domain.recouvrement import (
+        from apps.ventes.domain.recouvrement import (
             RepriseAbandonRefusee, reprendre_abandon_creance,
         )
         # ENF11 — corps illisible (liste, texte, motif non texte, identifiant
@@ -268,7 +268,7 @@ class FactureEncaissementActionsMixin:
         facture.retenue_liberee_le = date
         facture.save(update_fields=['retenue_liberee_le'])
         # AARG53 — la part libérée a sa propre échéance : statut re-dérivé.
-        from ..domain.encaissements import recalculer_statut_paiement
+        from apps.ventes.domain.encaissements import recalculer_statut_paiement
         recalculer_statut_paiement(facture, user=request.user,
                                    source='liberer_retenue')
         return Response(FactureSerializer(facture).data)
@@ -294,9 +294,9 @@ class FactureEncaissementActionsMixin:
                 {'detail': 'Corps illisible : un objet JSON est attendu.'},
                 status=status.HTTP_400_BAD_REQUEST)
         facture = self.get_object()
-        from ..services import LinkError, create_payment_link
-        from ..domain.encaissements import url_page_paiement
-        from ..payments.providers import get_provider, providers_lien_actifs
+        from apps.ventes.services import LinkError, create_payment_link
+        from apps.ventes.domain.encaissements import url_page_paiement
+        from apps.ventes.payments.providers import get_provider, providers_lien_actifs
         # ENF11 — ``provider`` ABSENT = « noop » ; présent, c'est une clé de
         # la liste blanche (``{}``, ``""`` ou ``null`` retombaient en silence
         # sur « noop » alors que le schéma les déclare invalides).
@@ -345,7 +345,7 @@ class FactureEncaissementActionsMixin:
 
         ASEC56 — geste d'argent (comme `lien_paiement`) : garde `PeutEncaisser`
         déclarée, qui PRIME sur le tiering de `get_permissions` (ASEC29)."""
-        from ..services import revoquer_lien_paiement
+        from apps.ventes.services import revoquer_lien_paiement
         facture = self.get_object()
         lien = revoquer_lien_paiement(facture=facture, user=request.user)
         if lien is None:
@@ -383,7 +383,7 @@ class FactureEncaissementActionsMixin:
 
         from apps.crm.selectors import get_company_client
 
-        from ..utils.corps import valider_corps
+        from apps.ventes.utils.corps import valider_corps
 
         company = request.user.company
         # CI #997 fuzz — le corps est validé par le sérialiseur PUBLIÉ (il
@@ -440,7 +440,7 @@ class FactureEncaissementActionsMixin:
         if repartition:
             repartition = {int(c): v for c, v in repartition.items()}
 
-        from ..services import affecter_encaissement_groupe
+        from apps.ventes.services import affecter_encaissement_groupe
 
         try:
             paiements = affecter_encaissement_groupe(

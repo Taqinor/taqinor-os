@@ -20,7 +20,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from apps.crm.models import Client
 from apps.parametres.models import CompanyProfile
 from apps.ventes.models import Facture
-from apps.ventes.views.facture import arrondir_au_pas
+from apps.facturation.views.facture import arrondir_au_pas
 
 User = get_user_model()
 MONTH = timezone.now().strftime('%Y%m')
