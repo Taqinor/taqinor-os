@@ -115,6 +115,64 @@ class FinEpisodeTests(TestCase):
         self.assertIsNone(ecart['penalite_mad'])
         self.assertIsNone(ecart['ecart_pct'])
 
+    def _remplacer_onduleur(self):
+        """AMON4 — T1 sur le drapeau ouvert, puis l'onduleur est remplacé."""
+        from core.events import equipement_remplace
+
+        from apps.monitoring.models import MonitoringSettings
+        from apps.sav.models import Equipement, Ticket
+        from apps.stock.models import Produit
+        reglages = MonitoringSettings.get(self.company)
+        reglages.auto_create_ticket = True
+        reglages.save()
+        services.evaluate_underperformance(self.inst, today=self.today)
+        t1 = self._drapeau().ticket
+        self.assertIsNotNone(t1)
+        Ticket.objects.filter(pk=t1.pk).update(statut=Ticket.Statut.RESOLU)
+        produit = Produit.objects.create(
+            company=self.company, nom='Onduleur', sku='OND-AMON4',
+            prix_achat=1, prix_vente=2)
+        onduleur = Equipement.objects.create(
+            company=self.company, produit=produit, installation=self.inst)
+        equipement_remplace.send(sender=None, equipement=onduleur, ticket=t1,
+                                 company=self.company, user=None)
+        drapeau = self._drapeau()
+        self.assertFalse(drapeau.is_open)
+        self.assertEqual(drapeau.motif_cloture, 'equipement_remplace')
+        return t1
+
+    def _releves_apres(self, facteur):
+        for i in range(1, 31):
+            jour = self.today + timedelta(days=i)
+            ProductionReading.objects.create(
+                company=self.company, installation=self.inst, date=jour,
+                period_days=1, energy_kwh=(services.attendu_entre(
+                    Decimal('12000'), jour, jour) * facteur).quantize(
+                        Decimal('0.01')))
+
+    def test_remplacement_ferme_et_repart(self):
+        t1 = self._remplacer_onduleur()
+        self._releves_apres(Decimal('0.4'))
+        res = services.evaluate_underperformance(
+            self.inst, today=self.today + timedelta(days=30))
+        self.assertTrue(res['underperforming'])
+        neuf = UnderperformanceFlag.objects.get(
+            installation=self.inst, is_open=True)
+        self.assertIsNotNone(neuf.ticket_id)
+        self.assertNotEqual(neuf.ticket_id, t1.pk)
+        self.assertEqual(
+            UnderperformanceFlag.objects.filter(installation=self.inst).count(),
+            2)
+
+    def test_remplacement_puis_releves_sains(self):
+        self._remplacer_onduleur()
+        self._releves_apres(Decimal('1'))
+        res = services.evaluate_underperformance(
+            self.inst, today=self.today + timedelta(days=30))
+        self.assertFalse(res['underperforming'])
+        self.assertFalse(UnderperformanceFlag.objects.filter(
+            installation=self.inst, is_open=True).exists())
+
     def test_nouvel_episode(self):
         ProductionReading.objects.filter(installation=self.inst).delete()
         services.evaluate_underperformance(self.inst, today=self.today)

@@ -91,17 +91,12 @@
     {
       "id": "monitoring_suit_remplacement",
       "libelle": "Le monitoring suit le remplacement d'un équipement",
-      "manquante": true,
-      "raison": "`equipement_remplace` est émis et notifié, mais le satellite monitoring n'y est pas abonné : la configuration de supervision et les relevés ne suivent pas l'équipement remplacé.",
-      "attendu": "Un récepteur dans `apps/monitoring/receivers.py` (tâche ASAV).",
-      "declencheur": {"manquant": true},
-      "fonction_entree": {"manquant": true},
-      "checkpoint": {"persistance": "apps/monitoring/models.py::MonitoringConfig", "description": "Configuration de supervision du système."},
+      "declencheur": {"type": "signal", "source": "apps/monitoring/receivers.py::_clore_episode_au_remplacement"},
+      "fonction_entree": "apps/monitoring/services.py::_fermer_episode",
+      "checkpoint": {"persistance": "apps/monitoring/models.py::UnderperformanceFlag", "description": "Épisode de sous-performance ouvert clos avec le motif `equipement_remplace` (AMON4)."},
       "regles_aval": [
-        {"regle": "L'émetteur existe déjà côté SAV.", "source": "apps/sav/services.py::retirer_piece"}
-      ],
-      "preuves_absence": [
-        {"motif": "equipement_remplace", "racine": "apps/monitoring", "fichiers_autorises": []}
+        {"regle": "L'émetteur existe côté SAV.", "source": "apps/sav/services.py::retirer_piece"},
+        {"regle": "L'évaluation suivante ne lit que les relevés postérieurs au remplacement : un nouvel épisode réel ouvre un drapeau et un ticket neufs.", "source": "apps/monitoring/services.py::evaluate_underperformance"}
       ]
     },
     {

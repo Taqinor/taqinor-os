@@ -270,6 +270,7 @@ def attendu_intervalles(config, intervalles):
 MOTIF_DONNEES_INDISPONIBLES = 'donnees_indisponibles'
 MOTIF_PERFORMANCE_RETABLIE = 'performance_retablie'
 MOTIF_SUPERVISION_RESILIEE = 'supervision_resiliee'
+MOTIF_EQUIPEMENT_REMPLACE = 'equipement_remplace'
 
 
 def _fermer_episode(installation, motif, note, user=None, drapeau_id=None):
@@ -344,6 +345,16 @@ def evaluate_underperformance(installation, *, user=None, today=None):
     # sous-performance. AUD522 — « donnée récente » = un relevé recouvre la
     # fenêtre ; sinon `stale_data` (relevé plus ancien) ou `no_data_ever`.
     since = today - timedelta(days=RECENT_WINDOW_DAYS)
+    # AMON4 — après un remplacement d'équipement, on ne réévalue que depuis
+    # le remplacement (l'épisode d'avant a été clos par le récepteur).
+    remplacement = (UnderperformanceFlag.objects
+                    .filter(installation=installation,
+                            motif_cloture=MOTIF_EQUIPEMENT_REMPLACE,
+                            date_cloture__isnull=False)
+                    .order_by('-date_cloture')
+                    .values_list('date_cloture', flat=True).first())
+    if remplacement is not None:
+        since = max(since, timezone.localtime(remplacement).date())
     releves = releves_recouvrant(installation, since, today)
     fenetre = fenetre_couverte(installation, releves, since, today)
     if fenetre is None:

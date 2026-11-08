@@ -119,10 +119,9 @@ class ParcoursPA7Tests(unittest.TestCase):
         # Les coutures sans émetteur/abonné/appelant du constat C-AMET-025 :
         # déclarées, pas devinées. ASAV100 a câblé la création d'abonnement et
         # la résiliation (émetteur vivant), ASAV101 le SLA de disponibilité :
-        # elles sont désormais PRÉSENTES.
-        self.assertEqual(
-            {e['id'] for e in manquantes},
-            {'monitoring_suit_remplacement'})
+        # elles sont désormais PRÉSENTES. AMON4 a câblé
+        # `monitoring_suit_remplacement` (récepteur monitoring).
+        self.assertEqual({e['id'] for e in manquantes}, set())
         for etape in manquantes:
             self.assertTrue(etape['raison'].strip(), etape['id'])
             self.assertTrue(etape['attendu'].strip(), etape['id'])

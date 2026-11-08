@@ -16,7 +16,9 @@ import logging
 
 from django.dispatch import receiver
 
-from core.events import abonnement_monitoring_resilie, chantier_receptionne
+from core.events import (
+    abonnement_monitoring_resilie, chantier_receptionne, equipement_remplace,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -68,3 +70,27 @@ def _semer_attendu_a_reception(sender, installation, user, ancien_statut,
         logger.warning(
             'YSERV8 : semis production attendue ignoré pour installation %s',
             getattr(installation, 'pk', '?'), exc_info=True)
+
+
+@receiver(equipement_remplace,
+          dispatch_uid="monitoring_fin_episode_remplacement")
+def _clore_episode_au_remplacement(sender, equipement, ticket, company, user,
+                                   **kwargs):
+    """AMON4 — un équipement du système est remplacé (``retirer_piece``) :
+    l'épisode de sous-performance ouvert est clos (motif
+    ``equipement_remplace``) ; l'évaluation repart du remplacement. Best-effort
+    (patron ``_semer_attendu_a_reception``) : jamais bloquant pour le SAV."""
+    installation_id = getattr(equipement, 'installation_id', None)
+    if not installation_id:
+        return
+    from .services import MOTIF_EQUIPEMENT_REMPLACE, _fermer_episode
+    try:
+        _fermer_episode(
+            installation_id, MOTIF_EQUIPEMENT_REMPLACE,
+            'Équipement remplacé (ticket '
+            f'{getattr(ticket, "reference", "")}) : évaluation repartie '
+            'du remplacement.')
+    except Exception:  # effet aval best-effort, jamais bloquant
+        logger.warning(
+            'AMON4 : clôture de l’épisode ignorée pour installation %s',
+            installation_id, exc_info=True)
