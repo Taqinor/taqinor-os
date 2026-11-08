@@ -33,6 +33,7 @@ from core.analytics_db import analytics_queryset
 from .models import CleaningEvent, ProductionReading, UnderperformanceFlag
 from .services import (
     _expected_recent_kwh, debut_couverture, get_or_create_config,
+    production_couverte, releves_recouvrant,
 )
 
 # Fenêtre par défaut (jours) d'analyse O&M.
@@ -94,6 +95,16 @@ def intervalles_couverts_par_releves(releves, since, today):
     return fusion
 
 
+def fenetre_mesuree(installation, since, today, window_days):
+    """AMON21 — ``(début, jours)`` de la fenêtre d'un indicateur : bornée au
+    début de couverture (``debut_couverture`` : mise en service / premier
+    relevé, comme l'attendu ASAV62) ; fenêtre entière si non bornée."""
+    debut = debut_couverture(installation, since)
+    if debut == since:
+        return debut, window_days
+    return debut, max((today - debut).days + 1, 0)
+
+
 def jours_couverts_mois(mois, debut_effectif, today):
     """ASAV63 — nombre de jours du mois ``mois`` (1er du mois) réellement
     couverts : ni avant ``debut_effectif`` (mise en service / premier relevé /
@@ -133,28 +144,32 @@ def om_metrics(installation, *, window_days=DEFAULT_WINDOW_DAYS, today=None):
     config = get_or_create_config(installation)
 
     # YHARD9 — lecture BI (relevés de production sur la fenêtre) : réplica si
-    # configuré, no-op strict sinon. 100 % lecture.
-    readings = analytics_queryset(ProductionReading.objects).filter(
-        installation=installation, date__gte=since, date__lte=today)
-    total_kwh = Decimal('0')
-    releves_couverture = []
-    for r in readings.values_list('energy_kwh', 'date', 'period_days'):
-        total_kwh += Decimal(str(r[0]))
-        releves_couverture.append((r[1], r[2]))
+    # configuré, no-op strict sinon. 100 % lecture. AMON21 — les relevés qui
+    # RECOUVRENT la fenêtre, au prorata (``production_couverte``), et une
+    # fenêtre bornée au début de couverture (mise en service / 1er relevé).
+    releves = releves_recouvrant(
+        installation, since, today,
+        base=analytics_queryset(ProductionReading.objects))
+    debut, jours_fenetre = fenetre_mesuree(installation, since, today,
+                                           window_days)
+    total_kwh = production_couverte(releves, debut, today)
 
     expected = _expected_recent_kwh(
         installation, config, window_days, today=today)
-    pr_pct = None
-    if expected and expected > 0:
+    pr_pct = availability_pct = None
+    if releves and expected and expected > 0:
         pr_pct = _q((total_kwh / expected) * Decimal('100'))
 
     # Disponibilité : jours couverts (UNION des intervalles des relevés,
-    # ASAV64) / jours de la fenêtre, plafonnée à 100 %.
-    jours_couverts = jours_couverts_par_releves(
-        releves_couverture, since, today)
-    availability_pct = _q(min(
-        Decimal(jours_couverts) / Decimal(window_days) * Decimal('100'),
-        Decimal('100')))
+    # ASAV64) / jours de la fenêtre BORNÉE, plafonnée à 100 % ; ``None``
+    # sans relevé (jamais un faux 0 %).
+    if releves and jours_fenetre > 0:
+        jours_couverts = jours_couverts_par_releves(
+            [(jour, periode) for jour, periode, _kwh in releves],
+            debut, today)
+        availability_pct = _q(min(
+            Decimal(jours_couverts) / Decimal(jours_fenetre)
+            * Decimal('100'), Decimal('100')))
 
     # PR mensuel pour soiling + dégradation.
     monthly = _monthly_series(installation, since, today)

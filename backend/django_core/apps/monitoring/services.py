@@ -183,12 +183,14 @@ def _expected_recent_kwh(installation, config, window_days, today=None,
         premier_releve)
 
 
-def releves_recouvrant(installation, debut, fin):
+def releves_recouvrant(installation, debut, fin, base=None):
     """AMON22 — ``[(date, period_days, energy_kwh)]`` des relevés dont la
     période ``[date, date + period_days)`` RECOUVRE ``[debut, fin]`` (un
-    relevé à cheval sur un bord compte, un relevé reçu en retard aussi)."""
+    relevé à cheval sur un bord compte, un relevé reçu en retard aussi).
+    ``base`` : gestionnaire de lecture (réplica analytique, YHARD9)."""
     from django.db.models import Max
-    qs = ProductionReading.objects.filter(installation=installation)
+    qs = (base if base is not None else ProductionReading.objects).filter(
+        installation=installation)
     plus_longue = qs.aggregate(m=Max('period_days'))['m'] or 1
     lignes = qs.filter(
         date__gt=debut - timedelta(days=plus_longue), date__lte=fin,
