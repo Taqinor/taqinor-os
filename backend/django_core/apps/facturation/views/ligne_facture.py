@@ -1,8 +1,8 @@
 from rest_framework.parsers import JSONParser
 from rest_framework import viewsets
-from ..models import LigneFacture
-from ..serializers_facturation import LigneFactureSerializer
-from ..gardes_lecture import LectureFactures
+from apps.ventes.models import LigneFacture
+from apps.ventes.serializers_facturation import LigneFactureSerializer
+from apps.ventes.gardes_lecture import LectureFactures
 from authentication.permissions import (
     IsResponsableOrAdmin,
     IsAdminRole,

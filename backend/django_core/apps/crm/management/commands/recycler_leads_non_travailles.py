@@ -24,6 +24,7 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 
 import logging
+from apps.crm.activity import journal_systeme
 
 logger = logging.getLogger(__name__)
 
@@ -123,8 +124,8 @@ def _escalate(lead, seuil, now):
 
     body = (f'{ESCALATION_MARKER} depuis plus de {seuil} h '
             f'(créé le {lead.date_creation:%Y-%m-%d %H:%M}).')
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
+    journal_systeme(
+        company=lead.company, lead=lead,
         kind=LeadActivity.Kind.NOTE, body=body)
     try:
         from apps.notifications.services import notify
@@ -162,7 +163,7 @@ def _deassign(lead):
     body = 'auto — recyclage SLA : lead désassigné, rendu au pool'
     if ancien_owner is not None:
         body += f' (précédemment {ancien_owner})'
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
+    journal_systeme(
+        company=lead.company, lead=lead,
         kind=LeadActivity.Kind.NOTE, body=body)
     return True

@@ -11,6 +11,7 @@ from .cadence_plan import sync_relance_activity
 from .leads_socle import MOTIF_BULK_CADENCE_ACTIVE, leads_avec_cadence_active
 from .models import Lead, LeadActivity, PointContact
 import logging
+from .activity import creer_activite, journal_systeme
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +66,7 @@ def appliquer_plan_activite(*, lead, plan, user):
         )
         resultats.append(act)
 
-    LeadActivity.objects.create(
+    creer_activite(
         company=lead.company, lead=lead, user=user,
         kind=LeadActivity.Kind.NOTE,
         body=f"Plan d'activité « {plan.nom} » appliqué "
@@ -86,8 +87,8 @@ def noter_touche_marketing(lead, message, *, ordre=0, cout=None):
     l'événement (ex. « Campagne X envoyée »), stocké aussi dans
     ``PointContact.detail`` pour l'attribution.
     """
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
+    journal_systeme(
+        company=lead.company, lead=lead,
         kind=LeadActivity.Kind.NOTE, body=message)
     return PointContact.objects.create(
         company=lead.company, lead=lead, canal=Lead.Canal.AUTRE,
@@ -139,7 +140,7 @@ def appliquer_champ_automatique(lead, champ, valeur, user=None):
             return CHAMP_AUTO_INCHANGE, ''
         lead.owner = cible
         lead.save(update_fields=['owner'])
-        LeadActivity.objects.create(
+        creer_activite(
             company=lead.company, lead=lead, user=user,
             kind=LeadActivity.Kind.MODIFICATION, field='owner',
             field_label=_activity.TRACKED_FIELDS.get('owner', 'owner'),
@@ -168,7 +169,7 @@ def appliquer_champ_automatique(lead, champ, valeur, user=None):
     # Par introspection (jamais `views` : contrat import-linter ventes -/-> audit).
     derivees = [c.name for c in Lead._meta.concrete_fields if c.name.endswith('_normalise')]
     lead.save(update_fields=[champ, *derivees])
-    LeadActivity.objects.create(
+    creer_activite(
         company=lead.company, lead=lead, user=user,
         kind=LeadActivity.Kind.MODIFICATION, field=champ,
         field_label=_activity.TRACKED_FIELDS.get(champ, champ),

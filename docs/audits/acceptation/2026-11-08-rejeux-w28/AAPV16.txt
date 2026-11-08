@@ -1,0 +1,31 @@
+# Preuve en direct AAPV16 — rejeu w28, code b00242be0 (dev-plan-6a6fc9-w28), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w28-django (conteneur privé : code de CE worktree, base privée
+# erp_accept_w28, transaction annulée, mail en mémoire, Celery coupé, HTTP sortant bloqué). « oc » = variante
+# scratchpad sonde_oc.py identique sauf transaction.on_commit exécuté immédiatement (événements « après commit »
+# qui ne partiraient jamais dans la transaction annulée). Sur le code corrigé, verdict ÉCART = repro False = attendu.
+# Sondes C-LIVE-* (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Écran : front de CE worktree servi par vite (127.0.0.1:5199) -> conteneur privé accept-w28-web (runserver, base
+# erp_accept_w28, SMTP 127.0.0.1:1 = aucune messagerie), piloté par Playwright MCP. Données d'écran = états des sondes
+# rejouées SANS rollback dans la base privée (comptes de test des sondes, mot de passe de test) ou fixtures FIX-*.
+# Verdict : PASS — Sondes C-AAPV-061 et -L2 (oc) : BCF chez F2 à 1 150 => repro False ; écran : Commander le besoin => BCF F2 PU 1 100 (palier 10+).
+
+== C-AAPV-061 (sha 6ffa876688)
+attendu : repro si BCF chez F3 (tarif expiré) et PU 1400 (prix catalogue) au lieu de F2 à 1150
+observé : {'reference': {'effectif_F2': '1150.00', 'effectif_F3': 'None'}, 'http': 201, 'detail': None, 'lignes': [{'fournisseur': 'F2-AAPV61', 'quantite': 10, 'pu': '1150.00', 'total': '11500.00'}]}
+{"reference": {"effectif_F2": "1150.00", "effectif_F3": "None"}, "http": 201, "detail": null, "lignes": [{"fournisseur": "F2-AAPV61", "quantite": 10, "pu": "1150.00", "total": "11500.00"}], "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 4, après 4) ; mails 0 ; tâches Celery bloquées 0
+
+== C-AAPV-061 (sha ff075ef7d4)
+attendu : elargi si BCF chez F2 (tarif en vigueur) mais PU 1400 catalogue, et ni PATCH ni envoyer ne signalent rien
+observé : {'role': 'responsable', 'effectif_F2': '1150.00', 'commander_http': 201, 'detail': None, 'lignes': [{'fournisseur': 'F2-AAPV61L2', 'quantite': 10, 'pu': '1150.00'}], 'get_http': 200, 'get_a_prix_warnings': False, 'pu_apres_envoi': '1150.00', 'patch_http': 200, 'prix_warnings_patch': None, 'envoyer_http': 200, 'prix_warnings_envoyer': None, 'bcf_statut': 'envoye'}
+{"role": "responsable", "effectif_F2": "1150.00", "commander_http": 201, "detail": null, "lignes": [{"fournisseur": "F2-AAPV61L2", "quantite": 10, "pu": "1150.00"}], "get_http": 200, "get_a_prix_warnings": false, "pu_apres_envoi": "1150.00", "patch_http": 200, "prix_warnings_patch": null, "envoyer_http": 200, "prix_warnings_envoyer": null, "bcf_statut": "envoye", "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 4, après 4) ; mails 0 ; tâches Celery bloquées 0
+
+## AAPV16 — PASS (partie écran)
+Société dédiée Live AAPV 16 (compte live_aapv_16) au Given de la tâche : P « Onduleur LIVE16 » catalogue 1 400, F2 tarif 1 150 en
+vigueur avec palier 10+ à 1 100, F3 900 expiré hier, chantier CH-LIVE16 manquant 10 P. Chantiers › CH-LIVE16 › « Matériel & BC » :
+fournisseur proposé F2-LIVE16 ; « Commander les manques (1) » => « 1 bon de commande créé (brouillon…) : BCF-202611-0001 — F2-LIVE16 ».
+Bons de commande › BCF-202611-0001 : « F2-LIVE16 Brouillon 11 000,00 MAD », ligne Onduleur LIVE16 quantité 10, PU 1 100,00
+(palier 10+ du tarif en vigueur ; ni F3 expiré ni prix catalogue 1 400). Console 0 erreur.

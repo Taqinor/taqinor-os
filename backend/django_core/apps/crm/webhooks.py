@@ -53,6 +53,7 @@ from . import stages
 from .leads_meta import date_webhook_ou_none
 from .models import Lead, LeadActivity, WebsiteLeadPayload
 from .webhook_origine import _clean_estimate_shown
+from .activity import journal_systeme
 
 logger = logging.getLogger(__name__)
 
@@ -378,8 +379,8 @@ def _noter_trace_toit(lead):
     if not _a_un_contour(contour):
         return
     try:
-        LeadActivity.objects.create(
-            company=lead.company, lead=lead, user=None,
+        journal_systeme(
+            company=lead.company, lead=lead,
             kind=LeadActivity.Kind.NOTE,
             body=(
                 'Toit dessiné par le client sur la carte du site : '
@@ -1951,25 +1952,16 @@ def assign_client_ref(lead):
 def _owners_habilites(company, owner_ids):
     """Sous-ensemble de ``owner_ids`` réellement ATTRIBUABLE aujourd'hui.
 
-    MÊMES filtres que ``services.pick_round_robin_owner`` (le chemin normal
-    d'attribution) : utilisateur de la société, ``is_active=True``, et
-    habilité au CRM — permission ``crm_creer``, ou rôle legacy admin/
-    responsable pour les comptes sans Role. Renvoie un ``set`` de pk."""
-    from django.contrib.auth import get_user_model
-    from django.db.models import Q
+    CRXB4 — le filtre n'est plus une COPIE : c'est
+    ``leads_attribution.commerciaux_habilites``, celui du chemin normal
+    (``pick_round_robin_owner``). Renvoie un ``set`` de pk."""
+    from .leads_attribution import commerciaux_habilites
 
     ids = {pk for pk in owner_ids if pk}
     if not ids:
         return set()
-    User = get_user_model()
-    return set(
-        User.objects.filter(
-            pk__in=ids, company=company, is_active=True,
-        ).filter(
-            Q(role__permissions__contains=['crm_creer'])
-            | Q(role__isnull=True, role_legacy__in=['admin', 'responsable']),
-        ).values_list('pk', flat=True)
-    )
+    return set(commerciaux_habilites(company).filter(
+        pk__in=ids).values_list('pk', flat=True))
 
 
 def _pick_owner_from_duplicates(dupes, *, telephone='', email='', company=None):
@@ -2042,8 +2034,8 @@ def _note_rappel_sous_seuil(lead):
     ).exists()
     if already:
         return
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
+    journal_systeme(
+        company=lead.company, lead=lead,
         kind=LeadActivity.Kind.NOTE,
         body=(f'{CALLBACK_SOUS_SEUIL_MARKER} : demande consignée, '
               'aucune alerte urgente envoyée.'),
@@ -2101,8 +2093,8 @@ def _flag_possible_duplicates(lead, *, telephone='', email='', dupes=None,
         owner_name = inherited_owner.get_full_name() or inherited_owner.username
         body += (f" — attribué à {owner_name} comme la fiche d'origine "
                  f"#{inherited_from.pk}")
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
+    journal_systeme(
+        company=lead.company, lead=lead,
         kind=LeadActivity.Kind.NOTE, body=body)
     return [le.pk for le in dupes], match_fort
 
@@ -2357,8 +2349,8 @@ def _map_and_link_lead(raw, data, company):
         if provisional_ref and provisional_ref != server_ref:
             creation_body += (
                 f' (code provisoire affiché au visiteur : {provisional_ref})')
-        LeadActivity.objects.create(
-            company=lead.company, lead=lead, user=None,
+        journal_systeme(
+            company=lead.company, lead=lead,
             kind=LeadActivity.Kind.CREATION,
             body=creation_body,
         )
@@ -2409,8 +2401,8 @@ def _map_and_link_lead(raw, data, company):
         try:
             questionnaire_full = _extract_web_questionnaire(data)
             if questionnaire_full:
-                LeadActivity.objects.create(
-                    company=lead.company, lead=lead, user=None,
+                journal_systeme(
+                    company=lead.company, lead=lead,
                     kind=LeadActivity.Kind.NOTE,
                     body=_build_questionnaire_note(
                         questionnaire_full,
@@ -2630,8 +2622,8 @@ def website_lead_webhook(request):
                         matched = candidate
                         break
             if matched is not None:
-                LeadActivity.objects.create(
-                    company=matched.company, lead=matched, user=None,
+                journal_systeme(
+                    company=matched.company, lead=matched,
                     kind=LeadActivity.Kind.NOTE,
                     body=f'Engagement proposition : {event_type}',
                 )
@@ -3355,8 +3347,8 @@ def _rdv_creer_lead(company, propre):
     if propre['message']:
         lignes.append('Message :')
         lignes.append(propre['message'])
-    LeadActivity.objects.create(
-        company=company, lead=lead, user=None,
+    journal_systeme(
+        company=company, lead=lead,
         kind=LeadActivity.Kind.NOTE, body='\n'.join(lignes))
     return lead
 

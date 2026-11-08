@@ -10,7 +10,7 @@ from ..utils.params import corps_objet, date_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 from ..models import FactureFournisseur, PaiementFournisseur
 from ..serializers import PaiementFournisseurSerializer
-from authentication.permissions import IsAdminRole, IsResponsableOrAdmin, HasPermissionOrLegacy
+from authentication.permissions import IsAdminRole, HasPermissionOrLegacy
 import logging
 
 logger = logging.getLogger(__name__)
@@ -82,14 +82,12 @@ class PaiementFournisseurViewSet(CompanyScopedModelViewSet):
         # donc l'API sur son écran ; aucun usage existant ne casse.
         if self.action == 'destroy':
             return [IsAdminRole()]
-        if self.action in ('list', 'retrieve'):
+        if self.action in ('list', 'retrieve', 'export_ras_tva'):  # AAPV35 export = lecture
             # ASTK19 — survivant unique de la lecture (AUD419 + ASTK11) : un
             # rôle fin lit les règlements s'il porte ``achats_payer`` OU
             # ``prix_achat_voir`` (montants d'achat, D-ASTK-2) ; un compte
             # légacy garde responsable/admin ET can_view_buy_prices.
             return [PeutLirePaiementsFournisseur()]
-        if self.action == 'export_ras_tva':
-            return [IsResponsableOrAdmin()]
         # ASTK19 (D-ASTK-3) — enregistrer/modifier un règlement = « payer » :
         # ``achats_payer`` (Directeur + Administrateur ; repli légacy).
         return [HasPermissionOrLegacy('achats_payer')()]
@@ -207,8 +205,7 @@ class PaiementFournisseurViewSet(CompanyScopedModelViewSet):
             recompute_facture_fournisseur_statut(facture)
 
     @extend_schema(parameters=[P('date_debut', DATE_OU_VIDE), P('date_fin', DATE_OU_VIDE)], responses={XLSX: BINARY})
-    @action(detail=False, methods=['get'], url_path='ras-tva/export',
-            permission_classes=[IsResponsableOrAdmin])
+    @action(detail=False, methods=['get'], url_path='ras-tva/export')
     def export_ras_tva(self, request):
         """XPUR2 — relevé RAS-TVA exportable xlsx pour la télédéclaration
         Simpl-TVA. Filtres optionnels ``?date_debut=`` / ``?date_fin=``

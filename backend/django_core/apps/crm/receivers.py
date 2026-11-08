@@ -47,6 +47,7 @@ from .fiche_funnel import (
 from .cadence_reperes import (
     est_note_de_geste_interne, est_note_de_report, est_note_de_touche_sautee)
 from .leads_premier_contact import marquer_premier_contact
+from .activity import creer_activite
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +85,7 @@ def _lever_perdu_sur_signature(devis, ancien_statut, user):
         return
     lead.perdu = False
     lead.save(update_fields=['perdu'])
-    LeadActivity.objects.create(
+    creer_activite(
         company=lead.company, lead=lead, user=user,
         kind=LeadActivity.Kind.MODIFICATION,
         field='perdu', field_label='Perdu',
@@ -271,7 +272,7 @@ def _noter_conception_on_layout_finalise(sender, devis, user=None, **kwargs):
     else:
         corps = 'Conception 3D finalisée'
 
-    LeadActivity.objects.create(
+    creer_activite(
         company=lead.company, lead=lead, kind=LeadActivity.Kind.NOTE,
         body=corps, user=user)
 

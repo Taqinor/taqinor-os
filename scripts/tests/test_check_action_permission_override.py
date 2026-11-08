@@ -211,14 +211,15 @@ class AllowlistTests(unittest.TestCase):
             'classe plutot que l ajouter a l allowlist.')
 
     def test_le_patron_d_or_reel_est_detecte_sans_allowlist(self):
-        """`ventes/views/paiement.py` passe par le PATRON, pas par la liste."""
-        chemin = (guard.DJANGO_CORE / 'apps' / 'ventes' / 'views'
+        """`facturation/views/paiement.py` (ex-ventes, ODX18) passe par le
+        PATRON, pas par la liste."""
+        chemin = (guard.DJANGO_CORE / 'apps' / 'facturation' / 'views'
                   / 'paiement.py')
         verdicts = {classe: verdict
                     for _l, classe, verdict, _d in guard.check_file(chemin)}
         self.assertEqual(verdicts.get('PaiementViewSet'), 'or')
         self.assertNotIn(
-            'backend/django_core/apps/ventes/views/paiement.py'
+            'backend/django_core/apps/facturation/views/paiement.py'
             '::PaiementViewSet',
             guard._load_allowlist())
 

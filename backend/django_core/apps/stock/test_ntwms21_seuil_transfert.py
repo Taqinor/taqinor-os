@@ -26,7 +26,7 @@ from apps.stock.models import (
     TransfertStock,
 )
 from apps.stock.services import (
-    demande_transfert_approuvee_existe, transfer_stock,
+    transfer_stock,
     transfert_exige_approbation, valeur_transfert,
 )
 
@@ -126,20 +126,30 @@ class TestSeuilApprobation(Ntwms21Base):
 
 class TestDemandeApprouveeTraverseLaGarde(Ntwms21Base):
     def test_demande_approuvee_laisse_passer_le_transfert(self):
-        """La régression la plus dangereuse : sans cette exemption, une
-        demande FG325 approuvée devenait inexécutable."""
+        """La régression la plus dangereuse : une demande FG325 approuvée doit
+        rester exécutable — AAPV74 : par son exécution (`demande_approuvee`)."""
         self._seuil('20000')
         self._demande(quantite=5, statut='approuve')
-
-        self.assertTrue(demande_transfert_approuvee_existe(
-            self.company, produit_id=self.produit.id,
-            source_id=self.principal.id,
-            destination_id=self.camionnette.id, quantite=5))
         transfert = transfer_stock(
             company=self.company, user=self.admin,
             produit_id=self.produit.id, source_id=self.principal.id,
-            destination_id=self.camionnette.id, quantite=5)
+            destination_id=self.camionnette.id, quantite=5,
+            demande_approuvee=True)
         self.assertIsInstance(transfert, TransfertStock)
+
+    def test_une_approbation_ne_couvre_pas_les_transferts_directs(self):
+        """AAPV74 — une demande approuvée de 5 ne couvre AUCUN transfert
+        direct identique (trois tentatives : trois refus, 0 transfert)."""
+        self._seuil('20000')
+        self._demande(quantite=5, statut='approuve')
+        for _ in range(3):
+            with self.assertRaises(ValueError) as ctx:
+                transfer_stock(
+                    company=self.company, user=self.admin,
+                    produit_id=self.produit.id, source_id=self.principal.id,
+                    destination_id=self.camionnette.id, quantite=5)
+            self.assertIn('exécutez la demande de transfert approuvée', str(ctx.exception))
+        self.assertEqual(TransfertStock.objects.count(), 0)
 
     def test_demande_seulement_demandee_ne_suffit_pas(self):
         self._seuil('20000')

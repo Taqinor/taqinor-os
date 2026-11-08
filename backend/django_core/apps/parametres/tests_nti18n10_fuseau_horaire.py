@@ -6,6 +6,7 @@ via GET /parametres/, écriture via PATCH /parametres/update/ (rôle
 responsable/admin uniquement), isolation multi-tenant.
 """
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
@@ -85,3 +86,33 @@ class FuseauHoraireApiTests(TestCase):
             {'fuseau_horaire': 'Africa/Dakar'}, format='json')
         other_profile.refresh_from_db()
         self.assertEqual(other_profile.fuseau_horaire, 'Africa/Casablanca')
+
+
+# NTI18N9 — devise d'affichage société (CompanyProfile.devise_tenant).
+class DeviseTenantTests(TestCase):
+    def test_default_mad_and_independent_of_devise_defaut(self):
+        p = CompanyProfile.get(_company('nti18n9-a'))
+        self.assertEqual(p.devise_tenant, 'MAD')
+        self.assertEqual(p.devise_defaut, 'MAD')
+
+    def test_xof_company_does_not_touch_other_company_or_document_currency(self):
+        xof = CompanyProfile.get(_company('nti18n9-xof'))
+        xof.devise_tenant = 'XOF'
+        xof.save(update_fields=['devise_tenant'])
+        autre = CompanyProfile.get(_company('nti18n9-mad'))
+        xof.refresh_from_db()
+        self.assertEqual(xof.devise_tenant, 'XOF')
+        self.assertEqual(xof.devise_defaut, 'MAD')  # devise document (FG52) intacte
+        self.assertEqual(autre.devise_tenant, 'MAD')
+
+    def test_exposed_by_serializer(self):
+        p = CompanyProfile.get(_company('nti18n9-ser'))
+        p.devise_tenant = 'XOF'
+        p.save(update_fields=['devise_tenant'])
+        self.assertEqual(CompanyProfileSerializer(p).data['devise_tenant'], 'XOF')
+
+    def test_invalid_code_rejected(self):
+        p = CompanyProfile.get(_company('nti18n9-bad'))
+        p.devise_tenant = 'xof'
+        with self.assertRaises(ValidationError):
+            p.full_clean()

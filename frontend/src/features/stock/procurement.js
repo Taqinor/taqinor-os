@@ -52,6 +52,7 @@ export function buildReceptionPayload(lignes = [], saisies = {}, tracabilite = {
     if (Array.isArray(t.numeros_serie) && t.numeros_serie.length > 0) item.numeros_serie = t.numeros_serie
     const lot = String(t.numero_lot ?? '').trim()
     if (lot) item.numero_lot = lot
+    if (lot && t.date_peremption) item.date_peremption = t.date_peremption  // AAPV39
     out.push(item)
   }
   return out

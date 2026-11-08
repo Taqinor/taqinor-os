@@ -407,12 +407,13 @@ class PlanChargementSerializer(IdInconnu404Mixin, ChampsStrictsMixin, CompanySco
         return obj.unites_logistiques.count()
 
 
-class MouvementRebutSerializer(CompanyScopedRelationsMixin,
+class MouvementRebutSerializer(MasqueMontantsAchatMixin, CompanyScopedRelationsMixin,
                                ChampsTexteBooleenStricts, serializers.ModelSerializer):
     """NTWMS24 — déclaration de perte motivée. La valeur de perte et le
     mouvement de stock sont posés côté serveur (jamais acceptés du client) ;
-    la valeur reste INTERNE."""
+    la valeur reste INTERNE (AAPV36 : masquée sans `prix_achat_voir`)."""
 
+    champs_montants_achat = ('valeur_perte',)
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
     bin_code = TexteLie(
         source='bin.code', read_only=True, default='')

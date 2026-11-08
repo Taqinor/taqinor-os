@@ -1,0 +1,23 @@
+# Preuve en direct AAPV19 — rejeu w28, code b00242be0 (dev-plan-6a6fc9-w28), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w28-django (conteneur privé : code de CE worktree, base privée
+# erp_accept_w28, transaction annulée, mail en mémoire, Celery coupé, HTTP sortant bloqué). « oc » = variante
+# scratchpad sonde_oc.py identique sauf transaction.on_commit exécuté immédiatement (événements « après commit »
+# qui ne partiraient jamais dans la transaction annulée). Sur le code corrigé, verdict ÉCART = repro False = attendu.
+# Sondes C-LIVE-* (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Écran : front de CE worktree servi par vite (127.0.0.1:5199) -> conteneur privé accept-w28-web (runserver, base
+# erp_accept_w28, SMTP 127.0.0.1:1 = aucune messagerie), piloté par Playwright MCP. Données d'écran = états des sondes
+# rejouées SANS rollback dans la base privée (comptes de test des sondes, mot de passe de test) ou fixtures FIX-*.
+# Verdict : PASS — Sonde C-AAPV-121 : DELETE/PATCH archive 409, valorisation 24 000 inchangée => repro False ; écran : message, valorisation inchangée.
+
+== C-AAPV-121 (sha acc21a69c0)
+attendu : repro si avant : valorisation == valorisation-a-date (24000) ; après DELETE P + PATCH R : valorisation 3000, a-date 24000, P.quantite_stock 40
+observé : {'stock_recu': {'P': 40, 'R': 5, 'Q': 10}, 'avant': {'valorisation_http': 200, 'valorisation_total': '24000.00', 'valorisation_produits': ['S121-P', 'S121-Q', 'S121-R'], 'a_date_http': 200, 'a_date_total': '24000.00', 'a_date_produits': ['S121-P', 'S121-Q', 'S121-R'], 'dashboard_http': 200, 'dashboard_valeur_stock': 38000.0}, 'delete_P': {'http': 409, 'archived': None, 'detail': '{\'detail\': "40 unité(s) en stock : sortez-les ou inventoriez à 0 avant d\'archiver ce produit."}'}, 'patch_R': {'http': 409, 'detail': '{\'detail\': ErrorDetail(string="5 unité(s) en stock : sortez-les ou inventoriez à 0 avant d\'archiver ce produit.", code=\'state_conflict\'), \'error\': {\'code\': \'sta'}, 'apres_archives': {'P': {'is_archived': False, 'quantite_stock': 40}, 'R': {'is_archived': False, 'quantite_stock': 5}}, 'apres': {'valorisation_http': 200, 'valorisation_total': '24000.00', 'valorisation_produits': ['S121-P', 'S121-Q', 'S121-R'], 'a_date_http': 200, 'a_date_total': '24000.00', 'a_date_produits': ['S121-P', 'S121-Q', 'S121-R'], 'dashboard_http': 200, 'dashboard_valeur_stock': 38000.0}}
+{"stock_recu": {"P": 40, "R": 5, "Q": 10}, "avant": {"valorisation_http": 200, "valorisation_total": "24000.00", "valorisation_produits": ["S121-P", "S121-Q", "S121-R"], "a_date_http": 200, "a_date_total": "24000.00", "a_date_produits": ["S121-P", "S121-Q", "S121-R"], "dashboard_http": 200, "dashboard_valeur_stock": 38000.0}, "delete_P": {"http": 409, "archived": null, "detail": "{'detail': \"40 unité(s) en stock : sortez-les ou inventoriez à 0 avant d'archiver ce produit.\"}"}, "patch_R": {"http": 409, "detail": "{'detail': ErrorDetail(string=\"5 unité(s) en stock : sortez-les ou inventoriez à 0 avant d'archiver ce produit.\", code='state_conflict'), 'error': {'code': 'sta"}, "apres_archives": {"P": {"is_archived": false, "quantite_stock": 40}, "R": {"is_archived": false, "quantite_stock": 5}}, "apres": {"valorisation_http": 200, "valorisation_total": "24000.00", "valorisation_produits": ["S121-P", "S121-Q", "S121-R"], "a_date_http": 200, "a_date_total": "24000.00", "a_date_produits": ["S121-P", "S121-Q", "S121-R"], "dashboard_http": 200, "dashboard_valeur_stock": 38000.0}, "ecart_meme_jour": "0.00", "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : non (avant 62, après 63) ; mails 0 ; tâches Celery bloquées 0
+
+## AAPV19 — PASS
+État de la sonde C-AAPV-121 rejouée sans rollback, compte sonde_aapv_121. Stock › « Valorisation » : Total 24 000,00 DH (P 40 u.
+20 000, Q 3 000, R 1 000). Ligne « Produit P (S121-P) » › « Plus d'actions sur la ligne » › « Supprimer » → « Supprimer le produit
+« Produit P » ? » → Supprimer => 409 affiché : « 40 unité(s) en stock : sortez-les ou inventoriez à 0 avant d'archiver ce produit. » ;
+« Valorisation » relue : Total 24 000,00 DH, Produit P 40 u. 20 000,00 DH (inchangée). Console : seule erreur = la 409 attendue.

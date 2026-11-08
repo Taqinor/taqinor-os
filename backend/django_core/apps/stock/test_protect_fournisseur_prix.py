@@ -160,6 +160,10 @@ class TestApiArchiveAuLieuDeDetruire(FournisseurPrixBase):
         avec_archives = self.api.get(f'{FOURNISSEURS_URL}?show_archived=true')
         self.assertIn(self.fournisseur.pk,
                       [f['id'] for f in _resultats(avec_archives)])
+        # ENF51 — la fiche d'un archivé reste consultable (404 avant).
+        fiche = self.api.get(f'{FOURNISSEURS_URL}{self.fournisseur.pk}/')
+        self.assertEqual(fiche.status_code, 200, fiche.data)
+        self.assertTrue(fiche.data['is_archived'])
 
         remise = self.api.patch(
             f'{FOURNISSEURS_URL}{self.fournisseur.pk}/unarchive/')

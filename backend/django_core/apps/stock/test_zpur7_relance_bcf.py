@@ -37,7 +37,9 @@ def _company(slug):
 
 
 def _user(company, username):
-    role = Role.objects.create(company=company, nom=f'r-{username}')
+    # AAPV51 — la relance va aux porteurs d'``achats_commander`` seulement.
+    role = Role.objects.create(company=company, nom=f'r-{username}',
+                               permissions=['achats_commander'])
     return User.objects.create_user(
         username=username, password='x', company=company, role=role,
         role_legacy='responsable')

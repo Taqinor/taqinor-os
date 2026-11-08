@@ -26,7 +26,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import (
-    HasPermissionOrLegacy, IsAnyRole, IsResponsableOrAdmin,
+    HasPermissionOrLegacy, IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
 from core.conflit_etat import ConflitEtat
 from core.documents import TransitionRefusee
@@ -85,7 +85,7 @@ def _exiger_brouillon(demande):
         return
     libelle = demande.get_statut_display().lower()
     raise ConflitEtat({'detail': (
-        f'Demande {libelle} : repassez-la en brouillon pour la modifier.')})
+        f'Demande {libelle} : figée, elle ne se modifie plus.')})
 
 
 #: ACHT12 — seul champ d'en-tête modifiable hors brouillon (épingle terrain).
@@ -136,6 +136,15 @@ def _notifier_demandeur_decision(da, approuvee):
         logger.warning("notifier demandeur decision : échec ignoré, comportement dégradé", exc_info=True)
 
 
+class _RefusGenererBcf(Exception):
+    """AAPV28 — refus de ``generer-bcf`` levé DANS la transaction (rollback),
+    porteur de la réponse servie."""
+
+    def __init__(self, response):
+        super().__init__(response.data)
+        self.response = response
+
+
 class DemandeAchatViewSet(oa.CorpsObjetMixin, oa.JsonOnlyMixin, ChatterViewSetMixin,
                           CompanyScopedModelViewSet):
     """FG310 — réquisitions d'achat. Lecture tout rôle, écriture
@@ -158,9 +167,12 @@ class DemandeAchatViewSet(oa.CorpsObjetMixin, oa.JsonOnlyMixin, ChatterViewSetMi
         # ACHT54 — `approuver` (décision directe) relève du même code fin que
         # `approuver-etape` ; `generer-bcf` CRÉE un BCF : `achats_commander`
         # (patron ASTK17 du viewset BCF stock).
-        if self.action in ('approuver_etape', 'approuver'):
+        # AAPV32 — refuser / rejeter-etape : même droit que l'approbation ;
+        # marquer-commandee : `achats_commander`, comme generer-bcf.
+        if self.action in ('approuver_etape', 'approuver', 'refuser',
+                           'rejeter_etape'):
             return [IsResponsableOrAdmin(), PeutApprouverDemandeAchat()]
-        if self.action == 'generer_bcf':
+        if self.action in ('generer_bcf', 'marquer_commandee'):
             return [IsResponsableOrAdmin(),
                     HasPermissionOrLegacy('achats_commander')()]
         if self.action in READ_ACTIONS:
@@ -342,12 +354,13 @@ class DemandeAchatViewSet(oa.CorpsObjetMixin, oa.JsonOnlyMixin, ChatterViewSetMi
                 status=status.HTTP_409_CONFLICT)
         # AUD819 — transition GARDÉE par la table TRANSITIONS + événement bus.
         try:
+            services.verifier_separation_taches_achat(da, request.user)  # AAPV32
             services.appliquer_statut_document(
                 da, DemandeAchat.Statut.APPROUVEE, user=request.user,
                 champs={'approuvee_par': request.user,
                         'date_decision': timezone.now(),
                         'motif_refus': None})
-        except TransitionRefusee as exc:
+        except (TransitionRefusee, services.ApprobationAchatError) as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_409_CONFLICT)
         # DA-EVENT-VIEWSET (NTP2P38) — ce chemin direct (sans plan
@@ -414,72 +427,68 @@ class DemandeAchatViewSet(oa.CorpsObjetMixin, oa.JsonOnlyMixin, ChatterViewSetMi
                             status=status.HTTP_409_CONFLICT)
         return Response(self.get_serializer(da).data)
 
-    @oa.extend_schema(request=oa.body('GenererBcfRequete', fournisseur=oa.i()))
-    @action(detail=True, methods=['post'], url_path='generer-bcf')
-    def generer_bcf(self, request, pk=None):
-        """YPROC5 — convertit les lignes de la DA APPROUVÉE en BCF brouillon
-        chez le fournisseur choisi (corps, défaut `fournisseur_suggere`).
-        Idempotent : une DA déjà commandée avec un BCF lié est refusée."""
+    def _gardes_generer_bcf(self, da, request):
+        """YPROC5 — gardes de ``generer-bcf`` relues sous verrou : renvoie
+        ``(fournisseur, lignes)`` ou lève ``_RefusGenererBcf``."""
         from django.apps import apps as django_apps
-        from apps.stock.services import creer_bcf_depuis_lignes
 
-        da = self.get_object()
+        def refus(corps, code=status.HTTP_409_CONFLICT):
+            raise _RefusGenererBcf(Response(corps, status=code))
         if da.statut != DemandeAchat.Statut.APPROUVEE:
-            return Response(
-                {'detail': "Seule une demande approuvée peut générer un BCF."},
-                status=status.HTTP_409_CONFLICT)
+            refus({'detail': "Seule une demande approuvée peut générer un BCF."})
         if da.bon_commande_id:
-            return Response(
-                {'detail': 'Cette demande a déjà un BCF lié.'},
-                status=status.HTTP_409_CONFLICT)
-
+            refus({'detail': 'Cette demande a déjà un BCF lié.'})
         fournisseur_id = request.data.get('fournisseur') or (
             da.fournisseur_suggere_id)
         if not fournisseur_id:
-            return Response(
-                {'detail': 'Aucun fournisseur (ni suggéré, ni fourni).'},
-                status=status.HTTP_409_CONFLICT)
-        fournisseur_model = django_apps.get_model('stock', 'Fournisseur')
-        fournisseur = fournisseur_model.objects.filter(
+            refus({'detail': 'Aucun fournisseur (ni suggéré, ni fourni).'})
+        fournisseur = django_apps.get_model('stock', 'Fournisseur').objects.filter(
             id=fournisseur_id, company=request.user.company).first()
         if fournisseur is None:
-            return Response(
-                {'fournisseur': 'Fournisseur inconnu pour cette société.'},
-                status=status.HTTP_404_NOT_FOUND)
-
-        lignes_source = list(da.lignes.select_related('produit').all())
+            refus({'fournisseur': 'Fournisseur inconnu pour cette société.'},
+                  status.HTTP_404_NOT_FOUND)
         # XPUR16 — les lignes sans produit catalogue sont reportées en
         # désignation libre (jamais ignorées : couverture complète de la DA).
         lignes = [
             (ligne.produit_id, ligne.designation or
              (ligne.produit.nom if ligne.produit_id else ''),
              ligne.quantite, ligne.prix_estime)
-            for ligne in lignes_source
+            for ligne in da.lignes.select_related('produit').all()
         ]
         if not lignes:
-            return Response(
-                {'detail': 'Cette demande ne contient aucune ligne.'},
-                status=status.HTTP_409_CONFLICT)
+            refus({'detail': 'Cette demande ne contient aucune ligne.'})
+        return fournisseur, lignes
 
-        # ACHT11 — le chantier de la DA suit le BCF (réception réservée) ;
-        # une quantité/un prix invalide (ValueError du service stock) → 400.
-        try:
-            bon = creer_bcf_depuis_lignes(
-                company=request.user.company, user=request.user,
-                fournisseur=fournisseur, lignes=lignes,
-                note=f'Généré depuis {da.reference}',
-                chantier_origine=da.chantier)
-        except ValueError as exc:
-            return Response({'detail': str(exc)},
-                            status=status.HTTP_409_CONFLICT)
+    @oa.extend_schema(request=oa.body('GenererBcfRequete', fournisseur=oa.i()))
+    @action(detail=True, methods=['post'], url_path='generer-bcf')
+    def generer_bcf(self, request, pk=None):
+        """YPROC5 — convertit les lignes de la DA APPROUVÉE en BCF brouillon
+        chez le fournisseur choisi (corps, défaut `fournisseur_suggere`).
+        Idempotent : une DA déjà commandée avec un BCF lié est refusée."""
+        from django.db import transaction
+        from apps.stock.services import creer_bcf_depuis_lignes
         from .. import services
-        # AUD819 — transition GARDÉE par la table TRANSITIONS + événement bus
-        # (le lien BCF est posé dans la MÊME écriture atomique).
+
+        pk_da = self.get_object().pk
+        # AAPV28 — réserver sa place AVANT de créer : DA relue sous verrou,
+        # passée « commandée » avant le BCF ; tout refus annule l'ensemble.
         try:
-            services.appliquer_statut_document(
-                da, DemandeAchat.Statut.COMMANDEE, user=request.user,
-                champs={'bon_commande': bon})
-        except TransitionRefusee as exc:
+            with transaction.atomic():
+                da = DemandeAchat.objects.select_for_update().get(pk=pk_da)
+                fournisseur, lignes = self._gardes_generer_bcf(da, request)
+                services.appliquer_statut_document(
+                    da, DemandeAchat.Statut.COMMANDEE, user=request.user)
+                # ACHT11 — le chantier de la DA suit le BCF (réception réservée).
+                bon = creer_bcf_depuis_lignes(
+                    company=request.user.company, user=request.user,
+                    fournisseur=fournisseur, lignes=lignes,
+                    note=f'Généré depuis {da.reference}',
+                    chantier_origine=da.chantier)
+                da.bon_commande = bon
+                da.save(update_fields=['bon_commande'])
+        except _RefusGenererBcf as refus:
+            return refus.response
+        except (ValueError, TransitionRefusee) as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_409_CONFLICT)
         # NTP2P4 — l'engagement devient RÉALISÉ (le BCF est passé).
@@ -611,7 +620,9 @@ class RegleApprobationAchatViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):
             return [IsAnyRole()]
-        return [IsResponsableOrAdmin()]
+        # AAPV34 — écriture des règles : Administrateur seul (patron
+        # SeuilApprobationBCFViewSet).
+        return [IsAdminRole()]
 
     def get_queryset(self):
         qs = super().get_queryset()

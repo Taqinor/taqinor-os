@@ -14,6 +14,7 @@ import {
 } from '../../ui/charts'
 import useStockFlags from '../../features/parametres/useStockFlags'
 import { usePermissionAchats } from '../../features/stock/useVoitPrixAchat'
+import { useIsAdmin } from '../../hooks/useHasPermission'
 import { AlerteErreurStock } from './BandeauxListeStock'
 
 /* ============================================================================
@@ -36,9 +37,11 @@ import { AlerteErreurStock } from './BandeauxListeStock'
    catégories de StockList.jsx (au-dessus, pas ici).
    ========================================================================== */
 
+const MSG_RESERVE_ADMIN = 'Réservé à l\'administrateur.'
+
 // Message FR par section (403 = permission, sinon détail serveur ou repli).
 function messageSection(err) {
-  if (err?.response?.status === 403) return 'Réservé à l\'administrateur.'
+  if (err?.response?.status === 403) return MSG_RESERVE_ADMIN
   return err?.response?.data?.detail ?? 'Chargement impossible. Réessayez.'
 }
 
@@ -241,7 +244,21 @@ export default function PilotageStock({ onBcfGenere }) {
     .then((r) => set({ loading: false, data: r.data ?? [], error: null }))
     .catch((e) => set({ loading: false, data: null, error: messageSection(e) }))
 
+  // AAPV74 (rejeu 08/11) — les 4 rapports sont `IsAdminRole` côté serveur
+  // (produit.py : a-reapprovisionner / previsions-reappro / rotation /
+  // expirant-bientot, donnée INTERNE : fournisseur le moins cher, prix et
+  // valeur d'achat). Un Responsable ou un Technicien recevait 4 × 403 à chaque
+  // ouverture de /stock : sans le palier admin, on n'appelle pas — même
+  // message honnête, zéro erreur réseau/console.
+  const estAdmin = useIsAdmin()
+
   const chargerTout = () => {
+    if (!estAdmin) {
+      const refus = { loading: false, data: null, error: MSG_RESERVE_ADMIN }
+      setReappro(refus); setPrevisions(refus)
+      setRotation(refus); setExpirations(refus)
+      return
+    }
     setReappro(etatInitial); setPrevisions(etatInitial)
     setRotation(etatInitial); setExpirations(etatInitial)
     chargeSection(stockApi.produitsAReapprovisionner(), setReappro)

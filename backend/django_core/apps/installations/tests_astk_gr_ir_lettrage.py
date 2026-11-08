@@ -103,6 +103,57 @@ class LettragePartielTests(GrIrBase):
         p2.refresh_from_db()
         self.assertTrue(p2.lettre)
 
+    def test_facture_de_reception_lettre_sa_provision_et_report_a_l_annulation(self):
+        """AAPV7 — la facture de R2 lettre P2 (pas P1, FIFO) ; une provision
+        lettrée par la facture d'une AUTRE réception reporte ce lettrage sur
+        sa sœur à l'annulation ; une provision créée APRÈS la facture « sur
+        commande » du BCF se lettre à sa création."""
+        from apps.installations.services import (
+            extourner_gr_ir_reception, provisionner_gr_ir_reception,
+        )
+        from apps.stock.models import (
+            LigneBonCommandeFournisseur, LigneReceptionFournisseur, Produit,
+            ReceptionFournisseur,
+        )
+        r1, r2 = (ReceptionFournisseur.objects.create(
+            company=self.company, reference=f'REC-AAPV7-{i}', bon_commande=self.bc,
+            statut=ReceptionFournisseur.Statut.CONFIRME) for i in (1, 2))
+        p1, p2 = (ReceptionNonFacturee.objects.create(
+            company=self.company, bon_commande=self.bc, reception=r,
+            montant_provision=Decimal('1000')) for r in (r1, r2))
+        f2 = self.facture('1000')
+        f2.reception = r2
+        f2.save(update_fields=['reception'])
+        self.lettrer(f2)
+        p1.refresh_from_db()
+        p2.refresh_from_db()
+        self.assertEqual((p1.lettre, p2.lettre, p2.facture_id), (False, True, f2.id))
+        # État hérité : P1 lettrée par la facture de R2, P2 ouverte.
+        ReceptionNonFacturee.objects.filter(pk=p2.pk).update(lettre=False, facture=None)
+        ReceptionNonFacturee.objects.filter(pk=p1.pk).update(lettre=True, facture=f2)
+        extourner_gr_ir_reception(reception=r1, company=self.company)
+        self.assertFalse(ReceptionNonFacturee.objects.filter(pk=p1.pk).exists())
+        p2.refresh_from_db()
+        self.assertEqual((p2.lettre, p2.facture_id), (True, f2.id))
+        self.assertFalse(ReceptionNonFacturee.objects.filter(
+            company=self.company, lettre=False).exists())
+        # « Sur commande » : facture du BCF d'abord, provision ensuite.
+        bc2 = self.bcf(self.company, self.fournisseur)
+        produit = Produit.objects.create(
+            company=self.company, nom='Panneau AAPV7', prix_vente=Decimal('1'))
+        ligne = LigneBonCommandeFournisseur.objects.create(
+            bon_commande=bc2, produit=produit, quantite=10,
+            prix_achat_unitaire=Decimal('2000'))
+        ff = self.facture('20000', bc=bc2)
+        rec = ReceptionFournisseur.objects.create(
+            company=self.company, reference='REC-AAPV7-3', bon_commande=bc2,
+            statut=ReceptionFournisseur.Statut.CONFIRME)
+        LigneReceptionFournisseur.objects.create(
+            reception=rec, ligne_commande=ligne, produit=produit, quantite=10)
+        prov = provisionner_gr_ir_reception(
+            reception=rec, company=self.company, user=self.user)
+        self.assertEqual((prov.lettre, prov.facture_id), (True, ff.id))
+
 
 class DelettrageTests(GrIrBase):
     SLUG = 'co-astk126'

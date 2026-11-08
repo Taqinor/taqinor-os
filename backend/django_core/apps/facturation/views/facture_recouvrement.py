@@ -11,12 +11,12 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
-from ..gardes_lecture import LectureFactures  # ERR-ASEC11-LISTE-FACTURES
-from . import openapi_docs as D
-from .. import openapi_shapes as SH
-from ..models import RelanceLog
-from ..serializers import EmailLogSerializer
-from ..serializers_facturation import (
+from apps.ventes.gardes_lecture import LectureFactures  # ERR-ASEC11-LISTE-FACTURES
+from apps.ventes.views import openapi_docs as D
+from apps.ventes import openapi_shapes as SH
+from apps.ventes.models import RelanceLog
+from apps.ventes.serializers import EmailLogSerializer
+from apps.ventes.serializers_facturation import (
     FactureActivitySerializer, FactureListeSerializer, FactureSerializer, RelanceLogSerializer,
     RelancerFactureSerializer,
 )
@@ -54,7 +54,7 @@ class FactureRecouvrementActionsMixin:
         Journalise une RelanceLog + fixe la prochaine date de relance. L'envoi
         passe par l'intégration configurable : NO-OP réseau sans clé (backend
         console), envoi réel via Brevo/SMTP quand configuré."""
-        from ..recouvrement import (
+        from apps.facturation.recouvrement import (
             ensure_default_followup_levels, facture_relancable,
         )
         facture = self.get_object()
@@ -82,7 +82,7 @@ class FactureRecouvrementActionsMixin:
             # AFAC46 — sans niveau choisi, LE prochain niveau de la cadence
             # (le même que l'aperçu et le beat), jamais une relance hors
             # séquence.
-            from ..domain.recouvrement import prochain_niveau
+            from apps.ventes.domain.recouvrement import prochain_niveau
             lvl, _tous = prochain_niveau(facture)
             niveau = lvl.ordre if lvl is not None else None
         niveau_nom = lvl.nom if lvl is not None else ''
@@ -90,7 +90,7 @@ class FactureRecouvrementActionsMixin:
         # NO-OP réseau sans clé configurée.
         email_log_id = None
         if donnees.get('envoyer_email'):
-            from ..email_service import send_relance_email
+            from apps.ventes.email_service import send_relance_email
             # AUD129 (PAY-19) — la note saisie prime sur le message générique
             # du niveau : sinon la personnalisation n'atteint jamais le client.
             email_log = send_relance_email(
@@ -98,7 +98,7 @@ class FactureRecouvrementActionsMixin:
                 message=(note or (lvl.message if lvl is not None else '')),
                 user=request.user, attach_pdf=True)  # AARG62
             email_log_id = email_log.id
-            from ..scheduled import _email_parti
+            from apps.ventes.scheduled import _email_parti
             if not _email_parti(email_log):  # AARG69 : niveau non consommé
                 return Response({'detail': "L'e-mail de relance n'est pas parti : aucune relance consignée.",
                                  'email_log_id': email_log_id}, status=status.HTTP_502_BAD_GATEWAY)
@@ -123,7 +123,7 @@ class FactureRecouvrementActionsMixin:
         de l'email (même rendu que l'envoi). Lecture seule — hormis la
         création, si la société n'en a aucun, des 3 niveaux par défaut.
         Contrat : ``contract_samples/facture_relance_apercu.json``."""
-        from ..recouvrement import apercu_relance
+        from apps.facturation.recouvrement import apercu_relance
         facture = self.get_object()
         return Response(apercu_relance(facture))
 
@@ -161,7 +161,7 @@ class FactureRecouvrementActionsMixin:
             permission_classes=[LectureFactures])
     def emails(self, request, pk=None):
         """Fil des emails (envoyés/reçus) consignés sur cette facture (N87/N88)."""
-        from ..serializers import EmailLogSerializer
+        from apps.ventes.serializers import EmailLogSerializer
         facture = self.get_object()
         return Response(
             EmailLogSerializer(facture.email_logs.all(), many=True).data)
@@ -172,7 +172,7 @@ class FactureRecouvrementActionsMixin:
     def historique(self, request, pk=None):
         """Chatter de la facture : avoirs créés + paiements encaissés (qui,
         quand, montant). Lecture seule ; acteur et société posés côté serveur."""
-        from ..serializers_facturation import FactureActivitySerializer
+        from apps.ventes.serializers_facturation import FactureActivitySerializer
         facture = self.get_object()
         return Response(
             FactureActivitySerializer(

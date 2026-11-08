@@ -102,6 +102,19 @@ class ReceptionFigeeTests(TestCase):
         self.assertEqual(rec.date_reception, datetime.date(2026, 10, 6))
         self.assertEqual(self.bc178.lignes.get().quantite_recue, 0)
 
+    def test_delete_document_fige_409(self):
+        # AAPV14 : la suppression est refusée comme la modification.
+        rec = self._reception()
+        r = self.api.delete(f'{BASE}receptions-fournisseur/{rec.pk}/')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertIn('non modifiable', r.json()['detail'])
+        self.assertTrue(
+            ReceptionFournisseur.objects.filter(pk=rec.pk).exists())
+        brouillon = self._reception(confirmer=False)
+        r = self.api.delete(
+            f'{BASE}receptions-fournisseur/{brouillon.pk}/')
+        self.assertEqual(r.status_code, 204, r.content)
+
     def test_reception_annulee_figee(self):
         rec = self._reception(confirmer=False)
         ReceptionFournisseur.objects.filter(pk=rec.pk).update(

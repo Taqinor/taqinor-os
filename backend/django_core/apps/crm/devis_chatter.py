@@ -14,6 +14,7 @@ from . import stages
 from .fiche_funnel import reprendre_lead
 from .leads_score import recompute_lead_score
 from .models import Lead, LeadActivity
+from .activity import journal_systeme
 
 #: CADV89 (D-CADV-4) — le silence au bout duquel une réouverture réveille un lead
 #: parqué ; en deçà, note et score seulement.
@@ -34,8 +35,8 @@ def noter_devis_ouvert(devis_reference: str, lead) -> None:
     proposition — sort le lead du parking). Distinct de QJ5 (re-stage sur
     staleness TEMPORELLE) : ici le déclencheur est un COMPORTEMENT observé.
     """
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
+    journal_systeme(
+        company=lead.company, lead=lead,
         kind=LeadActivity.Kind.NOTE,
         body=f"Le client a ouvert le devis {devis_reference}")
     # RÈGLE FONDATEUR 07/09/2026 — plus d'avance de funnel AUTOMATIQUE sur
@@ -88,8 +89,8 @@ def noter_devis_reouvert(devis_reference: str, lead, vues=None) -> None:
     CADV89 — après un long silence, réveille le lead parqué (``_reveil_du``)."""
     reveil = _reveil_du(lead)
     suffixe = f' — {int(vues)}ᵉ consultation' if vues and int(vues) > 1 else ''
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
+    journal_systeme(
+        company=lead.company, lead=lead,
         kind=LeadActivity.Kind.NOTE,
         body=f"Le client a rouvert le devis {devis_reference}{suffixe}")
     if reveil:
@@ -106,8 +107,8 @@ def noter_devis_envoye(devis_reference: str, lead) -> None:
     être un objet Lead avec company_id ; ``devis_reference`` est la
     référence textuelle du devis (pas d'import ventes ici). Note système
     (``user=None``), best-effort — l'appelant catche toute exception."""
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
+    journal_systeme(
+        company=lead.company, lead=lead,
         kind=LeadActivity.Kind.NOTE,
         body=f"Devis {devis_reference} envoyé par email")
 
@@ -118,7 +119,7 @@ def noter_devis_corrige(devis_reference: str, lead, resume: str = '') -> None:
     ``apps.ventes``, jamais d'import des models crm depuis ventes ; note
     système, best-effort — l'appelant catche toute exception)."""
     detail = f' ({resume})' if resume else ''
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
+    journal_systeme(
+        company=lead.company, lead=lead,
         kind=LeadActivity.Kind.NOTE,
         body=f"Devis {devis_reference} corrigé après envoi{detail}")

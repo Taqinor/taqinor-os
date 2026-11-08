@@ -7,7 +7,8 @@ de nom de table — l'``app_label`` reste ``parametres`` et la table reste
 import datetime
 from decimal import Decimal
 
-from django.core.validators import MaxValueValidator, MinValueValidator
+from django.core.validators import (
+    MaxValueValidator, MinValueValidator, RegexValidator)
 from django.db import models
 
 
@@ -368,6 +369,21 @@ class CompanyProfile(models.Model):
         verbose_name='Devise par défaut',
         help_text='Code ISO 4217 appliqué par défaut aux nouveaux devis/factures '
                   '(ex. MAD, EUR, USD). Défaut MAD.',
+    )
+
+    # ── NTI18N9 — devise d'AFFICHAGE de la société (tenant) ──
+    # Distincte de `devise_defaut` (FG52, devise PAR DOCUMENT) : gouverne le
+    # symbole/format par défaut des tableaux de bord, listes et rapports pour
+    # tout ce qui n'a pas de devise document explicite. Défaut MAD =
+    # comportement historique ; ne touche jamais aux devis/factures existants.
+    devise_tenant = models.CharField(
+        max_length=3, default='MAD',
+        validators=[RegexValidator(
+            r'^[A-Z]{3}$', 'Code ISO 4217 sur 3 lettres majuscules (ex. MAD, XOF).')],
+        verbose_name="Devise d'affichage",
+        help_text="Code ISO 4217 de la devise d'affichage par défaut de la "
+                  "société (tableaux de bord, listes, rapports). Défaut MAD. "
+                  "N'affecte pas la devise propre à chaque document (FG52).",
     )
 
     # ── NTI18N10 — fuseau horaire d'AFFICHAGE de la société ──

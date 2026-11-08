@@ -67,6 +67,27 @@ class BesoinChantierTests(TestCase):
         return {b['produit_id']: b
                 for b in compute_besoin_materiel(self.chantier)}
 
+    def test_stock_servi_aux_reservations_par_anciennete(self):
+        """AAPV15 — stock 10, A (réservée la première) puis B réservent 10 :
+        A disponible 10 / manque 0, B disponible 0 / manque 10 ; stock 0 :
+        jamais un disponible négatif."""
+        from apps.installations.models import StockReservation
+        Produit.objects.filter(pk=self.panneau.pk).update(quantite_stock=10)
+        b = Installation.objects.create(
+            company=self.company, reference='CH-ACHT9-B',
+            bom=[{'produit_id': self.panneau.id, 'designation': 'Panneau', 'quantite': 10.0}])
+        for inst in (self.chantier, b):
+            StockReservation.objects.update_or_create(
+                installation=inst, produit=self.panneau,
+                defaults={'company': self.company, 'quantite': 10, 'active': True})
+
+        def ligne(inst):
+            return {x['produit_id']: x for x in compute_besoin_materiel(inst)}[self.panneau.id]
+        self.assertEqual((ligne(self.chantier)['disponible'], ligne(self.chantier)['manque_brut']), (10, 0))
+        self.assertEqual((ligne(b)['disponible'], ligne(b)['manque_brut']), (0, 10))
+        Produit.objects.filter(pk=self.panneau.pk).update(quantite_stock=0)
+        self.assertEqual((ligne(b)['disponible'], ligne(b)['manque_brut']), (0, 10))
+
     def test_option_non_retenue_ignoree(self):
         besoins = self._par_produit()
         self.assertIn(self.panneau.id, besoins)

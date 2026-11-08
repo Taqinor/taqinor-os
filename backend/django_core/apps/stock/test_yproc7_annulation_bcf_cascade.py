@@ -119,6 +119,26 @@ class TestCascadeAnnulationBcf(Yproc7Base):
         self.assertIn('cascade', resp.data)
         self.assertEqual(resp.data['cascade']['receptions_annulees'], 1)
 
+    def test_bcf_facture_ou_acompte_inannulable(self):
+        """AAPV62 — BCF facturé (FF) et acompté : 409 nommant la facture et
+        l'acompte, BCF resté « envoyé »."""
+        from apps.stock.models import AcompteFournisseur, FactureFournisseur
+        bc = self._bcf(statut=BonCommandeFournisseur.Statut.ENVOYE)
+        FactureFournisseur.objects.create(
+            company=self.company, reference='FF-AAPV62', fournisseur=self.fournisseur,
+            bon_commande=bc, montant_ht=Decimal('20000'), montant_tva=Decimal('4000'),
+            montant_ttc=Decimal('24000'))
+        AcompteFournisseur.objects.create(
+            company=self.company, bon_commande=bc, montant=Decimal('7200'))
+        resp = self.api.post(
+            f'/api/django/stock/bons-commande-fournisseur/{bc.id}/annuler/',
+            {'motif_annulation': 'x'}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+        self.assertIn('FF-AAPV62', resp.data['detail'])
+        self.assertIn("l'acompte de 7 200,00", resp.data['detail'])
+        bc.refresh_from_db()
+        self.assertEqual(bc.statut, BonCommandeFournisseur.Statut.ENVOYE)
+
     def test_annuler_bcf_ne_touche_pas_reception_deja_confirmee(self):
         bc = self._bcf(
             statut=BonCommandeFournisseur.Statut.ENVOYE, quantite=10)

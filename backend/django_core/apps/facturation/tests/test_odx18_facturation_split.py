@@ -105,6 +105,43 @@ class TestODX18Routes(TestCase):
         self.assertEqual(r_new.status_code, 200, r_new.data)
         self.assertEqual(r_old.status_code, 200, r_old.data)
 
+    def test_deux_prefixes_reponses_octet_pour_octet(self):
+        """ODX18 (étape 2, vues déplacées) — chaque route servie sous les deux
+        préfixes renvoie EXACTEMENT les mêmes octets (même statut, même
+        corps) : le déplacement des vues n'a rien changé."""
+        f = self._facture('FA-2026-0003')
+        suffixes = [
+            'factures/', f'factures/{f.id}/', 'factures-lignes/', 'paiements/',
+            'avoirs/', 'notes-debit/', 'niveaux-relance/', 'relances/',
+            'balance-agee/', f'clients/{self.client_obj.id}/releve/',
+        ]
+        for suffixe in suffixes:
+            with self.subTest(route=suffixe):
+                r_old = self.api.get('/api/django/ventes/' + suffixe)
+                r_new = self.api.get('/api/django/facturation/' + suffixe)
+                self.assertEqual(r_old.status_code, 200, r_old.content)
+                self.assertEqual(r_new.status_code, r_old.status_code)
+                self.assertEqual(r_new.content, r_old.content)
+
+    def test_vues_deplacees_memes_objets_sous_les_deux_prefixes(self):
+        """ODX18 — les classes vivent dans apps.facturation ; les anciens
+        chemins d'import ventes renvoient les MÊMES objets (aucune copie)."""
+        from django.urls import resolve
+        from apps.facturation import recouvrement
+        from apps.facturation.views import FactureViewSet, PaiementViewSet
+        from apps.ventes import recouvrement as ancien_recouvrement
+        from apps.ventes.views import (
+            FactureViewSet as AncienFacture, PaiementViewSet as AncienPaiement)
+        self.assertIs(AncienFacture, FactureViewSet)
+        self.assertIs(AncienPaiement, PaiementViewSet)
+        self.assertEqual(FactureViewSet.__module__, 'apps.facturation.views.facture')
+        self.assertIs(ancien_recouvrement.relances_list, recouvrement.relances_list)
+        for suffixe in ('factures/1/ubl/', 'factures/1/dgi-export/', 'relances/'):
+            with self.subTest(route=suffixe):
+                v_old = resolve('/api/django/ventes/' + suffixe).func
+                v_new = resolve('/api/django/facturation/' + suffixe).func
+                self.assertIs(getattr(v_old, 'cls', v_old), getattr(v_new, 'cls', v_new))
+
     def test_tenant_isolation_on_new_route(self):
         other = make_company('odx18-other', 'Autre Co')
         other_client = make_client(other, email='other18@example.com')

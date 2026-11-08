@@ -146,8 +146,8 @@ def _reprendre_plan_apres_retour_visite(lead, user):
         lead, user, aujourd_hui_local())
     if deplacee is None:
         return None
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
+    activity.journal_systeme(
+        company=lead.company, lead=lead,
         kind=LeadActivity.Kind.NOTE,
         body=('Relances recalées sur le retour de visite — prochaine touche '
               f'le {deplacee.due_date:%d/%m/%Y}.'))
@@ -409,8 +409,8 @@ def appliquer_visite_planifiee(lead, user, date_prevue, commercial_nom=''):
     # Note SYSTÈME (``user=None``) : PLANIFIER n'est pas AVOIR contacté le
     # lead — même motif que ``arreter_cadence`` / ``initialiser_plan_relance``
     # (garde QJ7, qui traiterait sinon cette note comme un premier contact).
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
+    activity.journal_systeme(
+        company=lead.company, lead=lead,
         kind=LeadActivity.Kind.NOTE, body=corps)
 
     if not relancable:
@@ -594,8 +594,8 @@ def compenser_visite_retiree(lead, user, jour):
         _ecrire_date_visite(lead, user, None)  # ACVI69
     annuler_etapes_moteur_ouvertes(
         lead, CLE_CONFIRMATION, CLE_DEBRIEF, note='visite retirée')
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
+    activity.journal_systeme(
+        company=lead.company, lead=lead,
         kind=LeadActivity.Kind.NOTE,
         body=f'Visite technique du {jour:%d/%m/%Y} retirée.')
     _recaler_file(lead, user)
@@ -642,8 +642,8 @@ def annuler_rendez_vous_sur_arret(lead, user, *, cause):
             prevenu = ' (le technicien est prévenu)' if annules else ''
             # Note SYSTÈME (``user=None``) : dire ce que le moteur a fait
             # n'est pas un contact (garde QJ7).
-            LeadActivity.objects.create(
-                company=lead.company, lead=lead, user=None,
+            activity.journal_systeme(
+                company=lead.company, lead=lead,
                 kind=LeadActivity.Kind.NOTE,
                 body=(f'Rendez-vous de visite{quand} annulé{prevenu} : '
                       f'{cause}.'))
@@ -828,8 +828,8 @@ def appliquer_retour_visite(lead, user, retour, auteur='',
     corps = _composer_note_retour_visite(retour, auteur=auteur,
                                          qualification=qualification)
     if reprise:
-        LeadActivity.objects.create(
-            company=lead.company, lead=lead, user=None,
+        activity.journal_systeme(
+            company=lead.company, lead=lead,
             kind=LeadActivity.Kind.NOTE,
             body=f'Visite technique terminée de nouveau après renvoi.\n{corps}')
         return None
@@ -859,14 +859,14 @@ def appliquer_retour_visite(lead, user, retour, auteur='',
                     traite_le=timezone.now())
             corps += ('\nSuite : préparer et envoyer le devis (pour le '
                       f'{etape.due_date:%d/%m/%Y}).')
-            LeadActivity.objects.create(
-                company=lead.company, lead=lead, user=None,
+            activity.journal_systeme(
+                company=lead.company, lead=lead,
                 kind=LeadActivity.Kind.NOTE, body=corps)
             ecrire_retour_lead_visite(lead, '')
             _recaler_file(lead, user)
             return etape
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
+    activity.journal_systeme(
+        company=lead.company, lead=lead,
         kind=LeadActivity.Kind.NOTE, body=corps)
     ecrire_retour_lead_visite(lead, '')
 

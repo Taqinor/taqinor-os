@@ -1,0 +1,25 @@
+# Preuve en direct AAPV24 — rejeu w28, code b00242be0 (dev-plan-6a6fc9-w28), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w28-django (conteneur privé : code de CE worktree, base privée
+# erp_accept_w28, transaction annulée, mail en mémoire, Celery coupé, HTTP sortant bloqué). « oc » = variante
+# scratchpad sonde_oc.py identique sauf transaction.on_commit exécuté immédiatement (événements « après commit »
+# qui ne partiraient jamais dans la transaction annulée). Sur le code corrigé, verdict ÉCART = repro False = attendu.
+# Sondes C-LIVE-* (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Écran : front de CE worktree servi par vite (127.0.0.1:5199) -> conteneur privé accept-w28-web (runserver, base
+# erp_accept_w28, SMTP 127.0.0.1:1 = aucune messagerie), piloté par Playwright MCP. Données d'écran = états des sondes
+# rejouées SANS rollback dans la base privée (comptes de test des sondes, mot de passe de test) ou fixtures FIX-*.
+# Verdict : PASS — Écran : réception d'un produit à plan, verdict « Conforme » saisi dans le bloc Contrôle qualité, confirmée => stock 5.
+
+== C-AAPV-105 (sha c6bd9b5d52)
+attendu : repro si recevoir/ 400 et confirmer/ 400 (message contrôle qualité), puis controle-qualite 200 + confirmer 200
+observé : {'recevoir_http': 409, 'recevoir_detail': '{\'detail\': "Un plan d\'échantillonnage s\'applique à cette réception : saisissez le résultat du contrôle qualité avant de confirmer."}', 'stock_apres_recevoir': 0, 'creer_reception_http': 201, 'echantillonnage': {'echantillon_requis': True, 'unites_attendues': 1, 'controle': None}, 'confirmer_http': 409, 'confirmer_detail': '{\'detail\': "Un plan d\'échantillonnage s\'applique à cette réception : saisissez le résultat du contrôle qualité avant de confirmer."}', 'controle_qualite_http': 200, 'confirmer_apres_controle_http': 200, 'stock_final': 5}
+{"recevoir_http": 409, "recevoir_detail": "{'detail': \"Un plan d'échantillonnage s'applique à cette réception : saisissez le résultat du contrôle qualité avant de confirmer.\"}", "stock_apres_recevoir": 0, "creer_reception_http": 201, "echantillonnage": {"echantillon_requis": true, "unites_attendues": 1, "controle": null}, "confirmer_http": 409, "confirmer_detail": "{'detail': \"Un plan d'échantillonnage s'applique à cette réception : saisissez le résultat du contrôle qualité avant de confirmer.\"}", "controle_qualite_http": 200, "confirmer_apres_controle_http": 200, "stock_final": 5, "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 1, après 1) ; mails 0 ; tâches Celery bloquées 0
+
+## AAPV24 — PASS
+Compte live_ecrans ; produit « Batterie ECR24 » d'une catégorie à plan d'échantillonnage (10 %), BCF-ECR-24 10 × 3 000 HT.
+(1) Bons de commande › BCF-ECR-24 › « Recevoir les quantités » 5 => refus affiché « Un plan d'échantillonnage s'applique à cette
+réception : saisissez le résultat du contrôle qualité avant de confirmer. » (409 attendu).
+(2) Réceptions › « Nouvelle réception » › BCF-ECR-24, 5 → « Enregistrer en brouillon » => REC-202611-0006 Brouillon ; détail : bloc
+« Contrôle qualité — 1 unité(s) à contrôler » › « Conforme » => « verdict : conforme » ; « Confirmer (incrémente le stock) » =>
+« Réception confirmée — le stock a été incrémenté. », liste « Confirmé  5 » ; stock ECR-24 relu (API) = 5.

@@ -1,0 +1,103 @@
+{
+  "sha": "b00242be04fe22bd920918a75e734221b3cb2f3a",
+  "date": "2026-11-08",
+  "groupe": "PA6",
+  "verdict": "FAIL",
+  "couvre": [
+    "AAPV7",
+    "AAPV11",
+    "AAPV60",
+    "AAPV74"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "W28.AAPV7.preuve_en_direct",
+      "taches": [
+        "AAPV7"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV7.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sondes C-AAPV-004/005 : PASS. ÉCRAN : onglet relu à 2 lignes lettrées (0 MAD) au lieu de « 0 ligne »."
+    },
+    {
+      "id": "W28.AAPV11.preuve_en_direct",
+      "taches": [
+        "AAPV11"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV11.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AAPV-020 : annuler périmé 409 (PASS) ; ÉCRAN : deux onglets confirmer puis annuler => « Réception annulée » (contre-passation du confirmé), pas de 409."
+    },
+    {
+      "id": "W28.AAPV60.preuve_en_direct",
+      "taches": [
+        "AAPV60"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV60.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "NON JOUABLE : écran OCR = clé OCR + service FastAPI absents de la pile privée (aucune clé sortante)."
+    },
+    {
+      "id": "W28.AAPV74.preuve_en_direct",
+      "taches": [
+        "AAPV74"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w28/AAPV74.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AAPV-084 : PASS. Écran NON JOUABLE : aucun bouton « Transférer » pour le Technicien (StockList conditionné à stock_modifier)."
+    }
+  ]
+}

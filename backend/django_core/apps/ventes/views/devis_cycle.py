@@ -520,7 +520,7 @@ class DevisCycleActionsMixin:
                 corps = {k: v for k, v in corps.items()
                          if not k.startswith('_')}
                 return Response(corps)
-            from .facture_gardes import MOTIF_SANS_ENCAISSER, PeutEncaisser
+            from apps.facturation.views.facture_gardes import MOTIF_SANS_ENCAISSER, PeutEncaisser
             if not PeutEncaisser().has_permission(request, self) and (
                     apercu_prix_negocie(devis, **saisie)['regularisation']
                     ['type'] == 'avoir'):  # ASEC68 — un avoir exige encaisser

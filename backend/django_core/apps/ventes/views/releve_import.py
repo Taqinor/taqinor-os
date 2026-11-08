@@ -11,7 +11,7 @@ from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
 from rest_framework.response import Response
 
 from . import openapi_docs as D
-from .facture_gardes import PeutEncaisser
+from apps.facturation.views.facture_gardes import PeutEncaisser
 
 logger = logging.getLogger(__name__)
 

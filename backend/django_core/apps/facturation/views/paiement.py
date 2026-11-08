@@ -1,11 +1,11 @@
 from datetime import date as _date
 
 from drf_spectacular.utils import extend_schema_view
-from ..openapi_params import entier_requete, qstr
+from apps.ventes.openapi_params import entier_requete, qstr
 from django.http import HttpResponse
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
-from . import openapi_docs as D
+from apps.ventes.views import openapi_docs as D
 from drf_spectacular.utils import OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
 from rest_framework.parsers import JSONParser
@@ -17,20 +17,22 @@ from core.mixins import company_qs
 from core.pagination import OrdreTotalMixin  # ERR-FACTURES-LISTE-ORDRE-INSTABLE
 from core.conflit_etat import ConflitEtat
 from core.parseurs import corps_valide
-from ..models import Facture, Paiement, RetenueSubie
-from ..serializers_facturation import (
+from apps.ventes.models import Facture, Paiement, RetenueSubie
+from apps.ventes.serializers_facturation import (
     FactureSerializer, PaiementSerializer, AffectationPaiementSerializer,
     PaiementEnvoyerRecuRequestSerializer, PaiementVentilerRequestSerializer,
     RetenueSubieSerializer,
 )
-from ..serializers_facturation import PaiementAvecRetenueEntreeSerializer  # ENF11 : utilisé par @extend_schema
+from apps.ventes.serializers_facturation import (  # ENF11 : utilisé par @extend_schema
+    PaiementAvecRetenueEntreeSerializer,
+)
 from authentication.permissions import IsResponsableOrAdmin
-from ..gardes_lecture import LectureFactures
+from apps.ventes.gardes_lecture import LectureFactures
 from .facture_gardes import PeutEncaisser
 from core.permissions import declared_action_permissions
 import logging
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('apps.ventes.views.paiement')
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
@@ -101,7 +103,7 @@ class PaiementViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
         # remise d'encaissement accepterait (MÊME prédicat que la déclaration).
         if str(self.request.query_params.get('remisable') or '').strip() in (
                 '1', 'true', 'True'):
-            from .remise_encaissement import paiements_remisables
+            from apps.ventes.views.remise_encaissement import paiements_remisables
             qs = paiements_remisables(qs)
         return qs
 
@@ -148,7 +150,7 @@ class PaiementViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
         (montant_du remonte, statut recalculé) et ré-arme les relances. Le
         paiement n'est jamais supprimé (piste d'audit) ; un double rejet est
         refusé (409)."""
-        from ..services import rejeter_paiement, PaiementRejectError
+        from apps.ventes.services import rejeter_paiement, PaiementRejectError
         paiement = self.get_object()
         # CI #997 (2) — corps validé par sa forme publiée (texte, décimal,
         # date stricts) : ``date_rejet: ""`` valait « aujourd'hui » en silence.
@@ -171,7 +173,7 @@ class PaiementViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
     def annuler_saisie(self, request, pk=None):
         """AFAC17 — annule une saisie de paiement ERRONÉE (motif obligatoire,
         datée, signée) ; contrat ``paiement_annuler_saisie.json``."""
-        from ..domain.encaissements import (
+        from apps.ventes.domain.encaissements import (
             CorrectionPaiementRefusee, annuler_saisie_paiement,
         )
         paiement = self.get_object()
@@ -197,7 +199,7 @@ class PaiementViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
     def reaffecter(self, request, pk=None):
         """AFAC17 — réaffecte le paiement à une autre facture du MÊME client
         (encaissable) ; contrat ``paiement_reaffecter.json``."""
-        from ..domain.encaissements import (
+        from apps.ventes.domain.encaissements import (
             CorrectionPaiementRefusee, reaffecter_paiement,
         )
         paiement = self.get_object()
@@ -257,7 +259,7 @@ class PaiementViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
         la société de l'utilisateur : un id d'une autre société renvoie 400,
         jamais un paiement rattaché hors tenant."""
         from apps.crm.selectors import client_base_qs
-        from ..services import enregistrer_avance as _enregistrer_avance
+        from apps.ventes.services import enregistrer_avance as _enregistrer_avance
 
         company = request.user.company
         # CI #997 — corps non objet (``[null, null]``) : 400, plus 500.
@@ -346,7 +348,7 @@ class PaiementViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
         """XFAC1 — ventile une avance non affectée sur UNE facture ouverte du
         même client. Corps : ``{facture, montant}``. Peut être appelée
         plusieurs fois pour répartir la même avance sur plusieurs factures."""
-        from ..services import ventiler_avance as _ventiler_avance
+        from apps.ventes.services import ventiler_avance as _ventiler_avance
 
         paiement = self.get_object()
         entree = PaiementVentilerRequestSerializer(data=request.data)
@@ -388,7 +390,7 @@ class PaiementViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
         (RAS TVA/RAS IS) qui, ENSEMBLE, soldent la facture. Corps :
         ``{montant, date_paiement, mode, type_retenue, taux, reference?,
         note?}``."""
-        from ..services import (
+        from apps.ventes.services import (
             enregistrer_paiement_avec_retenue as _enregistrer_avec_retenue,
         )
         facture = self._facture_visible(facture_id)
@@ -398,7 +400,7 @@ class PaiementViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
         # AFAC30 (C-AFAC-029) — l'ENTRÉE est validée par un sérialiseur :
         # 400 en français sous le champ fautif, plus jamais un 500 ni un
         # `mode`/`type_retenue` inconnu enregistré.
-        from ..serializers_facturation import (
+        from apps.ventes.serializers_facturation import (
             PaiementAvecRetenueEntreeSerializer,
         )
         entree = PaiementAvecRetenueEntreeSerializer(data=request.data)
@@ -423,7 +425,7 @@ class PaiementViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
             'paiement': PaiementSerializer(paiement).data,
             'retenue': RetenueSubieSerializer(retenue).data,
             'facture': FactureSerializer(facture.__class__.objects.get(
-                pk=facture.pk)).data,
+                pk=facture.pk, company_id=facture.company_id)).data,
         }, status=status.HTTP_201_CREATED)
 
     @extend_schema(responses=RetenueSubieSerializer(many=True))
@@ -494,7 +496,7 @@ class PaiementViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
         conflit = _refus_si_rejete(paiement)
         if conflit is not None:
             return conflit
-        from ..utils.pdf import assurer_numero_recu, generate_recu_pdf
+        from apps.ventes.utils.pdf import assurer_numero_recu, generate_recu_pdf
         try:
             pdf_bytes = generate_recu_pdf(paiement)
         except Exception:
@@ -520,7 +522,7 @@ class PaiementViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
         AUD132 (PAY-12) — même garde que ``recu_pdf`` : envoyer la quittance
         d'un règlement rejeté enverrait au client la preuve écrite d'un
         paiement qu'il n'a pas fait. 409, et RIEN ne part."""
-        from ..email_service import send_recu_email
+        from apps.ventes.email_service import send_recu_email
         paiement = self.get_object()
         conflit = _refus_si_rejete(paiement)
         if conflit is not None:

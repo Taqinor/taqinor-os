@@ -56,6 +56,24 @@ CLE_PERIODE = 'periode'
 TYPE_METRIQUE = 'metrique'
 
 
+#: NTI18N53 — widget PRÉDÉFINI « Répartition des clients par langue
+#: documentaire » : un camembert des clients de la société par
+#: ``langue_document``. ``core`` ne connaît pas le modèle client : il nomme
+#: seulement le dataset ENREGISTRÉ par l'app crm (``crm_clients``, queryset déjà
+#: scopé société) — même patron que les widgets de dataset, aucune migration,
+#: aucun nouveau modèle, pas de cache (données à jour à chaque ouverture).
+TYPE_REPARTITION_LANGUE = 'repartition_langue_clients'
+REPARTITION_LANGUE = {
+    'titre': 'Répartition des clients par langue documentaire',
+    'dataset': 'crm_clients',
+    'champ': 'langue_document',
+    # Langues documentaires suivies : une langue sans client vaut 0 (une part
+    # absente du camembert serait illisible pour juger un pack pays/RTL).
+    'valeurs': ('fr', 'ar', 'en'),
+    'graphique': 'camembert',
+}
+
+
 class FiltreGlobalInvalide(Exception):
     """Filtres globaux mal formés (corps/paramètre illisible)."""
 
@@ -179,6 +197,38 @@ def executer_widget_metrique(widget, company, user, globaux):
     return entree
 
 
+def executer_widget_repartition_langue(company, user):
+    """NTI18N53 — compte les clients de la société par langue documentaire.
+
+    Renvoie ``rows`` = ``[{'langue': 'fr', 'nombre': n}, …]`` dans l'ordre de
+    ``REPARTITION_LANGUE['valeurs']`` (zéros compris), puis toute autre valeur
+    réellement présente en base — jamais une langue écartée en silence.
+    """
+    conf = REPARTITION_LANGUE
+    entree = {'type': TYPE_REPARTITION_LANGUE,
+              'dataset': conf['dataset'], 'graphique': conf['graphique']}
+    try:
+        lignes = data_explorer.run_query(conf['dataset'], company, user, {
+            'group_by': [conf['champ']],
+            'aggregates': [{'alias': 'nombre', 'fn': 'count',
+                            'field': 'id'}],
+        })
+    except (data_explorer.DatasetInconnu,
+            data_explorer.ChampNonAutorise) as exc:
+        entree['erreur'] = str(exc)
+        return entree
+    comptes = {}
+    for ligne in lignes:
+        langue = ligne.get(conf['champ']) or ''
+        comptes[langue] = comptes.get(langue, 0) + (ligne.get('nombre') or 0)
+    ordre = list(conf['valeurs']) + sorted(
+        k for k in comptes if k not in conf['valeurs'])
+    entree['rows'] = [{'langue': k, 'nombre': comptes.get(k, 0)}
+                      for k in ordre]
+    entree['total'] = sum(comptes.values())
+    return entree
+
+
 def normaliser_filtres(globaux):
     """Nettoie les filtres globaux (dict) : vide/None → ignoré.
 
@@ -260,6 +310,13 @@ def executer_dashboard(dashboard, company, user, globaux=None):
                                               effectifs)
             entree['id'] = ident
             entree['titre'] = widget.get('titre', '')
+            resultats.append(entree)
+            continue
+        if widget.get('type') == TYPE_REPARTITION_LANGUE:
+            entree = executer_widget_repartition_langue(company, user)
+            entree['id'] = ident
+            entree['titre'] = (widget.get('titre')
+                               or REPARTITION_LANGUE['titre'])
             resultats.append(entree)
             continue
         dataset = widget.get('dataset')

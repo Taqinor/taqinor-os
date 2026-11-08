@@ -1,0 +1,97 @@
+# Preuve en direct AAPV22 — rejeu w28, code b00242be0 (dev-plan-6a6fc9-w28), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w28-django (conteneur privé : code de CE worktree, base privée
+# erp_accept_w28, transaction annulée, mail en mémoire, Celery coupé, HTTP sortant bloqué). « oc » = variante
+# scratchpad sonde_oc.py identique sauf transaction.on_commit exécuté immédiatement (événements « après commit »
+# qui ne partiraient jamais dans la transaction annulée). Sur le code corrigé, verdict ÉCART = repro False = attendu.
+# Sondes C-LIVE-* (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Verdict : PASS — C-AAPV-025 ne peut plus créer REC-2 (refus AAPV67) ; C-LIVE-AAPV67 volet AAPV22 : annuler une réception dont la ligne cite aussi SN-100 => SN-100 reste en_stock, SN-101 retourné => PASS.
+
+== C-AAPV-025 (sha b432084786)
+attendu : repro si R : REC-2 acceptée 200 sans alerte (1 série pour 2 unités), puis annulation -> SN-100 (de REC-1, en rayon) retourne
+observé : ERREUR : Traceback (most recent call last):
+
+== C-LIVE-AAPV67 (sha b00242be0)
+attendu : LIVE (AAPV67 + AAPV22) : repro=true si REC-2 avec SN-100 deja en stock est refusee 409, SN-100 reste en_stock, et l'annulation d'une REC-3 dont la ligne cite aussi SN-100 laisse SN-100 en_stock (SN-101 retourne) ; temoin SN-200 retourne
+observé : {'AAPV67': {'rec1': (200, 'REC-202611-0001'), 'rec2_http': 409, 'rec2_detail': "{'detail': 'N° de série SN-100 déjà en stock (REC-202611-0001) pour Onduleur LIVE67.'}", 'rec2_creee': False, 'stock': 1, 'series': [('SN-100', 'en_stock', 'REC-202611-0001')]}, 'AAPV22': {'rec3': (200, 'REC-202611-0002'), 'annuler_rec3': 200, 'stock': 1, 'series': [('SN-100', 'en_stock', 'REC-202611-0001'), ('SN-101', 'retourne', 'REC-202611-0002')]}, 'T': {'annuler': 200, 'series': [('SN-100', 'en_stock', 'REC-202611-0001'), ('SN-101', 'retourne', 'REC-202611-0002'), ('SN-200', 'retourne', 'REC-202611-0003')]}}
+{"AAPV67": {"rec1": [200, "REC-202611-0001"], "rec2_http": 409, "rec2_detail": "{'detail': 'N° de série SN-100 déjà en stock (REC-202611-0001) pour Onduleur LIVE67.'}", "rec2_creee": false, "stock": 1, "series": [["SN-100", "en_stock", "REC-202611-0001"]]}, "AAPV22": {"rec3": [200, "REC-202611-0002"], "annuler_rec3": 200, "stock": 1, "series": [["SN-100", "en_stock", "REC-202611-0001"], ["SN-101", "retourne", "REC-202611-0002"]]}, "T": {"annuler": 200, "series": [["SN-100", "en_stock", "REC-202611-0001"], ["SN-101", "retourne", "REC-202611-0002"], ["SN-200", "retourne", "REC-202611-0003"]]}, "ok_AAPV67": true, "ok_AAPV22": true, "temoin_ok": true, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0
+
+# flake8: noqa  (sonde d'audit de parcours PA6 « Approvisionnement », rejouable par scripts/sonde.py — METHODE §C.4)
+"""K28 — séries : aucune unicité contrôlée à la saisie, et l'annulation d'une réception passe « retourné » une
+série enregistrée par une AUTRE réception (`retourner_series_entrepot_reception` filtre numéro + EN_STOCK, sans
+`reference_reception`).
+(R) BCF 2 onduleurs ; REC-1 = 1 u. SN-100 par la vraie route `recevoir/` ; REC-2 = 1 u. saisie par erreur avec
+SN-100 (même route) ; `receptions-fournisseur/<REC-2>/annuler/` (rappels on_commit exécutés) → statut de SN-100 ?
+(T) témoin : REC-T = 1 u. SN-200 seule, annulée → SN-200 « retourné » (comportement voulu)."""
+SONDE = {"constat": "C-LIVE-AAPV67", "sha": "b00242be0",
+         "attendu": "LIVE (AAPV67 + AAPV22) : repro=true si REC-2 avec SN-100 deja en stock est refusee 409, SN-100 reste en_stock, et l'annulation d'une REC-3 dont la ligne cite aussi SN-100 laisse SN-100 en_stock (SN-101 retourne) ; temoin SN-200 retourne",
+         "modeles": ["stock.Produit", "stock.ReceptionFournisseur", "installations.SerieEntrepot"]}
+
+
+def sonde(ctx):
+    from decimal import Decimal
+    from django.contrib.auth import get_user_model
+    from django.test import TestCase
+    from rest_framework.test import APIClient
+    from authentication.models import Company
+    from apps.stock.models import (Fournisseur, BonCommandeFournisseur, LigneBonCommandeFournisseur,
+                                   Produit, ReceptionFournisseur)
+    from apps.installations.models_serie_entrepot import SerieEntrepot
+    H = {'HTTP_HOST': 'localhost'}
+    co = Company.objects.create(nom='Live AAPV 67', slug='live-aapv-67')
+    u = get_user_model().objects.create_user(username='live_aapv_67', password='x', role_legacy='admin', company=co)
+    api = APIClient()
+    api.force_authenticate(u)
+    f = Fournisseur.objects.create(company=co, nom='F-LIVE67')
+    urlb = '/api/django/stock/bons-commande-fournisseur/'
+    p = Produit.objects.create(company=co, nom='Onduleur LIVE67', sku='LIVE-067', prix_vente=Decimal('9000'),
+                               quantite_stock=0)
+    bc = BonCommandeFournisseur.objects.create(company=co, fournisseur=f, reference='BCF-LIVE-067',
+                                               statut=BonCommandeFournisseur.Statut.ENVOYE)
+    lc = LigneBonCommandeFournisseur.objects.create(bon_commande=bc, produit=p, quantite=3,
+                                                    prix_achat_unitaire=Decimal('7000'))
+
+    def recevoir(serie):
+        avant = set(ReceptionFournisseur.objects.filter(bon_commande=bc).values_list('id', flat=True))
+        r = api.post(f'{urlb}{bc.id}/recevoir/', {'receptions': [{'ligne': lc.id, 'quantite': 1,
+                                                                   'numeros_serie': [serie]}]}, format='json', **H)
+        rec = ReceptionFournisseur.objects.filter(bon_commande=bc).exclude(id__in=avant).first()
+        return r.status_code, (None if r.status_code < 400 else str(r.data)[:200]), rec
+
+    def series():
+        return list(SerieEntrepot.objects.filter(company=co, produit=p).order_by('numero_serie').values_list(
+            'numero_serie', 'statut', 'reference_reception'))
+
+    c1, d1, rec1 = recevoir('SN-100')
+    c2, d2, rec2 = recevoir('SN-100')
+    p.refresh_from_db()
+    obs = {'AAPV67': {'rec1': (c1, rec1.reference if rec1 else None), 'rec2_http': c2, 'rec2_detail': d2,
+                      'rec2_creee': bool(rec2 and rec2.statut != 'brouillon'), 'stock': p.quantite_stock,
+                      'series': series()}}
+    # AAPV22 : une réception REC-3 confirmée (SN-101) dont la ligne cite AUSSI SN-100 (donnée héritée, posée
+    # en base : la route refuse désormais ce doublon) ; son annulation ne doit retourner que SN-101.
+    from apps.achats.models import LigneReceptionFournisseur
+    c3, d3, rec3 = recevoir('SN-101')
+    LigneReceptionFournisseur.objects.filter(reception=rec3).update(numeros_serie=['SN-101', 'SN-100'])
+    with TestCase.captureOnCommitCallbacks(execute=True):
+        ra = api.post(f'/api/django/stock/receptions-fournisseur/{rec3.id}/annuler/', {}, format='json', **H)
+    p.refresh_from_db()
+    obs['AAPV22'] = {'rec3': (c3, rec3.reference), 'annuler_rec3': ra.status_code, 'stock': p.quantite_stock,
+                     'series': series()}
+    cT, dT, recT = recevoir('SN-200')
+    with TestCase.captureOnCommitCallbacks(execute=True):
+        raT = api.post(f'/api/django/stock/receptions-fournisseur/{recT.id}/annuler/', {}, format='json', **H)
+    obs['T'] = {'annuler': raT.status_code, 'series': series()}
+    print(obs)
+    s67 = obs['AAPV67']
+    ok67 = s67['rec2_http'] == 409 and s67['stock'] == 1 and s67['series'] == [('SN-100', 'en_stock', rec1.reference)]
+    st22 = {s[0]: s[1] for s in obs['AAPV22']['series']}
+    ok22 = ra.status_code == 200 and st22.get('SN-100') == 'en_stock' and st22.get('SN-101') == 'retourne'
+    sn200 = [s for s in obs['T']['series'] if s[0] == 'SN-200']
+    temoin_ok = raT.status_code == 200 and sn200 and sn200[0][1] == 'retourne'
+    obs['ok_AAPV67'] = bool(ok67)
+    obs['ok_AAPV22'] = bool(ok22)
+    obs['temoin_ok'] = bool(temoin_ok)
+    obs['repro'] = bool(ok67 and ok22 and temoin_ok)
+    return obs

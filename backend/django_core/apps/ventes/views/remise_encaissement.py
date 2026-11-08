@@ -26,7 +26,7 @@ from core.conflit_etat import ConflitEtat
 from core.viewsets import CompanyScopedModelViewSet  # ARC5
 from ..models import Paiement, RemiseEncaissement, LigneRemiseEncaissement
 from ..serializers_facturation import RemiseEncaissementSerializer
-from .facture_gardes import PeutEncaisser
+from apps.facturation.views.facture_gardes import PeutEncaisser
 import logging
 
 logger = logging.getLogger(__name__)

@@ -65,6 +65,47 @@ class VerrouReceptionTests(TestCase):
             ligne_commande=ligne_cmd, produit=self.produit, quantite=quantite)
         return rec
 
+    def test_annulation_brouillon_perimee_apres_confirmation_409(self):
+        """AAPV11 — l'annulation de brouillon rejouée sur une instance lue
+        AVANT la confirmation : refus (409), réception confirmée, stock 10 ;
+        idem pour un retour validé entre-temps ; brouillon frais : annulé."""
+        from apps.stock.erreurs_achats import EtatIncompatible
+        from apps.stock.services import (
+            annuler_reception_brouillon, annuler_receptions_brouillon_bcf,
+            annuler_retour_brouillon,
+        )
+        bc, ligne_cmd = self._bcf(10)
+        rec = self._reception(bc, ligne_cmd, 10)
+        perimee = ReceptionFournisseur.objects.get(pk=rec.pk)
+        confirm_reception_fournisseur(rec, self.user)
+        with self.assertRaises(EtatIncompatible):
+            annuler_reception_brouillon(perimee)
+        rec.refresh_from_db()
+        self.assertEqual(rec.statut, ReceptionFournisseur.Statut.CONFIRME)
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.quantite_stock, 10)
+        self.assertEqual(annuler_receptions_brouillon_bcf(bc), 0)
+        rec.refresh_from_db()
+        self.assertEqual(rec.statut, ReceptionFournisseur.Statut.CONFIRME)
+
+        retour = RetourFournisseur.objects.create(
+            company=self.company, reference=f'RET-AAPV11-{self.n}',
+            fournisseur=self.fournisseur, bon_commande=bc)
+        retour.lignes.create(produit=self.produit, quantite=4)
+        retour_perime = RetourFournisseur.objects.get(pk=retour.pk)
+        apply_retour_fournisseur(retour, self.user)
+        with self.assertRaises(EtatIncompatible):
+            annuler_retour_brouillon(retour_perime)
+        retour.refresh_from_db()
+        self.assertEqual(retour.statut, RetourFournisseur.Statut.VALIDE)
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.quantite_stock, 6)
+
+        frais = self._reception(bc, ligne_cmd, 1)
+        annuler_reception_brouillon(frais)
+        frais.refresh_from_db()
+        self.assertEqual(frais.statut, ReceptionFournisseur.Statut.ANNULE)
+
     def test_double_confirmation(self):
         bc, ligne_cmd = self._bcf(10)
         rec = self._reception(bc, ligne_cmd, 4)

@@ -131,7 +131,7 @@ class FactureAdmin(CompanyScopedAdminMixin, admin.ModelAdmin):
         champs = tuple(super().get_readonly_fields(request, obj))
         if obj is None or obj.statut == Facture.Statut.BROUILLON:
             return champs
-        from .views.facture import FACTURE_CHAMPS_FINANCIERS
+        from apps.facturation.views.facture import FACTURE_CHAMPS_FINANCIERS
         geles = tuple(sorted(FACTURE_CHAMPS_FINANCIERS)) + ADMIN_FACTURE_ETAT + ADMIN_FACTURE_IDENTITE
         # AARG28 — `devis`, `bon_commande` sont dans les deux listes.
         return champs + tuple(

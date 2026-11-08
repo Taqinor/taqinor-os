@@ -1,0 +1,25 @@
+# Preuve en direct AAPV11 — rejeu w28 (après correctifs), code d6b50373b8 (dev-plan-6a6fc9-w28), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code de CE commit copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en
+# mémoire, Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu.
+# Écran : front de CE worktree servi par vite (127.0.0.1:3000) -> conteneur privé accept-w29-web (runserver,
+# base erp_accept_w29, SMTP 127.0.0.1:1 = aucune messagerie), piloté par Playwright MCP. Données d'écran :
+# fixture FIX-W28 (société « Live Acceptation W28b », comptes acc28_admin / acc28_resp, mot de passe de test).
+# Verdict : PASS — Sonde C-AAPV-020 : annuler périmé 409 ; écran deux onglets : confirmer puis annuler depuis la vue « Brouillon » => 409 « Réception confirmée entre-temps : rouvrez-la pour l'annuler. », réception restée confirmée, stock inchangé.
+
+== C-AAPV-020 (sha b432084786)
+attendu : repro si R : annuler 200 sur instance périmée -> réception « annule » avec ENTREE 10 en stock, provision GR/IR ouverte, facturer refusé ; RF : retour « annule » avec SORTIE déjà posée
+observé : {'R': {'confirmer': 200, 'annuler_perime': 409, 'statut': 'confirme', 'stock': 10, 'provisions': [('1000.00', True)], 'mouvements': [('entree', 10, 'REC-202611-0001')], 'bcf_recu': 10, 'bcf_statut': 'recu', 'facturer_ensuite': 201, 'facturer_detail': "{'id': 148, 'reference': 'FF-202611-0001', 'fournisseur': 1169, 'fournisseur_nom': 'F-AAPV20', 'bon_commande': 581, 'bon_commande_reference'", 'annuler_ensuite': 400, 'etat_apres_annuler_ensuite': {'statut': 'confirme', 'stock': 10, 'provisions': [('1000.00', True)], 'mouvements': [('entree', 10, 'REC-202611-0001')]}}, 'T': {'annuler_frais': 200, 'statut': 'annule', 'stock': 0, 'provisions': [], 'mouvements': [('entree', 10, 'REC-202611-0002'), ('sortie', 10, 'ANNUL-REC-202611-0002')]}, 'RF': {'creation': 201, 'valider': 200, 'annuler_perime': 409, 'statut_retour': 'valide', 'stock': 6, 'bcf_recu': 6, 'sorties_retour': [4], 'generer_avoir_ensuite': 201, 'avoir_detail': "{'id': 13, 'reference': 'AVF-202611-0001', 'fournisseur': 1169, 'fournisseur_nom': 'F-AAPV20', 'facture_origine': None, 'retour': 28, 'retou"}}
+{"R": {"confirmer": 200, "annuler_perime": 409, "statut": "confirme", "stock": 10, "provisions": [["1000.00", true]], "mouvements": [["entree", 10, "REC-202611-0001"]], "bcf_recu": 10, "bcf_statut": "recu", "facturer_ensuite": 201, "facturer_detail": "{'id': 148, 'reference': 'FF-202611-0001', 'fournisseur': 1169, 'fournisseur_nom': 'F-AAPV20', 'bon_commande': 581, 'bon_commande_reference'", "annuler_ensuite": 400, "etat_apres_annuler_ensuite": {"statut": "confirme", "stock": 10, "provisions": [["1000.00", true]], "mouvements": [["entree", 10, "REC-202611-0001"]]}}, "T": {"annuler_frais": 200, "statut": "annule", "stock": 0, "provisions": [], "mouvements": [["entree", 10, "REC-202611-0002"], ["sortie", 10, "ANNUL-REC-202611-0002"]]}, "RF": {"creation": 201, "valider": 200, "annuler_perime": 409, "statut_retour": "valide", "stock": 6, "bcf_recu": 6, "sorties_retour": [4], "generer_avoir_ensuite": 201, "avoir_detail": "{'id': 13, 'reference': 'AVF-202611-0001', 'fournisseur': 1169, 'fournisseur_nom': 'F-AAPV20', 'facture_origine': None, 'retour': 28, 'retou"}, "temoin_ok": true, "repro_reception": false, "repro_retour": false, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0
+
+## AAPV11 — PASS (écran)
+Compte acc28_admin. Essai 1 : REC-ACC-11 (BCF-ACC-11, brouillon, 5 u.) ouverte dans l'onglet A (détail « Brouillon ») ; onglet B :
+même détail › « Confirmer (incrémente le stock) » => liste B : REC-ACC-11 « Confirmé ». Onglet A (vue périmée « Brouillon ») ›
+« Annuler la réception » → « Annuler cette réception ? » (sans mention de contre-passation) → « Annuler la réception » =>
+POST stock/receptions-fournisseur/203/annuler/ (corps statut_vu « brouillon ») => 409 ; base relue : REC-ACC-11 « confirme », stock
+ACC-11 = 5 (rien contre-passé). Le message n'a pas été lu à temps (relevé ~5 s après).
+Essai 2 (REC-ACC-11B, même scénario, observateur DOM posé AVANT le clic) : message affiché « Réception confirmée entre-temps :
+rouvrez-la pour l'annuler. » ; liste rechargée : REC-ACC-11B « Confirmé », 5. Console : seule erreur = la 409 attendue.
+Note (hors clause) : le détail se referme à la confirmation du dialogue, le message reste lisible dans l'alerte/toast.

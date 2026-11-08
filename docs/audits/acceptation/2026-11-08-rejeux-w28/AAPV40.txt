@@ -1,0 +1,18 @@
+# Preuve en direct AAPV40 — rejeu w28, code b00242be0 (dev-plan-6a6fc9-w28), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w28-django (conteneur privé : code de CE worktree, base privée
+# erp_accept_w28, transaction annulée, mail en mémoire, Celery coupé, HTTP sortant bloqué). « oc » = variante
+# scratchpad sonde_oc.py identique sauf transaction.on_commit exécuté immédiatement (événements « après commit »
+# qui ne partiraient jamais dans la transaction annulée). Sur le code corrigé, verdict ÉCART = repro False = attendu.
+# Sondes C-LIVE-* (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Écran : front de CE worktree servi par vite (127.0.0.1:5199) -> conteneur privé accept-w28-web (runserver, base
+# erp_accept_w28, SMTP 127.0.0.1:1 = aucune messagerie), piloté par Playwright MCP. Données d'écran = états des sondes
+# rejouées SANS rollback dans la base privée (comptes de test des sondes, mot de passe de test) ou fixtures FIX-*.
+# Verdict : PASS — Écran : sur-livraison 12 sur 10 confirmée => liste 10, détail « 10 entré(s) (saisi 12) ».
+
+## AAPV40 — PASS
+Compte live_ecrans. BCF-ECR-40B 10 × 100 HT ; réception brouillon REC-202611-0004 saisie 12 (API). Réceptions › détail › « Confirmer
+(incrémente le stock) » => liste : « REC-202611-0004  BCF-ECR-40B  F-ECRANS  Confirmé  08/11/2026  10 » (Articles reçus 10) ;
+détail : « Rail ECRANS (ECR-RAIL)  10 entré(s) (saisi 12) ». Avant confirmation, la liste affichait la saisie 12 (brouillon inchangé).
+(Note : la route BCF « Recevoir les quantités » plafonne déjà au reste dû — essai BCF-ECR-40 : 10 saisi sur 5 => réception de 5.)
+NB incident : entre deux étapes, le conteneur web privé a épuisé max_connections de Postgres (CONN_MAX_AGE 60 s × fils de runserver) ;
+arrêté immédiatement, relancé avec DB_CONN_MAX_AGE=0 — étape AAPV40 rejouée après relance.

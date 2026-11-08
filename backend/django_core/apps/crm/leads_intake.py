@@ -70,12 +70,12 @@ def reactivate_lead_on_new_touch(lead, *, source='site web') -> bool:
     # ALEA2 — libellé lisible au chatter : « Nouvelle demande reçue (site
     # web) » / « (WhatsApp) ».
     body = f'auto — réactivation : Nouvelle demande reçue ({source})'
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
+    activity.journal_systeme(
+        company=lead.company, lead=lead,
         kind=LeadActivity.Kind.NOTE, body=body)
     if ancien_stage is not None:
-        LeadActivity.objects.create(
-            company=lead.company, lead=lead, user=None,
+        activity.journal_systeme(
+            company=lead.company, lead=lead,
             kind=LeadActivity.Kind.MODIFICATION,
             field='stage', field_label='Étape',
             old_value=stages.STAGE_LABELS[ancien_stage],
@@ -276,7 +276,7 @@ def resolve_or_create_lead_from_whatsapp(company, telephone, nom='',
         body = 'Nouveau message WhatsApp reçu'
         if nom:
             body += f' de {nom}'
-        LeadActivity.objects.create(
+        activity.creer_activite(
             company=lead.company, lead=lead, user=user,
             kind=LeadActivity.Kind.NOTE, body=body)
         return lead
@@ -378,8 +378,8 @@ def create_lead_from_livechat(*, company, nom, telephone='', email='',
             enregistrer_recontact(froid, None, canal='livechat')
 
     if transcript_text:
-        LeadActivity.objects.create(
-            company=lead.company, lead=lead, user=None,
+        activity.journal_systeme(
+            company=lead.company, lead=lead,
             kind=LeadActivity.Kind.NOTE,
             body=f'Transcript livechat :\n{transcript_text}')
 

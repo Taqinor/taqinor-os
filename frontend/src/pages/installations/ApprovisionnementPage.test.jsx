@@ -57,6 +57,18 @@ describe('ApprovisionnementPage (WIR110)', () => {
     expect(await screen.findByText('CC-202607-0001')).toBeInTheDocument()
   })
 
+  // AAPV7 — l'onglet ne demande que les provisions ouvertes (non lettrées).
+  it('« Réceptions non facturées » filtre les provisions lettrées', async () => {
+    resolveAll()
+    const user = userEvent.setup()
+    render(<ApprovisionnementPage />)
+    await screen.findByText('Seuil Responsable (MAD)')
+    await user.click(screen.getByRole('tab', { name: 'Réceptions non facturées' }))
+    await waitFor(() => expect(api.getReceptionsNonFacturees).toHaveBeenCalled())
+    expect(api.getReceptionsNonFacturees.mock.calls[0][0]).toMatchObject({ lettre: false })
+    expect(await screen.findByText('Aucune réception non facturée')).toBeInTheDocument()
+  })
+
   // ACHT62 — faux serveur DRF paginé à 50 : l'onglet lit TOUTES les pages (51 lignes).
   it('un onglet de 51 lignes sur 2 pages les affiche toutes', async () => {
     resolveAll()

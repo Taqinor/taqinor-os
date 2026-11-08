@@ -101,8 +101,8 @@ def reprendre_cadence_apres_reouverture(lead, user, *, origine=''):
     if etapes:
         # ERR-ACVI52 — le repli (lead sans historique : aucun réveil permis)
         # trace la reprise comme la cadence de réveil.
-        LeadActivity.objects.create(
-            company=lead.company, lead=lead, user=None,
+        activity.journal_systeme(
+            company=lead.company, lead=lead,
             kind=LeadActivity.Kind.NOTE,
             body=('Dossier rouvert' + (f' ({origine})' if origine else '')
                   + ' — cadence de reprise posée.'))
@@ -496,7 +496,7 @@ def _defaire_avance_funnel(lead, user, mouvements, *, debut, fin, cloture):
     ancien = lead.stage
     if not appliquer_stage_lead(lead, cible, user=user):
         return None
-    LeadActivity.objects.create(
+    activity.creer_activite(
         company=lead.company, lead=lead, user=user,
         kind=LeadActivity.Kind.MODIFICATION,
         field='stage', field_label='Étape',

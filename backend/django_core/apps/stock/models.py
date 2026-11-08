@@ -1872,6 +1872,9 @@ class ImputationAvoirFournisseur(models.Model):
         'achats.FactureFournisseur', on_delete=models.PROTECT,
         related_name='avoirs_imputes')
     montant = models.DecimalField(max_digits=14, decimal_places=2)
+    # AAPV5 (D-AAPV-2) — RAS-TVA restante portée par l'imputation qui SOLDE
+    # la facture (Σ RAS = taux × TVA au centime) ; 0 sinon.
+    montant_ras_tva = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:

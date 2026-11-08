@@ -145,6 +145,36 @@ class PrixAchatFacturesTests(TestCase):
                 self.assertEqual(
                     api.get(f'{base}en-exception/').status_code, 403)
 
+    def test_releve_tva_et_export_ras_403_sans_prix_achat(self):
+        """AAPV35 (D-ASTK-2) — relevé TVA déductible : `prix_achat_voir` ;
+        export RAS : règle des règlements fournisseur. Technicien, Commercial,
+        Admin Ventes 403 ; Administrateur 200 ; `achats_payer` seul : export
+        200, relevé 403."""
+        perms = dict(CANONICAL_SYSTEM_ROLES)
+        releve = '/api/django/stock/factures-fournisseur/releve-deductions-tva/'
+        export = '/api/django/stock/paiements-fournisseur/ras-tva/export/'
+        refuses = [self.commercial]
+        for nom in ('Technicien', 'Admin Ventes'):
+            if nom in perms:
+                role = Role.objects.create(
+                    company=self.company, nom=nom, permissions=perms[nom])
+                refuses.append(User.objects.create_user(
+                    username=f'aapv35-{nom.replace(" ", "-")}', password='x',
+                    company=self.company, role=role))
+        for user in refuses:
+            api = _api(user)
+            self.assertEqual(api.get(releve).status_code, 403, user.username)
+            self.assertEqual(api.get(export).status_code, 403, user.username)
+        api = _api(self.admin)
+        self.assertEqual(api.get(releve).status_code, 200)
+        self.assertEqual(api.get(export).status_code, 200)
+        payeur = User.objects.create_user(
+            username='aapv35-payeur', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom='Payeur AAPV35',
+                                     permissions=['achats_payer']))
+        self.assertEqual(_api(payeur).get(export).status_code, 200)
+        self.assertEqual(_api(payeur).get(releve).status_code, 403)
+
     def test_paiements_imbriques_masques(self):
         # TEN-10 — légacy « normal » : paiements-fournisseur 403 (AUD419)
         # ET plus de règlements imbriqués dans la facture.

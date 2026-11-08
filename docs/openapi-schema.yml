@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4932, operations: 7730, components: 3634}
+counts: {paths: 4933, operations: 7731, components: 3635}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -3890,6 +3890,7 @@ operations:
 - get /api/public/v1/changelog/ -> public_v1_changelog_retrieve
 - get /api/public/v1/chantiers/ -> public_v1_chantiers_list
 - get /api/public/v1/chantiers/{id}/ -> public_v1_chantiers_retrieve
+- get /api/public/v1/clients/{id}/langue/ -> public_v1_clients_langue_retrieve
 - post /api/public/v1/devis-write/ -> public_v1_devis_write_create
 - get /api/public/v1/devis/ -> public_v1_devis_list
 - get /api/public/v1/devis/{id}/ -> public_v1_devis_retrieve
@@ -9952,6 +9953,7 @@ components:
 - Client
 - ClientCreditWarning
 - ClientCreditWarningRecouvrement
+- ClientLanguePublic
 - ClientRequest
 - ClientScoreComportement
 - CocherChecklistRequeteRequest

@@ -64,6 +64,15 @@ class DaLignesTests(TestCase):
             self.assertIn('quantite', r.data)
         self.assertEqual(self.da.lignes.count(), 0)
 
+    def test_quantite_decimale_refusee_a_la_saisie(self):
+        """AAPV47 — 2,5 refusé dès la saisie (un BCF se commande en unités) ;
+        3 accepté."""
+        r = self._post_ligne(quantite='2.5')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('Quantité entière exigée', str(r.data['quantite']))
+        self.assertEqual(self.da.lignes.count(), 0)
+        self.assertEqual(self._post_ligne(quantite='3').status_code, 201)
+
     def test_prix_negatif_refuse(self):
         r = self._post_ligne(prix_estime='-5')
         # api-fuzz full : le motif publié ne sait pas exclure `-` -> 409.

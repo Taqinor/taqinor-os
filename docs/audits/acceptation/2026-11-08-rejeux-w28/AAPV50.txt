@@ -1,0 +1,14 @@
+# Preuve en direct AAPV50 — rejeu w28, code b00242be0 (dev-plan-6a6fc9-w28), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w28-django (conteneur privé : code de CE worktree, base privée
+# erp_accept_w28, transaction annulée, mail en mémoire, Celery coupé, HTTP sortant bloqué). « oc » = variante
+# scratchpad sonde_oc.py identique sauf transaction.on_commit exécuté immédiatement (événements « après commit »
+# qui ne partiraient jamais dans la transaction annulée). Sur le code corrigé, verdict ÉCART = repro False = attendu.
+# Sondes C-LIVE-* (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Verdict : PASS — Sonde C-AAPV-083 : demarrer une session terminée 409, aucun ajustement en double => repro False.
+
+== C-AAPV-083 (sha 6ffa876688)
+attendu : repro si demarrer d'une session terminée → 200 et chaque cycle re-poste −2 (3 AJUSTEMENT, stock 24) ; témoin terminer seul : rien
+observé : {'creation': 201, 'ajouter_ligne': 201, 'theorique_snapshot': 30, 'patch_ligne': 200, 'journal': [('cycle 1', 200, 200, 'termine', {'stock': '28', 'ajustements': 1, 'mvts': [('ajustement', '2', '30', '28')]}), ('témoin terminer seul', None, 200, 'termine', {'stock': '28', 'ajustements': 1, 'mvts': [('ajustement', '2', '30', '28')]}), ('cycle 2', (409, "{'detail': 'Seule une session planifiée peut démarrer.'}"), 200, 'termine', {'stock': '28', 'ajustements': 1, 'mvts': [('ajustement', '2', '30', '28')]}), ('cycle 3', (409, "{'detail': 'Seule une session planifiée peut démarrer.'}"), 200, 'termine', {'stock': '28', 'ajustements': 1, 'mvts': [('ajustement', '2', '30', '28')]})]}
+{"creation": 201, "ajouter_ligne": 201, "theorique_snapshot": 30, "patch_ligne": 200, "journal": [["cycle 1", 200, 200, "termine", {"stock": "28", "ajustements": 1, "mvts": [["ajustement", "2", "30", "28"]]}], ["témoin terminer seul", null, 200, "termine", {"stock": "28", "ajustements": 1, "mvts": [["ajustement", "2", "30", "28"]]}], ["cycle 2", [409, "{'detail': 'Seule une session planifiée peut démarrer.'}"], 200, "termine", {"stock": "28", "ajustements": 1, "mvts": [["ajustement", "2", "30", "28"]]}], ["cycle 3", [409, "{'detail': 'Seule une session planifiée peut démarrer.'}"], 200, "termine", {"stock": "28", "ajustements": 1, "mvts": [["ajustement", "2", "30", "28"]]}]], "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 1, après 1) ; mails 0 ; tâches Celery bloquées 0

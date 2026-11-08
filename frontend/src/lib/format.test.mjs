@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {
   toNumber, formatMAD, formatNumber, formatPercent,
   formatDate, formatDateTime, formatPhoneMA, canonicalPhoneMA, normalizeMaPhone,
-  timeAgo, formatPersonName, nbsp,
+  timeAgo, formatPersonName, nbsp, formatMontant,
 } from './format.js'
 
 // Intl fr-FR utilise des espaces insécables variables (U+00A0 / U+202F) comme
@@ -234,4 +234,14 @@ test('nbsp: espace fine insécable devant la ponctuation double', () => {
   assert.equal(nbsp('Titre :'), 'Titre :')
   assert.equal(nbsp(''), '')
   assert.equal(nbsp(null), null)
+})
+
+// NTI18N9 — devise d'affichage société : XOF pour une société XOF, MAD par
+// défaut (identique à formatMAD), code invalide -> MAD ; formatMAD inchangé.
+test('formatMontant: devise tenant XOF vs défaut MAD, formatMAD intact', () => {
+  assert.equal(norm(formatMontant(1234.5, { devise: 'XOF' })), '1 234,50 XOF')
+  assert.equal(formatMontant(1234.5), formatMAD(1234.5))
+  assert.equal(formatMontant(1234.5, { devise: 'xof' }), formatMAD(1234.5))
+  assert.equal(formatMontant(null, { devise: 'XOF' }), '—')
+  assert.equal(norm(formatMAD(1234.5)), '1 234,50 MAD')
 })

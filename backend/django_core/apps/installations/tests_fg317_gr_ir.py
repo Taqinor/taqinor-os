@@ -151,6 +151,51 @@ class TestScopeRole(TestCase):
         })
         self.assertEqual(r.status_code, 403, r.data)
 
+    def test_technicien_sans_prix_achat_403(self):
+        """AAPV61 — rôles système sans `prix_achat_voir`/`achats_payer` : 403
+        partout ; `prix_achat_voir` lit sans écrire ; Administrateur 200/204."""
+        from django.core.management import call_command
+        from apps.roles.models import Role
+        call_command('init_roles', verbosity=0)
+
+        def api_role(nom, perms=None):
+            if perms is None:
+                role = Role.objects.get(company=self.company, nom=nom)
+            else:
+                role = Role.objects.create(
+                    company=self.company, nom=f'AAPV61 {next(_seq)}',
+                    permissions=perms)
+            u = User.objects.create_user(
+                username=f'aapv61-{next(_seq)}', password='x',
+                company=self.company, role=role)
+            return auth(u)
+        prov = ReceptionNonFacturee.objects.create(
+            company=self.company, bon_commande=self.bcf,
+            montant_provision=1000)
+        url = f'{BASE}/receptions-non-facturees/'
+        for nom in ('Technicien', 'Technicien responsable'):
+            with self.subTest(role=nom):
+                api = api_role(nom)
+                self.assertEqual(api.get(url).status_code, 403)
+                self.assertEqual(
+                    api.post(f'{url}{prov.id}/lettrer/', {}).status_code, 403)
+                self.assertEqual(api.delete(f'{url}{prov.id}/').status_code, 403)
+                self.assertEqual(api.post(url, {
+                    'bon_commande': self.bcf.id, 'montant_provision': '5',
+                }).status_code, 403)
+        prov.refresh_from_db()
+        self.assertFalse(prov.lettre)
+        lecteur = api_role(None, ['prix_achat_voir'])
+        self.assertEqual(lecteur.get(url).status_code, 200)
+        self.assertEqual(
+            lecteur.post(f'{url}{prov.id}/lettrer/', {}).status_code, 403)
+        payeur = api_role(None, ['achats_payer'])
+        self.assertEqual(
+            payeur.post(f'{url}{prov.id}/lettrer/', {}).status_code, 200)
+        admin = api_role('Administrateur')
+        self.assertEqual(admin.get(url).status_code, 200)
+        self.assertEqual(admin.delete(f'{url}{prov.id}/').status_code, 204)
+
     def test_scope_isolation(self):
         other = make_company()
         bcf_o = make_bcf(other)

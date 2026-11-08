@@ -60,6 +60,8 @@
     detache:booleen, detail:inconnu
 - frontend/src/api/coreApi.js :: desactiver -> /api/django/core/modules/<>/desactiver
     dependants:inconnu, desactives:inconnu, detail:texte
+- frontend/src/api/coreApi.js :: donnees -> /api/django/core/dashboards/<>/donnees
+    detail:texte, filtres_globaux:inconnu, widgets:inconnu
 - frontend/src/api/coreApi.js :: getPublic -> /api/django/core/dashboards-partages/public/<>
     description:inconnu, detail:texte, layout:inconnu, titre:inconnu
 - frontend/src/api/coreApi.js :: installer -> /api/django/core/workflow-templates/installer
@@ -106,6 +108,8 @@
     references:inconnu, segment:texte
 - frontend/src/api/crmApi.js :: getLeadVisites -> /api/django/crm/leads/<>/visites
     avertissement_sans_devis:inconnu, rappel_juridique:inconnu, visites:inconnu
+- frontend/src/api/crmApi.js :: getLeads -> /api/django/crm/leads
+    count:inconnu, next:inconnu, previous:inconnu, results:inconnu
 - frontend/src/api/crmApi.js :: getMonPortefeuille -> /api/django/crm/clients/mon-portefeuille
     count:nombre, results:inconnu
 - frontend/src/api/crmApi.js :: getPermanences -> /api/django/crm/dispatch/permanences/<>
@@ -502,6 +506,8 @@
     results:inconnu, total_du:texte
 - frontend/src/api/stockApi.js :: getDelaiMesureFournisseur -> /api/django/stock/fournisseurs/<>/delai-mesure
     delai_annonce_jours:inconnu, delai_mesure_jours:inconnu, delai_retenu_jours:inconnu, ecart_jours:inconnu, ecart_pct:inconnu, ecart_type_jours:inconnu, fenetre_mois:inconnu, fournisseur_id:inconnu, nb_mesures:nombre, produit_id:inconnu, seuil_ecart_pct:inconnu, utiliser_delai_reel:inconnu
+- frontend/src/api/stockApi.js :: getEchantillonnageReception -> /api/django/stock/receptions-fournisseur/<>/echantillonnage
+    controle:inconnu, echantillon_requis:inconnu, unites_attendues:inconnu
 - frontend/src/api/stockApi.js :: getFavorisCatalogueAchat -> /api/django/stock/catalogue-achat/favoris
     epingles:inconnu, produit_ids:inconnu, recents:inconnu
 - frontend/src/api/stockApi.js :: getKitDisponibilite -> /api/django/stock/kits/<>/disponibilite

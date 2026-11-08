@@ -1,0 +1,35 @@
+# Preuve en direct AAPV74 — rejeu w28 (après correctifs), code d6b50373b8 (dev-plan-6a6fc9-w28), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code de CE commit copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en
+# mémoire, Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu.
+# Écran : front de CE worktree servi par vite (127.0.0.1:3000) -> conteneur privé accept-w29-web (runserver,
+# base erp_accept_w29, SMTP 127.0.0.1:1 = aucune messagerie), piloté par Playwright MCP. Données d'écran :
+# fixture FIX-W28 (société « Live Acceptation W28b », comptes acc28_admin / acc28_resp, mot de passe de test).
+# Verdict : FAIL — Sonde C-AAPV-084 : PASS. ÉCRAN FAIL : Responsable bloqué côté client (GET produits/<id>/emplacements/ 403 => dispo 0) ; Administrateur : POST transferts/ 400 « Identifiant entier attendu. » (ids en chaîne) => aucun message 409 atteignable.
+
+== C-AAPV-084 (sha 6ffa876688)
+attendu : repro si A : PATCH 200 et executer 200 (50 transférés) ; B : 3 × 201 ; T : 409
+observé : {'tech_a_stock_mouvement': True, 'T_direct_sans_demande': (409, '{\'detail\': "Ce transfert dépasse le seuil d\'approbation de la société : exécutez la demande de transfert approuvée."}'), 'A': {'creer': 201, 'approuver': 200, 'patch_apres_approbation': 409, 'quantite_apres_patch': None, 'executer': 200, 'detail': None, 'au_van': 5}, 'B': {'creer': 201, 'approuver': 200, 'directs_technicien': [(409, '{\'detail\': "Ce transfert dépasse le seuil d\'approbation de la société : exécutez la demande de transfert approuvée."}'), (409, '{\'detail\': "Ce transfert dépasse le seuil d\'approbation de la société : exécutez la demande de transfert approuvée."}'), (409, '{\'detail\': "Ce transfert dépasse le seuil d\'approbation de la société : exécutez la demande de transfert approuvée."}')], 'transferts_ajoutes_au_van': 0, 'demande_statut': 'approuve', 'nb_transferts_total': 1}}
+{"tech_a_stock_mouvement": true, "T_direct_sans_demande": [409, "{'detail': \"Ce transfert dépasse le seuil d'approbation de la société : exécutez la demande de transfert approuvée.\"}"], "A": {"creer": 201, "approuver": 200, "patch_apres_approbation": 409, "quantite_apres_patch": null, "executer": 200, "detail": null, "au_van": 5}, "B": {"creer": 201, "approuver": 200, "directs_technicien": [[409, "{'detail': \"Ce transfert dépasse le seuil d'approbation de la société : exécutez la demande de transfert approuvée.\"}"], [409, "{'detail': \"Ce transfert dépasse le seuil d'approbation de la société : exécutez la demande de transfert approuvée.\"}"], [409, "{'detail': \"Ce transfert dépasse le seuil d'approbation de la société : exécutez la demande de transfert approuvée.\"}"]], "transferts_ajoutes_au_van": 0, "demande_statut": "approuve", "nb_transferts_total": 1}, "temoin_ok": true, "defaut_A": false, "defaut_B": false, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0
+
+## AAPV74 — FAIL (écran)
+Sonde C-AAPV-084 : PASS (T et B : 409 « Ce transfert dépasse le seuil d'approbation de la société : exécutez la demande de
+transfert approuvée. », 0 transfert ajouté ; A : PATCH après approbation 409).
+Fixture : seuil 10 000 MAD, Onduleur ACC74 (prix d'achat 3 000, 200 en stock, GET stock/produits/<id>/ en Responsable :
+stock_par_emplacement = Dépôt principal 200), demande de 50 créée + approuvée, NON exécutée (statut « approuve »).
+(1) Compte acc28_resp (Responsable, `stock_modifier`) : Stock › « Transférer » → Onduleur ACC74, Dépôt principal → Camionnette, 50 :
+le tableau de ventilation affiche « Total 0 », « dispo : 0 » ; « Transférer » => alerte côté client « Quantité insuffisante à la
+source (0 disponible). », aucune requête au serveur. CAUSE observée : GET stock/produits/22796/emplacements/ => 403 (action
+`emplacements` de apps/stock/views/produit.py en `permission_classes=[IsAdminRole]`) ; le stock EST au dépôt source. Ce n'était donc
+pas la fixture du rejeu précédent.
+(2) Essai annexe en acc28_admin (même dialogue) : ventilation lue (Dépôt principal 200, dispo 200) ; « Transférer » =>
+POST stock/transferts/ corps {"produit":"22796","source":"857","destination":"858","quantite":50} => 400
+{produit/source/destination : « Identifiant entier attendu. »} (garde stricte `_corps_transfert` / types_corps_ou_400, ids en
+chaîne envoyés par l'écran) ; alerte affichée « Échec du transfert. ».
+OBSERVÉ : le message 409 du seuil n'est atteignable depuis StockList.jsx pour AUCUN rôle (Responsable bloqué par le 403 de la
+ventilation, Administrateur par le 400 des identifiants en chaîne). ATTENDU par la clause : « StockList.jsx (transfert) en
+Responsable au-dessus du seuil, demande approuvée non exécutée ⇒ message 409 ».
+Oracle 2 : 4 GET produits/{a-reapprovisionner,previsions-reappro,rotation,expirant-bientot}/ en 403 sur /stock en Responsable
+(déjà constaté au rejeu b00242be0) + le 403 ci-dessus.

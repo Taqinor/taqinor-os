@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: a3201a9c0c0f24bf23d3fd1cbbd576d9e4e60254829c3a581a0d09b89b4de994
-Plan fingerprint: de3c26bf0ac1e25e70125474d1a030ce324462eee15a67a01bf8ddb6177b0aea
+Structure fingerprint: 6f8d1b7b52b05d1757aaaa4daad4fa92b3f8a393161ea66663eee5fc93bf8281
+Plan fingerprint: 23df53def4ec13511664267f910cbe9380793542da9ab7a3512b8bfc7b2811da
 
 
 
@@ -226,7 +226,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 | `visites` | `visites/` | 2 | Visites techniques terrain (`VisiteTerrain`, `VisiteMedia`) — autonomous app; the field rep has no CRM access. |
 | `calepinage` | `calepinage/` | 12 | Roof design studio: `Calepinage` + variantes/versions, `ReleveTerrain`, `PhotoSite`, `PoseReelle`, `DossierReglementaire`. Holds the villa engine + kit catalogue + roof-marker helper repatriated from `ao`. |
 | `ventes` | `ventes/` | 49 | Devis (statuts brouillon/envoye/accepte/refuse/expire), BonCommande, `ShareLink` (ADOC131 : `suivi_prolonge_le`/`revoque_le`, action `devis/<id>/revoquer-lien-public/`), affiche de toiture servie même origine (ACAL314 : `devis/<id>/roof-image/fichier/` + public `proposal/<token>/roof-image/`, chemins fabriqués par `domain/stockage_toiture.py`), listes de prix, mandats/remises, `quote_engine/` (rule #4). `coherence/` = auditeur d'invariants nocturne en lecture seule (`ViolationCoherence`, `manage.py audit_coherence`, beat `ventes.audit_coherence_nuit` 04:15). Découpes SPL (move-only, goldens dans `tests/golden/` via `tests/split_golden.py`) : `selectors.py` = façade ré-exportant `selectors_{cadence,calepinage,facturation,portail,publicite,stock}.py` ; `public_views.py` garde document/proposal/suivi publics, le reste vit dans `public/` (`noyau`, `lecture_views` engagement, `paiement_views`, `signature_views`, `payload_*`) ; `etude_horaire.py` délègue à `horaire/` (`base`, `batterie_lignes`, `public`, `conso`, `ve_nocturne`) ; `views/devis.py` = viewset réparti en mixins `views/devis_{cadence,calepinage,cycle,edition,envoi,etudes,facturation,gardes,pdf}.py` ; `solar_design.py` ré-exporte `solar_{base,finance,classification}.py` ; `domain/cycle_vie.py`/`creation.py` répartis en `domain/{envoi,revision,creation_auto,creation_auto_residentiel,creation_auto_agricole,creation_calepinage,creation_clone,revision_visite_ci,…}.py` (CORC2 : `POST etude-ci/reviser-apres-visite/` recompose un devis C&I avec la visite validée) ; frontend `pages/ventes/DevisList.jsx` délègue à `devisList/`. |
-| `facturation` | `facturation/` | 7 | Factures, `Paiement`, `Avoir`, `FollowupLevel`, `RelanceLog` — state-only split out of `ventes` (ODX17); legacy `/ventes/factures…` paths still served; `receivers.py` subscribes `devis_accepted` / `devis_acceptation_annulee` (AMET4 provisional acompte draft). |
+| `facturation` | `facturation/` | 7 | Factures, `Paiement`, `Avoir`, `FollowupLevel`, `RelanceLog` — state-only split out of `ventes` (ODX17); legacy `/ventes/factures…` paths still served; `receivers.py` subscribes `devis_accepted` / `devis_acceptation_annulee` (AMET4 provisional acompte draft). ODX18 (07/11) : `views/` (FactureViewSet + ses 9 modules, LigneFacture, Paiement, export UBL/DGI) et `recouvrement.py` vivent ici (`apps.ventes.views`/`ventes.recouvrement` les ré-exportent) ; serializers, `views/avoir.py`, `views/remise_encaissement.py` et services encore dans `ventes` (reste ODX18). |
 | `stock` | `stock/` | 71 | Catalogue (`Produit`, `Marque`, `Categorie`, kits, `courbe_pompe`), `Fournisseur`, `MouvementStock`, emplacements/lots/inventaires, portail fournisseur. |
 | `achats` | `achats/` | 11 | Supplier POs/receptions/invoices/payments/returns, `PrixFournisseur`, `ImputationAcompteFournisseur` (ASTK106) — state-only split out of `stock` (ODX19). |
 | `installations` | `installations/` | 115 | Chantiers **core + GPS**: `Installation`, planning, interventions, checklists, field documents, demandes d'achat, `DossierImport`, kitting, livraisons, `RecettePompage` (recette pompage, `/recettes-pompage/`, AGR). Public token page: `/api/django/public/installations/intervention-rapport/<token>/` (+`pdf/`, `photo(s)/<att_id>/` — APDF38/ACHT68). Revue 26/10 : `chantiers/<id>/approvisionnement/`, `interventions/<id>/serials-attendus/`, `interventions/<id>/presence/`, GPS `gps-consentements/mon-consentement/` + `positions-techniciens/ping-lot|mes-positions`, migrations 0132-0133. |
@@ -253,7 +253,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 | `notifications` | `notifications/` | 18 | Unified notification engine: `Notification`, preferences, routing rules, WhatsApp templates/logs + inbound idempotence marker (`WhatsAppInboundMessage`), sweep emission marker (`MarqueurEmissionBalayage`), push, `MessageAccueil`, working hours. |
 | `automation` | `automation/` | 13 | No-code rules + approvals: `AutomationRule`/`Run`/`Step`, `ApprovalRequest`/`Decision`/`Delegation`, incoming webhooks. |
 | `agent` | `agent/` | 1 | Agentic action catalogue (declared in code, `AgentActionLog` only) — metadata; the endpoint re-checks permissions. |
-| `publicapi` | `publicapi/` | 13 | Public REST API: `ApiKey`, scopes, signed `Webhook` + deliveries, bulk jobs, OAuth clients, EDI partner, sandbox tenants. |
+| `publicapi` | `publicapi/` | 13 | Public REST API: `ApiKey`, scopes, signed `Webhook` + deliveries, bulk jobs, OAuth clients, EDI partner, sandbox tenants. `GET /api/public/v1/clients/<id>/langue/` (portée `read:clients`, NTI18N42) ; doc + OpenAPI en anglais via `?lang=en` (NTI18N44). |
 | `uxviews` | `uxviews/` | 4 | Server-side saved views, favourites, recent screens, UX prefs (NTUX). |
 | `trash` | `trash/` | 1 | Cross-app 30-day recycle bin (`ElementSupprime`) + per-model restorer registry. |
 | `offlinesync` | `offlinesync/` | 1 | Single offline write outbox (`OfflineOperation`), one `operations/batch/` sync point. |
@@ -594,7 +594,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1328)**
+**Done (1332)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1248,6 +1248,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `ENF48` — ENF11, tranche 05/11 quater (nocturne api-fuzz-full 42074433075 sur main 38be594a ; 7…
 - `ENF49` — ENF11, tranche 06/11 (nocturne api-fuzz-full 42128456456 sur main 04d15ba3 ; 5 tranches…
 - `ENF50` — ENF11, tranche 06/11 bis (nocturne api-fuzz-full 42160785666 sur main be284395 ; 4…
+- `ENF51` — ENF11, tranche 06/11 ter (nocturne api-fuzz-full 42197928068 sur main af09d4e6 ; 8…
 - `QAH1` — Skill `qa-explorer` : flotte d'agents « testeur humain » qui explore l'ERP démo module…
 - `QAH2` — Invariants Hypothesis sur la chaîne d'argent et la chaîne d'états des documents ventes
 - `QAH3` — Test différentiel `solar.js` ↔ `quote_engine/builder.py` sur un corpus figé
@@ -1642,6 +1643,9 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 - `CALX406` — Nommer le responsable d'un calepinage et n'ouvrir à chacun que les siens
 - `CRX42` — [OPS — action fondateur] Vérification .env prod (30 min)
+- `CRXB1` — Contrat d'abord (PACT10)
+- `CRXB4` — UN round-robin
+- `CRXB5` — Façade chatter partout
 - `ODY33` — Retrait du legacy : à la fin, UN seul shell dans le code
 - `QJR113` — [D-QJR113 = (a), Reda 11/10/2026 : ancre remplie — chantier D10 ouvert et livré dans…
 - `QJR500` — Contrat d'abord : un devis dit s'il est modifiable et révisable ; la ligne devis du…
@@ -1925,7 +1929,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT109` — `reporting/insights.py` (rentabilité chantier) : « facturé » = factures ÉMISES de la…
 - `VTAG1` — [GATED: décision fondateur]
 
-**Open — to build (122)**
+**Open — to build (119)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -2024,11 +2028,8 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX373` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
 - `CALX374` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
 - `CALX375` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
-- `CRXB1` — [GATED: mot fondateur « lance CRXB »] Contrat d'abord (PACT10)
 - `CRXB2` — [GATED] Scission models.py [VAGUE EXCLUSIVE]
 - `CRXB3` — [GATED] Fin de `__all__`
-- `CRXB4` — [GATED] UN round-robin
-- `CRXB5` — [GATED] Façade chatter partout
 - `CRXB6` — [GATED] Frontière sortante contractée
 - `CRXB7` — [GATED] Registres LeadsPage/ListView + tests de rendu
 - `CRXB8` — [GATED] LeadViewSet dégonflé

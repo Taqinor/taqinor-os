@@ -14,9 +14,9 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
 from apps.roles.permissions import DroitDeLaGrille  # ASEC50
-from . import openapi_docs as D
-from ..models import EmailLog, Facture
-from ..utils.corps import valider_corps
+from apps.ventes.views import openapi_docs as D
+from apps.ventes.models import EmailLog, Facture
+from apps.ventes.utils.corps import valider_corps
 
 logger = logging.getLogger('apps.ventes.views.facture')
 
@@ -30,7 +30,7 @@ class FactureDocumentsActionsMixin:
             permission_classes=[IsResponsableOrAdmin])
     def generer_pdf(self, request, pk=None):
         facture = self.get_object()
-        from ..tasks import task_generate_facture_pdf
+        from apps.ventes.tasks import task_generate_facture_pdf
         task = task_generate_facture_pdf.delay(facture.id)
         # M4 — événement découplé : ventes émet, le satellite audit journalise
         # (AuditLog.Action.PDF). ventes n'importe plus apps.audit ; le signal
@@ -54,7 +54,7 @@ class FactureDocumentsActionsMixin:
         # payer » imprimé est le courant ; une facture jamais rendue se rend à
         # la volée. Si le rafraîchissement échoue, le fichier stocké est servi
         # tel quel (même repli que le lien public).
-        from ..utils.pdf import cle_facture_pdf_a_jour, download_pdf
+        from apps.ventes.utils.pdf import cle_facture_pdf_a_jour, download_pdf
         try:
             cle = cle_facture_pdf_a_jour(facture)
         except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
@@ -75,7 +75,7 @@ class FactureDocumentsActionsMixin:
             )
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
         # QD2 — nom cohérent (société _ type _ client _ référence).
-        from ..utils.filenames import document_filename
+        from apps.ventes.utils.filenames import document_filename
         filename = document_filename(
             'Facture', facture.reference,
             client=facture.client if facture.client_id else None,
@@ -95,7 +95,7 @@ class FactureDocumentsActionsMixin:
         renvoie. Aucun appel externe, aucune transmission DGI."""
         facture = self.get_object()
         from apps.parametres.models import CompanyProfile
-        from ..utils.ubl import build_ubl_xml, store_ubl_xml
+        from apps.ventes.utils.ubl import build_ubl_xml, store_ubl_xml
         profile = CompanyProfile.get(company=facture.company)
         xml_str = build_ubl_xml(facture, profile)
         key = store_ubl_xml(facture, xml_str)
@@ -190,8 +190,8 @@ class FactureDocumentsActionsMixin:
         un lien public tokenisé (30 j) vers le PDF CLIENT de la facture.
         Body : `modele` ∈ {'facture','relance'}, `langue` ∈ {'fr','darija'}.
         """
-        from ..utils.phone import normalize_phone_e164
-        from ..utils.whatsapp import build_facture_whatsapp, build_wa_url
+        from apps.ventes.utils.phone import normalize_phone_e164
+        from apps.ventes.utils.whatsapp import build_facture_whatsapp, build_wa_url
         facture = self.get_object()
         phone = facture.client.telephone if facture.client_id else ''
         saisie = valider_corps(request, D.FactureWhatsappRequest)
@@ -206,7 +206,7 @@ class FactureDocumentsActionsMixin:
         message, link = build_facture_whatsapp(request, facture, modele, langue)
         # L856 — trace l'action dans le chatter de la facture (Historique).
         # Acteur et société posés côté serveur, jamais lus du corps de requête.
-        from ..activity import log_facture_whatsapp
+        from apps.ventes.activity import log_facture_whatsapp
         log_facture_whatsapp(facture, request.user, modele)
         return Response({
             'wa_url': build_wa_url(phone, message),
@@ -225,7 +225,7 @@ class FactureDocumentsActionsMixin:
         (backend console), envoi réel via Brevo/SMTP quand configuré. L'envoi
         est consigné sur le fil (EmailLog). Le corps/sujet/destinataire peuvent
         être surchargés dans le body de la requête."""
-        from ..email_service import send_document_email
+        from apps.ventes.email_service import send_document_email
         facture = self.get_object()
         saisie = valider_corps(request, D.EnvoyerEmailFactureRequest)
         log = send_document_email(
