@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 6f8d1b7b52b05d1757aaaa4daad4fa92b3f8a393161ea66663eee5fc93bf8281
-Plan fingerprint: 23df53def4ec13511664267f910cbe9380793542da9ab7a3512b8bfc7b2811da
+Structure fingerprint: f72c3a3af1e83f840e91733e47dbcaf0bc22b318891739de6960cbc5db6f43cf
+Plan fingerprint: ed6adee52f608f2d47b6aeb2a5252c3cda4406b788792a8c9284211ae6fe5293
 
 
 
@@ -594,7 +594,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1332)**
+**Done (1333)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1249,6 +1249,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `ENF49` — ENF11, tranche 06/11 (nocturne api-fuzz-full 42128456456 sur main 04d15ba3 ; 5 tranches…
 - `ENF50` — ENF11, tranche 06/11 bis (nocturne api-fuzz-full 42160785666 sur main be284395 ; 4…
 - `ENF51` — ENF11, tranche 06/11 ter (nocturne api-fuzz-full 42197928068 sur main af09d4e6 ; 8…
+- `ODX18` — App Facturation — étape 2 (vues/urls/recouvrement/frontend)
 - `QAH1` — Skill `qa-explorer` : flotte d'agents « testeur humain » qui explore l'ERP démo module…
 - `QAH2` — Invariants Hypothesis sur la chaîne d'argent et la chaîne d'états des documents ventes
 - `QAH3` — Test différentiel `solar.js` ↔ `quote_engine/builder.py` sur un corpus figé
@@ -1929,7 +1930,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT109` — `reporting/insights.py` (rentabilité chantier) : « facturé » = factures ÉMISES de la…
 - `VTAG1` — [GATED: décision fondateur]
 
-**Open — to build (119)**
+**Open — to build (118)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -2019,7 +2020,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `ENF11` — api-fuzz bloquant
 - `ENF15` — Dettes moyennes à zéro
 - `ENF19` — Duplicats (1 181) à zéro
-- `ODX18` — App Facturation — étape 2 (vues/urls/recouvrement/frontend)
 - `QAH10` — [GATED: secret `ANTHROPIC_API_KEY` GitHub + URL de staging/démo joignable — fondateur]
 - `CALX44` — Brancher le rattachement d'une affaire AO à un calepinage
 - `CALX131` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]

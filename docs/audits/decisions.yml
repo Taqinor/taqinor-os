@@ -3825,3 +3825,95 @@ decisions:
     date: "2026-11-07"
     source: "Reda, question interactive, audit de parcours PA7"
     taches: [AMON21]
+  - id: D-ACON-1
+    question: "« Générer le devis » depuis un calepinage (et la route from-layout) sur un lead commercial / industriel construit un devis RÉSIDENTIEL avec la production et les économies de l'outil toiture (interdit en C&I par CIQ117). Quelle règle ?"
+    options:
+      - cle: refus_nomme
+        texte: "409 nommé sur les deux portes (agricole compris sur from-layout), rien créé"
+      - cle: devis_au_marche_du_lead
+        texte: "Devis construit au marché du lead : aucune production / économie prise du layout, étude par le moteur C&I serveur"
+    reponse: devis_au_marche_du_lead
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PA2"
+    taches: [ACON40]
+  - id: D-ACON-2
+    question: "Un lead a un calepinage ouvert C1 lié au devis actif A ; un second devis actif B (pas une V2) demande une conception : aujourd'hui un C2 est créé et « Concevoir » l'ouvre en silence. Quelle règle ?"
+    options:
+      - cle: une_par_devis_actif
+        texte: "Un calepinage ouvert par devis actif (+ un sans devis par lead) ; « Concevoir » demande lequel ouvrir"
+      - cle: refus_409
+        texte: "Garder un calepinage ouvert par lead : 409 nommant C1"
+      - cle: variante_de_c1
+        texte: "Le devis B devient une variante de C1 (lien devis ↔ variante, nouvelle conception)"
+    reponse: variante_de_c1
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PA2"
+    taches: [ACON6]
+  - id: D-ACON-3
+    question: "L'approbation d'une conception ne couvre que le layout dessiné : changer l'onduleur, une longueur de chaîne forcée ou la fixation après accord garde l'accord valide et les pièces d'exécution ouvertes. L'empreinte d'approbation doit-elle les couvrir ?"
+    options:
+      - cle: tout_perime
+        texte: "Oui : tout changement électrique ou de fixation périme l'accord et referme les pièces d'exécution"
+      - cle: conception_seule
+        texte: "Non : l'accord ne porte que sur la conception imprimée (D-ACAL-4/21), limite écrite dans l'écran Approbation"
+    reponse: conception_seule
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PA2"
+    taches: [ACON24]
+  - id: D-ACON-4
+    question: "La page publique de proposition ne dessine que 600 panneaux par zone (et la visionneuse web partage un seul budget de 600 entre toutes les zones), alors que le compte affiché reste complet. Que faire ?"
+    options:
+      - cle: tout_dessiner_2000
+        texte: "Dessiner tous les panneaux jusqu'au plafond dur de 2 000 (décision du 23/10), par zone ; au-delà, mention « vue simplifiée »"
+      - cle: garder_600_mention
+        texte: "Garder 600 mais dire sur la page que le dessin est simplifié quand des panneaux sont omis"
+    reponse: tout_dessiner_2000
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PA2"
+    taches: [ACON50]
+  - id: D-APFS-1
+    question: "Les rôles porteurs de `users_voir` (Admin RH, Admin Ventes, Technicien responsable, Commercial responsable) comptent comme palier « responsable » : clés d'API / webhooks, désactivation de module, matrices et workflows, décision des demandes d'approbation, demandes loi 09-08 (accès / effacement), restauration de la corbeille. Quelle garde ?"
+    options:
+      - cle: code_dedie_ou_domaine
+        texte: "Un code dédié par geste pour clés d'API, modules et demandes 09-08 ; palier + code du domaine pour matrices, workflows, marque, approbations ; plan de quotas d'API réservé à l'administrateur"
+      - cle: administrateur_seul
+        texte: "Tous ces gestes réservés à l'administrateur (Administrateur / Directeur)"
+    reponse: code_dedie_ou_domaine
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PF1"
+    taches: [APFS40]
+  - id: D-APFS-2
+    question: "Un superutilisateur rattaché à la société A peut renommer ou suspendre la société B (opérateur plateforme partout), alors qu'ailleurs il est borné à A. Quelle règle ?"
+    options:
+      - cle: borne_a_sa_societe
+        texte: "Un superutilisateur rattaché à une société n'est qu'un utilisateur ERP de cette société ; pouvoirs plateforme seulement sans société (ou rôle support)"
+      - cle: operateur_partout
+        texte: "Tout superutilisateur est opérateur plateforme pour toutes les sociétés"
+    reponse: borne_a_sa_societe
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PF1"
+    taches: [APFS61]
+  - id: D-APFS-3
+    question: "Un utilisateur membre de plusieurs sociétés garde le rôle de sa société d'origine après bascule (un Administrateur de A est administrateur dans B sans que B le voie). Quelle règle ?"
+    options:
+      - cle: role_par_societe
+        texte: "Chaque appartenance porte son propre rôle fixé par la société ; B voit et gère ses membres ; aucun rôle dans B = refus"
+      - cle: garder_role_origine
+        texte: "Garder le rôle d'origine dans toute société accessible"
+    reponse: role_par_societe
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PF1"
+    taches: [APFS66]
+  - id: D-APFS-4
+    question: "160 vues de liste / détail métier (chantiers, fournisseurs, lignes de devis, remises, contrats SAV…) sont lisibles par tout rôle interne, quels que soient ses droits de module. Exiger le droit de lecture du module couperait aussi le Commercial des chantiers et le Technicien des ventes / du CRM. Quelle règle ?"
+    options:
+      - cle: droit_du_module_et_octrois
+        texte: "La lecture exige un droit du module ; les lectures inter-modules réellement nécessaires (Commercial → chantiers de ses ventes, Technicien → devis de son chantier) sont octroyées explicitement dans le registre des rôles"
+      - cle: droit_du_module_strict
+        texte: "La lecture exige un droit du module, rien de plus"
+      - cle: ouvert_champs_masques
+        texte: "Lecture ouverte aux rôles internes, champs sensibles (PII, RIB, prix) masqués sans le droit"
+    reponse: droit_du_module_et_octrois
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PF1"
+    taches: [APFS28]
