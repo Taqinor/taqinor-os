@@ -536,7 +536,7 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
         relevé, RMA) ne se supprime pas : 409, le rebut reste le chemin."""
         refs = [(n, un, plusieurs) for n, un, plusieurs in (
             (instance.tickets.count(), 'ticket', 'tickets'),
-            (instance.pieces_retirees.count(), 'pièce retirée', 'pièces retirées'),
+            (instance.retraits_pieces.count(), 'pièce retirée', 'pièces retirées'),
             (instance.downtimes.count(), 'arrêt', 'arrêts'),
             (instance.releves_compteur.count(), 'relevé', 'relevés'),
             (instance.warranty_claims.count(), 'RMA', 'RMA')) if n]
@@ -2223,11 +2223,11 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 return Response(
                     {'serie_neuve': ['Ce numéro de série est déjà au parc.']},
                     status=409)  # ENF11 : état du parc
-            from .services import equipement_vise_par_ticket
+            from .services import equipement_vise
             if (not numero_serie or not Equipement.objects.filter(
                     company=ticket.company,
                     numero_serie=numero_serie).exists()) and (
-                    equipement_vise_par_ticket(ticket, produit) is None):
+                    equipement_vise(ticket, produit) is None):
                 return Response(
                     {'serie_neuve': ["Le numéro de série de l'appareil "
                                      'remplacé doit exister au parc.']},

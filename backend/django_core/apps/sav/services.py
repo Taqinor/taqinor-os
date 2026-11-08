@@ -958,7 +958,7 @@ def _equipement_dans_perimetre_ticket(equipement, ticket):
                 and installation.client_id == ticket.client_id)
 
 
-def equipement_vise_par_ticket(ticket, produit, verrou=False):
+def equipement_vise(ticket, produit, verrou=False):
     """ACSV61 - repli quand la serie retiree est vide ou inconnue :
     l'equipement vise par le ticket (meme produit, non remplace) ou None."""
     from .models import Equipement
@@ -1009,7 +1009,7 @@ def retirer_piece(*, company, ticket, produit, quantite, numero_serie,
             equipements = equipements.select_for_update()
         equipement_remplace = equipements.first() if numero_serie else None
         if equipement_remplace is None:  # ACSV61 : série vide ou inconnue
-            equipement_remplace = equipement_vise_par_ticket(
+            equipement_remplace = equipement_vise(
                 ticket, produit, verrou=connection.in_atomic_block)
         if equipement_remplace is not None:
             if not _equipement_dans_perimetre_ticket(
