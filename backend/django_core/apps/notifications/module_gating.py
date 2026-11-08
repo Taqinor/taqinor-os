@@ -9,7 +9,7 @@ module OFF disparaît de toutes les surfaces.
 Whitelist FERMÉE et VOLONTAIREMENT PARTIELLE : seuls les types d'événement
 dont l'app propriétaire est certaine sont mappés. Un ``EventType`` absent
 d'``EVENT_MODULE`` (événements transverses/fondation — digest, annonces,
-chat, approbations, NPS, monitoring…) n'est JAMAIS gaté ici — comportement
+chat, approbations, NPS, rapport monitoring…) n'est JAMAIS gaté ici — comportement
 historique inchangé, jamais une régression par omission.
 """
 from __future__ import annotations
@@ -87,6 +87,9 @@ EVENT_MODULE = {
     # nouveaux avis ni l'alarme de silence d'une veille qu'elle n'a pas.
     EventType.VEILLE_AO_NOUVEAUX_AVIS: 'veille_ao',
     EventType.VEILLE_AO_ALARME_SILENCE: 'veille_ao',
+    # AMON86 — une alerte de sous-performance n'est pas émise pour une société
+    # dont le module monitoring est éteint.
+    EventType.MONITORING_SOUS_PERFORMANCE: 'monitoring',
 }
 
 

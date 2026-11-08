@@ -73,6 +73,21 @@ class NotifyServiceTests(TestCase):
         self.assertEqual(n.event_type, EventType.SLA_CREDIT_RECALCULE)
         self.assertEqual(Notification.objects.count(), 1)
 
+    def test_monitoring_sous_performance_catalogue_et_masquable(self):
+        """AMON86 — catalogué et masqué quand le module monitoring est éteint."""
+        from core.models import ModuleToggle
+
+        titre = 'Sous-performance — CHT-1'
+        n = notify(self.user, 'monitoring_sous_performance', titre,
+                   company=self.company)
+        self.assertIsNotNone(n)
+        self.assertEqual(n.event_type, EventType.MONITORING_SOUS_PERFORMANCE)
+        ModuleToggle.objects.create(
+            company=self.company, module='monitoring', actif=False)
+        self.assertIsNone(notify(self.user, 'monitoring_sous_performance',
+                                 titre, company=self.company))
+        self.assertEqual(Notification.objects.count(), 1)
+
     def test_none_user_is_safe(self):
         self.assertIsNone(notify(None, EventType.LEAD_ASSIGNED, 'Titre'))
 

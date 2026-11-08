@@ -469,3 +469,8 @@ class EventType(models.TextChoices):
     # snapshot (``core.sla._notifier_recalcul_credit``). Transverse : aucun
     # module (comme ``security_alert``).
     SLA_CREDIT_RECALCULE = ('sla_credit_recalcule', 'Crédit SLA recalculé')
+    # AMON86 — ouverture d'un épisode de sous-performance sur un système
+    # supervisé (émis par AMON87). Rattaché au module ``monitoring``.
+    MONITORING_SOUS_PERFORMANCE = (
+        'monitoring_sous_performance',
+        'Sous-performance détectée sur un système')

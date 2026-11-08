@@ -47,6 +47,7 @@ EVENT_TYPE_MODULE = {
     'ged_signature_expiration_proche': 'ged',
     'chat_message': 'chat',
     'monitoring_rapport': 'monitoring',
+    'monitoring_sous_performance': 'monitoring',  # AMON86
     'veille_ao_nouveaux_avis': 'veille_ao',
     'veille_ao_alarme_silence': 'veille_ao',
     'idea_vote': 'innovation',
