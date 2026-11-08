@@ -3835,3 +3835,14 @@ decisions:
     date: "2026-11-08"
     source: "Reda, question interactive, audit de parcours PA2"
     taches: []
+  - id: D-ACON-4
+    question: "La page publique de proposition ne dessine que 600 panneaux par zone (et la visionneuse web partage un seul budget de 600 entre toutes les zones), alors que le compte affiché reste complet. Que faire ?"
+    options:
+      - cle: tout_dessiner_2000
+        texte: "Dessiner tous les panneaux jusqu'au plafond dur de 2 000 (décision du 23/10), par zone ; au-delà, mention « vue simplifiée »"
+      - cle: garder_600_mention
+        texte: "Garder 600 mais dire sur la page que le dessin est simplifié quand des panneaux sont omis"
+    reponse: tout_dessiner_2000
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PA2"
+    taches: []
