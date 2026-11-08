@@ -372,7 +372,7 @@ class TestChantierFunnelParcChecklist(TestCase):
                ({'statut': 'installe'}, False)]
         for champs, attendu in cas:
             Installation.objects.filter(pk=self.inst.pk).update(
-                annule=False, parc_actif=True, **champs)
+                **{'annule': False, 'parc_actif': True, **champs})
             self.assertEqual(installation_scoped(self.inst.company, self.inst.pk).est_du_parc, attendu, champs)
             r = self.api.get(f'/api/django/installations/chantiers/{self.inst.id}/')
             self.assertEqual(r.data['est_parc'], attendu, champs)

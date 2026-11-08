@@ -73,7 +73,8 @@ class ReceptionDefinitiveTests(TestCase):
         from apps.sav.models import Ticket
         r1 = self._reserve_avec_ticket('Onduleur mal fixé A')
         r2 = self._reserve_avec_ticket('Onduleur mal fixé B')
-        for action in ('resoudre', 'cloturer'):
+        # Machine d'états YDOCF1 : nouveau → en_cours → resolu → cloture.
+        for action in ('demarrer', 'resoudre', 'cloturer'):
             rep = self.api.post(
                 f'/api/django/sav/tickets/{r1.ticket_id}/{action}/', {}, format='json')
             self.assertEqual(rep.status_code, 200, rep.data)

@@ -179,7 +179,9 @@ class CommissioningGateTests(TestCase):
         inst.save(update_fields=['mes_production_test'])
         raisons = verifier_transition_statut(
             inst, Installation.Statut.INSTALLE)
-        self.assertIn('Fiche de recette IEC 62446-1 non enregistrée.', raisons)
+        # Raison préfixée par l'étape franchie (« Étape « … » : … »).
+        self.assertTrue(any(r.endswith('Fiche de recette IEC 62446-1 non enregistrée.')
+                            for r in raisons), raisons)
 
 
 class CommissioningApiTests(TestCase):
