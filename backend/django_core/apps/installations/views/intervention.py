@@ -533,8 +533,14 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
                     and interv.date_prevue is not None
                     and interv.date_prevue != old.date_prevue):
                 from ..services import enregistrer_report_rdv
-                enregistrer_report_rdv(
-                    interv, old.date_prevue, None, self.request.user)
+                if self.request.data.get('annulation_deplacement') is True:  # ACSV14 — « Annuler » neutre
+                    from django.db.models import F
+                    type(interv).objects.filter(pk=interv.pk, rdv_reschedule_count__gt=0).update(
+                        rdv_reschedule_count=F('rdv_reschedule_count') - 1)
+                    interv.refresh_from_db(fields=['rdv_reschedule_count'])
+                    intervention_activity.log_note(interv, self.request.user, 'Déplacement annulé.')
+                else:
+                    enregistrer_report_rdv(interv, old.date_prevue, None, self.request.user)
             if nouveau_statut is None or nouveau_statut == old.statut:
                 # Pas de transition : effets « édition » inchangés.
                 self._stamp_date_realisee(interv)

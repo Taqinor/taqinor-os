@@ -85,6 +85,30 @@ class ReplanifierTests(TestCase):
         self.iv.refresh_from_db()
         self.assertEqual(self.iv.rdv_reschedule_count, 0)
 
+    def test_annulation_deplacement_ne_compte_pas_de_report(self):
+        """ACSV14 (C-ACSV-135) — déplacer puis « Annuler » au planning :
+        compteur de reports revenu à sa valeur d'avant, note « Déplacement
+        annulé » ; sans le drapeau le retour compte un report.
+        ROUGE AVANT : compteur 2."""
+        import datetime
+
+        from apps.installations.models import Intervention
+        j3 = datetime.date.today() + datetime.timedelta(days=3)
+        j5 = j3 + datetime.timedelta(days=2)
+        Intervention.objects.filter(pk=self.iv.pk).update(date_prevue=j3, rdv_reschedule_count=0)
+        url = f'/api/django/installations/interventions/{self.iv.pk}/'
+        r = self.api.patch(url, {'date_prevue': str(j5)}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        r = self.api.patch(url, {'date_prevue': str(j3), 'annulation_deplacement': True}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.iv.refresh_from_db()
+        self.assertEqual((self.iv.date_prevue, self.iv.rdv_reschedule_count), (j3, 0))
+        self.assertTrue(self.iv.activites.filter(body='Déplacement annulé.').exists())
+        self.api.patch(url, {'date_prevue': str(j5)}, format='json')
+        self.api.patch(url, {'date_prevue': str(j3)}, format='json')
+        self.iv.refresh_from_db()
+        self.assertEqual(self.iv.rdv_reschedule_count, 2)
+
     def test_patch_date_reinitialise_confirmation(self):
         r = self.api.patch(f'{BASE}/{self.iv.id}/',
                            {'date_prevue': '2026-11-09'}, format='json')
