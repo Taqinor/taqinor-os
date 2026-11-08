@@ -156,6 +156,22 @@ class ReservesChantierTests(TestCase):
         self.assertTrue(InstallationActivity.objects.filter(
             installation=self.inst, body='Réserve levée : Joint').exists())
 
+    def test_reserve_bloquante_apres_definitive_409(self):
+        """ACSV97 (C-ACSV-045 c) — définitive prononcée : une réserve
+        bloquante rend 409 sans rien créer ; une non bloquante reste acceptée.
+        ROUGE AVANT : 201."""
+        import datetime
+        Installation.objects.filter(pk=self.inst.pk).update(
+            date_reception=datetime.date(2026, 10, 1),
+            date_reception_definitive=datetime.date(2026, 11, 6))
+        r = self._ajouter(bloquante=True, origine='reception')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual(r.data['detail'],
+                         'Réception définitive prononcée le 06/11/2026 : ouvrez un ticket SAV.')
+        self.assertFalse(Reserve.objects.filter(installation=self.inst).exists())
+        r = self._ajouter(bloquante=False, origine='reception')
+        self.assertEqual(r.status_code, 201, r.data)
+
     def test_company_jamais_prise_du_corps(self):
         autre = make_company()
         r = self._ajouter(company=autre.id)

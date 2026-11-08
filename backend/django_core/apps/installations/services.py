@@ -2833,6 +2833,10 @@ def creer_reserve_chantier(installation, user, *, description, origine,
     du chantier (jamais du corps). Journalisée au chatter."""
     from . import activity
     from .models import Reserve
+    if bloquante and installation.date_reception_definitive:  # ACSV97
+        from core.conflit_etat import ConflitEtat
+        raise ConflitEtat(f'Réception définitive prononcée le {installation.date_reception_definitive:%d/%m/%Y} : '
+                          'ouvrez un ticket SAV.')
     reserve = Reserve.objects.create(
         company=installation.company, installation=installation,
         description=description, origine=origine, bloquante=bool(bloquante),

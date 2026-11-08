@@ -1611,7 +1611,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     # ── CIQ628 — réserves de réception au niveau du chantier ────────────────
     @oa.extend_schema(
         request=oa.ReserveChantierRequete,
-        responses={200: oa.LIST, 201: oa.OBJ},
+        responses={200: oa.LIST, 201: oa.OBJ, 409: oa.OBJ},
     )
     @action(pagination_class=None, detail=True, methods=['get', 'post'], url_path='reserves',
             permission_classes=[IsAnyRole])
