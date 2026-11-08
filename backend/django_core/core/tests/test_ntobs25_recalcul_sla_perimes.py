@@ -104,6 +104,45 @@ class RecalculerSlaPerimesTest(TestCase):
             recalculer_sla_perimes()
         self.assertEqual(notifs.count(), 1)
 
+    def test_notifie_le_recalcul_d_un_credit_decide(self):
+        """AMON89 — septembre « refusé » à 5 % (500) : un incident tardif de
+        48 h ferait passer le crédit dû à 25 % (2 500) ⇒ décision et montant
+        figé inchangés, 1 notification « décision déjà prise »."""
+        from decimal import Decimal
+
+        from django.contrib.auth import get_user_model
+
+        Notification = django_apps.get_model('notifications', 'Notification')
+        Role = django_apps.get_model('roles', 'Role')
+        directeur = get_user_model().objects.create_user(
+            'directeur_amon89', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom='Directeur'))
+        septembre = datetime.date(2026, 9, 1)
+        with mock.patch('core.sla.uptime_pct_periode', return_value=99.2), \
+                mock.patch('core.sla.montant_facture_mois',
+                           return_value=Decimal('10000')):
+            snapshot = generer_snapshot_societe(self.company, septembre)
+        snapshot.credit_statut = SlaSnapshot.CreditStatut.REFUSE
+        snapshot.save(update_fields=['credit_statut'])
+        self._figer_genere_le(snapshot, timezone.now() - datetime.timedelta(days=5))
+        IncidentPublic.objects.create(
+            titre='Panne tardive', company=None, severite='critique',
+            debute_le=timezone.make_aware(datetime.datetime(2026, 9, 10)),
+            resolu_le=timezone.make_aware(datetime.datetime(2026, 9, 12)))
+
+        with mock.patch('core.sla.montant_facture_mois',
+                        return_value=Decimal('10000')):
+            recalculer_sla_perimes()
+        snapshot.refresh_from_db()
+        self.assertEqual(snapshot.credit_statut, SlaSnapshot.CreditStatut.REFUSE)
+        self.assertEqual(snapshot.credit_du_montant, Decimal('500.00'))
+        notifs = Notification.objects.filter(
+            recipient=directeur, event_type='sla_credit_recalcule')
+        self.assertEqual(notifs.count(), 1)
+        self.assertIn('25 %', notifs.get().body)
+        self.assertIn('2500.00', notifs.get().body)
+        self.assertIn('décision déjà prise', notifs.get().body)
+
     def test_never_overwrites_a_human_decided_credit(self):
         """Un crédit déjà émis/refusé par un humain n'est jamais réécrit par
         le recalcul (même garantie que ``generer_snapshot_societe``)."""

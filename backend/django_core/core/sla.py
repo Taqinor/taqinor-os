@@ -410,14 +410,18 @@ def _snapshots_perimes_par_incident_tardif(company):
     return perimes
 
 
-def _notifier_recalcul_credit(company, snapshot, ancien_montant):
+def _notifier_recalcul_credit(company, snapshot, ancien_montant,
+                              credit_recalcule=None):
     """Notifie le Directeur qu'un recalcul a fait bouger le crédit SLA dû.
 
     ``'sla_credit_recalcule'`` est un littéral (jamais un import
     ``apps.notifications`` — contrat import-linter
     ``core-foundation-is-a-base-layer``) qui désigne ``EventType.
     SLA_CREDIT_RECALCULE``, catalogué par AMON85 : sans ce membre,
-    ``notify`` rejetait le type et aucune notification n'était créée."""
+    ``notify`` rejetait le type et aucune notification n'était créée.
+    AMON89 — ``credit_recalcule`` (``(pct, montant)``) signale un snapshot
+    DÉJÀ décidé (émis / refusé) dont le crédit dû change : la décision et le
+    montant figé restent intacts, seul le Directeur en est averti."""
     from . import notify_registry
     from .maintenance_windows import admins_cibles
 
@@ -425,6 +429,12 @@ def _notifier_recalcul_credit(company, snapshot, ancien_montant):
     body = (
         f'Ancien montant : {ancien_montant}. '
         f'Nouveau montant : {snapshot.credit_du_montant}.')
+    if credit_recalcule is not None:
+        pct, montant = credit_recalcule
+        body = (
+            f'Crédit dû recalculé : {pct or 0} % ({montant}) sur une décision '
+            f'déjà prise ({snapshot.get_credit_statut_display()}) ; décision '
+            f'et montant figé ({ancien_montant}) inchangés.')
     for admin in admins_cibles(company):
         notify_registry.notify(
             admin, 'sla_credit_recalcule', titre, body=body, company=company)
@@ -449,7 +459,18 @@ def recalculer_sla_perimes():
                 'ancien_credit=%s nouveau_credit=%s',
                 company.id, snapshot.periode, ancien_montant,
                 nouveau.credit_du_montant)
-            if nouveau.credit_du_montant != ancien_montant:
+            if nouveau.credit_statut in (
+                    SlaSnapshot.CreditStatut.EMIS,
+                    SlaSnapshot.CreditStatut.REFUSE):
+                # AMON89 — le montant d'un crédit décidé est figé : comparer
+                # le crédit que le nouvel uptime donnerait au montant figé.
+                pct, montant, _statut = _calculer_credit(
+                    company, nouveau.periode, nouveau.uptime_pct)
+                if montant != ancien_montant:
+                    _notifier_recalcul_credit(
+                        company, nouveau, ancien_montant,
+                        credit_recalcule=(pct, montant))
+            elif nouveau.credit_du_montant != ancien_montant:
                 _notifier_recalcul_credit(company, nouveau, ancien_montant)
     return regeneres
 
