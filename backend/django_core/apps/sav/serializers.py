@@ -591,6 +591,10 @@ class TicketSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
             'non_facturable', 'est_recidive', 'cout',
             # ASAV14 — posée/vidée par le service de transition uniquement.
             'date_resolution',
+            # ACSV54 — pointeurs de facturation / provenance : posés par les
+            # services (facturer, creer-devis, récidive), jamais du corps.
+            'facture_id_ext', 'devis_id_ext', 'lead_id_ext',
+            'intervention_origine_id',
         ]
         # client peut être déduit côté serveur d'un équipement lié (ticket
         # ouvert depuis le parc) ; sinon il reste exigé — voir
@@ -694,6 +698,39 @@ class TicketSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
     @extend_schema_field(serializers.CharField())
     def get_canal_resolution_propose(self, obj):
         return obj.canal_resolution_propose()
+
+    def _palier_responsable(self):
+        """ACSV54 - palier Administrateur/Responsable (hors requete : vrai)."""
+        from authentication.models import CustomUser
+        request = self.context.get('request')
+        if request is None:
+            return True
+        return getattr(request.user, 'menu_tier', None) in (
+            CustomUser.ROLE_ADMIN, CustomUser.ROLE_RESPONSABLE)
+
+    def validate_couverture(self, value):
+        """ACSV54 - la couverture decide qui paie : changement reserve au
+        palier responsable/admin (403 sinon)."""
+        if (self.instance is not None and value != self.instance.couverture
+                and not self._palier_responsable()):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied(
+                'Seul un responsable ou un administrateur change la couverture.')
+        return value
+
+    def update(self, instance, validated_data):
+        # ACSV54 - la date d'ouverture (donc la couverture/le SLA) n'est
+        # corrigee que par le palier responsable/admin (ASAV15).
+        if not self._palier_responsable():
+            validated_data.pop('date_ouverture', None)
+        ancienne = instance.couverture
+        instance = super().update(instance, validated_data)
+        if instance.couverture != ancienne:
+            from . import activity
+            activity.log_note(
+                instance, getattr(self.context.get('request'), 'user', None),
+                f'Couverture : {ancienne} → {instance.couverture}')
+        return instance
 
 
 # ── FG81 — Réglages SLA ────────────────────────────────────────────────────────
