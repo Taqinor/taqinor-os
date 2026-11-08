@@ -269,6 +269,7 @@ def attendu_intervalles(config, intervalles):
 
 MOTIF_DONNEES_INDISPONIBLES = 'donnees_indisponibles'
 MOTIF_PERFORMANCE_RETABLIE = 'performance_retablie'
+MOTIF_SUPERVISION_RESILIEE = 'supervision_resiliee'
 
 
 def _fermer_episode(installation, motif, note, user=None, drapeau_id=None):
@@ -326,6 +327,15 @@ def evaluate_underperformance(installation, *, user=None, today=None):
         _fermer_episode(
             installation, MOTIF_DONNEES_INDISPONIBLES,
             'Système retiré du parc : évaluation impossible.')
+        return result
+
+    # AMON10 — supervision résiliée sans abonnement actif restant : ni
+    # évaluation ni ticket, l'épisode ouvert est clos (patron ASAV69).
+    from .selectors import supervision_resiliee
+    if supervision_resiliee(installation):
+        result['data_status'] = MOTIF_SUPERVISION_RESILIEE
+        _fermer_episode(installation, MOTIF_SUPERVISION_RESILIEE,
+                        'Supervision résiliée : système plus évalué.')
         return result
 
     # AMON22 — réel ET attendu sur les seuls jours COUVERTS par les relevés

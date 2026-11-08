@@ -111,7 +111,8 @@
       "fonction_entree": "apps/monitoring/services.py::resilier_abonnement_monitoring",
       "checkpoint": {"persistance": "apps/monitoring/models.py::AbonnementMonitoring", "description": "Statut résilié et motif de résiliation."},
       "regles_aval": [
-        {"regle": "À la résiliation, la supervision automatique du système lié est coupée (abonné de `abonnement_monitoring_resilie`, émis par le service ASAV100).", "source": "apps/monitoring/receivers.py::_arreter_supervision_a_la_resiliation"}
+        {"regle": "À la résiliation, la supervision automatique du système lié est coupée (abonné de `abonnement_monitoring_resilie`, émis par le service ASAV100).", "source": "apps/monitoring/receivers.py::_arreter_supervision_a_la_resiliation"},
+        {"regle": "Sans abonnement actif restant, l'épisode ouvert est clos (motif `supervision_resiliee`) et le système n'est plus évalué (AMON10).", "source": "apps/monitoring/services.py::evaluate_underperformance"}
       ]
     }
   ]

@@ -80,6 +80,41 @@ class FinEpisodeTests(TestCase):
         services.evaluate_underperformance(self.inst, today=self.today)
         self._ferme_avec_motif()
 
+    def test_resiliation_ferme_et_n_evalue_plus(self):
+        """AMON10 — la résiliation (sans abonnement actif restant) clôt
+        l'épisode ; le système n'est plus évalué ni sous SLA. Le système
+        manuel jamais abonné (``enabled`` faux) a bien été évalué au setUp."""
+        from apps.monitoring.models import SlaDisponibilite
+        from apps.monitoring.selectors import disponibilite_vs_garantie
+        from apps.sav.models import Ticket
+
+        self.assertFalse(self.config.enabled)
+        abonnement = services.creer_abonnement_monitoring(
+            self.company, installation_id=self.inst.pk,
+            periodicite='mensuel', montant=Decimal('100'))
+        services.resilier_abonnement_monitoring(abonnement, motif='Fin')
+        drapeau = self._drapeau()
+        self.assertFalse(drapeau.is_open)
+        self.assertEqual(drapeau.motif_cloture, 'supervision_resiliee')
+        tickets_avant = Ticket.objects.filter(company=self.company).count()
+        for jours in (90, 120):
+            res = services.evaluate_underperformance(
+                self.inst, today=self.today + timedelta(days=jours))
+            self.assertEqual(res['data_status'], 'supervision_resiliee')
+            self.assertFalse(res['underperforming'])
+        self.assertEqual(
+            UnderperformanceFlag.objects.filter(installation=self.inst).count(),
+            1)
+        self.assertEqual(
+            Ticket.objects.filter(company=self.company).count(), tickets_avant)
+        SlaDisponibilite.objects.create(
+            company=self.company, installation=self.inst,
+            disponibilite_garantie_pct=Decimal('98'))
+        ecart = disponibilite_vs_garantie(self.inst, today=self.today)
+        self.assertFalse(ecart['sous_garantie'])
+        self.assertIsNone(ecart['penalite_mad'])
+        self.assertIsNone(ecart['ecart_pct'])
+
     def test_nouvel_episode(self):
         ProductionReading.objects.filter(installation=self.inst).delete()
         services.evaluate_underperformance(self.inst, today=self.today)

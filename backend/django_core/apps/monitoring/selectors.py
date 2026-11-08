@@ -305,6 +305,18 @@ def underperformance_flags_client_portail(company, client_id):
             .order_by('-date_creation'))
 
 
+def supervision_resiliee(installation):
+    """AMON10 — vrai quand le système a au moins un abonnement de supervision
+    résilié et AUCUN actif : il n'est plus évalué. Ne lit JAMAIS
+    ``MonitoringConfig.enabled`` (un système manuel jamais abonné reste évalué)."""
+    from .models import AbonnementMonitoring
+    abonnements = AbonnementMonitoring.objects.filter(
+        company_id=installation.company_id, installation_id=installation.pk)
+    statut = AbonnementMonitoring.Statut
+    return (abonnements.filter(statut=statut.RESILIE).exists()
+            and not abonnements.filter(statut=statut.ACTIF).exists())
+
+
 def disponibilite_vs_garantie(installation, *, window_days=365, today=None):
     """NTNRG14 — disponibilité MESURÉE (``analytics.om_metrics``) vs
     disponibilité contractuelle GARANTIE (``SlaDisponibilite``) d'un système.
@@ -328,7 +340,9 @@ def disponibilite_vs_garantie(installation, *, window_days=365, today=None):
     if sla is None:
         return {'has_sla': False}
 
-    metrics = om_metrics(installation, window_days=window_days, today=today)
+    # AMON10 — supervision résiliée : forme sans données (aucun écart).
+    metrics = ({} if supervision_resiliee(installation) else
+               om_metrics(installation, window_days=window_days, today=today))
     mesuree_pct = metrics.get('availability_pct')
     # CIQ644 — taux SANS défaut : une ligne sans taux garanti n'a ni écart ni
     # pénalité (jamais un 98 % supposé).

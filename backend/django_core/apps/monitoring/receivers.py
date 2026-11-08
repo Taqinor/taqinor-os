@@ -33,6 +33,16 @@ def _arreter_supervision_a_la_resiliation(sender, abonnement, motif, company,
     MonitoringConfig.objects.filter(
         company=company, installation_id=installation_id, enabled=True,
     ).update(enabled=False)
+    # AMON10 — plus aucun abonnement actif : l'épisode ouvert est clos.
+    from apps.installations import selectors as installations_selectors
+
+    from .selectors import supervision_resiliee
+    from .services import MOTIF_SUPERVISION_RESILIEE, _fermer_episode
+    installation = installations_selectors.installation_scoped(
+        company, installation_id)
+    if installation is not None and supervision_resiliee(installation):
+        _fermer_episode(installation, MOTIF_SUPERVISION_RESILIEE,
+                        'Supervision résiliée : système plus évalué.')
 
 
 @receiver(chantier_receptionne,
