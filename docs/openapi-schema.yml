@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4945, operations: 7743, components: 3640}
+counts: {paths: 4945, operations: 7743, components: 3642}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -10011,6 +10011,7 @@ components:
 - CommissioningRecordRequest
 - CommissioningTest
 - CommissioningTestRequest
+- CommissioningTestResultatEnum
 - Company
 - CompanyProfile
 - CompanyProfileRequest
@@ -10848,7 +10849,6 @@ components:
 - JournalAuditSections
 - KbArticle
 - KbArticleRequest
-- Kind28bEnum
 - KindActiviteEnum
 - KindDemandePersonneEnum
 - Kit
@@ -10879,6 +10879,7 @@ components:
 - LanguePrefereeEnum
 - Lead
 - LeadActivity
+- LeadActivityKindEnum
 - LeadActivityOutcomeEnum
 - LeadAffinerProResponse
 - LeadApercu
@@ -12748,6 +12749,7 @@ components:
 - TicketActiviteAFaireRequest
 - TicketActiviteAFaireTypeEnum
 - TicketActivity
+- TicketActivityKindEnum
 - TicketActivityOutcomeEnum
 - TicketChecklistItem
 - TicketIntervention
