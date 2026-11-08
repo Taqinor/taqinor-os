@@ -2139,19 +2139,25 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
             return Response({'detail': 'Consigne inconnue.'},
                             status=oa.statut_inconnu(request.data.get('cle'), str))
         coche = bool(request.data.get('coche', True))
+        if signoff.signe and not coche:  # ACSV16
+            return Response({'detail': field_capture.MESSAGE_CONSIGNES_SIGNEES}, status=status.HTTP_409_CONFLICT)
         item.coche = coche
         item.coche_par = request.user if coche else None
         item.coche_le = timezone.now() if coche else None
         item.save(update_fields=['coche', 'coche_par', 'coche_le'])
         return Response(SafetySignoffSerializer(signoff).data)
 
-    @oa.extend_schema(request=None, responses=SafetySignoffSerializer)
+    @oa.extend_schema(request=None, responses={200: SafetySignoffSerializer, 409: oa.OBJ})
     @action(detail=True, methods=['post'], url_path='signer-safety',
             permission_classes=[IsResponsableOrAdmin])
     def signer_safety(self, request, pk=None):
         """F18 — signe les consignes de sécurité (qui + quand)."""
         interv = self.get_object()
         signoff = field_capture.ensure_safety_signoff(interv)
+        manquants = field_capture.points_non_coches(signoff)  # ACSV16
+        if manquants:
+            return Response({'detail': 'Points non cochés : ' + ' ; '.join(manquants) + '.'},
+                            status=status.HTTP_409_CONFLICT)
         signoff.signe = True
         signoff.signe_par = request.user
         signoff.signe_le = timezone.now()

@@ -830,6 +830,11 @@ class TestSafety(_Base):
         item = next(i for i in r.data['items'] if i['cle'] == cle)
         self.assertTrue(item['coche'])
         self.assertEqual(item['coche_par_nom'], 'cap_resp')
+        # ACSV16 — signature refusée tant qu'un point manque.
+        r = self.api.post(f'{self.url}/signer-safety/', {}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        for autre in self.api.get(f'{self.url}/safety/').data['items']:
+            self.api.post(f'{self.url}/cocher-safety/', {'cle': autre['cle'], 'coche': True}, format='json')
         r = self.api.post(f'{self.url}/signer-safety/', {}, format='json')
         self.assertTrue(r.data['signe'])
 

@@ -713,3 +713,13 @@ def preuve_checklist_retiree(meta):
         f"Photo de l'étape « {item.libelle} » supprimée"
         + (' — étape décochée (aucune photo restante).' if decoche else '.')))
     return decoche
+
+
+#: ACSV16 — refus de décocher une consigne d'un sign-off signé (en ligne et hors-ligne).
+MESSAGE_CONSIGNES_SIGNEES = 'Consignes signées : décochage refusé.'
+
+
+def points_non_coches(signoff):
+    """ACSV16 — libellés des points de consigne non cochés : invariant
+    « consignes signées ⇒ tous les points cochés » (signature, démarrage)."""
+    return [it.libelle for it in signoff.items.all() if not it.coche]

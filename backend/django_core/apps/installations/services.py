@@ -6247,11 +6247,11 @@ def verifier_securite_avant_demarrage(intervention, nouveau_statut):
         return None
     if not getattr(profil, 'securite_obligatoire_avant_demarrage', False):
         return None
-    from .field_capture import ensure_safety_signoff
+    from .field_capture import ensure_safety_signoff, points_non_coches
     signoff = ensure_safety_signoff(intervention)
-    if signoff.signe:
+    non_coches = points_non_coches(signoff)
+    if signoff.signe and not non_coches:  # ACSV16 — signé ET complet
         return None
-    non_coches = [it.libelle for it in signoff.items.all() if not it.coche]
     detail = (' Points non cochés : ' + ' ; '.join(non_coches) + '.'
               if non_coches else '')
     return ("Consignes de sécurité non signées : démarrage et fin "

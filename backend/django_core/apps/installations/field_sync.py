@@ -340,6 +340,8 @@ def _h_cocher_safety(company, user, payload):
     if item is None:
         raise FieldOpError('Consigne inconnue.')
     coche = bool(payload.get('coche', True))
+    if signoff.signe and not coche:  # ACSV16
+        raise FieldOpError(field_capture.MESSAGE_CONSIGNES_SIGNEES)
     item.coche = coche
     item.coche_par = user if coche else None
     item.coche_le = _instant_saisie(payload, _plancher(iv, 'arrivee_site_le')) if coche else None  # ACSV23

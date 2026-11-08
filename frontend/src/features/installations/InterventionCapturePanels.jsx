@@ -738,7 +738,7 @@ export function SafetyPanel({ intervention, onChanged }) {
   const sign = async () => {
     setBusy(true)
     try { await installationsApi.signerSafety(id); toast.success('Consignes signées.'); await load(); onChanged?.() }
-    catch { toast.error('Signature impossible.') } finally { setBusy(false) }
+    catch (err) { toast.error(apiErrorMessage(err, 'Signature impossible.')) } finally { setBusy(false) }
   }
 
   if (loading) return <PanelLoading label="consignes de sécurité" />
@@ -756,7 +756,7 @@ export function SafetyPanel({ intervention, onChanged }) {
       ))}
       {data.signe
         ? <Badge tone="success">Signé par {data.signe_par_nom} le {formatDateTime(data.signe_le)}</Badge>
-        : <Button size="sm" disabled={busy} onClick={sign}>Signer les consignes</Button>}
+        : <Button size="sm" disabled={busy || (data.items || []).some((it) => !it.coche)} onClick={sign}>Signer les consignes</Button>}
     </div>
     </ErrorBoundary>
   )
