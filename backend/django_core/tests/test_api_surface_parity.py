@@ -74,8 +74,15 @@ def _app_class_config(app: str):
 
 def _has_tri_ou_recherche(app: str, class_name: str):
     """Retourne True si le viewset déclare ordering_fields (non vide/non
-    '__all__') OU search_fields ; None si la classe est introuvable."""
-    return _app_class_config(app).get(class_name)
+    '__all__') OU search_fields ; None si la classe est introuvable.
+
+    ODX18 — un viewset DÉPLACÉ (défini dans ``apps.facturation``, encore
+    enregistré par le routeur ``ventes``) est lu dans ``facturation`` plutôt
+    que de sortir silencieusement du contrôle."""
+    resultat = _app_class_config(app).get(class_name)
+    if resultat is None and app == 'ventes':
+        resultat = _app_class_config('facturation').get(class_name)
+    return resultat
 
 
 def scan_noncompliant_viewsets():

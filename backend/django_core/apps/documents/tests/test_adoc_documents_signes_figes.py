@@ -183,7 +183,8 @@ class DocumentsSignesFigesTests(TestCase):
             date_reception_definitive=date(2026, 11, 6))
         premier = self._get('pv-reception', definitive=1)
         texte = _texte(premier)
-        self.assertIn('PROCÈS-VERBAL DE RÉCEPTION DÉFINITIVE', texte)
+        # Le titre passe à la ligne dans le PDF : espaces normalisés.
+        self.assertIn('PROCÈS-VERBAL DE RÉCEPTION DÉFINITIVE', ' '.join(texte.split()))
         self.assertIn('prononcée le 06/11/2026', texte)
         self.assertNotIn('Signé le', texte)
         document = self._document(builders.SOURCE_PV_RECEPTION_DEFINITIVE)
