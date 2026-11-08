@@ -2005,7 +2005,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
         request=_SCHEMA_PIECE_CONSOMMEE,
         responses={201: PieceConsommeeSerializer})
     @action(detail=True, methods=['get', 'post'], url_path='pieces', pagination_class=None,
-            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+            permission_classes=[HasPermissionOrLegacy('sav_gerer'),
+                                DroitDeLaGrille('stock_mouvement', champ='decrement')])
     def pieces(self, request, pk=None):
         """N46 — pièces consommées sur le ticket. GET liste, POST ajoute.
 
@@ -2090,6 +2091,10 @@ class TicketViewSet(CompanyScopedModelViewSet):
             piece = ticket.pieces.select_related('produit').get(pk=piece_id)
         except (PieceConsommee.DoesNotExist, ValueError):
             return Response({'detail': 'Introuvable.'}, status=404)
+        if piece.stock_decremente:  # ACSV62 / D-ACSV-3 : la remise est un mouvement
+            garde = DroitDeLaGrille('stock_mouvement')()
+            if not garde.has_permission(request, self):
+                raise PermissionDenied(garde.message)
         with transaction.atomic():
             if piece.stock_decremente:
                 from apps.stock.services import verrouiller_produit
@@ -2121,7 +2126,9 @@ class TicketViewSet(CompanyScopedModelViewSet):
         request=_SCHEMA_PIECE_RETIREE, extensions=CORPS_PIECE_RETIREE,
         responses={201: PieceRetireeSerializer})
     @action(detail=True, methods=['get', 'post'], url_path='pieces-retirees', pagination_class=None,
-            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+            permission_classes=[HasPermissionOrLegacy('sav_gerer'),
+                                DroitDeLaGrille('stock_mouvement', operation='stock_occasion',
+                                                cle='destination')])
     def pieces_retirees(self, request, pk=None):
         """XMFG10 — pièces RETIRÉES du ticket (onduleur remplacé, pompe HS…).
 
@@ -2236,7 +2243,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
             'sous_garantie': drf_serializers.BooleanField(),
         })})
     @action(detail=True, methods=['post'], url_path='generer-facture',
-            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+            permission_classes=[HasPermissionOrLegacy('sav_gerer'),
+                                DroitDeLaGrille('ventes_creer')])
     def generer_facture(self, request, pk=None):
         """XFSM1 — génère une facture BROUILLON depuis un ticket SAV hors
         garantie : lignes pièces (PieceConsommee, prix de vente catalogue) +
@@ -2259,7 +2267,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
             'sous_garantie': drf_serializers.BooleanField(),
         })})
     @action(detail=True, methods=['post'], url_path='facturer',
-            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+            permission_classes=[HasPermissionOrLegacy('sav_gerer'),
+                                DroitDeLaGrille('ventes_creer')])
     def facturer(self, request, pk=None):
         """XCTR4 — Facture CE ticket selon le routage de couverture calculé
         (garantie/contrat de maintenance/facturable).
@@ -2370,7 +2379,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
         request=_SCHEMA_PRET_EQUIPEMENT,
         responses={201: PretEquipementSerializer})
     @action(detail=True, methods=['get', 'post'], url_path='prets-equipement', pagination_class=None,
-            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+            permission_classes=[HasPermissionOrLegacy('sav_gerer'),
+                                DroitDeLaGrille('stock_mouvement', champ='produit')])
     def prets_equipement(self, request, pk=None):
         """XSAV27 — prêt/échange anticipé d'équipement (loaner). GET liste,
         POST sort une unité du stock immédiatement (`services.
@@ -2412,7 +2422,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
         responses=PretEquipementSerializer)
     @action(detail=True, methods=['post'],
             url_path=r'prets-equipement/(?P<pret_id>[^/.]+)/retourner',
-            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+            permission_classes=[HasPermissionOrLegacy('sav_gerer'),
+                                DroitDeLaGrille('stock_mouvement')])
     def retourner_pret(self, request, pk=None, pret_id=None):
         """XSAV27 — clôture un prêt : réintègre le stock (idempotent)."""
         ticket = self.get_object()
@@ -2785,7 +2796,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
             'devis_reference': _CharF(),
         })})
     @action(detail=True, methods=['post'], url_path='creer-devis',
-            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+            permission_classes=[HasPermissionOrLegacy('sav_gerer'),
+                                DroitDeLaGrille('ventes_creer')])
     def creer_devis(self, request, pk=None):
         """XSAV3 — Crée un devis de réparation hors garantie depuis le ticket.
 

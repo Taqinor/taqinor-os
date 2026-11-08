@@ -333,7 +333,8 @@ _GESTE_PAR_SUFFIXE = {
 
 
 def _valeur_normalisee(valeur):
-    return '' if valeur in (None, '', 'null') else str(valeur)
+    # ACSV62 : un booléen faux (``decrement: false``) est une valeur ABSENTE.
+    return '' if valeur in (None, '', 'null', False) else str(valeur)
 
 
 def _corps(request):

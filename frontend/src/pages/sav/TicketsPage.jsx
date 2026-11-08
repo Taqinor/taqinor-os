@@ -37,7 +37,7 @@ import AttachmentsPanel from '../../components/AttachmentsPanel'
 // `records-panels.css`. Écriture réservée responsable/admin côté serveur, d'où
 // le `readOnly` piloté par le rôle.
 import TagChipInput from '../../components/TagChipInput'
-import { useCanListUsers, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
+import { useCanListUsers, useHasPermission, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 // WIR19 — historique AuditLog record-scopé (visible au propriétaire du ticket
 // sans la permission globale journal_activite_voir).
 import ObjectHistoryButton from '../../features/audit/ObjectHistoryButton'
@@ -253,6 +253,15 @@ export function TicketPremiereReponseChip({ ticket }) {
   )
 }
 
+// ACSV62 / D-ACSV-3 — droit métier exigé en plus de `sav_gerer` : le code fin
+// quand le compte en porte, sinon le palier responsable (comptes hérités).
+function useDroitMetier(code) {
+  const fins = useSelector((s) => (s.auth.permissions || []).length > 0)
+  const parCode = useHasPermission(code)
+  const parPalier = useIsAdminOrResponsable()
+  return fins ? parCode : parPalier
+}
+
 export function TicketDetail({ ticket, onClose, onSaved }) {
   const [fusions, setFusions] = useState(0)
   const dispatch = useDispatch()
@@ -265,6 +274,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
   // ERR-SAV-TECH-USERS-403 — `GET /users/` n'est appelé que si la permission
   // servie le permet (sinon repli direct sur les techniciens assignés).
   const peutTaguer = useIsAdminOrResponsable(), peutListerUsers = useCanListUsers()
+  const peutVentes = useDroitMetier('ventes_creer'), peutStock = useDroitMetier('stock_mouvement')
   const F =(k, d = '') => current?.[k] ?? d
 
   // VX216(b) — l'intervention qui a RÉSOLU ce ticket : la plus récemment
@@ -1231,11 +1241,13 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
               <Input type="number" min="0" step="any" value={pieceForm.quantite}
                      onChange={(e) => setPieceForm((s) => ({ ...s, quantite: e.target.value }))} />
             </FormField>
-            <label className="flex h-[var(--control-h)] items-center gap-2 text-sm">
-              <Checkbox checked={pieceForm.decrement}
-                        onCheckedChange={(v) => setPieceForm((s) => ({ ...s, decrement: !!v }))} />
-              Décrémenter le stock
-            </label>
+            {peutStock && (
+              <label className="flex h-[var(--control-h)] items-center gap-2 text-sm">
+                <Checkbox checked={pieceForm.decrement}
+                          onCheckedChange={(v) => setPieceForm((s) => ({ ...s, decrement: !!v }))} />
+                Décrémenter le stock
+              </label>
+            )}
           </div>
           <div>
             <Button type="button" variant="outline" size="sm"
@@ -1415,7 +1427,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
           )}
           {/* XSAV3 — devis de réparation hors garantie (refusé côté serveur
               si le ticket est sous garantie calculée). */}
-          {current.sous_garantie_effectif !== 'oui' && (
+          {peutVentes && current.sous_garantie_effectif !== 'oui' && (
             current.devis_id_ext ? (
               <Badge tone="success">Devis créé</Badge>
             ) : (
@@ -1429,7 +1441,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
               générique sinon. Idempotent (facture_id_ext déjà posé). */}
           {current.facture_id_ext ? (
             <Badge tone="success">Facture générée</Badge>
-          ) : (
+          ) : peutVentes && (
             <>
               <Button type="button" variant="outline" loading={factureBusy} onClick={() => facturer(false)}>
                 <FileText /> Facturer
