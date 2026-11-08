@@ -165,7 +165,7 @@ class DecisionFacturationTests(TestCase):
         # Palier responsable : l'override passe, une facture à 5000.00.
         resp, api_resp = self._api_role(
             'asav104_resp', 'Technicien responsable',
-            TECHNICIEN_RESP_PERMISSIONS)
+            TECHNICIEN_RESP_PERMISSIONS + ['ventes_creer'])  # D-ACSV-3 : facturer exige ventes_creer
         self.assertEqual(resp.menu_tier, 'responsable')
         ticket = self._ticket('SAV-A104-4', non_facturable=True,
                               est_recidive=True,
