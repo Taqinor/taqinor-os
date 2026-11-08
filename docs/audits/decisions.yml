@@ -3935,3 +3935,49 @@ decisions:
     date: "2026-11-08"
     source: "Reda, question interactive, audit de parcours PF2"
     taches: []
+  - id: D-APFS-1
+    question: "Les rôles porteurs de `users_voir` (Admin RH, Admin Ventes, Technicien responsable, Commercial responsable) comptent comme palier « responsable » : clés d'API / webhooks, désactivation de module, matrices et workflows, décision des demandes d'approbation, demandes loi 09-08 (accès / effacement), restauration de la corbeille. Quelle garde ?"
+    options:
+      - cle: code_dedie_ou_domaine
+        texte: "Un code dédié par geste pour clés d'API, modules et demandes 09-08 ; palier + code du domaine pour matrices, workflows, marque, approbations ; plan de quotas d'API réservé à l'administrateur"
+      - cle: administrateur_seul
+        texte: "Tous ces gestes réservés à l'administrateur (Administrateur / Directeur)"
+    reponse: code_dedie_ou_domaine
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PF1"
+    taches: [APFS40]
+  - id: D-APFS-2
+    question: "Un superutilisateur rattaché à la société A peut renommer ou suspendre la société B (opérateur plateforme partout), alors qu'ailleurs il est borné à A. Quelle règle ?"
+    options:
+      - cle: borne_a_sa_societe
+        texte: "Un superutilisateur rattaché à une société n'est qu'un utilisateur ERP de cette société ; pouvoirs plateforme seulement sans société (ou rôle support)"
+      - cle: operateur_partout
+        texte: "Tout superutilisateur est opérateur plateforme pour toutes les sociétés"
+    reponse: borne_a_sa_societe
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PF1"
+    taches: [APFS61]
+  - id: D-APFS-3
+    question: "Un utilisateur membre de plusieurs sociétés garde le rôle de sa société d'origine après bascule (un Administrateur de A est administrateur dans B sans que B le voie). Quelle règle ?"
+    options:
+      - cle: role_par_societe
+        texte: "Chaque appartenance porte son propre rôle fixé par la société ; B voit et gère ses membres ; aucun rôle dans B = refus"
+      - cle: garder_role_origine
+        texte: "Garder le rôle d'origine dans toute société accessible"
+    reponse: role_par_societe
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PF1"
+    taches: [APFS66]
+  - id: D-APFS-4
+    question: "160 vues de liste / détail métier (chantiers, fournisseurs, lignes de devis, remises, contrats SAV…) sont lisibles par tout rôle interne, quels que soient ses droits de module. Exiger le droit de lecture du module couperait aussi le Commercial des chantiers et le Technicien des ventes / du CRM. Quelle règle ?"
+    options:
+      - cle: droit_du_module_et_octrois
+        texte: "La lecture exige un droit du module ; les lectures inter-modules réellement nécessaires (Commercial → chantiers de ses ventes, Technicien → devis de son chantier) sont octroyées explicitement dans le registre des rôles"
+      - cle: droit_du_module_strict
+        texte: "La lecture exige un droit du module, rien de plus"
+      - cle: ouvert_champs_masques
+        texte: "Lecture ouverte aux rôles internes, champs sensibles (PII, RIB, prix) masqués sans le droit"
+    reponse: droit_du_module_et_octrois
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PF1"
+    taches: [APFS28]
