@@ -2301,8 +2301,13 @@ class FactureFournisseurSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMix
             and validated_data[champ] != getattr(instance, champ)
         ]
         # Le lien BCF d'une facture réglée ne se pose ni ne se retire (le
-        # retirer servait à contourner la garde DC16 ci-dessous).
-        if 'bon_commande' in validated_data:
+        # retirer servait à contourner la garde DC16 ci-dessous). AAPV1 — un
+        # PATCH qui renvoie le MÊME BCF déjà lié ne pose ni ne retire rien :
+        # accepté (tout autre envoi du champ, ``null`` compris, reste refusé).
+        meme_bcf = (instance.bon_commande_id is not None
+                    and getattr(validated_data.get('bon_commande'), 'pk', None)
+                    == instance.bon_commande_id)
+        if 'bon_commande' in validated_data and not meme_bcf:
             changes.append('bon_commande')
         if 'lignes' in validated_data:
             changes.append('lignes')
