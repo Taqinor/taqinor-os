@@ -37,6 +37,19 @@ describe('CertificatsCarboneSection (AMON93 — annulation)', () => {
     expect(URL.createObjectURL).toHaveBeenCalled()
   })
 
+  it('AMON96 — nomme le site par sa référence (repli « Système #id » sans référence)', async () => {
+    monitoringApi.getCertificatsCarbone.mockResolvedValueOnce({
+      data: { count: 2, next: null, results: [
+        { ...emis, installation_reference: 'CHT-202611-0087' },
+        { ...emis, id: 5, installation_id: 88, reference: 'CERT-CO2-202611-0002', installation_reference: null },
+      ] },
+    })
+    render(<MemoryRouter><ThemeProvider><CertificatsCarboneSection systems={[]} loadingSystems={false} /></ThemeProvider></MemoryRouter>)
+    expect(await screen.findByText(/CHT-202611-0087/)).toBeInTheDocument()
+    expect(screen.queryByText(/Système #87/)).not.toBeInTheDocument()
+    expect(screen.getByText(/Système #88/)).toBeInTheDocument()
+  })
+
   it('annule un certificat avec motif puis l’affiche barré', async () => {
     monitoringApi.getCertificatsCarbone
       .mockResolvedValueOnce({ data: { count: 1, next: null, results: [emis] } })
