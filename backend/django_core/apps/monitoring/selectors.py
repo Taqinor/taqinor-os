@@ -318,6 +318,16 @@ def message_recouvrement(jour, periode):
     return f'Ce relevé recouvre celui du {jour:%d/%m/%Y} ({periode} j).'
 
 
+def depassement_aujourdhui(jour, periode, aujourdhui=None):
+    """AMON3 — la date d'un relevé est son PREMIER jour couvert : refus
+    lisible quand ``jour + période − 1 j`` dépasse aujourd'hui, sinon None."""
+    fin = jour + timedelta(days=max(int(periode or 1), 1) - 1)
+    if fin > (aujourdhui or timezone.localdate()):
+        return (f'La période couverte (jusqu’au {fin:%d/%m/%Y}) dépasse '
+                'aujourd’hui.')
+    return None
+
+
 def releve_chevauchant(installation, debut, periode, exclure=None):
     """AMON1 — premier relevé du système dont la période recouvre
     ``[debut, debut + periode)``, toutes sources ; ``None`` sinon."""

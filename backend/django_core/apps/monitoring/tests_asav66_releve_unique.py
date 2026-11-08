@@ -91,6 +91,28 @@ class ReleveUniqueTests(TestCase):
         self.assertEqual(r.status_code, 409, r.content)
         self.assertEqual(self._nb(), 1)
 
+    def test_periode_au_dela_d_aujourd_hui_409(self):
+        """AMON3 — date = premier jour couvert : « aujourd'hui sur 30 j »
+        refusé (saisie et CSV), J−30 sur 30 j accepté."""
+        fin = self.today + timedelta(days=29)
+        r = self._post(period_days=30)
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertEqual(r.data['date'], [
+            f'La période couverte (jusqu’au {fin:%d/%m/%Y}) dépasse '
+            'aujourd’hui.'])
+        r = self._post(date=(self.today - timedelta(days=29)).isoformat(),
+                       period_days=30)
+        self.assertEqual(r.status_code, 201, r.content)
+        jour = self.today - timedelta(days=5)
+        r = self.api.post(
+            f'/api/django/monitoring/configs/{self.config.pk}/import-releves/',
+            {'csv': f'date;periode_jours;energie_kwh\n{jour.isoformat()};30;450\n'},
+            format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.data['crees'], 0)
+        self.assertEqual(len(r.data['erreurs']), 1)
+        self.assertEqual(self._nb(), 1)
+
     def test_releve_chevauchant_409(self):
         """AMON1 — recouvrement refusé à la saisie, au PATCH et au CSV ;
         contigu accepté ; doublon exact compté en `doublons`."""

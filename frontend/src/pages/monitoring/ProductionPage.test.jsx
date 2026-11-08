@@ -113,6 +113,18 @@ describe('ProductionPage (WIR122 — suppression de relevé + historique mensuel
     await waitFor(() => expect(monitoringApi.deleteReading).toHaveBeenCalledWith(9))
   })
 
+  it('AMON3 — le formulaire s\'ouvre sur « Début de la période » = J−30', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const { debutParDefaut } = await import('./ProductionPage.helpers')
+    renderPage(<ProductionPage />)
+
+    const select = await screen.findByRole('combobox', { name: 'Choisir un système installé' })
+    await userEvent.selectOptions(select, '11')
+    expect(await screen.findByLabelText('Début de la période')).toHaveValue(debutParDefaut(30))
+    expect(debutParDefaut(30, '2026-11-08')).toBe('2026-10-09')
+    expect(debutParDefaut(1, '2026-11-08')).toBe('2026-11-07')
+  })
+
   it('AMON1 — un relevé refusé (409) affiche le message du serveur', async () => {
     const { default: userEvent } = await import('@testing-library/user-event')
     renderPage(<ProductionPage />)

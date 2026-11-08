@@ -394,10 +394,16 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         existants = list(ProductionReading.objects.filter(
             installation=installation).values_list('date', 'period_days'))
         a_creer, doublons = [], 0
-        from .selectors import message_recouvrement, recouvre
+        from .selectors import (
+            depassement_aujourdhui, message_recouvrement, recouvre,
+        )
         for numero, (jour, periode, energie, index) in lignes:
             if (jour, periode) in existants:
                 doublons += 1
+                continue
+            refus = depassement_aujourdhui(jour, periode)  # AMON3
+            if refus:
+                erreurs.append({'ligne': numero, 'motif': refus})
                 continue
             # AMON1 — un relevé qui en recouvre un autre (base ou ligne déjà
             # retenue) n'est jamais créé : il est rapporté.

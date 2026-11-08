@@ -22,12 +22,9 @@ import { ModuleDashboard } from '../../ui/module'
 // plus consulté du dossier monitoring n'avait AUCUN graphique quand ses 4
 // voisins directs (PR mensuel, CO2, flotte…) en ont un.
 import { AreaSansAxe, ChartEmpty } from '../../ui/charts'
-import { buildProductionChartData } from './ProductionPage.helpers'
-import { todayLocalIso } from '../../lib/dateLocale'
+import { buildProductionChartData, debutParDefaut } from './ProductionPage.helpers'
 import EnTeteMonitoring from './EnTeteMonitoring'
 import { ChargementPage } from '../../ui/ChargementPage'
-
-const todayISO = () => todayLocalIso()
 
 // FG84 — historique mensuel : réponse `{ data: [...] }` d'une action NON liste
 // (une ligne par mois, 12 mois), jamais une liste paginée.
@@ -53,7 +50,7 @@ export default function ProductionPage() {
   const [history, setHistory] = useState([])
   const [loadingHistory, setLoadingHistory] = useState(false)
 
-  const [form, setForm] = useState({ date: todayISO(), energy_kwh: '', period_days: 30, note: '' })
+  const [form, setForm] = useState({ date: debutParDefaut(30), energy_kwh: '', period_days: 30, note: '' })
 
   // Charge la liste des systèmes installés (parc).
   useEffect(() => {
@@ -157,7 +154,7 @@ export default function ProductionPage() {
       note: form.note,
     })
       .then(() => {
-        setForm({ date: todayISO(), energy_kwh: '', period_days: 30, note: '' })
+        setForm({ date: debutParDefaut(30), energy_kwh: '', period_days: 30, note: '' })
         setMsg({ ok: true, text: 'Relevé enregistré.' })
         reloadReadings(selectedId)
       })
@@ -362,8 +359,8 @@ export default function ProductionPage() {
               <div className="mb-3 text-sm font-semibold">Saisir un relevé</div>
               <form onSubmit={addReading} noValidate className="flex flex-wrap items-end gap-3">
                 <div>
-                  <Label>Date</Label>
-                  <Input type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} required />
+                  <Label htmlFor="releve-debut">Début de la période</Label>
+                  <Input id="releve-debut" type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} required />
                 </div>
                 <div>
                   <Label>Énergie (kWh)</Label>
@@ -373,7 +370,7 @@ export default function ProductionPage() {
                 <div>
                   <Label>Période (jours)</Label>
                   <Input type="number" step="any" value={form.period_days}
-                         onChange={(e) => setForm((f) => ({ ...f, period_days: e.target.value }))} />
+                         onChange={(e) => setForm((f) => ({ ...f, period_days: e.target.value, date: debutParDefaut(e.target.value) }))} />
                 </div>
                 <div className="min-w-[12rem] flex-1">
                   <Label>Note</Label>

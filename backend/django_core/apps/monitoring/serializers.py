@@ -1,4 +1,3 @@
-from django.utils import timezone
 from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
 
@@ -125,9 +124,13 @@ class ProductionReadingSerializer(IdInconnu404Mixin, CompanyScopedRelationsMixin
             'installation', getattr(instance, 'installation', None))
         # ERR-ENF11-FUZZ-MONITORING — deux refus qui dépendent de l'HORLOGE et
         # des relevés DÉJÀ saisis (le schéma ne peut les dire) : 409.
-        if jour is not None and jour > timezone.localdate():
-            raise ConflitEtat(
-                {'date': ['La date du relevé ne peut pas être dans le futur.']})
+        # AMON3 — date = premier jour couvert : la période ne dépasse pas
+        # aujourd'hui (« aujourd'hui sur 30 j » couvrait 29 jours futurs).
+        from .selectors import depassement_aujourdhui
+        refus = (depassement_aujourdhui(jour, periode or 1)
+                 if jour is not None else None)
+        if refus:
+            raise ConflitEtat({'date': [refus]})
         if jour is not None and periode is not None and installation:
             # AMON1 — tout RECOUVREMENT est refusé (les lecteurs d'énergie
             # somment), pas seulement le doublon exact (date, période).
