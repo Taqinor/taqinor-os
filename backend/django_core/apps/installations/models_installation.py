@@ -68,6 +68,12 @@ class Installation(models.Model):
     def canonical_statut(cls, value):
         return cls.LEGACY_STATUT_MAP.get(value, value)
 
+    @property
+    def est_du_parc(self):
+        """AMON80 — système du parc : réceptionné ou clôturé, ``parc_actif``, non annulé."""
+        canon = self.canonical_statut(self.statut)
+        return bool(canon in (self.Statut.RECEPTIONNE, self.Statut.CLOTURE) and self.parc_actif and not self.annule)
+
     class Raccordement(models.TextChoices):
         MONOPHASE = 'monophase', 'Monophasé'
         TRIPHASE = 'triphase', 'Triphasé'
