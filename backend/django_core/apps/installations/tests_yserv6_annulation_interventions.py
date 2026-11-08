@@ -139,6 +139,53 @@ class AnnulationSoldeInterventionsTests(TestCase):
         }, format='json')
         self.assertEqual(r.status_code, 409, r.data)
 
+    def test_interventions_du_ticket(self):
+        """ACSV102 (C-ACSV-081) — annuler / relever / rattacher les
+        interventions d'un ticket SAV : la planifiée est annulée (motif, note,
+        technicien notifié) puis relevée ; la terminée et celle annulée par
+        son chantier restent intouchées ; celles du doublon passent au ticket."""
+        from apps.installations.services import (
+            annuler_interventions_du_ticket, rattacher_interventions_au_ticket,
+            reactiver_interventions_du_ticket,
+        )
+        from apps.notifications.models import Notification
+        from apps.notifications.types_evenements import EventType
+        from apps.sav.models import Ticket
+        tech = make_user(self.company, role='technicien')
+        client = self.inst.client
+        t = Ticket.objects.create(
+            company=self.company, reference='SAV-ACSV102-T', client=client)
+        d = Ticket.objects.create(
+            company=self.company, reference='SAV-ACSV102-D', client=client)
+        Intervention.objects.filter(pk=self.i1.pk).update(
+            ticket=t, technicien=tech)
+        Intervention.objects.filter(pk=self.i3_terminee.pk).update(ticket=t)
+        du_chantier = make_intervention(self.company, self.inst)
+        Intervention.objects.filter(pk=du_chantier.pk).update(
+            ticket=t, annulee=True,
+            motif_annulation=f'Chantier {self.inst.reference} annulé')
+        Intervention.objects.filter(pk=self.i2.pk).update(ticket=d)
+
+        self.assertEqual(annuler_interventions_du_ticket(
+            t.id, self.user, 'Ticket SAV-ACSV102-T annulé'), 1)
+        self.i1.refresh_from_db()
+        self.assertTrue(self.i1.annulee)
+        self.assertEqual(self.i1.motif_annulation, 'Ticket SAV-ACSV102-T annulé')
+        self.assertTrue(Notification.objects.filter(
+            recipient=tech, event_type=EventType.INTERVENTION_ANNULEE).exists())
+        self.i3_terminee.refresh_from_db()
+        self.assertFalse(self.i3_terminee.annulee)
+
+        self.assertEqual(reactiver_interventions_du_ticket(t.id, self.user), 1)
+        self.i1.refresh_from_db()
+        self.assertFalse(self.i1.annulee)
+        du_chantier.refresh_from_db()
+        self.assertTrue(du_chantier.annulee)
+
+        self.assertEqual(rattacher_interventions_au_ticket(d.id, t.id), 1)
+        self.i2.refresh_from_db()
+        self.assertEqual(self.i2.ticket_id, t.id)
+
 
 class ReactivationTests(TestCase):
     def setUp(self):

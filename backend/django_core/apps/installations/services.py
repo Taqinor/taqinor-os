@@ -6347,24 +6347,33 @@ def annuler_interventions_ouvertes(installation, user):
     des vues. Ce choix est ré-affirmé par `tests_parite_cascade.py` ; le
     changer exige de le changer AUSSI dans ce test.
     """
-    from .models_intervention import Intervention
+    return _annuler_interventions(
+        installation.interventions, user,
+        f'Chantier {installation.reference} annulé', 'chantier annulé')
 
-    qs = installation.interventions.exclude(
-        statut__in=[Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE]
-    ).filter(annulee=False)
+
+def _annuler_interventions(qs, user, motif, cause):
+    """YSERV6/ACSV102 — annule les interventions ouvertes de ``qs`` (motif, note, notification)."""
+    from .models_intervention import Intervention
+    from . import intervention_activity
     count = 0
-    for interv in qs:
+    for interv in qs.exclude(statut__in=[
+            Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE]
+    ).filter(annulee=False):
         interv.annulee = True
-        interv.motif_annulation = (
-            f'Chantier {installation.reference} annulé')
+        interv.motif_annulation = motif[:255]
         interv.save(update_fields=['annulee', 'motif_annulation'])
-        from . import intervention_activity
         intervention_activity.log_note(
-            interv, user,
-            'Intervention annulée automatiquement — chantier annulé.')
+            interv, user, f'Intervention annulée automatiquement — {cause}.')
         _notifier_intervention_annulee(interv, user)
         count += 1
     return count
+
+
+def annuler_interventions_du_ticket(ticket_id, user, motif):
+    """ACSV102 — annule les interventions ouvertes du ticket, motif « Ticket <réf> annulé »."""
+    from .models_intervention import Intervention
+    return _annuler_interventions(Intervention.objects.filter(ticket_id=ticket_id), user, motif, 'ticket SAV annulé')
 
 
 def _notifier_intervention_annulee(interv, user):
@@ -6404,19 +6413,39 @@ def reactiver_interventions_annulees(installation, user):
     traçant la provenance) — jamais une intervention annulée pour une autre
     raison. Renvoie le nombre réactivé."""
     marker = f'Chantier {installation.reference} annulé'
-    qs = installation.interventions.filter(
-        annulee=True, motif_annulation=marker)
+    return _relever_interventions(installation.interventions.filter(
+        annulee=True, motif_annulation=marker), user, 'chantier réactivé')
+
+
+def _relever_interventions(qs, user, cause):
+    """Helper commun YSERV6 / ACSV102 : lève ``annulee`` sur ``qs``."""
+    from . import intervention_activity
     count = 0
     for interv in qs:
         interv.annulee = False
         interv.motif_annulation = None
         interv.save(update_fields=['annulee', 'motif_annulation'])
-        from . import intervention_activity
         intervention_activity.log_note(
-            interv, user,
-            'Intervention réactivée — chantier réactivé.')
+            interv, user, f'Intervention réactivée — {cause}.')
         count += 1
     return count
+
+
+def reactiver_interventions_du_ticket(ticket_id, user):
+    """ACSV102 — relève SEULES celles annulées par le ticket (motif « Ticket … annulé »)."""
+    from .models_intervention import Intervention
+    return _relever_interventions(Intervention.objects.filter(
+        ticket_id=ticket_id, annulee=True, motif_annulation__startswith='Ticket ',
+        motif_annulation__endswith=' annulé'), user, 'ticket SAV réactivé')
+
+
+def rattacher_interventions_au_ticket(source_id, cible_id):
+    """ACSV102 — fusion SAV : interventions de ``source_id`` portées par ``cible_id`` (même société)."""
+    from .models_intervention import Intervention
+    cible = Intervention._meta.get_field('ticket').related_model.objects.filter(
+        pk=cible_id).values_list('company_id', flat=True).first()
+    return Intervention.objects.filter(
+        ticket_id=source_id, company_id=cible).update(ticket_id=cible_id)
 
 
 # ── YSERV7 — jalons atteints & réception → rappel de facturation d'échéancier
