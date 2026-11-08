@@ -108,6 +108,43 @@ class JalonsStatutTests(TestCase):
         self._passer(Installation.Statut.CLOTURE)  # en avant : rien défait
         self.assertEqual(etat(), (1, True, True, True))
 
+    def test_recul_defait_pose_et_appro(self):
+        """ACSV3 (C-ACSV-004) — « Installé » ramené à « Planifié » : `pose`
+        non atteint (interne + portail), `appro` atteint ; ramené à
+        « Signé » : `appro` non atteint ; ré-avancer réatteint (un jalon par
+        phase). ROUGE AVANT : `pose` atteint après le recul."""
+        from apps.portail.models import JalonChantierPortail
+
+        def etat(phase):
+            jalon = JalonProjet.objects.get(
+                installation=self.chantier, phase=phase)
+            portail = JalonChantierPortail.objects.get(
+                company=self.company, chantier_id=self.chantier.pk,
+                cle_phase=phase)
+            return jalon.atteint, portail.atteint
+
+        Phase = JalonProjet.Phase
+        self._passer(Installation.Statut.MATERIEL_COMMANDE)
+        self._passer(Installation.Statut.INSTALLE)
+        self.assertEqual(etat(Phase.POSE), (True, True))
+        self._passer(Installation.Statut.PLANIFIE)
+        self.assertEqual(etat(Phase.POSE), (False, False))
+        self.assertEqual(etat(Phase.APPRO), (True, True))
+        _, ms = self._suivi()
+        self.assertFalse(ms['installation']['done'])
+        self.assertTrue(ms['materiel']['done'])
+        self._passer(Installation.Statut.SIGNE)
+        self.assertEqual(etat(Phase.APPRO), (False, False))
+        _, ms = self._suivi()
+        self.assertFalse(ms['materiel']['done'])
+        self._passer(Installation.Statut.MATERIEL_COMMANDE)
+        self._passer(Installation.Statut.INSTALLE)
+        self.assertEqual(etat(Phase.POSE), (True, True))
+        self.assertEqual(etat(Phase.APPRO), (True, True))
+        for phase in (Phase.APPRO, Phase.POSE):
+            self.assertEqual(JalonProjet.objects.filter(
+                installation=self.chantier, phase=phase).count(), 1)
+
     def test_retour_arriere_ne_coche_rien(self):
         self._passer(Installation.Statut.INSTALLE)
         self._passer(Installation.Statut.SIGNE)

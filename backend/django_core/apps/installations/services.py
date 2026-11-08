@@ -13,7 +13,7 @@ from decimal import Decimal
 from apps.ventes.utils.references import create_with_reference
 from core.verrous import sous_verrou
 from .listes_prechargees import relation
-from .jalon_reception import defaire_reception
+from .jalon_reception import defaire_jalons_quittes
 from .models import (
     Installation, ChecklistTemplate, ChecklistEtapeModele,
     ChantierChecklistItem, StageModele, StockReservation,
@@ -5645,7 +5645,7 @@ def _publier_jalon_statut(inst, canon_old, canon_new, user):
     Idempotent (contrainte unique installation+phase) ; un retour en arrière
     n'atteint rien de nouveau ; best-effort, ne bloque jamais la transition.
     AARG46 — le retour avant RÉCEPTIONNÉ défait le jalon RÉCEPTION."""
-    defaire_reception(inst, canon_old, canon_new)  # AARG46
+    defaire_jalons_quittes(inst, canon_old, canon_new)  # AARG46, ACSV3
     if canon_new == canon_old or canon_new not in _STATUT_JALON_SUIVI:
         return None
     phase, libelle, champ_date = _STATUT_JALON_SUIVI[canon_new]

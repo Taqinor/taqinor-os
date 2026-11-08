@@ -3,28 +3,31 @@
 ``services.py`` est un mur (≥ 2 000 lignes)."""
 
 
-def defaire_reception(installation, canon_old, canon_new):
-    """Retour de RÉCEPTIONNÉ vers un statut antérieur ⇒ jalon RÉCEPTION non
-    atteint, ici et au portail : plus de solde « à facturer » ni de jalon
-    client « atteint ». Une nouvelle réception le réatteint (même ligne,
-    AUD321). RÉCEPTIONNÉ → CLÔTURÉ (en avant) : rien.
+def defaire_jalons_quittes(installation, canon_old, canon_new):
+    """Recul de statut ⇒ les jalons des statuts QUITTÉS vers l'arrière ne sont
+    plus atteints, ici et au portail (AARG46 : RÉCEPTION, plus de solde « à
+    facturer » ; ACSV3 : POSE quittant « Installé », APPRO quittant « Matériel
+    commandé »). Un nouveau passage les réatteint (même ligne, AUD321) ; un
+    pas en avant (RÉCEPTIONNÉ → CLÔTURÉ) ne défait rien.
 
     Rend vrai si un jalon a été défait."""
     from apps.portail import services as portail_services
 
     from .models import Installation, JalonProjet
 
+    Statut, Phase = Installation.Statut, JalonProjet.Phase
+    table = {Statut.RECEPTIONNE: Phase.RECEPTION, Statut.INSTALLE: Phase.POSE,
+             Statut.MATERIEL_COMMANDE: Phase.APPRO}
     ordre = Installation.STATUT_ORDER
-    if (canon_old != Installation.Statut.RECEPTIONNE
-            or canon_new not in ordre[:ordre.index(canon_old)]):
+    if canon_old not in ordre or canon_new not in ordre:
         return False
-    jalon = JalonProjet.objects.filter(
-        installation=installation, phase=JalonProjet.Phase.RECEPTION,
-        atteint=True).first()
-    if jalon is None:
-        return False
-    jalon.atteint = False
-    jalon.save(update_fields=['atteint'])
-    portail_services.upsert_jalon_chantier(
-        installation.company, installation.id, jalon.phase, jalon.libelle)
-    return True
+    quittes = ordre[ordre.index(canon_new) + 1:ordre.index(canon_old) + 1]
+    jalons = list(JalonProjet.objects.filter(
+        installation=installation, atteint=True,
+        phase__in=[table[s] for s in quittes if s in table]))
+    for jalon in jalons:
+        jalon.atteint = False
+        jalon.save(update_fields=['atteint'])
+        portail_services.upsert_jalon_chantier(
+            installation.company, installation.id, jalon.phase, jalon.libelle)
+    return bool(jalons)
