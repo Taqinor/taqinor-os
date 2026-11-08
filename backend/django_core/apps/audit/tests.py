@@ -370,6 +370,26 @@ class TestFournisseurAuditTrail(AuditBase):
         ids = [row['id'] for row in listing.data['results']]
         self.assertIn(entry.id, ids)
 
+    def test_detail_vide_rend_le_diff_stocke(self):
+        """AMON95 — ligne UPDATE générique (detail vide, diff dans ``changes``,
+        ex. attendu monitoring 6000 → 9000) : le Journal sert le diff au lieu
+        de « — » ; un ``detail`` écrit reste servi tel quel."""
+        from apps.monitoring.models import MonitoringConfig
+        from django.contrib.contenttypes.models import ContentType
+        ct = ContentType.objects.get_for_model(MonitoringConfig)
+        diff = AuditLog.objects.create(
+            company=self.company, action='update', content_type=ct, object_id='194',
+            object_repr='Monitoring #194', detail='',
+            changes=[{'field': 'expected_annual_kwh', 'old': '6000.00', 'new': '9000.00'}])
+        ecrit = AuditLog.objects.create(
+            company=self.company, action='update', content_type=ct, object_id='194',
+            object_repr='Monitoring #194', detail='Statut : A → B', changes=None)
+        listing = auth(self.directeur).get('/api/django/audit/entries/', {'module': 'monitoring'})
+        self.assertEqual(listing.status_code, 200)
+        par_id = {row['id']: row['detail'] for row in listing.data['results']}
+        self.assertEqual(par_id[diff.id], 'Expected annual kwh : 6000.00 → 9000.00')
+        self.assertEqual(par_id[ecrit.id], 'Statut : A → B')
+
     def test_fournisseur_orm_create_outside_request_not_logged(self):
         from apps.stock.models import Fournisseur
 
