@@ -1533,8 +1533,19 @@ class TransitionTicketRefusee(Exception):
         self.detail = detail
 
 
+def ticket_a_facturer_non_facture(ticket, user=None):
+    """ACSV60 - ticket facturable (ni garantie, ni contrat, ni recidive non
+    facturable) qui porte pieces ou main-d'oeuvre et aucune facture."""
+    if ticket.facture_id_ext or not (
+            ticket.pieces.exists() or (ticket.heures_main_oeuvre or 0) > 0):
+        return False
+    decision = decision_facturation(ticket, user, False)
+    return not decision['refuse'] and not decision['couvert']
+
+
 def appliquer_transition_ticket(ticket, cible, user, *, systeme=False,
-                                request=None, canal_resolution_defaut=None):
+                                request=None, canal_resolution_defaut=None,
+                                sans_facture=''):
     """ASAV12 — applique UNE transition de statut GARDÉE et TOUS ses effets.
 
     Chemin unique pour la vue (actions ``planifier/demarrer/resoudre/
@@ -1566,6 +1577,19 @@ def appliquer_transition_ticket(ticket, cible, user, *, systeme=False,
                            'ouverte(s) sur ce ticket.'),
                 'interventions_ouvertes': ouvertes,
             })
+    # ACSV60 - cloture d'un ticket facturable non facture : refusee, sauf
+    # forcage responsable motive (``sans_facture``) ; le balayage (systeme)
+    # laisse le ticket Resolu.
+    forcage = ''
+    if cible == Ticket.Statut.CLOTURE and old.statut != Ticket.Statut.CLOTURE \
+            and ticket_a_facturer_non_facture(old, user):
+        forcage = (sans_facture or '').strip()
+        if not forcage or systeme:
+            raise TransitionTicketRefusee({
+                'statut': ('Impossible de cl\u00f4turer : ticket facturable '
+                           'sans facture (pi\u00e8ces ou main-d\u0027\u0153uvre '
+                           '\u00e0 facturer).'),
+                'code': 'ticket_non_facture'})
     try:
         machine_etats.changer_statut(
             ticket, cible, persister=False, systeme=systeme)
@@ -1632,6 +1656,8 @@ def appliquer_transition_ticket(ticket, cible, user, *, systeme=False,
         ticket.refresh_from_db(fields=['reopen_count'])
     ticket.save(update_fields=['sla_breach'])
     activity.log_changes(old, ticket, user)
+    if forcage:
+        activity.log_note(ticket, user, f'Cl\u00f4tur\u00e9 sans facture : {forcage}')
     if old.statut != ticket.statut:
         # XSAV4 — notification client best-effort (toggle OFF = no-op).
         from .notifications_client import notify_ticket_transition

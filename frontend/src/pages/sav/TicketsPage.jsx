@@ -303,6 +303,9 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
   const set = (k, v) => setFields((f) => ({ ...f, [k]: v }))
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState(null)
+  // ACSV60 — clôture d'un ticket facturable non facturé : forçage motivé.
+  const [forcerSansFacture, setForcerSansFacture] = useState(false)
+  const [motifSansFacture, setMotifSansFacture] = useState('')
 
   const dirty = useMemo(
     () => Object.keys(initialFields).some((k) => String(fields[k] ?? '') !== String(initialFields[k] ?? '')),
@@ -517,6 +520,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
     }
     setSaving(true)
     setSaveError(null)
+    setForcerSansFacture(false)
     try {
       const nullable = (v) => (v === '' || v === undefined ? null : v)
       const data = {
@@ -546,6 +550,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
       onSaved?.()
     } catch (err) {
       setSaveError(frError(err, 'Échec de la mise à jour.'))
+      setForcerSansFacture(err?.response?.data?.code === 'ticket_non_facture')
       // ASAV42 — refus : rien n'a été écrit, la fiche reprend l'état serveur.
       try {
         const r = await savApi.getTicket(id)
@@ -554,6 +559,29 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
       } catch (errRecharge) {
         toast.error(frError(errRecharge, 'Rechargement du ticket impossible.'))
       }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // ACSV60 — « Clôturer sans facture » (responsable/admin) : motif obligatoire.
+  const cloturerSansFacture = async () => {
+    const motifForce = motifSansFacture.trim()
+    if (!motifForce) return
+    setSaving(true)
+    setSaveError(null)
+    try {
+      await savApi.cloturerTicket(id, { sans_facture: true, motif: motifForce })
+      const r = await savApi.getTicket(id)
+      setCurrent(r.data)
+      set('statut', r.data?.statut ?? current.statut)
+      setForcerSansFacture(false)
+      setMotifSansFacture('')
+      loadHistorique()
+      toast.success('Ticket clôturé sans facture')
+      onSaved?.()
+    } catch (err) {
+      setSaveError(frError(err, 'Échec de la clôture sans facture.'))
     } finally {
       setSaving(false)
     }
@@ -1023,6 +1051,18 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
               <div role="alert" className="sm:col-span-2 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
                 <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
                 <span className="break-all">{saveError}</span>
+              </div>
+            )}
+            {forcerSansFacture && peutTaguer && (
+              <div className="sm:col-span-2 flex flex-col gap-2 rounded-lg border p-3 text-sm" data-testid="cloture-sans-facture">
+                <label htmlFor="motif-sans-facture" className="font-medium">Motif de la clôture sans facture</label>
+                <Textarea id="motif-sans-facture" rows={2} value={motifSansFacture}
+                          onChange={(e) => setMotifSansFacture(e.target.value)}
+                          placeholder="Ex. : geste commercial" />
+                <Button type="button" variant="outline" loading={saving}
+                        disabled={!motifSansFacture.trim()} onClick={cloturerSansFacture}>
+                  Clôturer sans facture
+                </Button>
               </div>
             )}
           </FormSection>

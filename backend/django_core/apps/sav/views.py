@@ -16,7 +16,7 @@ from drf_spectacular.utils import (
 from rest_framework import filters, serializers as drf_serializers, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import (
-    APIException, NotFound, ValidationError,
+    APIException, NotFound, PermissionDenied, ValidationError,
 )
 from rest_framework.response import Response
 
@@ -220,6 +220,12 @@ class SavResoudreRequete(drf_serializers.Serializer):
     canal_resolution = drf_serializers.ChoiceField(
         choices=Ticket.CanalResolution.choices, required=False,
         allow_null=True, allow_blank=True)
+
+
+class SavCloturerRequete(drf_serializers.Serializer):
+    """Corps de ``cloturer`` (ACSV60) : forcage responsable motive."""
+    sans_facture = BooleenStrict(required=False)
+    motif = ChaineStricte(required=False, allow_blank=True)
 
 
 class SavReplanifierRequete(drf_serializers.Serializer):
@@ -1299,7 +1305,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
             from . import services as sav_services
             sav_services.notifier_arret_installation(serializer.instance)
 
-    def _appliquer_transition_statut(self, ticket, statut_cible):
+    def _appliquer_transition_statut(self, ticket, statut_cible, **options):
         """ASAV12 — délégué d'une ligne vers LE service unique
         ``services.appliquer_transition_ticket`` (même chaîne d'effets pour la
         vue et le récepteur d'intervention terminée). Une transition refusée
@@ -1307,7 +1313,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
         from . import services as sav_services
         try:
             return sav_services.appliquer_transition_ticket(
-                ticket, statut_cible, self.request.user, request=self.request)
+                ticket, statut_cible, self.request.user, request=self.request,
+                **options)
         except sav_services.TransitionTicketRefusee as exc:
             raise ConflitEtat(exc.detail)
 
@@ -1350,13 +1357,30 @@ class TicketViewSet(CompanyScopedModelViewSet):
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
 
-    @extend_schema(request=None)
+    @extend_schema(request=SavCloturerRequete)
     @action(detail=True, methods=['post'], url_path='cloturer',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def cloturer(self, request, pk=None):
-        """YDOCF1 — Transition gardée → CLOTURE (garde YSERV2 conservée)."""
+        """YDOCF1 — Transition gardée → CLOTURE (garde YSERV2 conservée).
+
+        ACSV60 — un ticket facturable non facturé (pièces / main-d'œuvre) est
+        refusé (409 ``ticket_non_facture``) ; ``{sans_facture: true, motif}``
+        (responsable/admin) force la clôture, tracée au chatter."""
         ticket = self.get_object()
-        self._appliquer_transition_statut(ticket, Ticket.Statut.CLOTURE)
+        corps = SavCloturerRequete().run_validation(request.data)
+        motif = (corps.get('motif') or '').strip()
+        if corps.get('sans_facture'):
+            from authentication.models import CustomUser
+            if getattr(request.user, 'menu_tier', None) not in (
+                    CustomUser.ROLE_ADMIN, CustomUser.ROLE_RESPONSABLE):
+                raise PermissionDenied(
+                    'Seul un responsable ou un administrateur clôture '
+                    'sans facture.')
+            if not motif:
+                raise ValidationError({'motif': 'Motif obligatoire.'})
+        self._appliquer_transition_statut(
+            ticket, Ticket.Statut.CLOTURE,
+            sans_facture=motif if corps.get('sans_facture') else '')
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
 
