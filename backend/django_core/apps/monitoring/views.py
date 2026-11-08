@@ -391,14 +391,23 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         # absent est rapporté dans ``erreurs`` (jamais un 400).
         lignes, erreurs = _lire_csv_releves(texte)
         installation = config.installation
-        existants = set(ProductionReading.objects.filter(
+        existants = list(ProductionReading.objects.filter(
             installation=installation).values_list('date', 'period_days'))
         a_creer, doublons = [], 0
+        from .selectors import message_recouvrement, recouvre
         for numero, (jour, periode, energie, index) in lignes:
             if (jour, periode) in existants:
                 doublons += 1
                 continue
-            existants.add((jour, periode))
+            # AMON1 — un relevé qui en recouvre un autre (base ou ligne déjà
+            # retenue) n'est jamais créé : il est rapporté.
+            autre = next((e for e in existants
+                          if recouvre(jour, periode, *e)), None)
+            if autre is not None:
+                erreurs.append({'ligne': numero,
+                                'motif': message_recouvrement(*autre)})
+                continue
+            existants.append((jour, periode))
             a_creer.append(ProductionReading(
                 company=request.user.company, installation=installation,
                 date=jour, period_days=periode, energy_kwh=energie,

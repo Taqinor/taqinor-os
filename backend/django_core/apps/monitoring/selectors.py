@@ -305,6 +305,35 @@ def underperformance_flags_client_portail(company, client_id):
             .order_by('-date_creation'))
 
 
+def recouvre(jour, periode, autre_jour, autre_periode):
+    """AMON1 — ``[jour, jour + période)`` recouvre-t-il l'autre relevé ?
+    (convention de ``analytics.jours_couverts_par_releves``)."""
+    fin = jour + timedelta(days=max(int(periode or 1), 1))
+    autre_fin = autre_jour + timedelta(days=max(int(autre_periode or 1), 1))
+    return jour < autre_fin and autre_jour < fin
+
+
+def message_recouvrement(jour, periode):
+    """AMON1 — refus lisible d'un relevé qui en recouvre un autre."""
+    return f'Ce relevé recouvre celui du {jour:%d/%m/%Y} ({periode} j).'
+
+
+def releve_chevauchant(installation, debut, periode, exclure=None):
+    """AMON1 — premier relevé du système dont la période recouvre
+    ``[debut, debut + periode)``, toutes sources ; ``None`` sinon."""
+    from django.db.models import Max
+    qs = ProductionReading.objects.filter(installation=installation)
+    if exclure is not None:
+        qs = qs.exclude(pk=exclure)
+    plus_longue = qs.aggregate(m=Max('period_days'))['m'] or 1
+    candidats = qs.filter(
+        date__gt=debut - timedelta(days=plus_longue),
+        date__lt=debut + timedelta(days=max(int(periode or 1), 1)),
+    ).order_by('date', 'id')
+    return next((r for r in candidats
+                 if recouvre(debut, periode, r.date, r.period_days)), None)
+
+
 def supervision_resiliee(installation):
     """AMON10 — vrai quand le système a au moins un abonnement de supervision
     résilié et AUCUN actif : il n'est plus évalué. Ne lit JAMAIS

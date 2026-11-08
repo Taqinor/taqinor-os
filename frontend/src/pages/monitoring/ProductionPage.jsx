@@ -16,6 +16,7 @@ import {
   Card, CardContent, DataTable, Switch, Label,
 } from '../../ui'
 import { useConfirmDialog, toast } from '../../ui/confirm'
+import { errorMessageFrom } from '../../lib/toast'
 import { ModuleDashboard } from '../../ui/module'
 // VX148 — courbe de tendance kWh (pattern OmAnalyticsPage.jsx) : l'écran le
 // plus consulté du dossier monitoring n'avait AUCUN graphique quand ses 4
@@ -160,7 +161,8 @@ export default function ProductionPage() {
         setMsg({ ok: true, text: 'Relevé enregistré.' })
         reloadReadings(selectedId)
       })
-      .catch(() => setMsg({ ok: false, text: 'Échec de l’enregistrement du relevé.' }))
+      // AMON1 — le refus du serveur (relevé qui en recouvre un autre) est lu.
+      .catch((err) => setMsg({ ok: false, text: errorMessageFrom(err, 'Échec de l’enregistrement du relevé.') }))
   }
 
   // WIR122 — un relevé mal saisi (typo de date/valeur) était insupprimable :

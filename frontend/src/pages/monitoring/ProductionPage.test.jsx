@@ -64,6 +64,9 @@ vi.mock('../../api/monitoringApi', () => ({
       data: [{ id: 5, installation: 11, provider: 'noop', enabled: true }],
     })),
     deleteReading: vi.fn(() => Promise.resolve({})),
+    addReading: vi.fn(() => Promise.reject({
+      response: { status: 409, data: { date: ['Ce relevé recouvre celui du 01/09/2026 (30 j).'] } },
+    })),
     getHistory: vi.fn(() => Promise.resolve({
       data: {
         installation: 11,
@@ -108,6 +111,18 @@ describe('ProductionPage (WIR122 — suppression de relevé + historique mensuel
     await userEvent.click(screen.getAllByLabelText('Supprimer')[0])
 
     await waitFor(() => expect(monitoringApi.deleteReading).toHaveBeenCalledWith(9))
+  })
+
+  it('AMON1 — un relevé refusé (409) affiche le message du serveur', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    renderPage(<ProductionPage />)
+
+    const select = await screen.findByRole('combobox', { name: 'Choisir un système installé' })
+    await userEvent.selectOptions(select, '11')
+    await userEvent.click(await screen.findByRole('button', { name: /Ajouter/ }))
+
+    await waitFor(() => expect(monitoringApi.addReading).toHaveBeenCalled())
+    expect(await screen.findByText('Ce relevé recouvre celui du 01/09/2026 (30 j).')).toBeInTheDocument()
   })
 
   it('affiche l\'historique mensuel attendu vs réel dès qu\'une config existe', async () => {

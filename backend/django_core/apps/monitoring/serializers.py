@@ -129,13 +129,17 @@ class ProductionReadingSerializer(IdInconnu404Mixin, CompanyScopedRelationsMixin
             raise ConflitEtat(
                 {'date': ['La date du relevé ne peut pas être dans le futur.']})
         if jour is not None and periode is not None and installation:
-            doublons = ProductionReading.objects.filter(
-                installation=installation, date=jour, period_days=periode)
-            if instance is not None:
-                doublons = doublons.exclude(pk=instance.pk)
-            if doublons.exists():
-                raise ConflitEtat(
-                    {'date': ['Relevé déjà saisi pour cette période.']})
+            # AMON1 — tout RECOUVREMENT est refusé (les lecteurs d'énergie
+            # somment), pas seulement le doublon exact (date, période).
+            from .selectors import message_recouvrement, releve_chevauchant
+            autre = releve_chevauchant(
+                installation, jour, periode,
+                exclure=instance.pk if instance is not None else None)
+            if autre is not None:
+                raise ConflitEtat({'date': [
+                    'Relevé déjà saisi pour cette période.'
+                    if (autre.date, autre.period_days) == (jour, periode)
+                    else message_recouvrement(autre.date, autre.period_days)]})
         return attrs
 
 
