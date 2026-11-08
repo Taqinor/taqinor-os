@@ -378,3 +378,24 @@ class ReactivationV2Tests(TestCase):
         inst.refresh_from_db()
         self.assertEqual(devis.statut, Devis.Statut.ACCEPTE)
         self.assertFalse(inst.annule)
+
+    def test_annulation_manuelle_ne_contourne_pas_le_bcf(self):
+        """ACSV7 (C-ACSV-007) — « Annuler le chantier » (motif manuel) puis
+        sortie de « Signé » : même 409 que sur le chantier actif tant qu'un
+        BCF est envoyé ; sans BCF : 200. ROUGE AVANT : 200, BCF orphelin."""
+        lead, devis, inst, bon = self._devis_accepte_avec_bcf('DEV-ACSV7-1')
+        BonCommandeFournisseur.objects.filter(pk=bon.pk).update(
+            statut=BonCommandeFournisseur.Statut.ENVOYE)
+        r = self.api.post(f'/api/django/installations/chantiers/{inst.id}/annuler/',
+                          {'motif': 'client parti'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        r = self._sortir_de_signe(lead)
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn(f'le bon de commande fournisseur {bon.reference} '
+                      "est envoyé : annulez-le d'abord.", r.data['detail'])
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, Devis.Statut.ACCEPTE)
+        BonCommandeFournisseur.objects.filter(pk=bon.pk).update(
+            statut=BonCommandeFournisseur.Statut.ANNULE)
+        r = self._sortir_de_signe(lead)
+        self.assertEqual(r.status_code, 200, r.data)
