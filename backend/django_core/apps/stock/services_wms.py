@@ -1750,7 +1750,7 @@ def imputer_sortie_sur_quarantaine(*, company, produit, quantite, bon_commande=N
     BCF d'abord) : un blocage couvert est levé au motif du geste, un blocage
     partiellement couvert est réduit. Sans quarantaine : no-op."""
     from .models_wms import BlocageQualite
-    blocages = list(BlocageQualite.objects.select_for_update().filter(
+    blocages = list(BlocageQualite.objects.select_for_update(of=('self',)).filter(
         company=company, produit=produit,
         statut=BlocageQualite.Statut.EN_QUARANTAINE).select_related('reception'))
     bcf_id = getattr(bon_commande, 'pk', None)
