@@ -64,6 +64,15 @@ class NotifyServiceTests(TestCase):
         self.assertIsNone(n)
         self.assertEqual(Notification.objects.count(), 0)
 
+    def test_sla_credit_recalcule_catalogue(self):
+        """AMON85 — le littéral émis par ``core.sla`` est catalogué."""
+        n = notify(self.user, 'sla_credit_recalcule',
+                   'Crédit SLA recalculé — septembre 2026',
+                   company=self.company)
+        self.assertIsNotNone(n)
+        self.assertEqual(n.event_type, EventType.SLA_CREDIT_RECALCULE)
+        self.assertEqual(Notification.objects.count(), 1)
+
     def test_none_user_is_safe(self):
         self.assertIsNone(notify(None, EventType.LEAD_ASSIGNED, 'Titre'))
 
