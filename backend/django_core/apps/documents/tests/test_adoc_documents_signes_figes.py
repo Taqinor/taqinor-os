@@ -137,6 +137,64 @@ class DocumentsSignesFigesTests(TestCase):
         self.assertIn('Signé le', texte)
         self.assertEqual(document.versions.count(), 1)
 
+    def test_pv_ci_signe_inchange_apres_levee_et_reserve_de_depannage(self):
+        """ACSV30 : lever une réserve puis en ajouter une plus tard ne re-rend
+        aucune version GED du PV / BL industriels signés."""
+        from apps.installations.models import Reserve
+        from apps.installations.services import ensure_commissioning_record
+        Installation.objects.filter(pk=self.chantier.pk).update(
+            type_installation='industriel')
+        self.chantier.refresh_from_db()
+        ensure_commissioning_record(self.chantier)
+        reserve = Reserve.objects.create(
+            company=self.company, installation=self.chantier,
+            origine='recette', description='Serrage coffret DC',
+            responsable='Équipe pose')
+        self._signer()
+        builders.figer_documents_signes(self.chantier)
+        document = self._document(builders.SOURCE_PV_RECEPTION)
+        fige = self._octets_version_en_vigueur(document)
+        self.assertIn('Serrage coffret DC', _texte(fige))
+
+        Reserve.objects.filter(pk=reserve.pk).update(
+            statut=Reserve.Statut.RESOLUE)
+        Reserve.objects.create(
+            company=self.company, installation=self.chantier,
+            origine='reception', description='Réserve de dépannage tardive')
+        servi = self._get('pv-reception')
+        self.assertEqual(_sha(servi), _sha(fige))
+        self.assertEqual(document.versions.count(), 1)
+        bl = self._document(builders.SOURCE_BON_LIVRAISON)
+        self._get('bon-livraison')
+        self.assertEqual(bl.versions.count(), 1)
+        self.assertEqual(
+            document.custom_data[builders.PV_CI_SIGNE_KEY]['reserves'][0][
+                'description'], 'Serrage coffret DC')
+
+    def test_pv_definitive_servi_fige_sans_trait(self):
+        """ACSV32 : ?definitive=1 sert le PV de réception DÉFINITIVE, figé en
+        GED sous sa propre source, sans le trait de la provisoire ; 409 tant
+        que la définitive n'est pas prononcée ; sans paramètre : provisoire."""
+        self._signer()
+        r = self.api.get(
+            f'{BASE}/{self.chantier.pk}/pv-reception/', {'definitive': 1})
+        self.assertEqual(r.status_code, 409, r.content)
+        Installation.objects.filter(pk=self.chantier.pk).update(
+            date_reception_definitive=date(2026, 11, 6))
+        premier = self._get('pv-reception', definitive=1)
+        texte = _texte(premier)
+        self.assertIn('PROCÈS-VERBAL DE RÉCEPTION DÉFINITIVE', texte)
+        self.assertIn('prononcée le 06/11/2026', texte)
+        self.assertNotIn('Signé le', texte)
+        document = self._document(builders.SOURCE_PV_RECEPTION_DEFINITIVE)
+        self.assertIsNotNone(document)
+        self.assertEqual(
+            _sha(self._octets_version_en_vigueur(document)), _sha(premier))
+        self.assertEqual(_sha(self._get('pv-reception', definitive=1)),
+                         _sha(premier))
+        self.assertEqual(document.versions.count(), 1)
+        self.assertIn('Signé le', _texte(self._get('pv-reception')))
+
     def test_bl_signe_fige(self):
         self._signer()
         premier = self._get('bon-livraison')
