@@ -344,6 +344,13 @@ def disponibilite_vs_garantie(installation, *, window_days=365, today=None):
     metrics = ({} if supervision_resiliee(installation) else
                om_metrics(installation, window_days=window_days, today=today))
     mesuree_pct = metrics.get('availability_pct')
+    libelle = LIBELLE_INDICE_SUIVI
+    if metrics:
+        # AMON43 — immobilisations SAV des équipements du système quand il en
+        # a au parc ; sinon l'indice relevés (libellé inchangé).
+        dispo_sav = _disponibilite_sav(installation, window_days, today)
+        if dispo_sav is not None:
+            mesuree_pct, libelle = dispo_sav, LIBELLE_DISPO_SAV
     # CIQ644 — taux SANS défaut : une ligne sans taux garanti n'a ni écart ni
     # pénalité (jamais un 98 % supposé).
     garantie_pct = (None if sla.disponibilite_garantie_pct is None
@@ -354,7 +361,7 @@ def disponibilite_vs_garantie(installation, *, window_days=365, today=None):
             'has_sla': True,
             'installation': installation.id,
             'window_days': window_days,
-            'libelle_indicateur': LIBELLE_INDICE_SUIVI,
+            'libelle_indicateur': libelle,
             'disponibilite_garantie_pct': garantie_pct,
             'disponibilite_mesuree_pct': (
                 None if mesuree_pct is None else Decimal(str(mesuree_pct))),
@@ -386,7 +393,7 @@ def disponibilite_vs_garantie(installation, *, window_days=365, today=None):
         'has_sla': True,
         'installation': installation.id,
         'window_days': window_days,
-        'libelle_indicateur': LIBELLE_INDICE_SUIVI,
+        'libelle_indicateur': libelle,
         'disponibilite_garantie_pct': garantie_pct,
         'disponibilite_mesuree_pct': Decimal(str(mesuree_pct)),
         'ecart_pct': _q(ecart_pct),
@@ -403,6 +410,28 @@ def disponibilite_vs_garantie(installation, *, window_days=365, today=None):
 #: CIQ644 — l'indicateur compte les jours AVEC RELEVÉ : c'est un indice de
 #: suivi, jamais une « disponibilité contractuelle ».
 LIBELLE_INDICE_SUIVI = 'indice de suivi (jours avec relevé)'
+#: AMON43 — libellé quand l'indicateur vient des immobilisations SAV.
+LIBELLE_DISPO_SAV = 'disponibilité (immobilisations SAV)'
+
+
+def _disponibilite_sav(installation, window_days, today):
+    """AMON43 — disponibilité SAV sur la fenêtre de l'indicateur (bornée au
+    début de couverture, AMON21), jours entiers jusqu'à la fin de ``today``."""
+    from datetime import datetime, time
+
+    from apps.sav.selectors_supervision import disponibilite_installation
+
+    from .analytics import fenetre_mesuree
+    jour = today or timezone.localdate()
+    _debut, jours = fenetre_mesuree(
+        installation, jour - timedelta(days=window_days), jour, window_days)
+    tz = timezone.get_current_timezone()
+    fin = timezone.make_aware(
+        datetime.combine(jour + timedelta(days=1), time.min), tz)
+    dispo = disponibilite_installation(
+        installation.company_id, installation.pk,
+        debut=fin - timedelta(days=jours), fin=fin)
+    return None if dispo is None else Decimal(str(dispo))
 
 
 def _garantie_production_autorisee(installation):

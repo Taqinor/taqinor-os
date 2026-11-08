@@ -121,6 +121,30 @@ class XSAV16DowntimeTest(TestCase):
             self.equip, debut_periode=debut_periode, fin_periode=fin_periode)
         self.assertEqual(data['disponibilite_pct'], 100.0)
 
+    def test_disponibilite_installation_union(self):
+        """AMON43 — deux équipements arrêtés en même temps comptent une fois."""
+        from apps.sav.selectors_supervision import disponibilite_installation
+        fin_periode = timezone.now()
+        debut_periode = fin_periode - timedelta(days=10)
+        second = Equipement.objects.create(
+            company=self.company, produit=self.produit, installation=self.inst,
+            created_by=self.admin)
+        dt = ouvrir_downtime(company=self.company, equipement=self.equip,
+                             debut=debut_periode + timedelta(days=1))
+        dt.clore(fin=debut_periode + timedelta(days=3))
+        dt = ouvrir_downtime(company=self.company, equipement=second,
+                             debut=debut_periode + timedelta(days=2))
+        dt.clore(fin=debut_periode + timedelta(days=4))
+        # Union = jours 1 à 4 = 3 jours sur 10 → 70 %.
+        self.assertAlmostEqual(disponibilite_installation(
+            self.company, self.inst.pk, debut=debut_periode,
+            fin=fin_periode), 70.0, delta=0.01)
+        sans = Installation.objects.create(
+            company=self.company, reference='CHT-XSAV16-B',
+            client=self.client_obj)
+        self.assertIsNone(disponibilite_installation(
+            self.company, sans.pk, debut=debut_periode, fin=fin_periode))
+
     # ── Clôture ticket ferme le downtime lié ────────────────────────────────
 
     def test_cloture_ticket_ferme_downtime_lie(self):

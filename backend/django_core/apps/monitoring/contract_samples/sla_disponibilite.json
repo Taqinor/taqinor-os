@@ -45,6 +45,7 @@
     }
   },
   "notes": {
+    "libelle_indicateur": "AMON43 — quand le système a des équipements au parc SAV, `disponibilite_mesuree_pct` vient de l'union de leurs immobilisations SAV et `libelle_indicateur` vaut « disponibilité (immobilisations SAV) » ; sans équipement, l'indice relevés (« indice de suivi (jours avec relevé) »). AMON10 — supervision résiliée sans abonnement actif : forme `exemple_sans_donnees`.",
     "taux_obligatoire": "POST/PATCH sans `disponibilite_garantie_pct` (ou hors ]0, 100]) → 400 sur ce champ (« Saisir le taux garanti »).",
     "un_sla_par_systeme": "Un seul SLA par système (OneToOne) : un second POST pour le même système → 400.",
     "autre_societe": "Détail, modification ou écart d'un SLA d'une autre société → 404 ; un système d'une autre société → 400 (« Système inconnu. »)."

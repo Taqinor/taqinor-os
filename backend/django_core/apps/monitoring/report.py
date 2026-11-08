@@ -88,6 +88,7 @@ def build_om_report_data(installation, *, period='monthly', today=None):
     curve = (warranty_curve_overlay(installation, today=today)
              if garantie_incluse else {})
 
+    from apps.sav.selectors_supervision import alarmes_onduleur_ouvertes
     open_flags = UnderperformanceFlag.objects.filter(
         installation=installation, is_open=True).count()
 
@@ -113,7 +114,9 @@ def build_om_report_data(installation, *, period='monthly', today=None):
         'availability_pct': metrics_periode['availability_pct'],
         'degradation_pct_per_year': metrics['degradation_pct_per_year'],
         'soiling_suspected': metrics['soiling_suspected'],
-        'open_alarms': open_flags,
+        # AMON43 — drapeaux ouverts + alarmes onduleur ouvertes (SAV).
+        'open_alarms': open_flags + alarmes_onduleur_ouvertes(
+            installation.company_id, installation.pk),
         'recommendations': recommendations,
         'date_edition': today.isoformat(),
     }

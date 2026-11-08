@@ -673,15 +673,10 @@ def disponibilite_equipement(equipement, *, debut_periode, fin_periode):
         equipement=equipement, debut__lte=fin_periode,
     ).filter(Q(fin__gte=debut_periode) | Q(fin__isnull=True))
 
-    downtime_heures = 0.0
-    for dt in qs:
-        fin = dt.fin or fin_periode
-        seg_debut = max(dt.debut, debut_periode)
-        seg_fin = min(fin, fin_periode)
-        if seg_fin > seg_debut:
-            downtime_heures += (seg_fin - seg_debut).total_seconds() / 3600
-
-    downtime_heures = min(downtime_heures, duree_periode)
+    # AMON43 — une seule définition du cumul (union des fenêtres).
+    from .selectors_supervision import heures_immobilisation
+    downtime_heures = min(
+        heures_immobilisation(qs, debut_periode, fin_periode), duree_periode)
     disponibilite_pct = round(
         (1 - downtime_heures / duree_periode) * 100, 2)
     return {

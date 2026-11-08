@@ -1129,6 +1129,29 @@ class TestOmReport(TestCase):
         self.assertIn('recommendations', d)
         self.assertTrue(len(d['recommendations']) >= 1)
 
+    def test_alarme_onduleur_escaladee_comptee(self):
+        """AMON43 — une alarme onduleur escaladée compte dans « Alarmes »."""
+        from apps.monitoring.report import (
+            build_om_report_data, build_om_report_html,
+        )
+        from apps.sav.models import AlarmeOnduleur, Equipement
+        from apps.stock.models import Produit
+        produit = Produit.objects.create(
+            company=self.company, nom='Onduleur', sku='OND-AMON43-R',
+            prix_achat=1, prix_vente=2)
+        onduleur = Equipement.objects.create(
+            company=self.company, produit=produit, installation=self.inst)
+        AlarmeOnduleur.objects.create(
+            company=self.company, equipement=onduleur, code='F01',
+            gravite=AlarmeOnduleur.Gravite.CRITIQUE,
+            statut=AlarmeOnduleur.Statut.ESCALADEE)
+        AlarmeOnduleur.objects.create(
+            company=self.company, equipement=onduleur, code='F02',
+            statut=AlarmeOnduleur.Statut.RESOLUE)
+        d = build_om_report_data(self.inst, period='monthly', today=self.today)
+        self.assertEqual(d['open_alarms'], 1)
+        self.assertIn('1 alarme(s) ouverte(s)', build_om_report_html(d))
+
     def test_report_quarterly_window(self):
         from apps.monitoring.report import build_om_report_data
         d = build_om_report_data(
