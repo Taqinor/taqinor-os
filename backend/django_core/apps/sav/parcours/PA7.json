@@ -44,7 +44,7 @@
       "fonction_entree": "apps/monitoring/services.py::evaluate_underperformance",
       "checkpoint": {"persistance": "apps/monitoring/models.py::UnderperformanceFlag", "description": "Un drapeau ouvert par épisode de sous-performance, fermé avec motif."},
       "regles_aval": [
-        {"regle": "Un épisode ouvert crée un ticket SAV correctif (une seule fois par épisode).", "source": "apps/monitoring/services.py::_create_underperf_ticket"}
+        {"regle": "Un épisode ouvert crée un ticket SAV préventif (une seule fois par épisode).", "source": "apps/monitoring/services.py::_create_underperf_ticket"}
       ]
     },
     {
@@ -54,12 +54,13 @@
       "fonction_entree": "apps/monitoring/selectors.py::disponibilite_vs_garantie",
       "checkpoint": {"persistance": "apps/monitoring/models.py::SlaDisponibilite", "description": "Taux garanti par système, sans valeur par défaut (CIQ644), saisi depuis l'écran SAV/monitoring (ASAV101)."},
       "regles_aval": [
-        {"regle": "La pénalité (tarif saisi par jour d'indisponibilité excédentaire) n'est chiffrée que si la société a validé l'engagement de production.", "source": "apps/monitoring/selectors.py::_garantie_production_autorisee"}
+        {"regle": "La pénalité (tarif saisi par jour d'indisponibilité excédentaire) n'est chiffrée que si la société a validé l'engagement de production.", "source": "apps/monitoring/selectors.py::_garantie_production_autorisee"},
+        {"regle": "La pénalité est un indicateur interne (D-AMON-2) : jamais stockée, décidée ni imprimée au rapport client.", "source": "apps/monitoring/selectors.py::disponibilite_vs_garantie"}
       ]
     },
     {
       "id": "credit_sla_genere",
-      "libelle": "Instantané SLA mensuel et crédit dû calculés",
+      "libelle": "SLA de la plateforme (TAQINOR OS envers la société) : instantané mensuel et crédit dû calculés",
       "declencheur": {"type": "tache", "source": "core/tasks.py::generer_sla_mensuel_task"},
       "fonction_entree": "core/sla.py::generer_sla_mensuel",
       "checkpoint": {"persistance": "core/sla.py::SlaSnapshot", "description": "Un instantané par société et par mois, avec uptime et crédit dû."},
@@ -69,13 +70,30 @@
     },
     {
       "id": "credit_sla_decision",
-      "libelle": "Décision humaine sur le crédit SLA (émis ou refusé)",
+      "libelle": "SLA de la plateforme (TAQINOR OS envers la société) : décision humaine sur le crédit (émis ou refusé)",
       "declencheur": {"type": "http", "source": "core/sla.py::sla_credit_statut"},
       "fonction_entree": "core/sla.py::sla_credit_statut",
       "checkpoint": {"persistance": "core/sla.py::SlaSnapshot", "description": "Statut du crédit tracé ; aucun avoir n'est créé par cette action."},
       "regles_aval": [
         {"regle": "La décision est émise sur le bus et inscrite au journal d'audit.", "source": "core/sla.py::_emettre_sla_credit_statut_change"},
         {"regle": "L'abonné d'audit enregistre la ligne du journal.", "source": "apps/audit/receivers.py::_record_sla_credit_statut_change"}
+      ]
+    },
+    {
+      "id": "credit_sla_client",
+      "libelle": "Crédit ou pénalité de disponibilité envers le client de l'installation",
+      "manquante": true,
+      "raison": "Décision D-AMON-2 : la pénalité de disponibilité de l'installation du client reste un indicateur interne ; aucune facturation ni avoir n'en découle. Les étapes crédit SLA ci-dessus mesurent TAQINOR OS envers la société, pas l'installation du client.",
+      "attendu": "Rien (affichage interne seulement) : tout lecteur de `penalite_mad` dans `apps/facturation` ou `apps/ventes` signale une dérive de la décision.",
+      "declencheur": {"manquant": true},
+      "fonction_entree": {"manquant": true},
+      "checkpoint": {"persistance": "apps/monitoring/models.py::SlaDisponibilite", "description": "Taux garanti par système : seul état stocké, aucune pénalité."},
+      "regles_aval": [
+        {"regle": "La pénalité n'est calculée qu'à la lecture, par le sélecteur de monitoring.", "source": "apps/monitoring/selectors.py::disponibilite_vs_garantie"}
+      ],
+      "preuves_absence": [
+        {"motif": "penalite_mad", "racine": "apps/facturation", "fichiers_autorises": []},
+        {"motif": "penalite_mad", "racine": "apps/ventes", "fichiers_autorises": []}
       ]
     },
     {
