@@ -145,6 +145,9 @@ class BalayagesSavTests(TestCase):
         tech = User.objects.create_user(
             username='acsv60-tech', password='x', company=self.active,
             role=role)
+        # Portée « équipe » du Technicien : le ticket lui est affecté, le
+        # refus attendu est celui du forçage (403), pas l'invisibilité (404).
+        Ticket.objects.filter(pk=t.pk).update(technicien_responsable=tech)
         api_tech = APIClient()
         api_tech.credentials(
             HTTP_AUTHORIZATION='Bearer %s' % AccessToken.for_user(tech))

@@ -139,8 +139,11 @@ class DecisionFacturationTests(TestCase):
         """ASAV104 — l'override d'une récidive non facturable est réservé au
         palier Administrateur/Responsable (``menu_tier``) : le rôle système
         Technicien porte ``sav_gerer`` mais reçoit 403 sur les trois portes."""
+        # ACSV62 / D-ACSV-3 — les trois portes exigent `ventes_creer` : ce
+        # technicien le porte, seul l'override reste à refuser.
         tech, api_tech = self._api_role(
-            'asav104_tech', 'Technicien', TECHNICIEN_PERMISSIONS)
+            'asav104_tech', 'Technicien',
+            [*TECHNICIEN_PERMISSIONS, 'ventes_creer'])
         self.assertTrue(tech.is_responsable)
         for porte, ref in (('facturer', 'SAV-A104-1'),
                            ('generer-facture', 'SAV-A104-2'),

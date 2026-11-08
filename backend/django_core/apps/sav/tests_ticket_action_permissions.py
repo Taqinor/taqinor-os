@@ -122,8 +122,11 @@ class TicketActionPermissionTierTests(TestCase):
             prix_vente=Decimal('5000'), quantite_stock=Decimal('5'))
 
         def _api(nom, permissions):
+            # Le test porte sur les DROITS, pas sur la portée : le marqueur
+            # « records_scope_equipe » du Technicien masquerait le ticket (404).
             role = Role.objects.create(
-                company=societe, nom=nom, permissions=list(permissions))
+                company=societe, nom=nom, permissions=[
+                    p for p in permissions if not p.startswith('records_scope_')])
             user = User.objects.create_user(
                 username=f'acsv62_{nom}', password='x', company=societe,
                 role=role)

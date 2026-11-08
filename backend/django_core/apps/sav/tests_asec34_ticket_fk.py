@@ -128,7 +128,9 @@ class TicketFkEtChampsServeurTests(TestCase):
             permissions=list(TECHNICIEN_PERMISSIONS))
         tech = User.objects.create_user(
             username='acsv54_tech', password='x', company=self.a, role=role)
+        # Portée « équipe » du Technicien : le ticket lui est affecté.
         Ticket.objects.filter(pk=self.ticket.pk).update(
+            technicien_responsable=tech,
             facture_id_ext=7, devis_id_ext=8, lead_id_ext=9,
             date_ouverture=date(2026, 1, 5))
         api_tech = _api(tech)

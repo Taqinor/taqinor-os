@@ -188,7 +188,9 @@ class XSAV27PretEquipementServiceTest(TestCase):
         base = f'/api/django/sav/tickets/{self.ticket.id}'
         r = api.post(f'{base}/cloturer/', {}, format='json')
         self.assertEqual(r.status_code, 409, r.data)
-        self.assertEqual(r.data['prets_en_cours'], [pret.id])
+        # ConflitEtat (APIException) rend les éléments de liste en chaînes,
+        # comme « interventions_ouvertes » (YSERV2).
+        self.assertEqual(r.data['prets_en_cours'], [str(pret.id)])
         r = api.post(f'{base}/annuler/', {}, format='json')
         self.assertEqual(r.status_code, 409, r.data)
         self.ticket.refresh_from_db()
