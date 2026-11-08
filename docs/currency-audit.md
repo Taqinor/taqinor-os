@@ -62,7 +62,7 @@ with no rate column at all — mono-MAD in practice.
 | installations | ApprobationBCF | `apps/installations/models_approbation_bcf.py:73` | montant_approuve |
 | installations | CommandeCadreLigne | `apps/installations/models_commande_cadre.py:71` | prix_negocie |
 | installations | ContratPrixLigne | `apps/installations/models_contrat_prix.py:83` | prix_convenu, remise_pct |
-| installations | DemandeAchatLigne | `apps/installations/models_demande_achat.py:195` | prix_estime |
+| installations | DemandeAchatLigne | `apps/installations/models_demande_achat.py:200` | prix_estime |
 | installations | ReceptionNonFacturee | `apps/installations/models_gr_ir.py:22` | montant_provision |
 | installations | FraisImport | `apps/installations/models_landed_cost.py:28` | montant |
 | installations | Livraison | `apps/installations/models_livraison.py:19` | cout_transport |
