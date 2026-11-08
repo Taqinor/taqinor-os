@@ -72,3 +72,29 @@ class ParcActifTests(TestCase):
                 ratio_pct=Decimal('10'))
         ov = fleet_overview(self.company, today=self.today)
         self.assertEqual(ov['open_alerts'], 1)
+
+    def test_balayage_ferme_le_drapeau_du_site_retire(self):
+        """AMON25 — le balayage nocturne ferme l'épisode ouvert d'un site
+        retiré du parc (sans le synchroniser) : il sort du portail client."""
+        from apps.monitoring.selectors import (
+            underperformance_flags_client_portail,
+        )
+        site = self._systeme('AMON25-S', parc_actif=True)
+        drapeau = UnderperformanceFlag.objects.create(
+            company=self.company, installation=site, is_open=True,
+            ratio_pct=Decimal('15'))
+        Installation.objects.filter(pk=site.pk).update(parc_actif=False)
+        with mock.patch('apps.monitoring.services.sync_system',
+                        return_value=(0, 'noop')) as synchro:
+            balayage_quotidien()
+            synchro.assert_not_called()
+        drapeau.refresh_from_db()
+        self.assertFalse(drapeau.is_open)
+        self.assertEqual(drapeau.motif_cloture, 'donnees_indisponibles')
+        self.assertIn('retiré du parc', drapeau.note_cloture)
+        self.assertFalse(underperformance_flags_client_portail(
+            self.company, site.client_id).exists())
+        # Second balayage : no-op (aucun drapeau neuf).
+        balayage_quotidien()
+        self.assertEqual(UnderperformanceFlag.objects.filter(
+            installation=site).count(), 1)

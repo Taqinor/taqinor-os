@@ -60,10 +60,13 @@ def balayage_quotidien():
                    .select_related('installation'))
         for config in configs:
             installation = config.installation
-            # ASAV69 — site retiré du parc : ni synchro ni évaluation.
-            if getattr(installation, 'parc_actif', True) is False:
-                continue
             try:
+                # ASAV69 — site retiré du parc : ni synchro ni évaluation.
+                # AMON25 — sauf la branche `site_retire` de l'évaluation, qui
+                # FERME l'épisode ouvert (elle ne crée jamais rien).
+                if getattr(installation, 'parc_actif', True) is False:
+                    evaluate_underperformance(installation)
+                    continue
                 imported, _provider = sync_system(installation)
                 total_importes += imported
                 result = evaluate_underperformance(installation)
