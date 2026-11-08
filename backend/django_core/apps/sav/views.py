@@ -449,8 +449,21 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
     def perform_create(self, serializer):
         self._check_tenant(serializer)
         company = self.request.user.company
+        vd, rempli = serializer.validated_data, False
         try:
-            serializer.save(company=company, created_by=self.request.user)
+            if vd.get('installation') is None:
+                serializer.save(company=company, created_by=self.request.user)
+            else:  # ACSV59 — écrivain unique du parc d'un chantier (ACHT46)
+                from apps.installations.selectors import quantites_nomenclature_chantier
+                from .services import assurer_equipement_chantier
+                chantier, produit = vd['installation'], vd.get('produit')
+                statut, serializer.instance = assurer_equipement_chantier(
+                    company=company, installation=chantier, produit=produit, numero_serie=vd.get('numero_serie'),
+                    quantite_ligne=quantites_nomenclature_chantier(chantier).get(getattr(produit, 'pk', None), 1),
+                    date_pose=chantier.date_reception or vd.get('date_pose'), created_by=self.request.user)
+                if statut == 'doublon':
+                    raise IntegrityError
+                rempli = statut == 'rempli'
         except IntegrityError:
             # L636 — filet de course si la contrainte d'unicité DB se déclenche
             # entre la validation serializer et l'écriture.
@@ -459,7 +472,8 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
                  'Ce numéro de série existe déjà dans votre société.'})
         # Calcul des horloges de garantie après la pose des FK.
         inst = serializer.instance
-        inst.recompute_garanties()
+        if not rempli:  # placeholder rempli : horloges figées (ASAV7)
+            inst.recompute_garanties()
         # FG85 — jeton QR EQUIP:<id> posé à la création.
         inst.equipement_token = f'EQUIP:{inst.pk}'
         inst.save(update_fields=[
