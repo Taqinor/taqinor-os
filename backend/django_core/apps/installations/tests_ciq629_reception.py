@@ -56,6 +56,37 @@ class ReceptionDefinitiveTests(TestCase):
         self.assertEqual(r.status_code, 409)  # ERR-ENF11 : refus d'état = 409
         self.assertIn('provisoire', r.data['detail'])
 
+    def _reserve_avec_ticket(self, description):
+        from apps.sav.services import create_corrective_ticket
+        reserve = creer_reserve_chantier(
+            self.inst, self.user, description=description, origine='reception')
+        reserve.ticket = create_corrective_ticket(
+            company=self.company, client=self.inst.client,
+            installation=self.inst, description=description,
+            created_by=self.user)
+        reserve.save(update_fields=['ticket'])
+        return reserve
+
+    def test_reserve_et_ticket_se_ferment_ensemble(self):
+        """ACSV66 — résoudre le ticket lève la réserve ; lever la réserve
+        résout le ticket (transition système) ; ticket déjà clos : rien."""
+        from apps.sav.models import Ticket
+        r1 = self._reserve_avec_ticket('Onduleur mal fixé A')
+        r2 = self._reserve_avec_ticket('Onduleur mal fixé B')
+        for action in ('resoudre', 'cloturer'):
+            rep = self.api.post(
+                f'/api/django/sav/tickets/{r1.ticket_id}/{action}/', {}, format='json')
+            self.assertEqual(rep.status_code, 200, rep.data)
+        r1.refresh_from_db()
+        self.assertEqual(r1.statut, Reserve.Statut.RESOLUE)
+        self.assertEqual(r1.levee_par, self.user)
+        self.assertIn(r1.ticket.reference, r1.resolution)
+        rep = self.api.post(f'{BASE}/chantiers/{self.inst.id}/reserves/{r2.id}/lever/', {}, format='json')
+        self.assertEqual(rep.status_code, 200, rep.data)
+        r2.ticket.refresh_from_db()
+        self.assertEqual(r2.ticket.statut, Ticket.Statut.RESOLU)
+        self.assertEqual(self.api.post(self.url, {}, format='json').status_code, 200)
+
     def test_toutes_levees_date_posee_et_journalisee(self):
         reserve = creer_reserve_chantier(
             self.inst, self.user, description='Coffret AC',
@@ -78,6 +109,37 @@ class ReceptionDefinitiveTests(TestCase):
         profil.save()
         bloc = reception_chantier(self.company, self.inst.id)
         self.assertEqual(bloc['date_definitive_prevue'], '2027-10-13')
+
+    def test_avant_date_prevue_ou_annule_409_derogation_directeur(self):
+        """ACSV35 (C-ACSV-045, D-ACSV-1) — délai 12 mois, provisoire d'hier :
+        409 pour un Responsable, 403 s'il donne un motif ; un Directeur avec
+        motif la prononce (note) ; chantier annulé : 409. ROUGE AVANT : 200."""
+        from django.utils import timezone
+
+        from apps.installations.models import Installation, InstallationActivity
+        profil = CompanyProfile.get(self.company)
+        profil.delai_reception_definitive_mois = 12
+        profil.save()
+        hier = timezone.localdate() - datetime.timedelta(days=1)
+        Installation.objects.filter(pk=self.inst.pk).update(date_reception=hier)
+        r = self.api.post(self.url, {}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('Réception définitive possible à partir du', r.data['detail'])
+        r = self.api.post(self.url, {'motif_derogation': 'client pressé'}, format='json')
+        self.assertEqual(r.status_code, 403, r.data)
+        self.inst.refresh_from_db()
+        self.assertIsNone(self.inst.date_reception_definitive)
+        directeur = make_user(self.company, role='admin')
+        r = auth(directeur).post(self.url, {'motif_derogation': 'client pressé'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.inst.refresh_from_db()
+        self.assertIsNotNone(self.inst.date_reception_definitive)
+        self.assertTrue(InstallationActivity.objects.filter(
+            installation=self.inst, body__contains='par dérogation Directeur').exists())
+        Installation.objects.filter(pk=self.inst.pk).update(annule=True, date_reception_definitive=None)
+        r = self.api.post(self.url, {}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('chantier annulé', r.data['detail'])
 
     def test_delai_non_saisi_date_prevue_null(self):
         bloc = reception_chantier(self.company, self.inst.id)

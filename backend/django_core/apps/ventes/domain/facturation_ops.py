@@ -1327,14 +1327,17 @@ def generer_facture_ticket_sav(*, ticket, sous_garantie, pieces, user):
     SOUS VERROU ; s'il pointe vers une facture non annulée, elle est renvoyée
     telle quelle. Renvoie la ``Facture`` créée (ou réutilisée)."""
     from ..models import Facture
-    from ..utils.company_settings import create_provisoire, tva_standard
+    from ..utils.company_settings import create_provisoire
+    from .facturation_ticket_sav import (
+        completer_brouillon_ticket_sav, lignes_ticket_sav)
 
     existante = _facture_generee_sous_verrou(ticket, 'facture_id_ext')
-    if existante is not None:
-        return existante
+    if existante is not None:  # ACSV104 : brouillon complété des pièces ajoutées
+        return completer_brouillon_ticket_sav(
+            existante, ticket=ticket, sous_garantie=sous_garantie,
+            pieces=pieces)
 
     company = ticket.company
-    taux_tva_defaut = tva_standard(company)
 
     def _create(ref):
         return Facture.objects.create(
@@ -1345,39 +1348,8 @@ def generer_facture_ticket_sav(*, ticket, sous_garantie, pieces, user):
             created_by=user,
         )
 
-    suffixe_couvert = ' (couvert garantie/contrat)' if sous_garantie else ''
-    # ENF47 — lignes bornées AVANT toute écriture (bornes.ecrire_facture_generee).
-    lignes = [dict(
-        produit=piece.produit,
-        designation=f'{piece.produit.nom}{suffixe_couvert}',
-        quantite=piece.quantite,
-        prix_unitaire=(Decimal('0') if sous_garantie
-                       else Decimal(str(piece.produit.prix_vente or 0))),
-        taux_tva=(piece.produit.tva if piece.produit.tva is not None
-                  else taux_tva_defaut),
-    ) for piece in pieces]
-
-    heures = ticket.heures_main_oeuvre
-    if heures and heures > 0:  # ERR-ENF11 : négatives = pas de ligne (contrainte montants positifs, 500 sinon)
-        profile_taux = None
-        try:
-            from apps.parametres.models import CompanyProfile
-            profile_taux = CompanyProfile.get(company).taux_horaire_sav
-        except Exception:  # pragma: no cover - défensif
-            logger.warning("facturation_ops.generer_facture_ticket_sav : erreur ignorée (mode dégradé)", exc_info=True)
-            profile_taux = None
-        taux_horaire = (
-            Decimal('0') if sous_garantie
-            else Decimal(str(profile_taux)) if profile_taux is not None
-            else None)
-        if taux_horaire is not None:
-            lignes.append(dict(
-                produit=_main_oeuvre_produit(company),
-                designation=f"Main-d'œuvre{suffixe_couvert}",
-                quantite=heures, prix_unitaire=taux_horaire,
-                taux_tva=taux_tva_defaut,
-            ))
-
+    lignes = lignes_ticket_sav(
+        ticket=ticket, sous_garantie=sous_garantie, pieces=pieces)
     facture = ecrire_facture_generee(lambda: create_provisoire(_create), lignes)
     ticket.facture_id_ext = facture.id
     ticket.save(update_fields=['facture_id_ext'])

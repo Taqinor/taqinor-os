@@ -156,3 +156,82 @@ class SyncHorodatageTests(TestCase):
         res = self._sync('intervention.consommation_ligne',
                          {'ligne': self.ligne.id, 'quantite_utilisee': '3'})
         self.assertEqual(res['status'], 'applied', res)
+
+    def test_retour_hors_ligne_derive_terminee(self):
+        """ACSV22 (C-ACSV-137) — un retour dépôt synchronisé passe « Sur
+        site » à « Terminée » (un `intervention_completed`) ; photo obligatoire
+        manquante : `statut_refuse` nommé, horodatage gardé ; départ dépôt sur
+        « À préparer » chargée : « En route ». ROUGE AVANT : « sur_site »."""
+        from apps.installations import field_services
+        from apps.installations.models import ShotListSlot
+        from core.events import intervention_completed
+        evenements = []
+
+        def _abonne(sender, **kwargs):
+            evenements.append(kwargs)
+
+        intervention_completed.connect(_abonne, dispatch_uid='acsv22-temoin')
+        self.addCleanup(intervention_completed.disconnect, dispatch_uid='acsv22-temoin')
+        Intervention.objects.filter(pk=self.iv.pk).update(statut=Intervention.Statut.SUR_SITE)
+        slot = ShotListSlot.objects.create(
+            company=self.company, cle='onduleur', libelle='Onduleur', obligatoire=True)
+        res = self._sync('intervention.retour', {})
+        self.assertEqual(res['status'], 'applied', res)
+        self.assertIn('Onduleur', res['result']['statut_refuse'])
+        self.iv.refresh_from_db()
+        self.assertEqual(self.iv.statut, Intervention.Statut.SUR_SITE)
+        self.assertIsNotNone(self.iv.retour_depot_le)
+        slot.delete()
+        with self.captureOnCommitCallbacks(execute=True):
+            res = self._sync('intervention.retour', {})
+        self.assertEqual(res['status'], 'applied', res)
+        self.assertEqual(res['result']['statut'], Intervention.Statut.TERMINEE)
+        self.iv.refresh_from_db()
+        self.assertEqual(self.iv.statut, Intervention.Statut.TERMINEE)
+        self.assertEqual(len(evenements), 1)
+        # Départ dépôt : « À préparer » (chargée) ⇒ « En route », jamais de recul.
+        autre = Intervention.objects.create(
+            company=self.company, installation=self.iv.installation,
+            type_intervention='pose', created_by=self.user, technicien=self.user)
+        field_services.confirm_charge(field_services.ensure_preparation(autre), self.user)
+        res = self._sync('intervention.depart_depot', {'intervention': autre.id})
+        self.assertEqual(res['result']['statut'], Intervention.Statut.EN_ROUTE)
+        res = self._sync('intervention.depart_depot', {})
+        self.assertEqual(res['result']['statut'], Intervention.Statut.TERMINEE)
+
+    def test_coche_checklist_plancher_et_trace(self):
+        """ACSV23 (C-ACSV-138) — une coche de checklist horodatée avant la
+        création du chantier est ramenée à l'heure de synchro et notée au
+        chatter (« heure de synchro retenue ») ; valide : `client_ts` gardé ;
+        consigne et signature avant l'arrivée : heure de synchro.
+        ROUGE AVANT : `fait_le` = il y a 5 jours, 0 note."""
+        from apps.installations import field_capture
+        from apps.installations.models import ChantierChecklistItem, InstallationActivity
+        inst = self.iv.installation
+        Installation.objects.filter(pk=inst.pk).update(date_creation=timezone.now() - timedelta(days=2))
+        item = ChantierChecklistItem.objects.create(
+            company=self.company, installation=inst, cle='acsv23', libelle='Étape ACSV23')
+        maintenant = timezone.now()
+        res = self._sync('chantier.cocher_checklist', {'chantier': inst.id, 'cle': 'acsv23'},
+                         client_ts=(maintenant - timedelta(days=5)).isoformat())
+        self.assertEqual(res['status'], 'applied', res)
+        item.refresh_from_db()
+        self.assertGreaterEqual(item.fait_le, maintenant)
+        self.assertTrue(InstallationActivity.objects.filter(
+            installation=inst, body='Étape « Étape ACSV23 » cochée (synchro hors-ligne ; heure du '
+                                    'terminal invraisemblable, heure de synchro retenue)').exists())
+        saisie = (maintenant - timedelta(days=1)).replace(microsecond=0)
+        self._sync('chantier.cocher_checklist', {'chantier': inst.id, 'cle': 'acsv23'},
+                   client_ts=saisie.isoformat())
+        item.refresh_from_db()
+        self.assertEqual(item.fait_le, saisie)
+        self.assertTrue(InstallationActivity.objects.filter(
+            installation=inst, body='Étape « Étape ACSV23 » cochée (synchro hors-ligne)').exists())
+        # Consigne de sécurité avant l'arrivée sur site : heure de synchro.
+        Intervention.objects.filter(pk=self.iv.pk).update(arrivee_site_le=maintenant - timedelta(hours=1))
+        consigne = field_capture.ensure_safety_signoff(self.iv).items.first()
+        self.assertIsNotNone(consigne)
+        self._sync('intervention.cocher_safety', {'cle': consigne.cle},
+                   client_ts=(maintenant - timedelta(hours=3)).isoformat())
+        consigne.refresh_from_db()
+        self.assertGreaterEqual(consigne.coche_le, maintenant)

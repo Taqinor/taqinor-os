@@ -107,7 +107,7 @@
     },
     {
       "id": "mise_en_service",
-      "libelle": "Mise en service enregistrée",
+      "libelle": "Mise en service enregistrée (réceptionne le chantier)",
       "declencheur": {
         "type": "http",
         "source": "apps/installations/views/installation.py::InstallationViewSet.mise_en_service"
@@ -121,12 +121,56 @@
         {
           "regle": "La consommation des réservations sort le matériel du stock à « Installé ».",
           "source": "apps/installations/services.py::consume_reservations"
+        },
+        {
+          "regle": "La mise en service réceptionne le chantier : remise de garantie au parc, jalon RÉCEPTION, solde à facturer, e-mail client.",
+          "source": "apps/installations/services.py::_apply_reception_handover"
         }
       ],
-      "effet_automatique": false
+      "effet_automatique": true,
+      "compensation": {
+        "regle": "Un recul depuis « Réceptionné » défait le jalon RÉCEPTION (ici et au portail) et les dates de réception ; la prochaine réception recale le parc.",
+        "source": "apps/installations/jalon_reception.py::defaire_jalons_quittes"
+      }
     },
     {
-      "id": "reception_chantier",
+      "id": "reception_provisoire",
+      "libelle": "Réception provisoire (arrivée à « Réceptionné »)",
+      "declencheur": {
+        "type": "http",
+        "source": "apps/installations/views/installation.py::InstallationViewSet.perform_update"
+      },
+      "fonction_entree": "apps/installations/services.py::changer_statut_chantier",
+      "checkpoint": {
+        "persistance": "apps/installations/models_installation.py::Installation",
+        "description": "Statut « réceptionné » et date de réception posés par le seul service."
+      },
+      "regles_aval": [
+        {
+          "regle": "Remise de garantie : la nomenclature entre au parc installé.",
+          "source": "apps/installations/services.py::_apply_reception_handover"
+        },
+        {
+          "regle": "Jalon RÉCEPTION atteint et publié ; le solde à facturer est notifié.",
+          "source": "apps/installations/services.py::notifier_reception_solde_a_facturer"
+        },
+        {
+          "regle": "`chantier_receptionne` : proposition d'un contrat d'entretien au commercial.",
+          "source": "apps/sav/receivers.py::_proposer_contrat_maintenance_on_chantier_receptionne"
+        },
+        {
+          "regle": "`chantier_receptionne` : production attendue du monitoring semée.",
+          "source": "apps/monitoring/receivers.py::_semer_attendu_a_reception"
+        }
+      ],
+      "effet_automatique": true,
+      "compensation": {
+        "regle": "Un recul depuis « Réceptionné » défait le jalon RÉCEPTION (ici et au portail) et les dates de réception ; la prochaine réception recale le parc.",
+        "source": "apps/installations/jalon_reception.py::defaire_jalons_quittes"
+      }
+    },
+    {
+      "id": "reception_definitive",
       "libelle": "Réception définitive prononcée",
       "declencheur": {
         "type": "http",
@@ -135,20 +179,12 @@
       "fonction_entree": "apps/installations/services.py::prononcer_reception_definitive",
       "checkpoint": {
         "persistance": "apps/installations/models_installation.py::Installation",
-        "description": "Statut « réceptionné » et date de réception posés."
+        "description": "`date_reception_definitive` posée (journalisée) après la provisoire, réserves levées."
       },
       "regles_aval": [
         {
-          "regle": "`chantier_receptionne` : proposition d'un contrat d'entretien au commercial.",
-          "source": "apps/sav/receivers.py::_proposer_contrat_maintenance_on_chantier_receptionne"
-        },
-        {
-          "regle": "`chantier_receptionne` : production attendue du monitoring semée.",
-          "source": "apps/monitoring/receivers.py::_semer_attendu_a_reception"
-        },
-        {
-          "regle": "Le solde à facturer est notifié.",
-          "source": "apps/installations/services.py::notifier_reception_solde_a_facturer"
+          "regle": "Refusée avant la provisoire ou tant qu'une réserve est ouverte.",
+          "source": "apps/installations/services.py::raison_refus_reception_definitive"
         }
       ],
       "effet_automatique": false

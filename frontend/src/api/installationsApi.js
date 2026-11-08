@@ -30,6 +30,8 @@ const installationsApi = {
     api.post(`/installations/chantiers/${id}/mise-en-service/`, data),
   annuler: (id, motif) => api.post(`/installations/chantiers/${id}/annuler/`, { motif }),
   reactiver: (id) => api.post(`/installations/chantiers/${id}/reactiver/`),
+  // ACSV4 — annule UNE intervention (motif obligatoire).
+  annulerIntervention: (id, motif) => api.post(`/installations/interventions/${id}/annuler/`, { motif }),
   // N4/N9 — checklist d'exécution + saisie de n° de série.
   getChecklist: (id) => api.get(`/installations/chantiers/${id}/checklist/`),
   cocherChecklist: (id, payload) =>
@@ -47,8 +49,8 @@ const installationsApi = {
       { signature_client, signataire_nom, ...extra }),
   // CIQ637 — réception définitive (réserves toutes levées) : 400 FR listant
   // les réserves ouvertes en cas de refus.
-  prononcerReceptionDefinitive: (id) =>
-    api.post(`/installations/chantiers/${id}/reception-definitive/`, {}),
+  prononcerReceptionDefinitive: (id, motif) => // ACSV35 — motif de dérogation Directeur (facultatif)
+    api.post(`/installations/chantiers/${id}/reception-definitive/`, motif ? { motif_derogation: motif } : {}),
   // N4 — étapes modèle de checklist (Paramètres → Chantiers).
   getChecklistEtapes: (templateId, params) =>
     api.get('/installations/checklist-etapes/',
@@ -322,6 +324,10 @@ const installationsApi = {
     api.post(`/installations/interventions/${id}/cocher-safety/`, { cle, coche }),
   signerSafety: (id) =>
     api.post(`/installations/interventions/${id}/signer-safety/`, {}),
+  // ACSV91 — fiche d'intervention (relevé du gabarit) : lecture + saisie par champ.
+  getFiche: (id) => api.get(`/installations/interventions/${id}/fiche/`),
+  renseignerFiche: (id, valeurId, valeur) =>
+    api.post(`/installations/interventions/${id}/renseigner-fiche/`, { valeur_id: valeurId, valeur }),
   // ── FG69 — signature client sur le compte-rendu d'intervention ──
   signerClient: (id, { signature_client, signataire_nom }) =>
     api.post(`/installations/interventions/${id}/signer-client/`,

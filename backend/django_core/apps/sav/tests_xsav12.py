@@ -101,6 +101,26 @@ class XSAV12FusionTest(TestCase):
             self.doublon.activites.filter(
                 body__icontains=self.principal.reference).exists())
 
+    def test_doublon_facture_refuse(self):
+        # ACSV57 — doublon facturé : 409, rien n'est déplacé ; facture annulée
+        # (facture_id_ext vidé par ACSV63) : la fusion passe.
+        self.doublon.facture_id_ext = 4242
+        self.doublon.save(update_fields=['facture_id_ext'])
+        url = f'/api/django/sav/tickets/{self.principal.pk}/fusionner/'
+        resp = self.api.post(url, {'doublon_id': self.doublon.pk}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+        self.assertIn('déjà facturé', resp.json()['detail'])
+        self.doublon.refresh_from_db()
+        self.assertFalse(self.doublon.annule)
+        self.assertEqual(
+            PieceConsommee.objects.filter(ticket=self.principal).count(), 0)
+        self.doublon.facture_id_ext = None
+        self.doublon.save(update_fields=['facture_id_ext'])
+        resp = self.api.post(url, {'doublon_id': self.doublon.pk}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(
+            PieceConsommee.objects.filter(ticket=self.principal).count(), 1)
+
     def test_doublon_marque_annule_avec_motif(self):
         self.api.post(
             f'/api/django/sav/tickets/{self.principal.pk}/fusionner/',
@@ -164,3 +184,38 @@ class XSAV12FusionTest(TestCase):
             {'doublon_id': self.doublon.pk}, format='json')
         # Le doublon existe toujours (pas supprimé) — juste annulé.
         self.assertTrue(Ticket.objects.filter(pk=self.doublon.pk).exists())
+
+    def test_interventions_suivent_annulation_et_fusion(self):
+        """ACSV65 (C-ACSV-081) — annuler le ticket annule son intervention
+        ouverte (motif « Ticket <réf> annulé »), le réactiver la relève ; la
+        fusion porte celle du doublon au principal ; une intervention annulée
+        par son chantier n'est jamais relevée par le ticket.
+        ROUGE AVANT : ``annulee`` False, intervention restée sur le doublon."""
+        from apps.installations.models import Intervention
+        base = '/api/django/sav/tickets'
+        r = self.api.post(f'{base}/{self.principal.pk}/planifier-intervention/', {}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        iv = Intervention.objects.get(pk=r.data['intervention_id'])
+        du_chantier = Intervention.objects.create(
+            company=self.company, installation=self.inst, ticket=self.principal,
+            type_intervention='depannage', annulee=True,
+            motif_annulation=f'Chantier {self.inst.reference} annulé')
+        r = self.api.post(f'{base}/{self.principal.pk}/annuler/', {'motif': 'doublon client'}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        iv.refresh_from_db()
+        self.assertTrue(iv.annulee)
+        self.assertEqual(iv.motif_annulation, f'Ticket {self.principal.reference} annulé')
+        r = self.api.post(f'{base}/{self.principal.pk}/reactiver/', {}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        iv.refresh_from_db()
+        du_chantier.refresh_from_db()
+        self.assertFalse(iv.annulee)
+        self.assertTrue(du_chantier.annulee)
+        r = self.api.post(f'{base}/{self.doublon.pk}/planifier-intervention/', {}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        iv_d = Intervention.objects.get(pk=r.data['intervention_id'])
+        r = self.api.post(f'{base}/{self.principal.pk}/fusionner/', {'doublon_id': self.doublon.pk}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        iv_d.refresh_from_db()
+        self.assertEqual(iv_d.ticket_id, self.principal.pk)
+        self.assertFalse(iv_d.annulee)

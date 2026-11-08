@@ -108,6 +108,58 @@ class BalayagesSavTests(TestCase):
         t.refresh_from_db()
         self.assertEqual(t.statut, Ticket.Statut.RESOLU)
 
+    def test_cloture_facturable_non_facture_refusee(self):
+        """ACSV60 : « Clôturer » un ticket facturable à 1 pièce sans facture
+        rend 409 `ticket_non_facture`, le balayage le laisse Résolu, le
+        forçage responsable motivé passe (note), le Technicien est refusé."""
+        from decimal import Decimal
+
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
+        from apps.sav.models import PieceConsommee
+        from apps.stock.models import Produit
+        t = self._resolu_dormant(self.active)
+        Ticket.objects.filter(pk=t.pk).update(couverture='facturable')
+        produit = Produit.objects.create(
+            company=self.active, nom='Câble ACSV60', sku='CAB-ACSV60',
+            prix_vente=Decimal('50'), prix_achat=Decimal('20'))
+        PieceConsommee.objects.create(
+            company=self.active, ticket=t, produit=produit,
+            quantite=Decimal('1'), created_by=self.active._tech)
+        self.assertEqual(tasks.scan_auto_cloture_tickets_resolus(), 0)
+        t.refresh_from_db()
+        self.assertEqual(t.statut, Ticket.Statut.RESOLU)
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION='Bearer %s' % AccessToken.for_user(
+            self.active._tech))
+        url = f'/api/django/sav/tickets/{t.pk}/cloturer/'
+        r = api.post(url, {}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual(r.data['code'], 'ticket_non_facture')
+        role = Role.objects.create(
+            company=self.active, nom='Technicien ACSV60',
+            permissions=list(TECHNICIEN_PERMISSIONS))
+        tech = User.objects.create_user(
+            username='acsv60-tech', password='x', company=self.active,
+            role=role)
+        api_tech = APIClient()
+        api_tech.credentials(
+            HTTP_AUTHORIZATION='Bearer %s' % AccessToken.for_user(tech))
+        r = api_tech.post(url, {'sans_facture': True, 'motif': 'x'},
+                          format='json')
+        self.assertEqual(r.status_code, 403, r.data)
+        r = api.post(url, {'sans_facture': True, 'motif': 'geste commercial'},
+                     format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        t.refresh_from_db()
+        self.assertEqual(t.statut, Ticket.Statut.CLOTURE)
+        self.assertTrue(TicketActivity.objects.filter(
+            ticket=t,
+            body__contains='Clôturé sans facture : geste commercial').exists())
+
     def test_entree_beat(self):
         from django.conf import settings
 

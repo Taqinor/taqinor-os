@@ -30,6 +30,7 @@ from ..serializers_commissioning import (
 from . import _openapi as oa
 
 READ_ACTIONS = ['list', 'retrieve']
+MESSAGE_RECETTE_IEC_VERROUILLEE = 'Recette IEC 62446-1 verrouillée : le PV de réception est signé.'
 
 
 @oa.listing(p0=oa.qi('installation'))
@@ -55,6 +56,8 @@ class CommissioningRecordViewSet(oa.JsonOnlyMixin, UsageGuardedDestroyMixin,
         return [IsResponsableOrAdmin()]
 
     def destroy_guard_message(self, record):
+        if record.verrouillee:  # ACSV19
+            return MESSAGE_RECETTE_IEC_VERROUILLEE
         if record.passe:
             return ("Cette fiche de recette IEC 62446-1 est PASSÉE "
                     f"({record.get_resultat_display()}) : elle atteste la "
@@ -109,6 +112,8 @@ class CommissioningRecordViewSet(oa.JsonOnlyMixin, UsageGuardedDestroyMixin,
             created_by=self.request.user)
 
     def perform_update(self, serializer):
+        if serializer.instance.verrouillee:  # ACSV19 — PV signé : fiche figée
+            raise ValidationError({'verrouillee': MESSAGE_RECETTE_IEC_VERROUILLEE})
         self._check_installation_tenant(serializer)
         self._check_instrument_etalonnage(serializer)
         serializer.save(company=self.request.user.company)
@@ -126,6 +131,8 @@ class CommissioningRecordViewSet(oa.JsonOnlyMixin, UsageGuardedDestroyMixin,
         serveur."""
         from ..services import compute_iv_ecart
         record = self.get_object()
+        if record.verrouillee:  # ACSV19
+            raise ValidationError({'verrouillee': MESSAGE_RECETTE_IEC_VERROUILLEE})
         serializer = CommissioningIVReadingSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         reading = CommissioningIVReading(

@@ -97,6 +97,23 @@ describe('InstallationDetail — ACHT3 gestes refusés masqués', () => {
     natif.mockRestore()
   })
 
+  it('mise en service sous 100 % de checklist : annonce la réception, annuler n’envoie rien', async () => {
+    // ACSV36
+    const user = userEvent.setup()
+    installationsApi.miseEnService = vi.fn(() => Promise.resolve({ data: {} }))
+    rendre({ id: 10, reference: 'CH-10', statut: 'installe', annule: false, checklist_completion: 60,
+      mes_production_test: 5, mes_tension: 230 })
+    await ouvrirJalons(user)
+    await user.type(screen.getByLabelText('Date de mise en service'), '2026-10-28')
+    await user.click(screen.getByRole('button', BTN))
+    expect(await screen.findByRole('alertdialog')).toHaveTextContent(/réceptionne le chantier.*60 %/)
+    await user.click(screen.getByRole('button', { name: 'Annuler' }))
+    expect(installationsApi.miseEnService).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', BTN))
+    await user.click(await screen.findByRole('button', { name: 'Continuer' }))
+    await waitFor(() => expect(installationsApi.miseEnService).toHaveBeenCalledTimes(1))
+  })
+
   it('assignable-users : aucun appel pour un Technicien, appel pour un admin', async () => {
     const appel = vi.spyOn(crmApi, 'getAssignableUsers')
     rendre({ id: 8, reference: 'CH-8', statut: 'installe', annule: false },

@@ -140,3 +140,58 @@ class XFSM1FacturationTicketTest(TestCase):
         self.assertEqual(
             Facture.objects.filter(
                 company=self.company, client=self.client_obj).count(), 1)
+
+    def test_consommation_f11_du_ticket_facturee(self):
+        """ACSV53 (C-ACSV-063) — la pièce catalogue consommée (F11 appliquée)
+        par l'intervention du ticket figure sur sa facture, à côté de la
+        ``PieceConsommee``, sans doublon. ROUGE AVANT : ligne F11 absente."""
+        from apps.installations.models import (
+            ConsommationLigne, Intervention, MaterielConsommation,
+        )
+        from apps.ventes.models import Facture
+        ticket = self._ticket_hors_garantie()
+        fusible = Produit.objects.create(
+            company=self.company, nom='Fusible F11', sku='FUS-ACSV53',
+            prix_achat=Decimal('4'), prix_vente=Decimal('40'))
+        iv = Intervention.objects.create(
+            company=self.company, installation=self.inst, ticket=ticket,
+            type_intervention='depannage', created_by=self.admin)
+        conso = MaterielConsommation.objects.create(
+            company=self.company, intervention=iv, valide=True)
+        ConsommationLigne.objects.create(
+            company=self.company, consommation=conso, produit=fusible,
+            designation='Fusible F11', quantite_utilisee=Decimal('1'),
+            justification='remplacé', stock_applique=True)
+        resp = auth(self.admin).post(f'/api/django/sav/tickets/{ticket.id}/facturer/')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        lignes = Facture.objects.get(pk=resp.data['facture_id']).lignes.all()
+        par_produit = {ln.produit_id: ln for ln in lignes}
+        self.assertEqual(len(lignes), 3)  # pièce, F11, main-d'œuvre
+        self.assertEqual(par_produit[fusible.id].quantite, Decimal('1'))
+        self.assertEqual(par_produit[fusible.id].prix_unitaire, Decimal('40'))
+        self.assertEqual(par_produit[self.piece.id].quantite, Decimal('3'))
+
+    def test_facture_annulee_libere_le_ticket(self):
+        """ACSV63 (C-ACSV-147) — annuler la facture d'un ticket vide
+        ``facture_id_ext`` (note au chatter) et une nouvelle facture se génère.
+        ROUGE AVANT : ``facture_id_ext`` resté sur F1."""
+        from apps.sav.models import TicketActivity
+        import importlib
+        from apps.ventes.models import Facture
+        # Test boîte blanche (politique QJR645) : le domaine n'est pas exporté par la façade.
+        annuler_facture = importlib.import_module('apps.ventes.domain.annulation_facture').annuler_facture
+        api = auth(self.admin)
+        ticket = self._ticket_hors_garantie()
+        r1 = api.post(f'/api/django/sav/tickets/{ticket.id}/facturer/')
+        self.assertEqual(r1.status_code, 201, r1.content)
+        f1 = Facture.objects.get(pk=r1.data['facture_id'])
+        annuler_facture(f1, user=self.admin)
+        ticket.refresh_from_db()
+        self.assertIsNone(ticket.facture_id_ext)
+        self.assertTrue(TicketActivity.objects.filter(
+            ticket=ticket, body=f'Facture {f1.reference} annulée : le ticket est à refacturer.').exists())
+        r2 = api.post(f'/api/django/sav/tickets/{ticket.id}/facturer/')
+        self.assertEqual(r2.status_code, 201, r2.content)
+        self.assertNotEqual(r2.data['facture_id'], f1.pk)
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.facture_id_ext, r2.data['facture_id'])

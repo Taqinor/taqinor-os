@@ -6,6 +6,7 @@ puissance (depuis l'étude du devis sinon la taille souhaitée du lead),
 raccordement GELÉ (depuis le lead), type d'installation (depuis le devis).
 Référence sans collision via l'utilitaire commun (jamais count()+1).
 """
+import datetime as _dt
 import logging
 import re
 from decimal import Decimal
@@ -13,7 +14,7 @@ from decimal import Decimal
 from apps.ventes.utils.references import create_with_reference
 from core.verrous import sous_verrou
 from .listes_prechargees import relation
-from .jalon_reception import defaire_reception
+from .jalon_reception import defaire_jalons_quittes
 from .models import (
     Installation, ChecklistTemplate, ChecklistEtapeModele,
     ChantierChecklistItem, StageModele, StockReservation,
@@ -675,7 +676,12 @@ def _rattacher_chantier_de_revision(devis, user, company):
         ancienne_ref = getattr(chantier.devis, 'reference', None) or pred_id
         chantier.devis = devis
         chantier.save(update_fields=['devis'])
-        realigne = _realigner_nomenclature_revision(chantier, devis)
+        # ACSV1 — annulé par la désacceptation : réactivé (réaligne lui-même).
+        if chantier.annule and chantier.motif_annulation == MOTIF_ANNULATION_DESACCEPTATION:
+            _reactiver_chantier_reaccepte(chantier, devis, user)
+            realigne = True
+        else:
+            realigne = _realigner_nomenclature_revision(chantier, devis)
         suite = ('nomenclature et réservations réalignées sur la révision'
                  if realigne else 'nomenclature gelée inchangée')
         from . import activity
@@ -774,6 +780,7 @@ def annuler_chantiers_desaccepte(devis, user, company):
         inst.annule = True
         inst.motif_annulation = MOTIF_ANNULATION_DESACCEPTATION[:255]
         inst.save(update_fields=['annule', 'motif_annulation'])
+        annuler_interventions_ouvertes(inst, user)  # ACSV90 : non datées
         activity.log_note(
             inst, user,
             f"Chantier annulé automatiquement : l'acceptation du devis "
@@ -802,6 +809,7 @@ def _reactiver_chantier_reaccepte(inst, devis, user):
         inst.date_signature = date_acc
         champs.append('date_signature')
     inst.save(update_fields=champs)
+    reactiver_interventions_annulees(inst, user)  # ACSV90
     activity.log_note(inst, user, f'Chantier réactivé : le devis '
                       f'{devis.reference} a été accepté de nouveau.')
     if not realigner_nomenclature_si_divergente(
@@ -2467,6 +2475,10 @@ def _gate_check_series(installation, stage=None):
             "checklist du chantier en attend.")
 
 
+#: ACSV24 — fiche IEC structurée (CH3, 02/07/2026) : plus de repli `mes_*` après.
+DATE_RECETTE_STRUCTUREE = _dt.datetime(2026, 7, 2, tzinfo=_dt.timezone.utc)
+
+
 def _gate_check_tests(installation, stage=None):
     """CH3 — une fiche de recette IEC 62446-1 PASSÉE (conforme / conforme avec
     réserves) est requise pour franchir le gate « Mise en service ».
@@ -2496,8 +2508,9 @@ def _gate_check_tests(installation, stage=None):
             return None
         return ("Fiche de recette IEC 62446-1 non conforme "
                 f"({record.get_resultat_display()}).")
-    # Aucune fiche structurée : repli sur la saisie historique.
-    if (installation.date_mise_en_service
+    # Aucune fiche structurée : repli sur la saisie historique (chantiers d'avant CH3).
+    if (installation.date_creation and installation.date_creation < DATE_RECETTE_STRUCTUREE) and (
+            installation.date_mise_en_service
             or installation.mes_production_test is not None
             or installation.mes_tension is not None):
         return None
@@ -2820,6 +2833,10 @@ def creer_reserve_chantier(installation, user, *, description, origine,
     du chantier (jamais du corps). Journalisée au chatter."""
     from . import activity
     from .models import Reserve
+    if bloquante and installation.date_reception_definitive:  # ACSV97
+        from core.conflit_etat import ConflitEtat
+        raise ConflitEtat(f'Réception définitive prononcée le {installation.date_reception_definitive:%d/%m/%Y} : '
+                          'ouvrez un ticket SAV.')
     reserve = Reserve.objects.create(
         company=installation.company, installation=installation,
         description=description, origine=origine, bloquante=bool(bloquante),
@@ -2837,21 +2854,47 @@ def lever_reserve_chantier(reserve, user, *, resolution=''):
     """CIQ628 — lève une réserve (statut résolue, date, auteur)."""
     from django.utils import timezone
 
+    from django.db import transaction
+
     from . import activity
     from .models import Reserve
-    reserve.statut = Reserve.Statut.RESOLUE
-    reserve.resolue_le = timezone.now()
-    reserve.levee_par = user if getattr(user, 'pk', None) else None
-    if resolution:
-        reserve.resolution = resolution
-    reserve.save(update_fields=['statut', 'resolue_le', 'levee_par',
-                                'resolution', 'date_modification'])
+    with transaction.atomic():  # ACSV40 — relue sous verrou : jamais levée deux fois
+        verrou = Reserve.objects.select_for_update().get(pk=reserve.pk)
+        if verrou.statut == Reserve.Statut.RESOLUE:
+            from core.conflit_etat import ConflitEtat
+            raise ConflitEtat(f'Réserve déjà levée le {timezone.localtime(verrou.resolue_le):%d/%m/%Y}.'
+                              if verrou.resolue_le else 'Réserve déjà levée.')
+        verrou.statut = Reserve.Statut.RESOLUE
+        verrou.resolue_le = timezone.now()
+        verrou.levee_par = user if getattr(user, 'pk', None) else None
+        if resolution:
+            verrou.resolution = resolution
+        verrou.save(update_fields=['statut', 'resolue_le', 'levee_par',
+                                   'resolution', 'date_modification'])
+    reserve.refresh_from_db()
     chantier = reserve.installation or getattr(
         reserve.intervention, 'installation', None)
     if chantier is not None:
         activity.log_note(chantier, user,
                           f"Réserve levée : {reserve.description}")
+    _resoudre_ticket_de_reserve(reserve, user, chantier)
     return reserve
+
+
+def _resoudre_ticket_de_reserve(reserve, user, chantier):
+    """ACSV66 — lever une réserve résout le ticket SAV né d'elle (transition
+    système) ; ticket déjà résolu/clos : rien ; transition refusée : note au
+    chantier (la réserve reste levée)."""
+    from . import activity
+    ticket = reserve.ticket
+    if ticket is None or ticket.statut in ('resolu', 'cloture'):
+        return
+    from apps.sav.services import TransitionTicketRefusee, appliquer_transition_ticket
+    try:
+        appliquer_transition_ticket(ticket, 'resolu', user, systeme=True)
+    except TransitionTicketRefusee as exc:
+        if chantier is not None:
+            activity.log_note(chantier, user, f"Ticket {ticket.reference} non résolu : {exc}")
 
 
 # ── CIQ629 — réception provisoire puis définitive ──────────────────────────
@@ -2881,15 +2924,23 @@ def date_definitive_prevue(installation):
         return None
 
 
-def raison_refus_reception_definitive(installation):
+def raison_refus_reception_definitive(installation, *, user=None, motif_derogation=''):
     """CIQ629 — raison FR qui refuse la définitive (pas de provisoire, ou
-    réserves ouvertes listées), sinon ``None``."""
+    réserves ouvertes listées), sinon ``None``. ACSV35 (D-ACSV-1) — aussi un
+    chantier annulé, et avant la date prévue sauf dérogation Directeur motivée."""
+    if installation.annule:
+        return 'Réception définitive impossible : chantier annulé.'
     if installation.date_reception is None:
         return RAISON_DEFINITIVE_SANS_PROVISOIRE
     ouvertes = reserves_ouvertes(installation)
     if ouvertes:
         return ("Réception définitive impossible : réserve(s) non "
                 "levée(s) : " + _descriptions_reserves(ouvertes) + ".")
+    prevue = date_definitive_prevue(installation)
+    from django.utils import timezone
+    if prevue and timezone.localdate() < prevue and not (motif_derogation and est_directeur(user)):
+        return (f'Réception définitive possible à partir du {prevue:%d/%m/%Y} ; '
+                "avant, dérogation d'un Directeur avec motif.")
     return None
 
 
@@ -2908,7 +2959,7 @@ def reception_contrat(installation):
     }
 
 
-def prononcer_reception_definitive(installation, user, *, date=None):
+def prononcer_reception_definitive(installation, user, *, date=None, motif_derogation=''):
     """CIQ629 — pose ``date_reception_definitive`` (journalisée) ; lève
     :class:`ReceptionDefinitiveRefusee` avant la provisoire ou tant qu'une
     réserve est ouverte. Aucune écriture financière ici (la partie D2 lit
@@ -2916,13 +2967,17 @@ def prononcer_reception_definitive(installation, user, *, date=None):
     from django.utils import timezone
 
     from . import activity
-    raison = raison_refus_reception_definitive(installation)
+    raison = raison_refus_reception_definitive(installation, user=user, motif_derogation=motif_derogation)
     if raison:
         raise ReceptionDefinitiveRefusee(raison)
     if installation.date_reception_definitive is not None:
         return installation
     installation.date_reception_definitive = date or timezone.localdate()
     installation.save(update_fields=['date_reception_definitive'])
+    prevue = date_definitive_prevue(installation)  # ACSV35 — dérogation tracée
+    if prevue and installation.date_reception_definitive < prevue:
+        activity.log_note(installation, user, 'Réception définitive prononcée par dérogation Directeur avant le '
+                          f'{prevue:%d/%m/%Y} — motif : {motif_derogation}')
     activity.log_note(
         installation, user,
         "Réception définitive prononcée le "
@@ -4676,7 +4731,8 @@ def previsualiser_replanification_masse(company, *, jour, technicien_id=None,
     from .models import Intervention
     from .planification_lot import suggerer_creneaux_lot
 
-    qs = Intervention.objects.filter(company=company, date_prevue=jour)
+    qs = Intervention.objects.filter(company=company, date_prevue=jour, annulee=False).exclude(  # ACSV10
+        statut__in=(Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE))
     if technicien_id is not None:
         qs = qs.filter(technicien_id=technicien_id)
     if intervention_ids:
@@ -5100,6 +5156,10 @@ class TicketSansInstallationError(Exception):
     création d'une intervention (rien à planifier sans Installation)."""
 
 
+class ChantierAnnuleError(TicketSansInstallationError):
+    """ACSV69 — chantier du ticket annulé (traduit en 409 par l'appelant)."""
+
+
 def creer_intervention_depuis_ticket(*, ticket, user, company,
                                      type_intervention=None):
     """YSERV2 — Point d'entrée cross-app (services.py cible) pour créer une
@@ -5123,6 +5183,9 @@ def creer_intervention_depuis_ticket(*, ticket, user, company,
         raise TicketSansInstallationError(
             "Ce ticket n'a pas de chantier lié — impossible de planifier "
             'une intervention.')
+    if Installation.objects.filter(pk=ticket.installation_id, annule=True).exists():
+        raise ChantierAnnuleError(
+            'Ce chantier est annulé — impossible de créer une nouvelle intervention.')
 
     interv = Intervention.objects.create(
         company=company,
@@ -5133,6 +5196,7 @@ def creer_intervention_depuis_ticket(*, ticket, user, company,
         date_prevue=ticket.date_tournee,
         created_by=user,
     )
+    _notifier_intervention_assignee(interv, user)  # ACSV69 — effet de la porte principale (CHT9)
     return interv
 
 
@@ -5607,18 +5671,21 @@ _STATUT_DATE_FIELD = {
 }
 
 
-def _stamp_statut_dates(inst, old_statut):
+def _stamp_statut_dates(inst, old_statut, date_saisie=None):
     """Pose la date du jalon atteint si elle est vide (jamais d'écrasement).
     Travaille sur le statut CANONIQUE pour couvrir aussi les statuts hérités.
     AUD316 — migré de `views/installation.py` : un effet de bord de statut ne
     s'appelle plus « à la carte » depuis une vue."""
     from django.utils import timezone
+    from django.utils.dateparse import parse_date
     canon = Installation.canonical_statut(inst.statut)
     if Installation.canonical_statut(old_statut) == canon:
         return None
     field = _STATUT_DATE_FIELD.get(canon)
     if field and getattr(inst, field, None) is None:
-        setattr(inst, field, timezone.localdate())
+        # ACSV21 — réception prononcée par la mise en service : sa date saisie.
+        saisie = parse_date(str(date_saisie)) if date_saisie and field == 'date_reception' else None
+        setattr(inst, field, saisie or timezone.localdate())
         inst.save(update_fields=[field])
         return field
     return None
@@ -5640,7 +5707,7 @@ def _publier_jalon_statut(inst, canon_old, canon_new, user):
     Idempotent (contrainte unique installation+phase) ; un retour en arrière
     n'atteint rien de nouveau ; best-effort, ne bloque jamais la transition.
     AARG46 — le retour avant RÉCEPTIONNÉ défait le jalon RÉCEPTION."""
-    defaire_reception(inst, canon_old, canon_new)  # AARG46
+    defaire_jalons_quittes(inst, canon_old, canon_new)  # AARG46, ACSV3
     if canon_new == canon_old or canon_new not in _STATUT_JALON_SUIVI:
         return None
     phase, libelle, champ_date = _STATUT_JALON_SUIVI[canon_new]
@@ -5713,6 +5780,10 @@ def _apply_reception_handover(inst, canon_old, canon_new, user):
         return None
     from apps.sav.services import sweep_bom_to_parc
     from apps.stock.selectors import get_produit_scoped
+    defaite = (inst.custom_data or {}).pop('date_reception_defaite', None)  # ACSV31
+    if defaite:
+        inst.save(update_fields=['custom_data'])
+        recaler_parc_apres_correction_reception(inst, _dt.date.fromisoformat(defaite), user)
 
     def _resolve(produit_id):
         return get_produit_scoped(inst.company, produit_id)
@@ -6037,7 +6108,8 @@ def changer_statut_chantier(installation, nouveau_statut, user, *, etape=None,
     canon_new = Installation.canonical_statut(installation.statut)
 
     effets = {}
-    effets['date_jalon'] = _stamp_statut_dates(installation, ancien_statut)
+    effets['date_jalon'] = _stamp_statut_dates(  # ACSV21
+        installation, ancien_statut, (champs_supplementaires or {}).get('date_mise_en_service'))
     # ADOC172 — « Matériel » / « Installation » du suivi client.
     effets['jalon_suivi'] = _publier_jalon_statut(
         installation, canon_old, canon_new, user)
@@ -6197,11 +6269,11 @@ def verifier_securite_avant_demarrage(intervention, nouveau_statut):
         return None
     if not getattr(profil, 'securite_obligatoire_avant_demarrage', False):
         return None
-    from .field_capture import ensure_safety_signoff
+    from .field_capture import ensure_safety_signoff, points_non_coches
     signoff = ensure_safety_signoff(intervention)
-    if signoff.signe:
+    non_coches = points_non_coches(signoff)
+    if signoff.signe and not non_coches:  # ACSV16 — signé ET complet
         return None
-    non_coches = [it.libelle for it in signoff.items.all() if not it.coche]
     detail = (' Points non cochés : ' + ' ; '.join(non_coches) + '.'
               if non_coches else '')
     return ("Consignes de sécurité non signées : démarrage et fin "
@@ -6345,24 +6417,28 @@ def annuler_interventions_ouvertes(installation, user):
     des vues. Ce choix est ré-affirmé par `tests_parite_cascade.py` ; le
     changer exige de le changer AUSSI dans ce test.
     """
-    from .models_intervention import Intervention
+    return _annuler_interventions(
+        installation.interventions, user,
+        f'Chantier {installation.reference} annulé', 'chantier annulé')
 
-    qs = installation.interventions.exclude(
-        statut__in=[Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE]
-    ).filter(annulee=False)
+
+def _annuler_interventions(qs, user, motif, cause):
+    """YSERV6/ACSV102 — annule les interventions ouvertes de ``qs`` (motif, note, notification)."""
+    from .models_intervention import Intervention
+    from .annulation_intervention import annuler_intervention  # ACSV4 — 1 implémentation
     count = 0
-    for interv in qs:
-        interv.annulee = True
-        interv.motif_annulation = (
-            f'Chantier {installation.reference} annulé')
-        interv.save(update_fields=['annulee', 'motif_annulation'])
-        from . import intervention_activity
-        intervention_activity.log_note(
-            interv, user,
-            'Intervention annulée automatiquement — chantier annulé.')
-        _notifier_intervention_annulee(interv, user)
+    for interv in qs.exclude(statut__in=[
+            Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE]
+    ).filter(annulee=False):
+        annuler_intervention(interv, user, motif, f'Intervention annulée automatiquement — {cause}.')
         count += 1
     return count
+
+
+def annuler_interventions_du_ticket(ticket_id, user, motif):
+    """ACSV102 — annule les interventions ouvertes du ticket, motif « Ticket <réf> annulé »."""
+    from .models_intervention import Intervention
+    return _annuler_interventions(Intervention.objects.filter(ticket_id=ticket_id), user, motif, 'ticket SAV annulé')
 
 
 def _notifier_intervention_annulee(interv, user):
@@ -6402,19 +6478,39 @@ def reactiver_interventions_annulees(installation, user):
     traçant la provenance) — jamais une intervention annulée pour une autre
     raison. Renvoie le nombre réactivé."""
     marker = f'Chantier {installation.reference} annulé'
-    qs = installation.interventions.filter(
-        annulee=True, motif_annulation=marker)
+    return _relever_interventions(installation.interventions.filter(
+        annulee=True, motif_annulation=marker), user, 'chantier réactivé')
+
+
+def _relever_interventions(qs, user, cause):
+    """Helper commun YSERV6 / ACSV102 : lève ``annulee`` sur ``qs``."""
+    from . import intervention_activity
     count = 0
     for interv in qs:
         interv.annulee = False
         interv.motif_annulation = None
         interv.save(update_fields=['annulee', 'motif_annulation'])
-        from . import intervention_activity
         intervention_activity.log_note(
-            interv, user,
-            'Intervention réactivée — chantier réactivé.')
+            interv, user, f'Intervention réactivée — {cause}.')
         count += 1
     return count
+
+
+def reactiver_interventions_du_ticket(ticket_id, user):
+    """ACSV102 — relève SEULES celles annulées par le ticket (motif « Ticket … annulé »)."""
+    from .models_intervention import Intervention
+    return _relever_interventions(Intervention.objects.filter(
+        ticket_id=ticket_id, annulee=True, motif_annulation__startswith='Ticket ',
+        motif_annulation__endswith=' annulé'), user, 'ticket SAV réactivé')
+
+
+def rattacher_interventions_au_ticket(source_id, cible_id):
+    """ACSV102 — fusion SAV : interventions de ``source_id`` portées par ``cible_id`` (même société)."""
+    from .models_intervention import Intervention
+    cible = Intervention._meta.get_field('ticket').related_model.objects.filter(
+        pk=cible_id).values_list('company_id', flat=True).first()
+    return Intervention.objects.filter(
+        ticket_id=source_id, company_id=cible).update(ticket_id=cible_id)
 
 
 # ── YSERV7 — jalons atteints & réception → rappel de facturation d'échéancier
@@ -6545,11 +6641,12 @@ def _notifier_client_jalon_atteint(installation, jalon):
                 "\n\nLe procès-verbal de réception et le bon de livraison "
                 "sont disponibles dans la rubrique « Mes documents » de "
                 "votre espace client dès leur signature.")
-        send_mail(
+        from django.db import transaction  # ACSV98 — au commit, jamais avant (patron QJR422)
+        transaction.on_commit(lambda: send_mail(
             f'Chantier {installation.reference} — {jalon.libelle} atteint',
             corps,
             getattr(settings, 'DEFAULT_FROM_EMAIL', None),
-            [email_addr], fail_silently=True)
+            [email_addr], fail_silently=True))
     except Exception:  # pragma: no cover - défensif, best-effort
         logger.warning(
             'CHT11 — email jalon portail (jalon %s) échoué', jalon.pk,
@@ -6563,20 +6660,19 @@ def notifier_reception_solde_a_facturer(installation, user=None):
     volée) le jalon RECEPTION du chantier pour y accrocher le drapeau, sans
     dupliquer le mécanisme de garde. No-op sans devis source."""
     devis = getattr(installation, 'devis', None)
-    if devis is None:
-        return False
+    # ACSV39 — sans devis : jalon atteint et publié, sans tranche ni rappel.
     jalon, _ = JalonProjet.obtenir_ou_creer_phase(
         installation, JalonProjet.Phase.RECEPTION,
         defaults={
             'company': installation.company,
             'libelle': 'Réception',
-            'tranche_echeancier': JalonProjet.TRANCHE_SOLDE,
+            'tranche_echeancier': JalonProjet.TRANCHE_SOLDE if devis is not None else None,
         })
     changed_fields = []
     if not jalon.atteint:
         jalon.atteint = True
         changed_fields.append('atteint')
-    if not jalon.tranche_echeancier:
+    if devis is not None and not jalon.tranche_echeancier:
         jalon.tranche_echeancier = JalonProjet.TRANCHE_SOLDE
         changed_fields.append('tranche_echeancier')
     if changed_fields:
@@ -6585,6 +6681,8 @@ def notifier_reception_solde_a_facturer(installation, user=None):
         # parmi PLANIFIE/EN_COURS/INSTALLE/RECEPTIONNE, qui marque aujourd'hui
         # un JalonProjet atteint automatiquement) se propage au portail.
         synchroniser_jalon_portail(jalon, user)
+    if devis is None:
+        return False
     return notifier_jalon_a_facturer(jalon, user)
 
 
@@ -6601,7 +6699,7 @@ def chantiers_a_facturer(company, user=None):
     out = []
     jalons = (
         JalonProjet.objects
-        .filter(company=company, atteint=True,
+        .filter(company=company, atteint=True, installation__annule=False,  # ACSV9
                 tranche_echeancier__isnull=False)
         .exclude(tranche_echeancier='')
         .select_related('installation', 'installation__devis')

@@ -1105,6 +1105,18 @@ def partager_document_avec_client_portail(document, client_id,
         niveau=ACL_LECTURE, herite=False, created_by=created_by)
 
 
+def retirer_partage_client_portail(document, *, sauf_client_id=None):
+    """ACSV33 — retire le partage portail (``AclGed.client``) du document à tout client sauf
+    ``sauf_client_id`` (société du document) ; rend le nombre d'entrées retirées."""
+    from .models import AclGed
+    if document is None:
+        return 0
+    qs = AclGed.objects.filter(company=document.company, document=document, client__isnull=False)
+    if sauf_client_id:
+        qs = qs.exclude(client_id=sauf_client_id)
+    return qs.delete()[0]
+
+
 def _store_bytes(data, *, mime='application/pdf'):
     """Téléverse des octets bruts dans le stockage objet et renvoie (clé, méta).
 
