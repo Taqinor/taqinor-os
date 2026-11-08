@@ -1629,7 +1629,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     @oa.extend_schema(
         parameters=[oa.OpenApiParameter('rid', oa.ID_SCHEMA, oa.OpenApiParameter.PATH)],
         request=oa.body('LeverReserveRequete', resolution=oa.s()),
-        responses=oa.OBJ,
+        responses={200: oa.OBJ, 409: oa.OBJ},
     )
     @action(detail=True, methods=['post'],
             url_path=r'reserves/(?P<rid>\d+)/lever',

@@ -2850,6 +2850,10 @@ def lever_reserve_chantier(reserve, user, *, resolution=''):
 
     from . import activity
     from .models import Reserve
+    if reserve.statut == Reserve.Statut.RESOLUE:  # ACSV40 — jamais levée deux fois
+        from core.conflit_etat import ConflitEtat
+        raise ConflitEtat(f'Réserve déjà levée le {timezone.localtime(reserve.resolue_le):%d/%m/%Y}.'
+                          if reserve.resolue_le else 'Réserve déjà levée.')
     reserve.statut = Reserve.Statut.RESOLUE
     reserve.resolue_le = timezone.now()
     reserve.levee_par = user if getattr(user, 'pk', None) else None

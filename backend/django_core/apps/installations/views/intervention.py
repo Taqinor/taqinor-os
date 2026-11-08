@@ -39,7 +39,7 @@ from ..serializers import (
     ReverificationMesureSerializer,
     FicheInterventionReleveSerializer,
 )
-from ..services import enregistrer_reverification
+from ..services import enregistrer_reverification, lever_reserve_chantier
 from .. import field_services
 from .. import field_capture
 from .. import field_sync
@@ -1868,7 +1868,7 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
     @oa.extend_schema(
         request=oa.body('ResoudreReserveRequete', reserve=oa.i(True),
                         statut=oa.choice(Reserve.Statut.values), resolution=oa.s()),
-        responses=ReserveSerializer,
+        responses={200: ReserveSerializer, 409: oa.OBJ},
     )
     @action(detail=True, methods=['post'], url_path='resoudre-reserve',
             permission_classes=[IsResponsableOrAdmin])
@@ -1881,11 +1881,12 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
             return Response({'detail': 'Réserve inconnue.'},
                             status=oa.statut_inconnu(request.data.get('reserve')))
         statut = oa.choix_corps(request, 'statut', Reserve.Statut.values, Reserve.Statut.RESOLUE)
-        reserve.statut = statut
-        reserve.resolution = (request.data.get('resolution') or '').strip()
-        reserve.resolue_le = (timezone.now()
-                              if statut == Reserve.Statut.RESOLUE else None)
-        reserve.save(update_fields=['statut', 'resolution', 'resolue_le'])
+        resolution = (request.data.get('resolution') or '').strip()
+        if statut == Reserve.Statut.RESOLUE:  # ACSV40 — une seule porte de levée (auteur, chatter, 409)
+            lever_reserve_chantier(reserve, request.user, resolution=resolution)
+        else:
+            reserve.statut, reserve.resolution, reserve.resolue_le = statut, resolution, None
+            reserve.save(update_fields=['statut', 'resolution', 'resolue_le'])
         return Response(ReserveSerializer(
             reserve, context={'request': request}).data)
 

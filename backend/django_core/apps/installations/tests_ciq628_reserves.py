@@ -118,6 +118,44 @@ class ReservesChantierTests(TestCase):
         self.assertEqual(r.status_code, 400, r.data)
         self.assertIn('resolution', r.data)
 
+    def test_lever_deux_fois_409_et_resoudre_trace_l_auteur(self):
+        """ACSV40 (C-ACSV-144) — une seule porte de levée : lever une réserve
+        déjà levée rend 409 sans réécrire date ni auteur ; « Résoudre » de
+        l'intervention délègue la levée (auteur, note, résolution gardée).
+        ROUGE AVANT : 200, `resolue_le` réécrit ; `levee_par` vide."""
+        import datetime
+
+        from django.utils import timezone
+
+        from apps.installations.models import InstallationActivity
+        leve_le = timezone.make_aware(datetime.datetime(2026, 11, 1, 10, 0))
+        r1 = Reserve.objects.create(
+            company=self.company, installation=self.inst, description='Câble',
+            statut=Reserve.Statut.RESOLUE, resolue_le=leve_le,
+            levee_par=self.user, resolution='Câble posé')
+        b = make_user(self.company)
+        api_b = auth(b)
+        r = api_b.post(f'{self.url}{r1.id}/lever/', {}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual(r.data['detail'], 'Réserve déjà levée le 01/11/2026.')
+        r1.refresh_from_db()
+        self.assertEqual((r1.resolue_le, r1.levee_par_id), (leve_le, self.user.id))
+        iv = Intervention.objects.create(
+            company=self.company, installation=self.inst,
+            type_intervention='pose', created_by=self.user)
+        r2 = Reserve.objects.create(
+            company=self.company, intervention=iv, description='Joint',
+            resolution='Joint repris')
+        r = api_b.post(f'{BASE}/interventions/{iv.id}/resoudre-reserve/',
+                       {'reserve': r2.id, 'resolution': ''}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        r2.refresh_from_db()
+        self.assertEqual(r2.statut, Reserve.Statut.RESOLUE)
+        self.assertEqual(r2.levee_par, b)
+        self.assertEqual(r2.resolution, 'Joint repris')
+        self.assertTrue(InstallationActivity.objects.filter(
+            installation=self.inst, body='Réserve levée : Joint').exists())
+
     def test_company_jamais_prise_du_corps(self):
         autre = make_company()
         r = self._ajouter(company=autre.id)
