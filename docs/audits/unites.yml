@@ -756,3 +756,25 @@ unites:
     date: 2026-11-06
     dossier: docs/audits/2026-11-06-parcours-PA6.md
     notes: "Quatrième audit de PARCOURS (L3, 06/11/2026, base 16da385) : 63 constats, 49 prouvés par sonde et 14 lus (S3) ; gravités 14 S1, 21 S2, 28 S3, dont 4 S1 conditionnels à un réglage éteint par défaut (RAS-TVA, budget départemental, produit « sur commande »). S1 : GR/IR jamais réduit par un retour ni lettré par réception, retour sur BCF livré au chantier, annulation de réception périmée, acomptes non imputés au lien d'une facture, 3 voies aveugle à HT + TVA ≠ TTC, relevé de TVA incomplet, RAS-TVA sous-retenue, nature d'achat jamais posée, besoin matériel sur-compté, BCF au prix catalogue, annulation de BCF sans défaire la DA ni le budget, « déjà sorti » compté deux fois, archivage d'un produit en stock. Seconde lentille sur 15 S1 : 9 maintenus, 3 conditionnels, 3 abaissés S3 (annulation d'une réception confirmée sans bouton). Prod lue le 06/11 : exposition nulle (achats quasi inutilisés). D-AAPV-1..4 (RAS sur TVA nette, imputation qui solde, F11 = ses produits, nature d'achat par défaut fournisseur). 1 critique Fable (7 trous dont 3 sondés). Tâches AAPV1-74 (68 posées : STOCK 47, CHANTIERS 20, ANALYSE 1)."
+
+  - id: PA5
+    rang: 24
+    declencheur: chantier-sav
+    titre: "Parcours PA5 « Chantier → SAV » : chantier créé depuis le devis accepté → planning des interventions → checklist et exécution terrain (F11, photos, relevés, hors-ligne) → avancement et jalons → mise en service → réception (PV, réserves, définitive, documents client) → parc SAV (balayage, garanties) → ticket SAV (correctif, garantie remplacement, intervention, facture) (METHODE §D.1)"
+    possede: []
+    perimetre_lu:
+      - "table backend/django_core/apps/installations/parcours/PA5.json (pilote chantiers) ; apps/installations, apps/sav, apps/documents, apps/ged, apps/portail (selectors), apps/ventes (domain/facturation_ops.py, quote_engine/extra_docs.py), apps/stock (services, services_wms), apps/crm/fiche_funnel.py, apps/records/views.py, apps/reporting/integrity.py, apps/roles/permissions_registre.py, frontend pages installations / sav / interventions et features/installations"
+    coutures:
+      - "passages de main devis accepté ↔ chantier (désacceptation, révision, réservations) ↔ interventions ↔ réception (PV et BL figés, partage portail, jalons) ↔ parc SAV ↔ ticket (garantie, récidive, pièces, facture) ; rôles × gestes d'argent et de stock du SAV ; annulations et corrections qui doivent défaire leurs effets (contrat d'entretien, interventions du ticket, réserve ↔ ticket, prêt d'équipement)"
+    P: 4
+    I: 4
+    score: 16
+    niveau: L3
+    statut: audité
+    groupe: ACSV
+    plan: docs/plans/PLAN_AUDIT_CHANTIERS.md
+    plans_alimentes: [docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_SAV.md, docs/plans/PLAN_AUDIT_DOCUMENTS.md, docs/plans/PLAN_AUDIT_MOTEUR.md, docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md]
+    pr: 1297
+    date: 2026-11-07
+    dossier: docs/audits/2026-11-07-parcours-PA5.md
+    notes: "Cinquième audit de PARCOURS (L3, 06-07/11/2026, base ddf1f97, fraîcheur 39313d4) : 58 constats, 36 prouvés par sonde et 22 lus (20 S3, 2 S4) ; gravités 7 S1, 20 S2, 29 S3, 2 S4. S1 : PV industriel signé re-rendu sous la signature du client quand une réserve change ou s'ajoute, ticket né d'une réserve facturable avant réception, récidive détectée par une seule porte de création, pièces SAV sorties hors verrou et en quarantaine, F11 d'un dépannage absente de la facture du ticket, équipement retiré deux fois par « Corriger », doublon facturé refacturé par la fusion. Seconde lentille sur les 7 S1 : 5 maintenus, 2 élargis (PV signé, pièces SAV), 0 réfuté. Prod lue le 07/11 : exposition nulle (aucun PV industriel signé, aucun ticket concerné). D-ACSV-1..4 (définitive : plancher et dérogation Directeur ; parc visible par qui voit le chantier ; droits ventes et stock exigés sur les gestes d'argent du SAV ; signature client refusée sur chantier annulé seulement). 1 critique Fable (8 trous dont 4 sondés : chantier annulé sans abonné SAV, ticket annulé et son intervention, réserve et ticket sans synchro, prêt sans rappel). Tâches ACSV1-104 (70 posées : CHANTIERS 43, SAV 20, DOCUMENTS 3, TRANSVERSE 2, MOTEUR 1, FACTURATION 1)."

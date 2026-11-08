@@ -3684,6 +3684,52 @@ decisions:
     date: "2026-11-05"
     source: "Reda, question interactive, contre-visite vérifie ADVS"
     taches: [ADVS49]
+  - id: D-ACSV-1
+    question: "La réception définitive peut être prononcée le lendemain de la provisoire, alors que la date prévue vaut provisoire + délai contractuel (ex. 12 mois). Quelle règle ?"
+    options:
+      - cle: plancher_et_derogation
+        texte: "Refus (409) avant la date prévue, sauf dérogation d'un Directeur avec motif tracé (même schéma que CIQ621)"
+      - cle: plancher_strict
+        texte: "Toujours refusée avant la date prévue, sans dérogation"
+      - cle: libre
+        texte: "Possible à tout moment après la provisoire ; la date prévue n'est qu'un rappel"
+    reponse: plancher_et_derogation
+    date: "2026-11-06"
+    source: "Reda, question interactive, audit de parcours PA5"
+    taches: [ACSV35]
+  - id: D-ACSV-2
+    question: "Parc SAV : un Technicien qui voit un chantier voit 0 de ses équipements, car le parc est filtré par auteur (le responsable les a créés à la réception). Qui voit les équipements d'un chantier ?"
+    options:
+      - cle: qui_voit_le_chantier
+        texte: "Quiconque voit le chantier voit tout son parc"
+      - cle: par_auteur
+        texte: "Garder la portée par auteur (comportement actuel)"
+    reponse: qui_voit_le_chantier
+    date: "2026-11-06"
+    source: "Reda, question interactive, audit de parcours PA5"
+    taches: [ACSV58]
+  - id: D-ACSV-3
+    question: "Sur un ticket SAV, un Technicien sans droit ventes crée devis et facture, et un Commercial responsable sans droit de mouvement de stock sort des pièces — `sav_gerer` suffit. Que doivent exiger ces gestes ?"
+    options:
+      - cle: droits_metier_exiges
+        texte: "Devis / facture du ticket exigent les droits ventes, sorties de pièces le droit de mouvement de stock, en plus de sav_gerer"
+      - cle: sav_gerer_suffit
+        texte: "Garder : sav_gerer suffit pour devis, facture et pièces depuis un ticket"
+    reponse: droits_metier_exiges
+    date: "2026-11-06"
+    source: "Reda, question interactive, audit de parcours PA5"
+    taches: [ACSV62]
+  - id: D-ACSV-4
+    question: "La signature client du chantier (PV / bon de livraison) fonctionne dans tout état, même sur un chantier annulé ; le BL se signe « à la livraison du matériel », avant « Installé ». Que refuser ?"
+    options:
+      - cle: annule_seulement
+        texte: "Refuser la signature sur un chantier annulé seulement ; la signature à la livraison (avant Installé) reste permise"
+      - cle: avant_installe_aussi
+        texte: "Refuser aussi avant « Installé »"
+    reponse: annule_seulement
+    date: "2026-11-07"
+    source: "Reda, question interactive, audit de parcours PA5"
+    taches: [ACSV34]
   - id: D-AAPV-1
     question: "RAS-TVA fournisseur : après imputation d'un avoir fournisseur, la retenue de 75 % porte-t-elle sur la TVA nette des avoirs ou sur la TVA totale de la facture ? (aujourd'hui : totale — 200 retenus au lieu de 100 sur une facture avec un avoir de 600 TTC)"
     options:
