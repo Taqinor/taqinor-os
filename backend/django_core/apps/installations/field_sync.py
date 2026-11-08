@@ -30,7 +30,7 @@ de l'intervention n'est jamais touchée (séparée du chantier et de STAGES.py).
 """
 from datetime import timedelta
 
-from django.db import IntegrityError, transaction
+from django.db import DatabaseError, IntegrityError, transaction
 from django.utils import timezone
 
 from .models import (
@@ -227,6 +227,16 @@ def _h_cocher_outil(company, user, payload):
     return {'ligne': ligne.id, 'coche': ligne.coche}
 
 
+def _texte_borne(valeur, modele, champ, libelle):
+    """ACSV17 — refus nommé d'un texte que la base rejetterait (NUL, trop long)."""
+    if '\x00' in valeur:
+        raise FieldOpError(f'{libelle} : texte attendu (sans caractère nul).')
+    longueur = modele._meta.get_field(champ).max_length
+    if longueur and len(valeur) > longueur:
+        raise FieldOpError(f'{libelle} trop long ({longueur} caractères au plus).')
+    return valeur
+
+
 def _h_serial(company, user, payload):
     """F9 — relève un n° de série (sans photo : la plaque est téléversée à part
     par son endpoint multipart quand le réseau revient). N° vide accepté."""
@@ -256,7 +266,8 @@ def _h_serial(company, user, payload):
         company=company, intervention=iv, produit=produit,
         designation=champs['designation'],
         slot_cle=(payload.get('slot') or '').strip(),
-        numero_serie=(payload.get('numero_serie') or '').strip(),
+        numero_serie=_texte_borne((payload.get('numero_serie') or '').strip(),
+                                  ComponentSerial, 'numero_serie', 'N° de série'),  # ACSV17
         caracteristiques=champs['caracteristiques'],
         capture_source=champs['capture_source'],
         created_by=user)
@@ -310,7 +321,8 @@ def _h_reserve(company, user, payload):
     from .models import Reserve
     reserve = Reserve.objects.create(
         company=company, intervention=iv,
-        description=(payload.get('description') or '').strip(),
+        description=_texte_borne((payload.get('description') or '').strip(),
+                                 Reserve, 'description', 'Description'),  # ACSV17
         created_by=user)
     return {'reserve': reserve.id}
 
@@ -566,6 +578,12 @@ def _apply_one(company, user, op):
         return {'client_op_id': op_id, 'op_type': op_type,
                 'status': 'error',
                 'error': "Conflit d'intégrité — opération non appliquée."}
+    except (DatabaseError, ValueError, ArithmeticError):
+        # ACSV17 — valeur que la base refuse (texte trop long, NUL, nombre hors
+        # colonne) : SEULE cette op échoue (sa transaction est annulée), le lot
+        # continue et l'op reste rejouable après correction.
+        return {'client_op_id': op_id, 'op_type': op_type, 'status': 'error',
+                'error': 'Valeur refusée par la base — opération non appliquée.'}
 
 
 def apply_batch(company, user, ops):
