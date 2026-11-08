@@ -5590,6 +5590,11 @@ def reduire_gr_ir_retour(*, retour, company):
             prov.save(update_fields=['montant_provision', 'date_modification'])
         reste -= part
         reduit += part
+    # AAPV75 — facture liée AVANT le retour : relance le lettrage de la provision réduite.
+    from apps.stock.selectors import derniere_facture_bcf
+    facture = derniere_facture_bcf(bc) if reduit else None
+    if facture is not None:
+        lettrer_gr_ir_facture(facture=facture, company=company, user=None)
     return reduit
 
 
