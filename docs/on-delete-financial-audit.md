@@ -163,7 +163,7 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/installations/models_contrat_prix.py::ContratPrixFournisseur.company` | backend/django_core/apps/installations/models_contrat_prix.py:30 | authentication.Company | CASCADE |
 | `backend/django_core/apps/installations/models_contrat_prix.py::ContratPrixLigne.produit` | backend/django_core/apps/installations/models_contrat_prix.py:92 | stock.Produit | SET_NULL |
 | `backend/django_core/apps/installations/models_demande_achat.py::DemandeAchat.company` | backend/django_core/apps/installations/models_demande_achat.py:101 | authentication.Company | CASCADE |
-| `backend/django_core/apps/installations/models_demande_achat.py::DemandeAchatLigne.produit` | backend/django_core/apps/installations/models_demande_achat.py:206 | stock.Produit | SET_NULL |
+| `backend/django_core/apps/installations/models_demande_achat.py::DemandeAchatLigne.produit` | backend/django_core/apps/installations/models_demande_achat.py:211 | stock.Produit | SET_NULL |
 | `backend/django_core/apps/installations/models_demande_transfert.py::DemandeTransfert.company` | backend/django_core/apps/installations/models_demande_transfert.py:32 | authentication.Company | CASCADE |
 | `backend/django_core/apps/installations/models_demande_transfert.py::DemandeTransfert.produit` | backend/django_core/apps/installations/models_demande_transfert.py:38 | stock.Produit | CASCADE |
 | `backend/django_core/apps/installations/models_document.py::DocumentProjet.company` | backend/django_core/apps/installations/models_document.py:63 | authentication.Company | CASCADE |

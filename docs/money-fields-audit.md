@@ -57,7 +57,7 @@ Généré par `python scripts/check_money_fields.py --decimal-places`. Tableau d
 | `backend/django_core/apps/installations/models_commande_cadre.py:85` | CommandeCadreLigne.prix_negocie | 12 | 2 |
 | `backend/django_core/apps/installations/models_contrat_prix.py:97` | ContratPrixLigne.prix_convenu | 12 | 2 |
 | `backend/django_core/apps/installations/models_contrat_prix.py:99` | ContratPrixLigne.remise_pct | 5 | 2 |
-| `backend/django_core/apps/installations/models_demande_achat.py:213` | DemandeAchatLigne.prix_estime | 12 | 2 |
+| `backend/django_core/apps/installations/models_demande_achat.py:218` | DemandeAchatLigne.prix_estime | 12 | 2 |
 | `backend/django_core/apps/installations/models_gr_ir.py:48` | ReceptionNonFacturee.montant_provision | 12 | 2 |
 | `backend/django_core/apps/installations/models_landed_cost.py:54` | FraisImport.montant | 12 | 2 |
 | `backend/django_core/apps/installations/models_livraison.py:54` | Livraison.cout_transport | 10 | 2 |
