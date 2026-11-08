@@ -594,7 +594,10 @@ class TestMaFile(TestCase):
         # Lead avec relance en retard (family relance) — possédé par l'user.
         Lead.objects.create(
             company=self.company, nom='Relance', owner=self.user,
-            relance_date=date.today() - timedelta(days=1))
+            # ALEA65 — « en retard » se compte en jours OUVRÉS : la veille
+            # d'un dimanche/lundi n'est pas encore en retard. 10 jours = en
+            # retard quel que soit le jour d'exécution.
+            relance_date=date.today() - timedelta(days=10))
         # Lead chaud jamais contacté.
         Lead.objects.create(
             company=self.company, nom='Chaud', owner=self.user, score=80)
