@@ -16,6 +16,7 @@ Run :
     python manage.py test apps.installations.tests_ch2_gates -v2
 """
 import itertools
+from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -26,12 +27,15 @@ from rest_framework_simplejwt.tokens import AccessToken
 from apps.crm.models import Client
 from apps.installations.models import Installation, StageModele
 from apps.installations.services import (
+    DATE_RECETTE_STRUCTUREE,
     seed_stages, verifier_transition_statut,
 )
 
 User = get_user_model()
 _seq = itertools.count(1)
 BASE = '/api/django/installations'
+#: ACSV24 — un chantier créé avant la fiche IEC structurée (CH3).
+AVANT_CH3 = DATE_RECETTE_STRUCTUREE - timedelta(days=1)
 
 
 def make_company():
@@ -97,6 +101,9 @@ class GateBlockingServiceTests(TestCase):
         self.assertTrue(any('service' in r.lower() for r in raisons))
         inst.mes_production_test = Decimal('5.2')
         inst.save(update_fields=['mes_production_test'])
+        # ACSV24 — repli `mes_*` réservé aux chantiers d'avant CH3.
+        Installation.objects.filter(pk=inst.pk).update(date_creation=AVANT_CH3)
+        inst.refresh_from_db()
         raisons = verifier_transition_statut(
             inst, Installation.Statut.INSTALLE)
         self.assertEqual(raisons, [])
@@ -156,6 +163,9 @@ class GateApiTests(TestCase):
             self.company, statut=Installation.Statut.EN_COURS)
         inst.mes_production_test = Decimal('6.0')
         inst.save(update_fields=['mes_production_test'])
+        # ACSV24 — repli `mes_*` réservé aux chantiers d'avant CH3.
+        Installation.objects.filter(pk=inst.pk).update(date_creation=AVANT_CH3)
+        inst.refresh_from_db()
         r = self.api.patch(
             f'{BASE}/chantiers/{inst.id}/',
             {'statut': Installation.Statut.INSTALLE}, format='json')
@@ -176,6 +186,9 @@ class GateApiTests(TestCase):
         inst.bom = [{'produit_id': produit.id, 'designation': 'Panneau CH2',
                      'quantite': 4}]
         inst.save(update_fields=['mes_production_test', 'bom'])
+        # ACSV24 — repli `mes_*` réservé aux chantiers d'avant CH3.
+        Installation.objects.filter(pk=inst.pk).update(date_creation=AVANT_CH3)
+        inst.refresh_from_db()
         from apps.installations.services import seed_reservations
         seed_reservations(inst)
         r = self.api.patch(
@@ -207,6 +220,9 @@ class GateApiTests(TestCase):
         self.assertIn('raisons', r.data)
         inst.mes_production_test = Decimal('6.0')
         inst.save(update_fields=['mes_production_test'])
+        # ACSV24 — repli `mes_*` réservé aux chantiers d'avant CH3.
+        Installation.objects.filter(pk=inst.pk).update(date_creation=AVANT_CH3)
+        inst.refresh_from_db()
         r = self.api.post(
             f'{BASE}/chantiers/{inst.id}/avancer-etape/',
             {'etape': 'mise_en_service'}, format='json')

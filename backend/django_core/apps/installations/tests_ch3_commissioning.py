@@ -15,6 +15,7 @@ Run :
     python manage.py test apps.installations.tests_ch3_commissioning -v2
 """
 import itertools
+from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -27,6 +28,7 @@ from apps.installations.models import (
     CommissioningRecord, Installation,
 )
 from apps.installations.services import (
+    DATE_RECETTE_STRUCTUREE,
     ESSAIS_RECETTE, compute_iv_ecart, ensure_commissioning_record,
     seed_stages, verifier_transition_statut,
 )
@@ -34,6 +36,8 @@ from apps.installations.services import (
 User = get_user_model()
 _seq = itertools.count(1)
 BASE = '/api/django/installations'
+#: ACSV24 — un chantier créé avant la fiche IEC structurée (CH3).
+AVANT_CH3 = DATE_RECETTE_STRUCTUREE - timedelta(days=1)
 
 
 def make_company():
@@ -160,9 +164,22 @@ class CommissioningGateTests(TestCase):
         inst = make_installation(self.company)
         inst.mes_production_test = Decimal('6.0')
         inst.save(update_fields=['mes_production_test'])
+        # ACSV24 — repli `mes_*` réservé aux chantiers d'avant CH3.
+        Installation.objects.filter(pk=inst.pk).update(date_creation=AVANT_CH3)
+        inst.refresh_from_db()
         raisons = verifier_transition_statut(
             inst, Installation.Statut.INSTALLE)
         self.assertEqual(raisons, [])
+
+    def test_repli_mes_refuse_apres_ch3(self):
+        """ACSV24 (C-ACSV-139) — chantier créé aujourd'hui, sans fiche, avec
+        `mes_production_test` : refusé au gate. ROUGE AVANT : aucune raison."""
+        inst = make_installation(self.company)
+        inst.mes_production_test = Decimal('6.0')
+        inst.save(update_fields=['mes_production_test'])
+        raisons = verifier_transition_statut(
+            inst, Installation.Statut.INSTALLE)
+        self.assertIn('Fiche de recette IEC 62446-1 non enregistrée.', raisons)
 
 
 class CommissioningApiTests(TestCase):

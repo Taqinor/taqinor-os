@@ -6,6 +6,7 @@ puissance (depuis l'étude du devis sinon la taille souhaitée du lead),
 raccordement GELÉ (depuis le lead), type d'installation (depuis le devis).
 Référence sans collision via l'utilitaire commun (jamais count()+1).
 """
+import datetime as _dt
 import logging
 import re
 from decimal import Decimal
@@ -2472,6 +2473,10 @@ def _gate_check_series(installation, stage=None):
             "checklist du chantier en attend.")
 
 
+#: ACSV24 — fiche IEC structurée (CH3, 02/07/2026) : plus de repli `mes_*` après.
+DATE_RECETTE_STRUCTUREE = _dt.datetime(2026, 7, 2, tzinfo=_dt.timezone.utc)
+
+
 def _gate_check_tests(installation, stage=None):
     """CH3 — une fiche de recette IEC 62446-1 PASSÉE (conforme / conforme avec
     réserves) est requise pour franchir le gate « Mise en service ».
@@ -2501,8 +2506,9 @@ def _gate_check_tests(installation, stage=None):
             return None
         return ("Fiche de recette IEC 62446-1 non conforme "
                 f"({record.get_resultat_display()}).")
-    # Aucune fiche structurée : repli sur la saisie historique.
-    if (installation.date_mise_en_service
+    # Aucune fiche structurée : repli sur la saisie historique (chantiers d'avant CH3).
+    if (installation.date_creation and installation.date_creation < DATE_RECETTE_STRUCTUREE) and (
+            installation.date_mise_en_service
             or installation.mes_production_test is not None
             or installation.mes_tension is not None):
         return None
