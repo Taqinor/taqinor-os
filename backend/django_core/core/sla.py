@@ -317,12 +317,15 @@ def _calculer_credit(company, periode, uptime):
     return credit_pct, credit_montant, SlaSnapshot.CreditStatut.A_EMETTRE
 
 
-def generer_snapshot_societe(company, periode):
+def generer_snapshot_societe(company, periode, raison=''):
     """Calcule et persiste (upsert) le snapshot SLA d'une société pour ``periode``.
 
     Ne réémet JAMAIS un crédit déjà ``emis``/``refuse`` (une régénération —
     ex. recalcul après incident tardif — ne doit pas effacer une décision déjà
-    prise par un humain sur le crédit)."""
+    prise par un humain sur le crédit). AMON34 — sur un snapshot EXISTANT,
+    ``genere_le`` (date de première publication) est gardé et le recalcul est
+    tracé (``recalcule_le`` / ``raison_recalcul``) ; un snapshot neuf garde
+    ``recalcule_le`` vide."""
     from . import metrics as metrics_infra
 
     uptime = uptime_pct_periode(company, periode)
@@ -338,17 +341,20 @@ def generer_snapshot_societe(company, periode):
             existant.credit_du_pct, existant.credit_du_montant)
         credit_statut = existant.credit_statut
 
+    defaults = {
+        'uptime_pct': uptime,
+        'latence_p95_ms': p95,
+        'credit_du_pct': credit_pct,
+        'credit_du_montant': credit_montant,
+        'credit_statut': credit_statut,
+    }
+    if existant:
+        defaults.update(recalcule_le=timezone.now(),
+                        raison_recalcul=raison or 'Régénération du rapport')
+    else:
+        defaults['genere_le'] = timezone.now()
     snapshot, _created = SlaSnapshot.objects.update_or_create(
-        company=company, periode=periode,
-        defaults={
-            'uptime_pct': uptime,
-            'latence_p95_ms': p95,
-            'genere_le': timezone.now(),
-            'credit_du_pct': credit_pct,
-            'credit_du_montant': credit_montant,
-            'credit_statut': credit_statut,
-        },
-    )
+        company=company, periode=periode, defaults=defaults)
     return snapshot
 
 
@@ -371,23 +377,19 @@ def generer_sla_mensuel(periode=None):
 # calculé ne reflète plus l'incident tardif). ``generer_snapshot_societe``
 # sait déjà régénérer un snapshot existant SANS écraser une décision humaine
 # déjà prise sur le crédit (``emis``/``refuse``) — ce module ne fait que
-# DÉTECTER quels snapshots sont périmés et les régénérer.
-#
-# LIMITE ASSUMÉE DE CE LOT (lane isolée ``core/{sla.py,tasks.py}`` — le
-# schéma ``core/models.py``/``core/migrations`` appartient à une autre lane en
-# ce moment) : le plan nommait deux nouveaux champs de traçabilité
-# (``SlaSnapshot.recalcule_le``, ``SlaSnapshot.raison_recalcul``), non posés
-# ici — le recalcul est journalisé via le logger applicatif (voir
-# ``logger.info`` ci-dessous) plutôt que persistés en base. Migration exacte
-# à poser par l'orchestrateur :
-#
-#     recalcule_le = models.DateTimeField(null=True, blank=True)
-#     raison_recalcul = models.CharField(max_length=255, blank=True, default='')
+# DÉTECTER quels snapshots sont périmés et les régénérer. AMON34 — le
+# recalcul est tracé sur le snapshot (``recalcule_le``, ``raison_recalcul``) et
+# la péremption est jugée sur la date la plus récente (recalcul ou génération).
+
+RAISON_RECALCUL_INCIDENT_TARDIF = (
+    'Incident déclaré ou modifié après la génération')
+
 
 def _snapshots_perimes_par_incident_tardif(company):
-    """``SlaSnapshot`` de ``company`` dont ``genere_le`` précède la dernière
-    modification (``updated_at``) d'un ``IncidentPublic`` touchant sa
-    période — système (``company=None``) ou propre à elle."""
+    """``SlaSnapshot`` de ``company`` dont le dernier calcul (``recalcule_le``,
+    sinon ``genere_le``) précède la dernière modification (``updated_at``)
+    d'un ``IncidentPublic`` touchant sa période — système (``company=None``)
+    ou propre à elle."""
     try:
         incident_model = django_apps.get_model('statuspage', 'IncidentPublic')
     except LookupError:
@@ -401,7 +403,8 @@ def _snapshots_perimes_par_incident_tardif(company):
             debute_le__lt=fin,
         ).filter(
             Q(resolu_le__gte=debut) | Q(resolu_le__isnull=True),
-        ).filter(updated_at__gt=snapshot.genere_le).exists()
+        ).filter(updated_at__gt=(
+            snapshot.recalcule_le or snapshot.genere_le)).exists()
         if touche_tardivement:
             perimes.append(snapshot)
     return perimes
@@ -440,7 +443,9 @@ def recalculer_sla_perimes():
     for company in Company.objects.filter(actif=True):
         for snapshot in _snapshots_perimes_par_incident_tardif(company):
             ancien_montant = snapshot.credit_du_montant
-            nouveau = generer_snapshot_societe(company, snapshot.periode)
+            nouveau = generer_snapshot_societe(
+                company, snapshot.periode,
+                raison=RAISON_RECALCUL_INCIDENT_TARDIF)
             regeneres.append(nouveau)
             logger.info(
                 'core.recalculer_sla_perimes: société=%s périodeMoi=%s '
