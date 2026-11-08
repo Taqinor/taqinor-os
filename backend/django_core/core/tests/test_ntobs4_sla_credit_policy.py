@@ -116,6 +116,35 @@ class MontantFactureMoisTest(TestCase):
         total = montant_facture_mois(self.company, periode)
         self.assertEqual(total, 5000.0)
 
+    def test_brouillon_exclu_et_decimal(self):
+        """AMON31 — base du crédit = factures ÉMISES seules (brouillons et
+        annulées exclus), en ``Decimal`` arrondi au centime."""
+        Client = django_apps.get_model('crm', 'Client')
+        Facture = django_apps.get_model('facturation', 'Facture')
+        client_obj = Client.objects.create(
+            company=self.company, nom='Test', prenom='Client',
+            email='c31@example.com', telephone='+212600000001',
+            adresse='Casablanca')
+        for ref, statut, ttc in (
+                ('FA-AMON31-1', Facture.Statut.EMISE, '100000.00'),
+                ('FA-AMON31-2', Facture.Statut.BROUILLON, '40000.00'),
+                ('FA-AMON31-3', Facture.Statut.ANNULEE, '5000.00')):
+            Facture.objects.create(
+                company=self.company, reference=ref, client=client_obj,
+                statut=statut, taux_tva=Decimal('20.00'),
+                montant_ttc=Decimal(ttc))
+        from core.sla import generer_snapshot_societe, montant_facture_mois
+        periode = datetime.date.today().replace(day=1)
+        total = montant_facture_mois(self.company, periode)
+        self.assertIsInstance(total, Decimal)
+        self.assertEqual(total, Decimal('100000.00'))
+        # Palier d'exemple 99.0 → 10 % franchi à 98 % de disponibilité.
+        with mock.patch('core.sla.uptime_pct_periode', return_value=98.0):
+            snapshot = generer_snapshot_societe(self.company, periode)
+        snapshot.refresh_from_db()
+        self.assertEqual(snapshot.credit_du_pct, Decimal('10.00'))
+        self.assertEqual(snapshot.credit_du_montant, Decimal('10000.00'))
+
 
 class SlaCreditsDusEndpointTest(TestCase):
     def setUp(self):

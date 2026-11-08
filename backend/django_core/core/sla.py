@@ -18,6 +18,7 @@ from __future__ import annotations
 import calendar
 import logging
 from datetime import datetime, timedelta
+from decimal import ROUND_HALF_UP, Decimal
 
 from django.apps import apps as django_apps
 from django.db import models
@@ -205,8 +206,9 @@ def montant_facture_mois(company, periode):
     ``django.apps.apps.get_model`` — ``core`` reste une couche de base,
     contrat import-linter ``core-foundation-is-a-base-layer``). Réutilise la
     propriété ``total_ttc`` DÉJÀ définie côté facturation (jamais un calcul de
-    TVA dupliqué ici). ``None`` — jamais 0 maquillé — si l'app n'est pas
-    disponible ou si le calcul échoue pour une facture (best-effort)."""
+    TVA dupliqué ici). Seules les factures ÉMISES comptent (brouillons et
+    annulées exclus — AMON31), sommées en ``Decimal``. ``None`` — jamais 0
+    maquillé — si l'app n'est pas disponible (best-effort)."""
     try:
         facture_model = django_apps.get_model('facturation', 'Facture')
     except LookupError:
@@ -217,12 +219,13 @@ def montant_facture_mois(company, periode):
         facture_model.objects
         .filter(company=company, date_emission__gte=debut.date(),
                 date_emission__lte=fin.date())
-        .exclude(statut=facture_model.Statut.ANNULEE)
+        .exclude(statut__in=[facture_model.Statut.BROUILLON,
+                             facture_model.Statut.ANNULEE])
     )
-    total = 0.0
+    total = Decimal('0')
     for facture in qs:
         try:
-            total += float(facture.total_ttc or 0)
+            total += Decimal(str(facture.total_ttc or 0))
         except Exception:  # noqa: BLE001 — best-effort, une facture KO n'en bloque pas d'autres (D-ENF22-BLE001)
             logger.warning("montant facture mois : échec ignoré, comportement dégradé", exc_info=True)
             continue
@@ -308,7 +311,8 @@ def _calculer_credit(company, periode, uptime):
 
     montant_facture = montant_facture_mois(company, periode)
     credit_montant = (
-        round(montant_facture * credit_pct / 100.0, 2)
+        (Decimal(str(montant_facture)) * Decimal(str(credit_pct)) / 100)
+        .quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
         if montant_facture is not None else None)
     return credit_pct, credit_montant, SlaSnapshot.CreditStatut.A_EMETTRE
 
