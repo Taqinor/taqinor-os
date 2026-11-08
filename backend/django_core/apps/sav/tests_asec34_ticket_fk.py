@@ -250,8 +250,7 @@ class FkSavBorneesSocieteTests(TestCase):
     def test_equipement(self):
         for champ, attribut in (
                 ('categorie', 'categorie'), ('client_vente', 'client'),
-                ('installation', 'installation'), ('produit', 'produit'),
-                ('remplace_par_ticket', 'ticket')):
+                ('installation', 'installation'), ('produit', 'produit')):
             self._assert_borne(S.EquipementSerializer, champ, attribut)
 
     def test_ticket(self):

@@ -66,6 +66,31 @@ class ZMFG12MiseAuRebutTest(TestCase):
         defaults.update(kwargs)
         return Equipement.objects.create(**defaults)
 
+    def test_statut_et_rebut_hors_patch(self):
+        """ACSV56 : « Remplacé » ne s'entre ni ne se quitte par PATCH (409),
+        le rebut ne s'écrit que par ses actions (400), la valeur inchangée
+        reste acceptée (écran « Corriger »)."""
+        eq = self._equip(statut=Equipement.Statut.REMPLACE)
+        url = f'/api/django/sav/equipements/{eq.id}/'
+        r = self.api.patch(url, {'statut': 'en_service'}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        r = self.api.patch(url, {'mis_au_rebut': True}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('mis_au_rebut', r.data)
+        r = self.api.patch(
+            url, {'statut': 'remplace', 'mis_au_rebut': False}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        eq.refresh_from_db()
+        self.assertEqual(eq.statut, Equipement.Statut.REMPLACE)
+        self.assertFalse(eq.mis_au_rebut)
+        autre = self._equip(numero_serie='SN-ACSV56')
+        url = f'/api/django/sav/equipements/{autre.id}/'
+        r = self.api.patch(url, {'statut': 'remplace'}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        for statut in ('hors_service', 'en_service'):
+            r = self.api.patch(url, {'statut': statut}, format='json')
+            self.assertEqual(r.status_code, 200, r.data)
+
     def test_motif_obligatoire(self):
         eq = self._equip()
         r = self.api.post(
