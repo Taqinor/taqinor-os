@@ -778,3 +778,25 @@ unites:
     date: 2026-11-07
     dossier: docs/audits/2026-11-07-parcours-PA5.md
     notes: "Cinquième audit de PARCOURS (L3, 06-07/11/2026, base ddf1f97, fraîcheur 39313d4) : 58 constats, 36 prouvés par sonde et 22 lus (20 S3, 2 S4) ; gravités 7 S1, 20 S2, 29 S3, 2 S4. S1 : PV industriel signé re-rendu sous la signature du client quand une réserve change ou s'ajoute, ticket né d'une réserve facturable avant réception, récidive détectée par une seule porte de création, pièces SAV sorties hors verrou et en quarantaine, F11 d'un dépannage absente de la facture du ticket, équipement retiré deux fois par « Corriger », doublon facturé refacturé par la fusion. Seconde lentille sur les 7 S1 : 5 maintenus, 2 élargis (PV signé, pièces SAV), 0 réfuté. Prod lue le 07/11 : exposition nulle (aucun PV industriel signé, aucun ticket concerné). D-ACSV-1..4 (définitive : plancher et dérogation Directeur ; parc visible par qui voit le chantier ; droits ventes et stock exigés sur les gestes d'argent du SAV ; signature client refusée sur chantier annulé seulement). 1 critique Fable (8 trous dont 4 sondés : chantier annulé sans abonné SAV, ticket annulé et son intervention, réserve et ticket sans synchro, prêt sans rappel). Tâches ACSV1-104 (70 posées : CHANTIERS 43, SAV 20, DOCUMENTS 3, TRANSVERSE 2, MOTEUR 1, FACTURATION 1)."
+
+  - id: PA7
+    rang: 25
+    declencheur: monitoring-abonnement
+    titre: "Parcours PA7 « Monitoring et abonnement » : équipement du parc → abonnement de supervision → relevés (saisie, CSV, connecteurs) → détection de sous-performance (drapeau, ticket préventif) → disponibilité contre SLA et garantie de production → crédit SLA généré puis décision → équipement remplacé (le monitoring doit suivre) → résiliation (METHODE §D.1)"
+    possede: []
+    perimetre_lu:
+      - "table backend/django_core/apps/sav/parcours/PA7.json (pilote sav) ; apps/monitoring, apps/sav (services, selectors), apps/portail (views_client, selectors), apps/notifications (services, types_evenements), apps/audit/modeles_suivis.py, apps/parametres/models_company.py, apps/installations (serializers, energy_report), apps/crm/clients_identite.py, core/sla.py, core/merge.py, authentication/permissions.py, apps/roles/permissions_registre.py, frontend pages monitoring / parametres et features sav/monitoring / portail/client"
+    coutures:
+      - "passages de main parc SAV ↔ abonnement ↔ relevés ↔ sous-performance (drapeau, ticket préventif, alerte du portail client) ↔ disponibilité et garantie de production ↔ crédit SLA de la plateforme (core/sla.py) ↔ certificats carbone et rapport O&M envoyés au client ; rôles × gestes d'argent et de document du monitoring ; résiliation, retrait du parc, remplacement d'équipement et fusion de clients qui doivent défaire leurs effets"
+    P: 3
+    I: 4
+    score: 12
+    niveau: L3
+    statut: audité
+    groupe: AMON
+    plan: docs/plans/PLAN_AUDIT_SAV.md
+    plans_alimentes: [docs/plans/PLAN_AUDIT_SAV.md, docs/plans/PLAN_AUDIT_SECURITE.md, docs/plans/PLAN_AUDIT_PARAMETRES.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_DOCUMENTS.md, docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md]
+    pr: 1298
+    date: 2026-11-08
+    dossier: docs/audits/2026-11-08-parcours-PA7.md
+    notes: "Sixième audit de PARCOURS (L3, 07-08/11/2026, base 39313d4, fraîcheur b31e3e5) : 33 constats, 21 prouvés par sonde et 12 lus (11 S3, 1 S4) ; gravités 5 S1, 11 S2, 16 S3, 1 S4. S1 : relevés chevauchants additionnés (CO₂, garantie, sous-performance), crédits SLA de toutes les sociétés lisibles par le Directeur de chaque société, disponibilité calculée sur 365 jours fixes (un système neuf ou sans relevé est « sous la garantie » jusque dans le rapport O&M client), retard d'import lu comme sous-production (drapeau et alerte au portail), garantie de production non proratée (S1 si la garantie est autorisée, S2 sinon). Seconde lentille sur les 4 S1 : 4 maintenus dont 3 élargis (geste d'écran, rôles système, supervision tardive), 0 réfuté. Prod lue le 07/11 : 1 société, 0 relevé, 0 abonnement, 0 garantie : exposition nulle. D-AMON-1..2 (abonnement vendu une fois, jamais facturé par l'ERP ; pénalité de disponibilité = indicateur interne, jamais un montant dû ni imprimé au client). 1 critique Fable (8 trous dont 6 sondés : garantie de production, facteur CO₂, registre carbone, deux disponibilités, salissure, droits). Tâches AMON1-94 (48 posées : SAV 33, SECURITE 7, PARAMETRES 3, CHANTIERS 2, DOCUMENTS 1, LEAD 1, TRANSVERSE 1)."
