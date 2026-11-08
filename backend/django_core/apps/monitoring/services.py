@@ -429,7 +429,7 @@ def production_for_calendar_year(installation, year):
     return total
 
 
-def _guaranteed_kwh_for_period(warranty, year, today):
+def _guaranteed_kwh_for_period(warranty, year, today, installation=None):
     """AUD508 — productible garanti pour la PÉRIODE ÉCOULÉE de ``year``.
 
     ``guaranteed_kwh_for_year`` renvoie l'objectif ANNUEL COMPLET, dégradé
@@ -445,15 +445,27 @@ def _guaranteed_kwh_for_period(warranty, year, today):
     Renvoie ``(guaranteed_kwh, year_in_progress)`` — ``year_in_progress``
     laisse l'appelant exposer un flag explicite (jamais une compensation
     affichée comme définitivement due en cours d'année).
+
+    AMON40 — et borné à la PÉRIODE COUVERTE : début = max(1er janvier,
+    1er janvier de ``start_year``, mise en service, premier relevé)
+    (``debut_couverture``, quand ``installation`` est fourni), fin =
+    min(31/12, ``today``) — un système mis en service en septembre n'est
+    plus jugé sur un garanti couru depuis janvier.
     """
-    guaranteed_full = warranty.guaranteed_kwh_for_year(year)
-    if year != today.year:
-        return guaranteed_full, False
     from datetime import date as _date
-    days_in_year = (_date(year, 12, 31) - _date(year, 1, 1)).days + 1
-    day_of_year = today.timetuple().tm_yday
-    fraction = Decimal(day_of_year) / Decimal(days_in_year)
-    return guaranteed_full * fraction, True
+    guaranteed_full = warranty.guaranteed_kwh_for_year(year)
+    premier_janvier = _date(year, 1, 1)
+    debut = max(premier_janvier, _date(int(warranty.start_year), 1, 1))
+    if installation is not None:
+        debut = debut_couverture(installation, debut)
+    fin = min(_date(year, 12, 31), today)
+    year_in_progress = year == today.year
+    if debut == premier_janvier and fin == _date(year, 12, 31):
+        return guaranteed_full, year_in_progress
+    days_in_year = (_date(year, 12, 31) - premier_janvier).days + 1
+    jours = max((fin - debut).days + 1, 0)
+    fraction = Decimal(jours) / Decimal(days_in_year)
+    return guaranteed_full * fraction, year_in_progress
 
 
 def production_warranty_status(installation, *, year=None, today=None):
@@ -480,9 +492,23 @@ def production_warranty_status(installation, *, year=None, today=None):
 
     today = today or timezone.localdate()
     year = int(year or today.year)
+    if year < int(warranty.start_year):
+        # AMON40 — aucune garantie avant son année de départ (404 en vue).
+        return {'has_warranty': False}
     guaranteed, year_in_progress = _guaranteed_kwh_for_period(
-        warranty, year, today)
+        warranty, year, today, installation)
     actual = production_for_calendar_year(installation, year)
+    q2 = Decimal('0.01')
+    if not ProductionReading.objects.filter(
+            installation=installation, date__year=year).exists():
+        # AMON40 — sans relevé : réel et compensation NON mesurés (null).
+        return {
+            'has_warranty': True, 'year': year,
+            'year_in_progress': year_in_progress,
+            'guaranteed_kwh': guaranteed.quantize(q2), 'actual_kwh': None,
+            'shortfall_kwh': None, 'within_tolerance': None,
+            'compensation_mad': None,
+        }
 
     shortfall = guaranteed - actual
     if shortfall < 0:
@@ -496,7 +522,6 @@ def production_warranty_status(installation, *, year=None, today=None):
     compensation = (compensable
                     * Decimal(str(warranty.compensation_mad_per_kwh)))
 
-    q2 = Decimal('0.01')
     return {
         'has_warranty': True,
         'year': year,
@@ -552,7 +577,7 @@ def warranty_curve_overlay(installation, *, years=None, today=None,
     recourse = False
     for year in year_list:
         guaranteed, year_in_progress = _guaranteed_kwh_for_period(
-            warranty, year, today)
+            warranty, year, today, installation)
         actual = production_for_calendar_year(installation, year)
         has_data = ProductionReading.objects.filter(
             installation=installation, date__year=year).exists()
