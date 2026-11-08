@@ -1,0 +1,29 @@
+# Preuve en direct ACSV105 — rejeu w29b, code joué d7ea0c158 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29b-dj (conteneur privé, code backend du commit joué copié
+# dans le conteneur, base privée erp_accept_w29b clonée de test_erp_db_base puis migrée ; transaction annulée, mail en
+# mémoire, Celery coupé, HTTP sortant bloqué). Audit : verdict ÉCART = repro False = attendu sur le code corrigé. Sondes
+# C-LIVE-* (écrites pour ce rejeu, source jointe ; transaction.on_commit exécuté immédiatement) : repro=true signifie ICI
+# que le comportement attendu par la tâche est observé.
+# Code joué : d7ea0c158 (dev-plan-6a6fc9-w29, aucun commit du correcteur CI arrivé pendant ~75 min d'attente).
+# Écran : front du worktree servi par vite (127.0.0.1:3000, proxy /api/django) -> conteneur privé accept-w29b-web
+# (runserver, base erp_accept_w29b, stockage objet PRIVÉ accept-w29b-minio dès le départ, mail en mémoire, SMTP
+# 127.0.0.1:1), piloté par Playwright MCP. Données : fixtures FIX-W29B (société « Acceptation W29B », compte
+# acc_w29b_adm) ou états des sondes rejouées SANS rollback (comptes de test, mot de passe de test).
+# Verdict : PASS — Écran : « Clôture rapide » refusée 409 ticket_non_facture => assistant fermé, bloc « Clôturer sans facture » dans la fiche, motif => clos (cause vide), sans référentiel cause/remède.
+
+== C-ACSV-070 rejouée SANS rollback (python .acc/persist.py ACSV/C-ACSV-070, état d'écran)
+== PERSISTÉ C-ACSV-070
+observé : {'couverture_calculee': Ticket.Couverture.FACTURABLE, 'M': {'pieces_http': 201, 'resoudre_http': 200, 'cloturer_http': 409, 'statut': 'resolu', 'facture_id_ext': None, 'avertissement': []}, 'A': {'pieces_http': 201, 'resoudre_http': 200, 'statut_avant_scan': 'resolu', 'scan_retour': 0, 'statut': 'resolu', 'facture_id_ext': None}, 'stock_final': 3}
+{"couverture_calculee": "facturable", "M": {"pieces_http": 201, "resoudre_http": 200, "cloturer_http": 409, "statut": "resolu", "facture_id_ext": null, "avertissement": []}, "A": {"pieces_http": 201, "resoudre_http": 200, "statut_avant_scan": "resolu", "scan_retour": 0, "statut": "resolu", "facture_id_ext": null}, "stock_final": 3, "repro": false}
+mails 0 celery bloquées 0
+
+## ACSV105 — PASS (écran)
+État de la sonde C-ACSV-070 rejouée SANS rollback (société « Sonde ACSV 070 » SANS référentiel cause/remède : listes Cause et Remède
+réduites à « — Cause — » / « — Remède — ») : ticket SAV-ACSV-070-M facturable, « Résolu », 1 pièce posée, 2 h de main-d'œuvre, sans
+facture. Compte sonde-acsv-070 › SAV › chip « Résolu » › SAV-ACSV-070-M › Statut « Clôturé » › « Mettre à jour » => « Assistant de
+clôture » › « Clôture rapide » => POST sav/tickets/5/cloturer/ 409 {code: ticket_non_facture} ; l'assistant se FERME, la fiche
+affiche « Impossible de clôturer : ticket facturable sans facture (pièces ou main-d'œuvre à facturer). » et le bloc « Motif de la
+clôture sans facture » (bouton désactivé tant que le motif est vide). Motif « Geste commercial (acceptation ACSV105) » › « Clôturer
+sans facture » => POST …/5/cloturer/ {"sans_facture":true,"motif":"Geste commercial (acceptation ACSV105)"} 200 ; fiche relue
+« Clôturé », historique « Clôturé sans facture : Geste commercial (acceptation ACSV105) — par sonde-acsv-070 » et « Statut : Résolu →
+Clôturé ». Base relue : statut cloture, cause None, remède None, facture_id_ext None. Console : seule erreur = la 409 attendue.

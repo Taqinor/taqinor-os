@@ -1,0 +1,107 @@
+# Preuve en direct AAPV86 — rejeu w29b, code joué d7ea0c158 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29b-dj (conteneur privé, code backend du commit joué copié
+# dans le conteneur, base privée erp_accept_w29b clonée de test_erp_db_base puis migrée ; transaction annulée, mail en
+# mémoire, Celery coupé, HTTP sortant bloqué). Audit : verdict ÉCART = repro False = attendu sur le code corrigé. Sondes
+# C-LIVE-* (écrites pour ce rejeu, source jointe ; transaction.on_commit exécuté immédiatement) : repro=true signifie ICI
+# que le comportement attendu par la tâche est observé.
+# Code joué : d7ea0c158 (dev-plan-6a6fc9-w29, aucun commit du correcteur CI arrivé pendant ~75 min d'attente).
+# Écran : front du worktree servi par vite (127.0.0.1:3000, proxy /api/django) -> conteneur privé accept-w29b-web
+# (runserver, base erp_accept_w29b, stockage objet PRIVÉ accept-w29b-minio dès le départ, mail en mémoire, SMTP
+# 127.0.0.1:1), piloté par Playwright MCP. Données : fixtures FIX-W29B (société « Acceptation W29B », compte
+# acc_w29b_adm) ou états des sondes rejouées SANS rollback (comptes de test, mot de passe de test).
+# Verdict : PASS — C-LIVE-AAPV86 REPRO : paiement 840 (RAS 140) puis acompte 360 : imputation 60,00 + avoir VALIDÉ 60,00 TTC/TVA 0 lié à la facture ; témoin acompte avant paiement : RAS 200, 0 avoir ; écran Avoirs : 60,00 disponible.
+
+== C-LIVE-AAPV86 (sha d7ea0c158)
+attendu : paiement 840 (RAS 140) puis acompte 360 qui solde : imputation RAS 60, avoir VALIDE 60 TTC/TVA 0 lie a la facture, disponible 60 ; temoin acompte avant paiement : 0 avoir, RAS paiement 200
+observé : {"facture": {"ttc": "1200.00", "tva": "200.00", "type": "biens"}, "paiement_840": [201, "140.00"], "avoirs_avant_acompte": 0, "acompte_360": 201, "facture_statut": "payee", "imputation_ras": "60.00", "avoirs": [{"reference": "AVF-202611-0001", "statut": "valide", "montant_ttc": "60.00", "montant_tva": "0.00", "montant_disponible": "60.00", "fournisseur_id": "1176", "facture_origine_id": "153", "note": "Créance RAS-TVA : 60.00 déclarés sur la facture FF-202611-0001 par l'imputation de l'acompte versé brut (non retenus) — à réclamer au fournisseur."}], "temoin_paiement_840": [201, "200.00"], "temoin_avoirs_total": 1, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0
+
+# ---- source : C-LIVE-AAPV86.py ----
+# flake8: noqa  (sonde LIVE du rejeu d'acceptation w29b — scénario exact d'AAPV86, vraies routes)
+"""AAPV86 (D-AAPV-6) — facture de biens TTC 1 200 / TVA 200 (« Facturer » la réception), RAS-TVA active,
+paiement 840 (RAS 140) puis acompte 360 du même BCF qui solde (POST acomptes-fournisseur/) : attendu
+imputation RAS 60,00 ET AvoirFournisseur VALIDÉ 60,00 TTC (TVA 0), fournisseur de la facture, facture_origine
+= la facture, note « RAS-TVA », disponible 60,00. Témoin : acompte imputé AVANT tout paiement ⇒ aucun avoir,
+le paiement porte toute la RAS (200). transaction.on_commit exécuté immédiatement. repro=True signifie ICI que
+le comportement ATTENDU par la tâche est observé."""
+SONDE = {"constat": "C-LIVE-AAPV86", "sha": "d7ea0c158",
+         "attendu": "paiement 840 (RAS 140) puis acompte 360 qui solde : imputation RAS 60, avoir VALIDE 60 TTC/TVA 0 lie a la facture, disponible 60 ; temoin acompte avant paiement : 0 avoir, RAS paiement 200",
+         "modeles": ["stock.AvoirFournisseur", "stock.ImputationAcompteFournisseur", "stock.PaiementFournisseur"]}
+
+
+def sonde(ctx):
+    from decimal import Decimal
+    from django.db import transaction
+    transaction.on_commit = lambda func, using=None, robust=False: func()
+    from django.contrib.auth import get_user_model
+    from rest_framework.test import APIClient
+    from authentication.models import Company
+    from apps.stock.models import (AchatsParametres, AvoirFournisseur, BonCommandeFournisseur, FactureFournisseur,
+                                   Fournisseur, ImputationAcompteFournisseur, LigneBonCommandeFournisseur, Produit)
+    H = {'HTTP_HOST': 'localhost'}
+    co = Company.objects.create(nom='Live AAPV 86', slug='live-aapv-86')
+    u = get_user_model().objects.create_user(username='live_aapv_86', password='x', role_legacy='admin', company=co)
+    api = APIClient()
+    api.force_authenticate(u)
+    prm = AchatsParametres.for_company(co)
+    prm.ras_tva_actif = True
+    prm.save()
+    f = Fournisseur.objects.create(company=co, nom='F-LAAPV86')
+    p = Produit.objects.create(company=co, nom='Onduleur L86', sku='LAAPV-086', prix_vente=Decimal('200'),
+                               prix_achat=Decimal('100'), tva=Decimal('20'))
+    url = '/api/django/stock/receptions-fournisseur/'
+
+    def bcf_facture(ref, acompte=None):
+        bc = BonCommandeFournisseur.objects.create(company=co, fournisseur=f, reference=ref,
+                                                   statut=BonCommandeFournisseur.Statut.ENVOYE)
+        lc = LigneBonCommandeFournisseur.objects.create(bon_commande=bc, produit=p, quantite=10,
+                                                        prix_achat_unitaire=Decimal('100'))
+        if acompte:
+            ra = api.post('/api/django/stock/acomptes-fournisseur/', {'bon_commande': bc.id, 'montant': acompte,
+                                                                     'date_versement': '2026-11-01'}, format='json', **H)
+            assert ra.status_code == 201, ra.data
+        r = api.post(url, {'bon_commande': bc.id, 'lignes': [{'ligne_commande': lc.id, 'quantite': 10}]},
+                     format='json', **H)
+        api.post(f"{url}{r.data['id']}/confirmer/", {}, format='json', **H)
+        rf = api.post(f"{url}{r.data['id']}/facturer/", {}, format='json', **H)
+        assert rf.status_code == 201, rf.data
+        return bc, FactureFournisseur.objects.get(pk=rf.data['id'])
+
+    def payer(fac, montant):
+        r = api.post('/api/django/stock/paiements-fournisseur/', {'facture': fac.id, 'montant': montant,
+                                                                 'date_paiement': '2026-11-05'}, format='json', **H)
+        return r.status_code, (r.data or {}).get('montant_ras_tva')
+
+    bc, fac = bcf_facture('BCF-LAAPV-086')
+    obs = {'facture': {'ttc': str(fac.montant_ttc), 'tva': str(fac.montant_tva), 'type': fac.type_achat}}
+    obs['paiement_840'] = payer(fac, '840')
+    obs['avoirs_avant_acompte'] = AvoirFournisseur.objects.filter(company=co).count()
+    ra = api.post('/api/django/stock/acomptes-fournisseur/', {'bon_commande': bc.id, 'montant': '360',
+                                                             'date_versement': '2026-11-06'}, format='json', **H)
+    obs['acompte_360'] = ra.status_code
+    fac.refresh_from_db()
+    obs['facture_statut'] = fac.statut
+    imp = ImputationAcompteFournisseur.objects.filter(facture=fac).first()
+    obs['imputation_ras'] = str(getattr(imp, 'montant_ras_tva', None))
+    av = [{'reference': a.reference, 'statut': a.statut, 'montant_ttc': a.montant_ttc, 'montant_tva': a.montant_tva,
+           'montant_disponible': a.montant_disponible, 'fournisseur_id': a.fournisseur_id,
+           'facture_origine_id': a.facture_origine_id, 'note': a.note}
+          for a in AvoirFournisseur.objects.filter(company=co)]
+    obs['avoirs'] = [{k: str(v) for k, v in d.items()} for d in av]
+    ok_av = (len(av) == 1 and av[0]['statut'] == AvoirFournisseur.Statut.VALIDE
+             and av[0]['montant_ttc'] == Decimal('60.00') and av[0]['montant_tva'] == Decimal('0.00')
+             and av[0]['montant_disponible'] == Decimal('60.00') and av[0]['fournisseur_id'] == f.id
+             and av[0]['facture_origine_id'] == fac.id and 'RAS-TVA' in (av[0]['note'] or ''))
+    # Témoin : acompte imputé AVANT le paiement.
+    bc2, fac2 = bcf_facture('BCF-LAAPV-086-T', acompte='360')
+    obs['temoin_paiement_840'] = payer(fac2, '840')
+    obs['temoin_avoirs_total'] = AvoirFournisseur.objects.filter(company=co).count()
+    obs['repro'] = bool(obs['paiement_840'][0] == 201 and str(obs['paiement_840'][1]) == '140.00'
+                        and ra.status_code == 201 and obs['imputation_ras'] == '60.00' and ok_av
+                        and str(obs['temoin_paiement_840'][1]) == '200.00' and obs['temoin_avoirs_total'] == 1)
+    return obs
+
+## AAPV86 — PASS (écran)
+État de la sonde C-LIVE-AAPV86 rejouée SANS rollback, compte live_aapv_86. Fournisseurs › F-LAAPV86 › fiche 360 › onglet
+« Avoirs » : « AVF-202611-0001 · Validé · 60,00 MAD (disponible 60,00 MAD) · Imputer ». Console : 0 erreur.

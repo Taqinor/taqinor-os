@@ -1,0 +1,15 @@
+# Preuve en direct AAPV75 — rejeu w29b, code joué d7ea0c158 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29b-dj (conteneur privé, code backend du commit joué copié
+# dans le conteneur, base privée erp_accept_w29b clonée de test_erp_db_base puis migrée ; transaction annulée, mail en
+# mémoire, Celery coupé, HTTP sortant bloqué). Audit : verdict ÉCART = repro False = attendu sur le code corrigé. Sondes
+# C-LIVE-* (écrites pour ce rejeu, source jointe ; transaction.on_commit exécuté immédiatement) : repro=true signifie ICI
+# que le comportement attendu par la tâche est observé.
+# Code joué : d7ea0c158 (dev-plan-6a6fc9-w29, aucun commit du correcteur CI arrivé pendant ~75 min d'attente).
+# Verdict : PASS — Sonde C-AAPV-VER-001 : repro False — facture 600 liée AVANT le retour de 4 : provision ramenée à 600,00 lettrée par la facture, GR/IR ouvert 0.
+
+== C-AAPV-VER-001 (sha 76344a269d)
+attendu : repro si facture 600 liee puis retour 4 valide : provision 600 ouverte (lettre=False), GR/IR ouvert 600 au lieu de 0
+observé : {'confirmer': 200, 'gr_ir_apres_reception': [{'montant_provision': '1000.00', 'lettre': 'False', 'facture_id': 'None'}], 'facture_creation': 201, 'facture_lien_bcf': 200, 'gr_ir_apres_facture': [{'montant_provision': '1000.00', 'lettre': 'False', 'facture_id': 'None'}], 'retour_creation': 201, 'retour_valider': 200, 'gr_ir_final': [{'montant_provision': '600.00', 'lettre': 'True', 'facture_id': '146'}], 'gr_ir_ouvert': '0'}
+{"confirmer": 200, "gr_ir_apres_reception": [{"montant_provision": "1000.00", "lettre": "False", "facture_id": "None"}], "facture_creation": 201, "facture_lien_bcf": 200, "gr_ir_apres_facture": [{"montant_provision": "1000.00", "lettre": "False", "facture_id": "None"}], "retour_creation": 201, "retour_valider": 200, "gr_ir_final": [{"montant_provision": "600.00", "lettre": "True", "facture_id": "146"}], "gr_ir_ouvert": "0", "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 4, après 4) ; mails 0 ; tâches Celery bloquées 0

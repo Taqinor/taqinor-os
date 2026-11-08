@@ -1,0 +1,19 @@
+# Preuve en direct AMON96 — rejeu w29b, code joué d7ea0c158 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29b-dj (conteneur privé, code backend du commit joué copié
+# dans le conteneur, base privée erp_accept_w29b clonée de test_erp_db_base puis migrée ; transaction annulée, mail en
+# mémoire, Celery coupé, HTTP sortant bloqué). Audit : verdict ÉCART = repro False = attendu sur le code corrigé. Sondes
+# C-LIVE-* (écrites pour ce rejeu, source jointe ; transaction.on_commit exécuté immédiatement) : repro=true signifie ICI
+# que le comportement attendu par la tâche est observé.
+# Code joué : d7ea0c158 (dev-plan-6a6fc9-w29, aucun commit du correcteur CI arrivé pendant ~75 min d'attente).
+# Écran : front du worktree servi par vite (127.0.0.1:3000, proxy /api/django) -> conteneur privé accept-w29b-web
+# (runserver, base erp_accept_w29b, stockage objet PRIVÉ accept-w29b-minio dès le départ, mail en mémoire, SMTP
+# 127.0.0.1:1), piloté par Playwright MCP. Données : fixtures FIX-W29B (société « Acceptation W29B », compte
+# acc_w29b_adm) ou états des sondes rejouées SANS rollback (comptes de test, mot de passe de test).
+# Verdict : PASS — Écran : carte SLA « CHT-W29B-SLA » (système sans supervision) et garantie « CHT-W29B-GAR » (hors parc), aucun « Système #id ».
+
+## AMON96 — PASS (écran)
+FIX-W29B : installation CHT-W29B-SLA (réceptionnée, SANS configuration de supervision) portant un SLA 98 % ; installation
+CHT-W29B-GAR (« en cours », hors parc) portant une garantie de production 9 000 kWh. Compte acc_w29b_adm › SAV › Monitoring › « SLA
+de disponibilité » : carte « CHT-W29B-SLA · garanti 98,00 % · 0,00 MAD / jour » (aucun « Système #… » sur la page). Production ›
+Garanties : ligne « CHT-W29B-GAR · 9 000 kWh · 0,50 %/an · 2026 » (référence servie, sans le « — client » du parc). Certificats
+carbone non rejoués (registre vide ; la clause « fini quand » porte sur le SLA). Console : 0 erreur.
