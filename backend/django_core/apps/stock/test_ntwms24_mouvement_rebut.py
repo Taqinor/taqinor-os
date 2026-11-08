@@ -195,7 +195,7 @@ class TestEndpointsRebut(Ntwms24Base):
         # Réaligné AAPV36 : le magasinier porte `stock_mouvement` (+ le droit
         # de voir les prix d'achat pour lire la valeur de la perte).
         self.magasinier = self._roled(
-            'magasinier', ['stock_mouvement', 'prix_achat_voir'])
+            'magasinier_roled', ['stock_mouvement', 'prix_achat_voir'])
         reponse = auth(self.magasinier).post(self.URL, {
             'produit': self.produit.id, 'quantite': 2, 'motif': 'casse',
             'bin': self.casier.id, 'note': 'Casse chariot',
