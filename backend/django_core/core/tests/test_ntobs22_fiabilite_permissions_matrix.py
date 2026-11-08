@@ -257,6 +257,9 @@ class Ntobs22PermissionsMatrixTest(TestCase):
     def test_sla_credit_statut_allowed_for_fiabilite_administration(self):
         snapshot = generer_snapshot_societe(
             self.company, timezone.now().date().replace(day=1))
+        # AMON32 — seule une décision sur un crédit « à émettre » est admise.
+        snapshot.credit_statut = SlaSnapshot.CreditStatut.A_EMETTRE
+        snapshot.save(update_fields=['credit_statut'])
         resp = self._client(self.u_admin_fiab).post(
             f'/api/django/core/sla/credits/{snapshot.pk}/statut/',
             {'statut': 'emis'}, format='json')

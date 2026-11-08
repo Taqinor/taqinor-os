@@ -27,7 +27,7 @@ from django.http import HttpResponse
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
-    OpenApiParameter, extend_schema, inline_serializer,
+    OpenApiParameter, OpenApiResponse, extend_schema, inline_serializer,
 )
 from rest_framework import generics, serializers, status
 
@@ -614,7 +614,10 @@ _REQUETE_CREDIT_STATUT = inline_serializer('SlaCreditStatutRequete', {
 })
 
 
-@extend_schema(request=_REQUETE_CREDIT_STATUT, responses=SlaSnapshotSerializer)
+@extend_schema(request=_REQUETE_CREDIT_STATUT, responses={
+    200: SlaSnapshotSerializer,
+    409: OpenApiResponse(description=(
+        "Conflit d'état : seul un crédit « à émettre » se décide (AMON32)."))})
 @api_view(['POST'])
 @permission_classes([IsAuthenticated, FiabilitePermission])
 @parser_classes([JSONParser])  # ENF8 (D2) — aucun upload
@@ -636,16 +639,24 @@ def sla_credit_statut(request, pk):
     from .parseurs import corps_valide
     nouveau_statut = corps_valide(request, _REQUETE_CREDIT_STATUT)['statut']
 
-    try:
-        snapshot = SlaSnapshot.objects.get(
-            pk=pk, company=request.user.company)
-    except SlaSnapshot.DoesNotExist:
-        return Response({'detail': 'Crédit SLA introuvable.'},
-                        status=status.HTTP_404_NOT_FOUND)
+    from django.db import transaction
 
-    ancien_statut = snapshot.credit_statut
-    snapshot.credit_statut = nouveau_statut
-    snapshot.save(update_fields=['credit_statut', 'updated_at'])
+    from .conflit_etat import ConflitEtat
+
+    with transaction.atomic():
+        snapshot = (SlaSnapshot.objects.select_for_update()
+                    .filter(pk=pk, company=request.user.company).first())
+        if snapshot is None:
+            return Response({'detail': 'Crédit SLA introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        ancien_statut = snapshot.credit_statut
+        # AMON32 — une décision ne se prend que sur un crédit « à émettre ».
+        if ancien_statut != SlaSnapshot.CreditStatut.A_EMETTRE:
+            raise ConflitEtat(
+                'Seul un crédit SLA « à émettre » peut être émis ou refusé '
+                f'(statut actuel : {snapshot.get_credit_statut_display()}).')
+        snapshot.credit_statut = nouveau_statut
+        snapshot.save(update_fields=['credit_statut', 'updated_at'])
     _emettre_sla_credit_statut_change(
         snapshot, ancien_statut, nouveau_statut, request.user)
     return Response(SlaSnapshotSerializer(snapshot).data)
