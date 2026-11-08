@@ -1424,7 +1424,14 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
               {current.type_installation === 'industriel' && (
                 <div className="flex flex-col gap-1" data-testid="reception-definitive">
                   {current.date_reception_definitive ? (
-                    <Hint>Réception définitive prononcée le {formatDate(current.date_reception_definitive)}.</Hint>
+                    <>
+                      <Hint>Réception définitive prononcée le {formatDate(current.date_reception_definitive)}.</Hint>
+                      {/* ACSV95 — PV de réception définitive (figé côté serveur, ACSV32). */}
+                      <Button variant="outline" className="self-start"
+                              onClick={() => openDocument('pvReceptionDefinitive', `pv-reception-definitive-${current.reference}.pdf`, 'PV de réception définitive')}>
+                        PV de réception définitive
+                      </Button>
+                    </>
                   ) : (
                     <Button variant="outline" loading={receptionBusy}
                             onClick={prononcerReceptionDefinitive} className="self-start">
