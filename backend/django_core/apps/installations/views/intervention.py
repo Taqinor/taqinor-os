@@ -1674,7 +1674,7 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
 
     @oa.extend_schema(
         request=oa.body('RenseignerFicheRequete', valeur_id=oa.i(True), valeur=oa.s()),
-        responses=FicheInterventionReleveSerializer,
+        responses={200: FicheInterventionReleveSerializer, 400: oa.OBJ, 409: oa.OBJ},
     )
     @action(detail=True, methods=['post'], url_path='renseigner-fiche',
             permission_classes=[IsResponsableOrAdmin])
@@ -1682,6 +1682,8 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
         """ZFSM1 — renseigne la valeur d'UN champ du relevé. Corps :
         {"valeur_id": <id>, "valeur": <str>}."""
         interv = self.get_object()
+        if not field_capture.intervention_modifiable(interv):  # ACSV15
+            return Response({'detail': 'Intervention validée.'}, status=status.HTTP_409_CONFLICT)
         releve = field_services.ensure_fiche_releve(interv)
         if releve is None:
             return Response({'detail': "Aucun gabarit pour ce type d'intervention."},
@@ -1691,9 +1693,14 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
         if valeur_obj is None:
             return Response({'detail': 'Champ de fiche inconnu.'},
                             status=oa.statut_inconnu(request.data.get('valeur_id')))
-        valeur_obj.valeur = str(request.data.get('valeur', '') or '').strip()
+        try:  # ACSV15 — valeur contrôlée par type, saisie tracée au chatter
+            valeur_obj.valeur = field_services.normaliser_valeur_fiche(valeur_obj.champ, request.data.get('valeur'))
+        except ValueError as exc:
+            return Response({'valeur': [str(exc)]}, status=status.HTTP_400_BAD_REQUEST)
         valeur_obj.renseigne_le = timezone.now()
         valeur_obj.save(update_fields=['valeur', 'renseigne_le'])
+        intervention_activity.log_note(
+            interv, request.user, f'Fiche : {valeur_obj.champ.libelle} = {valeur_obj.valeur or "—"}.')
         return Response(FicheInterventionReleveSerializer(
             releve, context={'request': request}).data)
 
