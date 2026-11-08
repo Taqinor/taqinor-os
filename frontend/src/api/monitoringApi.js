@@ -86,6 +86,12 @@ const monitoringApi = {
   resilierAbonnement: (id, motif) =>
     api.post(`/monitoring/abonnements/${id}/resilier/`, { motif }),
 
+  // ── AMON88 — alertes de sous-performance (vue parc) ──
+  // Contrat : backend/django_core/apps/monitoring/contract_samples/drapeaux_sous_performance.json
+  getDrapeaux: (params) => api.get('/monitoring/drapeaux/', { params }),
+  classerDrapeau: (id, motif) =>
+    api.post(`/monitoring/drapeaux/${id}/classer/`, { motif }),
+
   // ── ASAV101 — SLA de disponibilité (écran SAV/monitoring) ──
   // Contrat : backend/django_core/apps/monitoring/contract_samples/sla_disponibilite.json
   getSlasDisponibilite: (params) => api.get('/monitoring/sla-disponibilite/', { params }),

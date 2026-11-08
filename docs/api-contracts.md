@@ -1358,6 +1358,8 @@
     champs: credentials, date_modification, enabled, expected_annual_kwh, has_credentials, id, installation, is_auto, last_sync, provider, provider_label
 - frontend/src/api/monitoringApi.js :: getConfigs -> /api/django/monitoring/configs  [MonitoringConfigSerializer]
     champs: credentials, date_modification, enabled, expected_annual_kwh, has_credentials, id, installation, is_auto, last_sync, provider, provider_label
+- frontend/src/api/monitoringApi.js :: getDrapeaux -> /api/django/monitoring/drapeaux  [UnderperformanceFlagSerializer]
+    champs: cloture_par_nom, date_cloture, date_creation, id, installation, is_open, motif_cloture, note_cloture, ratio_pct, reference, ticket
 - frontend/src/api/monitoringApi.js :: getReadings -> /api/django/monitoring/readings  [ProductionReadingSerializer]
     champs: date, date_creation, energy_kwh, external_id, id, installation, note, period_days, source, source_display
     source ∈ {auto, import, manual}

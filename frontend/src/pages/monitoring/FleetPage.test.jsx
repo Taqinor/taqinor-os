@@ -38,6 +38,8 @@ vi.mock('../../api/monitoringApi', () => ({
         ],
       },
     })),
+    getDrapeaux: vi.fn(() => Promise.resolve({ data: { count: 0, results: [] } })),
+    classerDrapeau: vi.fn(() => Promise.resolve({ data: {} })),
   },
 }))
 
@@ -108,5 +110,35 @@ describe('FleetPage (WR6 — vue parc)', () => {
     await userEvent.click(screen.getByRole('radio', { name: 'Cartes' }))
     expect((await screen.findAllByText('sans référence')).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/95,2/).length).toBeGreaterThan(0)
+  })
+
+  it('AMON88 — classe une alerte ouverte avec motif', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const { data } = await monitoringApi.getFleet()
+    monitoringApi.getFleet.mockClear()
+    monitoringApi.getFleet
+      .mockResolvedValueOnce({ data })
+      .mockResolvedValueOnce({ data: { ...data, open_alerts: 0 } })
+    monitoringApi.getDrapeaux.mockResolvedValueOnce({
+      data: {
+        count: 1,
+        results: [{
+          id: 12, installation: 11, reference: 'INST-2026-001', ratio_pct: '60.00',
+          date_creation: '2026-11-07T02:15:00Z', ticket: null, is_open: true,
+        }],
+      },
+    })
+    renderPage(<FleetPage />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Classer' }))
+    const confirmer = screen.getByRole('button', { name: 'Confirmer le classement' })
+    expect(confirmer).toBeDisabled()
+    await userEvent.type(screen.getByLabelText('Motif du classement'), 'Relevés en retard')
+    await userEvent.click(confirmer)
+
+    expect(monitoringApi.classerDrapeau).toHaveBeenCalledWith(12, 'Relevés en retard')
+    expect(await screen.findByText('Aucune alerte de sous-performance ouverte.')).toBeInTheDocument()
+    expect(screen.getByText('Aucune alerte ouverte')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Classer' })).not.toBeInTheDocument()
   })
 })

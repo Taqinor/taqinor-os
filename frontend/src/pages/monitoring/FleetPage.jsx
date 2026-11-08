@@ -2,8 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AlertTriangle, Gauge, Leaf, Sun } from 'lucide-react'
 import monitoringApi from '../../api/monitoringApi'
-import { Badge, Card, EmptyState, IconButton } from '../../ui'
-import { formatNumber, formatPercent } from '../../lib/format'
+import { Badge, Button, Card, EmptyState, IconButton, Input } from '../../ui'
+import { formatDate, formatNumber, formatPercent } from '../../lib/format'
+import { getApiError } from '../../lib/apiError'
 import { METRIC_ICONS } from '../../ui/metricIcons'
 import useVisibilityAwarePoll from './useVisibilityAwarePoll'
 import FreshnessBadge from './FreshnessBadge'
@@ -50,6 +51,74 @@ function prStatus(prPct) {
 // qui cogne l'API en onglet caché) et pourra migrer sur VX56 telle quelle.
 const FLEET_POLL_MS = 5 * 60 * 1000
 
+// AMON88 — alertes de sous-performance OUVERTES (système, ratio, depuis,
+// ticket) avec un geste « Classer » à motif (POST …/classer/, AMON24).
+function AlertesOuvertes({ version, onClasse }) {
+  const [alertes, setAlertes] = useState(null)
+  const [aClasser, setAClasser] = useState(null)
+  const [motif, setMotif] = useState('')
+  const [erreur, setErreur] = useState(null)
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    let actif = true
+    monitoringApi.getDrapeaux({ is_open: 'true' })
+      .then((r) => { if (actif) setAlertes(r.data?.results ?? []) })
+      .catch(() => { if (actif) setAlertes([]) })
+    return () => { actif = false }
+  }, [version])
+  const classer = async (id) => {
+    setBusy(true)
+    setErreur(null)
+    try {
+      await monitoringApi.classerDrapeau(id, motif.trim())
+      setAClasser(null)
+      setMotif('')
+      onClasse()
+    } catch (e) {
+      setErreur(getApiError(e, 'Classement impossible.').message)
+    } finally { setBusy(false) }
+  }
+  if (alertes === null) return null
+  return (
+    <Card role="region" aria-label="Alertes de sous-performance" className="mt-6 p-4">
+      <h2 className="mb-2 text-sm font-semibold">Alertes de sous-performance ouvertes</h2>
+      {alertes.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Aucune alerte de sous-performance ouverte.</p>
+      ) : (
+        <ul className="divide-y divide-border">
+          {alertes.map((a) => (
+            <li key={a.id} className="py-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                <span>
+                  <span className="font-medium">{a.reference || `#${a.installation}`}</span>
+                  {` · ${formatPercent(a.ratio_pct, { decimals: 1 })} de l’attendu · depuis le ${formatDate(a.date_creation)}`}
+                  {a.ticket ? ` · ticket #${a.ticket}` : ' · sans ticket'}
+                </span>
+                {aClasser !== a.id && (
+                  <Button size="sm" variant="outline" onClick={() => { setAClasser(a.id); setMotif(''); setErreur(null) }}>
+                    Classer
+                  </Button>
+                )}
+              </div>
+              {aClasser === a.id && (
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <Input aria-label="Motif du classement" className="w-72" placeholder="Motif (ex. relevés en retard)"
+                         value={motif} onChange={(e) => setMotif(e.target.value)} />
+                  <Button size="sm" loading={busy} disabled={!motif.trim()} onClick={() => classer(a.id)}>
+                    Confirmer le classement
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setAClasser(null)}>Annuler</Button>
+                  {erreur && <p role="alert" className="w-full text-sm text-destructive">{erreur}</p>}
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  )
+}
+
 export default function FleetPage() {
   const navigate = useNavigate()
   const [fleet, setFleet] = useState(null)
@@ -64,6 +133,8 @@ export default function FleetPage() {
   // d'un vrai « 0 » (jamais confondus — un système à 0 peut produire ou être
   // en panne, une carte périmée le signale explicitement).
   const [stale, setStale] = useState(false)
+  // AMON88 — un classement recharge la vue parc (compteur « N alerte(s) »).
+  const [version, setVersion] = useState(0)
   const mountedRef = useRef(true)
   useEffect(() => () => { mountedRef.current = false }, [])
 
@@ -98,7 +169,7 @@ export default function FleetPage() {
     }
     load()
     return () => { active = false }
-  }, [windowDays])
+  }, [windowDays, version])
 
   // VX30 — re-sondage léger 5 min sur l'écran monitoring (silencieux : ne
   // remplace jamais l'état chargé/erreur affiché par un flash de loading).
@@ -218,6 +289,10 @@ export default function FleetPage() {
         titre="PR par système (%)" chartData={chartData} nom="PR"
         tooltipFormat={(v) => formatPercent(v, { decimals: 1 })}
       />
+
+      {!loading && !error && (
+        <AlertesOuvertes version={version} onClasse={() => setVersion((v) => v + 1)} />
+      )}
 
       {!loading && !error && (
         systems.length === 0 ? (
