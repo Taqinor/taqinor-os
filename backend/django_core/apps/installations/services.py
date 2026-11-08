@@ -6584,20 +6584,19 @@ def notifier_reception_solde_a_facturer(installation, user=None):
     volée) le jalon RECEPTION du chantier pour y accrocher le drapeau, sans
     dupliquer le mécanisme de garde. No-op sans devis source."""
     devis = getattr(installation, 'devis', None)
-    if devis is None:
-        return False
+    # ACSV39 — sans devis : jalon atteint et publié, sans tranche ni rappel.
     jalon, _ = JalonProjet.obtenir_ou_creer_phase(
         installation, JalonProjet.Phase.RECEPTION,
         defaults={
             'company': installation.company,
             'libelle': 'Réception',
-            'tranche_echeancier': JalonProjet.TRANCHE_SOLDE,
+            'tranche_echeancier': JalonProjet.TRANCHE_SOLDE if devis is not None else None,
         })
     changed_fields = []
     if not jalon.atteint:
         jalon.atteint = True
         changed_fields.append('atteint')
-    if not jalon.tranche_echeancier:
+    if devis is not None and not jalon.tranche_echeancier:
         jalon.tranche_echeancier = JalonProjet.TRANCHE_SOLDE
         changed_fields.append('tranche_echeancier')
     if changed_fields:
@@ -6606,6 +6605,8 @@ def notifier_reception_solde_a_facturer(installation, user=None):
         # parmi PLANIFIE/EN_COURS/INSTALLE/RECEPTIONNE, qui marque aujourd'hui
         # un JalonProjet atteint automatiquement) se propage au portail.
         synchroniser_jalon_portail(jalon, user)
+    if devis is None:
+        return False
     return notifier_jalon_a_facturer(jalon, user)
 
 
