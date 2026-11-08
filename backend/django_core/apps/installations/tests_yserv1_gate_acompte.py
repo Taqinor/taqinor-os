@@ -160,6 +160,36 @@ class ToggleOnSansAcompteTests(TestCase):
              'motif_override_acompte': '   '}, format='json')
         self.assertEqual(r.status_code, 409, r.data)
 
+    def test_patch_dater_pose_refusee_sans_acompte(self):
+        """ACSV12 (C-ACSV-133) — dater par PATCH une pose sans acompte
+        encaissé : 409 `date_prevue`, date nulle ; avec motif : 200 + note ;
+        faire d'une intervention datée une pose : même 409.
+        ROUGE AVANT : 200."""
+        import datetime
+
+        from apps.installations.models import Intervention
+        pose = Intervention.objects.create(
+            company=self.company, installation=self.inst,
+            type_intervention=Intervention.Type.POSE, created_by=self.user)
+        jour = (datetime.date.today() + datetime.timedelta(days=7)).isoformat()
+        url = f'{BASE}/interventions/{pose.id}/'
+        r = self.api.patch(url, {'date_prevue': jour}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('date_prevue', r.data)
+        pose.refresh_from_db()
+        self.assertIsNone(pose.date_prevue)
+        r = self.api.patch(url, {'date_prevue': jour, 'motif_override_acompte': 'Client VIP'},
+                           format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertTrue(InstallationActivity.objects.filter(
+            installation=self.inst, body__contains='pose planifiée sans acompte').exists())
+        controle = Intervention.objects.create(
+            company=self.company, installation=self.inst, type_intervention='controle',
+            created_by=self.user, date_prevue=datetime.date.today())
+        r = self.api.patch(f'{BASE}/interventions/{controle.id}/',
+                           {'type_intervention': Intervention.Type.POSE}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+
 
 class SansDevisLieTests(TestCase):
     def setUp(self):

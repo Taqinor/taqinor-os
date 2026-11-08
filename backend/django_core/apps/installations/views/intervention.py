@@ -412,23 +412,8 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
         # Intervention de type POSE DATÉE sur un chantier dont l'acompte
         # n'est pas encaissé (toggle société ON) est refusée, sauf override
         # responsable/admin (seul rôle admis en écriture ici) avec `motif`.
-        type_intervention = serializer.validated_data.get('type_intervention')
-        date_prevue = serializer.validated_data.get('date_prevue')
-        if (installation is not None
-                and type_intervention == Intervention.Type.POSE
-                and date_prevue):
-            from ..services import verifier_gate_acompte_planification
-            raison = verifier_gate_acompte_planification(installation)
-            if raison:
-                motif_override = (
-                    self.request.data.get('motif_override_acompte')
-                    or '').strip()
-                if not motif_override:
-                    raise ConflitEtat({'date_prevue': [raison]})
-                activity.log_note(
-                    installation, self.request.user,
-                    'Intervention de pose planifiée sans acompte — motif : '
-                    f'{motif_override}')
+        self._verifier_acompte_pose(installation, serializer.validated_data.get('type_intervention'),
+                                    serializer.validated_data.get('date_prevue'))
         technicien = serializer.validated_data.get('technicien')
         # AUD317 — `statut` était directement ÉCRIVABLE au corps
         # (`fields='__all__'`) SANS aucune garde ni effet : créer une
@@ -487,6 +472,21 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
             except TransitionRefusee as exc:
                 raise ConflitEtat({'statut': exc.raisons})
 
+    def _verifier_acompte_pose(self, installation, type_intervention, date_prevue):
+        """YSERV1 / ACSV12 — une POSE DATÉE (création, ou PATCH qui la date ou
+        en fait une pose) sur un chantier sans acompte encaissé : 409
+        `date_prevue`, levable par `motif_override_acompte` (noté au chatter)."""
+        if installation is None or type_intervention != Intervention.Type.POSE or not date_prevue:
+            return
+        from ..services import verifier_gate_acompte_planification
+        raison = verifier_gate_acompte_planification(installation)
+        if raison:
+            motif_override = (self.request.data.get('motif_override_acompte') or '').strip()
+            if not motif_override:
+                raise ConflitEtat({'date_prevue': [raison]})
+            activity.log_note(installation, self.request.user,
+                              f'Intervention de pose planifiée sans acompte — motif : {motif_override}')
+
     def perform_update(self, serializer):
         """ADAPTATEUR (AUD317) — le statut passe par le service unique.
 
@@ -505,6 +505,10 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
         if getattr(cible, 'pk', None) != old.installation_id:  # ACSV11
             raise ConflitEtat({'installation': [
                 "Le chantier d'une intervention ne change pas après sa création."]})
+        type_new = serializer.validated_data.get('type_intervention', old.type_intervention)
+        date_new = serializer.validated_data.get('date_prevue', old.date_prevue)
+        if (old.date_prevue is None and date_new) or type_new != old.type_intervention:  # ACSV12
+            self._verifier_acompte_pose(cible, type_new, date_new)
         intervention_activity.capturer_equipe(old)  # ACHT35
         nouveau_statut = serializer.validated_data.pop('statut', None)
         # Notification CHT9 : seulement quand le technicien CHANGE (pas de
