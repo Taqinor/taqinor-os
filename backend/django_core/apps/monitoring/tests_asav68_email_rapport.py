@@ -111,7 +111,7 @@ class EmailRapportTests(TestCase):
     @override_settings(
         EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
     def test_destinataire_du_client_reply_to_et_copie_ged(self):
-        """AMON47 — tiers refusé (400, 0 mail) ; envoi au client : reply_to =
+        """AMON47 — tiers refusé (409, 0 mail) ; envoi au client : reply_to =
         e-mail de la société, PDF envoyé archivé en GED."""
         from apps.ged.services import find_document_by_source
         from apps.parametres.models import CompanyProfile
@@ -123,7 +123,7 @@ class EmailRapportTests(TestCase):
             r = self.api.post(self.url, {
                 'period': 'monthly', 'recipient': 'tiers@example.invalid',
             }, format='json')
-            self.assertEqual(r.status_code, 400, r.content)
+            self.assertEqual(r.status_code, 409, r.content)  # ENF40 : refus d'état
             self.assertEqual(r.data['recipient'], [
                 'Le rapport ne part qu’aux adresses du client du système.'])
             self.assertEqual(len(mail.outbox), 0)

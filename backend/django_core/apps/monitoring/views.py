@@ -701,9 +701,10 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
             sent = email_om_report(
                 config.installation, period=period, recipient=recipient)
         except DestinataireHorsClient as exc:
-            # AMON47 — un tiers n'est jamais destinataire : 400 nommé.
-            return Response({'recipient': [str(exc)]},
-                            status=status.HTTP_400_BAD_REQUEST)
+            # AMON47 — un tiers n'est jamais destinataire. Adresse bien formée
+            # mais hors des adresses du client EN BASE : refus d'état, 409
+            # (règle ENF40 — le schéma ne peut pas connaître ces adresses).
+            raise ConflitEtat({'recipient': [str(exc)]})
         except EnvoiRapportImpossible as exc:
             # ASAV68 — l'e-mail n'est pas parti : jamais {sent: true}.
             return Response(
