@@ -7,7 +7,7 @@ scoping société assuré par l'appelant (viewset filtre déjà par company).
 """
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
 from django.db.models import Sum
@@ -333,11 +333,14 @@ def message_recouvrement(jour, periode):
 def depassement_aujourdhui(jour, periode, aujourdhui=None):
     """AMON3 — la date d'un relevé est son PREMIER jour couvert : refus
     lisible quand ``jour + période − 1 j`` dépasse aujourd'hui, sinon None."""
-    fin = jour + timedelta(days=max(int(periode or 1), 1) - 1)
-    if fin > (aujourdhui or timezone.localdate()):
-        return (f'La période couverte (jusqu’au {fin:%d/%m/%Y}) dépasse '
-                'aujourd’hui.')
-    return None
+    jours = max(int(periode or 1), 1) - 1
+    aujourdhui = aujourdhui or timezone.localdate()
+    if (aujourdhui - jour).days >= jours:
+        return None
+    # api-fuzz — période démesurée : la fin dépasse le calendrier (OverflowError → 500).
+    fin = jour + timedelta(days=min(jours, (date.max - jour).days))
+    return (f'La période couverte (jusqu’au {fin:%d/%m/%Y}) dépasse '
+            'aujourd’hui.')
 
 
 def releve_chevauchant(installation, debut, periode, exclure=None):
@@ -348,9 +351,9 @@ def releve_chevauchant(installation, debut, periode, exclure=None):
     if exclure is not None:
         qs = qs.exclude(pk=exclure)
     plus_longue = qs.aggregate(m=Max('period_days'))['m'] or 1
-    candidats = qs.filter(
-        date__gt=debut - timedelta(days=plus_longue),
-        date__lt=debut + timedelta(days=max(int(periode or 1), 1)),
+    candidats = qs.filter(  # borne basse ramenée au calendrier (jamais d'OverflowError)
+        date__gt=debut - timedelta(days=min(plus_longue, (debut - date.min).days)),
+        date__lt=debut + timedelta(days=min(max(int(periode or 1), 1), (date.max - debut).days)),
     ).order_by('date', 'id')
     return next((r for r in candidats
                  if recouvre(debut, periode, r.date, r.period_days)), None)
