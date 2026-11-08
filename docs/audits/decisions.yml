@@ -3788,7 +3788,7 @@ decisions:
     reponse: vendu_une_fois
     date: "2026-11-07"
     source: "Reda, question interactive, audit de parcours PA7"
-    taches: []
+    taches: [AMON2]
   - id: D-AMON-2
     question: "La pénalité de disponibilité de l'installation client (calculée sur les relevés) est affichée à l'écran et dans le rapport O&M mais jamais stockée, décidée ni créditée. Que doit-elle devenir ?"
     options:
@@ -3799,4 +3799,4 @@ decisions:
     reponse: affichage_interne
     date: "2026-11-07"
     source: "Reda, question interactive, audit de parcours PA7"
-    taches: []
+    taches: [AMON21]
