@@ -69,7 +69,8 @@ class TestRetour(RetourBase):
 
     def test_retour_incoherent_avec_le_bcf_refuse(self):
         """AAPV41 — retour du fournisseur B sur le BCF de A, ou d'un produit
-        absent du BCF : 400 nommé, rien créé ; cohérent : 201."""
+        absent du BCF : 409 nommé (ENF11 : refus d'état), rien créé ;
+        cohérent : 201."""
         from rest_framework.test import APIClient
         api = APIClient()
         api.force_authenticate(self.user)
@@ -83,11 +84,11 @@ class TestRetour(RetourBase):
         url = '/api/django/stock/retours-fournisseur/'
         rep = api.post(url, {'fournisseur': autre.id, 'bon_commande': bc.id, 'lignes': [
             {'produit': self.produit.id, 'quantite': 2}]}, format='json')
-        self.assertEqual(rep.status_code, 400, rep.content)
+        self.assertEqual(rep.status_code, 409, rep.content)
         self.assertIn('fournisseur', rep.data)
         rep = api.post(url, {'fournisseur': self.fournisseur.id, 'bon_commande': bc.id, 'lignes': [
             {'produit': hors.id, 'quantite': 2}]}, format='json')
-        self.assertEqual(rep.status_code, 400, rep.content)
+        self.assertEqual(rep.status_code, 409, rep.content)
         self.assertIn('lignes', rep.data)
         self.assertFalse(RetourFournisseur.objects.filter(bon_commande=bc).exists())
         rep = api.post(url, {'fournisseur': self.fournisseur.id, 'bon_commande': bc.id, 'lignes': [

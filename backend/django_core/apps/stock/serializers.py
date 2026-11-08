@@ -1447,14 +1447,16 @@ class RetourFournisseurSerializer(IdInconnu404ImbriquesMixin, SameCompanyFKSeria
         fournisseur = attrs.get('fournisseur', getattr(self.instance, 'fournisseur', None))
         if bc is None:
             return attrs
+        # ENF11 — corps conforme, refus par l'ÉTAT des données (le BCF est
+        # celui d'un autre fournisseur / ne porte pas ce produit) : 409.
         if fournisseur is not None and fournisseur.pk != bc.fournisseur_id:
-            raise serializers.ValidationError({'fournisseur': [
+            raise ConflitEtat({'fournisseur': [
                 f'Le fournisseur doit être celui du bon de commande ({bc.fournisseur.nom}).']})
         produits_bcf = set(bc.lignes.values_list('produit_id', flat=True))
         for ligne in attrs.get('lignes') or []:
             produit = ligne.get('produit')
             if produit is not None and produit.pk not in produits_bcf:
-                raise serializers.ValidationError({'lignes': [
+                raise ConflitEtat({'lignes': [
                     f"{produit.nom} n'est pas sur le bon de commande {bc.reference}."]})
         return attrs
 
@@ -2227,8 +2229,8 @@ class FactureFournisseurSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMix
         bcf = attrs.get('bon_commande', getattr(self.instance, 'bon_commande', None))
         fournisseur = attrs.get('fournisseur', getattr(self.instance, 'fournisseur', None))
         if bcf is not None and fournisseur is not None and bcf.fournisseur_id != fournisseur.pk:
-            raise serializers.ValidationError(  # AAPV53
-                {'bon_commande': 'Ce bon de commande appartient à un autre fournisseur.'})
+            raise ConflitEtat(  # AAPV53 — règle croisée sur l'état : 409 (ENF11)
+                {'bon_commande': ['Ce bon de commande appartient à un autre fournisseur.']})
         return attrs
 
     # DC16 — une facture rattachée à un bon de commande doit être créée via

@@ -183,7 +183,7 @@ class TestImputationOnFacture(Xpur8Base):
         self.assertEqual(r.status_code, 409, r.content)
 
     def test_lien_bcf_autre_fournisseur_refuse(self):
-        """AAPV53 — la facture du fournisseur B liée au BCF de A : 400, aucun
+        """AAPV53 — la facture du fournisseur B liée au BCF de A : 409, aucun
         lien, l'acompte de A reste ouvert ; l'imputation ne sert jamais une
         facture d'un autre fournisseur."""
         from apps.stock.models import FactureFournisseur
@@ -197,7 +197,7 @@ class TestImputationOnFacture(Xpur8Base):
             montant_ttc=Decimal('12000'))
         r = self.api.patch(f'/api/django/stock/factures-fournisseur/{ff_b.id}/',
                            {'bon_commande': self.bcf.id}, format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 409, r.content)
         self.assertIn('autre fournisseur', str(r.data['bon_commande']))
         ff_b.refresh_from_db()
         self.assertIsNone(ff_b.bon_commande_id)
