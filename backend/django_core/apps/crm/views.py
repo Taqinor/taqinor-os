@@ -1125,20 +1125,26 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         ``{adresse, ville}``. L'écran remplit ``gps_lat``/``gps_lng`` (et
         ``lien_maps``) avec la réponse ; l'enregistrement normal du lead
         persiste et journalise — ce résolveur reste PUR, utilisable aussi
-        en création avant tout enregistrement. ``precision`` dit d'où vient
-        le point : ``lien`` (exact, choisi par le client), ``adresse``
-        (géocodeur), ``ville`` (centre-ville approximatif)."""
+        en création avant tout enregistrement. ``lien`` accepte un lien
+        Google, des coordonnées, un plus code ou une adresse. ``precision``
+        dit d'où vient le point : ``lien`` (exact, choisi par le client),
+        ``adresse`` (géocodeur), ``lieu-dit``, ``ville`` (centre-ville
+        approximatif)."""
         from .geolocalisation import (
-            coords_depuis_adresse, coords_depuis_lien_maps)
+            coords_depuis_adresse, est_lien_court, resoudre_lien_maps)
         corps = corps_lu(request, CORPS_RESOUDRE_GPS)  # ERR-ENF11-FUZZ-CRM
         if lien := corps.get('lien', '').strip():
-            coords = coords_depuis_lien_maps(lien)
-            if coords is None:  # rien à trouver dans ce lien : 404
+            resultat = resoudre_lien_maps(lien, corps.get('ville', ''))
+            if resultat is None:  # rien à trouver dans ce lien : 404
                 return Response(
-                    {'detail': 'Aucune coordonnée trouvée dans ce lien '
-                               'Google Maps.'},
+                    {'detail': "Ce lien court n'a pas pu être ouvert : "
+                               'collez plutôt les coordonnées (latitude, '
+                               'longitude).' if est_lien_court(lien) else
+                               'Aucune position trouvée dans ce texte : '
+                               'collez un lien Google Maps, des coordonnées '
+                               'ou un plus code.'},
                     status=status.HTTP_404_NOT_FOUND)
-            lat, lng, precision = (*coords, 'lien')
+            lat, lng, precision = resultat
         else:
             resultat = coords_depuis_adresse(
                 corps.get('adresse'), corps.get('ville'))

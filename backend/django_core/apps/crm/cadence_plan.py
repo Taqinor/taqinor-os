@@ -1137,7 +1137,11 @@ def _materialiser_touche_suivante(etape_close, user=None):
             dimanche=bool(getattr(gabarit, 'dimanche_ok', False)),
             canal=_canal_effectif(gabarit),
             samedi=bool(getattr(gabarit, 'samedi_ok', False)),
-            heure_cible=getattr(gabarit, 'heure_cible', None))
+            heure_cible=getattr(gabarit, 'heure_cible', None),
+            # RAPPEL-LENDEMAIN (09/11/2026) — un appel sans réponse n'est
+            # jamais relancé par un barreau J+N le même jour.
+            rappel_apres=cadence_temps.instant_appel_clos(
+                etape_close, gabarit, _canal_effectif(gabarit)))
         etape = RelanceEtape(
             company=lead.company, lead=lead, cadence=cadence,
             ordre=gabarit.ordre, due_at=echeance, due_initial_at=echeance,

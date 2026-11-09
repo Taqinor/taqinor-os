@@ -218,18 +218,21 @@ class SaisieParLApi(TestCase):
         self.assertEqual(resp.status_code, 200, resp.data)
 
     def test_le_lien_maps_suit_un_seul_predicat_schema_et_serveur(self):
-        # Un lien long (jusqu'à 500 signes, comme la colonne) est accepté ; le
-        # schéma de requête publie le MÊME motif que celui que le serveur applique.
-        long = 'https://www.google.com/maps/place/' + 'x' * 300
-        self.assertEqual(self._patch({'lien_maps': long}).status_code, 200)
+        # Tout ce qu'un client envoie (lien long jusqu'à 2000 signes, coordonnées,
+        # plus code, adresse) est accepté ; seuls les signes de contrôle (nul
+        # compris) et les textes de plus de 2000 signes sont refusés. Le schéma
+        # de requête publie le MÊME motif que celui que le serveur applique.
+        long = 'https://www.google.com/maps/place/' + 'x' * 1500
         hote_long = 'https://' + '.'.join(['a' * 63] * 5) + '.ma/'
-        self.assertEqual(self._patch({'lien_maps': hote_long}).status_code, 200)
-        for refuse in ('ftp://x.ma', 'https://x.ma/a b', 'x' * 20,
-                       'https://x.ma/' + 'y' * 500):
+        for accepte in (long, hote_long, '33.57, -7.58', '8CQ9+X2 Casablanca',
+                        "33°30'34.1\"N 7°41'18.1\"W", 'Hay Hassani, Casablanca',
+                        'x' * 20, ''):
+            resp = self._patch({'lien_maps': accepte})
+            self.assertEqual(resp.status_code, 200, (accepte[:40], resp.data))
+        for refuse in ('x\u0000y', 'a\nb', 'x' * 2001):
             resp = self._patch({'lien_maps': refuse})
-            self.assertEqual(resp.status_code, 400, (refuse, resp.data))
+            self.assertEqual(resp.status_code, 400, (refuse[:20], resp.data))
             self.assertIn('lien_maps', resp.data)
-        self.assertEqual(self._patch({'lien_maps': ''}).status_code, 200)
 
     def test_cos_phi_strictement_positif_en_chaine_ou_en_nombre(self):
         for valeur in ('0.001', '1', 0.5, '.5'):

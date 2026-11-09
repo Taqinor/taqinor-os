@@ -236,7 +236,7 @@ export default function SectionContact({ state, setField, errors = {}, mode, ref
           <FormField label="Lien Google Maps (envoyé par le client)" htmlFor="lf-lien-maps" error={errors.lien_maps}>
             <Input
               id="lf-lien-maps" invalid={!!errors.lien_maps} value={v('lien_maps')} disabled={piiMasked} title={piiTitle}
-              placeholder="https://maps.app.goo.gl/…"
+              placeholder="Lien Google Maps, coordonnées (33.57, -7.58), plus code ou adresse"
               onChange={(e) => setField('lien_maps', e.target.value)}
             />
           </FormField>
@@ -245,8 +245,14 @@ export default function SectionContact({ state, setField, errors = {}, mode, ref
           type="button" size="sm" variant="outline"
           disabled={gpsBusy || piiMasked || !v('lien_maps')}
           onClick={() => resoudreGps(
-            { lien: v('lien_maps') },
-            () => 'GPS extrait du lien Google Maps.')}
+            { lien: v('lien_maps'), ville: v('ville') },
+            (d) => (d.precision === 'lien'
+              ? 'GPS extrait du lien Google Maps.'
+              : d.precision === 'ville'
+                ? 'GPS approximatif posé (centre-ville) — affinez si besoin.'
+                : d.precision === 'lieu-dit'
+                  ? 'GPS approximatif posé (centre du lieu-dit) — affinez si besoin.'
+                  : 'GPS approximatif posé depuis le nom du lieu — affinez si besoin.'))}
         >
           Lien → GPS{gpsBusy ? '…' : ''}
         </Button>
