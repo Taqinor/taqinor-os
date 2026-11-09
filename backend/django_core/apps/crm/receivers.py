@@ -551,6 +551,20 @@ def _empreinte_opposition_lead(sender, instance, **kwargs):
         poser_empreintes_opposition(instance.company, instance)
 
 
+@receiver(post_save, sender=Lead, dispatch_uid='crm_rejouer_restauration')
+@_point_de_sauvegarde
+def _rejouer_restauration_corbeille(sender, instance, update_fields=None,
+                                    **kwargs):
+    """ASOC86 — un lead SUPPRIMÉ restauré (corbeille, ``restore()``) rejoue la
+    restauration d'un archivé : ligne « restauré » + prochaine étape."""
+    if 'is_deleted' not in (update_fields or ()) or instance.is_deleted:
+        return
+    from . import activity
+    from .cadence_filet import assurer_prochaine_etape_apres_succes
+    activity.log_restore(instance, None)
+    assurer_prochaine_etape_apres_succes(instance, None)
+
+
 # ── VTA5 — LE FEU VERT D'UNE VISITE TERRAIN REDESCEND SUR LE LEAD ────────────
 #
 # ``apps.visites`` a émis ``visite_validee`` ; c'est ICI que le CRM décide ce
