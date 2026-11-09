@@ -850,8 +850,9 @@ class Lead(LeadPompageMixin, SoftDeleteModel):
     # GPS7 (fondateur 07/09/2026) — lien Google Maps envoyé par le client,
     # gardé pour PROVENANCE ; l'écran le convertit en gps_lat/gps_lng via
     # `geolocalisation.coords_depuis_lien_maps` (action resoudre-gps).
-    lien_maps = models.URLField(
-        max_length=500, blank=True, default='',
+    # Texte libre (lien Google, coordonnées, plus code, adresse) : 2000 signes.
+    lien_maps = models.CharField(
+        max_length=2000, blank=True, default='',
         verbose_name='Lien Google Maps')
     # VREF (fondateur 07/09/2026) — ville ERP de RATTACHEMENT quand la ville
     # tapée n'est pas dans le gazetier (douar, petit village) : choisie par

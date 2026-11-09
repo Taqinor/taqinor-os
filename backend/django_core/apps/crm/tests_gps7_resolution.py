@@ -17,7 +17,9 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 
 from apps.crm.geolocalisation import (
-    coords_depuis_adresse, coords_depuis_lien_maps)
+    coords_depuis_adresse, coords_depuis_lien_maps, est_lien_court,
+    olc_decoder, olc_encoder,
+    olc_retrouver, resoudre_lien_maps)
 
 User = get_user_model()
 
@@ -165,3 +167,187 @@ class ResolveurHttpTests(TestCase):
                 {'adresse': '', 'ville': 'Marrakech'}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(resp.data['precision'], 'ville')
+
+
+_CONSENT = ('https://consent.google.com/ml?continue=https://www.google.com/'
+            'maps/search/33.381037,%2B-7.545323?entry%3Dtts&gl=NL')
+_GEO_ADRESSE = 'apps.crm.geolocalisation.coords_depuis_adresse'
+_CASA = (Decimal('33.5731'), Decimal('-7.5898'), 'ville')
+
+
+class FormesGoogleTests(TestCase):
+    """Formats réels d'un lien / texte client : coordonnées entières, repère
+    déposé (``/search/lat,lng``, consentement), DMS (même encodé deux fois),
+    plus codes, noms de lieu. Réseau et géocodeur mockés."""
+
+    def _exact(self, texte, attendu):
+        with patch(_GEO_ADRESSE, side_effect=AssertionError('géocodé')):
+            self.assertEqual(
+                resoudre_lien_maps(texte),
+                (Decimal(attendu[0]), Decimal(attendu[1]), 'lien'), texte)
+
+    def test_repere_depose_search_et_consentement(self):
+        attendu = ('33.381037', '-7.545323')
+        self._exact(_CONSENT, attendu)
+        self._exact('https://www.google.com/maps/search/33.381037,+-7.545323'
+                    '?entry=tts', attendu)
+
+    def test_entiers_search_place_et_nu(self):
+        self._exact('https://maps.google.com/?q=33,-7', ('33', '-7'))
+        self._exact('https://www.google.com/maps/place/33.5731,-7.5898',
+                    ('33.5731', '-7.5898'))
+        self._exact('https://www.google.com/maps/search/33.5731,-7.5898/',
+                    ('33.5731', '-7.5898'))
+        self._exact('33.57; -7.58', ('33.57', '-7.58'))
+        self._exact('33.57 -7.58', ('33.57', '-7.58'))
+        self._exact('https://www.google.com/maps?ll=33.5,-7.5&z=15',
+                    ('33.5', '-7.5'))
+
+    def test_repere_exact_prime_sur_le_centre_de_la_carte(self):
+        self._exact(
+            'https://www.google.com/maps/place/Taqinor/@33.58,-7.61,17z/'
+            'data=!3m1!4b1!4m6!3m5!3d33.573110!4d-7.589843',
+            ('33.573110', '-7.589843'))
+
+    def test_degres_minutes_secondes(self):
+        attendu = ('33.509472', '-7.688361')
+        for texte in (
+                '33°30\'34.1"N 7°41\'18.1"W',
+                '33° 30′ 34.1″ N, 7° 41′ 18.1″ W',
+                "https://www.google.com/maps/place/33%C2%B030'34.1%22N+7%C2%B0"
+                "41'18.1%22W",
+                'https://consent.google.com/ml?continue=https%3A%2F%2Fwww.'
+                'google.com%2Fmaps%2Fplace%2F33%25C2%25B030%2734.1%2522N%2B7'
+                '%25C2%25B041%2718.1%2522W'):
+            self._exact(texte, attendu)
+        self._exact('33.5731 N, 7.5898 W', ('33.5731', '-7.5898'))
+        with patch(_GEO_ADRESSE, return_value=None):
+            self.assertIsNone(resoudre_lien_maps('33°75\'10"N 7°41\'18"W'))
+
+    def test_plus_code_complet(self):
+        lat, lng = olc_decoder('8FVC9G8F+6X')
+        self.assertAlmostEqual(float(lat), 47.3655625, places=6)
+        self.assertAlmostEqual(float(lng), 8.5249375, places=6)
+        # vecteur du jeu de référence OLC : ce point tombe dans la cellule « 6W »
+        self.assertEqual(olc_encoder('47.365562', '8.524813'), '8FVC9G8F+6W')
+        resultat = resoudre_lien_maps('8FVC9G8F+6X')
+        self.assertEqual(resultat[2], 'lien')
+        self.assertAlmostEqual(float(resultat[0]), 47.365562, places=5)
+
+    def test_plus_code_court_retrouve_pres_de_la_reference(self):
+        self.assertEqual(olc_encoder(47.4, 8.6)[:4], '8FVC')
+        lat, lng = olc_retrouver('9G8F+6X', 47.4, 8.6)
+        self.assertEqual((float(lat), float(lng)), (47.3655625, 8.5249375))
+        plein = olc_encoder('33.5731', '-7.5898')
+        court = plein[4:]
+        attendu = olc_decoder(plein)
+        self.assertEqual(olc_retrouver(court, 33.6, -7.6), attendu)
+        with patch(_GEO_ADRESSE, return_value=_CASA) as geo:
+            resultat = resoudre_lien_maps(court + ' Casablanca')
+        geo.assert_called_once_with('Casablanca', '')
+        self.assertEqual(resultat[2], 'lien')
+        self.assertAlmostEqual(float(resultat[0]), float(attendu[0]), places=5)
+        self.assertAlmostEqual(float(resultat[1]), float(attendu[1]), places=5)
+        # même code dans une URL Google (« + » encodé)
+        url = ('https://www.google.com/maps/place/' + court.replace('+', '%2B')
+               + '+Casablanca')
+        with patch(_GEO_ADRESSE, return_value=_CASA):
+            self.assertEqual(resoudre_lien_maps(url)[:2], resultat[:2])
+
+    def test_plus_code_court_sans_reference_rend_None(self):
+        with patch(_GEO_ADRESSE, return_value=None) as geo:
+            self.assertIsNone(resoudre_lien_maps('8CQ9+X2 Casablanca'))
+        geo.assert_called_once()
+        with patch(_GEO_ADRESSE, side_effect=AssertionError('géocodé')):
+            # ni localité ni ville : rien à géocoder, jamais d'invention
+            self.assertIsNone(resoudre_lien_maps('8CQ9+X2'))
+
+    def test_plus_code_court_utilise_la_ville_du_lead(self):
+        with patch(_GEO_ADRESSE, return_value=_CASA) as geo:
+            resultat = resoudre_lien_maps('8CQ9+X2', 'Casablanca')
+        geo.assert_called_once_with('', 'Casablanca')
+        self.assertEqual(resultat[2], 'lien')
+
+    def test_sans_coordonnee_le_nom_du_lieu_est_geocode(self):
+        cas = (
+            ('https://www.google.com/maps/place/Hay+Mohammadi,+Casablanca/',
+             'Hay Mohammadi, Casablanca'),
+            ('https://www.google.com/maps?q=Rue+Allal+Ben+Abdellah+Rabat',
+             'Rue Allal Ben Abdellah Rabat'),
+            ('https://www.google.com/maps/search/?api=1&query=Ain+Sebaa',
+             'Ain Sebaa'),
+            ('Hay Hassani, Casablanca', 'Hay Hassani, Casablanca'),
+        )
+        for texte, nom in cas:
+            with patch(_GEO_ADRESSE, return_value=_CASA) as geo:
+                resultat = resoudre_lien_maps(texte, 'Casablanca')
+            geo.assert_called_once_with(nom, 'Casablanca')
+            # la précision du géocodeur est rendue telle quelle (approximatif)
+            self.assertEqual(resultat, _CASA, texte)
+
+    def test_url_etrangere_a_google_n_est_pas_geocodee(self):
+        with patch(_GEO_ADRESSE, side_effect=AssertionError('géocodé')):
+            self.assertIsNone(
+                resoudre_lien_maps('https://exemple.com/pas-une-carte'))
+
+    def test_lien_court_vers_le_consentement(self):
+        class _Reponse:
+            url = _CONSENT
+            text = ''
+        with patch('requests.get', return_value=_Reponse()):
+            self.assertEqual(
+                resoudre_lien_maps('https://maps.app.goo.gl/AbC123'),
+                (Decimal('33.381037'), Decimal('-7.545323'), 'lien'))
+            self.assertEqual(
+                coords_depuis_lien_maps('https://maps.app.goo.gl/AbC123'),
+                (Decimal('33.381037'), Decimal('-7.545323')))
+
+    def test_seul_un_HOTE_google_court_est_suivi(self):
+        with patch('requests.get', side_effect=AssertionError('requête')):
+            self.assertIsNone(coords_depuis_lien_maps(
+                'http://169.254.169.254/latest/?x=maps.app.goo.gl/'))
+            self.assertIsNone(coords_depuis_lien_maps('goo.gl/AbC123'))
+        self.assertTrue(est_lien_court('https://maps.app.goo.gl/AbC?g_st=iw'))
+        self.assertTrue(est_lien_court('https://goo.gl/maps/AbC'))
+
+    def test_lien_court_ferme_rend_None_sans_geocoder(self):
+        with patch('requests.get', side_effect=OSError('down')), patch(
+                _GEO_ADRESSE, side_effect=AssertionError('géocodé')):
+            self.assertIsNone(
+                resoudre_lien_maps('https://maps.app.goo.gl/AbC123'))
+
+
+class ResolveurHttpFormesTests(TestCase):
+    """Le résolveur HTTP annonce la précision et dit quoi faire en échec."""
+
+    def setUp(self):
+        self.company, _ = Company.objects.get_or_create(
+            slug='gps7', defaults={'nom': 'gps7'})
+        self.user = User.objects.create_user(
+            username='gps7-f', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+
+    def _post(self, corps):
+        return self.api.post('/api/django/crm/leads/resoudre-gps/', corps,
+                             format='json')
+
+    def test_coordonnees_collees(self):
+        resp = self._post({'lien': '33.57, -7.58'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['precision'], 'lien')
+
+    def test_nom_de_lieu_annonce_une_precision_approximative(self):
+        with patch(_GEO_ADRESSE, return_value=_CASA):
+            resp = self._post({'lien': 'Hay Hassani', 'ville': 'Casablanca'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['precision'], 'ville')
+
+    def test_lien_court_ferme_404_propose_les_coordonnees(self):
+        with patch('requests.get', side_effect=OSError('down')):
+            resp = self._post({'lien': 'https://maps.app.goo.gl/AbC123'})
+        self.assertEqual(resp.status_code, 404)
+        self.assertIn('lien court', resp.data['detail'])
+        self.assertIn('coordonnées', resp.data['detail'])

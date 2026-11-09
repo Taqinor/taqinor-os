@@ -18,9 +18,7 @@ from drf_spectacular.drainage import set_override
 from drf_spectacular.extensions import OpenApiSerializerFieldExtension
 from rest_framework import serializers
 
-from core.champs_stricts import (
-    MOTIF_URL_HTTP_SOUPLE, ChaineStricte, UrlHttpSouple,
-)
+from core.champs_stricts import ChaineStricte
 from core.conflit_etat import ConflitEtat
 
 #: Plafond publié d'un relevé (kWh, kVA…) : au-delà, ``quantize`` à 2 décimales
@@ -37,7 +35,12 @@ MOTIF_COS_PHI_RELEVE = r'^(?:1(?:\.0{0,2})?|0?\.(?:[1-9][0-9]?|0[1-9]))$'
 MOTIF_COS_PHI = (r'^(?:1(?:\.0{0,3})?|0?\.(?:[1-9][0-9]{0,2}|0[1-9][0-9]?'
                  r'|00[1-9]))$')
 MOTIF_MOIS = r'^[0-9]{4}-(?:0[1-9]|1[0-2])$'
-MAPS_MAX = 500
+#: Lien / position Maps : un lien Google (long, avec consentement), mais aussi
+#: des coordonnées, un plus code ou une adresse collés tels quels — « le champ
+#: accepte toutes les adresses Google ». 2000 signes ; ni nul ni signe de
+#: contrôle (le résolveur ``resoudre-gps`` comprend ces formes).
+MAPS_MAX = 2000
+MOTIF_TEXTE_MAPS = r'^[^\u0000-\u001f\u007f]*$'
 
 
 def _nullable(schema):
@@ -186,13 +189,13 @@ class PeriodeFacture(ChaineStricte):
 
 
 class UrlMaps:
-    """Prédicat du lien Maps : ``MOTIF_URL_HTTP_SOUPLE`` (celui de
-    ``core.champs_stricts.UrlHttpSouple``) et au plus ``MAPS_MAX`` signes
-    (``max_length`` du modèle) — le même texte côté schéma et côté serveur."""
+    """Prédicat du champ Maps : ``MOTIF_TEXTE_MAPS`` (aucun signe de contrôle,
+    nul compris) et au plus ``MAPS_MAX`` signes (``max_length`` du modèle) — le
+    même texte côté schéma et côté serveur."""
 
     code = 'invalid'
-    message = 'Saisissez une URL valide.'
-    _motif = re.compile(MOTIF_URL_HTTP_SOUPLE)
+    message = 'Saisissez un lien Google Maps, des coordonnées ou une adresse.'
+    _motif = re.compile(MOTIF_TEXTE_MAPS)
 
     def __call__(self, value):
         if (not isinstance(value, str) or len(value) > MAPS_MAX
@@ -200,16 +203,16 @@ class UrlMaps:
             raise _ErreurDjango(self.message, code=self.code)
 
     def __eq__(self, autre):
-        return isinstance(autre, (UrlMaps, UrlHttpSouple))
+        return isinstance(autre, UrlMaps)
 
     def __hash__(self):
         return hash(UrlMaps)
 
 
 class LienMaps(ChaineStricte):
-    """Lien Google Maps du lead : http(s) puis des signes ni blancs ni de
-    contrôle, vide permis. Remplace ``format: uri`` + ``URLValidator`` (hôte
-    de plus de 253 signes publié conforme puis refusé)."""
+    """Lien / position Maps du lead : tout texte sans signe de contrôle (lien
+    Google, coordonnées, plus code, adresse), vide permis. Remplace
+    ``format: uri`` + ``URLValidator`` (qui refusait les coordonnées)."""
 
     def __init__(self, **kwargs):
         kwargs['validators'] = [
@@ -226,7 +229,7 @@ class _LienMaps(OpenApiSerializerFieldExtension):
     def map_serializer_field(self, auto_schema, direction):
         if direction == 'request':
             return {'type': 'string', 'maxLength': MAPS_MAX,
-                    'pattern': MOTIF_URL_HTTP_SOUPLE}
+                    'pattern': MOTIF_TEXTE_MAPS}
         return {'type': 'string', 'maxLength': MAPS_MAX}
 
 

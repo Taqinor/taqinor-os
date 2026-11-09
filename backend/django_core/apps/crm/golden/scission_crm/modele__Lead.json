@@ -476,11 +476,11 @@
    "kwargs": {
     "blank": true,
     "default": "",
-    "max_length": 500,
+    "max_length": 2000,
     "verbose_name": "Lien Google Maps"
    },
    "nom": "lien_maps",
-   "type": "URLField"
+   "type": "CharField"
   },
   {
    "args": [],
