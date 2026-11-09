@@ -329,10 +329,10 @@ def public_bcf_document(request, token):
 # qu'un seul devis d'une seule société). Aucun login : le jeton AUTHENTIFIE.
 
 
-#: WJ24 — plafond de panneaux republiés PAR ZONE. Une villa en pose quelques
-#: dizaines ; 600 couvre très largement l'industriel tout en bornant la taille
-#: du payload public (et le coût d'un blob stocké volumineux).
-_MAX_PANNEAUX_PUBLIES = 600
+#: WJ24/ACON50 (D-ACON-4) — plafond de panneaux republiés PAR ZONE : le plafond
+#: dur du calepinage (2 000, 23/10), au-delà la page compare ``count`` aux
+#: panneaux reçus et dit « vue simplifiée » (ACON93).
+_MAX_PANNEAUX_PUBLIES = 2000
 
 #: Valeurs d'énumération admises — tout le reste est jeté (jamais republié).
 _FAMILLES_CONNUES = ('south', 'eastwest')
