@@ -36,6 +36,8 @@ from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 import logging
 
+from core.events import ticket_resolu
+
 logger = logging.getLogger(__name__)
 
 #: Attribut transitoire porté par l'instance entre ``pre_save`` et
@@ -144,3 +146,20 @@ def deposer_upload_dans_ged(sender, instance, raw=False, **kwargs):
     type(instance).objects.filter(pk=instance.pk).update(
         document_ged_id=document.pk)
     instance.document_ged_id = document.pk
+
+
+@receiver(ticket_resolu, dispatch_uid='portail_demande_suit_ticket_resolu')
+def resoudre_demande_sur_ticket_resolu(sender, ticket, company, **kwargs):
+    """ASOC44 — la demande portail prise en charge suit la résolution de son
+    ticket SAV (« Résolue » côté client). Best-effort : la résolution du
+    ticket est déjà actée côté ``sav``."""
+    try:
+        from .models import DemandeTicketPortail
+
+        DemandeTicketPortail.objects.filter(
+            company=company, ticket_id=ticket.pk,
+            statut=DemandeTicketPortail.Statut.PRISE_EN_CHARGE,
+        ).update(statut=DemandeTicketPortail.Statut.RESOLUE)
+    except Exception:  # noqa: BLE001 — best-effort, ne casse jamais (D-ENF22-BLE001)
+        logger.warning('ASOC44 : demande portail non résolue pour ticket #%s',
+                       getattr(ticket, 'pk', '?'), exc_info=True)

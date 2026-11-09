@@ -153,3 +153,26 @@ class DemandeTicketLiaisonTests(TestCase):
             company=self.co_b, client=None, sujet='Autre société')
         res = self._lier(self.bon_ticket_c1.id, demande=autre)
         self.assertEqual(res.status_code, 404, res.content)
+
+    def test_ticket_resolu_resout_la_demande(self):
+        """ASOC44 — la demande prise en charge suit la résolution de SON
+        ticket ; une demande soumise ou liée à un autre ticket ne bouge pas."""
+        self.assertEqual(self._prendre(self.bon_ticket_c1.id).status_code, 200)
+        soumise = DemandeTicketPortail.objects.create(
+            company=self.co_a, client=self.c1, sujet='Soumise')
+        autre = DemandeTicketPortail.objects.create(
+            company=self.co_a, client=self.c1, sujet='Autre ticket',
+            statut=DemandeTicketPortail.Statut.PRISE_EN_CHARGE,
+            ticket=self.faux_ticket_c1)
+        tickets = f'/api/django/sav/tickets/{self.bon_ticket_c1.id}/'
+        for geste in ('demarrer', 'resoudre'):
+            res = self.api.post(f'{tickets}{geste}/', {}, format='json')
+            self.assertEqual(res.status_code, 200, res.content)
+        relu = self.api.get(f'{RACINE}{self.demande.id}/')
+        self.assertEqual(relu.json()['statut'],
+                         DemandeTicketPortail.Statut.RESOLUE)
+        soumise.refresh_from_db()
+        autre.refresh_from_db()
+        self.assertEqual(soumise.statut, DemandeTicketPortail.Statut.SOUMISE)
+        self.assertEqual(autre.statut,
+                         DemandeTicketPortail.Statut.PRISE_EN_CHARGE)
