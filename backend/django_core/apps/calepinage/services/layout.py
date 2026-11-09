@@ -570,6 +570,20 @@ def enregistrer_layout(calepinage, roof_layout, *, user=None,
                 from .versions import purger_versions
 
                 purger_versions(calepinage)
+            # ACON25 (D-ACAL-2) — la variante RETENUE suit la conception ; son
+            # résultat est périmé (ACAL112). Même document (retenir) ⇒ intacte.
+            from django.utils import timezone
+
+            from ..models import CalepinageVariante
+
+            retenue = (CalepinageVariante.objects.select_for_update()
+                       .filter(calepinage_id=calepinage.pk, retenue=True)
+                       .first())
+            if retenue is not None and (empreinte_document(retenue.roof_layout)
+                                        != empreinte_document(roof_layout)):
+                CalepinageVariante.objects.filter(pk=retenue.pk).update(
+                    roof_layout=roof_layout, layout_hash=nouvelle,
+                    resultat=None, updated_at=timezone.now())
 
     if not inchange:
         # CAL26 — un enregistrement SIGNIFICATIF se journalise ; un renvoi à

@@ -22,6 +22,7 @@ from django.test import TestCase
 
 from apps.calepinage.models import Calepinage
 from apps.calepinage.services.layout import LayoutRefuse, enregistrer_layout
+from apps.calepinage.services.variantes import creer_variante, retenir_variante
 from apps.crm.models import Client
 from apps.ventes.models import Devis
 from apps.ventes.services import layout_hash
@@ -68,6 +69,34 @@ class EnregistrementTest(BaseLayout):
         relu = Calepinage.objects.get(pk=self.pivot.pk)
         self.assertEqual(relu.layout_hash, rendu['layout_hash'])
         self.assertEqual(relu.roof_layout, LAYOUT_MODIFIE)
+
+    def test_la_variante_retenue_suit_la_conception(self):
+        # ACON25 (D-ACAL-2) — retenir A puis modifier la conception : A suit,
+        # son résultat est périmé ; re-retenir A garde la conception modifiée.
+        a = creer_variante(self.pivot, nom='Option A', roof_layout=LAYOUT,
+                           resultat={'kwc': 6.9})
+        b = creer_variante(self.pivot, nom='Option B',
+                           roof_layout={'zones': [{'id': 'z1', 'panels': 4}],
+                                        'panelWatt': 575})
+        retenir_variante(a)
+        a.refresh_from_db()
+        self.assertEqual(a.resultat, {'kwc': 6.9})  # retenir : intacte
+        enregistrer_layout(self.pivot, LAYOUT_MODIFIE)
+        a.refresh_from_db()
+        b.refresh_from_db()
+        self.assertEqual(a.roof_layout, LAYOUT_MODIFIE)
+        self.assertIsNone(a.resultat)
+        self.assertEqual(b.roof_layout['zones'][0]['panels'], 4)
+        retenir_variante(b)
+        retenir_variante(a)
+        self.pivot.refresh_from_db()
+        self.assertEqual(self.pivot.roof_layout, LAYOUT_MODIFIE)
+
+    def test_sans_variante_retenue_aucune_variante_ecrite(self):
+        a = creer_variante(self.pivot, nom='Option A', roof_layout=LAYOUT)
+        enregistrer_layout(self.pivot, LAYOUT_MODIFIE)
+        a.refresh_from_db()
+        self.assertEqual(a.roof_layout, LAYOUT)
 
 
 class EmpreinteNonRecodeeTest(BaseLayout):
