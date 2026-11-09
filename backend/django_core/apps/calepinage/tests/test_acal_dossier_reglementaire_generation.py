@@ -96,11 +96,11 @@ class BaseGeneration(BaseApiCalepinage):
         rendus.start()
         self.addCleanup(rendus.stop)
 
-    def _deposer_gabarit(self):
+    def _deposer_gabarit(self, pieces=PIECES):
         reponse = self.api.post(URL_GABARITS, {
             'pays': 'ma', 'code': 'raccordement_bt', 'genre': 'raccordement',
             'intitule': 'Dossier de raccordement BT',
-            'pieces_attendues': json.dumps(PIECES),
+            'pieces_attendues': json.dumps(pieces),
             'champs': json.dumps(CHAMPS),
             'fichier': SimpleUploadedFile(
                 'gabarit.pdf', _pdf('GABARIT ACAL240 PAGE 1',
@@ -116,10 +116,10 @@ class BaseGeneration(BaseApiCalepinage):
             {'gabarit': gabarit_id, 'champs': champs}, format='json')
         self.assertEqual(reponse.status_code, 200, reponse.data)
 
-    def _joindre(self, gabarit_id):
+    def _joindre(self, gabarit_id, piece='plan_masse'):
         reponse = self.api.post(
             f'{url_detail(self.calepinage.pk)}joindre-piece/',
-            {'gabarit': gabarit_id, 'piece': 'plan_masse',
+            {'gabarit': gabarit_id, 'piece': piece,
              'fichier': SimpleUploadedFile(
                  'plan.pdf', _pdf('PIECE JOINTE ACAL240'),
                  content_type='application/pdf')}, format='multipart')
@@ -243,6 +243,73 @@ class GenerationDossierTest(BaseGeneration):
             calepinage=self.calepinage, gabarit=gabarit)
         self.assertIsNone(dossier.document_id)
         self.assertEqual(dossier.genere_empreinte, '')
+
+    def test_piece_obligatoire_illisible_409_nommee(self):
+        """ACON43 — une jointe OBLIGATOIRE illisible refuse (409 nommant la
+        pièce, aucun document GED) ; une FACULTATIVE illisible est signalée."""
+        from apps.records import storage
+        from apps.records.models import Attachment
+
+        gabarit_id = self._deposer_gabarit(pieces=[
+            {'code': 'titre', 'intitule': 'Titre de propriété',
+             'obligatoire': True},
+            {'code': 'plan', 'intitule': 'Plan cadastral',
+             'obligatoire': True},
+            {'code': 'photo', 'intitule': 'Photo', 'obligatoire': False}])
+        self._saisir(gabarit_id, {'puissance': '12,5'})
+        for code in ('titre', 'plan', 'photo'):
+            self._joindre(gabarit_id, piece=code)
+        dossier = DossierReglementaire.objects.get(
+            calepinage=self.calepinage, gabarit_id=gabarit_id)
+        jointes = dossier.pieces_jointes
+        cles = {code: Attachment.objects.get(
+            pk=jointes[code]['attachment_id']).file_key
+            for code in ('plan', 'photo')}
+        vrai_fetch = storage.fetch_attachment
+
+        def _magasin(en_panne):
+            def _fetch(file_key, *args, **kwargs):
+                if file_key in en_panne:
+                    return None, 'stockage en erreur'
+                return vrai_fetch(file_key, *args, **kwargs)
+            return mock.patch('apps.records.storage.fetch_attachment',
+                              side_effect=_fetch)
+
+        titre = Attachment.objects.get(pk=jointes['titre']['attachment_id'])
+        donnees_titre = {'file_key': titre.file_key,
+                         'filename': titre.filename}
+        Attachment.objects.filter(pk=titre.pk).delete()
+        with _magasin({cles['plan']}):
+            refus = self._generer(gabarit_id)
+        self.assertEqual(refus.status_code, 409, refus.data)
+        self.assertEqual(refus.data, {'titre': [
+            "La pièce obligatoire « Titre de propriété » est illisible dans "
+            "le stockage : joignez-la à nouveau."]})
+        dossier.refresh_from_db()
+        self.assertIsNone(dossier.document_id)
+        self.assertIsNone(dossier.genere_le)
+
+        # Titre rétabli, plan relisible, photo illisible : 200 signalé.
+        Attachment.objects.create(
+            pk=titre.pk, company=self.company,
+            content_type=titre.content_type, object_id=titre.object_id,
+            **donnees_titre)
+        with _magasin({cles['photo']}):
+            signale = self._generer(gabarit_id)
+        self.assertEqual(signale.status_code, 200, signale.data)
+        self.assertIn("Pièce « Photo » illisible : non jointe au dossier.",
+                      signale.data['signalements'])
+        self.assertNotIn('jointe:photo',
+                         [p['code'] for p in signale.data['pieces']])
+
+        # Tout intact : 200 sans signalement de pièce.
+        intact = self._generer(gabarit_id)
+        self.assertEqual(intact.status_code, 200, intact.data)
+        self.assertEqual(intact.data['signalements'], [])
+        self.assertEqual(
+            [p['code'] for p in intact.data['pieces']
+             if p['code'].startswith('jointe:')],
+            ['jointe:titre', 'jointe:plan', 'jointe:photo'])
 
 
 class SaisiesConcurrentesTest(TransactionTestCase):

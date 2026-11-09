@@ -748,12 +748,15 @@ def _page_des_champs(gabarit, calepinage, lignes):
     return render_pdf(html=html)
 
 
-def _pieces_du_dossier(dossier, *, company, infos=None):
+def _pieces_du_dossier(dossier, *, company, infos=None, signalements=None):
     """``[(code, libellé, octets)]`` : gabarit, page des champs, pièces
-    jointes PDF — dans cet ordre.
+    jointes PDF — dans cet ordre. ACON43 — une jointe FACULTATIVE illisible
+    est nommée dans ``signalements`` (liste complétée), jamais sautée en
+    silence.
 
     Raises:
-        DossierRefuse: fichier du gabarit illisible ou NON PDF (``gabarit``).
+        DossierRefuse: fichier du gabarit illisible ou NON PDF (``gabarit``) ;
+            jointe OBLIGATOIRE illisible (code de la pièce).
     """
     gabarit = dossier.gabarit
     octets_gabarit = _octets_attachment(
@@ -783,10 +786,17 @@ def _pieces_du_dossier(dossier, *, company, infos=None):
         jointe = jointes.get(code)
         if not isinstance(jointe, dict):
             continue
+        intitule = str(attendue.get('intitule') or code)
         octets = _octets_attachment(company, jointe.get('attachment_id'))
         if _est_octets_pdf(octets):
-            pieces.append(('jointe:%s' % code,
-                           str(attendue.get('intitule') or code), octets))
+            pieces.append(('jointe:%s' % code, intitule, octets))
+        elif attendue.get('obligatoire'):
+            raise DossierRefuse(
+                "La pièce obligatoire « %s » est illisible dans le stockage "
+                ": joignez-la à nouveau." % intitule, piece=code)
+        elif signalements is not None:
+            signalements.append(
+                "Pièce « %s » illisible : non jointe au dossier." % intitule)
     return pieces
 
 
@@ -833,11 +843,14 @@ def construire_pack_dossier(dossier, *, created_by=None, rendus=None,
     # seulement quand l'EMPREINTE DES ENTRÉES change (gabarit compris).
     from .pack_technique import deposer_et_fusionner
 
+    signales = []
     if pieces_dossier is None:
-        pieces_dossier = _pieces_du_dossier(dossier, company=company)
+        pieces_dossier = _pieces_du_dossier(dossier, company=company,
+                                            signalements=signales)
     rendus = rendus if rendus is not None else _rendus_du_module(calepinage,
                                                                  company)
     pieces, signalements = _rendre_pieces_produites(rendus)
+    signalements = signales + signalements
     pieces = list(pieces_dossier) + list(pieces)
     if not pieces:
         raise DossierRefuse(
