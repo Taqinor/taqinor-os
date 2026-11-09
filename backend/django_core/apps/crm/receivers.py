@@ -411,11 +411,13 @@ def _relais_arreter_cadence_on_outcome(**kwargs):
 
 @receiver(lead_stage_changed,
           dispatch_uid="crm_stop_relance_on_stage_signed_or_cold")
+@_point_de_sauvegarde
 def _relais_arreter_cadence_on_stage_change(**kwargs):
     return receivers_cadence._arreter_cadence_on_stage_change(**kwargs)
 
 
 @receiver(lead_stage_changed, dispatch_uid="crm_generate_playbook_progress_on_stage_change")
+@_point_de_sauvegarde
 def _relais_generer_playbook_progress_on_stage_change(**kwargs):
     return receivers_clients._generer_playbook_progress_on_stage_change(**kwargs)
 
