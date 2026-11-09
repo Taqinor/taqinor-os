@@ -147,6 +147,33 @@ class TestClasseurApi(ClasseurBase):
             f'/api/django/reporting/classeurs/{classeur_id}/rafraichir/')
         self.assertEqual(resp3.status_code, 200)
 
+    def test_compte_portail_refuse_sur_toutes_les_routes(self):
+        """APFS100 (C-APFS-001) — un compte portail client reçoit 403 sur
+        la liste, la création et l'évaluation ; aucun classeur créé."""
+        classeur = Classeur.objects.create(
+            company=self.company, proprietaire=self.owner, titre='Interne')
+        portail = User.objects.create_user(
+            username='apfs100_portail', password='x', company=self.company,
+            portee=User.PORTEE_PORTAIL_CLIENT, portail_client_id=1)
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(portail)}')
+        avant = Classeur.objects.count()
+        base = '/api/django/reporting/classeurs/'
+        reponses = [
+            api.get(base),
+            api.post(base, {'titre': 'Fuite'}, format='json'),
+            api.post(f'{base}{classeur.pk}/evaluer/',
+                     {'formule': '=1+1'}, format='json'),
+        ]
+        for resp in reponses:
+            self.assertEqual(resp.status_code, 403)
+            self.assertEqual(str(resp.data['detail']),
+                             'Accès réservé aux comptes internes.')
+        self.assertEqual(Classeur.objects.count(), avant)
+        # L'interne garde l'accès.
+        self.assertEqual(self.api.get(base).status_code, 200)
+
     def test_rafraichir_cellules_non_objets_sans_500(self):
         """ENF11 fuzz — ``cellules`` est un objet libre : une cellule scalaire
         ou liste ne doit pas faire lever TypeError/AttributeError (500)."""

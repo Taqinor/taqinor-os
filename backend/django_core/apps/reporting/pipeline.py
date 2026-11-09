@@ -10,10 +10,9 @@ from decimal import Decimal
 from django.utils import timezone
 
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from authentication.permissions import IsResponsableOrAdmin
+from authentication.permissions import IsAuthenticatedInterne, IsResponsableOrAdmin
 from apps.crm import stages as stage_mod
 from core.score_params import NOM_WIN_PROBA, resoudre
 from core.win_probability import (
@@ -405,7 +404,7 @@ _PROBABILITES_ETAPE_REPONSE = inline_serializer('ReportingProbabilitesEtapeRepon
 
 @extend_schema(responses={200: _PROBABILITES_ETAPE_REPONSE})
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticatedInterne])
 def probabilites_etape(request):
     """AANA66 (D-AANA-VER-2) — LA table des probabilités de base par étape
     (``core.win_probability``), recalibrée par société (``score_params.
