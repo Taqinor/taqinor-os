@@ -25,6 +25,8 @@ Forme d'une entrée (contrat ``proposal_data.json`` › ``synthese_ci``) :
 """
 from __future__ import annotations
 
+import re
+
 from ..constants_82_21 import (
     ANRE_PERIODE,
     ANRE_TARIF_SOURCE,
@@ -154,6 +156,14 @@ TEXTES_VISITE = {
 SOURCE_CONVENTION_2 = "conventions Groupe CIQ (convention 2)"
 SOURCE_POINTE = "composition de l'offre servie (CIQ302)"
 SOURCE_VISITE = "D-CIQ-5"
+#: ADEV110 (ADEV77, D-ACI-1=b) — consommation extrapolée d'un relevé de n < 12
+#: mois (hypothèse ``consommation`` de l'étude, source « relevé partiel (n mois) »).
+TEXTES_CONSOMMATION_ESTIMEE = {
+    "fr": "Consommation : estimation sur {n} mois relevés.",
+    "en": "Consumption: estimate based on {n} metered months.",
+    "ar": "الاستهلاك: تقدير على أساس {n} أشهر مسجلة.",
+}
+_RELEVE_PARTIEL = re.compile(r"relevé partiel \((\d+) mois\)")
 
 
 def _dict(v):
@@ -384,6 +394,14 @@ TEXTES_OPTION_AVEC = {
            "سنويًا مع خيار البطارية."),
 }
 
+#: AMOT123 (C-AMOT-VER4-030) — base « ttc » (TVA non récupérable) : la même
+#: phrase, l'économie de l'option en TTC.
+TEXTES_OPTION_AVEC_TTC = {
+    "fr": TEXTES_OPTION_AVEC["fr"].replace("MAD HT", "MAD TTC"),
+    "en": TEXTES_OPTION_AVEC["en"].replace("MAD excl. VAT", "MAD incl. VAT"),
+    "ar": TEXTES_OPTION_AVEC["ar"].replace("دون احتساب الضريبة", "مع احتساب الضريبة"),
+}
+
 
 def _nombre_langue(valeur, langue, decimales=0):
     texte_ = f"{valeur:,.{decimales}f}"
@@ -415,14 +433,19 @@ def valeur_option_avec(data):
                   or _dict(data.get("totaux_avec")))
         ht = nombre_normalise(totaux.get("ht_net"))
         retour = round(ht / eco, 1) if ht else None
+    # AMOT123 — base « ttc » servie (niveau 12) : l'économie TTC de l'option.
+    eco_ttc = (economie_ttc_option_avec(data) if _dict(data.get("economie_ci")).get("base") == "ttc"
+               and not data.get("regles_0411_historique") else None)
     textes = {lg: gabarit.format(cap=_nombre_langue(cap, lg, 1),
                                  rest=_nombre_langue(rest, lg),
-                                 eco=_nombre_langue(eco, lg))
-              for lg, gabarit in TEXTES_OPTION_AVEC.items()}
+                                 eco=_nombre_langue(eco_ttc or eco, lg))
+              for lg, gabarit in (TEXTES_OPTION_AVEC_TTC if eco_ttc else TEXTES_OPTION_AVEC).items()}
     valeur = {"economie_annuelle_mad": round(eco, 2),
               "retour_simple_ans": retour if retour and retour > 0 else None,
               "capacite_utile_kwh": cap, "restitue_kwh_an": rest,
               "textes": textes}
+    if eco_ttc:
+        valeur["economie_annuelle_ttc_mad"] = round(eco_ttc, 2)
     valeur.update(non_rentable_option_avec(avec))
     return valeur
 
@@ -516,6 +539,20 @@ def _mention_pointe(data):
     return _entree("pointe", TEXTES_POINTE_AVEC_NON_CHIFFREE, SOURCE_POINTE)
 
 
+def _mention_consommation_estimee(data):
+    """ADEV110 — « estimation sur n mois relevés » quand l'étude a retenu un
+    relevé partiel (``etude.etude_ci.hypotheses``), sinon ``None``."""
+    etude_ci = _dict(_dict(data.get("etude")).get("etude_ci"))
+    for h in etude_ci.get("hypotheses") or []:
+        h = _dict(h)
+        trouve = _RELEVE_PARTIEL.search(str(h.get("source") or ""))
+        if h.get("cle") == "consommation" and h.get("statut") == "estimation" and trouve:
+            n = int(trouve.group(1))
+            return _entree("consommation_estimee", {
+                k: v.format(n=n) for k, v in TEXTES_CONSOMMATION_ESTIMEE.items()}, h["source"])
+    return None
+
+
 def mentions_ci(data, *, sous_reserve=False):
     """Les phrases client C&I d'un devis (liste ordonnée, forme du contrat).
 
@@ -549,6 +586,9 @@ def mentions_ci(data, *, sous_reserve=False):
         sortie.append(_entree("puissance_souscrite", TEXTES_PUISSANCE,
                               SOURCE_CONVENTION_2))
     sortie.append(_mention_pointe(data))
+    estimee = _mention_consommation_estimee(data)
+    if estimee is not None:
+        sortie.append(estimee)
     if sous_reserve:
         sortie.append(_entree("visite", TEXTES_VISITE, SOURCE_VISITE))
     return sortie

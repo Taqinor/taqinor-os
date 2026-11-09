@@ -1,0 +1,36 @@
+{
+  "sha": "5ec853a49628c278ccff223a2db41becbc32af79",
+  "date": "2026-11-05",
+  "groupe": "AMOT",
+  "verdict": "PASS",
+  "couvre": [
+    "AMOT125",
+    "AMOT127"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "V4.125",
+      "taches": [
+        "AMOT125",
+        "AMOT127"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AMOT/traces/2026-11-05/ACCEPTATION-AMOT-V4.125-5ec853a49.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}

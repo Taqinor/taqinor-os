@@ -39,7 +39,7 @@ from ..serializers import (
     ReverificationMesureSerializer,
     FicheInterventionReleveSerializer,
 )
-from ..services import enregistrer_reverification
+from ..services import enregistrer_reverification, lever_reserve_chantier
 from .. import field_services
 from .. import field_capture
 from .. import field_sync
@@ -151,6 +151,17 @@ def seed_types_intervention(company):
 # NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
 # (un module par ressource). Comportement et symboles inchangés : le
 # package __init__ ré-exporte toutes les vues publiques.
+
+
+def _quantite_f11(request):
+    """AAPV52 — quantité F11 bornée ET entière (le stock se compte en unités) :
+    refusée dès la saisie, jamais à la validation de toute la F11. Corps
+    conforme au schéma (décimal publié) ⇒ règle d'état 409 (ENF11), au champ."""
+    qte = oa.quantite_bornee(request, 'quantite_utilisee')
+    if qte != qte.to_integral_value():
+        from core.conflit_etat import ConflitEtat
+        raise ConflitEtat({'quantite_utilisee': [field_capture.MESSAGE_QTE_ENTIERE_F11]})
+    return qte
 
 
 @oa.listing(
@@ -332,7 +343,7 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
             'ajouter_ligne_consommation', 'modifier_ligne_consommation',
             'supprimer_ligne_consommation',
             'ajouter_memo', 'modifier_memo', 'supprimer_memo',
-            'ajouter_reserve', 'modifier_reserve', 'resoudre_reserve',
+            'ajouter_reserve', 'modifier_reserve', 'resoudre_reserve', 'annuler',  # ACSV4
             'cocher_tool_return', 'confirmer_tool_return',
             'cocher_safety', 'signer_safety',
             # FG78 — confirmation RDV.
@@ -362,8 +373,8 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
             # ASEC50 / D-ASEC-4 — affecter un technicien (créer une
             # intervention déjà affectée, changer le ``technicien`` au
             # PUT/PATCH, ou re-slotter une journée sur d'autres techniciens)
-            # exige ``technicien_assign``.
-            return [IsResponsableOrAdmin()] + droits_de_la_grille(
+            # exige ``technicien_assign``. ASEC72 — toute écriture : ``intervention_gerer``.
+            return [IsResponsableOrAdmin(), DroitDeLaGrille('intervention_gerer')()] + droits_de_la_grille(
                 self,
                 create=[DroitDeLaGrille('technicien_assign', champ='technicien')],
                 update=[DroitDeLaGrille('technicien_assign', champ='technicien')],
@@ -401,23 +412,8 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
         # Intervention de type POSE DATÉE sur un chantier dont l'acompte
         # n'est pas encaissé (toggle société ON) est refusée, sauf override
         # responsable/admin (seul rôle admis en écriture ici) avec `motif`.
-        type_intervention = serializer.validated_data.get('type_intervention')
-        date_prevue = serializer.validated_data.get('date_prevue')
-        if (installation is not None
-                and type_intervention == Intervention.Type.POSE
-                and date_prevue):
-            from ..services import verifier_gate_acompte_planification
-            raison = verifier_gate_acompte_planification(installation)
-            if raison:
-                motif_override = (
-                    self.request.data.get('motif_override_acompte')
-                    or '').strip()
-                if not motif_override:
-                    raise ConflitEtat({'date_prevue': [raison]})
-                activity.log_note(
-                    installation, self.request.user,
-                    'Intervention de pose planifiée sans acompte — motif : '
-                    f'{motif_override}')
+        self._verifier_acompte_pose(installation, serializer.validated_data.get('type_intervention'),
+                                    serializer.validated_data.get('date_prevue'))
         technicien = serializer.validated_data.get('technicien')
         # AUD317 — `statut` était directement ÉCRIVABLE au corps
         # (`fields='__all__'`) SANS aucune garde ni effet : créer une
@@ -452,8 +448,8 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
         # _stamp_statut_dates du chantier — ERR-QAH-…-DATE-REALISEE-AUTO).
         self._stamp_date_realisee(interv)
         # F3 — équipe par défaut = l'installateur du chantier quand aucune
-        # équipe n'a été fournie (posé côté serveur).
-        if not interv.equipe.exists() and installation is not None:
+        # équipe n'a été fournie (posé côté serveur) ; ACSV8 — ni technicien.
+        if not interv.equipe.exists() and installation is not None and technicien is None:
             installer = installation.technicien_responsable
             if installer is not None:
                 interv.equipe.add(installer)
@@ -476,6 +472,21 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
             except TransitionRefusee as exc:
                 raise ConflitEtat({'statut': exc.raisons})
 
+    def _verifier_acompte_pose(self, installation, type_intervention, date_prevue):
+        """YSERV1 / ACSV12 — une POSE DATÉE (création, ou PATCH qui la date ou
+        en fait une pose) sur un chantier sans acompte encaissé : 409
+        `date_prevue`, levable par `motif_override_acompte` (noté au chatter)."""
+        if installation is None or type_intervention != Intervention.Type.POSE or not date_prevue:
+            return
+        from ..services import verifier_gate_acompte_planification
+        raison = verifier_gate_acompte_planification(installation)
+        if raison:
+            motif_override = (self.request.data.get('motif_override_acompte') or '').strip()
+            if not motif_override:
+                raise ConflitEtat({'date_prevue': [raison]})
+            activity.log_note(installation, self.request.user,
+                              f'Intervention de pose planifiée sans acompte — motif : {motif_override}')
+
     def perform_update(self, serializer):
         """ADAPTATEUR (AUD317) — le statut passe par le service unique.
 
@@ -490,6 +501,14 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
         )
         self._check_tenant(serializer)
         old = Intervention.objects.get(pk=serializer.instance.pk)
+        cible = serializer.validated_data.get('installation', old.installation)
+        if getattr(cible, 'pk', None) != old.installation_id:  # ACSV11
+            raise ConflitEtat({'installation': [
+                "Le chantier d'une intervention ne change pas après sa création."]})
+        type_new = serializer.validated_data.get('type_intervention', old.type_intervention)
+        date_new = serializer.validated_data.get('date_prevue', old.date_prevue)
+        if (old.date_prevue is None and date_new) or type_new != old.type_intervention:  # ACSV12
+            self._verifier_acompte_pose(cible, type_new, date_new)
         intervention_activity.capturer_equipe(old)  # ACHT35
         nouveau_statut = serializer.validated_data.pop('statut', None)
         # Notification CHT9 : seulement quand le technicien CHANGE (pas de
@@ -514,8 +533,14 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
                     and interv.date_prevue is not None
                     and interv.date_prevue != old.date_prevue):
                 from ..services import enregistrer_report_rdv
-                enregistrer_report_rdv(
-                    interv, old.date_prevue, None, self.request.user)
+                if self.request.data.get('annulation_deplacement') is True:  # ACSV14 — « Annuler » neutre
+                    from django.db.models import F
+                    type(interv).objects.filter(pk=interv.pk, rdv_reschedule_count__gt=0).update(
+                        rdv_reschedule_count=F('rdv_reschedule_count') - 1)
+                    interv.refresh_from_db(fields=['rdv_reschedule_count'])
+                    intervention_activity.log_note(interv, self.request.user, 'Déplacement annulé.')
+                else:
+                    enregistrer_report_rdv(interv, old.date_prevue, None, self.request.user)
             if nouveau_statut is None or nouveau_statut == old.statut:
                 # Pas de transition : effets « édition » inchangés.
                 self._stamp_date_realisee(interv)
@@ -543,6 +568,16 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
                 # comme la création (`perform_create`). Une valeur de statut
                 # hors choix reste un 400 du sérialiseur.
                 raise ConflitEtat(corps)
+
+    @oa.extend_schema(request=oa.body('AnnulerInterventionRequete', motif=oa.s(True)),
+                      responses={200: InterventionSerializer, 400: oa.OBJ, 409: oa.OBJ})
+    @action(detail=True, methods=['post'], url_path='annuler', permission_classes=[IsResponsableOrAdmin])
+    def annuler(self, request, pk=None):
+        """ACSV4 — annule UNE intervention (motif obligatoire, 409 si terminée,
+        validée ou déjà annulée) ; elle quitte planning et calendrier."""
+        from ..annulation_intervention import annuler_intervention_motivee
+        interv = annuler_intervention_motivee(self.get_object(), request.user, oa.texte_corps(request, 'motif'))
+        return Response(InterventionSerializer(interv, context={'request': request}).data)
 
     def destroy_guard_message(self, interv):
         """AUD302 — message FR de blocage de la suppression, ou None.
@@ -751,6 +786,7 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
         from apps.stock.services import (
             draft_bcf_for_shortfall, resolve_fournisseur,
         )
+        from django.db import transaction
         from apps.stock.serializers import BonCommandeFournisseurSerializer
         interv = self.get_object()
         inst = interv.installation
@@ -767,9 +803,10 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
                     'par défaut sur les produits manquants.')},
                 status=oa.statut_inconnu(request.data.get('fournisseur'))
                 if request.data.get('fournisseur') else status.HTTP_409_CONFLICT)
-        try:
-            bon, nb = draft_bcf_for_shortfall(
-                inst, fournisseur, request.user, company)
+        try:  # AAPV28 — chantier verrouillé AVANT le calcul des manques
+            with transaction.atomic():
+                inst = Installation.objects.select_for_update().get(pk=inst.pk)
+                bon, nb = draft_bcf_for_shortfall(inst, fournisseur, request.user, company)
         except ValueError as exc:
             # api-fuzz-full 27/10 (ENF11) : rien à commander / BCF ouvert qui
             # couvre déjà les manques = refus d'ÉTAT.
@@ -1042,7 +1079,7 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
         if refus is not None:
             return refus
         slot = field_services._slot_of_attachment(att)
-        delete_attachment(att.file_key)
+        delete_attachment(att.file_key, liberee_par=(att,))  # ADOC200
         att.delete()
         self._tracer_suppression(
             interv, f"Photo supprimée{(' — ' + slot) if slot else ''}", motif)
@@ -1357,7 +1394,7 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
         produit_id = oa.id_corps(request, 'produit')  # liste/objet → 400, plus 500
         produit = get_produit_scoped(interv.company, produit_id) if produit_id else None
         from decimal import Decimal
-        qte = oa.quantite_bornee(request, 'quantite_utilisee')  # (12, 2) : 1e15 → 500
+        qte = _quantite_f11(request)  # (12, 2) : 1e15 → 500 ; AAPV52 entière
         ligne = ConsommationLigne.objects.create(
             company=interv.company, consommation=cons, produit=produit,
             designation=designation, quantite_prevue=Decimal('0'),
@@ -1395,7 +1432,7 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
                             status=oa.statut_inconnu(request.data.get('ligne')))
         fields = []
         if 'quantite_utilisee' in request.data:
-            ligne.quantite_utilisee = oa.quantite_bornee(request, 'quantite_utilisee')
+            ligne.quantite_utilisee = _quantite_f11(request)
             fields.append('quantite_utilisee')
         if 'justification' in request.data:
             ligne.justification = (request.data.get('justification') or '').strip()
@@ -1627,7 +1664,7 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
         if refus is not None:
             return refus
         if memo.audio_id:
-            delete_attachment(memo.audio.file_key)
+            delete_attachment(memo.audio.file_key, liberee_par=(memo.audio,))  # ADOC200
             memo.audio.delete()
         memo.delete()
         self._tracer_suppression(interv, 'Mémo vocal supprimé', motif)
@@ -1661,7 +1698,7 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
 
     @oa.extend_schema(
         request=oa.body('RenseignerFicheRequete', valeur_id=oa.i(True), valeur=oa.s()),
-        responses=FicheInterventionReleveSerializer,
+        responses={200: FicheInterventionReleveSerializer, 400: oa.OBJ, 409: oa.OBJ},
     )
     @action(detail=True, methods=['post'], url_path='renseigner-fiche',
             permission_classes=[IsResponsableOrAdmin])
@@ -1669,6 +1706,8 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
         """ZFSM1 — renseigne la valeur d'UN champ du relevé. Corps :
         {"valeur_id": <id>, "valeur": <str>}."""
         interv = self.get_object()
+        if not field_capture.intervention_modifiable(interv):  # ACSV15
+            return Response({'detail': 'Intervention validée.'}, status=status.HTTP_409_CONFLICT)
         releve = field_services.ensure_fiche_releve(interv)
         if releve is None:
             return Response({'detail': "Aucun gabarit pour ce type d'intervention."},
@@ -1678,9 +1717,14 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
         if valeur_obj is None:
             return Response({'detail': 'Champ de fiche inconnu.'},
                             status=oa.statut_inconnu(request.data.get('valeur_id')))
-        valeur_obj.valeur = str(request.data.get('valeur', '') or '').strip()
+        try:  # ACSV15 — valeur contrôlée par type, saisie tracée au chatter
+            valeur_obj.valeur = field_services.normaliser_valeur_fiche(valeur_obj.champ, request.data.get('valeur'))
+        except ValueError as exc:
+            return Response({'valeur': [str(exc)]}, status=status.HTTP_400_BAD_REQUEST)
         valeur_obj.renseigne_le = timezone.now()
         valeur_obj.save(update_fields=['valeur', 'renseigne_le'])
+        intervention_activity.log_note(
+            interv, request.user, f'Fiche : {valeur_obj.champ.libelle} = {valeur_obj.valeur or "—"}.')
         return Response(FicheInterventionReleveSerializer(
             releve, context={'request': request}).data)
 
@@ -1848,7 +1892,7 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
     @oa.extend_schema(
         request=oa.body('ResoudreReserveRequete', reserve=oa.i(True),
                         statut=oa.choice(Reserve.Statut.values), resolution=oa.s()),
-        responses=ReserveSerializer,
+        responses={200: ReserveSerializer, 409: oa.OBJ},
     )
     @action(detail=True, methods=['post'], url_path='resoudre-reserve',
             permission_classes=[IsResponsableOrAdmin])
@@ -1861,11 +1905,12 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
             return Response({'detail': 'Réserve inconnue.'},
                             status=oa.statut_inconnu(request.data.get('reserve')))
         statut = oa.choix_corps(request, 'statut', Reserve.Statut.values, Reserve.Statut.RESOLUE)
-        reserve.statut = statut
-        reserve.resolution = (request.data.get('resolution') or '').strip()
-        reserve.resolue_le = (timezone.now()
-                              if statut == Reserve.Statut.RESOLUE else None)
-        reserve.save(update_fields=['statut', 'resolution', 'resolue_le'])
+        resolution = (request.data.get('resolution') or '').strip()
+        if statut == Reserve.Statut.RESOLUE:  # ACSV40 — une seule porte de levée (auteur, chatter, 409)
+            lever_reserve_chantier(reserve, request.user, resolution=resolution)
+        else:
+            reserve.statut, reserve.resolution, reserve.resolue_le = statut, resolution, None
+            reserve.save(update_fields=['statut', 'resolution', 'resolue_le'])
         return Response(ReserveSerializer(
             reserve, context={'request': request}).data)
 
@@ -2094,19 +2139,25 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
             return Response({'detail': 'Consigne inconnue.'},
                             status=oa.statut_inconnu(request.data.get('cle'), str))
         coche = bool(request.data.get('coche', True))
+        if signoff.signe and not coche:  # ACSV16
+            return Response({'detail': field_capture.MESSAGE_CONSIGNES_SIGNEES}, status=status.HTTP_409_CONFLICT)
         item.coche = coche
         item.coche_par = request.user if coche else None
         item.coche_le = timezone.now() if coche else None
         item.save(update_fields=['coche', 'coche_par', 'coche_le'])
         return Response(SafetySignoffSerializer(signoff).data)
 
-    @oa.extend_schema(request=None, responses=SafetySignoffSerializer)
+    @oa.extend_schema(request=None, responses={200: SafetySignoffSerializer, 409: oa.OBJ})
     @action(detail=True, methods=['post'], url_path='signer-safety',
             permission_classes=[IsResponsableOrAdmin])
     def signer_safety(self, request, pk=None):
         """F18 — signe les consignes de sécurité (qui + quand)."""
         interv = self.get_object()
         signoff = field_capture.ensure_safety_signoff(interv)
+        manquants = field_capture.points_non_coches(signoff)  # ACSV16
+        if manquants:
+            return Response({'detail': 'Points non cochés : ' + ' ; '.join(manquants) + '.'},
+                            status=status.HTTP_409_CONFLICT)
         signoff.signe = True
         signoff.signe_par = request.user
         signoff.signe_le = timezone.now()

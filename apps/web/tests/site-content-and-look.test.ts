@@ -634,6 +634,21 @@ describe('WAUD63 — accessibilité et lisibilité', () => {
     expect(dl).not.toContain('<span');
     expect(dl).not.toContain('<p ');
   });
+  it('le <dl> de confiance de /ar/ (copie propre à l’arabe) : dt puis dd, rien d’autre (Lighthouse definition-list)', () => {
+    const ar = lireSrc('pages/ar/index.astro');
+    const debut = ar.indexOf('<dl class="mt-12 grid grid-cols-1 gap-x-8 gap-y-12 sm:grid-cols-3"');
+    const dl = ar.slice(debut, ar.indexOf('</dl>', debut));
+    expect(debut).toBeGreaterThan(0);
+    expect(dl.indexOf('<dt')).toBeLessThan(dl.indexOf('<dd'));
+    expect(dl).not.toContain('<span');
+    expect(dl).not.toContain('<p ');
+  });
+  it('Callout sur section claire (/methodologie-estimation) : corps et titres en encre, plus en « lune »', () => {
+    const c = lireSrc('components/Callout.astro');
+    expect(c).toMatch(/:global\(\.bg-blanc-azur\) \.callout__body,[\s\S]*?color: var\(--color-encre-soft/);
+    expect(c).toMatch(/:global\(\.bg-blanc-azur\) \.callout--info \.callout__title \{\s*color: var\(--color-azur-700/);
+    expect(c).toMatch(/:global\(\.bg-blanc-azur\) \.callout--warning \.callout__title \{\s*color: var\(--color-alert-600/);
+  });
   it('le lien logo du header n’est plus en français sur EN/AR', () => {
     expect(lireSrc('components/Header.astro')).toContain("aria-label={t('nav.homeLogo')}");
     const ui = lireSrc('i18n/ui.ts');
@@ -655,7 +670,7 @@ describe('WAUD46 WAUD64 WAUD65 — ruban, cibles tactiles, tuiles', () => {
   it('WAUD46 : ruban sans urgence, sur une ligne, décret intact', () => {
     const ui = lireSrc2('i18n/ui.ts');
     expect(ui).not.toMatch(/régularisez maintenant|regularize now|سوِّ وضعك الآن/);
-    expect(ui).toContain('Décret 2-25-100 en vigueur depuis le 9 juin 2026');
+    expect(ui).toContain('Décret 2-25-100 en vigueur — installation'); // WAUD18-b (D-WAUD-4=a) : sans date
     expect(ui).toContain('installation existante ? Nous montons votre dossier de régularisation →');
     const r = lireSrc2('components/Article33Ribbon.astro');
     expect(r).toContain('py-1');
@@ -664,6 +679,13 @@ describe('WAUD46 WAUD64 WAUD65 — ruban, cibles tactiles, tuiles', () => {
   });
   it('WAUD64 : liens du pied de page à 24 px au moins', () => {
     expect(lireSrc2('components/Footer.astro')).toMatch(/const linkClass = 'inline-block py-1 /);
+  });
+  it('WAUD64 (reste) : liens fléchés, puces de filtre, en-tête et fil d’Ariane — cibles agrandies', () => {
+    expect(lireSrc2('styles/global.css')).toMatch(/a\.border-b-2\.pb-0\\\.5:is\(\.inline-flex, \.inline-block\) \{\s*padding-top: 1\.25rem;/);
+    expect(lireSrc2('components/blocs/ArIndexButton3FED.astro')).toContain('gallery-filter-chip min-h-11');
+    expect(lireSrc2('components/Breadcrumb.astro')).toContain('breadcrumb-bidi inline-block py-1');
+    expect(lireSrc2('components/Header.astro')).toContain('class="tech-label block py-1 text-brass-300">{t(\'nav.solutions\')}');
+    expect(lireSrc2('components/Footer.astro')).toMatch(/\.footer-wa-recapture \{[^}]*padding-block: 0\.25rem;/);
   });
   it('WAUD65 : tuiles sans nowrap, donc sans collision', () => {
     expect(lireSrc2('components/blocs/EnIndexDlF52D.astro')).not.toContain('whitespace-nowrap');

@@ -152,17 +152,11 @@ owners:
       - backend/django_core/apps/ventes/utils/numbering_audit.py
       - backend/django_core/apps/ventes/utils/pdf.py
       - backend/django_core/apps/ventes/utils/ubl.py
-      - backend/django_core/apps/ventes/views/avoir.py
       - backend/django_core/apps/ventes/views/bon_commande.py
       - backend/django_core/apps/ventes/views/credit_warning.py
       - backend/django_core/apps/ventes/views/devis_facturation.py
-      - backend/django_core/apps/ventes/views/facture.py
-      - backend/django_core/apps/ventes/views/facture_*.py
-      - backend/django_core/apps/ventes/views/ligne_facture.py
       - backend/django_core/apps/ventes/views/mandat_paiement.py
-      - backend/django_core/apps/ventes/views/paiement.py
       - backend/django_core/apps/ventes/views/releve_import.py
-      - backend/django_core/apps/ventes/views/remise_encaissement.py
       - backend/django_core/core/events/facturation.py
       - backend/django_core/templates/pdf/_chaine_totaux.html
       - backend/django_core/templates/pdf/avoir.html
@@ -1045,6 +1039,8 @@ append_only:
     rule: "façade pure : une ligne de ré-export par nouveau nom, dans le bloc de son module ; jamais un corps (SPL89)"
   - path: docs/openapi-schema.yml
     rule: "instantané OpenAPI (PACT6) : jamais édité à la main ; régénéré par `python scripts/check_openapi_schema.py --write` dans toute tâche qui ajoute ou change une route Django ; conflit au fold ou à la fusion de main = régénérer depuis le code fusionné, jamais fusionner les deux textes (décision fondateur 28/10/2026, PR #1111)"
+  - path: scripts/check_garde_contact.py
+    rule: "LISTE_BLANCHE (ACVI107) : une ligne « fichier::fonction::genre » motivée par site ajoutée ; une tâche ne retire que les lignes de SES fichiers (une entrée périmée au commit) ; jamais réécrire la raison d'un autre"
 
 # Plan → propriétaire(s). Chaque owners.<x>.plan lie déjà son plan ; ici les fichiers plan
 # historiques. Les propriétaires `platform` / `transverse` / `parked` sont exemptés de la règle

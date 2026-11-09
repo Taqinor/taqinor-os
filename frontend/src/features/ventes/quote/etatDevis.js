@@ -344,6 +344,19 @@ export function facturesHiverEte(fHiver, fEte) {
   return { hiver_mad: hiver, ete_mad: differente ? ete : null, ete_differente: differente }
 }
 
+const MOIS_LONGS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+  'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre']
+
+/** AGNR67 (D-AGNR-1 (a)) — une série DÉRIVÉE des deux factures puis
+ *  corrigée (mois tapé ou vidé) n'est ni la série dérivée ni douze mois
+ *  tapés : `entreesDeEtat` n'enverrait que hiver / été (ou rien). Rend les
+ *  mois en cause `[{ mois, vide }]`, `[]` hors série mixte. */
+export function serieMixte(provenanceMois) {
+  if (!Array.isArray(provenanceMois) || !provenanceMois.includes('derivee')) return []
+  return provenanceMois.flatMap((p, i) => (p === 'derivee' ? []
+    : [{ mois: MOIS_LONGS[i], vide: p !== 'tapee' }]))
+}
+
 /**
  * AGNR57 — LES « entrées réelles » de l'étude envoyée (un seul constructeur,
  * celui que le générateur appelle à l'enregistrement). Un état d'écran porte
@@ -485,4 +498,19 @@ export function normaliserNombreEntete(valeur) {
   const texteAbs = `${abs.slice(0, -2)}.${abs.slice(-2)}`
   const envoye = negatif && centimes > 0n ? `-${texteAbs}` : texteAbs
   return { tape, envoye, change: Number(envoye) !== Number(tape.replace(/\s/g, '').replace(',', '.')) }
+}
+
+// AGNR76 — TOUTES les raisons de blocage de l'enregistrement, dans l'ordre de
+// la carte d'erreur (submit, lignes, client, conso, factures), sans doublon :
+// la carte les liste d'un coup au lieu de masquer la facture derrière la
+// ligne. Ne change JAMAIS ce qui est valide (lecture pure de `validate()`).
+export const CLES_ERREURS_BLOQUANTES = ['submit', 'lines', 'client', 'conso', 'factures']
+
+export function erreursBloquantes(errors) {
+  const vus = []
+  for (const cle of CLES_ERREURS_BLOQUANTES) {
+    const m = errors?.[cle]
+    if (m && typeof m === 'string' && !vus.includes(m)) vus.push(m)
+  }
+  return vus
 }

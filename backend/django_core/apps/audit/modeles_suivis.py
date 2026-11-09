@@ -81,6 +81,16 @@ TRACKED_MODELS = [
     ('stock', 'KitComposant'),
     ('achats', 'PrixFournisseur'),
     ('stock', 'PalierPrixFournisseur'),
+    # AMON46 — supervision (constat C-AMON-140) : configuration (attendu,
+    # fournisseur ; `credentials` chiffré donc caviardé, ASEC8), relevés,
+    # garanties, SLA, nettoyages, abonnements et certificats carbone.
+    ('monitoring', 'MonitoringConfig'),
+    ('monitoring', 'ProductionReading'),
+    ('monitoring', 'ProductionWarranty'),
+    ('monitoring', 'SlaDisponibilite'),
+    ('monitoring', 'CleaningEvent'),
+    ('monitoring', 'AbonnementMonitoring'),
+    ('monitoring', 'CertificatCarbone'),
 ]
 
 # ── UN SEUL ÉCRIVAIN PAR LIGNE D'AUDIT ─────────────────────────────────────

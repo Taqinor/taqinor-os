@@ -175,6 +175,14 @@ class ResponsableParModuleTests(TestCase):
             'Vue IsResponsableOrAdmin sans module résolu : poser '
             '`permission_module` ou un code au registre.')
 
+    def test_vues_facturation_relevent_du_module_ventes(self):
+        """ODX18 — les vues déménagées sous ``apps.facturation`` gardent la
+        garde du module ``ventes`` (sinon « module non résolu » : écritures
+        refusées à tout rôle fin, Commercial à ``ventes_creer`` compris)."""
+        vue = type('VueFacture', (),
+                   {'__module__': 'apps.facturation.views.facture'})()
+        self.assertEqual(module_de_la_vue(vue), 'ventes')
+
     def test_ecriture_sans_module_hors_fondation_refusee(self):
         """AARG52 — vue sans module d'une app hors ``APPS_SANS_MODULE``
         (portail) : écriture refusée à un rôle fin non administrateur
@@ -200,3 +208,24 @@ class ResponsableParModuleTests(TestCase):
         admin = self._user('Administrateur')
         self.assertTrue(perm.has_permission(
             SimpleNamespace(user=admin, method='POST'), portail))
+
+    def test_monitoring_hors_liste_de_fondation(self):
+        """AMON92 — ``monitoring`` n'est plus une app de fondation : une vue
+        sans module de l'app refuse l'écriture au rôle « RH seul » et au
+        Technicien (lecture admise) ; l'Administrateur reste admis."""
+        perm = IsResponsableOrAdmin()
+        rh_seul = User.objects.create_user(
+            username='amon92_rh', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom='RH seul 92',
+                                     permissions=['rh_voir', 'rh_gerer']))
+        vue = type('VueMonitoring', (), {
+            '__module__': 'apps.monitoring.views'})()
+        self.assertNotIn('monitoring', APPS_SANS_MODULE)
+        for user in (rh_seul, self._user('Technicien')):
+            with self.subTest(user=user.username):
+                self.assertFalse(perm.has_permission(
+                    SimpleNamespace(user=user, method='POST'), vue))
+                self.assertTrue(perm.has_permission(
+                    SimpleNamespace(user=user, method='GET'), vue))
+        self.assertTrue(perm.has_permission(SimpleNamespace(
+            user=self._user('Administrateur'), method='POST'), vue))

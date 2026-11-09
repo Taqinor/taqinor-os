@@ -9,24 +9,58 @@
       {
         "id": 4,
         "installation_id": 87,
+        "installation_reference": "CHT-202610-0087",
         "client_id": null,
         "periode_debut": "2026-01-01",
         "periode_fin": "2026-06-30",
         "tco2_evitees": "3.402",
         "reference": "CERT-CO2-202610-0001",
-        "created_at": "2026-10-11T09:30:00Z"
+        "created_at": "2026-10-11T09:30:00Z",
+        "statut": "emis",
+        "motif_annulation": "",
+        "annule_le": null,
+        "annule_par_nom": null
       }
     ]
   },
   "exemple_emission": {
     "endpoint": "POST /api/django/monitoring/certificats-carbone/",
-    "corps": {"installation_id": 87, "periode_debut": "2026-01-01", "periode_fin": "2026-06-30"},
+    "corps": {
+      "installation_id": 87,
+      "periode_debut": "2026-01-01",
+      "periode_fin": "2026-06-30"
+    },
     "reponse_statut": 201
+  },
+  "exemple_annulation": {
+    "endpoint": "POST /api/django/monitoring/certificats-carbone/{id}/annuler/",
+    "corps": {
+      "motif": "Relevé de juin corrigé"
+    },
+    "reponse": {
+      "id": 4,
+      "installation_id": 87,
+      "installation_reference": "CHT-202610-0087",
+      "client_id": null,
+      "periode_debut": "2026-01-01",
+      "periode_fin": "2026-06-30",
+      "tco2_evitees": "3.402",
+      "reference": "CERT-CO2-202610-0001",
+      "created_at": "2026-10-11T09:30:00Z",
+      "statut": "annule",
+      "motif_annulation": "Relevé de juin corrigé",
+      "annule_le": "2026-11-08T09:30:00Z",
+      "annule_par_nom": "Responsable SAV"
+    }
   },
   "notes": {
     "cible_xor": "Ni système ni client, ou les deux → 400 (`detail`).",
     "sans_production": "Aucune production mesurée sur la période → 400 (`detail`) : aucun certificat chiffré n'est émis.",
-    "doublon": "Même cible + même période déjà émise → 400 (`detail`, anti-double-comptage).",
-    "systeme_inconnu": "Système d'une autre société → 400 (champ `installation_id`)."
+    "doublon": "Période qui recouvre un certificat de la même cible ou d'une cible qui partage ses relevés (site ↔ client consolidé) → 409 (`detail` « … recouvre CERT-CO2-… », anti-double-comptage, AMON42).",
+    "pdf": "AMON94 — GET /api/django/monitoring/certificats-carbone/{id}/pdf/ (responsable/admin) : PDF du certificat (référence, période, tonnes FIGÉES, facteur réglé avec source et date), version GED déposée à l'émission (source `monitoring.certificat_carbone`), re-déposée si absente. `fichier_key` reste interne (jamais servi).",
+    "sans_facteur": "AMON41 — société sans facteur d'émission du réseau réglé (Paramètres : valeur ET source) → 409 (`detail` « Facteur d’émission du réseau non réglé (Paramètres) : aucun certificat chiffré. ») ; les tonnes viennent du facteur réglé (jamais 0,81 supposé).",
+    "fin_future": "Fin de période postérieure à aujourd'hui → 409 (`detail`, AMON42).",
+    "systeme_inconnu": "Système d'une autre société → 400 (champ `installation_id`).",
+    "annulation": "AMON93 — un certificat émis s'annule (POST …/annuler/ {motif}, responsable/admin) : statut « annule », motif, date et auteur tracés ; la même cible et période redeviennent émissibles (nouvelle référence). Motif vide → 400 nommant `motif` ; déjà annulé → 409 ; autre société → 404. Un certificat annulé ne compte plus dans l'anti-double-comptage."
   }
 }

@@ -1,0 +1,57 @@
+{
+  "sha": "51b2fe77b6ae96b31098963535860fcabbba5841",
+  "date": "2026-11-05",
+  "groupe": "ADVS",
+  "verdict": "PASS",
+  "couvre": [
+    "ADVS48",
+    "ADVS49"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "W10.ADVS48.envoi_kwh_incoherent",
+      "taches": [
+        "ADVS48"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-05-rejeux-w10/ADVS48.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "API reelle (responsable) : lead 46 kWh / facture hiver 10 000 ⇒ share-link envoi, envoyer-email, whatsapp, pdf-partage 409 kwh_incoherent_factures (MESSAGE_KWH_INCOHERENT), brouillons, date_envoi nul, 0 mail ; lead corrige 650 / 1 200 ⇒ renvoi envoye ; sonde VER5-001 repro False"
+    },
+    {
+      "id": "W10.ADVS49.envoi_les_deux_soeur",
+      "taches": [
+        "ADVS49"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-05-rejeux-w10/ADVS49.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "API reelle (responsable) : les_deux ⇒ deux envoyes, soeur a ShareLink valide, data publique du jeton source : gammes.soeur.proposition_path au jeton de la soeur (qui s ouvre en 200) ; renvoi : aucun second lien ; seule ⇒ soeur brouillon ; T17 (seuil 10 %, soeur a 30 % non approuvee) ⇒ 409, deux brouillons, 0 lien soeur. Rendu navigateur de la page client non joue : servie par apps/web (Worker), absente de la pile locale"
+    }
+  ]
+}

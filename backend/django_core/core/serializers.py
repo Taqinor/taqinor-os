@@ -356,11 +356,18 @@ class WorkflowDefinitionSerializer(
 
     class Meta:
         model = WorkflowDefinition
+        # NTWFL26 — ``version``/``definition_precedente`` (NTWFL25) exposés en
+        # LECTURE SEULE : l'historique d'une lignée se lit, il ne s'écrit que
+        # via ``core.workflow.editer_etapes_definition`` (fork serveur).
         fields = [
             'id', 'code', 'nom', 'description', 'actif', 'steps',
+            'version', 'definition_precedente',
             'created_at', 'updated_at',
         ]
-        read_only_fields = ['id', 'code', 'created_at', 'updated_at']
+        read_only_fields = [
+            'id', 'code', 'version', 'definition_precedente',
+            'created_at', 'updated_at',
+        ]
 
     def validate(self, attrs):
         """NTWFL9 — au moins une étape, pas de boucle infinie via
@@ -372,7 +379,11 @@ class WorkflowDefinitionSerializer(
         ``steps`` du tout est traitée comme « 0 étape » (toujours rejetée)."""
         from core import workflow as core_workflow
         if 'steps' in attrs:
-            erreurs = core_workflow.valider_definition_steps(attrs['steps'])
+            # ENF49 — validé sur l'ordre ENREGISTRÉ (position 1..n,
+            # ``_materialiser_etapes``), jamais sur l'``ordre`` envoyé : un
+            # ``ordre`` permuté cachait une boucle réellement stockée.
+            erreurs = core_workflow.valider_definition_steps(
+                [{**s, 'ordre': i} for i, s in enumerate(attrs['steps'], 1)])
             if erreurs:
                 raise serializers.ValidationError({'steps': erreurs})
         elif self.instance is None:

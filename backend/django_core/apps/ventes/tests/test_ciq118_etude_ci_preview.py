@@ -317,6 +317,23 @@ class LeadTests(_Base):
         self.assertIn('kwh_incoherent_factures', codes)
         self.assertEqual(codes['kwh_incoherent_factures']['niveau'], 'bloquant')
 
+    def test_kwh_annuel_tape_prime_sur_le_kwh_du_lead(self):
+        # ADEV106 (C-ADEV-VER-002) — corps > devis > lead entre feuilles de
+        # consommation : le kWh corrigé au générateur n'est plus ignoré.
+        lead = self._lead(conso_mensuelle_kwh=Decimal('4000'), categorie_commerciale='bureau')
+        corps = self._corps_lead(lead)
+        corps['consommation'] = {'kwh_mensuels': None, 'kwh_annuel': 96000}
+        data = self.post(corps)
+        self.assertEqual(data['entrees_resolues']['kwh_annuel']['provenance']['origine'], 'saisie')
+        self.assertAlmostEqual(
+            sum(m['consommation_kwh'] for m in data['bilan']['par_mois']), 96000, delta=24)
+        res = etude_ci.resoudre_entrees(corps, lead=lead)
+        self.assertEqual(etude_ci._consommation(res, {}, [], [])[1], 'kwh_annuel')
+        # Sans consommation au corps : le lead reste retenu (4 000 × 12).
+        res = etude_ci.resoudre_entrees(self._corps_lead(lead), lead=lead)
+        conso, feuille = etude_ci._consommation(res, {}, [], [])
+        self.assertEqual((feuille, sum(conso)), ('kwh_mensuel_declare', 48000))
+
     def test_lead_kwh_seulement_meme_taille_aperçu_et_moteur(self):
         lead = self._lead(conso_mensuelle_kwh=Decimal('6000'), categorie_commerciale='bureau')
         corps = self._corps_lead(lead)

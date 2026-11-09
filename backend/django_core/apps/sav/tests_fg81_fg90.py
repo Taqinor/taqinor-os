@@ -305,6 +305,14 @@ class TestMaintenanceChecklist(TestCase):
         self.assertTrue(item.coche)
         self.assertIsNotNone(item.coche_par)
 
+    def test_patch_checklist_cle_inconnue_409(self):
+        """ENF47 (api-fuzz-full 42017839549) : ticket existant, clé absente
+        de sa checklist = refus d'état (409), plus un 404 « introuvable »."""
+        t = make_ticket(self.co, self.user, self.client, self.inst)
+        r = self.api.patch(f'/api/django/sav/tickets/{t.pk}/checklist/',
+                           {'cle': 'schema_electrique_valide'}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+
     def test_get_checklist_items(self):
         """FG82 — GET checklist liste les items."""
         tmpl = self._make_template()

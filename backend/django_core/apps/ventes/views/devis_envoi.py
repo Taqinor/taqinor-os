@@ -196,7 +196,9 @@ def _pdf_partage_fichier(devis):
     from ..quote_engine import generate_premium_devis_pdf
     from ..utils.filenames import document_filename
     from ..utils.pdf import download_pdf
+    from ..domain.envoi import exiger_contact_permis
 
+    exiger_contact_permis(devis)  # ACVI102 — aucun lien ni PDF pour un opposé
     opts = _options_piece_jointe(devis, '', ShareLink.for_devis(devis).token)
     try:
         octets = download_pdf(generate_premium_devis_pdf(devis.id, opts, persist=False))
@@ -253,8 +255,10 @@ class DevisEnvoiActionsMixin:
             return Response({'detail': invalide},
                             status=status.HTTP_400_BAD_REQUEST)
         # ADEV20 (C-ADEV-021) — un code de lecture exigé d'un client qu'aucun
-        # canal ne peut joindre rendrait le lien illisible pour toujours : 400
+        # canal ne peut joindre rendrait le lien illisible pour toujours : 409
         # qui nomme ``otp_lecture``, AVANT tout effet (gamme, mint, statut).
+        # ENF11 (nocturne 41958593088) : le corps est conforme, c'est l'ÉTAT
+        # de la fiche client (sans e-mail) qui s'oppose — 409, plus 400.
         if 'otp_lecture' in request.data \
                 and bool(request.data.get('otp_lecture')):
             from ..domain.cycle_vie import canal_otp_disponible
@@ -264,7 +268,7 @@ class DevisEnvoiActionsMixin:
                         "Ce client n'a ni e-mail ni canal actif : aucun code "
                         "de lecture ne pourrait lui parvenir. Renseignez son "
                         "e-mail ou désactivez le code d'accès."]},
-                    status=status.HTTP_400_BAD_REQUEST)
+                    status=status.HTTP_409_CONFLICT)
         # QJR539 — garde T17 AVANT tout effet d'un ENVOI (gamme, mint, statut).
         if request.data.get('envoi'):
             # ADEV7 — une version remplacée ne s'envoie plus (409).

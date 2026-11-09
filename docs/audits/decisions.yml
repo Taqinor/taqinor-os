@@ -167,6 +167,7 @@ decisions:
     source: "session 2026-10-09 « loop work on all plans » (Reda_Laptop) — lot AskUserQuestion, 6 lots de 4 questions"
     taches: [VTAG1]
 
+  # 09/10/2026 : a (pas maintenant)
   - id: D-CRXB
     question: "Lancer le sous-groupe d'architecture CRXB (contrat-d'abord leads-list + workspace, 8 tâches) ?"
     options:
@@ -174,9 +175,9 @@ decisions:
         texte: "pas maintenant — re-poser après la vague SPL de scission du crm (PR #918)"
       - cle: b
         texte: "lancer CRXB"
-    reponse: a
-    date: "2026-10-09"
-    source: "session 2026-10-09 « loop work on all plans » (Reda_Laptop) — lot AskUserQuestion, 6 lots de 4 questions"
+    reponse: b
+    date: "2026-11-07"
+    source: "Reda, 07/11/2026 « Yes, launch CRXB » (boucle work on the plan, après la vague SPL)"
     taches: [CRXB1, CRXB2, CRXB3, CRXB4, CRXB5, CRXB6, CRXB8]
 
   - id: D-QJW16
@@ -1949,6 +1950,16 @@ decisions:
     source: "docs/claude-memory/decisions-audit-0810.md (AGNR43)"
     taches: [AGNR43, AGNR44]
 
+  - id: D-AGNR-4
+    question: "Avis « lignes à quantité 0 » sur une ligne composée intacte de l'auto-remplissage (AGNR59) ?"
+    options:
+      - cle: a
+        texte: "Générateur : l'avis « lignes à quantité 0 » ignore une ligne composée intacte de l'auto-remplissage (décision fondateur 01/11) — une ligne mise à 0 par l'utilisateur (quantité ou prix tapé) reste annoncée ; goldens rétablis sans l'avis sur un devis vierge"
+    reponse: a
+    date: "2026-11-01"
+    source: "commit e71e17290 (message cité mot pour mot)"
+    taches: [AGNR59]
+
   - id: D-ADEV-5
     question: "Lead PERDU dont le client signe (ADEV61) ?"
     options:
@@ -2202,6 +2213,7 @@ decisions:
     date: "2026-10-23"
     source: "question interactive du 23/10/2026 (apps/web/src/lib/proposition.ts nextSteps() sans argument de mode)"
     taches: [AGQ33]
+
   - id: D-AGQ-12
     question: "Page /proposition d'un pompage : « commande ferme des votre acceptation » + acompte 30 % a l'acceptation, alors que l'etape 2 dit « dossier FDA depose avant toute commande ». Que dit l'acceptation ?"
     options:
@@ -2215,6 +2227,7 @@ decisions:
     date: "2026-10-24"
     source: "question interactive du 24/10/2026 (phase 2 de l'audit agricole, docs/audits/2026-10-24-agricole-phase2.md)"
     taches: [AGQ52]
+
   - id: D-AGQ-13
     question: "Le document agricole n'a aucun service apres-vente (delai d'intervention, pieces, entretien), item standard des devis de pompage de reference (GIZ/FAO SPIS). L'imprimer ?"
     options:
@@ -2226,6 +2239,7 @@ decisions:
     date: "2026-10-24"
     source: "question interactive du 24/10/2026 (phase 2 de l'audit agricole, docs/audits/2026-10-24-agricole-phase2.md)"
     taches: [AGQ50]
+
   - id: D-AGQ-14
     question: "Etape « mise en service » : ajouter « dossier remis (fiches, schema) et formation a l'utilisation et a l'entretien » (protocole de reception de reference) ?"
     options:
@@ -2239,6 +2253,7 @@ decisions:
     date: "2026-10-24"
     source: "question interactive du 24/10/2026 (phase 2 de l'audit agricole, docs/audits/2026-10-24-agricole-phase2.md)"
     taches: [AGQ51]
+
   - id: D-AGQ-15
     question: "Message WhatsApp du lien de devis pour un lead de pompage (aujourd'hui le texte toiture « proposition d'installation solaire ») ?"
     options:
@@ -2264,6 +2279,7 @@ decisions:
     date: "2026-10-23"
     source: "question interactive du 23/10/2026 (session moteur C&I, go-deep L3) ; constat C-ACI-002 (lead prod 1650)"
     taches: [ADEV77, ALEA49]
+
   - id: D-ACI-2
     question: "Lignes dépendant de la visite (structure sans type de toit, câbles sans longueurs) sans prix : que fait le devis automatique C&I ?"
     options:
@@ -2275,6 +2291,7 @@ decisions:
     date: "2026-10-23"
     source: "question interactive du 23/10/2026 ; constat C-ACI-005"
     taches: [ADEV79]
+
   - id: D-ACI-3
     question: "Lead commercial en monophasé (petit commerce) alors que le catalogue C&I n'a que des onduleurs triphasés : que fait-on ?"
     options:
@@ -2286,6 +2303,7 @@ decisions:
     date: "2026-10-23"
     source: "question interactive du 23/10/2026 ; constat C-ACI-010 (lead anonymisé 1307)"
     taches: [ADEV86]
+
   - id: D-ACI-4
     question: "Les prestations C&I ont un prix saisi en Stock mais le moteur ne lit que les forfaits de Paramètres › Devis : quelle source ?"
     options:
@@ -2297,6 +2315,7 @@ decisions:
     date: "2026-10-23"
     source: "question interactive du 23/10/2026 ; constat C-ACI-007"
     taches: [ASTK254]
+
   - id: D-ACI-5
     question: "La fiche lead dit « devis auto prêt » dès que la consommation est connue (CIQ404) alors que le moteur exige aussi le contrat BT et le rythme : que doit dire la fiche ?"
     options:
@@ -2308,6 +2327,7 @@ decisions:
     date: "2026-10-23"
     source: "question interactive du 23/10/2026 ; constat C-ACI-001 (lead prod 1637)"
     taches: [ADEV76, ALEA47]
+
   - id: D-ACI-6
     question: "Postes FIXES sans prix (coffrets, protections, forfaits non saisis) : le devis automatique C&I…"
     options:
@@ -2319,6 +2339,7 @@ decisions:
     date: "2026-10-23"
     source: "question interactive du 23/10/2026 ; constats C-ACI-004, C-ACI-006"
     taches: [ADEV79]
+
   - id: D-ACI-7
     question: "Profil de charge SAISI par la société pour un lead industriel : quand le moteur l'utilise-t-il ?"
     options:
@@ -2330,6 +2351,7 @@ decisions:
     date: "2026-10-23"
     source: "question interactive du 23/10/2026 ; constat C-ACI-003"
     taches: [ADEV76]
+
   - id: D-ACI-8
     question: "Investissement du devis incomplet (lignes sans prix) : la page finance et le retour sur investissement…"
     options:
@@ -2341,6 +2363,7 @@ decisions:
     date: "2026-10-23"
     source: "question interactive du 23/10/2026 ; constat C-ACI-008 (TRI 895 % sur 2 lignes)"
     taches: [ADEV81, AMOT80]
+
   - id: D-ACI-9
     question: "Quand le rendu premium commercial/industriel refuse un devis, le moteur sert le document RÉSIDENTIEL legacy au client C&I : que faire ?"
     options:
@@ -2352,6 +2375,7 @@ decisions:
     date: "2026-10-23"
     source: "question interactive du 23/10/2026 ; constat C-ACI-012"
     taches: [AMOT79]
+
   - id: D-ACI-10
     question: "Badge « Prix ONEE en hausse » du document legacy (contredit QRES54 tarif constant, aucune source) : que faire ?"
     options:
@@ -2363,6 +2387,7 @@ decisions:
     date: "2026-10-23"
     source: "question interactive du 23/10/2026 ; constat C-ACI-013"
     taches: [AMOT82]
+
   - id: D-ACI-11
     question: "Ligne 82-21 du document C&I (D-CIQ-18) : quel texte ?"
     options:
@@ -2374,6 +2399,7 @@ decisions:
     date: "2026-10-23"
     source: "question interactive du 23/10/2026 ; constat C-ACI-014"
     taches: [AMOT83]
+
   - id: D-ACI-12
     question: "Suivi de production sur le devis C&I sans délai d'intervention saisi (D-CIQ-12) : que faire ?"
     options:
@@ -2385,6 +2411,7 @@ decisions:
     date: "2026-10-23"
     source: "question interactive du 23/10/2026 ; constat C-ACI-015"
     taches: [AMOT83]
+
   - id: D-ACI-13
     question: "Borne de toit du moteur C&I quand le mode de pose n'est pas déclaré (constat C-ACI-026 : 92 panneaux retenus sur 200 m² déclarés, la contenance restait « non bornée ») : que faire ?"
     options:
@@ -2398,6 +2425,7 @@ decisions:
     date: "2026-10-24"
     source: "rejeu humain du 23/10/2026 (session moteur C&I) ; constat C-ACI-026 ; tranchée par la question interactive du 24/10/2026"
     taches: [ADEV90]
+
   - id: D-ACI-14
     question: "Entretien (O&M) dans les flux C&I quand l'option n'est pas souscrite (aujourd'hui 0, production supposée propre) : que faire dans les nouveaux rendus ?"
     options:
@@ -2411,6 +2439,7 @@ decisions:
     date: "2026-10-24"
     source: "question interactive du 24/10/2026 (L3 « best quote making machine ») ; constat C-L3-MOT-01"
     taches: [AMOT96]
+
   - id: D-ACI-15
     question: "Incertitude par défaut sur le document C&I (production P90, tarif +x %/an, dégradation 0,75 %, contribution art. 13) ?"
     options:
@@ -2422,6 +2451,7 @@ decisions:
     date: "2026-10-24"
     source: "question interactive du 24/10/2026 ; constat C-L3-MOT-01"
     taches: [AMOT97]
+
   - id: D-ACI-16
     question: "Postes hors total (structure, câbles à chiffrer après la visite) : provision estimée ajoutée au total, ou omission ?"
     options:
@@ -2433,6 +2463,7 @@ decisions:
     date: "2026-10-24"
     source: "question interactive du 24/10/2026 ; confirme D-ACI-2=a et AMOT86"
     taches: [AMOT86]
+
   - id: D-ACI-17
     question: "« Exploitation et maintenance (O&M) C&I — prix à renseigner » sur le document client (D-ACI-12=a) : formulation côté client ?"
     options:
@@ -2446,6 +2477,7 @@ decisions:
     date: "2026-10-24"
     source: "question interactive du 24/10/2026 ; vérificateur R4 (« état interne du catalogue sur un document client »)"
     taches: [AMOT98]
+
   - id: D-ACI-18
     question: "Précision des calculs C&I (journées moyennes, 30° plein sud, dégradation 0,5 %/an aujourd'hui affichés) : passer au calcul complet ?"
     options:
@@ -2457,6 +2489,7 @@ decisions:
     date: "2026-10-24"
     source: "question interactive du 24/10/2026 ; constat C-L3-MOT-01"
     taches: [AMOT99]
+
   - id: D-ACI-19
     question: "CO₂ évité sur le document C&I ?"
     options:
@@ -2468,6 +2501,7 @@ decisions:
     date: "2026-10-24"
     source: "question interactive du 24/10/2026"
     taches: [AMOT100]
+
   - id: D-ACI-20
     question: "Signature des gros contrats C&I sur le lien public ?"
     options:
@@ -2479,6 +2513,7 @@ decisions:
     date: "2026-10-24"
     source: "question interactive du 24/10/2026 ; confirme ADEV95-96"
     taches: [ADEV95, ADEV96]
+
   - id: D-ACI-21
     question: "Format des nombres dans les documents C&I en anglais (aujourd'hui « 484 992,48 », comme en français) ?"
     options:
@@ -2490,6 +2525,7 @@ decisions:
     date: "2026-10-24"
     source: "question interactive du 24/10/2026 ; constat C-L3-DOC-06"
     taches: [AMOT101]
+
   - id: D-CMP-1
     question: "Chaînes de panneaux C&I : comment découper un champ sur un onduleur (constat R1 CMP : 8 panneaux « en réserve » non raccordés à 20 kWc, 47 chaînes de 6 avec écrêtage permanent à 200 kWc) ?"
     options:
@@ -2501,6 +2537,7 @@ decisions:
     date: "2026-10-27"
     source: "décision prise pour le fondateur (à revoir) — règle fondateur du 27/10/2026 « ne jamais attendre le fondateur » ; session L3 CMP"
     taches: [CMP1, CMP2]
+
   - id: D-CMP-2
     question: "Câble DC C&I : que vaut la longueur déclarée (aujourd'hui défaut = 2 × chaînes × 30 m, déclarée = chaînes × L) ?"
     options:
@@ -2512,6 +2549,7 @@ decisions:
     date: "2026-10-27"
     source: "décision prise pour le fondateur (à revoir) — alignée sur la règle fondateur du 26/10/2026 (2 × chaînes × 30 m) ; session L3 CMP"
     taches: [CMP4]
+
   - id: D-CMP-3
     question: "Option « avec batterie » C&I : combien d'onduleurs hybrides basse tension en parallèle au plus (constat R1 CMP : 19 Deye à 500 kWc) ?"
     options:
@@ -2523,6 +2561,7 @@ decisions:
     date: "2026-10-27"
     source: "décision prise pour le fondateur (à revoir) — datasheets Deye ; session L3 CMP"
     taches: [CMP3, CMP11]
+
   - id: D-CMP-4
     question: "Production d'un toit plat (lesté ou fixé) sans pente déclarée : quelle inclinaison (aujourd'hui 30° de la table PVGIS) ?"
     options:
@@ -2536,6 +2575,7 @@ decisions:
     date: "2026-10-27"
     source: "décision fondateur 27/10/2026 (Reda) : 30° par défaut, inclinaison modifiable dans le générateur — remplace la réponse a prise pour lui le même jour"
     taches: [CMP5]
+
   - id: D-CMP-5
     question: "Option « avec batterie » DOMINÉE (plus chère ET économie annuelle plus faible que l'option sans — rendu réel usine MT : 1 140 483 HT / 229 971 MAD contre 928 317 HT / 233 192 MAD) : la proposer ?"
     options:
@@ -2547,6 +2587,7 @@ decisions:
     date: "2026-10-27"
     source: "décision prise pour le fondateur (à revoir) — session L3 CMP, rendu réel du lead de démo 2231"
     taches: [CMP9]
+
   - id: D-CMP-6
     question: "Compteur d'injection / logger d'une option dont les onduleurs sont d'une autre marque que l'article retenu (Smart Meter Huawei sur 10 hybrides Deye) ?"
     options:
@@ -2560,6 +2601,7 @@ decisions:
     taches: [CMP10]
     source: "décision prise pour le fondateur (à revoir) — PVGIS 5.3 PVcalc relevé le 27/10/2026 ; session L3 CMP"
     taches: [CMP5]
+
   - id: D-CMP-7
     question: "Un devis C&I envoyé au niveau de règles ≤ 2 recalculé par force_etudes reçoit aujourd'hui les corrections de chiffre CMP5 / CMP7 / CMP8 du moteur C&I (gardées par la seule empreinte de l'étude) : que faire ?"
     options:
@@ -2571,6 +2613,7 @@ decisions:
     date: "2026-11-03"
     source: "Reda, question interactive, 03/11/2026 ; audit Fable final du run L3 devis (PC2, 28/10/2026), consigné par la coordinatrice ; option recommandée (a) — non construite, décision fondateur"
     taches: [CMP12]
+
   - id: D-AGM-1
     question: "Moteur de pompe donné en CV (5,5 CV = 4,05 kW) : quel kW pour la pompe et le variateur (constat R1 AGM : variateur 5,5 kW choisi pour un moteur normalisé de 4 kW) ?"
     options:
@@ -2582,6 +2625,7 @@ decisions:
     date: "2026-10-27"
     source: "décision prise pour le fondateur (à revoir) — règle fondateur du 27/10/2026 « ne jamais attendre le fondateur » ; session L3 AGM"
     taches: [AGM1]
+
   - id: D-AGM-2
     question: "Besoin en eau qu'aucun champ ne couvre : jusqu'où grossit le champ de repli (constat R1 AGM : OSP 30/8 à 800 m³/j → 121 panneaux) ?"
     options:
@@ -2593,6 +2637,7 @@ decisions:
     date: "2026-10-27"
     source: "décision prise pour le fondateur (à revoir) — session L3 AGM"
     taches: [AGM2, AGM14]
+
   - id: D-AGM-3
     question: "Pompe sans courbe (couverture du besoin non vérifiable) : le bloc « Votre argent » reste-t-il publiable au client ?"
     options:
@@ -2604,6 +2649,7 @@ decisions:
     date: "2026-10-27"
     source: "décision prise pour le fondateur (à revoir) — session L3 AGM"
     taches: [AGM9]
+
   - id: D-AGC-1
     question: "Les notes « rendement non publié … production en borne haute / rendement prudent » du PDF agricole sont-elles imprimées au client ?"
     options:
@@ -2615,6 +2661,7 @@ decisions:
     date: "2026-10-27"
     source: "décision prise pour le fondateur (à revoir) — session L3 AGC"
     taches: [AGC1]
+
   - id: D-AGC-2
     question: "Le une-page agricole imprime-t-il « (hypothèse) » à côté des heures de pompage ?"
     options:
@@ -2626,6 +2673,7 @@ decisions:
     date: "2026-10-27"
     source: "décision prise pour le fondateur (à revoir) — session L3 AGC"
     taches: [AGC2]
+
   - id: D-AGC-6
     question: "Bloc « Votre argent » agricole non publiable alors que le client a DÉCLARÉ sa dépense actuelle : que dit le document ?"
     options:
@@ -2637,6 +2685,7 @@ decisions:
     date: "2026-10-28"
     source: "décision prise pour le fondateur (à revoir) — session L3 AGC (validation R3)"
     taches: [AGC11, AGC14, AGC15, AGC16]
+
   - id: D-AGC-7
     question: "Vide redistribué par page du PDF agricole (pages 1-2 à plus d'un quart vides) : quel plafond ?"
     options:
@@ -2648,6 +2697,7 @@ decisions:
     date: "2026-10-27"
     source: "décision prise pour le fondateur (à revoir) — session L3 AGC"
     taches: [AGC12]
+
   - id: D-AGC-3
     question: "La tuile « 0 % » de /pompage-solaire : que vise l'exonération de TVA ?"
     options:
@@ -2745,6 +2795,19 @@ decisions:
     date: "2026-10-30"
     source: "Reda, décision fondateur du 29-30/10/2026 (lane w7-enf, question interactive)"
     taches: [ENF11]
+
+  - id: D-ENF11-WORKFLOW-BOUCLE-400
+    question: "ENF11 : le fuzz signale « API rejected schema-compliant request » sur PUT/PATCH /api/django/core/workflow-definitions/{id}/ (étape dont etape_alternative_si_echec la désigne elle-même, refusée en 400 — boucle infinie, NTWFL9) : que faire ?"
+    options:
+      - cle: a
+        texte: "accepter 400 comme réponse attendue du check positive_data_acceptance pour CES deux seules opérations (absence de cycle inexprimable au schéma OpenAPI 3.0), comme D-ENF11-CRENEAU-400"
+      - cle: b
+        texte: "laisser le constat ouvert (ENF11 reste rouge)"
+    reponse: a
+    date: "2026-11-06"
+    source: "Reda, décision fondateur du 06/11/2026 (« Yes, accept 400 », boucle work on the plan)"
+    taches: [ENF11]
+
   - id: D-CI-SENSIB-ENVOYES
     question: "ERR-CI-SENSIBILITE-P90-INVERSEE : le correctif du scénario production des sensibilités C&I s'applique-t-il aux devis déjà envoyés ?"
     options:
@@ -2756,6 +2819,7 @@ decisions:
     date: "2026-10-30"
     source: "Reda, décision fondateur du 30/10/2026 (question interactive, relayée par l'orchestrateur ; rejeu CEC6 P1.4)"
     taches: [ERR-CI-SENSIBILITE-P90-INVERSEE]
+
   - id: D-RWEB17-WA-REF
     question: "RWEB17-M8 : le message WhatsApp du lien de succes porte `Ma reference : <code>` sur la page FR mais pas sur EN ni AR : que faire ?"
     options:
@@ -2767,6 +2831,7 @@ decisions:
     date: "2026-10-29"
     source: "Reda, decision fondateur du 29/10/2026 (lane RWEB17-M8, question interactive)"
     taches: [RWEB17-M8]
+
   - id: D-RWEB17-DUP-PRINT
     question: "RWEB17-M19 : le bloc CSS d impression (@media print du <style is:global>, identique dans les trois pages mon-toit, deja en base sous fe75990add10) change d empreinte (066871c51477) parce que la premiere ligne du script de page a change ; la base des doublons ne peut que retrecir : que faire ?"
     options:
@@ -2778,6 +2843,7 @@ decisions:
     date: "2026-10-29"
     source: "Reda, decision fondateur du 29/10/2026 (lane RWEB17-M19, question interactive) ; couvre cette seule entree"
     taches: [RWEB17-M19]
+
   - id: D-VNT83-SOLDE
     question: "VNT83 : apres un prix negocie, le texte attend un solde de 34 000, alors que l'echeancier par defaut 30/60/10 donne 29 400 puis 4 600 ; corriger le texte ou l'echeancier ?"
     options:
@@ -2789,6 +2855,7 @@ decisions:
     date: "2026-10-30"
     source: "Reda, decision fondateur du 30/10/2026 (question interactive, rejeu VNT du 30/10)"
     taches: [VNT83]
+
   - id: D-ASTK239-PORTAIL-MONTANTS
     question: "ASTK239 : la page du lien prive fournisseur affiche montant_ttc et solde_du des factures du fournisseur lui-meme ; la tache dit qu'aucun montant d'achat ne doit apparaitre cote fournisseur : garder ou masquer ?"
     options:
@@ -2800,6 +2867,7 @@ decisions:
     date: "2026-10-30"
     source: "Reda, decision fondateur du 30/10/2026 (question interactive, rejeu ASTK239 du 30/10)"
     taches: [ASTK239]
+
   - id: D-ASEC11-LECTURE-FACTURES
     question: "ASEC21 P2.3 : `GET /api/django/ventes/factures/` répond 200 à Commercial terrain et Admin RH (seules les écritures sont refusées) : la LECTURE des factures doit-elle leur être refusée comme ASEC11 le dit ?"
     options:
@@ -2811,6 +2879,7 @@ decisions:
     date: "2026-10-30"
     source: "Reda, décision fondateur du 30/10/2026 (question interactive, relayée par l'orchestrateur ; rejeu ASEC21 P2.3)"
     taches: [ERR-ASEC11-LISTE-FACTURES, ASEC11]
+
   - id: D-SPL202-RESTE
     question: "SPL202 devait déplacer autoFillLines de solar.js vers calc/autoFill.js, mais ADEV69 (8ff41d2bc) l'a déjà supprimé : que faire du reste de la région ?"
     options:
@@ -2820,6 +2889,7 @@ decisions:
     date: "2026-10-30"
     source: "Reda, décision fondateur du 30/10/2026 (question interactive, relayée par l'orchestrateur ; lane w9-spl202)"
     taches: [SPL202]
+
   - id: D-CI-BATTERIE-NON-RENTABLE
     question: "Devis C&I : quand aucun module de batterie ne tient la règle marginale des 10 ans (usine MT : premier module 31,8 ans, meilleur groupe ≈ 13,6 ans), l'option « avec batterie » est aujourd'hui CACHÉE (alerte OPTION_BATTERIE_NON_COMPOSEE) : que faire ?"
     options:
@@ -2831,6 +2901,7 @@ decisions:
     date: "2026-10-30"
     source: "Reda, décision fondateur du 30/10/2026 (en chat : « search what the best in the world do and do it »)"
     taches: []
+
   - id: D-AGNR-CI-ETUDE-CREATION
     question: "Devis commercial ou industriel : si l'étude C&I est refusée à la création (ex. champ de tarif manquant), « Créer le devis » bloque-t-il, ou crée-t-il le devis sans son étude (« étude non attachée ») ?"
     options:
@@ -2842,6 +2913,7 @@ decisions:
     date: "2026-10-30"
     source: "Reda, décision fondateur du 30/10/2026 (question interactive, ERR-AGNR-CI-ETUDE-AJOUTEE-AU-REENREGISTREMENT)"
     taches: [ERR-AGNR-CI-ETUDE-AJOUTEE-AU-REENREGISTREMENT]
+
   - id: D-ENF-SEUILS-DEFAUT
     question: "Les quatre défauts électriques de core/electrique/types.py (SpecModule.temp_coeff_voc_pct_c = -0,27 ; temp_coeff_pmax_pct_c = -0,35 ; TEMP_FROID_DEFAUT_C = -5 ; TEMP_CHAUD_DEFAUT_C = 70) n'ont pas de source citée : les garder tels quels (et enregistrer la décision comme source) ou les remplacer ?"
     options:
@@ -2853,6 +2925,7 @@ decisions:
     date: "2026-10-30"
     source: "Reda, décision fondateur du 30/10/2026 (question interactive, dette de scripts/seuils_electriques_exceptions.txt)"
     taches: []
+
   - id: D-ENF-SYMBOLES-8221
     question: "Les constantes TSS_C_KWH, TURD_C_KWH et TURT_C_KWH de quote_engine/constants_82_21.py n'ont aucun lecteur (documentaires, jamais soustraites) : les garder pour affichage ou les supprimer ?"
     options:
@@ -2864,6 +2937,7 @@ decisions:
     date: "2026-10-30"
     source: "Reda, décision fondateur du 30/10/2026 (question interactive, passif de scripts/symboles_moteur_allow.txt)"
     taches: [AMOT47]
+
   - id: D-ENF-ARRONDI-PDF
     question: "Le moteur du PDF de devis arrondit encore l'argent affiché par round() (arrondi bancaire : 12,5 → 12, 51 232,50 → 51 232) sur 27 sites gelés dans scripts/money_rounding_allow.txt, contre la règle maison « moitié vers le haut » de core.money.quantize_mad (docs/money-convention.md) : basculer ?"
     options:
@@ -2875,6 +2949,7 @@ decisions:
     date: "2026-10-30"
     source: "Reda, décision fondateur du 30/10/2026 (relayée par l'orchestrateur, lane w15-arrondi)"
     taches: []
+
   - id: D-AANA-036-BRANCHER
     question: "AANA45 (C-AANA-036) : les deux routes backend sans écran, `reporting/p2p/kpi` (KPI achats → paiement) et `envois-rapports` (historique des envois de rapports programmés), doivent-elles être branchées à un écran ou supprimées ?"
     options:
@@ -2886,6 +2961,7 @@ decisions:
     date: "2026-10-30"
     source: "Reda, décision fondateur du 30/10/2026 (question interactive, relayée par l'orchestrateur ; lane w15-reporting)"
     taches: [AANA45]
+
   - id: D-AANA-VER-1
     question: "Le taux d'acceptation des devis a trois définitions (/reporting : acceptés ÷ créés ; Quote-to-cash : acceptés ÷ envoyés dans la période ; tableau de bord : acceptés ÷ sortis du brouillon). Laquelle devient l'unique définition ?"
     options:
@@ -2897,6 +2973,7 @@ decisions:
     date: "2026-11-01"
     source: "Reda, décision fondateur du 01/11/2026 (question interactive, contre-visite vérifie AANA)"
     taches: [AANA57, AANA58, AANA59, AANA60]
+
   - id: D-AANA-VER-2
     question: "Le prévisionnel pondéré du pipeline a deux tables de probabilité par étape (Kanban CRM 25/50/70 %, serveur 20/40/60 %). Laquelle garder comme unique table, servie par le serveur ?"
     options:
@@ -2908,6 +2985,7 @@ decisions:
     date: "2026-11-01"
     source: "Reda, décision fondateur du 01/11/2026 (question interactive, contre-visite vérifie AANA)"
     taches: [AANA66, AANA67]
+
   - id: D-ASEC-VER-1
     question: "Le droit `encaisser` (D-ASEC-1) garde-t-il aussi les gestes d'argent qui n'enregistrent pas d'encaissement (lien de paiement en ligne créé ou révoqué, pénalités de retard facturées, attestation RAS reçue), en plus du paiement avec retenue, du retour client avec avoir, de l'import de relevé, du rejet / de l'annulation / de la réaffectation d'un paiement et de la libération de retenue ?"
     options:
@@ -2919,6 +2997,7 @@ decisions:
     date: "2026-11-01"
     source: "Reda, décision fondateur du 01/11/2026 (question interactive, contre-visite vérifie ASEC)"
     taches: [ASEC56]
+
   - id: D-ENF15-DORMANTS
     question: "La commande crm.detecter_comptes_dormants (alerte in-app au commercial pour chaque client sans activité depuis 90 jours ; le premier passage alerte tout l'arriéré) doit-elle être planifiée chaque jour en production ?"
     options:
@@ -2932,6 +3011,7 @@ decisions:
     date: "2026-11-01"
     source: "Reda, décision fondateur du 01/11/2026 (question interactive, vague 10 ENF15)"
     taches: [ENF15]
+
   - id: D-APDF99-ORACLE
     question: "L'oracle « audit_coherence sans violation » d'APDF99 couvre-t-il aussi les violations calepinage/étude des devis rejoués, ou seulement les règles DOC_ des documents rendus ?"
     options:
@@ -2943,6 +3023,7 @@ decisions:
     date: "2026-11-01"
     source: "Reda, décision fondateur du 01/11/2026 (question interactive, vague 10)"
     taches: [APDF99]
+
   - id: D-ATOT-VER-1
     question: "L'export comptable par défaut (/export-comptable/, format « ligne », envoyé au fiduciaire) ne contient que les factures : faut-il y inclure les avoirs et les notes de débit ?"
     options:
@@ -2954,6 +3035,7 @@ decisions:
     date: "2026-11-01"
     source: "Reda, décision fondateur du 01/11/2026 (question interactive, contre-visite vérifie ATOT)"
     taches: [ATOT47]
+
   - id: D-ATOT-VER-2
     question: "Une révision qui baisse un taux de TVA et en monte un autre (V1 40 000 @10 % + 60 000 @20 % → V2 30 000 @10 % + 80 000 @20 %) : comment régulariser l'écart ?"
     options:
@@ -2965,6 +3047,7 @@ decisions:
     date: "2026-11-01"
     source: "Reda, question interactive, contre-visite vérifie ATOT"
     taches: [ATOT44, ATOT45]
+
   - id: D-ASAV-VER2-1
     question: "Quels tickets consomment le quota inclus (déplacements / visites) d'un contrat de maintenance ?"
     options:
@@ -2976,6 +3059,7 @@ decisions:
     date: "2026-11-02"
     source: "Reda, question interactive, contre-visite vérifie ASAV du 01/11/2026"
     taches: [ASAV122]
+
   - id: D-ASAV-VER2-2
     question: "Le quota d'un contrat se remet-il à zéro chaque année civile ou à l'anniversaire du contrat ?"
     options:
@@ -2987,6 +3071,7 @@ decisions:
     date: "2026-11-02"
     source: "Reda, question interactive, contre-visite vérifie ASAV du 01/11/2026"
     taches: [ASAV122]
+
   - id: D-ASAV-VER2-3
     question: "Corriger l'angle mort de la garde d'acceptation fait apparaître ≈ 134 tâches déjà cochées qui doivent une preuve en direct : regel unique de cette dette ?"
     options:
@@ -2998,6 +3083,7 @@ decisions:
     date: "2026-11-02"
     source: "Reda, question interactive, contre-visite vérifie ASAV du 01/11/2026"
     taches: [ASAV120]
+
   - id: D-ACAL-VER2-1
     question: "Un calepinage enregistré puis ombré (horizon, ombre, matrice) garde une production stockée jamais dératée, que l'atelier réémet à la réouverture : quelle règle ?"
     options:
@@ -3161,6 +3247,7 @@ decisions:
     date: "2026-11-02"
     source: "Reda, 02/11/2026, question interactive (AskUserQuestion) en session cadence-suivi-clients, posée par le drafter CADV101 (conflit avec D-CRX1)"
     taches: [CADV101]
+
   - id: D-AARG-1
     question: "Un avoir sur une facture déjà payée (12 000 payés, avoir 2 400) fait disparaître le montant crédité : que devient le surplus ?"
     options:
@@ -3174,6 +3261,7 @@ decisions:
     date: "2026-11-02"
     source: "Reda, question interactive, audit parcours PA4"
     taches: [AARG1]
+
   - id: D-AARG-2
     question: "Retenue à la source (RAS-TVA) après un avoir : quelle base ?"
     options:
@@ -3185,6 +3273,7 @@ decisions:
     date: "2026-11-02"
     source: "Reda, question interactive, audit parcours PA4"
     taches: [AARG4]
+
   - id: D-AARG-3
     question: "Émettre une facture exige `encaisser` sur « Facturer la vente » mais pas sur « Émettre » ni l'action groupée : quelle règle ?"
     options:
@@ -3196,6 +3285,7 @@ decisions:
     date: "2026-11-02"
     source: "Reda, question interactive, audit parcours PA4"
     taches: [AARG9]
+
   - id: D-AARG-4
     question: "Remise en brouillon puis réémission d'une facture émise : le numéro légal est redaté au jour (N peut finir daté après N+1). Quelle règle ?"
     options:
@@ -3209,6 +3299,7 @@ decisions:
     date: "2026-11-02"
     source: "Reda, question interactive, audit parcours PA4"
     taches: [AARG23]
+
   - id: D-AARG-5
     question: "Escompte pour paiement anticipé appliqué à l'encaissement sans avoir (journal des ventes, TVA et UBL au montant plein) : comment le comptabiliser ?"
     options:
@@ -3222,6 +3313,7 @@ decisions:
     date: "2026-11-02"
     source: "Reda, question interactive, audit parcours PA4 (critique de complétude)"
     taches: [AARG57]
+
   - id: D-ADVS-1
     question: "Un devis envoyé, rendu à nouveau (PDF /proposal, page publique), relit les réglages actuels de la société (productible, barème, redevance) et les fiches produit (garantie) : que voit le client ?"
     options:
@@ -3233,6 +3325,7 @@ decisions:
     date: "2026-11-02"
     source: "Reda, question interactive, audit parcours PA3"
     taches: [ADVS1, ADVS2, ADVS45]
+
   - id: D-ADVS-2
     question: "Une vente dés-acceptée, corrigée puis signée une seconde fois garde la première preuve et le premier exemplaire signé : que faire ?"
     options:
@@ -3244,6 +3337,7 @@ decisions:
     date: "2026-11-02"
     source: "Reda, question interactive, audit parcours PA3"
     taches: [ADVS4]
+
   - id: D-ADVS-3
     question: "Un accessoire de batterie (câble batterie classé cable_dc) et une batterie au nom sans « batterie » : dans quelle option les compter ?"
     options:
@@ -3255,6 +3349,7 @@ decisions:
     date: "2026-11-02"
     source: "Reda, question interactive, audit parcours PA3"
     taches: [ADVS5, ADVS6]
+
   - id: D-ADVS-4
     question: "Un prix tapé TTC × quantité perd des centimes en HT, puis l'arrondi à la centaine vers le bas retire 100 MAD (3 × 1 000 TTC → 2 900) : que faire ?"
     options:
@@ -3268,6 +3363,7 @@ decisions:
     date: "2026-11-02"
     source: "Reda, question interactive, audit parcours PA3"
     taches: [ADVS3]
+
   - id: D-ADVS-5
     question: "Désacceptation d'une vente dont le chantier a déjà un bon de commande fournisseur envoyé (ou une DA commandée) : bloquer ou laisser passer ?"
     options:
@@ -3279,6 +3375,7 @@ decisions:
     date: "2026-11-03"
     source: "Reda, question interactive, 03/11/2026 ; audit parcours PA3 (C-ADVS-027), non posée au lot interactif (S3)"
     taches: [ADVS40]
+
   - id: D-ENF15-STOCK-22
     question: "22 endpoints stock sans écran (passif de check_calepinage_actions_consommees.py, ENF15) : un écran ou l'API seule ?"
     options:
@@ -3288,6 +3385,7 @@ decisions:
     date: "2026-11-02"
     source: "Reda, question interactive, session all-plans"
     taches: [ENF15]
+
   - id: D-CADV22-PROMESSE
     question: "Le dernier parcage de contact est refusé par CADV22 (moins de 5 appels tracés, ou zéro touche) alors que l'écran promet Froid : que dit l'écran ?"
     options:
@@ -3297,6 +3395,7 @@ decisions:
     date: "2026-11-02"
     source: "Reda, question interactive, session all-plans"
     taches: [CADV22, CADV79]
+
   - id: D-CADV22-GABARIT-COURT
     question: "Un gabarit de moins de 5 appels ne peut jamais atteindre Froid avec la règle des 5 appels tracés : quelle règle ?"
     options:
@@ -3306,6 +3405,7 @@ decisions:
     date: "2026-11-02"
     source: "Reda, question interactive, session all-plans"
     taches: [CADV22]
+
   - id: D-ACVI-1
     question: "Un Commercial terrain (portée « all », privé d'énumération des leads) crée aujourd'hui une visite sur n'importe quel id de lead et reçoit client_panel et devis (C-ACVI-101) : que doit faire la porte POST /visites/visites/ ?"
     options:
@@ -3317,6 +3417,7 @@ decisions:
     date: "2026-11-03"
     source: "Reda, question interactive, 03/11/2026 ; audit parcours PA1 (loop audit, 03/11/2026) : non posée au fondateur (boucle sans réponse) ; option recommandée en premier"
     taches: [ACVI2]
+
   - id: D-ACVI-2
     question: "Relances, rendez-vous, points de contact et rapport d'attribution sont lisibles par Admin RH, Commercial terrain et un Commercial « soi » sur toute la société (C-ACVI-102, C-ACVI-109) : crm_voir + portée, ou transparence CKP3 étendue ?"
     options:
@@ -3328,6 +3429,7 @@ decisions:
     date: "2026-11-03"
     source: "Reda, question interactive, 03/11/2026 ; audit parcours PA1 (loop audit, 03/11/2026) : non posée au fondateur (boucle sans réponse) ; option recommandée en premier"
     taches: [ACVI3, ACVI10]
+
   - id: D-ACVI-3
     question: "Un porteur de visites_valider à portée sous-arbre (Commercial responsable) lit toutes les visites de la société (C-ACVI-107) : toute la société ou la portée ?"
     options:
@@ -3339,6 +3441,7 @@ decisions:
     date: "2026-11-03"
     source: "Reda, question interactive, 03/11/2026 ; audit parcours PA1 (loop audit, 03/11/2026) : non posée au fondateur (boucle sans réponse) ; option recommandée en premier"
     taches: [ACVI8]
+
   - id: D-ACVI-4
     question: "Les portes RDV YanBow, API publique, ticket SAV et import fichier créent des leads sans propriétaire, sans score ou sans cadence (C-ACVI-002) : même règle d'arrivée partout, ou traitement manuel déclaré dans la table ?"
     options:
@@ -3350,6 +3453,7 @@ decisions:
     date: "2026-11-03"
     source: "Reda, question interactive, 03/11/2026 ; audit parcours PA1 (loop audit, 03/11/2026) : non posée au fondateur (boucle sans réponse) ; option recommandée en premier"
     taches: [ACVI88]
+
   - id: D-ACVI-5
     question: "Une nouvelle demande (propriétaire d'un locataire, livechat, site) dont le doublon est archivé, perdu ou opposé est rattachée en silence à la fiche au rebut (C-ACVI-003) : règle D-CRX1 partout ?"
     options:
@@ -3361,6 +3465,7 @@ decisions:
     date: "2026-11-03"
     source: "Reda, question interactive, 03/11/2026 ; audit parcours PA1 (loop audit, 03/11/2026) : non posée au fondateur (boucle sans réponse) ; option recommandée en premier"
     taches: [ACVI13]
+
   - id: D-ACVI-6
     question: "Une opposition vivante (STOP, case « ne plus contacter ») ne vaut que pour la fiche : une nouvelle fiche au même numéro, ou le survivant d'une fusion, redevient contactable (C-ACVI-060, C-ACVI-020) : l'opposition suit-elle la personne ?"
     options:
@@ -3372,6 +3477,7 @@ decisions:
     date: "2026-11-03"
     source: "Reda, question interactive, 03/11/2026 ; audit parcours PA1 (loop audit, 03/11/2026) : non posée au fondateur (boucle sans réponse) ; option recommandée en premier"
     taches: [ACVI43]
+
   - id: D-ACVI-7
     question: "WhatsApp de devis, de visite ou de touche vers un lead opposé qui a lui-même demandé le document (C-ACVI-061) : refus ou envoi transactionnel tracé ?"
     options:
@@ -3383,6 +3489,7 @@ decisions:
     date: "2026-11-03"
     source: "Reda, question interactive, 03/11/2026 ; audit parcours PA1 (loop audit, 03/11/2026) : non posée au fondateur (boucle sans réponse) ; option recommandée en premier"
     taches: [ACVI89]
+
   - id: D-ACVI-8
     question: "La réservation publique et l'agenda créent un crm.Appointment sans VisiteTerrain, sans date sur la fiche ni suspension de cadence (C-ACVI-172) : est-ce la visite technique ?"
     options:
@@ -3394,6 +3501,7 @@ decisions:
     date: "2026-11-03"
     source: "Reda, question interactive, 03/11/2026 ; audit parcours PA1 (loop audit, 03/11/2026) : non posée au fondateur (boucle sans réponse) ; option recommandée en premier"
     taches: [ACVI63]
+
   - id: D-ACVI-9
     question: "Le lien {lien_rdv} des messages pointe vers taqinor.ma/rdv (aucune page) sans requête et vers l'ERP avec requête (C-ACVI-063) : quel hôte canonique ?"
     options:
@@ -3475,8 +3583,425 @@ decisions:
         texte: "Oui, créée par Reda dans le tableau de bord (jamais un jeton API Cloudflare dans le dépôt)"
       - cle: non
         texte: "Non"
-    reponse: ouverte
-    date: "2026-11-03"
-    source: "session 2026-11-03 revue L3 journal : non posée (défaut recommandé : oui)"
+    reponse: oui
+    date: "2026-11-04"
+    source: "session 2026-11-04 work on the plan : question interactive, Reda répond « Oui »"
     taches: [BPQ12]
 
+  - id: D-ADOC-VER4-1
+    question: "Un technicien assigné à une intervention ouvre la fiche du chantier (ERR-CHT-TECH-CHANTIER-404) mais ses documents (PV de réception, bon de livraison, dossier de remise) répondent 404 : que doit-il obtenir ?"
+    options:
+      - cle: aligner_documents
+        texte: "Le technicien télécharge le PV, le BL et le dossier de remise d'un chantier sur lequel il intervient, même portée de lecture que la fiche (attestation exclue, réservée aux responsables)"
+      - cle: masquer_boutons
+        texte: "Les documents restent réservés aux responsables ; la fiche masque ces boutons pour ce rôle"
+    reponse: aligner_documents
+    date: "2026-11-04"
+    source: "Reda, question interactive, contre-visite vérifie ADOC"
+    taches: [ADOC196]
+
+  - id: D-ASTK-VER4-1
+    question: "Une facture (acompte compris) sort le matériel de la vente à son émission ; si elle est annulée, le matériel reste sorti et le lead ne peut plus quitter « Signé » (409 stock sorti). Que faire ?"
+    options:
+      - cle: retour_annulation
+        texte: "L'annulation d'une facture émise ré-entre le stock qu'elle a sorti (entrée tracée) ; la sortie suit toujours une facture vivante, la facture suivante la refait"
+      - cle: retour_desacceptation
+        texte: "L'annulation garde le stock sorti ; seule la dés-acceptation ré-entre et ce stock ne bloque plus la sortie de « Signé »"
+      - cle: ajustement_manuel
+        texte: "Comportement actuel : retour par ajustement d'inventaire, dés-acceptation bloquée"
+    reponse: retour_annulation
+    date: "2026-11-04"
+    source: "Reda, question interactive, contre-visite vérifie ASTK"
+    taches: [ASTK262, ASTK263]
+
+  - id: D-ACHT-VER4-1
+    question: "Dans l'Agenda de la société, un technicien voit aussi les interventions, dates et noms de techniciens de chantiers hors de sa portée (sans téléphone ni GPS), alors que les listes de chantiers les lui cachent. Que doit montrer l'Agenda à un technicien ou un commercial ?"
+    options:
+      - cle: meme_portee_que_listes
+        texte: "L'Agenda ne montre que les interventions et chantiers que la personne voit déjà dans les listes"
+      - cle: societe_entiere
+        texte: "Comportement actuel : tout rôle qui a l'Agenda voit le planning de toute la société (lecture de D-ASEC11)"
+    reponse: meme_portee_que_listes
+    date: "2026-11-04"
+    source: "Reda, question interactive, contre-visite vérifie ACHT"
+    taches: [ACHT136, ACHT137]
+
+  - id: D-AMOT-VER4-1
+    question: "Devis à deux options, option recommandée « Sans batterie », acompte fixé en dirhams : les cases de paiement du PDF suivent l'option « Sans » (44 % / 56 % de 22 800) tandis que le texte des conditions et la page publique suivent « Avec » (18 % de 55 200), l'option dont le total est affiché et facturé. Quelle option tout l'échéancier doit-il suivre ?"
+    options:
+      - cle: option_facturee
+        texte: "Cases, texte et page publique suivent l'option dont le devis tire son total et sa facture (option_effective)"
+      - cle: option_recommandee
+        texte: "Cases, texte et page publique suivent le scénario puis l'option recommandée, même si le total affiché est l'autre option"
+    reponse: option_facturee
+    date: "2026-11-04"
+    source: "Reda, question interactive, contre-visite vérifie AMOT"
+    taches: [AMOT122]
+
+  - id: D-AANA-VER4-1
+    question: "L'import de factures et de devis (API seule, aucun écran aujourd'hui) propose les colonnes date d'émission, statut de paiement et date de création, mais ne les lit jamais : une facture 2024 « payée » migrée sort émise aujourd'hui, numérotée dans la série du mois, montant 0 (aucune relance). Que doit faire l'import de ces colonnes ?"
+    options:
+      - cle: retirer_colonnes
+        texte: "Les retirer du mapping : l'aperçu les dit « non mappées » ; les factures migrées gardent le comportement d'aujourd'hui jusqu'à un vrai besoin de migration"
+      - cle: lire_colonnes
+        texte: "Les lire vraiment : date source appliquée, posted + paid = payée, et une facture migrée non brouillon garde son numéro source au lieu d'en prendre un dans la série vivante"
+    reponse: retirer_colonnes
+    date: "2026-11-04"
+    source: "Reda, question interactive, contre-visite vérifie AANA"
+    taches: [AANA82]
+
+  - id: D-ASEC-VER4-1
+    question: "Appliquer la grille des rôles côté serveur fait perdre aux rôles Commercial et Commercial responsable (3 comptes actifs en prod) les exports stock (produits, mouvements), leurs rôles ne portant pas « Exporter » stock. Que faire ?"
+    options:
+      - cle: appliquer_grille
+        texte: "Le serveur suit la grille : ces rôles perdent l'export stock ; un admin coche « Exporter » dans Paramètres au besoin"
+      - cle: ajouter_code
+        texte: "Appliquer la grille mais ajouter d'abord stock_export aux rôles Commercial et Commercial responsable"
+    reponse: appliquer_grille
+    date: "2026-11-04"
+    source: "Reda, question interactive, contre-visite vérifie ASEC"
+    taches: [ASEC70]
+
+  - id: D-ACVI-10
+    question: "Un lead « ne plus contacter » peut déjà être un client signé. D-ACVI-7 refuse tout message devis / visite / cadence vers un lead opposé. Les messages vers cette personne en tant que CLIENT sous contrat (facture, relance de paiement, notifications chantier et SAV, accès portail) doivent-ils aussi être bloqués ?"
+    options:
+      - cle: contractuel_autorise
+        texte: "Opposition = prospection (loi 09-08 art. 9) : factures, relances, messages chantier / SAV / portail vers un client sous contrat partent, tracés ; tout rendu ou envoi de devis reste refusé"
+      - cle: tout_bloquer
+        texte: "Tout message ou lien vers une personne dont le lead est opposé est refusé, contractuels compris"
+    reponse: contractuel_autorise
+    date: "2026-11-05"
+    source: "Reda, question interactive, contre-visite vérifie ACVI"
+    taches: [ACVI102, ACVI107]
+
+  - id: D-ADVS-VER5-1
+    question: "Un envoi « les deux gammes » (Essentielle + Premium) ne passe que le devis principal en envoyé ; la gamme sœur reste brouillon et la page client n'affiche jamais le comparatif ni « choisir cette gamme ». Que doit faire un envoi « les deux » ?"
+    options:
+      - cle: envoyer_les_deux
+        texte: "L'envoi passe les DEUX devis en envoyé (par le seul chemin d'envoi), chacun avec un lien vivant ; le client voit et peut choisir l'une ou l'autre gamme"
+      - cle: garder_tel_quel
+        texte: "La sœur reste brouillon ; le commercial l'envoie à part quand il veut le comparatif"
+    reponse: envoyer_les_deux
+    date: "2026-11-05"
+    source: "Reda, question interactive, contre-visite vérifie ADVS"
+    taches: [ADVS49]
+  - id: D-ACSV-1
+    question: "La réception définitive peut être prononcée le lendemain de la provisoire, alors que la date prévue vaut provisoire + délai contractuel (ex. 12 mois). Quelle règle ?"
+    options:
+      - cle: plancher_et_derogation
+        texte: "Refus (409) avant la date prévue, sauf dérogation d'un Directeur avec motif tracé (même schéma que CIQ621)"
+      - cle: plancher_strict
+        texte: "Toujours refusée avant la date prévue, sans dérogation"
+      - cle: libre
+        texte: "Possible à tout moment après la provisoire ; la date prévue n'est qu'un rappel"
+    reponse: plancher_et_derogation
+    date: "2026-11-06"
+    source: "Reda, question interactive, audit de parcours PA5"
+    taches: [ACSV35]
+  - id: D-ACSV-2
+    question: "Parc SAV : un Technicien qui voit un chantier voit 0 de ses équipements, car le parc est filtré par auteur (le responsable les a créés à la réception). Qui voit les équipements d'un chantier ?"
+    options:
+      - cle: qui_voit_le_chantier
+        texte: "Quiconque voit le chantier voit tout son parc"
+      - cle: par_auteur
+        texte: "Garder la portée par auteur (comportement actuel)"
+    reponse: qui_voit_le_chantier
+    date: "2026-11-06"
+    source: "Reda, question interactive, audit de parcours PA5"
+    taches: [ACSV58]
+  - id: D-ACSV-3
+    question: "Sur un ticket SAV, un Technicien sans droit ventes crée devis et facture, et un Commercial responsable sans droit de mouvement de stock sort des pièces — `sav_gerer` suffit. Que doivent exiger ces gestes ?"
+    options:
+      - cle: droits_metier_exiges
+        texte: "Devis / facture du ticket exigent les droits ventes, sorties de pièces le droit de mouvement de stock, en plus de sav_gerer"
+      - cle: sav_gerer_suffit
+        texte: "Garder : sav_gerer suffit pour devis, facture et pièces depuis un ticket"
+    reponse: droits_metier_exiges
+    date: "2026-11-06"
+    source: "Reda, question interactive, audit de parcours PA5"
+    taches: [ACSV62]
+  - id: D-ACSV-4
+    question: "La signature client du chantier (PV / bon de livraison) fonctionne dans tout état, même sur un chantier annulé ; le BL se signe « à la livraison du matériel », avant « Installé ». Que refuser ?"
+    options:
+      - cle: annule_seulement
+        texte: "Refuser la signature sur un chantier annulé seulement ; la signature à la livraison (avant Installé) reste permise"
+      - cle: avant_installe_aussi
+        texte: "Refuser aussi avant « Installé »"
+    reponse: annule_seulement
+    date: "2026-11-07"
+    source: "Reda, question interactive, audit de parcours PA5"
+    taches: [ACSV34]
+  - id: D-AAPV-1
+    question: "RAS-TVA fournisseur : après imputation d'un avoir fournisseur, la retenue de 75 % porte-t-elle sur la TVA nette des avoirs ou sur la TVA totale de la facture ? (aujourd'hui : totale — 200 retenus au lieu de 100 sur une facture avec un avoir de 600 TTC)"
+    options:
+      - cle: tva_nette
+        texte: "Base = TVA de la facture − TVA des avoirs imputés, comme D-AARG-2 côté client"
+      - cle: tva_totale
+        texte: "Base = TVA totale de la facture ; comportement actuel conforme"
+    reponse: tva_nette
+    date: "2026-11-06"
+    source: "Reda, question interactive, audit de parcours PA6"
+    taches: [AAPV4]
+  - id: D-AAPV-2
+    question: "Quand une imputation d'acompte ou d'avoir (et non un paiement) solde la facture fournisseur, où va la retenue RAS-TVA restante ?"
+    options:
+      - cle: imputation_porte_le_reste
+        texte: "L'imputation qui solde porte la retenue restante : le total retenu vaut toujours 75 % de la TVA (D-ASTK-171)"
+      - cle: paiement_final_exige
+        texte: "Refuser une imputation qui solderait la facture tant qu'une retenue reste due ; le dernier règlement doit être un paiement"
+    reponse: imputation_porte_le_reste
+    date: "2026-11-06"
+    source: "Reda, question interactive, audit de parcours PA6"
+    taches: [AAPV5]
+  - id: D-AAPV-3
+    question: "Chantier posé en plusieurs interventions : valider la F11 de l'intervention 1 libère aujourd'hui TOUTES les réservations du chantier (l'onduleur réservé pour l'intervention 2 part sur un autre chantier). Que doit libérer une F11 ?"
+    options:
+      - cle: produits_de_la_f11
+        texte: "Seulement les réservations des produits réconciliés par cette F11 ; le reste demeure réservé jusqu'à sa F11 ou la clôture / l'annulation du chantier"
+      - cle: rien_avant_installe
+        texte: "Aucune F11 ne libère ; le reliquat n'est libéré qu'à « Installé » ou à l'annulation"
+      - cle: garder_actuel
+        texte: "Comportement actuel voulu (une F11 par chantier)"
+    reponse: produits_de_la_f11
+    date: "2026-11-06"
+    source: "Reda, question interactive, audit de parcours PA6 (précise D-ACHT-1 « reliquat libéré »)"
+    taches: [AAPV31]
+  - id: D-AAPV-4
+    question: "La RAS-TVA dépend de la nature de la facture fournisseur (biens 0 %, services 75 %), mais aucune porte ne renseigne `type_achat` : toute facture compte comme « biens ». D'où vient la nature ?"
+    options:
+      - cle: defaut_fournisseur_et_ecran
+        texte: "Pré-remplie depuis le type du fournisseur, modifiable à l'écran de facture ; OCR / UBL / factures nées d'un BCF prennent le défaut fournisseur"
+      - cle: champ_ecran_obligatoire
+        texte: "Choix obligatoire à l'écran ; les autres portes prennent le défaut fournisseur"
+      - cle: depuis_les_produits
+        texte: "Dérivée des produits / catégories des lignes"
+    reponse: defaut_fournisseur_et_ecran
+    date: "2026-11-06"
+    source: "Reda, question interactive, audit de parcours PA6"
+    taches: [AAPV6]
+  - id: D-AAPV-5
+    question: "Un BCF annulé dont l'annulation a rouvert la demande d'achat (AAPV71) et rendu l'engagement budgétaire (AAPV17) peut être « Réouvert » en brouillon : la DA re-génère alors un second BCF (40 000 commandés pour 20 000 demandés, budget réalisé 20 000). Que fait « Réouvrir » ?"
+    options:
+      - cle: refus
+        texte: "Refus 409 nommé : le BCF né d'une DA rouverte ne se réouvre pas ; on régénère le BC depuis la demande (recommandé)"
+      - cle: recommander
+        texte: "Réouvrir re-commande la DA (si elle est encore approuvée sans BCF) et re-consomme l'engagement ; 409 si la DA a déjà un autre BCF"
+    reponse: recommander
+    date: "2026-11-08"
+    source: "Reda, question interactive du 08/11/2026 (boucle work on the plan) — « Re-order the request » ; question posée par la vérifie AAPV du 08/11"
+    taches: [AAPV85]
+  - id: D-AAPV-6
+    question: "D-AAPV-2 fait porter la RAS-TVA restante par l'imputation qui solde (AAPV5). Quand c'est un acompte DÉJÀ versé brut (paiement 840 net puis acompte 360), 60 de RAS sont déclarés sans avoir été retenus : 1 260 décaissés pour 1 200 TTC. Que faire ?"
+    options:
+      - cle: garder
+        texte: "Garder : la RAS est due à l'État, la créance de 60 sur le fournisseur se règle hors ERP"
+      - cle: creance_fournisseur
+        texte: "L'ERP constate une créance de 60 sur le fournisseur (avoir à réclamer) à l'imputation"
+      - cle: retenir_avant
+        texte: "Retenir la RAS de l'acompte dès son versement (acompte versé net), plus jamais à l'imputation"
+    reponse: creance_fournisseur
+    date: "2026-11-08"
+    source: "Reda, question interactive du 08/11/2026 (boucle work on the plan) — « Supplier receivable » ; question posée par la vérifie AAPV du 08/11"
+    taches: [AAPV86]
+  - id: D-AMON-1
+    question: "Un abonnement de supervision (mensuel ou annuel, SAV → Supervision → Abonnements) n'est jamais facturé : sa « prochaine échéance » est posée une fois et reste dans le passé. L'ERP doit-il le facturer ?"
+    options:
+      - cle: vendu_une_fois
+        texte: "Comme les contrats de maintenance (D-ASAV-3) : vendu une fois avec le devis / facturé à la main ; « prochaine échéance » et « dernière facturation » retirées de l'écran et de l'API"
+      - cle: facturer_a_chaque_echeance
+        texte: "Facture brouillon créée à chaque échéance, échéance avancée d'une période (idempotent)"
+    reponse: vendu_une_fois
+    date: "2026-11-07"
+    source: "Reda, question interactive, audit de parcours PA7"
+    taches: [AMON2]
+  - id: D-AMON-2
+    question: "La pénalité de disponibilité de l'installation client (calculée sur les relevés) est affichée à l'écran et dans le rapport O&M mais jamais stockée, décidée ni créditée. Que doit-elle devenir ?"
+    options:
+      - cle: affichage_interne
+        texte: "Indicateur interne seulement : jamais un montant dû ni imprimé dans le rapport client ; fenêtre juste et rien sans relevé"
+      - cle: stockee_decidee_avoir
+        texte: "Stockée par période, décision humaine tracée (émise / refusée), avoir via la facturation si émise"
+    reponse: affichage_interne
+    date: "2026-11-07"
+    source: "Reda, question interactive, audit de parcours PA7"
+    taches: [AMON21]
+  - id: D-ACON-1
+    question: "« Générer le devis » depuis un calepinage (et la route from-layout) sur un lead commercial / industriel construit un devis RÉSIDENTIEL avec la production et les économies de l'outil toiture (interdit en C&I par CIQ117). Quelle règle ?"
+    options:
+      - cle: refus_nomme
+        texte: "409 nommé sur les deux portes (agricole compris sur from-layout), rien créé"
+      - cle: devis_au_marche_du_lead
+        texte: "Devis construit au marché du lead : aucune production / économie prise du layout, étude par le moteur C&I serveur"
+    reponse: devis_au_marche_du_lead
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PA2"
+    taches: [ACON40]
+  - id: D-ACON-2
+    question: "Un lead a un calepinage ouvert C1 lié au devis actif A ; un second devis actif B (pas une V2) demande une conception : aujourd'hui un C2 est créé et « Concevoir » l'ouvre en silence. Quelle règle ?"
+    options:
+      - cle: une_par_devis_actif
+        texte: "Un calepinage ouvert par devis actif (+ un sans devis par lead) ; « Concevoir » demande lequel ouvrir"
+      - cle: refus_409
+        texte: "Garder un calepinage ouvert par lead : 409 nommant C1"
+      - cle: variante_de_c1
+        texte: "Le devis B devient une variante de C1 (lien devis ↔ variante, nouvelle conception)"
+    reponse: variante_de_c1
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PA2"
+    taches: [ACON6]
+  - id: D-ACON-3
+    question: "L'approbation d'une conception ne couvre que le layout dessiné : changer l'onduleur, une longueur de chaîne forcée ou la fixation après accord garde l'accord valide et les pièces d'exécution ouvertes. L'empreinte d'approbation doit-elle les couvrir ?"
+    options:
+      - cle: tout_perime
+        texte: "Oui : tout changement électrique ou de fixation périme l'accord et referme les pièces d'exécution"
+      - cle: conception_seule
+        texte: "Non : l'accord ne porte que sur la conception imprimée (D-ACAL-4/21), limite écrite dans l'écran Approbation"
+    reponse: conception_seule
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PA2"
+    taches: [ACON24]
+  - id: D-ACON-4
+    question: "La page publique de proposition ne dessine que 600 panneaux par zone (et la visionneuse web partage un seul budget de 600 entre toutes les zones), alors que le compte affiché reste complet. Que faire ?"
+    options:
+      - cle: tout_dessiner_2000
+        texte: "Dessiner tous les panneaux jusqu'au plafond dur de 2 000 (décision du 23/10), par zone ; au-delà, mention « vue simplifiée »"
+      - cle: garder_600_mention
+        texte: "Garder 600 mais dire sur la page que le dessin est simplifié quand des panneaux sont omis"
+    reponse: tout_dessiner_2000
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PA2"
+    taches: [ACON50]
+  - id: D-ASOC-1
+    question: "Un devis envoyé sans échéancier propre lit l'échéancier société EN DIRECT jusqu'à l'acceptation : passer le réglage de 30 % à 40 % d'acompte après l'envoi fait figer 40 % à l'acceptation (acompte 8 920 au lieu de 6 690, alors que le PDF client disait 30 %). Quelle règle ?"
+    options:
+      - cle: figer_a_l_envoi
+        texte: "Figer l'échéancier (et le % des CGV) à l'envoi du devis, comme les autres champs d'un document engagé ; l'acceptation reprend le figé"
+      - cle: refuser_si_change
+        texte: "Garder le gel à l'acceptation, mais refuser l'acceptation (409) si l'échéancier société a changé depuis l'envoi"
+    reponse: figer_a_l_envoi
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PF2 (prolonge D-ECH-FIGE)"
+    taches: [ASOC95]
+  - id: D-ASOC-2
+    question: "Le module « Chantiers » désinstallé, accepter un devis crée quand même un chantier et des réservations de stock (chantier invisible ensuite). Quelle règle ?"
+    options:
+      - cle: rien_creer
+        texte: "Les abonnés d'un module désinstallé ne font rien : ni chantier, ni réservation, ni contrat SAV"
+      - cle: non_desinstallable
+        texte: "Un module dont dépend un abonné obligatoire ne peut pas être désinstallé tant que le module dépendant est actif"
+    reponse: rien_creer
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PF2"
+    taches: [ASOC2]
+  - id: D-ASOC-3
+    question: "Après un effacement loi 09-08, l'historique des modifications du lead (LeadActivity) garde en clair les anciennes et nouvelles valeurs d'identité. Quelle règle ?"
+    options:
+      - cle: caviarder
+        texte: "Garder chaque ligne d'historique (qui, quand, quel champ) mais remplacer les valeurs d'identité par « Anonymisé » à l'effacement"
+      - cle: garder_tel_quel
+        texte: "Historique conservé tel quel (doctrine « historique conservé »)"
+    reponse: caviarder
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PF2"
+    taches: [ASOC62]
+  - id: D-ASOC-4
+    question: "La rétention de 3 ans des prospects exclut tout lead qui a un client — or le client est créé au premier devis : tout prospect ayant reçu un devis est gardé à vie, et les clients n'ont aucune rétention. Quelle règle ?"
+    options:
+      - cle: client_sans_facture_est_prospect
+        texte: "Un client sans aucune facture est un prospect pour la rétention : purgé après 3 ans d'inactivité ; les clients facturés gardent la rétention comptable légale"
+      - cle: garder_actuel
+        texte: "Garder la règle actuelle"
+    reponse: client_sans_facture_est_prospect
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PF2"
+    taches: [ASOC74]
+  - id: D-ASOC-5
+    question: "Les métriques gouvernées de CA ignorent les avoirs alors que le tableau de bord les déduit (11 000 contre 8 000 sur les mêmes factures). Qu'est-ce que le « CA facturé » ?"
+    options:
+      - cle: net_d_avoirs
+        texte: "CA = factures moins avoirs partout (métriques, tableau de bord, rapports) ; une facture soldée par avoir total compte 0"
+      - cle: brut
+        texte: "CA = facturé brut ; avoirs montrés à part ; le tableau de bord s'aligne sur le brut"
+    reponse: net_d_avoirs
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PF2"
+    taches: [ASOC73]
+  - id: D-ASOC-6
+    question: "Un effacement 09-08 qui échoue sur une source est marqué « traitée » (final), erreur enfouie, sans relance possible. Quelle règle ?"
+    options:
+      - cle: statut_partielle
+        texte: "Statut « partielle » : sources en échec affichées, relance possible jusqu'à complétude"
+      - cle: tout_ou_rien
+        texte: "Effacement atomique : tout échec annule tout, la demande reste à traiter"
+    reponse: statut_partielle
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PF2"
+    taches: [ASOC65]
+  - id: D-ASOC-7
+    question: "Le réglage « Parrainage activé » n'a aucun lecteur : création automatique et notifications de parrainage tournent même éteint. Que faire ?"
+    options:
+      - cle: cabler_le_reglage
+        texte: "Éteint : aucun parrainage créé automatiquement, aucune notification, écrans et liens de parrainage masqués"
+      - cle: retirer_le_reglage
+        texte: "Retirer l'interrupteur : parrainage toujours actif"
+    reponse: cabler_le_reglage
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PF2"
+    taches: [ASOC70]
+  - id: D-ASOC-8
+    question: "Le fuseau horaire de la société est « affichage seulement » : fenêtres de cadence, heures calmes et récapitulatifs suivent toujours Casablanca, même pour une société à Dakar. Quelle règle ?"
+    options:
+      - cle: fuseau_de_la_societe
+        texte: "Plannings, fenêtres et « aujourd'hui » suivent le fuseau de la société"
+      - cle: casablanca_partout
+        texte: "Casablanca partout ; réglage de fuseau limité au Maroc tant que les autres pays ne sont pas pris en charge"
+    reponse: fuseau_de_la_societe
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PF2"
+    taches: [ASOC84]
+  - id: D-APFS-1
+    question: "Les rôles porteurs de `users_voir` (Admin RH, Admin Ventes, Technicien responsable, Commercial responsable) comptent comme palier « responsable » : clés d'API / webhooks, désactivation de module, matrices et workflows, décision des demandes d'approbation, demandes loi 09-08 (accès / effacement), restauration de la corbeille. Quelle garde ?"
+    options:
+      - cle: code_dedie_ou_domaine
+        texte: "Un code dédié par geste pour clés d'API, modules et demandes 09-08 ; palier + code du domaine pour matrices, workflows, marque, approbations ; plan de quotas d'API réservé à l'administrateur"
+      - cle: administrateur_seul
+        texte: "Tous ces gestes réservés à l'administrateur (Administrateur / Directeur)"
+    reponse: code_dedie_ou_domaine
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PF1"
+    taches: [APFS40]
+  - id: D-APFS-2
+    question: "Un superutilisateur rattaché à la société A peut renommer ou suspendre la société B (opérateur plateforme partout), alors qu'ailleurs il est borné à A. Quelle règle ?"
+    options:
+      - cle: borne_a_sa_societe
+        texte: "Un superutilisateur rattaché à une société n'est qu'un utilisateur ERP de cette société ; pouvoirs plateforme seulement sans société (ou rôle support)"
+      - cle: operateur_partout
+        texte: "Tout superutilisateur est opérateur plateforme pour toutes les sociétés"
+    reponse: borne_a_sa_societe
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PF1"
+    taches: [APFS61]
+  - id: D-APFS-3
+    question: "Un utilisateur membre de plusieurs sociétés garde le rôle de sa société d'origine après bascule (un Administrateur de A est administrateur dans B sans que B le voie). Quelle règle ?"
+    options:
+      - cle: role_par_societe
+        texte: "Chaque appartenance porte son propre rôle fixé par la société ; B voit et gère ses membres ; aucun rôle dans B = refus"
+      - cle: garder_role_origine
+        texte: "Garder le rôle d'origine dans toute société accessible"
+    reponse: role_par_societe
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PF1"
+    taches: [APFS66]
+  - id: D-APFS-4
+    question: "160 vues de liste / détail métier (chantiers, fournisseurs, lignes de devis, remises, contrats SAV…) sont lisibles par tout rôle interne, quels que soient ses droits de module. Exiger le droit de lecture du module couperait aussi le Commercial des chantiers et le Technicien des ventes / du CRM. Quelle règle ?"
+    options:
+      - cle: droit_du_module_et_octrois
+        texte: "La lecture exige un droit du module ; les lectures inter-modules réellement nécessaires (Commercial → chantiers de ses ventes, Technicien → devis de son chantier) sont octroyées explicitement dans le registre des rôles"
+      - cle: droit_du_module_strict
+        texte: "La lecture exige un droit du module, rien de plus"
+      - cle: ouvert_champs_masques
+        texte: "Lecture ouverte aux rôles internes, champs sensibles (PII, RIB, prix) masqués sans le droit"
+    reponse: droit_du_module_et_octrois
+    date: "2026-11-08"
+    source: "Reda, question interactive, audit de parcours PF1"
+    taches: [APFS28]

@@ -23,9 +23,10 @@ from ..utils.params import (
     id_requete_ou_400, statut_requete_ou_400, texte_sans_nul_ou_400, types_corps_ou_400, valeur_unique_ou_400,
 )
 from ..corps_achats import UniteAjouterLigneCorps, UniteControlerScanCorps, valider_corps
-from ..erreurs_achats import ConflitEtat, EtatIncompatible, statut_refus_metier
+from ..erreurs_achats import (
+    ConflitEtat, EtatIncompatible, debordement_compteur_en_409, statut_refus_metier)
 from authentication.permissions import (
-    IsAnyRole, IsAdminRole, IsResponsableOrAdmin,
+    IsAnyRole, IsAdminRole, IsResponsableOrAdmin, HasPermissionOrLegacy,
 )
 
 from ..models_wms import (
@@ -349,7 +350,9 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
         déjà imprimée doit toujours correspondre au contenu). Même prédicat
         ``est_figee`` que l'ajout de ligne. Refus d'ÉTAT (le corps était
         conforme) : 409, comme l'ajout de ligne (api-fuzz stock, vague 8)."""
-        if serializer.instance.est_figee:
+        from ..services_wms import unite_sous_scellage
+        # ASTK261 — sous une palette scellée aussi (détachement compris).
+        if unite_sous_scellage(serializer.instance):
             raise ConflitEtat(
                 'Unité scellée : elle ne peut plus être modifiée.')
         super().perform_update(serializer)
@@ -456,9 +459,13 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
         bin_destination = modele_bin.objects.filter(
             id=id_corps(cible), company=request.user.company).first()
         try:
-            resultat = deplacer_unite_logistique(
-                unite=unite, bin_destination=bin_destination,
-                user=request.user)
+            # api-fuzz PR #1273 — un casier dont le compteur (BinAffectation)
+            # déborderait sa colonne entière (SQLSTATE 22003) : 409 nommé, rien
+            # d'écrit, au lieu d'un 500 « integer out of range ».
+            with debordement_compteur_en_409():
+                resultat = deplacer_unite_logistique(
+                    unite=unite, bin_destination=bin_destination,
+                    user=request.user)
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=statut_refus_metier(exc))
@@ -1166,9 +1173,9 @@ class MouvementRebutViewSet(CompanyScopedModelViewSet):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
         if self.action == 'create':
-            # Le magasinier déclare ce qu'il casse : la déclaration doit être
-            # à sa portée, sinon elle n'est jamais faite.
-            return [IsAnyRole()]
+            # AAPV36 : sous `stock_mouvement` (comme les mouvements) — le
+            # magasinier (Technicien) garde le geste, Commercial/Viewer non.
+            return [HasPermissionOrLegacy('stock_mouvement')()]
         return [IsAdminRole()]
 
     def get_queryset(self):

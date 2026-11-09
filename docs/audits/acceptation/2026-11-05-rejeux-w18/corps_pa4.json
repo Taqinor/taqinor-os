@@ -1,0 +1,12 @@
+{
+  "PA4.03": {"lignes": [{"ligne_devis": "{ventes.LigneDevis.pk}", "quantite": "1"}], "date_livraison": "2026-11-05"},
+  "PA4.07": {"montant": "{facturation.Facture.montant_du}", "date_paiement": "2026-11-05", "mode": "virement",
+             "reference": "REJEU-AARG44"},
+  "PA4.08.apercu": {"file": {"__fichier__": "releve.csv",
+                             "contenu": "date,reference,montant\n05/11/2026,{facturation.Facture.reference},50\n"}},
+  "PA4.08": {},
+  "PA4.09": {"motif": "Rejeu AARG44", "mode": "correction"},
+  "PA4.10": {"motif": "Rejeu AARG44", "montant": "10"},
+  "PA4.11": {"montant": "10", "date_paiement": "2026-11-05", "mode": "virement", "type_retenue": "ras_tva",
+             "taux": "75", "reference": "REJEU-AARG44-RAS"}
+}

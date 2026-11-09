@@ -22,7 +22,7 @@ from .views import (
     NoteDebitViewSet,
     PaiementViewSet,
 )
-from apps.ventes.recouvrement import (
+from .recouvrement import (
     balance_agee,
     client_releve,
     client_releve_pdf,

@@ -68,7 +68,7 @@ import Picture from './Picture.astro';
 import { hasRating } from '../lib/testimonials';
 import { DEYE_CLOUD_URL, NAP, WHATSAPP_LEADS } from '../lib/nap';
 import { pageContextWhatsappText, whatsappLink } from '../lib/whatsapp';
-import { REALISATIONS } from '../lib/realisations';
+import { kwcLocale, REALISATIONS } from '../lib/realisations';
 import { getLocaleFromPath, stripLocale, useTranslations } from '../i18n/utils';
 import { localesForPath, localizeNavHref, QUOTE_JOURNEY_PATH } from '../i18n/pages';
 
@@ -80,7 +80,7 @@ const t = useTranslations(locale);
 const rootPath = stripLocale(Astro.url.pathname);
 const pageLocales = localesForPath(rootPath);
 const L = (href: string) => localizeNavHref(href, locale);
-const waEntete = whatsappLink(WHATSAPP_LEADS, pageContextWhatsappText(stripLocale(Astro.url.pathname)));
+const waEntete = whatsappLink(WHATSAPP_LEADS, pageContextWhatsappText(stripLocale(Astro.url.pathname), locale));
 
 // Solutions — dans cet ordre (W28). Le déclencheur pointe vers /nos-solutions.
 // W264 — `featured` : les deux points d'entrée grand public (résidentiel,
@@ -131,7 +131,7 @@ const solutionPreview: Record<string, { photo: string; alt: string; ville: strin
     alt: bestRealisation.photos[0].alt,
     ville: bestRealisation.ville,
     // Non-null : `bestRealisation` vient du pool filtré sur kwcNum != null ci-dessus.
-    kwc: bestRealisation.kwc!,
+    kwc: kwcLocale(bestRealisation, locale), // WAUD44 — format de la langue
     production: bestRealisation.production,
   },
 };
@@ -472,7 +472,7 @@ const itemClass =
     <div class="max-h-[calc(100svh-3.5rem)] overflow-y-auto overscroll-contain">
       <div class="flex flex-col gap-5 px-4 py-4">
         <div>
-          <a href={L('/nos-solutions')} class="tech-label block text-brass-300">{t('nav.solutions')}</a>
+          <a href={L('/nos-solutions')} class="tech-label block py-1 text-brass-300">{t('nav.solutions')}</a>
           <ul class="mt-2 flex flex-col gap-2 border-s border-white/10 ps-3">
             {solutions.map((s) => (
               <li><a href={L(s.href)} class="block text-base font-semibold text-white">{s.label}</a></li>
@@ -485,7 +485,7 @@ const itemClass =
           <li><a href={L('/à-propos')} class="block font-display text-base font-bold text-white">{t('nav.about')}</a></li>
         </ul>
         <div>
-          <a href={L('/guides')} class="tech-label block text-brass-300">{t('nav.resources')}</a>
+          <a href={L('/guides')} class="tech-label block py-1 text-brass-300">{t('nav.resources')}</a>
           <ul class="mt-2 flex flex-col gap-2 border-s border-white/10 ps-3">
             {ressources.map((r) => (
               <li><a href={L(r.href)} class="block text-base font-semibold text-white">{r.label}</a></li>
@@ -497,7 +497,7 @@ const itemClass =
         <ul class="flex flex-col gap-3 border-t border-white/10 pt-4">
           {/* W164 — Inline phone SVG replacing emoji 📞 */}
           <li>
-            <a href={`tel:${NAP.phone}`} class="flex items-center gap-2 text-sm font-semibold text-lune-soft">
+            <a href={`tel:${NAP.phone}`} class="flex items-center gap-2 py-1 text-sm font-semibold text-lune-soft">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
               {NAP.phoneDisplayIntl}
             </a>

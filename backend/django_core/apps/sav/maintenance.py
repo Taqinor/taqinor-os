@@ -22,7 +22,7 @@ from drf_spectacular.utils import (
 from rest_framework import serializers as drf_serializers
 from rest_framework import status
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
@@ -134,7 +134,13 @@ def planifier_tournee(company, ticket_ids, date_tournee, technicien_id=None,
         technicien = User.objects.filter(
             id=technicien_id, company=company).first()
         if technicien is None:
-            raise ValidationError({'technicien': 'Technicien inconnu.'})
+            # ENF11 (nocturne 41958593088, UVE3n5) : un id BIEN FORMÉ qui ne
+            # désigne aucun technicien de la société (absent ou voisin, même
+            # réponse) est une ressource manquante — 404, plus un 400 dont le
+            # ``detail`` (objet) violait le schéma d'erreur publié.
+            # ``detail`` TEXTE : ce que l'écran affiche (ContratsMaintenance).
+            raise NotFound({'detail': 'Technicien inconnu.',
+                            'technicien': 'Technicien inconnu.'})
 
     qs = Ticket.objects.filter(
         company=company, id__in=ticket_ids, type=Ticket.Type.PREVENTIF,
@@ -374,14 +380,10 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
         entree = PlanifierTourneeRequete(data=request.data)
         entree.is_valid(raise_exception=True)
         corps = entree.validated_data
-        try:
-            n = planifier_tournee(
-                request.user.company, corps['ticket_ids'],
-                corps['date_tournee'], corps.get('technicien_id'),
-                user=request.user)
-        except ValidationError as exc:
-            return Response({'ok': False, 'detail': exc.detail},
-                            status=status.HTTP_400_BAD_REQUEST)
+        n = planifier_tournee(
+            request.user.company, corps['ticket_ids'],
+            corps['date_tournee'], corps.get('technicien_id'),
+            user=request.user)
         return Response({'ok': True, 'tickets_planifies': n},
                         status=status.HTTP_200_OK)
 

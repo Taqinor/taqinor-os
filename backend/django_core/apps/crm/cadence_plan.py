@@ -49,6 +49,7 @@ from .fiche_funnel import (
 from .leads_doublons import find_duplicates_by_contact
 from .models import Lead, LeadActivity, RelanceEtape
 from .tasks import REVEILS_SAISONNIERS_LIMITE_PAR_PASSAGE
+from .activity import creer_activite, journal_systeme
 
 logger = logging.getLogger(__name__)
 
@@ -157,8 +158,8 @@ def _refus_cadence(lead, user, raison):
     (``instance.user is not None``) — un refus automatique de cadence n'est
     JAMAIS un premier contact, et posait pourtant CONTACTED + le stamp SLA
     dès la simple création d'un lead sans numéro exploitable."""
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
+    journal_systeme(
+        company=lead.company, lead=lead,
         kind=LeadActivity.Kind.NOTE,
         body=f'Cadence de relance non initialisée : {raison}.')
     return []
@@ -889,8 +890,8 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     # pas le nombre de lignes matérialisées : « 1 touche » sur un protocole de
     # onze aurait fait croire à un plan tronqué. Le plan est annoncé, la
     # matérialisation suit les issues.
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
+    journal_systeme(
+        company=lead.company, lead=lead,
         kind=LeadActivity.Kind.NOTE,
         body=f'Plan de relance initialisé — cadence « {cadence} » '
              f'({len(echeances)} touche(s) prévue(s), première le {quand}).')
@@ -918,8 +919,8 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
                 elif lead_dossier_subvention_en_instruction(lead):
                     motif = MOTIF_VALIDITE_SUBVENTION
             if poser_validite_devis(devis, validite):
-                LeadActivity.objects.create(
-                    company=lead.company, lead=lead, user=None,
+                journal_systeme(
+                    company=lead.company, lead=lead,
                     kind=LeadActivity.Kind.NOTE,
                     body=f'Validité posée au {validite:%d/%m/%Y} — {motif}.')
         except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
@@ -1301,8 +1302,8 @@ def cloturer_cadence(lead, user, cadence):
         except ParcRefuse as refus:
             # CADV22 — le lead reste à son étape, le refus se lit au chatter ;
             # D-CADV22-PROMESSE — la suite est un autre appel, jamais le devis.
-            LeadActivity.objects.create(
-                company=lead.company, lead=lead, user=None,
+            journal_systeme(
+                company=lead.company, lead=lead,
                 kind=LeadActivity.Kind.NOTE,
                 body=f'Mise au Froid refusée : {refus}.')
             _poser_touche_avant_froid(lead, user, cadence)
@@ -1674,12 +1675,19 @@ def reporter_prochaine_touche(lead, user, quand, *, etape=None,
         # ligne d'avant CKP2 (`cadence_depart` NULL) il n'y a rien à décaler :
         # la matérialisation réactive retombe alors sur son repli — la plus
         # ancienne échéance de la cadence, qui vient d'être décalée.
-        from django.db.models import F
+        from django.db.models import F, Max, Min
 
-        lead.relance_etapes.filter(
+        ancres = lead.relance_etapes.filter(
             cadence=cible.cadence, statut=RelanceEtape.Statut.A_FAIRE,
             cadence_depart__isnull=False,
-        ).update(cadence_depart=F('cadence_depart') + delta)
+        )
+        # ENF50 — Postgres accepte une ancre au-delà de l'an 9999 que Python
+        # ne relit plus (``refresh_from_db`` → ValueError, 500) : les bornes
+        # décalées sont calculées ici d'abord, un ``OverflowError`` part vers
+        # l'appelant (409 de ``reporter``, geste annulé) avant toute écriture.
+        for borne in ancres.aggregate(a=Min('cadence_depart'), b=Max('cadence_depart')).values():
+            borne is None or borne + delta  # aucune ancre : agrégat None
+        ancres.update(cadence_depart=F('cadence_depart') + delta)
         if cible.cadence_depart is not None:
             # L'objet rendu doit porter la MÊME ancre que sa ligne : c'est lui
             # que l'appelant passera à `materialiser_touche_suivante`.
@@ -1690,7 +1698,7 @@ def reporter_prochaine_touche(lead, user, quand, *, etape=None,
         # ``est_note_de_report`` reconnaît : cette note ne pose pas le
         # premier contact.
         quand_local = nouveau.astimezone(horaires.CASABLANCA)
-        LeadActivity.objects.create(
+        creer_activite(
             company=lead.company, lead=lead, user=user,
             kind=LeadActivity.Kind.NOTE,
             body=(PREFIXE_NOTE_REPORT
@@ -1757,8 +1765,8 @@ def arreter_cadence(lead, *, user, motif, cadences=None, exclure=None, garder=No
     # premier contact manuel et avançait NEW → CONTACTED dès qu'un lead tout
     # neuf était marqué « perdu » / « ne plus contacter » — le bug était
     # visible dans ``test_une_seule_note_chatter`` (4 notes au lieu de 3).
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
+    journal_systeme(
+        company=lead.company, lead=lead,
         kind=LeadActivity.Kind.NOTE,
         body=f'Cadence {quelles} arrêtée ({len(pks)} touche(s)) : {motif}.')
     # ACRM37 — LE recalage unique de la file (``_recaler_file``).
@@ -1962,8 +1970,8 @@ def _demarrer_deuxieme_affaire(lead, user):
     """
     anciens = _homonymes_signes(lead)
     refs = ', '.join(f'#{autre.pk}' for autre in anciens[:3])
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
+    journal_systeme(
+        company=lead.company, lead=lead,
         kind=LeadActivity.Kind.NOTE,
         body=(f'Client déjà signé qui revient (fiche {refs or "?"}) — '
               'cadence courte « deuxième affaire » lancée, PAS le protocole '
@@ -1972,8 +1980,8 @@ def _demarrer_deuxieme_affaire(lead, user):
     for ancien in anciens[:3]:
         # La liaison est SYMÉTRIQUE : depuis la fiche signée, on doit voir
         # qu'une deuxième affaire est partie — sinon personne ne le sait.
-        LeadActivity.objects.create(
-            company=lead.company, lead=ancien, user=None,
+        journal_systeme(
+            company=lead.company, lead=ancien,
             kind=LeadActivity.Kind.NOTE,
             body=(f'Nouvelle demande de ce client : fiche #{lead.pk} — '
                   'cadence courte « deuxième affaire ».'))

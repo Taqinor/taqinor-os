@@ -264,7 +264,8 @@ Clients → crm_client (nom, prenom, email, telephone)
 
 Devis → ventes_devis + ventes_lignedevis
   - statut : 'brouillon', 'envoye', 'accepte', 'refuse', 'expire'
-  (aucun montant stocke : SUM(ventes_lignedevis.quantite * ventes_lignedevis.prix_unitaire), remises en plus)
+  (aucun montant stocke ; ne somme JAMAIS les lignes d un devis pour son montant : renvoie a sa fiche ERP ;
+   le CA facture = SUM(ventes_facture.total_ht_stocke))
 
 Factures → ventes_facture + ventes_lignefacture
   - statut : 'brouillon', 'emise', 'payee', 'en_retard', 'annulee'
@@ -1489,6 +1490,14 @@ class SQLAgentService:
 
         # AIC7 — `report_gap` toujours offert (jamais une action du registre).
         tools.append(outil_report_gap(action_outputs))
+
+        # NTDATA12 — metriques GOUVERNEES (couche semantique Django) : l'agent
+        # prefere la definition partagee a un SQL ad-hoc quand l'intention
+        # correspond. Lecture seule ; absent sans catalogue (degradation).
+        from app.services.metriques_gouvernees import outil_metrique_gouvernee
+        outil_metrique = outil_metrique_gouvernee(action_ctx, allow_price)
+        if outil_metrique is not None:
+            tools.extend(_etiqueter_outils([outil_metrique]))
 
         # 5. Prompt avec historique (+ restriction marge si non autorise).
         # Defense en profondeur : meme decision que le garde DUR de l'outil SQL.

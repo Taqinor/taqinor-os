@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { formatFrame, frFormat, isCompound, parseTokens, shouldDigitRoll } from '../src/lib/countup';
+import { DUREE_ROULEMENT_MS, formatFrame, frFormat, isCompound, parseTokens, shouldDigitRoll } from '../src/lib/countup';
 
 // Espaces composés des chaînes réelles de la page d'accueil : insécable + fine.
 const NBSP = String.fromCharCode(0xa0);
@@ -101,6 +101,41 @@ describe('WAUD38 — aucun data-tally sur un texte à unité', () => {
         else if (e.name.endsWith('.astro')) {
           const m = readFileSync(p, 'utf-8').match(/data-tally[^>']*>[^<{]*(ans|years|سنة|سنوات|kWc|kW\b|MAD|kWh|MWh|DH)[^<]*</g);
           if (m) fautifs.push(`${p}: ${m[0]}`);
+        }
+      }
+    };
+    parcourir(racine);
+    expect(fautifs).toEqual([]);
+  });
+});
+
+describe('WAUD38 — aucun chiffre figé sur une image intermédiaire', () => {
+  const src = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+  it('le roulement finit avant 900 ms (sonde : valeur finale 900 ms après l’arrivée à l’écran)', () => {
+    expect(DUREE_ROULEMENT_MS).toBeLessThan(900);
+  });
+  it('plus de chiffre lié au défilement dans V2Enhance (il restait faux quand le visiteur s’arrêtait)', () => {
+    const v2 = src('../src/components/V2Enhance.astro');
+    expect(v2).not.toContain('formatFrame(');
+    expect(v2).not.toContain('scrubProgress');
+  });
+  it('InstallCounter : la production (MWh) n’est jamais interpolée', () => {
+    expect(src('../src/components/InstallCounter.astro')).toContain('shouldDigitRoll(`${finalText} MWh`)');
+  });
+});
+
+describe('WAUD38 — HTML construit : aucun data-tally sur une valeur à unité', () => {
+  it('ni « ans », « kWc », « MAD », « kWh » (ni EN/AR) dans un nœud data-tally de dist/client', () => {
+    const racine = fileURLToPath(new URL('../dist/client/', import.meta.url));
+    const fautifs: string[] = [];
+    const parcourir = (d: string) => {
+      for (const e of readdirSync(d, { withFileTypes: true })) {
+        const p = join(d, e.name);
+        if (e.isDirectory()) parcourir(p);
+        else if (e.name === 'index.html') {
+          for (const m of readFileSync(p, 'utf-8').matchAll(/<[a-z0-9]+\s[^>]*data-tally[^>]*>([^<]*)</g)) {
+            if (/ans|years|سنة|سنوات|سنتان|kWc|kW|MAD|kWh|MWh|DH/.test(m[1])) fautifs.push(`${p}: ${m[1]}`);
+          }
         }
       }
     };

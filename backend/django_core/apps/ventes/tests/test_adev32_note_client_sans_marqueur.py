@@ -146,6 +146,38 @@ class NoteClientSansMarqueurTests(TestCase):
         for m in MARQUEURS:
             self.assertNotIn(m, devis.note)
 
+    def test_upsell(self):
+        """ADEV118 (C-ADEV-VER4-020) — l'origine d'un upsell va au chatter :
+        la page publique ne montre plus « Chantier : CHT-… »."""
+        from apps.installations.models import Installation, Intervention
+        from apps.ventes.domain.creation import (
+            create_devis_upsell_from_intervention)
+        installation = Installation.objects.create(
+            company=self.company, reference='CHT-ADEV118-1',
+            client=self.client_obj)
+        intervention = Intervention.objects.create(
+            company=self.company, installation=installation,
+            type_intervention='controle', created_by=self.user)
+        devis = create_devis_upsell_from_intervention(
+            intervention=intervention, user=self.user)
+        for produit in (self.panneau, self.onduleur):
+            LigneDevis.objects.create(
+                devis=devis, produit=produit, designation=produit.nom,
+                quantite=Decimal('1'), prix_unitaire=Decimal('1000'),
+                remise=Decimal('0'))
+        devis.refresh_from_db()
+        self.assertEqual(devis.note, '')
+        self.assertFalse(self._note_client_publique(devis))
+        traces = DevisActivity.objects.filter(
+            devis=devis, body__contains='CHT-ADEV118-1')
+        self.assertEqual(traces.count(), 1)
+        self.assertIn("Type d'intervention", traces.get().body)
+        # Second appel : même devis, pas de seconde note.
+        intervention.refresh_from_db()
+        self.assertEqual(create_devis_upsell_from_intervention(
+            intervention=intervention, user=self.user).pk, devis.pk)
+        self.assertEqual(traces.count(), 1)
+
 
 # ── Garde de classe : aucun écrivain de ``Devis.note`` n'y injecte de texte ──
 
@@ -153,8 +185,6 @@ class NoteClientSansMarqueurTests(TestCase):
 #: texte d'ORIGINE — hors périmètre ADEV32 (signalé au groupe ADEV) : chacun
 #: est NOMMÉ ici avec sa raison, jamais ignoré en silence.
 EXEMPTIONS = {
-    'domain/creation.py:create_devis_upsell_from_intervention':
-        'upsell : référence chantier attendue par tests_zfsm5 (installations).',
     'domain/imports.py:creer_devis_import':
         "import d'un autre système : référence source (« Migré … »).",
 }

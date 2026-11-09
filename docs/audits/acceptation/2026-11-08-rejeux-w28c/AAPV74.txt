@@ -1,0 +1,25 @@
+# Preuve en direct AAPV74 — rejeu w28 (dialogue réparé), code 73ac6a2537 (dev-plan-6a6fc9-w28), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-web (conteneur privé, code de CE commit copié dans le
+# conteneur, base privée erp_accept_w29 ; transaction annulée, mail en mémoire, Celery coupé, HTTP sortant bloqué).
+# Écran : front de CE worktree servi par vite (127.0.0.1:3000) -> accept-w29-web (runserver, base erp_accept_w29,
+# SMTP 127.0.0.1:1), piloté par Playwright MCP.
+# Verdict : FAIL (corps PASS, oracle 2 FAIL préexistant) — Sonde C-AAPV-084 : repro False ; écran StockList « Transférer » en Responsable (stock au dépôt source, demande approuvée non exécutée, 50 × 3 000 > seuil 10 000) => 409 affiché « Ce transfert dépasse le seuil d'approbation de la société : exécutez la demande de transfert approuvée. ». Oracle 2 FAIL : 403 préexistants du panneau Pilotage (hors périmètre).
+
+== C-AAPV-084 (sha 6ffa876688)
+attendu : repro si A : PATCH 200 et executer 200 (50 transférés) ; B : 3 × 201 ; T : 409
+observé : {'tech_a_stock_mouvement': True, 'T_direct_sans_demande': (409, '{\'detail\': "Ce transfert dépasse le seuil d\'approbation de la société : exécutez la demande de transfert approuvée."}'), 'A': {'creer': 201, 'approuver': 200, 'patch_apres_approbation': 409, 'quantite_apres_patch': None, 'executer': 200, 'detail': None, 'au_van': 5}, 'B': {'creer': 201, 'approuver': 200, 'directs_technicien': [(409, '{\'detail\': "Ce transfert dépasse le seuil d\'approbation de la société : exécutez la demande de transfert approuvée."}'), (409, '{\'detail\': "Ce transfert dépasse le seuil d\'approbation de la société : exécutez la demande de transfert approuvée."}'), (409, '{\'detail\': "Ce transfert dépasse le seuil d\'approbation de la société : exécutez la demande de transfert approuvée."}')], 'transferts_ajoutes_au_van': 0, 'demande_statut': 'approuve', 'nb_transferts_total': 1}}
+{"tech_a_stock_mouvement": true, "T_direct_sans_demande": [409, "{'detail': \"Ce transfert dépasse le seuil d'approbation de la société : exécutez la demande de transfert approuvée.\"}"], "A": {"creer": 201, "approuver": 200, "patch_apres_approbation": 409, "quantite_apres_patch": null, "executer": 200, "detail": null, "au_van": 5}, "B": {"creer": 201, "approuver": 200, "directs_technicien": [[409, "{'detail': \"Ce transfert dépasse le seuil d'approbation de la société : exécutez la demande de transfert approuvée.\"}"], [409, "{'detail': \"Ce transfert dépasse le seuil d'approbation de la société : exécutez la demande de transfert approuvée.\"}"], [409, "{'detail': \"Ce transfert dépasse le seuil d'approbation de la société : exécutez la demande de transfert approuvée.\"}"]], "transferts_ajoutes_au_van": 0, "demande_statut": "approuve", "nb_transferts_total": 1}, "temoin_ok": true, "defaut_A": false, "defaut_B": false, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 8, après 8) ; mails 0 ; tâches Celery bloquées 0
+
+## AAPV74 — corps PASS (écran) ; oracle 2 FAIL (403 préexistants, hors périmètre)
+Fixture FIX-W28 (rejeu précédent, même base) : société « Live Acceptation W28b », seuil d'approbation des transferts 10 000 MAD,
+Onduleur ACC74 (prix d'achat 3 000, 200 en stock au Dépôt principal), demande de transfert de 50 Dépôt principal -> Camionnette
+créée et approuvée, NON exécutée (statut « approuve »).
+Compte acc28_resp (Responsable, stock_modifier). Stock › « Transférer » → Produit « Onduleur ACC74 (ACC-74) — stock 200 » :
+ventilation affichée « Dépôt principal (principal) 200 | Camionnette 0 | Total 200 » (GET stock/produits/22796/emplacements/ => 200,
+correctif 73ac6a2537) ; De « Dépôt principal », Vers « Camionnette », Quantité 50 (« dispo : 200 ») → « Transférer » =>
+POST stock/transferts/ {"produit":22796,"source":857,"destination":858,"quantite":50,"note":""} (identifiants entiers) => 409 ;
+alerte du dialogue : « Ce transfert dépasse le seuil d'approbation de la société : exécutez la demande de transfert approuvée. »
+Oracle 2 : 16 GET produits/{a-reapprovisionner,previsions-reappro,rotation,expirant-bientot}/ en 403 (panneau Pilotage de /stock en
+Responsable, déjà relevés aux rejeux b00242be0 et d6b50373b, hors périmètre AAPV74) + la 409 attendue.

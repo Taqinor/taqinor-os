@@ -106,6 +106,30 @@ class TestCreationEtGeneration(Zpur3Base):
         ligne = bc.lignes.get(produit=self.mc4)
         self.assertEqual(ligne.prix_achat_unitaire, Decimal('4.50'))
 
+    def test_generer_tarif_en_vigueur_et_palier(self):
+        """AAPV83 — catalogue 1 400 ; F3 : tarif 900 expiré hier ⇒ 1 400 ;
+        F2 : tarif 1 150, palier 10+ à 1 100 ⇒ ligne de 10 à 1 100."""
+        import datetime
+        onduleur = Produit.objects.create(
+            company=self.company, nom='Onduleur AAPV83', sku='OND-AAPV83',
+            prix_vente=Decimal('2000'), prix_achat=Decimal('1400'))
+        f2, f3 = (Fournisseur.objects.create(company=self.company, nom=f'F{i} AAPV83')
+                  for i in (2, 3))
+        PrixFournisseur.objects.create(
+            company=self.company, produit=onduleur, fournisseur=f3, prix_achat=Decimal('900'),
+            date_fin=datetime.date.today() - datetime.timedelta(days=1))
+        PrixFournisseur.objects.create(
+            company=self.company, produit=onduleur, fournisseur=f2,
+            prix_achat=Decimal('1150')).paliers.create(qte_min=10, prix=Decimal('1100'))
+        modele = ModeleBonCommandeFournisseur.objects.create(company=self.company, nom='Kit AAPV83')
+        modele.lignes.create(produit=onduleur, quantite=10)
+        for fournisseur, attendu in ((f3, Decimal('1400')), (f2, Decimal('1100'))):
+            resp = self.api.post(f'/api/django/stock/modeles-bcf/{modele.id}/generer/',
+                                 {'fournisseur': fournisseur.id}, format='json')
+            self.assertEqual(resp.status_code, 201, resp.data)
+            ligne = BonCommandeFournisseur.objects.get(id=resp.data['id']).lignes.get()
+            self.assertEqual(ligne.prix_achat_unitaire, attendu)
+
 
 class TestGardes(Zpur3Base):
     def test_generer_sans_fournisseur_refuse(self):
@@ -115,6 +139,24 @@ class TestGardes(Zpur3Base):
         resp = self.api.post(
             f'/api/django/stock/modeles-bcf/{modele.id}/generer/')
         self.assertEqual(resp.status_code, 409)
+
+    def test_generer_fournisseur_bloque_409(self):
+        """AAPV82 — un fournisseur « bloqué total » : 409 {detail}, aucun BCF ;
+        actif : 201 (inchangé)."""
+        bloque = Fournisseur.objects.create(
+            company=self.company, nom='Fournisseur bloqué AAPV82',
+            statut=Fournisseur.Statut.BLOQUE_TOTAL, motif_blocage='litige qualité')
+        modele = ModeleBonCommandeFournisseur.objects.create(
+            company=self.company, nom='Kit AAPV82', fournisseur=bloque)
+        modele.lignes.create(produit=self.mc4, quantite=10)
+        modele.lignes.create(produit=self.visserie, quantite=5)
+        url = f'/api/django/stock/modeles-bcf/{modele.id}/generer/'
+        resp = self.api.post(url)
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertIn('detail', resp.data)
+        self.assertFalse(BonCommandeFournisseur.objects.filter(fournisseur=bloque).exists())
+        resp = self.api.post(url, {'fournisseur': self.fournisseur.id}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
 
     def test_generer_modele_vide_refuse(self):
         modele = ModeleBonCommandeFournisseur.objects.create(

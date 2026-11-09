@@ -118,3 +118,24 @@ class RetraitBorneTests(TestCase):
         self.assertIn('produit', r.data)
         self.eq_c.refresh_from_db()
         self.assertEqual(self.eq_c.statut, Equipement.Statut.EN_SERVICE)
+
+    def test_retrait_sans_serie_vise_equipement_du_ticket(self):
+        """ACSV61 : sans série (ou série inconnue), le retrait vise
+        l'équipement du ticket (même produit) ; autre produit : 409."""
+        placeholder = Equipement.objects.create(
+            company=self.company, produit=self.produit,
+            installation=self.inst_a)
+        Ticket.objects.filter(pk=self.ticket.pk).update(equipement=placeholder)
+        r = self._post(produit=self.produit.pk, quantite='1',
+                       destination='retour_fournisseur', serie_neuve='SN-N')
+        self.assertEqual(r.status_code, 201, r.content)
+        placeholder.refresh_from_db()
+        self.assertEqual(placeholder.statut, Equipement.Statut.REMPLACE)
+        self.assertEqual(placeholder.remplace_par_ticket_id, self.ticket.pk)
+        self.assertEqual(WarrantyClaim.objects.filter(
+            equipement=placeholder).count(), 1)
+        self.assertTrue(Equipement.objects.filter(
+            company=self.company, numero_serie='SN-N').exists())
+        r = self._post(produit=self.autre_produit.pk, quantite='1',
+                       destination='rebut', serie_neuve='SN-N2')
+        self.assertEqual(r.status_code, 409, r.content)

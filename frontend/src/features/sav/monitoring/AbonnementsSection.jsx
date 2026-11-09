@@ -113,7 +113,9 @@ export default function AbonnementsSection({ systems, loadingSystems }) {
                 )}
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
-                Début {formatDate(a.date_debut)} · prochaine échéance {formatDate(a.prochaine_echeance)}
+                Début {formatDate(a.date_debut)}
+                {/* AMON7 — date et auteur de la résiliation. */}
+                {a.date_resiliation ? ` · Résilié le ${formatDate(a.date_resiliation)}${a.resilie_par_nom ? ` par ${a.resilie_par_nom}` : ''}` : ''}
                 {a.motif_resiliation ? ` · motif : ${a.motif_resiliation}` : ''}
               </p>
               {aResilier === a.id && (

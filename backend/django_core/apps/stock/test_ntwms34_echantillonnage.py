@@ -134,6 +134,30 @@ class Ntwms34GardeTests(Ntwms34Base):
         self.assertEqual(blocage.statut,
                          BlocageQualite.Statut.EN_QUARANTAINE)
 
+    def test_lot_non_conforme_ne_sort_pas_par_le_lot(self):
+        """AAPV21 — le blocage d'une réception non conforme porte le lot ;
+        « Sortir » 10 de ce lot : 409, stock et lot restent à 10."""
+        from rest_framework.test import APIClient
+        from apps.stock.models import LotEntrepot
+        PlanEchantillonnage.objects.create(
+            company=self.company, categorie=self.categorie, taux_echantillon_pct=20)
+        reception = self._reception(quantite=10)
+        reception.lignes.update(numero_lot='L-77')
+        enregistrer_controle_reception(
+            reception=reception, user=self.admin,
+            resultat=ControleReception.Resultat.NON_CONFORME, unites_controlees=2)
+        confirm_reception_fournisseur(reception, self.admin)
+        lot = LotEntrepot.objects.get(company=self.company, numero_lot='L-77')
+        self.assertEqual(BlocageQualite.objects.get(reception=reception).lot_id, lot.id)
+        api = APIClient()
+        api.force_authenticate(self.admin)
+        rep = api.post(f'/api/django/stock/lots-entrepot/{lot.id}/sortir/',
+                       {'quantite': 10}, format='json')
+        self.assertEqual(rep.status_code, 409, rep.content)
+        self.produit.refresh_from_db()
+        lot.refresh_from_db()
+        self.assertEqual((self.produit.quantite_stock, lot.quantite_restante), (10, 10))
+
     def test_societe_sans_plan_garde_le_comportement_historique(self):
         reception = self._reception(quantite=7)
         self.assertFalse(echantillon_requis_pour_reception(reception))
@@ -243,7 +267,8 @@ class Ntwms34ApiTests(Ntwms34Base):
         self.assertIsNone(etat.data['controle'])
 
         bloque = api.post(base + 'confirmer/')
-        self.assertEqual(bloque.status_code, 400)
+        # ENF11 (nocturne 41958593088) : verdict manquant = état, 409.
+        self.assertEqual(bloque.status_code, 409)
 
         saisie = api.post(base + 'controle-qualite/',
                           {'resultat': 'conforme', 'unites_controlees': 6},

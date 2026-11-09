@@ -7,7 +7,8 @@
     "prochaine_action": "∈ acompte | intermediaire | solde | complete | aucune ; `raison_bloquee` dit pourquoi aucune action n'est ouverte (chaîne vide sinon).",
     "peut": "gestes autorisés dits par le serveur : l'écran n'en redérive aucun.",
     "versions": "toute la chaîne ; `est_tete` vrai quand ce devis est la tête, `tete_id` = id de la tête ; `revision_en_cours` = brouillon de révision ouvert ou null.",
-    "statuts": "aucun statut nouveau (règle #4)."
+    "statuts": "aucun statut nouveau (règle #4).",
+    "confirmer_avoir_revision": "ATOT59 — `peut.confirmer_avoir_revision` vrai quand une révision acceptée attend son avoir d'écart (VNT64 : facturé > prix convenu de la tête, une facture émise, une version acceptée remplacée) et que l'utilisateur a le palier vente ; `raison_bloquee` nomme alors le montant (« Avoir de révision de N MAD TTC à confirmer … ») — l'écran le lit, ne le calcule jamais (ATOT60)."
   },
   "exemple": {
     "id": 502,
@@ -57,7 +58,8 @@
         "facturer_solde": false,
         "facturer_complete": true,
         "prix_negocie": true,
-        "modifier_echeancier": true
+        "modifier_echeancier": true,
+        "confirmer_avoir_revision": false
       }
     }
   },
@@ -124,7 +126,8 @@
         "facturer_solde": false,
         "facturer_complete": false,
         "prix_negocie": true,
-        "modifier_echeancier": true
+        "modifier_echeancier": true,
+        "confirmer_avoir_revision": false
       }
     }
   },
@@ -202,7 +205,8 @@
         "facturer_solde": true,
         "facturer_complete": false,
         "prix_negocie": true,
-        "modifier_echeancier": true
+        "modifier_echeancier": true,
+        "confirmer_avoir_revision": false
       }
     }
   },
@@ -329,7 +333,8 @@
         "facturer_solde": false,
         "facturer_complete": false,
         "prix_negocie": true,
-        "modifier_echeancier": false
+        "modifier_echeancier": false,
+        "confirmer_avoir_revision": false
       }
     }
   },
@@ -372,7 +377,8 @@
         "facturer_solde": false,
         "facturer_complete": false,
         "prix_negocie": false,
-        "modifier_echeancier": false
+        "modifier_echeancier": false,
+        "confirmer_avoir_revision": false
       }
     }
   },
@@ -427,7 +433,143 @@
         "facturer_solde": false,
         "facturer_complete": false,
         "prix_negocie": false,
-        "modifier_echeancier": false
+        "modifier_echeancier": false,
+        "confirmer_avoir_revision": false
+      }
+    }
+  },
+  "exemple_avoir_a_confirmer": {
+    "id": 503,
+    "reference": "DEV-202610-0021-V3",
+    "vente": {
+      "prix_convenu_ttc": "44100.00",
+      "emis_ttc": "49000.00",
+      "brouillons_ttc": "0.00",
+      "paye_ttc": "49000.00",
+      "reste_a_facturer_ttc": "0.00",
+      "reste_a_payer_ttc": "0.00",
+      "acompte_propose": "0.00",
+      "factures": [
+        {
+          "id": 118,
+          "reference": "FAC-202610-0007",
+          "nature": "acompte",
+          "statut": "payee",
+          "total_ttc": "15000.00",
+          "montant_paye": "15000.00",
+          "date_emission": "2026-10-12",
+          "paiements": [
+            {
+              "id": 301,
+              "montant": "15000.00",
+              "date_paiement": "2026-10-12",
+              "mode_paiement": "virement",
+              "statut": "valide",
+              "peut": {
+                "recu": true
+              }
+            }
+          ],
+          "peut": {
+            "emettre": false,
+            "pdf": true,
+            "envoyer": true,
+            "encaisser": false,
+            "annuler": true,
+            "supprimer": false,
+            "modifier_montant": false
+          }
+        },
+        {
+          "id": 119,
+          "reference": "FAC-202610-0008",
+          "nature": "intermediaire",
+          "statut": "payee",
+          "total_ttc": "29400.00",
+          "montant_paye": "29400.00",
+          "date_emission": "2026-10-20",
+          "paiements": [
+            {
+              "id": 302,
+              "montant": "29400.00",
+              "date_paiement": "2026-10-12",
+              "mode_paiement": "virement",
+              "statut": "valide",
+              "peut": {
+                "recu": true
+              }
+            }
+          ],
+          "peut": {
+            "emettre": false,
+            "pdf": true,
+            "envoyer": false,
+            "encaisser": false,
+            "annuler": true,
+            "supprimer": false,
+            "modifier_montant": false
+          }
+        },
+        {
+          "id": 120,
+          "reference": "FAC-202610-0009",
+          "nature": "solde",
+          "statut": "payee",
+          "total_ttc": "4600.00",
+          "montant_paye": "4600.00",
+          "date_emission": "2026-11-05",
+          "paiements": [
+            {
+              "id": 303,
+              "montant": "4600.00",
+              "date_paiement": "2026-10-12",
+              "mode_paiement": "virement",
+              "statut": "valide",
+              "peut": {
+                "recu": true
+              }
+            }
+          ],
+          "peut": {
+            "emettre": false,
+            "pdf": true,
+            "envoyer": false,
+            "encaisser": false,
+            "annuler": true,
+            "supprimer": false,
+            "modifier_montant": false
+          }
+        }
+      ],
+      "versions": [
+        {
+          "id": 502,
+          "reference": "DEV-202610-0021",
+          "version": 2,
+          "statut": "accepte",
+          "is_active": false
+        },
+        {
+          "id": 503,
+          "reference": "DEV-202610-0021-V3",
+          "version": 3,
+          "statut": "accepte",
+          "is_active": true
+        }
+      ],
+      "est_tete": true,
+      "tete_id": 503,
+      "revision_en_cours": null,
+      "prochaine_action": "aucune",
+      "raison_bloquee": "Avoir de révision de 4900.00 MAD TTC à confirmer : confirmez-le pour ramener la facturation au prix convenu.",
+      "prochaines_echeances": [],
+      "peut": {
+        "facturer_acompte": false,
+        "facturer_solde": false,
+        "facturer_complete": false,
+        "prix_negocie": true,
+        "modifier_echeancier": false,
+        "confirmer_avoir_revision": true
       }
     }
   }

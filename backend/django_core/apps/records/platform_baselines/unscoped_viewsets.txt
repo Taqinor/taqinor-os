@@ -73,6 +73,11 @@ parametres.TranslationOverrideViewSet
 # déplacés dans leur propre app sous ``portail._PortailBaseViewSet`` — le
 # scoping société (get_queryset/perform_create forcés par TenantMixin) est
 # IDENTIQUE, seule la classe basée n'est pas nommément CompanyScopedModelViewSet.
+# ODX18 (2026-11-07) : 3 entrees ventes.* RE-ETIQUETEES facturation.* (module
+# apps/ventes/recouvrement.py deplace tel quel ; aucune entree ajoutee).
+facturation.FollowupLevelViewSet
+facturation.ParametrageRelanceClientViewSet
+facturation.PromessePaiementViewSet
 portail._PortailBaseViewSet
 publicapi.ApiKeyViewSet
 publicapi.ServiceAccountViewSet
@@ -91,6 +96,3 @@ reporting.SavedReportViewSet
 roles.RoleViewSet
 stock.RegleCodeBarresViewSet
 tiers.TiersViewSet
-ventes.FollowupLevelViewSet
-ventes.ParametrageRelanceClientViewSet
-ventes.PromessePaiementViewSet

@@ -146,6 +146,38 @@ class M3WattNonLuTests(SimpleTestCase):
             builder.panneaux_et_watt_lu([_L("Panneau Jinko 585W", 10)]),
             (10, 585))
 
+    def test_watts_mixtes_kwc_somme_niveau_12(self):
+        """AGNR69 (C-AGNR-VER4-030) — 10 × 550 W + 10 × 710 W : le kWc du
+        document vaut Σ quantité × watt lu (12,6) au niveau 12, la règle de
+        l'écran (``solar.js::kwcPanneauxOption``) ; une ligne au watt
+        illisible prend le watt de la 1re lisible ; niveau 11 : 11,0 d'hier.
+        ROUGE AVANT : compte × watt de la 1re ligne (11,0)."""
+        from types import SimpleNamespace
+
+        from apps.ventes.quote_engine import builder
+        from apps.ventes.quote_engine.lignes_classement import (
+            kwc_des_lignes, kwc_lu_des_panneaux)
+
+        def _l(designation, quantite):
+            return SimpleNamespace(designation=designation, quantite=quantite,
+                                   produit=None)
+        mixtes = [_l("Panneau 550W", 10), _l("Panneau 710W", 10),
+                  _l("Onduleur réseau 10kW", 1)]
+        self.assertEqual(kwc_lu_des_panneaux(mixtes), 12.6)
+        self.assertEqual(kwc_lu_des_panneaux(
+            [_l("Panneau 550W", 10), _l("Panneaux solaires", 2)]), 6.6)
+        self.assertIsNone(kwc_lu_des_panneaux([_l("Panneaux solaires", 16)]))
+        nb, watt = builder.panneaux_et_watt_lu(mixtes)
+        self.assertEqual((nb, watt), (20, 550))  # « N × W » imprimé inchangé
+        n12, n11 = (SimpleNamespace(regles_calcul=12),
+                    SimpleNamespace(regles_calcul=11))
+        self.assertEqual(kwc_des_lignes(mixtes, nb, watt, n12), 12.6)
+        self.assertEqual(kwc_des_lignes(mixtes, nb, watt, n11), 11.0)
+        scal = builder._scalaires_par_option(mixtes, mixtes, n12)
+        self.assertEqual((scal["kwc_sans"], scal["kwc_avec"]), (12.6, 12.6))
+        self.assertEqual(
+            builder._scalaires_par_option(mixtes, mixtes, n11)["kwc_sans"], 11.0)
+
 
 class M4UnePageMemeBrancheTests(SimpleTestCase):
     """M4 — l'économie du format UNE PAGE vient de la branche facturée.

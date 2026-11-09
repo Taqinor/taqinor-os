@@ -1,0 +1,146 @@
+{
+  "sha": "e8306483b059813709058c6e41b00a367720cbfa",
+  "date": "2026-11-04",
+  "groupe": "ADEV",
+  "verdict": "FAIL",
+  "couvre": [
+    "ADEV112",
+    "ADEV107",
+    "ADEV110"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P3.apercu_409_liste",
+      "taches": [
+        "ADEV112"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ADEV-P3.apercu_409_liste.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "FAIL",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "oracle 8 — écran cassé sur http://localhost/ventes/devis"
+    },
+    {
+      "id": "P3.apercu_409_panneau_lead",
+      "taches": [
+        "ADEV112"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ADEV-P3.apercu_409_panneau_lead.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "FAIL",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "erreur : panneau du lead : le detail du 409 affiché ; oracle 8 — écran cassé sur http://localhost/crm/leads/4173"
+    },
+    {
+      "id": "P4.cumul_suit_option",
+      "taches": [
+        "ADEV107"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ADEV-P4.cumul_suit_option.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P4.couleur_mensualite",
+      "taches": [
+        "ADEV107"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ADEV-P4.couleur_mensualite.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "erreur : mensualité : mise en valeur (.text-brass-300) gardée après bascule (1 → 0)"
+    },
+    {
+      "id": "P4.bascule_taille_puis_option",
+      "taches": [
+        "ADEV107"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ADEV-P4.bascule_taille_puis_option.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "erreur : après une bascule de taille, la bascule d'option n'affiche pas le cumul de la taille recommandée (283253MAD → 280106MAD → 211474MAD)"
+    },
+    {
+      "id": "P6.pdf_releve_partiel",
+      "taches": [
+        "ADEV110"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-ADEV-P6.pdf_releve_partiel.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "erreur : PDF C&I : mention « estimation sur 3 mois relevés » imprimée"
+    }
+  ]
+}

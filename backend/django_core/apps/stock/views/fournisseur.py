@@ -141,11 +141,15 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
         # Archivage — même patron que `ProduitViewSet` : les fournisseurs
         # archivés sortent des listes par défaut, restent consultables avec
         # `?show_archived=true`, et sont toujours visibles pour les actions
-        # qui n'ont de sens que sur un archivé.
+        # qui n'ont de sens que sur un archivé (ou l'atteignent : revoquer, ENF47).
+        # ENF51 : la FICHE elle-même (lecture, modification) reste ouverte sur
+        # un archivé — créé archivé ou archivé par PATCH, il répondait 404 à
+        # son propre GET ; l'archivage masque des LISTES, il ne supprime pas.
         if choix_ou_400(valeur_unique_ou_400(self.request, 'show_archived'),
                         'show_archived', ('true', 'false')) == 'true':
             return qs
-        if self.action in ('force_delete', 'unarchive'):
+        if self.action in ('force_delete', 'unarchive', 'revoquer_acces_portail',
+                           'retrieve', 'update', 'partial_update'):
             return qs
         return qs.filter(is_archived=False)
 
@@ -384,11 +388,11 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
         # ASTK179 — compte ET jetons à lien public coupés ensemble.
         compte, nb, jetons_revoques = revoquer_acces_compte_fournisseur(
             request.user.company, fournisseur.pk, avec_jetons=True)
-        if compte is None and not jetons_revoques:
+        if compte is None and not jetons_revoques:  # ENF47 : refus d'état (ENF40)
             return Response(
                 {'detail': "Ce fournisseur n'a aucun accès portail à "
                            'révoquer.'},
-                status=status.HTTP_404_NOT_FOUND)
+                status=status.HTTP_409_CONFLICT)
         return Response({
             'fournisseur_id': fournisseur.pk,
             'actif': compte.actif if compte is not None else False,

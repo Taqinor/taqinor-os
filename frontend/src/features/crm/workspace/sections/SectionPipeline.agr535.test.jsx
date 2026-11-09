@@ -85,6 +85,19 @@ describe('SectionPipeline — AGR535 (résumé à l’associé)', () => {
     expect(window.open).not.toHaveBeenCalled()
   })
 
+  it('409 lead opposé (ACVI104) : le motif `detail` servi s’affiche, rien n’est ouvert', async () => {
+    crmApi.resumeAssocie.mockRejectedValue({
+      response: { status: 409, data: { detail: 'Message refusé : ne plus contacter.' } },
+    })
+    renderSection()
+    await screen.findByRole('option', { name: 'DEV-2026-0042' })
+    fireEvent.click(screen.getByLabelText('Le client a demandé ou accepté ce partage'))
+    fireEvent.click(bouton())
+    expect(await screen.findByTestId('resume-associe-refus'))
+      .toHaveTextContent('Message refusé : ne plus contacter.')
+    expect(window.open).not.toHaveBeenCalled()
+  })
+
   it('400 devis_id : message sous le champ « Devis »', async () => {
     crmApi.resumeAssocie.mockRejectedValue({
       response: { status: 400, data: CONTRAT.exemple_400_devis },

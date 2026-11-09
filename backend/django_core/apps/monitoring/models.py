@@ -95,8 +95,11 @@ class MonitoringConfig(models.Model):
     @property
     def is_auto(self):
         """Vrai si une récupération automatique est réellement possible :
-        activé, fournisseur non-noop ET identifiants présents."""
-        return bool(self.enabled and self.provider != 'noop' and self.credentials)
+        activé, fournisseur non-noop, identifiants présents ET connecteur
+        réellement câblé (AMON8 : un squelette n'est jamais « auto »)."""
+        from .providers import get_provider
+        return bool(self.enabled and self.provider != 'noop' and self.credentials
+                    and get_provider(self.provider).disponible)
 
 
 class ProductionReading(models.Model):
@@ -257,6 +260,10 @@ class UnderperformanceFlag(models.Model):
     # « donnees_indisponibles »…) et la note lisible associée.
     motif_cloture = models.CharField(max_length=40, blank=True, default='')
     note_cloture = models.TextField(blank=True, default='')
+    # AMON24 — qui a classé l'épisode à la main (NULL = fermeture automatique).
+    cloture_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+')
 
     class Meta:
         verbose_name = 'Drapeau de sous-performance'
@@ -374,6 +381,20 @@ class CertificatCarbone(TenantModel):
     reference = models.CharField(max_length=50)
     fichier_key = models.CharField(max_length=500, blank=True, default='')
 
+    class Statut(models.TextChoices):
+        EMIS = 'emis', 'Émis'
+        ANNULE = 'annule', 'Annulé'
+
+    # AMON93 — un certificat émis s'ANNULE (motif, auteur, date), jamais ne
+    # se supprime ; seule l'émission en vigueur bloque la période.
+    statut = models.CharField(
+        max_length=8, choices=Statut.choices, default=Statut.EMIS)
+    motif_annulation = models.CharField(max_length=500, blank=True, default='')
+    annule_le = models.DateTimeField(null=True, blank=True)
+    annule_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+')
+
     class Meta:
         verbose_name = 'Certificat carbone'
         verbose_name_plural = 'Certificats carbone'
@@ -402,11 +423,12 @@ class CertificatCarbone(TenantModel):
             # partageant `installation_id=NULL` ne collisionneraient jamais).
             models.UniqueConstraint(
                 fields=['company', 'installation_id', 'periode_debut', 'periode_fin'],
-                condition=models.Q(installation_id__isnull=False),
+                condition=models.Q(installation_id__isnull=False,
+                                   statut='emis'),
                 name='monitoring_certifco2_site_uniq'),
             models.UniqueConstraint(
                 fields=['company', 'client_id', 'periode_debut', 'periode_fin'],
-                condition=models.Q(client_id__isnull=False),
+                condition=models.Q(client_id__isnull=False, statut='emis'),
                 name='monitoring_certifco2_cli_uniq'),
             # Référence race-safe (`core.numbering`) — unique par société,
             # même patron que `AppelOffre`/`Devis` : c'est CETTE contrainte
@@ -484,6 +506,12 @@ class AbonnementMonitoring(models.Model):
     motif_resiliation = models.CharField(
         max_length=255, blank=True, default='',
         verbose_name='Motif de résiliation')
+    # AMON7 — date et auteur de la résiliation (posés par le service).
+    date_resiliation = models.DateTimeField(
+        null=True, blank=True, verbose_name='Résilié le')
+    resilie_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+', verbose_name='Résilié par')
 
     class Meta:
         verbose_name = 'Abonnement de monitoring'

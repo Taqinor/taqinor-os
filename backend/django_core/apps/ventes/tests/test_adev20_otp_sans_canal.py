@@ -4,7 +4,7 @@ réellement parti.
 * client sans e-mail (WhatsApp = stub, QX10) : demande du code de lecture et
   du code de signature → 409 ``{detail, code: "aucun_canal"}`` (contrat
   ``proposal_accept.json``, bloc ``otp``), aucun code mis en cache ;
-* ``POST /share-link/ {otp_lecture: true}`` sur ce devis → 400
+* ``POST /share-link/ {otp_lecture: true}`` sur ce devis → 409
   ``{otp_lecture: [...]}``, lien inchangé ;
 * client avec e-mail (backend locmem) : le code part, « Code envoyé. ».
 
@@ -95,14 +95,15 @@ class OtpSansCanalTests(TestCase):
         self.assertIsNone(cache.get(_otp_cache_key(lien.token)))
         self.assertEqual(len(mail.outbox), 0)
 
-    def test_share_link_otp_lecture_400(self):
+    def test_share_link_otp_lecture_409(self):
         lien = self._lien(self.sans_email, otp_lecture=False)
         api = APIClient()
         api.force_authenticate(user=self.user)
         reponse = api.post(
             f'/api/django/ventes/devis/{lien.devis_id}/share-link/',
             {'otp_lecture': True}, format='json')
-        self.assertEqual(reponse.status_code, 400, reponse.content)
+        # ENF11 (nocturne 41958593088) : état de la fiche client = 409.
+        self.assertEqual(reponse.status_code, 409, reponse.content)
         self.assertIn('otp_lecture', reponse.json())
         lien.refresh_from_db()
         self.assertFalse(lien.otp_lecture)

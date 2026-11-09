@@ -1,0 +1,110 @@
+# Preuve en direct AGNR66 - pile locale, code 93d4c7463 (dev-plan-6a6fc9-w13), 2026-11-05
+# Lanceur : python scripts/sonde.py (transaction annulee, mail en memoire, HTTP sortant bloque) ou node.
+# Sondes LIVE-* : repro=true signifie ICI que le comportement attendu par la tache est observe ;
+# sondes C-* d'audit : ECART (repro=false) = le defaut constate n'est plus reproduit.
+
+== LIVE-AGNR66 (sha 93d4c7463)
+attendu : niveau 12 : 3 cases, somme 8500, pct 100, aucune < 0, avertissement interne, PDF public sans lui ; niveau 11 : rendu d'hier
+observé : {"repro": true, "observe": {"n12": {"ttc": 8500.0, "texte": "| | | | Acompte à la commande | | 94 % · 8 000,00 MAD | | | | À la réception du matériel | | 6 % · 500,00 MAD | | | | Après mise en marche | | 0 % · 0,00 MAD | | | | | Acompte à la commande — après l'accord FDA si vous demandez l'aide. |", "cases": [["94", "8 000,00"], ["6", "500,00"], ["0", "0,00"]], "somme_montants": "8500.00", "somme_pct": "100", "avertissements_internes": ["échéancier au-delà du TTC : materiel, solde borné(s) au reste — corrigez l'échéancier"], "montants_tranches": {"sans": {"acompte": 8000.0, "materiel": 500.0, "solde": 0.0, "bornees": ["materiel", "solde"]}, "avec": {"acompte": 8000.0, "materiel": 500.0, "solde": 0.0, "bornees": ["materiel", "solde"]}}, "proposal": {"http": 200, "debut": "%PDF", "pages": 3, "avertissement_present": false, "echeancier_pdf": ["12/2026 · Acompte à la commande : 94% · 6% à la réception du matériel · 0% après la mise en marche · TVA : 10% panneaux photovoltaïques · 20% autres équipements et prestations Bon pour accord Offre valable jusqu'au 05/12/2026 ACOMPTE À LA C", " 0,00 MAD Acompte à la commande — après l'accord FDA si vous demandez l'aide. BON POUR ACCORD — LE CLIENT L66 Client Nom, date, mention « Bon pour accord » et signature POUR LIVE AGNR66 Cachet et signature Date Live AGNR66 Installation hors"]}}, "n11": {"texte": "| | | | Acompte à la commande | | 94 % · 8 000,00 MAD | | | | À la réception du matériel | | 6 % · 500,00 MAD | | | | | Acompte à la commande — après l'accord FDA si vous demandez l'aide. |", "cases": [["94", "8 000,00"], ["6", "500,00"]], "avertissements_internes": []}}}
+verdict : REPRO
+base inchangée : oui (avant 8755, après 8755) ; mails 0 ; tâches Celery bloquées 0
+
+== C-AGNR-VER4-012 (sha 4cd568403)
+attendu : (1) prix-negocie 201, jalons V2 : dernière tranche < 0 ; (2) jalons < 0 mais repartition_paiement bornée (aucune case < 0, tranche matériel tronquée) ; (3) DELETE 204, jalons : dernière < 0
+observé : empreintes={'echeancier': '18460fa263', 'negociation': '2aa25ed09c', 'revision': 'a2542c87c9', 'conditions_commerciales': '77d57e001b'}
+(1) patch_ech=200 statut_v1=accepte ttc_v1=17000.00 ech_v1=[{'type': 'acompte', 'unite': 'montant', 'libelle': 'Commande', 'pct_or_montant': 8000}, {'jalon': 'livraison_materiel', 'unite': 'pct', 'libelle': 'Livraison', 'pct_or_montant': 40}, {'jalon': 'reception_definitive', 'unite': 'montant', 'libelle': 'Réception', 'pct_or_montant': 2200.0}] jalons_v1=['8000.00', '6800.00', '2200.00'] saisie={'prix_ttc': '9000'} apercu=200 {'devis_v2': {'id': None, 'reference': None, 'version': 2}, 'remise_pct': '47.00', 'total_ttc': '9000.00', 'factures_annulees': [{'reference': 'BROUILLON-1068'}], 'factures_reprises': [], 'ecart_ttc': '-8000.00', 'regularisation': {'type': 'aucune', 'montant': '0.00'}, 'reste_a_facturer': '9000.00'} appliquer=409 {'detail': ErrorDetail(string='Total des tranches avant la dernière : 11 600 MAD — il dépasse le total TTC du devis (9 000 MAD).', code='state_conflict'), 'echeancier': [ErrorDetail(string='Total des tranches avant la dernière : 11 600 MAD — il dépasse le total TTC du devis (9 000 MAD).', code='state_conflict')], 'error': {'code': 'state_conflict', 'message': 'Total des tranches avant la dernière : 11 600 MAD — il dépasse le total TTC du devis (9 000 MAD).', 'fields': None, 'request_id': '4514a42b89a64f7f8df6c683bd5c5c0e'}}
+(2) agricole {'patch_ech': 200, 'patch_remise': 409, 'ttc': '17000.00', 'ech': [{'type': 'acompte', 'unite': 'montant', 'libelle': 'Acompte', 'pct_or_montant': 8000}, {'type': 'materiel', 'unite': 'pct', 'libelle': 'Matériel', 'pct_or_montant': 40}, {'type': 'solde', 'unite': 'montant', 'libelle': 'Solde', 'pct_or_montant': 2200.0}], 'jalons': ['8000.00', '6800.00', '2200.00'], 'repartition_direct': {'acompte': 8000.0, 'materiel': 6800.0, 'solde': 2200.0, 'pct_a': 47, 'pct_m': 40, 'pct_s': 13, 'deux_cases': False}, 'builder_montants_tranches': {'sans': {'total': 17000.0, 'acompte': 8000.0, 'materiel': 6800.0, 'solde': 2200.0, 'pct_a': 47, 'pct_m': 40, 'pct_s': 13}, 'avec': {'total': 17000.0, 'acompte': 8000.0, 'materiel': 6800.0, 'solde': 2200.0, 'pct_a': 47, 'pct_m': 40, 'pct_s': 13}}, 'builder_payment_terms': {'acompte': 47, 'materiel': 40, 'solde': 13}, 'regles_echeancier_historique': None, 'agricole_echeancier_texte': "| | | | Acompte à la commande | | 47 % · 8 000,00 MAD | | | | À la réception du matériel | | 40 % · 6 800,00 MAD | | | | Après mise en marche | | 13 % · 2 200,00 MAD | | | | | Acompte à la commande — après l'accord FDA si vous demandez l'aide. |"}
+(2) residentiel {'patch_ech': 200, 'patch_remise': 409, 'ttc': '17000.00', 'ech': [{'type': 'acompte', 'unite': 'montant', 'libelle': 'Acompte', 'pct_or_montant': 8000}, {'type': 'materiel', 'unite': 'pct', 'libelle': 'Matériel', 'pct_or_montant': 40}, {'type': 'solde', 'unite': 'montant', 'libelle': 'Solde', 'pct_or_montant': 2200.0}], 'jalons': ['8000.00', '6800.00', '2200.00'], 'repartition_direct': {'acompte': 8000.0, 'materiel': 6800.0, 'solde': 2200.0, 'pct_a': 47, 'pct_m': 40, 'pct_s': 13, 'deux_cases': False}, 'builder_erreur': "ValueError: Devis DEV-202611-9423 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité)."}
+(3) patch_ech=200 ech=[{'type': 'acompte', 'unite': 'montant', 'libelle': 'Commande', 'pct_or_montant': 8000}, {'jalon': 'livraison_materiel', 'unite': 'pct', 'libelle': 'Livraison', 'pct_or_montant': 40}, {'jalon': 'reception_definitive', 'unite': 'montant', 'libelle': 'Réception', 'pct_or_montant': 2200.0}] jalons_avant=['8000.00', '6800.00', '2200.00'] delete=409 {'detail': ErrorDetail(string='Total des tranches avant la dernière : 12 400 MAD — il dépasse le total TTC du devis (11 000 MAD).', code='state_conflict'), 'echeancier': [ErrorDetail(string='Total des tranches avant la dernière : 12 400 MAD — il dépasse le total TTC du devis (11 000 MAD).', code='state_conflict')], 'error': {'code': 'state_conflict', 'message': 'Total des tranches avant la dernière : 12 400 MAD — il dépasse le total TTC du devis (11 000 MAD).', 'fields': None, 'request_id': '2279821e251f4f8096e8ca9227e506d9'}} ttc_apres=17000.00 jalons_apres=['8000.00', '6800.00', '2200.00']
+{"1": {"appliquer": 409}, "2_agricole": {"jalons": ["8000.00", "6800.00", "2200.00"], "jalons_negatif": false, "repartition_negatif": false, "repartition": {"acompte": 8000.0, "materiel": 6800.0, "solde": 2200.0, "pct_a": 47, "pct_m": 40, "pct_s": 13, "deux_cases": false}, "builder": {"sans": {"total": 17000.0, "acompte": 8000.0, "materiel": 6800.0, "solde": 2200.0, "pct_a": 47, "pct_m": 40, "pct_s": 13}, "avec": {"total": 17000.0, "acompte": 8000.0, "materiel": 6800.0, "solde": 2200.0, "pct_a": 47, "pct_m": 40, "pct_s": 13}}}, "2_residentiel": {"jalons": ["8000.00", "6800.00", "2200.00"], "jalons_negatif": false, "repartition_negatif": false, "repartition": {"acompte": 8000.0, "materiel": 6800.0, "solde": 2200.0, "pct_a": 47, "pct_m": 40, "pct_s": 13, "deux_cases": false}, "builder": "ValueError: Devis DEV-202611-9423 : aucune option ne contient d'onduleur — génération du PDF à options refusée (règle de sécurité)."}, "3": {"delete": 409, "jalons_apres": ["8000.00", "6800.00", "2200.00"], "negatif": false}, "empreintes": {"echeancier": "18460fa263", "negociation": "2aa25ed09c", "revision": "a2542c87c9", "conditions_commerciales": "77d57e001b"}, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 8860, après 8860) ; mails 0 ; tâches Celery bloquées 0
+
+# ---- source : C-LIVE-AGNR66.py ----
+# flake8: noqa  (preuve en direct AGNR66, 05/11/2026)
+"""AGNR66 — cases de paiement agricoles : une tranche bornée au reste est imprimée à son % dérivé et dite au vendeur.
+Devis agricole des sondes (Panneau 1 000 ×10 TVA 10 % + Onduleur 5 000 ×1 TVA 20 %), remise 50 % (TTC 8 500) et
+échéancier stocké `[Acompte 8 000 MAD ; Matériel 40 % ; Solde 10 %]` posés par l'ORM. Niveau 12 : `build_quote_data`
+puis `agricole/pages.py::_echeancier` ⇒ trois cases, Σ montants 8 500, Σ % 100, aucune < 0 ;
+`avertissements_internes` porte « échéancier au-delà du TTC » ; PDF `/proposal` (vraie route, texte PyMuPDF) sans
+cet avertissement. Niveau 11 (même état) : rendu d'hier (deux cases). Admin, société neuve, transaction annulée."""
+SONDE = {"constat": "LIVE-AGNR66", "sha": "93d4c7463",
+         "attendu": "niveau 12 : 3 cases, somme 8500, pct 100, aucune < 0, avertissement interne, PDF public sans lui ; niveau 11 : rendu d'hier",
+         "modeles": ["authentication.Company", "crm.Client", "stock.Produit", "ventes.Devis", "ventes.LigneDevis"]}
+
+
+def sonde(ctx):
+    import re
+    from decimal import Decimal
+    from django.contrib.auth import get_user_model
+    from django.utils import timezone
+    from rest_framework.test import APIClient
+    from authentication.models import Company
+    from apps.crm.models import Client
+    from apps.stock.models import Produit
+    from apps.ventes.models import Devis, LigneDevis
+    from apps.ventes.quote_engine.builder import build_quote_data
+    from apps.ventes.quote_engine.agricole.pages import _echeancier
+    mois = timezone.now().strftime('%Y%m')
+    co = Company.objects.create(nom='Live AGNR66', slug='live-agnr66')
+    u = get_user_model().objects.create_user(username='live-agnr66', password='x', company=co, role_legacy='admin')
+    cl = Client.objects.create(company=co, nom='Client', prenom='L66', email='live-agnr66@example.invalid')
+    api = APIClient()
+    api.force_authenticate(u)
+    STOCKE = [{'type': 'acompte', 'unite': 'montant', 'libelle': 'Acompte', 'pct_or_montant': 8000},
+              {'type': 'materiel', 'unite': 'pct', 'libelle': 'Matériel', 'pct_or_montant': 40},
+              {'type': 'solde', 'unite': 'pct', 'libelle': 'Solde', 'pct_or_montant': 10}]
+
+    def devis(n, niveau):
+        d = Devis.objects.create(company=co, reference=f'DEV-{mois}-966{n}', client=cl, statut=Devis.Statut.BROUILLON,
+                                 taux_tva=Decimal('20.00'), mode_installation='agricole')
+        for nom, pu, q, tva in (('Panneau', '1000', '10', '10.00'), ('Onduleur', '5000', '1', '20.00')):
+            p = Produit.objects.create(company=co, nom=nom, sku=f'L66-{n}-{nom}', prix_vente=Decimal(pu), quantite_stock=100)
+            LigneDevis.objects.create(devis=d, produit=p, designation=nom, quantite=Decimal(q), prix_unitaire=Decimal(pu),
+                                      remise=Decimal('0'), taux_tva=Decimal(tva))
+        Devis.objects.filter(pk=d.pk).update(remise_globale=Decimal('50'), echeancier=STOCKE, regles_calcul=niveau)
+        return Devis.objects.get(pk=d.pk)
+
+    def cases(html):
+        txt = re.sub(r'\s+', ' ', re.sub(r'<[^>]+>', ' | ', html)).strip()
+        vals = re.findall(r'(-?[\d.,]+) % · (-?[\d\s .,]+?) MAD', re.sub(r'<[^>]+>', ' ', html))
+        return txt, [(p, m.strip()) for p, m in vals]
+
+    def num(s):
+        return Decimal(s.replace(' ', '').replace(' ', '').replace(',', '.'))
+
+    obs = {}
+    d12 = devis(1, 12)
+    data = build_quote_data(d12)
+    txt, vals = cases(_echeancier(data, 'fr'))
+    obs['n12'] = {'ttc': (data.get('totaux_all') or {}).get('ttc'), 'texte': txt, 'cases': vals,
+                  'somme_montants': str(sum(num(m) for _p, m in vals)), 'somme_pct': str(sum(num(p) for p, _m in vals)),
+                  'avertissements_internes': [a for a in (data.get('avertissements_internes') or [])],
+                  'montants_tranches': {b: {k: (data['montants_tranches'].get(b) or {}).get(k)
+                                            for k in ('acompte', 'materiel', 'solde', 'bornees')} for b in ('sans', 'avec')}}
+    r = api.get(f'/api/django/ventes/devis/{d12.pk}/proposal/', HTTP_HOST='localhost')
+    corps = b''.join(r.streaming_content) if getattr(r, 'streaming', False) else r.content
+    pdf = {'http': r.status_code, 'debut': corps[:4].decode('latin-1')}
+    if corps[:4] == b'%PDF':
+        import fitz
+        doc = fitz.open(stream=corps, filetype='pdf')
+        plat = re.sub(r'\s+', ' ', '\n'.join(pg.get_text() for pg in doc))
+        pdf.update({'pages': doc.page_count, 'avertissement_present': 'au-delà du TTC' in plat or 'borné' in plat,
+                    'echeancier_pdf': [plat[max(0, m.start() - 10):m.start() + 230] for m in
+                                       re.finditer(r'Acompte à la commande', plat)][:2]})
+    else:
+        pdf['corps'] = corps[:300].decode('utf-8', 'replace')
+    obs['n12']['proposal'] = pdf
+    d11 = devis(2, 11)
+    data11 = build_quote_data(d11)
+    txt11, vals11 = cases(_echeancier(data11, 'fr'))
+    obs['n11'] = {'texte': txt11, 'cases': vals11,
+                  'avertissements_internes': [a for a in (data11.get('avertissements_internes') or []) if 'TTC' in a]}
+    n12 = obs['n12']
+    ok = (len(vals) == 3 and num(n12['somme_montants']) == Decimal('8500') and num(n12['somme_pct']) == Decimal('100')
+          and all(num(m) >= 0 and num(p) >= 0 for p, m in vals)
+          and any('au-delà du TTC' in a for a in n12['avertissements_internes'])
+          and pdf['http'] == 200 and pdf.get('avertissement_present') is False
+          and len(vals11) == 2 and obs['n11']['avertissements_internes'] == [])
+    return {'repro': bool(ok), 'observe': obs}
+

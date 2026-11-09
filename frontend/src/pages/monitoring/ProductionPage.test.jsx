@@ -56,7 +56,10 @@ vi.mock('../../ui', async (importActual) => (await import('../../test/selectNati
 
 vi.mock('../../api/monitoringApi', () => ({
   default: {
-    getProviders: vi.fn(() => Promise.resolve({ data: [{ key: 'noop', label: 'Aucun' }] })),
+    getProviders: vi.fn(() => Promise.resolve({ data: [
+      { key: 'noop', label: 'Aucun', disponible: true },
+      { key: 'fusionsolar', label: 'Huawei FusionSolar', disponible: false },
+    ] })),
     getReadings: vi.fn(() => Promise.resolve({
       data: [{ id: 9, date: '2026-06-01', energy_kwh: '120.5', period_days: 30, source_display: 'Manuel', note: '' }],
     })),
@@ -64,6 +67,9 @@ vi.mock('../../api/monitoringApi', () => ({
       data: [{ id: 5, installation: 11, provider: 'noop', enabled: true }],
     })),
     deleteReading: vi.fn(() => Promise.resolve({})),
+    addReading: vi.fn(() => Promise.reject({
+      response: { status: 409, data: { date: ['Ce relevé recouvre celui du 01/09/2026 (30 j).'] } },
+    })),
     getHistory: vi.fn(() => Promise.resolve({
       data: {
         installation: 11,
@@ -108,6 +114,58 @@ describe('ProductionPage (WIR122 — suppression de relevé + historique mensuel
     await userEvent.click(screen.getAllByLabelText('Supprimer')[0])
 
     await waitFor(() => expect(monitoringApi.deleteReading).toHaveBeenCalledWith(9))
+  })
+
+  it('AMON3 — le formulaire s\'ouvre sur « Début de la période » = J−30', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const { debutParDefaut } = await import('./ProductionPage.helpers')
+    renderPage(<ProductionPage />)
+
+    const select = await screen.findByRole('combobox', { name: 'Choisir un système installé' })
+    await userEvent.selectOptions(select, '11')
+    expect(await screen.findByLabelText('Début de la période')).toHaveValue(debutParDefaut(30))
+    expect(debutParDefaut(30, '2026-11-08')).toBe('2026-10-09')
+    expect(debutParDefaut(1, '2026-11-08')).toBe('2026-11-07')
+  })
+
+  it('AMON8 — un connecteur non câblé est grisé « (non disponible) »', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    renderPage(<ProductionPage />)
+
+    const select = await screen.findByRole('combobox', { name: 'Choisir un système installé' })
+    await userEvent.selectOptions(select, '11')
+    // Le <select> natif du test ne relaie pas `disabled` : le libellé le dit.
+    expect(await screen.findByRole('option', { name: 'Huawei FusionSolar (non disponible)' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Aucun' })).toBeInTheDocument()
+  })
+
+  it('AMON46 — une suppression refusée (409) affiche le message du serveur', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const { toast } = await import('../../ui/confirm')
+    monitoringApi.deleteReading.mockRejectedValueOnce({
+      response: { status: 409, data: { detail: 'Ce relevé fonde le certificat CERT-CO2-202611-0001 : annulez le certificat avant de le supprimer.' } },
+    })
+    renderPage(<ProductionPage />)
+
+    const select = await screen.findByRole('combobox', { name: 'Choisir un système installé' })
+    await userEvent.selectOptions(select, '11')
+    await waitFor(() => expect(screen.getAllByText('120.5 kWh').length).toBeGreaterThan(0))
+    await userEvent.click(screen.getAllByLabelText('Supprimer')[0])
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(
+      'Ce relevé fonde le certificat CERT-CO2-202611-0001 : annulez le certificat avant de le supprimer.'))
+  })
+
+  it('AMON1 — un relevé refusé (409) affiche le message du serveur', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    renderPage(<ProductionPage />)
+
+    const select = await screen.findByRole('combobox', { name: 'Choisir un système installé' })
+    await userEvent.selectOptions(select, '11')
+    await userEvent.click(await screen.findByRole('button', { name: /Ajouter/ }))
+
+    await waitFor(() => expect(monitoringApi.addReading).toHaveBeenCalled())
+    expect(await screen.findByText('Ce relevé recouvre celui du 01/09/2026 (30 j).')).toBeInTheDocument()
   })
 
   it('affiche l\'historique mensuel attendu vs réel dès qu\'une config existe', async () => {

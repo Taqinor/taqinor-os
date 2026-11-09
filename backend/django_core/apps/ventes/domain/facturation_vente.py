@@ -275,6 +275,29 @@ def verrouiller_vente(devis):
                 .filter(Q(pk=racine.pk) | Q(pk=devis.pk)).order_by('pk'))
 
 
+def verrouiller_emission(facture, statut, *, restauration=False):
+    """ATOT58 (C-ATOT-VER4-002) — appelé par ``emettre_facture`` DANS la
+    transaction de la pose d'ÉMISE : ventes de la facture verrouillées (pk
+    croissant) AVANT la borne VNT20, facture relue et statut revérifié —
+    deux émissions simultanées d'une même vente : la seconde voit la
+    première (409)."""
+    from apps.ventes.models import Facture
+    from apps.ventes.vente_facturation import (
+        _ventes_de_la_facture, motif_emission_hors_prix)
+    from .facturation_ops import EmissionRefusee
+    for devis, _p in sorted(_ventes_de_la_facture(facture),
+                            key=lambda v: v[0].pk):
+        verrouiller_vente(devis)
+    relu = Facture.objects.select_for_update().filter(
+        pk=facture.pk).values_list('statut', flat=True).first()
+    if facture.pk and relu != statut:
+        raise EmissionRefusee(
+            'La facture a changé entre-temps : rechargez-la.', etat=True)
+    if (motif := motif_emission_hors_prix(
+            facture, restauration=restauration)):  # VNT20 : 1 vente, 1 fois
+        raise EmissionRefusee(motif, etat=True)
+
+
 def _facturer_tranche(devis, plan, nature, *, user, montant, cle_attendue,
                       libelle):
     """Natures ``intermediaire`` / ``solde`` : la prochaine tranche du plan."""
@@ -434,8 +457,13 @@ def _facturer_acompte(devis, plan, *, user, montant, cle_attendue, libelle):
                          if str(t['type']) == 'acompte'
                          and t['statut'] != 'emise'), None)
         if premiere is None or premiere['montant_ttc'] <= 0:
-            raise FacturationVenteRefusee('Montant invalide.',
-                                          code='montant_invalide')
+            # ENF47 (api-fuzz-full 42017839549) — montant facultatif au
+            # schéma : c'est l'ÉCHÉANCIER (aucun acompte à facturer) qui
+            # s'oppose, refus d'état 409 (le 400 rejetait un corps conforme).
+            raise FacturationVenteRefusee(
+                "Montant invalide : l'échéancier ne prévoit plus d'acompte à "
+                'facturer, indiquez un montant.',
+                code='montant_invalide', status=409)
         montant = premiere['montant_ttc']
     if montant >= prix:
         raise FacturationVenteRefusee(
@@ -546,7 +574,10 @@ def _emettre(facture, user, override_credit=False):
         emettre_facture(facture, user=user, source='facturer_vente',
                         verifier_credit=not override_credit)
     except EmissionRefusee as exc:
-        raise FacturationVenteRefusee(exc.motif)
+        # ENF11 (api-fuzz-full 41825184761) — vente déjà facturée au-delà du
+        # prix convenu (``etat``, VNT20) : le corps est conforme, seul l'état
+        # enregistré s'oppose = 409, comme ``facture_cycle.emettre``.
+        raise FacturationVenteRefusee(exc.motif, status=409 if exc.etat else 400)
     except StockInsuffisantError as exc:
         raise FacturationVenteRefusee(exc.message)
     except CreditHoldError as exc:
@@ -866,12 +897,27 @@ def _ventiler_part(paniers, part, total):
     return vent
 
 
+def _creditable_par_taux(facture):
+    """ATOT56 — TTC créditable par taux d'une facture : ses paniers
+    (``tva_par_taux``) moins ceux de ses avoirs actifs (même mixin)."""
+    reste = {}
+    docs = [(1, facture)] + [(-1, a) for a in facture.avoirs.all()
+                             if a.statut != 'annulee']
+    for signe, doc in docs:
+        for b in doc.tva_par_taux:
+            t = Decimal(str(b['taux']))
+            reste[t] = reste.get(t, Decimal('0')) + signe * (
+                _q(b['base_ht']) + _q(b['montant']))
+    return reste
+
+
 def crediter_ecart_de_vente(devis, montant_ttc, paniers, *, user, motif):
     """ATOT43 — crédite ``montant_ttc`` (paniers de l'écart) sur les factures
     émises de la vente, chacune sous son créditable (le plafond de
     ``creer_avoir_facture``) : le plus fort reste d'abord, à égalité la plus
-    récente. Un avoir CORRECTION par facture, ventilé au prorata ; le dernier
-    porte le solde des paniers au centime. Σ créditable insuffisant ⇒
+    récente. ATOT56 — taux par taux, sous le créditable À CE TAUX de la
+    facture (jamais de base négative) ; la dernière part d'un taux porte son
+    solde au centime. Σ créditable (par taux) insuffisant ⇒
     ``AvoirPlafondDepasse``, rien n'est écrit (transaction unique)."""
     from datetime import date
 
@@ -879,9 +925,11 @@ def crediter_ecart_de_vente(devis, montant_ttc, paniers, *, user, motif):
     from .facturation_ops import AvoirPlafondDepasse, creer_avoir_facture
     montant = _q(montant_ttc)
     total = sum(_q(p['base_ht']) + _q(p['montant']) for p in paniers)
-    restes = {Decimal(str(p['taux'])): [_q(p['base_ht']), _q(p['montant'])]
-              for p in paniers}
-    avoirs = []
+    if total and total != montant:
+        paniers = _ventiler_part(paniers, montant, total)
+    restes = [[str(p['taux']), _q(p['base_ht']), _q(p['montant'])]
+              for p in paniers]
+    plan = []
     with transaction.atomic():
         factures = sorted((
             (_q(f.total_ttc + f.notes_debit_total - f.avoirs_total
@@ -891,27 +939,31 @@ def crediter_ecart_de_vente(devis, montant_ttc, paniers, *, user, motif):
                 company_id=devis.company_id, devis_id=devis.pk).exclude(
                 statut__in=(Facture.Statut.BROUILLON, Facture.Statut.ANNULEE))
         ), key=lambda x: x[:3], reverse=True)
-        if sum(max(x[0], 0) for x in factures) < montant or not total:
+        for creditable, _date, _pk, facture in factures:
+            par_taux, vent = _creditable_par_taux(facture), []
+            for r in restes:
+                part = min(r[1] + r[2], max(creditable, 0), max(
+                    par_taux.get(Decimal(r[0]), 0), 0))
+                if part <= 0:
+                    continue
+                tva = r[2] if part == r[1] + r[2] else _q(
+                    part * r[2] / (r[1] + r[2]))
+                r[1], r[2] = r[1] - (part - tva), r[2] - tva
+                creditable -= part
+                vent.append({'taux': r[0], 'base_ht': str(part - tva),
+                             'montant': str(tva)})
+            if vent:
+                plan.append((facture, vent))
+        if not total or any(r[1] + r[2] for r in restes):
             raise AvoirPlafondDepasse(
                 "L'écart dépasse le montant restant des factures de la vente.")
-        reste = montant
-        for creditable, _date, _pk, facture in factures:
-            part = min(reste, creditable)
-            if part <= 0:
-                break
-            reste -= part
-            vent = (_ventiler_part(paniers, part, total)
-                    if reste or total != montant else [
-                        {'taux': str(t), 'base_ht': str(b), 'montant': str(m)}
-                        for t, (b, m) in restes.items()])
-            for v in vent:
-                r = restes[Decimal(str(v['taux']))]
-                r[0] -= Decimal(v['base_ht'])
-                r[1] -= Decimal(v['montant'])
+        avoirs = []
+        for facture, vent in plan:
             tva = sum(Decimal(v['montant']) for v in vent)
+            ttc = sum(Decimal(v['base_ht']) for v in vent) + tva
             avoirs.append(creer_avoir_facture(
                 facture=facture, user=user, motif=motif,
                 type_avoir=Avoir.Type.CORRECTION, montant_ventile={
-                    'ht': part - tva, 'tva': tva, 'ttc': part,
+                    'ht': ttc - tva, 'tva': tva, 'ttc': ttc,
                     'ventilation': vent}))
     return avoirs

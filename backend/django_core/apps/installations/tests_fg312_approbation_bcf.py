@@ -130,6 +130,39 @@ class TestApprobation(TestCase):
         self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(r.data['palier'], 'admin')
 
+    def test_palier_superieur_reste_valide_apres_baisse(self):
+        """AAPV48 — approuvé par l'Administrateur à 60 000, ramené à 40 000 :
+        l'approbation (palier supérieur) reste valide ; une approbation
+        responsable puis une hausse à 60 000 ne l'est plus."""
+        from decimal import Decimal
+        from apps.installations.selectors import bcf_approbation_valide
+        bcf = make_bcf_with_line(self.company, prix_unitaire=60000, quantite=1)
+        r = auth(self.admin).post(f'{BASE}/approbations-bcf/approuver/', {'bcf': bcf.id})
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertTrue(bcf_approbation_valide(self.company, bcf.id, Decimal('40000')))
+        bcf2 = make_bcf_with_line(self.company, prix_unitaire=40000, quantite=1)
+        r = auth(self.resp).post(f'{BASE}/approbations-bcf/approuver/', {'bcf': bcf2.id})
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertFalse(bcf_approbation_valide(self.company, bcf2.id, Decimal('60000')))
+
+    def test_sod_createur_ne_peut_approuver_son_bcf(self):
+        """AAPV48 — `sod_stricte` actif : créateur = approbateur ⇒ 409 ;
+        réglage éteint ⇒ 200."""
+        from apps.stock.models import AchatsParametres
+        bcf = make_bcf_with_line(self.company, prix_unitaire=1000, quantite=1)
+        bcf.created_by = self.resp
+        bcf.save(update_fields=['created_by'])
+        AchatsParametres.objects.update_or_create(
+            company=self.company, defaults={'sod_stricte': True})
+        api = auth(self.resp)
+        r = api.post(f'{BASE}/approbations-bcf/approuver/', {'bcf': bcf.id})
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('Séparation des tâches', r.data['detail'])
+        self.assertFalse(ApprobationBCF.objects.filter(bcf_id=bcf.id).exists())
+        AchatsParametres.objects.filter(company=self.company).update(sod_stricte=False)
+        self.assertEqual(api.post(f'{BASE}/approbations-bcf/approuver/',
+                                  {'bcf': bcf.id}).status_code, 200)
+
     def test_foreign_bcf_rejected(self):
         other = make_company()
         bcf_o = make_bcf_with_line(other, prix_unitaire=1000, quantite=1)

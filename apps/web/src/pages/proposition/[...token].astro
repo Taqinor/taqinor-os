@@ -291,6 +291,7 @@ import {
 } from '../../lib/warranty';
 import { NON_RENTABILISE_25, libellesEconomie, libellesRetour, phraseRentabilise, type Libelles } from '../../lib/proposition/retour';
 import { garantieBatterieAns, garantieOnduleurAns, garantiesPanneauxAns } from '../../lib/proposition/garanties';
+import { cumulParOption as cumulParOptionDe, sousLigneCumul } from '../../lib/proposition/cumulOption';
 // (fondateur 2026-08-17) le badge IEC ne s'affiche que s'il peut pointer vers la
 // fiche du panneau RÉELLEMENT devisé (catégorie « Panneaux photovoltaïques »).
 import { ficheBySlug } from '../../lib/fiches';
@@ -1485,6 +1486,8 @@ const clientConsommateur = installMode === 'residentiel';
 // modèle d'économies à elle — le moteur corrigé se propage tout seul ici.
 // CIW300 — jamais le cumul « économie × 25 ans » en C&I (l'argent C&I = `synthese_ci`).
 const headline = ok && !isAutoconso ? savingsHeadline(data!, reco ?? 'sans_batterie') : null;
+// ADEV107 — niveau ≤ 2 (pas de gain net) : la carte cumul suit l'option COCHÉE ; chaque option lue par savingsHeadline (lib/proposition/cumulOption.ts).
+const cumulParOption = cumulParOptionDe(data ?? null, !!headline && headline.gainNet === null && twoOptions);
 // RWEB24 — l'option du gain net (celle de la carte du PDF), nommée comme au PDF quand le devis en porte deux.
 const gainNetOpt = headline?.gainNet != null && twoOptions ? headline.gainNetOption : null;
 const gainNetSuffixe = gainNetOpt ? { fr: ` — option ${optionLabel(gainNetOpt, avecDifferee).toLowerCase()}`, en: ` — ${optionLabelEn(gainNetOpt, avecDifferee).toLowerCase()} option`, ar: ` — ${optionLabelAr(gainNetOpt, avecDifferee)}` } : { fr: '', en: '', ar: '' };
@@ -2190,6 +2193,8 @@ const signConfig = ok
       // PREVIEW-V3-FIX (audit C1) — l'acompte de CHAQUE option, déjà formaté
       // au rendu (voir `acompteMontantsFmt` dans le frontmatter).
       acompteMontants: acompteMontantsFmt,
+      // ADEV107 — cumul 25 ans + sous-ligne de chaque option, déjà formatés (niveau ≤ 2 ; vide sinon).
+      cumulParOption,
       // CIW305 — commercial / industriel : les quatre champs d'identité d'entreprise sont requis.
       entrepriseRequise,
       // ADEV51 — l'empreinte du contenu LU, renvoyée à la signature.
@@ -3361,10 +3366,10 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               </p>
               <p class="fig lum mt-3 text-4xl sm:text-5xl" dir="ltr" {...(headline.gainNet !== null ? { 'data-detail-gain-net-value': '' } : { 'data-detail-cumul-value': '' })} data-figure={headline.gainNet !== null ? 'gain_net_25_ans' : 'economies_cumul_25_ans'} data-figure-option={(headline.gainNetOption ?? reco) === 'avec_batterie' ? 'avec' : 'sans'}>{headline.gainNet !== null ? `≈ ${formatMAD(headline.gainNet)}` : formatMAD(headline.cumulative)}</p>
               <!-- RWEB24 — `gain_net_25_ans` (niveau 3) = la carte « Gain net sur 25 ans » du PDF, même option ; sinon le cumul brut ADEV50, jamais dit « du PDF ». -->
-              <p class="v2-body mt-2 text-sm text-lune-soft" data-i18n
-                data-fr={headline.gainNet !== null ? `Vos économies cumulées sur ${headline.years} ans, moins le prix de votre installation (loi 82-21, autoconsommation).` : `Économies cumulées estimées sur ${headline.years} ans${headline.monthly ? ` — soit ≈ ${formatMAD(headline.monthly)}/mois qui restent dans votre poche` : ''} (loi 82-21, autoconsommation).`}
-                data-en={headline.gainNet !== null ? `Your cumulative savings over ${headline.years} years, minus the price of your installation (law 82-21, self-consumption).` : `Estimated cumulative savings over ${headline.years} years${headline.monthly ? ` — that's ≈ ${formatMAD(headline.monthly)}/month staying in your pocket` : ''} (law 82-21, self-consumption).`}
-                data-ar={headline.gainNet !== null ? `توفيراتكم التراكمية على مدى ${headline.years} سنة، بعد خصم ثمن تركيبكم (القانون 82-21، الاستهلاك الذاتي).` : `توفير تراكمي مقدّر على مدى ${headline.years} سنة${headline.monthly ? ` — أي ما يعادل ≈ ${formatMAD(headline.monthly)}/شهر تبقى في جيبكم` : ''} (القانون 82-21، الاستهلاك الذاتي).`}>
+              <p class="v2-body mt-2 text-sm text-lune-soft" data-i18n {...(headline.gainNet !== null ? {} : { 'data-detail-cumul-sous': '' })}
+                data-fr={headline.gainNet !== null ? `Vos économies cumulées sur ${headline.years} ans, moins le prix de votre installation (loi 82-21, autoconsommation).` : sousLigneCumul(headline).fr}
+                data-en={headline.gainNet !== null ? `Your cumulative savings over ${headline.years} years, minus the price of your installation (law 82-21, self-consumption).` : sousLigneCumul(headline).en}
+                data-ar={headline.gainNet !== null ? `توفيراتكم التراكمية على مدى ${headline.years} سنة، بعد خصم ثمن تركيبكم (القانون 82-21، الاستهلاك الذاتي).` : sousLigneCumul(headline).ar}>
                 {headline.gainNet !== null ? <>Vos économies cumulées sur {headline.years} ans, moins le prix de votre installation</> : <>Économies cumulées estimées sur {headline.years} ans
                 {headline.monthly ? <> — soit <span class="text-brass-300">≈ {formatMAD(headline.monthly)}/mois</span> qui restent dans votre poche</> : null}</>}
                 <span class="text-lune-faint"> (loi 82-21, autoconsommation).</span>
@@ -7494,6 +7499,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
   } from '../../lib/proposition';
   // ADEV95 — 409 `ice_divergent` (signature B2B) : jamais traité comme « déjà signé ».
   import { estIceDivergent } from '../../lib/propositionB2b';
+  import { peindreCumulOption, type CumulOption } from '../../lib/proposition/cumulOption';
   // ADEV97 — l'exemplaire signé se télécharge avec le code de lecture (si exigé).
   import { installerGardePdfSigne } from '../../lib/propositionPdfSigne';
   // ADEV98 — balise de lecture humaine + « Décliner / demander un délai ».
@@ -7575,6 +7581,8 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
      *  servable (clé `sans_batterie`/`avec_batterie`). Option absente de la
      *  table ⇒ le montant est masqué, seul le pourcentage reste affiché. */
     acompteMontants?: Record<string, string>;
+    /** ADEV107 — cumul 25 ans formaté + sous-ligne FR/EN/AR de chaque option (niveau ≤ 2). */
+    cumulParOption?: Partial<Record<OptionKey, CumulOption>>;
     /** ADEV51 — empreinte du contenu lu (`empreinte_contenu` de `/data/`), renvoyée à `/accept/`. */
     empreinte?: string;
     /** ADEV97 — URL du flux `/pdf/` (garde de l'exemplaire signé). */
@@ -8367,9 +8375,10 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ token: cfg.token, mode: otpMode }),
         });
-        const data = (await res.json().catch(() => ({}))) as { ok?: boolean };
+        const data = (await res.json().catch(() => ({}))) as { ok?: boolean; detail?: string };
         if (otpStatusEl) {
-          otpStatusEl.textContent = data.ok ? OTP_SENT_MSG[currentLang] : OTP_SEND_FAILED_MSG[currentLang];
+          // ADEV109 — échec : le `detail` servi (409 `aucun_canal`…) en FR seulement (CPRW27), sinon le message traduit.
+          otpStatusEl.textContent = data.ok ? OTP_SENT_MSG[currentLang] : (currentLang === 'fr' && data.detail) || OTP_SEND_FAILED_MSG[currentLang];
           otpStatusEl.hidden = false;
         }
       } catch {
@@ -8634,7 +8643,13 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             acompteMontant.hidden = true;
           }
         }
+        // ADEV107 — la carte « cumul 25 ans » (niveau ≤ 2) dit l'option cochée, sur la taille DU DEVIS seulement.
+        const cumul = opt ? cfg.cumulParOption?.[opt] : undefined;
+        const cumulVal = document.querySelector<HTMLElement>('[data-detail-cumul-value]');
+        if (opt && cumul && cumulVal && !tailleHorsDevis) peindreCumulOption(cumulVal, document.querySelector<HTMLElement>('[data-detail-cumul-sous]'), cumul, opt);
       }
+      let tailleHorsDevis = false; // ADEV107 — une autre taille (Éco/Max) chargée suit l'option par son détail servi.
+      document.addEventListener('taqinor:taille-chargee', (ev) => { tailleHorsDevis = (ev as CustomEvent<{ defaut?: boolean }>).detail?.defaut === false; if (!tailleHorsDevis) syncRecap(); });
       form?.querySelectorAll<HTMLInputElement>('input[name="option"]').forEach((radio) => {
         radio.addEventListener('change', syncRecap);
       });
@@ -9852,8 +9867,16 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       synchroniserDetailPage();
       // OPTIONS CHARGEABLES — et les chapitres PROFONDS suivent la carte.
       void chargerDetail();
+      // ADEV107 — hors taille du devis, la carte cumul décrit CETTE taille/variante ; la signature la repeint au retour.
+      if (cle !== cleDefaut) document.querySelector<HTMLElement>('[data-detail-cumul-value]')?.setAttribute('data-figure-option', variante);
+      document.dispatchEvent(new CustomEvent('taqinor:taille-chargee', { detail: { defaut: cle === cleDefaut } }));
     }
 
+    // ADEV107 — l'option cochée sur une taille chargée (Éco/Max) charge le détail SERVI de cette taille, dans cette variante.
+    document.addEventListener('change', (ev) => {
+      const r = ev.target as HTMLInputElement | null; const v = r?.value === 'avec_batterie' ? 'avec' : 'sans';
+      if (r?.name === 'option' && r.checked && cle !== cleDefaut && v !== variante && switchBtns.some((b) => b.dataset.taillesVariante === v)) { variante = v; appliquer(); }
+    });
     for (const btn of switchBtns) {
       btn.addEventListener('click', () => {
         const v = btn.dataset.taillesVariante;

@@ -154,8 +154,11 @@ def repartition_paiement(total, termes, tranches_montant=None) -> dict:
         # Échéancier sans tranche matériel : le reliquat va au solde.
         solde = tot - acompte
         materiel = _D(0)
+    bornees = []  # AGNR66 — créneaux coupés par la borne ERR76 (dits au vendeur)
     if tranches_montant:
         montants = []
+        creneaux = (("acompte", "materiel", "solde") if len(tranches_montant) == 3
+                    else ("acompte",) + ("materiel",) * (len(tranches_montant) - 2) + ("solde",))
         for i, tr in enumerate(tranches_montant):
             if i == len(tranches_montant) - 1:
                 montants.append(tot - sum(montants, _D(0)))
@@ -169,6 +172,10 @@ def repartition_paiement(total, termes, tranches_montant=None) -> dict:
                         _D("0.01"), rounding=ROUND_HALF_UP)
                 # Borné au reste (ERR76) : aucune case négative.
                 montants.append(max(_D(0), min(m, tot - sum(montants, _D(0)))))
+                if montants[-1] < m:
+                    bornees.append(creneaux[i])
+        if bornees and creneaux[-1] not in bornees:
+            bornees.append(creneaux[-1])  # le reliquat ne reçoit plus sa part
         acompte = montants[0]
         materiel = montants[1] if len(montants) == 3 else _D(0)
         solde = montants[-1]
@@ -187,7 +194,7 @@ def repartition_paiement(total, termes, tranches_montant=None) -> dict:
                       else pm <= 0)
     solde2 = tot - acompte
     pct_s2 = 100 - pct_a
-    return {
+    cases = {
         "total": float(tot),
         "acompte": float(acompte), "materiel": float(max(materiel, _D(0))),
         "solde": float(solde),
@@ -196,6 +203,50 @@ def repartition_paiement(total, termes, tranches_montant=None) -> dict:
         "deux_cases": bool(deux_cases),
         "solde2": float(solde2), "pct_s2": _pct_simple(pct_s2),
     }
+    if bornees and tot > 0:
+        cases["bornees"] = list(dict.fromkeys(bornees))  # additif : absent sinon
+    return cases
+
+
+def cases_imprimees(data, branche, devis, avertissements):
+    """AMOT19 / AGNR66 — les cases de la branche imprimée ; au niveau 12, une
+    tranche coupée par la borne ERR76 (``bornees``) est DITE au vendeur dans
+    ``avertissements`` (liste interne du builder, jamais publique)."""
+    from apps.ventes.domain.regles_calcul import (
+        REGLES_ECARTS_0411, regles_au_moins)
+    cases = data["montants_tranches"].get(branche) or {}
+    if cases.get("bornees") and regles_au_moins(devis, REGLES_ECARTS_0411):
+        avertissements.append(
+            "échéancier au-delà du TTC : " + ", ".join(cases["bornees"])
+            + " borné(s) au reste — corrigez l'échéancier")
+    return cases
+
+
+def branche_echeancier(devis, data, branche_hier, option_choisie):
+    """AMOT122 (C-AMOT-VER4-007, D-AMOT-VER4-1) — LA branche d'échéancier d'un
+    devis résidentiel à deux options, au niveau 12 : celle d'``option_effective``
+    (l'option facturée, la même que ``public/payload_conditions._acompte_publique``)
+    — le texte (``payment_terms``) la suit, et quand la règle des cases du Devis
+    final (scénario, puis option recommandée) en choisirait une autre, elle est
+    servie dans ``data['branche_echeancier']`` pour que les cases la lisent
+    (sinon aucune clé : rendu octet-identique). C&I, mono-option, devis hors base
+    ou niveau 11 : rien n'est servi, ``branche_hier`` (rendu d'hier).
+
+    ``option_choisie`` (« sans » / « avec » / None) est résolue par l'APPELANT
+    (``builder._option_echeancier`` : ``utils.options.option_effective``, None
+    pour un C&I ou un devis hors base) — ce module n'importe jamais
+    ``utils.options`` (SPL164, ``utils.options`` importe le moteur à son sommet)."""
+    from apps.ventes.domain.regles_calcul import REGLES_ECARTS_0411, regles_au_moins
+    if (option_choisie not in ("sans", "avec") or getattr(devis, 'pk', None) is None
+            or not regles_au_moins(devis, REGLES_ECARTS_0411)):
+        return branche_hier
+    choisie = option_choisie
+    scenario = data.get("scenario")
+    cases = ("sans" if scenario == "Sans batterie" else "avec" if scenario == "Avec batterie"
+             else "sans" if data.get("recommended") == "Sans batterie" else "avec")
+    if choisie != cases:
+        data["branche_echeancier"] = choisie
+    return choisie
 
 
 def tranches_echeancier_en_montant(devis):

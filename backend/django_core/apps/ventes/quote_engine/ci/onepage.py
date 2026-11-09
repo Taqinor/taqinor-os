@@ -73,6 +73,17 @@ def legende_retour(chiffres, L):
             + L("ci_retour_prix_complet") + "</div>")
 
 
+def argent(valeur, fnum):
+    """AMOT126 (C-AMOT-VER4-040) — l'argent ENTIER du une-page C&I :
+    ``montants.fmt_dirhams`` (moitié vers le haut, séparateur de la langue),
+    comme la couverture C&I ; devis avant le niveau 12 : ``fnum`` d'hier."""
+    try:
+        from ..montants import fmt_dirhams, regles_0411_historique
+    except ImportError:  # exécution directe du moteur depuis son dossier
+        from montants import fmt_dirhams, regles_0411_historique
+    return fnum(valeur) if regles_0411_historique() else fmt_dirhams(valeur)
+
+
 def economie_ttc(chiffres, fnum, L):
     """AMOT95 — base « deux » : sous l'économie HT, « soit N MAD TTC » (la
     TTC servie par ``chiffres_cles``), sinon ''."""
@@ -80,7 +91,7 @@ def economie_ttc(chiffres, fnum, L):
     if ttc is None:
         return ""
     return ('<div style="font-size:5pt;font-weight:600;text-transform:none;'
-            f'letter-spacing:0;margin-top:1px;">{L("ci_soit")} {fnum(ttc)} '
+            f'letter-spacing:0;margin-top:1px;">{L("ci_soit")} {argent(ttc, fnum)} '
             f'MAD {L("ci_ttc")}</div>')
 
 

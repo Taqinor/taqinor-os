@@ -30,6 +30,7 @@ from ..corps_achats import ProduitDecoupeCorps, valider_corps
 from ..erreurs_achats import ConflitEtat, IntrouvableMetier
 from ..models import Produit, Categorie, Fournisseur, MouvementStock, EmplacementStock, RegleCodeBarres
 from ..serializers import ProduitSerializer, PrixFournisseurSerializer
+from apps.roles.permissions import DroitDeLaGrille, droits_de_la_grille  # ASEC70
 from authentication.permissions import (
     IsAnyRole,
     IsAdminRole,
@@ -404,8 +405,8 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             # l'@action, d'où ce cas explicite — sinon repli IsAdminRole).
             # ZSTK3 — `previsionnel` est LECTURE SEULE, même garde.
             # XSTK7 — `tracer` (rapport de traçabilité) est LECTURE SEULE,
-            # même garde.
-            return [IsAnyRole()]
+            # même garde. ASEC70 — l'export applique EN PLUS `stock_export`.
+            return [IsAnyRole(), *droits_de_la_grille(self, export_xlsx=[DroitDeLaGrille('stock_export')])]
         elif self.action in ('create', 'dupliquer'):
             # QG4 — création réservée à Directeur + Commercial responsable.
             # QP2 — le clone (`dupliquer`) EST une création : même garde. Ce
@@ -425,6 +426,14 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             return [HasPermissionOrLegacy('stock_modifier')()]
         elif self.action in ('destroy', 'force_delete'):
             return [IsAdminRole()]
+        elif self.action == 'emplacements':
+            # AAPV74 (rejeu 08/11) — la ventilation par emplacement alimente le
+            # dialogue « Transférer » : même droit que le transfert lui-même
+            # (`stock_mouvement`, cf. TransfertStockViewSet). Aucun prix ni
+            # valorisation dans la réponse (`stock_breakdown`), donc rien à
+            # masquer. Cas explicite OBLIGATOIRE (sinon repli IsAdminRole →
+            # un responsable ne voyait que « dispo 0 »).
+            return [HasPermissionOrLegacy('stock_mouvement')()]
         elif self.action in ('prix_fournisseurs', 'historique_prix'):
             # AUD213 — cette action ne renvoie QUE des prix d'ACHAT (et leurs
             # paliers) : même gate `prix_achat_voir` que le ViewSet dédié et
@@ -509,6 +518,11 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         les devis comme l'édition unitaire.
         """
         avant = _instantane_suivi(serializer.instance)
+        if serializer.validated_data.get('is_archived') and not serializer.instance.is_archived:
+            from ..services import motif_archivage_refuse  # AAPV19
+            motif = motif_archivage_refuse(serializer.instance)
+            if motif:
+                raise ConflitEtat({'detail': motif})
         # L'écriture PASSE PAR ``super()`` : c'est lui qui force la société côté
         # serveur (``TenantMixin.perform_update``). Sauvegarder soi-même ici
         # défairait cette garde d'isolation.
@@ -525,6 +539,10 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         detail=serializers.CharField(), nb_mouvements=serializers.IntegerField())})
     def destroy(self, request, *args, **kwargs):
         produit = self.get_object()
+        from ..services import motif_archivage_refuse  # AAPV19 — stock ≠ 0 : refus
+        motif = motif_archivage_refuse(produit)
+        if motif:
+            return Response({'detail': motif}, status=status.HTTP_409_CONFLICT)
         # ASTK81 — un produit référencé par une relation vivante (réservation
         # chantier, ligne BCF, conditionnement…) est ARCHIVÉ, jamais supprimé :
         # plus de donnée détachée (SET_NULL) ni effacée en cascade.
@@ -641,7 +659,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                                  ids=serializers.ListField(child=serializers.IntegerField(),
                                                            min_length=1)), responses={XLSX: BINARY})
     @action(detail=False, methods=['post'], url_path='export-xlsx',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsAnyRole, DroitDeLaGrille('stock_export')])
     def export_xlsx(self, request):
         """Exporte une sélection de produits en .xlsx (prix d'achat exclu)."""
         from ..services import export_products_xlsx
@@ -790,7 +808,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
 
     @extend_schema(responses=LISTE)
     @action(detail=True, methods=['get'], url_path='emplacements',
-            permission_classes=[IsAdminRole])
+            permission_classes=[HasPermissionOrLegacy('stock_mouvement')])
     def emplacements(self, request, *args, **kwargs):
         """N15 — ventilation du stock de ce produit par emplacement (le dépôt
         principal détient le reste = total − somme des autres)."""
@@ -909,7 +927,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                 return Response(status=status.HTTP_204_NO_CONTENT)
             produit.photo = None
             produit.save(update_fields=['photo'])
-            delete_attachment(ancienne.file_key)
+            delete_attachment(ancienne.file_key, liberee_par=(ancienne,))
             ancienne.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -933,7 +951,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             produit.save(update_fields=['photo'])
         # Remplacer une photo ne laisse pas l'ancienne traîner dans MinIO.
         if ancienne is not None:
-            delete_attachment(ancienne.file_key)
+            delete_attachment(ancienne.file_key, liberee_par=(ancienne,))
             ancienne.delete()
         return Response(
             {'image_url':

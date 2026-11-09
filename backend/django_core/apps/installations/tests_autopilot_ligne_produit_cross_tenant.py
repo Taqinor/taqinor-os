@@ -44,7 +44,7 @@ class TestRetourLigneProduitCrossTenant(TestCase):
         resp = self.api_a.patch(
             f'{BASE}/retour-livraison-lignes/{self.ligne.id}/',
             {'produit': self.produit_b.id}, format='json')
-        self.assertEqual(resp.status_code, 404, resp.content)
+        self.assertEqual(resp.status_code, 409, resp.content)  # ENF45 a : mise à jour = 409
         self.assertIn('produit', resp.data)
         self.ligne.refresh_from_db()
         self.assertEqual(self.ligne.produit_id, self.produit_a.id)
@@ -86,7 +86,7 @@ class TestOrdreDemontageLigneProduitCrossTenant(TestCase):
         resp = self.api_a.patch(
             f'{BASE}/ordre-demontage-lignes/{self.ligne.id}/',
             {'produit': self.produit_b.id}, format='json')
-        self.assertEqual(resp.status_code, 404, resp.content)
+        self.assertEqual(resp.status_code, 409, resp.content)  # ENF45 a : mise à jour = 409
         self.assertIn('produit', resp.data)
         self.ligne.refresh_from_db()
         self.assertEqual(self.ligne.produit_id, self.produit_a.id)

@@ -104,6 +104,28 @@ class TestDashboardBasic(TestCase):
         r = self.api.get(URL)
         self.assertEqual(r.status_code, 200)
 
+    def test_admin_rh_403_commercial_200(self):
+        """AARG67 (C-AARG-VER5-003) — montants facturés/encaissés/dus : Admin
+        RH (aucun code ventes) 403, Commercial et Directeur 200.
+        Mutant : remettre ``IsAnyRole`` ⇒ échec."""
+        from django.core.management import call_command
+        from apps.roles.models import Role
+        call_command('init_roles', verbosity=0)
+        roles = {r.nom: r for r in Role.objects.filter(company=self.co)}
+        for nom, attendu in (('Admin RH', 403), ('Commercial', 200),
+                             ('Directeur', 200)):
+            user = User.objects.create_user(
+                username=f"aarg67-{nom.replace(' ', '')}", password='x', role_legacy='normal',
+                role=roles[nom], company=self.co)
+            for url in (URL, URL + '?mine=1'):
+                with self.subTest(role=nom, url=url):
+                    r = _auth(user).get(url)
+                    self.assertEqual(r.status_code, attendu, r.data)
+                    if attendu == 403:
+                        self.assertEqual(
+                            str(r.data['detail']), 'Accès aux factures '
+                            'réservé aux rôles du module Ventes.')
+
     def test_periode_mal_formee_400(self):
         # ENF11 — start/end/month illisibles : 400 (ils finissaient en 500
         # dans ``date_creation__date__range``).

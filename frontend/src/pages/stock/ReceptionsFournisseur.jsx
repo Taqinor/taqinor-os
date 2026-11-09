@@ -65,6 +65,7 @@ export function NouvelleReception({ bonsRecevables, onClose, onSaved }) {
   // N° de série / lot par ligne (optionnels, repliés par défaut).
   const [series, setSeries] = useState({})      // { ligneCmdId: texte }
   const [lots, setLots] = useState({})          // { ligneCmdId: texte }
+  const [peremptions, setPeremptions] = useState({})  // AAPV39 { ligneCmdId: AAAA-MM-JJ }
   const [ouvertes, setOuvertes] = useState({})  // { ligneCmdId: bool }
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
@@ -130,6 +131,7 @@ export function NouvelleReception({ bonsRecevables, onClose, onSaved }) {
         if (nums.length > 0) ligne.numeros_serie = nums
         const lot = (lots[l.id] ?? '').trim()
         if (lot) ligne.numero_lot = lot
+        if (lot && peremptions[l.id]) ligne.date_peremption = peremptions[l.id]
         return ligne
       })
       .filter(Boolean)
@@ -260,6 +262,11 @@ export function NouvelleReception({ bonsRecevables, onClose, onSaved }) {
                         <Input id={`rec-lot-${l.id}`} className="h-9" value={lots[l.id] ?? ''}
                                onChange={(e) => setLots((x) => ({ ...x, [l.id]: e.target.value }))} />
                       </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-medium" htmlFor={`rec-per-${l.id}`}>Péremption du lot (optionnel)</label>
+                        <Input id={`rec-per-${l.id}`} type="date" className="h-9" value={peremptions[l.id] ?? ''}
+                               onChange={(e) => setPeremptions((x) => ({ ...x, [l.id]: e.target.value }))} />
+                      </div>
                     </div>
                   )}
                 </div>
@@ -305,6 +312,30 @@ export function ReceptionDetail({ reception, onClose, onSaved, peutReceptionner 
   const lignes = reception?.lignes ?? []
   const isBrouillon = reception?.statut === 'brouillon'
   const isConfirme = reception?.statut === 'confirme'
+  // AAPV24 — contrôle qualité à réception (plan d'échantillonnage NTWMS34) :
+  // verdict saisi ici, « Confirmer » bloqué tant qu'il manque.
+  const [qualite, setQualite] = useState(null)
+  useEffect(() => {
+    if (!reception?.id || reception?.statut !== 'brouillon') return undefined
+    let actif = true
+    // Lecture best-effort : sans plan (ou sans droit), l'écran reste inchangé.
+    Promise.resolve()
+      .then(() => stockApi.getEchantillonnageReception(reception.id))
+      .then((r) => { if (actif) setQualite(r?.data ?? null) })
+      .catch(() => {})
+    return () => { actif = false }
+  }, [reception?.id, reception?.statut])
+  const controleManquant = Boolean(qualite?.echantillon_requis && !qualite?.controle)
+  const saisirVerdict = async (resultat) => {
+    setBusy(true); setError(null)
+    try {
+      const r = await stockApi.saisirControleQualiteReception(reception.id, {
+        resultat, unites_controlees: qualite?.unites_attendues ?? 0 })
+      setQualite((q) => ({ ...q, controle: r.data }))
+    } catch (err) {
+      setError(frError(err, "L'enregistrement du contrôle qualité a échoué."))
+    } finally { setBusy(false) }
+  }
 
   const confirmer = async () => {
     setBusy(true); setError(null)
@@ -318,11 +349,17 @@ export function ReceptionDetail({ reception, onClose, onSaved, peutReceptionner 
   }
 
   const annuler = async () => {
-    if (!(await demanderConfirmation({ title: 'Annuler cette réception ?', confirmLabel: 'Annuler la réception' }))) return
+    // AAPV13 — une réception CONFIRMÉE s'annule par contre-passation.
+    if (!(await demanderConfirmation({
+      title: 'Annuler cette réception ?',
+      description: isConfirme
+        ? 'La réception est confirmée : son entrée de stock sera contre-passée.' : undefined,
+      confirmLabel: 'Annuler la réception',
+    }))) return
     setBusy(true); setError(null)
     try {
-      await stockApi.annulerReceptionFournisseur(reception.id)
-      onSaved?.('Réception annulée.')
+      await stockApi.annulerReceptionFournisseur(reception.id, reception.statut)
+      onSaved?.(isConfirme ? 'Réception annulée (contre-passation).' : 'Réception annulée.')
       onClose()
     } catch (err) {
       setError(frError(err, "L'annulation a échoué."))
@@ -392,7 +429,10 @@ export function ReceptionDetail({ reception, onClose, onSaved, peutReceptionner 
           )}
           {lignes.map((l) => (
             <tr key={l.id} className="border-t border-border">
-              <CellulesProduitQuantite l={l} />
+              {/* AAPV40 — confirmée : la quantité ENTRÉE, la saisie en second. */}
+              <CellulesProduitQuantite l={isConfirme && l.quantite_appliquee != null
+                && Number(l.quantite_appliquee) !== Number(l.quantite)
+                ? { ...l, quantite: `${l.quantite_appliquee} entré(s) (saisi ${l.quantite})` } : l} />
               <td className="px-3 py-2">
                 {[(l.numeros_serie ?? []).join(', '), l.numero_lot ? `Lot ${l.numero_lot}` : '']
                   .filter(Boolean).join(' · ') || '—'}
@@ -401,6 +441,24 @@ export function ReceptionDetail({ reception, onClose, onSaved, peutReceptionner 
           ))}
         </TableauLignes>
 
+        {isBrouillon && qualite?.echantillon_requis && (
+          <div role="region" aria-label="Contrôle qualité"
+               className="flex flex-wrap items-center gap-2 rounded-lg border border-border p-3 text-sm">
+            <span className="font-medium">Contrôle qualité</span>
+            <span className="text-muted-foreground">
+              {qualite.unites_attendues} unité(s) à contrôler
+              {qualite.controle ? ` — verdict : ${qualite.controle.resultat === 'conforme' ? 'conforme' : 'non conforme'}` : ''}
+            </span>
+            {!qualite.controle && peutReceptionner && (
+              <>
+                <Button type="button" size="sm" variant="success" loading={busy}
+                        onClick={() => saisirVerdict('conforme')}>Conforme</Button>
+                <Button type="button" size="sm" variant="destructive" loading={busy}
+                        onClick={() => saisirVerdict('non_conforme')}>Non conforme</Button>
+              </>
+            )}
+          </div>
+        )}
         <AlerteErreur error={error} />
         {factureInfo && (
           <div role="status" className="rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
@@ -409,7 +467,7 @@ export function ReceptionDetail({ reception, onClose, onSaved, peutReceptionner 
         )}
 
         <DialogFooter className="flex-wrap">
-          {peutReceptionner && isBrouillon && (
+          {peutReceptionner && (isBrouillon || isConfirme) && (
             <Button type="button" variant="destructive" loading={busy} onClick={annuler}>
               Annuler la réception
             </Button>
@@ -431,7 +489,9 @@ export function ReceptionDetail({ reception, onClose, onSaved, peutReceptionner 
           )}
           <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
           {peutReceptionner && isBrouillon && (
-            <Button type="button" variant="success" loading={busy} onClick={confirmer}>
+            <Button type="button" variant="success" loading={busy} onClick={confirmer}
+                    disabled={controleManquant}
+                    title={controleManquant ? 'Saisissez d\'abord le contrôle qualité' : undefined}>
               {busy ? '…' : 'Confirmer (incrémente le stock)'}
             </Button>
           )}

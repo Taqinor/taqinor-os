@@ -1,0 +1,15 @@
+# Preuve en direct ACSV54 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Verdict : PASS — Sonde C-ACSV-064 : repro False.
+
+== C-ACSV-064 (sha f57951e87)
+attendu : repro si un des 3 PATCH est accepté (200) et change la facturation : (a) 2 factures pour T1, (b) ligne à 0.00, (c) facture d'un autre client renvoyée
+observé : {'a': {'facturer1': (403, None), 'patch': (200, None), 'facturer2': (403, None), 'factures_distinctes': 0, 'lignes_f2': []}, 'b': {'couverture_calculee': Ticket.Couverture.FACTURABLE, 'patch': (403, "{'detail': ErrorDetail(string='Seul un responsable ou un administrateur change la couverture.', code='permission_denied'), 'error': {'code': 'permission_denied'"), 'couverture_stockee': 'a_determiner', 'facturer': (403, None), 'lignes': []}, 'c': {'patch': (200, None), 'facturer': (403, None), 'facture_renvoyee_est_autre_client': False, 'lignes_fx': []}}
+{"a": {"facturer1": [403, null], "patch": [200, null], "facturer2": [403, null], "factures_distinctes": 0, "lignes_f2": []}, "b": {"couverture_calculee": "facturable", "patch": [403, "{'detail': ErrorDetail(string='Seul un responsable ou un administrateur change la couverture.', code='permission_denied'), 'error': {'code': 'permission_denied'"], "couverture_stockee": "a_determiner", "facturer": [403, null], "lignes": []}, "c": {"patch": [200, null], "facturer": [403, null], "facture_renvoyee_est_autre_client": false, "lignes_fx": []}, "repro_a": false, "repro_b": false, "repro_c": false, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0

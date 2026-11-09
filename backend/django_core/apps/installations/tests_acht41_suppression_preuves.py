@@ -135,3 +135,101 @@ class SuppressionPreuvesTests(TestCase):
         for attendu in ('N° de série SN-41 supprimé', 'Mémo vocal supprimé',
                         'Ligne de consommation Vis supprimée'):
             self.assertIn(attendu, lignes)
+
+
+class CleLibereeParLaLigneTests(TestCase):
+    """ADOC200 (C-ADOC-VER4-010) — la photo supprimée libère sa clé
+    (``liberee_par``) : son binaire part ; une photo importée en créatif
+    garde le sien. Seul le client MinIO est simulé (frontière externe) :
+    ``delete_attachment`` est RÉEL ici."""
+
+    _iv = SuppressionPreuvesTests._iv
+    _photo = SuppressionPreuvesTests._photo
+
+    def setUp(self):
+        self.company, _ = Company.objects.get_or_create(
+            slug='co-adoc200', defaults={'nom': 'Co ADOC200'})
+        self.user = User.objects.create_user(
+            username='resp-adoc200', password='x', company=self.company,
+            role_legacy='responsable')
+        self.api = APIClient()
+        self.api.force_authenticate(self.user)
+        inst = Installation.objects.create(
+            company=self.company, reference='CH-ADOC200')
+        self.validee = self._iv(inst, Intervention.Statut.VALIDEE)
+        self.en_cours = self._iv(inst, Intervention.Statut.SUR_SITE)
+
+    def test_photo_importee_en_creatif_conservee(self):
+        from apps.adsengine.models import CreativeAsset
+        p, q = self._photo(self.en_cours), self._photo(self.validee)
+        Attachment.objects.filter(pk=q.pk).update(file_key='k/creatif')
+        CreativeAsset.objects.create(
+            company=self.company, asset_type='static', file_key='k/creatif')
+        client = mock.MagicMock()
+        with mock.patch('apps.records.storage.get_minio_client',
+                        return_value=client):
+            for iv, photo in ((self.en_cours, p), (self.validee, q)):
+                r = self.api.post(
+                    f'{BASE}/{iv.id}/supprimer-photo/',
+                    {'photo': photo.id, 'motif': 'doublon'}, format='json')
+                self.assertEqual(r.status_code, 204, r.data)
+        self.assertFalse(Attachment.objects.filter(
+            pk__in=(p.pk, q.pk)).exists())
+        self.assertEqual(
+            [c.kwargs['Key'] for c in client.delete_object.call_args_list],
+            [p.file_key])
+        self.assertTrue(CreativeAsset.objects.filter(
+            file_key='k/creatif').exists())
+
+    def test_photo_checklist_supprimee_decoche_et_trace(self):
+        """ACSV18 (C-ACSV-023) — supprimer l'unique photo d'une étape à photo
+        obligatoire cochée la décoche (gate photos la redemande) et le note au
+        chatter ; avec une seconde photo restante : cochée, note seule.
+        ROUGE AVANT : `fait` vrai, 0 note."""
+        from django.utils import timezone
+
+        from apps.installations.models import (
+            ChantierChecklistItem, InstallationActivity, PhotoChecklistMeta,
+        )
+        from apps.installations.services import raison_refus_cocher_etape
+        admin = User.objects.create_user(
+            username='admin-acsv18', password='x', company=self.company,
+            role_legacy='admin')
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(admin)}')
+        inst = Installation.objects.create(company=self.company, reference='CH-ACSV18')
+        item = ChantierChecklistItem.objects.create(
+            company=self.company, installation=inst, cle='tableau',
+            libelle='Photo du tableau', photo_obligatoire=True, fait=True,
+            fait_par=self.user, fait_le=timezone.now())
+        ct = ContentType.objects.get_for_model(Installation)
+
+        def photo(n):
+            att = Attachment.objects.create(
+                company=self.company, content_type=ct, object_id=inst.id,
+                file_key=f'k/acsv18-{n}', filename=f'tableau-{n}.png',
+                uploaded_by=self.user)
+            PhotoChecklistMeta.objects.create(
+                company=self.company, attachment=att, checklist_item=item)
+            return att
+
+        def notes():
+            return list(InstallationActivity.objects.filter(
+                installation=inst, body__startswith="Photo de l'étape").values_list('body', flat=True))
+
+        p1, p2 = photo(1), photo(2)
+        with mock.patch('apps.records.views.delete_attachment'):
+            r = api.delete(f'/api/django/records/attachments/{p1.id}/')
+            self.assertEqual(r.status_code, 204, getattr(r, 'data', r))
+            item.refresh_from_db()
+            self.assertTrue(item.fait)
+            self.assertEqual(notes(), ["Photo de l'étape « Photo du tableau » supprimée."])
+            r = api.delete(f'/api/django/records/attachments/{p2.id}/')
+            self.assertEqual(r.status_code, 204, getattr(r, 'data', r))
+        item.refresh_from_db()
+        self.assertFalse(item.fait)
+        self.assertIsNone(item.fait_par)
+        self.assertIsNone(item.fait_le)
+        self.assertIn("Photo de l'étape « Photo du tableau » supprimée — étape décochée "
+                      '(aucune photo restante).', notes())
+        self.assertIsNotNone(raison_refus_cocher_etape(item, True))

@@ -74,17 +74,19 @@ class Ntwms15Base(TestCase):
         self.api = auth(self.admin)
 
     def _reception(self, lignes):
-        """Réception BROUILLON + ses lignes (produit, quantité)."""
+        """Réception CONFIRMÉE (AAPV38 : seule une réception confirmée part en
+        cross-dock) + ses lignes (produit, quantité appliquée)."""
         reception = ReceptionFournisseur.objects.create(
             company=self.company, reference=f'REC-NTWMS15-{len(lignes)}',
-            bon_commande=self.bcf, date_reception=DATE_REF)
+            bon_commande=self.bcf, date_reception=DATE_REF,
+            statut=ReceptionFournisseur.Statut.CONFIRME)
         for produit, quantite in lignes:
             ligne_bcf = LigneBonCommandeFournisseur.objects.create(
                 bon_commande=self.bcf, produit=produit, quantite=quantite,
                 prix_achat_unitaire=produit.prix_achat)
             LigneReceptionFournisseur.objects.create(
                 reception=reception, ligne_commande=ligne_bcf,
-                produit=produit, quantite=quantite)
+                produit=produit, quantite=quantite, quantite_appliquee=quantite)
         return reception
 
     def _vague_en_attente(self, besoins, lancer=False):
@@ -127,6 +129,23 @@ class TestPropositionCrossDock(Ntwms15Base):
 
 
 class TestAffectationCrossDock(Ntwms15Base):
+    def test_reception_brouillon_refusee_quantite_appliquee_seule(self):
+        """AAPV38 — réception brouillon : refus (409) ; réception de 12
+        saisis dont 10 appliqués : seuls 10 partent au colis."""
+        from apps.stock.erreurs_achats import EtatIncompatible
+        self._vague_en_attente([{'produit_id': self.produit.id, 'quantite': 12}], lancer=True)
+        reception = self._reception([(self.produit, 12)])
+        reception.statut = ReceptionFournisseur.Statut.BROUILLON
+        reception.save(update_fields=['statut'])
+        with self.assertRaises(EtatIncompatible):
+            affecter_reception_cross_dock(reception=reception, user=self.admin)
+        reception.statut = ReceptionFournisseur.Statut.CONFIRME
+        reception.save(update_fields=['statut'])
+        reception.lignes.update(quantite_appliquee=10)
+        resultat = affecter_reception_cross_dock(reception=reception, user=self.admin)
+        colis = UniteLogistique.objects.get(id=resultat['unite_logistique'])
+        self.assertEqual(sum(lg.quantite for lg in colis.lignes.all()), 10)
+
     def test_reception_entierement_matchee_part_sans_passer_en_casier(self):
         """Le critère d'acceptation, de bout en bout."""
         self._vague_en_attente([

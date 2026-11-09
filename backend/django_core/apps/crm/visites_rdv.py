@@ -11,6 +11,7 @@ from core.dates import aujourd_hui_local
 from .leads_socle import lead_notification_recipients
 from .models import LeadActivity
 import logging
+from .activity import journal_systeme
 
 logger = logging.getLogger(__name__)
 
@@ -163,7 +164,8 @@ def build_appointment_confirmation_whatsapp(request, appointment):
         f'/api/django/crm/appointments/{appointment.pk}/ics/')
     salutation = f'Bonjour {nom},' if nom else 'Bonjour,'
     message = f'{salutation} je confirme notre rendez-vous le {date_str}.'
-    return message, build_wa_url(phone, message), ics_url
+    from .cadence_messages import refus_rendu_whatsapp  # ACVI111 — aucun lien à un refusé
+    return message, (None if refus_rendu_whatsapp(lead) else build_wa_url(phone, message)), ics_url
 
 
 # ── XSAL17 — Placeholder {lien_rdv} : lien de réservation dans les messages ──
@@ -315,8 +317,8 @@ def reserver_creneau_public(token, *, scheduled_at, notes=None):
             lead=link.lead, scheduled_at=scheduled_at, notes=notes, user=None)
         BookingLink.objects.filter(pk=link.pk).update(appointment=appointment)
         # ACRM41 — une note LISIBLE au chatter, dans la même transaction.
-        LeadActivity.objects.create(
-            company=link.lead.company, lead=link.lead, user=None,
+        journal_systeme(
+            company=link.lead.company, lead=link.lead,
             kind=LeadActivity.Kind.NOTE,
             body=(f'Le client a réservé sa visite le '
                   f'{_quand_local(scheduled_at)} via le lien de '

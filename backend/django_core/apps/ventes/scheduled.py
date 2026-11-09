@@ -57,19 +57,10 @@ def _echeance_effective(facture, today):
 
     AARG53 — une part plus récente que la facture reste seule due (note de débit,
     retenue libérée) : son échéance à elle."""
-    part_due = facture.echeance_exigible
-    if part_due and part_due != facture.echeance_appliquee:
-        return part_due
-    if facture.date_echeance:
-        return facture.date_echeance
-    base = facture.date_emission or today
-    from .services import calculer_date_echeance
-    derivee = calculer_date_echeance(
-        client=getattr(facture, 'client', None), date_emission=base)
-    if derivee is not None:
-        return derivee
+    # AARG70 — le délai client vit dans ``Facture.echeance_appliquee`` (une
+    # seule règle pour le beat, la liste des relances et ``jours_retard``).
     from apps.facturation.models import DEFAULT_ECHEANCE_DAYS
-    return base + timedelta(days=DEFAULT_ECHEANCE_DAYS)
+    return facture.echeance_exigible or today + timedelta(days=DEFAULT_ECHEANCE_DAYS)
 
 
 @shared_task(name='ventes.check_overdue_factures')

@@ -99,7 +99,7 @@ def chantiers_receptionnes(company, *, date_debut=None, date_fin=None):
 
     qs = Installation.objects.filter(
         company=company, statut=Installation.Statut.RECEPTIONNE,
-        date_reception__isnull=False)
+        date_reception__isnull=False, annule=False)  # ACSV103
     if date_debut is not None:
         qs = qs.filter(date_reception__gte=date_debut)
     if date_fin is not None:
@@ -205,6 +205,14 @@ def installation_gps_map(installation_ids):
     return {iid: (lat, lng) for iid, lat, lng in rows}
 
 
+def references_installations(company_id, installation_ids):
+    """AMON96 — {installation_id: référence} d'un lot de chantiers de la
+    société, en une requête (libellé lisible d'un système hors installations)."""
+    from .models import Installation
+    return dict(Installation.objects.filter(company_id=company_id, id__in=list(installation_ids))
+                .values_list('id', 'reference'))
+
+
 def active_installation_locations(company):
     """PUB79 — Chantiers ACTIFS (hors ``CLOTURE``) avec GPS + ville, pour les
     déclencheurs cross-app lisant la météo par emplacement (ex.
@@ -258,6 +266,18 @@ def installation_qs_for_remise():
             .select_related('client', 'devis', 'company',
                             'technicien_responsable')
             .prefetch_related('devis__lignes__produit'))
+
+
+def pack_remise_vivant(installation):
+    """ACSV38 — pack de remise PERSISTÉ relu vivant : pièces et verdict de
+    ``services.assemble_handover_pieces`` (ceux du gate), méta du pack gardée
+    (``pack``, ``monitoring_acces``) ; ``None`` sans pack persisté."""
+    pack = getattr(installation, 'handover_pack', None)
+    if pack is None:
+        return None
+    from .services import assemble_handover_pieces
+    return {**assemble_handover_pieces(installation), 'pack': pack,
+            'monitoring_acces': pack.monitoring_acces or '', 'persiste': True}
 
 
 def intervention_scoped(company, pk):
@@ -355,6 +375,21 @@ def serie_entrepot_scoped_by_serial(company, produit_id, numero_serie):
             .first())
 
 
+def series_en_stock(company, produit_id, numeros):
+    """AAPV22 — {numéro: référence de réception} des séries de ``numeros``
+    déjà en rayon (EN_STOCK ou RESERVE) pour ce produit, scopé société.
+    Lecture cross-app consommée par stock (refus d'un doublon à l'entrée)."""
+    from .models import SerieEntrepot
+    numeros = [n for n in (numeros or []) if n]
+    if company is None or produit_id is None or not numeros:
+        return {}
+    return dict(SerieEntrepot.objects.filter(
+        company=company, produit_id=produit_id, numero_serie__in=numeros,
+        statut__in=[SerieEntrepot.Statut.EN_STOCK,
+                    SerieEntrepot.Statut.RESERVE],
+    ).values_list('numero_serie', 'reference_reception'))
+
+
 def reserved_quantities_for_company(company):
     """Map {produit_id: quantité réservée active} pour toute la société —
     chantier (N14) + ordre d'assemblage (XMFG2), un seul agrégat par source
@@ -385,6 +420,26 @@ def own_reservation_map(installation):
             .filter(installation=installation)
             .values_list('produit_id', 'quantite'))
     return {pid: qte for pid, qte in rows}
+
+
+def reservations_anterieures_map(installation):
+    """AAPV70 — {produit_id: quantité} déjà promise par les réservations
+    actives non consommées des AUTRES chantiers posées AVANT celle de ce
+    chantier (ordre ``(date_creation, id)`` ; toutes si le chantier n'en a
+    pas pour ce produit), + les réservations d'assemblage actives. Le stock
+    sert d'abord ces réservations antérieures (contrat lu par AAPV15)."""
+    base = _active_reservations().filter(company=installation.company_id)
+    propres = {pid: (dc, rid) for pid, dc, rid in base.filter(
+        installation=installation).values_list('produit_id', 'date_creation', 'id')}
+    out = {pid: 0 for pid in propres}
+    for pid, qte, dc, rid in base.exclude(installation=installation).values_list(
+            'produit_id', 'quantite', 'date_creation', 'id'):
+        if pid not in propres or (dc, rid) < propres[pid]:
+            out[pid] = out.get(pid, 0) + (qte or 0)
+    for pid, qte in _active_reservations_assemblage().filter(
+            company=installation.company_id).values_list('produit_id', 'quantite'):
+        out[pid] = out.get(pid, 0) + (qte or 0)
+    return out
 
 
 def update_installation_lead(absorbed_lead, survivor_lead):
@@ -1717,7 +1772,9 @@ def bcf_approbation_valide(company, bcf_id, montant):
     total du BCF depuis l'approbation invalide celle-ci (cohérent avec la
     ré-approbation XPUR18). Lecture seule, jamais d'écriture ici."""
     from decimal import Decimal
-    from .models_approbation_bcf import ApprobationBCF
+    from .models_approbation_bcf import (
+        PALIER_ADMIN, PALIER_RESPONSABLE, ApprobationBCF,
+    )
 
     seuil = seuil_approbation_bcf_actif(company)
     if seuil is None:
@@ -1731,7 +1788,9 @@ def bcf_approbation_valide(company, bcf_id, montant):
                    .first())
     if approbation is None:
         return False
-    if approbation.palier != palier_requis:
+    # AAPV48 — un palier SUPÉRIEUR OU ÉGAL au requis reste valide.
+    rang = {PALIER_RESPONSABLE: 0, PALIER_ADMIN: 1}
+    if rang.get(approbation.palier, -1) < rang.get(palier_requis, 0):
         return False
     if (approbation.montant_approuve or Decimal('0')) < montant:
         return False
@@ -2681,6 +2740,20 @@ def suggestion_pieces_intervention(
         }
         for row in lignes[:max(int(top_n or _TOP_N_PIECES_DEFAUT), 1)]
     ]
+
+
+def consommations_appliquees_du_ticket(company, ticket_id):
+    """ACSV101 — lignes F11 catalogue appliquées au stock des interventions NON
+    annulées du ticket (bornées à ``company``) : entrée ``pieces`` de sa facture."""
+    from types import SimpleNamespace
+    from .models import ConsommationLigne
+    lignes = (ConsommationLigne.objects
+              .filter(company=company, consommation__intervention__ticket_id=ticket_id,
+                      consommation__intervention__annulee=False,
+                      stock_applique=True, produit__isnull=False)
+              .select_related('produit').order_by('pk'))
+    return [SimpleNamespace(produit=li.produit, quantite=li.quantite_utilisee)
+            for li in lignes]
 
 
 def intervention_export_row(interv):

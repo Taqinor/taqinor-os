@@ -290,6 +290,43 @@ class TestOptionDownstream(TestCase):
         self.assertEqual(t['ttc'], Decimal(str(devis.total_ttc)))
         self.assertEqual(len(option_lines(devis)), 2)
 
+    def test_lecture_seule_lead_lignes_de_l_option(self):
+        """AANA88 — le panneau visite d'un devis deux options accepté « sans »
+        ne liste que les lignes de l'option retenue, sous son total TTC."""
+        from apps.crm.models import Lead
+        from apps.ventes.selectors import devis_lecture_seule_pour_lead
+        lead = Lead.objects.create(company=self.company, nom='Lead AANA88')
+        devis = self._two_option_devis(num=88)
+        Devis.objects.filter(pk=devis.pk).update(
+            lead=lead, statut=Devis.Statut.ACCEPTE,
+            option_acceptee='sans_batterie')
+        (dossier,) = devis_lecture_seule_pour_lead(lead)
+        self.assertEqual(
+            [li['designation'] for li in dossier['lignes']],
+            [li.designation for li in option_lines(Devis.objects.get(pk=devis.pk))])
+        noms = ' '.join(li['designation'] for li in dossier['lignes'])
+        self.assertNotIn('Batterie', noms)
+        self.assertNotIn('hybride', noms)
+        self.assertEqual(len(dossier['lignes']), 3)
+        self.assertEqual(Decimal(dossier['total_ttc']),
+                         Decimal(str(Devis.objects.get(pk=devis.pk).total_ttc)))
+
+    def test_devis_pour_projet_option_retenue(self):
+        """AANA89 — le budget projet d'un deux-options accepté « sans » ne
+        ventile que les lignes de l'option retenue."""
+        from apps.ventes.selectors import devis_pour_projet
+        devis = self._two_option_devis(num=89)
+        Devis.objects.filter(pk=devis.pk).update(
+            statut=Devis.Statut.ACCEPTE, option_acceptee='sans_batterie')
+        res = devis_pour_projet(devis.id, self.company)
+        attendu = sum((Decimal(str(li.total_ht)) for li in option_lines(
+            Devis.objects.get(pk=devis.pk))), Decimal('0'))
+        self.assertEqual(attendu, Decimal('31100'))
+        self.assertEqual(
+            Decimal(str(res['montant_materiel'])) + Decimal(str(res['montant_main_oeuvre'])),
+            attendu)
+        self.assertEqual(res['nb_lignes_materiel'] + res['nb_lignes_main_oeuvre'], 3)
+
 
 class TestFamillesServables(SimpleTestCase):
     """BAT-DIFF (ordre fondateur, 17/09/2026) — servabilité PURE par familles.

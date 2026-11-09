@@ -190,3 +190,31 @@ class CockpitClientsEnLotTests(TestCase):
             {e['client'].pk: e['jours_inactivite'] for e in dormants},
             _anciens_dormants(self.company, self.now, 90))
         self.assertTrue(dormants)
+
+    def test_v1_signee_revisee_en_v2_brouillon_comptee(self):
+        # APRF44 (C-APRF-VER-002) — la vente signée en vigueur (V1 acceptée
+        # dont la révision V2 n'est pas signée) compte au ratio et au dernier
+        # devis, comme ``devis_du_client_portail`` (ADVS37).
+        from apps.crm.engagement import _signaux_pour_clients
+        client = Client.objects.create(company=self.company, nom='Client V1')
+        v1 = Devis.objects.create(
+            company=self.company, client=client, reference='DV-APRF44-V1',
+            statut=Devis.Statut.ACCEPTE)
+        v2 = Devis.objects.create(
+            company=self.company, client=client, reference='DV-APRF44-V2',
+            statut=Devis.Statut.BROUILLON)
+        date_v1 = self.now - datetime.timedelta(days=200)
+        Devis.objects.filter(pk=v1.pk).update(
+            is_active=False, superseded_by=v2, date_creation=date_v1)
+        sig = _signaux_pour_clients(self.company.id, [client.pk], self.now)[client.pk]
+        self.assertEqual((sig['d_actifs'], sig['d_acceptes']), (1, 1))
+        self.assertEqual(compute_engagement_score(client, now=self.now),
+                         _ancien_score(client, self.now))
+        dormants = {e['client'].pk: e for e in selectors.comptes_dormants(
+            self.company, seuil_jours=90, now=self.now)}
+        self.assertEqual(dormants[client.pk]['derniere_activite'],
+                         selectors._as_date(date_v1))
+        # V2 acceptée : une seule vente (la V2), jamais deux.
+        Devis.objects.filter(pk=v2.pk).update(statut=Devis.Statut.ACCEPTE)
+        sig = _signaux_pour_clients(self.company.id, [client.pk], self.now)[client.pk]
+        self.assertEqual((sig['d_actifs'], sig['d_acceptes']), (1, 1))

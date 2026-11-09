@@ -1,0 +1,14 @@
+# Preuve en direct ACSV32 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Verdict : PASS — Sonde C-ACSV-042 : repro False.
+
+== C-ACSV-042 (sha ddf1f97a1)
+attendu : repro si 0 appel definitive=True hors tests ET le PV servi après la définitive ne dit pas DÉFINITIVE
+observé : {"appels_generate_pv_reception_hors_tests": [{"fichier": "documents/builders.py", "ligne": 1367, "definitive": "True"}, {"fichier": "documents/builders.py", "ligne": 1355, "definitive": null}, {"fichier": "documents/builders.py", "ligne": 1340, "definitive": null}], "definitive_http": 200, "date_reception_definitive": "2026-11-08", "get_pv_http": [200, 200], "pv_servi_dit_DEFINITIVE": [false, true], "pv_servi_phrase_definitive": [false, true], "temoin_builder_definitive_True": {"titre": true, "phrase": true}, "moteur_pdf": "moqué (_html_to_pdf -> HTML)", "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0

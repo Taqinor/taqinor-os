@@ -1,0 +1,136 @@
+# Preuve en direct ACVI108 - pile locale, code 51b2fe77b (dev-plan-6a6fc9-w10), 2026-11-05
+# Lanceur : python scripts/sonde.py (transaction annulee, mail en memoire, HTTP sortant bloque).
+# Sondes LIVE-* : repro=true signifie ICI que le comportement attendu par la tache est observe.
+
+== LIVE-ACVI108 (sha 51b2fe77b)
+attendu : empreinte retiree apres rappel, C contactable ; autre oppose au meme numero : empreinte gardee, D nee opposee
+observé : {"repro": true, "observe": {"empreintes_avant": 1, "a_oppose_apres": false, "empreintes_apres": 0, "c_nee_opposee": false, "relecture": [false, 0], "autre_oppose": {"empreintes_avant_apres": [1, 1], "a3_oppose": false, "b3_oppose": true, "d_nee_opposee": true}}}
+verdict : REPRO
+base inchangée : oui (avant 4294, après 4294) ; mails 0 ; tâches Celery bloquées 0
+
+== C-ACVI-VER4-001 (sha 64c9c7317)
+attendu : A opposée (STOP) puis rappel demandé (canal rappel) → A contactable, empreinte toujours là, C créée au même numéro née ne_plus_contacter=True ; témoin levée fiche → C2 contactable
+observé : {'code_post_acvi43': True, 'a_oppose_apres_rappel': False, 'empreintes_avant_rappel': 1, 'empreintes_apres_rappel': 0, 'c_nee_opposee': False, 'temoin_c2_nee_opposee': False}
+{"repro": false, "code_post_acvi43": true, "a_oppose_apres_rappel": false, "empreintes_avant_rappel": 1, "empreintes_apres_rappel": 0, "c_nee_opposee": false, "temoin_c2_nee_opposee": false}
+verdict : ÉCART
+base inchangée : oui (avant 3885, après 3885) ; mails 0 ; tâches Celery bloquées 0
+
+# ---- source : C-LIVE-ACVI108.py ----
+# flake8: noqa  (preuve en direct ACVI108, 05/11/2026)
+"""ACVI108 — lead A oppose par STOP (empreinte), devis lie ; le client demande un rappel (notify_client_contact_request,
+canal rappel) : empreinte du numero = 0, A contactable, fiche C creee au meme numero contactable ; relecture identique.
+Garde-fou : si un AUTRE lead au meme numero reste oppose, l'empreinte reste et une fiche D nait opposee. Annule."""
+SONDE = {"constat": "LIVE-ACVI108", "sha": "51b2fe77b",
+         "attendu": "empreinte retiree apres rappel, C contactable ; autre oppose au meme numero : empreinte gardee, D nee opposee",
+         "modeles": ["authentication.Company", "crm.Lead", "crm.EmpreinteOpposition", "crm.LeadActivity", "ventes.Devis"]}
+
+
+def sonde(ctx):
+    from decimal import Decimal
+    from django.contrib.auth import get_user_model
+    from authentication.models import Company
+    from apps.crm.models import Lead, Client, EmpreinteOpposition
+    from apps.crm.cadence_reponses import (
+        CONSENT_SOURCE_OPPOSITION_TOUCHE, _marquer_lead_ne_plus_contacter, tracer_opposition_registre)
+    from apps.crm.cadence_signaux import notify_client_contact_request
+    from apps.ventes.models import Devis
+    co = Company.objects.create(nom='Live ACVI108', slug='live-acvi108')
+    u = get_user_model().objects.create_user(username='live-acvi108', password='x', role_legacy='responsable', company=co)
+
+    def stop(numero, nom):
+        a = Lead.objects.create(company=co, nom=nom, telephone=numero, owner=u)
+        _marquer_lead_ne_plus_contacter(a, u)
+        tracer_opposition_registre(a, source=CONSENT_SOURCE_OPPOSITION_TOUCHE)
+        a.refresh_from_db()
+        return a
+
+    def emp():
+        return EmpreinteOpposition.objects.filter(company=co).count()
+
+    obs = {}
+    a = stop('+212612341081', 'A')
+    cl = Client.objects.create(company=co, nom='A', telephone='+212612341081')
+    d = Devis.objects.create(company=co, reference='DEV-LIVE108', client=cl, lead=a, statut='envoye',
+                             taux_tva=Decimal('20'), version=1, created_by=u)
+    obs['empreintes_avant'] = emp()
+    notify_client_contact_request(d.reference, a, canal='rappel')
+    a.refresh_from_db()
+    obs['a_oppose_apres'] = a.ne_plus_contacter
+    obs['empreintes_apres'] = emp()
+    c = Lead.objects.create(company=co, nom='C', telephone='+212612341081')
+    obs['c_nee_opposee'] = c.ne_plus_contacter
+    a.refresh_from_db()
+    obs['relecture'] = [a.ne_plus_contacter, emp()]
+    ok = (obs['empreintes_avant'] >= 1 and obs['a_oppose_apres'] is False and obs['empreintes_apres'] == 0
+          and c.ne_plus_contacter is False and obs['relecture'] == [False, 0])
+    # garde-fou : un autre lead encore oppose au meme numero
+    e0 = emp()
+    a3 = stop('+212612341082', 'A3')
+    b3 = stop('+212612341082', 'B3')
+    e1 = emp()
+    notify_client_contact_request('DEV-LIVE108-B', a3, canal='rappel')
+    a3.refresh_from_db()
+    b3.refresh_from_db()
+    d3 = Lead.objects.create(company=co, nom='D', telephone='+212612341082')
+    obs['autre_oppose'] = {'empreintes_avant_apres': [e1 - e0, emp() - e0], 'a3_oppose': a3.ne_plus_contacter,
+                           'b3_oppose': b3.ne_plus_contacter, 'd_nee_opposee': d3.ne_plus_contacter}
+    ok = ok and emp() - e0 >= 1 and a3.ne_plus_contacter is False and b3.ne_plus_contacter is True \
+        and d3.ne_plus_contacter is True
+    return {'repro': ok, 'observe': obs}
+
+
+# ---- source : C-ACVI-VER4-001.py ----
+# flake8: noqa  (sonde de contre-visite ACVI, rejouable par scripts/sonde.py — AMET93)
+"""ACVI43 (D-ACVI-6 : l'opposition suit la personne) — jumeau de levée : `cadence_signaux.py::
+_lever_opposition_a_la_demande_du_client` (ACRM63, rappel demandé depuis la proposition) décoche
+`ne_plus_contacter` et écrit le registre SANS `retirer_empreintes_opposition` (seul
+`leads_consentement.py::tracer_levee_opposition_registre` la retire). L'empreinte posée au STOP reste :
+une nouvelle fiche au même numéro naît « ne plus contacter » alors que la personne a demandé un rappel.
+Témoin : levée par la fiche (tracer_levee_opposition_registre) → fiche neuve contactable.
+Transaction annulée. Jamais contre la prod."""
+SONDE = {"constat": "C-ACVI-VER4-001", "sha": "64c9c7317",
+         "attendu": "A opposée (STOP) puis rappel demandé (canal rappel) → A contactable, empreinte toujours là, C créée au même numéro née ne_plus_contacter=True ; témoin levée fiche → C2 contactable",
+         "modeles": ["authentication.Company", "crm.Lead", "crm.EmpreinteOpposition", "crm.LeadActivity", "core.ConsentRecord"]}
+
+
+def sonde(ctx):
+    from django.contrib.auth import get_user_model
+    from authentication.models import Company
+    from apps.crm.models import Lead, EmpreinteOpposition
+    from apps.crm import leads_doublons
+    from apps.crm.cadence_reponses import (
+        CONSENT_SOURCE_OPPOSITION_TOUCHE, _marquer_lead_ne_plus_contacter, tracer_opposition_registre)
+    from apps.crm.cadence_signaux import notify_client_contact_request
+    from apps.crm.leads_consentement import tracer_levee_opposition_registre
+    code_post_acvi43 = hasattr(leads_doublons, 'retirer_empreintes_opposition')
+    co = Company.objects.create(nom='Sonde ACVI-VER4-001', slug='sonde-acvi-ver4-001')
+    u = get_user_model().objects.create_user(username='sonde-acvi-ver4-001', password='x',
+                                             role_legacy='responsable', company=co)
+
+    def stop(numero, nom):
+        a = Lead.objects.create(company=co, nom=nom, telephone=numero, owner=u)
+        _marquer_lead_ne_plus_contacter(a, u)
+        tracer_opposition_registre(a, source=CONSENT_SOURCE_OPPOSITION_TOUCHE)
+        a.refresh_from_db()
+        return a
+
+    # Chemin observé : levée par « rappel demandé » (proposition publique).
+    a = stop('+212612349701', 'A')
+    emp_avant = EmpreinteOpposition.objects.filter(company=co).count()
+    notify_client_contact_request('DEV-SONDE-VER4', a, canal='rappel')
+    a.refresh_from_db()
+    emp_apres = EmpreinteOpposition.objects.filter(company=co).count()
+    c = Lead.objects.create(company=co, nom='C', telephone='+212612349701')
+    # Témoin : levée par la fiche.
+    a2 = stop('+212612349702', 'A2')
+    Lead.objects.filter(pk=a2.pk).update(ne_plus_contacter=False)
+    a2.refresh_from_db()
+    tracer_levee_opposition_registre(a2, u)
+    c2 = Lead.objects.create(company=co, nom='C2', telephone='+212612349702')
+    obs = {'code_post_acvi43': code_post_acvi43, 'a_oppose_apres_rappel': a.ne_plus_contacter,
+           'empreintes_avant_rappel': emp_avant, 'empreintes_apres_rappel': emp_apres,
+           'c_nee_opposee': c.ne_plus_contacter, 'temoin_c2_nee_opposee': c2.ne_plus_contacter}
+    print(obs)
+    repro = (code_post_acvi43 and not a.ne_plus_contacter and c.ne_plus_contacter
+             and not c2.ne_plus_contacter)
+    return {'repro': repro, **obs}

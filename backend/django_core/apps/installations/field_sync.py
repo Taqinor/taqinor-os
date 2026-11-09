@@ -28,7 +28,9 @@ JAMAIS lue du corps. Une cible (intervention/chantier) hors-société est rejet�
 proprement (l'op échoue mais ne casse pas le lot). Additif — la machine à états
 de l'intervention n'est jamais touchée (séparée du chantier et de STAGES.py).
 """
-from django.db import IntegrityError, transaction
+from datetime import timedelta
+
+from django.db import DatabaseError, IntegrityError, transaction
 from django.utils import timezone
 
 from .models import (
@@ -74,14 +76,33 @@ def _lire_horodatage(brut):
     return dt
 
 
-def _instant_saisie(payload):
+#: ACHT130 — au-delà, un `client_ts` est une horloge de terminal fausse.
+FENETRE_HORS_LIGNE_MAX = timedelta(days=7)
+
+
+def _instant_saisie(payload, plancher=None):
     """ACHT32 — instant de SAISIE de l'op (`client_ts`), borné au présent ;
-    sans `client_ts` valide, l'instant de synchro (rétrocompatible)."""
+    sans `client_ts` valide, l'instant de synchro (rétrocompatible) ;
+    ACHT130 — avant `plancher` ou la fenêtre : heure de synchro, marquée."""
     maintenant = timezone.now()
     saisie = payload.get('_client_ts') if isinstance(payload, dict) else None
     if saisie is None:
         return maintenant
+    if saisie < max(plancher or saisie, maintenant - FENETRE_HORS_LIGNE_MAX):
+        payload['_saisie_ramenee'] = True
+        return maintenant
     return min(saisie, maintenant)
+
+
+def _plancher(iv, *champs):
+    """ACHT130 — plus tardif de la création et des étapes précédentes."""
+    return max(d for d in [iv.date_creation, *(getattr(iv, c) for c in champs)] if d)
+
+
+def _suffixe(payload):
+    if payload.get('_saisie_ramenee'):
+        return ' (synchro hors-ligne ; heure du terminal invraisemblable, heure de synchro retenue)'
+    return ' (synchro hors-ligne)'
 
 
 # ── Résolution scopée société des cibles ─────────────────────────────────────
@@ -128,10 +149,28 @@ def _h_depart_depot(company, user, payload):
     iv = _intervention(company, payload, user)
     _garde_accord_geoloc(user)
     # ACHT43 — même geste que la vue (position de départ incluse).
+    instant = _instant_saisie(payload, _plancher(iv))
     field_services.enregistrer_depart_depot(
-        iv, _instant_saisie(payload), payload.get('lat'), payload.get('lng'),
-        user, suffixe=' (synchro hors-ligne)')
-    return {'intervention': iv.id, 'depart_depot_le': iv.depart_depot_le.isoformat()}
+        iv, instant, payload.get('lat'), payload.get('lng'),
+        user, suffixe=_suffixe(payload))
+    return _deriver_statut(iv, Intervention.Statut.EN_ROUTE, user, {  # ACSV22
+        'intervention': iv.id, 'depart_depot_le': iv.depart_depot_le.isoformat()})
+
+
+def _deriver_statut(iv, cible, user, res):
+    """EZ6 / ACSV22 — en ligne, l'écran dérive le statut de l'horodatage
+    (départ → « En route », arrivée → « Sur site », retour → « Terminée ») ;
+    rejoué hors-ligne, même service que le PATCH (gardes + cascade), jamais de
+    recul ; un refus de garde garde l'horodatage (``statut_refuse`` nommé)."""
+    from .services import TransitionRefusee, changer_statut_intervention
+    ordre = Intervention.STATUT_ORDER
+    if iv.statut in ordre and ordre.index(iv.statut) < ordre.index(cible):
+        try:
+            changer_statut_intervention(iv, cible, user)
+        except TransitionRefusee as exc:
+            res['statut_refuse'] = ' ; '.join(exc.raisons)
+    res['statut'] = iv.statut
+    return res
 
 
 def _h_checkin(company, user, payload):
@@ -139,34 +178,26 @@ def _h_checkin(company, user, payload):
     _garde_accord_geoloc(user)
     # ACHT43 — même geste que la vue (ponctualité XFSM5 incluse).
     try:
+        instant = _instant_saisie(payload, _plancher(iv, 'depart_depot_le'))
         field_services.enregistrer_arrivee(
-            iv, _instant_saisie(payload), payload.get('lat'),
-            payload.get('lng'), user, suffixe=' (synchro hors-ligne)')
+            iv, instant, payload.get('lat'),
+            payload.get('lng'), user, suffixe=_suffixe(payload))
     except field_services.CoordonneesInvalides:
         raise FieldOpError('Coordonnées invalides.')
-    res = {'intervention': iv.id, 'arrivee_site_le': iv.arrivee_site_le.isoformat()}
-    # ERR-CHT-CHECKIN-HORS-LIGNE-STATUT (EZ6) — en ligne, l'écran dérive
-    # « Sur site » du check-in ; rejoué hors-ligne, personne ne le faisait.
-    # Même service que le PATCH (gardes + cascade), jamais de recul ; un
-    # refus de garde garde l'arrivée (NO-OP du statut, comme l'écran).
-    from .services import TransitionRefusee, changer_statut_intervention
-    ordre = Intervention.STATUT_ORDER
-    sur_site = Intervention.Statut.SUR_SITE
-    if iv.statut in ordre and ordre.index(iv.statut) < ordre.index(sur_site):
-        try:
-            changer_statut_intervention(iv, sur_site, user)
-        except TransitionRefusee as exc:
-            res['statut_refuse'] = ' ; '.join(exc.raisons)
-    res['statut'] = iv.statut
-    return res
+    # ERR-CHT-CHECKIN-HORS-LIGNE-STATUT (EZ6) — « Sur site » dérivé du check-in.
+    return _deriver_statut(iv, Intervention.Statut.SUR_SITE, user, {
+        'intervention': iv.id, 'arrivee_site_le': iv.arrivee_site_le.isoformat()})
 
 
 def _h_retour(company, user, payload):
     iv = _intervention(company, payload, user)
-    iv.retour_depot_le = _instant_saisie(payload)
+    iv.retour_depot_le = _instant_saisie(
+        payload, _plancher(iv, 'depart_depot_le', 'arrivee_site_le'))
     iv.save(update_fields=['retour_depot_le'])
-    intervention_activity.log_note(iv, user, 'Retour dépôt enregistré (synchro hors-ligne).')
-    return {'intervention': iv.id, 'retour_depot_le': iv.retour_depot_le.isoformat()}
+    intervention_activity.log_note(
+        iv, user, 'Retour dépôt enregistré' + _suffixe(payload) + '.')
+    return _deriver_statut(iv, Intervention.Statut.TERMINEE, user, {  # ACSV22
+        'intervention': iv.id, 'retour_depot_le': iv.retour_depot_le.isoformat()})
 
 
 def _h_cocher_materiel(company, user, payload):
@@ -202,6 +233,16 @@ def _h_cocher_outil(company, user, payload):
     return {'ligne': ligne.id, 'coche': ligne.coche}
 
 
+def _texte_borne(valeur, modele, champ, libelle):
+    """ACSV17 — refus nommé d'un texte que la base rejetterait (NUL, trop long)."""
+    if '\x00' in valeur:
+        raise FieldOpError(f'{libelle} : texte attendu (sans caractère nul).')
+    longueur = modele._meta.get_field(champ).max_length
+    if longueur and len(valeur) > longueur:
+        raise FieldOpError(f'{libelle} trop long ({longueur} caractères au plus).')
+    return valeur
+
+
 def _h_serial(company, user, payload):
     """F9 — relève un n° de série (sans photo : la plaque est téléversée à part
     par son endpoint multipart quand le réseau revient). N° vide accepté."""
@@ -231,7 +272,8 @@ def _h_serial(company, user, payload):
         company=company, intervention=iv, produit=produit,
         designation=champs['designation'],
         slot_cle=(payload.get('slot') or '').strip(),
-        numero_serie=(payload.get('numero_serie') or '').strip(),
+        numero_serie=_texte_borne((payload.get('numero_serie') or '').strip(),
+                                  ComponentSerial, 'numero_serie', 'N° de série'),  # ACSV17
         caracteristiques=champs['caracteristiques'],
         capture_source=champs['capture_source'],
         created_by=user)
@@ -266,6 +308,9 @@ def _h_consommation_ligne(company, user, payload):
             ligne.quantite_utilisee = Decimal(str(payload.get('quantite_utilisee')))
         except (InvalidOperation, TypeError, ValueError):
             raise FieldOpError('Quantité invalide.')
+        if (not ligne.quantite_utilisee.is_finite()
+                or ligne.quantite_utilisee != ligne.quantite_utilisee.to_integral_value()):
+            raise FieldOpError(field_capture.MESSAGE_QTE_ENTIERE_F11)  # AAPV52
     if 'justification' in payload:
         ligne.justification = (payload.get('justification') or '').strip()
     ligne.save(update_fields=[
@@ -282,7 +327,8 @@ def _h_reserve(company, user, payload):
     from .models import Reserve
     reserve = Reserve.objects.create(
         company=company, intervention=iv,
-        description=(payload.get('description') or '').strip(),
+        description=_texte_borne((payload.get('description') or '').strip(),
+                                 Reserve, 'description', 'Description'),  # ACSV17
         created_by=user)
     return {'reserve': reserve.id}
 
@@ -294,9 +340,11 @@ def _h_cocher_safety(company, user, payload):
     if item is None:
         raise FieldOpError('Consigne inconnue.')
     coche = bool(payload.get('coche', True))
+    if signoff.signe and not coche:  # ACSV16
+        raise FieldOpError(field_capture.MESSAGE_CONSIGNES_SIGNEES)
     item.coche = coche
     item.coche_par = user if coche else None
-    item.coche_le = _instant_saisie(payload) if coche else None
+    item.coche_le = _instant_saisie(payload, _plancher(iv, 'arrivee_site_le')) if coche else None  # ACSV23
     item.save(update_fields=['coche', 'coche_par', 'coche_le'])
     return {'cle': item.cle, 'coche': item.coche}
 
@@ -320,7 +368,7 @@ def _h_signer_client(company, user, payload):
         raise FieldOpError(exc.message)
     # ACHT32 — `signe_le` = instant de saisie (borné au présent).
     if payload.get('_client_ts') is not None:
-        iv.signe_le = _instant_saisie(payload)
+        iv.signe_le = _instant_saisie(payload, _plancher(iv, 'arrivee_site_le'))  # ACSV23
         iv.save(update_fields=['signe_le'])
     intervention_activity.log_note(
         iv, user, f"Signature client enregistrée ({nom or 'anonyme'}, synchro hors-ligne).")
@@ -387,8 +435,10 @@ def _h_cocher_checklist(company, user, payload):
         raise FieldOpError(refus)
     item.fait = fait
     item.fait_par = user if fait else None
-    item.fait_le = _instant_saisie(payload) if fait else None
+    item.fait_le = _instant_saisie(payload, _plancher(inst)) if fait else None  # ACSV23
     item.save(update_fields=['fait', 'fait_par', 'fait_le'])
+    from . import activity
+    activity.log_note(inst, user, f"Étape « {item.libelle} » {'cochée' if fait else 'décochée'}{_suffixe(payload)}")
     lignes = [eq for eq in (payload.get('equipements') or [])
               if isinstance(eq, dict) and eq.get('produit')]
     if lignes:
@@ -538,6 +588,12 @@ def _apply_one(company, user, op):
         return {'client_op_id': op_id, 'op_type': op_type,
                 'status': 'error',
                 'error': "Conflit d'intégrité — opération non appliquée."}
+    except (DatabaseError, ValueError, ArithmeticError):
+        # ACSV17 — valeur que la base refuse (texte trop long, NUL, nombre hors
+        # colonne) : SEULE cette op échoue (sa transaction est annulée), le lot
+        # continue et l'op reste rejouable après correction.
+        return {'client_op_id': op_id, 'op_type': op_type, 'status': 'error',
+                'error': 'Valeur refusée par la base — opération non appliquée.'}
 
 
 def apply_batch(company, user, ops):

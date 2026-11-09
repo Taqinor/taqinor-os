@@ -229,6 +229,28 @@ class TestTableMentions(SimpleTestCase):
         self.assertEqual(h["tarif"]["date"], "2026-10-03")
         self.assertNotIn("tarif", _par_cle(mentions_ci(_data(_etude("bt")))))
 
+    def test_releve_partiel_mention_estimation(self):
+        # ADEV110 (C-ADEV-VER-006) — un relevé partiel (ADEV77) est dit au
+        # client, trilingue et sourcé, AVANT la mention de visite.
+        etude = _etude("bt")
+        etude["sous_reserve_visite"] = {"valeur": True, "motif": None}
+        etude["hypotheses"] = [{"cle": "consommation", "valeur": 48000.0,
+                                "statut": "estimation",
+                                "source": "relevé partiel (3 mois)"}]
+        entrees = synthese_ci(_data(etude))["hypotheses"]
+        cles = [e["cle"] for e in entrees]
+        h = _par_cle(entrees)["consommation_estimee"]
+        self.assertIn("estimation sur 3 mois relevés", h["textes"]["fr"])
+        self.assertEqual(set(h["textes"]), {"fr", "en", "ar"})
+        self.assertTrue(all("3" in t for t in h["textes"].values()))
+        self.assertEqual(h["source"], "relevé partiel (3 mois)")
+        self.assertLess(cles.index("consommation_estimee"), cles.index("visite"))
+        # 12 mois relevés (aucune hypothèse d'estimation) : liste inchangée.
+        sans = _etude("bt")
+        sans["sous_reserve_visite"] = {"valeur": True, "motif": None}
+        self.assertEqual([e for e in entrees if e["cle"] != "consommation_estimee"],
+                         synthese_ci(_data(sans))["hypotheses"])
+
     def test_visite_si_sous_reserve(self):
         etude = _etude("bt")
         etude["sous_reserve_visite"] = {"valeur": True, "motif": None}
@@ -256,6 +278,26 @@ class TestGabaritsLisentLaTable(SimpleTestCase):
             self.assertIn(MENTION_82_21, html)
             for copie in COPIES_INTERDITES:
                 self.assertNotIn(copie, html)
+
+    def test_releve_partiel_imprime_dans_les_deux_gabarits(self):
+        # ADEV110 (rejeu FAIL du 04/11, P6.pdf_releve_partiel) — la mention
+        # servie à ``synthese_ci['hypotheses']`` est IMPRIMÉE dans la note
+        # client de la couverture commerciale ET industrielle ; 12 mois : rien.
+        partiel = {"hypotheses": [{"cle": "consommation", "valeur": 48000.0,
+                                   "statut": "estimation",
+                                   "source": "relevé partiel (3 mois)"}]}
+        for sample, renderer, render, note in (
+                (com_sample, com_renderer, com_render, 'class="c1c-note"'),
+                (ind_sample, ind_renderer, ind_render, 'class="i1-note"')):
+            base = self._avec_injection(sample)
+            base["etude"]["etude_ci"] = copy.deepcopy(partiel)
+            html = render.build_html(renderer._augment(base))
+            bloc = html[html.index(note):]
+            bloc = bloc[:bloc.index("</div>")]
+            self.assertIn("estimation sur 3 mois relevés", bloc)
+            sans = render.build_html(renderer._augment(
+                self._avec_injection(sample)))
+            self.assertNotIn("mois relevés", sans)
 
     def test_aucune_copie_8221_dans_le_moteur(self):
         for chemin in QUOTE_ENGINE.rglob("*.py"):

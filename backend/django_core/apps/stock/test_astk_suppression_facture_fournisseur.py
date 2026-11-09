@@ -138,6 +138,27 @@ class DelettrageSuppressionTests(TestCase):
     setUp = SuppressionFactureFournisseurTests.setUp
     _facture = SuppressionFactureFournisseurTests._facture
 
+    def test_repointer_ou_delier_rouvre_l_ancienne_provision(self):
+        """AAPV43 — re-pointer de BCF-A vers BCF-B rouvre A et lettre B ;
+        délier rouvre B."""
+        from apps.installations.models_gr_ir import ReceptionNonFacturee
+        from apps.stock.models import BonCommandeFournisseur
+        bcf_b = BonCommandeFournisseur.objects.create(
+            company=self.company, reference='BCF-AAPV43-B', fournisseur=self.fournisseur)
+        prov_a, prov_b = (ReceptionNonFacturee.objects.create(
+            company=self.company, bon_commande=b, montant_provision=Decimal('1000'))
+            for b in (self.bcf, bcf_b))
+        f = self._facture('FF-AAPV43')
+        url = f'/api/django/stock/factures-fournisseur/{f.id}/'
+        for bcf_id, ouverte_a, ouverte_b in (
+                (self.bcf.id, False, True), (bcf_b.id, True, False), (None, True, True)):
+            resp = self.api.patch(url, {'bon_commande': bcf_id}, format='json')
+            self.assertEqual(resp.status_code, 200, resp.content)
+            prov_a.refresh_from_db()
+            prov_b.refresh_from_db()
+            self.assertEqual((not prov_a.lettre, not prov_b.lettre),
+                             (ouverte_a, ouverte_b), bcf_id)
+
     def test_suppression_rouvre_la_provision(self):
         from apps.installations.models_gr_ir import ReceptionNonFacturee
         from apps.installations.services import lettrer_gr_ir_facture

@@ -806,6 +806,8 @@ def _proprietes_etude_params(avec_jeton=True):
             if f not in formes:
                 formes.append(f)
         forme = formes[0] if len(formes) == 1 else {'anyOf': formes}
+        if cle == 'factures_mensuelles_reelles':  # ENF51 : plancher publié
+            forme = {**forme, 'items': _es.forme_element_facture()}
         props[cle] = {**forme, 'nullable': True}
     if avec_jeton:
         props['expected_updated_at'] = {'type': 'string', 'nullable': True}

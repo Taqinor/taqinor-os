@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 4be1ce1f2736afdba22d930d03f7189061439eddbe226f9f3068c22bee32e527
-Plan fingerprint: 52b6c3ca7f6d02090dc88772266ebc4ecb13a20e06d29a9123af70dce811a6f2
+Structure fingerprint: 96bc28de02827112d9434b88ae3c24615f81c380055a0078cc0dfbeed019f78a
+Plan fingerprint: ed6adee52f608f2d47b6aeb2a5252c3cda4406b788792a8c9284211ae6fe5293
 
 
 
@@ -226,7 +226,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 | `visites` | `visites/` | 2 | Visites techniques terrain (`VisiteTerrain`, `VisiteMedia`) — autonomous app; the field rep has no CRM access. |
 | `calepinage` | `calepinage/` | 12 | Roof design studio: `Calepinage` + variantes/versions, `ReleveTerrain`, `PhotoSite`, `PoseReelle`, `DossierReglementaire`. Holds the villa engine + kit catalogue + roof-marker helper repatriated from `ao`. |
 | `ventes` | `ventes/` | 49 | Devis (statuts brouillon/envoye/accepte/refuse/expire), BonCommande, `ShareLink` (ADOC131 : `suivi_prolonge_le`/`revoque_le`, action `devis/<id>/revoquer-lien-public/`), affiche de toiture servie même origine (ACAL314 : `devis/<id>/roof-image/fichier/` + public `proposal/<token>/roof-image/`, chemins fabriqués par `domain/stockage_toiture.py`), listes de prix, mandats/remises, `quote_engine/` (rule #4). `coherence/` = auditeur d'invariants nocturne en lecture seule (`ViolationCoherence`, `manage.py audit_coherence`, beat `ventes.audit_coherence_nuit` 04:15). Découpes SPL (move-only, goldens dans `tests/golden/` via `tests/split_golden.py`) : `selectors.py` = façade ré-exportant `selectors_{cadence,calepinage,facturation,portail,publicite,stock}.py` ; `public_views.py` garde document/proposal/suivi publics, le reste vit dans `public/` (`noyau`, `lecture_views` engagement, `paiement_views`, `signature_views`, `payload_*`) ; `etude_horaire.py` délègue à `horaire/` (`base`, `batterie_lignes`, `public`, `conso`, `ve_nocturne`) ; `views/devis.py` = viewset réparti en mixins `views/devis_{cadence,calepinage,cycle,edition,envoi,etudes,facturation,gardes,pdf}.py` ; `solar_design.py` ré-exporte `solar_{base,finance,classification}.py` ; `domain/cycle_vie.py`/`creation.py` répartis en `domain/{envoi,revision,creation_auto,creation_auto_residentiel,creation_auto_agricole,creation_calepinage,creation_clone,revision_visite_ci,…}.py` (CORC2 : `POST etude-ci/reviser-apres-visite/` recompose un devis C&I avec la visite validée) ; frontend `pages/ventes/DevisList.jsx` délègue à `devisList/`. |
-| `facturation` | `facturation/` | 7 | Factures, `Paiement`, `Avoir`, `FollowupLevel`, `RelanceLog` — state-only split out of `ventes` (ODX17); legacy `/ventes/factures…` paths still served; `receivers.py` subscribes `devis_accepted` / `devis_acceptation_annulee` (AMET4 provisional acompte draft). |
+| `facturation` | `facturation/` | 7 | Factures, `Paiement`, `Avoir`, `FollowupLevel`, `RelanceLog` — state-only split out of `ventes` (ODX17); legacy `/ventes/factures…` paths still served; `receivers.py` subscribes `devis_accepted` / `devis_acceptation_annulee` (AMET4 provisional acompte draft). ODX18 (07/11) : `views/` (FactureViewSet + ses 9 modules, LigneFacture, Paiement, export UBL/DGI) et `recouvrement.py` vivent ici (`apps.ventes.views`/`ventes.recouvrement` les ré-exportent) ; serializers, `views/avoir.py`, `views/remise_encaissement.py` et services encore dans `ventes` (reste ODX18). |
 | `stock` | `stock/` | 71 | Catalogue (`Produit`, `Marque`, `Categorie`, kits, `courbe_pompe`), `Fournisseur`, `MouvementStock`, emplacements/lots/inventaires, portail fournisseur. |
 | `achats` | `achats/` | 11 | Supplier POs/receptions/invoices/payments/returns, `PrixFournisseur`, `ImputationAcompteFournisseur` (ASTK106) — state-only split out of `stock` (ODX19). |
 | `installations` | `installations/` | 115 | Chantiers **core + GPS**: `Installation`, planning, interventions, checklists, field documents, demandes d'achat, `DossierImport`, kitting, livraisons, `RecettePompage` (recette pompage, `/recettes-pompage/`, AGR). Public token page: `/api/django/public/installations/intervention-rapport/<token>/` (+`pdf/`, `photo(s)/<att_id>/` — APDF38/ACHT68). Revue 26/10 : `chantiers/<id>/approvisionnement/`, `interventions/<id>/serials-attendus/`, `interventions/<id>/presence/`, GPS `gps-consentements/mon-consentement/` + `positions-techniciens/ping-lot|mes-positions`, migrations 0132-0133. |
@@ -238,13 +238,13 @@ Model counts are the real class count across `models*.py`/`models/`.
 | `portail` | `portail/` | 8 | Client self-service: quotes/invoices/deliveries, e-signature acceptance, online payment, site timeline. **Never financial detail beyond its own scope** (NTPRT14). GED links kept (SOLMVP16b). |
 | `adsengine` | `adsengine/` | 47 | Meta Ads engine: mirrors, propose->approve->apply, creative library, experiments, guardrails, `AssumptionNode` tree. **`installable: True`** (SOLMVP17 — the toggle now gates its API). Campaign creation is always PAUSED (rule #3). |
 | `reporting` | `reporting/` | 13 | Dashboards/KPIs/insights, federated KPI hub, `Classeur`, `RapportDefinition`, `KpiAlerte`, global search (`search.py`), stage-probability table (`GET reporting/probabilites-etape/`, AANA66), real-field Web Vitals (`WebVitalMetric`, VX61) and the user-problem journal (`ProblemeClient`, YJPB1 — `POST reporting/problemes-client/` posted by `frontend/src/lib/journalProblemes.js`, read by `manage.py problemes_utilisateurs`; no screen, see `docs/journal-problemes-utilisateurs.md`) — the app owns no business data. |
-| `semantic` | `semantic/` | 2 | Named, governed metrics (`MetricDefinition` + versions) — BI semantic layer consumed via `core.data_explorer`. |
+| `semantic` | `semantic/` | 2 | Named, governed metrics (`MetricDefinition` + versions) — BI semantic layer consumed via `core.data_explorer`; API `semantic/metriques/` (CRUD, `<cle>/valeur|expliquer`, `pour-agent`, `export`/`import`), `semantic/glossaire/`, `seed_dashboards_modeles` (NTDATA10/12/35/44/48/49) ; FastAPI tool `metriques_gouvernees`. |
 | `parametres` | `parametres/` | 18 | `CompanyProfile`, business settings, WhatsApp/email templates, `TauxTVA`/`ConditionPaiement`/`UniteMesure` referentials, `Realisation`, tax-ID validators, output-language resolver. |
 | `roles` | `roles/` | 1 | Per-company `Role` + permission lists (RBAC). |
 | `identity` | `identity/` | 7 | SSO/SCIM, network & session policies, trusted devices, break-glass (NTSEC). |
 | `accessreview` | `accessreview/` | 3 | Access-review campaigns, attestation, SoD rules. |
 | `audit` | `audit/` | 1 | `AuditLog` activity trail. |
-| `records` | `records/` | 7 | Generic chatter: `Activity`, `Comment`, `Follower`, `Tag`, `Attachment` (ContentType-based) + `platform_guards.py` (the pure guard logic `scripts/check_platform.py` reuses). |
+| `records` | `records/` | 7 | Generic chatter: `Activity`, `Comment`, `Follower`, `Tag`, `Attachment` (ContentType-based; `file_key` indexé, registre des détenteurs de clés `cles_stockage.py`, ADOC193) + `platform_guards.py` (the pure guard logic `scripts/check_platform.py` reuses). |
 | `customfields` | `custom-fields/` | 4 | Admin-defined fields and custom objects, registry fed by the platform manifests. |
 | `dataimport` | `imports/` | 4 | Two-step CSV/XLSX import (dry-run + commit), registry-driven targets, `ExternalRef`. |
 | `tiers` | `tiers/` | 1 | Unified party directory (`res.partner` equivalent), bridged additively from crm/stock. **Foundation layer** under an import-linter contract. |
@@ -253,14 +253,14 @@ Model counts are the real class count across `models*.py`/`models/`.
 | `notifications` | `notifications/` | 18 | Unified notification engine: `Notification`, preferences, routing rules, WhatsApp templates/logs + inbound idempotence marker (`WhatsAppInboundMessage`), sweep emission marker (`MarqueurEmissionBalayage`), push, `MessageAccueil`, working hours. |
 | `automation` | `automation/` | 13 | No-code rules + approvals: `AutomationRule`/`Run`/`Step`, `ApprovalRequest`/`Decision`/`Delegation`, incoming webhooks. |
 | `agent` | `agent/` | 1 | Agentic action catalogue (declared in code, `AgentActionLog` only) — metadata; the endpoint re-checks permissions. |
-| `publicapi` | `publicapi/` | 13 | Public REST API: `ApiKey`, scopes, signed `Webhook` + deliveries, bulk jobs, OAuth clients, EDI partner, sandbox tenants. |
+| `publicapi` | `publicapi/` | 13 | Public REST API: `ApiKey`, scopes, signed `Webhook` + deliveries, bulk jobs, OAuth clients, EDI partner, sandbox tenants. `GET /api/public/v1/clients/<id>/langue/` (portée `read:clients`, NTI18N42) ; doc + OpenAPI en anglais via `?lang=en` (NTI18N44). |
 | `uxviews` | `uxviews/` | 4 | Server-side saved views, favourites, recent screens, UX prefs (NTUX). |
 | `trash` | `trash/` | 1 | Cross-app 30-day recycle bin (`ElementSupprime`) + per-model restorer registry. |
 | `offlinesync` | `offlinesync/` | 1 | Single offline write outbox (`OfflineOperation`), one `operations/batch/` sync point. |
 | `onboarding` | `onboarding/` | 4 | « Premiers pas » checklist + product tours, auto-completed via `core.events`. |
 | `statuspage` | `statuspage/` | 6 | Public status page: components, incidents, 90-day uptime buckets, subscribers. `core` reads its models for SLA/uptime. |
 | `contact` | `contact/` | 0 | Public landing contact form — **PARKED by flag** (`CONTACT_FORM_ENABLED=0` -> 404, no email). No models. |
-| `core` | `core/` | ~53 | **Foundation, NOT under apps/**: abstract bases (`TenantModel`, `SoftDeleteModel`), `CompanyScopedModelViewSet`, numbering, `pdf.render_pdf`, `events.py` signal bus, platform registry + `platform_coverage.py` drift matrix, `documents` kit, workflow/BPM engine, `parked.py`, pure `calepinage`/`electrique` engines, jobs, quotas, DSR/PII registries. |
+| `core` | `core/` | ~53 | **Foundation, NOT under apps/**: abstract bases (`TenantModel`, `SoftDeleteModel`), `CompanyScopedModelViewSet`, numbering, `pdf.render_pdf`, `events.py` signal bus, platform registry + `platform_coverage.py` drift matrix, `documents` kit, workflow/BPM engine, `parked.py`, pure `calepinage`/`electrique` engines, jobs, quotas, DSR/PII registries, reliability settings (`views_fiabilite.py`, `/api/django/core/fiabilite/reglages/`, NTOBS21). |
 
 **What each SOLMVP lane changed in a kept app** (verified against
 `git log origin/main..HEAD -- backend/django_core/apps/<x>`):
@@ -420,7 +420,7 @@ Core routes are declared in `router/index.jsx`; every module's routes come from 
 
 **Core (`router/index.jsx`)** — public: `/`, `/landing`, `/login`, `/register`, `/ui`,
 `/403`, `*`; public tokenized: `/rdv/:token`, `/salle-vente/:token`,
-`/ged/signature|signataire|depot/:token`, `/e/:token`, `/suivi/:token`,
+`/ged/signature|signataire|depot|partage/:token`, `/e/:token`, `/suivi/:token`,
 `/intervention/:token`, `/intervention-rapport/:token`; portals: `/portail/client`
 (+`/devis`, `/factures`, `/livraisons`, `/chantiers`, `/mot-de-passe`),
 `/portail/fournisseur` (+`/commandes`), `/portail/partenaire` (+`/affaires`,
@@ -449,7 +449,7 @@ Core routes are declared in `router/index.jsx`; every module's routes come from 
 | `entites` | `/parametres/entites`, `/admin/groupe` |
 | `offlinesync` | `/mobile/commercial`, `/mobile/cockpit`, `/mobile/equipe-terrain`, `/mobile/equipe-commerciale`, `/synchro/conflits` |
 | `portail` | `/portail/administration` |
-| `core` | `/donnees/explorateur` |
+| `core` | `/donnees/explorateur`, `/parametres/fiabilite-reglages` |
 | `tiers` | `/tiers` |
 | `ia` | `/ia` |
 
@@ -594,7 +594,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1315)**
+**Done (1333)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -785,10 +785,12 @@ Things this map could not fully verify from source — do not over-trust:
 - `BPQ4` — [reporting/journal]
 - `BPQ5` — [skills/problemes-prod]
 - `BPQ6` — [core/health + frontend/shell]
+- `BPQ7` — [frontend/shell]
 - `BPQ8` — [docs/problemes-prod]
 - `BPQ9` — [core/observabilite]
 - `BPQ10` — [core/observabilite]
 - `BPQ11` — [docs/problemes-prod]
+- `BPQ12` — [core/health]
 - `BPQ13` — [scripts/check]
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
 - `CAD2` — Les trois étapes de VISITE posent la question du suivi de proposition
@@ -1235,6 +1237,19 @@ Things this map could not fully verify from source — do not over-trust:
 - `ENF37` — ENF19, tranche 30/10 (2)
 - `ENF38` — ENF19, tranche 30/10 (3)
 - `ENF39` — ENF15, tranche 02/11 (liste_page1)
+- `ENF40` — ENF11, tranche 04/11 (nocturne api-fuzz-full 41825184761 sur main c38868a6)
+- `ENF41` — ENF15, tranche 04/11 (liste_page1)
+- `ENF42` — ENF19, tranche 04/11
+- `ENF43` — ENF19, tranche 04/11 (2)
+- `ENF44` — ENF11, tranche 04/11 bis (fin du nocturne api-fuzz-full 41825184761, tranches 12-15…
+- `ENF45` — ENF11, tranche 05/11 (nocturne api-fuzz-full 41958593088 sur main 2781a204, AVANT les…
+- `ENF46` — ENF11, tranche 05/11 bis (les 6 restes d'ENF45, nocturne api-fuzz-full 41958593088)
+- `ENF47` — ENF11, tranche 05/11 ter (nocturne api-fuzz-full 42017839549 sur main c47c6866 ; 8…
+- `ENF48` — ENF11, tranche 05/11 quater (nocturne api-fuzz-full 42074433075 sur main 38be594a ; 7…
+- `ENF49` — ENF11, tranche 06/11 (nocturne api-fuzz-full 42128456456 sur main 04d15ba3 ; 5 tranches…
+- `ENF50` — ENF11, tranche 06/11 bis (nocturne api-fuzz-full 42160785666 sur main be284395 ; 4…
+- `ENF51` — ENF11, tranche 06/11 ter (nocturne api-fuzz-full 42197928068 sur main af09d4e6 ; 8…
+- `ODX18` — App Facturation — étape 2 (vues/urls/recouvrement/frontend)
 - `QAH1` — Skill `qa-explorer` : flotte d'agents « testeur humain » qui explore l'ERP démo module…
 - `QAH2` — Invariants Hypothesis sur la chaîne d'argent et la chaîne d'états des documents ventes
 - `QAH3` — Test différentiel `solar.js` ↔ `quote_engine/builder.py` sur un corpus figé
@@ -1629,6 +1644,9 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 - `CALX406` — Nommer le responsable d'un calepinage et n'ouvrir à chacun que les siens
 - `CRX42` — [OPS — action fondateur] Vérification .env prod (30 min)
+- `CRXB1` — Contrat d'abord (PACT10)
+- `CRXB4` — UN round-robin
+- `CRXB5` — Façade chatter partout
 - `ODY33` — Retrait du legacy : à la fin, UN seul shell dans le code
 - `QJR113` — [D-QJR113 = (a), Reda 11/10/2026 : ancre remplie — chantier D10 ouvert et livré dans…
 - `QJR500` — Contrat d'abord : un devis dit s'il est modifiable et révisable ; la ligne devis du…
@@ -1912,7 +1930,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT109` — `reporting/insights.py` (rentabilité chantier) : « facturé » = factures ÉMISES de la…
 - `VTAG1` — [GATED: décision fondateur]
 
-**Open — to build (124)**
+**Open — to build (118)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -1962,8 +1980,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `AICM2` — Réglage de confidentialité du compte claude.ai
 - `AICM3` — Avis juriste loi 09-08 (transfert hors Maroc)
 - `AUD504` — [GATED: coût prestataire — décision fondateur]
-- `BPQ7` — [frontend/shell]
-- `BPQ12` — [core/health]
 - `CADM1` — Relecture darija par un locuteur natif
 - `CADM2` — Déclaration CNDP du fichier prospects CRM + récépissé
 - `CADM3` — Question à un juriste : loi 31-08, démarchage à domicile
@@ -2004,7 +2020,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `ENF11` — api-fuzz bloquant
 - `ENF15` — Dettes moyennes à zéro
 - `ENF19` — Duplicats (1 181) à zéro
-- `ODX18` — App Facturation — étape 2 (vues/urls/recouvrement/frontend)
 - `QAH10` — [GATED: secret `ANTHROPIC_API_KEY` GitHub + URL de staging/démo joignable — fondateur]
 - `CALX44` — Brancher le rattachement d'une affaire AO à un calepinage
 - `CALX131` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
@@ -2013,11 +2028,8 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX373` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
 - `CALX374` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
 - `CALX375` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
-- `CRXB1` — [GATED: mot fondateur « lance CRXB »] Contrat d'abord (PACT10)
 - `CRXB2` — [GATED] Scission models.py [VAGUE EXCLUSIVE]
 - `CRXB3` — [GATED] Fin de `__all__`
-- `CRXB4` — [GATED] UN round-robin
-- `CRXB5` — [GATED] Façade chatter partout
 - `CRXB6` — [GATED] Frontière sortante contractée
 - `CRXB7` — [GATED] Registres LeadsPage/ListView + tests de rendu
 - `CRXB8` — [GATED] LeadViewSet dégonflé

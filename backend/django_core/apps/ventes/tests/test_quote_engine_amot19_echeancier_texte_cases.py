@@ -15,6 +15,8 @@ devis ACCEPTÉ imprime l'échéancier FIGÉ à l'acceptation (``figer_echeancier
 AMET1), jamais les réglages société changés depuis ; un brouillon les suit.
 """
 import html as _html
+import re
+from decimal import Decimal
 
 from django.test import TestCase
 
@@ -178,6 +180,94 @@ class EcheancierTexteCasesTests(TestCase):
             self.assertIn(f'{pct} % · {fmt_centimes(montant)} MAD', cases)
         hier = _texte(agr._echeancier(dict(d, regles_echeancier_historique=True), 'fr'))
         self.assertIn(f'10 % · {fmt_centimes(3000)} MAD', hier)
+
+    def test_tranche_bornee_dite_niveau_12(self):
+        """AGNR66 (C-AGNR-VER4-012) — [8 000 MAD ; 40 % ; 10 %] sur 8 500 TTC :
+        les cases sont bornées (8 000 / 500 / 0) et l'agricole imprime TROIS
+        cases (Σ 8 500, Σ % 100, aucune < 0) ; le builder le DIT au vendeur
+        (``avertissements_internes``), jamais au client ; niveau 11 : rendu
+        d'hier (le solde nul omis, aucun avertissement). ROUGE AVANT : deux
+        cases, solde omis en silence."""
+        from apps.ventes.quote_engine.agricole import pages as agr
+        from apps.ventes.quote_engine.conditions_commerciales import (
+            repartition_paiement)
+        from apps.ventes.quote_engine.montants import fmt_centimes
+        from apps.ventes.utils.options import option_totaux
+        tranches = [{'unite': 'montant', 'valeur': 8000},
+                    {'unite': 'pct', 'valeur': 40}, {'unite': 'pct', 'valeur': 10}]
+        rep = repartition_paiement(8500, {'acompte': 30, 'solde': 10}, tranches)
+        self.assertEqual([rep['acompte'], rep['materiel'], rep['solde']],
+                         [8000.0, 500.0, 0.0])
+        self.assertEqual(rep['pct_a'] + rep['pct_m'] + rep['pct_s'], 100)
+        self.assertEqual(rep['bornees'], ['materiel', 'solde'])
+        termes = {'acompte': rep['pct_a'], 'materiel': rep['pct_m'],
+                  'solde': rep['pct_s']}
+        d = {'payment_terms': termes, 'totaux_all': {'ttc': 8500},
+             'montants_tranches': {'sans': rep}}
+        cases = _texte(agr._echeancier(d, 'fr'))
+        self.assertEqual(cases.count('ag-ech-l'), 3)
+        for pct, montant in ((94, 8000), (6, 500), (0, 0)):
+            self.assertIn(f'{pct} % · {fmt_centimes(montant)} MAD', cases)
+        hier = _texte(agr._echeancier(dict(d, regles_0411_historique=True), 'fr'))
+        self.assertEqual(hier.count('ag-ech-l'), 2)
+        # Builder : l'avertissement interne au niveau 12 seulement.
+        devis = self._devis()
+        ttc = Decimal(str(option_totaux(devis)['ttc']))
+        Devis.objects.filter(pk=devis.pk).update(regles_calcul=12, echeancier=[
+            {'libelle': 'Acompte', 'type': 'acompte', 'unite': 'montant',
+             'pct_or_montant': float((ttc * Decimal('0.94')).quantize(Decimal('1')))},
+            {'libelle': 'Matériel', 'type': 'materiel', 'unite': 'pct', 'pct_or_montant': 40},
+            {'libelle': 'Solde', 'type': 'solde', 'unite': 'pct', 'pct_or_montant': 10}])
+        devis.refresh_from_db()
+        opts = clean_pdf_options({'pdf_mode': 'full', 'devis_final': True})
+        data = build_quote_data(devis, opts)
+        self.assertTrue(any('échéancier au-delà du TTC' in a
+                            for a in data.get('avertissements_internes', [])))
+        cases_b = data['montants_tranches']['sans']
+        self.assertTrue(all(cases_b[k] >= 0 for k in ('acompte', 'materiel', 'solde')))
+        self.assertAlmostEqual(cases_b['acompte'] + cases_b['materiel'] + cases_b['solde'],
+                               cases_b['total'], places=2)
+        Devis.objects.filter(pk=devis.pk).update(regles_calcul=11)
+        devis.refresh_from_db()
+        self.assertFalse(any('échéancier au-delà du TTC' in a for a in build_quote_data(
+            devis, opts).get('avertissements_internes', [])))
+
+    def test_recommandee_sans_texte_cases_acompte_alignes(self):
+        """AMOT122 (C-AMOT-VER4-007, D-AMOT-VER4-1) — deux options résidentiel,
+        recommandée « Sans », acompte 10 000 MAD : texte (``payment_terms``),
+        cases du Devis final (résidentiel ET legacy) et page publique lisent
+        LA branche d'``option_effective`` ; niveau 11 : rien servi (rendu
+        d'hier). Mutant : cases par recommandation ⇒ % ≠ texte."""
+        from apps.ventes.domain.regles_calcul import REGLES_CENTAINE_0311
+        from apps.ventes.public.payload_conditions import _acompte_publique
+        self.n += 1
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau mono 550W', '10', '1100'),
+            ('Onduleur réseau Huawei 5kW', '1', '8000'),
+            ('Onduleur hybride Deye 5kW', '1', '15000'),
+            ('Batterie Dyness 5kWh', '1', '20000'),
+        ], reference=f'DEV-AMOT122-{self.n}', etude_params={
+            'scenario': 'Les deux (Sans + Avec)', 'recommended_option': 'Sans batterie'})
+        Devis.objects.filter(pk=devis.pk).update(mode_installation='residentiel', echeancier=[
+            {'libelle': 'Acompte', 'type': 'montant', 'pct_or_montant': 10000},
+            {'libelle': 'Solde', 'pct_or_montant': 50}])
+        devis.refresh_from_db()
+        opts = clean_pdf_options({'pdf_mode': 'full', 'devis_final': True})
+        data = build_quote_data(devis, opts)
+        self.assertEqual(data['branche_echeancier'], 'avec')
+        cases = data['montants_tranches']['avec']
+        pct = cases['pct_a']
+        self.assertNotEqual(pct, data['montants_tranches']['sans']['pct_a'])
+        self.assertEqual(data['payment_terms']['acompte'], pct)
+        res_html = res_render.build_html(res_renderer._augment(dict(data)))
+        self.assertEqual(re.findall(r'class="p3-pay-p">([^<]+)<', res_html)[:1], [f'{pct}%'])
+        self.assertIn(f'line-height:1.0;">{pct}%</div>', legacy.render_html_for(dict(data)))
+        publique = _acompte_publique(devis)
+        self.assertEqual(publique['option'], 'avec_batterie')
+        self.assertEqual(Decimal(publique['ttc']), Decimal(str(cases['acompte'])))
+        Devis.objects.filter(pk=devis.pk).update(regles_calcul=REGLES_CENTAINE_0311)
+        devis.refresh_from_db()
+        self.assertNotIn('branche_echeancier', build_quote_data(devis, opts))
 
     def test_trois_tranches_par_defaut_inchangees(self):
         data, res, une_page, cgv, publiques = self._surfaces(self._devis())

@@ -215,6 +215,9 @@ CLES_HORS_RENDU_ORIGINE = (
     # ERR-CADV83-COUVERTURES (03/11/2026) — drapeau de GABARIT du niveau 11 (la
     # pastille de validité reçue, sans la réserve) : aucun chiffre.
     ('regles_validite_historique',),
+    # AMOT123/AMOT126 (04/11/2026) — drapeau de GABARIT du niveau 12 (carte
+    # d'option C&I et une-page d'hier) : aucun chiffre.
+    ('regles_0411_historique',),
     ('libelles_document', 'agr_base_besoin_agronomique'),
     # Libellé « suite » des CGV tronquées, ajouté au catalogue sans chiffre.
     ('libelles_document', 'ci_cgv_suite'),

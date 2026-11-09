@@ -1236,6 +1236,9 @@ function OngletTarif({ fournisseurId, canWrite }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [info, setInfo] = useState(null)
+  // AANA84 — lignes refusées par le serveur (`errors: [{row, message}]`) :
+  // montrées avec leur motif à l'aperçu ET après l'import réel.
+  const [lignesRefusees, setLignesRefusees] = useState([])
 
   const exporter = async () => {
     const pending = downloadBlobInGesture()
@@ -1250,10 +1253,11 @@ function OngletTarif({ fournisseurId, canWrite }) {
 
   const previewImport = async () => {
     if (!file) { setError('Choisissez un fichier .xlsx.'); return }
-    setBusy(true); setError(null); setInfo(null); setApercu(null)
+    setBusy(true); setError(null); setInfo(null); setApercu(null); setLignesRefusees([])
     try {
       const r = await stockApi.importPrixFournisseurXlsx(fournisseurId, file, { apercu: true })
       setApercu(r.data)
+      setLignesRefusees(r.data?.errors ?? [])
     } catch (e) {
       setError(frErr(e, "L'aperçu de l'import a échoué."))
     } finally { setBusy(false) }
@@ -1263,7 +1267,10 @@ function OngletTarif({ fournisseurId, canWrite }) {
     setBusy(true); setError(null)
     try {
       const r = await stockApi.importPrixFournisseurXlsx(fournisseurId, file, { apercu: false, ecraser })
-      setInfo(`Import effectué : ${r.data?.created ?? 0} création(s), ${r.data?.updated ?? 0} mise(s) à jour.`)
+      const refusees = r.data?.errors ?? []
+      setInfo(`Import effectué : ${r.data?.created ?? 0} création(s), ${r.data?.updated ?? 0} mise(s) à jour`
+        + (refusees.length ? `, ${refusees.length} ligne(s) refusée(s).` : '.'))
+      setLignesRefusees(refusees)
       setApercu(null); setFile(null); setEcraser(false)
     } catch (e) {
       setError(frErr(e, "L'import a échoué."))
@@ -1286,7 +1293,7 @@ function OngletTarif({ fournisseurId, canWrite }) {
             toujours l&apos;import réel.
           </p>
           <FileUpload accept=".xlsx"
-                      onFiles={(files) => { setFile(files?.[0] ?? null); setApercu(null); setInfo(null) }} />
+                      onFiles={(files) => { setFile(files?.[0] ?? null); setApercu(null); setInfo(null); setLignesRefusees([]) }} />
           <div className="flex flex-wrap items-center gap-2">
             <Button type="button" size="sm" variant="outline" disabled={!file} loading={busy && !apercu}
                     onClick={previewImport}>
@@ -1309,6 +1316,19 @@ function OngletTarif({ fournisseurId, canWrite }) {
               Aperçu : {apercu.created ?? 0} création(s), {apercu.updated ?? 0} mise(s) à jour,{' '}
               {(apercu.refuses ?? []).length} refusé(s) (déjà saisi, sans « écraser »).
             </p>
+          )}
+          {lignesRefusees.length > 0 && (
+            <div role="alert" data-testid="tarif-lignes-refusees"
+                 className="rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-sm text-destructive">
+              <p className="font-semibold">{lignesRefusees.length} ligne(s) refusée(s) :</p>
+              <ul className="list-disc pl-5">
+                {lignesRefusees.map((e, i) => (
+                  <li key={`${e?.row ?? ''}-${i}`}>
+                    {e?.row != null ? `Ligne ${e.row} : ` : ''}{e?.message ?? String(e)}
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
         </div>
       )}

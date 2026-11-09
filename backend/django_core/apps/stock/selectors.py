@@ -669,6 +669,18 @@ def montant_facture_bcf(bon_commande):
     return agg['total'] or Decimal('0')
 
 
+def derniere_facture_bcf(bon_commande):
+    """AAPV69 — FactureFournisseur la plus récente liée au BCF (même filtre
+    que ``montant_facture_bcf``), ``None`` sans facture ou sans BCF. Lue par
+    ``installations`` pour lettrer une provision GR/IR créée APRÈS la facture
+    (AAPV7). INTERNE, lecture seule."""
+    from .models import FactureFournisseur
+    if bon_commande is None:
+        return None
+    return (FactureFournisseur.objects.filter(bon_commande=bon_commande)
+            .order_by('-date_creation', '-pk').first())
+
+
 def quantite_en_commande_produit(company, produit_id):
     """YPROC9 — quantité TOTALE de ``produit_id`` déjà « en commande » chez un
     fournisseur (Σ ``quantite_restante`` des lignes de BCF BROUILLON ou
@@ -899,16 +911,44 @@ def releve_deductions_tva_par_taux(company, *, date_debut=None, date_fin=None):
         qs = qs.filter(date_facture__lte=date_fin)
 
     par_taux = {}
+
+    def cumuler(taux, ht, tva, n):
+        agg = par_taux.setdefault(
+            taux, {'taux_tva': taux, 'total_ht': Decimal('0'),
+                   'total_tva': Decimal('0'), 'nombre_factures': 0})
+        agg['total_ht'] += ht
+        agg['total_tva'] += tva
+        agg['nombre_factures'] += n
     for facture in qs:
-        for entry in sous_totaux_tva_facture_fournisseur(facture):
-            taux = entry['taux_tva']
-            agg = par_taux.setdefault(
-                taux, {'taux_tva': taux, 'total_ht': Decimal('0'),
-                       'total_tva': Decimal('0'), 'nombre_factures': 0})
-            agg['total_ht'] += entry['total_ht']
-            agg['total_tva'] += entry['total_tva']
-            agg['nombre_factures'] += 1
+        # AAPV3 — facture sans ligne ventilée : son EN-TÊTE entre au relevé.
+        entrees = sous_totaux_tva_facture_fournisseur(facture) or [
+            {'taux_tva': _taux_entete(facture), 'total_ht': facture.montant_ht or Decimal('0'),
+             'total_tva': facture.montant_tva or Decimal('0')}]
+        for entry in entrees:
+            cumuler(entry['taux_tva'], entry['total_ht'], entry['total_tva'], 1)
+    # AAPV3 — la TVA des avoirs fournisseur validés/imputés de la période
+    # est RETRANCHÉE à leur taux.
+    from .models import AvoirFournisseur
+    avoirs = AvoirFournisseur.objects.filter(company=company, statut__in=[
+        AvoirFournisseur.Statut.VALIDE, AvoirFournisseur.Statut.IMPUTE])
+    if date_debut:
+        avoirs = avoirs.filter(date_creation__date__gte=date_debut)
+    if date_fin:
+        avoirs = avoirs.filter(date_creation__date__lte=date_fin)
+    for avoir in avoirs:
+        cumuler(_taux_entete(avoir), -(avoir.montant_ht or Decimal('0')),
+                -(avoir.montant_tva or Decimal('0')), 0)
     return sorted(par_taux.values(), key=lambda e: e['taux_tva'], reverse=True)
+
+
+def _taux_entete(doc):
+    """AAPV3 — taux d'un en-tête HT/TVA (2 décimales) ; HT ≤ 0 ⇒ défaut 20."""
+    from decimal import Decimal
+    from .services import TAUX_TVA_ACHAT_DEFAUT
+    ht = doc.montant_ht or Decimal('0')
+    if ht <= 0:
+        return TAUX_TVA_ACHAT_DEFAUT.quantize(Decimal('0.01'))
+    return ((doc.montant_tva or Decimal('0')) / ht * 100).quantize(Decimal('0.01'))
 
 
 def encours_fournisseurs_par_tiers(company):

@@ -1,0 +1,28 @@
+# Preuve en direct AAPV71 — rejeu w28, code b00242be0 (dev-plan-6a6fc9-w28), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w28-django (conteneur privé : code de CE worktree, base privée
+# erp_accept_w28, transaction annulée, mail en mémoire, Celery coupé, HTTP sortant bloqué). « oc » = variante
+# scratchpad sonde_oc.py identique sauf transaction.on_commit exécuté immédiatement (événements « après commit »
+# qui ne partiraient jamais dans la transaction annulée). Sur le code corrigé, verdict ÉCART = repro False = attendu.
+# Sondes C-LIVE-* (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Écran : front de CE worktree servi par vite (127.0.0.1:5199) -> conteneur privé accept-w28-web (runserver, base
+# erp_accept_w28, SMTP 127.0.0.1:1 = aucune messagerie), piloté par Playwright MCP. Données d'écran = états des sondes
+# rejouées SANS rollback dans la base privée (comptes de test des sondes, mot de passe de test) ou fixtures FIX-*.
+# Verdict : PASS — Sondes C-AAPV-063 / -122 : DA rouverte (approuvée, BCF null) => repro False ; écran : DA « Approuvée ».
+
+== C-AAPV-063 (sha 6ffa876688)
+attendu : repro si après annulation du BCF : réalisé 20000, restant 30000, DA commandée liée au BCF annulé, soumission 35000 refusée 400
+observé : {'soumettre1': 200, 'budget_apres_soumission': {'engage': '20000.00', 'realise': '0', 'restant': '30000.00'}, 'approuver1': 200, 'generer_bcf': 200, 'budget_apres_bcf': {'engage': '0', 'realise': '20000.00', 'restant': '30000.00'}, 'annuler_http': 200, 'bcf_statut': 'annule', 'da_apres_annulation': {'statut': 'approuvee', 'bon_commande_id': None, 'bcf_lie_annule': False}, 'budget_apres_annulation': {'engage': '20000.00', 'realise': '0', 'restant': '30000.00'}, 'regenerer_bcf': {'http': 200, 'detail': "{'id': 1, 'reference': 'DA-202611-0001', 'objet': 'DA1', 'chantier': None, 'programme': None, 'fournisseur_suggere': 23,"}, 'soumettre_35000': {'http': 400, 'detail': '{\'detail\': "Budget départemental dépassé : il reste 30000.00 MAD, il manque 5000.0000 MAD. Une règle d\'approbation autorisant le dépassement est requise."}'}}
+{"soumettre1": 200, "budget_apres_soumission": {"engage": "20000.00", "realise": "0", "restant": "30000.00"}, "approuver1": 200, "generer_bcf": 200, "budget_apres_bcf": {"engage": "0", "realise": "20000.00", "restant": "30000.00"}, "annuler_http": 200, "bcf_statut": "annule", "da_apres_annulation": {"statut": "approuvee", "bon_commande_id": null, "bcf_lie_annule": false}, "budget_apres_annulation": {"engage": "20000.00", "realise": "0", "restant": "30000.00"}, "regenerer_bcf": {"http": 200, "detail": "{'id': 1, 'reference': 'DA-202611-0001', 'objet': 'DA1', 'chantier': None, 'programme': None, 'fournisseur_suggere': 23,"}, "soumettre_35000": {"http": 400, "detail": "{'detail': \"Budget départemental dépassé : il reste 30000.00 MAD, il manque 5000.0000 MAD. Une règle d'approbation autorisant le dépassement est requise.\"}"}, "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0
+
+== C-AAPV-122 (sha acc21a69c0)
+attendu : repro si DELETE 204, DA commandee avec bon_commande null, realise 20000 / restant 30000, generer-bcf 409, DA 35000 refusée 400
+observé : {'soumettre1': 200, 'approuver1': 200, 'generer_bcf': 200, 'bcf': {'statut': 'brouillon', 'acomptes': 0}, 'budget_apres_bcf': {'engage': '0', 'realise': '20000.00', 'restant': '30000.00'}, 'delete_http': 204, 'delete_detail': None, 'bcf_existe': False, 'da_apres_suppression': {'statut': 'approuvee', 'bon_commande_id': None}, 'engagements': [('actif', None, '20000.00')], 'budget_apres_suppression': {'engage': '20000.00', 'realise': '0', 'restant': '30000.00'}, 'regenerer_bcf': {'http': 200, 'detail': "{'id': 17, 'reference': 'DA-202611-0001', 'objet': 'DA1', 'chantier': None, 'programme': None, 'fournisseur_suggere': 62"}, 'soumettre_35000': {'http': 400, 'detail': '{\'detail\': "Budget départemental dépassé : il reste 30000.00 MAD, il manque 5000.0000 MAD. Une règle d\'approbation autorisant le dépassement est requise."}'}}
+{"soumettre1": 200, "approuver1": 200, "generer_bcf": 200, "bcf": {"statut": "brouillon", "acomptes": 0}, "budget_apres_bcf": {"engage": "0", "realise": "20000.00", "restant": "30000.00"}, "delete_http": 204, "delete_detail": null, "bcf_existe": false, "da_apres_suppression": {"statut": "approuvee", "bon_commande_id": null}, "engagements": [["actif", null, "20000.00"]], "budget_apres_suppression": {"engage": "20000.00", "realise": "0", "restant": "30000.00"}, "regenerer_bcf": {"http": 200, "detail": "{'id': 17, 'reference': 'DA-202611-0001', 'objet': 'DA1', 'chantier': None, 'programme': None, 'fournisseur_suggere': 62"}, "soumettre_35000": {"http": 400, "detail": "{'detail': \"Budget départemental dépassé : il reste 30000.00 MAD, il manque 5000.0000 MAD. Une règle d'approbation autorisant le dépassement est requise.\"}"}, "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 21, après 21) ; mails 0 ; tâches Celery bloquées 0
+
+## AAPV71 — PASS (partie écran)
+Même session : avant l'annulation, Demandes d'achat : « DA-202611-0001 DA1 — Commandée 20 000,00 MAD » ; après « Annuler le BC » de
+BCF-202611-0002 : « DA-202611-0001 DA1 — Approuvée 20 000,00 MAD » (DA rouverte ; relue en base : statut approuvee, bon_commande null).

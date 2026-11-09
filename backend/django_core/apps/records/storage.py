@@ -285,11 +285,21 @@ class AttachmentSerializerMixin:
             instance, self._router_pieces_jointes(validated_data, instance))
 
 
-def delete_attachment(key, *, lever=False):
+def delete_attachment(key, *, lever=False, liberee_par=()):
     """Efface `key` du bucket. Par défaut un échec est journalisé (dégradé) ;
-    `lever=True` (ADOC189, destructions GED) le fait remonter à l'appelant."""
+    `lever=True` (ADOC189, destructions GED) le fait remonter à l'appelant.
+
+    ADOC193 — une clé encore tenue par un détenteur enregistré
+    (``records.cles_stockage``), hors les instances ``liberee_par`` qui la
+    libèrent, est CONSERVÉE et journalisée : renvoie False, jamais
+    d'exception. Sinon True (tentative d'effacement)."""
+    from .cles_stockage import cle_detenue
     if not key:
-        return
+        return False
+    if cle_detenue(key, settings.MINIO_BUCKET_UPLOADS, sauf=liberee_par):
+        logger.info("storage.delete_attachment : clé %s conservée (encore "
+                    "tenue par un détenteur)", key)
+        return False
     try:
         client = get_minio_client()
         client.delete_object(Bucket=settings.MINIO_BUCKET_UPLOADS, Key=key)
@@ -297,6 +307,7 @@ def delete_attachment(key, *, lever=False):
         if lever:
             raise
         logger.warning("storage.delete_attachment : erreur ignorée (mode dégradé)", exc_info=True)
+    return True
 
 
 # --- NTPLT30 — Exports lourds asynchrones (brique de stockage) --------------

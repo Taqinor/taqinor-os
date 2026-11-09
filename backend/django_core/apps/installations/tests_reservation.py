@@ -111,6 +111,23 @@ class TestReservationSeeding(TestCase):
         self.assertEqual(available_quantity(self.panneau), 8)
         self.assertEqual(available_quantity(self.onduleur), 9)
 
+    def test_reservations_anterieures_dans_l_ordre_de_creation(self):
+        """AAPV70 — A puis B réservent 10 : A voit 0 d'antérieur, B 10, un
+        chantier C sans réservation 20 ; inactive/consommée jamais comptée."""
+        from apps.installations.selectors import reservations_anterieures_map
+        p = make_produit(self.company, 'Produit AAPV70', stock=10)
+        a, b, c, d = (Installation.objects.create(
+            company=self.company, reference=f'CH-AAPV70-{x}') for x in 'ABCD')
+        for inst in (a, b):
+            StockReservation.objects.create(
+                company=self.company, installation=inst, produit=p, quantite=10)
+        StockReservation.objects.create(
+            company=self.company, installation=d, produit=p, quantite=7,
+            active=False)
+        self.assertEqual(reservations_anterieures_map(a), {p.id: 0})
+        self.assertEqual(reservations_anterieures_map(b), {p.id: 10})
+        self.assertEqual(reservations_anterieures_map(c), {p.id: 20})
+
     def test_empty_bom_is_robust(self):
         # Devis sans ligne produit → BOM vide → aucune réservation, aucun crash.
         devis = make_accepted_devis_with_lines(self.company, [])

@@ -115,6 +115,7 @@ SURFACE_PUBLIQUE = (
     "decrit_la_capacite",
     "depart_dans_horizon",
     "echelle_paliers_batterie",
+    "est_onduleur_provisionne",  # AMOT120
     "facteur_remise_du_devis",
     "grimper_par_pas_marginaux",
     "horizon_du_pas",

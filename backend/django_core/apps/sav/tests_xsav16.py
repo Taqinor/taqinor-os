@@ -121,6 +121,30 @@ class XSAV16DowntimeTest(TestCase):
             self.equip, debut_periode=debut_periode, fin_periode=fin_periode)
         self.assertEqual(data['disponibilite_pct'], 100.0)
 
+    def test_disponibilite_installation_union(self):
+        """AMON43 — deux équipements arrêtés en même temps comptent une fois."""
+        from apps.sav.selectors_supervision import disponibilite_installation
+        fin_periode = timezone.now()
+        debut_periode = fin_periode - timedelta(days=10)
+        second = Equipement.objects.create(
+            company=self.company, produit=self.produit, installation=self.inst,
+            created_by=self.admin)
+        dt = ouvrir_downtime(company=self.company, equipement=self.equip,
+                             debut=debut_periode + timedelta(days=1))
+        dt.clore(fin=debut_periode + timedelta(days=3))
+        dt = ouvrir_downtime(company=self.company, equipement=second,
+                             debut=debut_periode + timedelta(days=2))
+        dt.clore(fin=debut_periode + timedelta(days=4))
+        # Union = jours 1 à 4 = 3 jours sur 10 → 70 %.
+        self.assertAlmostEqual(disponibilite_installation(
+            self.company, self.inst.pk, debut=debut_periode,
+            fin=fin_periode), 70.0, delta=0.01)
+        sans = Installation.objects.create(
+            company=self.company, reference='CHT-XSAV16-B',
+            client=self.client_obj)
+        self.assertIsNone(disponibilite_installation(
+            self.company, sans.pk, debut=debut_periode, fin=fin_periode))
+
     # ── Clôture ticket ferme le downtime lié ────────────────────────────────
 
     def test_cloture_ticket_ferme_downtime_lie(self):
@@ -270,3 +294,19 @@ class XSAV16DowntimeTest(TestCase):
             self.assertEqual(resp.status_code, 400, (corps, resp.content))
         dt.refresh_from_db()
         self.assertIsNone(dt.fin)
+
+    def test_api_cloturer_downtime_decalage_hors_postgres_200(self):
+        # ENF11 (nocturne 41958593088, cp6rAe) : « +22:09 » est lu par Python
+        # mais refusé par PostgreSQL (500) — l'instant est rangé en UTC.
+        dt = ouvrir_downtime(
+            company=self.company, equipement=self.equip,
+            debut=timezone.now() - timedelta(hours=2))
+        resp = auth(self.admin).post(
+            f'/api/django/sav/equipements/{self.equip.id}'
+            f'/downtime/{dt.id}/cloturer/',
+            {'fin': '9665-07-05T10:57:55.8+22:09'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        dt.refresh_from_db()
+        self.assertEqual(dt.fin.utcoffset(), timedelta(0))
+        self.assertEqual((dt.fin.year, dt.fin.month, dt.fin.day, dt.fin.hour),
+                         (9665, 7, 4, 12))

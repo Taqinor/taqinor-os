@@ -1,0 +1,82 @@
+# Preuve en direct AMON95 — rejeu w29b, code joué d7ea0c158 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29b-dj (conteneur privé, code backend du commit joué copié
+# dans le conteneur, base privée erp_accept_w29b clonée de test_erp_db_base puis migrée ; transaction annulée, mail en
+# mémoire, Celery coupé, HTTP sortant bloqué). Audit : verdict ÉCART = repro False = attendu sur le code corrigé. Sondes
+# C-LIVE-* (écrites pour ce rejeu, source jointe ; transaction.on_commit exécuté immédiatement) : repro=true signifie ICI
+# que le comportement attendu par la tâche est observé.
+# Code joué : d7ea0c158 (dev-plan-6a6fc9-w29, aucun commit du correcteur CI arrivé pendant ~75 min d'attente).
+# Écran : front du worktree servi par vite (127.0.0.1:3000, proxy /api/django) -> conteneur privé accept-w29b-web
+# (runserver, base erp_accept_w29b, stockage objet PRIVÉ accept-w29b-minio dès le départ, mail en mémoire, SMTP
+# 127.0.0.1:1), piloté par Playwright MCP. Données : fixtures FIX-W29B (société « Acceptation W29B », compte
+# acc_w29b_adm) ou états des sondes rejouées SANS rollback (comptes de test, mot de passe de test).
+# Verdict : PASS — C-LIVE-AMON95 REPRO (detail servi « Expected annual kwh : 6000.00 → 9000.00 ») ; écran Journal d'activité : même texte.
+
+== C-LIVE-AMON95 (sha d7ea0c158)
+attendu : ligne update detail='' changes 6000.00->9000.00 servie detail 'Expected annual kwh : 6000.00 → 9000.00' ; ligne au detail ecrit inchangee
+observé : {"patch_http": 200, "patch_detail": null, "lignes_update_stockees": [{"id": "2186", "detail": "", "changes": "[{'new': '9000.00', 'old': '6000.00', 'field': 'expected_annual_kwh'}]"}], "entries_http": 200, "detail_servi": {"2187": "Statut : A → B", "2186": "Expected annual kwh : 6000.00 → 9000.00"}, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 14, après 14) ; mails 0 ; tâches Celery bloquées 0
+
+# ---- source : C-LIVE-AMON95.py ----
+# flake8: noqa  (sonde LIVE du rejeu d'acceptation w29b — scénario exact d'AMON95, vraies routes)
+"""AMON95 — PATCH monitoring/configs/<id>/ {expected_annual_kwh: 9000} (6000 → 9000) écrit une ligne UPDATE
+générique (detail vide, diff dans changes) ; GET audit/entries/?module=monitoring doit servir
+detail = « Expected annual kwh : 6000.00 → 9000.00 ». Témoin : une ligne au detail écrit le garde.
+repro=True signifie ICI que le comportement ATTENDU par la tâche est observé."""
+SONDE = {"constat": "C-LIVE-AMON95", "sha": "d7ea0c158",
+         "attendu": "ligne update detail='' changes 6000.00->9000.00 servie detail 'Expected annual kwh : 6000.00 → 9000.00' ; ligne au detail ecrit inchangee",
+         "modeles": ["audit.AuditLog", "monitoring.MonitoringConfig"]}
+
+
+def sonde(ctx):
+    from datetime import timedelta
+    from decimal import Decimal
+    from django.db import transaction
+    transaction.on_commit = lambda func, using=None, robust=False: func()
+    from django.contrib.auth import get_user_model
+    from django.contrib.contenttypes.models import ContentType
+    from django.utils import timezone
+    from rest_framework.test import APIClient
+    from authentication.models import Company
+    from apps.audit.models import AuditLog
+    from apps.crm.models import Client
+    from apps.installations.models import Installation
+    from apps.monitoring.models import MonitoringConfig
+    H = {'HTTP_HOST': 'localhost'}
+    co = Company.objects.create(nom='Live AMON 95', slug='live-amon-95')
+    from apps.roles.models import Role
+    from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
+    role = Role.objects.create(company=co, nom='Directeur', permissions=DIRECTEUR_PERMISSIONS, est_systeme=True)
+    u = get_user_model().objects.create_user(username='live_amon_95', password='x', role=role, role_legacy='admin',
+                                             company=co)
+    api = APIClient()
+    api.force_authenticate(u)
+    cl = Client.objects.create(company=co, nom='Client', prenom='LAMON95', email='lamon95@example.invalid')
+    inst = Installation.objects.create(company=co, reference='CH-LAMON-095', client=cl, statut='receptionne',
+                                       date_reception=timezone.localdate() - timedelta(days=30),
+                                       puissance_installee_kwc=Decimal('4'))
+    cfg = MonitoringConfig.objects.create(company=co, installation=inst, enabled=True,
+                                          expected_annual_kwh=Decimal('6000'))
+    rp = api.patch(f'/api/django/monitoring/configs/{cfg.id}/', {'expected_annual_kwh': '9000'}, format='json', **H)
+    ct = ContentType.objects.get_for_model(MonitoringConfig)
+    lignes = list(AuditLog.objects.filter(company=co, content_type=ct, object_id=str(cfg.id),
+                                          action='update').values('id', 'detail', 'changes'))
+    ecrit = AuditLog.objects.create(company=co, action='update', content_type=ct, object_id=str(cfg.id),
+                                    object_repr=f'Monitoring #{cfg.id}', detail='Statut : A → B', changes=None)
+    rg = api.get('/api/django/audit/entries/', {'module': 'monitoring'}, **H)
+    res = rg.data.get('results', rg.data) if rg.status_code == 200 else []
+    servis = {row['id']: row.get('detail') for row in res}
+    obs = {'patch_http': rp.status_code, 'patch_detail': None if rp.status_code < 400 else str(rp.data)[:300], 'lignes_update_stockees': [{k: str(v) for k, v in d.items()} for d in lignes],
+           'entries_http': rg.status_code, 'detail_servi': {str(k): v for k, v in servis.items()}}
+    diff_ids = [d['id'] for d in lignes if not d['detail']]
+    obs['repro'] = bool(rp.status_code == 200 and rg.status_code == 200 and len(diff_ids) == 1
+                        and servis.get(diff_ids[0]) == 'Expected annual kwh : 6000.00 → 9000.00'
+                        and servis.get(ecrit.id) == 'Statut : A → B')
+    return obs
+
+## AMON95 — PASS (écran)
+État de la sonde C-LIVE-AMON95 rejouée SANS rollback (PATCH monitoring/configs/<id>/ {expected_annual_kwh: "9000"} 200 par la vraie
+route ; ligne AuditLog update detail '' changes [{expected_annual_kwh, 6000.00, 9000.00}]). Compte live_amon_95 (rôle Directeur,
+journal_activite_voir) › Journal d'activité : « 08/11/2026 20:22 live_amon_95 Modification Monitoring #74 (noop) Expected annual
+kwh : 6000.00 → 9000.00 » ; la ligne au detail écrit reste « Statut : A → B ». Console : 0 erreur.
+Observation hors clause : le même PATCH avec le nombre JSON 9000 (non chaîne) rend 400 « Un nombre valide est requis. ».

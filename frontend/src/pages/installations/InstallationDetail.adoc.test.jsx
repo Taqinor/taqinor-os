@@ -10,7 +10,7 @@ import { polyfillResizeObserver } from '../../test/selectNatif'
 
 beforeAll(polyfillResizeObserver)
 
-const docs = vi.hoisted(() => ({ attestation: vi.fn() }))
+const docs = vi.hoisted(() => ({ attestation: vi.fn(), pvReceptionDefinitive: vi.fn() }))
 vi.mock('../../api/documentsApi', () => ({ default: docs }))
 vi.mock('../../api/savApi', async () => (await import('../../test/selectNatif')).savApiMock)
 vi.mock('../../api/crmApi', async () => (await import('../../test/selectNatif')).crmApiMock)
@@ -62,5 +62,23 @@ describe('InstallationDetail — ADOC73 attestations', () => {
     await user.click(screen.getByRole('button', { name: 'Attestation de fin de travaux' }))
     expect(await screen.findByText('Réception non prononcée : attestation refusée.'))
       .toBeInTheDocument()
+  })
+
+  it('PV de réception définitive : bouton après la définitive seulement', async () => {
+    // ACSV95 — absent avant la définitive, présent après ; ouvre l'aperçu du PDF définitive.
+    docs.pvReceptionDefinitive.mockReturnValue(new Promise(() => {}))
+    const user = userEvent.setup()
+    const { unmount } = rendre({
+      id: 11, reference: 'CH-11', statut: 'receptionne', annule: false,
+      type_installation: 'industriel', date_reception_definitive: null })
+    await user.click(await screen.findByRole('tab', { name: /Jalons/ }))
+    expect(screen.queryByRole('button', { name: 'PV de réception définitive' })).toBeNull()
+    unmount()
+    rendre({
+      id: 12, reference: 'CH-12', statut: 'receptionne', annule: false,
+      type_installation: 'industriel', date_reception_definitive: '2026-11-06' })
+    await user.click(await screen.findByRole('tab', { name: /Jalons/ }))
+    await user.click(await screen.findByRole('button', { name: 'PV de réception définitive' }))
+    await waitFor(() => expect(docs.pvReceptionDefinitive).toHaveBeenCalledWith(12, undefined))
   })
 })

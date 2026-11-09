@@ -97,6 +97,9 @@ EXEMPTEES = {
     # REMPLACÉE est refusée par le service (``_exiger_vente_en_jeu`` :
     # 409 ``corps_version_remplacee``), jamais par _refus_modifiabilite.
     'facturer': 'aval d’un accepté (facture de la vente, VNT31).',
+    # ATOT62 — avoir de révision d'une vente acceptée : n'écrit que l'aval
+    # financier (avoir), refuse lui-même hors accepté actif (409 nommé).
+    'confirmer_avoir_revision': 'aval d’un accepté (avoir de révision, ATOT62).',
     # VNT60 — gestes d'une vente acceptée : « Prix négocié » crée la V2 par
     # ``reviser_devis`` (le contenu de l'accepté ne change pas) ; la demande
     # de signature d'avenant pose un lien et une tâche, rien d'autre.

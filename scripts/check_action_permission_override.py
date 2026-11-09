@@ -20,7 +20,7 @@ et une ``@action(permission_classes=...)`` doit satisfaire l'UN des trois
 patrons sûrs :
 
   · PATRON D'OR — appeler ``declared_action_permissions(...)``
-    (``apps/ventes/views/paiement.py``) : il lit la déclaration de l'action
+    (``apps/facturation/views/paiement.py``) : il lit la déclaration de l'action
     et la rend telle quelle ;
   · REPLI DRF — finir par ``return super().get_permissions()``, qui honore la
     déclaration inline pour toute action non explicitement listée (24 ViewSets
@@ -402,7 +402,7 @@ def main(argv):
             "la permission_classes déclarée sur l'action (motif AUD403, "
             "ventes/views/devis.py). Terminez par "
             "`return super().get_permissions()`, ou passez par "
-            f"`{HELPER_DECLARE}(...)` (patron d'or, apps/ventes/views/paiement.py). "
+            f"`{HELPER_DECLARE}(...)` (patron d'or, apps/facturation/views/paiement.py). "
             "Exception assumée : ajouter `chemin.py::Classe[.action]  # raison` "
             "à scripts/action_permission_override_allow.txt (une raison propre "
             "par ligne)."

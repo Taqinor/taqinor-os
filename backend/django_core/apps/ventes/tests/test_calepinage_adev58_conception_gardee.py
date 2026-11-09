@@ -142,3 +142,50 @@ class ConceptionGardeeTests(TestCase):
             DevisActivity.objects.filter(devis=devis).count(), nb_activites)
         self.assertIn("resync_apres_envoi", d.etude_params or {})
         self.assertGreater(d.updated_at, jeton_avant)
+
+    def _simuler_et_executer(self, devis, simulation):
+        """POST simuler (202) puis la tâche exécutée avec les arguments que
+        la vue lui a passés ; PVGIS et pans doublés."""
+        from apps.ventes import tasks
+        with mock.patch.object(tasks, "zones_etude_du_devis",
+                               return_value=[{"label": "Pan Sud"}]), \
+                mock.patch("apps.ventes.etude.run_bankable_study",
+                           return_value=simulation), \
+                mock.patch.object(tasks.task_simulate_bankable_study,
+                                  "apply_async") as tache:
+            resp = self.api.post(self._url(devis, "simuler"), {}, format="json")
+            self.assertEqual(resp.status_code, 202, resp.data)
+            appel = tache.call_args[1]
+            tasks.task_simulate_bankable_study.run(*appel["args"], **appel["kwargs"])
+
+    def test_simuler_envoye_trace(self):
+        # ADEV108 (C-ADEV-VER-004) — la simulation bancable qui réécrit l'étude
+        # d'un ENVOYÉ est tracée et avance le jeton, comme la conception.
+        devis = self._devis(statut=Devis.Statut.ENVOYE)
+        Devis.objects.filter(pk=devis.pk).update(etude_params={
+            **(devis.etude_params or {}),
+            "simulation": {"version": 1, "computed_at": "t0", "pr": 0.70}})
+        jeton_avant = Devis.objects.get(pk=devis.pk).updated_at
+        traces = DevisActivity.objects.filter(devis=devis)
+        nb = traces.count()
+        self._simuler_et_executer(
+            devis, {"version": 1, "computed_at": "t1", "pr": 0.80})
+        d = Devis.objects.get(pk=devis.pk)
+        apres = traces.count()
+        self.assertGreater(apres, nb)
+        self.assertEqual(traces.order_by("-pk").first().user, self.user)
+        self.assertGreater(d.updated_at, jeton_avant)
+        self.assertEqual(d.statut, Devis.Statut.ENVOYE)
+        self.assertEqual(d.etude_params["simulation"]["pr"], 0.80)
+        # Rejouée aux mêmes entrées (seul ``computed_at`` change) : rien.
+        self._simuler_et_executer(
+            devis, {"version": 1, "computed_at": "t2", "pr": 0.80})
+        self.assertEqual(traces.count(), apres)
+
+    def test_simuler_brouillon_sans_trace(self):
+        brouillon = self._devis()
+        nb_b = DevisActivity.objects.filter(devis=brouillon).count()
+        self._simuler_et_executer(
+            brouillon, {"version": 1, "computed_at": "t3", "pr": 0.90})
+        self.assertEqual(
+            DevisActivity.objects.filter(devis=brouillon).count(), nb_b)

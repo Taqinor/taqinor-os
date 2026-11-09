@@ -132,3 +132,35 @@ class EcrivainParcChantierTests(TestCase):
         eq = Equipement.objects.filter(
             installation=c, produit=self.panneau).first()
         self.assertEqual(eq.date_fin_garantie.year, 2036)
+
+    def test_ajout_manuel_remplit_le_placeholder(self):
+        """ACSV59 (C-ACSV-069) — l'ajout manuel (POST sav/equipements/) d'une
+        série au chantier réceptionné passe par l'écrivain unique : le
+        placeholder sans série est rempli, daté de la réception ; doublon 400 ;
+        sans chantier (comptoir) : créé tel quel. ROUGE AVANT : 2 onduleurs."""
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+        admin = get_user_model().objects.create_user(
+            username='acsv59_admin', password='x', role_legacy='admin', company=self.company)
+        api = APIClient()
+        api.force_authenticate(admin)
+        c = self._chantier('CHT-ACSV59')
+        Installation.objects.filter(pk=c.pk).update(date_reception=RECEPTION)
+        c.refresh_from_db()
+        self._balayage(c)
+        corps = {'installation': c.pk, 'produit': self.onduleur.pk,
+                 'numero_serie': 'SN-9', 'date_pose': '2026-08-25'}
+        r = api.post('/api/django/sav/equipements/', corps, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        parc = list(Equipement.objects.filter(installation=c, produit=self.onduleur)
+                    .values_list('numero_serie', 'date_pose'))
+        self.assertEqual(parc, [('SN-9', RECEPTION)])
+        self.assertEqual(r.data['id'], Equipement.objects.get(numero_serie='SN-9').pk)
+        r = api.post('/api/django/sav/equipements/', corps, format='json')
+        self.assertEqual(r.status_code, 409, r.content)  # garde du sérialiseur (ENF11)
+        self.assertIn('numero_serie', r.data)
+        r = api.post('/api/django/sav/equipements/', {
+            'produit': self.onduleur.pk, 'numero_serie': 'SN-COMPTOIR',
+            'date_pose': '2026-08-25'}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(Equipement.objects.get(numero_serie='SN-COMPTOIR').date_pose, date(2026, 8, 25))

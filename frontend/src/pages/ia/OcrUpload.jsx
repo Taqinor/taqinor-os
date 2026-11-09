@@ -60,14 +60,19 @@ const FIELD_LABELS = {
   iban: 'IBAN',
 }
 
+// AAPV60 — HT / TVA / TTC toujours corrigeables (un HT non lu ne fait plus
+// naître la facture d'achat à HT 0).
+const MONTANTS_CORRIGEABLES = ['montant_ht', 'montant_tva', 'montant_ttc']
+
 // VX152 — point de rendu UNIQUE de FIELD_LABELS : transforme un objet de données
 // OCR en lignes « libellé → valeur » (clés présentes uniquement). Les deux onglets
 // (Analyser éditable, Documents lecture seule) le réutilisent au lieu de réitérer
 // FIELD_LABELS chacun de son côté — fin des deux tables clé/valeur parallèles.
-function ocrFieldRows(source) {
+// AAPV60 — `toujours` : clés offertes à la correction même absentes de l'extraction.
+function ocrFieldRows(source, toujours = []) {
   const data = source ?? {}
   return Object.entries(FIELD_LABELS)
-    .filter(([key]) => data[key] != null)
+    .filter(([key]) => data[key] != null || toujours.includes(key))
     .map(([key, label]) => ({ key, label }))
 }
 
@@ -172,7 +177,7 @@ function AnalyseTab({ canSave }) {
     setFactureError(null)
     try {
       const r = await stockApi.factureFournisseurDepuisOcr({
-        fields: ocrResult.donnees_structurees ?? {},
+        fields: editedFields,
         file: currentFile,
       })
       setFactureDone({
@@ -223,7 +228,7 @@ function AnalyseTab({ canSave }) {
     try {
       const r = await publicapiApi.ocrToCrm({
         mode,
-        fields: ocrResult.donnees_structurees ?? {},
+        fields: editedFields,
       })
       setCrmDone({
         mode,
@@ -269,7 +274,7 @@ function AnalyseTab({ canSave }) {
   // Champs affichés = ceux présents à l'origine (non nuls) — restent visibles
   // même si l'utilisateur efface une valeur en la corrigeant.
   const rawDonnees = ocrResult?.donnees_structurees ?? {}
-  const champsExtraits = ocrFieldRows(rawDonnees)
+  const champsExtraits = ocrFieldRows(rawDonnees, MONTANTS_CORRIGEABLES)
 
   return (
     <div className="space-y-4">

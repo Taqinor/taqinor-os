@@ -48,6 +48,7 @@ from .cadence_reperes import (
 )
 from .visites_retour_lead import ecrire_retour_lead_visite, journaliser_visite
 from .cadence_reponses import est_derniere_touche_du_suivi
+from .activity import creer_activite, journal_systeme
 
 logger = logging.getLogger(__name__)
 
@@ -165,7 +166,7 @@ def _planifier_apres_devis_on_devis_sent(sender, devis, user, ancien_statut,
             if deja.devis_id in predecesseurs:
                 barreaux_ouverts.filter(
                     devis_id__in=predecesseurs).update(devis_id=devis.pk)
-                LeadActivity.objects.create(
+                creer_activite(
                     company=lead.company, lead=lead, user=user,
                     kind=LeadActivity.Kind.NOTE,
                     body=('Suivi repris sur la révision '
@@ -175,7 +176,7 @@ def _planifier_apres_devis_on_devis_sent(sender, devis, user, ancien_statut,
                     return
         if deja is not None:
             reference = getattr(deja.devis, 'reference', '') or '?'
-            LeadActivity.objects.create(
+            creer_activite(
                 company=lead.company, lead=lead, user=user,
                 kind=LeadActivity.Kind.NOTE,
                 body=('Cadence après devis déjà en cours pour '
@@ -574,8 +575,8 @@ def _tracer_facture_emise_sur_le_lead(sender, instance, company, **kwargs):
             .order_by('-date_creation', '-id').first())
         if lead is None:
             return
-        LeadActivity.objects.create(
-            company=lead.company, lead=lead, user=None,
+        journal_systeme(
+            company=lead.company, lead=lead,
             kind=LeadActivity.Kind.NOTE,
             body=FACTURE_EMISE_TRACE.format(
                 reference=getattr(instance, 'reference', '') or '?'))

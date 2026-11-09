@@ -78,7 +78,7 @@ class TicketFkEtChampsServeurTests(TestCase):
     def _assert_refus(self, champ, valeur):
         r = self._patch({champ: valeur})
         # CI #997 api-fuzz : id d'ailleurs = id inconnu → 404 (``IdInconnu404Mixin``).
-        self.assertEqual(r.status_code, 404, r.data)
+        self.assertEqual(r.status_code, 409, r.data)  # ENF45 a : mise à jour = 409
         self.assertIn(champ, r.data)
         self.assertNotIn('secrète', str(r.data))
         self.ticket.refresh_from_db()
@@ -104,7 +104,7 @@ class TicketFkEtChampsServeurTests(TestCase):
     def test_id_inexistant_meme_reponse(self):
         r_etr = self._patch({'categorie': self.cat_b.id})
         r_abs = self._patch({'categorie': 999999})
-        self.assertEqual(r_abs.status_code, 404)
+        self.assertEqual(r_abs.status_code, 409)  # ENF45 a : mise à jour = 409
         self.assertEqual(
             str(r_etr.data['categorie'][0]).replace(str(self.cat_b.id), '?'),
             str(r_abs.data['categorie'][0]).replace('999999', '?'))
@@ -115,6 +115,46 @@ class TicketFkEtChampsServeurTests(TestCase):
         self.ticket.refresh_from_db()
         self.assertFalse(self.ticket.non_facturable)
         self.assertFalse(self.ticket.est_recidive)
+
+    def test_pointeurs_facturation_figes(self):
+        """ACSV54 : un Technicien ne change ni les pointeurs de facturation,
+        ni la date d'ouverture ; la couverture lui est refusée (403) et le
+        responsable la change avec une note au chatter."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
+        from apps.sav.models import TicketActivity
+        role = Role.objects.create(
+            company=self.a, nom='Technicien ACSV54',
+            permissions=list(TECHNICIEN_PERMISSIONS))
+        tech = User.objects.create_user(
+            username='acsv54_tech', password='x', company=self.a, role=role)
+        # Portée « équipe » du Technicien : le ticket lui est affecté.
+        Ticket.objects.filter(pk=self.ticket.pk).update(
+            technicien_responsable=tech,
+            facture_id_ext=7, devis_id_ext=8, lead_id_ext=9,
+            date_ouverture=date(2026, 1, 5))
+        api_tech = _api(tech)
+        for corps in ({'facture_id_ext': None}, {'devis_id_ext': 9},
+                      {'lead_id_ext': 9}, {'intervention_origine_id': 9},
+                      {'date_ouverture': '2020-01-01'}):
+            r = api_tech.patch(f'{URL}{self.ticket.id}/', corps, format='json')
+            self.assertEqual(r.status_code, 200, r.data)
+        self.ticket.refresh_from_db()
+        self.assertEqual((self.ticket.facture_id_ext, self.ticket.devis_id_ext,
+                          self.ticket.lead_id_ext), (7, 8, 9))
+        self.assertIsNone(self.ticket.intervention_origine_id)
+        self.assertEqual(self.ticket.date_ouverture, date(2026, 1, 5))
+        r = api_tech.patch(f'{URL}{self.ticket.id}/',
+                           {'couverture': 'garantie'}, format='json')
+        self.assertEqual(r.status_code, 403, r.data)
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.couverture, 'a_determiner')
+        r = self._patch({'couverture': 'garantie'})
+        self.assertEqual(r.status_code, 200, r.data)
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.couverture, 'garantie')
+        self.assertTrue(TicketActivity.objects.filter(
+            ticket=self.ticket, body__contains='Couverture :').exists())
 
     def test_cout_fige(self):
         r = self._patch({'cout': '999.00'})
@@ -212,8 +252,7 @@ class FkSavBorneesSocieteTests(TestCase):
     def test_equipement(self):
         for champ, attribut in (
                 ('categorie', 'categorie'), ('client_vente', 'client'),
-                ('installation', 'installation'), ('produit', 'produit'),
-                ('remplace_par_ticket', 'ticket')):
+                ('installation', 'installation'), ('produit', 'produit')):
             self._assert_borne(S.EquipementSerializer, champ, attribut)
 
     def test_ticket(self):
@@ -265,7 +304,7 @@ class FkSavBorneesSocieteTests(TestCase):
         url = f'/api/django/sav/tickets/{self.a.ticket.pk}/'
         r = api.patch(url, {'equipement': self.b.equipement.pk},
                       format='json')
-        self.assertEqual(r.status_code, 404, r.data)
+        self.assertEqual(r.status_code, 409, r.data)  # ENF45 a : mise à jour = 409
         self.assertIn('equipement', r.data)
         self.a.ticket.refresh_from_db()
         self.assertIsNone(self.a.ticket.equipement_id)

@@ -1,0 +1,31 @@
+# Preuve en direct AAPV7 — rejeu w28 (après correctifs), code d6b50373b8 (dev-plan-6a6fc9-w28), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code de CE commit copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en
+# mémoire, Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu.
+# Écran : front de CE worktree servi par vite (127.0.0.1:3000) -> conteneur privé accept-w29-web (runserver,
+# base erp_accept_w29, SMTP 127.0.0.1:1 = aucune messagerie), piloté par Playwright MCP. Données d'écran :
+# fixture FIX-W28 (société « Live Acceptation W28b », comptes acc28_admin / acc28_resp, mot de passe de test).
+# Verdict : PASS — Sondes C-AAPV-004/005 : repro False ; écran : onglet « Réceptions non facturées » à 1 ligne ouverte après réception, 0 ligne après « Facturer cette réception » (requête lettre=false).
+
+== C-AAPV-004 (sha 5f603acce0)
+attendu : repro si apres annulation de R1 : P1 lettree (facture F2, reception R1 annulee) et P2 ouverte 1000 -> GR/IR ouvert 1000 au lieu de 0
+observé : {'gr_ir_apres_receptions': [{'reception': 'R1', 'montant': '1000.00', 'lettre': False, 'facture_id': None}, {'reception': 'R2', 'montant': '1000.00', 'lettre': False, 'facture_id': None}], 'facturer_R2': 201, 'f2_ht': '1000.00', 'gr_ir_apres_facture_R2': [{'reception': 'R1', 'montant': '1000.00', 'lettre': True, 'facture_id': 146}, {'reception': 'R2', 'montant': '1000.00', 'lettre': False, 'facture_id': None}], 'annuler_R1': 200, 'statuts': {'R1': 'annule', 'R2': 'confirme'}, 'gr_ir_final': [{'reception': 'R2', 'montant': '1000.00', 'lettre': True, 'facture_id': 146}], 'gr_ir_ouvert': '0', 'provision_lettree_sur_R1_annulee': False}
+{"gr_ir_apres_receptions": [{"reception": "R1", "montant": "1000.00", "lettre": false, "facture_id": null}, {"reception": "R2", "montant": "1000.00", "lettre": false, "facture_id": null}], "facturer_R2": 201, "f2_ht": "1000.00", "gr_ir_apres_facture_R2": [{"reception": "R1", "montant": "1000.00", "lettre": true, "facture_id": 146}, {"reception": "R2", "montant": "1000.00", "lettre": false, "facture_id": null}], "annuler_R1": 200, "statuts": {"R1": "annule", "R2": "confirme"}, "gr_ir_final": [{"reception": "R2", "montant": "1000.00", "lettre": true, "facture_id": 146}], "gr_ir_ouvert": "0", "provision_lettree_sur_R1_annulee": false, "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0
+
+== C-AAPV-005 (sha 5f603acce0)
+attendu : repro si apres FF sur commande 20000 HT puis reception confirmee : provision 20000 ouverte (lettre=False) et facturer reception refuse
+observé : {'facturer_bcf': 201, 'ff_ht': '20000.00', 'confirmer': 200, 'stock': 10, 'facturer_reception': 409, 'facturer_reception_detail': "{'detail': 'Rien à facturer à la réception : toutes les lignes de REC-202611-0001 sont « sur commande » (facturées sur le bon de commande).'}", 'gr_ir': [{'montant_provision': '20000.00', 'lettre': 'True', 'facture_id': '147'}], 'gr_ir_ouvert': '0'}
+{"facturer_bcf": 201, "ff_ht": "20000.00", "confirmer": 200, "stock": 10, "facturer_reception": 409, "facturer_reception_detail": "{'detail': 'Rien à facturer à la réception : toutes les lignes de REC-202611-0001 sont « sur commande » (facturées sur le bon de commande).'}", "gr_ir": [{"montant_provision": "20000.00", "lettre": "True", "facture_id": "147"}], "gr_ir_ouvert": "0", "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0
+
+## AAPV7 — PASS (écran)
+Compte acc28_admin. Chantiers › Approvisionnement avancé › onglet « Réceptions non facturées » : « Aucune réception non facturée ».
+Stock › Commandes fournisseur › BCF-ACC-07 (10 × 100 HT, Envoyé) › « À recevoir » 10 › « Recevoir les quantités ».
+Onglet relu : 1 ligne « Réception REC-202611-0001 | 584 | 1 000 MAD | Non | 08/11/2026 » (provision ouverte).
+Stock › Réceptions fournisseur › REC-202611-0001 (Confirmé) › « Facturer cette réception » => « Facture fournisseur FF-202611-0001
+créée (1 200,00 MAD TTC). ». Onglet relu : « Aucune réception non facturée » (0 ligne). Requête de l'onglet :
+GET installations/receptions-non-facturees/?page=1&page_size=200&lettre=false => 200 (le filtre de la correction df6b1ad602).
+Console : 0 erreur.

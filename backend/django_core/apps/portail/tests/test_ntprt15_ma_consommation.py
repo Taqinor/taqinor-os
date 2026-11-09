@@ -122,6 +122,26 @@ class ProductionSeriesTests(TestCase):
             Decimal(str(res.data['points'][0]['energy_kwh'])),
             Decimal('15.00'))
 
+    def test_point_porte_sa_periode(self):
+        """AMON83 — un mensuel et un journalier : deux points, chacun avec sa
+        période (groupés par date ET période)."""
+        from datetime import timedelta
+        today = timezone.localdate()
+        mensuel = today - timedelta(days=60)
+        ProductionReading.objects.create(
+            company=self.company, installation=self.installation,
+            date=mensuel, period_days=30, energy_kwh=Decimal('450'))
+        ProductionReading.objects.create(
+            company=self.company, installation=self.installation,
+            date=today - timedelta(days=5), energy_kwh=Decimal('15'))
+        res = self.api.get(URL)
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertEqual(
+            [(p['date'], p['period_days'], Decimal(str(p['energy_kwh'])))
+             for p in res.data['points']],
+            [(mensuel.isoformat(), 30, Decimal('450.00')),
+             ((today - timedelta(days=5)).isoformat(), 1, Decimal('15.00'))])
+
     def test_isolation_autre_client_ne_fuit_pas(self):
         autre_client = make_client_crm(self.company)
         autre_installation = Installation.objects.create(

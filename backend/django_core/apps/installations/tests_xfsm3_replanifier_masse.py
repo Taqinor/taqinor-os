@@ -181,6 +181,32 @@ class TestReplanificationMasse(TestCase):
             set(resp.data['non_resolues'])
         self.assertEqual(touched, {self.iv1.id})
 
+    def test_annulees_et_terminees_ignorees(self):
+        """ACSV10 (C-ACSV-131) — une pose annulée et une pose terminée du
+        jour ne sont ni proposées ni déplacées. ROUGE AVANT : 3 propositions."""
+        Intervention.objects.filter(pk=self.iv2.pk).update(annulee=True)
+        iv3 = Intervention.objects.create(
+            company=self.company, installation=self.inst,
+            type_intervention='pose', created_by=self.admin,
+            technicien=self.absent, date_prevue=self.jour,
+            statut=Intervention.Statut.TERMINEE)
+        url = f'{BASE}/interventions/replanifier-en-masse/'
+        corps = {'jour': self.jour.isoformat(), 'technicien': self.absent.id}
+        resp = self.api.post(url, {**corps, 'simuler': True}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual([p['intervention_id'] for p in resp.data['propositions']],
+                         [self.iv1.id])
+        resp = self.api.post(url, {**corps, 'motif': 'panne véhicule'},
+                             format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        touched = ({d['intervention_id'] for d in resp.data['deplacees']}
+                   | set(resp.data['non_resolues']))
+        self.assertEqual(touched, {self.iv1.id})
+        for iv in (self.iv2, iv3):
+            iv.refresh_from_db()
+            self.assertEqual(iv.date_prevue, self.jour)
+            self.assertEqual(iv.rdv_reschedule_count, 0)
+
     def test_jour_manquant_rejete(self):
         resp = self.api.post(
             f'{BASE}/interventions/replanifier-en-masse/', {}, format='json')

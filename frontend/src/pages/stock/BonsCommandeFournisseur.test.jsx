@@ -33,6 +33,7 @@ vi.mock('../../api/stockApi', () => ({
     dupliquerBcf: vi.fn(),
     facturerBcf: vi.fn(),
     updateBonCommandeFournisseur: vi.fn(),
+    createBonCommandeFournisseur: vi.fn(),
     reviserBcf: vi.fn(),
     confirmerBcf: vi.fn(),
     getBcfSimilaires: vi.fn(() => Promise.resolve({ data: [] })),
@@ -45,6 +46,10 @@ vi.mock('../../api/stockApi', () => ({
     getAchatsHorsContrat: vi.fn(() => Promise.resolve({ data: [] })),
     // NTP2P21 — suggestions de fusion des BCF brouillon (lecture seule).
     getSuggestionsConsolidationBcf: vi.fn(() => Promise.resolve({ data: [] })),
+    // AAPV20 — retour fournisseur (lot / séries).
+    createRetourFournisseur: vi.fn(() => Promise.resolve({ data: { id: 3 } })),
+    envoyerBcf: vi.fn(() => Promise.resolve({ data: {} })),
+    validerRetourFournisseur: vi.fn(() => Promise.resolve({ data: {} })),
   },
 }))
 
@@ -53,7 +58,7 @@ vi.mock('../../api/coreApi', () => ({
 }))
 
 import stockApi from '../../api/stockApi'
-import BonsCommandeFournisseur, { BcfDetail, MotifAnnulationModal } from './BonsCommandeFournisseur.jsx'
+import BonsCommandeFournisseur, { BcfDetail, MotifAnnulationModal, RetourModal } from './BonsCommandeFournisseur.jsx'
 import { messageErreurBlob } from '../../utils/pdfBlob'
 import { installJsdomPolyfills } from './__tests__/jsdomPolyfills.js'
 
@@ -582,5 +587,64 @@ describe('Chantier d\'origine du BCF', () => {
   it('ne devine plus par regex quand le champ serveur est présent mais nul', () => {
     renderDetail({ bcf: { ...bcf, note: 'chantier CHT-X', chantier_origine: null, chantier_origine_reference: null } })
     expect(screen.queryByText(/Chantier/)).toBeNull()
+  })
+})
+
+describe('RetourModal (AAPV20)', () => {
+  it('RetourModal envoie lot et séries', async () => {
+    const bcf = { id: 4, reference: 'BCF-4', fournisseur: 2, lignes: [
+      { id: 9, produit: 7, produit_nom: 'Batterie', quantite_recue: 10 }] }
+    const onDone = vi.fn()
+    render(<ThemeProvider><RetourModal bcf={bcf} onClose={() => {}} onDone={onDone} /></ThemeProvider>)
+    fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '3' } })
+    fireEvent.change(screen.getByLabelText('Lot retourné — Batterie'), { target: { value: 'L-0425' } })
+    fireEvent.change(screen.getByLabelText('Séries retournées — Batterie'),
+      { target: { value: 'SN1, SN2, SN3' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Valider le retour' }))
+    await waitFor(() => expect(stockApi.createRetourFournisseur).toHaveBeenCalledWith(
+      expect.objectContaining({ lignes: [expect.objectContaining({
+        produit: 7, quantite: 3, numero_lot: 'L-0425', numeros_serie: ['SN1', 'SN2', 'SN3'] })] })))
+    await waitFor(() => expect(onDone).toHaveBeenCalled())
+  })
+})
+
+describe('BcfDetail — avertissements prix (AAPV16)', () => {
+  it('affiche prix_warnings et confirme avant envoi', async () => {
+    const brouillon = {
+      id: 77, reference: 'BCF-77', statut: 'brouillon', fournisseur: 1,
+      lignes: [{ id: 1, produit: 5, produit_nom: 'Onduleur', quantite: 10, prix_achat_unitaire: '1400' }],
+    }
+    stockApi.updateBonCommandeFournisseur.mockResolvedValue({
+      data: { ...brouillon, prix_warnings: [{ ligne_id: 1, produit: 5, warnings: ['Prix au-dessus du contrat (1 150).'] }] },
+    })
+    renderDetail({ bcf: brouillon, fournisseurs: [{ id: 1, nom: 'F2' }] },
+      { role_nom: 'Directeur', permissions: ['achats_commander', 'prix_achat_voir'] })
+    fireEvent.click(screen.getByRole('button', { name: /Envoyer au fournisseur/ }))
+    const dialog = await screen.findByRole('alertdialog')
+    expect(within(dialog).getByText(/au-dessus du contrat/)).toBeInTheDocument()
+    expect(stockApi.envoyerBcf).not.toHaveBeenCalled()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Envoyer' }))
+    await waitFor(() => expect(stockApi.envoyerBcf).toHaveBeenCalledWith(77))
+  })
+
+  it("refus de l'avertissement d'un nouveau BCF : un seul brouillon créé", async () => {
+    // AAPV84 — le brouillon est créé avant la confirmation : au refus, la fenêtre
+    // se ferme (la liste relit le serveur), un second « Envoyer » ne recrée rien.
+    stockApi.createBonCommandeFournisseur.mockResolvedValue({
+      data: { id: 88, statut: 'brouillon', prix_warnings: [{ ligne_id: 1, produit: 5, warnings: ['Prix au-dessus du contrat (1 150).'] }] },
+    })
+    const onClose = vi.fn()
+    const onSaved = vi.fn()
+    renderDetail({
+      bcf: { fournisseur: 1, lignes: [{ produit: 5, quantite: 10, prix_achat_unitaire: '1400' }] },
+      fournisseurs: [{ id: 1, nom: 'F2' }], produits: [{ id: 5, nom: 'Onduleur' }], onClose, onSaved,
+    }, { role_nom: 'Directeur', permissions: ['achats_commander', 'prix_achat_voir'] })
+    fireEvent.click(screen.getByRole('button', { name: /Envoyer au fournisseur/ }))
+    const dialog = await screen.findByRole('alertdialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
+    expect(onSaved).toHaveBeenCalled()
+    expect(stockApi.createBonCommandeFournisseur).toHaveBeenCalledTimes(1)
+    expect(stockApi.envoyerBcf).not.toHaveBeenCalled()
   })
 })

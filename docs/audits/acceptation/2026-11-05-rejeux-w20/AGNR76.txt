@@ -1,0 +1,13 @@
+# Preuve en direct AGNR76 - pile locale, code a711ebdd22 (dev-plan-6a6fc9-w19), 2026-11-05
+# Front reconstruit depuis ce code (docker compose up --build frontend), nginx :80, societe demo id 2 (TAQINOR Demo), demo_admin.
+
+== LIVE-AGNR76 ecran (Playwright MCP, http://localhost/ventes/devis/nouveau)
+parcours : connexion demo_admin ; guide d'accueil ferme ; generateur Residentiel, aucun lead, aucun client choisi ;
+toutes les lignes du tableau supprimees (bouton « Supprimer la ligne », 0 ligne restante) ; clic « Creer le devis » (form#gen-form).
+observe : la carte data-testid=erreur-enregistrement est presente et liste D'UN COUP deux entrees (<li>) :
+  1. « Au moins une ligne avec un produit et une quantite > 0 »
+  2. « Selectionnez un lead ou un client »
+  (avant AGNR76, seule la premiere restait affichee). URL inchangee /ventes/devis/nouveau.
+aucune requete /ventes/devis emise (browser_network_requests filtre ventes/devis : vide) ; console : 0 erreur (1 warning), le seul 401
+(auth/me) precede la connexion ; aucun dialogue natif.
+temoin texte nu : une seule erreur reste affichee en texte nu (couvert par les 8 tests DevisGenerator*.test.jsx de la tache).

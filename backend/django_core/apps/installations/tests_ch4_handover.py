@@ -186,6 +186,28 @@ class HandoverApiTests(TestCase):
         self.assertTrue(HandoverPack.objects.filter(
             installation=inst).exists())
 
+    def test_get_pack_persiste_lit_les_pieces_vivantes(self):
+        """ACSV38 (C-ACSV-142) — le pack persisté disait l'as-built manquant ;
+        après dépôt du schéma, GET pack-remise le montre présent, verdict du
+        gate, méta du pack gardée. ROUGE AVANT : as-built absent."""
+        from apps.installations.models import DocumentProjet
+        inst = make_installation(self.company)
+        url = f'{BASE}/chantiers/{inst.id}/pack-remise/'
+        self.assertEqual(self.api.post(url).status_code, 201)
+        HandoverPack.objects.filter(installation=inst).update(monitoring_acces='https://supervision.example/1')
+        self.assertFalse(_pieces_by_type(HandoverPack.objects.get(installation=inst).pieces)['as_built']['present'])
+        DocumentProjet.objects.create(
+            company=self.company, installation=inst,
+            type_doc='schema_unifilaire', titre='Schéma unifilaire tel que posé')
+        inst = Installation.objects.get(pk=inst.pk)
+        r = self.api.get(url)
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertTrue(_pieces_by_type(r.data['pieces'])['as_built']['present'])
+        self.assertEqual(r.data['complet'], assemble_handover_pieces(inst)['complet'])
+        self.assertTrue(r.data['persiste'])
+        self.assertTrue(r.data['date_generation'])
+        self.assertEqual(r.data['monitoring_acces'], 'https://supervision.example/1')
+
     def test_reception_assemble_le_pack_et_remet_la_garantie(self):
         from apps.stock.models import Produit
         produit = Produit.objects.create(

@@ -225,4 +225,11 @@ class CapaciteMontantsFactureMixin:
             for champ in self._CHAMPS_DEVISE))
         if mad is not None and abs(mad) > PLAFOND_MONTANT:
             raise ConflitEtat({'montant_ttc_devise': [MESSAGE_CAPACITE_FACTURE]})
+        if mad is not None:  # AAPV44 — HT et TVA convertis au même taux
+            from .services import contre_valeur_mad
+            taux = attrs.get('taux_change', getattr(instance, 'taux_change', None))
+            for champ in ('montant_ht', 'montant_tva'):
+                if attrs.get(champ) is not None and abs(
+                        contre_valeur_mad(attrs[champ], taux)) > PLAFOND_MONTANT:
+                    raise ConflitEtat({champ: [MESSAGE_CAPACITE_FACTURE]})
         return attrs

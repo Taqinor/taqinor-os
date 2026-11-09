@@ -4,6 +4,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction, IntegrityError
 from django.db.models import Count, Q
 from django.http import HttpResponse
@@ -15,7 +16,7 @@ from drf_spectacular.utils import (
 from rest_framework import filters, serializers as drf_serializers, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import (
-    APIException, NotFound, ValidationError,
+    APIException, NotFound, PermissionDenied, ValidationError,
 )
 from rest_framework.response import Response
 
@@ -39,7 +40,8 @@ from apps.records.champs_stricts import RegexStricte
 
 from . import activity
 from .champs_corps import (
-    CORPS_PIECE_RETIREE, QuantitePositive, TexteSansSubstitut, refus_stock_en_conflit,
+    CORPS_PIECE_RETIREE, QuantitePositive, TexteSansSubstitut, erreurs_nombres_lignes,
+    refus_stock_en_conflit,
 )
 from .validations_releve import date_du_corps, datetime_du_corps, exiger_objet
 from .models import (
@@ -220,6 +222,12 @@ class SavResoudreRequete(drf_serializers.Serializer):
         allow_null=True, allow_blank=True)
 
 
+class SavCloturerRequete(drf_serializers.Serializer):
+    """Corps de ``cloturer`` (ACSV60) : forcage responsable motive."""
+    sans_facture = BooleenStrict(required=False)
+    motif = ChaineStricte(required=False, allow_blank=True)
+
+
 class SavReplanifierRequete(drf_serializers.Serializer):
     date_tournee = drf_serializers.DateField()
 
@@ -336,9 +344,13 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
                     filter=Q(tickets__type=Ticket.Type.CORRECTIF,
                              tickets__date_creation__date__gte=depuis)),
             )
-        # Portée de visibilité (Feature F) — équipements créés par soi / l'équipe.
-        from authentication.scoping import scope_queryset
-        qs = scope_queryset(qs, self.request.user, ['created_by'])
+        # Portée de visibilité (Feature F) — équipements créés par soi / l'équipe,
+        # OU parc d'un chantier visible (ACSV58, D-ACSV-2).
+        from authentication.scoping import visible_user_ids
+        ids = visible_user_ids(self.request.user)
+        if ids is not None:
+            from apps.installations.selectors import chantiers_visibles
+            qs = qs.filter(Q(created_by__in=ids) | Q(installation__in=chantiers_visibles(self.request.user)))
         params = self.request.query_params
         # ENF11 — filtres d'identifiants validés (400, jamais 500).
         produit = entier_param(self.request, 'produit')
@@ -443,8 +455,21 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
     def perform_create(self, serializer):
         self._check_tenant(serializer)
         company = self.request.user.company
+        vd, rempli = serializer.validated_data, False
         try:
-            serializer.save(company=company, created_by=self.request.user)
+            if vd.get('installation') is None:
+                serializer.save(company=company, created_by=self.request.user)
+            else:  # ACSV59 — écrivain unique du parc d'un chantier (ACHT46)
+                from apps.installations.selectors import quantites_nomenclature_chantier
+                from .services import assurer_equipement_chantier
+                chantier, produit = vd['installation'], vd.get('produit')
+                statut, serializer.instance = assurer_equipement_chantier(
+                    company=company, installation=chantier, produit=produit, numero_serie=vd.get('numero_serie'),
+                    quantite_ligne=quantites_nomenclature_chantier(chantier).get(getattr(produit, 'pk', None), 1),
+                    date_pose=chantier.date_reception or vd.get('date_pose'), created_by=self.request.user)
+                if statut == 'doublon':
+                    raise IntegrityError
+                rempli = statut == 'rempli'
         except IntegrityError:
             # L636 — filet de course si la contrainte d'unicité DB se déclenche
             # entre la validation serializer et l'écriture.
@@ -453,7 +478,8 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
                  'Ce numéro de série existe déjà dans votre société.'})
         # Calcul des horloges de garantie après la pose des FK.
         inst = serializer.instance
-        inst.recompute_garanties()
+        if not rempli:  # placeholder rempli : horloges figées (ASAV7)
+            inst.recompute_garanties()
         # FG85 — jeton QR EQUIP:<id> posé à la création.
         inst.equipement_token = f'EQUIP:{inst.pk}'
         inst.save(update_fields=[
@@ -468,6 +494,21 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
         # catalogue et deux jumeaux divergeaient).
         avant = serializer.instance
         pose_avant, produit_avant = avant.date_pose, avant.produit_id
+        donnees = serializer.validated_data
+        if 'installation' in donnees and (
+                getattr(donnees['installation'], 'pk', None)
+                != avant.installation_id):
+            # ACSV68 — déplacer un équipement de chantier : refus tant qu'un
+            # ticket ouvert le vise, sinon pose recalée sur la réception du
+            # nouveau chantier (sauf date_pose saisie dans le même PATCH).
+            if avant.tickets.filter(statut__in=Ticket.OPEN_STATUTS,
+                                    annule=False).exists():
+                raise ConflitEtat({'installation': [
+                    'Un ticket ouvert vise cet équipement : clôturez-le '
+                    'avant de le déplacer.']})
+            reception = getattr(donnees['installation'], 'date_reception', None)
+            if reception and 'date_pose' not in donnees:
+                donnees['date_pose'] = reception
         try:
             super().perform_update(serializer)
         except IntegrityError:
@@ -489,6 +530,22 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
             update_fields.append('equipement_token')
         if update_fields:
             inst.save(update_fields=update_fields)
+
+    def perform_destroy(self, instance):
+        """ACSV70 — un équipement référencé (ticket, pièce retirée, arrêt,
+        relevé, RMA) ne se supprime pas : 409, le rebut reste le chemin."""
+        refs = [(n, un, plusieurs) for n, un, plusieurs in (
+            (instance.tickets.count(), 'ticket', 'tickets'),
+            (instance.retraits_pieces.count(), 'pièce retirée', 'pièces retirées'),
+            (instance.downtimes.count(), 'arrêt', 'arrêts'),
+            (instance.releves_compteur.count(), 'relevé', 'relevés'),
+            (instance.warranty_claims.count(), 'RMA', 'RMA')) if n]
+        if refs:
+            raise ConflitEtat(
+                'Équipement référencé ('
+                + ', '.join(f'{n} {un if n == 1 else plusieurs}' for n, un, plusieurs in refs)
+                + ') : mettez-le au rebut.')
+        super().perform_destroy(instance)
 
     @extend_schema(
         request=_SCHEMA_REBUT, responses=EquipementSerializer)
@@ -1155,22 +1212,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 if technicien is not None:
                     inst.technicien_responsable = technicien
                     inst.save(update_fields=['technicien_responsable'])
-        # XFSM15 — suggestion de récidive : une intervention TERMINÉE/VALIDÉE
-        # récente sur le MÊME chantier marque le ticket récidive + non
-        # facturable par défaut (override responsable possible ensuite).
-        if inst.installation_id and not inst.est_recidive:
-            from .services import suggerer_recidive
-            interv_id, motif = suggerer_recidive(
-                company=company, installation_id=inst.installation_id,
-                exclure_ticket_id=inst.id, a_la_date=date_ouverture)
-            if interv_id is not None:
-                inst.est_recidive = True
-                inst.intervention_origine_id = interv_id
-                inst.motif_recidive = motif
-                inst.non_facturable = True
-                inst.save(update_fields=[
-                    'est_recidive', 'intervention_origine_id',
-                    'motif_recidive', 'non_facturable'])
+        # XFSM15 / ACSV51 — la récidive est marquée par le récepteur
+        # `post_save` (`services.marquer_recidive`), pour toute porte d'INSERT.
         # XSAV24 — la trace de création (CREATION) est désormais posée
         # automatiquement par le récepteur `post_save` de `receivers.py`
         # (voir `_log_creation_on_ticket_created`), pour TOUT chemin de
@@ -1311,7 +1354,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
             from . import services as sav_services
             sav_services.notifier_arret_installation(serializer.instance)
 
-    def _appliquer_transition_statut(self, ticket, statut_cible):
+    def _appliquer_transition_statut(self, ticket, statut_cible, **options):
         """ASAV12 — délégué d'une ligne vers LE service unique
         ``services.appliquer_transition_ticket`` (même chaîne d'effets pour la
         vue et le récepteur d'intervention terminée). Une transition refusée
@@ -1319,7 +1362,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
         from . import services as sav_services
         try:
             return sav_services.appliquer_transition_ticket(
-                ticket, statut_cible, self.request.user, request=self.request)
+                ticket, statut_cible, self.request.user, request=self.request,
+                **options)
         except sav_services.TransitionTicketRefusee as exc:
             raise ConflitEtat(exc.detail)
 
@@ -1362,13 +1406,32 @@ class TicketViewSet(CompanyScopedModelViewSet):
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
 
-    @extend_schema(request=None)
+    @extend_schema(request=SavCloturerRequete, extensions={EXTENSION_CORPS_RESSERRE: {'allOf': [{'anyOf': [
+        {'properties': {'sans_facture': {'enum': [False]}}},  # ACSV60 : forçage = motif non blanc
+        {'required': ['motif'], 'properties': {'motif': {'pattern': MOTIF_NON_BLANC_SANS_NUL}}}]}]}})
     @action(detail=True, methods=['post'], url_path='cloturer',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def cloturer(self, request, pk=None):
-        """YDOCF1 — Transition gardée → CLOTURE (garde YSERV2 conservée)."""
+        """YDOCF1 — Transition gardée → CLOTURE (garde YSERV2 conservée).
+
+        ACSV60 — un ticket facturable non facturé (pièces / main-d'œuvre) est
+        refusé (409 ``ticket_non_facture``) ; ``{sans_facture: true, motif}``
+        (responsable/admin) force la clôture, tracée au chatter."""
         ticket = self.get_object()
-        self._appliquer_transition_statut(ticket, Ticket.Statut.CLOTURE)
+        corps = SavCloturerRequete().run_validation(request.data)
+        motif = (corps.get('motif') or '').strip()
+        if corps.get('sans_facture'):
+            from authentication.models import CustomUser
+            if getattr(request.user, 'menu_tier', None) not in (
+                    CustomUser.ROLE_ADMIN, CustomUser.ROLE_RESPONSABLE):
+                raise PermissionDenied(
+                    'Seul un responsable ou un administrateur clôture '
+                    'sans facture.')
+            if not motif:
+                raise ValidationError({'motif': 'Motif obligatoire.'})
+        self._appliquer_transition_statut(
+            ticket, Ticket.Statut.CLOTURE,
+            sans_facture=motif if corps.get('sans_facture') else '')
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
 
@@ -1726,6 +1789,10 @@ class TicketViewSet(CompanyScopedModelViewSet):
         motif = (_valider_corps(_SCHEMA_ANNULER, request.data).get('motif')
                  or '').strip()
         if not ticket.annule:
+            if ticket.prets_equipement.filter(statut='en_cours').exists():
+                raise ConflitEtat(  # ACSV67
+                    "Impossible d'annuler : un pr\u00eat d'\u00e9quipement est "
+                    'encore en cours (retournez-le d\u0027abord).')
             ticket.annule = True
             ticket.motif_annulation = motif or None
             ticket.reprendre_apres_attente()
@@ -1734,6 +1801,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
             activity.log_note(
                 ticket, request.user,
                 f"Ticket annulé{(' : ' + motif) if motif else ''}")
+            from apps.installations.services import annuler_interventions_du_ticket  # ACSV65
+            annuler_interventions_du_ticket(ticket.pk, request.user, f'Ticket {ticket.reference} annulé')
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
 
@@ -1749,6 +1818,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
             ticket.save(update_fields=[
                 'annule', 'motif_annulation', *_CHAMPS_PAUSE])
             activity.log_note(ticket, request.user, "Ticket réactivé")
+            from apps.installations.services import reactiver_interventions_du_ticket  # ACSV65
+            reactiver_interventions_du_ticket(ticket.pk, request.user)
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
 
@@ -1993,7 +2064,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
         request=_SCHEMA_PIECE_CONSOMMEE,
         responses={201: PieceConsommeeSerializer})
     @action(detail=True, methods=['get', 'post'], url_path='pieces', pagination_class=None,
-            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+            permission_classes=[HasPermissionOrLegacy('sav_gerer'),
+                                DroitDeLaGrille('stock_mouvement', champ='decrement')])
     def pieces(self, request, pk=None):
         """N46 — pièces consommées sur le ticket. GET liste, POST ajoute.
 
@@ -2017,21 +2089,29 @@ class TicketViewSet(CompanyScopedModelViewSet):
         except (produit_does_not_exist(), ValueError, TypeError):
             return Response({'detail': 'Produit inconnu.'}, status=404)
         decrement = bool(corps.get('decrement'))
-        if decrement:
-            # ERR80 — garde plancher : ne jamais piloter le stock en négatif.
-            # On bloque le décrément qui dépasserait le stock en main.
-            produit.refresh_from_db()
-            if quantite > produit.quantite_stock:
-                return Response(
-                    {'detail': 'Stock insuffisant : '
-                     f'{produit.quantite_stock} en main, {quantite} demandé(s).'},
-                    status=status.HTTP_409_CONFLICT)  # ENF11 : état du stock
         with transaction.atomic():
+            if decrement:
+                # ACSV52 - verrou de ligne AVANT la lecture du stock (deux
+                # poses concurrentes ne lisent plus la meme valeur) ; ERR80 -
+                # garde plancher : ne jamais piloter le stock en negatif ;
+                # ASTK248 - la part en quarantaine n'est jamais prelevee.
+                from apps.stock.services import verrouiller_produit
+                from apps.stock.services_wms import exiger_hors_quarantaine
+                from apps.stock.erreurs_achats import EtatIncompatible
+                produit = verrouiller_produit(produit.pk)
+                if quantite > produit.quantite_stock:
+                    return Response(
+                        {'detail': 'Stock insuffisant : '
+                         f'{produit.quantite_stock} en main, {quantite} demandé(s).'},
+                        status=status.HTTP_409_CONFLICT)  # ENF11 : état du stock
+                try:
+                    exiger_hors_quarantaine(ticket.company, produit, quantite)
+                except EtatIncompatible as exc:
+                    raise ConflitEtat(str(exc)) from exc
             piece = PieceConsommee.objects.create(
                 company=ticket.company, ticket=ticket, produit=produit,
                 quantite=quantite, created_by=request.user)
             if decrement:
-                produit.refresh_from_db()
                 try:
                     record_stock_movement(
                         company=ticket.company, produit=produit,
@@ -2070,10 +2150,14 @@ class TicketViewSet(CompanyScopedModelViewSet):
             piece = ticket.pieces.select_related('produit').get(pk=piece_id)
         except (PieceConsommee.DoesNotExist, ValueError):
             return Response({'detail': 'Introuvable.'}, status=404)
+        if piece.stock_decremente:  # ACSV62 / D-ACSV-3 : la remise est un mouvement
+            garde = DroitDeLaGrille('stock_mouvement')()
+            if not garde.has_permission(request, self):
+                raise PermissionDenied(garde.message)
         with transaction.atomic():
             if piece.stock_decremente:
-                produit = piece.produit
-                produit.refresh_from_db()
+                from apps.stock.services import verrouiller_produit
+                produit = verrouiller_produit(piece.produit_id)  # ACSV52
                 qte_avant = produit.quantite_stock
                 qte_apres = qte_avant + piece.quantite
                 record_stock_movement(
@@ -2101,7 +2185,9 @@ class TicketViewSet(CompanyScopedModelViewSet):
         request=_SCHEMA_PIECE_RETIREE, extensions=CORPS_PIECE_RETIREE,
         responses={201: PieceRetireeSerializer})
     @action(detail=True, methods=['get', 'post'], url_path='pieces-retirees', pagination_class=None,
-            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+            permission_classes=[HasPermissionOrLegacy('sav_gerer'),
+                                DroitDeLaGrille('stock_mouvement', operation='stock_occasion',
+                                                cle='destination')])
     def pieces_retirees(self, request, pk=None):
         """XMFG10 — pièces RETIRÉES du ticket (onduleur remplacé, pompe HS…).
 
@@ -2139,9 +2225,11 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 return Response(
                     {'serie_neuve': ['Ce numéro de série est déjà au parc.']},
                     status=409)  # ENF11 : état du parc
-            if not numero_serie or not Equipement.objects.filter(
+            from .services import equipement_vise
+            if (not numero_serie or not Equipement.objects.filter(
                     company=ticket.company,
-                    numero_serie=numero_serie).exists():
+                    numero_serie=numero_serie).exists()) and (
+                    equipement_vise(ticket, produit) is None):
                 return Response(
                     {'serie_neuve': ["Le numéro de série de l'appareil "
                                      'remplacé doit exister au parc.']},
@@ -2214,7 +2302,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
             'sous_garantie': drf_serializers.BooleanField(),
         })})
     @action(detail=True, methods=['post'], url_path='generer-facture',
-            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+            permission_classes=[HasPermissionOrLegacy('sav_gerer'),
+                                DroitDeLaGrille('ventes_creer')])
     def generer_facture(self, request, pk=None):
         """XFSM1 — génère une facture BROUILLON depuis un ticket SAV hors
         garantie : lignes pièces (PieceConsommee, prix de vente catalogue) +
@@ -2237,7 +2326,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
             'sous_garantie': drf_serializers.BooleanField(),
         })})
     @action(detail=True, methods=['post'], url_path='facturer',
-            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+            permission_classes=[HasPermissionOrLegacy('sav_gerer'),
+                                DroitDeLaGrille('ventes_creer')])
     def facturer(self, request, pk=None):
         """XCTR4 — Facture CE ticket selon le routage de couverture calculé
         (garantie/contrat de maintenance/facturable).
@@ -2268,7 +2358,9 @@ class TicketViewSet(CompanyScopedModelViewSet):
                             status=decision['http'])
         couverture = decision['couverture']
         sous_garantie = decision['couvert']
-        pieces = list(ticket.pieces.select_related('produit'))
+        from apps.installations.selectors import consommations_appliquees_du_ticket
+        pieces = list(ticket.pieces.select_related('produit')) + (  # ACSV53 — F11 appliquée
+            consommations_appliquees_du_ticket(ticket.company, ticket.id))
         facture = generer_facture_ticket_sav(
             ticket=ticket, sous_garantie=sous_garantie, pieces=pieces,
             user=request.user)
@@ -2348,7 +2440,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
         request=_SCHEMA_PRET_EQUIPEMENT,
         responses={201: PretEquipementSerializer})
     @action(detail=True, methods=['get', 'post'], url_path='prets-equipement', pagination_class=None,
-            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+            permission_classes=[HasPermissionOrLegacy('sav_gerer'),
+                                DroitDeLaGrille('stock_mouvement', champ='produit')])
     def prets_equipement(self, request, pk=None):
         """XSAV27 — prêt/échange anticipé d'équipement (loaner). GET liste,
         POST sort une unité du stock immédiatement (`services.
@@ -2390,7 +2483,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
         responses=PretEquipementSerializer)
     @action(detail=True, methods=['post'],
             url_path=r'prets-equipement/(?P<pret_id>[^/.]+)/retourner',
-            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+            permission_classes=[HasPermissionOrLegacy('sav_gerer'),
+                                DroitDeLaGrille('stock_mouvement')])
     def retourner_pret(self, request, pk=None, pret_id=None):
         """XSAV27 — clôture un prêt : réintègre le stock (idempotent)."""
         ticket = self.get_object()
@@ -2529,7 +2623,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         try:
             item = ticket.checklist_items.get(cle=cle)
         except TicketChecklistItem.DoesNotExist:
-            return Response({'detail': 'Item introuvable.'}, status=404)
+            return Response({'detail': 'Item introuvable.'}, status=409)  # ENF47 : refus d'état (ENF40)
         if 'coche' in corps:
             item.coche = corps['coche']
             if item.coche:
@@ -2543,8 +2637,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
         item.save()
         return Response(TicketChecklistItemSerializer(item).data)
 
-    @extend_schema(
-        methods=['GET'], request=None, responses=TicketWorksheetSerializer)
+    @extend_schema(methods=['GET'], request=None, responses={
+        200: TicketWorksheetSerializer, 409: _sch('SavWorksheetRefus', {'detail': drf_serializers.CharField()})})
     @extend_schema(
         methods=['POST'],
         request=_sch('SavWorksheetInitRequete', {
@@ -2571,13 +2665,13 @@ class TicketViewSet(CompanyScopedModelViewSet):
                marque complétée (body: {complete: true}) — refuse (400) si
                un champ requis du modèle manque encore.
         Gaté par ``SavSlaSettings.worksheets_maintenance_actifs`` (défaut
-        OFF) : 404 tant que la société n'a pas activé la fonctionnalité."""
+        OFF) : 409 tant que la société n'a pas activé la fonctionnalité."""
         ticket = self.get_object()
         sla = SavSlaSettings.get(ticket.company)
         if not sla.worksheets_maintenance_actifs:
             return Response(
                 {'detail': 'Feuilles de maintenance non activées pour cette société.'},
-                status=404)
+                status=409)  # ENF50 : ticket existant, fonction éteinte = état (ENF40)
 
         if request.method == 'GET':
             worksheet = getattr(ticket, 'worksheet', None)
@@ -2686,6 +2780,10 @@ class TicketViewSet(CompanyScopedModelViewSet):
             pk=doublon_id, company=principal.company).first()
         if doublon is None:
             return Response({'detail': 'Ticket doublon introuvable.'}, status=404)
+        if doublon.facture_id_ext:  # ACSV57 — la facture resterait sur le doublon
+            raise ConflitEtat(
+                f'Ce doublon est déjà facturé (facture n°{doublon.facture_id_ext}) '
+                ': annulez sa facture avant de fusionner.')
 
         from django.contrib.contenttypes.models import ContentType
         from apps.records.models import Attachment
@@ -2700,12 +2798,16 @@ class TicketViewSet(CompanyScopedModelViewSet):
 
             doublon.activites.update(ticket=principal, company=principal.company)
             doublon.pieces.update(ticket=principal, company=principal.company)
+            doublon.prets_equipement.update(  # ACSV67
+                ticket=principal, company=principal.company)
             TicketChecklistItem.objects.filter(ticket=doublon).update(
                 ticket=principal, company=principal.company)
             ct = ContentType.objects.get_for_model(Ticket)
             Attachment.objects.filter(
                 content_type=ct, object_id=doublon.pk,
             ).update(object_id=principal.pk, company=principal.company)
+            from apps.installations.services import rattacher_interventions_au_ticket  # ACSV65
+            rattacher_interventions_au_ticket(doublon.pk, principal.pk)
 
             # Note sur le doublon APRÈS le déplacement de ses activités
             # (sinon elle partirait elle-même vers le principal et le
@@ -2725,11 +2827,10 @@ class TicketViewSet(CompanyScopedModelViewSet):
 
     @staticmethod
     def _produits_lignes_hors_societe(company, lignes):
-        """ASEC35 — résout dans la société du ticket chaque ``produit_id``
-        reçu par ``creer-devis`` AVANT le domaine ventes (via le sélecteur
-        stock borné société). Renvoie ``{index: {'produit_id': [msg]}}`` —
-        un produit d'une autre société et un id inexistant reçoivent la MÊME
-        réponse (aucun oracle d'existence) ; ``{}`` si tout est valide."""
+        """ASEC35/ASEC80 — résout dans la société chaque ``produit_id`` de ``creer-devis``
+        AVANT le domaine ventes (sélecteur stock borné société) et contrôle quantité / prix.
+        Renvoie ``{index: {champ: [msg]}}`` — un produit d'une autre société et un id
+        inexistant reçoivent la MÊME réponse (aucun oracle) ; ``{}`` si tout est valide."""
         from apps.stock.selectors import valid_produit_ids
 
         message = "Produit introuvable pour votre société."
@@ -2751,7 +2852,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         for i, pid in a_verifier.items():
             if pid not in valides:
                 erreurs[i] = {'produit_id': [message]}
-        return erreurs
+        return erreurs_nombres_lignes(lignes, erreurs)
 
     @extend_schema(
         request=_sch('SavCreerDevisRequete', {
@@ -2764,7 +2865,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
             'devis_reference': _CharF(),
         })})
     @action(detail=True, methods=['post'], url_path='creer-devis',
-            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+            permission_classes=[HasPermissionOrLegacy('sav_gerer'),
+                                DroitDeLaGrille('ventes_creer')])
     def creer_devis(self, request, pk=None):
         """XSAV3 — Crée un devis de réparation hors garantie depuis le ticket.
 
@@ -2819,8 +2921,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 company=ticket.company, user=request.user,
                 client_id=client_id, lignes=lignes,
                 note=f'Devis de réparation SAV — ticket {ticket.reference}')
-        except Exception:
-            logging.getLogger(__name__).warning("sav.creer_devis : exception ignorée", exc_info=True)
+        except ObjectDoesNotExist:  # ASEC80 — seul le client inconnu est un 404
             return Response(
                 {'detail': 'Client introuvable pour votre société.'},
                 status=status.HTTP_404_NOT_FOUND)

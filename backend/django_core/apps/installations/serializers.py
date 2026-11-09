@@ -787,12 +787,7 @@ class InstallationSerializer(IdInconnu404Mixin, ChampsStrictsEntiersMixin,  # id
 
     @extend_schema_field(serializers.BooleanField())
     def get_est_parc(self, obj):
-        # Système installé = chantier réceptionné (ou clôturé) et toujours
-        # actif dans le parc, hors chantier annulé.
-        canon = Installation.canonical_statut(obj.statut)
-        reached = canon in (
-            Installation.Statut.RECEPTIONNE, Installation.Statut.CLOTURE)
-        return bool(reached and obj.parc_actif and not obj.annule)
+        return obj.est_du_parc  # AMON80 — règle unique sur le modèle
 
     @extend_schema_field(serializers.IntegerField(allow_null=True))
     def get_checklist_completion(self, obj):
@@ -1499,6 +1494,9 @@ class DemandeAchatLigneSerializer(PrixEstimeNonNegatifMixin, IdInconnu404Mixin,
         # ACHT11 — quantité finie et strictement positive.
         if value is None or not value.is_finite() or value <= 0:
             raise ConflitEtat({'quantite': ['La quantité doit être supérieure à 0.']})
+        if value != value.to_integral_value():  # AAPV47 — un BCF se commande en unités
+            raise ConflitEtat({'quantite': [
+                'Quantité entière exigée : un bon de commande fournisseur se commande en unités.']})
         return value
 
     def validate(self, attrs):

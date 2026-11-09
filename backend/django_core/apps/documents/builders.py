@@ -77,13 +77,76 @@ _BON_LIVRAISON_LIBELLES = {
 }
 
 
+# NTI18N30 — libellés FR/AR du PV de réception (N21), même patron que le BL
+# (XSTK18) : libellés fixes traduits, valeurs et fragments telles quelles.
+_PV_RECEPTION_LIBELLES = {
+    'fr': {
+        'titre': 'PROCÈS-VERBAL DE RÉCEPTION',
+        'titre_definitive': 'PROCÈS-VERBAL DE RÉCEPTION DÉFINITIVE',
+        'chantier': 'Chantier',
+        'installateur': 'Installateur',
+        'client': 'Client',
+        'technicien': 'Technicien',
+        'intro': ("Le présent procès-verbal constate la réception des travaux "
+                  "d'installation du système photovoltaïque réalisé par"),
+        'intro_fin': 'pour le client ci-dessus.',
+        'puissance': 'Puissance',
+        'type': 'Type',
+        'raccordement': 'Raccordement',
+        'mise_en_service': 'Mise en service',
+        'composants': 'Composants installés',
+        'designation': 'Désignation',
+        'quantite': 'Qté',
+        'verifications': 'Réception — vérifications',
+        'le_client': 'Le client',
+        'l_installateur': "L'installateur",
+        'mention': 'Mention manuscrite « Bon pour accord »',
+        'signe_le': 'Signé le',
+        'empreinte': 'empreinte',
+        'fige_le': 'Figé le',
+        'apres_signature': 'après la signature du',
+        'genere_le': 'Document généré le',
+    },
+    'ar': {
+        'titre': 'محضر الاستلام',
+        'titre_definitive': 'محضر الاستلام النهائي',
+        'chantier': 'الورش',
+        'installateur': 'المركّب',
+        'client': 'الزبون',
+        'technicien': 'التقني',
+        'intro': 'يثبت هذا المحضر استلام أشغال تركيب النظام الكهروضوئي المنجز من طرف',
+        'intro_fin': 'لفائدة الزبون المذكور أعلاه.',
+        'puissance': 'القدرة',
+        'type': 'النوع',
+        'raccordement': 'الربط',
+        'mise_en_service': 'التشغيل',
+        'composants': 'المكونات المركّبة',
+        'designation': 'البيان',
+        'quantite': 'الكمية',
+        'verifications': 'الاستلام — عمليات التحقق',
+        'le_client': 'الزبون',
+        'l_installateur': 'المركّب',
+        'mention': 'عبارة بخط اليد « موافق »',
+        'signe_le': 'تم التوقيع بتاريخ',
+        'empreinte': 'البصمة',
+        'fige_le': 'تم التجميد بتاريخ',
+        'apres_signature': 'بعد التوقيع بتاريخ',
+        'genere_le': 'تم إنشاء الوثيقة بتاريخ',
+    },
+}
+
+
+def _libelle_traduit(tables, cle, langue='fr'):
+    """XSTK18/NTI18N30 — libellé fixe FR/AR d'un document chantier. FR par
+    défaut ; une clé absente du dictionnaire AR retombe sur le FR, jamais une
+    clé brute affichée au client."""
+    table = tables.get(langue) or tables['fr']
+    return table.get(cle) or tables['fr'].get(cle, cle)
+
+
 def _bl_libelle(cle, langue='fr'):
-    """XSTK18 — Traduction d'un libellé du bon de livraison. FR par défaut
-    (comportement inchangé quand `langue` n'est pas 'ar' ou que la clé est
-    absente du dictionnaire AR — retombe alors sur le FR, jamais une clé
-    brute affichée au client)."""
-    table = _BON_LIVRAISON_LIBELLES.get(langue) or _BON_LIVRAISON_LIBELLES['fr']
-    return table.get(cle) or _BON_LIVRAISON_LIBELLES['fr'].get(cle, cle)
+    """XSTK18 — Traduction d'un libellé du bon de livraison."""
+    return _libelle_traduit(_BON_LIVRAISON_LIBELLES, cle, langue)
 
 
 # Guide d'exploitation & maintenance par défaut (français). Texte générique
@@ -467,6 +530,34 @@ def _base_context(chantier):
 
 # ── Générateurs publics ──────────────────────────────────────────────────────
 
+def _parts_etat_signe(chantier):
+    """Parts de l'état SIGNÉ (référence, signataire, ``signe_le``, trait,
+    champs signataire C&I) — sans recette ni réserves, qui vivent."""
+    signe_le = getattr(chantier, 'signe_le', None)
+    parts = [
+        str(getattr(chantier, 'reference', '') or ''),
+        str(getattr(chantier, 'signataire_nom', '') or ''),
+        signe_le.isoformat() if signe_le is not None else '',
+        str(getattr(chantier, 'signature_client', '') or ''),
+    ]
+    # CIQ631 — signataire nommé et co-signature : ajoutés SEULEMENT quand ils
+    # existent (résidentiel : empreinte octet-identique quand ils sont vides).
+    extras = [str(getattr(chantier, champ, '') or '')
+              for champ in _CHAMPS_SIGNATAIRE_CI]
+    if any(extras):
+        parts.extend(extras)
+    return parts
+
+
+def empreinte_etat_signe(chantier):
+    """ACSV30 — clé de GEL du PV / BL signés : l'état SIGNÉ seul. Ni la
+    levée d'une réserve ni une réserve ajoutée plus tard ne la changent
+    (seule une re-signature le fait) ; égale à ``empreinte_signature`` en
+    résidentiel."""
+    return hashlib.sha256(
+        '|'.join(_parts_etat_signe(chantier)).encode('utf-8')).hexdigest()[:16]
+
+
 def empreinte_signature(chantier):
     """AUD306 — empreinte SHA-256 (16 hex) de l'ÉTAT SIGNÉ d'un chantier.
 
@@ -477,20 +568,7 @@ def empreinte_signature(chantier):
     signé en produit une autre : c'est ce qui distingue « la version signée »
     d'une simple régénération à la volée depuis l'état LIVE du chantier.
     """
-    signe_le = getattr(chantier, 'signe_le', None)
-    parts = [
-        str(getattr(chantier, 'reference', '') or ''),
-        str(getattr(chantier, 'signataire_nom', '') or ''),
-        signe_le.isoformat() if signe_le is not None else '',
-        str(getattr(chantier, 'signature_client', '') or ''),
-    ]
-    # CIQ631 — signataire nommé, co-signature, recette et réserves C&I :
-    # ajoutés SEULEMENT quand ils existent (résidentiel : empreinte
-    # octet-identique quand ces champs sont vides).
-    extras = [str(getattr(chantier, champ, '') or '')
-              for champ in _CHAMPS_SIGNATAIRE_CI]
-    if any(extras):
-        parts.extend(extras)
+    parts = _parts_etat_signe(chantier)
     contenu_ci = _contenu_ci_empreinte(chantier)
     if contenu_ci:
         parts.append(contenu_ci)
@@ -509,11 +587,42 @@ def _pv_ci(chantier):
     """CIQ631 — résumé liste blanche (recette + réserves ouvertes) d'un
     chantier industriel, via le sélecteur installations ; None ailleurs."""
     from apps.installations.selectors import pv_recette_ci
+    fige = getattr(chantier, '_pv_ci_signe', None)
+    if fige is not None:  # ACSV30 — re-rendu de secours : l'état signé, pas le vivant
+        return _pv_ci_depuis_json(fige)
     try:
         return pv_recette_ci(chantier)
     except Exception:  # pragma: no cover - défensif (PV jamais bloqué)
         logger.exception('CIQ631 — résumé recette C&I indisponible')
         return None
+
+
+def _pv_ci_en_json(resume):
+    """ACSV30 — résumé ``_pv_ci`` sérialisable (dates en ISO) ; None reste None."""
+    if resume is None:
+        return None
+    recette = resume['recette']
+    if recette is not None:
+        recette = {**recette, 'date': (
+            recette['date'].isoformat() if recette['date'] else None)}
+    return {'recette': recette, 'reserves': [
+        {**r, 'date_echeance': (
+            r['date_echeance'].isoformat() if r['date_echeance'] else None)}
+        for r in resume['reserves']]}
+
+
+def _pv_ci_depuis_json(donnees):
+    """ACSV30 — inverse de ``_pv_ci_en_json`` (dates rehydratées)."""
+    recette = donnees['recette']
+    if recette is not None:
+        recette = {**recette, 'date': (
+            date.fromisoformat(recette['date'])
+            if recette['date'] else None)}
+    return {'recette': recette, 'reserves': [
+        {**r, 'date_echeance': (
+            date.fromisoformat(r['date_echeance'])
+            if r['date_echeance'] else None)}
+        for r in donnees['reserves']]}
 
 
 def _contenu_ci_empreinte(chantier):
@@ -632,7 +741,7 @@ def generate_pv_reception(chantier, fige_le=None, definitive=False):
     # CIQ631 — PV de réception DÉFINITIVE : même gabarit, son titre.
     if definitive:
         ctx['doc_titre'] = 'PROCÈS-VERBAL DE RÉCEPTION DÉFINITIVE'
-    if chantier.signature_client:
+    if chantier.signature_client and not definitive:  # ACSV32 : la définitive n'a pas le trait de la provisoire
         ctx['signature_client'] = chantier.signature_client
         ctx['signataire_nom'] = chantier.signataire_nom or None
         ctx['signe_le'] = chantier.signe_le
@@ -641,7 +750,15 @@ def generate_pv_reception(chantier, fige_le=None, definitive=False):
         # « figé le …, après la signature du … » remplace l'empreinte.
         if fige_le is not None:
             ctx['fige_le'] = fige_le
-    html = get_template('document_pv_reception.html').render(ctx)
+    # NTI18N30 — client `langue_document='ar'` (NTI18N4, repli société) : PV
+    # RTL par le gabarit dédié (patron XSTK18) ; le FR garde son gabarit et
+    # son contexte inchangés (byte-identique).
+    template_name = 'document_pv_reception.html'
+    if document_langue(chantier.client, company=chantier.company) == 'ar':
+        ctx['L'] = lambda cle: _libelle_traduit(_PV_RECEPTION_LIBELLES, cle, 'ar')
+        ctx['doc_titre'] = ctx['L']('titre_definitive' if definitive else 'titre')
+        template_name = 'document_pv_reception_ar.html'
+    html = get_template(template_name).render(ctx)
     # AGR611 — chantier agricole : mesures de la recette pompage + formalité
     # art. 3 (fragment vide ailleurs : PV strictement inchangé).
     html = _inject_before(html, '<div class="signature-section">',
@@ -697,19 +814,15 @@ def generate_bon_livraison(chantier):
 
 
 def _handover_pack_summary(chantier):
-    """AUD307 — pièces du pack de remise CH4 (`installations.HandoverPack`).
-
-    Même patron défensif que `_checklist_summary` : ``None`` quand le chantier
-    n'a pas encore de pack persisté (l'accesseur inverse OneToOne lève une
-    exception qui hérite d'``AttributeError``, donc ``getattr(..., None)``
-    suffit), et chaque pièce dégrade proprement — une entrée malformée est
-    ignorée plutôt que de casser la génération du document client.
-    """
-    pack = getattr(chantier, 'handover_pack', None)
+    """AUD307 — pièces du pack de remise CH4, relues VIVANTES (ACSV38 :
+    ``installations.selectors.pack_remise_vivant``, celles du gate) ; ``None``
+    sans pack persisté ; une entrée malformée est ignorée, jamais fatale."""
+    from apps.installations.selectors import pack_remise_vivant
+    pack = pack_remise_vivant(chantier)
     if pack is None:
         return None
     pieces = []
-    for piece in (pack.pieces or []):
+    for piece in (pack['pieces'] or []):
         if not isinstance(piece, dict):
             continue
         pieces.append({
@@ -720,10 +833,10 @@ def _handover_pack_summary(chantier):
         })
     return {
         'pieces': pieces,
-        'complet': bool(pack.complet),
+        'complet': bool(pack['complet']),
         'presentes': sum(1 for p in pieces if p['present']),
         'total': len(pieces),
-        'monitoring_acces': pack.monitoring_acces or '',
+        'monitoring_acces': pack['monitoring_acces'],
     }
 
 
@@ -1071,12 +1184,15 @@ def generate_attestation(chantier, attestation_type, date_emission=None):
 
 SOURCE_PV_RECEPTION = 'documents.pv_reception'
 SOURCE_BON_LIVRAISON = 'documents.bon_livraison'
+SOURCE_PV_RECEPTION_DEFINITIVE = 'documents.pv_reception_definitive'  # ACSV32
 SOURCE_ATTESTATION = 'documents.attestation'
 GED_CABINET_CHANTIERS = 'Chantiers'
 # Au-delà de ce délai entre la signature et le gel, le PV ne peut plus
 # affirmer l'empreinte du contenu signé : il dit quand il a été figé.
 GEL_TARDIF_SEUIL = timedelta(hours=1)
 EMPREINTE_KEY = 'empreinte_signature'
+EMPREINTE_GEL_KEY = 'empreinte_gel'  # ACSV30
+PV_CI_SIGNE_KEY = 'pv_ci_signe'  # ACSV30
 
 
 def _aujourdhui():
@@ -1111,8 +1227,8 @@ def _octets_en_vigueur(document):
     version = document.versions.order_by('-version').first()
     if version is None or not version.file_key:
         return None
-    from apps.records.storage import fetch_attachment
-    data, err = fetch_attachment(version.file_key)
+    from apps.ged import services as ged_services  # ASEC81 — garde ASEC58 (clé hors société)
+    data, err = ged_services._fetch_version_bytes(version)
     if err or not data:
         return None
     return data
@@ -1148,20 +1264,30 @@ def _servir_signe(chantier, *, source_type, nom, render, maintenant=None):
     l'empreinte de signature courante ; sinon (jamais figé, ou re-signé) rendu
     puis gel (nouvelle version du même Document)."""
     empreinte = empreinte_signature(chantier)
+    gel = empreinte_etat_signe(chantier)  # ACSV30 — clé de gel : état signé seul
     document = _document_ged(chantier, source_type)
-    if document is not None and (
-            (document.custom_data or {}).get(EMPREINTE_KEY) == empreinte):
-        data = _octets_en_vigueur(document)
-        if data:
-            return data
+    pv_ci_signe = None
+    if document is not None:
+        meta_gelee = document.custom_data or {}
+        if (meta_gelee.get(EMPREINTE_GEL_KEY)
+                or meta_gelee.get(EMPREINTE_KEY)) == gel:
+            data = _octets_en_vigueur(document)
+            if data:
+                return data
+            # Octets illisibles : re-rendu de secours sous l'état C&I SIGNÉ.
+            pv_ci_signe = meta_gelee.get(PV_CI_SIGNE_KEY)
+            chantier._pv_ci_signe = pv_ci_signe
     maintenant = maintenant or timezone.now()
     signe_le = getattr(chantier, 'signe_le', None)
     tardif = bool(signe_le and maintenant - signe_le > GEL_TARDIF_SEUIL)
     pdf = render(chantier, maintenant if tardif else None)
+    if pv_ci_signe is None:  # 1re gel : état C&I signé, relu en cas de secours
+        pv_ci_signe = _pv_ci_en_json(_pv_ci(chantier))
     _deposer_fige(
         chantier, source_type=source_type, nom=nom, pdf=pdf,
-        meta={EMPREINTE_KEY: empreinte, 'fige_le': maintenant.isoformat(),
-              'gel_tardif': tardif})
+        meta={EMPREINTE_KEY: empreinte, EMPREINTE_GEL_KEY: gel,
+              PV_CI_SIGNE_KEY: pv_ci_signe,
+              'fige_le': maintenant.isoformat(), 'gel_tardif': tardif})
     _partager_au_client_portail(chantier, source_type)
     return pdf
 
@@ -1190,6 +1316,23 @@ def _partager_au_client_portail(chantier, source_type):
         return None
 
 
+def aligner_partage_portail_chantier(chantier):
+    """ACSV33 — PV et BL figés partagés avec le seul client COURANT d'un
+    chantier non annulé : tout autre client perd la lecture, un chantier annulé
+    n'en partage aucun. Idempotent, best-effort (journalisé, ne lève jamais)."""
+    from apps.ged import services as ged_services
+    garder = None if chantier.annule else getattr(chantier, 'client_id', None)
+    for source_type in (SOURCE_PV_RECEPTION, SOURCE_BON_LIVRAISON):
+        try:
+            ged_services.retirer_partage_client_portail(
+                _document_ged(chantier, source_type), sauf_client_id=garder)
+        except Exception:
+            logger.exception('ACSV33 — retrait du partage portail impossible (%s, chantier %s)',
+                             source_type, chantier.pk)
+        if garder:
+            _partager_au_client_portail(chantier, source_type)
+
+
 def _servir_pv(chantier, maintenant=None):
     return _servir_signe(
         chantier, source_type=SOURCE_PV_RECEPTION,
@@ -1211,6 +1354,24 @@ def pv_reception_pour_client(chantier):
     if not chantier.signature_client:
         return generate_pv_reception(chantier)
     return _servir_pv(chantier)
+
+
+def pv_reception_definitive_pour_client(chantier):
+    """ACSV32 — PV de réception DÉFINITIVE : figé en GED à sa première
+    émission sous sa propre source, partagé au client, servi tel quel ensuite.
+    À appeler seulement quand la définitive est prononcée."""
+    document = _document_ged(chantier, SOURCE_PV_RECEPTION_DEFINITIVE)
+    data = _octets_en_vigueur(document) if document is not None else None
+    if data:
+        return data
+    pdf = generate_pv_reception(chantier, definitive=True)
+    _deposer_fige(
+        chantier, source_type=SOURCE_PV_RECEPTION_DEFINITIVE,
+        nom=f'PV de réception définitive {chantier.reference}', pdf=pdf,
+        meta={'date_reception_definitive': str(
+            chantier.date_reception_definitive)})
+    _partager_au_client_portail(chantier, SOURCE_PV_RECEPTION_DEFINITIVE)
+    return pdf
 
 
 def bon_livraison_pour_client(chantier):

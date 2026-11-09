@@ -1386,11 +1386,21 @@ class LigneRetourFournisseurSerializer(SameCompanyFKSerializerMixin,
     same_company_fields = ('produit',)
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
     produit_sku = serializers.CharField(source='produit.sku', read_only=True)
+    numeros_serie = serializers.ListField(  # AAPV20
+        child=ChaineStricte(max_length=100), allow_null=True, required=False)
 
     class Meta:
         model = LigneRetourFournisseur
         fields = ['id', 'produit', 'produit_nom', 'produit_sku', 'quantite',
-                  'motif']
+                  'motif', 'numero_lot', 'numeros_serie']
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        nb = len(attrs.get('numeros_serie') or [])
+        if nb > (attrs.get('quantite') or 0):  # AAPV20 — comptage des séries
+            raise serializers.ValidationError({'numeros_serie': [
+                f'{nb} n° de série pour {attrs.get("quantite") or 0} retourné(s).']})
+        return attrs
 
     def validate_quantite(self, value):
         if value is None or value <= 0:
@@ -1429,6 +1439,26 @@ class RetourFournisseurSerializer(IdInconnu404ImbriquesMixin, SameCompanyFKSeria
         if not value:
             raise serializers.ValidationError('Au moins une ligne est requise.')
         return value
+
+    def validate(self, attrs):
+        """AAPV41 — un retour lié à un BCF vise SON fournisseur et ses produits."""
+        attrs = super().validate(attrs)
+        bc = attrs.get('bon_commande', getattr(self.instance, 'bon_commande', None))
+        fournisseur = attrs.get('fournisseur', getattr(self.instance, 'fournisseur', None))
+        if bc is None:
+            return attrs
+        # ENF11 — corps conforme, refus par l'ÉTAT des données (le BCF est
+        # celui d'un autre fournisseur / ne porte pas ce produit) : 409.
+        if fournisseur is not None and fournisseur.pk != bc.fournisseur_id:
+            raise ConflitEtat({'fournisseur': [
+                f'Le fournisseur doit être celui du bon de commande ({bc.fournisseur.nom}).']})
+        produits_bcf = set(bc.lignes.values_list('produit_id', flat=True))
+        for ligne in attrs.get('lignes') or []:
+            produit = ligne.get('produit')
+            if produit is not None and produit.pk not in produits_bcf:
+                raise ConflitEtat({'lignes': [
+                    f"{produit.nom} n'est pas sur le bon de commande {bc.reference}."]})
+        return attrs
 
     def create(self, validated_data):
         lignes_data = validated_data.pop('lignes')
@@ -1763,7 +1793,33 @@ class BonCommandeFournisseurSerializer(IdInconnu404Mixin, CapaciteMontantsBcfMix
             instance.save()
             if lignes_data is not None:
                 self._upsert_lignes(instance, lignes_data)
+            elif {'devise', 'taux_change'} & set(validated_data):
+                # AAPV45 — taux/devise changés sans lignes : contre-valeur
+                # MAD des lignes à PU devise recalculée.
+                from .services import apply_devise_ligne_bcf
+                for ligne in instance.lignes.filter(prix_achat_unitaire_devise__isnull=False):
+                    fusion = {'prix_achat_unitaire_devise': ligne.prix_achat_unitaire_devise,
+                              'prix_achat_unitaire': ligne.prix_achat_unitaire}
+                    apply_devise_ligne_bcf(fusion, instance.devise, instance.taux_change)
+                    ligne.prix_achat_unitaire = fusion['prix_achat_unitaire']
+                    ligne.save(update_fields=['prix_achat_unitaire'])
         return instance
+
+    @staticmethod
+    def _devise_depuis_mad(instance, data, fusion):
+        """AAPV45 — PU MAD transmis SEUL sur un BCF en devise : le PU devise
+        en découle (MAD ÷ taux, règle de ``_valider_revision_ligne_bcf``) et le
+        MAD saisi est gardé (jamais écrasé). Renvoie True si appliqué."""
+        from decimal import Decimal
+        from .models import DeviseAchat
+        if ('prix_achat_unitaire' not in data or 'prix_achat_unitaire_devise' in data
+                or not instance.devise or instance.devise == DeviseAchat.MAD
+                or not instance.taux_change or fusion.get('prix_achat_unitaire') is None):
+            return False
+        fusion['prix_achat_unitaire_devise'] = (
+            Decimal(str(fusion['prix_achat_unitaire'])) / Decimal(str(instance.taux_change))
+        ).quantize(Decimal('0.01'))
+        return True
 
     #: ASTK67 — champs d'une ligne existante mis à jour quand ils sont
     #: transmis ; un champ NON transmis garde sa valeur en base.
@@ -1785,8 +1841,9 @@ class BonCommandeFournisseurSerializer(IdInconnu404Mixin, CapaciteMontantsBcfMix
             ligne_id = data.pop('id', None)
             ligne = existantes.get(ligne_id)
             if ligne is None or ligne_id in gardees:
-                apply_devise_ligne_bcf(
-                    data, instance.devise, instance.taux_change)
+                if not self._devise_depuis_mad(instance, dict(data), data):
+                    apply_devise_ligne_bcf(
+                        data, instance.devise, instance.taux_change)
                 LigneBonCommandeFournisseur.objects.create(
                     bon_commande=instance, **data)
                 continue
@@ -1795,8 +1852,9 @@ class BonCommandeFournisseurSerializer(IdInconnu404Mixin, CapaciteMontantsBcfMix
                 champ: data.get(champ, getattr(ligne, champ))
                 for champ in self.CHAMPS_LIGNE_MODIFIABLES
             }
-            apply_devise_ligne_bcf(
-                fusion, instance.devise, instance.taux_change)
+            if not self._devise_depuis_mad(instance, data, fusion):  # AAPV45
+                apply_devise_ligne_bcf(
+                    fusion, instance.devise, instance.taux_change)
             for champ in self.CHAMPS_LIGNE_MODIFIABLES:
                 setattr(ligne, champ, fusion[champ])
             ligne.save()
@@ -1858,6 +1916,14 @@ class LigneReceptionFournisseurSerializer(CompanyScopedRelationsMixin,
             raise serializers.ValidationError('La quantité doit être positive.')
         return value
 
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        from .services import motif_series_en_trop  # AAPV68
+        motif = motif_series_en_trop(len(attrs.get('numeros_serie') or []), attrs.get('quantite'))
+        if motif:
+            raise serializers.ValidationError(motif)
+        return attrs
+
 
 class ReceptionFournisseurSerializer(IdInconnu404LignesMixin, CompanyScopedRelationsMixin,
                                      ChampsTexteBooleenStricts, serializers.ModelSerializer):
@@ -1874,7 +1940,13 @@ class ReceptionFournisseurSerializer(IdInconnu404LignesMixin, CompanyScopedRelat
         source='recu_par.username', read_only=True, allow_null=True)
     created_by_username = serializers.CharField(
         source='created_by.username', read_only=True, allow_null=True)
-    total_recu = serializers.IntegerField(read_only=True)
+    # AAPV40 — ce qui est RÉELLEMENT entré (quantité appliquée, ASTK59).
+    total_recu = serializers.SerializerMethodField()
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_total_recu(self, obj):
+        from .services import quantite_entree_ligne_reception
+        return sum((quantite_entree_ligne_reception(lg) for lg in obj.lignes.all()), 0)
 
     class Meta:
         model = ReceptionFournisseur
@@ -2152,6 +2224,15 @@ class FactureFournisseurSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMix
         from .selectors import sous_totaux_tva_facture_fournisseur
         return sous_totaux_tva_facture_fournisseur(obj)
 
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        bcf = attrs.get('bon_commande', getattr(self.instance, 'bon_commande', None))
+        fournisseur = attrs.get('fournisseur', getattr(self.instance, 'fournisseur', None))
+        if bcf is not None and fournisseur is not None and bcf.fournisseur_id != fournisseur.pk:
+            raise ConflitEtat(  # AAPV53 — règle croisée sur l'état : 409 (ENF11)
+                {'bon_commande': ['Ce bon de commande appartient à un autre fournisseur.']})
+        return attrs
+
     # DC16 — une facture rattachée à un bon de commande doit être créée via
     # « facturer une réception » (FG56) pour que ses montants soient DÉRIVÉS de
     # la réception (jamais saisis à la main) AVANT le rapprochement 3 voies
@@ -2167,8 +2248,10 @@ class FactureFournisseurSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMix
     def create(self, validated_data):
         if validated_data.get('bon_commande'):
             raise ConflitEtat({'bon_commande': self._MSG_DC16_CREATE})
-        from .services import apply_devise_facture
+        from .services import apply_devise_facture, type_achat_par_defaut
         lignes_data = validated_data.pop('lignes', [])
+        if 'type_achat' not in validated_data:  # AAPV6 — défaut fournisseur
+            validated_data['type_achat'] = type_achat_par_defaut(validated_data.get('fournisseur'))
         # XPUR3 — si un montant TTC en devise est fourni, sa contre-valeur
         # MAD ÉCRASE montant_ttc (comportement historique inchangé quand la
         # facture est en MAD / le champ devise n'est pas renseigné).
@@ -2177,6 +2260,7 @@ class FactureFournisseurSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMix
             validated_data.get('devise'), validated_data.get('taux_change'))
         if mad is not None:
             validated_data['montant_ttc'] = mad
+            self._convertir_ht_tva(validated_data, validated_data.get('taux_change'))
         # XPUR6 — auto-dérive date_echeance depuis les conditions de paiement
         # du fournisseur QUAND elle n'est pas explicitement fournie (reste
         # modifiable ensuite). No-op si le fournisseur n'a pas de délai
@@ -2204,8 +2288,8 @@ class FactureFournisseurSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMix
     @staticmethod
     def _a_une_imputation(instance):
         return (instance.paiements.exists()
-                or instance.acomptes_imputes.exists()
-                or instance.avoirs_imputes.exists())
+                or instance.imputations_acompte.exists()  # AAPV42 — table d'imputation
+                or instance.acomptes_imputes.exists() or instance.avoirs_imputes.exists())
 
     def _verifier_verrou_imputation(self, instance, validated_data):
         """ASTK26 — une facture qui porte un paiement, un acompte ou un avoir
@@ -2219,8 +2303,13 @@ class FactureFournisseurSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMix
             and validated_data[champ] != getattr(instance, champ)
         ]
         # Le lien BCF d'une facture réglée ne se pose ni ne se retire (le
-        # retirer servait à contourner la garde DC16 ci-dessous).
-        if 'bon_commande' in validated_data:
+        # retirer servait à contourner la garde DC16 ci-dessous). AAPV1 — un
+        # PATCH qui renvoie le MÊME BCF déjà lié ne pose ni ne retire rien :
+        # accepté (tout autre envoi du champ, ``null`` compris, reste refusé).
+        meme_bcf = (instance.bon_commande_id is not None
+                    and getattr(validated_data.get('bon_commande'), 'pk', None)
+                    == instance.bon_commande_id)
+        if 'bon_commande' in validated_data and not meme_bcf:
             changes.append('bon_commande')
         if 'lignes' in validated_data:
             changes.append('lignes')
@@ -2229,6 +2318,15 @@ class FactureFournisseurSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMix
                 'detail': self._MSG_FACTURE_REGLEE,
                 'champs': changes,
             })
+
+    @staticmethod
+    def _convertir_ht_tva(validated_data, taux_change):
+        """AAPV44 — document en devise : HT et TVA du corps sont, comme le
+        TTC, en devise ⇒ convertis en MAD au même taux (XPUR3)."""
+        from .services import contre_valeur_mad
+        for champ in ('montant_ht', 'montant_tva'):
+            if validated_data.get(champ) is not None:
+                validated_data[champ] = contre_valeur_mad(validated_data[champ], taux_change)
 
     def update(self, instance, validated_data):
         self._verifier_verrou_imputation(instance, validated_data)
@@ -2244,6 +2342,8 @@ class FactureFournisseurSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMix
                 validated_data.get('taux_change', instance.taux_change))
             if mad is not None:
                 validated_data['montant_ttc'] = mad
+                self._convertir_ht_tva(
+                    validated_data, validated_data.get('taux_change', instance.taux_change))
         # DC16 — sur une FF déjà liée à un BCF (typiquement issue de FG56), les
         # montants restent ceux dérivés de la réception : on rejette toute
         # tentative de les écraser à la main.
@@ -2421,7 +2521,7 @@ class KitComposantSerializer(CompanyScopedRelationsMixin,
         return attrs
 
 
-class KitProduitSerializer(ChampsTexteBooleenStricts, CompanyScopedRelationsMixin,
+class KitProduitSerializer(IdInconnu404ImbriquesMixin, ChampsTexteBooleenStricts, CompanyScopedRelationsMixin,
                            serializers.ModelSerializer):
     # ASTK5 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
@@ -2679,6 +2779,16 @@ class AcompteFournisseurSerializer(SameCompanyFKSerializerMixin,
             raise serializers.ValidationError(
                 "Cet acompte est déjà imputé sur une facture : son montant "
                 "n'est plus modifiable.")
+        return value
+
+    def validate_bon_commande(self, value):
+        """AAPV63 — le BCF d'un acompte imputé est figé, comme son montant."""
+        instance = self.instance
+        if (instance is not None and value is not None and value.pk != instance.bon_commande_id
+                and instance.imputations.exists()):
+            raise serializers.ValidationError(
+                "Cet acompte est déjà imputé sur une facture : son bon de "
+                "commande n'est plus modifiable.")
         return value
 
 

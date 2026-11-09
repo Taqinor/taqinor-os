@@ -279,6 +279,8 @@ def _bom_quantities(installation):
 #: ACHT30 — messages des gardes communes (synchro terrain + vues).
 MESSAGE_CONSOMMATION_VALIDEE = 'Réconciliation déjà validée.'
 MESSAGE_INTERVENTION_VALIDEE = 'Intervention validée.'
+# AAPV52 — saisie F11 (vues + synchro terrain) : le stock se compte en unités.
+MESSAGE_QTE_ENTIERE_F11 = 'Quantité entière exigée (le stock se compte en unités).'
 
 
 def consommation_modifiable(cons):
@@ -309,6 +311,7 @@ def ensure_consommation(intervention):
     if cons.valide:
         return cons
     besoins = _bom_quantities(intervention.installation)
+    deja_pose = _deja_pose_f11(intervention.installation)
     existing = {(li.produit_id, li.designation): li
                 for li in cons.lignes.filter(hors_nomenclature=False)}
     seen = set()
@@ -320,7 +323,8 @@ def ensure_consommation(intervention):
             ligne = ConsommationLigne(
                 company=company, consommation=cons, produit_id=produit_id,
                 designation=designation, quantite_prevue=qte,
-                quantite_utilisee=qte, ordre=i)
+                quantite_utilisee=max(qte - deja_pose.get(produit_id, 0), 0),
+                ordre=i)
             ligne.save()
         elif li.quantite_prevue != qte or li.ordre != i:
             li.quantite_prevue = qte
@@ -331,6 +335,16 @@ def ensure_consommation(intervention):
         if key not in seen:
             li.delete()
     return cons
+
+
+def _deja_pose_f11(installation):
+    """AAPV31 — ``{produit_id: Σ posé}`` des F11 déjà appliquées du chantier :
+    la F11 suivante n'est pré-remplie que du reliquat non posé."""
+    from django.db.models import Sum
+    return {r['produit_id']: r['t'] for r in ConsommationLigne.objects.filter(
+        consommation__intervention__installation=installation,
+        stock_applique=True, produit__isnull=False).order_by()
+        .values('produit_id').annotate(t=Sum('quantite_utilisee'))}
 
 
 def ligne_needs_justification(ligne):
@@ -344,6 +358,18 @@ def ligne_needs_justification(ligne):
 def consommation_missing_justifications(cons):
     """Lignes en variance sans justification (bloquent la validation)."""
     return [li for li in cons.lignes.all() if ligne_needs_justification(li)]
+
+
+def _deja_sorti_vente(installation):
+    """ASTK258 — ``{'sorti': T, 'cumul': posé F11 déjà appliqué}`` par
+    produit (T = ``sorties_de_la_vente``, F11 antérieures comprises) ; None
+    pour un chantier sans devis."""
+    from apps.ventes.selectors import sorties_de_la_vente
+    if not installation.devis_id:
+        return None
+    return {'sorti': sorties_de_la_vente(
+        installation.devis_id, installation.company),
+        'cumul': _deja_pose_f11(installation)}
 
 
 def validate_consommation(cons, user):
@@ -376,6 +402,10 @@ def validate_consommation(cons, user):
     poses = {}
     installation = cons.intervention.installation
     with transaction.atomic():
+        # ASTK258 — la vente a déjà sorti T (facture, acompte, BC, F11
+        # antérieures) : sortie = max(0, posé F11 cumulé − T) ; sans devis :
+        # toute la pose (inchangé).
+        deja = _deja_sorti_vente(installation)
         lignes = (cons.lignes.select_for_update()
                   .filter(stock_applique=False, produit__isnull=False))
         for li in lignes:
@@ -386,11 +416,19 @@ def validate_consommation(cons, user):
                 continue
             produit = lock_produit(li.produit_id)
             qte_avant = produit.quantite_stock
+            due = qte if deja is None else max(
+                Decimal('0'), deja['cumul'].get(li.produit_id, 0) + qte
+                - deja['sorti'].get(li.produit_id, 0))
             # ERR80 — garde plancher : ne sors jamais plus que le stock en main
             # (on borne à zéro plutôt que de piloter `quantite_stock` négatif).
-            qte_sortie = min(qte, qte_avant) if qte_avant > 0 else Decimal('0')
-            # ERR41 — sortie sur la quantité DÉCIMALE (jamais int(qte)) : une
-            # ligne de 0,5 sort bien 0,5 (et n'est plus tronquée à 0/perdue).
+            qte_sortie = min(due, qte_avant) if qte_avant > 0 else Decimal('0')
+            if deja is not None:
+                deja['cumul'][li.produit_id] = deja['cumul'].get(
+                    li.produit_id, 0) + qte
+                deja['sorti'][li.produit_id] = deja['sorti'].get(
+                    li.produit_id, 0) + qte_sortie
+            # AAPV52 — la saisie refuse toute quantité non entière (vues et
+            # synchro terrain) ; record_stock_movement reste le filet (ASTK45).
             qte_apres = qte_avant - qte_sortie
             record_stock_movement(
                 company=cons.company, produit=produit,
@@ -418,7 +456,8 @@ def validate_consommation(cons, user):
             release_reservations, solder_reservations_consommation_terrain,
         )
         solder_reservations_consommation_terrain(installation, poses)
-        release_reservations(installation)
+        # AAPV31 (D-AAPV-3) — seuls les produits posés par CETTE F11.
+        release_reservations(installation, produits=poses)
         cons.valide = True
         cons.valide_par = user
         cons.valide_le = timezone.now()
@@ -496,6 +535,8 @@ def _minutes_between(start, end):
     if not (start and end):
         return None
     delta = end - start
+    if delta.total_seconds() < 0:  # ACHT131 — ordre inversé : durée inconnue
+        return None
     return round(delta.total_seconds() / 60)
 
 
@@ -651,3 +692,34 @@ def transcribe_memo(memo):
     memo.transcrit = bool(configure)
     memo.save(update_fields=['transcript', 'transcrit'])
     return memo
+
+
+def preuve_checklist_retiree(meta):
+    """ACSV18 — une photo d'étape de checklist supprimée (pièce jointe et sa
+    méta en cascade) : l'étape à photo obligatoire restée cochée SANS photo est
+    décochée (la garde ``raison_refus_cocher_etape`` la redemandera) ; la
+    suppression est notée au chatter du chantier. Rend vrai si décochée."""
+    from . import activity
+    from .models import ChantierChecklistItem
+    item = (ChantierChecklistItem.objects.select_related('installation')
+            .filter(pk=meta.checklist_item_id).first())
+    if item is None:
+        return False
+    decoche = item.photo_obligatoire and item.fait and not item.photos.exists()
+    if decoche:
+        item.fait, item.fait_par, item.fait_le = False, None, None
+        item.save(update_fields=['fait', 'fait_par', 'fait_le'])
+    activity.log_note(item.installation, None, (
+        f"Photo de l'étape « {item.libelle} » supprimée"
+        + (' — étape décochée (aucune photo restante).' if decoche else '.')))
+    return decoche
+
+
+#: ACSV16 — refus de décocher une consigne d'un sign-off signé (en ligne et hors-ligne).
+MESSAGE_CONSIGNES_SIGNEES = 'Consignes signées : décochage refusé.'
+
+
+def points_non_coches(signoff):
+    """ACSV16 — libellés des points de consigne non cochés : invariant
+    « consignes signées ⇒ tous les points cochés » (signature, démarrage)."""
+    return [it.libelle for it in signoff.items.all() if not it.coche]

@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.services import action_tools as at  # noqa: E402 — après sys.path/setup() (D-ENF22)
 from app.services.action_tools import ActionContext  # noqa: E402 — après sys.path/setup() (D-ENF22)
+from app.services import metriques_gouvernees as mg  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 
 def _ctx(role="responsable", permissions=None, token="jwt-xyz",
@@ -845,6 +846,48 @@ class JournalEvenementAic6Tests(unittest.TestCase):
             user_id=301, inputs=sans_preuve, object_id=None))
         self.assertEqual(corps["tokens"], contrat["exemple_corps"]["tokens"])
 
+    def test_echec_de_l_agent_journalise_avec_preuve_signee(self):
+        """ERR-ACC-JOURNAL-AGENT-PREUVE-VIDE — l'evenement d'un ECHEC de
+        l'agent (intention bug + erreur) part signe comme les autres ; sans
+        secret, aucun POST a preuve vide (refuse 400 par Django) : avertissement
+        nommant la cause, None, la reponse du commercial reste intacte."""
+        # Corps tel que `SQLAgentService._journaliser` le forme sur l'echec
+        # (`_query` : intention bug + erreur {status, outil, message}).
+        echec = {"intention": "bug", "question": "Montant ?",
+                 "resume_reponse": "Je n'ai pas pu traiter votre demande.",
+                 "ecran": "", "lead_id": None, "outils_appeles": [],
+                 "erreur": {"status": 500, "outil": "assistant",
+                            "message": "Error code: 401 - invalid_api_key"},
+                 "modele": "openai/gpt-oss-120b", "repli": False,
+                 "manuel_present": False,
+                 "tokens": {"cache_read": 0, "input": 0, "output": 0}}
+        appels = []
+
+        def fake_call(ctx, path, method="POST", payload=None):
+            appels.append(payload)
+            return {"ok": True, "status": 201, "data": {"id": 77}}
+
+        with mock.patch.dict(os.environ, {"AGENT_HMAC_SECRET": "s3cret"}), \
+                mock.patch.object(at, "_django_call", fake_call):
+            ev_id = at.journaliser_evenement_assistant(self._ctx_jwt(),
+                                                       dict(echec))
+        self.assertEqual(ev_id, 77)
+        corps = appels[0]
+        self.assertEqual(corps["intention"], "bug")
+        sans_preuve = {k: v for k, v in corps.items() if k != "preuve"}
+        self.assertEqual(corps["preuve"], at.calculer_preuve_confirmation(
+            secret="s3cret", action_key="assistant.evenement", company_id=7,
+            user_id=301, inputs=sans_preuve, object_id=None))
+        self.assertTrue(corps["preuve"])
+
+        with mock.patch.dict(os.environ, {"AGENT_HMAC_SECRET": ""}), \
+                mock.patch.object(at, "_django_call",
+                                  lambda *a, **k: self.fail("aucun POST non signe")), \
+                self.assertLogs(at.logger, level="WARNING") as journaux:
+            self.assertIsNone(at.journaliser_evenement_assistant(
+                self._ctx_jwt(), dict(echec)))
+        self.assertIn("AGENT_HMAC_SECRET absent", " ".join(journaux.output))
+
     def test_sans_contexte_aucun_journal(self):
         with mock.patch.object(at, "_django_call",
                                lambda *a, **k: self.fail("aucun appel")):
@@ -943,6 +986,93 @@ class CapteurErreursAic7Tests(unittest.TestCase):
         with _patch_catalogue([_CAT_LEAD_LIST]):
             noms = {t.name for t in at.build_action_tools(_ctx(role="admin"))}
         self.assertNotIn("report_gap", noms)
+
+
+# ---------------------------------------------------------------------------
+# NTDATA12 — métriques gouvernées offertes à l'agent NL→SQL (réseau Django moqué)
+# ---------------------------------------------------------------------------
+
+CATALOGUE_METRIQUES = {"metriques": [
+    {"cle": "dso", "libelle": "DSO", "description": "Délai moyen.",
+     "unite": "jours"},
+    {"cle": "marge_brute", "libelle": "Marge brute", "description": "",
+     "unite": "MAD"},
+    {"cle": "Pas Une Cle", "libelle": "x", "description": "", "unite": ""},
+]}
+
+
+class MetriquesGouverneesCatalogueTests(unittest.TestCase):
+    def _catalogue(self, reponse, allow_price=False, token="jwt-xyz"):
+        with mock.patch.object(at, "DJANGO_INTERNAL_URL", "http://dj:8000"), \
+                mock.patch.object(mg, "_django_call",
+                                  return_value=reponse) as appel:
+            out = mg.catalogue_metriques(_ctx(token=token), allow_price)
+        return out, appel
+
+    def test_catalogue_lu_chez_django_avec_le_jeton(self):
+        out, appel = self._catalogue({"ok": True, "data": CATALOGUE_METRIQUES})
+        self.assertEqual(appel.call_args.args[1], mg.CATALOGUE_PATH)
+        self.assertEqual(appel.call_args.kwargs["method"], "GET")
+        self.assertEqual([m["cle"] for m in out], ["dso"])
+
+    def test_marge_offerte_seulement_avec_le_droit(self):
+        out, _ = self._catalogue({"ok": True, "data": CATALOGUE_METRIQUES},
+                                 allow_price=True)
+        self.assertEqual([m["cle"] for m in out], ["dso", "marge_brute"])
+
+    def test_django_injoignable_catalogue_vide(self):
+        out, _ = self._catalogue({"ok": False, "status": 0, "error": "x"})
+        self.assertEqual(out, [])
+
+    def test_sans_jeton_aucun_appel(self):
+        with mock.patch.object(at, "DJANGO_INTERNAL_URL", "http://dj:8000"), \
+                mock.patch.object(mg, "_django_call") as appel:
+            self.assertEqual(mg.catalogue_metriques(_ctx(token="")), [])
+        appel.assert_not_called()
+
+    def test_description_cite_les_metriques(self):
+        texte = mg.description_outil([
+            {"cle": "dso", "libelle": "DSO", "description": "Délai moyen.",
+             "unite": "jours"}])
+        self.assertIn("PREFERE", texte)
+        self.assertIn("- dso : DSO (jours) — Délai moyen.", texte)
+
+
+class MetriquesGouverneesValeurTests(unittest.TestCase):
+    def test_valeur_lue_par_le_resolveur_serveur(self):
+        reponse = {"ok": True, "data": {
+            "cle": "dso", "libelle": "DSO", "unite": "jours", "valeur": 42.5}}
+        with mock.patch.object(mg, "_django_call",
+                               return_value=reponse) as appel:
+            out = mg.lire_valeur(_ctx(), {"dso"}, "dso")
+        self.assertEqual(out["valeur"], 42.5)
+        self.assertEqual(appel.call_args.args[1],
+                         "/api/django/semantic/metriques/dso/valeur/")
+        self.assertEqual(appel.call_args.kwargs["payload"], {"group_by": ""})
+
+    def test_cle_hors_catalogue_refusee_sans_appel(self):
+        with mock.patch.object(mg, "_django_call") as appel:
+            out = mg.lire_valeur(_ctx(), {"dso"}, "../auth/me")
+        self.assertFalse(out["ok"])
+        appel.assert_not_called()
+
+    def test_outil_absent_sans_catalogue(self):
+        with mock.patch.object(mg, "catalogue_metriques", return_value=[]):
+            self.assertIsNone(mg.outil_metrique_gouvernee(_ctx()))
+
+    def test_outil_langchain(self):
+        # langchain_core est installé en CI (requirements.txt → langchain) :
+        # aucun saut, l'outil LangChain est réellement construit.
+        catalogue = [{"cle": "dso", "libelle": "DSO", "description": "",
+                      "unite": "jours"}]
+        with mock.patch.object(mg, "catalogue_metriques",
+                               return_value=catalogue), \
+                mock.patch.object(mg, "_django_call", return_value={
+                    "ok": True, "data": {"valeur": 3}}):
+            outil = mg.outil_metrique_gouvernee(_ctx())
+            sortie = json.loads(outil.func(cle="dso"))
+        self.assertEqual(outil.name, "metrique_gouvernee")
+        self.assertEqual(sortie["valeur"], 3)
 
 
 if __name__ == "__main__":

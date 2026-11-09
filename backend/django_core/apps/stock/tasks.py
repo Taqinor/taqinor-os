@@ -152,11 +152,8 @@ def relancer_bcf_en_retard_task():
             try:
                 from apps.notifications.services import notify_many
                 from apps.notifications.types_evenements import EventType
-                from django.contrib.auth import get_user_model
-                User = get_user_model()
-                recipients = list(User.objects.filter(
-                    company=company, is_active=True,
-                    role_legacy__in=['responsable', 'admin']))
+                from .services import destinataires_achats  # AAPV51
+                recipients = destinataires_achats(company)
                 fournisseur_nom = (
                     bc.fournisseur.nom if bc.fournisseur_id else '')
                 url, _token = bcf_share_url(bc)
@@ -494,7 +491,7 @@ def liberer_vagues_planifiees_task():
     return len(resultat.get('liberees', []))
 
 
-#: APRF34 — durée de validité de l'URL présignée de la notification (24 h).
+#: APRF34/APRF43 — durée de validité du lien de téléchargement de la notification (24 h).
 EXPORT_MOUVEMENTS_URL_TTL = 24 * 3600
 
 
@@ -506,12 +503,12 @@ def export_mouvements_xlsx_task(job_id=None, company_id=None,
     EXPLICITES, jamais lus d'une requête). Construit le MÊME fichier que la voie
     synchrone (``export_mouvements_xlsx_bytes``), le dépose dans MinIO
     (``exports/<société>/<job>.xlsx``), termine le ``BackgroundJob`` et notifie
-    le demandeur « export prêt » avec une URL présignée. Lecture seule : aucun
-    mouvement n'est modifié."""
+    le demandeur « export prêt » avec un lien SERVI PAR DJANGO (APRF43 : jeton
+    ``core.signed_download`` borné à la société, jamais l'hôte MinIO interne).
+    Lecture seule : aucun mouvement n'est modifié."""
     from core.models import BackgroundJob
-    from apps.records.storage import (
-        presign_export_result, store_export_result,
-    )
+    from django.conf import settings
+    from apps.records.storage import store_export_result
     from apps.records.xlsx import XLSX_CONTENT_TYPE
     from .services import export_mouvements_xlsx_bytes
 
@@ -536,10 +533,20 @@ def export_mouvements_xlsx_task(job_id=None, company_id=None,
     job.marquer_termine(result_file_key=key)
 
     # Notification « export prêt » (best-effort : le livrable reste suivi par
-    # ``core/jobs-status/<id>/`` même si la notification échoue). L'URL
-    # présignée va dans le corps (TextField) ; le lien (512 car. max) ne la
-    # porte que si elle y tient entière — jamais une URL tronquée.
-    url = presign_export_result(key, expires=EXPORT_MOUVEMENTS_URL_TTL) or ''
+    # ``core/jobs-status/<id>/`` même si la notification échoue). APRF43 — le
+    # lien est un chemin Django (jeton 24 h borné à la société), jamais une URL
+    # présignée MinIO (hôte interne ``minio:9000``, injoignable du navigateur).
+    url = ''
+    try:
+        from core.signed_download import creer_lien
+        lien = creer_lien(
+            job.company, settings.MINIO_BUCKET_UPLOADS, key,
+            taille_octets=len(data),
+            expiry_days=EXPORT_MOUVEMENTS_URL_TTL / 86400)
+        url = f'/api/django/stock/mouvements/telecharger-export/{lien.token}/'
+    except Exception:  # noqa: BLE001 — best-effort, le job reste suivi (D-ENF22-BLE001)
+        logger.warning('stock.export_mouvements_xlsx: lien non créé '
+                       '(job %s)', job_id, exc_info=True)
     try:
         from apps.notifications.services import notify
         from apps.notifications.types_evenements import EventType
@@ -550,7 +557,7 @@ def export_mouvements_xlsx_task(job_id=None, company_id=None,
         notify(
             job.user, EventType.EXPORT_REVERSIBILITE_PRET,
             title='Export des mouvements de stock prêt', body=corps,
-            link=url if len(url) <= 512 else '', company=job.company)
+            link=url, company=job.company)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning('stock.export_mouvements_xlsx: notification échouée '
                        '(job %s)', job_id, exc_info=True)

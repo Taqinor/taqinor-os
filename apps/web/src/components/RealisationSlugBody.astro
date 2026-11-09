@@ -12,7 +12,7 @@ import PhotoCaption from './PhotoCaption.astro';
 import LiteVideo from './LiteVideo.astro';
 import CtaBand from './CtaBand.astro';
 import CtaLigne from './CtaLigne.astro';
-import { dateLocale, mesureAffichee } from '../lib/realisations';
+import { dateLocale, kwcLocale, mesureAffichee } from '../lib/realisations';
 import V2Page from './V2Page.astro';
 
 interface Props {
@@ -45,6 +45,8 @@ const dir = rtl ? 'ltr' : undefined;
 // WAUD21 — le seul cumul apparié à CETTE réalisation (measuredLabel), avec sa date de relevé.
 const mesure = mesureAffichee(r, fr ? 'fr' : rtl ? 'ar' : 'en');
 const dateAffichee = dateLocale(r.date, fr ? 'fr' : rtl ? 'ar' : 'en');
+// WAUD44 — puissance au format de la langue (EN « 17.04 kWc »).
+const kwcAff = kwcLocale(r, fr ? 'fr' : rtl ? 'ar' : 'en');
 const linkClass = 'border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10';
 ---
 
@@ -75,7 +77,7 @@ const linkClass = 'border border-white/40 px-5 py-3 text-sm font-bold text-white
       <p class="tech-label v2-kicker rule-brass cine-in text-lune">{t.ref} {rtl ? <span dir="ltr">{r.ref} · {r.ville} · {dateAffichee}</span> : <>{r.ref} · {r.ville} · {dateAffichee}</>}</p>
       <h1 class="display v2-page-title cine-in mt-5 max-w-[20ch] [animation-delay:120ms]">
         {r.kwc
-          ? <>{rtl ? <span dir="ltr">{r.kwc}</span> : r.kwc}{' '}{t.h1Kwc}</>
+          ? <>{rtl ? <span dir="ltr">{kwcAff}</span> : kwcAff}{' '}{t.h1Kwc}</>
           : <>{t.h1NoKwc}</>}
       </h1>
       <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">{t.resume}</p>
@@ -86,13 +88,13 @@ const linkClass = 'border border-white/40 px-5 py-3 text-sm font-bold text-white
     <dl class="mx-auto grid max-w-6xl gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
       {r.kwc && (
         <div class="v2-rise" style="--v2-i:0">
-          <dd class="fig lum text-3xl sm:text-4xl" data-tally dir={dir}>{r.kwc}</dd>
+          <dd class="fig lum text-3xl sm:text-4xl" data-fig-fixe dir={dir}>{kwcAff}</dd>
           <dt class="tech-label mt-2 text-lune-faint">{t.power}</dt>
         </div>
       )}
       {r.production && (
         <div class="v2-rise" style="--v2-i:1">
-          <dd class="fig lum text-3xl sm:text-4xl" data-tally dir={dir}>{r.production}</dd>
+          <dd class="fig lum text-3xl sm:text-4xl" data-fig-fixe dir={dir}>{r.production}</dd>
           <dt class="tech-label mt-2 text-lune-faint">
             {r.productionEstimated ? t.productionEstimated : t.productionMeasured}
           </dt>
@@ -120,7 +122,7 @@ const linkClass = 'border border-white/40 px-5 py-3 text-sm font-bold text-white
 
   <section class="mx-auto max-w-3xl px-4 py-20 sm:py-28">
     <p class="tech-label v2-kicker rule-brass text-lune">{t.storyKicker}</p>
-    <h2 class="display v2-section-title mt-5 text-white">{r.kwc ? <>{t.whyPre}{rtl ? <span dir="ltr">{r.kwc}</span> : r.kwc}{t.whyPost}</> : t.whatShows}</h2>
+    <h2 class="display v2-section-title mt-5 text-white">{r.kwc ? <>{t.whyPre}{rtl ? <span dir="ltr">{kwcAff}</span> : kwcAff}{t.whyPost}</> : t.whatShows}</h2>
     <p class="v2-lead mt-5 text-lune-soft">{cs.situation}</p>
     <p class="v2-lead mt-4 text-lune-soft">{cs.sizing}</p>
     <p class="v2-lead mt-4 text-lune-soft">{cs.result}</p>

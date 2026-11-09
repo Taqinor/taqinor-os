@@ -89,8 +89,14 @@ REGLES_PANIER_UNIQUE_0211 = 10
 #: Porte aussi ERR-CADV83-COUVERTURES : la réserve « prix révisable au-delà » sur les
 #: couvertures (dessous : ``regles_validite_historique``, la pastille reçue).
 REGLES_CENTAINE_0311 = 11
+#: AMOT118 (C-AMOT-VER4-010, 04/11/2026) — niveau 12, contrat UNIQUE des correctifs
+#: de chiffres de la contre-visite AMOT du 04/11 (AMOT120 provision d'onduleur
+#: hors réseau, AMOT121 port batterie off-grid, AMOT122 branche d'échéancier,
+#: AMOT123 économie TTC C&I, AMOT126 une-page C&I en ``fmt_dirhams``). La migration
+#: 0153 ne passe que les brouillons jamais envoyés de 11 à 12 : un envoyé garde son rendu.
+REGLES_ECARTS_0411 = 12
 #: Niveau posé sur un devis neuf (défaut du modèle ``Devis.regles_calcul``).
-REGLES_COURANTES = REGLES_CENTAINE_0311
+REGLES_COURANTES = REGLES_ECARTS_0411
 
 
 def regles_au_moins(devis, niveau: int) -> bool:

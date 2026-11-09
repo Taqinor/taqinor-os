@@ -13,6 +13,8 @@ from django.contrib.postgres.search import SearchVector
 from django.db import models, transaction
 from django.db.models import F, Value
 
+from core.conflit_etat import ConflitEtat
+from core.parseurs import sans_nul
 from core.pdf import render_pdf
 
 from .models import Cabinet, Document, DocumentVersion, Folder, RoutageDocumentaire
@@ -361,8 +363,9 @@ def valider_extraction_ocr(validation, *, champs_corriges, user):
     document = validation.document
     # ADOC9 — jamais sur un document archivé légalement (write-once).
     assert_not_archive_legalement(document)
+    # ENF47 — NUL imbriqué (jsonb → 500) retiré des corrections stockées.
     corrections = {
-        k: v for k, v in (champs_corriges or {}).items()
+        k: v for k, v in (sans_nul(champs_corriges) or {}).items()
         if k not in (SOURCE_TYPE_KEY, SOURCE_ID_KEY)}
     existant = dict(document.custom_data or {})
     data = dict(existant)
@@ -381,7 +384,7 @@ def valider_extraction_ocr(validation, *, champs_corriges, user):
     document.save(update_fields=['custom_data', 'updated_at'])
     from django.utils import timezone as _tz
     validation.valide = True
-    validation.champs_extraits = champs_corriges or validation.champs_extraits
+    validation.champs_extraits = sans_nul(champs_corriges) or validation.champs_extraits
     validation.valide_par = user
     validation.valide_le = _tz.now()
     validation.save(update_fields=[
@@ -835,6 +838,9 @@ def add_version(document, *, file_key, company, filename='', size=0, mime='',
     # ADOC14 — une nouvelle version d'un document APPROUVÉ n'est pas
     # approuvée : il repasse en revue (approbation à refaire).
     from .models import LIFECYCLE_APPROUVE, LIFECYCLE_REVUE
+    from .chaine_approbation import reprendre_chaine_a_l_etape_1  # ASEC84
+    if next_version > 1:
+        reprendre_chaine_a_l_etape_1(document, utilisateur=uploaded_by)
     if (next_version > 1 and Document.objects.filter(
             pk=document.pk, statut=LIFECYCLE_APPROUVE).exists()):
         Document.objects.filter(pk=document.pk).update(statut=LIFECYCLE_REVUE)
@@ -1097,6 +1103,18 @@ def partager_document_avec_client_portail(document, client_id,
     return AclGed.objects.create(
         company=document.company, document=document, client_id=client_id,
         niveau=ACL_LECTURE, herite=False, created_by=created_by)
+
+
+def retirer_partage_client_portail(document, *, sauf_client_id=None):
+    """ACSV33 — retire le partage portail (``AclGed.client``) du document à tout client sauf
+    ``sauf_client_id`` (société du document) ; rend le nombre d'entrées retirées."""
+    from .models import AclGed
+    if document is None:
+        return 0
+    qs = AclGed.objects.filter(company=document.company, document=document, client__isnull=False)
+    if sauf_client_id:
+        qs = qs.exclude(client_id=sauf_client_id)
+    return qs.delete()[0]
 
 
 def _store_bytes(data, *, mime='application/pdf'):
@@ -2544,15 +2562,13 @@ def purger_definitivement(document):
 
 
 def _cles_binaires_exclusives(document):
-    """ADOC29 — clés de stockage des versions de `document` qu'AUCUNE autre
-    version (d'un autre document) ne référence : seules celles-ci peuvent
-    être effacées du stockage objet."""
-    cles = set(DocumentVersion.objects.filter(document=document)
-               .exclude(file_key='').values_list('file_key', flat=True))
-    partagees = set(DocumentVersion.objects.filter(file_key__in=cles)
-                    .exclude(document=document)
-                    .values_list('file_key', flat=True))
-    return sorted(cles - partagees)
+    """ADOC29 — clés de stockage des versions de `document` qu'AUCUN autre
+    détenteur ne tient : seules celles-ci peuvent être effacées du stockage
+    objet. ADOC192 — le choix est délégué au registre des détenteurs
+    (ADOC193 : autre version GED, pièce jointe importée, créatif…)."""
+    from apps.records.cles_stockage import cle_detenue
+    versions = list(DocumentVersion.objects.filter(document=document).exclude(file_key=''))
+    return sorted({v.file_key for v in versions if not cle_detenue(v.file_key, sauf=versions)})
 
 
 def _supprimer_binaires(cles):
@@ -5408,7 +5424,6 @@ def scinder_pdf(version, points_de_coupe, *, created_by=None):
         # stocké → 409 (ENF11, api-fuzz-full 24/10).
         raw_points = [int(p) for p in (points_de_coupe or [])]
         if n_pages < 1 or any(p < 1 or p > n_pages for p in raw_points):
-            from core.conflit_etat import ConflitEtat
             raise ConflitEtat("Points de coupe invalides.")
         coupes = sorted(set(raw_points))
         if not coupes or coupes[0] != 1:
@@ -5911,12 +5926,12 @@ def creer_document_lien(*, company, folder, nom, url_externe, description='',
         url_externe=url_externe, created_by=created_by)
 
 
-def assert_not_document_lien(document, *, action=''):
+def assert_not_document_lien(document, *, action='', exc=ValueError):
     """XGED18 — Garde : refuse une action FICHIER (version/OCR/signature) sur un
     document-lien. Lève `ValueError` (→ 400 explicite côté vue, jamais un
     comportement silencieusement faux)."""
     if document.est_document_lien:
-        raise ValueError(
+        raise exc(
             f"Action « {action or 'fichier'} » impossible : ce document est "
             "un document-lien (URL externe, sans fichier stocké).")
 
@@ -6113,37 +6128,10 @@ def avancer_chaine_approbation_ged(demande, *, user, commentaire=''):
                 f"impossible.")
         _assert_peut_decider(demande, user)
         chaine = type(chaine).objects.select_for_update().get(pk=chaine.pk)
-        return _avancer_chaine_verrouillee(
+        from .chaine_approbation import avancer_chaine_verrouillee
+        return avancer_chaine_verrouillee(
             demande, chaine, user=user, commentaire=commentaire,
             get_user_model=get_user_model, _tz=_tz)
-
-
-def _avancer_chaine_verrouillee(demande, chaine, *, user, commentaire,
-                                get_user_model, _tz):
-    """ADOC14 — corps de `avancer_chaine_approbation_ged`, appelé sous
-    verrou de ligne (demande + chaîne)."""
-    etapes = list(chaine.etapes or [])
-    idx = chaine.etape_courante
-    if idx < len(etapes):
-        etapes[idx]['statut'] = 'approuve'
-        etapes[idx]['decision_le'] = _tz.now().isoformat()
-    if idx + 1 < len(etapes):
-        # Étape suivante : réassigne l'approbateur actif, la demande reste
-        # « en_attente » (décision globale pas encore prise).
-        etapes[idx + 1]['statut'] = 'en_cours'
-        User = get_user_model()
-        suivant = User.objects.filter(
-            company=demande.company, pk=etapes[idx + 1]['approbateur_id']).first()
-        demande.approbateur = suivant
-        demande.save(update_fields=['approbateur', 'updated_at'])
-        chaine.etapes = etapes
-        chaine.etape_courante = idx + 1
-        chaine.save(update_fields=['etapes', 'etape_courante', 'updated_at'])
-        return demande
-    # Dernière étape : décision définitive (réutilise GED18, jamais dupliqué).
-    chaine.etapes = etapes
-    chaine.save(update_fields=['etapes', 'updated_at'])
-    return approve_demande(demande, user=user, commentaire=commentaire)
 
 
 # ── XGED23 — Disposition fin de rétention (revue + certificat) ─────────────
@@ -6364,12 +6352,10 @@ def caviarder_document(version, zones, *, created_by=None):
     l'original), dont `custom_data` trace l'origine
     (`{'caviarde_depuis': <id original>}`) — pattern `source_type`/`source_id`
     déjà utilisé pour les traces cross-app, pas un nouveau schéma de FK.
-    Respecte les gardes GED23/24 sur l'ORIGINAL (lecture seule — jamais
-    bloquant : caviarder ne MODIFIE pas l'original, seule une garde
-    `assert_not_document_lien` s'applique, XGED18). Renvoie le nouveau
-    `Document` créé."""
+    L'original n'est jamais modifié ; un document-lien (XGED18) est un refus
+    d'ÉTAT, 409 (ENF47, c'était 400). Renvoie le `Document` créé."""
     document = version.document
-    assert_not_document_lien(document, action='caviarder')
+    assert_not_document_lien(document, action='caviarder', exc=ConflitEtat)
     try:
         import fitz  # PyMuPDF
     except Exception:
@@ -6385,7 +6371,6 @@ def caviarder_document(version, zones, *, created_by=None):
         # copie « (caviardée) » qui ne masque rien fuirait le texte).
         # api-fuzz-full 24/10 — 409 : le nombre de pages du fichier stocké et
         # « x1 > x0 » sont des règles que le schéma ne peut pas porter.
-        from core.conflit_etat import ConflitEtat
         a_rediger = []
         for zone in zones:
             try:
@@ -6427,7 +6412,7 @@ def caviarder_document(version, zones, *, created_by=None):
     finally:
         doc.close()
 
-    nom = f'{document.nom} (caviardé)'
+    nom = f'{document.nom[:240]} (caviardé)'  # ENF48 : nom ≤ 255, « .pdf » compris
     new_doc = create_document(
         company=document.company, folder=document.folder, nom=nom,
         description=document.description,

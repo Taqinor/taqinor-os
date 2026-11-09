@@ -31,3 +31,19 @@ class FacturesPlancherTests(SimpleTestCase):
         self.assertEqual(valider({'factures_mensuelles_reelles':
                                   [39.94] * 12}), [])
         self.assertEqual(valider({'factures_mensuelles_reelles': None}), [])
+
+    def test_plancher_publie_au_schema_egal_a_la_garde(self):
+        """ENF51 — la série publiée (PATCH ``etude-params``) refuse ce que la
+        garde refuse : un élément conforme au schéma n'est jamais refusé."""
+        import jsonschema
+
+        from apps.ventes.views.openapi_docs import _proprietes_etude_params
+        forme = dict(_proprietes_etude_params()['factures_mensuelles_reelles'])
+        forme.pop('nullable')
+        element = dict(forme['items'])
+        # OpenAPI 3.0 (bornes exclusives booléennes) -> draft 4.
+        for valeur in (0, -5, 0.0, 39.94, 40, 450.5, '', None, [], {}, True,
+                       2.5443360298620274, 1, 39.93):
+            conforme = jsonschema.Draft4Validator(element).is_valid(valeur)
+            refuse = bool(valider({'factures_mensuelles_reelles': [valeur]}))
+            self.assertEqual(conforme, not refuse, repr(valeur))

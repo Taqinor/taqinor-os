@@ -1,0 +1,23 @@
+# Preuve en direct AAPV73 — rejeu w28, code b00242be0 (dev-plan-6a6fc9-w28), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w28-django (conteneur privé : code de CE worktree, base privée
+# erp_accept_w28, transaction annulée, mail en mémoire, Celery coupé, HTTP sortant bloqué). « oc » = variante
+# scratchpad sonde_oc.py identique sauf transaction.on_commit exécuté immédiatement (événements « après commit »
+# qui ne partiraient jamais dans la transaction annulée). Sur le code corrigé, verdict ÉCART = repro False = attendu.
+# Sondes C-LIVE-* (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Écran : front de CE worktree servi par vite (127.0.0.1:5199) -> conteneur privé accept-w28-web (runserver, base
+# erp_accept_w28, SMTP 127.0.0.1:1 = aucune messagerie), piloté par Playwright MCP. Données d'écran = états des sondes
+# rejouées SANS rollback dans la base privée (comptes de test des sondes, mot de passe de test) ou fixtures FIX-*.
+# Verdict : PASS — Sonde C-AAPV-107 : Technicien responsable et Admin Ventes 403 => repro False ; écran : refus affiché.
+
+== C-AAPV-107 (sha c6bd9b5d52)
+attendu : repro si Technicien responsable (et Admin Ventes) PATCH = 200 et les contrôles achats sont coupés ; Technicien 403
+observé : {'Technicien': {'stock_modifier': False, 'parametres_modifier': False, 'http': 403, 'sod_stricte': True, 'ras_tva_actif': True, 'tolerance_prix_pct': '2.00', 'onboarding_obligatoire': True}, 'Technicien responsable': {'stock_modifier': True, 'parametres_modifier': False, 'http': 403, 'sod_stricte': True, 'ras_tva_actif': True, 'tolerance_prix_pct': '2.00', 'onboarding_obligatoire': True}, 'Admin Ventes': {'stock_modifier': True, 'parametres_modifier': False, 'http': 403, 'sod_stricte': True, 'ras_tva_actif': True, 'tolerance_prix_pct': '2.00', 'onboarding_obligatoire': True}, 'Commercial': {'stock_modifier': False, 'parametres_modifier': False, 'http': 403, 'sod_stricte': True, 'ras_tva_actif': True, 'tolerance_prix_pct': '2.00', 'onboarding_obligatoire': True}}
+{"Technicien": {"stock_modifier": false, "parametres_modifier": false, "http": 403, "sod_stricte": true, "ras_tva_actif": true, "tolerance_prix_pct": "2.00", "onboarding_obligatoire": true}, "Technicien responsable": {"stock_modifier": true, "parametres_modifier": false, "http": 403, "sod_stricte": true, "ras_tva_actif": true, "tolerance_prix_pct": "2.00", "onboarding_obligatoire": true}, "Admin Ventes": {"stock_modifier": true, "parametres_modifier": false, "http": 403, "sod_stricte": true, "ras_tva_actif": true, "tolerance_prix_pct": "2.00", "onboarding_obligatoire": true}, "Commercial": {"stock_modifier": false, "parametres_modifier": false, "http": 403, "sod_stricte": true, "ras_tva_actif": true, "tolerance_prix_pct": "2.00", "onboarding_obligatoire": true}, "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 7, après 7) ; mails 0 ; tâches Celery bloquées 0
+
+## AAPV73 — PASS (partie écran)
+État de la sonde C-AAPV-107 rejouée sans rollback, compte s107-technicien-responsable (rôle système Technicien responsable, porte
+stock_modifier). Paramètres › Achats (/parametres/achats) › Tolérances du rapprochement 3 voies › « Enregistrer » =>
+PATCH /stock/achats-parametres/29/ 403, message affiché « Vous n'avez pas la permission de modifier ces paramètres. ».
+Console : seule erreur = la 403 attendue (refus sous test).

@@ -289,3 +289,19 @@ class DomainePlateformeTests(TestCase):
         compte, _ = self._classer('aacq38-shop2', ['boutique-a.myshopify.com',
                                                    'chic-b.myshopify.com'])
         self.assertEqual(compte, temoin)
+
+    def test_hebergeur_hors_lexique_pas_doublon(self):
+        """AACQ109 — un hébergeur absent du lexique (e-monsite, webnode)
+        garde l'hôte complet : deux boutiques ne sont jamais « doublon »."""
+        temoin, _ = self._classer('aacq109-shop', ['a.myshopify.com',
+                                                   'b.myshopify.com'])
+        self.assertEqual(temoin, {'incertain': 2})
+        for slug, suffixe in (('aacq109-emon', 'e-monsite.com'),
+                              ('aacq109-wbn', 'webnode.fr')):
+            with self.subTest(suffixe=suffixe):
+                compte, classes = self._classer(
+                    slug, [f'boutique-a.{suffixe}', f'chic-b.{suffixe}'])
+                self.assertEqual(compte, {'incertain': 2})
+                self.assertNotIn('doublon', classes)
+        self.assertEqual(vd.legende_vers_domaine('www.marque.ma'),
+                         vd.legende_vers_domaine('marque.ma'))

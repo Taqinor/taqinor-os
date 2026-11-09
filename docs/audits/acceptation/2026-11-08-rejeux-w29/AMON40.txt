@@ -1,0 +1,24 @@
+# Preuve en direct AMON40 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Écran : front du worktree servi par vite (127.0.0.1:3000) -> conteneur privé accept-w29-web (runserver, base
+# erp_accept_w29, stockage objet PRIVÉ accept-w29-minio, SMTP 127.0.0.1:1 puis mail en mémoire pour AMON47), piloté par
+# Playwright MCP. Données : seed_demo « TAQINOR Démo » + fixtures FIX-W29* ou états des sondes rejouées SANS rollback
+# (comptes de test, mot de passe de test).
+# Verdict : PASS — Sonde C-AMON-040 : repro False ; écran Garanties : productible borné, compensation 0,00 MAD.
+
+== C-AMON-040 (sha 51dac387b)
+attendu : repro si N : compensation ≈ 8478.72 et within_tolerance False ; rapport 2025 : penalite 12540, year_in_progress False, route PDF 200 ; témoin T : compensation 0
+observé : {"N_mes_08_09": {"releves": 61, "mise_en_service": "2026-09-08", "status_service": {"has_warranty": "True", "year": "2026", "year_in_progress": "True", "guaranteed_kwh": "2005.48", "actual_kwh": "2005.68", "shortfall_kwh": "0.00", "within_tolerance": "True", "compensation_mad": "0.00"}, "status_route": {"http": 200, "year": 2026, "guaranteed_kwh": "2038.36", "actual_kwh": "2005.68", "compensation_mad": "0.0", "within_tolerance": true}, "rapport_2025": {"year_in_progress": null, "guaranteed_year_kwh": "None", "total_actual_kwh": "None", "total_penalite_mad": "None"}, "rapport_2026_mois": [["Janvier", "0.00", "0.00"], ["Février", "0.00", "0.00"], ["Mars", "0.00", "0.00"], ["Avril", "0.00", "0.00"], ["Mai", "0.00", "0.00"], ["Juin", "0.00", "0.00"], ["Juillet", "0.00", "0.00"], ["Août", "0.00", "0.00"], ["Septembre", "756.24", "0.00"], ["Octobre", "1019.28", "0.00"], ["Novembre", "230.16", "0.00"]], "pdf_2025_http": 404, "pdf_2025_type": "application/json"}, "T_temoin_01_01": {"releves": 311, "mise_en_service": "2026-01-01", "status_service": {"has_warranty": "True", "year": "2026", "year_in_progress": "True", "guaranteed_kwh": "10224.66", "actual_kwh": "10225.68", "shortfall_kwh": "0.00", "within_tolerance": "True", "compensation_mad": "0.00"}, "status_route": {"http": 200, "year": 2026, "guaranteed_kwh": "10257.53", "actual_kwh": "10225.68", "compensation_mad": "0.0", "within_tolerance": true}, "rapport_2025": {"year_in_progress": null, "guaranteed_year_kwh": "None", "total_actual_kwh": "None", "total_penalite_mad": "None"}, "rapport_2026_mois": [["Janvier", "1019.28", "0.00"], ["Février", "920.64", "0.00"], ["Mars", "1019.28", "0.00"], ["Avril", "986.40", "0.00"], ["Mai", "1019.28", "0.00"], ["Juin", "986.40", "0.00"], ["Juillet", "1019.28", "0.00"], ["Août", "1019.28", "0.00"], ["Septembre", "986.40", "0.00"], ["Octobre", "1019.28", "0.00"], ["Novembre", "230.16", "0.00"]], "pdf_2025_http": 404, "pdf_2025_type": "application/json"}, "temoin_ok": true, "defaut_courant": false, "defaut_2025": false, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0
+
+## AMON40 — PASS (écran)
+État de la sonde C-AMON-040 rejouée SANS rollback, compte amon040_resp. Production › Garanties : « Statut et courbe » du système
+mis en service le 08/09/2026 (#192) : « Année 2026 — Garanti 2 038 kWh (productible borné à la période couverte, pas 12 000) — Réel
+2 006 kWh — Manque 33 kWh — Compensation due (estimation, année en cours) 0,00 MAD — Dans la tolérance » ; #193 : garanti 10 258,
+réel 10 226, compensation 0,00 MAD. Sonde C-AMON-040 : repro False.

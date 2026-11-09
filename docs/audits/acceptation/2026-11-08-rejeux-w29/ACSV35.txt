@@ -1,0 +1,28 @@
+# Preuve en direct ACSV35 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Écran : front du worktree servi par vite (127.0.0.1:3000) -> conteneur privé accept-w29-web (runserver, base
+# erp_accept_w29, stockage objet PRIVÉ accept-w29-minio, SMTP 127.0.0.1:1 puis mail en mémoire pour AMON47), piloté par
+# Playwright MCP. Données : seed_demo « TAQINOR Démo » + fixtures FIX-W29* ou états des sondes rejouées SANS rollback
+# (comptes de test, mot de passe de test).
+# Verdict : PASS — Sonde C-ACSV-045 : cas (a) et (b) non reproduits (409) ; écran : refus affiché (Responsable), dérogation Directeur avec motif => définitive + note.
+
+== C-ACSV-045 (sha ddf1f97a1)
+attendu : repro si (a) 200 sur annulé, (b) 200 avant date_definitive_prevue, (c) 201 réserve après définitive
+observé : {"a_annule": {"http": 409, "date_reception_definitive": "None"}, "b_delai": {"date_provisoire": "2026-11-07", "date_definitive_prevue": "2027-11-07", "http": 409, "date_reception_definitive": "None"}, "c_reserve_apres_definitive": {"http": 201, "reserves_ouvertes": 1, "reception_contrat": {"date_reception_provisoire": "2026-11-07", "date_reception_definitive": null, "date_definitive_prevue": "2027-11-07", "definitive_possible": false}}, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 1, après 1) ; mails 0 ; tâches Celery bloquées 0
+
+## ACSV35 — PASS (écran)
+Fixture FIX-W29d : délai de réception définitive 12 mois (société démo) ; CHT-E29-35 industriel, provisoire 07/11/2026 ; compte
+e29_dir (rôle système « Directeur »). (1) Compte demo_resp (Responsable) › Chantiers › CHT-E29-35 › Jalons & gates › « Prononcer la
+réception définitive » => POST …/179/reception-definitive/ {} 409 ; refus affiché « Réception définitive possible à partir du
+07/11/2027 ; avant, dérogation d'un Directeur avec motif. ». (2) Compte e29_dir : même geste sans motif => même 409 affiché, puis le
+champ « Motif de dérogation (Directeur) » apparaît ; motif « Exigence du maître d'ouvrage (acceptation ACSV35) » → « Prononcer la
+réception définitive » => POST {"motif_derogation":…} 200 ; bloc relu « Réception définitive prononcée le 08/11/2026. » ;
+Historique : « Réception définitive prononcée par dérogation Directeur avant le 07/11/2027 — motif : Exigence du maître d'ouvrage
+(acceptation ACSV35) — par e29_dir ». Console : seules erreurs = les 409 attendues.

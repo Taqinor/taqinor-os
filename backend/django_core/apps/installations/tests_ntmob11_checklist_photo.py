@@ -105,6 +105,17 @@ class ChecklistPhotoMetaEndpointTests(TestCase):
         self.assertIsNone(meta.longitude)
         self.assertIsNone(meta.precision_m)
 
+    def test_geoloc_hors_bornes_400_sans_ecriture(self):
+        """ENF51 — latitude 1e216 débordait la colonne (9, 6) : 500."""
+        att = make_attachment(self.company, self.inst)
+        for corps in ({'latitude': 1.334285049531963e+216}, {'longitude': 180.5},
+                      {'latitude': -90.01}):
+            resp = self.api.post(
+                self._url(), {'attachment': att.id, 'cle': 'r', **corps}, format='json')
+            self.assertEqual(resp.status_code, 400, resp.data)
+            self.assertIn(next(iter(corps)), resp.data)
+        self.assertFalse(PhotoChecklistMeta.objects.filter(attachment=att).exists())
+
     def test_missing_attachment_400(self):
         resp = self.api.post(self._url(), {'cle': self.cle}, format='json')
         self.assertEqual(resp.status_code, 400)

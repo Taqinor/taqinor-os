@@ -1,0 +1,26 @@
+# Preuve en direct AMON44 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Écran : front du worktree servi par vite (127.0.0.1:3000) -> conteneur privé accept-w29-web (runserver, base
+# erp_accept_w29, stockage objet PRIVÉ accept-w29-minio, SMTP 127.0.0.1:1 puis mail en mémoire pour AMON47), piloté par
+# Playwright MCP. Données : seed_demo « TAQINOR Démo » + fixtures FIX-W29* ou états des sondes rejouées SANS rollback
+# (comptes de test, mot de passe de test).
+# Verdict : PASS — Sonde C-AMON-044 : repro False ; écran Nettoyages : perte « — », aucune reco « salissure ».
+
+== C-AMON-044 (sha 51dac387b)
+attendu : repro si S : perte ≥ 60, recommend True, soiling_pct ≥ 60, reco rapport présente ; après nettoyage 20/12 : perte inchangée et recommend True ; témoin plat : recommend False
+observé : {"S_saisonnier": {"avant_nettoyage": {"baseline_pr": "108.61", "current_pr": "114.00", "perte": "-5.39", "recommend": false, "reasons": [], "soiling_pct_pertes": "-5.39", "reco_rapport": ["Aucune action requise sur la période."]}, "apres_nettoyage_20_12": {"perte": "None", "recommend": false, "reasons": [], "last_cleaning_date": "2025-12-20"}}, "T_plat": {"avant_nettoyage": {"baseline_pr": "141.62", "current_pr": "178.75", "perte": "-37.13", "recommend": false, "reasons": [], "soiling_pct_pertes": "-37.13", "reco_rapport": ["Aucune action requise sur la période."]}, "apres_nettoyage_20_12": {"perte": "None", "recommend": false, "reasons": [], "last_cleaning_date": "2025-12-20"}}, "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0
+
+## AMON44 — PASS (écran)
+État de la sonde C-AMON-044 rejouée SANS rollback ; FIX-W29p : compte amon044_resp ; FIX-W29q : systèmes « Réceptionné ». Production
+› Nettoyages › CHT-AMON044-S (production saisonnière saine) : « Perte estimée (salissure) — » (estimated_soiling_loss_pct null),
+« Dernier nettoyage 20/12/2025 (323 j) », « Nettoyage recommandé — délai depuis le dernier nettoyage » (seule raison : le délai écoulé,
+aucune raison « salissure ») ; GET …/configs/61/soiling/ 200 {current_pr_pct null, baseline null, recommend_cleaning true,
+reasons ["délai depuis le dernier nettoyage"]}. Sonde (évaluée au 31/12/2025) : recommend false, perte None après nettoyage
+(repro False).

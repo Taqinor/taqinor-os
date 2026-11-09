@@ -18,7 +18,7 @@ from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
-from authentication.permissions import IsAnyRole
+from .gardes_lecture import LectureFactures
 
 
 def _periode_invalide(params):
@@ -124,7 +124,7 @@ def _cle_commercial(devis):
                          description='1 = devis du demandeur (created_by)')],
     responses={200: SH.DashboardQuoteToCashResponse})
 @api_view(['GET'])
-@permission_classes([IsAnyRole])
+@permission_classes([LectureFactures])  # AARG67
 def dashboard_quote_to_cash(request):
     """GET /ventes/dashboard/
 

@@ -522,6 +522,17 @@ def _ids_chemin_reels(case):
     meta = case.meta
     if meta is None or meta.generation.mode != GenerationMode.POSITIVE:
         return
+    # api-fuzz-full 41825184761 (POST facturation/niveaux-relance/ puis GET
+    # .../4/ ; POST ventes/recettes-mes/ puis PATCH .../1/ : 404). En phase
+    # STATEFUL, Schemathesis 4.28 lit comme « venu d'un lien » TOUT paramètre
+    # qui diffère de sa valeur générée (``Case._override`` = écart au cliché,
+    # ``generation/overrides.py::get_component_diff``) : l'id d'inventaire posé
+    # ici sur un id GÉNÉRÉ (le lien n'est suivi qu'avec une probabilité <1)
+    # passait pour l'id de la ligne créée, et une ligne d'inventaire supprimée
+    # plus tôt donnait « not available after creation ». Les liens apportent
+    # les ids réels de cette phase : aucune substitution.
+    if getattr(getattr(meta, 'phase', None), 'name', None) == 'stateful':
+        return
     gabarit = case.operation.path
     m = _PREMIER_ID.match(gabarit)
     if not m or m.group(2) not in (case.path_parameters or {}):
@@ -680,6 +691,12 @@ _FICHIERS_VALIDES = (
     (re.compile(_GED + r'deposer-lot-scans-separe/$'), {'POST'},
      {'files': _PNG_MINIMAL}),
     (re.compile(_GED + r'import-masse/$'), {'POST'}, {'csv': _CSV_MINIMAL}),
+    # Nocturne 41958593088 (tranche 13, HrXXRu) — dépôt PUBLIC par lien :
+    # ``store_attachment`` lit les octets magiques (PDF, PNG, JPEG, WebP) ;
+    # des octets quelconques sont « Format non supporté » (400), le schéma ne
+    # dit que ``format: binary``.
+    (re.compile(r'^/api/django/ged/depot/\{[^}]+\}/$'), {'POST'},
+     {'file': _PDF_MINIMAL}),
     # CI #997 (2e passe) — pièce jointe polymorphe de records : un part sans
     # nom ni octets est « Aucun fichier fourni » (400) ; le serveur valide
     # les octets magiques, inexprimable dans le schéma.

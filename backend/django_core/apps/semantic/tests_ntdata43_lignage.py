@@ -9,7 +9,7 @@ Couvre :
   * le nombre de lignes agrégées est RÉEL, et VIDE (jamais 0) quand il n'est
     pas exprimable — métrique d'adaptateur, dataset désenregistré ;
   * la version de définition en vigueur (NTDATA9) est citée ;
-  * une métrique inconnue/inactive est un 404 ;
+  * une métrique inconnue est un 404, désactivée un 409 (ENF50) ;
   * l'endpoint `/semantic/metriques/<cle>/lignage/` et son scoping société.
 """
 from django.contrib.auth import get_user_model
@@ -136,7 +136,7 @@ class LignageTests(TestCase):
     def test_metrique_inactive_leve(self):
         definition = self._metrique()
         MetricDefinition.objects.filter(pk=definition.pk).update(actif=False)
-        with self.assertRaises(services.MetriqueInconnue):
+        with self.assertRaises(services.MetriqueInactive):
             selectors.lineage(self.company, 'ca_ht', user=self.user)
 
 
@@ -183,6 +183,85 @@ class LignageEndpointTests(TestCase):
         reponse = self._get('chez_le_voisin')
         self.assertEqual(reponse.status_code, status.HTTP_404_NOT_FOUND)
 
+    def test_metrique_desactivee_est_un_409(self):
+        """ENF50 (api-fuzz-full 42160785666, UwBLOT) — la métrique EXISTE
+        mais est désactivée : 409 nommé, jamais le 404 d'une clé absente."""
+        MetricDefinition.objects.filter(
+            company=self.company, cle='ca_ht').update(actif=False)
+        reponse = self._get('ca_ht')
+        self.assertEqual(reponse.status_code, status.HTTP_409_CONFLICT)
+        self.assertIn('désactivée', reponse.data['detail'])
+
     def test_utilisateur_non_responsable_refuse(self):
         self.assertEqual(self._get('ca_ht', user=self.simple).status_code,
                          status.HTTP_403_FORBIDDEN)
+
+
+class ExpliquerChiffreTests(TestCase):
+    """NTDATA44 — « expliquer ce chiffre » : définition + filtres + lignes
+    sources en une réponse."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = Company.objects.create(nom='NTDATA44 SA',
+                                             slug='ntdata44-sa')
+        cls.user = User.objects.create_user(
+            username='ntdata44_u', password='x', company=cls.company,
+            role_legacy='admin')
+
+    def setUp(self):
+        data_explorer.register_dataset(
+            'ventes_ntdata44', 'Sociétés (test)', ['id', 'nom'],
+            _societes_dataset)
+
+    def _metrique(self, **kw):
+        params = dict(company=self.company, cle='ca_ht', libelle='CA HT',
+                      description="Chiffre d'affaires hors taxe.",
+                      dataset='ventes_ntdata44',
+                      mesure={'field': 'id', 'agg': 'count'})
+        params.update(kw)
+        return MetricDefinition.objects.create(**params)
+
+    def test_expose_definition_filtres_et_lignes_sources(self):
+        """Critère d'acceptation NTDATA44."""
+        self._metrique(filtres={'nom': 'NTDATA44 SA'})
+        explication = selectors.expliquer(self.company, self.user, 'ca_ht')
+        self.assertEqual(explication['lignage']['metrique'], 'ca_ht')
+        self.assertEqual(explication['lignage']['description'],
+                         "Chiffre d'affaires hors taxe.")
+        self.assertEqual(explication['filtres_appliques'],
+                         {'nom': 'NTDATA44 SA'})
+        lignes = explication['enregistrements']
+        self.assertEqual(lignes['nb'], 1)
+        self.assertEqual(lignes['enregistrements'][0]['id'], self.company.pk)
+
+    def test_cellule_cliquee_restreint_les_lignes(self):
+        self._metrique()
+        explication = selectors.expliquer(
+            self.company, self.user, 'ca_ht', cellule={'nom': 'Autre'})
+        self.assertEqual(explication['cellule'], {'nom': 'Autre'})
+        self.assertEqual(explication['enregistrements']['nb'], 0)
+
+    def test_adaptateur_sans_lignes_inventees(self):
+        self._metrique(cle='dso', dataset='',
+                       mesure={'adapter': 'compta.dso'})
+        explication = selectors.expliquer(self.company, self.user, 'dso')
+        self.assertIsNone(explication['enregistrements'])
+        self.assertIn('adaptateur', explication['raison'])
+
+    def test_endpoint(self):
+        from apps.semantic.views import MetriqueExpliquerView
+        self._metrique()
+        requete = APIRequestFactory().get(
+            '/api/django/semantic/metriques/ca_ht/expliquer/',
+            {'cellule': '{"nom": "NTDATA44 SA"}'})
+        force_authenticate(requete, user=self.user)
+        reponse = MetriqueExpliquerView.as_view()(requete, cle='ca_ht')
+        self.assertEqual(reponse.status_code, status.HTTP_200_OK)
+        self.assertEqual(reponse.data['enregistrements']['nb'], 1)
+        requete = APIRequestFactory().get(
+            '/api/django/semantic/metriques/inconnue/expliquer/')
+        force_authenticate(requete, user=self.user)
+        self.assertEqual(
+            MetriqueExpliquerView.as_view()(requete, cle='inconnue')
+            .status_code, status.HTTP_404_NOT_FOUND)

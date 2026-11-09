@@ -16,6 +16,13 @@ vi.mock('../../features/stock/useVoitPrixAchat', () => ({
   useVoitPrixAchat: () => true,
 }))
 
+// AAPV74 (rejeu 08/11) — palier admin piloté par test (les 4 rapports sont
+// `IsAdminRole` côté serveur) ; vrai par défaut = comportement historique.
+const palier = vi.hoisted(() => ({ admin: true }))
+vi.mock('../../hooks/useHasPermission', () => ({
+  useIsAdmin: () => palier.admin,
+}))
+
 vi.mock('../../api/stockApi', () => ({
   default: {
     produitsAReapprovisionner: vi.fn(),
@@ -41,6 +48,7 @@ import { wrapper } from './__tests__/WrapperRouterTheme.jsx'
 
 beforeEach(() => {
   vi.clearAllMocks()
+  palier.admin = true
   installJsdomPolyfills()
   stockApi.produitsAReapprovisionner.mockResolvedValue({
     data: [{
@@ -97,6 +105,24 @@ describe('WR3 — rendu des quatre rapports', () => {
     await waitFor(() => {
       expect(screen.getAllByText(/Réservé à l['’]administrateur\./).length).toBeGreaterThan(0)
     })
+  })
+})
+
+/* AAPV74 (rejeu 08/11) — Responsable / Technicien : /stock ne tire plus les
+   4 rapports admin-only (4 × 403 = oracle 2 de l'acceptation). */
+describe('AAPV74 — sans palier admin, aucun appel aux rapports admin-only', () => {
+  it('n\'appelle aucun des 4 endpoints et affiche le message honnête', async () => {
+    palier.admin = false
+    render(<PilotageStock />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getAllByText(/Réservé à l['’]administrateur\./).length).toBeGreaterThan(0)
+    })
+    expect(stockApi.produitsAReapprovisionner).not.toHaveBeenCalled()
+    expect(stockApi.previsionsReappro).not.toHaveBeenCalled()
+    expect(stockApi.rotationStock).not.toHaveBeenCalled()
+    expect(stockApi.expirantBientot).not.toHaveBeenCalled()
+    // Les gestes « analyse d'achats » (IsResponsableOrAdmin) restent offerts.
+    expect(screen.getByRole('button', { name: /Analyse d'achats \(Excel\)/ })).toBeVisible()
   })
 })
 

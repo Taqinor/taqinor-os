@@ -8,12 +8,12 @@ from drf_spectacular.utils import (
 )
 from rest_framework import serializers
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound
 from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 
 from authentication.permissions import IsAdminRole
 from core.champs_stricts import ChaineStricte
+from core.conflit_etat import ConflitEtat
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import AccessReviewCampaign, AccessReviewItem, SodRule
@@ -46,7 +46,7 @@ class AccessReviewCampaignViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(request=AttesterSerializer,
                    responses={200: AccessReviewItemSerializer,
-                              404: OpenApiResponse(
+                              409: OpenApiResponse(
                                   description='Item inconnu pour cette campagne.')})
     @action(detail=True, methods=['post'])
     def attester(self, request, pk=None):
@@ -64,7 +64,9 @@ class AccessReviewCampaignViewSet(CompanyScopedModelViewSet):
             pk=valide['item'], campagne=campaign,
             company=request.user.company).first()
         if item is None:
-            raise NotFound({'item': 'Item inconnu pour cette campagne.'})
+            # ENF11 : la campagne existe, seul l'item du corps est inconnu =
+            # refus d'état (409), pas un 404 qui la dirait introuvable.
+            raise ConflitEtat({'item': 'Item inconnu pour cette campagne.'})
         _attester(item, decision=decision, reviewer=request.user,
                   commentaire=commentaire)
         return Response(AccessReviewItemSerializer(item).data)

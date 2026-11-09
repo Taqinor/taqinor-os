@@ -297,6 +297,28 @@ class TestConsommation(_Base):
             produit=self.panneau,
             type_mouvement=MouvementStock.TypeMouvement.SORTIE).exists())
 
+    def test_f11_ne_libere_que_ses_produits(self):
+        """AAPV31 (D-AAPV-3) — F11 n°1 : panneaux posés, onduleur à 0 « posé à
+        l'intervention 2 » ⇒ l'onduleur reste réservé ; la F11 n°2 ne
+        propose que le reliquat (0 panneau, 1 onduleur)."""
+        from apps.installations.models import StockReservation
+        cons = field_capture.ensure_consommation(self.interv)
+        ond = cons.lignes.get(designation='Onduleur 5kW')
+        ond.quantite_utilisee = Decimal('0')
+        ond.justification = "Posé à l'intervention 2"
+        ond.save()
+        field_capture.validate_consommation(cons, self.user)
+        resa = StockReservation.objects.get(
+            installation=self.inst, produit=self.onduleur)
+        self.assertEqual((resa.quantite, resa.active, resa.consomme),
+                         (1, True, False))
+        interv2 = make_intervention(self.inst, self.company, self.user)
+        cons2 = field_capture.ensure_consommation(interv2)
+        lignes = {li.designation: li.quantite_utilisee
+                  for li in cons2.lignes.all()}
+        self.assertEqual(lignes['Panneau 550W'], Decimal('0'))
+        self.assertEqual(lignes['Onduleur 5kW'], Decimal('1'))
+
     def test_extra_unplanned_line(self):
         r = self.api.post(f'{self.url}/ajouter-ligne-consommation/', {
             'designation': 'Câble 6mm² (m)', 'quantite_utilisee': '25'},
@@ -312,12 +334,33 @@ class TestConsommation(_Base):
             r = self.api.post(url, {'designation': 'Câble', 'quantite_utilisee': brut},
                               format='json')
             self.assertEqual(r.status_code, 400, (brut, r.content))
-        r = self.api.post(url, {'designation': 'Câble', 'quantite_utilisee': '9999999999.99'},
+        # AAPV52 — borne haute ENTIÈRE (une quantité non entière est refusée).
+        r = self.api.post(url, {'designation': 'Câble', 'quantite_utilisee': '9999999999'},
                           format='json')
         self.assertEqual(r.status_code, 201, r.content)
         r = self.api.post(f'{self.url}/modifier-ligne-consommation/', {
             'ligne': r.data['id'], 'quantite_utilisee': 1e15}, format='json')
         self.assertEqual(r.status_code, 400, r.content)
+
+    def test_quantite_f11_decimale_refusee_a_la_saisie(self):
+        """AAPV52 — 12,5 / 0,5 refusés dès la saisie (409 au champ, corps
+        conforme au schéma), ligne inchangée ; 12 accepté puis F11 validée."""
+        cons = field_capture.ensure_consommation(self.interv)
+        ligne = cons.lignes.get(designation='Panneau 550W')
+        r = self.api.post(f'{self.url}/modifier-ligne-consommation/', {
+            'ligne': ligne.id, 'quantite_utilisee': 12.5}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertIn('Quantité entière exigée', str(r.data['quantite_utilisee']))
+        r = self.api.post(f'{self.url}/ajouter-ligne-consommation/', {
+            'designation': 'Câble', 'quantite_utilisee': 0.5}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        ligne.refresh_from_db()
+        self.assertEqual(ligne.quantite_utilisee, Decimal('12'))
+        r = self.api.post(f'{self.url}/modifier-ligne-consommation/', {
+            'ligne': ligne.id, 'quantite_utilisee': 12}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        r = self.api.post(f'{self.url}/valider-consommation/', {}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
 
     def test_produit_et_justification_mal_types_400_jamais_500(self):
         # api-fuzz-full 28/10 : `produit` en liste atteignait `filter(id=…)`
@@ -569,6 +612,26 @@ class TestCrewTime(_Base):
         jd = field_capture.labour_days_for_intervention(self.interv)
         self.assertEqual(jd, Decimal('0.50'))  # 240 min / 480 × 1 personne
 
+    def test_duree_negative_inconnue(self):
+        """ACHT131 — retour antérieur au check-in (ou départ après l'arrivée) :
+        durée inconnue (None), aucune main-d'œuvre ; témoin 180 min."""
+        from django.utils import timezone
+        from datetime import timedelta
+        now = timezone.now()
+        self.interv.arrivee_site_le = now - timedelta(hours=1)
+        self.interv.retour_depot_le = now - timedelta(hours=3)
+        self.interv.depart_depot_le = now
+        self.interv.save()
+        t = field_capture.crew_time(self.interv)
+        self.assertIsNone(t['duree_sur_site_min'])
+        self.assertIsNone(t['trajet_aller_min'])
+        self.assertIsNone(
+            field_capture.labour_days_for_intervention(self.interv))
+        self.interv.retour_depot_le = now + timedelta(minutes=120)
+        self.interv.save()
+        self.assertEqual(
+            field_capture.crew_time(self.interv)['duree_sur_site_min'], 180)
+
     def test_push_labour_to_chantier(self):
         from django.utils import timezone
         from datetime import timedelta
@@ -767,6 +830,11 @@ class TestSafety(_Base):
         item = next(i for i in r.data['items'] if i['cle'] == cle)
         self.assertTrue(item['coche'])
         self.assertEqual(item['coche_par_nom'], 'cap_resp')
+        # ACSV16 — signature refusée tant qu'un point manque.
+        r = self.api.post(f'{self.url}/signer-safety/', {}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        for autre in self.api.get(f'{self.url}/safety/').data['items']:
+            self.api.post(f'{self.url}/cocher-safety/', {'cle': autre['cle'], 'coche': True}, format='json')
         r = self.api.post(f'{self.url}/signer-safety/', {}, format='json')
         self.assertTrue(r.data['signe'])
 

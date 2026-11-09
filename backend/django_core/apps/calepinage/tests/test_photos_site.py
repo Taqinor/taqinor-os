@@ -374,6 +374,15 @@ class CalageEndpointTest(BasePhoto):
         self.photo.refresh_from_db()
         self.assertEqual(self.photo.calage, {'coins': COINS})
 
+    def test_corps_formulaire_refuse_415_json_seul(self):
+        """ENF48 — api-fuzz : ``calage=coins`` (formulaire) ne peut pas porter
+        l'objet publié ; la route ne lit plus que du JSON (415), rien d'écrit."""
+        reponse = self.api.patch(self.url, 'calage=coins',
+                                 content_type='application/x-www-form-urlencoded')
+        self.assertEqual(reponse.status_code, 415)
+        self.photo.refresh_from_db()
+        self.assertIsNone(self.photo.calage)
+
     def test_patch_calage_null_efface(self):
         calage_photo_site(self.photo, {'coins': COINS})
         reponse = self.api.patch(self.url, {'calage': None}, format='json')

@@ -93,7 +93,7 @@ class DemandeAchat(DocumentMetier):
         Statut.SOUMISE: {Statut.APPROUVEE, Statut.REFUSEE},
         Statut.APPROUVEE: {Statut.COMMANDEE},
         Statut.REFUSEE: set(),
-        Statut.COMMANDEE: set(),
+        Statut.COMMANDEE: {Statut.APPROUVEE},  # AAPV71 — BCF annulé : DA rouverte
     }
 
     # Redéclarée à l'identique (SCA36) : conserve le related_name + la
@@ -123,6 +123,11 @@ class DemandeAchat(DocumentMetier):
         'achats.BonCommandeFournisseur', on_delete=models.SET_NULL,
         null=True, blank=True,
         related_name='installations_demandes_achat')
+    # AAPV85 (D-AAPV-5 = recommander) — BCF dont l'annulation a rouvert cette
+    # DA (AAPV71) : « Réouvrir » ce BCF re-commande la DA. String-FK.
+    bcf_annule = models.ForeignKey(
+        'achats.BonCommandeFournisseur', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+')
     priorite = models.CharField(
         max_length=10, choices=Priorite.choices, default=Priorite.NORMALE)
     date_besoin = models.DateField(null=True, blank=True)

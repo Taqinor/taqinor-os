@@ -28,7 +28,7 @@ from drf_spectacular.utils import (
 )
 from rest_framework import serializers, status
 from rest_framework.decorators import action
-from rest_framework.parsers import MultiPartParser
+from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 from core.champs_stricts import ChaineStricte, DateStricte
@@ -257,7 +257,10 @@ class PhotosSiteMixin:
         responses={200: _FORME_PHOTO})
     @action(detail=True, methods=['patch'],
             url_path=r'photos/(?P<photo_id>[^/.]+)/calage',
-            permission_classes=[PeutLireOuEcrireCalepinage])
+            permission_classes=[PeutLireOuEcrireCalepinage],
+            # ENF48 — ``calage`` est un OBJET : un corps de formulaire ne sait
+            # pas le porter (``calage=coins``, 400 sur corps « conforme »).
+            parser_classes=[JSONParser])
     def photo_calage(self, request, pk=None, photo_id=None):
         """CAL53 — pose (ou efface) le calage des 4 coins d'UNE photo de site.
 

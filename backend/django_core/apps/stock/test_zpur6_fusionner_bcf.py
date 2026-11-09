@@ -132,6 +132,28 @@ class TestGardes(Zpur6Base):
             {'bons_commande': [bc1.id, bc2.id]}, format='json')
         self.assertEqual(resp.status_code, 409, resp.data)
 
+    def test_bcf_acompte_refuse(self):
+        """AAPV81 — un brouillon acompté de 7 200 ne se fusionne pas : 409
+        nommant l'acompte, aucun BCF créé, les deux sources restent brouillon."""
+        from apps.stock.models import AcompteFournisseur
+        bc1 = self._bcf_brouillon(
+            self.fournisseur, 'BCF-AAPV81-1', [(self.mc4, 10, Decimal('5'))])
+        bc2 = self._bcf_brouillon(
+            self.fournisseur, 'BCF-AAPV81-2', [(self.mc4, 10, Decimal('5'))])
+        AcompteFournisseur.objects.create(
+            company=self.company, bon_commande=bc1, montant=Decimal('7200'))
+        avant = BonCommandeFournisseur.objects.filter(company=self.company).count()
+        resp = self.api.post(
+            '/api/django/stock/bons-commande-fournisseur/fusionner/',
+            {'bons_commande': [bc1.id, bc2.id]}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertIn("l'acompte", resp.data['detail'])
+        self.assertIn('BCF-AAPV81-1', resp.data['detail'])
+        self.assertEqual(BonCommandeFournisseur.objects.filter(company=self.company).count(), avant)
+        for bc in (bc1, bc2):
+            bc.refresh_from_db()
+            self.assertEqual(bc.statut, BonCommandeFournisseur.Statut.BROUILLON)
+
     def test_moins_de_deux_bcf_refuse(self):
         bc1 = self._bcf_brouillon(
             self.fournisseur, 'BCF-ZPUR6-8', [(self.mc4, 10, Decimal('5'))])

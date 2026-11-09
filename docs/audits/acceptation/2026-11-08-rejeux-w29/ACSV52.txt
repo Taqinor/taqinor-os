@@ -1,0 +1,143 @@
+# Preuve en direct ACSV52 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Verdict : PASS — C-ACSV-062 (C) et -062-L2 restent REPRO structurels : le crochet rejoue la 2e requête sur la MÊME connexion, qu'un verrou select_for_update ne peut pas sérialiser ; (Q) quarantaine 409 = corrigé. LIVE-ACSV52 (deux connexions réelles) : la 2e pose reste bloquée sur le verrou du produit puis stock 5→4→3 ; remise pendant une pose : stock final 4 => PASS.
+
+== C-ACSV-062 (sha ddf1f97a1)
+attendu : repro (élargi au jumeau) si DELETE pieces de A et POST pieces de B réussissent et que le stock final vaut 5 au lieu de 4
+observé : {'a_pose_http': 201, 'stock_apres_pose_a': 4, 'a_delete_http': 204, 'b_pose_http': 201, 'a_entree_quantite_avant_passee': 4, 'mouvements': [('sortie', '1', '5', '4'), ('sortie', '1', '4', '3'), ('entree', '1', '4', '5')], 'stock_final': 5, 'stock_attendu': 4, 'repro': True}
+{"a_pose_http": 201, "stock_apres_pose_a": 4, "a_delete_http": 204, "b_pose_http": 201, "a_entree_quantite_avant_passee": 4, "mouvements": [["sortie", "1", "5", "4"], ["sortie", "1", "4", "3"], ["entree", "1", "4", "5"]], "stock_final": 5, "stock_attendu": 4, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 6, après 6) ; mails 0 ; tâches Celery bloquées 0
+
+== C-ACSV-062 (sha f57951e87)
+attendu : repro si C : stock final 4 pour 2 SORTIE de 1 (attendu 3) ; Q : 201 (attendu 409), stock 2
+observé : {'C': {'a_http': 201, 'b_http': 201, 'a_quantite_avant_passee': 5, 'stock_final': 4, 'sorties': [(1, 5, 4), (1, 5, 4)], 'somme_sorties': 2}, 'Q': {'temoin_garde_wms': 'refus EtatIncompatible', 'pieces_http': 409, 'stock_final': 5}}
+{"C": {"a_http": 201, "b_http": 201, "a_quantite_avant_passee": 5, "stock_final": 4, "sorties": [[1, 5, 4], [1, 5, 4]], "somme_sorties": 2}, "Q": {"temoin_garde_wms": "refus EtatIncompatible", "pieces_http": 409, "stock_final": 5}, "repro_concurrence": true, "repro_quarantaine": false, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 6, après 6) ; mails 0 ; tâches Celery bloquées 0
+
+== LIVE-ACSV52 (deux connexions Postgres réelles)
+@@LIVE {"C": {"r1": {"http": 201, "detail": null}, "r2": {"http": 201, "detail": null}, "r2_bloquee_pendant_r1": true, "stock_final": 3, "mouvements": [["sortie", "1", "5", "4"], ["sortie", "1", "4", "3"]]}, "L2_pose_A": [201, 4], "L2": {"r1": {"http": 204, "detail": null}, "r2": {"http": 201, "detail": null}, "r2_bloquee_pendant_r1": true, "stock_final": 4, "mouvements": [["sortie", "1", "5", "4"], ["entree", "1", "4", "5"], ["sortie", "1", "5", "4"]]}, "repro": true}
+
+# ---- source : LIVE-ACSV52.py ----
+# LIVE-ACSV52 — vraie concurrence (deux threads = deux connexions Postgres) sur les pièces SAV.
+# Les sondes C-ACSV-062 / -062-L2 rejouent l'entrelacement sur UNE connexion (crochet dans record_stock_movement) :
+# le verrou `verrouiller_produit` (select_for_update) ne peut pas y sérialiser la 2e requête (même transaction).
+# Ici : la requête 1 entre dans record_stock_movement (produit verrouillé) et s'y arrête ; la requête 2 part sur une
+# autre connexion ; on observe qu'elle reste bloquée tant que la 1 n'a pas commité, puis le stock final.
+# (C) deux poses d'1 pièce sur stock 5 => attendu 3. (L2) A retire sa pièce (DELETE, ENTRÉE) pendant la pose de B
+# => attendu 4 (5 -1 A +1 remise -1 B). Base privée erp_accept_w29 (données commitées, société « Live ACSV 52 »),
+# mail en mémoire, HTTP sortant bloqué, Celery coupé. Lancé par `manage.py shell` dans le conteneur accept-w29-dj.
+import json, socket, threading, time
+from decimal import Decimal
+from django.conf import settings
+from django.db import connection
+settings.EMAIL_BACKEND = 'django.core.mail.backends.locmem.EmailBackend'
+settings.ALLOWED_HOSTS = list(settings.ALLOWED_HOSTS) + ['localhost', 'testserver']
+def _http(*a, **k):
+    raise RuntimeError('HTTP sortant bloque')
+socket.create_connection = _http
+import celery.app.task as _ct
+_ct.Task.apply_async = lambda self, *a, **k: None
+_ct.Task.delay = lambda self, *a, **k: None
+from unittest import mock
+from django.contrib.auth import get_user_model
+from rest_framework.test import APIClient
+from authentication.models import Company
+from apps.crm.models import Client
+from apps.installations.models import Installation
+from apps.roles.models import Role
+from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
+from apps.sav.models import Ticket
+from apps.stock import services as stock_services
+from apps.stock.models import MouvementStock, Produit
+
+H = {'HTTP_HOST': 'localhost'}
+TAG = int(time.time())
+co = Company.objects.create(nom='Live ACSV 52', slug='live-acsv-52-%d' % TAG)
+role = Role.objects.create(company=co, nom='Technicien', permissions=list(TECHNICIEN_PERMISSIONS), est_systeme=True)
+U = get_user_model()
+ua = U.objects.create_user(username='live52a_%d' % TAG, password='x', company=co, role=role)
+ub = U.objects.create_user(username='live52b_%d' % TAG, password='x', company=co, role=role)
+cl = Client.objects.create(company=co, nom='Client', prenom='L52', email='l52@example.invalid')
+inst = Installation.objects.create(company=co, reference='CHT-L52-%d' % TAG, client=cl)
+
+
+def ticket(ref, u):
+    return Ticket.objects.create(company=co, reference=ref, client=cl, installation=inst,
+                                 type=Ticket.Type.CORRECTIF, created_by=u, technicien_responsable=u)
+
+
+orig = stock_services.record_stock_movement
+
+
+def scenario(nom, produit, req1, req2):
+    dans = threading.Event()
+    liberer = threading.Event()
+    res = {}
+    n = {'n': 0}
+
+    def crochet(*a, **k):
+        if threading.current_thread().name == 'r1':
+            n['n'] += 1
+            if n['n'] == 1:
+                dans.set()
+                liberer.wait(30)
+        return orig(*a, **k)
+
+    def run(nm, f):
+        try:
+            r = f()
+            res[nm] = {'http': r.status_code,
+                       'detail': None if r.status_code < 400 else str(getattr(r, 'data', ''))[:160]}
+        finally:
+            connection.close()
+
+    with mock.patch.object(stock_services, 'record_stock_movement', side_effect=crochet):
+        t1 = threading.Thread(target=run, args=('r1', req1), name='r1')
+        t1.start()
+        assert dans.wait(60), 'r1 jamais entrée dans record_stock_movement'
+        t2 = threading.Thread(target=run, args=('r2', req2), name='r2')
+        t2.start()
+        time.sleep(4)
+        bloquee = t2.is_alive() and 'r2' not in res
+        liberer.set()
+        t1.join(60)
+        t2.join(60)
+    produit.refresh_from_db()
+    mv = list(MouvementStock.objects.filter(produit=produit).order_by('id')
+              .values_list('type_mouvement', 'quantite', 'quantite_avant', 'quantite_apres'))
+    return {'r1': res.get('r1'), 'r2': res.get('r2'), 'r2_bloquee_pendant_r1': bloquee,
+            'stock_final': produit.quantite_stock, 'mouvements': [tuple(str(x) for x in m) for m in mv]}
+
+
+A, B = APIClient(), APIClient()
+A.force_authenticate(ua)
+B.force_authenticate(ub)
+corps = lambda p: {'produit': p.pk, 'quantite': '1', 'decrement': True}
+# (C)
+pc = Produit.objects.create(company=co, nom='Fusible L52 C', sku='L52-C-%d' % TAG, prix_vente=Decimal('50'), quantite_stock=5)
+t1, t2 = ticket('SAV-L52-1-%d' % TAG, ua), ticket('SAV-L52-2-%d' % TAG, ub)
+obs = {'C': scenario('C', pc,
+                     lambda: A.post(f'/api/django/sav/tickets/{t1.pk}/pieces/', corps(pc), format='json', **H),
+                     lambda: B.post(f'/api/django/sav/tickets/{t2.pk}/pieces/', corps(pc), format='json', **H))}
+# (L2)
+pl = Produit.objects.create(company=co, nom='Fusible L52 L2', sku='L52-L2-%d' % TAG, prix_vente=Decimal('50'), quantite_stock=5)
+t3, t4 = ticket('SAV-L52-3-%d' % TAG, ua), ticket('SAV-L52-4-%d' % TAG, ub)
+ra = A.post(f'/api/django/sav/tickets/{t3.pk}/pieces/', corps(pl), format='json', **H)
+pid = ra.data.get('id')
+pl.refresh_from_db()
+obs['L2_pose_A'] = (ra.status_code, pl.quantite_stock)
+obs['L2'] = scenario('L2', pl,
+                     lambda: A.delete(f'/api/django/sav/tickets/{t3.pk}/pieces/{pid}/', **H),
+                     lambda: B.post(f'/api/django/sav/tickets/{t4.pk}/pieces/', corps(pl), format='json', **H))
+obs['repro'] = bool(obs['C']['r2_bloquee_pendant_r1'] and obs['C']['stock_final'] == 3
+                    and obs['C']['r1']['http'] == 201 and obs['C']['r2']['http'] == 201
+                    and obs['L2']['r2_bloquee_pendant_r1'] and obs['L2']['stock_final'] == 4
+                    and obs['L2']['r1']['http'] == 204 and obs['L2']['r2']['http'] == 201)
+print('@@LIVE ' + json.dumps(obs, ensure_ascii=False))

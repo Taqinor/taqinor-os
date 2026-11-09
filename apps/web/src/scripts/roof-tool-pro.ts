@@ -24,7 +24,7 @@
  */
 import * as maplibregl from 'maplibre-gl';
 import maplibreCssUrl from 'maplibre-gl/dist/maplibre-gl.css?url';
-import { GOLD, MOROCCO_CENTER, $, assertWebGL, addTraceLayers, estimateAndShow, geocodeAndFly, injectMaplibreCss, makeSetStatus, mapErrorWarner, maptilerStyleUrl, renderRoofResults, traceGeoJson, wireSearchForm, wireVertexClicks, createRoofMap, wireOrientReestimate, type RoofResults } from './roofToolShared';
+import { GOLD, MOROCCO_CENTER, $, assertWebGL, addTraceLayers, estimateAndShow, geocodeAndFly, injectMaplibreCss, makeSetStatus, mapErrorWarner, maptilerStyleUrl, renderRoofResults, traceGeoJson, wireSearchForm, wireVertexClicks, createRoofMap, moveCamera, wireOrientReestimate, type RoofResults } from './roofToolShared';
 import * as THREE from 'three';
 import { makeCompose, configureShadowRenderer, ringsBBox, fitShadowCamera } from './roofPro11/threeShared';
 import { layoutProRows, type ProLayout } from '../lib/roofPro';
@@ -396,16 +396,12 @@ export function initRoofToolPro(opts: InitOptions): void {
     showResults(null);
     if (buildPanel) buildPanel.hidden = true;
     if (finishBtn) finishBtn.disabled = true;
-    const target = { pitch: 0, bearing: 0 } as const;
-    if (opts.reducedMotion) map.jumpTo(target);
-    else map.easeTo({ ...target, duration: 600 });
+    moveCamera(map, opts.reducedMotion, { pitch: 0, bearing: 0 }, 600);
     setStatus('Cliquez les coins de votre toit. Double-cliquez pour fermer.');
   }
 
   function go3DView(layout: ProLayout) {
-    const target = { center: layout.origin, pitch: PITCH_VIEW } as const;
-    if (opts.reducedMotion) map.jumpTo(target);
-    else map.easeTo({ ...target, duration: 1100, essential: true });
+    moveCamera(map, opts.reducedMotion, { center: layout.origin, pitch: PITCH_VIEW }, 1100, true);
   }
 
   function close() {

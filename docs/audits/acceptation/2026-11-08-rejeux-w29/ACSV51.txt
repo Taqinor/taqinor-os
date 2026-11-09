@@ -1,0 +1,15 @@
+# Preuve en direct ACSV51 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Verdict : PASS — Sonde C-ACSV-061 : repro False.
+
+== C-ACSV-061 (sha f57951e87)
+attendu : repro si T : est_recidive True, facturer 403 ; ET Q ou A : est_recidive False, facturer 201 facturable (pièce 5000)
+observé : {'garantie_eq': '2021-01-15', 'T_manuel': {'est_recidive': True, 'non_facturable': True, 'intervention_origine_id': 15, 'facturer_http': 403, 'couverture': None, 'lignes': []}, 'Q_http': 201, 'Q_qr': {'est_recidive': True, 'non_facturable': True, 'intervention_origine_id': 15, 'facturer_http': 403, 'couverture': None, 'lignes': []}, 'A_http': 200, 'A_alarme': {'est_recidive': True, 'non_facturable': True, 'intervention_origine_id': 15, 'facturer_http': 403, 'couverture': None, 'lignes': []}}
+{"garantie_eq": "2021-01-15", "T_manuel": {"est_recidive": true, "non_facturable": true, "intervention_origine_id": 15, "facturer_http": 403, "couverture": null, "lignes": []}, "Q_http": 201, "Q_qr": {"est_recidive": true, "non_facturable": true, "intervention_origine_id": 15, "facturer_http": 403, "couverture": null, "lignes": []}, "A_http": 200, "A_alarme": {"est_recidive": true, "non_facturable": true, "intervention_origine_id": 15, "facturer_http": 403, "couverture": null, "lignes": []}, "temoin_ok": true, "portes_sans_recidive": [], "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0

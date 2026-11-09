@@ -228,7 +228,7 @@
     "composant": "PaiementDialog.jsx",
     "action": "Enregistrer le paiement"
    },
-   "fonction_entree": "backend/django_core/apps/ventes/domain/encaissements.py::enregistrer_paiement",
+   "fonction_entree": "backend/django_core/apps/ventes/domain/encaissements.py::encaisser_sur_facture",
    "checkpoint": {
     "modifiable": true,
     "champs": [
@@ -354,7 +354,7 @@
     "composant": "NoteDebitDialog",
     "action": "Note de débit"
    },
-   "fonction_entree": "backend/django_core/apps/ventes/views/facture_rectificatifs.py::FactureRectificatifsActionsMixin.creer_note_debit",
+   "fonction_entree": "backend/django_core/apps/facturation/views/facture_rectificatifs.py::FactureRectificatifsActionsMixin.creer_note_debit",
    "checkpoint": {
     "modifiable": true,
     "champs": [
@@ -380,7 +380,7 @@
    "proprietaire": "facturation",
    "declencheur": {
     "type": "manuel",
-    "source": "backend/django_core/apps/ventes/views/paiement.py::PaiementViewSet.paiement_avec_retenue"
+    "source": "backend/django_core/apps/facturation/views/paiement.py::PaiementViewSet.paiement_avec_retenue"
    },
    "ecran": {
     "route": "(aucune)",
@@ -424,7 +424,7 @@
     "composant": "(aucun)",
     "action": "route mandats-paiement parquée (AFAC19)"
    },
-   "fonction_entree": "backend/django_core/apps/ventes/serializers_facturation.py::MandatPaiementSerializer",
+   "fonction_entree": "backend/django_core/apps/facturation/serializers.py::MandatPaiementSerializer",
    "checkpoint": {
     "modifiable": true,
     "champs": [],
@@ -493,7 +493,7 @@
    "regle_aval": [
     {
      "type": "preserve_manuel",
-     "detail": "société sans export DGI actif : aucune transmission, export non proposé"
+     "detail": "société sans export DGI actif : aucune transmission, export non proposé ; transmission dormante (dgi_transmission_actif OFF) : HTTP 404, la capacité reste invisible"
     },
     {
      "type": "reference",
@@ -625,7 +625,7 @@
     "etape": "PA4.04"
    },
    {
-    "source": "backend/django_core/apps/ventes/views/facture_rectificatifs.py::FactureRectificatifsActionsMixin.facturer_penalites._create",
+    "source": "backend/django_core/apps/facturation/views/facture_rectificatifs.py::FactureRectificatifsActionsMixin.facturer_penalites._create",
     "etape": "PA4.16"
    },
    {
@@ -637,7 +637,7 @@
     "etape": "PA4.16"
    },
    {
-    "source": "backend/django_core/apps/ventes/views/facture.py::FactureViewSet.perform_create",
+    "source": "backend/django_core/apps/facturation/views/facture.py::FactureViewSet.perform_create",
     "etape": "PA4.16"
    }
   ],

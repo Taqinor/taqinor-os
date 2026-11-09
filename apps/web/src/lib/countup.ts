@@ -139,38 +139,14 @@ export function formatFrame(text: string, progress: number): string {
 }
 
 /**
- * W361 — Progression scrub d'un count-up piloté par le défilement (au lieu
- * d'un fire-once déclenché par IntersectionObserver). Pure fonction : prend
- * la position d'un élément dans la fenêtre d'affichage et renvoie une
- * progression easée 0 → 1, exactement comme la course `animation-range`
- * posée en CSS pour `.v2-rise` (entry 0% → cover 35%) afin que le nombre et
- * son fondu terminent leur course ensemble.
- *
- * `elTop`/`elBottom` : rectangle de l'élément en coordonnées viewport
- * (`getBoundingClientRect`). `viewportHeight` : hauteur de la fenêtre.
- * L'entrée commence quand le haut de l'élément atteint le bas de la vue,
- * et se termine à 35 % de la hauteur de la vue parcourue par l'élément —
- * même fenêtre que `animation-range: entry 0% cover 35%` en CSS pour que
- * les deux mécanismes (transform/opacity en CSS natif, texte en JS) restent
- * visuellement synchrones.
- */
-export function scrubProgress(elTop: number, viewportHeight: number): number {
-  if (viewportHeight <= 0) return 1;
-  const start = viewportHeight; // le haut de l'élément touche le bas de la vue
-  const end = viewportHeight * 0.65; // course de 35% de la hauteur de vue
-  if (elTop >= start) return 0;
-  if (elTop <= end) return 1;
-  const raw = (start - elTop) / (start - end);
-  const p = Math.max(0, Math.min(1, raw));
-  return 1 - Math.pow(1 - p, 3); // easeOutCubic, identique aux autres count-ups
-}
-
-/**
  * ENF19 — animation DOM partagée (InstallCounter + V2Enhance) : roule le nombre de 0 → sa valeur
- * (easeOutCubic, 1,1 s) puis pose la valeur finale EXACTE. Une seule copie (garde ACAL345).
+ * (easeOutCubic) puis pose la valeur finale EXACTE. Une seule copie (garde ACAL345).
+ * WAUD38 — durée bornée par `DUREE_ROULEMENT_MS` (< 900 ms) : aucune image intermédiaire
+ * n'est encore à l'écran 900 ms après l'arrivée du chiffre.
  */
+export const DUREE_ROULEMENT_MS = 700;
 export function animerChiffre(el: HTMLElement, finalText: string): void {
-  const dur = 1100;
+  const dur = DUREE_ROULEMENT_MS;
   let start: number | null = null;
   function frame(t: number) {
     if (start === null) start = t;

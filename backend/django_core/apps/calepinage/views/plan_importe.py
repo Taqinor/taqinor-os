@@ -52,6 +52,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutVoirCalepinage
+from ..serializers import REPONSE_REFUS_ETAT
 from .calepinages import CalepinageViewSet
 
 __all__ = ['plan_importe', 'dimensions_image', 'SANS_FOND', 'FOND_PHOTO',
@@ -170,9 +171,13 @@ def _forme():
 
 
 def _absent(champ, detail):
-    """404 qui NOMME son champ — jamais un « non trouvé » générique."""
+    """409 qui NOMME son champ — jamais un « non trouvé » générique.
+
+    ENF51 (règle d'ENF40) : le calepinage EXISTE, c'est le fond qu'il ne
+    désigne pas (ou pas rattaché) — un 409 d'état, pas le 404 d'une ressource
+    absente (gardé pour un calepinage inconnu ou d'une autre société)."""
     return Response({'detail': detail, 'champ': champ},
-                    status=status.HTTP_404_NOT_FOUND)
+                    status=status.HTTP_409_CONFLICT)
 
 
 def _piece_du_calepinage(calepinage, attachment_id):
@@ -195,7 +200,7 @@ def _piece_du_calepinage(calepinage, attachment_id):
             .first())
 
 
-@extend_schema(responses={200: _forme()})
+@extend_schema(responses={200: _forme(), 409: REPONSE_REFUS_ETAT})
 @action(detail=True, methods=['get'], url_path='plan-importe',
         url_name='plan-importe', permission_classes=[PeutVoirCalepinage])
 def plan_importe(self, request, pk=None):

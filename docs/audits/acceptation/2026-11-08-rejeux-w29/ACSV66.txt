@@ -1,0 +1,15 @@
+# Preuve en direct ACSV66 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Verdict : PASS — Sonde C-ACSV-082 : repro False. Son témoin (« levée manuelle après clôture » = 200) est rendu sans objet par la correction : la clôture du ticket a déjà levé la réserve (statut resolue), d'où lever 409 ; (A) définitive 200, (B) lever la réserve résout le ticket.
+
+== C-ACSV-082 (sha 7f4ba787d)
+attendu : repro si A : ticket cloture, réserve ouverte, définitive 409 ; témoin : après levée manuelle 200 ; B : ticket toujours nouveau après levée de la réserve
+observé : {'A': {'ajouter_reserve_http': 201, 'reserve_ticket': 39, 'demarrer': 200, 'resoudre': 200, 'cloturer': 200, 'ticket_statut': 'cloture', 'reserve_statut': 'resolue', 'raison_refus_definitive': None, 'definitive_http': 200, 'temoin_lever_http': 409, 'temoin_raison_apres_levee': None}, 'B': {'ajouter_reserve_http': 201, 'reserve_ticket': 40, 'ticket_statut_avant': 'nouveau', 'lever_http': 200, 'reserve_statut': 'resolue', 'ticket_statut_apres': 'resolu', 'ticket_annule': False, 'ticket_couverture_calculee': Ticket.Couverture.A_DETERMINER}}
+{"A": {"ajouter_reserve_http": 201, "reserve_ticket": 39, "demarrer": 200, "resoudre": 200, "cloturer": 200, "ticket_statut": "cloture", "reserve_statut": "resolue", "raison_refus_definitive": null, "definitive_http": 200, "temoin_lever_http": 409, "temoin_raison_apres_levee": null}, "B": {"ajouter_reserve_http": 201, "reserve_ticket": 40, "ticket_statut_avant": "nouveau", "lever_http": 200, "reserve_statut": "resolue", "ticket_statut_apres": "resolu", "ticket_annule": false, "ticket_couverture_calculee": "a_determiner"}, "temoin_ok": false, "defaut_A": false, "defaut_B": false, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0

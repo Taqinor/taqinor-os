@@ -67,10 +67,18 @@ def _registre_modules():
 
 
 #: AARG52 — apps de FONDATION sans codes au registre : seules à garder la règle
-#: historique en ÉCRITURE (liste qui ne fait que décroître ; ``portail`` retiré).
+#: historique en ÉCRITURE (liste qui ne fait que décroître ; ``portail`` retiré ;
+#: ``monitoring`` retiré par AMON92, ses vues relevant du module ``sav``, AMON45).
 APPS_SANS_MODULE = frozenset({
-    'authentication', 'core', 'dataimport', 'documents', 'monitoring',
+    'authentication', 'core', 'dataimport', 'documents',
     'offlinesync', 'outillage', 'records', 'roles', 'semantic', 'uxviews'})
+
+#: ODX18 — apps dont les vues relèvent du module de droits d'une AUTRE app.
+#: ``apps.facturation`` n'a pas de codes propres (ASEC9 : « module
+#: facturation » = module ``ventes``, cf. ``'encaisser': 'ventes'`` du
+#: registre) ; ses vues déménagées de ``apps.ventes`` gardent donc la garde
+#: ``ventes`` à l'identique au lieu de retomber sur « module non résolu ».
+MODULE_DES_APPS = {'facturation': 'ventes'}
 
 
 def module_de_la_vue(view):
@@ -90,6 +98,7 @@ def module_de_la_vue(view):
     parties = (type(view).__module__ or '').split('.')
     app = parties[1] if parties[0] == 'apps' and len(parties) > 1 \
         else parties[0]
+    app = MODULE_DES_APPS.get(app, app)
     return app if app in set(PERMISSION_MODULE.values()) else None
 
 

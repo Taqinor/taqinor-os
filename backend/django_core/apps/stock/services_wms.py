@@ -624,6 +624,21 @@ def _prochain_sscc(company):
         PREFIXE_SSCC_INTERNE, str(plus_haut + 1), extension='0')
 
 
+def unite_sous_scellage(unite, vus=frozenset()):  # ASTK261 : figée ou sous un ancêtre figé
+    if unite is None or unite.pk in vus:  # remontée bornée par les cycles
+        return False
+    return unite.est_figee or unite_sous_scellage(unite.parent, vus | {unite.pk})
+
+
+def refuser_parent_unite(parent, company_id):  # ASTK261 : création ET PATCH
+    if parent.company_id != company_id:
+        raise ValueError('Palette introuvable dans cette société.')
+    if parent.type_unite != parent.TypeUnite.PALETTE:
+        raise EtatIncompatible('Seule une palette peut contenir une unité.')
+    if unite_sous_scellage(parent):
+        raise EtatIncompatible('Cette palette est scellée : contenu figé.')
+
+
 def creer_unite_logistique(*, company, type_unite='colis', parent=None,
                            vague=None, poids_kg=None, dimensions=''):
     """Crée un colis ou une palette avec un SSCC GS1 fraîchement attribué.
@@ -637,12 +652,7 @@ def creer_unite_logistique(*, company, type_unite='colis', parent=None,
     if type_unite not in dict(UniteLogistique.TypeUnite.choices):
         raise ValueError('Type d\'unité logistique inconnu.')
     if parent is not None:
-        if parent.company_id != getattr(company, 'id', None):
-            raise ValueError('Palette introuvable dans cette société.')
-        if parent.type_unite != UniteLogistique.TypeUnite.PALETTE:
-            raise EtatIncompatible('Seule une palette peut contenir une unité.')
-        if parent.est_figee:
-            raise EtatIncompatible('Cette palette est scellée : contenu figé.')
+        refuser_parent_unite(parent, getattr(company, 'id', None))
 
     derniere_erreur = None
     for _ in range(5):
@@ -675,7 +685,7 @@ def ajouter_ligne_unite_logistique(*, company, unite, produit, quantite,
     from django.db.models import F
     from .models_wms import UniteLogistique, UniteLogistiqueLigne
 
-    if unite.est_figee:
+    if unite_sous_scellage(unite):  # ASTK261 : ancêtre scellé compris
         raise EtatIncompatible(
             'Cette unité logistique est scellée : son contenu est figé.')
     try:
@@ -1369,6 +1379,7 @@ def proposer_cross_dock(reception):
     NTWMS2). LECTURE SEULE : cette fonction PROPOSE, elle n'écrit rien.
     """
     from .models_wms import AffectationCrossDock
+    from .services import quantite_entree_ligne_reception
 
     if reception is None:
         return []
@@ -1393,7 +1404,8 @@ def proposer_cross_dock(reception):
             'ligne_id': ligne.id,
             'produit_id': ligne.produit_id,
             'produit_nom': getattr(ligne.produit, 'nom', '') or '',
-            'quantite': ligne.quantite or 0,
+            # AAPV38 — la quantité RÉELLEMENT entrée (ASTK59), jamais la saisie.
+            'quantite': quantite_entree_ligne_reception(ligne),
             'deja_affectee': ligne.id in deja,
             'vagues': vagues,
         })
@@ -1454,6 +1466,8 @@ def affecter_reception_cross_dock(*, reception, user=None, lignes=None,
 
     if reception is None:
         raise ValueError('Réception introuvable.')
+    if not type(reception).objects.filter(pk=reception.pk, statut='confirme').exists():  # AAPV38
+        raise EtatIncompatible('Seule une réception confirmée part en cross-dock.')
     company = reception.company
     filtre = {int(x) for x in (lignes or []) if str(x).isdigit()}
     propositions = [
@@ -1727,6 +1741,34 @@ def lever_quarantaine(*, blocage, user=None):
     blocage.date_levee = timezone.now()
     blocage.save(update_fields=['statut', 'leve_par', 'date_levee'])
     return blocage
+
+
+def imputer_sortie_sur_quarantaine(*, company, produit, quantite, bon_commande=None,
+                                   user=None, motif=''):
+    """AAPV37 — un retour fournisseur ou un rebut qui ÉVACUE de la marchandise
+    consomme d'abord la quarantaine du produit (blocages des réceptions du
+    BCF d'abord) : un blocage couvert est levé au motif du geste, un blocage
+    partiellement couvert est réduit. Sans quarantaine : no-op."""
+    from .models_wms import BlocageQualite
+    blocages = list(BlocageQualite.objects.select_for_update(of=('self',)).filter(
+        company=company, produit=produit,
+        statut=BlocageQualite.Statut.EN_QUARANTAINE).select_related('reception'))
+    bcf_id = getattr(bon_commande, 'pk', None)
+    blocages.sort(key=lambda b: (not (bcf_id and b.reception_id
+                                      and b.reception.bon_commande_id == bcf_id), b.pk))
+    reste = int(quantite or 0)
+    for blocage in blocages:
+        if reste <= 0:
+            break
+        if blocage.quantite <= reste:
+            reste -= blocage.quantite
+            blocage.motif = f'{blocage.motif} — {motif}'.strip(' —')
+            blocage.save(update_fields=['motif'])
+            lever_quarantaine(blocage=blocage, user=user)
+        else:
+            blocage.quantite -= reste
+            blocage.save(update_fields=['quantite'])
+            reste = 0
 
 
 def lever_quarantaine_bin(*, company, bin_id, user=None):
@@ -2514,39 +2556,16 @@ def valeur_transfert(produit, quantite):
     return (prix * Decimal(int(quantite or 0))).quantize(Decimal('0.01'))
 
 
-def demande_transfert_approuvee_existe(company, *, produit_id, source_id,
-                                       destination_id, quantite):
-    """Vrai si une demande FG325 APPROUVÉE couvre exactement ce transfert.
-
-    Le modèle vit dans ``installations`` : il est atteint par l'ACCESSEUR
-    INVERSE de la string-FK que cette app expose (``EmplacementStock`` →
-    demandes sortantes), jamais par un import de ``apps.installations.models``.
-    C'est ce qui permet à l'exécution d'une demande approuvée de traverser la
-    garde de seuil sans que l'app ``installations`` ait à changer d'appel.
-    """
-    from .models import EmplacementStock
-
-    modele = EmplacementStock._meta.get_field(
-        'installations_demandes_transfert_sortantes').related_model
-    return modele.objects.filter(
-        company=company, produit_id=produit_id, source_id=source_id,
-        destination_id=destination_id, quantite=quantite,
-        statut='approuve').exists()
-
-
 def transfert_exige_approbation(company, produit, quantite, *, source_id=None,
                                 destination_id=None):
-    """Vrai si CE transfert dépasse le seuil configuré ET n'est couvert par
-    aucune demande de transfert déjà approuvée (FG325)."""
+    """Vrai si CE transfert dépasse le seuil configuré. AAPV74 — une
+    demande FG325 approuvée ne couvre plus un transfert DIRECT : seule son
+    exécution (``transfer_stock(…, demande_approuvee=True)``) traverse la
+    garde. ``source_id``/``destination_id`` gardés pour la signature."""
     seuil = seuil_approbation_transfert(company)
     if seuil <= 0:
         return False
     if valeur_transfert(produit, quantite) <= seuil:
-        return False
-    if source_id and destination_id and demande_transfert_approuvee_existe(
-            company, produit_id=getattr(produit, 'id', None),
-            source_id=source_id, destination_id=destination_id,
-            quantite=quantite):
         return False
     return True
 

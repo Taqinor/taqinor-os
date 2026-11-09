@@ -277,7 +277,7 @@ class VentilerEntreeTests(SimpleTestCase):
     sérialiseur publié (sans base)."""
 
     def _erreurs(self, corps):
-        from apps.ventes.serializers_facturation import (
+        from apps.facturation.serializers import (
             PaiementVentilerRequestSerializer)
         entree = PaiementVentilerRequestSerializer(data=corps)
         return None if entree.is_valid() else entree.errors

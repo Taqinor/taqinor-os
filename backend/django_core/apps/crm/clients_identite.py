@@ -12,6 +12,7 @@ from rest_framework.exceptions import ValidationError as DRFValidationError
 
 from .leads_doublons import normalize_email, normalize_phone
 from .models import Client, Lead, LeadActivity
+from .activity import creer_activite, journal_systeme
 
 logger = logging.getLogger(__name__)
 
@@ -220,8 +221,8 @@ def resolve_client_for_lead(lead: Lead) -> Client:
     # automatique côté serveur). L'utilisateur acteur n'est pas connu ici
     # (résolution déclenchée par le générateur de devis) → entrée système.
     nom_client = f"{client.nom} {client.prenom or ''}".strip()
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
+    journal_systeme(
+        company=lead.company, lead=lead,
         kind=LeadActivity.Kind.NOTE,
         body=f"Client lié : {nom_client}")
     # ARC56 — rattache le lead au MÊME Tiers que le client fraîchement résolu
@@ -535,7 +536,7 @@ def synchroniser_identite_client(lead, avant, user, *, force=False):
         corps = (f'Fiche client {client.nom} mise à jour depuis le lead '
                  f'({libelles}) par {acteur}.')
         for lead_client in client.leads.all():
-            LeadActivity.objects.create(
+            creer_activite(
                 company=lead_client.company, lead=lead_client, user=user,
                 kind=LeadActivity.Kind.NOTE, body=corps)
         from apps.ventes.selectors import devis_envoyes_du_client
@@ -545,7 +546,7 @@ def synchroniser_identite_client(lead, avant, user, *, force=False):
                 devis, user=user, objet='identité client',
                 resume=f'identité client ({libelles})')
     if message:
-        LeadActivity.objects.create(
+        creer_activite(
             company=lead.company, lead=lead, user=user,
             kind=LeadActivity.Kind.NOTE, body=message)
     return champs, message
@@ -589,7 +590,7 @@ def convertir_lead_en_client(*, lead, user, mode, client_id=None,
         raise ValueError("Mode de conversion invalide (nouveau|lier|aucun).")
 
     if mode == 'aucun':
-        LeadActivity.objects.create(
+        creer_activite(
             company=lead.company, lead=lead, user=user,
             kind=LeadActivity.Kind.NOTE,
             body="Conversion : lead qualifié SANS client rattaché "
@@ -610,7 +611,7 @@ def convertir_lead_en_client(*, lead, user, mode, client_id=None,
         lead.client = client
         lead.save(update_fields=['client'])
         nom_client = f"{client.nom} {client.prenom or ''}".strip()
-        LeadActivity.objects.create(
+        creer_activite(
             company=lead.company, lead=lead, user=user,
             kind=LeadActivity.Kind.NOTE,
             body=f"Conversion : client existant lié — {nom_client} "
@@ -623,7 +624,7 @@ def convertir_lead_en_client(*, lead, user, mode, client_id=None,
     # on ajoute une entrée dédiée précisant que c'est une conversion EXPLICITE.
     client = resolve_client_for_lead(lead)
     nom_client = f"{client.nom} {client.prenom or ''}".strip()
-    LeadActivity.objects.create(
+    creer_activite(
         company=lead.company, lead=lead, user=user,
         kind=LeadActivity.Kind.NOTE,
         body=f"Conversion : nouveau client — {nom_client} "
@@ -719,6 +720,13 @@ def merge_clients(survivor, others, user):
     with transaction.atomic():
         for absorbed in others:
             repointes, non_repointes = repointer_relations(absorbed, survivor)
+            # AMON82 — ids entiers du monitoring (abonnements, certificats).
+            from apps.monitoring.services import repointer_client_monitoring
+            rep_mon, non_rep_mon = repointer_client_monitoring(
+                survivor.company, ancien_client_id=absorbed.pk,
+                nouveau_client_id=survivor.pk)
+            repointes = {**repointes, **rep_mon}
+            non_repointes = non_repointes + non_rep_mon
             for etiquette, n in repointes.items():
                 rapport['repointes'][etiquette] = (
                     rapport['repointes'].get(etiquette, 0) + n)

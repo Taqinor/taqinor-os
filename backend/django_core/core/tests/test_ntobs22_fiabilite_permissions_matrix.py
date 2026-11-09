@@ -215,7 +215,10 @@ class Ntobs22PermissionsMatrixTest(TestCase):
         self.assertIn(snap_mine.id, ids)
         self.assertNotIn(snap_autre.id, ids)
 
-    def test_sla_credits_directeur_sees_all_companies(self):
+    def test_sla_credits_directeur_borne_a_sa_societe(self):
+        """AMON20 — Directeur, Administrateur et ``fiabilite_voir`` d'un
+        tenant ne lisent que SA société ; seul le superutilisateur de la
+        plateforme voit toutes les sociétés."""
         snap_mine = generer_snapshot_societe(
             self.company, timezone.now().date().replace(day=1))
         snap_mine.credit_statut = SlaSnapshot.CreditStatut.A_EMETTRE
@@ -224,10 +227,21 @@ class Ntobs22PermissionsMatrixTest(TestCase):
             self.autre, timezone.now().date().replace(day=1))
         snap_autre.credit_statut = SlaSnapshot.CreditStatut.A_EMETTRE
         snap_autre.save(update_fields=['credit_statut'])
+        role_admin = Role.objects.create(
+            company=self.company, nom='Administrateur')
+        u_admin = User.objects.create_user(
+            'administrateur22', password='x', company=self.company,
+            role=role_admin)
+        superuser = User.objects.create_user(
+            'super22credits', password='x', company=self.company,
+            is_superuser=True)
 
-        resp = self._client(self.u_directeur).get(
-            '/api/django/core/sla/credits/')
-        self.assertEqual(resp.status_code, 200)
+        for user in (self.u_directeur, u_admin, self.u_voir):
+            resp = self._client(user).get('/api/django/core/sla/credits/')
+            self.assertEqual(resp.status_code, 200)
+            ids = [row['id'] for row in resp.data]
+            self.assertEqual(ids, [snap_mine.id], user.username)
+        resp = self._client(superuser).get('/api/django/core/sla/credits/')
         ids = [row['id'] for row in resp.data]
         self.assertIn(snap_mine.id, ids)
         self.assertIn(snap_autre.id, ids)
@@ -243,6 +257,9 @@ class Ntobs22PermissionsMatrixTest(TestCase):
     def test_sla_credit_statut_allowed_for_fiabilite_administration(self):
         snapshot = generer_snapshot_societe(
             self.company, timezone.now().date().replace(day=1))
+        # AMON32 — seule une décision sur un crédit « à émettre » est admise.
+        snapshot.credit_statut = SlaSnapshot.CreditStatut.A_EMETTRE
+        snapshot.save(update_fields=['credit_statut'])
         resp = self._client(self.u_admin_fiab).post(
             f'/api/django/core/sla/credits/{snapshot.pk}/statut/',
             {'statut': 'emis'}, format='json')

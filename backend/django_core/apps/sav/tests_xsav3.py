@@ -128,6 +128,29 @@ class XSAV3CreerDevisTest(TestCase):
         self.ticket.refresh_from_db()
         self.assertIsNone(self.ticket.devis_id_ext)
 
+    def test_quantite_invalide_400_sans_devis(self):
+        """ASEC80 (C-ASEC-VER4-021) — une quantité « abc » (ou un prix
+        négatif) rend 400 ``{lignes: {0: {champ: [msg]}}}`` avant le domaine
+        ventes : aucun devis, ``devis_id_ext`` vide ; client inconnu : 404 ;
+        lignes valides : 201. Mutant : retirer le contrôle ⇒ échec."""
+        url = f'/api/django/sav/tickets/{self.ticket.pk}/creer-devis/'
+        for champ, valeur in (('quantite', 'abc'), ('prix_unitaire', '-5')):
+            ligne = {'produit_id': self.produit.pk, 'quantite': '1',
+                     'prix_unitaire': '900', champ: valeur}
+            with self.subTest(champ=champ):
+                resp = self.api.post(url, {'lignes': [ligne]}, format='json')
+                self.assertEqual(resp.status_code, 400, resp.content)
+                self.assertIn(champ, resp.data['lignes'][0])
+        self.assertEqual(Devis.objects.filter(company=self.company).count(), 0)
+        self.ticket.refresh_from_db()
+        self.assertFalse(self.ticket.devis_id_ext)
+        resp = self.api.post(url, {'client_id': 999999, 'lignes': []},
+                             format='json')
+        self.assertEqual(resp.status_code, 404, resp.content)
+        resp = self.api.post(url, {'lignes': [
+            {'produit_id': self.produit.pk, 'quantite': '2'}]}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+
     def test_cross_tenant_404(self):
         other = make_company(slug='sav-xsav3-other', nom='Other Co')
         other_user = User.objects.create_user(

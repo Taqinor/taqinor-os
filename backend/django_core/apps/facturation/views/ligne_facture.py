@@ -1,0 +1,105 @@
+from rest_framework.parsers import JSONParser
+from rest_framework import viewsets
+from apps.ventes.models import LigneFacture
+from apps.facturation.serializers import LigneFactureSerializer
+from apps.ventes.gardes_lecture import LectureFactures
+from authentication.permissions import (
+    IsResponsableOrAdmin,
+    IsAdminRole,
+)
+from core.viewsets import CompanyScopedModelViewSet  # noqa: ARC5 — exception documentée (D-ENF22)
+
+READ_ACTIONS = ['list', 'retrieve']
+WRITE_ACTIONS = ['create', 'update', 'partial_update']
+
+
+# NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
+# (un module par ressource). Comportement et symboles inchangés : le
+# package __init__ ré-exporte toutes les vues publiques.
+
+
+class LigneFactureViewSet(CompanyScopedModelViewSet):
+    parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
+    # ARC5 — sweep TenantMixin : base transverse unique. LigneFacture N'A PAS de
+    # champ `company` (elle est scopée via son parent `facture__company`), donc la
+    # base TenantMixin ne convient PAS telle quelle : son get_queryset
+    # (`qs.filter(company=…)`) lèverait un FieldError, et son perform_create
+    # (`save(company=…)`) écrirait un champ inexistant. On SURCHARGE donc
+    # INTÉGRALEMENT get_queryset (scoping via facture__company, en partant du
+    # queryset ModelViewSet non filtré — PAS de super() TenantMixin) ainsi que
+    # perform_create/perform_update. Comportement et matrice 401/403/404 (404
+    # cross-tenant) STRICTEMENT inchangés (règle #4 : aucun statut/sérialisation
+    # Facture touché).
+    queryset = LigneFacture.objects.select_related(
+        'facture', 'produit'
+    ).all()
+    serializer_class = LigneFactureSerializer
+
+    def get_queryset(self):
+        # NE PAS passer par super() (TenantMixin filtrerait sur un champ
+        # `company` absent de LigneFacture) : on part du queryset ModelViewSet brut.
+        qs = viewsets.ModelViewSet.get_queryset(self)
+        user = self.request.user
+        if user.company_id:
+            return qs.filter(facture__company=user.company)
+        if user.is_superuser:
+            return qs
+        return qs.none()
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [LectureFactures()]  # AARG66
+        elif self.action in WRITE_ACTIONS:
+            return [IsResponsableOrAdmin()]
+        elif self.action == 'destroy':
+            return [IsAdminRole()]
+        return [IsAdminRole()]
+
+    def _check_tenant(self, serializer):
+        """ERR7 — la facture ciblée par la ligne doit appartenir à la société de
+        l'utilisateur (refuse l'injection IDOR d'une ligne sur le document d'un
+        autre tenant). Superuser sans société : non borné."""
+        from rest_framework.exceptions import ValidationError
+        user = self.request.user
+        facture = serializer.validated_data.get('facture')
+        if facture is not None and user.company_id \
+                and facture.company_id != user.company_id:
+            raise ValidationError({'facture': 'Facture inconnue.'})
+
+    def _check_immuable(self, facture):
+        """XFAC24/ATOT9 — une ligne d'une facture NON BROUILLON ne peut plus
+        être créée/modifiée/supprimée, QUEL QUE SOIT `factures_immuables`
+        (D-ATOT-1 : une facture émise se corrige par avoir, ou par
+        `remettre-brouillon`). Facture brouillon → comportement inchangé."""
+        if facture is None or facture.statut == facture.Statut.BROUILLON:
+            return
+        from core.conflit_etat import ConflitEtat
+        raise ConflitEtat(
+            "Montant figé après émission : impossible de modifier les "
+            "lignes d'une facture émise. Corrigez par un avoir (ou "
+            "remettez la facture en brouillon).")
+
+    def _check_facture_inchangee(self, serializer):
+        """ATOT40 — une ligne ne CHANGE jamais de facture (motif QJR516)."""
+        from core.conflit_etat import ConflitEtat
+        cible = serializer.validated_data.get('facture')
+        if cible is not None and cible.pk != serializer.instance.facture_id:
+            raise ConflitEtat({
+                'facture': "Une ligne ne change pas de facture : supprimez-la "
+                           "et ajoutez-la sur l'autre facture."})
+
+    def perform_create(self, serializer):
+        self._check_tenant(serializer)
+        facture = serializer.validated_data.get('facture')
+        self._check_immuable(facture)
+        serializer.save()
+
+    def perform_update(self, serializer):
+        self._check_tenant(serializer)
+        self._check_facture_inchangee(serializer)
+        self._check_immuable(serializer.instance.facture)
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        self._check_immuable(instance.facture)
+        instance.delete()

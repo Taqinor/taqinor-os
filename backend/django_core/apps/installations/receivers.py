@@ -12,22 +12,24 @@ sans en créer un second. Ré-accepter un devis (ou ré-émettre l'événement) 
 duplique donc jamais le chantier. La création est company-scopée
 (``devis.company``). Le signal est synchrone, comme les autres récepteurs.
 """
+from django.db.models.signals import post_delete
 from django.dispatch import receiver
 
 from core.events import (
     abonne_best_effort, bon_commande_cree, devis_acceptation_annulee,
-    devis_accepted,
-    reception_fournisseur_annulee,
-    reception_fournisseur_confirmee, facture_fournisseur_creee,
+    devis_accepted, facture_annulee,
+    reception_fournisseur_annulee, retour_fournisseur_valide, bon_commande_fournisseur_annule,
+    reception_fournisseur_confirmee, facture_fournisseur_creee, ticket_resolu,
 )
 
-from .models import Installation
+from .models import Installation, PhotoChecklistMeta
 from .services import (
     annuler_chantiers_desaccepte, create_installation_from_devis,
     extourner_gr_ir_reception,
     provisionner_gr_ir_reception, lettrer_gr_ir_facture,
     peupler_series_entrepot_reception,
-    replafonner_reservation_recue_pour_chantier,
+    reduire_gr_ir_retour, replafonner_reservation_recue_pour_chantier,
+    replafonner_reservation_retour, retourner_series_retour,
     reserver_stock_recu_pour_chantier, retourner_series_entrepot_reception,
 )
 
@@ -153,6 +155,32 @@ def _replafonner_reservation_on_reception_annulee(sender, reception, company,
         reception=reception, company=company)
 
 
+@receiver(retour_fournisseur_valide,
+          dispatch_uid="installations_reduire_gr_ir_on_retour_valide")
+@abonne_best_effort
+def _reduire_gr_ir_on_retour_valide(sender, retour, company, user=None, **kwargs):
+    """AAPV9 — la provision GR/IR ouverte du BCF baisse de la valeur
+    retournée (idempotent, état persisté)."""
+    reduire_gr_ir_retour(retour=retour, company=company)
+
+
+@receiver(retour_fournisseur_valide,
+          dispatch_uid="installations_replafonner_resa_on_retour_valide")
+@abonne_best_effort
+def _replafonner_reservation_on_retour_valide(sender, retour, company, user=None, **kwargs):
+    """AAPV9 — la réservation du chantier d'origine ne dépasse plus le reçu
+    net du BCF après le retour (idempotent)."""
+    replafonner_reservation_retour(retour=retour, company=company)
+
+
+@receiver(retour_fournisseur_valide,
+          dispatch_uid="installations_retourner_series_on_retour_valide")
+@abonne_best_effort
+def _retourner_series_on_retour_valide(sender, retour, company, user=None, **kwargs):
+    """AAPV65 — les séries citées par le retour passent « retourné »."""
+    retourner_series_retour(retour=retour, company=company)
+
+
 @receiver(bon_commande_cree,
           dispatch_uid="installations_rattacher_chantier_on_bon_commande_cree")
 @abonne_best_effort
@@ -176,6 +204,36 @@ def _rattacher_chantier_on_bon_commande_cree(sender, instance, company,
     ).update(bon_commande=instance)
 
 
+@receiver(facture_annulee,
+          dispatch_uid="installations_rouvrir_resa_on_facture_annulee")
+@abonne_best_effort
+def _rouvrir_reservation_on_facture_annulee(sender, instance, company,
+                                            **kwargs):
+    """ASTK263 — la facture annulée a rendu son stock (ASTK262) : la
+    réservation que la vente avait soldée redevient active."""
+    from apps.installations.selectors import installation_for_devis
+    from .services_solde_vente import rouvrir_reservations_vente
+    devis = getattr(instance, 'devis', None)
+    if devis is not None:
+        rouvrir_reservations_vente(installation_for_devis(
+            devis, company=company), devis.reference)
+
+
+@receiver(ticket_resolu,
+          dispatch_uid="installations_lever_reserves_on_ticket_resolu")
+@abonne_best_effort
+def _lever_reserves_on_ticket_resolu(sender, ticket, company, user=None,
+                                     **kwargs):
+    """ACSV66 — le ticket SAV né d'une réserve est résolu : la réserve est
+    levée (boucle évitée : une réserve déjà levée n'est pas retouchée)."""
+    from .models import Reserve
+    from .services import lever_reserve_chantier
+    for reserve in Reserve.objects.filter(ticket=ticket, company=company).exclude(
+            statut=Reserve.Statut.RESOLUE):
+        lever_reserve_chantier(
+            reserve, user, resolution=f'Résolue par le ticket {ticket.reference}')
+
+
 @receiver(facture_fournisseur_creee,
           dispatch_uid="installations_lettrer_gr_ir_on_facture")
 @abonne_best_effort
@@ -187,3 +245,24 @@ def _lettrer_gr_ir_on_facture(sender, instance, company, user=None, **kwargs):
     stock.FactureFournisseur, ``user`` optionnel (None pour une création
     système/hors-requête, ex. saisie manuelle via la vue)."""
     lettrer_gr_ir_facture(facture=instance, company=company, user=user)
+
+
+@receiver(bon_commande_fournisseur_annule,
+          dispatch_uid="installations_rouvrir_da_on_bcf_annule")
+def _rouvrir_da_on_bcf_annule(sender, bon_commande_id, company, user=None,
+                              supprime=False, **kwargs):
+    """AAPV71 — abonné OBLIGATOIRE (pas best-effort) : la DA suit le BCF
+    annulé/supprimé dans la même transaction."""
+    from .services import rouvrir_demande_achat_bcf_annule
+    rouvrir_demande_achat_bcf_annule(
+        bon_commande_id=bon_commande_id, company=company, user=user, supprime=supprime)
+
+
+@receiver(post_delete, sender=PhotoChecklistMeta,
+          dispatch_uid="installations_preuve_checklist_retiree")
+def _preuve_checklist_retiree(sender, instance, **kwargs):
+    """ACSV18 — photo d'étape supprimée : l'étape à photo obligatoire sans
+    photo restante est décochée et la suppression notée au chatter."""
+    if instance.checklist_item_id:
+        from .field_capture import preuve_checklist_retiree
+        preuve_checklist_retiree(instance)

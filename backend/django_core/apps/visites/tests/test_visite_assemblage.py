@@ -155,10 +155,15 @@ class ActionApiTests(AssemblageBase):
         self.assertEqual(detail.data['photo_toit']['assemblage_etat'],
                          VisiteTerrain.Assemblage.EN_COURS)
 
-    def test_photo_toit_absente_renvoie_404(self):
+    def test_photo_toit_absente_renvoie_409(self):
+        # ENF47 (api-fuzz-full 42017839549) : la visite existe, seule l'image
+        # manque — refus d'état 409 ; une visite inconnue reste 404.
         resp = self.api.get(
             f'/api/django/visites/visites/{self.visite_id}/photo-toit/')
-        self.assertEqual(resp.status_code, 404, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertIn('photo_toit', resp.data['erreurs'])
+        resp = self.api.get('/api/django/visites/visites/999999999/photo-toit/')
+        self.assertEqual(resp.status_code, 404)
 
     def test_calage_exige_quatre_coins(self):
         resp = self.api.patch(

@@ -24,7 +24,7 @@ from apps.installations.models import DemandeAchat, DemandeAchatLigne
 
 User = get_user_model()
 BASE = '/api/django/installations'
-MSG = 'repassez-la en brouillon pour la modifier'
+MSG = 'figée, elle ne se modifie plus'  # AAPV47 — aucun retour en brouillon
 
 
 class DaFigeeTests(TestCase):

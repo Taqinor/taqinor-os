@@ -89,13 +89,13 @@ type LocalizedCityContent = Record<Locale, CityContent>;
 
 /**
  * Lien « Voir les régimes → » du pilier conformité, traduit par locale mais
- * pointant TOUJOURS vers la même cible `/loi-82-21` (un seul fichier source ;
- * le `localizeNavHref` du template gère le repli FR sans lien mort).
+ * pointant vers la page /loi-82-21 de SA locale (WAUD87 : HTML brut, jamais passé par
+ * `localizeNavHref` — l'ancien lien unique envoyait EN/AR vers le français).
  */
 const REGIMES_LINK: Record<Locale, string> = {
   fr: '<a href="/loi-82-21/" class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">Voir les régimes →</a>',
-  en: '<a href="/loi-82-21/" class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">See the regimes →</a>',
-  ar: '<a href="/loi-82-21/" class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">اطّلع على الأنظمة →</a>',
+  en: '<a href="/en/loi-82-21/" class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">See the regimes →</a>',
+  ar: '<a href="/ar/loi-82-21/" class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">اطّلع على الأنظمة →</a>',
 };
 
 /**

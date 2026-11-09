@@ -486,7 +486,16 @@ def zones_etude_du_devis(devis):
     return zones
 
 
-def ranger_simulation(devis_id, simulation):
+def _empreinte_simulation(simulation):
+    """ADEV108 — la simulation sans son horodatage de calcul (JSON trié)."""
+    import json
+
+    from django.core.serializers.json import DjangoJSONEncoder
+    return json.dumps({k: v for k, v in (simulation or {}).items() if k != 'computed_at'},
+                      sort_keys=True, cls=DjangoJSONEncoder)
+
+
+def ranger_simulation(devis_id, simulation, user_id=None):
     """PV74 — range la simulation dans ``etude_params['simulation']``, et RIEN
     d'autre.
 
@@ -495,6 +504,10 @@ def ranger_simulation(devis_id, simulation):
     ``update_fields`` se limite à ``etude_params`` — le STATUT ne peut donc pas
     bouger depuis ce chemin (règle #4). Rend le devis rafraîchi, ou ``None``
     s'il a disparu entre-temps.
+
+    ADEV108 — sur un ENVOYÉ, une simulation qui CHANGE (hors ``computed_at``)
+    est tracée « corrigé après envoi — étude » au nom de ``user_id`` et avance
+    le jeton d'édition, comme la conception électrique ; identique : rien.
     """
     from .domain.etude_schema import MOTEUR_SIMULATION, appliquer
     from .models import Devis
@@ -502,8 +515,19 @@ def ranger_simulation(devis_id, simulation):
     devis = Devis.objects.filter(pk=devis_id).first()
     if devis is None:
         return None
+    avant = _empreinte_simulation((devis.etude_params or {}).get('simulation'))
     appliquer(devis, proprietaire=MOTEUR_SIMULATION, simulation=simulation)
     devis.save(update_fields=['etude_params'])
+    if avant != _empreinte_simulation(devis.etude_params.get('simulation')):
+        from django.contrib.auth import get_user_model
+
+        from .domain.modifiabilite import _est_envoye, consigner_correction_apres_envoi
+        from .domain.verrou_devis import toucher
+        if _est_envoye(devis):
+            user = get_user_model().objects.filter(pk=user_id).first() if user_id else None
+            consigner_correction_apres_envoi(
+                devis, user=user, objet='etude', resume='étude (simulation bancable)')
+            toucher(devis)
     return devis
 
 
@@ -515,7 +539,7 @@ def ranger_simulation(devis_id, simulation):
     acks_late=True,
 )
 def task_simulate_bankable_study(self, devis_id, company_id, token,
-                                 force_refresh=False):
+                                 force_refresh=False, user_id=None):
     """PV74 — exécute l'étude bankable d'un devis HORS requête et la range.
 
     Met à jour l'état du job en cache (``pending`` → ``ready``/``error``),
@@ -548,7 +572,7 @@ def task_simulate_bankable_study(self, devis_id, company_id, token,
         simulation = run_bankable_study(
             devis, zones=zones_etude_du_devis(devis),
             force_refresh=bool(force_refresh))
-        ranger_simulation(devis.pk, simulation)
+        ranger_simulation(devis.pk, simulation, user_id=user_id)
 
         cache.set(ckey, {
             'company_id': company_id, 'devis_id': devis_id,
@@ -718,11 +742,22 @@ def task_devis_automatique_depuis_lead(lead_id, company_id):
 @shared_task(name='ventes.audit_coherence_nuit', soft_time_limit=1500,
              time_limit=1800)
 def audit_coherence_nuit():
+    from celery.exceptions import SoftTimeLimitExceeded
+
     from .coherence.moteur import run_audit
     from .coherence.notification import (
         notifier_nouvelles_violations, notifier_regles_sans_verdict)
 
-    report = run_audit(persist=True)
+    try:
+        report = run_audit(persist=True)
+    except SoftTimeLimitExceeded as exc:
+        # ERR-JPB-AUDIT-COHERENCE-TUE-180S — passe interrompue : les nouvelles
+        # violations déjà persistées sont notifiées (sinon, vues comme
+        # « existantes » la nuit suivante, elles ne le seraient jamais).
+        partiel = getattr(exc, 'rapport', None)
+        if partiel is not None and partiel.new:
+            notifier_nouvelles_violations(partiel)
+        raise
     notifications = notifier_nouvelles_violations(report) if report.new \
         else 0
     # AMOT61 (C-AMOT-037) — une règle restée SANS VERDICT n'est plus muette :

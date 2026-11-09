@@ -1,0 +1,27 @@
+{
+  "endpoint": "GET /api/django/crm/leads/",
+  "forme_serveur": "complete",
+  "pourquoi": "CRXB1 (PACT10, D-CRXB = b, Reda 07/11/2026) — le contrat de la LISTE des leads, posé en premier du sous-groupe d'architecture CRXB. `LeadViewSet.list()` rend désormais son enveloppe de pagination en DICTIONNAIRE EXPLICITE (`count` / `next` / `previous` / `results`, mêmes clés et même ordre que `PageNumberPagination.get_paginated_response` : réponse octet pour octet identique), donc lisible statiquement par `scripts/check_api_shapes.py` : un renommage de clé d'enveloppe côté serveur rougit. `results` porte un `LeadSerializer` par lead (forme du sérialiseur, encore `fields = '__all__'` jusqu'à CRXB3) ; les champs réservés à la fiche (voir `lead_workspace.json`) n'y figurent JAMAIS. Lecteurs : `crmSlice.js`, `LeadsPage.jsx` et ses vues (liste, kanban), `fetchAllPages.js`.",
+  "exemple": {
+    "count": 2,
+    "next": "https://api.taqinor.ma/api/django/crm/leads/?page=2",
+    "previous": null,
+    "results": [
+      {
+        "id": 1489,
+        "nom": "Alaoui",
+        "prenom": "Karim",
+        "ville": "Casablanca",
+        "telephone": "+212600000001",
+        "owner_nom": "commercial1",
+        "client_nom": null
+      }
+    ]
+  },
+  "exemple_vide": {
+    "count": 0,
+    "next": null,
+    "previous": null,
+    "results": []
+  }
+}

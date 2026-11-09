@@ -1,0 +1,24 @@
+# Preuve en direct AMON3 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Écran : front du worktree servi par vite (127.0.0.1:3000) -> conteneur privé accept-w29-web (runserver, base
+# erp_accept_w29, stockage objet PRIVÉ accept-w29-minio, SMTP 127.0.0.1:1 puis mail en mémoire pour AMON47), piloté par
+# Playwright MCP. Données : seed_demo « TAQINOR Démo » + fixtures FIX-W29* ou états des sondes rejouées SANS rollback
+# (comptes de test, mot de passe de test).
+# Verdict : PASS — Sonde C-AMON-003 : repro False ; écran : « Début de la période » = J−30, saisie acceptée, jour futur 409.
+
+== C-AMON-003 (sha 3007f3f04)
+attendu : repro si A (début de mois) ≈ 100 % et B (fin de mois) < 98 % avec pénalité/écart alors que les relevés sont identiques ; et le geste écran par défaut (aujourd'hui, 30 j) est accepté 201
+observé : {"A_debut_de_mois": {"production_kwh": "6000.00", "pr_pct": "100.00", "availability_pct": "100.00", "ecart_pct": "-2.00", "sous_garantie": false, "penalite_mad": "0.00"}, "B_fin_de_mois": {"production_kwh": "5516.13", "pr_pct": "96.82", "availability_pct": "97.92", "ecart_pct": "0.08", "sous_garantie": true, "penalite_mad": "26.88"}, "geste_ecran_defaut": {"http": 409, "date": "2026-11-08", "jours_couverts_APRES_aujourdhui_par_ce_releve": 29}, "profil_garantie_autorisee": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0
+
+## AMON3 — PASS (écran)
+Production › CHT-E29-39 › « Saisir un relevé » : le formulaire s'ouvre sur « Début de la période » = 2026-10-09 (J−30) ; période 7 ⇒
+2026-11-01, période 30 ⇒ 2026-10-09 (date recalculée). Saisie 450 kWh, début 2026-10-09, 30 j => POST monitoring/readings/ 201
+(relevé affiché « 2026-10-09 450.00 kWh 30 »). Un relevé débutant le 2026-10-20 sur 30 j => 409 « La période couverte (jusqu'au
+18/11/2026) dépasse aujourd'hui. » (refus serveur du jour futur). Sonde C-AMON-003 : repro False.

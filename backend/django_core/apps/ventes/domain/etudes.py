@@ -261,6 +261,7 @@ def puissances_etude_horaire(devis):
     """
     from apps.ventes.quote_engine.builder import (
         _scalaires_par_option, _variante_de_ligne, panneaux_et_watt_lu)
+    from apps.ventes.quote_engine.lignes_classement import kwc_des_lignes
     lignes = [
         li for li in devis.lignes.select_related(
             'produit', 'produit__fiche_technique').all()
@@ -269,7 +270,8 @@ def puissances_etude_horaire(devis):
     ]
     par_option = _scalaires_par_option(
         [li for li in lignes if _variante_de_ligne(li) in ('', 'sans')],
-        [li for li in lignes if _variante_de_ligne(li) in ('', 'avec')])
+        [li for li in lignes if _variante_de_ligne(li) in ('', 'avec')],
+        devis)  # AGNR70 — kWc Σ quantité × watt lu au niveau 12
     if par_option['divergents']:
         return par_option['kwc_avec'], par_option['kwc_sans']
     # ERR-ETUDE-KWC-DOUBLE — panneaux VARIANTÉS à comptes ÉGAUX (8 « sans » +
@@ -284,9 +286,7 @@ def puissances_etude_horaire(devis):
            for li in lignes if panneaux_et_watt_lu([li])[0]):
         return par_option['kwc_avec'] or par_option['kwc_sans'], None
     nb_panneaux, watt = panneaux_et_watt_lu(lignes)
-    kwc = (round(nb_panneaux * watt / 1000, 2)
-           if nb_panneaux > 0 and watt else None)
-    return kwc, None
+    return kwc_des_lignes(lignes, nb_panneaux, watt, devis), None
 
 
 def _blocs_horaires_deja_a_jour(devis, kwc, kwc_sans):

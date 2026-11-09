@@ -19,6 +19,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole
+from .gardes_lecture import LectureFactures
 
 from .models import Facture
 import logging
@@ -40,7 +41,7 @@ def _scope(qs, user):
     responses={(200, 'application/pdf'): OpenApiTypes.BINARY,
                409: SH.DetailResponse, 500: SH.DetailResponse})
 @api_view(['GET'])
-@permission_classes([IsAnyRole])
+@permission_classes([LectureFactures])  # AARG66
 def lettre_relance_premium(request, facture_id):
     """Lettre de relance premium pour une facture en retard.
 
@@ -84,7 +85,7 @@ def lettre_relance_premium(request, facture_id):
 
 
 @extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY,
-                          500: SH.DetailResponse})
+                          409: SH.DetailResponse, 500: SH.DetailResponse})
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def fiche_remise_premium(request, chantier_id):
@@ -96,6 +97,12 @@ def fiche_remise_premium(request, chantier_id):
     if chantier is None:
         return Response({'detail': 'Chantier introuvable.'},
                         status=status.HTTP_404_NOT_FOUND)
+    # ACSV99 — même garde d'état que les documents de chantier (ADOC72) :
+    # annulé ou pas encore installé ⇒ 409 nommé.
+    from apps.documents.views import _refus_etat
+    refus = _refus_etat(chantier)
+    if refus is not None:
+        return refus
     from .quote_engine.extra_docs import render_fiche_remise_pdf
     try:
         pdf_bytes = render_fiche_remise_pdf(chantier)

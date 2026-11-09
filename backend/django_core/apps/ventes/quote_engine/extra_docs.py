@@ -655,8 +655,33 @@ OPERATING_GUIDANCE = [
 ]
 
 
+def _composants_du_parc(parc):
+    """ACSV37 — lignes de la fiche depuis le PARC posé (``_equipements_poses``,
+    liste blanche : numéro de série, marque, modèle, fins de garantie
+    CALCULÉES) : une ligne par appareil sérialisé, regroupées sinon."""
+    lignes = {}
+    for eq in parc:
+        garantie = " — ".join(
+            texte for texte in (
+                eq["date_fin_garantie"] and "Matériel : " + _fr_date(eq["date_fin_garantie"]),
+                eq["date_fin_garantie_production"]
+                and "Production : " + _fr_date(eq["date_fin_garantie_production"]),
+            ) if texte) or DEFAULT_GARANTIE
+        serie = eq["numero_serie"]
+        cle = (serie or None, eq["modele"], eq["marque"], garantie)
+        if cle not in lignes:
+            lignes[cle] = {
+                "designation": eq["modele"] + (f" (N° {serie})" if serie else ""),
+                "quantite": 0, "marque": eq["marque"], "garantie": garantie}
+        lignes[cle]["quantite"] += 1
+    return list(lignes.values())
+
+
 def _chantier_composants(chantier):
     """Composants installés (désignation + quantité + marque + garantie texte).
+
+    ACSV37 — le parc réellement posé (n° de série, fin de garantie calculée)
+    prime dès qu'il existe ; sinon (avant réception) les lignes vendues.
 
     Lecture STRICTEMENT publique : ``prix_achat`` n'est jamais lu — impossible
     de le faire fuiter dans un document client.
@@ -669,12 +694,17 @@ def _chantier_composants(chantier):
     VRAI devis à deux options est filtré, comme l'échéancier et la nomenclature
     du bon de commande.
     """
+    from apps.documents.builders import _equipements_poses
+    parc = _equipements_poses(chantier)
+    if parc:
+        return _composants_du_parc(parc)
     devis = getattr(chantier, "devis", None)
     if devis is None:
         return []
-    from apps.ventes.utils.options import option_lines
+    # ADOC198 — matériel VENDU : lignes de l'option retenue × nombre de villas.
+    from apps.ventes.utils.options import lignes_vendues
     out = []
-    for ligne in option_lines(devis):
+    for ligne, quantite in lignes_vendues(devis):
         produit = ligne.produit
         garantie = ((getattr(produit, "garantie", None) or "").strip()
                     if produit else "")
@@ -682,7 +712,7 @@ def _chantier_composants(chantier):
                   if produit else "")
         out.append({
             "designation": ligne.designation,
-            "quantite": ligne.quantite,
+            "quantite": quantite,
             "marque": marque,
             "garantie": garantie or DEFAULT_GARANTIE,
         })
@@ -692,8 +722,10 @@ def _chantier_composants(chantier):
 def build_fiche_remise_html(ctx, client, chantier_info, composants):
     """HTML de la fiche de remise / garantie après-vente (une page)."""
     ref = chantier_info.get("reference", "")
+    # ACSV37 — datée de la réception (jamais du jour d'impression) quand elle existe.
+    date_remise = chantier_info.get("date_reception") or _fr_date(date.today())
     ref_line = (f"Chantier {escape(str(ref))}<br>"
-                f"Le {escape(_fr_date(date.today()))}")
+                f"Le {escape(date_remise)}")
 
     # Bandeau système (aucun prix).
     sys_rows = []
@@ -753,7 +785,7 @@ def build_fiche_remise_html(ctx, client, chantier_info, composants):
         + '<div class="section-h">Exploitation &amp; entretien</div>'
           f'<ul class="guidance">{guidance}</ul>'
         + '<div class="sign"><div class="box">Remis au client le '
-          f'{escape(_fr_date(date.today()))}<div class="line">Signature du '
+          f'{escape(date_remise)}<div class="line">Signature du '
           'client</div></div>'
           f'<div class="box" style="text-align:right;">'
           f'{escape(str(ctx.get("entreprise_nom", "")))}'

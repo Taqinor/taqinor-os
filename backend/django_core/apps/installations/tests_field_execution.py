@@ -213,6 +213,18 @@ class TestPreparation(TestCase):
         self.assertEqual(r.status_code, 201, r.data)
         self.assertEqual(r.data['nb_lignes'], 1)
 
+    def test_manque_preparation_par_anciennete_et_plancher(self):
+        """AAPV78 — stock 10, A puis B réservent 10 : la préparation de A ne
+        manque rien, celle de B manque 10 ; stock 0 : 10 chacun (jamais 20)."""
+        def manques(stock):
+            p = make_produit(self.company, f'Onduleur AAPV78 {stock}', stock=stock)
+            chantiers = [make_chantier(self.company, self.user, [(p, 10)]) for _ in 'AB']
+            return [field_services.ensure_preparation(make_intervention(
+                inst, self.company, self.user)).materiel.get(produit=p).quantite_manquante
+                for inst in chantiers]
+        self.assertEqual(manques(10), [0, 10])
+        self.assertEqual(manques(0), [10, 10])
+
     def test_refus_etat_preparation_409_et_fournisseur_inconnu_404(self):
         """api-fuzz-full 27/10 (ENF11) : `confirmer-charge` sans toutes les
         lignes cochées et `commander-manques` sans fournisseur par défaut sont

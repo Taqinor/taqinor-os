@@ -287,6 +287,7 @@ _SignalerReponse = inline_serializer('SavPublicSignalerReponse', {
     responses={
         200: _SignalerReponse,
         201: _SignalerReponse,
+        410: _SignalerReponse,  # ACSV71 : appareil retiré
     })
 @api_view(['POST'])
 @authentication_classes([])
@@ -317,6 +318,11 @@ def equipement_public_signaler(request, token):
         ).get(public_token=token)
     except Equipement.DoesNotExist:
         return _not_found()
+    if equipement.est_retire:  # ACSV71 : appareil remplacé / au rebut
+        return _noindex(Response(
+            {'detail': "Cet appareil n'est plus en service chez vous : "
+                       'contactez-nous.'},
+            status=status.HTTP_410_GONE))
 
     # Honeypot : un champ caché que seuls les bots remplissent. Réponse 201
     # factice (aucune trace du piège pour l'appelant) sans rien créer.

@@ -134,6 +134,30 @@ class TestSessionComptage(TestCase):
         session.refresh_from_db()
         self.assertEqual(session.statut, SessionComptage.Statut.TERMINE)
 
+    def test_session_terminee_ne_redemarre_pas(self):
+        """AAPV50 — une session terminée ne redémarre pas (409) ; terminer à
+        nouveau ne poste aucun second ajustement."""
+        from apps.stock.models import MouvementStock
+        session = SessionComptage.objects.create(
+            company=self.company, reference='CYC-AAPV50')
+        ComptageLigne.objects.create(
+            session=session, produit=self.produit, quantite_theorique=42,
+            quantite_comptee=40, compte=True)
+        url = f'{BASE}/sessions-comptage/{session.id}'
+        self.assertEqual(self.api.post(f'{url}/demarrer/', {}, format='json').status_code, 200)
+        self.assertEqual(self.api.post(f'{url}/terminer/', {}, format='json').status_code, 200)
+        r = self.api.post(f'{url}/demarrer/', {}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertEqual(r.json()['detail'], 'Seule une session planifiée peut démarrer.')
+        self.assertEqual(self.api.post(f'{url}/terminer/', {}, format='json').status_code, 200)
+        session.refresh_from_db()
+        self.assertEqual(session.statut, SessionComptage.Statut.TERMINE)
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.quantite_stock, 40)
+        self.assertEqual(MouvementStock.objects.filter(
+            produit=self.produit,
+            type_mouvement=MouvementStock.TypeMouvement.AJUSTEMENT).count(), 1)
+
 
 class TestFiltresIllisibles(TestCase):
     def test_filtre_emplacement_chiffre_unicode_400(self):

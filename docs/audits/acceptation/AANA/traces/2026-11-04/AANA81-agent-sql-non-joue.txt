@@ -1,0 +1,18 @@
+AANA81 — pile locale, sha be834beb1 — preuve en direct NON JOUABLE (clé LLM locale invalide).
+
+Préparation : SQL_AGENT_DB_USER=sql_agent_ro + mot de passe de test ajoutés au .env LOCAL du worktree (jamais commité),
+provision_sql_agent_ro.sh -> « role sql_agent_ro provisionne », fastapi_ia recréé ; log_statement='all' posé puis
+RESET sur le rôle sql_agent_ro pour observer le SQL.
+
+POST /api/fastapi/sql-agent/query {"question": "Quel est le montant du devis DEV-202611-0083 ?"} -> 200
+  answer : « Je n'ai pas pu traiter votre demande. Essayez de reformuler … »
+  log fastapi_ia : SQL agent error: Error code: 401 - {'error': {'message': 'Invalid API Key', … 'invalid_api_key'}}
+  (GROQ_API_KEY du .env local refusée par le fournisseur ; seule l'introspection du schéma a tourné sous sql_agent_ro.)
+  log fastapi_ia aussi : « Journal de l'assistant non ecrit (400): preuve: Ce champ ne peut être vide. » (évènement AIC6
+  refusé quand l'agent échoue — voir le rapport).
+
+Vérifié sans LLM, dans le conteneur fastapi_ia :
+  'SUM(ventes_lignedevis' in _AGENT_PREFIX -> False ; 'quantite * prix_unitaire' -> False
+  puce Devis : « (aucun montant stocke ; ne somme JAMAIS les lignes d un devis pour son montant : renvoie a sa fiche ERP ; »
+  python -m unittest tests.test_eval_harness -> Ran 13 tests … OK
+=> tâche laissée NON cochée : le rejeu de l'agent sous sql_agent_ro attend une clé GROQ (ou autre fournisseur) valide.

@@ -830,8 +830,9 @@ export default function DevisGenerator({
     if (linesInitialized.current || !produits.length) return
     linesInitialized.current = true
     // QJR570 — les lignes par défaut sont une composition (pas une saisie).
-    setLines(withKeys(defaultProductLines(produits).map(r => ({ ...r, compose: true }))))
-  }, [produits])
+    // ADVS47 — produit sans taux : TVA standard de la société (profil, D-APAR-1).
+    setLines(withKeys(defaultProductLines(produits, undefined, quoteLogic.tvaStandard).map(r => ({ ...r, compose: true }))))
+  }, [produits, quoteLogic.tvaStandard])
   // Chaque ligne d'un produit À BARÈME suit le compte de panneaux COURANT des
   // lignes (`retarifer_forfaits_par_panneau` du serveur), ajusté PENDANT le
   // rendu (jamais un rendu affiché au mauvais prix) ; le même tableau revient
@@ -974,9 +975,9 @@ export default function DevisGenerator({
     () => multiPropertyPreviewTTC(lines, {
       nombreProprietes: multiMode === 'multiplier' ? nombreProprietes : null,
       // ATOT24 — la chaîne du rail : scénario + option effective (celle de `kpiTotal`).
-      discountPct, scenario, option: optionArgent, montee: centaineMontee,
+      discountPct, scenario, option: optionArgent, montee: centaineMontee, produits,
     }),
-    [lines, multiMode, nombreProprietes, discountPct, scenario, optionArgent, centaineMontee],
+    [lines, multiMode, nombreProprietes, discountPct, scenario, optionArgent, centaineMontee, produits],
   )
 
   // SPL51 — dérivations d'aperçu et d'étude horaire (déplacées telles quelles dans le hook, même position : l'ordre des hooks est inchangé).
@@ -1002,8 +1003,8 @@ export default function DevisGenerator({
     realBillMad, distributeur, baremeSociete, provenanceMois, realBillSaisi, leadDuDevis, leads,
     leadId, modeInstallation, clientsConnus, clientId, confirm, quoteLogic, editId, fHiver, fEte,
     // RGEN5 — niveau de règles du devis édité (`Devis.regles_calcul`, ancien calcul tant
-    // qu'il n'est pas lu) ; un devis neuf naît au niveau 3.
-    sizing, dispatchSizing, produits, discountPct, reglesCalcul: editId ? (editDevis?.regles_calcul ?? 0) : 3,
+    // qu'il n'est pas lu) ; devis neuf : null = règles courantes (AMOT125).
+    sizing, dispatchSizing, produits, discountPct, reglesCalcul: editId ? (editDevis?.regles_calcul ?? 0) : null,
   })
 
   // ── Mode d'installation (Résidentiel / Industriel-Commercial / Agricole) ──
@@ -1103,17 +1104,14 @@ export default function DevisGenerator({
   }
   const corpsCi = marcheCi ? corpsCiDepuisProfil(profilCi, ctxProfilCi) : null
   const apercuCi = useEtudeCiPreview(corpsCi)
-  const resoluesCi = apercuCi.donnees?.entrees_resolues || {}
   // Consommation connue : saisie dans le profil (ou taille explicite), ou
   // reprise de la fiche lead par le serveur (valeur résolue non vide).
   // ADEV91 (rejeu « humain » 23/10/2026) — un lead Meta ne porte qu'un kWh
   // MENSUEL (`conso_mensuelle_kwh`) : le serveur le résout sous
   // `kwh_mensuel_declare` (étude calculée, 30,53 kWc), mais l'écran ne lisait
-  // que les 12 mois / l'annuel et refusait « Créer le devis ».
-  const consoCiConnue = profilCiAncre(profilCi)
-    || [resoluesCi.kwh_mensuels?.valeur, resoluesCi.kwh_annuel?.valeur,
-      resoluesCi.kwh_mensuel_declare?.valeur]
-      .some((v) => (Array.isArray(v) ? v.some((x) => Number(x) > 0) : Number(v) > 0))
+  // que les 12 mois / l'annuel et refusait « Créer le devis ». ADEV120 — la feuille que
+  // l'aperçu a RETENUE (`feuille_consommation_retenue`, AMOT104) fait foi, quelle qu'elle soit.
+  const consoCiConnue = profilCiAncre(profilCi) || Boolean(apercuCi.donnees?.feuille_consommation_retenue)
 
   // L-2OPT — kWc de la branche AVEC batterie POUR LA COMPOSITION EN COURS :
   // le moteur horaire serveur (recommandation_avec, source de vérité) prime
@@ -1450,7 +1448,7 @@ export default function DevisGenerator({
     confirm, canRenameLine, renameDialog, setRenameDialog, setRenameBusy, setRenameError, produits,
     setProduits, clientId, lines, setLines, setSavingOrdreLignes, setTauxTva, setDiscountPct,
     linesTableRef, pendingFocusKey, setPendingFocusKey, setMultiMode, villaGroups, setVillaGroups,
-    appliquerMarcheEcran,
+    appliquerMarcheEcran, tvaStandard: quoteLogic.tvaStandard,
   })
 
   // AGR130 — le dimensionnement pompage vit CÔTÉ SERVEUR (aperçu AGR127,
@@ -1599,14 +1597,14 @@ export default function DevisGenerator({
   // (`apercuPompage`, AGR127) : plus de besoin FAO-56 calculé dans le
   // navigateur (le jumeau `agronomy.js` disparaît avec AGR131).
 
-  // QJR568 — prix/kWc et prix cible au kWc FACTURÉ des lignes.
-  const pkwc = prixParKwc(kpiTotal, kwpLignes)
+  // QJR568 / AGNR74 — prix/kWc et prix cible au kWc FACTURÉ de l'option affichée.
+  const pkwc = prixParKwc(kpiTotal, optionArgent === 'avec' ? kwpAvec : kwpLignes)
   const buyDetail = useMemo(() => computeBuyCostDetail(lines, produits), [lines, produits])
   const buyCost = buyDetail.cost
   const marge = buyCost != null ? Math.round(kpiTotal - buyCost) : null
 
   const applyPrixCible = () => {
-    const pct = discountForTarget(prixCible, kwpLignes, kpiTotalBrut)
+    const pct = discountForTarget(prixCible, optionArgent === 'avec' ? kwpAvec : kwpLignes, kpiTotalBrut)
     if (pct == null) return
     setDiscountPct(String(Math.max(0, pct)))
   }

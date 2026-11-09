@@ -73,7 +73,7 @@ class AchatsParametresViewSet(viewsets.ViewSet):
         return Response(AchatsParametresSerializer(obj).data)
 
     def partial_update(self, request, pk=None):
-        if not HasPermissionOrLegacy('stock_modifier')().has_permission(
+        if not HasPermissionOrLegacy('parametres_modifier')().has_permission(
                 request, self):
             return Response(
                 {'detail': "Vous n'avez pas la permission de modifier ces "

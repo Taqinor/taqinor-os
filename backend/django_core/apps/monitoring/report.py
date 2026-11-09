@@ -75,6 +75,9 @@ def build_om_report_data(installation, *, period='monthly', today=None):
         period_kwh += Decimal(str(r))
 
     metrics = om_metrics(installation, today=today)
+    # AMON21 — PR et disponibilité DE LA PÉRIODE du rapport (30 / 91 j),
+    # jamais ceux de 365 j ; la dérive reste lue sur l'année.
+    metrics_periode = om_metrics(installation, window_days=window, today=today)
     soiling = soiling_assessment(installation, today=today)
     # CIQ646 (D-CIQ-12) — aucune ligne de garantie de production dans un
     # rapport client tant que la société n'a pas validé l'engagement
@@ -85,6 +88,7 @@ def build_om_report_data(installation, *, period='monthly', today=None):
     curve = (warranty_curve_overlay(installation, today=today)
              if garantie_incluse else {})
 
+    from apps.sav.selectors_supervision import alarmes_onduleur_ouvertes
     open_flags = UnderperformanceFlag.objects.filter(
         installation=installation, is_open=True).count()
 
@@ -106,11 +110,13 @@ def build_om_report_data(installation, *, period='monthly', today=None):
         'period': period,
         'period_days': window,
         'period_kwh': period_kwh.quantize(Decimal('0.01')),
-        'pr_pct': metrics['pr_pct'],
-        'availability_pct': metrics['availability_pct'],
+        'pr_pct': metrics_periode['pr_pct'],
+        'availability_pct': metrics_periode['availability_pct'],
         'degradation_pct_per_year': metrics['degradation_pct_per_year'],
         'soiling_suspected': metrics['soiling_suspected'],
-        'open_alarms': open_flags,
+        # AMON43 — drapeaux ouverts + alarmes onduleur ouvertes (SAV).
+        'open_alarms': open_flags + alarmes_onduleur_ouvertes(
+            installation.company_id, installation.pk),
         'recommendations': recommendations,
         'date_edition': today.isoformat(),
     }
@@ -159,7 +165,7 @@ def build_om_report_html(data, *, entreprise_nom=''):
         + f'<p>{alarms_html}</p>'
         + '<div class="section-h">Recommandations</div>'
         + recos
-        + f'<div class="footer">Rapport O&amp;M automatisé · {escape(str(entreprise_nom or ""))}</div>'
+        + f'<div class="footer">Rapport O&amp;M · {escape(str(entreprise_nom or ""))}</div>'
     )
     return (
         '<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">'
@@ -175,6 +181,11 @@ def render_om_report_pdf(installation, *, period='monthly', today=None):
     entreprise_nom = getattr(company, 'nom', '') or ''
     html = build_om_report_html(data, entreprise_nom=entreprise_nom)
     return render_pdf(html=html)
+
+
+class DestinataireHorsClient(ValueError):
+    """AMON47 — le rapport O&M ne part qu'aux adresses du client du système
+    (l'appelant répond 400 sur ``recipient``)."""
 
 
 class EnvoiRapportImpossible(Exception):
@@ -202,9 +213,14 @@ def email_om_report(installation, *, period='monthly', recipient=None,
     """
     from django.core.mail import EmailMessage
 
+    client = getattr(installation, 'client', None)
+    email_client = (getattr(client, 'email', None) or '') if client else ''
     if recipient is None:
-        client = getattr(installation, 'client', None)
-        recipient = getattr(client, 'email', None) if client else None
+        recipient = email_client or None
+    elif recipient.strip().casefold() != email_client.strip().casefold():
+        # AMON47 — jamais un tiers : seule l'adresse du client du système.
+        raise DestinataireHorsClient(
+            'Le rapport ne part qu’aux adresses du client du système.')
     if not recipient:
         return False
 
@@ -217,7 +233,7 @@ def email_om_report(installation, *, period='monthly', recipient=None,
         subject=f'Rapport O&M {period_label} — système {ref}',
         body=('Veuillez trouver ci-joint le rapport de supervision '
               f'{period_label} du système {ref}.'),
-        to=[recipient])
+        to=[recipient], reply_to=_reply_to_societe(installation))
     msg.attach(f'rapport-om-{ref}.pdf', pdf_bytes, 'application/pdf')
     try:
         envoyes = msg.send(fail_silently=False)
@@ -227,11 +243,37 @@ def email_om_report(installation, *, period='monthly', recipient=None,
         raise EnvoiRapportImpossible('le serveur de messagerie a refusé '
                                      "l'envoi")
 
+    _archiver_rapport_ged(installation, period_label, ref, pdf_bytes)
     try:
         _notify_rapport_envoye(installation, period_label, ref, recipient)
     except Exception:  # pragma: no cover - défensif, best-effort
         logger.warning("email om report : échec ignoré, comportement dégradé", exc_info=True)
     return True
+
+
+def _reply_to_societe(installation):
+    """AMON47 — les réponses du client vont à l'e-mail de la société."""
+    from apps.parametres.selectors import company_identity
+    company = getattr(installation, 'company', None)
+    email = company_identity(company).get('email') if company else ''
+    return [email] if email else []
+
+
+def _archiver_rapport_ged(installation, period_label, ref, pdf_bytes):
+    """AMON47 — le PDF ENVOYÉ est déposé en GED (une version par envoi qui
+    change). Best-effort journalisé : l'e-mail est déjà parti."""
+    try:
+        from apps.ged.services import deposit_document
+        deposit_document(
+            company=installation.company,
+            nom=f'Rapport O&M {period_label} — système {ref}',
+            source_type='monitoring.rapport_om', source_id=installation.pk,
+            contenu_bytes=pdf_bytes, filename=f'rapport-om-{ref}.pdf',
+            mime='application/pdf', cabinet_nom='Supervision',
+            folder_nom='Rapports O&M', versionner_si_modifie=True)
+    except Exception:
+        logger.warning('AMON47 : archivage GED du rapport O&M %s ignoré',
+                       ref, exc_info=True)
 
 
 def _notify_rapport_envoye(installation, period_label, ref, recipient):

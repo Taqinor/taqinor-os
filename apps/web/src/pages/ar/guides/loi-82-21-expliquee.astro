@@ -40,11 +40,11 @@ const faq = [
   },
   {
     q: 'منذ متى يسري القانون 82-21؟',
-    a: 'يُطبَّق المرسوم التطبيقي 2-25-100 منذ 9 يونيو 2026.',
+    a: 'المرسوم التطبيقي 2-25-100 ساري المفعول؛ نص القانون مرتبط في صفحة القانون 82-21.',
   },
   {
     q: 'ماذا أفعل إن كانت تركيبتي الشمسية الحالية غير مُصرَّح بها؟',
-    a: 'ينص الفصل 33 على «خلال ثمانية عشر (18) شهراً ابتداءً من تاريخ دخول هذا القانون حيّز التنفيذ»: أودعوا الملف دون انتظار. بعد هذا الأجل، تبقى التركيبة في وضعية غير قانونية تجاه القانون.',
+    a: 'تؤطّر المادة 33 تسوية التركيبات القائمة (النص الحرفي في صفحة القانون 82-21): نُعدّ الملف الناقص حسب نظامكم.',
   },
 ];
 
@@ -57,7 +57,7 @@ const regimes = [
   {
     n: '02',
     title: 'اتفاق الربط',
-    body: 'فوق عتبة التصريح وحتى 5 MW، بمجرّد الحقن في الشبكة بالجهد المنخفض أو المتوسط، يجب الحصول على اتفاق ربط من المدبّر — ONEE في أغلب الجهات، أو الوكالة المحلية: Lydec بالدار البيضاء، Redal بالرباط، Amendis بطنجة — قبل الانطلاق. إنه المجال المعتاد للمواقع المهنية.',
+    body: 'فوق عتبة التصريح وحتى 5 MW، بمجرّد الحقن في الشبكة بالجهد المنخفض أو المتوسط، يجب الحصول على اتفاق ربط من مدبّر شبكة التوزيع المعني قبل الانطلاق. إنه المجال المعتاد للمواقع المهنية.',
   },
   {
     n: '03',
@@ -84,7 +84,7 @@ import Loi8221ExpliqueeDiv68F7 from '../../../components/blocs/Loi8221ExpliqueeD
       <p class="tech-label v2-kicker rule-brass text-lune">دليل · القانون <span dir="ltr">82-21</span></p>
       <h1 class="display v2-page-title mt-5 text-white">القانون <span dir="ltr">82-21</span> ببساطة</h1>
       <p class="v2-lead mt-6 text-lune-soft">
-        منذ <span dir="ltr">9</span> يونيو <span dir="ltr">2026</span>، يُطبَّق القانون <span dir="ltr">82-21</span> حول الإنتاج الذاتي للطاقة الكهربائية ومرسومه
+        يُطبَّق القانون <span dir="ltr">82-21</span> حول الإنتاج الذاتي للطاقة الكهربائية ومرسومه
         <span dir="ltr">2-25-100</span>. القاعدة أبسط ممّا تبدو: رقمان — قدرتك ومستوى ربطك — يكفيان لوضعك في أحد الأنظمة
         الثلاثة أدناه، سواء كانت تركيبتك جديدة أو قائمة بالفعل. إليك كيف تموضع نفسك، دون مصطلحات.
       </p>
@@ -98,8 +98,7 @@ import Loi8221ExpliqueeDiv68F7 from '../../../components/blocs/Loi8221ExpliqueeD
           <div>
             <p class="tech-label text-lune">ساري المفعول</p>
             <p class="mt-2 text-sm leading-relaxed text-lune-soft">
-              المرسوم <strong class="text-white" dir="ltr">2-25-100</strong> (الجريدة الرسمية بتاريخ <span dir="ltr">9</span> مارس <span dir="ltr">2026</span>،
-              ساري منذ <span dir="ltr">9</span> يونيو <span dir="ltr">2026</span>) وقرار <span dir="ltr">ANRE</span> رقم <strong class="text-white" dir="ltr">04/26</strong>.
+              المرسوم <strong class="text-white" dir="ltr">2-25-100</strong> (ساري المفعول) وقرار <span dir="ltr">ANRE</span> رقم <strong class="text-white" dir="ltr">04/26</strong>.
               تعريفة الفائض (قرار <span dir="ltr">ANRE 04/26</span>):
               <strong class="text-white"><span dir="ltr">0,18</span> درهم/<span dir="ltr">kWh</span> خارج الذروة، <span dir="ltr">0,21</span> درهم/<span dir="ltr">kWh</span> في الذروة، دون احتساب الرسوم</strong>،
               للتركيبات المربوطة بـ<strong class="text-white">التوتر المتوسط أو العالي أو العالي جداً
@@ -116,8 +115,7 @@ import Loi8221ExpliqueeDiv68F7 from '../../../components/blocs/Loi8221ExpliqueeD
           </div>
         </div>
         <p class="mt-5 text-xs leading-relaxed text-lune-faint">
-          تركيبتك قائمة بالفعل؟ تنص المادة <span dir="ltr">33</span> على «خلال ثمانية عشر (<span dir="ltr">18</span>) شهراً ابتداءً من تاريخ دخول هذا القانون حيّز التنفيذ»:
-          أودعوا الملف دون انتظار، بصرف النظر عن هذه التعريفة —
+          تركيبتك قائمة بالفعل؟ تؤطّر المادة <span dir="ltr">33</span> تسويتها، بصرف النظر عن هذه التعريفة —
           <a href={L('/regularization-article-33')} class="border-b border-brass-300/60 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">سوِّ تركيبتك القائمة <span class="inline-block rtl:-scale-x-100">→</span></a>.
         </p>
       </div>
@@ -126,11 +124,9 @@ import Loi8221ExpliqueeDiv68F7 from '../../../components/blocs/Loi8221ExpliqueeD
 
       <h2 class="display v2-section-title mt-14 text-white">وإن كانت تركيبتي قائمة بالفعل؟</h2>
       <p class="v2-lead mt-5 text-lune-soft">
-        القانون لا ينسى التركيبات المُركّبة قبله. تنص مادته <span dir="ltr">33</span> على «خلال ثمانية عشر (<span dir="ltr">18</span>) شهراً ابتداءً من تاريخ دخول هذا القانون حيّز التنفيذ»
-        لجعلها في وضع قانوني: أودعوا الملف الناقص دون انتظار،
-        تصريح أو اتفاق ربط أو ترخيص، حسب النظام الذي يعنيك أعلاه. تركيبة قائمة سُوّيت داخل هذا الأجل تلتحق
-        بالإطار القانوني كأنها جديدة. وبعد انقضاء الأجل، تبقى في وضعية غير قانونية إزاء القانون <span dir="ltr">82-21</span>.
-        فلا فائدة من الانتظار، والمسطرة تنطلق منذ اليوم.
+        القانون لا ينسى التركيبات المُركّبة قبله: تؤطّر مادته <span dir="ltr">33</span> جعلها في وضع قانوني (النص الحرفي في صفحة القانون <span dir="ltr">82-21</span>).
+        الملف الناقص — تصريح أو اتفاق ربط أو ترخيص — يتوقف على النظام الذي يعنيك أعلاه. تركيبة قائمة سُوّيت تلتحق
+        بالإطار القانوني كأنها جديدة، والمسطرة يمكن أن تنطلق منذ اليوم.
       </p>
       <div class="mt-8 flex flex-wrap gap-3">
         <a href={L('/loi-82-21')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">حدّد نظامي في <span dir="ltr">3</span> أسئلة <span class="inline-block rtl:-scale-x-100">→</span></a>

@@ -117,6 +117,11 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         (précédent : stock.services.reserved_quantity)."""
         if bc.statut != BonCommandeFournisseur.Statut.BROUILLON:
             return None
+        from ..services import exiger_fournisseur_commandable
+        try:  # AAPV29 — jamais d'envoi chez un fournisseur bloqué / non validé
+            exiger_fournisseur_commandable(bc.company, bc.fournisseur)
+        except EtatIncompatible as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         from apps.installations.selectors import (
             bcf_approbation_valide, palier_manquant_bcf_detail,
         )
@@ -210,8 +215,11 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(
         request=BcfEnvoyerEmailCorps,
-        responses=corps('BcfEnvoyerEmailReponse', detail=serializers.CharField(), log_id=serializers.IntegerField(),
-                        email_statut=serializers.CharField(), statut=serializers.CharField()))
+        # AAPV46 — UN seul composant partagé par 200 et 502 (deux appels à
+        # ``corps`` = deux classes homonymes → avertissement de schéma).
+        responses=dict.fromkeys((200, 502), corps(
+            'BcfEnvoyerEmailReponse', detail=serializers.CharField(), log_id=serializers.IntegerField(),
+            email_statut=serializers.CharField(), statut=serializers.CharField())))
     @action(detail=True, methods=['post'], url_path='envoyer-email')
     def envoyer_email(self, request, pk=None):
         """QS3 — Envoie le BCF (PDF joint) au FOURNISSEUR par email + EmailLog.
@@ -266,6 +274,12 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             company=bc.company, to_email=to_email, sujet=sujet, corps=corps,
             attachment=attachment, attachment_name=attachment_name,
             reference=bc.reference, user=request.user)
+        if not ok:
+            # AAPV46 : l'e-mail n'est pas parti -> le BCF reste en brouillon.
+            return Response({
+                'detail': "L'e-mail n'est pas parti : le bon de commande reste en brouillon.",
+                'log_id': log.id, 'email_statut': log.statut, 'statut': bc.statut,
+            }, status=status.HTTP_502_BAD_GATEWAY)
         self._mark_bcf_envoye(bc)
         try:
             from apps.audit.recorder import record
@@ -277,8 +291,7 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                 "bon_commande_fournisseur.BonCommandeFournisseurViewSet.envoyer_email "
                 ": erreur ignorée (mode dégradé)", exc_info=True)
         return Response({
-            'detail': (f'Email envoyé à {to_email}.' if ok
-                       else "Échec de l'envoi de l'email."),
+            'detail': f'Email envoyé à {to_email}.',
             'log_id': log.id, 'email_statut': log.statut,
             'statut': bc.statut,
         })
@@ -336,7 +349,10 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                     '(annulez-le).'
                 ),
             })
-        instance.delete()
+        from ..services import emettre_bcf_annule
+        with transaction.atomic():  # AAPV17 — budget rendu + DA rouverte avant le SET_NULL
+            emettre_bcf_annule(instance, self.request.user, supprime=True)
+            instance.delete()
 
     def create(self, request, *args, **kwargs):
         # XPUR4 — refuse la création si le fournisseur est bloqué commandes
@@ -349,27 +365,9 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         from ..utils.params import id_corps
         donnees = request.data if hasattr(request.data, 'get') else {}
         fournisseur_id = id_corps(donnees.get('fournisseur'))
-        if fournisseur_id:
-            try:
-                from ..services import check_fournisseur_statut_commande
-                fournisseur = Fournisseur.objects.get(
-                    pk=fournisseur_id, company=request.user.company)
-                check_fournisseur_statut_commande(fournisseur)
-            except Fournisseur.DoesNotExist:
-                pass
-            except ValueError as exc:
-                # ENF11 — fournisseur bloqué = état (409), pas un corps invalide.
-                return Response(
-                    {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
-            # NTP2P7 — onboarding OBLIGATOIRE (réglage société, OFF par
-            # défaut) : un fournisseur au dossier incomplet/non validé ne peut
-            # pas recevoir de nouveau BCF. No-op tant que le flag est OFF.
-            from .. import selectors as stock_selectors
-            autorise, motif = stock_selectors.fournisseur_peut_recevoir_bcf(
-                request.user.company, fournisseur_id)
-            if not autorise:
-                return Response({'detail': motif},
-                                status=status.HTTP_409_CONFLICT)
+        refus = self._refus_fournisseur(request, fournisseur_id)
+        if refus is not None:
+            return refus
         # XPUR1 — WARNING (non bloquant) si le fournisseur a un document de
         # conformité manquant/expiré ; ajouté à la réponse sans jamais
         # empêcher la création du BCF.
@@ -389,6 +387,24 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             self._attach_prix_warnings(response, request)
         return response
 
+    @staticmethod
+    def _refus_fournisseur(request, fournisseur_id):
+        """AAPV29 — garde unique (statut bloqué XPUR4 + onboarding NTP2P7)
+        d'un fournisseur NOMMÉ dans le corps : Response 409 ou None (ENF11 :
+        fournisseur bloqué = état, pas un corps invalide)."""
+        if not fournisseur_id:
+            return None
+        from ..services import exiger_fournisseur_commandable
+        fournisseur = Fournisseur.objects.filter(
+            pk=fournisseur_id, company=request.user.company).first()
+        if fournisseur is None:
+            return None
+        try:
+            exiger_fournisseur_commandable(request.user.company, fournisseur)
+        except EtatIncompatible as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
+        return None
+
     def update(self, request, *args, **kwargs):
         # XPUR18 — un BCF ENVOYE/RECU se modifie UNIQUEMENT via l'action
         # `reviser` (tracée + ré-approbation) : l'édition directe (PUT/PATCH)
@@ -404,6 +420,13 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                     "Ce BCF a été envoyé : utilisez l'action « réviser » "
                     'pour le modifier (traçabilité + ré-approbation).')},
                 status=status.HTTP_409_CONFLICT)
+        from ..utils.params import id_corps
+        donnees = request.data if hasattr(request.data, 'get') else {}
+        nouveau = id_corps(donnees.get('fournisseur'))
+        if nouveau and nouveau != bc.fournisseur_id:  # AAPV29 — réaffectation gardée
+            refus = self._refus_fournisseur(request, nouveau)
+            if refus is not None:
+                return refus
         response = super().update(request, *args, **kwargs)
         if response.status_code == status.HTTP_200_OK:
             self._attach_prix_warnings(response, request)
@@ -510,6 +533,12 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                 {'detail': 'Un BCF entièrement reçu ne peut pas être annulé.'},
                 status=status.HTTP_409_CONFLICT,
             )
+        # AAPV62 — un BCF facturé ou acompté ne s'annule pas (AP orpheline).
+        from ..services import motif_bcf_engage
+        engage = motif_bcf_engage(bc)
+        if engage:
+            return Response({'detail': f'{engage} : annulation refusée.'},
+                            status=status.HTTP_409_CONFLICT)
         # ZPUR11 — motif OBLIGATOIRE (400 si vide), tracé horodaté + acteur.
         # ENF11 (nocturne 15/10) — même prédicat que le motif publié (texte
         # non blanc, sans caractère nul) : un nul faisait un ValueError SQL (500).
@@ -533,7 +562,8 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         # (comportement inchangé) ; le détail des quantités déjà entrées en
         # stock est renvoyé pour décision (retour fournisseur éventuel).
         from ..services import annuler_bcf_cascade
-        detail_cascade = annuler_bcf_cascade(bc, user=request.user)
+        with transaction.atomic():  # AAPV17 — l'abonné (DA rouverte) est obligatoire
+            detail_cascade = annuler_bcf_cascade(bc, user=request.user)
         data = self.get_serializer(bc).data
         data['cascade'] = detail_cascade
         return Response(data)
@@ -558,8 +588,14 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                     'réouvrir.')},
                 status=status.HTTP_409_CONFLICT,
             )
-        bc.statut = BonCommandeFournisseur.Statut.BROUILLON
-        bc.save(update_fields=['statut'])
+        refus = self._refus_fournisseur(request, bc.fournisseur_id)  # AAPV29
+        if refus is not None:
+            return refus
+        from apps.installations.services import recommander_demande_achat_bcf_rouvert
+        with transaction.atomic():  # AAPV85 (D-AAPV-5) : DA re-commandée ou 409 nommé
+            recommander_demande_achat_bcf_rouvert(bc, user=request.user)
+            bc.statut = BonCommandeFournisseur.Statut.BROUILLON
+            bc.save(update_fields=['statut'])
         from ..services import log_bcf_chatter
         log_bcf_chatter(
             bc, user=request.user,
@@ -747,14 +783,13 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             # Plafonnement au reste dû — jamais plus que commandé (idempotence).
             qte = min(qte, ligne.quantite_restante)
             series = rec.get('numeros_serie') or []
-            if len(series) > max(qte, 0):  # ACHT122 : jamais d'ajustement silencieux
-                return Response(
-                    {'detail': (
-                        f'{len(series)} n° de série saisis pour {max(qte, 0)} '
-                        f'reçu(s) : retirez-en {len(series) - max(qte, 0)}.')},
-                    status=status.HTTP_400_BAD_REQUEST)
+            from ..services import motif_series_en_trop  # ACHT122/AAPV68 : règle unique
+            motif_series = motif_series_en_trop(len(series), qte)
+            if motif_series:
+                return Response({'detail': motif_series}, status=status.HTTP_400_BAD_REQUEST)
             if qte > 0:
-                plan.append((ligne, qte, series, (rec.get('numero_lot') or '').strip() or None))
+                plan.append((ligne, qte, series, (rec.get('numero_lot') or '').strip() or None,
+                             rec.get('date_peremption')))  # AAPV39
 
         if not plan:
             return Response(
@@ -778,12 +813,12 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
 
                 reception = create_with_reference(
                     ReceptionFournisseur, 'REC', bc.company, _creer)
-                for ligne, qte, series, lot in plan:
+                for ligne, qte, series, lot, peremption in plan:
                     reception.lignes.create(
                         ligne_commande=ligne,
                         produit=ligne.produit if ligne.produit_id else None,
                         quantite=qte, numeros_serie=series or None,
-                        numero_lot=lot)
+                        numero_lot=lot, date_peremption=peremption)
                 # ASTK62 — survivant UNIQUE (XPUR16 lignes libres, XPUR23
                 # destination, YPROC* GR/IR + réservation, NTWMS34 qualité,
                 # XSTK6 lots) : la confirmation de réception.
@@ -835,7 +870,10 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         lignes. La source n'est jamais modifiée."""
         from ..services import dupliquer_bcf
         bc = self.get_object()
-        clone = dupliquer_bcf(request.user.company, request.user, bc)
+        try:
+            clone = dupliquer_bcf(request.user.company, request.user, bc)
+        except EtatIncompatible as exc:  # AAPV29 — fournisseur bloqué
+            return Response({'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         return Response(
             self.get_serializer(clone).data, status=status.HTTP_201_CREATED)
 

@@ -50,8 +50,8 @@ def noter_version_remplacee_ouverte(devis_reference: str, lead, *,
     if LeadActivity.objects.filter(
             lead=lead, kind=LeadActivity.Kind.NOTE, body=corps).exists():
         return False
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
+    activity.journal_systeme(
+        company=lead.company, lead=lead,
         kind=LeadActivity.Kind.NOTE, body=corps)
     return True
 
@@ -97,8 +97,8 @@ def notifier_signal_lecture(devis_reference: str, lead, *, friction_section='',
             titre = f'Devis {devis_reference} — lecture en détail'
         if resume:
             corps += f' ({resume})'
-        LeadActivity.objects.create(
-            company=lead.company, lead=lead, user=None,
+        activity.journal_systeme(
+            company=lead.company, lead=lead,
             kind=LeadActivity.Kind.NOTE, body=corps)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
@@ -450,8 +450,8 @@ def poser_touche_signal(lead, signal, *, user=None, maintenant=None):
             corps += (f' La touche du plan « {nom} » glisse au '
                       f'{apres:%d/%m/%Y à %H:%M}, avec sa suite (décaler, '
                       'jamais redémarrer).')
-        LeadActivity.objects.create(
-            company=lead.company, lead=lead, user=None,
+        activity.journal_systeme(
+            company=lead.company, lead=lead,
             kind=LeadActivity.Kind.NOTE, body=corps)
         return etape
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
@@ -502,8 +502,8 @@ def poser_etape_preparer_devis(lead, *, origine, user=None, jours=None,
             return etape
         quand = etape.due_at.astimezone(horaires.CASABLANCA)
         # Note SYSTÈME (``user=None``) : poser une tâche n'est pas un contact.
-        LeadActivity.objects.create(
-            company=lead.company, lead=lead, user=None,
+        activity.journal_systeme(
+            company=lead.company, lead=lead,
             kind=LeadActivity.Kind.NOTE,
             body=(f'{origine[:1].upper()}{origine[1:]} : étape « '
                   f'{etape.libelle} » posée pour le '
@@ -584,8 +584,8 @@ def notify_client_contact_request(devis_reference: str, lead,
             note += f' [{_REVISION_KIND_LABELS.get(revision_kind, revision_kind)}]'
         if message:
             note += f' : « {message[:2000]} »'
-        LeadActivity.objects.create(
-            company=lead.company, lead=lead, user=None,
+        activity.journal_systeme(
+            company=lead.company, lead=lead,
             kind=LeadActivity.Kind.NOTE, body=note)
 
         # ACRM63 (D-ACRM-5 (3)=(a)) — la personne « ne plus contacter » qui
@@ -663,8 +663,10 @@ def _lever_opposition_a_la_demande_du_client(lead) -> bool:
     maintenant = timezone.now()
     lead.ne_plus_contacter = False
     lead.save(update_fields=['ne_plus_contacter'])
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
+    from .leads_doublons import retirer_empreintes_opposition  # ACVI108 (D-ACVI-6)
+    retirer_empreintes_opposition(lead.company, lead)
+    activity.journal_systeme(
+        company=lead.company, lead=lead,
         kind=LeadActivity.Kind.NOTE,
         body=(f'{NOTE_OPPOSITION_LEVEE_CLIENT} '
               f'({timezone.localtime(maintenant):%d/%m/%Y %H:%M})'))
@@ -696,8 +698,8 @@ def notify_lead_callback_requested(lead) -> None:
         ).exists()
         if already:
             return
-        LeadActivity.objects.create(
-            company=lead.company, lead=lead, user=None,
+        activity.journal_systeme(
+            company=lead.company, lead=lead,
             kind=LeadActivity.Kind.NOTE,
             body=f'{CALLBACK_REQUESTED_MARKER}.',
         )

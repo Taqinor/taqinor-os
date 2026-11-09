@@ -429,6 +429,20 @@ def option_mise_en_avant(devis) -> str:
     return SANS_BATTERIE if est_mode_ci(devis) else AVEC_BATTERIE
 
 
+def option_echeancier(devis):
+    """AMOT122 — l'option FACTURÉE (``option_effective``) d'un devis
+    résidentiel au niveau 12, en branche d'échéancier « sans » / « avec »,
+    passée par ``quote_engine.builder`` à
+    ``conditions_commerciales.branche_echeancier`` (qui n'importe jamais ce
+    module — SPL164). None pour un devis hors base, de niveau 11 (aucune
+    lecture de plus : rendu d'hier), C&I ou d'option inconnue."""
+    from apps.ventes.domain.regles_calcul import REGLES_ECARTS_0411, regles_au_moins
+    if (getattr(devis, 'pk', None) is None or not regles_au_moins(devis, REGLES_ECARTS_0411)
+            or est_mode_ci(devis)):
+        return None
+    return {SANS_BATTERIE: 'sans', AVEC_BATTERIE: 'avec'}.get(option_effective(devis))
+
+
 def option_lines(devis, option=None):
     """Lignes RÉELLES du devis pour l'option retenue (nomenclature du chantier).
 
@@ -450,6 +464,26 @@ def option_lines(devis, option=None):
     if not option or not has_two_options(devis):
         return lignes
     return filter_lines_for_option(lignes, option, devis=devis)
+
+
+def lignes_vendues(devis):
+    """ADOC191 (C-ADOC-VER4-002) — ``[(ligne, quantité vendue)]`` : les
+    lignes de l'option retenue (``option_lines``) × nombre de villas
+    (``multivilla.nombre_proprietes``), lignes sans quantité exclues. LA
+    lecture du matériel vendu d'un devis multi-villas (82-21, fiche de
+    remise, contrat de maintenance)."""
+    from decimal import Decimal, InvalidOperation
+    from apps.ventes.multivilla import nombre_proprietes
+    n = nombre_proprietes(devis)
+    vendues = []
+    for ligne in option_lines(devis):
+        try:
+            qte = Decimal(str(ligne.quantite or 0)) * n
+        except (InvalidOperation, ValueError):
+            continue
+        if qte:
+            vendues.append((ligne, qte))
+    return vendues
 
 
 def _totaux_canoniques(devis, lignes) -> dict:

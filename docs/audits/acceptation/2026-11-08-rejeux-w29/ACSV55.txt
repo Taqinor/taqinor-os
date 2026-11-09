@@ -1,0 +1,15 @@
+# Preuve en direct ACSV55 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Verdict : PASS — Sonde C-ACSV-065 : repro False.
+
+== C-ACSV-065 (sha f57951e87)
+attendu : repro si R : date_pose du neuf ramenée à la réception (fin -400 j) ; ou P : fin du neuf < reste de l'ancien après PATCH date_pose
+observé : {'reception': '2025-10-04', 'R_remplacement': (201, None), 'R': {'neuf_avant': ('2026-11-08', '2031-11-08'), 'neuf_apres': ('2026-11-08', '2031-11-08'), 'transitions': [(Installation.Statut.INSTALLE, 'ok'), (Installation.Statut.RECEPTIONNE, 'ok')], 'statut_final': 'receptionne', 'date_reception': '2026-11-08', 'parc': [('SN-065-NEW', datetime.date(2026, 11, 8)), ('SN-065-OLD', datetime.date(2026, 11, 8))]}, 'P_remplacement': (201, None), 'P': {'reste_ancien': '2035-10-04', 'fin_neuf_apres_remplacement': '2035-10-04', 'patch': 200, 'fin_neuf_apres_patch': '2035-10-04', 'fin_effective_apres_patch': '2035-10-04'}}
+{"reception": "2025-10-04", "R_remplacement": [201, null], "R": {"neuf_avant": ["2026-11-08", "2031-11-08"], "neuf_apres": ["2026-11-08", "2031-11-08"], "transitions": [["installe", "ok"], ["receptionne", "ok"]], "statut_final": "receptionne", "date_reception": "2026-11-08", "parc": [["SN-065-NEW", "2026-11-08"], ["SN-065-OLD", "2026-11-08"]]}, "P_remplacement": [201, null], "P": {"reste_ancien": "2035-10-04", "fin_neuf_apres_remplacement": "2035-10-04", "patch": 200, "fin_neuf_apres_patch": "2035-10-04", "fin_effective_apres_patch": "2035-10-04"}, "repro_R": false, "repro_P": false, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0

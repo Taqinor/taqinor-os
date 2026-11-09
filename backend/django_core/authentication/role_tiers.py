@@ -95,6 +95,13 @@ def sync_role_legacy(user_model):
 CODE_RANG_CIBLE = 'rang_cible'
 CODE_ROLE_PLUS_LARGE = 'role_plus_large'
 
+MESSAGES_REFUS_GESTION = {
+    CODE_RANG_CIBLE: "Vous ne pouvez pas gérer ce compte : son rang est "
+                     "supérieur au vôtre ou il est protégé.",
+    CODE_ROLE_PLUS_LARGE: "Vous ne pouvez pas gérer ce compte : son rôle "
+                          "porte des droits que vous n'avez pas.",
+}
+
 _RANG = {ROLE_NORMAL: 1, ROLE_RESPONSABLE: 2, ROLE_ADMIN: 3}
 
 
@@ -107,7 +114,7 @@ def rang(user):
 
 def peut_gerer(acteur, cible):
     """``(True, None)`` si ``acteur`` peut gérer le compte ``cible``, sinon
-    ``(False, CODE_RANG_CIBLE)``.
+    ``(False, CODE_RANG_CIBLE)`` ou ``(False, CODE_ROLE_PLUS_LARGE)``.
 
     - un superuser gère tout ; personne d'autre ne gère un superuser ;
     - on se gère soi-même (les gardes propriétaire existantes restent) ;
@@ -128,7 +135,16 @@ def peut_gerer(acteur, cible):
         return False, CODE_RANG_CIBLE
     if rang(cible) > rang(acteur):
         return False, CODE_RANG_CIBLE
+    # ASEC66 — quel que soit le rang, un non-administrateur ne gère pas un compte
+    # portant un code qu'il n'a pas (sans rôle fin = jeu vide).
+    if not getattr(acteur, 'is_admin_role', False) and codes_plus_larges(
+            _perms(acteur), _perms(cible)):
+        return False, CODE_ROLE_PLUS_LARGE
     return True, None
+
+
+def _perms(user):
+    return user.role.permissions if getattr(user, 'role_id', None) else []
 
 
 def codes_plus_larges(permissions_acteur, permissions_role):

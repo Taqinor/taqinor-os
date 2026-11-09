@@ -78,12 +78,17 @@ def _signaux_pour_clients(company_id, client_ids, now):
     leads de la société liés au client. Renvoie ``{client_id: dict}``."""
     from django.db.models import Count, Max, Q
 
+    from apps.ventes.selectors import devis_signes_en_vigueur
+
     from .models import Client
 
     base = Client.objects.filter(pk__in=client_ids).order_by()
     devis_nb = Q(devis__company_id=company_id) & ~Q(
         devis__statut=_STATUT_BROUILLON)
-    devis_actif = devis_nb & Q(devis__is_active=True)
+    # APRF44 — même population que ``devis_du_client_portail`` (ADVS37) : la
+    # vente signée en vigueur (V1 acceptée, révision non signée) compte.
+    en_vigueur = devis_signes_en_vigueur(company_id).values('pk')
+    devis_actif = devis_nb & (Q(devis__is_active=True) | Q(devis__pk__in=en_vigueur))
     signaux = {pk: {} for pk in client_ids}
     for r in base.values('pk').annotate(
             d_total=Count('devis', filter=devis_nb, distinct=True),

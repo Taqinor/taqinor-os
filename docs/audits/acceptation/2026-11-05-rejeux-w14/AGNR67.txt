@@ -1,0 +1,72 @@
+# Preuve en direct AGNR67 - pile locale, code 93d4c7463 (dev-plan-6a6fc9-w13), 2026-11-05
+# Lanceur : python scripts/sonde.py (transaction annulee, mail en memoire, HTTP sortant bloque) ou node.
+# Sondes LIVE-* : repro=true signifie ICI que le comportement attendu par la tache est observe ;
+# sondes C-* d'audit : ECART (repro=false) = le defaut constate n'est plus reproduit.
+
+== LIVE-AGNR67 écran (Playwright MCP, http://localhost, front reconstruit depuis le code 93d4c7463, demo_admin)
+parcours : /ventes/devis/nouveau, Résidentiel, lead « Rejeu AGNR47 sans facture Client », Composition libre cochée
+(pour que la carte d'erreur montre la ligne `factures`, la garde des lignes passant avant elle dans CarteCreation.jsx).
+1. Facture Hiver 500, Facture Été 1200, « Estimer 12 mois » => 12 cases « estimé » (500×4 hiver, 1200×6 été, 500×2).
+2. Mars tapé 900 (badge « estimé » retiré) puis « Créer » =>
+   carte d'erreur : « Mars tapé : tapez les 12 mois ou effacez la correction » ; aucune requête /ventes/devis émise
+   (browser_network_requests filtre /ventes/devis : vide).
+3. Mars vidé puis « Créer » => « Mars vide : tapez les 12 mois ou effacez la correction » ; aucune requête /ventes/devis.
+4. Témoin : « Estimer 12 mois » (12 dérivés) puis « Créer » => plus aucune erreur `factures` (« 12 mois ou » absent).
+oracles : aucune réponse >= 500 ; les seuls 401 (auth/me, token/refresh) précèdent la connexion ; aucun dialogue natif.
+
+== C-AGNR-VER4-011.mjs (node, copie de frontend/src du code testé) : le constructeur `entreesDeEtat` envoie toujours
+`factures_hiver_ete` seul pour la série mixte (attendu : la tâche BLOQUE l'enregistrement au lieu de changer le corps).
+
+{"mars_tape":[{"mois":"Mars","vide":false}],"mars_vide":[{"mois":"Mars","vide":true}],"douze_tapes":[],"douze_derives":[],"ok":true}
+
+{
+ "monthly": [
+  "500",
+  "500",
+  "900",
+  "500",
+  "1200",
+  "1200",
+  "1200",
+  "1200",
+  "1200",
+  "1200",
+  "500",
+  "500"
+ ],
+ "facturesSaisies": true,
+ "consoApercu": 5979,
+ "consoDeriveeSansMars900": 5779,
+ "corps": {
+  "factures_hiver_ete": {
+   "hiver_mad": 500,
+   "ete_mad": 1200,
+   "ete_differente": true
+  }
+ },
+ "marsEnvoye": false,
+ "cas2": {
+  "facturesSaisies": false,
+  "corps": {}
+ }
+}
+
+# ---- source : C-LIVE-AGNR67.mjs ----
+// LIVE-AGNR67 (05/11/2026) — complément node de la sonde C-AGNR-VER4-011.mjs : la règle exportée `serieMixte`
+// (lue par usePersistanceDevis.validate) sur les deux états de la sonde + les deux témoins.
+// Lancer : node C-LIVE-AGNR67.mjs file:///<copie de frontend/src du code testé, node_modules à côté>/
+const R = process.argv[2]
+const { serieMixte } = await import(R + 'features/ventes/quote/etatDevis.js')
+const marsTape = Array(12).fill('derivee'); marsTape[2] = 'tapee'
+const marsVide = Array(12).fill('derivee'); marsVide[2] = 'exemple'
+const out = {
+  mars_tape: serieMixte(marsTape),
+  mars_vide: serieMixte(marsVide),
+  douze_tapes: serieMixte(Array(12).fill('tapee')),
+  douze_derives: serieMixte(Array(12).fill('derivee')),
+}
+out.ok = JSON.stringify(out.mars_tape) === JSON.stringify([{ mois: 'Mars', vide: false }])
+  && JSON.stringify(out.mars_vide) === JSON.stringify([{ mois: 'Mars', vide: true }])
+  && out.douze_tapes.length === 0 && out.douze_derives.length === 0
+console.log(JSON.stringify(out))
+

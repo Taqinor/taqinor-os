@@ -8,10 +8,14 @@
 //   2. les chaînes FR sont présentes MOT POUR MOT (rendu FR inchangé) ;
 //   3. une traduction EN et une traduction AR distinctives existent ;
 //   4. les CHIFFRES sont identiques dans toutes les langues (jamais traduits) ;
-//   5. le deeplink WhatsApp pré-rempli reste EN FRANÇAIS.
+//   5. le deeplink WhatsApp pré-rempli part dans la langue de la page (WAUD10, D-WAUD-3=a).
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { FICHES } from '../src/lib/fiches';
+import { CATEGORIES_FICHE, EN_TETES_FICHE } from '../src/lib/fichesLocale';
+import { localesForPath } from '../src/i18n/pages';
+import { builtPage } from './builtHtmlHelper';
 
 const read = (rel: string) =>
   readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
@@ -148,7 +152,7 @@ describe('VideoChantier — FR verbatim, EN/AR présents, lieux/chemins invarian
   });
 });
 
-describe('WhatsAppMock — FR verbatim, EN/AR présents, deeplink FR figé', () => {
+describe('WhatsAppMock — FR verbatim, EN/AR présents, deeplink dans la langue de la page', () => {
   it('reprend les bulles et libellés FR mot pour mot', () => {
     expect(whatsapp).toContain('répond sur WhatsApp sous 1 h, 7j/7');
     expect(whatsapp).toContain('WhatsApp direct');
@@ -159,17 +163,17 @@ describe('WhatsAppMock — FR verbatim, EN/AR présents, deeplink FR figé', () 
     expect(whatsapp).toContain('📷 Photo of the roof');
     expect(whatsapp).toContain('يردّ عبر واتساب خلال ساعة، 7 أيام على 7');
   });
-  it('garde les chiffres + lieux identiques et le deeplink WhatsApp EN FRANÇAIS', () => {
+  it('garde les chiffres + lieux identiques et le deeplink WhatsApp localisé (WAUD10)', () => {
     // Chiffres et lieu identiques dans toutes les langues (présents au moins en FR).
     expect(whatsapp).toContain('1 800 MAD');
     // WAUD19 — aucune puissance chiffrée ni « anonymisé » : c'est un exemple.
     expect(whatsapp).not.toMatch(/kWc'|\d kWc/);
     expect(whatsapp).not.toContain('anonymis');
     expect(whatsapp).toContain('Casablanca');
-    // Le message pré-rempli du lien reste en français (atteint l'équipe FR).
-    expect(whatsapp).toContain(
-      "whatsappLink(WHATSAPP_LEADS, 'Bonjour, je viens de faire le diagnostic sur taqinor.ma.')",
-    );
+    // WAUD10 — le message pré-rempli suit la locale ; FR identique à l'octet.
+    expect(whatsapp).toContain("fr: 'Bonjour, je viens de faire le diagnostic sur taqinor.ma.'");
+    expect(whatsapp).toContain("en: 'Hello, I have just done the diagnosis on taqinor.ma.'");
+    expect(whatsapp).toContain('whatsappLink(WHATSAPP_LEADS, WA_TEXTE[locale])');
   });
 });
 
@@ -210,5 +214,37 @@ describe('WAUD87 — assurance habitation sur /garanties EN et AR', () => {
     const src = readFileSync(fileURLToPath(new URL(`../src/pages/${p}.astro`, import.meta.url)), 'utf-8');
     expect(src).toContain('items={insuranceFaq}');
     expect(src).toContain('schema={false}');
+  });
+  it('pages ville et tunnel AR : liens vers la page de LEUR locale quand elle existe (loi 82-21, méthodologie, réalisations)', () => {
+    const lire = (p: string) => readFileSync(fileURLToPath(new URL(`../src/${p}`, import.meta.url)), 'utf-8');
+    const city = lire('lib/cityContent.ts');
+    expect(city).toContain(`en: '<a href="/en/loi-82-21/"`);
+    expect(city).toContain(`ar: '<a href="/ar/loi-82-21/"`);
+    const arTunnel = lire('pages/ar/devis/mon-toit.astro');
+    expect(arTunnel).not.toMatch(/href="\/(methodologie-estimation|realisations)\/"/);
+  });
+
+  it('fiches /produits : chaque fiche et chaque catégorie a son en-tête EN et AR (nom + résumé)', () => {
+    expect(FICHES.length).toBe(16);
+    for (const f of FICHES) {
+      for (const loc of ['en', 'ar'] as const) {
+        const t = EN_TETES_FICHE[f.slug]?.[loc];
+        expect(t?.nom, `${f.slug} ${loc}`).toBeTruthy();
+        expect(t?.resume, `${f.slug} ${loc}`).toBeTruthy();
+        expect(t?.resume).not.toBe(f.resume);
+        expect(CATEGORIES_FICHE[f.categorie][loc], f.categorie).toBeTruthy();
+      }
+    }
+    expect(localesForPath('/produits')).toEqual(['fr', 'en', 'ar']);
+    expect(localesForPath('/produits/cablage')).toEqual(['fr', 'en', 'ar']);
+  });
+
+  it.each(['en', 'ar'])('fiches /%s/produits construites : en-tête localisé + repli FR explicite', (loc) => {
+    expect(builtPage(`/${loc}/produits`)).toContain(`href="/${loc}/produits/cablage/"`);
+    for (const f of FICHES) {
+      const html = builtPage(`/${loc}/produits/${f.slug}`);
+      expect(html).toContain(EN_TETES_FICHE[f.slug][loc as 'en' | 'ar'].nom.replace(/&/g, '&amp;'));
+      expect(html).toMatch(new RegExp(`<a href="/produits/${f.slug}/" hreflang="fr"`));
+    }
   });
 });

@@ -434,7 +434,7 @@ function CalendrierTab() {
               String(x.id) === String(iv.id) ? { ...x, ...avant } : x)),
           }))
         })
-        installationsApi.updateIntervention(iv.id, avant)
+        installationsApi.updateIntervention(iv.id, { ...avant, annulation_deplacement: true }) // ACSV14
           .catch(() => toast.error('Annulation impossible — réessayez.'))
       },
     })

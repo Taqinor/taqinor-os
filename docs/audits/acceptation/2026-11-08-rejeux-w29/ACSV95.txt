@@ -1,0 +1,21 @@
+# Preuve en direct ACSV95 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Écran : front du worktree servi par vite (127.0.0.1:3000) -> conteneur privé accept-w29-web (runserver, base
+# erp_accept_w29, stockage objet PRIVÉ accept-w29-minio, SMTP 127.0.0.1:1 puis mail en mémoire pour AMON47), piloté par
+# Playwright MCP. Données : seed_demo « TAQINOR Démo » + fixtures FIX-W29* ou états des sondes rejouées SANS rollback
+# (comptes de test, mot de passe de test).
+# Verdict : PASS — Écran : « Prononcer la réception définitive » puis « PV de réception définitive » : PDF titré « … DÉFINITIVE » ; bouton absent avant.
+
+## ACSV95 — PASS
+Compte demo_admin. CHT-E29-95 (industriel, provisoire 04/10/2025) › Jalons & gates : AVANT, le bloc ne montre que « Prononcer la
+réception définitive » (pas de bouton PV définitive) ; clic => POST …/177/reception-definitive/ 200 ; bloc relu « Réception
+définitive prononcée le 08/11/2026. » + bouton « PV de réception définitive » ; clic => GET documents/chantiers/177/pv-reception/
+?definitive=1 200 application/pdf, aperçu « PV de réception définitive CHT-E29-95 ». Même bouton sur CHT-E29-35 =>
+GET …/179/pv-reception/?definitive=1 200 ; texte du PDF (PyMuPDF, même route, e29_dir) : titre « PROCÈS-VERBAL DE RÉCEPTION
+DÉFINITIVE », « Réception définitive prononcée le 08/11/2026. » (le PV ordinaire du même chantier : « PROCÈS-VERBAL DE RÉCEPTION »).
+Console 0 erreur.

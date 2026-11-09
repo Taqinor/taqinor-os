@@ -11,7 +11,8 @@ panneaux accepté (chantier, réservation 10, stock 30) :
     directe qui reçoit puis sort 10).
 
 LA TABLE DES CHEMINS. Les appelants de ``decompter_stock_lignes`` /
-``record_stock_movement`` de type SORTIE dans ``apps/ventes`` et
+``record_stock_movement`` de type SORTIE dans ``apps/ventes``,
+``apps/facturation`` (ODX18 : vues de facturation déménagées) et
 ``apps/stock`` sont RELUS dans le source (AST) et comparés à la table
 ci-dessous : un chemin de sortie ajouté sans y être classé (couvert ici, ou
 hors vente avec sa raison) fait échouer la garde EN LE NOMMANT.
@@ -55,6 +56,10 @@ CHEMINS_COUVERTS = {
         'livraison_directe_chantier',
     'apps/ventes/views/bon_commande.py::BonCommandeViewSet.livrer_partiel':
         'bc_livraison_partielle',
+    # AARG64 — la restauration d'une facture annulée RESSORT le stock rentré
+    # à l'annulation (et resolde la réservation) : joué par un cas composé.
+    'apps/ventes/domain/annulation_facture.py::_rejouer_effets':
+        'facture_restauree',
 }
 
 #: La primitive elle-même (ses appelants sont classés un par un).
@@ -89,7 +94,7 @@ HORS_VENTE = {
         'sortie manuelle d\'un lot d\'entrepôt',
     'apps/stock/views/mouvement.py::MouvementStockViewSet.perform_create':
         'mouvement manuel saisi au stock',
-    'apps/ventes/views/avoir.py::AvoirViewSet._contre_passer_restockage':
+    'apps/facturation/views/avoir.py::AvoirViewSet._contre_passer_restockage':
         "annulation d'un avoir de retour (AFAC28) : SORTIE miroir des "
         'ENTRÉES du retour, aucune vente de chantier',
 }
@@ -108,10 +113,11 @@ _TYPES_NON_SORTIE = ('ENTREE', 'AJUSTEMENT', 'REBUT', 'TRANSFERT',
 def appelants_sortie():
     """``{'apps/<app>/<fichier>.py::<Classe.fonction>'}`` des appelants de
     ``decompter_stock_lignes`` / ``record_stock_movement`` de type SORTIE
-    (ou de type non littéral) dans ``apps/ventes`` et ``apps/stock``."""
+    (ou de type non littéral) dans ``apps/ventes``, ``apps/facturation``
+    (ODX18 — vues de facturation déménagées de ventes) et ``apps/stock``."""
     racine = Path(settings.BASE_DIR)
     sites = set()
-    for app in ('ventes', 'stock'):
+    for app in ('ventes', 'facturation', 'stock'):
         for chemin in sorted((racine / 'apps' / app).rglob('*.py')):
             parties = set(chemin.relative_to(racine).parts)
             if (parties & {'migrations', 'tests', 'management'}
@@ -174,7 +180,8 @@ class TableDesCheminsTests(SimpleTestCase):
 
     def test_chaque_chemin_couvert_est_joue(self):
         self.assertLessEqual(set(CHEMINS_COUVERTS.values()),
-                             set(GardeSortieUnique.CAS))
+                             set(GardeSortieUnique.CAS)
+                             | set(GardeSortieUnique.CAS_COMPOSES))
 
 
 class GardeSortieUnique(TestCase):
@@ -182,6 +189,8 @@ class GardeSortieUnique(TestCase):
     CAS = ('facture_directe', 'bc_livre_toggle_off', 'bc_livre_toggle_on',
            'livraison_directe_chantier', 'consommation_terrain_f11',
            'bc_livraison_partielle')
+    #: Cas composés (retour puis ressortie) : bilan NET, joués à part.
+    CAS_COMPOSES = ('facture_restauree',)
 
     def setUp(self):
         from apps.crm.models import Client
@@ -362,3 +371,141 @@ class GardeSortieUnique(TestCase):
                 self.assertEqual(
                     panneau.quantite_stock,
                     STOCK_INITIAL + entrees - QUANTITE_VENDUE, cas)
+
+    def test_facture_restauree_une_sortie_nette(self):
+        """AARG64 — facture directe, annulée (stock rentré), restaurée par
+        l'annulation de son avoir miroir (stock ressorti), puis « Installé » :
+        Σ SORTIE − Σ ENTRÉE = 10 vendues, stock 20 — jamais une 3e sortie."""
+        from apps.stock.models import MouvementStock
+        from apps.stock.services import (
+            mouvement_type_entree, mouvement_type_sortie,
+        )
+        import importlib
+
+        from apps.ventes.models import Avoir
+        # Même import dynamique délibéré du domaine que ``_facture_directe``.
+        annuler_facture = importlib.import_module(
+            'apps.ventes.domain.annulation_facture').annuler_facture
+        admin = User.objects.create_user(
+            username='admin-astk129', password='x', company=self.company,
+            role_legacy='admin')
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(admin)}')
+        devis, inst, panneau = self._vente()
+        self._facture_directe(devis, inst, panneau)
+        facture = devis.factures.exclude(statut='brouillon').get()
+        annuler_facture(facture, user=admin, directive=None)
+        avoir = Avoir.objects.get(facture=facture)
+        rep = api.post(f'/api/django/ventes/avoirs/{avoir.id}/annuler/', {},
+                       format='json')
+        self.assertEqual(rep.status_code, 200, getattr(rep, 'data', rep))
+        self._installer(inst)
+        mouvements = MouvementStock.objects.filter(produit=panneau)
+        sorties = mouvements.filter(type_mouvement=mouvement_type_sortie(
+        )).aggregate(t=Sum('quantite'))['t'] or 0
+        entrees = mouvements.filter(type_mouvement=mouvement_type_entree(
+        )).aggregate(t=Sum('quantite'))['t'] or 0
+        self.assertEqual((sorties, entrees), (2 * QUANTITE_VENDUE,
+                                              QUANTITE_VENDUE))
+        panneau.refresh_from_db()
+        self.assertEqual(panneau.quantite_stock,
+                         STOCK_INITIAL - QUANTITE_VENDUE)
+
+    # ── ASTK258 (C-ASTK-VER4-040) — vente PUIS chantier ───────────────────
+
+    def _f11_api(self, inst, panneau, qte=None):
+        """F11 par la route terrain ; ``qte`` ≠ prévu ⇒ ligne justifiée."""
+        from apps.installations import field_capture
+        from apps.installations.models import Intervention
+        itv = Intervention.objects.create(
+            company=self.company, installation=inst)
+        cons = field_capture.ensure_consommation(itv)
+        if qte is not None:
+            cons.lignes.filter(produit=panneau).update(
+                quantite_utilisee=Decimal(qte), justification='partiel')
+        rep = self.api.post(
+            f'/api/django/installations/interventions/{itv.id}/'
+            'valider-consommation/', {}, format='json')
+        self.assertEqual(rep.status_code, 200, getattr(rep, 'data', rep))
+        return cons
+
+    def _acompte_api(self, devis):
+        rep = self.api.post(
+            f'/api/django/ventes/devis/{devis.id}/generer-facture/', {},
+            format='json')
+        self.assertLess(rep.status_code, 400, getattr(rep, 'data', rep))
+        fac = devis.factures.order_by('id').first()
+        if fac is not None and fac.statut == 'brouillon':
+            rep = self.api.post(
+                f'/api/django/ventes/factures/{fac.id}/emettre/', {},
+                format='json')
+            self.assertLess(rep.status_code, 400, getattr(rep, 'data', rep))
+
+    def _chantier(self, inst, action, **data):
+        rep = self.api.post(
+            f'/api/django/installations/chantiers/{inst.id}/{action}/',
+            data, format='json')
+        self.assertEqual(rep.status_code, 200, getattr(rep, 'data', rep))
+
+    def _bilan(self, panneau):
+        from apps.stock.models import MouvementStock
+        from apps.stock.services import mouvement_type_sortie
+        panneau.refresh_from_db()
+        return (MouvementStock.objects.filter(
+            produit=panneau, type_mouvement=mouvement_type_sortie())
+            .aggregate(t=Sum('quantite'))['t'] or 0, panneau.quantite_stock)
+
+    def test_compositions_vente_puis_chantier(self):
+        from apps.installations import field_capture
+        with self.subTest('a — facture émise puis F11 10'):
+            devis, inst, panneau = self._vente()
+            self._facture_directe(devis, inst, panneau)
+            cons = self._f11_api(inst, panneau)
+            self._installer(inst)
+            self.assertEqual(self._bilan(panneau), (10, 20))
+            self.assertEqual(  # persistance : revalider ⇒ 0 sortie
+                field_capture.validate_consommation(cons, self.user), 0)
+            self.assertEqual(self._bilan(panneau), (10, 20))
+        with self.subTest("b — acompte par l'API puis F11 par l'API"):
+            devis, inst, panneau = self._vente()
+            self._acompte_api(devis)
+            self._f11_api(inst, panneau)
+            self._installer(inst)
+            self.assertEqual(self._bilan(panneau), (10, 20))
+        with self.subTest('c — sans facture, F11 6 puis F11 4'):
+            devis, inst, panneau = self._vente()
+            self._f11_api(inst, panneau, 6)
+            self._f11_api(inst, panneau, 4)
+            self._installer(inst)
+            self.assertEqual(self._bilan(panneau), (10, 20))
+        with self.subTest('d — annulé, acompte, réactivé, Installé'):
+            devis, inst, panneau = self._vente()
+            self._chantier(inst, 'annuler', motif='test')
+            self._acompte_api(devis)
+            self._chantier(inst, 'reactiver')
+            self._installer(inst)
+            self.assertEqual(self._bilan(panneau), (10, 20))
+        with self.subTest('F11 12 après facture ⇒ 12'):
+            devis, inst, panneau = self._vente()
+            self._facture_directe(devis, inst, panneau)
+            self._f11_api(inst, panneau, 12)
+            self.assertEqual(self._bilan(panneau), (12, 18))
+
+    def test_acompte_puis_f11_deja_sorti_compte_une_fois(self):
+        """AAPV18 — acompte émis (sortie 10) puis F11 de 10 : besoin,
+        déjà-sorti et retournable lisent 10, jamais 20."""
+        from apps.installations.selectors import quantites_deja_sorties_chantier
+        from apps.installations.services import (
+            quantite_deja_sortie_chantier, quantite_retournable,
+        )
+        devis, inst, panneau = self._vente()
+        self._acompte_api(devis)
+        self._f11_api(inst, panneau)
+        inst.refresh_from_db()
+        self.assertEqual(self._bilan(panneau), (10, 20))
+        self.assertEqual(quantite_deja_sortie_chantier(inst, panneau.id), 10)
+        self.assertEqual(quantite_retournable(inst, panneau.id), Decimal('10'))
+        self.assertEqual(
+            quantites_deja_sorties_chantier(inst, [panneau.id]),
+            {panneau.id: 10})

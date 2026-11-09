@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4910, operations: 7700, components: 3616}
+counts: {paths: 4945, operations: 7743, components: 3642}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -749,6 +749,8 @@ operations:
 - post /api/django/core/export-reversibilite/ -> django_core_export_reversibilite_create
 - get /api/django/core/export-reversibilite/historique/ -> django_core_export_reversibilite_historique_list
 - get /api/django/core/export-reversibilite/telecharger/{token}/ -> django_core_export_reversibilite_telecharger_retrieve
+- get /api/django/core/fiabilite/reglages/ -> django_core_fiabilite_reglages_retrieve
+- patch /api/django/core/fiabilite/reglages/ -> django_core_fiabilite_reglages_partial_update
 - get /api/django/core/formulaire-champs/ -> django_core_formulaire_champs_list
 - post /api/django/core/formulaire-champs/ -> django_core_formulaire_champs_create
 - delete /api/django/core/formulaire-champs/{id}/ -> django_core_formulaire_champs_destroy
@@ -1906,6 +1908,7 @@ operations:
 - post /api/django/installations/interventions/{id}/ajouter-reserve/ -> django_installations_interventions_ajouter_reserve_create
 - post /api/django/installations/interventions/{id}/ajouter-serial/ -> django_installations_interventions_ajouter_serial_create
 - post /api/django/installations/interventions/{id}/annoter-photo/ -> django_installations_interventions_annoter_photo_create
+- post /api/django/installations/interventions/{id}/annuler/ -> django_installations_interventions_annuler_create
 - post /api/django/installations/interventions/{id}/checkin/ -> django_installations_interventions_checkin_create
 - post /api/django/installations/interventions/{id}/choisir-kit/ -> django_installations_interventions_choisir_kit_create
 - post /api/django/installations/interventions/{id}/cocher-materiel/ -> django_installations_interventions_cocher_materiel_create
@@ -2253,6 +2256,8 @@ operations:
 - get /api/django/monitoring/certificats-carbone/ -> django_monitoring_certificats_carbone_list
 - post /api/django/monitoring/certificats-carbone/ -> django_monitoring_certificats_carbone_create
 - get /api/django/monitoring/certificats-carbone/{id}/ -> django_monitoring_certificats_carbone_retrieve
+- post /api/django/monitoring/certificats-carbone/{id}/annuler/ -> django_monitoring_certificats_carbone_annuler_create
+- get /api/django/monitoring/certificats-carbone/{id}/pdf/ -> django_monitoring_certificats_carbone_pdf_retrieve
 - get /api/django/monitoring/cleanings/ -> django_monitoring_cleanings_list
 - post /api/django/monitoring/cleanings/ -> django_monitoring_cleanings_create
 - delete /api/django/monitoring/cleanings/{id}/ -> django_monitoring_cleanings_destroy
@@ -2282,6 +2287,9 @@ operations:
 - get /api/django/monitoring/configs/{id}/rapport-garantie-pdf/ -> django_monitoring_configs_rapport_garantie_pdf_retrieve
 - get /api/django/monitoring/configs/{id}/soiling/ -> django_monitoring_configs_soiling_retrieve
 - post /api/django/monitoring/configs/{id}/sync-now/ -> django_monitoring_configs_sync_now_create
+- get /api/django/monitoring/drapeaux/ -> django_monitoring_drapeaux_list
+- get /api/django/monitoring/drapeaux/{id}/ -> django_monitoring_drapeaux_retrieve
+- post /api/django/monitoring/drapeaux/{id}/classer/ -> django_monitoring_drapeaux_classer_create
 - get /api/django/monitoring/readings/ -> django_monitoring_readings_list
 - post /api/django/monitoring/readings/ -> django_monitoring_readings_create
 - delete /api/django/monitoring/readings/{id}/ -> django_monitoring_readings_destroy
@@ -2970,7 +2978,18 @@ operations:
 - get /api/django/sav/worksheet-modeles/{id}/ -> django_sav_worksheet_modeles_retrieve
 - patch /api/django/sav/worksheet-modeles/{id}/ -> django_sav_worksheet_modeles_partial_update
 - put /api/django/sav/worksheet-modeles/{id}/ -> django_sav_worksheet_modeles_update
+- get /api/django/semantic/glossaire/ -> django_semantic_glossaire_retrieve
+- get /api/django/semantic/metriques/ -> django_semantic_metriques_list
+- post /api/django/semantic/metriques/ -> django_semantic_metriques_create
+- get /api/django/semantic/metriques/export/ -> django_semantic_metriques_export_retrieve
+- post /api/django/semantic/metriques/import/ -> django_semantic_metriques_import_create
+- get /api/django/semantic/metriques/pour-agent/ -> django_semantic_metriques_pour_agent_retrieve
+- get /api/django/semantic/metriques/{cle}/expliquer/ -> django_semantic_metriques_expliquer_retrieve
 - get /api/django/semantic/metriques/{cle}/lignage/ -> django_semantic_metriques_lignage_retrieve
+- get /api/django/semantic/metriques/{cle}/valeur/ -> django_semantic_metriques_valeur_retrieve
+- get /api/django/semantic/metriques/{id}/ -> django_semantic_metriques_retrieve
+- patch /api/django/semantic/metriques/{id}/ -> django_semantic_metriques_partial_update
+- put /api/django/semantic/metriques/{id}/ -> django_semantic_metriques_update
 - get /api/django/semantic/metriques/{id}/versions/ -> django_semantic_metriques_versions_retrieve
 - get /api/django/statuspage/historique-statut/ -> django_statuspage_historique_statut_list
 - get /api/django/statuspage/historique-statut/{id}/prefill-incident/ -> django_statuspage_historique_statut_prefill_incident_retrieve
@@ -3255,6 +3274,7 @@ operations:
 - post /api/django/stock/mouvements/ -> django_stock_mouvements_create
 - get /api/django/stock/mouvements/agregation/ -> django_stock_mouvements_agregation_retrieve
 - post /api/django/stock/mouvements/export-xlsx/ -> django_stock_mouvements_export_xlsx_create
+- get /api/django/stock/mouvements/telecharger-export/{token}/ -> django_stock_mouvements_telecharger_export_retrieve
 - get /api/django/stock/mouvements/{id}/ -> django_stock_mouvements_retrieve
 - get /api/django/stock/nomenclatures-code-barres/ -> django_stock_nomenclatures_code_barres_list
 - post /api/django/stock/nomenclatures-code-barres/ -> django_stock_nomenclatures_code_barres_create
@@ -3592,6 +3612,7 @@ operations:
 - post /api/django/ventes/devis/{id}/avenant/demander-signature/ -> django_ventes_devis_avenant_demander_signature_create
 - get /api/django/ventes/devis/{id}/conception-electrique/ -> django_ventes_devis_conception_electrique_retrieve
 - post /api/django/ventes/devis/{id}/conception-electrique/ -> django_ventes_devis_conception_electrique_create
+- post /api/django/ventes/devis/{id}/confirmer-avoir-revision/ -> django_ventes_devis_confirmer_avoir_revision_create
 - post /api/django/ventes/devis/{id}/contacter-superieur/ -> django_ventes_devis_contacter_superieur_create
 - post /api/django/ventes/devis/{id}/convertir-bc/ -> django_ventes_devis_convertir_bc_create
 - get /api/django/ventes/devis/{id}/declaration-raccordement/ -> django_ventes_devis_declaration_raccordement_retrieve
@@ -3875,6 +3896,7 @@ operations:
 - get /api/public/v1/changelog/ -> public_v1_changelog_retrieve
 - get /api/public/v1/chantiers/ -> public_v1_chantiers_list
 - get /api/public/v1/chantiers/{id}/ -> public_v1_chantiers_retrieve
+- get /api/public/v1/clients/{id}/langue/ -> public_v1_clients_langue_retrieve
 - post /api/public/v1/devis-write/ -> public_v1_devis_write_create
 - get /api/public/v1/devis/ -> public_v1_devis_list
 - get /api/public/v1/devis/{id}/ -> public_v1_devis_retrieve
@@ -4639,6 +4661,8 @@ operations:
 - post /api/v1/core/export-reversibilite/ -> v1_core_export_reversibilite_create
 - get /api/v1/core/export-reversibilite/historique/ -> v1_core_export_reversibilite_historique_list
 - get /api/v1/core/export-reversibilite/telecharger/{token}/ -> v1_core_export_reversibilite_telecharger_retrieve
+- get /api/v1/core/fiabilite/reglages/ -> v1_core_fiabilite_reglages_retrieve
+- patch /api/v1/core/fiabilite/reglages/ -> v1_core_fiabilite_reglages_partial_update
 - get /api/v1/core/formulaire-champs/ -> v1_core_formulaire_champs_list
 - post /api/v1/core/formulaire-champs/ -> v1_core_formulaire_champs_create
 - delete /api/v1/core/formulaire-champs/{id}/ -> v1_core_formulaire_champs_destroy
@@ -5796,6 +5820,7 @@ operations:
 - post /api/v1/installations/interventions/{id}/ajouter-reserve/ -> v1_installations_interventions_ajouter_reserve_create
 - post /api/v1/installations/interventions/{id}/ajouter-serial/ -> v1_installations_interventions_ajouter_serial_create
 - post /api/v1/installations/interventions/{id}/annoter-photo/ -> v1_installations_interventions_annoter_photo_create
+- post /api/v1/installations/interventions/{id}/annuler/ -> v1_installations_interventions_annuler_create
 - post /api/v1/installations/interventions/{id}/checkin/ -> v1_installations_interventions_checkin_create
 - post /api/v1/installations/interventions/{id}/choisir-kit/ -> v1_installations_interventions_choisir_kit_create
 - post /api/v1/installations/interventions/{id}/cocher-materiel/ -> v1_installations_interventions_cocher_materiel_create
@@ -6143,6 +6168,8 @@ operations:
 - get /api/v1/monitoring/certificats-carbone/ -> v1_monitoring_certificats_carbone_list
 - post /api/v1/monitoring/certificats-carbone/ -> v1_monitoring_certificats_carbone_create
 - get /api/v1/monitoring/certificats-carbone/{id}/ -> v1_monitoring_certificats_carbone_retrieve
+- post /api/v1/monitoring/certificats-carbone/{id}/annuler/ -> v1_monitoring_certificats_carbone_annuler_create
+- get /api/v1/monitoring/certificats-carbone/{id}/pdf/ -> v1_monitoring_certificats_carbone_pdf_retrieve
 - get /api/v1/monitoring/cleanings/ -> v1_monitoring_cleanings_list
 - post /api/v1/monitoring/cleanings/ -> v1_monitoring_cleanings_create
 - delete /api/v1/monitoring/cleanings/{id}/ -> v1_monitoring_cleanings_destroy
@@ -6172,6 +6199,9 @@ operations:
 - get /api/v1/monitoring/configs/{id}/rapport-garantie-pdf/ -> v1_monitoring_configs_rapport_garantie_pdf_retrieve
 - get /api/v1/monitoring/configs/{id}/soiling/ -> v1_monitoring_configs_soiling_retrieve
 - post /api/v1/monitoring/configs/{id}/sync-now/ -> v1_monitoring_configs_sync_now_create
+- get /api/v1/monitoring/drapeaux/ -> v1_monitoring_drapeaux_list
+- get /api/v1/monitoring/drapeaux/{id}/ -> v1_monitoring_drapeaux_retrieve
+- post /api/v1/monitoring/drapeaux/{id}/classer/ -> v1_monitoring_drapeaux_classer_create
 - get /api/v1/monitoring/readings/ -> v1_monitoring_readings_list
 - post /api/v1/monitoring/readings/ -> v1_monitoring_readings_create
 - delete /api/v1/monitoring/readings/{id}/ -> v1_monitoring_readings_destroy
@@ -6825,7 +6855,18 @@ operations:
 - get /api/v1/sav/worksheet-modeles/{id}/ -> v1_sav_worksheet_modeles_retrieve
 - patch /api/v1/sav/worksheet-modeles/{id}/ -> v1_sav_worksheet_modeles_partial_update
 - put /api/v1/sav/worksheet-modeles/{id}/ -> v1_sav_worksheet_modeles_update
+- get /api/v1/semantic/glossaire/ -> v1_semantic_glossaire_retrieve
+- get /api/v1/semantic/metriques/ -> v1_semantic_metriques_list
+- post /api/v1/semantic/metriques/ -> v1_semantic_metriques_create
+- get /api/v1/semantic/metriques/export/ -> v1_semantic_metriques_export_retrieve
+- post /api/v1/semantic/metriques/import/ -> v1_semantic_metriques_import_create
+- get /api/v1/semantic/metriques/pour-agent/ -> v1_semantic_metriques_pour_agent_retrieve
+- get /api/v1/semantic/metriques/{cle}/expliquer/ -> v1_semantic_metriques_expliquer_retrieve
 - get /api/v1/semantic/metriques/{cle}/lignage/ -> v1_semantic_metriques_lignage_retrieve
+- get /api/v1/semantic/metriques/{cle}/valeur/ -> v1_semantic_metriques_valeur_retrieve
+- get /api/v1/semantic/metriques/{id}/ -> v1_semantic_metriques_retrieve
+- patch /api/v1/semantic/metriques/{id}/ -> v1_semantic_metriques_partial_update
+- put /api/v1/semantic/metriques/{id}/ -> v1_semantic_metriques_update
 - get /api/v1/semantic/metriques/{id}/versions/ -> v1_semantic_metriques_versions_retrieve
 - get /api/v1/statuspage/historique-statut/ -> v1_statuspage_historique_statut_list
 - get /api/v1/statuspage/historique-statut/{id}/prefill-incident/ -> v1_statuspage_historique_statut_prefill_incident_retrieve
@@ -7110,6 +7151,7 @@ operations:
 - post /api/v1/stock/mouvements/ -> v1_stock_mouvements_create
 - get /api/v1/stock/mouvements/agregation/ -> v1_stock_mouvements_agregation_retrieve
 - post /api/v1/stock/mouvements/export-xlsx/ -> v1_stock_mouvements_export_xlsx_create
+- get /api/v1/stock/mouvements/telecharger-export/{token}/ -> v1_stock_mouvements_telecharger_export_retrieve
 - get /api/v1/stock/mouvements/{id}/ -> v1_stock_mouvements_retrieve
 - get /api/v1/stock/nomenclatures-code-barres/ -> v1_stock_nomenclatures_code_barres_list
 - post /api/v1/stock/nomenclatures-code-barres/ -> v1_stock_nomenclatures_code_barres_create
@@ -7444,6 +7486,7 @@ operations:
 - post /api/v1/ventes/devis/{id}/avenant/demander-signature/ -> v1_ventes_devis_avenant_demander_signature_create
 - get /api/v1/ventes/devis/{id}/conception-electrique/ -> v1_ventes_devis_conception_electrique_retrieve
 - post /api/v1/ventes/devis/{id}/conception-electrique/ -> v1_ventes_devis_conception_electrique_create
+- post /api/v1/ventes/devis/{id}/confirmer-avoir-revision/ -> v1_ventes_devis_confirmer_avoir_revision_create
 - post /api/v1/ventes/devis/{id}/contacter-superieur/ -> v1_ventes_devis_contacter_superieur_create
 - post /api/v1/ventes/devis/{id}/convertir-bc/ -> v1_ventes_devis_convertir_bc_create
 - get /api/v1/ventes/devis/{id}/declaration-raccordement/ -> v1_ventes_devis_declaration_raccordement_retrieve
@@ -7954,6 +7997,7 @@ query_params:
   get /api/django/custom-fields/objects/: ordering page page_size search
   get /api/django/custom-fields/permissions-role/: field_def ordering page page_size search
   get /api/django/documents/chantiers/{id}/attestation/: regenerer type
+  get /api/django/documents/chantiers/{id}/pv-reception/: definitive
   get /api/django/entites/entites/: ordering page page_size search tree
   get /api/django/entites/entites/mes-entites/: ordering search
   get /api/django/entites/entites/{id}/historique/: ordering search
@@ -8172,6 +8216,7 @@ query_params:
   get /api/django/monitoring/configs/{id}/pertes/: window_days
   get /api/django/monitoring/configs/{id}/rapport-garantie-pdf/: annee
   get /api/django/monitoring/configs/{id}/soiling/: window_days
+  get /api/django/monitoring/drapeaux/: installation is_open ordering page page_size
   get /api/django/monitoring/readings/: installation ordering page page_size search
   get /api/django/monitoring/settings/: ordering search
   get /api/django/monitoring/sla-disponibilite/: installation ordering page page_size search
@@ -8311,6 +8356,9 @@ query_params:
   get /api/django/sav/tickets/{id}/similaires/: limit
   get /api/django/sav/warranty-claims/: equipement ordering page page_size search statut ticket
   get /api/django/sav/worksheet-modeles/: ordering page page_size search
+  get /api/django/semantic/metriques/: ordering page page_size search
+  get /api/django/semantic/metriques/{cle}/expliquer/: cellule filters limite
+  get /api/django/semantic/metriques/{cle}/valeur/: filters group_by period
   get /api/django/statuspage/historique-statut/: ordering search
   get /api/django/statuspage/public/incidents/: ordering page page_size search
   get /api/django/stock/accords-rfa-fournisseur/: fournisseur ordering page page_size search statut
@@ -8748,6 +8796,7 @@ query_params:
   get /api/v1/custom-fields/objects/: ordering page page_size search
   get /api/v1/custom-fields/permissions-role/: field_def ordering page page_size search
   get /api/v1/documents/chantiers/{id}/attestation/: regenerer type
+  get /api/v1/documents/chantiers/{id}/pv-reception/: definitive
   get /api/v1/entites/entites/: ordering page page_size search tree
   get /api/v1/entites/entites/mes-entites/: ordering search
   get /api/v1/entites/entites/{id}/historique/: ordering search
@@ -8966,6 +9015,7 @@ query_params:
   get /api/v1/monitoring/configs/{id}/pertes/: window_days
   get /api/v1/monitoring/configs/{id}/rapport-garantie-pdf/: annee
   get /api/v1/monitoring/configs/{id}/soiling/: window_days
+  get /api/v1/monitoring/drapeaux/: installation is_open ordering page page_size
   get /api/v1/monitoring/readings/: installation ordering page page_size search
   get /api/v1/monitoring/settings/: ordering search
   get /api/v1/monitoring/sla-disponibilite/: installation ordering page page_size search
@@ -9103,6 +9153,9 @@ query_params:
   get /api/v1/sav/tickets/{id}/similaires/: limit
   get /api/v1/sav/warranty-claims/: equipement ordering page page_size search statut ticket
   get /api/v1/sav/worksheet-modeles/: ordering page page_size search
+  get /api/v1/semantic/metriques/: ordering page page_size search
+  get /api/v1/semantic/metriques/{cle}/expliquer/: cellule filters limite
+  get /api/v1/semantic/metriques/{cle}/valeur/: filters group_by period
   get /api/v1/statuspage/historique-statut/: ordering search
   get /api/v1/statuspage/public/incidents/: ordering page page_size search
   get /api/v1/stock/accords-rfa-fournisseur/: fournisseur ordering page page_size search statut
@@ -9521,6 +9574,7 @@ components:
 - AnnotationRequest
 - AnnoterPhotoRequeteRequest
 - AnnulerChantierRequeteRequest
+- AnnulerInterventionRequeteRequest
 - AnnulerOrdreAssemblageRequeteRequest
 - AnomalyEvent
 - AnomalyEventKindEnum
@@ -9877,6 +9931,7 @@ components:
 - CauseDefaillance
 - CauseDefaillanceRequest
 - CertificatCarbone
+- CertificatCarboneStatutEnum
 - CertificatDestruction
 - ChampSignature
 - ChampSignatureRequest
@@ -9916,6 +9971,7 @@ components:
 - Client
 - ClientCreditWarning
 - ClientCreditWarningRecouvrement
+- ClientLanguePublic
 - ClientRequest
 - ClientScoreComportement
 - CocherChecklistRequeteRequest
@@ -10228,6 +10284,7 @@ components:
 - DevisConceptionElectriqueResponse
 - DevisConcurrentsEnum
 - DevisConfigSnapshot
+- DevisConfirmerAvoirRevisionReponse
 - DevisContacterSuperieurRequestRequest
 - DevisContacterSuperieurResponse
 - DevisDeriveResponse
@@ -10703,6 +10760,8 @@ components:
 - GenrePhotoSiteEnum
 - GeoGeoPointsReponse
 - GeofenceAlert
+- GlossaireEntree
+- GlossaireReponse
 - GpsConsentRecord
 - GpsConsentRecordRequest
 - GpsConsentementEnum
@@ -10731,6 +10790,7 @@ components:
 - ImportMappingEnregistre
 - ImportMappingLigne
 - ImportMappingRequeteRequest
+- ImportMetriquesRequest
 - ImporterFeriesRapport
 - ImporterFeriesRequestRequest
 - ImporterLignesCsvRequeteRequest
@@ -10968,9 +11028,17 @@ components:
 - MethodeEnum
 - MethodeReservationStockEnum
 - MetierEnum
+- MetricDefinition
+- MetricDefinitionRequest
 - MetriqueCommercialeEnum
+- MetriqueExpliquerReponse
 - MetriqueLignageReponse
+- MetriquePourAgent
+- MetriqueValeurReponse
 - MetriqueVersionsReponse
+- MetriquesExportReponse
+- MetriquesImportReponse
+- MetriquesPourAgentReponse
 - MiseEnServiceRequeteRequest
 - MobileHomeRouteReponse
 - MobileHomeRouteRequeteRequest
@@ -11322,6 +11390,7 @@ components:
 - PaginatedMessageAccueilList
 - PaginatedMessageTemplateList
 - PaginatedMetaConnectionList
+- PaginatedMetricDefinitionList
 - PaginatedModeleBonCommandeFournisseurList
 - PaginatedModeleDocumentList
 - PaginatedMonitoringConfigList
@@ -11460,6 +11529,7 @@ components:
 - PaginatedTypeChampSignatureList
 - PaginatedTypeInterventionList
 - PaginatedUiActionBoutonList
+- PaginatedUnderperformanceFlagList
 - PaginatedUniteLogistiqueList
 - PaginatedUniteMesureList
 - PaginatedUserList
@@ -11706,6 +11776,7 @@ components:
 - PatchedMessageTemplateRequest
 - PatchedMesuresRequest
 - PatchedMetaConnectionRequest
+- PatchedMetricDefinitionRequest
 - PatchedModeleBonCommandeFournisseurRequest
 - PatchedModeleDocumentRequest
 - PatchedMonitoringConfigRequest
@@ -11780,6 +11851,7 @@ components:
 - PatchedRegleRoutageEcritureRequest
 - PatchedRegularisation8221Request
 - PatchedRegulatoryDossierRequest
+- PatchedReliabilitySettingsRequest
 - PatchedRemedeDefaillanceRequest
 - PatchedRemiseEncaissementRequest
 - PatchedRendezVousTransporteurRequest
@@ -12159,6 +12231,7 @@ components:
 - Realisation
 - RealisationRequest
 - ReceptionCrossDockCorpsRequest
+- ReceptionDefinitiveRequeteRequest
 - ReceptionFournisseur
 - ReceptionFournisseurRequest
 - ReceptionFournisseurStatutEnum
@@ -12253,6 +12326,7 @@ components:
 - ReleveImportCommitResponse
 - ReleveImportDryRunRequestRequest
 - ReleveImportDryRunResponse
+- ReliabilitySettings
 - RemedeDefaillance
 - RemedeDefaillanceRequest
 - RemiseEncaissement
@@ -12366,6 +12440,7 @@ components:
 - SavAnnulerRequeteRequest
 - SavChecklistInitRequeteRequest
 - SavCloturerDowntimeRequeteRequest
+- SavCloturerRequeteRequest
 - SavCreerDevisReponse
 - SavCreerDevisRequeteRequest
 - SavCreerLeadReponse
@@ -12439,6 +12514,7 @@ components:
 - SavSlaSettingsRequest
 - SavSuivreReponse
 - SavWorksheetInitRequeteRequest
+- SavWorksheetRefus
 - SavedQuery
 - SavedQueryAdhocRequestRequest
 - SavedQueryRequest
@@ -12770,9 +12846,11 @@ components:
 - UiBoutonDeclencherRequestRequest
 - UiOngletCustom
 - UiOngletCustomRequest
+- UnderperformanceFlag
 - UniteAjouterLigneCorpsRequest
 - UniteControlerScanCorpsRequest
 - UniteDeplacerCorpsRequest
+- UniteEnum
 - UniteImportAsnCorpsRequest
 - UniteLogistique
 - UniteLogistiqueLigne
@@ -12904,6 +12982,7 @@ components:
 - WorkingHoursConfigRequest
 - WorksheetMaintenanceModele
 - WorksheetMaintenanceModeleRequest
+- _ClasserDrapeauCorpsRequest
 - _CoinsCalageRequest
 - _CompanyProfileSchema
 - _DecisionGabaritRequest

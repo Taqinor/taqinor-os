@@ -49,6 +49,33 @@ class ParcActifTests(TestCase):
                 energy_kwh=Decimal('5'))
         return inst
 
+    def test_systeme_hors_parc_409(self):
+        """AMON11 — abonnement refusé (409) sur un chantier annulé « signé »,
+        installé non réceptionné ou réceptionné retiré ; admis (201) sur un
+        réceptionné actif."""
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+
+        from apps.monitoring.models import AbonnementMonitoring
+        api = APIClient()
+        api.force_authenticate(get_user_model().objects.create_user(
+            username='amon11_resp', password='x', role_legacy='responsable',
+            company=self.company))
+        cas = [('AMON11-ANNULE', {'statut': 'signe', 'annule': True}, 409),
+               ('AMON11-INSTALLE', {'statut': 'installe'}, 409),
+               ('AMON11-RETIRE', {'statut': 'receptionne', 'parc_actif': False}, 409),
+               ('AMON11-ACTIF', {'statut': 'receptionne'}, 201)]
+        for ref, champs, attendu in cas:
+            with self.subTest(ref=ref):
+                inst = self._systeme(ref, parc_actif=True)
+                Installation.objects.filter(pk=inst.pk).update(**champs)
+                r = api.post('/api/django/monitoring/abonnements/', {
+                    'installation_id': inst.pk, 'periodicite': 'mensuel',
+                    'montant': '150.00'}, format='json')
+                self.assertEqual(r.status_code, attendu, r.data)
+        self.assertEqual(AbonnementMonitoring.objects.filter(
+            company=self.company).count(), 1)
+
     def test_site_retire_non_evalue(self):
         retire = self._systeme('ASAV69-RETIRE', parc_actif=False)
         actif = self._systeme('ASAV69-ACTIF', parc_actif=True)
@@ -72,3 +99,70 @@ class ParcActifTests(TestCase):
                 ratio_pct=Decimal('10'))
         ov = fleet_overview(self.company, today=self.today)
         self.assertEqual(ov['open_alerts'], 1)
+
+    def test_balayage_ferme_le_drapeau_du_site_retire(self):
+        """AMON25 — le balayage nocturne ferme l'épisode ouvert d'un site
+        retiré du parc (sans le synchroniser) : il sort du portail client."""
+        from apps.monitoring.selectors import (
+            underperformance_flags_client_portail,
+        )
+        site = self._systeme('AMON25-S', parc_actif=True)
+        drapeau = UnderperformanceFlag.objects.create(
+            company=self.company, installation=site, is_open=True,
+            ratio_pct=Decimal('15'))
+        Installation.objects.filter(pk=site.pk).update(parc_actif=False)
+        with mock.patch('apps.monitoring.services.sync_system',
+                        return_value=(0, 'noop')) as synchro:
+            balayage_quotidien()
+            synchro.assert_not_called()
+        drapeau.refresh_from_db()
+        self.assertFalse(drapeau.is_open)
+        self.assertEqual(drapeau.motif_cloture, 'donnees_indisponibles')
+        self.assertIn('retiré du parc', drapeau.note_cloture)
+        self.assertFalse(underperformance_flags_client_portail(
+            self.company, site.client_id).exists())
+        # Second balayage : no-op (aucun drapeau neuf).
+        balayage_quotidien()
+        self.assertEqual(UnderperformanceFlag.objects.filter(
+            installation=site).count(), 1)
+
+    def test_site_retire_resilie_l_abonnement(self):
+        """AMON81 — le balayage résilie l'abonnement actif d'un système sorti
+        du parc (motif « Système retiré du parc ») et coupe sa config ; un
+        seul événement ; second balayage sans effet ; site actif intact."""
+        from apps.monitoring.models import AbonnementMonitoring
+        from core.events import abonnement_monitoring_resilie
+
+        retire = self._systeme('AMON81-R', parc_actif=True)
+        actif = self._systeme('AMON81-A', parc_actif=True)
+        MonitoringConfig.objects.filter(
+            installation__in=[retire, actif]).update(enabled=True)
+        abonnements = {
+            inst.pk: AbonnementMonitoring.objects.create(
+                company=self.company, client_id=inst.client_id,
+                installation_id=inst.pk, montant=150)
+            for inst in (retire, actif)}
+        Installation.objects.filter(pk=retire.pk).update(parc_actif=False)
+        emis = []
+
+        def _compter(sender, **kwargs):
+            emis.append(kwargs['abonnement'].pk)
+        abonnement_monitoring_resilie.connect(_compter)
+        try:
+            with mock.patch('apps.monitoring.services.sync_system',
+                            return_value=(0, 'noop')):
+                balayage_quotidien()
+                balayage_quotidien()
+        finally:
+            abonnement_monitoring_resilie.disconnect(_compter)
+        ab = abonnements[retire.pk]
+        ab.refresh_from_db()
+        self.assertEqual(ab.statut, 'resilie')
+        self.assertEqual(ab.motif_resiliation, 'Système retiré du parc')
+        self.assertEqual(emis, [ab.pk])
+        self.assertFalse(MonitoringConfig.objects.get(
+            installation=retire).enabled)
+        abonnements[actif.pk].refresh_from_db()
+        self.assertEqual(abonnements[actif.pk].statut, 'actif')
+        self.assertTrue(MonitoringConfig.objects.get(
+            installation=actif).enabled)

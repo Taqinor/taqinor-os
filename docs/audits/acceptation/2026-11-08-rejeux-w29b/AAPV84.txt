@@ -1,0 +1,21 @@
+# Preuve en direct AAPV84 — rejeu w29b, code joué d7ea0c158 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29b-dj (conteneur privé, code backend du commit joué copié
+# dans le conteneur, base privée erp_accept_w29b clonée de test_erp_db_base puis migrée ; transaction annulée, mail en
+# mémoire, Celery coupé, HTTP sortant bloqué). Audit : verdict ÉCART = repro False = attendu sur le code corrigé. Sondes
+# C-LIVE-* (écrites pour ce rejeu, source jointe ; transaction.on_commit exécuté immédiatement) : repro=true signifie ICI
+# que le comportement attendu par la tâche est observé.
+# Code joué : d7ea0c158 (dev-plan-6a6fc9-w29, aucun commit du correcteur CI arrivé pendant ~75 min d'attente).
+# Écran : front du worktree servi par vite (127.0.0.1:3000, proxy /api/django) -> conteneur privé accept-w29b-web
+# (runserver, base erp_accept_w29b, stockage objet PRIVÉ accept-w29b-minio dès le départ, mail en mémoire, SMTP
+# 127.0.0.1:1), piloté par Playwright MCP. Données : fixtures FIX-W29B (société « Acceptation W29B », compte
+# acc_w29b_adm) ou états des sondes rejouées SANS rollback (comptes de test, mot de passe de test).
+# Verdict : PASS — Écran : nouveau BCF hors contrat, « Envoyer », refus de l'avertissement => fenêtre fermée, un seul brouillon, aucun envoi.
+
+## AAPV84 — PASS (écran)
+FIX-W29B : contrat de prix ACTIF CPF-W29B-84 (Onduleur W29B-84 convenu 1 000) chez F-W29B-84. Compte acc_w29b_adm › Bons de
+commande fournisseur › « Nouveau bon de commande » › fournisseur F-W29B-84, ligne Onduleur W29B-84 × 1 à 1 200 › « Envoyer au
+fournisseur » => POST bons-commande-fournisseur/ 201 (BCF-202611-0002 brouillon, prix_warnings hors_contrat 1200 > 1000) puis
+confirmation « Envoyer malgré l'avertissement prix ? » › « Annuler » => la fenêtre du nouveau BCF se ferme ; liste relue : UN seul
+brouillon « BCF-202611-0002 F-W29B-84 Brouillon 1 200,00 MAD » ; aucun POST …/envoyer/. Console : 0 erreur.
+Observation hors clause : le corps de la confirmation affiche « [object Object] » au lieu du message (le serveur sert
+prix_warnings = [{ligne_id, produit, warnings: [{type, message…}]}] ; le texte lu côté écran n'en extrait pas le message).

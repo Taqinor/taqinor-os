@@ -355,7 +355,7 @@ class FkInstallationsBorneesSocieteTests(TestCase):
         api = _api(self.a.user)
         url = f'{BASE}/chantiers/{self.a.chantier.id}/'
         r = api.patch(url, {'client': self.b.client.pk}, format='json')
-        self._refus(r, 'client', 404)
+        self._refus(r, 'client', 409)  # ENF45 a : PATCH = mise à jour → 409
         r = api.post(f'{BASE}/chantiers/', {'lead': 999999}, format='json')
         self._refus(r, 'lead', 404)
         self.a.chantier.refresh_from_db()

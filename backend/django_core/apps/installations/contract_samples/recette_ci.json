@@ -10,6 +10,7 @@
       "date_recette": "2026-10-12",
       "resultat": "reserves",
       "resultat_calcule": true,
+      "verrouillee": false,
       "irradiance": {
         "irradiance_poa_wm2": 780,
         "source": "mesuree",
@@ -105,6 +106,7 @@
       "date_recette": "2026-11-20",
       "resultat": "conforme",
       "resultat_calcule": true,
+      "verrouillee": false,
       "irradiance": {
         "irradiance_poa_wm2": 905,
         "source": "mesuree",

@@ -231,6 +231,33 @@ class CompositionTests(TestCase):
         self.assertEqual(structure['prix_unitaire_ht'], '200.00')
         self.assertEqual(self._lignes(comp, 'panneau')[0]['prix_unitaire_ht'], '800.00')
 
+    def test_palier_onduleur_meme_prix_taille_et_devis(self):
+        # ADEV111 (C-ADEV-VER-007) — un onduleur au prix de PALIER compte à la
+        # taille au HT de ses lignes écrites, jamais au prix catalogue.
+        from apps.ventes.moteur_ci.taille import cout_vente_ht
+        cat = [dict(p) for p in self.cat]
+        for p in cat:
+            if p['role_ci'] == 'onduleur_string_tri':
+                p.update(tva_pct=Decimal('20'), paliers_prix_vente=[
+                    {'seuil_min': 1, 'seuil_max': None, 'prix_vente_ttc': '1200'}])
+        ond = _onduleurs(cat, 100)
+        comp = composer_ci(100, cat, onduleurs=ond, entrees=_entrees(), forfaits={})
+        lignes_ond = self._lignes(comp, 'onduleur_string_tri')
+        self.assertTrue(lignes_ond and all(ligne['palier'] for ligne in lignes_ond))
+        autres = {'lignes': [ligne for ligne in comp['lignes'] if ligne not in lignes_ond]}
+        part = sum(Decimal(str(ligne['quantite'])) * Decimal(ligne['prix_unitaire_ht'])
+                   for ligne in lignes_ond)
+        self.assertNotEqual(part, Decimal(str(ond['prix_vente_total_ht'])))
+        self.assertEqual(cout_vente_ht(comp, ond), cout_vente_ht(autres, None) + part)
+        # Sans palier : la combinaison CIQ111 au prix catalogue, inchangé.
+        comp = composer_ci(100, self.cat, onduleurs=_onduleurs(self.cat, 100),
+                           entrees=_entrees(), forfaits={})
+        autres = {'lignes': [ligne for ligne in comp['lignes']
+                             if ligne['role'] != 'onduleur_string_tri']}
+        ond = _onduleurs(self.cat, 100)
+        self.assertEqual(cout_vente_ht(comp, ond), (cout_vente_ht(autres, None) + Decimal(
+            str(ond['prix_vente_total_ht']))).quantize(Decimal('0.01')))
+
     def test_compteur_compatible_tarife_prefere_au_controleur_sans_prix(self):
         cat = [dict(p) for p in self.cat]
         for p in cat:

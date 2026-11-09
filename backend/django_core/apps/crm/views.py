@@ -192,21 +192,21 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
     ordering = ['-date_creation', 'id']  # départage déterministe (golden GET leads ; même ligne que #956)
 
     def list(self, request, *args, **kwargs):
-        # YOPSB13 — LeadSerializer.get_next_activity() et get_devis() (via
-        # installation_summaries_for_devis) exécutaient chacun 1 requête PAR
-        # LIGNE (N+1 réel : le nombre de requêtes grandissait avec le nombre
-        # de leads — apps/crm/tests_yopsb13_lead_query_budget.py /
-        # tests_perf_n1_leads.py). On précharge ici les deux cartes {lead_id
-        # / devis_id: ...} en UNE SEULE requête chacune, pour TOUTE la page
-        # (après pagination), et on les pose dans le contexte serializer —
-        # le serializer les préfère à son fallback requête-par-ligne.
-        queryset = self.filter_queryset(self.get_queryset())
-        page = self.paginate_queryset(queryset)
-        objects = page if page is not None else list(queryset)
-        donnees = self._serialiser_leads_en_lot(objects)
-        if page is not None:
-            return self.get_paginated_response(donnees)
-        return Response(donnees)
+        # YOPSB13 — cartes {lead_id/devis_id: …} préchargées en UNE requête
+        # pour toute la page (``_serialiser_leads_en_lot``), jamais une par
+        # ligne (tests_yopsb13_lead_query_budget.py / tests_perf_n1_leads.py).
+        # CRXB1 (PACT10) — l'enveloppe est un DICT EXPLICITE, lisible par
+        # ``check_api_shapes`` (contrat ``contract_samples/lead_list.json``) :
+        # mêmes clés, même ordre que ``PageNumberPagination`` (octet pour
+        # octet). Le viewset est toujours paginé (``StandardPagination``,
+        # ``page_size`` jamais nul) : ``page`` n'est donc jamais ``None``.
+        page = self.paginate_queryset(self.filter_queryset(self.get_queryset()))
+        return Response({
+            'count': self.paginator.page.paginator.count,
+            'next': self.paginator.get_next_link(),
+            'previous': self.paginator.get_previous_link(),
+            'results': self._serialiser_leads_en_lot(page),
+        })
 
     def _serialiser_leads_en_lot(self, objects):
         """APRF18 (C-APRF-009) — LA sérialisation EN LOT d'une liste de
@@ -808,7 +808,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
             # d'``owner`` au PATCH) exige ``crm_reassign`` ; la suppression en
             # masse ``delete`` exige ``crm_supprimer``.
             return [IsResponsableOrAdmin()] + droits_de_la_grille(
-                self,
+                self, create=[DroitDeLaGrille('crm_creer')],  # ASEC76
                 bulk=[DroitDeLaGrille('crm_reassign', operation='reassign'),
                       DroitDeLaGrille('crm_supprimer', operation='delete')],
                 update=[DroitDeLaGrille('crm_reassign', champ='owner')],
@@ -875,8 +875,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         from .models import LeadActivity
         from .serializers import pii_masquee_pour
         from .cadence_messages import (
-            _corps_pour_segment,
-            _nom_affiche_conseiller,
+            _corps_pour_segment, _nom_affiche_conseiller, garde_contact_du_lead,
             _nom_affiche_marque,
             _omettre_phrases_incompletes,
             _societe_du_lead,
@@ -887,7 +886,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
                 {'detail': "Vous n'avez pas la permission de voir les "
                            'coordonnées du client.'},
                 status=status.HTTP_403_FORBIDDEN)
-        lead = self.get_object()
+        garde_contact_du_lead(lead := self.get_object())  # ACVI104 (D-ACVI-7) — opposé/perdu/archivé : 409
         accord = corps_objet(request).get('accord_client')  # fuzz #1176 : [null, null] → 400
         if not (accord is True or str(accord).strip().lower() == 'true'):
             return Response(
@@ -937,7 +936,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         message = render_message_template(
             _omettre_phrases_incompletes(corps, manquants), contexte)
         nom = (lead.contact_secondaire_nom or '').strip() or 'l’associé'
-        LeadActivity.objects.create(
+        activity.creer_activite(
             company=lead.company, lead=lead, user=request.user,
             kind=LeadActivity.Kind.NOTE,
             body=f'Résumé transmis à {nom} — accord du client noté '
@@ -1427,7 +1426,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         from .cadence_plan import reporter_prochaine_touche
         from .leads_premier_contact import marquer_premier_contact
         with transaction.atomic():
-            act = LeadActivity.objects.create(
+            act = activity.creer_activite(
                 lead=lead,
                 company=lead.company,
                 kind=kind,

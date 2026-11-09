@@ -120,6 +120,19 @@ class CaviarderServiceTests(XGed24Base):
             created_by=self.admin_a)
         self.assertEqual(new_doc.custom_data.get('caviarde_depuis'), self.doc.pk)
 
+    def test_nom_original_255_caracteres_copie_bornee(self):
+        """ENF48 — api-fuzz : un original au nom de 255 caractères débordait
+        la colonne avec « (caviardé) » (500). Nom et fichier ≤ 255."""
+        self.doc.nom = 'n' * 255
+        self.doc.save()
+        version = self._add_pdf_version(self.doc, 'secret')
+        new_doc = services.caviarder_document(
+            version, [{'page': 0, 'x0': 0, 'y0': 0, 'x1': 100, 'y1': 100}],
+            created_by=self.admin_a)
+        self.assertTrue(new_doc.nom.endswith(' (caviardé)'))
+        self.assertLessEqual(len(new_doc.nom), 255)
+        self.assertLessEqual(len(new_doc.versions.first().filename), 255)
+
     def test_sans_zones_leve(self):
         version = self._add_pdf_version(self.doc, 'texte')
         with self.assertRaises(ValueError):
@@ -134,10 +147,12 @@ class CaviarderServiceTests(XGed24Base):
                     created_by=self.admin_a)
 
     def test_document_lien_refuse(self):
+        # ENF47 (api-fuzz-full 42017839549) : refus d'ÉTAT (409), plus 400.
+        from core.conflit_etat import ConflitEtat
         lien = services.creer_document_lien(
             company=self.co_a, folder=self.folder_a, nom='Lien externe',
             url_externe='https://example.com/doc')
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ConflitEtat):
             services.caviarder_document(
                 mock.Mock(document=lien),
                 [{'page': 0, 'x0': 0, 'y0': 0, 'x1': 50, 'y1': 50}],
@@ -155,6 +170,20 @@ class CaviarderViewTests(XGed24Base):
             }, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertNotEqual(resp.data['id'], self.doc.pk)
+
+    def test_endpoint_document_lien_409(self):
+        """ENF47 (api-fuzz-full 42017839549) : caviarder un document-lien
+        portant une version répondait 400 à un corps conforme — 409."""
+        lien = services.creer_document_lien(
+            company=self.co_a, folder=self.folder_a, nom='Lien versionné',
+            url_externe='https://example.com/doc')
+        version = self._add_pdf_version(lien, 'ABCDEF secret')
+        resp = auth(self.admin_a).post(
+            f'/api/django/ged/documents/{lien.pk}/caviarder/', {
+                'version': version.pk,
+                'zones': [{'page': 0, 'x0': 0, 'y0': 0, 'x1': 50, 'y1': 50}],
+            }, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
 
     def test_endpoint_sans_pymupdf_400(self):
         version = self._add_pdf_version(self.doc, 'ABCDEF secret')

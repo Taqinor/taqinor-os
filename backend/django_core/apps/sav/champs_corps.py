@@ -74,6 +74,31 @@ class QuantitePositive(serializers.DecimalField):
             'pattern': MOTIF_QUANTITE_POSITIVE})
 
 
+def erreurs_nombres_lignes(lignes, erreurs):
+    """ASEC80 — ajoute à ``erreurs`` (``{i: {champ: [msg]}}``) chaque
+    ``quantite`` (décimal fini > 0) et ``prix_unitaire`` (décimal fini ≥ 0)
+    invalide des lignes de ``creer-devis``, AVANT le domaine ventes ; rend
+    ``erreurs``. Un champ absent garde le défaut du domaine (1 / 0)."""
+    from decimal import InvalidOperation
+
+    for i, ligne in enumerate(lignes):
+        if not isinstance(ligne, dict):
+            continue
+        for champ, strict, message in (
+                ('quantite', True, 'Quantité strictement positive attendue.'),
+                ('prix_unitaire', False, 'Prix positif ou nul attendu.')):
+            brut = ligne.get(champ)
+            if brut in (None, ''):
+                continue
+            try:
+                v = Decimal(str(brut))
+            except (InvalidOperation, ValueError, TypeError):
+                v = None
+            if v is None or not v.is_finite() or v < 0 or (strict and v == 0):
+                erreurs.setdefault(i, {})[champ] = [message]
+    return erreurs
+
+
 @contextmanager
 def refus_stock_en_conflit():
     """Le service stock refuse la quantité (fractionnaire sur un stock en

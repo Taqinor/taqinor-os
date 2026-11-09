@@ -243,6 +243,99 @@ class RejeuTests(unittest.TestCase):
         etapes, _ = rp.etapes_enregistrement(_table(ETAPE_B), res)
         self.assertEqual(etapes[0]["verdict"], "FAIL")
 
+    def test_statuts_declares_lus_dans_la_table_jamais_un_5xx(self):
+        """Le 4xx DÉCLARÉ par une règle aval (« HTTP nnn », `refus_409`) est la réponse attendue ; rien d'autre."""
+        e = dict(ETAPE, regle_aval=[{"type": "refus_409", "detail": "jeton absent : HTTP 400 ; consommé : HTTP 409"},
+                                    {"type": "preserve_manuel", "detail": "dormante : HTTP 404 ; panne : HTTP 500"}])
+        self.assertEqual(rp.statuts_declares(e), [400, 404, 409])
+        self.assertEqual(rp.statuts_declares(ETAPE), [409])                     # refus_409 seul
+        self.assertEqual(rp.statuts_declares(ETAPE_B), [])                      # dialecte sans code
+        prog = rp.programme(_table(ETAPE), {"modele": "fac.Facture", "enregistrement": "1"}, 60)
+        self.assertIn('"declares": {"PA9.01": [409]}', prog.replace("\\", ""))
+
+    def test_oracle_2_accepte_seulement_le_4xx_declare(self):
+        C = {"P": {"declares": {"e": [409]}}, "co": None, "routes": []}
+        for st, o1, o2 in ((409, "PASS", "PASS"), (404, "PASS", "FAIL"), (500, "FAIL", "PASS")):
+            with self.subTest(st=st):
+                res = {"id": "e", "oracles": {}, "parcours": {}, "notes": []}
+                rp._c_oracles_api(C, res, ("post", "/api/x/1/facturer/", {}, (st, "application/json", "{}", {})),
+                                  object, set())
+                self.assertEqual((res["oracles"]["1"], res["oracles"]["2"]), (o1, o2))
+                self.assertEqual(any("déclaré par la table" in n for n in res["notes"]), st == 409)
+
+    def test_url_a_parametre_nomme_modele_id(self):
+        """PA4.11 — `paiements/factures/<facture_id>/…` reçoit le pk de la FACTURE, pas celui du modèle de la vue."""
+        route = "api/django/ventes/paiements/^factures/(?P<facture_id>[^/.]+)/paiement-avec-retenue/$"
+        self.assertEqual(rp._c_url(route, {"facture_id": 1087}),
+                         "/api/django/ventes/paiements/factures/1087/paiement-avec-retenue/")
+        self.assertEqual(rp._c_url("api/x/<int:pk>/y/<str:token>/", {"pk": 3, "token": "ab"}), "/api/x/3/y/ab/")
+        self.assertEqual(rp._c_url("api/x/(?P<pk>[^/.]+)/y/", 5), "/api/x/5/y/")  # valeur unique : inchangé
+
+    def test_apercu_declare_enchaine_son_jeton_dans_l_action(self):
+        """PA4.08 — déclencheur = vue dry-run : jouée d'abord, son `token` passé au commit ; aperçu raté = FAIL."""
+        from unittest import mock
+        Apercu = type("releve_dry_run", (), {"post": None, "__module__": "apps.ventes.views.releve_import"})
+        Commit = type("releve_commit", (), {"post": None, "__module__": "apps.ventes.views.releve_import"})
+        C = {"routes": [("api/releve/dry-run/", SimpleNamespace(cls=Apercu, actions=None)),
+                        ("api/releve/commit/", SimpleNamespace(cls=Commit, actions=None))],
+             "P": {"corps": {"PA4.08.apercu": {"file": "x"}}, "declares": {"PA4.08": [400, 409]}},
+             "objets": {}, "co": None}
+        e = {"id": "PA4.08", "declencheur": {"source": "backend/django_core/apps/ventes/views/releve_import.py"
+                                                       "::releve_dry_run"}}
+        appels = []
+
+        def appeler(C_, verbe, chemin, corps=None):
+            appels.append((chemin, corps))
+            return (200, "application/json", "", {"token": "J1"}) if "dry-run" in chemin else (
+                (201, "application/json", "", {}) if (corps or {}).get("token") else (400, "", "", {}))
+        trouve = ("api/releve/commit/", "post", Commit)
+        with mock.patch.object(rp, "_c_appeler", appeler), mock.patch.object(rp, "_c_gabarit", lambda C_, v: v), \
+                mock.patch.object(rp, "_c_parametres", lambda *a: ({}, None)):
+            res = {"id": "PA4.08", "oracles": {}, "parcours": {}, "notes": []}
+            self.assertTrue(rp._c_jouer_api(C, e, res, trouve, set()))
+            self.assertEqual(appels, [("/api/releve/dry-run/", {"file": "x"}),
+                                      ("/api/releve/commit/", {"token": "J1"})])
+            self.assertEqual((res["appel"], res["oracles"]["2"]), ("POST /api/releve/commit/ -> 201", "PASS"))
+            # aperçu sans jeton : le 400 « jeton requis » est DÉCLARÉ, mais jamais accepté quand l'aperçu a raté
+            appels.clear()
+            appeler_ko = (lambda C_, v, ch, c=None: (400, "", "aucun fichier", {}))
+            with mock.patch.object(rp, "_c_appeler", appeler_ko):
+                res = {"id": "PA4.08", "oracles": {}, "parcours": {}, "notes": []}
+                rp._c_jouer_api(C, e, res, trouve, set())
+            self.assertEqual(res["oracles"]["2"], "FAIL")
+            self.assertIn("aperçu déclaré en échec", " ".join(res["notes"]))
+        self.assertIsNone(rp._c_apercu(C, dict(e, declencheur={"source": "frontend/x.jsx::f"}), trouve, res))
+
+    def test_etape_planifiee_executee_sans_artefact_hors_rejeu_jamais_fail(self):
+        """PA4.15 — la tâche nommée par le déclencheur tourne ; sans artefact lié : « hors rejeu », pas FAIL ;
+        une tâche qui LÈVE reste FAIL."""
+        from unittest import mock
+        e = {"id": "PA4.15", "declencheur": {"type": "beat", "source": "backend/django_core/apps/v/scheduled.py::r"},
+             "checkpoint": {"persistance": "x.py::RelanceLog"}, "regle_aval": []}
+        C = {"P": {"oracles": rp.ORACLES, "auto": sorted(cp.TYPES_AUTO), "declares": {}}, "routes": [], "objets": {}}
+
+        def checkpoint(C_, res, point, Mp, auto):
+            res["parcours"].update(auto="FAIL", checkpoint="FAIL")
+        for tache, hors in ((True, True), (None, True), (False, False)):
+            with self.subTest(tache=tache), mock.patch.object(rp, "_c_tache", lambda *a, t=tache: t), \
+                    mock.patch.object(rp, "_c_modele_de", lambda a: object), \
+                    mock.patch.object(rp, "_c_checkpoint", checkpoint):
+                res = rp._c_etape(C, e)
+            self.assertEqual(bool(res.get("hors_rejeu")), hors)
+            self.assertEqual(res["parcours"]["auto"], "NA" if hors else "FAIL")
+            etapes, ignorees = rp.etapes_enregistrement({"etapes": [dict(e, taches=["T1"])]}, [res])
+            self.assertEqual(len(etapes), 0 if hors else 1)
+            if hors:
+                self.assertIn("PA4.15 : hors rejeu", ignorees[0])
+
+    def test_couvre_attribue_chaque_etape_jouee_aux_taches_demandees(self):
+        table = _table(ETAPE_B, dict(ETAPE_B, id="PA9.03", taches=[]))
+        res = self._resultats() + [dict(self._resultats()[0], id="PA9.03")]
+        etapes, ignorees = rp.etapes_enregistrement(table, res, ["AARG44"])
+        self.assertEqual([(x["id"], x["taches"]) for x in etapes],
+                         [("payer.rejeu_aarg44", ["AARG44"]), ("PA9.03.rejeu_aarg44", ["AARG44"])])
+        self.assertTrue(all(cacc._etape_complete(x) for x in etapes))
+
     def test_programme_dans_une_transaction_annulee(self):
         prog = rp.programme(_table(ETAPE_B), {"modele": "fac.Facture", "enregistrement": "1"}, 60)
         self.assertIn("set_rollback(True)", prog)
@@ -386,6 +479,18 @@ class EntreeDomaineTests(unittest.TestCase):
         notes = []
         self.assertIsNone(rp._c_par_appelant(C, {"id": "autre"}, Facture, notes))
         self.assertIn("aucune action de vue n'appelle", notes[0])
+
+    def test_vue_fonction_publique_a_jeton_resolue_par_son_ancre(self):
+        """ADVS41 — `fichier::fonction` (@api_view publique, PA3-04) : sa route, jouée au jeton du lien."""
+        Vue = type("proposal_data", (), {"get": lambda self: None, "__module__": "apps.ventes.public_views"})
+        route = "api/django/ventes/proposal/<str:token>/"
+        C = {"routes": [(route, SimpleNamespace(cls=Vue, actions=None))]}
+        self.assertEqual(rp._c_route_de(C, "apps/ventes/public_views.py::proposal_data"), (route, "get", Vue))
+        self.assertIsNone(rp._c_route_de(C, "apps/ventes/autre.py::proposal_data"))  # autre module
+        # un DÉCLENCHEUR public (signature à empreinte lue) n'est jamais joué à la place de l'entrée
+        self.assertIsNone(rp._c_route_de(C, "apps/ventes/public_views.py::proposal_data", False))
+        self.assertIsNone(rp._c_route_de(C, "apps/ventes/domain/envoi.py::mark_devis_sent"))  # fonction domaine
+        self.assertEqual(rp._c_url(route, "abc"), "/api/django/ventes/proposal/abc/")
 
 
 if __name__ == "__main__":

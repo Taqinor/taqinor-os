@@ -26,7 +26,7 @@ from .lignes_classement import (
     _LigneArgentPdf, _is_battery,
     _is_hybrid_inverter, _is_offgrid_inverter, _is_panel, _is_reseau_inverter,
     _item_classement, _item_marque, _line_to_item, _parse_marque,
-    fiches_figees, panneaux_et_watt_lu,
+    fiches_figees, kwc_des_lignes, panneaux_et_watt_lu,
 )
 # SPL163 — la phase D1 (chiffrage de l'étude) vit dans ``etude_chiffrage``
 # (move only) ; builder n'importe ici que ce qu'il utilise lui-même.
@@ -41,8 +41,8 @@ from .etude_chiffrage import (  # noqa: F401
 # mentions vivent dans ``conditions_commerciales`` (move only) ; builder
 # n'importe ici que ce qu'il utilise lui-même.
 from .conditions_commerciales import (
-    _pct_simple, conditions_et_liens, delais_validite_et_kit, remises_et_puces,
-    repartition_paiement, tranches_echeancier_en_montant,
+    _pct_simple, branche_echeancier, cases_imprimees, conditions_et_liens, delais_validite_et_kit,
+    remises_et_puces, repartition_paiement, tranches_echeancier_en_montant,
 )
 # SPL164 — ré-export (noqa: F401) pour d'autres propriétaires :
 # utils/company_settings et tests devis test_qx43_mode_commercial,
@@ -247,7 +247,7 @@ def _repartir_options(paires, devis=None):
     return sans, avec, contradictions
 
 
-def _scalaires_par_option(sans_lignes, avec_lignes) -> dict:
+def _scalaires_par_option(sans_lignes, avec_lignes, devis=None) -> dict:
     """Panneaux et kWc de CHAQUE option, lus sur les lignes de CETTE option.
 
     Même règle de lecture que le scalaire global (``panneaux_et_watt_lu`` :
@@ -283,17 +283,13 @@ def _scalaires_par_option(sans_lignes, avec_lignes) -> dict:
     """
     nb_sans, watt_sans = panneaux_et_watt_lu(sans_lignes)
     nb_avec, watt_avec = panneaux_et_watt_lu(avec_lignes)
-
-    def _kwc(nb, watt):
-        return round(nb * watt / 1000, 2) if nb > 0 and watt else None
-
     return {
         "nb_sans": nb_sans or None,
         "nb_avec": nb_avec or None,
         "watt_sans": watt_sans,
         "watt_avec": watt_avec,
-        "kwc_sans": _kwc(nb_sans, watt_sans),
-        "kwc_avec": _kwc(nb_avec, watt_avec),
+        "kwc_sans": kwc_des_lignes(sans_lignes, nb_sans, watt_sans, devis),  # AGNR69
+        "kwc_avec": kwc_des_lignes(avec_lignes, nb_avec, watt_avec, devis),
         "divergents": bool(nb_sans and nb_avec and nb_sans != nb_avec),
     }
 
@@ -486,7 +482,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     """Build the dict consumed by generate_premium_pdf from a Devis instance."""
     from apps.ventes.domain.regles_calcul import (
         REGLES_ARRONDI_3010, REGLES_CENTAINE_0311, REGLES_CONSO_PUBLIQUE_0111, REGLES_ECARTS_0111,
-        calcul_corrige, regles_au_moins)
+        REGLES_ECARTS_0411, calcul_corrige, regles_au_moins)
 
     # Décision fondateur 08/10/2026 — « nouveaux rendus seulement » : un devis
     # envoyé avant les corrections du moteur (``Devis.regles_calcul = 1``)
@@ -666,7 +662,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     _kwc_registre_devis = (_kwc_du_registre(devis) if _corrige
                            else _kwc_du_registre_origine(devis))
     if nb_panneaux > 0 and watt:
-        puissance_kwc = round(nb_panneaux * watt / 1000, 2)
+        puissance_kwc = kwc_des_lignes(lignes, nb_panneaux, watt, devis)  # AGNR69 : Σ q × W lu au niveau 12
         # QJR63 — LE REGISTRE DE SURCHARGES PASSE DEVANT (décision fondateur
         # D12). C'est le MÊME propriétaire que celui qui STOCKE la clé
         # (``services.puissance_kwc_du_devis``) : sans cela le rendu et la
@@ -977,7 +973,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # batterie, artefact PV86) et avant tout rétrécissement de confort : ce que
     # chaque option contient RÉELLEMENT. Sur un devis sans variante les deux
     # comptes sont égaux, ``divergents`` est faux et rien n'est touché.
-    _scal = _scalaires_par_option(sans_lignes, avec_lignes)
+    _scal = _scalaires_par_option(sans_lignes, avec_lignes, devis)
     nb_panneaux_sans = _scal["nb_sans"]
     nb_panneaux_avec = _scal["nb_avec"]
     puissance_kwc_sans = _scal["kwc_sans"]
@@ -1121,7 +1117,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # suive l'option que ce rétrécissement fait TITRER au document.
     from apps.ventes.utils.options import AVEC_BATTERIE as _NOYAU_AVEC
     from apps.ventes.utils.options import SANS_BATTERIE as _NOYAU_SANS
-    from apps.ventes.utils.options import option_du_scenario_mono as _mono_de
+    from apps.ventes.utils.options import option_du_scenario_mono as _mono_de, option_echeancier
     _scenario_mono = _mono_de(scenario)
     if _scenario_mono == _NOYAU_SANS:
         avec_ok = False
@@ -2022,10 +2018,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # chaque lecteur l'omet, jamais « 60 % à la réception du matériel » à côté
     # de cases 45/55. ``payment_terms`` (entrée ci-dessus) reste la source
     # des cases elles-mêmes.
-    _branche_imprimee = ("sans" if option_servie == "sans"
-                         else ("avec" if (deux_options or avec_ok)
-                               else "sans"))
-    _cases = data["montants_tranches"].get(_branche_imprimee) or {}
+    _branche_imprimee = branche_echeancier(devis, data, "sans" if option_servie == "sans" else (  # AMOT122
+        "avec" if (deux_options or avec_ok) else "sans"), option_echeancier(devis))
+    _cases = cases_imprimees(data, _branche_imprimee, devis, avertissements_internes)  # AGNR66
     # Règles d'origine (devis envoyé avant AMOT19) : ``payment_terms`` d'hier.
     if _cases and _corrige:
         if _cases.get("deux_cases"):
@@ -2153,6 +2148,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         ("regles_echeancier_historique", not regles_au_moins(devis, REGLES_CONSO_PUBLIQUE_0111)),  # AGNR52
         ("regles_ecarts_0111_historique", not regles_au_moins(devis, REGLES_ECARTS_0111)),  # AMOT116/AMOT115
         ("regles_validite_historique", not regles_au_moins(devis, REGLES_CENTAINE_0311)),  # ERR-CADV83-COUVERTURES
+        ("regles_0411_historique", not regles_au_moins(devis, REGLES_ECARTS_0411)),  # AMOT123/AMOT126
         ("regles_arrondi_historique", not regles_au_moins(devis, REGLES_ARRONDI_3010))) if pose})  # CE2E4 : tout mode
 
     # ── AGR217 — l'attestation d'usage agricole SAISIE (``etude_params``),

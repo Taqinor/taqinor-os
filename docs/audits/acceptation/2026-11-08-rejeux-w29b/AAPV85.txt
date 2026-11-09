@@ -1,0 +1,28 @@
+# Preuve en direct AAPV85 — rejeu w29b, code joué d7ea0c158 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29b-dj (conteneur privé, code backend du commit joué copié
+# dans le conteneur, base privée erp_accept_w29b clonée de test_erp_db_base puis migrée ; transaction annulée, mail en
+# mémoire, Celery coupé, HTTP sortant bloqué). Audit : verdict ÉCART = repro False = attendu sur le code corrigé. Sondes
+# C-LIVE-* (écrites pour ce rejeu, source jointe ; transaction.on_commit exécuté immédiatement) : repro=true signifie ICI
+# que le comportement attendu par la tâche est observé.
+# Code joué : d7ea0c158 (dev-plan-6a6fc9-w29, aucun commit du correcteur CI arrivé pendant ~75 min d'attente).
+# Écran : front du worktree servi par vite (127.0.0.1:3000, proxy /api/django) -> conteneur privé accept-w29b-web
+# (runserver, base erp_accept_w29b, stockage objet PRIVÉ accept-w29b-minio dès le départ, mail en mémoire, SMTP
+# 127.0.0.1:1), piloté par Playwright MCP. Données : fixtures FIX-W29B (société « Acceptation W29B », compte
+# acc_w29b_adm) ou états des sondes rejouées SANS rollback (comptes de test, mot de passe de test).
+# Verdict : PASS — Sonde C-AAPV-VER-007 : repro False (rouvrir 200 re-commande la DA, generer-bcf B 409, 1 BCF vivant, réalisé 20 000) ; écran « Réouvrir » 200, DA commandée.
+
+== C-AAPV-VER-007 (sha 76344a269d)
+attendu : repro si rouvrir 200 puis generer-bcf 200 : BCF-A brouillon + BCF-B vivants pour une DA, realise 20000
+observé : {'soumettre': 200, 'approuver': 200, 'generer_bcf_a': 200, 'budget_apres_bcf_a': {'engage': '0', 'realise': '20000.00', 'restant': '30000.00'}, 'annuler_a': 200, 'budget_apres_annulation': {'engage': '20000.00', 'realise': '0', 'restant': '30000.00'}, 'rouvrir_a': {'http': 200, 'detail': None}, 'da_apres_rouvrir': {'statut': 'commandee', 'bon_commande_id': 583}, 'generer_bcf_b': {'http': 409, 'detail': "{'detail': 'Seule une demande approuvée peut générer un BCF.'}"}, 'bcf_vivants': [[583, 'brouillon']], 'budget_final': {'engage': '0', 'realise': '20000.00', 'restant': '30000.00'}}
+{"soumettre": 200, "approuver": 200, "generer_bcf_a": 200, "budget_apres_bcf_a": {"engage": "0", "realise": "20000.00", "restant": "30000.00"}, "annuler_a": 200, "budget_apres_annulation": {"engage": "20000.00", "realise": "0", "restant": "30000.00"}, "rouvrir_a": {"http": 200, "detail": null}, "da_apres_rouvrir": {"statut": "commandee", "bon_commande_id": 583}, "generer_bcf_b": {"http": 409, "detail": "{'detail': 'Seule une demande approuvée peut générer un BCF.'}"}, "bcf_vivants": [[583, "brouillon"]], "budget_final": {"engage": "0", "realise": "20000.00", "restant": "30000.00"}, "temoin_ok": false, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 7, après 7) ; mails 0 ; tâches Celery bloquées 0
+
+## AAPV85 — PASS (écran, D-AAPV-5 = recommander)
+FIX-W29B (vraies routes) : budget départemental allumé 50 000, DA « DA W29B-85 » 20 000 soumise 200, approuvée 200, generer-bcf 200
+(BCF-202611-0001), BCF annulé 200 => DA « approuvee » sans BCF, bcf_annule = BCF-202611-0001. Compte acc_w29b_adm › Bons de commande
+fournisseur › BCF-202611-0001 (Annulé) › « Réouvrir » => POST …/579/rouvrir/ 200 ; liste relue « BCF-202611-0001 F-W29B-85
+Brouillon 20 000,00 MAD ». Base relue : DA statut « commandee », bon_commande = 579 ; budget engagé 0, réalisé 20 000, restant
+30 000 ; BCF vivants du fournisseur : 1 (BCF-202611-0001 brouillon). Console : 0 erreur.
+Observation hors clause : la fenêtre de détail ouverte reste sur « Annulé » avec le bouton « Réouvrir » jusqu'à sa fermeture (la
+liste, elle, est rafraîchie).

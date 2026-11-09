@@ -13,7 +13,11 @@ import Picture from './Picture.astro';
 import CtaBand from './CtaBand.astro';
 import CtaLigne from './CtaLigne.astro';
 import V2Page from './V2Page.astro';
-import type { cityPageBase } from '../lib/cityPageData';
+import ReponseCourte from './ReponseCourte.astro';
+import { AR_CITY_NAME, type cityPageBase } from '../lib/cityPageData';
+import { pageLocale } from '../lib/pageCtx';
+import { kwcLocale } from '../lib/realisations';
+import { reponseCourteVille, type LangueCourte } from '../lib/reponsesCourtes';
 
 interface Props {
   c: { name: string; slug: string; sunshineHours: number | string; hasLocalInstall: boolean };
@@ -27,7 +31,7 @@ interface Props {
   /** Résultat de `cityPageBase()` (lib/cityPageData.ts) : listes de chantiers + prose de la ville. */
   city: ReturnType<typeof cityPageBase>;
 }
-const { c, rtl = false, L, cardAlt, t, breadcrumbItems, heroPhoto, showYieldNote, city } = Astro.props;
+const { c, rtl = false, L, cardAlt, t, breadcrumbItems, heroPhoto, showYieldNote, city } = Astro.props as Props;
 const {
   heroLead, sunshineContext, roiNuance, delegataireNote, inCity, nearby, closest, closer,
   pillarStudy, pillarMeasure, pillarCompliance,
@@ -35,6 +39,9 @@ const {
 const pillars = [pillarStudy, pillarMeasure, pillarCompliance];
 // WAUD45 — rendement PVGIS de la ville à 20 % de pertes totales (le chiffre central du site), plein sud à 30°.
 const rendementVille = Math.round(specificYield(YIELD_TABLE[c.slug].lat, 30, 0) / 10) * 10;
+// WAUD77 — réponse courte de la ville : ce même rendement, dans la langue de la page.
+const langue = pageLocale(Astro.url.pathname).locale as LangueCourte;
+const reponseVille = reponseCourteVille(langue === 'ar' ? (AR_CITY_NAME[c.slug] ?? c.name) : c.name, rendementVille, langue);
 const dir = rtl ? 'ltr' : undefined;
 const noteClass = rtl
   ? 'mx-auto mt-4 max-w-3xl border-e-2 border-brass-400/60 pe-4 text-sm leading-relaxed text-lune-soft'
@@ -58,6 +65,7 @@ const stats = [
       <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">{t.kicker}</p>
       <h1 class="display v2-page-title cine-in mt-5 max-w-[20ch] [animation-delay:120ms]">{t.h1}</h1>
       <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">{heroLead}</p>
+      <ReponseCourte texte={reponseVille} lang={langue} />
     </div>
   </section>
 
@@ -100,7 +108,7 @@ const stats = [
               <Picture name={r!.photos[0].name} alt={cardAlt(r!)} widths={r!.photos[0].widths} ratio={3 / 2}
                 sizes="(min-width: 1024px) 33vw, 50vw" class="aspect-[3/2] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
               <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-5 pb-4 pt-16">
-                {r!.kwc && <span class="fig block text-2xl text-white" dir={dir}>{r!.kwc}{r!.production ? ` · ${r!.production}` : ''}</span>}
+                {r!.kwc && <span class="fig block text-2xl text-white" dir={dir}>{kwcLocale(r, langue)}{r!.production ? ` · ${r!.production}` : ''}</span>}
                 {r!.panneaux && <span class="mt-1 block text-xs text-lune">{r!.panneaux}</span>}
                 <span class="mt-2 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white">{t.caseStudy} {rtl ? <span class="inline-block rtl:-scale-x-100">→</span> : '→'}</span>
               </div>
@@ -124,7 +132,7 @@ const stats = [
         <div class="mt-8 flex flex-wrap gap-3">
           {nearby.map((r) => (
             <a href={L(`/realisations/${r!.slug}`)} class={linkClass}>
-              {r!.kwc ? <>{r!.ville} · {rtl ? <span dir="ltr">{r!.kwc}</span> : r!.kwc}</> : r!.ville} {rtl ? <span class="inline-block rtl:-scale-x-100">→</span> : '→'}
+              {r!.kwc ? <>{r!.ville} · {rtl ? <span dir="ltr">{kwcLocale(r, langue)}</span> : kwcLocale(r, langue)}</> : r!.ville} {rtl ? <span class="inline-block rtl:-scale-x-100">→</span> : '→'}
             </a>
           ))}
         </div>
@@ -143,7 +151,7 @@ const stats = [
         <div class="mt-8 flex flex-wrap gap-3">
           {closest.map((r) => (
             <a href={L(`/realisations/${r.slug}`)} class={linkClass}>
-              {r.kwc ? <>{r.ville} · {rtl ? <span dir="ltr">{r.kwc}</span> : r.kwc}</> : r.ville} {rtl ? <span class="inline-block rtl:-scale-x-100">→</span> : '→'}
+              {r.kwc ? <>{r.ville} · {rtl ? <span dir="ltr">{kwcLocale(r, langue)}</span> : kwcLocale(r, langue)}</> : r.ville} {rtl ? <span class="inline-block rtl:-scale-x-100">→</span> : '→'}
             </a>
           ))}
           <a href={L('/realisations')} class={linkClass}>

@@ -319,6 +319,36 @@ class GestesArgentTests(TestCase):
         self.assertEqual(Facture.objects.get(pk=brouillon.pk).statut,
                          Facture.Statut.EMISE)
 
+    def test_generer_facture_et_consolider_exigent_encaisser(self):
+        """ASEC67 (C-ASEC-VER4-010, D-AARG-3) — les jumelles d'émission
+        ``devis/<id>/generer-facture/`` et ``factures/consolider/`` : 403
+        sans ``encaisser``, aucune facture créée ; un Commercial (porte
+        ``encaisser``) émet toujours. Mutant : retirer une garde ⇒ échec."""
+        from apps.ventes.models import Facture
+        motif = "Émettre ou encaisser une facture exige le droit d'encaissement."
+        sans, commercial = (self.users['Commercial sans encaisser'],
+                            self.users['Commercial'])
+        api = self._api(sans)
+        avant = Facture.objects.filter(company=self.company).count()
+        d1 = self._devis(sans)
+        r = api.post(f'/api/django/ventes/devis/{d1.id}/generer-facture/',
+                     {}, format='json')
+        self.assertEqual(r.status_code, 403, r.data)
+        self.assertEqual(r.data['detail'], motif)
+        d2, d3 = self._devis(sans), self._devis(sans)
+        r = api.post('/api/django/ventes/factures/consolider/',
+                     {'devis_ids': [d2.id, d3.id]}, format='json')
+        self.assertEqual(r.status_code, 403, r.data)
+        self.assertEqual(r.data['detail'], motif)
+        self.assertEqual(
+            Facture.objects.filter(company=self.company).count(), avant)
+        # Le Commercial est borné à SES devis (portée « own ») : son propre devis.
+        d4 = self._devis(commercial)
+        r = self._api(commercial).post(
+            f'/api/django/ventes/devis/{d4.id}/generer-facture/', {},
+            format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+
     def test_lecture_argent_bornee_au_module_ventes(self):
         """AARG12 — paiements (+ reçu PDF), avoirs, notes de débit, bons de
         commande et promesses : 403 pour Admin RH (aucun code ventes), comme
@@ -349,8 +379,8 @@ class GestesArgentTests(TestCase):
                 self.assertEqual(r.status_code, 200, getattr(r, 'data', None))
 
     def test_get_permissions_respecte_action(self):
-        from apps.ventes.views.facture import FactureViewSet
-        from apps.ventes.views.facture_gardes import PeutEncaisser
+        from apps.facturation.views.facture import FactureViewSet
+        from apps.facturation.views.facture_gardes import PeutEncaisser
         fabrique = APIRequestFactory()
         for action in ('enregistrer_paiement', 'abandonner_solde',
                        'creer_avoir', 'encaissement_groupe'):
@@ -394,3 +424,53 @@ class GestesArgentTests(TestCase):
             r = api.get(f'{base}{mienne.id}/')
             with self.subTest(role=nom, url='fiche'):
                 self.assertEqual(r.status_code, 200, getattr(r, 'data', None))
+
+    def _lectures_bornees(self, urls_json, urls_autres):
+        """Admin RH : 403 (texte LectureFactures) sur chaque URL ; Commercial et
+        Directeur : 200 sur les lectures JSON, jamais 403 sur les autres (PDF
+        à rendu dépendant de l'environnement)."""
+        rh = self._api(self.users['Admin RH'])
+        for url in urls_json + urls_autres:
+            with self.subTest(role='Admin RH', url=url):
+                r = rh.get(url)
+                self.assertEqual(r.status_code, 403, getattr(r, 'data', None))
+                self.assertEqual(
+                    str(r.data['detail']),
+                    'Accès aux factures réservé aux rôles du module Ventes.')
+        for nom in AUTORISES:
+            api = self._api(self.users[nom])
+            for url in urls_json:
+                with self.subTest(role=nom, url=url):
+                    r = api.get(url)
+                    self.assertEqual(r.status_code, 200,
+                                     getattr(r, 'data', None))
+            for url in urls_autres:
+                with self.subTest(role=nom, url=url):
+                    self.assertNotEqual(api.get(url).status_code, 403)
+
+    def test_lectures_recouvrement_bornees_au_module_ventes(self):
+        """AARG65 (C-AARG-VER5-011) — relances, balance âgée, relevé client
+        (JSON, PDF), lettre de relance PDF et score de comportement : 403 pour
+        Admin RH, comme la liste des factures ; Commercial/Directeur lisent.
+        Mutant : remettre ``IsAnyRole`` sur une vue ⇒ échec."""
+        facture = self._facture(self.users['Commercial'])
+        base = '/api/django/ventes/'
+        client = self.client_obj.id
+        self._lectures_bornees(
+            [base + 'relances/', base + 'balance-agee/',
+             f'{base}clients/{client}/releve/',
+             f'{base}clients/{client}/score-comportement/'],
+            [f'{base}clients/{client}/releve-pdf/',
+             f'{base}factures/{facture.id}/lettre-relance-pdf/'])
+
+    def test_lectures_annexes_bornees_au_module_ventes(self):
+        """AARG66 (C-AARG-VER5-003) — lignes de facture, prévision de
+        trésorerie, alerte d'encours client, lettre de relance premium : 403
+        pour Admin RH ; Commercial/Directeur lisent.
+        Mutant : remettre ``IsAnyRole`` sur une vue ⇒ échec."""
+        facture = self._facture(self.users['Commercial'])
+        base = '/api/django/ventes/'
+        self._lectures_bornees(
+            [base + 'factures-lignes/', base + 'insights/cash-flow/',
+             f'{base}clients/{self.client_obj.id}/credit-warning/'],
+            [f'{base}factures/{facture.id}/lettre-relance-premium/'])

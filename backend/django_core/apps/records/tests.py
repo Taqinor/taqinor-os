@@ -268,6 +268,53 @@ class TestAttachments(TestCase):
             self.assertEqual(d2.status_code, 204)
         self.assertFalse(Attachment.objects.filter(id=att_id).exists())
 
+    def test_cle_tenue_ailleurs_conservee(self):
+        """ADOC193 (C-ADOC-VER4-010) — une clé encore tenue par un détenteur
+        enregistré (version GED, créatif) n'est pas effacée ; tenue par
+        personne d'autre, elle l'est comme avant."""
+        from django.contrib.contenttypes.models import ContentType
+        from apps.adsengine.models import CreativeAsset
+        from apps.ged.models import Cabinet, Document, DocumentVersion, Folder
+        from apps.records.storage import delete_attachment
+        ct = ContentType.objects.get_for_model(Lead)
+
+        def piece(cle):
+            return Attachment.objects.create(
+                company=self.company, content_type=ct, object_id=self.lead.id,
+                uploaded_by=self.user, file_key=cle, filename='f.pdf',
+                size=1, mime='application/pdf')
+
+        partagee, seule = piece('attachments/ged.pdf'), piece('attachments/x.pdf')
+        folder = Folder.objects.create(
+            company=self.company, nom='R', cabinet=Cabinet.objects.create(
+                company=self.company, nom='Cab'))
+        DocumentVersion.objects.create(
+            company=self.company, version=1, file_key=partagee.file_key,
+            document=Document.objects.create(
+                company=self.company, folder=folder, nom='D'))
+        CreativeAsset.objects.create(
+            company=self.company, asset_type='static',
+            file_key='attachments/photo.jpg')
+        client = mock.MagicMock()
+        with mock.patch('apps.records.storage.get_minio_client',
+                        return_value=client):
+            # (1) DELETE de la pièce jointe importée en GED : binaire gardé.
+            r = auth(self.admin).delete(
+                f'/api/django/records/attachments/{partagee.id}/')
+            self.assertEqual(r.status_code, 204)
+            self.assertFalse(Attachment.objects.filter(
+                pk=partagee.pk).exists())
+            # Photo copiée en créatif : False, clé lisible.
+            self.assertFalse(delete_attachment('attachments/photo.jpg'))
+            client.delete_object.assert_not_called()
+            # Clé tenue par personne d'autre : effacée comme avant.
+            r = auth(self.admin).delete(
+                f'/api/django/records/attachments/{seule.id}/')
+            self.assertEqual(r.status_code, 204)
+        self.assertEqual(
+            [c.kwargs['Key'] for c in client.delete_object.call_args_list],
+            ['attachments/x.pdf'])
+
     def test_set_phase_retags_attachment(self):
         """L5 — déplacer une pièce jointe entre phases (avant/pendant/après)
         sans supprimer/ré-uploader : le re-tag persiste, scopé société."""
@@ -547,7 +594,10 @@ class TestMaFile(TestCase):
         # Lead avec relance en retard (family relance) — possédé par l'user.
         Lead.objects.create(
             company=self.company, nom='Relance', owner=self.user,
-            relance_date=date.today() - timedelta(days=1))
+            # ALEA65 — « en retard » se compte en jours OUVRÉS : la veille
+            # d'un dimanche/lundi n'est pas encore en retard. 10 jours = en
+            # retard quel que soit le jour d'exécution.
+            relance_date=date.today() - timedelta(days=10))
         # Lead chaud jamais contacté.
         Lead.objects.create(
             company=self.company, nom='Chaud', owner=self.user, score=80)
@@ -1492,11 +1542,11 @@ class TaggedItemTagBorneTests(TestCase):
         # ERR-ENF11-FUZZ-RECORDS : id bien formé mais inconnu de la société
         # (autre société = absent) -> 404, plus 400.
         r = api.patch(url, {'tag': self.tag_b.pk}, format='json')
-        self.assertEqual(r.status_code, 404, r.data)
+        self.assertEqual(r.status_code, 409, r.data)  # ENF45 a : mise à jour = 409
         self.assertIn('tag', r.data)
         self.assertNotIn('TAG-B-SECRET', str(r.data))
         r0 = api.put(url, {'tag': 0}, format='json')
-        self.assertEqual(r0.status_code, 404, r0.data)
+        self.assertEqual(r0.status_code, 409, r0.data)  # ENF45 a : mise à jour = 409
         self.item.refresh_from_db()
         self.assertEqual(self.item.tag_id, self.tag_a.pk)
         r_ok = api.patch(url, {'tag': self.tag_a2.pk}, format='json')
@@ -1671,7 +1721,7 @@ class Enf11Records2eTourTests(TestCase):
         r = self.api.patch(
             f'/api/django/records/activity-types/{self.type.id}/',
             {'type_suivant': 987654321}, format='json')
-        self.assertEqual(r.status_code, 404, r.content)
+        self.assertEqual(r.status_code, 409, r.content)  # ENF45 a : mise à jour = 409
         r = self.api.post(
             f'/api/django/records/activities/{self.act.id}/snooze/',
             {'snoozed_until': '2999-01-01',

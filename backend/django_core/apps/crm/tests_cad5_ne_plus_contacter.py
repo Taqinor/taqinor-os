@@ -212,6 +212,46 @@ class RefusNommeTests(_Base):
         notifier_signal_lecture('DEV-1', self.lead)
         self.assertFalse(Notification.objects.filter(body__contains='wa.me').exists())
 
+    def test_les_builders_ne_rendent_aucun_lien_a_un_oppose(self):
+        """ACVI111 (D-ACVI-7) — les trois builders refusent eux-mêmes le lien
+        wa.me d'un lead opposé (textes inchangés) ; l'accusé `stop_contact`
+        garde le sien ; un lead normal garde ses liens."""
+        from django.test import RequestFactory
+        from django.utils import timezone
+
+        from apps.crm.cadence_messages import message_pour_etape, message_visite_pour_lead
+        from apps.crm.models import Appointment
+        from apps.crm.visites_rdv import build_appointment_confirmation_whatsapp
+
+        touche = self._touche(canal=RelanceEtape.Canal.WHATSAPP)
+        rdv = Appointment.objects.create(
+            company=self.company, lead=self.lead,
+            scheduled_at=timezone.now() + datetime.timedelta(days=2))
+        requete = RequestFactory().get('/')
+
+        def rendus():
+            self.lead.refresh_from_db()
+            touche.refresh_from_db()
+            rdv.refresh_from_db()
+            return (message_pour_etape(touche, user=self.acteur),
+                    message_visite_pour_lead(self.lead, 'visite_confirmation', user=self.acteur),
+                    build_appointment_confirmation_whatsapp(requete, rdv))
+
+        etape, visite, confirmation = rendus()
+        self.assertIsNotNone(etape['wa_url'])
+        self.assertIsNotNone(visite['wa_url_fr'])
+        self.assertIsNotNone(confirmation[1])
+        Lead.objects.filter(pk=self.lead.pk).update(ne_plus_contacter=True)
+        etape_o, visite_o, confirmation_o = rendus()
+        self.assertIsNone(etape_o['wa_url'])
+        self.assertEqual(etape_o['message'], etape['message'])
+        self.assertIsNone(visite_o['wa_url_fr'])
+        self.assertIsNone(visite_o['wa_url_darija'])
+        self.assertEqual(visite_o['corps_fr'], visite['corps_fr'])
+        self.assertIsNone(confirmation_o[1])
+        self.assertEqual(confirmation_o[0], confirmation[0])
+        self.assertIsNotNone(message_pour_etape(touche, user=self.acteur, cle='stop_contact')['wa_url'])
+
     def test_une_reponse_inconnue_nomme_le_champ(self):
         resp = self.api.post(
             f'/api/django/crm/relance-etapes/{self._touche().pk}/fait/',

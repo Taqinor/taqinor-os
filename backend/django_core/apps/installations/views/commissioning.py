@@ -6,13 +6,17 @@ gate « Mise en service » (CH2). Multi-tenant : la société est TOUJOURS posé
 côté serveur (jamais lue du corps) ; le queryset est scopé à la société du
 demandeur.
 """
+from decimal import Decimal
+
 from django.conf import settings
+from drf_spectacular.utils import OpenApiResponse
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.conflit_etat import ConflitEtat
 from core.viewsets import CompanyScopedModelViewSet
 from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 
@@ -26,6 +30,7 @@ from ..serializers_commissioning import (
 from . import _openapi as oa
 
 READ_ACTIONS = ['list', 'retrieve']
+MESSAGE_RECETTE_IEC_VERROUILLEE = 'Recette IEC 62446-1 verrouillée : le PV de réception est signé.'
 
 
 @oa.listing(p0=oa.qi('installation'))
@@ -51,6 +56,8 @@ class CommissioningRecordViewSet(oa.JsonOnlyMixin, UsageGuardedDestroyMixin,
         return [IsResponsableOrAdmin()]
 
     def destroy_guard_message(self, record):
+        if record.verrouillee:  # ACSV19
+            return MESSAGE_RECETTE_IEC_VERROUILLEE
         if record.passe:
             return ("Cette fiche de recette IEC 62446-1 est PASSÉE "
                     f"({record.get_resultat_display()}) : elle atteste la "
@@ -105,11 +112,17 @@ class CommissioningRecordViewSet(oa.JsonOnlyMixin, UsageGuardedDestroyMixin,
             created_by=self.request.user)
 
     def perform_update(self, serializer):
+        if serializer.instance.verrouillee:  # ACSV19 — PV signé : fiche figée
+            raise ValidationError({'verrouillee': MESSAGE_RECETTE_IEC_VERROUILLEE})
         self._check_installation_tenant(serializer)
         self._check_instrument_etalonnage(serializer)
         serializer.save(company=self.request.user.company)
 
-    @oa.extend_schema(request=CommissioningIVReadingSerializer, responses={201: CommissioningIVReadingSerializer})
+    @oa.extend_schema(request=CommissioningIVReadingSerializer, responses={
+        201: CommissioningIVReadingSerializer,
+        409: OpenApiResponse(description=(
+            "Écart de Pmax hors de la capacité de la colonne (± 9 999,99 %) : "
+            "relevé refusé, rien n'est écrit."))})
     @action(detail=True, methods=['post'], url_path='ajouter-iv',
             permission_classes=[IsResponsableOrAdmin])
     def ajouter_iv(self, request, pk=None):
@@ -118,6 +131,8 @@ class CommissioningRecordViewSet(oa.JsonOnlyMixin, UsageGuardedDestroyMixin,
         serveur."""
         from ..services import compute_iv_ecart
         record = self.get_object()
+        if record.verrouillee:  # ACSV19
+            raise ValidationError({'verrouillee': MESSAGE_RECETTE_IEC_VERROUILLEE})
         serializer = CommissioningIVReadingSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         reading = CommissioningIVReading(
@@ -125,6 +140,15 @@ class CommissioningRecordViewSet(oa.JsonOnlyMixin, UsageGuardedDestroyMixin,
             **{k: v for k, v in serializer.validated_data.items()
                if k != 'record'})
         compute_iv_ecart(reading)
+        # ENF48 — l'écart est CALCULÉ (mesuré vs attendu) : un attendu minuscule
+        # le pousse au-delà de la colonne (« numeric field overflow », 500).
+        # Refus nommé AVANT toute écriture, jamais un écart tronqué en silence.
+        champ = CommissioningIVReading._meta.get_field('ecart_pmax_pct')
+        borne = Decimal(10) ** (champ.max_digits - champ.decimal_places)
+        if reading.ecart_pmax_pct is not None and abs(reading.ecart_pmax_pct) >= borne:
+            raise ConflitEtat({'pmax_attendu_w': (
+                "Écart de Pmax mesuré/attendu hors limites (± 9 999,99 %) : "
+                "vérifiez la puissance attendue du string.")})
         reading.save()
         # CIQ625 — un relevé I-V en défaut est un essai faux : le résultat
         # de la fiche est recalculé (jamais laissé « conforme »).

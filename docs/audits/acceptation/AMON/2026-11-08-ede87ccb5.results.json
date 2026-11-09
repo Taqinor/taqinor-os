@@ -1,0 +1,701 @@
+{
+  "sha": "ede87ccb57b3ef92a9f9ef8bd45450721ea82d0d",
+  "date": "2026-11-08",
+  "groupe": "AMON",
+  "verdict": "PASS",
+  "couvre": [
+    "AMON1",
+    "AMON2",
+    "AMON3",
+    "AMON4",
+    "AMON5",
+    "AMON6",
+    "AMON7",
+    "AMON8",
+    "AMON10",
+    "AMON20",
+    "AMON21",
+    "AMON22",
+    "AMON26",
+    "AMON32",
+    "AMON35",
+    "AMON40",
+    "AMON41",
+    "AMON42",
+    "AMON43",
+    "AMON44",
+    "AMON46",
+    "AMON47",
+    "AMON83",
+    "AMON84",
+    "AMON87",
+    "AMON88",
+    "AMON89",
+    "AMON91",
+    "AMON93",
+    "AMON94"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "W29.AMON1.preuve_en_direct",
+      "taches": [
+        "AMON1"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/AMON1.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AMON-001-L2 : repro False (C-AMON-001 v1 s'arrête : recent_production_kwh retirée par AMON22) ; écran Production : recouvrement 409 affiché."
+    },
+    {
+      "id": "W29.AMON2.preuve_en_direct",
+      "taches": [
+        "AMON2"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/AMON2.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Écran Abonnements : carte « Début … » seule ; API sans prochaine_echeance."
+    },
+    {
+      "id": "W29.AMON3.preuve_en_direct",
+      "taches": [
+        "AMON3"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/AMON3.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AMON-003 : repro False ; écran : « Début de la période » = J−30, saisie acceptée, jour futur 409."
+    },
+    {
+      "id": "W29.AMON4.preuve_en_direct",
+      "taches": [
+        "AMON4"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/AMON4.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AMON-004 : repro False ; étapes PA7 equipement_remplace (checkpoint PASS) et monitoring_suit_remplacement (auto PASS, checkpoint PASS, motif equipement_remplace)."
+    },
+    {
+      "id": "W29.AMON5.preuve_en_direct",
+      "taches": [
+        "AMON5"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/AMON5.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Écran Abonnements : 2e création 409, message sous le formulaire."
+    },
+    {
+      "id": "W29.AMON6.preuve_en_direct",
+      "taches": [
+        "AMON6"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/AMON6.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Écran portail « Ma consommation » d'un client « Manuel » : tableau des relevés saisis à l'écran Production."
+    },
+    {
+      "id": "W29.AMON7.preuve_en_direct",
+      "taches": [
+        "AMON7"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/AMON7.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Écran Abonnements : « Résilié le … par … · motif » après rechargement."
+    },
+    {
+      "id": "W29.AMON8.preuve_en_direct",
+      "taches": [
+        "AMON8"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/AMON8.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Écran Production : Fournisseur — seule « Manuel » sélectionnable, les autres « (non disponible) »."
+    },
+    {
+      "id": "W29.AMON10.preuve_en_direct",
+      "taches": [
+        "AMON10"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/AMON10.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Résiliation jouée à l'écran (AMON7). C-AMON-023 (beat) : repro False. C-AMON-010 s'arrête sur le code corrigé (système hors parc ⇒ abonnement 409 AMON11 ⇒ KeyError 'id') ; C-LIVE-AMON10 (système réceptionné) : J+120 sans drapeau ni ticket, data_status supervision_resiliee, sous_garantie false => PASS."
+    },
+    {
+      "id": "W29.AMON20.preuve_en_direct",
+      "taches": [
+        "AMON20"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/AMON20.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sondes C-AMON-020 et -020-L2 : repro False (API seule)."
+    },
+    {
+      "id": "W29.AMON21.preuve_en_direct",
+      "taches": [
+        "AMON21"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/AMON21.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sondes C-AMON-021 et -021-L2 : repro False ; écran SLA : « Garantie tenue »."
+    },
+    {
+      "id": "W29.AMON22.preuve_en_direct",
+      "taches": [
+        "AMON22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/AMON22.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sondes C-AMON-022 et -022-L2 : repro False ; portail « Aucune alerte ouverte »."
+    },
+    {
+      "id": "W29.AMON26.preuve_en_direct",
+      "taches": [
+        "AMON26"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/AMON26.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AMON-026 : repro False."
+    },
+    {
+      "id": "W29.AMON32.preuve_en_direct",
+      "taches": [
+        "AMON32"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/AMON32.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AMON-032 cas (1) : non_applicable → emis 409 (API seule)."
+    },
+    {
+      "id": "W29.AMON35.preuve_en_direct",
+      "taches": [
+        "AMON35"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/AMON35.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AMON-032 : 1 notification « Crédit SLA recalculé — August 2026 » (août 500 → 2 500). La 2e notification (September) est celle d'AMON89 (crédit d'une décision déjà prise recalculé, décision et montant figés inchangés), pas un doublon d'août."
+    },
+    {
+      "id": "W29.AMON40.preuve_en_direct",
+      "taches": [
+        "AMON40"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/AMON40.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AMON-040 : repro False ; écran Garanties : productible borné, compensation 0,00 MAD."
+    },
+    {
+      "id": "W29.AMON41.preuve_en_direct",
+      "taches": [
+        "AMON41"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/AMON41.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AMON-041 : repro False ; écran Certificats carbone : 3,780 t à 630 ; société sans facteur 409 affiché."
+    },
+    {
+      "id": "W29.AMON42.preuve_en_direct",
+      "taches": [
+        "AMON42"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/AMON42.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AMON-042 : repro False ; écran : recouvrement 409 et fin future 409 affichés."
+    },
+    {
+      "id": "W29.AMON43.preuve_en_direct",
+      "taches": [
+        "AMON43"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/AMON43.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AMON-043 : repro False ; écran SLA : indicateur « disponibilité (immobilisations SAV) »."
+    },
+    {
+      "id": "W29.AMON44.preuve_en_direct",
+      "taches": [
+        "AMON44"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/AMON44.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AMON-044 : repro False ; écran Nettoyages : perte « — », aucune reco « salissure »."
+    },
+    {
+      "id": "W29.AMON46.preuve_en_direct",
+      "taches": [
+        "AMON46"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/AMON46.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Écran Production : suppression d'un relevé certifié 409 affiché ; Journal d'activité : changement d'attendu (diff en base)."
+    },
+    {
+      "id": "W29.AMON47.preuve_en_direct",
+      "taches": [
+        "AMON47"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/AMON47.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Écran Rapports : envoi tiers 400 affiché ; envoi client 200 (mail en mémoire), retrouvé en GED."
+    },
+    {
+      "id": "W29.AMON83.preuve_en_direct",
+      "taches": [
+        "AMON83"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/AMON83.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Écran portail : « 09/10/2026 · 30 j · 450 », colonne « Période (j) »."
+    },
+    {
+      "id": "W29.AMON84.preuve_en_direct",
+      "taches": [
+        "AMON84"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/AMON84.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Écran : résiliation éteint « Activée », nouvel abonnement le rallume."
+    },
+    {
+      "id": "W29.AMON87.preuve_en_direct",
+      "taches": [
+        "AMON87"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/AMON87.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AMON-024 (variante on_commit) : notifications_creees 1 (drapeau ouvert) ; en transaction annulée stricte : 0 (abonné après commit)."
+    },
+    {
+      "id": "W29.AMON88.preuve_en_direct",
+      "taches": [
+        "AMON88"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/AMON88.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Écran Vue parc : « Classer » (motif) => ligne retirée, « Aucune alerte ouverte » ; portail 0 alerte."
+    },
+    {
+      "id": "W29.AMON89.preuve_en_direct",
+      "taches": [
+        "AMON89"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/AMON89.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-AMON-032 : repro False (septembre refusé recalculé, décision gardée, Directeur notifié)."
+    },
+    {
+      "id": "W29.AMON91.preuve_en_direct",
+      "taches": [
+        "AMON91"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/AMON91.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Écran Parc installé › rapport énergie : 0,630 kg CO₂/kWh imprimé ; sans facteur : mention."
+    },
+    {
+      "id": "W29.AMON93.preuve_en_direct",
+      "taches": [
+        "AMON93"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/AMON93.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Écran Certificats carbone : annulation tracée (ligne barrée), ré-émission 201 nouvelle référence."
+    },
+    {
+      "id": "W29.AMON94.preuve_en_direct",
+      "taches": [
+        "AMON94"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29/AMON94.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Écran : PDF du certificat (référence, 3,780 t, 630 ONEE), fichier_key + document GED."
+    }
+  ]
+}

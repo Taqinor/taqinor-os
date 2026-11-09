@@ -482,8 +482,8 @@ def _enrichir_meta_trace(lead, extras):
         for champ in changed:
             if champ == 'contact_preference_set_at':
                 continue   # horodatage technique, pas une donnée du client
-            LeadActivity.objects.create(
-                company=lead.company, lead=lead, user=None,
+            activity.journal_systeme(
+                company=lead.company, lead=lead,
                 kind=LeadActivity.Kind.MODIFICATION, field=champ,
                 field_label=_activity.TRACKED_FIELDS.get(champ, champ),
                 old_value=_activity._display(lead, champ, avant.get(champ)),
@@ -530,8 +530,8 @@ def _ensure_meta_form_note(lead, extras, form_id=''):
             '(tranche ouverte « %s » : aucune facture pré-remplie — le '
             'montant réel est à demander au premier appel)'
             % extras.get('facture_declaree', '').replace('_', ' '))
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
+    activity.journal_systeme(
+        company=lead.company, lead=lead,
         kind=LeadActivity.Kind.NOTE, body='\n'.join(lines))
 
 
@@ -655,8 +655,8 @@ def _reprendre_froid_meta(lead, leadgen_id, extras, ville, form_id, created_time
             lead.ville = ville
             lead.save(update_fields=['ville'])
         _ensure_meta_form_note(lead, extras, form_id=form_id)
-        LeadActivity.objects.create(
-            company=lead.company, lead=lead, user=None,
+        activity.journal_systeme(
+            company=lead.company, lead=lead,
             kind=LeadActivity.Kind.NOTE, body=_note_demande_meta(leadgen_id))
     recompute_lead_score(lead)
     return lead
@@ -874,8 +874,8 @@ def create_lead_from_meta_lead_ads(
         Lead.objects.filter(pk=lead.pk).update(date_creation=moment_meta)
         lead.refresh_from_db(fields=['date_creation'])
     activity.log_creation(lead, None, origine=origine)
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
+    activity.journal_systeme(
+        company=lead.company, lead=lead,
         kind=LeadActivity.Kind.NOTE,
         body='Lead créé depuis Meta Lead Ads (formulaire Facebook/Instagram).')
     _ensure_meta_form_note(lead, extras, form_id=str(form_id or ''))
@@ -938,8 +938,8 @@ def import_external_notes_for_contact(company, *, phone=None, email=None,
         if LeadActivity.objects.filter(
                 lead=lead, body__startswith=marker).exists():
             continue
-        LeadActivity.objects.create(
-            company=lead.company, lead=lead, user=None,
+        activity.journal_systeme(
+            company=lead.company, lead=lead,
             kind=LeadActivity.Kind.NOTE, body=body)
         created += 1
     return True, created
@@ -996,8 +996,8 @@ def create_minimal_lead_from_ctwa(*, company, phone, ad_id='') -> Lead:
         **extra,
     )
     activity.log_creation(lead, None)
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
+    activity.journal_systeme(
+        company=lead.company, lead=lead,
         kind=LeadActivity.Kind.NOTE,
         body='Lead créé depuis une conversation WhatsApp/CTWA entrante '
              '(aucun lead préalable trouvé pour ce numéro).',

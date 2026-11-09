@@ -108,3 +108,39 @@ checks.not_a_server_error.expected-statuses = ["2xx", "3xx", "4xx", 503]
 [[operations]]
 include-name = 'POST /api/django/public/stock/portail-fournisseur/{token}/reserver-creneau/'
 checks.positive_data_acceptance.expected-statuses = ["2xx", 400, 401, 403, 404, 409, 429, "5xx"]
+
+# ── 7. Lien de dépôt public expiré : le 410 est la réponse VOULUE (ENF45 b) ──
+# `GET` / `POST /api/django/ged/depot/{token}/` (XGED7) résolvent le lien par
+# son seul jeton : un lien expiré, révoqué ou au quota épuisé répond 410 Gone
+# (déclaré au schéma, `oa.PUBLIC_ERREUR`) — l'écran public `PublicDepotPage.jsx`
+# lit ce 410 pour afficher « lien expiré ». Le lien d'inventaire du fuzz peut
+# s'épuiser en cours de run (nocturne 41958593088) : un jeton conforme au
+# schéma qui n'ouvre plus rien n'est pas une requête « refusée à tort ». Comme
+# la § 4 (ASAV27), 410 est AJOUTÉ aux statuts attendus de
+# `positive_data_acceptance` pour CES SEULES deux opérations (un filtre
+# `include-name` par entrée — deux filtres include se combineraient en OU) ;
+# le check reste actif partout ailleurs et l'endpoint est inchangé.
+[[operations]]
+include-name = 'GET /api/django/ged/depot/{token}/'
+checks.positive_data_acceptance.expected-statuses = ["2xx", 401, 403, 404, 409, 410, 429, "5xx"]
+
+[[operations]]
+include-name = 'POST /api/django/ged/depot/{token}/'
+checks.positive_data_acceptance.expected-statuses = ["2xx", 401, 403, 404, 409, 410, 429, "5xx"]
+
+# ── 8. Étape de workflow qui se désigne elle-même : le 400 est la règle ─────
+# (D-ENF11-WORKFLOW-BOUCLE-400) — `PUT`/`PATCH …/core/workflow-definitions/{id}/`
+# refusent une étape dont `etape_alternative_si_echec` la désigne elle-même
+# (boucle infinie, NTWFL9) par 400. « Ce graphe n'a pas de cycle » n'est
+# exprimable par aucun schéma OpenAPI 3.0 : une étape conforme au format mais
+# en boucle n'est pas « refusée à tort ». Décision fondateur du 06/11/2026,
+# même forme que la § 6 : 400 AJOUTÉ aux statuts attendus de
+# `positive_data_acceptance` pour CES SEULES deux opérations (un filtre
+# `include-name` par entrée) ; le check reste actif partout ailleurs.
+[[operations]]
+include-name = 'PUT /api/django/core/workflow-definitions/{id}/'
+checks.positive_data_acceptance.expected-statuses = ["2xx", 400, 401, 403, 404, 409, 429, "5xx"]
+
+[[operations]]
+include-name = 'PATCH /api/django/core/workflow-definitions/{id}/'
+checks.positive_data_acceptance.expected-statuses = ["2xx", 400, 401, 403, 404, 409, 429, "5xx"]

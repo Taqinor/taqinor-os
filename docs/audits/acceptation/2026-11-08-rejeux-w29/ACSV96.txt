@@ -1,0 +1,26 @@
+# Preuve en direct ACSV96 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Écran : front du worktree servi par vite (127.0.0.1:3000) -> conteneur privé accept-w29-web (runserver, base
+# erp_accept_w29, stockage objet PRIVÉ accept-w29-minio, SMTP 127.0.0.1:1 puis mail en mémoire pour AMON47), piloté par
+# Playwright MCP. Données : seed_demo « TAQINOR Démo » + fixtures FIX-W29* ou états des sondes rejouées SANS rollback
+# (comptes de test, mot de passe de test).
+# Verdict : PASS — Sonde C-ACSV-043 : repro False ; portail de A « Mes documents » vide, B voit PV + BL.
+
+== C-ACSV-043 (sha ddf1f97a1)
+attendu : repro si (a) A voit encore PV+BL d'un chantier annulé ou (b) A garde PV+BL après le changement de client et B ne les a pas
+observé : {"a": {"signer_http": 200, "docs_A_avant_annulation": ["Bon de livraison CHT-K43-1", "PV de réception CHT-K43-1"], "annuler_http": 200, "annule": true, "chantier_visible_au_portail_de_A": false, "docs_A_apres_annulation": []}, "b": {"signer_http": 200, "docs_A_avant": ["Bon de livraison CHT-K43-2", "PV de réception CHT-K43-2"], "patch_client_http": 200, "patch_detail": null, "client_du_chantier": "B", "get_pv_http": 200, "docs_A_apres": [], "docs_B_apres": ["Bon de livraison CHT-K43-2", "PV de réception CHT-K43-2"]}, "repro_a": false, "repro_b": false, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0
+
+## ACSV96 — PASS (écran)
+État de la sonde C-ACSV-043 rejouée SANS rollback (PDF et stockage moqués par la sonde) ; comptes portail p043_a43 (client A) et
+p043_b43 (client B). Espace client › Documents :
+- p043_a43 : « Aucun document — Aucun document n'est partagé avec vous pour le moment. » ; GET portail/mes-documents/ 200 {results: []}
+  (ni PV ni BL de CHT-K43-1 annulé, ni de CHT-K43-2 passé au client B).
+- p043_b43 : « Bon de livraison CHT-K43-2 » et « PV de réception CHT-K43-2 » (version 1) listés.
+Console 0 erreur.

@@ -13,7 +13,9 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from django.utils import timezone
 
-from authentication.permissions import IsResponsableOrAdmin
+from authentication.permissions import (
+    HasPermissionOrLegacy, IsAdminRole, IsResponsableOrAdmin,
+)
 from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import ReceptionNonFacturee
@@ -38,6 +40,15 @@ class ReceptionNonFactureeViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         'reception', 'bon_commande', 'facture', 'created_by').all()
     serializer_class = ReceptionNonFactureeSerializer
     permission_classes = [IsResponsableOrAdmin]
+
+    def get_permissions(self):
+        # AAPV61 (D-ASTK-2/3) — montants internes : lecture `prix_achat_voir`,
+        # écriture + lettrage `achats_payer`, suppression administrateur.
+        if self.action == 'destroy':
+            return [IsAdminRole()]
+        if self.action in ('create', 'update', 'partial_update', 'lettrer'):
+            return [HasPermissionOrLegacy('achats_payer')()]
+        return [HasPermissionOrLegacy('prix_achat_voir')()]
 
     def get_queryset(self):
         qs = super().get_queryset()

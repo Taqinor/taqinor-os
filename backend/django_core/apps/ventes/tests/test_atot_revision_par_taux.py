@@ -107,6 +107,45 @@ class RevisionParTauxTests(TestCase):
             [(t, m) for t, _b, m in _paniers(avoir)],
             [(Decimal('10'), Decimal('1000.00'))])
 
+    def test_confirmer_avoir_revision_par_la_route(self, *_):
+        """ATOT62 (C-ATOT-VER4-022) — la V2 acceptée par le flux normal reçoit
+        par la route son avoir de 11 000 TTC à 10 % ; un second POST répond
+        409 ``aucun_avoir_a_confirmer`` (rien d'écrit) ; rôle normal ⇒ 403.
+        Mutant : appeler sans ``confirmer_avoir`` ⇒ échec."""
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+        self.v1 = self._accepter(self.v1)
+        self._facturer_tout(self.v1)
+        v2 = self._v2({A10: '30000'})
+        url = f'/api/django/ventes/devis/{v2.pk}/confirmer-avoir-revision/'
+
+        def client(user):
+            api = APIClient()
+            api.credentials(
+                HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+            return api
+        normal = get_user_model().objects.create_user(
+            username='atot62_normal', password='x', role_legacy='normal',
+            company=self.company)
+        self.assertEqual(client(normal).post(url, {}, format='json')
+                         .status_code, 403)
+        resp = client(self.user).post(url, {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        avoir = Avoir.objects.get(company=self.company)
+        avoir.refresh_from_db()  # CLAUSE PERSISTANCE — un seul avoir relu
+        self.assertEqual(avoir.type, Avoir.Type.CORRECTION)
+        self.assertEqual((avoir.montant_ht, avoir.montant_tva),
+                         (Decimal('10000.00'), Decimal('1000.00')))
+        self.assertEqual(resp.data['avoirs'], [{
+            'reference': avoir.reference, 'montant_ttc': '11000.00',
+            'facture': avoir.facture.reference}])
+        encore = client(self.user).post(url, {}, format='json')
+        self.assertEqual(encore.status_code, 409, encore.data)
+        self.assertEqual(encore.data['code'], 'aucun_avoir_a_confirmer')
+        self.assertEqual(Avoir.objects.filter(company=self.company).count(),
+                         1)
+
     def test_complement_revision_ventile(self, *_):
         self.v1 = self._accepter(self.v1)
         self._facturer_tout(self.v1)
@@ -255,3 +294,41 @@ class RevisionParTauxTests(TestCase):
             type=Avoir.Type.CORRECTION).exists())
         d.refresh_from_db()
         self.assertTrue(d.is_active)
+
+    def test_prix_negocie_avoir_sans_encaisser_403_rien_ecrit(self, *_):
+        """ASEC68 (C-ASEC-VER4-011, D-ASEC-VER-1) — appliquer un prix
+        négocié qui émettrait un avoir exige ``encaisser`` : Admin Ventes ⇒
+        403 ``{detail}``, ni V2 ni avoir ; l'aperçu reste ouvert et le
+        compte qui encaisse applique (201). Mutant : retirer la garde ⇒
+        échec."""
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import ADMIN_VENTES_PERMISSIONS
+        d, _factures = self._vente_5x20_emise()
+        av = get_user_model().objects.create_user(
+            username='asec68_av', password='x', company=self.company,
+            role_legacy='responsable', role=Role.objects.create(
+                company=self.company, nom='Admin Ventes', est_systeme=True,
+                permissions=list(ADMIN_VENTES_PERMISSIONS)))
+        api = APIClient()
+        api.force_authenticate(av)
+        url = f'/api/django/ventes/devis/{d.id}/prix-negocie/'
+        corps = {'prix_ttc': '9000', 'confirmer_avoir': True}
+        self.assertEqual(api.post(url, corps, format='json').status_code,
+                         200)
+        nb_devis = Devis.objects.count()
+        r = api.post(url, {**corps, 'mode': 'appliquer'}, format='json')
+        self.assertEqual(r.status_code, 403, r.data)
+        self.assertEqual(
+            r.data, {'detail': "Émettre ou encaisser une facture exige le "
+                               "droit d'encaissement."})
+        self.assertEqual(Devis.objects.count(), nb_devis)
+        self.assertFalse(Avoir.objects.filter(company=self.company).exists())
+        d.refresh_from_db()
+        self.assertTrue(d.is_active)
+        self.assertEqual(d.version, 1)
+        api.force_authenticate(self.user)
+        r = api.post(url, {**corps, 'mode': 'appliquer'}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)

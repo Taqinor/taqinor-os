@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 
@@ -11,7 +11,18 @@ import { configureStore } from '@reduxjs/toolkit'
    hors liste blanche (comme la sonde #LIVE1). Un composant ajouté plus tard à
    ShellGlobal entre automatiquement dans ce balayage. */
 
-const { appels, sante } = vi.hoisted(() => ({ appels: [], sante: { tri: null } }))
+const { appels, sante, sw } = vi.hoisted(() => ({
+  appels: [], sante: { tri: null }, sw: { needRefresh: false, update: vi.fn() },
+}))
+
+// BPQ7 — `virtual:pwa-register/react` : état « nouvelle version prête » piloté par le test.
+vi.mock('virtual:pwa-register/react', () => ({
+  useRegisterSW: () => ({
+    needRefresh: [sw.needRefresh, vi.fn()],
+    offlineReady: [false, vi.fn()],
+    updateServiceWorker: sw.update,
+  }),
+}))
 
 vi.mock('../api/axios', () => {
   const repondre = (verbe) => (url, ...reste) => {
@@ -130,5 +141,24 @@ describe('BPQ6 — bandeau du tri quotidien des problèmes', () => {
     await stabiliser()
     expect(appels.some(({ url }) => url === '/core/health/ready/')).toBe(false)
     expect(screen.queryByTestId('bandeau-tri-problemes')).toBeNull()
+  })
+})
+
+describe('BPQ7 — bandeau « Nouvelle version » dans le shell', () => {
+  it('rien tant qu’aucune version n’est prête', async () => {
+    sw.needRefresh = false
+    rendre({ username: 'demo_admin', portee: 'interne', langue_interface: 'fr' })
+    await stabiliser()
+    expect(screen.queryByTestId('ae-update-banner')).toBeNull()
+  })
+
+  it('version prête : un seul bandeau, « Recharger » demande skipWaiting (updateServiceWorker(true))', async () => {
+    sw.needRefresh = true
+    sw.update.mockClear()
+    rendre({ username: 'demo_admin', portee: 'interne', langue_interface: 'fr' })
+    expect(await screen.findAllByTestId('ae-update-banner')).toHaveLength(1)
+    fireEvent.click(screen.getByTestId('ae-update-banner-reload'))
+    expect(sw.update).toHaveBeenCalledWith(true)
+    sw.needRefresh = false
   })
 })

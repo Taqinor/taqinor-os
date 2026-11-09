@@ -173,3 +173,44 @@ class XSAV27PretEquipementServiceTest(TestCase):
             self.assertEqual(resp.status_code, 400, (corps, resp.content))
         pret.refresh_from_db()
         self.assertNotEqual(pret.statut, PretEquipement.Statut.RETOURNE)
+
+    def test_pret_en_cours_bloque_cloture_annulation_suit_fusion(self):
+        """ACSV67 : un prêt en cours refuse clôture et annulation (409) ; à la
+        fusion, le prêt du doublon suit le principal ; retourné : clôture 200."""
+        api = auth(self.admin)
+        Ticket.objects.filter(pk=self.ticket.pk).update(
+            statut=Ticket.Statut.RESOLU)
+        pret = creer_pret_equipement(
+            company=self.company, ticket=self.ticket, produit=self.onduleur,
+            numero_serie='SN-PRET-67', date_sortie=date.today(),
+            date_retour_prevue=date.today() + timedelta(days=14),
+            user=self.admin)
+        base = f'/api/django/sav/tickets/{self.ticket.id}'
+        r = api.post(f'{base}/cloturer/', {}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        # ConflitEtat (APIException) rend les éléments de liste en chaînes,
+        # comme « interventions_ouvertes » (YSERV2).
+        self.assertEqual(r.data['prets_en_cours'], [str(pret.id)])
+        r = api.post(f'{base}/annuler/', {}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.statut, Ticket.Statut.RESOLU)
+        self.assertFalse(self.ticket.annule)
+        doublon = Ticket.objects.create(
+            company=self.company, reference='SAV-XSAV27-2',
+            client=self.client_obj, installation=self.inst,
+            type=Ticket.Type.CORRECTIF, created_by=self.admin)
+        pret_doublon = creer_pret_equipement(
+            company=self.company, ticket=doublon, produit=self.onduleur,
+            numero_serie='SN-PRET-67B', date_sortie=date.today(),
+            date_retour_prevue=None, user=self.admin)
+        r = api.post(f'{base}/fusionner/', {'doublon_id': doublon.id},
+                     format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        pret_doublon.refresh_from_db()
+        self.assertEqual(pret_doublon.ticket_id, self.ticket.id)
+        for en_cours in (pret, pret_doublon):
+            retourner_pret_equipement(
+                pret=en_cours, date_retour_reelle=date.today(), user=self.admin)
+        r = api.post(f'{base}/cloturer/', {}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)

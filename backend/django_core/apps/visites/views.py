@@ -25,7 +25,7 @@ from decimal import Decimal, InvalidOperation
 
 from django.utils import timezone
 from drf_spectacular.utils import (
-    OpenApiParameter, extend_schema, inline_serializer)
+    OpenApiParameter, OpenApiResponse, extend_schema, inline_serializer)
 from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -413,11 +413,13 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         return None if refus is None else Response(refus, status=status.HTTP_400_BAD_REQUEST)
 
     def _refus_si_gelee(self, visite):
+        # ENF11 (nocturne 41958593088) : une visite validée ou annulée est
+        # gelée par son ÉTAT — le corps était conforme : 409, même corps.
         if visite.modifiable:
             return None
         return Response(
             {'erreurs': {'statut': visite.raison_lecture_seule}},
-            status=status.HTTP_400_BAD_REQUEST)
+            status=status.HTTP_409_CONFLICT)
 
     # ERR-ENF11-FUZZ-VISITES — le PUT rend l'ENTÊTE écrite par le sérialiseur
     # (``super().update``), pas l'agrégat : la réponse publiée le dit.
@@ -812,10 +814,16 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         visite.refresh_from_db()
         return self._agregat(visite)
 
-    @extend_schema(responses={(200, 'image/png'): OpenApiTypes.BINARY})
+    @extend_schema(responses={(200, 'image/png'): OpenApiTypes.BINARY, 404: None,
+                              409: OpenApiResponse(description='Aucune image assemblée.')})
     @action(detail=True, methods=['get'], url_path='photo-toit')
     def photo_toit(self, request, pk=None):
-        """Sert l'image assemblée par le proxy Django (jamais MinIO direct)."""
+        """Sert l'image assemblée par le proxy Django (jamais MinIO direct).
+
+        ENF47 (api-fuzz-full 42017839549) — visite d'une autre société ou
+        absente : 404 (``get_object``) ; visite de la société SANS image (ou
+        objet manquant) : 409, son état s'y oppose (même règle que
+        ``devis/{id}/roof-image/fichier``) — c'était un 404 « introuvable »."""
         from django.http import HttpResponse
 
         from apps.records.storage import fetch_attachment
@@ -824,10 +832,10 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         if not visite.photo_toit_key:
             return _erreur('photo_toit', "Aucune image de toit assemblée pour "
                                          'cette visite.',
-                           status.HTTP_404_NOT_FOUND)
+                           status.HTTP_409_CONFLICT)
         data, message = fetch_attachment(visite.photo_toit_key)
         if message:
-            return _erreur('photo_toit', message, status.HTTP_404_NOT_FOUND)
+            return _erreur('photo_toit', message, status.HTTP_409_CONFLICT)
         return HttpResponse(data, content_type='image/png')
 
     @extend_schema(request=CalageSerializer, responses=_VISITE_CONTEXTE,

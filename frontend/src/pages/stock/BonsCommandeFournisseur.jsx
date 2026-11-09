@@ -39,6 +39,12 @@ import {
 // ASTK231 — confirmations par l'AlertDialog commune (aucune boîte native).
 import { erreurComptageSeries, parseSeries } from './numerosSerie.js'
 import { useConfirmation } from '../../features/stock/useConfirmation'
+import { toast } from '../../ui/confirm'
+
+// AAPV16 — avertissements prix (XPUR13, non bloquants) servis par le PATCH /
+// la création d'un BCF : texte unique pour le toast et la confirmation d'envoi.
+const texteAvertissementsPrix = (data) => (data?.prix_warnings ?? [])
+  .flatMap((w) => w.warnings ?? []).map(String).join(' · ')
 import { AlerteErreurStock, MessagesStock } from './BandeauxListeStock'
 import { AlerteErreur, InfoSucces } from '../../ui/AlertesServeur'
 import PiedDialogueFormulaire from '../../ui/PiedDialogueFormulaire'
@@ -91,8 +97,8 @@ const fmtDateFR = (iso) => {
 
 // ── N19 — Modal de retour fournisseur (créé + validé depuis un BCF) ──────────
 // La validation décrémente le stock. Lien automatique vers le BCF d'origine.
-function RetourModal({ bcf, onClose, onDone }) {
-  const [saisies, setSaisies] = useState({})   // { ligneId: { qte, motif } }
+export function RetourModal({ bcf, onClose, onDone }) {
+  const [saisies, setSaisies] = useState({})   // { ligneId: { qte, motif, lot, series } }
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const lignes = bcf?.lignes ?? []
@@ -102,13 +108,18 @@ function RetourModal({ bcf, onClose, onDone }) {
 
   const submit = async () => {
     setError(null)
+    // AAPV20 — même règle de comptage des séries que la réception.
+    const erreurSeries = lignes.map((l) => erreurComptageSeries(
+      saisies[l.id]?.series, Math.floor(Number(saisies[l.id]?.qte)) || 0)).find(Boolean)
+    if (erreurSeries) { setError(erreurSeries); return }
     const payloadLignes = lignes
       .map((l) => {
         const s = saisies[l.id] ?? {}
         // Plafonne au reçu : on ne retourne jamais plus que ce qui a été reçu.
         const qte = Math.min(Math.floor(Number(s.qte)), Number(l.quantite_recue) || 0)
         return Number.isFinite(qte) && qte > 0
-          ? { produit: l.produit, quantite: qte, motif: s.motif || '' }
+          ? { produit: l.produit, quantite: qte, motif: s.motif || '',
+              numero_lot: s.lot || null, numeros_serie: parseSeries(s.series) }
           : null
       })
       .filter(Boolean)
@@ -148,6 +159,7 @@ function RetourModal({ bcf, onClose, onDone }) {
                 <th className="px-3 py-2 text-left font-semibold">Reçu</th>
                 <th className="px-3 py-2 text-left font-semibold">À retourner</th>
                 <th className="px-3 py-2 text-left font-semibold">Motif</th>
+                <th className="px-3 py-2 text-left font-semibold">Lot / séries</th>
               </tr>
             </thead>
           )}>
@@ -170,6 +182,14 @@ function RetourModal({ bcf, onClose, onDone }) {
                        value={saisies[l.id]?.motif ?? ''}
                        placeholder="ex. cassé à la livraison"
                        onChange={(e) => setLigne(l.id, { motif: e.target.value })} />
+              </td>
+              <td className="px-3 py-2">
+                <Input className="h-9" aria-label={`Lot retourné — ${l.produit_nom}`} placeholder="Lot"
+                       value={saisies[l.id]?.lot ?? ''}
+                       onChange={(e) => setLigne(l.id, { lot: e.target.value })} />
+                <Input className="mt-1 h-9" aria-label={`Séries retournées — ${l.produit_nom}`}
+                       placeholder="SN1, SN2…" value={saisies[l.id]?.series ?? ''}
+                       onChange={(e) => setLigne(l.id, { series: e.target.value })} />
               </td>
             </tr>
           ))}
@@ -277,6 +297,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   const [showRetour, setShowRetour] = useState(false)
   const [showAnnuler, setShowAnnuler] = useState(false)
   const [info, setInfo] = useState(null)
+  const [payloadAControler, setPayloadAControler] = useState(null)  // AAPV24
   // WIR220/XPUR7 — accusé de commande fournisseur (date confirmée + n°) : la
   // date DEMANDÉE (`date_livraison_prevue`, ci-dessus) n'est JAMAIS écrasée —
   // état local séparé mis à jour depuis la réponse serveur (le composant ne
@@ -479,8 +500,10 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
     if (payload.lignes.length === 0) { setError('Ajoutez au moins une ligne.'); return }
     setBusy(true)
     try {
-      if (isNew) await stockApi.createBonCommandeFournisseur(payload)
-      else await stockApi.updateBonCommandeFournisseur(bcf.id, payload)
+      const r = isNew ? await stockApi.createBonCommandeFournisseur(payload)
+        : await stockApi.updateBonCommandeFournisseur(bcf.id, payload)
+      const avertissement = texteAvertissementsPrix(r?.data)
+      if (avertissement) toast.warning(`Prix à vérifier : ${avertissement}`)
       onSaved?.()
       onClose()
     } catch (err) {
@@ -501,12 +524,14 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
     setBusy(true); setError(null)
     try {
       // En brouillon, on enregistre d'abord d'éventuelles modifications.
-      if (!isNew) await stockApi.updateBonCommandeFournisseur(bcf.id, buildPayload())
-      let id = bcf?.id
-      if (isNew) {
-        const r = await stockApi.createBonCommandeFournisseur(buildPayload())
-        id = r.data.id
-      }
+      const r = isNew ? await stockApi.createBonCommandeFournisseur(buildPayload())
+        : await stockApi.updateBonCommandeFournisseur(bcf.id, buildPayload())
+      const id = isNew ? r.data.id : bcf?.id
+      const avertissement = texteAvertissementsPrix(r?.data)
+      if (avertissement && !(await confirmer({
+        title: 'Envoyer malgré l\'avertissement prix ?', description: avertissement,
+        confirmLabel: 'Envoyer',
+      }))) { onSaved?.(); if (isNew) onClose(); return } // AAPV84 — nouveau : brouillon déjà créé
       await stockApi.envoyerBcf(id)
       onSaved?.()
       onClose()
@@ -567,18 +592,35 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
 
   const recevoir = async () => {
     const trac = Object.fromEntries(Object.entries(tracas).map(([id, t]) => [
-      id, { numeros_serie: parseSeries(t.series), numero_lot: t.lot }]))
+      id, { numeros_serie: parseSeries(t.series), numero_lot: t.lot, date_peremption: t.peremption }]))
     const ligneEnErreur = bcf.lignes.find((l) => erreurSeriesLigne(l, receptions, tracas))
     if (ligneEnErreur) { setError(erreurSeriesLigne(ligneEnErreur, receptions, tracas)); return }
     const payload = buildReceptionPayload(bcf.lignes, receptions, trac)
     if (payload.length === 0) { setError('Saisissez au moins une quantité à recevoir.'); return }
-    setBusy(true); setError(null)
+    setBusy(true); setError(null); setPayloadAControler(null)
     try {
       await stockApi.recevoirBcf(bcf.id, payload)
       onSaved?.()
       onClose()
     } catch (err) {
       setError(frBcfError(err, 'La réception a échoué.'))
+      // AAPV24 — plan d'échantillonnage : proposer la réception brouillon à contrôler.
+      if (/échantillonnage/i.test(err?.response?.data?.detail ?? '')) setPayloadAControler(payload)
+    } finally { setBusy(false) }
+  }
+
+  const creerReceptionAControler = async () => {
+    setBusy(true); setError(null)
+    try {
+      const r = await stockApi.createReceptionFournisseur({
+        bon_commande: bcf.id,
+        lignes: payloadAControler.map(({ ligne, ...reste }) => ({ ligne_commande: ligne, ...reste })),
+      })
+      setPayloadAControler(null)
+      setInfo(`Réception ${r.data?.reference ?? ''} créée en brouillon : saisissez son contrôle qualité dans Réceptions.`)
+      onSaved?.()
+    } catch (err) {
+      setError(frBcfError(err, 'La création de la réception à contrôler a échoué.'))
     } finally { setBusy(false) }
   }
 
@@ -1022,6 +1064,11 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
                                  aria-label={`N° de lot — ${l.produit_nom ?? l.designation ?? 'ligne'}`}
                                  value={tracas[l.id]?.lot ?? ''}
                                  onChange={(e) => setTracas((t) => ({ ...t, [l.id]: { ...t[l.id], lot: e.target.value } }))} />
+                          {/* AAPV39 — péremption du lot (FEFO, garde du périmé). */}
+                          <Input type="date" className="h-8 w-48 text-xs"
+                                 aria-label={`Péremption du lot — ${l.produit_nom ?? l.designation ?? 'ligne'}`}
+                                 value={tracas[l.id]?.peremption ?? ''}
+                                 onChange={(e) => setTracas((t) => ({ ...t, [l.id]: { ...t[l.id], peremption: e.target.value } }))} />
                         </div>
                       )}
                     </td>
@@ -1051,6 +1098,11 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
 
         <AlerteErreur error={error} />
         <InfoSucces info={info} />
+        {payloadAControler && (
+          <Button type="button" variant="outline" loading={busy} onClick={creerReceptionAControler}>
+            Créer la réception à contrôler
+          </Button>
+        )}
 
         <DialogFooter className="flex-wrap">
           {voitPrix && !isNew && statut !== 'annule' && (

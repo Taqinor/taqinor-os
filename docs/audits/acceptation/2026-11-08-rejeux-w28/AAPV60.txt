@@ -1,0 +1,14 @@
+# Preuve en direct AAPV60 — rejeu w28, code b00242be0 (dev-plan-6a6fc9-w28), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w28-django (conteneur privé : code de CE worktree, base privée
+# erp_accept_w28, transaction annulée, mail en mémoire, Celery coupé, HTTP sortant bloqué). « oc » = variante
+# scratchpad sonde_oc.py identique sauf transaction.on_commit exécuté immédiatement (événements « après commit »
+# qui ne partiraient jamais dans la transaction annulée). Sur le code corrigé, verdict ÉCART = repro False = attendu.
+# Sondes C-LIVE-* (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Écran : front de CE worktree servi par vite (127.0.0.1:5199) -> conteneur privé accept-w28-web (runserver, base
+# erp_accept_w28, SMTP 127.0.0.1:1 = aucune messagerie), piloté par Playwright MCP. Données d'écran = états des sondes
+# rejouées SANS rollback dans la base privée (comptes de test des sondes, mot de passe de test) ou fixtures FIX-*.
+# Verdict : FAIL — NON JOUABLE : écran OCR = clé OCR + service FastAPI absents de la pile privée (aucune clé sortante).
+
+## AAPV60 — NOT-PLAYABLE
+L'écran IA › OCR exige la clé OCR (ZHIPU_API_KEY) et le service FastAPI : le conteneur privé de rejeu n'a aucune clé sortante (retirées
+volontairement : aucune donnée envoyée à un tiers) et aucun service FastAPI de cette branche n'est servi. Non joué.

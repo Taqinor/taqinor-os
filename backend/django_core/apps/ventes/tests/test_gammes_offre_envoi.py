@@ -60,6 +60,30 @@ class TestModeEnvoi(GammeBase):
         self.assertEqual(gamme_envoi(source), GAMME_ENVOI_SEULE)
         self.assertEqual(gamme_envoi(soeur), GAMME_ENVOI_SEULE)
 
+    def test_les_deux_envoie_aussi_la_soeur(self):
+        """ADVS49 (D-ADVS-VER5-1 = envoyer_les_deux) — envoi « les deux » : la
+        sœur passe envoyée avec un lien vivant, la page client sert son jeton ;
+        un renvoi ne frappe aucun second lien ; « seule » : sœur brouillon."""
+        from apps.ventes.models import Devis, ShareLink
+        from apps.ventes.public.payload_variantes import _gammes_public
+        source, soeur = self._paire('DEV-GAM-026')
+        url = f'/api/django/ventes/devis/{source.id}/share-link/'
+        corps = {'envoi': True, 'gamme_envoi': GAMME_ENVOI_LES_DEUX}
+        self.assertEqual(self.api.post(url, corps, format='json').status_code, 200)
+        source.refresh_from_db()
+        soeur.refresh_from_db()
+        self.assertEqual((source.statut, soeur.statut), (Devis.Statut.ENVOYE, Devis.Statut.ENVOYE))
+        jeton = ShareLink.objects.get(devis=soeur).token
+        self.assertIn(str(jeton), _gammes_public(source)['soeur']['proposition_path'])
+        self.assertEqual(self.api.post(url, corps, format='json').status_code, 200)
+        self.assertEqual(ShareLink.objects.filter(devis=soeur).count(), 1)
+        seule, soeur_seule = self._paire('DEV-GAM-027')
+        resp = self.api.post(f'/api/django/ventes/devis/{seule.id}/share-link/',
+                             {'envoi': True, 'gamme_envoi': GAMME_ENVOI_SEULE}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        soeur_seule.refresh_from_db()
+        self.assertEqual(soeur_seule.statut, Devis.Statut.BROUILLON)
+
     def test_share_link_expose_le_bloc_gamme(self):
         source, _ = self._paire('DEV-GAM-025')
         resp = self.api.post(

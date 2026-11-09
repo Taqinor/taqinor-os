@@ -68,9 +68,13 @@ class SeriesReceptionTests(TestCase):
                 'numero_serie', flat=True))
 
     def test_series_plafonnees_quantite_appliquee(self):
+        # AAPV68 — plus de séries que d'unités ENTRÉES : la confirmation est
+        # refusée (409) au lieu de tronquer en silence ; rien au registre.
+        from apps.stock.erreurs_achats import EtatIncompatible
         ligne = self._ligne_cmd(2)
-        self._reception(ligne, 5, ['S1', 'S2', 'S3', 'S4', 'S5'])
-        self.assertEqual(self._en_stock(), {'S1', 'S2'})
+        with self.assertRaises(EtatIncompatible):
+            self._reception(ligne, 5, ['S1', 'S2', 'S3', 'S4', 'S5'])
+        self.assertEqual(self._en_stock(), set())
         self.assertFalse(SerieEntrepot.objects.filter(
             company=self.company, numero_serie__in=['S3', 'S4', 'S5'])
             .exists())

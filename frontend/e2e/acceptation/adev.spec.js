@@ -560,9 +560,9 @@ etape('P5.2', ['ADEV43'], async ({ page, context, testInfo }) => {
     const motifs = listeDe(await lireJson(await api.get(`${API}/crm/motifs-perte/?page_size=100`, T), 'motifs de perte'))
     const motif = motifs.find((m) => m.nom === 'Concurrent' && !m.archived)
     expect(motif, 'motif « Concurrent » actif').toBeTruthy()
-    // Un motif inconnu est refusé (400 nommant `motif`) ; le devis reste envoyé.
+    // Un motif inconnu est refusé (409 nommant `motif`) ; le devis reste envoyé.
     const inconnu = await api.post(`${API}/ventes/devis/${d1.id}/refuser/`, { ...T, data: { motif: 'inconnu' } })
-    expect(inconnu.status()).toBe(400)
+    expect(inconnu.status()).toBe(409) // ERR-ENF11 : motif du corps inconnu = refus d'état
     expect(Object.keys(await inconnu.json())).toContain('motif')
     expect((await lire(api, d1.id)).statut).toBe('envoye')
     // Refus avec motif + note ; le témoin est refusé SANS motif.

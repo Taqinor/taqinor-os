@@ -116,6 +116,35 @@ class MontantFactureMoisTest(TestCase):
         total = montant_facture_mois(self.company, periode)
         self.assertEqual(total, 5000.0)
 
+    def test_brouillon_exclu_et_decimal(self):
+        """AMON31 — base du crédit = factures ÉMISES seules (brouillons et
+        annulées exclus), en ``Decimal`` arrondi au centime."""
+        Client = django_apps.get_model('crm', 'Client')
+        Facture = django_apps.get_model('facturation', 'Facture')
+        client_obj = Client.objects.create(
+            company=self.company, nom='Test', prenom='Client',
+            email='c31@example.com', telephone='+212600000001',
+            adresse='Casablanca')
+        for ref, statut, ttc in (
+                ('FA-AMON31-1', Facture.Statut.EMISE, '100000.00'),
+                ('FA-AMON31-2', Facture.Statut.BROUILLON, '40000.00'),
+                ('FA-AMON31-3', Facture.Statut.ANNULEE, '5000.00')):
+            Facture.objects.create(
+                company=self.company, reference=ref, client=client_obj,
+                statut=statut, taux_tva=Decimal('20.00'),
+                montant_ttc=Decimal(ttc))
+        from core.sla import generer_snapshot_societe, montant_facture_mois
+        periode = datetime.date.today().replace(day=1)
+        total = montant_facture_mois(self.company, periode)
+        self.assertIsInstance(total, Decimal)
+        self.assertEqual(total, Decimal('100000.00'))
+        # Palier d'exemple 99.0 → 10 % franchi à 98 % de disponibilité.
+        with mock.patch('core.sla.uptime_pct_periode', return_value=98.0):
+            snapshot = generer_snapshot_societe(self.company, periode)
+        snapshot.refresh_from_db()
+        self.assertEqual(snapshot.credit_du_pct, Decimal('10.00'))
+        self.assertEqual(snapshot.credit_du_montant, Decimal('10000.00'))
+
 
 class SlaCreditsDusEndpointTest(TestCase):
     def setUp(self):
@@ -160,6 +189,43 @@ class SlaCreditsDusEndpointTest(TestCase):
                            {'statut': 'emis'}, format='json')
         self.assertEqual(resp.status_code, 404)
         self.assertIn('detail', resp.json())
+
+    def test_decision_hors_a_emettre_409(self):
+        """AMON32 — la décision (émis / refusé) n'est acceptée que depuis
+        « à émettre » ; un 409 laisse le statut inchangé et n'émet rien."""
+        from core.events import sla_credit_statut_change
+
+        client = self._client(self.directeur)
+        url = f'/api/django/core/sla/credits/{self.snap.pk}/statut/'
+        recus = []
+
+        def _recepteur(sender, **kwargs):
+            recus.append(kwargs['nouveau_statut'])
+        sla_credit_statut_change.connect(_recepteur)
+        try:
+            non_applicable = SlaSnapshot.objects.create(
+                company=self.company, periode=datetime.date(2026, 7, 1),
+                uptime_pct=Decimal('100'),
+                credit_statut=SlaSnapshot.CreditStatut.NON_APPLICABLE)
+            resp = client.post(
+                f'/api/django/core/sla/credits/{non_applicable.pk}/statut/',
+                {'statut': 'emis'}, format='json')
+            self.assertEqual(resp.status_code, 409, resp.data)
+            self.assertIn('detail', resp.data)
+            non_applicable.refresh_from_db()
+            self.assertEqual(non_applicable.credit_statut,
+                             SlaSnapshot.CreditStatut.NON_APPLICABLE)
+            self.assertEqual(
+                client.post(url, {'statut': 'emis'}, format='json').status_code,
+                200)
+            resp = client.post(url, {'statut': 'refuse'}, format='json')
+            self.assertEqual(resp.status_code, 409, resp.data)
+            self.snap.refresh_from_db()
+            self.assertEqual(self.snap.credit_statut,
+                             SlaSnapshot.CreditStatut.EMIS)
+            self.assertEqual(recus, ['emis'])
+        finally:
+            sla_credit_statut_change.disconnect(_recepteur)
 
     def test_marking_emis_never_creates_a_financial_document(self):
         url = f'/api/django/core/sla/credits/{self.snap.pk}/statut/'

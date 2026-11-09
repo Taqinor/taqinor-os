@@ -21,6 +21,7 @@ evaluated} : seul `evaluated` déclenche un drapeau/ticket, les deux autres
 sont des no-op tracés (le rapport O&M / le fleet dashboard peuvent afficher
 « données manquantes » au lieu d'une fausse alarme production).
 """
+import logging
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
@@ -32,6 +33,8 @@ from .models import (
     ProductionWarranty, UnderperformanceFlag,
 )
 from .providers import _coerce_reading, get_provider
+
+logger = logging.getLogger(__name__)
 
 # CIQ643 — plus d'attendu inventé : sans ``expected_annual_kwh`` semé (recette
 # FG278 ou étude du devis), aucune évaluation ni drapeau.
@@ -105,6 +108,12 @@ def sync_system(installation, *, user=None):
                 external_id=ext).exists()
             if exists:
                 continue
+        # AMON9 — même règle que la saisie (AMON1) : un relevé fournisseur qui
+        # recouvre un relevé existant (manuel, CSV, auto) est écarté.
+        from .selectors import releve_chevauchant
+        if releve_chevauchant(installation, data['date'],
+                              data['period_days']) is not None:
+            continue
         ProductionReading.objects.create(
             company=installation.company, installation=installation,
             date=data['date'], period_days=data['period_days'],
@@ -165,12 +174,35 @@ def attendu_periode(installation, config, debut, fin,
         return None
     debut_effectif = debut_couverture(installation, debut, premier_releve)
     if debut_effectif == debut:
-        jours = (fin - debut).days  # fenêtre entière (comportement d'origine)
-    else:
-        # Période bornée : le jour de départ compte (un relevé par jour).
-        jours = (fin - debut_effectif).days + 1
-    jours = max(jours, 0)
-    return Decimal(str(annual)) * Decimal(jours) / Decimal('365')
+        # Fenêtre entière (comportement d'origine : ``(fin - debut).days``
+        # jours, soit ]debut ; fin]).
+        debut_effectif = debut + timedelta(days=1)
+    # Période bornée : le jour de départ compte (un relevé par jour).
+    return attendu_entre(annual, debut_effectif, fin)
+
+
+def attendu_entre(annuel, debut, fin):
+    """AMON29 — attendu (kWh) de ``[debut, fin]`` (bornes incluses) réparti
+    selon le profil mensuel déjà imprimé au devis
+    (``MOROCCO_SOLAR_MONTHLY_WEIGHTS``, somme = 1) : annuel × Σ mois (poids ×
+    jours du mois dans la période / jours du mois) — jamais annuel / 365 à
+    plat (un premier hiver n'est plus jugé contre la moyenne annuelle)."""
+    import calendar
+
+    from apps.ventes.selectors_calepinage import poids_solaires_mensuels
+
+    poids = poids_solaires_mensuels()
+
+    total = Decimal('0')
+    jour = debut
+    while jour <= fin:
+        nb_mois = calendar.monthrange(jour.year, jour.month)[1]
+        fin_mois = jour.replace(day=nb_mois)
+        jours = (min(fin_mois, fin) - jour).days + 1
+        total += (Decimal(str(poids[jour.month - 1]))
+                  * Decimal(jours) / Decimal(nb_mois))
+        jour = fin_mois + timedelta(days=1)
+    return Decimal(str(annuel)) * total
 
 
 def _expected_recent_kwh(installation, config, window_days, today=None,
@@ -183,41 +215,99 @@ def _expected_recent_kwh(installation, config, window_days, today=None,
         premier_releve)
 
 
-def recent_production_kwh(installation, *, window_days=RECENT_WINDOW_DAYS,
-                          today=None):
-    """Somme des relevés sur la fenêtre récente (toutes sources)."""
-    today = today or timezone.localdate()
-    since = today - timedelta(days=window_days)
-    agg = ProductionReading.objects.filter(
-        installation=installation, date__gte=since, date__lte=today)
+def releves_recouvrant(installation, debut, fin, base=None):
+    """AMON22 — ``[(date, period_days, energy_kwh)]`` des relevés dont la
+    période ``[date, date + period_days)`` RECOUVRE ``[debut, fin]`` (un
+    relevé à cheval sur un bord compte, un relevé reçu en retard aussi).
+    ``base`` : gestionnaire de lecture (réplica analytique, YHARD9)."""
+    from django.db.models import Max
+    qs = (base if base is not None else ProductionReading.objects).filter(
+        installation=installation)
+    plus_longue = qs.aggregate(m=Max('period_days'))['m'] or 1
+    lignes = qs.filter(
+        date__gt=debut - timedelta(days=plus_longue), date__lte=fin,
+    ).values_list('date', 'period_days', 'energy_kwh')
+    return [(jour, periode, kwh) for jour, periode, kwh in lignes
+            if jour + timedelta(days=max(int(periode or 1), 1)) > debut]
+
+
+def production_couverte(releves, debut, fin):
+    """AMON22 — production (kWh) de ``releves`` dans ``[debut, fin]`` : chaque
+    relevé compte au prorata de ses jours dans la fenêtre (``kWh × jours
+    dedans / period_days``), jamais en entier quand il déborde."""
     total = Decimal('0')
-    for r in agg.values_list('energy_kwh', flat=True):
-        total += Decimal(str(r))
+    fin_excl = fin + timedelta(days=1)
+    for jour, periode, kwh in releves:
+        periode = max(int(periode or 1), 1)
+        dedans = (min(jour + timedelta(days=periode), fin_excl)
+                  - max(jour, debut)).days
+        if dedans > 0:
+            total += Decimal(str(kwh)) * Decimal(dedans) / Decimal(periode)
     return total
+
+
+def fenetre_couverte(installation, releves, since, today):
+    """AMON22 — ``(debut, fin, intervalles)`` de la fenêtre réellement
+    couverte : début = ``debut_couverture`` (mise en service / premier
+    relevé), fin = min(aujourd'hui, dernier jour couvert par un relevé),
+    intervalles = union des périodes des relevés dedans. ``None`` si aucun
+    jour couvert."""
+    from .analytics import intervalles_couverts_par_releves
+    if not releves:
+        return None
+    debut = debut_couverture(installation, since)
+    fin = min(today, max(jour + timedelta(days=max(int(periode or 1), 1) - 1)
+                         for jour, periode, _kwh in releves))
+    intervalles = intervalles_couverts_par_releves(
+        [(jour, periode) for jour, periode, _kwh in releves], debut, fin)
+    if not intervalles:
+        return None
+    return debut, fin, intervalles
+
+
+def attendu_intervalles(config, intervalles):
+    """AMON22 — attendu (kWh) sur les seuls jours couverts (intervalles
+    ``[debut, fin)``), au profil mensuel (AMON29, ``attendu_entre``).
+    ``None`` sans référence annuelle (CIQ643)."""
+    annual = config.expected_annual_kwh
+    if annual is None:
+        return None
+    return sum((attendu_entre(annual, debut, fin - timedelta(days=1))
+                for debut, fin in intervalles), Decimal('0'))
 
 
 MOTIF_DONNEES_INDISPONIBLES = 'donnees_indisponibles'
 MOTIF_PERFORMANCE_RETABLIE = 'performance_retablie'
+MOTIF_SUPERVISION_RESILIEE = 'supervision_resiliee'
+MOTIF_EQUIPEMENT_REMPLACE = 'equipement_remplace'
 
 
-def _fermer_episode(installation, motif, note):
+def _fermer_episode(installation, motif, note, user=None, drapeau_id=None):
     """ASAV70 — termine l'épisode de sous-performance : ferme le drapeau
     OUVERT du système (verrou de ligne) avec son motif et sa note. No-op
-    s'il n'y en a pas. Un nouvel épisode réel rouvrira un drapeau neuf."""
+    s'il n'y en a pas. Un nouvel épisode réel rouvrira un drapeau neuf.
+    AMON24 — ``user`` : auteur d'un classement manuel (``cloture_par``) ;
+    ``drapeau_id`` : ne ferme que CE drapeau (classement d'une ligne)."""
     with transaction.atomic():
-        drapeau = (UnderperformanceFlag.objects
-                   .select_for_update()
-                   .filter(installation=installation, is_open=True)
-                   .first())
+        ouverts = (UnderperformanceFlag.objects.select_for_update()
+                   .filter(installation=installation, is_open=True))
+        if drapeau_id is not None:
+            ouverts = ouverts.filter(pk=drapeau_id)
+        drapeau = ouverts.first()
         if drapeau is None:
             return None
         drapeau.is_open = False
         drapeau.date_cloture = timezone.now()
         drapeau.motif_cloture = motif
         drapeau.note_cloture = note
+        drapeau.cloture_par = user
         drapeau.save(update_fields=[
-            'is_open', 'date_cloture', 'motif_cloture', 'note_cloture'])
+            'is_open', 'date_cloture', 'motif_cloture', 'note_cloture',
+            'cloture_par'])
         return drapeau
+
+
+MOTIF_CLASSE_MANUELLEMENT = 'classe_manuellement'
 
 
 def evaluate_underperformance(installation, *, user=None, today=None):
@@ -249,18 +339,34 @@ def evaluate_underperformance(installation, *, user=None, today=None):
             'Système retiré du parc : évaluation impossible.')
         return result
 
-    expected = _expected_recent_kwh(
-        installation, config, RECENT_WINDOW_DAYS, today=today)
-    # AUD522 — bornée à la MÊME fenêtre que `actual` (recent_production_kwh) :
-    # un système dont le SEUL relevé date de plus d'un an n'a AUCUNE donnée
-    # récente, même si `ProductionReading.objects.filter(installation=...)`
-    # (sans borne de date) renvoyait vrai. `has_recent_data=False` avec un
-    # relevé plus ancien existant ⇒ `stale_data` (pas `no_data_ever`) : la
-    # distinction reste tracée pour le rapport O&M / le fleet dashboard.
+    # AMON10 — supervision résiliée sans abonnement actif restant : ni
+    # évaluation ni ticket, l'épisode ouvert est clos (patron ASAV69).
+    from .selectors import supervision_resiliee
+    if supervision_resiliee(installation):
+        result['data_status'] = MOTIF_SUPERVISION_RESILIEE
+        _fermer_episode(installation, MOTIF_SUPERVISION_RESILIEE,
+                        'Supervision résiliée : système plus évalué.')
+        return result
+
+    # AMON22 — réel ET attendu sur les seuls jours COUVERTS par les relevés
+    # ([début de couverture ; min(aujourd'hui, fin du dernier relevé)],
+    # relevés au prorata aux bords) : une saisie en retard n'est plus une
+    # sous-performance. AUD522 — « donnée récente » = un relevé recouvre la
+    # fenêtre ; sinon `stale_data` (relevé plus ancien) ou `no_data_ever`.
     since = today - timedelta(days=RECENT_WINDOW_DAYS)
-    has_recent_data = ProductionReading.objects.filter(
-        installation=installation, date__gte=since, date__lte=today).exists()
-    if not has_recent_data:
+    # AMON4 — après un remplacement d'équipement, on ne réévalue que depuis
+    # le remplacement (l'épisode d'avant a été clos par le récepteur).
+    remplacement = (UnderperformanceFlag.objects
+                    .filter(installation=installation,
+                            motif_cloture=MOTIF_EQUIPEMENT_REMPLACE,
+                            date_cloture__isnull=False)
+                    .order_by('-date_cloture')
+                    .values_list('date_cloture', flat=True).first())
+    if remplacement is not None:
+        since = max(since, timezone.localtime(remplacement).date())
+    releves = releves_recouvrant(installation, since, today)
+    fenetre = fenetre_couverte(installation, releves, since, today)
+    if fenetre is None:
         has_ever = ProductionReading.objects.filter(
             installation=installation).exists()
         result['data_status'] = 'stale_data' if has_ever else 'no_data_ever'
@@ -270,6 +376,8 @@ def evaluate_underperformance(installation, *, user=None, today=None):
             'Aucun relevé récent : évaluation impossible '
             f'({result["data_status"]}).')
         return result
+    debut, fin, intervalles = fenetre
+    expected = attendu_intervalles(config, intervalles)
     if not expected or expected <= 0:
         # CIQ643 — des relevés récents existent mais aucune référence n'a été
         # semée : aucune évaluation, aucun drapeau.
@@ -280,7 +388,7 @@ def evaluate_underperformance(installation, *, user=None, today=None):
             'Référence de production retirée : évaluation impossible.')
         return result
 
-    actual = recent_production_kwh(installation, today=today)
+    actual = production_couverte(releves, debut, fin)
     ratio = (actual / expected) * Decimal('100')
     result.update(evaluated=True, ratio_pct=ratio.quantize(Decimal('0.01')),
                   data_status='evaluated')
@@ -313,6 +421,11 @@ def evaluate_underperformance(installation, *, user=None, today=None):
                 if not _created:
                     open_flag.ratio_pct = result['ratio_pct']
                     open_flag.save(update_fields=['ratio_pct'])
+                else:
+                    # AMON87 — une notification à l'OUVERTURE de l'épisode.
+                    drapeau = open_flag
+                    transaction.on_commit(
+                        lambda: _notifier_drapeau(installation, drapeau))
             else:
                 open_flag.ratio_pct = result['ratio_pct']
                 open_flag.save(update_fields=['ratio_pct'])
@@ -351,7 +464,7 @@ def production_for_calendar_year(installation, year):
     return total
 
 
-def _guaranteed_kwh_for_period(warranty, year, today):
+def _guaranteed_kwh_for_period(warranty, year, today, installation=None):
     """AUD508 — productible garanti pour la PÉRIODE ÉCOULÉE de ``year``.
 
     ``guaranteed_kwh_for_year`` renvoie l'objectif ANNUEL COMPLET, dégradé
@@ -367,15 +480,27 @@ def _guaranteed_kwh_for_period(warranty, year, today):
     Renvoie ``(guaranteed_kwh, year_in_progress)`` — ``year_in_progress``
     laisse l'appelant exposer un flag explicite (jamais une compensation
     affichée comme définitivement due en cours d'année).
+
+    AMON40 — et borné à la PÉRIODE COUVERTE : début = max(1er janvier,
+    1er janvier de ``start_year``, mise en service, premier relevé)
+    (``debut_couverture``, quand ``installation`` est fourni), fin =
+    min(31/12, ``today``) — un système mis en service en septembre n'est
+    plus jugé sur un garanti couru depuis janvier.
     """
-    guaranteed_full = warranty.guaranteed_kwh_for_year(year)
-    if year != today.year:
-        return guaranteed_full, False
     from datetime import date as _date
-    days_in_year = (_date(year, 12, 31) - _date(year, 1, 1)).days + 1
-    day_of_year = today.timetuple().tm_yday
-    fraction = Decimal(day_of_year) / Decimal(days_in_year)
-    return guaranteed_full * fraction, True
+    guaranteed_full = warranty.guaranteed_kwh_for_year(year)
+    premier_janvier = _date(year, 1, 1)
+    debut = max(premier_janvier, _date(int(warranty.start_year), 1, 1))
+    if installation is not None:
+        debut = debut_couverture(installation, debut)
+    fin = min(_date(year, 12, 31), today)
+    year_in_progress = year == today.year
+    if debut == premier_janvier and fin == _date(year, 12, 31):
+        return guaranteed_full, year_in_progress
+    days_in_year = (_date(year, 12, 31) - premier_janvier).days + 1
+    jours = max((fin - debut).days + 1, 0)
+    fraction = Decimal(jours) / Decimal(days_in_year)
+    return guaranteed_full * fraction, year_in_progress
 
 
 def production_warranty_status(installation, *, year=None, today=None):
@@ -402,9 +527,23 @@ def production_warranty_status(installation, *, year=None, today=None):
 
     today = today or timezone.localdate()
     year = int(year or today.year)
+    if year < int(warranty.start_year):
+        # AMON40 — aucune garantie avant son année de départ (404 en vue).
+        return {'has_warranty': False}
     guaranteed, year_in_progress = _guaranteed_kwh_for_period(
-        warranty, year, today)
+        warranty, year, today, installation)
     actual = production_for_calendar_year(installation, year)
+    q2 = Decimal('0.01')
+    if not ProductionReading.objects.filter(
+            installation=installation, date__year=year).exists():
+        # AMON40 — sans relevé : réel et compensation NON mesurés (null).
+        return {
+            'has_warranty': True, 'year': year,
+            'year_in_progress': year_in_progress,
+            'guaranteed_kwh': guaranteed.quantize(q2), 'actual_kwh': None,
+            'shortfall_kwh': None, 'within_tolerance': None,
+            'compensation_mad': None,
+        }
 
     shortfall = guaranteed - actual
     if shortfall < 0:
@@ -418,7 +557,6 @@ def production_warranty_status(installation, *, year=None, today=None):
     compensation = (compensable
                     * Decimal(str(warranty.compensation_mad_per_kwh)))
 
-    q2 = Decimal('0.01')
     return {
         'has_warranty': True,
         'year': year,
@@ -474,7 +612,7 @@ def warranty_curve_overlay(installation, *, years=None, today=None,
     recourse = False
     for year in year_list:
         guaranteed, year_in_progress = _guaranteed_kwh_for_period(
-            warranty, year, today)
+            warranty, year, today, installation)
         actual = production_for_calendar_year(installation, year)
         has_data = ProductionReading.objects.filter(
             installation=installation, date__year=year).exists()
@@ -509,6 +647,26 @@ def warranty_curve_overlay(installation, *, years=None, today=None,
     }
 
 
+def _notifier_drapeau(installation, flag):
+    """AMON87 — notifie les responsables (``monitoring_sous_performance``)
+    qu'un épisode de sous-performance s'ouvre. Best-effort : un échec d'envoi
+    ne change jamais l'évaluation (patron ``report._notify_rapport_envoye``)."""
+    try:
+        from apps.notifications import services as notif_services
+        company = installation.company
+        ref = getattr(installation, 'reference', None) or f'#{installation.pk}'
+        notif_services.notify_many(
+            notif_services.resolve_recipients(
+                company, 'monitoring_sous_performance'),
+            'monitoring_sous_performance',
+            title=f'Sous-performance — {ref} : {flag.ratio_pct} % de l’attendu',
+            body='Production sous le seuil de la supervision : vérification '
+                 'à prévoir.', company=company)
+    except Exception:
+        logger.warning('AMON87 : notification de sous-performance ignorée '
+                       '(installation %s)', installation.pk, exc_info=True)
+
+
 def _create_underperf_ticket(installation, flag, user):
     """Crée UN ticket SAV préventif pour un drapeau de sous-performance.
 
@@ -522,6 +680,19 @@ def _create_underperf_ticket(installation, flag, user):
     client = getattr(installation, 'client', None)
     if client is None:
         return None
+    # AMON26 — rechute : le ticket préventif encore OUVERT de l'épisode
+    # précédent est repris, jamais un second à côté.
+    from apps.sav import selectors as sav_selectors
+    precedent = (UnderperformanceFlag.objects
+                 .filter(installation=installation, is_open=False,
+                         ticket__isnull=False)
+                 .order_by('-date_cloture', '-id')
+                 .values_list('ticket_id', flat=True).first())
+    ticket = (sav_selectors.ticket_scoped(installation.company, precedent)
+              if precedent else None)
+    if (ticket is not None and ticket.statut in type(ticket).OPEN_STATUTS
+            and not ticket.annule):
+        return ticket
     ratio = flag.ratio_pct
 
     return sav_services.creer_ticket_preventif(
@@ -544,9 +715,10 @@ def emettre_certificat_carbone(company, *, installation_id=None, client_id=None,
 
     Exactement UNE cible : `installation_id` (certificat PAR SITE) OU
     `client_id` (certificat CONSOLIDÉ multi-sites) — jamais les deux, jamais
-    aucune. Un certificat EXACTEMENT identique (même société + même cible +
-    même période) est REFUSÉ (``ValueError``) — jamais un doublon silencieux
-    qui compterait deux fois le même CO₂ évité.
+    aucune. Un certificat dont la période RECOUVRE celle d'un certificat de
+    la même cible, ou d'une cible qui partage ses relevés (site ↔ client
+    consolidé), est REFUSÉ (``CertificatCarboneDoublon``, AMON42) — jamais un
+    doublon silencieux qui compterait deux fois le même CO₂ évité.
 
     La référence (``CERT-CO2-YYYYMM-NNNN``) est posée côté serveur, race-safe
     (``core.numbering`` — plus-haut-utilisé+1 par société/mois, jamais un
@@ -561,14 +733,6 @@ def emettre_certificat_carbone(company, *, installation_id=None, client_id=None,
     if periode_fin < periode_debut:
         raise ValueError('periode_fin doit être postérieure ou égale à periode_debut.')
 
-    deja_emis = CertificatCarbone.objects.filter(
-        company=company, installation_id=installation_id, client_id=client_id,
-        periode_debut=periode_debut, periode_fin=periode_fin).exists()
-    if deja_emis:
-        raise CertificatCarboneDoublon(
-            'Un certificat carbone existe déjà pour cette cible et cette '
-            'période exacte (anti-double-comptage).')
-
     from core.numbering import create_with_reference
 
     def _creer(reference):
@@ -578,8 +742,69 @@ def emettre_certificat_carbone(company, *, installation_id=None, client_id=None,
             periode_fin=periode_fin, tco2_evitees=tco2_evitees,
             reference=reference, fichier_key=fichier_key or '')
 
-    return create_with_reference(
-        CertificatCarbone, PREFIXE_REFERENCE_CERTIFICAT_CO2, company, _creer)
+    with transaction.atomic():
+        existant = _certificat_recouvrant(
+            company, installation_id, client_id, periode_debut, periode_fin)
+        if existant is not None:
+            raise CertificatCarboneDoublon(
+                f'La période recouvre {existant.reference} (même cible ou '
+                'relevés partagés site ↔ client) : anti-double-comptage.')
+        return create_with_reference(
+            CertificatCarbone, PREFIXE_REFERENCE_CERTIFICAT_CO2, company,
+            _creer)
+
+
+def _certificat_recouvrant(company, installation_id, client_id, debut, fin):
+    """AMON42 — premier certificat (verrouillé) dont la période recouvre
+    [debut ; fin] sur la cible OU sur une cible qui partage ses relevés :
+    le client consolidé d'un site, les sites (relevés) d'un client."""
+    from django.db.models import Q
+
+    from apps.installations import selectors as installations_selectors
+
+    from .models import CertificatCarbone
+
+    if installation_id:
+        cible = Q(installation_id=installation_id)
+        client_du_site = installations_selectors.chantier_client_id(
+            company, installation_id)
+        if client_du_site:
+            cible |= Q(client_id=client_du_site)
+    else:
+        sites = ProductionReading.objects.filter(
+            company=company, installation__client_id=client_id,
+        ).values_list('installation_id', flat=True).distinct()
+        cible = Q(client_id=client_id) | Q(installation_id__in=list(sites))
+    # AMON93 — un certificat ANNULÉ ne compte plus.
+    return (CertificatCarbone.objects.select_for_update()
+            .filter(cible, company=company, periode_debut__lte=fin,
+                    periode_fin__gte=debut,
+                    statut=CertificatCarbone.Statut.EMIS)
+            .order_by('periode_debut', 'id').first())
+
+
+def annuler_certificat_carbone(certificat, *, motif, user=None):
+    """AMON93 — annule un certificat émis (motif obligatoire, auteur et date
+    tracés) sous verrou de ligne ; la même cible et période redeviennent
+    émissibles. Déjà annulé : ``CertificatCarboneError`` d'état (409)."""
+    from .models import CertificatCarbone
+
+    motif = motif.replace('\x00', '').strip() if isinstance(motif, str) else ''
+    if not motif:
+        raise CertificatCarboneError(
+            'Indiquez le motif de l’annulation.', champ='motif')
+    with transaction.atomic():
+        verrou = CertificatCarbone.objects.select_for_update().get(
+            pk=certificat.pk)
+        if verrou.statut == CertificatCarbone.Statut.ANNULE:
+            raise CertificatCarboneError('Certificat déjà annulé.', etat=True)
+        verrou.statut = CertificatCarbone.Statut.ANNULE
+        verrou.motif_annulation = motif[:500]
+        verrou.annule_le = timezone.now()
+        verrou.annule_par = user
+        verrou.save(update_fields=[
+            'statut', 'motif_annulation', 'annule_le', 'annule_par'])
+    return verrou
 
 
 # ── ASAV100 — Abonnements de supervision (D-ASAV-4 option (b), ASAV93) ──────
@@ -605,26 +830,6 @@ class AbonnementMonitoringError(ValueError):
         self.introuvable = introuvable
 
 
-def _ajouter_mois(jour, nb_mois):
-    """``jour`` + ``nb_mois`` mois, borné au dernier jour du mois cible."""
-    import calendar
-
-    mois_total = jour.month - 1 + nb_mois
-    annee = jour.year + mois_total // 12
-    mois = mois_total % 12 + 1
-    return jour.replace(
-        year=annee, month=mois,
-        day=min(jour.day, calendar.monthrange(annee, mois)[1]))
-
-
-def prochaine_echeance_abonnement(depuis, periodicite):
-    """Mensuel → +1 mois ; annuel → +12 mois (même règle que FG244)."""
-    from .models import AbonnementMonitoring
-
-    pas = 12 if periodicite == AbonnementMonitoring.Periodicite.ANNUEL else 1
-    return _ajouter_mois(depuis, pas)
-
-
 def creer_abonnement_monitoring(company, *, installation_id, periodicite,
                                 montant, date_debut=None, user=None):
     """ASAV100 — crée un abonnement ACTIF pour un système de la société.
@@ -636,10 +841,16 @@ def creer_abonnement_monitoring(company, *, installation_id, periodicite,
 
     from .models import AbonnementMonitoring
 
-    if installations_selectors.installation_scoped(company, installation_id) is None:
+    installation = installations_selectors.installation_scoped(
+        company, installation_id)
+    if installation is None:
         raise AbonnementMonitoringError(
             'Système inconnu ou sans client.', champ='installation_id',
             introuvable=True)
+    if not installation.est_du_parc:  # AMON11 — règle unique AMON80
+        raise AbonnementMonitoringError(
+            'Seul un système du parc (réceptionné, actif, non annulé) peut '
+            'être abonné.', etat=True)
     client_id = installations_selectors.chantier_client_id(
         company, installation_id)
     if client_id is None:
@@ -650,11 +861,30 @@ def creer_abonnement_monitoring(company, *, installation_id, periodicite,
         raise AbonnementMonitoringError(
             'Saisir le montant par période.', champ='montant')
     debut = date_debut or timezone.localdate()
-    return AbonnementMonitoring.objects.create(
-        company=company, client_id=client_id, installation_id=installation_id,
-        periodicite=periodicite, montant=montant,
-        statut=AbonnementMonitoring.Statut.ACTIF, date_debut=debut,
-        prochaine_echeance=prochaine_echeance_abonnement(debut, periodicite))
+    with transaction.atomic():
+        # AMON5 — un seul abonnement ACTIF par système (verrou de lignes).
+        actifs = list(AbonnementMonitoring.objects.select_for_update().filter(
+            company=company, installation_id=installation_id,
+            statut=AbonnementMonitoring.Statut.ACTIF).values_list('pk', flat=True))
+        if actifs:
+            raise AbonnementMonitoringError(
+                'Ce système a déjà un abonnement actif : résiliez-le d’abord.',
+                etat=True)
+        abonnement = AbonnementMonitoring.objects.create(
+            company=company, client_id=client_id,
+            installation_id=installation_id, periodicite=periodicite,
+            montant=montant, statut=AbonnementMonitoring.Statut.ACTIF,
+            date_debut=debut)
+        # AMON84 — la supervision coupée par une résiliation est rallumée
+        # (pendant du récepteur) ; un système jamais abonné reste tel quel.
+        if AbonnementMonitoring.objects.filter(
+                company=company, installation_id=installation_id,
+                statut=AbonnementMonitoring.Statut.RESILIE).exists():
+            from .models import MonitoringConfig
+            MonitoringConfig.objects.filter(
+                company=company, installation_id=installation_id,
+                enabled=False).update(enabled=True)
+        return abonnement
 
 
 def resilier_abonnement_monitoring(abonnement, *, motif, user=None):
@@ -684,11 +914,42 @@ def resilier_abonnement_monitoring(abonnement, *, motif, user=None):
                 'Abonnement déjà résilié.', etat=True)
         abonnement.statut = AbonnementMonitoring.Statut.RESILIE
         abonnement.motif_resiliation = motif[:255]
-        abonnement.save(update_fields=['statut', 'motif_resiliation'])
+        # AMON7 — date et auteur tracés.
+        abonnement.date_resiliation = timezone.now()
+        abonnement.resilie_par = user
+        abonnement.save(update_fields=[
+            'statut', 'motif_resiliation', 'date_resiliation', 'resilie_par'])
         abonnement_monitoring_resilie.send(
             sender=AbonnementMonitoring, abonnement=abonnement, motif=motif,
             company=abonnement.company)
     return abonnement
+
+
+def repointer_client_monitoring(company, *, ancien_client_id,
+                                nouveau_client_id):
+    """AMON12 — repointe les ``client_id`` entiers du monitoring (abonnements,
+    certificats carbone) d'un client absorbé vers le survivant, dans la seule
+    société ``company``. Même forme de rapport que
+    ``core.merge.repointer_relations`` : ``(repointes, non_repointes)`` ; un
+    point de sauvegarde par modèle, un conflit d'unicité est rapporté."""
+    from django.db import IntegrityError
+
+    from .models import AbonnementMonitoring, CertificatCarbone
+
+    repointes, non_repointes = {}, []
+    for modele in (AbonnementMonitoring, CertificatCarbone):
+        etiquette = 'monitoring.%s.client_id' % modele.__name__
+        try:
+            with transaction.atomic():
+                n = modele._base_manager.filter(
+                    company=company, client_id=ancien_client_id,
+                ).update(client_id=nouveau_client_id)
+        except IntegrityError as exc:
+            non_repointes.append({'relation': etiquette, 'motif': str(exc)})
+            continue
+        if n:
+            repointes[etiquette] = n
+    return repointes, non_repointes
 
 
 # ── ASAV102 — émission d'un certificat carbone depuis l'écran ───────────────
@@ -735,6 +996,10 @@ def emettre_certificat_carbone_mesure(company, *, installation_id=None,
         raise CertificatCarboneError(
             'La fin de période doit suivre son début.', champ='periode_fin',
             etat=True)
+    if periode_fin > timezone.localdate():
+        raise CertificatCarboneError(
+            'La fin de période ne peut pas être dans le futur.',
+            champ='periode_fin', etat=True)
     installation = None
     if installation_id:
         installation = installations_selectors.installation_scoped(
@@ -746,15 +1011,29 @@ def emettre_certificat_carbone_mesure(company, *, installation_id=None,
     tonnes, has_data = tco2_evitees_periode(
         company, installation=installation, client_id=client_id,
         since=periode_debut, until=periode_fin)
+    if has_data and tonnes is None:
+        # AMON41 — jamais un certificat chiffré sur un facteur supposé.
+        raise CertificatCarboneError(
+            'Facteur d’émission du réseau non réglé (Paramètres) : aucun '
+            'certificat chiffré.', etat=True)
     if not has_data:
         raise CertificatCarboneError(
             'Aucune production mesurée sur la période : aucun certificat '
             'chiffré ne peut être émis.', etat=True)
     try:
-        return emettre_certificat_carbone(
+        certificat = emettre_certificat_carbone(
             company, installation_id=installation_id or None,
             client_id=client_id or None, periode_debut=periode_debut,
             periode_fin=periode_fin, tco2_evitees=tonnes)
     except ValueError as exc:
         raise CertificatCarboneError(
             str(exc), etat=isinstance(exc, CertificatCarboneDoublon)) from exc
+    # AMON94 — le certificat devient un document : PDF déposé en GED
+    # (`fichier_key`), best-effort.
+    try:
+        from .report_carbon import deposer_certificat_ged, render_certificat_pdf
+        deposer_certificat_ged(certificat, render_certificat_pdf(certificat))
+    except Exception:
+        logger.warning('AMON94 : PDF du certificat %s non rendu',
+                       certificat.reference, exc_info=True)
+    return certificat

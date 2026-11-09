@@ -1,0 +1,70 @@
+# Preuve en direct ACVI111 - pile locale, code 51b2fe77b (dev-plan-6a6fc9-w10), 2026-11-05
+# Lanceur : python scripts/sonde.py (transaction annulee, mail en memoire, HTTP sortant bloque).
+# Sondes LIVE-* : repro=true signifie ICI que le comportement attendu par la tache est observe.
+
+== LIVE-ACVI111 (sha 51b2fe77b)
+attendu : oppose : 4 liens None, textes identiques ; stop_contact : lien ; normal : liens
+observé : {"repro": true, "observe": {"normal": {"wa_url": true, "wa_url_fr": true, "wa_url_darija": true, "confirmation_lien": true}, "oppose": {"wa_url": null, "wa_url_fr": null, "wa_url_darija": null, "confirmation_lien": null}, "textes_identiques": {"etape": true, "visite_fr": true, "visite_darija": true, "confirmation": true}, "stop_contact_lien": "https://wa.me/212661001111?tex", "texte_etape_oppose": "Bonjour Benali, je suis Sara de Mon Entreprise. Vous venez de nous laisser une demande pour le solaire, merci. Je vous a"}}
+verdict : REPRO
+base inchangée : oui (avant 1961, après 1961) ; mails 0 ; tâches Celery bloquées 0
+
+# ---- source : C-LIVE-ACVI111.py ----
+# flake8: noqa  (preuve en direct ACVI111, 05/11/2026)
+"""ACVI111 — lead ne_plus_contacter a telephone valide, une touche WhatsApp ouverte, un rendez-vous : message_pour_etape,
+message_visite_pour_lead(visite_confirmation) et build_appointment_confirmation_whatsapp appeles DIRECTEMENT =>
+wa_url / wa_url_fr / wa_url_darija / 2e element = None, textes inchanges ; cle stop_contact : lien rendu ; lead normal :
+liens rendus. Societe neuve, transaction annulee."""
+SONDE = {"constat": "LIVE-ACVI111", "sha": "51b2fe77b",
+         "attendu": "oppose : 4 liens None, textes identiques ; stop_contact : lien ; normal : liens",
+         "modeles": ["crm.Lead", "crm.RelanceEtape", "crm.Appointment"]}
+
+
+def sonde(ctx):
+    import datetime
+    from django.contrib.auth import get_user_model
+    from django.test import RequestFactory
+    from django.utils import timezone
+    from authentication.models import Company
+    from apps.crm.models import Lead, Appointment
+    from apps.crm.models_cadence import RelanceEtape
+    from apps.crm.cadence_messages import message_pour_etape, message_visite_pour_lead
+    from apps.crm.visites_rdv import build_appointment_confirmation_whatsapp
+    from apps.parametres.models import CompanyProfile
+    co = Company.objects.create(nom='Live ACVI111', slug='live-acvi111')
+    CompanyProfile.objects.get_or_create(company=co)
+    u = get_user_model().objects.create_user(username='live-acvi111', password='x', role_legacy='responsable',
+                                             company=co, first_name='Sara')
+    L = Lead.objects.create(company=co, nom='Aziz', prenom='Benali', owner=u, telephone='+212661001111',
+                            whatsapp='+212661001111')
+    now = timezone.now()
+    t = RelanceEtape.objects.create(company=co, lead=L, cadence='contact', ordre=1, canal=RelanceEtape.Canal.WHATSAPP,
+                                    libelle='WhatsApp 1', template_cle='identite', due_at=now, due_date=timezone.localdate(),
+                                    cadence_depart=now - datetime.timedelta(days=1))
+    rdv = Appointment.objects.create(company=co, lead=L, scheduled_at=now + datetime.timedelta(days=2))
+    req = RequestFactory().get('/', HTTP_HOST='localhost')
+
+    def rendus():
+        L.refresh_from_db()
+        t.refresh_from_db()
+        rdv.refresh_from_db()
+        return (message_pour_etape(t, user=u), message_visite_pour_lead(L, 'visite_confirmation', user=u),
+                build_appointment_confirmation_whatsapp(req, rdv))
+
+    e, v, cf = rendus()
+    Lead.objects.filter(pk=L.pk).update(ne_plus_contacter=True)
+    eo, vo, cfo = rendus()
+    stop = message_pour_etape(t, user=u, cle='stop_contact')
+    obs = {
+        'normal': {'wa_url': bool(e.get('wa_url')), 'wa_url_fr': bool(v.get('wa_url_fr')),
+                   'wa_url_darija': bool(v.get('wa_url_darija')), 'confirmation_lien': bool(cf[1])},
+        'oppose': {'wa_url': eo.get('wa_url'), 'wa_url_fr': vo.get('wa_url_fr'), 'wa_url_darija': vo.get('wa_url_darija'),
+                   'confirmation_lien': cfo[1]},
+        'textes_identiques': {'etape': eo.get('message') == e.get('message'), 'visite_fr': vo.get('corps_fr') == v.get('corps_fr'),
+                              'visite_darija': vo.get('corps_darija') == v.get('corps_darija'),
+                              'confirmation': cfo[0] == cf[0]},
+        'stop_contact_lien': (stop.get('wa_url') or '')[:30],
+        'texte_etape_oppose': (eo.get('message') or '')[:120],
+    }
+    ok = (all(obs['normal'].values()) and all(x is None for x in obs['oppose'].values())
+          and all(obs['textes_identiques'].values()) and bool(eo.get('message')) and bool(stop.get('wa_url')))
+    return {'repro': ok, 'observe': obs}

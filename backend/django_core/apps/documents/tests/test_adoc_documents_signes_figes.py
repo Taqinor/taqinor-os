@@ -100,6 +100,25 @@ class DocumentsSignesFigesTests(TestCase):
             site_adresse='99 boulevard Nouveau')
         self.chantier.refresh_from_db()
 
+    def test_version_a_cle_d_une_autre_societe_jamais_servie(self):
+        """ASEC81 (C-ASEC-VER4-030) — une version GED dont la clé porte l'id
+        d'une AUTRE société n'est jamais lue (traitée comme non récupérable :
+        re-rendu) ; la clé de la société sert ses octets figés. Mutant :
+        revenir à ``fetch_attachment`` ⇒ échec."""
+        self._signer()
+        builders.figer_documents_signes(self.chantier)
+        document = self._document(builders.SOURCE_PV_RECEPTION)
+        version = document.versions.order_by('-version').first()
+        self.assertEqual(builders._octets_en_vigueur(document),
+                         self._octets_version_en_vigueur(document))
+        autre = Company.objects.create(slug=f'asec81-b-{next(_seq)}', nom='B')
+        type(version).objects.filter(pk=version.pk).update(
+            file_key=f'attachments/{autre.pk}/pv-de-b.pdf')
+        with patch('apps.records.storage.fetch_attachment',
+                   return_value=(b'%PDF- octets de B', None)) as lu:
+            self.assertIsNone(builders._octets_en_vigueur(document))
+        lu.assert_not_called()
+
     def test_pv_signe_identique_apres_modification_du_chantier(self):
         self._signer()
         builders.figer_documents_signes(self.chantier)
@@ -117,6 +136,65 @@ class DocumentsSignesFigesTests(TestCase):
         self.assertNotIn('9.50', texte)
         self.assertIn('Signé le', texte)
         self.assertEqual(document.versions.count(), 1)
+
+    def test_pv_ci_signe_inchange_apres_levee_et_reserve_de_depannage(self):
+        """ACSV30 : lever une réserve puis en ajouter une plus tard ne re-rend
+        aucune version GED du PV / BL industriels signés."""
+        from apps.installations.models import Reserve
+        from apps.installations.services import ensure_commissioning_record
+        Installation.objects.filter(pk=self.chantier.pk).update(
+            type_installation='industriel')
+        self.chantier.refresh_from_db()
+        ensure_commissioning_record(self.chantier)
+        reserve = Reserve.objects.create(
+            company=self.company, installation=self.chantier,
+            origine='recette', description='Serrage coffret DC',
+            responsable='Équipe pose')
+        self._signer()
+        builders.figer_documents_signes(self.chantier)
+        document = self._document(builders.SOURCE_PV_RECEPTION)
+        fige = self._octets_version_en_vigueur(document)
+        self.assertIn('Serrage coffret DC', _texte(fige))
+
+        Reserve.objects.filter(pk=reserve.pk).update(
+            statut=Reserve.Statut.RESOLUE)
+        Reserve.objects.create(
+            company=self.company, installation=self.chantier,
+            origine='reception', description='Réserve de dépannage tardive')
+        servi = self._get('pv-reception')
+        self.assertEqual(_sha(servi), _sha(fige))
+        self.assertEqual(document.versions.count(), 1)
+        bl = self._document(builders.SOURCE_BON_LIVRAISON)
+        self._get('bon-livraison')
+        self.assertEqual(bl.versions.count(), 1)
+        self.assertEqual(
+            document.custom_data[builders.PV_CI_SIGNE_KEY]['reserves'][0][
+                'description'], 'Serrage coffret DC')
+
+    def test_pv_definitive_servi_fige_sans_trait(self):
+        """ACSV32 : ?definitive=1 sert le PV de réception DÉFINITIVE, figé en
+        GED sous sa propre source, sans le trait de la provisoire ; 409 tant
+        que la définitive n'est pas prononcée ; sans paramètre : provisoire."""
+        self._signer()
+        r = self.api.get(
+            f'{BASE}/{self.chantier.pk}/pv-reception/', {'definitive': 1})
+        self.assertEqual(r.status_code, 409, r.content)
+        Installation.objects.filter(pk=self.chantier.pk).update(
+            date_reception_definitive=date(2026, 11, 6))
+        premier = self._get('pv-reception', definitive=1)
+        texte = _texte(premier)
+        # Le titre passe à la ligne dans le PDF : espaces normalisés.
+        self.assertIn('PROCÈS-VERBAL DE RÉCEPTION DÉFINITIVE', ' '.join(texte.split()))
+        self.assertIn('prononcée le 06/11/2026', texte)
+        self.assertNotIn('Signé le', texte)
+        document = self._document(builders.SOURCE_PV_RECEPTION_DEFINITIVE)
+        self.assertIsNotNone(document)
+        self.assertEqual(
+            _sha(self._octets_version_en_vigueur(document)), _sha(premier))
+        self.assertEqual(_sha(self._get('pv-reception', definitive=1)),
+                         _sha(premier))
+        self.assertEqual(document.versions.count(), 1)
+        self.assertIn('Signé le', _texte(self._get('pv-reception')))
 
     def test_bl_signe_fige(self):
         self._signer()
@@ -192,3 +270,34 @@ class DocumentsSignesFigesTests(TestCase):
         # Les deux types d'attestation ne se versionnent pas l'un sur l'autre.
         self.assertIsNone(self._document(
             builders._source_attestation('fin_travaux')))
+
+    def test_aligner_partage_retire_l_ancien_client_et_l_annule(self):
+        """ACSV33 (C-ACSV-043) — PV et BL figés partagés avec le seul client
+        courant d'un chantier non annulé ; idempotent.
+        ROUGE AVANT : ImportError (primitive absente)."""
+        from apps.ged.models import AclGed
+        from apps.ged.selectors import documents_partages_client_portail as partages
+        self._signer()
+        builders.figer_documents_signes(self.chantier)
+        a = self.chantier.client_id
+        b = Client.objects.create(company=self.company, nom='Alaoui', prenom='Sara').pk
+        pv = self._document(builders.SOURCE_PV_RECEPTION)
+        bl = self._document(builders.SOURCE_BON_LIVRAISON)
+        self.assertEqual({d.pk for d in partages(self.company, a)}, {pv.pk, bl.pk})
+        Installation.objects.filter(pk=self.chantier.pk).update(client_id=b)
+        self.chantier.refresh_from_db()
+        builders.aligner_partage_portail_chantier(self.chantier)
+        self.assertFalse(partages(self.company, a).filter(pk__in=[pv.pk, bl.pk]).exists())
+        self.assertEqual({d.pk for d in partages(self.company, b)}, {pv.pk, bl.pk})
+        nb = AclGed.objects.filter(company=self.company).count()
+        builders.aligner_partage_portail_chantier(self.chantier)  # second appel : rien
+        self.assertEqual(AclGed.objects.filter(company=self.company).count(), nb)
+        Installation.objects.filter(pk=self.chantier.pk).update(annule=True)
+        self.chantier.refresh_from_db()
+        builders.aligner_partage_portail_chantier(self.chantier)
+        self.assertFalse(partages(self.company, b).exists())
+        self.assertFalse(partages(self.company, a).exists())
+        Installation.objects.filter(pk=self.chantier.pk).update(annule=False)
+        self.chantier.refresh_from_db()
+        builders.aligner_partage_portail_chantier(self.chantier)
+        self.assertEqual({d.pk for d in partages(self.company, b)}, {pv.pk, bl.pk})

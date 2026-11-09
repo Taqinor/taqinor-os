@@ -230,8 +230,8 @@ def _poser_touche_passation(lead, user, ancien_responsable=None):
     if etape is not None and ancien_responsable is not None:
         # La trace dit DE QUI le dossier vient — l'écran et le gabarit, eux,
         # lisent le responsable courant, jamais un prénom figé.
-        LeadActivity.objects.create(
-            company=lead.company, lead=lead, user=None,
+        activity.journal_systeme(
+            company=lead.company, lead=lead,
             kind=LeadActivity.Kind.NOTE,
             body=('Passation à annoncer au client : le dossier change de '
                   'conseiller.'))
@@ -756,7 +756,7 @@ def _veille_simple(lead, user, cible, quand, *, journaliser=True):
     if deplacee is not None and journaliser:
         libelle = (deplacee.libelle or '').strip() \
             or deplacee.get_canal_display()
-        LeadActivity.objects.create(
+        activity.creer_activite(
             company=lead.company, lead=lead, user=user,
             kind=LeadActivity.Kind.NOTE,
             body=(PREFIXE_NOTE_VEILLE
@@ -807,7 +807,7 @@ def _basculer_veille_en_reveil(lead, user, cible, quand, *, journaliser=True):
     if journaliser:
         suite = (f'un réveil est daté du {reveil.due_date:%d/%m/%Y}'
                  if reveil is not None else 'aucun réveil n’a pu être daté')
-        LeadActivity.objects.create(
+        activity.creer_activite(
             company=lead.company, lead=lead, user=user,
             kind=LeadActivity.Kind.NOTE,
             body=(PREFIXE_NOTE_VEILLE
@@ -868,7 +868,7 @@ def repondre_plus_tard(etape, user, quand, *, note='', body=''):
         corps += f' {body}'
     if (note or '').strip():
         corps += f' Note : {note.strip()}'
-    LeadActivity.objects.create(
+    activity.creer_activite(
         company=lead.company, lead=lead, user=user,
         kind=_CANAL_VERS_KIND.get(etape.canal, LeadActivity.Kind.NOTE),
         body=corps, outcome=spec['outcome'])
@@ -880,8 +880,8 @@ def repondre_plus_tard(etape, user, quand, *, note='', body=''):
         else:
             parquer_lead(lead, 'plus_tard_date', jour_convenu, user)
     except ParcRefuse as refus:
-        LeadActivity.objects.create(
-            company=lead.company, lead=lead, user=None,
+        activity.journal_systeme(
+            company=lead.company, lead=lead,
             kind=LeadActivity.Kind.NOTE, body=f'Standby refusé : {refus}.')
     if reprise is None:
         etape.refresh_from_db()
@@ -909,7 +909,7 @@ def _prolonger_validite_attente_accord(lead, user=None):
             if nouvelle is None:
                 continue
             prolonges.append((devis.pk, nouvelle))
-            LeadActivity.objects.create(
+            activity.creer_activite(
                 company=lead.company, lead=lead, user=user,
                 kind=LeadActivity.Kind.NOTE,
                 body=(f'Validité prolongée au {nouvelle:%d/%m} — en attente '
@@ -1047,7 +1047,7 @@ def repondre_attente_accord(etape, user, quand, *, raison=None, note='',
         corps += f' {body}'
     if (note or '').strip():
         corps += f' Note : {note.strip()}'
-    LeadActivity.objects.create(
+    activity.creer_activite(
         company=lead.company, lead=lead, user=user,
         kind=_CANAL_VERS_KIND.get(etape.canal, LeadActivity.Kind.NOTE),
         body=corps, outcome=spec['outcome'])
@@ -1096,8 +1096,8 @@ def repondre_question_prix(etape, user, *, note='', body=''):
              'proposition est en pause.')
     _recaler_file(lead, user)
     # Note SYSTÈME (``user=None``) : poser une étape n'est pas un contact.
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
+    activity.journal_systeme(
+        company=lead.company, lead=lead,
         kind=LeadActivity.Kind.NOTE,
         body=(f'Suivi de proposition en pause (question de prix) : étape « '
               f'{QUESTION_PRIX_LIBELLE} » posée pour le '
@@ -1271,8 +1271,8 @@ def repondre_visite_abandonnee(etape, user, *, note='', body=''):
         morceaux.append(f'{retirees} étape(s) de visite retirée(s)')
     # Note SYSTÈME (``user=None``) : dire ce que le moteur a fait n'est pas
     # un contact (garde QJ7).
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
+    activity.journal_systeme(
+        company=lead.company, lead=lead,
         kind=LeadActivity.Kind.NOTE,
         body=' — '.join(morceaux) + ' : le suivi continue sans visite.')
     assurer_prochaine_etape_apres_succes(
@@ -1332,8 +1332,8 @@ def repondre_planifier_sans_reponse(etape, user, *, note='', body=''):
             quand=aujourd_hui_local() + datetime.timedelta(days=1),
             devis_id=etape.devis_id)
         # Note SYSTÈME (``user=None``) : poser une étape n'est pas un contact.
-        LeadActivity.objects.create(
-            company=lead.company, lead=lead, user=None,
+        activity.journal_systeme(
+            company=lead.company, lead=lead,
             kind=LeadActivity.Kind.NOTE,
             body=(f'Pas de réponse pour caler la visite : étape « '
                   f'{nouvelle.libelle} » reposée pour le '
@@ -1470,8 +1470,8 @@ def repondre_rappel_convenu(etape, user, quand, *, note='', body='',
     quand_local = rappel.due_at.astimezone(horaires.CASABLANCA)
     quand_lisible = quand_local.strftime('%d/%m/%Y à %H:%M')
     # Note SYSTÈME (``user=None``) : poser une étape n'est pas un contact.
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
+    activity.journal_systeme(
+        company=lead.company, lead=lead,
         kind=LeadActivity.Kind.NOTE,
         body=(f'Créneau convenu avec le client : étape « {rappel.libelle} » '
               f'posée pour le {quand_lisible}.'))
@@ -1531,7 +1531,7 @@ def enregistrer_piece_recue(etape, user, *, type_piece, attachment=None,
         # reposer à l'identique n'aurait aucun sens. La pièce est tracée (et
         # attachée) sur la fiche, l'étape reste ouverte — son « Fait » vaudra
         # toujours « devis parti » (QJ-FUNNEL).
-        ligne = LeadActivity.objects.create(
+        ligne = activity.creer_activite(
             company=lead.company, lead=lead, user=user,
             kind=LeadActivity.Kind.NOTE,
             body=(f'Pièce reçue du client : {libelle_piece.lower()} — '
@@ -1622,7 +1622,7 @@ def enregistrer_recontact(lead, user, *, canal, note=''):
     corps = f'Le client a recontacté ({CANAUX_RECONTACT[canal]}).'
     if (note or '').strip():
         corps += f' Note : {note.strip()}'
-    LeadActivity.objects.create(
+    activity.creer_activite(
         company=lead.company, lead=lead, user=user,
         kind=LeadActivity.Kind.NOTE, body=corps)
     etape = assurer_prochaine_etape_apres_succes(
@@ -1913,14 +1913,14 @@ def creer_lead_proprietaire(locataire, user, donnees, *, queryset=None):
         nom_locataire = ' '.join(
             p for p in ((locataire.prenom or '').strip(),
                         (locataire.nom or '').strip()) if p)
-        LeadActivity.objects.create(
-            company=proprietaire.company, lead=proprietaire, user=None,
+        activity.journal_systeme(
+            company=proprietaire.company, lead=proprietaire,
             kind=LeadActivity.Kind.NOTE,
             body=(f'{PREFIXE_LIEN_LOCATAIRE}{locataire.pk} ({nom_locataire}) '
                   ': le locataire du logement nous a donné les coordonnées du '
                   'propriétaire.'))
-        LeadActivity.objects.create(
-            company=locataire.company, lead=locataire, user=None,
+        activity.journal_systeme(
+            company=locataire.company, lead=locataire,
             kind=LeadActivity.Kind.NOTE,
             body=(f'Locataire — propriétaire du logement : fiche '
                   f'#{proprietaire.pk} '

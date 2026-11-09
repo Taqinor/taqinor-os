@@ -1,0 +1,12 @@
+---
+// WAUD87 — /en/produits/<slug> : en-tête EN + repli FR explicite (components/FicheLocale.astro).
+import FicheLocale from '../../../components/FicheLocale.astro';
+import type { Fiche } from '../../../lib/fiches';
+import { fichesStaticPaths } from '../../../lib/fichesStaticPaths';
+
+export const getStaticPaths = fichesStaticPaths;
+
+const { fiche } = Astro.props as { fiche: Fiche };
+---
+
+<FicheLocale fiche={fiche} />

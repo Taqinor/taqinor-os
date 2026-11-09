@@ -21,6 +21,7 @@ from authentication.models import Company
 from apps.crm.models import Client
 from apps.installations.models import Installation
 from apps.monitoring.models import MonitoringConfig, ProductionReading
+from apps.monitoring.test_ntnrg27_registre_certificats import regler_facteur
 
 User = get_user_model()
 
@@ -35,6 +36,7 @@ class TestCarbonReportDataSite(TestCase):
     def setUp(self):
         self.company, _ = Company.objects.get_or_create(
             slug='ntnrg26-co', defaults={'nom': 'NTNRG26 Co'})
+        regler_facteur(self.company)  # AMON41 — facteur réglé (810 g)
         self.client_obj = Client.objects.create(
             company=self.company, nom='Cli', prenom='Carbone',
             email='ntnrg26-cli@example.invalid')

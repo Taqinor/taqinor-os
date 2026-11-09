@@ -139,6 +139,21 @@ class TestReceptionAutoSynchronisePortail(TestCase):
         self.inst = make_installation(
             self.company, self.client_obj, devis=self.devis)
 
+    def test_reception_sans_devis_atteint_et_publie_le_jalon(self):
+        """ACSV39 (C-ACSV-143) — chantier sans devis réceptionné : jalon
+        RÉCEPTION atteint, publié au portail, sans tranche à facturer.
+        ROUGE AVANT : 0 jalon."""
+        from apps.installations.services import chantiers_a_facturer
+        inst = make_installation(self.company, self.client_obj)
+        self.assertFalse(notifier_reception_solde_a_facturer(inst, self.user))
+        jalon = JalonProjet.objects.get(installation=inst, phase=JalonProjet.Phase.RECEPTION)
+        self.assertTrue(jalon.atteint)
+        self.assertFalse(jalon.tranche_echeancier)
+        self.assertTrue(JalonChantierPortail.objects.filter(
+            chantier=inst, cle_phase='reception', atteint=True).exists())
+        self.assertFalse([c for c in chantiers_a_facturer(self.company)
+                          if c['installation_id'] == inst.id])
+
     def test_reception_marque_le_jalon_atteint_et_publie_au_portail(self):
         notifier_reception_solde_a_facturer(self.inst, self.user)
         self.assertTrue(

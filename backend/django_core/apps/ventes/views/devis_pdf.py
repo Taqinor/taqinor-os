@@ -12,6 +12,7 @@ function-locaux (les ``mock.patch`` ``apps.ventes.quote_engine.*`` /
 from django.http import HttpResponse
 from drf_spectacular.utils import extend_schema
 from drf_spectacular.utils import OpenApiParameter
+from drf_spectacular.utils import OpenApiResponse
 from drf_spectacular.types import OpenApiTypes
 from . import openapi_docs as D
 from rest_framework import status
@@ -243,7 +244,14 @@ class DevisPdfActionsMixin:
         )
         return response
 
-    @extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
+    # ENF49 (api-fuzz-full 42128456456, T6SpeD) — devis existant, PDF jamais
+    # généré (ou fichier absent du stockage) = 409, règle d'ENF40 ; 404 reste
+    # au devis absent / d'une autre société (``get_object``).
+    @extend_schema(responses={
+        (200, 'application/pdf'): OpenApiTypes.BINARY,
+        409: OpenApiResponse(
+            description='PDF pas encore généré (ou fichier absent du stockage).'),
+    })
     @action(
         detail=True,
         methods=['get'],
@@ -258,7 +266,7 @@ class DevisPdfActionsMixin:
                     'PDF non disponible. '
                     'Cliquez d\'abord sur « Générer PDF ».'
                 )},
-                status=status.HTTP_404_NOT_FOUND,
+                status=status.HTTP_409_CONFLICT,
             )
         try:
             from ..utils.pdf import download_pdf
@@ -295,7 +303,7 @@ class DevisPdfActionsMixin:
                 "devis_pdf.DevisPdfActionsMixin.telecharger_pdf : erreur ignorée (mode dégradé)", exc_info=True)
             return Response(
                 {'detail': 'Fichier introuvable. Régénérez le PDF.'},
-                status=status.HTTP_404_NOT_FOUND,
+                status=status.HTTP_409_CONFLICT,
             )
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
         # QD2 — nom cohérent (société _ type _ client _ référence).

@@ -387,3 +387,182 @@ class TestLeadListeEtudeParamsNonChargee(TestCase):
         for ligne in lignes:
             self.assertEqual(ligne['updated_by_nom'], 'aoom_modificateur')
             self.assertEqual(ligne['archived_by_nom'], 'aoom_modificateur')
+
+
+class TestLeadListeBudgetAbsoluRequetes(TestCase):
+    """Rejeu live du 24/10/2026 (parcours commercial en navigateur, pile
+    locale, copie anonymisée, société 4) : une page de 200 leads mettait 12 à
+    35 s et ~400 requêtes — au-delà des 20 s du client
+    (``frontend/src/api/axios.js``). Mesuré le 04/11/2026 sur la même copie
+    (1 047 leads, 334 devis), en transaction annulée, ``CaptureQueriesContext``
+    autour de ``GET /api/django/crm/leads/?page_size=200`` :
+
+    * main du 02/11 09:39 (ERR-PERF-CRM-N1 sans AOOM) : 107 requêtes, 1,7 s
+      à chaud (6,9 s à froid) — 88 lectures ``authentication_customuser``,
+      une par lead (``updated_by_nom``/``archived_by_nom``), et 0,30 s pour
+      les 134 devis chargés avec tout leur ``etude_params`` ;
+    * main du 04/11 (+ AOOM1-4, + POINT-EAU-N1) : 19 requêtes, 0,6 s à chaud,
+      et 19 aussi à 50 leads — plus aucune requête par lead ni par devis
+      (lignes, produits, successeur, chantier, lien de partage, lectures et
+      visite du point d'eau arrivent chacun en UNE requête par page).
+
+    Les classes ci-dessus prouvent la PLATITUDE (5 vs 25 lignes) ; aucune ne
+    borne le NOMBRE — 400 requêtes constantes passeraient. Ici le budget est
+    ABSOLU : une page ne coûte jamais plus de requêtes qu'elle n'a de lignes
+    (``BUDGET`` = 25 à 25 leads, et la MÊME borne à 50), sur la page la plus
+    riche que sert la liste : deux devis par lead dont une V1 remplacée, un
+    V2 à DEUX options déclarées (réseau + hybride + batterie sous « Les deux
+    (Sans + Avec) » : ``total_ttc`` passe par la classification des lignes et
+    lit ``produit.nom`` ligne par ligne), un chantier, un lien de partage
+    déjà lu, des leads agricoles avec ou sans visite du point d'eau.
+
+    Test-du-test : remettre ``'devis__lignes'`` à la place de
+    ``'devis__lignes__produit'`` dans
+    ``ventes.selectors_listes.prefetch_devis_liste_leads`` ⇒ une requête
+    ``stock_produit`` par devis à deux options (+25 à 25 leads) ; retirer
+    ``'updated_by'`` du ``select_related`` de ``LeadViewSet.queryset`` ⇒ une
+    requête utilisateur par lead (+25). Les deux crèvent le budget.
+    """
+    BASE = '/api/django/crm/leads/'
+    #: Une requête par lead de la page, préchargements compris. Mesuré : 19
+    #: sur la copie anonymisée (04/11/2026), à 50 comme à 200 leads.
+    BUDGET = 25
+
+    def setUp(self):
+        self.company, _ = Company.objects.get_or_create(
+            slug='budget-liste-leads-co',
+            defaults={'nom': 'Budget Liste Leads Co'})
+        self.admin = User.objects.create_user(
+            username='budget_liste_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.autre = User.objects.create_user(
+            username='budget_liste_autre', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = _auth(self.admin)
+        self.n = 0
+        self.avec_chantier, self.avec_visite, self.sans_visite = [], [], []
+
+    def _leads(self, nombre):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from apps.installations.models import Installation
+        from apps.stock.models import Produit
+        from apps.ventes.models import LigneDevis, ShareLink
+        from apps.visites.models import VisiteTerrain
+        from apps.visites.visite_checklist import GABARIT_POINT_EAU
+        now = timezone.now()
+        for _ in range(nombre):
+            self.n += 1
+            i = self.n
+            client_obj = Client.objects.create(
+                company=self.company, nom=f'C{i}',
+                email=f'budget-liste-{i}@example.invalid')
+            agricole = i % 5 == 0
+            lead = Lead.objects.create(
+                company=self.company, nom=f'L{i}', stage='NEW',
+                owner=self.admin, client=client_obj,
+                updated_by=self.autre, archived_by=self.autre,
+                **({'type_installation': 'agricole'} if agricole else {}))
+            # V1 d'abord (remplacée), V2 ensuite : la liste sert la plus
+            # récente en tête, donc V2 puis V1.
+            v1 = Devis.objects.create(
+                company=self.company, reference=f'DEV-BUDGET-{i:04d}-1',
+                client=client_obj, lead=lead, statut=Devis.Statut.ENVOYE,
+                taux_tva=Decimal('20'), version=1, is_active=False)
+            v2 = Devis.objects.create(
+                company=self.company, reference=f'DEV-BUDGET-{i:04d}-2',
+                client=client_obj, lead=lead, statut=Devis.Statut.ENVOYE,
+                taux_tva=Decimal('20'), version=2,
+                etude_params={'scenario': 'Les deux (Sans + Avec)',
+                              'nombre_proprietes': 1,
+                              'profil_horaire': [0.5] * 168})
+            Devis.objects.filter(pk=v1.pk).update(superseded_by=v2)
+            for nom, prix in (('Panneau 550 W', '1200'),
+                              ('Onduleur réseau 5 kW', '9000'),
+                              ('Onduleur hybride 5 kW', '12000'),
+                              ('Batterie lithium 10 kWh', '15000')):
+                produit = Produit.objects.create(
+                    company=self.company, nom=nom, sku=f'BUDGET-{i}-{prix}',
+                    prix_vente=Decimal(prix), quantite_stock=10)
+                LigneDevis.objects.create(
+                    devis=v2, produit=produit, designation=nom,
+                    quantite=Decimal('2' if nom.startswith('Panneau') else '1'),
+                    prix_unitaire=Decimal(prix), remise=Decimal('0'))
+            ShareLink.objects.create(
+                company=self.company, devis=v2, view_count=2,
+                first_viewed_at=now - timedelta(days=1),
+                last_viewed_at=now - timedelta(hours=2))
+            if i % 5 == 1:
+                Installation.objects.create(
+                    company=self.company, reference=f'CH-BUDGET-{i}',
+                    client=client_obj, devis=v2, lead=lead)
+                self.avec_chantier.append(lead.id)
+            if agricole and i % 10 == 0:
+                VisiteTerrain.objects.create(
+                    company=self.company, lead=lead,
+                    gabarit=GABARIT_POINT_EAU,
+                    statut=VisiteTerrain.Statut.VALIDEE)
+                self.avec_visite.append(lead.id)
+            elif agricole:
+                self.sans_visite.append(lead.id)
+
+    def _mesure(self, page_size):
+        with CaptureQueriesContext(connection) as ctx:
+            resp = self.api.get(self.BASE, {'page_size': page_size})
+        self.assertEqual(resp.status_code, 200, resp.content)
+        data = resp.data
+        lignes = data['results'] if isinstance(data, dict) else data
+        return ctx.captured_queries, lignes
+
+    def _verifier_budget(self, requetes, lignes):
+        import collections
+        import re
+        par_table = collections.Counter()
+        for q in requetes:
+            m = re.search(r'FROM "([a-z_]+)"', q['sql'])
+            par_table[m.group(1) if m else '?'] += 1
+        self.assertLessEqual(
+            len(requetes), self.BUDGET,
+            f'liste des leads : {len(requetes)} requêtes pour {len(lignes)} '
+            f'leads (budget {self.BUDGET}) — par table : '
+            f'{dict(par_table.most_common())}')
+
+    def test_budget_absolu_tient_a_25_et_50_leads(self):
+        from apps.ventes.utils.options import deux_options_declarees
+        self._leads(25)
+        self._mesure(25)  # échauffement des caches de processus
+        requetes_25, lignes_25 = self._mesure(25)
+        self.assertEqual(len(lignes_25), 25)
+        self._verifier_budget(requetes_25, lignes_25)
+        # La page double (50 leads, 100 devis, 200 lignes) : MÊME borne.
+        self._leads(25)
+        requetes_50, lignes_50 = self._mesure(50)
+        self.assertEqual(len(lignes_50), 50)
+        self._verifier_budget(requetes_50, lignes_50)
+        # La page est bien la plus riche : chaque chemin batché est EXERCÉ,
+        # et le payload reste celui du contrat ``lead_devis_ligne.json``.
+        par_id = {x['id']: x for x in lignes_50}
+        v2, v1 = lignes_50[0]['devis']
+        self.assertEqual((v2['version'], v1['version']), (2, 1))
+        self.assertEqual(v1['superseded_by'], v2['id'])
+        self.assertTrue(v1['raison_non_modifiable'].startswith('Remplacé par'))
+        self.assertIsNotNone(v2['share_link'])
+        self.assertEqual(v2['lecture']['nombre_vues'], 2)
+        devis_v2 = Devis.objects.get(pk=v2['id'])  # oracle SANS préchargement
+        self.assertTrue(deux_options_declarees(devis_v2))
+        self.assertEqual(v2['total_ttc'], str(devis_v2.total_ttc))
+        # Option AVEC (mise en avant, D9) et jamais la somme des deux paniers :
+        # 2 × 1 200 + 12 000 + 15 000 = 29 400 HT → 35 280 TTC → palier de
+        # 100 MAD inférieur (ARRONDI-100) = 35 200 ; la somme des deux
+        # paniers vaudrait 46 000.
+        self.assertEqual(v2['total_ttc'], '35200.00')
+        for lead_id in self.avec_chantier:
+            self.assertTrue(par_id[lead_id]['devis'][0]['chantier'])
+        for lead_id in self.avec_visite:
+            self.assertFalse(par_id[lead_id]['devis_auto'][
+                'visite_point_eau_avant_devis']['requise'])
+        for lead_id in self.sans_visite:
+            self.assertTrue(par_id[lead_id]['devis_auto'][
+                'visite_point_eau_avant_devis']['requise'])

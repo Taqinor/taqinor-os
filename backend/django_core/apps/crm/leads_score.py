@@ -8,6 +8,7 @@ import logging
 from django.utils import timezone
 
 from .models import Lead, LeadActivity
+from .activity import journal_systeme
 
 logger = logging.getLogger(__name__)
 
@@ -119,17 +120,16 @@ def _next_round_robin_commercial(company):
     from django.contrib.auth import get_user_model
     from django.db.models import Count, Q
 
-    User = get_user_model()
-    candidats = list(
-        User.objects.filter(
-            company=company, is_active=True, role__nom='Commercial',
-        ).annotate(
-            nb_mql=Count(
-                'leads_assignes',
-                filter=Q(leads_assignes__mql_assigned_at__isnull=False)),
-        ).order_by('nb_mql', 'id')
-    )
-    return candidats[0] if candidats else None
+    from .leads_attribution import rotation_equilibree  # CRXB4 — LE round-robin
+
+    candidats = get_user_model().objects.filter(
+        company=company, is_active=True, role__nom='Commercial',
+    ).annotate(
+        nb_mql=Count(
+            'leads_assignes',
+            filter=Q(leads_assignes__mql_assigned_at__isnull=False)),
+    ).order_by('id')
+    return rotation_equilibree(candidats, lambda u: u.nb_mql)
 
 
 def maybe_assign_mql(lead) -> bool:
@@ -182,8 +182,8 @@ def maybe_assign_mql(lead) -> bool:
         body = (f"auto — MQL : score {lead.score} ≥ seuil {seuil}"
                 f"{' — assigné à ' + str(assignee) if assignee else ''}. "
                 f"Contexte marketing : {contexte_txt}.")
-        LeadActivity.objects.create(
-            company=lead.company, lead=lead, user=None,
+        journal_systeme(
+            company=lead.company, lead=lead,
             kind=LeadActivity.Kind.NOTE, body=body)
 
         # Si on vient d'assigner un owner (round-robin), le save() ci-dessus a

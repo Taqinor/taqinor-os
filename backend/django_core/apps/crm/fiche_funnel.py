@@ -10,7 +10,7 @@ import re
 from . import activity, stages
 from .cadence_messages import (
     SEGMENTS_PRO, _nom_affiche_conseiller, _nom_affiche_marque,
-    _omettre_phrases_incompletes, langue_relance_du_lead,
+    _omettre_phrases_incompletes, _societe_du_lead, langue_relance_du_lead,
 )
 from .cadence_reperes import _CLOTURE_RAISONS
 from .leads_premier_contact import marquer_premier_contact
@@ -245,7 +245,7 @@ def avancer_stage_new_vers_contacted(lead, user) -> bool:
     lead.save(update_fields=['stage'])
     # FG28/MRY19 — le premier contact passe par LA source unique
     # (``marquer_premier_contact``) : plus de pose artisanale ici.
-    LeadActivity.objects.create(
+    activity.creer_activite(
         company=lead.company, lead=lead, user=user,
         kind=LeadActivity.Kind.MODIFICATION,
         field='stage', field_label='Étape',
@@ -287,7 +287,7 @@ def avancer_stage_sur_reponse_devis(lead, user) -> bool:
         return False
     lead.stage = stages.FOLLOW_UP
     lead.save(update_fields=['stage'])
-    LeadActivity.objects.create(
+    activity.creer_activite(
         company=lead.company, lead=lead, user=user,
         kind=LeadActivity.Kind.MODIFICATION,
         field='stage', field_label='Étape',
@@ -322,7 +322,7 @@ def avancer_stage_devis_envoye_sur_touche(lead, user) -> bool:
     ancien = lead.stage
     lead.stage = stages.QUOTE_SENT
     lead.save(update_fields=['stage'])
-    LeadActivity.objects.create(
+    activity.creer_activite(
         company=lead.company, lead=lead, user=user,
         kind=LeadActivity.Kind.MODIFICATION,
         field='stage', field_label='Étape',
@@ -373,7 +373,7 @@ def avancer_stage_pour_devis(devis, ancien_statut, nouveau_statut, user):
         # accepté et ne dispose pas de l'attribution UTM — pas de CAPI ici.
         pass
 
-    LeadActivity.objects.create(
+    activity.creer_activite(
         company=lead.company, lead=lead, user=user,
         kind=LeadActivity.Kind.MODIFICATION,
         field='stage', field_label='Étape',
@@ -468,8 +468,8 @@ def avancer_stage_sur_ouverture_devis(lead) -> bool:
     # CRX20 — chemin canonique : écrit ET émet ``lead_stage_changed`` (ce
     # point d'entrée était muet, les playbooks/séquences ne partaient pas).
     appliquer_stage_lead(lead, cible, user=None)
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
+    activity.journal_systeme(
+        company=lead.company, lead=lead,
         kind=LeadActivity.Kind.MODIFICATION,
         field='stage', field_label='Étape',
         old_value=stages.STAGE_LABELS[ancien_stage],
@@ -550,7 +550,7 @@ def _corps_whatsapp_en_masse(lead, tpl, corps_direct=''):
         'nom': (lead.nom or '').strip(),
         'conseiller': _nom_affiche_conseiller(lead, None),
         'marque': _nom_affiche_marque(lead),
-        'societe': _nom_affiche_marque(lead),
+        'societe': _societe_du_lead(lead),  # ACVI109 — la raison sociale DU LEAD
     }
     for cle in re.findall(r'\{(\w+)\}', corps):
         contexte.setdefault(cle, '')

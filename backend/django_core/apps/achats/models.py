@@ -414,11 +414,6 @@ class ReceptionFournisseur(models.Model):
     def __str__(self):
         return self.reference
 
-    @property
-    def total_recu(self):
-        """Nombre total d'articles reçus sur cette réception."""
-        return sum((ligne.quantite for ligne in self.lignes.all()), 0)
-
 
 class LigneReceptionFournisseur(models.Model):
     """Ligne d'une réception fournisseur : la ligne de BCF concernée, le produit
@@ -653,6 +648,9 @@ class ImputationAcompteFournisseur(TenantModel):
         FactureFournisseur, on_delete=models.PROTECT,  # on_delete: PROTECT — garde ASTK85 : facture avec acompte imputé
         related_name='imputations_acompte')
     montant = models.DecimalField(max_digits=14, decimal_places=2)
+    # AAPV5 (D-AAPV-2) — RAS-TVA restante portée par l'imputation qui SOLDE
+    # la facture (Σ RAS = taux × TVA au centime) ; 0 sinon.
+    montant_ras_tva = models.DecimalField(max_digits=14, decimal_places=2, default=0)
 
     class Meta:
         verbose_name = "Imputation d'acompte fournisseur"
@@ -836,6 +834,9 @@ class LigneRetourFournisseur(models.Model):
         related_name='lignes_retour_fournisseur')
     quantite = models.IntegerField()
     motif = models.CharField(max_length=255, blank=True, null=True)
+    # AAPV20 — lot et séries retournés (le lot est débité à la validation).
+    numero_lot = models.CharField(max_length=100, blank=True, null=True)
+    numeros_serie = models.JSONField(null=True, blank=True)
 
     class Meta:
         verbose_name = 'Ligne de retour fournisseur'

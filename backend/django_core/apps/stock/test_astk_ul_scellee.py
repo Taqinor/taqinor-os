@@ -127,3 +127,42 @@ class UniteLogistiqueScelleeTests(TestCase):
         r = self.api.post(f'{URL}{self.w.id}/deplacer/',
                           {'bin_destination': self.bin.id}, format='json')
         self.assertIn(r.status_code, (200, 400, 409), r.content)
+
+    def test_palette_scellee_fige_sa_descendance(self):
+        """ASTK261 (C-ASTK-VER4-050) — palette scellée P contenant un colis
+        ouvert C1 : rattacher V à P, ajouter une ligne à C1, détacher C1 et
+        rattacher W à un simple colis C2 répondent 409 (sonde : 200/201/200/200)."""
+        from apps.stock.models_wms import UniteLogistiqueLigne
+        pal = creer_unite_logistique(company=self.co, type_unite='palette')
+        c1 = creer_unite_logistique(company=self.co, parent=pal)
+        ajouter_ligne_unite_logistique(
+            company=self.co, unite=c1, produit=self.produit, quantite=2)
+        sceller_unite_logistique(unite=pal, user=self.resp)
+        v = creer_unite_logistique(company=self.co)
+        ajouter_ligne_unite_logistique(
+            company=self.co, unite=v, produit=self.produit, quantite=5)
+        w = creer_unite_logistique(company=self.co)
+        c2 = creer_unite_logistique(company=self.co)
+        enfants_avant = sorted(pal.enfants.values_list('pk', flat=True))
+
+        gestes = [
+            self.api.patch(f'{URL}{v.id}/', {'parent': pal.id}, format='json'),
+            self.api.post(f'{URL}{c1.id}/lignes/',
+                          {'produit': self.produit.id, 'quantite': 3},
+                          format='json'),
+            self.api.patch(f'{URL}{c1.id}/', {'parent': None}, format='json'),
+            self.api.patch(f'{URL}{w.id}/', {'parent': c2.id}, format='json'),
+        ]
+        self.assertEqual([r.status_code for r in gestes], [409] * 4,
+                         [r.content for r in gestes])
+        # Persistance relue : descendance et contenu inchangés.
+        self.assertEqual(sorted(UniteLogistique.objects.filter(
+            parent=pal).values_list('pk', flat=True)), enfants_avant)
+        self.assertEqual(
+            UniteLogistiqueLigne.objects.get(unite=c1).quantite, 2)
+        w.refresh_from_db()
+        self.assertIsNone(w.parent_id)
+        # Témoin : un colis ouvert hors palette reste modifiable.
+        r = self.api.patch(f'{URL}{c2.id}/', {'dimensions': '40 × 30 × 20'},
+                           format='json')
+        self.assertEqual(r.status_code, 200, r.content)

@@ -1,0 +1,60 @@
+{
+  "sha": "613f13265514ee244674b2417d9c02bdb8b6d278",
+  "date": "2026-11-04",
+  "groupe": "APRF",
+  "verdict": "PASS",
+  "couvre": [
+    "APRF43",
+    "APRF44",
+    "APRF45"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P1.export_lien_cloche",
+      "taches": [
+        "APRF43",
+        "APRF45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-APRF-P1.export_lien_cloche.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P3.vente_en_vigueur_portefeuille_dormants",
+      "taches": [
+        "APRF44",
+        "APRF45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-04/ACCEPTATION-APRF-P3.vente_en_vigueur_portefeuille_dormants.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}

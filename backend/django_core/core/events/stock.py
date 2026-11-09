@@ -41,6 +41,12 @@ les émetteurs et abonnés continuent d'importer ``core.events``.
     repasse les ``SerieEntrepot`` en « retourné » et re-plafonne la
     réservation YPROC10 du chantier. ``stock`` n'importe pas ``installations``.
 
+``retour_fournisseur_valide``
+    AAPV8 — émis après commit à la fin de
+    ``stock.services.apply_retour_fournisseur`` (arguments ``retour``,
+    ``company``, ``user``, ``lignes`` = ``{ligne, produit, quantite}``).
+    Abonné attendu : ``installations`` (GR/IR, réservation d'origine).
+
 ``facture_fournisseur_creee`` / ``paiement_fournisseur_enregistre``
     Symétrique achat de ``facture_emise``/``paiement_enregistre`` — YLEDG2.
     Émis SYNCHRONE, best-effort, au point de création canonique :
@@ -146,6 +152,29 @@ demande_achat_approuvee = django.dispatch.Signal()
 # ``user`` (peut être ``None``), ``bon_commande_id`` (le BCF créé).
 rfq_attribuee = django.dispatch.Signal()
 
+# ── AAPV8 — Retour fournisseur validé ───────────────────────────────────────
+# Jumeau RETOUR de ``reception_fournisseur_annulee`` : émis UNE fois, APRÈS
+# commit, à la fin de ``stock.services.apply_retour_fournisseur`` (validation
+# d'un retour fournisseur, API ou scanné). Arguments :
+#   * ``retour`` — l'instance ``stock.RetourFournisseur`` validée ;
+#   * ``company`` — la société (posée côté serveur) ;
+#   * ``user`` — l'utilisateur qui valide (peut être ``None``) ;
+#   * ``lignes`` — liste de dicts ``{ligne, produit, quantite}``.
+# Abonnés attendus : ``installations`` (AAPV9 : provision GR/IR réduite ;
+# AAPV65 : réservation du chantier d'origine replafonnée).
+retour_fournisseur_valide = django.dispatch.Signal()
+
+# ── AAPV17 — BCF annulé ou supprimé ─────────────────────────────────────────
+# Émis SYNCHRONE par ``stock.services.emettre_bcf_annule`` à l'annulation
+# (``annuler_bcf_cascade``) ET avant la suppression d'un BCF brouillon
+# (l'abonné relit la DA liée avant le ``SET_NULL``). Arguments :
+#   * ``bon_commande_id`` — l'id du BCF ;
+#   * ``company`` — la société ;
+#   * ``user`` — l'acteur (peut être ``None``) ;
+#   * ``supprime`` — ``True`` pour une suppression, ``False`` une annulation.
+# Abonné attendu : ``installations`` (AAPV71 : la DA liée est rouverte).
+bon_commande_fournisseur_annule = django.dispatch.Signal()
+
 __all__ = [
     'reception_fournisseur_confirmee',
     'reception_fournisseur_annulee',
@@ -155,4 +184,6 @@ __all__ = [
     'produit_modifie',
     'demande_achat_approuvee',
     'rfq_attribuee',
+    'retour_fournisseur_valide',
+    'bon_commande_fournisseur_annule',
 ]

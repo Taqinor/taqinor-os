@@ -106,7 +106,7 @@ class TestEmployeeAdmin(TestCase):
             User.objects.filter(company=self.company).count(), avant)
         resp = self.api.patch(f'/api/django/users/{self.employee.id}/',
                               {'fonction': 999999}, format='json')
-        self.assertEqual(resp.status_code, 404, resp.content)
+        self.assertEqual(resp.status_code, 409, resp.content)  # ENF45 a : mise à jour = 409
 
     def test_liste_refuse_page_size_non_entier_et_repete(self):
         # La liste est paginée (``core.pagination``) : ``page_size`` non entier

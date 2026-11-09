@@ -227,12 +227,16 @@ def _resoudre_ref(doc: dict, schema, profondeur: int = 0) -> dict:
     return schema
 
 
-def _reponse_porte_id(doc: dict, reponse: dict) -> bool:
+def _proprietes_reponse(doc: dict, reponse: dict) -> set:
+    proprietes = set()
     for media in ((reponse or {}).get("content") or {}).values():
         schema = _resoudre_ref(doc, (media or {}).get("schema"))
-        if "id" in (schema.get("properties") or {}):
-            return True
-    return False
+        proprietes |= set(schema.get("properties") or {})
+    return proprietes
+
+
+def _reponse_porte_id(doc: dict, reponse: dict) -> bool:
+    return "id" in _proprietes_reponse(doc, reponse)
 
 
 _PREMIER_PARAM = re.compile(r"^\{([^}/]+)\}/")
@@ -244,7 +248,13 @@ def declarer_liens(doc: dict) -> int:
     Pour ``POST /x/`` (201 dont le corps a un ``id``) et chaque chemin
     ``/x/{pk}/…`` dont le PREMIER segment après ``/x/`` est un paramètre,
     déclare ``{pk}: $response.body#/id``. Un lien existant n'est jamais
-    écrasé. Retourne le nombre de liens ajoutés."""
+    écrasé. Retourne le nombre de liens ajoutés.
+
+    api-fuzz-full 42160785666 (ENF50, UwBLOT) — un paramètre NOMMÉ comme un
+    champ du corps 201 (``semantic/metriques/{cle}/lignage/`` : le corps
+    publie ``cle``) reçoit CE champ : l'``id`` (49) y était posé comme clé, et
+    chaque opération ``/{cle}/…`` répondait 404 « Aucune métrique « 49 » »
+    (« linked data not usable », puis « not available after creation »)."""
     chemins = doc.get("paths") or {}
     ajoutes = 0
     for collection, item in chemins.items():
@@ -254,6 +264,7 @@ def declarer_liens(doc: dict) -> int:
         reponse = (post.get("responses") or {}).get("201")
         if not reponse or not _reponse_porte_id(doc, reponse):
             continue
+        proprietes = _proprietes_reponse(doc, reponse)
         for cible, item_cible in chemins.items():
             if cible == collection or not cible.startswith(collection):
                 continue
@@ -270,7 +281,8 @@ def declarer_liens(doc: dict) -> int:
                     continue
                 liens[nom] = {
                     "operationId": operation["operationId"],
-                    "parameters": {m.group(1): "$response.body#/id"},
+                    "parameters": {m.group(1): "$response.body#/" + (
+                        m.group(1) if m.group(1) in proprietes else "id")},
                 }
                 ajoutes += 1
     return ajoutes

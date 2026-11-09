@@ -30,6 +30,8 @@ import { Navigate, useNavigate } from 'react-router-dom'
 // d'atterrissage générique post-login, donc le seul endroit qui doit décider
 // d'un redémarrage automatique vers un accueil mobile par rôle.
 import api from '../api/axios'
+import ventesApi from '../api/ventesApi'
+import reportingApi from '../api/reportingApi'
 import { useIsMobile } from '../ui/ResponsiveDialog'
 import { mobileHomeAction, routeSuggereeServeur } from '../features/offlinesync/mobile/mobileHome'
 import { toast } from '../ui/confirm'
@@ -44,7 +46,8 @@ import { ModuleHero } from '../ui/module/ModuleHero.jsx'
 import { fetchProduits } from '../features/stock/store/stockSlice'
 import { fetchClients, fetchLeads } from '../features/crm/store/crmSlice'
 import { fetchDevis, fetchFactures } from '../features/ventes/store/ventesSlice'
-import { useCanLireVentes } from '../hooks/useHasPermission'
+import { useDeviseTenant } from '../hooks/useDeviseTenant'
+import { useCanLireVentes, useCanLireEquipesCrm } from '../hooks/useHasPermission'
 import { fetchInstallations } from '../features/installations/store/installationsSlice'
 // VX27 — cockpit du matin par rôle : le SAV réutilise les helpers de statut/SLA
 // existants (aucune logique de ticket dupliquée ici) et les tickets déjà en
@@ -66,7 +69,7 @@ import {
 } from '../ui'
 import { StateBlock } from '../components/StateBlock'
 import { cn } from '../lib/cn'
-import { formatMAD, formatNumber, formatPercent, formatDate } from '../lib/format'
+import { formatMAD, formatMontant, formatNumber, formatPercent, formatDate } from '../lib/format'
 import { STATUT_DEVIS_LABELS } from '../features/ventes/devisStatuts'
 // ODY27 — le Dashboard est une surface TRANSVERSE : ses cartes, KPI et
 // segments pointent vers plusieurs apps. Ils sont filtrés par la source
@@ -216,30 +219,28 @@ export function ticketsSlaEnRetard(tickets) {
   return (tickets ?? []).filter((t) => t && t.sla_breach === true)
 }
 
-// VX219 — « Mes chiffres » : devis du MOIS COURANT scopés au vendeur
-// (`created_by === userId`, jamais agrégés à l'équipe), même ancrage mensuel
-// que caMensuel/devisSpark ci-dessus (`date_creation`). Fonction PURE, testée
-// sans monter le composant ni le store (`userId` absent → aucun scope, utile
-// en repli si l'utilisateur courant n'est pas encore chargé).
+// AANA60 (D-AANA-VER-1) — taux de signature et effectifs SERVIS par le
+// Quote-to-cash (`GET /ventes/dashboard/?mine=1&month=`, sélecteur
+// `taux_acceptation_periode`) : l'accueil ne divise plus jamais d'effectifs.
+// `devisServi` = bloc `devis` de la réponse. Seul `caSigne` (montant, aucune clé
+// servie) reste la somme des devis acceptés du mois du vendeur (VX219).
 // eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé (D-ENF22)
-export function mesChiffresDuMois(devis, { userId, now = new Date() } = {}) {
-  const y = now.getFullYear()
-  const m = now.getMonth()
-  const mine = (devis ?? []).filter((d) => {
-    if (!d || !d.date_creation) return false
-    if (userId != null && d.created_by !== userId) return false
-    const dt = new Date(d.date_creation)
-    return dt.getFullYear() === y && dt.getMonth() === m
-  })
-  const emis = mine.filter((d) => ['envoye', 'accepte', 'refuse', 'expire'].includes(d.statut))
-  const acceptesList = mine.filter((d) => d.statut === 'accepte')
-  const caSigne = acceptesList.reduce((s, d) => s + num(d.total_affiche ?? d.total_ttc), 0)
+export function mesChiffresDuMois(devisServi, devis, { userId, now = new Date() } = {}) {
+  const acceptes = (devis ?? []).filter((d) => d && d.statut === 'accepte' && d.date_creation
+    && (userId == null || d.created_by === userId)
+    && String(d.date_creation).slice(0, 7) === moisCourant(now))
   return {
-    envoyes: emis.length,
-    acceptes: acceptesList.length,
-    tauxSignature: emis.length > 0 ? Math.round((acceptesList.length / emis.length) * 100) : 0,
-    caSigne,
+    envoyes: devisServi?.envoyes_periode ?? 0,
+    acceptes: devisServi?.acceptes_periode ?? 0,
+    tauxSignature: devisServi?.taux_acceptation_pct ?? 0,
+    caSigne: acceptes.reduce((s, d) => s + num(d.total_affiche ?? d.total_ttc), 0),
   }
+}
+
+// AANA60 — `AAAA-MM` du mois courant (paramètre `month` du Quote-to-cash).
+// eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé (D-ENF22)
+export function moisCourant(now = new Date()) {
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 }
 
 // VX219 — leads « chauds » à traiter en priorité : les MIENS, non perdus/
@@ -457,6 +458,9 @@ export function Component() {
   const navigate = useNavigate()
   // ODY27 — source UNIQUE de la visibilité des apps (ODY1).
   const { isPathVisible } = useAppVisibility()
+  // NTI18N9 — montants agrégés (KPI/graphiques) dans la devise société ; les
+  // lignes de documents (factures, alertes) gardent leur propre devise (FG52).
+  const devise = useDeviseTenant()
   const { produits, loading: stockLoading, error: stockError } = useSelector((s) => s.stock)
   const { clients, leads, loading: crmLoading, error: crmError } = useSelector((s) => s.crm)
   const { devis, factures, loading: ventesLoading, error: ventesError } = useSelector((s) => s.ventes)
@@ -467,6 +471,7 @@ export function Component() {
   const roleNom = useSelector((s) => s.auth.role_nom)
   const roleTier = useSelector((s) => s.auth.role)
   const peutLireVentes = useCanLireVentes()
+  const peutLireEquipes = useCanLireEquipesCrm()
   const profile = cockpitProfile({ roleNom, roleTier })
 
   // NTMOB6 — sélecteur de démarrage par rôle. `mobile_home_route` (NULL tant
@@ -508,6 +513,7 @@ export function Component() {
   // VX41 — comparaison togglable « période précédente » sur le CA mensuel
   // (off par défaut : comportement écran inchangé tant qu'on ne l'active pas).
   const [caCompare, setCaCompare] = useState(false)
+  const [servis, setServis] = useState({ q2c: null, q2cMine: null, reporting: null, refuseReporting: false })
 
   // VX67 — extrait en fonction nommée pour être réutilisable comme `onRetry`
   // du StateBlock d'erreur ci-dessous.
@@ -524,6 +530,17 @@ export function Component() {
     dispatch(fetchInstallations())
     dispatch(fetchLeads())
     dispatch(fetchTickets())
+    // AANA60 — chiffres SERVIS (taux, « Mes chiffres », CA mensuel) ; un 403 de
+    // /reporting/dashboard/ (rôle non direction) → état « accès réservé ».
+    const servi = (cle, promesse) => promesse.then(
+      (r) => setServis((s) => ({ ...s, [cle]: r.data })),
+      (err) => { if (err?.response?.status === 403) setServis((s) => ({ ...s, refuseReporting: true })) },
+    )
+    if (peutLireVentes) {
+      servi('q2c', ventesApi.getDashboardQuoteToCash())
+      servi('q2cMine', ventesApi.getDashboardQuoteToCash({ month: moisCourant(), mine: 1 }))
+    }
+    servi('reporting', reportingApi.getDashboard())
   }, [dispatch, peutLireVentes])
   useEffect(() => {
     reload()
@@ -538,23 +555,12 @@ export function Component() {
   // « période précédente » : les 6 premiers mois servent de référence décalée
   // aux 6 mois affichés, à partir des MÊMES données déjà en store (zéro appel
   // API supplémentaire).
-  const caMensuel12 = useMemo(() => {
-    const MOIS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc']
-    const map = {}
-    const today = new Date()
-    for (let i = 11; i >= 0; i--) {
-      const d = new Date(today.getFullYear(), today.getMonth() - i, 1)
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-      map[key] = { mois: `${MOIS[d.getMonth()]} ${d.getFullYear()}`, ca: 0 }
-    }
-    factures
-      .filter((f) => f.statut === 'payee' && f.date_emission)
-      .forEach((f) => {
-        const key = f.date_emission.slice(0, 7)
-        if (map[key]) map[key].ca += num(f.total_ht)
-      })
-    return Object.values(map)
-  }, [factures])
+  // AANA60 — `ca_mensuel` SERVI par /reporting/dashboard/ (12 mois, part HT des
+  // paiements reçus, avoirs déduits — AANA55) : jamais une somme locale des factures.
+  const caMensuel12 = useMemo(
+    () => (servis.reporting?.ca_mensuel ?? []).map((m) => ({ mois: m.mois, ca: num(m.ca) })),
+    [servis.reporting],
+  )
 
   const caMensuel = useMemo(() => caMensuel12.slice(-6), [caMensuel12])
 
@@ -644,15 +650,12 @@ export function Component() {
     [installations],
   )
 
-  // Conversion devis → signé : envoyés vs. acceptés (taux de signature).
-  const conversion = useMemo(() => {
-    const emis = devis.filter((d) =>
-      ['envoye', 'accepte', 'refuse', 'expire'].includes(d.statut),
-    ).length
-    const signes = devis.filter((d) => d.statut === 'accepte').length
-    const taux = emis > 0 ? Math.round((signes / emis) * 100) : 0
-    return { emis, signes, taux }
-  }, [devis])
+  // AANA60 — conversion devis → signé SERVIE (Quote-to-cash, D-AANA-VER-1).
+  const conversion = {
+    emis: servis.q2c?.devis?.envoyes_periode ?? 0,
+    signes: servis.q2c?.devis?.acceptes_periode ?? 0,
+    taux: servis.q2c?.devis?.taux_acceptation_pct ?? 0,
+  }
 
   // Encours clients : montant dû agrégé par tranche d'ancienneté (balance âgée).
   const ageBalance = useMemo(() => {
@@ -726,8 +729,8 @@ export function Component() {
   // pour ces deux blocs (seule l'atteinte d'objectif, dans la carte elle-même,
   // refait un appel scopé `?owner=`).
   const mesChiffres = useMemo(
-    () => mesChiffresDuMois(devis, { userId: user?.id }),
-    [devis, user?.id],
+    () => mesChiffresDuMois(servis.q2cMine?.devis, devis, { userId: user?.id }),
+    [servis.q2cMine, devis, user?.id],
   )
   const mesLeadsChauds = useMemo(
     () => leadsChauds(leads, { userId: user?.id, limit: 3 }),
@@ -1070,7 +1073,7 @@ export function Component() {
                     Chiffre d'affaires · 6 mois
                   </span>
                   <div className="num mt-1 text-4xl font-semibold leading-none text-foreground">
-                    {formatMAD(caTotal, { decimals: 0 })}
+                    {formatMontant(caTotal, { decimals: 0, devise })}
                   </div>
                 </div>
                 <Badge tone="success">
@@ -1102,9 +1105,11 @@ export function Component() {
           <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-2">
             <ChartCard
               title="Chiffre d'affaires mensuel"
-              description={`Factures payées · ${formatMAD(caTotal, { decimals: 0 })} sur 6 mois`}
-              isEmpty={caMensuel.every((m) => m.ca === 0)}
-              emptyLabel="Aucune facture payée sur les 6 derniers mois."
+              description={`Paiements reçus HT · ${formatMontant(caTotal, { decimals: 0, devise })} sur 6 mois`}
+              isEmpty={servis.refuseReporting || caMensuel.every((m) => m.ca === 0)}
+              emptyLabel={servis.refuseReporting
+                ? "Accès réservé : chiffre d'affaires visible par la direction."
+                : 'Aucun paiement reçu sur les 6 derniers mois.'}
               actions={(
                 <CaCompareToggle caCompare={caCompare} setCaCompare={setCaCompare} />
               )}
@@ -1116,7 +1121,7 @@ export function Component() {
                       courante en trait plein (palette CA), précédente en
                       pointillé (CHART_COMPARISON_STYLE). */}
                   <CaCompareChart data={caMensuelCompare} height={180}
-                    format={(v) => formatMAD(v, { decimals: 0 })} />
+                    format={(v) => formatMontant(v, { decimals: 0, devise })} />
                 </>
               ) : (
                 <AreaSansAxe
@@ -1126,7 +1131,7 @@ export function Component() {
                   tone="primary"
                   name="CA HT"
                   height={180}
-                  tooltipFormat={(v) => formatMAD(v, { decimals: 0 })}
+                  tooltipFormat={(v) => formatMontant(v, { decimals: 0, devise })}
                 />
               )}
             </ChartCard>
@@ -1174,7 +1179,7 @@ export function Component() {
 
             <ChartCard
               title="Encours clients (balance âgée)"
-              description={`${formatMAD(encoursTotal, { decimals: 0 })} à recouvrer`}
+              description={`${formatMontant(encoursTotal, { decimals: 0, devise })} à recouvrer`}
               isEmpty={encoursTotal === 0}
               emptyLabel="Aucun encours client à recouvrer."
             >
@@ -1186,7 +1191,7 @@ export function Component() {
                 name="Montant dû"
                 height={180}
                 barSize={40}
-                tooltipFormat={(v) => formatMAD(v, { decimals: 0 })}
+                tooltipFormat={(v) => formatMontant(v, { decimals: 0, devise })}
               />
             </ChartCard>
           </div>
@@ -1296,9 +1301,13 @@ export function Component() {
 
           {/* ZSAL3 — Tableau de bord « Mes équipes » (autonome : ne rend rien
               si aucune équipe ou si le rôle n'y a pas accès). */}
-          <Suspense fallback={null}>
-            <MesEquipesCard />
-          </Suspense>
+          {/* ERR-ACC-ACCUEIL-403-LECTEUR : jamais monté (jamais appelé) pour un
+              rôle que l'endpoint refuse (Lecteur : 403). */}
+          {peutLireEquipes && (
+            <Suspense fallback={null}>
+              <MesEquipesCard />
+            </Suspense>
+          )}
 
           {/* NTUX11 — Récents (autonome : ne rend rien sans entité récente). */}
           <Suspense fallback={null}>

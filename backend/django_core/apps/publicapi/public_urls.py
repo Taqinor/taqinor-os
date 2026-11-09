@@ -31,6 +31,7 @@ from .public_changelog_views import PublicChangelogView
 from .public_errors_views import PublicErrorCatalogView
 from .public_events_views import PublicEventFeedView
 from .public_oauth_views import PublicOAuthTokenView
+from .public_clients_views import PublicClientLangueView
 from .public_licence_views import PublicLicenceStatutView
 from .public_uxviews_views import PublicFavoriViewSet, PublicSavedViewViewSet
 from .public_achats_views import PublicDemandeAchatViewSet, PublicRFQViewSet
@@ -114,6 +115,9 @@ urlpatterns = [
     # NTOBS27 — surface « Fiabilité » en lecture seule (scope `fiabilite:lecture`),
     # trois objets uniques scopés société : sauvegardes (NTOBS5), rapport SLA
     # mensuel (NTOBS3) et limites & usage (NTOBS8).
+    # NTI18N42 — langue documentaire résolue d'un client (scope `read:clients`).
+    path('clients/<int:pk>/langue/', PublicClientLangueView.as_view(),
+         name='public-client-langue'),
     path('fiabilite/sauvegardes/', PublicFiabiliteSauvegardesView.as_view(),
          name='public-fiabilite-sauvegardes'),
     path('fiabilite/sla/<str:periode>/', PublicFiabiliteSlaView.as_view(),

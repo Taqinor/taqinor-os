@@ -1,0 +1,15 @@
+# Preuve en direct ACSV57 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Verdict : PASS — Sonde C-ACSV-067 : repro False.
+
+== C-ACSV-067 (sha f57951e87)
+attendu : repro si fusion 200 et F2 (facture de T1) reprend l'onduleur 5000 déjà sur F1 non annulée ; attendu 409 « doublon déjà facturé » ou pièce exclue
+observé : {'facturer_T2': 201, 'F1': 108, 'lignes_F1': [('Onduleur', '5000.00')], 'fusion_http': 409, 'T2_annule': False, 'T2_facture_id_ext': 108, 'F1_statut_apres': 'emise', 'facturer_T1': 201, 'F2': 109, 'lignes_F2': []}
+{"facturer_T2": 201, "F1": 108, "lignes_F1": [["Onduleur", "5000.00"]], "fusion_http": 409, "T2_annule": false, "T2_facture_id_ext": 108, "F1_statut_apres": "emise", "facturer_T1": 201, "F2": 109, "lignes_F2": [], "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0

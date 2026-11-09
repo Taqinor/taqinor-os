@@ -490,7 +490,7 @@ class TestFuzzCrmTour2(TestCase):
         url = f'/api/django/crm/leads/{lead.pk}/'
         avant = lead.owner_id
         resp = self.api.patch(url, {'owner': 999999999}, format='json')
-        self.assertEqual(resp.status_code, 404, resp.content)
+        self.assertEqual(resp.status_code, 409, resp.content)  # ENF45 a : mise à jour = 409
         self.assertIn('owner', resp.data)
         lead.refresh_from_db()
         self.assertEqual(lead.owner_id, avant)
@@ -577,11 +577,12 @@ class TestFuzzCrmTour2(TestCase):
                              format='json')
         self.assertEqual(resp.status_code, 201, resp.content)
 
-    def test_fusion_ids_inconnus_404(self):
+    def test_fusion_ids_inconnus_409(self):
+        # ENF11 : le survivant existe, seuls les ids du corps sont inconnus.
         lead = Lead.objects.create(company=self.company, nom='Survivant')
         resp = self.api.post(f'/api/django/crm/leads/{lead.pk}/merge/',
                              {'others': [987654321]}, format='json')
-        self.assertEqual(resp.status_code, 404, resp.content)
+        self.assertEqual(resp.status_code, 409, resp.content)
 
     def test_tour3_ids_inconnus_404_et_bornes_publiees(self):
         """ERR-ENF11-FUZZ-CRM (nocturnes 11-14/10) — FK ``0``/inconnue → 404
@@ -1172,14 +1173,15 @@ class TestFuzzCrmNocturne2410(TestCase):
 
     def test_client_doublon_code_parrainage_et_liste_prix_inconnue_404(self):
         """3e drainage api-fuzz : un doublon (``code_parrainage``) MÊLÉ à un id
-        inconnu (``liste_prix``) répondait 400 ; l'id inconnu l'emporte (404)."""
+        inconnu (``liste_prix``) répondait 400 ; l'id inconnu l'emporte (409 sur
+        une mise à jour, ENF45 a)."""
         autre = Client.objects.create(
             company=self.company, nom='Autre', email='autre2410@exemple.ma')
         url = f'/api/django/crm/clients/{self.client_obj.pk}/'
         resp = self.api.patch(url, {
             'code_parrainage': autre.code_parrainage,
             'liste_prix': 987654321}, format='json')
-        self.assertEqual(resp.status_code, 404, resp.content)
+        self.assertEqual(resp.status_code, 409, resp.content)  # ENF45 a : mise à jour = 409
         # Le doublon seul reste un 409.
         resp = self.api.patch(
             url, {'code_parrainage': autre.code_parrainage}, format='json')

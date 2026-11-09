@@ -1,0 +1,15 @@
+AANA80 — pile locale, sha be834beb1.
+
+1. Sondes (transaction annulée) :
+   C-AANA-VER4-030 -> repro False : total_ht 18 000 = _marge_devis ca_ht 18 000 ; coût 11 000 ; marge 7 000 ;
+                      GET /reporting/insights/commissions/ : base 7 000, commission 700 (MARGE_INTERNE 10 %).
+   C-AANA-VER4-031 -> repro False : 3 villas, coût 33 000 = _bom_material_cost du chantier (33 000) ;
+                      job-costing cost_estimate 33 000 ; ca_ht 54 999,99 = total_ht.
+   (sorties complètes : C-AANA-VER4-030.txt, C-AANA-VER4-031.txt)
+
+2. Écran (données persistantes de la société démo) : DEV-202611-0083 deux options accepté « sans » (rejeu AANA88),
+   chantier CHT-202611-0053. Lignes (prix_achat × qté) : panneau 3 210,90 (commune), onduleur réseau 321,09 (sans),
+   onduleur hybride 321,09 (avec), batterie 321,09 (avec).
+   Attendu : coût des lignes vendues = 3 210,90 + 321,09 = 3 531,99 (l'ancien calcul sommait les deux paniers : 3 853,08).
+   GET /api/django/reporting/insights/job-costing/ : CHT-202611-0053 cost_estimate 3531.9900
+   /rapports > Insights > « Coût de revient par chantier » : « CHT-202611-0053  ADEV107T …  0  3 531,99  -3 531,99  0 % »

@@ -1077,6 +1077,17 @@ def _echelle_paliers_batterie(devis):
     return echelle
 
 
+def est_onduleur_provisionne(role, devis=None):
+    """AMOT120 — rôle d'onduleur dont la provision de remplacement compte : au niveau 12
+    (``REGLES_ECARTS_0411`` ; devis absent ⇒ courantes) les trois rôles ``est_onduleur_devis`` (hors réseau
+    compris, comme le PDF), sinon le tuple d'hier réseau/hybride."""
+    from apps.ventes.domain.regles_calcul import REGLES_ECARTS_0411, regles_au_moins
+    from core.product_roles import est_onduleur_devis
+    if regles_au_moins(devis, REGLES_ECARTS_0411):
+        return est_onduleur_devis(role)
+    return role in ('onduleur_reseau', 'onduleur_hybride')
+
+
 def _payback_publie_palier(cout, economie, lignes, facteur_remise,
                            devis=None, taux_tva=None):
     """AMOT29 — payback PUBLIÉ d'un palier de l'échelle batterie :
@@ -1093,7 +1104,7 @@ def _payback_publie_palier(cout, economie, lignes, facteur_remise,
     roi_a = devis is not None and regles_au_moins(devis, REGLES_ECARTS_3110)
     onduleur = 0.0
     for ligne in (lignes or []):
-        if (ligne or {}).get('role') in ('onduleur_reseau', 'onduleur_hybride'):
+        if est_onduleur_provisionne((ligne or {}).get('role'), devis):
             onduleur += (_num(ligne.get('quantite')) * _num(ligne.get('prix_unitaire_ht')) * (
                 _facteur_ttc_ligne(None, ligne.get('designation') or '', taux_tva,
                                    getattr(devis, 'company', None)) if roi_a else 1.2))

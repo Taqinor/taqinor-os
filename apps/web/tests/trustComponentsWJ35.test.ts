@@ -71,6 +71,9 @@ describe('WJ35 — InstallCounter : chiffres dérivés de realisations.ts, jamai
   it('affiche la production mesurée de la flotte (MWh), pas la capacité', () => {
     expect(INSTALL_COUNTER).toContain('MEASURED_FLEET_LIFETIME_MWH');
     expect(INSTALL_COUNTER).toContain('MWh produits et mesurés');
+    // WAUD31/WAUD42 — libellé et date d'arrêté rendus côté serveur dans la langue de la page.
+    expect(INSTALL_COUNTER).toContain('{LIBELLE_MWH[locale]}');
+    expect(INSTALL_COUNTER).toContain('{MEASURED_FLEET_READ_NOTE[locale]}');
     expect(INSTALL_COUNTER).not.toContain('kwcNum');
   });
   it('reduced-motion : le count-up est gated, la valeur finale est toujours révélée', () => {

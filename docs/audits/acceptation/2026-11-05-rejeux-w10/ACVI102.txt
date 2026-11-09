@@ -1,0 +1,270 @@
+# Preuve en direct ACVI102 - pile locale, code 51b2fe77b (dev-plan-6a6fc9-w10), 2026-11-05
+# Lanceur : python scripts/sonde.py (transaction annulee, mail en memoire, HTTP sortant bloque).
+# Sondes LIVE-* : repro=true signifie ICI que le comportement attendu par la tache est observe.
+
+== LIVE-ACVI102 (sha 51b2fe77b)
+attendu : 6 gestes 409 MOTIF_CONTACT_REFUSE, 0 mail, 0 EmailLog, brouillon ; envoye : 409 ; lead normal : 200 + envoye
+observé : {"repro": true, "observe": {"oppose": {"post whatsapp-preview/": [409, "Contact refusé : la personne a demandé à ne plus être contactée", 0, "brouillon", true, 0], "post whatsapp/": [409, "Contact refusé : la personne a demandé à ne plus être contactée", 0, "brouillon", true, 0], "post envoyer-email/": [409, "Contact refusé : la personne a demandé à ne plus être contactée", 0, "brouillon", true, 0], "post share-link/": [409, "Contact refusé : la personne a demandé à ne plus être contactée", 0, "brouillon", true, 0], "post pdf-partage/": [409, "Contact refusé : la personne a demandé à ne plus être contactée", 0, "brouillon", true, 0], "get pdf-partage/": [409, "Contact refusé : la personne a demandé à ne plus être contactée", 0, "brouillon", true, 0]}, "envoye_oppose": {"post whatsapp-preview/": [409, "Contact refusé : la personne a demandé à ne plus être contactée", 0], "post whatsapp/": [409, "Contact refusé : la personne a demandé à ne plus être contactée", 0], "post envoyer-email/": [409, "Contact refusé : la personne a demandé à ne plus être contactée", 0], "post share-link/": [409, "Contact refusé : la personne a demandé à ne plus être contactée", 0]}, "normal": {"post whatsapp-preview/": [200, true, 0, "brouillon", ""], "post whatsapp/": [200, true, 0, "envoye", ""], "post share-link/": [200, true, 0, "envoye", ""], "post envoyer-email/": [200, false, 1, "envoye", "Email envoyé à live-acvi102-Nenvoyeremail@example.invalid."]}, "mails_outbox_total": 1}}
+verdict : REPRO
+base inchangée : oui (avant 3246, après 3246) ; mails 1 ; tâches Celery bloquées 0
+
+== C-ACVI-VER4-010 (sha 64c9c7317)
+attendu : voie lead 409 ; voie devis 200 + wa_url, devis brouillon → envoye
+observé : {"repro": false, "observe": {"lead_apercu": [409, false, "Contact refusé : la personne a demandé à ne plus être contactée"], "devis_apercu": [409, "", "Contact refusé : la personne a demandé à ne plus être contactée"], "devis_envoi": [409, "", "Contact refusé : la personne a demandé à ne plus être contactée"], "devis_statut_apres": "brouillon"}}
+verdict : ÉCART
+base inchangée : oui (avant 5358, après 5358) ; mails 0 ; tâches Celery bloquées 0
+== C-ACVI-VER4-012 (sha 64c9c7317)
+attendu : envoyer-email 200 + 1 mail + envoye ; share-link envoi 200 + envoye ; pdf-partage 200 + envoye ; resume-associe 200 + wa_url vers l'associé
+observé : {"repro": false, "observe": {"a_email_reel": [409, "", 0, "brouillon", "Contact refusé : la personne a demandé à ne plus être contactée"], "b_share_link_envoi": [409, false, 0, "brouillon", "Contact refusé : la personne a demandé à ne plus être contactée"], "c_pdf_partage_post": [409, 0, "brouillon", "Contact refusé : la personne a demandé à ne plus être contactée"], "c_pdf_partage_get": [409, 0, "brouillon", "Contact refusé : la personne a demandé à ne plus être contactée"], "d_resume_associe": [409, "", "", 0, "Message refusé : ne plus contacter."], "lead_ne_plus_contacter_apres": true, "mails_total_outbox": 0, "gestes_200": []}}
+verdict : ÉCART
+base inchangée : oui (avant 5458, après 5458) ; mails 0 ; tâches Celery bloquées 0
+
+# ---- source : C-LIVE-ACVI102.py ----
+# flake8: noqa  (preuve en direct ACVI102, 05/11/2026)
+"""ACVI102 — les six gestes d'envoi d'un devis dont le lead est ne_plus_contacter rendent 409
+MOTIF_CONTACT_REFUSE, 0 mail, 0 EmailLog, brouillon + date_envoi nul ; devis deja envoye : 409 ;
+lead normal : inchange (gestes 200, devis envoye). Societe demo, responsable cree, transaction annulee."""
+SONDE = {"constat": "LIVE-ACVI102", "sha": "51b2fe77b",
+         "attendu": "6 gestes 409 MOTIF_CONTACT_REFUSE, 0 mail, 0 EmailLog, brouillon ; envoye : 409 ; lead normal : 200 + envoye",
+         "modeles": ["crm.Lead", "crm.Client", "ventes.Devis", "ventes.ShareLink", "ventes.EmailLog"]}
+
+
+def sonde(ctx):
+    import json
+    from decimal import Decimal
+    from unittest import mock
+    from django.contrib.auth import get_user_model
+    from django.core import mail
+    from django.db import transaction
+    from rest_framework.test import APIClient
+    from apps.crm.models import Lead, Client
+    from apps.crm.selectors import MOTIF_CONTACT_REFUSE
+    from apps.ventes.models import Devis, EmailLog
+    U = get_user_model()
+    c = U.objects.get(username='demo_admin').company
+    u = U.objects.create_user(username='live-acvi102-resp', password='x', role_legacy='responsable', company=c)
+    api = APIClient()
+    api.force_authenticate(u)
+
+    def appel(meth, url, corps=None):
+        avant = len(getattr(mail, 'outbox', []))
+        try:
+            with transaction.atomic():
+                r = getattr(api, meth)(url, corps or {}, format='json', HTTP_HOST='localhost')
+            ct = r.get('Content-Type', '')
+            d = {}
+            if 'json' in ct:
+                try:
+                    d = json.loads(r.content.decode('utf-8', 'replace'))
+                except Exception:
+                    d = {}
+            return r.status_code, d, len(getattr(mail, 'outbox', [])) - avant
+        except Exception as e:
+            return 599, {'_exc': repr(e)[:300]}, 0
+
+    def lead_devis(tag, oppose, statut=Devis.Statut.BROUILLON):
+        tel = '0612' + ('%06d' % (sum(ord(x) * (k + 1) for k, x in enumerate(tag)) % 1000000))
+        cl = Client.objects.create(company=c, nom='Live ' + tag, telephone=tel,
+                                   email=f'live-acvi102-{tag}@example.invalid')
+        L = Lead.objects.create(company=c, nom='Live', prenom=tag, telephone=tel, client=cl,
+                                email=f'live-acvi102-{tag}@example.invalid', owner=u)
+        d = Devis.objects.create(company=c, reference=f'DEV-LIVE102-{tag}', client=cl, lead=L,
+                                 statut=statut, taux_tva=Decimal('20'), version=1, created_by=u)
+        if oppose:
+            Lead.objects.filter(pk=L.pk).update(ne_plus_contacter=True)
+        return L, d
+
+    B = '/api/django/ventes/devis'
+    gestes = [('post', 'whatsapp-preview/', {}), ('post', 'whatsapp/', {}), ('post', 'envoyer-email/', {}),
+              ('post', 'share-link/', {'envoi': True}), ('post', 'pdf-partage/', {}), ('get', 'pdf-partage/', None)]
+    obs = {'oppose': {}, 'envoye_oppose': {}, 'normal': {}}
+    ok = True
+    for i, (meth, suf, corps) in enumerate(gestes):
+        L, d = lead_devis('O%d' % i, True)
+        s, r, m = appel(meth, f'{B}/{d.id}/{suf}', corps)
+        d.refresh_from_db()
+        logs = EmailLog.objects.filter(company=c, devis=d).count() if hasattr(EmailLog, 'devis') else 'n/a'
+        det = str(r.get('detail', ''))
+        obs['oppose'][meth + ' ' + suf] = [s, det[:70], m, d.statut, d.date_envoi is None, logs]
+        ok = ok and s == 409 and det == MOTIF_CONTACT_REFUSE and m == 0 and d.statut == 'brouillon' \
+            and d.date_envoi is None and logs in (0, 'n/a')
+    for i, (meth, suf, corps) in enumerate(gestes[:4]):
+        L, d = lead_devis('E%d' % i, True, statut=Devis.Statut.ENVOYE)
+        s, r, m = appel(meth, f'{B}/{d.id}/{suf}', corps)
+        obs['envoye_oppose'][meth + ' ' + suf] = [s, str(r.get('detail', ''))[:70], m]
+        ok = ok and s == 409 and m == 0
+    # lead normal : inchange
+    for meth, suf, corps in [('post', 'whatsapp-preview/', {}), ('post', 'whatsapp/', {}),
+                             ('post', 'share-link/', {'envoi': True}), ('post', 'envoyer-email/', {})]:
+        L, d = lead_devis('N' + suf.replace('/', '').replace('-', ''), False)
+        s, r, m = appel(meth, f'{B}/{d.id}/{suf}', corps)
+        if s != 200 and r.get('code') in ('pdf_refuse', 'pdf_indisponible'):
+            with mock.patch('apps.ventes.quote_engine.generate_premium_devis_pdf', return_value='cle-bouchon'), \
+                    mock.patch('apps.ventes.utils.pdf.download_pdf', return_value=b'%PDF-1.4 bouchon'):
+                s, r, m = appel(meth, f'{B}/{d.id}/{suf}', corps)
+        d.refresh_from_db()
+        obs['normal'][meth + ' ' + suf] = [s, bool(r.get('wa_url') or r.get('token')), m, d.statut,
+                                          str(r.get('detail', '') or r.get('code', ''))[:70]]
+        ok = ok and s in (200, 201)
+    obs['mails_outbox_total'] = len(getattr(mail, 'outbox', []))
+    return {'repro': ok, 'observe': obs}
+
+
+# ---- source : C-ACVI-VER4-010.py ----
+# flake8: noqa  (contre-visite de clôture ACVI du 04/11 soir : jumeau d'ACVI98)
+"""C-ACVI-VER4-010 — ACVI98 ferme `crm/leads/<id>/whatsapp-devis(-apercu)/` vers un lead `ne_plus_contacter`
+(D-ACVI-7 = refus_409 « sur tout rendu/envoi vers un opposé »). Le jumeau écran Devis
+`ventes/devis/<id>/whatsapp-preview/` et `ventes/devis/<id>/whatsapp/` (`apps/ventes/views/devis_envoi.py`) ne lit
+pas l'opposition. Société démo, transaction annulée. `repro: true` = la voie lead rend 409 MAIS la voie devis rend
+un wa_url (et l'envoi marque le devis « envoyé »)."""
+SONDE = {"constat": "C-ACVI-VER4-010", "sha": "64c9c7317",
+         "attendu": "voie lead 409 ; voie devis 200 + wa_url, devis brouillon → envoye",
+         "modeles": ["crm.Lead", "crm.Client", "ventes.Devis", "ventes.ShareLink", "crm.LeadActivity"]}
+
+
+def sonde(ctx):
+    import json
+    from decimal import Decimal
+    from django.contrib.auth import get_user_model
+    from django.db import transaction
+    from rest_framework.test import APIClient
+    from apps.crm.models import Lead, Client
+    from apps.ventes.models import Devis
+    U = get_user_model()
+    ua = U.objects.get(username='demo_admin')
+    c = ua.company
+    api = APIClient()
+    api.force_authenticate(ua)
+
+    def appel(url, corps):
+        try:
+            with transaction.atomic():
+                r = api.post(url, corps, format='json', HTTP_HOST='localhost')
+            txt = r.content.decode('utf-8', 'replace')
+            try:
+                d = json.loads(txt)
+            except Exception:
+                d = {'_brut': txt[:200]}
+            return r.status_code, d
+        except Exception as e:
+            return 599, {'_exc': repr(e)[:300]}
+
+    cl = Client.objects.create(company=c, nom='Oppose VER4-010', telephone='0612349410')
+    L = Lead.objects.create(company=c, nom='Oppose', prenom='VER4-010', telephone='0612349410', client=cl,
+                            email='sonde-acvi-ver4-010@example.invalid', owner=ua)
+    d = Devis.objects.create(company=c, reference='DEV-VER4-010', client=cl, lead=L,
+                             statut=Devis.Statut.BROUILLON, taux_tva=Decimal('20'), version=1)
+    Lead.objects.filter(pk=L.pk).update(ne_plus_contacter=True)
+    obs = {}
+    s, r = appel(f'/api/django/crm/leads/{L.id}/whatsapp-devis-apercu/', {'devis_ids': [d.id]})
+    obs['lead_apercu'] = [s, 'wa_url' in r, str(r.get('detail', ''))[:80]]
+    s, r = appel(f'/api/django/ventes/devis/{d.id}/whatsapp-preview/', {})
+    obs['devis_apercu'] = [s, (r.get('wa_url') or '')[:30], str(r.get('detail', ''))[:80]]
+    s, r = appel(f'/api/django/ventes/devis/{d.id}/whatsapp/', {})
+    d.refresh_from_db()
+    obs['devis_envoi'] = [s, (r.get('wa_url') or '')[:30], str(r.get('detail', ''))[:80]]
+    obs['devis_statut_apres'] = d.statut
+    lead_409 = obs['lead_apercu'][0] == 409
+    devis_ouvert = obs['devis_apercu'][0] == 200 or obs['devis_envoi'][0] == 200
+    return {'repro': bool(lead_409 and devis_ouvert), 'observe': obs}
+
+
+# ---- source : C-ACVI-VER4-012.py ----
+# flake8: noqa  (contre-visite de clôture ACVI du 05/11 : jumeaux d'envoi du devis vers un opposé)
+"""C-ACVI-VER4-012 — D-ACVI-7 = refus 409 de tout rendu/envoi de devis vers un lead `ne_plus_contacter`
+(D-ACVI-10 : un signé reçoit le contractuel, jamais un DEVIS). Les gestes de `apps/ventes/views/devis_envoi.py`
+(`envoyer-email`, `share-link {envoi: true}`, `pdf-partage` POST/GET) et `apps/crm/views.py::LeadViewSet.resume_associe`
+lisent-ils l'opposition ? Même montage que C-ACVI-VER4-010 (lead opposé + devis brouillon). Société démo, transaction
+annulée, mail en mémoire. Si le rendu réel du PDF échoue (pdf_refuse / 502), l'envoi e-mail est rejoué avec le moteur
+remplacé par un bouchon (pour juger la seule garde d'opposition). `repro: true` = au moins un geste aboutit (200)."""
+SONDE = {"constat": "C-ACVI-VER4-012", "sha": "64c9c7317",
+         "attendu": "envoyer-email 200 + 1 mail + envoye ; share-link envoi 200 + envoye ; pdf-partage 200 + envoye ; resume-associe 200 + wa_url vers l'associé",
+         "modeles": ["crm.Lead", "crm.Client", "ventes.Devis", "ventes.ShareLink", "crm.LeadActivity", "ventes.EmailLog"]}
+
+
+def sonde(ctx):
+    import json
+    from decimal import Decimal
+    from unittest import mock
+    from django.contrib.auth import get_user_model
+    from django.core import mail
+    from django.db import transaction
+    from rest_framework.test import APIClient
+    from apps.crm.models import Lead, Client
+    from apps.ventes.models import Devis
+    U = get_user_model()
+    ua = U.objects.get(username='demo_admin')
+    c = ua.company
+    api = APIClient()
+    api.force_authenticate(ua)
+
+    def appel(methode, url, corps=None):
+        avant = len(getattr(mail, 'outbox', []))
+        try:
+            with transaction.atomic():
+                r = getattr(api, methode)(url, corps or {}, format='json', HTTP_HOST='localhost')
+            ct = r.get('Content-Type', '')
+            if 'json' in ct:
+                try:
+                    d = json.loads(r.content.decode('utf-8', 'replace'))
+                except Exception:
+                    d = {}
+            else:
+                d = {'_ct': ct[:30]}
+            return r.status_code, d, len(getattr(mail, 'outbox', [])) - avant
+        except Exception as e:
+            return 599, {'_exc': repr(e)[:300]}, 0
+
+    cl = Client.objects.create(company=c, nom='Oppose VER4-012', telephone='0612349412',
+                               email='sonde-acvi-ver4-012@example.invalid')
+    L = Lead.objects.create(company=c, nom='Oppose', prenom='VER4-012', telephone='0612349412', client=cl,
+                            email='sonde-acvi-ver4-012@example.invalid', owner=ua,
+                            contact_secondaire_nom='Associe Sonde', contact_secondaire_telephone='0612349499')
+
+    def devis(n):
+        return Devis.objects.create(company=c, reference=f'DEV-VER4-012-{n}', client=cl, lead=L,
+                                    statut=Devis.Statut.BROUILLON, taux_tva=Decimal('20'), version=1)
+    d1, d2, d3, d4 = devis('A'), devis('B'), devis('C'), devis('D')
+    Lead.objects.filter(pk=L.pk).update(ne_plus_contacter=True)
+    obs = {}
+    B = '/api/django/ventes/devis'
+
+    def court(r):
+        return str(r.get('detail', '') or r.get('code', '') or r.get('_exc', '') or r.get('_ct', ''))[:90]
+
+    # (a) envoyer-email — rendu réel d'abord
+    s, r, m = appel('post', f'{B}/{d1.id}/envoyer-email/', {})
+    d1.refresh_from_db()
+    obs['a_email_reel'] = [s, r.get('code', ''), m, d1.statut, court(r)]
+    if s != 200 and r.get('code') in ('pdf_refuse', 'pdf_indisponible'):
+        with mock.patch('apps.ventes.quote_engine.generate_premium_devis_pdf', return_value='cle-bouchon'), \
+                mock.patch('apps.ventes.utils.pdf.download_pdf', return_value=b'%PDF-1.4 bouchon'):
+            s, r, m = appel('post', f'{B}/{d1.id}/envoyer-email/', {})
+        d1.refresh_from_db()
+        obs['a_email_bouchon'] = [s, r.get('code', ''), m, d1.statut, court(r)]
+        if m:
+            obs['a_destinataire'] = list(mail.outbox[-1].to)
+    elif m:
+        obs['a_destinataire'] = list(mail.outbox[-1].to)
+    # (b) share-link {envoi: true}
+    s, r, m = appel('post', f'{B}/{d2.id}/share-link/', {'envoi': True})
+    d2.refresh_from_db()
+    obs['b_share_link_envoi'] = [s, bool(r.get('token')), m, d2.statut, court(r)]
+    # (c) pdf-partage POST (marque envoyé ?) puis GET (rendu du PDF à partager)
+    s, r, m = appel('post', f'{B}/{d3.id}/pdf-partage/', {})
+    d3.refresh_from_db()
+    obs['c_pdf_partage_post'] = [s, m, d3.statut, court(r)]
+    s, r, m = appel('get', f'{B}/{d4.id}/pdf-partage/')
+    d4.refresh_from_db()
+    obs['c_pdf_partage_get'] = [s, m, d4.statut, court(r)]
+    # (d) resume-associe sur le lead opposé, avec un devis « envoyé »
+    Devis.objects.filter(pk=d4.pk).update(statut=Devis.Statut.ENVOYE)
+    s, r, m = appel('post', f'/api/django/crm/leads/{L.id}/resume-associe/',
+                    {'devis_id': d4.id, 'accord_client': True})
+    obs['d_resume_associe'] = [s, (r.get('wa_url') or '')[:40], r.get('phone', ''), m, court(r)]
+    L.refresh_from_db()
+    obs['lead_ne_plus_contacter_apres'] = L.ne_plus_contacter
+    obs['mails_total_outbox'] = len(getattr(mail, 'outbox', []))
+    ouverts = [k for k, v in obs.items() if isinstance(v, list) and v and v[0] == 200]
+    obs['gestes_200'] = ouverts
+    return {'repro': bool(ouverts), 'observe': obs}

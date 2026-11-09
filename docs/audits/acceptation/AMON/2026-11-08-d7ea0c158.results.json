@@ -1,0 +1,57 @@
+{
+  "sha": "d7ea0c158536c85599d455724f6dd9183ec3d4d1",
+  "date": "2026-11-08",
+  "groupe": "AMON",
+  "verdict": "PASS",
+  "couvre": [
+    "AMON95",
+    "AMON96"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "W29B.AMON95.preuve_en_direct",
+      "taches": [
+        "AMON95"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29b/AMON95.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "C-LIVE-AMON95 REPRO (detail servi « Expected annual kwh : 6000.00 → 9000.00 ») ; écran Journal d'activité : même texte."
+    },
+    {
+      "id": "W29B.AMON96.preuve_en_direct",
+      "taches": [
+        "AMON96"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-08-rejeux-w29b/AMON96.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Écran : carte SLA « CHT-W29B-SLA » (système sans supervision) et garantie « CHT-W29B-GAR » (hors parc), aucun « Système #id »."
+    }
+  ]
+}

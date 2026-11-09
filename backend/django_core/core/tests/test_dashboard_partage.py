@@ -257,7 +257,7 @@ class TestCrossTenantCreationRefused(DashboardPartageBase):
         resp = self.api.patch(
             f'/api/django/core/dashboards-partages/{partage.id}/',
             {'dashboard': other_dash.id}, format='json')
-        self.assertEqual(resp.status_code, 404, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)  # ENF45 a : mise à jour = 409
         self.assertIn('dashboard', resp.data)
         partage.refresh_from_db()
         self.assertEqual(partage.dashboard_id, self.dashboard.id)

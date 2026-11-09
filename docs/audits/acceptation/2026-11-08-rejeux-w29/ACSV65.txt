@@ -1,0 +1,15 @@
+# Preuve en direct ACSV65 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Verdict : PASS — Sonde C-ACSV-081 : repro False.
+
+== C-ACSV-081 (sha 7f4ba787d)
+attendu : repro si R : intervention annulee=False, dans interventions_actives et le calendrier après annulation du ticket ; F : intervention reste sur le doublon annulé ; T : annulee=True
+observé : {'R': {'planifier': (201, 17), 'annuler_http': 200, 'ticket_annule': True, 'annulee': True, 'ticket_id': 35, 'date_prevue': '2026-11-13', 'dans_interventions_actives': False, 'calendrier_http': 200, 'dans_calendrier': False}, 'F': {'planifier_doublon': (201, 18), 'fusion_http': 200, 'doublon_annule': True, 'interventions_du_principal': 1, 'annulee': False, 'ticket_id': 36, 'date_prevue': '2026-11-13', 'dans_interventions_actives': True, 'calendrier_http': 200, 'dans_calendrier': True}, 'T': {'planifier': (201, 19), 'annuler_chantier_http': 200, 'annulee': True, 'ticket_id': 38, 'date_prevue': '2026-11-13', 'dans_interventions_actives': False, 'calendrier_http': 200, 'dans_calendrier': False}}
+{"R": {"planifier": [201, 17], "annuler_http": 200, "ticket_annule": true, "annulee": true, "ticket_id": 35, "date_prevue": "2026-11-13", "dans_interventions_actives": false, "calendrier_http": 200, "dans_calendrier": false}, "F": {"planifier_doublon": [201, 18], "fusion_http": 200, "doublon_annule": true, "interventions_du_principal": 1, "annulee": false, "ticket_id": 36, "date_prevue": "2026-11-13", "dans_interventions_actives": true, "calendrier_http": 200, "dans_calendrier": true}, "T": {"planifier": [201, 19], "annuler_chantier_http": 200, "annulee": true, "ticket_id": 38, "date_prevue": "2026-11-13", "dans_interventions_actives": false, "calendrier_http": 200, "dans_calendrier": false}, "temoin_ok": true, "defaut_R": false, "defaut_F": false, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0

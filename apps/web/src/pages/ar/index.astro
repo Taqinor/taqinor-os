@@ -385,7 +385,7 @@ import ArIndexH1ED0F from '../../components/blocs/ArIndexH1ED0F.astro';
         <dl class="mt-12 grid grid-cols-2 gap-x-8 gap-y-10 sm:grid-cols-4" data-stagger>
           {investment.map((it, i) => (
             <div class="v2-rise min-w-0" style={`--v2-i:${i}`}>
-              <dd class="fig fig-md text-azur-600" data-tally dir="ltr">{it.v}</dd>
+              <dd class="fig fig-md text-azur-600" data-fig-fixe dir="ltr">{it.v}</dd>
               <dt class="tech-label mt-2 text-encre-soft">{it.label}</dt>
             </div>
           ))}
@@ -405,7 +405,7 @@ import ArIndexH1ED0F from '../../components/blocs/ArIndexH1ED0F.astro';
           <p class="tech-label v2-kicker rule-brass text-lune"><span class="ms-2 font-display text-xs text-azur-200/80" aria-hidden="true">02</span>لماذا تاكينور</p>
           <h2 class="display v2-section-title mt-5 text-white">الإثبات قبل الوعد</h2>
           <p class="v2-body mt-5">
-            أوراش حقيقية، قابلة للزيارة، ودراسة مُحجَّمة يدويًا على فاتورتكم
+            أوراش حقيقية ودراسة مُحجَّمة يدويًا على فاتورتكم
             الحقيقية. الرقم يقرّر العتاد — لا العكس أبدًا.
           </p>
         </div>
@@ -414,11 +414,10 @@ import ArIndexH1ED0F from '../../components/blocs/ArIndexH1ED0F.astro';
             الثلاث المتبقية (أبداً تكرار للرقم الإجمالي المُزال). ── */}
         <dl class="mt-12 grid grid-cols-1 gap-x-8 gap-y-12 sm:grid-cols-3" data-stagger>
           {trust.map((t, i) => (
-            <div class="v2-rise relative min-w-0 border-t-2 border-white/10 pt-5" style={`--v2-i:${i}`}>
-              <span class="absolute -top-px start-0 h-0.5 w-10 bg-brass-400" aria-hidden="true"></span>
-              <dd class="fig fig-lg lum break-words" data-tally={t.tally ? '' : undefined}>{t.fig}</dd>
-              <dt class="tech-label mt-2 text-lune-faint">{t.label}</dt>
-              <p class="mt-1 text-sm leading-snug text-lune-soft">{t.body}</p>
+            <div class="v2-rise relative flex min-w-0 flex-col border-t-2 border-white/10 pt-5 before:absolute before:-top-px before:start-0 before:h-0.5 before:w-10 before:bg-brass-400" style={`--v2-i:${i}`}>
+              <dt class="tech-label order-2 mt-2 text-lune-faint">{t.label}</dt>
+              <dd class="fig fig-lg lum order-1 break-words" data-tally={t.tally ? '' : undefined}>{t.fig}</dd>
+              <dd class="order-3 mt-1 text-sm leading-snug text-lune-soft">{t.body}</dd>
             </div>
           ))}
         </dl>
@@ -510,7 +509,7 @@ import ArIndexH1ED0F from '../../components/blocs/ArIndexH1ED0F.astro';
         </div>
         <aside class="v2-rise cine-card border-t-4 border-t-brass-400 p-6" style="--v2-i:1">
           <p class="tech-label text-lune-faint">آخر تركيب مُسلَّم</p>
-          {latest.kwc && <p class="fig lum mt-3 text-4xl" data-tally>{latest.kwc}</p>}
+          {latest.kwc && <p class="fig lum mt-3 text-4xl" data-fig-fixe>{latest.kwc}</p>}
           <p class="tech-label mt-1 text-lune-faint">{latestVilleAr} · {dateLocale(latest.date, 'ar')}</p>
           <p class="mt-4 text-sm leading-relaxed text-lune-soft">
             {[latest.panneaux, latest.onduleur, latest.batterie].filter(Boolean).join(' · ')}

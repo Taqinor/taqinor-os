@@ -182,7 +182,16 @@ class TestPlanifierTournee(TestCase):
         r = self.api.post(PLANIFIER, {
             'ticket_ids': [t1.id], 'date_tournee': date.today().isoformat(),
             'technicien_id': foreign_tech.id}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        # ENF11 (nocturne 41958593088) : technicien absent ou voisin = même
+        # 404 nommant le champ (le 400 portait un ``detail`` OBJET hors schéma).
+        self.assertEqual(r.status_code, 404, r.data)
+        absent = self.api.post(PLANIFIER, {
+            'ticket_ids': [t1.id], 'date_tournee': date.today().isoformat(),
+            'technicien_id': 999999}, format='json')
+        self.assertEqual(absent.status_code, 404, absent.data)
+        self.assertEqual(absent.data['technicien'], r.data['technicien'])
+        # ``detail`` en TEXTE (lu par l'écran ContratsMaintenance).
+        self.assertEqual(absent.data['detail'], 'Technicien inconnu.')
         t1.refresh_from_db()
         self.assertIsNone(t1.date_tournee)
 

@@ -1,0 +1,57 @@
+{
+  "sha": "be834beb1732b54cc2c0b2279c542135736b6ccc",
+  "date": "2026-11-04",
+  "groupe": "ACHT",
+  "verdict": "PASS",
+  "couvre": [
+    "ACHT135",
+    "ACHT132"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P.agenda_glisser_report",
+      "taches": [
+        "ACHT135"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ACHT/traces/2026-11-04/ACCEPTATION-ACHT-P.agenda_glisser_report.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Intervention 253 confirmee (confirmer-rdv) au 25/12/2026, glissee dans /calendrier au 28/12 (dragstart/drop HTML5 sur les cellules) : POST reschedule 200 {ok, date 2026-12-28} ; psql rdv_confirme f, rdv_reschedule_count 1 ; fiche : Historique « RDV reporte du 2026-12-25 au 2026-12-28 (Agenda - glisser-deposer) (report n1) ». Rejeu meme date : 200, compteur reste 1, aucune trace ajoutee."
+    },
+    {
+      "id": "P.hors_ligne_deux_blurs",
+      "taches": [
+        "ACHT132"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ACHT/traces/2026-11-04/ACCEPTATION-ACHT-P.hors_ligne_deux_blurs.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Ma journee hors ligne : quantite 8 puis justification casse sur la meme ligne => 1 op en file (base T0, payload fusionne) ; reseau retabli => sync applied 1, file vide, ligne 8 + casse, aucun « Conflit - ». Detail : traces/2026-11-04/ACHT132-hors-ligne-fusion.txt."
+    }
+  ]
+}

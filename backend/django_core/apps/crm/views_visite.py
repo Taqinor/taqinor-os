@@ -13,6 +13,7 @@ de l'app cible, jamais par ses modèles.
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 
 from authentication.permissions import HasPermissionOrLegacy
@@ -34,11 +35,13 @@ def lead_photo_toit(request, lead_id):
     lisent le toit réaliste SANS connaître le module visite : ils demandent la
     texture d'un LEAD, le serveur choisit la dernière visite VALIDÉE.
 
-    JAMAIS 404 : sans visite validée, sans image, ou pour un lead qui n'est pas
-    de la société de l'appelant, la réponse porte les MÊMES clés à ``null``
-    (``{"visite_id": null, "url": null, "texture_calage": null}``). Une seule
-    forme à consommer côté écran, et aucune différence de réponse qui
-    laisserait deviner l'existence du lead d'une autre société.
+    Sans visite validée ou sans image, la réponse porte les MÊMES clés à
+    ``null`` (``{"visite_id": null, "url": null, "texture_calage": null}``) :
+    une seule forme à consommer côté écran. ENF11 (nocturne 41958593088,
+    « use after free ») : un lead SUPPRIMÉ (corbeille), inexistant ou d'une
+    autre société répond le MÊME 404 — servir la texture d'un lead supprimé
+    disait qu'il existait encore ; un seul 404 pour les trois cas ne laisse
+    toujours rien deviner de l'existence d'un lead voisin.
 
     Permission : ``crm_voir`` — la lecture CRM ordinaire, celle que portent
     déjà le commercial ET l'atelier ; exiger ``visites_voir`` fermerait la
@@ -50,4 +53,6 @@ def lead_photo_toit(request, lead_id):
 
     lead = Lead.objects.filter(pk=lead_id,
                                company=request.user.company).first()
+    if lead is None:
+        raise NotFound('Lead introuvable.')
     return Response(selectors.texture_toit_pour_lead(lead))

@@ -88,8 +88,10 @@ class NotifierEtapeSuivanteTests(TestCase):
         deuxieme = services.prochaine_etape_approbation_achat(self.da)
         Notification.objects.filter(company=self.company).delete()
 
+        # AAPV33 — approbateurs distincts d'une étape à l'autre.
         services.approuver_etape_achat(
-            deuxieme, approbateur=self.admin, commentaire='')
+            deuxieme, approbateur=make_user(self.company, role='admin'),
+            commentaire='')
 
         self.da.refresh_from_db()
         self.assertEqual(self.da.statut, DemandeAchat.Statut.APPROUVEE)

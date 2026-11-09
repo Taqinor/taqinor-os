@@ -7,22 +7,23 @@ vi.mock('../../api/crmApi', () => ({
 }))
 
 import crmApi from '../../api/crmApi'
+import { reponseContrat } from '../../test/fixtures/contractSamples'
 import SelecteurRattachement from './SelecteurRattachement'
 
 beforeEach(() => { vi.clearAllMocks() })
 
 describe('SelecteurRattachement (ACAL181)', () => {
   it('cherche les leads au SERVEUR et rend l’id choisi', async () => {
-    crmApi.getLeads.mockResolvedValue({ data: { results: [
-      { id: 5, nom: 'Alami', prenom: 'Sara', ville: 'Rabat' },
-    ] } })
+    // CRXB1 — la liste des leads porte son contrat (crm/lead_list.json) : la
+    // charge utile vient de l'exemple committé, jamais retapée (PACT13).
+    crmApi.getLeads.mockResolvedValue(reponseContrat('crm', 'lead_list'))
     const onChange = vi.fn()
     render(<SelecteurRattachement genre="lead" onChange={onChange} />)
     await userEvent.click(screen.getByRole('combobox'))
-    await userEvent.click(await screen.findByText('Alami Sara'))
+    await userEvent.click(await screen.findByText('Alaoui Karim'))
     await waitFor(() => expect(onChange).toHaveBeenCalled())
     expect(crmApi.getLeads).toHaveBeenCalled()
-    expect(onChange.mock.calls[0][0]).toBe('5')
+    expect(onChange.mock.calls[0][0]).toBe('1489')
   })
 
   it('cherche les clients par searchClients et affiche le libellé courant', async () => {

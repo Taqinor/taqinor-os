@@ -161,7 +161,8 @@ class ParcoursPA4Tests(SimpleTestCase):
         la table rougit `test_portes_listent_tous_les_createurs`."""
         createurs = _createurs()
         ventes = 'backend/django_core/apps/ventes/'
-        self.assertIn(('Facture', ventes + 'views/facture.py::FactureViewSet.perform_create'), createurs)
+        facturation = 'backend/django_core/apps/facturation/'  # ODX18 : vues déménagées
+        self.assertIn(('Facture', facturation + 'views/facture.py::FactureViewSet.perform_create'), createurs)
         self.assertIn(('Facture', ventes + 'domain/facturation_vente.py::creer_brouillon_tranche'), createurs)
         self.assertIn(('Paiement', 'backend/django_core/apps/portail/services.py::rapprocher_paiement_facture'),
                       createurs)

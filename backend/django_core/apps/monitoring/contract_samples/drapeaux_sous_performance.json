@@ -1,0 +1,47 @@
+{
+  "endpoint": "GET /api/django/monitoring/drapeaux/",
+  "pourquoi": "AMON24 (C-AMON-024) — drapeaux de sous-performance d'un parc, servis par UnderperformanceFlagViewSet.list (enveloppe paginée DRF), filtrables ?installation= et ?is_open=true|false. Lecture tout rôle interne ; société forcée côté serveur (une autre société → 404). Un drapeau naît de l'évaluation (evaluate_underperformance), jamais d'un POST. Le personnel (responsable/admin) le CLASSE par POST …/<id>/classer/ {motif} : fermé, motif_cloture « classe_manuellement », note_cloture = motif, cloture_par_nom = l'auteur ; il sort alors du compteur de la vue parc et du portail client. `ratio_pct` est un texte décimal (2 décimales), `reference` celle du système.",
+  "exemple": {
+    "count": 1,
+    "next": null,
+    "previous": null,
+    "results": [
+      {
+        "id": 12,
+        "installation": 87,
+        "reference": "CHT-2026-0087",
+        "ratio_pct": "60.00",
+        "date_creation": "2026-11-07T02:15:00Z",
+        "ticket": null,
+        "is_open": true,
+        "date_cloture": null,
+        "motif_cloture": "",
+        "note_cloture": "",
+        "cloture_par_nom": null
+      }
+    ]
+  },
+  "exemple_classement": {
+    "endpoint": "POST /api/django/monitoring/drapeaux/{id}/classer/",
+    "corps": {"motif": "Relevés en retard"},
+    "reponse": {
+      "id": 12,
+      "installation": 87,
+      "reference": "CHT-2026-0087",
+      "ratio_pct": "60.00",
+      "date_creation": "2026-11-07T02:15:00Z",
+      "ticket": null,
+      "is_open": false,
+      "date_cloture": "2026-11-08T09:30:00Z",
+      "motif_cloture": "classe_manuellement",
+      "note_cloture": "Relevés en retard",
+      "cloture_par_nom": "Responsable SAV"
+    }
+  },
+  "notes": {
+    "motif_vide": "Motif absent ou blanc → 400 nommant `motif`.",
+    "deja_ferme": "Drapeau déjà fermé → 409 (`detail`).",
+    "autre_societe": "Drapeau d'une autre société → 404.",
+    "droits": "Lecture : tout rôle interne ; classer : responsable/admin (403 sinon)."
+  }
+}

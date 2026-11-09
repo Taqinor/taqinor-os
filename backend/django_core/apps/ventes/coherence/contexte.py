@@ -75,6 +75,21 @@ class ContexteAudit:
         self._constructeur = constructeur or _construire
         self._rendus = {}
         self._tarif = None
+        self._memo_pk = None
+        self._memo = {}
+
+    # ── Lectures partagées par plusieurs règles d'UN devis ─────────────────
+    def memo_devis(self, devis, nom, calcul):
+        """ERR-JPB-AUDIT-COHERENCE-TUE-180S — ``calcul()`` évalué UNE fois
+        par (devis, ``nom``) : les règles d'un même devis (calepinage lié,
+        mesures du document…) ne relisent plus la base chacune. Le cache est
+        vidé au devis suivant (les règles d'un devis s'enchaînent) : mémoire
+        bornée à UN devis, jamais une donnée périmée d'un autre."""
+        if devis.pk != self._memo_pk:
+            self._memo_pk, self._memo = devis.pk, {}
+        if nom not in self._memo:
+            self._memo[nom] = calcul()
+        return self._memo[nom]
 
     # ── Données du document ────────────────────────────────────────────────
     def donnees_devis(self, devis, options=None):

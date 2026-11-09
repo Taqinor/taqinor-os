@@ -119,16 +119,23 @@ def _pos(valeur):
 def cout_vente_ht(composition, onduleurs, *, taux_tva_pct=None):
     """Prix de VENTE HT de la composition (jamais un coût d'achat).
 
-    Onduleurs : ``prix_vente_total_ht`` de la combinaison CIQ111. Autres
+    Onduleurs : ``prix_vente_total_ht`` de la combinaison CIQ111 (au palier :
+    leurs lignes, ADEV111). Autres
     lignes : quantité × ``prix_unitaire_ht`` ; une ligne au prix de palier
     (TTC, CIQ123) est ramenée HT par la TVA de SON article (``tva_pct``), à
     défaut ``taux_tva_pct`` (taux standard de la société). Une ligne sans
     quantité, sans prix ou « à chiffrer après visite » (hors total, D-ACI-2)
     ne compte pas.
     """
-    total = _dec((onduleurs or {}).get('prix_vente_total_ht')) or Decimal('0')
-    for ligne in (composition or {}).get('lignes') or []:
-        if ligne.get('role') == 'onduleur_string_tri' or ligne.get('a_chiffrer_visite'):
+    lignes = (composition or {}).get('lignes') or []
+    # ADEV111 — un onduleur au prix de PALIER compte au HT de ses lignes écrites.
+    au_palier = any(ligne.get('role') == 'onduleur_string_tri' and ligne.get('palier')
+                    for ligne in lignes)
+    total = Decimal('0') if au_palier else (
+        _dec((onduleurs or {}).get('prix_vente_total_ht')) or Decimal('0'))
+    for ligne in lignes:
+        if ((ligne.get('role') == 'onduleur_string_tri' and not au_palier)
+                or ligne.get('a_chiffrer_visite')):
             continue
         quantite = _dec(ligne.get('quantite'))
         if quantite is None or not ligne.get('prix_connu'):

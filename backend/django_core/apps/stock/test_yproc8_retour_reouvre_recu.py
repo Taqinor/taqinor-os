@@ -100,6 +100,70 @@ class TestReouvertureQuantiteRecue(Yproc8Base):
         bc.refresh_from_db()
         self.assertEqual(bc.statut, BonCommandeFournisseur.Statut.ENVOYE)
 
+    def test_facturer_apres_retour_facture_le_net(self):
+        """AAPV25 — réception de 10, retour de 3 validé : « Facturer » crée
+        7 000 HT / 8 400 TTC, 3 voies normale ; une facture de 10 000 HT liée
+        ensuite passe en exception."""
+        import datetime
+        from apps.stock.models import (
+            FactureFournisseur, LigneReceptionFournisseur, ReceptionFournisseur,
+        )
+        from apps.stock.services import evaluer_rapprochement_3_voies, facturer_reception
+        self.produit.quantite_stock = 0
+        self.produit.save(update_fields=['quantite_stock'])
+        bc = BonCommandeFournisseur.objects.create(
+            company=self.company, reference='BCF-AAPV25', fournisseur=self.fournisseur,
+            statut=BonCommandeFournisseur.Statut.RECU)
+        ligne = bc.lignes.create(produit=self.produit, quantite=10,
+                                 prix_achat_unitaire=Decimal('1000'), quantite_recue=10)
+        rec = ReceptionFournisseur.objects.create(
+            company=self.company, reference='REC-AAPV25', bon_commande=bc,
+            statut=ReceptionFournisseur.Statut.CONFIRME,
+            date_reception=datetime.date(2026, 10, 1))
+        LigneReceptionFournisseur.objects.create(
+            reception=rec, ligne_commande=ligne, produit=self.produit, quantite=10)
+        self.produit.quantite_stock = 10
+        self.produit.save(update_fields=['quantite_stock'])
+        apply_retour_fournisseur(self._retour(bc, 3), user=None)
+        facture = facturer_reception(self.company, None, rec)
+        facture.refresh_from_db()
+        self.assertEqual(facture.montant_ht, Decimal('7000.00'))
+        self.assertEqual(facture.montant_ttc, Decimal('8400.00'))
+        self.assertEqual(facture.statut_controle, 'normale')
+        self.assertEqual([lg.quantite for lg in facture.lignes.all()], [7])
+        autre = FactureFournisseur.objects.create(
+            company=self.company, reference='FF-AAPV25-2', fournisseur=self.fournisseur,
+            bon_commande=bc, montant_ht=Decimal('10000'), montant_tva=Decimal('2000'),
+            montant_ttc=Decimal('12000'))
+        self.assertEqual(evaluer_rapprochement_3_voies(autre), 'exception')
+
+    def test_deux_lignes_meme_produit_retour_compte_une_fois(self):
+        """AAPV80 — lignes A et B 10 × 1 000 du même produit, 20 reçus, 3
+        retournés : 17 000 HT attendus et facturés (le retour n'est retiré
+        qu'une fois, de la ligne la plus récente)."""
+        import datetime
+        from apps.stock.models import LigneReceptionFournisseur, ReceptionFournisseur
+        from apps.stock.services import _montant_attendu_bcf_ht, facturer_reception
+        bc = BonCommandeFournisseur.objects.create(
+            company=self.company, reference='BCF-AAPV80', fournisseur=self.fournisseur,
+            statut=BonCommandeFournisseur.Statut.RECU)
+        lignes = [bc.lignes.create(produit=self.produit, quantite=10, quantite_recue=10,
+                                   prix_achat_unitaire=Decimal('1000')) for _ in 'AB']
+        rec = ReceptionFournisseur.objects.create(
+            company=self.company, reference='REC-AAPV80', bon_commande=bc,
+            statut=ReceptionFournisseur.Statut.CONFIRME,
+            date_reception=datetime.date(2026, 10, 1))
+        for ligne in lignes:
+            LigneReceptionFournisseur.objects.create(
+                reception=rec, ligne_commande=ligne, produit=self.produit, quantite=10)
+        apply_retour_fournisseur(self._retour(bc, 3), user=None)
+        self.assertEqual([lg.quantite_recue for lg in bc.lignes.order_by('id')], [10, 7])
+        self.assertEqual(_montant_attendu_bcf_ht(bc.id), Decimal('17000.00'))
+        facture = facturer_reception(self.company, None, rec)
+        facture.refresh_from_db()
+        self.assertEqual(facture.montant_ht, Decimal('17000.00'))
+        self.assertEqual(sorted(lg.quantite for lg in facture.lignes.all()), [7, 10])
+
 
 class TestSansBcfLieInchange(Yproc8Base):
     def test_retour_sans_bcf_lie_comportement_historique(self):

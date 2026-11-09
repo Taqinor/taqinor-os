@@ -44,7 +44,7 @@ import {
   type FlushPack,
 } from './estimatorBrainV3';
 import { type YieldSource } from './estimatorBrainV6';
-import type { EvalProductionSourced } from './estimatorBrainCommun';
+import { productionFields, type EvalProductionSourced } from './estimatorBrainCommun';
 import { anneauPosableParArete } from './estimatorBrainV7'; // CALX95 câblage
 
 export { PANEL2_WATT };
@@ -191,12 +191,7 @@ function evalPitched(ctx: PitchedCtx, layout: PitchedLayoutAxis, margin: Pitched
     fitCount,
     placedCount,
     kwc,
-    annualKwh,
-    pctOfTarget: ctx.target > 0 ? (annualKwh / ctx.target) * 100 : 0,
-    savingsLow: savings.low,
-    savingsHigh: savings.high,
-    perPanelYield: y.value,
-    yieldSource: y.source,
+    ...productionFields({ kwh: annualKwh, perPanelYield: y.value, source: y.source }, ctx.target, savings),
     pack,
     grid,
     layoutLabel: LAYOUT_FR[layout],

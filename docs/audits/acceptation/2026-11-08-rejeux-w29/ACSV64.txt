@@ -1,0 +1,15 @@
+# Preuve en direct ACSV64 — rejeu w29, code joué 42d1886b8 / enregistré ede87ccb5 (dev-plan-6a6fc9-w29), 2026-11-08
+# Lanceur : python scripts/sonde.py --conteneur accept-w29-dj (conteneur privé, code backend du commit joué copié dans le
+# conteneur, base privée erp_accept_w29 clonée de test_erp_db_base puis migrée ; transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sur le code corrigé, verdict ÉCART = repro False = attendu. Sondes C-LIVE-* / LIVE-*
+# (écrites pour ce rejeu, source jointe) : repro=true signifie ICI que le comportement attendu est observé.
+# Code joué : 42d1886b8 (dev-plan-6a6fc9-w29) ; enregistré sur ede87ccb5, dont le diff avec 42d1886b8 ne touche que
+# apps/stock/views/{produit,reception_fournisseur}.py et 9 fichiers front stock/appro (correctifs w28 déjà acceptés).
+# Verdict : PASS — Sonde C-ACSV-080 : repro False.
+
+== C-ACSV-080 (sha 7f4ba787d)
+attendu : repro si R : annuler 200, contrat.actif True, 1 ticket PREVENTIF sur le chantier annulé, chantier présent dans chantiers_receptionnes ; T : 1 ticket généré
+observé : {'generes_total': 1, 'R': {'annuler_http': 200, 'detail': None, 'inst_annule': True, 'contrat_actif_apres_annulation': False, 'equipement_statut': 'en_service', 'tickets_preventifs': 0, 'dans_chantiers_receptionnes': False}, 'T': {'tickets_preventifs': 1}}
+{"generes_total": 1, "R": {"annuler_http": 200, "detail": null, "inst_annule": true, "contrat_actif_apres_annulation": false, "equipement_statut": "en_service", "tickets_preventifs": 0, "dans_chantiers_receptionnes": false}, "T": {"tickets_preventifs": 1}, "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 0, après 0) ; mails 0 ; tâches Celery bloquées 0

@@ -593,7 +593,8 @@ export default function DevisList() {
     setRefusNote('')
     setRefusBusy(false)
     fetchAllPages((page, extra) => crmApi.getMotifsPerte({ page, ...extra }).then(r => r.data))
-      .then(rows => setMotifsPerte(Array.isArray(rows) ? rows : (rows?.results ?? [])))
+      // ADEV119 — motifs actifs seuls (le refus valide un motif NON archivé).
+      .then(rows => setMotifsPerte((Array.isArray(rows) ? rows : (rows?.results ?? [])).filter((m) => !m.archived)))
       .catch(() => setMotifsPerte([]))
   }
   const closeRefusModal = () => { setRefusTarget(null); setRefusBusy(false) }

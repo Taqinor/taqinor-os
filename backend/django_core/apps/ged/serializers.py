@@ -757,8 +757,8 @@ class PartageGedSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
 
     @extend_schema_field(OpenApiTypes.STR)
     def get_public_url(self, obj):
-        # Chemin public (relatif) — le jeton EST le secret d'accès.
-        return f'/api/django/ged/public/{obj.token}/'
+        # ASEC78 — la PAGE publique (ASEC77), relative ; le jeton EST le secret.
+        return f'/ged/partage/{obj.token}'
 
     def validate_document(self, value):
         """Le document doit appartenir à la société courante — on ne partage
@@ -1657,6 +1657,20 @@ def _refus_cible(serializer, noms, message):
     raise serializers.ValidationError(message)
 
 
+def _exiger_corps_put_acl(attrs):
+    """ENF11 (nocturne 41958593088, cn00tY) — un PUT est un corps COMPLET : le
+    schéma publié exige qu'il nomme lui-même UNE cible (``folder`` XOR
+    ``document``) et au moins un principal. Sans eux, la ligne en base
+    comblait le trou (200 sur un corps hors schéma) — refus 400 lu du corps."""
+    if sum(attrs.get(n) is not None for n in ('folder', 'document')) != 1:
+        raise serializers.ValidationError(
+            "Une entrée ACL cible exactement un dossier OU un document.")
+    if all(attrs.get(n) is None for n in ('utilisateur', 'role', 'client')):
+        raise serializers.ValidationError(
+            "Une entrée ACL désigne au moins un utilisateur, un rôle ou "
+            "un client (portail).")
+
+
 class AclGedSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                        SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """WIR163 — Droit d'accès GED19 par dossier/document (héritage + override).
@@ -1697,6 +1711,8 @@ class AclGedSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
         read_only_fields = ['created_by', 'created_at', 'updated_at']
 
     def validate(self, attrs):
+        if self.instance is not None and not self.partial:
+            _exiger_corps_put_acl(attrs)
         folder = attrs.get('folder', getattr(self.instance, 'folder', None))
         document = attrs.get(
             'document', getattr(self.instance, 'document', None))
@@ -1876,8 +1892,10 @@ class CreerMultiSignatairesSerializer(serializers.Serializer):
         choices=_codes(DemandeSignatureDocument, 'routage'),
         required=False, allow_null=True)
     expires_at = serializers.DateTimeField(required=False, allow_null=True)
+    # ENF11 (nocturne 41958593088) : borné à la colonne (PositiveIntegerField)
+    # — 19 chiffres débordaient l'entier SQL (500 « integer out of range »).
     relance_cadence_jours = serializers.IntegerField(
-        min_value=0, required=False, allow_null=True)
+        min_value=0, max_value=ENTIER_SQL_MAX, required=False, allow_null=True)
 
     def validate_destinataires(self, value):
         if not any(d.get('role', 'signataire') == 'signataire' for d in value):

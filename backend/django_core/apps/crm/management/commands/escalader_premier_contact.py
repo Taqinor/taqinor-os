@@ -43,6 +43,7 @@ CAD31 (21/09/2026), trois corrections :
 import logging
 
 from django.core.management.base import BaseCommand
+from apps.crm.activity import journal_systeme
 
 logger = logging.getLogger(__name__)
 
@@ -257,8 +258,8 @@ def escalader_premier_contact(dry_run=False, now=None):
                     ecoulees = horaires.minutes_ouvrees_entre(
                         lead.date_creation, maintenant, company,
                         canal=CANAL_PREMIER_CONTACT)
-                    LeadActivity.objects.create(
-                        company=company, lead=lead, user=None,
+                    journal_systeme(
+                        company=company, lead=lead,
                         kind=LeadActivity.Kind.NOTE,
                         body=(f'{MARQUEUR} — {ecoulees} minute(s) ouvrée(s) '
                               f"écoulées depuis l'arrivée (objectif "

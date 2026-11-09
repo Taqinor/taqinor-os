@@ -69,6 +69,34 @@ class LivraisonDirecteReservationTests(TestCase):
             {'receptions': [{'ligne': self.ligne.id, 'quantite': 10}]},
             format='json')
 
+    def test_livraison_directe_ni_lot_ni_quarantaine_au_depot(self):
+        """AAPV23 — réception 10 lot L-9 non conforme livrée au chantier :
+        aucun lot crédité au dépôt, aucun blocage, le stock libre (5) reste
+        sortable."""
+        from apps.stock.models import (
+            BlocageQualite, ControleReception, LigneReceptionFournisseur,
+            LotEntrepot, ReceptionFournisseur,
+        )
+        from apps.stock.services import confirm_reception_fournisseur
+        from apps.stock.services_qualite_reception import (
+            enregistrer_controle_reception, router_apres_controle,
+        )
+        rec = ReceptionFournisseur.objects.create(
+            company=self.company, reference='REC-AAPV23', bon_commande=self.bc)
+        LigneReceptionFournisseur.objects.create(
+            reception=rec, ligne_commande=self.ligne, produit=self.produit,
+            quantite=10, numero_lot='L-9')
+        enregistrer_controle_reception(
+            reception=rec, user=self.user,
+            resultat=ControleReception.Resultat.NON_CONFORME, unites_controlees=1)
+        confirm_reception_fournisseur(rec, self.user)
+        self.assertEqual(router_apres_controle(rec, self.user), [])
+        self.assertFalse(LotEntrepot.objects.filter(
+            company=self.company, numero_lot='L-9').exists())
+        self.assertFalse(BlocageQualite.objects.filter(reception=rec).exists())
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.quantite_stock, 5)
+
     def test_une_seule_sortie(self):
         rep = self._recevoir()
         self.assertEqual(rep.status_code, 200, rep.data)
@@ -101,3 +129,105 @@ class LivraisonDirecteReservationTests(TestCase):
         self.resa.refresh_from_db()
         self.assertFalse(self.resa.consomme)
         self.assertEqual(self.resa.quantite, 6)
+
+    # ── ASTK259 (C-ASTK-VER4-041) — chantier d'une VENTE ────────────────
+    def _vente(self):
+        """Devis accepté de 10 panneaux (stock 30) → chantier (réservation
+        10) + BCF de livraison directe de 20 vers ce chantier."""
+        from apps.crm import stages
+        from apps.crm.models import Lead
+        from apps.installations.services import create_installation_from_devis
+        from apps.ventes.models import Devis, LigneDevis
+        self.panneau = Produit.objects.create(
+            company=self.company, nom='Panneau ASTK259', sku='PAN-ASTK259',
+            prix_vente=Decimal('100'), prix_achat=Decimal('60'),
+            quantite_stock=30, tva=Decimal('20.00'))
+        client = Client.objects.create(
+            company=self.company, nom='Site', prenom='ASTK259',
+            email='astk259@example.invalid')
+        lead = Lead.objects.create(
+            company=self.company, nom='Site', prenom='ASTK259',
+            stage=stages.SIGNED, type_installation='residentiel')
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-ASTK259', client=client,
+            lead=lead, statut=Devis.Statut.ACCEPTE, taux_tva=Decimal('20'),
+            mode_installation='residentiel')
+        LigneDevis.objects.create(
+            devis=devis, produit=self.panneau, designation='Panneau',
+            quantite=Decimal('10'), prix_unitaire=Decimal('100'),
+            taux_tva=Decimal('20.00'))
+        chantier, _ = create_installation_from_devis(
+            devis, self.user, self.company)
+        bcf = BonCommandeFournisseur.objects.create(
+            company=self.company, reference='BCF-ASTK259',
+            fournisseur=Fournisseur.objects.create(
+                company=self.company, nom='Fournisseur ASTK259'),
+            chantier_livraison=chantier,
+            statut=BonCommandeFournisseur.Statut.ENVOYE)
+        ligne = bcf.lignes.create(
+            produit=self.panneau, quantite=20,
+            prix_achat_unitaire=Decimal('60'))
+        return devis, chantier, bcf, ligne
+
+    def _direct(self, bcf, ligne, quantite):
+        rep = self.api.post(
+            f'/api/django/stock/bons-commande-fournisseur/{bcf.id}/recevoir/',
+            {'receptions': [{'ligne': ligne.id, 'quantite': quantite}]},
+            format='json')
+        self.assertEqual(rep.status_code, 200, rep.data)
+
+    def _somme(self, type_mouvement, **filtres):
+        return sum(MouvementStock.objects.filter(
+            produit=self.panneau, type_mouvement=type_mouvement,
+            **filtres).values_list('quantite', flat=True))
+
+    def test_vente_sortie_puis_livraison_directe(self):
+        """ROUGE sur c38868a62 : facture émise puis direct 10 ⇒ 20 sorties,
+        stock 20. Attendu : ENTRÉE 10, aucune SORTIE de plus, stock 30."""
+        # Façade ventes (contrat import-linter) : l'émission d'une facture sort le
+        # panier par ce même appel (emettre_facture -> reserver_stock_devis_facture).
+        from apps.ventes.services import reserver_stock_devis_facture
+        devis, chantier, bcf, ligne = self._vente()
+        reserver_stock_devis_facture(
+            devis=devis, user=self.user, company=self.company)
+        self._direct(bcf, ligne, 10)
+        sortie = MouvementStock.TypeMouvement.SORTIE
+        self.assertEqual(self._somme(MouvementStock.TypeMouvement.ENTREE), 10)
+        self.assertEqual(self._somme(sortie), 10)
+        self.assertEqual(self._somme(sortie, reference=chantier.reference), 0)
+        # Persistance : relu en base.
+        self.panneau.refresh_from_db()
+        self.assertEqual(self.panneau.quantite_stock, 30)
+        self.assertTrue(StockReservation.objects.get(
+            installation=chantier, produit=self.panneau).consomme)
+
+    def test_sortie_partielle_de_la_vente_puis_direct_15(self):
+        """Cas « acompte émis » : l'émission sort le panier par
+        `reserver_stock_devis_facture` (même appel qu'`emettre_facture`) ;
+        direct 15 ⇒ SORTIE 5 sous la référence du chantier, stock 30."""
+        from apps.ventes.services import reserver_stock_devis_facture
+        devis, chantier, bcf, ligne = self._vente()
+        reserver_stock_devis_facture(
+            devis=devis, user=self.user, company=self.company)
+        self._direct(bcf, ligne, 15)
+        sortie = MouvementStock.TypeMouvement.SORTIE
+        self.assertEqual(self._somme(sortie), 15)
+        self.assertEqual(self._somme(sortie, reference=chantier.reference), 5)
+        self.panneau.refresh_from_db()
+        self.assertEqual(self.panneau.quantite_stock, 30)
+
+    def test_sans_facture_direct_4_puis_6(self):
+        devis, chantier, bcf, ligne = self._vente()
+        self._direct(bcf, ligne, 4)
+        self._direct(bcf, ligne, 6)
+        sortie = MouvementStock.TypeMouvement.SORTIE
+        self.assertEqual(
+            sorted(MouvementStock.objects.filter(
+                produit=self.panneau, type_mouvement=sortie,
+                reference=chantier.reference).values_list(
+                    'quantite', flat=True)), [4, 6])
+        self.panneau.refresh_from_db()
+        self.assertEqual(self.panneau.quantite_stock, 30)
+        resa = StockReservation.objects.get(
+            installation=chantier, produit=self.panneau)
+        self.assertTrue(resa.consomme)

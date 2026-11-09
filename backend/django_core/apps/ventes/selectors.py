@@ -103,7 +103,7 @@ def devis_lecture_seule_pour_lead(lead):
     domaine.
 
     CE QUI SORT, ET RIEN D'AUTRE : référence, statut, date, total TTC, et les
-    lignes PRODUIT comptées dans les totaux (désignation, quantité, prix
+    lignes PRODUIT de l'option retenue (``option_lines``) (désignation, quantité, prix
     unitaire TTC, total TTC). ``prix_achat`` — et toute donnée de coût ou de
     marge — ne franchit JAMAIS cette fonction : le panneau est montré au
     commercial ET dérivé d'un document client.
@@ -115,6 +115,7 @@ def devis_lecture_seule_pour_lead(lead):
     from decimal import ROUND_HALF_UP, Decimal
 
     from .models import Devis
+    from .utils.options import option_lines
 
     cent = Decimal('0.01')
     dossiers = []
@@ -123,9 +124,7 @@ def devis_lecture_seule_pour_lead(lead):
         Devis.objects.filter(lead=lead, company=lead.company).order_by('-id'))
     for devis in devis_qs:
         lignes = []
-        for ligne in devis.lignes.all():
-            if not ligne.compte_dans_totaux:
-                continue
+        for ligne in option_lines(devis):  # AANA88 — l'option retenue seule
             taux = Decimal(str(ligne.taux_tva_effectif or 0))
             coefficient = Decimal('1') + (taux / Decimal('100'))
             unitaire = Decimal(str(ligne.prix_unitaire or 0)) * coefficient
@@ -310,18 +309,17 @@ def devis_pour_projet(devis_id, company):
     désignation, alignée sur ``frontend/src/features/ventes/solar.js``).
     """
     from .models import Devis
-
+    from .utils.options import option_lines
     devis = (
         Devis.objects.filter(pk=devis_id, company=company)
         .select_related('client')
-        .prefetch_related('lignes')
+        .prefetch_related('lignes__produit')
         .first())
     if devis is None or devis.statut != Devis.Statut.ACCEPTE:
         return None
 
-    lignes_mo = []
-    lignes_materiel = []
-    for ligne in devis.lignes.all():
+    lignes_mo, lignes_materiel = [], []
+    for ligne in option_lines(devis):  # AANA89 — l'option retenue seule
         cible = lignes_mo if _est_main_oeuvre(ligne.designation) \
             else lignes_materiel
 
@@ -860,7 +858,7 @@ def ca_par_entite(company, entite_ids):
 
 
 def devis_envoyes_periode(company, *, date_debut=None, date_fin=None,
-                          commercial_id=None):
+                          commercial_id=None, en_vigueur=False):
     """NTCPQ24 — Devis ENVOYÉS (ou au-delà) d'une société sur une période.
 
     Point d'entrée cross-app en LECTURE (sans importer
@@ -868,9 +866,10 @@ def devis_envoyes_periode(company, *, date_debut=None, date_fin=None,
     sur ``date_envoi`` ; bornes optionnelles (ouvertes si absentes). Précharge
     les lignes/produits (le calcul de conformité les parcourt)."""
     from .models import Devis
-    qs = devis_en_jeu(Devis.objects.filter(
-        company=company, date_envoi__isnull=False,
-    )).select_related('client', 'created_by').prefetch_related(
+    qs = Devis.objects.filter(company=company, date_envoi__isnull=False)
+    # AANA87 — ``en_vigueur`` : + la V1 acceptée puis révisée (vente en vigueur).
+    qs = (qs.filter(is_active=True) | qs.filter(pk__in=devis_signes_en_vigueur(company).values('pk'))
+          if en_vigueur else devis_en_jeu(qs)).select_related('client', 'created_by').prefetch_related(
         'lignes__produit__categorie')
     if date_debut:
         qs = qs.filter(date_envoi__date__gte=date_debut)
@@ -884,9 +883,9 @@ def devis_envoyes_periode(company, *, date_debut=None, date_fin=None,
 def taux_acceptation_periode(company, date_debut, date_fin, commercial_id=None):
     """D-AANA-VER-1 — LE taux d'acceptation : acceptés ÷ devis envoyés dans la
     période (versions en jeu, révisions remplacées exclues). `None` sans envoi."""
-    envoyes = devis_envoyes_periode(
-        company, date_debut=date_debut, date_fin=date_fin, commercial_id=commercial_id)
-    n, acceptes = envoyes.count(), envoyes.filter(statut='accepte').count()
+    envoyes = devis_envoyes_periode(company, date_debut=date_debut, date_fin=date_fin,
+                                    commercial_id=commercial_id, en_vigueur=True)
+    n, acceptes = envoyes.count(), envoyes.filter(pk__in=devis_signes_en_vigueur(company).values('pk')).count()
     return {'envoyes': n, 'acceptes': acceptes,
             'taux_pct': round(acceptes / n * 100, 1) if n else None}
 
@@ -1804,6 +1803,7 @@ from .selectors_stock import (  # noqa: E402 — ré-export (SPL147) (D-ENF22)
     classer_produit_nom,
     devis_utilisant_produit,
 )
+from .selectors_sorties_vente import sorties_de_la_vente  # noqa: E402,F401 — ré-export (ASTK257) (D-ENF22)
 
 # VNT23 — l'état de la vente se lit par la FAÇADE (contrat import-linter
 # ``vente-lue-par-la-facade``) ; défini UNE fois dans ``vente_facturation``.

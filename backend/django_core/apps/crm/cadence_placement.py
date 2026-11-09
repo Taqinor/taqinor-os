@@ -22,6 +22,7 @@ from .cadence_plan import (
 from .cadence_reperes import _CLOTURE_TAGS
 from .fiche_funnel import avancer_stage_lead_vers, poser_tag_lead
 from .models import Lead, LeadActivity, RelanceEtape
+from .activity import journal_systeme
 
 logger = logging.getLogger(__name__)
 
@@ -652,8 +653,8 @@ def _placer_un(entree, *, user, maintenant):
     a_faire = [e for e in touches if e.statut == RelanceEtape.Statut.A_FAIRE]
     if entree['cadence'] == 'reveil' and not a_faire:
         # CADV25 — ni touche à nommer ni cadence : la note le dit (système, cf. FG28).
-        LeadActivity.objects.create(
-            company=lead.company, lead=lead, user=None,
+        journal_systeme(
+            company=lead.company, lead=lead,
             kind=LeadActivity.Kind.NOTE,
             body=f'Placé au Froid, sans réveil ({PLACEMENT_MARQUEUR}).')
         return True
@@ -673,8 +674,8 @@ def _placer_un(entree, *, user, maintenant):
     # faussé du même coup. Même choix, trois lignes plus haut, que la note de
     # `initialiser_plan_relance`. QUI a lancé le placement reste tracé : par
     # les lignes de modification (étape, étiquette), qui portent l'acteur.
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=None,
+    journal_systeme(
+        company=lead.company, lead=lead,
         kind=LeadActivity.Kind.NOTE,
         body=f'Placé dans la cadence {entree["cadence"]} à la touche '
              f'« {libelle} » ({PLACEMENT_MARQUEUR}).')

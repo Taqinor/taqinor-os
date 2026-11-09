@@ -112,7 +112,7 @@ class FkDevisSocieteTests(TestCase):
             quantite=Decimal('1'), prix_unitaire=Decimal('1000'))
         r = self.api.patch(f'{LIGNES}{ligne.id}/',
                            {'produit': self.produit_b.id}, format='json')
-        self.assertEqual(r.status_code, 404, r.content)
+        self.assertEqual(r.status_code, 409, r.content)  # ENF45 a : mise à jour = 409
         self.assertIn('produit', r.data)
         ligne.refresh_from_db()
         self.assertEqual(ligne.produit_id, self.produit_a.id)
@@ -163,7 +163,7 @@ class FkDevisSocieteTests(TestCase):
             quantite=Decimal('1'), prix_unitaire=Decimal('1000'))
         r = self.api.patch(f'{LIGNES}{ligne.id}/',
                            {'lot': self.lot_b.id}, format='json')
-        self.assertEqual(r.status_code, 404, r.content)
+        self.assertEqual(r.status_code, 409, r.content)  # ENF45 a : mise à jour = 409
         self.assertIn('lot', r.data)
         ligne.refresh_from_db()
         self.assertIsNone(ligne.lot_id)
@@ -251,8 +251,10 @@ class FkDevisSocieteTests(TestCase):
         self.assertEqual(r.status_code, 201, r.content)
 
     # ── ENF17 — FK restantes du devis bornées société ───────────────────
-    def _assert_comme_absent(self, r, r_absent, champ, id_etranger):
-        self.assertEqual(r.status_code, 404, r.content)
+    def _assert_comme_absent(self, r, r_absent, champ, id_etranger,
+                             statut=404):
+        self.assertEqual(r.status_code, statut, r.content)
+        self.assertEqual(r_absent.status_code, statut, r_absent.content)
         self.assertEqual(r.data[champ][0].code, 'does_not_exist', r.content)
         self.assertEqual(
             str(r.data[champ][0]).replace(str(id_etranger), '<ID>'),
@@ -293,7 +295,9 @@ class FkDevisSocieteTests(TestCase):
                                    {champ: etranger.id}, format='json')
                 r_absent = self.api.patch(f'{url}{self.devis_a.id}/',
                                           {champ: 999999999}, format='json')
-                self._assert_comme_absent(r, r_absent, champ, etranger.id)
+                # ENF45 a : PATCH = mise à jour → 409, même corps absent/voisin.
+                self._assert_comme_absent(r, r_absent, champ, etranger.id,
+                                          statut=409)
         self.devis_a.refresh_from_db()
         self.assertEqual(self.devis_a.client_id, self.client_a.id)
         self.assertIsNone(self.devis_a.lead_id)

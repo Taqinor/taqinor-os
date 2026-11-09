@@ -101,6 +101,17 @@ class CeremonieGardesTests(CeremonieGardesBase):
         self.assertEqual(resp.status_code, 400, resp.data)
         self.assertIn('expires_at', resp.data)
 
+    def test_creer_multi_cadence_hors_colonne_400(self):
+        # ENF11 (nocturne 41958593088) : 19 chiffres = 400 nommé, plus 500.
+        resp = self.api.post(
+            '/api/django/ged/demandes-signature/creer-multi/', {
+                'document': self.doc.pk,
+                'destinataires': [{'nom': 'X'}],
+                'relance_cadence_jours': 4367184427156246146},
+            format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('relance_cadence_jours', resp.data)
+
     def test_circuit_sans_signataire_refuse(self):
         resp = self.api.post(
             '/api/django/ged/demandes-signature/creer-multi/', {
