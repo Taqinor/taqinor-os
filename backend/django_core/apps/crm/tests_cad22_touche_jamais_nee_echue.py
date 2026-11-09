@@ -288,6 +288,68 @@ class ToucheJamaisNeeEchueTests(TestCase):
         self.assertGreaterEqual(nee.due_at, MERCREDI)  # horloge GELÉE
 
 
+class RappelPasAvantLendemainTests(TestCase):
+    """RAPPEL-LENDEMAIN (incident Asmaa du 09/11/2026) — sur un suivi après
+    devis en retard, l'« Appel de suivi » J+2 clos « pas de réponse » faisait
+    naître l'« Appel de suivi » J+7 dû à la SECONDE même : la même carte
+    renaissait sous le « Fait ». Le rappel tombe désormais au plus tôt le
+    lendemain ; un plan à l'heure garde son J+7."""
+
+    #: Lundi 2 novembre 2026, 15 h 23 — le devis part, le suivi démarre.
+    DEPART = datetime.datetime(2026, 11, 2, 15, 23, tzinfo=horaires.CASABLANCA)
+
+    def setUp(self):
+        self.company = _company('rappel-lendemain')
+        self.acteur = User.objects.create_user(
+            username='rappel-lendemain-u', password='x',
+            role_legacy='responsable', company=self.company)
+        self.lead = Lead.objects.create(
+            company=self.company, nom='Hassan', prenom='El',
+            ville='Casablanca', owner=self.acteur)
+
+    def _clore_appel_j2(self, traite_le):
+        gel = frozen(traite_le)
+        gel.start()
+        self.addCleanup(gel.stop)
+        gabarit, echeance = next(
+            (g, e) for g, e in calculer_echeances_cadence(
+                self.lead, 'apres_devis', self.DEPART) if g.ordre == 2)
+        self.assertEqual(gabarit.canal, RelanceEtape.Canal.APPEL)
+        close = RelanceEtape.objects.create(
+            company=self.company, lead=self.lead, cadence='apres_devis',
+            ordre=2, due_at=echeance,
+            due_date=echeance.astimezone(horaires.CASABLANCA).date(),
+            canal=gabarit.canal, libelle=gabarit.libelle,
+            cadence_depart=self.DEPART, outcome='non_joint',
+            statut=RelanceEtape.Statut.FAIT, traite_par=self.acteur,
+            traite_le=traite_le)
+        return materialiser_touche_suivante(close, self.acteur)
+
+    def test_plan_en_retard_le_rappel_tombe_le_LENDEMAIN(self):
+        # Lundi 9/11, 12 h 45 : le J+2 est traité avec 5 jours de retard.
+        traite = datetime.datetime(
+            2026, 11, 9, 12, 45, tzinfo=horaires.CASABLANCA)
+        nee = self._clore_appel_j2(traite)
+        self.assertIsNotNone(nee)
+        self.assertEqual(nee.canal, RelanceEtape.Canal.APPEL)
+        self.assertEqual(nee.ordre, 6)
+        local = nee.due_at.astimezone(horaires.CASABLANCA)
+        self.assertEqual(local.date(), datetime.date(2026, 11, 10))
+        self.assertGreaterEqual(local.time(), datetime.time(9, 0))
+        self.assertEqual(nee.due_date, local.date())
+
+    def test_plan_a_lheure_garde_son_J7(self):
+        # Mercredi 4/11, 10 h : le J+2 est fait le jour dit.
+        traite = datetime.datetime(
+            2026, 11, 4, 10, 0, tzinfo=horaires.CASABLANCA)
+        nee = self._clore_appel_j2(traite)
+        self.assertIsNotNone(nee)
+        self.assertEqual(nee.ordre, 6)
+        self.assertEqual(
+            nee.due_at.astimezone(horaires.CASABLANCA).date(),
+            datetime.date(2026, 11, 9))
+
+
 class ReportNeLaissePersonneDerriereTests(TestCase):
     """`reporter_prochaine_touche` — l'ordre du plan ne se défait pas."""
 

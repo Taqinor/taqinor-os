@@ -972,6 +972,32 @@ class RaisonSuite:
     NON_RELANCABLE = 'non_relancable'  # lead hors relance, filet, visite
 
 
+def _rappel_pas_avant_lendemain(echeance, etape_close, company, gabarit):
+    """RAPPEL-LENDEMAIN (incident Asmaa du 09/11/2026) — un appel de PROTOCOLE
+    (barreau J+N) qui naît d'un APPEL qu'on vient de clore n'est jamais dû le
+    même jour : au plus tôt le premier créneau d'appel du lendemain.
+
+    Sur un plan en retard, l'« Appel de suivi » J+7 naissait déjà échu de la
+    clôture de l'« Appel de suivi » J+2 et CAD22 le ramenait à « maintenant » :
+    la commerciale voyait renaître la même carte à la seconde de son « Fait »
+    (33 fois sur 76 en 14 jours) et rappelait un client qui venait de ne pas
+    répondre. Les touches du jour même (``delai_jours == 0``) ne passent
+    jamais ici : leur écart intra-journée est voulu par le protocole."""
+    from . import horaires
+
+    base = etape_close.traite_le or timezone.now()
+    jour = base.astimezone(horaires.CASABLANCA).date()
+    if echeance.astimezone(horaires.CASABLANCA).date() > jour:
+        return echeance
+    lendemain = datetime.datetime.combine(
+        jour + datetime.timedelta(days=1), datetime.time(0, 0),
+        tzinfo=horaires.CASABLANCA)
+    return horaires.prochain_creneau_appel(
+        lendemain, company, canal=RelanceEtape.Canal.APPEL,
+        samedi=bool(getattr(gabarit, 'samedi_ok', False)),
+        heure_cible=getattr(gabarit, 'heure_cible', None))
+
+
 def materialiser_touche_suivante(etape_close, user=None, *, avec_raison=False):
     """ACRM12 — ``avec_raison=True`` rend ``(etape | None, RaisonSuite.*)``
     au lieu de la seule étape (les appelants historiques sont inchangés).
@@ -1137,6 +1163,11 @@ def _materialiser_touche_suivante(etape_close, user=None):
             canal=_canal_effectif(gabarit),
             samedi=bool(getattr(gabarit, 'samedi_ok', False)),
             heure_cible=getattr(gabarit, 'heure_cible', None))
+        if (gabarit.delai_jours > 0
+                and etape_close.canal == RelanceEtape.Canal.APPEL
+                and _canal_effectif(gabarit) == RelanceEtape.Canal.APPEL):
+            echeance = _rappel_pas_avant_lendemain(
+                echeance, etape_close, lead.company, gabarit)
         etape = RelanceEtape(
             company=lead.company, lead=lead, cadence=cadence,
             ordre=gabarit.ordre, due_at=echeance, due_initial_at=echeance,
