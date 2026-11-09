@@ -214,8 +214,8 @@ def _contour_lisible(sommets):
 def contours_croises(document):
     """ACAL76 — ``[(chemin, contour), …]`` des contours qui se CROISENT.
 
-    Contours contrôlés : ``zones[].vertices``, ``zones[].obstacles[].contour``
-    et ``exclusionZones[].vertices`` ; le test est
+    Contours contrôlés : ``zones[].vertices``, ``zones[].obstacles[].contour``,
+    ``exclusionZones[].vertices`` et ``poseSurfaces[].vertices`` ; le test est
     ``core.calepinage.geometrie.est_polygone_simple`` (le noyau, jamais
     recodé). Un contour illisible est laissé au schéma. Fonction PURE.
     """
@@ -242,6 +242,13 @@ def contours_croises(document):
         if isinstance(zone, dict):
             candidats.append((f'exclusionZones.{rang}.vertices',
                               zone.get('vertices')))
+    # ACON8 — le champ au sol (D-ACAL-5 : compté au devis) aussi.
+    surfaces = document.get('poseSurfaces')
+    for rang, surface in enumerate(
+            surfaces if isinstance(surfaces, list) else ()):
+        if isinstance(surface, dict):
+            candidats.append((f'poseSurfaces.{rang}.vertices',
+                              surface.get('vertices')))
     croises = []
     for chemin, sommets in candidats:
         contour = _contour_lisible(sommets)
