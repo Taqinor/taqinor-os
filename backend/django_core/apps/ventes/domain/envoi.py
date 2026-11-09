@@ -351,6 +351,17 @@ def mark_devis_sent(*, devis, user=None, paire=True):
     if (refus := refus_kwh_declare_du_devis(devis)) is not None:
         from core.conflit_etat import ConflitEtat
         raise ConflitEtat(refus)
+    # ACON86 (C-ACON-021) — conception du calepinage lié (lien direct) divergente
+    # de celle du devis (ACAL46) : 409, le brouillon ne part pas ; inconnu : envoi.
+    from apps.calepinage.selectors import calepinage_du_devis
+    from apps.ventes.selectors_calepinage import peremption_layout_devis
+    calepinage = calepinage_du_devis(devis.pk, devis.company)
+    if (calepinage is not None and calepinage.devis_id == devis.pk
+            and peremption_layout_devis(devis, calepinage)['conception_divergente'] is True):
+        from core.conflit_etat import ConflitEtat
+        raise ConflitEtat({'detail': (
+            f"La conception du calepinage « {calepinage} » a changé depuis ce devis : "
+            "resynchronisez le devis avant de l'envoyer."), 'code': 'conception_a_resynchroniser'})
 
     # QJR539 — FILET T17 (brouillon seulement) : chaque vue d'envoi appelle
     # déjà la garde AVANT ses effets ; ce filet couvre tout autre appelant.
