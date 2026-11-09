@@ -366,7 +366,7 @@ def _reconstruire_duplication_en_conflit(message, corps, champ):
     return DuplicationEnConflit(message, corps=corps, champ=champ)
 
 
-def _cible_de_copie(calepinage, lead_id, client_id):
+def _cible_de_copie(calepinage, lead_id, client_id, user=None):
     """ACAL187 — ``(lead_id, client_id)`` de la copie, ou un refus.
 
     Cible EXPLICITE (``lead_id`` et/ou ``client_id`` donnés) : bornée à la
@@ -390,9 +390,10 @@ def _cible_de_copie(calepinage, lead_id, client_id):
         raise VarianteRefusee(
             "Indiquez le lead ou le client de la copie.", champ='lead')
     if lead_id:
-        from apps.crm.selectors import get_company_lead
+        from .creation import lead_en_portee
 
-        lead = get_company_lead(company, lead_id)
+        # ACON3 — dans la portée CRM de l'auteur (hors portée = absent).
+        lead = lead_en_portee(company, lead_id, user)
         if lead is None:
             raise VarianteRefusee(f"Lead introuvable (#{lead_id}).",
                                   champ='lead')
@@ -478,7 +479,8 @@ def dupliquer(calepinage, *, user=None, titre='', avec_variantes=True,
             champ='calepinage')
     # ACAL187 — la CIBLE (lead/client) est résolue et le « un seul ouvert
     # par lead » (D-ACAL-12) tenu AVANT toute écriture.
-    lead_cible, client_cible = _cible_de_copie(calepinage, lead_id, client_id)
+    lead_cible, client_cible = _cible_de_copie(calepinage, lead_id, client_id,
+                                               user=user)
 
     copies = {champ: copy.deepcopy(getattr(calepinage, champ, None))
               for champ in CHAMPS_COPIES}

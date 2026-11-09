@@ -199,9 +199,11 @@ def creer_depuis_modele(modele, *, user=None, lead_id=None, client_id=None,
             raise RattachementDuModeleIntrouvable(
                 'Client introuvable dans cette société.', champ='client')
     if lead_id:
-        from apps.crm.selectors import get_company_lead, repere_toit
+        from apps.crm.selectors import repere_toit
 
-        lead = get_company_lead(modele.company, lead_id)
+        from .creation import lead_en_portee
+
+        lead = lead_en_portee(modele.company, lead_id, user)  # ACON3
         if lead is None:
             raise RattachementDuModeleIntrouvable(
                 'Lead introuvable dans cette société.', champ='lead')
