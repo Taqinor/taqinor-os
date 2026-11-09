@@ -512,8 +512,9 @@ def pre_echeance_reminders():
     """XFAC7 — rappel de courtoisie J-N AVANT échéance (jamais après).
 
     Pour chaque facture ÉMISE (jamais payée/annulée/exclue) dont l'échéance
-    tombe dans EXACTEMENT N jours (N = ``CompanyProfile.rappel_pre_echeance_
-    jours`` de la société, défaut 5, 0 = désactivé), envoie l'email de
+    tombe dans la fenêtre ]aujourd'hui, aujourd'hui + N] (ASOC85 : un beat
+    raté ou un délai < N n'empêche plus le rappel ; N = ``CompanyProfile.
+    rappel_pre_echeance_jours`` de la société, défaut 5, 0 = désactivé), envoie l'email de
     courtoisie (clé ``EmailTemplate`` ``pre_echeance``, NO-OP réseau sans clé
     d'envoi) avec le lien de paiement FG53 si disponible, et consigne dans
     ``EmailLog``. Idempotent : un log dédié (``reference`` suffixée du
@@ -546,7 +547,7 @@ def pre_echeance_reminders():
         n = getattr(profile, 'rappel_pre_echeance_jours', 5) or 0
         if n <= 0:
             continue
-        if facture.date_echeance != today + timedelta(days=n):
+        if not (today < facture.date_echeance <= today + timedelta(days=n)):
             continue
         # Idempotence : un seul rappel par facture (le marqueur reste tant
         # que la facture n'a qu'une échéance figée — pas de doublon possible
