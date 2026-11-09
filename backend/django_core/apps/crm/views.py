@@ -1136,11 +1136,10 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         if lien := corps.get('lien', '').strip():
             resultat = resoudre_lien_maps(lien, corps.get('ville', ''))
             if resultat is None:  # rien à trouver dans ce lien : 404
-                court = est_lien_court(lien)
                 return Response(
                     {'detail': "Ce lien court n'a pas pu être ouvert : "
                                'collez plutôt les coordonnées (latitude, '
-                               'longitude).' if court else
+                               'longitude).' if est_lien_court(lien) else
                                'Aucune position trouvée dans ce texte : '
                                'collez un lien Google Maps, des coordonnées '
                                'ou un plus code.'},

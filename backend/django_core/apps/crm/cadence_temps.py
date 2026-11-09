@@ -34,7 +34,7 @@ from . import horaires
 
 def echeance_jamais_echue(echeance, *, company, dimanche=False,
                           canal='appel', maintenant=None, samedi=False,
-                          heure_cible=None):
+                          heure_cible=None, rappel_apres=None):
     """CAD22 — l'échéance d'une touche qui NAÎT, jamais dans le passé.
 
     Les touches naissent dans l'ordre du PROTOCOLE, et leur échéance calculée
@@ -55,6 +55,9 @@ def echeance_jamais_echue(echeance, *, company, dimanche=False,
     Rend l'échéance inchangée quand elle est future (cas normal), ou `None`
     tel quel.
 
+    RAPPEL-LENDEMAIN — `rappel_apres` (``instant_appel_clos``) : jamais le
+    même jour que cet appel sans réponse, au plus tôt le lendemain.
+
     ACRM36 (C-ACRM-031) — `samedi` (`samedi_ok` du barreau, CAD43) et
     `heure_cible` sont TRANSMIS au recalage : une touche née échue d'un
     barreau ouvert le samedi tombe le samedi, comme l'aperçu MRY30 l'annonce
@@ -63,13 +66,41 @@ def echeance_jamais_echue(echeance, *, company, dimanche=False,
     if echeance is None:
         return echeance
     maintenant = maintenant if maintenant is not None else timezone.now()
-    if echeance >= maintenant:
+    if echeance < maintenant:
+        echeance = (horaires.prochain_dimanche(maintenant) if dimanche
+                    else horaires.prochain_creneau_appel(
+                        maintenant, company, canal=canal, samedi=samedi,
+                        heure_cible=heure_cible))
+    if rappel_apres is None:
         return echeance
-    if dimanche:
-        return horaires.prochain_dimanche(maintenant)
+    jour = rappel_apres.astimezone(horaires.CASABLANCA).date()
+    if echeance.astimezone(horaires.CASABLANCA).date() > jour:
+        return echeance
     return horaires.prochain_creneau_appel(
-        maintenant, company, canal=canal, samedi=samedi,
-        heure_cible=heure_cible)
+        datetime.datetime.combine(jour + datetime.timedelta(days=1),
+                                  datetime.time(0, 0),
+                                  tzinfo=horaires.CASABLANCA),
+        company, canal=canal, samedi=samedi, heure_cible=heure_cible)
+
+
+def instant_appel_clos(etape_close, gabarit, canal):
+    """RAPPEL-LENDEMAIN (incident Asmaa du 09/11/2026) — l'instant de
+    clôture de l'APPEL ``etape_close`` quand la touche qui en naît est un
+    appel de PROTOCOLE (barreau J+N), sinon ``None``.
+
+    Sur un plan en retard, l'« Appel de suivi » J+7 naissait déjà échu de la
+    clôture « pas de réponse » de l'« Appel de suivi » J+2 et la règle CAD22
+    le ramenait à « maintenant » : la même carte renaissait à la seconde du
+    « Fait » (33 fois sur 76 en 14 jours, lecture prod) et la commerciale
+    rappelait un client qui venait de ne pas répondre. Passé en
+    ``rappel_apres`` à ``echeance_jamais_echue``, il repousse ce rappel au
+    premier créneau du LENDEMAIN. Les touches du jour même
+    (``delai_jours == 0``) gardent leur écart intra-journée voulu."""
+    if ((getattr(gabarit, 'delai_jours', 0) or 0) <= 0
+            or getattr(etape_close, 'canal', None) != 'appel'
+            or canal != 'appel'):
+        return None
+    return getattr(etape_close, 'traite_le', None) or timezone.now()
 
 
 def nee_en_retard(etape):
