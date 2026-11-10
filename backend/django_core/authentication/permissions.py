@@ -76,10 +76,12 @@ def _registre_modules():
 
 #: AARG52 — apps de FONDATION sans codes au registre : seules à garder la règle
 #: historique en ÉCRITURE (liste qui ne fait que décroître ; ``portail`` retiré ;
-#: ``monitoring`` retiré par AMON92, ses vues relevant du module ``sav``, AMON45).
+#: ``monitoring`` retiré par AMON92, ses vues relevant du module ``sav``, AMON45 ;
+#: ``semantic`` retiré par APFS43 : ses métriques ne s'écrivent plus par un
+#: rôle fin non administrateur).
 APPS_SANS_MODULE = frozenset({
     'authentication', 'core', 'dataimport', 'documents',
-    'offlinesync', 'outillage', 'records', 'roles', 'semantic', 'uxviews'})
+    'offlinesync', 'outillage', 'records', 'roles', 'uxviews'})
 
 #: ODX18 — apps dont les vues relèvent du module de droits d'une AUTRE app.
 #: ``apps.facturation`` n'a pas de codes propres (ASEC9 : « module

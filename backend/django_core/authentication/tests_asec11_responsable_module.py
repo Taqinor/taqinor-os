@@ -51,7 +51,30 @@ MATRICE_DOREE = {
 # (``APPS_SANS_MODULE``, seule liste). Une app non résolue HORS liste a ses
 # écritures fermées aux rôles fins ; ``portail`` l'est jusqu'à AARG8 (modules
 # posés sur ses vues). Toute autre app non résolue fait échouer le test.
-FERMEES_EN_ECRITURE_ATTENDUES = frozenset({'portail'})
+# APFS43 — ``semantic`` (métriques) n'est plus une app de fondation.
+FERMEES_EN_ECRITURE_ATTENDUES = frozenset({'portail', 'semantic'})
+
+
+def _gardes_declarees(cls):
+    """APFS43 — TOUTES les gardes déclarées d'une vue : ``permission_classes``
+    de la classe, celles des ``@action``, et celles rendues par
+    ``get_permissions()`` pour chaque action routée (vue instanciée sans
+    requête ; une vue qui exige une requête pour répondre est ignorée)."""
+    gardes = list(getattr(cls, 'permission_classes', []) or [])
+    actions = ['list', 'retrieve', 'create', 'update', 'partial_update',
+               'destroy']
+    for extra in (getattr(cls, 'get_extra_actions', lambda: [])() or []):
+        gardes.extend(extra.kwargs.get('permission_classes') or [])
+        actions.append(extra.__name__)
+    for action in actions:
+        vue = cls.__new__(cls)
+        vue.action, vue.request, vue.kwargs = action, None, {}
+        vue.format_kwarg = None
+        try:
+            gardes.extend(type(g) for g in vue.get_permissions())
+        except Exception:  # noqa: BLE001 — vue qui exige une vraie requête
+            continue
+    return gardes
 
 
 def _iter_vues(motifs):
@@ -161,7 +184,7 @@ class ResponsableParModuleTests(TestCase):
         modules_registre = set(PERMISSION_MODULE.values())
         non_resolues = set()
         for cls in _iter_vues(get_resolver().url_patterns):
-            perms = list(getattr(cls, 'permission_classes', []) or [])
+            perms = _gardes_declarees(cls)  # APFS43 — get_permissions compris
             if not any(p is IsResponsableOrAdmin for p in perms):
                 continue
             vue = cls.__new__(cls)
@@ -208,6 +231,27 @@ class ResponsableParModuleTests(TestCase):
         admin = self._user('Administrateur')
         self.assertTrue(perm.has_permission(
             SimpleNamespace(user=admin, method='POST'), portail))
+
+    def test_semantic_ferme_en_ecriture_sans_module(self):
+        """APFS43 — ``semantic`` n'est plus une app de fondation : écriture
+        des métriques refusée au rôle « RH seul » et au Technicien (lecture
+        admise) ; l'Administrateur reste admis."""
+        perm = IsResponsableOrAdmin()
+        rh_seul = User.objects.create_user(
+            username='apfs43_rh', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom='RH seul 43',
+                                     permissions=['rh_voir', 'rh_gerer']))
+        vue = type('MetricDefinitionViewSet', (), {
+            '__module__': 'apps.semantic.views'})()
+        self.assertNotIn('semantic', APPS_SANS_MODULE)
+        for user in (rh_seul, self._user('Technicien')):
+            with self.subTest(user=user.username):
+                self.assertFalse(perm.has_permission(
+                    SimpleNamespace(user=user, method='POST'), vue))
+                self.assertTrue(perm.has_permission(
+                    SimpleNamespace(user=user, method='GET'), vue))
+        self.assertTrue(perm.has_permission(SimpleNamespace(
+            user=self._user('Administrateur'), method='POST'), vue))
 
     def test_monitoring_hors_liste_de_fondation(self):
         """AMON92 — ``monitoring`` n'est plus une app de fondation : une vue
