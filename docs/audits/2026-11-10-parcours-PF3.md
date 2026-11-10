@@ -143,4 +143,4 @@ Porte : 0 réfuté en entier, 2 en partie / 27 vérifiés · 4 gravités revues 
 
 ## 9. Coût et routage
 Coût : H0 S6 O10 F0 · jetons sous-agents ≈ 4,7 M · tâches 93 (M0 0 M1 29 M2 0 M3 58 GATED 6).
-Routage : `PLAN_AUDIT_DEPLOY.md` 65 · `PLAN_AUDIT_SECURITE.md` 14 · `PLAN_AUDIT_TRANSVERSE.md` 4 · `WEB_PLAN.md` 3 · `PLAN_AUDIT_ANALYSE.md` 2 · `PLAN_AUDIT_DEVIS.md` 1 · `PLAN_AUDIT_FACTURATION.md` 1 · `PLAN_AUDIT_LEAD.md` 1 · `PLAN_AUDIT_MOTEUR.md` 1 · `PLAN_AUDIT_PARAMETRES.md` 1 · acceptation ADCG100 · PR #NUM_PR.
+Routage : `PLAN_AUDIT_DEPLOY.md` 65 · `PLAN_AUDIT_SECURITE.md` 14 · `PLAN_AUDIT_TRANSVERSE.md` 4 · `WEB_PLAN.md` 3 · `PLAN_AUDIT_ANALYSE.md` 2 · `PLAN_AUDIT_DEVIS.md` 1 · `PLAN_AUDIT_FACTURATION.md` 1 · `PLAN_AUDIT_LEAD.md` 1 · `PLAN_AUDIT_MOTEUR.md` 1 · `PLAN_AUDIT_PARAMETRES.md` 1 · acceptation ADCG100 · PR #1310.
