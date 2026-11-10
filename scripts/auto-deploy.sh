@@ -183,6 +183,18 @@ fi
 # ADCG2 — `migrate` AVANT tout redémarrage ou recréation : l'image juste
 # construite (`run --rm --no-deps`, code monté) migre la base PUIS le code neuf
 # est servi (docs/online-migrations.md). Un migrate en échec ne redémarre rien.
+# ADCG93 — des migrations en attente ? Dump (core/backup.py, `dump_database`)
+# AVANT de migrer ; un dump en échec = pas de migrate. Un seul dump par commit
+# (marqueur) : un migrate qui échoue puis est retenté ne remplit pas le disque.
+if [ "$ok" = "1" ] \
+   && ! $COMPOSE run --rm --no-deps django_core python manage.py migrate --check >/dev/null 2>&1 \
+   && [ "$(cat "$STATE/dump_avant_migrate" 2>/dev/null)" != "$NEW" ]; then
+  if $COMPOSE exec -T django_core python manage.py dump_database; then
+    echo "$NEW" > "$STATE/dump_avant_migrate"
+  else
+    log "AVERTISSEMENT: dump avant migrate en échec -> migrate non lancé"; ok=0
+  fi
+fi
 if [ "$ok" = "1" ]; then
   $COMPOSE run --rm --no-deps django_core python manage.py migrate --noinput || ok=0
 fi

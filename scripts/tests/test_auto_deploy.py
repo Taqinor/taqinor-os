@@ -169,10 +169,11 @@ class AutoDeployTests(unittest.TestCase):
         # Cycle 2 : migrate en échec -> rien n'est redémarré ni recréé.
         (banc.d / "calls.log").unlink()
         banc.ecrire("last_deployed_commit", A)
-        rc, _ = banc.jouer(FAIL="manage.py migrate")
+        rc, _ = banc.jouer(FAIL="manage.py migrate --noinput")
         self.assertNotEqual(rc, 0)
-        self.assertEqual(banc.compte(r"prod\.yml up -d"), 0, banc.appels)
-        self.assertEqual(banc.compte(r" restart "), 0, banc.appels)
+        # Avant le retour arrière vers A (ADCG5), rien n'est recréé ni redémarré.
+        avant = banc.appels[:banc.index(f"^git reset --hard {A}$")]
+        self.assertFalse([a for a in avant if re.search(r"prod\.yml up -d| restart ", a)], avant)
         self.assertIn("ECHEC", banc.journal)
 
     def test_echec_meme_commit_pas_rejoue(self):
@@ -319,6 +320,48 @@ class AutoDeployTests(unittest.TestCase):
         self.assertEqual(rc, 0, sortie)
         self.assertIsNotNone(banc.index(r"--scale django_core=2"))
         self.assertIsNone(banc.lire("zero_downtime"))
+
+
+@unittest.skipUnless(_bash(), "bash introuvable")
+class DumpAvantMigrateTests(unittest.TestCase):
+    """ADCG93 — `migrate --check` en 1 => `dump_database` avant `migrate --noinput`."""
+    LOT = "backend/django_core/apps/crm/migrations/0999_x.py\n"
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+
+    def banc(self, sous):
+        return Banc(Path(self._tmp.name) / sous, changes=self.LOT)
+
+    def test_migrations_en_attente_dump_avant_migrate(self):
+        banc = self.banc("attente")
+        rc, sortie = banc.jouer(FAIL="migrate --check")
+        self.assertEqual(rc, 0, sortie + banc.journal)
+        self.assertLess(banc.index("manage.py dump_database"), banc.index("manage.py migrate --noinput"))
+        self.assertEqual(banc.lire("dump_avant_migrate"), B)
+        banc = self.banc("a_jour")
+        banc.jouer()
+        self.assertIsNone(banc.index("dump_database"))
+        self.assertIsNotNone(banc.index("manage.py migrate --noinput"))
+        # Le chemin manuel passe par la même séquence (aucun migrate dans son distant).
+        self.assertNotIn("migrate", _remote())
+
+    def test_dump_en_echec_ne_migre_pas(self):
+        banc = self.banc("dump_ko")
+        rc, _ = banc.jouer(FAIL="migrate --check|dump_database")
+        self.assertNotEqual(rc, 0)
+        self.assertIsNone(banc.index("manage.py migrate --noinput"), banc.appels)
+        self.assertIn("ECHEC", banc.journal)
+        self.assertEqual(banc.lire("last_deployed_commit"), A)
+
+    def test_un_seul_dump_par_commit(self):
+        banc = self.banc("retente")
+        banc.jouer(FAIL="migrate --check|migrate --noinput")
+        (banc.d / "state" / "commit_en_echec").unlink()  # réessai explicite (manuel)
+        banc.jouer(FAIL="migrate --check|migrate --noinput")
+        self.assertEqual(banc.compte("manage.py dump_database"), 1)
+        self.assertEqual(banc.compte("manage.py migrate --noinput"), 2)
 
 
 if __name__ == "__main__":
