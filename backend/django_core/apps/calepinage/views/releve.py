@@ -155,9 +155,11 @@ class ReleveTerrainMixin:
         request=inline_serializer('CalepinageAppliquerCoteCorps', {
             'zone_id': serializers.CharField(),
             'cote_index': serializers.IntegerField(),
-            'longueur_m': serializers.FloatField()}),
+            'longueur_m': serializers.FloatField(),
+            'base_empreinte': serializers.CharField(allow_blank=True)}),
         responses={200: forme_reponse('CalepinageAppliquerCote',
-                                      'roof_layout', 'version')})
+                                      'roof_layout', 'version',
+                                      'empreinte_document')})
     @action(detail=True, methods=['post'],
             url_path=r'releve/(?P<releve_id>[^/.]+)/appliquer-cote',
             permission_classes=[PeutGererCalepinage])
@@ -172,6 +174,7 @@ class ReleveTerrainMixin:
         longueur absente du relevé ; 409 : calepinage verrouillé ; 404 : relevé
         ou calepinage d'ailleurs. Jamais d'application automatique.
         """
+        from ..services.layout import DocumentModifie
         from ..services.releve import ReleveRefuse, appliquer_cote_au_pan
 
         calepinage = self.get_object()  # borné société par get_queryset
@@ -185,7 +188,10 @@ class ReleveTerrainMixin:
                 calepinage, zone_id=corps.get('zone_id'),
                 cote_index=corps.get('cote_index'),
                 longueur_m=corps.get('longueur_m'),
-                releve_id=releve_id, user=request.user)
+                releve_id=releve_id, user=request.user,
+                base_empreinte=corps.get('base_empreinte'))
+        except DocumentModifie as conflit:  # ACON2 — jeton périmé, rien écrit
+            return Response(conflit.corps(), status=status.HTTP_409_CONFLICT)
         except ReleveRefuse as refus:
             return Response({refus.champ or 'detail': str(refus)},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -193,4 +199,5 @@ class ReleveTerrainMixin:
         return Response({
             'roof_layout': calepinage.roof_layout,
             'version': version.pk if version is not None else None,
+            'empreinte_document': resultat.get('empreinte_document') or '',
         })

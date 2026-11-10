@@ -345,8 +345,9 @@ function ErreurChamp({ champ, erreurs }) {
   )
 }
 
-function AppliquerCoteAuPan({ calepinageId, releve, lectureSeule = false }) {
+function AppliquerCoteAuPan({ calepinageId, releve, documentVivant = null, lectureSeule = false }) {
   const [conception, setConception] = useState(null)
+  const [empreinte, setEmpreinte] = useState(null) // ACON2 — même patron qu'AppliquerAzimutAuPan
   const [zoneId, setZoneId] = useState('')
   const [coteIndex, setCoteIndex] = useState('')
   const [mesureCle, setMesureCle] = useState('')
@@ -357,7 +358,11 @@ function AppliquerCoteAuPan({ calepinageId, releve, lectureSeule = false }) {
     if (!calepinageId) return undefined
     let vivant = true
     Promise.resolve(calepinageApi.calepinages.layout?.(calepinageId))
-      .then((res) => { if (vivant) setConception(res?.data?.roof_layout ?? null) })
+      .then((res) => {
+        if (!vivant) return
+        setConception(res?.data?.roof_layout ?? null)
+        setEmpreinte(res?.data?.empreinte_document ?? null)
+      })
       .catch(() => {})
     return () => { vivant = false }
   }, [calepinageId])
@@ -378,9 +383,18 @@ function AppliquerCoteAuPan({ calepinageId, releve, lectureSeule = false }) {
       zone_id: zone.id,
       cote_index: Number(coteIndex),
       longueur_m: mesure.longueur,
+      base_empreinte: documentVivant?.empreinte || empreinte,
     }))
       .then((res) => {
-        if (res?.data?.roof_layout) setConception(res.data.roof_layout)
+        const apres = res?.data?.empreinte_document ?? null
+        if (res?.data?.roof_layout) {
+          setConception(res.data.roof_layout)
+          // ACON2 — l'atelier vivant reprend la section ET le jeton rendus.
+          if (Array.isArray(res.data.roof_layout.zones)) {
+            documentVivant?.appliquerSection?.('zones', res.data.roof_layout.zones, apres)
+          }
+        }
+        setEmpreinte(apres ?? empreinte)
         setRetour({ ok: true, texte: `Cote appliquée au côté ${coteIndex} — nouvelle version${
           mesure.precision != null ? ` (précision ± ${mesure.precision} m)` : ''}.` })
       })
@@ -862,6 +876,7 @@ export default function PanneauReleve({
 
       {/* ACAL207 — geste EXPLICITE : recaler un côté d'un pan sur une cote mesurée. */}
       <AppliquerCoteAuPan calepinageId={calepinageId} releve={resultat?.releve ?? null}
+        documentVivant={documentVivant}
         lectureSeule={lectureSeule} />
       {/* ACAL206 — geste EXPLICITE : poser l'azimut relevé (avec sa précision) sur un pan. */}
       <AppliquerAzimutAuPan calepinageId={calepinageId} releve={resultat?.releve ?? null}

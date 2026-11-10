@@ -536,7 +536,7 @@ def _index_de_cote(brut):
 
 
 def appliquer_cote_au_pan(calepinage, *, zone_id, cote_index, longueur_m,
-                          releve_id, user=None):
+                          releve_id, user=None, base_empreinte=None):
     """ACAL207 — recale le côté ``cote_index`` du pan ``zone_id`` sur une cote
     MESURÉE du relevé ``releve_id``, par homothétie le long de ce côté.
 
@@ -546,6 +546,9 @@ def appliquer_cote_au_pan(calepinage, *, zone_id, cote_index, longueur_m,
     appliquée — côté i », verrou respecté) ; ``zones[i].cotesReleve`` reçoit
     ``{cote, longueurM, precisionM, releveId, appliqueLe}`` (précision du
     relevé CONSERVÉE). L'azimut n'est jamais recalculé ici.
+
+    ACON2 — ``base_empreinte`` (jeton de l'atelier vivant) est EXIGÉ : absent
+    ⇒ 400 ``base_empreinte`` ; périmé ⇒ ``DocumentModifie`` (409, rien écrit).
 
     Raises:
         ReleveRefuse: relevé introuvable, zone/côté invalides, longueur
@@ -559,13 +562,16 @@ def appliquer_cote_au_pan(calepinage, *, zone_id, cote_index, longueur_m,
     from core.calepinage.geo import deprojeteur_local, projeteur_local
     from core.calepinage.geometrie import est_polygone_simple
 
-    from .layout import LayoutRefuse, enregistrer_layout
+    from .layout import (
+        MESSAGE_JETON_MANQUANT, LayoutRefuse, enregistrer_layout)
 
     releve = None
     if str(releve_id).isdigit():
         releve = calepinage.releves_terrain.filter(pk=int(releve_id)).first()
     if releve is None:
         raise ReleveRefuse('Relevé introuvable.', 'releve')
+    if not isinstance(base_empreinte, str):
+        raise ReleveRefuse(MESSAGE_JETON_MANQUANT, 'base_empreinte')
 
     index = _index_de_cote(cote_index)
     longueur = _nombre_valide(longueur_m, 'longueur_m', 'Longueur mesurée',
@@ -640,6 +646,7 @@ def appliquer_cote_au_pan(calepinage, *, zone_id, cote_index, longueur_m,
     try:
         return enregistrer_layout(
             calepinage, document, user=user,
-            libelle=f'Cote du relevé appliquée — côté {index}')
+            libelle=f'Cote du relevé appliquée — côté {index}',
+            base_empreinte=base_empreinte)
     except LayoutRefuse as refus:
         raise ReleveRefuse(str(refus), refus.champ or 'zone_id')
