@@ -87,3 +87,11 @@ class CoreConfig(AppConfig):
         # rendue en UTC : voir ``core.champs_stricts.installer_dates_rfc3339``.
         from .champs_stricts import installer_dates_rfc3339
         installer_dates_rfc3339()
+
+        # APFS103 — créateur supprimé ⇒ ses extraits planifiés suspendus
+        # (référence paresseuse : aucun import d'app ici).
+        from django.conf import settings
+        from django.db.models.signals import pre_delete
+        from .scheduled_export import suspendre_exports_du_createur
+        pre_delete.connect(suspendre_exports_du_createur, sender=settings.AUTH_USER_MODEL,
+                           dispatch_uid='core_apfs103_suspendre_exports_du_createur')

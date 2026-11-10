@@ -155,6 +155,24 @@ class ExportsDusTests(TestCase):
         self.assertIn('désactivé', export.dernier_detail['detail'])
         self.assertEqual(export.created_by_id, directeur.pk)
 
+    def test_createur_supprime_suspend_l_extrait(self):
+        """APFS103 — un créateur SUPPRIMÉ (SET_NULL) ne rend pas l'extrait
+        illimité : ``pre_delete`` le suspend avec une cause nommée."""
+        createur = User.objects.create_user(username='apfs103-sup', password='x',
+                                            company=self.company, role_legacy='admin')
+        extrait = self._export(created_by=createur)
+        autre = self._export(titre='Sans créateur')
+        createur.delete()
+        extrait.refresh_from_db()
+        self.assertIsNone(extrait.created_by_id)
+        self.assertFalse(extrait.actif)
+        self.assertEqual(extrait.dernier_statut, 'erreur')
+        self.assertEqual(extrait.dernier_detail['detail'],
+                         scheduled_export.CAUSE_CREATEUR_SUPPRIME)
+        self.assertNotIn(extrait, scheduled_export.exports_dus(MARDI_02H))
+        autre.refresh_from_db()
+        self.assertTrue(autre.actif)
+
     def test_extrait_inactif_jamais_du(self):
         self._export(actif=False)
         self.assertEqual(
