@@ -464,6 +464,12 @@ def entete_facture_depuis_devis(devis, *, ttc=None):
     if retenue is not None:
         entete['retenue_garantie_mad'] = retenue['montant']
         entete['conditions_paiement'] = retenue['phrase']
+    # ASOC87 — escompte par défaut de la société, comme la facture manuelle (XFAC12).
+    from apps.parametres.models import CompanyProfile
+    profil = CompanyProfile.get(company=devis.company)
+    for champ in ('escompte_pct', 'escompte_jours'):
+        if getattr(profil, f'{champ}_defaut', None) is not None:
+            entete[champ] = getattr(profil, f'{champ}_defaut')
     return entete
 
 
