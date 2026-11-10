@@ -12,6 +12,7 @@ from django.test import TestCase
 from apps.crm.models import Client
 from apps.installations.models import Installation
 from apps.monitoring import analytics
+from apps.monitoring import tests as _base
 from apps.monitoring.models import MonitoringConfig, ProductionReading
 from authentication.models import Company
 
@@ -155,3 +156,23 @@ class DisponibiliteTests(TestCase):
         self.assertNotIn('Disponibilité', html)
         self.assertTrue(bytes(render_om_report_pdf(
             self.inst, today=fin_octobre)).startswith(b'%PDF'))
+
+
+class RapportOmPdfTests(TestCase):
+    """ERR-AMON-PDF-RAPPORT-404 — ``?format=pdf`` est le paramètre réservé de DRF :
+    sans renderer « pdf » déclaré, le bouton « Télécharger le PDF » rendait 404."""
+
+    # Même fixture que tests.TestOmReport (référence par module : la classe
+    # n'est pas réimportée, le chargeur ne la rejoue donc pas ici).
+    setUp = _base.TestOmReport.setUp
+
+    def test_report_pdf_endpoint_format_pdf(self):
+        from unittest import mock
+        with mock.patch('apps.monitoring.report.render_om_report_pdf',
+                        return_value=b'%PDF-1.4 test'):
+            r = self.api.get(
+                f'/api/django/monitoring/configs/{self.config.id}/om-report/'
+                '?period=monthly&format=pdf')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r['Content-Type'], 'application/pdf')
+        self.assertTrue(r.content.startswith(b'%PDF'))
