@@ -149,6 +149,13 @@ def build_warranty_report_data(installation, *, year=None, today=None):
             'penalite_cumulee_mad': _q(penalty_cum),
         })
 
+    # AMON104 — sans aucun relevé de l'année (même test que
+    # ``production_warranty_status``) : réel, écart et pénalité NON mesurés.
+    if not ProductionReading.objects.filter(
+            installation=installation, date__year=year).exists():
+        for m in monthly:
+            m.update(production_kwh=None, actual_cumule_kwh=None,
+                     ecart_cumule_kwh=None, penalite_cumulee_mad=None)
     final = monthly[-1] if monthly else None
     return {
         'has_warranty': True,

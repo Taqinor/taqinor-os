@@ -113,6 +113,41 @@ class TestWarrantyReportData(TestCase):
         self.assertFalse(data['year_in_progress'])
         self.assertEqual(len(data['monthly']), 12)
 
+    def _garantie_2026(self):
+        return ProductionWarranty.objects.create(
+            company=self.company, installation=self.inst,
+            guaranteed_year1_kwh=Decimal('12000'),
+            degradation_pct_per_year=Decimal('0'), start_year=2026,
+            tolerance_pct=Decimal('5'),
+            compensation_mad_per_kwh=Decimal('1.10'))
+
+    def test_sans_releve_penalite_non_mesuree(self):
+        """AMON104 — année sans aucun relevé : réel, écart et pénalité NON
+        mesurés (null, « — » au PDF), jamais « 10 787,84 MAD » sur un réel
+        0 ; un relevé de l'année : chiffres mesurés."""
+        from apps.monitoring.report_warranty import (
+            build_warranty_report_data, build_warranty_report_html,
+        )
+        self._garantie_2026()
+        edition = date(2026, 11, 10)
+        data = build_warranty_report_data(self.inst, year=2026, today=edition)
+        for cle in ('total_actual_kwh', 'total_ecart_kwh',
+                    'total_penalite_mad'):
+            self.assertIsNone(data[cle], cle)
+        for mois in data['monthly']:
+            self.assertIsNone(mois['actual_cumule_kwh'])
+            self.assertIsNone(mois['ecart_cumule_kwh'])
+            self.assertIsNone(mois['penalite_cumulee_mad'])
+        html = build_warranty_report_html(data)
+        self.assertIn('— MAD', html)
+        self.assertNotIn('10787.84', html)
+        ProductionReading.objects.create(
+            company=self.company, installation=self.inst,
+            date=date(2026, 1, 1), period_days=1, energy_kwh=Decimal('30'))
+        data = build_warranty_report_data(self.inst, year=2026, today=edition)
+        self.assertIsNotNone(data['total_penalite_mad'])
+        self.assertIsNotNone(data['monthly'][0]['actual_cumule_kwh'])
+
 
 class TestWarrantyReportHtmlAndPdf(TestCase):
     def setUp(self):
