@@ -1095,6 +1095,15 @@ def _explique(constat: Constat):
     return lignes
 
 
+def _liste_v2():
+    """(chemin, ids gelés, ids gelés qui ne sont plus OUVERTS dans un PLAN_AUDIT)."""
+    chemin_v2 = ROOT / V2_IDS_RELATIF
+    ids_v2 = charger_ids_v2(chemin_v2)
+    ouverts_audit = {t.identifiant for t in lire_taches()
+                     if not t.close and _PLAN_AUDIT.match(t.fichier)}
+    return chemin_v2, ids_v2, sorted(ids_v2 - ouverts_audit)
+
+
 def _echec_v2_perimes(v2_perimes) -> int:
     """ADCG79 — la liste v2 gelee ne garde que des ids encore ouverts : sinon ECHEC."""
     print(f"\nECHEC : {len(v2_perimes)} id(s) v2 plus ouvert(s) dans {V2_IDS_RELATIF} : "
@@ -1191,11 +1200,7 @@ def main(argv=None) -> int:
     # Liste gelee des taches v2 : elle ne peut que retrecir (une tache cochee
     # ou retiree en sort ; `--write-baseline` la reecrit sans ces ids). Un id
     # absent de la liste est juge en v3 : aucune croissance n'est possible.
-    chemin_v2 = ROOT / V2_IDS_RELATIF
-    ids_v2 = charger_ids_v2(chemin_v2)
-    ouverts_audit = {t.identifiant for t in lire_taches()
-                     if not t.close and _PLAN_AUDIT.match(t.fichier)}
-    v2_perimes = sorted(ids_v2 - ouverts_audit)
+    chemin_v2, ids_v2, v2_perimes = _liste_v2()
 
     if args.write_baseline:
         if v2_perimes and chemin_v2.is_file():
