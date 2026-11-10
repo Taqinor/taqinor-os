@@ -18,7 +18,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from authentication.permissions import LectureDuModule, IsResponsableOrAdmin
 from core.champs_stricts import entier_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 
@@ -116,7 +116,7 @@ class ProjetViewSet(oa.JsonOnlyMixin, DeprecatedProgrammeSurfaceMixin, CompanySc
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -224,7 +224,7 @@ class ProjetChantierViewSet(oa.JsonOnlyMixin, DeprecatedProgrammeSurfaceMixin, C
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -255,7 +255,7 @@ class ProjetDevisViewSet(oa.JsonOnlyMixin, DeprecatedProgrammeSurfaceMixin, Comp
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -286,7 +286,7 @@ class ProjetTicketViewSet(oa.JsonOnlyMixin, DeprecatedProgrammeSurfaceMixin, Com
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -356,7 +356,7 @@ class ProjetTacheViewSet(oa.JsonOnlyMixin, DeprecatedProgrammeSurfaceMixin, Comp
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):

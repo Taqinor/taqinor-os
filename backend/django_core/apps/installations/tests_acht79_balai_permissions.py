@@ -133,6 +133,25 @@ class BalaiPermissionsTests(SimpleTestCase):
             perimees, [],
             f"Passif gelé périmé (cliquet) : retirez-le : {perimees}")
 
+    def test_lectures_refusees_a_admin_rh_et_commercial_terrain(self):
+        """APFS105 (D-APFS-4) — la LECTURE (`list`) de chaque viewset du routeur
+        est refusée à Admin RH et Commercial terrain ; le Commercial n'entre que
+        par l'octroi `ventes_voir` (chantiers) ; Directeur et Technicien lisent
+        (le Technicien hors GR/IR, gardé par `prix_achat_voir`)."""
+        perms = dict(CANONICAL_SYSTEM_ROLES)
+        comptes = {nom: _utilisateur(nom, perms[nom]) for nom in (
+            'Commercial terrain', 'Commercial', 'Technicien', 'Directeur')}
+        comptes['Admin RH'] = _utilisateur('Admin RH', ADMIN_RH_PERMISSIONS)
+        vues = [viewset for _p, viewset, _b in router_installations.registry]
+        lues = {nom: {v.__name__ for v in vues if _autorise(v, 'list', 'GET', user)}
+                for nom, user in comptes.items()}
+        self.assertEqual(sorted(lues['Admin RH']), [])
+        self.assertEqual(sorted(lues['Commercial terrain']), [])
+        self.assertEqual(sorted(lues['Commercial']), ['InstallationViewSet'])
+        self.assertEqual(sorted({v.__name__ for v in vues} - lues['Directeur']), [])
+        self.assertLessEqual({v.__name__ for v in vues} - lues['Technicien'],
+                             {'ReceptionNonFactureeViewSet'})
+
 
 class FuiteListesTechnicienTests(TestCase):
     """(1) — un Technicien de portée équipe ne reçoit, des vues agrégées
@@ -182,3 +201,34 @@ class FuiteListesTechnicienTests(TestCase):
         r = api.get('/api/django/installations/chantiers/gantt/')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertNotIn(self.chantier.id, [row['id'] for row in r.data])
+
+    def test_commercial_ne_lit_que_les_chantiers_de_ses_devis(self):
+        """APFS105 — Commercial C1 (octroi `ventes_voir`) : `chantiers/` = le
+        chantier de SON devis, celui d'un collègue 404, les autres vues 403 ;
+        le Technicien lit toujours."""
+        from apps.crm.models import Client
+        from apps.ventes.models import Devis
+        role = Role.objects.create(company=self.company, nom='Commercial',
+                                   permissions=list(dict(CANONICAL_SYSTEM_ROLES)['Commercial']))
+        c1, c2 = (User.objects.create_user(username=f'{n}-apfs105', password='x', company=self.company,
+                                           role=role) for n in ('c1', 'c2'))
+        client = Client.objects.create(company=self.company, nom='Site', prenom='Client',
+                                       email='apfs105@example.invalid')
+
+        def chantier_du_devis_de(auteur):
+            devis = Devis.objects.create(
+                company=self.company, reference=f'DEV-APFS105-{auteur.username}', client=client,
+                created_by=auteur, mode_installation='residentiel')
+            return Installation.objects.create(
+                company=self.company, reference=f'CH-APFS105-{auteur.username}', devis=devis)
+        k1, k2 = chantier_du_devis_de(c1), chantier_du_devis_de(c2)
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(c1)}')
+        r = api.get('/api/django/installations/chantiers/')
+        self.assertEqual(r.status_code, 200, r.data)
+        lignes = r.data['results'] if isinstance(r.data, dict) else r.data
+        self.assertEqual([row['id'] for row in lignes], [k1.id])
+        self.assertEqual(api.get(f'/api/django/installations/chantiers/{k2.id}/').status_code, 404)
+        self.assertEqual(api.get('/api/django/installations/interventions/').status_code, 403)
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.t1)}')
+        self.assertEqual(api.get('/api/django/installations/chantiers/').status_code, 200)

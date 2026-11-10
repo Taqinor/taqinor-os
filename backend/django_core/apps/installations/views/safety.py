@@ -1,5 +1,5 @@
 
-from authentication.permissions import IsAnyRole, IsAdminRole
+from authentication.permissions import LectureDuModule, IsAdminRole
 from core.viewsets import CompanyScopedModelViewSet
 from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from django.utils import timezone
@@ -98,7 +98,7 @@ class SafetyChecklistSlotViewSet(oa.JsonOnlyMixin, UsageGuardedDestroyMixin, Com
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsAdminRole()]
 
     def list(self, request, *args, **kwargs):

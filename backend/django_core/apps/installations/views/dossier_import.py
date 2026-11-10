@@ -13,7 +13,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from authentication.permissions import LectureDuModule, IsResponsableOrAdmin
 from apps.stock.permissions import PeutVoirPrixAchat
 from core.viewsets import CompanyScopedModelViewSet
 
@@ -50,9 +50,9 @@ class DossierImportViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action == 'landed_cost':
-            return [IsAnyRole(), PeutVoirPrixAchat()]
+            return [LectureDuModule(), PeutVoirPrixAchat()]
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):

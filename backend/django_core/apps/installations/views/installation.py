@@ -5,7 +5,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from authentication.permissions import (
-    IsAnyRole, IsResponsableOrAdmin, IsAdminRole, HasPermissionOrLegacy,
+    IsAnyRole, LectureDuModule, IsResponsableOrAdmin, IsAdminRole, HasPermissionOrLegacy, codes_du_module,
 )
 from core.viewsets import CompanyScopedModelViewSet
 from apps.roles.permissions import DroitDeLaGrille  # ASEC75
@@ -85,6 +85,15 @@ def raison_blocage_suppression_chantier(inst):
         "recette, le pack de remise, les jalons, les documents et les "
         "interventions du chantier. Annulez le chantier (motif obligatoire) "
         "plutôt que de le supprimer.")
+
+
+def _lecteur_sans_code_installations(user):
+    """APFS105 — rôle fin non administrateur sans aucun code ``installations``
+    (jumeau de ``ventes/views/ligne_devis.py::_lecteur_sans_code_ventes``)."""
+    if (getattr(user, 'is_superuser', False) or getattr(user, 'is_admin_role', False)
+            or not getattr(user, 'role_id', None)):
+        return False
+    return not (codes_du_module('installations') & set(user.role.permissions or []))
 
 
 def seed_types_intervention(company):
@@ -180,7 +189,12 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         from ..selectors import scoper_chantiers
         user = self.request.user
         portee = scoper_chantiers(qs, user)
-        if (self.request.method in SAFE_METHODS
+        if _lecteur_sans_code_installations(user):
+            # APFS105 (D-APFS-4) — entré par l'octroi ``ventes_voir`` : les
+            # chantiers des devis de SA portée seulement.
+            from core.scoping import scope_queryset
+            portee = scope_queryset(qs, user, ['devis__created_by'])
+        elif (self.request.method in SAFE_METHODS
                 and getattr(self, 'action', None) == 'retrieve'
                 and visible_user_ids(user) is not None):
             assignee = Intervention.objects.filter(
@@ -277,7 +291,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             # CIQ628 — réserves du chantier (lecture ; POST auto-gardé).
             'reserves',
         ]:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         elif self.action in WRITE_ACTIONS + [
             'noter', 'mise_en_service',
             'annuler', 'reactiver', 'commander_besoin', 'cocher_checklist',
