@@ -198,3 +198,47 @@ class TestCalendar(TestCase):
         self.assertEqual(p['i1'].date_prevue.isoformat(), cible)
         self.assertEqual(bouger(p['admin'], 'pose', p['c2']).status_code, 200)
         self.assertEqual(bouger(p['admin'], 'intervention', p['i2']).status_code, 200)
+
+    def _activites(self):
+        """ACHT138/139 — Directeur D et son à-faire personnel P, Commercial C
+        (portée soi) et l'activité A de son lead, Technicien T et A_T."""
+        from django.contrib.contenttypes.models import ContentType
+
+        from apps.crm.models import Lead
+        from apps.records.models import Activity
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import (
+            CANONICAL_SYSTEM_ROLES, COMMERCIAL_PERMISSIONS, TECHNICIEN_PERMISSIONS)
+        roles = {nom: Role.objects.create(company=self.company, nom=nom, permissions=list(perms))
+                 for nom, perms in (('Directeur', dict(CANONICAL_SYSTEM_ROLES)['Directeur']),
+                                    ('Commercial', COMMERCIAL_PERMISSIONS),
+                                    ('Technicien', TECHNICIEN_PERMISSIONS))}
+        p = {k: User.objects.create_user(username=f'{k}-act', password='x',
+                                         company=self.company, role=roles[nom])
+             for k, nom in (('D', 'Directeur'), ('C', 'Commercial'), ('T', 'Technicien'))}
+        lead = Lead.objects.create(company=self.company, nom='L-act', owner=p['C'])
+        ct, jour = ContentType.objects.get_for_model(Lead), date.today() + timedelta(days=3)
+        p['P'] = Activity.objects.create(company=self.company, summary='perso D', personnelle=True,
+                                         created_by=p['D'], assigned_to=p['D'], due_date=jour)
+        for k, qui in (('A', p['C']), ('A_T', p['T'])):
+            p[k] = Activity.objects.create(company=self.company, content_type=ct,
+                                           object_id=lead.pk, summary=k, created_by=p['C'],
+                                           assigned_to=qui, due_date=jour)
+        return p
+
+    def test_activites_bornees_a_la_vue_des_activites(self):
+        """ACHT138 (C-ACHT-OPT1-136) — T : {A_T} ; C : A, jamais P ; D : tout ;
+        autre société : rien."""
+        p = self._activites()
+
+        def vus(user):
+            r = self._api_de(user).get('/api/django/reporting/calendar/?types=activite')
+            self.assertEqual(r.status_code, 200, r.data)
+            return {e['obj_id'] for e in r.data['events']}
+        self.assertEqual(vus(p['T']), {p['A_T'].pk})
+        self.assertIn(p['A'].pk, vus(p['C']))
+        self.assertNotIn(p['P'].pk, vus(p['C']))
+        self.assertEqual(vus(p['D']), {p['P'].pk, p['A'].pk, p['A_T'].pk})
+        autre = User.objects.create_user(
+            username='autre-act', password='x', role_legacy='responsable', company=self.other)
+        self.assertEqual(vus(autre), set())
