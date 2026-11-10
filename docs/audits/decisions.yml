@@ -4070,7 +4070,7 @@ decisions:
         texte: "Oui : émettre un avoir de contre-passation est un geste sur une créance, il exige le droit d'encaisser (annulation d'une facture, création de facture depuis un bon de commande, prix négocié qui retire un brouillon remis)"
       - cle: palier_seul
         texte: "Non : l'annulation sans mouvement d'argent reste ouverte au palier responsable, comme la tâche AARG7 l'avait laissée"
-    reponse: ouverte
+    reponse: exiger_encaisser
     date: "2026-11-10"
-    source: "vérifie ASEC du 10/11/2026 (contre-visite des correctifs du soir) : non posée, Reda absent (défaut recommandé : exiger_encaisser, dans le prolongement de D-ASEC-VER-1) ; AARG7 avait écrit « annuler sans argent ni directive : inchangé » sans décision propre"
+    source: "Reda, décision fondateur du 10/11/2026 (question interactive, run loop work on all plans 99392c) : exiger_encaisser, dans le prolongement de D-ASEC-VER-1 ; posée par la vérifie ASEC du 10/11/2026"
     taches: [ASEC90, ASEC93]
