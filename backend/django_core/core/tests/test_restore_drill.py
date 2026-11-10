@@ -102,6 +102,38 @@ class RestoreDrillTests(TestCase):
                         if c.args and c.args[0][0] == 'dropdb']
         self.assertGreaterEqual(len(dropdb_calls), 2)
 
+    def test_limite_de_temps_pendant_pg_restore_finit_en_echec(self):
+        """ADCG35 — une SoftTimeLimitExceeded remonte, le run finit `echec`."""
+        from celery.exceptions import SoftTimeLimitExceeded
+        self._make_source_dump()
+        run = BackupRun.objects.create(kind=BackupRun.KIND_RESTORE_DRILL,
+                                       company=None)
+
+        def fake_run(args, **kwargs):
+            if args[0] == 'pg_restore':
+                raise SoftTimeLimitExceeded()
+            return _completed(returncode=0)
+
+        with mock.patch.object(backup, '_minio_client', return_value=mock.Mock()), \
+                mock.patch('subprocess.run', side_effect=fake_run) as run_mock:
+            with self.assertRaises(SoftTimeLimitExceeded):
+                backup.restore_drill(run)
+
+        run.refresh_from_db()
+        self.assertEqual(run.statut, BackupRun.STATUT_ECHEC)
+        self.assertEqual(run.detail['message'],
+                         'Exercice de restauration interrompu : SoftTimeLimitExceeded')
+        dropdb_calls = [c for c in run_mock.call_args_list
+                        if c.args and c.args[0][0] == 'dropdb']
+        self.assertGreaterEqual(len(dropdb_calls), 2)
+
+    def test_taches_sauvegarde_limites_propres(self):
+        """ADCG35 — dump et exercice ont leur limite, au-dessus des 3600 s."""
+        from core.tasks import dump_database_task, restore_drill_task
+        for tache in (dump_database_task, restore_drill_task):
+            self.assertGreater(tache.soft_time_limit, 3600)
+            self.assertGreater(tache.time_limit, tache.soft_time_limit)
+
     def test_management_command_failure_exits_nonzero(self):
         with self.assertRaises(CommandError):
             call_command('restore_drill')

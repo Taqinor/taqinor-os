@@ -676,6 +676,15 @@ def restore_drill(run: BackupRun) -> BackupRun:
                 logger.warning(
                     'NTPLT62 — drill: %d société(s) sans données restaurées: %s',
                     len(ecarts), ecarts)
+        except BaseException as exc:
+            # ADCG35 — interruption (limite de temps Celery, erreur imprévue) :
+            # le run finit `echec`, jamais `en_cours` à vie, puis on relève.
+            logger.warning('restore drill : exercice interrompu', exc_info=True)
+            run.statut = BackupRun.STATUT_ECHEC
+            run.detail = {'message': 'Exercice de restauration interrompu : '
+                                     f'{type(exc).__name__}'}
+            run.save(update_fields=['statut', 'detail', 'updated_at'])
+            raise
         finally:
             # Toujours DROP la base scratch, succès ou échec (jamais laisser
             # traîner une base jetable en dehors du drill).
