@@ -14,7 +14,7 @@ import portailApi from '../../../api/portailApi'
 import { chargerToutesLesPages } from './chargerToutesLesPages'
 import EtatChargementAdmin from './EtatChargementAdmin'
 import {
-  Button, EmptyState, StatusPill, NumberInput, DataTable, toast,
+  Button, EmptyState, StatusPill, NumberInput, Input, DataTable, toast,
 } from '../../../ui'
 
 const formatDateHeure = (iso) => formatDateTime(iso)
@@ -48,22 +48,26 @@ export default function DemandesTicketPortailAdmin() {
 
   useEffect(() => { fetchDemandesTicket() }, [])
 
+  // ASOC98 — mode 'refus' : refus motivé, le client lit « Refusée » et le motif.
   const confirmerPriseEnCharge = async (row) => {
     const ticketId = Number(edit?.ticketId)
-    if (!ticketId) return
+    const refus = edit?.mode === 'refus'
+    if (!ticketId && !refus) return
     setBusyId(row.id)
     const lier = edit?.mode === 'lier'
     try {
-      if (lier) {
+      if (refus) {
+        await portailApi.admin.demandesTicket.refuser(row.id, { motif: edit.motif })
+      } else if (lier) {
         await portailApi.admin.demandesTicket.lierTicket(row.id, { ticket_id: ticketId })
       } else {
         await portailApi.admin.demandesTicket.prendreEnCharge(row.id, { ticket_id: ticketId })
       }
       setEdit(null)
-      toast.success(lier ? 'Ticket lié modifié' : 'Demande prise en charge')
+      toast.success(refus ? 'Demande refusée' : lier ? 'Ticket lié modifié' : 'Demande prise en charge')
       load()
     } catch (e) {
-      toast.error(e?.response?.data?.detail
+      toast.error(e?.response?.data?.motif?.[0] ?? e?.response?.data?.detail
         ?? (lier ? 'Modification impossible.' : 'Prise en charge impossible.'))
     } finally {
       setBusyId(null)
@@ -73,6 +77,11 @@ export default function DemandesTicketPortailAdmin() {
   // ADOC118 — la liaison reste corrigeable tant que la demande n'est ni
   // résolue ni refusée (le serveur répond 409 au-delà).
   const liaisonModifiable = (row) => !['resolue', 'refusee'].includes(row.statut)
+  const boutonRefuser = (row) => (
+    <Button variant="ghost" size="sm" onClick={() => setEdit({ id: row.id, motif: '', mode: 'refus' })}>
+      Refuser
+    </Button>
+  )
 
   const columns = [
     { id: 'client', header: 'Client', width: 100, accessor: (r) => (r.client_id ? `#${r.client_id}` : '—') },
@@ -102,6 +111,7 @@ export default function DemandesTicketPortailAdmin() {
                   Modifier le ticket lié
                 </Button>
               )}
+              {liaisonModifiable(row) && boutonRefuser(row)}
             </span>
           )
         }
@@ -109,11 +119,19 @@ export default function DemandesTicketPortailAdmin() {
         if (edit?.id === row.id) {
           return (
             <span className="flex items-center gap-1.5">
-              <NumberInput aria-label={`N° de ticket SAV existant — ${row.sujet}`}
-                           className="h-8 w-24" placeholder="N° ticket"
-                           value={edit.ticketId}
-                           onChange={(e) => setEdit((s) => ({ ...s, ticketId: e.target.value }))} />
-              <Button size="sm" variant="outline" disabled={busyId === row.id || !Number(edit.ticketId)}
+              {edit.mode === 'refus' ? (
+                <Input aria-label={`Motif du refus — ${row.sujet}`} className="h-8 w-40"
+                       placeholder="Motif du refus" value={edit.motif}
+                       onChange={(e) => setEdit((s) => ({ ...s, motif: e.target.value }))} />
+              ) : (
+                <NumberInput aria-label={`N° de ticket SAV existant — ${row.sujet}`}
+                             className="h-8 w-24" placeholder="N° ticket"
+                             value={edit.ticketId}
+                             onChange={(e) => setEdit((s) => ({ ...s, ticketId: e.target.value }))} />
+              )}
+              <Button size="sm" variant="outline"
+                      disabled={busyId === row.id
+                        || (edit.mode === 'refus' ? !edit.motif.trim() : !Number(edit.ticketId))}
                       onClick={() => confirmerPriseEnCharge(row)}>
                 <Check /> Confirmer
               </Button>
@@ -122,9 +140,12 @@ export default function DemandesTicketPortailAdmin() {
           )
         }
         return (
-          <Button variant="outline" size="sm" onClick={() => setEdit({ id: row.id, ticketId: '', mode: 'prise' })}>
-            Prendre en charge
-          </Button>
+          <span className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setEdit({ id: row.id, ticketId: '', mode: 'prise' })}>
+              Prendre en charge
+            </Button>
+            {boutonRefuser(row)}
+          </span>
         )
       },
     },

@@ -1055,6 +1055,7 @@ class MesDemandesSavPortailLigneSerializer(serializers.Serializer):
     statut_display = serializers.CharField()
     chantier_id = serializers.IntegerField(allow_null=True)
     ticket_id = serializers.IntegerField(allow_null=True)
+    motif_refus = serializers.CharField(allow_blank=True)
     date_creation = serializers.DateTimeField(allow_null=True)
 
 
@@ -1106,6 +1107,7 @@ class MesDemandesSavPortailViewSet(viewsets.ViewSet):
             'statut_display': demande.get_statut_display(),
             'chantier_id': demande.chantier_id,
             'ticket_id': demande.ticket_id,
+            'motif_refus': demande.motif_refus,
             'date_creation': (demande.date_creation.isoformat()
                               if demande.date_creation else None),
         }

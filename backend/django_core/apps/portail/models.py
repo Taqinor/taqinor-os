@@ -526,6 +526,9 @@ class DemandeTicketPortail(models.Model):
         related_name='demandes_portail',
         verbose_name='Ticket SAV créé',
     )
+    # ASOC98 — motif du refus SAV, lu par le client (« Mes demandes »).
+    motif_refus = models.TextField(
+        blank=True, default='', verbose_name='Motif du refus')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créée le')
 
