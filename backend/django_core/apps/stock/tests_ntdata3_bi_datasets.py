@@ -40,7 +40,7 @@ class StockBiDatasetsTests(TestCase):
         self.admin.save(update_fields=['company'])
         # Utilisateur avec un rôle fin SANS `prix_achat_voir` → masqué.
         role = Role.objects.create(
-            company=self.company, nom='NTDATA3 Vendeur', permissions=[])
+            company=self.company, nom='NTDATA3 Vendeur', permissions=['stock_voir'])  # APFS104
         self.vendeur = User.objects.create_user(
             username='ntdata3_vendeur', password='x', company=self.company,
             role=role)

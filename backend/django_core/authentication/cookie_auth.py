@@ -175,6 +175,9 @@ class CookieJWTAuthentication(BaseAuthentication):
         if claimed is not None and claimed != user.company_id:
             active = resolve_active_company(user, claimed)
             if active is not None:
+                # APFS61 — la société d'ATTACHE reste lisible (prédicat
+                # ``est_operateur_plateforme``) après la bascule.
+                user._company_id_attache = user.company_id
                 user.company = active
         set_active_company_id(user.company_id)
 

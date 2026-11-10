@@ -76,10 +76,12 @@ def _registre_modules():
 
 #: AARG52 — apps de FONDATION sans codes au registre : seules à garder la règle
 #: historique en ÉCRITURE (liste qui ne fait que décroître ; ``portail`` retiré ;
-#: ``monitoring`` retiré par AMON92, ses vues relevant du module ``sav``, AMON45).
+#: ``monitoring`` retiré par AMON92, ses vues relevant du module ``sav``, AMON45 ;
+#: ``semantic`` retiré par APFS43 : ses métriques ne s'écrivent plus par un
+#: rôle fin non administrateur).
 APPS_SANS_MODULE = frozenset({
     'authentication', 'core', 'dataimport', 'documents',
-    'offlinesync', 'outillage', 'records', 'roles', 'semantic', 'uxviews'})
+    'offlinesync', 'outillage', 'records', 'roles', 'uxviews'})
 
 #: ODX18 — apps dont les vues relèvent du module de droits d'une AUTRE app.
 #: ``apps.facturation`` n'a pas de codes propres (ASEC9 : « module
@@ -348,3 +350,15 @@ def exiger_mot_de_passe_change_hors_sortie(request, user):
     nom = f'{type(vue).__module__}.{type(vue).__qualname__}'
     if nom not in VUES_ADMISES_MOT_DE_PASSE_A_CHANGER:
         exiger_mot_de_passe_change(user)
+
+
+def est_operateur_plateforme(user):
+    """APFS61 (D-APFS-2) — LE prédicat « opérateur de la plateforme » :
+    superutilisateur SANS société (celui de ``core.mixins.company_qs``). Un
+    superutilisateur rattaché à une société est borné à elle."""
+    attache = getattr(user, '_company_id_attache',
+                      getattr(user, 'company_id', None))
+    return bool(user is not None
+                and getattr(user, 'is_authenticated', False)
+                and getattr(user, 'is_superuser', False)
+                and not attache)
