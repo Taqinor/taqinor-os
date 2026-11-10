@@ -6,6 +6,7 @@ Faux client HTTP (aucun serveur, Locust non requis : le fichier porte ses shims)
 from __future__ import annotations
 
 import importlib.util
+import re
 import unittest
 from pathlib import Path
 
@@ -78,6 +79,31 @@ class ScenarioTests(unittest.TestCase):
         user.client_id = None
         user.creation_devis()
         self.assertEqual(user.client.appels, [])
+
+
+def _commande_seed_scale(workflow: Path) -> str:
+    """La commande `seed_scale` du workflow, lignes continuées (barre oblique inverse) recollées."""
+    texte = re.sub(r"\\\n\s*", " ", workflow.read_text(encoding="utf-8"))
+    lignes = [ligne for ligne in texte.splitlines() if "manage.py seed_scale" in ligne]
+    assert len(lignes) == 1, (workflow, lignes)
+    return lignes[0]
+
+
+class WorkflowSeedTests(unittest.TestCase):
+    """ADCG105 — le seed des workflows de charge peuple la société du compte `charge`."""
+
+    def test_seed_des_workflows_de_charge_peuple_la_societe_du_compte(self):
+        seed_py = (ROOT / "backend/django_core/core/management/commands/seed_scale.py").read_text(encoding="utf-8")
+        tag_defaut = re.search(r"'--tag', default='([^']+)'", seed_py).group(1)
+        compte = (ROOT / "scripts/load/creer_compte_charge.py").read_text(encoding="utf-8")
+        societe = re.search(r"get_or_create\(nom='([^']+)'\)", compte).group(1)
+        for nom in ("load-smoke.yml", "loadtest.yml"):
+            with self.subTest(workflow=nom):
+                commande = _commande_seed_scale(ROOT / ".github/workflows" / nom)
+                tag = re.search(r"--tag\s+(\S+)", commande)
+                tag = tag.group(1) if tag else tag_defaut
+                self.assertTrue(societe.startswith(f"[{tag}]"), (nom, tag, societe))
+                self.assertRegex(commande, r"--companies\s+1(\s|$)")
 
 
 if __name__ == "__main__":
