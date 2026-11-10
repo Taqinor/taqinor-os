@@ -82,4 +82,23 @@ Aucun S1 : ni seconde lentille ni critique Fable (METHODE §C.4). Les quatre tâ
 
 - 3 vérificateurs + 1 rédacteur (opus, effort élevé) ≈ 0,92 M de jetons ; aucun appel Fable (aucun S1).
 
-<!-- verifie | groupe: ACSV | pct: 100 | ecarts_s1_s2: 1 -->
+## 8. Contre-visite des correctifs, le même jour (base `c1a99568a`)
+
+Les tâches d'écart déposées ci-dessus ont été construites dans la journée (PR #1316). Un vérificateur frais (opus, effort
+élevé) a relu les trois qui sont cochées (METHODE §C.4 point 6) : **ACSV107, ACSV109, ACSV110 : ok**.
+
+- **Écart S2 fermé.** À la création d'un ticket, la couverture et la date d'ouverture ne se choisissent plus depuis la requête
+  (ACSV107) : refus pour le rôle sans droit, date du jour imposée, valeur relue en base ; aucun autre code n'écrit la
+  couverture.
+- ACSV109 : le refus de facturer un ticket sous garantie de chantier passe avant le cas de la récidive (simple déplacement,
+  un seul service pour les trois appelants). ACSV110 : deux poses de pièce simultanées ne sortent plus le stock deux fois
+  (test à deux connexions réelles).
+- **Non cochée, non vérifiée.** ACSV108 (S3) : code livré, bloquée sur sa preuve en direct.
+- **Tests.** Présents et comportementaux, verts dans la CI de la PR #1316, non retouchés depuis. Les trois tâches demandaient
+  la sortie rouge de leur mutant : aucun mutant n'a été exécuté (dit dans les commits) ; seule la version saine est prouvée.
+- **Optionnel.** Sur un ticket sans équipement daté, un technicien peut cocher « sous garantie » à la main : le ticket est
+  alors couvert et « Facturer » produit une facture à zéro. L'écran est conçu pour cette saisie et aucune décision du
+  fondateur n'a été trouvée sur ce point : règle à confirmer, non comptée comme écart.
+- **Statut.** Plus aucun écart S1-S2 ouvert ⇒ ACSV passe « vérifié » pour sa part construite.
+
+<!-- verifie | groupe: ACSV | pct: 100 | ecarts_s1_s2: 0 -->
