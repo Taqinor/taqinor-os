@@ -32,7 +32,7 @@ from core.analytics_db import analytics_queryset
 
 from .models import CleaningEvent, ProductionReading, UnderperformanceFlag
 from .services import (
-    _expected_recent_kwh, attendu_entre, debut_couverture,
+    attendu_entre, attendu_intervalles, debut_couverture, fenetre_couverte,
     get_or_create_config, production_couverte, releves_recouvrant,
 )
 
@@ -154,11 +154,14 @@ def om_metrics(installation, *, window_days=DEFAULT_WINDOW_DAYS, today=None):
                                            window_days)
     total_kwh = production_couverte(releves, debut, today)
 
-    expected = _expected_recent_kwh(
-        installation, config, window_days, today=today)
+    # AMON97 — PR : réel ET attendu sur la fenêtre réellement couverte
+    # ([début de couverture ; min(aujourd'hui, dernier jour couvert)]).
+    fenetre = fenetre_couverte(installation, releves, since, today)
+    expected = attendu_intervalles(config, fenetre[2]) if fenetre else None
     pr_pct = availability_pct = None
-    if releves and expected and expected > 0:
-        pr_pct = _q((total_kwh / expected) * Decimal('100'))
+    if fenetre and expected and expected > 0:
+        reel = production_couverte(releves, fenetre[0], fenetre[1])
+        pr_pct = _q((reel / expected) * Decimal('100'))
 
     # Disponibilité : jours couverts (UNION des intervalles des relevés,
     # ASAV64) / jours de la fenêtre BORNÉE, plafonnée à 100 % ; ``None``
