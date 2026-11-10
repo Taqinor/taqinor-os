@@ -27,8 +27,9 @@ larges que les siens (ASEC66, vérifié en mémoire avec les rôles vivants) ; g
 d'encaisser (ASEC67) ; une demande d'accès déjà décidée ne se modifie plus (ASEC69) ; le lien de partage public d'un document
 fonctionne et son mot de passe se saisit (ASEC77, ASEC78). Deux restent ouverts par une porte voisine : voir §4.
 
-Une seconde lentille indépendante, chargée de réfuter les deux écarts les plus graves, a **confirmé** le premier et l'a
-classé S1, et a ramené le second à S3 (aucun rôle livré n'est touché).
+Une seconde lentille indépendante, chargée de réfuter les deux écarts jugés les plus graves, a **confirmé** le premier et
+l'a classé S1, et a ramené le second (droits créer / modifier un devis) à S3 : aucun rôle livré n'est touché. À la
+rédaction, l'écart de l'export de stock a été relevé à S2 : il touche, lui, des rôles livrés.
 
 ## 2. Tests nommés
 
@@ -50,11 +51,11 @@ session dont la pile sert `main` (attendu avant correctif : reproduit ; après :
 | C-ASEC-VER5-068 | ASEC68 | **S1** | la confirmation de l'avoir de révision d'un devis, ajoutée seize minutes après ASEC68, ÉMET un avoir numéroté sans exiger le droit d'encaisser, contre la décision D-ASEC-VER-1 ; les rôles « Admin Ventes » et « Responsable » y arrivent seuls (réviser, modifier la nouvelle version, l'accepter, confirmer) ; le montant est calculé par le système. **Production le 10/11 : aucun compte actif ne porte ces deux rôles** (5 comptes actifs) — non exploitable aujourd'hui | STATIQUE — deux lectures indépendantes concordantes ; sonde écrite, non rejouée (§3) | ASEC85 |
 | C-ASEC-VER5-071 | ASEC71 | S3 | le droit « modifier un devis » n'est exigé que sur une route que l'écran n'utilise pas pour les lignes : décocher la case dans la grille d'un rôle ne retire pas la modification ; aucun rôle livré n'est touché | STATIQUE (lecture) | ASEC86 |
 | C-ASEC-VER5-074 | ASEC74 | S3 | même chose pour « créer un devis » : la création réelle passe par deux routes qui n'exigent pas ce droit | STATIQUE (lecture) | ASEC87 |
-| C-ASEC-VER5-070 | ASEC70 | S3 | l'export en tableur de l'agrégation des mouvements de stock n'exige pas le droit d'export | STATIQUE (lecture) | ASEC88 |
+| C-ASEC-VER5-070 | ASEC70 | S2 | l'export en tableur de l'agrégation des mouvements de stock n'exige pas le droit d'export : six rôles livrés qui voient le stock sans droit d'export (dont Commercial, Technicien et le rôle de consultation) le téléchargent aujourd'hui, contre la décision D-ASEC-VER4-1 ; un test existant fige ce comportement | STATIQUE (lecture) | ASEC88 |
 | C-ASEC-VER5-075 | ASEC75 | S3 | quatre actions d'écriture d'un chantier (recette, recette de pompage, réserves, dossier de remise) n'exigent pas le droit de gérer les chantiers | STATIQUE (lecture) | ASEC89 |
 
-Un écart S1 confirmé par la seconde lentille ; la critique finale est celle de l'orchestrateur (modèle de session), sans
-appel supplémentaire.
+Un écart S1 confirmé par la seconde lentille et un écart S2 ; la critique finale est celle de l'orchestrateur (modèle de
+session), sans appel supplémentaire.
 
 ## 5. Optionnel (non déposé)
 
@@ -64,6 +65,9 @@ appel supplémentaire.
 - Le retour d'outillage d'une intervention n'exige pas le droit de gérer les interventions.
 - Le « Commercial responsable » a perdu les écritures d'intervention et de chantier (c'est la grille ; non annoncé).
 - Le fichier de référence des rôles est un plancher daté : pour un rôle, lire le registre vivant.
+- Après ASEC85, l'écran proposera encore le bouton « Confirmer l'avoir » à un rôle qui recevra un refus (l'état de la
+  vente ne lit pas le droit d'encaisser).
+- Deux autres exports de stock (conformité des fournisseurs, négoce) ne lisent pas le droit d'export : non tranchés.
 
 ## 6. Couverture et sortie de cycle
 
@@ -71,10 +75,11 @@ appel supplémentaire.
 - **Non couvert.** ASEC80 à ASEC84 ; les 65 autres tâches cochées ; aucune sonde ni test rejoué ; la chaîne complète de
   l'avoir n'a pas été jouée ; un seuil d'approbation de remise pourrait bloquer l'acceptation d'une version moins chère
   (non vérifié).
-- **Statut.** Un écart S1 ⇒ ASEC reste « construit » ; contre-visite due quand ASEC85 sera cochée.
+- **Statut.** Un écart S1 et un écart S2 ⇒ ASEC reste « construit » ; contre-visite due quand ASEC85 et ASEC88 seront
+  cochées.
 
 ## 7. Coût
 
 - 1 vérificateur + 1 seconde lentille + 1 rédacteur (opus, effort élevé) ≈ 0,9 M de jetons ; aucun appel Fable.
 
-<!-- verifie | groupe: ASEC | pct: 100 | ecarts_s1_s2: 1 -->
+<!-- verifie | groupe: ASEC | pct: 100 | ecarts_s1_s2: 2 -->
