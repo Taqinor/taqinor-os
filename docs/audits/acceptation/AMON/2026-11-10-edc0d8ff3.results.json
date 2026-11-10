@@ -1,0 +1,195 @@
+{
+  "sha": "edc0d8ff3c8b51da8d4e9f6f4d1742c35b3cc210",
+  "date": "2026-11-10",
+  "groupe": "AMON",
+  "verdict": "PASS",
+  "couvre": [
+    "AMON97",
+    "AMON98",
+    "AMON99",
+    "AMON100",
+    "AMON101",
+    "AMON102",
+    "AMON103",
+    "AMON105"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "AMONLIVE.AMON97.preuve_en_direct",
+      "taches": [
+        "AMON97"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-amon/AMON97.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde REPRO (PR 100,0 / 99,97 / témoin 60,0) ; écran Rapports O&M ACC-AMON-97 : carte PR « 100,0 % »"
+    },
+    {
+      "id": "AMONLIVE.AMON98.preuve_en_direct",
+      "taches": [
+        "AMON98"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-amon/AMON98.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde REPRO (220,07 / 1 267,82) ; écran Rapports O&M ACC-AMON-97 : « Production période 289 kWh » (et non 0)"
+    },
+    {
+      "id": "AMONLIVE.AMON99.preuve_en_direct",
+      "taches": [
+        "AMON99"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-amon/AMON99.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde REPRO (dégradation 0,02 / −0,58 %/an, soiling non) ; écrans Rapports O&M + Analytique O&M ACC-AMON-99"
+    },
+    {
+      "id": "AMONLIVE.AMON100.preuve_en_direct",
+      "taches": [
+        "AMON100"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-amon/AMON100.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde REPRO (13 mois ratio_pct = pr_pct ± 0,1, JSON et CSV, attendu au profil ×2,49) ; écrans Historique mensuel = Analytique O&M"
+    },
+    {
+      "id": "AMONLIVE.AMON101.preuve_en_direct",
+      "taches": [
+        "AMON101"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-amon/AMON101.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde REPRO (PR 100,0 vue parc et classement, témoin 60,0 rang 3, parc 100,0, requêtes 6 = 6) ; écran Vue parc « PR PARC 100,0 % »"
+    },
+    {
+      "id": "AMONLIVE.AMON102.preuve_en_direct",
+      "taches": [
+        "AMON102"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-amon/AMON102.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde REPRO (100,00 %, non sous garantie, 0 j ; trou de juin 89,58 %) ; écran SAV SLA « indice de suivi … 100,00 % »"
+    },
+    {
+      "id": "AMONLIVE.AMON103.preuve_en_direct",
+      "taches": [
+        "AMON103"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-amon/AMON103.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde REPRO (panne 100,00, curtailment 33,33) ; écran SAV « Pertes catégorisées » ACC-AMON-103 : Panne 100,00 %"
+    },
+    {
+      "id": "AMONLIVE.AMON105.preuve_en_direct",
+      "taches": [
+        "AMON105"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-amon/AMON105.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde REPRO (compensation 0,00, pénalité 0,00, garanti figé 5 950,68 de juin à décembre, année close 12 000) ; écran Garanties : 0,00 MAD"
+    }
+  ]
+}

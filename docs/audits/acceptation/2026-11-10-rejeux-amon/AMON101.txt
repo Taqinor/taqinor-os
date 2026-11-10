@@ -1,0 +1,132 @@
+# Preuve en direct AMON101 — rejeu accept-amon, code joué edc0d8ff3 (origin/main, merge de #1314), 2026-11-10
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau accept-amon-net ; accept-amon-db (pgvector pg16,
+# 127.0.0.1:5547, base erp_accept_amon = pg_dump --no-owner de la base locale erp_live en lecture seule, puis
+# `manage.py migrate` des 33 migrations manquantes, puis `seed_demo` — « Demo company already seeded ») ;
+# accept-amon-redis ; accept-amon-dj (image erp-agentique-django_core, code backend du commit joué COPIÉ par tar
+# dans /srv/app, settings.dev, mail locmem, MinIO coupé, runserver 127.0.0.1:8017, DB_CONN_MAX_AGE=0).
+# Sondes : python scripts/sonde.py LIVE/C-LIVE-AMON101 --conteneur accept-amon-dj (transaction annulée, mail en
+# mémoire, Celery coupé, HTTP sortant bloqué). Sondes C-LIVE-* écrites pour ce rejeu (source jointe) : elles
+# rejouent le Given/When/Then de la tâche ; repro=true signifie ICI que le comportement ATTENDU est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8017
+# vite preview --port 5197`, bundle servi index-C1tXrJ3H.js == dist/index.html), piloté par Playwright MCP,
+# compte acc_amon_adm (société « Acceptation AMON », rôle Directeur, mot de passe de test généré, base jetable).
+# Fixtures écran FIX-AMON (persistées, dates relatives au 10/11/2026 réel) : ACC-AMON-97 (6 000 kWh/an, MES
+# 01/01/2026, mensuels au profil datés du 1er, janvier → octobre), ACC-AMON-99 (12 000, journaliers au profil
+# jusqu'au 10/10), ACC-AMON-100 (12 000, journaliers 12 mois jusqu'au 10/11), ACC-AMON-102 (SLA 98 %, mensuels
+# contigus 01/01 → 10/10), ACC-AMON-103 (MES J−59, 60 journaliers au profil, drapeau ouvert J−59), ACC-AMON-105
+# (garantie 2026 12 000 kWh / 5 % / 1,10 MAD, journaliers 32,88 kWh du 01/01 au 30/06). Captures : C:\dev\taqinor-os\logs\nightly-qa\playwright\accept-amon\.
+# Verdict : PASS — sonde REPRO (PR 100,0 vue parc et classement, témoin 60,0 rang 3, parc 100,0, requêtes 6 = 6) ; écran Vue parc « PR PARC 100,0 % »
+
+== C-LIVE-AMON101 (sha edc0d8ff3)
+attendu : parc de 2 systèmes sains (journaliers jusqu'au 15/10) + témoin 60 %, lu le 15/11 : pr_pct ∈ [99;101] (vue parc et classement), témoin < 65 et rang 3 ; sans témoin fleet_pr_pct ∈ [99;101] (et non ≈ 93,2) ; requêtes identiques 5 vs 20 systèmes
+observé : {"systemes": {"LAMON101-A": {"pr_vue_parc": 100.0, "pr_classement": 100.0, "rang": 2}, "LAMON101-B": {"pr_vue_parc": 100.0, "pr_classement": 100.0, "rang": 1}, "LAMON101-T": {"pr_vue_parc": 60.0, "pr_classement": 60.0, "rang": 3}}, "fleet_pr_sans_temoin": 100.0, "requetes_5_vs_20": {"5": 6, "20": 6}, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 499, après 499) ; mails 0 ; tâches Celery bloquées 0
+
+== Écran
+Écran /production/parc, 1 an : SYSTÈMES ACTIFS 4 · PR PARC 100,0 % · PR par système : ACC-AMON-103 100,0 %,
+  ACC-AMON-100 100,0 %, ACC-AMON-99 100,0 % (relevés arrêtés le 10/10 : ≈ 91,8 avant correctif), ACC-AMON-97 100,0 %.
+Capture : AMON101-parc.png
+
+# ---- source : C-LIVE-AMON101.py ----
+# flake8: noqa  (sonde LIVE du rejeu d'acceptation AMON — scénario exact de AMON101, vraies fonctions/routes)
+"""AMON101 — Given/When/Then de la tâche rejoué sur la pile privée accept-amon. repro=True signifie ICI que le
+comportement ATTENDU par la tâche est observé."""
+SONDE = {"constat": "C-LIVE-AMON101", "sha": "edc0d8ff3",
+         "attendu": "parc de 2 systèmes sains (journaliers jusqu'au 15/10) + témoin 60 %, lu le 15/11 : pr_pct ∈ [99;101] (vue parc et classement), témoin < 65 et rang 3 ; sans témoin fleet_pr_pct ∈ [99;101] (et non ≈ 93,2) ; requêtes identiques 5 vs 20 systèmes",
+         "modeles": ['monitoring.ProductionReading', 'monitoring.MonitoringConfig', 'installations.Installation', 'authentication.Company']}
+
+def _base(slug):
+    from decimal import Decimal
+    from django.contrib.auth import get_user_model
+    from rest_framework.test import APIClient
+    from authentication.models import Company
+    from apps.crm.models import Client
+    co = Company.objects.create(nom='Live ' + slug, slug='live-' + slug.lower())
+    u = get_user_model().objects.create_user(username='live_' + slug.lower(), password='x', company=co,
+                                             role_legacy='admin')
+    api = APIClient()
+    api.force_authenticate(u)
+    cl = Client.objects.create(company=co, nom='Client', prenom=slug, email=slug.lower() + '@example.invalid')
+    return co, cl, api
+
+
+def _systeme(co, cl, ref, annuel, mes, kwc='5.00'):
+    from decimal import Decimal
+    from apps.installations.models import Installation
+    from apps.monitoring.models import MonitoringConfig
+    inst = Installation.objects.create(company=co, reference=ref, client=cl,
+                                       puissance_installee_kwc=Decimal(kwc), date_mise_en_service=mes)
+    cfg = None
+    if annuel:
+        cfg = MonitoringConfig.objects.create(company=co, installation=inst, expected_annual_kwh=Decimal(annuel))
+    return inst, cfg
+
+
+def _profil(annuel, d1, d2, facteur=1):
+    from decimal import Decimal
+    from apps.monitoring.services import attendu_entre
+    return (attendu_entre(Decimal(annuel), d1, d2) * Decimal(str(facteur))).quantize(Decimal('0.01'))
+
+
+def _mensuels(co, inst, annuel, mois, facteur=1):
+    import calendar
+    from datetime import date, timedelta
+    from apps.monitoring.models import ProductionReading
+    for m in mois:
+        jour = date(2026, m, 1)
+        p = calendar.monthrange(2026, m)[1]
+        ProductionReading.objects.create(company=co, installation=inst, date=jour, period_days=p,
+                                         energy_kwh=_profil(annuel, jour, jour + timedelta(days=p - 1), facteur))
+
+
+def _journaliers(co, inst, annuel, d1, d2, facteur=1):
+    from datetime import timedelta
+    from apps.monitoring.models import ProductionReading
+    j = d1
+    while j <= d2:
+        ProductionReading.objects.create(company=co, installation=inst, date=j, period_days=1,
+                                         energy_kwh=_profil(annuel, j, j, facteur))
+        j += timedelta(days=1)
+
+
+def _f(x):
+    return None if x is None else float(x)
+
+def sonde(ctx):
+    from datetime import date
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+    from apps.installations.models import Installation
+    from apps.monitoring.selectors import benchmark_parc, fleet_overview
+    co, cl, api = _base('AMON101')
+    q = date(2026, 11, 15)
+    ids = {}
+    for ref, fac in (('LAMON101-A', 1), ('LAMON101-B', 1), ('LAMON101-T', '0.6')):
+        inst, _ = _systeme(co, cl, ref, '12000', None, kwc='7.00')
+        _journaliers(co, inst, '12000', date(2025, 11, 16), date(2026, 10, 15), fac)
+        ids[ref] = inst.id
+    ov = fleet_overview(co, today=q)
+    pr = {s['installation']: _f(s['pr_pct']) for s in ov['systems']}
+    b = {s['installation']: s for s in benchmark_parc(co, today=q)['systems']}
+    obs = {ref: {'pr_vue_parc': pr[i], 'pr_classement': _f(b[i]['pr_pct']), 'rang': b[i]['rang']}
+           for ref, i in ids.items()}
+    ok = all(99 <= obs[r]['pr_vue_parc'] <= 101 and 99 <= obs[r]['pr_classement'] <= 101
+             for r in ('LAMON101-A', 'LAMON101-B'))
+    ok = ok and obs['LAMON101-T']['pr_vue_parc'] < 65 and obs['LAMON101-T']['rang'] == 3
+    Installation.objects.filter(pk=ids['LAMON101-T']).update(parc_actif=False)
+    fleet = _f(fleet_overview(co, today=q)['fleet_pr_pct'])
+    ok = ok and 99 <= fleet <= 101
+    # Requêtes : 5 puis 20 systèmes dans une société neuve.
+    co2, cl2, _ = _base('AMON101Q')
+    nb = {}
+    for n in (5, 20):
+        while Installation.objects.filter(company=co2).count() < n:
+            k = Installation.objects.filter(company=co2).count()
+            inst, _ = _systeme(co2, cl2, f'LAMON101Q-{k}', '12000', None)
+            _journaliers(co2, inst, '12000', date(2026, 10, 1), date(2026, 10, 5))
+        with CaptureQueriesContext(connection) as cq:
+            fleet_overview(co2, today=q)
+        nb[n] = len(cq.captured_queries)
+    ok = ok and nb[5] == nb[20]
+    return {'systemes': obs, 'fleet_pr_sans_temoin': fleet, 'requetes_5_vs_20': nb, 'repro': ok}
