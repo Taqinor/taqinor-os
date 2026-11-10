@@ -382,6 +382,23 @@ class AutoDeployTests(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertIn("ROLLBACK vers", banc.journal)
 
+    def test_fetch_en_echec_consigne_une_fois(self):
+        """ADCG110 — `git fetch` en échec : UNE entrée {sha déployé, étape fetch}
+        par série d'échecs (marqueur state/fetch_en_echec) ; un fetch revenu l'efface."""
+        banc = self.banc(changes="backend/django_core/apps/crm/views.py\n")
+        for _ in range(2):
+            rc, _ = banc.jouer(FAIL="git fetch")
+            self.assertEqual(rc, 1, banc.journal)
+            self.assertIsNotNone(banc.lire("fetch_en_echec"))
+        pousses = [a for a in banc.appels if re.search(r"exec -T redis redis-cli LPUSH erp:deploys_en_echec ", a)]
+        self.assertEqual(len(pousses), 1, banc.appels)
+        self.assertIn(f'"sha": "{A[:9]}"', pousses[0])
+        self.assertIn('"etape": "fetch"', pousses[0])
+        rc, sortie = banc.jouer()
+        self.assertEqual(rc, 0, sortie + banc.journal)
+        self.assertIsNone(banc.lire("fetch_en_echec"))
+        self.assertEqual(banc.compte("LPUSH"), 1, banc.appels)
+
     def test_zero_downtime_drapeau_lu_puis_efface(self):
         banc = self.banc(changes=LOT_ECRAN_API)
         rc, _ = banc.jouer(_remote().replace("ZERO_DOWNTIME=0", "ZERO_DOWNTIME=1"))

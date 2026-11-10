@@ -154,6 +154,49 @@ class RestoreDrillTests(TestCase):
                         if c.args and c.args[0][0] == 'dropdb']
         self.assertGreaterEqual(len(dropdb_calls), 2)
 
+    def _drill_nettoyage_final_leve(self, exc):
+        """ADCG112 — tout réussit sauf le second ``dropdb`` (nettoyage final)."""
+        self._make_source_dump()
+        run = BackupRun.objects.create(kind=BackupRun.KIND_RESTORE_DRILL, company=None)
+        fake_cursor = mock.MagicMock()
+        fake_cursor.__enter__.return_value = fake_cursor
+        fake_cursor.fetchone.return_value = (42,)
+        fake_conn = mock.Mock()
+        fake_conn.cursor.return_value = fake_cursor
+        dropdbs = []
+
+        def fake_run(args, **kwargs):
+            if args[0] == 'dropdb':
+                dropdbs.append(args)
+                if len(dropdbs) == 2:
+                    raise exc
+            return _completed(returncode=0)
+
+        with mock.patch.object(backup, '_minio_client', return_value=mock.Mock()), \
+                mock.patch('subprocess.run', side_effect=fake_run), \
+                mock.patch('psycopg2.connect', return_value=fake_conn), \
+                mock.patch.object(backup, '_comptages_live', return_value={}), \
+                mock.patch.object(backup, '_top_tenants_live', return_value={}):
+            try:
+                backup.restore_drill(run)
+            finally:
+                run.refresh_from_db()
+        return run
+
+    def test_nettoyage_final_en_echec_ne_laisse_jamais_en_cours(self):
+        import subprocess
+        from celery.exceptions import SoftTimeLimitExceeded
+        run = self._drill_nettoyage_final_leve(subprocess.TimeoutExpired('dropdb', 120))
+        self.assertEqual(run.statut, BackupRun.STATUT_TERMINE)
+        self.assertEqual(run.detail['comptages'], {t: 42 for t in backup.RESTORE_DRILL_TABLES})
+        self.assertEqual(run.detail['nettoyage'], 'base jetable non supprimée : TimeoutExpired')
+
+        with self.assertRaises(SoftTimeLimitExceeded):
+            self._drill_nettoyage_final_leve(SoftTimeLimitExceeded())
+        run = BackupRun.objects.filter(kind=BackupRun.KIND_RESTORE_DRILL).order_by('-pk').first()
+        self.assertEqual(run.statut, BackupRun.STATUT_ECHEC)
+        self.assertIn('nettoyage interrompu', run.detail['message'])
+
     def _drill_avec(self, restaure_n, lignes_societe):
         """ADCG38 — live : 5 lignes par table clé, société 1 = 1640 lignes."""
         self._make_source_dump()

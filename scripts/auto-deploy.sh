@@ -55,7 +55,25 @@ rien_a_deployer() { [ "$ZERO_DOWNTIME" = "1" ] && log "zéro-coupure demandée, 
 
 cd "$REPO" || { log "ERREUR: dépôt $REPO introuvable"; exit 1; }
 
-git fetch origin main --quiet || { log "ERREUR: git fetch a échoué"; exit 1; }
+# ADCG12 — trace d'un ÉCHEC dans le journal des problèmes (Redis erp:deploys_en_echec, lu par
+# apps/reporting/journal_problemes.py::_deploys_en_echec), best-effort. ADCG110 : un fetch
+# en échec y est consigné UNE fois par série (marqueur effacé au fetch revenu), sha = déployé.
+signaler_echec() {
+  $COMPOSE exec -T redis redis-cli LPUSH erp:deploys_en_echec \
+      "{\"ts\": $(date +%s), \"sha\": \"$SHORT\", \"etape\": \"$ETAPE\"}" >/dev/null 2>&1 \
+    && $COMPOSE exec -T redis redis-cli LTRIM erp:deploys_en_echec 0 49 >/dev/null 2>&1
+  return 0
+}
+FETCH_KO="$STATE/fetch_en_echec"
+if ! git fetch origin main --quiet; then
+  log "ERREUR: git fetch a échoué"
+  if [ ! -f "$FETCH_KO" ]; then
+    SHORT=$(git rev-parse --short "$(cat "$LAST" 2>/dev/null)" 2>/dev/null || true)
+    ETAPE=fetch; signaler_echec; touch "$FETCH_KO"
+  fi
+  exit 1
+fi
+rm -f "$FETCH_KO"
 NEW=$(git rev-parse origin/main)
 OLD=$(cat "$LAST" 2>/dev/null || echo "")
 
@@ -153,17 +171,9 @@ fi
 ok=1
 RIEN_CONSTRUIT=0
 # ADCG12 — l'étape en cours (posée tant que tout va bien : après un échec, elle
-# nomme l'étape fautive) et la trace d'un ÉCHEC dans le journal des problèmes de
-# l'ERP (liste Redis bornée erp:deploys_en_echec, lue par
-# apps/reporting/journal_problemes.py::_deploys_en_echec). Best-effort.
+# nomme l'étape fautive) ; sa trace Redis : signaler_echec, plus haut.
 ETAPE=arbre
 etape() { [ "$ok" = "1" ] && ETAPE="$1"; return 0; }
-signaler_echec() {
-  $COMPOSE exec -T redis redis-cli LPUSH erp:deploys_en_echec \
-      "{\"ts\": $(date +%s), \"sha\": \"$SHORT\", \"etape\": \"$ETAPE\"}" >/dev/null 2>&1 \
-    && $COMPOSE exec -T redis redis-cli LTRIM erp:deploys_en_echec 0 49 >/dev/null 2>&1
-  return 0
-}
 # ── ADCG109 — ARBRE DE CONSTRUCTION SÉPARÉ ──────────────────────────────────
 # /opt/taqinor-os est MONTÉ dans django_core, les celery et fastapi_ia : l'avancer
 # avant build + migrate rendait le code neuf visible aux processus EN MARCHE (un
