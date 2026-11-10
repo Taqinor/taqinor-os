@@ -21,7 +21,9 @@ Principes (règles fondatrices) :
 import logging
 
 from celery import shared_task
+from django.utils.timezone import localdate
 
+from .calendar_utils import is_jour_ouvre
 from .types_evenements import EventType
 from .services import notify
 
@@ -172,7 +174,7 @@ def _run_digest(periode_label, title):
     for company in _companies():
         try:
             recipients = _recipients(company)
-            if not recipients:
+            if not recipients or not is_jour_ouvre(localdate(), company):  # ASOC22
                 continue
             summary = build_summary(company)
             body = format_body(summary, periode_label)

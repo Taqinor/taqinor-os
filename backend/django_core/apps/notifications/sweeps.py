@@ -17,7 +17,9 @@ import logging
 from datetime import date, timedelta
 
 from celery import shared_task
+from django.utils.timezone import localdate
 
+from .calendar_utils import is_jour_ouvre
 from .types_evenements import EventType
 from .services import notify
 
@@ -937,6 +939,8 @@ def sweep_daily():
     Best-effort par société ; renvoie le total de notifications émises."""
     total = 0
     for company in _companies():
+        if not is_jour_ouvre(localdate(), company):
+            continue  # ASOC22 — rien un jour chômé de la société.
         try:
             total += _sweep_warranty_expiring(company)
             total += _sweep_maintenance_due(company)

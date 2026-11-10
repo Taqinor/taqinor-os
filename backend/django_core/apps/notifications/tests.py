@@ -287,6 +287,47 @@ class DigestTaskTests(TestCase):
         self.manager = _make_user(self.company, username='manager')
         self.manager.role_legacy = 'admin'
         self.manager.save(update_fields=['role_legacy'])
+        # ASOC22 — jour figé ouvré (mardi) : le récap ne part qu'un jour ouvré.
+        from datetime import date
+        jour = mock.patch('apps.notifications.digests.localdate',
+                          return_value=date(2026, 11, 10))
+        jour.start()
+        self.addCleanup(jour.stop)
+
+    def test_recap_et_balayage_muets_un_jour_non_ouvre(self):
+        """ASOC22 (C-ASOC-141) — samedi (lun-ven par défaut) : ni récap ni
+        balayage ; lundi : récap et garantie émis."""
+        from datetime import date, timedelta
+        from apps.crm.models import Client
+        from apps.installations.models import Installation
+        from apps.sav.models import Equipement
+        from apps.stock.models import Produit
+        from apps.ventes.models import Devis
+        from .digests import daily_digest
+        from .sweeps import sweep_daily
+        client = Client.objects.create(company=self.company, nom='Client J')
+        Devis.objects.create(company=self.company, client=client,
+                             reference='DV-J', statut=Devis.Statut.ENVOYE)
+        Equipement.objects.create(
+            company=self.company, statut=Equipement.Statut.EN_SERVICE,
+            produit=Produit.objects.create(
+                company=self.company, nom='Onduleur J', prix_vente=0),
+            installation=Installation.objects.create(
+                company=self.company, client=client, reference='CH-J',
+                statut=Installation.Statut.CLOTURE),
+            date_fin_garantie=date.today() + timedelta(days=30))
+        for jour, attendu in ((date(2026, 11, 14), False),
+                              (date(2026, 11, 16), True)):
+            with mock.patch('apps.notifications.digests.localdate',
+                            return_value=jour), \
+                    mock.patch('apps.notifications.sweeps.localdate',
+                               return_value=jour):
+                daily_digest()
+                sweep_daily()
+            for event in (EventType.DIGEST, EventType.WARRANTY_EXPIRING):
+                self.assertEqual(Notification.objects.filter(
+                    company=self.company, event_type=event).exists(),
+                    attendu, (jour, event))
 
     def _seed_data(self):
         """Sème un enregistrement par section pour vérifier le comptage."""
