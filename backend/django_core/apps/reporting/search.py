@@ -20,16 +20,29 @@ d'une app SANS toucher ce fichier ne le rend PAS automatiquement cherchable
 (toggle OFF) le retire bien de la recherche sans rien changer ici. L'enveloppe
 de résultat (``{'query', 'groups': [{'type','label','results':[...]}]}``) reste
 BYTE-IDENTIQUE à avant ARC29 (le hook front VX13 la consomme sans changement).
+
+NTPLT33 — PLEIN-TEXTE. Les 7 entités dotées de ``search_vector`` (NTPLT32 :
+Lead, Client, Devis, Facture, Installation, Equipement, Ticket) sont cherchées
+par ``to_tsquery('french', 'mot:* & …')`` sur leur index GIN (préfixe : la
+frappe instantanée trouve « Dupont » dès « dup » ; racinisation française :
+pluriels ; accents retirés des deux côtés) et classées par ``ts_rank``. Une
+ligne pas encore indexée (colonne ``NULL`` : avant ``rebuild_search_index``)
+retombe sur l'ancien ``icontains`` — ligne par ligne, dans la MÊME requête :
+aucun résultat ne disparaît pendant le déploiement, aucune requête de plus.
+Téléphone / e-mail (APFS24) restent en ``icontains`` réservé à
+``client_pii_voir`` : ils ne sont jamais dans le vecteur.
 """
 from datetime import date, timedelta
 
 from django.contrib.contenttypes.models import ContentType
-from django.db.models import Q
+from django.contrib.postgres.search import SearchRank
+from django.db.models import F, Q
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole
 from core import platform
+from core.recherche_fts import requete_prefixe
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import serializers as drf_serializers
@@ -45,22 +58,43 @@ def _co_filter(user):
     return None
 
 
+def _critere_fts(fts, repli, prefixe=''):
+    """NTPLT33 — ligne indexée : plein-texte ; ligne pas encore indexée
+    (``search_vector`` NULL) : le critère ``icontains`` d'avant. ``prefixe``
+    vise le vecteur d'une relation (``client__``)."""
+    if fts is None:
+        return repli
+    return (Q(**{f'{prefixe}search_vector': fts})
+            | (Q(**{f'{prefixe}search_vector__isnull': True}) & repli))
+
+
+def _classer(qs, fts, *ordre):
+    """NTPLT33 — pertinence ``ts_rank`` d'abord (lignes non indexées en
+    dernier, à rang égal), puis l'ordre historique du groupe."""
+    if fts is None:
+        return qs.order_by(*ordre)
+    return qs.annotate(rang_fts=SearchRank(F('search_vector'), fts)).order_by(
+        F('rang_fts').desc(nulls_last=True), *ordre)
+
+
 def _spec_lead(co, q, user=None):
     from apps.crm.models import Lead
     from apps.crm.selectors import portee_leads
     pii = _voit_pii(user)
-    critere = (
+    fts = requete_prefixe(q)
+    critere = _critere_fts(fts, (
         Q(nom__icontains=q) | Q(prenom__icontains=q) | Q(societe__icontains=q)
         | Q(ville__icontains=q)
         # WREF (fondateur 21/08) — le « TQ-XXXX » remis au client retrouve le
         # lead depuis l'omnibox aussi. (code_parrainage vit sur crm.Client,
         # pas sur Lead — l'y interroger casserait TOUTES les recherches.)
-        | Q(client_ref__icontains=q) | Q(client_ref_provisoire__icontains=q))
+        | Q(client_ref__icontains=q) | Q(client_ref_provisoire__icontains=q)))
     if pii:  # APFS24 — téléphone / e-mail : critère réservé à ``client_pii_voir``
         critere |= Q(email__icontains=q) | Q(telephone__icontains=q)
     qs = Lead.objects.filter(**co).filter(critere)
     # APFS24 — la portée du rôle (propriétaire + entités), comme ``crm/leads/``.
-    qs = (portee_leads(qs, user) if user is not None else qs.none()).order_by('-date_creation')
+    qs = _classer(portee_leads(qs, user) if user is not None else qs.none(),
+                  fts, '-date_creation')
     # Incident 02/10/2026 — un lead ARCHIVÉ reste trouvable ici (il « avait
     # disparu » pour la commerciale) mais doit se DIRE archivé : sans la
     # mention, rien n'expliquait son absence du pipeline.
@@ -76,10 +110,11 @@ def _spec_lead(co, q, user=None):
 def _spec_client(co, q, user=None):
     from apps.crm.models import Client
     pii = _voit_pii(user)
-    critere = Q(nom__icontains=q) | Q(prenom__icontains=q)
+    fts = requete_prefixe(q)
+    critere = _critere_fts(fts, Q(nom__icontains=q) | Q(prenom__icontains=q))
     if pii:  # APFS24 — même règle que les leads
         critere |= Q(email__icontains=q) | Q(telephone__icontains=q)
-    qs = Client.objects.filter(**co).filter(critere).order_by('nom')
+    qs = _classer(Client.objects.filter(**co).filter(critere), fts, 'nom')
     return 'client', 'Clients', qs, lambda c: {
         'id': c.id,
         'label': f"{c.nom} {c.prenom or ''}".strip() or '—',
@@ -88,9 +123,11 @@ def _spec_client(co, q, user=None):
 
 def _spec_devis(co, q, user=None):
     from apps.ventes.models import Devis
-    qs = Devis.objects.filter(**co).filter(
-        Q(reference__icontains=q) | Q(client__nom__icontains=q)
-    ).select_related('client').order_by('-id')
+    fts = requete_prefixe(q)
+    qs = _classer(Devis.objects.filter(**co).filter(
+        _critere_fts(fts, Q(reference__icontains=q))
+        | _critere_fts(fts, Q(client__nom__icontains=q), 'client__')
+    ).select_related('client'), fts, '-id')
     return 'devis', 'Devis', qs, lambda d: {
         'id': d.id, 'label': d.reference,
         'sublabel': getattr(d.client, 'nom', '') or ''}
@@ -98,9 +135,11 @@ def _spec_devis(co, q, user=None):
 
 def _spec_facture(co, q, user=None):
     from apps.ventes.models import Facture
-    qs = Facture.objects.filter(**co).filter(
-        Q(reference__icontains=q) | Q(client__nom__icontains=q)
-    ).select_related('client').order_by('-id')
+    fts = requete_prefixe(q)
+    qs = _classer(Facture.objects.filter(**co).filter(
+        _critere_fts(fts, Q(reference__icontains=q))
+        | _critere_fts(fts, Q(client__nom__icontains=q), 'client__')
+    ).select_related('client'), fts, '-id')
     return 'facture', 'Factures', qs, lambda f: {
         'id': f.id, 'label': f.reference,
         'sublabel': getattr(f.client, 'nom', '') or ''}
@@ -108,18 +147,21 @@ def _spec_facture(co, q, user=None):
 
 def _spec_chantier(co, q, user=None):
     from apps.installations.models import Installation
-    qs = Installation.objects.filter(**co).filter(
-        Q(reference__icontains=q)
-    ).order_by('-id')
+    fts = requete_prefixe(q)
+    qs = _classer(Installation.objects.filter(**co).filter(
+        _critere_fts(fts, Q(reference__icontains=q))), fts, '-id')
     return 'chantier', 'Chantiers', qs, (
         lambda i: {'id': i.id, 'label': i.reference, 'sublabel': ''})
 
 
 def _spec_equipement(co, q, user=None):
     from apps.sav.models import Equipement
-    qs = Equipement.objects.filter(**co).filter(
-        Q(numero_serie__icontains=q) | Q(produit__nom__icontains=q)
-    ).select_related('produit').order_by('-id')
+    fts = requete_prefixe(q)
+    # Le produit (catalogue, hors plein-texte) reste en ``icontains``.
+    qs = _classer(Equipement.objects.filter(**co).filter(
+        _critere_fts(fts, Q(numero_serie__icontains=q))
+        | Q(produit__nom__icontains=q)
+    ).select_related('produit'), fts, '-id')
     return 'equipement', 'Équipements', qs, lambda e: {
         'id': e.id, 'label': e.numero_serie or f"#{e.id}",
         'sublabel': getattr(e.produit, 'nom', '') or ''}
@@ -127,9 +169,10 @@ def _spec_equipement(co, q, user=None):
 
 def _spec_ticket(co, q, user=None):
     from apps.sav.models import Ticket
-    qs = Ticket.objects.filter(**co).filter(
-        Q(reference__icontains=q) | Q(description__icontains=q)
-    ).order_by('-id')
+    fts = requete_prefixe(q)
+    qs = _classer(Ticket.objects.filter(**co).filter(_critere_fts(
+        fts, Q(reference__icontains=q) | Q(description__icontains=q))),
+        fts, '-id')
     return 'ticket', 'Tickets SAV', qs, lambda t: {
         'id': t.id, 'label': t.reference,
         'sublabel': (t.description or '')[:40]}

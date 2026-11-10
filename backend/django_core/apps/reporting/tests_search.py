@@ -135,9 +135,10 @@ class TestRechercheFtsEntretien(TestCase):
 
     def test_signal_indexe_apres_commit_sans_accents(self):
         from core.recherche_fts import requete_prefixe
+        lead = Lead.objects.create(company=self.company, nom='Provisoire')
+        lead.nom, lead.ville = 'Élodie', 'Fès'
         with self.captureOnCommitCallbacks(execute=True):
-            lead = Lead.objects.create(
-                company=self.company, nom='Élodie', ville='Fès')
+            lead.save(update_fields=['nom', 'ville'])
         lead.refresh_from_db()
         self.assertIsNotNone(lead.search_vector)
         for q in ('elodie', 'Élo', 'FES'):
@@ -185,6 +186,64 @@ class TestRechercheFtsEntretien(TestCase):
         resp = api.get(f'/api/django/crm/leads/{leads[0].pk}/')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertNotIn('search_vector', resp.data)
+
+
+class TestGlobalSearchFts(TestCase):
+    """NTPLT33 — recherche globale en plein-texte : accents, pluriels,
+    préfixe ; une ligne pas encore indexée reste trouvée (repli icontains) ;
+    enveloppe de résultat inchangée."""
+
+    def setUp(self):
+        self.company = Company.objects.get_or_create(
+            slug='fts-search-co', defaults={'nom': 'FTS Search Co'})[0]
+        self.user = User.objects.create_user(
+            username='fts_search_user', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+
+    def _groupe(self, q, type_):
+        resp = self.api.get('/api/django/reporting/search/', {'q': q})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(set(resp.data), {'query', 'groups'})
+        return next((g for g in resp.data['groups'] if g['type'] == type_), None)
+
+    def test_accents_prefixe_et_repli_non_indexe(self):
+        from core.recherche_fts import indexer
+        helene = Lead.objects.create(
+            company=self.company, nom='Hélène', prenom='Zouhri')
+        indexer(Lead, [helene.pk])
+        # Jamais indexé (signal non exécuté en TestCase) : repli icontains.
+        Lead.objects.create(company=self.company, nom='Zouhrinette')
+        # « helene » sans accent : seul le plein-texte la retrouve (ILIKE non).
+        groupe = self._groupe('helene', 'lead')
+        self.assertIsNotNone(groupe)
+        self.assertEqual([r['label'] for r in groupe['results']], ['Hélène Zouhri'])
+        self.assertEqual(set(groupe['results'][0]), {'id', 'label', 'sublabel'})
+        labels = {r['label'] for r in self._groupe('Zouhri', 'lead')['results']}
+        self.assertEqual(labels, {'Hélène Zouhri', 'Zouhrinette'})
+
+    def test_pluriel_francais_et_relation_client(self):
+        from apps.sav.models import Ticket
+        from core.recherche_fts import indexer
+        client = Client.objects.create(company=self.company, nom='Benkirane')
+        ticket = Ticket.objects.create(
+            company=self.company, reference='SAV-FTS-1', client=client,
+            description="Panne de l'onduleur principal")
+        facture = Facture.objects.create(
+            company=self.company, reference='FAC-FTS-1', client=client,
+            taux_tva=Decimal('20'), remise_globale=Decimal('0'))
+        for modele, objet in ((Client, client), (Ticket, ticket), (Facture, facture)):
+            indexer(modele, [objet.pk])
+        # « onduleurs » (pluriel) : absent tel quel du texte, trouvé par racine.
+        ticket = self._groupe('onduleurs', 'ticket')
+        self.assertIsNotNone(ticket)
+        self.assertEqual(ticket['results'][0]['label'], 'SAV-FTS-1')
+        # Facture trouvée par le nom de son client (vecteur du client).
+        facture = self._groupe('benkir', 'facture')
+        self.assertIsNotNone(facture)
+        self.assertEqual(facture['results'][0]['label'], 'FAC-FTS-1')
 
 
 class TestNotifications(TestCase):
