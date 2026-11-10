@@ -1,0 +1,148 @@
+# Preuve en direct ADCG37 — runbook de restauration (docs/backup-runbook.md § « ADCG37 — Restauration RÉELLE ») joué
+# MOT POUR MOT, rejeu accept-runbook, code joué 697277c48 (origin/main b25205b3f + merge de #1347, qui corrige le nom
+# de service `django` → `django_core` du runbook), 2026-11-10.
+#
+# Pile PRIVÉE montée depuis CE worktree avec les fichiers compose du dépôt : projet compose `accept-runbook`
+# (COMPOSE_PROJECT_NAME=accept-runbook, COMPOSE_FILE = docker-compose.yml + une surcharge hors dépôt qui ne fait
+# que : image privée `accept-runbook-django_core` construite par `docker compose build django_core` (jamais le tag
+# partagé erp-agentique-django_core), image MinIO existante réutilisée, ports hôte remappés sur 127.0.0.1
+# (db 5571, minio 9041, django_core 8041) ou retirés (redis) pour ne pas heurter la pile partagée). Services
+# démarrés : db, redis, redis_cache, minio, django_core (gunicorn), celery_worker. `.env` de travail = copie de
+# .env.example avec des valeurs de TEST (mots de passe test_accept_runbook_*, aucun secret réel), supprimé après.
+# Les commandes du runbook sont exécutées TELLES QU'ÉCRITES (`docker compose …`, sans -p ni -f : le projet privé
+# est choisi par les variables d'environnement ci-dessus), depuis la racine du worktree, sous Git Bash
+# (MSYS_NO_PATHCONV=1). Seuls les emplacements que le runbook demande de remplir sont substitués (<object_key>,
+# '…' des mots de passe).
+#
+# MISE EN PLACE (hors runbook) — écart déclaré : le `migrate` à froid (2 351 migrations) a été lancé et ABANDONNÉ
+# après 750 migrations en ~75 min (rythme tombé à ~35 s/migration, CPU-bound sur le rendu d'état Django : ~15 h
+# projetées). Base reconstruite neuve : extensions vector/pg_trgm/unaccent/btree_gist, schéma créé depuis les
+# modèles (`migrate --run-syncdb` avec migrations désactivées, 3 min 37), puis `migrate --fake` (2 351 migrations
+# consignées, 3 min 07), puis `manage.py seed_demo` (société « TAQINOR Démo », 15 rôles, 5 utilisateurs, 5 devis,
+# 3 leads). Un fichier de test posé dans chaque bucket métier (erp-uploads/ged/1/acceptation-runbook.txt,
+# erp-pdf/devis/acceptation-runbook.pdf). Sauvegarde RÉELLE : `docker compose exec -T django_core python manage.py
+# dump_database` ⇒ « dump_database: OK — BackupRun #1, 7296311 octets, objet pg_dumps/20261110-213515.dump »,
+# detail.fichiers = {erp-pdf: {objets 1, octets 28}, erp-uploads: {objets 1, octets 34}}.
+#
+# Verdict : PASS — les étapes 2, 3, 4 (check) et 5 passent telles qu'écrites (code 0) ; restauration réelle vers
+# erp_restaure (BackupRun #2 kind restore termine, comptages users 5 / devis 5 / leads 3, fichiers recopiés vers
+# erp-uploads-restaure / erp-pdf-restaure) ; `manage.py check` sur erp_restaure sans erreur ; GET authentifié
+# /api/django/crm/leads/ 200 servi par erp_restaure ; bascule (étape 6) jouée sur la pile privée ⇒ gunicorn sert
+# erp_restaure et les buckets -restaure. Aucune commande écrite n'a échoué. Trois IMPRÉCISIONS du texte (pas des
+# échecs) relevées en fin de trace.
+
+## Étape 1 — choisir le dump (le runbook ne donne PAS de commande ; lecture faite ainsi)
+$ docker compose exec -T django_core python manage.py shell -c "from core.models import BackupRun; from core.backup import _minio_client; r=BackupRun.objects.filter(kind='db_dump', statut='termine').latest('termine_le'); print('BackupRun', r.pk, r.object_key); print(sorted(o['Key'] for o in _minio_client().list_objects_v2(Bucket='erp-backups', Prefix='fichiers/')['Contents']))" 2>&1 | tail -2
+BackupRun 1 pg_dumps/20261110-213515.dump
+['fichiers/erp-pdf/devis/acceptation-runbook.pdf', 'fichiers/erp-uploads/ged/1/acceptation-runbook.txt']
+[code retour 0]
+⇒ OK : object_key choisi = pg_dumps/20261110-213515.dump ; fichiers du dump bien sous erp-backups/fichiers/<bucket>/.
+
+## Étape 2 — telle qu'écrite
+$ docker compose cp backend/db/rls_roles.sql django_core:/tmp/rls_roles.sql
+ accept-runbook-django_core-1 Copying backend/db/rls_roles.sql to accept-runbook-django_core-1:/tmp/rls_roles.sql
+ accept-runbook-django_core-1 Copied backend/db/rls_roles.sql to accept-runbook-django_core-1:/tmp/rls_roles.sql
+[code retour 0]
+⇒ OK (le service `django_core` existe : correctif #1347 confirmé ; avec l'ancien `django` cette ligne échouait).
+
+## Étape 3 — telle qu'écrite (<object_key> rempli, sans -T comme dans le texte)
+$ docker compose exec django_core python manage.py restaurer_sauvegarde --dump pg_dumps/20261110-213515.dump --base erp_restaure --suffixe-buckets=-restaure --roles-sql /tmp/rls_roles.sql
+System check identified some issues:
+WARNINGS:
+?: (crm.W010) META_LEAD_ADS_APP_SECRET n'est pas configuré : … (avertissement attendu, secret de webhook non posé)
+?: (notifications.W010) WHATSAPP_BSP_APP_SECRET n'est pas configuré : … (idem)
+restaurer_sauvegarde: OK — BackupRun #2, base=erp_restaure, comptages={'authentication_customuser': 5, 'ventes_devis': 5, 'crm_lead': 3}, fichiers={'erp-uploads-restaure': {'objets': 1}, 'erp-pdf-restaure': {'objets': 1}}
+[code retour 0]
+Vérifications (lecture, hors runbook) :
+- bases présentes : erp_db, erp_restaure (la base restaurée est CONSERVÉE) ; 703 tables dans chacune ; 2 351 lignes
+  django_migrations dans chacune ; crm_lead 3 / 3.
+- rôles : app_rls (LOGIN, NOBYPASSRLS), sql_agent_ro (LOGIN, NOBYPASSRLS) ; dans erp_restaure : propriétaire des 703
+  tables = erp_user (propriétaires restaurés, pas de --no-owner), 2 812 droits accordés à app_rls, 21 à sql_agent_ro
+  (SELECT seul sur la liste blanche de l'agent : ventes_devis, ventes_facture, crm_client, stock_produit, …).
+- BackupRun #2 : kind restore, statut termine, detail = {base: erp_restaure, message: « Restauration réussie. »,
+  fichiers {erp-pdf-restaure: 1, erp-uploads-restaure: 1}, comptages {crm_lead 3, ventes_devis 5,
+  authentication_customuser 5}, source_object_key pg_dumps/20261110-213515.dump}.
+
+## Étape 4 — « Vérifier » : la commande écrite, telle quelle
+$ docker compose exec -e DB_NAME=erp_restaure django_core python manage.py check
+System check identified some issues:
+WARNINGS:
+?: (crm.W010) … ; ?: (notifications.W010) … (les deux mêmes avertissements de secrets non posés)
+System check identified 2 issues (0 silenced).
+[code retour 0]
+⇒ OK : aucune erreur.
+
+## Étape 4 — « puis un GET authentifié (ex. /api/django/crm/leads/) sur la base restaurée » (le runbook ne donne PAS
+## de commande pour servir la base restaurée avant la bascule ; joué en suivant la même forme `-e DB_NAME=erp_restaure`)
+Marqueur : APRÈS le dump, dans erp_db SEULEMENT : `update crm_lead set nom = 'Idrissi (modifie APRES le dump, base erp_db
+seulement)' where id = 1` ⇒ une réponse qui montre « Idrissi » nu vient de la base restaurée.
+$ docker compose exec -d -e DB_NAME=erp_restaure django_core python manage.py runserver 0.0.0.0:8001 --noreload
+[code retour 0]
+(premier essai du GET avant que le serveur écoute : Connection refused — serveur prêt 30 s plus tard ; rejoué)
+$ docker compose exec -T -e DB_NAME=erp_restaure django_core python manage.py shell -c "from django.db import connection; print('base servie avec -e DB_NAME=erp_restaure :', connection.settings_dict['NAME'])"
+base servie avec -e DB_NAME=erp_restaure : erp_restaure
+$ docker compose exec -T django_core python /tmp/get_leads.py 8001     (demo_admin, mot de passe de seed_demo)
+POST /api/django/token/ -> 200 cookies: ['access_token', 'refresh_token']
+GET /api/django/crm/leads/ -> 200 count 3 leads ['Bouazza', 'El Amrani', 'Idrissi']
+[code retour 0]
+Contre-épreuve sur la base vivante (gunicorn :8000, erp_db) :
+POST /api/django/token/ -> 200 cookies: ['access_token', 'refresh_token']
+GET /api/django/crm/leads/ -> 200 count 3 leads ['Bouazza', 'El Amrani', 'Idrissi (modifie APRES le dump, base erp_db seulement)']
+⇒ OK : le GET authentifié est servi par erp_restaure (le marqueur postérieur au dump est absent).
+
+## Étape 5 — mots de passe des rôles
+(a) `ALTER ROLE app_rls PASSWORD '…'` — le runbook donne le SQL, pas l'outil ; joué en psql propriétaire dans le service db :
+$ docker compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d erp_restaure -v ON_ERROR_STOP=1 -c "ALTER ROLE app_rls PASSWORD '"'"'test_accept_runbook_app_rls'"'"'"'
+ALTER ROLE
+[code retour 0]
+(b) telle qu'écrite :
+$ bash backend/db/provision_sql_agent_ro.sh
+provision_sql_agent_ro : role sql_agent_ro provisionne.
+[code retour 0]
+Vérification (connexion PAR MOT DE PASSE, -h localhost) :
+app_rls connecte a erp_restaure, bypassrls=false
+sql_agent_ro lit ventes_devis (liste blanche) sur erp_restaure : 5
+ERROR:  permission denied for table crm_lead        (lecture hors liste blanche refusée — attendu)
+ERROR:  permission denied for table ventes_devis    (`delete from ventes_devis` refusé — attendu)
+⇒ OK.
+
+## Étape 6 — bascule (en production : geste de Reda ; ici jouée sur la pile PRIVÉE seulement)
+`.env` : DB_NAME=erp_restaure, MINIO_BUCKET_UPLOADS=erp-uploads-restaure, MINIO_BUCKET_PDF=erp-pdf-restaure.
+« puis redémarrer la pile » — le texte ne dit pas comment ; les deux lectures possibles ont été jouées :
+$ docker compose restart django_core celery_worker && docker compose exec -T django_core sh -c 'echo "DB_NAME vu par le conteneur apres restart : $DB_NAME ; MINIO_BUCKET_UPLOADS=$MINIO_BUCKET_UPLOADS"'
+DB_NAME vu par le conteneur apres restart : erp_db ; MINIO_BUCKET_UPLOADS=erp-uploads
+[code retour 0]
+⇒ `docker compose restart` NE relit PAS le .env : la pile resterait sur l'ANCIENNE base.
+$ docker compose up -d django_core celery_worker && docker compose exec -T django_core sh -c 'echo "DB_NAME vu par le conteneur apres up -d : $DB_NAME ; MINIO_BUCKET_UPLOADS=$MINIO_BUCKET_UPLOADS ; MINIO_BUCKET_PDF=$MINIO_BUCKET_PDF"'
+ Container accept-runbook-db-1 Recreate      (POSTGRES_DB vient aussi de DB_NAME : le conteneur db est recréé — volume conservé)
+ … django_core, celery_worker Recreated / Started
+DB_NAME vu par le conteneur apres up -d : erp_restaure ; MINIO_BUCKET_UPLOADS=erp-uploads-restaure ; MINIO_BUCKET_PDF=erp-pdf-restaure
+[code retour 0]
+GET via gunicorn :8000 après bascule :
+POST /api/django/token/ -> 200 cookies: ['access_token', 'refresh_token']
+GET /api/django/crm/leads/ -> 200 count 3 leads ['Bouazza', 'El Amrani', 'Idrissi']
+Fichiers lus par l'application sur les buckets de réglage :
+erp-uploads-restaure ['ged/1/acceptation-runbook.txt'] b'fichier GED de test accept-runbook'
+erp-pdf-restaure ['devis/acceptation-runbook.pdf'] b'%PDF-1.4 test accept-runbook'
+⇒ OK avec `docker compose up -d`.
+
+## Garde (paragraphe « Garde : » du runbook), après bascule (base de production de la pile = erp_restaure)
+$ docker compose exec -T django_core python manage.py restaurer_sauvegarde --dump pg_dumps/20261110-213515.dump --base erp_restaure --suffixe-buckets=-restaure --roles-sql /tmp/rls_roles.sql
+CommandError: La base cible est la base de production ('erp_restaure') : relancer avec --remplacer-production erp_restaure pour confirmer.
+$ docker compose exec -T django_core python manage.py restaurer_sauvegarde --dump pg_dumps/20261110-213515.dump --base erp_essai_suffixe_vide --suffixe-buckets= --roles-sql /tmp/rls_roles.sql
+CommandError: Un suffixe de buckets vide écraserait les fichiers vivants : confirmer avec --remplacer-production <nom de la base de production>.
+bases presentes : erp_db, erp_restaure       (rien créé par les deux refus)
+⇒ OK.
+
+## IMPRÉCISIONS DU TEXTE (aucune commande écrite n'a échoué ; signalées pour une prochaine passe du runbook)
+1. Étape 6 « puis redémarrer la pile » : `docker compose restart` garde l'ancien environnement (prouvé ci-dessus :
+   DB_NAME=erp_db après restart). Il faut écrire `docker compose up -d` (recrée les conteneurs et relit le .env) ;
+   noter aussi que le conteneur db est recréé (POSTGRES_DB suit DB_NAME), sans perte (volume conservé).
+2. Étape 4 « un GET authentifié … sur la base restaurée » : aucune commande pour SERVIR la base restaurée avant la
+   bascule ; ici `docker compose exec -d -e DB_NAME=erp_restaure django_core python manage.py runserver 0.0.0.0:8001
+   --noreload` puis login + GET depuis le conteneur.
+3. Étape 5 : `ALTER ROLE app_rls PASSWORD '…'` sans l'outil (psql propriétaire dans le service db) ; et
+   `provision_sql_agent_ro.sh` rejoue les GRANT sur `POSTGRES_DB` (= l'ANCIENNE base tant que la bascule n'est pas
+   faite) — sans effet de bord ici (le mot de passe de rôle est global, les GRANT de erp_restaure viennent déjà de
+   restaurer_sauvegarde), à savoir si l'ordre 5 → 6 est inversé.
+Verdict : PASS
