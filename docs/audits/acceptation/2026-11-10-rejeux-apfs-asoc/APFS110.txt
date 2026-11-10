@@ -1,0 +1,94 @@
+# Preuve en direct APFS110 — rejeu accept-apfs-asoc, code joué c97df310d (origin/main, merge de #1318), 2026-11-10
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau accept-apfs-net ; accept-apfs-db (pgvector pg16,
+# 127.0.0.1:5548, base erp_accept_apfs = pg_dump --no-owner de la base locale erp_live en lecture seule, puis
+# `manage.py migrate`) ; accept-apfs-redis ; accept-apfs-minio (MinIO privé : le rendu /proposal et l'envoi de devis
+# écrivent leur PDF dans le stockage) ; accept-apfs-dj (image erp-agentique-django_core, code backend du commit joué
+# COPIÉ par tar dans /srv/app, settings.dev, mail locmem, runserver 127.0.0.1:8018, DB_CONN_MAX_AGE=0) ;
+# accept-apfs-fa (image erp-agentique-fastapi_ia, code backend/fastapi_ia du commit joué copié, uvicorn 127.0.0.1:8019,
+# relais Django = accept-apfs-dj, aucune clé Groq/Zhipu).
+# Sondes : python scripts/sonde.py <G>/<sonde> --conteneur accept-apfs-dj (transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sondes du dossier d'audit : verdict ÉCART = `repro` faux = le défaut d'origine
+# n'est PLUS reproduit. Sondes C-LIVE-* écrites pour ce rejeu (source jointe) : elles rejouent le Given/When/Then de la
+# tâche ; ICI repro=true (verdict REPRO) signifie que le comportement ATTENDU est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8018
+# vite preview --port 5198`), piloté par Playwright MCP, comptes de test acc_apfs_<rôle> (société « Acceptation APFS »,
+# rôles système, mot de passe de test généré, base jetable) et compte portail acc_portail@example.invalid.
+# Fixtures écran FIX-APFS (persistées dans la base jetable) : leads Zerouali Karim (Commercial acc_apfs_com, GPS),
+# Collegue Samir (acc_apfs_com2), Corbeille Test, Filleul Nadia ; devis DEV-ACC-APFS-1 accepté → chantier
+# CH-ACC-APFS-1 (technicien acc_apfs_tech) + dossier réglementaire ; fournisseur ACC ; remise REM-ACC-APFS-1 ;
+# garantie SN-ACC-APFS-1 ; réquisition DA-ACC-APFS-1 (10 × 750) ; facture FAC-ACC-APFS-14 (TVA 14 %) ; demande
+# portail « Onduleur en défaut ACC » ; type d'approbation « Remise exceptionnelle ACC » (palier admin) ; demandes
+# 09-08 (reçues, en vérification, partielle) ; société B « Acceptation APFS B » (acc_apfs_adm membre).
+# Captures : C:\dev\taqinor-os\logs\nightly-qa\playwright\accept-apfs\.
+# Verdict : PASS — sondes C-APFS-040 (facettes clé et webhook non reproduites : 403 à tout rôle sans integrations_gerer) et C-LIVE-APFS110 (rôle integrations_gerer sans ventes_voir : clé 400 « Portée non détenue : read:factures », webhook 400 « Évènement non détenu : facture.created » ; Admin RH 403 ; Directeur 201) ; écran Paramètres › API & Webhooks en Admin RH : « Créer la clé » → 403 affiché, aucune clé
+
+== C-APFS-040 (sha 57d3fd371d)
+attendu : repro si Admin RH et Technicien responsable (sans code CRM/ventes/parametres) obtiennent 201 clé + lecture des leads par la clé, 201 webhook, 200 désactivation de module, 200 plan core, 200 approbation d'une demande palier admin, alors que le témoin ASEC31 (parametres/update) leur répond 403 ; Commercial/Technicien 403 partout
+observé : {'feuille': 'achats', 'roles': {'Directeur': {'menu_tier': 'admin', 'perms': {'users_voir': True, 'roles_gerer': True, 'parametres_modifier': True, 'crm_codes': ['crm_creer', 'crm_export', 'crm_modifier'], 'facture_codes': []}, 'jwt_role_claim': 'admin', 'temoin_asec31_profile': 200, 'cle_http': 201, 'cle_lecture_leads': {'http': 200, 'noms': ['Prospect A confidentiel']}, 'cle_lecture_factures_http': 200, 'webhook_http': 201, 'module_desactiver_http': 200, 'module_coupe': True, 'plan_temoin_publicapi_http': 403, 'plan_core_http': 200, 'plan_ecrit': {'actif': False, 'quota_par_jour': 0}, 'garde': {'matrices': 400, 'workflows': 400, 'theme': 200, 'gabarits': 400}, 'approbation_palier_admin': {'http': 200, 'statut': 'approved'}}, 'Administrateur': {'menu_tier': 'admin', 'perms': {'users_voir': True, 'roles_gerer': True, 'parametres_modifier': True, 'crm_codes': ['crm_creer', 'crm_export', 'crm_modifier'], 'facture_codes': []}, 'jwt_role_claim': 'admin', 'temoin_asec31_profile': 200, 'cle_http': 201, 'cle_lecture_leads': {'http': 200, 'noms': ['Prospect A confidentiel']}, 'cle_lecture_factures_http': 200, 'webhook_http': 201, 'module_desactiver_http': 200, 'module_coupe': True, 'plan_temoin_publicapi_http': 403, 'plan_core_http': 200, 'plan_ecrit': {'actif': False, 'quota_par_jour': 0}, 'garde': {'matrices': 400, 'workflows': 400, 'theme': 200, 'gabarits': 400}, 'approbation_palier_admin': {'http': 200, 'statut': 'approved'}}, 'Responsable': {'menu_tier': 'responsable', 'perms': {'users_voir': True, 'roles_gerer': False, 'parametres_modifier': False, 'crm_codes': ['crm_creer', 'crm_export', 'crm_modifier'], 'facture_codes': []}, 'jwt_role_claim': 'responsable', 'temoin_asec31_profile': 403, 'cle_http': 403, 'webhook_http': 403, 'module_desactiver_http': 403, 'module_coupe': False, 'plan_temoin_publicapi_http': 403, 'plan_core_http': 403, 'plan_ecrit': {'actif': True, 'quota_par_jour': 10000}, 'garde': {'matrices': 403, 'workflows': 403, 'theme': 403, 'gabarits': 403}, 'approbation_palier_admin': {'http': 403, 'statut': 'pending'}}, 'Admin RH': {'menu_tier': 'responsable', 'perms': {'users_voir': True, 'roles_gerer': False, 'parametres_modifier': False, 'crm_codes': [], 'facture_codes': []}, 'jwt_role_claim': 'responsable', 'temoin_asec31_profile': 403, 'cle_http': 403, 'webhook_http': 403, 'module_desactiver_http': 403, 'module_coupe': False, 'plan_temoin_publicapi_http': 403, 'plan_core_http': 403, 'plan_ecrit': {'actif': True, 'quota_par_jour': 10000}, 'garde': {'matrices': 403, 'workflows': 403, 'theme': 403, 'gabarits': 403}, 'approbation_palier_admin': {'http': 403, 'statut': 'pending'}}, 'Admin Ventes': {'menu_tier': 'responsable', 'perms': {'users_voir': True, 'roles_gerer': False, 'parametres_modifier': False, 'crm_codes': ['crm_creer', 'crm_export', 'crm_modifier'], 'facture_codes': []}, 'jwt_role_claim': 'responsable', 'temoin_asec31_profile': 403, 'cle_http': 403, 'webhook_http': 403, 'module_desactiver_http': 403, 'module_coupe': False, 'plan_temoin_publicapi_http': 403, 'plan_core_http': 403, 'plan_ecrit': {'actif': True, 'quota_par_jour': 10000}, 'garde': {'matrices': 403, 'workflows': 403, 'theme': 403, 'gabarits': 403}, 'approbation_palier_admin': {'http': 403, 'statut': 'pending'}}, 'Technicien responsable': {'menu_tier': 'responsable', 'perms': {'users_voir': True, 'roles_gerer': False, 'parametres_modifier': False, 'crm_codes': [], 'facture_codes': []}, 'jwt_role_claim': 'responsable', 'temoin_asec31_profile': 403, 'cle_http': 403, 'webhook_http': 403, 'module_desactiver_http': 403, 'module_coupe': False, 'plan_temoin_publicapi_http': 403, 'plan_core_http': 403, 'plan_ecrit': {'actif': True, 'quota_par_jour': 10000}, 'garde': {'matrices': 403, 'workflows': 403, 'theme': 403, 'gabarits': 403}, 'approbation_palier_admin': {'http': 403, 'statut': 'pending'}}, 'Commercial responsable': {'menu_tier': 'responsable', 'perms': {'users_voir': True, 'roles_gerer': False, 'parametres_modifier': False, 'crm_codes': ['crm_creer', 'crm_export', 'crm_modifier'], 'facture_codes': []}, 'jwt_role_claim': 'responsable', 'temoin_asec31_profile': 403, 'cle_http': 403, 'webhook_http': 403, 'module_desactiver_http': 403, 'module_coupe': False, 'plan_temoin_publicapi_http': 403, 'plan_core_http': 403, 'plan_ecrit': {'actif': True, 'quota_par_jour': 10000}, 'garde': {'matrices': 403, 'workflows': 403, 'theme': 403, 'gabarits': 403}, 'approbation_palier_admin': {'http': 403, 'statut': 'pending'}}, 'Commercial': {'menu_tier': 'normal', 'perms': {'users_voir': False, 'roles_gerer': False, 'parametres_modifier': False, 'crm_codes': ['crm_creer', 'crm_export', 'crm_modifier'], 'facture_codes': []}, 'jwt_role_claim': 'normal', 'temoin_asec31_profile': 403, 'cle_http': 403, 'webhook_http': 403, 'module_desactiver_http': 403, 'module_coupe': False, 'plan_temoin_publicapi_http': 403, 'plan_core_http': 403, 'plan_ecrit': {'actif': True, 'quota_par_jour': 10000}, 'garde': {'matrices': 403, 'workflows': 403, 'theme': 403, 'gabarits': 403}, 'approbation_palier_admin': {'http': 403, 'statut': 'pending'}}, 'Technicien': {'menu_tier': 'normal', 'perms': {'users_voir': False, 'roles_gerer': False, 'parametres_modifier': False, 'crm_codes': [], 'facture_codes': []}, 'jwt_role_claim': 'normal', 'temoin_asec31_profile': 403, 'cle_http': 403, 'webhook_http': 403, 'module_desactiver_http': 403, 'module_coupe': False, 'plan_temoin_publicapi_http': 403, 'plan_core_http': 403, 'plan_ecrit': {'actif': True, 'quota_par_jour': 10000}, 'garde': {'matrices': 403, 'workflows': 403, 'theme': 403, 'gabarits': 403}, 'approbation_palier_admin': {'http': 403, 'statut': 'pending'}}}, 'B': {'cles': 0, 'webhooks': 0, 'toggles': 0, 'plan_inchange': True}, 'A_cles_emises': 2}
+{"feuille": "achats", "roles": {"Directeur": {"menu_tier": "admin", "perms": {"users_voir": true, "roles_gerer": true, "parametres_modifier": true, "crm_codes": ["crm_creer", "crm_export", "crm_modifier"], "facture_codes": []}, "jwt_role_claim": "admin", "temoin_ase
+verdict : ÉCART
+base inchangée : oui (avant 2208, après 2208) ; mails 0 ; tâches Celery bloquées 0
+
+== C-LIVE-APFS110 (sha c97df310d)
+attendu : rôle integrations_gerer sans ventes_voir : clé read:factures 400 « Portée non détenue : read:factures », webhook facture.created 400 ; Admin RH 403 ; Directeur 201
+observé : {"integ_sans_ventes": {"tier": "admin", "cle": [400, "{'scopes': [ErrorDetail(string='Portée non détenue : read:factures', code='invalid'), ErrorDetail(string='Portée non détenue : devis:write', code='invalid')], 'error': {'code': 'validation_error', 'me"], "webhook": [400, "{'events': [ErrorDetail(string='Évènement non détenu : facture.created', code='invalid')], 'error': {'code': 'validation_error', 'message': 'Évènement non détenu : facture.created', 'fields': {'events"]}, "admin_rh": {"tier": "responsable", "cle": [403, "{'detail': ErrorDetail(string=\"Vous n'avez pas la permission d'effectuer cette action.\", code='permission_denied'), 'error': {'code': 'permission_denied', 'message': ErrorDetail(string=\"Vous n'avez pa"], "webhook": [403, "{'detail': ErrorDetail(string=\"Vous n'avez pas la permission d'effectuer cette action.\", code='permission_denied'), 'error': {'code': 'permission_denied', 'message': ErrorDetail(string=\"Vous n'avez pa"]}, "directeur": {"tier": "admin", "cle": [201, "{'id': 53, 'label': 'cle directeur', 'prefix': 'tqk_live_PyVxRc0YR', 'scopes': ['read:leads', 'read:factures', 'devis:write'], 'enabled': True, 'api_version': 'v1', 'environnement': 'live', 'expire_le"], "webhook": [201, "{'id': 9, 'label': 'wh directeur', 'target_url': 'https://hooks.example.com/x', 'events': ['facture.created', 'lead.created'], 'enabled': True, 'filtres': {}, 'disabled_reason': '', 'disabled_at': Non"]}, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 151, après 151) ; mails 0 ; tâches Celery bloquées 0
+
+== Écran
+Écran Paramètres › API & Webhooks en Admin RH (acc_apfs_rh) : libellé « Clé ACC RH », « Créer la clé » → 403 POST
+/api/django/publicapi/keys/ ; toast « Vous n'avez pas la permission d'effectuer cette action. » ; « Aucune clé pour
+l'instant. » inchangé. Capture : APFS110-cle-adminrh.png
+
+# ---- source : C-LIVE-APFS110.py ----
+# flake8: noqa  (sonde LIVE du rejeu d'acceptation APFS/ASOC — volet « portée non détenue » de APFS110)
+"""APFS110 — un rôle porteur de `integrations_gerer` SANS `ventes_voir` (palier admin) : POST publicapi/keys/
+avec read:factures ⇒ 400 nommant read:factures ; webhook facture.created ⇒ 400 ; Admin RH ⇒ 403 ; Directeur ⇒
+201. repro=True signifie ICI que le comportement ATTENDU est observé."""
+SONDE = {"constat": "C-LIVE-APFS110", "sha": "c97df310d",
+         "attendu": "rôle integrations_gerer sans ventes_voir : clé read:factures 400 « Portée non détenue : read:factures », webhook facture.created 400 ; Admin RH 403 ; Directeur 201",
+         "modeles": ['publicapi.ApiKey', 'publicapi.Webhook', 'roles.Role', 'authentication.CustomUser']}
+
+
+def sonde(ctx):
+    from unittest import mock
+    from django.contrib.auth import get_user_model
+    from rest_framework.test import APIClient
+    from rest_framework_simplejwt.tokens import AccessToken
+    from authentication.models import Company
+    from authentication.role_tiers import tier_for_role_fields
+    from apps.roles.models import Role
+    from apps.roles import permissions_registre as reg
+    H = {'HTTP_HOST': 'localhost'}
+    U = get_user_model()
+    R = dict(reg.CANONICAL_SYSTEM_ROLES)
+    co = Company.objects.create(nom='Live APFS110', slug='live-apfs110')
+
+    def compte(nom, perms, suf, systeme=True):
+        role, _ = Role.objects.get_or_create(company=co, nom=nom, defaults={'permissions': perms, 'est_systeme': systeme})
+        u = U.objects.create_user(username='live110-' + suf, password='x', company=co, role=role,
+                                  role_legacy=tier_for_role_fields(nom, systeme, perms))
+        c = APIClient()
+        c.credentials(HTTP_AUTHORIZATION='Bearer ' + str(AccessToken.for_user(u)))
+        return u, c
+    perso = [p for p in R['Directeur'] if not p.startswith('ventes_') and not p.startswith('facture')]
+    assert 'integrations_gerer' in perso
+    out = {}
+    for tag, (nom, perms, syst) in {'integ_sans_ventes': ('Intégrateur sans ventes', perso, False),
+                                    'admin_rh': ('Admin RH', list(R['Admin RH']), True),
+                                    'directeur': ('Directeur', list(R['Directeur']), True)}.items():
+        u, c = compte(nom, perms, tag, syst)
+        k = c.post('/api/django/publicapi/keys/', {'label': 'cle ' + tag,
+                                                   'scopes': ['read:leads', 'read:factures', 'devis:write']},
+                   format='json', **H)
+        with mock.patch('apps.publicapi.serializers.validate_webhook_target_url', side_effect=lambda v: v):
+            w = c.post('/api/django/publicapi/webhooks/', {'label': 'wh ' + tag, 'target_url': 'https://hooks.example.com/x',
+                                                           'events': ['facture.created', 'lead.created']},
+                       format='json', **H)
+        out[tag] = {'tier': u.role_legacy, 'cle': [k.status_code, str(getattr(k, 'data', ''))[:200]],
+                    'webhook': [w.status_code, str(getattr(w, 'data', ''))[:200]]}
+    i = out['integ_sans_ventes']
+    out['repro'] = bool(i['cle'][0] == 400 and 'read:factures' in i['cle'][1] and i['webhook'][0] == 400
+                        and out['admin_rh']['cle'][0] == 403 and out['admin_rh']['webhook'][0] == 403
+                        and out['directeur']['cle'][0] == 201 and out['directeur']['webhook'][0] == 201)
+    return out

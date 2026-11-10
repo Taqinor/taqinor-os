@@ -1,0 +1,89 @@
+# Preuve en direct ASOC65 — rejeu accept-apfs-asoc, code joué c97df310d (origin/main, merge de #1318), 2026-11-10
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau accept-apfs-net ; accept-apfs-db (pgvector pg16,
+# 127.0.0.1:5548, base erp_accept_apfs = pg_dump --no-owner de la base locale erp_live en lecture seule, puis
+# `manage.py migrate`) ; accept-apfs-redis ; accept-apfs-minio (MinIO privé : le rendu /proposal et l'envoi de devis
+# écrivent leur PDF dans le stockage) ; accept-apfs-dj (image erp-agentique-django_core, code backend du commit joué
+# COPIÉ par tar dans /srv/app, settings.dev, mail locmem, runserver 127.0.0.1:8018, DB_CONN_MAX_AGE=0) ;
+# accept-apfs-fa (image erp-agentique-fastapi_ia, code backend/fastapi_ia du commit joué copié, uvicorn 127.0.0.1:8019,
+# relais Django = accept-apfs-dj, aucune clé Groq/Zhipu).
+# Sondes : python scripts/sonde.py <G>/<sonde> --conteneur accept-apfs-dj (transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sondes du dossier d'audit : verdict ÉCART = `repro` faux = le défaut d'origine
+# n'est PLUS reproduit. Sondes C-LIVE-* écrites pour ce rejeu (source jointe) : elles rejouent le Given/When/Then de la
+# tâche ; ICI repro=true (verdict REPRO) signifie que le comportement ATTENDU est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8018
+# vite preview --port 5198`), piloté par Playwright MCP, comptes de test acc_apfs_<rôle> (société « Acceptation APFS »,
+# rôles système, mot de passe de test généré, base jetable) et compte portail acc_portail@example.invalid.
+# Fixtures écran FIX-APFS (persistées dans la base jetable) : leads Zerouali Karim (Commercial acc_apfs_com, GPS),
+# Collegue Samir (acc_apfs_com2), Corbeille Test, Filleul Nadia ; devis DEV-ACC-APFS-1 accepté → chantier
+# CH-ACC-APFS-1 (technicien acc_apfs_tech) + dossier réglementaire ; fournisseur ACC ; remise REM-ACC-APFS-1 ;
+# garantie SN-ACC-APFS-1 ; réquisition DA-ACC-APFS-1 (10 × 750) ; facture FAC-ACC-APFS-14 (TVA 14 %) ; demande
+# portail « Onduleur en défaut ACC » ; type d'approbation « Remise exceptionnelle ACC » (palier admin) ; demandes
+# 09-08 (reçues, en vérification, partielle) ; société B « Acceptation APFS B » (acc_apfs_adm membre).
+# Captures : C:\dev\taqinor-os\logs\nightly-qa\playwright\accept-apfs\.
+# Verdict : PASS — sonde C-ASOC-063 repro faux (source en échec ⇒ 200 « partielle », {erreur} par source, 2e traiter 200) ; sonde C-LIVE-ASOC65 : source réparée, 2e traiter ⇒ 200 « traitee », traitee_le posé, client anonymisé
+
+== C-ASOC-063 (sha c514bd8ba)
+attendu : repro si traiter=200 statut=traitee avec resultat.zz_sonde.erreur, client anonymisé, 2e traiter=409
+observé : {'creation_http': 201, 'traiter1_http': 200, 'traiter1_statut': 'partielle', 'resultat_zz': {'erreur': 'stockage des photos indisponible (simulé)'}, 'resultat_crm': {'erreur': 'différé : source précédente en échec'}, 'client_anonymise': False, 'traiter2_http': 200, 'traiter2_detail': "{'id': 15, 'subject_identifier': 'asoc063@example.invalid', 'kind': 'effacement', 'statut': 'partielle', 'resultat': {'calepinage': {'anonymises': 0}, 'stock': {'pseudonymises': 0, 'motif_conservation", 'statut_final': 'partielle', 'fournisseurs_restants': ['calepinage', 'crm', 'installations', 'notifications', 'portail', 'sav', 'stock', 'tiers', 'ventes']}
+{"creation_http": 201, "traiter1_http": 200, "traiter1_statut": "partielle", "resultat_zz": {"erreur": "stockage des photos indisponible (simulé)"}, "resultat_crm": {"erreur": "différé : source précédente en échec"}, "client_anonymise": false, "traiter2_http": 200, "traiter2_detail": "{'id': 15, 'subject_identifier': 'asoc063@example.invalid', 'kind': 'effacement', 'statut': 'partielle', 'resultat': {'calepinage': {'anonymises': 0}, 'stock': {'pseudonymises': 0, 'motif_conservation", "statut_final": "partielle", "fournisseurs_restants": ["calepinage", "crm", "installations", "notifications", "portail", "sav", "stock", "tiers", "ventes"], "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 1057, après 1057) ; mails 0 ; tâches Celery bloquées 0
+
+== C-LIVE-ASOC65 (sha c97df310d)
+attendu : traiter 1 : 200 partielle, resultat.<source>.erreur ; source réparée, traiter 2 : 200 traitee, traitee_le posé ; client anonymisé
+observé : {"creation_http": 201, "traiter1": [200, "partielle", {"erreur": "stockage des photos indisponible (simulé)"}], "traiter2": [200, "traitee", {"effaces": 0}], "traitee_le": "2026-11-10T12:15:08.645185Z", "statut_final": "traitee", "client_anonymise": true, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 1064, après 1064) ; mails 0 ; tâches Celery bloquées 0
+
+# ---- source : C-LIVE-ASOC65.py ----
+# flake8: noqa  (sonde LIVE du rejeu d'acceptation APFS/ASOC — scénario exact de ASOC65, vraies routes)
+"""ASOC65 — effacement avec une source DSR en échec ⇒ 200 « partielle » + {erreur} par source ; la source
+RÉPARÉE, 2e traiter ⇒ 200 « traitee », traitee_le posé. repro=True signifie ICI que le comportement ATTENDU
+par la tâche est observé."""
+SONDE = {"constat": "C-LIVE-ASOC65", "sha": "c97df310d",
+         "attendu": "traiter 1 : 200 partielle, resultat.<source>.erreur ; source réparée, traiter 2 : 200 traitee, traitee_le posé ; client anonymisé",
+         "modeles": ['core.DSRRequest', 'crm.Client', 'authentication.Company']}
+
+
+def sonde(ctx):
+    from django.contrib.auth import get_user_model
+    from rest_framework.test import APIClient
+    from authentication.models import Company
+    from apps.crm.models import Client
+    from core import dsr
+    H = {'HTTP_HOST': 'localhost'}
+    co = Company.objects.create(nom='Live ASOC65', slug='live-asoc65')
+    u = get_user_model().objects.create_user(username='live_asoc65', password='x', role_legacy='admin', company=co)
+    api = APIClient()
+    api.force_authenticate(u)
+    cl = Client.objects.create(company=co, nom='Chraibi', prenom='Laila', email='live65@example.invalid')
+    etat = {'panne': True}
+
+    def source(company, ident):
+        if etat['panne']:
+            raise RuntimeError('stockage des photos indisponible (simulé)')
+        return {'effaces': 0}
+
+    dsr.register_dsr_provider('zz_live_asoc65', erase=source, erase_order=50)
+    try:
+        r = api.post('/api/django/core/dsr-requests/', {'subject_identifier': 'live65@example.invalid',
+                                                        'kind': 'effacement'}, format='json', **H)
+        rid = r.data['id']
+        t1 = api.post(f'/api/django/core/dsr-requests/{rid}/traiter/', {}, format='json', **H)
+        etat['panne'] = False
+        t2 = api.post(f'/api/django/core/dsr-requests/{rid}/traiter/', {}, format='json', **H)
+        g = api.get(f'/api/django/core/dsr-requests/{rid}/', **H)
+    finally:
+        dsr._PROVIDERS.pop('zz_live_asoc65', None)
+    cl.refresh_from_db()
+    res1 = t1.data.get('resultat') or {}
+    obs = {'creation_http': r.status_code,
+           'traiter1': [t1.status_code, t1.data.get('statut'), res1.get('zz_live_asoc65')],
+           'traiter2': [t2.status_code, t2.data.get('statut'), (t2.data.get('resultat') or {}).get('zz_live_asoc65')],
+           'traitee_le': str(g.data.get('traitee_le')), 'statut_final': g.data.get('statut'),
+           'client_anonymise': cl.is_anonymized}
+    obs['repro'] = bool(t1.status_code == 200 and obs['traiter1'][1] == 'partielle'
+                        and isinstance(obs['traiter1'][2], dict) and 'erreur' in obs['traiter1'][2]
+                        and t2.status_code == 200 and obs['traiter2'][1] == 'traitee'
+                        and g.data.get('traitee_le') and cl.is_anonymized)
+    return obs

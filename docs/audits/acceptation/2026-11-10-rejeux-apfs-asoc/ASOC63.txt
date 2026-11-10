@@ -1,0 +1,30 @@
+# Preuve en direct ASOC63 — rejeu accept-apfs-asoc, code joué c97df310d (origin/main, merge de #1318), 2026-11-10
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau accept-apfs-net ; accept-apfs-db (pgvector pg16,
+# 127.0.0.1:5548, base erp_accept_apfs = pg_dump --no-owner de la base locale erp_live en lecture seule, puis
+# `manage.py migrate`) ; accept-apfs-redis ; accept-apfs-minio (MinIO privé : le rendu /proposal et l'envoi de devis
+# écrivent leur PDF dans le stockage) ; accept-apfs-dj (image erp-agentique-django_core, code backend du commit joué
+# COPIÉ par tar dans /srv/app, settings.dev, mail locmem, runserver 127.0.0.1:8018, DB_CONN_MAX_AGE=0) ;
+# accept-apfs-fa (image erp-agentique-fastapi_ia, code backend/fastapi_ia du commit joué copié, uvicorn 127.0.0.1:8019,
+# relais Django = accept-apfs-dj, aucune clé Groq/Zhipu).
+# Sondes : python scripts/sonde.py <G>/<sonde> --conteneur accept-apfs-dj (transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sondes du dossier d'audit : verdict ÉCART = `repro` faux = le défaut d'origine
+# n'est PLUS reproduit. Sondes C-LIVE-* écrites pour ce rejeu (source jointe) : elles rejouent le Given/When/Then de la
+# tâche ; ICI repro=true (verdict REPRO) signifie que le comportement ATTENDU est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8018
+# vite preview --port 5198`), piloté par Playwright MCP, comptes de test acc_apfs_<rôle> (société « Acceptation APFS »,
+# rôles système, mot de passe de test généré, base jetable) et compte portail acc_portail@example.invalid.
+# Fixtures écran FIX-APFS (persistées dans la base jetable) : leads Zerouali Karim (Commercial acc_apfs_com, GPS),
+# Collegue Samir (acc_apfs_com2), Corbeille Test, Filleul Nadia ; devis DEV-ACC-APFS-1 accepté → chantier
+# CH-ACC-APFS-1 (technicien acc_apfs_tech) + dossier réglementaire ; fournisseur ACC ; remise REM-ACC-APFS-1 ;
+# garantie SN-ACC-APFS-1 ; réquisition DA-ACC-APFS-1 (10 × 750) ; facture FAC-ACC-APFS-14 (TVA 14 %) ; demande
+# portail « Onduleur en défaut ACC » ; type d'approbation « Remise exceptionnelle ACC » (palier admin) ; demandes
+# 09-08 (reçues, en vérification, partielle) ; société B « Acceptation APFS B » (acc_apfs_adm membre).
+# Captures : C:\dev\taqinor-os\logs\nightly-qa\playwright\accept-apfs\.
+# Verdict : PASS — sonde C-ASOC-062 repro faux : parrain effacé ⇒ phrase du prescripteur omise, prescripteur aux manquants ; témoin vivant « Benali nous a parlé de vous »
+
+== C-ASOC-062 (sha c514bd8ba)
+attendu : repro si le message après effacement contient « Anonymisé nous a parlé de vous »
+observé : {'R1_avant': {'message': "Bonjour Hamid, je suis Youssef de Sonde ASOC 062. Benali nous a parlé de vous pour le solaire. Je vous appelle dans quelques minutes pour une première estimation; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange. Répondez STOP et je n'insiste ", 'manquants': [], 'prescripteur_fn': 'Benali'}, 'R1_effacer': 1, 'R1_parrain_nom': 'Anonymisé', 'R1_apres': {'message': "Bonjour Hamid, je suis Youssef de Sonde ASOC 062. Je vous appelle dans quelques minutes pour une première estimation; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange. Répondez STOP et je n'insiste plus.", 'manquants': ['prescripteur'], 'prescripteur_fn': ''}, 'R2_avant': {'message': "Bonjour Driss, je suis Youssef de Sonde ASOC 062. Nadia nous a parlé de vous pour le solaire. Je vous appelle dans quelques minutes pour une première estimation; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange. Répondez STOP et je n'insiste p", 'manquants': [], 'prescripteur_fn': 'Nadia'}, 'R2_effacer': 1, 'R2_apres': {'message': "Bonjour Driss, je suis Youssef de Sonde ASOC 062. Je vous appelle dans quelques minutes pour une première estimation; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange. Répondez STOP et je n'insiste plus.", 'manquants': ['prescripteur'], 'prescripteur_fn': ''}}
+{"R1_avant": {"message": "Bonjour Hamid, je suis Youssef de Sonde ASOC 062. Benali nous a parlé de vous pour le solaire. Je vous appelle dans quelques minutes pour une première estimation; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange. Répondez STOP et je n'insiste ", "manquants": [], "prescripteur_fn": "Benali"}, "R1_effacer": 1, "R1_parrain_nom": "Anonymisé", "R1_apres": {"message": "Bonjour Hamid, je suis Youssef de Sonde ASOC 062. Je vous appelle dans quelques minutes pour une première estimation; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange. Répondez STOP et je n'insiste plus.", "manquants": ["prescripteur"], "prescripteur_fn": ""}, "R2_avant": {"message": "Bonjour Driss, je suis Youssef de Sonde ASOC 062. Nadia nous a parlé de vous pour le solaire. Je vous appelle dans quelques minutes pour une première estimation; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange. Répondez STOP et je n'insiste p", "manquants": [], "prescripteur_fn": "Nadia"}, "R2_effacer": 1, "R2_apres": {"message": "Bonjour Driss, je suis Youssef de Sonde ASOC 062. Je vous appelle dans quelques minutes pour une première estimation; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange. Répondez STOP et je n'insiste plus.", "manquants": ["prescripteur"], "prescripteur_fn": ""}, "temoin_ok": true, "defaut_parrain": false, "defaut_locataire": false, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 11658, après 11658) ; mails 0 ; tâches Celery bloquées 0

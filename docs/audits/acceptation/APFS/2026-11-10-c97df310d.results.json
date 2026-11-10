@@ -1,0 +1,563 @@
+{
+  "sha": "c97df310d63ac657bc6fec2504007ebc4dc668bd",
+  "date": "2026-11-10",
+  "groupe": "APFS",
+  "verdict": "PASS",
+  "couvre": [
+    "APFS1",
+    "APFS2",
+    "APFS3",
+    "APFS20",
+    "APFS21",
+    "APFS23",
+    "APFS24",
+    "APFS25",
+    "APFS26",
+    "APFS27",
+    "APFS40",
+    "APFS42",
+    "APFS66",
+    "APFS102",
+    "APFS105",
+    "APFS106",
+    "APFS107",
+    "APFS108",
+    "APFS109",
+    "APFS110",
+    "APFS111",
+    "APFS112",
+    "APFS115",
+    "APFS116"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "APFSLIVE.APFS1.preuve_en_direct",
+      "taches": [
+        "APFS1"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/APFS1.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": "sonde C-APFS-001 repro faux (portail : saved-queries/run, saved-queries, dashboards, corbeille, paiements-en-ligne, scheduled-exports = 403, auth/me 200, aucune fuite B) ; C-APFS-001-L2 : 0 GET de liste à 200 avec lignes de la société, les 8 réponses 200 du compte portail = auth/me, health live/ready, clé VAPID, statuspage public (3), thème portail public. NOTE : le drapeau calculé de la L2 reste vrai par construction (il exige seulement qu'une vue IsAuthenticated laisse passer le portail, et `auth/me` en est une) ; la condition « GET de liste 200 + lignes » de son attendu n'est plus observée"
+    },
+    {
+      "id": "APFSLIVE.APFS2.preuve_en_direct",
+      "taches": [
+        "APFS2"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/APFS2.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "rejeu HTTP réel (jetons émis par Django, FastAPI du commit joué) : portail 403 « Accès réservé aux comptes internes. » sur /sql-agent/query, /sql-agent/transcribe, /ocr/process_document, 3 refus journalisés par app.core.security (user_id, company_id, chemin) ; Directeur passe la garde (query 200, transcribe 200 ; OCR 503 du limiteur, sans clé Zhipu — la garde est franchie). Volet « relais injoignable ⇒ 403 » non rejoué (couvert par les tests nommés)"
+    },
+    {
+      "id": "APFSLIVE.APFS3.preuve_en_direct",
+      "taches": [
+        "APFS3"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/APFS3.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écran : Directeur réinitialise acc_apfs_com2 (POST users/607/reinitialiser-mot-de-passe 200) → connexion → /mot-de-passe ; /dashboard re-redirigé vers /mot-de-passe ; crm/leads 403 mot_de_passe_a_changer ; changement (auth/change-password 200) → /apps, crm/leads 200 ; sonde C-APFS-002 repro faux (expiré et réinitialisé : GET/POST crm/leads 403 mot_de_passe_a_changer, auth/me 200)"
+    },
+    {
+      "id": "APFSLIVE.APFS20.preuve_en_direct",
+      "taches": [
+        "APFS20"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/APFS20.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": "sonde C-APFS-022 repro faux : Admin RH liste vide 200 / téléchargement 404 / commentaires vides / dépôt 404 sur facture, fournisseur, DA, devis ; Directeur pièce listée, 200 + octets, commentaire lu, 201 ; cible B jamais listée"
+    },
+    {
+      "id": "APFSLIVE.APFS21.preuve_en_direct",
+      "taches": [
+        "APFS21"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/APFS21.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": "sonde C-APFS-023 repro faux : C2 « soi » et Admin RH ne voient pas la pièce du lead de C1 dans attachments/all/ (avec et sans model=crm.lead) ; aucune fuite B"
+    },
+    {
+      "id": "APFSLIVE.APFS23.preuve_en_direct",
+      "taches": [
+        "APFS23"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/APFS23.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": "sonde C-APFS-024 repro faux (Admin RH / Viewer / terrain 403 sur factures, devis, tickets ; C2 sans le devis de C1 ; Directeur 200 complet) ; écran Chantiers en Directeur : « Exporter » télécharge chantiers.xlsx contenant CH-ACC-APFS-1"
+    },
+    {
+      "id": "APFSLIVE.APFS24.preuve_en_direct",
+      "taches": [
+        "APFS24"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/APFS24.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": "sonde C-APFS-025 repro faux (Admin RH / terrain : aucun groupe lead/client, cloche sans facture ; C2 sans le lead de C1 ; rôle sans PII : recherche par téléphone vide) ; omnibox en Commercial : « Zerouali » trouve son lead"
+    },
+    {
+      "id": "APFSLIVE.APFS25.preuve_en_direct",
+      "taches": [
+        "APFS25"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/APFS25.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": "sonde C-APFS-026 repro faux (Admin RH / terrain / Technicien : aucun point lead ; C2 sans le lead de C1 ; rôle sans PII sans lat/lng) ; écran /carte en Commercial : « Leads (1) », son lead seul (le lead du collègue absent)"
+    },
+    {
+      "id": "APFSLIVE.APFS26.preuve_en_direct",
+      "taches": [
+        "APFS26"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/APFS26.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": "sonde C-APFS-027 repro faux (Technicien / Technicien responsable / Commercial / Admin RH : montant null ; Directeur 7500.0) ; écran Approbations en Technicien : « Réquisition DA-ACC-APFS-1 », colonne Montant « — »"
+    },
+    {
+      "id": "APFSLIVE.APFS27.preuve_en_direct",
+      "taches": [
+        "APFS27"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/APFS27.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde C-APFS-028 repro faux : rôle sans client_pii_voir → client_telephone null sur le ticket SAV, la liste des tickets et la facture ; témoin Responsable : 0661028028"
+    },
+    {
+      "id": "APFSLIVE.APFS40.preuve_en_direct",
+      "taches": [
+        "APFS40"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/APFS40.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde C-APFS-040 repro faux (facette modules : Admin RH, Admin Ventes, Technicien/Commercial responsable 403 sur core/modules/achats/desactiver/, module inchangé ; Directeur, Administrateur 200) ; écran Paramètres › Applications en Admin RH : « Accès restreint — réservé aux comptes Directeur », aucun bouton de désactivation"
+    },
+    {
+      "id": "APFSLIVE.APFS42.preuve_en_direct",
+      "taches": [
+        "APFS42"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/APFS42.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": "sondes C-APFS-041 (Admin RH, Technicien, Commercial terrain, Commercial, Viewer 403, lead toujours supprimé ; Directeur 200 ; B 404) et C-LIVE-APFS42 (Admin Ventes 403 + lead supprimé ; Administrateur et Commercial responsable 200 restored) ; écran : Directeur « Supprimer » puis « Annuler » du toast → lead revenu. L'écran ne propose pas « Supprimer » à Admin Ventes (vérifié : actions de ligne sans Supprimer), son refus de restauration est donc prouvé au serveur"
+    },
+    {
+      "id": "APFSLIVE.APFS66.preuve_en_direct",
+      "taches": [
+        "APFS66"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/APFS66.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": "écran : sélecteur de société en Administrateur de A, B sans rôle → 403 « Vous n'êtes pas membre de cette société ou n'y avez aucun rôle. » affiché, A reste active ; rôle Commercial de B posé sur l'appartenance → bascule 200, auth/me = B / Commercial / menu normal (« UTILISATEUR »), users/ 403"
+    },
+    {
+      "id": "APFSLIVE.APFS102.preuve_en_direct",
+      "taches": [
+        "APFS102"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/APFS102.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écran : Commercial réinitialisé par le Directeur → connexion → /mot-de-passe (texte attendu, sans coquille ERP) → changement → /apps (accueil ERP, jamais /portail/client) ; navigateur rouvert → aucune redirection"
+    },
+    {
+      "id": "APFSLIVE.APFS105.preuve_en_direct",
+      "taches": [
+        "APFS105"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/APFS105.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": "sondes C-APFS-080 (installations 0/70 ouverte à Admin RH et Commercial terrain) et C-APFS-081 repro faux (chantier 403 Admin RH) ; écran Devis › « Voir le chantier CH-ACC-APFS-1 » en Commercial : son chantier listé et ouvert (200). Le panneau du chantier appelle aussi installations/types-intervention/ → 403 (vue hors octroi, conforme au Then « 403 sur les autres vues ») : une ressource 403 en console, observation optionnelle"
+    },
+    {
+      "id": "APFSLIVE.APFS106.preuve_en_direct",
+      "taches": [
+        "APFS106"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/APFS106.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": "sondes C-APFS-080 (stock 0/55 ouverte à Admin RH — plus strict que le 1/55 attendu, la fiche technique étant fermée par APFS109) et C-APFS-081 (fournisseur 403 à Admin RH) ; écran Stock › Fournisseurs en Technicien : liste affichée"
+    },
+    {
+      "id": "APFSLIVE.APFS107.preuve_en_direct",
+      "taches": [
+        "APFS107"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/APFS107.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde C-APFS-080 (sav 0/17 ouverte à Admin RH) ; écran SAV › Garanties (RMA) en Technicien : liste affichée"
+    },
+    {
+      "id": "APFSLIVE.APFS108.preuve_en_direct",
+      "taches": [
+        "APFS108"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/APFS108.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": "sonde C-APFS-081 repro faux (ligne de devis 403 à Admin RH et Commercial terrain) ; écran fiche chantier en Technicien : onglet « Matériel & BC » montre la ligne du devis (Panneau ACC 710W, requis 10)"
+    },
+    {
+      "id": "APFSLIVE.APFS109.preuve_en_direct",
+      "taches": [
+        "APFS109"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/APFS109.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde C-APFS-080 (ventes 0/17, crm, installations, sav, stock : aucune route ouverte à Admin RH) ; écran fiche chantier en Technicien : « Dossier réglementaire (En constitution) » affiché (200 ventes/dossiers-reglementaires/?devis=…)"
+    },
+    {
+      "id": "APFSLIVE.APFS110.preuve_en_direct",
+      "taches": [
+        "APFS110"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/APFS110.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sondes C-APFS-040 (facettes clé et webhook non reproduites : 403 à tout rôle sans integrations_gerer) et C-LIVE-APFS110 (rôle integrations_gerer sans ventes_voir : clé 400 « Portée non détenue : read:factures », webhook 400 « Évènement non détenu : facture.created » ; Admin RH 403 ; Directeur 201) ; écran Paramètres › API & Webhooks en Admin RH : « Créer la clé » → 403 affiché, aucune clé"
+    },
+    {
+      "id": "APFSLIVE.APFS111.preuve_en_direct",
+      "taches": [
+        "APFS111"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/APFS111.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écran Approbations › Demandes ad-hoc en Admin RH : « Approuver » la demande de type admin → 403 « Décision réservée au palier administrateur pour ce type de demande. » affiché, demande toujours en attente ; sonde C-APFS-040 (facette approbation : Admin RH 403 pending, Administrateur 200 approved)"
+    },
+    {
+      "id": "APFSLIVE.APFS112.preuve_en_direct",
+      "taches": [
+        "APFS112"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/APFS112.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde C-APFS-040 (garde : matrices, workflows, thème, gabarits 403 aux non-porteurs de parametres_modifier ; Directeur 400/200) ; écran Paramètres › Modèles brandés en Admin RH : « Créer le modèle » → 403 affiché, liste vide"
+    },
+    {
+      "id": "APFSLIVE.APFS115.preuve_en_direct",
+      "taches": [
+        "APFS115"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/APFS115.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": "sonde C-APFS-081 (remise : liste, fiche et PDF 403 à Admin RH et Commercial terrain) ; écran Ventes › Remises en Commercial : liste REM-ACC-APFS-1 et « Bordereau PDF » 200 application/pdf (après clôture par le Directeur)"
+    },
+    {
+      "id": "APFSLIVE.APFS116.preuve_en_direct",
+      "taches": [
+        "APFS116"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/APFS116.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde C-APFS-080 (crm 0/32 ouverte à Admin RH et Commercial terrain) ; écran Pipeline en Commercial inchangé (kanban, son lead Zerouali Karim, aucune réponse ≥ 400)"
+    }
+  ]
+}

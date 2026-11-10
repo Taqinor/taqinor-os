@@ -1,0 +1,37 @@
+# Preuve en direct APFS1 — rejeu accept-apfs-asoc, code joué c97df310d (origin/main, merge de #1318), 2026-11-10
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau accept-apfs-net ; accept-apfs-db (pgvector pg16,
+# 127.0.0.1:5548, base erp_accept_apfs = pg_dump --no-owner de la base locale erp_live en lecture seule, puis
+# `manage.py migrate`) ; accept-apfs-redis ; accept-apfs-minio (MinIO privé : le rendu /proposal et l'envoi de devis
+# écrivent leur PDF dans le stockage) ; accept-apfs-dj (image erp-agentique-django_core, code backend du commit joué
+# COPIÉ par tar dans /srv/app, settings.dev, mail locmem, runserver 127.0.0.1:8018, DB_CONN_MAX_AGE=0) ;
+# accept-apfs-fa (image erp-agentique-fastapi_ia, code backend/fastapi_ia du commit joué copié, uvicorn 127.0.0.1:8019,
+# relais Django = accept-apfs-dj, aucune clé Groq/Zhipu).
+# Sondes : python scripts/sonde.py <G>/<sonde> --conteneur accept-apfs-dj (transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sondes du dossier d'audit : verdict ÉCART = `repro` faux = le défaut d'origine
+# n'est PLUS reproduit. Sondes C-LIVE-* écrites pour ce rejeu (source jointe) : elles rejouent le Given/When/Then de la
+# tâche ; ICI repro=true (verdict REPRO) signifie que le comportement ATTENDU est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8018
+# vite preview --port 5198`), piloté par Playwright MCP, comptes de test acc_apfs_<rôle> (société « Acceptation APFS »,
+# rôles système, mot de passe de test généré, base jetable) et compte portail acc_portail@example.invalid.
+# Fixtures écran FIX-APFS (persistées dans la base jetable) : leads Zerouali Karim (Commercial acc_apfs_com, GPS),
+# Collegue Samir (acc_apfs_com2), Corbeille Test, Filleul Nadia ; devis DEV-ACC-APFS-1 accepté → chantier
+# CH-ACC-APFS-1 (technicien acc_apfs_tech) + dossier réglementaire ; fournisseur ACC ; remise REM-ACC-APFS-1 ;
+# garantie SN-ACC-APFS-1 ; réquisition DA-ACC-APFS-1 (10 × 750) ; facture FAC-ACC-APFS-14 (TVA 14 %) ; demande
+# portail « Onduleur en défaut ACC » ; type d'approbation « Remise exceptionnelle ACC » (palier admin) ; demandes
+# 09-08 (reçues, en vérification, partielle) ; société B « Acceptation APFS B » (acc_apfs_adm membre).
+# Captures : C:\dev\taqinor-os\logs\nightly-qa\playwright\accept-apfs\.
+# Verdict : PASS — sonde C-APFS-001 repro faux (portail : saved-queries/run, saved-queries, dashboards, corbeille, paiements-en-ligne, scheduled-exports = 403, auth/me 200, aucune fuite B) ; C-APFS-001-L2 : 0 GET de liste à 200 avec lignes de la société, les 8 réponses 200 du compte portail = auth/me, health live/ready, clé VAPID, statuspage public (3), thème portail public. NOTE : le drapeau calculé de la L2 reste vrai par construction (il exige seulement qu'une vue IsAuthenticated laisse passer le portail, et `auth/me` en est une) ; la condition « GET de liste 200 + lignes » de son attendu n'est plus observée
+
+== C-APFS-001 (sha c9e72d5b2)
+attendu : repro si le compte portail (must_change_password=True) obtient 200 + lignes de A sur saved-queries/run (crm_leads nom/telephone/email, crm_clients ice/adresse, ventes_factures montants), dashboards/<id>/donnees, classeurs/<id>/evaluer, corbeille, paiements-en-ligne ; alors que crm/leads/ = 403 et portail/mes-factures/ = 403 ; aucune ligne de B
+observé : {'provision': {'cree': True, 'portee': 'portail_client', 'company_A': True, 'must_change_password': True, 'mails': 1}, 'mdp_temporaire_lu_dans_le_mail': True, 'login': 200, 'K60_claims_jeton_portail': {'token_type': 'access', 'company_id': 351, 'active_company_id': 351, 'cle_portee_presente': False, 'cles': ['active_company_id', 'company_id', 'company_nom', 'exp', 'iat', 'is_superuser', 'jti', 'menu_tier', 'role', 'role_nom', 'sid', 'token_type', 'user_id', 'username']}, 'portail': {'run_crm_leads': {'http': 403, 'n': 0, 'A_vu': False, 'B_vu': False, 'exemple': []}, 'run_crm_clients': {'http': 403, 'n': 0, 'A_vu': False, 'B_vu': False, 'exemple': []}, 'run_ventes_factures': {'http': 403, 'n': 0, 'A_vu': False, 'B_vu': False, 'exemple': []}, 'saved_query_create': 403, 'dashboard_create': 403, 'corbeille': {'http': 403, 'labels': []}, 'paiements_en_ligne': {'http': 403, 'montants': []}, 'scheduled_exports_list': 403}, 'temoins': {'crm_leads_defaut_ASEC51': 403, 'portail_mes_factures': {'http': 403, 'code': 'mot_de_passe_a_changer'}, 'auth_me': 200, 'must_change_password_toujours': True}, 'fuite_societe_B': False, 'temoins_ok': True, 'repro': False}
+{"provision": {"cree": true, "portee": "portail_client", "company_A": true, "must_change_password": true, "mails": 1}, "mdp_temporaire_lu_dans_le_mail": true, "login": 200, "K60_claims_jeton_portail": {"token_type": "access", "company_id": 351, "active_company_id": 351, "cle_portee_presente": false, "cles": ["active_company_id", "company_id", "company_nom", "exp", "iat", "is_superuser", "jti", "menu_tier", "role", "role_nom", "sid", "token_type", "user_id", "username"]}, "portail": {"run_crm_leads": {"http": 403, "n": 0, "A_vu": false, "B_vu": false, "exemple": []}, "run_crm_clients": {"http": 403, "n": 0, "A_vu": false, "B_vu": false, "exemple": []}, "run_ventes_factures": {"http": 403, "n": 0, "A_vu": false, "B_vu": false, "exemple": []}, "saved_query_create": 403, "dashboard_create": 403, "corbeille": {"http": 403, "labels": []}, "paiements_en_ligne": {"http": 403, "montants": []}, "scheduled_exports_list": 403}, "temoins": {"crm_leads_defaut_ASEC51": 403, "portail_mes_factures": {"http": 403, "code": "mot_de_passe_a_changer"}, "auth_me": 200, "must_change_password_toujours": true}, "fuite_societe_B": false, "temoins_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 3303, après 3303) ; mails 1 ; tâches Celery bloquées 0
+
+== C-APFS-001 (sha 496537c42)
+attendu : repro si des routes internes (hors /portail/, /auth/ personnelles, publiques AllowAny) laissent passer le compte portail via un IsAuthenticated explicite, et que des GET de liste rendent 200 + lignes de la société ; aucune route passée par IsAnyRole/ScopedPermission/défaut ASEC51
+observé : {'societe': {'id': 156, 'leads': 1124, 'clients': 228}, 'provision': {'cree': True, 'portee': 'portail_client', 'must_change_password': True, 'mdp_lu_dans_le_mail': True}, 'login': 200, 'K60_verify_token_replique': {'accepte': True, 'company_id': 156, 'role': 'normal', 'cle_portee': False}, 'inventaire': {'routes_methodes': 4003, 'passent': 183, 'passent_hors_portail_auth': 162, 'erreurs_eval': 0, 'vues_passees_avec_IsAuthenticated': 56, 'get_liste_200_avec_lignes': 0, 'http_par_statut': {'200': 8, '403': 62, '404': 1, 'non_appele': 112}}, 'temoin_crm_leads': False, 'must_change_password_toujours': True, 'repro': True}
+{"societe": {"id": 156, "leads": 1124, "clients": 228}, "provision": {"cree": true, "portee": "portail_client", "must_change_password": true, "mdp_lu_dans_le_mail": true}, "login": 200, "K60_verify_token_replique": {"accepte": true, "company_id": 156, "role": "normal", "cle_portee": false}, "inventaire": {"routes_methodes": 4003, "passent": 183, "passent_hors_portail_auth": 162, "erreurs_eval": 0, "vues_passees_avec_IsAuthenticated": 56, "get_liste_200_avec_lignes": 0, "http_par_statut": {"200": 8, "403": 62, "404": 1, "non_appele": 112}}, "temoin_crm_leads": false, "must_change_password_toujours": true, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 3212, après 3212) ; mails 1 ; tâches Celery bloquées 0

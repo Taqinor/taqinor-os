@@ -1,0 +1,43 @@
+# Preuve en direct APFS3 — rejeu accept-apfs-asoc, code joué c97df310d (origin/main, merge de #1318), 2026-11-10
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau accept-apfs-net ; accept-apfs-db (pgvector pg16,
+# 127.0.0.1:5548, base erp_accept_apfs = pg_dump --no-owner de la base locale erp_live en lecture seule, puis
+# `manage.py migrate`) ; accept-apfs-redis ; accept-apfs-minio (MinIO privé : le rendu /proposal et l'envoi de devis
+# écrivent leur PDF dans le stockage) ; accept-apfs-dj (image erp-agentique-django_core, code backend du commit joué
+# COPIÉ par tar dans /srv/app, settings.dev, mail locmem, runserver 127.0.0.1:8018, DB_CONN_MAX_AGE=0) ;
+# accept-apfs-fa (image erp-agentique-fastapi_ia, code backend/fastapi_ia du commit joué copié, uvicorn 127.0.0.1:8019,
+# relais Django = accept-apfs-dj, aucune clé Groq/Zhipu).
+# Sondes : python scripts/sonde.py <G>/<sonde> --conteneur accept-apfs-dj (transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sondes du dossier d'audit : verdict ÉCART = `repro` faux = le défaut d'origine
+# n'est PLUS reproduit. Sondes C-LIVE-* écrites pour ce rejeu (source jointe) : elles rejouent le Given/When/Then de la
+# tâche ; ICI repro=true (verdict REPRO) signifie que le comportement ATTENDU est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8018
+# vite preview --port 5198`), piloté par Playwright MCP, comptes de test acc_apfs_<rôle> (société « Acceptation APFS »,
+# rôles système, mot de passe de test généré, base jetable) et compte portail acc_portail@example.invalid.
+# Fixtures écran FIX-APFS (persistées dans la base jetable) : leads Zerouali Karim (Commercial acc_apfs_com, GPS),
+# Collegue Samir (acc_apfs_com2), Corbeille Test, Filleul Nadia ; devis DEV-ACC-APFS-1 accepté → chantier
+# CH-ACC-APFS-1 (technicien acc_apfs_tech) + dossier réglementaire ; fournisseur ACC ; remise REM-ACC-APFS-1 ;
+# garantie SN-ACC-APFS-1 ; réquisition DA-ACC-APFS-1 (10 × 750) ; facture FAC-ACC-APFS-14 (TVA 14 %) ; demande
+# portail « Onduleur en défaut ACC » ; type d'approbation « Remise exceptionnelle ACC » (palier admin) ; demandes
+# 09-08 (reçues, en vérification, partielle) ; société B « Acceptation APFS B » (acc_apfs_adm membre).
+# Captures : C:\dev\taqinor-os\logs\nightly-qa\playwright\accept-apfs\.
+# Verdict : PASS — écran : Directeur réinitialise acc_apfs_com2 (POST users/607/reinitialiser-mot-de-passe 200) → connexion → /mot-de-passe ; /dashboard re-redirigé vers /mot-de-passe ; crm/leads 403 mot_de_passe_a_changer ; changement (auth/change-password 200) → /apps, crm/leads 200 ; sonde C-APFS-002 repro faux (expiré et réinitialisé : GET/POST crm/leads 403 mot_de_passe_a_changer, auth/me 200)
+
+== C-APFS-002 (sha c9e72d5b2)
+attendu : repro si E et R : login 200, must_change_password=True (lu par /auth/me/), puis GET crm/leads/ = 200 et POST crm/leads/ = 201 sans changement de mot de passe (attendu : 403 code mot_de_passe_a_changer)
+observé : {'reinit_par_directeur': {'http': 200, 'detail': None}, 'E_expire': {'login': 200, 'me': 200, 'me_must_change_password': True, 'flag_en_base': True, 'GET_crm_leads': 403, 'POST_crm_leads': 403, 'POST_detail': 'b\'{"detail":"Vous devez d\\xc3\\xa9finir un nouveau mot de passe avant d\\xe2\\x80\\x99acc\\xc3\\xa9der \\xc3\\xa0 votre espace.","code":"mot_de_passe_a_changer","error":{"code":"permission_denied",\''}, 'R_reinit': {'login': 200, 'me': 200, 'me_must_change_password': True, 'flag_en_base': True, 'GET_crm_leads': 403, 'POST_crm_leads': 403, 'POST_detail': 'b\'{"detail":"Vous devez d\\xc3\\xa9finir un nouveau mot de passe avant d\\xe2\\x80\\x99acc\\xc3\\xa9der \\xc3\\xa0 votre espace.","code":"mot_de_passe_a_changer","error":{"code":"permission_denied",\''}, 'E_defaut': False, 'R_defaut': False, 'repro': False}
+{"reinit_par_directeur": {"http": 200, "detail": null}, "E_expire": {"login": 200, "me": 200, "me_must_change_password": true, "flag_en_base": true, "GET_crm_leads": 403, "POST_crm_leads": 403, "POST_detail": "b'{\"detail\":\"Vous devez d\\xc3\\xa9finir un nouveau mot de passe avant d\\xe2\\x80\\x99acc\\xc3\\xa9der \\xc3\\xa0 votre espace.\",\"code\":\"mot_de_passe_a_changer\",\"error\":{\"code\":\"permission_denied\",'"}, "R_reinit": {"login": 200, "me": 200, "me_must_change_password": true, "flag_en_base": true, "GET_crm_leads": 403, "POST_crm_leads": 403, "POST_detail": "b'{\"detail\":\"Vous devez d\\xc3\\xa9finir un nouveau mot de passe avant d\\xe2\\x80\\x99acc\\xc3\\xa9der \\xc3\\xa0 votre espace.\",\"code\":\"mot_de_passe_a_changer\",\"error\":{\"code\":\"permission_denied\",'"}, "E_defaut": false, "R_defaut": false, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 2152, après 2152) ; mails 0 ; tâches Celery bloquées 0
+
+== Écran
+Écran Utilisateurs (/admin/users) en Directeur : « Modifier » acc_apfs_com2, nouveau mot de passe + confirmation,
+« Enregistrer » → 200 POST /api/django/users/607/reinitialiser-mot-de-passe/, 200 PATCH /users/607/, toast « Utilisateur enregistré. »
+Connexion acc_apfs_com2 (mot de passe réinitialisé) → URL /mot-de-passe : « Choisissez votre mot de passe — Votre mot de
+passe a expiré ou a été réinitialisé : choisissez-en un nouveau. » ; GET /dashboard → reste /mot-de-passe ;
+fetch crm/leads → 403 {"code":"mot_de_passe_a_changer"}.
+Soumission (temporaire + nouveau ×2) → 200 POST /api/django/auth/change-password/ → /apps (accueil ERP, « UTILISATEUR ») ;
+crm/leads 200. Navigateur « rouvert » (cookies effacés, reconnexion avec le nouveau mot de passe) → /apps, puis /crm/leads
+ouvert sans redirection.
+Observation optionnelle : sur /mot-de-passe, deux toasts « Vous devez définir un nouveau mot de passe… » viennent des
+appels de fond (traductions, messages d'accueil) refusés en 403 par APFS3.
+Captures : APFS102-mot-de-passe.png, APFS102-apres-changement.png

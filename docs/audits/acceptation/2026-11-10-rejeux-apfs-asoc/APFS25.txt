@@ -1,0 +1,33 @@
+# Preuve en direct APFS25 — rejeu accept-apfs-asoc, code joué c97df310d (origin/main, merge de #1318), 2026-11-10
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau accept-apfs-net ; accept-apfs-db (pgvector pg16,
+# 127.0.0.1:5548, base erp_accept_apfs = pg_dump --no-owner de la base locale erp_live en lecture seule, puis
+# `manage.py migrate`) ; accept-apfs-redis ; accept-apfs-minio (MinIO privé : le rendu /proposal et l'envoi de devis
+# écrivent leur PDF dans le stockage) ; accept-apfs-dj (image erp-agentique-django_core, code backend du commit joué
+# COPIÉ par tar dans /srv/app, settings.dev, mail locmem, runserver 127.0.0.1:8018, DB_CONN_MAX_AGE=0) ;
+# accept-apfs-fa (image erp-agentique-fastapi_ia, code backend/fastapi_ia du commit joué copié, uvicorn 127.0.0.1:8019,
+# relais Django = accept-apfs-dj, aucune clé Groq/Zhipu).
+# Sondes : python scripts/sonde.py <G>/<sonde> --conteneur accept-apfs-dj (transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sondes du dossier d'audit : verdict ÉCART = `repro` faux = le défaut d'origine
+# n'est PLUS reproduit. Sondes C-LIVE-* écrites pour ce rejeu (source jointe) : elles rejouent le Given/When/Then de la
+# tâche ; ICI repro=true (verdict REPRO) signifie que le comportement ATTENDU est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8018
+# vite preview --port 5198`), piloté par Playwright MCP, comptes de test acc_apfs_<rôle> (société « Acceptation APFS »,
+# rôles système, mot de passe de test généré, base jetable) et compte portail acc_portail@example.invalid.
+# Fixtures écran FIX-APFS (persistées dans la base jetable) : leads Zerouali Karim (Commercial acc_apfs_com, GPS),
+# Collegue Samir (acc_apfs_com2), Corbeille Test, Filleul Nadia ; devis DEV-ACC-APFS-1 accepté → chantier
+# CH-ACC-APFS-1 (technicien acc_apfs_tech) + dossier réglementaire ; fournisseur ACC ; remise REM-ACC-APFS-1 ;
+# garantie SN-ACC-APFS-1 ; réquisition DA-ACC-APFS-1 (10 × 750) ; facture FAC-ACC-APFS-14 (TVA 14 %) ; demande
+# portail « Onduleur en défaut ACC » ; type d'approbation « Remise exceptionnelle ACC » (palier admin) ; demandes
+# 09-08 (reçues, en vérification, partielle) ; société B « Acceptation APFS B » (acc_apfs_adm membre).
+# Captures : C:\dev\taqinor-os\logs\nightly-qa\playwright\accept-apfs\.
+# Verdict : PASS — sonde C-APFS-026 repro faux (Admin RH / terrain / Technicien : aucun point lead ; C2 sans le lead de C1 ; rôle sans PII sans lat/lng) ; écran /carte en Commercial : « Leads (1) », son lead seul (le lead du collègue absent)
+
+== C-APFS-026 (sha c9e72d5b2)
+attendu : repro si geo/?types=lead rend le point (nom + lat/lng) du lead de C1 à rh/terrain/tech/c2 soi, ou les coordonnées au rôle sans client_pii_voir ; lead de B absent
+observé : {"repro": false, "observe": {"rh": {"ecran_leads": 403, "fiche_lead_c1": 403, "geo": [200, false, null, null, null, false]}, "terrain": {"ecran_leads": 403, "fiche_lead_c1": 403, "geo": [200, false, null, null, null, false]}, "tech": {"ecran_leads": 403, "fiche_lead_c1": 403, "geo": [200, false, null, null, null, false]}, "c2_soi": {"ecran_leads": 200, "fiche_lead_c1": 404, "geo": [200, false, null, null, null, false]}, "sans_pii": {"ecran_leads": 200, "fiche_lead_c1": 200, "geo": [200, false, null, null, null, false]}, "ecarts": [], "fuite_B": false}}
+verdict : ÉCART
+base inchangée : oui (avant 2243, après 2243) ; mails 0 ; tâches Celery bloquées 0
+
+== Écran
+Écran /carte en Commercial acc_apfs_com : « Carte — 1 point(s) géolocalisé(s) — Leads (1) » (son lead Zerouali
+Karim, Casablanca ; le lead Collegue Samir de acc_apfs_com2, géolocalisé à Rabat, n'est pas servi) ; aucune réponse API ≥ 400.

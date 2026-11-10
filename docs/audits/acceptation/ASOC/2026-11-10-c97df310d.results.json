@@ -1,0 +1,816 @@
+{
+  "sha": "c97df310d63ac657bc6fec2504007ebc4dc668bd",
+  "date": "2026-11-10",
+  "groupe": "ASOC",
+  "verdict": "PASS",
+  "couvre": [
+    "ASOC1",
+    "ASOC2",
+    "ASOC6",
+    "ASOC21",
+    "ASOC23",
+    "ASOC24",
+    "ASOC40",
+    "ASOC41",
+    "ASOC43",
+    "ASOC44",
+    "ASOC45",
+    "ASOC46",
+    "ASOC48",
+    "ASOC49",
+    "ASOC61",
+    "ASOC63",
+    "ASOC64",
+    "ASOC65",
+    "ASOC66",
+    "ASOC68",
+    "ASOC73",
+    "ASOC75",
+    "ASOC90",
+    "ASOC92",
+    "ASOC93",
+    "ASOC94",
+    "ASOC95",
+    "ASOC96",
+    "ASOC97",
+    "ASOC98",
+    "ASOC99",
+    "ASOC100",
+    "ASOC101",
+    "ASOC103",
+    "ASOC104"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "ASOCLIVE.ASOC1.preuve_en_direct",
+      "taches": [
+        "ASOC1"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/ASOC1.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde C-ASOC-001 repro faux : alerte devis expiré au responsable actif B (1), 0 vers A inactif, 0 canal hors-app vers A, _notify_user_or_managers(A) ⇒ 1 ligne au manager"
+    },
+    {
+      "id": "ASOCLIVE.ASOC2.preuve_en_direct",
+      "taches": [
+        "ASOC2"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/ASOC2.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde C-ASOC-002 repro faux : installations désactivé ⇒ accepter 200, 0 chantier, 0 réservé ; témoin actif ⇒ 1 chantier, 10 réservés"
+    },
+    {
+      "id": "ASOCLIVE.ASOC6.preuve_en_direct",
+      "taches": [
+        "ASOC6"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/ASOC6.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde C-ASOC-003 repro faux : erreur base injectée dans l'arrêt de cadence ⇒ accepter 200, accepte, lead SIGNED, 1 chantier"
+    },
+    {
+      "id": "ASOCLIVE.ASOC21.preuve_en_direct",
+      "taches": [
+        "ASOC21"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/ASOC21.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde C-ASOC-005 repro faux : soumission ⇒ ap1 1 et ap2 1, demandeur 0 ; demande-info ⇒ demandeur 1 ; approbation rang 1 ⇒ ap2 notifié"
+    },
+    {
+      "id": "ASOCLIVE.ASOC23.preuve_en_direct",
+      "taches": [
+        "ASOC23"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/ASOC23.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde C-ASOC-006 repro faux : balayages à J, J+1, J+2 ⇒ 1 warranty_expiring, 2 chantier_due (1 par manager)"
+    },
+    {
+      "id": "ASOCLIVE.ASOC24.preuve_en_direct",
+      "taches": [
+        "ASOC24"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/ASOC24.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde C-ASOC-007 repro faux : brouillon échu hors factures_echues, jours_retard 0, 0 alerte ; émise : 1 alerte « en retard de 5 jour(s) »"
+    },
+    {
+      "id": "ASOCLIVE.ASOC40.preuve_en_direct",
+      "taches": [
+        "ASOC40"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/ASOC40.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde C-ASOC-040-L2 repro faux (devis envoyé : échéancier figé 30/60/10, signature avec l'empreinte lue 200 à 30 %) ; sonde C-LIVE-ASOC40 (devis envoyé SANS échéancier propre, cas antérieur au gel) : page lue 30 %, jalons 40/50/10, signature avec E1 ⇒ 409 empreinte_perimee, « envoye », 0 facture ; relu E2 ≠ E1 à 40 %, signature E2 ⇒ 200"
+    },
+    {
+      "id": "ASOCLIVE.ASOC41.preuve_en_direct",
+      "taches": [
+        "ASOC41"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/ASOC41.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde C-ASOC-041 repro faux : date_validite posée à l'envoi (10/12/2026), /proposal imprime 10/12/2026, acceptation client acceptée, beat expired 0"
+    },
+    {
+      "id": "ASOCLIVE.ASOC43.preuve_en_direct",
+      "taches": [
+        "ASOC43"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/ASOC43.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde C-ASOC-043 repro faux : profil passé de R1 à R2, page publique de paiement et PDF servent le RIB R1 figé"
+    },
+    {
+      "id": "ASOCLIVE.ASOC44.preuve_en_direct",
+      "taches": [
+        "ASOC44"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/ASOC44.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde C-ASOC-044 repro faux : ticket démarré → résolu → clôturé, la demande portail lue « resolue / Résolue »"
+    },
+    {
+      "id": "ASOCLIVE.ASOC45.preuve_en_direct",
+      "taches": [
+        "ASOC45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/ASOC45.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écran portail client : carte « Tickets SAV ouverts 1 » (1 demande soumise, 0 ticket) = 1 ligne non close dans « Mes demandes SAV » ; après refus de cette demande et une nouvelle demande : toujours 1 = 1"
+    },
+    {
+      "id": "ASOCLIVE.ASOC46.preuve_en_direct",
+      "taches": [
+        "ASOC46"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/ASOC46.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écran portail : POST mes-demandes-sav 201 puis POST mes-documents 201 (justificatif PDF) ⇒ 2 notifications portail_demande_client par destinataire (« ACC Portail : nouvelle demande SAV » / « justificatif déposé », lien /portail/administration) ; cloche du Directeur : « ACC Portail : justificatif déposé ×2 »"
+    },
+    {
+      "id": "ASOCLIVE.ASOC48.preuve_en_direct",
+      "taches": [
+        "ASOC48"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/ASOC48.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde C-ASOC-048 repro faux : profil 14 % / EUR ⇒ generer-devis-reserve 201 à 14.00 / EUR (comme l'upsell)"
+    },
+    {
+      "id": "ASOCLIVE.ASOC49.preuve_en_direct",
+      "taches": [
+        "ASOC49"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/ASOC49.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écran Factures › Note de débit, facture à 14 % : champ TVA pré-rempli « 14 », POST creer-note-debit avec taux_tva '14' → 201 (ND 570,00 MAD)"
+    },
+    {
+      "id": "ASOCLIVE.ASOC61.preuve_en_direct",
+      "taches": [
+        "ASOC61"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/ASOC61.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde C-ASOC-061 repro faux : dsr.effacer vide GPS, contact secondaire (4 champs), note, notes de visite et d'ombrage du lead, GPS et ombrage du SiteProfile"
+    },
+    {
+      "id": "ASOCLIVE.ASOC63.preuve_en_direct",
+      "taches": [
+        "ASOC63"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/ASOC63.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde C-ASOC-062 repro faux : parrain effacé ⇒ phrase du prescripteur omise, prescripteur aux manquants ; témoin vivant « Benali nous a parlé de vous »"
+    },
+    {
+      "id": "ASOCLIVE.ASOC64.preuve_en_direct",
+      "taches": [
+        "ASOC64"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/ASOC64.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écran Paramètres › Confidentialité : « Traiter » sur l'effacement ouvre « Effacer les données de … ? Irréversible », Annuler ⇒ 0 POST, confirmer ⇒ POST traiter ; « Traiter » sur l'accès ⇒ sources exportées listées + « Télécharger (JSON) » → dsr-acces-19.json"
+    },
+    {
+      "id": "ASOCLIVE.ASOC65.preuve_en_direct",
+      "taches": [
+        "ASOC65"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/ASOC65.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde C-ASOC-063 repro faux (source en échec ⇒ 200 « partielle », {erreur} par source, 2e traiter 200) ; sonde C-LIVE-ASOC65 : source réparée, 2e traiter ⇒ 200 « traitee », traitee_le posé, client anonymisé"
+    },
+    {
+      "id": "ASOCLIVE.ASOC66.preuve_en_direct",
+      "taches": [
+        "ASOC66"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/ASOC66.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde C-ASOC-064 repro faux : export liste la clé notifications (WhatsApp) ; effacer ⇒ les 3 journaux sans numéro ni corps ; politique notifications_whatsapp_journal présente"
+    },
+    {
+      "id": "ASOCLIVE.ASOC68.preuve_en_direct",
+      "taches": [
+        "ASOC68"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/ASOC68.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écran /crm/parrainage : parrain Alaoui + filleul (lead) « Filleul Nadia » → « + Ajouter » → POST {filleul_lead: 3485} 201, ligne « Filleul » ; devis DEV-ACC-ASOC68 du lead accepté à l'écran ⇒ parrainage « converti » (CONVERTIS 1)"
+    },
+    {
+      "id": "ASOCLIVE.ASOC73.preuve_en_direct",
+      "taches": [
+        "ASOC73"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/ASOC73.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde C-ASOC-065 repro faux : ca_ht 8 000 (= ca_attente 8 000), ca_ttc 9 600, panier moyen 4 800"
+    },
+    {
+      "id": "ASOCLIVE.ASOC75.preuve_en_direct",
+      "taches": [
+        "ASOC75"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/ASOC75.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écran /crm/parrainage : la ligne liée au lead Zerouali Karim dont le texte libre vaut « K. » affiche « Zerouali » (nom du lead lié) et non « K. »"
+    },
+    {
+      "id": "ASOCLIVE.ASOC90.preuve_en_direct",
+      "taches": [
+        "ASOC90"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/ASOC90.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde C-ASOC-001-L2 repro faux : relance J+2 d'un vendeur inactif ⇒ 0 e-mail à A, nudge journalisé, notifications d'engagement hors de A. NOTE : e-mail réel non configuré dans la pile (is_email_configured faux), l'envoi à B n'est donc pas observable ici"
+    },
+    {
+      "id": "ASOCLIVE.ASOC92.preuve_en_direct",
+      "taches": [
+        "ASOC92"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/ASOC92.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde C-ASOC-004 (volet cohérence) : admin à digest coupé ⇒ notifier_nouvelles_violations rend 1, 1 notification coherence_violation"
+    },
+    {
+      "id": "ASOCLIVE.ASOC93.preuve_en_direct",
+      "taches": [
+        "ASOC93"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/ASOC93.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde C-ASOC-004 (volet contrat) : notification sav_demande_contrat_portail reçue par l'admin à digest coupé ; C-LIVE-ASOC93 : 1 notification et is_action(sav_demande_contrat_portail) vrai (comptée dans les actions)"
+    },
+    {
+      "id": "ASOCLIVE.ASOC94.preuve_en_direct",
+      "taches": [
+        "ASOC94"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/ASOC94.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde C-ASOC-007 (récap) : « Paiements en retard » = 1 pour l'émise, 0 pour le brouillon"
+    },
+    {
+      "id": "ASOCLIVE.ASOC95.preuve_en_direct",
+      "taches": [
+        "ASOC95"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/ASOC95.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde C-ASOC-040 repro faux : échéancier 30/60/10 figé (fige_le) dès l'envoi, PDF « 30 % » après passage des jalons à 40/50/10, brouillon d'acompte 6 690,00 (30 % de 22 300)"
+    },
+    {
+      "id": "ASOCLIVE.ASOC96.preuve_en_direct",
+      "taches": [
+        "ASOC96"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/ASOC96.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde C-ASOC-042 repro faux : devis accepté, profil passé v1 → v2, /proposal (moteur réel) porte la raison sociale et l'ICE v1, aucune valeur v2"
+    },
+    {
+      "id": "ASOCLIVE.ASOC97.preuve_en_direct",
+      "taches": [
+        "ASOC97"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/ASOC97.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde C-ASOC-043 repro faux : « Payer » du portail ⇒ 200 virement {SOLAIRE K43 SARL, Banque Une, RIB R1}"
+    },
+    {
+      "id": "ASOCLIVE.ASOC98.preuve_en_direct",
+      "taches": [
+        "ASOC98"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/ASOC98.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écran Portail › administration › Demandes de ticket : « Refuser » (Confirmer grisé tant que le motif est vide) → POST refuser 200 statut refusee ; portail client « Mes demandes » : « Refusée — Motif du refus : Hors garantie : dégât d'orage »"
+    },
+    {
+      "id": "ASOCLIVE.ASOC99.preuve_en_direct",
+      "taches": [
+        "ASOC99"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/ASOC99.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écran Paramètres › Email : sous le modèle Devis, sections « Anglais » et « Arabe » ; sujet et corps arabes saisis (dir=rtl) → PUT email-templates/bulk 200 avec sujet_en/corps_en/sujet_ar/corps_ar ; rechargement : valeurs relues"
+    },
+    {
+      "id": "ASOCLIVE.ASOC100.preuve_en_direct",
+      "taches": [
+        "ASOC100"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/ASOC100.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde C-ASOC-060 (volet client) repro faux : après dsr.effacer, GET tiers/tiers/<id>/ ⇒ nom « Anonymisé », prénom, e-mail, téléphone, adresse, CIN, ICE, RC, IF vides ; tiers/?search=0612345678 ⇒ 0"
+    },
+    {
+      "id": "ASOCLIVE.ASOC101.preuve_en_direct",
+      "taches": [
+        "ASOC101"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/ASOC101.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde C-ASOC-060 (volet fournisseur) : stock pseudonymises 1, Tiers du fournisseur sans e-mail ni téléphone, raison sociale « Grossiste Solaire SARL » gardée"
+    },
+    {
+      "id": "ASOCLIVE.ASOC103.preuve_en_direct",
+      "taches": [
+        "ASOC103"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/ASOC103.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écran Paramètres › Confidentialité : « Partiellement traitée » avec « Sources en échec : stock — stockage indisponible » et « Relancer » ; « En vérification d'identité » avec « Traiter » ; « Relancer » ⇒ POST traiter 200, ligne relue « Traitée »"
+    },
+    {
+      "id": "ASOCLIVE.ASOC104.preuve_en_direct",
+      "taches": [
+        "ASOC104"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-apfs-asoc/ASOC104.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écran /crm/parrainage, réglage éteint : « Parrainage désactivé — activez-le dans Paramètres › Leads », aucun formulaire, aucun « + Ajouter », aucun appel crm/parrainages/ ; allumé dans Paramètres › Leads (PATCH referral_enabled true 200) : écran complet (formulaire + tableau)"
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+# Preuve en direct APFS23 — rejeu accept-apfs-asoc, code joué c97df310d (origin/main, merge de #1318), 2026-11-10
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau accept-apfs-net ; accept-apfs-db (pgvector pg16,
+# 127.0.0.1:5548, base erp_accept_apfs = pg_dump --no-owner de la base locale erp_live en lecture seule, puis
+# `manage.py migrate`) ; accept-apfs-redis ; accept-apfs-minio (MinIO privé : le rendu /proposal et l'envoi de devis
+# écrivent leur PDF dans le stockage) ; accept-apfs-dj (image erp-agentique-django_core, code backend du commit joué
+# COPIÉ par tar dans /srv/app, settings.dev, mail locmem, runserver 127.0.0.1:8018, DB_CONN_MAX_AGE=0) ;
+# accept-apfs-fa (image erp-agentique-fastapi_ia, code backend/fastapi_ia du commit joué copié, uvicorn 127.0.0.1:8019,
+# relais Django = accept-apfs-dj, aucune clé Groq/Zhipu).
+# Sondes : python scripts/sonde.py <G>/<sonde> --conteneur accept-apfs-dj (transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sondes du dossier d'audit : verdict ÉCART = `repro` faux = le défaut d'origine
+# n'est PLUS reproduit. Sondes C-LIVE-* écrites pour ce rejeu (source jointe) : elles rejouent le Given/When/Then de la
+# tâche ; ICI repro=true (verdict REPRO) signifie que le comportement ATTENDU est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8018
+# vite preview --port 5198`), piloté par Playwright MCP, comptes de test acc_apfs_<rôle> (société « Acceptation APFS »,
+# rôles système, mot de passe de test généré, base jetable) et compte portail acc_portail@example.invalid.
+# Fixtures écran FIX-APFS (persistées dans la base jetable) : leads Zerouali Karim (Commercial acc_apfs_com, GPS),
+# Collegue Samir (acc_apfs_com2), Corbeille Test, Filleul Nadia ; devis DEV-ACC-APFS-1 accepté → chantier
+# CH-ACC-APFS-1 (technicien acc_apfs_tech) + dossier réglementaire ; fournisseur ACC ; remise REM-ACC-APFS-1 ;
+# garantie SN-ACC-APFS-1 ; réquisition DA-ACC-APFS-1 (10 × 750) ; facture FAC-ACC-APFS-14 (TVA 14 %) ; demande
+# portail « Onduleur en défaut ACC » ; type d'approbation « Remise exceptionnelle ACC » (palier admin) ; demandes
+# 09-08 (reçues, en vérification, partielle) ; société B « Acceptation APFS B » (acc_apfs_adm membre).
+# Captures : C:\dev\taqinor-os\logs\nightly-qa\playwright\accept-apfs\.
+# Verdict : PASS — sonde C-APFS-024 repro faux (Admin RH / Viewer / terrain 403 sur factures, devis, tickets ; C2 sans le devis de C1 ; Directeur 200 complet) ; écran Chantiers en Directeur : « Exporter » télécharge chantiers.xlsx contenant CH-ACC-APFS-1
+
+== C-APFS-024 (sha c9e72d5b2)
+attendu : repro si un rôle sans ventes_export (ou sans ventes_voir) reçoit 200 + un XLSX contenant la facture/le client de A, ou si C2 « soi » exporte le devis de C1 ; aucune ligne de B
+observé : {"repro": false, "observe": {"terrain": {"ecran_factures": 403, "ecran_devis_c1": 403, "export_factures": [403, false, false, false], "export_devis_c1": [403, false], "export_tickets": 403}, "rh": {"ecran_factures": 403, "ecran_devis_c1": 403, "export_factures": [403, false, false, false], "export_devis_c1": [403, false], "export_tickets": 403}, "viewer": {"ecran_factures": 200, "ecran_devis_c1": 404, "export_factures": [403, false, false, false], "export_devis_c1": [403, false], "export_tickets": 403}, "c2_soi": {"ecran_factures": 200, "ecran_devis_c1": 404, "export_factures": [200, false, false, false], "export_devis_c1": [200, false], "export_tickets": 403}, "directeur": {"ecran_factures": 200, "ecran_devis_c1": 200, "export_factures": [200, true, true, false], "export_devis_c1": [200, true], "export_tickets": 200}, "ecarts": [], "fuite_B": false}}
+verdict : ÉCART
+base inchangée : oui (avant 3341, après 3341) ; mails 0 ; tâches Celery bloquées 0
+
+== Écran
+Écran /chantiers en Directeur (acc_apfs_dir) : liste « Chantiers 1 » ; bouton « Exporter » → téléchargement
+chantiers.xlsx (aucune réponse API ≥ 400). Contenu relu (openpyxl) : en-têtes (Référence, Client, Statut, Pose prévue,
+Mise en service) + ligne (CH-ACC-APFS-1, Alaoui, Signé). Fichier : APFS23-chantiers-directeur.xlsx
