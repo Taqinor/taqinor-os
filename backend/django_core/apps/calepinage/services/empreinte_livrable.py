@@ -28,7 +28,9 @@ réunit TOUT ce qu'un livrable lit —
   dossiers ET manuel du propriétaire ;
 * l'identité imprimée (titre, client et adresses LUS par ``crm.selectors``) et
   la marque de la société (``styles_de_societe``) ;
-* la langue et la sélection de sections demandées.
+* la langue et la sélection de sections demandées ;
+* ACON45 — les lignes matériel du devis lié, l'état d'approbation et de
+  verrou (``etat_de_conception``) et :data:`VERSION_RENDU`.
 
 Lecture STRICTEMENT PURE : rien n'est écrit, aucun statut touché (règle #4).
 L'empreinte n'est stockée que par ses consommateurs (nom d'une version
@@ -40,11 +42,15 @@ from __future__ import annotations
 import hashlib
 import json
 
-__all__ = ['CHAMPS_VOLATILS', 'empreinte_des_entrees']
+__all__ = ['CHAMPS_VOLATILS', 'VERSION_RENDU', 'empreinte_des_entrees']
 
 #: Les clés ignorées PARTOUT dans la simulation servie et les saisies : des
 #: horodatages de calcul / de saisie, jamais une donnée imprimée.
 CHAMPS_VOLATILS = frozenset({'calcule_le', 'saisi_le'})
+
+#: ACON45 — version de MISE EN PAGE des livrables : à monter à chaque
+#: changement de gabarit de rendu (un document rendu autrement est neuf).
+VERSION_RENDU = 1
 
 
 def _sans_volatils(valeur):
@@ -152,6 +158,17 @@ def _marque(company):
     return styles_de_societe(company)
 
 
+def _materiel(calepinage):
+    """ACON45 — les lignes matériel du devis lié (D-ACAL-10), LUES par
+    ``apps.ventes.selectors`` (devis borné à la société du calepinage)."""
+    from apps.ventes.selectors import lignes_produits_calepinage
+
+    from .equipements import _devis_lie
+
+    return [dict(ligne, produit=getattr(ligne['produit'], 'pk', None))
+            for ligne in lignes_produits_calepinage(_devis_lie(calepinage))]
+
+
 def _entrees_du_livrable(calepinage, langue='fr', sections=None):
     """Le dictionnaire CANONIQUE des entrées d'un livrable (avant hachage).
 
@@ -159,6 +176,7 @@ def _entrees_du_livrable(calepinage, langue='fr', sections=None):
     en est le SHA-256. ``sections`` garde l'ORDRE demandé (il change le
     document) ; ``None`` vaut « aucune sélection » (toutes les sections).
     """
+    from .documents.gabarit_document import etat_de_conception
     from .layout import empreinte_document
 
     company = getattr(calepinage, 'company', None)
@@ -172,6 +190,11 @@ def _entrees_du_livrable(calepinage, langue='fr', sections=None):
         'marque': _marque(company),
         'langue': str(langue or '').strip().lower(),
         'sections': None if sections is None else [str(s) for s in sections],
+        # ACON45 — lignes du devis lié, approbation/verrou (mentions du
+        # pied : ``etat_de_conception``) et version de mise en page.
+        'materiel': _materiel(calepinage),
+        'etat': etat_de_conception(calepinage),
+        'rendu': VERSION_RENDU,
     }
 
 

@@ -15,6 +15,7 @@ Run :
 """
 import copy
 import datetime
+from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
@@ -29,6 +30,8 @@ from apps.calepinage.services.resultat import modifier_resultat
 from apps.crm.models import Client, Lead
 from apps.records.models import Attachment
 from apps.roles.models import Role
+from apps.stock.models import Produit
+from apps.ventes.models import Devis, LigneDevis
 from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
 from authentication.models import Company
 from core.models import TenantTheme
@@ -204,6 +207,36 @@ class EmpreinteLivrableTest(TestCase):
                                         f'{nom} ne change pas l\'empreinte')
                 finally:
                     self._rollback(sid)
+
+    def test_sensible_au_materiel_du_devis_et_a_l_approbation(self):
+        # ACON45 — approuver change l'empreinte (le pied perd « Conception
+        # non approuvée ») ; la quantité d'une ligne du devis lié aussi ;
+        # aucune des deux n'entrait dans l'empreinte.
+        client = Client.objects.create(company=self.societe, nom='Atlas')
+        produit = Produit.objects.create(
+            company=self.societe, nom='Panneau 221', sku='ACON45-P',
+            prix_vente=Decimal('1500'), quantite_stock=1)
+        devis = Devis.objects.create(company=self.societe, client=client,
+                                     reference='DEV-ACON45-1')
+        ligne = LigneDevis.objects.create(
+            devis=devis, produit=produit, designation=produit.nom,
+            quantite=Decimal('12'), prix_unitaire=Decimal('100'),
+            type_ligne='produit')
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(
+            devis_id=devis.pk)
+        lie = self._empreinte()
+
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(approbation={
+            'etat': 'approuve',
+            'empreinte_approuvee': self.calepinage.layout_hash})
+        approuve = self._empreinte()
+        self.assertNotEqual(lie, approuve)
+
+        ligne.quantite = Decimal('14')
+        ligne.save(update_fields=['quantite'])
+        quantite = self._empreinte()
+        self.assertNotEqual(approuve, quantite)
+        self.assertEqual(quantite, self._empreinte())
 
     def test_sensible_a_la_langue_et_aux_sections(self):
         base = self._empreinte('fr', None)
