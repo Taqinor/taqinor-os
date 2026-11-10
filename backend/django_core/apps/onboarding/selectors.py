@@ -179,3 +179,26 @@ def _assistant_demarrage_auto(company, items):
         return False
     return any(
         it['key'] == 'assistant_demarrage' and not it['fait'] for it in items)
+
+
+#: NTDMO35 — plafond d'utilisateurs agrégés par appel (borne le coût d'un
+#: endpoint public appelé par un badge externe).
+RESUME_SOCIETE_MAX_UTILISATEURS = 200
+
+
+def pourcentage_activation_societe(company):
+    """NTDMO35 — pourcentage d'activation AGRÉGÉ d'une société : moyenne
+    (arrondie) du ``pourcentage`` « Premiers pas » de ses utilisateurs actifs.
+    Un entier 0-100 et RIEN d'autre (jamais d'items, d'identité ni de PII) ;
+    0 si la société n'a aucun utilisateur actif."""
+    if company is None:
+        return 0
+    from django.contrib.auth import get_user_model
+    users = list(
+        get_user_model().objects.filter(company=company, is_active=True)
+        .select_related('role').order_by('id')[:RESUME_SOCIETE_MAX_UTILISATEURS])
+    if not users:
+        return 0
+    total = sum(
+        resume_pour_utilisateur(company, u)['pourcentage'] for u in users)
+    return round(total / len(users))

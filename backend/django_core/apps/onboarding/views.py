@@ -21,10 +21,15 @@ from rest_framework.response import Response
 from authentication.permissions import IsAdminOrResponsableTier
 from core.openapi_operations import SchemaObjetUnique
 
+from apps.publicapi.auth import (
+    ApiKeyAuthentication, ApiKeyRateThrottle, HasApiScope,
+)
+from apps.publicapi.portees import SCOPE_READ_LICENCE
+
 from . import services
 from .selectors import (
-    items_masquables_pour_societe, resume_pour_utilisateur,
-    tours_pour_utilisateur,
+    items_masquables_pour_societe, pourcentage_activation_societe,
+    resume_pour_utilisateur, tours_pour_utilisateur,
 )
 
 
@@ -102,11 +107,31 @@ _CLE_TOUR = [OpenApiParameter(
 class OnboardingProgressViewSet(viewsets.ViewSet):
     """Checklist « Premiers pas » de l'utilisateur courant (company-scopée)."""
     permission_classes = [IsAuthenticated]
+    #: NTDMO35 — scope lu par ``HasApiScope`` pour l'action ``resume`` seule
+    #: (statut d'adoption agrégé de la société : même famille que le statut
+    #: de licence, ``read:licence`` ; aucun nouveau scope dans le registre).
+    required_scope = SCOPE_READ_LICENCE
     #: ``list`` rend le résumé (UN objet), pas un tableau d'items.
     schema = SchemaObjetUnique()
 
     def _company(self, request):
         return getattr(request.user, 'company', None)
+
+    @extend_schema(responses=inline_serializer('OnboardingResumePublic', {
+        'pourcentage': drf_serializers.IntegerField()}))
+    @action(detail=False, methods=['get'], url_path='resume',
+            authentication_classes=[ApiKeyAuthentication],
+            permission_classes=[HasApiScope],
+            throttle_classes=[ApiKeyRateThrottle])
+    def resume(self, request):
+        """NTDMO35 — ``GET onboarding/progress/resume/`` : pourcentage
+        d'activation AGRÉGÉ de la société de la clé, pour un badge externe.
+        Authentifié par clé d'API (``publicapi.ApiKey``, jamais un nouveau
+        mécanisme) ; 401 sans clé, 403 sans le scope. Lecture seule, un
+        entier — jamais le détail des items ni de PII."""
+        return Response({
+            'pourcentage': pourcentage_activation_societe(
+                request.auth.company)})
 
     @extend_schema(responses=_VIEWS_ONBOARDING_PROGRESS_VIEW_SET_LIST_REPONSE)
     def list(self, request):

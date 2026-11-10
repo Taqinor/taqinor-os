@@ -109,3 +109,43 @@ class OnboardingProgressEndpointTest(TestCase):
             'responses']['200']['content']['application/json']['schema']
         self.assertEqual(reponse['$ref'].rsplit('/', 1)[-1],
                          'ViewsOnboardingProgressViewSetListReponse')
+
+
+class OnboardingResumePublicNTDMO35Test(TestCase):
+    """NTDMO35 — pourcentage agrégé, clé API à scope restreint."""
+
+    def setUp(self):
+        from apps.publicapi.models import ApiKey
+        from apps.publicapi.portees import SCOPE_READ_LEADS, SCOPE_READ_LICENCE
+        self.company = Company.objects.create(nom="Co35", slug="co-35")
+        role = Role.objects.create(company=self.company, nom="Administrateur")
+        self.u1 = User.objects.create_user(
+            "u35a", password="x", company=self.company, role=role)
+        User.objects.create_user(
+            "u35b", password="x", company=self.company, role=role)
+        _, self.raw_ok = ApiKey.issue(
+            company=self.company, label="ok", scopes=[SCOPE_READ_LICENCE])
+        _, self.raw_ko = ApiKey.issue(
+            company=self.company, label="ko", scopes=[SCOPE_READ_LEADS])
+        self.url = "/api/django/onboarding/progress/resume/"
+
+    def _get(self, raw=None):
+        c = APIClient()
+        if raw:
+            c.credentials(HTTP_AUTHORIZATION=f"Api-Key {raw}")
+        return c.get(self.url)
+
+    def test_cle_valide_retourne_uniquement_le_pourcentage(self):
+        r = self._get(self.raw_ok)
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(set(r.data), {"pourcentage"})
+        self.assertEqual(r.data["pourcentage"], 0)
+        item = OnboardingChecklistItem.objects.filter(actif=True).first()
+        marquer_item_complete(self.company, self.u1, item.key)
+        self.assertGreater(self._get(self.raw_ok).data["pourcentage"], 0)
+
+    def test_sans_cle_401(self):
+        self.assertEqual(self._get().status_code, 401)
+
+    def test_scope_insuffisant_403(self):
+        self.assertEqual(self._get(self.raw_ko).status_code, 403)
