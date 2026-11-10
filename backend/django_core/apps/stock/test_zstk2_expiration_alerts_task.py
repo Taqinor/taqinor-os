@@ -38,7 +38,9 @@ def _company(slug):
 
 
 def _user(company, username):
-    role = Role.objects.create(company=company, nom=f'r-{username}')
+    # ASOC30 — palier « responsable » porté par le rôle (APAR21).
+    role = Role.objects.create(company=company, nom=f'r-{username}',
+                               permissions=['users_voir'])
     return User.objects.create_user(
         username=username, password='x', company=company, role=role,
         role_legacy='responsable')
