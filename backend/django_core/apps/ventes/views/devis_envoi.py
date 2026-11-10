@@ -15,6 +15,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 from ..models import Devis
+from ..domain.envoi import exiger_contact_permis
 from ..domain.modifiabilite import ENVOYER
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from ..utils.client_links import chemin_proposition, url_proposition
@@ -274,6 +275,7 @@ class DevisEnvoiActionsMixin:
             # ADEV7 — une version remplacée ne s'envoie plus (409).
             _exiger_version_en_jeu(devis, ENVOYER)
             _exiger_remise_envoi(devis, request.user)
+            exiger_contact_permis(devis)  # ACVI112 — opposé : 409 avant mode et lien
         # GAMME — le mode d'envoi (« seule » / « les_deux ») accompagne le lien
         # quand le vendeur le précise ; absent du corps → mode déjà posé.
         # ADVS52 — mode, bascule et lien sous UNE transaction (un 409 n'écrit rien).
@@ -378,6 +380,7 @@ class DevisEnvoiActionsMixin:
         _exiger_version_en_jeu(devis, ENVOYER)
         # QJR539 — garde T17 AVANT tout effet (gamme, PDF, lien, `_send`).
         _exiger_remise_envoi(devis, request.user)
+        exiger_contact_permis(devis)  # ACVI112 — opposé : 409 avant mode, lien et rendu
         to_email = (request.data.get('to_email') or '').strip() or None
         sujet = (request.data.get('sujet') or '').strip() or None
         corps = (request.data.get('corps') or '').strip() or None
