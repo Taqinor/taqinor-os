@@ -282,6 +282,32 @@ describe('ACAL205 — le relevé courant est relu, corrigé, ou doublé', () => 
     expect(corrigerReleve).not.toHaveBeenCalled()
   })
 
+  it('après un Nouveau relevé antidaté, Enregistrer corrige le relevé affiché', async () => {
+    // ACON1 — R2 créé (antidaté) n'est PAS le courant serveur : la correction et la
+    // suppression visent R2 (le relevé affiché), jamais le courant R1.
+    const lecture = lectureContrat().data
+    const courantId = lecture.releve_courant_id
+    const r2 = { ...lecture.releves[0], id: courantId + 100, releve_le: '2026-11-01' }
+    enregistrerReleve.mockResolvedValue(
+      { data: { releve: r2, releve_courant_id: courantId, releves: [...lecture.releves, r2] } })
+    corrigerReleve.mockResolvedValue({ data: { releve: r2, releve_courant_id: courantId } })
+    const confirmation = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    supprimerReleve.mockResolvedValue({})
+    rendre()
+    await screen.findByDisplayValue(lecture.releves[0].releve_le)
+
+    fireEvent.click(screen.getByTestId('cal-releve-nouveau'))
+    await waitFor(() => expect(enregistrerReleve).toHaveBeenCalledTimes(1))
+    await screen.findByTestId('cal-releve-message')
+    fireEvent.click(screen.getByTestId('cal-releve-envoyer'))
+    await waitFor(() => expect(corrigerReleve).toHaveBeenCalledTimes(1))
+    expect(corrigerReleve.mock.calls[0][1]).toBe(r2.id)
+
+    fireEvent.click(screen.getByTestId('cal-releve-supprimer'))
+    await waitFor(() => expect(supprimerReleve).toHaveBeenCalledWith(1, r2.id))
+    confirmation.mockRestore()
+  })
+
   it('les photos du calepinage sont cochables et partent en photo_ids', async () => {
     corrigerReleve.mockResolvedValue({ data: { releve: lectureContrat().data.releves[0], releve_courant_id: 1 } })
     rendre()
