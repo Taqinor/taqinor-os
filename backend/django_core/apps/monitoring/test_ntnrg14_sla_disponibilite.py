@@ -153,6 +153,43 @@ class TestDisponibiliteVsGarantie(TestCase):
         self.assertIsNone(result['penalite_mad'])
         self.assertFalse(result['sous_garantie'])
 
+    def test_releves_mensuels_en_retard_pas_sous_garantie(self):
+        """AMON102 — indice de suivi sur la fenêtre bornée au dernier jour
+        couvert : mensuels contigus du 01/01 au 15/10, lus le 15/11 ⇒
+        100,00 %, pas sous garantie, 0 jour excédentaire (et non 90,28) ;
+        un trou d'un mois entre deux relevés reste compté (< 98)."""
+        import calendar
+
+        def systeme(ref, mois):
+            inst = make_inst(self.company, ref)
+            Installation.objects.filter(pk=inst.pk).update(
+                date_mise_en_service=date(2026, 1, 1))
+            inst.refresh_from_db()
+            SlaDisponibilite.objects.create(
+                company=self.company, installation=inst,
+                disponibilite_garantie_pct=Decimal('98'),
+                compensation_mad_par_jour_indispo=Decimal('100'))
+            for m in mois:
+                ProductionReading.objects.create(
+                    company=self.company, installation=inst,
+                    date=date(2026, m, 1), energy_kwh=Decimal('500'),
+                    period_days=(15 if m == 10
+                                 else calendar.monthrange(2026, m)[1]))
+            return inst
+
+        quinze = date(2026, 11, 15)
+        r = disponibilite_vs_garantie(
+            systeme('AMON102-1', range(1, 11)), today=quinze)
+        self.assertEqual(r['disponibilite_mesuree_pct'], Decimal('100.00'))
+        self.assertFalse(r['sous_garantie'])
+        self.assertEqual(r['jours_indisponibilite_excedentaire'],
+                         Decimal('0'))
+        trou = disponibilite_vs_garantie(
+            systeme('AMON102-2', [m for m in range(1, 11) if m != 6]),
+            today=quinze)
+        self.assertLess(trou['disponibilite_mesuree_pct'], Decimal('98'))
+        self.assertTrue(trou['sous_garantie'])
+
 
 class TestAsav101SlaApi(TestCase):
     """ASAV101 — SLA de disponibilité rendu utilisable : route company-scopée

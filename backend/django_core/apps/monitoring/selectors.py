@@ -16,7 +16,9 @@ from django.utils import timezone
 from .models import (
     MonitoringConfig, ProductionReading, SlaDisponibilite, UnderperformanceFlag,
 )
-from .services import attendu_intervalles, fenetre_couverte, premiers_releves, production_couverte
+from .services import (
+    attendu_intervalles, fenetre_couverte, premiers_releves, production_couverte, releves_recouvrant,
+)
 
 
 def _q(value, places='0.01'):
@@ -407,7 +409,7 @@ def disponibilite_vs_garantie(installation, *, window_days=365, today=None):
     ``compensation_mad_par_jour_indispo`` (0 par défaut = pas de compensation
     chiffrée, seul l'écart est exposé).
     """
-    from .analytics import om_metrics
+    from .analytics import fenetre_mesuree
 
     sla = getattr(installation, 'sla_disponibilite', None)
     if sla is None:
@@ -416,16 +418,26 @@ def disponibilite_vs_garantie(installation, *, window_days=365, today=None):
         return {'has_sla': False}
 
     # AMON10 — supervision résiliée : forme sans données (aucun écart).
-    metrics = ({} if supervision_resiliee(installation) else
-               om_metrics(installation, window_days=window_days, today=today))
-    mesuree_pct = metrics.get('availability_pct')
+    resiliee = supervision_resiliee(installation)
+    jour = today or timezone.localdate()
+    since = jour - timedelta(days=window_days)
+    # AMON102 — indice de suivi = jours couverts / jours de [début ; dernier
+    # jour couvert] (``fenetre_couverte``), pénalité sur ces mêmes jours.
+    fenetre = None if resiliee else fenetre_couverte(
+        installation, releves_recouvrant(installation, since, jour), since, jour)
+    mesuree_pct = jours_fenetre = None
+    if fenetre:
+        jours_fenetre = (fenetre[1] - fenetre[0]).days + 1
+        mesuree_pct = _q(min(Decimal(sum((f - d).days for d, f in fenetre[2]))
+                             / Decimal(jours_fenetre) * 100, Decimal('100')))
     libelle = LIBELLE_INDICE_SUIVI
-    if metrics:
+    if not resiliee:
         # AMON43 — immobilisations SAV des équipements du système quand il en
         # a au parc ; sinon l'indice relevés (libellé inchangé).
         dispo_sav = _disponibilite_sav(installation, window_days, today)
         if dispo_sav is not None:
             mesuree_pct, libelle = dispo_sav, LIBELLE_DISPO_SAV
+            jours_fenetre = fenetre_mesuree(installation, since, jour, window_days)[1]
     # CIQ644 — taux SANS défaut : une ligne sans taux garanti n'a ni écart ni
     # pénalité (jamais un 98 % supposé).
     garantie_pct = (None if sla.disponibilite_garantie_pct is None
@@ -449,13 +461,8 @@ def disponibilite_vs_garantie(installation, *, window_days=365, today=None):
     ecart_pct = garantie_pct - Decimal(str(mesuree_pct))
     sous_garantie = ecart_pct > 0
     if sous_garantie:
-        # AMON21 — jours excédentaires sur la fenêtre BORNÉE (mise en
-        # service / premier relevé), celle de la disponibilité mesurée.
-        from .analytics import fenetre_mesuree
-        jour = today or timezone.localdate()
-        _debut, jours_fenetre = fenetre_mesuree(
-            installation, jour - timedelta(days=window_days), jour,
-            window_days)
+        # AMON21/AMON102 — jours excédentaires sur la fenêtre de
+        # l'indicateur mesuré (couverte, ou bornée pour la branche SAV).
         jours_excedentaires = (
             (ecart_pct / Decimal('100')) * Decimal(jours_fenetre))
         penalite = jours_excedentaires * Decimal(
