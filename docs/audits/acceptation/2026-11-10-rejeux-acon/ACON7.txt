@@ -1,0 +1,103 @@
+# Preuve en direct ACON7 — rejeu accept-acon, code joué 325accf80 (origin/main, merge de #1320), 2026-11-10
+# (le code calepinage / ventes / frontend calepinage / apps/web est identique sur c1a99568a, base de cette PR : git diff
+# 325accf80 c1a99568a vide sur ces chemins).
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau accept-acon-net ; accept-acon-db (pgvector pg16,
+# 127.0.0.1:5552, base erp_accept_acon = pg_dump --no-owner de la base locale erp_live en lecture seule, puis
+# `manage.py migrate`) ; accept-acon-redis ; accept-acon-minio (MinIO privé, seaux erp-pdf / erp-uploads) ;
+# accept-acon-dj (image erp-agentique-django_core, code backend du commit joué COPIÉ par tar dans /app, settings.dev,
+# mail locmem, runserver 0.0.0.0:8000 publié sur 127.0.0.1:8028, DB_CONN_MAX_AGE=0).
+# Sondes : python scripts/sonde.py ACON/<sonde> --conteneur accept-acon-dj (transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sondes du dossier d'audit : verdict ÉCART = `repro` faux = le défaut d'origine
+# n'est PLUS reproduit. Sondes C-LIVE-* écrites pour ce rejeu (source jointe ci-dessous) : --racine <scratch>
+# --sans-fraicheur (la fraîcheur du conteneur est prouvée par les sondes du dossier, lancées SANS --sans-fraicheur
+# sur ce worktree) ; ICI repro=true (verdict REPRO) signifie que le comportement ATTENDU est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8028
+# vite preview --port 5208`), piloté par Playwright MCP, comptes de test acc_acon_dir / acc_acon_dir2 (rôle Directeur,
+# société « Acceptation ACON », seed_catalogue, mot de passe de test généré, base jetable). Page publique : apps/web
+# du commit joué (`PUBLIC_API_BASE=http://127.0.0.1:8028 astro dev --port 5218`).
+# CARTE : la clé MapTiler du .env local est refusée hors *.taqinor.ma (403 sur 127.0.0.1 / localhost, 200 avec
+# Origin taqinor.ma) ; sans style la scène de l'atelier ne s'hydrate pas. Le rejeu sert à la place d'api.maptiler.com
+# un style de FOND NEUTRE local (style.json version 8, une couche background, route Playwright) : aucune tuile, aucune
+# requête MapTiler ; zones, panneaux, cotes, enregistrement et 3D sont ceux de l'application, seul le fond satellite
+# manque. Fixtures FIX-ACON-* : scripts `manage.py shell` sur la base jetable (créations par l'API ou les services, et
+# raccourcis nommés : statut de devis posé par update() quand le geste d'acceptation/envoi n'est pas sous audit).
+# Verdict : PASS — pile locale, porte réelle du parcours public (webhook des leads du site) : roof_outline en « 8 » ⇒ calepinage à repère seul (zones []), 1 version « Tracé repris du parcours public « mon toit » », « Tracé multi-pans ignoré : … le contour se croise » au chatter ; témoin contour simple = 1 zone
+
+Sonde C-LIVE-ACON7 (source jointe) : POST du vrai webhook website-lead-webhook (secret et société posés par override_settings, valeurs de test), on_commit exécutés. Lead « 8 » : 201, 1 calepinage, zones [], pin 33.5 / -7.59995 (dans le lobe), versions ['Tracé repris du parcours public « mon toit »'], note « Tracé multi-pans ignoré : Conception refusée au champ « zones.0.vertices » : le contour se croise (nœud papillon) — redessinez-le sans que deux côtés se coupent. » ; témoin (contour simple, autre lead) : 1 zone. Pas d'écran : la preuve demandée est la création par reprise publique sur la pile locale.
+
+== C-LIVE-ACON7 (sha 325accf80)
+attendu : repro (= attendu observé) si le lead « 8 » donne 1 calepinage, zones [], pin dans le lobe, 1 version au libellé de reprise et la note « Tracé multi-pans ignoré : … se croise » ; témoin 1 zone
+observé : {'webhook_http': 201, 'lead': 3492, 'calepinages': 1, 'zones': [], 'pin': {'lat': 33.5, 'lng': -7.59995}, 'versions': ['Tracé repris du parcours public « mon toit »'], 'notes': ['Tracé multi-pans ignoré : Conception refusée au champ « zones.0.vertices » : le contour se croise (nœud papillon) — redessinez-le sans que deux côtés se coupent.'], 'temoin': {'webhook_http': 201, 'lead': 3493, 'calepinages': 1, 'zones': 1}}
+{"webhook_http": 201, "lead": 3492, "calepinages": 1, "zones": [], "pin": {"lat": 33.5, "lng": -7.59995}, "versions": ["Tracé repris du parcours public « mon toit »"], "notes": ["Tracé multi-pans ignoré : Conception refusée au champ « zones.0.vertices » : le contour se croise (nœud papillon) — redessinez-le sans que deux côtés se coupent."], "temoin": {"webhook_http": 201, "lead": 3493, "calepinages": 1, "zones": 1}, "repro": true}
+verdict : REPRO (fraîcheur non vérifiée)
+base inchangée : oui (avant 4311, après 4311) ; mails 0 ; tâches Celery bloquées 2
+
+== SOURCE C-LIVE-ACON7.py (sonde C-LIVE écrite pour ce rejeu)
+# flake8: noqa  (sonde de rejeu C-LIVE, acceptation ACON 10/11/2026 — METHODE §C.4)
+"""ACON7 — étape PA2.1 (création par reprise publique) : le VRAI webhook des leads du site (porte du parcours public
+« mon toit ») reçoit un lead dont le roof_outline est en « 8 » ; Then : calepinage à repère seul (zones []), 1 version
+« Tracé repris du parcours public « mon toit » », et « Tracé multi-pans ignoré : … le contour se croise » au chatter.
+Témoin : le même webhook avec un contour simple donne 1 zone. Secret et société du webhook posés par override_settings
+(valeurs de test). on_commit exécutés. ICI repro=True = comportement ATTENDU observé."""
+SONDE = {"constat": "C-LIVE-ACON7", "sha": "325accf80",
+         "attendu": "repro (= attendu observé) si le lead « 8 » donne 1 calepinage, zones [], pin dans le lobe, "
+                    "1 version au libellé de reprise et la note « Tracé multi-pans ignoré : … se croise » ; témoin 1 zone",
+         "modeles": ["crm.Lead", "calepinage.Calepinage", "calepinage.CalepinageVersion", "records.Activity"]}
+
+
+def sonde(ctx):
+    import json
+    from django.contrib.contenttypes.models import ContentType
+    from django.test import Client, TestCase, override_settings
+    from django.urls import reverse
+    from apps.calepinage.models import Calepinage
+    from apps.crm.models import Lead
+
+    def payload_site(**extra):  # même forme que apps/crm/tests_webhook.payload_site (charge émise par apps/web lead.ts)
+        base = {'fullName': 'Amina Benali', 'phoneE164': '+212661850410', 'whatsappOptIn': True,
+                'city': 'Casablanca', 'roofType': 'villa', 'billRange': '1500-3000', 'consent': True,
+                'consentTimestamp': '2026-06-13T10:00:00+00:00', 'submittedAt': '2026-06-13T10:00:00+00:00',
+                'qualified': True, 'band': {'kwcMin': 5, 'kwcMax': 9, 'kwcLabel': '5 à 9 kWc',
+                                            'paybackLabel': '4 à 6 ans', 'source': 'local'}, 'page': '/'}
+        base.update(extra)
+        return base
+    from apps.records.models import Activity
+    from authentication.models import Company
+    co = Company.objects.get(slug='acceptation-acon')
+    secret = 'secret-de-test-acon7'
+    c = Client()
+
+    def poster(**kw):
+        with override_settings(WEBSITE_LEAD_WEBHOOK_SECRET=secret, WEBSITE_LEADS_COMPANY_ID=co.pk):
+            with TestCase.captureOnCommitCallbacks(execute=True):
+                return c.post(reverse('website-lead-webhook'), data=json.dumps(payload_site(**kw)),
+                              content_type='application/json', HTTP_X_WEBHOOK_SECRET=secret, HTTP_HOST='localhost')
+
+    def calepinage_du_dernier():
+        lead = Lead.objects.filter(company=co, source=Lead.Source.SITE_WEB).order_by('-pk').first()
+        cals = list(Calepinage.objects.filter(lead_id=lead.pk))
+        return lead, cals
+
+    huit = [[33.4999, -7.6001], [33.5001, -7.5999], [33.4999, -7.5999], [33.5001, -7.6001]]
+    r = poster(roofOutline=huit, roofPoint={'lat': 33.5, 'lng': -7.59995})
+    lead, cals = calepinage_du_dernier()
+    obs = {'webhook_http': r.status_code, 'lead': lead.pk, 'calepinages': len(cals)}
+    if cals:
+        cal = cals[0]
+        L = cal.roof_layout or {}
+        notes = list(Activity.objects.filter(content_type=ContentType.objects.get_for_model(Calepinage),
+                                             object_id=cal.pk).values_list('body', flat=True))
+        obs.update(zones=L.get('zones'), pin=L.get('pin'), versions=list(cal.versions.values_list('libelle', flat=True)),
+                   notes=[n for n in notes if n.startswith('Tracé multi-pans ignoré')])
+    simple = [[33.4999, -7.6001], [33.4999, -7.5999], [33.5001, -7.5999], [33.5001, -7.6001]]
+    r2 = poster(roofOutline=simple, roofPoint={'lat': 33.5, 'lng': -7.6}, fullName='Témoin Contour', phoneE164='+212661000777')
+    lead2, cals2 = calepinage_du_dernier()
+    obs['temoin'] = {'webhook_http': r2.status_code, 'lead': lead2.pk, 'calepinages': len(cals2),
+                     'zones': len((cals2[0].roof_layout or {}).get('zones') or []) if cals2 else None}
+    print(obs)
+    ok = (r.status_code == 201 and obs['calepinages'] == 1 and obs.get('zones') == []
+          and abs(float((obs.get('pin') or {}).get('lat', 0)) - 33.5) < 1e-6 and len(obs.get('versions') or []) == 1
+          and len(obs.get('notes') or []) == 1 and 'se croise' in obs['notes'][0]
+          and obs['temoin']['zones'] == 1 and lead2.pk != lead.pk)
+    obs['repro'] = bool(ok)
+    return obs

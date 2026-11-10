@@ -1,0 +1,33 @@
+# Preuve en direct ACON45 — rejeu accept-acon, code joué 325accf80 (origin/main, merge de #1320), 2026-11-10
+# (le code calepinage / ventes / frontend calepinage / apps/web est identique sur c1a99568a, base de cette PR : git diff
+# 325accf80 c1a99568a vide sur ces chemins).
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau accept-acon-net ; accept-acon-db (pgvector pg16,
+# 127.0.0.1:5552, base erp_accept_acon = pg_dump --no-owner de la base locale erp_live en lecture seule, puis
+# `manage.py migrate`) ; accept-acon-redis ; accept-acon-minio (MinIO privé, seaux erp-pdf / erp-uploads) ;
+# accept-acon-dj (image erp-agentique-django_core, code backend du commit joué COPIÉ par tar dans /app, settings.dev,
+# mail locmem, runserver 0.0.0.0:8000 publié sur 127.0.0.1:8028, DB_CONN_MAX_AGE=0).
+# Sondes : python scripts/sonde.py ACON/<sonde> --conteneur accept-acon-dj (transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sondes du dossier d'audit : verdict ÉCART = `repro` faux = le défaut d'origine
+# n'est PLUS reproduit. Sondes C-LIVE-* écrites pour ce rejeu (source jointe ci-dessous) : --racine <scratch>
+# --sans-fraicheur (la fraîcheur du conteneur est prouvée par les sondes du dossier, lancées SANS --sans-fraicheur
+# sur ce worktree) ; ICI repro=true (verdict REPRO) signifie que le comportement ATTENDU est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8028
+# vite preview --port 5208`), piloté par Playwright MCP, comptes de test acc_acon_dir / acc_acon_dir2 (rôle Directeur,
+# société « Acceptation ACON », seed_catalogue, mot de passe de test généré, base jetable). Page publique : apps/web
+# du commit joué (`PUBLIC_API_BASE=http://127.0.0.1:8028 astro dev --port 5218`).
+# CARTE : la clé MapTiler du .env local est refusée hors *.taqinor.ma (403 sur 127.0.0.1 / localhost, 200 avec
+# Origin taqinor.ma) ; sans style la scène de l'atelier ne s'hydrate pas. Le rejeu sert à la place d'api.maptiler.com
+# un style de FOND NEUTRE local (style.json version 8, une couche background, route Playwright) : aucune tuile, aucune
+# requête MapTiler ; zones, panneaux, cotes, enregistrement et 3D sont ceux de l'application, seul le fond satellite
+# manque. Fixtures FIX-ACON-* : scripts `manage.py shell` sur la base jetable (créations par l'API ou les services, et
+# raccourcis nommés : statut de devis posé par update() quand le geste d'acceptation/envoi n'est pas sous audit).
+# Verdict : PASS — écran : « Composer le dossier technique » v1 (approbation non exigée) ; approbation rendue exigée (pied « Conception non approuvée »), « Approuver » puis « Composer le dossier technique » ⇒ nouvelle version v2 du même document GED 262, sans « non approuvée » (pied vide) ; C-ACON-044 repro faux. NOTE : un pack « rangé Conception non approuvée » ne se reproduit plus tel quel (exigée + non approuvé = 409, ACON44) ; v1 a donc été produite approbation non exigée
+
+Calepinage #291 (simulé avec le client PVGIS de test, matériel du devis lié). Approbation non exigée : Documents › « Composer le dossier technique » ⇒ POST pack-technique/ 201 {document 262, pièces planche 1 p., note de calcul 3 p., plan de toiture, plan de pose, rapport d'étude 15 p., plan de câblage ; signalements plan de masse / rapport d'ombrage affichés} ; GED 262 : version 1. Approbation exigée remise : pied_du_calepinage = [« Conception non approuvée »]. Onglet Approbation (acc_acon_dir2, non auteur) « Approuver » ⇒ 200 ; Documents › « Composer le dossier technique » ⇒ 201 document 262 ; GED 262 : versions 1 et 2 (le clic suivant l'approbation produit une nouvelle version, pas « document inchangé ») ; texte PDF v2 sans « non approuvée » ; pied_du_calepinage = [].
+
+== C-ACON-044 (sha 33cba7f5d)
+attendu : repro si pack-technique 409 approbation ET generer-dossier 200 avec document GED, pied de planche = mention « non approuvée »
+observé : {'approbation_exigee': True, 'est_approuve': False, 'pack_technique': [409, '{\'approbation\': [ErrorDetail(string="Approbation à jour exigée avant de produire une pièce d\'exécution", code=\'invalid\')], \'error\': {\'code\': \'api_error\', \'message\': "Approbation à jour exigée avant de'], 'generer_dossier': [409, None], 'pied_planche': ['Conception non approuvée']}
+{"approbation_exigee": true, "est_approuve": false, "pack_technique": [409, "{'approbation': [ErrorDetail(string=\"Approbation à jour exigée avant de produire une pièce d'exécution\", code='invalid')], 'error': {'code': 'api_error', 'message': \"Approbation à jour exigée avant de"], "generer_dossier": [409, null], "pied_planche": ["Conception non approuvée"], "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 206, après 206) ; mails 0 ; tâches Celery bloquées 0

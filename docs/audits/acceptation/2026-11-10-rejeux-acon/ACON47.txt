@@ -1,0 +1,26 @@
+# Preuve en direct ACON47 — rejeu accept-acon, code joué 325accf80 (origin/main, merge de #1320), 2026-11-10
+# (le code calepinage / ventes / frontend calepinage / apps/web est identique sur c1a99568a, base de cette PR : git diff
+# 325accf80 c1a99568a vide sur ces chemins).
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau accept-acon-net ; accept-acon-db (pgvector pg16,
+# 127.0.0.1:5552, base erp_accept_acon = pg_dump --no-owner de la base locale erp_live en lecture seule, puis
+# `manage.py migrate`) ; accept-acon-redis ; accept-acon-minio (MinIO privé, seaux erp-pdf / erp-uploads) ;
+# accept-acon-dj (image erp-agentique-django_core, code backend du commit joué COPIÉ par tar dans /app, settings.dev,
+# mail locmem, runserver 0.0.0.0:8000 publié sur 127.0.0.1:8028, DB_CONN_MAX_AGE=0).
+# Sondes : python scripts/sonde.py ACON/<sonde> --conteneur accept-acon-dj (transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sondes du dossier d'audit : verdict ÉCART = `repro` faux = le défaut d'origine
+# n'est PLUS reproduit. Sondes C-LIVE-* écrites pour ce rejeu (source jointe ci-dessous) : --racine <scratch>
+# --sans-fraicheur (la fraîcheur du conteneur est prouvée par les sondes du dossier, lancées SANS --sans-fraicheur
+# sur ce worktree) ; ICI repro=true (verdict REPRO) signifie que le comportement ATTENDU est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8028
+# vite preview --port 5208`), piloté par Playwright MCP, comptes de test acc_acon_dir / acc_acon_dir2 (rôle Directeur,
+# société « Acceptation ACON », seed_catalogue, mot de passe de test généré, base jetable). Page publique : apps/web
+# du commit joué (`PUBLIC_API_BASE=http://127.0.0.1:8028 astro dev --port 5218`).
+# CARTE : la clé MapTiler du .env local est refusée hors *.taqinor.ma (403 sur 127.0.0.1 / localhost, 200 avec
+# Origin taqinor.ma) ; sans style la scène de l'atelier ne s'hydrate pas. Le rejeu sert à la place d'api.maptiler.com
+# un style de FOND NEUTRE local (style.json version 8, une couche background, route Playwright) : aucune tuile, aucune
+# requête MapTiler ; zones, panneaux, cotes, enregistrement et 3D sont ceux de l'application, seul le fond satellite
+# manque. Fixtures FIX-ACON-* : scripts `manage.py shell` sur la base jetable (créations par l'API ou les services, et
+# raccourcis nommés : statut de devis posé par update() quand le geste d'acceptation/envoi n'est pas sous audit).
+# Verdict : FAIL — ÉCHEC écran (ERR-ACON-DOSSIER-SIGNALEMENT-NON-AFFICHE) : saisie « Puissance (kWc) » 6,6 contre 2,13 du calepinage, « Générer le dossier » ⇒ 200 avec signalements [« Champ « Puissance (kWc) » : saisi 6,6, le calepinage dit 2,13 — la valeur saisie est imprimée. »] MAIS l'écran n'affiche ni le signalement ni « Dossier généré — … » (seulement « Dernière génération »), vérifié 40 s après le clic ; attendu : signalement affiché
+
+FIX-ACON-REGL (approbation non exigée) : calepinage #291 simulé ; Dossiers réglementaires › « Puissance (kWc) » 6,6 → « Enregistrer les champs » 200 (écran : « Valeur du calepinage : 2.13 / Utiliser la valeur du calepinage ») → « Générer le dossier » ⇒ 200 {document 261, pièces gabarit/champs/planche/note_calcul/schema_unifilaire, signalements [« Champ « Puissance (kWc) » : saisi 6,6, le calepinage dit 2,13 — la valeur saisie est imprimée. »]}. Écran après le 200 (lu toutes les 0,5 s pendant 40 s lors d'un 2e clic, et 40 s après le 1er) : aucun élément data-testid calx40-signalement ni calx40-genere-*, texte « saisi 6,6 » absent de la page ; seuls « Dernière génération : 10/11/2026 14:36 » et « Ouvrir le document généré (GED) ». (Le panneau Documents, lui, affiche les signalements du pack technique.) Premier essai sans simulation : 409 note_calcul « Aucun résultat de moteur enregistré… » affiché.
