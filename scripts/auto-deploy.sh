@@ -67,13 +67,17 @@ if [ -f "$STATE/zero_downtime" ]; then
   rm -f "$STATE/zero_downtime"
 fi
 
-# Changement purement docs/markdown ? (markdown, .txt, ou sous docs/) -> on
-# rafraîchit l'arbre de travail mais on saute rebuild/migration/restart/préchauffage.
+# Changement purement docs/markdown ? (*.md / *.markdown, ou sous docs/ HORS
+# docs/meryem/) -> on rafraîchit l'arbre de travail mais on saute
+# rebuild/migration/restart/préchauffage. ADCG7 : `.txt` n'est PAS de la doc
+# (requirements*.txt reconstruit une image) et docs/meryem/** est publié dans la
+# GED par publier_documents_meryem : tous deux exigent un deploy complet.
 DOCS_ONLY=0
 CHANGES=""
 if [ -n "$OLD" ] && git cat-file -e "${OLD}^{commit}" 2>/dev/null; then
   CHANGES=$(git diff --name-only "$OLD" "$NEW" || echo "")
-  NONDOC=$(echo "$CHANGES" | grep -vE '(\.(md|markdown|txt)$)|(^docs/)' || true)
+  NONDOC=$( { echo "$CHANGES" | grep -vE '(\.(md|markdown)$)|(^docs/)'; \
+              echo "$CHANGES" | grep -E '^docs/meryem/'; } || true)
   [ -z "$NONDOC" ] && DOCS_ONLY=1
 fi
 

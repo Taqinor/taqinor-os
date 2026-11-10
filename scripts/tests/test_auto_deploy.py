@@ -238,6 +238,25 @@ class AutoDeployTests(unittest.TestCase):
         self.assertIn("ECHEC sans retour arrière (aucun commit sain)", banc.journal)
         self.assertNotIn("ROLLBACK", banc.journal)
 
+    def test_requirements_et_meryem_ne_sont_pas_des_docs(self):
+        """ADCG7 — seuls *.md/*.markdown et docs/** (hors docs/meryem/) sont « docs »."""
+        banc = self.banc("requirements",
+                         changes="backend/django_core/requirements.txt\ndocs/CODEMAP.md\n")
+        rc, sortie = banc.jouer()
+        self.assertEqual(rc, 0, sortie + banc.journal)
+        self.assertIsNotNone(banc.index(r"prod\.yml build django_core$"))
+        self.assertIn("rebuild ciblé", banc.journal)
+        self.assertEqual(banc.lire("last_deployed_commit"), B)
+        banc = self.banc("meryem", changes="docs/meryem/guide.md\n")
+        rc, sortie = banc.jouer()
+        self.assertEqual(rc, 0, sortie + banc.journal)
+        self.assertIsNotNone(banc.index("publier_documents_meryem"))
+        self.assertEqual(banc.lire("last_deployed_commit"), B)
+        banc = self.banc("docs", changes="docs/CODEMAP.md\n")
+        banc.jouer()
+        self.assertIn("docs/markdown uniquement", banc.journal)
+        self.assertIsNone(banc.index("manage.py"))
+
     def test_zero_downtime_drapeau_lu_puis_efface(self):
         banc = self.banc(changes=LOT_ECRAN_API)
         rc, _ = banc.jouer(_remote().replace("ZERO_DOWNTIME=0", "ZERO_DOWNTIME=1"))
