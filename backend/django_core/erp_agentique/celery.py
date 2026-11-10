@@ -331,6 +331,12 @@ app.conf.beat_schedule = {
         'task': 'crm.snapshot_forecast_hebdo',
         'schedule': crontab(hour=5, minute=0, day_of_week=1),
     },
+    # NTDMO29 — ré-ancre les relances passées des leads des sociétés DÉMO
+    # (est_demo=True strictement) sur 1-5 jours futurs ; quotidien, idempotent.
+    'crm-reancrer-relances-demo': {
+        'task': 'crm.reancrer_relances_demo',
+        'schedule': crontab(hour=5, minute=30),
+    },
     # XPLT6 — évalue les alertes de seuil sur KPI agrégés (dédup interne).
     'reporting-evaluate-kpi-alertes': {
         'task': 'reporting.evaluate_kpi_alertes',

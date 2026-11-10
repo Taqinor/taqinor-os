@@ -242,3 +242,37 @@ def attribuer_leads_echus_task():
     from apps.crm.dispatch import attribuer_echeances, escalader_file
     return {'attribues': attribuer_echeances(),
             'paliers_file': escalader_file()}
+
+
+def reancrer_relances_demo(today=None, rng=None):
+    """NTDMO29 — ré-ancre les ``relance_date`` PASSÉES des leads des sociétés
+    de DÉMONSTRATION sur 1 à 5 jours dans le futur.
+
+    Filtre strict ``Company.est_demo=True`` : une société réelle n'est jamais
+    touchée. Idempotent : seules les relances déjà passées bougent. Écrit via
+    ``QuerySet.update`` (ni chatter ni signal : mise en scène de démo, pas un
+    acte commercial). Retourne le nombre de leads ré-ancrés."""
+    import datetime
+    import random
+
+    from django.utils import timezone
+
+    from apps.crm.models import Lead
+
+    rng = rng or random
+    today = today or timezone.localdate()
+    n = 0
+    qs = Lead.objects.filter(
+        company__est_demo=True, perdu=False, relance_date__lt=today)
+    for pk in list(qs.values_list('pk', flat=True)):
+        Lead.objects.filter(pk=pk).update(
+            relance_date=today + datetime.timedelta(days=rng.randint(1, 5)))
+        n += 1
+    return n
+
+
+@shared_task(name='crm.reancrer_relances_demo')
+def reancrer_relances_demo_task():
+    """NTDMO29 — Enveloppe Celery Beat quotidienne de ``reancrer_relances_demo``
+    (planifiée dans ``erp_agentique/celery.py``)."""
+    return {'reancres': reancrer_relances_demo()}
