@@ -52,6 +52,9 @@ function suggestionsEnAttente(erreurs) {
     .filter((champ) => !['decision', 'motif', 'detail', 'roof_layout'].includes(champ))
 }
 
+/** ACON24 (D-ACON-3) — ce que l'accord COUVRE : la conception imprimée seule. */
+const PORTEE_ACCORD = 'L’accord porte sur la conception dessinée (implantation des modules). Il ne couvre ni la saisie électrique (onduleur, chaînes, longueur forcée, batterie) ni le système de fixation : les modifier après l’accord ne le périme pas.'
+
 export default function Approbation({ calepinageId: idPropose = null, lectureSeule = false }) {
   const { id: idUrl } = useParams()
   const calepinageId = idPropose ?? idUrl ?? null
@@ -128,6 +131,9 @@ export default function Approbation({ calepinageId: idPropose = null, lectureSeu
             Une approbation à jour est exigée avant de générer ou resynchroniser le devis et de produire les pièces d’exécution (réglage société). Retenir une variante se fait d’abord ; l’approbation se donne ensuite.
           </p>
         )}
+        <p className="mt-1 text-xs text-muted-foreground" data-testid="calx349-portee">
+          {PORTEE_ACCORD}
+        </p>
         {etat.etat ? (
           <p className="mt-2 text-sm" data-testid="calx349-decision">
             {LIBELLE_DECISION[etat.etat] || etat.etat}

@@ -213,6 +213,19 @@ describe('Approbation (CALX349) — décider, avec le code', () => {
    ACAL115 — l'approbation PÉRIMÉE et le refus « conception vide », servis.
    ========================================================================== */
 describe('Approbation (ACAL115)', () => {
+  it('dit que l’accord ne couvre ni l’électrique ni la fixation', async () => {
+    // ACON24 (D-ACON-3) — visible avec ou sans décision, avec ou sans code d'approbation.
+    for (const variante of ['exemple_vide', 'exemple']) {
+      servir(variante)
+      rendre()
+      expect(await screen.findByTestId('calx349-portee')).toHaveTextContent(
+        'L’accord porte sur la conception dessinée (implantation des modules). Il ne couvre ni la '
+        + 'saisie électrique (onduleur, chaînes, longueur forcée, batterie) ni le système de fixation : '
+        + 'les modifier après l’accord ne le périme pas.')
+      cleanup()
+    }
+  })
+
   it('approbation périmée : bandeau à redécider', async () => {
     servir('exemple_perime')
     rendre()
