@@ -145,7 +145,7 @@ def import_projet(self, request):
             titre=corps.get('titre') or '',
             apercu=apercu)
     except ImportProjetRefuse as refus:
-        return Response({refus.champ or 'projet': str(refus)},
+        return Response(refus.corps or {refus.champ or 'projet': str(refus)},
                         status=refus.statut)
     return Response(resume, status=(status.HTTP_200_OK if apercu
                                     else status.HTTP_201_CREATED))
