@@ -640,6 +640,13 @@ ALL_PERMISSIONS = [
     # ``CODES_NON_OCTROYABLES`` ci-dessous, appliqué par ``RoleSerializer``).
     # NON élevé. Garde côté vues d'argent : ASEC29 (facturation).
     'encaisser',
+    # ── APFS40 / D-APFS-1 — codes dédiés d'administration, EN PLUS du palier :
+    # clés d'API & webhooks (``integrations_gerer``, APFS110), activer/couper
+    # un module (``modules_gerer``), demandes loi 09-08 (``dsr_traiter``,
+    # APFS45). Titulaires : Directeur + Administrateur (héritage du catalogue),
+    # aucun autre rôle système ; aucun rôle en base n'en reçoit (migration
+    # roles 0013 : zéro titulaire, retour arrière = retrait).
+    'integrations_gerer', 'modules_gerer', 'dsr_traiter',
 ]
 
 # ───────────────────────────────────────────────────────────────────────────

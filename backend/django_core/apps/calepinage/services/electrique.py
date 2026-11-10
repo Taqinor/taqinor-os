@@ -2070,13 +2070,12 @@ def _ecart_devis(calepinage, p50):
     devis_id = getattr(calepinage, 'devis_id', None)
     if not devis_id or not _est_un_nombre(p50):
         return None
-    from apps.ventes.selectors import (
-        get_devis_by_pk, production_attendue_pour_devis,
-    )
+    from apps.ventes.selectors import get_devis_by_pk, production_attendue_pour_devis
+    from apps.ventes.selectors_calepinage import _conception_a_jour
 
     devis = get_devis_by_pk(devis_id)
-    if devis is None or devis.company_id != getattr(calepinage,
-                                                    'company_id', None):
+    if (devis is None or devis.company_id != getattr(calepinage, 'company_id', None)
+            or _conception_a_jour(devis, calepinage) is False):  # ACON27 — autre conception
         return None
     production = production_attendue_pour_devis(devis_id)
     if production is None or production <= 0:

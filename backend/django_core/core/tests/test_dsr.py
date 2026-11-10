@@ -130,3 +130,44 @@ class DsrRequestViewSetTests(TestCase):
             {'post': 'traiter'})(req, pk=dsr_req.pk)
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.assertEqual(resp.data['statut'], DataSubjectRequest.STATUT_TRAITEE)
+
+    def test_traiter_refuse_sans_dsr_traiter(self):
+        """APFS45 (C-APFS-042, D-APFS-1) — demandes loi 09-08 : ``dsr_traiter``
+        exigé en plus du palier sur toutes les routes ; refus ⇒ sujet ni
+        exporté ni effacé ; Directeur / Administrateur 201 puis 200."""
+        from django.apps import apps as django_apps
+        from django.core.management import call_command
+        Role = django_apps.get_model('roles', 'Role')  # core n'importe aucune app
+        appels = []
+        dsr._PROVIDERS.clear()
+        dsr.register_dsr_provider('crm', export=lambda co, s: appels.append(('export', s)) or {},
+                                  erase=lambda co, s: appels.append(('erase', s)) or {})
+        call_command('init_roles', verbosity=0)
+        roles = {r.nom: r for r in Role.objects.filter(company=self.company)}
+        demandes = [DataSubjectRequest.objects.create(
+            company=self.company, subject_identifier='sujet@b.ma', kind=k)
+            for k in (DataSubjectRequest.KIND_ACCESS, DataSubjectRequest.KIND_ERASURE)]
+
+        def gestes(nom):
+            user = User.objects.create_user(
+                username=f'apfs45_{nom.replace(" ", "_").lower()}', password='x',
+                company=self.company, role=roles[nom])
+            reqs = [(self.factory.get('/dsr-requests/'), {'get': 'list'}, {}),
+                    (self.factory.post('/dsr-requests/', {'kind': 'acces', 'subject_identifier': 'x@b.ma'},
+                                       format='json'), {'post': 'create'}, {})]
+            reqs += [(self.factory.post(f'/dsr-requests/{d.pk}/traiter/'), {'post': 'traiter'}, {'pk': d.pk})
+                     for d in demandes]
+            codes = []
+            for req, actions, kw in reqs:
+                force_authenticate(req, user=user)
+                codes.append(DataSubjectRequestViewSet.as_view(actions)(req, **kw).status_code)
+            return codes
+        for nom in ('Admin RH', 'Admin Ventes', 'Technicien responsable', 'Commercial responsable', 'Responsable'):
+            with self.subTest(role=nom):
+                self.assertEqual(gestes(nom), [403] * 4)
+        self.assertEqual(appels, [])
+        self.assertEqual(gestes('Directeur'), [200, 201, 200, 200])
+        self.assertIn(('erase', 'sujet@b.ma'), appels)
+        demandes = [DataSubjectRequest.objects.create(
+            company=self.company, subject_identifier='autre@b.ma', kind=DataSubjectRequest.KIND_ACCESS)]
+        self.assertEqual(gestes('Administrateur')[1:], [201, 200])

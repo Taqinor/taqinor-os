@@ -112,6 +112,42 @@ class CatalogueEndpointTests(TestCase):
             {'post': 'desactiver'})(req, pk='pos')
         self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_desactiver_refuse_palier_responsable_sans_modules_gerer(self):
+        """APFS40 (C-APFS-040, D-APFS-1) — le palier « responsable » ne suffit
+        plus : sans ``modules_gerer`` 403 et module inchangé ; Directeur et
+        Administrateur 200 ; compte hérité palier admin 200 (repli légacy)."""
+        from django.apps import apps as django_apps
+        from django.core.management import call_command
+        Role = django_apps.get_model('roles', 'Role')  # core n'importe aucune app
+        call_command('init_roles', verbosity=0)
+        roles = {r.nom: r for r in Role.objects.filter(company=self.company)}
+
+        def geste(user, action):
+            req = self.factory.post(f'/modules/achats/{action}/')
+            force_authenticate(req, user=user)
+            return ModuleCatalogViewSet.as_view({'post': action})(req, pk='achats')
+
+        for nom in ('Admin RH', 'Admin Ventes', 'Technicien responsable',
+                    'Commercial responsable', 'Commercial'):
+            user = User.objects.create_user(
+                username=f'apfs40_{nom.replace(" ", "_").lower()}',
+                password='x', company=self.company, role=roles[nom])
+            for action in ('desactiver', 'activer'):
+                with self.subTest(role=nom, action=action):
+                    self.assertEqual(geste(user, action).status_code,
+                                     status.HTTP_403_FORBIDDEN)
+                    self.assertFalse(ModuleToggle.objects.filter(
+                        company=self.company, module='achats',
+                        actif=False).exists())
+        for nom in ('Directeur', 'Administrateur'):
+            user = User.objects.create_user(
+                username=f'apfs40_{nom.lower()}', password='x',
+                company=self.company, role=roles[nom])
+            with self.subTest(role=nom):
+                self.assertEqual(geste(user, 'desactiver').status_code, 200)
+                self.assertEqual(geste(user, 'activer').status_code, 200)
+        self.assertEqual(geste(self.admin, 'desactiver').status_code, 200)
+
     def test_desactiver_with_dependent_returns_400(self):
         req = self.factory.post('/modules/crm/desactiver/')
         force_authenticate(req, user=self.admin)

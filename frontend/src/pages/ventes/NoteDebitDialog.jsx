@@ -28,6 +28,9 @@ import {
 
 // AFAC33 — `onChanged` (optionnel) : l'écran appelant recharge ses factures
 // après une création / annulation (le reste dû change).
+// ASOC49 — le taux de la facture (« 14.00 » → « 14 »), vide si elle n'en porte pas.
+const tauxDeLaFacture = (f) => (f?.taux_tva == null || f.taux_tva === '' ? '' : String(Number(f.taux_tva)))
+
 export default function NoteDebitDialog({ facture, open, onOpenChange, onChanged }) {
   const isAdmin = useIsAdmin()
   const [notes, setNotes] = useState([])
@@ -39,7 +42,7 @@ export default function NoteDebitDialog({ facture, open, onOpenChange, onChanged
   const [creating, setCreating] = useState(false)
   // AFAC33 — jamais « toute la facture » par défaut : montant HT saisi + taux.
   const [montant, setMontant] = useState('')
-  const [tauxTva, setTauxTva] = useState('20')
+  const [tauxTva, setTauxTva] = useState(() => tauxDeLaFacture(facture))
   const [erreur, setErreur] = useState('')
   const [annulationId, setAnnulationId] = useState(null)
 
@@ -52,7 +55,7 @@ export default function NoteDebitDialog({ facture, open, onOpenChange, onChanged
   const [wasOpen, setWasOpen] = useState(open)
   if (open !== wasOpen) {
     setWasOpen(open)
-    if (open) setLoadedFactureId(null)
+    if (open) { setLoadedFactureId(null); setTauxTva(tauxDeLaFacture(facture)) }
   }
 
   const factureId = facture?.id ?? null
@@ -76,7 +79,7 @@ export default function NoteDebitDialog({ facture, open, onOpenChange, onChanged
     setCreating(true); setErreur('')
     try {
       const res = await ventesApi.creerNoteDebit(
-        facture.id, { motif, montant, taux_tva: tauxTva })
+        facture.id, { motif, montant, ...(tauxTva !== '' && { taux_tva: tauxTva }) })
       setNotes((n) => [res.data, ...n])
       setMotif(''); setMontant('')
       toast.success(`Note de débit ${res.data?.reference || ''} créée.`)

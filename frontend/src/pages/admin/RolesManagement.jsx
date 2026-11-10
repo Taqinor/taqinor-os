@@ -109,6 +109,9 @@ const PERMISSION_GROUPS = [
     codes: [
       { code: 'parametres_voir',     label: 'Voir' },
       { code: 'parametres_modifier', label: 'Modifier' },
+      { code: 'modules_gerer', label: 'Activer ou couper un module' },
+      { code: 'integrations_gerer', label: "Gérer les clés d'API et webhooks" },
+      { code: 'dsr_traiter', label: 'Traiter les demandes loi 09-08' },
     ],
   },
   {

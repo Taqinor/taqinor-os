@@ -14,7 +14,7 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serial
 from rest_framework import serializers
 
 
-def _co_qs(model, user, company_id=None):
+def _co_qs(model, user, company_id=None, portee=None):
     """Queryset borné à UNE société — jamais « toutes » (AUD315).
 
     La branche superutilisateur renvoyait auparavant le queryset NON filtré :
@@ -24,6 +24,9 @@ def _co_qs(model, user, company_id=None):
     sans sélecteur explicite, on ne renvoie rien (fail-closed).
     """
     qs = model.objects.all()
+    if portee:  # APFS23 — la portée de l'écran (« soi », équipe) borne aussi l'export
+        from core.scoping import scope_queryset
+        qs = scope_queryset(qs, user, portee)
     if user.company_id:
         return qs.filter(company=user.company)
     if user.is_superuser:
@@ -41,7 +44,7 @@ def _devis_rows(user, ids, company_id=None):
     # ``lignes__produit``) + la société (réglages lus par le calcul) : le
     # nombre de requêtes ne dépend plus du nombre de devis exportés.
     qs = devis_avec_totaux(
-        _co_qs(Devis, user, company_id).select_related('client', 'company'))
+        _co_qs(Devis, user, company_id, ['created_by']).select_related('client', 'company'))
     if ids:
         qs = qs.filter(id__in=ids)
     headers = ['Référence', 'Client', 'Statut', 'Total TTC', 'Créé le', 'Validité']
@@ -56,7 +59,7 @@ def _devis_rows(user, ids, company_id=None):
 
 def _factures_rows(user, ids, company_id=None):
     from apps.ventes.models import Facture
-    qs = _co_qs(Facture, user, company_id).select_related('client')
+    qs = _co_qs(Facture, user, company_id, ['created_by']).select_related('client')
     if ids:
         qs = qs.filter(id__in=ids)
     # ``Facture`` n'a pas de ``date_creation`` (AttributeError → 500 dès qu'une
@@ -72,7 +75,8 @@ def _factures_rows(user, ids, company_id=None):
 
 def _chantiers_rows(user, ids, company_id=None):
     from apps.installations.models import Installation
-    qs = _co_qs(Installation, user, company_id).select_related('client')
+    from apps.installations.selectors import scoper_chantiers
+    qs = scoper_chantiers(_co_qs(Installation, user, company_id), user).select_related('client')
     if ids:
         qs = qs.filter(id__in=ids)
     headers = ['Référence', 'Client', 'Statut', 'Pose prévue', 'Mise en service']
@@ -115,6 +119,10 @@ def _tickets_rows(user, ids, company_id=None):
     return 'tickets.xlsx', headers, rows, 'Tickets SAV'
 
 
+#: APFS23 — code d'export du module de l'entité (refus nommé ``droit_manquant``).
+_DROITS_EXPORT = {'devis': 'ventes_export', 'factures': 'ventes_export',
+                  'chantiers': 'installation_export', 'equipements': 'sav_export', 'tickets': 'sav_export'}
+
 _BUILDERS = {
     'devis': _devis_rows, 'factures': _factures_rows, 'chantiers': _chantiers_rows,
     'equipements': _equipements_rows, 'tickets': _tickets_rows,
@@ -152,6 +160,10 @@ def export_list(request, entity):
     builder = _BUILDERS.get(entity)
     if builder is None:
         return Response({'detail': 'Entité inconnue.'}, status=400)
+    from apps.roles.permissions import DroitDeLaGrille
+    garde = DroitDeLaGrille(_DROITS_EXPORT[entity])()
+    if not garde.has_permission(request, None):
+        return Response(garde.message, status=403)
     corps = corps_valide(request, _EXPORT_LISTE_REQUETE)
     company_id = None
     if not request.user.company_id and request.user.is_superuser:

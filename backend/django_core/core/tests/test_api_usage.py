@@ -115,3 +115,31 @@ class ApiUsagePlanViewTests(TestCase):
         self.assertEqual(resp.data['quota_par_jour'], 5)
         plan = api_usage.plan_pour_societe(self.company)
         self.assertEqual(plan.quota_par_jour, 5)
+
+    def test_patch_plan_refuse_palier_responsable(self):
+        """APFS41 (C-APFS-040, D-APFS-1) — le plan de quotas est réservé au
+        palier administrateur : le palier « responsable » reçoit 403, plan
+        inchangé ; Directeur et Administrateur 200."""
+        from django.core.management import call_command
+        Role = django_apps.get_model('roles', 'Role')  # core n'importe aucune app
+        call_command('init_roles', verbosity=0)
+        roles = {r.nom: r for r in Role.objects.filter(company=self.company)}
+        avant = api_usage.plan_pour_societe(self.company)
+
+        def patch(nom):
+            user = User.objects.create_user(
+                username=f'apfs41_{nom.replace(" ", "_").lower()}', password='x',
+                company=self.company, role=roles[nom])
+            req = self.factory.patch('/api-usage/plan/', {
+                'quota_par_jour': 0, 'actif': False}, format='json')
+            force_authenticate(req, user=user)
+            return ApiUsagePlanViewSet.as_view({'patch': 'plan'})(req)
+        for nom in ('Responsable', 'Admin RH', 'Admin Ventes', 'Technicien responsable',
+                    'Commercial responsable', 'Commercial'):
+            with self.subTest(role=nom):
+                self.assertEqual(patch(nom).status_code, status.HTTP_403_FORBIDDEN)
+                plan = api_usage.plan_pour_societe(self.company)
+                self.assertEqual((plan.actif, plan.quota_par_jour), (avant.actif, avant.quota_par_jour))
+        for nom in ('Directeur', 'Administrateur'):
+            with self.subTest(role=nom):
+                self.assertEqual(patch(nom).status_code, status.HTTP_200_OK)

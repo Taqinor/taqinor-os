@@ -7,9 +7,8 @@ réglé).
 """
 from rest_framework import generics
 from rest_framework.parsers import JSONParser
-from rest_framework.permissions import IsAuthenticated
 
-from authentication.permissions import IsResponsableOrAdmin
+from authentication.permissions import IsAuthenticatedInterne, IsResponsableOrAdmin
 from ..serializers import ParametresGammesSerializer
 from .. import services
 
@@ -31,7 +30,7 @@ class ParametresGammesView(generics.RetrieveUpdateAPIView):
 
     def get_permissions(self):
         if self.request.method in ('GET', 'HEAD', 'OPTIONS'):
-            return [IsAuthenticated()]
+            return [IsAuthenticatedInterne()]
         return [IsResponsableOrAdmin()]
 
     def get_object(self):

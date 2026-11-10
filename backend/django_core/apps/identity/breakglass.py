@@ -60,8 +60,9 @@ def revoke_break_glass(grant):
     target.role_legacy = grant.role_legacy_avant or target.role_legacy
     if grant.role_id_avant:
         target.role_id = grant.role_id_avant
-    else:
-        target.role = None
+    else:  # APFS47 — rôle « Utilisateur » de la société, jamais « aucun rôle »
+        from apps.roles.services import role_utilisateur
+        target.role = role_utilisateur(target.company)
     target.save(update_fields=['role_legacy', 'role'])
     grant.revoque_le = timezone.now()
     grant.save(update_fields=['revoque_le'])

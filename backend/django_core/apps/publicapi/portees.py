@@ -122,3 +122,23 @@ IMPORT_SCOPE_BY_ENTITY = {
     'leads': SCOPE_WRITE_LEADS,
     'activites': SCOPE_WRITE_ACTIVITIES,
 }
+
+# APFS110 (D-APFS-1) — code ERP que l'émetteur d'une portée doit porter ; portée
+# absente : le palier + ``integrations_gerer`` suffisent.
+CODE_DE_PORTEE = {
+    SCOPE_READ_LEADS: 'crm_voir', SCOPE_READ_CLIENTS: 'crm_voir',
+    SCOPE_READ_DEVIS: 'ventes_voir', SCOPE_READ_FACTURES: 'ventes_voir',
+    SCOPE_READ_CHANTIERS: 'installation_voir', SCOPE_READ_STOCK: 'stock_voir',
+    SCOPE_READ_CALEPINAGES: 'calepinage_voir',
+    SCOPE_READ_FIABILITE: 'fiabilite_voir',
+    SCOPE_WRITE_LEADS: 'crm_creer', SCOPE_WRITE_ACTIVITIES: 'crm_modifier',
+    SCOPE_WRITE_DEVIS: 'ventes_creer', SCOPE_WRITE_TICKETS: 'sav_gerer',
+}
+# Même règle pour l'abonnement webhook : préfixe d'évènement → code de lecture.
+CODE_DE_PREFIXE_EVENEMENT = {
+    'lead': 'crm_voir', 'devis': 'ventes_voir', 'facture': 'ventes_voir',
+    'paiement': 'ventes_voir', 'chantier': 'installation_voir',
+    'intervention': 'installation_voir', 'ticket': 'sav_voir',
+    'stock': 'stock_voir', 'livraison': 'stock_voir',
+    'calepinage': 'calepinage_voir',
+}

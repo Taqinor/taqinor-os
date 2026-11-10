@@ -106,7 +106,7 @@ class AccessReviewTests(TenantAPITestCase):
              'commentaire': 'plus besoin'}, format='json')
         self.assertEqual(r.status_code, 200, r.content)
         member.refresh_from_db()
-        self.assertIsNone(member.role_id)
+        self.assertEqual(member.role.nom, 'Utilisateur')  # APFS47 — jamais « aucun rôle »
         item.refresh_from_db()
         self.assertEqual(item.decision, 'revoque')
         self.assertIsNotNone(item.reviewer_id)
