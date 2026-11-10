@@ -1,0 +1,102 @@
+# Preuve en direct AMON107 — rejeu accept-w9, code joué 8fd07618c (origin/dev-all-99392c-w9, vague 9 #1354), 2026-11-10
+# Pile : voir _pile.txt (projet compose privé accept-w9, base jetable, aucune ressource partagée touchée).
+# Sonde C-LIVE-AMON107 écrite pour ce rejeu (source jointe) : `python scripts/sonde.py <chemin>/C-LIVE-AMON107
+# --conteneur accept-w9-dj-1 --timeout 800` (garde de fraîcheur ADCG20 passée : /app du conteneur == backend/django_core
+# du worktree ; transaction annulée, mail en mémoire, Celery coupé, HTTP sortant bloqué). repro=true signifie ICI que le
+# comportement ATTENDU par la tâche est observé.
+# Verdict : PASS
+
+== C-LIVE-AMON107 (sha 8fd07618c)
+attendu : garantie 2026 (12 000 kWh, dégradation 0, tolérance 5 %, 1,10 MAD/kWh), journaliers = attendu_entre(12000, j, j) du 01/01 à la date lue : compensation_mad 0,00 au 31/01 et au 13/05 (et chaque jour de l'année), manufacturer_recourse faux, aucune reco « recours fabricant » dans build_om_report_data au 13/05 ; au 31/12 garanti = 12000.00
+observé : {"dates_avec_penalite": [], "nb_dates_avec_penalite": 0, "dates_avec_recours": [], "ecart_max_reel_vs_garanti": "0.000241", "lus": {"2026-01-31": {"compensation_mad": "0.00", "garanti_kwh": "641.84", "reel_kwh": "641.70", "manufacturer_recourse_courbe": false}, "2026-05-13": {"compensation_mad": "0.00", "garanti_kwh": "4149.69", "reel_kwh": "4149.58", "manufacturer_recourse_courbe": false, "recommandations": ["Aucune action requise sur la période."]}, "2026-12-31": {"compensation_mad": "0.00", "garanti_kwh": "12000.00", "reel_kwh": "11999.85", "manufacturer_recourse_courbe": false}}, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 329, après 329) ; mails 0 ; tâches Celery bloquées 0
+
+Lecture : la sonde ajoute un relevé par jour du 01/01 au 31/12/2026 et, CHAQUE jour (365 dates), lit
+`production_warranty_status(today=j)` et `warranty_curve_overlay(today=j)` : 0 date avec pénalité, 0 date avec
+`manufacturer_recourse` ; écart max réel/garanti 0,024 % (arrondi des relevés à 0,01 kWh) ; rapport O&M au 13/05 :
+« Aucune action requise sur la période. » (aucun « recours fabricant »). Avant le correctif (prorata à plat, constat
+C-AMON-VER1-040) : 359,01 MAD au 31/01, dérive > 5 % du 02/01 au 13/05. Garanti au 31/01 = 641,84 kWh (profil) et non
+12 000 × 31/365 = 1 019,18 kWh (à plat). (Un premier passage de la même sonde, qui ne lisait la courbe qu'aux trois dates,
+avait rendu le même observé ; base 7 → 7.)
+
+== Écran
+/production/garanties (demo_admin, Directeur) → ACC-AMON-107 → « Statut et courbe » (édition = 10/11/2026 réel) :
+  Année 2026 · Garanti 11 013 kWh · Réel 11 012 kWh · Manque 0 kWh · Compensation due (estimation, année en cours)
+  0,00 MAD · Dans la tolérance ; courbe 2026 : garanti 11 013 / mesuré 11 012 / dérive 0,0 %.
+  Le garanti affiché (11 013 kWh) est le prorata AU PROFIL ; à plat il vaudrait 12 000 × 314/365 = 10 323 kWh.
+  Limite : l'écran édite au jour réel (10/11), il ne se place pas au 13/05 ; la date du 13/05 (et chacune des 365) est
+  rejouée par la sonde sur les vraies fonctions servies à l'écran (`production_warranty_status`, `warranty_curve_overlay`).
+  Console : 0 erreur ; requêtes /api/ de la session : toutes 200/201 (warranties, warranties/2/status, warranties/2/curve).
+Capture : AMON107-garanties.png
+
+# ---- source : C-LIVE-AMON107.py ----
+# flake8: noqa  (sonde LIVE du rejeu d'acceptation accept-w9 — scénario exact de AMON107, vraies fonctions)
+"""AMON107 — Given/When/Then de la tâche rejoué sur la pile privée accept-w9. repro=True signifie ICI que le
+comportement ATTENDU par la tâche est observé (aucune pénalité ni recours fabricant à aucune date de l'année)."""
+SONDE = {"constat": "C-LIVE-AMON107", "sha": "8fd07618c",
+         "attendu": "garantie 2026 (12 000 kWh, dégradation 0, tolérance 5 %, 1,10 MAD/kWh), journaliers = attendu_entre(12000, j, j) du 01/01 à la date lue : compensation_mad 0,00 au 31/01 et au 13/05 (et chaque jour de l'année), manufacturer_recourse faux, aucune reco « recours fabricant » dans build_om_report_data au 13/05 ; au 31/12 garanti = 12000.00",
+         "modeles": ['monitoring.ProductionReading', 'monitoring.ProductionWarranty', 'monitoring.MonitoringConfig',
+                     'installations.Installation', 'authentication.Company', 'crm.Client']}
+
+
+def sonde(ctx):
+    from datetime import date, timedelta
+    from decimal import Decimal
+    from django.contrib.auth import get_user_model
+    from authentication.models import Company
+    from apps.crm.models import Client
+    from apps.installations.models import Installation
+    from apps.monitoring.models import MonitoringConfig, ProductionReading, ProductionWarranty
+    from apps.monitoring.report import build_om_report_data
+    from apps.monitoring.services import (attendu_entre, production_warranty_status,
+                                          warranty_curve_overlay)
+    from apps.parametres.models import CompanyProfile
+    co = Company.objects.create(nom='Live AMON107', slug='live-amon107')
+    get_user_model().objects.create_user(username='live_amon107', password='x', company=co, role_legacy='admin')
+    prof, _ = CompanyProfile.objects.get_or_create(company=co)
+    prof.garantie_production_autorisee = True
+    prof.save()
+    cl = Client.objects.create(company=co, nom='Client', prenom='AMON107', email='amon107@example.invalid')
+    inst = Installation.objects.create(company=co, reference='LAMON107-1', client=cl,
+                                       puissance_installee_kwc=Decimal('8'), date_mise_en_service=date(2026, 1, 1))
+    MonitoringConfig.objects.create(company=co, installation=inst, expected_annual_kwh=Decimal('12000'))
+    ProductionWarranty.objects.create(company=co, installation=inst, guaranteed_year1_kwh=Decimal('12000'),
+                                      degradation_pct_per_year=Decimal('0'), start_year=2026,
+                                      tolerance_pct=Decimal('5'), compensation_mad_per_kwh=Decimal('1.10'))
+    j = date(2026, 1, 1)
+    penalites = []
+    recours = []
+    pire = Decimal('0')
+    lus = {}
+    while j <= date(2026, 12, 31):
+        ProductionReading.objects.create(company=co, installation=inst, date=j, period_days=1,
+                                         energy_kwh=attendu_entre(Decimal('12000'), j, j))
+        st = production_warranty_status(inst, year=2026, today=j)
+        if st['compensation_mad'] != Decimal('0.00'):
+            penalites.append((j.isoformat(), str(st['compensation_mad'])))
+        courbe = warranty_curve_overlay(inst, today=j)
+        if courbe.get('manufacturer_recourse'):
+            recours.append(j.isoformat())
+        if st['guaranteed_kwh']:
+            ecart = abs(st['actual_kwh'] - st['guaranteed_kwh']) / st['guaranteed_kwh']
+            pire = max(pire, ecart)
+        if j in (date(2026, 1, 31), date(2026, 5, 13), date(2026, 12, 31)):
+            lus[j.isoformat()] = {
+                'compensation_mad': str(st['compensation_mad']),
+                'garanti_kwh': str(st['guaranteed_kwh']), 'reel_kwh': str(st['actual_kwh']),
+                'manufacturer_recourse_courbe': courbe.get('manufacturer_recourse')}
+            if j == date(2026, 5, 13):
+                rep = build_om_report_data(inst, today=j)
+                lus[j.isoformat()]['recommandations'] = rep.get('recommendations')
+        j += timedelta(days=1)
+    reco = lus['2026-05-13']['recommandations'] or []
+    ok = (not penalites and not recours
+          and lus['2026-01-31']['compensation_mad'] == '0.00' and lus['2026-05-13']['compensation_mad'] == '0.00'
+          and lus['2026-01-31']['manufacturer_recourse_courbe'] is False
+          and lus['2026-05-13']['manufacturer_recourse_courbe'] is False
+          and not any('recours fabricant' in r for r in reco)
+          and Decimal(lus['2026-12-31']['garanti_kwh']) == Decimal('12000'))
+    return {'dates_avec_penalite': penalites[:10], 'nb_dates_avec_penalite': len(penalites),
+            'dates_avec_recours': recours[:10], 'ecart_max_reel_vs_garanti': str(pire.quantize(Decimal('0.000001'))),
+            'lus': lus, 'repro': ok}

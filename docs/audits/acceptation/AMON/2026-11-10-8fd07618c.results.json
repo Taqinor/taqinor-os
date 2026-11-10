@@ -1,0 +1,34 @@
+{
+  "sha": "8fd07618c1221792f4a4926352149ab0ca4bf1e5",
+  "date": "2026-11-10",
+  "groupe": "AMON",
+  "verdict": "PASS",
+  "couvre": [
+    "AMON107"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "ACCW9LIVE.AMON107.preuve_en_direct",
+      "taches": [
+        "AMON107"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-w9/AMON107.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde C-LIVE-AMON107 (sonde.py --conteneur accept-w9-dj-1, fraîcheur ADCG20 OK) REPRO : garantie 2026 12 000 kWh / 0 % / 5 % / 1,10 MAD, relevés journaliers au profil (attendu_entre) ajoutés jour par jour, statut et courbe lus CHAQUE jour de 2026 : 0 date avec pénalité, 0 date avec manufacturer_recourse ; 31/01 et 13/05 compensation 0.00 (garanti 641,84 / 4 149,69 kWh au profil) ; rapport O&M au 13/05 « Aucune action requise » ; 31/12 garanti 12000.00 ; écran /production/garanties ACC-AMON-107 (édition 10/11 réel) : Garanti 11 013 kWh (au profil, à plat 10 323) · Réel 11 012 · Compensation due 0,00 MAD · Dans la tolérance ; capture AMON107-garanties.png"
+    }
+  ]
+}

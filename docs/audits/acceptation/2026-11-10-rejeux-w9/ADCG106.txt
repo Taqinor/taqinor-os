@@ -1,0 +1,34 @@
+# Preuve en direct ADCG106 — rejeu accept-w9, code joué 8fd07618c (origin/dev-all-99392c-w9, vague 9 #1354), 2026-11-10
+# Preuve de DÉPÔT (0 écran) : `audit_registre.py --du` sur le dépôt réel de ce worktree, garde d'acceptation neutralisée
+# (METHODE §C.4 point 5 : `a.acceptation = lambda g: 'n/d'` avant `a.cmd_du()`). Aucune pile nécessaire.
+# Verdict : PASS
+
+== cmd_du() sur le dépôt réel (8fd07618c)
+Vérifie dû : 0 groupe(s)
+Décisions ouvertes : 1 (D-JPB-6)
+Dette d'acceptation : voir `python scripts/check_acceptation.py`
+
+== Diagnostic par unité visée par la preuve (script scratchpad adcg106_diag.py : mêmes fonctions, blocs lus et état)
+D3 ACAL : vérifie 2026-11-10-calepinage-verifie.md (pct 99, écarts 1). Blocs « ACAL — ÉCARTS vérifie <d> » d ≤ 2026-11-10
+  LUS dans 6 plans (09/10, 10/10, 01/11) ; tâches ouvertes : ACAL355, ACAL356, ACAL357 (bloc 10/10, CALEPINAGE),
+  ACAL366, ACAL367 (bloc 01/11, CALEPINAGE), ACAL364 (bloc 10/10, TRANSVERSE) — toutes [BLOCKED].
+  ecarts_tous_coches(ACAL, 2026-11-10) = False ⇒ non dû. == attendu « D3 attend ACAL355-357, ACAL364, ACAL366, ACAL367 ».
+X7 AANA : vérifie 2026-11-10-analyse-verifie.md (pct 98, écarts 1). Bloc AANA du 04/11 (PLAN_AUDIT_ANALYSE) LU, ouvertes :
+  AANA81 [BLOCKED], AANA90 [ ] ; ecarts_tous_coches(AANA, 2026-11-10) = False ⇒ non dû. == attendu « X7 attend AANA81,
+  AANA90 ».
+X1 ASEC : vérifie 2026-11-10-sécurité-verifie.md (pct 100, écarts 1). Bloc ASEC du 10/11 (PLAN_AUDIT_FACTURATION) LU,
+  ouvertes : ASEC90, ASEC91 [BLOCKED : preuve en direct due — rejouées PASS dans CE rejeu, cochées dans ce même commit
+  de suivi] ; ASEC92/93 déjà cochées depuis f46afed2b. ecarts_tous_coches(ASEC, 2026-11-10) = False au moment du
+  diagnostic ⇒ non dû. == attendu « X1 attend ASEC90-93 » (sous-ensemble restant).
+J6 ADOC : ecarts_tous_coches(ADOC, 2026-11-10) = True (tous les blocs ADOC ≤ 10/11 cochés, 16 blocs lus dans 12 plans).
+  Sur f46afed2b le marqueur du compte rendu était `pct: 99 | ecarts_s1_s2: 1` ⇒ J6 dû (« reste dû ») ; il est passé à
+  `ecarts_s1_s2: 0` par 3f9daa2b5 (contre-visite ADOC du 10/11, POSTÉRIEURE à f46afed2b, « ADOC vérifié ») ⇒ J6 n'est
+  plus dû parce qu'il a été vérifié, pas par la règle : la règle rend bien « tous cochés » pour J6.
+Aucun bloc postérieur au compte rendu n'existe pour ces quatre groupes au 10/11 (le cas « bloc postérieur ignoré » est
+  couvert par le banc ci-dessous).
+
+== Banc
+python -m unittest scripts.tests.test_audit_registre -v ⇒ Ran 20 tests in 4.573s — OK, dont
+  test_du_contre_visite_lit_les_blocs_d_ecarts_anterieurs (le Given/When/Then FauxDepot de la tâche : absent avant la
+  coche de ZZTST22, « contre-visite des correctifs » après ; bloc postérieur ignoré) et
+  test_du_contre_visite_des_correctifs_apres_ecarts_coches (5 cas, reste vert).

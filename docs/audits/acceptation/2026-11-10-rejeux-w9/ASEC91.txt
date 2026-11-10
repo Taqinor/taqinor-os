@@ -1,0 +1,27 @@
+# Preuve en direct ASEC91 — rejeu accept-w9, code joué 8fd07618c (origin/dev-all-99392c-w9, vague 9 #1354), 2026-11-10
+# Pile : voir _pile.txt (projet compose privé accept-w9, base jetable, fixtures FIX-W9).
+# Given : V1 DEV-ACCW9B-0095 (40 000 HT à 10 % + 60 000 HT à 20 %) acceptée et facturée en entier par
+# `creer_facture_tranche` (FAC-202611-0001/0002/0003 émises, 116 000 TTC), V2 DEV-202611-0001 (`reviser_devis`, ligne à
+# 10 % → 30 000 HT) acceptée par `accept_devis` : avoir de révision de 11 000,00 TTC à confirmer.
+# Comptes : acc_w9_adv (VRAI rôle système Admin Ventes, sans `encaisser`), acc_w9_resp (rôle système Responsable, sans
+# `encaisser`), acc_w9_herite (sans rôle, role_legacy=responsable : `encaisser` par repli), demo_admin (Directeur).
+# Verdict : PASS
+
+== API (GET /api/django/ventes/devis/10/, bloc `vente`)
+acc_w9_adv     confirmer_avoir_revision= False | Avoir de révision de 11000.00 MAD TTC à confirmer : confirmez-le pour ramener la facturation au prix convenu.
+acc_w9_resp    confirmer_avoir_revision= False | (même raison_bloquee)
+acc_w9_herite  confirmer_avoir_revision= True  | (même raison_bloquee)
+demo_admin     confirmer_avoir_revision= True  | (même raison_bloquee)
+raison_bloquee identique pour les quatre comptes (inchangée, Then de la tâche).
+Témoin route (ASEC85) : POST /ventes/devis/10/confirmer-avoir-revision/ as acc_w9_adv ⇒ HTTP 403 « Vous n'avez pas la
+  permission d'effectuer cette action. » ; avoirs inchangés (1, celui d'ASEC90).
+
+== Écran (Playwright MCP, front du commit joué sur 127.0.0.1:5263)
+acc_w9_adv, /ventes/devis → puce « Vente de DEV-202611-0001 » ⇒ panneau de vente : la phrase « Avoir de révision de
+  11000.00 MAD TTC à confirmer : … » est affichée, AUCUN bouton « Confirmer l'avoir » (recherche /Confirmer l.avoir/ dans
+  le texte et les boutons : faux).
+Témoin demo_admin, même panneau : bouton « Confirmer l'avoir » présent ; factures FAC-202611-0001/0002/0003 avec
+  « Annuler ».
+Capture : ASEC91-adv-panneau-v2.png
+Oracles : aucune requête ≥ 500. Hors périmètre observé : 403 GET /monitoring/configs/co2-fleet/ de la barre latérale en
+  Admin Ventes (voir ASEC90.txt), sans lien avec le geste.
