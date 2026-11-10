@@ -33,6 +33,7 @@ sur les CHAMPS BRUTS de chaque ligne ; avec eux, sur les alias d'agrégats
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers
 from rest_framework import status
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -136,6 +137,9 @@ class FormuleTestView(APIView):
         except FormulaError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
+        except PermissionDenied:
+            # ERR-APFS-FORMULE-TESTER-400 — APFS4 : refus de lecture = 403, pas 400.
+            raise
         except Exception:
             logger.warning("post : échec ignoré, comportement dégradé", exc_info=True)
             return Response(

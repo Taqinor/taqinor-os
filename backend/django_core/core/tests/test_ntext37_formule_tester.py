@@ -4,6 +4,8 @@ Tester une formule sur les premières lignes RÉELLES d'un dataset enregistré
 renvoie les valeurs calculées (ou une erreur française claire), sans jamais
 écrire quoi que ce soit.
 """
+from unittest import mock
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
@@ -111,6 +113,16 @@ class FormuleTesterTests(TestCase):
             'filtres': {'password': 'x'},
         }, format='json')
         self.assertEqual(res.status_code, 400)
+
+    def test_lecture_refusee_renvoie_403_pas_400(self):
+        # ERR-APFS-FORMULE-TESTER-400 — DatasetNonAutorise (APFS4) -> 403.
+        with mock.patch.object(data_explorer, 'run_query',
+                               side_effect=data_explorer.DatasetNonAutorise()):
+            res = self.api.post(URL, {
+                'expression': 'id', 'dataset': 'ntext37_utilisateurs',
+            }, format='json')
+        self.assertEqual(res.status_code, 403)
+        self.assertIn('refusé', res.data['detail'])
 
     def test_expression_requise(self):
         res = self.api.post(URL, {'dataset': 'ntext37_utilisateurs'},
