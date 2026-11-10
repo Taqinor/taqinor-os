@@ -547,6 +547,17 @@ def _variante_du_devis(company, devis_id):
                     calepinage__in=calepinages_actifs(company)).first())
 
 
+def variante_portant_le_devis(calepinage, devis_id):
+    """ACON80 — la variante de CE calepinage qui porte ``devis_id``, ou
+    ``None`` (devis lié au calepinage lui-même, ou porté ailleurs)."""
+    if (calepinage is None or not devis_id
+            or str(calepinage.devis_id) == str(devis_id)):
+        return None
+    variante = _variante_du_devis(calepinage.company, devis_id)
+    return (variante if variante is not None
+            and variante.calepinage_id == calepinage.pk else None)
+
+
 def conception_du_devis(devis_id, company):
     """ACON6 (D-ACON-2) — LA conception d'un devis : ``{calepinage, variante,
     roof_layout, layout_hash}`` (contrat ``calepinage_conception_du_devis.json``).
@@ -558,10 +569,7 @@ def conception_du_devis(devis_id, company):
     calepinage = calepinage_du_devis(devis_id, company)
     if calepinage is None:
         return None
-    variante = (None if str(calepinage.devis_id) == str(devis_id)
-                else _variante_du_devis(company, devis_id))
-    if variante is not None and variante.calepinage_id != calepinage.pk:
-        variante = None
+    variante = variante_portant_le_devis(calepinage, devis_id)
     source = variante or calepinage
     return {'calepinage': calepinage, 'variante': variante,
             'roof_layout': source.roof_layout,
@@ -641,6 +649,8 @@ def _calepinage_lisible_pour_devis(devis_id, company):
     calepinage = calepinage_du_devis(devis_id, company)
     if calepinage is None or str(calepinage.devis_id) == str(devis_id):
         return calepinage
+    if variante_portant_le_devis(calepinage, devis_id) is not None:
+        return calepinage  # ACON80 — grandeurs de SITE du conteneur
     from .services.layout import empreinte_document
 
     document = _conception_figee(calepinage, devis_id)['roof_layout']
@@ -679,16 +689,19 @@ def ombrage_servi(devis_id, company):
     calepinage = _calepinage_lisible_pour_devis(devis_id, company)
     if calepinage is None:
         return None
-    if str(calepinage.devis_id) == str(devis_id):
+    # ACON80 — un devis porté par une VARIANTE lit la simulation de celle-ci.
+    variante = variante_portant_le_devis(calepinage, devis_id)
+    if str(calepinage.devis_id) == str(devis_id) or variante is not None:
         # ACON21 — lien direct : la conception a changé depuis le devis
         # (empreintes imprimées, ACAL46) ⇒ aucune perte d'une autre conception.
         from apps.ventes.selectors import get_devis_by_pk
         from apps.ventes.selectors_calepinage import _conception_a_jour
 
-        if _conception_a_jour(get_devis_by_pk(devis_id), calepinage) is False:
+        if _conception_a_jour(get_devis_by_pk(devis_id),
+                              variante or calepinage) is False:
             return {'perime': True, 'motif': MOTIF_CONCEPTION_DIVERGENTE,
                     'par_pan': {}, 'global': None}
-    servi = resultat_servi(calepinage)
+    servi = resultat_servi(calepinage, variante=variante)
     if servi.get('simulation_perimee'):
         return {'perime': True, 'motif': servi.get('motif') or '',
                 'par_pan': {}, 'global': None}
@@ -1206,7 +1219,7 @@ def calepinage_villa(area, *, ordre='lnglat', kit=None, produit_panneau=None,
 # compris (CALX70) — une intégration ne doit jamais recevoir une production
 # que l'écran déclarerait périmée.
 
-def resultat_servi(calepinage):
+def resultat_servi(calepinage, *, variante=None):
     """CALX369 — le ``resultat`` servi par ``GET resultat/`` (CALX70).
 
     EXACTEMENT ``services.electrique.resultat_calepinage`` : mêmes blocs,
@@ -1221,6 +1234,9 @@ def resultat_servi(calepinage):
     from .services.electrique import TemperaturesInvalides, resultat_calepinage
 
     try:
+        if variante is not None:  # ACON80 — la simulation de LA variante
+            return resultat_calepinage(calepinage, layout=variante.roof_layout,
+                                       porteur_simulation=variante)
         return resultat_calepinage(calepinage)
     except TemperaturesInvalides as refus:
         return {

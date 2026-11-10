@@ -434,22 +434,21 @@ def resynchroniser_devis(calepinage, *, user=None,
 
     verifier_avant_publication(calepinage, geste=GESTE_DEVIS)
     layout = _exiger_layout(calepinage)
-    conception = None
-    if devis_id and str(devis_id) != str(getattr(calepinage, 'devis_id', '')):
-        from ..selectors import conception_du_devis
+    # ACON6/ACON80 — un devis porté par une variante de CE calepinage suit
+    # le document de la variante ; tout autre ``devis_id`` est ignoré.
+    from ..selectors import variante_portant_le_devis
 
-        conception = conception_du_devis(devis_id, calepinage.company)
-        if conception is None or conception['variante'] is None:
-            conception = None
-        else:
-            layout = _exiger_layout(conception['variante'])
+    variante = variante_portant_le_devis(calepinage, devis_id)
+    if variante is not None:
+        layout = _exiger_layout(variante)
     # ACAL373 — agricole / multi-villa : la raison de l'écran, 409, rien n'est
     # écrit (le refus de STATUT reste celui de ventes, revision_possible compris).
     from apps.ventes.selectors_calepinage import raison_lecture_seule_conception
 
     from .verrou import est_verrouille
-    lie = getattr(calepinage, 'devis', None)
-    if lie is not None and not est_verrouille(calepinage):
+    lie = (variante.devis if variante is not None
+           else getattr(calepinage, 'devis', None))
+    if lie is not None and not est_verrouille(calepinage, devis=lie):
         raison = raison_lecture_seule_conception(lie)
         if raison:
             raise DevisRefuse(raison, champ='roof_layout', statut=409,
@@ -458,7 +457,7 @@ def resynchroniser_devis(calepinage, *, user=None,
     # écriture (un devis ENVOYÉ suit le même refus).
     garde = _garde_electrique(calepinage, derogation_electrique, user,
                               geste='resynchronisé')
-    devis_id = (conception['variante'].devis_id if conception
+    devis_id = (variante.devis_id if variante is not None
                 else getattr(calepinage, 'devis_id', None))
     if not devis_id:
         raise DevisRefuse(

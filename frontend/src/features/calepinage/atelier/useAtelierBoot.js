@@ -48,6 +48,11 @@ export function useAtelierBoot(ctx) {
   // ACAL37 — plus de mode devis écrivain : `devisId` = le devis SYNCHRONISÉ du flux
   // `/ventes/devis/:id/design` (atelier calepinage), lu pour l'étude bancable (PV75).
   const { cibleId, calepinageId, devisId, leadId, estCalepinage } = ctx
+  // ACON80 — `{devis}` quand le devis synchronisé est porté par une VARIANTE.
+  const { paramsContexte } = ctx
+  const lireContexte = () => (paramsContexte
+    ? calepinageApi.calepinages.designContext(calepinageId, paramsContexte)
+    : calepinageApi.calepinages.designContext(calepinageId))
   const { builderApi, reducedMotion, utilisateurCourantId } = ctx
   const { setBrouillonPropose, setBuilderApiActuel, setBuilderReady, setContexte } = ctx
   const { setCatalogueIndisponible } = ctx
@@ -319,7 +324,7 @@ export function useAtelierBoot(ctx) {
 
       let ctx = null
       try {
-        const res = await calepinageApi.calepinages.designContext(calepinageId)
+        const res = await lireContexte()
         ctx = res.data
       } catch (err) {
         if (cancelled) return
@@ -341,7 +346,7 @@ export function useAtelierBoot(ctx) {
       if (ctx?.geometrie?.derive?.etat === 'automatique' && ctx?.modifiable) {
         try {
           await calepinageApi.calepinages.recentrerSurLead(calepinageId)
-          const relu = await calepinageApi.calepinages.designContext(calepinageId)
+          const relu = await lireContexte()
           if (relu?.data) ctx = relu.data
         } catch (err) {
           setRepereErreur?.(messageRefusRepere(err?.response?.data))

@@ -29,6 +29,7 @@ mauvais objet (``LeadWorkspace.jsx`` l'a montré).
 """
 from __future__ import annotations
 
+import copy
 import json
 
 from django.utils.dateparse import parse_date, parse_datetime
@@ -833,7 +834,9 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
     @extend_schema(
         request=inline_serializer('CalepinageSyncDevisCorps', {
             'derogation_electrique': drf_serializers.JSONField(
-                required=False)}),
+                required=False),
+            # ACON80 — le devis porté par une variante de ce calepinage.
+            'devis': drf_serializers.IntegerField(required=False)}),
         responses={200: forme_reponse(
             'CalepinageSyncDevis', 'inchange', 'panneaux', 'kwc', 'scenario',
             'batterie', 'lignes_modifiees', 'lignes_ajoutees',
@@ -858,7 +861,8 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
         try:
             resultat = resynchroniser_devis(
                 calepinage, user=request.user,
-                derogation_electrique=corps.get('derogation_electrique'))
+                derogation_electrique=corps.get('derogation_electrique'),
+                devis_id=_entier_ou_none(corps.get('devis')))
         except DevisRefuse as refus:
             return Response(_refus_devis(refus),
                             status=_statut_refus_devis(refus))
@@ -1295,6 +1299,14 @@ def contexte_conception(calepinage, request=None):
 
     company = getattr(calepinage, 'company', None)
     devis = _devis_lie_de(calepinage, company)
+    # ACON80 — ``?devis=<B>`` : le devis porté par une VARIANTE de ce
+    # calepinage ; l'atelier lit et édite alors le document de la variante.
+    variante = cal_selectors.variante_portant_le_devis(calepinage, _entier_ou_none(
+        getattr(request, 'query_params', {}).get('devis')))
+    if variante is not None:
+        devis, calepinage = variante.devis, copy.copy(calepinage)
+        calepinage.roof_layout = variante.roof_layout
+        calepinage.layout_hash = variante.layout_hash
     contexte_devis = _contexte_devis_lie(calepinage, company, devis=devis)
     # Lu UNE seule fois et partagé : la géométrie ET l'adresse en sortent.
     geo = cal_selectors.contexte_geographique(calepinage, avec_repere=True)
@@ -1348,7 +1360,15 @@ def contexte_conception(calepinage, request=None):
         # le noyau ``NatureZone``) : l'atelier lit ICI son sélecteur de nature,
         # jamais une constante recopiée.
         'natures_zones': list(natures_admises()),
+        'variante': ({'id': variante.pk, 'nom': variante.nom,
+                      'devis': variante.devis_id} if variante else None),
     }
+
+
+def _entier_ou_none(brut):
+    """ACON80 — un identifiant entier lu d'un corps/paramètre, sinon ``None``."""
+    texte = str(brut if brut is not None else '').strip()
+    return int(texte) if texte.isascii() and texte.isdigit() and len(texte) < 19 else None
 
 
 def _devis_lie_de(calepinage, company):

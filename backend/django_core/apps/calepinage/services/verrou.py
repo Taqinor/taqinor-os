@@ -64,10 +64,11 @@ def _verdict_verrou(calepinage, devis=None):
     return devis_modifiabilite(devis, geste=GESTE_CALEPINAGE)
 
 
-def est_verrouille(calepinage):
+def est_verrouille(calepinage, *, devis=None):
     """``True`` si le calepinage est en lecture seule : devis lié présent ET
-    ``not devis_modifiabilite(devis, geste='CALEPINAGE')['modifiable']``."""
-    verdict = _verdict_verrou(calepinage)
+    ``not devis_modifiabilite(devis, geste='CALEPINAGE')['modifiable']``
+    (ACON80 : ``devis`` = celui que porte une variante)."""
+    verdict = _verdict_verrou(calepinage, devis)
     return verdict is not None and not verdict.get('modifiable', True)
 
 
