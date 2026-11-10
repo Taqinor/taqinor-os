@@ -31,6 +31,7 @@ from apps.stock.models import FicheTechnique, Produit
 from apps.ventes import services
 from apps.ventes.models import Devis
 from authentication.models import Company
+from apps.ventes.tests.test_acal_layout_enrichi import en_tete_jeton
 
 User = get_user_model()
 
@@ -180,7 +181,8 @@ class EtudeElectriquePersisteeTests(_FraicheurBase):
         devis = self._devis_neuf(9)
         resp = self.api.post(
             f'/api/django/ventes/devis/{devis.pk}/sync-layout/',
-            layout_plat(20), format='json')
+            layout_plat(20), format='json',
+            **en_tete_jeton(devis.pk))
         self.assertEqual(resp.status_code, 200, resp.content[:400])
         self.assertFalse(resp.data['inchange'])
         self.assertEqual(resp.data['panneaux'], 20)
@@ -194,7 +196,8 @@ class EtudeElectriquePersisteeTests(_FraicheurBase):
         devis = self._devis_neuf(9)
         resp = self.api.post(
             f'/api/django/ventes/devis/{devis.pk}/sync-layout/',
-            layout_plat(20), format='json')
+            layout_plat(20), format='json',
+            **en_tete_jeton(devis.pk))
         self.assertEqual(resp.status_code, 200, resp.content[:400])
         devis.refresh_from_db()
         self.assertEqual(devis.statut, Devis.Statut.BROUILLON)

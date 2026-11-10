@@ -88,9 +88,9 @@ from ..services.devis import (
 )
 from ..services.approbation import LIBELLES_STATUT, statut_derive
 from ..services.layout import (
-    CHAMPS_SECTION_ZONE, CLES_SECTION_RACINE, DocumentModifie, LayoutRefuse,
-    empreinte_document, enregistrer_layout, enregistrer_section,
-    layout_decrit_une_geometrie,
+    CHAMPS_SECTION_ZONE, CLES_SECTION_RACINE, MESSAGE_JETON_VERSION_MANQUANT,
+    DocumentModifie, LayoutRefuse, empreinte_document, enregistrer_layout,
+    enregistrer_section, layout_decrit_une_geometrie,
 )
 # ACAL196 — référence et aperçu : UNE définition, lue aussi par la liste.
 from ..services.presentation import image_apercu, reference_calepinage
@@ -1192,8 +1192,8 @@ def _corps_de_layout(donnees):
 
 
 #: ACAL316 — le 428 nommé d'une écriture complète sans jeton de version.
-MESSAGE_JETON_MANQUANT = ("Jeton de version manquant : rechargez la conception "
-                          "avant d'enregistrer.")
+#: ACON9 — UNE définition (services.layout), partagée avec ventes.
+MESSAGE_JETON_MANQUANT = MESSAGE_JETON_VERSION_MANQUANT
 
 
 def _jeton_if_match(request):

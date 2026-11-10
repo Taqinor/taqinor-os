@@ -343,6 +343,11 @@ class DocumentModifie(ValueError):
                 'empreinte_courante': self.empreinte_courante}
 
 
+#: ACAL316 / ACON9 — LE 428 d'une écriture COMPLÈTE sans jeton If-Match (porte
+#: du module ET portes ventes ``sync-layout`` / ``layout`` d'un devis conçu).
+MESSAGE_JETON_VERSION_MANQUANT = ("Jeton de version manquant : rechargez la "
+                                  "conception avant d'enregistrer.")
+
 #: ACAL22 / ACON2 — LE message d'un jeton d'écriture absent (section, cote).
 MESSAGE_JETON_MANQUANT = ("Jeton manquant : envoyez base_empreinte, "
                           "l'empreinte du document ouvert.")

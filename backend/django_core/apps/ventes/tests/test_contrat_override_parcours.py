@@ -66,6 +66,7 @@ from apps.crm.models import Client
 from apps.stock.models import Produit
 from apps.ventes.domain import overrides
 from apps.ventes.models import Devis, LigneDevis, ShareLink
+from apps.ventes.tests.test_acal_layout_enrichi import en_tete_jeton
 
 User = get_user_model()
 
@@ -304,7 +305,8 @@ class Parcours:
     def etape_sync_layout(self):
         r = self.case.api.post(
             f'/api/django/ventes/devis/{self.devis.id}/sync-layout/',
-            _layout(), format='json')
+            _layout(), format='json',
+            **en_tete_jeton(self.devis.id))
         # 409 = garde de statut (règle #4) ; 400 = layout refusé. Les deux
         # sont des refus LÉGITIMES qui ne doivent rien écrire du tout.
         return r.status_code, (200, 400, 409)

@@ -28,6 +28,7 @@ from apps.ventes.tests.test_pv18_sync_layout import (
     BAREMES_FORFAIT, CATALOGUE_KIT, auth_client, layout, make_company)
 from apps.ventes.utils.options import (
     deux_options_depuis_paniers, familles_servables)
+from apps.ventes.tests.test_acal_layout_enrichi import en_tete_jeton
 
 User = get_user_model()
 
@@ -147,7 +148,8 @@ class BatDiffResynchro(_Base):
         devis = self._devis((RESEAU, HYBRIDE), scenario=SCENARIO_LES_DEUX)
         reponse = self.api.post(
             '/api/django/ventes/devis/%s/sync-layout/' % devis.id,
-            layout(panels=16, kwc=8.8, scenario='reseau'), format='json')
+            layout(panels=16, kwc=8.8, scenario='reseau'), format='json',
+            **en_tete_jeton(devis.id))
         self.assertEqual(reponse.status_code, 200, reponse.content)
         devis.refresh_from_db()
         self.assertEqual(devis.etude_params['scenario'], SCENARIO_LES_DEUX)

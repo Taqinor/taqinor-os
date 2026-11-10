@@ -29,6 +29,7 @@ from apps.crm.models import Client, Lead
 from apps.ventes.models import Devis
 
 from .test_api_liste import BaseApiCalepinage
+from apps.ventes.tests.test_acal_layout_enrichi import en_tete_jeton
 
 LAYOUT = {'schema_version': 2, 'result': {'panels': 12, 'kwc': 8.64}}
 LAYOUT_2 = {'schema_version': 2, 'result': {'panels': 14, 'kwc': 10.08}}
@@ -114,7 +115,8 @@ class MiroirLayoutTest(BaseApiCalepinage):
 
     def test_action_layout_de_ventes_pose_l_empreinte_et_emet(self):
         url = f'/api/django/ventes/devis/{self.devis.pk}/layout/'
-        reponse = self.api.post(url, LAYOUT, format='json')
+        reponse = self.api.post(url, LAYOUT, format='json',
+                                **en_tete_jeton(self.devis.pk))
         self.assertEqual(reponse.status_code, 200, reponse.data)
         self.devis.refresh_from_db()
         self.assertEqual(self.devis.roof_layout, LAYOUT)

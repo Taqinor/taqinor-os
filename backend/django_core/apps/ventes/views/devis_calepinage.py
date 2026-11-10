@@ -63,11 +63,23 @@ def _ecrire_conception(devis, payload, request):
     # CI #997 fuzz (24/10) : JSON libre rangé en jsonb -> nul et demi-substituts
     # Unicode normalisés (DataError / UnicodeEncodeError = 500 sinon).
     payload = nettoyer_json(payload)
+    base = _jeton_if_match(request)
+    if base is None:
+        # ACON9 — un devis déjà CONÇU (calepinage lié) exige le jeton, comme
+        # ``calepinages/<id>/layout/`` : sans lui, l'écriture écraserait la
+        # conception de l'atelier (428, rien d'écrit) ; première conception :
+        # rien à écraser, aucun jeton.
+        from apps.calepinage import services as calepinage_services
+        from apps.calepinage.selectors import calepinage_du_devis
+
+        if calepinage_du_devis(devis.pk, devis.company) is not None:
+            return Response(
+                {'detail': calepinage_services.MESSAGE_JETON_VERSION_MANQUANT},
+                status=status.HTTP_428_PRECONDITION_REQUIRED)
 
     try:
         resultat = ecrire_conception_du_devis(
-            devis, payload, request.user,
-            base_empreinte=_jeton_if_match(request))
+            devis, payload, request.user, base_empreinte=base)
     except SyncLayoutError as exc:
         return Response(
             {'detail': exc.detail,
@@ -353,8 +365,10 @@ class DevisCalepinageActionsMixin:
         return Response(contexte)
 
     @extend_schema(request=D.LayoutRequest,
+                   parameters=[D.PARAM_IF_MATCH_DEVIS_CONCU],
                    responses={200: D.SyncLayoutResponse,
-                              409: D.ErreurSyncLayout},
+                              409: D.ErreurSyncLayout,
+                              428: D.ErreurSyncLayout},
                    extensions=D.CORPS_LAYOUT_OBLIGATOIRE)
     @action(parser_classes=[JSONParser], detail=True, methods=['post'], url_path='sync-layout',
             permission_classes=[IsResponsableOrAdmin])
@@ -640,7 +654,9 @@ class DevisCalepinageActionsMixin:
     # api-only: plus d'appelant écran depuis ACAL97 (intégrations/scripts)
     @extend_schema(methods=['GET'], responses=D.LayoutResponse)
     @extend_schema(methods=['POST'], request=D.LayoutRequest,
-                   responses=D.LayoutResponse,
+                   parameters=[D.PARAM_IF_MATCH_DEVIS_CONCU],
+                   responses={200: D.LayoutResponse,
+                              428: D.ErreurSyncLayout},
                    extensions=D.CORPS_LAYOUT_OBLIGATOIRE)
     @action(
         parser_classes=[JSONParser],

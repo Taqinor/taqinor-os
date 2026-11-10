@@ -11,7 +11,8 @@ from django.core.exceptions import ValidationError as _ErreurDjango
 from django.core.validators import RegexValidator as _RegexValidator
 from drf_spectacular.drainage import set_override
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema_field, inline_serializer
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema_field, inline_serializer)
 from rest_framework import serializers as s
 
 from core.champs_stricts import (
@@ -721,6 +722,15 @@ ErreurSyncLayout = _ser('DevisErreurSyncLayout', {
     'detail': s.CharField(required=False),
     'revision_possible': s.BooleanField(required=False),
 })
+
+#: ACON9 — l'en-tête If-Match d'un devis DÉJÀ conçu (calepinage lié) :
+#: absent ⇒ 428 rien d'écrit ; périmé ⇒ 409 ``document_modifie``. Facultatif
+#: pour une première conception (rien à écraser).
+PARAM_IF_MATCH_DEVIS_CONCU = OpenApiParameter(
+    'If-Match', OpenApiTypes.STR, OpenApiParameter.HEADER, required=False,
+    description="Empreinte « document » de la conception liée (GET "
+                "calepinage ``layout``) : exigée dès qu'un calepinage est lié "
+                "au devis — absente, 428 ; périmée, 409.")
 
 DesignContextResponse = _ser('DevisDesignContext', {
     'devis': s.DictField(),

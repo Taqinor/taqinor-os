@@ -22,6 +22,7 @@ from apps.ventes.domain.catalogue import classer_produit
 from apps.ventes.models import Devis
 from apps.ventes.services import build_devis_from_layout
 from authentication.models import Company
+from apps.ventes.tests.test_acal_layout_enrichi import en_tete_jeton
 
 User = get_user_model()
 
@@ -99,7 +100,8 @@ class KitRetireALaMain(TestCase):
     def _sync(self, panneaux):
         r = self.api.post(
             f'/api/django/ventes/devis/{self.devis.id}/sync-layout/',
-            _layout(panneaux), format='json')
+            _layout(panneaux), format='json',
+            **en_tete_jeton(self.devis.id))
         self.assertEqual(r.status_code, 200, r.content)
         return r.data
 

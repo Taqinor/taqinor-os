@@ -36,6 +36,7 @@ from apps.stock.models import Produit
 from apps.ventes.domain import modifiabilite as mod
 from apps.ventes.models import Devis, LigneDevis
 from authentication.models import Company
+from apps.ventes.tests.test_acal_layout_enrichi import en_tete_jeton
 
 User = get_user_model()
 MONTH = timezone.now().strftime('%Y%m')
@@ -232,7 +233,8 @@ class CalepinageSurUnEnvoye(_Base):
     def _sync(self, devis, panels):
         return self.api.post(
             f'/api/django/ventes/devis/{devis.id}/sync-layout/',
-            self._layout(panels), format='json')
+            self._layout(panels), format='json',
+            **en_tete_jeton(devis.id))
 
     def test_envoye_se_resynchronise_sur_place_et_trace(self):
         from apps.ventes.models import DevisActivity
