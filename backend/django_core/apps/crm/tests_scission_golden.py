@@ -550,7 +550,8 @@ class ScissionGoldenTests(_Base):
         total = sum(len(v) for v in attendu['par_signal'].values())
         # 25 + crm_client_mirror_tiers + crm_dispatch_mise_en_attente + crm_stop_cadence_on_archive
         # + crm_empreinte_opposition_lead (ERR-ACVI6-OPPOSITION, ``models.py`` non touché)
-        self.assertEqual(total, 29)
+        # + crm_rejouer_restauration (ASOC86, restauration corbeille d'un lead)
+        self.assertEqual(total, 30)
 
     def test_facades(self):
         for module in ('selectors', 'models'):

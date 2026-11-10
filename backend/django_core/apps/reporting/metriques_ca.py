@@ -70,9 +70,11 @@ def _part_ht(facture, montant_ttc):
 
 def ttc_net(facture):
     """ASOC73 (D-ASOC-5) — TTC net d'avoirs : ``total_ttc`` − terme ``avoirs``
-    de ``decomposition_du`` (même source que ``montant_du``), borné à 0."""
-    from apps.facturation.models import decomposition_du
-    net = Decimal(facture.total_ttc or 0) - decomposition_du(facture)['avoirs']
+    de ``decomposition_du`` (même source que ``montant_du`` :
+    ``Facture.avoirs_total``), borné à 0. Seul ce terme est lu : calculer les
+    six (notes de débit, retenues…) coûtait deux requêtes PAR facture sur une
+    population préchargée des seuls avoirs (VNT109, job costing)."""
+    net = Decimal(facture.total_ttc or 0) - Decimal(facture.avoirs_total or 0)
     return max(net, Decimal('0'))
 
 
