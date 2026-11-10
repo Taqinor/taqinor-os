@@ -704,9 +704,10 @@ def _texte_valeur(valeur):
     return str(valeur)
 
 
-def _lignes_des_champs(gabarit, champs_saisis, infos):
+def _lignes_des_champs(gabarit, champs_saisis, infos, signalements=None):
     """``[(libellé, valeur imprimée, source)]`` — la saisie EN PRIORITÉ,
-    sinon la valeur du calepinage, sinon « à compléter ». PUR."""
+    sinon la valeur du calepinage, sinon « à compléter ». ACON47 — une saisie
+    qui CONTREDIT le calepinage est nommée dans ``signalements``."""
     lignes = []
     for champ in getattr(gabarit, 'champs', None) or []:
         if not isinstance(champ, dict):
@@ -720,6 +721,12 @@ def _lignes_des_champs(gabarit, champs_saisis, infos):
         calcul = _valeur_reelle((infos or {}).get(cle)) if cle else None
         if saisie is not None:
             lignes.append((libelle, _texte_valeur(saisie), 'saisie'))
+            if (calcul is not None and signalements is not None
+                    and not _meme_valeur(saisie, calcul)):
+                signalements.append(
+                    "Champ « %s » : saisi %s, le calepinage dit %s — la "
+                    "valeur saisie est imprimée." % (
+                        libelle, _texte_valeur(saisie), _texte_valeur(calcul)))
         elif calcul is not None:
             lignes.append((libelle, _texte_valeur(calcul), 'calepinage'))
         else:
@@ -774,7 +781,8 @@ def _pieces_du_dossier(dossier, *, company, infos=None, signalements=None):
     if infos is None:
         infos = _infos_du_calepinage(dossier.calepinage)
     pieces = [('gabarit', 'Gabarit — %s' % gabarit.intitule, octets_gabarit)]
-    lignes = _lignes_des_champs(gabarit, dossier.champs_saisis, infos)
+    lignes = _lignes_des_champs(gabarit, dossier.champs_saisis, infos,
+                                signalements)
     if lignes:
         pieces.append(('champs', 'Champs du dossier', _page_des_champs(
             gabarit, dossier.calepinage, lignes)))

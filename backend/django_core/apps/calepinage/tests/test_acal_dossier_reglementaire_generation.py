@@ -311,6 +311,27 @@ class GenerationDossierTest(BaseGeneration):
              if p['code'].startswith('jointe:')],
             ['jointe:titre', 'jointe:plan', 'jointe:photo'])
 
+    def test_champ_en_ecart_signale_a_la_generation(self):
+        """ACON47 — une saisie qui contredit le calepinage est imprimée ET
+        signalée ; égale au calcul : aucun signalement."""
+        gabarit_id = self._deposer_gabarit()
+        infos = {'puissance_kwc': 8.8}
+        with mock.patch('apps.calepinage.services.reglementaire.'
+                        '_infos_du_calepinage', return_value=infos):
+            self._saisir(gabarit_id, {'puissance': '6,6'})
+            ecart = self._generer(gabarit_id)
+            self.assertEqual(ecart.status_code, 200, ecart.data)
+            self.assertIn(
+                "Champ « Puissance (kWc) » : saisi 6,6, le calepinage dit "
+                "8,8 — la valeur saisie est imprimée.",
+                ecart.data['signalements'])
+
+            self._saisir(gabarit_id, {'puissance': '8,8'})
+            egal = self._generer(gabarit_id)
+        self.assertEqual(egal.status_code, 200, egal.data)
+        self.assertFalse([s for s in egal.data['signalements']
+                          if s.startswith('Champ « ')], egal.data)
+
 
 class SaisiesConcurrentesTest(TransactionTestCase):
     """Deux copies PÉRIMÉES du même dossier : aucun champ n'est perdu."""
