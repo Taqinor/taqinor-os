@@ -65,4 +65,22 @@ Un écart S2, aucun S1 : ni seconde lentille ni critique (METHODE §C.4).
 
 - 1 vérificateur (opus, effort élevé) ≈ 0,2 M de jetons, rédaction partagée avec le groupe AMOT ; aucun appel Fable.
 
-<!-- verifie | groupe: ADOC | pct: 99 | ecarts_s1_s2: 1 -->
+## 8. Contre-visite du correctif, le soir même (base `f46afed2b`)
+
+La tâche d'écart ADOC202 a été construite puis cochée dans la soirée, après sa preuve en direct. Un vérificateur frais (opus,
+effort élevé) l'a relue : **ADOC202 : ok**.
+
+- **Écart S2 fermé.** L'attestation d'un chantier est refusée au porteur du vrai rôle technicien qui n'y est que technicien
+  d'une intervention ; son procès-verbal, son bon de livraison et son dossier de remise restent servis ; le responsable du
+  chantier, les rôles de portée société et les administrateurs gardent l'attestation — conforme à la décision D-ADOC-VER4-1.
+- **Test.** Il joue le vrai rôle du registre, sans droit retiré, et départage la garde : le même compte passe du refus à
+  l'accès quand il devient responsable du chantier. Non exécuté ici (CI d'abord).
+- **Preuve en direct réelle.** Jouée sur un code qui contient le correctif (ancêtre de `main`, aucun changement depuis sur les
+  fichiers concernés) ; la trace montre les vraies routes : trois documents servis, attestation refusée, puis servie au
+  responsable ; une autre société ne voit rien ; base inchangée.
+- **Optionnel.** Un second test, plus ancien, accepte encore « servi ou refusé » avec un rôle amputé. L'écran montre toujours
+  les deux boutons d'attestation à un technicien qui sera refusé. Un technicien rattaché à une équipe obtient l'attestation
+  d'un chantier dont un pair est responsable (comportement antérieur, à la portée d'équipe — au fondateur de dire s'il le veut).
+- **Statut.** Plus aucun écart S1-S2 ouvert ⇒ ADOC passe « vérifié ».
+
+<!-- verifie | groupe: ADOC | pct: 99 | ecarts_s1_s2: 0 -->
