@@ -260,8 +260,11 @@ def dump_database(run: BackupRun) -> BackupRun:
         except Exception as exc:  # noqa: BLE001 — échec copie = échec du run (D-ENF22-BLE001)
             logger.warning("dump database : échec de la copie des fichiers", exc_info=True)
             run.statut = BackupRun.STATUT_ECHEC
+            # ADCG111 — le dump EST déposé : sa clé reste nommée pour la purge.
+            run.object_key, run.bytes_taille = object_key, taille
             run.detail = {'message': f'Échec de la copie des fichiers : {exc}'}
-            run.save(update_fields=['statut', 'detail', 'updated_at'])
+            run.save(update_fields=['statut', 'object_key', 'bytes_taille',
+                                    'detail', 'updated_at'])
             return run
 
         # SCA13 — copie hors-boîte, best-effort, APRÈS le succès du backup
@@ -918,6 +921,15 @@ def purger_backups(now=None, apply_=False):
     runs = list(qs)
     conserver_pks = _a_conserver(runs, now)
     a_purger = [r for r in runs if r.pk not in conserver_pks]
+    # ADCG111 — dump déposé par un run `echec` (copie des fichiers) : objet
+    # sans run `termine` qui le nomme, purgé hors fenêtre quotidienne.
+    a_purger += list(
+        BackupRun.objects
+        .filter(kind=BackupRun.KIND_DB_DUMP, statut=BackupRun.STATUT_ECHEC,
+                purge_is_deleted=False,
+                created_at__lt=now - datetime.timedelta(
+                    days=_retention_settings()['daily']))
+        .exclude(object_key=''))
 
     if not apply_:
         return {
