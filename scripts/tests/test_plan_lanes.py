@@ -251,6 +251,23 @@ class EndToEndCliTests(unittest.TestCase):
         self.addCleanup(lambda: Path(tmp.name).unlink(missing_ok=True))
         return Path(tmp.name)
 
+    def test_ligne_cassee_sort_1_sans_check(self):
+        """ADCG89 — sans --check, une ligne cassée rendait 0 (tâche disparue
+        du planning) ; désormais rc 1 en nommant fichier:ligne."""
+        plan = self._write("- [ ] ZZ1 — **x** : sain. (@lane: apps/zz)\n"
+                           "- [ ]ZZ2 cassée\n")
+        erreur = io.StringIO()
+        with contextlib.redirect_stderr(erreur), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(pl.main([str(plan)]), 1)
+            self.assertEqual(pl.main([str(plan) + ".absent"]), 2)
+        self.assertIn(f"ligne de tâche illisible {plan}:2", erreur.getvalue())
+        self.assertIn("fichier de plan introuvable", erreur.getvalue())
+        saine = self._write("- [ ] ZZ1 — **x** : sain. (@lane: apps/zz)\n")
+        with contextlib.redirect_stderr(io.StringIO()), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(pl.main([str(saine)]), 0)
+
     def test_missing_build_order_file_is_fully_backward_compatible(self):
         """SCA3 contract: no BUILD_ORDER.yml at all -> byte-identical
         schedule to pre-SCA3 behaviour (every buildable task included,
@@ -949,7 +966,7 @@ class TaskLineGrammarTests(unittest.TestCase):
             ids = self._ids(self.NEGATIF)
         self.assertEqual(ids, [])
         # …et elle reste SIGNALÉE, pas avalée en silence.
-        self.assertIn("malformed task line", journal.getvalue())
+        self.assertIn("ligne de tâche illisible", journal.getvalue())
         self.assertEqual(pl.count_malformed(self._plan(self.NEGATIF)), 1)
 
     def test_NEGATIF_autres_formes_de_prose_restent_rejetees(self):

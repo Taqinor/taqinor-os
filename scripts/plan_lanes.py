@@ -591,8 +591,7 @@ def load_build_order(path: Path) -> dict | None:
     if not path.is_file():
         return None
     data = _MiniYamlParser(path.read_text(encoding="utf-8")).parse()
-    manquantes = [k for k in ("waves", "aliases", "edges", "unmapped_ok") if k not in data]
-    if manquantes:
+    if manquantes := [k for k in ("waves", "aliases", "edges", "unmapped_ok") if k not in data]:
         raise ValueError("BUILD_ORDER.yml : section(s) obligatoire(s) absente(s) : " + ", ".join(manquantes))
     return data
 
@@ -1184,12 +1183,9 @@ def parse_tasks(path: Path) -> list[dict]:
         m = _TASK_LIST_RE.match(raw) or _TASK_HEADER_RE.match(raw)
         if not m:
             if _RAW_CHECKLIST_RE.match(raw):
-                print(
-                    f"WARNING: malformed task line at {path}:{lineno} — "
-                    f"looks like a checklist item but matches neither task "
-                    f"regex: {raw.strip()!r}",
-                    file=sys.stderr,
-                )
+                print(f"ligne de tâche illisible {path}:{lineno} — case à "
+                      f"cocher sans id de tâche reconnu : {raw.strip()!r}",
+                      file=sys.stderr)
             continue
         status = m.group("status").strip()
         # An inline ``[BLOCKED: …]`` annotation sitting between the id and the
@@ -2116,7 +2112,7 @@ def main(argv: list[str] | None = None) -> int:
         if not pth.is_absolute():
             pth = ROOT / pth
         if not pth.is_file():
-            print(f"plan file not found: {pth}", file=sys.stderr)
+            print(f"fichier de plan introuvable : {pth}", file=sys.stderr)
             return 2
         paths.append(pth)
 
@@ -2255,18 +2251,12 @@ def main(argv: list[str] | None = None) -> int:
               + ", ".join(avec_after), file=sys.stderr)
         check_failed = True
 
-    if args.check:
-        # ADEP28 : CHAQUE fichier du pool, pas seulement le premier — une ligne
-        # mal formee du 2e fichier d'un pool « work on all plans » rendait 0.
-        malformed = sum(count_malformed(pth) for pth in paths)
-        if malformed:
-            print(
-                f"\n{malformed} line(s) look like a checklist task "
-                "(`- [`) but match neither task regex — see the WARNING(s) "
-                "above for file/line detail.",
-                file=sys.stderr,
-            )
-            check_failed = True
+    # ADEP28 : CHAQUE fichier du pool. ADCG89 : avec OU sans --check — sans,
+    # la tâche disparaissait du planning et le run rendait 0.
+    if malformed := sum(count_malformed(pth) for pth in paths):
+        print(f"\n{malformed} ligne(s) de tâche illisible(s) — fichier:ligne "
+              "ci-dessus.", file=sys.stderr)
+        check_failed = True
 
     if check_failed:
         return 1
