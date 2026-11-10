@@ -18,8 +18,12 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-DJANGO_PIDFILE=/tmp/taqinor-e2e-django.pid
-PREVIEW_PIDFILE=/tmp/taqinor-e2e-preview.pid
+ETAT="${E2E_ETAT_DIR:-/tmp}"   # surchargeable par les tests (scripts/tests/test_e2e_local.py)
+DJANGO_PIDFILE="$ETAT/taqinor-e2e-django.pid"
+PREVIEW_PIDFILE="$ETAT/taqinor-e2e-preview.pid"
+# ADCG23 — services que `up` a lui-même démarrés : `stop` n'arrête qu'eux, jamais
+# la pile partagée du poste (db/redis/minio déjà en marche avant `up`).
+SERVICES_FILE="$ETAT/taqinor-e2e-services.txt"
 DJANGO_LOG=/tmp/taqinor-e2e-django.log
 PREVIEW_LOG=/tmp/taqinor-e2e-preview.log
 
@@ -28,8 +32,15 @@ stop() {
   for pf in "$PREVIEW_PIDFILE" "$DJANGO_PIDFILE"; do
     if [ -f "$pf" ]; then kill "$(cat "$pf")" 2>/dev/null || true; rm -f "$pf"; fi
   done
-  echo "→ Arrêt des services (db/redis/minio)…"
-  docker compose stop db redis minio 2>/dev/null || true
+  if [ -s "$SERVICES_FILE" ]; then
+    a_arreter="$(tr '\n' ' ' < "$SERVICES_FILE")"
+    echo "→ Arrêt des services démarrés par up : $a_arreter"
+    # shellcheck disable=SC2086 — un nom de service par mot
+    docker compose stop $a_arreter 2>/dev/null || true
+  else
+    echo "→ db/redis/minio : services laissés en marche (non démarrés par up)"
+  fi
+  rm -f "$SERVICES_FILE"
   echo "✓ Stoppé."
 }
 
@@ -37,6 +48,9 @@ up() {
   [ -f .env ] || { echo "→ .env absent : copie depuis .env.example"; cp .env.example .env; }
 
   echo "→ Démarrage des services (db/redis/minio)…"
+  deja="$(docker compose ps --services --status running 2>/dev/null || true)"
+  : > "$SERVICES_FILE"
+  for s in db redis minio; do grep -qx "$s" <<< "$deja" || echo "$s" >> "$SERVICES_FILE"; done
   docker compose up -d db redis minio
 
   # Crédentiels depuis .env, mais hôtes forcés en localhost (Django tourne sur
