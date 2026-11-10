@@ -77,6 +77,11 @@ def push(ref, sha, lease=None):
     return git(*args, f"{sha}:{ref}", check=False).returncode == 0
 
 
+def supprimer(key):
+    """ADCG85 — True si la ref du bail a bien été supprimée sur origin."""
+    return git("push", "-q", "origin", f":{NS}{slug(key)}", check=False).returncode == 0
+
+
 def cmd_list(_):
     claims = remote_claims()
     if not claims:
@@ -94,7 +99,11 @@ def cmd_claim(a):
         ref = NS + slug(key)
         cur = claims.get(slug(key))
         if cur and cur[1].get("owner") == a.owner:
-            ok = push(ref, make_commit(key, a.owner, a.branch, cur[0]))
+            # ADCG85 : déjà tenue = simple renouvellement, jamais rendue au retour arrière.
+            if not push(ref, make_commit(key, a.owner, a.branch, cur[0])):
+                print(f"NON RENOUVELÉ {key}")
+                return 1
+            continue
         elif cur and not is_stale(cur[1]):
             print(f"REFUSÉ {key} : tenu par {cur[1].get('owner')} ({cur[1].get('branch', '')})")
             ok = False
@@ -103,12 +112,13 @@ def cmd_claim(a):
         else:
             ok = push(ref, make_commit(key, a.owner, a.branch))
         if not ok:
-            for k in won:  # tout ou rien
-                git("push", "-q", "origin", f":{NS}{slug(k)}", check=False)
-            print(f"ÉCHEC — aucune clé gardée ({key} non obtenu).")
+            for k in won:  # tout ou rien — sur les seules clés NEUVES de l'appel
+                if not supprimer(k):
+                    print(f"NON LIBÉRÉ {k} (retour arrière refusé)")
+            print(f"ÉCHEC — aucune clé neuve gardée ({key} non obtenu).")
             return 1
         won.append(key)
-    print("PRIS : " + ", ".join(won))
+    print("PRIS : " + ", ".join(a.keys))
     return 0
 
 
@@ -121,21 +131,25 @@ def cmd_renew(a):
             print(f"PERDU {key} : plus à {a.owner}")
             rc = 1
             continue
-        push(NS + slug(key), make_commit(key, a.owner, cur[1].get("branch", ""), cur[0]))
+        if not push(NS + slug(key), make_commit(key, a.owner, cur[1].get("branch", ""), cur[0])):
+            print(f"NON RENOUVELÉ {key}")
+            rc = 1
     return rc
 
 
 def cmd_release(a):
     claims = remote_claims()
+    rc = 0
     for key in a.keys:
         cur = claims.get(slug(key))
         if cur and cur[1].get("owner") == a.owner:
-            git("push", "-q", "origin", f":{NS}{slug(key)}", check=False)
-            print(f"LIBÉRÉ {key}")
-    return 0
+            ok = supprimer(key)
+            print(f"{'LIBÉRÉ' if ok else 'NON LIBÉRÉ'} {key}")
+            rc = rc or (0 if ok else 1)
+    return rc
 
 
-def main():
+def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("list")
@@ -144,7 +158,7 @@ def main():
         s.add_argument("keys", nargs="+")
         s.add_argument("--owner", required=True, help="poste+session, ex. DESKTOP-APTAHF6/dev-all-8")
         s.add_argument("--branch", default="")
-    a = p.parse_args()
+    a = p.parse_args(argv)
     return {"list": cmd_list, "claim": cmd_claim, "renew": cmd_renew, "release": cmd_release}[a.cmd](a)
 
 
