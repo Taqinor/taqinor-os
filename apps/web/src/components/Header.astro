@@ -245,8 +245,11 @@ const itemClass =
         navigation qui porte par ailleurs un morph de photo (galerie →
         héros de réalisation) ; classe pure CSS, no-op tant que le
         navigateur ne supporte pas les cross-document view transitions. */}
-    <a href={L('/')} aria-label={t('nav.homeLogo')} class="site-logo-vt">
+    {/* WAUD92 — pas d'aria-label : le nom accessible part du contenu (« TAQINOR » du logo +
+        suffixe masqué), pour qu'il contienne le texte visible (label-content-name-mismatch). */}
+    <a href={L('/')} class="site-logo-vt">
       <Logo size={24} theme="dark" />
+      <span class="sr-only"> — {t('nav.homeLogo')}</span>
     </a>
     <nav class="hidden items-center gap-6 xl:flex" aria-label={t('nav.primary')}>
       {/* Solutions (déroulant) */}
