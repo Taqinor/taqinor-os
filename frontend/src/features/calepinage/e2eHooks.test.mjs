@@ -127,6 +127,7 @@ export const ALL_HOOKS = [
   'cal-fiche-archiver',
   'cal-fiche-archiver-annuler',
   'cal-fiche-archiver-confirmation',
+  'cal-fiche-archiver-indisponible',
   'cal-fiche-bandeau-archive',
   'cal-fiche-bandeau-nom',
   'cal-fiche-bloc',

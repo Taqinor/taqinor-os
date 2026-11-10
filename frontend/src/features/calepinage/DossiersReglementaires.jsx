@@ -6,6 +6,7 @@ import { formatDateTime } from '../../lib/format'
 import { Button, Card } from '../../ui'
 import RetourAtelier from './atelier/RetourAtelier'
 import EtatEcranAtelier from './atelier/EtatEcranAtelier'
+import { refusServeur } from './commun/refusServeur'
 
 /* ============================================================================
    CAL196 — L'ÉCRAN « DOSSIERS RÉGLEMENTAIRES » DU CALEPINAGE.
@@ -66,6 +67,15 @@ function messageErreur(message) {
   return Array.isArray(message) ? message.join(' ') : String(message)
 }
 
+/* ERR-ACON-ERREUR-OBJET-AFFICHEE — un refus serveur → `{champ: texte}` par LE
+   décodeur du module (`commun/refusServeur`) : l'enveloppe `error` du handler
+   global n'est jamais un champ (elle s'affichait « [object Object] ») ; un
+   refus sans champ nommé (`detail` seul) tombe sous `cle`, avec son texte. */
+function refusParChamp(err, cle, repli) {
+  const { message, champs } = refusServeur(err)
+  return Object.keys(champs).length ? champs : { [cle]: message || repli }
+}
+
 function Etiquette({ texte, alerte }) {
   return (
     <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[11px] ${
@@ -114,10 +124,8 @@ function JoindrePiece({ piece, dossier, calepinageId, onJoint }) {
         if (onJoint) onJoint()
       })
       .catch((err) => {
-        const donnees = err?.response?.data
-        setErreur(donnees && typeof donnees === 'object'
-          ? Object.values(donnees).map(messageErreur).join(' ')
-          : 'Pièce refusée par le serveur.')
+        setErreur(Object.values(refusParChamp(err, 'piece', 'Pièce refusée par le serveur.'))
+          .join(' '))
       })
       .finally(() => setEnVol(false))
   }
@@ -247,10 +255,7 @@ function ChampsDossier({ dossier, calepinageId, onEnregistre }) {
       })
       .catch((err) => {
         // Un 400 NOMME le champ fautif : on le rend SOUS ce champ-là.
-        const corpsErreur = err?.response?.data
-        setErreurs(corpsErreur && typeof corpsErreur === 'object'
-          ? corpsErreur
-          : { champs: 'Enregistrement refusé par le serveur.' })
+        setErreurs(refusParChamp(err, 'champs', 'Enregistrement refusé par le serveur.'))
       })
       .finally(() => setEnVol(false))
   }
@@ -375,10 +380,7 @@ function Dossier({ dossier, calepinageId, onGenere, onEnregistre }) {
       .catch((err) => {
         // Un 400 NOMME son champ : on le rend sous ce champ-là, jamais sous
         // un « non enregistré » générique.
-        const corps = err?.response?.data
-        setErreurs(corps && typeof corps === 'object'
-          ? corps
-          : { dossier: 'Génération refusée par le serveur.' })
+        setErreurs(refusParChamp(err, 'dossier', 'Génération refusée par le serveur.'))
       })
       .finally(() => setEnVol(false))
   }
@@ -544,7 +546,11 @@ export default function DossiersReglementaires({ calepinageId }) {
 
   const regenere = () => { setSurcharge(null); refetch() }
 
-  if (loading || error) {
+  /* ACON47 — la relecture qui suit une génération NE DÉMONTE PAS l'écran déjà
+     servi : le démonter effaçait « Dossier généré » et les signalements du
+     POST (état local de la carte) avant même qu'ils soient lus. Le spinner
+     n'est montré qu'au PREMIER chargement. */
+  if ((loading && !donnees) || error) {
     return <EtatEcranAtelier id={id} loading={loading} error={error} testIdErreur="cal196-erreur" />
   }
 
@@ -583,7 +589,10 @@ export default function DossiersReglementaires({ calepinageId }) {
 
       {dossiers.map((dossier) => (
         <Dossier
-          key={dossier.id ?? `gabarit-${dossier.gabarit_id}`}
+          /* Clé STABLE à travers la génération : un dossier jamais commencé
+             (`id: null`) reçoit son `id` au POST — une clé qui change
+             remonterait la carte et perdrait sa réponse (ACON47). */
+          key={dossier.gabarit_id != null ? `gabarit-${dossier.gabarit_id}` : `dossier-${dossier.id}`}
           dossier={dossier}
           calepinageId={id}
           onGenere={regenere}
