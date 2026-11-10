@@ -53,6 +53,22 @@ describe('SauvegardesPage (NTOBS5)', () => {
     await waitFor(() => expect(screen.getByText(/Périmé/)).toBeInTheDocument())
   })
 
+  it('badge danger quand le dernier test a échoué hier (ADCG42)', async () => {
+    const hier = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+    parametresApi.getMesSauvegardes.mockResolvedValueOnce({
+      data: {
+        derniere_sauvegarde: { date: hier, statut: 'termine' },
+        dernier_drill: { date: hier, statut: 'echec' },
+        rpo_planifie: null,
+        rto_annonce_heures: null,
+      },
+    })
+    renderPage(<SauvegardesPage />)
+    await waitFor(() =>
+      expect(screen.getByText(/Dernier test de restauration en échec le/)).toBeInTheDocument())
+    expect(screen.queryByText(/Périmé/)).not.toBeInTheDocument()
+  })
+
   it("affiche un état vide propre quand aucune sauvegarde n'existe encore", async () => {
     parametresApi.getMesSauvegardes.mockResolvedValueOnce({
       data: {
