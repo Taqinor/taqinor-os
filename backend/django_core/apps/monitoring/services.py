@@ -246,16 +246,17 @@ def production_couverte(releves, debut, fin):
     return total
 
 
-def fenetre_couverte(installation, releves, since, today):
+def fenetre_couverte(installation, releves, since, today,
+                     premier_releve=_NON_FOURNI):
     """AMON22 — ``(debut, fin, intervalles)`` de la fenêtre réellement
     couverte : début = ``debut_couverture`` (mise en service / premier
-    relevé), fin = min(aujourd'hui, dernier jour couvert par un relevé),
-    intervalles = union des périodes des relevés dedans. ``None`` si aucun
-    jour couvert."""
+    relevé ; ``premier_releve`` déjà lu par l'appelant, AMON101), fin =
+    min(aujourd'hui, dernier jour couvert par un relevé), intervalles = union
+    des périodes des relevés dedans. ``None`` si aucun jour couvert."""
     from .analytics import intervalles_couverts_par_releves
     if not releves:
         return None
-    debut = debut_couverture(installation, since)
+    debut = debut_couverture(installation, since, premier_releve)
     fin = min(today, max(jour + timedelta(days=max(int(periode or 1), 1) - 1)
                          for jour, periode, _kwh in releves))
     intervalles = intervalles_couverts_par_releves(

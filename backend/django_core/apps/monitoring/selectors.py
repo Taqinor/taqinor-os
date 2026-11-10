@@ -10,13 +10,13 @@ from __future__ import annotations
 from datetime import date, timedelta
 from decimal import Decimal
 
-from django.db.models import Sum
+from django.db.models import Max, Sum
 from django.utils import timezone
 
 from .models import (
     MonitoringConfig, ProductionReading, SlaDisponibilite, UnderperformanceFlag,
 )
-from .services import _expected_recent_kwh, premiers_releves
+from .services import attendu_intervalles, fenetre_couverte, premiers_releves, production_couverte
 
 
 def _q(value, places='0.01'):
@@ -37,6 +37,28 @@ def _facteur_kg(company, co2_kg_par_kwh=None):
 def _fois(kwh, facteur):
     """AMON41 — kg CO₂ = kWh × facteur, ``None`` sans facteur."""
     return None if facteur is None else kwh * facteur
+
+
+def _reel_attendu_couverts(configs, since, today):
+    """AMON101 — ``{installation_id: (réel, attendu)}`` sur la fenêtre COUVERTE
+    de chaque système (``fenetre_couverte``), en requêtes CONSTANTES."""
+    ids = [config.installation_id for config in configs]
+    premiers = premiers_releves(ids)
+    qs = ProductionReading.objects.filter(installation_id__in=ids)
+    plus_longue = qs.aggregate(m=Max('period_days'))['m'] or 1
+    releves = {}
+    for inst_id, jour, periode, kwh in qs.filter(
+            date__gt=since - timedelta(days=plus_longue), date__lte=today,
+    ).values_list('installation', 'date', 'period_days', 'energy_kwh'):
+        if jour + timedelta(days=max(int(periode or 1), 1)) > since:
+            releves.setdefault(inst_id, []).append((jour, periode, kwh))
+    resultat = {}
+    for config in configs:
+        lus = releves.get(config.installation_id, [])
+        f = fenetre_couverte(config.installation, lus, since, today, premiers.get(config.installation_id))
+        resultat[config.installation_id] = ((production_couverte(lus, *f[:2]), attendu_intervalles(config, f[2]))
+                                            if f else (Decimal('0'), None))
+    return resultat
 
 
 def fleet_overview(company, *, window_days=365, today=None):
@@ -60,7 +82,8 @@ def fleet_overview(company, *, window_days=365, today=None):
                    .select_related('installation'))
 
     inst_ids = [config.installation_id for config in configs]
-    premiers = premiers_releves(inst_ids)  # ASAV62 — une requête, pas N
+    # AMON101 — PR sur la fenêtre couverte (production affichée inchangée).
+    couverts = _reel_attendu_couverts(configs, since, today)
     prod_par_installation = dict(
         ProductionReading.objects
         .filter(installation_id__in=inst_ids, date__gte=since, date__lte=today)
@@ -89,14 +112,12 @@ def fleet_overview(company, *, window_days=365, today=None):
         prod = Decimal(str(prod))
         total_kwh += prod
 
-        expected = _expected_recent_kwh(
-            inst, config, window_days, today=today,
-            premier_releve=premiers.get(inst.id))
+        reel, expected = couverts[inst.id]
         pr_pct = None
         if expected and expected > 0:
             total_expected += expected
-            total_kwh_avec_attendu += prod
-            pr_pct = _q((prod / expected) * Decimal('100'))
+            total_kwh_avec_attendu += reel
+            pr_pct = _q((reel / expected) * Decimal('100'))
 
         systems.append({
             'installation': inst.id,
@@ -105,7 +126,7 @@ def fleet_overview(company, *, window_days=365, today=None):
             'production_kwh': _q(prod),
             'pr_pct': pr_pct,
             # ASAV65 — « sans référence » : pas d'attendu, donc pas de PR.
-            'sans_reference': pr_pct is None,
+            'sans_reference': not config.expected_annual_kwh,
         })
 
     fleet_pr = None
@@ -518,22 +539,15 @@ def benchmark_parc(company, *, window_days=365, today=None):
                    .filter(company=company)
                    .select_related('installation'))
 
-    premiers = premiers_releves(
-        [config.installation_id for config in configs])
+    couverts = _reel_attendu_couverts(configs, since, today)  # AMON101
     entries = []
     for config in configs:
         inst = config.installation
         if not getattr(inst, 'parc_actif', True):
             continue
-        expected = _expected_recent_kwh(
-            inst, config, window_days, today=today,
-            premier_releve=premiers.get(inst.id))
+        prod, expected = couverts[inst.id]
         if not expected or expected <= 0:
             continue
-        prod = (ProductionReading.objects
-                .filter(installation=inst, date__gte=since, date__lte=today)
-                .aggregate(total=Sum('energy_kwh'))['total'] or Decimal('0'))
-        prod = Decimal(str(prod))
         pr_pct = _q((prod / expected) * Decimal('100'))
         entries.append({
             'installation': inst.id,
