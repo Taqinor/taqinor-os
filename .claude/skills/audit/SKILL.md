@@ -73,7 +73,12 @@ et sujet à blocage local). (a) Une tâche écart dont les `Files:` touchent PLU
 --owner-of`) va dans `docs/plans/PLAN_AUDIT_TRANSVERSE.md` avec `(@atomique: a, b)` si c'est un correctif en UN commit —
 jamais dans le plan d'un seul propriétaire. (b) Ancre = `chemin/complet.ext::symbole` (fonction/classe réels), JAMAIS
 `:ligne` ni `(l.N)` nus ; un dict/variable de module n'est pas une ancre résolvable → le citer en texte. (c) Chaque `n/a`
-porte « n/a — raison » (jamais nu). (d) Les 14 clauses v3 sont toutes présentes (dont « Assertions existantes »). Le record
+porte « n/a — raison » (jamais nu). (d) Les 14 clauses v3 sont toutes présentes (dont « Assertions existantes »). (e) Une tâche ÉCART ne cite jamais un
+`C-<G>-NNN` du dossier d'origine ni un nom de sonde `C-<G>-NNN.py` : `check_audit_dossier.py` compte ces citations dans
+l'en-tête `taches:` du dossier (rouge « N mais N+1 réels », vu sur PA5 le 10/11) ; constat = `C-<G>-VER<n>-NNN`, sonde citée
+en texte (« la sonde 062 du dossier PA5 ») ; lancer aussi `check_audit_dossier.py` et `audit_registre.py --check` en local.
+(f) `audit_registre.py --du` / `status` lancent la garde d'acceptation groupe par groupe (plusieurs minutes) : pour la seule
+liste des dus, neutraliser `acceptation` (`a.acceptation = lambda g: 'n/d'` avant `a.cmd_du()`). Le record
 `<date>-<mot>-verifie.md` prend le `mot` du `declencheur` tel quel, ACCENTS COMPRIS (`sécurité`, `générateur`) sinon
 `audit_registre` ne le matche pas ; une 2ᵉ contre-visite le même jour REMPLACE le fichier canonique (git garde la 1ʳᵉ).
 
