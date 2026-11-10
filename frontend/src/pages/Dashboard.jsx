@@ -14,6 +14,7 @@ const ApprobationsAttentionCard = lazy(() => import('../components/ApprobationsA
 // WIR59). `PremiersPasWidget` est la source de vérité serveur (company+user
 // scopée, les 6 items du catalogue réel).
 const PremiersPasWidget = lazy(() => import('../components/PremiersPasWidget'))
+const DemoResumeWidget = lazy(() => import('../components/DemoResumeWidget'))
 // NTUX11 — historique de navigation récente unifié (autonome : ne rend rien
 // si aucune entité récente).
 const RecentEntitiesWidget = lazy(() => import('../features/uxviews/RecentEntitiesWidget'))
@@ -868,6 +869,11 @@ export function Component() {
           l'import ci-dessus). */}
       <Suspense fallback={null}>
         <PremiersPasWidget />
+      </Suspense>
+
+      {/* NTDMO21 — résumé du mois, société DÉMO uniquement (se masque seul). */}
+      <Suspense fallback={null}>
+        <DemoResumeWidget />
       </Suspense>
 
       {/* VX27 — bandeau « aujourd'hui » : les signaux du jour, cliquables. Se

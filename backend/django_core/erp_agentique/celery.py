@@ -351,6 +351,13 @@ app.conf.beat_schedule = {
         'task': 'reporting.controle_integrite',
         'schedule': crontab(hour=3, minute=0, day_of_week=1),
     },
+    # NTDMO31/41/42 — recalcul nocturne (UN job) du résumé « Ce que vous avez
+    # accompli ce mois-ci » des sociétés démo + des KPI internes d'onboarding,
+    # servis ensuite depuis le cache (apps/reporting/demo_resume.py).
+    'reporting-recalcul-nocturne-onboarding': {
+        'task': 'reporting.recalcul_nocturne_onboarding',
+        'schedule': crontab(hour=2, minute=40),
+    },
     # XFAC25 — relevé de compte mensuel automatique (opt-in par client),
     # 1er du mois 08:00 Africa/Casablanca.
     'ventes-releve-mensuel-reminders': {

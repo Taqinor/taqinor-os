@@ -37,6 +37,37 @@ except ImportError:  # pragma: no cover - celery absent en environnement de test
     pass
 
 
+def run_recalcul_nocturne_onboarding():
+    """NTDMO31/41/42 — UN job nocturne : résumé démo de chaque société démo
+    (``demo_resume``) + KPI internes d'onboarding (``onboarding_kpi``), tous
+    deux servis ensuite depuis le cache. Une brique en échec n'arrête pas
+    l'autre."""
+    import logging
+    from . import demo_resume, onboarding_kpi
+
+    log = logging.getLogger(__name__)
+    out = {'societes_demo': 0, 'kpi_interne': False}
+    try:
+        out['societes_demo'] = demo_resume.precalculer_societes_demo()
+    except Exception:  # pragma: no cover - défensif
+        log.warning('recalcul nocturne : résumés démo en échec', exc_info=True)
+    try:
+        onboarding_kpi.precalculer()
+        out['kpi_interne'] = True
+    except Exception:  # pragma: no cover - défensif
+        log.warning('recalcul nocturne : KPI onboarding en échec', exc_info=True)
+    return out
+
+
+try:
+    @shared_task(name='reporting.recalcul_nocturne_onboarding')
+    def recalcul_nocturne_onboarding_task():
+        """Tâche Beat quotidienne (nuit) — voir ``run_recalcul_nocturne_onboarding``."""
+        return run_recalcul_nocturne_onboarding()
+except NameError:  # pragma: no cover - celery absent
+    pass
+
+
 # NTEXT12 — l'envoi planifié des abonnements vit dans son propre module ; on
 # l'importe ICI pour que ``app.autodiscover_tasks()`` (qui ne regarde que
 # ``tasks.py``) enregistre bien ``reporting.envoyer_rapports_planifies``.

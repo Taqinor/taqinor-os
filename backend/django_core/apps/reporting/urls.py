@@ -36,6 +36,7 @@ from .reports_chantier import pilotage_chantiers_report
 from .p2p_kpi import kpi_p2p
 from .technicien_scorecard import technicien_scorecard
 from .vitals import collect_vital, vitals_p75
+from .demo_views import demo_resume_view, kpi_onboarding_interne  # NTDMO21/41
 from .journal_problemes import resume_problemes_service, signaler_probleme
 
 # N79 — CRUD des rapports sauvegardés (router DRF, ajouté en additif).
@@ -60,6 +61,9 @@ router.register(r'rapport-definitions', RapportDefinitionViewSet,
 urlpatterns = [
     path('', include(router.urls)),
     path('dashboard/', dashboard, name='reporting-dashboard'),
+    path('demo-resume/', demo_resume_view, name='reporting-demo-resume'),  # NTDMO21
+    path('kpi-onboarding-interne/', kpi_onboarding_interne,
+         name='reporting-kpi-onboarding-interne'),  # NTDMO41/42
     path('search/', global_search, name='global-search'),
     path('notifications/', notifications, name='in-app-notifications'),
     path('calendar/', calendar_events, name='reporting-calendar'),
