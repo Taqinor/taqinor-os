@@ -156,9 +156,14 @@ class DupliquerTest(BaseVariantes):
         self.assertEqual(copie.lead_id, self.lead_b.pk)
 
     def test_la_copie_reprend_le_layout(self):
+        from apps.ventes.services import layout_hash
+
         copie = self._dupliquer()
-        self.assertEqual(copie.roof_layout, LAYOUT)
-        self.assertEqual(copie.layout_hash, self.pivot.layout_hash)
+        # ACON11 — vers un AUTRE lead : la production de la source
+        # (``result``) n'est jamais recopiée ; la conception l'est.
+        attendu = {'zones': LAYOUT['zones']}
+        self.assertEqual(copie.roof_layout, attendu)
+        self.assertEqual(copie.layout_hash, layout_hash(attendu))
 
     def test_la_copie_repart_en_brouillon(self):
         self.pivot.statut = Calepinage.Statut.VALIDE

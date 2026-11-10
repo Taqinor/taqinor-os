@@ -76,8 +76,10 @@ class GenererDevisPortesTest(BaseApiCalepinage):
         # ACAL187 — source OUVERTE : la copie vise un autre lead.
         copie = dupliquer(self.original, user=self.user,
                           lead_id=self.lead_2.pk)
-        self.original.refresh_from_db()
-        self.assertEqual(copie.layout_hash, self.original.layout_hash)
+        # ACON11 — la production de la source ne suit pas une copie vers un
+        # autre lead : la copie est re-simulée (ici, résultat reposé).
+        self.assertNotIn('result', copie.roof_layout)
+        enregistrer_layout(copie, copy.deepcopy(TOIT), user=self.user)
 
         reponse = self._generer(copie)
         self.assertEqual(reponse.status_code, 201, reponse.data)

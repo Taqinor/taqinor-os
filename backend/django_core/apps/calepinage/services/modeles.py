@@ -29,7 +29,6 @@ silencieuse du lead/client du modèle.
 """
 from __future__ import annotations
 
-import copy
 
 #: Nom du tag SYSTÈME (FG9) qui porte le drapeau « modèle réutilisable ».
 NOM_TAG_MODELE = 'calepinage:modele'
@@ -200,7 +199,7 @@ def creer_depuis_modele(modele, *, user=None, lead_id=None, client_id=None,
         ModeleInvalide: modèle absent/non marqué, ou aucun nouveau
             rattachement (lead/client) fourni.
     """
-    from .variantes import dupliquer
+    from .variantes import dupliquer, preparer_pour_cible
 
     if modele is None or not getattr(modele, 'pk', None):
         raise ModeleInvalide('Modèle introuvable.', champ='modele')
@@ -258,18 +257,8 @@ def creer_depuis_modele(modele, *, user=None, lead_id=None, client_id=None,
         pin = None
 
     def preparer(source):
-        """D-ACAL-15 — la règle de copie d'un document du modèle, UNE pour
-        la conception et chaque variante : translatée sur le repère du lead
-        cible (s'il y en a un), sans la consommation d'un AUTRE client."""
-        if pin is not None:
-            from .translation_conception import translater_conception
-
-            prepare = translater_conception(source, pin)
-        else:
-            prepare = copy.deepcopy(source)
-        if isinstance(prepare, dict):
-            prepare.pop('consumption', None)
-        return prepare
+        # D-ACAL-15 / ACON11 — LA règle partagée avec Dupliquer.
+        return preparer_pour_cible(source, pin)
 
     # ACAL187/ACAL184 — la CIBLE est passée explicitement à ``dupliquer`` :
     # la copie naît sur ce lead/client (jamais sur le rattachement du
