@@ -73,6 +73,9 @@ ROUTES_SOUS_VERROU = {
     ('DELETE', RELEVE): '_sonde_supprimer_releve',
     ('POST', RELEVE + '/appliquer-cote'): PAR_ENREGISTRER_LAYOUT,
     ('POST', 'fixation'): '_sonde_fixation',
+    # ACON85 — re-simuler un calepinage figé réécrirait la production du
+    # devis accepté : refusé au motif de ventes.
+    ('POST', 'simuler'): '_sonde_simuler',
 }
 
 #: Routes HORS VERROU, chacune avec son MOTIF (jamais vide).
@@ -87,8 +90,6 @@ ROUTES_HORS_VERROU = {
     ('POST', 'archiver'): 'archivage : son propre prédicat (devis non '
                           'brouillon refusé, ACAL118)',
     ('POST', 'restaurer-corbeille'): 'restauration depuis la corbeille',
-    ('POST', 'simuler'): 'simulation : calcul, jamais une écriture de '
-                         'conception (ACAL43)',
     ('POST', 'meteo-fichier'): 'simulation : entrée météo du calcul',
     ('DELETE', 'meteo-fichier'): 'simulation : entrée météo du calcul',
     ('POST', 'evaluer-electrique'): 'évaluation électrique à la demande '
@@ -266,6 +267,9 @@ class GardeRoutesVerrouTest(BaseApiCalepinage):
         # Lot 2 critique #10 — même un retrait (null, aucun catalogue requis)
         # est refusé : le verrou passe AVANT toute écriture.
         return self._post('fixation/', {'systeme_id': None})
+
+    def _sonde_simuler(self):
+        return self._post('simuler/', {'forcer': True})
 
     # ── la garde ────────────────────────────────────────────────────────────
     def test_chaque_route_d_ecriture_est_classee(self):

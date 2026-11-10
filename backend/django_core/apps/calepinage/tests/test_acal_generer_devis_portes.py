@@ -196,6 +196,29 @@ class GenererDevisPortesTest(BaseApiCalepinage):
         self.assertEqual(reponse.status_code, 201, reponse.data)
         self.assertIn(self._generer(self.original).status_code, (200, 201))
 
+    def test_devis_genere_range_l_ombrage_servi(self):
+        """ACON85 — les études du devis sont rafraîchies APRÈS le lien au
+        calepinage : ``calepinage_du_devis`` trouve alors la conception et
+        l'ombrage servi entre dans le bloc horaire (mutant : rafraîchir
+        avant ``_lier`` ⇒ le dernier rafraîchissement voit un devis nu)."""
+        from unittest import mock
+
+        from apps.ventes import services as ventes_services
+
+        vus = []
+        reel = ventes_services.rafraichir_etudes_du_devis
+
+        def espion(devis, *args, **kwargs):
+            vus.append(Calepinage.objects.filter(devis_id=devis.pk).exists())
+            return reel(devis, *args, **kwargs)
+
+        with mock.patch.object(ventes_services, 'rafraichir_etudes_du_devis',
+                               side_effect=espion):
+            reponse = self._generer(self.original)
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        self.assertTrue(vus)
+        self.assertTrue(vus[-1], vus)
+
     def test_reponse_porte_avertissements(self):
         reponse = self._generer(self.original)
         self.assertEqual(reponse.status_code, 201, reponse.data)

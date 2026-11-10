@@ -213,7 +213,8 @@ def _generer(calepinage, layout, company, lead, client, montants, *, user,
 
     from apps.ventes.services import (
         AutoDevisError, build_devis_from_layout, layout_hash,
-        poser_layout_hash, validate_composition_for_layout,
+        poser_layout_hash, rafraichir_etudes_du_devis,
+        validate_composition_for_layout,
     )
 
     # Pré-vol de composition : le catalogue peut-il servir ce toit ? Le refus
@@ -245,6 +246,8 @@ def _generer(calepinage, layout, company, lead, client, montants, *, user,
         deja = _brouillon_reutilisable(company, lead, empreinte, calepinage)
         if deja is not None:
             _lier(calepinage, deja, user=user)
+            # ACON85 — les études relues APRÈS le lien (ombrage servi).
+            rafraichir_etudes_du_devis(deja)
             _poser_affiche(calepinage, deja)
             return deja, False
 
@@ -264,6 +267,10 @@ def _generer(calepinage, layout, company, lead, client, montants, *, user,
     # la dédup possible au clic suivant, et le badge « à jour » honnête.
     poser_layout_hash(devis, empreinte)
     _lier(calepinage, devis, user=user)
+    # ACON85 — ``build_devis_from_layout`` a rafraîchi AVANT le lien
+    # (``calepinage_du_devis`` ne trouvait rien) : l'ombrage du calepinage
+    # n'entre dans le bloc horaire qu'ici.
+    rafraichir_etudes_du_devis(devis)
     _poser_affiche(calepinage, devis)
     if journal is not None:
         # ACAL89 — ce que la composition a REFUSÉ de faire, tel quel.
