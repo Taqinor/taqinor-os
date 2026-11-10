@@ -382,7 +382,8 @@ def _facture_ht_vente(devis):
     sur la V2 reste au chantier de la V1), lues par la façade ventes ; jamais
     un brouillon (prévu) ni une annulée. Préchargez ``devis__factures``."""
     from apps.ventes.selectors import factures_de_la_vente
-    return sum((Decimal(f.total_ht) for f in factures_de_la_vente(
+    from .metriques_ca import ht_net  # ASOC73 — net d'avoirs (D-ASOC-5)
+    return sum((ht_net(f) for f in factures_de_la_vente(
         devis, emises=True)), Decimal('0')) if devis else Decimal('0')
 
 

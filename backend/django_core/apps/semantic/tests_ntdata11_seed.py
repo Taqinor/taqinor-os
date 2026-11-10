@@ -158,6 +158,46 @@ class SeedMetriquesTests(TestCase):
         with self.assertRaises(services.MetriqueNonResolvable):
             val(self.company, None, 'ca_ht', filters={'montant_ht': 1})
 
+    def test_ca_net_d_avoirs(self):
+        """ASOC73 (C-ASOC-065, D-ASOC-5) — F1 10 000 HT + avoir 2 000 HT, F2
+        1 000 HT soldée par avoir total : ca_ht 8 000 (= ca_attente du tableau
+        de bord), ca_ttc 9 600, panier 4 800 ; « facturé » du job costing net."""
+        from decimal import Decimal
+        from unittest import mock
+
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+
+        from apps.reporting.insights import _facture_ht_vente
+        from apps.ventes.models import Avoir, Facture, LigneAvoir
+        self._seed()
+        f1 = self._facture('F73-1', 'emise', ht='10000')
+        f2 = self._facture('F73-2', 'emise', ht='1000')
+        for facture, ht in ((f1, '2000'), (f2, '1000')):
+            avoir = Avoir.objects.create(
+                company=self.company, reference='AV-%s' % facture.reference,
+                facture=facture, client=self._cli)
+            LigneAvoir.objects.create(
+                avoir=avoir, designation='Avoir', quantite=Decimal('1'),
+                prix_unitaire=Decimal(ht))
+        Facture.objects.filter(pk=f2.pk).update(statut='payee')
+        val = services.resolve_metric_valeur
+        self.assertEqual(val(self.company, None, 'ca_ht'), Decimal('8000'))
+        self.assertEqual(val(self.company, None, 'ca_ttc'), Decimal('9600'))
+        self.assertEqual(val(self.company, None, 'panier_moyen'),
+                         Decimal('4800'))
+        api = APIClient()
+        api.force_authenticate(get_user_model().objects.create_user(
+            username='asoc73-admin', password='x', role_legacy='admin',
+            company=self.company))
+        reponse = api.get('/api/django/reporting/dashboard/')
+        self.assertEqual(reponse.status_code, 200)
+        self.assertAlmostEqual(reponse.data['kpis']['ca_attente'], 8000.0,
+                               places=2)
+        with mock.patch('apps.ventes.selectors.factures_de_la_vente',
+                        return_value=[Facture.objects.get(pk=f1.pk)]):
+            self.assertEqual(_facture_ht_vente(object()), Decimal('8000'))
+
     def test_exemple_agent_ca_facture_lit_total_stocke(self):
         # AANA77 volet agent (ATOT55) : l'exemple « CA facture HT » du prompt
         # de l'agent SQL, exécuté tel quel (scopé société comme la

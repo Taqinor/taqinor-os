@@ -46,7 +46,8 @@ def _factures(company, period, filters):
         qs = qs.filter(date_emission__gte=debut)
     if fin is not None:
         qs = qs.filter(date_emission__lte=fin)
-    return list(qs.prefetch_related('lignes'))
+    from apps.facturation.selectors import factures_avec_montant_du
+    return list(factures_avec_montant_du(qs))  # lignes + avoirs (ASOC73)
 
 
 def _bornes(period):
@@ -58,19 +59,40 @@ def _bornes(period):
     return period.get('debut'), period.get('fin')
 
 
-def _somme(factures, attribut):
-    return sum((Decimal(getattr(f, attribut) or 0) for f in factures),
-               Decimal('0'))
+def _part_ht(facture, montant_ttc):
+    """AANA55 — part HT d'un montant TTC, au prorata HT/TTC de la facture."""
+    total_ttc = Decimal(facture.total_ttc or 0)
+    if total_ttc <= 0:
+        return Decimal('0')
+    montant = min(Decimal(montant_ttc or 0), total_ttc)
+    return montant * Decimal(facture.total_ht or 0) / total_ttc
+
+
+def ttc_net(facture):
+    """ASOC73 (D-ASOC-5) — TTC net d'avoirs : ``total_ttc`` − terme ``avoirs``
+    de ``decomposition_du`` (même source que ``montant_du``), borné à 0."""
+    from apps.facturation.models import decomposition_du
+    net = Decimal(facture.total_ttc or 0) - decomposition_du(facture)['avoirs']
+    return max(net, Decimal('0'))
+
+
+def ht_net(facture):
+    """ASOC73 — HT net d'avoirs, au prorata HT/TTC (``_part_ht``)."""
+    return _part_ht(facture, ttc_net(facture))
+
+
+def _somme(factures, valeur):
+    return sum((valeur(f) for f in factures), Decimal('0'))
 
 
 def ca_ht(company, user=None, *, period=None, filters=None):
-    """Somme des ``Facture.total_ht`` de la population."""
-    return _somme(_factures(company, period, filters), 'total_ht')
+    """Somme des HT nets d'avoirs (ASOC73) de la population."""
+    return _somme(_factures(company, period, filters), ht_net)
 
 
 def ca_ttc(company, user=None, *, period=None, filters=None):
-    """Somme des ``Facture.total_ttc`` de la population."""
-    return _somme(_factures(company, period, filters), 'total_ttc')
+    """Somme des TTC nets d'avoirs (ASOC73) de la population."""
+    return _somme(_factures(company, period, filters), ttc_net)
 
 
 def panier_moyen(company, user=None, *, period=None, filters=None):
@@ -78,7 +100,7 @@ def panier_moyen(company, user=None, *, period=None, filters=None):
     factures = _factures(company, period, filters)
     if not factures:
         return None
-    return _somme(factures, 'total_ttc') / len(factures)
+    return _somme(factures, ttc_net) / len(factures)
 
 
 def taux_conversion(company, user=None, *, period=None, filters=None):
