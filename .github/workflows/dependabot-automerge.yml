@@ -1,6 +1,10 @@
 # ADCG67 (D-ADCG-2 = fusion_auto_securite_mono_paquet) : met en file de fusion les PR Dependabot
 # de SECURITE, mono-paquet, patch/minor. Les checks requis (merge queue) gardent la main : rien
 # n'est contourne. Groupes, majeures et montees ordinaires ne sont jamais touches.
+# Signal de securite STRUCTUREL : .github/dependabot.yml regroupe TOUTES les montees minor+patch
+# de version (groups "*"). Une PR Dependabot non groupee, mono-paquet, patch/minor ne peut donc
+# etre qu'une mise a jour de securite (ghsa-id exige alert-lookup + un jeton lisant les alertes,
+# indisponible avec GITHUB_TOKEN). Le test statique verrouille cet invariant.
 # pull_request_target : le code de la PR n'est JAMAIS recupere ni execute (pas de checkout).
 name: dependabot-automerge
 
@@ -12,7 +16,7 @@ permissions: {}
 
 jobs:
   automerge:
-    if: github.actor == 'dependabot[bot]'
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -23,14 +27,13 @@ jobs:
         uses: dependabot/fetch-metadata@v2.4.0
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Mettre en file (securite, mono-paquet, patch/minor)
+      - name: Mettre en file (non groupee, mono-paquet, patch/minor = securite)
         if: >-
-          steps.meta.outputs.ghsa-id != '' &&
           steps.meta.outputs.dependency-group == '' &&
           !contains(steps.meta.outputs.dependency-names, ',') &&
           (steps.meta.outputs.update-type == 'version-update:semver-patch' ||
           steps.meta.outputs.update-type == 'version-update:semver-minor')
-        run: gh pr merge --auto --merge "$PR_URL"
+        run: gh pr merge --auto "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

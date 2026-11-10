@@ -213,7 +213,8 @@ class AutomergeDependabotTests(unittest.TestCase):
         declencheurs = wf.get("on") or wf.get(True)
         self.assertEqual(set(declencheurs), {"pull_request_target"})
         job = wf["jobs"]["automerge"]
-        self.assertIn("dependabot[bot]", job["if"])
+        self.assertEqual(
+            job["if"], "github.event.pull_request.user.login == 'dependabot[bot]'")
         self.assertEqual(wf["permissions"], {})
         self.assertEqual(job["permissions"], {"contents": "write", "pull-requests": "write"})
         self.assertNotIn("actions/checkout", texte)
@@ -222,14 +223,27 @@ class AutomergeDependabotTests(unittest.TestCase):
         meta = next(e for e in etapes if "fetch-metadata" in e.get("uses", ""))
         self.assertRegex(meta["uses"], r"dependabot/fetch-metadata@v\d+\.\d+\.\d+$")
         fusion = next(e for e in etapes if "gh pr merge" in e.get("run", ""))
-        self.assertIn("--auto --merge", fusion["run"])
+        self.assertIn("gh pr merge --auto \"$PR_URL\"", fusion["run"])
+        self.assertNotIn("--merge", fusion["run"])
         cond = fusion["if"]
-        for garde in ("ghsa-id != ''", "dependency-group == ''",
+        for garde in ("dependency-group == ''",
                       "contains(steps.meta.outputs.dependency-names, ',')",
                       "semver-patch", "semver-minor"):
             self.assertIn(garde, cond)
         self.assertNotIn("semver-major", cond)
         self.assertNotIn("--admin", texte)
+        self.assertNotIn("ghsa-id", cond)
+        # Invariant : tout ecosysteme groupe toutes les minor+patch, sinon une PR
+        # non groupee patch/minor ne prouverait plus la securite.
+        dep = yaml.safe_load(
+            (ROOT / ".github/dependabot.yml").read_text(encoding="utf-8"))
+        for upd in dep["updates"]:
+            groupes = (upd.get("groups") or {}).values()
+            self.assertTrue(
+                any(g.get("patterns") == ["*"]
+                    and {"minor", "patch"} <= set(g.get("update-types") or [])
+                    for g in groupes),
+                "ecosysteme sans groupe '*' minor+patch : %s" % upd.get("directory"))
 
 
 if __name__ == "__main__":
