@@ -219,11 +219,21 @@ const redirectSiPortail = (user) => {
   return home ? redirect(home) : null
 }
 
+// APFS102 — un compte INTERNE au mot de passe à changer (réinitialisé ou
+// expiré) est amené sur `/mot-de-passe` avant toute coquille ERP (le serveur
+// refuse le reste, APFS3).
+const CHEMIN_MOT_DE_PASSE_INTERNE = '/mot-de-passe'
+const redirectSiMotDePasseInterne = (user, request) => (
+  user.must_change_password
+    && new URL(request.url).pathname !== CHEMIN_MOT_DE_PASSE_INTERNE
+    ? redirect(CHEMIN_MOT_DE_PASSE_INTERNE) : null
+)
+
 const authLoader = async ({ request }) => {
   const user = await ensurePortalScope()
   if (user === HORS_LIGNE) return ETAT_HORS_LIGNE
   if (!user) return buildLoginRedirect(request)
-  return redirectSiPortail(user)
+  return redirectSiPortail(user) || redirectSiMotDePasseInterne(user, request)
 }
 
 // Garde des routes `/portail/<scope>` : session valide + portée EXACTE.
@@ -281,6 +291,8 @@ const roleLoader = (roles, perm, permRepliPalier) => async ({ request }) => {
   // même gardée par rôle : il rejoint son propre shell.
   const versPortail = redirectSiPortail(user)
   if (versPortail) return versPortail
+  const versMotDePasse = redirectSiMotDePasseInterne(user, request) // APFS102
+  if (versMotDePasse) return versMotDePasse
   const { role, permissions } = store.getState().auth
   const tier = role || 'normal'
   const allowed = estAutoriseEntree({ roles, perm, permRepliPalier }, tier, permissions)
@@ -446,6 +458,9 @@ const router = createBrowserRouter([
   { path: '/suivi/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><TicketSuiviPage /></Suspense></RouteErrorBoundary> },
   // XPLT10 — kiosque TV plein écran des dashboards partagés (authentifié,
   // sans layout ERP — rotation/rafraîchissement pilotés côté écran).
+  // APFS102 — rotation forcée du mot de passe d'un compte INTERNE, sans
+  // coquille ERP (même composant que les portails).
+  { path: '/mot-de-passe', loader: authLoader, element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PortailMotDePasse /></Suspense></RouteErrorBoundary> },
   { path: '/dashboards-tv', loader: authLoader, element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><DashboardsTvPage /></Suspense></RouteErrorBoundary> },
   // WIR264/XFSM7 — suivi public « technicien en route » (sans login).
   { path: '/intervention/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><InterventionSuiviPublicPage /></Suspense></RouteErrorBoundary> },

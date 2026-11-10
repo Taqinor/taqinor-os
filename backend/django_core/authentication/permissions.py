@@ -46,12 +46,20 @@ class IsAdminRole(BasePermission):
 # l'ancien import fonction-local de ``PERMISSION_MODULE``.
 _REGISTRE_MODULES = None
 
+#: APFS28 (D-APFS-4) — lectures CROISÉES admises : ``{(module, nom de la
+#: classe de vue): frozenset(codes)}`` injecté par ``apps.roles`` (jamais
+#: importé d'ici) ; lu par ``LectureDuModule``.
+_OCTROIS_LECTURE = {}
 
-def enregistrer_registre_modules(permission_module):
+
+def enregistrer_registre_modules(permission_module, *, octrois_lecture=None):
     """Branché par ``apps.roles.apps.RolesConfig.ready()`` avec
-    ``apps.roles.permissions_registre.PERMISSION_MODULE``."""
-    global _REGISTRE_MODULES
+    ``apps.roles.permissions_registre.PERMISSION_MODULE`` (et, APFS28,
+    ``OCTROIS_LECTURE``)."""
+    global _REGISTRE_MODULES, _OCTROIS_LECTURE
     _REGISTRE_MODULES = permission_module
+    if octrois_lecture is not None:
+        _OCTROIS_LECTURE = octrois_lecture
 
 
 def _registre_modules():
@@ -68,10 +76,12 @@ def _registre_modules():
 
 #: AARG52 — apps de FONDATION sans codes au registre : seules à garder la règle
 #: historique en ÉCRITURE (liste qui ne fait que décroître ; ``portail`` retiré ;
-#: ``monitoring`` retiré par AMON92, ses vues relevant du module ``sav``, AMON45).
+#: ``monitoring`` retiré par AMON92, ses vues relevant du module ``sav``, AMON45 ;
+#: ``semantic`` retiré par APFS43 : ses métriques ne s'écrivent plus par un
+#: rôle fin non administrateur).
 APPS_SANS_MODULE = frozenset({
     'authentication', 'core', 'dataimport', 'documents',
-    'offlinesync', 'outillage', 'records', 'roles', 'semantic', 'uxviews'})
+    'offlinesync', 'outillage', 'records', 'roles', 'uxviews'})
 
 #: ODX18 — apps dont les vues relèvent du module de droits d'une AUTRE app.
 #: ``apps.facturation`` n'a pas de codes propres (ASEC9 : « module
@@ -184,6 +194,39 @@ class IsAnyRole(BasePermission):
         )
 
 
+class LectureDuModule(IsAnyRole):
+    """APFS28 (D-APFS-4, C-APFS-080) — LECTURE d'une vue de module.
+
+    Compte interne (``IsAnyRole``) ET, pour un rôle fin non administrateur, au
+    moins un code du module de la vue (``module_de_la_vue``) OU un code
+    octroyé pour CETTE vue (``OCTROIS_LECTURE`` : le Commercial lit les
+    chantiers de ses ventes, le Technicien les lignes / dossiers / recette du
+    devis de son chantier). Inchangés : superuser, palier administrateur,
+    compte hérité sans rôle fin, module non résolu (règle d'``IsAnyRole``) ;
+    compte portail refusé."""
+
+    message = 'Accès réservé aux rôles du module.'
+    #: APFS108 — module FIGÉ (``LectureVentes``) au lieu du module de la vue.
+    module_fige = None
+
+    def has_permission(self, request, view):
+        if not super().has_permission(request, view):
+            return False
+        user = request.user
+        if (getattr(user, 'is_superuser', False)
+                or getattr(user, 'is_admin_role', False)
+                or not getattr(user, 'role_id', None)):
+            return True
+        module = self.module_fige or module_de_la_vue(view)
+        if module is None:
+            return True
+        perms = set(user.role.permissions or [])
+        if codes_du_module(module) & perms:
+            return True
+        octroi = _OCTROIS_LECTURE.get((module, type(view).__name__), ())
+        return bool(set(octroi) & perms)
+
+
 def HasPermissionOrLegacy(code):
     """Permission ERP granulaire quand l'utilisateur porte un rôle fin ;
     comportement historique (responsable/admin) pour les comptes hérités
@@ -252,3 +295,58 @@ def HasPermission(code):
             )
     _HasPermission.__name__ = f'HasPermission_{code}'
     return _HasPermission
+
+
+# ── APFS3 / AUD139 — mot de passe à changer ─────────────────────────────────
+# Déplacé depuis ``apps.roles.permissions`` (qui le ré-importe) : la garde est
+# appliquée au point UNIQUE d'authentification JWT (``cookie_auth``), pour tout
+# compte — interne comme portail —, hors les trois vues qui permettent de
+# SORTIR de cet état (``VUES_ADMISES_MOT_DE_PASSE_A_CHANGER``).
+#: Code machine renvoyé dans le corps du 403 (le frontend s'y branche).
+CODE_MOT_DE_PASSE_A_CHANGER = 'mot_de_passe_a_changer'
+
+MESSAGE_MOT_DE_PASSE_A_CHANGER = (
+    'Vous devez définir un nouveau mot de passe avant d’accéder à votre '
+    'espace.'
+)
+
+
+def exiger_mot_de_passe_change(user):
+    """AUD139 — Lève 403 si ``user`` doit encore changer son mot de passe.
+
+    Le corps porte un CODE exploitable (``code``) en plus du message : un
+    écran ne doit pas avoir à reconnaître une phrase française pour router
+    l'utilisateur vers le formulaire de changement.
+    """
+    if getattr(user, 'must_change_password', False):
+        from rest_framework.exceptions import PermissionDenied
+
+        raise PermissionDenied({
+            'detail': MESSAGE_MOT_DE_PASSE_A_CHANGER,
+            'code': CODE_MOT_DE_PASSE_A_CHANGER,
+        })
+
+
+#: APFS3 — les vues joignables tant que le mot de passe n'est pas changé
+#: (nom qualifié de la classe de vue).
+VUES_ADMISES_MOT_DE_PASSE_A_CHANGER = frozenset({
+    'authentication.views.MeView',
+    'authentication.views.LogoutView',
+    'authentication.views.ChangePasswordView',
+})
+
+
+def exiger_mot_de_passe_change_hors_sortie(request, user):
+    """APFS3 — ``exiger_mot_de_passe_change`` sur une requête DRF dont la vue
+    n'est pas une des trois portes de sortie ; une ``HttpRequest`` nue (les
+    middlewares) n'est jamais refusée ici."""
+    from rest_framework.request import Request
+
+    if not isinstance(request, Request):
+        return
+    vue = (getattr(request, 'parser_context', None) or {}).get('view')
+    if vue is None:
+        return
+    nom = f'{type(vue).__module__}.{type(vue).__qualname__}'
+    if nom not in VUES_ADMISES_MOT_DE_PASSE_A_CHANGER:
+        exiger_mot_de_passe_change(user)

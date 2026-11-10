@@ -738,6 +738,31 @@ PERMISSION_MODULE = {
     # mapper masquerait leur case sur un toggle qui n'existe pas.
 }
 
+#: APFS28 (D-APFS-4) — lectures CROISÉES : ``(module, vue): codes`` qui ouvrent
+#: la LECTURE d'une vue d'un module à un rôle sans code de ce module
+#: (``authentication.permissions.LectureDuModule``, injecté par
+#: ``RolesConfig.ready``). Surface append-only : un octroi ne s'ajoute jamais
+#: en silence (une tâche le motive).
+_VUES_DU_CHANTIER = (
+    'LigneDevisViewSet',
+    # apps/ventes/views/regulatory.py
+    'RegulatoryDossierViewSet', 'DossierChecklistItemViewSet',
+    'DossierExchangeViewSet', 'SubventionDossierViewSet',
+    'Regularisation8221ViewSet',
+    # apps/ventes/views/commissioning.py
+    'CommissioningTestViewSet', 'IVCurveCaptureViewSet', 'AsBuiltPackViewSet',
+    'AttestationConformiteViewSet', 'TestPerformanceReceptionViewSet',
+    'AttestationREViewSet',
+)
+OCTROIS_LECTURE = {
+    # Commercial → les chantiers de ses ventes.
+    ('installations', 'InstallationViewSet'): frozenset({'ventes_voir'}),
+    # Technicien → devis / dossier / recette de SON chantier
+    # (InstallationDetail.jsx les lit).
+    **{('ventes', vue): frozenset({'installation_voir'})
+       for vue in _VUES_DU_CHANTIER},
+}
+
 # Permissions de portée : un rôle qui en porte une voit un sous-ensemble ; sans
 # l'une d'elles, le rôle voit tout (par société). Source unique de vérité.
 SCOPE_TEAM = 'records_scope_equipe'

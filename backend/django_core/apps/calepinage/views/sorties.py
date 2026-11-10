@@ -191,6 +191,44 @@ def porte_execution(calepinage, piece):
         raise PieceNonPubliable(refus.detail)
 
 
+def _kwc_lisible(valeur):
+    try:
+        return ('%.1f' % float(valeur)).replace('.', ',')
+    except (TypeError, ValueError):
+        return None
+
+
+def porte_conception_vendue(calepinage):
+    """ACON42 (D-ACAL-6, D-ACAL-23) — aucune pièce versionnée d'une
+    conception qui a DIVERGÉ d'un devis lié envoyé ou accepté : 409
+    ``{conception, devis}`` (prédicat ACAL46 ``peremption_layout_devis``,
+    aucun second) ; brouillon, empreintes égales ou sans devis : no-op."""
+    from apps.ventes.selectors import (
+        peremption_layout_devis, puissance_kwc_projet,
+    )
+
+    from ..selectors import mesures_du_calepinage
+    from ..services.devis import _devis_lie_actif
+
+    devis = (_devis_lie_actif(calepinage)
+             if getattr(calepinage, 'devis_id', None) else None)
+    if devis is None or devis.statut not in ('envoye', 'accepte'):
+        return
+    if not peremption_layout_devis(devis, calepinage).get(
+            'conception_divergente'):
+        return
+    kwc_c = _kwc_lisible(mesures_du_calepinage(calepinage).get('kwc'))
+    kwc_d = _kwc_lisible(puissance_kwc_projet(devis))
+    raise PieceNonPubliable({
+        'conception': (
+            'La conception%s diffère du devis %s (%s%s) : resynchronisez ou '
+            'révisez avant de produire cette pièce.'
+            % (f' ({kwc_c} kWc)' if kwc_c else '', devis.reference,
+               devis.get_statut_display().lower(),
+               f', {kwc_d} kWc' if kwc_d else '')),
+        'devis': devis.reference})
+
+
 class PieceNonPubliable(APIException):
     """ERR-ENF11-FUZZ-CALEPINAGE — le refus d'état de la porte d'exécution
     (feu vert / approbation) : 409, corps ``{champ: [messages]}`` inchangé."""
@@ -418,6 +456,7 @@ class SortiesMixin:
 
         calepinage = self.get_object()  # borné société par get_queryset
         porte_execution(calepinage, 'pack_technique')  # ACAL116
+        porte_conception_vendue(calepinage)  # ACON42
         try:
             resultat = construire_pack(calepinage,
                                        company=calepinage.company,

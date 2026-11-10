@@ -206,6 +206,62 @@ class MatricePermissionsDevis(TestCase):
             'prefill': api.get('%sprefill-site/?client=%s' % (base, client.pk)).status_code,
         }
 
+    def test_lignes_et_listes_prix_bornees_au_module_ou_au_chantier(self):
+        """APFS108 (D-APFS-4) — Admin RH et Commercial terrain : 403 sur les
+        lignes et les listes de prix ; Technicien (octroi
+        ``installation_voir``) : les lignes du devis de SON chantier
+        seulement, 403 sur les listes de prix ; Commercial : 200."""
+        from decimal import Decimal
+
+        from apps.installations.models import Installation
+        from apps.ventes.models import LigneDevis
+
+        client = Client.objects.create(company=self.company, nom='APFS108')
+        commercial = self._compte('Commercial', registre.COMMERCIAL_PERMISSIONS)
+        technicien = self._compte('Technicien', registre.TECHNICIEN_PERMISSIONS)
+        d1, d2 = (Devis.objects.create(
+            company=self.company, reference=f'DEV-APFS108-{n}', client=client,
+            created_by=commercial) for n in (1, 2))
+        for devis in (d1, d2):
+            LigneDevis.objects.create(
+                devis=devis, designation='Panneau', quantite=Decimal('1'),
+                prix_unitaire=Decimal('100'), remise=Decimal('0'))
+        Installation.objects.create(
+            company=self.company, reference='CH-APFS108-1', client=client,
+            devis=d1, technicien_responsable=technicien)
+        Installation.objects.create(
+            company=self.company, reference='CH-APFS108-2', client=client,
+            devis=d2)
+
+        def lire(user, url):
+            api = APIClient()
+            api.force_authenticate(user)
+            return api.get(url)
+
+        lignes = '/api/django/ventes/devis-lignes/'
+        prix = '/api/django/ventes/listes-prix/'
+        for nom, codes in (('Admin RH', registre.ADMIN_RH_PERMISSIONS),
+                           ('Commercial terrain',
+                            registre.COMMERCIAL_TERRAIN_PERMISSIONS)):
+            with self.subTest(role=nom):
+                compte = self._compte(nom, codes)
+                self.assertEqual(lire(compte, lignes).status_code, 403)
+                self.assertEqual(lire(compte, prix).status_code, 403)
+
+        def ids(reponse):
+            corps = reponse.data
+            rangs = corps.get('results', corps) if isinstance(corps, dict) \
+                else corps
+            return {ligne['devis'] for ligne in rangs}
+
+        # Le Technicien ne lit QUE les lignes du devis de son chantier (D1).
+        r1 = lire(technicien, lignes)
+        self.assertEqual(r1.status_code, 200, r1.data)
+        self.assertEqual(ids(r1), {d1.pk})
+        self.assertEqual(lire(technicien, prix).status_code, 403)
+        self.assertEqual(lire(commercial, lignes).status_code, 200)
+        self.assertEqual(lire(commercial, prix).status_code, 200)
+
     def test_lecture_devis_refusee_hors_module_ventes(self):
         # ADVS23 — Admin RH, Commercial terrain et les deux techniciens : 403 ×5.
         client = Client.objects.create(company=self.company, nom='ADVS23')

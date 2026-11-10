@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import PortailValiderMotDePasse from './PortailValiderMotDePasse'
 import { useNavigate } from 'react-router-dom'
-import { useDispatch, useSelector } from 'react-redux'
+import { useDispatch, useSelector, useStore } from 'react-redux'
 import api from '../../api/axios'
 import { fetchMe } from '../auth/store/authSlice'
+import { resolveLandingFromAuth } from '../../lib/apps/landing'
 import { portalHomePath } from './portalScope'
 import {
   Card, Form, FormField, Input, toast,
@@ -30,6 +31,7 @@ import {
 
 export default function PortailMotDePasse() {
   const dispatch = useDispatch()
+  const store = useStore()
   const navigate = useNavigate()
   const user = useSelector((s) => s.auth.user)
   const doitChanger = useSelector((s) => !!s.auth.user?.must_change_password)
@@ -56,7 +58,9 @@ export default function PortailMotDePasse() {
       // lieu de le supposer tombé, sinon le loader nous renverrait ici.
       await dispatch(fetchMe())
       toast.success('Mot de passe mis à jour')
-      navigate(portalHomePath(user) || '/portail/client', { replace: true })
+      // APFS102 — un compte INTERNE rejoint SON accueil ERP, jamais le portail.
+      navigate(portalHomePath(user)
+        || resolveLandingFromAuth(store.getState().auth), { replace: true })
     } catch (err) {
       setErreur(
         err?.response?.data?.detail
@@ -73,10 +77,13 @@ export default function PortailMotDePasse() {
         Choisissez votre mot de passe
       </h1>
       <p className="text-sm text-muted-foreground">
-        {doitChanger
-          ? 'Votre mot de passe a été transmis par email : il est temporaire. '
-            + 'Définissez le vôtre pour accéder à votre espace.'
-          : 'Vous pouvez changer votre mot de passe à tout moment.'}
+        {!doitChanger
+          ? 'Vous pouvez changer votre mot de passe à tout moment.'
+          : portalHomePath(user)
+            ? 'Votre mot de passe a été transmis par email : il est temporaire. '
+              + 'Définissez le vôtre pour accéder à votre espace.'
+            : 'Votre mot de passe a expiré ou a été réinitialisé : '
+              + 'choisissez-en un nouveau.'}
       </p>
 
       <Card className="p-4">

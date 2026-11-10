@@ -152,6 +152,33 @@ class TestForcedRotation(TestCase):
         self.assertIn('must_change_password', resp.data)
         self.assertFalse(resp.data['must_change_password'])
 
+    def test_drapeau_bloque_toute_route_hors_liste_blanche(self):
+        """APFS3 — un compte au mot de passe à changer reçoit 403
+        ``mot_de_passe_a_changer`` partout (lecture ET écriture) sauf
+        /auth/me/, /auth/logout/, /auth/change-password/ ; 200 après."""
+        from apps.crm.models import Lead
+        from authentication.permissions import CODE_MOT_DE_PASSE_A_CHANGER
+
+        self.user.must_change_password = True
+        self.user.save(update_fields=['must_change_password'])
+        self.assertEqual(self._login().status_code, 200)
+        for methode, corps in (('get', None), ('post', {'nom': 'Bloqué'})):
+            with self.subTest(methode=methode):
+                resp = getattr(self.api, methode)(
+                    '/api/django/crm/leads/', corps, format='json')
+                self.assertEqual(resp.status_code, 403, resp.data)
+                self.assertEqual(resp.data.get('code'),
+                                 CODE_MOT_DE_PASSE_A_CHANGER, resp.data)
+        self.assertFalse(Lead.objects.filter(nom='Bloqué').exists())
+        self.assertEqual(self.api.get('/api/django/auth/me/').status_code, 200)
+        resp = self.api.post('/api/django/auth/change-password/', {
+            'current_password': 'ancienMotDePasse1',
+            'new_password': 'nouveauMotDePasse2',
+        }, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertNotEqual(
+            self.api.get('/api/django/crm/leads/').status_code, 403)
+
     def test_change_password_clears_flag_and_stamps(self):
         """Le changement efface le drapeau et horodate password_changed_at."""
         self.user.must_change_password = True

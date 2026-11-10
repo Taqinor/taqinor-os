@@ -168,6 +168,8 @@ function RegistreTraitements() {
 
 // ── Bloc 2 : demandes de personnes concernées (DSR) ──────────────────────────
 function DsrRequests() {
+  // ASOC64 — un effacement est IRRÉVERSIBLE : confirmation maison d'abord.
+  const { confirm } = useConfirmDialog()
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
@@ -197,11 +199,24 @@ function DsrRequests() {
   }
 
   const traiter = async (row) => {
+    if (row.kind === 'effacement') {
+      const ok = await confirm({
+        title: `Effacer les données de ${row.subject_identifier} ?`,
+        description: 'Irréversible : les données de cette personne seront effacées.',
+        confirmLabel: 'Effacer', cancelLabel: 'Annuler', destructive: true,
+      })
+      if (!ok) return
+    }
     setTraitingId(row.id)
     try { await coreApi.confidentialite.dsrRequests.traiter(row.id); load() }
     catch (e) { toast.error(e?.response?.data?.detail ?? 'Traitement impossible.') }
     finally { setTraitingId(null) }
   }
+
+  // ASOC64 — le résultat d'un ACCÈS (relu de la demande, jamais un état en
+  // mémoire) : les sources exportées et leur téléchargement JSON.
+  const telechargerAcces = (row) => downloadBlob(
+    JSON.stringify(row.resultat, null, 2), `dsr-acces-${row.id}.json`)
 
   if (loading) return <ChargementTexte />
   if (loadError) {
@@ -243,7 +258,18 @@ function DsrRequests() {
                     {traitingId === row.id ? 'Traitement…' : 'Traiter'}
                   </Button>
                 )}
+                {row.kind === 'acces' && row.statut === 'traitee' && row.resultat && (
+                  <Button type="button" size="sm" variant="outline"
+                    onClick={() => telechargerAcces(row)}>
+                    <Download className="size-4" aria-hidden="true" /> Télécharger (JSON)
+                  </Button>
+                )}
               </div>
+              {row.kind === 'acces' && row.statut === 'traitee' && row.resultat && (
+                <p className="w-full text-[11.5px] text-muted-foreground" data-testid="dsr-sources">
+                  Sources exportées : {Object.keys(row.resultat).join(', ') || '—'}
+                </p>
+              )}
             </div>
           ))}
         </div>

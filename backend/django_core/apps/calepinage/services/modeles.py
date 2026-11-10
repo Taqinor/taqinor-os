@@ -29,7 +29,6 @@ silencieuse du lead/client du modèle.
 """
 from __future__ import annotations
 
-import copy
 
 #: Nom du tag SYSTÈME (FG9) qui porte le drapeau « modèle réutilisable ».
 NOM_TAG_MODELE = 'calepinage:modele'
@@ -61,6 +60,18 @@ class ModeleEnConflit(ModeleInvalide):
     409 (lu par ``depuis-modele``)."""
 
     statut_http = 409
+
+
+class DemarquageEnConflit(ModeleEnConflit):
+    """ACON5 (D-ACAL-12) — retirer le drapeau rendrait ce calepinage un
+    SECOND ouvert de son lead : 409 nommant l'ouvert (``corps``, contrat
+    ``calepinage_creation_conflit.json``)."""
+
+    def __init__(self, existant, user=None):
+        from .creation import _message_deja_ouvert, corps_conflit
+
+        super().__init__(_message_deja_ouvert(existant), champ='lead')
+        self.corps = corps_conflit(existant, user)
 
 
 def _tag_modele(company, *, creer=False):
@@ -122,9 +133,26 @@ def demarquer_modele(calepinage, *, user=None):
     tag = _tag_modele(getattr(calepinage, 'company', None))
     if tag is None:
         return False
+    from django.db import transaction
+
+    from ..selectors import calepinage_ouvert_du_lead
+    from .archivage import est_archive
+    from .creation import _verrou_creation
+
     ct = ContentType.objects.get_for_model(type(calepinage))
-    retires, _ = TaggedItem.objects.filter(
-        tag=tag, content_type=ct, object_id=calepinage.pk).delete()
+    marque = TaggedItem.objects.filter(
+        tag=tag, content_type=ct, object_id=calepinage.pk)
+    with transaction.atomic(), _verrou_creation(calepinage.company_id,
+                                                calepinage.lead_id):
+        # ACON5 — relu SOUS le verrou du lead : le modèle (encore marqué)
+        # est exclu de « l'ouvert » ; un autre ouvert ⇒ refus nommé.
+        if (calepinage.lead_id and marque.exists()
+                and not est_archive(calepinage)):
+            existant = calepinage_ouvert_du_lead(calepinage.company,
+                                                 calepinage.lead_id)
+            if existant is not None:
+                raise DemarquageEnConflit(existant, user)
+        retires, _ = marque.delete()
     if retires:
         from .journal import noter
 
@@ -171,7 +199,7 @@ def creer_depuis_modele(modele, *, user=None, lead_id=None, client_id=None,
         ModeleInvalide: modèle absent/non marqué, ou aucun nouveau
             rattachement (lead/client) fourni.
     """
-    from .variantes import dupliquer
+    from .variantes import dupliquer, preparer_pour_cible
 
     if modele is None or not getattr(modele, 'pk', None):
         raise ModeleInvalide('Modèle introuvable.', champ='modele')
@@ -199,9 +227,11 @@ def creer_depuis_modele(modele, *, user=None, lead_id=None, client_id=None,
             raise RattachementDuModeleIntrouvable(
                 'Client introuvable dans cette société.', champ='client')
     if lead_id:
-        from apps.crm.selectors import get_company_lead, repere_toit
+        from apps.crm.selectors import repere_toit
 
-        lead = get_company_lead(modele.company, lead_id)
+        from .creation import lead_en_portee
+
+        lead = lead_en_portee(modele.company, lead_id, user)  # ACON3
         if lead is None:
             raise RattachementDuModeleIntrouvable(
                 'Lead introuvable dans cette société.', champ='lead')
@@ -227,18 +257,8 @@ def creer_depuis_modele(modele, *, user=None, lead_id=None, client_id=None,
         pin = None
 
     def preparer(source):
-        """D-ACAL-15 — la règle de copie d'un document du modèle, UNE pour
-        la conception et chaque variante : translatée sur le repère du lead
-        cible (s'il y en a un), sans la consommation d'un AUTRE client."""
-        if pin is not None:
-            from .translation_conception import translater_conception
-
-            prepare = translater_conception(source, pin)
-        else:
-            prepare = copy.deepcopy(source)
-        if isinstance(prepare, dict):
-            prepare.pop('consumption', None)
-        return prepare
+        # D-ACAL-15 / ACON11 — LA règle partagée avec Dupliquer.
+        return preparer_pour_cible(source, pin)
 
     # ACAL187/ACAL184 — la CIBLE est passée explicitement à ``dupliquer`` :
     # la copie naît sur ce lead/client (jamais sur le rattachement du
