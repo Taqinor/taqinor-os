@@ -9,16 +9,21 @@ Endpoints (company + user scopés côté serveur, jamais lus du corps) :
   coche manuellement un item SANS ``event_key`` (aucun déclencheur
   automatique adapté sans importer une app métier — alternative explicite).
 """
+from django.http import HttpResponse
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     OpenApiParameter, extend_schema, inline_serializer,
 )
 from rest_framework import serializers as drf_serializers, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
-from authentication.permissions import IsAdminOrResponsableTier
+from authentication.permissions import (
+    IsAdminOrResponsableTier, IsAdminRole, est_operateur_plateforme,
+)
 from core.openapi_operations import SchemaObjetUnique
 
 from apps.publicapi.auth import (
@@ -26,7 +31,7 @@ from apps.publicapi.auth import (
 )
 from apps.publicapi.portees import SCOPE_READ_LICENCE
 
-from . import services
+from . import services, textes_csv
 from .selectors import (
     items_masquables_pour_societe, pourcentage_activation_societe,
     resume_pour_utilisateur, tours_pour_utilisateur,
@@ -268,3 +273,50 @@ class OnboardingItemsMasquesViewSet(viewsets.ViewSet):
         return Response(
             items_masquables_pour_societe(self._company(request)),
             status=status.HTTP_200_OK)
+
+
+# NTDMO36 — export/réimport CSV des textes FR (admin société uniquement).
+class OnboardingTextesExportView(APIView):
+    """``GET /api/django/onboarding/export-textes.csv`` — libellés FR des tours
+    et de la checklist (clé stable, écran cible, texte FR)."""
+    permission_classes = [IsAdminRole]
+
+    @extend_schema(responses={(200, "text/csv"): OpenApiTypes.STR})
+    def get(self, request):
+        reponse = HttpResponse(
+            textes_csv.exporter_csv(request.user.company),
+            content_type="text/csv; charset=utf-8")
+        reponse["Content-Disposition"] = (
+            "attachment; filename=\"onboarding-textes.csv\"")
+        return reponse
+
+
+class OnboardingTextesImportView(APIView):
+    """``POST /api/django/onboarding/import-textes.csv`` (multipart, champ
+    ``fichier``) — met à jour les textes existants par clé stable, sans doublon
+    ni création. Les lignes du catalogue global exigent l'opérateur plateforme."""
+    permission_classes = [IsAdminRole]
+    parser_classes = [MultiPartParser]
+
+    @extend_schema(request=inline_serializer("OnboardingTextesImport", {
+        "fichier": drf_serializers.FileField()}),
+        responses=inline_serializer("OnboardingTextesImportReponse", {
+            "mis_a_jour": drf_serializers.IntegerField(),
+            "inchanges": drf_serializers.IntegerField(),
+            "ignorees": drf_serializers.IntegerField(),
+            "inconnues": drf_serializers.ListField(
+                child=drf_serializers.CharField())}))
+    def post(self, request):
+        fichier = request.FILES.get("fichier")
+        if fichier is None:
+            return Response(
+                {"detail": "Fichier CSV manquant (champ « fichier »)."},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            res = textes_csv.importer_csv(
+                fichier.read(), request.user.company,
+                peut_ecrire_global=est_operateur_plateforme(request.user))
+        except (ValueError, UnicodeDecodeError) as exc:
+            return Response({"detail": str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(res)

@@ -149,3 +149,60 @@ class OnboardingResumePublicNTDMO35Test(TestCase):
 
     def test_scope_insuffisant_403(self):
         self.assertEqual(self._get(self.raw_ko).status_code, 403)
+
+
+class OnboardingTextesCsvNTDMO36Test(TestCase):
+    """NTDMO36 — export/réimport CSV des textes FR par clé stable."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom="Co36", slug="co-36")
+        self.role_admin = Role.objects.create(
+            company=self.company, nom="Administrateur",
+            permissions=["roles_gerer"])
+        self.role_tech = Role.objects.create(
+            company=self.company, nom="Technicien")
+        self.admin = User.objects.create_user(
+            "a36", password="x", company=self.company, role=self.role_admin)
+        self.tech = User.objects.create_user(
+            "t36", password="x", company=self.company, role=self.role_tech)
+        self.url_export = "/api/django/onboarding/export-textes.csv"
+        self.url_import = "/api/django/onboarding/import-textes.csv"
+
+    def _client(self, user):
+        c = APIClient()
+        c.force_authenticate(user)
+        return c
+
+    def test_non_admin_403(self):
+        self.assertEqual(self._client(self.tech).get(self.url_export).status_code, 403)
+        self.assertEqual(self._client(self.tech).post(self.url_import).status_code, 403)
+
+    def test_export_trois_colonnes_et_cles_stables(self):
+        r = self._client(self.admin).get(self.url_export)
+        self.assertEqual(r.status_code, 200)
+        texte = r.content.decode("utf-8-sig")
+        self.assertEqual(texte.splitlines()[0], "cle_stable,ecran_cible,texte_fr")
+        self.assertIn("item:", texte)
+
+    def test_reimport_met_a_jour_sans_doublon(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from apps.onboarding.models import OnboardingChecklistItem
+        item = OnboardingChecklistItem.objects.create(
+            company=self.company, key="item-36", libelle="Ancien", lien="/x")
+        avant = OnboardingChecklistItem.objects.count()
+        contenu = self._client(self.admin).get(self.url_export).content
+        contenu = contenu.decode("utf-8-sig").replace("Ancien", "Nouveau")
+        r = self._client(self.admin).post(
+            self.url_import,
+            {"fichier": SimpleUploadedFile("t.csv", contenu.encode("utf-8"))},
+            format="multipart")
+        self.assertEqual(r.status_code, 200, r.content)
+        item.refresh_from_db()
+        self.assertEqual(item.libelle, "Nouveau")
+        self.assertEqual(OnboardingChecklistItem.objects.count(), avant)
+        # Le catalogue global n"est pas modifiable par un admin de société.
+        self.assertEqual(r.data["mis_a_jour"], 1)
+
+    def test_import_sans_fichier_400(self):
+        self.assertEqual(self._client(self.admin).post(
+            self.url_import, {}, format="multipart").status_code, 400)
