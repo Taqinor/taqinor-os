@@ -73,12 +73,13 @@ class PermissionsAgentTests(unittest.TestCase):
         self.addCleanup(patcher.stop)
 
     def _client(self, payload):
-        from app.core.security import get_raw_token, verify_token
+        from app.core.security import exiger_compte_interne, get_raw_token, verify_token
 
         app = FastAPI()
         app.include_router(_ep.router, prefix="/sql-agent")
         app.dependency_overrides[verify_token] = lambda: payload
         app.dependency_overrides[get_raw_token] = lambda: "jwt-de-l-appelant"
+        app.dependency_overrides[exiger_compte_interne] = lambda: {}  # APFS2
         return TestClient(app)
 
     def _django_me(self, permissions, ok=True):

@@ -11,6 +11,7 @@ unittest (stdlib). A lancer depuis backend/fastapi_ia :
 
 L'endpoint importe fastapi ; si absent (env leger), les tests se sautent.
 """
+import contextlib
 import os
 import sys
 import unittest
@@ -152,7 +153,7 @@ class QueryConfirmLoopTests(unittest.TestCase):
     accepte par /confirm, et une action interne remonte result."""
 
     def setUp(self):
-        from app.core.security import get_raw_token, verify_token
+        from app.core.security import exiger_compte_interne, get_raw_token, verify_token
 
         app = _FastAPI()
         app.include_router(_ep.router, prefix="/sql-agent")
@@ -161,6 +162,7 @@ class QueryConfirmLoopTests(unittest.TestCase):
             "permissions": [], "is_superuser": False,
         }
         app.dependency_overrides[get_raw_token] = lambda: "jwt-xyz"
+        app.dependency_overrides[exiger_compte_interne] = lambda: {}  # APFS2
         self.client = _TestClient(app)
 
         self._sec = mock.patch.object(_at, "ACTION_PROPOSAL_SECRET", "sig-secret")
@@ -229,6 +231,33 @@ class QueryConfirmLoopTests(unittest.TestCase):
         # DEUX appels reels plutot que le seul dernier.
         self.assertIn("/api/django/ventes/devis/9/proposal/", calls)
         self.assertIn("/api/django/agent/logs/confirmer/", calls)
+
+    def test_jeton_portail_refuse_403_sans_appel_service(self):
+        """APFS2 (C-APFS-001) — la portee est relue par `/auth/me/` : un compte
+        portail (ou Django injoignable) recoit 403 sans atteindre le service ;
+        un interne passe. Garde du ROUTEUR, rien n'est surcharge ici."""
+        from app.core.security import get_raw_token, verify_token
+        app = _FastAPI()
+        app.include_router(_ep.router, prefix="/sql-agent")
+        app.dependency_overrides[verify_token] = lambda: {"user_id": 3, "company_id": 7, "role": "normal"}
+        app.dependency_overrides[get_raw_token] = lambda: "jwt-portail"
+        client, appels = _TestClient(app), []
+
+        async def fake_query(question, user_id=None, company_id=None, action_ctx=None):
+            appels.append(question)
+            return {"answer": "ok", "sql_query": "", "data": None}
+        for me, attendu in (({"ok": True, "status": 200, "data": {"portee": "portail_client"}}, 403),
+                            ({"ok": False, "status": 0, "error": "indisponible"}, 403),
+                            ({"ok": True, "status": 200, "data": {"portee": "interne"}}, 200)):
+            with mock.patch.object(_at, "_django_call", lambda *a, _me=me, **k: _me), \
+                    mock.patch.object(_ep.sql_agent_service, "query", fake_query), \
+                    self.assertLogs("app.core.security", "WARNING") if attendu == 403 else contextlib.nullcontext():
+                r = client.post("/sql-agent/query", json={"question": "liste des clients"})
+            self.assertEqual(r.status_code, attendu, r.text)
+            if attendu == 403:
+                self.assertEqual(r.json()["detail"], "Accès réservé aux comptes internes.")
+                self.assertEqual(appels, [])
+        self.assertEqual(appels, ["liste des clients"])
 
     def test_internal_query_surfaces_result(self):
         async def fake_query(question, user_id=None, company_id=None,
@@ -324,7 +353,7 @@ class ContexteEcranAic9Tests(unittest.TestCase):
     `GET /sql-agent/suggestions` lue du manifeste."""
 
     def setUp(self):
-        from app.core.security import get_raw_token, verify_token
+        from app.core.security import exiger_compte_interne, get_raw_token, verify_token
         from app.services import sql_agent_service as svc
 
         self.svc = svc
@@ -333,6 +362,7 @@ class ContexteEcranAic9Tests(unittest.TestCase):
         app.dependency_overrides[verify_token] = lambda: {
             "user_id": 1, "company_id": 7, "role": "normal"}
         app.dependency_overrides[get_raw_token] = lambda: "jwt-xyz"
+        app.dependency_overrides[exiger_compte_interne] = lambda: {}  # APFS2
         self.client = _TestClient(app)
         for cible, attrs in (
             (_ep._database, {"check_rate_limit": lambda *a, **k: None,

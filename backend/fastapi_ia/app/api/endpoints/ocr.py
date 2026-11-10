@@ -7,14 +7,14 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.security import verify_token
+from app.core.security import exiger_compte_interne, verify_token
 # AANA7 — UN seul helper (societe ACTIVE d'abord, 403 sans societe),
 # partage avec l'agent SQL ; le nom local est garde pour les appelants.
 from app.core.security import require_company_id as _require_company_id
 from app.models.ocr import OcrDocument
 from app.services.ocr_service import ocr_service
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(exiger_compte_interne)])  # APFS2
 
 # ── Constantes de sécurité ────────────────────────────────────────────────────
 MAX_FILE_SIZE = 10 * 1024 * 1024   # 10 Mo

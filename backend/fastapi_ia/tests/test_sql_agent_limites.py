@@ -98,7 +98,7 @@ class _DeadRedis:
 class SqlAgentLimitesTests(unittest.TestCase):
 
     def _client(self, user_id):
-        from app.core.security import get_raw_token, verify_token
+        from app.core.security import exiger_compte_interne, get_raw_token, verify_token
 
         app = FastAPI()
         app.include_router(_ep.router, prefix="/sql-agent")
@@ -107,6 +107,7 @@ class SqlAgentLimitesTests(unittest.TestCase):
             "is_superuser": False,
         }
         app.dependency_overrides[get_raw_token] = lambda: "jwt-xyz"
+        app.dependency_overrides[exiger_compte_interne] = lambda: {}  # APFS2
         return TestClient(app)
 
     def _patch_llm(self):
