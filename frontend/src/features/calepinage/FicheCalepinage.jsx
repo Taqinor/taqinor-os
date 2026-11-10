@@ -212,6 +212,7 @@ export default function FicheCalepinage({ detail, onRelire }) {
   // actions exigent (`PeutGererCalepinage`). Sans elle, aucun geste d'écriture
   // n'est proposé : une permission refusée ne s'annonce pas en bouton grisé.
   const peutGerer = permissions.peut_modifier === true
+  const archivable = permissions.peut_supprimer === true
 
   /* ACAL294 — enregistre les champs personnalisés par la même porte que le
      reste de la fiche (PATCH du calepinage) ; le refus 400 du serveur (champ
@@ -425,10 +426,24 @@ export default function FicheCalepinage({ detail, onRelire }) {
             </button>
           ) : (
             <>
-              <button type="button" className={styleBouton} disabled={enCours}
+              {/* ACON31 — le serveur sert `peut_supprimer` (LE prédicat
+                  d'archivage) : faux ⇒ le bouton est grisé et la raison est
+                  dite AVANT le clic, jamais un 409 découvert après confirmation. */}
+              <button type="button" className={styleBouton}
+                disabled={enCours || !archivable}
                 data-testid="cal-fiche-archiver" onClick={lancerArchivage}>
                 {confirmation ? 'Confirmer l’archivage' : 'Archiver'}
               </button>
+              {!archivable && (
+                <p className="basis-full text-xs text-lune-faint" role="status"
+                  data-testid="cal-fiche-archiver-indisponible">
+                  {detail.devis
+                    ? `Archivage indisponible : le devis ${texte(detail.devis.reference)} lit encore ce `
+                      + 'calepinage (devis actif, ou brouillon qui lit son ombrage). Le serveur '
+                      + 'refuse l’archivage tant que ce lien tient.'
+                    : 'Archivage indisponible : le serveur refuse l’archivage de ce calepinage.'}
+                </p>
+              )}
               {confirmation && (
                 <button type="button" disabled={enCours}
                   className="text-sm text-lune-soft underline"
