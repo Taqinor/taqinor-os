@@ -162,16 +162,19 @@ CHAMPS_PERSONNE = tuple(
 
 
 def anonymiser_tiers(company, tiers_id, champs=CHAMPS_PERSONNE):
-    """ASOC60 — LA porte d'effacement du miroir : nom « Anonymisé », ``champs``
-    (parmi ``CHAMPS_PERSONNE``) vidés, rôles gardés. Bornée à ``company`` ;
+    """ASOC60 — LA porte d'effacement du miroir : ``champs`` (parmi
+    ``CHAMPS_PERSONNE``) vidés, rôles gardés ; le nom devient « Anonymisé »
+    seulement pour un effacement de TOUTE l'identité (un contact fournisseur
+    retiré laisse le nom de la personne morale). Bornée à ``company`` ;
     renvoie le nombre de Tiers écrits (0 si ``tiers_id`` absent ou étranger).
     Le miroir écartant les valeurs vides, un re-save ne les remplit plus."""
     if tiers_id is None:
         return 0
     vide = {c: (None if Tiers._meta.get_field(c).null else '')
             for c in champs if c in CHAMPS_PERSONNE}
-    return Tiers.objects.filter(company=company, pk=tiers_id).update(
-        nom='Anonymisé', **vide)
+    if set(CHAMPS_PERSONNE) <= set(champs):
+        vide['nom'] = 'Anonymisé'
+    return Tiers.objects.filter(company=company, pk=tiers_id).update(**vide)
 
 
 # ── ARC21 — Bascule write-path (DÉCISION founder-gated, OFF par défaut) ──────

@@ -84,6 +84,7 @@ class Arc18ServiceDedupTests(TestCase):
             self.company, t.pk, ('email', 'telephone')), 1)
         t.refresh_from_db()
         self.assertEqual((t.email, t.telephone, t.cin), ('', '', 'AB123456'))
+        self.assertEqual(t.nom, 'Benali')  # contact seul : le nom reste
         self.assertEqual(tiers_services.anonymiser_tiers(self.company, t.pk), 1)
         t.refresh_from_db()
         self.assertEqual(t.nom, 'Anonymisé')

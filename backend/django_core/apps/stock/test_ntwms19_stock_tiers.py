@@ -176,3 +176,37 @@ class IdentiteFournisseurSansPrixTests(TestCase):
         source = inspect.getsource(ecrire_identite_fournisseur)
         self.assertNotIn('prix_achat', source)
         self.assertNotIn('marge', source)
+
+    def test_effacement_dsr_vide_le_contact_du_tiers(self):
+        """ASOC101 (C-ASOC-060) — le contact pseudonymisé quitte aussi le
+        Tiers miroir ; raison sociale, ICE et rôle fournisseur gardés ;
+        un fournisseur d'une autre société reste intact."""
+        from authentication.models import Company
+
+        from apps.stock.dsr_provider import erase_stock
+        from apps.stock.models import Fournisseur
+        from apps.tiers.models import Tiers
+        company = Company.objects.create(nom='ASOC101', slug='asoc101')
+        autre = Company.objects.create(nom='ASOC101 b', slug='asoc101-b')
+        f = Fournisseur.objects.create(
+            company=company, nom='ACME Solaire', ice='001122334455667',
+            contact_personne='Karim', email='karim.asoc101@example.ma',
+            telephone='0661223344')
+        voisin = Fournisseur.objects.create(
+            company=autre, nom='Voisin', email='karim.asoc101@example.ma',
+            telephone='0661223344')
+        f.refresh_from_db()
+        voisin.refresh_from_db()
+
+        self.assertEqual(erase_stock(company, 'karim.asoc101@example.ma')
+                         ['pseudonymises'], 1)
+        Fournisseur.objects.get(pk=f.pk).save()  # re-save : rien ne revient
+
+        tiers = Tiers.objects.get(pk=f.tiers_id)
+        self.assertEqual((tiers.email, tiers.telephone), ('', ''))
+        self.assertEqual(tiers.nom, 'ACME Solaire')
+        self.assertEqual(tiers.raison_sociale, 'ACME Solaire')
+        self.assertEqual(tiers.ice, '001122334455667')
+        self.assertTrue(tiers.is_fournisseur)
+        intact = Tiers.objects.get(pk=voisin.tiers_id)
+        self.assertEqual(intact.telephone, '0661223344')
