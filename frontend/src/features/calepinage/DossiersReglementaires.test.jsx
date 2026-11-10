@@ -240,6 +240,46 @@ describe('DossiersReglementaires — génération (CALX40)', () => {
     // Aucun message générique n'est fabriqué à côté du message serveur.
     expect(screen.queryByTestId(`calx40-genere-${premier.id}`)).toBeNull()
   })
+
+  it('ACON47 — « Dossier généré » et le signalement SURVIVENT à la relecture qui suit', async () => {
+    servirGenerable()
+    const signalement = 'Champ « Puissance (kWc) » : saisi 6,6, le calepinage dit 2,13 — '
+      + 'la valeur saisie est imprimée.'
+    calepinageApi.calepinages.genererDossier.mockResolvedValue({
+      data: {
+        dossier: 1,
+        document: 42,
+        genere_le: '2026-09-21T10:00:00Z',
+        pieces: [{ code: 'planche', libelle: 'Planche de calepinage' }],
+        signalements: [signalement],
+      },
+    })
+    rendre()
+
+    await screen.findByTestId('cal196-ecran')
+    const premier = echantillon('exemple').dossiers[0]
+    // La relecture qui suit la génération prend du temps, comme en vrai
+    // réseau : elle reste en vol tant que le test ne la libère pas.
+    const relue = calepinageApi.calepinages.dossiersReglementaires.getMockImplementation()
+    let liberer
+    calepinageApi.calepinages.dossiersReglementaires.mockImplementationOnce(
+      () => new Promise((resolve) => { liberer = () => resolve(relue()) }))
+    await userEvent.click(screen.getByTestId(`cal196-generer-${premier.id}`))
+
+    await waitFor(() => {
+      expect(calepinageApi.calepinages.dossiersReglementaires).toHaveBeenCalledTimes(2)
+    })
+    // Pendant la relecture, l'écran déjà servi reste en place.
+    expect(screen.getByTestId('cal196-ecran')).toBeInTheDocument()
+    liberer()
+    await waitFor(() => {
+      expect(screen.getByTestId(`calx40-genere-${premier.id}`)).toBeInTheDocument()
+    })
+    // … et la réponse du POST est toujours affichée.
+    expect(await screen.findByTestId(`calx40-genere-${premier.id}`))
+      .toHaveTextContent('Dossier généré')
+    expect(screen.getByTestId('calx40-signalement')).toHaveTextContent(signalement)
+  })
 })
 
 /* ── CALX41 — les champs sont CONTRÔLÉS, ENREGISTRÉS, et relus ─────────────

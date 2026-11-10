@@ -544,7 +544,11 @@ export default function DossiersReglementaires({ calepinageId }) {
 
   const regenere = () => { setSurcharge(null); refetch() }
 
-  if (loading || error) {
+  /* ACON47 — la relecture qui suit une génération NE DÉMONTE PAS l'écran déjà
+     servi : le démonter effaçait « Dossier généré » et les signalements du
+     POST (état local de la carte) avant même qu'ils soient lus. Le spinner
+     n'est montré qu'au PREMIER chargement. */
+  if ((loading && !donnees) || error) {
     return <EtatEcranAtelier id={id} loading={loading} error={error} testIdErreur="cal196-erreur" />
   }
 
@@ -583,7 +587,10 @@ export default function DossiersReglementaires({ calepinageId }) {
 
       {dossiers.map((dossier) => (
         <Dossier
-          key={dossier.id ?? `gabarit-${dossier.gabarit_id}`}
+          /* Clé STABLE à travers la génération : un dossier jamais commencé
+             (`id: null`) reçoit son `id` au POST — une clé qui change
+             remonterait la carte et perdrait sa réponse (ACON47). */
+          key={dossier.gabarit_id != null ? `gabarit-${dossier.gabarit_id}` : `dossier-${dossier.id}`}
           dossier={dossier}
           calepinageId={id}
           onGenere={regenere}
