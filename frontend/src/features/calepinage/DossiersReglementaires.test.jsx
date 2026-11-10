@@ -280,6 +280,26 @@ describe('DossiersReglementaires — génération (CALX40)', () => {
       .toHaveTextContent('Dossier généré')
     expect(screen.getByTestId('calx40-signalement')).toHaveTextContent(signalement)
   })
+
+  it('l’enveloppe `error` du serveur n’est jamais rendue (« [object Object] »)', async () => {
+    servirGenerable()
+    const motif = 'Le dossier est incomplet.'
+    calepinageApi.calepinages.genererDossier.mockRejectedValue({
+      response: {
+        status: 409,
+        data: { dossier: [motif], error: { code: 'conflict', message: motif, fields: {} } },
+      },
+    })
+    rendre()
+
+    await screen.findByTestId('cal196-ecran')
+    const premier = echantillon('exemple').dossiers[0]
+    await userEvent.click(screen.getByTestId(`cal196-generer-${premier.id}`))
+
+    expect(await screen.findByTestId('calx40-erreur-dossier')).toHaveTextContent(motif)
+    expect(screen.queryByTestId('calx40-erreur-error')).toBeNull()
+    expect(screen.getByTestId('cal196-ecran')).not.toHaveTextContent('[object Object]')
+  })
 })
 
 /* ── CALX41 — les champs sont CONTRÔLÉS, ENREGISTRÉS, et relus ─────────────

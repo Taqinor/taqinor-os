@@ -230,6 +230,33 @@ describe('PanneauDocuments — bascule sur `documents/` (CALX320)', () => {
     expect(screen.queryByTestId('cal-doc-erreur')).toBeNull() // pas de bandeau de tête
     expect(downloadBlob).not.toHaveBeenCalled()
   })
+
+  it('l’enveloppe `error` du handler global n’est jamais rendue (« [object Object] »)', async () => {
+    servirInventaire('exemple')
+    const motif = 'La conception vendue a changé : rien n’est rendu.'
+    const corpsErreur = {
+      calepinage: [motif],
+      error: { code: 'conflict', message: motif, fields: {}, request_id: 'r-1' },
+    }
+    calepinageApi.calepinages.telechargerDocument.mockRejectedValue({
+      response: {
+        status: 409,
+        data: new Blob([JSON.stringify(corpsErreur)], { type: 'application/json' }),
+      },
+    })
+    const utilisateur = userEvent.setup()
+
+    rendre()
+    await utilisateur.click(await screen.findByTestId('cal-doc-bouton-rapport_etude'))
+
+    const carte = await screen.findByTestId('cal-doc-sortie-rapport_etude')
+    await waitFor(() => {
+      expect(carte.querySelector('[data-testid="cal-doc-erreurs"]')).toHaveTextContent(motif)
+    })
+    const erreurs = carte.querySelector('[data-testid="cal-doc-erreurs"]')
+    expect(erreurs).not.toHaveTextContent('[object Object]')
+    expect(erreurs.querySelectorAll('li')).toHaveLength(1)
+  })
 })
 
 describe('PanneauDocuments — versions (CALX322/CALX320)', () => {
