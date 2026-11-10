@@ -391,9 +391,9 @@ def compute_sla_reponse_due_at(company, client, priorite, date_ouverture):
     jours = response_days_pour(company, client, priorite)
     if jours is None:
         return None
-    if sla.sla_jours_ouvres:
-        from core.calendar import add_working_days
-        return add_working_days(date_ouverture, jours)
+    if sla.sla_jours_ouvres:  # ASOC80 — calendrier de la société (n = 0 : inchangé)
+        from apps.notifications.calendar_utils import ajouter_jours_ouvres
+        return ajouter_jours_ouvres(date_ouverture, jours, company) if jours else date_ouverture
     return date_ouverture + timedelta(days=jours)
 
 
@@ -457,9 +457,9 @@ def compute_sla_echeance(company, client, priorite, date_ouverture,
                 return timezone.localtime(echeance).date(), echeance
 
     resolution_days = resolution_days_pour(company, client, priorite)
-    if sla.sla_jours_ouvres:
-        from core.calendar import add_working_days
-        return add_working_days(date_ouverture, resolution_days), None
+    if sla.sla_jours_ouvres:  # ASOC80 — calendrier de la société (n = 0 : inchangé)
+        from apps.notifications.calendar_utils import ajouter_jours_ouvres as plus_ouvres
+        return (plus_ouvres(date_ouverture, resolution_days, company) if resolution_days else date_ouverture), None
     return date_ouverture + timedelta(days=resolution_days), None
 
 
