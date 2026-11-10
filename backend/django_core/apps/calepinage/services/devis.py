@@ -77,17 +77,24 @@ def _lead_et_client(calepinage):
     return lead, client
 
 
-#: ACAL89 — défaut gravé : un lead AGRICOLE se chiffre depuis l'écran devis
-#: agricole (pompage, groupe AGR), jamais depuis le calepinage toiture.
-MESSAGE_LEAD_AGRICOLE = ("Lead agricole : le pompage se chiffre depuis l'écran "
-                         "devis agricole.")
-
-
 def _refuser_lead_agricole(lead):
-    """ACAL89 — 422 ``{type_installation}`` pour un lead agricole."""
+    """ACAL89 — 422 ``{type_installation}`` pour un lead agricole ; ACON90 :
+    le message est LA constante du constructeur partagé (ventes)."""
     if lead is not None and getattr(lead, 'type_installation', '') == 'agricole':
+        from apps.ventes.services import MESSAGE_LEAD_AGRICOLE
+
         raise DevisRefuse(MESSAGE_LEAD_AGRICOLE, champ='type_installation',
                           statut=422)
+
+
+def _refuser_autre_marche(devis, lead):
+    """ACON90 (D-ACON-1) — 409 ``{devis}`` : la dédup ne rend jamais un
+    brouillon d'un autre marché que celui du lead."""
+    from apps.ventes.selectors_calepinage import refus_marche_du_brouillon
+
+    motif = refus_marche_du_brouillon(devis, lead)
+    if motif:
+        raise DevisRefuse(motif, champ='devis', statut=409)
 
 
 def _refus_deja_rattache(lie):
@@ -240,11 +247,13 @@ def _generer(calepinage, layout, company, lead, client, montants, *, user,
         # création (jamais un devis orphelin ni un 500).
         if (lie.statut == 'brouillon'
                 and (lie.layout_hash or '') == (empreinte or '')):
+            _refuser_autre_marche(lie, lead)  # ACON90
             return lie, False
         raise _refus_deja_rattache(lie)
     if lead is not None:
         deja = _brouillon_reutilisable(company, lead, empreinte, calepinage)
         if deja is not None:
+            _refuser_autre_marche(deja, lead)  # ACON90
             _lier(calepinage, deja, user=user)
             # ACON85 — les études relues APRÈS le lien (ombrage servi).
             rafraichir_etudes_du_devis(deja)

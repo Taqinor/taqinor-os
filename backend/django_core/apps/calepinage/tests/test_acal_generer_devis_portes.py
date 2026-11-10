@@ -152,6 +152,47 @@ class GenererDevisPortesTest(BaseApiCalepinage):
         self.original.refresh_from_db()
         self.assertEqual(self.original.devis_id, premier.data['devis'])
 
+    def test_lead_ci_marche_du_lead_et_brouillon_d_un_autre_marche_409(self):
+        """ACON90 (D-ACON-1) — « Générer le devis » sur un lead industriel :
+        devis INDUSTRIEL ; un brouillon RÉSIDENTIEL de même empreinte lié à
+        un calepinage d'un lead industriel : 409 ``{devis}`` sans nouveau
+        devis ; ``from-layout`` : même refus, texte aussi sous ``detail``."""
+        industriel = Lead.objects.create(company=self.company, nom='Usine',
+                                         type_installation='industriel')
+        c = Calepinage.objects.create(company=self.company,
+                                      lead_id=industriel.pk, titre='ACON90-C')
+        enregistrer_layout(c, copy.deepcopy(TOIT), user=self.user)
+        reponse = self._generer(c)
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        self.assertEqual(Devis.objects.get(pk=reponse.data['devis'])
+                         .mode_installation, 'industriel')
+
+        autre = Lead.objects.create(company=self.company, nom='Usine 2',
+                                    type_installation='industriel')
+        c2 = Calepinage.objects.create(company=self.company,
+                                       lead_id=autre.pk, titre='ACON90-C2')
+        enregistrer_layout(c2, copy.deepcopy(TOIT), user=self.user)
+        c2.refresh_from_db()
+        residentiel = Devis.objects.create(
+            company=self.company, client=self.client_a, lead=autre,
+            reference='DEV-ACON90-1', layout_hash=c2.layout_hash,
+            mode_installation='residentiel')
+        Calepinage.objects.filter(pk=c2.pk).update(devis=residentiel)
+        avant = Devis.objects.filter(company=self.company).count()
+        reponse = self._generer(c2)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertIn('DEV-ACON90-1', str(reponse.data['devis']))
+        self.assertIn('marché résidentiel', str(reponse.data['devis']))
+
+        Calepinage.objects.filter(pk=c2.pk).update(devis=None)
+        reponse = self.api.post(
+            '/api/django/ventes/devis/from-layout/',
+            {'layout': c2.roof_layout, 'lead': autre.pk}, format='json')
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertEqual(reponse.data['detail'], reponse.data['devis'])
+        self.assertEqual(Devis.objects.filter(company=self.company).count(),
+                         avant)
+
     def test_lead_agricole_409(self):
         agricole = Lead.objects.create(company=self.company,
                                        nom='Ferme Souss',
