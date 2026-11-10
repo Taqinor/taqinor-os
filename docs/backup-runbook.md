@@ -53,12 +53,19 @@ L'exercice ci-dessus prouve qu'un dump se relit ; il ne remet RIEN en service
    `erp-uploads-restaure` / `erp-pdf-restaure`, `BackupRun` `kind=restore`
    avec comptages. Code non nul en cas d'échec.
 4. Vérifier : `docker compose exec -e DB_NAME=erp_restaure django_core python manage.py check`, puis un GET
-   authentifié (ex. `/api/django/crm/leads/`) sur la base restaurée.
+   authentifié (ex. `/api/django/crm/leads/`) sur la base restaurée. Pour la SERVIR avant la bascule, lancer
+   un second serveur sur le port 8001 du conteneur :
+   `docker compose exec -d -e DB_NAME=erp_restaure django_core python manage.py runserver 0.0.0.0:8001 --noreload`
+   (prêt après ~30 s ; le serveur vivant reste sur `erp_db`, port 8000). L'atteindre depuis le conteneur
+   (`docker compose exec django_core …` : login `/api/django/token/` puis GET sur `http://localhost:8001/api/django/crm/leads/`).
 5. Poser les mots de passe des rôles (jamais dans le dépôt) :
-   `ALTER ROLE app_rls PASSWORD '…'` et `bash backend/db/provision_sql_agent_ro.sh`.
+   `ALTER ROLE app_rls PASSWORD '…'` se joue avec psql en propriétaire, dans le service db :
+   `docker compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d erp_restaure -v ON_ERROR_STOP=1 -c "ALTER ROLE app_rls PASSWORD '"'"'<mot_de_passe>'"'"'"'`
+   (`<mot_de_passe>` : valeur choisie, jamais écrite dans le dépôt) ; puis `bash backend/db/provision_sql_agent_ro.sh`.
 6. Bascule (geste de Reda, jamais automatique) : pointer `DB_NAME` sur
    `erp_restaure` et `MINIO_BUCKET_UPLOADS` / `MINIO_BUCKET_PDF` sur les buckets
-   `-restaure` dans `.env`, puis redémarrer la pile.
+   `-restaure` dans `.env`, puis `docker compose up -d` (et NON `docker compose restart`, qui ne relit pas
+   le `.env` et garde l'ancien `DB_NAME` ; `up -d` recrée aussi le conteneur db, sans perte, volume conservé).
 
 Garde : `--base` égal à la base de production est refusé (rien n'est écrit)
 sans `--remplacer-production <ce nom>` ; un `--suffixe-buckets` vide (écrire
