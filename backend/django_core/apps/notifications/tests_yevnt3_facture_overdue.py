@@ -141,9 +141,14 @@ class FactureOverdueSweepTests(TestCase):
 
     def test_sweep_daily_wires_facture_overdue(self):
         """`sweep_daily` (la tâche Celery Beat) appelle bien le sweep facture."""
+        from unittest import mock
+
         from .sweeps import sweep_daily
         self._make_facture(reference='FA-OV-8')
-        total = sweep_daily()
+        # ASOC22 — jour figé ouvré (mardi) : le balayage ne tourne qu'un jour ouvré.
+        with mock.patch('apps.notifications.sweeps.localdate',
+                        return_value=date(2026, 11, 10)):
+            total = sweep_daily()
         self.assertGreaterEqual(total, 1)
         self.assertTrue(Notification.objects.filter(
             event_type=EventType.FACTURE_OVERDUE).exists())

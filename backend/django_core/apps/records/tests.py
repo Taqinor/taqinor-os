@@ -1178,6 +1178,39 @@ class TestAttachmentsAll(TestCase):
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]['filename'], 'mine.pdf')
 
+    def test_centre_exclut_les_pieces_des_leads_hors_portee(self):
+        """APFS21 (C-APFS-023) — le centre applique le filtre de
+        ``records/attachments/`` : C2 « soi » et Admin RH ne voient pas la
+        pièce du lead de C1 ; C1 et Directeur la voient."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import (
+            CANONICAL_SYSTEM_ROLES, COMMERCIAL_PERMISSIONS)
+        roles = dict(CANONICAL_SYSTEM_ROLES)
+        comptes = {}
+        for nom, perms in (('C1', COMMERCIAL_PERMISSIONS),
+                           ('C2', COMMERCIAL_PERMISSIONS),
+                           ('Admin RH', roles['Admin RH']),
+                           ('Directeur', roles['Directeur'])):
+            comptes[nom] = User.objects.create_user(
+                username=f'apfs21-{nom}', password='x', company=self.company,
+                role=Role.objects.create(company=self.company, nom=f'APFS21 {nom}',
+                                         permissions=list(perms)))
+        lead = Lead.objects.create(company=self.company, nom='Tazi023',
+                                   owner=comptes['C1'])
+        piece = Attachment.objects.create(
+            company=self.company, content_type=ContentType.objects.get_for_model(Lead),
+            object_id=lead.id, uploaded_by=comptes['C1'],
+            file_key='attachments/cin.pdf', filename='CIN-Tazi023.pdf', size=1,
+            mime='application/pdf')
+        for nom, voit in (('C2', False), ('Admin RH', False), ('C1', True),
+                          ('Directeur', True)):
+            for params in ({}, {'model': 'crm.lead'}):
+                res = auth(comptes[nom]).get(
+                    '/api/django/records/attachments/all/', params)
+                self.assertEqual(res.status_code, 200, (nom, res.data))
+                ids = [r['id'] for r in res.data.get('results', res.data)]
+                self.assertEqual(piece.id in ids, voit, (nom, params))
+
 
 # ── XKB4 — à-faire personnel (sans cible métier) ────────────────────────────
 # SOLMVP20 — la conversion en tâche projet (``vers-tache-projet``, déléguée à

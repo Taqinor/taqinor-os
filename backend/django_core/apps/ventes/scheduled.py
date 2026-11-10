@@ -512,8 +512,9 @@ def pre_echeance_reminders():
     """XFAC7 — rappel de courtoisie J-N AVANT échéance (jamais après).
 
     Pour chaque facture ÉMISE (jamais payée/annulée/exclue) dont l'échéance
-    tombe dans EXACTEMENT N jours (N = ``CompanyProfile.rappel_pre_echeance_
-    jours`` de la société, défaut 5, 0 = désactivé), envoie l'email de
+    tombe dans la fenêtre ]aujourd'hui, aujourd'hui + N] (ASOC85 : un beat
+    raté ou un délai < N n'empêche plus le rappel ; N = ``CompanyProfile.
+    rappel_pre_echeance_jours`` de la société, défaut 5, 0 = désactivé), envoie l'email de
     courtoisie (clé ``EmailTemplate`` ``pre_echeance``, NO-OP réseau sans clé
     d'envoi) avec le lien de paiement FG53 si disponible, et consigne dans
     ``EmailLog``. Idempotent : un log dédié (``reference`` suffixée du
@@ -546,7 +547,7 @@ def pre_echeance_reminders():
         n = getattr(profile, 'rappel_pre_echeance_jours', 5) or 0
         if n <= 0:
             continue
-        if facture.date_echeance != today + timedelta(days=n):
+        if not (today < facture.date_echeance <= today + timedelta(days=n)):
             continue
         # Idempotence : un seul rappel par facture (le marqueur reste tant
         # que la facture n'a qu'une échéance figée — pas de doublon possible
@@ -734,9 +735,11 @@ def engagement_followup_engine():
 
     for link in links:
         devis = link.devis
-        vendeur = getattr(devis, 'created_by', None)
-        if vendeur is None:
+        if getattr(devis, 'created_by', None) is None:
             continue
+        # ASOC90 — vendeur inactif ⇒ responsable actif du lead, sinon managers.
+        from apps.notifications.services import destinataire_actif
+        vendeur = destinataire_actif(devis.created_by, lead=devis.lead)
         # CAD138 — les déclencheurs sont désormais DATÉS (forme dict), pour
         # qu'ils puissent se périmer côté panier. L'idempotence ne change
         # pas : un déclencheur déjà allumé ne re-notifie jamais.
@@ -810,7 +813,7 @@ def _poser_touche_signal_reouverture(devis):
 def _post_engagement_notification(devis, vendeur, key, label):
     """QX30be — pose une Notification d'engagement (best-effort, in-lane)."""
     try:
-        from apps.notifications.services import notify
+        from apps.notifications.sweeps import _notify_user_or_managers
         from apps.notifications.types_evenements import EventType
         from apps.ventes.utils.client_links import proposition_url
         from apps.ventes.models import ShareLink
@@ -820,13 +823,12 @@ def _post_engagement_notification(devis, vendeur, key, label):
         except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning("scheduled._post_engagement_notification : erreur ignorée (mode dégradé)", exc_info=True)
             url = ''
-        notify(
-            vendeur, EventType.DEVIS_NUDGE_DUE,
-            title=f'{label} — devis {devis.reference}',
-            body=(f'Déclencheur d\'engagement : {key}. '
-                  f'Proposition : {url or "—"}'),
-            link=f'/ventes/devis?devis={devis.id}',
-            company=devis.company)
+        _notify_user_or_managers(
+            vendeur, devis.company, EventType.DEVIS_NUDGE_DUE,
+            f'{label} — devis {devis.reference}',
+            (f'Déclencheur d\'engagement : {key}. '
+             f'Proposition : {url or "—"}'),
+            link=f'/ventes/devis?devis={devis.id}')
     except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('QX30: notification engagement échec devis %s : %s',
                        getattr(devis, 'reference', '?'), exc)

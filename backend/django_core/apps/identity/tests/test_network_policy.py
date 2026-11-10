@@ -73,10 +73,31 @@ class NetworkPolicyMiddlewareTests(TestCase):
 
     def test_public_paths_never_blocked(self):
         self._policy(NetworkPolicy.Mode.ENFORCE)
-        for path in ('/api/public/leads/', '/api/django/public/sav/x/',
-                     '/api/django/ventes/devis/1/proposal/'):
+        # APFS67 — le PDF interne ``ventes/devis/<id>/proposal/`` n'est plus un
+        # chemin public (préfixes exacts) : voir le test suivant.
+        for path in ('/api/public/leads/', '/api/django/public/sav/x/'):
             resp = self.mw(self._req(ip='203.0.113.5', path=path))
             self.assertEqual(resp.status_code, 200, path)
+
+    def test_route_interne_contenant_un_marqueur_reste_filtree(self):
+        """APFS67 (C-APFS-065) — hors plage en ENFORCE : une route interne qui
+        CONTIENT « /proposal » ou « /webhook » est filtrée (403) ; les routes
+        publiques nommées par préfixe exact restent servies."""
+        self._policy(NetworkPolicy.Mode.ENFORCE, allow='10.99.0.0/24')
+        for user in (self.admin, self.user):
+            for path in ('/api/django/ventes/devis/1/proposal/',
+                         '/api/django/publicapi/webhooks/',
+                         '/api/django/crm/leads/'):
+                resp = self.mw(self._req(ip='203.0.113.7', user=user, path=path))
+                self.assertEqual(resp.status_code, 403, path)
+                self.assertIn('Adresse IP non autoris', resp.content.decode())
+        publics = [self.rf.get('/api/django/public/proposal/tok/data/'),
+                   self.rf.get('/api/public/v1/leads/'),
+                   self.rf.post('/api/django/crm/webhooks/website-leads/')]
+        for req in publics:
+            req.META['REMOTE_ADDR'] = '203.0.113.7'
+            req.user = self.admin
+            self.assertEqual(self.mw(req).status_code, 200, req.path)
 
     def test_applies_to_admins_ignores_non_admin(self):
         self._policy(NetworkPolicy.Mode.ENFORCE, applies_to='admins')

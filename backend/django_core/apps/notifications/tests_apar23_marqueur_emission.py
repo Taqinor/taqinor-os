@@ -96,3 +96,57 @@ class MarqueurEmissionTests(TestCase):
         self.assertTrue(MarqueurEmissionBalayage.objects.filter(
             company=self.company, event_type=EventType.FACTURE_OVERDUE,
             cle=lien).exists())
+
+    def test_garantie_et_pose_une_fois_par_occurrence(self):
+        """ASOC23 (C-ASOC-006) — balayages joués à J, J+1, J+2 : une
+        ``warranty_expiring`` au technicien, une ``chantier_due`` par manager ;
+        fin de garantie modifiée ⇒ une de plus."""
+        from apps.crm.models import Client
+        from apps.installations.models import Installation
+        from apps.sav.models import Equipement
+        from apps.stock.models import Produit
+        User.objects.create_user(
+            username='apar23-mgr2', password='x', role_legacy='responsable',
+            company=self.company)
+        tech = User.objects.create_user(
+            username='apar23-tech', password='x', role_legacy='normal',
+            company=self.company)
+        jour_j = datetime.date.today()
+        client = Client.objects.create(company=self.company, nom='Client ASOC23')
+        eq = Equipement.objects.create(
+            company=self.company, statut=Equipement.Statut.EN_SERVICE,
+            produit=Produit.objects.create(
+                company=self.company, nom='Onduleur ASOC23', prix_vente=0),
+            installation=Installation.objects.create(
+                company=self.company, client=client, reference='CH-ASOC23-1',
+                statut=Installation.Statut.CLOTURE, technicien_responsable=tech),
+            date_fin_garantie=jour_j + datetime.timedelta(days=60))
+        Installation.objects.create(
+            company=self.company, client=client, reference='CH-ASOC23-2',
+            statut=Installation.Statut.SIGNE,
+            date_pose_prevue=jour_j + datetime.timedelta(days=10))
+
+        class _Jour(datetime.date):
+            decalage = 0
+
+            @classmethod
+            def today(cls):
+                return jour_j + datetime.timedelta(days=cls.decalage)
+
+        with mock.patch.object(sweeps, 'date', _Jour):
+            for decalage in (0, 1, 2):
+                _Jour.decalage = decalage
+                sweeps._sweep_warranty_expiring(self.company)
+                sweeps._sweep_chantier_due(self.company)
+        garanties = Notification.objects.filter(
+            event_type=EventType.WARRANTY_EXPIRING)
+        self.assertEqual(list(garanties.values_list('recipient', flat=True)),
+                         [tech.pk])
+        self.assertEqual(Notification.objects.filter(
+            event_type=EventType.CHANTIER_DUE).count(), 2)
+        self.assertEqual(MarqueurEmissionBalayage.objects.filter(
+            company=self.company, cle=f'equipement:{eq.pk}').count(), 1)
+        Equipement.objects.filter(pk=eq.pk).update(
+            date_fin_garantie=jour_j + datetime.timedelta(days=70))
+        sweeps._sweep_warranty_expiring(self.company)
+        self.assertEqual(garanties.count(), 2)

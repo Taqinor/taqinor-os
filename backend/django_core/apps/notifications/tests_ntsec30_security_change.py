@@ -44,6 +44,32 @@ class SecurityChangeNotifyTests(TestCase):
     def test_none_user_noop(self):
         self.assertIsNone(notify_security_change(None, 't', 'b'))
 
+    def test_transaction_annulee_aucun_email(self):
+        """ASOC31 (C-ASOC-140) — changement annulé par la transaction : 0 ligne,
+        0 e-mail ; transaction validée : 1 ligne, 1 e-mail APRÈS le commit."""
+        from unittest import mock
+
+        from django.db import transaction
+        with mock.patch(
+                'apps.notifications.services._dispatch_email') as envoi:
+            with self.captureOnCommitCallbacks(execute=True):
+                with self.assertRaises(RuntimeError):
+                    with transaction.atomic():
+                        notify_security_change(
+                            self.user, 'Mot de passe modifié')
+                        raise RuntimeError('annulé')
+            envoi.assert_not_called()
+            lignes = Notification.objects.filter(
+                recipient=self.user, event_type=EventType.SECURITY_CHANGE)
+            self.assertEqual(lignes.count(), 0)
+            with self.captureOnCommitCallbacks(execute=False) as rappels:
+                notify_security_change(self.user, 'Mot de passe modifié')
+            envoi.assert_not_called()  # pas avant le commit
+            for rappel in rappels:
+                rappel()
+            envoi.assert_called_once()
+            self.assertEqual(lignes.count(), 1)
+
     def test_scoped_to_user_company(self):
         notify_security_change(self.user, 't', 'b')
         n = Notification.objects.get(recipient=self.user)

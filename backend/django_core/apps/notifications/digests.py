@@ -21,7 +21,9 @@ Principes (règles fondatrices) :
 import logging
 
 from celery import shared_task
+from django.utils.timezone import localdate
 
+from .calendar_utils import is_jour_ouvre
 from .types_evenements import EventType
 from .services import notify
 
@@ -95,10 +97,10 @@ def _count_devis_en_attente(company):
 
 
 def _count_paiements_en_retard(company):
-    """Factures en retard (échéance dépassée, non réglées)."""
-    from apps.ventes.models import Facture
-    return Facture.objects.filter(
-        company=company, statut=Facture.Statut.EN_RETARD).count()
+    """Factures en retard (échéance dépassée, non réglées) — ASOC94 : LA
+    définition de l'alerte (``factures_echues``), pas le statut du beat."""
+    from apps.ventes.selectors import factures_echues
+    return sum(1 for f in factures_echues(company) if f.jours_retard > 0)
 
 
 def _count_maintenances_dues(company):
@@ -172,7 +174,7 @@ def _run_digest(periode_label, title):
     for company in _companies():
         try:
             recipients = _recipients(company)
-            if not recipients:
+            if not recipients or not is_jour_ouvre(localdate(), company):  # ASOC22
                 continue
             summary = build_summary(company)
             body = format_body(summary, periode_label)
