@@ -261,7 +261,7 @@ class RestaurerSauvegardeTests(TestCase):
                 mock.patch('subprocess.run', side_effect=fake_run), \
                 mock.patch('psycopg2.connect', return_value=fake_conn):
             call_command('restaurer_sauvegarde', '--dump', 'pg_dumps/20261110-030000.dump',
-                         '--base', 'erp_restaure', '--suffixe-buckets', '-restaure',
+                         '--base', 'erp_restaure', '--suffixe-buckets=-restaure',
                          '--roles-sql', self._roles_sql(), stdout=out)
 
         noms = [a[0] for a, _k in appels]

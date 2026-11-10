@@ -481,6 +481,7 @@ retiré plus un hook ajouté.
 | `cal-releve-azimut-retour` | relevé azimut : retour du serveur / refus nommé (ACAL206). |
 | `cal-releve-azimut-lecture-seule` | relevé azimut : raison de la lecture seule. |
 | `cal-releve-cote-lecture-seule` | relevé cote : raison de la lecture seule. |
+| `cal-releve-lecture-seule` | relevé : raison de la lecture seule, boutons d’écriture grisés (ACON10). |
 | `cal-releve-azimut-appliquer` | relevé azimut : appliquer au pan (ACAL206). |
 | `cal-releve-azimut-pan` | relevé azimut : choix du pan (ACAL206). |
 | `cal-releve-azimut-mesure` | relevé azimut : valeur et précision relevées (ACAL206). |

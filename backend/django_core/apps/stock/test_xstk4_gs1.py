@@ -174,7 +174,8 @@ class TestScanGs1Endpoint(Xstk4ApiBase):
 
     def test_scan_gs1_cross_tenant_404(self):
         other = _company('xstk4-other')
-        other_user = _user(other, 'xstk4-other-user')
+        # APFS106 — droit du module stock : l'isolation société se prouve avec un lecteur stock.
+        other_user = _user(other, 'xstk4-other-user', permissions=['stock_voir'])
         api = _api(other_user)
         code = '01' + '04006381333931'
         resp = api.get(

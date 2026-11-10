@@ -144,18 +144,21 @@ class PorteeEquipeTests(TestCase):
         sans = User.objects.create_user(
             username='apfs27_sans', password='x', company=self.company,
             role=role, role_legacy='responsable')
+        # Portée équipe sans superviseur (lui seul) : son propre ticket, pas M.
+        propre = self._ticket('S', sans)
 
-        def telephones(user):
+        def telephones(user, ticket=None):
+            ticket = ticket or self.m
             api = auth(user)
-            fiche = api.get(f'{BASE}/tickets/{self.m.pk}/')
+            fiche = api.get(f'{BASE}/tickets/{ticket.pk}/')
             self.assertEqual(fiche.status_code, 200, fiche.content)
             r = api.get(f'{BASE}/tickets/')
             self.assertEqual(r.status_code, 200, r.content)
             rows = r.data['results'] if 'results' in r.data else r.data
             return [fiche.data['client_telephone']] + [
                 row['client_telephone'] for row in rows
-                if row['id'] == self.m.pk]
-        self.assertEqual(telephones(sans), [None, None])
+                if row['id'] == ticket.pk]
+        self.assertEqual(telephones(sans, propre), [None, None])
         self.assertEqual(telephones(self.tech), ['0661028028'] * 2)
         self.assertEqual(telephones(self.autre), ['0661028028'] * 2)
 

@@ -77,9 +77,21 @@ test('CAL221: /calepinage → créer depuis un lead → variante → retenir →
   expect(calepinageId, 'aucun identifiant de calepinage dans l’URL').toBeTruthy()
 
   // ── 4. ENREGISTRER UNE VARIANTE (CAL21, par l'API — voir l'en-tête) ────
+  // ACON26 — on ne retient qu'une variante DESSINÉE (roof_layout absent ou
+  // {} ⇒ 409 nommé). La variante porte donc la conception COURANTE du
+  // calepinage, exactement comme le geste « Enregistrer la variante » de
+  // VariantesCompare.jsx ; `zones` garantit un document non vide sur un
+  // calepinage tout juste créé.
+  const lu = await page.request.get(`${API}/calepinages/${calepinageId}/`)
+  expect(lu.ok(), `GET calepinage (${lu.status()})`).toBeTruthy()
+  const courant = (await lu.json())?.roof_layout
+  const conception = {
+    ...(courant && typeof courant === 'object' ? courant : {}),
+    zones: Array.isArray(courant?.zones) ? courant.zones : [],
+  }
   const creation = await page.request.post(
     `${API}/calepinages/${calepinageId}/variantes/`,
-    { data: { nom: 'CAL221 Variante', parametres: {} } },
+    { data: { nom: 'CAL221 Variante', roof_layout: conception } },
   )
   expect(creation.ok(),
     `le serveur a refusé la variante : ${creation.status()} ${await creation.text()}`)
