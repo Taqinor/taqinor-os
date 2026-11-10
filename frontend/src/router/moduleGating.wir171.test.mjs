@@ -131,7 +131,12 @@ test('parametres : journal_activite_voir est un ET strict (pas de permRepliPalie
 test('reporting : journal_activite_voir est un ET strict (pas de permRepliPalier)', () => {
   const src = lire('..', 'features', 'reporting', 'module.config.jsx')
   assert.match(src, /roles: \['normal','responsable','admin'\], perm: 'journal_activite_voir'/)
-  assert.doesNotMatch(src, /permRepliPalier/)
+  // AARG72 a légitimement ajouté permRepliPalier aux entrées `ventes_voir`
+  // (Balance âgée, Quote-to-Cash) : le ET strict est vérifié sur les lignes
+  // `journal_activite_voir` seulement.
+  const lignesJournal = src.split(/\r?\n/).filter((l) => l.includes("perm: 'journal_activite_voir'"))
+  assert.ok(lignesJournal.length > 0)
+  for (const l of lignesJournal) assert.doesNotMatch(l, /permRepliPalier/)
 })
 
 // La 6ᵉ sous-tâche d'origine (« litiges : le commentaire périmé
