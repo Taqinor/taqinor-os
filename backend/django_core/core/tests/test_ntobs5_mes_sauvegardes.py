@@ -1,5 +1,7 @@
 """NTOBS5 — écran self-service « Sauvegardes » pour l'admin tenant (lecture
 seule des BackupRun déjà produits, jamais un nouveau moteur)."""
+import datetime
+
 from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -26,13 +28,27 @@ class ResumeSauvegardesTest(TestCase):
         self.assertIsNone(resume['dernier_drill'])
 
     def test_finds_latest_successful_export_for_company(self):
+        # ADCG34 — un export (manifeste de comptages) n'est PAS une sauvegarde.
         BackupRun.objects.create(
             company=self.company, kind=BackupRun.KIND_EXPORT,
             statut=BackupRun.STATUT_TERMINE,
             termine_le=timezone.now())
         resume = resume_sauvegardes(self.company)
-        self.assertIsNotNone(resume['derniere_sauvegarde'])
-        self.assertEqual(resume['derniere_sauvegarde']['statut'], 'termine')
+        self.assertIsNone(resume['derniere_sauvegarde'])
+
+    def test_export_comptage_n_est_pas_une_sauvegarde(self):
+        """ADCG34 — export seul ⇒ null ; un dump d'hier ⇒ sa date."""
+        maintenant = timezone.now()
+        BackupRun.objects.create(
+            company=self.company, kind=BackupRun.KIND_EXPORT,
+            statut=BackupRun.STATUT_TERMINE, termine_le=maintenant)
+        self.assertIsNone(resume_sauvegardes(self.company)['derniere_sauvegarde'])
+        hier = maintenant - datetime.timedelta(days=1)
+        BackupRun.objects.create(
+            company=None, kind=BackupRun.KIND_DB_DUMP,
+            statut=BackupRun.STATUT_TERMINE, termine_le=hier)
+        resume = resume_sauvegardes(self.company)
+        self.assertEqual(resume['derniere_sauvegarde']['date'], hier.isoformat())
 
     def test_system_wide_db_dump_counts_for_every_company(self):
         BackupRun.objects.create(

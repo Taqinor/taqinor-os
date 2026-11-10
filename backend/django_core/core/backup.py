@@ -846,13 +846,12 @@ def resume_sauvegardes(company):
     Renvoie ``{derniere_sauvegarde, dernier_drill, rpo_planifie,
     rto_annonce_heures}`` — chaque champ ``None`` quand la donnée n'existe
     pas encore (jamais un défaut forfaitaire affiché comme réel)."""
-    from django.db.models import Q
-
+    # ADCG34 — seul un dump réel compte : un export FG395 n'est qu'un
+    # manifeste de comptages (aucun artefact restaurable).
     derniere_sauvegarde = (
         BackupRun.objects
         .filter(
-            Q(kind=BackupRun.KIND_EXPORT, company=company) |
-            Q(kind=BackupRun.KIND_DB_DUMP, company__isnull=True),
+            kind=BackupRun.KIND_DB_DUMP, company__isnull=True,
             statut=BackupRun.STATUT_TERMINE, purge_is_deleted=False,
         )
         .order_by('-termine_le', '-created_at')
