@@ -1,0 +1,34 @@
+{
+  "sha": "f9337084dbda8d0f01ee32a2c93aca8eb35557f3",
+  "date": "2026-11-10",
+  "groupe": "ACSV",
+  "verdict": "PASS",
+  "couvre": [
+    "ACSV108"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "MOPUPLIVE.ACSV108.preuve_en_direct",
+      "taches": [
+        "ACSV108"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-mopup/ACSV108.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "PA5 : liste Tickets SAV, sélection de T (SAV-ACC-MOP-T, prêt d'onduleur en cours) et U2, Plus › Annuler ⇒ POST actions-groupees 200 {traites:[150], echecs:[{id:148, raison:« Impossible d'annuler : un prêt d'équipement est encore en cours (retournez-le d'abord). »}]} ; toast « 1 ticket(s) sur 2 n'ont pas pu être mis à jour. » ; après rechargement T toujours ouvert (Nouveau) ; PATCH {annule:true} sur T : 200, annule relu False"
+    }
+  ]
+}

@@ -86,4 +86,28 @@ tâches non échantillonnées relues et tenues (AMON31, 41, 89, 94). Cause commu
 - 2 vérificateurs + 1 seconde lentille + 1 rédacteur (opus, effort élevé) ≈ 0,98 M de jetons ; 1 critique Fable ≈ 0,26 M :
   elle a trouvé les 2 S1 que l'échantillon ne voyait pas (dégradation et salissure du rapport client, prorata du garanti).
 
-<!-- verifie | groupe: AMON | pct: 100 | ecarts_s1_s2: 3 -->
+## 8. Contre-visite des correctifs, le même jour (base `c1a99568a`)
+
+Les tâches d'écart déposées ci-dessus ont été construites dans la journée (PR #1316, #1320). Un vérificateur frais (opus,
+effort élevé) a relu les dix qui sont cochées (METHODE §C.4 point 6) : **AMON97 à AMON106 : ok, 10 sur 10**. Preuve
+exécutée : les vraies fonctions de calcul d'`origin/main`, extraites telles quelles et jouées sur des données en mémoire
+(sans base) — les tests Django n'ont pas été lancés.
+
+- **Écarts S1-S2 : 2 fermés sur 3.** Fermés : le rapport d'exploitation remis au client — indice de performance, production
+  de la période, dégradation et salissure sortent justes quand les relevés sont mensuels ou en retard (AMON97 à AMON103 ;
+  acceptation en direct passée le 10/11) ; la garantie de production — plus de pénalité sans relevé ni pour des relevés
+  arrêtés, relevé à cheval sur deux années réparti au prorata (AMON104 à AMON106).
+- **Encore ouvert.** Le libellé « Disponibilité » : le code est corrigé et le téléchargement du PDF aussi, mais AMON108
+  reste bloquée sur sa preuve en direct, pas rejouée depuis ce correctif. AMON109 est dans le même cas ; AMON107 attend la
+  décision D-AMON-3.
+- **Tests.** Présents et comportementaux ; trois assertions existantes ont été réalignées sur le calcul au prorata, annoncées
+  dans les commits et cohérentes avec les tâches (aucun affaiblissement).
+- **Optionnel, à trancher avec D-AMON-3.** Un trou de relevés au MILIEU de l'année fait encore courir le montant garanti
+  (une compensation est calculée), ce qui ne suit pas la règle « pas de relevé = non mesuré » retenue pour la fin de série.
+  Deux calculs de l'indice de suivi divergent (le rapport client compte jusqu'à aujourd'hui, l'engagement de service
+  jusqu'au dernier jour couvert) : un rapport mensuel peut afficher un indice de performance de 100 à côté d'un indice de
+  suivi de 53 %. Un écran interne affiche encore « Disponibilité ».
+- **Statut.** Un écart S1 d'origine reste ouvert (AMON108, non cochée) : le marqueur en garde 1 et AMON reste « construit »
+  jusqu'à ce que cette tâche soit cochée puis relue.
+
+<!-- verifie | groupe: AMON | pct: 100 | ecarts_s1_s2: 1 -->

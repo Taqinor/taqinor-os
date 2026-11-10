@@ -1,0 +1,34 @@
+{
+  "sha": "f9337084dbda8d0f01ee32a2c93aca8eb35557f3",
+  "date": "2026-11-10",
+  "groupe": "AAPV",
+  "verdict": "PASS",
+  "couvre": [
+    "AAPV72"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "MOPUPLIVE.AAPV72.preuve_en_direct",
+      "taches": [
+        "AAPV72"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-mopup/AAPV72.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écran BCF : ligne Panneau ACC MOPUP à 1 150 sur un contrat en vigueur à 1 000 ⇒ toast « Prix à vérifier : Le prix saisi (1150.00) dépasse le prix convenu du contrat en vigueur (1000.0). » ; « Envoyer au fournisseur » ⇒ confirmation « Envoyer malgré l'avertissement prix ? » portant le même message ; jamais « [object Object] » (envoi annulé)"
+    }
+  ]
+}

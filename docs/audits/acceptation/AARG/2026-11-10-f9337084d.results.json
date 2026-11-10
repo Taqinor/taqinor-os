@@ -1,0 +1,34 @@
+{
+  "sha": "f9337084dbda8d0f01ee32a2c93aca8eb35557f3",
+  "date": "2026-11-10",
+  "groupe": "AARG",
+  "verdict": "PASS",
+  "couvre": [
+    "AARG72"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "MOPUPLIVE.AARG72.preuve_en_direct",
+      "taches": [
+        "AARG72"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-mopup/AARG72.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Admin RH (acc_mop_rh) : menu ANALYSE sans « Balance âgée » ni « Quote-to-Cash », /reporting/balance-agee et /reporting/quote-to-cash ⇒ /403 « Accès refusé (403) » (jamais « serveur indisponible ») ; Commercial responsable (acc_mop_comresp) : deux entrées au menu, deux écrans chargés"
+    }
+  ]
+}

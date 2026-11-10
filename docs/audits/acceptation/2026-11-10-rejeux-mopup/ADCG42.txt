@@ -1,0 +1,106 @@
+# Preuve en direct ADCG42 — rejeu accept-mopup (rattrapage), code joué f9337084d (origin/main = merge de #1335), 2026-11-10
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau mopup-net ; mopup-db (pgvector pg16, 127.0.0.1:5561,
+# base erp_mopup = pg_dump --no-owner --no-privileges de la base locale erp_live en lecture seule, puis `manage.py
+# migrate`) ; mopup-redis ; mopup-minio (MinIO privé) ; mopup-dj (image erp-agentique-django_core, code backend du
+# commit joué COPIÉ par tar dans /app, `pip install -r requirements.txt` du commit joué — Pillow 13.0.0, DRF 3.18.2 —,
+# settings.dev, EMAIL_BACKEND locmem, DB_CONN_MAX_AGE=0, runserver 0.0.0.0:8000 publié sur 127.0.0.1:8031).
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8031 vite
+# preview --port 5231`), piloté par Playwright MCP ; comptes de test acc_mop_<rôle> (société « Acceptation MOPUP »,
+# id 278, rôles système dir/adm/rh/comresp/com/techresp + superuser acc_mop_su, mot de passe de test généré, base
+# jetable). Sondes du dossier d'audit : `python scripts/sonde.py <G>/<sonde> --conteneur mopup-dj` (fraîcheur ADCG20
+# vérifiée : même code que ce worktree) ; sondes de dépôt ADCG : `python docs/audits/sondes/ADCG/<sonde>.py` sur ce
+# worktree. Sondes C-LIVE-* écrites pour ce rejeu (source jointe) : ICI repro=true signifie que le comportement
+# ATTENDU par la tâche est observé. Captures : C:\dev\taqinor-os\logs\nightly-qa\playwright\accept-mopup\ (hors dépôt, sauf mention).
+# Verdict : PASS — dernier exercice en échec d'hier : écran Sauvegardes ⇒ badge danger « Dernier test de restauration en échec le 9 novembre 2026 à 22:00 ». C-ADCG-019 partie A reste « drillPerime=false » PAR CONCEPTION du correctif (un autre badge, drillEchec, remplace l'absence) — sonde partie A périmée ; C-LIVE-ADCG42 (partie A étendue) ⇒ drillEchec=true, libellé rendu
+
+FIX-MOPUP-BKP (base jetable) : tous les BackupRun globaux d'erp_live supprimés (24) ; export « termine » de la société
+  (manifeste seul, BackupRun #25).
+S1 — écran Paramètres › Sauvegardes (acc_mop_dir) : GET core/mes-sauvegardes/ 200 {"derniere_sauvegarde":null,
+  "dernier_drill":null,"rpo_planifie":"quotidien, 03:00","rto_annonce_heures":null,"copie_distante":null} ; écran :
+  « Dernière sauvegarde | Aucune sauvegarde réussie pour le moment. | … | Aucun test de restauration enregistré. »
+S2 — `manage.py dump_database` RÉEL (pg_dump vers le MinIO privé, aucun BACKUP_OFFSITE_* dans l'environnement) :
+  « dump_database: OK — BackupRun #26, 25307519 octets, objet pg_dumps/20261110-154901.dump » ; detail.offsite =
+  {"status":"off","message":"BACKUP_OFFSITE_* non configuré — hors-boîte désactivé.","configured":false}.
+  Écran : GET 200 {"derniere_sauvegarde":{"date":"2026-11-10T15:49:07…","statut":"termine"},…,"copie_distante":{"etat":"off",
+  "date":"2026-11-10T15:49:07…"}} ; « Réussie le 10 novembre 2026 à 15:49 termine | Copie hors serveur : non configurée ».
+S3 — 13 exercices « echec » sans termine_le (created_at 23/09 → 05/10/2026), 5 « termine » (termine_le 12/10, 19/10,
+  26/10, 02/11, 09/11/2026 03:00) : resume_sauvegardes ⇒ dernier_drill {date 2026-11-09T03:00, statut termine} ;
+  écran « Dernier test de restauration | Réussi le 9 novembre 2026 à 03:00 termine », aucun badge.
+S4 — + un « echec » sans termine_le créé le 09/11/2026 22:00 (hier) : dernier_drill {date 2026-11-09T22:00, statut echec} ;
+  écran « Statut le 9 novembre 2026 à 22:00 echec | Dernier test de restauration en échec le 9 novembre 2026 à 22:00 »
+  (badge danger).
+Captures : ADCG34-S1-export-seul.png, ADCG31-ADCG34-S2-dump-reel-sans-offsite.png, ADCG41-drill-reussi-0911.png,
+  ADCG42-drill-echec-hier.png.
+
+== C-ADCG-019 (python docs/audits/sondes/ADCG/C-ADCG-019.py, worktree au commit joué)
+{
+ "repro": true,
+ "observe": "A (page) : drill echec d'hier → joursDrill=1, drillPerime=False ; B (resume_sauvegardes) : filtre de statut sur dernier_drill=False, tri -termine_le sans nulls_last=False, restore_drill : 7 branches echec et 1 seule affectation de termine_le (succès) → un échec a termine_le nul et passe en tête sous Postgres"
+}
+LECTURE : la partie A d'origine mesure `drillPerime` sur un échec d'hier et conclut « badge masqué » s'il est faux. Le
+  correctif ADCG42 laisse `drillPerime` faux sur un échec (`!drillEchec && …`) et affiche un badge dédié `drillEchec`
+  « Dernier test de restauration en échec le <date> » — observé à l'écran (S4). La partie A est donc PÉRIMÉE (à étendre
+  à drillEchec), pas l'écran.
+
+== C-LIVE-ADCG42 (python <scratch>/C-LIVE-ADCG42.py, source ci-dessous)
+{
+ "repro": true,
+ "drillEchec": true,
+ "libelle_rendu_si_drillEchec": true,
+ "observe": "A (page) : drill echec d'hier → joursDrill=1, drillPerime=False ; B (resume_sauvegardes) : filtre de statut sur dernier_drill=False, tri -termine_le sans nulls_last=False, restore_drill : 7 branches echec et 1 seule affectation de termine_le (succès) → un échec a termine_le nul et passe en tête sous Postgres"
+}
+
+Verdict : PASS (écran conforme ; partie A de C-ADCG-019 périmée, voir rapport)
+
+# ---- source : C-LIVE-ADCG42.py ----
+"""C-LIVE-ADCG42 (rejeu d'acceptation 10/11/2026) — partie A de C-ADCG-019 étendue au badge ADCG42 (`drillEchec`) : la partie A d'origine ne lit que `drillPerime`, que le correctif laisse VOLONTAIREMENT faux sur un échec (le badge « Dernier test de restauration en échec le <date> » le remplace). Ici repro=True = comportement ATTENDU observé.
+Ancien en-tête : Rejoue le calcul « périmé » de SauvegardesPage.jsx (node) sur un exercice ÉCHOUÉ d'hier, et lit dans resume_sauvegardes le tri '-termine_le' qui place en tête les exercices échoués (termine_le nul, NULLS FIRST sous Postgres)."""
+SONDE = {"constat": "C-LIVE-ADCG42", "sha": "f9337084d",
+         "attendu": "A : drill echec d'hier → drillPerime=false (badge masqué) ; B : dernier_drill sans filtre de statut, tri -termine_le sans nulls_last, échecs sans termine_le"}
+import ast, json, pathlib, re, shutil, subprocess, tempfile
+RACINE = pathlib.Path(r"C:\dev\taqinor-os\.claude\worktrees\agent-add6be7605fdf1d77")
+
+
+def partie_a():
+    jsx = (RACINE / "frontend/src/pages/parametres/SauvegardesPage.jsx").read_text(encoding="utf-8")
+    seuil = re.search(r"const DRILL_STALE_DAYS = \d+", jsx).group(0)
+    jours = re.search(r"function joursDepuis\(iso\) \{.*?\n\}", jsx, re.S).group(0)
+    calc = re.search(r"const joursDrill = .*?\n\s*const drillPerime = .*?\n", jsx, re.S).group(0)
+    js = (f"{seuil}\n{jours}\nconst drill = {{statut: 'echec', date: new Date(Date.now() - 86400000).toISOString()}}\n"
+          f"{calc}\nconsole.log(JSON.stringify({{joursDrill, drillPerime, drillEchec}}))\n")
+    with tempfile.TemporaryDirectory() as d:
+        p = pathlib.Path(d) / "calc.mjs"; p.write_text(js, encoding="utf-8")
+        out = subprocess.run([shutil.which("node"), str(p)], capture_output=True, text=True, timeout=60)
+    return json.loads(out.stdout.strip().splitlines()[-1])
+
+
+def partie_b():
+    src = (RACINE / "backend/django_core/core/backup.py").read_text(encoding="utf-8")
+    arbre = ast.parse(src)
+    resume = next(n for n in arbre.body if isinstance(n, ast.FunctionDef) and n.name == "resume_sauvegardes")
+    seg = ast.get_source_segment(src, resume)
+    bloc = seg[seg.index("dernier_drill = ("):seg.index("rto_annonce_heures = None")]
+    filtre_statut = "statut" in bloc
+    tri_nul_en_tete = "'-termine_le'" in bloc and "nulls_last" not in bloc
+    drill = ast.get_source_segment(src, next(n for n in arbre.body if isinstance(n, ast.FunctionDef) and n.name == "restore_drill"))
+    nb_echecs = drill.count("STATUT_ECHEC")
+    nb_termine_le = drill.count("run.termine_le")
+    return {"filtre_statut": filtre_statut, "tri_nul_en_tete": tri_nul_en_tete,
+            "branches_echec": nb_echecs, "affectations_termine_le": nb_termine_le}
+
+
+def sonde(ctx=None):
+    a, b = partie_a(), partie_b()
+    jsx = (RACINE / "frontend/src/pages/parametres/SauvegardesPage.jsx").read_text(encoding="utf-8")
+    libelle = "Dernier test de restauration en échec le" in jsx and "{drillEchec && (" in jsx
+    nul_en_tete = (not b["filtre_statut"]) and b["tri_nul_en_tete"] and b["affectations_termine_le"] == 1
+    return {"repro": a.get("drillEchec") is True and libelle and not nul_en_tete, "drillEchec": a.get("drillEchec"),
+            "libelle_rendu_si_drillEchec": libelle, "observe": (
+        f"A (page) : drill echec d'hier → joursDrill={a['joursDrill']}, drillPerime={a['drillPerime']} ; "
+        f"B (resume_sauvegardes) : filtre de statut sur dernier_drill={b['filtre_statut']}, tri -termine_le sans nulls_last="
+        f"{b['tri_nul_en_tete']}, restore_drill : {b['branches_echec']} branches echec et {b['affectations_termine_le']} "
+        f"seule affectation de termine_le (succès) → un échec a termine_le nul et passe en tête sous Postgres")}
+
+
+if __name__ == "__main__":
+    print(json.dumps(sonde(), ensure_ascii=False, indent=1))
