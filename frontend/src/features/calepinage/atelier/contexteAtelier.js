@@ -1,6 +1,6 @@
 // SPL213 — mappeurs purs de l'atelier 3D, déplacés VERBATIM depuis
 // pages/ventes/ToitureDesign.jsx (move only : seul `export` a été ajouté).
-import { refusServeur } from '../commun/refusServeur'
+import { refusServeur } from '../commun/refusServeur.js'
 
 // Convertit un data URL PNG en Blob (upload multipart de la 3D).
 export function dataUrlToBlob(dataUrl) {
