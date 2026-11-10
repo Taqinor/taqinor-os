@@ -275,7 +275,14 @@ def dump_database(run: BackupRun) -> BackupRun:
     run.artifact_ref = f'minio://{BACKUP_BUCKET}/{object_key}'
     run.statut = BackupRun.STATUT_TERMINE
     run.termine_le = timezone.now()
-    run.detail = {'message': 'pg_dump réussi et déposé dans MinIO.',
+    message = 'pg_dump réussi et déposé dans MinIO.'
+    if offsite_detail.get('status') == 'echec':
+        # ADCG31 — le dump local reste restaurable (run termine), mais l'échec
+        # de la copie distante se VOIT : message du run + logger.error.
+        message += f" — copie hors serveur EN ÉCHEC : {offsite_detail.get('message', '')}"
+        logger.error('dump database : copie hors serveur en échec (run %s) : %s',
+                     run.pk, offsite_detail.get('message', ''))
+    run.detail = {'message': message,
                   'bytes': taille, 'offsite': offsite_detail,
                   'fichiers': fichiers}
     run.save(update_fields=['object_key', 'bytes_taille', 'artifact_ref',
@@ -980,32 +987,46 @@ def _run_resume(run):
     }
 
 
+def _plus_recent():
+    # ADCG41 — le plus RÉCENT, réussi ou non : un échec sans `termine_le`
+    # (NULL en tête d'un tri décroissant) ne masque plus les succès suivants.
+    from django.db.models.functions import Coalesce
+    return (Coalesce('termine_le', 'created_at').desc(), '-id')
+
+
+def _derniere_sauvegarde_run():
+    # ADCG34 — seul un dump réel compte : un export FG395 n'est qu'un
+    # manifeste de comptages (aucun artefact restaurable).
+    return (BackupRun.objects
+            .filter(kind=BackupRun.KIND_DB_DUMP, company__isnull=True,
+                    statut=BackupRun.STATUT_TERMINE, purge_is_deleted=False)
+            .order_by(*_plus_recent())
+            .first())
+
+
+def copie_distante(run):
+    """ADCG31 — état de la copie hors serveur du dernier dump :
+    ``{etat: off|ok|echec, date[, message]}`` ou ``None`` (aucun dump)."""
+    off = ((run.detail or {}).get('offsite') or {}) if run is not None else {}
+    if off.get('status') not in ('off', 'ok', 'echec'):
+        return None
+    etat = {'etat': off['status'], 'date': _run_resume(run)['date']}
+    if off['status'] == 'echec':
+        etat['message'] = off.get('message', '')
+    return etat
+
+
 def resume_sauvegardes(company):
     """NTOBS5 — résumé self-service pour l'admin tenant.
 
     Renvoie ``{derniere_sauvegarde, dernier_drill, rpo_planifie,
     rto_annonce_heures}`` — chaque champ ``None`` quand la donnée n'existe
     pas encore (jamais un défaut forfaitaire affiché comme réel)."""
-    from django.db.models.functions import Coalesce
-
-    # ADCG41 — le plus RÉCENT, réussi ou non : un échec sans `termine_le`
-    # (NULL en tête d'un tri décroissant) ne masque plus les succès suivants.
-    recent = (Coalesce('termine_le', 'created_at').desc(), '-id')
-    # ADCG34 — seul un dump réel compte : un export FG395 n'est qu'un
-    # manifeste de comptages (aucun artefact restaurable).
-    derniere_sauvegarde = (
-        BackupRun.objects
-        .filter(
-            kind=BackupRun.KIND_DB_DUMP, company__isnull=True,
-            statut=BackupRun.STATUT_TERMINE, purge_is_deleted=False,
-        )
-        .order_by(*recent)
-        .first()
-    )
+    derniere_sauvegarde = _derniere_sauvegarde_run()
     dernier_drill = (
         BackupRun.objects
         .filter(kind=BackupRun.KIND_RESTORE_DRILL, company__isnull=True)
-        .order_by(*recent)
+        .order_by(*_plus_recent())
         .first()
     )
 
@@ -1039,9 +1060,13 @@ _RUN_RESUME_SHAPE = inline_serializer('BackupRunResume', {
     'dernier_drill': _RUN_RESUME_SHAPE,
     'rpo_planifie': drf_serializers.CharField(allow_null=True),
     'rto_annonce_heures': drf_serializers.IntegerField(allow_null=True),
+    # ADCG31 — écran interne seulement (l'API publique de fiabilité garde ses 4 clés).
+    'copie_distante': drf_serializers.DictField(allow_null=True),
 }))
 @api_view(['GET'])
 @permission_classes([IsAuthenticatedInterne])
 def mes_sauvegardes_view(request):
     """GET /api/django/core/mes-sauvegardes/ — scopé société de l'appelant."""
-    return Response(resume_sauvegardes(request.user.company))
+    donnees = resume_sauvegardes(request.user.company)
+    donnees['copie_distante'] = copie_distante(_derniere_sauvegarde_run())
+    return Response(donnees)
