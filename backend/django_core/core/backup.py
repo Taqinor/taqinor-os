@@ -667,6 +667,7 @@ def restore_drill(run: BackupRun) -> BackupRun:
         return run
 
     base_args, env, _ = _psql_env_args_for(drill_db)
+    nettoyage = None
 
     with tempfile.TemporaryDirectory() as tmpdir:
         dump_path = Path(tmpdir) / 'restore.dump'
@@ -733,10 +734,20 @@ def restore_drill(run: BackupRun) -> BackupRun:
             raise
         finally:
             # Toujours DROP la base scratch, succès ou échec (jamais laisser
-            # traîner une base jetable en dehors du drill).
-            subprocess.run(
-                ['dropdb', *base_args, '--if-exists', drill_db],
-                env=env, stderr=subprocess.PIPE, timeout=120)
+            # traîner une base jetable) ; ADCG112 : jamais `en_cours` ensuite.
+            try:
+                subprocess.run(
+                    ['dropdb', *base_args, '--if-exists', drill_db],
+                    env=env, stderr=subprocess.PIPE, timeout=120)
+            except (subprocess.SubprocessError, OSError) as exc:
+                logger.error('restore drill : base jetable %s non supprimée : %r', drill_db, exc)
+                nettoyage = f'base jetable non supprimée : {type(exc).__name__}'
+            except BaseException:
+                if run.statut == BackupRun.STATUT_EN_COURS:
+                    run.statut, run.detail = BackupRun.STATUT_ECHEC, {
+                        'message': 'Exercice de restauration : nettoyage interrompu'}
+                    run.save(update_fields=['statut', 'detail', 'updated_at'])
+                raise
 
     run.statut = BackupRun.STATUT_TERMINE
     run.termine_le = timezone.now()
@@ -748,6 +759,7 @@ def restore_drill(run: BackupRun) -> BackupRun:
         # NTPLT62 — comptages par société (top 5) + écarts (perte de tenant).
         'comptages_par_societe': comptages_par_societe,
         'ecarts_tenant': [str(c) for c in ecarts],
+        **({'nettoyage': nettoyage} if nettoyage else {}),
     }
     run.save(update_fields=['statut', 'termine_le', 'detail', 'updated_at'])
     return run
