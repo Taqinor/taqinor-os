@@ -215,6 +215,13 @@ def decide_request(req, *, decider, approve, note=''):
     engine.enforce_requester_not_approver(
         requester=req.demandeur, approver=decider, company=req.company,
         label=f'approval_request#{req.pk}')
+    # APFS111 — le palier du TYPE : « admin » n'est décidé que par un admin
+    # (superutilisateur compris) ; 403 sans décision ni changement d'état.
+    if (req.request_type.palier_approbateur
+            == req.request_type.ApproverTier.ADMIN
+            and not getattr(decider, 'is_admin_role', False)):
+        raise DecisionInterdite('Décision réservée au palier administrateur '
+                                'pour ce type de demande.')
 
     already_decided = req.decisions.filter(decided_by=decider).exists()
     if already_decided:

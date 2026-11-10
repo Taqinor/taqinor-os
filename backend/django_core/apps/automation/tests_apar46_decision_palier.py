@@ -19,8 +19,8 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.automation.models import (
-    ActionType, AutomationApproval, AutomationRule, AutomationRun,
-    TriggerType,
+    ActionType, ApprovalRequest, ApprovalRequestType, AutomationApproval,
+    AutomationRule, AutomationRun, TriggerType,
 )
 from apps.notifications.approval_tokens import make_approval_token
 from authentication.models import Company
@@ -130,6 +130,45 @@ class DecisionPalierTests(TestCase):
         self.assertEqual(
             self._decider('inbox', self.resp, 'automation', approval), 403)
         self._toujours_en_attente('automation', approval)
+
+    def test_type_palier_admin_refuse_au_palier_responsable(self):
+        """APFS111 — un type « admin » n'est décidé (approuver, rejeter) que
+        par le palier administrateur ; un type « responsable » reste ouvert
+        au palier responsable. Mutant : retirer le contrôle ⇒ 200."""
+        admin = User.objects.create_user(
+            username='apfs111-admin', password='x', company=self.co,
+            role_legacy='admin')
+        base = '/api/django/automation/approval-requests/'
+
+        def demande(palier):
+            type_ = ApprovalRequestType.objects.create(
+                company=self.co, nom=f'APFS111 {palier}',
+                palier_approbateur=palier, min_approbations=1)
+            return ApprovalRequest.objects.create(
+                company=self.co, request_type=type_,
+                demandeur=self.commercial, payload={})
+
+        req = demande('admin')
+        for geste in ('approve', 'reject'):
+            with self.subTest(geste=geste):
+                r = _api(self.resp).post(f'{base}{req.pk}/{geste}/', {},
+                                         format='json')
+                self.assertEqual(r.status_code, 403, r.data)
+                self.assertEqual(
+                    r.data['detail'], 'Décision réservée au palier '
+                    'administrateur pour ce type de demande.')
+                req.refresh_from_db()
+                self.assertEqual(req.status, ApprovalRequest.Status.PENDING)
+                self.assertFalse(req.decisions.exists())
+        r = _api(admin).post(f'{base}{req.pk}/approve/', {}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        req.refresh_from_db()
+        self.assertEqual(req.status, ApprovalRequest.Status.APPROVED)
+
+        ouverte = demande('responsable')
+        r = _api(self.resp).post(f'{base}{ouverte.pk}/approve/', {},
+                                 format='json')
+        self.assertEqual(r.status_code, 200, r.data)
 
     def test_message_explicite(self):
         r = _api(self.commercial).post(BASE + 'decider/', {
