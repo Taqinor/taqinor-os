@@ -371,6 +371,9 @@ def anonymiser_client(company, cl, *, motif, demande_droit_ref='', now=None,
         'nom', 'prenom', 'email', 'telephone', 'adresse',
         'cin', 'ice', 'if_fiscal', 'rc', 'custom_data',
         'is_anonymized', 'anonymized_at'])
+    # ASOC100 — l'effacement traverse le Tiers miroir (porte ASOC60).
+    from apps.tiers.services import CHAMPS_PERSONNE, anonymiser_tiers
+    anonymiser_tiers(company, cl.tiers_id, CHAMPS_PERSONNE)
     return 1
 
 

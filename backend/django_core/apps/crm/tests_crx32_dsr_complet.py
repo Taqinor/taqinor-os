@@ -146,6 +146,25 @@ class LaBrancheClientEstEffaceeCompletement(TestCase):
         self.assertIsNone(site.gps_lat)
         self.assertIsNone(site.ombrage_notes)
 
+    def test_le_tiers_miroir_est_vide(self):
+        """ASOC100 (C-ASOC-060) — l'effacement traverse le Tiers miroir :
+        identité vide, rôle client gardé, recherche par téléphone → rien."""
+        from apps.tiers.models import Tiers
+        self.client_obj.refresh_from_db()
+        tiers_id = self.client_obj.tiers_id
+        self.assertIsNotNone(tiers_id, 'miroir ARC18 attendu')
+        erase_crm(self.company, 'amina.crx32@example.ma')
+        self.client_obj.save()  # un re-save ne re-remplit rien
+        tiers = Tiers.objects.get(pk=tiers_id)
+        self.assertEqual(tiers.nom, 'Anonymisé')
+        for champ in ('prenom', 'email', 'telephone', 'adresse', 'cin', 'ice',
+                      'rc', 'identifiant_fiscal'):
+            with self.subTest(champ=champ):
+                self.assertIn(getattr(tiers, champ), ('', None))
+        self.assertTrue(tiers.is_client)
+        self.assertFalse(Tiers.objects.filter(
+            company=self.company, telephone__contains='600000032').exists())
+
     def test_une_autre_societe_n_est_jamais_touchee(self):
         autre = Company.objects.create(
             nom='Autre CRX32', slug='autre-crx32')
