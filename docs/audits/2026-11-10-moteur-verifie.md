@@ -41,7 +41,7 @@ pourcentages réellement imprimés.
 
 | C-id | Tâche d'origine | Grav. | Écart | Sonde | Tâches |
 |---|---|---|---|---|---|
-| C-AMOT-VER5-121 | AMOT121 | S3 | la puissance de batterie admise par un onduleur hors réseau suit le niveau de règles du devis, sauf par trois chemins qui ne transmettent pas le devis : un devis déjà envoyé verrait ses bornes, son échelle et ses cartes recalculées aux règles du jour ; aucun produit semé n'est concerné, le catalogue de production n'a pas été lu | STATIQUE (lecture) | AMOT128 |
+| C-AMOT-VER5-121 | AMOT121 | S3 | la puissance de batterie admise par un onduleur hors réseau suit le niveau de règles du devis, sauf par trois chemins qui ne transmettent pas le devis : un devis déjà envoyé verrait ses bornes, son échelle et ses cartes recalculées aux règles du jour ; aucun produit semé n'est concerné, le catalogue de production n'a pas été lu | STATIQUE (lecture) | AMOT128 (cartes et échelle), AMOT130 (balayage des tailles, deux propriétaires) |
 | C-AMOT-VER5-123 | AMOT123 | S3 | jumeau oublié : sur la page équipements du PDF commercial, le bloc de l'option avec batterie affiche encore « Économie annuelle HT » en base TTC ; dans un même PDF la carte dit 24 000 TTC et le bloc 20 000 HT ; le site public et le PDF divergent sur ce bloc ; aucun chiffre faux | STATIQUE (lecture) | AMOT129 |
 
 Aucun écart S1-S2 : ni seconde lentille ni critique (METHODE §C.4).
@@ -57,7 +57,7 @@ Aucun écart S1-S2 : ni seconde lentille ni critique (METHODE §C.4).
 - **Couvert.** Les 9 tâches d'écart ; lecture du code, des commits, des tests et des enregistrements d'acceptation.
 - **Non couvert.** Les 116 autres tâches cochées (échantillonnées par les contre-visites précédentes) ; aucune sonde ni test
   rejoué ; aucun PDF rendu ; l'échelle d'un devis envoyé est-elle recalculée à chaque lecture (non vérifié).
-- **Statut.** 0 écart S1-S2 ⇒ AMOT passe « vérifié » ; restent les deux tâches d'écart S3.
+- **Statut.** 0 écart S1-S2 ⇒ AMOT passe « vérifié » ; restent les trois tâches d'écart S3.
 
 ## 7. Coût
 
