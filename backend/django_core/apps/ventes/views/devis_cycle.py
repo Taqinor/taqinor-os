@@ -522,9 +522,10 @@ class DevisCycleActionsMixin:
                          if not k.startswith('_')}
                 return Response(corps)
             from apps.facturation.views.facture_gardes import MOTIF_SANS_ENCAISSER, PeutEncaisser
-            if not PeutEncaisser().has_permission(request, self) and (
-                    apercu_prix_negocie(devis, **saisie)['regularisation']
-                    ['type'] == 'avoir'):  # ASEC68 — un avoir exige encaisser
+            from core.numbering import est_reference_provisoire
+            ap = None if PeutEncaisser().has_permission(request, self) else apercu_prix_negocie(devis, **saisie)
+            if ap and (ap['regularisation']['type'] == 'avoir' or any(  # ASEC68 — un avoir exige encaisser ; ASEC93 :
+                    not est_reference_provisoire(f['reference']) for f in ap['factures_annulees'])):  # contre-passation
                 return Response({'detail': MOTIF_SANS_ENCAISSER},
                                 status=status.HTTP_403_FORBIDDEN)
             corps = appliquer_prix_negocie(

@@ -371,3 +371,65 @@ class RevisionParTauxTests(TestCase):
         api.force_authenticate(self.user)
         r = api.post(url, {**corps, 'mode': 'appliquer'}, format='json')
         self.assertEqual(r.status_code, 201, r.data)
+
+    def test_prix_negocie_brouillon_reference_legale_sans_encaisser_403(self, *_):
+        """ASEC93 (C-ASEC-VER6-090, D-ASEC-VER6-1 = exiger_encaisser) — la
+        facture d'acompte ``FAC-…`` remise en brouillon garde sa référence
+        légale : « Prix négocié » appliqué la retire par un avoir de
+        contre-passation même quand la régularisation vaut « aucune ». VRAI
+        rôle système Admin Ventes ⇒ 403 ``{detail}``, ni V2 ni avoir ; aperçu
+        200 qui nomme le brouillon ; le compte qui encaisse ⇒ 201 + avoir.
+        Mutant : ôter la condition de référence légale ⇒ échec."""
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+
+        from apps.facturation.models import LigneFacture
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import ADMIN_VENTES_PERMISSIONS
+        d = make_devis(self.company, self.user, self.client_obj,
+                       [('Panneau ASEC93', '10', '1000', '20')],
+                       reference='DEV-ASEC93-0001')
+        Devis.objects.filter(pk=d.pk).update(statut=Devis.Statut.ENVOYE)
+        d = self._accepter(Devis.objects.get(pk=d.pk))
+        remis = Facture.objects.create(
+            company=self.company, reference='FAC-ASEC93-0001', devis=d,
+            client=self.client_obj, statut=Facture.Statut.BROUILLON,
+            type_facture=Facture.TypeFacture.ACOMPTE,
+            taux_tva=Decimal('20.00'), created_by=self.user)
+        LigneFacture.objects.create(
+            facture=remis, designation='Acompte', quantite=Decimal('1'),
+            produit=LigneDevis.objects.filter(devis=d).first().produit,
+            prix_unitaire=Decimal('3000'), taux_tva=Decimal('20.00'))
+        d = Devis.objects.get(pk=d.pk)
+        self.assertNotIn('encaisser', ADMIN_VENTES_PERMISSIONS)
+        av = get_user_model().objects.create_user(
+            username='asec93_av', password='x', company=self.company,
+            role_legacy='responsable', role=Role.objects.create(
+                company=self.company, nom='Admin Ventes', est_systeme=True,
+                permissions=list(ADMIN_VENTES_PERMISSIONS)))
+        api = APIClient()
+        api.force_authenticate(av)
+        url = f'/api/django/ventes/devis/{d.id}/prix-negocie/'
+        corps = {'prix_ttc': '9000'}
+        r = api.post(url, corps, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['regularisation']['type'], 'aucune')
+        self.assertIn({'reference': 'FAC-ASEC93-0001'},
+                      r.data['factures_annulees'])
+        nb_devis = Devis.objects.count()
+        r = api.post(url, {**corps, 'mode': 'appliquer'}, format='json')
+        self.assertEqual(r.status_code, 403, r.data)
+        self.assertEqual(
+            r.data, {'detail': "Émettre ou encaisser une facture exige le "
+                               "droit d'encaissement."})
+        self.assertEqual(Devis.objects.count(), nb_devis)
+        self.assertFalse(Avoir.objects.filter(company=self.company).exists())
+        d.refresh_from_db()
+        remis.refresh_from_db()
+        self.assertTrue(d.is_active)
+        self.assertEqual(d.version, 1)
+        self.assertEqual(remis.statut, Facture.Statut.BROUILLON)
+        api.force_authenticate(self.user)
+        r = api.post(url, {**corps, 'mode': 'appliquer'}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(Avoir.objects.filter(facture=remis).count(), 1)
