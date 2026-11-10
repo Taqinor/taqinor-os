@@ -21,6 +21,7 @@ from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models.functions import Lower
 
+from core.champs_plateforme import RechercheFTSMixin, index_fts, index_fts_attente
 from core.models import TenantModel
 
 from .models import (
@@ -787,7 +788,7 @@ class AppareilEquipe(TenantModel):
         return self.libelle or self.appareil_id[:8]
 
 
-class Client(models.Model):
+class Client(RechercheFTSMixin, models.Model):
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
@@ -1006,6 +1007,8 @@ class Client(models.Model):
         verbose_name = "Client"
         verbose_name_plural = "Clients"
         unique_together = [('company', 'email')]
+        indexes = [index_fts('crm_client_fts_gin'),  # NTPLT32 — plein-texte (GIN)
+                   index_fts_attente('crm_client_fts_null')]  # NTPLT33
         constraints = [
             # CRX24 — unicité de l'e-mail INSENSIBLE À LA CASSE. Le
             # ``unique_together`` ci-dessus est sensible à la casse, alors que

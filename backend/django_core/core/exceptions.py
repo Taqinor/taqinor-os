@@ -55,6 +55,7 @@ from rest_framework.views import set_rollback
 from core.parametres_requete import MESSAGE_CHAMP as MESSAGE_PARAMETRE_INCONNU
 from core.parametres_requete import ParametresRequeteInconnus
 from core.conflit_etat import ConflitEtat
+from core.verrou_optimiste import ConflitVersion
 from core.unicite import ConflitUnicite, decrire_contrainte, message_conflit
 
 logger = logging.getLogger(__name__)
@@ -71,6 +72,8 @@ _CODE_BY_EXCEPTION = (
     (Http404, 'not_found'),
     (DjangoPermissionDenied, 'permission_denied'),
     (ConflitUnicite, 'unique_conflict'),
+    # NTPLT17 — version périmée (verrou optimiste) : AVANT ConflitEtat, son parent.
+    (ConflitVersion, 'version_conflict'),
     # ACVI76 — tout refus d'état porte son code stable, jamais `api_error`.
     (ConflitEtat, 'state_conflict'),
     # ENFP (D1) — paramètre de requête non déclaré au schéma OpenAPI.

@@ -138,6 +138,38 @@ class TestLeadAPI(TestCase):
         self.assertAlmostEqual(float(lead.gps_lat), 33.5)
         self.assertAlmostEqual(float(lead.gps_lng), -7.6)
 
+    def test_verrou_optimiste_lock_version_opt_in(self):
+        """NTPLT17 — ``lock_version`` servi en lecture ; sans lui dans le corps,
+        le PATCH reste inchangé ; avec une version périmée : 409 et rien
+        d'écrit ; avec la version à jour : l'écriture passe."""
+        lead = Lead.objects.create(company=self.company, nom='Verrou', ville='Oujda')
+        url = f'/api/django/crm/leads/{lead.id}/'
+        v0 = self.api.get(url).data['lock_version']
+        resp = self.api.patch(url, {'ville': 'Rabat'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        lead.refresh_from_db()
+        self.assertEqual(lead.ville, 'Rabat')
+        self.assertGreater(lead.lock_version, v0)
+        resp = self.api.patch(url, {'ville': 'Fes', 'lock_version': v0}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        corps = resp.json()
+        self.assertEqual(corps['code'], 'conflit_version')
+        self.assertEqual(corps['error']['code'], 'version_conflict')
+        self.assertEqual(corps['lock_version'], lead.lock_version)
+        self.assertEqual(corps['actuel']['ville'], 'Rabat')
+        lead.refresh_from_db()
+        self.assertEqual(lead.ville, 'Rabat')
+        resp = self.api.patch(
+            url, {'ville': 'Fes', 'lock_version': lead.lock_version}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        lead.refresh_from_db()
+        self.assertEqual(lead.ville, 'Fes')
+        # Écriture bornée par ``update_fields`` : la version avance quand même.
+        avant = lead.lock_version
+        lead.save(update_fields=['ville'])
+        lead.refresh_from_db()
+        self.assertEqual(lead.lock_version, avant + 1)
+
 
 class TestClientAPI(TestCase):
     """Création de client par l'API : la société vient du serveur (jamais du

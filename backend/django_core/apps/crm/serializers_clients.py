@@ -455,7 +455,7 @@ class ClientSerializer(UniciteEn409Mixin, IdInconnu404Mixin,
 
     class Meta:
         model = Client
-        fields = '__all__'
+        exclude = ['search_vector']  # NTPLT32 — index plein-texte, jamais servi
         read_only_fields = ['date_modification']
         # CI #997 (fuzz) — motif d'ICE publié (validation : ``validate_ice``).
         # ENF15 : la contrainte (société, code_parrainage) ne rend pas le

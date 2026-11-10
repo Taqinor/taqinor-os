@@ -125,6 +125,182 @@ class TestGlobalSearch(TestCase):
         self.assertIn('MaintCli', group['results'][0]['sublabel'])
 
 
+class TestRechercheFtsEntretien(TestCase):
+    """NTPLT32 — ``search_vector`` entretenu après validation (signal
+    ``post_save``), jamais servi par l'API, reconstruit par lots."""
+
+    def setUp(self):
+        self.company = Company.objects.get_or_create(
+            slug='fts-co', defaults={'nom': 'FTS Co'})[0]
+
+    def test_signal_indexe_apres_commit_sans_accents(self):
+        from core.recherche_fts import requete_prefixe
+        lead = Lead.objects.create(company=self.company, nom='Provisoire')
+        lead.nom, lead.ville = 'Élodie', 'Fès'
+        with self.captureOnCommitCallbacks(execute=True):
+            lead.save(update_fields=['nom', 'ville'])
+        lead.refresh_from_db()
+        self.assertIsNotNone(lead.search_vector)
+        for q in ('elodie', 'Élo', 'FES'):
+            self.assertTrue(Lead.objects.filter(
+                pk=lead.pk, search_vector=requete_prefixe(q)).exists(), q)
+        self.assertFalse(Lead.objects.filter(
+            pk=lead.pk, search_vector=requete_prefixe('martin')).exists())
+
+    def test_ecriture_bornee_hors_index_ne_recalcule_pas(self):
+        lead = Lead.objects.create(company=self.company, nom='Borne')
+        Lead.objects.filter(pk=lead.pk).update(search_vector=None)
+        with self.captureOnCommitCallbacks(execute=True):
+            lead.save(update_fields=['note'])
+        lead.refresh_from_db()
+        self.assertIsNone(lead.search_vector)
+        with self.captureOnCommitCallbacks(execute=True):
+            lead.save(update_fields=['nom'])
+        lead.refresh_from_db()
+        self.assertIsNotNone(lead.search_vector)
+
+    def test_rebuild_search_index_par_lots_et_api_sans_vecteur(self):
+        from io import StringIO
+
+        from django.core.management import CommandError, call_command
+        # Hors captureOnCommitCallbacks, le signal ne s'exécute pas : lignes NULL.
+        leads = [Lead.objects.create(company=self.company, nom=f'Lot{i}')
+                 for i in range(3)]
+        client = Client.objects.create(company=self.company, nom='Clientlot')
+        self.assertEqual(Lead.objects.filter(
+            pk__in=[le.pk for le in leads], search_vector__isnull=True).count(), 3)
+        call_command('rebuild_search_index', '--app', 'crm', '--lot', '2',
+                     '--pause-ms', '0', stdout=StringIO())
+        self.assertFalse(Lead.objects.filter(
+            pk__in=[le.pk for le in leads], search_vector__isnull=True).exists())
+        client.refresh_from_db()
+        self.assertIsNotNone(client.search_vector)
+        with self.assertRaises(CommandError):
+            call_command('rebuild_search_index', '--app', 'inconnue',
+                         stdout=StringIO())
+        user = User.objects.create_user(
+            username='fts_user', password='x', role_legacy='responsable',
+            company=self.company)
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+        resp = api.get(f'/api/django/crm/leads/{leads[0].pk}/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertNotIn('search_vector', resp.data)
+
+
+class TestGlobalSearchFts(TestCase):
+    """NTPLT33 — recherche globale en plein-texte : accents, pluriels,
+    préfixe ; une ligne pas encore indexée reste trouvée (repli icontains) ;
+    enveloppe de résultat inchangée."""
+
+    def setUp(self):
+        self.company = Company.objects.get_or_create(
+            slug='fts-search-co', defaults={'nom': 'FTS Search Co'})[0]
+        self.user = User.objects.create_user(
+            username='fts_search_user', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+
+    def _groupe(self, q, type_):
+        resp = self.api.get('/api/django/reporting/search/', {'q': q})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(set(resp.data), {'query', 'groups'})
+        return next((g for g in resp.data['groups'] if g['type'] == type_), None)
+
+    def test_accents_prefixe_et_repli_non_indexe(self):
+        from core.recherche_fts import indexer
+        helene = Lead.objects.create(
+            company=self.company, nom='Hélène', prenom='Zouhri')
+        indexer(Lead, [helene.pk])
+        # Jamais indexé (signal non exécuté en TestCase) : repli icontains.
+        Lead.objects.create(company=self.company, nom='Zouhrinette')
+        # « helene » sans accent : seul le plein-texte la retrouve (ILIKE non).
+        groupe = self._groupe('helene', 'lead')
+        self.assertIsNotNone(groupe)
+        self.assertEqual([r['label'] for r in groupe['results']], ['Hélène Zouhri'])
+        self.assertEqual(set(groupe['results'][0]), {'id', 'label', 'sublabel'})
+        labels = {r['label'] for r in self._groupe('Zouhri', 'lead')['results']}
+        self.assertEqual(labels, {'Hélène Zouhri', 'Zouhrinette'})
+
+    def test_pluriel_francais_et_relation_client(self):
+        from apps.sav.models import Ticket
+        from core.recherche_fts import indexer
+        client = Client.objects.create(company=self.company, nom='Benkirane')
+        ticket = Ticket.objects.create(
+            company=self.company, reference='SAV-FTS-1', client=client,
+            description="Panne de l'onduleur principal")
+        facture = Facture.objects.create(
+            company=self.company, reference='FAC-FTS-1', client=client,
+            taux_tva=Decimal('20'), remise_globale=Decimal('0'))
+        for modele, objet in ((Client, client), (Ticket, ticket), (Facture, facture)):
+            indexer(modele, [objet.pk])
+        # « onduleurs » (pluriel) : absent tel quel du texte, trouvé par racine.
+        ticket = self._groupe('onduleurs', 'ticket')
+        self.assertIsNotNone(ticket)
+        self.assertEqual(ticket['results'][0]['label'], 'SAV-FTS-1')
+        # Facture trouvée par le nom de son client (vecteur du client).
+        facture = self._groupe('benkir', 'facture')
+        self.assertIsNotNone(facture)
+        self.assertEqual(facture['results'][0]['label'], 'FAC-FTS-1')
+
+
+class TestSuggestTrigramme(TestCase):
+    """NTPLT34 — ``reporting/search/suggest/`` : tolérant aux fautes
+    (pg_trgm), borné société, 10 résultats au plus."""
+
+    URL = '/api/django/reporting/search/suggest/'
+
+    def setUp(self):
+        self.company = Company.objects.get_or_create(
+            slug='suggest-co', defaults={'nom': 'Suggest Co'})[0]
+        self.autre = Company.objects.create(slug='suggest-autre', nom='Autre')
+        self.user = User.objects.create_user(
+            username='suggest_user', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+
+    def test_faute_de_frappe_bornee_societe_et_plafond(self):
+        from core.recherche_fts import trigramme_disponible
+        if not trigramme_disponible():
+            self.skipTest("pg_trgm absente de la base de test : repli icontains.")
+        Lead.objects.create(company=self.company, nom='Bennani', prenom='Salma')
+        Lead.objects.create(company=self.autre, nom='Bennani', prenom='Autre')
+        Client.objects.create(company=self.company, nom='Benanni', prenom='Électricité')
+        resp = self.api.get(self.URL, {'q': 'Benani'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(set(resp.data), {'query', 'results'})
+        par_type = {(r['type'], r['label']) for r in resp.data['results']}
+        self.assertIn(('lead', 'Bennani Salma'), par_type)
+        self.assertIn(('client', 'Benanni Électricité'), par_type)
+        self.assertNotIn(('lead', 'Bennani Autre'), par_type)
+        for r in resp.data['results']:
+            self.assertEqual(set(r), {'type', 'id', 'label', 'sublabel', 'score'})
+            self.assertGreater(r['score'], 0.3)
+        scores = [r['score'] for r in resp.data['results']]
+        self.assertEqual(scores, sorted(scores, reverse=True))
+        for i in range(12):
+            Lead.objects.create(company=self.company, nom=f'Bennani{i}')
+        self.assertLessEqual(
+            len(self.api.get(self.URL, {'q': 'Bennani'}).data['results']), 10)
+
+    def test_requete_courte_et_repli_sans_trigramme(self):
+        from unittest import mock
+        resp = self.api.get(self.URL, {'q': 'b'})
+        self.assertEqual(resp.data, {'query': 'b', 'results': []})
+        Lead.objects.create(company=self.company, nom='Alaoui')
+        with mock.patch('apps.reporting.search.trigramme_disponible',
+                        return_value=False):
+            resp = self.api.get(self.URL, {'q': 'lao'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual([(r['type'], r['label'], r['score'])
+                          for r in resp.data['results']],
+                         [('lead', 'Alaoui', None)])
+
+
 class TestNotifications(TestCase):
     def setUp(self):
         self.company = Company.objects.get_or_create(

@@ -7,7 +7,7 @@ from drf_spectacular.utils import (extend_schema_field, extend_schema_serializer
                                    inline_serializer)
 from rest_framework import serializers
 
-from core.mixins import SameCompanyFKSerializerMixin
+from core.mixins import SameCompanyFKSerializerMixin, VerrouOptimisteSerializerMixin
 from core.serializers import CompanyScopedRelationsMixin, ChampsTexteBooleenStricts
 from core.champs_stricts import (
     ChaineStricte, ChampsStrictsMixin, DecimalStricte, IdInconnu404Mixin,
@@ -340,7 +340,9 @@ def _company_du_contexte(serializer):
 
 
 class ProduitSerializer(CompanyScopedRelationsMixin,
-                        ChampsStrictsProduitMixin, serializers.ModelSerializer):
+                        ChampsStrictsProduitMixin,
+                        VerrouOptimisteSerializerMixin,  # NTPLT17 — opt-in
+                        serializers.ModelSerializer):
     # ASTK5 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
     categorie = CategorieSerializer(read_only=True, allow_null=True)  # ENF11 : produit sans catégorie
@@ -750,6 +752,7 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
         fields = [
             # Identité & catalogue
             'id', 'company', 'nom', 'description', 'sku', 'marque',
+            'lock_version',  # NTPLT17 — verrou optimiste (lecture seule)
             # APX18 — photo produit : URL de téléchargement de la pièce jointe
             # MinIO liée (lecture seule ; l'envoi passe par l'action
             # `photo/`). Écrans INTERNES uniquement.
