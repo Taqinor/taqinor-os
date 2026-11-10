@@ -232,8 +232,11 @@ class TestPdfEventCapture(AuditBase):
         self.assertEqual(entry.company_id, self.company.id)
         self.assertEqual(entry.detail, 'PDF devis généré')
 
-    def test_facture_pdf_logs_pdf_audit_row(self):
+    def test_facture_pdf_journalise_apres_rendu_reussi(self):
+        # ASOC8 (C-ASOC-134) — rien à la mise en file (202) ni sur un rendu en
+        # échec ; une ligne au nom du DEMANDEUR après le rendu réussi.
         from apps.ventes.models import Facture
+        from apps.ventes.tasks import task_generate_facture_pdf as tache
         facture = Facture.objects.create(
             company=self.company, reference='FAC-AUD-0001',
             client=self._client(), statut='emise',
@@ -243,9 +246,20 @@ class TestPdfEventCapture(AuditBase):
             resp = auth(self.directeur).post(
                 f'/api/django/ventes/factures/{facture.id}/generer-pdf/')
         self.assertEqual(resp.status_code, 202)
-        entry = AuditLog.objects.filter(
-            action='pdf', object_id=str(facture.id)).first()
-        self.assertIsNotNone(entry)
+        task.delay.assert_called_once_with(
+            facture.id, user_id=self.directeur.id)
+        pdf = AuditLog.objects.filter(action='pdf', object_id=str(facture.id))
+        self.assertEqual(pdf.count(), 0)
+        with patch('apps.ventes.utils.pdf.generate_facture_pdf',
+                   side_effect=RuntimeError('rendu KO')):
+            with self.assertRaises(RuntimeError):
+                tache(facture.id, user_id=self.directeur.id)
+        self.assertEqual(pdf.count(), 0)
+        with patch('apps.ventes.utils.pdf.generate_facture_pdf',
+                   return_value='fake-key'):
+            tache(facture.id, user_id=self.directeur.id)
+        self.assertEqual(pdf.count(), 1)
+        entry = pdf.first()
         self.assertEqual(entry.user_id, self.directeur.id)
         self.assertEqual(entry.company_id, self.company.id)
         self.assertEqual(entry.detail, 'PDF facture généré')

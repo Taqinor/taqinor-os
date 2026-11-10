@@ -55,19 +55,23 @@ def oublier_echec_pdf_devis(devis_id):
     cache.delete(pdf_job_cache_key(devis_id))
 
 
-def _signaler_pdf_devis_genere(devis_id):
-    """ADEV22 — émet ``document_pdf_generated(kind='devis')`` pour le devis
-    rendu ; best-effort (un journal raté n'invalide pas un PDF rendu)."""
+def _signaler_pdf_genere(obj_id, kind='devis', user_id=None):
+    """ADEV22/ASOC8 — émet ``document_pdf_generated`` APRÈS le rendu réussi
+    (devis ou facture), au nom du demandeur ``user_id`` s'il est passé ;
+    best-effort (un journal raté n'invalide pas un PDF rendu)."""
     try:
+        from django.contrib.auth import get_user_model
         from core.events import document_pdf_generated
-        from .models import Devis
-        devis = Devis.objects.filter(pk=devis_id).first()
-        if devis is not None:
+        from .models import Devis, Facture
+        model = Facture if kind == 'facture' else Devis
+        obj = model.objects.filter(pk=obj_id).first()
+        acteur = {} if user_id is None else {
+            'user': get_user_model().objects.filter(pk=user_id).first()}
+        if obj is not None:
             document_pdf_generated.send(
-                sender=Devis, instance=devis, kind='devis')
+                sender=model, instance=obj, kind=kind, **acteur)
     except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
-        logger.exception('ADEV22 : audit PDF devis ignoré (devis %s)',
-                         devis_id)
+        logger.exception('ADEV22 : audit PDF %s ignoré (%s)', kind, obj_id)
 
 
 @shared_task(
@@ -119,7 +123,7 @@ def task_generate_devis_pdf(self, devis_id, pdf_options=None):
         logger.info('task_generate_devis_pdf OK: %s', key)
         # ADEV22 (C-ADEV-028) — l'entrée d'audit « PDF devis généré » est
         # écrite au RENDU réussi (plus à la demande ``generer-pdf``).
-        _signaler_pdf_devis_genere(devis_id)
+        _signaler_pdf_genere(devis_id)
         # WIR217 — un rendu réussi PURGE l'échec précédent : un « Réessayer »
         # qui aboutit ne doit pas laisser l'écran en échec pendant 24 h.
         oublier_echec_pdf_devis(devis_id)
@@ -367,12 +371,13 @@ def _pdf_exists(key):
     default_retry_delay=30,
     acks_late=True,
 )
-def task_generate_facture_pdf(self, facture_id):
+def task_generate_facture_pdf(self, facture_id, user_id=None):
     """Generate PDF for Facture and store in MinIO. Retries on failure."""
     try:
         from .utils.pdf import generate_facture_pdf
         key = generate_facture_pdf(facture_id)
         logger.info('task_generate_facture_pdf OK: %s', key)
+        _signaler_pdf_genere(facture_id, 'facture', user_id)  # ASOC8
         return key
     except Exception as exc:
         logger.error('task_generate_facture_pdf failed facture_id=%s: %s', facture_id, exc)
