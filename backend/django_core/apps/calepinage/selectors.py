@@ -617,6 +617,12 @@ def _calepinage_lisible_pour_devis(devis_id, company):
     return calepinage
 
 
+#: ACON21 — le motif d'un ombrage refusé à un devis dont la conception a
+#: divergé de celle de son calepinage.
+MOTIF_CONCEPTION_DIVERGENTE = ('Conception modifiée depuis le devis : '
+                               'resynchronisez le devis.')
+
+
 def ombrage_servi(devis_id, company):
     """ACAL143 — la perte d'OMBRAGE de la conception d'un devis, PAR PAN,
     lue sur le résultat SERVI (même verdict de fraîcheur que GET resultat/,
@@ -640,6 +646,15 @@ def ombrage_servi(devis_id, company):
     calepinage = _calepinage_lisible_pour_devis(devis_id, company)
     if calepinage is None:
         return None
+    if str(calepinage.devis_id) == str(devis_id):
+        # ACON21 — lien direct : la conception a changé depuis le devis
+        # (empreintes imprimées, ACAL46) ⇒ aucune perte d'une autre conception.
+        from apps.ventes.selectors import get_devis_by_pk
+        from apps.ventes.selectors_calepinage import _conception_a_jour
+
+        if _conception_a_jour(get_devis_by_pk(devis_id), calepinage) is False:
+            return {'perime': True, 'motif': MOTIF_CONCEPTION_DIVERGENTE,
+                    'par_pan': {}, 'global': None}
     servi = resultat_servi(calepinage)
     if servi.get('simulation_perimee'):
         return {'perime': True, 'motif': servi.get('motif') or '',
