@@ -187,7 +187,7 @@ function DsrRequests() {
 
   const load = () => toutesLesPages((params) => coreApi.confidentialite.dsrRequests.list(params))
     .then((rows) => { setRows(rows); setLoadError(false) })
-    .catch(() => setLoadError(true))
+    .catch((e) => setLoadError(e?.response?.status === 403 ? 'refus' : true))
     .finally(() => setLoading(false))
 
   useEffect(() => { load() }, [])
@@ -228,6 +228,15 @@ function DsrRequests() {
     JSON.stringify(row.resultat, null, 2), `dsr-acces-${row.id}.json`)
 
   if (loading) return <ChargementTexte />
+  // ERR-APFS-DSR-ECRAN-REFUS-GENERIQUE — un 403 (droit `dsr_traiter` manquant)
+  // se montre COMME un refus qui nomme le droit, pas comme une panne.
+  if (loadError === 'refus') {
+    return (
+      <EmptyState title="Accès refusé"
+        description="Les demandes de personnes concernées exigent le droit « Traiter les demandes de personnes concernées » (dsr_traiter). Demandez-le à un administrateur."
+        className="py-6" />
+    )
+  }
   if (loadError) {
     return <ErreurChargementListe title="Impossible de charger les demandes" />
   }

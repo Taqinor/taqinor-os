@@ -84,6 +84,15 @@ describe('ConfidentialiteSection (XPLT23)', () => {
     expect(screen.getAllByText('Accès (export)').length).toBeGreaterThan(0)
   })
 
+  it('montre un 403 DSR comme un refus nommant le droit, pas comme une panne (ERR-APFS-DSR-ECRAN-REFUS-GENERIQUE)', async () => {
+    listDsr.mockImplementationOnce(() => Promise.reject({ response: { status: 403 } }))
+    renderWithRole('admin')
+
+    expect(await screen.findByText('Accès refusé')).toBeInTheDocument()
+    expect(screen.getByText(/dsr_traiter/)).toBeInTheDocument()
+    expect(screen.queryByText('Impossible de charger les demandes')).not.toBeInTheDocument()
+  })
+
   it('soumet une nouvelle demande de personne concernée', async () => {
     const user = userEvent.setup()
     renderWithRole('responsable')
