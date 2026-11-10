@@ -1,0 +1,36 @@
+# ADCG67 (D-ADCG-2 = fusion_auto_securite_mono_paquet) : met en file de fusion les PR Dependabot
+# de SECURITE, mono-paquet, patch/minor. Les checks requis (merge queue) gardent la main : rien
+# n'est contourne. Groupes, majeures et montees ordinaires ne sont jamais touches.
+# pull_request_target : le code de la PR n'est JAMAIS recupere ni execute (pas de checkout).
+name: dependabot-automerge
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+
+permissions: {}
+
+jobs:
+  automerge:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Metadonnees Dependabot
+        id: meta
+        uses: dependabot/fetch-metadata@v2.4.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Mettre en file (securite, mono-paquet, patch/minor)
+        if: >-
+          steps.meta.outputs.ghsa-id != '' &&
+          steps.meta.outputs.dependency-group == '' &&
+          !contains(steps.meta.outputs.dependency-names, ',') &&
+          (steps.meta.outputs.update-type == 'version-update:semver-patch' ||
+          steps.meta.outputs.update-type == 'version-update:semver-minor')
+        run: gh pr merge --auto --merge "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

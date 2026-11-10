@@ -204,5 +204,33 @@ class DockerComposeTests(unittest.TestCase):
             self.assertNotEqual((dep.get("django_core") or {}).get("condition"), "service_healthy")
 
 
+class AutomergeDependabotTests(unittest.TestCase):
+    """ADCG67 / D-ADCG-2 : fusion auto des seules PR de securite mono-paquet patch/minor."""
+
+    def test_automerge_dependabot_securite_seulement(self):
+        texte = (ROOT / ".github/workflows/dependabot-automerge.yml").read_text(encoding="utf-8")
+        wf = yaml.safe_load(texte)
+        declencheurs = wf.get("on") or wf.get(True)
+        self.assertEqual(set(declencheurs), {"pull_request_target"})
+        job = wf["jobs"]["automerge"]
+        self.assertIn("dependabot[bot]", job["if"])
+        self.assertEqual(wf["permissions"], {})
+        self.assertEqual(job["permissions"], {"contents": "write", "pull-requests": "write"})
+        self.assertNotIn("actions/checkout", texte)
+        self.assertNotIn("pull_request.head", texte)
+        etapes = job["steps"]
+        meta = next(e for e in etapes if "fetch-metadata" in e.get("uses", ""))
+        self.assertRegex(meta["uses"], r"dependabot/fetch-metadata@v\d+\.\d+\.\d+$")
+        fusion = next(e for e in etapes if "gh pr merge" in e.get("run", ""))
+        self.assertIn("--auto --merge", fusion["run"])
+        cond = fusion["if"]
+        for garde in ("ghsa-id != ''", "dependency-group == ''",
+                      "contains(steps.meta.outputs.dependency-names, ',')",
+                      "semver-patch", "semver-minor"):
+            self.assertIn(garde, cond)
+        self.assertNotIn("semver-major", cond)
+        self.assertNotIn("--admin", texte)
+
+
 if __name__ == "__main__":
     unittest.main()
