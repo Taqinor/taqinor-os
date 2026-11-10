@@ -156,6 +156,49 @@ class TicketFkEtChampsServeurTests(TestCase):
         self.assertTrue(TicketActivity.objects.filter(
             ticket=self.ticket, body__contains='Couverture :').exists())
 
+    def test_creation_couverture_et_ouverture_reservees(self):
+        """ACSV107 : à la CRÉATION aussi, un Technicien ne pose ni la
+        couverture (403, 0 ticket) ni une date d'ouverture ancienne (date du
+        jour) ; le responsable pose les deux."""
+        from django.utils import timezone
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
+        role = Role.objects.create(
+            company=self.a, nom='Technicien ACSV107',
+            permissions=list(TECHNICIEN_PERMISSIONS))
+        tech = User.objects.create_user(
+            username='acsv107_tech', password='x', company=self.a, role=role)
+        produit = Produit.objects.create(
+            company=self.a, nom='Onduleur 2019', sku='ACSV107-OND',
+            prix_achat=Decimal('10'), prix_vente=Decimal('20'))
+        equipement = Equipement.objects.create(
+            company=self.a, produit=produit, client_vente=self.client_a,
+            numero_serie='ACSV107', date_pose=date(2019, 3, 1),
+            date_fin_garantie=date(2024, 3, 1))
+        base = {'client': self.client_a.id, 'equipement': equipement.id,
+                'type': 'correctif'}
+        api_tech = _api(tech)
+        avant = Ticket.objects.count()
+        r = api_tech.post(URL, {**base, 'description': 'a',
+                                'couverture': 'garantie'}, format='json')
+        self.assertEqual(r.status_code, 403)
+        self.assertIn('detail', r.data)
+        self.assertEqual(Ticket.objects.count(), avant)
+        r = api_tech.post(URL, {**base, 'description': 'b',
+                                'date_ouverture': '2020-01-01'}, format='json')
+        self.assertEqual(r.status_code, 201)
+        self.assertEqual(r.data['couverture_proposee'], 'facturable')
+        ticket = Ticket.objects.get(pk=r.data['id'])
+        self.assertEqual(ticket.couverture, 'a_determiner')
+        self.assertEqual(ticket.date_ouverture, timezone.localdate())
+        r = self.api.post(URL, {**base, 'description': 'c',
+                                'couverture': 'garantie',
+                                'date_ouverture': '2020-01-01'}, format='json')
+        self.assertEqual(r.status_code, 201)
+        ticket = Ticket.objects.get(pk=r.data['id'])
+        self.assertEqual((ticket.couverture, ticket.date_ouverture),
+                         ('garantie', date(2020, 1, 1)))
+
     def test_cout_fige(self):
         r = self._patch({'cout': '999.00'})
         self.assertEqual(r.status_code, 200, r.data)
