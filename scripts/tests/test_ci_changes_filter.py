@@ -209,7 +209,9 @@ _ALL_JOBS = ("changes", "ci-image-check", "backend-lint-fast", "backend-openapi"
              # ENF11 — sous-ensemble PR du fuzz API (suivi par `backend-tests`).
              "api-fuzz-pr",
              # ADCG72 — SAST + audit CVE (suivis par `backend-lint`).
-             "bandit", "semgrep", "dependency-audit")
+             "bandit", "semgrep", "dependency-audit",
+             # ADCG74 — suite RLS hors des lanes (suivie par `backend-tests`).
+             "backend-rls")
 
 
 def _expr(cond, results, outputs):
@@ -406,7 +408,7 @@ class RunAllegeTests(unittest.TestCase):
     restent, verts (lanes « skipped » = acceptables). Le run `merge_group`
     (allege=false) reste le seul gate complet."""
 
-    LOURDES = ("backend-testdb", "backend-tests-shard", "api-fuzz-pr",
+    LOURDES = ("backend-testdb", "backend-tests-shard", "backend-rls", "api-fuzz-pr",
                "frontend-vitest-shard", "e2e-shard")
     RAPIDES = ("backend-lint-fast", "backend-openapi", "frontend-static",
                "stage-names", "web-build-test", "fastapi-security", "ci-image-check")

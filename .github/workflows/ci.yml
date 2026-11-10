@@ -1301,21 +1301,60 @@ jobs:
           read -r _ u2 n2 s2 i2 w2 q2 sq2 st2 _ < /proc/stat
           occ=$(( u2+n2+s2+q2+sq2+st2 - (u1+n1+s1+q1+sq1+st1) )); tot=$(( occ + i2+w2 - i1-w1 ))
           echo "CPU lane : $(( 100*occ/(tot>0?tot:1) )) % occupe sur $(nproc) vCPU, $(( $(date +%s)-t0 )) s de mur (iowait $(( 100*(w2-w1)/(tot>0?tot:1) )) %)"
-      # NTPLT5 — suite d'étanchéité RLS (`core.tests.test_rls*`, sautée sans
-      # POSTGRES_RLS_ENABLED). SOLMVP54 (21/09/2026) : c'était un job séparé
-      # `rls-tests` (2 min 18 s dont 1 min 30 s de mise en place pour 33 s de
-      # tests, un créneau de la vague, et NON requis — il n'entrait pas dans
-      # ci-gate). Repliée ICI, sur la lane 0, APRÈS sa tranche normale : même
-      # base `test_erp_db` déjà restaurée, +33 s sur une seule lane, un créneau
-      # rendu à une 7e/8e lane backend — et la suite devient de fait REQUISE
-      # (elle rougit l'agrégateur `backend-tests`), ce qui est plus strict
-      # qu'avant, pas moins. `--parallel 1` comme avant (la suite manipule les
-      # politiques RLS de la base partagée).
-      - name: Run RLS seal suite (opt-in — flag ON, lane 0 only)
-        if: ${{ matrix.shard == 0 }}
+
+  # NTPLT5 — suite d'étanchéité RLS (`core.tests.test_rls*`, sautée sans
+  # POSTGRES_RLS_ENABLED, `--parallel 1` : elle manipule les politiques RLS de
+  # la base partagée). ADCG74 (C-ADCG-041, 10/11/2026) : repliée sur la lane 0
+  # de `backend-tests-shard` par SOLMVP54, elle allongeait le chemin critique ;
+  # elle tourne de nouveau EN PARALLÈLE (même image, même dump restauré) et
+  # reste REQUISE : l'agrégateur `backend-tests` la suit (garde d'échec).
+  backend-rls:
+    needs: [changes, ci-image-check, backend-testdb]
+    if: ${{ !cancelled() && needs.changes.outputs.backend == 'true' && needs.changes.outputs.allege != 'true' && needs.ci-image-check.result == 'success' && (needs.backend-testdb.result == 'success' || needs.backend-testdb.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    permissions:
+      contents: read
+      packages: read
+    defaults:
+      run:
+        shell: bash
+    container:
+      image: ${{ needs.ci-image-check.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    services:
+      redis:
+        image: mirror.gcr.io/library/redis:7.4-alpine
+        ports:
+          - 6379:6379
+    env:
+      DJANGO_SETTINGS_MODULE: erp_agentique.settings.dev
+      DJANGO_SECRET_KEY: ci-only-secret-key-not-used-in-production
+      DJANGO_DEBUG: 'True'
+      DB_NAME: erp_db
+      DB_USER: erp_user
+      DB_PASSWORD: ci_password
+      DB_HOST: localhost
+      DB_PORT: '5432'
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      DB_STATEMENT_TIMEOUT_MS: '600000'
+      MINIO_ENDPOINT: localhost:9000
+      MINIO_ROOT_USER: erp_admin
+      MINIO_ROOT_PASSWORD: erp_minio_password
+      MINIO_BUCKET_PDF: erp-pdf
+      MINIO_BUCKET_UPLOADS: erp-uploads
+      POSTGRES_RLS_ENABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/backend-env
+        with:
+          testdb-cache-into: test_erp_db
+          prebuilt-image: 'true'
+      - name: Run RLS seal suite (opt-in — flag ON)
         working-directory: backend/django_core
-        env:
-          POSTGRES_RLS_ENABLED: '1'
         run: >-
           python manage.py test
           core.tests.test_rls
@@ -1625,7 +1664,7 @@ jobs:
           if-no-files-found: warn
 
   backend-tests:
-    needs: [changes, ci-image-check, backend-testdb, backend-tests-shard, fastapi-security, api-fuzz-pr]
+    needs: [changes, ci-image-check, backend-testdb, backend-tests-shard, backend-rls, fastapi-security, api-fuzz-pr]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
@@ -1660,6 +1699,12 @@ jobs:
         if: ${{ needs.backend-tests-shard.result == 'failure' || needs.backend-tests-shard.result == 'cancelled' }}
         run: |
           echo "A backend-tests shard did not pass (result=${{ needs.backend-tests-shard.result }})."
+          exit 1
+      # ADCG74 — la suite RLS (job `backend-rls`) fait partie du check REQUIS.
+      - name: Fail if the RLS seal suite failed or was cancelled
+        if: ${{ needs.backend-rls.result == 'failure' || needs.backend-rls.result == 'cancelled' }}
+        run: |
+          echo "backend-rls did not pass (result=${{ needs.backend-rls.result }})."
           exit 1
       # ADEP15 — la lane securite du service IA fait partie du check REQUIS : un echec
       # (ou annulation) de `fastapi-security` rougit `backend-tests`. Sautee par le
@@ -2376,13 +2421,9 @@ jobs:
         run: echo "e2e-shard result=${{ needs.e2e-shard.result }} — gate OK."
 
   # ---------------------------------------------------------------------------
-  # NTPLT5 / AUD422 — la suite d'étanchéité RLS (`core.tests.test_rls` +
-  # `test_rls_cross_tenant_denial`, opt-in par POSTGRES_RLS_ENABLED) était ici
-  # un job `rls-tests` séparé, non requis. SOLMVP54 (21/09/2026) : repliée sur
-  # la lane 0 de `backend-tests-shard` (voir son étape « Run RLS seal suite »),
-  # même dump WOW8 restauré, `--parallel 1` conservé (la suite applique ses
-  # propres policies en setUp et les retire en tearDown — le dump restauré
-  # exerce le sceau exactement comme un build froid, WOW-CI 16/07/2026).
+  # NTPLT5 / AUD422 — la suite d'étanchéité RLS : job `backend-rls` (ADCG74),
+  # suivi par `backend-tests` et `ci-gate` ; même dump WOW8 restauré (la suite
+  # applique ses propres policies en setUp et les retire en tearDown).
   # ---------------------------------------------------------------------------
   # Always-running aggregate gate. Pin THIS one job as the single required
   # status check on `main`: because it always runs (if: always()) it can never
@@ -2410,6 +2451,7 @@ jobs:
       - backend-lint-fast
       - backend-openapi
       - backend-tests-shard
+      - backend-rls
       - fastapi-security
       - api-fuzz-pr
       - frontend-static
@@ -2430,6 +2472,7 @@ jobs:
           echo "backend-lint-fast=${{ needs.backend-lint-fast.result }}"
           echo "backend-openapi=${{ needs.backend-openapi.result }}"
           echo "backend-tests-shard=${{ needs.backend-tests-shard.result }}"
+          echo "backend-rls=${{ needs.backend-rls.result }}"
           echo "fastapi-security=${{ needs.fastapi-security.result }}"
           echo "api-fuzz-pr=${{ needs.api-fuzz-pr.result }}"
           echo "frontend-static=${{ needs.frontend-static.result }}"

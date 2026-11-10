@@ -328,6 +328,28 @@ class WorkflowShardTotalConsistencyTests(unittest.TestCase):
             set(matrix), set(range(len(matrix))),
             "la matrice doit etre exactement 0..N-1, sans trou ni doublon")
 
+    def test_suite_rls_hors_des_lanes_et_requise(self):
+        """ADCG74 (C-ADCG-041) — la suite RLS ne charge plus la lane 0 : job
+        `backend-rls` parallèle (même image, dump restauré, flag ON, `--parallel 1`),
+        suivi par `backend-tests` avec sa garde d'échec ; aucune réserve de lane."""
+        with open(self.WORKFLOW, encoding="utf-8") as fh:
+            jobs = yaml.safe_load(fh)["jobs"]
+        shard = jobs[self.JOB_NAME]
+        self.assertFalse([s for s in shard["steps"] if "test_rls" in str(s.get("run", ""))
+                          or "matrix.shard == 0" in str(s.get("if", ""))])
+        rls = jobs["backend-rls"]
+        self.assertEqual(rls["container"], shard["container"])
+        self.assertEqual(rls["env"]["POSTGRES_RLS_ENABLED"], "1")
+        self.assertEqual(rls["if"], shard["if"])
+        run = " ".join(str(s.get("run", "")) for s in rls["steps"])
+        self.assertIn("core.tests.test_rls", run)
+        self.assertIn("--parallel 1", run)
+        self.assertIn("backend-rls", jobs["backend-tests"]["needs"])
+        self.assertIn("backend-rls", jobs["ci-gate"]["needs"])
+        self.assertTrue(any("needs.backend-rls.result == 'failure'" in str(s.get("if", ""))
+                            and "exit 1" in str(s.get("run", "")) for s in jobs["backend-tests"]["steps"]))
+        self.assertEqual(ci_shard.LANE_RESERVE_SECONDS, {})
+
     def test_rouge_dabord_a_stale_hardcoded_literal_is_caught(self):
         """AUD830 Done= — simule EXACTEMENT le scenario du defaut mesure :
         une matrice retombee a 5 entrees avec le litteral '6' inchange a
