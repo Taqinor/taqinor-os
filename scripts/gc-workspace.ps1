@@ -57,7 +57,8 @@ $mergedDeleted = 0; $unmergedKept = @()
 # et, sous $ErrorActionPreference='Stop', PS 5.1 promeut le stderr natif en
 # erreur terminale qui tuait la boucle). On les exclut donc en amont.
 $checkedOut = @(git worktree list --porcelain | Select-String '^branch refs/heads/' | ForEach-Object { $_.ToString().Substring(18) })
-$merged = (git branch --merged main --format '%(refname:short)') -split "`n" | Where-Object { $_ -and $_ -notin @('main','master') -and ($_ -match '^(agent-|claude/|wow-)') -and ($_ -notin $checkedOut) }
+$motif = '^(agent-|worktree-agent-|claude/|wow-)'  # ADCG21 : worktree-agent-* = outil de worktree des agents
+$merged = (git branch --merged main --format '%(refname:short)') -split "`n" | Where-Object { $_ -and $_ -notin @('main','master') -and ($_ -match $motif) -and ($_ -notin $checkedOut) }
 foreach ($b in $merged) {
   Write-Host "  ${act}delete merged branch $b"
   if (-not $WhatIf) {
@@ -67,7 +68,7 @@ foreach ($b in $merged) {
     $mergedDeleted++
   }
 }
-$unmergedKept = (git branch --no-merged main --format '%(refname:short)') -split "`n" | Where-Object { $_ -and ($_ -match '^(agent-|claude/|wow-)') }
+$unmergedKept = (git branch --no-merged main --format '%(refname:short)') -split "`n" | Where-Object { $_ -and ($_ -match $motif) }
 if ($unmergedKept) { Write-Host "  KEEP (non fusionnées, à vérifier à la main) :"; $unmergedKept | ForEach-Object { Write-Host "    - $_" } }
 
 # 3) Docker : cache de build + images pendantes.

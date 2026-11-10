@@ -558,6 +558,9 @@ GARDES = {
         ('Test des garde-fous des scripts de QA de nuit (QAH11)',
          'python -m unittest scripts.tests.test_nightly_qa_scripts -v',
          '.'),
+        ('Test du nettoyage gc-workspace sur un depot temporaire (ADCG21)',
+         'python -m unittest scripts.tests.test_gc_workspace -v',
+         '.'),
         # Instantanés anonymisés de prod (qa_export_anonymise) : CONFIDENTIELS,
         # ignorés par .gitignore — cette garde refuse un `git add -f`.
         ('Check aucun instantané anonymisé suivi par git (var/anon, *.anon.json.gz)',
