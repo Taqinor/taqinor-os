@@ -15,7 +15,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from authentication.permissions import HasPermissionOrLegacy, IsAnyRole
 from apps.stock.permissions import PeutVoirPrixAchat
 from core.viewsets import CompanyScopedModelViewSet
 
@@ -46,7 +46,7 @@ class ContratPrixFournisseurViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet)
             return [IsAnyRole(), PeutVoirPrixAchat()]
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
-        return [IsResponsableOrAdmin()]
+        return [HasPermissionOrLegacy('achats_commander')()]  # APFS117
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -133,7 +133,7 @@ class ContratPrixLigneViewSet(oa.JsonOnlyMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
-        return [IsResponsableOrAdmin()]
+        return [HasPermissionOrLegacy('achats_commander')()]  # APFS117
 
     def get_queryset(self):
         qs = super().get_queryset()
