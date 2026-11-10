@@ -133,6 +133,8 @@ def _matcher(company, subject_identifier):
 
 def export_crm(company, subject_identifier):
     """Export des données CRM de la personne (leads + clients)."""
+    from apps.visites.selectors import visites_export_dsr
+    from .models import LeadActivity
     leads, clients = _matcher(company, subject_identifier)
     return {
         'leads': [
@@ -163,6 +165,10 @@ def export_crm(company, subject_identifier):
             }
             for cl in clients
         ],
+        'chatter': [  # ASOC67 — chatter des leads + visites terrain (selector visites)
+            {'id': a.pk, 'lead': a.lead_id, 'kind': a.kind, 'body': a.body, 'champ': a.field_label,
+             'le': a.created_at.isoformat()} for a in LeadActivity.objects.filter(company=company, lead__in=leads)],
+        'visites': visites_export_dsr(company, leads.values_list('pk', flat=True)),
     }
 
 

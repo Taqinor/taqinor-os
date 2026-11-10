@@ -38,8 +38,16 @@ const KIND_LABELS = {
   effacement: 'Effacement',
   rectification: 'Rectification',
 }
-const STATUT_TONE = { recue: 'warning', traitee: 'success', refusee: 'danger' }
-const STATUT_LABELS = { recue: 'Reçue', traitee: 'Traitée', refusee: 'Refusée' }
+const STATUT_TONE = {
+  recue: 'warning', en_verification: 'warning', partielle: 'warning', traitee: 'success', refusee: 'danger',
+}
+const STATUT_LABELS = {
+  recue: 'Reçue', en_verification: "En vérification d'identité", partielle: 'Partiellement traitée',
+  traitee: 'Traitée', refusee: 'Refusée',
+}
+// ASOC103 — sources d'un effacement partiel restées en erreur (`{erreur}` par source).
+const sourcesEnEchec = (resultat) => Object.entries(resultat ?? {})
+  .filter(([, v]) => v && typeof v === 'object' && 'erreur' in v)
 
 // ── Bloc 1 : registre des traitements CNDP ───────────────────────────────────
 function RegistreTraitements() {
@@ -199,7 +207,8 @@ function DsrRequests() {
   }
 
   const traiter = async (row) => {
-    if (row.kind === 'effacement') {
+    // ASOC103 — une relance (partielle) reprend un effacement déjà confirmé.
+    if (row.kind === 'effacement' && row.statut !== 'partielle') {
       const ok = await confirm({
         title: `Effacer les données de ${row.subject_identifier} ?`,
         description: 'Irréversible : les données de cette personne seront effacées.',
@@ -250,12 +259,12 @@ function DsrRequests() {
                 {STATUT_LABELS[row.statut] ?? row.statut}
               </Badge>
               <div className="ml-auto flex items-center gap-1">
-                {row.statut === 'recue' && (
+                {['recue', 'en_verification', 'partielle'].includes(row.statut) && (
                   <Button type="button" size="sm" variant="outline"
                     disabled={traitingId === row.id}
                     onClick={() => traiter(row)}>
                     <FileCheck2 className="size-4" aria-hidden="true" />
-                    {traitingId === row.id ? 'Traitement…' : 'Traiter'}
+                    {traitingId === row.id ? 'Traitement…' : (row.statut === 'partielle' ? 'Relancer' : 'Traiter')}
                   </Button>
                 )}
                 {row.kind === 'acces' && row.statut === 'traitee' && row.resultat && (
@@ -268,6 +277,11 @@ function DsrRequests() {
               {row.kind === 'acces' && row.statut === 'traitee' && row.resultat && (
                 <p className="w-full text-[11.5px] text-muted-foreground" data-testid="dsr-sources">
                   Sources exportées : {Object.keys(row.resultat).join(', ') || '—'}
+                </p>
+              )}
+              {row.statut === 'partielle' && (
+                <p className="w-full text-[11.5px] text-destructive" data-testid="dsr-echecs">
+                  Sources en échec : {sourcesEnEchec(row.resultat).map(([n, v]) => `${n} — ${v.erreur}`).join(', ')}
                 </p>
               )}
             </div>

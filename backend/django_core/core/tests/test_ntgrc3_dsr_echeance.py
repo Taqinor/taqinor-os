@@ -94,6 +94,48 @@ class MachineAEtatsTests(TestCase):
         with self.assertRaises(dsr.TransitionInterdite):
             dsr.traiter_demande(demande)
 
+    def test_effacement_en_echec_partiel_reste_relancable(self):
+        """ASOC65 (D-ASOC-6) — une source d'effacement en échec ⇒ « partielle »,
+        relancée la source réparée ⇒ « traitee » ; un accès en échec reste
+        « traitee » (inchangé)."""
+        sauvegarde = dict(dsr._PROVIDERS)
+        etat = {'casse': True}
+
+        def _erase(co, subj):
+            if etat['casse']:
+                raise RuntimeError('stockage indisponible')
+            return 2
+
+        def _boom(co, subj):
+            raise RuntimeError('export KO')
+
+        try:
+            dsr._PROVIDERS.clear()
+            dsr.register_dsr_provider('crm', erase=lambda co, subj: 1)
+            dsr.register_dsr_provider('stock', export=_boom, erase=_erase)
+            demande = self._demande(kind=DataSubjectRequest.KIND_ERASURE)
+            dsr.traiter_demande(demande)
+            demande.refresh_from_db()
+            self.assertEqual(demande.statut, DataSubjectRequest.STATUT_PARTIELLE)
+            self.assertIn('erreur', demande.resultat['stock'])
+            self.assertEqual(demande.resultat['crm'], 1)
+            self.assertIn(demande, list(dsr.demandes_en_retard(
+                self.company, now=demande.date_echeance
+                + timezone.timedelta(days=1))))
+            etat['casse'] = False
+            dsr.traiter_demande(demande)
+            demande.refresh_from_db()
+            self.assertEqual(demande.statut, DataSubjectRequest.STATUT_TRAITEE)
+            self.assertIsNotNone(demande.traitee_le)
+            acces = DataSubjectRequest.objects.create(
+                company=self.company, subject_identifier='a@b.ma',
+                kind=DataSubjectRequest.KIND_ACCESS)
+            dsr.traiter_demande(acces)
+            self.assertEqual(acces.statut, DataSubjectRequest.STATUT_TRAITEE)
+        finally:
+            dsr._PROVIDERS.clear()
+            dsr._PROVIDERS.update(sauvegarde)
+
     def test_refus_est_terminal(self):
         demande = self._demande()
         dsr.refuser_demande(demande, motif='Identité non prouvée.')
