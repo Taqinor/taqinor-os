@@ -276,12 +276,14 @@ def _generer_sous_verrou(calepinage, layout, company, lead, client, montants,
         if (lie.statut == 'brouillon'
                 and (lie.layout_hash or '') == (empreinte or '')):
             _refuser_autre_marche(lie, lead)  # ACON90
+            _refuser_montants_differents(lie, montants)  # ACON49
             return lie, False
         raise _refus_deja_rattache(lie)
     if lead is not None:
         deja = _brouillon_reutilisable(company, lead, empreinte, calepinage)
         if deja is not None:
             _refuser_autre_marche(deja, lead)  # ACON90
+            _refuser_montants_differents(deja, montants)  # ACON49
             _lier(calepinage, deja, user=user)
             # ACON85 — les études relues APRÈS le lien (ombrage servi).
             rafraichir_etudes_du_devis(deja)
@@ -406,6 +408,30 @@ def _lier(calepinage, devis, *, user=None):
         lier_devis(calepinage, devis.pk, user=user)
     except LiaisonRefusee as refus:
         raise DevisRefuse(str(refus), champ='devis', statut=409) from None
+
+
+def _refuser_montants_differents(brouillon, montants):
+    """ACON49 — une génération DÉDUPLIQUÉE ne change jamais en silence les
+    montants demandés : TVA ou remise différente du brouillon rendu ⇒ 409
+    nommant le champ (le brouillon se modifie depuis le devis), rien écrit."""
+    for cle, quoi, geste in (('taux_tva', 'à {} %', 'la TVA'),
+                             ('remise_globale', 'avec une remise de {} %',
+                              'la remise')):
+        actuel = getattr(brouillon, cle, None)
+        if cle in montants and actuel is not None and montants[cle] != actuel:
+            message = (f"Le devis {brouillon.reference} existe déjà "
+                       f"{quoi.format(pourcentage_lisible(actuel))} : "
+                       f"changez {geste} depuis le devis.")
+            raise DevisRefuse(message, champ=cle, statut=409,
+                              donnees={cle: message})
+
+
+def pourcentage_lisible(valeur):
+    """ACON49 — ``Decimal('20.00')`` ⇒ ``'20'``, ``5.50`` ⇒ ``'5,5'``."""
+    texte = f'{valeur:f}'
+    if '.' in texte:
+        texte = texte.rstrip('0').rstrip('.')
+    return texte.replace('.', ',')
 
 
 def _montants(taux_tva, remise_globale, Decimal):

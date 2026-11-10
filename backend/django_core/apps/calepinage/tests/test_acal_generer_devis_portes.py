@@ -102,6 +102,39 @@ class GenererDevisPortesTest(BaseApiCalepinage):
         self.assertEqual(Devis.objects.filter(company=self.company).count(),
                          avant)
 
+    def test_montants_differents_du_brouillon_rendu_409(self):
+        """ACON49 — un second POST dédupliqué qui demande une autre TVA ou
+        une autre remise : 409 nommant le champ, brouillon inchangé ; sans
+        montant, ou le même : 200 ``deduplique``."""
+        premier = self._generer(self.original)
+        self.assertEqual(premier.status_code, 201, premier.data)
+        devis = Devis.objects.get(pk=premier.data['devis'])
+        tva, remise = devis.taux_tva, devis.remise_globale
+        url = url_generer(self.original.pk)
+        for corps, champ in (({'taux_tva': 10}, 'taux_tva'),
+                             ({'remise_globale': 5}, 'remise_globale')):
+            with self.subTest(corps=corps):
+                reponse = self.api.post(url, corps, format='json')
+                self.assertEqual(reponse.status_code, 409, reponse.data)
+                self.assertEqual(list(reponse.data), [champ])
+                self.assertIn(devis.reference, reponse.data[champ])
+        from apps.calepinage.services.devis import pourcentage_lisible
+
+        self.assertEqual(self.api.post(
+            url, {'taux_tva': 10}, format='json').data['taux_tva'],
+            f'Le devis {devis.reference} existe déjà à '
+            f'{pourcentage_lisible(tva)} % : changez la TVA depuis le devis.')
+        for corps in ({}, {'taux_tva': str(tva)}):
+            with self.subTest(corps=corps):
+                reponse = self.api.post(url, corps, format='json')
+                self.assertEqual(reponse.status_code, 200, reponse.data)
+                self.assertTrue(reponse.data['deduplique'])
+        devis.refresh_from_db()
+        self.assertEqual((devis.taux_tva, devis.remise_globale),
+                         (tva, remise))
+        self.assertEqual(Devis.objects.filter(
+            company=self.company).count(), 1)
+
     def test_client_seul_deux_clics_un_devis(self):
         client = Client.objects.create(company=self.company,
                                        nom='Client seul ACAL89')
