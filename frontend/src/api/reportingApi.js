@@ -53,6 +53,9 @@ const reportingApi = {
   // paiement (?debut=&fin=, contrats kpi_p2p.json / rapports_programmes.json, envois_rapports.json).
   listEnvoisRapports: (params) => api.get('/reporting/envois-rapports/', { params }),
   kpiP2p: (params) => api.get('/reporting/p2p/kpi/', { params }),
+  // NTDMO21 — résumé « Ce que vous avez accompli ce mois-ci » (société démo
+  // uniquement, 404 sinon ; contrat demo_resume.json).
+  getDemoResume: () => api.get('/reporting/demo-resume/'),
   // FG96 — Config de tableau de bord (par utilisateur / palier de rôle).
   //   listDashboardConfigs → CRUD ; effectiveDashboardConfig → la config
   //   résolue pour l'utilisateur courant (per-user > palier > défaut Python).

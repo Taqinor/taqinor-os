@@ -1,0 +1,11 @@
+{
+  "endpoint": "GET /api/django/reporting/demo-resume/",
+  "pourquoi": "NTDMO21/31 — contrat PARTAGE du widget « Ce que vous avez accompli ce mois-ci » du Dashboard demo. Le serveur (apps/reporting/demo_resume.py, servi depuis le cache nocturne) rend exactement ces cles ; l'ecran n'affiche que `phrase`. Societe NON demo : 404 (le widget n'existe pas).",
+  "exemple": {
+    "mois": "2026-11",
+    "devis_envoyes": 12,
+    "chantiers_receptionnes": 5,
+    "ca_facture_ht": 45200.0,
+    "phrase": "12 devis envoyés, 5 chantiers réceptionnés, 45 200 MAD facturés ce mois — données de démonstration"
+  }
+}
