@@ -26,7 +26,7 @@ from ..corps_achats import UniteAjouterLigneCorps, UniteControlerScanCorps, vali
 from ..erreurs_achats import (
     ConflitEtat, EtatIncompatible, debordement_compteur_en_409, statut_refus_metier)
 from authentication.permissions import (
-    IsAnyRole, IsAdminRole, IsResponsableOrAdmin, HasPermissionOrLegacy,
+    IsAnyRole, LectureDuModule, IsAdminRole, IsResponsableOrAdmin, HasPermissionOrLegacy,
 )
 
 from ..models_wms import (
@@ -171,7 +171,7 @@ class VaguePickingViewSet(CompanyScopedModelViewSet):
         # `get_permissions` prime sur le `permission_classes` d'une @action :
         # chaque action est donc listée explicitement ici.
         if self.action in READ_ACTIONS + ['lignes']:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         if self.action in WRITE_ACTIONS + [
                 'lancer', 'prelever', 'configurer_liberation']:
             return [IsResponsableOrAdmin()]
@@ -295,7 +295,7 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['etiquette_pdf', 'export_asn']:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         if self.action in WRITE_ACTIONS + [
                 'sceller', 'ajouter_ligne', 'controler_scan', 'deplacer',
                 'import_asn']:
@@ -581,7 +581,7 @@ class QuaiViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['planning']:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsAdminRole()]
 
     def get_queryset(self):
@@ -632,7 +632,7 @@ class RendezVousTransporteurViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         if self.action in WRITE_ACTIONS:
             return [IsResponsableOrAdmin()]
         return [IsAdminRole()]
@@ -703,14 +703,14 @@ class ExpeditionTransporteurViewSet(CompanyScopedModelViewSet):
         # NTWMS43 — la lettre de voiture est une LECTURE (elle n'écrit rien
         # et ne stocke pas le PDF).
         if self.action in READ_ACTIONS + ['tracking', 'tarifs', 'cmr_pdf']:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         if self.action in WRITE_ACTIONS + ['generer_etiquette']:
             return [IsResponsableOrAdmin()]
         return [IsAdminRole()]
 
     @extend_schema(responses={(200, 'application/pdf'): bytes})
     @action(detail=True, methods=['get'], url_path='cmr-pdf',
-            permission_classes=[IsAnyRole])
+            permission_classes=[LectureDuModule])
     def cmr_pdf(self, request, pk=None):
         """NTWMS43 — lettre de voiture (CMR simplifiée) de cette expédition.
 
@@ -841,7 +841,7 @@ class AlerteRappelViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['impact']:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         if self.action in WRITE_ACTIONS + ['cloturer']:
             return [IsResponsableOrAdmin()]
         return [IsAdminRole()]
@@ -920,7 +920,7 @@ class PlanComptageTournantViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsAdminRole()]
 
     def list(self, request, *args, **kwargs):
@@ -956,7 +956,7 @@ class BlocageQualiteViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         if self.action in WRITE_ACTIONS:
             return [IsResponsableOrAdmin()]
         if self.action in ['lever', 'lever_quarantaine_bin']:
@@ -1060,7 +1060,7 @@ class PlanChargementViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['verifier_capacite']:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         if self.action in WRITE_ACTIONS + ['ajouter_unite']:
             return [IsResponsableOrAdmin()]
         return [IsAdminRole()]
@@ -1171,7 +1171,7 @@ class MouvementRebutViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         if self.action == 'create':
             # AAPV36 : sous `stock_mouvement` (comme les mouvements) — le
             # magasinier (Technicien) garde le geste, Commercial/Viewer non.
@@ -1232,7 +1232,7 @@ class RetourClientViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         if self.action in WRITE_ACTIONS + ['receptionner', 'inspecter']:
             return [IsResponsableOrAdmin()]
         return [IsAdminRole()]

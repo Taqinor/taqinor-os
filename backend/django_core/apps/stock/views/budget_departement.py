@@ -16,7 +16,7 @@ from rest_framework import serializers, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from authentication.permissions import LectureDuModule, IsResponsableOrAdmin
 from core.mixins import TenantMixin
 from core.champs_stricts import ChampsStrictsMixin
 from core.serializers import CompanyScopedRelationsMixin
@@ -108,9 +108,9 @@ class BudgetDepartementViewSet(CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action == 'consommation':
             # ERR-STK-PRIX-ACHAT-SUITE — engagé/réalisé/restant : montants seuls.
-            return [IsAnyRole(), PeutVoirPrixAchat()]
+            return [LectureDuModule(), PeutVoirPrixAchat()]
         if self.action in ('list', 'retrieve', 'disponible'):
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -179,7 +179,7 @@ class EngagementBudgetViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):  # he
     demande d'achat (``stock.services.engager_budget``)."""
     queryset = EngagementBudget.objects.all()
     serializer_class = EngagementBudgetSerializer
-    permission_classes = [IsAnyRole]
+    permission_classes = [LectureDuModule]
 
     parser_classes = [JSONParser]
 

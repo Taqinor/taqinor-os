@@ -15,7 +15,7 @@ from ..serializers import (
     DocumentConformiteFournisseurSerializer, AchatsParametresSerializer,
     ToleranceRapprochementCategorieSerializer,
 )
-from authentication.permissions import IsAnyRole, IsAdminRole, HasPermissionOrLegacy
+from authentication.permissions import LectureDuModule, IsAdminRole, HasPermissionOrLegacy
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -39,7 +39,7 @@ class DocumentConformiteFournisseurViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
         return [HasPermissionOrLegacy('stock_modifier')()]
@@ -65,7 +65,7 @@ class AchatsParametresViewSet(viewsets.ViewSet):
     company). GET renvoie (en le créant si besoin) le réglage courant ; PATCH
     le met à jour. ``company`` toujours dérivée de l'utilisateur, jamais du
     corps de requête."""
-    permission_classes = [IsAnyRole]
+    permission_classes = [LectureDuModule]
     schema = SchemaObjetUnique()
 
     def list(self, request):
@@ -140,7 +140,7 @@ class ToleranceRapprochementCategorieViewSet(CompanyScopedModelViewSet):  # head
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
         return [HasPermissionOrLegacy('stock_modifier')()]

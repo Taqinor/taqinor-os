@@ -92,3 +92,66 @@ class Aud419LecturePaiementsTests(TestCase):
         resp = self._api('responsable', 'resp419b').delete(
             f'{URL}{self.paiement.id}/')
         self.assertEqual(resp.status_code, 403, resp.content)
+
+    def test_lectures_stock_bornees_au_module(self):
+        """APFS106 (C-APFS-080/081, D-APFS-4) — balai des routeurs ``stock``
+        et ``achats`` : la lecture ``list`` de CHAQUE vue est refusée à Admin
+        RH et Commercial terrain (aucun code stock) ; Commercial, Technicien
+        (``stock_voir``), Directeur et le compte hérité lisent les 44 vues
+        rouvertes ; le fournisseur (RIB) : 403 à Admin RH, 200 au Technicien.
+        Hors balai : la fiche technique (propriétaire calepinage, APFS109)."""
+        from apps.achats.urls import router as routeur_achats
+        from apps.roles import permissions_registre as registre
+        from apps.roles.models import Role
+        from apps.stock.urls import router as routeur_stock
+        from authentication.tests_asec11_responsable_module import (
+            lectures_acceptees,
+        )
+
+        def compte(nom, permissions):
+            role = Role.objects.create(company=self.company, nom=nom,
+                                       permissions=list(permissions),
+                                       est_systeme=False)
+            return User.objects.create_user(
+                username=f'apfs106-{nom}', password='x', company=self.company,
+                role=role, role_legacy='responsable')
+        refuses = {nom: compte(nom, perms) for nom, perms in (
+            ('admin_rh', registre.ADMIN_RH_PERMISSIONS),
+            ('commercial_terrain', registre.COMMERCIAL_TERRAIN_PERMISSIONS))}
+        admis = {nom: compte(nom, perms) for nom, perms in (
+            ('commercial', registre.COMMERCIAL_PERMISSIONS),
+            ('technicien', registre.TECHNICIEN_PERMISSIONS),
+            ('directeur', registre.DIRECTEUR_PERMISSIONS))}
+        admis['herite'] = User.objects.create_user(
+            username='apfs106-herite', password='x', company=self.company,
+            role_legacy='responsable')
+        vues = list(dict.fromkeys(
+            vs for routeur in (routeur_stock, routeur_achats)
+            for _prefixe, vs, _nom in routeur.registry
+            if not vs.__module__.endswith('.fiche_technique')))
+        for (vue, nom), accepte in lectures_acceptees(vues, refuses).items():
+            self.assertFalse(accepte, f'{vue} : lecture ouverte à {nom}')
+        rouvertes = [vs for vs in vues if any(
+            'LectureDuModule' == type(g).__name__
+            for g in _gardes_de_liste(vs))]
+        self.assertEqual(len(rouvertes), 44, [vs.__name__ for vs in rouvertes])
+        for (vue, nom), accepte in lectures_acceptees(rouvertes, admis).items():
+            self.assertTrue(accepte, f'{vue} : lecture refusée à {nom}')
+        Fournisseur.objects.filter(pk=self.fournisseur.pk).update(
+            rib='011780000012345678901234')
+        for user, attendu in ((refuses['admin_rh'], 403),
+                              (admis['technicien'], 200)):
+            api = APIClient()
+            api.force_authenticate(user)
+            r = api.get(f'/api/django/stock/fournisseurs/{self.fournisseur.pk}/')
+            self.assertEqual(r.status_code, attendu, r.content[:200])
+
+
+def _gardes_de_liste(classe):
+    """Gardes de la lecture ``list`` d'un viewset (sans requête)."""
+    from types import SimpleNamespace
+    vue = classe()
+    vue.action = 'list'
+    vue.format_kwarg = None
+    vue.request = SimpleNamespace(method='GET', user=None)
+    return vue.get_permissions()

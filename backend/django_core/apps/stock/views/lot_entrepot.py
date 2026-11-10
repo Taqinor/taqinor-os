@@ -9,7 +9,7 @@ from ..openapi_helpers import INT, LISTE, P, STR, corps
 from ..utils.params import corps_objet
 from ..models import LotEntrepot
 from ..serializers import LotEntrepotSerializer
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from authentication.permissions import LectureDuModule, IsResponsableOrAdmin
 
 READ_ACTIONS = ['list', 'retrieve']
 
@@ -38,7 +38,7 @@ class LotEntrepotViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['fefo']:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -54,7 +54,7 @@ class LotEntrepotViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     @extend_schema(parameters=[P('produit', INT, True, 'Produit (id)'), P('quantite', INT, False,
                                                                           'Quantité (défaut 1)')], responses=LISTE)
     @action(detail=False, methods=['get'], url_path='fefo',
-            permission_classes=[IsAnyRole])
+            permission_classes=[LectureDuModule])
     def fefo(self, request):
         """XSTK6 — suggestion FEFO (péremption la plus proche d'abord) pour
         sortir ``quantite`` unités d'un produit. Query params : ``produit``

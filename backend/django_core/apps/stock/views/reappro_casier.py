@@ -6,7 +6,7 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import (
-    IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
+    IsAdminRole, LectureDuModule, IsResponsableOrAdmin,
 )
 from core.champs_stricts import IdInconnu404Mixin, TexteLie
 from core.serializers import ChampsTexteBooleenStricts, CompanyScopedRelationsMixin
@@ -64,7 +64,7 @@ class SeuilReapproCasierViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         if self.action in WRITE_ACTIONS:
             return [IsResponsableOrAdmin()]
         return [IsAdminRole()]
@@ -94,7 +94,7 @@ class TacheReapproInterneViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         if self.action in WRITE_ACTIONS + ['executer']:
             return [IsResponsableOrAdmin()]
         return [IsAdminRole()]
