@@ -3,7 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from authentication.permissions import (
-    HasPermissionOrLegacy, IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
+    HasPermissionOrLegacy, IsAnyRole, LectureDuModule, IsResponsableOrAdmin, IsAdminRole,
 )
 from apps.roles.permissions import DroitDeLaGrille, droits_de_la_grille  # ASEC50
 from core.champs_stricts import (
@@ -331,7 +331,7 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
             'fiche',
         ]:
             # D-ASEC-50 — la liste ``?export=xlsx`` exige ``installation_export``.
-            return [IsAnyRole()] + droits_de_la_grille(
+            return [LectureDuModule()] + droits_de_la_grille(
                 self, list=[DroitDeLaGrille('installation_export', export=('xlsx',))])
         elif self.action in WRITE_ACTIONS + [
             'noter', 'cocher_materiel', 'cocher_outil', 'choisir_kit',

@@ -15,7 +15,8 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from authentication.permissions import HasPermissionOrLegacy, LectureDuModule
+from apps.stock.permissions import PeutVoirPrixAchat
 from core.viewsets import CompanyScopedModelViewSet
 
 from apps.ventes.utils.references import create_with_reference
@@ -27,7 +28,7 @@ from ..serializers import (
 from .. import selectors
 from . import _openapi as oa
 
-READ_ACTIONS = ['list', 'retrieve', 'prix_convenu']
+READ_ACTIONS = ['list', 'retrieve']  # APFS29 : `prix_convenu` sous PeutVoirPrixAchat
 
 
 @oa.listing(p0=oa.qi('fournisseur'), p1=oa.qs('statut'))
@@ -41,9 +42,11 @@ class ContratPrixFournisseurViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet)
     serializer_class = ContratPrixFournisseurSerializer
 
     def get_permissions(self):
+        if self.action == 'prix_convenu':
+            return [LectureDuModule(), PeutVoirPrixAchat()]
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
-        return [IsResponsableOrAdmin()]
+            return [LectureDuModule()]
+        return [HasPermissionOrLegacy('achats_commander')()]  # APFS117
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -129,8 +132,8 @@ class ContratPrixLigneViewSet(oa.JsonOnlyMixin, viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
-        return [IsResponsableOrAdmin()]
+            return [LectureDuModule()]
+        return [HasPermissionOrLegacy('achats_commander')()]  # APFS117
 
     def get_queryset(self):
         qs = super().get_queryset()

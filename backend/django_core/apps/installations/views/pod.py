@@ -10,7 +10,7 @@ from django.utils import timezone
 
 from rest_framework.exceptions import ValidationError
 
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from authentication.permissions import LectureDuModule, IsResponsableOrAdmin
 from core.viewsets import CompanyScopedModelViewSet
 from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 
@@ -39,7 +39,7 @@ class PreuveLivraisonViewSet(oa.JsonOnlyMixin, UsageGuardedDestroyMixin,
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def destroy_guard_message(self, preuve):

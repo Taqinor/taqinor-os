@@ -229,6 +229,51 @@ class TestLifecycleScopeRole(TestCase):
         })
         self.assertEqual(r.status_code, 403, r.data)
 
+    def test_ecriture_exige_achats_commander(self):
+        """APFS117 — contrats de prix et commandes cadres (lignes, appels,
+        activation) écrits sous ``achats_commander`` comme le BCF (ACHT54) :
+        Technicien responsable 403 sans rien créer, Administrateur 201/200."""
+        from apps.installations.models import AppelCommande, CommandeCadre, CommandeCadreLigne
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        perms = dict(CANONICAL_SYSTEM_ROLES)
+        tech, admin = (User.objects.create_user(
+            username=f'fg318-{next(_seq)}', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom=nom, permissions=perms[nom]))
+            for nom in ('Technicien responsable', 'Administrateur'))
+        self.assertTrue(tech.has_erp_permission('installation_gerer'))
+        self.assertFalse(tech.has_erp_permission('achats_commander'))
+        produit = make_produit(self.company)
+        cc = CommandeCadre.objects.create(
+            company=self.company, reference='CC-APFS117', intitule='X', fournisseur=self.f)
+        ligne = CommandeCadreLigne.objects.create(
+            commande_cadre=cc, designation='P', prix_negocie=1, volume_engage=100)
+        ecritures = [
+            ('contrats-prix-fournisseur/', {'intitule': 'X', 'fournisseur': self.f.id}),
+            ('contrats-prix-lignes/', {'contrat': self.c.id, 'produit': produit.id, 'prix_convenu': '1.00'}),
+            ('commandes-cadre/', {'intitule': 'X', 'fournisseur': self.f.id}),
+            ('commandes-cadre-lignes/', {'commande_cadre': cc.id, 'designation': 'P',
+                                         'prix_negocie': '1.00', 'volume_engage': '10'}),
+            ('appels-commande/', {'ligne': ligne.id, 'quantite': '1'}),
+            (f'contrats-prix-fournisseur/{self.c.id}/activer/', {}),
+            (f'commandes-cadre/{cc.id}/activer/', {}),
+        ]
+
+        def compte():
+            return (ContratPrixFournisseur.objects.count(), ContratPrixLigne.objects.count(),
+                    CommandeCadre.objects.count(), CommandeCadreLigne.objects.count(),
+                    AppelCommande.objects.count())
+        avant = compte()
+        for chemin, corps in ecritures:
+            self.assertEqual(auth(tech).post(f'{BASE}/{chemin}', corps).status_code, 403, chemin)
+        self.assertEqual(compte(), avant)
+        self.c.refresh_from_db()
+        cc.refresh_from_db()
+        self.assertEqual((self.c.statut, cc.statut), ('brouillon', 'brouillon'))
+        for chemin, corps in ecritures:
+            r = auth(admin).post(f'{BASE}/{chemin}', corps)
+            self.assertIn(r.status_code, (200, 201), (chemin, r.data))
+
     def test_scope_isolation(self):
         other = make_company()
         f_o = make_fournisseur(other)

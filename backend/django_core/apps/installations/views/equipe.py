@@ -10,7 +10,7 @@ elles doivent appartenir à la société de l'utilisateur."""
 from rest_framework.exceptions import ValidationError
 
 from authentication.equipes_structure import enregistrer_equipe
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from authentication.permissions import LectureDuModule, IsResponsableOrAdmin
 from core.viewsets import CompanyScopedModelViewSet
 from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 
@@ -47,7 +47,7 @@ class EquipeViewSet(oa.JsonOnlyMixin, UsageGuardedDestroyMixin, CompanyScopedMod
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):

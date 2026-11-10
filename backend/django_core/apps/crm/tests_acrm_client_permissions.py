@@ -119,6 +119,33 @@ class ClientPermissionsTests(TestCase):
         self.assertNotIn('lead', sources)
         self.assertNotIn('+212661909902', str(resp.data))
 
+    def test_satellites_crm_lecture_bornee_au_module(self):
+        """APFS116 (D-APFS-4) — la LISTE des 22 vues satellites du CRM
+        (équipes, objectifs, playbooks, prévisions, canaux, tags, motifs,
+        règles d'attribution, modèles de message, profils de site, vues
+        enregistrées…) exige un code du module crm : Admin RH, Commercial
+        terrain et Technicien 403 ; le Commercial passe la garde."""
+        from apps.crm.urls import router
+        satellites = {
+            'EquipeCommercialeViewSet', 'ObjectifCommercialViewSet', 'PlaybookViewSet',
+            'PlaybookEtapeViewSet', 'PlaybookTacheViewSet', 'ForecastEntryViewSet',
+            'ParrainageViewSet', 'PlanActiviteViewSet', 'ConcurrentPerteViewSet',
+            'PlanCompteViewSet', 'RevueCompteViewSet', 'DefiViewSet', 'VisiteExterneViewSet',
+            'AppareilEquipeViewSet', 'SalleVenteViewSet', 'LeadTagViewSet', 'MotifPerteViewSet',
+            'CanalViewSet', 'SiteProfileViewSet', 'SavedViewViewSet', 'MessageTemplateViewSet',
+            'RegleAttributionViewSet'}
+        routes = {vs.__name__: f'/api/django/crm/{prefixe}/'
+                  for prefixe, vs, _b in router.registry if vs.__name__ in satellites}
+        self.assertEqual(set(routes), satellites)
+        for nom in ('Admin RH', 'Commercial terrain', 'Technicien', 'Commercial'):
+            api = self._api(nom)
+            for vue, url in sorted(routes.items()):
+                code = api.get(url).status_code
+                if nom == 'Commercial':
+                    self.assertNotIn(code, (401, 403), f'{nom} {vue} {url}')
+                else:
+                    self.assertEqual(code, 403, f'{nom} {vue} {url}')
+
     def test_commercial_inchange(self):
         api = self._api('Commercial')
         lectures = self._lectures(api, self.client_c.pk)
