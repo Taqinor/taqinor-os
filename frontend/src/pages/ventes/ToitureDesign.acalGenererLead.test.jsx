@@ -13,6 +13,7 @@ vi.mock('../../hooks/useHasPermission', () => ({ useHasPermission: () => false }
 import { initRoofToolPro8, rendreLead, reinitialiserBoot, simulerApiLead }
   from '../../test/toitureDesignHarness'
 import api from '../../api/axios'
+import CONTRAT from '../../../../backend/django_core/apps/ventes/contract_samples/devis_from_layout.json'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -41,5 +42,25 @@ describe('ToitureDesign — mode lead : Générer (ACAL97)', () => {
     const urls = api.post.mock.calls.map(([url]) => url)
     expect(urls).not.toContain('/ventes/devis/501/layout/')
     expect(urls.filter((u) => /\/ventes\/devis\/\d+\/layout\/$/.test(u))).toEqual([])
+  })
+
+  it('un 409 {hors_reseau} de from-layout affiche le motif serveur', async () => {
+    // ACAL369 (C-ACAL-VER2-41) — corps IMPORTÉ du contrat (PACT13), tel quel puis
+    // sans `detail` (la forme `{hors_reseau}` seule relevée par la sonde) : le motif
+    // nommé s'affiche mot pour mot, jamais « Composition invalide… ».
+    const exemple = CONTRAT.exemple_409_hors_reseau
+    const { detail: _detail, ...sansDetail } = exemple
+    for (const corps of [exemple, sansDetail]) {
+      reinitialiserBoot()
+      simulerApiLead(api)
+      api.post.mockImplementation((url) => (url === '/ventes/devis/from-layout/'
+        ? Promise.reject({ response: { status: 409, data: corps } })
+        : Promise.resolve({ data: {} })))
+      rendreLead(88)
+      await userEvent.click(await screen.findByRole('button', { name: /^Générer le devis$/ }))
+      expect((await screen.findAllByText(exemple.hors_reseau)).length).toBeGreaterThan(0)
+      expect(screen.queryByText(/Composition invalide/)).toBeNull()
+      cleanup()
+    }
   })
 })
