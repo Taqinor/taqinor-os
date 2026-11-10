@@ -1470,6 +1470,7 @@ def attachments_all(request):
         Attachment.objects.select_related('uploaded_by', 'content_type'),
         request.user
     ).order_by('-created_at', '-id')
+    qs = pieces_visibles(qs, request.user)  # APFS21 — même filtre que la liste
 
     p = request.query_params
     # Un octet NUL dans un filtre texte fait lever ValueError côté base (500) :
