@@ -234,7 +234,7 @@ class WorkflowTemplateViewSet(viewsets.ViewSet):
     def get_permissions(self):
         # Lecture : tout utilisateur authentifié ; install : admin/responsable.
         if getattr(self, 'action', None) == 'installer':
-            return [IsAdminOrResponsableTier()]
+            return [IsAdminOrResponsableTier(), HasPermissionOrLegacy('parametres_modifier')()]
         return [IsAuthenticatedInterne()]
 
     @extend_schema(responses=WorkflowTemplateSerializer(many=True))
@@ -310,7 +310,7 @@ class WorkflowDefinitionViewSet(TenantMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.request.method in ('GET', 'HEAD', 'OPTIONS'):
             return [IsAuthenticatedInterne()]
-        return [IsAdminOrResponsableTier()]
+        return [IsAdminOrResponsableTier(), HasPermissionOrLegacy('parametres_modifier')()]
 
     @extend_schema(request=None, responses={201: WorkflowDefinitionSerializer})
     @action(detail=True, methods=['post'])
@@ -344,7 +344,7 @@ class MatriceApprobationViewSet(TenantMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.request.method in ('GET', 'HEAD', 'OPTIONS'):
             return [IsAuthenticatedInterne()]
-        return [IsAdminOrResponsableTier()]
+        return [IsAdminOrResponsableTier(), HasPermissionOrLegacy('parametres_modifier')()]
 
 
 class FormulaireDefinitionViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -359,7 +359,7 @@ class FormulaireDefinitionViewSet(TenantMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.request.method in ('GET', 'HEAD', 'OPTIONS'):
             return [IsAuthenticatedInterne()]
-        return [IsAdminOrResponsableTier()]
+        return [IsAdminOrResponsableTier(), HasPermissionOrLegacy('parametres_modifier')()]
 
 
 class FormulaireChampReutilisableViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -373,7 +373,7 @@ class FormulaireChampReutilisableViewSet(TenantMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.request.method in ('GET', 'HEAD', 'OPTIONS'):
             return [IsAuthenticatedInterne()]
-        return [IsAdminOrResponsableTier()]
+        return [IsAdminOrResponsableTier(), HasPermissionOrLegacy('parametres_modifier')()]
 
 
 class WorkflowStepDefinitionViewSet(viewsets.ModelViewSet):
@@ -398,7 +398,7 @@ class WorkflowStepDefinitionViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.request.method in ('GET', 'HEAD', 'OPTIONS'):
             return [IsAuthenticatedInterne()]
-        return [IsAdminOrResponsableTier()]
+        return [IsAdminOrResponsableTier(), HasPermissionOrLegacy('parametres_modifier')()]
 
     def get_queryset(self):
         user = self.request.user
@@ -1405,7 +1405,7 @@ class TenantThemeViewSet(TenantMixin, viewsets.GenericViewSet):
 
     def get_permissions(self):
         if self.request.method in ('PUT', 'PATCH', 'POST'):
-            return [IsAdminOrResponsableTier()]
+            return [IsAdminOrResponsableTier(), HasPermissionOrLegacy('parametres_modifier')()]
         return [IsAuthenticated()]
 
     @extend_schema(request=TenantThemeSerializer,
@@ -1452,7 +1452,7 @@ class BrandedTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):
             return [IsAuthenticatedInterne()]
-        return [IsAdminOrResponsableTier()]
+        return [IsAdminOrResponsableTier(), HasPermissionOrLegacy('parametres_modifier')()]
 
     @extend_schema(
         request=_REQUETE_APERCU,
