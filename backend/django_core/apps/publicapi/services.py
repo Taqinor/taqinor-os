@@ -9,7 +9,10 @@ inter-app (jamais d'import de models cross-app dans l'autre sens non plus —
 import logging
 
 from . import delivery
-from .constants import EVENT_STOCK_SEUIL_ATTEINT, EVENT_LIVRAISON_LIVREE
+from .constants import (
+    EVENT_LIVRAISON_LIVREE, EVENT_ONBOARDING_ITEM_COMPLETE,
+    EVENT_STOCK_SEUIL_ATTEINT,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +58,26 @@ def notify_livraison_livree(
         'reference': reference,
         'installation_id': installation_id,
         'numero_suivi': numero_suivi,
+    })
+
+
+def notify_onboarding_item_complete(*, company_id, user_id, item_key,
+                                    complete_le):
+    """NTDMO34 — un item « Premiers pas » vient d'être complété.
+
+    Appelée par ``apps.onboarding.services.marquer_item_complete`` UNIQUEMENT
+    au passage à complet (jamais sur une re-coche idempotente). Webhook
+    ``onboarding.item_complete`` via le registre existant (``Webhook`` /
+    ``WebhookDelivery``, livraison durable NTPLT11) — jamais un système
+    parallèle. Charge utile minimale, aucune PII au-delà de l'ID utilisateur.
+    Best-effort, jamais bloquant pour l'appelant."""
+    _safe_dispatch(company_id, EVENT_ONBOARDING_ITEM_COMPLETE, {
+        'event': EVENT_ONBOARDING_ITEM_COMPLETE,
+        'company_id': company_id,
+        'user_id': user_id,
+        'item_key': item_key,
+        'complete_le': (complete_le.isoformat()
+                        if hasattr(complete_le, 'isoformat') else complete_le),
     })
 
 

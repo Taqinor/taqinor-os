@@ -69,6 +69,56 @@ class TestNotificationProducers(TestCase):
         self.assertEqual(notifs.count(), 1)
         self.assertIn('DEV-NOTIF-1', notifs.first().body)
 
+    def test_ntplt11_redis_coupe_a_l_acceptation_notif_livree_au_redemarrage(self):
+        """NTPLT11 — l'envoi DEVIS_ACCEPTED est un effet durable de l'outbox :
+        une panne pendant l'émission (Redis/cache coupé ⇒ ``notify`` lève)
+        n'empêche pas l'acceptation et ne perd pas la notification — le
+        worker la livre au redémarrage, UNE fois."""
+        from datetime import timedelta
+        from unittest import mock
+
+        from django.utils import timezone
+
+        from core import dispatch_outbox
+        from core.models import OutboxEvent
+        from apps.notifications import signals as notif_signals
+        client = Client.objects.create(
+            company=self.company, nom='ClientCo', email='c4@example.com')
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-NTPLT11', client=client,
+            statut='brouillon', taux_tva=Decimal('20.00'),
+            remise_globale=Decimal('0'), created_by=self.actor)
+        Notification.objects.all().delete()
+        with mock.patch.object(notif_signals, 'notify',
+                               side_effect=ConnectionError('Redis coupé')):
+            devis.statut = Devis.Statut.ACCEPTE
+            devis.save()
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, Devis.Statut.ACCEPTE)
+        notifs = Notification.objects.filter(
+            recipient=self.actor, event_type=EventType.DEVIS_ACCEPTED)
+        self.assertEqual(notifs.count(), 0)
+        ligne = OutboxEvent.objects.get(
+            event_name=notif_signals.EFFET_DEVIS_ACCEPTE,
+            company=self.company)
+        self.assertEqual(ligne.statut, OutboxEvent.STATUT_FAILED)
+        # Redémarrage : le worker rejoue — deux passages, une notification.
+        plus_tard = timezone.now() + timedelta(hours=2)
+        dispatch_outbox.dispatch_pending(now=plus_tard)
+        dispatch_outbox.dispatch_pending(now=plus_tard)
+        self.assertEqual(notifs.count(), 1)
+        self.assertIn('DEV-NTPLT11', notifs.first().body)
+        ligne.refresh_from_db()
+        self.assertEqual(ligne.statut, OutboxEvent.STATUT_DELIVERED)
+
+    def test_ntplt11_etape_crm_reste_synchrone_sur_devis_accepted(self):
+        """NTPLT11 — l'invariant in-process (avancement d'étape crm) reste un
+        récepteur SYNCHRONE du signal, jamais un effet d'outbox."""
+        from core import events
+        uids = {r[0][0] for r in events.devis_accepted.receivers}
+        self.assertIn('crm_advance_stage_on_devis_accepted', uids)
+        self.assertEqual(events.durable_handlers('devis_accepted'), [])
+
     def test_devis_already_accepted_resave_emits_nothing(self):
         client = Client.objects.create(
             company=self.company, nom='ClientCo', email='c2@example.com')

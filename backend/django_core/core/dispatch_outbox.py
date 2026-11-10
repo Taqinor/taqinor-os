@@ -41,15 +41,41 @@ def _already_processed(event_id, handler_name) -> bool:
 
 
 def _mark_processed(event_id, handler_name) -> None:
-    from django.db import IntegrityError
+    from django.db import IntegrityError, transaction
     from .models import ProcessedEvent
     try:
-        ProcessedEvent.objects.create(
-            event_id=event_id, handler_name=handler_name)
+        # NTPLT11 — point de sauvegarde propre : la collision ne casse jamais
+        # la transaction englobante (livraison verrouillée, émetteur).
+        with transaction.atomic():
+            ProcessedEvent.objects.create(
+                event_id=event_id, handler_name=handler_name)
     except IntegrityError:
         # Course : un autre worker a déjà marqué ce (event_id, handler) →
         # bénin (la dédup a justement fait son travail).
         pass
+
+
+class EffetsPartiels(Exception):
+    """NTPLT11 — levée par un handler durable dont CERTAINS effets ont réussi
+    (et sont marqués ``marquer_effet_applique``) et d'autres non : à la
+    différence d'une exception ordinaire, ses écritures ne sont PAS annulées
+    (les marques restent), mais l'événement repasse en échec pour rejouer
+    le reste."""
+
+
+def effet_deja_applique(event, cle: str) -> bool:
+    """NTPLT11 — dédup FINE à l'intérieur d'un handler durable.
+
+    Un handler qui produit PLUSIEURS effets indépendants (ex. une mise en file
+    par webhook abonné) marque chacun sous la clé ``cle`` : si l'effet n°2
+    échoue, le rejeu ne refait PAS l'effet n°1. Même table/contrainte que la
+    dédup par handler (``ProcessedEvent``), la clé tenant lieu de nom."""
+    return _already_processed(event.event_id, cle)
+
+
+def marquer_effet_applique(event, cle: str) -> None:
+    """NTPLT11 — pose la marque de ``effet_deja_applique`` (idempotent)."""
+    _mark_processed(event.event_id, cle)
 
 
 def deliver_one(event) -> bool:
@@ -61,20 +87,118 @@ def deliver_one(event) -> bool:
     """
     from core import events
 
+    from django.db import transaction
+
     handlers = events.durable_handlers(event.event_name)
     all_ok = True
     for handler_name, handler, _rejouable in handlers:
         if _already_processed(event.event_id, handler_name):
             continue
         try:
-            handler(event)
-            _mark_processed(event.event_id, handler_name)
+            # NTPLT11 — effet + marque de dédup dans UN point de sauvegarde :
+            # un handler qui échoue n'y laisse aucune écriture partielle (le
+            # rejeu repart propre), un handler qui réussit est marqué avec
+            # son effet (exactement-une-fois côté base).
+            with transaction.atomic():
+                try:
+                    handler(event)
+                except EffetsPartiels as partiel:
+                    # Les effets déjà marqués (``marquer_effet_applique``)
+                    # sont GARDÉS ; le handler n'est pas marqué traité : le
+                    # rejeu ne refait que le reste.
+                    logger.warning(
+                        'dispatch_outbox: handler %s partiel sur %s (%s)',
+                        handler_name, event.event_id, partiel)
+                    all_ok = False
+                    continue
+                _mark_processed(event.event_id, handler_name)
         except Exception:  # noqa: BLE001 — un handler KO n'arrête pas les autres (D-ENF22-BLE001)
             logger.exception(
                 'dispatch_outbox: handler %s a échoué sur %s',
                 handler_name, event.event_id)
             all_ok = False
     return all_ok
+
+
+def _appliquer_resultat(event, ok: bool, now) -> str:
+    """Statut / backoff / dead-letter après UNE tentative de livraison.
+
+    Renvoie ``'delivered'``, ``'failed'`` ou ``'dead'``."""
+    from .models import OutboxEvent
+
+    if ok:
+        event.statut = OutboxEvent.STATUT_DELIVERED
+        event.prochaine_tentative = None
+        event.save(update_fields=['statut', 'prochaine_tentative',
+                                  'updated_at'])
+        return 'delivered'
+    event.tentatives += 1
+    if event.tentatives >= MAX_ATTEMPTS:
+        event.statut = OutboxEvent.STATUT_DEAD
+        event.prochaine_tentative = None
+        resultat = 'dead'
+    else:
+        event.statut = OutboxEvent.STATUT_FAILED
+        event.prochaine_tentative = now + _next_delay(event.tentatives)
+        resultat = 'failed'
+    event.save(update_fields=['statut', 'tentatives',
+                              'prochaine_tentative', 'updated_at'])
+    return resultat
+
+
+def _filtre_livrables(now):
+    from django.db.models import Q
+
+    from .models import OutboxEvent
+
+    return (Q(statut=OutboxEvent.STATUT_PENDING)
+            | Q(statut=OutboxEvent.STATUT_FAILED,
+                prochaine_tentative__lte=now))
+
+
+def _livrer_verrouille(pk, now):
+    """Livre UN événement sous verrou de ligne (``SKIP LOCKED``).
+
+    NTPLT11 — le worker et la tentative immédiate (``livrer_maintenant``) ne
+    livrent jamais la même ligne en même temps : celui qui ne prend pas le
+    verrou passe son tour. Renvoie le résultat de ``_appliquer_resultat`` ou
+    ``None`` (ligne verrouillée ailleurs / plus livrable)."""
+    from django.db import transaction
+
+    from .models import OutboxEvent
+
+    with transaction.atomic():
+        event = (OutboxEvent.objects.select_for_update(skip_locked=True)
+                 .filter(_filtre_livrables(now), pk=pk).first())
+        if event is None:
+            return None
+        return _appliquer_resultat(event, deliver_one(event), now)
+
+
+def livrer_maintenant(pk, now=None):
+    """NTPLT11 — tentative IMMÉDIATE de livraison d'un événement outbox.
+
+    Appelée par ``core.events.enqueue_durable`` (dans la transaction de
+    l'émetteur, ou à son commit) : l'effet part tout de suite comme avant ;
+    s'il échoue (Redis/broker coupé, panne d'un service), la ligne reste
+    ``failed`` avec son backoff et le worker ``dispatch_pending`` la
+    re-livre au redémarrage — rien n'est perdu. Ne lève que si la base
+    elle-même lève (les erreurs de handler sont absorbées par
+    ``deliver_one``)."""
+    from django.utils import timezone
+
+    return _livrer_verrouille(pk, now or timezone.now())
+
+
+def livrer_maintenant_sans_erreur(pk):
+    """Variante ``on_commit`` de ``livrer_maintenant`` : ne lève JAMAIS (un
+    rappel ``on_commit`` qui lève casserait les rappels suivants). Un échec
+    laisse la ligne au worker."""
+    try:
+        return livrer_maintenant(pk)
+    except Exception:  # noqa: BLE001 — le worker re-livrera (D-ENF22-BLE001)
+        logger.exception('dispatch_outbox: livraison immédiate %s échouée', pk)
+        return None
 
 
 def dispatch_pending(now=None, limit: int = 500) -> dict:
@@ -84,40 +208,23 @@ def dispatch_pending(now=None, limit: int = 500) -> dict:
     ``prochaine_tentative`` est échue, les livre, et applique statut/backoff/
     dead-letter. Renvoie un compte ``{delivered, failed, dead, scanned}``.
     """
-    from django.db.models import Q
     from django.utils import timezone
 
     from .models import OutboxEvent
 
     now = now or timezone.now()
-    livrables = OutboxEvent.objects.filter(
-        Q(statut=OutboxEvent.STATUT_PENDING)
-        | Q(statut=OutboxEvent.STATUT_FAILED,
-            prochaine_tentative__lte=now)
-    ).order_by('created_at')[:limit]
+    ids = list(OutboxEvent.objects.filter(_filtre_livrables(now))
+               .order_by('created_at').values_list('pk', flat=True)[:limit])
 
     counts = {'delivered': 0, 'failed': 0, 'dead': 0, 'scanned': 0}
-    for event in livrables:
-        counts['scanned'] += 1
-        ok = deliver_one(event)
-        if ok:
-            event.statut = OutboxEvent.STATUT_DELIVERED
-            event.prochaine_tentative = None
-            event.save(update_fields=['statut', 'prochaine_tentative',
-                                      'updated_at'])
-            counts['delivered'] += 1
+    for pk in ids:
+        # NTPLT11 — une ligne à la fois, sous verrou : une tentative immédiate
+        # concurrente (ou un 2e worker) ne la double-livre pas.
+        resultat = _livrer_verrouille(pk, now)
+        if resultat is None:
             continue
-        event.tentatives += 1
-        if event.tentatives >= MAX_ATTEMPTS:
-            event.statut = OutboxEvent.STATUT_DEAD
-            event.prochaine_tentative = None
-            counts['dead'] += 1
-        else:
-            event.statut = OutboxEvent.STATUT_FAILED
-            event.prochaine_tentative = now + _next_delay(event.tentatives)
-            counts['failed'] += 1
-        event.save(update_fields=['statut', 'tentatives',
-                                  'prochaine_tentative', 'updated_at'])
+        counts['scanned'] += 1
+        counts[resultat] += 1
     return counts
 
 

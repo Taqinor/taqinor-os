@@ -282,6 +282,64 @@ def clear_durable_handlers():
     _DURABLE_HANDLERS.clear()
 
 
+def snapshot_durable_handlers():
+    """NTPLT11 — copie du registre (test) : un test qui le vide RESTAURE
+    ensuite les handlers posés par les ``ready()`` des apps (webhooks
+    publicapi, notifications), sinon les tests suivants du même processus
+    perdraient leur livraison."""
+    return {name: list(entries) for name, entries in _DURABLE_HANDLERS.items()}
+
+
+def restore_durable_handlers(snapshot):
+    """NTPLT11 — remet le registre dans l'état de ``snapshot`` (test)."""
+    _DURABLE_HANDLERS.clear()
+    _DURABLE_HANDLERS.update(
+        {name: list(entries) for name, entries in snapshot.items()})
+
+
+#: NTPLT11 — moments de la tentative IMMÉDIATE d'``enqueue_durable``.
+#: ``transaction`` : dans la transaction de l'émetteur (point de sauvegarde) —
+#: l'effet base (notification in-app) suit l'émetteur comme avant.
+#: ``commit`` : au commit de l'émetteur — pour un effet HORS base (mise en file
+#: Celery d'un webhook) qui ne doit jamais partir sur un rollback (AANA31).
+#: ``None`` : aucune tentative immédiate, le worker seul livre.
+IMMEDIAT_TRANSACTION = 'transaction'
+IMMEDIAT_AU_COMMIT = 'commit'
+
+
+def enqueue_durable(name, payload=None, *, company=None,
+                    immediat=IMMEDIAT_AU_COMMIT):
+    """NTPLT11 — confie un EFFET non critique à l'outbox (handler durable).
+
+    Écrit une ligne ``OutboxEvent`` ``name`` DANS la transaction courante (un
+    rollback de l'émetteur l'annule : jamais d'effet fantôme), puis tente
+    tout de suite de la livrer aux handlers ``subscribe_durable(name, …)``
+    (voir ``IMMEDIAT_*``). Si la tentative échoue — Redis/broker coupé,
+    service indisponible — la ligne reste ``failed`` avec son backoff et le
+    worker ``core.dispatch_outbox`` la re-livre au redémarrage : l'effet
+    n'est jamais perdu, et la dédup ``ProcessedEvent`` le garde
+    exactement-une-fois. ``name`` est un nom d'EFFET (ex.
+    ``'publicapi.webhook'``), pas un signal du bus : les invariants
+    synchrones (avancement d'étape crm sur ``devis_accepted``) restent des
+    récepteurs du signal, jamais confiés ici. Renvoie l'``OutboxEvent``."""
+    from django.db import transaction
+
+    from core import dispatch_outbox
+    from core.models import OutboxEvent
+
+    company_id = getattr(company, 'pk', company)
+    row = OutboxEvent.objects.create(
+        company_id=company_id, event_name=name,
+        payload=_jsonify(payload or {}))
+    if immediat == IMMEDIAT_TRANSACTION:
+        dispatch_outbox.livrer_maintenant(row.pk)
+    elif immediat == IMMEDIAT_AU_COMMIT:
+        pk = row.pk
+        transaction.on_commit(
+            lambda: dispatch_outbox.livrer_maintenant_sans_erreur(pk))
+    return row
+
+
 def _jsonify(value):
     """Rend une valeur JSON-sérialisable pour le payload d'outbox.
 

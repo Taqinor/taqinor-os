@@ -97,6 +97,12 @@ def marquer_item_complete(company, user, item_key):
     if progress.complete_le is None:
         progress.complete_le = timezone.now()
         progress.save(update_fields=['complete_le'])
+        # NTDMO34 — webhook `onboarding.item_complete` (au passage à complet
+        # seulement), via le registre webhook existant de `publicapi`.
+        from apps.publicapi.services import notify_onboarding_item_complete
+        notify_onboarding_item_complete(
+            company_id=progress.company_id, user_id=progress.user_id,
+            item_key=item.key, complete_le=progress.complete_le)
     return progress
 
 

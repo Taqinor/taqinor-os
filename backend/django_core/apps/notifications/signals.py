@@ -106,21 +106,82 @@ def devis_post_save(sender, instance, created, **kwargs):
     from apps.ventes.selectors import predecesseur_accepte
     if predecesseur_accepte(instance) is not None:
         return
-    recipient = getattr(instance, 'created_by', None)
+    if getattr(instance, 'created_by', None) is None:
+        return
+    # NTPLT11 — l'envoi est un effet DURABLE de l'outbox : livré tout de suite
+    # (dans la transaction, comme avant) et, si la livraison échoue (Redis
+    # coupé, panne), REJOUÉ par le worker au redémarrage — jamais perdu.
+    _confier_a_l_outbox(EFFET_DEVIS_ACCEPTE, instance)
+
+
+# ── NTPLT11 — effets durables (outbox) des notifications de devis ───────────
+# Les récepteurs SYNCHRONES ne font plus que DÉCIDER (transition réelle,
+# avenant, destinataire) puis CONFIER l'envoi à l'outbox
+# (``core.events.enqueue_durable``) ; les handlers ``subscribe_durable``
+# ci-dessous font l'envoi, IDEMPOTENTS (dédup ``ProcessedEvent`` par
+# événement : une notification, jamais deux, même rejouée).
+EFFET_DEVIS_ACCEPTE = 'notifications.devis_accepted'
+EFFET_DEVIS_EXPIRE = 'notifications.devis_expired'
+
+
+def _confier_a_l_outbox(effet, devis):
+    """Écrit l'effet dans l'outbox et le livre tout de suite (point de
+    sauvegarde) — jamais bloquant pour le save d'origine."""
+    from django.db import transaction
+
+    from core.events import IMMEDIAT_TRANSACTION, enqueue_durable
+    try:
+        with transaction.atomic():
+            enqueue_durable(effet, {'devis_id': devis.pk},
+                            company=devis.company_id,
+                            immediat=IMMEDIAT_TRANSACTION)
+    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
+        logger.exception("NTPLT11 : %s non confié à l'outbox (devis %s)",
+                         effet, devis.pk)
+
+
+def _devis_de(outbox_event):
+    """Le devis de l'effet, borné à SA société (jamais un autre tenant)."""
+    from apps.ventes.models import Devis
+    devis_id = (outbox_event.payload or {}).get('devis_id')
+    if not devis_id:
+        return None
+    return (Devis.objects.select_related('created_by', 'lead', 'company')
+            .filter(pk=devis_id, company_id=outbox_event.company_id).first())
+
+
+def livrer_devis_accepte(outbox_event):
+    """Handler durable de ``EFFET_DEVIS_ACCEPTE`` : notifie le créateur."""
+    devis = _devis_de(outbox_event)
+    recipient = getattr(devis, 'created_by', None)
     if recipient is None:
         return
-    try:
-        notify(
-            user=recipient,
-            event_type=EventType.DEVIS_ACCEPTED,
-            title='Devis accepté',
-            body=f'Le devis {instance.reference} a été accepté.',
-            # QX12be — deep-link qui ATTERRIT : /devis/<pk> n'existe pas côté
-            # front ; DevisList consomme le param ?devis=<pk>.
-            link=f'/ventes/devis?devis={instance.pk}',
-        )
-    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
-        logger.exception('notify DEVIS_ACCEPTED failed (devis %s)', instance.pk)
+    notify(
+        user=recipient,
+        event_type=EventType.DEVIS_ACCEPTED,
+        title='Devis accepté',
+        body=f'Le devis {devis.reference} a été accepté.',
+        # QX12be — deep-link qui ATTERRIT : /devis/<pk> n'existe pas côté
+        # front ; DevisList consomme le param ?devis=<pk>.
+        link=f'/ventes/devis?devis={devis.pk}',
+    )
+
+
+def livrer_devis_expire(outbox_event):
+    """Handler durable de ``EFFET_DEVIS_EXPIRE`` (YEVNT2 / ASOC1)."""
+    devis = _devis_de(outbox_event)
+    if devis is None or getattr(devis, 'created_by', None) is None:
+        return
+    from .services import destinataire_actif
+    from .sweeps import _notify_user_or_managers
+    # ASOC1 — auteur inactif ⇒ responsable actif du lead, sinon managers.
+    _notify_user_or_managers(
+        destinataire_actif(devis.created_by, lead=devis.lead),
+        devis.company, EventType.DEVIS_EXPIRED, 'Devis expiré',
+        (f'Le devis {devis.reference} a expiré automatiquement '
+         '(date de validité dépassée). Pensez à relancer le client.'),
+        # QX12be — deep-link qui atterrit (voir livrer_devis_accepte).
+        link=f'/ventes/devis?devis={devis.pk}')
 
 
 # ── Devis → DEVIS_EXPIRED (YEVNT2) ──────────────────────────────────────────
@@ -129,22 +190,11 @@ def devis_post_save(sender, instance, created, **kwargs):
 # le signal domain-event posé par ``ventes.services.expire_stale_devis``
 # (M6) : plus simple ici (le sweep ne pose l'événement QU'à la transition
 # réelle envoyé→expiré, donc aucune diffing pre/post_save n'est nécessaire).
+# NTPLT11 — l'envoi est confié à l'outbox (``livrer_devis_expire``).
 def devis_expired_receiver(sender, devis, ancien_statut, **kwargs):
     if getattr(devis, 'created_by', None) is None:
         return
-    try:
-        from .services import destinataire_actif
-        from .sweeps import _notify_user_or_managers
-        # ASOC1 — auteur inactif ⇒ responsable actif du lead, sinon managers.
-        _notify_user_or_managers(
-            destinataire_actif(devis.created_by, lead=devis.lead),
-            devis.company, EventType.DEVIS_EXPIRED, 'Devis expiré',
-            (f'Le devis {devis.reference} a expiré automatiquement '
-             '(date de validité dépassée). Pensez à relancer le client.'),
-            # QX12be — deep-link qui atterrit (voir devis_post_save).
-            link=f'/ventes/devis?devis={devis.pk}')
-    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
-        logger.exception('notify DEVIS_EXPIRED failed (devis %s)', devis.pk)
+    _confier_a_l_outbox(EFFET_DEVIS_EXPIRE, devis)
 
 
 # ── Facture soldée → FACTURE_PAYEE (ARC36) ───────────────────────────────────
@@ -573,6 +623,12 @@ def connect():
                       dispatch_uid='notifications_devis_accepted')
     devis_expired.connect(devis_expired_receiver,
                           dispatch_uid='notifications_devis_expired')
+    # NTPLT11 — handlers DURABLES (outbox) des notifications de devis.
+    from core.events import subscribe_durable
+    subscribe_durable(EFFET_DEVIS_ACCEPTE, livrer_devis_accepte,
+                      handler_name=EFFET_DEVIS_ACCEPTE)
+    subscribe_durable(EFFET_DEVIS_EXPIRE, livrer_devis_expire,
+                      handler_name=EFFET_DEVIS_EXPIRE)
     # ARC36 — événements documentaires YEVNT6 désormais consommés.
     facture_payee.connect(facture_payee_receiver,
                           dispatch_uid='notifications_facture_payee')

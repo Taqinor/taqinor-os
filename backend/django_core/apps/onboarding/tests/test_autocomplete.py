@@ -321,6 +321,77 @@ class AbonnesBusPointDeSauvegardeTests(TestCase):
         self._workflow()
 
 
+class OnboardingItemCompleteWebhookTest(TestCase):
+    """NTDMO34 — webhook ``onboarding.item_complete`` sur le registre
+    ``publicapi`` existant : une souscription active reçoit UN
+    ``WebhookDelivery`` à la complétion d'un item (endpoint mock), charge
+    utile minimale, rien sur une re-coche idempotente."""
+
+    def setUp(self):
+        import json
+
+        from apps.publicapi.constants import EVENT_ONBOARDING_ITEM_COMPLETE
+        from apps.publicapi.models import Webhook
+        self.json = json
+        self.event = EVENT_ONBOARDING_ITEM_COMPLETE
+        self.company = Company.objects.create(nom='Co WH', slug='co-ntdmo34')
+        self.user = User.objects.create_user(
+            'u_ntdmo34', password='x', company=self.company,
+            email='u34@example.test')
+        self.hook = Webhook.objects.create(
+            company=self.company, target_url='https://example.test/hook',
+            secret='s3cr3t', events=[self.event], enabled=True)
+        p = mock.patch('apps.publicapi.delivery.validate_webhook_target_url',
+                       side_effect=lambda u: u)
+        p.start()
+        self.addCleanup(p.stop)
+        from erp_agentique.celery import app as celery_app
+        prev = celery_app.conf.task_always_eager
+        celery_app.conf.task_always_eager = True
+        celery_app.conf.task_eager_propagates = False
+        self.addCleanup(
+            lambda: setattr(celery_app.conf, 'task_always_eager', prev))
+
+    def _cocher(self):
+        from apps.onboarding.services import marquer_item_complete
+        corps = []
+
+        def endpoint(url, content=None, headers=None, timeout=None):
+            corps.append(self.json.loads(content.decode('utf-8')))
+            return mock.Mock(status_code=200)
+
+        with mock.patch('apps.publicapi.delivery.httpx.post',
+                        side_effect=endpoint), \
+                self.captureOnCommitCallbacks(execute=True):
+            marquer_item_complete(self.company, self.user, 'premier_devis')
+        return corps
+
+    def test_completion_livre_un_webhook_minimal(self):
+        from apps.publicapi.models import WebhookDelivery
+        corps = self._cocher()
+        livraison = WebhookDelivery.objects.get(webhook=self.hook)
+        self.assertEqual(livraison.event, self.event)
+        self.assertEqual(livraison.status, WebhookDelivery.Statut.SUCCESS)
+        self.assertEqual(len(corps), 1)
+        envoye = corps[0]
+        self.assertEqual(
+            set(envoye) - {'event', 'event_id'},
+            {'company_id', 'user_id', 'item_key', 'complete_le'})
+        self.assertEqual(envoye['company_id'], self.company.pk)
+        self.assertEqual(envoye['user_id'], self.user.pk)
+        self.assertEqual(envoye['item_key'], 'premier_devis')
+        self.assertTrue(envoye['complete_le'])
+        # Aucune PII au-delà de l'ID utilisateur.
+        self.assertNotIn('u34@example.test', self.json.dumps(envoye))
+
+    def test_recoche_idempotente_ne_relivre_pas(self):
+        from apps.publicapi.models import WebhookDelivery
+        self._cocher()
+        self._cocher()
+        self.assertEqual(
+            WebhookDelivery.objects.filter(webhook=self.hook).count(), 1)
+
+
 def _resoudre(chemin):
     """Objet réel désigné par ``module.attribut`` (pour ``wraps=``)."""
     import importlib
