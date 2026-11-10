@@ -186,7 +186,18 @@ class ReviserRelieTest(BaseApiCalepinage):
 
         huit = copy.deepcopy(DOCUMENT)
         huit['zones'][0]['geometry']['count'] = 8
-        ecrire_conception_du_devis(b, huit, user=self.user)
+        # L'affiche CLIENT de C1 n'est jamais transmise au devis B (variante).
+        from unittest import mock
+
+        import apps.ventes.services as ventes_services
+        Calepinage.objects.filter(pk=self.c.pk).update(
+            roof_image='calepinages/c1/affiche.png')
+        with mock.patch.object(
+                ventes_services, 'resynchroniser_conception',
+                wraps=ventes_services.resynchroniser_conception) as espion:
+            ecrire_conception_du_devis(b, huit, user=self.user)
+        self.assertEqual(espion.call_count, 1)
+        self.assertIsNone(espion.call_args.kwargs['roof_image'])
         v.refresh_from_db()
         self.c.refresh_from_db()
         self.v1.refresh_from_db()
