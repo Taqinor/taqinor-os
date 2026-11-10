@@ -311,14 +311,17 @@ def verifier_fraicheur_trust_center_task():
             dernier_audit_le__isnull=False, dernier_audit_le__lt=seuil):
         if _trust_center_deja_alerte(entry):
             continue
+        envoyees = 0  # ASOC29 — « alertée » seulement si une notification est créée
         for admin in superusers:
-            notify_registry.notify(
+            envoyees += notify_registry.notify(
                 admin, 'trust_center_audit_expire',
                 f'Audit expiré — {entry.titre}',
                 body=(
                     f'Dernier audit le {entry.dernier_audit_le:%d/%m/%Y} '
                     f'(plus de {TRUST_CENTER_AUDIT_MAX_MOIS} mois).'),
-            )
+            ) is not None
+        if not envoyees:
+            continue
         _trust_center_marquer_alerte(entry)
         notifies += 1
     logger.info(
