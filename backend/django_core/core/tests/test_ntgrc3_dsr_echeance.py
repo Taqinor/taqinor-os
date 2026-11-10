@@ -72,9 +72,9 @@ class MachineAEtatsTests(TestCase):
         cls.company = Company.objects.create(nom='NTGRC3 M', slug='ntgrc3-m')
 
     def _demande(self, **kw):
+        kw.setdefault('kind', DataSubjectRequest.KIND_ACCESS)
         return DataSubjectRequest.objects.create(
-            company=self.company, subject_identifier='a@b.ma',
-            kind=DataSubjectRequest.KIND_ACCESS, **kw)
+            company=self.company, subject_identifier='a@b.ma', **kw)
 
     def test_recue_passe_en_verification(self):
         demande = self._demande()
