@@ -424,7 +424,9 @@ def job_costing(request):
                  .filter(**co)
                  .select_related('client', 'devis')
                  .prefetch_related('devis__lignes__produit',
-                                   'devis__factures__lignes'))
+                                   'devis__factures__lignes',
+                                   # ASOC73 — facturé net d'avoirs (ht_net)
+                                   'devis__factures__avoirs__lignes'))
 
     rows = []
     monthly = defaultdict(lambda: {'invoiced': Decimal('0'),
@@ -1138,7 +1140,8 @@ def profitability(request):
 
     chantiers_qs = Installation.objects.filter(**co).select_related(
         'devis', 'lead').prefetch_related('devis__lignes__produit',
-                                          'devis__factures__lignes')
+                                          'devis__factures__lignes',
+                                          'devis__factures__avoirs__lignes')
     if start:
         chantiers_qs = chantiers_qs.filter(date_creation__date__gte=start)
     if end:
