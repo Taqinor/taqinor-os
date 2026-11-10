@@ -47,9 +47,10 @@ class PorteeDocumentsChantierTests(TestCase):
             company=self.company, role_legacy='responsable')
         # A : rôle d'équipe AVEC droit d'écriture (passe IsResponsableOrAdmin)
         # mais ni technicien ni créateur du chantier X → hors portée.
+        # APFS105 — code RÉEL du module installations (la lecture y est bornée).
         role_a = Role.objects.create(
             company=self.company, nom='Chef équipe restreint',
-            permissions=[SCOPE_TEAM, 'installations_modifier'])
+            permissions=[SCOPE_TEAM, 'installation_gerer'])
         self.user_a = User.objects.create_user(
             username=f'adoc69-a-{n}', password='x', company=self.company,
             role=role_a)
