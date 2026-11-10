@@ -41,7 +41,9 @@ from ..serializers import (
     FORME_DETAIL_CALEPINAGE, CalepinageLectureSerializer, CalepinageSerializer,
     corps_obligatoire, forme_reponse,
 )
-from ..services.modeles import ModeleInvalide, calepinages_modeles
+from ..services.modeles import (
+    DemarquageEnConflit, ModeleInvalide, calepinages_modeles,
+)
 from ..services.modeles import demarquer_modele as service_demarquer
 from ..services.modeles import marquer_modele as service_marquer
 from ..services.variantes import DuplicationEnConflit, VarianteRefusee
@@ -109,7 +111,10 @@ def marquer_modele(self, request, pk=None):
 def demarquer_modele(self, request, pk=None):
     """CALX42 — retire le drapeau « modèle » (idempotent)."""
     calepinage = self.get_object()  # borné société par get_queryset
-    service_demarquer(calepinage, user=request.user)
+    try:
+        service_demarquer(calepinage, user=request.user)
+    except DemarquageEnConflit as refus:  # ACON5 — un autre ouvert du lead
+        return Response(refus.corps, status=status.HTTP_409_CONFLICT)
     return Response({'calepinage': calepinage.pk, 'modele': False})
 
 

@@ -63,6 +63,18 @@ class ModeleEnConflit(ModeleInvalide):
     statut_http = 409
 
 
+class DemarquageEnConflit(ModeleEnConflit):
+    """ACON5 (D-ACAL-12) — retirer le drapeau rendrait ce calepinage un
+    SECOND ouvert de son lead : 409 nommant l'ouvert (``corps``, contrat
+    ``calepinage_creation_conflit.json``)."""
+
+    def __init__(self, existant, user=None):
+        from .creation import _message_deja_ouvert, corps_conflit
+
+        super().__init__(_message_deja_ouvert(existant), champ='lead')
+        self.corps = corps_conflit(existant, user)
+
+
 def _tag_modele(company, *, creer=False):
     from apps.records.models import Tag
 
@@ -122,9 +134,26 @@ def demarquer_modele(calepinage, *, user=None):
     tag = _tag_modele(getattr(calepinage, 'company', None))
     if tag is None:
         return False
+    from django.db import transaction
+
+    from ..selectors import calepinage_ouvert_du_lead
+    from .archivage import est_archive
+    from .creation import _verrou_creation
+
     ct = ContentType.objects.get_for_model(type(calepinage))
-    retires, _ = TaggedItem.objects.filter(
-        tag=tag, content_type=ct, object_id=calepinage.pk).delete()
+    marque = TaggedItem.objects.filter(
+        tag=tag, content_type=ct, object_id=calepinage.pk)
+    with transaction.atomic(), _verrou_creation(calepinage.company_id,
+                                                calepinage.lead_id):
+        # ACON5 — relu SOUS le verrou du lead : le modèle (encore marqué)
+        # est exclu de « l'ouvert » ; un autre ouvert ⇒ refus nommé.
+        if (calepinage.lead_id and marque.exists()
+                and not est_archive(calepinage)):
+            existant = calepinage_ouvert_du_lead(calepinage.company,
+                                                 calepinage.lead_id)
+            if existant is not None:
+                raise DemarquageEnConflit(existant, user)
+        retires, _ = marque.delete()
     if retires:
         from .journal import noter
 
