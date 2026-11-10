@@ -243,10 +243,14 @@ class TestCouverture(BaseArbre):
         code, out = self._main()
         self.assertEqual(code, 0, out)
 
-    def test_validate_champ_couvre(self):
+    def test_validate_champ_ne_couvre_plus(self):
+        # APFS62 — un ``validate_<champ>`` résout la ligne voisine puis répond
+        # par son propre message (oracle d'existence) : plus une couverture.
         self._monter(SER_VALIDATE)
         code, out = self._main()
-        self.assertEqual(code, 0, out)
+        self.assertEqual(code, 1, out)
+        self.assertIn("LigneSerializer.produit", out)
+        self.assertIn("LigneSerializer.voisine", out)
 
     def test_read_only_fields_sort_du_perimetre(self):
         self._monter(SER_READ_ONLY)

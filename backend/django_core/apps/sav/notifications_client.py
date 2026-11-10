@@ -31,26 +31,26 @@ def build_ticket_transition_message(ticket, cle, *, request=None):
     """Construit `(sujet_ou_none, corps)` pour la clé donnée (WhatsApp = pas de
     sujet). Le lien client (FG86) est généré/résolu ici — jamais le chatter ni
     le coût interne."""
+    from apps.parametres.i18n_resolver import resolve_langue_sortie
     from apps.parametres.models import MessageTemplate
     from apps.parametres.models_email import EmailTemplate
+    from apps.ventes.services import public_url
     from apps.ventes.utils.whatsapp import render_message_template
 
     token = ticket.ensure_share_token()
     # XSAV10/XSAV19 — pointe vers la page FRONTEND /suivi/<token> (statut +
-    # CSAT), pas l'API JSON brute (même origine, même patron que lien_client()
-    # dans views.py et public_booking_url() XSAL17).
-    if request is not None:
-        lien = request.build_absolute_uri(f'/suivi/{token}')
-    else:
-        lien = f'/suivi/{token}'
+    # CSAT), pas l'API JSON brute. ASOC26 — ABSOLU même hors requête
+    # (maintenance, intervention terminée) : PUBLIC_BASE_URL, sinon la requête.
+    lien = public_url(f'/suivi/{token}', request)
 
     ctx = {
         'civilite': '', 'nom': _nom_complet(ticket.client),
         'reference': ticket.reference, 'lien': lien,
     }
+    langue = resolve_langue_sortie(client=ticket.client, company=ticket.company)  # ASOC83
     wa_corps = render_message_template(
-        MessageTemplate.get_corps(ticket.company, cle), ctx)
-    email = EmailTemplate.render(ticket.company, cle, **ctx)
+        MessageTemplate.get_corps(ticket.company, cle, langue), ctx)
+    email = EmailTemplate.render(ticket.company, cle, langue, **ctx)
     return wa_corps, email
 
 

@@ -499,6 +499,49 @@ class PointDEcritureUniqueTests(TestCase):
             f"exister QUE dans services.{self.FONCTION_AUTORISEE}() — "
             f"trouvé : {fautives}")
 
+    def _accepter_dix_panneaux(self, desinstaller):
+        from django.utils import timezone
+        from core import feature_flags
+        company = make_company()
+        user = User.objects.create_user(
+            username=f'asoc2-{next(_seq)}', password='x', company=company,
+            role_legacy='admin')
+        if desinstaller:
+            feature_flags.desactiver_module(
+                company, 'installations', cascade=True, user=user)
+        pan = Produit.objects.create(
+            company=company, nom='Panneau 710W', sku=f'ASOC2-{company.id}',
+            prix_vente=Decimal('1000'), quantite_stock=50)
+        client = Client.objects.create(
+            company=company, nom='Affaire', prenom='ASOC2',
+            email=f'asoc2-{company.id}@example.invalid')
+        devis = Devis.objects.create(
+            company=company, reference=f'DEV-ASOC2-{company.id}',
+            client=client, statut=Devis.Statut.ENVOYE,
+            date_envoi=timezone.now(), taux_tva=Decimal('20'),
+            mode_installation='residentiel', created_by=user)
+        LigneDevis.objects.create(
+            devis=devis, produit=pan, designation=pan.nom,
+            quantite=Decimal('10'), prix_unitaire=pan.prix_vente,
+            remise=Decimal('0'), ordre=0)
+        r = auth(user).post(f'/api/django/ventes/devis/{devis.id}/accepter/',
+                            {'nom': 'Client'}, format='json')
+        self.assertEqual(r.status_code, 200, getattr(r, 'data', r))
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, Devis.Statut.ACCEPTE)
+        return devis
+
+    def test_module_desinstalle_aucun_chantier_ni_reservation(self):
+        # ASOC2 (D-ASOC-2 rien_creer) — Chantiers désinstallé : l'acceptation
+        # passe (200, accepté) mais ne crée ni chantier ni réservation.
+        devis = self._accepter_dix_panneaux(desinstaller=True)
+        self.assertEqual(Installation.objects.filter(devis=devis).count(), 0)
+        self.assertFalse(StockReservation.objects.filter(
+            installation__devis=devis, active=True).exists())
+        # Témoin : module actif ⇒ un chantier.
+        temoin = self._accepter_dix_panneaux(desinstaller=False)
+        self.assertEqual(Installation.objects.filter(devis=temoin).count(), 1)
+
     def test_une_seule_fonction_ecrit_intervention_statut(self):
         """AUD317 — même garde, côté intervention."""
         racine = pathlib.Path(__file__).resolve().parent

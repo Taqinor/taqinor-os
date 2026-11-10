@@ -451,13 +451,16 @@ def email_saved_reports():
     Sélectionne les rapports dont `schedule` est dû et qui ont un destinataire,
     les rend en .xlsx et les envoie. NO-OP propre si l'email n'est pas configuré
     (aucun envoi). Idempotent : seul `last_sent_at` est horodaté sur envoi réussi."""
+    from authentication.selectors import active_companies
     from .models import SavedReport
 
     now = _casablanca_now()
     due = _due_schedules(now)
     sent = 0
     try:
-        reports = list(SavedReport.objects.filter(schedule__in=due))
+        # APFS63 — une société suspendue ne reçoit plus aucun rapport.
+        reports = list(SavedReport.objects.filter(
+            schedule__in=due, company__in=active_companies()))
     except Exception:  # pragma: no cover - défensif
         logger.warning('email_saved_reports: chargement des rapports impossible',
                        exc_info=True)

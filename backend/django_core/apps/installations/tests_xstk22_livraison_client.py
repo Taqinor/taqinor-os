@@ -111,6 +111,29 @@ class TestNotificationTransit(TestCase):
         self.assertEqual(self.liv.notifie_transit_le, first_notified_at)
         self.assertEqual(len(mail.outbox), 1)
 
+    def test_client_arabe_recoit_la_livraison_en_arabe(self):
+        """ASOC83 — client ``langue_document='ar'`` : e-mail et WhatsApp de
+        livraison en transit dans l'arabe de la société ; vide → repli FR."""
+        from urllib.parse import unquote
+        from apps.installations.livraison_client_notify import (
+            notify_livraison_transition,
+        )
+        from apps.parametres.models import MessageTemplate
+        from apps.parametres.models_email import EmailTemplate
+        self.client_crm.langue_document = 'ar'
+        self.client_crm.save(update_fields=['langue_document'])
+        EmailTemplate.objects.create(
+            company=self.company, cle='livraison_en_transit',
+            sujet='FR {reference}', corps='Corps FR {reference}',
+            sujet_ar='شحنة {reference}', corps_ar='في الطريق {reference}')
+        MessageTemplate.objects.create(
+            company=self.company, cle='livraison_en_transit',
+            corps_fr='WA FR {reference}', corps_ar='واتساب {reference}')
+        result = notify_livraison_transition(self.liv, 'en_transit')
+        self.assertEqual(mail.outbox[-1].subject, 'شحنة LIV-XSTK22-2')
+        self.assertIn('في الطريق LIV-XSTK22-2', mail.outbox[-1].body)
+        self.assertIn('واتساب LIV-XSTK22-2', unquote(result['wa_draft_url']))
+
     def test_no_client_no_crash(self):
         """Chantier sans client email/tel → aucune exception, pas d'envoi."""
         client_sans_contact = make_client_crm(self.company)
