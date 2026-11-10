@@ -340,7 +340,6 @@ class GenererDevisConcurrentTest(TransactionTestCase):
 
     def test_deux_generations_concurrentes_un_seul_devis(self):
         import threading
-        import time
         from unittest import mock
 
         from django.db import connection
@@ -349,15 +348,20 @@ class GenererDevisConcurrentTest(TransactionTestCase):
         from apps.ventes.services import build_devis_from_layout as vraie
 
         dans_la_creation = threading.Event()
+        second_lance = threading.Event()
         resultats, erreurs = [], []
 
         def lente(*args, **kwargs):
             dans_la_creation.set()
-            time.sleep(0.5)  # la seconde génération arrive PENDANT la création
+            # La seconde génération est lancée PENDANT la création (poignée
+            # de main, jamais une attente fixe).
+            second_lance.wait(30)
             return vraie(*args, **kwargs)
 
-        def generer():
+        def generer(signal=None):
             try:
+                if signal is not None:
+                    signal.set()
                 cal = Calepinage.objects.get(pk=self.calepinage.pk)
                 resultats.append(generer_devis(cal, user=self.user,
                                                journal={}))
@@ -371,7 +375,8 @@ class GenererDevisConcurrentTest(TransactionTestCase):
             premier = threading.Thread(target=generer)
             premier.start()
             self.assertTrue(dans_la_creation.wait(30))
-            second = threading.Thread(target=generer)
+            second = threading.Thread(target=generer,
+                                      kwargs={'signal': second_lance})
             second.start()
             premier.join(60)
             second.join(60)
