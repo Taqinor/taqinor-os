@@ -76,6 +76,28 @@ class FenetreDuJourTests(TestCase):
                                      canal='email')[0],
             datetime.time(8, 30))
 
+    def test_fenetre_au_fuseau_de_la_societe(self):
+        """ASOC84 (D-ASOC-8) — une société à Dakar raisonne à l'heure de
+        Dakar : 18:40 Dakar (19:40 à Casablanca) est dans 08:30-19:00."""
+        from zoneinfo import ZoneInfo
+
+        dakar = ZoneInfo('Africa/Dakar')
+        CompanyProfile.objects.filter(company=self.company).update(
+            fuseau_horaire='Africa/Dakar',
+            appel_heure_fin=datetime.time(19, 0))
+        soir = datetime.datetime(2026, 11, 10, 18, 40, tzinfo=dakar)
+        matin = datetime.datetime(2026, 11, 10, 7, 40, tzinfo=dakar)
+        self.assertTrue(horaires.est_dans_fenetre(soir, self.company,
+                                                  canal='whatsapp'))
+        self.assertFalse(horaires.est_dans_fenetre(matin, self.company,
+                                                   canal='whatsapp'))
+        # Société sans fuseau saisi : Casablanca, comme avant.
+        casa = _company('asoc84-sans-fuseau')
+        CompanyProfile.objects.filter(company=casa).update(
+            appel_heure_fin=datetime.time(19, 0))
+        self.assertFalse(horaires.est_dans_fenetre(soir, casa,
+                                                   canal='whatsapp'))
+
     def test_un_canal_inconnu_retombe_sur_la_fenetre_dappel(self):
         """Dans le doute, la fenêtre la plus TARDIVE : mieux vaut poser une
         touche trop tard qu'appeler quelqu'un trop tôt."""
