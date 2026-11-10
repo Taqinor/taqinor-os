@@ -125,10 +125,10 @@ class ServiceTests(ZGed6Base):
             filename='FAC-1.pdf', reference='FAC-1', contexte={'annee': 2026})
         routage.dossier_cible = 'Comptabilité/Factures'
         routage.save(update_fields=['dossier_cible'])
-        autre = BytesIO(b'%PDF-1.4\n%\xe2\xe3\xcf\xd3\n' + b'1' * 120)
-        autre.name, autre.size = 'FAC-1.pdf', len(autre.getvalue())
         for _ in range(2):  # contenu différent, puis identique
-            autre.seek(0)
+            # Un flux NEUF par rendu : le stockage ferme le fichier écrit.
+            autre = BytesIO(b'%PDF-1.4\n%\xe2\xe3\xcf\xd3\n' + b'1' * 120)
+            autre.name, autre.size = 'FAC-1.pdf', len(autre.getvalue())
             doc2 = services.router_document_module(
                 'facture', company=self.co_a, file=autre, filename='FAC-1.pdf',
                 reference='FAC-1', contexte={'annee': 2026})
