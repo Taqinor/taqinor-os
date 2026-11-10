@@ -587,6 +587,16 @@ class GcWorkspaceTests(unittest.TestCase):
         branches = _git(self.depot, "branch", "--format=%(refname:short)").split()
         self.assertEqual(sorted(branches), ["main", "worktree-agent-x", "worktree-agent-y"])
 
+    def test_whatif_ne_prune_aucun_worktree(self):
+        # ERR-GC-WORKSPACE-WHATIF-PRUNE : -WhatIf ne lance aucune commande git destructive.
+        wt = self.depot.parent / (self.depot.name + "-wtmort")
+        _git(self.depot, "worktree", "add", "-q", "-b", "wt-mort", str(wt))
+        shutil.rmtree(wt)
+        entree = self.depot / ".git" / "worktrees"
+        self.assertTrue(any(entree.iterdir()))
+        self._lancer()
+        self.assertTrue(any(entree.iterdir()), "-WhatIf a pruné un worktree")
+
     def test_sans_docker_garde_le_cache(self):
         # ADCG22 : la passe nocturne appelle -SansDocker (cache de build garde chaud).
         self.assertIn("docker builder prune", self._lancer())

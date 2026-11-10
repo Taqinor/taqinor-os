@@ -29,7 +29,8 @@ Write-Host "== gc-workspace ($act mode) — repo $repo =="
 
 # 1) Worktrees : prune les référence mortes, puis supprime les dossiers
 #    .claude/worktrees/* enregistrés, plus vieux que MaxAgeDays ET propres.
-git worktree prune
+# -WhatIf ne change RIEN : le prune passe en --dry-run (liste sans supprimer).
+if ($WhatIf) { git worktree prune --dry-run -v } else { git worktree prune }
 $cutoff = (Get-Date).AddDays(-$MaxAgeDays)
 $registered = (git worktree list --porcelain | Select-String '^worktree ' | ForEach-Object { $_.ToString().Substring(9) })
 $removed = 0; $kept = 0
@@ -49,7 +50,7 @@ foreach ($it in (Get-ChildItem "$repo/.claude/worktrees" -Directory -ErrorAction
     $removed++
   }
 }
-git worktree prune
+if ($WhatIf) { git worktree prune --dry-run -v } else { git worktree prune }
 
 # 2) Branches locales fusionnées dans main, motif agent-*/claude/* → suppr.
 #    Non-mergées → listées, jamais supprimées.

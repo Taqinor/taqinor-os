@@ -29,8 +29,13 @@ def sonde(ctx=None):
     sys.modules["django.conf"].settings = types.SimpleNamespace(CELERY_BROKER_URL="redis://redis:6379/0")
     redis = types.ModuleType("redis")
 
-    def injoignable(*a, **k): raise ConnectionError("redis injoignable")
-    redis.Redis = types.SimpleNamespace(from_url=injoignable); sys.modules["redis"] = redis
+    class RedisError(Exception): pass  # redis.exceptions.ConnectionError ⊂ RedisError ⊂ Exception (pas OSError)
+
+    class Client:  # Redis tombé comme en vrai : from_url est paresseux, c'est ping() qui lève
+        def ping(s): raise RedisError("Error -2 connecting to redis:6379. Name or service not known.")
+        def get(s, *a, **k): raise RedisError("injoignable")
+        def hgetall(s, *a, **k): raise RedisError("injoignable")
+    redis.Redis = types.SimpleNamespace(from_url=lambda *a, **k: Client()); sys.modules["redis"] = redis
     sys.modules.pop("core", None)
     with tempfile.TemporaryDirectory() as tmp:
         pkg = pathlib.Path(tmp) / "core"; pkg.mkdir(); (pkg / "__init__.py").write_text("")
