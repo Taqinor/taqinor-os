@@ -538,7 +538,7 @@ def _nature(facture, ids) -> str:
     return facture.type_facture
 
 
-def _facture_etat(facture, ids, palier, actionnable) -> dict:
+def _facture_etat(facture, ids, palier, actionnable, encaisse=False) -> dict:
     from core.numbering import est_reference_provisoire
     statut = facture.statut
     emise = statut in STATUTS_EMIS
@@ -566,7 +566,7 @@ def _facture_etat(facture, ids, palier, actionnable) -> dict:
             'envoyer': emise,
             'encaisser': statut in ('emise', 'en_retard')
             and _d(facture.montant_du) > 0,
-            'annuler': emise and palier,
+            'annuler': emise and palier and (encaisse or est_reference_provisoire(facture.reference)),  # ASEC90
             'supprimer': (brouillon and palier
                           and est_reference_provisoire(facture.reference)),
             'modifier_montant': brouillon and palier,
@@ -709,7 +709,7 @@ def _etat_vente(devis, palier, encaisse=False) -> dict:
             'confirmez-le pour ramener la facturation au prix convenu.')]))
     return {
         **_montants_vente(plan),
-        'factures': [_facture_etat(f, ids, palier, actionnable and encaisse)
+        'factures': [_facture_etat(f, ids, palier, actionnable and encaisse, encaisse)
                      for f, _r in plan['factures_parts']],
         'versions': [{'id': d.pk, 'reference': d.reference,
                       'version': d.version, 'statut': d.statut,
