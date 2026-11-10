@@ -1,0 +1,56 @@
+# Preuve en direct ADCG18 — échecs de tâches Celery dans le journal des problèmes, rejeu accept-runbook,
+# code joué 697277c48 (origin/main b25205b3f + merge de #1347), 2026-11-10.
+# Même pile PRIVÉE que la trace ADCG37.txt (projet compose accept-runbook depuis ce worktree, `.env` de test,
+# worker Celery RÉEL du compose : `celery -A erp_agentique worker -Q default,scheduled,bulk --concurrency=1`,
+# courtier Redis privé). Joué après la bascule de la pile privée sur erp_restaure (sans effet ici : la liste vit
+# dans Redis). Jeton de service de test PROBLEMES_RESUME_TOKEN=test_accept_runbook_jeton_resume (pile jetable).
+# Clause de la tâche : « Preuve en direct : API seulement — 0 écran ; pile locale : une tâche qui lève, puis
+# `manage.py problemes_utilisateurs --json` » ; titre : « fini quand une tâche qui lève apparaît dans
+# GET /api/django/reporting/problemes/resume/ sous taches_en_echec (nom, classe d'exception, occurrences, dernier
+# message tronqué) ».
+# Verdict : PASS
+
+## Avant
+$ docker compose exec -T redis redis-cli LLEN erp:taches_en_echec
+0
+$ curl -s -o /dev/null -w "sans jeton -> HTTP %{http_code}\n" http://127.0.0.1:8041/api/django/reporting/problemes/resume/
+sans jeton -> HTTP 403
+$ curl -s -H "Authorization: Bearer <jeton de test>" http://127.0.0.1:8041/api/django/reporting/problemes/resume/
+resume avant : taches_en_echec = []
+
+## Des tâches qui lèvent, exécutées par le worker réel (arguments en trop envoyés par nom ⇒ TypeError à l'appel)
+$ docker compose exec -T django_core python manage.py shell -c "from erp_agentique.celery import app; ids = [app.send_task('core.purge_backups', args=[1, 2, 3]).id for _ in range(3)] + [app.send_task('core.restore_drill', args=['force-un-echec']).id]; print(…, ids)"
+taches envoyees au worker (arguments en trop => TypeError a l execution) : ['609de6b9-…', '09974fca-…', '4483ea29-…', '2faab641-…']
+$ docker compose logs --no-log-prefix celery_worker | grep -E "raised unexpected|ERROR/" | tail -4
+[2026-11-10 22:55:30,154: ERROR/ForkPoolWorker-1] Task core.purge_backups[609de6b9-5ad7-4ab9-8329-295a83415125] raised unexpected: TypeError('purge_backups_task() takes 0 positional arguments but 3 were given')
+[2026-11-10 22:55:30,205: ERROR/ForkPoolWorker-1] Task core.purge_backups[09974fca-e05e-4a8f-ab51-6d5fb432d184] raised unexpected: TypeError('purge_backups_task() takes 0 positional arguments but 3 were given')
+[2026-11-10 22:55:30,235: ERROR/ForkPoolWorker-1] Task core.purge_backups[4483ea29-1672-449a-b975-c6ffc9bc3470] raised unexpected: TypeError('purge_backups_task() takes 0 positional arguments but 3 were given')
+[2026-11-10 22:55:30,271: ERROR/ForkPoolWorker-1] Task core.restore_drill[2faab641-812a-41b6-acd8-102ab3ab82ad] raised unexpected: TypeError('restore_drill_task() takes 0 positional arguments but 1 was given')
+
+## Après — la liste Redis (récepteur task_failure → consigner_echec_tache), relue
+LLEN erp:taches_en_echec = 4
+$ docker compose exec -T redis redis-cli LRANGE erp:taches_en_echec 0 -1
+{"ts": 1794347730.256365, "tache": "core.restore_drill", "exception": "TypeError", "message": "restore_drill_task() takes 0 positional arguments but 1 was given"}
+{"ts": 1794347730.231405, "tache": "core.purge_backups", "exception": "TypeError", "message": "purge_backups_task() takes 0 positional arguments but 3 were given"}
+{"ts": 1794347730.178609, "tache": "core.purge_backups", "exception": "TypeError", "message": "purge_backups_task() takes 0 positional arguments but 3 were given"}
+{"ts": 1794347730.140684, "tache": "core.purge_backups", "exception": "TypeError", "message": "purge_backups_task() takes 0 positional arguments but 3 were given"}
+
+## Après — le résumé servi
+$ curl -s -H "Authorization: Bearer <jeton de test>" "http://127.0.0.1:8041/api/django/reporting/problemes/resume/?jours=1"
+taches_en_echec = [
+ {"tache": "core.purge_backups", "exception": "TypeError", "occurrences": 3, "dernier": "2026-11-10T21:55:30.231405+00:00",
+  "message": "purge_backups_task() takes 0 positional arguments but 3 were given"},
+ {"tache": "core.restore_drill", "exception": "TypeError", "occurrences": 1, "dernier": "2026-11-10T21:55:30.256365+00:00",
+  "message": "restore_drill_task() takes 0 positional arguments but 1 was given"}
+]
+cles du resume : ['deploys_en_echec', 'genere_le', 'jours', 'outbox_alimentee', 'outbox_en_echec', 'problemes', 'sante', 'sauvegardes_en_echec', 'taches_en_echec', 'tri_horodate']
+
+## Après — la commande de la clause « Preuve en direct »
+$ docker compose exec -T django_core python manage.py problemes_utilisateurs --json
+taches_en_echec = [{"tache": "core.purge_backups", "exception": "TypeError", "occurrences": 3, "dernier": "2026-11-10T21:55:30.231405+00:00", "message": "purge_backups_task() takes 0 positional arguments but 3 were given"}, {"tache": "core.restore_drill", "exception": "TypeError", "occurrences": 1, "dernier": "2026-11-10T21:55:30.256365+00:00", "message": "restore_drill_task() takes 0 positional arguments but 1 was given"}]
+
+⇒ nom de tâche, classe d'exception, occurrences regroupées (3 / 1), dernier horodatage et message (≤ 200 car.)
+présents, dans l'endpoint ET dans `problemes_utilisateurs --json`. Le worker a continué à servir (4 échecs
+consécutifs traités, aucun arrêt). Non joué ici (couvert par les tests de la tâche, pas par la clause en direct) :
+les cas « company donné ⇒ [] » et « Redis absent ⇒ [] ».
+Verdict : PASS

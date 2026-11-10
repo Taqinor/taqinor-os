@@ -1,0 +1,57 @@
+{
+  "sha": "697277c48d6fb1a0c8a6c7c68f374ea357ad87f2",
+  "date": "2026-11-10",
+  "groupe": "ADCG",
+  "verdict": "PASS",
+  "couvre": [
+    "ADCG18",
+    "ADCG37"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "RUNBOOK.ADCG37.restauration_mot_pour_mot",
+      "taches": [
+        "ADCG37"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-runbook/ADCG37.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "docs/backup-runbook.md § ADCG37 joué commande par commande sur la pile privée accept-runbook (code 697277c48, #1347 inclus) : cp des rôles, restaurer_sauvegarde vers erp_restaure (BackupRun #2 termine, users 5 / devis 5 / leads 3, fichiers recopiés), check sur erp_restaure sans erreur, GET authentifié /api/django/crm/leads/ 200 servi par la base restaurée, mots de passe des rôles, bascule jouée en privé (docker compose up -d), gardes refusent ; aucune commande écrite en échec ; imprécisions : restart ne relit pas le .env, pas de commande pour servir la base restaurée avant bascule, outil non dit pour ALTER ROLE. Mise en place : schéma par run-syncdb + migrate --fake (migrate à froid abandonné, ~15 h projetées)."
+    },
+    {
+      "id": "RUNBOOK.ADCG18.preuve_en_direct",
+      "taches": [
+        "ADCG18"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-runbook/ADCG18.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "worker Celery réel : 3 × core.purge_backups + 1 × core.restore_drill qui lèvent (TypeError) ⇒ erp:taches_en_echec 4 entrées ; GET reporting/problemes/resume/?jours=1 ⇒ taches_en_echec regroupé (3 / 1, exception, dernier, message) ; problemes_utilisateurs --json ⇒ même liste ; sans jeton 403."
+    }
+  ]
+}
