@@ -8,8 +8,14 @@ chantiers), ``serializer.parent`` n'est pas ``None`` et les trois blocs valent
 ``None`` ; le DÉTAIL (``retrieve``, réponses d'écriture d'un chantier) les sert
 inchangés. Le panneau ``InstallationDetail`` relit le détail à son ouverture.
 
+APFS29 — en fin de fichier : mixins de masquage des montants d'achat (``champs_montants_achat``
+retirés sans ``prix_achat_voir``, cf. ``apps.stock.permissions``).
+
 Fichier frère de ``serializers.py`` (mur ≥ 2 000 lignes : il ne grossit pas).
 """
+
+
+from apps.stock.permissions import MasqueMontantsAchatMixin
 
 
 def bloc_regime_suggere(serializer, obj):
@@ -52,3 +58,32 @@ def bloc_avertissements_cloture(serializer, obj):
         return None
     from .services import avertissements_cloture
     return avertissements_cloture(obj)
+
+
+class MasqueBudgetProjet(MasqueMontantsAchatMixin):
+    champs_montants_achat = ('budget_materiel', 'budget_main_oeuvre', 'budget_sous_traitance',
+                             'budget_divers', 'budget_total', 'tarif_jour_mo')
+
+
+class MasquePrixNegocie(MasqueMontantsAchatMixin):
+    champs_montants_achat = ('prix_negocie',)
+
+
+class MasqueMontant(MasqueMontantsAchatMixin):
+    champs_montants_achat = ('montant',)
+
+
+class MasqueLandedCost(MasqueMontantsAchatMixin):
+    champs_montants_achat = ('valeur_fob', 'cout_fob_unitaire')
+
+
+class MasquePrixConvenu(MasqueMontantsAchatMixin):
+    champs_montants_achat = ('prix_convenu', 'remise_pct')
+
+
+class MasqueCoutPrevu(MasqueMontantsAchatMixin):
+    champs_montants_achat = ('cout_prevu',)
+
+
+class MasqueCoutTransport(MasqueMontantsAchatMixin):
+    champs_montants_achat = ('cout_transport',)

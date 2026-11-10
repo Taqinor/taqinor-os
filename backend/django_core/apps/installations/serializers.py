@@ -18,12 +18,12 @@ from core.champs_stricts import (  # ENF11
 from core.conflit_etat import ConflitEtat
 from core.mixins import SameCompanyFKSerializerMixin
 from core.unicite import UniciteEn409Mixin
-from apps.stock.permissions import MasqueMontantsAchatMixin  # APFS29 — survivant ASTK
 
 from .listes_prechargees import totaux_temps_memo
 from .serializers_blocs import (
-    bloc_avertissements_cloture, bloc_calepinage, bloc_dossier_8221_resume,
-    bloc_regime_suggere)
+    MasqueBudgetProjet, MasqueCoutPrevu, MasqueCoutTransport, MasqueLandedCost, MasqueMontant,
+    MasquePrixConvenu, MasquePrixNegocie, bloc_avertissements_cloture, bloc_calepinage,
+    bloc_dossier_8221_resume, bloc_regime_suggere)
 from .serializers_stage import (
     CautionTotaleMixin, refus_protege, valider_unicite_societe)
 from .serializers_gps import GeofenceAlertGpsChampsMixin, InterventionGpsChampsMixin
@@ -1277,7 +1277,7 @@ class BudgetEngagementSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixi
 
 class BudgetProjetSerializer(
     IdInconnu404Mixin, ChampsTexteStrictsMixin,  # api-fuzz-full 28/10 : `devise` sans NUL
-    MasqueMontantsAchatMixin, UniciteEn409Mixin, SameCompanyFKSerializerMixin,
+    MasqueBudgetProjet, UniciteEn409Mixin, SameCompanyFKSerializerMixin,
         serializers.ModelSerializer):
     """FG294 — budget d'un programme (enveloppes par catégorie + seuil d'alerte).
     La société et `created_by` sont posés côté serveur ; le `projet` est validé
@@ -1286,8 +1286,6 @@ class BudgetProjetSerializer(
     sélecteur `budget_projet_synthese`."""
     # ACHT53 — FK inscriptibles bornées à la société.
     same_company_fields = ('projet',)
-    champs_montants_achat = ('budget_materiel', 'budget_main_oeuvre', 'budget_sous_traitance',
-                             'budget_divers', 'budget_total', 'tarif_jour_mo')
     budget_total = serializers.SerializerMethodField()
     engagements = BudgetEngagementSerializer(many=True, read_only=True)
 
@@ -1670,13 +1668,12 @@ class ApprobationBCFSerializer(SameCompanyFKSerializerMixin,
         ]
 
 
-class CommandeCadreLigneSerializer(MasqueMontantsAchatMixin, IdInconnu404Mixin, SameCompanyFKSerializerMixin,
+class CommandeCadreLigneSerializer(MasquePrixNegocie, IdInconnu404Mixin, SameCompanyFKSerializerMixin,
                                    serializers.ModelSerializer):
     """FG314 — ligne d'un contrat-cadre (SKU, prix négocié INTERNE, volume
     engagé). `volume_consomme`/`volume_restant` sont dérivés (lecture seule)."""
     # ACHT53/ENF17 — FK inscriptibles bornées à la société.
     same_company_fields = ('commande_cadre', 'produit')
-    champs_montants_achat = ('prix_negocie',)
     produit_nom = TexteLie(
         source='produit.nom', read_only=True, default=None, allow_null=True)
     volume_consomme = serializers.DecimalField(
@@ -1737,14 +1734,13 @@ class CommandeCadreSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerial
         return value
 
 
-class AppelCommandeSerializer(MasqueMontantsAchatMixin, IdInconnu404Mixin, SameCompanyFKSerializerMixin,
+class AppelCommandeSerializer(MasqueMontant, IdInconnu404Mixin, SameCompanyFKSerializerMixin,
                               serializers.ModelSerializer):
     """FG314 — commande d'appel sur une ligne de contrat-cadre. La société et
     `created_by` sont posés CÔTÉ SERVEUR. `montant` est dérivé (quantité × prix
     négocié, INTERNE)."""
     # ACHT53 — FK inscriptibles bornées à la société.
     same_company_fields = ('chantier',)
-    champs_montants_achat = ('montant',)
     montant = serializers.DecimalField(
         max_digits=14, decimal_places=2, read_only=True)
 
@@ -1803,7 +1799,7 @@ class DossierImportSerializer(
 
 
 class FraisImportSerializer(
-    MasqueMontantsAchatMixin, IdInconnu404Mixin,
+    MasqueMontant, IdInconnu404Mixin,
     ChampsStrictsEntiersMixin,
     SameCompanyFKSerializerMixin,
         serializers.ModelSerializer):
@@ -1812,7 +1808,6 @@ class FraisImportSerializer(
     INTERNE."""
     # ACHT53 — FK inscriptibles bornées à la société.
     same_company_fields = ('dossier',)
-    champs_montants_achat = ('montant',)
     categorie_display = serializers.CharField(
         source='get_categorie_display', read_only=True, default=None, allow_null=True)
     # ENF11 (nocturne 15/10) — « jamais négatif » PUBLIÉ (motif sans signe) et
@@ -1829,13 +1824,12 @@ class FraisImportSerializer(
 
 
 class LandedCostLigneSerializer(ChampsTexteStrictsMixin, IdInconnu404Mixin, SameCompanyFKSerializerMixin,
-                                MasqueMontantsAchatMixin, serializers.ModelSerializer):
+                                MasqueLandedCost, serializers.ModelSerializer):
     """FG316 — ligne de coût débarqué par SKU (valeur FOB + quantité). La société
     est posée CÔTÉ SERVEUR. `cout_fob_unitaire` est dérivé ; la quote-part de
     frais + le coût débarqué se lisent via l'action `landed-cost` du dossier."""
     # ACHT53/ENF17 — FK inscriptibles bornées à la société.
     same_company_fields = ('dossier', 'produit')
-    champs_montants_achat = ('valeur_fob', 'cout_fob_unitaire')
     produit_nom = TexteLie(
         source='produit.nom', read_only=True, default=None, allow_null=True)
     # 14 chiffres : valeur FOB maximale (10 entiers) / quantité minimale (0,01). À 12,
@@ -1895,13 +1889,12 @@ class ReceptionNonFactureeSerializer(MontantProvisionBorneMixin,
         return value
 
 
-class ContratPrixLigneSerializer(MasqueMontantsAchatMixin, IdInconnu404Mixin, SameCompanyFKSerializerMixin,
+class ContratPrixLigneSerializer(MasquePrixConvenu, IdInconnu404Mixin, SameCompanyFKSerializerMixin,
                                  serializers.ModelSerializer):
     """FG318 — ligne de prix convenu d'un contrat fournisseur (SKU + prix
     négocié INTERNE + remise % optionnelle)."""
     # ACHT53/ENF17 — FK inscriptibles bornées à la société.
     same_company_fields = ('contrat', 'produit')
-    champs_montants_achat = ('prix_convenu', 'remise_pct')
     produit_nom = TexteLie(
         source='produit.nom', read_only=True, default=None, allow_null=True)
 
@@ -2450,7 +2443,7 @@ class OrdreAssemblageLigneSerializer(IdInconnu404Mixin, SameCompanyFKSerializerM
         return attrs
 
 
-class OrdreAssemblageSerializer(MasqueMontantsAchatMixin, IdInconnu404Mixin, SameCompanyFKSerializerMixin,
+class OrdreAssemblageSerializer(MasqueCoutPrevu, IdInconnu404Mixin, SameCompanyFKSerializerMixin,
                                 ChampsStrictsSansDecimalMixin, serializers.ModelSerializer):
     """FG328 - ordre d'assemblage de N kits. Reference/societe/`created_by`
     poses COTE SERVEUR ; le statut avance via `demarrer`/`terminer`/`annuler`."""
@@ -2460,7 +2453,6 @@ class OrdreAssemblageSerializer(MasqueMontantsAchatMixin, IdInconnu404Mixin, Sam
     same_company_fields = (
         'chantier', 'ordre_sous_traitance', 'responsable', 'kit', 'devis',
         'emplacement_destination', 'emplacement_source', 'sous_traitant')
-    champs_montants_achat = ('cout_prevu',)
     kit_nom = TexteLie(
         source='kit.nom', read_only=True, default=None, allow_null=True)
     statut_display = serializers.CharField(
@@ -2726,7 +2718,7 @@ class LivraisonLigneSerializer(
 
 
 class LivraisonSerializer(
-    MasqueMontantsAchatMixin, IdInconnu404Mixin,
+    MasqueCoutTransport, IdInconnu404Mixin,
     ChampsStrictsEntiersMixin,
     SameCompanyFKSerializerMixin,
         serializers.ModelSerializer):
@@ -2735,7 +2727,6 @@ class LivraisonSerializer(
     `expedier`/`livrer`/`annuler`. Lignes imbriquees en lecture."""
     # ACHT53/ENF17 — FK inscriptibles bornées à la société.
     same_company_fields = ('installation', 'transporteur', 'depot')
-    champs_montants_achat = ('cout_transport',)
     installation_reference = TexteLie(
         source='installation.reference', read_only=True, default=None, allow_null=True)
     depot_nom = TexteLie(
