@@ -189,6 +189,10 @@ class AttestationView(_BaseDocumentView):
         responses=_PDF)
     def get(self, request, pk):
         chantier = _get_chantier_or_404(request, pk)
+        from apps.installations.selectors import scoper_chantiers  # ADOC202 : portée propriétaire seule (D-ADOC-VER4-1)
+        if not scoper_chantiers(Installation.objects.filter(pk=chantier.pk), request.user).exists():
+            return Response({'detail': 'Attestation réservée aux responsables du chantier.'},
+                            status=status.HTTP_403_FORBIDDEN)
         attestation_type = request.query_params.get('type', 'installation')
         if attestation_type not in builders.ATTESTATION_TYPES:
             return Response(
