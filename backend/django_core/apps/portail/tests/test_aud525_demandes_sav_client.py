@@ -190,7 +190,7 @@ class AUD525DemandesSavClientTests(TestCase):
         with stockage:
             self.assertEqual(deposer().status_code, 201)
         notes = Notification.objects.filter(
-            user=resp_interne, event_type='portail_demande_client')
+            recipient=resp_interne, event_type='portail_demande_client')
         self.assertEqual(notes.count(), 2)
         self.assertTrue(all('Alpha' in n.title for n in notes))
         with stockage, mock.patch(
