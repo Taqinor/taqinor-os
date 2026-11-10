@@ -1447,6 +1447,20 @@ class EstOperateurPlateforme(permissions.BasePermission):
         return est_operateur_plateforme(request.user)  # APFS61
 
 
+class PeutReinitialiserDemo(permissions.BasePermission):
+    """NTDMO32 — qui peut déclencher ``reset-demo/`` : un compte ``is_staff``
+    (accès historique) ou un rôle portant ``peut_reinitialiser_demo``."""
+
+    message = "Réservé aux comptes autorisés à réinitialiser la démo."
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not (user and user.is_authenticated):
+            return False
+        return bool(getattr(user, 'is_staff', False)
+                    or user.has_erp_permission('peut_reinitialiser_demo'))
+
+
 class CompanyViewSet(viewsets.ModelViewSet):
     queryset = Company.objects.all().order_by('date_creation')
     serializer_class = CompanySerializer
@@ -1472,6 +1486,12 @@ class CompanyViewSet(viewsets.ModelViewSet):
         # donc aucune.
         if self.action in ('create', 'destroy'):
             return [permissions.IsAdminUser(), EstOperateurPlateforme()]
+        if self.action == 'reset_demo':
+            # NTDMO32 — ``is_staff`` (comportement historique) OU la
+            # permission fine ``peut_reinitialiser_demo`` du rôle ; le
+            # cloisonnement de société (403) reste appliqué.
+            return [PeutReinitialiserDemo(),
+                    EstSaPropreSocieteOuOperateurPlateforme()]
         return super().get_permissions()
 
     def get_queryset(self):

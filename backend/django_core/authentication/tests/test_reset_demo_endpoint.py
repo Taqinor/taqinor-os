@@ -1,8 +1,11 @@
 """Tests du endpoint reset-demo (NTDMO7) + drapeaux démo /auth/me."""
+from unittest import mock
+
 from django.core.management import call_command
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
+from apps.roles.models import Role
 from authentication.models import Company, CustomUser
 
 
@@ -60,3 +63,39 @@ class ResetDemoEndpointTest(TestCase):
         self.assertEqual(resp.status_code, 403)
         real.refresh_from_db()
         self.assertFalse(real.mode_presentation_actif)
+
+
+class ResetDemoPermissionNTDMO32Test(TestCase):
+    """NTDMO32 — ``peut_reinitialiser_demo`` ouvre reset-demo/ à un rôle fin."""
+
+    def setUp(self):
+        self.co = Company.objects.create(
+            nom='Démo 32', slug='demo-32', est_demo=True)
+        self.url = f'/api/django/companies/{self.co.id}/reset-demo/'
+
+    def _post(self, perms):
+        role = Role.objects.create(
+            company=self.co, nom=f'Commercial démo {len(perms)}',
+            permissions=perms)
+        user = CustomUser.objects.create_user(
+            f'u32-{len(perms)}', password='x', company=self.co, role=role,
+            is_staff=False)
+        c = APIClient()
+        c.force_authenticate(user)
+        with mock.patch('authentication.views._run_demo_reset'):
+            return c.post(self.url)
+
+    def test_commercial_sans_permission_403(self):
+        self.assertEqual(self._post(['crm_voir']).status_code, 403)
+
+    def test_commercial_avec_permission_ok(self):
+        self.assertEqual(
+            self._post(['crm_voir', 'peut_reinitialiser_demo']).status_code,
+            200)
+
+    def test_permission_au_catalogue_et_admin(self):
+        from apps.roles.permissions_registre import (
+            ADMIN_PERMISSIONS, ALL_PERMISSIONS, COMMERCIAL_PERMISSIONS)
+        self.assertIn('peut_reinitialiser_demo', ALL_PERMISSIONS)
+        self.assertIn('peut_reinitialiser_demo', ADMIN_PERMISSIONS)
+        self.assertNotIn('peut_reinitialiser_demo', COMMERCIAL_PERMISSIONS)

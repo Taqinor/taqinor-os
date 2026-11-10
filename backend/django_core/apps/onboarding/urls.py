@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     OnboardingItemsMasquesViewSet, OnboardingProgressViewSet,
-    ProductTourViewSet,
+    OnboardingTextesExportView, OnboardingTextesImportView, ProductTourViewSet,
 )
 
 router = DefaultRouter()
@@ -13,5 +13,10 @@ router.register(r'tours', ProductTourViewSet, basename='onboarding-tours')
 router.register(r'items-masques', OnboardingItemsMasquesViewSet, basename='onboarding-items-masques')
 
 urlpatterns = [
+    # NTDMO36 — textes FR (tours + checklist) : export/réimport CSV, admin.
+    path('export-textes.csv', OnboardingTextesExportView.as_view(),
+         name='onboarding-export-textes'),
+    path('import-textes.csv', OnboardingTextesImportView.as_view(),
+         name='onboarding-import-textes'),
     path('', include(router.urls)),
 ]
