@@ -158,7 +158,8 @@ lecture seule (A.2). Détecteurs : commande + SHA + verdict dans le dossier, sor
   parcours reçoit une **sonde** `docs/audits/sondes/<G>/C-<G>-<NNN>.py` (en-tête `SONDE = {constat, sha, attendu}`,
   `def sonde(ctx)`) jouée par `scripts/sonde.py` dans une transaction ANNULÉE (mail en mémoire, Celery coupé, HTTP bloqué),
   avec comptes avant / après. Verdict REPRO (chemin de sonde dans la colonne « Sonde ») ou STATIQUE ; STATIQUE est interdit
-  en S1-S2 sur les critères à sonde obligatoire. PLAUSIBLE n'entre jamais au tableau.
+  en S1-S2 sur les critères à sonde obligatoire. PLAUSIBLE n'entre jamais au tableau. Une sonde est lue par les gardes du
+  dépôt : lancer `check_stages.py` avant de pousser (aucun littéral d'étape, `NEW` compris, en clé ou en comparaison).
 - **0 réfuté sur les S1 ⇒ seconde lentille** (11 dossiers v2 sur 19 étaient à 0 réfuté ; la seconde lentille a corrigé
   2/13 chez J5 et 2/4 chez J4). Jamais sur l'ensemble des constats.
 - **Fraîcheur** : `git diff <base>..origin/main -- <périmètre>` avant rédaction ; un constat déjà corrigé est retiré.
@@ -258,6 +259,22 @@ téléphone ; ligne de coût `H<n> S<n> O<n> F<n> · jetons sous-agents ≈ x M`
    complète ; `vérifié` ← `vérifie` sans écart S1-S2. Sortie du cycle : deux `vérifie` consécutifs à zéro S1-S2.
 4. Une tâche n'est fermée que par un vérificateur frais qui rejoue la reproduction ; preuve que la CAUSE a disparu (test
    rouge-d'abord vert, mutant rouge, frères fermés, garde de classe).
+5. **Mécanique des tâches ÉCART (mesuré 11/10 : 4 cycles CI rouges évitables).** Avant de pousser, lancer EN LOCAL
+   les trois gardes rapides `check_ownership.py` + `check_ancres_taches.py` + `check_taches_cablage.py` (pas
+   seulement `stage-names`, lent et sujet à blocage local). (a) Une tâche écart dont les `Files:` touchent PLUSIEURS
+   propriétaires (`check_ownership.py --owner-of`) va dans `docs/plans/PLAN_AUDIT_TRANSVERSE.md` avec `(@atomique: a,
+   b)` si c'est un correctif en UN commit — jamais dans le plan d'un seul propriétaire. (b) Ancre =
+   `chemin/complet.ext::symbole` (fonction/classe réels), JAMAIS `:ligne` ni `(l.N)` nus ; un dict/variable de module
+   n'est pas une ancre résolvable → le citer en texte. (c) Chaque `n/a` porte « n/a — raison » (jamais nu). (d) Les
+   14 clauses v3 sont toutes présentes (dont « Assertions existantes »). (e) Une tâche ÉCART ne cite jamais un
+   `C-<G>-NNN` du dossier d'origine ni un nom de sonde `C-<G>-NNN.py` : `check_audit_dossier.py` compte ces citations
+   dans l'en-tête `taches:` du dossier (rouge « N mais N+1 réels », vu sur PA5 le 10/11) ; constat =
+   `C-<G>-VER<n>-NNN`, sonde citée en texte (« la sonde 062 du dossier PA5 ») ; lancer aussi `check_audit_dossier.py`
+   et `audit_registre.py --check` en local. (f) `audit_registre.py --du` / `status` lancent la garde d'acceptation
+   groupe par groupe (plusieurs minutes) : pour la seule liste des dus, neutraliser `acceptation` (`a.acceptation =
+   lambda g: 'n/d'` avant `a.cmd_du()`). Le record `<date>-<mot>-verifie.md` prend le `mot` du `declencheur` tel
+   quel, ACCENTS COMPRIS (`sécurité`, `générateur`) sinon `audit_registre` ne le matche pas ; une 2ᵉ contre-visite le
+   même jour REMPLACE le fichier canonique (git garde la 1ʳᵉ).
 
 ---
 

@@ -3836,6 +3836,17 @@ decisions:
     date: "2026-11-07"
     source: "Reda, question interactive, audit de parcours PA7"
     taches: [AMON21]
+  - id: D-AMON-3
+    question: "Le productible garanti de la garantie de production est proraté À PLAT sur l'année (jours / jours de l'année) alors que la production attendue suit le profil mensuel : un système sain au profil porte une pénalité de janvier à avril et un « recours fabricant » jusqu'à mi-mai. Quelle règle de prorata en cours d'année ?"
+    options:
+      - cle: profil_mensuel
+        texte: "Garanti proraté au profil mensuel déjà servi à l'attendu (aucune pénalité pour un système produisant au profil)"
+      - cle: prorata_a_plat
+        texte: "Garder le prorata temporis à plat annoncé par la mention légale (aucun code ; la pénalité d'hiver reste provisoire jusqu'à la clôture de l'année)"
+    reponse: ouverte
+    date: "2026-11-10"
+    source: "vérifie AMON du 10/11/2026 (critique de complétude) : non posée, Reda absent (défaut recommandé : profil_mensuel) ; réglage garantie_production_autorisee éteint par défaut, 0 garantie en prod au 07/11"
+    taches: [AMON107]
   - id: D-ACON-1
     question: "« Générer le devis » depuis un calepinage (et la route from-layout) sur un lead commercial / industriel construit un devis RÉSIDENTIEL avec la production et les économies de l'outil toiture (interdit en C&I par CIQ117). Quelle règle ?"
     options:
@@ -4016,3 +4027,38 @@ decisions:
     date: "2026-11-08"
     source: "Reda, question interactive, audit de parcours PF1"
     taches: [APFS28]
+  - id: D-ADCG-1
+    question: "Les sauvegardes de la production (base, et bientôt fichiers) restent sur le même serveur que la base : la copie distante est éteinte faute de réglage. Où envoyer la copie hors du serveur ?"
+    options:
+      - cle: espace_objet_externe
+        texte: "Un espace de stockage objet chez un autre fournisseur que l'hébergeur (quatre variables BACKUP_OFFSITE_* à poser, copie chiffrée)"
+      - cle: stockage_hebergeur
+        texte: "Un espace de stockage du même hébergeur, dans un autre centre de données"
+      - cle: option_backups_hebergeur_seule
+        texte: "S'en remettre à l'option Backups de l'hébergeur (image entière du serveur), sans copie applicative"
+    reponse: ouverte
+    date: "2026-11-10"
+    source: "audit de parcours PF3 (10/11/2026) : non posée, Reda absent (défaut recommandé : espace_objet_externe) ; prod lue le 10/11 : copie distante off, 33 dumps et 271 Mo de fichiers sur le même disque ; option Backups de l'hébergeur non vérifiée"
+    taches: [ADCG32]
+  - id: D-ADCG-2
+    question: "40 PR Dependabot sont ouvertes, dont des correctifs de sécurité verts à un seul paquet que personne ne fusionne. Les fusionner automatiquement quand la CI est verte ?"
+    options:
+      - cle: fusion_auto_securite_mono_paquet
+        texte: "Oui : fusion automatique des PR de sécurité à un seul paquet, mineures et correctifs seulement, CI verte exigée"
+      - cle: manuel
+        texte: "Non : toute montée de dépendance reste une fusion à la main"
+    reponse: ouverte
+    date: "2026-11-10"
+    source: "audit de parcours PF3 (10/11/2026) : non posée, Reda absent (défaut recommandé : fusion_auto_securite_mono_paquet) ; 217 alertes ouvertes dont 11 critiques le 10/11"
+    taches: [ADCG67]
+  - id: D-ADCG-3
+    question: "Un devis à micro-onduleurs n'est rangé dans aucune famille d'onduleur par le moteur : son PDF à options est refusé. Faut-il classer un micro-onduleur comme onduleur réseau (injection) ?"
+    options:
+      - cle: reseau
+        texte: "Oui : un micro-onduleur est un onduleur réseau, le devis se rend comme une installation sans batterie"
+      - cle: non_classe
+        texte: "Non : il reste hors famille ; un devis à micro-onduleurs ne propose pas le PDF à options"
+    reponse: ouverte
+    date: "2026-11-10"
+    source: "audit de parcours PF3 (10/11/2026) : non posée, Reda absent (défaut recommandé : reseau) ; vu sur un devis de démonstration ; 4 devis réels sans onduleur reconnu non identifiés"
+    taches: [ADCG45]
