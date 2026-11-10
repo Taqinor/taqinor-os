@@ -12,8 +12,9 @@ export const prerender = false;
 import Layout from '../../layouts/Layout.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
 import { formatDate, type IncidentPublicItem } from '../../lib/statusPublic';
+import { resolveApiBase } from '../api/_apiBase';
 
-const API_BASE = (import.meta.env.PUBLIC_API_BASE as string | undefined) ?? 'https://api.taqinor.ma';
+const API_BASE = resolveApiBase(); // ADCG56 : runtime Cloudflare, puis build, puis défaut
 const SSR_FETCH_TIMEOUT_MS = 8000;
 const { incident: incidentParam } = Astro.params as { incident: string };
 

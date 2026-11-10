@@ -253,7 +253,7 @@ import { dasharrayDonut } from '../../lib/tailleDetail';
 import { economiesPeriodes } from '../../lib/economiesPeriodes';
 import { ficheSlugPourLigne } from '../../lib/ficheMatcher';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
-import { entetePreuve, entetesIpVisiteur, relaisAfficheToiture, relaisPdfProposition } from '../api/_apiBase';
+import { entetePreuve, entetesIpVisiteur, relaisAfficheToiture, relaisPdfProposition, resolveApiBase } from '../api/_apiBase';
 // QJ-EQUIPE (cookie partagé ERP↔site, T2) — `isPlausibleUuid` filtre le cookie
 // `tq_appareil` avant de le transmettre en en-tête SSR ; `domaineCookiePartage`
 // + `SITE_HOST` posent `tq_equipe` sur le domaine partagé (`taqinor.ma`), lisible
@@ -324,7 +324,7 @@ import {
   type OffreVariante,
 } from '../../lib/offresTailles';
 
-const API_BASE = (import.meta.env.PUBLIC_API_BASE as string | undefined) ?? 'https://api.taqinor.ma';
+const API_BASE = resolveApiBase(); // ADCG56 : runtime Cloudflare, puis build, puis défaut
 // ── PV80 — ROUTE CATCH-ALL : /proposition/<token> ET /proposition/<slug>/<token>.
 // Le lien envoyé au client peut désormais porter son nom (« se lit » dans un
 // message WhatsApp) sans rien changer à la sécurité : le segment décoratif
