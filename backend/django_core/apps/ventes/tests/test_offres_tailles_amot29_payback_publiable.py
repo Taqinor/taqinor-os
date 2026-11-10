@@ -111,6 +111,48 @@ class PaybackPubliableTests(SimpleTestCase):
             vus[niveau] = publie.call_args.kwargs['cout_onduleur_ttc']
             self.assertEqual(vus[niveau], attendu)
 
+    def test_bornes_offgrid_niveau_11_cartes(self):
+        """AMOT128 (C-AMOT-VER5-121) — onduleur hors réseau (port 3 kW fiché)
+        ×1 + 2 packs 5 kW : au niveau 11 (devis envoyé) la carte borne le
+        moteur horaire aux règles d'hier (port off-grid ignoré : décharge
+        onduleur None, charge 10,0) ; au niveau 12 : 3,0 / 3,0.
+        Test-du-test : ôter ``devis=`` de l'appel ⇒ niveau 11 lu en 12."""
+        from decimal import Decimal
+        from unittest import mock
+
+        from apps.ventes.tests.test_offres_tailles import _contexte_factice
+
+        class _Arret(BaseException):
+            """Sort du moteur dès la lecture des bornes (hors ``except Exception``)."""
+
+        ond, pack = object(), object()
+        fiches = {(ond, 'bat_max_decharge_kw'): 3.0, (ond, 'bat_max_charge_kw'): 3.0,
+                  (pack, 'max_decharge_kw'): 5.0, (pack, 'max_charge_kw'): 5.0}
+        lignes = type('Compo', (list,), {})([
+            SimpleNamespace(produit=ond, designation='Onduleur off-grid', quantite=1, prix_unitaire=9000),
+            SimpleNamespace(produit=pack, designation='Batterie 5 kWh', quantite=2, prix_unitaire=15000)])
+        lignes.roles = ['onduleur_offgrid', 'batterie']
+        for niveau, attendu in ((11, (None, 10.0)), (12, (3.0, 3.0))):
+            contexte = _contexte_factice(SimpleNamespace(taux_tva=Decimal('20'), regles_calcul=niveau))
+            contexte.composer = (lambda nb, avec_batterie=False, cible_kwh=None:
+                                 lignes if avec_batterie else None)
+            vus = []
+
+            def espion(**kwargs):
+                vus.append(kwargs)
+                raise _Arret
+
+            with mock.patch('apps.ventes.horaire.batterie_lignes._puissance_fiche',
+                            side_effect=lambda produit, cle: fiches.get((produit, cle))), \
+                    mock.patch('apps.ventes.dimensionnement._lire_composition',
+                               return_value={'batterie_kwh': 10.0}), \
+                    mock.patch('apps.ventes.etude_horaire.calculer_etude_horaire', espion), \
+                    self.assertRaises(_Arret):
+                ot._carte_moteur(contexte, 10)
+            self.assertEqual(len(vus), 1, niveau)
+            self.assertEqual((vus[0]['batterie_puissance_decharge_onduleur_kw'],
+                              vus[0]['batterie_puissance_charge_kw']), attendu, niveau)
+
     def test_err_rhor8_carte_recommande_jamais_rembourse_omise(self):
         """ERR-RHOR8-TAILLES-JAMAIS-RENTABILISE (devis 2300) — ``roi_*`` servi
         à la sentinelle 25,0 avec ``roi_*_jamais`` : la carte Recommandé OMET

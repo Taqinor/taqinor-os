@@ -523,7 +523,7 @@ def rafraichir_dimensionnement_devis(devis, *, force=False):
             mppt_paires=entrees['mppt_paires'],
             # RSIZ2/3/5 — les sondes d'un devis aux règles < 3 gardent ses
             # règles (``balayer_tailles`` → ``ContexteSonde``).
-            regles_2710=regles_au_moins(devis, REGLES_CORRIGEES_2710))
+            regles_2710=regles_au_moins(devis, REGLES_CORRIGEES_2710), devis=devis)  # AMOT130
         resultat['_empreinte'] = empreinte
         ecrire(devis, proprietaire=MOTEUR_DIMENSIONNEMENT,
                dimensionnement=resultat)

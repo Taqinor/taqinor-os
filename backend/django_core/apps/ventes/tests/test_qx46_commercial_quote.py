@@ -1134,6 +1134,36 @@ class TestAmot95BaseDeclaree(SimpleTestCase):
             self.assertNotIn("economie_annuelle_ttc_mad", hier)
             self.assertIn("20 000 MAD HT", hier["textes"]["fr"])
 
+    def test_base_ttc_bloc_option_avec_en_ttc(self):
+        """AMOT129 (C-AMOT-VER5-123) — base « ttc », deux options : le bloc
+        « Option avec batterie » de la page équipements imprime « Économie
+        annuelle TTC » et 24 000 MAD (la valeur servie), comme la carte ;
+        bases « ht » / « deux » et ``regles_0411_historique`` : la ligne HT
+        d'hier. Mutant : relire ``economie_annuelle_mad`` en dur ⇒ échec."""
+        import html as _h
+        import re
+        from apps.ventes.quote_engine.ci.blocs import bloc_option_avec
+        from apps.ventes.quote_engine.residential.theme import fmt
+        option_avec = {"economie_annuelle_mad": 20000.0, "retour_simple_ans": 9.1,
+                       "bilan": {"batterie": {"capacite_utile_kwh": 100.0, "restitue_kwh_an": 30000}},
+                       "economie_ci": {"economie_annee1": {"total_mad": 20000.0, "total_mad_ttc": 24000.0}}}
+
+        def bloc(base, **extra):
+            d = {"langue_sortie": "fr", "economie_ci": {"base": base}, "all_items": [],
+                 "option_batterie": {"totaux": {"ht_net": 700000.0, "tva": 140000.0, "ttc": 840000.0},
+                                     "lignes": []},
+                 "etude": {"etude_ci": {"option_avec": option_avec}}, **extra}
+            brut = bloc_option_avec(d, lambda cle, fr: fr, fmt, ("#000", "#111", "#222", "#333"))
+            texte = _h.unescape(re.sub(r"<[^>]+>", " ", brut))
+            return re.sub(r"\s+", " ", texte.replace("\xa0", " ").replace(" ", " "))
+
+        ttc = bloc("ttc")
+        self.assertIn("Économie annuelle TTC 24 000 MAD", ttc)
+        self.assertNotIn("Économie annuelle HT", ttc)
+        for hier in (bloc("ht"), bloc("deux"), bloc("ttc", regles_0411_historique=True)):
+            self.assertIn("Économie annuelle HT 20 000 MAD", hier)
+            self.assertNotIn("24 000", hier)
+
     def test_anglais(self):
         p1 = _texte_ci(_pages_ci(_data_ci(langue="en"))[1])
         self.assertNotIn("Recoverable VAT not declared", p1)  # CPDF5

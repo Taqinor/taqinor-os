@@ -60,7 +60,7 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
                     max_panneaux=None, source_conso=None,
                     cible_falaise_kwh_mois=None, jour_reference=None,
                     hors_reseau=False, mppt_paires=1, perte_ombrage_pct=None,
-                    regles_2710=True):
+                    regles_2710=True, devis=None):  # AMOT130 : devis ⇒ bornes batterie à son niveau
     """Le TABLEAU complet : une ligne par taille candidate, DEUX dimensions.
 
     ``tranches`` / ``charges_fixes_mad`` sont KEYWORD-REQUIS (QJR46). Ils
@@ -416,7 +416,7 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
             vues[capacite] = (cible, vue)
             compositions.append(capacite)
             puissances = puissances_batterie_des_lignes(
-                lignes, roles=getattr(lignes, 'roles', None))
+                lignes, roles=getattr(lignes, 'roles', None), devis=devis)
             bornes_par_capacite[round(capacite, 3)] = {
                 'decharge_kw': puissances['packs_decharge_kw'],
                 'decharge_onduleur_kw': puissances['ond_decharge_kw'],

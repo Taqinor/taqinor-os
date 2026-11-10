@@ -99,14 +99,15 @@ class PorteeDocumentsChantierTests(TestCase):
         ERR-CHT-TECH-CHANTIER-404) ET ses documents ; l'attestation reste
         aux responsables.
 
-        Rôle en LECTURE seule : un code d'écriture du module installations
-        (``intervention_gerer``) fait de son porteur un responsable du module
-        au sens d'``IsResponsableOrAdmin`` (ASEC11) — la portée vient de
-        l'intervention assignée, pas d'un droit d'écriture."""
+        ADOC202 (D-ADOC-VER4-1) — le VRAI rôle Technicien du registre
+        (``TECHNICIEN_PERMISSIONS`` : ``intervention_gerer`` le fait passer
+        ``IsResponsableOrAdmin``) : attestation 403 tant qu'il n'atteint le
+        chantier que par l'intervention ; 200 une fois responsable du chantier."""
         from apps.installations.models import Intervention
+        from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
         role = Role.objects.create(
             company=self.company, nom='Technicien d’intervention',
-            permissions=[SCOPE_TEAM, 'installation_voir'])
+            permissions=list(TECHNICIEN_PERMISSIONS))
         tech_iv = User.objects.create_user(
             username=f'adoc196-iv-{next(_seq)}', password='x',
             company=self.company, role=role)
@@ -124,6 +125,10 @@ class PorteeDocumentsChantierTests(TestCase):
                 self.assertEqual(r['Content-Type'], 'application/pdf')
         self.assertEqual(api.get(
             f'{DOCS}/{self.chantier_x.pk}/attestation/').status_code, 403)
+        Installation.objects.filter(pk=self.chantier_x.pk).update(
+            technicien_responsable=tech_iv)
+        self.assertEqual(api.get(
+            f'{DOCS}/{self.chantier_x.pk}/attestation/').status_code, 200)
 
     def test_attestation_reservee_responsable(self):
         r = _api(self.tech).get(

@@ -908,8 +908,8 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True,
     bornes = {}
     if lignes_avec is not None and capacite:
         try:
-            puissances = puissances_batterie_des_lignes(
-                lignes_avec, roles=getattr(lignes_avec, 'roles', None))
+            puissances = puissances_batterie_des_lignes(  # AMOT128 : niveau du devis
+                lignes_avec, roles=getattr(lignes_avec, 'roles', None), devis=contexte.devis)
             bornes = {
                 'batterie_puissance_decharge_kw':
                     puissances['packs_decharge_kw'],

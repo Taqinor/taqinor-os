@@ -211,7 +211,7 @@ def _dimensionnement_variante(devis, occupation):
         hors_reseau=entrees.hors_reseau, mppt_paires=entrees.mppt_paires,
         # RSIZ2/3/5 — un devis existant aux règles < 3 garde ses règles,
         # comme le profil réel (``etudes.rafraichir_dimensionnement_devis``).
-        regles_2710=regles_au_moins(devis, REGLES_CORRIGEES_2710))
+        regles_2710=regles_au_moins(devis, REGLES_CORRIGEES_2710), devis=devis)  # AMOT130
 
 
 def calculer_profils_comparatifs(devis):
