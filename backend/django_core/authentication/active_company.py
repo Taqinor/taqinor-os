@@ -93,6 +93,19 @@ def user_can_operate(user, company_id):
     return any(c.id == company_id for c in companies_for_user(user))
 
 
+def role_dans_societe(user, company_id):
+    """APFS66 (D-APFS-3) — ``(autorisé, rôle)`` dans ``company_id`` : rôle d'attache chez soi (ou
+    opérateur plateforme), sinon celui de l'appartenance s'il est de cette société ; sinon refus."""
+    from authentication.permissions import est_operateur_plateforme
+    attache = getattr(user, '_company_id_attache', getattr(user, 'company_id', None))
+    if est_operateur_plateforme(user) or (attache is not None and int(company_id) == attache):
+        return True, getattr(user, 'role', None)
+    from authentication.models import AppartenanceSociete
+    lien = (AppartenanceSociete.objects.select_related('role')
+            .filter(user_id=user.pk, company_id=int(company_id), role__company_id=int(company_id)).first())
+    return (True, lien.role) if lien is not None else (False, None)
+
+
 def resolve_active_company(user, claimed_id):
     """Résout la société active à appliquer à la requête.
 
@@ -109,5 +122,11 @@ def resolve_active_company(user, claimed_id):
         return home
     if home is not None and home.id == int(claimed_id):
         return home
+    autorise, role = role_dans_societe(user, claimed_id)
+    if not autorise:  # APFS66 — membre sans rôle dans cette société : repli
+        return home
     from authentication.models import Company
-    return Company.objects.filter(pk=int(claimed_id)).first() or home
+    active = Company.objects.filter(pk=int(claimed_id)).first()
+    if active is not None:
+        user.role = role  # APFS66 — rôle de la société ACTIVE, sur l'instance (jamais save())
+    return active or home

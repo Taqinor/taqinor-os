@@ -1813,9 +1813,7 @@ class ScheduledExport(TimestampedModel):
     ``cron`` porte la planification (interprétée par l'infra Celery Beat, hors
     core). Multi-tenant : ``company`` obligatoire, imposée côté serveur.
 
-    ⚠ AUTH : la livraison réelle exige des credentials provisionnés par le
-    fondateur ; sans eux le runner reste en no-op (``dernier_statut`` =
-    « non_configure »).
+    ⚠ AUTH : livraison réelle = credentials du fondateur ; sinon no-op (« non_configure »).
     """
 
     FORMAT_CSV = 'csv'
@@ -1870,6 +1868,8 @@ class ScheduledExport(TimestampedModel):
         'Planification (cron)', max_length=120, blank=True, default='',
         help_text='Expression cron interprétée par Celery Beat (hors core).')
     actif = models.BooleanField('Actif', default=True)
+    created_by = models.ForeignKey(  # APFS103 — créateur (posé serveur) : ses droits et sa portée bornent l'extrait
+        'authentication.CustomUser', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
 
     # NTDATA30 — extraction incrémentale (high-watermark, CDC léger).
     # ``complet`` = comportement historique (tout le dataset à chaque passage).

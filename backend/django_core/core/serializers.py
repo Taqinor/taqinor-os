@@ -718,11 +718,13 @@ class ScheduledExportSerializer(ChampsStrictsMixin, CompanyScopedRelationsMixin,
     # ERR-ENF11-FUZZ-CORE — JSON typé et non nul (``null`` était conforme au
     # schéma ``{}`` puis refusé par le champ de modèle).
     spec = ObjetJSON(required=False)
+    # APFS103 — créateur posé serveur (hors schéma), jamais réécrit à la modification.
+    created_by = serializers.HiddenField(default=serializers.CurrentUserDefault())
 
     class Meta:
         model = ScheduledExport
         fields = [
-            'id', 'titre', 'dataset', 'spec', 'format', 'destination', 'cron',
+            'id', 'titre', 'dataset', 'spec', 'format', 'destination', 'cron', 'created_by',
             'actif', 'mode', 'champ_curseur', 'dernier_curseur',
             'derniere_execution_le', 'dernier_statut',
             'dernier_detail', 'created_at', 'updated_at',
@@ -731,6 +733,19 @@ class ScheduledExportSerializer(ChampsStrictsMixin, CompanyScopedRelationsMixin,
             'id', 'dernier_curseur', 'derniere_execution_le', 'dernier_statut',
             'dernier_detail', 'created_at', 'updated_at',
         ]
+
+    def validate_dataset(self, value):
+        """APFS103 — le lecteur doit avoir le droit du module du jeu (403 sinon)."""
+        from core import data_explorer
+        try:
+            data_explorer.exiger_lecture_dataset(value, getattr(self.context.get('request'), 'user', None))
+        except data_explorer.DatasetInconnu:
+            pass  # jeu inconnu : comportement d'avant (l'exécution le signale, 409)
+        return value
+
+    def update(self, instance, validated_data):
+        validated_data.pop('created_by', None)
+        return super().update(instance, validated_data)
 
 
 class DeletionRecordSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):

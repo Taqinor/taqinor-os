@@ -104,12 +104,27 @@ def module_de_la_vue(view):
     explicite = getattr(view, 'permission_module', None)
     if explicite:
         return explicite
+    return module_du_chemin(type(view).__module__)
+
+
+def module_du_chemin(chemin):
+    """APFS4 — module de droits d'un chemin Python (``apps.<app>.…`` → ``<app>``,
+    ``MODULE_DES_APPS`` appliqué) s'il porte des codes au registre ; sinon ``None``."""
     PERMISSION_MODULE = _registre_modules()
-    parties = (type(view).__module__ or '').split('.')
+    parties = (chemin or '').split('.')
     app = parties[1] if parties[0] == 'apps' and len(parties) > 1 \
         else parties[0]
     app = MODULE_DES_APPS.get(app, app)
     return app if app in set(PERMISSION_MODULE.values()) else None
+
+
+def peut_lire_module(user, module):
+    """APFS4 — LA règle de lecture d'un module (branche lecture
+    d'``IsResponsableOrAdmin``, reprise par le moteur de données)."""
+    if getattr(user, 'is_superuser', False) or getattr(user, 'is_admin_role', False) \
+            or not getattr(user, 'role_id', None) or module is None:
+        return True
+    return bool(codes_du_module(module) & set(user.role.permissions or []))
 
 
 def codes_du_module(module):
@@ -142,14 +157,13 @@ class IsResponsableOrAdmin(BasePermission):
         if not getattr(user, 'role_id', None):
             return True
         module = module_de_la_vue(view)
+        if request.method in SAFE_METHODS:
+            return peut_lire_module(user, module)
         if module is None:
             parties = (type(view).__module__ or '').split('.')
             app = parties[1] if parties[0] == 'apps' and len(parties) > 1 else parties[0]
-            return request.method in SAFE_METHODS or app in APPS_SANS_MODULE
-        codes = codes_du_module(module) & set(user.role.permissions or [])
-        if request.method in SAFE_METHODS:
-            return bool(codes)
-        return user._role_grants_write(codes)
+            return app in APPS_SANS_MODULE
+        return user._role_grants_write(codes_du_module(module) & set(user.role.permissions or []))
 
 
 class IsAdminOrResponsableTier(BasePermission):

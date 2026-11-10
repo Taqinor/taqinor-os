@@ -50,6 +50,7 @@ from __future__ import annotations
 from django.core.exceptions import FieldError
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Avg, Count, Max, Min, Sum
+from rest_framework.exceptions import PermissionDenied
 
 from core.analytics_db import analytics_queryset
 
@@ -86,6 +87,11 @@ class SpecInvalide(ChampNonAutorise):
     ``ChampNonAutorise`` : chaque appelant (data-explorer run/drill,
     saved-queries, formule/tester, widgets de dashboard) la rend déjà en 400
     ou en erreur DU widget — jamais un 500."""
+
+
+class DatasetNonAutorise(PermissionDenied):
+    """APFS4 — le lecteur n'a aucun droit sur le module du jeu (403 aux portes DRF)."""
+    default_detail = 'Accès au jeu de données refusé.'
 
 
 _SEQUENCES = (list, tuple)
@@ -152,7 +158,7 @@ TYPES_CHAMP = (TYPE_DIMENSION, TYPE_MESURE, TYPE_TEMPS)
 
 def register_dataset(name, label, fields, queryset_provider,
                      cache_partage=False, gated_fields=None,
-                     field_meta=None):
+                     field_meta=None, module=None):
     """Enregistre un dataset interrogeable (idempotent).
 
     ``fields`` = liste blanche de chemins de champs. ``queryset_provider`` =
@@ -178,6 +184,9 @@ def register_dataset(name, label, fields, queryset_provider,
     absent du dict — ou un dataset sans ``field_meta`` du tout — reste une
     DIMENSION portant son propre nom comme libellé : strictement le rendu
     d'avant NTDATA5.
+
+    APFS4 — ``module`` : module de droits du jeu ; défaut : l'app du fournisseur
+    (``apps.<app>.…``, résolue à la lecture) ; aucune app à codes = fondation.
     """
     if not name or not callable(queryset_provider):
         raise ValueError('Dataset : nom + queryset_provider requis.')
@@ -203,7 +212,38 @@ def register_dataset(name, label, fields, queryset_provider,
         'cache_partage': bool(cache_partage),
         'gated_fields': gated,
         'field_meta': meta,
+        'module': module,
+        'chemin': getattr(queryset_provider, '__module__', ''),
     }
+
+
+def exiger_lecture_dataset(name, user):
+    """APFS4 — droit de lecture du module du jeu (branche lecture
+    d'``IsResponsableOrAdmin``) ; ``user=None`` (tâche sans acteur) : inchangé."""
+    if user is None:
+        return
+    from authentication.permissions import module_du_chemin, peut_lire_module
+    dataset = get_dataset(name)
+    if not peut_lire_module(user, dataset.get('module') or module_du_chemin(dataset.get('chemin'))):
+        raise DatasetNonAutorise()
+
+
+#: APFS4 — FK utilisateur de TRAÇAGE : jamais un critère de portée « soi / équipe ».
+_FK_TRACE = frozenset({'updated_by', 'archived_by', 'deleted_by'})
+
+
+def _borne_portee(qs, user):
+    """APFS4 — portée « soi / équipe » du lecteur sur les FK utilisateur du
+    modèle racine (``core.scoping.scope_queryset``) ; aucune FK : non borné.
+    En sous-requête : son ``distinct()`` ne doit pas fusionner les lignes projetées."""
+    from django.contrib.auth import get_user_model
+    from core.scoping import scope_queryset, visible_user_ids
+    fks = [f.name for f in qs.model._meta.get_fields()
+           if getattr(f, 'many_to_one', False) and f.concrete and f.name not in _FK_TRACE
+           and f.related_model is get_user_model()]
+    if not fks or user is None or visible_user_ids(user) is None:
+        return qs
+    return qs.filter(pk__in=scope_queryset(qs, user, fks).values('pk'))
 
 
 def _champs_decrits(dataset, user=None):
@@ -392,12 +432,13 @@ def run_query(name, company, user, spec):
     ``queryset_provider`` du dataset (déjà scopé). Tout champ hors liste blanche
     lève ``ChampNonAutorise``.
     """
+    exiger_lecture_dataset(name, user)
     dataset = get_dataset(name)
     allowed = dataset['fields']
     # YHARD9 — lecture BI lourde : route vers le réplica analytique si configuré
     # (no-op strict sinon). Le queryset provider est DÉJÀ scopé société ; changer
     # la base de lecture ne touche pas le filtre `company`. Chemin 100 % lecture.
-    qs = analytics_queryset(dataset['provider'](company, user))
+    qs = analytics_queryset(_borne_portee(dataset['provider'](company, user), user))
 
     spec = spec or {}
     lue = _spec_lue(spec)
