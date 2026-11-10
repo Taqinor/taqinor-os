@@ -235,6 +235,32 @@ class BaremeGeleEnvoiTests(q220._Base):
         autre.save(update_fields=['echeancier'])
         self.assertEqual(self._envoyer(autre).echeancier, negocie)
 
+    def test_identite_vendeur_figee_a_l_envoi(self):
+        """ASOC42 (C-ASOC-042) — raison sociale et ICE changés après l'envoi :
+        la page publique sert encore l'émetteur de l'envoi ; un brouillon lit le
+        profil du jour. Mutant : lire ``company_identity`` vivant ⇒ ICE v2."""
+        from apps.parametres.models import CompanyProfile
+        from apps.ventes.domain.reglages_figes_lecture import reglages_figes
+        from apps.ventes.models import ShareLink
+        from apps.ventes.public_views import _emetteur_public
+
+        from .test_adev50_cumul_25_ans_servi import lire
+        profil = CompanyProfile.get(self.company)
+        profil.nom, profil.ice = 'SOLAIRE ANCIEN SARL', '001111111000011'
+        profil.save()
+        devis = self._envoyer(self._devis(9, pose_a=9))
+        brouillon = self._devis(9, pose_a=9)
+        profil.nom, profil.ice = 'SOLAIRE NOUVEAU SA', '002222222000022'
+        profil.save()
+        devis.refresh_from_db()  # CLAUSE PERSISTANCE — l'instantané v1
+        self.assertEqual(reglages_figes(devis)['identite']['ice'], '001111111000011')
+        lien = ShareLink.objects.create(company=self.company, devis=devis)
+        resp = lire(lien.token)
+        self.assertEqual(resp.status_code, 200, resp.content[:300])
+        self.assertEqual((resp.json()['emetteur']['nom'], resp.json()['emetteur']['ice']),
+                         ('SOLAIRE ANCIEN SARL', '001111111000011'))
+        self.assertEqual(_emetteur_public(brouillon)['ice'], '002222222000022')
+
     def test_v2_refigee_a_son_propre_envoi(self):
         from apps.ventes.domain.reglages_figes_lecture import (
             TYPE_REGLAGES_FIGES, reglages_figes)

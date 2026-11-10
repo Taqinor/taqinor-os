@@ -154,7 +154,7 @@ def figer_reglages_rendu(devis):
     des lignes. Une entrée héritée d'une V1 est REMPLACÉE : une révision prend
     les réglages de SON envoi. Ne touche jamais au statut (règle #4)."""
     from apps.parametres.models_tariff import TariffSettings
-    from apps.parametres.selectors import residential_tranches_for, tariff_for
+    from apps.parametres.selectors import company_identity, residential_tranches_for, tariff_for
     from apps.ventes.models import LigneDevis
 
     company = devis.company
@@ -183,6 +183,7 @@ def figer_reglages_rendu(devis):
         'redevance_compteur_mad_mois': (
             None if redevance is None else float(redevance)),
         'produits': produits,
+        'identite': company_identity(company),  # ASOC42 — l'émetteur du jour de l'envoi
     }]
     devis.save(update_fields=['clauses_appliquees'])
 

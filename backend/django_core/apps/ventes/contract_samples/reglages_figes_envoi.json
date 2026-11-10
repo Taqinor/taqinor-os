@@ -5,7 +5,8 @@
     "tarif": "Le dict de apps.parametres.selectors.tariff_for(company). `productible_kwh_kwc` null = société sans productible : le moteur lit le productible PVGIS de la ville figée.",
     "tranches": "Le dict de apps.parametres.selectors.residential_tranches_for(company) (`pairs` en listes, plafond null pour la dernière tranche) ; null = barème non édité par la société, le moteur garde sa grille nationale.",
     "redevance_compteur_mad_mois": "TariffSettings.redevance_compteur_mad_mois en nombre, null = non réglé (défauts sourcés du barème).",
-    "produits": "Une entrée par produit lié à une ligne `produit` du devis, clé = id du produit en texte. Jamais de prix d'achat ni de marge."
+    "produits": "Une entrée par produit lié à une ligne `produit` du devis, clé = id du produit en texte. Jamais de prix d'achat ni de marge.",
+    "identite": "ASOC42 — le dict de apps.parametres.selectors.company_identity(company) du jour de l'envoi (raison sociale, forme, capital, ICE, IF, RC, patente, CNSS, RIB, banque, adresse, contacts, site, couleur). Lu par public_views._emetteur_public (page publique d'un non-brouillon) et le moteur (ASOC96). Gel interne : jamais imprimé comme clause."
   },
   "exemple": {
     "tarif": {
@@ -46,6 +47,23 @@
         "garantie_mois": 300,
         "garantie_production_mois": 360
       }
+    },
+    "identite": {
+      "nom": "SOLAIRE EXEMPLE SARL",
+      "adresse": "12 rue Exemple, Casablanca",
+      "email": "contact@example.com",
+      "telephone": "+212 5 22 00 00 00",
+      "ice": "001234567000089",
+      "identifiant_fiscal": "12345678",
+      "rc": "123456",
+      "patente": "34567890",
+      "cnss": "7654321",
+      "rib": "011 780 0000000000000000 00",
+      "banque": "Banque Exemple",
+      "couleur_principale": "#0E7C66",
+      "site_web": "example.com",
+      "capital_social": "100 000 MAD",
+      "forme_juridique": "SARL"
     }
   },
   "exemple_vide": {}

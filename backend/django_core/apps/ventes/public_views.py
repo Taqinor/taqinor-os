@@ -1132,10 +1132,10 @@ def _economies_cumul_25_ans_publique(data, devis=None):
     return out or None, net or None
 
 
-def _emetteur_public(company):
-    """APDF110 (C-APDF-VER-007) — identité légale de la société ÉMETTRICE, lue
-    par ``company_identity`` ('' quand non renseignée) ; jamais RIB/adresse/CNSS."""
-    identite = company_identity(company)
+def _emetteur_public(devis):
+    """APDF110/ASOC42 — identité légale de l'ÉMETTRICE, figée à l'envoi sinon le profil ; jamais RIB/adresse/CNSS."""
+    from apps.ventes.domain.reglages_figes_lecture import reglages_figes
+    identite = reglages_figes(devis).get('identite') or company_identity(devis.company)
     return {cle: identite[cle] for cle in ('nom', 'forme_juridique', 'capital_social', 'rc', 'ice')}
 
 
@@ -1373,7 +1373,7 @@ def proposal_data(request, token):
             'client_name': data['client_name'],
             'statut': devis.statut,
             # APDF110 — la société ÉMETTRICE est celle du devis du jeton.
-            'emetteur': _emetteur_public(devis.company),
+            'emetteur': _emetteur_public(devis),
             # QJR536 (contrat QJR501) — ``null`` tant que CE devis n'est pas
             # remplacé ; sinon ``{reference, url}`` de la version EN VIGUEUR
             # (dernière de la chaîne ``superseded_by``, même société). ``url``
