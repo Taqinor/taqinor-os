@@ -86,6 +86,8 @@ services:
       # n'est pas expose publiquement — voir docker-compose.prod.yml minio
       # ports: !reset []).
       MINIO_PUBLIC_ORIGIN: ${MINIO_PUBLIC_ORIGIN:-http://localhost:9000}
+      # ADCG53 — le DSN du front (le même que l'arg de build) : son hôte rejoint connect-src.
+      VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
     mem_limit: 256m
     cpus: 0.5
 
