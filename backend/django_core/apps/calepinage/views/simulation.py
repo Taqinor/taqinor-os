@@ -210,6 +210,11 @@ def simuler(self, request, pk=None):
     )
 
     calepinage = self.get_object()  # borné société par get_queryset
+    # ACON85 — un calepinage FIGÉ (devis accepté, archivé) ne se re-simule
+    # pas : 409 au motif de ventes (verrou ACAL43). Envoyé : permis.
+    from ..services.verrou import verifier_ecriture_autorisee
+
+    verifier_ecriture_autorisee(calepinage, champ='simulation')
     corps = request.data if isinstance(request.data, dict) else {}
     forcer = bool(corps.get('forcer'))
     # ACAL112 (D-ACAL-17) — ``variante_id`` facultatif : la variante du MÊME

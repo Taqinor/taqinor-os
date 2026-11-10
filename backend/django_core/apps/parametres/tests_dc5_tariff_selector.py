@@ -50,6 +50,30 @@ class TestDC5TariffSelector(TestCase):
         self.assertAlmostEqual(t['productible_kwh_kwc'], 1750.0, places=1)
         self.assertAlmostEqual(t['rendement_global'], 0.85, places=3)
 
+    def test_lecture_sans_profil_n_ecrit_rien(self):
+        """ACON30 — une société SANS profil : les lecteurs servent les
+        valeurs par défaut du modèle sans AUCUNE écriture."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from apps.parametres.selectors import (
+            company_identity, langue_par_defaut_effective,
+        )
+
+        company = _company()
+        CompanyProfile.objects.filter(company=company).delete()
+        with CaptureQueriesContext(connection) as requetes:
+            t = tariff_for(company)
+            company_identity(company)
+            langue_par_defaut_effective(company)
+        ecritures = [q['sql'] for q in requetes.captured_queries
+                     if q['sql'].lstrip().upper().startswith(
+                         ('INSERT', 'UPDATE'))]
+        self.assertEqual(ecritures, [])
+        self.assertFalse(CompanyProfile.objects.filter(
+            company=company).exists())
+        self.assertIn('onee_tarif_kwh', t)
+
     def test_facteur_co2_reseau_regle_ou_none(self):
         """AMON90 — valeur ET source saisies ⇒ dict Decimal ; sinon None."""
         import datetime

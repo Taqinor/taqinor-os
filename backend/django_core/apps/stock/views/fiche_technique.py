@@ -12,7 +12,7 @@ from ..models import FicheTechnique, Produit
 from ..erreurs_achats import ConflitEtat
 from ..serializers_fiche_technique import CODE_REFUS_ETAT, FicheTechniqueSerializer
 from authentication.permissions import (
-    IsAnyRole,
+    LectureDuModule,
     IsAdminRole,
     HasPermissionOrLegacy,
 )
@@ -75,7 +75,7 @@ class FicheTechniqueViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]  # APFS109
         elif self.action in WRITE_ACTIONS:
             return [HasPermissionOrLegacy('stock_modifier')()]
         return [IsAdminRole()]

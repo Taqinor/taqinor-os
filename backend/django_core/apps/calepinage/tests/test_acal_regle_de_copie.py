@@ -67,11 +67,15 @@ class RegleDeCopieTest(BaseApiCalepinage):
                                        roof_layout=_document(),
                                        resultat={'production': {'p50': 1}})
         retenir_variante(self.variante, appliquer=False)
+        # ACON11 — la cible d'une copie a un repère toit (sinon 409).
+        Lead.objects.filter(pk=self.lead_2.pk).update(roof_point=dict(CASA))
 
     def test_dupliquer_copie_pertes_sans_resultat(self):
         copie = dupliquer(self.source, user=self.user, lead_id=self.lead_2.pk)
         copie = Calepinage.objects.get(pk=copie.pk)
-        self.assertEqual(copie.roof_layout, self.source.roof_layout)
+        attendu = {cle: valeur for cle, valeur in _document().items()
+                   if cle != 'consumption'}
+        self.assertEqual(copie.roof_layout, attendu)
         self.assertEqual(copie.pertes, POSTES)
         self.assertIsNone(copie.resultat)
         self.assertEqual(copie.roof_image, '')
@@ -135,6 +139,42 @@ class RegleDeCopieTest(BaseApiCalepinage):
         # La variante SOURCE n'est pas touchée.
         self.variante.refresh_from_db()
         self.assertEqual(self.variante.roof_layout, _document())
+
+    def test_dupliquer_vers_un_autre_lead_retire_et_translate(self):
+        """ACON11 (D-ACAL-15) — Dupliquer vers le lead B (Marrakech) : la
+        copie perd consommation, factures, production et fond de plan de A,
+        son pin est le repère de B ; vers un lead sans repère : 409."""
+        from apps.calepinage.services.variantes import (
+            CLES_D_UN_AUTRE_SITE, DuplicationEnConflit,
+        )
+        from apps.records.models import Activity
+
+        document = dict(_document(), billKwh=540, result={'kwc': 5.5},
+                        underlay={'attachmentId': 7})
+        Calepinage.objects.filter(pk=self.source.pk).update(
+            roof_layout=document)
+        self.source.refresh_from_db()
+        b = Lead.objects.create(company=self.company, nom='Marrakech',
+                                roof_point=dict(MARRAKECH))
+        copie = Calepinage.objects.get(pk=dupliquer(
+            self.source, user=self.user, lead_id=b.pk).pk)
+        for cle in CLES_D_UN_AUTRE_SITE:
+            self.assertNotIn(cle, copie.roof_layout)
+        self.assertAlmostEqual(copie.roof_layout['pin']['lat'],
+                               MARRAKECH['lat'], 6)
+        premier = copie.roof_layout['zones'][0]['vertices'][0]
+        self.assertAlmostEqual(premier[1], MARRAKECH['lat'], 4)
+        variante = CalepinageVariante.objects.get(calepinage=copie)
+        self.assertNotIn('consumption', variante.roof_layout)
+        self.assertTrue(Activity.objects.filter(
+            object_id=copie.pk, body__contains='non recopiés').exists())
+
+        sans = Lead.objects.create(company=self.company, nom='Sans repère')
+        avant = Calepinage.objects.count()
+        with self.assertRaises(DuplicationEnConflit) as refus:
+            dupliquer(self.source, user=self.user, lead_id=sans.pk)
+        self.assertIn("n'a pas de repère toit", refus.exception.corps['lead'])
+        self.assertEqual(Calepinage.objects.count(), avant)
 
     def test_modele_sans_repere_refuse(self):
         marquer_modele(self.source, user=self.user)

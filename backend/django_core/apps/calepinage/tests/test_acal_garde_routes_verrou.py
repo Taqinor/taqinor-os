@@ -73,6 +73,9 @@ ROUTES_SOUS_VERROU = {
     ('DELETE', RELEVE): '_sonde_supprimer_releve',
     ('POST', RELEVE + '/appliquer-cote'): PAR_ENREGISTRER_LAYOUT,
     ('POST', 'fixation'): '_sonde_fixation',
+    # ACON85 — re-simuler un calepinage figé réécrirait la production du
+    # devis accepté : refusé au motif de ventes.
+    ('POST', 'simuler'): '_sonde_simuler',
 }
 
 #: Routes HORS VERROU, chacune avec son MOTIF (jamais vide).
@@ -87,8 +90,6 @@ ROUTES_HORS_VERROU = {
     ('POST', 'archiver'): 'archivage : son propre prédicat (devis non '
                           'brouillon refusé, ACAL118)',
     ('POST', 'restaurer-corbeille'): 'restauration depuis la corbeille',
-    ('POST', 'simuler'): 'simulation : calcul, jamais une écriture de '
-                         'conception (ACAL43)',
     ('POST', 'meteo-fichier'): 'simulation : entrée météo du calcul',
     ('DELETE', 'meteo-fichier'): 'simulation : entrée météo du calcul',
     ('POST', 'evaluer-electrique'): 'évaluation électrique à la demande '
@@ -267,6 +268,9 @@ class GardeRoutesVerrouTest(BaseApiCalepinage):
         # est refusé : le verrou passe AVANT toute écriture.
         return self._post('fixation/', {'systeme_id': None})
 
+    def _sonde_simuler(self):
+        return self._post('simuler/', {'forcer': True})
+
     # ── la garde ────────────────────────────────────────────────────────────
     def test_chaque_route_d_ecriture_est_classee(self):
         servies = routes_d_ecriture()
@@ -283,6 +287,30 @@ class GardeRoutesVerrouTest(BaseApiCalepinage):
             sorted(set(ROUTES_SOUS_VERROU) & set(ROUTES_HORS_VERROU)), [])
         for route, motif in ROUTES_HORS_VERROU.items():
             self.assertTrue(str(motif).strip(), f'{route} : motif vide')
+
+    def test_livrables_refuses_sur_conception_divergente_du_devis_vendu(self):
+        """ACON42 (D-ACAL-6, D-ACAL-23) — devis ACCEPTÉ, conception passée à
+        une autre empreinte : dossier réglementaire, pack technique et
+        remise de la planche rendent 409 ``{conception, devis}``, aucune
+        version de document."""
+        from apps.records.models import Attachment
+
+        Devis.objects.filter(pk=self.devis.pk).update(layout_hash='f' * 64)
+        avant = Attachment.objects.count()
+        for suffixe, corps in (('generer-dossier/', {'dossier': 1}),
+                               ('pack-technique/', {}),
+                               ('remettre-document/',
+                                {'code': 'planche_pdf'})):
+            with self.subTest(route=suffixe):
+                reponse = self._post(suffixe, corps)
+                self.assertEqual(reponse.status_code, 409, reponse.data)
+                self.assertEqual(sorted(reponse.data),
+                                 ['conception', 'devis'])
+                self.assertEqual(str(reponse.data['devis']),
+                                 self.devis.reference)
+                self.assertIn('DEV-ACAL319-1',
+                              str(reponse.data['conception']))
+        self.assertEqual(Attachment.objects.count(), avant)
 
     def test_routes_sous_verrou_repondent_409_sur_accepte(self):
         avant = Calepinage.objects.get(pk=self.calepinage.pk)

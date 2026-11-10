@@ -151,6 +151,7 @@ def _construire_presentation(calepinage, *, resultat=_LIRE, roof_layout=None,
 
     return {
         'code': CODE_DOCUMENT,
+        'production_devis': _production_du_devis_lie(calepinage),  # ACON42
         # ACAL259 — le résultat SERVI porte le bloc ``pose`` (fiche du stock).
         'totaux': _totaux_de_pose(roof_layout, resultat),
         'svg_planche': svg_planche or '',
@@ -203,7 +204,32 @@ def _table_mensuelle(mensuel):
             % lignes)
 
 
-def _page2_html(resultat, motif_perime=''):
+def _production_du_devis_lie(calepinage):
+    """ACON42 (D-ACAL-6) — ``{reference, kwh}`` du devis lié actif, ou
+    ``None`` : un calepinage lié n'imprime jamais SON P50, la production
+    est celle du devis (``production_attendue_pour_devis``, YSERV8)."""
+    if not getattr(calepinage, 'devis_id', None):
+        return None
+    from apps.ventes.selectors import production_attendue_pour_devis
+
+    from ..devis import _devis_lie_actif
+
+    devis = _devis_lie_actif(calepinage)
+    if devis is None:
+        return None
+    return {'reference': devis.reference,
+            'kwh': production_attendue_pour_devis(devis.pk)}
+
+
+def _page2_html(resultat, motif_perime='', production_devis=None):
+    if production_devis:
+        kwh = production_devis.get('kwh')
+        return ('<section class="page-2" data-section="production">'
+                '<h2>Production</h2><p>Production : celle du devis %s%s</p>'
+                '</section>'
+                % (escape(str(production_devis.get('reference') or '')),
+                   (' (%s kWh/an)' % nombre_tel_que_servi(kwh))
+                   if kwh is not None else ''))
     if not resultat:
         return ('<section class="page-2" data-section="production">'
                 '<h2>Production</h2><p class="motif">%s</p></section>'
@@ -256,7 +282,8 @@ def _html_de_presentation(document):
     from .gabarit_document import document_html
 
     corps = _page1_html(document) + _page2_html(
-        document['resultat'], document.get('motif_perime', ''))
+        document['resultat'], document.get('motif_perime', ''),
+        document.get('production_devis'))
     return document_html(
         corps, titre='Présentation compacte', styles=document['styles'],
         provenance=document['provenance'], mentions=[MENTION_PAS_UN_DEVIS],

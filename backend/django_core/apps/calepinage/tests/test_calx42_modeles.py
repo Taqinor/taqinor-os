@@ -142,6 +142,35 @@ class MarquageEtCreationDepuisModeleTest(TestCase):
             Tag.objects.filter(company=self.company,
                                nom=NOM_TAG_MODELE).count(), 1)
 
+    def test_demarquer_avec_un_autre_ouvert_409(self):
+        """ACON5 (D-ACAL-12) — démarquer C1 alors que C2 est l'ouvert du
+        lead : refus nommant C2, C1 reste modèle, ouverts [C2]. Sans autre
+        ouvert : le retrait passe."""
+        from apps.calepinage.models import Calepinage
+        from apps.calepinage.selectors import calepinages_ouverts_du_lead
+        from apps.calepinage.services.modeles import (
+            DemarquageEnConflit, demarquer_modele, est_modele, marquer_modele,
+        )
+        from apps.crm.models import Lead
+
+        lead = Lead.objects.create(company=self.company, nom='Lead ACON5')
+        c1 = Calepinage.objects.create(company=self.company, lead_id=lead.pk,
+                                       titre='Gabarit')
+        marquer_modele(c1)
+        c2 = Calepinage.objects.create(company=self.company, lead_id=lead.pk,
+                                       titre='Toit vivant')
+        with self.assertRaises(DemarquageEnConflit) as refus:
+            demarquer_modele(c1)
+        self.assertEqual(refus.exception.corps['calepinage_existant'], c2.pk)
+        self.assertIn(f'#{c2.pk}', refus.exception.corps['lead'])
+        self.assertTrue(est_modele(c1))
+        self.assertEqual([c.pk for c in calepinages_ouverts_du_lead(
+            self.company, lead.pk)], [c2.pk])
+
+        c2.delete()
+        self.assertTrue(demarquer_modele(c1))
+        self.assertFalse(est_modele(c1))
+
     def test_les_deux_bascules_sont_journalisees_au_chatter(self):
         from apps.calepinage.services.modeles import (
             demarquer_modele, marquer_modele,
