@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: e9b2d60c1c6774d450f095b9b6ef927eab6da4ae8d325dacc5240cd7ba0e8965
+Structure fingerprint: aee65512c171c89c5c0897d14ba52858c1ce8210fb9fb11e6f3acc18364e9169
 Plan fingerprint: 1ad6c27428053a3a10e68fa31cdb01322d6549666980f67d3aa62d6e2236274e
 
 
@@ -260,7 +260,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 | `onboarding` | `onboarding/` | 4 | « Premiers pas » checklist + product tours, auto-completed via `core.events`. |
 | `statuspage` | `statuspage/` | 6 | Public status page: components, incidents, 90-day uptime buckets, subscribers. `core` reads its models for SLA/uptime. |
 | `contact` | `contact/` | 0 | Public landing contact form — **PARKED by flag** (`CONTACT_FORM_ENABLED=0` -> 404, no email). No models. |
-| `core` | `core/` | ~53 | **Foundation, NOT under apps/**: abstract bases (`TenantModel`, `SoftDeleteModel`), `CompanyScopedModelViewSet`, numbering, `pdf.render_pdf`, `events.py` signal bus, platform registry + `platform_coverage.py` drift matrix, `documents` kit, workflow/BPM engine, `parked.py`, pure `calepinage`/`electrique` engines, jobs, quotas, DSR/PII registries, reliability settings (`views_fiabilite.py`, `/api/django/core/fiabilite/reglages/`, NTOBS21). |
+| `core` | `core/` | ~53 | **Foundation, NOT under apps/**: `drf_compat.py` (DRF 3.18 ramené au comportement 3.15 au `ready()` — ADCG61), abstract bases (`TenantModel`, `SoftDeleteModel`), `CompanyScopedModelViewSet`, numbering, `pdf.render_pdf`, `events.py` signal bus, platform registry + `platform_coverage.py` drift matrix, `documents` kit, workflow/BPM engine, `parked.py`, pure `calepinage`/`electrique` engines, jobs, quotas, DSR/PII registries, reliability settings (`views_fiabilite.py`, `/api/django/core/fiabilite/reglages/`, NTOBS21). |
 
 **What each SOLMVP lane changed in a kept app** (verified against
 `git log origin/main..HEAD -- backend/django_core/apps/<x>`):
