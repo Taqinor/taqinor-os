@@ -43,8 +43,10 @@ import { toast } from '../../ui/confirm'
 
 // AAPV16 — avertissements prix (XPUR13, non bloquants) servis par le PATCH /
 // la création d'un BCF : texte unique pour le toast et la confirmation d'envoi.
+// AAPV72 — objets serveur {type, …, message} ; une chaîne (ancien format) telle quelle.
 const texteAvertissementsPrix = (data) => (data?.prix_warnings ?? [])
-  .flatMap((w) => w.warnings ?? []).map(String).join(' · ')
+  .flatMap((w) => w.warnings ?? [])
+  .map((w) => (typeof w === 'string' ? w : w?.message ?? '')).filter(Boolean).join(' · ')
 import { AlerteErreurStock, MessagesStock } from './BandeauxListeStock'
 import { AlerteErreur, InfoSucces } from '../../ui/AlertesServeur'
 import PiedDialogueFormulaire from '../../ui/PiedDialogueFormulaire'

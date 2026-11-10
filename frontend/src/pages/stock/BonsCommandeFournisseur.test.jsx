@@ -615,13 +615,15 @@ describe('BcfDetail — avertissements prix (AAPV16)', () => {
       lignes: [{ id: 1, produit: 5, produit_nom: 'Onduleur', quantite: 10, prix_achat_unitaire: '1400' }],
     }
     stockApi.updateBonCommandeFournisseur.mockResolvedValue({
-      data: { ...brouillon, prix_warnings: [{ ligne_id: 1, produit: 5, warnings: ['Prix au-dessus du contrat (1 150).'] }] },
+      // AAPV72 — forme SERVEUR (check_prix_ligne_bcf) : objets {type, message}.
+      data: { ...brouillon, prix_warnings: [{ ligne_id: 1, produit: 5, warnings: [{ type: 'contrat', message: 'Prix au-dessus du contrat (1 150).' }] }] },
     })
     renderDetail({ bcf: brouillon, fournisseurs: [{ id: 1, nom: 'F2' }] },
       { role_nom: 'Directeur', permissions: ['achats_commander', 'prix_achat_voir'] })
     fireEvent.click(screen.getByRole('button', { name: /Envoyer au fournisseur/ }))
     const dialog = await screen.findByRole('alertdialog')
     expect(within(dialog).getByText(/au-dessus du contrat/)).toBeInTheDocument()
+    expect(within(dialog).queryByText(/object Object/)).toBeNull()
     expect(stockApi.envoyerBcf).not.toHaveBeenCalled()
     fireEvent.click(within(dialog).getByRole('button', { name: 'Envoyer' }))
     await waitFor(() => expect(stockApi.envoyerBcf).toHaveBeenCalledWith(77))
