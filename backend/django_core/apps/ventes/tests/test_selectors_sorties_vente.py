@@ -101,6 +101,21 @@ class SortiesDeLaVenteTests(TestCase):
             quantite_avant=0, quantite_apres=0, reference=devis.reference)
         self.assertEqual(sorties_de_la_vente(devis.id, self.company), {})
 
+    def test_compte_la_sortie_de_la_version_remplacee(self):
+        """ASTK264 — V1 facturée (SORTIE 10 sous ``V1.reference``) puis sa V2
+        (``reviser_devis``) acceptée : la V2 compte ``{panneau: 10}`` ; V1
+        jamais facturée : ``{}``."""
+        from apps.ventes.domain.revision import reviser_devis
+        for facturee, attendu in ((True, {self.panneau.id: Decimal('10')}), (False, {})):
+            with self.subTest(facturee=facturee):
+                v1, _ = self._devis(chantier=False)
+                if facturee:
+                    self._sortie(v1.reference, 10)
+                v2 = reviser_devis(v1, user=self.user)
+                Devis.objects.filter(pk=v2.pk).update(statut=Devis.Statut.ACCEPTE)
+                self.assertNotEqual(v2.reference, v1.reference)
+                self.assertEqual(sorties_de_la_vente(v2.id, self.company), attendu)
+
     def test_devis_inconnu_ou_autre_societe(self):
         devis, _ = self._devis(chantier=False)
         self._sortie(devis.reference, 4)
