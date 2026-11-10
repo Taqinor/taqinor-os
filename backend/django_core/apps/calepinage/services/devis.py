@@ -226,9 +226,7 @@ def _generer(calepinage, layout, company, lead, client, montants, *, user,
     from django.db import transaction
 
     from apps.ventes.services import (
-        AutoDevisError, build_devis_from_layout, layout_hash,
-        poser_layout_hash, rafraichir_etudes_du_devis,
-        validate_composition_for_layout,
+        AutoDevisError, layout_hash, validate_composition_for_layout,
     )
 
     # Pré-vol de composition : le catalogue peut-il servir ce toit ? Le refus
@@ -245,6 +243,29 @@ def _generer(calepinage, layout, company, lead, client, montants, *, user,
                           donnees={'detail': erreurs[0], 'errors': erreurs})
 
     empreinte = calepinage.layout_hash or layout_hash(layout)
+    # ACON46 — UNE transaction sous verrou de ligne du calepinage : deux
+    # générations concurrentes se sérialisent ; la seconde relit le lien posé
+    # par la première (dédup) au lieu de créer un second devis.
+    with transaction.atomic():
+        from ..models import Calepinage
+
+        Calepinage.objects.select_for_update().filter(pk=calepinage.pk).exists()
+        calepinage.refresh_from_db(fields=['devis'])
+        return _generer_sous_verrou(calepinage, layout, company, lead, client,
+                                    montants, empreinte, user=user,
+                                    journal=journal)
+
+
+def _generer_sous_verrou(calepinage, layout, company, lead, client, montants,
+                         empreinte, *, user, journal):
+    """ACON46 — dédup, création et liaison, sous le verrou de ``_generer``."""
+    from django.db import transaction
+
+    from apps.ventes.services import (
+        AutoDevisError, build_devis_from_layout, poser_layout_hash,
+        rafraichir_etudes_du_devis,
+    )
+
     # ACAL89 — le lien EXISTANT est lu AVANT toute création.
     lie = _devis_lie_actif(calepinage)
     if lie is not None:
