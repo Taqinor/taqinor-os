@@ -1317,7 +1317,7 @@ class ModuleCatalogViewSet(viewsets.ViewSet):
     def get_permissions(self):
         if self.action in ('list',):
             return [IsAuthenticatedInterne()]
-        return [IsAdminOrResponsableTier()]
+        return [IsAdminOrResponsableTier(), HasPermissionOrLegacy('modules_gerer')()]  # APFS40
 
     # ERR-ENF11-FUZZ-CORE — l'action ``list`` est déjà publiée en tableau :
     # ``_LISTE_OBJETS`` donnait un tableau de tableaux.
