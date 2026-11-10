@@ -24,15 +24,14 @@ import calendar
 from datetime import date, timedelta
 from decimal import Decimal
 
-from django.db.models import Q, Sum
-from django.db.models.functions import TruncMonth
+from django.db.models import Q
 from django.utils import timezone
 
 from core.analytics_db import analytics_queryset
 
 from .models import CleaningEvent, ProductionReading, UnderperformanceFlag
 from .services import (
-    attendu_entre, attendu_intervalles, debut_couverture, fenetre_couverte,
+    attendu_intervalles, debut_couverture, fenetre_couverte,
     get_or_create_config, production_couverte, releves_recouvrant,
 )
 
@@ -50,17 +49,24 @@ def _q(value, places='0.01'):
     return Decimal(str(value)).quantize(Decimal(places)) if value is not None else None
 
 
-def _monthly_series(installation, since, today):
-    """Série mensuelle [(month_date, kwh_decimal)] triée croissant."""
-    # YHARD9 — agrégat BI lourd (série mensuelle) : route vers le réplica
-    # analytique si configuré (no-op strict sinon). 100 % lecture.
-    qs = (analytics_queryset(ProductionReading.objects)
-          .filter(installation=installation, date__gte=since, date__lte=today)
-          .annotate(month=TruncMonth('date'))
-          .values('month')
-          .annotate(total=Sum('energy_kwh'))
-          .order_by('month'))
-    return [(row['month'], Decimal(str(row['total'] or 0))) for row in qs]
+def serie_mensuelle(config, releves, debut, today):
+    """AMON99 — série mensuelle ``[(1er du mois, kWh, attendu)]`` de
+    ``[debut, today]`` : chaque relevé (``releves_recouvrant``) au prorata de
+    ses jours dans le mois (``production_couverte``), attendu du mois sur ses
+    seuls jours couverts (``attendu_intervalles`` ; None sans référence).
+    Un mois sans aucun jour couvert est omis."""
+    paires = [(jour, periode) for jour, periode, _kwh in releves]
+    serie = []
+    mois = debut.replace(day=1)
+    while mois <= today:
+        dernier = mois.replace(day=calendar.monthrange(mois.year, mois.month)[1])
+        bornes = (max(mois, debut), min(dernier, today))
+        intervalles = intervalles_couverts_par_releves(paires, *bornes)
+        if intervalles:
+            serie.append((mois, production_couverte(releves, *bornes),
+                          attendu_intervalles(config, intervalles)))
+        mois = dernier + timedelta(days=1)
+    return serie
 
 
 def jours_couverts_par_releves(releves, since, today):
@@ -174,29 +180,25 @@ def om_metrics(installation, *, window_days=DEFAULT_WINDOW_DAYS, today=None):
             Decimal(jours_couverts) / Decimal(jours_fenetre)
             * Decimal('100'), Decimal('100')))
 
-    # PR mensuel pour soiling + dégradation.
-    monthly = _monthly_series(installation, since, today)
-    # ASAV63 — attendu de CHAQUE mois sur ses jours réellement couverts : le
-    # premier et le dernier mois partiels sont normalisés, plus jamais
-    # comparés à un mois plein. AMON29 — au profil mensuel (``attendu_entre``).
-    annual = config.expected_annual_kwh
-    debut_eff = debut_couverture(installation, since)
-
+    # PR mensuel pour soiling + dégradation. ASAV63/AMON99 — chaque relevé
+    # au prorata de ses jours dans le mois, attendu du mois sur ses seuls
+    # jours couverts (au profil, AMON29). ``complet`` = mois entier dans
+    # [début de couverture ; dernier jour couvert] : seuls ces mois portent
+    # la pente (un mois partiel n'est jamais une dérive).
+    fin_couverte = fenetre[1] if fenetre else today
     monthly_pr = []
     pr_points = []
-    for idx, (month, kwh) in enumerate(monthly):
-        ratio = None
-        couverts = jours_couverts_mois(month, debut_eff, today)
-        if annual and couverts > 0:
-            attendu_mois = attendu_entre(
-                annual, max(month, debut_eff),
-                max(month, debut_eff) + timedelta(days=couverts - 1))
-            ratio = (kwh / attendu_mois) * Decimal('100')
+    for idx, (month, kwh, attendu_mois) in enumerate(
+            serie_mensuelle(config, releves, debut, today)):
+        ratio = (kwh / attendu_mois) * Decimal('100') if attendu_mois else None
+        complet = _mois_complet(month.strftime('%Y-%m'), debut, fin_couverte)
+        if ratio is not None and complet:
             pr_points.append((idx, float(ratio)))
         monthly_pr.append({
             'month': month.strftime('%Y-%m'),
             'kwh': _q(kwh),
             'pr_pct': _q(ratio) if ratio is not None else None,
+            'complet': complet,
         })
 
     # Dégradation/soiling : pente du PR mensuel (points/mois) → %/an.
@@ -259,7 +261,8 @@ def soiling_assessment(installation, *, window_days=DEFAULT_WINDOW_DAYS,
         today - timedelta(days=window_days))
     complets = [
         m['pr_pct'] for m in metrics['monthly_pr']
-        if m['pr_pct'] is not None and _mois_complet(m['month'], debut, today)]
+        if m['pr_pct'] is not None and m['complet']
+        and _mois_complet(m['month'], debut, today)]
     pr_drop = current_pr = baseline_pr = None
     if len(complets) >= 3:
         current_pr = complets[-1]
