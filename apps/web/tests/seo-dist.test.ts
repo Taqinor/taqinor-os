@@ -100,6 +100,14 @@ describe('WAUD59 — tech SEO du HTML construit', () => {
     expect(fautes.slice(0, 10), `${fautes.length} commentaires`).toEqual([]);
   });
 
+  it('WAUD91 — kit (EN, AR) et devis (EN) construits, avec leurs 4 hreflang', () => {
+    for (const route of ['/en/kit-solaire-maroc/', '/ar/kit-solaire-maroc/', '/en/devis-panneaux-solaires-maroc/']) {
+      const p = pages.find((x) => x.route === route);
+      expect(p, route).toBeDefined();
+      expect([...alternates(p!.html).keys()].sort(), route).toEqual(['ar', 'en', 'fr', 'x-default']);
+    }
+  });
+
   it('JSON-LD parsable partout', () => {
     expect(pages.flatMap(({ route, html }) => jsonLdInvalides(html).map((j) => `${route}: ${j}`))).toEqual([]);
   });

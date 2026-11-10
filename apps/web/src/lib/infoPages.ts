@@ -7,7 +7,7 @@
 import type { Locale } from '../i18n/config';
 import { ANRE_TARIF_HORS_POINTE, ANRE_TARIF_POINTE } from './constants82_21';
 import { DECLARATION_BT_MAX_KW } from './regime';
-import { lignesGaranties, TABLEAU_GARANTIES_AR, TABLEAU_GARANTIES_FR } from './warranty';
+import { lignesGaranties, TABLEAU_GARANTIES_AR, TABLEAU_GARANTIES_EN, TABLEAU_GARANTIES_FR } from './warranty';
 import {
   ANRE_PERIODE_AR,
   ANRE_PERIODE_EN,
@@ -190,6 +190,72 @@ const KIT: Partial<Record<Locale, InfoPage>> = {
       },
     ],
   },
+  // WAUD91 — miroirs EN et AR (fus'ha, à relire avec la liste de WAUD82) : mêmes faits, aucun montant.
+  en: {
+    title: 'Solar kit or custom installation in Morocco: what a kit leaves out | Taqinor',
+    description:
+      'Is a solar kit enough? What a kit usually leaves out: AC/DC protection, a mounting structure suited to the roof, the Law 82-21 procedure for its power, production monitoring.',
+    kicker: 'Kit or custom',
+    h1: 'Solar kit or custom installation?',
+    lead: 'A kit is a box of equipment; an installation is also everything around it. Here is what to check before choosing.',
+    crumb: 'Solar kit or custom',
+    blocks: [
+      {
+        h2: 'What a kit usually leaves out',
+        paras: [
+          'Protection on the direct-current and alternating-current sides, chosen for the actual installation.',
+          'The mounting structure, which depends on the roof type (tiles, metal sheet, flat terrace) and its condition.',
+          'Production monitoring, to check that the installation delivers what was promised.',
+        ],
+      },
+      {
+        h2: 'The Law 82-21 procedure depends on the power',
+        paras: [
+          `On low voltage, an installation below ${SEUIL} kW falls under the declaration regime; from ${SEUIL} kW (or on medium voltage), it needs a connection agreement. A kit does not handle this procedure for you.`,
+        ],
+        links: [{ href: '/loi-82-21', label: 'Find your regime in 3 questions' }],
+      },
+      {
+        h2: 'What about the price?',
+        paras: ['Orders of magnitude are on the prices page; the real figure always comes from a technical visit.'],
+        links: [{ href: '/prix-panneaux-solaires-maroc', label: 'Solar panel prices in Morocco' }],
+      },
+    ],
+  },
+  ar: {
+    title: 'عُدّة شمسية جاهزة أم تركيب حسب الطلب بالمغرب: ما لا تتضمّنه العُدّة | Taqinor',
+    description:
+      'هل تكفي عُدّة شمسية جاهزة؟ ما لا تتضمّنه العُدّة عادةً: حمايات التيار المستمر والمتناوب، وهيكل تثبيت ملائم للسطح، وإجراءات القانون 82-21 حسب القدرة، ومراقبة الإنتاج.',
+    kicker: 'عُدّة جاهزة أم حسب الطلب',
+    h1: 'عُدّة شمسية جاهزة أم تركيب حسب الطلب؟',
+    lead: 'العُدّة تجمع معدّات فحسب؛ أمّا التركيب فيشمل أيضاً كل ما يحيط بها. إليكم ما ينبغي التحقّق منه قبل الاختيار.',
+    crumb: 'عُدّة جاهزة أم حسب الطلب',
+    blocks: [
+      {
+        h2: 'ما لا تتضمّنه العُدّة عادةً',
+        paras: [
+          'حمايات جهة التيار المستمر وجهة التيار المتناوب، وتُختار حسب التركيبة الفعلية.',
+          'هيكل التثبيت، وهو يتوقّف على نوع السطح (قرميد، صفائح معدنية، سطح مستوٍ) وعلى حالته.',
+          'مراقبة الإنتاج، للتأكّد من أنّ التركيبة تفي بما وُعد به.',
+        ],
+      },
+      {
+        h2: 'إجراءات القانون 82-21 تتوقّف على القدرة',
+        paras: [
+          `في التوتر المنخفض، تخضع التركيبة التي تقلّ قدرتها عن ${SEUIL} kW لنظام التصريح؛ وابتداءً من ${SEUIL} kW (أو في التوتر المتوسط) يلزم الحصول على موافقة الربط. والعُدّة لا تقوم بهذه الإجراءات بدلاً منكم.`,
+        ],
+        links: [{ href: '/loi-82-21', label: 'حدّدوا نظامكم في 3 أسئلة' }],
+      },
+      {
+        h2: 'وماذا عن الثمن؟',
+        paras: ['الهوامش الاسترشادية في صفحة الأسعار؛ أمّا الرقم الحقيقي فيأتي دائماً من زيارة تقنية.'],
+        links: [
+          { href: '/prix-panneaux-solaires-maroc', label: 'أسعار الألواح الشمسية بالمغرب' },
+          { href: '/ressources/10-questions-avant-de-signer', label: '10 أسئلة قبل التوقيع' },
+        ],
+      },
+    ],
+  },
 };
 
 const DEVIS_LIGNES_FR: string[][] = [
@@ -207,6 +273,15 @@ const DEVIS_LIGNES_AR: string[][] = [
   ['حمايات التيار المستمر والمتناوب', 'موجودة ومُفصَّلة، وليس مجرّد «الكابلات مشمولة»'],
   ['التصريح وفق القانون 82-21', 'من يودعه، وحسب أي قدرة'],
   ['مراقبة الإنتاج', 'تطبيق مُقدَّم، وولوج الزبون'],
+];
+
+const DEVIS_LIGNES_EN: string[][] = [
+  ['Panels', 'Actual brand, model and unit power; number of panels; total power in kWp'],
+  ['Inverter', 'Brand, type (grid-tied or hybrid) and power'],
+  ['Mounting structure', 'Material and fit with the roof type'],
+  ['AC/DC protection', 'Present and listed, not just “wiring included”'],
+  ['Law 82-21 declaration', 'Who files it, and for what power'],
+  ['Production monitoring', 'App provided, customer access'],
 ];
 
 const DEVIS: Partial<Record<Locale, InfoPage>> = {
@@ -236,6 +311,33 @@ const DEVIS: Partial<Record<Locale, InfoPage>> = {
           { href: '/prix-panneaux-solaires-maroc', label: 'Prix des panneaux solaires au Maroc' },
           { href: '/ressources/10-questions-avant-de-signer', label: '10 questions avant de signer' },
         ],
+      },
+    ],
+  },
+  // WAUD91 — miroir EN (aucun montant ; garanties depuis TABLEAU_GARANTIES_EN).
+  en: {
+    title: 'Solar panel quotes in Morocco: reading and comparing two quotes | Taqinor',
+    description:
+      'How to compare two solar quotes line by line: panel brand and power, inverter, structure, AC/DC protection, Law 82-21 declaration, monitoring and warranties per component.',
+    kicker: 'Compare two quotes',
+    h1: 'Solar panel quotes: reading and comparing two quotes',
+    lead: 'Two quotes with the same total may not contain the same installation. Compare them line by line.',
+    crumb: 'Reading and comparing two quotes',
+    blocks: [
+      {
+        h2: 'Inclusions table',
+        paras: ['For each line, the quote must name exactly what is supplied.'],
+        table: { head: ['Line', 'What the quote must state'], rows: DEVIS_LIGNES_EN },
+      },
+      {
+        h2: 'Warranties per component',
+        paras: ['Ask for the warranty period of each component, not a single period. At Taqinor:'],
+        table: { head: ['Component', 'Warranty'], rows: lignesGaranties(TABLEAU_GARANTIES_EN) },
+      },
+      {
+        h2: 'Going further',
+        paras: ['Orders of magnitude are on the prices page.'],
+        links: [{ href: '/prix-panneaux-solaires-maroc', label: 'Solar panel prices in Morocco' }],
       },
     ],
   },
