@@ -217,6 +217,36 @@ class TestSoftDelete(ArchiveTestBase):
         self.assertTrue(RelanceEtape.objects.filter(
             lead=self.lead, statut=RelanceEtape.Statut.A_FAIRE).exists())
 
+    def test_suppression_arrete_les_touches_avant_restauration(self):
+        """ASOC106 — supprimer (soft) un lead annule ses touches à faire
+        (« lead supprimé ») ; restauré par la corbeille, sa prochaine étape
+        est une touche NEUVE, jamais la relance périmée. Mutant : retirer la
+        branche ``is_deleted`` ⇒ la touche du 03/11 reste à faire."""
+        from datetime import date
+        Lead.objects.filter(pk=self.lead.pk).update(stage='CONTACTED')
+        touche = RelanceEtape.objects.create(
+            company=self.company, lead=self.lead, cadence='contact', ordre=1,
+            due_date=date(2026, 11, 3), canal=RelanceEtape.Canal.APPEL,
+            libelle='Appel 1')
+        api = auth(self.admin)
+        corbeille_id = api.delete(
+            f'/api/django/crm/leads/{self.lead.id}/').data['corbeille_id']
+        touche.refresh_from_db()
+        self.assertEqual(touche.statut, RelanceEtape.Statut.ANNULEE)
+        self.assertEqual(touche.note, 'lead supprimé')
+        avant = list(RelanceEtape.objects.filter(
+            lead=self.lead).values_list('pk', flat=True))
+        rest = api.post(f'/api/django/core/corbeille/{corbeille_id}/restaurer/')
+        self.assertEqual(rest.status_code, 200, rest.data)
+        self.assertEqual(LeadActivity.objects.filter(
+            lead=self.lead, body__startswith='Lead restauré').count(), 1)
+        ouvertes = RelanceEtape.objects.filter(
+            lead=self.lead, statut=RelanceEtape.Statut.A_FAIRE)
+        self.assertTrue(ouvertes.exists())
+        self.assertFalse(ouvertes.filter(pk__in=avant).exists())
+        touche.refresh_from_db()
+        self.assertEqual(touche.statut, RelanceEtape.Statut.ANNULEE)
+
     def test_restore_is_scoped_to_company(self):
         """La corbeille d'une autre société n'est jamais restaurable ici."""
         api = auth(self.admin)

@@ -107,7 +107,7 @@ class TestRoleAgentSql(unittest.TestCase):
         self.assertTrue(script.is_file())
         corps = script.read_text(encoding="utf-8")
         self.assertIn("rls_roles.sql", corps)  # une seule source des GRANT
-        for nom in ("pile_locale.ps1", "deploy-prod.ps1"):
+        for nom in ("pile_locale.ps1", "auto-deploy.sh"):  # ADCG1 : séquence unique
             texte = (ROOT / "scripts" / nom).read_text(encoding="utf-8")
             i_migrate = texte.index("manage.py migrate")
             self.assertIn("provision_sql_agent_ro.sh", texte, nom)

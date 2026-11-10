@@ -59,10 +59,19 @@ export function emitSessionExpired() {
 // cet onglet et doivent donc tous deux purger ses caches locaux.
 export const AUTH_LOGOUT_EVENT = 'taqinor:auth-logout'
 
+// ADCG52 — cache média du service worker (`MEDIA_CACHE` de `sw.js`, parité gardée
+// par test) : aperçus GED, images KB, /media/ AUTHENTIFIÉS. Vidé à chaque
+// déconnexion (poste partagé) ; le précache de la coquille, lui, est gardé.
+export const SW_MEDIA_CACHE = 'taqinor-media-v1'
+
 /** Signale que CET onglet vient de se déconnecter (local ou propagé). */
 export function emitAuthLogout() {
   if (typeof window === 'undefined') return
   window.dispatchEvent(new Event(AUTH_LOGOUT_EVENT))
+  try {
+    // Best-effort, jamais bloquant : navigateur sans Cache API → rien à vider.
+    globalThis.caches?.delete(SW_MEDIA_CACHE)?.catch?.(() => {})
+  } catch { /* Cache API refusée (contexte non sécurisé) : rien à vider */ }
 }
 
 // VX162 — canal de diffusion CROSS-ONGLETS pour le logout. Avant : seul

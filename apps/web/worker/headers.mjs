@@ -91,6 +91,23 @@ const CSP_DIRECTIVES = [
 /** Valeur de Content-Security-Policy appliquée aux documents HTML. */
 export const CONTENT_SECURITY_POLICY = CSP_DIRECTIVES.join('; ');
 
+/**
+ * ADCG55 — `/embed/*` (widget partenaire W358, pages/embed/estimation.astro) est fait pour
+ * l'iframe d'un site tiers : même CSP, seule `frame-ancestors` s'ouvre aux origines HTTPS
+ * (aucun partenaire déclaré, donc aucune liste de domaines) ; le reste du site reste fermé.
+ */
+export const CONTENT_SECURITY_POLICY_EMBED = CSP_DIRECTIVES
+  .map((d) => (d.startsWith('frame-ancestors ') ? 'frame-ancestors https:' : d))
+  .join('; ');
+
+function estEmbed(request) {
+  try {
+    return new URL(request && request.url ? request.url : 'https://x/').pathname.startsWith('/embed/');
+  } catch {
+    return false;
+  }
+}
+
 /** HSTS : 1 an, sous-domaines inclus (le site n'est servi qu'en HTTPS). */
 export const STRICT_TRANSPORT_SECURITY = 'max-age=31536000; includeSubDomains';
 
@@ -117,14 +134,17 @@ export function applySecurityHeaders(request, response) {
   if (!contentType.toLowerCase().includes('text/html')) return response;
 
   const headers = new Headers(response.headers);
-  headers.set('Content-Security-Policy', CONTENT_SECURITY_POLICY);
+  const embed = estEmbed(request);
+  headers.set('Content-Security-Policy', embed ? CONTENT_SECURITY_POLICY_EMBED : CONTENT_SECURITY_POLICY);
   headers.set('Strict-Transport-Security', STRICT_TRANSPORT_SECURITY);
   headers.set('Referrer-Policy', REFERRER_POLICY);
   headers.set('Permissions-Policy', PERMISSIONS_POLICY);
   headers.set('X-Content-Type-Options', 'nosniff');
   // WB34 — défense en profondeur clickjacking pour les anciens agents/scanners
   // qui n'honorent pas `frame-ancestors` (CSP) : DENY reflète la même politique.
-  headers.set('X-Frame-Options', 'DENY');
+  // ADCG55 — sauf sur /embed/* (DENY y empêcherait l'iframe du partenaire).
+  if (embed) headers.delete('X-Frame-Options');
+  else headers.set('X-Frame-Options', 'DENY');
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,

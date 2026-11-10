@@ -53,12 +53,19 @@ jobs:
           python-version: '3.11'
       - name: Install backend dependencies
         working-directory: backend/django_core
-        run: pip install -r requirements.txt
+        # ADCG73 — Faker (épinglé dans requirements-dev.txt) pour seed_scale.
+        run: |
+          pip install -r requirements.txt
+          pip install "$(grep -E '^Faker==' requirements-dev.txt)"
       - name: Migrate + run Django dev server in the background
         working-directory: backend/django_core
         run: |
           python manage.py migrate --noinput
           python ../../scripts/load/creer_compte_charge.py
+          # ADCG73 — base PEUPLÉE, bornée à la société du compte de charge
+          # (`[CHARGE] Load smoke` : seed_scale réutilise les sociétés de son tag).
+          python manage.py seed_scale --tag CHARGE --companies 1 --users 2 \
+            --leads 300 --devis 60 --lignes 300 --mouvements 100 --force-je-sais
           nohup python manage.py runserver 0.0.0.0:8000 > server.log 2>&1 &
           for i in $(seq 1 30); do
             if curl -sf http://localhost:8000/api/django/token/ -o /dev/null -w '%{http_code}' | grep -qE '^[24]'; then

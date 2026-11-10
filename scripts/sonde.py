@@ -13,6 +13,8 @@ Le lanceur envoie un programme AUTONOME (source de la sonde en ligne, jamais par
 `docker exec -i <conteneur> python -u manage.py shell` : transaction annulee (`set_rollback(True)`), mail
 en memoire, Celery coupe, HTTP sortant bloque, `signal.alarm`, comptes avant / apres. Sortie 0 seulement
 si verdict REPRO ou STATIQUE ET base inchangee. Jamais contre la prod.
+ADCG20 : avant toute sonde, l'empreinte des *.py de `/app` du conteneur est comparee a celle de
+`backend/django_core` local ; un autre code monte = sortie 3, rien de joue (`--sans-fraicheur` pour passer outre).
 """
 from __future__ import annotations
 
@@ -108,6 +110,37 @@ sys.exit(0 if _res['base_inchangee'] and _verdict in ('REPRO', 'STATIQUE') else 
 '''
 
 
+# ADCG20 — empreinte des *.py (chemin relatif -> sha256), calculée dans le conteneur ET localement.
+MARQUE_EMPREINTE = '@@EMPREINTE '
+EMPREINTE = r'''
+import hashlib, json, os
+def _empreinte(racine):
+    out = {}
+    for d, dossiers, fichiers in os.walk(racine):
+        dossiers[:] = [x for x in dossiers if x != '__pycache__']
+        for f in (x for x in fichiers if x.endswith('.py')):
+            with open(os.path.join(d, f), 'rb') as fh:
+                out[os.path.relpath(os.path.join(d, f), racine).replace(os.sep, '/')] = hashlib.sha256(
+                    fh.read()).hexdigest()
+    return out
+'''
+
+
+def fraicheur(conteneur, racine, executer, timeout):
+    """None si `/app` du conteneur porte les mêmes *.py que `backend/django_core` local ; sinon les écarts."""
+    ns = {}
+    exec(EMPREINTE, ns)
+    local = ns['_empreinte'](os.path.join(racine, 'backend', 'django_core'))
+    prog = EMPREINTE + "print(%r + json.dumps(_empreinte('/app')))\n" % MARQUE_EMPREINTE
+    rc, sortie, erreur = executer(['docker', 'exec', '-i', conteneur, 'python', '-'], prog, timeout)
+    ligne = next((x for x in sortie.splitlines() if x.startswith(MARQUE_EMPREINTE)), None)
+    if ligne is None:
+        return 'empreinte illisible (code %s) %s' % (rc, (erreur or sortie).strip()[-200:])
+    distant = json.loads(ligne[len(MARQUE_EMPREINTE):])
+    ecarts = sorted(k for k in set(local) | set(distant) if local.get(k) != distant.get(k))
+    return (', '.join(ecarts[:5]) + (' …' if len(ecarts) > 5 else '')) if ecarts else None
+
+
 class ErreurSonde(Exception):
     pass
 
@@ -148,7 +181,7 @@ def executer_docker(cmd, prog, timeout):
     return r.returncode, r.stdout.decode('utf-8', 'replace'), r.stderr.decode('utf-8', 'replace')
 
 
-def jouer(chemin, conteneur, timeout, executer, dry_run=False):
+def jouer(chemin, conteneur, timeout, executer, dry_run=False, note=''):
     """Rejoue UNE sonde ; renvoie (code, verdict). Imprime attendu / observe / verdict / base."""
     source, entete = charger(chemin)
     prog = programme(source, entete, timeout)
@@ -168,7 +201,7 @@ def jouer(chemin, conteneur, timeout, executer, dry_run=False):
     verdict = {'ECART': 'ÉCART'}.get(res.get('verdict'), res.get('verdict'))
     inchangee = res.get('base_inchangee') is True
     print('observé : %s' % res.get('observe', ''))
-    print('verdict : %s' % verdict)
+    print('verdict : %s%s' % (verdict, note))
     print('base inchangée : %s (avant %s, après %s) ; mails %s ; tâches Celery bloquées %s' % (
         'oui' if inchangee else 'non', res.get('comptes_avant'), res.get('comptes_apres'),
         res.get('mails'), res.get('celery_bloques')))
@@ -183,6 +216,8 @@ def main(argv=None, executer=executer_docker):
     p.add_argument('--timeout', type=int, default=120)
     p.add_argument('--dry-run', action='store_true', help='imprime le programme généré, sans docker')
     p.add_argument('--racine', default=RACINE)
+    p.add_argument('--sans-fraicheur', action='store_true',
+                   help='ne compare pas le code monté dans le conteneur à backend/django_core local')
     a = p.parse_args(argv)
     if hasattr(sys.stdout, 'reconfigure'):
         sys.stdout.reconfigure(encoding='utf-8')
@@ -194,10 +229,17 @@ def main(argv=None, executer=executer_docker):
     if not chemins:
         print('aucune sonde dans %s' % a.toutes)
         return 1
+    note = ' (fraîcheur non vérifiée)' if a.sans_fraicheur else ''
+    if not (a.dry_run or a.sans_fraicheur):
+        ecarts = fraicheur(a.conteneur, a.racine, executer, a.timeout)
+        if ecarts:
+            print('REFUSÉE : le conteneur %s sert un autre code que %s (fichiers : %s) — relancer la pile '
+                  'sur ce worktree, ou --sans-fraicheur' % (a.conteneur, a.racine, ecarts))
+            return 3
     bilan = []
     for chemin in chemins:
         try:
-            code, verdict = jouer(chemin, a.conteneur, a.timeout, executer, a.dry_run)
+            code, verdict = jouer(chemin, a.conteneur, a.timeout, executer, a.dry_run, note)
         except ErreurSonde as e:
             print('REFUSÉE : %s' % e)
             code, verdict = 1, 'REFUSÉE'

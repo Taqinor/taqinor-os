@@ -206,11 +206,10 @@ def main(argv: list[str] | None = None) -> int:
             path = ROOT / path
 
     if not path.is_file():
-        print(
-            f"{path} introuvable — le contrôle BUILD_ORDER.yml est ignoré "
-            "(fichier absent, SCA1 pas encore atterri) — vert par défaut.",
-        )
-        return 0
+        # ADCG81 — absent = garde désarmée en silence : échec (le
+        # planificateur, lui, garde son None rétro-compatible).
+        print(f"{path} introuvable — contrôle BUILD_ORDER.yml impossible.")
+        return 1
 
     build_order = plan_lanes.load_build_order(path)
     if build_order is None:

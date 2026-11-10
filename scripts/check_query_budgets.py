@@ -19,7 +19,7 @@ occurrence : un endpoint déclaré ``enforced: true`` sans test de budget ne
 faisait rougir AUCUN job CI.
 
 Comportement :
-- manifeste absent          -> notice + exit 0 (rien à garder) ;
+- manifeste absent          -> exit 1 (ADCG81 : jamais désarmé en silence) ;
 - PyYAML absent             -> ÉCHEC EXPLICITE (exit 1, AUD831). Un
   environnement CI où PyYAML manque est une régression d'environnement, pas
   un cas légitime — un exit 0 silencieux serait exactement le faux-vert que
@@ -34,6 +34,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = ROOT / "docs" / "query-budgets.yml"
+INVENTAIRE = ROOT / "docs" / "openapi-schema.yml"
 BACKEND = ROOT / "backend" / "django_core"
 
 BUDGET_ASSERTIONS = ("assertMaxQueries", "assertNumQueries")
@@ -106,6 +107,51 @@ def _has_budget_test(url: str, corpus: dict) -> bool:
     return any(url in text for text in corpus.values())
 
 
+def _plafonds(text: str):
+    """ADCG48 — (entiers littéraux passés à assertMaxQueries/assertNumQueries,
+    le fichier lit-il le manifeste ?) — lu par AST : un commentaire ou une
+    docstring qui cite « query-budgets.yml » ne lit pas le manifeste."""
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return set(), False
+    docs = {id(n.value) for n in ast.walk(tree) if isinstance(n, ast.Expr)}
+    ints, lit = set(), False
+    for n in ast.walk(tree):
+        if (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                and n.func.attr in BUDGET_ASSERTIONS and n.args
+                and isinstance(n.args[0], ast.Constant)
+                and isinstance(n.args[0].value, int)):
+            ints.add(n.args[0].value)
+        elif (isinstance(n, ast.Constant) and isinstance(n.value, str)
+              and id(n) not in docs and "query-budgets.yml" in n.value):
+            lit = True
+    return ints, lit
+
+
+def _ecart_budget(entry: dict, corpus: dict):
+    """ADCG48 — plafonds testés si le ``budget`` n'en est aucun (sinon None) ;
+    un test qui lit le manifeste est accepté sans comparaison."""
+    ints = set()
+    for text in corpus.values():
+        if entry["path"] in text:
+            valeurs, lit = _plafonds(text)
+            if lit:
+                return None
+            ints |= valeurs
+    return sorted(ints) if ints and entry.get("budget") not in ints else None
+
+
+def _routes_get():
+    """ADCG49 — chemins ``get`` de l'inventaire d'opérations (lignes
+    ``- get <chemin> ->``), sans importer Django ; vide s'il manque."""
+    if not INVENTAIRE.exists():
+        return set()
+    return {ligne.split()[2] for ligne in
+            INVENTAIRE.read_text(encoding="utf-8").splitlines()
+            if ligne.startswith("- get ")}
+
+
 def _colonnes_non_verifiees(entry: dict, corpus: dict):
     """ACVI86 — colonnes de ``colonnes_absentes`` qu'aucun fichier de budget
     citant l'URL ne nomme : le budget compte les requêtes, pas ce qu'elles
@@ -117,8 +163,9 @@ def _colonnes_non_verifiees(entry: dict, corpus: dict):
 
 def main() -> int:
     if not MANIFEST.exists():
-        print("check_query_budgets: docs/query-budgets.yml absent — skip.")
-        return 0
+        print("check_query_budgets: docs/query-budgets.yml introuvable.",
+              file=sys.stderr)
+        return 1
     try:
         import yaml
     except ImportError:
@@ -145,10 +192,21 @@ def main() -> int:
               file=sys.stderr)
         return 1
 
+    routes = _routes_get()
+    sans_route = [e.get("path") for e in endpoints if isinstance(e, dict)
+                  and e.get("path") and str(e["path"]).replace(
+                      "<pk>", "{id}") not in routes]
+    if sans_route:
+        for path in sans_route:
+            print(f"check_query_budgets: chemin servi par aucune route "
+                  f"(docs/openapi-schema.yml) : {path}", file=sys.stderr)
+        return 1
+
     corpus = _test_corpus()
     missing = []
     sautes = []
     colonnes = []
+    ecarts = []
     checked = 0
     for entry in endpoints:
         if not isinstance(entry, dict):
@@ -170,6 +228,9 @@ def main() -> int:
                 sautes.append((path, fichier, ligne))
             colonnes.extend(
                 (path, c) for c in _colonnes_non_verifiees(entry, corpus))
+            testes = _ecart_budget(entry, corpus)
+            if testes:
+                ecarts.append((path, entry.get("budget"), testes))
 
     if sautes:
         print("check_query_budgets: budget(s) 'enforced' dont le test est "
@@ -183,6 +244,12 @@ def main() -> int:
         for path, colonne in colonnes:
             print(f"check_query_budgets: colonne {colonne} non vérifiée par le "
                   f"test de budget de {path}", file=sys.stderr)
+        return 1
+
+    if ecarts:
+        for path, budget, testes in ecarts:
+            print(f"check_query_budgets: budget {path} ({budget}) diffère du plafond "
+                  f"testé {testes}", file=sys.stderr)
         return 1
 
     if missing:

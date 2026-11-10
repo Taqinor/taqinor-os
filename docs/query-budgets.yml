@@ -6,7 +6,9 @@
 #
 # `scripts/check_query_budgets.py` échoue si une entrée `enforced: true` n'a
 # PAS de test de budget correspondant (un fichier de test qui référence l'URL
-# de l'endpoint ET utilise `assertMaxQueries` / `assertNumQueries`). Complète
+# de l'endpoint ET utilise `assertMaxQueries` / `assertNumQueries`), ou si son
+# `budget` n'est aucun des entiers que ces tests affirment (ADCG48 ; un test
+# qui lit ce manifeste est accepté sans comparaison). Complète
 # la sonde de parité YAPIC11.
 #
 # AUD831 — réellement branché dans le job CI `stage-names` (jamais gaté par
@@ -26,14 +28,14 @@ version: 1
 
 endpoints:
   - path: /api/django/crm/leads/
-    budget: 12
+    budget: 15
     enforced: true
-    note: "Liste des leads (YOPSB13)."
+    note: "Liste des leads (YOPSB13) — 12 → 15 (ADCG48) : aligné sur l'assertMaxQueries(15) de apps/crm/tests_yopsb13_lead_query_budget.py (la garde compare désormais la valeur)."
 
   - path: /api/django/sav/tickets/
-    budget: 12
+    budget: 20
     enforced: true
-    note: "Liste des tickets SAV (YOPSB13)."
+    note: "Liste des tickets SAV (YOPSB13) — 12 → 20 (ADCG48) : aligné sur l'assertMaxQueries(20) de apps/sav/tests_yopsb13_ticket_query_budget.py."
 
   - path: /api/django/stock/produits/
     budget: 24
@@ -58,8 +60,11 @@ endpoints:
   # lignes, 1 lot de factures de chaîne, 1 lot BC/consolidées + 1 de sources,
   # leurs préchargements), identiques à 10 et 25 devis — plafond dérivé, à
   # confirmer par la mesure CI de test_yopsb13 (test_ventes_en_lot_*).
+  # ADCG48 (10/11/2026) — 23 → 40 : aligné sur le plafond absolu RÉELLEMENT
+  # affirmé (assertMaxQueries(40), ~32 requêtes mesurées par SCA43 à 10 devis,
+  # marge comprise) ; la garde N+1 autoritaire reste le test de croissance.
   - path: /api/django/ventes/devis/
-    budget: 23
+    budget: 40
     enforced: true
     note: "Liste des devis (YOPSB13) — appelle le moteur d'affichage TTC."
 
@@ -101,10 +106,10 @@ endpoints:
     enforced: false
     note: "À couvrir : liste des interventions."
 
-  - path: /api/django/core/notifications/
+  - path: /api/django/notifications/notifications/
     budget: 10
     enforced: false
-    note: "À couvrir : liste des notifications (polling du bell)."
+    note: "À couvrir : liste des notifications (polling du bell) — chemin corrigé (ADCG49 : /api/django/core/notifications/ n'était servi par aucune route)."
 
   # --- Parcours PA1 (ACVI86, ACVI95) : plafond-filet 40 posé sans base locale, à resserrer sur mesure CI ; la garde réelle = compte égal N / 3N --
   - path: /api/django/crm/relance-etapes/

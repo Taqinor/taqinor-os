@@ -149,7 +149,7 @@ class ScopingSocieteTests(VisiteTerrainBase):
         liste = intrus.get('/api/django/visites/visites/')
         self.assertEqual(liste.status_code, 200)
         self.assertEqual(
-            [ligne['id'] for ligne in liste.data], [])
+            [ligne['id'] for ligne in liste.data['results']], [])
 
     def test_creer_une_visite_sur_le_lead_dune_autre_societe_est_refuse(self):
         # ENF11 (nocturne 15/10) — lead borné à la société : celui d'une autre
@@ -733,7 +733,23 @@ class ListeFiltreLeadTests(AssertQueryBudgetMixin, VisiteTerrainBase):
         resp = self.api.get('/api/django/visites/visites/',
                             {'lead': self.lead.id})
         self.assertEqual(resp.status_code, 200, resp.data)
-        self.assertEqual([r['id'] for r in resp.data], [visite_id])
+        self.assertEqual([r['id'] for r in resp.data['results']], [visite_id])
+
+    def test_liste_paginee_250_visites(self):
+        """ADCG50 — enveloppe standard, 50 par page ; `?lead=` paginé aussi.
+        Mutant : remettre `pagination_class = None` ⇒ 250 lignes nues."""
+        leads = [Lead.objects.create(company=self.company, nom=f'P{i}') for i in range(5)]
+        VisiteTerrain.objects.bulk_create(
+            VisiteTerrain(company=self.company, lead=lead, commercial=self.commercial)
+            for lead in leads for _ in range(50))
+        url = '/api/django/visites/visites/'
+        resp = self.api.get(url)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual((resp.data['count'], len(resp.data['results'])), (250, 50))
+        self.assertIsNotNone(resp.data['next'])
+        page5 = self.api.get(url, {'page': 5})
+        self.assertEqual((len(page5.data['results']), page5.data['next']), (50, None))
+        self.assertEqual(self.api.get(url, {'lead': leads[0].id}).data['count'], 50)
 
     def test_lead_non_entier_400(self):
         # CI #956 (api-fuzz « accepted schema-violating », ?lead=null → 200) :
@@ -747,10 +763,10 @@ class ListeFiltreLeadTests(AssertQueryBudgetMixin, VisiteTerrainBase):
         # Vide = pas de filtre ; un id inconnu = liste vide, jamais 404.
         resp = self.api.get('/api/django/visites/visites/', {'lead': ''})
         self.assertEqual(resp.status_code, 200, resp.data)
-        self.assertEqual(len(resp.data), 1)
+        self.assertEqual(resp.data['count'], 1)
         resp = self.api.get('/api/django/visites/visites/', {'lead': '0'})
         self.assertEqual(resp.status_code, 200, resp.data)
-        self.assertEqual(resp.data, [])
+        self.assertEqual(resp.data['results'], [])
 
     def _visites_avec_photos(self, combien):
         type_visite = ContentType.objects.get_for_model(VisiteTerrain)
@@ -771,7 +787,7 @@ class ListeFiltreLeadTests(AssertQueryBudgetMixin, VisiteTerrainBase):
         with CaptureQueriesContext(connection) as capture:
             resp = self.api.get('/api/django/visites/visites/')
         self.assertEqual(resp.status_code, 200, resp.data)
-        return len(capture.captured_queries), resp.data
+        return len(capture.captured_queries), resp.data['results']
 
     def test_liste_requetes_constantes(self):
         # ACVI82 — la liste coûte autant à 3 et à 9 visites (préchargement
@@ -882,7 +898,14 @@ class SchemaVisitesPublieTests(SimpleTestCase):
             noeud['$ref'].rsplit('/', 1)[-1]]
 
     def test_la_liste_est_un_tableau_de_lignes(self):
-        schema = self._reponse('get', 'visites/')
+        # ADCG50 — la liste est paginée : le schéma publié est l'enveloppe
+        # standard (composant Paginated…List) dont `results` est le tableau
+        # de lignes — jamais un tableau DE tableaux.
+        enveloppe = self._composant(self._reponse('get', 'visites/'))
+        self.assertEqual(enveloppe['type'], 'object')
+        self.assertTrue({'count', 'next', 'previous', 'results'}
+                        <= set(enveloppe['properties']))
+        schema = enveloppe['properties']['results']
         self.assertEqual(schema['type'], 'array')
         ligne = self._composant(schema['items'])
         self.assertEqual(ligne['type'], 'object')

@@ -50,7 +50,7 @@ BACKEND = ROOT / "backend" / "django_core"
 ALLOWLIST_PATH = ROOT / "scripts" / "liste_page1_allow.txt"
 NON_PAGINEES_PATH = ROOT / "scripts" / "liste_page1_non_paginees.txt"
 _PREUVE_RE = re.compile(r"pagination_class\s*=\s*None\b|\[:\d+\]|@api_view\b")
-_CITATION_RE = re.compile(r"@(\S+?\.py):(\d+)\s*$")
+_CITATION_RE = re.compile(r"@(\S+?\.py)::([\w.]+)\s*$")  # ADCG75 : par symbole, jamais `:LIGNE`
 
 _RESULTS_RE = re.compile(r"\bdata\??\.results\b")
 _HTTP_RE = re.compile(
@@ -261,6 +261,20 @@ def _load_allowlist() -> set:
     return out
 
 
+def _corps_cite(fichier: str, symbole: str) -> str:
+    """ADCG75 — corps du symbole cité ET ses décorateurs (`audit_tache.resoudre`)."""
+    import audit_tache
+    rel, _q, d = audit_tache.resoudre(f"{fichier}::{symbole}", ROOT)
+    lignes = (ROOT / rel).read_text(encoding="utf-8").splitlines()
+    debut, ouvertes = d.debut - 1, 0
+    while debut > 0:  # remonter les décorateurs, même sur plusieurs lignes
+        ouvertes += lignes[debut - 1].count(")") - lignes[debut - 1].count("(")
+        if ouvertes <= 0 and not lignes[debut - 1].lstrip().startswith("@"):
+            break
+        debut -= 1
+    return "\n".join(lignes[debut:d.fin])
+
+
 def _load_non_paginees():
     """({cle: endpoint}, [erreurs]) du registre ; chaque citation backend est vérifiée."""
     out, erreurs = {}, []
@@ -277,16 +291,15 @@ def _load_non_paginees():
         cle, endpoint, raison = parts
         m = _CITATION_RE.search(raison)
         if not m:
-            erreurs.append(f"{cle} : citation backend `@fichier.py:ligne` manquante")
+            erreurs.append(f"{cle} : citation backend `@fichier.py::Symbole` manquante")
             continue
-        cible = ROOT / m.group(1)
         try:
-            texte = cible.read_text(encoding="utf-8").splitlines()[int(m.group(2)) - 1]
-        except (OSError, UnicodeDecodeError, IndexError):
-            erreurs.append(f"{cle} : citation {m.group(1)}:{m.group(2)} introuvable")
+            texte = _corps_cite(m.group(1), m.group(2))
+        except (OSError, UnicodeDecodeError, SyntaxError, SystemExit):
+            erreurs.append(f"{cle} : citation {m.group(1)}::{m.group(2)} introuvable")
             continue
         if not _PREUVE_RE.search(texte):
-            erreurs.append(f"{cle} : {m.group(1)}:{m.group(2)} ne porte ni pagination_class = None, "
+            erreurs.append(f"{cle} : {m.group(1)}::{m.group(2)} ne porte ni pagination_class = None, "
                            "ni tranche [:N], ni @api_view — endpoint peut-être paginé")
             continue
         out[cle] = endpoint

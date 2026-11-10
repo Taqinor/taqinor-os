@@ -72,6 +72,9 @@ entre crochets évite qu'un `pgrep` lancé par SSH se trouve lui-même).
 | `DJANGO_ADMIN_URL` | **POSÉE le 10/10/2026** (décision de Reda) : chemin aléatoire SOUS `api/django/`, terminé par `/` ; la valeur n'existe QUE dans le `.env` serveur, jamais au dépôt ni dans un chat — la lire : `grep '^DJANGO_ADMIN_URL=' /opt/taqinor-os/.env` | oui (décision) | l'ancien `/api/django/admin/` répond 404 ; le login `<DJANGO_ADMIN_URL>login/` reste plafonné par nginx (`login_limit`, ASEC47). Hors `api/django/`, nginx ne relaierait pas l'admin |
 | `PUBLIC_BASE_URL` | `https://api.taqinor.ma` | recommandé | liens client relatifs (comportement historique) |
 | `LOG_LEVEL` | `INFO` | non | défaut `INFO` (journaux lisibles sans DEBUG) |
+| `SENTRY_DSN` | le DSN du projet Sentry backend (D-JPB-2) | pour les alarmes | **si absente : alarme muette** — aucune exception serveur remontée ; recette : `docs/problemes-prod.md` |
+| `SENTRY_RELEASE` | le commit servi (repli de `DEPLOYED_SHA`, posé par le deploy) | non | **si absente : alarme muette** sur la version — pics d'erreurs non rattachés à un deploy ; voir `docs/problemes-prod.md` |
+| `PROBLEMES_RESUME_TOKEN` | jeton de service de la routine du tri quotidien (BPQ4) | pour les alarmes | **si absente : alarme muette** — le résumé `problemes/resume/` reste fermé, le tri ne tourne jamais (bandeau « jamais tourné » chez les superusers) ; voir `docs/problemes-prod.md` |
 
 ### Avertissements acceptés de `manage.py check --deploy`
 
@@ -170,7 +173,8 @@ Une commande, depuis le PC :
 powershell -File scripts\deploy-prod.ps1
 ```
 
-(pull de `main` sur le serveur → rebuild → migrations → redémarrage.)
+(installe `scripts/auto-deploy.sh` d'`origin/main` puis lance l'unité
+`taqinor-autodeploy` : la même séquence que l'auto-déploiement de chaque fusion.)
 
 ## Heure légale — 20/09/2026
 
@@ -332,6 +336,32 @@ Console Hetzner → serveur `taqinor-os` → onglet **Backups** → choisir un
 instantané → **Restore** (écrase le serveur avec l'état de ce jour-là).
 Pour un besoin ponctuel, « Convert to snapshot » permet de monter la
 sauvegarde sur un serveur séparé sans toucher à la prod.
+
+## Reconstruire le serveur (serveur neuf, ADCG96)
+
+Quand l'instantané Hetzner manque ou ne suffit pas, tout se rejoue depuis le
+dépôt — l'auto-déploiement (unités systemd comprises) y est versionné sous
+`scripts/serveur/`.
+
+1. **Serveur neuf** : Ubuntu, Docker + plugin compose, la clé SSH publique de
+   `taqinor_hetzner` dans `/root/.ssh/authorized_keys`, pare-feu ouvert sur
+   22/80/443 seulement.
+2. **Code** : `git clone https://github.com/Taqinor/taqinor-os.git /opt/taqinor-os`.
+3. **`.env`** : `/opt/taqinor-os/.env` depuis la copie chiffrée hors serveur
+   (ADCG97) — jamais reconstitué de mémoire ; voir « Variables du `.env` serveur ».
+4. **Auto-déploiement** : `bash /opt/taqinor-os/scripts/serveur/installer-serveur.sh`
+   (installe `taqinor-autodeploy.service`, `.timer` et `/opt/autodeploy/auto-deploy.sh`,
+   active le timer ; idempotent).
+5. **Pile** : `cd /opt/taqinor-os && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`.
+6. **Données** : restaurer le dernier dump de la base et les objets MinIO
+   (procédure de restauration des données, C-ADCG-016), puis
+   `docker compose … run --rm --no-deps django_core python manage.py migrate --noinput`.
+7. **Contrôles (lecture seule)** : `curl -s -o /dev/null -w '%{http_code}' https://taqinor.ma`
+   → 200, `https://api.taqinor.ma/api/django/` → 401, `docker ps` → 12 conteneurs,
+   `manage.py showmigrations --plan | grep -c '\[ \]'` → 0.
+8. Écrire le commit servi dans `/opt/autodeploy/last_deployed_commit`
+   (`git -C /opt/taqinor-os rev-parse HEAD`) pour que le premier cycle du timer
+   ne refasse pas un deploy complet.
 
 ## Récupération du compte propriétaire
 

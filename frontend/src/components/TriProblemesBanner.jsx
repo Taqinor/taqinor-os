@@ -11,9 +11,11 @@ import { isPortalUser } from '../features/portail/portalScope'
 
    UN SEUL appel par chargement (ref), jamais périodique ; réservé aux
    superusers internes (jamais un compte portail : ShellGlobal.portail.test
-   interdit tout endpoint interne). Échec réseau, `null` (le tri n'a jamais
-   tourné : la routine n'est pas encore armée) ou date illisible : AUCUN
-   bandeau, jamais un toast. */
+   interdit tout endpoint interne). ADCG98 : `null` (clé PRÉSENTE) = le tri n'a
+   JAMAIS tourné — l'alarme était muette en prod le 10/11 — donc bandeau
+   « jamais tourné » (aussi quand Redis manque côté serveur : voulu). Échec
+   réseau, clé absente, corps vide ou date illisible : AUCUN bandeau, jamais
+   un toast. */
 
 const SEUIL_HEURES = 48
 
@@ -28,15 +30,22 @@ export default function TriProblemesBanner() {
   const superuser = useSelector((s) => (
     s.auth?.user?.is_superuser === true && !isPortalUser(s.auth?.user)
   ))
-  const [heures, setHeures] = useState(null)
+  const [message, setMessage] = useState(null)
   const fetchedRef = useRef(false)
 
   useEffect(() => {
     if (!isAuthenticated || !superuser || fetchedRef.current) return
     fetchedRef.current = true
     const lire = (data) => {
+      if (data && typeof data === 'object' && 'dernier_tri_problemes' in data
+          && data.dernier_tri_problemes === null) {
+        setMessage("Le tri quotidien des problèmes n'a jamais tourné.")
+        return
+      }
       const h = heuresDepuis(data?.dernier_tri_problemes)
-      if (h !== null && h > SEUIL_HEURES) setHeures(h)
+      if (h !== null && h > SEUIL_HEURES) {
+        setMessage(`Le tri quotidien des problèmes n'a pas tourné depuis ${h} h.`)
+      }
     }
     api.get('/core/health/ready/', { suppressErrorToast: true })
       .then((res) => lire(res.data))
@@ -44,14 +53,14 @@ export default function TriProblemesBanner() {
       .catch((err) => lire(err?.response?.data))
   }, [isAuthenticated, superuser])
 
-  if (!superuser || heures === null) return null
+  if (!superuser || message === null) return null
   return (
     <div
       role="status"
       data-testid="bandeau-tri-problemes"
       className="fixed inset-x-0 top-0 z-50 bg-amber-100 px-4 py-2 text-center text-sm text-amber-900"
     >
-      {`Le tri quotidien des problèmes n'a pas tourné depuis ${heures} h.`}
+      {message}
     </div>
   )
 }

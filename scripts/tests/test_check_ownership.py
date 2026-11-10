@@ -200,6 +200,17 @@ class ResolutionTests(unittest.TestCase):
 
 
 class RegistreTests(unittest.TestCase):
+    def test_registre_ampute_refuse(self):
+        """ADCG88 — sans sa section ``plans`` (fichier coupé), le registre
+        se lisait sans erreur ; il est refusé en nommant la section."""
+        ampute = REGISTRE.split("\nplans:\n")[0] + "\n"
+        self.assertNotIn("\nplans:", ampute)
+        with self.assertRaises(ValueError) as ctx:
+            registre(ampute)
+        self.assertIn("section(s) obligatoire(s) absente(s) : plans",
+                      str(ctx.exception))
+        self.assertIsNotNone(registre())
+
     def test_glob_trop_large_sur_un_conteneur_refuse(self):
         # Un fallback « tout frontend/src/features » rendrait propriétaire
         # d'office un module NEUF : la règle (c) ne pourrait plus jamais tirer.

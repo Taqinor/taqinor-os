@@ -14,9 +14,16 @@ correspondant : une valeur vide ⇒ nginx n'émet pas l'en-tête.
 Le mini-analyseur (`analyser`, `server_principal`, `location_pour`,
 `entetes_effectifs`) est réutilisé par les tests nginx ASEC47 / ASEC52.
 """
+import os
 import re
+import shutil
+import subprocess
+import sys
+import tempfile
 import unittest
 from pathlib import Path
+
+from scripts.tests import test_auto_deploy as deploy  # banc bash partagé (_bash, _px)
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 NGINX_DIR = ROOT / "backend" / "nginx"
@@ -201,6 +208,44 @@ def entetes_effectifs(arbre, uri):
     return sortie
 
 
+FOND_CARTE = ROOT / "frontend" / "src" / "lib" / "calage" / "fondCarte.js"
+ENTRYPOINT = NGINX_DIR / "docker-entrypoint.sh"
+# envsubst minimal (seules les variables listées en argument), comme gettext.
+_ENVSUBST = r'''import os, re, sys
+noms = re.findall(r"\$\{(\w+)\}", " ".join(sys.argv[1:]))
+texte = sys.stdin.read()
+for nom in noms:
+    texte = texte.replace("${" + nom + "}", os.environ.get(nom, ""))
+sys.stdout.write(texte)
+'''
+
+
+def _csp_rendue(dsn):
+    """ADCG53 — rend le gabarit par le VRAI docker-entrypoint.sh (chemins
+    /etc/nginx déplacés dans un dossier temporaire) ; {directive: [jetons]}."""
+    with tempfile.TemporaryDirectory() as d:
+        racine = Path(d)
+        (racine / "templates").mkdir()
+        shutil.copy(NGINX_DIR / "security-headers.conf.template", racine / "templates")
+        (racine / "envsubst.py").write_text(_ENVSUBST, encoding="utf-8")
+        shim = racine / "bin" / "envsubst"
+        shim.parent.mkdir()
+        shim.write_text(f'#!/usr/bin/env bash\nexec "{deploy._px(sys.executable)}" '
+                        f'"{deploy._px(racine / "envsubst.py")}" "$@"\n', encoding="utf-8")
+        shim.chmod(0o755)
+        script = racine / "entrypoint.sh"
+        script.write_bytes(ENTRYPOINT.read_text(encoding="utf-8")
+                           .replace("/etc/nginx", deploy._px(racine))
+                           .replace("\r\n", "\n").encode())
+        subprocess.run([deploy._bash(), "-c", 'export PATH="$1:$PATH"; sh "$2" true', "_",
+                        deploy._px(shim.parent), deploy._px(script)],
+                       env={**os.environ, "VITE_SENTRY_DSN": dsn}, check=True,
+                       capture_output=True, timeout=60)
+        texte = (racine / "generated" / "security-headers.conf").read_text(encoding="utf-8")
+    valeur = re.search(r'Content-Security-Policy "([^"]+)"', texte).group(1)
+    return {d.split()[0]: d.split()[1:] for d in valeur.split(";") if d.strip()}
+
+
 # ── tests ADEP5 ──────────────────────────────────────────────────────────────
 class CacheControlTests(unittest.TestCase):
     def setUp(self):
@@ -221,6 +266,19 @@ class CacheControlTests(unittest.TestCase):
             entetes = entetes_effectifs(self.arbre, uri)
             for nom in ENTETES_SECURITE:
                 self.assertIn(nom, entetes, f"{nom} absent sur {uri}")
+
+    def test_csp_couvre_les_origines_externes_du_front(self):
+        """ADCG53 — chaque origine https:// de fondCarte.js est en img-src ; le DSN
+        Sentry armé met son hôte en connect-src (rendu réel par l'entrypoint)."""
+        csp = _csp_rendue("https://k@o1.ingest.de.sentry.io/2")
+        for url in re.findall(r"https://[^'\"`\s]+", FOND_CARTE.read_text(encoding="utf-8")):
+            origine = re.match(r"https://[^/?]+", url).group(0).replace("{s}", "*")
+            self.assertIn(origine, csp["img-src"], f"{url} : origine absente de img-src")
+        self.assertIn("https://o1.ingest.de.sentry.io", csp["connect-src"])
+        sans_dsn = _csp_rendue("")
+        self.assertEqual(
+            sans_dsn["connect-src"],
+            [t for t in csp["connect-src"] if t != "https://o1.ingest.de.sentry.io"])
 
     def test_aucun_no_store_litteral_au_niveau_server(self):
         server = server_principal(self.arbre)

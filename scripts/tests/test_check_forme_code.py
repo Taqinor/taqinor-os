@@ -169,6 +169,21 @@ class FormeCodeTests(unittest.TestCase):
         self.assertIn("exception C20 sans effet : ZZ4 : FICHIER_MUR scripts/y.py", sortie)
         self.assertIn("[BASELINE_GROSSIT] scripts/x_allow.txt", sortie)
 
+    def test_registre_non_pagine_et_bases_plateforme_sous_cliquet(self):
+        """ADCG76 — ces listes gelées grossissaient sans refus ; jugées par clé :
+        réécrire la citation d'une entrée existante n'est pas grossir."""
+        reg = "scripts/liste_page1_non_paginees.txt"
+        hand = "backend/django_core/apps/records/platform_baselines/handrolled_models.txt"
+        d = self.depot({reg: "a.jsx::f  x/  raison @b.py:12\n", hand: "crm.A\n",
+                        "scripts/taches_audit_v2.txt": "AX1\n"})
+        code, sortie = d.scenario({reg: "a.jsx::f  x/  raison @b.py::V.f\n", hand: "crm.A\n"})
+        self.assertNotIn("BASELINE_GROSSIT", sortie)
+        code, sortie = d.scenario({reg: "a.jsx::f  x/  r @b.py::V.f\na.jsx::g  y/  r @b.py::V.g\n",
+                                   hand: "crm.A\ncrm.B\n", "scripts/taches_audit_v2.txt": "AX1\nAX2\n"})
+        self.assertEqual(code, 1, sortie)
+        for chemin, neuve in ((reg, "a.jsx::g"), (hand, "crm.B"), ("scripts/taches_audit_v2.txt", "AX2")):
+            self.assertIn(f"[BASELINE_GROSSIT] {chemin} : +1 entrée(s) gelée(s) ({neuve})", sortie)
+
     def test_dette_videe_en_ids_flux_ne_grossit_pas(self):
         """`check_acceptation --write-baseline` ecrit `ids: []` quand la dette tombe a 0 (ADEP, 10/10)."""
         dette = "docs/audits/acceptation/ZZ/_dette.yml"

@@ -88,6 +88,11 @@ class CoreConfig(AppConfig):
         from .champs_stricts import installer_dates_rfc3339
         installer_dates_rfc3339()
 
+        # ADCG61 — DRF 3.18 garde le contrat API de 3.15 (mapping des entiers,
+        # options d'unicité) : voir ``core.drf_compat``.
+        from .drf_compat import appliquer as appliquer_drf_compat
+        appliquer_drf_compat()
+
         # APFS103 — créateur supprimé ⇒ ses extraits planifiés suspendus
         # (référence paresseuse : aucun import d'app ici).
         from django.conf import settings

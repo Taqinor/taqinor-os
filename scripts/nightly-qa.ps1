@@ -345,6 +345,7 @@ function Invoke-NightlyPass {
     $timeoutMs = ($script:MaxMinutes + 30) * 60 * 1000
     Write-Log ('> claude ' + $argLine)
     Write-Log ('  chien de garde : ' + ($script:MaxMinutes + 30) + ' min ; sortie JSON : ' + $outFile)
+    $script:PasseLancee = $true
     $proc = Start-Process -FilePath $claudeExe -ArgumentList $argLine -WorkingDirectory $RepoRoot `
         -RedirectStandardOutput $outFile -RedirectStandardError $errFile -NoNewWindow -PassThru
     $null = $proc.Handle   # PS 5.1 : sans cet acces, ExitCode reste vide
@@ -391,5 +392,13 @@ try {
 } finally {
     Remove-Item -LiteralPath $LockFile -Force -ErrorAction SilentlyContinue
     Write-Log ('fin : code de sortie ' + $ExitCode)
+}
+# ADCG22 : nettoyage best-effort APRES la passe (rien si elle a ete sautee), cache docker
+# garde pour le --build de la nuit suivante ; une erreur est journalisee, le code reste.
+if ($script:PasseLancee) {
+    try {
+        $gc = @(& (Join-Path $RepoRoot 'scripts\gc-workspace.ps1') -MaxAgeDays 14 -SansDocker 6>&1 2>&1 | ForEach-Object { $_.ToString() })
+        foreach ($l in @($gc | Where-Object { $_ -match 'supprim|restants' })) { Write-Log ('gc-workspace : ' + $l.Trim()) }
+    } catch { Write-Log ('gc-workspace en erreur (code inchange) : ' + $_.Exception.Message) }
 }
 exit $ExitCode

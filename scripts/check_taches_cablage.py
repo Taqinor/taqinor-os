@@ -1095,6 +1095,22 @@ def _explique(constat: Constat):
     return lignes
 
 
+def _liste_v2():
+    """(chemin, ids gelés, ids gelés qui ne sont plus OUVERTS dans un PLAN_AUDIT)."""
+    chemin_v2 = ROOT / V2_IDS_RELATIF
+    ids_v2 = charger_ids_v2(chemin_v2)
+    ouverts_audit = {t.identifiant for t in lire_taches()
+                     if not t.close and _PLAN_AUDIT.match(t.fichier)}
+    return chemin_v2, ids_v2, sorted(ids_v2 - ouverts_audit)
+
+
+def _echec_v2_perimes(v2_perimes) -> int:
+    """ADCG79 — la liste v2 gelee ne garde que des ids encore ouverts : sinon ECHEC."""
+    print(f"\nECHEC : {len(v2_perimes)} id(s) v2 plus ouvert(s) dans {V2_IDS_RELATIF} : "
+          f"{', '.join(v2_perimes[:20])} — python scripts/check_taches_cablage.py --write-baseline")
+    return 1
+
+
 def main(argv=None) -> int:
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -1184,11 +1200,7 @@ def main(argv=None) -> int:
     # Liste gelee des taches v2 : elle ne peut que retrecir (une tache cochee
     # ou retiree en sort ; `--write-baseline` la reecrit sans ces ids). Un id
     # absent de la liste est juge en v3 : aucune croissance n'est possible.
-    chemin_v2 = ROOT / V2_IDS_RELATIF
-    ids_v2 = charger_ids_v2(chemin_v2)
-    ouverts_audit = {t.identifiant for t in lire_taches()
-                     if not t.close and _PLAN_AUDIT.match(t.fichier)}
-    v2_perimes = sorted(ids_v2 - ouverts_audit)
+    chemin_v2, ids_v2, v2_perimes = _liste_v2()
 
     if args.write_baseline:
         if v2_perimes and chemin_v2.is_file():
@@ -1248,6 +1260,9 @@ def main(argv=None) -> int:
               "NE LA DESACTIVEZ PAS.")
         return 1
 
+    if v2_perimes:
+        return _echec_v2_perimes(v2_perimes)
+
     print(f"OK : {stats['f1_creations']} tache(s) creent un ecran et "
           f"{stats['f3_candidates']} portent deux moities ; aucun NOUVEAU "
           f"constat bloquant ({len(base)} dette(s) historique(s) gelee(s), "
@@ -1260,9 +1275,7 @@ def main(argv=None) -> int:
         print("Ces dettes corrigees peuvent quitter la base : "
               "python scripts/check_taches_cablage.py --write-baseline")
     print(f"   FORME 5 : {stats['f5_v2']} tache(s) v2 gelee(s), "
-          f"{stats['f5_v3']} tache(s) v3"
-          + (f" ; {len(v2_perimes)} id(s) v2 plus ouvert(s) a retirer "
-             f"(--write-baseline)" if v2_perimes else "") + ".")
+          f"{stats['f5_v3']} tache(s) v3.")
     return 0
 
 

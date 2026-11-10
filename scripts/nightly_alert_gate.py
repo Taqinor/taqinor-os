@@ -25,6 +25,8 @@ Usage (depuis le workflow) :
     python scripts/nightly_alert_gate.py \\
         --job-result success --job-result failure \\
         --previous-conclusion success
+Avec `--decision` (ADCG70) : imprime `alerte`, `fermer` (run vert : fermer
+l'issue ouverte) ou `rien`.
 Sortie : imprime "true" ou "false" sur STDOUT (jamais dans le code de
 retour — le workflow lit stdout ; un code de sortie non nul refleterait un
 BUG du script lui-meme, jamais la decision "faut-il alerter").
@@ -64,6 +66,14 @@ def should_alert(
     return previous_conclusion != SUCCESS
 
 
+def decision(job_results: Sequence[str], previous_conclusion: Optional[str]) -> str:
+    """ADCG70 — `alerte` (2 nuits non vertes), `fermer` (CE run est vert : l'issue
+    d'alerte ouverte est commentee puis fermee), sinon `rien`."""
+    if is_run_green(job_results):
+        return "fermer"
+    return "alerte" if should_alert(job_results, previous_conclusion) else "rien"
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -76,9 +86,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         metavar="CONCLUSION",
         help="Conclusion du run nocturne PRECEDENT deja termine (omis ou "
              "vide si aucun historique).")
+    parser.add_argument(
+        "--decision", action="store_true",
+        help="Imprimer alerte|fermer|rien au lieu de true|false (ADCG70).")
     args = parser.parse_args(argv)
 
     previous = args.previous_conclusion or None
+    if args.decision:
+        print(decision(args.job_results, previous))
+        return 0
     alerte = should_alert(args.job_results, previous)
     print("true" if alerte else "false")
     return 0

@@ -116,7 +116,7 @@ def diagnostic_tenant(company):
         from apps.audit.models import AuditLog
         nb_erreurs = list(AuditLog.objects.filter(
             company=company, action=AuditLog.Action.SECURITY_ALERT
-        ).order_by('-created_at').values_list('detail', 'created_at')[:5])
+        ).order_by('-timestamp').values_list('detail', 'timestamp')[:5])  # AuditLog n'a pas de created_at
     except Exception:
         logger.warning("selectors.diagnostic_tenant : erreur ignorée (mode dégradé)", exc_info=True)
 

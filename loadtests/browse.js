@@ -1,6 +1,6 @@
 // YTEST14 — "load" scenario: a realistic READ-heavy traffic mix.
 // Weighted mix: login (rare, ~5%) + list devis (40%) + list clients (35%) +
-// devis detail (20%). Gate is the PERCENTILE (p95/p99), never the average —
+// list leads (25%, ADCG73 : base peuplée). Gate is the PERCENTILE (p95/p99), never the average —
 // see docs/testing.md "percentile, pas moyenne".
 import http from 'k6/http';
 import { check, sleep } from 'k6';
@@ -28,6 +28,11 @@ export function setup() {
   if (!token) {
     throw new Error('Connexion k6 impossible (compte de charge absent ?)');
   }
+  // ADCG73 — mesurer une base PEUPLÉE : la société du compte de charge doit avoir des leads.
+  const leads = http.get(`${BASE_URL}/api/django/crm/leads/`, authHeaders(token));
+  if (leads.status !== 200 || !(leads.json('count') > 0)) {
+    throw new Error(`Base vide pour le compte de charge (leads ${leads.status}) : seed_scale absent ?`);
+  }
   return { token };
 }
 
@@ -45,8 +50,8 @@ export default function (data) {
     const r = http.get(`${BASE_URL}/api/django/crm/clients/`, headers);
     check(r, { 'list clients 200': (res) => res.status === 200 });
   } else {
-    const r = http.get(`${BASE_URL}/api/django/ventes/devis/`, headers);
-    check(r, { 'devis browse 200': (res) => res.status === 200 });
+    const r = http.get(`${BASE_URL}/api/django/crm/leads/`, headers);
+    check(r, { 'list leads 200': (res) => res.status === 200 });
   }
 
   sleep(1);

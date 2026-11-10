@@ -8,12 +8,14 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import visitesApi from '../../api/visitesApi'
 import PageHeader from '../../components/layout/PageHeader'
-import { Card, Badge, Spinner, EmptyState, Segmented } from '../../ui'
+import { Button, Card, Badge, Spinner, EmptyState, Segmented } from '../../ui'
 import { STATUT_VISITE_LABEL } from './visiteHelpers'
 
 export default function VisitesListPage() {
   const navigate = useNavigate()
   const [scope, setScope] = useState('mine')
+  const [page, setPage] = useState(1) // ADCG50 : liste paginée (50 par page)
+  const [suivante, setSuivante] = useState(false)
   const [visites, setVisites] = useState([])
   const [loading, setLoading] = useState(true)
   const [erreur, setErreur] = useState(null)
@@ -21,11 +23,11 @@ export default function VisitesListPage() {
   const load = useCallback(() => {
     setLoading(true)
     setErreur(null)
-    visitesApi.getVisites(scope === 'mine' ? { mine: 1 } : {})
-      .then((res) => setVisites(res.data?.results ?? res.data ?? []))
+    visitesApi.getVisites({ ...(scope === 'mine' ? { mine: 1 } : {}), page })
+      .then((res) => { setVisites(res.data?.results ?? res.data ?? []); setSuivante(Boolean(res.data?.next)) })
       .catch(() => setErreur('Chargement des visites impossible.'))
       .finally(() => setLoading(false))
-  }, [scope])
+  }, [scope, page])
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement initial + à chaque bascule de portée (D-ENF22)
   useEffect(() => { load() }, [load])
@@ -37,7 +39,7 @@ export default function VisitesListPage() {
       <div className="mb-3">
         <Segmented
           value={scope}
-          onChange={setScope}
+          onChange={(s) => { setScope(s); setPage(1) }}
           options={[
             { value: 'mine', label: 'Mes visites' },
             { value: 'toutes', label: 'Toutes' },
@@ -80,6 +82,12 @@ export default function VisitesListPage() {
             </li>
           ))}
         </ul>
+      )}
+      {!loading && (page > 1 || suivante) && (
+        <div className="mt-3 flex justify-between">
+          <Button variant="outline" disabled={page <= 1} onClick={() => setPage(page - 1)}>Page précédente</Button>
+          <Button variant="outline" disabled={!suivante} onClick={() => setPage(page + 1)}>Page suivante</Button>
+        </div>
       )}
     </div>
   )

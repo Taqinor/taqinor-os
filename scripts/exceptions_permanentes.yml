@@ -259,6 +259,16 @@ safe_migrations:
     - "backend/django_core/apps/crm/migrations/0119_agr401_pompe_actuelle_cv.py"
     - "backend/django_core/apps/stock/migrations/0162_agr104_roles_pompage.py"
     - "backend/django_core/apps/calepinage/migrations/0031_acal320_retrait_gabarits_dossier.py"
+    # ADCG92 (10/11/2026) — déjà appliquées en production, révélées par les règles
+    # DELETEMODEL / RUNPYTHON_DELETE_IRREVERSIBLE (base YOPSB4) ; une migration NEUVE
+    # n'entre ici qu'après revue.
+    - "backend/django_core/core/migrations/0027_qx37_remove_webhooksubscription.py"
+    - "backend/django_core/apps/adsengine/migrations/0061_enf18_reconciliation_unique.py"
+    - "backend/django_core/apps/portail/migrations/0005_aud145_uniq_acceptation_portail_devis.py"
+    - "backend/django_core/apps/portail/migrations/0006_aud137_uniq_paiement_initie_par_facture.py"
+    - "backend/django_core/apps/scm/migrations/0008_scm_unicite_abc_politique.py"
+    - "backend/django_core/apps/statuspage/migrations/0005_enf18_uptimebucket_systeme_unique.py"
+    - "backend/django_core/apps/ventes/migrations/0120_qjr647_retrait_rooflayout.py"
 
 tenant_exempt_models:
   raison: modèles globaux/inter-sociétés PAR CONCEPTION, sans société propriétaire (check_company_fk.py)
@@ -393,6 +403,9 @@ tests_sautes_environnement:
     # Condition : test réseau désarmé (règle #5, armement fondateur VAO4)
     - "backend/parked/veille_ao/tests/test_client_portail.py::IntegrationReseauTests.test_la_sequence_contre_le_portail_reel"
     # Condition : bibliothèque optionnelle absente : PyMuPDF / WeasyPrint / qrcode / pypdf / ezdxf / Pillow / pvlib / fontTools / python-docx / langchain_core / PyJWT / fastapi (import impossible)
+    # ADCG82 — `raise unittest.SkipTest` désormais vu par la garde (sauts déjà présents) :
+    - "backend/django_core/apps/calepinage/tests/acal_livrables_helpers.py::exiger_bibliotheques_pdf"
+    - "backend/django_core/apps/calepinage/tests/test_acal_rapport_etude_servi.py::RapportEtudeServiTest.setUpClass"
     - "backend/django_core/apps/calepinage/tests/test_acal_dossier_reglementaire_generation.py::BaseGeneration.setUp"
     - "backend/django_core/apps/calepinage/tests/test_acal_nom_de_fichier.py::MemeFonctionPourLesExportsTest.test_planche_d_un_titre_arabe_garde_nom_et_extension"
     - "backend/django_core/apps/calepinage/tests/test_acal_planche_surfaces_pose.py::ChampSeulTest.test_dxf_porte_le_calque_des_surfaces"

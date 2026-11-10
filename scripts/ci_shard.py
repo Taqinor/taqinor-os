@@ -106,10 +106,10 @@ MIN_UNIT_SECONDS = 0.4
 DEFAULT_PARALLEL = 4
 
 # SOLMVP54 (21/09/2026) — temps de mur RESERVE sur une lane pour un travail
-# qui n'est pas dans le decoupage : la lane 0 enchaine la suite RLS
-# (`core.tests.test_rls*`, `--parallel 1`, etape dediee de ci.yml) apres sa
-# tranche, 42-45 s mesurees. Le LPT la traite comme deja chargee d'autant.
-LANE_RESERVE_SECONDS = {0: 45.0}
+# qui n'est pas dans le decoupage (le LPT la traite comme deja chargee d'autant).
+# ADCG74 (10/11/2026) : la suite RLS, qui chargeait la lane 0 de 45 s, est sortie
+# dans le job parallele `backend-rls` de ci.yml — plus aucune reserve.
+LANE_RESERVE_SECONDS: dict[int, float] = {}
 
 # Seuil au-dessus duquel une CLASSE est retenue dans `ci_shard_class_timings.json`.
 # En dessous, elle ne peut pas etre le facteur limitant d'une lane (la charge

@@ -34,14 +34,23 @@ class _Harness(unittest.TestCase):
         self.backend = self.tmp_path / "backend" / "django_core"
         self.backend.mkdir(parents=True)
         self.manifest = self.tmp_path / "query-budgets.yml"
+        # ADCG49 — inventaire d'opérations de fixture (routes servies).
+        self.inventaire = self.tmp_path / "openapi-schema.yml"
+        self.inventaire.write_text("operations:\n" + "".join(
+            f"- get {c} -> op\n" for c in (
+                "/api/django/crm/leads/", "/api/django/crm/relance-etapes/",
+                "/api/django/ventes/factures/",
+                "/api/django/calepinage/calepinages/{id}/resultat/")),
+            encoding="utf-8")
 
-        self._orig = (cqb.MANIFEST, cqb.BACKEND)
+        self._orig = (cqb.MANIFEST, cqb.BACKEND, cqb.INVENTAIRE)
         cqb.MANIFEST = self.manifest
         cqb.BACKEND = self.backend
+        cqb.INVENTAIRE = self.inventaire
         self.addCleanup(self._restore)
 
     def _restore(self):
-        cqb.MANIFEST, cqb.BACKEND = self._orig
+        cqb.MANIFEST, cqb.BACKEND, cqb.INVENTAIRE = self._orig
 
     def _write_manifest(self, text):
         self.manifest.write_text(textwrap.dedent(text), encoding="utf-8")
@@ -63,9 +72,13 @@ ENFORCED_ENDPOINT = """\
 
 
 class TestManifestAbsent(_Harness):
-    def test_missing_manifest_is_ok(self):
+    def test_missing_manifest_is_red(self):
+        """ADCG81 — un manifeste renommé/supprimé ne désarme pas la garde."""
         self.assertFalse(self.manifest.exists())
-        self.assertEqual(cqb.main(), 0)
+        erreur = io.StringIO()
+        with contextlib.redirect_stderr(erreur):
+            self.assertEqual(cqb.main(), 1)
+        self.assertIn("docs/query-budgets.yml introuvable", erreur.getvalue())
 
 
 class TestRougeDabordEnforcedWithoutTest(_Harness):
@@ -139,6 +152,28 @@ class TestRougeDabordEnforcedWithoutTest(_Harness):
         """)
         self.assertEqual(cqb.main(), 0)
 
+    def test_budget_different_de_l_assertion_echoue(self):
+        """ADCG48 — le manifeste dit 12, le test affirme 13 : la garde
+        compare la VALEUR, pas seulement l'existence du test."""
+        self._write_manifest(ENFORCED_ENDPOINT)
+        f = self._write_test_file("test_leads_budget.py", """\
+            class T:
+                def test_budget(self):
+                    # 12 dans un commentaire ne compte pas : query-budgets.yml
+                    with self.assertMaxQueries(13):
+                        self.client.get('/api/django/crm/leads/')
+        """)
+        erreur = io.StringIO()
+        with contextlib.redirect_stderr(erreur):
+            self.assertEqual(cqb.main(), 1)
+        self.assertIn("/api/django/crm/leads/ (12)", erreur.getvalue())
+        self.assertIn("[13]", erreur.getvalue())
+        # Un test qui LIT le manifeste est accepté sans comparaison.
+        f.write_text(f.read_text(encoding="utf-8")
+                     + "MANIFESTE = 'docs/query-budgets.yml'\n",
+                     encoding="utf-8")
+        self.assertEqual(cqb.main(), 0)
+
     def test_assert_num_queries_also_counts(self):
         self._write_manifest(ENFORCED_ENDPOINT)
         self._write_test_file("test_leads_budget.py", """\
@@ -162,6 +197,27 @@ class TestMalformedManifest(_Harness):
     def test_enforced_without_path_fails(self):
         self._write_manifest("endpoints:\n  - enforced: true\n")
         self.assertEqual(cqb.main(), 1)
+
+    def test_chemin_sans_route_echoue(self):
+        """ADCG49 — un chemin que rien ne sert est refusé, enforced ou non ;
+        ``<pk>`` du manifeste est lu comme ``{id}``."""
+        self._write_manifest("""\
+            endpoints:
+              - path: /api/django/core/notifications/
+                budget: 10
+                enforced: false
+              - path: /api/django/calepinage/calepinages/<pk>/resultat/
+                budget: 15
+                enforced: false
+        """)
+        erreur = io.StringIO()
+        with contextlib.redirect_stderr(erreur):
+            self.assertEqual(cqb.main(), 1)
+        self.assertIn("/api/django/core/notifications/", erreur.getvalue())
+        self.assertNotIn("resultat", erreur.getvalue())
+        self.inventaire.unlink()
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(cqb.main(), 1)
 
     def test_unreadable_yaml_fails(self):
         self._write_manifest("endpoints: [unterminated\n")

@@ -176,6 +176,20 @@ class CiChangesFilterTest(unittest.TestCase):
                      "backend/django_core/apps/crm/models.py"):
             self.assertFalse(_resolve(self.rules, [path])["fastapi"], path)
 
+    def test_fichiers_d_image_de_prod_declenchent_images_prod(self):
+        """ADCG91 — un fichier d'image de production pose images_prod=true ;
+        le code applicatif seul ne la pose pas (le build compose est lourd)."""
+        regle = re.search(r"grep -qE '([^']+)' <<< \"\$changed\" && images_prod=true",
+                          _detect_step_script())
+        self.assertIsNotNone(regle, "ci.yml : aucune regle `images_prod=true` dans detect")
+        for chemin in ("backend/django_core/requirements.txt", "backend/django_core/Dockerfile",
+                       "backend/fastapi_ia/requirements.txt", "frontend/Dockerfile.prod",
+                       "frontend/package-lock.json", ".dockerignore"):
+            self.assertRegex(chemin, regle.group(1))
+        for chemin in ("backend/django_core/apps/crm/views.py", "apps/web/src/pages/index.astro",
+                       "docs/PLAN.md"):
+            self.assertNotRegex(chemin, regle.group(1))
+
     def test_docs_only_diff_stays_cheap(self):
         """Cas negatif : docs/**.md ne doit declencher aucun job lourd.
 
@@ -207,7 +221,13 @@ _ALL_JOBS = ("changes", "ci-image-check", "backend-lint-fast", "backend-openapi"
              # « skipped » par défaut = hit exact du cache (le cas courant).
              "backend-testdb",
              # ENF11 — sous-ensemble PR du fuzz API (suivi par `backend-tests`).
-             "api-fuzz-pr")
+             "api-fuzz-pr",
+             # ADCG72 — SAST + audit CVE (suivis par `backend-lint`).
+             "bandit", "semgrep", "dependency-audit",
+             # ADCG74 — suite RLS hors des lanes (suivie par `backend-tests`).
+             "backend-rls",
+             # ADCG91 — build des images de production (suivi par `backend-lint`).
+             "images-prod")
 
 
 def _expr(cond, results, outputs):
@@ -321,6 +341,52 @@ class AgregateursChangesTests(unittest.TestCase):
                 self.assertEqual(_verdict(self.jobs, "backend-tests", results, out),
                                  attendu)
 
+    def test_backend_lint_suit_bandit_semgrep_et_audit_cve(self):
+        """ADCG72 (C-ADCG-039) — bandit, semgrep et l'audit CVE sont dans les
+        `needs` du check REQUIS `backend-lint` (et de `ci-gate`) : leur échec le
+        rougit, leur saut par filtre le laisse vert. Test-du-test : retirer
+        `bandit` des `needs` de `backend-lint` fait échouer ce test."""
+        lanes = ("bandit", "semgrep", "dependency-audit")
+        for lane in lanes:
+            self.assertIn(lane, self.jobs["backend-lint"]["needs"])
+            self.assertIn(lane, self.jobs["ci-gate"]["needs"])
+        self.assertIn("backend == 'true'", self.jobs["bandit"]["if"])
+        self.assertIn("backend == 'true'", self.jobs["semgrep"]["if"])
+        self.assertIn("deps == 'true'", self.jobs["dependency-audit"]["if"])
+        self.assertEqual(self.jobs["dependency-audit"]["uses"], "./.github/workflows/dependency-audit.yml")
+        results, out = self._scenario("success", {"backend": "true", "code": "true", "deps": "true"})
+        results.update({"backend-lint-fast": "success", "backend-openapi": "success"})
+        for lane in lanes:
+            for resultat, attendu in (("failure", "failure"), ("cancelled", "failure"),
+                                      ("success", "success"), ("skipped", "success")):
+                with self.subTest(lane=lane, resultat=resultat):
+                    essai = dict(results, **{lane: resultat})
+                    self.assertEqual(_verdict(self.jobs, "backend-lint", essai, out), attendu)
+
+    def test_manifestes_et_baselines_sast_declenchent_leurs_lanes(self):
+        script = _detect_step_script()
+        regle = re.search(r"grep -qE '([^']+)' <<< \"\$changed\" && deps=true", script)
+        self.assertIsNotNone(regle, "ci.yml : aucune regle `deps=true` dans detect")
+        for chemin in ("backend/django_core/requirements.txt", "frontend/package-lock.json",
+                       "frontend/package.json", "scripts/check_cve_severite.py"):
+            self.assertRegex(chemin, regle.group(1))
+        self.assertNotRegex("backend/django_core/apps/crm/models.py", regle.group(1))
+        for chemin in (".bandit.baseline", ".semgrep/taqinor.yml"):
+            self.assertTrue(_resolve(_parse_rules(script), [chemin])["backend"], chemin)
+        self.assertFalse(_resolve(_parse_rules(script), [".gitignore"])["backend"])
+
+    def test_echec_images_prod_rougit_backend_lint(self):
+        """ADCG91 — l'échec du build des images de prod rougit `backend-lint` (et
+        figure dans `ci-gate`) ; sauté (aucun fichier d'image) = vert."""
+        self.assertIn("images-prod", self.jobs["ci-gate"]["needs"])
+        results, out = self._scenario("success", {"backend": "true", "images_prod": "true"})
+        results.update({"backend-lint-fast": "success", "backend-openapi": "success"})
+        for resultat, attendu in (("failure", "failure"), ("cancelled", "failure"),
+                                  ("success", "success"), ("skipped", "success")):
+            with self.subTest(images_prod=resultat):
+                essai = dict(results, **{"images-prod": resultat})
+                self.assertEqual(_verdict(self.jobs, "backend-lint", essai, out), attendu)
+
     def test_lane_api_fuzz_pr_declaree(self):
         job = self.jobs["api-fuzz-pr"]
         self.assertIn("backend == 'true'", job["if"])
@@ -370,8 +436,8 @@ class RunAllegeTests(unittest.TestCase):
     restent, verts (lanes « skipped » = acceptables). Le run `merge_group`
     (allege=false) reste le seul gate complet."""
 
-    LOURDES = ("backend-testdb", "backend-tests-shard", "api-fuzz-pr",
-               "frontend-vitest-shard", "e2e-shard")
+    LOURDES = ("backend-testdb", "backend-tests-shard", "backend-rls", "api-fuzz-pr",
+               "frontend-vitest-shard", "e2e-shard", "images-prod")
     RAPIDES = ("backend-lint-fast", "backend-openapi", "frontend-static",
                "stage-names", "web-build-test", "fastapi-security", "ci-image-check")
 
@@ -548,6 +614,20 @@ class ReutilisationMergeQueueTests(unittest.TestCase):
         # la copie du script en en-tete (ligne avec `$`) ne compte pas
         self.assertFalse(self.m.est_allege('echo "… - allege=$allege"\n'))
         self.assertIsNone(self._chercher(self._faux_gh(journal=journal)))
+
+    def test_journal_complet_avec_script_recopie_n_est_pas_allege(self):
+        # ADCG71 (C-ADCG-038) — GitHub recopie le script de `detect` (affectation
+        # `allege=true`, commentaire qui la nomme) : un run COMPLET n'est pas allege.
+        lignes = _detect_step_script().splitlines()
+        horo = "2026-11-10T02:37:40.9Z "
+        recopie = [horo + "##[group]Run " + lignes[0]] + [horo + ligne for ligne in lignes[1:]]
+        self.assertTrue(any("allege=true" in ligne and "$" not in ligne for ligne in recopie))
+        journal = "\n".join(recopie + [horo + "##[endgroup]"]) + "\n" + self.JOURNAL
+        self.assertFalse(self.m.est_allege(journal))
+        self.assertTrue(self.m.est_allege(
+            journal + horo + "Run allege (pull_request sur claude/x) : "
+            "lanes lourdes reportees au merge_group - allege=true\n"))
+        self.assertEqual(self._chercher(self._faux_gh(journal=journal)), "111")
 
     def test_erreur_api_ne_fait_jamais_echouer(self):
         def gh(*args):

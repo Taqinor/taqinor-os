@@ -48,6 +48,14 @@ déploiement que le code qui l'utilise.** Un rollback de CODE doit toujours
 pouvoir se faire sans toucher au schéma ; un rollback de SCHÉMA (contract)
 n'est lancé qu'une fois qu'on est sûr de ne plus revenir en arrière.
 
+## L'ordre réel du deploy (ADCG2)
+
+`scripts/auto-deploy.sh` (séquence unique, auto et manuelle) applique
+`migrate` avec l'image et le code NEUFS (`run --rm --no-deps django_core`)
+AVANT `up -d` et tout redémarrage : la migration additive passe d'abord, le
+code neuf est servi ensuite, dans le même deploy. Un `migrate` en échec ne
+redémarre rien (l'ancien code sert toujours un schéma qu'il connaît).
+
 ## Piège connu : `AddField(unique=True, default=uuid4)` sur une table peuplée
 
 Documenté en mémoire projet (`deploy_migration_gotchas`) : une migration
