@@ -33,6 +33,7 @@ case "$a" in
  *"python -c"*health*) echo "${HEALTH-ok}";;
  *showmigrations*) printf '%b' "${SHOWMIG-}";;
  "curl "*) printf '%s' "${HTTP_CODE-200}";;
+ *pending_restart*) echo "${PENDING_RESTART-0}";;
 esac
 if [ -n "${FAIL:-}" ] && echo "$a" | grep -qE "$FAIL"; then exit 1; fi
 exit 0
@@ -275,6 +276,23 @@ class AutoDeployTests(unittest.TestCase):
         self.assertLess(banc.index("caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile"),
                         banc.index("caddy reload"))
         self.assertIn("— OK", banc.journal)
+
+    def test_fichiers_embarques_declenchent_leur_service(self):
+        """ADCG10 — worker du site, image minio, postgresql.conf monté."""
+        banc = self.banc("worker", changes="apps/web/worker/deadLetter.mjs\n")
+        self.assertEqual(banc.jouer()[0], 0, banc.journal)
+        self.assertIsNotNone(banc.index(r"prod\.yml build frontend$"))
+        banc = self.banc("minio", changes="backend/minio/Dockerfile\n")
+        self.assertEqual(banc.jouer()[0], 0, banc.journal)
+        self.assertLess(banc.index(r"prod\.yml build minio$"), banc.index(r"prod\.yml up -d"))
+        banc = self.banc("pgconf", changes="backend/db/postgresql.conf\n")
+        self.assertEqual(banc.jouer(PENDING_RESTART="1")[0], 0, banc.journal)
+        self.assertIsNotNone(banc.index(r"exec -T db sh -c psql .*SELECT pg_reload_conf\(\)"))
+        self.assertIn("AVERTISSEMENT : postgresql.conf exige un redémarrage de db", banc.journal)
+        self.assertEqual(banc.compte(r" restart db"), 0)
+        banc = self.banc("pgconf_sans_restart", changes="backend/db/postgresql.conf\n")
+        banc.jouer()
+        self.assertNotIn("exige un redémarrage", banc.journal)
 
     def test_zero_downtime_drapeau_lu_puis_efface(self):
         banc = self.banc(changes=LOT_ECRAN_API)

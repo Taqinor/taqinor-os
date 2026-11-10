@@ -115,8 +115,12 @@ else
   if echo "$CHANGES" | grep -qE '^backend/fastapi_ia/(Dockerfile|requirements.*\.txt)$'; then
     A_CONSTRUIRE="$A_CONSTRUIRE fastapi_ia"
   fi
-  if echo "$CHANGES" | grep -qE '^(frontend/|apps/web/src/|package(-lock)?\.json)'; then
+  # ADCG10 : apps/web/worker/ est copié par frontend/Dockerfile.prod.
+  if echo "$CHANGES" | grep -qE '^(frontend/|apps/web/src/|apps/web/worker/|package(-lock)?\.json)'; then
     A_CONSTRUIRE="$A_CONSTRUIRE frontend"
+  fi
+  if echo "$CHANGES" | grep -qE '^backend/minio/'; then   # ADCG10 : build: ./backend/minio
+    A_CONSTRUIRE="$A_CONSTRUIRE minio"
   fi
   if echo "$CHANGES" | grep -qE '(nginx)'; then
     A_CONSTRUIRE="$A_CONSTRUIRE nginx"
@@ -185,6 +189,17 @@ fi
 
 if [ "$ok" = "1" ]; then
   $COMPOSE up -d --remove-orphans || ok=0
+fi
+
+# ADCG10 — backend/db/postgresql.conf est MONTÉ et lu au seul démarrage : on le
+# recharge (pg_reload_conf) ; un réglage qui exige un redémarrage est SIGNALÉ,
+# jamais appliqué par un redémarrage automatique de db.
+if [ "$ok" = "1" ] && echo "$CHANGES" | grep -qE '^backend/db/postgresql\.conf$'; then
+  psql_db() { $COMPOSE exec -T db sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -tAc \"$1\""; }
+  psql_db "SELECT pg_reload_conf()" || ok=0
+  if [ "$(psql_db "SELECT count(*) FROM pg_settings WHERE pending_restart" | tr -d '[:space:]')" != "0" ]; then
+    log "AVERTISSEMENT : postgresql.conf exige un redémarrage de db"
+  fi
 fi
 
 # ── PIÈGE DE LA CONSTRUCTION SAUTÉE — NE PAS RETIRER ────────────────────────
