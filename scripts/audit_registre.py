@@ -217,9 +217,10 @@ def cmd_status() -> int:
 
 
 def ecarts_tous_coches(groupe: str, date: str) -> bool:
-    """ADCG104 — vrai si les blocs `### <G> — ÉCARTS vérifie <date>` de tous les
-    plans (jusqu'à l'en-tête suivant) portent au moins une tâche, toutes `[x]`."""
-    entete = re.compile(rf"^###\s+{re.escape(groupe)}\s+—\s+ÉCARTS vérifie {re.escape(date)}\b")
+    """ADCG104 — vrai si les blocs `### <G> — ÉCARTS vérifie <d>` de tous les
+    plans (jusqu'à l'en-tête suivant) portent au moins une tâche, toutes `[x]`.
+    ADCG106 — tous les blocs datés `d <= date` (écart reporté d'un bloc plus ancien)."""
+    entete = re.compile(rf"^###\s+{re.escape(groupe)}\s+—\s+ÉCARTS vérifie (\d{{4}}-\d{{2}}-\d{{2}})\b")
     etats = []
     for rel in ctc.fichiers_de_plan():
         lignes = (ROOT / rel).read_text(encoding="utf-8", errors="replace").splitlines()
@@ -227,7 +228,8 @@ def ecarts_tous_coches(groupe: str, date: str) -> bool:
         for i, ligne in enumerate(lignes, 1):
             if bornes and len(bornes[-1]) == 1 and ligne.startswith("#"):
                 bornes[-1].append(i)
-            if entete.match(ligne):
+            m = entete.match(ligne)
+            if m and m.group(1) <= date:
                 bornes.append([i])
         if not bornes:
             continue

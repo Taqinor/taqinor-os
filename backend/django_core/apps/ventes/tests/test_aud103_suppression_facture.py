@@ -141,17 +141,21 @@ class TestSuppressionFacture(TestCase):
         self.assertTrue(self.directeur.is_admin_role)
         self.assertFalse(self.directeur.is_superuser)
         cas = (
-            ('Directeur', self.api_dir, True),
+            ('Directeur', self.api_dir, True, True),
             ('Responsable', self._api_role(
-                'Responsable', RESPONSABLE_PERMISSIONS), True),
+                'Responsable', RESPONSABLE_PERMISSIONS), True, False),
             ('Commercial', self._api_role(
-                'Commercial', COMMERCIAL_PERMISSIONS), False),
+                'Commercial', COMMERCIAL_PERMISSIONS), False, False),
             ('Technicien responsable', self._api_role(
-                'Technicien responsable', TECHNICIEN_RESP_PERMISSIONS), False),
+                'Technicien responsable', TECHNICIEN_RESP_PERMISSIONS), False, False),
             ('Admin RH', self._api_role('Admin RH', ADMIN_RH_PERMISSIONS),
-             False),
+             False, False),
         )
-        for nom, api, autorise in cas:
+        # ASEC90 (D-ASEC-VER6-1 = exiger_encaisser) : annuler une facture à
+        # référence légale émet un avoir de contre-passation ⇒ il faut
+        # ``encaisser`` (Directeur) ; le Responsable garde la suppression du
+        # brouillon provisoire.
+        for nom, api, autorise, annule in cas:
             with self.subTest(role=nom):
                 # Référence vide → « BROUILLON-<id> » (hors série légale).
                 brouillon = self._facture(reference='', avec_ligne=False)
@@ -163,11 +167,11 @@ class TestSuppressionFacture(TestCase):
                     not autorise)
                 emise = self._facture(statut=Facture.Statut.EMISE)
                 r = api.post(self._url(emise) + 'annuler/', {}, format='json')
-                self.assertEqual(r.status_code, 200 if autorise else 403,
+                self.assertEqual(r.status_code, 200 if annule else 403,
                                  getattr(r, 'data', r))
                 emise.refresh_from_db()
                 self.assertEqual(emise.statut == Facture.Statut.ANNULEE,
-                                 autorise)
+                                 annule)
 
     # ── ProtectedError traduit, plus une 500 ──────────────────────────────
 

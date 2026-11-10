@@ -260,14 +260,17 @@ class FactureCycleActionsMixin:
         directive = valider_corps(request, D.FactureAnnulerRequest).get(
             'acompte')
         # AARG7 (D-ASEC-VER-1) — rendre ou re-pointer l'argent (directive
-        # d'acompte) est un geste d'argent : garde ``encaisser`` (ASEC29).
+        # d'acompte) est un geste d'argent : garde ``encaisser`` (ASEC29) ;
+        # ASEC90 (D-ASEC-VER6-1) : une référence LÉGALE aussi (son avoir).
+        from core.numbering import est_reference_provisoire
         from .facture_gardes import PeutEncaisser
-        if directive and directive.get('action') in (
-                'rembourser', 'transferer') and not PeutEncaisser(
+        argent = bool(directive) and directive.get('action') in ('rembourser', 'transferer')
+        if (argent or not est_reference_provisoire(facture.reference)) and not PeutEncaisser(
                 ).has_permission(request, self):
             return Response(
-                {'detail': ("Rendre ou transférer l'argent d'une facture "
-                            "exige le droit d'encaissement.")},
+                {'detail': ("Rendre ou transférer l'argent d'une facture " if argent else
+                            "Annuler une facture numérotée (avoir de contre-passation) ")
+                 + "exige le droit d'encaissement."},
                 status=status.HTTP_403_FORBIDDEN)
         # ENF11 — la seule règle d'ENTRÉE d'une directive que le sérialiseur
         # ne porte pas (publiée en ``anyOf``) : « transferer » exige sa cible.

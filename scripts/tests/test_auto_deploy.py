@@ -31,6 +31,7 @@ case "$a" in
  "git diff --name-only"*) cat "$BANC/changes";;
  "git reset --hard "*) t=$3; [ "$t" = origin/main ] && t=$(cat "$BANC/origin"); echo "$t" > "$BANC/HEAD";;
  "git show origin/main:scripts/auto-deploy.sh") cat "$BANC/auto_origin.sh";;
+ "git worktree add --detach "*) mkdir -p "$4";;
  *"python -c"*health*) echo "${HEALTH-ok}";;
  *showmigrations*) printf '%b' "${SHOWMIG-}";;
  "curl "*) printf '%s' "${HTTP_CODE-200}";;
@@ -73,6 +74,7 @@ class Banc:
             shim.chmod(0o755)
         (self.d / "repo/backend/db/provision_sql_agent_ro.sh").write_bytes(
             b'echo PROVISION >> "$BANC/calls.log"\n')
+        (self.d / "repo/.env").write_text("DB_NAME=x\n")  # relié dans l'arbre (ADCG109)
         (self.d / "HEAD").write_text(last or A)
         (self.d / "origin").write_text(origin)
         (self.d / "changes").write_text(changes)
@@ -176,6 +178,32 @@ class AutoDeployTests(unittest.TestCase):
         self.assertFalse([a for a in avant if re.search(r"prod\.yml up -d| restart ", a)], avant)
         self.assertIn("ECHEC", banc.journal)
 
+    def test_code_neuf_visible_seulement_apres_migrate(self):
+        """ADCG109 — build et migrate sur un arbre séparé au commit neuf ;
+        /opt/taqinor-os (monté dans les conteneurs) n'avance qu'avant `up -d`."""
+        lot = "backend/django_core/apps/crm/models.py\nbackend/django_core/requirements.txt\n"
+        banc = self.banc("vert", changes=lot)
+        rc, sortie = banc.jouer()
+        self.assertEqual(rc, 0, sortie + banc.journal)
+        arbre = re.escape(_px(banc.d / "state" / "arbre"))
+        neuf = rf"^docker compose -f {arbre}/docker-compose\.yml -f {arbre}/docker-compose\.prod\.yml "
+        ordre = [banc.index(rf"^git worktree add --detach {arbre} {B}$"),
+                 banc.index(neuf + r"build django_core$"),
+                 banc.index(neuf + r"run --rm --no-deps django_core python manage\.py migrate --noinput$"),
+                 banc.index(f"^git reset --hard {B}$"),
+                 banc.index(r"^docker compose -f docker-compose\.yml -f docker-compose\.prod\.yml "
+                            r"up -d --remove-orphans$")]
+        self.assertNotIn(None, ordre, banc.appels)
+        self.assertEqual(ordre, sorted(ordre), banc.appels)
+        retraits = [i for i, a in enumerate(banc.appels) if re.search(rf"^git worktree remove --force {arbre}$", a)]
+        self.assertGreater(retraits[-1], ordre[-1])
+        self.assertFalse((banc.d / "state" / "arbre").exists())
+        banc = self.banc("migrate_ko", changes=lot)
+        rc, _ = banc.jouer(FAIL="manage.py migrate --noinput")
+        self.assertNotEqual(rc, 0)
+        self.assertIsNone(banc.index(f"^git reset --hard {B}$"), banc.appels)
+        self.assertIn("ECHEC", banc.journal)
+
     def test_echec_meme_commit_pas_rejoue(self):
         """ADCG3 — deux cycles sur un commit en échec = un seul migrate."""
         banc = self.banc(changes="backend/django_core/apps/crm/views.py\n")
@@ -227,7 +255,10 @@ class AutoDeployTests(unittest.TestCase):
                 i_neuf = banc.index(f"^git reset --hard {B}$")
                 i_sain = banc.index(f"^git reset --hard {A}$")
                 self.assertIsNotNone(i_sain, banc.appels)
-                self.assertLess(i_neuf, i_sain)
+                if nom == "migrate":  # ADCG109 : /opt/taqinor-os jamais avancé avant migrate
+                    self.assertIsNone(i_neuf, banc.appels)
+                else:
+                    self.assertLess(i_neuf, i_sain)
                 apres = banc.appels[i_sain:]
                 self.assertTrue(any(re.search(r"prod\.yml build django_core$", a) for a in apres))
                 self.assertTrue(any(re.search(r"prod\.yml up -d", a) for a in apres))
@@ -240,6 +271,25 @@ class AutoDeployTests(unittest.TestCase):
         self.assertNotEqual(rc, 0)
         self.assertIn("ECHEC sans retour arrière (aucun commit sain)", banc.journal)
         self.assertNotIn("ROLLBACK", banc.journal)
+
+    def test_retour_arriere_jamais_dans_un_etat_melange(self):
+        """ADCG107 — (1) le retour arrière recharge Caddy sur la configuration revenue ;
+        (2) une reconstruction de l'ancien commit en échec ne relance rien."""
+        banc = self.banc("caddy", changes="backend/caddy/Caddyfile\nbackend/django_core/apps/crm/views.py\n")
+        rc, _ = banc.jouer(HEALTH="")
+        self.assertNotEqual(rc, 0)
+        apres = banc.appels[banc.index(f"^git reset --hard {A}$"):]
+        i_valide = next((i for i, a in enumerate(apres) if "caddy validate" in a), None)
+        i_recharge = next((i for i, a in enumerate(apres) if "caddy reload" in a), None)
+        self.assertIsNotNone(i_recharge, apres)
+        self.assertLess(i_valide, i_recharge)
+        self.assertIn(f"ROLLBACK vers {A[:9]} effectué", banc.journal)
+        banc = self.banc("build_ko", changes="backend/django_core/requirements.txt\n")
+        rc, _ = banc.jouer(FAIL=r"prod\.yml build")
+        self.assertNotEqual(rc, 0)
+        for motif in (r"prod\.yml up -d", r" restart ", "caddy reload"):
+            self.assertEqual(banc.compte(motif), 0, (motif, banc.appels))
+        self.assertIn(f"ROLLBACK vers {A[:9]} EN ÉCHEC — intervention manuelle", banc.journal)
 
     def test_requirements_et_meryem_ne_sont_pas_des_docs(self):
         """ADCG7 — seuls *.md/*.markdown et docs/** (hors docs/meryem/) sont « docs »."""
@@ -341,6 +391,22 @@ class AutoDeployTests(unittest.TestCase):
         self.assertEqual(rc, 0, sortie)
         self.assertIsNotNone(banc.index(r"--scale django_core=2"))
         self.assertIsNone(banc.lire("zero_downtime"))
+
+    def test_zero_downtime_sans_commit_neuf_drapeau_consomme(self):
+        """ADCG108 — `-ZeroDowntime` sans commit neuf : drapeau effacé et dit au
+        journal ; le deploy suivant du minuteur ne bascule pas à deux répliques."""
+        banc = self.banc(changes="backend/django_core/apps/crm/views.py\n", last=B, origin=B)
+        banc.ecrire("zero_downtime", "")
+        rc, sortie = banc.jouer()
+        self.assertEqual(rc, 0, sortie)
+        self.assertIsNone(banc.lire("zero_downtime"))
+        self.assertEqual(banc.compte("^docker compose"), 0, banc.appels)
+        self.assertIn("zéro-coupure demandée, rien à déployer : drapeau effacé", banc.journal)
+        (banc.d / "origin").write_text(C)
+        rc, sortie = banc.jouer()
+        self.assertEqual(rc, 0, sortie + banc.journal)
+        self.assertEqual(banc.compte(r"--scale django_core=2"), 0, banc.appels)
+        self.assertIn(f"DEPLOY {C[:9]} — OK", banc.journal)
 
 
 @unittest.skipUnless(_bash(), "bash introuvable")

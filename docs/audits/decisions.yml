@@ -3843,9 +3843,9 @@ decisions:
         texte: "Garanti proraté au profil mensuel déjà servi à l'attendu (aucune pénalité pour un système produisant au profil)"
       - cle: prorata_a_plat
         texte: "Garder le prorata temporis à plat annoncé par la mention légale (aucun code ; la pénalité d'hiver reste provisoire jusqu'à la clôture de l'année)"
-    reponse: ouverte
+    reponse: profil_mensuel
     date: "2026-11-10"
-    source: "vérifie AMON du 10/11/2026 (critique de complétude) : non posée, Reda absent (défaut recommandé : profil_mensuel) ; réglage garantie_production_autorisee éteint par défaut, 0 garantie en prod au 07/11"
+    source: "Reda, question interactive, 10/11/2026 (soir, session loop audit) ; avant : vérifie AMON du 10/11/2026 (critique de complétude) : non posée, Reda absent (défaut recommandé : profil_mensuel) ; réglage garantie_production_autorisee éteint par défaut, 0 garantie en prod au 07/11"
     taches: [AMON107]
   - id: D-ACON-1
     question: "« Générer le devis » depuis un calepinage (et la route from-layout) sur un lead commercial / industriel construit un devis RÉSIDENTIEL avec la production et les économies de l'outil toiture (interdit en C&I par CIQ117). Quelle règle ?"
@@ -4036,9 +4036,9 @@ decisions:
         texte: "Un espace de stockage du même hébergeur, dans un autre centre de données"
       - cle: option_backups_hebergeur_seule
         texte: "S'en remettre à l'option Backups de l'hébergeur (image entière du serveur), sans copie applicative"
-    reponse: ouverte
+    reponse: espace_objet_externe
     date: "2026-11-10"
-    source: "audit de parcours PF3 (10/11/2026) : non posée, Reda absent (défaut recommandé : espace_objet_externe) ; prod lue le 10/11 : copie distante off, 33 dumps et 271 Mo de fichiers sur le même disque ; option Backups de l'hébergeur non vérifiée"
+    source: "Reda, question interactive, 10/11/2026 (soir, session loop audit) ; avant : audit de parcours PF3 (10/11/2026) : non posée, Reda absent (défaut recommandé : espace_objet_externe) ; prod lue le 10/11 : copie distante off, 33 dumps et 271 Mo de fichiers sur le même disque ; option Backups de l'hébergeur non vérifiée"
     taches: [ADCG32]
   - id: D-ADCG-2
     question: "40 PR Dependabot sont ouvertes, dont des correctifs de sécurité verts à un seul paquet que personne ne fusionne. Les fusionner automatiquement quand la CI est verte ?"
@@ -4047,9 +4047,9 @@ decisions:
         texte: "Oui : fusion automatique des PR de sécurité à un seul paquet, mineures et correctifs seulement, CI verte exigée"
       - cle: manuel
         texte: "Non : toute montée de dépendance reste une fusion à la main"
-    reponse: ouverte
+    reponse: fusion_auto_securite_mono_paquet
     date: "2026-11-10"
-    source: "audit de parcours PF3 (10/11/2026) : non posée, Reda absent (défaut recommandé : fusion_auto_securite_mono_paquet) ; 217 alertes ouvertes dont 11 critiques le 10/11"
+    source: "Reda, question interactive, 10/11/2026 (soir, session loop audit) ; avant : audit de parcours PF3 (10/11/2026) : non posée, Reda absent (défaut recommandé : fusion_auto_securite_mono_paquet) ; 217 alertes ouvertes dont 11 critiques le 10/11"
     taches: [ADCG67]
   - id: D-ADCG-3
     question: "Un devis à micro-onduleurs n'est rangé dans aucune famille d'onduleur par le moteur : son PDF à options est refusé. Faut-il classer un micro-onduleur comme onduleur réseau (injection) ?"
@@ -4058,9 +4058,9 @@ decisions:
         texte: "Oui : un micro-onduleur est un onduleur réseau, le devis se rend comme une installation sans batterie"
       - cle: non_classe
         texte: "Non : il reste hors famille ; un devis à micro-onduleurs ne propose pas le PDF à options"
-    reponse: ouverte
+    reponse: reseau
     date: "2026-11-10"
-    source: "audit de parcours PF3 (10/11/2026) : non posée, Reda absent (défaut recommandé : reseau) ; vu sur un devis de démonstration ; 4 devis réels sans onduleur reconnu non identifiés"
+    source: "Reda, question interactive, 10/11/2026 (soir, session loop audit) ; avant : audit de parcours PF3 (10/11/2026) : non posée, Reda absent (défaut recommandé : reseau) ; vu sur un devis de démonstration ; 4 devis réels sans onduleur reconnu non identifiés"
     taches: [ADCG45]
 
   - id: D-ASEC-VER6-1
@@ -4070,7 +4070,7 @@ decisions:
         texte: "Oui : émettre un avoir de contre-passation est un geste sur une créance, il exige le droit d'encaisser (annulation d'une facture, création de facture depuis un bon de commande, prix négocié qui retire un brouillon remis)"
       - cle: palier_seul
         texte: "Non : l'annulation sans mouvement d'argent reste ouverte au palier responsable, comme la tâche AARG7 l'avait laissée"
-    reponse: ouverte
+    reponse: exiger_encaisser
     date: "2026-11-10"
-    source: "vérifie ASEC du 10/11/2026 (contre-visite des correctifs du soir) : non posée, Reda absent (défaut recommandé : exiger_encaisser, dans le prolongement de D-ASEC-VER-1) ; AARG7 avait écrit « annuler sans argent ni directive : inchangé » sans décision propre"
+    source: "Reda, décision fondateur du 10/11/2026 (question interactive, run loop work on all plans 99392c) : exiger_encaisser, dans le prolongement de D-ASEC-VER-1 ; posée par la vérifie ASEC du 10/11/2026"
     taches: [ASEC90, ASEC93]

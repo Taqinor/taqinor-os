@@ -47,7 +47,7 @@ class PrixAchatFournisseurTests(TestCase):
         self.company = Company.objects.create(nom='ASTK13', slug='astk13-co')
         role = Role.objects.create(
             company=self.company, nom='r-astk13-lecture',
-            permissions=['stock_voir'])
+            permissions=['stock_voir', 'stock_export'])  # ASEC92 : xlsx = stock_export
         self.lecteur = User.objects.create_user(
             username='astk13-lecteur', password='x', company=self.company,
             role=role)
