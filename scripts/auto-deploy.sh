@@ -1,18 +1,22 @@
 #!/usr/bin/env bash
-# Auto-déploiement Taqinor OS — LA COPIE DE RÉFÉRENCE, VERSIONNÉE ICI.
+# Auto-déploiement Taqinor OS — LA SEULE SÉQUENCE DE DEPLOY, VERSIONNÉE ICI.
 #
 # ── Pourquoi ce fichier est dans le dépôt (04/08/2026) ──────────────────────
 # Il vivait UNIQUEMENT sur le serveur (`/opt/autodeploy/auto-deploy.sh`, créé le
 # 16/06). Il n'était donc ni relu, ni sauvegardé, ni versionné — alors qu'il
 # pilote la production à chaque fusion. Si le serveur tombait, il était perdu.
-# Il est désormais versionné ici, et `scripts/deploy-prod.ps1` l'INSTALLE sur le
-# serveur à chaque déploiement manuel : cette copie est la source de vérité.
+#
+# ── UNE séquence, deux déclencheurs (ADCG1, 10/11/2026) ─────────────────────
+# Le timer systemd `taqinor-autodeploy` le lance ~chaque minute ; le deploy
+# MANUEL (`scripts/deploy-prod.ps1`) n'embarque plus sa propre copie : il
+# installe CE script depuis `origin/main` dans /opt/autodeploy/ puis lance
+# `systemctl start taqinor-autodeploy.service`. Avant, deux copies divergeaient
+# (le manuel ne redémarrait pas django quand seul le frontend était reconstruit ;
+# l'auto sautait six étapes du manuel). Toute étape du deploy vit ICI.
 #
 # ── Ce qu'il fait ───────────────────────────────────────────────────────────
-# Sonde `origin/main` ~chaque minute (timer systemd `taqinor-autodeploy`) et ne
-# déploie QUE si main a bougé depuis le dernier déploiement. Verrou flock
-# (jamais deux déploiements simultanés — le déploiement MANUEL prend le MÊME
-# verrou depuis l'incident du 04/08), journal horodaté (une ligne par
+# Ne déploie QUE si main a bougé depuis le dernier déploiement. Verrou flock
+# (jamais deux déploiements simultanés), journal horodaté (une ligne par
 # déploiement), et saut du rebuild pour les commits purement docs/markdown.
 #
 # Sortie détaillée (build docker, migrations…) -> journalctl -u taqinor-autodeploy
@@ -35,10 +39,8 @@ log() { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*" >> "$LOG"; }
 mkdir -p "$STATE"
 
 # Verrou non bloquant : si un déploiement tourne déjà, on sort sans rien faire.
-# Le déploiement manuel (`deploy-prod.ps1`) prend CE MÊME verrou — sans quoi les
-# deux se marchent dessus : mesuré le 04/08, un manuel avait construit la bonne
-# image (2,71 Go) et l'auto, parti d'un commit ANTÉRIEUR, a fini en dernier et
-# réécrit l'étiquette avec son ancienne image de 9,25 Go.
+# Mesuré le 04/08 : deux deploys simultanés -> le dernier arrivé réécrit
+# l'étiquette avec son image, même s'il porte du code plus vieux.
 exec 9>"$LOCK"
 flock -n 9 || exit 0
 
@@ -52,6 +54,13 @@ OLD=$(cat "$LAST" 2>/dev/null || echo "")
 [ "$NEW" = "$OLD" ] && exit 0
 
 SHORT=$(git rev-parse --short "$NEW")
+
+# -ZeroDowntime du deploy manuel (NTPLT57, opt-in) : drapeau lu puis effacé.
+ZERO_DOWNTIME=0
+if [ -f "$STATE/zero_downtime" ]; then
+  ZERO_DOWNTIME=1
+  rm -f "$STATE/zero_downtime"
+fi
 
 # Changement purement docs/markdown ? (markdown, .txt, ou sous docs/) -> on
 # rafraîchit l'arbre de travail mais on saute rebuild/migration/restart/préchauffage.
@@ -113,6 +122,19 @@ for IMG in erp-agentique-django_core erp-agentique-fastapi_ia \
   docker image inspect "$IMG" >/dev/null 2>&1 || TOUT=1
 done
 
+# Avant construction : seulement les images dangling (sans effet sur le cache
+# de build, borné après le build — incident « no space left » du 2026-07-10).
+echo "Espace disque avant build :"; df -h / | tail -1
+docker image prune -f || true
+# FILET « container name already in use » (incident 02/08/2026) : un conteneur
+# lent à s'arrêter a déjà été RENOMMÉ <hash>_<nom> par compose ; s'il survit, la
+# recréation échoue. On retire ces survivants renommés — jamais un conteneur sain.
+ORPHELINS=$(docker ps -a --format '{{.Names}}' | grep -E '^[0-9a-f]{12}_erp-agentique-' || true)
+if [ -n "$ORPHELINS" ]; then
+  echo "Conteneurs renommés par un arrêt raté, on les retire : $ORPHELINS"
+  echo "$ORPHELINS" | xargs -r docker rm -f || true
+fi
+
 ok=1
 RIEN_CONSTRUIT=0
 if [ "$TOUT" = "1" ]; then
@@ -137,19 +159,14 @@ fi
 # le contenu d'un bind-mount). Or gunicorn tourne SANS --reload en production :
 # le code fraîchement récupéré resterait dans le dossier monté sans jamais être
 # chargé. Le déploiement serait RAPIDE ET INERTE — pire que lent, parce qu'il
-# annonce « OK » sans rien livrer. Avant la construction sélective, la mise à
-# jour était portée PAR ACCIDENT : `COPY . /app/` changeait à chaque commit,
-# donc l'image changeait, donc compose recréait.
+# annonce « OK » sans rien livrer.
 # ── PIÈGE N° 2 — LA CONSTRUCTION CIBLÉE QUI SAUTE LE BACKEND (07/09/2026) ──
 # Quand SEUL le frontend est reconstruit alors que du code backend a bougé
-# (le cas ordinaire d'un lot complet : écran + API), `RIEN_CONSTRUIT` vaut 0,
-# l'image Django n'a pas changé, `up -d` ne recrée pas django_core, et le
-# restart ci-dessous était sauté : gunicorn servait l'ANCIEN code (route
-# neuve en 404) sous un « DEPLOY — OK ». Mesuré sur la fusion 2873e029
-# (django_core « Up 6 hours » après le déploiement). Le backend est donc
-# redémarré dès que son code a bougé SANS que son image ait été reconstruite
-# — une image reconstruite (ciblée ou complète) est, elle, recréée par
-# `up -d`, un restart de plus serait inutile.
+# (le cas ordinaire d'un lot complet : écran + API), l'image Django n'a pas
+# changé, `up -d` ne recrée pas django_core : gunicorn servait l'ANCIEN code
+# (route neuve en 404) sous un « DEPLOY — OK » (fusion 2873e029). Le backend
+# est donc redémarré dès que son code a bougé SANS que son image ait été
+# reconstruite — une image reconstruite est, elle, recréée par `up -d`.
 RESTART_BACKEND=0
 if [ "$RIEN_CONSTRUIT" = "1" ]; then
   RESTART_BACKEND=1
@@ -162,14 +179,51 @@ if [ "$ok" = "1" ] && [ "$RESTART_BACKEND" = "1" ]; then
                    celery_beat fastapi_ia || ok=0
 fi
 
+# GARDE DB (incident 2026-07-10) : un fichier bind-monté (postgresql.conf) qui
+# change ne recrée pas db ; si la base ne répond pas, on redémarre db (relit la
+# conf montée) et on ré-attend. `-h db` teste le LISTENER TCP (la socket locale
+# répond même quand Postgres n'écoute que sur localhost).
+wait_db() {
+  for _ in $(seq 1 30); do
+    $COMPOSE exec -T db pg_isready -h db -q 2>/dev/null && return 0
+    sleep 3
+  done
+  return 1
+}
+if [ "$ok" = "1" ] && ! wait_db; then
+  log "AVERTISSEMENT: db injoignable après 90 s -> restart db"
+  $COMPOSE restart db || ok=0
+  [ "$ok" = "1" ] && { wait_db || ok=0; }
+fi
+
 if [ "$ok" = "1" ]; then
   $COMPOSE exec -T django_core python manage.py migrate --noinput   || ok=0
+fi
+if [ "$ok" = "1" ]; then
+  # AANA64 — rôle Postgres lecture seule de l'agent SQL (idempotent, mot de passe
+  # lu du .env serveur). Non bloquant : sans lui, l'agent SQL est désactivé.
+  COMPOSE_CMD="$COMPOSE" bash backend/db/provision_sql_agent_ro.sh \
+    || log "AVERTISSEMENT: provisionnement sql_agent_ro en échec"
+  # WOW26 — TOUTES les migrations appliquées (un up -d partiel laissait des
+  # migrations en attente + un 502 silencieux).
+  UNAPPLIED=$($COMPOSE exec -T django_core python manage.py showmigrations --plan 2>/dev/null \
+              | grep -c '\[ \]' || true)
+  if [ "$UNAPPLIED" != "0" ]; then
+    log "AVERTISSEMENT: migrations non appliquées restantes : $UNAPPLIED"
+    ok=0
+  fi
+fi
+if [ "$ok" = "1" ]; then
   $COMPOSE exec -T django_core python manage.py init_roles          || ok=0
   # Publie (versionné) le Guide de Meryem/Protocole de rappel/Carte one-page
-  # dans la GED + notifie Meryem et la direction à chaque nouvelle version —
-  # best-effort : docs/meryem/ absent ou inchangé ne doit jamais faire
-  # échouer un déploiement.
+  # dans la GED — best-effort : docs/meryem/ absent ou inchangé ne doit jamais
+  # faire échouer un déploiement.
   $COMPOSE exec -T django_core python manage.py publier_documents_meryem || true
+  # PVOND (18/08/2026) — ré-applique les fiches catalogue (strictement additif :
+  # ne touche jamais un prix ni une quantité). Non bloquant.
+  $COMPOSE exec -T django_core python manage.py seed_catalogue \
+      --company-slug "${SEED_COMPANY_SLUG:-taqinor-demo}" \
+    || log "AVERTISSEMENT: seed_catalogue en échec (fiches catalogue non rafraîchies)"
   # nginx garde l'ancienne adresse de django après recréation -> 502 sinon.
   $COMPOSE restart nginx                                            || ok=0
   # Caddyfile est un bind mount : reload explicite (zéro coupure), inoffensif sinon.
@@ -186,6 +240,26 @@ print('prechauffage PDF/graphiques: %.1fs' % (time.time() - t0))
 PYEOF
 fi
 
+# NTPLT57 — bascule SANS coupure (opt-in, drapeau du deploy manuel) : scale à 2
+# (l'ancien sert toujours), attente de la santé du neuf, recharge nginx, retour à
+# 1. Le neuf non sain -> redescente à 1, ECHEC (l'ancien n'a jamais cessé de servir).
+sante_interne() {
+  $COMPOSE exec -T django_core python -c "import django, os; os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'erp_agentique.settings.prod'); django.setup(); from core import health; print(health.overall_status(health.check_services()))" 2>/dev/null | tail -n 1 | tr -d '\r'
+}
+if [ "$ok" = "1" ] && [ "$ZERO_DOWNTIME" = "1" ]; then
+  $COMPOSE up -d --no-deps --no-recreate --scale django_core=2 django_core || ok=0
+  ZD_OK=0
+  for _ in $(seq 1 30); do
+    ZD_STATUS=$(sante_interne)
+    if [ -n "$ZD_STATUS" ] && [ "$ZD_STATUS" != "down" ]; then ZD_OK=1; break; fi
+    sleep 3
+  done
+  [ "$ZD_OK" = "1" ] && $COMPOSE restart nginx
+  $COMPOSE up -d --no-deps --scale django_core=1 django_core || ok=0
+  $COMPOSE restart nginx || ok=0
+  [ "$ZD_OK" = "1" ] || { log "AVERTISSEMENT: bascule sans coupure annulée (nouveau conteneur non sain)"; ok=0; }
+fi
+
 if [ "$ok" = "1" ]; then
   echo "$NEW" > "$LAST"
   # AUTO-MISE À JOUR : la copie de référence est celle du dépôt. On l'installe
@@ -198,6 +272,10 @@ if [ "$ok" = "1" ]; then
       && chmod +x "$STATE/auto-deploy.sh" \
       && log "auto-deploy.sh mis à jour depuis le dépôt (actif au prochain cycle)"
   fi
+  # NETTOYAGE POST-BUILD (succès seulement) : cache de build BORNÉ à 8 Go — les
+  # couches du build qui vient de tourner survivent, le vieux cache part.
+  docker image prune -f || true
+  docker builder prune -f --keep-storage=8g || true
   log "DEPLOY $SHORT — OK"
   exit 0
 else
