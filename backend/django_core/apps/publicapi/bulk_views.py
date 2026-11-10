@@ -43,7 +43,7 @@ from .bulk import (
 from .portees import EXPORT_SCOPE_BY_ENTITY, IMPORT_SCOPE_BY_ENTITY
 from .models import ApiKey, BulkJob
 from .public_response import PublicApiResponseMixin
-from .public_serializers import BulkJobSerializer
+from .public_serializers import BulkJobSerializer, cle_du_livrable
 
 
 class HasAnyApiKey(BasePermission):
@@ -241,6 +241,32 @@ class PublicJobViewSet(PublicApiResponseMixin, viewsets.ReadOnlyModelViewSet):
         except BulkJobError as exc:
             raise ValidationError({'detail': str(exc)})
         return Response(BulkJobSerializer(job).data)
+
+    def _livrable(self, nom):
+        """APRF46 — sert le livrable par l'API publique : ``get_object()``
+        (société + clé, AANA33), octets relus du stockage ; sinon 404."""
+        import mimetypes
+        import posixpath
+        from django.http import Http404
+        from apps.records.storage import fetch_attachment
+        cle = cle_du_livrable(self.get_object(), nom)
+        data = fetch_attachment(cle)[0] if cle else None
+        if data is None:
+            raise Http404
+        fichier = posixpath.basename(cle)
+        reponse = HttpResponse(data, content_type=mimetypes.guess_type(fichier)[0] or 'application/octet-stream')
+        reponse['Content-Disposition'] = f'attachment; filename="{fichier}"'
+        return reponse
+
+    @extend_schema(responses={(200, 'application/octet-stream'): OpenApiTypes.BINARY, 404: None})
+    @action(detail=True, methods=['get'], url_path='resultat')
+    def resultat(self, request, pk=None):
+        return self._livrable('resultat')
+
+    @extend_schema(responses={(200, 'application/octet-stream'): OpenApiTypes.BINARY, 404: None})
+    @action(detail=True, methods=['get'], url_path='erreurs')
+    def erreurs(self, request, pk=None):
+        return self._livrable('erreurs')
 
 
 class PublicCsvPullExportView(PublicApiResponseMixin, APIView):

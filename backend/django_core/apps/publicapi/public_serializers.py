@@ -110,14 +110,22 @@ class PublicProduitSerializer(serializers.ModelSerializer):
         return available_quantity(obj)
 
 
+def cle_du_livrable(job, nom):
+    """APRF46 — clé de stockage du livrable ``resultat`` (une fois `termine`)
+    ou ``erreurs`` (dès qu'une ligne a échoué, même `en_cours`), sinon None."""
+    if nom == 'resultat':
+        return job.resultat_file_key if job.statut == BulkJob.STATUT_TERMINE else None
+    return job.erreurs_file_key or None
+
+
 class BulkJobSerializer(serializers.ModelSerializer):
     """NTAPI16 — suivi d'un `BulkJob` : statut/progression/compteurs/liens.
 
-    `resultat_url`/`erreurs_url` sont des liens présignés COURTE durée (15 min,
-    comme les notifications « export prêt » existantes) — jamais l'URL MinIO
-    interne brute, jamais permanents. `resultat_url` n'apparaît qu'une fois
-    `termine` ; `erreurs_url` dès qu'au moins une ligne a échoué (même job
-    encore `en_cours`, pour un import partiel)."""
+    APRF46 — `resultat_url`/`erreurs_url` sont des chemins de l'API publique
+    (`/api/public/v1/jobs/<id>/resultat/`, `.../erreurs/`) gardés par la clé,
+    jamais l'URL MinIO interne (injoignable de l'intégrateur). `resultat_url`
+    n'apparaît qu'une fois `termine` ; `erreurs_url` dès qu'au moins une ligne
+    a échoué (même job encore `en_cours`, pour un import partiel)."""
     progression_pct = serializers.IntegerField(read_only=True)
     resultat_url = serializers.SerializerMethodField()
     erreurs_url = serializers.SerializerMethodField()
@@ -134,17 +142,11 @@ class BulkJobSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_resultat_url(self, obj):
-        if obj.statut != BulkJob.STATUT_TERMINE or not obj.resultat_file_key:
-            return None
-        from apps.records.storage import presign_export_result
-        return presign_export_result(obj.resultat_file_key, expires=900)
+        return f'/api/public/v1/jobs/{obj.pk}/resultat/' if cle_du_livrable(obj, 'resultat') else None
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_erreurs_url(self, obj):
-        if not obj.erreurs_file_key:
-            return None
-        from apps.records.storage import presign_export_result
-        return presign_export_result(obj.erreurs_file_key, expires=900)
+        return f'/api/public/v1/jobs/{obj.pk}/erreurs/' if cle_du_livrable(obj, 'erreurs') else None
 
 
 class PublicChantierSerializer(serializers.ModelSerializer):
