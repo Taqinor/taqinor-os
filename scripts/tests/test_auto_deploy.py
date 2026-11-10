@@ -31,6 +31,7 @@ case "$a" in
  "git diff --name-only"*) cat "$BANC/changes";;
  "git reset --hard "*) t=$3; [ "$t" = origin/main ] && t=$(cat "$BANC/origin"); echo "$t" > "$BANC/HEAD";;
  "git show origin/main:scripts/auto-deploy.sh") cat "$BANC/auto_origin.sh";;
+ "git worktree add --detach "*) mkdir -p "$4";;
  *"python -c"*health*) echo "${HEALTH-ok}";;
  *showmigrations*) printf '%b' "${SHOWMIG-}";;
  "curl "*) printf '%s' "${HTTP_CODE-200}";;
@@ -73,6 +74,7 @@ class Banc:
             shim.chmod(0o755)
         (self.d / "repo/backend/db/provision_sql_agent_ro.sh").write_bytes(
             b'echo PROVISION >> "$BANC/calls.log"\n')
+        (self.d / "repo/.env").write_text("DB_NAME=x\n")  # relié dans l'arbre (ADCG109)
         (self.d / "HEAD").write_text(last or A)
         (self.d / "origin").write_text(origin)
         (self.d / "changes").write_text(changes)
@@ -176,6 +178,32 @@ class AutoDeployTests(unittest.TestCase):
         self.assertFalse([a for a in avant if re.search(r"prod\.yml up -d| restart ", a)], avant)
         self.assertIn("ECHEC", banc.journal)
 
+    def test_code_neuf_visible_seulement_apres_migrate(self):
+        """ADCG109 — build et migrate sur un arbre séparé au commit neuf ;
+        /opt/taqinor-os (monté dans les conteneurs) n'avance qu'avant `up -d`."""
+        lot = "backend/django_core/apps/crm/models.py\nbackend/django_core/requirements.txt\n"
+        banc = self.banc("vert", changes=lot)
+        rc, sortie = banc.jouer()
+        self.assertEqual(rc, 0, sortie + banc.journal)
+        arbre = re.escape(_px(banc.d / "state" / "arbre"))
+        neuf = rf"^docker compose -f {arbre}/docker-compose\.yml -f {arbre}/docker-compose\.prod\.yml "
+        ordre = [banc.index(rf"^git worktree add --detach {arbre} {B}$"),
+                 banc.index(neuf + r"build django_core$"),
+                 banc.index(neuf + r"run --rm --no-deps django_core python manage\.py migrate --noinput$"),
+                 banc.index(f"^git reset --hard {B}$"),
+                 banc.index(r"^docker compose -f docker-compose\.yml -f docker-compose\.prod\.yml "
+                            r"up -d --remove-orphans$")]
+        self.assertNotIn(None, ordre, banc.appels)
+        self.assertEqual(ordre, sorted(ordre), banc.appels)
+        retraits = [i for i, a in enumerate(banc.appels) if re.search(rf"^git worktree remove --force {arbre}$", a)]
+        self.assertGreater(retraits[-1], ordre[-1])
+        self.assertFalse((banc.d / "state" / "arbre").exists())
+        banc = self.banc("migrate_ko", changes=lot)
+        rc, _ = banc.jouer(FAIL="manage.py migrate --noinput")
+        self.assertNotEqual(rc, 0)
+        self.assertIsNone(banc.index(f"^git reset --hard {B}$"), banc.appels)
+        self.assertIn("ECHEC", banc.journal)
+
     def test_echec_meme_commit_pas_rejoue(self):
         """ADCG3 — deux cycles sur un commit en échec = un seul migrate."""
         banc = self.banc(changes="backend/django_core/apps/crm/views.py\n")
@@ -227,7 +255,10 @@ class AutoDeployTests(unittest.TestCase):
                 i_neuf = banc.index(f"^git reset --hard {B}$")
                 i_sain = banc.index(f"^git reset --hard {A}$")
                 self.assertIsNotNone(i_sain, banc.appels)
-                self.assertLess(i_neuf, i_sain)
+                if nom == "migrate":  # ADCG109 : /opt/taqinor-os jamais avancé avant migrate
+                    self.assertIsNone(i_neuf, banc.appels)
+                else:
+                    self.assertLess(i_neuf, i_sain)
                 apres = banc.appels[i_sain:]
                 self.assertTrue(any(re.search(r"prod\.yml build django_core$", a) for a in apres))
                 self.assertTrue(any(re.search(r"prod\.yml up -d", a) for a in apres))

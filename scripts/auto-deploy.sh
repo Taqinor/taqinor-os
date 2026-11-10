@@ -83,9 +83,8 @@ if [ -n "$OLD" ] && git cat-file -e "${OLD}^{commit}" 2>/dev/null; then
   [ -z "$NONDOC" ] && DOCS_ONLY=1
 fi
 
-git reset --hard "$NEW" || { log "ERREUR: git reset --hard $SHORT a échoué"; exit 1; }
-
 if [ "$DOCS_ONLY" = "1" ]; then
+  git reset --hard "$NEW" || { log "ERREUR: git reset --hard $SHORT a échoué"; exit 1; }
   log "DEPLOY $SHORT — docs/markdown uniquement : rebuild ignoré"
   echo "$NEW" > "$LAST"
   rm -f "$ECHEC_COMMIT"
@@ -157,7 +156,7 @@ RIEN_CONSTRUIT=0
 # nomme l'étape fautive) et la trace d'un ÉCHEC dans le journal des problèmes de
 # l'ERP (liste Redis bornée erp:deploys_en_echec, lue par
 # apps/reporting/journal_problemes.py::_deploys_en_echec). Best-effort.
-ETAPE=build
+ETAPE=arbre
 etape() { [ "$ok" = "1" ] && ETAPE="$1"; return 0; }
 signaler_echec() {
   $COMPOSE exec -T redis redis-cli LPUSH erp:deploys_en_echec \
@@ -165,13 +164,33 @@ signaler_echec() {
     && $COMPOSE exec -T redis redis-cli LTRIM erp:deploys_en_echec 0 49 >/dev/null 2>&1
   return 0
 }
-if [ "$TOUT" = "1" ]; then
+# ── ADCG109 — ARBRE DE CONSTRUCTION SÉPARÉ ──────────────────────────────────
+# /opt/taqinor-os est MONTÉ dans django_core, les celery et fastapi_ia : l'avancer
+# avant build + migrate rendait le code neuf visible aux processus EN MARCHE (un
+# import tardif charge le fichier neuf contre un schéma non migré). Build,
+# `migrate --check` et `migrate` tournent sur un arbre git séparé au commit neuf
+# (même projet compose par `name:`, .env du serveur relié) ; /opt/taqinor-os
+# n'avance qu'à l'étape `code`, juste avant `up -d`. Arbre retiré en fin de cycle.
+ARBRE="$STATE/arbre"
+COMPOSE_NEUF="docker compose -f $ARBRE/docker-compose.yml -f $ARBRE/docker-compose.prod.yml"
+retirer_arbre() { git worktree remove --force "$ARBRE" >/dev/null 2>&1; rm -rf "$ARBRE"; git worktree prune; }
+retirer_arbre
+trap retirer_arbre EXIT
+if git worktree add --detach "$ARBRE" "$NEW" && ln -sfn "$REPO/.env" "$ARBRE/.env"; then
+  [ ! -f "$REPO/frontend/.env" ] || cp -p "$REPO/frontend/.env" "$ARBRE/frontend/.env" || ok=0
+else
+  log "ERREUR: arbre de construction $ARBRE au commit $SHORT impossible"; ok=0
+fi
+etape build
+if [ "$ok" != "1" ]; then
+  :
+elif [ "$TOUT" = "1" ]; then
   log "DEPLOY $SHORT — début (rebuild complet)"
-  $COMPOSE build || ok=0
+  $COMPOSE_NEUF build || ok=0
 elif [ -n "$A_CONSTRUIRE" ]; then
   log "DEPLOY $SHORT — début (rebuild ciblé :$A_CONSTRUIRE)"
   # shellcheck disable=SC2086
-  $COMPOSE build $A_CONSTRUIRE || ok=0
+  $COMPOSE_NEUF build $A_CONSTRUIRE || ok=0
 else
   log "DEPLOY $SHORT — début (code seul : aucune image à reconstruire)"
   RIEN_CONSTRUIT=1
@@ -203,7 +222,7 @@ fi
 # (marqueur) : un migrate qui échoue puis est retenté ne remplit pas le disque.
 etape dump
 if [ "$ok" = "1" ] \
-   && ! $COMPOSE run --rm --no-deps django_core python manage.py migrate --check >/dev/null 2>&1 \
+   && ! $COMPOSE_NEUF run --rm --no-deps django_core python manage.py migrate --check >/dev/null 2>&1 \
    && [ "$(cat "$STATE/dump_avant_migrate" 2>/dev/null)" != "$NEW" ]; then
   if $COMPOSE exec -T django_core python manage.py dump_database; then
     echo "$NEW" > "$STATE/dump_avant_migrate"
@@ -213,7 +232,12 @@ if [ "$ok" = "1" ] \
 fi
 etape migrate
 if [ "$ok" = "1" ]; then
-  $COMPOSE run --rm --no-deps django_core python manage.py migrate --noinput || ok=0
+  $COMPOSE_NEUF run --rm --no-deps django_core python manage.py migrate --noinput || ok=0
+fi
+# ADCG109 — le code neuf devient visible aux conteneurs ICI, build et migrate passés.
+etape code
+if [ "$ok" = "1" ]; then
+  git reset --hard "$NEW" || { log "ERREUR: git reset --hard $SHORT a échoué"; ok=0; }
 fi
 
 # ADCG19 — le commit servi rejoint l'environnement des services Django
