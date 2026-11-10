@@ -106,10 +106,10 @@ endpoints:
     enforced: false
     note: "À couvrir : liste des interventions."
 
-  - path: /api/django/core/notifications/
+  - path: /api/django/notifications/notifications/
     budget: 10
     enforced: false
-    note: "À couvrir : liste des notifications (polling du bell)."
+    note: "À couvrir : liste des notifications (polling du bell) — chemin corrigé (ADCG49 : /api/django/core/notifications/ n'était servi par aucune route)."
 
   # --- Parcours PA1 (ACVI86, ACVI95) : plafond-filet 40 posé sans base locale, à resserrer sur mesure CI ; la garde réelle = compte égal N / 3N --
   - path: /api/django/crm/relance-etapes/

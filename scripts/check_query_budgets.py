@@ -34,6 +34,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = ROOT / "docs" / "query-budgets.yml"
+INVENTAIRE = ROOT / "docs" / "openapi-schema.yml"
 BACKEND = ROOT / "backend" / "django_core"
 
 BUDGET_ASSERTIONS = ("assertMaxQueries", "assertNumQueries")
@@ -141,6 +142,16 @@ def _ecart_budget(entry: dict, corpus: dict):
     return sorted(ints) if ints and entry.get("budget") not in ints else None
 
 
+def _routes_get():
+    """ADCG49 — chemins ``get`` de l'inventaire d'opérations (lignes
+    ``- get <chemin> ->``), sans importer Django ; vide s'il manque."""
+    if not INVENTAIRE.exists():
+        return set()
+    return {ligne.split()[2] for ligne in
+            INVENTAIRE.read_text(encoding="utf-8").splitlines()
+            if ligne.startswith("- get ")}
+
+
 def _colonnes_non_verifiees(entry: dict, corpus: dict):
     """ACVI86 — colonnes de ``colonnes_absentes`` qu'aucun fichier de budget
     citant l'URL ne nomme : le budget compte les requêtes, pas ce qu'elles
@@ -178,6 +189,16 @@ def main() -> int:
     if not isinstance(endpoints, list):
         print("check_query_budgets: 'endpoints' doit être une liste.",
               file=sys.stderr)
+        return 1
+
+    routes = _routes_get()
+    sans_route = [e.get("path") for e in endpoints if isinstance(e, dict)
+                  and e.get("path") and str(e["path"]).replace(
+                      "<pk>", "{id}") not in routes]
+    if sans_route:
+        for path in sans_route:
+            print(f"check_query_budgets: chemin servi par aucune route "
+                  f"(docs/openapi-schema.yml) : {path}", file=sys.stderr)
         return 1
 
     corpus = _test_corpus()
