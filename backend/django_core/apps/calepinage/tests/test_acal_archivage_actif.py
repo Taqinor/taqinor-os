@@ -137,12 +137,13 @@ class ArchivageActifTest(BaseApiCalepinage):
                     company=self.company, client=self.client_a, devis=devis,
                     titre=f'Lié {statut}')
                 reponse = self._archiver_http(calepinage)
-                self.assertEqual(reponse.status_code, 400, reponse.data)
+                # ACON12 — conflit d'état (409), sans geste inexistant.
+                self.assertEqual(reponse.status_code, 409, reponse.data)
                 self.assertEqual(
                     reponse.data,
                     {'devis': (f'Ce calepinage porte le devis {reference} '
-                               f'({devis.get_statut_display()}) : '
-                               "détachez-le d'abord")})
+                               f'({devis.get_statut_display()}) : il reste '
+                               'sa conception tant que ce devis est actif.')})
                 calepinage.refresh_from_db()
                 self.assertFalse(est_archive(calepinage))
                 self.assertEqual(calepinage.devis_id, devis.pk)
