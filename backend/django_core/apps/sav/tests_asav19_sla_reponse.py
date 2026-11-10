@@ -86,6 +86,35 @@ class SlaReponseTests(TestCase):
         t = Ticket.objects.get(pk=r.data['id'])
         self.assertEqual(t.sla_reponse_due_at, date(2026, 11, 14))
 
+    def test_pause_suit_le_calendrier_societe(self):
+        """ASOC105 — la pause « en attente client » compte les jours ouvrés du
+        calendrier de la SOCIÉTÉ (lun-sam ici), comme l'échéance qu'elle décale."""
+        from datetime import date
+
+        from apps.notifications.models import Holiday, WorkingHoursConfig
+
+        WorkingHoursConfig.objects.create(
+            company=self.company, working_days=0b0111111)  # lun-sam
+        Holiday.objects.create(company=self.company, date=date(2026, 11, 11),
+                               nom='Armistice', recurrent_annuel=True, pays='FR')
+        sla = SavSlaSettings.get(self.company)
+        sla.sla_jours_ouvres = True
+        sla.save()
+        t = Ticket.objects.create(
+            company=self.company, reference='SAV-OC105', client=self.client_obj,
+            type=Ticket.Type.CORRECTIF, priorite='normale',
+            date_ouverture=date(2026, 11, 10), sla_due_at=date(2026, 11, 17),
+            en_attente_client=True, attente_depuis=date(2026, 11, 13),
+            created_by=self.admin)
+        lundi = date(2026, 11, 16)
+        # Vendredi 13 + samedi 14 ouvrés (dimanche 15 non) : 2 jours, pas 1.
+        self.assertEqual(t._pause_en_cours_jours(today=lundi), 2)
+        self.assertEqual(t.sla_due_at_effectif(today=lundi), date(2026, 11, 19))
+        t.reprendre_apres_attente(today=lundi)
+        t.save()
+        t.refresh_from_db()
+        self.assertEqual(t.jours_pause, 2)
+
     def test_echeance_reponse_posee(self):
         t = self._creer()
         self.assertEqual(t.sla_reponse_due_at, self.today + timedelta(days=1))

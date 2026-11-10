@@ -1,0 +1,109 @@
+# Preuve en direct AMON98 — rejeu accept-amon, code joué edc0d8ff3 (origin/main, merge de #1314), 2026-11-10
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau accept-amon-net ; accept-amon-db (pgvector pg16,
+# 127.0.0.1:5547, base erp_accept_amon = pg_dump --no-owner de la base locale erp_live en lecture seule, puis
+# `manage.py migrate` des 33 migrations manquantes, puis `seed_demo` — « Demo company already seeded ») ;
+# accept-amon-redis ; accept-amon-dj (image erp-agentique-django_core, code backend du commit joué COPIÉ par tar
+# dans /srv/app, settings.dev, mail locmem, MinIO coupé, runserver 127.0.0.1:8017, DB_CONN_MAX_AGE=0).
+# Sondes : python scripts/sonde.py LIVE/C-LIVE-AMON98 --conteneur accept-amon-dj (transaction annulée, mail en
+# mémoire, Celery coupé, HTTP sortant bloqué). Sondes C-LIVE-* écrites pour ce rejeu (source jointe) : elles
+# rejouent le Given/When/Then de la tâche ; repro=true signifie ICI que le comportement ATTENDU est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8017
+# vite preview --port 5197`, bundle servi index-C1tXrJ3H.js == dist/index.html), piloté par Playwright MCP,
+# compte acc_amon_adm (société « Acceptation AMON », rôle Directeur, mot de passe de test généré, base jetable).
+# Fixtures écran FIX-AMON (persistées, dates relatives au 10/11/2026 réel) : ACC-AMON-97 (6 000 kWh/an, MES
+# 01/01/2026, mensuels au profil datés du 1er, janvier → octobre), ACC-AMON-99 (12 000, journaliers au profil
+# jusqu'au 10/10), ACC-AMON-100 (12 000, journaliers 12 mois jusqu'au 10/11), ACC-AMON-102 (SLA 98 %, mensuels
+# contigus 01/01 → 10/10), ACC-AMON-103 (MES J−59, 60 journaliers au profil, drapeau ouvert J−59), ACC-AMON-105
+# (garantie 2026 12 000 kWh / 5 % / 1,10 MAD, journaliers 32,88 kWh du 01/01 au 30/06). Captures : C:\dev\taqinor-os\logs\nightly-qa\playwright\accept-amon\.
+# Verdict : PASS — sonde REPRO (220,07 / 1 267,82) ; écran Rapports O&M ACC-AMON-97 : « Production période 289 kWh » (et non 0)
+
+== C-LIVE-AMON98 (sha edc0d8ff3)
+attendu : period_kwh mensuel 220.07 et trimestriel 1267.82 (± 0,01) au 15/11, mensuels jan-oct, et non 0 / 949.97
+observé : {"period_kwh_mensuel": 220.07, "period_kwh_trimestriel": 1267.82, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 499, après 499) ; mails 0 ; tâches Celery bloquées 0
+
+== Écran
+Écran /production/rapports, ACC-AMON-97 (relevés mensuels jusqu'en octobre, lus le 10/11) :
+  carte PRODUCTION PÉRIODE « 289 kWh » = prorata servi 288,84 kWh (fenêtre 11/10 → 10/11, 21 j du relevé
+  d'octobre ; arrondi d'affichage decimals:0). Avant correctif : 0 kWh (aucun relevé DATÉ dans la fenêtre).
+  Le chiffre 220,07 de la tâche est celui du 15/11 : rejoué à la date par la sonde ci-dessous.
+PDF rendu (render_om_report_pdf, même système, texte extrait pypdf) : « PRODUCTION PÉRIODE 288.84 kWh · PR 100.00 % ».
+Capture : AMON97-98-108-rapport-om.png
+
+# ---- source : C-LIVE-AMON98.py ----
+# flake8: noqa  (sonde LIVE du rejeu d'acceptation AMON — scénario exact de AMON98, vraies fonctions/routes)
+"""AMON98 — Given/When/Then de la tâche rejoué sur la pile privée accept-amon. repro=True signifie ICI que le
+comportement ATTENDU par la tâche est observé."""
+SONDE = {"constat": "C-LIVE-AMON98", "sha": "edc0d8ff3",
+         "attendu": 'period_kwh mensuel 220.07 et trimestriel 1267.82 (± 0,01) au 15/11, mensuels jan-oct, et non 0 / 949.97',
+         "modeles": ['monitoring.ProductionReading', 'monitoring.MonitoringConfig', 'installations.Installation', 'authentication.Company']}
+
+def _base(slug):
+    from decimal import Decimal
+    from django.contrib.auth import get_user_model
+    from rest_framework.test import APIClient
+    from authentication.models import Company
+    from apps.crm.models import Client
+    co = Company.objects.create(nom='Live ' + slug, slug='live-' + slug.lower())
+    u = get_user_model().objects.create_user(username='live_' + slug.lower(), password='x', company=co,
+                                             role_legacy='admin')
+    api = APIClient()
+    api.force_authenticate(u)
+    cl = Client.objects.create(company=co, nom='Client', prenom=slug, email=slug.lower() + '@example.invalid')
+    return co, cl, api
+
+
+def _systeme(co, cl, ref, annuel, mes, kwc='5.00'):
+    from decimal import Decimal
+    from apps.installations.models import Installation
+    from apps.monitoring.models import MonitoringConfig
+    inst = Installation.objects.create(company=co, reference=ref, client=cl,
+                                       puissance_installee_kwc=Decimal(kwc), date_mise_en_service=mes)
+    cfg = None
+    if annuel:
+        cfg = MonitoringConfig.objects.create(company=co, installation=inst, expected_annual_kwh=Decimal(annuel))
+    return inst, cfg
+
+
+def _profil(annuel, d1, d2, facteur=1):
+    from decimal import Decimal
+    from apps.monitoring.services import attendu_entre
+    return (attendu_entre(Decimal(annuel), d1, d2) * Decimal(str(facteur))).quantize(Decimal('0.01'))
+
+
+def _mensuels(co, inst, annuel, mois, facteur=1):
+    import calendar
+    from datetime import date, timedelta
+    from apps.monitoring.models import ProductionReading
+    for m in mois:
+        jour = date(2026, m, 1)
+        p = calendar.monthrange(2026, m)[1]
+        ProductionReading.objects.create(company=co, installation=inst, date=jour, period_days=p,
+                                         energy_kwh=_profil(annuel, jour, jour + timedelta(days=p - 1), facteur))
+
+
+def _journaliers(co, inst, annuel, d1, d2, facteur=1):
+    from datetime import timedelta
+    from apps.monitoring.models import ProductionReading
+    j = d1
+    while j <= d2:
+        ProductionReading.objects.create(company=co, installation=inst, date=j, period_days=1,
+                                         energy_kwh=_profil(annuel, j, j, facteur))
+        j += timedelta(days=1)
+
+
+def _f(x):
+    return None if x is None else float(x)
+
+def sonde(ctx):
+    from datetime import date
+    from apps.monitoring.report import build_om_report_data
+    co, cl, api = _base('AMON98')
+    q = date(2026, 11, 15)
+    inst, _ = _systeme(co, cl, 'CHT-LAMON98', '6000', date(2026, 1, 1))
+    _mensuels(co, inst, '6000', range(1, 11))
+    m = _f(build_om_report_data(inst, period='monthly', today=q)['period_kwh'])
+    t = _f(build_om_report_data(inst, period='quarterly', today=q)['period_kwh'])
+    return {'period_kwh_mensuel': m, 'period_kwh_trimestriel': t,
+            'repro': abs(m - 220.07) <= 0.01 and abs(t - 1267.82) <= 0.01}

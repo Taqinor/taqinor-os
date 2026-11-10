@@ -1,0 +1,131 @@
+# Preuve en direct AMON105 — rejeu accept-amon, code joué edc0d8ff3 (origin/main, merge de #1314), 2026-11-10
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau accept-amon-net ; accept-amon-db (pgvector pg16,
+# 127.0.0.1:5547, base erp_accept_amon = pg_dump --no-owner de la base locale erp_live en lecture seule, puis
+# `manage.py migrate` des 33 migrations manquantes, puis `seed_demo` — « Demo company already seeded ») ;
+# accept-amon-redis ; accept-amon-dj (image erp-agentique-django_core, code backend du commit joué COPIÉ par tar
+# dans /srv/app, settings.dev, mail locmem, MinIO coupé, runserver 127.0.0.1:8017, DB_CONN_MAX_AGE=0).
+# Sondes : python scripts/sonde.py LIVE/C-LIVE-AMON105 --conteneur accept-amon-dj (transaction annulée, mail en
+# mémoire, Celery coupé, HTTP sortant bloqué). Sondes C-LIVE-* écrites pour ce rejeu (source jointe) : elles
+# rejouent le Given/When/Then de la tâche ; repro=true signifie ICI que le comportement ATTENDU est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8017
+# vite preview --port 5197`, bundle servi index-C1tXrJ3H.js == dist/index.html), piloté par Playwright MCP,
+# compte acc_amon_adm (société « Acceptation AMON », rôle Directeur, mot de passe de test généré, base jetable).
+# Fixtures écran FIX-AMON (persistées, dates relatives au 10/11/2026 réel) : ACC-AMON-97 (6 000 kWh/an, MES
+# 01/01/2026, mensuels au profil datés du 1er, janvier → octobre), ACC-AMON-99 (12 000, journaliers au profil
+# jusqu'au 10/10), ACC-AMON-100 (12 000, journaliers 12 mois jusqu'au 10/11), ACC-AMON-102 (SLA 98 %, mensuels
+# contigus 01/01 → 10/10), ACC-AMON-103 (MES J−59, 60 journaliers au profil, drapeau ouvert J−59), ACC-AMON-105
+# (garantie 2026 12 000 kWh / 5 % / 1,10 MAD, journaliers 32,88 kWh du 01/01 au 30/06). Captures : C:\dev\taqinor-os\logs\nightly-qa\playwright\accept-amon\.
+# Verdict : PASS — sonde REPRO (compensation 0,00, pénalité 0,00, garanti figé 5 950,68 de juin à décembre, année close 12 000) ; écran Garanties : 0,00 MAD
+
+== C-LIVE-AMON105 (sha edc0d8ff3)
+attendu : garantie 2026 (12 000 kWh, 5 %, 1,10 MAD/kWh), journaliers au garanti 01/01-30/06, édition 10/11 : compensation_mad 0.00, total_penalite_mad 0.00, garanti cumulé figé au 30/06 de juillet à novembre (et non 3 857,73) ; année close entièrement relevée : garanti 12000.00
+observé : {"compensation_mad": "0.00", "total_penalite_mad": "0.00", "garanti_cumule_juin_a_fin": ["5950.68", "5950.68", "5950.68", "5950.68", "5950.68", "5950.68"], "garanti_annee_close": "12000.00", "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 499, après 499) ; mails 0 ; tâches Celery bloquées 0
+
+== Écran
+/production/garanties → ACC-AMON-105 → « Statut et courbe » (édition = 10/11/2026 réel, le jour de la tâche) :
+  Garanti 5 951 kWh · Réel 5 951 kWh · Manque 0 kWh · Compensation due (estimation, année en cours) 0,00 MAD ·
+  Dans la tolérance ; courbe 2026 : garanti 5 951 / mesuré 5 951. Avant correctif : 3 857,73 MAD.
+Capture : AMON105-garanties.png
+
+# ---- source : C-LIVE-AMON105.py ----
+# flake8: noqa  (sonde LIVE du rejeu d'acceptation AMON — scénario exact de AMON105, vraies fonctions/routes)
+"""AMON105 — Given/When/Then de la tâche rejoué sur la pile privée accept-amon. repro=True signifie ICI que le
+comportement ATTENDU par la tâche est observé."""
+SONDE = {"constat": "C-LIVE-AMON105", "sha": "edc0d8ff3",
+         "attendu": 'garantie 2026 (12 000 kWh, 5 %, 1,10 MAD/kWh), journaliers au garanti 01/01-30/06, édition 10/11 : compensation_mad 0.00, total_penalite_mad 0.00, garanti cumulé figé au 30/06 de juillet à novembre (et non 3 857,73) ; année close entièrement relevée : garanti 12000.00',
+         "modeles": ['monitoring.ProductionReading', 'monitoring.MonitoringConfig', 'installations.Installation', 'authentication.Company']}
+
+def _base(slug):
+    from decimal import Decimal
+    from django.contrib.auth import get_user_model
+    from rest_framework.test import APIClient
+    from authentication.models import Company
+    from apps.crm.models import Client
+    co = Company.objects.create(nom='Live ' + slug, slug='live-' + slug.lower())
+    u = get_user_model().objects.create_user(username='live_' + slug.lower(), password='x', company=co,
+                                             role_legacy='admin')
+    api = APIClient()
+    api.force_authenticate(u)
+    cl = Client.objects.create(company=co, nom='Client', prenom=slug, email=slug.lower() + '@example.invalid')
+    return co, cl, api
+
+
+def _systeme(co, cl, ref, annuel, mes, kwc='5.00'):
+    from decimal import Decimal
+    from apps.installations.models import Installation
+    from apps.monitoring.models import MonitoringConfig
+    inst = Installation.objects.create(company=co, reference=ref, client=cl,
+                                       puissance_installee_kwc=Decimal(kwc), date_mise_en_service=mes)
+    cfg = None
+    if annuel:
+        cfg = MonitoringConfig.objects.create(company=co, installation=inst, expected_annual_kwh=Decimal(annuel))
+    return inst, cfg
+
+
+def _profil(annuel, d1, d2, facteur=1):
+    from decimal import Decimal
+    from apps.monitoring.services import attendu_entre
+    return (attendu_entre(Decimal(annuel), d1, d2) * Decimal(str(facteur))).quantize(Decimal('0.01'))
+
+
+def _mensuels(co, inst, annuel, mois, facteur=1):
+    import calendar
+    from datetime import date, timedelta
+    from apps.monitoring.models import ProductionReading
+    for m in mois:
+        jour = date(2026, m, 1)
+        p = calendar.monthrange(2026, m)[1]
+        ProductionReading.objects.create(company=co, installation=inst, date=jour, period_days=p,
+                                         energy_kwh=_profil(annuel, jour, jour + timedelta(days=p - 1), facteur))
+
+
+def _journaliers(co, inst, annuel, d1, d2, facteur=1):
+    from datetime import timedelta
+    from apps.monitoring.models import ProductionReading
+    j = d1
+    while j <= d2:
+        ProductionReading.objects.create(company=co, installation=inst, date=j, period_days=1,
+                                         energy_kwh=_profil(annuel, j, j, facteur))
+        j += timedelta(days=1)
+
+
+def _f(x):
+    return None if x is None else float(x)
+
+def sonde(ctx):
+    from datetime import date, timedelta
+    from decimal import Decimal
+    from apps.monitoring.models import ProductionReading, ProductionWarranty
+    from apps.monitoring.report_warranty import build_warranty_report_data
+    from apps.monitoring.services import production_warranty_status
+    from apps.parametres.models import CompanyProfile
+    co, cl, api = _base('AMON105')
+    prof, _ = CompanyProfile.objects.get_or_create(company=co)
+    prof.garantie_production_autorisee = True
+    prof.save()
+    inst, _ = _systeme(co, cl, 'LAMON105-1', None, None, kwc='10')
+    ProductionWarranty.objects.create(company=co, installation=inst, guaranteed_year1_kwh=Decimal('12000'),
+                                      degradation_pct_per_year=Decimal('0'), start_year=2026,
+                                      tolerance_pct=Decimal('5'), compensation_mad_per_kwh=Decimal('1.10'))
+    j = date(2026, 1, 1)
+    while j <= date(2026, 6, 30):
+        ProductionReading.objects.create(company=co, installation=inst, date=j, period_days=1,
+                                         energy_kwh=Decimal('32.88'))
+        j += timedelta(days=1)
+    ed = date(2026, 11, 10)
+    st = production_warranty_status(inst, year=2026, today=ed)
+    d = build_warranty_report_data(inst, year=2026, today=ed)
+    juin = d['monthly'][5]['guaranteed_cumule_kwh']
+    fige = [str(m['guaranteed_cumule_kwh']) for m in d['monthly'][5:]]
+    while j <= date(2026, 12, 31):
+        ProductionReading.objects.create(company=co, installation=inst, date=j, period_days=1,
+                                         energy_kwh=Decimal('32.88'))
+        j += timedelta(days=1)
+    clos = production_warranty_status(inst, year=2026, today=date(2027, 1, 10))
+    ok = (st['compensation_mad'] == Decimal('0.00') and d['total_penalite_mad'] == Decimal('0.00')
+          and all(m['guaranteed_cumule_kwh'] == juin for m in d['monthly'][6:])
+          and clos['guaranteed_kwh'] == Decimal('12000.00'))
+    return {'compensation_mad': str(st['compensation_mad']), 'total_penalite_mad': str(d['total_penalite_mad']),
+            'garanti_cumule_juin_a_fin': fige, 'garanti_annee_close': str(clos['guaranteed_kwh']), 'repro': ok}

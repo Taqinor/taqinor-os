@@ -378,13 +378,19 @@ def _arreter_cadence_on_archive(sender, instance, update_fields=None, **kwargs):
     chemin (unitaire, en masse, commande) : ses touches restaient À FAIRE sur
     un dossier caché des listes. La fusion annule déjà les siennes (motif
     « fusion ») et sauve sans ``update_fields`` : no-op. Restaurer ne ressuscite
-    rien. Best-effort, point de sauvegarde : l'archivage prime."""
-    if (not instance.is_archived or not update_fields
-            or 'is_archived' not in update_fields):
+    rien. Best-effort, point de sauvegarde : l'archivage prime. ASOC106 — la
+    suppression douce (``soft_delete``) arrête de même (motif « lead
+    supprimé ») : restauré par la corbeille, le filet replante une touche neuve."""
+    champs = update_fields or ()
+    if instance.is_archived and 'is_archived' in champs:
+        motif = 'lead archivé'
+    elif getattr(instance, 'is_deleted', False) and 'is_deleted' in champs:
+        motif = 'lead supprimé'
+    else:
         return
     try:
         with transaction.atomic():
-            arreter_cadence(instance, user=None, motif='lead archivé')
+            arreter_cadence(instance, user=None, motif=motif)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             "CADV61 : arrêt de cadence échoué à l'archivage du lead #%s",

@@ -1,0 +1,132 @@
+# Preuve en direct AMON108 — rejeu accept-amon, code joué edc0d8ff3 (origin/main, merge de #1314), 2026-11-10
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau accept-amon-net ; accept-amon-db (pgvector pg16,
+# 127.0.0.1:5547, base erp_accept_amon = pg_dump --no-owner de la base locale erp_live en lecture seule, puis
+# `manage.py migrate` des 33 migrations manquantes, puis `seed_demo` — « Demo company already seeded ») ;
+# accept-amon-redis ; accept-amon-dj (image erp-agentique-django_core, code backend du commit joué COPIÉ par tar
+# dans /srv/app, settings.dev, mail locmem, MinIO coupé, runserver 127.0.0.1:8017, DB_CONN_MAX_AGE=0).
+# Sondes : python scripts/sonde.py LIVE/C-LIVE-AMON108 --conteneur accept-amon-dj (transaction annulée, mail en
+# mémoire, Celery coupé, HTTP sortant bloqué). Sondes C-LIVE-* écrites pour ce rejeu (source jointe) : elles
+# rejouent le Given/When/Then de la tâche ; repro=true signifie ICI que le comportement ATTENDU est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8017
+# vite preview --port 5197`, bundle servi index-C1tXrJ3H.js == dist/index.html), piloté par Playwright MCP,
+# compte acc_amon_adm (société « Acceptation AMON », rôle Directeur, mot de passe de test généré, base jetable).
+# Fixtures écran FIX-AMON (persistées, dates relatives au 10/11/2026 réel) : ACC-AMON-97 (6 000 kWh/an, MES
+# 01/01/2026, mensuels au profil datés du 1er, janvier → octobre), ACC-AMON-99 (12 000, journaliers au profil
+# jusqu'au 10/10), ACC-AMON-100 (12 000, journaliers 12 mois jusqu'au 10/11), ACC-AMON-102 (SLA 98 %, mensuels
+# contigus 01/01 → 10/10), ACC-AMON-103 (MES J−59, 60 journaliers au profil, drapeau ouvert J−59), ACC-AMON-105
+# (garantie 2026 12 000 kWh / 5 % / 1,10 MAD, journaliers 32,88 kWh du 01/01 au 30/06). Captures : C:\dev\taqinor-os\logs\nightly-qa\playwright\accept-amon\.
+# Verdict : FAIL — sonde REPRO et carte écran correcte, mais « Télécharger le PDF » de l'écran Rapports O&M répond 404 : PDF NON téléchargé
+
+== C-LIVE-AMON108 (sha edc0d8ff3)
+attendu : système relevé chaque jour d'octobre, onduleur immobilisé 01-16/10, alarme escaladée, rapport du 31/10 : libelle_indicateur = LIBELLE_INDICE_SUIVI, availability_pct 100.00, HTML du PDF porte « indice de suivi (jours avec relevé) » et aucun « Disponibilité », PDF rendu
+observé : {"libelle_indicateur": "indice de suivi (jours avec relevé)", "availability_pct": "100.00", "open_alarms": 1, "html_extrait": "s=\"big\">36.35 %</div></div><div class=\"card\"><div class=\"k\">indice de suivi (jours avec relevé)</div><div class=\"big\">100.00 %</div></div></", "disponibilite_dans_html": false, "pdf_debut": "%PDF-", "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 499, après 499) ; mails 0 ; tâches Celery bloquées 0
+
+== Écran
+Écran /production/rapports, ACC-AMON-97 : carte « INDICE DE SUIVI (JOURS AVEC RELEVÉ) 70,0 % », aucune carte
+  « Disponibilité » (OK).
+Clic « Télécharger le PDF » : GET /api/django/monitoring/configs/63/om-report/?period=monthly&format=pdf => 404
+  {"detail":"Pas trouvé.","error":{"code":"not_found"…} ; console : « Failed to load resource: 404 » (oracle 1/2).
+  Rejoué hors navigateur (APIClient, même compte) : ?period=monthly&format=pdf 404 application/json ;
+  ?period=monthly 200. Cause probable : `format` est le paramètre réservé de DRF (URL_FORMAT_OVERRIDE) et aucun
+  renderer « pdf » n'est déclaré sur l'action → Http404 avant la vue (défaut de route, hors du libellé AMON108).
+Contenu du PDF (render_om_report_pdf du même système, texte extrait pypdf) : « INDICE DE SUIVI (JOURS AVEC RELEVÉ)
+  70.00 % », aucun « Disponibilité » — le libellé est bon, mais la preuve exigée (« PDF téléchargé ») n'est pas jouable.
+Verdict : FAIL — tâche laissée [BLOCKED] ; ERR à créer (route PDF du rapport O&M).
+
+# ---- source : C-LIVE-AMON108.py ----
+# flake8: noqa  (sonde LIVE du rejeu d'acceptation AMON — scénario exact de AMON108, vraies fonctions/routes)
+"""AMON108 — Given/When/Then de la tâche rejoué sur la pile privée accept-amon. repro=True signifie ICI que le
+comportement ATTENDU par la tâche est observé."""
+SONDE = {"constat": "C-LIVE-AMON108", "sha": "edc0d8ff3",
+         "attendu": "système relevé chaque jour d'octobre, onduleur immobilisé 01-16/10, alarme escaladée, rapport du 31/10 : libelle_indicateur = LIBELLE_INDICE_SUIVI, availability_pct 100.00, HTML du PDF porte « indice de suivi (jours avec relevé) » et aucun « Disponibilité », PDF rendu",
+         "modeles": ['monitoring.ProductionReading', 'monitoring.MonitoringConfig', 'installations.Installation', 'authentication.Company']}
+
+def _base(slug):
+    from decimal import Decimal
+    from django.contrib.auth import get_user_model
+    from rest_framework.test import APIClient
+    from authentication.models import Company
+    from apps.crm.models import Client
+    co = Company.objects.create(nom='Live ' + slug, slug='live-' + slug.lower())
+    u = get_user_model().objects.create_user(username='live_' + slug.lower(), password='x', company=co,
+                                             role_legacy='admin')
+    api = APIClient()
+    api.force_authenticate(u)
+    cl = Client.objects.create(company=co, nom='Client', prenom=slug, email=slug.lower() + '@example.invalid')
+    return co, cl, api
+
+
+def _systeme(co, cl, ref, annuel, mes, kwc='5.00'):
+    from decimal import Decimal
+    from apps.installations.models import Installation
+    from apps.monitoring.models import MonitoringConfig
+    inst = Installation.objects.create(company=co, reference=ref, client=cl,
+                                       puissance_installee_kwc=Decimal(kwc), date_mise_en_service=mes)
+    cfg = None
+    if annuel:
+        cfg = MonitoringConfig.objects.create(company=co, installation=inst, expected_annual_kwh=Decimal(annuel))
+    return inst, cfg
+
+
+def _profil(annuel, d1, d2, facteur=1):
+    from decimal import Decimal
+    from apps.monitoring.services import attendu_entre
+    return (attendu_entre(Decimal(annuel), d1, d2) * Decimal(str(facteur))).quantize(Decimal('0.01'))
+
+
+def _mensuels(co, inst, annuel, mois, facteur=1):
+    import calendar
+    from datetime import date, timedelta
+    from apps.monitoring.models import ProductionReading
+    for m in mois:
+        jour = date(2026, m, 1)
+        p = calendar.monthrange(2026, m)[1]
+        ProductionReading.objects.create(company=co, installation=inst, date=jour, period_days=p,
+                                         energy_kwh=_profil(annuel, jour, jour + timedelta(days=p - 1), facteur))
+
+
+def _journaliers(co, inst, annuel, d1, d2, facteur=1):
+    from datetime import timedelta
+    from apps.monitoring.models import ProductionReading
+    j = d1
+    while j <= d2:
+        ProductionReading.objects.create(company=co, installation=inst, date=j, period_days=1,
+                                         energy_kwh=_profil(annuel, j, j, facteur))
+        j += timedelta(days=1)
+
+
+def _f(x):
+    return None if x is None else float(x)
+
+def sonde(ctx):
+    from datetime import date, datetime, timedelta
+    from decimal import Decimal
+    from django.utils import timezone
+    from apps.monitoring.models import ProductionReading
+    from apps.monitoring.report import build_om_report_data, build_om_report_html, render_om_report_pdf
+    from apps.monitoring.selectors import LIBELLE_INDICE_SUIVI
+    from apps.sav.models import AlarmeOnduleur, Equipement, EquipementDowntime
+    from apps.stock.models import Produit
+    co, cl, api = _base('AMON108')
+    inst, cfg = _systeme(co, cl, 'CHT-LAMON108', '12000', None, kwc='7.00')
+    for i in range(31):
+        ProductionReading.objects.create(company=co, installation=inst, date=date(2026, 10, 1) + timedelta(days=i),
+                                         energy_kwh=Decimal('10'), period_days=1)
+    ond = Equipement.objects.create(company=co, installation=inst, produit=Produit.objects.create(
+        company=co, nom='Onduleur', sku='OND-LAMON108', prix_achat=1, prix_vente=2))
+    EquipementDowntime.objects.create(company=co, equipement=ond, debut=timezone.make_aware(datetime(2026, 10, 1)),
+                                      fin=timezone.make_aware(datetime(2026, 10, 16)))
+    AlarmeOnduleur.objects.create(company=co, equipement=ond, code='F01', statut=AlarmeOnduleur.Statut.ESCALADEE)
+    fin = date(2026, 10, 31)
+    d = build_om_report_data(inst, today=fin)
+    html = build_om_report_html(d)
+    pdf = bytes(render_om_report_pdf(inst, today=fin))
+    i = html.find('indice de suivi')
+    return {'libelle_indicateur': d['libelle_indicateur'], 'availability_pct': str(d['availability_pct']),
+            'open_alarms': d.get('open_alarms'), 'html_extrait': html[max(0, i - 60):i + 80] if i >= 0 else None,
+            'disponibilite_dans_html': 'Disponibilité' in html, 'pdf_debut': pdf[:5].decode('latin-1'),
+            'repro': (d['libelle_indicateur'] == LIBELLE_INDICE_SUIVI == 'indice de suivi (jours avec relevé)'
+                      and d['availability_pct'] == Decimal('100.00') and 'indice de suivi (jours avec relevé)' in html
+                      and 'Disponibilité' not in html and pdf.startswith(b'%PDF'))}
