@@ -735,9 +735,11 @@ def engagement_followup_engine():
 
     for link in links:
         devis = link.devis
-        vendeur = getattr(devis, 'created_by', None)
-        if vendeur is None:
+        if getattr(devis, 'created_by', None) is None:
             continue
+        # ASOC90 — vendeur inactif ⇒ responsable actif du lead, sinon managers.
+        from apps.notifications.services import destinataire_actif
+        vendeur = destinataire_actif(devis.created_by, lead=devis.lead)
         # CAD138 — les déclencheurs sont désormais DATÉS (forme dict), pour
         # qu'ils puissent se périmer côté panier. L'idempotence ne change
         # pas : un déclencheur déjà allumé ne re-notifie jamais.
@@ -811,7 +813,7 @@ def _poser_touche_signal_reouverture(devis):
 def _post_engagement_notification(devis, vendeur, key, label):
     """QX30be — pose une Notification d'engagement (best-effort, in-lane)."""
     try:
-        from apps.notifications.services import notify
+        from apps.notifications.sweeps import _notify_user_or_managers
         from apps.notifications.types_evenements import EventType
         from apps.ventes.utils.client_links import proposition_url
         from apps.ventes.models import ShareLink
@@ -821,13 +823,12 @@ def _post_engagement_notification(devis, vendeur, key, label):
         except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning("scheduled._post_engagement_notification : erreur ignorée (mode dégradé)", exc_info=True)
             url = ''
-        notify(
-            vendeur, EventType.DEVIS_NUDGE_DUE,
-            title=f'{label} — devis {devis.reference}',
-            body=(f'Déclencheur d\'engagement : {key}. '
-                  f'Proposition : {url or "—"}'),
-            link=f'/ventes/devis?devis={devis.id}',
-            company=devis.company)
+        _notify_user_or_managers(
+            vendeur, devis.company, EventType.DEVIS_NUDGE_DUE,
+            f'{label} — devis {devis.reference}',
+            (f'Déclencheur d\'engagement : {key}. '
+             f'Proposition : {url or "—"}'),
+            link=f'/ventes/devis?devis={devis.id}')
     except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('QX30: notification engagement échec devis %s : %s',
                        getattr(devis, 'reference', '?'), exc)
