@@ -261,6 +261,30 @@ class BaremeGeleEnvoiTests(q220._Base):
                          ('SOLAIRE ANCIEN SARL', '001111111000011'))
         self.assertEqual(_emetteur_public(brouillon)['ice'], '002222222000022')
 
+    def test_moteur_imprime_l_identite_figee_a_l_envoi(self):
+        """ASOC96 (C-ASOC-042) — le moteur ``/proposal`` d'un devis envoyé puis
+        accepté imprime l'identité de l'envoi ; brouillon et envoyé d'avant le
+        gel (instantané sans ``identite``) : le profil du jour. Mutant : relire
+        ``company_identity`` ⇒ ICE v2. (Ici et non dans test_quote_engine_builder.py,
+        déjà à 1 998 lignes : mur des 2 000 lignes.)"""
+        from apps.parametres.models import CompanyProfile
+        from apps.ventes.quote_engine.builder import build_quote_data
+        profil = CompanyProfile.get(self.company)
+        profil.nom, profil.ice = 'SOLAIRE ANCIEN SARL', '001111111000011'
+        profil.save()
+        devis = self._envoyer(self._devis(9, pose_a=9))
+        Devis.objects.filter(pk=devis.pk).update(statut=Devis.Statut.ACCEPTE)
+        ancien = self._devis(9, pose_a=9)
+        profil.nom, profil.ice = 'SOLAIRE NOUVEAU SA', '002222222000022'
+        profil.save()
+        devis.refresh_from_db()
+        entreprise = build_quote_data(devis)['entreprise']
+        self.assertEqual((entreprise['nom'], entreprise['ice']), ('SOLAIRE ANCIEN SARL', '001111111000011'))
+        self.assertEqual(build_quote_data(ancien)['entreprise']['ice'], '002222222000022')
+        Devis.objects.filter(pk=ancien.pk).update(statut=Devis.Statut.ENVOYE)
+        ancien.refresh_from_db()  # envoyé sans instantané : le profil du jour
+        self.assertEqual(build_quote_data(ancien)['entreprise']['ice'], '002222222000022')
+
     def test_v2_refigee_a_son_propre_envoi(self):
         from apps.ventes.domain.reglages_figes_lecture import (
             TYPE_REGLAGES_FIGES, reglages_figes)
