@@ -288,7 +288,7 @@ class ValidationTest(unittest.TestCase):
                 self.assertEqual(capture.exception.champ, 'lead')
 
     def test_l_apercu_n_ecrit_rien(self):
-        with mock.patch('apps.calepinage.services.creation.creer_pour_lead'
+        with mock.patch('apps.calepinage.services.creation.ouvrir_ou_creer_pour_lead'
                         ) as creation, \
                 mock.patch('apps.calepinage.services.layout.'
                            'enregistrer_layout') as layout:

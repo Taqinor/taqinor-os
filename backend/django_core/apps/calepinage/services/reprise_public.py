@@ -17,7 +17,7 @@ UN calepinage brouillon rattaché au lead, pré-tracé. Rien de plus :
 * AUCUNE écriture vers crm : ``roof_outline`` et ``roof_point`` du lead
   restent exactement ce qu'ils sont (CAL217 est fondue ici) ;
 * la création et l'enregistrement passent par les chemins COMMUNS du module
-  (``services.creation.creer_pour_lead``, ``services.layout``), donc la
+  (``services.creation._creer_pour_lead``, ``services.layout``), donc la
   version et le chatter sont alimentés comme pour n'importe quelle
   conception.
 

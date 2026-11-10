@@ -6,7 +6,7 @@ TROIS PORTES, UN SEUL OBJET
   toiture (3D) » d'un devis doit retomber sur LE MÊME calepinage à chaque
   appel : le service est IDEMPOTENT et reprend la conception déjà portée par
   le devis (``roof_layout`` / ``layout_hash``).
-* ``creer_pour_lead`` et ``creer_pour_client`` — les portes du module
+* ``_creer_pour_lead`` et ``creer_pour_client`` — les portes du module
   AUTONOME : on choisit un lead ou un client, et on conçoit sa toiture, même
   s'il n'existe aucun devis. Un calepinage sans devis est un objet de
   première classe.
@@ -197,7 +197,7 @@ def ouvrir_ou_creer_pour_lead(lead_id, company, *, user=None, titre='',
             existant = calepinage_ouvert_du_lead(company, lead_id)
             if existant is not None:
                 return existant, False
-            calepinage = creer_pour_lead(
+            calepinage = _creer_pour_lead(
                 lead_id, company, user=user, titre=titre,
                 preset_id=preset_id, responsable=responsable)
     return calepinage, True
@@ -439,8 +439,8 @@ def _titre_du_devis(devis):
     return f'Calepinage {reference}'.strip() if reference else ''
 
 
-def creer_pour_lead(lead_id, company, *, user=None, titre='',
-                    preset_id=None, responsable=None):
+def _creer_pour_lead(lead_id, company, *, user=None, titre='',
+                     preset_id=None, responsable=None):
     """Crée un calepinage sur un LEAD (porte autonome du module).
 
     CALX351 — ``preset_id`` : voir ``obtenir_ou_creer_pour_devis``. Un
@@ -505,7 +505,7 @@ def creer_pour_client(client_id, company, *, user=None, titre='',
                       preset_id=None, responsable=None):
     """Crée un calepinage sur un CLIENT (porte autonome du module).
 
-    CALX351 — ``preset_id`` : voir ``creer_pour_lead``.
+    CALX351 — ``preset_id`` : voir ``_creer_pour_lead``.
 
     Raises:
         CreationRefusee: client absent ou d'une autre société — rien n'est

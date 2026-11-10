@@ -32,7 +32,7 @@ from django.test import TransactionTestCase
 
 from apps.calepinage.models import Calepinage
 from apps.calepinage.services.creation import (
-    creer_pour_lead,
+    _creer_pour_lead,
     ouvrir_ou_creer_pour_lead,
     _verrou_creation,
 )
@@ -137,7 +137,7 @@ class PorteUniqueTest(BaseApiCalepinage):
                                            client=self.client_lead,
                                            titre='Modèle ACON3')
         marquer_modele(modele, user=self.user)
-        c = creer_pour_lead(lead_a.pk, self.company, user=a)
+        c = _creer_pour_lead(lead_a.pk, self.company, user=a)
         motif = f'Lead introuvable (#{lead_b1.pk}).'
         gestes = (
             ('depuis-lead', 404, lambda: api_a.post(
@@ -202,7 +202,7 @@ class PorteUniqueTest(BaseApiCalepinage):
 
     def test_second_appel_renvoie_l_existant_409_ou_cree_false(self):
         lead = self._lead('Villa ouverte')
-        existant = creer_pour_lead(lead.pk, self.company, user=self.user)
+        existant = _creer_pour_lead(lead.pk, self.company, user=self.user)
         self._poser_trace(lead)
 
         reponse = self.api.post(f'{URL}depuis-lead/', {'lead': lead.pk},
@@ -288,7 +288,7 @@ class VerrouCreationTest(TransactionTestCase):
                 with transaction.atomic():
                     with _verrou_creation(self.company.pk, self.lead.pk):
                         a_le_verrou.set()
-                        resultat['a'] = creer_pour_lead(
+                        resultat['a'] = _creer_pour_lead(
                             self.lead.pk, self.company).pk
                         relacher.wait(15)
             finally:
