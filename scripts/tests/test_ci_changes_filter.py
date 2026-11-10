@@ -549,6 +549,20 @@ class ReutilisationMergeQueueTests(unittest.TestCase):
         self.assertFalse(self.m.est_allege('echo "… - allege=$allege"\n'))
         self.assertIsNone(self._chercher(self._faux_gh(journal=journal)))
 
+    def test_journal_complet_avec_script_recopie_n_est_pas_allege(self):
+        # ADCG71 (C-ADCG-038) — GitHub recopie le script de `detect` (affectation
+        # `allege=true`, commentaire qui la nomme) : un run COMPLET n'est pas allege.
+        lignes = _detect_step_script().splitlines()
+        horo = "2026-11-10T02:37:40.9Z "
+        recopie = [horo + "##[group]Run " + lignes[0]] + [horo + ligne for ligne in lignes[1:]]
+        self.assertTrue(any("allege=true" in ligne and "$" not in ligne for ligne in recopie))
+        journal = "\n".join(recopie + [horo + "##[endgroup]"]) + "\n" + self.JOURNAL
+        self.assertFalse(self.m.est_allege(journal))
+        self.assertTrue(self.m.est_allege(
+            journal + horo + "Run allege (pull_request sur claude/x) : "
+            "lanes lourdes reportees au merge_group - allege=true\n"))
+        self.assertEqual(self._chercher(self._faux_gh(journal=journal)), "111")
+
     def test_erreur_api_ne_fait_jamais_echouer(self):
         def gh(*args):
             raise OSError("réseau")

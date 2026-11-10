@@ -41,6 +41,8 @@ _PR_RE = re.compile(r"/pr-(\d+)-[0-9a-f]+$")
 # avale la parenthèse de `e2e(code)`, la clé lue est donc `code`.
 _RESOLVED_RE = re.compile(r"(\w+)\)?=(true|false)")
 _FUZZ_RE = re.compile(r"\(fuzz PR\) : (.*)$")
+# ADCG71 — la PHRASE imprimée par `detect`, jamais l'affectation/le commentaire recopiés.
+_ALLEGE_RE = re.compile(r"Run allege \(pull_request sur [^)]+\) : .* - allege=true\s*$")
 
 
 def numero_pr(head_ref: str) -> int | None:
@@ -53,7 +55,7 @@ def est_allege(journal: str) -> bool:
     tourné en mode allégé (`pull_request` sur une branche `claude/*`) : ses lanes
     lourdes ont été reportées au `merge_group`, son vert ne vaut donc PAS gate.
     Les lignes recopiées du script (`$`) sont ignorées comme ailleurs."""
-    return any("allege=true" in ligne for ligne in journal.splitlines() if "$" not in ligne)
+    return any(_ALLEGE_RE.search(ligne) for ligne in journal.splitlines() if "$" not in ligne)
 
 
 def lire_journal_changes(journal: str):
