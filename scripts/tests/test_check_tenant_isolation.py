@@ -74,6 +74,28 @@ class TestSurfaceEnumeration(unittest.TestCase):
         files = list(cti._iter_view_files())
         self.assertEqual(files.count(f), 1)
 
+    def test_api_view_hors_fichier_vues_lue(self):
+        """APFS118 — une @api_view d'un module quelconque est lue ; sa copie
+        sous tests/ ou migrations/ ne l'est pas. Mutant : retirer la boucle
+        _iter_fichiers_api_view de main."""
+        import contextlib
+        import io
+        src = ("from rest_framework.decorators import api_view\n\n"
+               "@api_view(['GET'])\ndef devis_detail(request, pk):\n"
+               "    return Devis.objects.get(pk=pk)\n")
+        (self.app_dir / "pipeline.py").write_text(src, encoding="utf-8")
+        for sub in ("tests", "migrations"):
+            (self.app_dir / sub).mkdir()
+            (self.app_dir / sub / "pipeline.py").write_text(
+                src, encoding="utf-8")
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            cti.main([])
+        out = sortie.getvalue()
+        self.assertIn("[API_VIEW_COMPANY_FILTER_MISSING]", out)
+        self.assertIn("apps/demo/pipeline.py::devis_detail", out)
+        self.assertNotIn("demo/tests/", out)
+        self.assertNotIn("demo/migrations/", out)
+
 
 def _view_codes(src):
     with tempfile.NamedTemporaryFile(

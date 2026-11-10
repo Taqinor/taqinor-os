@@ -94,6 +94,32 @@ DETTE_FILTRE_EFFECTIF = frozenset({
     "backend/django_core/apps/ventes/public_views.py::public_bcf_document",
     "backend/django_core/authentication/views.py::CompanyViewSet",
     "backend/django_core/core/views.py::secrets_rotation_due",
+    # APFS118 (10/11/2026) — @api_view hors fichiers « vues » ; ne fait que décroître.
+    "backend/django_core/apps/reporting/approbations.py::decider_approbation_via_push",
+    "backend/django_core/apps/reporting/archive.py::archive_chantier",
+    "backend/django_core/apps/reporting/archive.py::archive_client",
+    "backend/django_core/apps/reporting/calendar.py::calendar_events",
+    "backend/django_core/apps/reporting/calendar.py::calendar_reschedule",
+    "backend/django_core/apps/reporting/commercial.py::commercial_dashboard",
+    "backend/django_core/apps/reporting/commercial.py::win_loss_by_source",
+    "backend/django_core/apps/reporting/geo.py::geo_points",
+    "backend/django_core/apps/reporting/insights.py::analytics",
+    "backend/django_core/apps/reporting/insights.py::audit_log",
+    "backend/django_core/apps/reporting/insights.py::cohorts",
+    "backend/django_core/apps/reporting/insights.py::job_costing",
+    "backend/django_core/apps/reporting/insights.py::profitability",
+    "backend/django_core/apps/reporting/insights.py::recurring_revenue",
+    "backend/django_core/apps/reporting/insights.py::sales_leaderboard",
+    "backend/django_core/apps/reporting/pipeline.py::funnel_velocity",
+    "backend/django_core/apps/reporting/pipeline.py::pipeline",
+    "backend/django_core/apps/reporting/reports.py::sales_report",
+    "backend/django_core/apps/reporting/reports.py::service_report",
+    "backend/django_core/apps/reporting/reports.py::stock_report",
+    "backend/django_core/apps/reporting/reports_field.py::field_service_report",
+    "backend/django_core/apps/reporting/sav_sla.py::sav_sla_insight",
+    "backend/django_core/apps/ventes/public/lecture_views.py::proposal_engagement",
+    "backend/django_core/apps/ventes/public/signature_views.py::proposal_accept",
+    "backend/django_core/core/trust_center.py::trust_center_public",
 })
 
 
@@ -132,6 +158,22 @@ def _iter_view_files():
                 if f.name != "__init__.py" and f not in seen:
                     seen.add(f)
                     yield f
+
+
+def _iter_fichiers_api_view():
+    """APFS118 — tout autre ``*.py`` (hors tests/migrations et hors fichiers
+    déjà rendus par ``_iter_view_files``) : seules ses ``@api_view`` sont lues."""
+    deja = set(_iter_view_files())
+    for app_dir in _app_dirs_and_foundation():
+        if not app_dir.is_dir():
+            continue
+        for f in sorted(app_dir.rglob("*.py")):
+            parts = f.relative_to(app_dir).parts
+            if f in deja or any(
+                    p == "migrations" or p == "tests" or p.startswith("test")
+                    for p in parts):
+                continue
+            yield f
 
 
 def _rel(path: Path) -> str:
@@ -253,7 +295,7 @@ def _subscript_key(node):
     return None
 
 
-def check_view_file(path: Path):
+def check_view_file(path: Path, fonctions_seules=False):
     """Return (views, findings). views = [(cls, compliant_bool)]."""
     try:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -272,7 +314,8 @@ def check_view_file(path: Path):
                     "API_VIEW_COMPANY_FILTER_MISSING", f"{rel}::{node.name}",
                     f"@api_view {node.name} reads the ORM without an "
                     "effective company filter (company=… / company_qs)."))
-        if not isinstance(node, ast.ClassDef) or not _is_view(node):
+        if fonctions_seules or not (
+                isinstance(node, ast.ClassDef) and _is_view(node)):
             continue
         key = f"{rel}::{node.name}"
         model_backed = _is_model_backed(node)
@@ -414,9 +457,11 @@ def main(argv):
     offenders = _morts_offenders(allow)
     dette_vue = set()
 
-    for path in _iter_view_files():
+    sources = ([(p, False) for p in _iter_view_files()]
+               + [(p, True) for p in _iter_fichiers_api_view()])
+    for path, seules in sources:
         rel = _rel(path)
-        views, findings = check_view_file(path)
+        views, findings = check_view_file(path, fonctions_seules=seules)
         for cls, scoped in views:
             all_views.append(f"{rel}::{cls} scoped={scoped}")
         for code, key, msg in findings:
