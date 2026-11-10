@@ -1590,15 +1590,11 @@ class TicketViewSet(CompanyScopedModelViewSet):
         elif operation == 'annuler':
             motif = (request.data.get('motif') or '').strip()
             for ticket in tickets:
-                if not ticket.annule:
-                    ticket.annule = True
-                    ticket.motif_annulation = motif or None
-                    ticket.reprendre_apres_attente()
-                    ticket.save(update_fields=[
-                        'annule', 'motif_annulation', *_CHAMPS_PAUSE])
-                    activity.log_note(
-                        ticket, request.user,
-                        f"Ticket annulé{(' : ' + motif) if motif else ''}")
+                try:  # ACSV108 — même porte que l'action unitaire
+                    self._annuler_ticket(ticket, request.user, motif)
+                except ConflitEtat as exc:
+                    echecs.append({'id': ticket.id, 'raison': str(exc)})
+                    continue
                 traites.append(ticket.id)
 
         return Response({
@@ -1789,23 +1785,28 @@ class TicketViewSet(CompanyScopedModelViewSet):
         ticket = self.get_object()
         motif = (_valider_corps(_SCHEMA_ANNULER, request.data).get('motif')
                  or '').strip()
-        if not ticket.annule:
-            if ticket.prets_equipement.filter(statut='en_cours').exists():
-                raise ConflitEtat(  # ACSV67
-                    "Impossible d'annuler : un pr\u00eat d'\u00e9quipement est "
-                    'encore en cours (retournez-le d\u0027abord).')
-            ticket.annule = True
-            ticket.motif_annulation = motif or None
-            ticket.reprendre_apres_attente()
-            ticket.save(update_fields=[
-                'annule', 'motif_annulation', *_CHAMPS_PAUSE])
-            activity.log_note(
-                ticket, request.user,
-                f"Ticket annulé{(' : ' + motif) if motif else ''}")
-            from apps.installations.services import annuler_interventions_du_ticket  # ACSV65
-            annuler_interventions_du_ticket(ticket.pk, request.user, f'Ticket {ticket.reference} annulé')
+        self._annuler_ticket(ticket, request.user, motif)
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
+
+    @staticmethod
+    def _annuler_ticket(ticket, user, motif):
+        """ACSV108 — porte unique de l'annulation (unitaire et en lot)."""
+        if ticket.annule:
+            return
+        if ticket.prets_equipement.filter(statut='en_cours').exists():
+            raise ConflitEtat(  # ACSV67
+                "Impossible d'annuler : un pr\u00eat d'\u00e9quipement est "
+                'encore en cours (retournez-le d\u0027abord).')
+        ticket.annule = True
+        ticket.motif_annulation = motif or None
+        ticket.reprendre_apres_attente()
+        ticket.save(update_fields=[
+            'annule', 'motif_annulation', *_CHAMPS_PAUSE])
+        activity.log_note(
+            ticket, user, f"Ticket annulé{(' : ' + motif) if motif else ''}")
+        from apps.installations.services import annuler_interventions_du_ticket  # ACSV65
+        annuler_interventions_du_ticket(ticket.pk, user, f'Ticket {ticket.reference} annulé')
 
     @extend_schema(request=None)
     @action(detail=True, methods=['post'], url_path='reactiver',

@@ -629,6 +629,8 @@ class TicketSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
             # services (facturer, creer-devis, récidive), jamais du corps.
             'facture_id_ext', 'devis_id_ext', 'lead_id_ext',
             'intervention_origine_id',
+            # ACSV108 — l'annulation passe par la porte gardée (annuler).
+            'annule',
         ]
         # client peut être déduit côté serveur d'un équipement lié (ticket
         # ouvert depuis le parc) ; sinon il reste exigé — voir
