@@ -1,0 +1,123 @@
+# Preuve en direct ACON2 — rejeu accept-acon, code joué 325accf80 (origin/main, merge de #1320), 2026-11-10
+# (le code calepinage / ventes / frontend calepinage / apps/web est identique sur c1a99568a, base de cette PR : git diff
+# 325accf80 c1a99568a vide sur ces chemins).
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau accept-acon-net ; accept-acon-db (pgvector pg16,
+# 127.0.0.1:5552, base erp_accept_acon = pg_dump --no-owner de la base locale erp_live en lecture seule, puis
+# `manage.py migrate`) ; accept-acon-redis ; accept-acon-minio (MinIO privé, seaux erp-pdf / erp-uploads) ;
+# accept-acon-dj (image erp-agentique-django_core, code backend du commit joué COPIÉ par tar dans /app, settings.dev,
+# mail locmem, runserver 0.0.0.0:8000 publié sur 127.0.0.1:8028, DB_CONN_MAX_AGE=0).
+# Sondes : python scripts/sonde.py ACON/<sonde> --conteneur accept-acon-dj (transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sondes du dossier d'audit : verdict ÉCART = `repro` faux = le défaut d'origine
+# n'est PLUS reproduit. Sondes C-LIVE-* écrites pour ce rejeu (source jointe ci-dessous) : --racine <scratch>
+# --sans-fraicheur (la fraîcheur du conteneur est prouvée par les sondes du dossier, lancées SANS --sans-fraicheur
+# sur ce worktree) ; ICI repro=true (verdict REPRO) signifie que le comportement ATTENDU est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8028
+# vite preview --port 5208`), piloté par Playwright MCP, comptes de test acc_acon_dir / acc_acon_dir2 (rôle Directeur,
+# société « Acceptation ACON », seed_catalogue, mot de passe de test généré, base jetable). Page publique : apps/web
+# du commit joué (`PUBLIC_API_BASE=http://127.0.0.1:8028 astro dev --port 5218`).
+# CARTE : la clé MapTiler du .env local est refusée hors *.taqinor.ma (403 sur 127.0.0.1 / localhost, 200 avec
+# Origin taqinor.ma) ; sans style la scène de l'atelier ne s'hydrate pas. Le rejeu sert à la place d'api.maptiler.com
+# un style de FOND NEUTRE local (style.json version 8, une couche background, route Playwright) : aucune tuile, aucune
+# requête MapTiler ; zones, panneaux, cotes, enregistrement et 3D sont ceux de l'application, seul le fond satellite
+# manque. Fixtures FIX-ACON-* : scripts `manage.py shell` sur la base jetable (créations par l'API ou les services, et
+# raccourcis nommés : statut de devis posé par update() quand le geste d'acceptation/envoi n'est pas sous audit).
+# Verdict : PASS — écran PA2.2 → PA2.3 sans recharger : appliquer-cote avec base_empreinte → 200 + empreinte_document, puis « Enregistrer le calepinage » If-Match = ce jeton → 200 (version 186) ; C-ACON-002 repro faux ; C-LIVE-ACON10 : jeton périmé 409 document_modifie sans version, sans jeton 400
+
+Écran 277 (fond neutre) sans recharger : onglet Relevé, Pan z1, Côté 2→3, « Egout sud — total 12.40 » → « Appliquer la cote au pan » : POST releve/7/appliquer-cote/ corps {zone_id z1, cote_index 2, longueur_m 12.4, base_empreinte ebbc1c37f0a5…} → 200 {roof_layout, version 185, empreinte_document 4270ac1d5d97…} (« Cote appliquée au côté 2 — nouvelle version ») ; puis « Enregistrer le calepinage » : POST layout/ If-Match 4270ac1d5d97… → 200 version 186 (« Conception enregistrée — version 186. »). C-ACON-002 repro False (sans base_empreinte 400). C-LIVE-ACON10 (volet ACON2) : base_empreinte périmé → 409 document_modifie + empreinte_courante, sans base 400, versions 3 → 3.
+
+== C-ACON-002 (sha 33cba7f5d)
+attendu : repro si appliquer-cote sans If-Match = 200 (version créée, pas d'empreinte_document rendue) puis POST layout/ avec If-Match E0 (jeton d'avant) = 409 ; témoins : layout/ sans If-Match = 428, avec E1 = 200
+observé : {'releve_http': 201, 'e0': 'c03e1ec65d5bebbd1bdadd340b4950f755364e7d2ccbad12424afc5a81a49e2e', 'appliquer_cote_http': 400, 'appliquer_cote_cles_reponse': ['base_empreinte'], 'versions_avant_apres': [0, 0], 'layout_sans_if_match_http': 428, 'layout_if_match_E0_http': 200, 'layout_if_match_E0_corps': "{'roof_layout': {'pin': {'lat': 33.5731, 'lng': -7.5898}, 'zones': [{'id': 'z1', 'pitchDeg': 20, 'vertices': [[-7.589853908773986, 33.57306406738863], [-7.5897256058919, 33.57306406738863], [-7.5897256058919, 33.57313593", 'e1_different_de_e0': True, 'layout_if_match_E1_http': 200, 'temoin_ok': True, 'repro': False}
+{"releve_http": 201, "e0": "c03e1ec65d5bebbd1bdadd340b4950f755364e7d2ccbad12424afc5a81a49e2e", "appliquer_cote_http": 400, "appliquer_cote_cles_reponse": ["base_empreinte"], "versions_avant_apres": [0, 0], "layout_sans_if_match_http": 428, "layout_if_match_E0_http": 200, "layout_if_match_E0_corps": "{'roof_layout': {'pin': {'lat': 33.5731, 'lng': -7.5898}, 'zones': [{'id': 'z1', 'pitchDeg': 20, 'vertices': [[-7.589853908773986, 33.57306406738863], [-7.5897256058919, 33.57306406738863], [-7.5897256058919, 33.57313593", "e1_different_de_e0": true, "layout_if_match_E1_http": 200, "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 266, après 266) ; mails 0 ; tâches Celery bloquées 0
+
+== C-LIVE-ACON10 (sha 325accf80)
+attendu : repro (= attendu observé) si toutes les écritures relevé/photo sur 279 rendent 409 avec le motif « Devis accepté », photo + pièce + objet intacts, et appliquer-cote périmé sur 277 = 409 sans version
+observé : {'verrouille_279': True, 'releve_post': [409, "{'releve': [ErrorDetail(string='Devis accepté : révisez-le', code='calepinage_verrouille')], 'error': {'code': 'api_error', 'message': 'Devis accepté : révisez-le', 'fields': None, 'request_id': 'f7b2"], 'releve_patch': [409, "{'roof_layout': [ErrorDetail(string='Devis accepté : révisez-le', code='calepinage_verrouille')], 'error': {'code': 'api_error', 'message': 'Devis accepté : révisez-le', 'fields': None, 'request_id': "], 'releve_delete': [409, "{'roof_layout': [ErrorDetail(string='Devis accepté : révisez-le', code='calepinage_verrouille')], 'error': {'code': 'api_error', 'message': 'Devis accepté : révisez-le', 'fields': None, 'request_id': "], 'releves_279_avant_apres': [1, 1], 'photo_delete': [409, "{'photos': [ErrorDetail(string='Devis accepté : révisez-le', code='calepinage_verrouille')], 'error': {'code': 'api_error', 'message': 'Devis accepté : révisez-le', 'fields': None, 'request_id': '2ceb"], 'photo_patch': [409, "{'photos': [ErrorDetail(string='Devis accepté : révisez-le', code='calepinage_verrouille')], 'error': {'code': 'api_error', 'message': 'Devis accepté : révisez-le', 'fields': None, 'request_id': '5e85"], 'photo_post': [409, "{'photos': [ErrorDetail(string='Devis accepté : révisez-le', code='calepinage_verrouille')], 'error': {'code': 'api_error', 'message': 'Devis accepté : révisez-le', 'fields': None, 'request_id': '627d"], 'photo_toujours_la': True, 'legende': 'Photo ACON13', 'objet_octets_avant_apres': [70, 70], 'acon2_perime': [409, '{\'detail\': "Le document a été modifié ailleurs depuis votre ouverture : rechargez avant d\'enregistrer.", \'code\': \'document_modifie\', \'empreinte_courante\': \'b369998a9314e49874c75f689183f6a45ccb96c5b032'], 'acon2_sans_base': [400, '{\'base_empreinte\': "Jeton manquant : envoyez base_empreinte, l\'empreinte du document ouvert."}'], 'acon2_versions_avant_apres': [3, 3], 'repro': True}
+{"verrouille_279": true, "releve_post": [409, "{'releve': [ErrorDetail(string='Devis accepté : révisez-le', code='calepinage_verrouille')], 'error': {'code': 'api_error', 'message': 'Devis accepté : révisez-le', 'fields': None, 'request_id': 'f7b2"], "releve_patch": [409, "{'roof_layout': [ErrorDetail(string='Devis accepté : révisez-le', code='calepinage_verrouille')], 'error': {'code': 'api_error', 'message': 'Devis accepté : révisez-le', 'fields': None, 'request_id': "], "releve_delete": [409, "{'roof_layout': [ErrorDetail(string='Devis accepté : révisez-le', code='calepinage_verrouille')], 'error': {'code': 'api_error', 'message': 'Devis accepté : révisez-le', 'fields': None, 'request_id': "], "releves_279_avant_apres": [1, 1], "photo_delete": [409, "{'photos': [ErrorDetail(string='Devis accepté : révisez-le', code='calepinage_verrouille')], 'error': {'code': 'api_error', 'message': 'Devis accepté : révisez-le', 'fields': None, 'request_id': '2ceb"], "photo_patch": [409, "{'photos': [ErrorDetail(string='Devis accepté : révisez-le', code='calepinage_verrouille')], 'error': {'code': 'api_error', 'message': 'Devis accepté : révisez-le', 'fields': None, 'request_id': '5e85"], "photo_post": [409, "{'photos': [ErrorDetail(string='Devis accepté : révisez-le', code='calepinage_verrouille')], 'error': {'code': 'api_error', 'message': 'Devis accepté : révisez-le', 'fields': None, 'request_id': '627d"], "photo_toujours_la": true, "legende": "Photo ACON13", "objet_octets_avant_apres": [70, 70], "acon2_perime": [409, "{'detail': \"Le document a été modifié ailleurs depuis votre ouverture : rechargez avant d'enregistrer.\", 'code': 'document_modifie', 'empreinte_courante': 'b369998a9314e49874c75f689183f6a45ccb96c5b032"], "acon2_sans_base": [400, "{'base_empreinte': \"Jeton manquant : envoyez base_empreinte, l'empreinte du document ouvert.\"}"], "acon2_versions_avant_apres": [3, 3], "repro": true}
+verdict : REPRO (fraîcheur non vérifiée)
+base inchangée : oui (avant 96, après 96) ; mails 0 ; tâches Celery bloquées 0
+
+== SOURCE C-LIVE-ACON10.py (sonde C-LIVE écrite pour ce rejeu)
+# flake8: noqa  (sonde de rejeu C-LIVE, acceptation ACON 10/11/2026 — METHODE §C.4)
+"""ACON10 / ACON13 / ACON2 (volet API) — sur FIX-ACON-L (calepinage 279, devis 2366 ACCEPTÉ, relevé + photo 1) :
+POST releve/ (création), PATCH/DELETE releve/<id>/ ; DELETE/PATCH photos/1/, POST photos/ ⇒ 409 verrou au motif de
+ventes ; photo, pièce et objet restent. FIX-ACON-A2 (calepinage 277, modifiable) : appliquer-cote avec un
+base_empreinte PÉRIMÉ ⇒ 409 document_modifie sans nouvelle version. ICI repro=True = comportement ATTENDU observé."""
+SONDE = {"constat": "C-LIVE-ACON10", "sha": "325accf80",
+         "attendu": "repro (= attendu observé) si toutes les écritures relevé/photo sur 279 rendent 409 avec le motif "
+                    "« Devis accepté », photo + pièce + objet intacts, et appliquer-cote périmé sur 277 = 409 sans version",
+         "modeles": ["calepinage.ReleveTerrain", "calepinage.PhotoSite", "calepinage.CalepinageVersion"]}
+
+
+def sonde(ctx):
+    import base64
+    from django.contrib.auth import get_user_model
+    from django.core.files.uploadedfile import SimpleUploadedFile
+    from rest_framework.test import APIClient
+    from apps.calepinage.models import CalepinageVersion, PhotoSite, ReleveTerrain
+    from apps.calepinage.services.verrou import est_verrouille
+    from apps.calepinage.models import Calepinage
+    H = {'HTTP_HOST': 'localhost'}
+    u = get_user_model().objects.get(username='acc_acon_dir')
+    api = APIClient(); api.force_authenticate(u)
+    b = '/api/django/calepinage/calepinages/279/'
+    rel = ReleveTerrain.objects.filter(calepinage_id=279).first()
+    n_rel = ReleveTerrain.objects.filter(calepinage_id=279).count()
+    corps = {'releve_le': '2026-11-06', 'chaines': [{'nom': 'X', 'total_mesure': 5, 'tolerance_m': 0.05,
+                                                     'cotes': [{'nom': 'a', 'valeur': 5}]}]}
+    c = api.post(b + 'releve/', corps, format='json', **H)
+    pa = api.patch(b + 'releve/%d/' % rel.pk, corps, format='json', **H)
+    de = api.delete(b + 'releve/%d/' % rel.pk, **H)
+    ph = PhotoSite.objects.get(pk=1)
+    att = ph.attachment
+    from apps.records.storage import fetch_attachment
+    from django.conf import settings
+    from apps.records.storage import get_minio_client
+
+    def fetch_attachment(cle):  # les photos de site sont rangées au seau PDF (roofs/…), lu ici directement
+        try:
+            return get_minio_client().get_object(Bucket=settings.MINIO_BUCKET_PDF, Key=cle)['Body'].read(), None
+        except Exception as e:
+            return None, str(e)[:80]
+    oct_, err_ = fetch_attachment(att.file_key)
+    objet_avant = len(oct_) if oct_ is not None else 'illisible: %s' % err_
+    pd = api.delete(b + 'photos/1/', **H)
+    pp = api.patch(b + 'photos/1/', {'legende': 'modifiee'}, format='json', **H)
+    png = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==')
+    po = api.post(b + 'photos/', {'photo': SimpleUploadedFile('x.png', png, content_type='image/png'),
+                                  'prise_le': '2026-11-06'}, format='multipart', **H)
+    ph.refresh_from_db()
+    oct2, err2 = fetch_attachment(ph.attachment.file_key)
+    objet_apres = len(oct2) if oct2 is not None else 'illisible: %s' % err2
+    # ACON2 — jeton périmé sur 277 (modifiable)
+    b2 = '/api/django/calepinage/calepinages/277/'
+    r7 = ReleveTerrain.objects.filter(calepinage_id=277).order_by('pk').first()
+    v_avant = CalepinageVersion.objects.filter(calepinage_id=277).count()
+    perime = api.post(b2 + 'releve/%d/appliquer-cote/' % r7.pk,
+                      {'zone_id': 'z1', 'cote_index': 0, 'longueur_m': 12.4, 'base_empreinte': '0' * 64},
+                      format='json', **H)
+    sans = api.post(b2 + 'releve/%d/appliquer-cote/' % r7.pk,
+                    {'zone_id': 'z1', 'cote_index': 0, 'longueur_m': 12.4}, format='json', **H)
+    v_apres = CalepinageVersion.objects.filter(calepinage_id=277).count()
+    d = lambda r: str(getattr(r, 'data', ''))[:200]
+    obs = {'verrouille_279': est_verrouille(Calepinage.objects.get(pk=279)),
+           'releve_post': [c.status_code, d(c)], 'releve_patch': [pa.status_code, d(pa)],
+           'releve_delete': [de.status_code, d(de)],
+           'releves_279_avant_apres': [n_rel, ReleveTerrain.objects.filter(calepinage_id=279).count()],
+           'photo_delete': [pd.status_code, d(pd)], 'photo_patch': [pp.status_code, d(pp)],
+           'photo_post': [po.status_code, d(po)],
+           'photo_toujours_la': PhotoSite.objects.filter(pk=1).exists(), 'legende': ph.legende,
+           'objet_octets_avant_apres': [objet_avant, objet_apres],
+           'acon2_perime': [perime.status_code, d(perime)], 'acon2_sans_base': [sans.status_code, d(sans)],
+           'acon2_versions_avant_apres': [v_avant, v_apres]}
+    ok = (all(x[0] == 409 for x in (obs['releve_post'], obs['releve_patch'], obs['releve_delete'],
+                                     obs['photo_delete'], obs['photo_patch'], obs['photo_post']))
+          and 'accept' in obs['releve_post'][1].lower() and obs['photo_toujours_la']
+          and obs['legende'] == 'Photo ACON13' and isinstance(objet_avant, int) and objet_avant == objet_apres
+          and n_rel == obs['releves_279_avant_apres'][1]
+          and perime.status_code == 409 and sans.status_code == 400 and v_avant == v_apres)
+    obs['repro'] = bool(ok)
+    print(obs)
+    return obs

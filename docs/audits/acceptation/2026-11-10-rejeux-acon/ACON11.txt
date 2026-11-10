@@ -1,0 +1,33 @@
+# Preuve en direct ACON11 — rejeu accept-acon, code joué 325accf80 (origin/main, merge de #1320), 2026-11-10
+# (le code calepinage / ventes / frontend calepinage / apps/web est identique sur c1a99568a, base de cette PR : git diff
+# 325accf80 c1a99568a vide sur ces chemins).
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau accept-acon-net ; accept-acon-db (pgvector pg16,
+# 127.0.0.1:5552, base erp_accept_acon = pg_dump --no-owner de la base locale erp_live en lecture seule, puis
+# `manage.py migrate`) ; accept-acon-redis ; accept-acon-minio (MinIO privé, seaux erp-pdf / erp-uploads) ;
+# accept-acon-dj (image erp-agentique-django_core, code backend du commit joué COPIÉ par tar dans /app, settings.dev,
+# mail locmem, runserver 0.0.0.0:8000 publié sur 127.0.0.1:8028, DB_CONN_MAX_AGE=0).
+# Sondes : python scripts/sonde.py ACON/<sonde> --conteneur accept-acon-dj (transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sondes du dossier d'audit : verdict ÉCART = `repro` faux = le défaut d'origine
+# n'est PLUS reproduit. Sondes C-LIVE-* écrites pour ce rejeu (source jointe ci-dessous) : --racine <scratch>
+# --sans-fraicheur (la fraîcheur du conteneur est prouvée par les sondes du dossier, lancées SANS --sans-fraicheur
+# sur ce worktree) ; ICI repro=true (verdict REPRO) signifie que le comportement ATTENDU est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8028
+# vite preview --port 5208`), piloté par Playwright MCP, comptes de test acc_acon_dir / acc_acon_dir2 (rôle Directeur,
+# société « Acceptation ACON », seed_catalogue, mot de passe de test généré, base jetable). Page publique : apps/web
+# du commit joué (`PUBLIC_API_BASE=http://127.0.0.1:8028 astro dev --port 5218`).
+# CARTE : la clé MapTiler du .env local est refusée hors *.taqinor.ma (403 sur 127.0.0.1 / localhost, 200 avec
+# Origin taqinor.ma) ; sans style la scène de l'atelier ne s'hydrate pas. Le rejeu sert à la place d'api.maptiler.com
+# un style de FOND NEUTRE local (style.json version 8, une couche background, route Playwright) : aucune tuile, aucune
+# requête MapTiler ; zones, panneaux, cotes, enregistrement et 3D sont ceux de l'application, seul le fond satellite
+# manque. Fixtures FIX-ACON-* : scripts `manage.py shell` sur la base jetable (créations par l'API ou les services, et
+# raccourcis nommés : statut de devis posé par update() quand le geste d'acceptation/envoi n'est pas sous audit).
+# Verdict : PASS — écran PA2.4 : « Dupliquer » C1 (lead A Casablanca) vers le lead B (Marrakech) ⇒ 201, copie #285 sans consumption / billKwh / result / underlay, pin sur le repère de B ; C-ACON-060 repro faux (GET layout de la copie sans les appareils de A). NOTE : l'atelier n'affiche pas les libellés d'appareils même sur la source — preuve d'absence par le document servi
+
+FIX-ACON-D : C1 #284 (lead A 3478 Casablanca 33.57/-7.60, consumption appareils « Clim salon de A », « Pompe piscine de A », billKwh 540, result 5,5 kWc), lead B 3479 Marrakech 31.63/-8.00. Écran fiche /calepinage/284 : « Dupliquer » → lead « Maison B Marrakech ACON11 » → « Confirmer la duplication » ⇒ POST dupliquer/ {avec_variantes:true, lead:3479} 201 → copie #285, atelier ouvert sur /calepinage/285 (LEAD Maison B Marrakech ACON11). Base : #284 consumption oui, billKwh 540, result 5,5 kWc, pin 33.57/-7.6 ; #285 consumption absent, billKwh None, result None, underlay None, pin 31.63/-8.0. C-ACON-060 repro False (copie_consumption_identique_A false, appareils [], billKwh None, pin = repère de B (écart 0 m), underlay None ; GET layout ne sert pas les appareils de A). NOTE : l'atelier n'affiche pas les libellés d'appareils en texte, même sur la source : l'absence « à l'écran » n'est pas discriminante ; la preuve d'absence est le document servi (GET layout de la sonde) et relu en base.
+
+== C-ACON-060 (sha 819fe0f8c)
+attendu : repro si la copie vers le lead B porte consumption/pin/underlay de A, que la courbe de base simulée de B est celle de A (origine layout) et que le témoin modèle purge + translate
+observé : {'dupliquer_http': 201, 'copie_lead': True, 'copie_consumption_identique_A': False, 'copie_appareils_labels': [], 'copie_billKwh': None, 'copie_pin': {'lat': 31.63, 'lng': -8.0}, 'copie_result_kwc': None, 'copie_underlay_attachmentId': None, 'repere_lead_B': {'lat': 31.63, 'lng': -8.0, 'source': 'gps'}, 'ecart_m_pin_copie_vs_lead_B': 0.0, 'derive_etat': 'aucune', 'fond_retrouve_sur_copie': False, 'fond_retrouve_sur_source': True, 'simulation_B_origine_courbe': None, 'simulation_B_kwh_jour_1': None, 'courbe_A_kwh_jour': 17.9, 'get_layout_http': 200, 'get_layout_sert_appareils_A': False, 'temoin_modele_consumption_absent': True, 'temoin_modele_pin': {'lat': 34.02, 'lng': -6.84}, 'temoin_modele_billKwh': None, 'temoin_modele_result_kwc': None, 'temoin_modele_underlay_attachmentId': None}
+{"dupliquer_http": 201, "copie_lead": true, "copie_consumption_identique_A": false, "copie_appareils_labels": [], "copie_billKwh": null, "copie_pin": {"lat": 31.63, "lng": -8.0}, "copie_result_kwc": null, "copie_underlay_attachmentId": null, "repere_lead_B": {"lat": 31.63, "lng": -8.0, "source": "gps"}, "ecart_m_pin_copie_vs_lead_B": 0.0, "derive_etat": "aucune", "fond_retrouve_sur_copie": false, "fond_retrouve_sur_source": true, "simulation_B_origine_courbe": null, "simulation_B_kwh_jour_1": null, "courbe_A_kwh_jour": 17.9, "get_layout_http": 200, "get_layout_sert_appareils_A": false, "temoin_modele_consumption_absent": true, "temoin_modele_pin": {"lat": 34.02, "lng": -6.84}, "temoin_modele_billKwh": null, "temoin_modele_result_kwc": null, "temoin_modele_underlay_attachmentId": null, "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 2484, après 2484) ; mails 0 ; tâches Celery bloquées 0

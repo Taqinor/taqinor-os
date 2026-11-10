@@ -1,0 +1,69 @@
+# Preuve en direct ACON85 — rejeu accept-acon, code joué 325accf80 (origin/main, merge de #1320), 2026-11-10
+# (le code calepinage / ventes / frontend calepinage / apps/web est identique sur c1a99568a, base de cette PR : git diff
+# 325accf80 c1a99568a vide sur ces chemins).
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau accept-acon-net ; accept-acon-db (pgvector pg16,
+# 127.0.0.1:5552, base erp_accept_acon = pg_dump --no-owner de la base locale erp_live en lecture seule, puis
+# `manage.py migrate`) ; accept-acon-redis ; accept-acon-minio (MinIO privé, seaux erp-pdf / erp-uploads) ;
+# accept-acon-dj (image erp-agentique-django_core, code backend du commit joué COPIÉ par tar dans /app, settings.dev,
+# mail locmem, runserver 0.0.0.0:8000 publié sur 127.0.0.1:8028, DB_CONN_MAX_AGE=0).
+# Sondes : python scripts/sonde.py ACON/<sonde> --conteneur accept-acon-dj (transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sondes du dossier d'audit : verdict ÉCART = `repro` faux = le défaut d'origine
+# n'est PLUS reproduit. Sondes C-LIVE-* écrites pour ce rejeu (source jointe ci-dessous) : --racine <scratch>
+# --sans-fraicheur (la fraîcheur du conteneur est prouvée par les sondes du dossier, lancées SANS --sans-fraicheur
+# sur ce worktree) ; ICI repro=true (verdict REPRO) signifie que le comportement ATTENDU est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8028
+# vite preview --port 5208`), piloté par Playwright MCP, comptes de test acc_acon_dir / acc_acon_dir2 (rôle Directeur,
+# société « Acceptation ACON », seed_catalogue, mot de passe de test généré, base jetable). Page publique : apps/web
+# du commit joué (`PUBLIC_API_BASE=http://127.0.0.1:8028 astro dev --port 5218`).
+# CARTE : la clé MapTiler du .env local est refusée hors *.taqinor.ma (403 sur 127.0.0.1 / localhost, 200 avec
+# Origin taqinor.ma) ; sans style la scène de l'atelier ne s'hydrate pas. Le rejeu sert à la place d'api.maptiler.com
+# un style de FOND NEUTRE local (style.json version 8, une couche background, route Playwright) : aucune tuile, aucune
+# requête MapTiler ; zones, panneaux, cotes, enregistrement et 3D sont ceux de l'application, seul le fond satellite
+# manque. Fixtures FIX-ACON-* : scripts `manage.py shell` sur la base jetable (créations par l'API ou les services, et
+# raccourcis nommés : statut de devis posé par update() quand le geste d'acceptation/envoi n'est pas sous audit).
+# Verdict : NOT PLAYED — NON JOUÉ (volet écran) : « Générer le devis » sur un calepinage simulé OMBRÉ exige l'étude d'ombrage de l'atelier (accès solaire par module, calculé sur la 3D/terrain) — indisponible sans tuiles (clé MapTiler refusée hors taqinor.ma) ; un accès solaire posé côté serveur est retiré par l'enregistrement préalable de « Générer le devis » (simulation alors périmée, devis sans ombrage : essai #290 → DEV-202611-0027 sans bloc ombrage). Volet API joué : C-ACON-020-L2 section F (PDF = page = 25 071 kWh/an, bloc ombrage 8 %) ; C-LIVE-ACON85 : simuler {forcer} sur le calepinage d'un devis accepté 409, recalcul de masse sans lui
+
+Volet API : C-ACON-020-L2 repro faux, section F : generer-devis 201, lien, bloc horaire rangé {source calepinage, perte 8,0}, production 25 070,63, PDF 2 148 nombres dont prod_kwh, page publique 25 071 (dimensionnement_options.sans 25 071). C-LIVE-ACON85 : POST calepinages/279/simuler/ {forcer:true} (devis 2366 accepté) 409 « Devis accepté : révisez-le » (calepinage_verrouille) ; POST parametres/recalculer-simulations/ 202 {soumis 3, jobs 291, 289, 288} — ni 279 ni 290 (devis accepté) soumis. Volet écran non jouable : voir le verdict.
+
+== C-ACON-020-L2 (sha 819fe0f8c)
+attendu : repro si un rafraichisseur du devis perime la simulation du calepinage (cle d'empreinte nommee) ; D/E disent si, profil societe present, le bloc range et le PDF portent l'ombrage
+observé : {"put_reglages": 200, "A0_perte_fraiche": 8.0, "A0_hash_stocke_egal_empreinte_live": true, "A_etapes": [{"etape": "etude_horaire", "erreur": null, "lectures_empreinte_pendant_etape": 2, "perte_apres": 8.0, "simulation_perimee": false, "motif": "", "ecarts_charge_vs_frais": [], "resultat_calepinage_modifie": false, "roof_layout_modifie": false, "bloc_range_production_kwh": 8356.88, "bloc_range_ombrage": {"source": "calepinage", "perte_pct": 8.0}}, ["dimensionnement", 8.0], ["profils_comparatifs", 8.0], ["conception_electrique", 8.0], ["etude_ci", 8.0], ["etude_pompage", 8.0]], "B0_perte_fraiche": 8.0, "B_patch_http": 200, "B_perte_apres_patch": 8.0, "B_simulation_perimee": false, "B_ecarts_charge": [], "B_bloc_range_production_kwh": null, "B_bloc_range_ombrage": null, "B_regles_calcul": 12, "C_perte_apres_resimulation": 8.0, "C_patch_http": 200, "C_perte_apres_patch2": 8.0, "C_bloc_range_production_kwh": null, "C_bloc_range_ombrage": null, "D_profil_fuseau": "Africa/Casablanca", "D_put_reglages": 200, "D0_perte_fraiche": 8.0, "D_patch_ligne": [200, ""], "D1_perte": 8.0, "D1_simulation_perimee": false, "D1_bloc_production_kwh": 8356.88, "D1_bloc_ombrage": {"source": "calepinage", "perte_pct": 8.0}, "D_pdf": {"http": 200, "nb_chiffres": 875, "egales_bloc_range": ["prod_kwh", "prod_kwh_sans", "prod_kwh_avec", "etude.etude_horaire.annuel.production_kwh"], "prod_kwh": 8357}, "E_patch_ligne_1": [200, ""], "E1_avant_simulation_perte": null, "E1_avant_simulation_simulation_perimee": false, "E1_avant_simulation_bloc_production_kwh": 9083.56, "E1_avant_simulation_bloc_ombrage": null, "E2_apres_simulation_sans_enregistrer_perte": 8.0, "E2_apres_simulation_sans_enregistrer_simulation_perimee": false, "E2_apres_simulation_sans_enregistrer_bloc_production_kwh": 9083.56, "E2_apres_simulation_sans_enregistrer_bloc_ombrage": null, "E2_pdf": {"http": 200, "nb_chiffres": 874, "egales_bloc_range": ["prod_kwh", "prod_kwh_sans", "prod_kwh_avec", "etude.etude_horaire.annuel.production_kwh"], "prod_kwh": 9084}, "E_patch_ligne_2": [200, ""], "E3_apres_reenregistrement_perte": 8.0, "E3_apres_reenregistrement_simulation_perimee": false, "E3_apres_reenregistrement_bloc_production_kwh": 8356.88, "E3_apres_reenregistrement_bloc_ombrage": {"source": "calepinage", "perte_pct": 8.0}, "E3_pdf": {"http": 200, "nb_chiffres": 875, "egales_bloc_range": ["prod_kwh", "prod_kwh_sans", "prod_kwh_avec", "etude.etude_horaire.annuel.production_kwh"], "prod_kwh": 8357}, "F_put_reglages": 200, "F_generer_http": 201, "F_generer_corps": "", "F_lien": true, "F_mode": "residentiel", "F_regles": 12, "F1_ne_perte": 8.0, "F1_ne_simulation_perimee": false, "F1_ne_bloc_production_kwh": 25070.63, "F1_ne_bloc_ombrage": {"source": "calepinage", "perte_pct": 8.0}, "F2_pdf": {"http": 200, "nb_chiffres": 2148, "egales_bloc_range": ["prod_kwh", "prod_kwh_sans", "prod_kwh_avec", "etude.etude_horaire.annuel.production_kwh"], "prod_kwh": 25071}, "F2_public_http": 200, "F2_public_production_options": {"sans": 25071}, "F2_public_cles_production": {"quote.etude.dimensionnement.tableau[0].production_annuelle_kwh": 1135.45, "quote.etude.dimensionnement.tableau[1].production_annuelle_kwh": 2270.89, "quote.etude.dimensionnement.tableau[2].production_annuelle_kwh": 3406.34, "quote.etude.dimensionnement.tableau[3].production_annuelle_kwh": 4541.78, "quote.etude.dimensionnement.tableau[4].production_annuelle_kwh": 5677.23, "quote.etude.dimensionnement.tableau[5].production_annuelle_kwh": 6812.67}, "F2_public_egal_bloc_range": ["quote.prod_kwh", "quote.prod_kwh_sans", "quote.prod_kwh_avec", "dimensionnement_options.sans.production_annuelle_kwh", "offres_tailles.offres[1].sans.production_annuelle_kwh"], "premiere_etape_qui_perime": null, "ombrage_atteint_pdf_profil_present": true, "repro": false}
+{"repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 1472, après 1472) ; mails 0 ; tâches Celery bloquées 0
+
+== C-LIVE-ACON85 (sha 325accf80)
+attendu : repro (= attendu observé) si simuler forcer sur 279 = 409 sans job et que le recalcul de masse ne soumet pas 279
+observé : {'simuler': [409, "{'simulation': [ErrorDetail(string='Devis accepté : révisez-le', code='calepinage_verrouille')], 'error': {'code': 'api_error', 'message': 'Devis accepté : révisez-le', 'fields': None, 'request_id': '12adbc82b5b244529460518be797b2c6'}}"], 'recalculer_tout': [202, "{'soumis': 3, 'jobs': [{'calepinage': 291, 'job_id': 1}, {'calepinage': 289, 'job_id': 2}, {'calepinage': 288, 'job_id': 3}], 'reste': 0}"], 'jobs_calepinages': [291, 289, 288], '279_soumis': False}
+{"simuler": [409, "{'simulation': [ErrorDetail(string='Devis accepté : révisez-le', code='calepinage_verrouille')], 'error': {'code': 'api_error', 'message': 'Devis accepté : révisez-le', 'fields': None, 'request_id': '12adbc82b5b244529460518be797b2c6'}}"], "recalculer_tout": [202, "{'soumis': 3, 'jobs': [{'calepinage': 291, 'job_id': 1}, {'calepinage': 289, 'job_id': 2}, {'calepinage': 288, 'job_id': 3}], 'reste': 0}"], "jobs_calepinages": [291, 289, 288], "279_soumis": false, "repro": true}
+verdict : REPRO (fraîcheur non vérifiée)
+base inchangée : oui (avant 230, après 230) ; mails 0 ; tâches Celery bloquées 3
+
+== SOURCE C-LIVE-ACON85.py (sonde C-LIVE écrite pour ce rejeu)
+# flake8: noqa  (sonde de rejeu C-LIVE, acceptation ACON 10/11/2026 — METHODE §C.4)
+"""ACON85 (volet API) — sur FIX-ACON-L (calepinage 279, devis 2366 ACCEPTÉ) : POST simuler {forcer: true} ⇒ 409
+verrou, aucun job ; POST parametres/recalculer-simulations/ (recalcul de masse) n'inclut pas 279. ICI repro=True = attendu observé."""
+SONDE = {"constat": "C-LIVE-ACON85", "sha": "325accf80",
+         "attendu": "repro (= attendu observé) si simuler forcer sur 279 = 409 sans job et que le recalcul de masse "
+                    "ne soumet pas 279",
+         "modeles": ["calepinage.Calepinage"]}
+
+
+def sonde(ctx):
+    from django.contrib.auth import get_user_model
+    from django.urls import get_resolver
+    from rest_framework.test import APIClient
+    H = {'HTTP_HOST': 'localhost'}
+    u = get_user_model().objects.get(username='acc_acon_dir')
+    api = APIClient(); api.force_authenticate(u)
+    s = api.post('/api/django/calepinage/calepinages/279/simuler/', {'forcer': True}, format='json', **H)
+
+    r = api.post('/api/django/calepinage/parametres/recalculer-simulations/', {}, format='json', **H)
+    corps = getattr(r, 'data', None)
+    jobs = [j.get('calepinage') for j in ((corps or {}).get('jobs') or [])] if isinstance(corps, dict) else []
+    obs = {'simuler': [s.status_code, str(getattr(s, 'data', ''))[:240]],
+           'recalculer_tout': [r.status_code, str(corps)[:300]], 'jobs_calepinages': jobs[:50],
+           '279_soumis': 279 in jobs}
+    print(obs)
+    obs['repro'] = bool(s.status_code == 409 and r.status_code in (200, 202) and not obs['279_soumis'])
+    return obs

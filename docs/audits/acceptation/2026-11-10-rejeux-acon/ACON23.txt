@@ -1,0 +1,33 @@
+# Preuve en direct ACON23 — rejeu accept-acon, code joué 325accf80 (origin/main, merge de #1320), 2026-11-10
+# (le code calepinage / ventes / frontend calepinage / apps/web est identique sur c1a99568a, base de cette PR : git diff
+# 325accf80 c1a99568a vide sur ces chemins).
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau accept-acon-net ; accept-acon-db (pgvector pg16,
+# 127.0.0.1:5552, base erp_accept_acon = pg_dump --no-owner de la base locale erp_live en lecture seule, puis
+# `manage.py migrate`) ; accept-acon-redis ; accept-acon-minio (MinIO privé, seaux erp-pdf / erp-uploads) ;
+# accept-acon-dj (image erp-agentique-django_core, code backend du commit joué COPIÉ par tar dans /app, settings.dev,
+# mail locmem, runserver 0.0.0.0:8000 publié sur 127.0.0.1:8028, DB_CONN_MAX_AGE=0).
+# Sondes : python scripts/sonde.py ACON/<sonde> --conteneur accept-acon-dj (transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sondes du dossier d'audit : verdict ÉCART = `repro` faux = le défaut d'origine
+# n'est PLUS reproduit. Sondes C-LIVE-* écrites pour ce rejeu (source jointe ci-dessous) : --racine <scratch>
+# --sans-fraicheur (la fraîcheur du conteneur est prouvée par les sondes du dossier, lancées SANS --sans-fraicheur
+# sur ce worktree) ; ICI repro=true (verdict REPRO) signifie que le comportement ATTENDU est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8028
+# vite preview --port 5208`), piloté par Playwright MCP, comptes de test acc_acon_dir / acc_acon_dir2 (rôle Directeur,
+# société « Acceptation ACON », seed_catalogue, mot de passe de test généré, base jetable). Page publique : apps/web
+# du commit joué (`PUBLIC_API_BASE=http://127.0.0.1:8028 astro dev --port 5218`).
+# CARTE : la clé MapTiler du .env local est refusée hors *.taqinor.ma (403 sur 127.0.0.1 / localhost, 200 avec
+# Origin taqinor.ma) ; sans style la scène de l'atelier ne s'hydrate pas. Le rejeu sert à la place d'api.maptiler.com
+# un style de FOND NEUTRE local (style.json version 8, une couche background, route Playwright) : aucune tuile, aucune
+# requête MapTiler ; zones, panneaux, cotes, enregistrement et 3D sont ceux de l'application, seul le fond satellite
+# manque. Fixtures FIX-ACON-* : scripts `manage.py shell` sur la base jetable (créations par l'API ou les services, et
+# raccourcis nommés : statut de devis posé par update() quand le geste d'acceptation/envoi n'est pas sous audit).
+# Verdict : PASS — écran : onglet Approbation ouvert par acc_acon_dir2, H2 enregistrée par le concepteur pendant la relecture, « Approuver » ⇒ 409 « La conception a changé depuis votre ouverture : relisez-la avant d'approuver. » affiché, rien d'approuvé ; relu puis « Approuver » ⇒ 200 sur H2 ; C-ACON-023 repro faux
+
+FIX-ACON-AP : calepinage #296 (lead 3489), H1 enregistrée par acc_acon_dir (créateur, responsable) via enregistrer_layout (LAYOUT_PLANCHE_SIMULABLE). Écran /calepinage/296?onglet=approbation en acc_acon_dir2 (relecteur) ; pendant la relecture, H2 (pan ajouté) enregistrée par acc_acon_dir. « Approuver » ⇒ POST approbation/ {decision approuve, empreinte c9e16c4a49d5… (H1 lue)} → 409 {"empreinte":"La conception a changé depuis votre ouverture : relisez-la avant d'approuver."} ; écran : « Décision refusée — à corriger : empreinte » + le message ; « Aucune décision n'a encore été prise. » Rechargé puis « Approuver » ⇒ 200 {etat approuve, empreinte_approuvee = empreinte_courante b9c23ed22eda…}, écran « Approuvée par acc_acon_dir2 le 10/11/2026 14:16 ».
+
+== C-ACON-023 (sha 33cba7f5d)
+attendu : repro si POST approuve = 200 et empreinte_approuvee == H2 (!= H1 lu au GET) sans aucun parametre designant H1
+observé : {"get_http": 200, "get_expose_empreinte_courante": true, "get_cles": ["decide_le", "decide_par", "empreinte_approuvee", "empreinte_courante", "etat", "exigee", "motif", "perimee"], "h1_ne_h2": true, "zones_h1_h2": [1, 2], "post_http": 409, "empreinte_approuvee_eq_H2": false, "empreinte_approuvee_eq_H1_relue": false, "est_approuve_H2": false, "repro": false}
+{"repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 266, après 266) ; mails 0 ; tâches Celery bloquées 0

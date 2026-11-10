@@ -1,0 +1,701 @@
+# Preuve en direct ACON46 — rejeu accept-acon, code joué 325accf80 (origin/main, merge de #1320), 2026-11-10
+# (le code calepinage / ventes / frontend calepinage / apps/web est identique sur c1a99568a, base de cette PR : git diff
+# 325accf80 c1a99568a vide sur ces chemins).
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau accept-acon-net ; accept-acon-db (pgvector pg16,
+# 127.0.0.1:5552, base erp_accept_acon = pg_dump --no-owner de la base locale erp_live en lecture seule, puis
+# `manage.py migrate`) ; accept-acon-redis ; accept-acon-minio (MinIO privé, seaux erp-pdf / erp-uploads) ;
+# accept-acon-dj (image erp-agentique-django_core, code backend du commit joué COPIÉ par tar dans /app, settings.dev,
+# mail locmem, runserver 0.0.0.0:8000 publié sur 127.0.0.1:8028, DB_CONN_MAX_AGE=0).
+# Sondes : python scripts/sonde.py ACON/<sonde> --conteneur accept-acon-dj (transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sondes du dossier d'audit : verdict ÉCART = `repro` faux = le défaut d'origine
+# n'est PLUS reproduit. Sondes C-LIVE-* écrites pour ce rejeu (source jointe ci-dessous) : --racine <scratch>
+# --sans-fraicheur (la fraîcheur du conteneur est prouvée par les sondes du dossier, lancées SANS --sans-fraicheur
+# sur ce worktree) ; ICI repro=true (verdict REPRO) signifie que le comportement ATTENDU est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8028
+# vite preview --port 5208`), piloté par Playwright MCP, comptes de test acc_acon_dir / acc_acon_dir2 (rôle Directeur,
+# société « Acceptation ACON », seed_catalogue, mot de passe de test généré, base jetable). Page publique : apps/web
+# du commit joué (`PUBLIC_API_BASE=http://127.0.0.1:8028 astro dev --port 5218`).
+# CARTE : la clé MapTiler du .env local est refusée hors *.taqinor.ma (403 sur 127.0.0.1 / localhost, 200 avec
+# Origin taqinor.ma) ; sans style la scène de l'atelier ne s'hydrate pas. Le rejeu sert à la place d'api.maptiler.com
+# un style de FOND NEUTRE local (style.json version 8, une couche background, route Playwright) : aucune tuile, aucune
+# requête MapTiler ; zones, panneaux, cotes, enregistrement et 3D sont ceux de l'application, seul le fond satellite
+# manque. Fixtures FIX-ACON-* : scripts `manage.py shell` sur la base jetable (créations par l'API ou les services, et
+# raccourcis nommés : statut de devis posé par update() quand le geste d'acceptation/envoi n'est pas sous audit).
+# Verdict : PASS — écran : double-clic « Générer le devis » ⇒ 1 enregistrement préalable + 1 POST generer-devis (201), 1 devis ; C-LIVE-ACON46 (2 connexions HTTP réelles, barrière) : 20/20 générations concurrentes = 1 devis lié au calepinage ; 18/20 : 201 + 200 deduplique ; OBSERVATION : 2/20 (lot à froid) les DEUX réponses 200 deduplique:true (1 seul devis créé). C-ACON-046 (mono-connexion) reste REPRO par construction : son crochet imbrique la 2e génération DANS la transaction de la 1re, ce qu'un verrou de ligne ne sérialise pas — non probant
+
+FIX-ACON-G1 #291 : « Remplir automatiquement », « Enregistrer le calepinage », DOUBLE-CLIC « Générer le devis » ⇒ 1 POST layout (enregistrement préalable) + 1 POST generer-devis 201 (DEV-202611-0028, 2370) ; lead 3484 : 1 devis.
+C-LIVE-ACON46 (HTTP, 2 connexions, barrière) : lot 1 (5, à froid) 1 devis/lead 5/5, lié 5/5 ; MAIS 253 et 254 : les DEUX réponses 200 deduplique:true (le créateur ne dit pas 201) ; lots 2 (5) et 3 (10) : 15/15 exacts (201 + 200 deduplique, ~1,8 s chacune, terminées à < 15 ms d'écart = sérialisées). Témoin successif 201 puis 200 dedup.
+
+== C-ACON-046 (sha 33cba7f5d)
+attendu : repro si 2 devis créés pour le même lead + même layout_hash, un seul lié au calepinage, l'autre brouillon orphelin ; témoin : un 2e clic NON chevauché rend le même devis (deduplique)
+observé : {'temoin': {'http': [201, 200], 'meme_devis': True, 'deduplique_2e': True, 'devis_du_lead': 1}, 'requete_1': [201, 2331], 'requete_2': {'devis': 2330, 'cree': True}, 'calepinage.devis_id': 2331, 'devis_du_lead': [('DEV-202611-0003', 'brouillon', 'a4ba25dada'), ('DEV-202611-0002', 'brouillon', 'a4ba25dada')], 'calepinages_lies_par_devis': {2331: 1, 2330: 0}}
+{"temoin": {"http": [201, 200], "meme_devis": true, "deduplique_2e": true, "devis_du_lead": 1}, "requete_1": [201, 2331], "requete_2": {"devis": 2330, "cree": true}, "calepinage.devis_id": 2331, "devis_du_lead": [["DEV-202611-0003", "brouillon", "a4ba25dada"], ["DEV-202611-0002", "brouillon", "a4ba25dada"]], "calepinages_lies_par_devis": {"2331": 1, "2330": 0}, "temoin_ok": true, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 1471, après 1471) ; mails 0 ; tâches Celery bloquées 0
+
+{
+ "concurrent": [
+  {
+   "calepinage": 253,
+   "reponses": [
+    [
+     200,
+     2342,
+     true
+    ],
+    [
+     200,
+     2342,
+     true
+    ]
+   ],
+   "devis_du_lead": [
+    [
+     2342,
+     "DEV-202611-0001",
+     "brouillon"
+    ]
+   ],
+   "calepinage_devis_id": 2342,
+   "un_seul_devis": true,
+   "lie_au_devis": true
+  },
+  {
+   "calepinage": 254,
+   "reponses": [
+    [
+     200,
+     2343,
+     true
+    ],
+    [
+     200,
+     2343,
+     true
+    ]
+   ],
+   "devis_du_lead": [
+    [
+     2343,
+     "DEV-202611-0002",
+     "brouillon"
+    ]
+   ],
+   "calepinage_devis_id": 2343,
+   "un_seul_devis": true,
+   "lie_au_devis": true
+  },
+  {
+   "calepinage": 255,
+   "reponses": [
+    [
+     201,
+     2344,
+     false
+    ],
+    [
+     200,
+     2344,
+     true
+    ]
+   ],
+   "devis_du_lead": [
+    [
+     2344,
+     "DEV-202611-0003",
+     "brouillon"
+    ]
+   ],
+   "calepinage_devis_id": 2344,
+   "un_seul_devis": true,
+   "lie_au_devis": true
+  },
+  {
+   "calepinage": 256,
+   "reponses": [
+    [
+     201,
+     2345,
+     false
+    ],
+    [
+     200,
+     2345,
+     true
+    ]
+   ],
+   "devis_du_lead": [
+    [
+     2345,
+     "DEV-202611-0004",
+     "brouillon"
+    ]
+   ],
+   "calepinage_devis_id": 2345,
+   "un_seul_devis": true,
+   "lie_au_devis": true
+  },
+  {
+   "calepinage": 257,
+   "reponses": [
+    [
+     200,
+     2346,
+     true
+    ],
+    [
+     201,
+     2346,
+     false
+    ]
+   ],
+   "devis_du_lead": [
+    [
+     2346,
+     "DEV-202611-0005",
+     "brouillon"
+    ]
+   ],
+   "calepinage_devis_id": 2346,
+   "un_seul_devis": true,
+   "lie_au_devis": true
+  }
+ ],
+ "temoin": {
+  "http": [
+   201,
+   200
+  ],
+  "deduplique_2e": true,
+  "devis_du_lead": [
+   [
+    2347,
+    "DEV-202611-0006",
+    "brouillon"
+   ]
+  ],
+  "calepinage_devis_id": 2347
+ },
+ "repro": true,
+ "attendu_observe": false
+}
+
+{
+ "concurrent": [
+  {
+   "calepinage": 259,
+   "reponses": [
+    [
+     201,
+     2348,
+     false,
+     1.815
+    ],
+    [
+     200,
+     2348,
+     true,
+     1.821
+    ]
+   ],
+   "devis_du_lead": [
+    [
+     2348,
+     "DEV-202611-0007",
+     "brouillon"
+    ]
+   ],
+   "calepinage_devis_id": 2348,
+   "un_seul_devis": true,
+   "lie_au_devis": true
+  },
+  {
+   "calepinage": 260,
+   "reponses": [
+    [
+     200,
+     2349,
+     true,
+     1.752
+    ],
+    [
+     201,
+     2349,
+     false,
+     1.744
+    ]
+   ],
+   "devis_du_lead": [
+    [
+     2349,
+     "DEV-202611-0008",
+     "brouillon"
+    ]
+   ],
+   "calepinage_devis_id": 2349,
+   "un_seul_devis": true,
+   "lie_au_devis": true
+  },
+  {
+   "calepinage": 261,
+   "reponses": [
+    [
+     200,
+     2350,
+     true,
+     1.804
+    ],
+    [
+     201,
+     2350,
+     false,
+     1.795
+    ]
+   ],
+   "devis_du_lead": [
+    [
+     2350,
+     "DEV-202611-0009",
+     "brouillon"
+    ]
+   ],
+   "calepinage_devis_id": 2350,
+   "un_seul_devis": true,
+   "lie_au_devis": true
+  },
+  {
+   "calepinage": 262,
+   "reponses": [
+    [
+     200,
+     2351,
+     true,
+     1.772
+    ],
+    [
+     201,
+     2351,
+     false,
+     1.765
+    ]
+   ],
+   "devis_du_lead": [
+    [
+     2351,
+     "DEV-202611-0010",
+     "brouillon"
+    ]
+   ],
+   "calepinage_devis_id": 2351,
+   "un_seul_devis": true,
+   "lie_au_devis": true
+  },
+  {
+   "calepinage": 263,
+   "reponses": [
+    [
+     201,
+     2352,
+     false,
+     1.812
+    ],
+    [
+     200,
+     2352,
+     true,
+     1.818
+    ]
+   ],
+   "devis_du_lead": [
+    [
+     2352,
+     "DEV-202611-0011",
+     "brouillon"
+    ]
+   ],
+   "calepinage_devis_id": 2352,
+   "un_seul_devis": true,
+   "lie_au_devis": true
+  }
+ ],
+ "temoin": {
+  "http": [
+   201,
+   200
+  ],
+  "deduplique_2e": true,
+  "devis_du_lead": [
+   [
+    2353,
+    "DEV-202611-0012",
+    "brouillon"
+   ]
+  ],
+  "calepinage_devis_id": 2353
+ },
+ "repro": false,
+ "attendu_observe": true
+}
+
+{
+ "concurrent": [
+  {
+   "calepinage": 265,
+   "reponses": [
+    [
+     201,
+     2354,
+     false,
+     1.76
+    ],
+    [
+     200,
+     2354,
+     true,
+     1.765
+    ]
+   ],
+   "devis_du_lead": [
+    [
+     2354,
+     "DEV-202611-0013",
+     "brouillon"
+    ]
+   ],
+   "calepinage_devis_id": 2354,
+   "un_seul_devis": true,
+   "lie_au_devis": true
+  },
+  {
+   "calepinage": 266,
+   "reponses": [
+    [
+     201,
+     2355,
+     false,
+     1.781
+    ],
+    [
+     200,
+     2355,
+     true,
+     1.788
+    ]
+   ],
+   "devis_du_lead": [
+    [
+     2355,
+     "DEV-202611-0014",
+     "brouillon"
+    ]
+   ],
+   "calepinage_devis_id": 2355,
+   "un_seul_devis": true,
+   "lie_au_devis": true
+  },
+  {
+   "calepinage": 267,
+   "reponses": [
+    [
+     201,
+     2356,
+     false,
+     1.76
+    ],
+    [
+     200,
+     2356,
+     true,
+     1.768
+    ]
+   ],
+   "devis_du_lead": [
+    [
+     2356,
+     "DEV-202611-0015",
+     "brouillon"
+    ]
+   ],
+   "calepinage_devis_id": 2356,
+   "un_seul_devis": true,
+   "lie_au_devis": true
+  },
+  {
+   "calepinage": 268,
+   "reponses": [
+    [
+     200,
+     2357,
+     true,
+     1.791
+    ],
+    [
+     201,
+     2357,
+     false,
+     1.786
+    ]
+   ],
+   "devis_du_lead": [
+    [
+     2357,
+     "DEV-202611-0016",
+     "brouillon"
+    ]
+   ],
+   "calepinage_devis_id": 2357,
+   "un_seul_devis": true,
+   "lie_au_devis": true
+  },
+  {
+   "calepinage": 269,
+   "reponses": [
+    [
+     200,
+     2358,
+     true,
+     1.852
+    ],
+    [
+     201,
+     2358,
+     false,
+     1.838
+    ]
+   ],
+   "devis_du_lead": [
+    [
+     2358,
+     "DEV-202611-0017",
+     "brouillon"
+    ]
+   ],
+   "calepinage_devis_id": 2358,
+   "un_seul_devis": true,
+   "lie_au_devis": true
+  },
+  {
+   "calepinage": 270,
+   "reponses": [
+    [
+     201,
+     2359,
+     false,
+     1.841
+    ],
+    [
+     200,
+     2359,
+     true,
+     1.853
+    ]
+   ],
+   "devis_du_lead": [
+    [
+     2359,
+     "DEV-202611-0018",
+     "brouillon"
+    ]
+   ],
+   "calepinage_devis_id": 2359,
+   "un_seul_devis": true,
+   "lie_au_devis": true
+  },
+  {
+   "calepinage": 271,
+   "reponses": [
+    [
+     200,
+     2360,
+     true,
+     1.814
+    ],
+    [
+     201,
+     2360,
+     false,
+     1.805
+    ]
+   ],
+   "devis_du_lead": [
+    [
+     2360,
+     "DEV-202611-0019",
+     "brouillon"
+    ]
+   ],
+   "calepinage_devis_id": 2360,
+   "un_seul_devis": true,
+   "lie_au_devis": true
+  },
+  {
+   "calepinage": 272,
+   "reponses": [
+    [
+     200,
+     2361,
+     true,
+     2.286
+    ],
+    [
+     201,
+     2361,
+     false,
+     2.279
+    ]
+   ],
+   "devis_du_lead": [
+    [
+     2361,
+     "DEV-202611-0020",
+     "brouillon"
+    ]
+   ],
+   "calepinage_devis_id": 2361,
+   "un_seul_devis": true,
+   "lie_au_devis": true
+  },
+  {
+   "calepinage": 273,
+   "reponses": [
+    [
+     200,
+     2362,
+     true,
+     1.883
+    ],
+    [
+     201,
+     2362,
+     false,
+     1.875
+    ]
+   ],
+   "devis_du_lead": [
+    [
+     2362,
+     "DEV-202611-0021",
+     "brouillon"
+    ]
+   ],
+   "calepinage_devis_id": 2362,
+   "un_seul_devis": true,
+   "lie_au_devis": true
+  },
+  {
+   "calepinage": 274,
+   "reponses": [
+    [
+     200,
+     2363,
+     true,
+     1.86
+    ],
+    [
+     201,
+     2363,
+     false,
+     1.854
+    ]
+   ],
+   "devis_du_lead": [
+    [
+     2363,
+     "DEV-202611-0022",
+     "brouillon"
+    ]
+   ],
+   "calepinage_devis_id": 2363,
+   "un_seul_devis": true,
+   "lie_au_devis": true
+  }
+ ],
+ "temoin": {
+  "http": [
+   201,
+   200
+  ],
+  "deduplique_2e": true,
+  "devis_du_lead": [
+   [
+    2364,
+    "DEV-202611-0023",
+    "brouillon"
+   ]
+  ],
+  "calepinage_devis_id": 2364
+ },
+ "repro": false,
+ "attendu_observe": true
+}
+
+== SOURCE C-LIVE-ACON46.py (sonde C-LIVE écrite pour ce rejeu)
+"""C-LIVE-ACON46 — rejeu HTTP réel, DEUX connexions concurrentes (runserver multi-fils, Postgres) : Given C (lead L,
+12 × 550 W) sans devis ; When deux POST generer-devis lâchés ensemble (barrière) ; Then 1 devis sur L, C lié à lui,
+la seconde 200 deduplique: true. Témoin : deux clics successifs = 201 puis 200 deduplique. Comptes lus en base."""
+import json
+import subprocess
+import sys
+import threading
+
+import requests
+
+BASE = 'http://127.0.0.1:8028/api/django'
+USER, PW = sys.argv[1], sys.argv[2]
+FX = json.loads(sys.argv[3])
+
+
+def session():
+    # Jeton émis par Django (le login /token/ est limité en débit : 429 après quelques essais).
+    prog = ("from django.contrib.auth import get_user_model;from rest_framework_simplejwt.tokens import AccessToken;"
+            "print('@@'+str(AccessToken.for_user(get_user_model().objects.get(username=%r))))" % USER)
+    out = subprocess.run(['docker', 'exec', 'accept-acon-dj', 'python', 'manage.py', 'shell', '-c', prog],
+                         capture_output=True, text=True).stdout
+    s = requests.Session()
+    s.headers['Authorization'] = 'Bearer ' + next(x for x in out.splitlines() if x.startswith('@@'))[2:]
+    return s
+
+
+def compte(lead, cal):
+    prog = ("from apps.ventes.models import Devis;from apps.calepinage.models import Calepinage;import json;"
+            "d=list(Devis.objects.filter(lead_id=%d).values_list('pk','reference','statut'));"
+            "print('@@'+json.dumps({'devis_du_lead':d,'calepinage_devis_id':Calepinage.objects.get(pk=%d).devis_id}))"
+            % (lead, cal))
+    out = subprocess.run(['docker', 'exec', 'accept-acon-dj', 'python', 'manage.py', 'shell', '-c', prog],
+                         capture_output=True, text=True).stdout
+    return json.loads(next(x for x in out.splitlines() if x.startswith('@@'))[2:])
+
+
+res = {'concurrent': [], 'temoin': None}
+for fx in FX[:-1]:
+    s1, s2 = session(), session()
+    barriere = threading.Barrier(2)
+    out = [None, None]
+
+    def go(i, s):
+        barriere.wait()
+        r = s.post(BASE + '/calepinage/calepinages/%d/generer-devis/' % fx['calepinage'], json={})
+        try:
+            j = r.json()
+        except ValueError:
+            j = {}
+        out[i] = [r.status_code, j.get('devis'), j.get('deduplique'), round(r.elapsed.total_seconds(), 3)]
+
+    t = [threading.Thread(target=go, args=(i, s)) for i, s in enumerate((s1, s2))]
+    [x.start() for x in t]
+    [x.join() for x in t]
+    c = compte(fx['lead'], fx['calepinage'])
+    res['concurrent'].append({'calepinage': fx['calepinage'], 'reponses': out, **c,
+                              'un_seul_devis': len(c['devis_du_lead']) == 1,
+                              'lie_au_devis': bool(c['devis_du_lead']) and c['calepinage_devis_id'] == c['devis_du_lead'][0][0]})
+fx = FX[-1]
+s = session()
+r1 = s.post(BASE + '/calepinage/calepinages/%d/generer-devis/' % fx['calepinage'], json={})
+r2 = s.post(BASE + '/calepinage/calepinages/%d/generer-devis/' % fx['calepinage'], json={})
+res['temoin'] = {'http': [r1.status_code, r2.status_code], 'deduplique_2e': r2.json().get('deduplique'),
+                 **compte(fx['lead'], fx['calepinage'])}
+ok = all(x['un_seul_devis'] and x['lie_au_devis'] and sorted(y[0] for y in x['reponses']) == [200, 201]
+         and any(y[2] is True for y in x['reponses']) for x in res['concurrent'])
+res['repro'] = not ok
+res['attendu_observe'] = ok
+print(json.dumps(res, ensure_ascii=False, indent=1))

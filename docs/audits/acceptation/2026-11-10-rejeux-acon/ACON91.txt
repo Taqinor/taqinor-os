@@ -1,0 +1,50 @@
+# Preuve en direct ACON91 — rejeu accept-acon, code joué 325accf80 (origin/main, merge de #1320), 2026-11-10
+# (le code calepinage / ventes / frontend calepinage / apps/web est identique sur c1a99568a, base de cette PR : git diff
+# 325accf80 c1a99568a vide sur ces chemins).
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau accept-acon-net ; accept-acon-db (pgvector pg16,
+# 127.0.0.1:5552, base erp_accept_acon = pg_dump --no-owner de la base locale erp_live en lecture seule, puis
+# `manage.py migrate`) ; accept-acon-redis ; accept-acon-minio (MinIO privé, seaux erp-pdf / erp-uploads) ;
+# accept-acon-dj (image erp-agentique-django_core, code backend du commit joué COPIÉ par tar dans /app, settings.dev,
+# mail locmem, runserver 0.0.0.0:8000 publié sur 127.0.0.1:8028, DB_CONN_MAX_AGE=0).
+# Sondes : python scripts/sonde.py ACON/<sonde> --conteneur accept-acon-dj (transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sondes du dossier d'audit : verdict ÉCART = `repro` faux = le défaut d'origine
+# n'est PLUS reproduit. Sondes C-LIVE-* écrites pour ce rejeu (source jointe ci-dessous) : --racine <scratch>
+# --sans-fraicheur (la fraîcheur du conteneur est prouvée par les sondes du dossier, lancées SANS --sans-fraicheur
+# sur ce worktree) ; ICI repro=true (verdict REPRO) signifie que le comportement ATTENDU est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8028
+# vite preview --port 5208`), piloté par Playwright MCP, comptes de test acc_acon_dir / acc_acon_dir2 (rôle Directeur,
+# société « Acceptation ACON », seed_catalogue, mot de passe de test généré, base jetable). Page publique : apps/web
+# du commit joué (`PUBLIC_API_BASE=http://127.0.0.1:8028 astro dev --port 5218`).
+# CARTE : la clé MapTiler du .env local est refusée hors *.taqinor.ma (403 sur 127.0.0.1 / localhost, 200 avec
+# Origin taqinor.ma) ; sans style la scène de l'atelier ne s'hydrate pas. Le rejeu sert à la place d'api.maptiler.com
+# un style de FOND NEUTRE local (style.json version 8, une couche background, route Playwright) : aucune tuile, aucune
+# requête MapTiler ; zones, panneaux, cotes, enregistrement et 3D sont ceux de l'application, seul le fond satellite
+# manque. Fixtures FIX-ACON-* : scripts `manage.py shell` sur la base jetable (créations par l'API ou les services, et
+# raccourcis nommés : statut de devis posé par update() quand le geste d'acceptation/envoi n'est pas sous audit).
+# Verdict : FAIL — ÉCHEC (ERR-ACON-REVISION-ARCHIVEE-VERROU) : C-ACON-041 reste REPRO sur le volet archivage : après « Réviser » puis PATCH {is_active:false} de la V2, V1 réactivée mais C reste lié à la V2 archivée (verrouillé), calepinage_du_devis(V1) None et la 3D de V1 CRÉE un 2e calepinage (2 sur le lead). Cause observée : l'abonné relier_calepinage_a_la_version_reactivee échoue sur restaurer_version → VerrouilleRefuse « Devis archivé : il ne se modifie plus » (journalisé, avalé). Volet DELETE : OK (C re-lié à V1, 3D de V1 « existant »)
+
+C-ACON-041 (dossier d'audit) : (a) DELETE V2 204, V1 active acceptée, C.devis = V1 (2324), calepinage_du_devis(V1) = C, ouverture 3D « existant » — attendu observé ; (b) PATCH V2 {is_active:false} 200, V1 active, C.devis == V2 true, C verrouillé, calepinage_du_devis(V1) None, ouverture 3D « cree », 2 calepinages sur le lead ⇒ repro_b true. Diagnostic DBG-041 (même sonde + capture des journaux) : « ACON91 : re-liaison du calepinage à la V1 en échec » — Traceback receivers.py:172 restaurer_version → versions.py:253 verifier_ecriture_autorisee → VerrouilleRefuse {'roof_layout': ['Devis archivé : il ne se modifie plus']}. Volet « refus » non rejoué. Écran non joué (le volet API échoue).
+
+== C-ACON-041 (sha 33cba7f5d)
+attendu : repro si (a) après DELETE V2 : C.devis_id None, calepinage_du_devis(V1) None, adoption de C (empreinte retouchée != V1) ; (b) après archivage V2 : C lié à V2, verrouillé, V1 sans calepinage et sa 3D crée un 2e calepinage ; témoin : après reviser, C lié à V2
+observé : {'a': {'temoin': {'C.devis==V2': True, 'versions': ['Version envoyée — DEV-202611-0001']}, 'delete_http': 204, 'V1_active': True, 'V1_statut': 'accepte', 'C.devis_id_apres': 2324, 'calepinage_du_devis(V1)': 229, 'ouverture_3D_V1': 'existant', 'adopte_est_C': True, 'empreinte_C_retouchee_vs_V1': ['a4ba25dada', 'a4ba25dada']}, 'b': {'temoin': {'C.devis==V2': True, 'versions': ['Version envoyée — DEV-202611-0002']}, 'patch_http': 200, 'patch_detail': None, 'V1_active': True, 'C.devis_id==V2': True, 'C_verrouille': True, 'calepinage_du_devis(V1)': None, 'ouverture_3D_V1': 'cree', 'calepinages_du_lead': 2}}
+{"a": {"temoin": {"C.devis==V2": true, "versions": ["Version envoyée — DEV-202611-0001"]}, "delete_http": 204, "V1_active": true, "V1_statut": "accepte", "C.devis_id_apres": 2324, "calepinage_du_devis(V1)": 229, "ouverture_3D_V1": "existant", "adopte_est_C": true, "empreinte_C_retouchee_vs_V1": ["a4ba25dada", "a4ba25dada"]}, "b": {"temoin": {"C.devis==V2": true, "versions": ["Version envoyée — DEV-202611-0002"]}, "patch_http": 200, "patch_detail": null, "V1_active": true, "C.devis_id==V2": true, "C_verrouille": true, "calepinage_du_devis(V1)": null, "ouverture_3D_V1": "cree", "calepinages_du_lead": 2}, "temoin_ok": true, "repro_a": false, "repro_b": true, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 1557, après 1557) ; mails 0 ; tâches Celery bloquées 0
+
+== DBG-041 (sha 33cba7f5d)
+attendu : repro si (a) après DELETE V2 : C.devis_id None, calepinage_du_devis(V1) None, adoption de C (empreinte retouchée != V1) ; (b) après archivage V2 : C lié à V2, verrouillé, V1 sans calepinage et sa 3D crée un 2e calepinage ; témoin : après reviser, C lié à V2
+observé : {'a': {'temoin': {'C.devis==V2': True, 'versions': ['Version envoyée — DEV-202611-0001']}, 'delete_http': 204, 'V1_active': True, 'V1_statut': 'accepte', 'C.devis_id_apres': 2377, 'calepinage_du_devis(V1)': 305, 'ouverture_3D_V1': 'existant', 'adopte_est_C': True, 'empreinte_C_retouchee_vs_V1': ['a4ba25dada', 'a4ba25dada']}, 'b': {'temoin': {'C.devis==V2': True, 'versions': ['Version envoyée — DEV-202611-0002']}, 'patch_http': 200, 'patch_detail': None, 'V1_active': True, 'C.devis_id==V2': True, 'C_verrouille': True, 'calepinage_du_devis(V1)': None, 'ouverture_3D_V1': 'cree', 'calepinages_du_lead': 2}}
+LOGS ACON91 : re-liaison du calepinage à la V1 en échec (2380 -> 2379)
+Traceback (most recent call last):
+  File "/app/apps/calepinage/receivers.py", line 172, in relier_calepinage_a_la_version_reactivee
+    restaurer_version(envoyee, user=user)
+  File "/app/apps/calepinage/services/versions.py", line 253, in restaurer_version
+    verifier_ecriture_autorisee(calepinage)
+  File "/app/apps/calepinage/services/verrou.py", line 93, in verifier_ecriture_autorisee
+    raise VerrouilleRefuse(
+apps.calepinage.services.verrou.VerrouilleRefuse: {'roof_layout': [ErrorDetail(string='Devis archivé : il ne se modifie plus', code='calepinage_verrouille')]}
+
+{"a": {"temoin": {"C.devis==V2": true, "versions": ["Version envoyée — DEV-202611-0001"]}, "delete_http": 204, "V1_active": true, "V1_statut": "accepte", "C.devis_id_apres": 2377, "calepinage_du_devis(V1)": 305, "ouverture_3D_V1": "existant", "adopte_est_C": true, "empreinte_C_retouchee_vs_V1": ["a4ba25dada", "a4ba25dada"]}, "b": {"temoin": {"C.devis==V2": true, "versions": ["Version envoyée — DEV-202611-0002"]}, "patch_http": 200, "patch_detail": null, "V1_active": true, "C.devis_id==V2": true, "C_verrouille": true, "calepinage_du_devis(V1)": null, "ouverture_3D_V1": "cree", "calepinages_du_lead": 2}, "temoin_ok": true, "repro_a": false, "repro_b": true, "repro": true}
+verdict : REPRO (fraîcheur non vérifiée)
+base inchangée : oui (avant 1659, après 1659) ; mails 0 ; tâches Celery bloquées 0

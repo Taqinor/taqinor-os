@@ -1,0 +1,33 @@
+# Preuve en direct ACON12 — rejeu accept-acon, code joué 325accf80 (origin/main, merge de #1320), 2026-11-10
+# (le code calepinage / ventes / frontend calepinage / apps/web est identique sur c1a99568a, base de cette PR : git diff
+# 325accf80 c1a99568a vide sur ces chemins).
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau accept-acon-net ; accept-acon-db (pgvector pg16,
+# 127.0.0.1:5552, base erp_accept_acon = pg_dump --no-owner de la base locale erp_live en lecture seule, puis
+# `manage.py migrate`) ; accept-acon-redis ; accept-acon-minio (MinIO privé, seaux erp-pdf / erp-uploads) ;
+# accept-acon-dj (image erp-agentique-django_core, code backend du commit joué COPIÉ par tar dans /app, settings.dev,
+# mail locmem, runserver 0.0.0.0:8000 publié sur 127.0.0.1:8028, DB_CONN_MAX_AGE=0).
+# Sondes : python scripts/sonde.py ACON/<sonde> --conteneur accept-acon-dj (transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sondes du dossier d'audit : verdict ÉCART = `repro` faux = le défaut d'origine
+# n'est PLUS reproduit. Sondes C-LIVE-* écrites pour ce rejeu (source jointe ci-dessous) : --racine <scratch>
+# --sans-fraicheur (la fraîcheur du conteneur est prouvée par les sondes du dossier, lancées SANS --sans-fraicheur
+# sur ce worktree) ; ICI repro=true (verdict REPRO) signifie que le comportement ATTENDU est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8028
+# vite preview --port 5208`), piloté par Playwright MCP, comptes de test acc_acon_dir / acc_acon_dir2 (rôle Directeur,
+# société « Acceptation ACON », seed_catalogue, mot de passe de test généré, base jetable). Page publique : apps/web
+# du commit joué (`PUBLIC_API_BASE=http://127.0.0.1:8028 astro dev --port 5218`).
+# CARTE : la clé MapTiler du .env local est refusée hors *.taqinor.ma (403 sur 127.0.0.1 / localhost, 200 avec
+# Origin taqinor.ma) ; sans style la scène de l'atelier ne s'hydrate pas. Le rejeu sert à la place d'api.maptiler.com
+# un style de FOND NEUTRE local (style.json version 8, une couche background, route Playwright) : aucune tuile, aucune
+# requête MapTiler ; zones, panneaux, cotes, enregistrement et 3D sont ceux de l'application, seul le fond satellite
+# manque. Fixtures FIX-ACON-* : scripts `manage.py shell` sur la base jetable (créations par l'API ou les services, et
+# raccourcis nommés : statut de devis posé par update() quand le geste d'acceptation/envoi n'est pas sous audit).
+# Verdict : PASS — écran PA2.1 : calepinage d'un devis REFUSÉ « Archiver » → 200, puis « Ouvrir dans le module Calepinage » depuis le lead ⇒ calepinage neuf #287 (201 cree:true) ; C-ACON-062 repro faux
+
+FIX-ACON-R : lead 3480, calepinage #286, generer-devis 201 → devis 2367 posé REFUSÉ. Écran /calepinage/286 : « Archiver » → « Confirmer l’archivage » ⇒ POST archiver/ 200 {"calepinage":286,"archive":true} ; fiche du lead /crm/leads/3480 › « Plus d'actions » › « Ouvrir dans le module Calepinage » ⇒ POST depuis-lead/ 201 {"calepinage":287,"cree":true} (calepinage neuf). C-ACON-062 repro False (refusé : archiver 200, peut_supprimer vrai, ouvert du lead libéré, depuis-lead 201 crée).
+
+== C-ACON-062 (sha 819fe0f8c)
+attendu : repro si, devis refuse : est_verrouille vrai, archiver refuse avec « détachez », peut_supprimer faux, depuis-lead 200 cree=False sur ce calepinage, POST calepinages {lead} 409
+observé : {"refuse": {"est_verrouille": true, "detail_peut_supprimer": true, "archiver_http": 200, "archiver_corps": null, "archive_apres": true, "ouvert_du_lead": null, "depuis_lead_http": 201, "depuis_lead_cree": true, "depuis_lead_calepinage": 243, "creer_http": 409, "creer_corps": "{'lead': 'Ce lead a déjà un calepinage ouvert (#243) : ouvrez-le, ou créez une variante.', 'calepinage_existant': 243}", "dupliquer_sans_cible_http": 409, "ecrire_layout_http": 409, "ecrire_layout_corps": "{'detail': ErrorDetail(string='Calepinage archivé : restaurez-le avant toute modification.', code='calepinage_archive'), 'error': {'code': 'api_error', 'message"}, "expire": {"est_verrouille": false, "detail_peut_supprimer": true, "archiver_http": 200, "archiver_corps": null, "archive_apres": true, "ouvert_du_lead": 243, "depuis_lead_http": 200, "depuis_lead_cree": false, "depuis_lead_calepinage": 243, "creer_http": 409, "creer_corps": "{'lead': 'Ce lead a déjà un calepinage ouvert (#243) : ouvrez-le, ou créez une variante.', 'calepinage_existant': 243}", "dupliquer_sans_cible_http": 409, "ecrire_layout_http": 409, "ecrire_layout_corps": "{'detail': ErrorDetail(string='Calepinage archivé : restaurez-le avant toute modification.', code='calepinage_archive'), 'error': {'code': 'api_error', 'message"}}
+{"refuse": {"est_verrouille": true, "detail_peut_supprimer": true, "archiver_http": 200, "archiver_corps": null, "archive_apres": true, "ouvert_du_lead": null, "depuis_lead_http": 201, "depuis_lead_cree": true, "depuis_lead_calepinage": 243, "creer_http": 409, "creer_corps": "{'lead': 'Ce lead a déjà un calepinage ouvert (#243) : ouvrez-le, ou créez une variante.', 'calepinage_existant': 243}", "dupliquer_sans_cible_http": 409, "ecrire_layout_http": 409, "ecrire_layout_corps": "{'detail': ErrorDetail(string='Calepinage archivé : restaurez-le avant toute modification.', code='calepinage_archive'), 'error': {'code': 'api_error', 'message"}, "expire": {"est_verrouille": false, "detail_peut_supprimer": true, "archiver_http": 200, "archiver_corps": null, "archive_apres": true, "ouvert_du_lead": 243, "depuis_lead_http": 200, "depuis_lead_cree": false, "depuis_lead_calepinage": 243, "creer_http": 409, "creer_corps": "{'lead': 'Ce lead a déjà un calepinage ouvert (#243) : ouvrez-le, ou créez une variante.', 'calepinage_existant': 243}", "dupliquer_sans_cible_http": 409, "ecrire_layout_http": 409, "ecrire_layout_corps": "{'detail': ErrorDetail(string='Calepinage archivé : restaurez-le avant toute modification.', code='calepinage_archive'), 'error': {'code': 'api_error', 'message"}, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 1471, après 1471) ; mails 0 ; tâches Celery bloquées 0

@@ -1,0 +1,34 @@
+# Preuve en direct ACON20 — rejeu accept-acon, code joué 325accf80 (origin/main, merge de #1320), 2026-11-10
+# (le code calepinage / ventes / frontend calepinage / apps/web est identique sur c1a99568a, base de cette PR : git diff
+# 325accf80 c1a99568a vide sur ces chemins).
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau accept-acon-net ; accept-acon-db (pgvector pg16,
+# 127.0.0.1:5552, base erp_accept_acon = pg_dump --no-owner de la base locale erp_live en lecture seule, puis
+# `manage.py migrate`) ; accept-acon-redis ; accept-acon-minio (MinIO privé, seaux erp-pdf / erp-uploads) ;
+# accept-acon-dj (image erp-agentique-django_core, code backend du commit joué COPIÉ par tar dans /app, settings.dev,
+# mail locmem, runserver 0.0.0.0:8000 publié sur 127.0.0.1:8028, DB_CONN_MAX_AGE=0).
+# Sondes : python scripts/sonde.py ACON/<sonde> --conteneur accept-acon-dj (transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sondes du dossier d'audit : verdict ÉCART = `repro` faux = le défaut d'origine
+# n'est PLUS reproduit. Sondes C-LIVE-* écrites pour ce rejeu (source jointe ci-dessous) : --racine <scratch>
+# --sans-fraicheur (la fraîcheur du conteneur est prouvée par les sondes du dossier, lancées SANS --sans-fraicheur
+# sur ce worktree) ; ICI repro=true (verdict REPRO) signifie que le comportement ATTENDU est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8028
+# vite preview --port 5208`), piloté par Playwright MCP, comptes de test acc_acon_dir / acc_acon_dir2 (rôle Directeur,
+# société « Acceptation ACON », seed_catalogue, mot de passe de test généré, base jetable). Page publique : apps/web
+# du commit joué (`PUBLIC_API_BASE=http://127.0.0.1:8028 astro dev --port 5218`).
+# CARTE : la clé MapTiler du .env local est refusée hors *.taqinor.ma (403 sur 127.0.0.1 / localhost, 200 avec
+# Origin taqinor.ma) ; sans style la scène de l'atelier ne s'hydrate pas. Le rejeu sert à la place d'api.maptiler.com
+# un style de FOND NEUTRE local (style.json version 8, une couche background, route Playwright) : aucune tuile, aucune
+# requête MapTiler ; zones, panneaux, cotes, enregistrement et 3D sont ceux de l'application, seul le fond satellite
+# manque. Fixtures FIX-ACON-* : scripts `manage.py shell` sur la base jetable (créations par l'API ou les services, et
+# raccourcis nommés : statut de devis posé par update() quand le geste d'acceptation/envoi n'est pas sous audit).
+# Verdict : PASS — page publique du devis envoyé = PDF : 8 357 kWh/an (avant et après PUT des réglages + re-simulation, perte rangée 8,0 %) ; C-ACON-020 repro faux. OBSERVATION optionnelle : total du graphe mensuel « 8 358 kWh/an » (somme des mois arrondis)
+
+FIX-ACON-20 : devis 2368 : empreinte imprimée posée = celle du calepinage 288, études rafraîchies (bloc horaire rangé ombrage {source calepinage, perte_pct 8,0}, production 8 356,93), statut envoye (raccourci comme C-ACON-020), lien de partage. m0 : PDF /proposal (3 pages) « 8 357 kWh/an » ; page publique /proposition/<token> (apps/web astro dev, PUBLIC_API_BASE = API privée) : « 8 357 kWh / an » (en-tête) et « 8 357 kWh ». Puis PUT parametres simulation (fenetre_annees 2018-2019) 200 + re-simulation du calepinage : perte lue 8,0, bloc 8 356,93 ; PDF « 8 357 kWh/an » ; page « 8 357 ». C-ACON-020 repro False. OBSERVATION (hors périmètre ACON20, optionnelle) : le libellé total du graphe mensuel de la page dit « 8 358 kWh/an » (somme des mois arrondis), à côté du 8 357 de l'en-tête.
+PDF /proposal : 200 application/pdf, 3 pages, 477 960 octets, aucun « prix d'achat » / « marge » dans le texte.
+
+== C-ACON-020 (sha 33cba7f5d)
+attendu : repro si la perte d'ombrage (et un chiffre client) d'un devis envoye change apres un PUT reglages, et si simuler/recalculer ne sont pas refuses (409) sur le calepinage d'un devis envoye
+observé : {"put_reglages_initial": 200, "simulation_lue": "{'mode_meteo': {'source': 'societe', 'valeur': 'pluriannuel', 'reference': 'choix du bureau d’études'}, 'fenetre_annees': {'source': 'societe', 'valeur': [2020, 2021], 'reference': 'base PVGIS disponible'}}", "perte_apres_simulation": 8.0, "perte_apres_rafraichir_etudes": 8.0, "entree_electrique_change_par_rafraichir": false, "hash_sim_inchange": true, "regles_calcul": 12, "statut": "envoye", "put_reglages_sigma": 200, "simuler_http": 202, "simuler_corps": "b'{\"job_id\":1}'", "recalculer_http": 202, "recalculer_corps": "b'{\"soumis\":1,\"jobs\":[{\"calepinage\":216,\"job_id\":2}],\"reste\":0}'", "put_reglages_sigma_2": 200, "m0_frais": {"perte_ombrage_pct": 8.0, "horaire_live_production_kwh": 8356.88, "horaire_live_economie_sans": 5478.67, "horaire_range_production_kwh": 8356.88, "proposal_http": 200, "proposal_ctype": "application/pdf", "public_http": 200}, "m1_apres_put_reglage": {"perte_ombrage_pct": 8.0, "horaire_live_production_kwh": 8356.88, "horaire_live_economie_sans": 5478.67, "horaire_range_production_kwh": 8356.88, "proposal_http": 200, "proposal_ctype": "application/pdf", "public_http": 200}, "m2_apres_resimulation": {"perte_ombrage_pct": 8.0, "horaire_live_production_kwh": 8356.88, "horaire_live_economie_sans": 5478.67, "horaire_range_production_kwh": 8356.88, "proposal_http": 200, "proposal_ctype": "application/pdf", "public_http": 200}, "m3_apres_second_reglage": {"perte_ombrage_pct": 8.0, "horaire_live_production_kwh": 8356.88, "horaire_live_economie_sans": 5478.67, "horaire_range_production_kwh": 8356.88, "proposal_http": 200, "proposal_ctype": "application/pdf", "public_http": 200}, "diff_public_m0_m2": {"nb": 0, "exemples": []}, "diff_proposal_m0_m2": {"nb": 0, "exemples": []}, "diff_public_m2_m3": {"nb": 0, "exemples": []}, "diff_proposal_m2_m3": {"nb": 0, "exemples": []}, "repro": false, "nb_chiffres_proposal_compares": 874}
+{"repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 1472, après 1472) ; mails 0 ; tâches Celery bloquées 0

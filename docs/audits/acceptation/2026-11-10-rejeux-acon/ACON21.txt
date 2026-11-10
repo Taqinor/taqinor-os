@@ -1,0 +1,33 @@
+# Preuve en direct ACON21 — rejeu accept-acon, code joué 325accf80 (origin/main, merge de #1320), 2026-11-10
+# (le code calepinage / ventes / frontend calepinage / apps/web est identique sur c1a99568a, base de cette PR : git diff
+# 325accf80 c1a99568a vide sur ces chemins).
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau accept-acon-net ; accept-acon-db (pgvector pg16,
+# 127.0.0.1:5552, base erp_accept_acon = pg_dump --no-owner de la base locale erp_live en lecture seule, puis
+# `manage.py migrate`) ; accept-acon-redis ; accept-acon-minio (MinIO privé, seaux erp-pdf / erp-uploads) ;
+# accept-acon-dj (image erp-agentique-django_core, code backend du commit joué COPIÉ par tar dans /app, settings.dev,
+# mail locmem, runserver 0.0.0.0:8000 publié sur 127.0.0.1:8028, DB_CONN_MAX_AGE=0).
+# Sondes : python scripts/sonde.py ACON/<sonde> --conteneur accept-acon-dj (transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sondes du dossier d'audit : verdict ÉCART = `repro` faux = le défaut d'origine
+# n'est PLUS reproduit. Sondes C-LIVE-* écrites pour ce rejeu (source jointe ci-dessous) : --racine <scratch>
+# --sans-fraicheur (la fraîcheur du conteneur est prouvée par les sondes du dossier, lancées SANS --sans-fraicheur
+# sur ce worktree) ; ICI repro=true (verdict REPRO) signifie que le comportement ATTENDU est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8028
+# vite preview --port 5208`), piloté par Playwright MCP, comptes de test acc_acon_dir / acc_acon_dir2 (rôle Directeur,
+# société « Acceptation ACON », seed_catalogue, mot de passe de test généré, base jetable). Page publique : apps/web
+# du commit joué (`PUBLIC_API_BASE=http://127.0.0.1:8028 astro dev --port 5218`).
+# CARTE : la clé MapTiler du .env local est refusée hors *.taqinor.ma (403 sur 127.0.0.1 / localhost, 200 avec
+# Origin taqinor.ma) ; sans style la scène de l'atelier ne s'hydrate pas. Le rejeu sert à la place d'api.maptiler.com
+# un style de FOND NEUTRE local (style.json version 8, une couche background, route Playwright) : aucune tuile, aucune
+# requête MapTiler ; zones, panneaux, cotes, enregistrement et 3D sont ceux de l'application, seul le fond satellite
+# manque. Fixtures FIX-ACON-* : scripts `manage.py shell` sur la base jetable (créations par l'API ou les services, et
+# raccourcis nommés : statut de devis posé par update() quand le geste d'acceptation/envoi n'est pas sous audit).
+# Verdict : PASS — sonde C-ACON-021 repro faux : conception gagnant un pan (8 → 16 modules) ⇒ ombrage_servi périmé, perte_ombrage_du_devis None (plus la perte de l'autre conception)
+
+Preuve en direct = sonde seule (clause de la tâche).
+
+== C-ACON-021 (sha 33cba7f5d)
+attendu : repro si conception divergente (planche retiree) ET perte_ombrage_du_devis = perte de H2 (!= H1) appliquee a la production client
+observé : {"put_reglages": 200, "h1": {"devis_layout_hash": "9c83e1b7f4", "calepinage_layout_hash": "9c83e1b7f4", "modules_calepinage": 8, "conception_divergente_ACAL46": false, "ombrage_servi_perime": false, "ombrage_servi_global": 3.2, "perte_ombrage_du_devis": 3.2, "horaire_devis_production_kwh_5_68kwc": 8792.89, "public_http": 404, "public_layout_stale": null, "public_production_annuelle_sans": null, "public_kwc_sans": null}, "h2": {"devis_layout_hash": "9c83e1b7f4", "calepinage_layout_hash": "dd648d612a", "modules_calepinage": 16, "conception_divergente_ACAL46": true, "ombrage_servi_perime": true, "ombrage_servi_global": null, "perte_ombrage_du_devis": null, "horaire_devis_production_kwh_5_68kwc": 9083.56, "public_http": 404, "public_layout_stale": null, "public_production_annuelle_sans": null, "public_kwc_sans": null}, "repro": false}
+{"repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 1471, après 1471) ; mails 0 ; tâches Celery bloquées 0

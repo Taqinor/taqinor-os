@@ -1,0 +1,33 @@
+# Preuve en direct ACON42 — rejeu accept-acon, code joué 325accf80 (origin/main, merge de #1320), 2026-11-10
+# (le code calepinage / ventes / frontend calepinage / apps/web est identique sur c1a99568a, base de cette PR : git diff
+# 325accf80 c1a99568a vide sur ces chemins).
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau accept-acon-net ; accept-acon-db (pgvector pg16,
+# 127.0.0.1:5552, base erp_accept_acon = pg_dump --no-owner de la base locale erp_live en lecture seule, puis
+# `manage.py migrate`) ; accept-acon-redis ; accept-acon-minio (MinIO privé, seaux erp-pdf / erp-uploads) ;
+# accept-acon-dj (image erp-agentique-django_core, code backend du commit joué COPIÉ par tar dans /app, settings.dev,
+# mail locmem, runserver 0.0.0.0:8000 publié sur 127.0.0.1:8028, DB_CONN_MAX_AGE=0).
+# Sondes : python scripts/sonde.py ACON/<sonde> --conteneur accept-acon-dj (transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sondes du dossier d'audit : verdict ÉCART = `repro` faux = le défaut d'origine
+# n'est PLUS reproduit. Sondes C-LIVE-* écrites pour ce rejeu (source jointe ci-dessous) : --racine <scratch>
+# --sans-fraicheur (la fraîcheur du conteneur est prouvée par les sondes du dossier, lancées SANS --sans-fraicheur
+# sur ce worktree) ; ICI repro=true (verdict REPRO) signifie que le comportement ATTENDU est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8028
+# vite preview --port 5208`), piloté par Playwright MCP, comptes de test acc_acon_dir / acc_acon_dir2 (rôle Directeur,
+# société « Acceptation ACON », seed_catalogue, mot de passe de test généré, base jetable). Page publique : apps/web
+# du commit joué (`PUBLIC_API_BASE=http://127.0.0.1:8028 astro dev --port 5218`).
+# CARTE : la clé MapTiler du .env local est refusée hors *.taqinor.ma (403 sur 127.0.0.1 / localhost, 200 avec
+# Origin taqinor.ma) ; sans style la scène de l'atelier ne s'hydrate pas. Le rejeu sert à la place d'api.maptiler.com
+# un style de FOND NEUTRE local (style.json version 8, une couche background, route Playwright) : aucune tuile, aucune
+# requête MapTiler ; zones, panneaux, cotes, enregistrement et 3D sont ceux de l'application, seul le fond satellite
+# manque. Fixtures FIX-ACON-* : scripts `manage.py shell` sur la base jetable (créations par l'API ou les services, et
+# raccourcis nommés : statut de devis posé par update() quand le geste d'acceptation/envoi n'est pas sous audit).
+# Verdict : PASS — écran atelier › Documents › « Remettre » la planche, devis accepté 2,1 kWc et conception à 6 panneaux ⇒ 409 nommant le devis, message sous la carte ; C-ACON-042 repro faux (generer-dossier et pack-technique 409). DÉFAUT CONNEXE signalé : la carte affiche aussi une ligne « error — [object Object] » (ERR-ACON-ERREUR-OBJET-AFFICHEE)
+
+FIX-ACON-G0 : calepinage #290, devis DEV-202611-0027 (2369, 3 × 710 W) posé ACCEPTÉ (raccourci) après que la conception est passée à 6 panneaux (ACON86). Écran /calepinage/290?onglet=documents › carte « Planche de calepinage cotée (A3) » › « Remettre » ⇒ POST remettre-document/ {code planche_pdf} 409 {"conception":"La conception diffère du devis DEV-202611-0027 (accepté, 2,1 kWc) : resynchronisez ou révisez avant de produire cette pièce.","devis":"DEV-202611-0027","error":{…}} ; sous la carte : « conception — La conception diffère du devis … » / « devis — DEV-202611-0027 » / « error — [object Object] » (l'enveloppe d'erreur rendue comme un champ : défaut d'affichage, le message nommé est bien là).
+
+== C-ACON-042 (sha 33cba7f5d)
+attendu : repro si, conception 8,8 kWc ≠ devis accepté 6,6 kWc (divergence vue par le prédicat /proposal), generer-dossier rend 200 sans signalement avec « Puissance 8,8 » imprimée et pack-technique 201
+observé : {'ecriture_layout_devis_envoye': [200, None], 'empreintes_differentes': True, 'temoin_proposal_planche_retiree': True, 'devis_kwc_layout': 6.6, 'infos_calepinage': {'puissance_kwc': 8.8, 'nombre_modules': 16}, 'generer_dossier': {'http': 409, 'signalements': None, 'pieces': "{'conception': ErrorDetail(string='La conception (8,8 kWc) diffère du devis DEV-202611-0001 (accepté, 8,5 kWc) : resynchronisez ou révisez avant de produire cette pièce.', code='piece_non_publiable'),", 'texte_pdf_champs': []}, 'pack_technique': {'http': 409, 'signalements': None}}
+{"ecriture_layout_devis_envoye": [200, null], "empreintes_differentes": true, "temoin_proposal_planche_retiree": true, "devis_kwc_layout": 6.6, "infos_calepinage": {"puissance_kwc": 8.8, "nombre_modules": 16}, "generer_dossier": {"http": 409, "signalements": null, "pieces": "{'conception': ErrorDetail(string='La conception (8,8 kWc) diffère du devis DEV-202611-0001 (accepté, 8,5 kWc) : resynchronisez ou révisez avant de produire cette pièce.', code='piece_non_publiable'),", "texte_pdf_champs": []}, "pack_technique": {"http": 409, "signalements": null}, "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 1677, après 1677) ; mails 0 ; tâches Celery bloquées 0
