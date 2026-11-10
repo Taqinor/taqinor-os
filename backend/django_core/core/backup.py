@@ -986,6 +986,11 @@ def resume_sauvegardes(company):
     Renvoie ``{derniere_sauvegarde, dernier_drill, rpo_planifie,
     rto_annonce_heures}`` — chaque champ ``None`` quand la donnée n'existe
     pas encore (jamais un défaut forfaitaire affiché comme réel)."""
+    from django.db.models.functions import Coalesce
+
+    # ADCG41 — le plus RÉCENT, réussi ou non : un échec sans `termine_le`
+    # (NULL en tête d'un tri décroissant) ne masque plus les succès suivants.
+    recent = (Coalesce('termine_le', 'created_at').desc(), '-id')
     # ADCG34 — seul un dump réel compte : un export FG395 n'est qu'un
     # manifeste de comptages (aucun artefact restaurable).
     derniere_sauvegarde = (
@@ -994,13 +999,13 @@ def resume_sauvegardes(company):
             kind=BackupRun.KIND_DB_DUMP, company__isnull=True,
             statut=BackupRun.STATUT_TERMINE, purge_is_deleted=False,
         )
-        .order_by('-termine_le', '-created_at')
+        .order_by(*recent)
         .first()
     )
     dernier_drill = (
         BackupRun.objects
         .filter(kind=BackupRun.KIND_RESTORE_DRILL, company__isnull=True)
-        .order_by('-termine_le', '-created_at')
+        .order_by(*recent)
         .first()
     )
 

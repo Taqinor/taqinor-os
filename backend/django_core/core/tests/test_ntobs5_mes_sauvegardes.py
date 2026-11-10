@@ -85,6 +85,32 @@ class ResumeSauvegardesTest(TestCase):
         self.assertIsNotNone(resume['dernier_drill'])
         self.assertEqual(resume['dernier_drill']['statut'], 'echec')
 
+    def test_dernier_drill_le_plus_recent_meme_si_echecs_sans_fin(self):
+        """ADCG41 — échecs SANS termine_le (NULL) puis succès : le dernier
+        succès est servi ; un échec plus récent ensuite ⇒ cet échec."""
+        maintenant = timezone.now()
+
+        def drill(statut, jours, termine):
+            date = maintenant - datetime.timedelta(days=jours)
+            run = BackupRun.objects.create(
+                company=None, kind=BackupRun.KIND_RESTORE_DRILL, statut=statut,
+                termine_le=date if termine else None)
+            BackupRun.objects.filter(pk=run.pk).update(created_at=date)
+            return date
+
+        for jours in range(48, 35, -1):  # 13 échecs jusqu'à J-36
+            drill(BackupRun.STATUT_ECHEC, jours, termine=False)
+        for jours in (29, 22, 15, 8, 1):  # 5 succès depuis
+            dernier_succes = drill(BackupRun.STATUT_TERMINE, jours, termine=True)
+        resume = resume_sauvegardes(self.company)
+        self.assertEqual(resume['dernier_drill'],
+                         {'date': dernier_succes.isoformat(), 'statut': 'termine'})
+
+        echec_recent = drill(BackupRun.STATUT_ECHEC, 0, termine=False)
+        resume = resume_sauvegardes(self.company)
+        self.assertEqual(resume['dernier_drill'],
+                         {'date': echec_recent.isoformat(), 'statut': 'echec'})
+
 
 class MesSauvegardesEndpointTest(TestCase):
     def setUp(self):
