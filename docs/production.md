@@ -72,6 +72,9 @@ entre crochets évite qu'un `pgrep` lancé par SSH se trouve lui-même).
 | `DJANGO_ADMIN_URL` | **POSÉE le 10/10/2026** (décision de Reda) : chemin aléatoire SOUS `api/django/`, terminé par `/` ; la valeur n'existe QUE dans le `.env` serveur, jamais au dépôt ni dans un chat — la lire : `grep '^DJANGO_ADMIN_URL=' /opt/taqinor-os/.env` | oui (décision) | l'ancien `/api/django/admin/` répond 404 ; le login `<DJANGO_ADMIN_URL>login/` reste plafonné par nginx (`login_limit`, ASEC47). Hors `api/django/`, nginx ne relaierait pas l'admin |
 | `PUBLIC_BASE_URL` | `https://api.taqinor.ma` | recommandé | liens client relatifs (comportement historique) |
 | `LOG_LEVEL` | `INFO` | non | défaut `INFO` (journaux lisibles sans DEBUG) |
+| `SENTRY_DSN` | le DSN du projet Sentry backend (D-JPB-2) | pour les alarmes | **si absente : alarme muette** — aucune exception serveur remontée ; recette : `docs/problemes-prod.md` |
+| `SENTRY_RELEASE` | le commit servi (repli de `DEPLOYED_SHA`, posé par le deploy) | non | **si absente : alarme muette** sur la version — pics d'erreurs non rattachés à un deploy ; voir `docs/problemes-prod.md` |
+| `PROBLEMES_RESUME_TOKEN` | jeton de service de la routine du tri quotidien (BPQ4) | pour les alarmes | **si absente : alarme muette** — le résumé `problemes/resume/` reste fermé, le tri ne tourne jamais (bandeau « jamais tourné » chez les superusers) ; voir `docs/problemes-prod.md` |
 
 ### Avertissements acceptés de `manage.py check --deploy`
 
