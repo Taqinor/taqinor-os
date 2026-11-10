@@ -1183,13 +1183,13 @@ class Ticket(models.Model):
             return 0
         today = today or timezone.localdate()
         if self._sla_jours_ouvres():
-            # ASAV16 — sous ``sla_jours_ouvres`` la pause compte des jours
-            # OUVRÉS écoulés (week-ends et fériés exclus).
-            from core.calendar import count_working_days
-            if today <= self.attente_depuis:
-                return 0
-            return count_working_days(
-                self.attente_depuis, today - timezone.timedelta(days=1))
+            # ASAV16/ASOC105 — sous ``sla_jours_ouvres`` la pause compte les
+            # jours OUVRÉS écoulés du calendrier de la SOCIÉTÉ (même calendrier
+            # que ``ajouter_jours_ouvres`` de ``sla_due_at_effectif``).
+            from apps.notifications.calendar_utils import jours_ouvres_entre
+            veille = today - timezone.timedelta(days=1)  # bornes vides → 0
+            return len(jours_ouvres_entre(
+                self.company, self.attente_depuis, veille))
         return max(0, (today - self.attente_depuis).days)
 
     def _sla_jours_ouvres(self):
