@@ -1514,7 +1514,7 @@ class DataSubjectRequestViewSet(TenantMixin, viewsets.ModelViewSet):
     """
     parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     serializer_class = DataSubjectRequestSerializer
-    permission_classes = [IsAdminOrResponsableTier]
+    permission_classes = [IsAdminOrResponsableTier, HasPermissionOrLegacy('dsr_traiter')]  # APFS45 (D-APFS-1)
     queryset = DataSubjectRequest.objects.all()
     # AUD809 — append-only ; ``traiter`` (POST) reste le seul chemin d'évolution.
     http_method_names = ['get', 'post', 'head', 'options']
