@@ -62,6 +62,7 @@ import {
   TICKET_TYPES,
   TICKET_PRIORITES,
   TICKET_PRIORITE_LABELS,
+  prioriteBulkLabel,
   SOUS_GARANTIE_OPTIONS,
   SOUS_GARANTIE_LABELS,
   filterTickets,
@@ -2388,9 +2389,9 @@ export default function TicketsPage() {
                   })),
                   // ZSAV10 — priorité en lot (nouveau, n'existait pas avant).
                   ...TICKET_PRIORITES.map((p) => ({
-                    id: `priorite-${p}`,
-                    label: `Priorité → ${TICKET_PRIORITE_LABELS[p]}`,
-                    onClick: () => bulkAction(selKeys, 'priorite', { priorite: p }, clear),
+                    id: `priorite-${p.value}`,
+                    label: prioriteBulkLabel(p),
+                    onClick: () => bulkAction(selKeys, 'priorite', { priorite: p.value }, clear),
                   })),
                   // ZSAV10 — annulation en lot (nouveau, n'existait pas avant).
                   {

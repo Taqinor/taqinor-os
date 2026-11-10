@@ -15,6 +15,8 @@ import {
   statusCounts,
   statusCountsIndependants,
   filtresPourStatut,
+  TICKET_PRIORITES,
+  prioriteBulkLabel,
 } from './ticketStatuses.js'
 
 test("les 5 statuts ticket, dans l'ordre d'entonnoir", () => {
@@ -149,4 +151,10 @@ test('ACSV106 — compteurs indépendants du filtre de statut et de « Ouverts s
   assert.equal(filterTickets(items, f).length, 2)
   assert.deepEqual([filtresPourStatut(f, 'resolu').statut, filtresPourStatut(EMPTY_TICKET_FILTERS, 'nouveau').ouvert],
     ['', 'ouverts'])
+})
+
+test('ERR-SAV-BULK-PRIORITE-UNDEFINED — libellés de priorité en lot sans « undefined »', () => {
+  const labels = TICKET_PRIORITES.map(prioriteBulkLabel)
+  assert.deepEqual(labels, ['Priorité → Basse', 'Priorité → Normale', 'Priorité → Haute', 'Priorité → Urgente'])
+  for (const l of labels) assert.ok(!l.includes('undefined'), l)
 })

@@ -45,6 +45,8 @@ export const TICKET_PRIORITES = [
 export const TICKET_PRIORITE_LABELS = {
   basse: 'Basse', normale: 'Normale', haute: 'Haute', urgente: 'Urgente',
 }
+// Libellé du bouton de priorité en lot (TICKET_PRIORITES = objets {value,label}).
+export const prioriteBulkLabel = (p) => `Priorité → ${p.label}`
 const PRIO_RANK = { basse: 0, normale: 1, haute: 2, urgente: 3 }
 
 export const SOUS_GARANTIE_OPTIONS = [
