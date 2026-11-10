@@ -392,6 +392,7 @@ export const ALL_HOOKS = [
   'cal-releve-azimut-retour',
   'cal-releve-azimut-lecture-seule',
   'cal-releve-cote-lecture-seule',
+  'cal-releve-lecture-seule',
   'cal-releve-azimut-appliquer',
   'cal-releve-azimut-pan',
   'cal-releve-azimut-mesure',
