@@ -74,6 +74,7 @@ class DumpDatabaseOffsiteTests(TestCase):
         SCA13 — le run termine, AUCUN appel au client hors-boîte."""
         run = self._make_run()
         fake_minio = mock.Mock()
+        fake_minio.list_objects_v2.return_value = {'Contents': []}  # ADCG30 : buckets vides
 
         with mock.patch.dict(os.environ, {}, clear=False):
             for key in _OFFSITE_ENV:
@@ -92,6 +93,7 @@ class DumpDatabaseOffsiteTests(TestCase):
     def test_dump_with_offsite_env_pushes_and_stays_termine(self):
         run = self._make_run()
         fake_minio = mock.Mock()
+        fake_minio.list_objects_v2.return_value = {'Contents': []}  # ADCG30 : buckets vides
         fake_offsite = mock.Mock()
         fake_offsite.list_objects_v2.return_value = {'Contents': []}
 
@@ -115,6 +117,7 @@ class DumpDatabaseOffsiteTests(TestCase):
         jamais un nouveau point de défaillance pour le backup principal)."""
         run = self._make_run()
         fake_minio = mock.Mock()
+        fake_minio.list_objects_v2.return_value = {'Contents': []}  # ADCG30 : buckets vides
 
         with mock.patch.dict(os.environ, _OFFSITE_ENV, clear=False), \
                 mock.patch('subprocess.run', side_effect=self._fake_write), \

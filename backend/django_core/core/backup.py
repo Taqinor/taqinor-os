@@ -252,6 +252,17 @@ def dump_database(run: BackupRun) -> BackupRun:
             run.save(update_fields=['statut', 'detail', 'updated_at'])
             return run
 
+        # ADCG30 — les fichiers métier suivent le dump : un échec de copie
+        # fait échouer le run (même règle que l'upload du dump).
+        try:
+            fichiers = sauvegarder_fichiers(client)
+        except Exception as exc:  # noqa: BLE001 — échec copie = échec du run (D-ENF22-BLE001)
+            logger.warning("dump database : échec de la copie des fichiers", exc_info=True)
+            run.statut = BackupRun.STATUT_ECHEC
+            run.detail = {'message': f'Échec de la copie des fichiers : {exc}'}
+            run.save(update_fields=['statut', 'detail', 'updated_at'])
+            return run
+
         # SCA13 — copie hors-boîte, best-effort, APRÈS le succès du backup
         # local (MinIO reste la source de vérité du statut du run). Le
         # fichier local (dump_path) existe encore ICI, dans le `with`
@@ -264,10 +275,64 @@ def dump_database(run: BackupRun) -> BackupRun:
     run.statut = BackupRun.STATUT_TERMINE
     run.termine_le = timezone.now()
     run.detail = {'message': 'pg_dump réussi et déposé dans MinIO.',
-                  'bytes': taille, 'offsite': offsite_detail}
+                  'bytes': taille, 'offsite': offsite_detail,
+                  'fichiers': fichiers}
     run.save(update_fields=['object_key', 'bytes_taille', 'artifact_ref',
                             'statut', 'termine_le', 'detail', 'updated_at'])
     return run
+
+
+def _lister_objets(client, bucket, prefix=''):
+    """``{clé: (taille, etag)}`` de tous les objets (pagination par jeton)."""
+    objets, kw = {}, {'Bucket': bucket, 'Prefix': prefix}
+    while True:
+        try:
+            resp = client.list_objects_v2(**kw)
+        except Exception as exc:  # bucket encore jamais créé = vide ; le reste remonte
+            if getattr(exc, 'response', {}).get('Error', {}).get('Code') == 'NoSuchBucket':
+                return objets
+            raise
+        for obj in resp.get('Contents', []):
+            objets[obj['Key']] = (obj.get('Size'), obj.get('ETag'))
+        if not resp.get('IsTruncated'):
+            return objets
+        kw['ContinuationToken'] = resp.get('NextContinuationToken')
+
+
+def sauvegarder_fichiers(client):
+    """ADCG30 — copie INCRÉMENTALE des buckets métier sous
+    ``erp-backups/fichiers/<bucket>/<clé>`` (objet absent ou taille/ETag
+    différent ⇒ copie ; jamais de suppression : un objet effacé à la source
+    reste dans la copie), puis vers la cible hors-boîte si configurée
+    (best-effort, comme le dump). Lève en nommant le bucket fautif."""
+    cfg = _offsite_settings()
+    resultat = {}
+    for bucket in (settings.MINIO_BUCKET_UPLOADS, settings.MINIO_BUCKET_PDF):
+        prefixe = f'fichiers/{bucket}/'
+        try:
+            source = _lister_objets(client, bucket)
+            copie = _lister_objets(client, BACKUP_BUCKET, prefixe)
+            for cle, meta in source.items():
+                if copie.get(prefixe + cle) != meta:
+                    client.copy_object(Bucket=BACKUP_BUCKET, Key=prefixe + cle,
+                                       CopySource={'Bucket': bucket, 'Key': cle})
+        except Exception as exc:
+            raise RuntimeError(f'bucket {bucket} : {exc}') from exc
+        resultat[bucket] = {'objets': len(source),
+                            'octets': sum(t or 0 for t, _e in source.values())}
+        if _offsite_configured(cfg):
+            try:
+                distant = _offsite_client(cfg)
+                deja = _lister_objets(distant, cfg['bucket'], prefixe)
+                for cle, (taille, _etag) in source.items():
+                    if (deja.get(prefixe + cle) or (None,))[0] != taille:
+                        corps = client.get_object(Bucket=bucket, Key=cle)['Body']
+                        distant.upload_fileobj(corps, cfg['bucket'], prefixe + cle)
+                resultat[bucket]['offsite'] = 'ok'
+            except Exception as exc:  # noqa: BLE001 — best-effort comme le dump (D-ENF22-BLE001)
+                logger.warning('ADCG30: copie hors-boîte %s en échec: %s', bucket, exc)
+                resultat[bucket]['offsite'] = f'echec: {exc}'
+    return resultat
 
 
 # ---------------------------------------------------------------------------
