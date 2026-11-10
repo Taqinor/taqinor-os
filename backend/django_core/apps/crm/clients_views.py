@@ -493,7 +493,9 @@ class AppareilEquipeViewSet(CorpsTexteMixin, mixins.ListModelMixin,
         # y compris une @action, et un repli non délégué rendrait la déclaration
         # inline purement décorative (ici : plus restrictive, donc l'action
         # deviendrait inaccessible au commercial qu'elle vise).
-        if self.action in ('list', 'ce_navigateur'):
+        if self.action == 'ce_navigateur':  # QJ-EQUIPE-3 : tout rôle (Header)
+            return [IsAnyRole()]
+        if self.action == 'list':
             return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
