@@ -1275,13 +1275,9 @@ class ParrainageViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
         company = self.request.user.company
         extra = {'created_by': self.request.user}
         if serializer.validated_data.get('recompense') in (None, ''):
-            try:
-                from apps.parametres.models import CompanyProfile
-                prof = CompanyProfile.get(company)
-                if prof and prof.referral_reward is not None:
-                    extra['recompense'] = prof.referral_reward
-            except Exception:
-                logger.warning('%s : échec ignoré (dégradé)', 'perform_create', exc_info=True)
+            from .clients_pilotage import recompense_par_defaut
+            if (recompense := recompense_par_defaut(company)) is not None:
+                extra['recompense'] = recompense
         serializer.save(**extra)
 
     @extend_schema(responses=inline_serializer('CrmParrainageStats', {

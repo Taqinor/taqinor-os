@@ -119,6 +119,18 @@ def _format_date_fr(valeur):
         return str(valeur)
 
 
+def recompense_par_defaut(company):
+    """ASOC69 — la récompense par défaut (``referral_reward``) d'un
+    parrainage, pour TOUTE création (manuelle ou par le lien) ; ``None``."""
+    try:
+        from apps.parametres.models import CompanyProfile
+        prof = CompanyProfile.get(company)
+        return prof.referral_reward if prof else None
+    except Exception:  # noqa: BLE001 — dégradé, jamais bloquant (D-ENF22-BLE001)
+        logger.warning('recompense_par_defaut : échec ignoré', exc_info=True)
+        return None
+
+
 def handle_parrainage_signup(lead) -> None:
     """QX35 — Wire la promesse de la page /parrainage : un lead capté avec
     ``utm_source=parrainage`` crée automatiquement un ``Parrainage`` en
@@ -228,6 +240,7 @@ def handle_parrainage_signup(lead) -> None:
             company=lead.company, parrain=parrain,
             filleul_lead=lead, filleul_nom=lead.nom or '',
             statut=Parrainage.Statut.EN_ATTENTE,
+            recompense=recompense_par_defaut(lead.company),
         )
         journal_systeme(
             company=lead.company, lead=lead,

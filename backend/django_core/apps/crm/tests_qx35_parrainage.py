@@ -112,6 +112,20 @@ class HandleParrainageSignupTests(TestCase):
         self.assertEqual(p.statut, Parrainage.Statut.EN_ATTENTE)
         self.assertEqual(p.company, self.company)
 
+    def test_recompense_par_defaut_posee(self):
+        """ASOC69 (C-ASOC-159) — le lien de parrainage pose la récompense
+        par défaut, comme la création manuelle ; réglage vide : nulle."""
+        from apps.parametres.models import CompanyProfile
+        lead = self._lead()
+        handle_parrainage_signup(lead)
+        self.assertIsNone(Parrainage.objects.get(filleul_lead=lead).recompense)
+        CompanyProfile.objects.update_or_create(
+            company=self.company, defaults={'referral_reward': Decimal('500')})
+        lead = self._lead(telephone='+212600333333')
+        handle_parrainage_signup(lead)
+        self.assertEqual(Parrainage.objects.get(filleul_lead=lead).recompense,
+                         Decimal('500'))
+
     def test_notifies_managers(self):
         from apps.roles.models import Role
         role = Role.objects.create(
