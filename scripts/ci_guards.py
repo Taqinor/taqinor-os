@@ -586,6 +586,9 @@ GARDES = {
         ('Tests e2e-local.sh : stop n arrete que les services demarres par up (ADCG23)',
          'python -m unittest scripts.tests.test_e2e_local -v',
          '.'),
+        ('Tests scenarios Locust : page dans les bornes, client avec e-mail (ADCG73)',
+         'python -m unittest scripts.tests.test_locustfile -v',
+         '.'),
         # ACAL317 - seul l'atelier réécrit le document entier (C-ACAL-044).
         ('Check écrivains du layout calepinage (aucun écran hors atelier, ACAL317)',
          'python scripts/check_calepinage_ecrivains_layout.py',
