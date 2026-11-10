@@ -131,6 +131,41 @@ class RestoreDrillTests(TestCase):
                         if c.args and c.args[0][0] == 'dropdb']
         self.assertGreaterEqual(len(dropdb_calls), 2)
 
+    def _drill_avec(self, restaure_n, lignes_societe):
+        """ADCG38 — live : 5 lignes par table clé, société 1 = 1640 lignes."""
+        self._make_source_dump()
+        run = BackupRun.objects.create(kind=BackupRun.KIND_RESTORE_DRILL, company=None)
+        fake_cursor = mock.MagicMock()
+        fake_cursor.__enter__.return_value = fake_cursor
+        fake_cursor.fetchone.return_value = (restaure_n,)
+        fake_cursor.fetchall.return_value = lignes_societe
+        fake_conn = mock.Mock()
+        fake_conn.cursor.return_value = fake_cursor
+        live = {t: 5 for t in backup.RESTORE_DRILL_TABLES}
+        with mock.patch.object(backup, '_minio_client', return_value=mock.Mock()), \
+                mock.patch('subprocess.run', return_value=_completed(returncode=0)), \
+                mock.patch('psycopg2.connect', return_value=fake_conn), \
+                mock.patch.object(backup, '_comptages_live', return_value=live), \
+                mock.patch.object(backup, '_top_tenants_live', return_value={1: 1640}):
+            backup.restore_drill(run)
+        run.refresh_from_db()
+        return run
+
+    def test_restauration_vide_ou_societe_perdue_echec(self):
+        vide = self._drill_avec(0, [])
+        self.assertEqual(vide.statut, BackupRun.STATUT_ECHEC)
+        self.assertIn('Base restaurée incomplète : ', vide.detail['message'])
+        self.assertIn('ventes_devis 0 ligne (live 5)', vide.detail['message'])
+        self.assertEqual(vide.detail['comptages']['ventes_devis'], 0)
+
+        perdue = self._drill_avec(3, [])
+        self.assertEqual(perdue.statut, BackupRun.STATUT_ECHEC)
+        self.assertIn('société 1 sans données restaurées', perdue.detail['message'])
+        self.assertEqual(perdue.detail['ecarts_tenant'], ['1'])
+
+        complete = self._drill_avec(3, [(1, 1600)])  # restauré < live : normal
+        self.assertEqual(complete.statut, BackupRun.STATUT_TERMINE)
+
     def test_taches_sauvegarde_limites_propres(self):
         """ADCG35 — dump et exercice ont leur limite, au-dessus des 3600 s."""
         from core.tasks import dump_database_task, restore_drill_task

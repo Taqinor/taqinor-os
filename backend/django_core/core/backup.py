@@ -486,6 +486,16 @@ def _top_tenants_live(limit=RESTORE_DRILL_TOP_TENANTS):
     return dict(top)
 
 
+def _comptages_live():
+    """ADCG38 — comptages des tables clés dans la base LIVE (même requête
+    que la base restaurée) ; ``{}`` hors Postgres."""
+    from django.db import connection as _live
+    if _live.vendor != 'postgresql':
+        return {}
+    with _live.cursor() as cur:
+        return _compter_tables(cur)
+
+
 def detecter_ecarts_tenant(top_live, restored):
     """Croise comptages live vs restaurés par société (NTPLT62).
 
@@ -662,6 +672,7 @@ def restore_drill(run: BackupRun) -> BackupRun:
                 try:
                     with conn.cursor() as cur:
                         comptages = _compter_tables(cur)
+                        live = _comptages_live()  # ADCG38
                         # NTPLT62 — comptages PAR SOCIÉTÉ (top 5 par volume).
                         top_live = _top_tenants_live()
                         restored = _tenant_counts_in_restored(
@@ -681,10 +692,18 @@ def restore_drill(run: BackupRun) -> BackupRun:
             # live > 0 est une ALERTE.
             comptages_par_societe, ecarts = detecter_ecarts_tenant(
                 top_live, restored)
-            if ecarts:
-                logger.warning(
-                    'NTPLT62 — drill: %d société(s) sans données restaurées: %s',
-                    len(ecarts), ecarts)
+            # ADCG38 — table clé vide alors que peuplée en live, ou société
+            # perdue ⇒ l'exercice ÉCHOUE (restauré < live reste normal).
+            manques = [f'{t} 0 ligne (live {live[t]})' for t, n in comptages.items()
+                       if n == 0 and live.get(t, 0) > 0]
+            manques += [f'société {c} sans données restaurées' for c in ecarts]
+            if manques:
+                run.statut = BackupRun.STATUT_ECHEC
+                run.detail = {'message': 'Base restaurée incomplète : ' + ' ; '.join(manques),
+                              'comptages': comptages, 'comptages_par_societe': comptages_par_societe,
+                              'ecarts_tenant': [str(c) for c in ecarts]}
+                run.save(update_fields=['statut', 'detail', 'updated_at'])
+                return run
         except BaseException as exc:
             # ADCG35 — interruption (limite de temps Celery, erreur imprévue) :
             # le run finit `echec`, jamais `en_cours` à vie, puis on relève.
