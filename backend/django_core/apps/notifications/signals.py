@@ -130,19 +130,19 @@ def devis_post_save(sender, instance, created, **kwargs):
 # (M6) : plus simple ici (le sweep ne pose l'événement QU'à la transition
 # réelle envoyé→expiré, donc aucune diffing pre/post_save n'est nécessaire).
 def devis_expired_receiver(sender, devis, ancien_statut, **kwargs):
-    recipient = getattr(devis, 'created_by', None)
-    if recipient is None:
+    if getattr(devis, 'created_by', None) is None:
         return
     try:
-        notify(
-            user=recipient,
-            event_type=EventType.DEVIS_EXPIRED,
-            title='Devis expiré',
-            body=(f'Le devis {devis.reference} a expiré automatiquement '
-                  '(date de validité dépassée). Pensez à relancer le client.'),
+        from .services import destinataire_actif
+        from .sweeps import _notify_user_or_managers
+        # ASOC1 — auteur inactif ⇒ responsable actif du lead, sinon managers.
+        _notify_user_or_managers(
+            destinataire_actif(devis.created_by, lead=devis.lead),
+            devis.company, EventType.DEVIS_EXPIRED, 'Devis expiré',
+            (f'Le devis {devis.reference} a expiré automatiquement '
+             '(date de validité dépassée). Pensez à relancer le client.'),
             # QX12be — deep-link qui atterrit (voir devis_post_save).
-            link=f'/ventes/devis?devis={devis.pk}',
-        )
+            link=f'/ventes/devis?devis={devis.pk}')
     except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         logger.exception('notify DEVIS_EXPIRED failed (devis %s)', devis.pk)
 

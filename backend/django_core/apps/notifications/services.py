@@ -614,6 +614,15 @@ def _diffuser_hors_app(user, company, event_type, title, body, link, prefs,
             logger.warning('Dispatch web push notification échoué : %s', exc)
 
 
+def destinataire_actif(user, *, lead=None):
+    """ASOC1 — ``user`` s'il est actif, sinon le responsable ACTIF du lead
+    (``lead.owner``), sinon None (l'appelant retombe sur les managers)."""
+    for candidat in (user, getattr(lead, 'owner', None)):
+        if candidat is not None and getattr(candidat, 'is_active', False):
+            return candidat
+    return None
+
+
 def notify(user, event_type, title, body='', link=None, company=None,
            skip_email=False, reason='', respect_quiet_hours=True,
            approval_action=None):
@@ -672,6 +681,10 @@ def notify(user, event_type, title, body='', link=None, company=None,
         return None
 
     prefs = resolve_prefs(user, event_type)
+    if not getattr(user, 'is_active', True):
+        # ASOC1 — compte désactivé : jamais rien hors de l'app (patron de
+        # ``_livrer_differee``).
+        prefs = {'in_app': prefs.get('in_app')}
     from .models import NotificationReason
     reason = reason if reason in NotificationReason.values else ''
     programmee_pour = _report_hors_fenetre(

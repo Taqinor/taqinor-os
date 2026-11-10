@@ -72,8 +72,10 @@ def _is_manager(user):
 
 
 def _notify_user_or_managers(user, company, event_type, title, body, link=''):
-    """Notifie `user` s'il est valide, sinon les managers de la société."""
-    if user is not None and getattr(user, 'pk', None):
+    """Notifie `user` s'il est valide ET actif (ASOC1), sinon les managers
+    de la société."""
+    if (user is not None and getattr(user, 'pk', None)
+            and getattr(user, 'is_active', True)):
         notify(user, event_type, title, body=body, link=link, company=company)
         return
     for mgr in _managers(company, event_type):
