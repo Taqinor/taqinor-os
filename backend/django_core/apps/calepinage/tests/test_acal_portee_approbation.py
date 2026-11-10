@@ -42,6 +42,7 @@ ROUTES = {
     'export_csv': ('get', 'export.csv/'),
     'pack_technique': ('post', 'pack-technique/'),
     'dossier_fin_chantier': ('post', 'dossier-fin-chantier/'),
+    'dossier_reglementaire': ('post', 'generer-dossier/'),  # ACON44
 }
 
 TOIT = {
