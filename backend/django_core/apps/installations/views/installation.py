@@ -397,6 +397,11 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         # CIQ621 — dérogation Directeur (motif) aux travaux sans convention.
         motif_derogation_8221 = (
             self.request.data.get('motif_derogation_8221') or '').strip()
+        if 'custom_data' in serializer.validated_data:  # ACSV113
+            from ..jalon_reception import CLE_RECEPTION_DEFAITE as cle
+            cd = {k: v for k, v in (serializer.validated_data['custom_data'] or {}).items() if k != cle}
+            cd.update({k: v for k, v in (old.custom_data or {}).items() if k == cle})
+            serializer.validated_data['custom_data'] = cd
         with transaction.atomic():
             super().perform_update(serializer)
             inst = serializer.instance

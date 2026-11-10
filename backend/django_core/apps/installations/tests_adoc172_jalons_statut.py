@@ -187,6 +187,34 @@ class JalonsStatutTests(TestCase):
         self.assertEqual(eq.date_fin_garantie.year, aujourdhui.year + 10)
         self.assertNotIn('date_reception_defaite', inst.custom_data or {})
 
+    def test_cle_reception_defaite_non_ecrivable(self):
+        """ACSV113 (C-ACSV-OPT1-031) — un PATCH ne l'écrit ni ne l'efface.
+        ROUGE AVANT : clé effacée par `{}`, forgée par « 2020-01-01 »."""
+        admin = User.objects.create_user(
+            username='acsv113-admin', password='x', company=self.company,
+            role_legacy='admin')
+        self.api.force_authenticate(admin)
+        url = f'/api/django/installations/chantiers/{self.chantier.pk}/'
+        Installation.objects.filter(pk=self.chantier.pk).update(
+            custom_data={'date_reception_defaite': '2026-08-08'})
+        r = self.api.patch(url, {'custom_data': {}}, format='json')
+        self.assertEqual(r.status_code, 200, getattr(r, 'data', r))
+        self.chantier.refresh_from_db()
+        self.assertEqual(self.chantier.custom_data,
+                         {'date_reception_defaite': '2026-08-08'})
+        r = self.api.patch(url, {'custom_data': {
+            'date_reception_defaite': 'pas-une-date', 'x': 1}}, format='json')
+        self.assertEqual(r.status_code, 200, getattr(r, 'data', r))
+        self.chantier.refresh_from_db()
+        self.assertEqual(self.chantier.custom_data,
+                         {'date_reception_defaite': '2026-08-08', 'x': 1})
+        Installation.objects.filter(pk=self.chantier.pk).update(custom_data={})
+        r = self.api.patch(url, {'custom_data': {
+            'date_reception_defaite': '2020-01-01'}}, format='json')
+        self.assertEqual(r.status_code, 200, getattr(r, 'data', r))
+        self.chantier.refresh_from_db()
+        self.assertNotIn('date_reception_defaite', self.chantier.custom_data)
+
     def test_retour_arriere_ne_coche_rien(self):
         self._passer(Installation.Statut.INSTALLE)
         self._passer(Installation.Statut.SIGNE)
