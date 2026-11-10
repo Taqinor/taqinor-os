@@ -351,7 +351,7 @@ dépôt — l'auto-déploiement (unités systemd comprises) y est versionné sou
    (ADCG97) — jamais reconstitué de mémoire ; voir « Variables du `.env` serveur ».
 4. **Auto-déploiement** : `bash /opt/taqinor-os/scripts/serveur/installer-serveur.sh`
    (installe `taqinor-autodeploy.service`, `.timer` et `/opt/autodeploy/auto-deploy.sh`,
-   active le timer ; idempotent).
+   active le timer SANS le démarrer — il démarre à l'étape 9 ; idempotent).
 5. **Pile** : `cd /opt/taqinor-os && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`.
 6. **Données** : restaurer le dernier dump de la base et les objets MinIO
    (procédure de restauration des données, C-ADCG-016), puis
@@ -362,6 +362,8 @@ dépôt — l'auto-déploiement (unités systemd comprises) y est versionné sou
 8. Écrire le commit servi dans `/opt/autodeploy/last_deployed_commit`
    (`git -C /opt/taqinor-os rev-parse HEAD`) pour que le premier cycle du timer
    ne refasse pas un deploy complet.
+9. **Démarrer l'auto-déploiement**, en dernier : `systemctl start taqinor-autodeploy.timer`
+   (avant, un cycle du timer lancerait un deploy complet en parallèle des étapes 5-6, ADCG102).
 
 ## Récupération du compte propriétaire
 

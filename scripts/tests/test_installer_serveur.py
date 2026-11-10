@@ -53,7 +53,20 @@ class InstallerServeurTests(unittest.TestCase):
         if os.name == "posix":
             self.assertTrue(os.access(script, os.X_OK))
         self.assertEqual(appels, ["systemctl daemon-reload",
-                                  "systemctl enable --now taqinor-autodeploy.timer"])
+                                  "systemctl enable taqinor-autodeploy.timer"])
+
+    def test_installation_ne_demarre_pas_le_timer(self):
+        # ADCG102 — le timer n'est démarré qu'en dernière étape de la procédure,
+        # après last_deployed_commit et les contrôles (sinon deploy complet concurrent).
+        for _passage in range(2):
+            appels = self.installer()
+            self.assertFalse([a for a in appels if " start" in a or "--now" in a], appels)
+        doc = (ROOT / "docs" / "production.md").read_text(encoding="utf-8")
+        section = doc.split("## Reconstruire le serveur", 1)[1].split("\n## ", 1)[0]
+        demarrage = "systemctl start taqinor-autodeploy.timer"
+        self.assertEqual(section.count(demarrage), 1)
+        self.assertGreater(section.index(demarrage), section.index("last_deployed_commit"))
+        self.assertGreater(section.index(demarrage), section.index("showmigrations"))
 
     def test_second_passage_idempotent(self):
         self.installer()

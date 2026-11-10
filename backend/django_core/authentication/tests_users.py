@@ -223,7 +223,7 @@ class TestEmployeeAdmin(TestCase):
         # Chemin relatif de même origine — jamais l'hôte interne MinIO.
         self.assertTrue(url.startswith('/api/django/users/avatar-image/'), url)
         self.assertNotIn('minio', url)
-        self.assertNotIn('9000', url)
+        self.assertNotIn(':9000', url)  # le port MinIO, pas un « 9000 » tiré au hasard dans la clé
         self.assertNotIn('http://', url)
         # La clé stockée est bien transportée (encodée) dans l'URL.
         self.employee.refresh_from_db()

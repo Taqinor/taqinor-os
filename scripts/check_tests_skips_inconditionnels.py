@@ -102,7 +102,7 @@ def _leve_not_implemented(fonction) -> bool:
 
 def analyser_source(source: str) -> list:
     """[(fonction, ligne, regle)] des tests fautifs d'un texte Python."""
-    if "skip" not in source and "NotImplementedError" not in source:
+    if "skip" not in source and "SkipTest" not in source and "NotImplementedError" not in source:
         return []  # préfiltre : l'immense majorité des fichiers n'a rien à lire
     try:
         arbre = ast.parse(source)
@@ -126,11 +126,16 @@ def analyser_source(source: str) -> list:
                        for t in raisons):
                     sites.append((fn.name, fn.lineno, "b"))
         for appel in ast.walk(fn):
-            if (isinstance(appel, ast.Call) and isinstance(appel.func, ast.Attribute)
-                    and appel.func.attr == "skipTest"):
-                if any(any(i in _normalise(t) for i in _RAISONS_INTERDITES)
-                       for t in _textes(appel)):
-                    sites.append((fn.name, fn.lineno, "b"))
+            # ADCG101 — `raise [unittest.]SkipTest(...)` est lu comme `.skipTest(...)`.
+            if (isinstance(appel, ast.Raise) and appel.exc is not None
+                    and _nom_decorateur(appel.exc)[0].endswith("SkipTest")):
+                appel = appel.exc
+            elif not (isinstance(appel, ast.Call) and isinstance(appel.func, ast.Attribute)
+                      and appel.func.attr == "skipTest"):
+                continue
+            if any(any(i in _normalise(t) for i in _RAISONS_INTERDITES)
+                   for t in _textes(appel)):
+                sites.append((fn.name, fn.lineno, "b"))
         if _leve_not_implemented(fn):
             sites.append((fn.name, fn.lineno, "c"))
         elif skip_inconditionnel and _corps_vide(fn.body):

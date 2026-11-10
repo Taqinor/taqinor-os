@@ -18,5 +18,5 @@ install -m 0644 "$DEPOT/scripts/serveur/taqinor-autodeploy.timer" "$UNITES/taqin
 install -m 0755 "$DEPOT/scripts/auto-deploy.sh" "$ETAT/auto-deploy.sh"
 
 systemctl daemon-reload
-systemctl enable --now taqinor-autodeploy.timer
+systemctl enable taqinor-autodeploy.timer
 echo "Auto-deploiement installe : systemctl list-timers taqinor-autodeploy.timer"
