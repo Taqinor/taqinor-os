@@ -2,7 +2,7 @@
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: 43e67e126d10184fd234971a938ce8cbefc6962165b0d3e37c958e1399732cfe
-Plan fingerprint: 6d03ab98550a1ff2dead8f4e9ab6e2f9d91b0262163c12ccb847729f02a12228
+Plan fingerprint: 1ad6c27428053a3a10e68fa31cdb01322d6549666980f67d3aa62d6e2236274e
 
 
 
@@ -1930,7 +1930,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT109` — `reporting/insights.py` (rentabilité chantier) : « facturé » = factures ÉMISES de la…
 - `VTAG1` — [GATED: décision fondateur]
 
-**Open — to build (116)**
+**Open — to build (115)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -2017,7 +2017,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CIQM23` — Valider les textes B2B marqués ✎ de la cadence
 - `CIQM24` — Script d'appel `objection_loi_8221` : valider une réponse qui réserve la revente du…
 - `CIQM25` — Écrire les surcharges commerciales après les premières mesures
-- `ENF15` — Dettes moyennes à zéro
 - `QAH10` — [GATED: secret `ANTHROPIC_API_KEY` GitHub + URL de staging/démo joignable — fondateur]
 - `CALX44` — Brancher le rattachement d'une affaire AO à un calepinage
 - `CALX131` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
@@ -2049,10 +2048,11 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT108` — [GATED: geste du fondateur — `reparer_vente_active --lister` = 0 en prod ; aujourd'hui…
 - `VTG1` — [GATED: décision fondateur coût/infra]
 
-**Blocked — awaiting founder decision (10)**
+**Blocked — awaiting founder decision (11)**
 
 - `AGR113` — ET0 et pluie efficace par région tirées de FAO CLIMWAT (ou de la DMN), sinon étiquetées…
 - `ENF11` — api-fuzz bloquant
+- `ENF15` — Dettes moyennes à zéro
 - `ENF19` — Duplicats (1 181) à zéro
 - `CALX339` — Figer le contrat de l'import d'un fichier PVsyst `.PAN`/`.OND` vers une fiche technique
 - `CALX356` — Écrire le parseur de fichiers PVsyst `.PAN` et `.OND`
