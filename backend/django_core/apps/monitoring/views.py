@@ -43,6 +43,7 @@ from core.conflit_etat import ConflitEtat
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from core.parseurs import corps_valide
 from core.viewsets import CompanyScopedModelViewSet
+from apps.parametres.views_common import SettingsAuditedMixin  # ASOC82
 
 from .models import (
     AbonnementMonitoring, CertificatCarbone, CleaningEvent, MonitoringConfig,
@@ -976,10 +977,12 @@ class ProductionWarrantyViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(result)
 
 
-class MonitoringSettingsViewSet(TenantMixin, viewsets.ModelViewSet):
+class MonitoringSettingsViewSet(SettingsAuditedMixin, TenantMixin,
+                                viewsets.ModelViewSet):
     """Réglage société de sous-performance (N52). Singleton par société :
     `list` renvoie l'unique enregistrement ; écriture responsable/admin."""
     permission_module = 'sav'  # AMON45 — écritures bornées au module sav (ASEC11)
+    audit_section, audit_libelle = 'monitoring', 'Réglage de supervision'
     queryset = MonitoringSettings.objects.all()
     serializer_class = MonitoringSettingsSerializer
     parser_classes = [JSONParser]
@@ -1002,12 +1005,11 @@ class MonitoringSettingsViewSet(TenantMixin, viewsets.ModelViewSet):
     @extend_schema(request=MonitoringSettingsSerializer,
                    responses={200: MonitoringSettingsSerializer})
     def create(self, request, *args, **kwargs):
-        """Upsert du singleton société (PATCH-like via POST)."""
-        company = request.user.company
-        obj = MonitoringSettings.get(company)
+        """Upsert du singleton société (PATCH-like via POST), journalisé."""
+        obj = MonitoringSettings.get(request.user.company)
         serializer = self.get_serializer(obj, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        serializer.save(company=company)
+        self.perform_update(serializer)  # ASOC82 — SettingsAuditLog
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 

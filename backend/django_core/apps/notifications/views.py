@@ -14,7 +14,7 @@ from drf_spectacular.utils import (
     OpenApiParameter, OpenApiResponse, extend_schema, extend_schema_view,
     inline_serializer,
 )
-from rest_framework import serializers, status, viewsets
+from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import (
     authentication_classes, action, api_view, parser_classes,
     permission_classes,
@@ -28,6 +28,7 @@ from core.conflit_etat import ConflitEtat
 from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL, BooleenStrict, ChaineStricte, entier_ou_400
 from core.parametres_requete import choix_ou_400
 from core.viewsets import CompanyScopedModelViewSet
+from apps.parametres.views_common import SettingsAuditedMixin  # ASOC82
 from authentication.permissions import (
     IsAdminOrResponsableTier, IsAdminRole, IsAnyRole,
 )
@@ -296,12 +297,14 @@ class NotificationPreferenceViewSet(TenantMixin, viewsets.ViewSet):
         responses={201: NotificationRoutingRuleSerializer}),
     update=extend_schema(request=_REGLE_ROUTAGE_ECRITURE),
     partial_update=extend_schema(request=_REGLE_ROUTAGE_ECRITURE))
-class NotificationRoutingRuleViewSet(TenantMixin, viewsets.ModelViewSet):
+class NotificationRoutingRuleViewSet(SettingsAuditedMixin, TenantMixin,
+                                     viewsets.ModelViewSet):
     """FG4 — CRUD des règles de routage de notifications (admin uniquement).
 
     Lecture : tout rôle (l'UI des paramètres de notification est accessible
     à tous). Écriture : admin seulement (créer/modifier/supprimer les règles).
     Tout est scopé à la société (TenantMixin). company est posée côté serveur."""
+    audit_section, audit_libelle = 'notifications', 'Règle de routage'  # ASOC82
     queryset = NotificationRoutingRule.objects.all()
     serializer_class = NotificationRoutingRuleSerializer
     parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
@@ -321,9 +324,6 @@ class NotificationRoutingRuleViewSet(TenantMixin, viewsets.ModelViewSet):
         if enabled in _BOOL_01:
             qs = qs.filter(enabled=enabled in ('1', 'true'))
         return qs
-
-    def perform_create(self, serializer):
-        serializer.save(company=self.request.user.company)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -345,7 +345,8 @@ class NotificationRoutingRuleViewSet(TenantMixin, viewsets.ModelViewSet):
         request=WorkingHoursConfigSerializer,
         responses=WorkingHoursConfigSerializer),
 )
-class WorkingHoursConfigViewSet(viewsets.ViewSet):
+class WorkingHoursConfigViewSet(SettingsAuditedMixin, mixins.UpdateModelMixin,
+                                viewsets.ViewSet):
     """FG5 — Config des jours ouvrés : GET (lecture) + PUT/PATCH (upsert).
 
     Singleton par société : GET renvoie la config effective (défauts si absente).
@@ -355,6 +356,7 @@ class WorkingHoursConfigViewSet(viewsets.ViewSet):
     permission_classes = [IsAnyRole]
     parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     serializer_class = WorkingHoursConfigSerializer
+    audit_section, audit_libelle = 'notifications', 'Jours ouvrés'  # ASOC82
 
     def _get_or_default_data(self, company):
         cfg = WorkingHoursConfig.objects.filter(company=company).first()
@@ -388,7 +390,7 @@ class WorkingHoursConfigViewSet(viewsets.ViewSet):
         serializer = WorkingHoursConfigSerializer(
             cfg, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        self.perform_update(serializer)  # ASOC82 — SettingsAuditLog
         return Response(serializer.data)
 
 
