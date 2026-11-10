@@ -77,6 +77,65 @@ class CommissioningApiTest(TestCase):
         self.api.force_authenticate(self.user)
         self.url = '/api/django/ventes/recettes-mes/'
 
+    def test_lectures_dossier_recette_fiche_bornees(self):
+        """APFS109 (D-APFS-4) — Admin RH : 403 sur les dossiers et la
+        recette ; Technicien (octroi ``installation_voir``) : la recette et le
+        dossier de SON chantier, rien d'un autre ; un rôle Ventes : 200."""
+        from apps.installations.models import Installation
+        from apps.roles import permissions_registre as registre
+        from apps.roles.models import Role
+        from apps.ventes.models import RegulatoryDossier
+
+        def compte(nom, codes):
+            role = Role.objects.create(company=self.company, nom=nom,
+                                       permissions=list(codes))
+            return User.objects.create_user(
+                username='apfs109_' + nom.replace(' ', '_'), password='x',
+                role=role, company=self.company)
+
+        rh = compte('Admin RH', registre.ADMIN_RH_PERMISSIONS)
+        tech = compte('Technicien', registre.TECHNICIEN_PERMISSIONS)
+        commercial = compte('Commercial', registre.COMMERCIAL_PERMISSIONS)
+        d2 = make_devis(self.company, self.user, ref='DEV-FG274-2')
+        k1 = Installation.objects.create(
+            company=self.company, reference='CH-APFS109-1',
+            client=self.devis.client, devis=self.devis,
+            technicien_responsable=tech)
+        k2 = Installation.objects.create(
+            company=self.company, reference='CH-APFS109-2',
+            client=d2.client, devis=d2)
+        r1 = CommissioningTest.objects.create(
+            company=self.company, devis=self.devis, chantier=k1)
+        CommissioningTest.objects.create(company=self.company, devis=d2,
+                                         chantier=k2)
+        dossier1 = RegulatoryDossier.objects.create(
+            company=self.company, devis=self.devis, chantier=k1)
+        RegulatoryDossier.objects.create(company=self.company, devis=d2,
+                                         chantier=k2)
+        dossiers = '/api/django/ventes/dossiers-reglementaires/'
+
+        def lire(user, url):
+            api = APIClient()
+            api.force_authenticate(user)
+            return api.get(url)
+
+        def ids(reponse):
+            corps = reponse.data
+            rangs = corps.get('results', corps) if isinstance(corps, dict) \
+                else corps
+            return {ligne['id'] for ligne in rangs}
+
+        for url in (self.url, dossiers):
+            with self.subTest(url=url):
+                self.assertEqual(lire(rh, url).status_code, 403)
+                self.assertEqual(lire(commercial, url).status_code, 200)
+        r = lire(tech, self.url)
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(ids(r), {r1.pk})
+        r = lire(tech, dossiers)
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(ids(r), {dossier1.pk})
+
     def test_result_derived_server_side(self):
         # ENF11 — texte strict : ``observations: 0`` n'est plus converti.
         refus = self.api.post(self.url, {

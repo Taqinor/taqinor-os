@@ -69,10 +69,17 @@ ROUTES_SOUS_VERROU = {
     ('POST', 'schema-unifilaire'): '_sonde_schema',
     ('POST', 'raccordement'): '_sonde_raccordement',
     ('POST', 'approbation'): '_sonde_approbation',
+    ('POST', 'releve'): '_sonde_creer_releve',  # ACON10
+    ('POST', 'photos'): '_sonde_ajouter_photo',  # ACON13
+    ('PATCH', PHOTO): '_sonde_modifier_photo',
+    ('DELETE', PHOTO): '_sonde_supprimer_photo',
     ('PATCH', RELEVE): '_sonde_modifier_releve',
     ('DELETE', RELEVE): '_sonde_supprimer_releve',
     ('POST', RELEVE + '/appliquer-cote'): PAR_ENREGISTRER_LAYOUT,
     ('POST', 'fixation'): '_sonde_fixation',
+    # ACON85 — re-simuler un calepinage figé réécrirait la production du
+    # devis accepté : refusé au motif de ventes.
+    ('POST', 'simuler'): '_sonde_simuler',
 }
 
 #: Routes HORS VERROU, chacune avec son MOTIF (jamais vide).
@@ -87,8 +94,6 @@ ROUTES_HORS_VERROU = {
     ('POST', 'archiver'): 'archivage : son propre prédicat (devis non '
                           'brouillon refusé, ACAL118)',
     ('POST', 'restaurer-corbeille'): 'restauration depuis la corbeille',
-    ('POST', 'simuler'): 'simulation : calcul, jamais une écriture de '
-                         'conception (ACAL43)',
     ('POST', 'meteo-fichier'): 'simulation : entrée météo du calcul',
     ('DELETE', 'meteo-fichier'): 'simulation : entrée météo du calcul',
     ('POST', 'evaluer-electrique'): 'évaluation électrique à la demande '
@@ -96,12 +101,7 @@ ROUTES_HORS_VERROU = {
     ('POST', 'pose-reelle'): 'pose réelle : preuve du chantier (ACAL43)',
     ('DELETE', r'pose-reelle/(?P<zone_id>.+)'):
         'pose réelle : retrait du relevé d\'un pan (orphelin, ACAL267)',
-    ('POST', 'photos'): 'photos de site',
-    ('PATCH', PHOTO): 'photos de site',
-    ('DELETE', PHOTO): 'photos de site',
     ('PATCH', PHOTO + '/calage'): 'photos de site (calage)',
-    ('POST', 'releve'): 'relevé terrain : saisie de visite, pas la '
-                        'conception',
     ('POST', 'releve-visite'): 'relevé terrain : reprise de la visite',
     ('POST', 'image-document'): 'documents : images des livrables',
     ('POST', 'dossier-fin-chantier'): 'documents : dossier de fin de chantier',
@@ -255,6 +255,26 @@ class GardeRoutesVerrouTest(BaseApiCalepinage):
     def _sonde_approbation(self):
         return self._post('approbation/', {'decision': 'approuve'})
 
+    def _sonde_creer_releve(self):
+        return self._post('releve/', {'releve_le': HIER.isoformat(),
+                                      'chaines': [CHAINE_FRDISI]})
+
+    def _sonde_ajouter_photo(self):
+        return self.api.post(
+            f'{self.base}photos/',
+            {'photo': SimpleUploadedFile('site.png', PNG,
+                                         content_type='image/png'),
+             'genre': 'drone', 'prise_le': HIER.isoformat()},
+            format='multipart')
+
+    def _sonde_modifier_photo(self):
+        # Le verrou passe AVANT la recherche de la photo (calepinage borné).
+        return self.api.patch(f'{self.base}photos/1/', {'legende': 'X'},
+                              format='json')
+
+    def _sonde_supprimer_photo(self):
+        return self.api.delete(f'{self.base}photos/1/')
+
     def _sonde_modifier_releve(self):
         return self.api.patch(f'{self.base}releve/{self.releve.pk}/',
                               {'notes': 'après'}, format='json')
@@ -266,6 +286,9 @@ class GardeRoutesVerrouTest(BaseApiCalepinage):
         # Lot 2 critique #10 — même un retrait (null, aucun catalogue requis)
         # est refusé : le verrou passe AVANT toute écriture.
         return self._post('fixation/', {'systeme_id': None})
+
+    def _sonde_simuler(self):
+        return self._post('simuler/', {'forcer': True})
 
     # ── la garde ────────────────────────────────────────────────────────────
     def test_chaque_route_d_ecriture_est_classee(self):
@@ -283,6 +306,31 @@ class GardeRoutesVerrouTest(BaseApiCalepinage):
             sorted(set(ROUTES_SOUS_VERROU) & set(ROUTES_HORS_VERROU)), [])
         for route, motif in ROUTES_HORS_VERROU.items():
             self.assertTrue(str(motif).strip(), f'{route} : motif vide')
+
+    def test_livrables_refuses_sur_conception_divergente_du_devis_vendu(self):
+        """ACON42 (D-ACAL-6, D-ACAL-23) — devis ACCEPTÉ, conception passée à
+        une autre empreinte : dossier réglementaire, pack technique et
+        remise de la planche rendent 409 ``{conception, devis}``, aucune
+        version de document."""
+        from apps.records.models import Attachment
+
+        Devis.objects.filter(pk=self.devis.pk).update(layout_hash='f' * 64)
+        avant = Attachment.objects.count()
+        for suffixe, corps in (('generer-dossier/', {'dossier': 1}),
+                               ('pack-technique/', {}),
+                               ('remettre-document/',
+                                {'code': 'planche_pdf'})):
+            with self.subTest(route=suffixe):
+                reponse = self._post(suffixe, corps)
+                self.assertEqual(reponse.status_code, 409, reponse.data)
+                # YAPIC3 : l'enveloppe ``error`` est ADDITIVE (toute 409).
+                self.assertEqual(sorted(set(reponse.data) - {'error'}),
+                                 ['conception', 'devis'])
+                self.assertEqual(str(reponse.data['devis']),
+                                 self.devis.reference)
+                self.assertIn('DEV-ACAL319-1',
+                              str(reponse.data['conception']))
+        self.assertEqual(Attachment.objects.count(), avant)
 
     def test_routes_sous_verrou_repondent_409_sur_accepte(self):
         avant = Calepinage.objects.get(pk=self.calepinage.pk)

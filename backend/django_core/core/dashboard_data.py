@@ -213,7 +213,7 @@ def executer_widget_repartition_langue(company, user):
             'aggregates': [{'alias': 'nombre', 'fn': 'count',
                             'field': 'id'}],
         })
-    except (data_explorer.DatasetInconnu,
+    except (data_explorer.DatasetInconnu, data_explorer.DatasetNonAutorise,
             data_explorer.ChampNonAutorise) as exc:
         entree['erreur'] = str(exc)
         return entree
@@ -337,7 +337,7 @@ def executer_dashboard(dashboard, company, user, globaux=None):
             else:
                 rows, statut = data_explorer.run_query(
                     dataset, company, user, spec), ''
-        except (data_explorer.DatasetInconnu,
+        except (data_explorer.DatasetInconnu, data_explorer.DatasetNonAutorise,
                 data_explorer.ChampNonAutorise, FormulaError) as exc:
             entree['erreur'] = str(exc)
         else:

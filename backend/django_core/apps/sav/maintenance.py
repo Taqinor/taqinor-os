@@ -25,7 +25,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from authentication.permissions import IsResponsableOrAdmin, LectureDuModule
 from core.openapi_operations import mots_operation
 from core.parametres_requete import choix_ou_400
 from core.parseurs import PARSEURS_JSON
@@ -270,7 +270,7 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve', 'a_venir', 'tournee'):
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def _check_tenant(self, serializer):
@@ -343,7 +343,7 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
         }))
     @action(detail=False, methods=['get'], url_path='tournee',
             pagination_class=None,  # ENF15 : liste calculée complète, jamais paginée
-            permission_classes=[IsAnyRole])
+            permission_classes=[LectureDuModule])
     def tournee(self, request):
         """FG88 — File des visites préventives DUES à planifier.
 

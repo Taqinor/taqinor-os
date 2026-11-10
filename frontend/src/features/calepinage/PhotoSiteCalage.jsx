@@ -177,7 +177,8 @@ export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivan
       .catch((e) => {
         const donnees = e?.response?.data
         if (donnees && typeof donnees === 'object') setErreursDepot(donnees)
-        setMessage(donnees?.detail || 'Le dépôt de la photo a échoué.')
+        // ACON13 — le verrou (409) dit son motif sous la clé `photos`.
+        setMessage(donnees?.detail || donnees?.photos?.[0] || 'Le dépôt de la photo a échoué.')
       })
       .finally(() => { setDepotEnCours(false); setProgressionDepot(undefined) })
   }
@@ -276,7 +277,8 @@ export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivan
       .catch((e) => {
         const donnees = e?.response?.data
         if (donnees && typeof donnees === 'object') setErreursEdition(donnees)
-        else setMessage('La photo n’a pas pu être modifiée.')
+        if (donnees?.photos?.[0]) setMessage(donnees.photos[0]) // ACON13 — verrou
+        else if (!donnees || typeof donnees !== 'object') setMessage('La photo n’a pas pu être modifiée.')
       })
       .finally(() => setEnregistrement(false))
   }
@@ -293,7 +295,8 @@ export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivan
         setMessage('Photo supprimée.')
         recharger()
       })
-      .catch((e) => setMessage(e?.response?.data?.detail || 'La photo n’a pas pu être supprimée.'))
+      .catch((e) => setMessage(e?.response?.data?.detail || e?.response?.data?.photos?.[0]
+        || 'La photo n’a pas pu être supprimée.'))
       .finally(() => setEnregistrement(false))
   }
 

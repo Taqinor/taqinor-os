@@ -413,6 +413,15 @@ def _outbox_en_echec(depuis, company):
     return resultat
 
 
+def _outbox_alimentee(company):
+    """ASOC5 — `outbox_en_echec` vide ne vaut couverture que si l'outbox a déjà
+    reçu au moins un événement (toute fenêtre, tout statut)."""
+    from core.models import OutboxEvent
+
+    qs = OutboxEvent.objects.all()
+    return (qs.filter(company=company) if company is not None else qs).exists()
+
+
 def _sauvegardes_en_echec(depuis, company):
     from core.models import BackupRun
 
@@ -473,6 +482,7 @@ def resume_json(jours=7, company=None, maintenant=None):
             for ligne in resume_problemes(jours, company, maintenant)
         ],
         'outbox_en_echec': _outbox_en_echec(depuis, company),
+        'outbox_alimentee': _outbox_alimentee(company),
         'sauvegardes_en_echec': _sauvegardes_en_echec(depuis, company),
         'sante': _etat_sante(),
     }
@@ -526,6 +536,7 @@ _RESUME_PROBLEMES_REPONSE = inline_serializer('ResumeProblemesService', {
     'genere_le': serializers.DateTimeField(),
     'problemes': serializers.ListField(child=serializers.DictField()),
     'outbox_en_echec': serializers.ListField(child=serializers.DictField()),
+    'outbox_alimentee': serializers.BooleanField(),
     'sauvegardes_en_echec': serializers.ListField(child=serializers.DictField()),
     'sante': serializers.DictField(child=serializers.DictField()),
     'tri_horodate': serializers.BooleanField(),

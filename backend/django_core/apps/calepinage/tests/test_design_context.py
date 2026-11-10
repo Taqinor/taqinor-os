@@ -283,6 +283,44 @@ class ContexteConceptionTest(BaseApiCalepinage):
         with mock.patch.dict('os.environ', {'PUBLIC_MAPTILER_KEY': ''}):
             self.assertFalse(self._contexte(self.nu)['carte']['available'])
 
+    def test_devis_porte_par_une_variante_sert_la_variante(self):
+        """ACON80 (D-ACON-2) — ``?devis=<B>`` d'un devis porté par une
+        VARIANTE de ce calepinage : le contexte sert la variante et SON
+        document ; sans le paramètre (ou un devis étranger) : inchangé."""
+        from apps.calepinage.models import CalepinageVariante
+        from apps.calepinage.selectors import ombrage_servi
+        from apps.ventes.selectors import contexte_conception_devis
+
+        b = Devis.objects.create(
+            company=self.company, client=self.client_lie, lead=self.lead_lie,
+            reference='DEV-202609-2312')
+        document_v = dict(LAYOUT, result={'panels': 8, 'kwc': 5.76})
+        v = CalepinageVariante.objects.create(
+            company=self.company, calepinage=self.avec_devis,
+            nom=f'Devis {b.reference}', roof_layout=document_v, devis=b)
+
+        contexte = self.api.get(
+            url_contexte(self.avec_devis.pk), {'devis': b.pk}).data
+        self.assertEqual(contexte['variante'],
+                         {'id': v.pk, 'nom': v.nom, 'devis': b.pk})
+        self.assertEqual(contexte['geometrie']['roof_layout'], document_v)
+        self.assertEqual(contexte['calepinage']['devis_lie']['id'], b.pk)
+        self.assertEqual(set(contexte), set(CONTRAT['exemple_variante']))
+        # Sans paramètre, ou un devis qui n'est pas porté ici : inchangé.
+        for params in ({}, {'devis': self.devis.pk}, {'devis': 'x'}):
+            with self.subTest(params=params):
+                servi = self.api.get(url_contexte(self.avec_devis.pk),
+                                     params).data
+                self.assertIsNone(servi['variante'])
+                self.assertEqual(servi['geometrie']['roof_layout'], LAYOUT)
+        # Le contexte devis de B dessine le document de V ; C1 intact.
+        self.assertEqual(contexte_conception_devis(b, self.company)
+                         ['geometrie']['roof_layout'], document_v)
+        self.avec_devis.refresh_from_db()
+        self.assertEqual(self.avec_devis.roof_layout, LAYOUT)
+        # Sans simulation de V : aucun ombrage d'une autre conception.
+        self.assertIsNone(ombrage_servi(b.pk, self.company))
+
     def test_autre_societe_introuvable(self):
         reponse = self.api.get(url_contexte(self.etranger.pk))
         self.assertEqual(reponse.status_code, 404)

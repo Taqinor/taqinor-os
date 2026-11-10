@@ -17,7 +17,7 @@ UN calepinage brouillon rattaché au lead, pré-tracé. Rien de plus :
 * AUCUNE écriture vers crm : ``roof_outline`` et ``roof_point`` du lead
   restent exactement ce qu'ils sont (CAL217 est fondue ici) ;
 * la création et l'enregistrement passent par les chemins COMMUNS du module
-  (``services.creation.creer_pour_lead``, ``services.layout``), donc la
+  (``services.creation._creer_pour_lead``, ``services.layout``), donc la
   version et le chatter sont alimentés comme pour n'importe quelle
   conception.
 
@@ -93,6 +93,17 @@ def _motif_refus_document(document):
     return None
 
 
+def _ecarter_contours_croises(document):
+    """ACON7 — retire les pans/exclusions au contour croisé (ACAL76) ; motif."""
+    from .layout import contours_croises, message_contour_croise
+    croises = [chemin for chemin, _contour in contours_croises(document)]
+    for cle in ('zones', 'exclusionZones'):
+        ecartes = {int(c.split('.')[1]) for c in croises if c.startswith(cle + '.')}
+        if ecartes:
+            document[cle] = [e for i, e in enumerate(document[cle]) if i not in ecartes]
+    return ' ; '.join(message_contour_croise(c) for c in croises)
+
+
 def _document_et_motif(lead):
     """``(document, motif_ignore)`` — le document public du lead et, quand
     le tracé MULTI-PANS transporté a été écarté, POURQUOI (sinon ``''``)."""
@@ -118,7 +129,7 @@ def _document_et_motif(lead):
         # invalide ⇒ repli À UNE zone depuis ``roof_outline``, motif nommé.
         motif = _motif_refus_document(document) or ''
         if not motif:
-            return document, ''
+            return document, _ecarter_contours_croises(document)
 
     contour = contour_lnglat(lead)
     if len(contour) < 3:
@@ -130,6 +141,9 @@ def _document_et_motif(lead):
             'zones': [{'id': REPERE_ZONE_CONTOUR, 'vertices': contour}],
             'outline': [[point[1], point[0]] for point in contour],
         }
+        croise = _ecarter_contours_croises(document)
+        if croise:  # ACON7 — contour en « 8 » : repère seul, motif nommé.
+            document['outline'], motif = [], ' ; '.join(m for m in (motif, croise) if m)
     else:
         # Le repère est HORS du contour : l'ancien toit n'est pas un pan à
         # calepiner — le document ne porte que le repère, jamais une zone.
@@ -194,11 +208,13 @@ def reprendre_trace_public(lead_id, company, *, user=None):
     # ACAL182 — la porte UNIQUE (verrou du lead + un seul ouvert par lead) :
     # déjà repris (rejeu d'événement, lead ré-enregistré) ou lead qui a déjà
     # un calepinage OUVERT ⇒ on ne crée jamais un second calepinage.
-    calepinage, cree = ouvrir_ou_creer_pour_lead(lead_id, company, user=user)
-    if not cree:
-        return None
-    enregistrer_layout(calepinage, document, user=user,
-                       libelle='Tracé repris du parcours public « mon toit »')
+    from django.db import transaction
+    with transaction.atomic():  # ACON7 — création ET tracé, ou rien.
+        calepinage, cree = ouvrir_ou_creer_pour_lead(lead_id, company, user=user)
+        if not cree:
+            return None
+        enregistrer_layout(calepinage, document, user=user,
+                           libelle='Tracé repris du parcours public « mon toit »')
     if motif_ignore:
         # ACAL190 — le repli à une zone n'est jamais silencieux.
         from .journal import noter

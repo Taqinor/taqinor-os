@@ -47,6 +47,10 @@ class _Base(TestCase):
             company=self.company, nom='Bennani', prenom='CRX38',
             email='%s@example.invalid' % self.slug)
         self._n = 0
+        # ASOC70 (D-ASOC-7) — le lien ne part que réglage parrainage allumé.
+        from apps.parametres.models import CompanyProfile
+        CompanyProfile.objects.update_or_create(
+            company=self.company, defaults={'referral_enabled': True})
 
     def _devis(self, *, statut=Devis.Statut.ACCEPTE, lead=None,
                created_by=None):
@@ -136,6 +140,22 @@ class LesCasOuRienNePart(_Base):
 
         self._accepter(devis)
 
+        self.assertEqual(self._notifs(), [])
+
+    def test_reglage_parrainage_eteint_aucun_lien(self):
+        """ASOC70 (D-ASOC-7) — réglage éteint : aucun lien, aucune notif."""
+        from apps.parametres.models import CompanyProfile
+        CompanyProfile.objects.filter(company=self.company).update(
+            referral_enabled=False)
+        lead = Lead.objects.create(
+            company=self.company, nom='Bennani', owner=self.commercial)
+        devis = self._devis(lead=lead)
+        Notification.objects.all().delete()
+
+        with mock.patch('apps.ventes.services.installation_share_link') as lien:
+            self._accepter(devis)
+
+        lien.assert_not_called()
         self.assertEqual(self._notifs(), [])
 
     def test_un_echec_du_lien_ne_casse_jamais_l_acceptation(self):

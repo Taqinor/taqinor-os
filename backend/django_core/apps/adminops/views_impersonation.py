@@ -49,8 +49,9 @@ def _est_administrateur(user):
     """True si `user` peut CONSENTIR pour sa société (Administrateur)."""
     if not (user and user.is_authenticated):
         return False
-    return bool(getattr(user, 'is_superuser', False)
-                or getattr(user, 'is_admin_role', False)
+    # APFS60 (D-APFS-2) — aucune branche superutilisateur : un compte rattaché
+    # à SA société n'y consent qu'en Administrateur de celle-ci (``_charger``).
+    return bool(getattr(user, 'is_admin_role', False)
                 or getattr(user, 'role_legacy', '') == 'admin')
 
 
@@ -189,8 +190,8 @@ class _ActionConsentementView(APIView):
             return None, Response({'detail': "Réservé à l'Administrateur."},
                                   status=status.HTTP_403_FORBIDDEN)
         # Isolation stricte : un Administrateur ne décide QUE pour sa société.
-        if demande.company_id != getattr(request.user, 'company_id', None) \
-                and not request.user.is_superuser:
+        # APFS60 (D-APFS-2) — superutilisateur compris.
+        if demande.company_id != getattr(request.user, 'company_id', None):
             return None, Response({'detail': 'Demande introuvable.'},
                                   status=status.HTTP_404_NOT_FOUND)
         return demande, None

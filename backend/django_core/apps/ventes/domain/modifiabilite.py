@@ -463,7 +463,9 @@ def empreinte_visible(devis):
     mémoire, qui peut être périmée ou déjà mutée) : ``{lignes, entete, note,
     option, conception, etude}``."""
     from apps.ventes.models import Devis, LigneDevis
+    from apps.ventes.utils.echeancier import tranches_normalisees
 
+    relu = Devis.objects.select_related('company').filter(pk=devis.pk).first()
     ligne_devis = (Devis.objects.filter(pk=devis.pk)
                    .values(*_CHAMPS_ENTETE_VISIBLES, 'note', 'etude_params',
                            'layout_hash')
@@ -502,6 +504,9 @@ def empreinte_visible(devis):
         # des panneaux ou ne retouche que l'ombrage est ainsi tracée.
         'conception': ligne_devis.get('layout_hash') or '',
         'etude': _etude_saisie(etude),
+        # ASOC40 (D-ASOC-1) — tranches EFFECTIVES : échéancier propre, sinon jalons société.
+        'tranches': [(t.get('key'), str(t.get('valeur')), t.get('unite'))
+                     for t in (tranches_normalisees(relu) if relu else [])],
     }
 
 

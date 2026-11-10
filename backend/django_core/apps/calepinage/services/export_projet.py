@@ -523,10 +523,19 @@ class ImportProjetRefuse(ValueError):
     que ce schéma dit (fichier non objet, version inconnue, rattachement ni
     lead ni client), 404 pour un lead / client introuvable."""
 
-    def __init__(self, message, *, champ='', statut=409):
+    def __init__(self, message, *, champ='', statut=409, corps=None):
         super().__init__(message)
         self.champ = champ
         self.statut = statut
+        self.corps = corps  # ACON4 — corps 409 publié (``corps_conflit``)
+
+
+def _refus_deja_ouvert(existant, user):
+    """ACON4 — le lead a déjà un calepinage ouvert (D-ACAL-12) : le refus
+    des autres portes, ``calepinage_creation_conflit``."""
+    from .creation import corps_conflit
+    corps = corps_conflit(existant, user)
+    return ImportProjetRefuse(corps.get('lead') or corps['detail'], champ='lead', corps=corps)
 
 
 def _chemin_layout(prefixe, champ):
@@ -933,20 +942,26 @@ def importer_projet(document, company, *, user=None, lead_id=None,
             'le projet importé (un seul des deux).', champ='lead', statut=400)
     _trier_produits(plan, company)
     if apercu:
+        from ..selectors import calepinage_ouvert_du_lead
+        existant = calepinage_ouvert_du_lead(company, lead_id)
+        if existant is not None:
+            raise _refus_deja_ouvert(existant, user)
         return _resume(plan, ecrit=False)
 
     from django.db import transaction
 
-    from .creation import CreationRefusee, creer_pour_client, creer_pour_lead
+    from .creation import CreationRefusee, creer_pour_client, ouvrir_ou_creer_pour_lead
     from .layout import LayoutRefuse, enregistrer_layout
     from .pertes import enregistrer_pertes
 
     avertissements = []
     try:
         with transaction.atomic():
-            if lead_id:
-                calepinage = creer_pour_lead(lead_id, company, user=user,
-                                             titre=plan['titre'])
+            if lead_id:  # ACON4 — la porte unique : un seul ouvert par lead
+                calepinage, cree = ouvrir_ou_creer_pour_lead(
+                    lead_id, company, user=user, titre=plan['titre'])
+                if not cree:
+                    raise _refus_deja_ouvert(calepinage, user)
             else:
                 calepinage = creer_pour_client(client_id, company, user=user,
                                                titre=plan['titre'])

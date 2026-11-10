@@ -56,7 +56,7 @@ from .services import COOKIE_APPAREIL, domaine_cookies_equipe, enregistrer_appar
 from . import activity
 from . import schema_docs as sd
 from authentication.permissions import (
-    HasPermissionOrLegacy, IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
+    HasPermissionOrLegacy, IsAnyRole, IsResponsableOrAdmin, IsAdminRole, LectureDuModule,
 )
 from apps.roles.permissions import DroitDeLaGrille  # ASEC50
 import logging
@@ -89,7 +89,7 @@ class SalleVenteViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -321,7 +321,7 @@ class DefiViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS or self.action == 'classement':
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     @extend_schema(responses=sd.liste('CrmClassementDefi'))
@@ -351,7 +351,7 @@ class VisiteExterneViewSet(viewsets.ReadOnlyModelViewSet):
     # runtime passe TOUJOURS par get_queryset, qui rescope par société).
     queryset = VisiteExterne.objects.all()
     serializer_class = VisiteExterneSerializer
-    permission_classes = [IsAnyRole]
+    permission_classes = [LectureDuModule]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['created_at', 'duree_s']
     ordering = ['-created_at']
@@ -494,7 +494,7 @@ class AppareilEquipeViewSet(CorpsTexteMixin, mixins.ListModelMixin,
         # inline purement décorative (ici : plus restrictive, donc l'action
         # deviendrait inaccessible au commercial qu'elle vise).
         if self.action in ('list', 'ce_navigateur'):
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     @extend_schema(responses={200: AppareilEquipeSerializer,
@@ -956,26 +956,16 @@ class ClientViewSet(CompanyScopedModelViewSet):
         """FG26 — droit à l'effacement : scrube les PII du client tout en
         PRÉSERVANT l'intégrité comptable (devis/factures conservés, liés à une
         identité neutralisée). Admin uniquement, irréversible, idempotent."""
-        from django.utils import timezone
+        from .dsr_provider import anonymiser_client
         client = self.get_object()
         if client.is_anonymized:
             # ERR-ENF11-FUZZ-CRM : refus d'ÉTAT (fiche déjà effacée) = 409.
             return Response(
                 {'detail': 'Ce client est déjà anonymisé.'},
                 status=status.HTTP_409_CONFLICT)
-        client.nom = f'Client anonymisé #{client.id}'
-        client.prenom = None
-        client.email = None
-        client.telephone = None
-        client.adresse = None
-        client.cin = None
-        client.ice = None
-        client.if_fiscal = None
-        client.rc = None
-        client.custom_data = None
-        client.is_anonymized = True
-        client.anonymized_at = timezone.now()
-        client.save()
+        # ASOC61 — LE scrub unique du DSR (profil de site compris).
+        anonymiser_client(client.company, client, nom=f'Client anonymisé #{client.id}',
+                          motif='Anonymisation RGPD (action fiche client)')
         from apps.audit.recorder import record
         from apps.audit.models import AuditLog
         record(AuditLog.Action.UPDATE, instance=client,
@@ -1278,20 +1268,16 @@ class ParrainageViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['stats']:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def perform_create(self, serializer):
         company = self.request.user.company
         extra = {'created_by': self.request.user}
         if serializer.validated_data.get('recompense') in (None, ''):
-            try:
-                from apps.parametres.models import CompanyProfile
-                prof = CompanyProfile.get(company)
-                if prof and prof.referral_reward is not None:
-                    extra['recompense'] = prof.referral_reward
-            except Exception:
-                logger.warning('%s : échec ignoré (dégradé)', 'perform_create', exc_info=True)
+            from .clients_pilotage import recompense_par_defaut
+            if (recompense := recompense_par_defaut(company)) is not None:
+                extra['recompense'] = recompense
         serializer.save(**extra)
 
     @extend_schema(responses=inline_serializer('CrmParrainageStats', {
@@ -1334,7 +1320,7 @@ class PlanActiviteViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
 
@@ -1354,7 +1340,7 @@ class EquipeCommercialeViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsAdminRole()]
 
     def perform_destroy(self, instance):
@@ -1452,7 +1438,7 @@ class ObjectifCommercialViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['attainment', 'attainment_list']:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         if self.action in ('create', 'update', 'partial_update', 'destroy'):
             return [IsAnyRole()]
         return [IsAdminRole()]
@@ -1555,7 +1541,7 @@ class ConcurrentPerteViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -1610,7 +1596,7 @@ class ForecastEntryViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -1735,7 +1721,7 @@ class PlanCompteViewSet(_PorteeEnfantsMixin, ChatterViewSetMixin, CompanyScopedM
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['historique']:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def perform_create(self, serializer):
@@ -1782,7 +1768,7 @@ class RevueCompteViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -1810,7 +1796,7 @@ class PlaybookViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
 
@@ -1888,7 +1874,7 @@ class PlaybookEtapeViewSet(_PlaybookEnfantViewSetMixin,
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def base_queryset(self):
@@ -1909,7 +1895,7 @@ class PlaybookTacheViewSet(_PlaybookEnfantViewSetMixin,
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def base_queryset(self):

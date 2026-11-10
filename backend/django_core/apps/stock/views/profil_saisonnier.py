@@ -12,7 +12,7 @@ from rest_framework import serializers, status
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from authentication.permissions import LectureDuModule, IsResponsableOrAdmin
 from core.serializers import ChampsTexteBooleenStricts, CompanyScopedRelationsMixin
 from ..erreurs_achats import ConflitEtat, EtatIncompatible
 from ..openapi_helpers import BOOL, ID_OU_VIDE, P
@@ -59,7 +59,7 @@ class ProfilSaisonnierViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):

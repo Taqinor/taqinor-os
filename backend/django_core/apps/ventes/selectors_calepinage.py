@@ -265,6 +265,32 @@ def peremption_layout_devis(devis, calepinage=None):
     }
 
 
+#: ACON90 — le marché d'un devis / d'un lead, dit en clair.
+_LIBELLES_MARCHE = {'residentiel': 'résidentiel', 'industriel': 'industriel',
+                    'commercial': 'commercial', 'agricole': 'agricole'}
+
+
+def refus_marche_du_brouillon(devis, lead):
+    """ACON90 (D-ACON-1) — LE refus des portes de dédup (« Générer le
+    devis », ``from-layout``) : le brouillon ``devis`` n'est pas au marché du
+    ``lead`` (``type_installation``, résidentiel par défaut). Le message, ou
+    ``None`` quand les marchés concordent (ou sans lead)."""
+    from .models import Devis
+
+    if devis is None or lead is None:
+        return None
+    marches = Devis.ModeInstallation
+    attendu = (getattr(lead, 'type_installation', '') or '').lower()
+    attendu = attendu if attendu in marches.values else marches.RESIDENTIEL
+    actuel = devis.mode_installation or marches.RESIDENTIEL
+    if actuel == attendu:
+        return None
+    return (f'Le devis {devis.reference} est au marché '
+            f'{_LIBELLES_MARCHE.get(actuel, actuel)}, le lead est '
+            f'{_LIBELLES_MARCHE.get(attendu, attendu)} : archivez ce brouillon '
+            '(ou corrigez son marché) puis générez à nouveau.')
+
+
 def refus_kwh_declare_du_devis(devis):
     """ADVS26 — la garde kWh déclaré / factures, lue par le module calepinage (une
     seule règle : ``etude_horaire.controle_kwh_declare_du_devis``) : le corps
@@ -580,6 +606,11 @@ def contexte_conception_devis(devis, company):
                      else 'roof_point' if source_lead else None)
     contour_graine = contour_client if contour_utilisable else []
     layout = devis.roof_layout if isinstance(devis.roof_layout, dict) else None
+    # ACON80 (D-ACON-2) — un devis porté par une VARIANTE dessine SON document.
+    from apps.calepinage.selectors import conception_du_devis
+    variante = (conception_du_devis(devis.pk, company) or {}).get('variante')
+    if variante is not None and isinstance(variante.roof_layout, dict):
+        layout = variante.roof_layout
     if layout:
         source = 'devis'
         roof_layout = layout

@@ -42,6 +42,7 @@ ROUTES = {
     'export_csv': ('get', 'export.csv/'),
     'pack_technique': ('post', 'pack-technique/'),
     'dossier_fin_chantier': ('post', 'dossier-fin-chantier/'),
+    'dossier_reglementaire': ('post', 'generer-dossier/'),  # ACON44
 }
 
 TOIT = {
@@ -112,7 +113,8 @@ class PorteeApprobationTest(BaseApiCalepinage):
     def test_sync_refuse_approbation_perimee(self):
         self._exiger()
         self.calepinage.refresh_from_db()
-        decider(self.calepinage, decision='approuve', user=self.user)
+        decider(self.calepinage, decision='approuve', user=self.user,
+                empreinte=self.calepinage.layout_hash or '')  # ACON23
         reponse = self._generer()
         self.assertEqual(reponse.status_code, 201, reponse.data)
         # La conception change : l'approbation est périmée.

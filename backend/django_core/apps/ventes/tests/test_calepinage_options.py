@@ -548,6 +548,27 @@ class ContenanceTests(SimpleTestCase):
         self.assertNotIn('plafonne', dessin)
         ExtensionTests._tous_dans_le_polygone(self, layout, dessin)
 
+    def test_contenance_d_une_zone_de_1200_n_est_pas_bornee_a_600(self):
+        # ACON92 (D-ACON-4) — plafond 2 000 (ACON50) : 1 200 posés ⇒ contenance
+        # ≥ 1 200, dessinée au même nombre ; 2 400 posés ⇒ 2 000 ; une petite
+        # zone extensible (sous les deux plafonds) : inchangée.
+        for rangees, colonnes, demi_l, demi_h, attendu in (
+                (30, 40, 95.0, 40.0, None), (40, 60, 140.0, 48.0, 2000)):
+            with self.subTest(posees=rangees * colonnes):
+                layout = toit(rangees=rangees, colonnes=colonnes,
+                              demi_largeur=demi_l, demi_hauteur=demi_h)
+                capacite = co.capacite_du_layout(layout)
+                self.assertGreaterEqual(capacite, attendu or 1200)
+                self.assertLessEqual(capacite, 2000)
+                bloc = co.deriver(_DevisFactice(layout), offres(
+                    recommande=rangees * colonnes, max=capacite), layout)
+                dessin = bloc['offres']['max']['sans']
+                self.assertEqual(dessin['nb_panneaux_dessines'], capacite)
+        petit = toit(rangees=3, colonnes=6)
+        with mock.patch.object(co, '_MAX_PANNEAUX_DESSINES', 600):
+            avant = co.capacite_du_layout(petit)
+        self.assertEqual(co.capacite_du_layout(petit), avant)
+
     def test_un_toit_SATURE_rend_exactement_les_panneaux_poses(self):
         # LA CONVERGENCE HONNÊTE : le contour serre la pose de si près qu'aucun
         # emplacement supplémentaire ne passe le test de contenance. La

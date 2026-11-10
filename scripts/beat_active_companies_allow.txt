@@ -20,3 +20,17 @@
 # (10/10/2026) Les lectures d'UNE ligne par clé primaire (`.filter/.get(pk=…|id=…)`) ne sont
 # plus des balayages pour la garde : 5 entrées retirées (deliver_webhook, _societe_du_devis,
 # _content_version, ranger_simulation, _signaler_pdf_devis_genere).
+
+# APFS63 - perimetre etendu (2026-11-10) a tout module de apps/ ou core/ qui decore @shared_task : sites
+# relevés par --list, GELES (constatés, pas approuvés).
+# notifications : Company.objects.filter(actif=True) recopié (bonne sémantique, duplique le sélecteur) -
+# fusion dans active_companies() = autre geste (hors périmètre APFS63).
+backend/django_core/apps/notifications/digests.py
+backend/django_core/apps/notifications/sweeps.py
+# reporting : rendus d'UN rapport, bornés par _company_filter(report.company) (**co) que l'AST ne lit pas ;
+# l'appelant email_saved_reports itère active_companies() (APFS63).
+backend/django_core/apps/reporting/scheduled_reports.py::render_sales
+backend/django_core/apps/reporting/scheduled_reports.py::render_stock
+backend/django_core/apps/reporting/scheduled_reports.py::render_service
+# core/tasks.py : purge technique des clés d'idempotence expirées (TTL), aucun envoi ni effet métier par société.
+backend/django_core/core/tasks.py::purge_idempotency_records_task

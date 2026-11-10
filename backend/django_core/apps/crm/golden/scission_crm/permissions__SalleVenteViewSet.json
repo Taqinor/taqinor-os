@@ -65,7 +65,7 @@
   "permissions": [
    {
     "attrs": {},
-    "classe": "IsAnyRole"
+    "classe": "LectureDuModule"
    }
   ]
  },
@@ -95,7 +95,7 @@
   "permissions": [
    {
     "attrs": {},
-    "classe": "IsAnyRole"
+    "classe": "LectureDuModule"
    }
   ]
  },

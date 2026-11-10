@@ -15,3 +15,7 @@ class TiersConfig(AppConfig):
                        "fournisseurs, partenaires, sous-traitants).",
         'categorie': 'Technique',  # couche foundation (même catégorie que records/roles)
     }
+
+    def ready(self):
+        from . import dsr_provider  # ASOC67 — fournisseur DSR (export)
+        dsr_provider.register()

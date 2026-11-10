@@ -45,8 +45,10 @@ def _creer_chantier_on_devis_accepted(sender, devis, user, ancien_statut,
     ré-émettre l'événement ne crée jamais de second chantier. La société du
     chantier est celle du devis (jamais issue d'une entrée client).
     """
+    from core.feature_flags import module_actif
     company = getattr(devis, 'company', None)
-    if company is None:
+    # ASOC2 (D-ASOC-2 rien_creer) — Chantiers désinstallé : ni chantier ni réservation.
+    if company is None or not module_actif(company, 'installations'):
         return
     inst, _created = create_installation_from_devis(devis, user, company)
     _ouvrir_dossier_8221_ci(devis, inst, user)

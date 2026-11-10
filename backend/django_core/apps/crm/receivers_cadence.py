@@ -407,7 +407,7 @@ def _retour_lead_on_visite_validee(sender, visite, lead_id, user, recap,
     from .models import Lead
 
     try:
-        lead = Lead.objects.filter(pk=lead_id).first()
+        lead = Lead.objects.filter(pk=lead_id, company_id=visite.company_id).first()
         if lead is not None:
             ecrire_retour_lead_visite(
                 lead, recap, visite_id=getattr(visite, "pk", None))
@@ -458,7 +458,7 @@ def _suivi_on_visite_planifiee(sender, visite, lead_id, user, date_prevue,
     sa position exacte dans le protocole. Aucune cadence n'est jamais
     redémarrée."""
     try:
-        lead = Lead.objects.filter(pk=lead_id).first()
+        lead = Lead.objects.filter(pk=lead_id, company_id=visite.company_id).first()
         if lead is None:
             return
         appliquer_visite_planifiee(
@@ -487,7 +487,7 @@ def _suivi_on_visite_terminee(sender, visite, lead_id, user, retour,
     ``owner`` d'un lead — ``apps.visites`` n'a aucun moyen (ni aucun droit) de
     le savoir."""
     try:
-        lead = Lead.objects.filter(pk=lead_id).first()
+        lead = Lead.objects.filter(pk=lead_id, company_id=visite.company_id).first()
         if lead is None:
             return
         auteur = ''

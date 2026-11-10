@@ -113,7 +113,8 @@ def creer_devis_import(company, ligne, *, external_system=None, user=None):
     ``('erreur', motif, None)`` — jamais d'exception : une ligne fautive est
     SKIPPÉE par l'appelant, elle n'arrête jamais tout le lot.
     """
-    from apps.ventes.utils.company_settings import create_numbered
+    from apps.ventes.domain.creation import devise_par_defaut
+    from apps.ventes.utils.company_settings import create_numbered, tva_standard
 
     from apps.ventes.models import Devis
 
@@ -134,6 +135,8 @@ def creer_devis_import(company, ligne, *, external_system=None, user=None):
             created_by=user if getattr(user, 'pk', None) else None,
             note=(f"Migré (réf. source {ligne.get('reference_source')})"
                   if ligne.get('reference_source') else ''),
+            # ASOC48 — taux et devise par défaut de la société (comme l'upsell).
+            taux_tva=tva_standard(company), devise=devise_par_defaut(company),
         )
 
     devis = create_numbered(Devis, company, 'devis', _create)

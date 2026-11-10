@@ -89,7 +89,6 @@ LISTE_BLANCHE: dict[str, str] = {
         _TRANSACTIONNEL,
     "backend/django_core/apps/installations/livraison_client_notify.py::notify_livraison_transition::email":
         _TRANSACTIONNEL,
-    "backend/django_core/apps/installations/services.py::_notifier_client_jalon_atteint::email": _TRANSACTIONNEL,
     "backend/django_core/apps/installations/tasks.py::_wa_draft_for_intervention::wa.me": _TRANSACTIONNEL,
     "backend/django_core/apps/installations/tasks.py::_envoyer_email_client::email": _TRANSACTIONNEL,
     "backend/django_core/apps/monitoring/report.py::email_om_report::email": _TRANSACTIONNEL,

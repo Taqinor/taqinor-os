@@ -46,8 +46,11 @@ class ApprobationEmpreinteTest(BaseApiCalepinage):
         self.base = url_detail(self.calepinage.pk)
 
     def _approuver(self):
+        # ACON23 — l'accord renvoie l'empreinte VUE (GET approbation/).
+        vue = self._etat()['empreinte_courante']
         reponse = self.api.post(f'{self.base}approbation/',
-                                {'decision': 'approuve'}, format='json')
+                                {'decision': 'approuve', 'empreinte': vue},
+                                format='json')
         self.assertEqual(reponse.status_code, 200, reponse.data)
         return reponse
 
@@ -131,6 +134,33 @@ class ApprobationEmpreinteTest(BaseApiCalepinage):
         self._approuver()
         self.assertIsNone(self._publier('devis'))
         self.assertIsNone(self._publier('execution'))
+
+    def test_approuver_une_empreinte_perimee_409(self):
+        """ACON23 — E lit H1, D enregistre H2, E approuve H1 : 409 nommé,
+        H2 reste non approuvé ; H2 renvoyée : 200 ; sans empreinte : 400 ;
+        un REFUS n'en exige aucune."""
+        h1 = self._etat()['empreinte_courante']
+        self._modifier_le_dessin()
+        h2 = self._etat()['empreinte_courante']
+        self.assertNotEqual(h1, h2)
+        url = f'{self.base}approbation/'
+        reponse = self.api.post(url, {'decision': 'approuve',
+                                      'empreinte': h1}, format='json')
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertEqual(reponse.data, {'empreinte': (
+            "La conception a changé depuis votre ouverture : relisez-la "
+            "avant d'approuver.")})
+        self.assertIsNone(self._etat()['etat'])
+        reponse = self.api.post(url, {'decision': 'approuve'}, format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('empreinte', reponse.data)
+        reponse = self.api.post(url, {'decision': 'approuve',
+                                      'empreinte': h2}, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual(reponse.data['empreinte_approuvee'], h2)
+        reponse = self.api.post(url, {'decision': 'refuse', 'motif': 'Non'},
+                                format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
 
     def test_approuver_conception_vide_refuse(self):
         vide = Calepinage.objects.create(company=self.company,

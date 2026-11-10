@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import userEvent from '@testing-library/user-event'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
@@ -298,6 +298,20 @@ describe('BoutonDevis — enregistrer avant le geste (ACAL94)', () => {
     await screen.findByTestId('cal-devis-refus')
     expect(calepinageApi.calepinages.genererDevis).not.toHaveBeenCalled()
     expect(navigateMock).not.toHaveBeenCalled()
+  })
+
+  it('deux clics rapides : un enregistrement, un POST', async () => {
+    // ACON46 — la garde est posée AVANT l'enregistrement préalable (asynchrone).
+    let liberer
+    const enregistrerAvant = vi.fn(() => new Promise((ok) => { liberer = () => ok(true) }))
+    calepinageApi.calepinages.genererDevis.mockResolvedValue({ data: { devis: 77 } })
+    rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE, enregistrerAvant })
+    const bouton = await screen.findByTestId('cal-generer-devis')
+    fireEvent.click(bouton)
+    fireEvent.click(bouton)
+    liberer()
+    await waitFor(() => expect(calepinageApi.calepinages.genererDevis).toHaveBeenCalledTimes(1))
+    expect(enregistrerAvant).toHaveBeenCalledTimes(1)
   })
 
   it('Réviser sur accepté : avertit sans refuser', async () => {

@@ -200,7 +200,9 @@ def approbation_perimee(calepinage):
 
 def etat_approbation(calepinage):
     """``{etat, decide_par, decide_le, motif, exigee, perimee,
-    empreinte_approuvee}`` — le contrat CALX334 (+ ACAL6/ACAL114).
+    empreinte_approuvee, empreinte_courante}`` — le contrat CALX334 (+ ACAL6/
+    ACAL114 ; ACON23 : ``empreinte_courante`` = l'empreinte imprimée VUE, que
+    l'accord renvoie).
 
     ``etat`` vaut ``None`` tant que personne n'a décidé ; ``exigee`` reflète
     le réglage société (jamais supposé) ; ``perimee`` dit qu'un accord ne
@@ -218,7 +220,24 @@ def etat_approbation(calepinage):
         'exigee': approbation_exigee(getattr(calepinage, 'company', None)),
         'perimee': approbation_perimee(calepinage),
         'empreinte_approuvee': _empreinte_approuvee(calepinage) if etat else '',
+        'empreinte_courante': getattr(calepinage, 'layout_hash', '') or '',
     }
+
+
+#: ACON23 — un accord porte l'empreinte VUE (``empreinte_courante`` du GET).
+MESSAGE_EMPREINTE_ABSENTE = ("Empreinte manquante : renvoyez l'empreinte de la "
+                             "conception lue (empreinte_courante).")
+MESSAGE_EMPREINTE_PERIMEE = ("La conception a changé depuis votre ouverture : "
+                             "relisez-la avant d'approuver.")
+
+
+def _exiger_empreinte_vue(calepinage, empreinte):
+    """ACON23 — absente ⇒ refus ``empreinte`` (corps mal formé, 400) ;
+    différente de l'empreinte imprimée d'aujourd'hui ⇒ refus (409)."""
+    if not isinstance(empreinte, str):
+        raise ApprobationRefusee(MESSAGE_EMPREINTE_ABSENTE, champ='empreinte')
+    if empreinte != (getattr(calepinage, 'layout_hash', '') or ''):
+        raise ApprobationRefusee(MESSAGE_EMPREINTE_PERIMEE, champ='empreinte')
 
 
 def est_approuve(calepinage, *, empreinte=None):
@@ -239,8 +258,10 @@ def est_approuve(calepinage, *, empreinte=None):
 #: ACAL114 (D-ACAL-19) — le statut DÉRIVÉ (lecture seule) et ses libellés.
 STATUT_BROUILLON, STATUT_VALIDE, STATUT_PERIME = (
     'brouillon', 'valide', 'perime')
+#: ACON28 — la dernière décision est un REFUS : visible, jamais « brouillon ».
+STATUT_REFUSE = 'refuse'
 LIBELLES_STATUT = {STATUT_BROUILLON: 'Brouillon', STATUT_VALIDE: 'Validé',
-                   STATUT_PERIME: 'Périmé'}
+                   STATUT_PERIME: 'Périmé', STATUT_REFUSE: 'Refusé'}
 
 
 def statut_derive(calepinage):
@@ -250,7 +271,20 @@ def statut_derive(calepinage):
         return STATUT_VALIDE
     if _decision(calepinage).get('etat') == APPROUVE:
         return STATUT_PERIME
+    if _decision(calepinage).get('etat') == REFUSE:
+        return STATUT_REFUSE
     return STATUT_BROUILLON
+
+
+def avertissement_refus(calepinage):
+    """ACON28 — l'avertissement d'un devis généré depuis une conception
+    REFUSÉE à l'approbation (``''`` sinon), motif nommé."""
+    decision = _decision(calepinage)
+    if decision.get('etat') != REFUSE:
+        return ''
+    return (f"Conception refusée à l'approbation (motif : "
+            f"{decision.get('motif') or 'non précisé'}) : ce devis part "
+            "d'une conception à reprendre.")
 
 
 def annoter_statut_derive(queryset):
@@ -271,6 +305,7 @@ def annoter_statut_derive(queryset):
                      & ~Q(_appr_empreinte=''),
                      then=Value(STATUT_VALIDE)),
                 When(_appr_etat=APPROUVE, then=Value(STATUT_PERIME)),
+                When(_appr_etat=REFUSE, then=Value(STATUT_REFUSE)),
                 default=Value(STATUT_BROUILLON),
                 output_field=CharField())))
 
@@ -314,7 +349,8 @@ def _valider(decision, motif, roof_layout):
     return motif
 
 
-def decider(calepinage, *, decision, motif='', user=None, maintenant=None):
+def decider(calepinage, *, decision, motif='', user=None, maintenant=None,
+            empreinte=None):
     """Enregistre la décision d'approbation et la note au chatter.
 
     Args:
@@ -323,6 +359,8 @@ def decider(calepinage, *, decision, motif='', user=None, maintenant=None):
         motif: obligatoire pour un refus, facultatif pour un accord.
         user: le décideur — posé côté serveur.
         maintenant: horodatage injectable (aware) ; ``timezone.now()`` sinon.
+        empreinte: ACON23 — l'empreinte VUE (``empreinte_courante``), EXIGÉE
+            pour un accord, vérifiée APRÈS les refus d'avant.
 
     Returns:
         ``etat_approbation(calepinage)`` après écriture.
@@ -352,6 +390,8 @@ def decider(calepinage, *, decision, motif='', user=None, maintenant=None):
     # refus nommé, rien n'est écrit ; indéterminé ⇒ accord AVEC avertissement.
     avertissement = (_verdict_electrique_avant_accord(calepinage)
                      if decision == APPROUVE else '')
+    if decision == APPROUVE:
+        _exiger_empreinte_vue(calepinage, empreinte)
     horodatage = maintenant or timezone.now()
     calepinage.approbation = {
         'etat': decision,
@@ -389,17 +429,16 @@ MESSAGE_AUTO_APPROBATION = (
 
 def _concepteurs(calepinage):
     """Les comptes qui ONT CONÇU ou PORTENT la conception : l'auteur du
-    calepinage, son responsable, l'auteur de sa DERNIÈRE version."""
-    from ..models import CalepinageVersion
+    calepinage, son responsable, et (ACON22, D-ACAL-11) l'auteur de CHAQUE
+    version et de CHAQUE variante — pas seulement de la dernière version."""
+    from ..models import CalepinageVariante, CalepinageVersion
 
     ids = {getattr(calepinage, 'cree_par_id', None),
            getattr(calepinage, 'responsable_id', None)}
     if getattr(calepinage, 'pk', None):
-        derniere = (CalepinageVersion.objects
-                    .filter(calepinage_id=calepinage.pk)
-                    .order_by('-created_at', '-id')
-                    .values_list('cree_par_id', flat=True).first())
-        ids.add(derniere)
+        for modele in (CalepinageVersion, CalepinageVariante):
+            ids.update(modele.objects.filter(calepinage_id=calepinage.pk)
+                       .values_list('cree_par_id', flat=True).distinct())
     ids.discard(None)
     return ids
 

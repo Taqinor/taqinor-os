@@ -63,11 +63,23 @@ def _ecrire_conception(devis, payload, request):
     # CI #997 fuzz (24/10) : JSON libre rangé en jsonb -> nul et demi-substituts
     # Unicode normalisés (DataError / UnicodeEncodeError = 500 sinon).
     payload = nettoyer_json(payload)
+    base = _jeton_if_match(request)
+    if base is None:
+        # ACON9 — un devis déjà CONÇU (calepinage lié) exige le jeton, comme
+        # ``calepinages/<id>/layout/`` : sans lui, l'écriture écraserait la
+        # conception de l'atelier (428, rien d'écrit) ; première conception :
+        # rien à écraser, aucun jeton.
+        from apps.calepinage import services as calepinage_services
+        from apps.calepinage.selectors import calepinage_du_devis
+
+        if calepinage_du_devis(devis.pk, devis.company) is not None:
+            return Response(
+                {'detail': calepinage_services.MESSAGE_JETON_VERSION_MANQUANT},
+                status=status.HTTP_428_PRECONDITION_REQUIRED)
 
     try:
         resultat = ecrire_conception_du_devis(
-            devis, payload, request.user,
-            base_empreinte=_jeton_if_match(request))
+            devis, payload, request.user, base_empreinte=base)
     except SyncLayoutError as exc:
         return Response(
             {'detail': exc.detail,
@@ -236,7 +248,8 @@ class DevisCalepinageActionsMixin:
             composition_errors = validate_composition_for_layout(
                 layout, company, lead=lead_obj)
         except AutoDevisError as refus:
-            return Response({refus.field or 'detail': refus.message},
+            return Response({refus.field or 'detail': refus.message,
+                             'detail': refus.message},  # ACON90
                             status=status.HTTP_409_CONFLICT)
         if composition_errors:
             return Response(
@@ -253,6 +266,12 @@ class DevisCalepinageActionsMixin:
         if lead_obj is not None and lhash:
             existing = devis_brouillon_pour_layout(company, lead_obj.pk, lhash)
         if existing is not None:
+            from ..selectors_calepinage import refus_marche_du_brouillon
+
+            motif = refus_marche_du_brouillon(existing, lead_obj)  # ACON90
+            if motif:
+                return Response({'devis': motif, 'detail': motif},
+                                status=status.HTTP_409_CONFLICT)
             link = ShareLink.for_devis(existing)
             import logging as _logging
             _logging.getLogger(__name__).info(
@@ -288,8 +307,10 @@ class DevisCalepinageActionsMixin:
                 **_composition)
         except AutoDevisError as refus:
             # ACAL32 — un refus de composition (site isolé non servable…) est
-            # un 409 NOMMÉ, jamais un 500 ; rien n'a été écrit.
-            return Response({refus.field or 'detail': refus.message},
+            # un 409 NOMMÉ, jamais un 500 ; rien n'a été écrit. ACON90 : le
+            # même texte sous ``detail`` (lu par ``httpMessage`` de l'écran).
+            return Response({refus.field or 'detail': refus.message,
+                             'detail': refus.message},
                             status=status.HTTP_409_CONFLICT)
 
         # QJ17 — persist the layout hash on the newly-created devis so future
@@ -344,8 +365,10 @@ class DevisCalepinageActionsMixin:
         return Response(contexte)
 
     @extend_schema(request=D.LayoutRequest,
+                   parameters=[D.PARAM_IF_MATCH_DEVIS_CONCU],
                    responses={200: D.SyncLayoutResponse,
-                              409: D.ErreurSyncLayout},
+                              409: D.ErreurSyncLayout,
+                              428: D.ErreurSyncLayout},
                    extensions=D.CORPS_LAYOUT_OBLIGATOIRE)
     @action(parser_classes=[JSONParser], detail=True, methods=['post'], url_path='sync-layout',
             permission_classes=[IsResponsableOrAdmin])
@@ -631,7 +654,9 @@ class DevisCalepinageActionsMixin:
     # api-only: plus d'appelant écran depuis ACAL97 (intégrations/scripts)
     @extend_schema(methods=['GET'], responses=D.LayoutResponse)
     @extend_schema(methods=['POST'], request=D.LayoutRequest,
-                   responses=D.LayoutResponse,
+                   parameters=[D.PARAM_IF_MATCH_DEVIS_CONCU],
+                   responses={200: D.LayoutResponse,
+                              428: D.ErreurSyncLayout},
                    extensions=D.CORPS_LAYOUT_OBLIGATOIRE)
     @action(
         parser_classes=[JSONParser],

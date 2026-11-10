@@ -10,7 +10,7 @@ from core.viewsets import CompanyScopedModelViewSet
 from ..utils.params import MOTIF_IDS, choix_ou_400, corps_objet, etiquette_options_ou_400, ids_requete_ou_400
 from ..models import Produit, EmplacementStock, TransfertStock
 from ..serializers import EmplacementStockSerializer, TransfertStockSerializer
-from authentication.permissions import IsAnyRole, IsAdminRole
+from authentication.permissions import LectureDuModule, IsAdminRole
 import logging
 
 logger = logging.getLogger(__name__)
@@ -43,7 +43,7 @@ class EmplacementStockViewSet(CompanyScopedModelViewSet):
             # garde que les autres impressions d'étiquettes N20
             # (`get_permissions` prime sur le `permission_classes` de
             # l'@action, d'où ce cas explicite — sinon repli IsAdminRole).
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsAdminRole()]
 
     def get_queryset(self):

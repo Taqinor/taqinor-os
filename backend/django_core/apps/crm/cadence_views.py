@@ -35,7 +35,7 @@ from core.conflit_etat import ConflitEtat
 from core.parseurs import ChoixDocumente
 from apps.roles.permissions import DroitDeLaGrille  # ACVI3 : refus nommé
 from authentication.permissions import (
-    HasPermissionOrLegacy, IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
+    HasPermissionOrLegacy, IsAnyRole, IsResponsableOrAdmin, IsAdminRole, LectureDuModule,
 )
 
 logger = logging.getLogger(__name__)
@@ -1474,7 +1474,7 @@ class MessageTemplateViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve', 'render_template']:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsAdminRole()]
 
     def perform_create(self, serializer):

@@ -32,10 +32,10 @@ def _titre(outil):
 def notifier_calibration_proche(outil, destinataires):
     """Notifie ``destinataires`` (itérable d'utilisateurs) de l'échéance de
     calibration de ``outil``. Une seule notification par destinataire et par
-    échéance (titre = nom + date). Renvoie le nombre de notifications créées.
+    échéance (marqueur d'émission ASOC32, indépendant des préférences). Renvoie le nombre de notifications créées.
     Journalise (``logger.warning``) au lieu d'avaler l'exception."""
-    from apps.notifications.models import Notification
     from apps.notifications.services import notify
+    from apps.notifications.sweeps import _reserver_emission
     from apps.notifications.types_evenements import EventType
 
     if outil.date_prochaine_calibration is None:
@@ -44,10 +44,9 @@ def notifier_calibration_proche(outil, destinataires):
     crees = 0
     for user in destinataires:
         try:
-            if Notification.objects.filter(
-                    recipient=user, company=outil.company,
-                    event_type=EventType.OUTILLAGE_CALIBRATION_PROCHE,
-                    title=titre).exists():
+            if not _reserver_emission(  # ASOC32 — (outil, destinataire, échéance)
+                    outil.company, EventType.OUTILLAGE_CALIBRATION_PROCHE,
+                    f'outil:{outil.pk}:{user.pk}', outil.date_prochaine_calibration.isoformat()):
                 continue
             notif = notify(
                 user, EventType.OUTILLAGE_CALIBRATION_PROCHE, titre,

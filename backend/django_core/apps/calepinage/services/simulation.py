@@ -802,11 +802,15 @@ def recalculer_simulations_societe(company, user, *,
         simuler_calepinage as tache_de_simulation,
     )
 
+    from .verrou import est_verrouille
+
     candidats = []
-    for calepinage in liste_calepinages(company).only('pk', 'resultat'):
+    for calepinage in (liste_calepinages(company).select_related('devis')
+                       .only('pk', 'resultat', 'devis')):
         entete = ((calepinage.resultat or {}).get(CLE_SIMULATION)
                   if isinstance(calepinage.resultat, dict) else None)
-        if isinstance(entete, dict) and entete.get('hash_entree'):
+        if (isinstance(entete, dict) and entete.get('hash_entree')
+                and not est_verrouille(calepinage)):  # ACON85 — figé exclu
             candidats.append(calepinage.pk)
     jobs = []
     for calepinage_id in candidats[:plafond]:

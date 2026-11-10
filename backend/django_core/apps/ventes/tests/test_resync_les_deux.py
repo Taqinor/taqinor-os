@@ -43,6 +43,7 @@ from apps.ventes.services import (SCENARIO_AVEC_BATTERIE, SCENARIO_LES_DEUX)
 from apps.ventes.tests.test_pv18_sync_layout import (
     BAREMES_FORFAIT, CATALOGUE_KIT, CLES_REPONSE, auth_client, layout,
     make_company)
+from apps.ventes.tests.test_acal_layout_enrichi import en_tete_jeton
 
 User = get_user_model()
 
@@ -104,7 +105,8 @@ class _BaseDeuxOptions(TestCase):
     def _post(self, devis, corps):
         return self.api.post(
             '/api/django/ventes/devis/%s/sync-layout/' % devis.id,
-            corps, format='json')
+            corps, format='json',
+            **en_tete_jeton(devis.id))
 
     def _designations(self, devis):
         return set(devis.lignes.values_list('designation', flat=True))
@@ -446,7 +448,8 @@ class _BaseReparation(TestCase):
     def _post(self, devis, corps):
         return self.api.post(
             '/api/django/ventes/devis/%s/sync-layout/' % devis.id,
-            corps, format='json')
+            corps, format='json',
+            **en_tete_jeton(devis.id))
 
 
 class TestReparationHeriteDesReglesDeCreation(_BaseReparation):

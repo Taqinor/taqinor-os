@@ -4,7 +4,7 @@ from core.viewsets import CompanyScopedModelViewSet
 from ..openapi_helpers import INT, P
 from ..models import ConditionnementProduit
 from ..serializers import ConditionnementProduitSerializer
-from authentication.permissions import IsAnyRole, HasPermissionOrLegacy
+from authentication.permissions import LectureDuModule, HasPermissionOrLegacy
 
 # NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
 # (un module par ressource). Comportement et symboles inchangés : le
@@ -24,7 +24,7 @@ class ConditionnementProduitViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [HasPermissionOrLegacy('stock_modifier')()]
 
     def get_queryset(self):

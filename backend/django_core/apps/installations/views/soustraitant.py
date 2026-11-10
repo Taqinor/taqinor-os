@@ -16,7 +16,7 @@ from drf_spectacular.utils import extend_schema_serializer
 from rest_framework import status, viewsets
 from rest_framework.response import Response
 
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from authentication.permissions import LectureDuModule, IsResponsableOrAdmin
 
 from apps.stock import selectors as stock_selectors
 from apps.stock import services as stock_services
@@ -59,7 +59,7 @@ class SousTraitantViewSet(oa.JsonOnlyMixin, viewsets.ViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     # ── Helpers ──────────────────────────────────────────────────────────────

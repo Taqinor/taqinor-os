@@ -153,6 +153,39 @@ class ModelesEmailLusTests(TestCase):
         self.assertEqual(resp.status_code, 202, resp.data)
         self.assertEqual(mail.outbox[0].body, 'Corps tapé')
 
+    def test_client_arabe_recoit_le_modele_arabe(self):
+        """ASOC83 — client ``langue_document='ar'`` : l'envoi du devis et la
+        pré-échéance portent le sujet/corps ARABES de la société ; traduction
+        vide → repli FR."""
+        from apps.ventes.email_service import send_pre_echeance_email
+        from apps.ventes.tests.test_qj14_email_send import rendu_ok
+        rendu_ok(self)
+        self.client_obj.langue_document = 'ar'
+        self.client_obj.save(update_fields=['langue_document'])
+        EmailTemplate.objects.create(
+            company=self.company, cle='envoi_devis',
+            sujet='Devis FR {reference}', corps='Corps FR {reference}',
+            sujet_ar='عرض {reference}', corps_ar='نص عربي {reference}')
+        EmailTemplate.objects.create(
+            company=self.company, cle='pre_echeance',
+            sujet='Echeance FR {reference}', corps='Rappel FR {reference}',
+            sujet_ar='استحقاق {reference}')
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-APAR59-0083',
+            client=self.client_obj, statut=Devis.Statut.BROUILLON,
+            taux_tva=Decimal('20.00'), created_by=self.user)
+        resp = self.api.post(
+            f'/api/django/ventes/devis/{devis.id}/envoyer-email/', {},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        log = EmailLog.objects.filter(devis=devis).first()
+        self.assertEqual(log.sujet, 'عرض DEV-APAR59-0083')
+        self.assertIn('نص عربي DEV-APAR59-0083', log.corps)
+        log = send_pre_echeance_email(self.facture, user=self.user)
+        log.refresh_from_db()
+        self.assertEqual(log.sujet, 'استحقاق FAC-APAR59-0001')
+        self.assertEqual(log.corps, 'Rappel FR FAC-APAR59-0001')  # repli FR
+
     def test_modele_d_une_autre_societe_ignore(self):
         from authentication.models import Company
         autre = Company.objects.create(nom='Autre APAR59', slug='apar59-autre')

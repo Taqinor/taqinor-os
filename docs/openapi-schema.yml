@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4945, operations: 7743, components: 3642}
+counts: {paths: 4947, operations: 7745, components: 3643}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -2508,6 +2508,7 @@ operations:
 - put /api/django/portail/demandes-ticket-portail/{id}/ -> django_portail_demandes_ticket_portail_update
 - post /api/django/portail/demandes-ticket-portail/{id}/lier-ticket/ -> django_portail_demandes_ticket_portail_lier_ticket_create
 - post /api/django/portail/demandes-ticket-portail/{id}/prendre_en_charge/ -> django_portail_demandes_ticket_portail_prendre_en_charge_create
+- post /api/django/portail/demandes-ticket-portail/{id}/refuser/ -> django_portail_demandes_ticket_portail_refuser_create
 - get /api/django/portail/documents-client-portail/ -> django_portail_documents_client_portail_list
 - post /api/django/portail/documents-client-portail/ -> django_portail_documents_client_portail_create
 - delete /api/django/portail/documents-client-portail/{id}/ -> django_portail_documents_client_portail_destroy
@@ -6420,6 +6421,7 @@ operations:
 - put /api/v1/portail/demandes-ticket-portail/{id}/ -> v1_portail_demandes_ticket_portail_update
 - post /api/v1/portail/demandes-ticket-portail/{id}/lier-ticket/ -> v1_portail_demandes_ticket_portail_lier_ticket_create
 - post /api/v1/portail/demandes-ticket-portail/{id}/prendre_en_charge/ -> v1_portail_demandes_ticket_portail_prendre_en_charge_create
+- post /api/v1/portail/demandes-ticket-portail/{id}/refuser/ -> v1_portail_demandes_ticket_portail_refuser_create
 - get /api/v1/portail/documents-client-portail/ -> v1_portail_documents_client_portail_list
 - post /api/v1/portail/documents-client-portail/ -> v1_portail_documents_client_portail_create
 - delete /api/v1/portail/documents-client-portail/{id}/ -> v1_portail_documents_client_portail_destroy
@@ -12011,6 +12013,7 @@ components:
 - PortailFournisseurToken
 - PortailPartenaireTableauDeBord
 - PortailRapprocherRequestRequest
+- PortailRefusDemandeRequestRequest
 - PortailTicketIdOptionnelRequestRequest
 - PortailTicketIdRequestRequest
 - PortailTiersToken

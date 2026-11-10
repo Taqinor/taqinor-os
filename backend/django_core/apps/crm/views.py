@@ -42,7 +42,7 @@ from .fiche_bulk import BULK_ACTIONS  # SPL3 (main) : déplacé de services ; EN
 from .leads_attribution import default_responsable_for
 from . import schema_docs as sd
 from authentication.permissions import (
-    HasPermissionOrLegacy, IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
+    HasPermissionOrLegacy, IsAdminRole, IsAnyRole, IsResponsableOrAdmin, LectureDuModule,
 )
 from apps.roles.permissions import DroitDeLaGrille, droits_de_la_grille  # ASEC50
 
@@ -1556,7 +1556,7 @@ class LeadTagViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsAdminRole()]
 
     def list(self, request, *args, **kwargs):
@@ -1765,7 +1765,7 @@ class MotifPerteViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsAdminRole()]
 
     def list(self, request, *args, **kwargs):
@@ -1838,7 +1838,7 @@ class CanalViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsAdminRole()]
 
     def list(self, request, *args, **kwargs):
@@ -1944,7 +1944,7 @@ class SiteProfileViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -2016,7 +2016,7 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
     pagination_class = None
 
     def get_permissions(self):
-        return [IsAnyRole()]
+        return [LectureDuModule()]
 
     def get_queryset(self):
         qs = super().get_queryset().filter(user=self.request.user)

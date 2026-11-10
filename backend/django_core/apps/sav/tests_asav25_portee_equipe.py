@@ -131,6 +131,34 @@ class PorteeEquipeTests(TestCase):
         self.assertEqual(r.status_code, 200, r.content)
         self.assertEqual(sorted(r.data['traites']), sorted([self.a.pk, self.m.pk]))
 
+    def test_telephone_client_masque_sans_client_pii_voir(self):
+        """APFS27 (C-APFS-028) — un rôle sans ``client_pii_voir`` lit
+        ``client_telephone: null`` sur la fiche et la liste des tickets ;
+        témoin (Technicien) et compte hérité : présent."""
+        Client.objects.filter(pk=self.client_obj.pk).update(
+            telephone='0661028028')
+        role = Role.objects.create(
+            company=self.company, nom='Technicien sans client_pii_voir',
+            permissions=[p for p in TECHNICIEN_PERMISSIONS
+                         if p != 'client_pii_voir'], est_systeme=False)
+        sans = User.objects.create_user(
+            username='apfs27_sans', password='x', company=self.company,
+            role=role, role_legacy='responsable')
+
+        def telephones(user):
+            api = auth(user)
+            fiche = api.get(f'{BASE}/tickets/{self.m.pk}/')
+            self.assertEqual(fiche.status_code, 200, fiche.content)
+            r = api.get(f'{BASE}/tickets/')
+            self.assertEqual(r.status_code, 200, r.content)
+            rows = r.data['results'] if 'results' in r.data else r.data
+            return [fiche.data['client_telephone']] + [
+                row['client_telephone'] for row in rows
+                if row['id'] == self.m.pk]
+        self.assertEqual(telephones(sans), [None, None])
+        self.assertEqual(telephones(self.tech), ['0661028028'] * 2)
+        self.assertEqual(telephones(self.autre), ['0661028028'] * 2)
+
     def test_parc_visible_du_chantier_visible(self):
         """ACSV58 (C-ACSV-068, D-ACSV-2) — qui voit un chantier voit tout son
         parc, même créé par un autre ; l'équipement de comptoir du technicien

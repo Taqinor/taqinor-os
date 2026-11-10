@@ -99,7 +99,112 @@
       "INTERDITE",
       "RESERVEE",
       "PREFEREE"
-    ]
+    ],
+    "variante": null
+  },
+  "exemple_variante": {
+    "calepinage": {
+      "id": 1,
+      "titre": "Toiture — bâtiment principal",
+      "statut": "brouillon",
+      "lead": 1,
+      "client": 1,
+      "devis": 1,
+      "client_adresse": "12 rue des Oliviers",
+      "client_ville": "Casablanca",
+      "devis_lie": {
+        "id": 2,
+        "reference": "DEV-202610-0002",
+        "statut": "brouillon",
+        "client_nom": "M. Alaoui"
+      },
+      "lead_supprime": false
+    },
+    "geometrie": {
+      "source": "calepinage",
+      "roof_layout": {
+        "schema_version": 2,
+        "result": {
+          "panels": 12,
+          "kwc": 8.64
+        }
+      },
+      "pin": {
+        "lat": 33.5731,
+        "lng": -7.5898
+      },
+      "outline": [
+        [
+          33.5731,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5897
+        ]
+      ],
+      "contour_client": [
+        [
+          33.5731,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5897
+        ]
+      ],
+      "empreinte_document": "3f1c9a7e5b2d4c60a81e0f9b7d3c5a12e4b6f8091a2c3d4e5f60718293a4b5c6",
+      "repere_lead": {
+        "lat": 33.5731,
+        "lng": -7.5898,
+        "source": "gps"
+      },
+      "ecart_m": 12.4,
+      "derive": {
+        "etat": "aucune",
+        "seuil_m": 100
+      },
+      "contour_utilisable": true,
+      "source_repere": "gps"
+    },
+    "cible": {
+      "panneaux": 12,
+      "kwc": 8.64,
+      "panel_watt": 720,
+      "scenario": "reseau",
+      "batterie": false,
+      "avertissements": [],
+      "source": "devis",
+      "refus": null
+    },
+    "carte": {
+      "available": true,
+      "maptilerKey": "cle-d-essai",
+      "mapboxToken": null
+    },
+    "modifiable": true,
+    "raison_lecture_seule": "",
+    "avertissements": [],
+    "revision_possible": false,
+    "natures_zones": [
+      "ENVELOPPE",
+      "INTERDITE",
+      "RESERVEE",
+      "PREFEREE"
+    ],
+    "variante": {
+      "id": 2,
+      "nom": "Devis DEV-202610-0002",
+      "devis": 2
+    }
   },
   "exemple_sans_devis": {
     "calepinage": {
@@ -180,7 +285,8 @@
       "INTERDITE",
       "RESERVEE",
       "PREFEREE"
-    ]
+    ],
+    "variante": null
   },
   "exemple_vide": {
     "calepinage": {
@@ -229,7 +335,8 @@
       "INTERDITE",
       "RESERVEE",
       "PREFEREE"
-    ]
+    ],
+    "variante": null
   },
   "forme_serveur_note": "ACAL5 — `partielle` TANT QUE les moitiés back (D02-T15, D06-T19, D08-T06) ne servent pas les clés ajoutées (revision_possible, calepinage.devis_lie, calepinage.lead_supprime, geometrie.empreinte_document / repere_lead / ecart_m / derive / contour_utilisable / source_repere, cible.source / cible.refus) ; la première moitié back remet `complete`.",
   "exemple_contour_inutilisable": {
@@ -314,7 +421,8 @@
       "INTERDITE",
       "RESERVEE",
       "PREFEREE"
-    ]
+    ],
+    "variante": null
   },
   "exemple_cible_lead": {
     "calepinage": {
@@ -404,7 +512,8 @@
       "INTERDITE",
       "RESERVEE",
       "PREFEREE"
-    ]
+    ],
+    "variante": null
   },
   "exemple_cible_refus": {
     "calepinage": {
@@ -494,7 +603,8 @@
       "INTERDITE",
       "RESERVEE",
       "PREFEREE"
-    ]
+    ],
+    "variante": null
   },
   "exemple_derive_a_decider": {
     "calepinage": {
@@ -593,7 +703,8 @@
       "INTERDITE",
       "RESERVEE",
       "PREFEREE"
-    ]
+    ],
+    "variante": null
   },
   "exemple_envoye": {
     "calepinage": {
@@ -692,7 +803,8 @@
       "INTERDITE",
       "RESERVEE",
       "PREFEREE"
-    ]
+    ],
+    "variante": null
   },
   "exemple_accepte": {
     "calepinage": {
@@ -791,7 +903,8 @@
       "INTERDITE",
       "RESERVEE",
       "PREFEREE"
-    ]
+    ],
+    "variante": null
   },
   "exemple_remplace": {
     "calepinage": {
@@ -890,7 +1003,9 @@
       "INTERDITE",
       "RESERVEE",
       "PREFEREE"
-    ]
+    ],
+    "variante": null
   },
-  "acal312_note": "ACAL312 (D-ACAL-20) — clé racine ADDITIVE `natures_zones` (liste, toujours présente) : les natures de zone d'exclusion ADMISES, servies depuis `services.zones.natures_admises` (le noyau `core.calepinage.types.NatureZone`) — l'atelier lit ICI son sélecteur de nature, jamais une constante recopiée ; POST layout/ et import-layout/ refusent toute autre nature au chemin `exclusionZones.<i>.nature`."
+  "acal312_note": "ACAL312 (D-ACAL-20) — clé racine ADDITIVE `natures_zones` (liste, toujours présente) : les natures de zone d'exclusion ADMISES, servies depuis `services.zones.natures_admises` (le noyau `core.calepinage.types.NatureZone`) — l'atelier lit ICI son sélecteur de nature, jamais une constante recopiée ; POST layout/ et import-layout/ refusent toute autre nature au chemin `exclusionZones.<i>.nature`.",
+  "acon80_note": "ACON80 (D-ACON-2) — `variante` : `null` hors variante ; avec `?devis=<id>` d'un devis porté par une VARIANTE de ce calepinage (second devis actif du lead, ACON6), `{id, nom, devis}` de la variante, et `geometrie` décrit le document de LA VARIANTE (`roof_layout`, `empreinte_document`), `devis_lie` / `modifiable` ceux du devis porté (`exemple_variante`). L'atelier enregistre alors la variante (PATCH variantes/<id>/, puis sync-devis avec `devis`), jamais le calepinage. Le document est lu par `selectors.conception_du_devis` (contrat calepinage_conception_du_devis.json)."
 }

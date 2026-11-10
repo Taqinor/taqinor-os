@@ -134,9 +134,9 @@ _DEGAGEMENTS = {
 _MAX_COLONNES_AJOUTEES = 6
 _MAX_RANGEES_AJOUTEES = 6
 _MAX_CANDIDATS = 600
-#: Même plafond dur que la visionneuse (``VIEWER_MAX_PANELS``) : au-delà elle
-#: ne dessinerait pas plus, inutile de transporter davantage.
-_MAX_PANNEAUX_DESSINES = 600
+#: ACON92 (D-ACON-4) — même plafond dur que la visionneuse et l'assainisseur
+#: public (2 000, ACON50/ACON93) : au-delà rien de plus n'est dessiné.
+_MAX_PANNEAUX_DESSINES = 2000
 
 #: Les clés de ``zone.geometry`` recopiées telles quelles sur un dessin dérivé.
 #: ``count`` et ``panels`` sont réestampillés ; ``kwc`` est VOLONTAIREMENT
@@ -763,7 +763,7 @@ def capacite_du_layout(layout_public, libres=None, contraintes=None,
        contenance supérieure ferait promettre à la carte un dessin qui
        n'existera jamais. La contenance vaut alors le posé, point.
     5. **Bornée par le plafond de la visionneuse** (``_MAX_PANNEAUX_DESSINES``,
-       600) — au-delà elle ne dessinerait pas plus.
+       2 000, ACON92) — au-delà elle ne dessinerait pas plus.
 
     GARANTIE DE COHÉRENCE (c'est LE point de n'avoir qu'une machinerie) : le
     nombre rendu ici est EXACTEMENT ce que :func:`_repartir` sait dessiner. Un

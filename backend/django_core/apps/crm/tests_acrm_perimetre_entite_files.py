@@ -456,6 +456,38 @@ class ActionRequiseBorneTests(TestCase):
             plus30['devis'][str(self.envoye.id)]['prochaine_touche_crm'],
             touche)
 
+    def test_telephone_client_masque_sans_client_pii_voir(self):
+        """APFS27 (C-APFS-028) — sans ``client_pii_voir`` : téléphone ET
+        WhatsApp null dans l'action-requise ; Responsable témoin et compte
+        hérité : présents."""
+        from apps.roles.permissions_registre import RESPONSABLE_PERMISSIONS
+        self._demo()
+        Lead.objects.filter(pk=self.envoye.lead_id).update(
+            whatsapp='0661028029')
+
+        def ligne(user):
+            api = APIClient()
+            api.force_authenticate(user)
+            r = api.get(URL)
+            self.assertEqual(r.status_code, 200, r.content[:300])
+            d = r.json()['devis'][str(self.envoye.id)]
+            return d['client_telephone'], d['client_whatsapp']
+
+        def compte(nom, permissions):
+            role = Role.objects.create(company=self.company, nom=nom,
+                                       permissions=permissions,
+                                       est_systeme=False)
+            return User.objects.create_user(
+                username=f'apfs27_{len(nom)}', password='x', role=role,
+                role_legacy='responsable', company=self.company)
+        sans = compte('Responsable sans client_pii_voir', [
+            p for p in RESPONSABLE_PERMISSIONS if p != 'client_pii_voir'])
+        temoin = compte('Responsable', list(RESPONSABLE_PERMISSIONS))
+        self.assertEqual(ligne(sans), (None, None))
+        attendu = ('+212600000909', '0661028029')
+        self.assertEqual(ligne(temoin), attendu)
+        self.assertEqual(ligne(self.user), attendu)
+
     def test_details_vingt_premiers(self):
         n = _details_du_contrat()
         refuses = self._refuses(n + 5)

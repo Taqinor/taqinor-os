@@ -41,7 +41,7 @@ from .throttles import (
     LoginRateThrottle,
     RegisterRateThrottle,
 )
-from authentication.permissions import IsAdminRole, IsAdminOrResponsableTier
+from authentication.permissions import IsAdminRole, IsAdminOrResponsableTier, est_operateur_plateforme  # noqa: E501
 from core.throttling import CookieRefreshThrottle
 
 # ── Stratégie CSRF des cookies d'authentification (ERR45) ────────────────────
@@ -661,9 +661,9 @@ class SwitchCompanyView(APIView):
         company_id = entree.validated_data['company_id']
         # Garde d'appartenance STRICTE : jamais de switch vers une société non
         # autorisée (défense contre l'escalade cross-tenant).
-        if not user.peut_operer_societe(company_id):
+        if not user.peut_basculer_vers(company_id):  # APFS66 — membre ET un rôle dans la cible
             return Response(
-                {'detail': "Vous n'êtes pas membre de cette société."},
+                {'detail': "Vous n'êtes pas membre de cette société ou n'y avez aucun rôle."},
                 status=status.HTTP_403_FORBIDDEN,
             )
         cible = Company.objects.filter(pk=company_id).first()
@@ -860,7 +860,7 @@ class RegisterCompanyView(APIView):  # ENF15 : endpoint d'action, aucun queryset
             # XPLT19 — la société d'attache est aussi la première société
             # autorisée (membre). Un compte mono-société démarre donc avec
             # {sa société}.
-            user.societes_autorisees.add(company)
+            user.societes_autorisees.add(company, through_defaults={'role': admin_role})  # APFS66
 
         # SOL10 — gabarit de tenant « Solaire » : compose l'existant (modules
         # rares éteints SOL8, plan de licence Solaire SOL9, rôles types,
@@ -1123,8 +1123,8 @@ class UserViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.company_id:
             return (
-                CustomUser.objects
-                .filter(company=user.company)
+                CustomUser.objects.filter(CustomUser.portee_membres(  # APFS66 — + membres (lecture)
+                    company=user.company, ecriture=getattr(self, 'action', None) in _ACTIONS_ECRITURE_COMPTES))
                 .select_related('role', 'fonction__departement')
                 .order_by('date_joined')
             )
@@ -1430,7 +1430,7 @@ class EstSaPropreSocieteOuOperateurPlateforme(permissions.BasePermission):
 
     def has_object_permission(self, request, view, obj):
         user = request.user
-        if getattr(user, 'is_superuser', False):
+        if est_operateur_plateforme(user):  # APFS61
             return True
         return obj.pk == getattr(user, 'company_id', None)
 
@@ -1444,7 +1444,7 @@ class EstOperateurPlateforme(permissions.BasePermission):
     message = "Réservé à l'opérateur de la plateforme."
 
     def has_permission(self, request, view):
-        return bool(getattr(request.user, 'is_superuser', False))
+        return est_operateur_plateforme(request.user)  # APFS61
 
 
 class CompanyViewSet(viewsets.ModelViewSet):
@@ -1484,7 +1484,7 @@ class CompanyViewSet(viewsets.ModelViewSet):
         contredirait le contrat 403 déjà testé (NTDMO7/NTDMO22)."""
         qs = super().get_queryset()
         user = getattr(self.request, 'user', None)
-        if getattr(user, 'is_superuser', False):
+        if est_operateur_plateforme(user):  # APFS61
             return qs
         if self.action == 'list':
             company_id = getattr(user, 'company_id', None)

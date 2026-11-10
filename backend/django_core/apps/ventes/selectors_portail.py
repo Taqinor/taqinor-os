@@ -125,6 +125,13 @@ def garde_empreinte_portail(request, devis):
     return None, (_empreinte_recue(request) if signable_au_jeton(devis) else None)
 
 
+def virement_facture_portail(facture):
+    """ASOC97 — ``{beneficiaire, banque, rib}`` FIGÉS de la facture pour le
+    « Payer » du portail (définition unique : ``utils.pdf.virement_de_la_facture``)."""
+    from .utils.pdf import virement_de_la_facture
+    return virement_de_la_facture(facture)
+
+
 def _acceptable_portail(devis):
     """Vrai si ``accept_devis`` accepterait ce devis (ERR33 : brouillon /
     envoyé ; ADEV52 : pas expiré). Une seule source pour l'écran portail."""

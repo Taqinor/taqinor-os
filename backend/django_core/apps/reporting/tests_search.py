@@ -52,6 +52,48 @@ class TestGlobalSearch(TestCase):
         self.assertEqual(par_nom['Merbahi'], 'Archivé · Rabat')
         self.assertEqual(par_nom['Merbahiactif'], 'Fes')
 
+    def test_groupes_et_cloche_bornes_au_droit_et_a_la_portee(self):
+        """APFS24 (C-APFS-025) — Admin RH (sans crm_voir/ventes_voir) : aucun
+        groupe lead/client/devis/facture, aucune facture dans la cloche ; C2
+        (« soi ») : pas le lead de C1 ; sans client_pii_voir : rien par
+        téléphone / e-mail, sublabel sans coordonnées ; C1 : inchangé.
+        Mutant : retirer le test de droit ⇒ échec."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import SCOPE_SELF
+
+        def api_de(nom, permissions):
+            role = Role.objects.create(company=self.company, nom=nom, permissions=permissions)
+            user = User.objects.create_user(username=nom, password='x', company=self.company, role=role)
+            api = APIClient()
+            api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+            return user, api
+        c1, api_c1 = api_de('apfs24-c1', ['crm_voir', 'ventes_voir', 'client_pii_voir', SCOPE_SELF])
+        _, api_c2 = api_de('apfs24-c2', ['crm_voir', 'ventes_voir', 'client_pii_voir', SCOPE_SELF])
+        _, api_rh = api_de('apfs24-rh', ['rh_voir'])
+        _, api_sans_pii = api_de('apfs24-sans-pii', ['crm_voir', 'ventes_voir'])
+        Lead.objects.create(company=self.company, nom='Apfslead', telephone='0661240024', owner=c1)
+        client = Client.objects.create(company=self.company, nom='Apfsclient', email='apfs24@example.com')
+        Facture.objects.create(
+            company=self.company, reference='FAC-APFS24', client=client, created_by=c1,
+            statut=Facture.Statut.EMISE, date_echeance=date.today() - timedelta(days=10),
+            taux_tva=Decimal('20'), remise_globale=Decimal('0'))
+
+        def groupes(api, q):
+            resp = api.get('/api/django/reporting/search/', {'q': q})
+            self.assertEqual(resp.status_code, 200, resp.data)
+            return {g['type']: g for g in resp.data['groups']}
+        for q in ('0661240024', 'Apfs', 'FAC-APFS24'):
+            self.assertFalse({'lead', 'client', 'devis', 'facture'} & set(groupes(api_rh, q)), q)
+        self.assertEqual(groupes(api_c1, '0661240024')['lead']['results'][0]['sublabel'], '0661240024')
+        self.assertNotIn('lead', groupes(api_c2, 'Apfslead'))
+        self.assertNotIn('lead', groupes(api_sans_pii, '0661240024'))
+        self.assertNotIn('client', groupes(api_sans_pii, 'apfs24@example.com'))
+        par_nom = groupes(api_sans_pii, 'Apfs')
+        self.assertNotIn('0661240024', str(par_nom))
+        self.assertNotIn('apfs24@example.com', str(par_nom))
+        self.assertEqual(api_rh.get('/api/django/reporting/notifications/').data['factures_impayees'], [])
+        self.assertEqual(len(api_c1.get('/api/django/reporting/notifications/').data['factures_impayees']), 1)
+
     def test_short_query_returns_nothing(self):
         resp = self.api.get('/api/django/reporting/search/?q=a')
         self.assertEqual(resp.status_code, 200)

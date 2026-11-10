@@ -78,7 +78,7 @@ from . import import_plan as _import_plan_action  # noqa: F401 — import d'enre
 # copie CAL14, ``services/variantes.py::dupliquer``).
 from . import cycle as _cycle_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # CALX47 — même patron : rattache ``depuis-lead`` (la porte CRM du module,
-# idempotente, qui appelle ``services/creation.py::creer_pour_lead``).
+# idempotente, qui appelle ``services/creation.py::_creer_pour_lead``).
 from . import depuis_lead as _depuis_lead_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # CALX62 — même patron : rattache ``meteo-fichier`` (le dépôt d'une série
 # météo horaire de la société, lue par ``services/meteo_fichier.py``).

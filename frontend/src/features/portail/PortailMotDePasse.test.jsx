@@ -66,6 +66,37 @@ describe('PortailMotDePasse — ADOC119', () => {
     },
   )
 
+  it('un compte interne revient sur son accueil ERP après le changement', async () => {
+    // APFS102 — jamais `/portail/client` pour un interne.
+    const user = { id: 2, portee: 'interne', must_change_password: true }
+    const store = configureStore({
+      reducer: { auth: authReducer },
+      preloadedState: {
+        auth: {
+          user, role: 'normal', role_nom: null, permissions: [],
+          modulesDesactives: [], isAuthenticated: true, loading: false,
+        },
+      },
+    })
+    serveur.post.mockResolvedValue({ data: {} })
+    serveur.get.mockResolvedValue({ data: { ...user, must_change_password: false } })
+    render(
+      <Provider store={store}>
+        <MemoryRouter initialEntries={['/mot-de-passe']}>
+          <Routes>
+            <Route path="/mot-de-passe" element={<PortailMotDePasse />} />
+            <Route path="/portail/client" element={<div>PORTAIL CLIENT</div>} />
+            <Route path="*" element={<div>ACCUEIL ERP</div>} />
+          </Routes>
+        </MemoryRouter>
+      </Provider>,
+    )
+    expect(screen.getByText(/expiré ou a été réinitialisé/)).toBeTruthy()
+    soumettre()
+    expect(await screen.findByText('ACCUEIL ERP')).toBeTruthy()
+    expect(screen.queryByText('PORTAIL CLIENT')).toBeNull()
+  })
+
   it('l’ancien écran client est le MÊME composant (ré-export)', () => {
     expect(PortailClientMotDePasse).toBe(PortailMotDePasse)
   })

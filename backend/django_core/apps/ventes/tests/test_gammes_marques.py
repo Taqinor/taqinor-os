@@ -76,6 +76,33 @@ class PorteeSocieteTests(ParametresGammesBase):
             gamme='Essentielle')
         self.assertEqual(retenu, moins_cher)
 
+    def test_lecture_refusee_au_compte_portail(self):
+        """APFS101 (C-APFS-001 L2) — un compte portail client reçoit 403 sur
+        la lecture des réglages « gammes » (aucun singleton créé) ; tout
+        interne (Commercial, Directeur) garde 200."""
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+        User = get_user_model()
+        url = '/api/django/ventes/parametres-gammes/'
+        portail = User.objects.create_user(
+            username='apfs101-portail', password='x', company=self.company,
+            portee=User.PORTEE_PORTAIL_CLIENT, portail_client_id=1)
+        api = APIClient()
+        api.force_authenticate(portail)
+        resp = api.get(url)
+        self.assertEqual(resp.status_code, 403)
+        self.assertEqual(str(resp.data['detail']),
+                         'Accès réservé aux comptes internes.')
+        self.assertFalse(
+            ParametresGammes.objects.filter(company=self.company).exists())
+        for username, role in (('apfs101-com', 'commercial'),
+                               ('apfs101-dir', 'admin')):
+            interne = User.objects.create_user(
+                username=username, password='x', company=self.company,
+                role_legacy=role)
+            api.force_authenticate(interne)
+            self.assertEqual(api.get(url).status_code, 200, role)
+
 
 # ── 2. Défaut = comportement historique inchangé ────────────────────────
 

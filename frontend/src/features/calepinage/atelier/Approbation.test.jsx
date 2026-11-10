@@ -17,7 +17,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { reponseContrat } from '../../../test/fixtures/contractSamples'
+import { documentContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
 
 const mocks = vi.hoisted(() => ({ hasPermission: vi.fn(() => false) }))
 vi.mock('../../../hooks/useHasPermission', () => ({
@@ -103,9 +103,27 @@ describe('Approbation (CALX349) — décider, avec le code', () => {
     fireEvent.click(screen.getByTestId('calx349-approuver'))
 
     await waitFor(() => expect(calepinageApi.calepinages.decisionApprobation)
-      .toHaveBeenCalledWith(1, { decision: 'approuve', motif: '' }))
+      .toHaveBeenCalledWith(1, { decision: 'approuve', motif: '',
+        empreinte: echantillon('exemple_vide').empreinte_courante }))
     await screen.findByTestId('calx349-decision')
     expect(screen.getByTestId('calx349-decision')).toHaveTextContent('Approuvée')
+  })
+
+  it('l’accord renvoie l’empreinte VUE ; conception changée depuis : le motif serveur est dit', async () => {
+    // ACON23 — 409 `{empreinte}` : rien n'est approuvé, le message nommé s'affiche.
+    servir('exemple')
+    const refus = documentContrat('calepinage', 'calepinage_approbation').refus_conception_modifiee
+    calepinageApi.calepinages.decisionApprobation.mockRejectedValue({
+      response: { status: 409, data: refus } })
+    rendre()
+    await screen.findByTestId('calx349-decider')
+
+    fireEvent.click(screen.getByTestId('calx349-approuver'))
+
+    await waitFor(() => expect(calepinageApi.calepinages.decisionApprobation)
+      .toHaveBeenCalledWith(1, { decision: 'approuve', motif: '',
+        empreinte: echantillon('exemple').empreinte_courante }))
+    expect(await screen.findByTestId('acon23-erreur-empreinte')).toHaveTextContent(refus.empreinte)
   })
 
   it('un refus SANS motif est rendu SOUS le champ « motif », bandeau nommé', async () => {
@@ -195,6 +213,19 @@ describe('Approbation (CALX349) — décider, avec le code', () => {
    ACAL115 — l'approbation PÉRIMÉE et le refus « conception vide », servis.
    ========================================================================== */
 describe('Approbation (ACAL115)', () => {
+  it('dit que l’accord ne couvre ni l’électrique ni la fixation', async () => {
+    // ACON24 (D-ACON-3) — visible avec ou sans décision, avec ou sans code d'approbation.
+    for (const variante of ['exemple_vide', 'exemple']) {
+      servir(variante)
+      rendre()
+      expect(await screen.findByTestId('calx349-portee')).toHaveTextContent(
+        'L’accord porte sur la conception dessinée (implantation des modules). Il ne couvre ni la '
+        + 'saisie électrique (onduleur, chaînes, longueur forcée, batterie) ni le système de fixation : '
+        + 'les modifier après l’accord ne le périme pas.')
+      cleanup()
+    }
+  })
+
   it('approbation périmée : bandeau à redécider', async () => {
     servir('exemple_perime')
     rendre()

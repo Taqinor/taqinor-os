@@ -128,6 +128,18 @@ devis_expired = django.dispatch.Signal()
 # que ventes importe apps.audit (suppression de l'arête montante ventes→audit).
 document_pdf_generated = django.dispatch.Signal()
 
+# ── ACON41 — la révision abandonnée (retour de ``devis_revise``) ────────────
+# Émis par ``apps.ventes.domain.revision.abandonner_revision`` quand la V2
+# d'une vente est abandonnée (brouillon supprimé, archivée, refusée, expirée)
+# et qu'au moins une version précédente est RÉACTIVÉE — SYNCHRONE, dans la
+# transaction de l'appelant et AVANT la suppression de la V2 (l'abonné doit
+# lire le lien vers la V2 avant la cascade SET_NULL), en best-effort
+# (``send_robust``). Arguments : ancien (la V2 abandonnée), reactivees (les
+# versions réactivées), user. Aucun statut n'est écrit (règle #4). Abonné
+# prévu : le calepinage (re-lien à la V1, ACON91) ; d'ici là, réservé dans
+# ``core.event_coverage.ALLOWED_UNCONSUMED``.
+revision_abandonnee = django.dispatch.Signal()
+
 __all__ = [
     'devis_accepted',
     'devis_acceptation_annulee',
@@ -137,4 +149,5 @@ __all__ = [
     'devis_refused',
     'devis_expired',
     'document_pdf_generated',
+    'revision_abandonnee',
 ]

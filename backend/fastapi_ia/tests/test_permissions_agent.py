@@ -29,6 +29,7 @@ try:
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
+    from app.api.endpoints import ocr as _ocr
     from app.api.endpoints import sql_agent as _ep
     from app.core import database as _db
     from app.services import action_tools as _at
@@ -52,7 +53,7 @@ class _FakeRedis:
         return self._Pipe()
 
 
-@unittest.skipIf(_ep is None, f"endpoint sql_agent non importable: {_ERR}")
+@unittest.skipIf(_ep is None, f"endpoints sql_agent/ocr non importables: {_ERR}")
 class PermissionsAgentTests(unittest.TestCase):
 
     def setUp(self):
@@ -73,12 +74,13 @@ class PermissionsAgentTests(unittest.TestCase):
         self.addCleanup(patcher.stop)
 
     def _client(self, payload):
-        from app.core.security import get_raw_token, verify_token
+        from app.core.security import exiger_compte_interne, get_raw_token, verify_token
 
         app = FastAPI()
         app.include_router(_ep.router, prefix="/sql-agent")
         app.dependency_overrides[verify_token] = lambda: payload
         app.dependency_overrides[get_raw_token] = lambda: "jwt-de-l-appelant"
+        app.dependency_overrides[exiger_compte_interne] = lambda: {}  # APFS2
         return TestClient(app)
 
     def _django_me(self, permissions, ok=True):
@@ -141,6 +143,66 @@ class PermissionsAgentTests(unittest.TestCase):
             self._client(dict(self._PAYLOAD)).post(
                 "/sql-agent/confirm", json={"token": "abc"})
         self.assertEqual(seen[0].permissions, ["prix_achat_voir"])
+
+    # APFS46 (C-APFS-040, facette OCR) — l'historique OCR se décide sur les
+    # codes fins lus par `/auth/me/` (simulé côté HTTP), jamais sur le claim
+    # `role` (« responsable » pour Admin RH, Technicien responsable…). Même
+    # classe que l'agent SQL : un seul saut d'environnement signé (deps tierces).
+    CODES_OCR = {1: ["users_voir", "rh_voir"],                      # Admin RH
+                 2: ["installation_voir", "achats_receptionner"],   # Technicien responsable
+                 3: ["prix_achat_voir", "achats_commander"]}        # Directeur
+
+    def _monter_ocr(self):
+        from sqlalchemy import BigInteger, create_engine
+        from sqlalchemy.ext.compiler import compiles
+        from sqlalchemy.orm import sessionmaker
+        from sqlalchemy.pool import StaticPool
+        from app.core.security import exiger_compte_interne, get_raw_token, verify_token
+        from app.models.ocr import OcrDocument
+        compiles(BigInteger, "sqlite")(lambda *a, **k: "INTEGER")  # PK auto-incrémentée sous SQLite
+        engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+        OcrDocument.__table__.create(engine)
+        self.Session = sessionmaker(bind=engine)
+        with self.Session() as s:
+            s.add_all([OcrDocument(id=10, company_id=7, user_id=1, username="rh", filename="a.pdf"),
+                       OcrDocument(id=11, company_id=7, user_id=3, username="dir", filename="b.pdf")])
+            s.commit()
+        self.me_ok, self.user_id = True, 1
+        self.app = FastAPI()
+        self.app.include_router(_ocr.router, prefix="/ocr")
+        self.app.dependency_overrides[exiger_compte_interne] = lambda: {}
+        self.app.dependency_overrides[verify_token] = lambda: {
+            "user_id": self.user_id, "company_id": 7, "role": "responsable", "is_superuser": False}
+        self.app.dependency_overrides[get_raw_token] = lambda: "jwt"
+        self.app.dependency_overrides[_ocr.get_db] = lambda: self.Session()
+
+        def fake_call(ctx, path, method="POST", payload=None):
+            if not self.me_ok:
+                return {"ok": False, "status": 0, "error": "indisponible"}
+            return {"ok": True, "status": 200, "data": {"permissions": self.CODES_OCR[self.user_id]}}
+        patcher = mock.patch.object(_at, "_django_call", fake_call)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.client = TestClient(self.app)
+
+    def _gestes(self, user_id):
+        self.user_id = user_id
+        ids = sorted(d["id"] for d in self.client.get("/ocr/documents").json())
+        save = self.client.post("/ocr/save_document", json={
+            "filename": "c.pdf", "type_document": "facture", "texte_brut": "", "donnees_structurees": {},
+            "confiance": 0.9}).status_code
+        return ids, self.client.delete("/ocr/documents/11").status_code, save
+
+    def test_documents_d_autrui_exigent_prix_achat_voir(self):
+        self._monter_ocr()
+        self.assertEqual(self._gestes(1), ([10], 403, 403))       # Admin RH
+        self.assertEqual(self._gestes(2), ([], 403, 403))         # Technicien responsable
+        self.me_ok = False                                        # /auth/me/ injoignable : fail-closed
+        self.assertEqual(self._gestes(1), ([10], 403, 403))
+        self.me_ok = True
+        ids, suppression, enregistrement = self._gestes(3)        # Directeur
+        self.assertEqual((ids, enregistrement), ([10, 11], 200), ids)
+        self.assertEqual(suppression, 204)
 
 
 if __name__ == "__main__":

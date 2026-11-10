@@ -51,18 +51,33 @@ def apply_role_to_user(user, role_id) -> bool:
     return True
 
 
+def role_utilisateur(company):
+    """APFS47 (C-APFS-044) — LE rôle « Utilisateur » de ``company`` (créé depuis
+    ``CANONICAL_SYSTEM_ROLES`` s'il manque), posé à la place de « aucun rôle » :
+    un compte sans rôle fin lirait prix d'achat et marges par le repli légacy.
+    ``None`` sans société."""
+    if company is None:
+        return None
+    from .models import Role
+    from .permissions_registre import UTILISATEUR_PERMISSIONS
+    return (Role.objects.filter(company=company, nom='Utilisateur').order_by('id').first()
+            or Role.objects.create(company=company, nom='Utilisateur', est_systeme=True,
+                                   permissions=list(UTILISATEUR_PERMISSIONS)))
+
+
 def remove_role_from_user(user, role_id) -> bool:
     """Retire le rôle ``role_id`` de ``user`` s'il le porte actuellement.
 
-    Le modèle ``CustomUser`` ne porte qu'UN rôle : retirer = repasser à
-    « aucun rôle » (``None``) uniquement quand le rôle courant est bien celui
-    demandé. Renvoie ``True`` si un retrait a eu lieu, sinon ``False``.
+    Le modèle ``CustomUser`` ne porte qu'UN rôle : retirer = repasser au rôle
+    « Utilisateur » de la société (APFS47, jamais « aucun rôle ») uniquement
+    quand le rôle courant est bien celui demandé. Renvoie ``True`` si un
+    retrait a eu lieu, sinon ``False``.
     """
     if user is None or not getattr(user, 'pk', None):
         return False
     if not role_id or str(user.role_id) != str(role_id):
         return False
-    user.role = None
+    user.role = role_utilisateur(user.company)
     user.save(update_fields=['role'])
     return True
 

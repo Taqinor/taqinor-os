@@ -21,3 +21,44 @@
 # ASEC46 — FactureWriteSerializer déclare ses champs par Meta.exclude (invisible avant ASEC46) : 8 FK
 # écrivables non bornées CONSTATÉES, à corriger par la lane ventes (same_company_fields) ; chaque ligne
 # se retire dès que son champ est borné (sinon « ligne d'allowlist inutile »).
+
+# APFS65 - references ENTIERES opaques ecrivables (IntegerField *_id / *_id_ext d'un modele societe), relevees le 2026-11-10 par --list. CONSTATEES, pas approuvees : chaque ligne se retire des que le champ est borne ou passe en read_only_fields. Les quatre pointeurs de TicketSerializer (ACSV54) sont deja en lecture seule.
+backend/django_core/apps/monitoring/serializers.py::AbonnementMonitoringSerializer.installation_id
+backend/django_core/apps/monitoring/serializers.py::CertificatCarboneSerializer.client_id
+backend/django_core/apps/monitoring/serializers.py::CertificatCarboneSerializer.installation_id
+backend/django_core/apps/reporting/saved_reports_api.py::SavedReportSerializer.cible_id
+backend/django_core/apps/sav/serializers.py::WarrantyClaimSerializer.fournisseur_id_ext
+backend/django_core/apps/uxviews/serializers.py::FavoriUtilisateurSerializer.object_id
+
+# APFS62 - validateur manuel : a convertir. Sites couverts jusqu'ici par un validate_<champ> seul, releves le 2026-11-10 par la garde (un validate_<champ> ne couvre plus : il resout la ligne voisine puis repond par son propre message = oracle d'existence). CONSTATES, pas approuves : une tache par proprietaire ; chaque ligne se retire des que le champ passe en same_company_fields.
+backend/django_core/apps/adsengine/serializers.py::ArmDailyStatSerializer.arm  # validateur manuel : à convertir
+backend/django_core/apps/adsengine/serializers.py::CompetitorAdObservationSerializer.competitor_page  # validateur manuel : à convertir
+backend/django_core/apps/adsengine/serializers.py::ConsentRecordSerializer.client_id  # validateur manuel : à convertir
+backend/django_core/apps/adsengine/serializers.py::CreativeAssetSerializer.consent  # validateur manuel : à convertir
+backend/django_core/apps/adsengine/serializers.py::CreativeAssetSerializer.parent  # validateur manuel : à convertir
+backend/django_core/apps/adsengine/serializers.py::CreativeBacklogItemSerializer.asset  # validateur manuel : à convertir
+backend/django_core/apps/adsengine/serializers.py::CreativeBacklogItemSerializer.batch  # validateur manuel : à convertir
+backend/django_core/apps/adsengine/serializers.py::CreativeBacklogItemSerializer.target_campaign  # validateur manuel : à convertir
+backend/django_core/apps/adsengine/serializers.py::CreativeGenerationBatchSerializer.source_hook_asset  # validateur manuel : à convertir
+backend/django_core/apps/adsengine/serializers.py::ExperimentArmSerializer.creative_asset  # validateur manuel : à convertir
+backend/django_core/apps/adsengine/serializers.py::ExperimentArmSerializer.experiment  # validateur manuel : à convertir
+backend/django_core/apps/adsengine/serializers.py::ExperimentSerializer.adset  # validateur manuel : à convertir
+backend/django_core/apps/adsengine/serializers.py::ExperimentSerializer.campaign  # validateur manuel : à convertir
+backend/django_core/apps/adsengine/serializers.py::FactEntrySerializer.table  # validateur manuel : à convertir
+backend/django_core/apps/adsengine/serializers.py::FlightPhaseSerializer.plan  # validateur manuel : à convertir
+backend/django_core/apps/crm/serializers.py::AppointmentSerializer.lead  # validateur manuel : à convertir
+backend/django_core/apps/crm/serializers.py::PointContactSerializer.lead  # validateur manuel : à convertir
+backend/django_core/apps/crm/serializers.py::SavedViewSerializer.user  # validateur manuel : à convertir
+backend/django_core/apps/crm/serializers.py::SiteProfileSerializer.client  # validateur manuel : à convertir
+backend/django_core/apps/crm/serializers_clients.py::ConcurrentPerteSerializer.lead  # validateur manuel : à convertir
+backend/django_core/apps/crm/serializers_clients.py::ParrainageSerializer.filleul_client  # validateur manuel : à convertir
+backend/django_core/apps/crm/serializers_clients.py::ParrainageSerializer.filleul_lead  # validateur manuel : à convertir
+backend/django_core/apps/crm/serializers_clients.py::ParrainageSerializer.parrain  # validateur manuel : à convertir
+backend/django_core/apps/ged/serializers.py::PartageGedSerializer.document  # validateur manuel : à convertir
+backend/django_core/apps/installations/serializers_commissioning.py::CommissioningRecordSerializer.instrument_id  # validateur manuel : à convertir
+backend/django_core/apps/installations/serializers_commissioning.py::RecettePompageSerializer.technicien  # validateur manuel : à convertir
+backend/django_core/apps/parametres/serializers_company.py::CompanyProfileSerializer.default_installer  # validateur manuel : à convertir
+backend/django_core/apps/parametres/serializers_company.py::CompanyProfileSerializer.responsable_defaut_leads  # validateur manuel : à convertir
+backend/django_core/apps/parametres/serializers_company.py::CompanyProfileSerializer.responsable_leads_pro  # validateur manuel : à convertir
+backend/django_core/apps/roles/serializers.py::RoleSerializer.entites_visibles  # validateur manuel : à convertir
+backend/django_core/apps/sav/serializers_maintenance.py::ContratMaintenanceSerializer.equipements  # validateur manuel : à convertir

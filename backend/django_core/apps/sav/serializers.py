@@ -652,8 +652,12 @@ class TicketSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_client_telephone(self, obj):
+        # APFS27 — masqué sans ``client_pii_voir`` (``can_view_client_pii``).
+        user = getattr(self.context.get('request'), 'user', None)
         c = obj.client
-        return c.telephone if c else None
+        if not c or not getattr(user, 'can_view_client_pii', True):
+            return None
+        return c.telephone
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_technicien_nom(self, obj):
@@ -1037,16 +1041,6 @@ class EquipeMaintenanceSerializer(IdInconnu404Mixin, CompanyScopedRelationsMixin
     def get_membres_count(self, obj):
         return obj.membres.count()
 
-    def _same_company(self, obj):
-        req = self.context.get('request')
-        return not (obj and req and req.user.company_id
-                    and obj.company_id != req.user.company_id)
-
-    def validate_responsable(self, value):
-        if value and not self._same_company(value):
-            raise serializers.ValidationError('Utilisateur inconnu.')
-        return value
-
     def validate_membres(self, value):
         req = self.context.get('request')
         company_id = req.user.company_id if req else None
@@ -1061,9 +1055,9 @@ class EquipeMaintenanceSerializer(IdInconnu404Mixin, CompanyScopedRelationsMixin
 
 class CategorieEquipementSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin,
                                     serializers.ModelSerializer):
-    # ENF17 — équipe responsable bornée à la société (le responsable l'est
-    # déjà par ``validate_responsable``).
-    same_company_fields = ('equipe_responsable',)
+    # ENF17 / APFS62 — équipe et utilisateur responsables bornés à la société
+    # (id voisin = id absent).
+    same_company_fields = ('equipe_responsable', 'responsable')
     responsable_nom = serializers.CharField(
         source='responsable.username', read_only=True, allow_null=True)
     # Compteur d'équipements par catégorie (smart-button façon Odoo).
@@ -1088,16 +1082,6 @@ class CategorieEquipementSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalM
         if annote is not None:
             return annote  # APRF30 — annoté par la liste.
         return obj.equipements.count()
-
-    def _same_company(self, obj):
-        req = self.context.get('request')
-        return not (obj and req and req.user.company_id
-                    and obj.company_id != req.user.company_id)
-
-    def validate_responsable(self, value):
-        if value and not self._same_company(value):
-            raise serializers.ValidationError('Utilisateur inconnu.')
-        return value
 
 
 # ── XSAV16 — Journal d'immobilisation (downtime) ──────────────────────────────

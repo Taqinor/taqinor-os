@@ -25,6 +25,14 @@ not a proven leak) — ``core``/``authentication`` foundation views that are
 legitimately unscoped stay covered by
 ``scripts/tenant_view_allowlist.txt`` like any other reviewed exemption.
 
+APFS64 — the sweep also reads every ``@api_view`` FUNCTION (292 of them
+were never opened) and demands an EFFECTIVE company filter: a ``company*``
+keyword (or a COMPANY_TOKENS keyword) passed to a call, or a scoping call
+(``company_qs``, ``scope_queryset``…) — the word « company » cited in a
+condition or a branch no longer counts. The sites found on 09/11/2026 are a
+FROZEN debt (``DETTE_FILTRE_EFFECTIF``, ``path::symbol``) that only shrinks:
+a key without a site fails the guard.
+
 v1: foundation/public views already reviewed are listed in
 ``scripts/tenant_view_allowlist.txt`` (``path::ClassName``); a NEW business
 view missing the company filter or exposing ``company`` writable fails CI.
@@ -64,6 +72,29 @@ COMPANY_TOKENS = ("company", "scope_queryset", "scope_client_queryset",
                   "get_company_object", "for_user", "_scoped",
                   "employe__user", "visible_user_ids", "subtree_user_ids",
                   "peer_user_ids")
+
+#: APFS64 — dette GELÉE (``--list``, 09/11/2026) : ne fait que décroître.
+DETTE_FILTRE_EFFECTIF = frozenset({
+    "backend/django_core/apps/crm/clients_views.py::lead_playbook_view",
+    "backend/django_core/apps/crm/public_booking_views.py::public_booking_reserve",
+    "backend/django_core/apps/crm/public_chat_views.py::get_chat_session",
+    "backend/django_core/apps/crm/public_views.py::public_apporteur_mes_deals",
+    "backend/django_core/apps/crm/public_views.py::public_salle_vente",
+    "backend/django_core/apps/ged/views.py::public_signataire",
+    "backend/django_core/apps/ged/views.py::public_signataire_document",
+    "backend/django_core/apps/ged/views.py::public_signature_document",
+    "backend/django_core/apps/notifications/views.py::push_subscribe",
+    "backend/django_core/apps/notifications/views.py::push_unsubscribe",
+    "backend/django_core/apps/portail/views_externes.py::preference_portail",
+    "backend/django_core/apps/reporting/views.py::dashboard",
+    "backend/django_core/apps/sav/public_views.py::ticket_public_status",
+    "backend/django_core/apps/statuspage/views.py::public_abonner",
+    "backend/django_core/apps/statuspage/views.py::public_confirmer_abonnement",
+    "backend/django_core/apps/statuspage/views.py::public_desabonner",
+    "backend/django_core/apps/ventes/public_views.py::public_bcf_document",
+    "backend/django_core/authentication/views.py::CompanyViewSet",
+    "backend/django_core/core/views.py::secrets_rotation_due",
+})
 
 
 # AUD828 (M-07) — the THREE dispositions the repo actually uses for a
@@ -147,14 +178,44 @@ def _method(classdef, name):
     return None
 
 
+def _nom_appel(call):
+    f = call.func
+    return f.attr if isinstance(f, ast.Attribute) else getattr(f, "id", "")
+
+
+def _filtre_effectif(fonction):
+    """APFS64 — un filtre société EFFECTIF : mot-clé ``company*`` (ou jeton
+    de COMPANY_TOKENS) d'un appel, ou appel de portée (``company_qs``…)."""
+    for n in ast.walk(fonction):
+        if isinstance(n, ast.keyword) and n.arg \
+                and any(t in n.arg for t in COMPANY_TOKENS):
+            return True
+        if isinstance(n, ast.Call) \
+                and any(t in _nom_appel(n) for t in COMPANY_TOKENS):
+            return True
+    return False
+
+
+def _est_api_view(fonction):
+    for d in fonction.decorator_list:
+        cible = d.func if isinstance(d, ast.Call) else d
+        if (cible.attr if isinstance(cible, ast.Attribute)
+                else getattr(cible, "id", "")) == "api_view":
+            return True
+    return False
+
+
+def _lit_orm(fonction):
+    return any(isinstance(n, ast.Attribute) and n.attr == "objects"
+               for n in ast.walk(fonction))
+
+
 def _has_company_scoping(classdef):
     if any(SCOPING_BASE_RE.search(n) for n in _base_names(classdef)):
         return True
     gq = _method(classdef, "get_queryset")
-    if gq is not None:
-        src = ast.dump(gq)
-        if any(tok in src for tok in COMPANY_TOKENS):
-            return True
+    if gq is not None and _filtre_effectif(gq):
+        return True
     # A get_object that scopes by company also counts (detail-only views).
     go = _method(classdef, "get_object")
     if go is not None and "company" in ast.dump(go):
@@ -202,6 +263,15 @@ def check_view_file(path: Path):
     views = []
     findings = []
     for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) \
+                and _est_api_view(node) and _lit_orm(node):
+            scoped = _filtre_effectif(node)
+            views.append((node.name, scoped))
+            if not scoped:
+                findings.append((
+                    "API_VIEW_COMPANY_FILTER_MISSING", f"{rel}::{node.name}",
+                    f"@api_view {node.name} reads the ORM without an "
+                    "effective company filter (company=… / company_qs)."))
         if not isinstance(node, ast.ClassDef) or not _is_view(node):
             continue
         key = f"{rel}::{node.name}"
@@ -342,6 +412,7 @@ def main(argv):
     allow = _load_allowlist()
     all_views = []
     offenders = _morts_offenders(allow)
+    dette_vue = set()
 
     for path in _iter_view_files():
         rel = _rel(path)
@@ -349,9 +420,15 @@ def main(argv):
         for cls, scoped in views:
             all_views.append(f"{rel}::{cls} scoped={scoped}")
         for code, key, msg in findings:
-            if key in allow:
+            all_views.append(f"{key} [{code}]")
+            if key in DETTE_FILTRE_EFFECTIF:
+                dette_vue.add(key)
+            if key in allow or key in DETTE_FILTRE_EFFECTIF:
                 continue
             offenders.append(f"[{code}] {key}: {msg}")
+    offenders += [f"[DETTE_MORTE] {k}: site corrigé ou disparu — retirez la "
+                  "clé de DETTE_FILTRE_EFFECTIF (la dette ne fait que décroître)"
+                  for k in sorted(DETTE_FILTRE_EFFECTIF - dette_vue)]
 
     for path in _iter_serializer_files():
         for code, key, msg in serializer_company_writable(path):

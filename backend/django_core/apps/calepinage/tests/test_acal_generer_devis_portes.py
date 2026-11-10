@@ -21,6 +21,8 @@ from decimal import Decimal
 import json
 from pathlib import Path
 
+from django.test import TransactionTestCase
+
 from apps.calepinage.models import Calepinage
 from apps.calepinage.services.layout import enregistrer_layout
 from apps.calepinage.services.variantes import dupliquer
@@ -76,8 +78,10 @@ class GenererDevisPortesTest(BaseApiCalepinage):
         # ACAL187 — source OUVERTE : la copie vise un autre lead.
         copie = dupliquer(self.original, user=self.user,
                           lead_id=self.lead_2.pk)
-        self.original.refresh_from_db()
-        self.assertEqual(copie.layout_hash, self.original.layout_hash)
+        # ACON11 — la production de la source ne suit pas une copie vers un
+        # autre lead : la copie est re-simulée (ici, résultat reposé).
+        self.assertNotIn('result', copie.roof_layout)
+        enregistrer_layout(copie, copy.deepcopy(TOIT), user=self.user)
 
         reponse = self._generer(copie)
         self.assertEqual(reponse.status_code, 201, reponse.data)
@@ -97,6 +101,39 @@ class GenererDevisPortesTest(BaseApiCalepinage):
         self.assertEqual(second.data['devis'], premier.data['devis'])
         self.assertEqual(Devis.objects.filter(company=self.company).count(),
                          avant)
+
+    def test_montants_differents_du_brouillon_rendu_409(self):
+        """ACON49 — un second POST dédupliqué qui demande une autre TVA ou
+        une autre remise : 409 nommant le champ, brouillon inchangé ; sans
+        montant, ou le même : 200 ``deduplique``."""
+        premier = self._generer(self.original)
+        self.assertEqual(premier.status_code, 201, premier.data)
+        devis = Devis.objects.get(pk=premier.data['devis'])
+        tva, remise = devis.taux_tva, devis.remise_globale
+        url = url_generer(self.original.pk)
+        for corps, champ in (({'taux_tva': 10}, 'taux_tva'),
+                             ({'remise_globale': 5}, 'remise_globale')):
+            with self.subTest(corps=corps):
+                reponse = self.api.post(url, corps, format='json')
+                self.assertEqual(reponse.status_code, 409, reponse.data)
+                self.assertEqual(list(reponse.data), [champ])
+                self.assertIn(devis.reference, reponse.data[champ])
+        from apps.calepinage.services.devis import pourcentage_lisible
+
+        self.assertEqual(self.api.post(
+            url, {'taux_tva': 10}, format='json').data['taux_tva'],
+            f'Le devis {devis.reference} existe déjà à '
+            f'{pourcentage_lisible(tva)} % : changez la TVA depuis le devis.')
+        for corps in ({}, {'taux_tva': str(tva)}):
+            with self.subTest(corps=corps):
+                reponse = self.api.post(url, corps, format='json')
+                self.assertEqual(reponse.status_code, 200, reponse.data)
+                self.assertTrue(reponse.data['deduplique'])
+        devis.refresh_from_db()
+        self.assertEqual((devis.taux_tva, devis.remise_globale),
+                         (tva, remise))
+        self.assertEqual(Devis.objects.filter(
+            company=self.company).count(), 1)
 
     def test_client_seul_deux_clics_un_devis(self):
         client = Client.objects.create(company=self.company,
@@ -150,6 +187,47 @@ class GenererDevisPortesTest(BaseApiCalepinage):
         self.original.refresh_from_db()
         self.assertEqual(self.original.devis_id, premier.data['devis'])
 
+    def test_lead_ci_marche_du_lead_et_brouillon_d_un_autre_marche_409(self):
+        """ACON90 (D-ACON-1) — « Générer le devis » sur un lead industriel :
+        devis INDUSTRIEL ; un brouillon RÉSIDENTIEL de même empreinte lié à
+        un calepinage d'un lead industriel : 409 ``{devis}`` sans nouveau
+        devis ; ``from-layout`` : même refus, texte aussi sous ``detail``."""
+        industriel = Lead.objects.create(company=self.company, nom='Usine',
+                                         type_installation='industriel')
+        c = Calepinage.objects.create(company=self.company,
+                                      lead_id=industriel.pk, titre='ACON90-C')
+        enregistrer_layout(c, copy.deepcopy(TOIT), user=self.user)
+        reponse = self._generer(c)
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        self.assertEqual(Devis.objects.get(pk=reponse.data['devis'])
+                         .mode_installation, 'industriel')
+
+        autre = Lead.objects.create(company=self.company, nom='Usine 2',
+                                    type_installation='industriel')
+        c2 = Calepinage.objects.create(company=self.company,
+                                       lead_id=autre.pk, titre='ACON90-C2')
+        enregistrer_layout(c2, copy.deepcopy(TOIT), user=self.user)
+        c2.refresh_from_db()
+        residentiel = Devis.objects.create(
+            company=self.company, client=self.client_a, lead=autre,
+            reference='DEV-ACON90-1', layout_hash=c2.layout_hash,
+            mode_installation='residentiel')
+        Calepinage.objects.filter(pk=c2.pk).update(devis=residentiel)
+        avant = Devis.objects.filter(company=self.company).count()
+        reponse = self._generer(c2)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertIn('DEV-ACON90-1', str(reponse.data['devis']))
+        self.assertIn('marché résidentiel', str(reponse.data['devis']))
+
+        Calepinage.objects.filter(pk=c2.pk).update(devis=None)
+        reponse = self.api.post(
+            '/api/django/ventes/devis/from-layout/',
+            {'layout': c2.roof_layout, 'lead': autre.pk}, format='json')
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertEqual(reponse.data['detail'], reponse.data['devis'])
+        self.assertEqual(Devis.objects.filter(company=self.company).count(),
+                         avant)
+
     def test_lead_agricole_409(self):
         agricole = Lead.objects.create(company=self.company,
                                        nom='Ferme Souss',
@@ -194,6 +272,29 @@ class GenererDevisPortesTest(BaseApiCalepinage):
         self.assertEqual(reponse.status_code, 201, reponse.data)
         self.assertIn(self._generer(self.original).status_code, (200, 201))
 
+    def test_devis_genere_range_l_ombrage_servi(self):
+        """ACON85 — les études du devis sont rafraîchies APRÈS le lien au
+        calepinage : ``calepinage_du_devis`` trouve alors la conception et
+        l'ombrage servi entre dans le bloc horaire (mutant : rafraîchir
+        avant ``_lier`` ⇒ le dernier rafraîchissement voit un devis nu)."""
+        from unittest import mock
+
+        from apps.ventes import services as ventes_services
+
+        vus = []
+        reel = ventes_services.rafraichir_etudes_du_devis
+
+        def espion(devis, *args, **kwargs):
+            vus.append(Calepinage.objects.filter(devis_id=devis.pk).exists())
+            return reel(devis, *args, **kwargs)
+
+        with mock.patch.object(ventes_services, 'rafraichir_etudes_du_devis',
+                               side_effect=espion):
+            reponse = self._generer(self.original)
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        self.assertTrue(vus)
+        self.assertTrue(vus[-1], vus)
+
     def test_reponse_porte_avertissements(self):
         reponse = self._generer(self.original)
         self.assertEqual(reponse.status_code, 201, reponse.data)
@@ -206,3 +307,78 @@ class GenererDevisPortesTest(BaseApiCalepinage):
         self.assertEqual(sorted(second.data),
                          sorted(set(CONTRAT['exemple_deduplique'])
                                 | {'electrique'}))
+
+
+class GenererDevisConcurrentTest(TransactionTestCase):
+    """ACON46 — deux « Générer le devis » CONCURRENTS sur le même calepinage :
+    le verrou de ligne les sérialise, UN devis sur le lead, la seconde rend la
+    dédup (``cree`` faux). Deux fils, chacun sa connexion ; la première
+    génération est ralentie DANS la création (jamais de barrière qui
+    bloquerait sous le verrou)."""
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
+        from apps.ventes.tests.test_from_layout_endpoint import seed_catalogue
+        from authentication.models import Company
+
+        self.company = Company.objects.create(nom='ACON46 Co',
+                                              slug='acon46-co')
+        role = Role.objects.create(company=self.company, nom='Directeur',
+                                   permissions=list(DIRECTEUR_PERMISSIONS))
+        self.user = get_user_model().objects.create_user(
+            username='acon46', password='x', company=self.company, role=role)
+        self.lead = Lead.objects.create(company=self.company,
+                                        nom='Toiture ACON46')
+        seed_catalogue(self.company)
+        self.calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='ACON46')
+        enregistrer_layout(self.calepinage, copy.deepcopy(TOIT),
+                           user=self.user)
+
+    def test_deux_generations_concurrentes_un_seul_devis(self):
+        import threading
+        import time
+        from unittest import mock
+
+        from django.db import connection
+
+        from apps.calepinage.services.devis import generer_devis
+        from apps.ventes.services import build_devis_from_layout as vraie
+
+        dans_la_creation = threading.Event()
+        resultats, erreurs = [], []
+
+        def lente(*args, **kwargs):
+            dans_la_creation.set()
+            time.sleep(0.5)  # la seconde génération arrive PENDANT la création
+            return vraie(*args, **kwargs)
+
+        def generer():
+            try:
+                cal = Calepinage.objects.get(pk=self.calepinage.pk)
+                resultats.append(generer_devis(cal, user=self.user,
+                                               journal={}))
+            except Exception as erreur:  # noqa: BLE001 — remonté par l'assertion
+                erreurs.append(erreur)
+            finally:
+                connection.close()
+
+        with mock.patch('apps.ventes.services.build_devis_from_layout',
+                        side_effect=lente):
+            premier = threading.Thread(target=generer)
+            premier.start()
+            self.assertTrue(dans_la_creation.wait(30))
+            second = threading.Thread(target=generer)
+            second.start()
+            premier.join(60)
+            second.join(60)
+
+        self.assertEqual(erreurs, [])
+        self.assertEqual(sorted(cree for _devis, cree in resultats),
+                         [False, True])
+        self.assertEqual(Devis.objects.filter(lead=self.lead).count(), 1)
+        self.calepinage.refresh_from_db()
+        self.assertEqual(self.calepinage.devis_id, resultats[0][0].pk)

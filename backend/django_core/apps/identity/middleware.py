@@ -25,18 +25,20 @@ from django.http import JsonResponse
 
 logger = logging.getLogger(__name__)
 
-# Fragments de chemin JAMAIS soumis à l'allowlist (endpoints publics).
-_PUBLIC_PATH_MARKERS = (
-    '/api/public/',
-    '/public/',
-    '/proposal',
-    '/webhook',
-    '/estimateur',
+# APFS67 — PRÉFIXES exacts JAMAIS soumis à l'allowlist (endpoints publics et
+# webhooks entrants nommés) ; jamais une sous-chaîne (« /proposal » laissait
+# passer le PDF interne ventes/devis/<id>/proposal/, « /webhook » la gestion
+# publicapi/webhooks/). Une route publique future vit sous ``public/``.
+_PUBLIC_PATH_PREFIXES = (
+    '/api/public/', '/api/django/public/',
+    '/api/django/crm/webhooks/', '/api/v1/crm/webhooks/',
+    '/api/django/adsengine/whatsapp/webhook/', '/api/v1/adsengine/whatsapp/webhook/',
+    '/api/django/notifications/whatsapp/webhook/', '/api/v1/notifications/whatsapp/webhook/',
 )
 
 
 def _is_public_path(path):
-    return any(marker in path for marker in _PUBLIC_PATH_MARKERS)
+    return path.startswith(_PUBLIC_PATH_PREFIXES)
 
 
 def _client_ip(request):

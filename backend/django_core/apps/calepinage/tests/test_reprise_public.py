@@ -24,6 +24,7 @@ lead réel exigent la base (comme tout test d'API du module).
 Run :
     python manage.py test apps.calepinage.tests.test_reprise_public -v2
 """
+import contextlib
 import io
 import json
 import pathlib
@@ -252,7 +253,12 @@ class LaRepriseCreeUnCalepinagePreTrace(SimpleTestCase):
                            return_value=(faux_calepinage,
                                          not deja_repris)) as creer, \
                 mock.patch('apps.calepinage.services.layout'
-                           '.enregistrer_layout') as enregistrer:
+                           '.enregistrer_layout') as enregistrer, \
+                mock.patch('django.db.transaction.atomic',
+                           side_effect=lambda *a, **k: contextlib.nullcontext(
+                           )) as self.atomique:
+            # ACON7 — la transaction (création ET tracé, ou rien) est
+            # neutralisée : ces tests éprouvent la décision, sans base.
             rendu = reprise_public.reprendre_trace_public(1, object())
         return rendu, creer, enregistrer, faux_calepinage
 
@@ -262,6 +268,7 @@ class LaRepriseCreeUnCalepinagePreTrace(SimpleTestCase):
         rendu, creer, enregistrer, attendu = self._reprendre(lead)
         self.assertIs(rendu, attendu)
         creer.assert_called_once()
+        self.atomique.assert_called_once()  # ACON7
         document = enregistrer.call_args.args[1]
         self.assertEqual(len(document['zones']), 2)
 

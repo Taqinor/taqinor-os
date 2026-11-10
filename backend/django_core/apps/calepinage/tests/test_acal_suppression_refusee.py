@@ -95,7 +95,7 @@ class SuppressionRefuseeTest(BaseApiCalepinage):
         detail = self.api.get(url_detail(self.calepinage.pk)).data
         self.assertFalse(detail['permissions']['peut_supprimer'])
         refus = self.api.post(f'{url_detail(self.calepinage.pk)}archiver/')
-        self.assertEqual(refus.status_code, 400, refus.data)
+        self.assertEqual(refus.status_code, 409, refus.data)  # ACON12
 
         # Devis repassé en BROUILLON : archiver accepte ⇒ peut_supprimer vrai.
         Devis.objects.filter(pk=self.devis.pk).update(

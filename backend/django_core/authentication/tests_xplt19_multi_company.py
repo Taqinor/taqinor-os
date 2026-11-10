@@ -17,6 +17,15 @@ from testkit.factories import (
 from authentication.active_company import ACTIVE_COMPANY_CLAIM
 
 
+def _role(company, nom):
+    """Rôle système canonique ``nom`` de ``company`` (comme la sonde C-APFS-064)."""
+    from apps.roles.models import Role
+    from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+    perms = list(dict(CANONICAL_SYSTEM_ROLES)[nom])
+    return Role.objects.get_or_create(company=company, nom=nom,
+                                      defaults={'permissions': perms, 'est_systeme': True})[0]
+
+
 def _client_with_active(user, active_company_id=None):
     """APIClient portant un access token dont le claim ``active_company_id`` est
     posé (comme après un switch). Sans ``active_company_id``, comportement
@@ -44,7 +53,10 @@ class SwitchCompanyApiTest(TenantAPITestCase):
             # rien à voir avec le switch).
             role_legacy='responsable',
         )
-        self.bi_user.societes_autorisees.add(self.company, self.company_b)
+        self.bi_user.societes_autorisees.add(self.company)
+        # APFS66 (D-APFS-3) — un rôle DANS B est exigé pour y basculer.
+        self.bi_user.societes_autorisees.add(
+            self.company_b, through_defaults={'role': _role(self.company_b, 'Commercial')})
         # Données distinctes par société.
         self.client_a = ClientFactory(company=self.company, nom='ClientA')
         self.client_b = ClientFactory(company=self.company_b, nom='ClientB')
@@ -89,6 +101,40 @@ class SwitchCompanyApiTest(TenantAPITestCase):
         r = api.post('/api/django/auth/switch-company/',
                      {'company_id': self.company_b.id}, format='json')
         self.assertEqual(r.status_code, 403)
+
+    def test_bascule_refusee_sans_role_dans_la_societe(self):
+        """APFS66 (C-APFS-064) — Administrateur de A membre de B sans rôle dans B."""
+        from apps.crm.models import Lead
+        from authentication.models import AppartenanceSociete
+        role_a = _role(self.company, 'Administrateur')
+        x = UserFactory(username='apfs66-adm-a', company=self.company, role=role_a, role_legacy='admin')
+        x.societes_autorisees.add(self.company, self.company_b)
+        adm_b = UserFactory(username='apfs66-adm-b', company=self.company_b,
+                            role=_role(self.company_b, 'Administrateur'), role_legacy='admin')
+        r = _client_with_active(x).post('/api/django/auth/switch-company/',
+                                        {'company_id': self.company_b.id}, format='json')
+        self.assertEqual(r.status_code, 403, r.data)
+        self.assertIn('detail', r.data)
+        # Jeton forgé revendiquant B : repli sur A, aucun lead créé dans B.
+        api_b = _client_with_active(x, self.company_b.id)
+        api_b.post('/api/django/crm/leads/', {'nom': 'Lead APFS66'}, format='json')
+        self.assertFalse(Lead.objects.filter(company=self.company_b, nom='Lead APFS66').exists())
+        # Avec le rôle « Commercial » de B : bascule 200, users/ 403 (droits Commercial).
+        AppartenanceSociete.objects.filter(user=x, company=self.company_b).update(
+            role=_role(self.company_b, 'Commercial'))
+        r = _client_with_active(x).post('/api/django/auth/switch-company/',
+                                        {'company_id': self.company_b.id}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(api_b.get('/api/django/users/').status_code, 403)
+        # L'Administrateur de B voit X parmi ses membres.
+        r = _client_with_active(adm_b).get('/api/django/users/?page_size=200')
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(x.id, {u['id'] for u in r.data.get('results', r.data)})
+        # Persistance : l'appartenance porte le rôle de B ; le rôle d'attache est inchangé.
+        lien = AppartenanceSociete.objects.get(user=x, company=self.company_b)
+        self.assertEqual(lien.role.company_id, self.company_b.id)
+        x.refresh_from_db()
+        self.assertEqual(x.role_id, role_a.id)
 
     def test_enf11_switch_corps_invalide_400_pas_500(self):
         api = _client_with_active(self.bi_user)

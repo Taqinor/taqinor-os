@@ -64,6 +64,63 @@ class DsrCrmProviderTests(TestCase):
         self.assertEqual(
             LeadActivity.objects.filter(lead=lead).count(), 1)
 
+    def test_acces_couvre_toutes_les_sources_personnelles(self):
+        """ASOC67 — l'export d'accès rend aussi factures (+ avoir), tickets SAV,
+        chantiers, visites, documents portail, chatter, consentements et Tiers ;
+        rien d'une autre société."""
+        from decimal import Decimal
+
+        get = django_apps.get_model
+        email = 'jean@example.com'
+        lead = self._lead(self.company)
+        client = get('crm', 'Client').objects.create(
+            company=self.company, nom='Dupont', email=email)
+        facture = get('facturation', 'Facture').objects.create(
+            company=self.company, reference='FAC-ASOC67', client=client,
+            statut='emise', taux_tva=Decimal('20'), montant_ht=Decimal('1000'),
+            montant_tva=Decimal('200'), montant_ttc=Decimal('1200'))
+        get('facturation', 'Avoir').objects.create(
+            company=self.company, reference='AV-ASOC67', facture=facture,
+            client=client, taux_tva=Decimal('20'))
+        get('sav', 'Ticket').objects.create(
+            company=self.company, reference='SAV-ASOC67', client=client)
+        get('installations', 'Installation').objects.create(
+            company=self.company, reference='CH-ASOC67', client=client)
+        get('visites', 'VisiteTerrain').objects.create(
+            company=self.company, lead=lead)
+        get('portail', 'DocumentClientPortail').objects.create(
+            company=self.company, client=client, type_document='autre')
+        activite = get('crm', 'LeadActivity')
+        for body in ('Appel 1', 'Appel 2'):
+            activite.objects.create(company=self.company, lead=lead,
+                                    kind=activite.Kind.NOTE, body=body)
+        get('core', 'ConsentRecord').objects.create(
+            company=self.company, subject_identifier=email, purpose='marketing')
+        # Le Tiers miroir du client est posé par crm.tiers_bridge (ARC18).
+        get('tiers', 'Tiers').objects.create(
+            company=self.other, nom='Dupont', email=email)
+
+        out = dsr.exporter(self.company, email)
+        self.assertEqual([f['reference'] for f in out['ventes']['factures']],
+                         ['FAC-ASOC67'])
+        self.assertEqual(
+            [a['reference'] for a in out['ventes']['factures'][0]['avoirs']],
+            ['AV-ASOC67'])
+        self.assertEqual(len(out['sav']['tickets']), 1)
+        self.assertEqual(len(out['installations']['chantiers']), 1)
+        self.assertEqual(len(out['crm']['visites']), 1)
+        self.assertEqual(len(out['portail']['documents']), 1)
+        self.assertEqual(
+            sorted(a['body'] for a in out['crm']['chatter']
+                   if a['kind'] == activite.Kind.NOTE), ['Appel 1', 'Appel 2'])
+        self.assertEqual(len(out['core']['consentements']), 1)
+        self.assertEqual(len(out['tiers']['tiers']), 1)
+        self.assertNotIn('prix_achat', str(out))
+        self.assertNotIn('marge', str(out))
+        autre = dsr.exporter(self.other, email)
+        self.assertEqual(autre['sav']['tickets'], [])
+        self.assertEqual(autre['core']['consentements'], [])
+
     def test_tenant_isolation_on_export(self):
         self._lead(self.other, email='jean@example.com')
         req = DataSubjectRequest.objects.create(

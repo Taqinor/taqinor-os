@@ -42,7 +42,7 @@ import { openPdfBlob } from '../../utils/pdfBlob'
 import NoteDebitDialog from './NoteDebitDialog'
 import { polyfillResizeObserver } from '../../test/selectNatif'
 
-const FACTURE = { id: 11, reference: 'FAC-202607-0001', montant_du: '12000.00' }
+const FACTURE = { id: 11, reference: 'FAC-202607-0001', montant_du: '12000.00', taux_tva: '20.00' }
 const bouton = () => screen.getByRole('button', { name: /Créer la note de débit/ })
 
 describe('NoteDebitDialog (WIR103 + AFAC33)', () => {
@@ -77,6 +77,31 @@ describe('NoteDebitDialog (WIR103 + AFAC33)', () => {
         11, { motif: 'pénalité', montant: '500', taux_tva: '20' }))
     expect(await screen.findByText(CONTRAT.exemple.reference)).toBeInTheDocument()
     expect(onChanged).toHaveBeenCalled()
+  })
+
+  it('pré-remplit le taux de la facture', async () => {
+    // ASOC49 — facture à 14 % : le champ s'ouvre sur 14 et le corps poste '14' ; sans taux :
+    // champ vide, clé absente (le serveur prend le taux de la facture) ; réouverture : son taux.
+    ventesApi.creerNoteDebit.mockClear()
+    ventesApi.creerNoteDebit.mockResolvedValue({ data: CONTRAT.exemple })
+    const user = userEvent.setup()
+    const a14 = { ...FACTURE, id: 12, taux_tva: '14.00' }
+    const { rerender } = render(<NoteDebitDialog facture={a14} open onOpenChange={() => {}} />)
+    await screen.findByText('ND-202607-0001')
+    expect(screen.getByLabelText('TVA (%)')).toHaveValue(14)
+    await user.type(screen.getByLabelText(/Montant HT/), '500')
+    await user.click(bouton())
+    await waitFor(() => expect(ventesApi.creerNoteDebit).toHaveBeenLastCalledWith(
+      12, { motif: '', montant: '500', taux_tva: '14' }))
+    const sansTaux = { ...FACTURE, id: 13, taux_tva: null }
+    rerender(<NoteDebitDialog facture={sansTaux} open={false} onOpenChange={() => {}} />)
+    rerender(<NoteDebitDialog facture={sansTaux} open onOpenChange={() => {}} />)
+    await screen.findByText('ND-202607-0001')
+    expect(screen.getByLabelText('TVA (%)')).toHaveValue(null)
+    await user.type(screen.getByLabelText(/Montant HT/), '300')
+    await user.click(bouton())
+    await waitFor(() => expect(ventesApi.creerNoteDebit).toHaveBeenLastCalledWith(
+      13, { motif: '', montant: '300' }))
   })
 
   it('affiche le message serveur sous le champ', async () => {

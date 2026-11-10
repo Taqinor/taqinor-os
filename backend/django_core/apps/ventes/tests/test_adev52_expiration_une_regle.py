@@ -137,6 +137,34 @@ class ExpirationUneRegleTests(TestCase):
         devis.refresh_from_db()
         self.assertEqual(devis.statut, Devis.Statut.ACCEPTE)
 
+    def test_reglage_baisse_apres_envoi_n_expire_pas(self):
+        """ASOC41 (C-ASOC-041) — créé le 19/10, envoyé le 08/11 à 30 j : validité
+        posée au 08/12 ; réglage passé à 15 j ensuite : pas expiré au 20/11 (beat
+        0), acceptation client 200. Mutant : retirer la pose ⇒ ``expiree``."""
+        from datetime import datetime
+
+        from apps.parametres.models import CompanyProfile
+        from apps.ventes.domain.envoi import mark_devis_sent
+        from apps.ventes.domain.recouvrement import expire_stale_devis
+        profil = CompanyProfile.get(self.company)
+        profil.quote_validity_days = 30
+        profil.save(update_fields=['quote_validity_days'])
+        devis = self._devis(None)
+        Devis.objects.filter(pk=devis.pk).update(
+            statut=Devis.Statut.BROUILLON,
+            date_creation=timezone.make_aware(datetime(2026, 10, 19, 10)))
+        devis.refresh_from_db()
+        with freeze_time('2026-11-08T10:00:00Z'):
+            mark_devis_sent(devis=devis, user=self.admin)
+        devis.refresh_from_db()  # CLAUSE PERSISTANCE
+        self.assertEqual(devis.date_validite, date(2026, 12, 8))
+        profil.quote_validity_days = 15
+        profil.save(update_fields=['quote_validity_days'])
+        with freeze_time('2026-11-20T10:00:00Z'):
+            self.assertEqual(expire_stale_devis()['expired'], 0)
+            resp = self._public(devis)
+        self.assertEqual(resp.status_code, 200, resp.data)
+
     def test_offre_expiree_servie(self):
         expire = self._devis(timezone.localdate() - timedelta(days=3))
         corps = self._lire(expire)

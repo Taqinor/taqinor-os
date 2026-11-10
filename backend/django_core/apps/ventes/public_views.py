@@ -329,10 +329,10 @@ def public_bcf_document(request, token):
 # qu'un seul devis d'une seule société). Aucun login : le jeton AUTHENTIFIE.
 
 
-#: WJ24 — plafond de panneaux republiés PAR ZONE. Une villa en pose quelques
-#: dizaines ; 600 couvre très largement l'industriel tout en bornant la taille
-#: du payload public (et le coût d'un blob stocké volumineux).
-_MAX_PANNEAUX_PUBLIES = 600
+#: WJ24/ACON50 (D-ACON-4) — plafond de panneaux republiés PAR ZONE : le plafond
+#: dur du calepinage (2 000, 23/10), au-delà la page compare ``count`` aux
+#: panneaux reçus et dit « vue simplifiée » (ACON93).
+_MAX_PANNEAUX_PUBLIES = 2000
 
 #: Valeurs d'énumération admises — tout le reste est jeté (jamais republié).
 _FAMILLES_CONNUES = ('south', 'eastwest')
@@ -1132,11 +1132,12 @@ def _economies_cumul_25_ans_publique(data, devis=None):
     return out or None, net or None
 
 
-def _emetteur_public(company):
-    """APDF110 (C-APDF-VER-007) — identité légale de la société ÉMETTRICE, lue
-    par ``company_identity`` ('' quand non renseignée) ; jamais RIB/adresse/CNSS."""
-    identite = company_identity(company)
-    return {cle: identite[cle] for cle in ('nom', 'forme_juridique', 'capital_social', 'rc', 'ice')}
+def _emetteur_public(devis):
+    """APDF110/ASOC42 — identité légale de l'ÉMETTRICE, figée à l'envoi sinon le profil ; jamais RIB/adresse/CNSS."""
+    from apps.ventes.domain.reglages_figes_lecture import reglages_figes
+    return {cle: valeur for cle, valeur in (
+        reglages_figes(devis).get('identite') or company_identity(devis.company)).items()
+        if cle in ('nom', 'forme_juridique', 'capital_social', 'rc', 'ice')}
 
 
 @extend_schema(responses={200: SH.ProposalDataResponse, 403: SH.OtpRequis})
@@ -1373,7 +1374,7 @@ def proposal_data(request, token):
             'client_name': data['client_name'],
             'statut': devis.statut,
             # APDF110 — la société ÉMETTRICE est celle du devis du jeton.
-            'emetteur': _emetteur_public(devis.company),
+            'emetteur': _emetteur_public(devis),
             # QJR536 (contrat QJR501) — ``null`` tant que CE devis n'est pas
             # remplacé ; sinon ``{reference, url}`` de la version EN VIGUEUR
             # (dernière de la chaîne ``superseded_by``, même société). ``url``

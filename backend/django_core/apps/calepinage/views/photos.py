@@ -166,7 +166,11 @@ class PhotosSiteMixin:
 
         if request.method.lower() == 'get':
             return Response({'photos': photos_site(calepinage)})
+        # ACON13 — verrou aux PORTES HTTP (jamais dans supprimer_photo_site :
+        # l'effacement 09-08 reste libre) ⇒ 409 {photos: [motif ventes]}.
+        from ..services.verrou import verifier_ecriture_autorisee
 
+        verifier_ecriture_autorisee(calepinage, champ='photos')
         champs = PhotoSiteChampsSerializer(data=request.data)
         champs.is_valid(raise_exception=True)
         valides = champs.validated_data
@@ -221,7 +225,10 @@ class PhotosSiteMixin:
         # ACAL277 — import local : ``calepinages.py`` importe CE module.
         from .calepinages import _identifiant_ou_404
 
+        from ..services.verrou import verifier_ecriture_autorisee
+
         calepinage = self.get_object()  # borné société par get_queryset
+        verifier_ecriture_autorisee(calepinage, champ='photos')  # ACON13
         photo = calepinage.photos_site.select_related('attachment').filter(
             pk=_identifiant_ou_404(photo_id)).first()
         if photo is None:

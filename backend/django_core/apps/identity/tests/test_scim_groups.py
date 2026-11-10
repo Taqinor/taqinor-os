@@ -29,7 +29,7 @@ class RolesServiceTests(TestCase):
         self.assertEqual(self.user.role_id, self.role.id)
         self.assertTrue(remove_role_from_user(self.user, self.role.id))
         self.user.refresh_from_db()
-        self.assertIsNone(self.user.role_id)
+        self.assertEqual(self.user.role.nom, 'Utilisateur')  # APFS47 — jamais « aucun rôle »
 
     def test_foreign_company_role_never_applied(self):
         self.assertFalse(apply_role_to_user(self.user, self.foreign.id))
@@ -100,7 +100,7 @@ class ScimGroupsTests(TestCase):
         }, format='json')
         self.assertEqual(r.status_code, 200, r.content)
         self.user.refresh_from_db()
-        self.assertIsNone(self.user.role_id)
+        self.assertEqual(self.user.role.nom, 'Utilisateur')  # APFS47 — jamais « aucun rôle »
 
     def test_membership_scoped_to_company(self):
         # Un compte d'une autre société n'est jamais affecté par le mapping.

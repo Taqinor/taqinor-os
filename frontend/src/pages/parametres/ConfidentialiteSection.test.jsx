@@ -113,6 +113,55 @@ describe('ConfidentialiteSection (XPLT23)', () => {
     await waitFor(() => expect(traiterDsr).toHaveBeenCalledWith(5))
   })
 
+  it('confirme un effacement avant de le traiter et montre le résultat d\'un accès', async () => {
+    // ASOC64 — annuler la confirmation ⇒ aucun POST ; un accès traité montre
+    // ses sources et se télécharge en JSON.
+    const { downloadBlob } = await import('../../api/importApi')
+    listDsr.mockResolvedValueOnce({
+      data: [
+        { id: 6, subject_identifier: 'efface@x.ma', kind: 'effacement', statut: 'recue' },
+        { id: 7, subject_identifier: 'acces@x.ma', kind: 'acces', statut: 'traitee',
+          resultat: { crm: { leads: 1 }, ventes: { devis: 2 } } },
+      ],
+    })
+    const confirmer = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const user = userEvent.setup()
+    renderWithRole('admin')
+    await screen.findByText('efface@x.ma')
+
+    await user.click(screen.getByRole('button', { name: /Traiter/ }))
+    expect(confirmer).toHaveBeenCalled()
+    expect(traiterDsr).not.toHaveBeenCalled()
+
+    expect(screen.getByTestId('dsr-sources')).toHaveTextContent('crm, ventes')
+    await user.click(screen.getByRole('button', { name: /Télécharger \(JSON\)/ }))
+    expect(downloadBlob).toHaveBeenCalledWith(
+      expect.stringContaining('"crm"'), 'dsr-acces-7.json')
+    confirmer.mockRestore()
+  })
+
+  it('montre une demande partielle, ses sources en échec et la relance', async () => {
+    // ASOC103 — « en_verification » reste traitable ; « partielle » montre ses
+    // sources en erreur et « Relancer » POSTe `traiter` puis relit la ligne.
+    const partielle = { id: 9, subject_identifier: 'partiel@x.ma', kind: 'effacement',
+      statut: 'partielle', resultat: { crm: 1, stock: { erreur: 'stockage indisponible' } } }
+    listDsr.mockResolvedValueOnce({ data: [
+      { id: 8, subject_identifier: 'verif@x.ma', kind: 'acces', statut: 'en_verification' }, partielle,
+    ] }).mockResolvedValueOnce({ data: [{ ...partielle, statut: 'traitee', resultat: { crm: 1, stock: 2 } }] })
+    const user = userEvent.setup()
+    renderWithRole('admin')
+    await screen.findByText('partiel@x.ma')
+
+    expect(screen.getByText("En vérification d'identité")).toBeInTheDocument()
+    expect(screen.getByText('Partiellement traitée')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Traiter/ })).toBeInTheDocument()
+    expect(screen.getByTestId('dsr-echecs')).toHaveTextContent('Sources en échec : stock — stockage indisponible')
+
+    await user.click(screen.getByRole('button', { name: /Relancer/ }))
+    await waitFor(() => expect(traiterDsr).toHaveBeenCalledWith(9))
+    expect(await screen.findByText('Traitée')).toBeInTheDocument()
+  })
+
   it('liste les consentements par sujet et finalité avec leur statut (PACT119)', async () => {
     renderWithRole('admin')
 

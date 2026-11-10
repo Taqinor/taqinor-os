@@ -55,6 +55,21 @@ class LiensClientAbsolusTests(unittest.TestCase):
     def test_docstring_ignoree(self):
         self.assertEqual(guard.analyser(_repo(DOCSTRING)), {})
 
+    def test_suivi_relatif_detecte(self):
+        # ASOC26 — `/suivi/<jeton>` (page client SAV) relatif hors requête :
+        # signalé ; via public_url : accepté ; constante de module : ignorée.
+        relatif = ("def build(token, request=None):\n"
+                   "    return f'/suivi/{token}'\n")
+        self.assertEqual(list(guard.analyser(_repo(relatif))), [
+            "backend/django_core/apps/ventes/payments/providers.py::build"])
+        absolu = ("def build(token, request=None):\n"
+                  "    return public_url(f'/suivi/{token}', request)\n")
+        self.assertEqual(guard.analyser(_repo(absolu)), {})
+        constante = "SUIVI_PATH = '/suivi/{token}'\n"
+        self.assertEqual(guard.analyser(_repo(constante)), {})
+        prefixes = "PREFIXES = ('/api/django/public/', '/suivi/')\n"
+        self.assertEqual(guard.analyser(_repo(prefixes)), {})
+
     def test_cle_morte_echoue(self):
         erreurs = guard.verifier({}, {"a.py::f"})
         self.assertEqual(len(erreurs), 1)

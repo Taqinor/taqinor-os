@@ -41,7 +41,7 @@ from psycopg2 import sql
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from authentication.permissions import IsAuthenticatedInterne
 from rest_framework.response import Response
 
 from . import data_explorer
@@ -832,7 +832,7 @@ _RUN_RESUME_SHAPE = inline_serializer('BackupRunResume', {
     'rto_annonce_heures': drf_serializers.IntegerField(allow_null=True),
 }))
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticatedInterne])
 def mes_sauvegardes_view(request):
     """GET /api/django/core/mes-sauvegardes/ — scopé société de l'appelant."""
     return Response(resume_sauvegardes(request.user.company))

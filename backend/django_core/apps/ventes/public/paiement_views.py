@@ -179,6 +179,7 @@ def pay_page(request, token):
     link = _resolve_payment_link(token, require_valid=False)
     if link is None:
         return _not_found()
+    from ..utils.pdf import virement_de_la_facture
     facture = link.facture
     # AFAC23 (C-AFAC-018) — une facture ANNULÉE ne réclame jamais rien, même
     # par un lien resté ouvert : la page répond « annulé », montant 0.00. Un
@@ -199,9 +200,9 @@ def pay_page(request, token):
         'statut': statut,
         'paye': link.statut == PaymentLink.Statut.PAYE,
         'expire': not link.is_valid and link.statut != PaymentLink.Statut.PAYE,
-        # AFAC21 — clé du contrat ``paiement_public.json`` : le RIB de la
-        # société émettrice (null si aucun n'est paramétré).
-        'rib': _company_rib(facture.company) or None,
+        # AFAC21 — clé du contrat ``paiement_public.json`` ; ASOC43 — le RIB
+        # FIGÉ de la facture (celui du PDF), null si aucun n'est paramétré.
+        'rib': virement_de_la_facture(facture)['rib'] or None,
     }))
 
 

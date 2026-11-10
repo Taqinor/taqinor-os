@@ -201,6 +201,22 @@ class TestSoftDelete(ArchiveTestBase):
         r = api.get('/api/django/crm/leads/')
         self.assertIn(self.lead.id, ids_of(r))
 
+    def test_restauration_corbeille_rejoue_chatter_et_prochaine_etape(self):
+        """ASOC86 (C-ASOC-165) — restaurer un lead SUPPRIMÉ par la corbeille
+        rejoue la restauration d'un archivé : 1 ligne « restauré » + une
+        prochaine étape à faire."""
+        Lead.objects.filter(pk=self.lead.pk).update(stage='CONTACTED')
+        api = auth(self.admin)
+        corbeille_id = api.delete(
+            f'/api/django/crm/leads/{self.lead.id}/').data['corbeille_id']
+        RelanceEtape.objects.filter(lead=self.lead).delete()
+        rest = api.post(f'/api/django/core/corbeille/{corbeille_id}/restaurer/')
+        self.assertEqual(rest.status_code, 200, rest.data)
+        self.assertEqual(LeadActivity.objects.filter(
+            lead=self.lead, body__startswith='Lead restauré').count(), 1)
+        self.assertTrue(RelanceEtape.objects.filter(
+            lead=self.lead, statut=RelanceEtape.Statut.A_FAIRE).exists())
+
     def test_restore_is_scoped_to_company(self):
         """La corbeille d'une autre société n'est jamais restaurable ici."""
         api = auth(self.admin)

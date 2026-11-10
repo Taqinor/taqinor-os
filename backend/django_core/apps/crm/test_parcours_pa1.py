@@ -128,6 +128,32 @@ class ParcoursPA1Tests(unittest.TestCase):
         self.assertIn('apps/crm/leads_attribution.py::default_responsable_for',
                       [e['source'] for e in ecrivains['owner']])
 
+    def test_visite_d_une_autre_societe_ne_touche_pas_le_lead(self):
+        # ASOC7 — les trois abonnés visite lisent le lead BORNÉ à la société
+        # de la visite : chaque ``Lead.objects.filter(pk=lead_id…)`` porte
+        # ``company_id`` (lu par AST, sans base). Mutant : retirer le filtre
+        # d'un site ⇒ échec.
+        arbre = ast.parse((RACINE / 'apps/crm/receivers_cadence.py')
+                          .read_text(encoding='utf-8'))
+        abonnes = {'_retour_lead_on_visite_validee',
+                   '_suivi_on_visite_planifiee', '_suivi_on_visite_terminee'}
+        vus = set()
+        for fonction in arbre.body:
+            if not (isinstance(fonction, ast.FunctionDef)
+                    and fonction.name in abonnes):
+                continue
+            for appel in ast.walk(fonction):
+                if not (isinstance(appel, ast.Call)
+                        and isinstance(appel.func, ast.Attribute)
+                        and appel.func.attr == 'filter'
+                        and ast.unparse(appel.func.value) == 'Lead.objects'):
+                    continue
+                cles = {k.arg for k in appel.keywords}
+                self.assertIn('company_id', cles,
+                              f'{fonction.name} : lead lu sans société')
+                vus.add(fonction.name)
+        self.assertEqual(vus, abonnes)
+
     def test_les_references_pointent_des_fichiers_existants(self):
         self.assertTrue(TABLE['references'])
         for chemin in TABLE['references']:

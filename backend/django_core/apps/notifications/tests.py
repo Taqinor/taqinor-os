@@ -287,6 +287,47 @@ class DigestTaskTests(TestCase):
         self.manager = _make_user(self.company, username='manager')
         self.manager.role_legacy = 'admin'
         self.manager.save(update_fields=['role_legacy'])
+        # ASOC22 — jour figé ouvré (mardi) : le récap ne part qu'un jour ouvré.
+        from datetime import date
+        jour = mock.patch('apps.notifications.digests.localdate',
+                          return_value=date(2026, 11, 10))
+        jour.start()
+        self.addCleanup(jour.stop)
+
+    def test_recap_et_balayage_muets_un_jour_non_ouvre(self):
+        """ASOC22 (C-ASOC-141) — samedi (lun-ven par défaut) : ni récap ni
+        balayage ; lundi : récap et garantie émis."""
+        from datetime import date, timedelta
+        from apps.crm.models import Client
+        from apps.installations.models import Installation
+        from apps.sav.models import Equipement
+        from apps.stock.models import Produit
+        from apps.ventes.models import Devis
+        from .digests import daily_digest
+        from .sweeps import sweep_daily
+        client = Client.objects.create(company=self.company, nom='Client J')
+        Devis.objects.create(company=self.company, client=client,
+                             reference='DV-J', statut=Devis.Statut.ENVOYE)
+        Equipement.objects.create(
+            company=self.company, statut=Equipement.Statut.EN_SERVICE,
+            produit=Produit.objects.create(
+                company=self.company, nom='Onduleur J', prix_vente=0),
+            installation=Installation.objects.create(
+                company=self.company, client=client, reference='CH-J',
+                statut=Installation.Statut.CLOTURE),
+            date_fin_garantie=date.today() + timedelta(days=30))
+        for jour, attendu in ((date(2026, 11, 14), False),
+                              (date(2026, 11, 16), True)):
+            with mock.patch('apps.notifications.digests.localdate',
+                            return_value=jour), \
+                    mock.patch('apps.notifications.sweeps.localdate',
+                               return_value=jour):
+                daily_digest()
+                sweep_daily()
+            for event in (EventType.DIGEST, EventType.WARRANTY_EXPIRING):
+                self.assertEqual(Notification.objects.filter(
+                    company=self.company, event_type=event).exists(),
+                    attendu, (jour, event))
 
     def _seed_data(self):
         """Sème un enregistrement par section pour vérifier le comptage."""
@@ -304,10 +345,13 @@ class DigestTaskTests(TestCase):
         Devis.objects.create(
             company=self.company, client=client, reference='DV-1',
             statut=Devis.Statut.ENVOYE)
-        # Facture en retard.
+        # Facture en retard (ASOC94 : échue et non soldée, comme l'alerte).
+        from datetime import date, timedelta
+        from decimal import Decimal
         Facture.objects.create(
             company=self.company, client=client, reference='FA-1',
-            statut=Facture.Statut.EN_RETARD)
+            statut=Facture.Statut.EN_RETARD, montant_ttc=Decimal('1200'),
+            date_echeance=date.today() - timedelta(days=5))
         # SAV ouvert.
         Ticket.objects.create(
             company=self.company, client=client, reference='SAV-1',
@@ -334,6 +378,24 @@ class DigestTaskTests(TestCase):
         self.assertIn('Paiements en retard : 1', notif.body)
         self.assertIn('SAV ouverts : 1', notif.body)
         self.assertIn('Maintenances dues : 1', notif.body)
+
+    def test_recap_retard_meme_definition_que_l_alerte(self):
+        """ASOC94 (C-ASOC-007) — une facture ÉMISE échue J-5 non soldée compte
+        1 au récap le jour même (sans attendre le statut « en retard » posé par
+        le beat) ; un brouillon identique compte 0."""
+        from datetime import date, timedelta
+        from decimal import Decimal
+        from apps.crm.models import Client
+        from apps.ventes.models import Facture
+        from .digests import build_summary
+        client = Client.objects.create(company=self.company, nom='Client R')
+        for statut in (Facture.Statut.EMISE, Facture.Statut.BROUILLON):
+            Facture.objects.create(
+                company=self.company, client=client, statut=statut,
+                reference=f'FA-ASOC94-{statut}', montant_ttc=Decimal('1000'),
+                date_echeance=date.today() - timedelta(days=5))
+        self.assertEqual(
+            dict(build_summary(self.company))['Paiements en retard'], 1)
 
     def test_weekly_digest_produces_notification(self):
         from .digests import weekly_digest

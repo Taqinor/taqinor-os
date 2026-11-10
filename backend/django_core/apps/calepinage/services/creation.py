@@ -6,7 +6,7 @@ TROIS PORTES, UN SEUL OBJET
   toiture (3D) » d'un devis doit retomber sur LE MÊME calepinage à chaque
   appel : le service est IDEMPOTENT et reprend la conception déjà portée par
   le devis (``roof_layout`` / ``layout_hash``).
-* ``creer_pour_lead`` et ``creer_pour_client`` — les portes du module
+* ``_creer_pour_lead`` et ``creer_pour_client`` — les portes du module
   AUTONOME : on choisit un lead ou un client, et on conçoit sa toiture, même
   s'il n'existe aucun devis. Un calepinage sans devis est un objet de
   première classe.
@@ -186,15 +186,37 @@ def ouvrir_ou_creer_pour_lead(lead_id, company, *, user=None, titre='',
     from ..selectors import calepinage_ouvert_du_lead
 
     _exiger_societe(company)
+    if lead_id and user is not None and lead_en_portee(
+            company, lead_id, user) is None:
+        # ACON3 — résolu AVANT la relecture de l'ouvert : un lead hors de la
+        # portée CRM de l'appelant ne fait jamais servir son calepinage.
+        raise RattachementIntrouvable(
+            f"Lead introuvable (#{lead_id}).", champ='lead')
     with transaction.atomic():
         with _verrou_creation(company.pk, lead_id):
             existant = calepinage_ouvert_du_lead(company, lead_id)
             if existant is not None:
                 return existant, False
-            calepinage = creer_pour_lead(
+            calepinage = _creer_pour_lead(
                 lead_id, company, user=user, titre=titre,
                 preset_id=preset_id, responsable=responsable)
     return calepinage, True
+
+
+def lead_en_portee(company, lead_id, user=None):
+    """ACON3 — le lead ``lead_id`` de ``company`` DANS la portée CRM de
+    ``user`` (``apps.crm.selectors.leads_visibles``), ou ``None``.
+
+    Sans utilisateur authentifié (reprise du tracé public, scripts) : la
+    société seule (``get_company_lead``). Un lead hors portée est
+    « introuvable », exactement comme un lead absent — aucun oracle."""
+    from apps.crm.selectors import get_company_lead, leads_visibles
+
+    if not lead_id:
+        return None
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return get_company_lead(company, lead_id)
+    return leads_visibles(user, company).filter(pk=lead_id).first()
 
 
 def responsable_par_defaut(company, lead_id):
@@ -247,6 +269,8 @@ def obtenir_ou_creer_pour_devis(devis_id, company, *, user=None, titre='',
 ORIGINE_EXISTANT = 'existant'
 ORIGINE_ADOPTE = 'adopte'
 ORIGINE_CREE = 'cree'
+#: ACON6 (D-ACON-2) — le devis est porté par une VARIANTE neuve de l'ouvert.
+ORIGINE_VARIANTE = 'variante'
 
 
 def _sans_cles_privees(roof_layout):
@@ -349,7 +373,9 @@ def adopter_ou_creer_pour_devis(devis_id, company, *, user=None, titre='',
         # Lot 2 critique #4 — un ARCHIVÉ qui tient déjà ce devis : refus
         # nommé (409, « restaurez-le »), jamais un IntegrityError en 500.
         _refuser_si_un_archive_tient_le_devis(company, devis.pk)
-        adopte = _adopter_l_ouvert_du_lead(devis, company, lead_id, user=user)
+        adopte = (_adopter_l_ouvert_du_lead(devis, company, lead_id, user=user)
+                  or _variante_de_l_ouvert_lie(devis, company, lead_id,
+                                               user=user))
         if adopte is not None:
             return adopte
         try:
@@ -411,14 +437,41 @@ def _adopter_l_ouvert_du_lead(devis, company, lead_id, *, user=None):
     return calepinage, ORIGINE_ADOPTE
 
 
+def _variante_de_l_ouvert_lie(devis, company, lead_id, *, user=None):
+    """ACON6 (D-ACON-2) — ``(C1, 'variante')`` quand l'UNIQUE ouvert du lead
+    est lié à un AUTRE devis actif : le devis naît comme variante liée de C1
+    (copie de son document sans clés privées), jamais un second calepinage."""
+    import copy
+
+    from ..selectors import liste_calepinages
+    from .modeles import est_modele
+    from .variantes import creer_variante
+
+    if not lead_id:
+        return None
+    ouverts = [c for c in liste_calepinages(company, lead_id=lead_id)
+               if not est_modele(c)]
+    lie = getattr(ouverts[0], 'devis', None) if len(ouverts) == 1 else None
+    if (lie is None or lie.pk == devis.pk
+            or not getattr(lie, 'is_active', True)
+            or getattr(lie, 'superseded_by_id', None) == devis.pk):
+        return None  # pas d'autre devis ACTIF (ou B est sa révision, ACAL92)
+    reference = (getattr(devis, 'reference', '') or '').strip()
+    creer_variante(ouverts[0], nom=f'Devis {reference or devis.pk}',
+                   roof_layout=copy.deepcopy(
+                       _sans_cles_privees(ouverts[0].roof_layout)),
+                   user=user, devis=devis)
+    return ouverts[0], ORIGINE_VARIANTE
+
+
 def _titre_du_devis(devis):
     """Un titre lisible, dérivé du devis — jamais un prénom codé en dur."""
     reference = (getattr(devis, 'reference', '') or '').strip()
     return f'Calepinage {reference}'.strip() if reference else ''
 
 
-def creer_pour_lead(lead_id, company, *, user=None, titre='',
-                    preset_id=None, responsable=None):
+def _creer_pour_lead(lead_id, company, *, user=None, titre='',
+                     preset_id=None, responsable=None):
     """Crée un calepinage sur un LEAD (porte autonome du module).
 
     CALX351 — ``preset_id`` : voir ``obtenir_ou_creer_pour_devis``. Un
@@ -433,8 +486,6 @@ def creer_pour_lead(lead_id, company, *, user=None, titre='',
         CreationRefusee: lead absent ou d'une autre société — rien n'est
             créé ; jeu de réglages inconnu (``preset_id``).
     """
-    from apps.crm.selectors import get_company_lead
-
     from ..models import Calepinage
 
     _exiger_societe(company)
@@ -444,7 +495,7 @@ def creer_pour_lead(lead_id, company, *, user=None, titre='',
             "Aucun lead n'a été indiqué : choisissez le lead dont vous "
             "concevez la toiture.", champ='lead')
 
-    lead = get_company_lead(company, lead_id)
+    lead = lead_en_portee(company, lead_id, user)  # ACON3
     if lead is None:
         raise RattachementIntrouvable(
             f"Lead introuvable (#{lead_id}).", champ='lead')
@@ -485,7 +536,7 @@ def creer_pour_client(client_id, company, *, user=None, titre='',
                       preset_id=None, responsable=None):
     """Crée un calepinage sur un CLIENT (porte autonome du module).
 
-    CALX351 — ``preset_id`` : voir ``creer_pour_lead``.
+    CALX351 — ``preset_id`` : voir ``_creer_pour_lead``.
 
     Raises:
         CreationRefusee: client absent ou d'une autre société — rien n'est

@@ -33,6 +33,28 @@ class TableEventTypeModuleTests(TestCase):
             m for m in EVENT_TYPE_MODULE.values() if m not in manifests})
         self.assertEqual(inconnus, [], f'modules inconnus : {inconnus}')
 
+    def test_types_emis_hors_catalogue_catalogues(self):
+        """ASOC28 — `fournisseur_candidature` et `trust_center_audit_expire`
+        étaient émis hors catalogue : `notify` rendait None."""
+        from apps.notifications.models import Notification
+        from apps.notifications.module_gating import EVENT_MODULE
+        from apps.notifications.services import notify, notify_many
+
+        company = Company.objects.create(nom='ASOC28', slug='asoc28-n')
+        admins = [User.objects.create_user(
+            username=f'asoc28_admin_{i}', password='x', role_legacy='admin',
+            company=company) for i in (1, 2)]
+        racine = User.objects.create_superuser(
+            username='asoc28_root', password='x', email='asoc28@example.invalid')
+        notify_many(admins, 'fournisseur_candidature', 'Candidature',
+                    company=company)
+        notify(racine, 'trust_center_audit_expire', 'Audit expiré')
+        self.assertEqual(Notification.objects.filter(
+            event_type='fournisseur_candidature').count(), 2)
+        self.assertEqual(Notification.objects.filter(
+            recipient=racine, event_type='trust_center_audit_expire').count(), 1)
+        self.assertEqual(EVENT_MODULE[EventType.FOURNISSEUR_CANDIDATURE], 'stock')
+
     def test_les_evenements_transverses_ne_sont_pas_mappes(self):
         """Jamais masquables : ils ne dépendent d'aucun module installable."""
         for event_type in ('digest', 'security_alert', 'approval_requested',
@@ -87,3 +109,29 @@ class GrilleDesPreferencesTests(TestCase):
 
     def test_sans_societe_rien_n_est_masque(self):
         self.assertEqual(event_types_masques(None), frozenset())
+
+
+class CleesPropresDesAlertesTests(TestCase):
+    """ASOC20 — ces deux alertes ont leur propre clé : couper
+    « Récapitulatif » (``digest``) ne les tait plus."""
+
+    def test_coherence_et_contrat_portail_ont_leur_cle(self):
+        from apps.notifications.models import Notification
+        from apps.notifications.module_gating import EVENT_MODULE
+        from apps.notifications.services import notify
+        from apps.notifications.severity import is_action, severity_of
+
+        company = Company.objects.create(nom='ASOC20', slug='asoc20-n')
+        admin = User.objects.create_user(
+            username='asoc20_admin', password='x', role_legacy='admin',
+            company=company)
+        NotificationPreference.objects.create(
+            user=admin, company=company, event_type='digest', in_app=False,
+            email=False, whatsapp=False, push=False)
+        for cle in ('coherence_violation', 'sav_demande_contrat_portail'):
+            notify(admin, cle, f'Alerte {cle}', company=company)
+        self.assertEqual(Notification.objects.filter(recipient=admin).count(), 2)
+        self.assertTrue(is_action('sav_demande_contrat_portail'))
+        self.assertEqual(severity_of('coherence_violation'), 'normal')
+        self.assertEqual(
+            EVENT_MODULE[EventType.SAV_DEMANDE_CONTRAT_PORTAIL], 'sav')

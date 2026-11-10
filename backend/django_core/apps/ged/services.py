@@ -17,7 +17,7 @@ from core.conflit_etat import ConflitEtat
 from core.parseurs import sans_nul
 from core.pdf import render_pdf
 
-from .models import Cabinet, Document, DocumentVersion, Folder, RoutageDocumentaire
+from .models import LIFECYCLE_OBSOLETE, Cabinet, Document, DocumentVersion, Folder, RoutageDocumentaire
 from .pdf_etat import ouvrir_pdf_exploitable
 
 logger = logging.getLogger(__name__)
@@ -1991,8 +1991,8 @@ def resolve_partage_public(token, *, password=None):
     # Jeton inconnu OU partage révoqué → 404 indistinct (pas de fuite).
     if partage is None or not partage.actif:
         return PARTAGE_INTROUVABLE, None
-    # ADOC6 — un document mis en corbeille n'est plus servi (404 indistinct).
-    if partage.document.supprime_le is not None:
+    # ADOC6 / ASOC47 — document en corbeille OU obsolète : plus servi (404 indistinct).
+    if partage.document.supprime_le is not None or partage.document.statut == LIFECYCLE_OBSOLETE:
         return PARTAGE_INTROUVABLE, None
     # Expiré ou quota épuisé → 410 Gone.
     if partage.is_expired or partage.quota_exhausted:
@@ -6628,8 +6628,8 @@ def router_document_module(source, *, company, file, filename='',
 
     Sans réglage ACTIF pour cette `source`+société : no-op strict, renvoie
     `None` (comportement actuel inchangé — c'est la voie normale tant qu'un
-    admin n'a rien configuré). IDEMPOTENT par `source`+`reference` : si un
-    document du dossier résolu porte déjà cette référence (posée dans
+    admin n'a rien configuré). IDEMPOTENT par `reference` : si un document de
+    la société (quel que soit son dossier — ASOC50) porte cette référence (dans
     `custom_data['routage_reference']`), le document existant est renvoyé sans
     créer de doublon.
 
@@ -6658,8 +6658,7 @@ def router_document_module(source, *, company, file, filename='',
     except Exception:  # pragma: no cover - flux non repositionnable.
         logger.warning('%s : échec ignoré (dégradé)', 'router_document_module', exc_info=True)
     contenu = file.read() or b''
-    if isinstance(contenu, str):
-        contenu = contenu.encode('utf-8')
+    contenu = contenu.encode('utf-8') if isinstance(contenu, str) else contenu
     file.seek(0)
 
     def _stocker():
@@ -6669,11 +6668,12 @@ def router_document_module(source, *, company, file, filename='',
         return meta_
 
     if reference:
-        existant = Document.objects.filter(
-            company=company, folder=folder, supprime_le__isnull=True,
+        if (existant := Document.objects.filter(  # ASOC50 — clé (société, référence), jamais le dossier
+            company=company, supprime_le__isnull=True,
             custom_data__routage_reference=reference,
-        ).order_by('id').first()
-        if existant is not None:
+        ).order_by('id').first()) is not None:
+            if folder is not None:  # dossier cible changé : déplacé (no-op s'il est le même)
+                move_document(existant, folder)
             versionner_si_modifie(
                 existant, contenu, filename=filename, uploaded_by=uploaded_by,
                 stocker=_stocker)

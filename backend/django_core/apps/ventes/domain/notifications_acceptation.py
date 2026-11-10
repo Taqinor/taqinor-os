@@ -26,13 +26,16 @@ def _notify_seller_accepted(*, devis, user):
     pour soi-même serait du bruit). QJ2 ajoute un lien wa.me « répondre
     maintenant » vers le client dans le corps de la notification.
     """
-    vendeur = getattr(devis, 'created_by', None)
-    if vendeur is None:
+    if getattr(devis, 'created_by', None) is None:
         return
+    from apps.notifications.services import destinataire_actif
+    # ASOC1/ASOC91 — vendeur inactif ⇒ responsable actif du lead, sinon
+    # managers (``_notify_user_or_managers``) ; jamais l'inactif.
+    vendeur = destinataire_actif(devis.created_by, lead=getattr(devis, 'lead', None))
     # Éviter de notifier l'utilisateur qui effectue l'action lui-même.
     if user is not None and getattr(user, 'pk', None) == getattr(vendeur, 'pk', None):
         return
-    from apps.notifications.services import notify
+    from apps.notifications.sweeps import _notify_user_or_managers
     client_nom = ''
     client = getattr(devis, 'client', None)
     if client is not None:
@@ -47,14 +50,10 @@ def _notify_seller_accepted(*, devis, user):
     ]
     if wa_url:
         body_lines.append(f'Répondre maintenant : {wa_url}')
-    notify(
-        user=vendeur,
-        event_type='devis_accepted',
-        title=f'Devis {devis.reference} accepté',
-        body='\n'.join(body_lines),
-        link=f'/ventes/devis/{devis.pk}',
-        company=getattr(devis, 'company', None),
-    )
+    _notify_user_or_managers(
+        vendeur, getattr(devis, 'company', None), 'devis_accepted',
+        f'Devis {devis.reference} accepté', '\n'.join(body_lines),
+        link=f'/ventes/devis/{devis.pk}')
 
 
 def _build_acceptance_wa_url(*, devis):

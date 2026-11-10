@@ -174,10 +174,8 @@ def tableau_de_bord_client(request):
     (``apps.portail.views_externes``) : société ET client viennent
     EXCLUSIVEMENT du compte portail connecté (``_scope``), jamais d'un
     paramètre de requête. Chaque carte lit le sélecteur PROPRIÉTAIRE de son
-    domaine (``ventes``/``sav``/``installations``) — jamais un import direct
-    de leurs modèles depuis ``portail`` (frontière cross-app CLAUDE.md) — donc
-    les compteurs matchent, par construction, ce que l'écran interne montre
-    pour ce même client.
+    domaine (``ventes``/``installations``) ; ASOC45 — ``tickets_ouverts`` =
+    les demandes non closes de « Mes demandes » (la liste qu'ouvre la carte).
 
     NTPRT37 — sélecteur de site (multi-chantiers B2B) : ``?chantier=<id>``
     est un filtre ADDITIF, aucune donnée nouvelle. SEUL ``prochain_jalon``
@@ -190,12 +188,13 @@ def tableau_de_bord_client(request):
     autre client) renvoie ``prochain_jalon: null`` — jamais un repli
     silencieux vers l'agrégat global ni les données d'un autre site."""
     from apps.installations.selectors import prochain_jalon_client_portail
-    from apps.sav.selectors import tickets_ouverts_client
     from apps.ventes.selectors import resume_portail_client
+    from .models import DemandeTicketPortail as Demande
 
     company, client_id = _scope(request)
     resume = resume_portail_client(company, client_id)
-    resume['tickets_ouverts'] = tickets_ouverts_client(company, client_id)
+    resume['tickets_ouverts'] = MesDemandesSavPortailViewSet()._mes_demandes(request).filter(
+        statut__in=(Demande.Statut.SOUMISE, Demande.Statut.PRISE_EN_CHARGE)).count()
     chantier_id = request.query_params.get('chantier')
     jalon = None
     if chantier_id:
@@ -781,10 +780,10 @@ class MesFacturesPortailViewSet(viewsets.ViewSet):
         """
         from django.db import IntegrityError, transaction
 
-        from apps.parametres.selectors import company_identity
         from apps.ventes.selectors import (
             facture_du_client_portail, facture_est_payable_portail,
         )
+        from apps.ventes.selectors_portail import virement_facture_portail
 
         # NTPRT6 — un membre d'équipe « lecture seule » ne peut PAS créer
         # d'intention de paiement (consultation uniquement).
@@ -846,21 +845,15 @@ class MesFacturesPortailViewSet(viewsets.ViewSet):
             detail=f'Intention de paiement facture #{facture.id} '
                    'initiée depuis le portail client')
 
-        # Repli virement : UNIQUEMENT le nom, la banque et le RIB de la société
-        # émettrice — jamais le reste de son identité légale (on ne déverse pas
-        # ``company_identity`` entier vers un écran externe).
-        identite = company_identity(company)
+        # Repli virement : UNIQUEMENT bénéficiaire, banque et RIB — ASOC97 : ceux
+        # FIGÉS sur la facture (son PDF), jamais le reste de l'identité légale.
         return Response({
             'paiement_id': paiement.id,
             'reference': paiement.reference,
             'statut': paiement.statut,
             'montant': str(paiement.montant),
             'paiement_en_ligne_actif': actif,
-            'virement': {
-                'beneficiaire': identite.get('nom', ''),
-                'banque': identite.get('banque', ''),
-                'rib': identite.get('rib', ''),
-            },
+            'virement': virement_facture_portail(facture),
         })
 
 
@@ -1055,6 +1048,7 @@ class MesDemandesSavPortailLigneSerializer(serializers.Serializer):
     statut_display = serializers.CharField()
     chantier_id = serializers.IntegerField(allow_null=True)
     ticket_id = serializers.IntegerField(allow_null=True)
+    motif_refus = serializers.CharField(allow_blank=True)
     date_creation = serializers.DateTimeField(allow_null=True)
 
 
@@ -1106,6 +1100,7 @@ class MesDemandesSavPortailViewSet(viewsets.ViewSet):
             'statut_display': demande.get_statut_display(),
             'chantier_id': demande.chantier_id,
             'ticket_id': demande.ticket_id,
+            'motif_refus': demande.motif_refus,
             'date_creation': (demande.date_creation.isoformat()
                               if demande.date_creation else None),
         }
@@ -1175,6 +1170,8 @@ class MesDemandesSavPortailViewSet(viewsets.ViewSet):
         _auditer_portail(
             AuditLog.Action.CREATE, request, instance=demande,
             detail='Ticket SAV ouvert depuis le portail client')
+        services.notifier_demande_client(
+            company, client_id, 'nouvelle demande SAV', sujet)
         return Response(self._ligne(demande),
                         status=status.HTTP_201_CREATED)
 
@@ -1806,6 +1803,8 @@ class MesDocumentsPortailViewSet(viewsets.ViewSet):
         _auditer_portail(
             AuditLog.Action.CREATE, request, instance=document,
             detail='Justificatif déposé depuis le portail client')
+        services.notifier_demande_client(
+            company, client_id, 'justificatif déposé', document.libelle or '')
         return Response(
             DocumentClientPortailSerializer(document).data,
             status=status.HTTP_201_CREATED)

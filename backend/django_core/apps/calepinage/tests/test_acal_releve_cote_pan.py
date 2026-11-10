@@ -74,10 +74,18 @@ class AppliquerCotePanTest(BaseApiCalepinage):
 
     def _appliquer(self, corps, calepinage=None, releve_id=None, api=None):
         calepinage = calepinage or self.calepinage
+        if 'base_empreinte' not in corps:
+            # ACON2 — le jeton de l'atelier vivant, lu juste avant d'écrire.
+            corps = dict(corps, base_empreinte=self._jeton(calepinage))
         return (api or self.api).post(
             f'{url_detail(calepinage.pk)}releve/'
             f'{releve_id or self.releve_id}/appliquer-cote/',
             corps, format='json')
+
+    def _jeton(self, calepinage=None):
+        calepinage = calepinage or self.calepinage
+        return self.api.get(
+            f'{url_detail(calepinage.pk)}layout/').data['empreinte_document']
 
     def _sommets_relus(self):
         reponse = self.api.get(f'{url_detail(self.calepinage.pk)}layout/')
@@ -142,6 +150,45 @@ class AppliquerCotePanTest(BaseApiCalepinage):
         self.assertEqual(reponse.status_code, 200, reponse.data)
         self.assertTrue(reponse.data['inchange'])
         self.assertEqual(versions.count(), avant + 1)
+
+    def test_sans_jeton_400_rien_ecrit(self):
+        corps = {'zone_id': 'z1', 'cote_index': 0, 'longueur_m': 12.4}
+        reponse = self.api.post(
+            f'{url_detail(self.calepinage.pk)}releve/{self.releve_id}/'
+            'appliquer-cote/', corps, format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('base_empreinte', reponse.data)
+        self.calepinage.refresh_from_db()
+        self.assertEqual(self.calepinage.roof_layout, self.layout)
+
+    def test_jeton_perime_409_sans_version(self):
+        """ACON2 — un jeton périmé : 409 ``document_modifie``, aucune version,
+        document intact."""
+        avant = CalepinageVersion.objects.filter(
+            calepinage=self.calepinage).count()
+        reponse = self._appliquer(
+            {'zone_id': 'z1', 'cote_index': 0, 'longueur_m': 12.4,
+             'base_empreinte': 'f' * 64})
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertEqual(reponse.data['code'], 'document_modifie')
+        self.assertEqual(reponse.data['empreinte_courante'], self._jeton())
+        self.assertEqual(CalepinageVersion.objects.filter(
+            calepinage=self.calepinage).count(), avant)
+        self.calepinage.refresh_from_db()
+        self.assertEqual(self.calepinage.roof_layout, self.layout)
+
+    def test_jeton_rendu_repris_par_l_atelier(self):
+        """ACON2 — la réponse rend ``empreinte_document`` (E1) : l'atelier
+        enregistre ensuite avec E1 sans recharger, 200."""
+        reponse = self._appliquer(
+            {'zone_id': 'z1', 'cote_index': 0, 'longueur_m': 12.4})
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        e1 = reponse.data['empreinte_document']
+        self.assertEqual(e1, self._jeton())
+        url = f'{url_detail(self.calepinage.pk)}layout/'
+        enregistre = self.api.post(url, reponse.data['roof_layout'],
+                                   format='json', HTTP_IF_MATCH=f'"{e1}"')
+        self.assertEqual(enregistre.status_code, 200, enregistre.data)
 
     def test_cote_a_confirmer_refusee(self):
         # « d » = 9,00 − 4,00 = 5,00 m, DÉDUITE par fermeture.

@@ -13,7 +13,7 @@ from ..erreurs_achats import ConflitEtat, statut_refus_metier
 from ..models import Produit, ReceptionFournisseur
 from ..serializers import ReceptionFournisseurSerializer, FactureFournisseurSerializer
 from authentication.permissions import (
-    IsAnyRole,
+    LectureDuModule,
     IsAdminRole,
     IsResponsableOrAdmin,
     HasPermissionOrLegacy,
@@ -81,7 +81,7 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
             # n'écrivent rien) : même garde que les autres lectures. Ce
             # `get_permissions` prime sur le `permission_classes` de l'@action,
             # d'où ce cas explicite — sinon repli IsAdminRole.
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         elif self.action in WRITE_ACTIONS + [
                 'confirmer', 'annuler', 'affecter_cross_dock',
                 # NTWMS34 — la saisie du verdict qualité est une ÉCRITURE.

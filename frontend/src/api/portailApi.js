@@ -213,6 +213,9 @@ const portailApi = {
       // CE client dans CETTE société ; 409 sur une demande résolue/refusée).
       lierTicket: (id, payload) =>
         api.post(`/portail/demandes-ticket-portail/${id}/lier-ticket/`, payload ?? {}),
+      // ASOC98 — refus motivé ({ motif }) ; 409 sur une demande close.
+      refuser: (id, payload) =>
+        api.post(`/portail/demandes-ticket-portail/${id}/refuser/`, payload ?? {}),
     },
   },
 }

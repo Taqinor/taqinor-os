@@ -25,6 +25,7 @@ from apps.stock.models import Produit
 from apps.ventes.domain.geometrie import layout_hash
 from apps.ventes.models import Devis, DevisActivity, LigneDevis
 from authentication.models import Company
+from apps.ventes.tests.test_acal_layout_enrichi import en_tete_jeton
 
 User = get_user_model()
 MONTH = timezone.now().strftime('%Y%m')
@@ -85,7 +86,8 @@ class TraceConceptionApresEnvoi(TestCase):
     def _sync(self, layout):
         return self.api.post(
             f'/api/django/ventes/devis/{self.devis.id}/sync-layout/',
-            layout, format='json')
+            layout, format='json',
+            **en_tete_jeton(self.devis.id))
 
     def _assert_trace_conception(self):
         self.devis.refresh_from_db()
@@ -111,7 +113,8 @@ class TraceConceptionApresEnvoi(TestCase):
     def test_post_layout_envoye_trace(self):
         r = self.api.post(
             f'/api/django/ventes/devis/{self.devis.id}/layout/',
-            _layout(decalage=0.5), format='json')
+            _layout(decalage=0.5), format='json',
+            **en_tete_jeton(self.devis.id))
         self.assertEqual(r.status_code, 200, r.content)
         self._assert_trace_conception()
 
@@ -127,7 +130,8 @@ class TraceConceptionApresEnvoi(TestCase):
         self.assertEqual(r.status_code, 200, r.content)
         r = self.api.post(
             f'/api/django/ventes/devis/{self.devis.id}/layout/',
-            copy.deepcopy(self.layout), format='json')
+            copy.deepcopy(self.layout), format='json',
+            **en_tete_jeton(self.devis.id))
         self.assertEqual(r.status_code, 200, r.content)
         self.assertEqual(self._corrections().count(), 0)
         self.devis.refresh_from_db()

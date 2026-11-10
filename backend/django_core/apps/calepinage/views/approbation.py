@@ -6,7 +6,9 @@ UNE SEULE FORME D'URL (CAL233) : ``@action`` du viewset pivot, servie sous
 
 * ``GET`` — ``{etat, decide_par, decide_le, motif, exigee}`` ; ``etat`` vaut
   ``null`` tant que personne n'a décidé. Garde de LECTURE (``calepinage_voir``).
-* ``POST`` — corps ``{decision: 'approuve'|'refuse', motif}`` ; enregistre la
+* ``POST`` — corps ``{decision: 'approuve'|'refuse', motif, empreinte}``
+  (ACON23 : ``empreinte`` = ``empreinte_courante`` lue, exigée pour un accord,
+  409 si la conception a changé depuis) ; enregistre la
   décision, écrit une note de chatter et REND l'état à jour. Garde
   ``calepinage_approuver`` : un porteur de ``calepinage_gerer`` SEUL reçoit
   403 — c'est tout l'objet du second regard.
@@ -54,6 +56,9 @@ class CalepinageApprobationRequeteSerializer(drf_serializers.Serializer):
 
     decision = drf_serializers.ChoiceField(choices=[APPROUVE, REFUSE])
     motif = drf_serializers.CharField(required=False, allow_blank=True)
+    #: ACON23 — l'empreinte VUE (``empreinte_courante`` du GET), exigée pour
+    #: un accord.
+    empreinte = drf_serializers.CharField(required=False, allow_blank=True)
 
 
 class _RefusMotivePublie(OpenApiSerializerExtension):
@@ -69,7 +74,9 @@ class _RefusMotivePublie(OpenApiSerializerExtension):
         if direction != 'request':
             return schema
         return {**schema, 'oneOf': [
-            {'properties': {'decision': {'anyOf': [{'enum': [APPROUVE]}]}}},
+            {'properties': {'decision': {'anyOf': [{'enum': [APPROUVE]}]},
+                            'empreinte': {'type': 'string'}},
+             'required': ['empreinte']},
             {'properties': {'decision': {'anyOf': [{'enum': [REFUSE]}]},
                             'motif': {'type': 'string',
                                       'pattern': MOTIF_NON_BLANC_SANS_NUL}},
@@ -93,7 +100,8 @@ def approbation(self, request, pk=None):
     corps = request.data if isinstance(request.data, dict) else {}
     try:
         etat = decider(calepinage, decision=corps.get('decision'),
-                       motif=corps.get('motif') or '', user=request.user)
+                       motif=corps.get('motif') or '', user=request.user,
+                       empreinte=corps.get('empreinte'))
     except ApprobationRefusee as refus:
         return Response(refus.corps(), status=_statut_du_refus(refus, corps))
     return Response(etat)
@@ -103,6 +111,8 @@ def _statut_du_refus(refus, corps):
     """400 pour un corps mal formé (décision inconnue, refus sans motif),
     409 pour un refus d'ÉTAT de la conception."""
     mal_forme = (refus.champ == 'motif'
+                 or (refus.champ == 'empreinte'  # ACON23 — absente : 400
+                     and not isinstance(corps.get('empreinte'), str))
                  or (refus.champ == 'decision'
                      and not (isinstance(corps.get('decision'), str)
                               and corps.get('decision') in DECISIONS)))

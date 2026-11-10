@@ -34,7 +34,7 @@ from .models_email import (
 from .requetes_strictes import (
     EmailTemplatesBulkRequestSerializer, valider_corps,
 )
-from .serializers_email import EmailTemplateSerializer
+from .serializers_email import CHAMPS_TEXTE, CHAMPS_TRADUITS, EmailTemplateSerializer
 from .views_common import SettingsAuditedMixin
 
 READ_ACTIONS = ['list', 'retrieve', 'effective']
@@ -47,6 +47,9 @@ _EMAILS_EFFECTIFS = inline_serializer('EmailTemplatesEffectifs', {
         'corps': serializers.CharField(),
         'sujet_defaut': serializers.CharField(),
         'corps_defaut': serializers.CharField(),
+        # ASOC99 — traductions anglaise et arabe ('' : non traduit).
+        'sujet_en': serializers.CharField(), 'sujet_ar': serializers.CharField(),
+        'corps_en': serializers.CharField(), 'corps_ar': serializers.CharField(),
         'personnalise': serializers.BooleanField(),
         'placeholders': serializers.ListField(child=serializers.CharField()),
     }, many=True),
@@ -76,6 +79,8 @@ def effective_email_templates(company):
             'corps': (row.corps if row and row.corps else default['corps']),
             'sujet_defaut': default['sujet'],
             'corps_defaut': default['corps'],
+            **{champ: (getattr(row, champ, '') or '') if row else ''
+               for champ in CHAMPS_TRADUITS},  # ASOC99
             'personnalise': row is not None,
             'placeholders': EMAIL_TEMPLATE_PLACEHOLDERS.get(cle, []),
         })
@@ -150,7 +155,7 @@ class EmailTemplateViewSet(SettingsAuditedMixin, TenantMixin,
             # Validation des placeholders avant écriture (mêmes règles que le
             # sérialiseur de création) — rejette toute la requête si fautif.
             ser = EmailTemplateSerializer(data={
-                k: v for k, v in item.items() if k in ('cle', 'sujet', 'corps')
+                k: v for k, v in item.items() if k in ('cle', *CHAMPS_TEXTE)
             })
             ser.is_valid(raise_exception=True)
             obj, _ = EmailTemplate.objects.get_or_create(
@@ -160,6 +165,11 @@ class EmailTemplateViewSet(SettingsAuditedMixin, TenantMixin,
                 obj.sujet = str(item['sujet'])[:255]
             if 'corps' in item and item['corps'] is not None:
                 obj.corps = str(item['corps'])
+            for champ in CHAMPS_TRADUITS:  # ASOC99
+                if item.get(champ) is not None:
+                    valeur = str(item[champ])
+                    setattr(obj, champ, valeur[:255] if champ.startswith(
+                        'sujet') else valeur)
             obj.save()
             if (obj.sujet, obj.corps) != before:
                 self._audit(

@@ -17,6 +17,7 @@ User = get_user_model()
 PERMS_COMMERCIAL = [
     'ventes_voir', 'ventes_creer', 'ventes_modifier',
     'crm_voir', 'crm_creer', 'users_voir',
+    'stock_voir',  # APFS106 — la lecture du catalogue exige un code stock.
 ]
 
 

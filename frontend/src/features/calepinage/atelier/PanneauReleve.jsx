@@ -345,8 +345,9 @@ function ErreurChamp({ champ, erreurs }) {
   )
 }
 
-function AppliquerCoteAuPan({ calepinageId, releve, lectureSeule = false }) {
+function AppliquerCoteAuPan({ calepinageId, releve, documentVivant = null, lectureSeule = false }) {
   const [conception, setConception] = useState(null)
+  const [empreinte, setEmpreinte] = useState(null) // ACON2 — même patron qu'AppliquerAzimutAuPan
   const [zoneId, setZoneId] = useState('')
   const [coteIndex, setCoteIndex] = useState('')
   const [mesureCle, setMesureCle] = useState('')
@@ -357,7 +358,11 @@ function AppliquerCoteAuPan({ calepinageId, releve, lectureSeule = false }) {
     if (!calepinageId) return undefined
     let vivant = true
     Promise.resolve(calepinageApi.calepinages.layout?.(calepinageId))
-      .then((res) => { if (vivant) setConception(res?.data?.roof_layout ?? null) })
+      .then((res) => {
+        if (!vivant) return
+        setConception(res?.data?.roof_layout ?? null)
+        setEmpreinte(res?.data?.empreinte_document ?? null)
+      })
       .catch(() => {})
     return () => { vivant = false }
   }, [calepinageId])
@@ -378,9 +383,18 @@ function AppliquerCoteAuPan({ calepinageId, releve, lectureSeule = false }) {
       zone_id: zone.id,
       cote_index: Number(coteIndex),
       longueur_m: mesure.longueur,
+      base_empreinte: documentVivant?.empreinte || empreinte,
     }))
       .then((res) => {
-        if (res?.data?.roof_layout) setConception(res.data.roof_layout)
+        const apres = res?.data?.empreinte_document ?? null
+        if (res?.data?.roof_layout) {
+          setConception(res.data.roof_layout)
+          // ACON2 — l'atelier vivant reprend la section ET le jeton rendus.
+          if (Array.isArray(res.data.roof_layout.zones)) {
+            documentVivant?.appliquerSection?.('zones', res.data.roof_layout.zones, apres)
+          }
+        }
+        setEmpreinte(apres ?? empreinte)
         setRetour({ ok: true, texte: `Cote appliquée au côté ${coteIndex} — nouvelle version${
           mesure.precision != null ? ` (précision ± ${mesure.precision} m)` : ''}.` })
       })
@@ -588,6 +602,9 @@ export default function PanneauReleve({
   // ACAL205 — le relevé COURANT (relu au montage), l'historique, les photos
   // du calepinage (cochables) et celles rattachées au relevé.
   const [releveCourantId, setReleveCourantId] = useState(null)
+  // ACON1 — le relevé AFFICHÉ au formulaire (créé ou corrigé en dernier) : c'est
+  // lui que visent « Enregistrer (corriger) » et « Supprimer », jamais le courant serveur.
+  const [releveAfficheId, setReleveAfficheId] = useState(null)
   const [historique, setHistorique] = useState([])
   const [photosSite, setPhotosSite] = useState([])
   const [photoIds, setPhotoIds] = useState([])
@@ -602,6 +619,7 @@ export default function PanneauReleve({
         const releves = donnees.releves ?? []
         setHistorique(releves)
         setReleveCourantId(donnees.releve_courant_id ?? null)
+        setReleveAfficheId(donnees.releve_courant_id ?? null)
         const courant = releves.find((r) => r.id === donnees.releve_courant_id)
         if (courant) {
           const champs = champsDuReleve(courant)
@@ -649,10 +667,10 @@ export default function PanneauReleve({
       notes,
       photo_ids: photoIds,
     }
-    const corriger = mode === 'corriger' && releveCourantId
+    const corriger = mode === 'corriger' && releveAfficheId
     setEnCours(true)
     Promise.resolve(corriger
-      ? calepinageApi.calepinages.corrigerReleve(calepinageId, releveCourantId, corps)
+      ? calepinageApi.calepinages.corrigerReleve(calepinageId, releveAfficheId, corps)
       : calepinageApi.calepinages.enregistrerReleve(calepinageId, corps))
       .then((res) => {
         const donnees = res?.data ?? null
@@ -662,6 +680,7 @@ export default function PanneauReleve({
           setHistorique((h) => h.map((r) => (r.id === donnees.releve.id ? donnees.releve : r)))
         }
         if (donnees?.releve_courant_id !== undefined) setReleveCourantId(donnees.releve_courant_id)
+        if (donnees?.releve?.id != null) setReleveAfficheId(donnees.releve.id)
         setMessage(corriger ? 'Relevé corrigé.' : 'Relevé enregistré.')
       })
       .catch((err) => {
@@ -672,16 +691,17 @@ export default function PanneauReleve({
   }
 
   const supprimer = () => {
-    if (!releveCourantId || !calepinageId) return
+    if (!releveAfficheId || !calepinageId) return
     if (typeof window !== 'undefined' && typeof window.confirm === 'function'
       && !window.confirm('Supprimer ce relevé ? Ses photos restent au calepinage.')) return
     setEnCours(true)
-    Promise.resolve(calepinageApi.calepinages.supprimerReleve(calepinageId, releveCourantId))
+    Promise.resolve(calepinageApi.calepinages.supprimerReleve(calepinageId, releveAfficheId))
       .then(() => Promise.resolve(calepinageApi.calepinages.releve?.(calepinageId)))
       .then((res) => {
         const donnees = res?.data
         setHistorique(donnees?.releves ?? [])
         setReleveCourantId(donnees?.releve_courant_id ?? null)
+        setReleveAfficheId(donnees?.releve_courant_id ?? null)
         setResultat(null)
         setMessage('Relevé supprimé.')
       })
@@ -790,24 +810,29 @@ export default function PanneauReleve({
         </fieldset>
       )}
 
+      {lectureSeule && ( /* ACON10 — aucun bouton d'écriture actif, la raison dite */
+        <p className="mt-4 text-xs text-lune-faint" data-testid="cal-releve-lecture-seule">
+          {RAISON_LECTURE_SEULE}
+        </p>
+      )}
       <div className="mt-5 flex flex-wrap gap-3">
         <button
           type="button"
-          onClick={() => enregistrer(releveCourantId ? 'corriger' : 'creer')}
-          disabled={enCours}
+          onClick={() => enregistrer(releveAfficheId ? 'corriger' : 'creer')}
+          disabled={enCours || lectureSeule}
           data-testid="cal-releve-envoyer"
           className="block rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200"
         >
           {enCours
             ? 'Envoi au solveur…'
-            : (releveCourantId ? 'Enregistrer (corriger ce relevé)' : 'Envoyer au solveur')}
+            : (releveAfficheId ? 'Enregistrer (corriger ce relevé)' : 'Envoyer au solveur')}
         </button>
-        {releveCourantId && (
+        {releveAfficheId && (
           <>
             <button
               type="button"
               onClick={() => enregistrer('creer')}
-              disabled={enCours}
+              disabled={enCours || lectureSeule}
               data-testid="cal-releve-nouveau"
               className="block rounded border border-white/15 px-4 py-2 text-sm text-lune-soft"
             >
@@ -816,7 +841,7 @@ export default function PanneauReleve({
             <button
               type="button"
               onClick={supprimer}
-              disabled={enCours}
+              disabled={enCours || lectureSeule}
               data-testid="cal-releve-supprimer"
               className="block px-2 py-2 text-sm text-red-300 underline"
             >
@@ -856,6 +881,7 @@ export default function PanneauReleve({
 
       {/* ACAL207 — geste EXPLICITE : recaler un côté d'un pan sur une cote mesurée. */}
       <AppliquerCoteAuPan calepinageId={calepinageId} releve={resultat?.releve ?? null}
+        documentVivant={documentVivant}
         lectureSeule={lectureSeule} />
       {/* ACAL206 — geste EXPLICITE : poser l'azimut relevé (avec sa précision) sur un pan. */}
       <AppliquerAzimutAuPan calepinageId={calepinageId} releve={resultat?.releve ?? null}

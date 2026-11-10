@@ -13,7 +13,7 @@ from ..utils.params import ID_MAX, corps_objet, types_corps_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 from ..models import TransfertStock
 from ..serializers import TransfertStockSerializer
-from authentication.permissions import IsAnyRole, IsAdminRole, HasPermissionOrLegacy
+from authentication.permissions import LectureDuModule, IsAdminRole, HasPermissionOrLegacy
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -73,7 +73,7 @@ class TransfertStockViewSet(CompanyScopedModelViewSet):
         # `get_permissions` prime sur le `permission_classes` d'une @action :
         # chaque action NTRET7 est listée explicitement ici.
         if self.action in READ_ACTIONS + ['bon_pdf']:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         if self.action in ('create', 'demander', 'expedier', 'receptionner'):
             return [HasPermissionOrLegacy('stock_mouvement')()]
         return [IsAdminRole()]

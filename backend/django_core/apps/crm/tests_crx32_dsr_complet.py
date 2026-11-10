@@ -80,6 +80,94 @@ class LaBrancheClientEstEffaceeCompletement(TestCase):
         self.client_obj.refresh_from_db()
         self.assertTrue(self.client_obj.is_anonymized)
 
+    def _site_et_lead(self):
+        from decimal import Decimal
+
+        from apps.crm.models import SiteProfile
+        site = SiteProfile.objects.create(
+            company=self.company, client=self.client_obj,
+            gps_lat=Decimal('33.573100'), gps_lng=Decimal('-7.589800'),
+            ombrage_notes='Palmier du voisin Mme Alaoui')
+        lead = Lead.objects.create(
+            company=self.company, nom='Alaoui', client=self.client_obj,
+            email='amina.crx32@example.ma', ville='Casablanca',
+            gps_lat=Decimal('33.573100'), gps_lng=Decimal('-7.589800'),
+            contact_secondaire_nom='Karim Alaoui',
+            contact_secondaire_telephone='0661000061',
+            contact_secondaire_email='karim061@example.ma',
+            contact_secondaire_fonction='Époux',
+            note='Sara rappelle après 18h, villa 12 lot Riad',
+            visite_notes='Code portail 4512, chien',
+            ombrage_notes='Antenne sur le toit Alaoui',
+            lien_maps='https://maps.google.com/?q=33.5731,-7.5898')
+        return site, lead
+
+    def test_gps_contact_secondaire_et_notes_partent(self):
+        """ASOC61 (C-ASOC-061) — GPS, contact secondaire, notes libres et
+        lien Maps du lead, GPS et notes d'ombrage du profil de site."""
+        site, lead = self._site_et_lead()
+        self.assertEqual(erase_crm(self.company, 'amina.crx32@example.ma'), 2)
+        lead.refresh_from_db()
+        for champ in ('gps_lat', 'gps_lng', 'contact_secondaire_nom',
+                      'contact_secondaire_telephone',
+                      'contact_secondaire_email',
+                      'contact_secondaire_fonction', 'note', 'visite_notes',
+                      'ombrage_notes'):
+            with self.subTest(champ=champ):
+                self.assertIsNone(getattr(lead, champ))
+        self.assertEqual(lead.lien_maps, '')
+        self.assertEqual(lead.ville, 'Casablanca')
+        site.refresh_from_db()
+        self.assertIsNone(site.gps_lat)
+        self.assertIsNone(site.gps_lng)
+        self.assertIsNone(site.ombrage_notes)
+
+    def test_l_action_anonymize_scrube_aussi_le_profil_de_site(self):
+        """ASOC61 — ``anonymize`` délègue au scrub unique du DSR."""
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+
+        site, _ = self._site_et_lead()
+        admin = get_user_model().objects.create_user(
+            username='asoc61-admin', password='x', role_legacy='admin',
+            company=self.company)
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(admin)}')
+        r = api.post(
+            f'/api/django/crm/clients/{self.client_obj.id}/anonymize/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.client_obj.refresh_from_db()
+        self.assertEqual(self.client_obj.nom,
+                         f'Client anonymisé #{self.client_obj.id}')
+        self.assertIsNone(self.client_obj.cin)
+        site.refresh_from_db()
+        self.assertIsNone(site.gps_lat)
+        self.assertIsNone(site.ombrage_notes)
+
+    def test_le_tiers_miroir_est_vide(self):
+        """ASOC100 (C-ASOC-060) — l'effacement traverse le Tiers miroir :
+        identité vide, rôle client gardé, recherche par téléphone → rien."""
+        from apps.tiers.models import Tiers
+        self.client_obj.refresh_from_db()
+        tiers_id = self.client_obj.tiers_id
+        self.assertIsNotNone(tiers_id, 'miroir ARC18 attendu')
+        erase_crm(self.company, 'amina.crx32@example.ma')
+        # Re-save du client ANONYMISÉ (relu, pas l'instance d'avant
+        # l'effacement qui ré-écrirait l'identité) : ne re-remplit rien.
+        self.client_obj.refresh_from_db()
+        self.client_obj.save()
+        tiers = Tiers.objects.get(pk=tiers_id)
+        self.assertEqual(tiers.nom, 'Anonymisé')
+        for champ in ('prenom', 'email', 'telephone', 'adresse', 'cin', 'ice',
+                      'rc', 'identifiant_fiscal'):
+            with self.subTest(champ=champ):
+                self.assertIn(getattr(tiers, champ), ('', None))
+        self.assertTrue(tiers.is_client)
+        self.assertFalse(Tiers.objects.filter(
+            company=self.company, telephone__contains='600000032').exists())
+
     def test_une_autre_societe_n_est_jamais_touchee(self):
         autre = Company.objects.create(
             nom='Autre CRX32', slug='autre-crx32')

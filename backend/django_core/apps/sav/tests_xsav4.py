@@ -14,7 +14,7 @@ Run :
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from authentication.models import Company
 from apps.crm.models import Client
@@ -87,6 +87,71 @@ class XSAV4NotificationsClientTest(TestCase):
         self.assertNotIn('1234.56', wa_corps)
         self.assertNotIn('1234.56', email['corps'])
         self.assertNotIn('1234.56', email['sujet'])
+
+    @override_settings(PUBLIC_BASE_URL='https://api.taqinor.ma')
+    def test_lien_suivi_absolu_hors_requete(self):
+        # ASOC26 — hors requête (maintenance, intervention terminée), le lien
+        # /suivi/<jeton> du message client commence par la base publique.
+        from apps.sav.notifications_client import build_ticket_transition_message
+        wa_corps, email = build_ticket_transition_message(
+            self.ticket, 'ticket_planifie')
+        attendu = f'https://api.taqinor.ma/suivi/{self.ticket.share_token}'
+        self.assertIn(attendu, wa_corps)
+        self.assertIn(attendu, email['corps'])
+
+    def test_client_arabe_recoit_le_message_arabe(self):
+        # ASOC83 — client `langue_document='ar'` : sujet/corps e-mail et
+        # WhatsApp du ticket dans l'arabe de la société ; client FR inchangé.
+        from apps.parametres.models import MessageTemplate
+        from apps.parametres.models_email import EmailTemplate
+        from apps.sav.notifications_client import build_ticket_transition_message
+        EmailTemplate.objects.create(
+            company=self.company, cle='ticket_planifie',
+            sujet='FR {reference}', corps='Corps FR {reference}',
+            sujet_ar='تدخل {reference}', corps_ar='مبرمج {reference}')
+        MessageTemplate.objects.create(
+            company=self.company, cle='ticket_planifie',
+            corps_fr='WA FR {reference}', corps_ar='واتساب {reference}')
+        wa_fr, email_fr = build_ticket_transition_message(
+            self.ticket, 'ticket_planifie')
+        self.assertEqual(email_fr['sujet'], 'FR SAV-XSAV4-1')
+        self.client_obj.langue_document = 'ar'
+        self.client_obj.save(update_fields=['langue_document'])
+        self.ticket.refresh_from_db()
+        wa_corps, email = build_ticket_transition_message(
+            self.ticket, 'ticket_planifie')
+        self.assertEqual(email['sujet'], 'تدخل SAV-XSAV4-1')
+        self.assertEqual(email['corps'], 'مبرمج SAV-XSAV4-1')
+        self.assertEqual(wa_corps, 'واتساب SAV-XSAV4-1')
+        self.assertEqual(wa_fr, 'WA FR SAV-XSAV4-1')
+
+    @override_settings(ANYMAIL={'SENDGRID_API_KEY': 'sg-test-key'},
+                       EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    def test_transition_notifie_le_compte_portail(self):
+        """ASOC27 (C-ASOC-136) — la transition « planifié » notifie le compte
+        portail ACTIF du client (1 ``portail_ticket_maj``, sans e-mail : celui
+        du SAV reste le seul) ; compte désactivé : 0."""
+        from django.core import mail
+        from apps.notifications.models import Notification
+        sla = SavSlaSettings.get(self.company)
+        sla.notifications_client_sav = True
+        sla.save(update_fields=['notifications_client_sav'])
+        compte = User.objects.create_user(
+            username='xsav4_portail', password='x', company=self.company,
+            email='xsav4-portail@example.invalid', portee='portail_client',
+            portail_client_id=self.client_obj.id)
+        User.objects.create_user(
+            username='xsav4_portail_inactif', password='x', is_active=False,
+            company=self.company, portee='portail_client',
+            portail_client_id=self.client_obj.id)
+        mail.outbox = []
+        with self.captureOnCommitCallbacks(execute=True):
+            result = notify_ticket_transition(self.ticket, 'planifie')
+        self.assertTrue(result['email_sent'])
+        lignes = Notification.objects.filter(event_type='portail_ticket_maj')
+        self.assertEqual([n.recipient_id for n in lignes], [compte.id])
+        self.assertEqual([m.to for m in mail.outbox],
+                         [['xsav4-client@example.invalid']])
 
     def test_migration_defaut_off(self):
         """Migration additive : le champ existe, défaut False (comportement

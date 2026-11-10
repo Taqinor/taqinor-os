@@ -1209,9 +1209,9 @@ class Ticket(models.Model):
         total_pause = self.jours_pause + self._pause_en_cours_jours(today=today)
         if total_pause <= 0:
             return self.sla_due_at
-        if self._sla_jours_ouvres():
-            from core.calendar import add_working_days
-            return add_working_days(self.sla_due_at, total_pause)
+        if self._sla_jours_ouvres():  # ASOC80 — calendrier de la société
+            from apps.notifications.calendar_utils import ajouter_jours_ouvres
+            return ajouter_jours_ouvres(self.sla_due_at, total_pause, self.company)
         return self.sla_due_at + timezone.timedelta(days=total_pause)
 
     def mettre_en_attente_client(self, today=None):

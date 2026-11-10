@@ -257,7 +257,8 @@
     "corps": {
       "zone_id": "z1",
       "cote_index": 0,
-      "longueur_m": 10.2
+      "longueur_m": 10.2,
+      "base_empreinte": "abababababababababababababababababababababababababababababababab"
     },
     "exemple": {
       "roof_layout": {
@@ -276,13 +277,23 @@
           }
         ]
       },
-      "version": 6
+      "version": 6,
+      "empreinte_document": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
     },
     "refus_cote_a_confirmer_400": {
       "cote_index": "La cote « b » est A_CONFIRMER (déduite par fermeture) : confirmez-la avant de l'appliquer."
     },
     "refus_pan_croise_400": {
       "zone_id": "Le pan « z1 » est croisé : corrigez son contour avant d'appliquer une cote."
-    }
+    },
+    "refus_jeton_manquant_400": {
+      "base_empreinte": "Jeton manquant : envoyez base_empreinte, l'empreinte du document ouvert."
+    },
+    "refus_jeton_perime_409": {
+      "detail": "Le document a été modifié ailleurs depuis votre ouverture : rechargez avant d'enregistrer.",
+      "code": "document_modifie",
+      "empreinte_courante": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"
+    },
+    "acon2_note": "ACON2 — le jeton de l'atelier vivant est EXIGÉ (`corps.base_empreinte`) : absent ⇒ 400 `base_empreinte` (même message que l'écriture par section), périmé ⇒ 409 `document_modifie` sans version ; la réponse rend `empreinte_document` (E1), repris par l'atelier avec la section `zones`."
   }
 }
