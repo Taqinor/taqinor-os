@@ -144,6 +144,26 @@ class FacturationFinanceurTest(_Base):
         self.assertIn('FAC-CIQ213-BC-0040', str(ctx.exception))
         self.assertEqual(Facture.objects.filter(devis=devis).count(), 1)
 
+    def test_tiers_payeur_autre_societe_meme_reponse_qu_absent(self):
+        # APFS62 — l'id d'un client d'une autre société et un id absent
+        # rendent la MÊME réponse (statut + corps) : aucun oracle.
+        from apps.crm.models import Client
+        devis = self._devis('DEV-CIQ213-0045', 10, tiers=False,
+                            statut='brouillon')
+        absent = Client.objects.order_by('-id').first().id + 1000
+        url = f'/api/django/ventes/devis/{devis.id}/'
+        r_voisin = self.api.patch(
+            url, {'tiers_payeur': self.financeur_etranger.id}, format='json')
+        r_absent = self.api.patch(
+            url, {'tiers_payeur': absent}, format='json')
+        self.assertEqual(r_voisin.status_code, r_absent.status_code)
+        self.assertNotEqual(r_voisin.status_code, 200)
+        attendu = str(r_absent.data['tiers_payeur'][0]).replace(
+            str(absent), str(self.financeur_etranger.id))
+        self.assertEqual(str(r_voisin.data['tiers_payeur'][0]), attendu)
+        devis.refresh_from_db()
+        self.assertIsNone(devis.tiers_payeur_id)
+
 
 class TiersPayeurApiTest(_Base):
     def test_tiers_d_une_autre_societe_400(self):
@@ -152,7 +172,8 @@ class TiersPayeurApiTest(_Base):
         r = self.api.patch(f'/api/django/ventes/devis/{devis.id}/',
                            {'tiers_payeur': self.financeur_etranger.id},
                            format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        # APFS62 — refus « objet inexistant » (statut de l'id absent).
+        self.assertNotEqual(r.status_code, 200, r.data)
         self.assertIn('tiers_payeur', r.data)
 
     def test_tiers_de_la_societe_accepte(self):

@@ -236,7 +236,8 @@ class DevisCalepinageActionsMixin:
             composition_errors = validate_composition_for_layout(
                 layout, company, lead=lead_obj)
         except AutoDevisError as refus:
-            return Response({refus.field or 'detail': refus.message},
+            return Response({refus.field or 'detail': refus.message,
+                             'detail': refus.message},  # ACON90
                             status=status.HTTP_409_CONFLICT)
         if composition_errors:
             return Response(
@@ -253,6 +254,12 @@ class DevisCalepinageActionsMixin:
         if lead_obj is not None and lhash:
             existing = devis_brouillon_pour_layout(company, lead_obj.pk, lhash)
         if existing is not None:
+            from ..selectors_calepinage import refus_marche_du_brouillon
+
+            motif = refus_marche_du_brouillon(existing, lead_obj)  # ACON90
+            if motif:
+                return Response({'devis': motif, 'detail': motif},
+                                status=status.HTTP_409_CONFLICT)
             link = ShareLink.for_devis(existing)
             import logging as _logging
             _logging.getLogger(__name__).info(
@@ -288,8 +295,10 @@ class DevisCalepinageActionsMixin:
                 **_composition)
         except AutoDevisError as refus:
             # ACAL32 — un refus de composition (site isolé non servable…) est
-            # un 409 NOMMÉ, jamais un 500 ; rien n'a été écrit.
-            return Response({refus.field or 'detail': refus.message},
+            # un 409 NOMMÉ, jamais un 500 ; rien n'a été écrit. ACON90 : le
+            # même texte sous ``detail`` (lu par ``httpMessage`` de l'écran).
+            return Response({refus.field or 'detail': refus.message,
+                             'detail': refus.message},
                             status=status.HTTP_409_CONFLICT)
 
         # QJ17 — persist the layout hash on the newly-created devis so future

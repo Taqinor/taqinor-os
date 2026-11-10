@@ -356,18 +356,24 @@ class ApprovalRequestSerializer(SameCompanyFKSerializerMixin,
         portant déjà une décision (double approbation en cours) est figée :
         ni son type ni son contenu ne changent plus par PATCH (409, refus
         d'état) ; seules les actions dédiées écrivent la décision."""
+        from .services import demande_figee
+
         attrs = super().validate(attrs)
         inst = self.instance
-        decidees = (ApprovalRequest.Status.APPROVED,
-                    ApprovalRequest.Status.REJECTED)
-        if inst is not None and (inst.status in decidees
-                                 or inst.decisions.exists()):
+        if inst is not None and demande_figee(inst):
             figes = sorted(k for k in ('request_type', 'payload')
                            if k in attrs)
             if figes:
                 raise ConflitEtat({
                     k: ['Demande déjà décidée : modification impossible.']
                     for k in figes})
+        if inst is not None and 'payload' in attrs:
+            # APFS113 — les champs requis du type, rejoués comme à la
+            # soumission (``submit_request``) : un PATCH ne les vide pas.
+            type_ = attrs.get('request_type') or inst.request_type
+            erreurs = type_.validate_payload(attrs['payload'])
+            if erreurs:
+                raise serializers.ValidationError({'payload': erreurs})
         return attrs
 
     @extend_schema_field(serializers.IntegerField())

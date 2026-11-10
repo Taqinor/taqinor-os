@@ -53,6 +53,7 @@ sans parcelle saisie, schéma unifilaire non encore produit) est rapportée dans
 """
 from __future__ import annotations
 
+import json
 import logging
 
 logger = logging.getLogger(__name__)
@@ -278,9 +279,28 @@ def _fusionner_localement(pieces, refus):
                 sortie.insert_pdf(segment)
             finally:
                 segment.close()
+        # ACON45 — la description du document voyage AVEC lui.
+        sortie.set_metadata({'keywords': json.dumps(
+            [[c, l, p] for c, l, _o, p in pieces], ensure_ascii=False)})
         return sortie.tobytes(), sortie.page_count
     finally:
         sortie.close()
+
+
+def _pieces_servies(version):
+    """ACON45 — ``[(code, libellé, pages)]`` du PDF SERVI (métadonnée posée
+    à la fusion), ou ``None`` s'il ne se relit pas (le rendu neuf décrit)."""
+    import fitz  # PyMuPDF
+    from apps.records.storage import fetch_attachment
+
+    octets, _erreur = fetch_attachment(getattr(version, 'file_key', ''))
+    try:
+        with fitz.open(stream=octets, filetype='pdf') as servi:
+            return [tuple(p) for p in json.loads(servi.metadata['keywords'])]
+    except Exception as erreur:  # document d'avant ACON45, ou magasin en panne
+        logger.info('ACON45 — pièces du PDF servi non relues (version %s) : %s',
+                    getattr(version, 'pk', None), _erreur or erreur)
+        return None
 
 
 def deposer_et_fusionner(calepinage, *, pieces, famille, nom, folder_nom,
@@ -299,7 +319,8 @@ def deposer_et_fusionner(calepinage, *, pieces, famille, nom, folder_nom,
        VERSION du même document (D-ADOC-2), l'ancienne en historique.
 
     Returns:
-        ``{'document', 'pages', 'nouvelle_version'}``.
+        ``{'document', 'pages', 'nouvelle_version'}`` (+ ``pieces`` du
+        document SERVI quand il est inchangé — ACON45).
 
     Raises:
         ``refus`` (``PackRefuse`` / ``DossierRefuse``) : fusion impossible,
@@ -352,7 +373,8 @@ def deposer_et_fusionner(calepinage, *, pieces, famille, nom, folder_nom,
                 == nom_fichier):
             # Entrées inchangées : le MÊME document, aucune copie.
             return {'document': document, 'pages': pages,
-                    'nouvelle_version': False}
+                    'nouvelle_version': False,
+                    'pieces': _pieces_servies(en_vigueur)}
         # Entrées changées : NOUVELLE VERSION du même document (D-ADOC-2) —
         # octets dans le magasin générique (PDF vérifié par octets magiques),
         # numéro posé par la GED, l'ancienne version reste en historique.
@@ -397,18 +419,17 @@ def construire_pack(calepinage, *, company=None, created_by=None,
             "Dossier technique refusé : aucune pièce à fusionner.",
             piece='pieces')
 
-    attendues = sum(pages for _c, _l, _o, pages in pieces)
     depot = deposer_et_fusionner(
         calepinage, pieces=pieces, famille='pack_technique',
         nom='Dossier technique — %s' % calepinage, folder_nom=DOSSIER,
         company=company, created_by=created_by,
         empreinte=(empreinte if empreinte is not None
                    else _empreinte_des_dossiers(calepinage)))
+    decrites = depot.get('pieces') or [(c, l, p) for c, l, _o, p in pieces]
     return {
         'document': depot['document'],
-        'pieces': [(code, libelle, pages) for code, libelle, _o, pages
-                   in pieces],
-        'pages_attendues': attendues,
+        'pieces': decrites,
+        'pages_attendues': sum(p for _c, _l, p in decrites),
         'signalements': signalements,
     }
 
@@ -517,7 +538,6 @@ def construire_dossier_fin_chantier(calepinage, *, company=None,
             "Dossier de fin de chantier refusé : aucune pièce à fusionner.",
             piece='pieces')
 
-    attendues = sum(pages for _c, _l, _o, pages in pieces)
     depot = deposer_et_fusionner(
         calepinage, pieces=pieces, famille='dossier_fin_chantier',
         nom='Dossier de fin de chantier — %s' % calepinage,
@@ -525,10 +545,10 @@ def construire_dossier_fin_chantier(calepinage, *, company=None,
         created_by=created_by,
         empreinte=(empreinte if empreinte is not None
                    else _empreinte_des_dossiers(calepinage)))
+    decrites = depot.get('pieces') or [(c, l, p) for c, l, _o, p in pieces]
     return {
         'document': depot['document'],
-        'pieces': [(code, libelle, pages) for code, libelle, _o, pages
-                   in pieces],
-        'pages_attendues': attendues,
+        'pieces': decrites,
+        'pages_attendues': sum(p for _c, _l, p in decrites),
         'signalements': signalements + [MENTION_RECETTE_GARANTIES],
     }

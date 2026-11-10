@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.core import database as _database
-from app.core.security import get_raw_token, verify_token
+from app.core.security import exiger_compte_interne, get_raw_token, verify_token
 # AANA7 — UN seul helper (societe ACTIVE d'abord, 403 sans societe),
 # partage avec l'OCR ; le nom local est garde pour les appelants.
 from app.core.security import require_company_id as _require_company_id
@@ -15,7 +15,7 @@ from app.services.sql_agent_service import (
     sql_agent_service, suggestions_pour_ecran,
 )
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(exiger_compte_interne)])  # APFS2
 
 # AANA5 (C-AANA-034) — bornes de l'agent : une question de 1 Mo ou une rafale
 # de requetes ne doit ni saturer le LLM (payant) ni la base.

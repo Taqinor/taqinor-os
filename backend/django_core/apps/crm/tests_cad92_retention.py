@@ -110,10 +110,51 @@ class BalayageTests(TestCase):
     def test_un_lead_devenu_client_est_epargne(self):
         """La déclaration leur oppose la durée légale COMPTABLE, pas 3 ans."""
         client = Client.objects.create(company=self.company, nom='Client')
+        self._facture(client)
         self._lead('Ancien prospect signé', cree_le=self.vieux,
                    telephone='0600000024', client=client)
         self.assertEqual(
             dsr_provider.sweep_retention_prospects(self.now), 0)
+
+    def _facture(self, client):
+        from decimal import Decimal
+
+        from apps.ventes.models import Facture
+        return Facture.objects.create(
+            company=self.company, reference=f'FAC-CAD92-{client.pk:04d}',
+            client=client, statut=Facture.Statut.EMISE,
+            taux_tva=Decimal('20'), montant_ht=Decimal('1000'),
+            montant_tva=Decimal('200'), montant_ttc=Decimal('1200'))
+
+    @override_settings(CRM_LEAD_RETENTION_ACTIF=True)
+    def test_un_client_sans_facture_est_un_prospect(self):
+        """ASOC74 (D-ASOC-4) — lead de 4 ans d'un client SANS facture :
+        anonymisé avec son client ; client facturé : intact ; client dont un
+        autre lead est récent : lead anonymisé, client gardé."""
+        sans = Client.objects.create(company=self.company, nom='Sans facture')
+        lead_sans = self._lead('Devisé', cree_le=self.vieux,
+                               telephone='0600000031', client=sans)
+        facture = Client.objects.create(company=self.company, nom='Facturé')
+        self._facture(facture)
+        lead_facture = self._lead('Facturé', cree_le=self.vieux,
+                                  telephone='0600000032', client=facture)
+        partage = Client.objects.create(company=self.company, nom='Partagé')
+        lead_vieux = self._lead('Vieux', cree_le=self.vieux,
+                                telephone='0600000033', client=partage)
+        self._lead('Récent', telephone='0600000034', client=partage)
+
+        self.assertEqual(
+            dsr_provider.sweep_retention_prospects(self.now, apply_=True), 2)
+
+        for lead in (lead_sans, lead_facture, lead_vieux, sans, facture,
+                     partage):
+            lead.refresh_from_db()
+        self.assertEqual(lead_sans.nom, dsr_provider.LEAD_NOM_ANONYMISE)
+        self.assertTrue(sans.is_anonymized)
+        self.assertEqual(lead_facture.nom, 'Facturé')
+        self.assertFalse(facture.is_anonymized)
+        self.assertEqual(lead_vieux.nom, dsr_provider.LEAD_NOM_ANONYMISE)
+        self.assertFalse(partage.is_anonymized)
 
     def test_un_lead_signe_est_epargne(self):
         lead = self._lead('Signé', cree_le=self.vieux,

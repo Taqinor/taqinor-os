@@ -56,6 +56,7 @@ PIECES_EXECUTION = (
     'export_csv',
     'pack_technique',       # dossier technique (GED)
     'dossier_fin_chantier',  # dossier de fin de chantier (GED)
+    'dossier_reglementaire',  # ACON44 — generer-dossier (GED)
 )
 
 MESSAGES_APPROBATION = {

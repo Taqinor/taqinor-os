@@ -76,9 +76,9 @@ endpoints:
     note: "Liste des calepinages (CALX390) — layout_stale lu sur le devis lié (select_related + prefetch devis__lignes) + UN préchargement des leads de la page (CALX407)."
 
   - path: /api/django/calepinage/calepinages/<pk>/
-    budget: 20
+    budget: 25
     enforced: true
-    note: "Détail agrégé (CALX390) — lead, client, devis, compteurs de versions/variantes, contexte géographique, droits."
+    note: "Détail agrégé (CALX390) — lead, client, devis, compteurs de versions/variantes, contexte géographique, droits. 20 → 25 (ACON31, ACON21) : le droit `peut_supprimer` d'un calepinage lié à un devis BROUILLON lit l'ombrage servi (`selectors.ombrage_servi` : calepinage du devis, devis pour l'empreinte ACON21, résultat servi) — mesuré à 25, constant (O(1))."
 
   - path: /api/django/calepinage/calepinages/<pk>/resultat/
     budget: 15

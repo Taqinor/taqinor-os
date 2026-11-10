@@ -139,6 +139,9 @@ def _proposer_lien_parrainage_on_devis_accepted(sender, devis, user,
     synchrone sous les verrous de l'acceptation, cf. QJR422)."""
     from django.db import transaction
 
+    from .clients_pilotage import parrainage_actif
+    if not parrainage_actif(getattr(devis, 'company', None)):
+        return  # ASOC70 (D-ASOC-7) — réglage parrainage éteint.
     # VNT53 — un AVENANT n'est pas une nouvelle vente : le lien a déjà été
     # proposé à la première signature.
     from apps.ventes.selectors import predecesseur_accepte
@@ -218,6 +221,7 @@ def _suggerer_graine_pub_parrainage(parrainage, user):
     if parrain is None:
         return
     try:
+        from django.db import transaction
         from apps.adsengine.audiences import referral_seed_suggestion
         from apps.records.services import log_note
 
@@ -225,8 +229,9 @@ def _suggerer_graine_pub_parrainage(parrainage, user):
         suggestion = referral_seed_suggestion(
             parrain_nom=nom_complet,
             parrain_localisation=getattr(parrain, 'adresse', None))
-        log_note(parrain, user, suggestion['reason_fr'],
-                 company=parrainage.company)
+        with transaction.atomic():
+            log_note(parrain, user, suggestion['reason_fr'],
+                     company=parrainage.company)
     except Exception:  # noqa: BLE001 — best-effort, ne casse jamais la conversion (D-ENF22-BLE001)
         logger.warning(
             'PUB65 : suggestion de graine pub échouée pour parrainage #%s',

@@ -176,8 +176,11 @@ class ScimUsersView(APIView):
             username=username, email=email, company=company,
             first_name=given, last_name=family, is_active=active)
         # Compte fédéré : pas de mot de passe local utilisable (SSO only).
+        # APFS47 — rôle « Utilisateur » de la société, jamais « aucun rôle ».
+        from apps.roles.services import role_utilisateur
         user.set_unusable_password()
-        user.save(update_fields=['password'])
+        user.role = role_utilisateur(company)
+        user.save(update_fields=['password', 'role'])
         try:
             from apps.audit.recorder import record
             from apps.audit.models import AuditLog

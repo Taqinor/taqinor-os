@@ -154,7 +154,7 @@ def figer_reglages_rendu(devis):
     des lignes. Une entrée héritée d'une V1 est REMPLACÉE : une révision prend
     les réglages de SON envoi. Ne touche jamais au statut (règle #4)."""
     from apps.parametres.models_tariff import TariffSettings
-    from apps.parametres.selectors import residential_tranches_for, tariff_for
+    from apps.parametres.selectors import company_identity, residential_tranches_for, tariff_for
     from apps.ventes.models import LigneDevis
 
     company = devis.company
@@ -183,6 +183,7 @@ def figer_reglages_rendu(devis):
         'redevance_compteur_mad_mois': (
             None if redevance is None else float(redevance)),
         'produits': produits,
+        'identite': company_identity(company),  # ASOC42 — l'émetteur du jour de l'envoi
     }]
     devis.save(update_fields=['clauses_appliquees'])
 
@@ -351,6 +352,17 @@ def mark_devis_sent(*, devis, user=None, paire=True):
     if (refus := refus_kwh_declare_du_devis(devis)) is not None:
         from core.conflit_etat import ConflitEtat
         raise ConflitEtat(refus)
+    # ACON86 (C-ACON-021) — conception du calepinage lié (lien direct) divergente
+    # de celle du devis (ACAL46) : 409, le brouillon ne part pas ; inconnu : envoi.
+    from apps.calepinage.selectors import calepinage_du_devis
+    from apps.ventes.selectors_calepinage import peremption_layout_devis
+    calepinage = calepinage_du_devis(devis.pk, devis.company)
+    if (calepinage is not None and calepinage.devis_id == devis.pk
+            and peremption_layout_devis(devis, calepinage)['conception_divergente'] is True):
+        from core.conflit_etat import ConflitEtat
+        raise ConflitEtat({'detail': (
+            f"La conception du calepinage « {calepinage} » a changé depuis ce devis : "
+            "resynchronisez le devis avant de l'envoyer."), 'code': 'conception_a_resynchroniser'})
 
     # QJR539 — FILET T17 (brouillon seulement) : chaque vue d'envoi appelle
     # déjà la garde AVANT ses effets ; ce filet couvre tout autre appelant.
@@ -430,6 +442,12 @@ def geler_document_engage(devis, user, *, statut=None, acceptation=False):
     figer_baremes_forfaits(devis)
     # ADVS2 — fige les réglages de rendu et les fiches produit (D-ADVS-1).
     figer_reglages_rendu(devis)
+    from apps.ventes.models import Devis
+    if statut == Devis.Statut.ENVOYE:  # ASOC95 (D-ASOC-1) — échéancier figé à l'envoi
+        from apps.ventes.utils.echeancier import figer_echeancier
+        figer_echeancier(devis)
+        # ASOC41 — validité = envoi + réglage du jour, posée si vide (même date que CADV81).
+        poser_validite_devis(devis, date_validite_credit(devis))
 
 
 def poser_validite_devis(devis, date_validite):

@@ -20,8 +20,8 @@ Généré par `python scripts/check_money_fields.py --decimal-places`. Tableau d
 | `backend/django_core/apps/adminops/models.py:332` | FactureLicence.montant_ht | 12 | 2 |
 | `backend/django_core/apps/adminops/models.py:334` | FactureLicence.tva | 12 | 2 |
 | `backend/django_core/apps/adminops/models.py:336` | FactureLicence.montant_ttc | 12 | 2 |
-| `backend/django_core/apps/crm/models.py:915` | Lead.montant_estime | 12 | 2 |
-| `backend/django_core/apps/crm/models.py:2433` | PointContact.cout | 12 | 2 |
+| `backend/django_core/apps/crm/models.py:916` | Lead.montant_estime | 12 | 2 |
+| `backend/django_core/apps/crm/models.py:2434` | PointContact.cout | 12 | 2 |
 | `backend/django_core/apps/crm/models_clients.py:306` | CommissionPartenaire.base_ht | 14 | 2 |
 | `backend/django_core/apps/crm/models_clients.py:312` | CommissionPartenaire.montant | 14 | 2 |
 | `backend/django_core/apps/crm/models_clients.py:587` | DealEnregistre.montant_commission_estime | 14 | 2 |

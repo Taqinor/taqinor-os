@@ -288,7 +288,7 @@ class ValidationTest(unittest.TestCase):
                 self.assertEqual(capture.exception.champ, 'lead')
 
     def test_l_apercu_n_ecrit_rien(self):
-        with mock.patch('apps.calepinage.services.creation.creer_pour_lead'
+        with mock.patch('apps.calepinage.services.creation.ouvrir_ou_creer_pour_lead'
                         ) as creation, \
                 mock.patch('apps.calepinage.services.layout.'
                            'enregistrer_layout') as layout:
@@ -520,6 +520,24 @@ class EndpointImportProjetEnBaseTest(BaseApiCalepinage):
         reponse = self._post({'projet': document, 'lead': self.lead.pk})
         self.assertEqual(reponse.status_code, 409)
         self.assertTrue(any('prix_achat' in cle for cle in reponse.data))
+
+    def test_lead_deja_ouvert_409_nomme_l_existant(self):
+        """ACON4 — porte unique (D-ACAL-12) : le lead a déjà C1 ouvert ⇒
+        aperçu ET confirmation 409 nommant C1, rien n'est créé."""
+        from apps.calepinage.models import Calepinage
+        from apps.calepinage.selectors import calepinages_ouverts_du_lead
+
+        c1 = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='Toiture C1')
+        for apercu in (True, False):
+            reponse = self._post({'projet': fichier(), 'lead': self.lead.pk,
+                                  'apercu': apercu})
+            self.assertEqual(reponse.status_code, 409, reponse.data)
+            self.assertEqual(reponse.data['calepinage_existant'], c1.pk)
+            self.assertIn(f'#{c1.pk}', reponse.data['lead'])
+        self.assertEqual(
+            [c.pk for c in calepinages_ouverts_du_lead(self.company, self.lead.pk)],
+            [c1.pk])
 
     def test_un_lead_d_une_autre_societe_est_introuvable_404(self):
         from apps.crm.models import Lead

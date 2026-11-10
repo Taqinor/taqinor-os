@@ -389,17 +389,16 @@ MESSAGE_AUTO_APPROBATION = (
 
 def _concepteurs(calepinage):
     """Les comptes qui ONT CONÇU ou PORTENT la conception : l'auteur du
-    calepinage, son responsable, l'auteur de sa DERNIÈRE version."""
-    from ..models import CalepinageVersion
+    calepinage, son responsable, et (ACON22, D-ACAL-11) l'auteur de CHAQUE
+    version et de CHAQUE variante — pas seulement de la dernière version."""
+    from ..models import CalepinageVariante, CalepinageVersion
 
     ids = {getattr(calepinage, 'cree_par_id', None),
            getattr(calepinage, 'responsable_id', None)}
     if getattr(calepinage, 'pk', None):
-        derniere = (CalepinageVersion.objects
-                    .filter(calepinage_id=calepinage.pk)
-                    .order_by('-created_at', '-id')
-                    .values_list('cree_par_id', flat=True).first())
-        ids.add(derniere)
+        for modele in (CalepinageVersion, CalepinageVariante):
+            ids.update(modele.objects.filter(calepinage_id=calepinage.pk)
+                       .values_list('cree_par_id', flat=True).distinct())
     ids.discard(None)
     return ids
 

@@ -80,6 +80,37 @@ class AutoApprobationTest(BaseApiCalepinage):
             roof_layout=DESSIN, cree_par=self.user)
         self._refus_sans_ecriture(calepinage)
 
+    def test_auteur_d_une_version_ancienne_ou_d_une_variante_refuse(self):
+        """ACON22 — D a conçu les versions 1-6 (C la 7e) ou la variante
+        retenue par C : D ne l'approuve pas ; E (tiers) l'approuve."""
+        from apps.calepinage.services.variantes import (
+            creer_variante, retenir_variante,
+        )
+
+        c = User.objects.create_user(username='acon22_c', password='x',
+                                     company=self.company, role=self.role)
+        cas_a = self._calepinage(cree_par=c, responsable=c)
+        for rang in range(1, 7):
+            CalepinageVersion.objects.create(
+                company=self.company, calepinage=cas_a, libelle=f'V{rang}',
+                roof_layout=DESSIN, cree_par=self.user)
+        CalepinageVersion.objects.create(
+            company=self.company, calepinage=cas_a, libelle='V7',
+            roof_layout=DESSIN, cree_par=c)
+        self._refus_sans_ecriture(cas_a)
+
+        cas_b = self._calepinage(cree_par=c, responsable=c)
+        # ``retenue`` ne s'écrit que par le service de variantes (CAL9) : D
+        # crée la variante, C la retient (sans réécrire la conception).
+        variante = creer_variante(cas_b, nom='Option B', roof_layout=DESSIN,
+                                  user=self.user)
+        retenir_variante(variante, user=c, appliquer=False)
+        self._refus_sans_ecriture(cas_b)
+
+        reponse = self._decider(cas_b, api=self.api_tiers,
+                                decision='approuve')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+
     def test_auteur_peut_refuser(self):
         calepinage = self._calepinage(cree_par=self.user)
 

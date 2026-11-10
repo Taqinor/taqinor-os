@@ -511,6 +511,57 @@ class TestVx100MontantEtLien(ApprobationsBase):
         self.assertIsNone(item['montant'])
         self.assertIsNone(item['lien'])
 
+    def test_montant_masque_sans_prix_achat_voir(self):
+        """APFS26 (D-ASTK-2) — Technicien (sans ``prix_achat_voir``) : item
+        présent, ``montant`` null, ni tri ni raison IA « montant élevé » ;
+        Directeur : 7500.0. Mutant : masquer après le tri ⇒ ordre faux."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import (
+            DIRECTEUR_PERMISSIONS, UTILISATEUR_PERMISSIONS,
+        )
+        da = DemandeAchat.objects.create(
+            company=self.company, reference='DA-APFS26', objet='Panneaux',
+            statut=DemandeAchat.Statut.SOUMISE)
+        DemandeAchatLigne.objects.create(
+            demande=da, designation='Panneau', quantite=10, prix_estime=750)
+        ancienne = DemandeAchat.objects.create(
+            company=self.company, reference='DA-APFS26-0', objet='Câbles',
+            statut=DemandeAchat.Statut.SOUMISE)
+        DemandeAchat.objects.filter(pk=ancienne.pk).update(
+            date_creation=timezone.now() - datetime.timedelta(days=30))
+
+        def client(nom, permissions):
+            role = Role.objects.create(company=self.company, nom=nom,
+                                       permissions=list(permissions))
+            user = User.objects.create_user(
+                username=f'apfs26_{nom}', password='x',
+                company=self.company, role=role)
+            api = APIClient()
+            api.credentials(
+                HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+            return api
+
+        technicien = client('Technicien', [
+            p for p in UTILISATEUR_PERMISSIONS if p != 'prix_achat_voir'])
+        base = self._url() + '?source=installations&trier='
+        resp = technicien.get(base + 'montant')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        items = resp.data['items']
+        self.assertTrue(all(it['montant'] is None for it in items), items)
+        # Sans montant : ancienneté d'abord (règle de ``_trier_items``).
+        self.assertEqual([it['libelle'] for it in items][:2],
+                         ['Réquisition DA-APFS26-0', 'Réquisition DA-APFS26'])
+        resp = technicien.get(base + 'ia')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        for it in resp.data['items']:
+            self.assertNotIn('montant élevé', it.get('raison_ia') or '')
+
+        directeur = client('Directeur', DIRECTEUR_PERMISSIONS)
+        resp = directeur.get(base + 'montant')
+        item = next(it for it in resp.data['items']
+                    if it['libelle'] == 'Réquisition DA-APFS26')
+        self.assertEqual(float(item['montant']), 7500.0)
+
     def test_trier_montant_orders_amounts_descending(self):
         small = DemandeAchat.objects.create(
             company=self.company, reference='DA-VX100-SMALL', objet='X',

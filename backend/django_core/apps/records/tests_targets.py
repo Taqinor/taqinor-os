@@ -235,3 +235,83 @@ class Acvi6PorteeDesCiblesLeadTests(TestCase):
             {'model': 'crm.lead', 'id': self.lead.pk, 'body': 'x'}, format='json')
         self.assertEqual(reponse.status_code, 404, reponse.data)
         self.assertEqual(Comment.objects.filter(object_id=self.lead.pk).count(), 0)
+
+
+class DroitDuModuleDesCiblesTests(TestCase):
+    """APFS20 (C-APFS-022) — toute cible exige le droit de SON module : Admin RH
+    (aucun code ventes) ne lit, ne télécharge ni ne dépose rien sur une facture
+    ou un devis ; Directeur et compte hérité inchangés."""
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        from django.contrib.contenttypes.models import ContentType
+
+        from apps.crm.models import Client
+        from apps.facturation.models import Facture
+        from apps.records.models import Attachment, Comment
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        from apps.ventes.models import Devis
+        from authentication.models import Company
+
+        User = get_user_model()
+        self.company = Company.objects.create(nom='APFS20', slug='apfs20')
+        roles = dict(CANONICAL_SYSTEM_ROLES)
+        self.users = {
+            nom: User.objects.create_user(
+                username=f'apfs20-{i}', password='x', company=self.company,
+                role=Role.objects.create(company=self.company, nom=nom,
+                                         permissions=list(roles[nom])))
+            for i, nom in enumerate(('Directeur', 'Admin RH'))}
+        self.users['hérité'] = User.objects.create_user(
+            username='apfs20-legacy', password='x', company=self.company,
+            role_legacy='responsable')
+        client = Client.objects.create(company=self.company, nom='Cli APFS20')
+        self.facture = Facture.objects.create(
+            company=self.company, reference='FAC-APFS20', client=client,
+            statut='emise')
+        self.devis = Devis.objects.create(
+            company=self.company, reference='DEV-APFS20', client=client)
+        self.piece = Attachment.objects.create(
+            company=self.company, uploaded_by=self.users['Directeur'],
+            content_type=ContentType.objects.get_for_model(Facture),
+            object_id=self.facture.pk, filename='p.pdf', file_key='k/p.pdf',
+            size=1, mime='application/pdf')
+        self.com = Comment.objects.create(
+            company=self.company, author=self.users['Directeur'],
+            content_type=ContentType.objects.get_for_model(Devis),
+            object_id=self.devis.pk, body='Remise négociée A : 12 %')
+
+    def _ids(self, api, url, params=None):
+        rep = api.get(url, params or {})
+        self.assertEqual(rep.status_code, 200, rep.data)
+        lignes = rep.data['results'] if isinstance(rep.data, dict) else rep.data
+        return [r['id'] for r in lignes]
+
+    def test_admin_rh_ne_lit_ni_ne_depose_sur_facture_et_devis(self):
+        from unittest import mock
+
+        from rest_framework.test import APIClient
+
+        from apps.records.models import Comment
+        pieces, coms = '/api/django/records/attachments/', '/api/django/records/comments/'
+        attendu = {'Directeur': True, 'hérité': True, 'Admin RH': False}
+        for nom, voit in attendu.items():
+            api = APIClient()
+            api.force_authenticate(self.users[nom])
+            cible_f = {'model': 'facturation.facture', 'id': self.facture.pk}
+            self.assertEqual(self.piece.pk in self._ids(api, pieces, cible_f), voit, nom)
+            self.assertEqual(self.piece.pk in self._ids(api, pieces), voit, nom)
+            with mock.patch('apps.records.views.fetch_attachment',
+                            return_value=(b'%PDF', None)):
+                rep = api.get(f'{pieces}{self.piece.pk}/download/')
+            self.assertEqual(rep.status_code, 200 if voit else 404, nom)
+            cible_d = {'model': 'ventes.devis', 'id': self.devis.pk}
+            self.assertEqual(self.com.pk in self._ids(api, coms, cible_d), voit, nom)
+            avant = Comment.objects.filter(object_id=self.devis.pk).count()
+            rep = api.post(coms, dict(cible_d, body=f'note {nom}'), format='json')
+            self.assertEqual(rep.status_code, 201 if voit else 404, (nom, rep.data))
+            if not voit:
+                self.assertEqual(rep.data['detail'], 'Cible introuvable.')
+                self.assertEqual(
+                    Comment.objects.filter(object_id=self.devis.pk).count(), avant)

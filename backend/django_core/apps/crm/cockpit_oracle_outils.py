@@ -58,6 +58,9 @@ class Oracle:
         self.company = company
         self.maintenant = maintenant
         self.today = _local(maintenant)
+        # ASOC84 — l'horloge du délai suit le fuseau de la société, comme
+        # ``horaires.minutes_jours_ouvres_entre`` qu'elle double.
+        self.tz = horaires.fuseau(company)
         self.leads = {
             lead.pk: lead for lead in
             Lead.objects.filter(company=company, is_archived=False)}
@@ -97,13 +100,13 @@ class Oracle:
     def minutes_d_attente(self, debut, fin):
         """L'horloge du DÉLAI de premier contact (contrat, ``notes.exceptions``) : les
         minutes d'horloge de ``debut`` à ``fin``, jours NON ouvrés retirés."""
-        total, jour = 0.0, _local(debut)
-        while jour <= _local(fin):
+        total, jour = 0.0, debut.astimezone(self.tz).date()
+        while jour <= fin.astimezone(self.tz).date():
             if self.ouvre(jour):
                 minuit = datetime.datetime.combine(
-                    jour, datetime.time(0, 0), tzinfo=CASA)
+                    jour, datetime.time(0, 0), tzinfo=self.tz)
                 lendemain = datetime.datetime.combine(
-                    jour + datetime.timedelta(days=1), datetime.time(0, 0), tzinfo=CASA)
+                    jour + datetime.timedelta(days=1), datetime.time(0, 0), tzinfo=self.tz)
                 ecoule = (min(fin, lendemain) - max(debut, minuit)).total_seconds()
                 total += max(0.0, ecoule) / 60.0
             jour += datetime.timedelta(days=1)

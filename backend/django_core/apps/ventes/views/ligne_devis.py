@@ -5,7 +5,7 @@ from rest_framework import viewsets
 from ..models import LigneDevis
 from ..serializers import LigneDevisSerializer
 from authentication.permissions import (
-    IsAnyRole,
+    LectureDuModule,
     IsResponsableOrAdmin,
     IsAdminRole,
 )
@@ -118,16 +118,23 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
             # ADEV21 (C-ADEV-025) — même portée équipe que ``DevisViewSet``
             # (``owner_fields=['created_by']`` du devis parent) : une ligne
             # d'un devis hors portée est introuvable (404), jamais modifiable.
+            qs = qs.filter(devis__company=user.company)
+            from ..gardes_lecture import lecteur_sans_code_ventes
+            if lecteur_sans_code_ventes(user):
+                # APFS108 — entré par l'octroi ``installation_voir`` : les
+                # lignes des devis de SES chantiers seulement.
+                from apps.installations.selectors import chantiers_visibles
+                return qs.filter(devis_id__in=chantiers_visibles(user)
+                                 .values('devis_id'))
             from core.scoping import scope_queryset
-            return scope_queryset(qs.filter(devis__company=user.company),
-                                  user, ['devis__created_by'])
+            return scope_queryset(qs, user, ['devis__created_by'])
         if user.is_superuser:
             return qs
         return qs.none()
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]  # APFS108
         elif self.action in WRITE_ACTIONS + ['destroy']:
             # Retirer une LIGNE fait partie de l'édition normale d'un
             # brouillon (le générateur remplace les lignes) — même niveau

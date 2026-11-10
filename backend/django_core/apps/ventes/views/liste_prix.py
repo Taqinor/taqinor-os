@@ -25,7 +25,9 @@ from rest_framework.parsers import JSONParser
 from rest_framework.exceptions import ValidationError, NotFound, PermissionDenied
 from rest_framework.response import Response
 
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from authentication.permissions import (
+    IsAnyRole, IsResponsableOrAdmin, LectureDuModule,
+)
 from core.viewsets import CompanyScopedModelViewSet  # ARC5
 from . import openapi_docs as D
 from ..models import ListePrix, LignePrixListe
@@ -78,7 +80,7 @@ class ListePrixViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]  # APFS108
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):

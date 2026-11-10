@@ -331,6 +331,61 @@ class TestScheduledJobs(TestCase):
         self.assertEqual(CASABLANCA_TZ, 'Africa/Casablanca')
         self.assertIsInstance(casablanca_today(), date)
 
+    @override_settings(DEVIS_NUDGE_DAYS=[2, 5, 10], CACHES={'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}})
+    def test_relance_devis_vendeur_inactif_va_au_responsable_actif(self):
+        """ASOC90 (C-ASOC-001) — relance J+2 et engagement d'un devis d'un
+        vendeur inactif : au responsable actif du lead, jamais à l'inactif ;
+        lead sans responsable actif ⇒ managers en in-app, 0 e-mail."""
+        from unittest.mock import patch
+
+        from django.utils import timezone
+        from apps.crm.models import Lead
+        from apps.notifications.models import Notification
+        from apps.ventes.models import DevisNudgeLog
+        from apps.ventes.scheduled import engagement_followup_engine
+        from apps.ventes.services import send_devis_followup_nudges
+        inactif = User.objects.create_user(
+            username='asoc90_a', password='x', company=self.company,
+            email='a-asoc90@example.ma', is_active=False)
+        actif = User.objects.create_user(
+            username='asoc90_b', password='x', company=self.company,
+            email='b-asoc90@example.ma', role_legacy='commercial')
+        manager = User.objects.create_user(
+            username='asoc90_m', password='x', company=self.company,
+            email='m-asoc90@example.ma', role_legacy='admin')
+
+        def _devis(ref, owner):
+            return Devis.objects.create(
+                company=self.company, reference=ref, client=self.client_obj,
+                lead=Lead.objects.create(
+                    company=self.company, nom=f'Lead {ref}', owner=owner),
+                statut=Devis.Statut.ENVOYE, taux_tva=Decimal('20'),
+                created_by=inactif,
+                date_envoi=timezone.now() - timedelta(days=2))
+
+        devis = _devis('DEV-ASOC90-1', actif)
+        mail.outbox = []
+        with patch('apps.ventes.email_service.is_email_configured',
+                   return_value=True):
+            send_devis_followup_nudges()
+        self.assertEqual([m.to for m in mail.outbox], [[actif.email]])
+        self.assertEqual(DevisNudgeLog.objects.filter(devis=devis).count(), 1)
+        engagement_followup_engine()
+        relances = Notification.objects.filter(event_type='devis_nudge_due')
+        self.assertTrue(relances.filter(recipient=actif).exists())
+        self.assertFalse(relances.filter(recipient=inactif).exists())
+        # Lead sans responsable actif ⇒ managers en in-app, aucun e-mail.
+        _devis('DEV-ASOC90-2', None)
+        mail.outbox = []
+        relances.delete()
+        with patch('apps.ventes.email_service.is_email_configured',
+                   return_value=True):
+            send_devis_followup_nudges()
+        self.assertEqual(mail.outbox, [])
+        self.assertEqual(list(relances.values_list('recipient', flat=True)),
+                         [manager.pk])
+
 
 @override_settings(EMAIL_BACKEND='django.core.mail.backends.console.EmailBackend')
 class TestQW8EmailConfigBugfix(TestCase):

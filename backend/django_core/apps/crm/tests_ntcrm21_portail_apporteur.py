@@ -4,12 +4,16 @@ from rest_framework.test import APIClient
 
 from authentication.models import Company
 from apps.crm.models import Apporteur, DealEnregistre, Lead
+from apps.parametres.models import CompanyProfile
 
 
 class PortailApporteurTests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(
             nom='Taqinor NTCRM21', slug='taqinor-ntcrm21')
+        # APFS68 — le portail n'est servi que réglage « apporteurs » allumé.
+        CompanyProfile.objects.update_or_create(
+            company=self.company, defaults={'apporteurs_actif': True})
         self.apporteur1 = Apporteur.objects.create(
             company=self.company, nom='Apporteur Un')
         self.apporteur2 = Apporteur.objects.create(
@@ -54,3 +58,20 @@ class PortailApporteurTests(TestCase):
         resp = anon.get(
             f'/api/django/crm/apporteur-portail/{self.apporteur1.token_acces}/mes-deals/')
         self.assertEqual(resp.status_code, 404)
+
+    def test_reglage_eteint_404(self):
+        """APFS68 (C-APFS-066, D-ACRM-6 iii) — réglage éteint : 404
+        « Introuvable. » sans aucun nom de client ; rallumé : 200."""
+        url = (f'/api/django/crm/apporteur-portail/'
+               f'{self.apporteur1.token_acces}/mes-deals/')
+        CompanyProfile.objects.filter(company=self.company).update(
+            apporteurs_actif=False)
+        resp = APIClient().get(url)
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.data, {'detail': 'Introuvable.'})
+        self.assertNotIn('Client 1', str(resp.content))
+        CompanyProfile.objects.filter(company=self.company).update(
+            apporteurs_actif=True)
+        resp = APIClient().get(url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual([d['id'] for d in resp.data['deals']], [self.deal1.id])

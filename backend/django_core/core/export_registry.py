@@ -39,7 +39,8 @@ from rest_framework.decorators import (
 )
 from rest_framework.parsers import JSONParser
 from rest_framework.exceptions import PermissionDenied
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny
+from authentication.permissions import IsAuthenticatedInterne
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
 
@@ -270,7 +271,7 @@ _REQUETE_EXPORT = inline_serializer('ExportReversibiliteRequete', {
     request=_REQUETE_EXPORT,
     responses={202: ExportReversibiliteRunSerializer})
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticatedInterne])
 @parser_classes([JSONParser])  # ENF8 (D2) — aucun upload
 @throttle_classes([ExportReversibiliteThrottle])
 def declencher_export_reversibilite(request):
@@ -300,7 +301,7 @@ class ExportReversibiliteHistoriqueView(generics.ListAPIView):
     """GET /api/django/core/export-reversibilite/historique/ — scopé société."""
 
     serializer_class = ExportReversibiliteRunSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedInterne]
     pagination_class = None
 
     def get_queryset(self):

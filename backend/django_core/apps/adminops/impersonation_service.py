@@ -86,6 +86,10 @@ def demander_impersonation(*, utilisateur_cible, initiee_par, motif):
             not getattr(initiee_par, 'is_superuser', False):
         raise ImpersonationRefusee(
             'Réservé au staff support de l\'éditeur.')
+    # APFS60 — jamais une session sur un superutilisateur ou un compte support.
+    if getattr(utilisateur_cible, 'is_superuser', False) or getattr(utilisateur_cible, 'is_taqinor_support', False):
+        raise ImpersonationRefusee(
+            "Un superutilisateur ou un compte support ne peut pas être la cible d'une session support.")
 
     demande = SessionImpersonation.objects.create(
         company=utilisateur_cible.company,
@@ -154,6 +158,11 @@ def donner_consentement(demande, *, par, now=None):
     Refuse (et ne modifie rien) si la demande est déjà refusée, close, périmée
     ou hors délai — une demande expirée n'est JAMAIS ré-ouvrable."""
     now = now or timezone.now()
+    # APFS60 (D-APFS-2) — LA porte : un Administrateur DE la société de la
+    # demande, distinct de l'initiateur (aucune exemption superutilisateur).
+    if par is None or par.pk == demande.initiee_par_id or par.company_id != demande.company_id:
+        raise ImpersonationRefusee(
+            "Seul un Administrateur de la société concernée, autre que le demandeur, peut l'autoriser.")
     if demande.consentement_donne:
         return demande
     if demande.refusee:

@@ -181,7 +181,73 @@ class ProduitSerializer(serializers.ModelSerializer):
 '''
 
 
+API_VIEW_SANS_FILTRE = '''
+from rest_framework.decorators import api_view
+
+
+@api_view(['GET'])
+def devis_detail(request, pk):
+    devis = Devis.objects.get(pk=pk)
+    return Response({'id': devis.pk})
+'''
+
+API_VIEW_COMPANY_QS = '''
+from rest_framework.decorators import api_view
+
+
+@api_view(['GET'])
+def devis_liste(request):
+    return Response(list(company_qs(Devis.objects.all(), request)))
+
+
+@api_view(['GET'])
+def devis_detail(request, pk):
+    devis = Devis.objects.get(pk=pk, company=request.user.company)
+    return Response({'id': devis.pk})
+'''
+
+GET_QUERYSET_BRANCHE = '''
+from rest_framework import viewsets
+
+
+class ProduitViewSet(viewsets.ModelViewSet):
+    def get_queryset(self):
+        if self.request.user.company:
+            self.request.journal = True
+        return Produit.objects.all()
+'''
+
+
 class TestTenantIsolation(unittest.TestCase):
+    def test_api_view_sans_filtre_societe_signalee(self):
+        """APFS64 — une vue fonction ``@api_view`` qui lit l'ORM sans filtre
+        société est signalée ``chemin::fonction`` ; ``company_qs`` ou
+        ``company=…`` : acceptée. Mutant : ne plus itérer les FunctionDef."""
+        self.assertIn("API_VIEW_COMPANY_FILTER_MISSING",
+                      _view_codes(API_VIEW_SANS_FILTRE))
+        self.assertEqual(_view_codes(API_VIEW_COMPANY_QS), set())
+
+    def test_company_cite_dans_une_branche_ne_suffit_pas(self):
+        """APFS64 — « company » dans une condition n'est pas un filtre."""
+        self.assertIn("COMPANY_FILTER_MISSING",
+                      _view_codes(GET_QUERYSET_BRANCHE))
+
+    def test_cle_de_dette_sans_site_echoue(self):
+        """APFS64 — la dette ne fait que décroître : sur un arbre où plus
+        aucun site n'existe, chaque clé gelée est refusée (DETTE_MORTE)."""
+        import contextlib
+        import io
+        with tempfile.TemporaryDirectory(dir=ROOT / "scripts" / "tests") as d:
+            orig = (cti.APPS_DIR, cti.CORE_DIR, cti.AUTH_DIR)
+            cti.APPS_DIR = cti.CORE_DIR = cti.AUTH_DIR = Path(d)
+            try:
+                with contextlib.redirect_stdout(io.StringIO()) as sortie:
+                    self.assertEqual(cti.main([]), 1)
+            finally:
+                cti.APPS_DIR, cti.CORE_DIR, cti.AUTH_DIR = orig
+        self.assertEqual(sortie.getvalue().count("[DETTE_MORTE]"),
+                         len(cti.DETTE_FILTRE_EFFECTIF))
+
     def test_naked_modelviewset_flagged(self):
         self.assertIn("COMPANY_FILTER_MISSING", _view_codes(NAKED_VIEWSET))
 

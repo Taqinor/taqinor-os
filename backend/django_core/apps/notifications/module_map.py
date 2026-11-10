@@ -61,6 +61,7 @@ EVENT_TYPE_MODULE = {
     'outillage_calibration_proche': 'outillage',
     # APAR58 — alertes du moteur de publicité.
     'adsengine_alert': 'adsengine',
+    'portail_demande_client': 'portail',  # ASOC46
 }
 
 

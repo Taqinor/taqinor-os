@@ -120,3 +120,21 @@ class PartagesPublicsTests(TestCase):
         self.assertEqual(apres.status_code, 404)
         statut, _ = services.resolve_partage_public(self.partage_public.token)
         self.assertEqual(statut, services.PARTAGE_INTROUVABLE)
+
+    def test_obsolete_404(self):
+        """ASOC47 (C-ASOC-150) — un document passé OBSOLÈTE n'est plus servi
+        par son lien public (404, corps du jeton inconnu) ; « archivé » : servi."""
+        from apps.ged.models import LIFECYCLE_ARCHIVE, LIFECYCLE_OBSOLETE
+        url = f'{BASE}public/{self.partage_public.token}/'
+        docs = Document.objects.filter(pk=self.doc_public.pk)
+        with mock.patch('apps.ged.views.fetch_attachment',
+                        return_value=(PDF, None)):
+            docs.update(statut=LIFECYCLE_ARCHIVE)
+            self.assertNotEqual(APIClient().get(url).status_code, 404)
+            docs.update(statut=LIFECYCLE_OBSOLETE)
+            apres = APIClient().get(url)
+        inconnu = APIClient().get(f'{BASE}public/jeton-inconnu-asoc47/')
+        self.assertEqual(apres.status_code, 404)
+        self.assertEqual(apres.content, inconnu.content)
+        statut, _ = services.resolve_partage_public(self.partage_public.token)
+        self.assertEqual(statut, services.PARTAGE_INTROUVABLE)

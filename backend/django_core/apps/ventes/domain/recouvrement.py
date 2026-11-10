@@ -746,7 +746,10 @@ def send_devis_followup_nudges():
 
         client = getattr(devis, 'client', None)
         client_nom = (getattr(client, 'nom', '') or '') if client else ''
-        vendeur = getattr(devis, 'created_by', None)
+        # ASOC90 — vendeur inactif ⇒ responsable actif du lead, sinon None
+        # (les managers reçoivent alors la relance en in-app, jamais l'inactif).
+        from apps.notifications.services import destinataire_actif
+        vendeur = destinataire_actif(devis.created_by, lead=devis.lead)
 
         # QX13 — respecte la réalité : relance planifiée, contact manuel
         # récent, ou engagement proposition récent → on diffère ce tour.
@@ -814,14 +817,17 @@ def send_devis_followup_nudges():
                 # QX13 — le brouillon wa.me ne partait qu'en LOG (invisible) :
                 # crée une vraie Notification in-app au vendeur, avec le lien
                 # proposition + le brouillon wa.me prêts et un deep-link devis.
-                if vendeur is not None:
-                    try:
-                        from apps.notifications.services import notify
-                        from apps.notifications.types_evenements import (
-                            EventType,
-                        )
+                try:
+                    from apps.notifications.services import (
+                        notify, resolve_recipients)
+                    from apps.notifications.types_evenements import (
+                        EventType,
+                    )
+                    for dest in ([vendeur] if vendeur is not None else
+                                 resolve_recipients(
+                                     devis.company, EventType.DEVIS_NUDGE_DUE)):
                         notify(
-                            vendeur, EventType.DEVIS_NUDGE_DUE,
+                            dest, EventType.DEVIS_NUDGE_DUE,
                             title=(f'Relance à faire — devis {devis.reference} '
                                    f'(niveau {idx + 1})'),
                             body=(f'Aucune réponse depuis {jours} j. '
@@ -829,11 +835,11 @@ def send_devis_followup_nudges():
                                   + (f'\nBrouillon WhatsApp : {wa_url}'
                                      if wa_url else '')),
                             link=f'/ventes/devis?devis={devis.id}',
-                            company=devis.company)
-                    except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
-                        logger.warning(
-                            'QX13: notification relance échec devis %s : %s',
-                            devis.reference, exc)
+                            company=devis.company, skip_email=vendeur is None)
+                except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
+                    logger.warning(
+                        'QX13: notification relance échec devis %s : %s',
+                        devis.reference, exc)
 
             # Record the fired level — unique_together prevents duplicates.
             try:

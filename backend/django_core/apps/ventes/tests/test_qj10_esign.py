@@ -382,3 +382,34 @@ class TestDevisSignatureSellerNotification(TestCase):
         with pdf_signe_en_ligne(self):
             accept_devis(devis=devis, user=None, nom='Client')
         mock_notify.assert_called_once()
+
+    def test_vendeur_inactif_responsable_actif_notifie(self):
+        """ASOC91 (C-ASOC-001) — vendeur inactif : le responsable actif du lead
+        reçoit « devis accepté » (lien wa.me), jamais l'inactif ; sans
+        responsable actif ⇒ les managers actifs."""
+        from apps.crm.models import Lead
+        from apps.notifications.models import Notification
+        from apps.ventes.domain.notifications_acceptation import (
+            _notify_seller_accepted)
+        responsable = _make_user(self.company, 'qj10gb')
+        manager = _make_user(self.company, 'qj10gm')
+        self.seller.is_active = False
+        self.seller.save(update_fields=['is_active'])
+        lead = Lead.objects.create(
+            company=self.company, nom='Lead ASOC91', owner=responsable,
+            telephone='0612345678')
+        devis = _make_devis(self.company, self.client_obj, 'DEV-ASOC91-01')
+        devis.created_by, devis.lead = self.seller, lead
+        devis.save(update_fields=['created_by', 'lead'])
+        Notification.objects.all().delete()
+        _notify_seller_accepted(devis=devis, user=None)
+        acceptes = Notification.objects.filter(event_type='devis_accepted')
+        self.assertEqual(acceptes.filter(recipient=responsable).count(), 1)
+        self.assertIn('wa.me', acceptes.get(recipient=responsable).body)
+        self.assertFalse(acceptes.filter(recipient=self.seller).exists())
+        lead.owner = None
+        lead.save()
+        Notification.objects.all().delete()
+        _notify_seller_accepted(devis=devis, user=None)
+        self.assertEqual(set(acceptes.values_list('recipient', flat=True)),
+                         {responsable.pk, manager.pk})

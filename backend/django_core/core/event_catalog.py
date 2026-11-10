@@ -81,6 +81,12 @@ CATALOG = {
         'Un devis est révisé : sa V+1 est créée et l\'ancienne version est '
         'remplacée (émis après commit, best-effort) — aucun statut ne bouge.',
         ['ancien', 'nouveau', 'user']),
+    'revision_abandonnee': _e(
+        'La révision d\'un devis est abandonnée (V2 supprimée, archivée, '
+        'refusée ou expirée) et les versions précédentes sont réactivées '
+        '(émis dans la transaction, avant la suppression, best-effort) — '
+        'aucun statut ne bouge.',
+        ['ancien', 'reactivees', 'user']),
     'visite_validee': _e(
         'Une visite technique terrain reçoit le feu vert du bureau '
         'd\'études — aucun statut de funnel ne bouge. ``mesures_point_eau`` '

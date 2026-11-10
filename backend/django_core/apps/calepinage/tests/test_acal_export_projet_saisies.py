@@ -217,8 +217,9 @@ class AllerRetourDesSaisiesTest(BaseConceptionReelle):
         self.assertEqual(bloc['sld_edition']['libelles'],
                          {'champ': 'Champ PV'})
 
+        # ACON4 — self.lead porte déjà self.calepinage ouvert : second lead.
         resume = importer_projet(premier, self.company, user=self.user,
-                                 lead_id=self.lead.pk)
+                                 lead_id=self.lead_2.pk)
         self.assertTrue(resume['ecrit'])
         self.assertIn('saisies', resume['repris'])
         self.assertNotIn(BLOC_PRODUITS_IGNORES,
@@ -264,7 +265,7 @@ class AllerRetourDesSaisiesTest(BaseConceptionReelle):
         document['saisies']['entree_electrique']['dc_m'] = -1
         avant = Calepinage.objects.count()
         with self.assertRaises(ImportProjetRefuse) as capture:
-            importer_projet(document, self.company, lead_id=self.lead.pk)
+            importer_projet(document, self.company, lead_id=self.lead_2.pk)
         self.assertEqual(capture.exception.champ,
                          'saisies.entree_electrique.dc_m')
         self.assertEqual(Calepinage.objects.count(), avant)

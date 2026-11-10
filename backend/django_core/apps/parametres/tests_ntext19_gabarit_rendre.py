@@ -129,6 +129,44 @@ class RendreGabaritTests(TestCase):
             self.assertFalse(
                 any(mot in cle.lower() for mot in CLES_INTERDITES), cle)
 
+    def test_rendu_exige_le_droit_du_module_de_la_cible(self):
+        """APFS22 (C-APFS-021) — un rôle fin sans code du module de la cible
+        reçoit le 404 d'un id absent ; sans ``client_pii_voir`` le contexte
+        perd téléphone, e-mail et adresse ; un compte autorisé : complet."""
+        from apps.crm.models import Client
+        from apps.roles.models import Role
+        client = Client.objects.create(
+            company=self.company, nom='Benali', telephone='0612345678',
+            email='benali.apfs22@example.ma', adresse='12 rue X')
+        GabaritDocumentCustom.objects.create(
+            company=self.company, code='fiche-client', nom='Fiche client',
+            cible=GabaritDocumentCustom.Cible.CLIENT, corps='<p>{{ nom }}</p>')
+
+        def _role_user(nom, codes):
+            role = Role.objects.create(company=self.company, nom=nom,
+                                       permissions=codes)
+            return User.objects.create_user(
+                username=f'apfs22-{next(_seq)}', password='x',
+                company=self.company, role=role)
+
+        rh = _role_user('Admin RH APFS22', ['paie_voir'])
+        sans_pii = _role_user('Sans PII APFS22', ['crm_voir'])
+        res = _auth(rh).get(f'{URL}fiche-client/rendre/?cible_id={client.pk}')
+        self.assertEqual(res.status_code, 404, getattr(res, 'data', None))
+        self.assertEqual(res.data['detail'],
+                         f'Aucun client « {client.pk} » dans cette société.')
+        self.assertIsNone(construire_contexte(
+            'ticket', self.company, 1, user=rh))
+        contexte = construire_contexte(
+            'client', self.company, client.pk, user=sans_pii)
+        self.assertEqual(contexte['nom'], 'Benali')
+        for cle in ('telephone', 'email', 'adresse'):
+            self.assertNotIn(cle, contexte)
+            self.assertNotIn(cle, contexte['client'])
+        complet = construire_contexte(
+            'client', self.company, client.pk, user=self.user)
+        self.assertEqual(complet['telephone'], '0612345678')
+
     def test_list_only_returns_active_templates_of_the_company(self):
         GabaritDocumentCustom.objects.create(
             company=self.company, code='inactive', nom='Inactive',

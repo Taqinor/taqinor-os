@@ -46,20 +46,11 @@ def _deja_notifie_aujourdhui(event_type, link, company):
 
 def _recipients_reappro(company, event_type):
     """Destinataires de l'alerte ``event_type`` : APAR72 — une règle de routage
-    ACTIVE (Paramètres › Notifications) fait foi ; sinon responsables/admins
-    actifs de la société. À défaut (aucun rôle taggé), tous les actifs."""
-    from apps.notifications.services import (
-        regle_de_routage_active, resolve_recipients)
-    if regle_de_routage_active(company, event_type):
-        return list(resolve_recipients(company, event_type))
-    from django.contrib.auth import get_user_model
-    User = get_user_model()
-    qs = User.objects.filter(
-        company=company, is_active=True,
-        role_legacy__in=['responsable', 'admin'])
-    if qs.exists():
-        return list(qs)
-    return list(User.objects.filter(company=company, is_active=True))
+    ACTIVE (Paramètres › Notifications) fait foi ; sinon les managers INTERNES
+    actifs (palier du rôle, APAR21). ASOC30 : plus de repli « tous les
+    actifs » — un compte portail n'est jamais destinataire."""
+    from apps.notifications.services import resolve_recipients
+    return list(resolve_recipients(company, event_type))
 
 
 @shared_task(name='stock.recompute_reordering')

@@ -69,7 +69,7 @@ class ConfigAgentSqlTests(unittest.TestCase):
         self.addCleanup(importlib.reload, _config)
 
     def _client(self):
-        from app.core.security import get_raw_token, verify_token
+        from app.core.security import exiger_compte_interne, get_raw_token, verify_token
 
         app = FastAPI()
         app.include_router(_ep.router, prefix="/sql-agent")
@@ -77,6 +77,7 @@ class ConfigAgentSqlTests(unittest.TestCase):
             "user_id": 301, "company_id": 7, "role": "admin",
         }
         app.dependency_overrides[get_raw_token] = lambda: "jwt-xyz"
+        app.dependency_overrides[exiger_compte_interne] = lambda: {}  # APFS2
         return TestClient(app)
 
     def test_prod_sans_role_dedie_refuse(self):

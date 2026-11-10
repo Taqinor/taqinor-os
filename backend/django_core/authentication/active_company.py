@@ -85,7 +85,9 @@ def user_can_operate(user, company_id):
         company_id = int(company_id)
     except (TypeError, ValueError):
         return False
-    if getattr(user, 'is_superuser', False):
+    from authentication.permissions import est_operateur_plateforme
+
+    if est_operateur_plateforme(user):  # APFS61 — superuser SANS société
         from authentication.models import Company
         return Company.objects.filter(pk=company_id).exists()
     return any(c.id == company_id for c in companies_for_user(user))

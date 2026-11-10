@@ -461,3 +461,42 @@ class ActionPermissionRatchetTests(SimpleTestCase):
         self.assertEqual(
             self.counts.get("crm", 0), 0,
             "crm (pattern d'or) ne devrait avoir aucune @action non gardée.")
+
+
+# APFS112 (D-APFS-1) — dette gelée : registres CNDP et extraits planifiés, non
+# tranchés (APFS4) ; ne fait que DÉCROÎTRE (une entrée périmée échoue).
+PALIER_SEUL_DETTE = {'ConsentRecordViewSet', 'RegistreTraitementViewSet', 'ScheduledExportViewSet'}
+
+
+def _ecritures_core_au_palier_seul():
+    """Vues de ``core.views`` routées dont une écriture (POST/PUT/PATCH/DELETE)
+    n'est gardée QUE par le palier ``IsAdminOrResponsableTier``."""
+    from django.urls import URLResolver, get_resolver
+    from rest_framework.test import APIRequestFactory
+    from authentication.permissions import IsAdminOrResponsableTier
+    factory, trouvees, pile = APIRequestFactory(), set(), list(get_resolver().url_patterns)
+    while pile:
+        p = pile.pop()
+        pile.extend(p.url_patterns if isinstance(p, URLResolver) else ())
+        cb = getattr(p, 'callback', None)
+        cls, actions = getattr(cb, 'cls', None), getattr(cb, 'actions', None) or {}
+        if cls is None or cls.__module__ != 'core.views':
+            continue
+        for meth in [m for m in ('post', 'put', 'patch', 'delete') if m in actions or hasattr(cls, m)]:
+            view = cls(**(getattr(cb, 'initkwargs', None) or {}))
+            view.action_map, view.action = actions, actions.get(meth)
+            view.request = view.initialize_request(getattr(factory, meth)('/'))
+            view.args, view.kwargs, view.format_kwarg = (), {}, None
+            if [type(x) for x in view.get_permissions()] == [IsAdminOrResponsableTier]:
+                trouvees.add(cls.__name__)
+    return trouvees
+
+
+class PalierSeulInterditTests(SimpleTestCase):
+    def test_aucune_ecriture_core_au_palier_seul(self):
+        trouvees = _ecritures_core_au_palier_seul()
+        self.assertEqual(sorted(trouvees - PALIER_SEUL_DETTE), [],
+                         "écriture d'administration de core.views au palier seul : "
+                         "ajouter HasPermissionOrLegacy('parametres_modifier')")
+        self.assertEqual(sorted(PALIER_SEUL_DETTE - trouvees), [],
+                         'dette périmée : retirer la vue de PALIER_SEUL_DETTE')

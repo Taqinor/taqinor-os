@@ -122,6 +122,51 @@ class TestNotificationProducers(TestCase):
         self.assertTrue(Notification.objects.filter(
             recipient=self.owner, event_type=EventType.SAV_TICKET_OPENED).exists())
 
+    def test_devis_expire_vendeur_inactif_va_au_responsable_actif(self):
+        """ASOC1 (C-ASOC-001) — auteur inactif ⇒ le responsable actif du lead
+        reçoit l'expiration ; jamais rien hors de l'app vers l'inactif ;
+        `_notify_user_or_managers(inactif)` ⇒ les managers."""
+        from unittest import mock
+
+        from core.events import devis_expired
+        from apps.notifications.services import notify
+        from apps.notifications.sweeps import _notify_user_or_managers
+        inactif = User.objects.create_user(
+            username='notif_inactif', password='x', company=self.company,
+            is_active=False)
+        self.owner.role_legacy = 'admin'  # manager M
+        self.owner.save(update_fields=['role_legacy'])
+        lead = Lead.objects.create(
+            company=self.company, nom='Lead ASOC1', owner=self.actor)
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-ASOC1-1',
+            client=Client.objects.create(company=self.company, nom='C1'),
+            lead=lead, statut=Devis.Statut.EXPIRE, taux_tva=Decimal('20'),
+            created_by=inactif)
+        Notification.objects.all().delete()
+        devis_expired.send(sender=Devis, devis=devis, ancien_statut='envoye')
+        expire = Notification.objects.filter(event_type=EventType.DEVIS_EXPIRED)
+        self.assertEqual(expire.filter(recipient=self.actor).count(), 1)
+        self.assertEqual(expire.filter(recipient=inactif).count(), 0)
+        # Sans responsable actif ⇒ les managers.
+        lead.owner = None
+        lead.save()
+        Notification.objects.all().delete()
+        devis_expired.send(sender=Devis, devis=devis, ancien_statut='envoye')
+        self.assertEqual(list(expire.values_list('recipient', flat=True)),
+                         [self.owner.pk])
+        # notify(inactif) : in-app seul, aucun canal hors-app.
+        with mock.patch('apps.notifications.services._diffuser_hors_app') \
+                as diffuser, self.captureOnCommitCallbacks(execute=True):
+            notify(inactif, EventType.DEVIS_EXPIRED, 'T', company=self.company,
+                   respect_quiet_hours=False)
+        self.assertEqual(set(diffuser.call_args.args[6]), {'in_app'})
+        Notification.objects.all().delete()
+        _notify_user_or_managers(
+            inactif, self.company, EventType.DEVIS_EXPIRED, 'T', 'B')
+        self.assertEqual(list(expire.values_list('recipient', flat=True)),
+                         [self.owner.pk])
+
     def test_sav_ticket_update_does_not_reemit(self):
         from apps.sav.models import Ticket
         ticket = Ticket.objects.create(

@@ -43,6 +43,10 @@ def perte_ombrage_du_devis(devis):
         return None
     if not regles_au_moins(devis, REGLES_CORRIGEES_2710):
         return None
+    if getattr(devis, 'statut', 'brouillon') != 'brouillon':
+        # ACON20 — figé à l'envoi : la perte RANGÉE au bloc horaire, jamais
+        # la simulation vivante (page publique = PDF).
+        return _perte_rangee(devis)
     try:
         from apps.calepinage.selectors import ombrage_servi
         servi = ombrage_servi(devis.pk, getattr(devis, 'company', None))
@@ -59,6 +63,19 @@ def perte_ombrage_du_devis(devis):
     if not 0.0 <= perte < 100.0:
         return None
     return perte
+
+
+def _perte_rangee(devis):
+    """ACON20 — ``etude_params.etude_horaire.ombrage.perte_pct`` du devis,
+    dans ``[0, 100[``, ou ``None`` (ne lève jamais)."""
+    etude = getattr(devis, 'etude_params', None)
+    bloc = etude.get('etude_horaire') if isinstance(etude, dict) else None
+    ombrage = bloc.get('ombrage') if isinstance(bloc, dict) else None
+    try:
+        perte = float((ombrage or {}).get('perte_pct'))
+    except (TypeError, ValueError, AttributeError):
+        return None
+    return perte if 0.0 <= perte < 100.0 else None
 
 
 def facteur_ombrage(perte_pct):

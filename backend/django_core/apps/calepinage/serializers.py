@@ -724,14 +724,16 @@ class CalepinageSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
         if erreurs:
             raise serializers.ValidationError(erreurs)
 
-    def _lead_de_la_requete(self, lead_id):
-        from apps.crm.selectors import get_company_lead
+    def _lead_de_la_requete(self, lead_id, *, en_portee=False):
+        from .services.creation import lead_en_portee
 
         request = self.context.get('request')
-        company = getattr(getattr(request, 'user', None), 'company', None)
+        user = getattr(request, 'user', None)
+        company = getattr(user, 'company', None)
         if company is None:
             return None
-        return get_company_lead(company, lead_id)
+        # ACON3 — l'ÉCRITURE du lead se borne à la portée CRM de l'appelant.
+        return lead_en_portee(company, lead_id, user if en_portee else None)
 
     def _exiger_lead_de_la_societe(self, lead_id):
         """Un lead d'une AUTRE société est « introuvable », jamais « interdit ».
@@ -744,7 +746,7 @@ class CalepinageSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
         company = getattr(getattr(request, 'user', None), 'company', None)
         if company is None:
             return None
-        lead = self._lead_de_la_requete(lead_id)
+        lead = self._lead_de_la_requete(lead_id, en_portee=True)
         if lead is None:
             # ENF11 — un id de lead bien formé qui ne désigne rien (ou un lead
             # d'une autre société, même réponse) est introuvable : 404.

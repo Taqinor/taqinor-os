@@ -179,6 +179,9 @@ export default function PortailClientSav() {
                 {d.description ? (
                   <p className="text-sm text-muted-foreground">{d.description}</p>
                 ) : null}
+                {d.statut === 'refusee' && d.motif_refus ? (
+                  <p className="text-sm">Motif du refus : {d.motif_refus}</p>
+                ) : null}
                 {d.ticket_id ? (
                   <div className="flex flex-col gap-2">
                     <Button variant="outline" size="sm" className="self-start"

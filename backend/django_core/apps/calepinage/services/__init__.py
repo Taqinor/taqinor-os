@@ -16,7 +16,7 @@ LA RÈGLE
   ``versions``, ``liens``, ``journal``, ``electrique``, ``production``,
   ``consommation``, ``pompage``, ``planche``, ``sorties``…) ;
 * ce ``__init__`` RÉ-EXPORTE les fonctions publiques : l'appelant écrit
-  ``from apps.calepinage import services`` puis ``services.creer_pour_lead(...)``
+  ``from apps.calepinage import services`` puis ``services.ouvrir_ou_creer_pour_lead(...)``
   sans jamais connaître le découpage interne ;
 * les imports sont FONCTION-LOCAUX dans les sous-modules là où ils évitent un
   cycle au chargement des apps.
@@ -65,8 +65,8 @@ __all__ = ['SOUS_MODULES']
 def __getattr__(nom):
     """Ré-export PARESSEUX des fonctions publiques des sous-modules.
 
-    ``services.creer_pour_lead`` résout à la volée vers
-    ``services.creation.creer_pour_lead``. Paresseux à dessein : importer
+    ``services.ouvrir_ou_creer_pour_lead`` résout à la volée vers
+    ``services.creation.ouvrir_ou_creer_pour_lead``. Paresseux à dessein : importer
     ``apps.calepinage.services`` ne doit charger NI les modèles NI une app
     tierce au démarrage de Django (les sous-modules sont importés au premier
     usage réel, jamais au chargement des apps).

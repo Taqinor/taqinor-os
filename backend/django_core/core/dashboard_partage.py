@@ -20,7 +20,8 @@ from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, viewsets
 from rest_framework.parsers import JSONParser
 from rest_framework.decorators import authentication_classes, api_view, permission_classes, throttle_classes
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny
+from authentication.permissions import IsAuthenticatedInterne
 from rest_framework.response import Response
 
 from core.throttling import PublicTokenReadThrottle
@@ -163,7 +164,7 @@ class PartageDashboardViewSet(TenantMixin, viewsets.ModelViewSet):
     pointer vers un dashboard de la société B et le servir au monde entier
     (``dashboard_public`` résout par le SEUL jeton)."""
     serializer_class = PartageDashboardSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedInterne]
     parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     queryset = PartageDashboard.objects.all()
 
@@ -217,7 +218,7 @@ class DashboardPartageInterneViewSet(TenantMixin, viewsets.ModelViewSet):
     et l'``utilisateur`` bénéficiaire sont validés company-scope par le
     serializer (``DashboardScopeMixin`` → 404)."""
     serializer_class = DashboardPartageInterneSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedInterne]
     parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     queryset = DashboardPartageInterne.objects.all()
 
@@ -250,7 +251,7 @@ def user_can_view_dashboard(user, dashboard):
     }, many=True),
 }))
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticatedInterne])
 def dashboard_tv(request):
     """XPLT10 — ``GET dashboards-tv/`` : dashboards éligibles au mode TV
     (plein écran, rotation automatique) pour l'utilisateur courant.

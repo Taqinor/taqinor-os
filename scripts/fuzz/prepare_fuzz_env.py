@@ -327,14 +327,14 @@ def _semer_calepinage(company, user):
     existant = _premier('calepinage.Calepinage', company)
     if existant is not None:
         return existant
-    from apps.calepinage.services.creation import creer_pour_lead
+    from apps.calepinage.services.creation import _creer_pour_lead
 
     lead = (_modele('crm.Lead').objects.filter(company=company)
             .order_by('-pk').first())
     if lead is None:
         raise ValueError('aucun lead dans la société de fuzz')
-    return creer_pour_lead(lead.pk, company, user=user,
-                           titre='Calepinage fuzz')
+    return _creer_pour_lead(lead.pk, company, user=user,
+                            titre='Calepinage fuzz')
 
 
 def _ids_calepinages_modeles(company):

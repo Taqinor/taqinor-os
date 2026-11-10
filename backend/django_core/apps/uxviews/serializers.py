@@ -244,12 +244,16 @@ class FavoriUtilisateurSerializer(serializers.ModelSerializer):
         return data
 
 
-class UxParametresSerializer(serializers.ModelSerializer):
+class UxParametresSerializer(SameCompanyFKSerializerMixin,
+                             serializers.ModelSerializer):
     """NTUX27 — réglages UX de la société.
 
     `company` n'est JAMAIS lue du corps : la vue résout les réglages depuis
-    `request.user.company`.
+    `request.user.company`. APFS62 — un rôle d'une autre société = un id
+    absent (`same_company_fields`).
     """
+
+    same_company_fields = ('roles_autorises_definir_defaut',)
 
     # CI #1003 (fuzz) — booléen STRICT : `0` était converti en `false` (200)
     # alors que le schéma publie `type: boolean`. (Les entiers restent
@@ -277,14 +281,3 @@ class UxParametresSerializer(serializers.ModelSerializer):
                 'roles_autorises_definir_defaut':
                     "Une liste d'identifiants de rôles est attendue."})
         return super().to_internal_value(data)
-
-    def validate_roles_autorises_definir_defaut(self, value):
-        """Un rôle d'une AUTRE société n'a rien à faire ici (les ids de rôle
-        sont devinables — sans ce garde, on ouvrirait une référence croisée)."""
-        company = self.context.get('company')
-        if company is not None:
-            etrangers = [role for role in value if role.company_id != company.id]
-            if etrangers:
-                raise serializers.ValidationError(
-                    "Un rôle d'une autre société ne peut pas être autorisé.")
-        return value

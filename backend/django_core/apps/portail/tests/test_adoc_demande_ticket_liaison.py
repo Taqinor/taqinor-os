@@ -153,3 +153,62 @@ class DemandeTicketLiaisonTests(TestCase):
             company=self.co_b, client=None, sujet='Autre société')
         res = self._lier(self.bon_ticket_c1.id, demande=autre)
         self.assertEqual(res.status_code, 404, res.content)
+
+    def test_ticket_resolu_resout_la_demande(self):
+        """ASOC44 — la demande prise en charge suit la résolution de SON
+        ticket ; une demande soumise ou liée à un autre ticket ne bouge pas."""
+        self.assertEqual(self._prendre(self.bon_ticket_c1.id).status_code, 200)
+        soumise = DemandeTicketPortail.objects.create(
+            company=self.co_a, client=self.c1, sujet='Soumise')
+        autre = DemandeTicketPortail.objects.create(
+            company=self.co_a, client=self.c1, sujet='Autre ticket',
+            statut=DemandeTicketPortail.Statut.PRISE_EN_CHARGE,
+            ticket=self.faux_ticket_c1)
+        tickets = f'/api/django/sav/tickets/{self.bon_ticket_c1.id}/'
+        for geste in ('demarrer', 'resoudre'):
+            res = self.api.post(f'{tickets}{geste}/', {}, format='json')
+            self.assertEqual(res.status_code, 200, res.content)
+        relu = self.api.get(f'{RACINE}{self.demande.id}/')
+        self.assertEqual(relu.json()['statut'],
+                         DemandeTicketPortail.Statut.RESOLUE)
+        soumise.refresh_from_db()
+        autre.refresh_from_db()
+        self.assertEqual(soumise.statut, DemandeTicketPortail.Statut.SOUMISE)
+        self.assertEqual(autre.statut,
+                         DemandeTicketPortail.Statut.PRISE_EN_CHARGE)
+
+    def test_refuser_avec_motif(self):
+        """ASOC98 — refus motivé : 200 + motif lu par le client ; motif vide
+        400 ; demande close 409 ; utilisateur sans rôle responsable 403."""
+        from apps.portail.tests.test_aud525_demandes_sav_client import (
+            make_portal_user)
+
+        motif = "Hors garantie : dégât d'orage"
+        url = f'{RACINE}{self.demande.id}/refuser/'
+        vide = self.api.post(url, {'motif': '  '}, format='json')
+        self.assertEqual(vide.status_code, 400, vide.content)
+        self.assertIn('motif', vide.json())
+        normal = CustomUser.objects.create_user(
+            username='asoc98-normal', password='motdepasse-test-1234',
+            company=self.co_a, role_legacy='normal')
+        autre = APIClient()
+        autre.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(normal)}')
+        self.assertEqual(
+            autre.post(url, {'motif': motif}, format='json').status_code, 403)
+        res = self.api.post(url, {'motif': motif}, format='json')
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertEqual(res.json()['statut'],
+                         DemandeTicketPortail.Statut.REFUSEE)
+        encore = self.api.post(url, {'motif': motif}, format='json')
+        self.assertEqual(encore.status_code, 409, encore.content)
+        portail = make_portal_user(
+            self.co_a, 'asoc98-portail', CustomUser.PORTEE_PORTAIL_CLIENT,
+            self.c1.id)
+        client = APIClient()
+        client.force_authenticate(portail)
+        ligne = client.get(
+            f'/api/django/portail/mes-demandes-sav/{self.demande.id}/').json()
+        self.assertEqual(
+            (ligne['statut'], ligne['statut_display'], ligne['motif_refus']),
+            ('refusee', 'Refusée', motif))

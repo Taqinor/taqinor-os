@@ -37,7 +37,8 @@ portés par `notifications.calendar_utils` (`is_jour_ouvre`,
 un second calendrier concurrent.
 
 Convention de temps : les entrées et sorties sont des datetimes AWARE (UTC en
-pratique) ; tout le raisonnement se fait en heure locale Africa/Casablanca.
+pratique) ; tout le raisonnement se fait en heure locale de la société
+(`fuseau`, ASOC84 — repli Africa/Casablanca).
 """
 from __future__ import annotations
 
@@ -45,7 +46,7 @@ import contextlib
 import contextvars
 import datetime
 import logging
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.utils import timezone
 
@@ -290,22 +291,35 @@ def fenetre_du_jour(d, company, *, dimanche=False, samedi=False,
     return (debut, fin, pause)
 
 
-def _local(dt):
-    """Datetime aware → heure locale Casablanca (aware)."""
+def fuseau(company):
+    """ASOC84 (D-ASOC-8) — le fuseau de la société (``CompanyProfile.
+    fuseau_horaire``, profil mis en cache par ``cache_local``) ; sans société,
+    sans réglage ou nom inconnu ⇒ Casablanca (``core.tz_display``)."""
+    from core.tz_display import DEFAULT_TIMEZONE
+
+    nom = getattr(_profil(company), 'fuseau_horaire', '') or DEFAULT_TIMEZONE
+    try:
+        return ZoneInfo(nom)
+    except (ZoneInfoNotFoundError, ValueError):
+        return CASABLANCA
+
+
+def _local(dt, company=None):
+    """Datetime aware → heure locale de la société (aware)."""
     if timezone.is_naive(dt):
         dt = timezone.make_aware(dt, datetime.timezone.utc)
-    return dt.astimezone(CASABLANCA)
+    return dt.astimezone(fuseau(company))
 
 
-def _combiner(d, t):
-    """Date locale + heure locale → datetime aware Casablanca."""
-    return datetime.datetime.combine(d, t, tzinfo=CASABLANCA)
+def _combiner(d, t, tz=CASABLANCA):
+    """Date locale + heure locale → datetime aware dans ``tz``."""
+    return datetime.datetime.combine(d, t, tzinfo=tz)
 
 
 def est_dans_fenetre(dt, company, *, dimanche=False, samedi=False,
                      canal='appel'):
     """L'instant `dt` est-il dans la fenêtre de son jour, pour ce `canal` ?"""
-    local = _local(dt)
+    local = _local(dt, company)
     fenetre = fenetre_du_jour(local.date(), company, dimanche=dimanche,
                               samedi=samedi, canal=canal)
     if fenetre is None:
@@ -347,7 +361,7 @@ def prochain_balayage_weekend(dt, company, canal='whatsapp'):
     dans sa fenêtre, dimanche après la fenêtre, et quand la société travaille le
     samedi. Férié : ce jour-là est sauté ; Ramadan : l'ouverture de la fenêtre."""
     tz_entree = dt.tzinfo or datetime.timezone.utc
-    local = _local(dt)
+    local = _local(dt, company)
     jour = local.date()
     if jour.weekday() == 4:
         fenetre = fenetre_du_jour(jour, company, canal=canal)
@@ -367,7 +381,8 @@ def prochain_balayage_weekend(dt, company, canal='whatsapp'):
             if jour == local.date():
                 heure = max(heure, local.time())
             if heure < fin:
-                return _combiner(jour, heure).astimezone(tz_entree)
+                return _combiner(jour, heure,
+                                 local.tzinfo).astimezone(tz_entree)
         jour += datetime.timedelta(days=1)
     return None
 
@@ -398,7 +413,7 @@ def prochain_creneau_appel(dt, company, *, dimanche=False, samedi=False,
     prière du vendredi, fenêtre resserrée du Ramadan, fenêtre dominicale), on
     retombe sur l'ouverture — jamais une touche posée hors fenêtre."""
     tz_entree = dt.tzinfo or datetime.timezone.utc
-    local = _local(dt)
+    local = _local(dt, company)
     jour = local.date()
     # CAD21 — le jour de DÉPART, figé : c'est le seul où l'heure de `dt`
     # compte. Les suivants se recomposent (heure cible, sinon ouverture).
@@ -410,7 +425,7 @@ def prochain_creneau_appel(dt, company, *, dimanche=False, samedi=False,
             debut, fin, pause = fenetre
             candidat = (local if jour == jour_initial
                         else _combiner(jour, _heure_visee(
-                            heure_cible, debut, fin, pause)))
+                            heure_cible, debut, fin, pause), local.tzinfo))
             heure = candidat.time()
             if (dimanche and jour.weekday() == 6 and heure >= fin
                     and est_en_ramadan(jour, company)):
@@ -422,17 +437,17 @@ def prochain_creneau_appel(dt, company, *, dimanche=False, samedi=False,
                 # même nature de geste que `prochain_dimanche`, qui PLACE la
                 # touche : on ne recale pas un instant vécu, on choisit
                 # l'heure d'un rendez-vous.
-                candidat = _combiner(jour, debut)
+                candidat = _combiner(jour, debut, local.tzinfo)
                 heure = debut
             # CAD21 — le jour de DÉPART est le seul où l'heure de `dt`
             # compte : les jours suivants sont déjà recomposés par
             # `_heure_visee`, qui ne rend jamais une heure avant l'ouverture.
             if jour == jour_initial and heure < debut:
-                candidat = _combiner(jour, debut)
+                candidat = _combiner(jour, debut, local.tzinfo)
                 heure = debut
             if heure < fin:
                 if pause is not None and pause[0] <= heure < pause[1]:
-                    candidat = _combiner(jour, pause[1])
+                    candidat = _combiner(jour, pause[1], local.tzinfo)
                     if pause[1] < fin:
                         return candidat.astimezone(tz_entree)
                 else:
@@ -551,8 +566,8 @@ def minutes_ouvrees_entre(a, b, company, *, canal='whatsapp'):
     `escalader_premier_contact` ne partirait jamais avant 9 h."""
     if a is None or b is None:
         return 0
-    debut_local = _local(a)
-    fin_local = _local(b)
+    debut_local = _local(a, company)
+    fin_local = _local(b, company)
     if fin_local <= debut_local:
         return 0
     total = 0
@@ -570,8 +585,9 @@ def minutes_ouvrees_entre(a, b, company, *, canal='whatsapp'):
             for plage_debut, plage_fin in plages:
                 if plage_fin <= plage_debut:
                     continue
-                borne_bas = max(_combiner(jour, plage_debut), debut_local)
-                borne_haut = min(_combiner(jour, plage_fin), fin_local)
+                tz = debut_local.tzinfo
+                borne_bas = max(_combiner(jour, plage_debut, tz), debut_local)
+                borne_haut = min(_combiner(jour, plage_fin, tz), fin_local)
                 if borne_haut > borne_bas:
                     total += int(
                         (borne_haut - borne_bas).total_seconds() // 60)
@@ -601,7 +617,7 @@ def echeance_en_temps_ouvre(depart, delai, company, canal='appel'):
     if depart is None:
         return None
     tz_entree = depart.tzinfo or datetime.timezone.utc
-    debut_local = _local(depart)
+    debut_local = _local(depart, company)
     reste = delai if delai > datetime.timedelta(0) else datetime.timedelta(0)
     jour = debut_local.date()
     for _ in range(_MAX_JOURS):
@@ -615,8 +631,9 @@ def echeance_en_temps_ouvre(depart, delai, company, canal='appel'):
             for plage_debut, plage_fin in plages:
                 if plage_fin <= plage_debut:
                     continue
-                borne_bas = max(_combiner(jour, plage_debut), debut_local)
-                borne_haut = _combiner(jour, plage_fin)
+                tz = debut_local.tzinfo
+                borne_bas = max(_combiner(jour, plage_debut, tz), debut_local)
+                borne_haut = _combiner(jour, plage_fin, tz)
                 if borne_haut <= borne_bas:
                     continue
                 disponible = borne_haut - borne_bas
@@ -660,7 +677,7 @@ def minutes_calendaires_entre(a, b):
 def minutes_jours_ouvres_entre(a, b, company, *, ouvres=None):
     """COCKPIT-CONTRÔLE B9 — minutes d'HORLOGE écoulées entre ``a`` et ``b``
     (0 si ``b <= a``), en retirant EN ENTIER tout ce qui tombe un jour NON
-    ouvré de la société (jour local Casablanca : week-end, férié du
+    ouvré de la société (jour local de son fuseau : week-end, férié du
     calendrier ``notifications.calendar_utils``).
 
     L'horloge du DÉLAI de premier contact (contrat ``controle_suivi``) :
@@ -678,8 +695,8 @@ def minutes_jours_ouvres_entre(a, b, company, *, ouvres=None):
     Absent, il est lu ici, une fois (jamais une requête par jour)."""
     if a is None or b is None:
         return 0
-    debut = _local(a)
-    fin = _local(b)
+    debut = _local(a, company)
+    fin = _local(b, company)
     if fin <= debut:
         return 0
     if ouvres is None:
@@ -689,10 +706,11 @@ def minutes_jours_ouvres_entre(a, b, company, *, ouvres=None):
     jour = debut.date()
     while jour <= fin.date():
         if jour in ouvres:
-            borne_bas = max(_combiner(jour, datetime.time(0, 0)), debut)
+            borne_bas = max(_combiner(jour, datetime.time(0, 0),
+                                      debut.tzinfo), debut)
             borne_haut = min(
                 _combiner(jour + datetime.timedelta(days=1),
-                          datetime.time(0, 0)), fin)
+                          datetime.time(0, 0), debut.tzinfo), fin)
             if borne_haut > borne_bas:
                 secondes += (borne_haut - borne_bas).total_seconds()
         jour += datetime.timedelta(days=1)

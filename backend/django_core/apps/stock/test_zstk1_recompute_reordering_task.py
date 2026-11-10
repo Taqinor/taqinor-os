@@ -33,8 +33,11 @@ def _company(slug):
 
 
 def _user(company, username, permissions=None):
+    # ASOC30 — palier « responsable » porté par le RÔLE (``users_voir``,
+    # APAR21) : c'est lui qui fait un manager, plus ``role_legacy``.
     role = Role.objects.create(
-        company=company, nom=f'r-{username}', permissions=permissions or [])
+        company=company, nom=f'r-{username}',
+        permissions=permissions or ['users_voir'])
     return User.objects.create_user(
         username=username, password='x', company=company, role=role,
         role_legacy='responsable')
@@ -115,6 +118,24 @@ class TestRecomputeReordering(Zstk1Base):
         recompute_reordering_task()
         self.assertEqual(
             self._destinataires(), {'zstk1-admin', 'zstk1-user'})
+
+    def test_destinataires_internes_jamais_portail(self):
+        # ASOC30 — un Directeur à rôle fin (sans ``role_legacy`` manager) est
+        # notifié ; un compte portail actif ne l'est jamais (plus de repli
+        # « tous les actifs »).
+        User.objects.filter(pk=self.user.pk).update(is_active=False)
+        directeur = Role.objects.create(
+            company=self.company, nom='Directeur ASOC30',
+            permissions=['roles_gerer'])
+        User.objects.create_user(
+            username='zstk1-directeur', password='x', company=self.company,
+            role=directeur, role_legacy='normal')
+        User.objects.create_user(
+            username='zstk1-portail', password='x', company=self.company,
+            role_legacy='normal', portee=User.PORTEE_PORTAIL_CLIENT)
+        self._produit_sous_seuil()
+        recompute_reordering_task()
+        self.assertEqual(self._destinataires(), {'zstk1-directeur'})
 
     def test_aucun_bcf_cree_automatiquement(self):
         Produit.objects.create(

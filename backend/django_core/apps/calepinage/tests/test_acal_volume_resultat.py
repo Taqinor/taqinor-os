@@ -76,6 +76,11 @@ class VolumeResultatTest(BaseApiCalepinage):
 
         # ACAL187 (D-ACAL-12) — la source est un calepinage OUVERT de son
         # lead : la copie vise un AUTRE lead (sinon 409, une variante).
+        # ACON11 — une source épinglée exige un repère toit à la cible.
+        from apps.crm.models import Lead
+
+        Lead.objects.filter(pk=self.lead_2.pk).update(
+            roof_point=dict(self.calepinage.roof_layout['pin']))
         copie = dupliquer(self.calepinage, user=self.user,
                           lead_id=self.lead_2.pk)
         copie = Calepinage.objects.get(pk=copie.pk)

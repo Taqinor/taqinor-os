@@ -26,7 +26,7 @@ from core import events
 
 from apps.calepinage.models import Calepinage
 from apps.calepinage.selectors import calepinage_du_devis
-from apps.calepinage.services.creation import creer_pour_lead
+from apps.calepinage.services.creation import _creer_pour_lead
 from apps.ventes.models import Devis
 from apps.ventes.tests.test_from_layout_endpoint import (
     FROM_LAYOUT_URL, SAMPLE_LAYOUT, seed_catalogue,
@@ -54,7 +54,7 @@ class AdoptionDevisTest(BaseApiCalepinage):
     def setUp(self):
         super().setUp()
         seed_catalogue(self.company)
-        self.c1 = creer_pour_lead(self.lead.pk, self.company, user=self.user)
+        self.c1 = _creer_pour_lead(self.lead.pk, self.company, user=self.user)
         Calepinage.objects.filter(pk=self.c1.pk).update(
             roof_layout=copy.deepcopy(CONCEPTION_DU_MODULE),
             layout_hash='a' * 64)

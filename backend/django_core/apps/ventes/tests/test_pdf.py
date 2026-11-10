@@ -404,7 +404,7 @@ class TestPdfEndpoints(TestCase):
 
         resp = api.post(f'/api/django/ventes/factures/{facture.id}/generer-pdf/')
         self.assertEqual(resp.status_code, 202)
-        mock_task.delay.assert_called_once_with(facture.id)
+        mock_task.delay.assert_called_once_with(facture.id, user_id=self.user.id)
 
     def test_telecharger_pdf_409_when_not_generated(self):
         """GET telecharger-pdf returns 409 when fichier_pdf is empty (ENF49 :

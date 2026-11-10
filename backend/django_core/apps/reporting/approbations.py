@@ -355,6 +355,12 @@ def approbations_en_attente(request):
     items = []
     for source in sources:
         items.extend(_SOURCE_LOADERS[source](company))
+    # APFS26 (D-ASTK-2) — le montant d'une réquisition est une estimation
+    # d'ACHAT : sans ``prix_achat_voir`` il est retiré AVANT tri et score IA.
+    if not getattr(request.user, 'can_view_buy_prices', False):
+        for it in items:
+            if it['source'] == 'installations':
+                it['montant'] = None
 
     items = _enrichir_urgence(items, company)
 

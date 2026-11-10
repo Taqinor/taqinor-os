@@ -109,7 +109,10 @@ class DupliquerCible(BaseApiCalepinage):
         self.assertTrue(any(str(entree.get('kind') or '').upper()
                             == 'CREATION' for entree in chatter.data),
                         chatter.data)
-        self.assertIn(f'Dupliqué depuis #{self.source.pk} (« Villa Anfa »)',
+        # ACON11 (D-ACAL-15) : vers un autre site, le journal nomme aussi ce
+        # qui n'est pas recopié.
+        self.assertIn(f'Dupliqué depuis #{self.source.pk} (« Villa Anfa ») — '
+                      'consommation, production et fond de plan non recopiés',
                       corps)
         # La source est inchangée.
         self.source.refresh_from_db()

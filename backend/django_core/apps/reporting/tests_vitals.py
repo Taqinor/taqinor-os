@@ -659,6 +659,17 @@ class ResumeEnrichiTests(TestCase):
         self.assertIn('ailleurs', [ligne['evenement'] for ligne in
                                    resume_json(jours=1)['outbox_en_echec']])
 
+    def test_outbox_non_alimentee_dite(self):
+        """ASOC5 — sans aucun `OutboxEvent`, la liste vide n'est pas une couverture."""
+        from core.models import OutboxEvent
+        self._evenement(company=self.autre)
+        corps = resume_json(jours=1, company=self.company)
+        self.assertIs(corps['outbox_alimentee'], False)
+        self.assertEqual(corps['outbox_en_echec'], [])
+        self._evenement(statut=OutboxEvent.STATUT_DELIVERED, il_y_a=timedelta(days=30))
+        self.assertIs(
+            resume_json(jours=1, company=self.company)['outbox_alimentee'], True)
+
     def test_sauvegardes_en_echec(self):
         from core.models import BackupRun
         BackupRun.objects.create(

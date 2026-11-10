@@ -110,14 +110,17 @@ class VerrouCouvertureTest(BaseApiCalepinage):
             self.assertIn('image', reponse.data)
             self.assertEqual(self._etat(), avant)
 
-    def test_simulation_et_pose_reelle_restent_permises(self):
+    def test_simulation_refusee_pose_reelle_permise(self):
         self._statut(Devis.Statut.ACCEPTE)
         base = url_detail(self.calepinage.pk)
-        # Pas le refus du VERROU : un refus d'état propre à la route (mode
-        # météo absent, aucun pan relevé) répond 409 lui aussi (ERR-ENF11),
-        # c'est donc le MOTIF du verrou qui doit manquer.
-        reponse = self.api.post(f'{base}simuler/', {}, format='json')
-        self.assertNotIn(MOTIF, str(reponse.data), reponse.data)
+        # ACON85 — re-simuler un calepinage FIGÉ réécrirait la production du
+        # devis accepté : refus du verrou, à son motif.
+        reponse = self.api.post(f'{base}simuler/', {'forcer': True},
+                                format='json')
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertIn(MOTIF, str(reponse.data['simulation']))
+        # La pose réelle reste permise : pas le refus du VERROU (un refus
+        # d'état propre à la route répond 409 lui aussi, ERR-ENF11).
         reponse = self.api.get(f'{base}pose-reelle/')
         self.assertEqual(reponse.status_code, 200, reponse.data)
         reponse = self.api.post(f'{base}pose-reelle/',

@@ -112,7 +112,7 @@ from .facturation import (
 )
 from .devis import (
     devis_accepted, devis_acceptation_annulee, devis_sent, layout_finalise, devis_revise,
-    devis_refused, devis_expired, document_pdf_generated,
+    devis_refused, devis_expired, document_pdf_generated, revision_abandonnee,
 )
 from .stock import (
     reception_fournisseur_confirmee, reception_fournisseur_annulee, facture_fournisseur_creee,
@@ -157,6 +157,7 @@ __all__ = [
     'appointment_effectue', 'salle_vente_signal_interet', 'meta_lead_captured',
     'lead_trace_toit_recu', 'intervention_completed', 'chantier_annule', 'chantier_receptionne',
     'ticket_resolu', 'equipement_remplace', 'calepinage_simule',
+    'revision_abandonnee',
 ]
 
 _logger = logging.getLogger(__name__)

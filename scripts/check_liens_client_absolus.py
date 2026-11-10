@@ -35,7 +35,8 @@ BACKEND = Path("backend") / "django_core"
 SOUS_DOSSIERS = ("apps", "core")
 BASELINE = ROOT / "scripts" / "liens_client_absolus_allow.txt"
 # Préfixes littéraux d'un lien client public (constante de la garde).
-ROUTES_CLIENT = ("/api/django/public/",)
+# ASOC26 — `/suivi/<jeton>` (page client du ticket SAV) en est une.
+ROUTES_CLIENT = ("/api/django/public/", "/suivi/")
 # Constructeurs d'URL absolue : un lien est correct s'il est leur argument direct.
 CONSTRUCTEURS = {"_public_url", "build_absolute_uri", "public_url"}
 IGNORES = {"migrations", "tests", "test", "node_modules", "__pycache__"}
@@ -88,6 +89,19 @@ class _Visiteur(ast.NodeVisitor):
         if (node.body and isinstance(node.body[0], ast.Expr)
                 and isinstance(node.body[0].value, ast.Constant)):
             self.docstrings.add(id(node.body[0].value))
+        # ASOC26 — une constante de MODULE (`SUIVI_PATH = '/suivi/'`) nomme une
+        # route, elle ne construit aucun lien : ignorée.
+        # Un tuple/liste de constantes au niveau module (préfixes d'une
+        # allowlist, APFS67) nomme des routes de la même façon.
+        for stmt in node.body:
+            if not isinstance(stmt, (ast.Assign, ast.AnnAssign)):
+                continue
+            valeur = getattr(stmt, "value", None)
+            elements = (valeur.elts if isinstance(valeur, (ast.Tuple, ast.List))
+                        else [valeur])
+            for el in elements:
+                if isinstance(el, ast.Constant):
+                    self.docstrings.add(id(el))
         self.generic_visit(node)
 
     def visit_Call(self, node):

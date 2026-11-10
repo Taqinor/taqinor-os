@@ -158,6 +158,46 @@ class SeedMetriquesTests(TestCase):
         with self.assertRaises(services.MetriqueNonResolvable):
             val(self.company, None, 'ca_ht', filters={'montant_ht': 1})
 
+    def test_ca_net_d_avoirs(self):
+        """ASOC73 (C-ASOC-065, D-ASOC-5) — F1 10 000 HT + avoir 2 000 HT, F2
+        1 000 HT soldée par avoir total : ca_ht 8 000 (= ca_attente du tableau
+        de bord), ca_ttc 9 600, panier 4 800 ; « facturé » du job costing net."""
+        from decimal import Decimal
+        from unittest import mock
+
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+
+        from apps.reporting.insights import _facture_ht_vente
+        from apps.ventes.models import Avoir, Facture, LigneAvoir
+        self._seed()
+        f1 = self._facture('F73-1', 'emise', ht='10000')
+        f2 = self._facture('F73-2', 'emise', ht='1000')
+        for facture, ht in ((f1, '2000'), (f2, '1000')):
+            avoir = Avoir.objects.create(
+                company=self.company, reference='AV-%s' % facture.reference,
+                facture=facture, client=self._cli)
+            LigneAvoir.objects.create(
+                avoir=avoir, designation='Avoir', quantite=Decimal('1'),
+                prix_unitaire=Decimal(ht))
+        Facture.objects.filter(pk=f2.pk).update(statut='payee')
+        val = services.resolve_metric_valeur
+        self.assertEqual(val(self.company, None, 'ca_ht'), Decimal('8000'))
+        self.assertEqual(val(self.company, None, 'ca_ttc'), Decimal('9600'))
+        self.assertEqual(val(self.company, None, 'panier_moyen'),
+                         Decimal('4800'))
+        api = APIClient()
+        api.force_authenticate(get_user_model().objects.create_user(
+            username='asoc73-admin', password='x', role_legacy='admin',
+            company=self.company))
+        reponse = api.get('/api/django/reporting/dashboard/')
+        self.assertEqual(reponse.status_code, 200)
+        self.assertAlmostEqual(reponse.data['kpis']['ca_attente'], 8000.0,
+                               places=2)
+        with mock.patch('apps.ventes.selectors.factures_de_la_vente',
+                        return_value=[Facture.objects.get(pk=f1.pk)]):
+            self.assertEqual(_facture_ht_vente(object()), Decimal('8000'))
+
     def test_exemple_agent_ca_facture_lit_total_stocke(self):
         # AANA77 volet agent (ATOT55) : l'exemple « CA facture HT » du prompt
         # de l'agent SQL, exécuté tel quel (scopé société comme la
@@ -217,6 +257,46 @@ class SeedMetriquesTests(TestCase):
         nb_ca = ca.versions.count()
         mig.realigner(parc, None)  # second passage : rien d'écrit
         self.assertEqual(ca.versions.count(), nb_ca)
+
+    def test_taux_conversion_suit_le_taux_de_gain(self):
+        """ASOC72 (C-ASOC-157, D-AANA-1) — 1 signé, 1 perdu, 2 ouverts ce
+        mois : 33,3 comme ``taux_gain`` (perdus hors dénominateur) ; aucun lead
+        non perdu : None ; migration 0006 sur l'ancien défaut seul."""
+        import importlib
+
+        from django.apps import apps as parc
+        from django.utils import timezone
+
+        from apps.crm.models import Lead
+        from apps.crm.stages import NEW, SIGNED
+        from apps.reporting.services import leads_de_la_fenetre, taux_gain
+        self._seed()
+        mois = (timezone.localdate().replace(day=1), timezone.localdate())
+        val = services.resolve_metric_valeur
+        perdu = Lead.objects.create(company=self.company, nom='P', stage=NEW,
+                                    perdu=True)
+        self.assertIsNone(val(self.company, None, 'taux_conversion', period=mois))
+        Lead.objects.create(company=self.company, nom='S', stage=SIGNED)
+        for nom in ('O1', 'O2'):
+            Lead.objects.create(company=self.company, nom=nom, stage=NEW)
+        self.assertEqual(val(self.company, None, 'taux_conversion', period=mois),
+                         33.3)
+        self.assertEqual(33.3, taux_gain(leads_de_la_fenetre(
+            {'company': self.company}, *mois)))
+        self.assertTrue(perdu.perdu)
+        mig = importlib.import_module(
+            'apps.semantic.migrations.0006_taux_conversion_taux_gain')
+        tc = MetricDefinition.objects.get(company=self.company,
+                                          cle='taux_conversion')
+        MetricDefinition.objects.filter(pk=tc.pk).update(
+            dataset=mig.DATASET, mesure=mig.ANCIEN)
+        nb = tc.versions.count()
+        mig.realigner(parc, None)
+        tc.refresh_from_db()
+        self.assertEqual((tc.dataset, tc.mesure), ('', mig.NOUVEAU))
+        self.assertEqual(tc.versions.count(), nb + 1)
+        mig.realigner(parc, None)  # second passage : rien d'écrit
+        self.assertEqual(tc.versions.count(), nb + 1)
 
     def test_seed_par_societe(self):
         autre = Company.objects.create(nom='NTDATA11 Autre',

@@ -161,6 +161,60 @@ class OmbrageEtudeDevisTest(BaseApiCalepinage):
             self.assertIsNone(perte_ombrage_du_devis(self.devis))
             self.assertEqual(facteur_production_saison(self.devis), 1.0)
 
+    def test_devis_envoye_lit_la_perte_rangee(self, *_m):
+        """ACON20 — un devis ENVOYÉ lit la perte RANGÉE à son bloc horaire,
+        même quand la simulation vivante du calepinage a changé ; sans
+        ``ombrage`` rangé : ``None`` ; brouillon : la perte vivante."""
+        from apps.ventes.horaire.ombrage import perte_ombrage_du_devis
+
+        layout = copy.deepcopy(self.calepinage.roof_layout)
+        layout['zones'][0]['geometry']['count'] = 3
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(
+            roof_layout=layout)
+        Devis.objects.filter(pk=self.devis.pk).update(
+            statut=Devis.Statut.ENVOYE, etude_params={
+                'etude_horaire': {'ombrage': {'perte_pct': 8.0}}})
+        self.devis.refresh_from_db()
+        with patch_materiel():
+            self.assertEqual(perte_ombrage_du_devis(self.devis), 8.0)
+        Devis.objects.filter(pk=self.devis.pk).update(
+            etude_params={'etude_horaire': {}})
+        self.devis.refresh_from_db()
+        with patch_materiel():
+            self.assertIsNone(perte_ombrage_du_devis(self.devis))
+
+    def test_lecture_d_etude_n_ecrit_rien_sans_profil(self, *_m):
+        """ACON87 — société SANS ``CompanyProfile`` : l'étude horaire du
+        devis et les lecteurs ventes n'écrivent AUCUN profil ; la perte
+        d'ombrage servie ne bouge pas."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from apps.parametres.models import CompanyProfile
+        from apps.ventes.etude_horaire import etude_horaire_pour_devis
+        from apps.ventes.horaire.ombrage import perte_ombrage_du_devis
+        from apps.ventes.utils.company_settings import (
+            doc_prefix, payment_terms_for, tva_standard,
+        )
+
+        CompanyProfile.objects.filter(company=self.company).delete()
+        with patch_materiel():
+            avant = perte_ombrage_du_devis(self.devis)
+            with CaptureQueriesContext(connection) as requetes:
+                etude_horaire_pour_devis(self.devis)
+                tva_standard(self.company)
+                doc_prefix(self.company, 'devis')
+                payment_terms_for(self.company, 'residentiel')
+            apres = perte_ombrage_du_devis(self.devis)
+        ecritures = [q['sql'] for q in requetes.captured_queries
+                     if 'parametres_companyprofile' in q['sql']
+                     and q['sql'].lstrip().upper().startswith(
+                         ('INSERT', 'UPDATE'))]
+        self.assertEqual(ecritures, [])
+        self.assertFalse(CompanyProfile.objects.filter(
+            company=self.company).exists())
+        self.assertEqual(avant, apres)
+
     def test_d_res_2710_1_simulation_perimee_aucun_ombrage(self, *_m):
         from apps.ventes.horaire.ombrage import perte_ombrage_du_devis
         layout = copy.deepcopy(self.calepinage.roof_layout)
