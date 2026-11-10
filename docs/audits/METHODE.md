@@ -158,7 +158,8 @@ lecture seule (A.2). Détecteurs : commande + SHA + verdict dans le dossier, sor
   parcours reçoit une **sonde** `docs/audits/sondes/<G>/C-<G>-<NNN>.py` (en-tête `SONDE = {constat, sha, attendu}`,
   `def sonde(ctx)`) jouée par `scripts/sonde.py` dans une transaction ANNULÉE (mail en mémoire, Celery coupé, HTTP bloqué),
   avec comptes avant / après. Verdict REPRO (chemin de sonde dans la colonne « Sonde ») ou STATIQUE ; STATIQUE est interdit
-  en S1-S2 sur les critères à sonde obligatoire. PLAUSIBLE n'entre jamais au tableau.
+  en S1-S2 sur les critères à sonde obligatoire. PLAUSIBLE n'entre jamais au tableau. Une sonde est lue par les gardes du
+  dépôt : lancer `check_stages.py` avant de pousser (aucun littéral d'étape, `NEW` compris, en clé ou en comparaison).
 - **0 réfuté sur les S1 ⇒ seconde lentille** (11 dossiers v2 sur 19 étaient à 0 réfuté ; la seconde lentille a corrigé
   2/13 chez J5 et 2/4 chez J4). Jamais sur l'ensemble des constats.
 - **Fraîcheur** : `git diff <base>..origin/main -- <périmètre>` avant rédaction ; un constat déjà corrigé est retiré.

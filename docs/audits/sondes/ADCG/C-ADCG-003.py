@@ -7,11 +7,11 @@ OLD, NEW = "a" * 40, "b" * 40
 SHIM = r'''#!/usr/bin/env bash
 n=$(basename "$0"); a="$n $*"; echo "$a" >> "$BANC/calls.log"
 case "$a" in
- "git rev-parse origin/main") echo "$NEW";;
+ "git rev-parse origin/main") echo "$COMMIT_NEUF";;
  "git rev-parse HEAD") cat "$BANC/HEAD";;
  "git rev-parse --short "*) echo "${3:0:9}";;
  "git diff --name-only"*) cat "$BANC/changes";;
- "git reset --hard "*) t=$3; [ "$t" = origin/main ] && t=$NEW; echo "$t" > "$BANC/HEAD";;
+ "git reset --hard "*) t=$3; [ "$t" = origin/main ] && t=$COMMIT_NEUF; echo "$t" > "$BANC/HEAD";;
  *"python -c"*health*) echo "${HEALTH-ok}";;
  *showmigrations*) printf '%b' "${SHOWMIG-}";;
 esac
@@ -36,7 +36,7 @@ def jouer(texte, banc, env):
     t = texte.replace("/opt/taqinor-os", px(b / "repo")).replace("/opt/autodeploy", px(b / "state"))
     (b / "s.sh").write_bytes(t.replace("\r\n", "\n").encode())
     r = subprocess.run([bash(), "-c", 'export PATH="$1:$PATH"; bash "$2"', "_", px(b / "bin"), px(b / "s.sh")],
-                       env={**os.environ, "BANC": px(b), "NEW": NEW, **env}, capture_output=True, text=True,
+                       env={**os.environ, "BANC": px(b), "COMMIT_NEUF": NEW, **env}, capture_output=True, text=True,
                        encoding="utf-8", errors="replace", timeout=120)
     return r.returncode, r.stdout + r.stderr
 

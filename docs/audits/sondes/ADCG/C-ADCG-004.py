@@ -9,7 +9,7 @@ n=$(basename "$0"); a="$n $*"; echo "$a" >> "$BANC/calls.log"
 case "$a" in
  "git rev-parse HEAD") cat "$BANC/HEAD";;
  "git diff --name-only"*) cat "$BANC/changes";;
- "git reset --hard "*) t=$3; [ "$t" = origin/main ] && t=$NEW; echo "$t" > "$BANC/HEAD";;
+ "git reset --hard "*) t=$3; [ "$t" = origin/main ] && t=$COMMIT_NEUF; echo "$t" > "$BANC/HEAD";;
 esac
 if [ -n "${FAIL:-}" ] && echo "$a" | grep -qE "$FAIL"; then echo "Traceback: boom" >&2; exit 1; fi
 exit 0
@@ -34,7 +34,7 @@ def jouer(texte, fail):
         t = texte.replace("/opt/taqinor-os", px(b / "repo")).replace("/opt/autodeploy", px(b / "state"))
         (b / "s.sh").write_bytes(t.replace("\r\n", "\n").encode())
         r = subprocess.run([bash(), "-c", 'export PATH="$1:$PATH"; bash "$2"', "_", px(b / "bin"), px(b / "s.sh")],
-                           env={**os.environ, "BANC": px(b), "NEW": NEW, "FAIL": fail}, capture_output=True,
+                           env={**os.environ, "BANC": px(b), "COMMIT_NEUF": NEW, "FAIL": fail}, capture_output=True,
                            text=True, encoding="utf-8", errors="replace", timeout=120)
         return r.returncode, r.stdout
 

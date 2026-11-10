@@ -7,7 +7,7 @@ OLD, NEW = "a" * 40, "b" * 40
 SHIM = r'''#!/usr/bin/env bash
 n=$(basename "$0"); a="$n $*"; echo "$a" >> "$BANC/calls.log"
 case "$a" in
- "git rev-parse origin/main") echo "$NEW";;
+ "git rev-parse origin/main") echo "$COMMIT_NEUF";;
  "git rev-parse --short "*) echo "${3:0:9}";;
  "git diff --name-only"*) cat "$BANC/changes";;
 esac
@@ -40,7 +40,7 @@ def jouer(texte, changes):
         t = texte.replace("/opt/taqinor-os", px(b / "repo")).replace("/opt/autodeploy", px(b / "state"))
         (b / "s.sh").write_bytes(t.replace("\r\n", "\n").encode())
         subprocess.run([bash(), "-c", 'export PATH="$1:$PATH"; bash "$2"', "_", px(b / "bin"), px(b / "s.sh")],
-                       env={**os.environ, "BANC": px(b), "NEW": NEW}, capture_output=True, timeout=120)
+                       env={**os.environ, "BANC": px(b), "COMMIT_NEUF": NEW}, capture_output=True, timeout=120)
         log = (b / "state" / "deploy.log").read_text(encoding="utf-8")
         calls = (b / "calls.log").read_text(encoding="utf-8")
         last = (b / "state" / "last_deployed_commit").read_text().strip()
