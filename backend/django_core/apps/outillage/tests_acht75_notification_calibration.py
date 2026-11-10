@@ -81,3 +81,42 @@ class NotificationCalibrationTests(TestCase):
         self.assertEqual(self._nb(self.suspendue), 0)
         tasks.calibrations_a_echeance()
         self.assertEqual(self._nb(self.company), 1)  # aucun doublon
+
+    def test_in_app_coupe_un_seul_email_par_echeance(self):
+        """ASOC32 (C-ASOC-142) — in-app coupé, e-mail actif : un seul e-mail
+        par échéance sur deux passages ; nouvelle échéance ⇒ un de plus."""
+        from unittest import mock
+
+        from apps.crm import horaires
+        from apps.notifications.models import (
+            MarqueurEmissionBalayage, NotificationPreference)
+        # notify() juge les heures calmes sur l'horloge : mardi 10 h (ouvré).
+        mardi = datetime.datetime(2026, 9, 1, 10, 0, tzinfo=horaires.CASABLANCA)
+        ouvre = mock.patch('apps.notifications.services.timezone.now',
+                           return_value=mardi)
+        tech = User.objects.create_user(
+            username='tech-asoc32', password='x', company=self.company,
+            email='tech-asoc32@example.ma')
+        NotificationPreference.objects.create(
+            user=tech, company=self.company, event_type=EVT,
+            in_app=False, email=True)
+        self.proche.date_derniere_calibration = (
+            self.jour + datetime.timedelta(days=7) - relativedelta(months=12))
+        self.proche.save()
+        self.proche.refresh_from_db()
+        with mock.patch('apps.notifications.services._dispatch_email',
+                        return_value=True) as envoi, ouvre, \
+                self.captureOnCommitCallbacks(execute=True):
+            for _passage in range(2):  # deux jours de suite
+                tasks.notifier_calibration_proche(self.proche, [tech])
+        self.assertEqual(envoi.call_count, 1)
+        self.assertEqual(MarqueurEmissionBalayage.objects.filter(
+            company=self.company, cle=f'outil:{self.proche.pk}:{tech.pk}').count(), 1)
+        self.proche.date_derniere_calibration += relativedelta(months=1)
+        self.proche.save()
+        self.proche.refresh_from_db()
+        with mock.patch('apps.notifications.services._dispatch_email',
+                        return_value=True) as envoi, ouvre, \
+                self.captureOnCommitCallbacks(execute=True):
+            tasks.notifier_calibration_proche(self.proche, [tech])
+        self.assertEqual(envoi.call_count, 1)
