@@ -1462,6 +1462,7 @@ export async function forwardLead(
     const sleep = opts.sleepFn ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
     const maxAttempts = FORWARD_RETRY_DELAYS_MS.length + 1;
     let reason = 'webhook-error-unknown';
+    let refusedStatus: number | undefined; // ADCG51 — 4xx (hors 429) : refus du CRM
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       if (attempt > 0) await sleep(FORWARD_RETRY_DELAYS_MS[attempt - 1]);
       try {
@@ -1474,13 +1475,17 @@ export async function forwardLead(
         if (res.ok) return { delivered: true };
         reason = `webhook-status-${res.status}`;
         // Réessai seulement sur 5xx / 429 ; jamais sur 4xx (400 / 401 / 403…).
-        if (!(res.status >= 500 || res.status === 429)) break;
+        if (!(res.status >= 500 || res.status === 429)) {
+          refusedStatus = res.status >= 400 && res.status < 500 ? res.status : undefined;
+          break;
+        }
       } catch (e) {
         reason = `webhook-error-${e instanceof Error ? e.name : 'unknown'}`;
       }
     }
     // QJR663 — échec final : lettre morte KV (record COMPLET, clé = idempotencyKey).
-    const deadLettered = await storeDeadLetter(env.LEADS_DLQ, payload);
+    // ADCG51 — un refus 4xx part sous `lead-refuse:` SANS expiration (signalé à chaque renvoi).
+    const deadLettered = await storeDeadLetter(env.LEADS_DLQ, payload, undefined, refusedStatus);
     return deadLettered ? { delivered: false, reason, deadLettered } : { delivered: false, reason };
   } catch (e) {
     return { delivered: false, reason: `webhook-error-${e instanceof Error ? e.name : 'unknown'}` };

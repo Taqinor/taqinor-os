@@ -25,6 +25,15 @@ export const DEAD_LETTER_PREFIX = 'lead:';
 /** Durée de conservation : 7 jours, puis le KV efface seul (borne la PII stockée). */
 export const DEAD_LETTER_TTL_SECONDS = 7 * 24 * 60 * 60;
 
+/**
+ * ADCG51 — lead REFUSÉ par le CRM en 4xx (secret faux, JSON refusé…) : ce n'est
+ * pas une panne passagère, il n'expirerait qu'en silence alors que le visiteur a
+ * reçu `ok: true`. Il est gardé SANS expiration sous ce préfixe distinct
+ * (`lead-refuse:<idempotencyKey>`, statut en métadonnée) et chaque renvoi le
+ * signale en ERREUR jusqu'à livraison.
+ */
+export const DEAD_LETTER_REFUSED_PREFIX = 'lead-refuse:';
+
 /** Plafond de clés renvoyées par déclenchement (reste sous les limites de sous-requêtes). */
 export const DEAD_LETTER_MAX_PER_RUN = 25;
 
@@ -45,8 +54,9 @@ function warnMissingBindingOnce(log) {
  * Dépose le record complet. Retourne true si stocké ; jamais ne lève.
  * @param {{ put: Function } | undefined} kv  liaison LEADS_DLQ
  * @param {object} record  record complet (avec `idempotencyKey` non vide)
+ * @param {number} [refusedStatus]  statut 4xx du refus du CRM (ADCG51) : sans expiration
  */
-export async function storeDeadLetter(kv, record, log = console.warn) {
+export async function storeDeadLetter(kv, record, log = console.warn, refusedStatus) {
   if (!kv || typeof kv.put !== 'function') {
     warnMissingBindingOnce(log);
     return false;
@@ -54,9 +64,15 @@ export async function storeDeadLetter(kv, record, log = console.warn) {
   const key = record && typeof record.idempotencyKey === 'string' ? record.idempotencyKey.trim() : '';
   if (!key) return false;
   try {
-    await kv.put(DEAD_LETTER_PREFIX + key, JSON.stringify(record), {
-      expirationTtl: DEAD_LETTER_TTL_SECONDS,
-    });
+    if (refusedStatus) {
+      await kv.put(DEAD_LETTER_REFUSED_PREFIX + key, JSON.stringify(record), {
+        metadata: { statut: refusedStatus },
+      });
+    } else {
+      await kv.put(DEAD_LETTER_PREFIX + key, JSON.stringify(record), {
+        expirationTtl: DEAD_LETTER_TTL_SECONDS,
+      });
+    }
     return true;
   } catch (e) {
     log(`[dead-letter] écriture KV impossible (${e instanceof Error ? e.name : 'erreur'}).`);
@@ -69,7 +85,7 @@ export async function storeDeadLetter(kv, record, log = console.warn) {
  * déclenchement ; la suivante sera pour le prochain cron). Supprime la clé
  * seulement sur réponse 2xx. Retourne des compteurs, jamais de contenu.
  */
-export async function resendDeadLetters(env, fetchFn = fetch, log = console.log) {
+export async function resendDeadLetters(env, fetchFn = fetch, log = console.log, logError = console.error) {
   const kv = env && env.LEADS_DLQ;
   if (!kv || typeof kv.list !== 'function') {
     warnMissingBindingOnce(console.warn);
@@ -85,14 +101,17 @@ export async function resendDeadLetters(env, fetchFn = fetch, log = console.log)
   let found = 0;
   let delivered = 0;
   let failed = 0;
+  const refusParStatut = new Map(); // ADCG51 : statut 4xx -> nombre de leads refusés
   let listing;
+  let refuses;
   try {
     listing = await kv.list({ prefix: DEAD_LETTER_PREFIX, limit: DEAD_LETTER_MAX_PER_RUN });
+    refuses = await kv.list({ prefix: DEAD_LETTER_REFUSED_PREFIX, limit: DEAD_LETTER_MAX_PER_RUN });
   } catch (e) {
     log(`[dead-letter] liste KV impossible (${e instanceof Error ? e.name : 'erreur'}).`);
     return { skipped: false, found: 0, delivered: 0, failed: 0 };
   }
-  for (const { name } of listing.keys || []) {
+  for (const { name } of [...(listing.keys || []), ...(refuses.keys || [])]) {
     found += 1;
     try {
       const body = await kv.get(name);
@@ -106,6 +125,8 @@ export async function resendDeadLetters(env, fetchFn = fetch, log = console.log)
       if (res.ok) {
         await kv.delete(name);
         delivered += 1;
+      } else if (name.startsWith(DEAD_LETTER_REFUSED_PREFIX)) {
+        refusParStatut.set(res.status, (refusParStatut.get(res.status) || 0) + 1);
       } else {
         failed += 1;
       }
@@ -114,5 +135,12 @@ export async function resendDeadLetters(env, fetchFn = fetch, log = console.log)
     }
   }
   log(`[dead-letter] renvoi : ${found} en attente, ${delivered} livrés, ${failed} en échec.`);
-  return { skipped: false, found, delivered, failed };
+  let refused = 0;
+  for (const [statut, n] of refusParStatut) {
+    refused += n;
+    logError(`[dead-letter] ${n} lead(s) refusé(s) par le CRM (HTTP ${statut}), conservé(s) sans expiration`);
+  }
+  return refused
+    ? { skipped: false, found, delivered, failed, refused }
+    : { skipped: false, found, delivered, failed };
 }
