@@ -361,6 +361,22 @@ class AutoDeployTests(unittest.TestCase):
         self.assertIsNotNone(banc.index(r"--scale django_core=2"))
         self.assertIsNone(banc.lire("zero_downtime"))
 
+    def test_zero_downtime_sans_commit_neuf_drapeau_consomme(self):
+        """ADCG108 — `-ZeroDowntime` sans commit neuf : drapeau effacé et dit au
+        journal ; le deploy suivant du minuteur ne bascule pas à deux répliques."""
+        banc = self.banc(changes="backend/django_core/apps/crm/views.py\n", last=B, origin=B)
+        banc.ecrire("zero_downtime", "")
+        rc, sortie = banc.jouer()
+        self.assertEqual(rc, 0, sortie)
+        self.assertIsNone(banc.lire("zero_downtime"))
+        self.assertEqual(banc.compte("^docker compose"), 0, banc.appels)
+        self.assertIn("zéro-coupure demandée, rien à déployer : drapeau effacé", banc.journal)
+        (banc.d / "origin").write_text(C)
+        rc, sortie = banc.jouer()
+        self.assertEqual(rc, 0, sortie + banc.journal)
+        self.assertEqual(banc.compte(r"--scale django_core=2"), 0, banc.appels)
+        self.assertIn(f"DEPLOY {C[:9]} — OK", banc.journal)
+
 
 @unittest.skipUnless(_bash(), "bash introuvable")
 class DumpAvantMigrateTests(unittest.TestCase):

@@ -44,6 +44,15 @@ mkdir -p "$STATE"
 exec 9>"$LOCK"
 flock -n 9 || exit 0
 
+# -ZeroDowntime du deploy manuel (NTPLT57, opt-in) : drapeau lu puis effacé —
+# ADCG108 : AVANT les sorties précoces, jamais laissé au deploy suivant du minuteur.
+ZERO_DOWNTIME=0
+if [ -f "$STATE/zero_downtime" ]; then
+  ZERO_DOWNTIME=1
+  rm -f "$STATE/zero_downtime"
+fi
+rien_a_deployer() { [ "$ZERO_DOWNTIME" = "1" ] && log "zéro-coupure demandée, rien à déployer : drapeau effacé"; exit 0; }
+
 cd "$REPO" || { log "ERREUR: dépôt $REPO introuvable"; exit 1; }
 
 git fetch origin main --quiet || { log "ERREUR: git fetch a échoué"; exit 1; }
@@ -51,21 +60,14 @@ NEW=$(git rev-parse origin/main)
 OLD=$(cat "$LAST" 2>/dev/null || echo "")
 
 # Rien de neuf -> sortie silencieuse (pas de bruit dans le journal).
-[ "$NEW" = "$OLD" ] && exit 0
+[ "$NEW" = "$OLD" ] && rien_a_deployer
 # ADCG3 — un commit déjà en ÉCHEC n'est pas rejoué à chaque minute (reset, build,
 # redémarrages, migrate sans fin) : seul un nouveau commit ou le deploy manuel
 # (qui efface cet état) le relance.
 ECHEC_COMMIT="$STATE/commit_en_echec"
-[ "$NEW" = "$(cat "$ECHEC_COMMIT" 2>/dev/null)" ] && exit 0
+[ "$NEW" = "$(cat "$ECHEC_COMMIT" 2>/dev/null)" ] && rien_a_deployer
 
 SHORT=$(git rev-parse --short "$NEW")
-
-# -ZeroDowntime du deploy manuel (NTPLT57, opt-in) : drapeau lu puis effacé.
-ZERO_DOWNTIME=0
-if [ -f "$STATE/zero_downtime" ]; then
-  ZERO_DOWNTIME=1
-  rm -f "$STATE/zero_downtime"
-fi
 
 # Changement purement docs/markdown ? (*.md / *.markdown, ou sous docs/ HORS
 # docs/meryem/) -> on rafraîchit l'arbre de travail mais on saute
