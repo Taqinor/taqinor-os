@@ -197,6 +197,9 @@ def generer_dossier(self, request, pk=None):
     jamais un « non enregistré » générique.
     """
     calepinage = self.get_object()
+    from .sorties import porte_conception_vendue
+
+    porte_conception_vendue(calepinage)  # ACON42 — avant tout rendu
     corps = request.data if isinstance(request.data, dict) else {}
     agregat = dossiers_du_calepinage(calepinage)
 

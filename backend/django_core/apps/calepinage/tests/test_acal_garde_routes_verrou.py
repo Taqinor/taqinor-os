@@ -288,6 +288,30 @@ class GardeRoutesVerrouTest(BaseApiCalepinage):
         for route, motif in ROUTES_HORS_VERROU.items():
             self.assertTrue(str(motif).strip(), f'{route} : motif vide')
 
+    def test_livrables_refuses_sur_conception_divergente_du_devis_vendu(self):
+        """ACON42 (D-ACAL-6, D-ACAL-23) — devis ACCEPTÉ, conception passée à
+        une autre empreinte : dossier réglementaire, pack technique et
+        remise de la planche rendent 409 ``{conception, devis}``, aucune
+        version de document."""
+        from apps.records.models import Attachment
+
+        Devis.objects.filter(pk=self.devis.pk).update(layout_hash='f' * 64)
+        avant = Attachment.objects.count()
+        for suffixe, corps in (('generer-dossier/', {'dossier': 1}),
+                               ('pack-technique/', {}),
+                               ('remettre-document/',
+                                {'code': 'planche_pdf'})):
+            with self.subTest(route=suffixe):
+                reponse = self._post(suffixe, corps)
+                self.assertEqual(reponse.status_code, 409, reponse.data)
+                self.assertEqual(sorted(reponse.data),
+                                 ['conception', 'devis'])
+                self.assertEqual(str(reponse.data['devis']),
+                                 self.devis.reference)
+                self.assertIn('DEV-ACAL319-1',
+                              str(reponse.data['conception']))
+        self.assertEqual(Attachment.objects.count(), avant)
+
     def test_routes_sous_verrou_repondent_409_sur_accepte(self):
         avant = Calepinage.objects.get(pk=self.calepinage.pk)
         variantes = sorted(CalepinageVariante.objects
