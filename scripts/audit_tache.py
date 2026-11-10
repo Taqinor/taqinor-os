@@ -224,6 +224,9 @@ def resoudre(cible: str, racine=None) -> tuple:
     fichier, sep, symbole = cible.partition("::")
     if not sep or not symbole:
         raise SystemExit(f"cible invalide « {cible} » : attendu fichier::symbole")
+    if not fichier.endswith(".py"):  # ADCG83 : jamais un ast.parse sur du JS ; code 2
+        print(f"ancre non Python « {cible} » : greps équivalents (tampon manuel)", file=sys.stderr)
+        raise SystemExit(2)
     rel = next((r for r in (fichier, f"{DJANGO_REL}/{fichier}") if (racine / r).is_file()), None)
     if rel is None:
         raise SystemExit(f"fichier introuvable : {fichier}")
@@ -724,6 +727,7 @@ def listes_figees(fichier: str, racine=None) -> dict:
     OpenAPI) qui citent le fichier ou une route qu'il sert ; garde proprietaire,
     type de cle (declare `TYPE_DE_CLE` ou deduit) et commande de regeneration."""
     racine = Path(racine or ROOT)
+    fichier = fichier.partition("::")[0]  # ADCG83 : une ancre fichier::symbole vaut son fichier
     rel = fichier if (racine / fichier).is_file() else f"{DJANGO_REL}/{fichier}"
     court = rel[len(DJANGO_REL) + 1:] if rel.startswith(DJANGO_REL + "/") else rel
     cites = {}
