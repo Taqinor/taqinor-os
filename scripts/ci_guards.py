@@ -859,6 +859,11 @@ GARDES = {
         ('Test the liens client absolus (AFAC94) checker itself',
          'python -m unittest scripts.tests.test_check_liens_client_absolus -v',
          '.'),
+        # ADCG9 - le validateur du proxy (Caddyfile + nginx.conf) rougit sur une
+        # config invalide ; le vrai docker tourne dans l'etape ci.yml dediee.
+        ('Tests du validateur de configuration du proxy (ADCG9)',
+         'python -m unittest scripts.tests.test_valider_proxy -v',
+         '.'),
     ],
 }
 

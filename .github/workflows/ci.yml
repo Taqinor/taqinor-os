@@ -586,6 +586,12 @@ jobs:
       # tourner sur TOUTE PR (docs, plan, frontend seul).
       - name: Gardes hôte en parallèle (scripts/ci_guards.py backend-lint-fast)
         run: python scripts/ci_guards.py backend-lint-fast
+      # ADCG9 (C-ADCG-007) — Caddyfile + nginx.conf validés par les VRAIS
+      # binaires (caddy validate, nginx -t) : une erreur de syntaxe ne se
+      # découvre plus au rechargement en production. Rouge ici = `backend-lint`
+      # (requis) rouge. Docker absent = code 2, jamais vert.
+      - name: Valider la configuration du proxy (scripts/valider-proxy.sh)
+        run: bash scripts/valider-proxy.sh
   # Lane dédiée : génération + validation du schéma OpenAPI. Mesurée à 5 min 53 s
   # sur le run 32182877239 (une seule invocation de `manage.py spectacular
   # --validate`, aucune sortie intermédiaire), puis raccourcie par WOW-CI3
