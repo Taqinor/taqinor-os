@@ -67,20 +67,7 @@ graine = SHA) ; vérificateurs frais opus / high : texte ↔ commit(s) ↔ test 
 sondes rejouées, verdict ok / partiel / non-fait / faux / régression / déjà-présent + cause ; UNE critique Fable seulement si
 des S1 subsistent. Écarts confirmés = tâches v3 sous `### <G> — ÉCARTS vérifie <date> · format v3` dans le fichier du
 PROPRIÉTAIRE (numérotation du groupe continuée ; jamais `ERROR_PLAN.md`). PR docs-only.
-**Mécanique des tâches ÉCART (mesuré 11/10 : 4 cycles CI rouges évitables).** Avant de pousser, lancer EN LOCAL les trois
-gardes rapides `check_ownership.py` + `check_ancres_taches.py` + `check_taches_cablage.py` (pas seulement `stage-names`, lent
-et sujet à blocage local). (a) Une tâche écart dont les `Files:` touchent PLUSIEURS propriétaires (`check_ownership.py
---owner-of`) va dans `docs/plans/PLAN_AUDIT_TRANSVERSE.md` avec `(@atomique: a, b)` si c'est un correctif en UN commit —
-jamais dans le plan d'un seul propriétaire. (b) Ancre = `chemin/complet.ext::symbole` (fonction/classe réels), JAMAIS
-`:ligne` ni `(l.N)` nus ; un dict/variable de module n'est pas une ancre résolvable → le citer en texte. (c) Chaque `n/a`
-porte « n/a — raison » (jamais nu). (d) Les 14 clauses v3 sont toutes présentes (dont « Assertions existantes »). (e) Une tâche ÉCART ne cite jamais un
-`C-<G>-NNN` du dossier d'origine ni un nom de sonde `C-<G>-NNN.py` : `check_audit_dossier.py` compte ces citations dans
-l'en-tête `taches:` du dossier (rouge « N mais N+1 réels », vu sur PA5 le 10/11) ; constat = `C-<G>-VER<n>-NNN`, sonde citée
-en texte (« la sonde 062 du dossier PA5 ») ; lancer aussi `check_audit_dossier.py` et `audit_registre.py --check` en local.
-(f) `audit_registre.py --du` / `status` lancent la garde d'acceptation groupe par groupe (plusieurs minutes) : pour la seule
-liste des dus, neutraliser `acceptation` (`a.acceptation = lambda g: 'n/d'` avant `a.cmd_du()`). Le record
-`<date>-<mot>-verifie.md` prend le `mot` du `declencheur` tel quel, ACCENTS COMPRIS (`sécurité`, `générateur`) sinon
-`audit_registre` ne le matche pas ; une 2ᵉ contre-visite le même jour REMPLACE le fichier canonique (git garde la 1ʳᵉ).
+**Mécanique des tâches ÉCART** (gardes à lancer en local, routage, ancres, citations de constats, liste des dus) : METHODE §C.4.5.
 
 **Mesuré le 03/11 (PA1, 4 cycles de gardes rouges évitables).** Rédacteurs : chemin COMPLET dans chaque ancre (`check_ancres_taches` refuse `views.py::X` et un symbole neuf ou une variable de module en `::`) ; `(@decision: D-x=cle)` seulement sur une décision RÉPONDUE (une décision `ouverte` se porte par `[GATED: D-x]` dans le titre, `check_decisions`) ; une sonde par C-id (`C-<G>-NNN.py` = le C-id, lint du dossier) ; dans les sondes, clés d'étape via `from apps.crm import stages` (`check_stages`) ; un fichier de plan édité par UN seul agent (écrire les tâches dans un scratch, insérer en une passe).
 

@@ -861,3 +861,25 @@ unites:
     date: 2026-11-08
     dossier: docs/audits/2026-11-08-parcours-PF2.md
     notes: "Neuvième audit de PARCOURS (L3, 08/11/2026, base 31a4bce, fraîcheur 86b4067) : 55 constats, 19 prouvés par sonde et 36 lus ; gravités 1 S1, 10 S2, 36 S3, 8 S4. S1 : un devis envoyé sans échéancier propre lit les jalons société en direct jusqu'à l'acceptation ; la page client passe de 30 à 40 % sans changer d'empreinte, la signature réussit et l'acompte facturé (8 920) diffère du PDF reçu (6 690) ; prod : 34 devis envoyés dans ce cas, réglage jamais changé depuis. S2 : alertes devis (expiration, acceptation, relances de 08:15 en e-mail direct) adressées à un vendeur inactif et jamais au responsable actif (prod : e-mail non configuré, S1 dès qu'il l'est) ; validité du devis comptée depuis la création ; deux RIB pour une facture (portail et page publique) ; demande SAV du portail jamais « résolue » ; effacement loi 09-08 qui laisse le Tiers miroir, le GPS et les notes du lead, le chatter et le journal WhatsApp, marqué « traitée » même en échec partiel ; CA des métriques gouvernées qui ignore les avoirs. D-ASOC-1..8 (échéancier figé à l'envoi, abonnés muets si le module est désinstallé, chatter caviardé, client sans facture = prospect, CA net d'avoirs, statut « partielle », parrainage câblé, fuseau de la société). Seconde lentille sur les 2 S1 candidats : 1 maintenu, 1 abaissé en S2 conditionnel, 2 élargis. 1 critique Fable (8 trous lus, couches transverses). Tâches ASOC1-104 (70 posées : LEAD 15, PARAMETRES 13, TRANSVERSE 8, DOCUMENTS 7, DEVIS 6, ANALYSE 5, FACTURATION 5, SECURITE 4, MOTEUR 2, SAV 2, STOCK 2, CHANTIERS 1)."
+
+  - id: PF3
+    rang: 29
+    declencheur: deploy-ci-gardes
+    titre: "Parcours PF3 « Deploy / CI / gardes / budgets de performance » : livrer en production (script du serveur, chemin manuel, retour arrière), sauvegarder et restaurer, réglages de production, intégration continue et file de fusion, gardes du dépôt, budgets de performance, santé et alertes, outillage des runs de plan et des audits, construction du front et site public (METHODE §D.1)"
+    possede: []
+    perimetre_lu:
+      - "scripts/**, .github/**, docker-compose*.yml, Dockerfiles, backend/{caddy,nginx,minio,db}, backend/django_core/core/{backup,health,tasks}.py, réglages, apps/reporting/kpi_alertes.py, apps/ventes/coherence, frontend/{Dockerfile.prod,vite.config.js,src/sw.js}, apps/web/{worker,astro.config.mjs}"
+    coutures:
+      - "merge ↔ script du serveur ↔ migrations ↔ contrôle de santé ↔ retour arrière ; sauvegarde ↔ copie distante ↔ restauration ; garde annoncée bloquante ↔ check réellement requis ; alerte émise ↔ lecteur ; outil de plan ↔ sessions parallèles ; poste du fondateur ↔ tâches nocturnes"
+    P: 3
+    I: 5
+    score: 15
+    niveau: L2
+    statut: audité
+    groupe: ADCG
+    plan: docs/plans/PLAN_AUDIT_DEPLOY.md
+    plans_alimentes: [docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_SECURITE.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/WEB_PLAN.md, docs/plans/PLAN_AUDIT_ANALYSE.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_MOTEUR.md, docs/plans/PLAN_AUDIT_PARAMETRES.md]
+    pr: null
+    date: 2026-11-10
+    dossier: docs/audits/2026-11-10-parcours-PF3.md
+    notes: "Dixième et dernier audit de PARCOURS (L2, 10/11/2026, base dc496b2, fraîcheur ce4e5fc) : 62 constats, 20 prouvés par sonde hôte (vrais scripts, fausses commandes) et 42 lus ; gravités 2 S1, 18 S2, 42 S3. S1 : les fichiers (pièces, PDF : 271 Mo en prod) ne sont jamais sauvegardés ; aucune copie des sauvegardes hors du serveur. S2 : pas de retour arrière effectif, code servi avant les migrations, contrôle de santé vert quand il ne peut pas s'exécuter, deux séquences de deploy divergées, configuration du proxy jamais validée, audit des dépendances qui ne peut pas échouer (31 vulnérabilités graves imprimées, étapes vertes), agrégateur du fuzz toujours à 0, alerte de restauration muette, pas de procédure de restauration ni de reconstruction du serveur, QA nocturne du poste mort depuis le 14/10, disque du serveur non surveillé, alarmes décidées jamais armées. Porte : 27 constats vérifiés, 0 réfuté en entier, 2 en partie, 4 gravités revues. Prod lue le 10/11 (lecture seule) : à jour, 0 migration en attente, 38 sauvegardes réussies depuis le 09/10 (incident prod-sans-sauvegarde clos), copie distante off, 42 exceptions en 24 h dans le worker. D-ADCG-1..3 ouvertes (copie hors serveur, fusion automatique des correctifs Dependabot, classement du micro-onduleur). 1 critique opus (6 trous). Tâches ADCG1-100 (93 posées : DEPLOY 65, SECURITE 14, TRANSVERSE 4, WEB 3, ANALYSE 2, DEVIS 1, FACTURATION 1, LEAD 1, MOTEUR 1, PARAMETRES 1)."
