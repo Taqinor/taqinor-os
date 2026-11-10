@@ -1,0 +1,57 @@
+{
+  "sha": "8fd07618c1221792f4a4926352149ab0ca4bf1e5",
+  "date": "2026-11-10",
+  "groupe": "ADCG",
+  "verdict": "PASS",
+  "couvre": [
+    "ADCG45",
+    "ADCG106"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "ACCW9LIVE.ADCG45.preuve_en_direct",
+      "taches": [
+        "ADCG45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-w9/ADCG45.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "pile seed_demo : GET /api/django/ventes/devis/4/proposal/ (DEV-DEMO-0004, Panneau poly 330W ×6 + Micro-onduleur 800W ×6) en demo_admin ⇒ 200 application/pdf, 3 pages ; texte pypdf : « Sans batterie » ×3, « 6 × Micro-onduleur 800W », ligne « Micro-onduleur 800W 6 1 490,00 », « Total — Sans batterie », aucun « aucune option » ; prix d'achat absents ; is_reseau_inverter serveur vrai (hybride reste hybride, câble reste câble) ; isReseauInverter générateur (node) vrai ; classifieurs.parite.test.mjs 162/162"
+    },
+    {
+      "id": "ACCW9LIVE.ADCG106.preuve_en_direct",
+      "taches": [
+        "ADCG106"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-w9/ADCG106.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "--du sur le dépôt réel, garde d'acceptation neutralisée : D3 attend ACAL355-357, ACAL364, ACAL366, ACAL367 ; X7 attend AANA81, AANA90 ; X1 attendait ASEC90-91 (ASEC92/93 cochées depuis) ; J6 : ecarts_tous_coches vrai, plus dû car vérifié par 3f9daa2b5 (marqueur 1 → 0 écart, postérieur à f46afed2b) ; banc test_audit_registre 20 tests OK dont test_du_contre_visite_lit_les_blocs_d_ecarts_anterieurs ; 0 écran"
+    }
+  ]
+}
