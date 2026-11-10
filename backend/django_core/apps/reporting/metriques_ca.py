@@ -41,16 +41,21 @@ def _factures(company, period, filters):
                 '(admis : %s).' % (cle, ', '.join(sorted(_FILTRES))))
         criteres[_FILTRES[cle]] = valeur
     qs = Facture.objects.filter(company=company, **criteres)
-    if period:
-        if isinstance(period, (tuple, list)):
-            debut, fin = (list(period) + [None, None])[:2]
-        else:
-            debut, fin = period.get('debut'), period.get('fin')
-        if debut is not None:
-            qs = qs.filter(date_emission__gte=debut)
-        if fin is not None:
-            qs = qs.filter(date_emission__lte=fin)
+    debut, fin = _bornes(period)
+    if debut is not None:
+        qs = qs.filter(date_emission__gte=debut)
+    if fin is not None:
+        qs = qs.filter(date_emission__lte=fin)
     return list(qs.prefetch_related('lignes'))
+
+
+def _bornes(period):
+    """``period`` (``(debut, fin)`` ou ``{'debut', 'fin'}``) → (debut, fin)."""
+    if not period:
+        return None, None
+    if isinstance(period, (tuple, list)):
+        return tuple((list(period) + [None, None])[:2])
+    return period.get('debut'), period.get('fin')
 
 
 def _somme(factures, attribut):
@@ -76,9 +81,22 @@ def panier_moyen(company, user=None, *, period=None, filters=None):
     return _somme(factures, 'total_ttc') / len(factures)
 
 
+def taux_conversion(company, user=None, *, period=None, filters=None):
+    """ASOC72 (D-AANA-1) — LE taux de gain du reporting (gagnés ÷ NON perdus)
+    sur la fenêtre de leads du classement ; ``None`` sans lead non perdu."""
+    from apps.reporting.services import leads_de_la_fenetre, taux_gain
+    from apps.semantic.services import MetriqueNonResolvable
+    if filters:
+        raise MetriqueNonResolvable(
+            'Le taux de conversion ne prend aucun filtre (reçu : %s).'
+            % ', '.join(sorted(filters)))
+    return taux_gain(leads_de_la_fenetre({'company': company}, *_bornes(period)))
+
+
 def register_metric_adapters():
-    """Enregistre les trois adaptateurs (idempotent) — appelé par ``ready()``."""
+    """Enregistre les adaptateurs (idempotent) — appelé par ``ready()``."""
     from apps.semantic.adapters import register_adapter
     register_adapter('reporting.ca_ht', ca_ht)
     register_adapter('reporting.ca_ttc', ca_ttc)
     register_adapter('reporting.panier_moyen', panier_moyen)
+    register_adapter('reporting.taux_gain', taux_conversion)

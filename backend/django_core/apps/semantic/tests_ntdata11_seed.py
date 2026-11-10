@@ -218,6 +218,46 @@ class SeedMetriquesTests(TestCase):
         mig.realigner(parc, None)  # second passage : rien d'écrit
         self.assertEqual(ca.versions.count(), nb_ca)
 
+    def test_taux_conversion_suit_le_taux_de_gain(self):
+        """ASOC72 (C-ASOC-157, D-AANA-1) — 1 signé, 1 perdu, 2 ouverts ce
+        mois : 33,3 comme ``taux_gain`` (perdus hors dénominateur) ; aucun lead
+        non perdu : None ; migration 0006 sur l'ancien défaut seul."""
+        import importlib
+
+        from django.apps import apps as parc
+        from django.utils import timezone
+
+        from apps.crm.models import Lead
+        from apps.crm.stages import NEW, SIGNED
+        from apps.reporting.services import leads_de_la_fenetre, taux_gain
+        self._seed()
+        mois = (timezone.localdate().replace(day=1), timezone.localdate())
+        val = services.resolve_metric_valeur
+        perdu = Lead.objects.create(company=self.company, nom='P', stage=NEW,
+                                    perdu=True)
+        self.assertIsNone(val(self.company, None, 'taux_conversion', period=mois))
+        Lead.objects.create(company=self.company, nom='S', stage=SIGNED)
+        for nom in ('O1', 'O2'):
+            Lead.objects.create(company=self.company, nom=nom, stage=NEW)
+        self.assertEqual(val(self.company, None, 'taux_conversion', period=mois),
+                         33.3)
+        self.assertEqual(33.3, taux_gain(leads_de_la_fenetre(
+            {'company': self.company}, *mois)))
+        self.assertTrue(perdu.perdu)
+        mig = importlib.import_module(
+            'apps.semantic.migrations.0006_taux_conversion_taux_gain')
+        tc = MetricDefinition.objects.get(company=self.company,
+                                          cle='taux_conversion')
+        MetricDefinition.objects.filter(pk=tc.pk).update(
+            dataset=mig.DATASET, mesure=mig.ANCIEN)
+        nb = tc.versions.count()
+        mig.realigner(parc, None)
+        tc.refresh_from_db()
+        self.assertEqual((tc.dataset, tc.mesure), ('', mig.NOUVEAU))
+        self.assertEqual(tc.versions.count(), nb + 1)
+        mig.realigner(parc, None)  # second passage : rien d'écrit
+        self.assertEqual(tc.versions.count(), nb + 1)
+
     def test_seed_par_societe(self):
         autre = Company.objects.create(nom='NTDATA11 Autre',
                                        slug='ntdata11-autre')

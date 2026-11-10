@@ -17,9 +17,8 @@ RÉELLEMENT stocké, soit le calcul qui fait déjà autorité dans le dépôt.
   du noyau canonique, pas des colonnes : `montant_ht`/`montant_ttc` ne sont
   remplis que sur les factures d'échéancier) des factures émises, payées, en
   retard ; panier = CA TTC / nombre de factures.
-* `taux_conversion` — somme(`signe_num`) / nombre de leads × 100, où
-  `signe_num` est l'indicateur 1/0 « étape SIGNED ET non perdu » du dataset
-  `crm_leads` : EXACTEMENT la règle de `crm.selectors`.
+* `taux_conversion` — ADAPTATEUR `reporting.taux_gain` (ASOC72, D-AANA-1) :
+  LE taux de gain du reporting, leads gagnés ÷ leads NON perdus.
 * `mrr` — valeur annuelle des contrats de maintenance ACTIFS ÷ 12
   (`sav_contrats.valeur_annuelle`, dérivée du prix de période × 12/mois).
 * `marge_brute` et `dso` — ADAPTATEURS `compta.*` : lus du cockpit
@@ -73,16 +72,10 @@ METRIQUES_COEUR = [
     {
         'cle': 'taux_conversion',
         'libelle': 'Taux de conversion',
-        'description': 'Part des pistes signées (étape Signé, non perdues) '
-                       'dans le total des pistes.',
-        'dataset': 'crm_leads',
-        'mesure': {
-            'formula': 'signes / total * 100',
-            'aggregates': [
-                {'alias': 'signes', 'fn': 'sum', 'field': 'signe_num'},
-                {'alias': 'total', 'fn': 'count', 'field': 'id'},
-            ],
-        },
+        'description': 'Part des pistes gagnées parmi les pistes non '
+                       'perdues (taux de gain du reporting).',
+        'dataset': '',
+        'mesure': {'adapter': 'reporting.taux_gain'},
         'unite': MetricDefinition.Unite.POURCENT,
         'format': 1,
     },
