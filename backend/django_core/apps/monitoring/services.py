@@ -246,16 +246,17 @@ def production_couverte(releves, debut, fin):
     return total
 
 
-def fenetre_couverte(installation, releves, since, today):
+def fenetre_couverte(installation, releves, since, today,
+                     premier_releve=_NON_FOURNI):
     """AMON22 — ``(debut, fin, intervalles)`` de la fenêtre réellement
     couverte : début = ``debut_couverture`` (mise en service / premier
-    relevé), fin = min(aujourd'hui, dernier jour couvert par un relevé),
-    intervalles = union des périodes des relevés dedans. ``None`` si aucun
-    jour couvert."""
+    relevé ; ``premier_releve`` déjà lu par l'appelant, AMON101), fin =
+    min(aujourd'hui, dernier jour couvert par un relevé), intervalles = union
+    des périodes des relevés dedans. ``None`` si aucun jour couvert."""
     from .analytics import intervalles_couverts_par_releves
     if not releves:
         return None
-    debut = debut_couverture(installation, since)
+    debut = debut_couverture(installation, since, premier_releve)
     fin = min(today, max(jour + timedelta(days=max(int(periode or 1), 1) - 1)
                          for jour, periode, _kwh in releves))
     intervalles = intervalles_couverts_par_releves(
@@ -454,14 +455,19 @@ def evaluate_underperformance(installation, *, user=None, today=None):
     return result
 
 
+def releves_annee(installation, year):
+    """AMON106 — relevés qui RECOUVRENT l'année calendaire ``year``."""
+    from datetime import date as _date
+    return releves_recouvrant(
+        installation, _date(year, 1, 1), _date(year, 12, 31))
+
+
 def production_for_calendar_year(installation, year):
-    """Somme des relevés (kWh) d'une année calendaire pour un système."""
-    agg = ProductionReading.objects.filter(
-        installation=installation, date__year=year)
-    total = Decimal('0')
-    for r in agg.values_list('energy_kwh', flat=True):
-        total += Decimal(str(r))
-    return total
+    """Production (kWh) d'une année calendaire — AMON106 : chaque relevé au
+    prorata de ses jours dans l'année (à cheval : sa part dans chacune)."""
+    from datetime import date as _date
+    return production_couverte(releves_annee(installation, year),
+                               _date(year, 1, 1), _date(year, 12, 31))
 
 
 def _guaranteed_kwh_for_period(warranty, year, today, installation=None):
@@ -485,15 +491,21 @@ def _guaranteed_kwh_for_period(warranty, year, today, installation=None):
     1er janvier de ``start_year``, mise en service, premier relevé)
     (``debut_couverture``, quand ``installation`` est fourni), fin =
     min(31/12, ``today``) — un système mis en service en septembre n'est
-    plus jugé sur un garanti couru depuis janvier.
+    plus jugé sur un garanti couru depuis janvier. AMON105 — et au dernier
+    jour couvert par un relevé (des relevés arrêtés en juin ne font plus
+    courir le garanti jusqu'à aujourd'hui).
     """
     from datetime import date as _date
     guaranteed_full = warranty.guaranteed_kwh_for_year(year)
     premier_janvier = _date(year, 1, 1)
     debut = max(premier_janvier, _date(int(warranty.start_year), 1, 1))
+    fin = min(_date(year, 12, 31), today)
     if installation is not None:
         debut = debut_couverture(installation, debut)
-    fin = min(_date(year, 12, 31), today)
+        releves = releves_recouvrant(installation, debut, fin)
+        if releves:
+            fin = min(fin, max(jour + timedelta(days=max(int(p or 1), 1) - 1)
+                               for jour, p, _kwh in releves))
     year_in_progress = year == today.year
     if debut == premier_janvier and fin == _date(year, 12, 31):
         return guaranteed_full, year_in_progress
@@ -534,9 +546,9 @@ def production_warranty_status(installation, *, year=None, today=None):
         warranty, year, today, installation)
     actual = production_for_calendar_year(installation, year)
     q2 = Decimal('0.01')
-    if not ProductionReading.objects.filter(
-            installation=installation, date__year=year).exists():
-        # AMON40 — sans relevé : réel et compensation NON mesurés (null).
+    if not releves_annee(installation, year):
+        # AMON40 — sans relevé (AMON106 : recouvrant l'année) : réel et
+        # compensation NON mesurés (null).
         return {
             'has_warranty': True, 'year': year,
             'year_in_progress': year_in_progress,
@@ -614,8 +626,7 @@ def warranty_curve_overlay(installation, *, years=None, today=None,
         guaranteed, year_in_progress = _guaranteed_kwh_for_period(
             warranty, year, today, installation)
         actual = production_for_calendar_year(installation, year)
-        has_data = ProductionReading.objects.filter(
-            installation=installation, date__year=year).exists()
+        has_data = bool(releves_annee(installation, year))  # AMON106
         drift_pct = None
         anomalous = False
         # Garanti < 0,01 kWh (arrondi à 0,00) : dérive non définie. Un garanti
