@@ -478,6 +478,7 @@ def relances_list(request):
     mes_relances = str(request.GET.get('mes_relances') or '').strip() in (
         '1', 'true', 'True')
     rows = []
+    pii = getattr(request.user, 'can_view_client_pii', True)
     for f in _facture_due_rows(request.user):
         param = param_par_client.get(f.client_id)
         if mes_relances and (
@@ -508,7 +509,9 @@ def relances_list(request):
             'client_nom': f"{f.client.nom} {f.client.prenom or ''}".strip(),
             # L853 — téléphone client pour valider/désactiver le bouton WhatsApp
             # côté front (aucun envoi ici ; affichage/validation seulement).
-            'client_telephone': f.client.telephone if f.client_id else None,
+            # APFS27 — masqué sans ``client_pii_voir``.
+            'client_telephone': (f.client.telephone if f.client_id and pii
+                                 else None),
             'date_echeance': echeance.isoformat() if echeance else None,
             'montant_du': _s(du),
             'jours_retard': jr,
