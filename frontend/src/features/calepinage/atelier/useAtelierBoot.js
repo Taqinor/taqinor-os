@@ -48,8 +48,9 @@ export function useAtelierBoot(ctx) {
   // ACAL37 — plus de mode devis écrivain : `devisId` = le devis SYNCHRONISÉ du flux
   // `/ventes/devis/:id/design` (atelier calepinage), lu pour l'étude bancable (PV75).
   const { cibleId, calepinageId, devisId, leadId, estCalepinage } = ctx
-  // ACON80 — `{devis}` quand le devis synchronisé est porté par une VARIANTE.
   const { paramsContexte } = ctx
+  // ACON80 — `{devis}` quand le devis synchronisé est porté par une VARIANTE.
+  // parametres-requete: devis
   const lireContexte = () => (paramsContexte
     ? calepinageApi.calepinages.designContext(calepinageId, paramsContexte)
     : calepinageApi.calepinages.designContext(calepinageId))

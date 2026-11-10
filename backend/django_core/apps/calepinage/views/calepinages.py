@@ -1043,7 +1043,11 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
         })
 
     @extend_schema(responses=forme_du_contrat(
-        'CalepinageDesignContext', 'calepinage_design_context.json'))
+        'CalepinageDesignContext', 'calepinage_design_context.json'),
+        parameters=[OpenApiParameter(
+            'devis', OpenApiTypes.INT, OpenApiParameter.QUERY, required=False,
+            description="ACON80 — devis porté par une VARIANTE de ce calepinage : "
+                        "le contexte sert alors la variante et son document.")])
     @action(detail=True, methods=['get'], url_path='design-context',
             permission_classes=[PeutVoirCalepinage])
     def design_context(self, request, pk=None):
