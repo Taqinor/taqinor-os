@@ -78,7 +78,8 @@ class FenetreDuJourTests(TestCase):
 
     def test_fenetre_au_fuseau_de_la_societe(self):
         """ASOC84 (D-ASOC-8) — une société à Dakar raisonne à l'heure de
-        Dakar : 18:40 Dakar (19:40 à Casablanca) est dans 08:30-19:00."""
+        Dakar : 18:40 Dakar est dans 08:30-19:00 ; le fuseau de la société
+        décide (Paris vs Casablanca)."""
         from zoneinfo import ZoneInfo
 
         dakar = ZoneInfo('Africa/Dakar')
@@ -91,12 +92,25 @@ class FenetreDuJourTests(TestCase):
                                                   canal='whatsapp'))
         self.assertFalse(horaires.est_dans_fenetre(matin, self.company,
                                                    canal='whatsapp'))
+        # Le Maroc est à UTC+0 depuis le 20/09/2026 (décret 2.26.530,
+        # tzdata 2026.4 épinglé) : Dakar et Casablanca y coïncident. Le
+        # fuseau se prouve donc contre Paris (UTC+1 en novembre) : 19:40 à
+        # Paris = 18:40 à Casablanca.
+        paris_soir = datetime.datetime(2026, 11, 10, 19, 40,
+                                       tzinfo=ZoneInfo('Europe/Paris'))
+        CompanyProfile.objects.filter(company=self.company).update(
+            fuseau_horaire='Europe/Paris')
+        self.assertFalse(horaires.est_dans_fenetre(paris_soir, self.company,
+                                                   canal='whatsapp'))
         # Société sans fuseau saisi : Casablanca, comme avant.
         casa = _company('asoc84-sans-fuseau')
         CompanyProfile.objects.filter(company=casa).update(
             appel_heure_fin=datetime.time(19, 0))
-        self.assertFalse(horaires.est_dans_fenetre(soir, casa,
-                                                   canal='whatsapp'))
+        self.assertTrue(horaires.est_dans_fenetre(paris_soir, casa,
+                                                  canal='whatsapp'))
+        self.assertFalse(horaires.est_dans_fenetre(
+            datetime.datetime(2026, 11, 10, 19, 10, tzinfo=CASA), casa,
+            canal='whatsapp'))
 
     def test_un_canal_inconnu_retombe_sur_la_fenetre_dappel(self):
         """Dans le doute, la fenêtre la plus TARDIVE : mieux vaut poser une
