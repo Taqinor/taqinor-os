@@ -37,8 +37,15 @@ mv /opt/autodeploy/auto-deploy.sh.neuf /opt/autodeploy/auto-deploy.sh
 if [ "$ZERO_DOWNTIME" = "1" ]; then touch /opt/autodeploy/zero_downtime; fi
 # ADCG3 — reessai explicite : l'auto ne rejoue jamais seul un commit en echec.
 rm -f /opt/autodeploy/commit_en_echec
-echo "Deploiement lance (systemctl start taqinor-autodeploy) — detail : journalctl -u taqinor-autodeploy"
+echo "Deploiement lance (systemctl start taqinor-autodeploy) - detail : journalctl -u taqinor-autodeploy"
+# ADCG6 — imprime les lignes du journal ecrites par CE deploy : le message final
+# du poste se lit dessus (ROLLBACK ou derniere ligne), il ne suppose plus rien.
+N=$(wc -l < /opt/autodeploy/deploy.log 2>/dev/null || echo 0)
+set +e
 systemctl start taqinor-autodeploy.service
+rc=$?
+tail -n +"$((N + 1))" /opt/autodeploy/deploy.log 2>/dev/null
+exit $rc
 '@ -replace "`r`n", "`n"
 
 # NTPLT57 — injecte l'etat du flag -ZeroDowntime en tete du script distant
@@ -66,11 +73,24 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 Remove-Item $tmpScript -ErrorAction SilentlyContinue
-ssh -i $Key -o StrictHostKeyChecking=accept-new "root@$ServerIp" "bash /tmp/$nom; rc=`$?; rm -f /tmp/$nom; exit `$rc"
+$sortie = @()
+ssh -i $Key -o StrictHostKeyChecking=accept-new "root@$ServerIp" "bash /tmp/$nom; rc=`$?; rm -f /tmp/$nom; exit `$rc" |
+    ForEach-Object { Write-Host $_; $sortie += [string]$_ }
 $deployExitCode = $LASTEXITCODE
 
+# ADCG6 — le message dit ce que le JOURNAL du serveur porte, jamais une supposition
+# (accents par code : ce fichier est lu en ANSI par Windows PowerShell 5.1).
 if ($deployExitCode -ne 0) {
-    Write-Host "`nDEPLOIEMENT EN ECHEC (code $deployExitCode). Voir /opt/autodeploy/deploy.log et journalctl -u taqinor-autodeploy." -ForegroundColor Red
+    $e = [char]0xE9; $eg = [char]0xE8; $tiret = [char]0x2014
+    $rollback = $sortie | Select-String -Pattern 'ROLLBACK vers (\S+) effectu' | Select-Object -Last 1
+    if ($rollback) {
+        $sha = $rollback.Matches[0].Groups[1].Value
+        Write-Host "`nECHEC $tiret retour arri$($eg)re vers $sha effectu$e" -ForegroundColor Red
+    } else {
+        $derniere = ($sortie | Where-Object { $_.Trim() } | Select-Object -Last 1) -replace '^\[[^\]]*\]\s*', ''
+        Write-Host "`nECHEC SANS retour arri$($eg)re : $derniere" -ForegroundColor Red
+    }
+    Write-Host "Detail : /opt/autodeploy/deploy.log et journalctl -u taqinor-autodeploy." -ForegroundColor Red
     exit $deployExitCode
 }
 
