@@ -41,7 +41,7 @@ from .throttles import (
     LoginRateThrottle,
     RegisterRateThrottle,
 )
-from authentication.permissions import IsAdminRole, IsAdminOrResponsableTier
+from authentication.permissions import IsAdminRole, IsAdminOrResponsableTier, est_operateur_plateforme  # noqa: E501
 from core.throttling import CookieRefreshThrottle
 
 # ── Stratégie CSRF des cookies d'authentification (ERR45) ────────────────────
@@ -1430,7 +1430,7 @@ class EstSaPropreSocieteOuOperateurPlateforme(permissions.BasePermission):
 
     def has_object_permission(self, request, view, obj):
         user = request.user
-        if getattr(user, 'is_superuser', False):
+        if est_operateur_plateforme(user):  # APFS61
             return True
         return obj.pk == getattr(user, 'company_id', None)
 
@@ -1444,7 +1444,7 @@ class EstOperateurPlateforme(permissions.BasePermission):
     message = "Réservé à l'opérateur de la plateforme."
 
     def has_permission(self, request, view):
-        return bool(getattr(request.user, 'is_superuser', False))
+        return est_operateur_plateforme(request.user)  # APFS61
 
 
 class CompanyViewSet(viewsets.ModelViewSet):
@@ -1484,7 +1484,7 @@ class CompanyViewSet(viewsets.ModelViewSet):
         contredirait le contrat 403 déjà testé (NTDMO7/NTDMO22)."""
         qs = super().get_queryset()
         user = getattr(self.request, 'user', None)
-        if getattr(user, 'is_superuser', False):
+        if est_operateur_plateforme(user):  # APFS61
             return qs
         if self.action == 'list':
             company_id = getattr(user, 'company_id', None)

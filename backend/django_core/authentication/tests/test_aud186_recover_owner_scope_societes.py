@@ -119,10 +119,14 @@ class RegistreDesSocietesCloisonneTests(TestCase):
         self.admin_a = User.objects.create_user(
             username='aud186-admin-a', password='x', company=self.co_a,
             role_legacy='admin', is_staff=True)
+        # APFS61 (D-APFS-2) — l'opérateur de la plateforme est un
+        # superutilisateur SANS société ; rattaché à A, il est borné à A.
         self.operateur = User.objects.create_superuser(
             username='aud186-operateur', password='x')
-        self.operateur.company = self.co_a
-        self.operateur.save()
+        self.super_a = User.objects.create_superuser(
+            username='apfs61-super-a', password='x')
+        self.super_a.company = self.co_a
+        self.super_a.save()
 
     def test_la_liste_ne_montre_que_sa_propre_societe(self):
         r = auth(self.admin_a).get('/api/django/companies/')
@@ -185,3 +189,22 @@ class RegistreDesSocietesCloisonneTests(TestCase):
         self.assertIn(self.co_a.id, ids)
         self.assertIn(self.co_b.id, ids)
         self.assertEqual(detail.status_code, 200, detail.data)
+
+    def test_superutilisateur_rattache_borne_a_sa_societe(self):
+        """APFS61 — superutilisateur rattaché à A : liste = {A}, 403 sur B
+        (lecture et écriture, B reste active), création refusée."""
+        api = auth(self.super_a)
+        liste = api.get('/api/django/companies/')
+        resultats = (liste.data['results'] if isinstance(liste.data, dict)
+                     else liste.data)
+        self.assertEqual([c['id'] for c in resultats], [self.co_a.id])
+        self.assertEqual(
+            api.get(f'/api/django/companies/{self.co_b.id}/').status_code, 403)
+        r = api.patch(f'/api/django/companies/{self.co_b.id}/',
+                      {'actif': False}, format='json')
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(api.post('/api/django/companies/', {
+            'nom': 'Nouvelle 61', 'slug': 'apfs61-nouvelle'},
+            format='json').status_code, 403)
+        self.co_b.refresh_from_db()
+        self.assertEqual(self.co_b.nom, 'Société B AUD186')
