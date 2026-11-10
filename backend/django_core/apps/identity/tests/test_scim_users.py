@@ -61,6 +61,35 @@ class ScimUsersTests(TestCase):
         self.assertFalse(u.has_usable_password())
         self.assertEqual(r.json()['userName'], 'jdoe')
 
+    def test_compte_scim_recoit_le_role_utilisateur_sans_prix_achat(self):
+        """APFS47 (C-APFS-044) — SCIM puis retrait de rôle posent le rôle
+        « Utilisateur » de la société (jamais « aucun rôle ») : ni prix
+        d'achat ni marge servis sur ``stock/produits/``."""
+        from decimal import Decimal
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import COMMERCIAL_PERMISSIONS
+        from apps.roles.services import remove_role_from_user
+        from apps.stock.models import Produit
+        Produit.objects.create(company=self.company, nom='Onduleur APFS47', sku='APFS47',
+                               prix_achat=Decimal('500.00'), prix_vente=Decimal('900.00'))
+        r = self._client().post(self.base, {'userName': 'scim47', 'active': True}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        commercial = UserFactory(company=self.company, username='com47', role=Role.objects.create(
+            company=self.company, nom='Commercial', permissions=list(COMMERCIAL_PERMISSIONS)))
+        self.assertTrue(remove_role_from_user(commercial, commercial.role_id))
+        for user in (CustomUser.objects.get(username='scim47'), CustomUser.objects.get(pk=commercial.pk)):
+            with self.subTest(user=user.username):
+                self.assertEqual((user.role.nom, user.role.company_id), ('Utilisateur', self.company.id))
+                api = APIClient()
+                api.force_authenticate(user)
+                resp = api.get('/api/django/stock/produits/')
+                self.assertEqual(resp.status_code, 200, resp.content)
+                rows = resp.data['results'] if isinstance(resp.data, dict) else resp.data
+                ligne = next(p for p in rows if p['sku'] == 'APFS47')
+                self.assertNotIn('prix_achat', ligne)
+                self.assertNotIn('marge_pct', ligne)
+        self.assertEqual(Role.objects.filter(company=self.company, nom='Utilisateur').count(), 1)
+
     def test_list_only_shows_own_company(self):
         UserFactory(company=self.company, username='mine')
         UserFactory(company=self.other, username='theirs')
