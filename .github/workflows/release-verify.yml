@@ -446,12 +446,14 @@ jobs:
       - name: Type-check apps/web (tsc)
         working-directory: apps/web
         run: npm run check
-      - name: apps/web unit tests (vitest)
-        working-directory: apps/web
-        run: npm test
+      # ADCG68 (C-ADCG-036) — construire AVANT vitest, comme ci.yml::web-build-test :
+      # tests lisant dist/client sinon rouges (build lancé pendant vitest).
       - name: Build marketing site (astro build)
         working-directory: apps/web
         run: npm run build
+      - name: apps/web unit tests (vitest)
+        working-directory: apps/web
+        run: npm test
       # ENF12 (règle fondateur 09/10/2026) : plus de `continue-on-error` ni de
       # `|| true`. Trois passes, budgets sur la MÉDIANE de chaque catégorie
       # (scripts/check_lighthouse.py — valeurs mesurées et leur source dans
