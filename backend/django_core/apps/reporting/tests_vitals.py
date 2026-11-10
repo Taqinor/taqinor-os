@@ -11,7 +11,6 @@ import json
 from datetime import datetime, timedelta
 from io import StringIO
 from pathlib import Path
-from types import SimpleNamespace
 from unittest import mock
 from zoneinfo import ZoneInfo
 
@@ -702,8 +701,14 @@ class ResumeEnrichiTests(TestCase):
             def lrange(self, cle, debut, fin):
                 return list(self.listes.get(cle, []))
 
+        class FausseTache:
+            # Le Signal de Celery met l'expéditeur en clé de cache : il doit
+            # être hachable (une vraie tâche l'est ; SimpleNamespace non).
+            def __init__(self, name):
+                self.name = name
+
         def echouer(nom, exc):
-            task_failure.send(sender=SimpleNamespace(name=nom), task_id='t', exception=exc)
+            task_failure.send(sender=FausseTache(nom), task_id='t', exception=exc)
 
         faux = FauxRedis()
         with mock.patch('apps.reporting.journal_problemes._client_redis', return_value=faux):
