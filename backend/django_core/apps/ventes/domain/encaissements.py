@@ -1306,9 +1306,10 @@ def _entete_consolidee(facture, devis_qs):
     taux de tête n'est pas repris (chaque ligne porte son taux effectif)."""
     from apps.ventes.domain.facturation_ops import entete_facture_depuis_devis
     retenue = Decimal('0')
-    phrases, refs = [], []
+    phrases, refs, escompte = [], [], {}
     for d in devis_qs:
         entete = entete_facture_depuis_devis(d)
+        escompte = {c: entete[c] for c in ('escompte_pct', 'escompte_jours') if c in entete}  # ASOC107
         if entete.get('retenue_garantie_mad') is not None:
             retenue += Decimal(str(entete['retenue_garantie_mad']))
             phrases.append(f'{d.reference} : {entete["conditions_paiement"]}')
@@ -1323,6 +1324,9 @@ def _entete_consolidee(facture, devis_qs):
     if refs:
         facture.reference_commande_client = ', '.join(refs)[:60]
         champs.append('reference_commande_client')
+    for champ, valeur in escompte.items():  # ASOC107 — escompte par défaut de la société
+        setattr(facture, champ, valeur)
+        champs.append(champ)
     if champs:
         facture.save(update_fields=champs)
 

@@ -114,6 +114,31 @@ class EntetePortesTests(TestCase):
         self._assert_entete(self._relire(r.data['id']),
                             '15000.00', '285000.00')
 
+    def test_facture_consolidee_porte_l_escompte_par_defaut(self):
+        """ASOC107 (C-ASOC-OPT1-087) — jumeau d'ASOC87 : la consolidée reprend
+        l'escompte par défaut de la société (2 % / 10 j) comme les autres
+        factures nées d'un devis ; profil sans défaut : NULL comme hier.
+        Mutant : retirer la reprise ⇒ None."""
+        from apps.parametres.models import CompanyProfile
+
+        def consolider():
+            d1, d2 = self._devis(), self._devis()
+            r = self.api.post(
+                '/api/django/ventes/factures/consolider/',
+                {'devis_ids': [d1.id, d2.id]}, format='json')
+            self.assertEqual(r.status_code, 201, r.data)
+            return self._relire(r.data['id'])  # CLAUSE PERSISTANCE
+
+        sans = consolider()
+        self.assertEqual((sans.escompte_pct, sans.escompte_jours), (None, None))
+        profil = CompanyProfile.get(company=self.company)
+        profil.escompte_pct_defaut, profil.escompte_jours_defaut = Decimal('2'), 10
+        profil.save()
+        facture = consolider()
+        self.assertEqual((facture.escompte_pct, facture.escompte_jours),
+                         (Decimal('2'), 10))
+        self._assert_entete(facture, '15000.00', '285000.00')
+
     def test_tranche_temoin_inchangee(self):
         devis = self._devis()
         r = self.api.post(
