@@ -1,5 +1,7 @@
 """NTOBS5 — écran self-service « Sauvegardes » pour l'admin tenant (lecture
 seule des BackupRun déjà produits, jamais un nouveau moteur)."""
+import datetime
+
 from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -26,13 +28,27 @@ class ResumeSauvegardesTest(TestCase):
         self.assertIsNone(resume['dernier_drill'])
 
     def test_finds_latest_successful_export_for_company(self):
+        # ADCG34 — un export (manifeste de comptages) n'est PAS une sauvegarde.
         BackupRun.objects.create(
             company=self.company, kind=BackupRun.KIND_EXPORT,
             statut=BackupRun.STATUT_TERMINE,
             termine_le=timezone.now())
         resume = resume_sauvegardes(self.company)
-        self.assertIsNotNone(resume['derniere_sauvegarde'])
-        self.assertEqual(resume['derniere_sauvegarde']['statut'], 'termine')
+        self.assertIsNone(resume['derniere_sauvegarde'])
+
+    def test_export_comptage_n_est_pas_une_sauvegarde(self):
+        """ADCG34 — export seul ⇒ null ; un dump d'hier ⇒ sa date."""
+        maintenant = timezone.now()
+        BackupRun.objects.create(
+            company=self.company, kind=BackupRun.KIND_EXPORT,
+            statut=BackupRun.STATUT_TERMINE, termine_le=maintenant)
+        self.assertIsNone(resume_sauvegardes(self.company)['derniere_sauvegarde'])
+        hier = maintenant - datetime.timedelta(days=1)
+        BackupRun.objects.create(
+            company=None, kind=BackupRun.KIND_DB_DUMP,
+            statut=BackupRun.STATUT_TERMINE, termine_le=hier)
+        resume = resume_sauvegardes(self.company)
+        self.assertEqual(resume['derniere_sauvegarde']['date'], hier.isoformat())
 
     def test_system_wide_db_dump_counts_for_every_company(self):
         BackupRun.objects.create(
@@ -68,6 +84,32 @@ class ResumeSauvegardesTest(TestCase):
         resume = resume_sauvegardes(self.company)
         self.assertIsNotNone(resume['dernier_drill'])
         self.assertEqual(resume['dernier_drill']['statut'], 'echec')
+
+    def test_dernier_drill_le_plus_recent_meme_si_echecs_sans_fin(self):
+        """ADCG41 — échecs SANS termine_le (NULL) puis succès : le dernier
+        succès est servi ; un échec plus récent ensuite ⇒ cet échec."""
+        maintenant = timezone.now()
+
+        def drill(statut, jours, termine):
+            date = maintenant - datetime.timedelta(days=jours)
+            run = BackupRun.objects.create(
+                company=None, kind=BackupRun.KIND_RESTORE_DRILL, statut=statut,
+                termine_le=date if termine else None)
+            BackupRun.objects.filter(pk=run.pk).update(created_at=date)
+            return date
+
+        for jours in range(48, 35, -1):  # 13 échecs jusqu'à J-36
+            drill(BackupRun.STATUT_ECHEC, jours, termine=False)
+        for jours in (29, 22, 15, 8, 1):  # 5 succès depuis
+            dernier_succes = drill(BackupRun.STATUT_TERMINE, jours, termine=True)
+        resume = resume_sauvegardes(self.company)
+        self.assertEqual(resume['dernier_drill'],
+                         {'date': dernier_succes.isoformat(), 'statut': 'termine'})
+
+        echec_recent = drill(BackupRun.STATUT_ECHEC, 0, termine=False)
+        resume = resume_sauvegardes(self.company)
+        self.assertEqual(resume['dernier_drill'],
+                         {'date': echec_recent.isoformat(), 'statut': 'echec'})
 
 
 class MesSauvegardesEndpointTest(TestCase):

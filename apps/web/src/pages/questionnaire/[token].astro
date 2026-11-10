@@ -58,12 +58,12 @@ import ChampsHeuresActivite from '../../components/questionnaire/ChampsHeuresAct
 import Repli from '../../components/questionnaire/Repli.astro';
 import ChampsAffiner from '../../components/questionnaire/ChampsAffiner.astro';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
-import { entetesIpVisiteur } from '../api/_apiBase';
+import { entetesIpVisiteur, resolveApiBase } from '../api/_apiBase';
 import { NAP, WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink } from '../../lib/whatsapp';
 import { appliquerStatutToken, detailRefus } from '../../lib/pageToken';
 
-const API_BASE = (import.meta.env.PUBLIC_API_BASE as string | undefined) ?? 'https://api.taqinor.ma';
+const API_BASE = resolveApiBase(); // ADCG56 : runtime Cloudflare, puis build, puis défaut
 const token = typeof Astro.params.token === 'string' ? Astro.params.token.trim() : '';
 
 // ── Lecture serveur du questionnaire (même discipline W316/WJ81 que /proposition) ──

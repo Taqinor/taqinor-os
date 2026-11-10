@@ -109,3 +109,38 @@ class TestReliquatLigneSection(TestCase):
         self.assertEqual(
             cout_1, cout_5,
             f'N+1 : {cout_1} requêtes pour 1 BC, {cout_5} pour 5.')
+
+    def test_budget_bc_sans_facture_independant_du_nombre(self):
+        """ADCG47 — le cas COURANT (BC confirmé SANS facture) : la porte
+        descend dans la vente ; la page la lit en lot, coût constant."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        def _mesurer(n):
+            for _ in range(n):
+                self._bc(self._devis_avec_section())
+            with CaptureQueriesContext(connection) as ctx:
+                resp = self.api.get('/api/django/ventes/bons-commande/')
+            self.assertEqual(resp.status_code, 200)
+            results = resp.data.get('results', resp.data)
+            self.assertTrue(all(r['facturable']['ok'] for r in results))
+            return len(ctx.captured_queries)
+
+        cout_1 = _mesurer(1)
+        cout_5 = _mesurer(4)  # 5 BC au total
+        self.assertEqual(cout_1, cout_5,
+                         f'N+1 : {cout_1} requêtes pour 1 BC, {cout_5} pour 5.')
+
+    def test_bc_dont_le_devis_est_deja_facture_garde_son_motif(self):
+        devis = self._devis_avec_section()
+        self._bc(devis)
+        facture = Facture.objects.create(
+            company=self.company, reference=f'FAC-ADCG47-{_nxt()}',
+            client=self.client_obj, devis=devis,
+            statut=Facture.Statut.EMISE, taux_tva=Decimal('20'))
+        resp = self.api.get('/api/django/ventes/bons-commande/')
+        self.assertEqual(resp.status_code, 200)
+        results = resp.data.get('results', resp.data)
+        self.assertFalse(results[0]['facturable']['ok'])
+        self.assertIn(f'Ce devis est déjà facturé par {facture.reference}',
+                      results[0]['facturable']['motif'])

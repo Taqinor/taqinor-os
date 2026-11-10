@@ -27,10 +27,10 @@ import {
 } from '../../lib/suivi';
 import { whatsappLink } from '../../lib/proposition';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
-import { entetePreuve } from '../api/_apiBase';
+import { entetePreuve, resolveApiBase } from '../api/_apiBase';
 import { appliquerStatutToken, detailRefus } from '../../lib/pageToken';
 
-const API_BASE = (import.meta.env.PUBLIC_API_BASE as string | undefined) ?? 'https://api.taqinor.ma';
+const API_BASE = resolveApiBase(); // ADCG56 : runtime Cloudflare, puis build, puis défaut
 const { token } = Astro.params as { token: string };
 
 // ── Lecture serveur du suivi ─────────────────────────────────────────────────

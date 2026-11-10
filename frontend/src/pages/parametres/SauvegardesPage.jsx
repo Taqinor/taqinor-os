@@ -64,9 +64,12 @@ export default function SauvegardesPage() {
   }
 
   const derniere = data?.derniere_sauvegarde
+  const copie = data?.copie_distante
   const drill = data?.dernier_drill
   const joursDrill = joursDepuis(drill?.date)
-  const drillPerime = joursDrill === null || joursDrill > DRILL_STALE_DAYS
+  // ADCG42 — un exercice ÉCHOUÉ, même d'hier, n'est pas un drill réussi.
+  const drillEchec = drill?.statut === 'echec'
+  const drillPerime = !drillEchec && (joursDrill === null || joursDrill > DRILL_STALE_DAYS)
 
   return (
     <div className="mx-auto max-w-2xl space-y-4 p-6">
@@ -83,6 +86,16 @@ export default function SauvegardesPage() {
               </p>
             ) : (
               <p className="mt-1 text-sm text-muted-foreground">Aucune sauvegarde réussie pour le moment.</p>
+            )}
+            {/* ADCG31 — état de la copie hors serveur du dernier dump */}
+            {copie?.etat === 'off' && (
+              <Badge tone="warning" className="mt-2">Copie hors serveur : non configurée</Badge>
+            )}
+            {copie?.etat === 'echec' && (
+              <Badge tone="danger" className="mt-2">Copie hors serveur en échec le {formatDate(copie.date)}</Badge>
+            )}
+            {copie?.etat === 'ok' && (
+              <p className="mt-1 text-xs text-muted-foreground">Copie hors serveur réussie le {formatDate(copie.date)}</p>
             )}
             {data?.rpo_planifie && (
               <p className="mt-1 text-xs text-muted-foreground">
@@ -105,6 +118,11 @@ export default function SauvegardesPage() {
               </p>
             ) : (
               <p className="mt-1 text-sm text-muted-foreground">Aucun test de restauration enregistré.</p>
+            )}
+            {drillEchec && (
+              <Badge tone="danger" className="mt-2">
+                Dernier test de restauration en échec le {formatDate(drill.date)}
+              </Badge>
             )}
             {drillPerime && (
               <Badge tone="danger" className="mt-2">

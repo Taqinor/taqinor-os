@@ -95,6 +95,32 @@ describe('reporting — module.config (ODY23 Journal)', () => {
   })
 })
 
+/* AARG72 — Balance âgée et Quote-to-Cash appellent des routes serveur gardées
+   par LectureFactures (code `ventes_voir`, repli palier légacy) : menu ET route
+   portent le même droit, sinon Admin RH clique et reçoit « serveur indisponible ». */
+describe('reporting — module.config (droit de lecture des factures)', () => {
+  it('Balance âgée et Quote-to-Cash refusées à Admin RH et Technicien responsable, ouvertes au Commercial responsable et au légacy', async () => {
+    const { default: config } = await import('./module.config.jsx')
+    const { estAutoriseEntree } = await import('../../router/moduleGating.js')
+    const chemins = ['/reporting/balance-agee', '/reporting/quote-to-cash']
+    const entrees = [
+      ...chemins.map((to) => config.nav.items.find((i) => i.to === to)),
+      ...chemins.map((path) => config.routes.find((r) => r.path === path)),
+    ]
+    expect(entrees.every(Boolean)).toBe(true)
+    const adminRh = ['users_voir', 'users_gerer', 'reporting_voir', 'rh_voir']
+    const technicienResp = ['installations_voir', 'sav_voir', 'stock_voir', 'reporting_voir']
+    const commercial = ['ventes_voir', 'crm_voir', 'reporting_voir']
+    for (const entree of entrees) {
+      expect(estAutoriseEntree(entree, 'responsable', adminRh)).toBe(false)
+      expect(estAutoriseEntree(entree, 'responsable', technicienResp)).toBe(false)
+      expect(estAutoriseEntree(entree, 'responsable', commercial)).toBe(true)
+      expect(estAutoriseEntree(entree, 'normal', commercial)).toBe(true)
+      expect(estAutoriseEntree(entree, 'admin', [])).toBe(true) // légacy : repli palier
+    }
+  })
+})
+
 const CONTRAT_P2P = documentContrat('reporting', 'kpi_p2p').exemple
 
 describe('KpiP2pCard (AANA45)', () => {

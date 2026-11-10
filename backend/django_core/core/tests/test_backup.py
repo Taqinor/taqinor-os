@@ -85,6 +85,21 @@ class BackupTests(TestCase):
                     self.assertIn(champ, resp.data)
         self.assertEqual(BackupRun.objects.count(), 1)
 
+    def test_kind_systeme_refuse_400(self):
+        """ADCG40 — db_dump / restore_drill jamais créés ni transformés par une société."""
+        for kind in (BackupRun.KIND_RESTORE_DRILL, BackupRun.KIND_DB_DUMP):
+            refus = self._create(self.admin, {'kind': kind})
+            self.assertEqual(refus.status_code, status.HTTP_400_BAD_REQUEST, kind)
+            self.assertIn('kind', refus.data)
+        self.assertFalse(BackupRun.objects.exists())
+        resp = self._create(self.admin, {'kind': 'export'})
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        req = self.factory.patch('/sauvegardes/', {'kind': 'restore_drill'}, format='json')
+        force_authenticate(req, user=self.admin)
+        patch = BackupRunViewSet.as_view({'patch': 'partial_update'})(req, pk=resp.data['id'])
+        self.assertEqual(patch.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(BackupRun.objects.get(pk=resp.data['id']).kind, BackupRun.KIND_EXPORT)
+
     def test_create_requires_admin_tier(self):
         resp = self._create(self.user, {'kind': 'export'})
         self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)

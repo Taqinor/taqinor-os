@@ -213,3 +213,23 @@ describe('pages/api/visite.ts — proxy same-origin, même discipline que les au
     expect(src).toContain('const validated = validateVisiteBody(body);');
   });
 });
+
+describe('ADCG56 — base de l’API ERP des pages SSR', () => {
+  const PAGES = [
+    '../src/pages/confiance.astro',
+    '../src/pages/proposition/[...token].astro',
+    '../src/pages/questionnaire/[token].astro',
+    '../src/pages/status/index.astro',
+    '../src/pages/status/[incident].astro',
+    '../src/pages/suivi/[token].astro',
+  ];
+
+  it('les pages SSR lisent la base API par resolveApiBase, jamais import.meta.env.PUBLIC_API_BASE', () => {
+    for (const page of PAGES) {
+      const src = read(page);
+      expect(src, page).not.toContain('import.meta.env.PUBLIC_API_BASE');
+      expect(src, page).toMatch(/const API_BASE = resolveApiBase\(\);/);
+      expect(src, page).toMatch(/import \{[^}]*\bresolveApiBase\b[^}]*\} from '\.{1,2}\/api\/_apiBase';/);
+    }
+  });
+});

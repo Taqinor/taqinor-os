@@ -257,8 +257,8 @@ def _compute_jours_depuis_dernier_drill_reussi(company):
     (``company`` nul — toute l'instance, pas une société), donc la valeur est
     la même pour toutes les sociétés — cohérent avec le reste du catalogue où
     un KPI transverse n'a pas besoin d'être différencié par société pour être
-    surveillable par société. ``None`` tant qu'aucun drill réussi n'a jamais
-    été enregistré (jamais un 0 trompeur)."""
+    surveillable par société. Sans aucun drill réussi : jours depuis le plus
+    ancien run système (ADCG36) ; ``None`` seulement sans aucun run système."""
     from django.utils import timezone
 
     from core.models import BackupRun
@@ -268,13 +268,20 @@ def _compute_jours_depuis_dernier_drill_reussi(company):
             kind=BackupRun.KIND_RESTORE_DRILL,
             statut=BackupRun.STATUT_TERMINE,
             purge_is_deleted=False,
+            company__isnull=True,  # ADCG36 : un run de société n'est jamais compté
         )
         .exclude(termine_le__isnull=True)
         .order_by('-termine_le')
         .first()
     )
     if dernier is None:
-        return None
+        # ADCG36 — aucun exercice JAMAIS réussi : jours depuis le plus ancien
+        # run système (dump ou exercice), pour que l'alerte sonne ; aucun ⇒ None.
+        premier = (BackupRun.objects.filter(
+            company__isnull=True,
+            kind__in=[BackupRun.KIND_DB_DUMP, BackupRun.KIND_RESTORE_DRILL])
+            .order_by('created_at').first())
+        return None if premier is None else Decimal((timezone.now() - premier.created_at).days)
     return Decimal((timezone.now() - dernier.termine_le).days)
 
 
