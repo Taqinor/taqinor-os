@@ -102,3 +102,41 @@ class Ntapi26TestLiveKeysTests(TestCase):
             environnement=ENV_LIVE)
         resp = _key_client(live_raw).post('/api/public/v1/sandbox/reset/')
         self.assertEqual(resp.status_code, 403)
+
+    def test_emission_bornee_au_code_dedie_et_aux_portees_detenues(self):
+        """APFS110 (C-APFS-040, D-APFS-1) — clés et webhooks exigent
+        ``integrations_gerer`` en plus du palier, et n'émettent que les portées
+        / évènements dont l'acteur porte le code ; compte hérité : repli."""
+        from unittest import mock
+        from django.core.management import call_command
+        from apps.roles.models import Role
+        call_command('init_roles', verbosity=0)
+        roles = {r.nom: r for r in Role.objects.filter(company=self.co)}
+        roles['integrateur'] = Role.objects.create(
+            company=self.co, nom='Intégrateur APFS110',
+            permissions=['users_voir', 'integrations_gerer', 'crm_voir'])
+        cle = {'label': 'k', 'scopes': ['read:leads', 'read:factures', 'devis:write']}
+        hook = {'label': 'h', 'target_url': 'https://example.test/hook',
+                'events': ['facture.created', 'lead.created']}
+
+        def appels(nom):
+            user = User.objects.create_user(
+                username=f'apfs110-{nom[:12].replace(" ", "-")}', password='x',
+                company=self.co, role=roles[nom])
+            api = _session_client(user)
+            with mock.patch('apps.publicapi.serializers.validate_webhook_target_url',
+                            side_effect=lambda u: u):
+                return (api.post('/api/django/publicapi/keys/', cle, format='json'),
+                        api.post('/api/django/publicapi/webhooks/', hook, format='json'))
+        for nom in ('Admin RH', 'Admin Ventes', 'Technicien responsable', 'Commercial responsable'):
+            with self.subTest(role=nom):
+                self.assertEqual([r.status_code for r in appels(nom)], [403, 403])
+        self.assertFalse(ApiKey.objects.filter(company=self.co).exists())
+        k, h = appels('integrateur')
+        self.assertEqual((k.status_code, h.status_code), (400, 400))
+        self.assertIn('Portée non détenue : read:factures', k.data['scopes'])
+        self.assertIn('Évènement non détenu : facture.created', h.data['events'])
+        self.assertFalse(ApiKey.objects.filter(company=self.co).exists())
+        self.assertEqual([r.status_code for r in appels('Directeur')], [201, 201])
+        legacy = _session_client(self.admin)
+        self.assertEqual(legacy.post('/api/django/publicapi/keys/', cle, format='json').status_code, 201)

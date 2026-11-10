@@ -14,7 +14,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from authentication.permissions import IsAdminOrResponsableTier
+from authentication.permissions import HasPermissionOrLegacy, IsAdminOrResponsableTier
 from core.conflit_etat import ConflitEtat
 from core.api_usage import plan_pour_societe
 
@@ -42,9 +42,30 @@ def _no_store(response):
     return response
 
 
+# APFS110 (D-APFS-1) — l'écran API & webhooks exige le code dédié EN PLUS du palier.
+_GARDE_INTEGRATIONS = [IsAdminOrResponsableTier, HasPermissionOrLegacy('integrations_gerer')]
+
+
+def portees_non_detenues(user, scopes=(), events=()):
+    """APFS110 — refus par champ des portées / évènements dont l'acteur ne porte
+    pas le code ERP : une clé n'ouvre jamais plus que ce que lit son émetteur."""
+    from core.permissions import _user_has_or_legacy
+    from .portees import CODE_DE_PORTEE, CODE_DE_PREFIXE_EVENEMENT
+    erreurs = {}
+    for champ, valeurs, code_de, libelle in (
+            ('scopes', scopes, CODE_DE_PORTEE.get, 'Portée non détenue'),
+            ('events', events, lambda e: CODE_DE_PREFIXE_EVENEMENT.get(str(e).split('.')[0]),
+             'Évènement non détenu')):
+        refus = [f'{libelle} : {v}' for v in valeurs
+                 if code_de(v) and not _user_has_or_legacy(user, code_de(v))]
+        if refus:
+            erreurs[champ] = refus
+    return erreurs
+
+
 class _CompanyScopedMixin:
     """Filtre toujours par la société de l'utilisateur connecté."""
-    permission_classes = [IsAdminOrResponsableTier]
+    permission_classes = _GARDE_INTEGRATIONS
 
     def get_queryset(self):
         return super().get_queryset().filter(company=self.request.user.company)
@@ -59,7 +80,7 @@ _CATALOGUE_REPONSE = inline_serializer('PublicApiCatalogue', {
 
 class CatalogueView(APIView):
     """Catalogue des scopes & évènements pour peupler l'écran Paramètres."""
-    permission_classes = [IsAdminOrResponsableTier]
+    permission_classes = _GARDE_INTEGRATIONS
 
     @extend_schema(responses=_CATALOGUE_REPONSE)
     def get(self, request):
@@ -91,7 +112,7 @@ class DocsView(APIView):
     au palier admin/responsable, comme le catalogue, car elle est consultée
     depuis l'écran Paramètres → API & Webhooks.
     """
-    permission_classes = [IsAdminOrResponsableTier]
+    permission_classes = _GARDE_INTEGRATIONS
 
     @extend_schema(responses=_DOCS_REPONSE)
     def get(self, request):
@@ -219,7 +240,7 @@ class OcrToCrmView(APIView):
     par leurs models/views. La société vient toujours de l'utilisateur connecté.
     Réservée au palier admin/responsable (même portée que la validation OCR).
     """
-    permission_classes = [IsAdminOrResponsableTier]
+    permission_classes = _GARDE_INTEGRATIONS
     parser_classes = PARSEURS_JSON  # ENF11 — D2 : vue sans fichier = JSON seul
 
     @extend_schema(request=OcrToCrmSerializer,
@@ -380,7 +401,7 @@ class MonitoringView(APIView):
     un admin ne peut pas lire le monitoring d'une autre société. Réservé au
     palier admin/responsable, comme le reste de l'écran Paramètres → API.
     """
-    permission_classes = [IsAdminOrResponsableTier]
+    permission_classes = _GARDE_INTEGRATIONS
 
     def get(self, request):
         from .monitoring import (
@@ -441,6 +462,8 @@ class ApiKeyViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         in_ser = ApiKeyCreateSerializer(data=request.data)
         in_ser.is_valid(raise_exception=True)
+        if refus := portees_non_detenues(request.user, in_ser.validated_data['scopes']):
+            raise ValidationError(refus)
         company = request.user.company
         environnement = in_ser.validated_data.get('environnement') or ENV_LIVE
         if environnement == ENV_TEST:
@@ -475,7 +498,7 @@ class ApiKeyViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
     @extend_schema(request=RotationCleSerializer,
                    responses={201: ApiKeyRotationSerializer})
     @action(detail=True, methods=['post'],
-            permission_classes=[IsAdminOrResponsableTier])
+            permission_classes=_GARDE_INTEGRATIONS)
     def rotate(self, request, pk=None):
         """NTAPI23 — rotation sans coupure : émet une nouvelle clé (mêmes
         scopes/environnement), garde l'ancienne valide jusqu'à `expire_le`
@@ -484,6 +507,8 @@ class ApiKeyViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
         instance = self.get_object()
         corps = RotationCleSerializer(data=request.data)
         corps.is_valid(raise_exception=True)
+        if refus := portees_non_detenues(request.user, instance.scopes or []):
+            raise ValidationError(refus)
         grace_jours = corps.validated_data.get('grace_jours', 7)
         new_instance, raw_key = instance.rotate(
             grace_jours=grace_jours, created_by=request.user)
@@ -512,6 +537,8 @@ class WebhookViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        if refus := portees_non_detenues(request.user, events=serializer.validated_data.get('events') or []):
+            raise ValidationError(refus)
         self.perform_create(serializer)
         data = serializer.data
         # Le secret en clair n'est disponible QU'ICI, à la création.
@@ -696,7 +723,7 @@ class SandboxTryView(APIView):
     RÉEL contre le bac à sable NTAPI27 de la société courante (créé/seedé au
     besoin). Réservé au palier admin/responsable, comme le reste de l'écran
     Paramètres → API & Webhooks. Ne renvoie JAMAIS de donnée réelle."""
-    permission_classes = [IsAdminOrResponsableTier]
+    permission_classes = _GARDE_INTEGRATIONS
     parser_classes = [JSONParser]
 
     _RESOURCES = ('leads',)
