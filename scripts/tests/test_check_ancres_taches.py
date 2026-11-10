@@ -130,6 +130,22 @@ class AncresTests(unittest.TestCase):
         self.assertEqual(code, 1, sortie)
         self.assertIn("ECHEC BBB4", sortie)
 
+    def test_renommage_du_symbole_par_la_pr_bloque(self):
+        # ADCG80 (C-ADCG-043) — la tache n'a pas bouge, mais la PR renomme le symbole ancre.
+        (self.depot.racine / "backend" / "app").mkdir(parents=True)
+        (self.depot.racine / "backend" / "app" / "a.py").write_text("def f():\n    pass\n", encoding="utf-8")
+        self.depot.plan("CCC1 — voir `backend/app/a.py::f` fin", "CCC2 — voir `mod.py::deja_absente` fin")
+        self.depot.valider("base")
+        self.assertEqual(self.depot.lancer("--base", "HEAD")[0], 0)
+        (self.depot.racine / "backend" / "app" / "a.py").write_text("def _f():\n    pass\n", encoding="utf-8")
+        self.depot.valider("renomme f")
+        self.depot.git("branch", "-f", "base", "HEAD~1")
+        code, sortie = self.depot.lancer("--base", "base")
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("ECHEC CCC1 : backend/app/a.py::f", sortie)
+        self.assertNotIn("ECHEC CCC2", sortie)  # deja cassee a la base : rapport seul
+        self.assertIn("CCC2 : mod.py::deja_absente", sortie)
+
     def test_base_indisponible_traite_tout_comme_touche(self):
         self.depot.plan("BBB3 — voir `mod.py::absent` fin")
         os.environ.pop("GITHUB_ACTIONS", None)
