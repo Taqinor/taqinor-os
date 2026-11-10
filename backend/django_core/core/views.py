@@ -1792,7 +1792,7 @@ class ApiUsagePlanViewSet(TenantMixin, viewsets.GenericViewSet):
 
     def get_permissions(self):
         if self.request.method in ('PUT', 'PATCH', 'POST'):
-            return [IsAdminOrResponsableTier()]
+            return [IsAdminRole()]  # APFS41 (D-APFS-1) : plan de quotas = administrateur seul
         return [IsAuthenticatedInterne()]
 
     @extend_schema(request=ApiUsagePlanSerializer,
