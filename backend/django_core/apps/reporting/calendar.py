@@ -350,8 +350,8 @@ def calendar_reschedule(request):
             iv = scoper_interventions(
                 Intervention.objects.filter(**co), request.user).get(pk=obj_id)
             replanifier(iv, new_date, 'Agenda — glisser-déposer', request.user)
-        else:  # activite
-            act = Activity.objects.filter(**co).get(pk=obj_id)
+        else:  # activite — ACHT139 : hors de la vue des activités = 404
+            act = _activites_visibles(request.user, co).get(pk=obj_id)
             act.due_date = new_date
             act.save(update_fields=['due_date'])
     except (Installation.DoesNotExist, Intervention.DoesNotExist,

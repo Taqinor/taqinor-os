@@ -242,3 +242,28 @@ class TestCalendar(TestCase):
         autre = User.objects.create_user(
             username='autre-act', password='x', role_legacy='responsable', company=self.other)
         self.assertEqual(vus(autre), set())
+
+    def test_reschedule_activite_hors_vue_404(self):
+        """ACHT139 (C-ACHT-OPT1-137) — T sur A et P : 404, échéances
+        inchangées ; T sur A_T : 200 ; C sur P : 404 ; D sur A : 200 ; autre
+        société : 404."""
+        p = self._activites()
+        jour, cible = p['A'].due_date, (date.today() + timedelta(days=10)).isoformat()
+
+        def bouger(user, act):
+            return self._api_de(user).post('/api/django/reporting/calendar/reschedule/',
+                                           {'type': 'activite', 'id': act.pk, 'date': cible},
+                                           format='json').status_code
+        self.assertEqual(bouger(p['T'], p['A']), 404)
+        self.assertEqual(bouger(p['T'], p['P']), 404)
+        self.assertEqual(bouger(p['C'], p['P']), 404)
+        autre = User.objects.create_user(
+            username='autre-act2', password='x', role_legacy='responsable', company=self.other)
+        self.assertEqual(bouger(autre, p['A']), 404)
+        for k in ('A', 'P'):
+            p[k].refresh_from_db()
+            self.assertEqual(p[k].due_date, jour)
+        self.assertEqual(bouger(p['T'], p['A_T']), 200)
+        p['A_T'].refresh_from_db()
+        self.assertEqual(p['A_T'].due_date.isoformat(), cible)
+        self.assertEqual(bouger(p['D'], p['A']), 200)
