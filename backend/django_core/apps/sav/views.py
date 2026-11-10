@@ -1789,9 +1789,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
 
-    @staticmethod
-    def _annuler_ticket(ticket, user, motif):
-        """ACSV108 — porte unique de l'annulation (unitaire et en lot)."""
+    def _annuler_ticket(self, ticket, user, motif):
+        # ACSV108 — porte unique de l'annulation (unitaire et en lot).
         if ticket.annule:
             return
         if ticket.prets_equipement.filter(statut='en_cours').exists():
