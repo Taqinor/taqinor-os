@@ -13,6 +13,7 @@ from core.champs_stricts import (
     DecimalSouple, IdInconnu404Mixin,
 )
 from core.conflit_etat import ConflitEtat
+from core.verrou_optimiste import VerrouOptimisteSerializerMixin
 from core.parseurs import ObjetJSON
 from core.mixins import SameCompanyFKSerializerMixin
 from core.serializers import (
@@ -499,6 +500,7 @@ _MSG_JOURS_IRRIGATION = "Jours d'irrigation par semaine : entre 0 et 7 (0 exclu)
 
 class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
                      _CompanyScopedRelationsMixin,
+                     VerrouOptimisteSerializerMixin,  # NTPLT17 — opt-in
                      serializers.ModelSerializer):
     # api-fuzz #1022 — ``custom_data`` publié comme OBJET nullable (un tableau
     # « conforme » au JSON libre était refusé 400 « Format invalide. »).

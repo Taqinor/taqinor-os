@@ -5,6 +5,8 @@ from django.utils import timezone
 # AUD105/AUD106/AUD107 — la chaîne d'argent des documents client vit dans
 # un module SANS modèle, pour que ``apps.ventes.models`` (NoteDebit)
 # puisse l'importer en tête de fichier sans toucher l'ordre de chargement.
+from core.champs_plateforme import VerrouOptimisteMixin
+
 from .totaux import TotauxDocumentMixin
 
 # ODX17 — App Facturation, étape 1 (modèles, state-only).
@@ -30,7 +32,7 @@ from .totaux import TotauxDocumentMixin
 DEFAULT_ECHEANCE_DAYS = 30
 
 
-class Facture(TotauxDocumentMixin, models.Model):
+class Facture(TotauxDocumentMixin, VerrouOptimisteMixin, models.Model):
     class Statut(models.TextChoices):
         BROUILLON = 'brouillon', 'Brouillon'
         EMISE = 'emise', 'Émise'

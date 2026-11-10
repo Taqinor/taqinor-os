@@ -12,6 +12,7 @@ from core.champs_stricts import (
 from core.mixins import SameCompanyFKSerializerMixin
 from core.parseurs import ListeJSON, ObjetJSON
 from core.serializer_mixins import _user_may_see
+from core.verrou_optimiste import VerrouOptimisteSerializerMixin
 from core.serializers import (
     ChampsStrictsMixin, CompanyScopedPrimaryKeyRelatedField, request_company_id,
 )
@@ -1092,6 +1093,7 @@ class DevisWriteSerializer(IdInconnu404Mixin, DecimalSoupleMixin,
                            SameCompanyFKSerializerMixin,
                            TiersPayeurValidationMixin,
                            EcheancierValidationMixin,
+                           VerrouOptimisteSerializerMixin,  # NTPLT17 — opt-in
                            serializers.ModelSerializer):
     """Création/modification sans lignes imbriquées.
 
@@ -1184,8 +1186,9 @@ class DevisWriteSerializer(IdInconnu404Mixin, DecimalSoupleMixin,
             'prix_cible_kwc', 'prix_par_kwc', 'remise_approuvee',
             # ADEV33 — profondeur de remise approuvée (lecture seule).
             'remise_approuvee_pct',
-            # Versionnage / cycle de vie technique.
-            'version', 'is_active', 'custom_data', 'devise', 'taux_change',
+            # Versionnage / cycle de vie technique. ``lock_version`` : verrou
+            # optimiste NTPLT17 (lecture seule, ``version`` = révision V1/V2).
+            'version', 'lock_version', 'is_active', 'custom_data', 'devise', 'taux_change',
             # Calepinage 3D + rendus. ``roof_layout`` et ``layout_hash`` sont
             # posés par ``POST /devis/<id>/layout/``, jamais par ce corps.
             'roof_layout', 'roof_image', 'layout_hash', 'pdf_render_meta',

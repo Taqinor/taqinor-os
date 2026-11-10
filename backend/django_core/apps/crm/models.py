@@ -5,6 +5,7 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models.functions import Lower  # noqa: F401 — façade crm.models (golden SPL70) (D-ENF22)
 
+from core.champs_plateforme import VerrouOptimisteMixin
 from core.models import SoftDeleteModel, TenantModel
 
 from .stages import STAGE_CHOICES, NEW
@@ -220,7 +221,7 @@ def valider_facture_tranche_declaree(valeur):
 Client = 'crm.Client'
 
 
-class Lead(LeadPompageMixin, SoftDeleteModel):
+class Lead(LeadPompageMixin, VerrouOptimisteMixin, SoftDeleteModel):
     """A sales lead / opportunity — distinct from a Client (customer) record.
 
     Leads carry a pipeline stage (canonical from STAGES.py) and a source/origin

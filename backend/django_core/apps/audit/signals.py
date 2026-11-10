@@ -45,7 +45,9 @@ _STATUS_FIELDS = ('statut', 'stage')
 # dans tout le backend (le reste des lignes UPDATE avaient ``changes=None``).
 # Champs de bookkeeping exclus du diff automatique : ils changent à CHAQUE
 # sauvegarde sans jamais représenter un changement métier lisible.
-_DIFF_NOISE_FIELDS = {'date_modification', 'updated_at', 'modified_at'}
+# NTPLT17 — ``lock_version`` (verrou optimiste) avance à chaque sauvegarde.
+_DIFF_NOISE_FIELDS = {'date_modification', 'updated_at', 'modified_at',
+                      'lock_version'}
 # Longueur max d'une valeur stockée dans le diff — évite qu'un gros champ
 # texte (ex. ``KbArticle.corps``) ne fasse exploser ``AuditLog.changes`` à
 # chaque édition (même esprit que la troncature de ``object_repr`` à 255).

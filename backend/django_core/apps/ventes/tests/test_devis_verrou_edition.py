@@ -197,6 +197,47 @@ class TestDevisVerrouEdition(TestCase):
         self.assertEqual(r.status_code, 409, r.content)
         self.assertEqual(r.json()['updated_by_nom'], 'Sami Alaoui')
 
+    def test_lock_version_absent_comportement_inchange(self):
+        # NTPLT17 — sans ``lock_version`` dans le corps, rien ne change :
+        # deux PATCH successifs « à l'aveugle » passent, la version avance.
+        devis = self._devis(8)
+        api = self._api(self.user_a)
+        url = f'/api/django/ventes/devis/{devis.id}/'
+        v0 = api.get(url).data['lock_version']
+        for note in ('un', 'deux'):
+            r = api.patch(url, {'note': note}, format='json')
+            self.assertEqual(r.status_code, 200, r.content)
+        devis.refresh_from_db()
+        self.assertEqual(devis.note, 'deux')
+        self.assertGreater(devis.lock_version, v0)
+
+    def test_lock_version_perimee_409_a_jour_passe(self):
+        # NTPLT17 — A et B ouvrent le même devis ; A enregistre, B (version
+        # périmée) reçoit 409 avec l'état courant et n'écrase rien.
+        devis = self._devis(9)
+        api_a, api_b = self._api(self.user_a), self._api(self.user_b)
+        url = f'/api/django/ventes/devis/{devis.id}/'
+        v = api_b.get(url).data['lock_version']
+        r = api_a.patch(url, {'note': 'A', 'lock_version': v}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertGreater(r.data['lock_version'], v)
+        r = api_b.patch(url, {'note': 'B', 'lock_version': v}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        corps = r.json()
+        devis.refresh_from_db()
+        self.assertEqual(devis.note, 'A')
+        self.assertEqual(corps['code'], 'conflit_version')
+        self.assertEqual(corps['lock_version'], devis.lock_version)
+        self.assertEqual(corps['actuel']['note'], 'A')
+        r = api_b.patch(url, {'note': 'B', 'lock_version': corps['lock_version']},
+                        format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        devis.refresh_from_db()
+        self.assertEqual(devis.note, 'B')
+        r = api_b.patch(url, {'note': 'C', 'lock_version': 'abc'}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('lock_version', r.json())
+
     def test_etude_params_porte_updated_at_et_ignore_le_jeton(self):
         devis = self._devis(7)
         api = self._api(self.user_a)

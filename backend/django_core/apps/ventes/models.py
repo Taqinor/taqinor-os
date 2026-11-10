@@ -1,6 +1,7 @@
 from django.db import models
 from django.conf import settings
 
+from core.champs_plateforme import VerrouOptimisteMixin
 from core.models import TenantModel
 # STKCAT21 — LE vocabulaire de rôles de devis, déclaré une seule fois dans la
 # couche de FONDATION (``core``), parce que ``apps.stock`` doit lire le même
@@ -33,7 +34,7 @@ __all__ = [
 # stock⇄ventes import cycles without any schema change).
 
 
-class Devis(models.Model):
+class Devis(VerrouOptimisteMixin, models.Model):
     class Statut(models.TextChoices):
         BROUILLON = 'brouillon', 'Brouillon'
         ENVOYE = 'envoye', 'Envoyé'

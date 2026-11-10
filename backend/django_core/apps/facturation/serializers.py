@@ -29,6 +29,7 @@ from core.champs_stricts import (
 from core.conflit_etat import ConflitEtat
 from core.mixins import SameCompanyFKSerializerMixin
 from core.unicite import UniciteEn409Mixin
+from core.verrou_optimiste import VerrouOptimisteSerializerMixin
 from apps.ventes.domain.bornes import (
     MOTIF_MONTANT_POSITIF, montant_saisi, pourcentage_saisi,
     total_ligne_hors_capacite,
@@ -548,6 +549,7 @@ _MONTANT_FACTURE_PUBLIE = {'type': 'string', 'format': 'decimal',
 
 class FactureWriteSerializer(IdInconnu404Mixin, UniciteEn409Mixin, _BornesArgentMixin,
                              SameCompanyFKSerializerMixin,
+                             VerrouOptimisteSerializerMixin,  # NTPLT17 — opt-in
                              serializers.ModelSerializer):
     """Création/modification sans lignes imbriquées.
 
@@ -601,7 +603,7 @@ class FactureWriteSerializer(IdInconnu404Mixin, UniciteEn409Mixin, _BornesArgent
             'fichier_ubl', 'devise', 'taux_change', 'dgi_statut',
             'dgi_reference', 'dgi_motif_rejet', 'periode_service_debut',
             'periode_service_fin', 'updated_at', 'updated_by', 'entite',
-            'company',
+            'company', 'lock_version',  # NTPLT17 — lecture seule
         ]
         # company is force-assigned in perform_create — never accept it from the body.
         # XFAC29 : dgi_statut/reference/motif_rejet sont posés UNIQUEMENT par
