@@ -474,3 +474,7 @@ class EventType(models.TextChoices):
     MONITORING_SOUS_PERFORMANCE = (
         'monitoring_sous_performance',
         'Sous-performance détectée sur un système')
+    # ASOC46 — un client a ouvert une demande SAV ou déposé un justificatif
+    # sur le portail (``apps.portail.services.notifier_demande_client``).
+    PORTAIL_DEMANDE_CLIENT = (
+        'portail_demande_client', 'Demande ou dépôt du client (portail)')

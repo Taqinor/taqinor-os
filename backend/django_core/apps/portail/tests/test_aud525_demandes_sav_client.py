@@ -158,3 +158,43 @@ class AUD525DemandesSavClientTests(TestCase):
         api.force_authenticate(user=fournisseur)
         resp = api.post(BASE, {'sujet': 'Panne'}, format='json')
         self.assertEqual(resp.status_code, 403, resp.content)
+
+    def test_demande_et_depot_notifient_l_interne(self):
+        """ASOC46 — demande SAV puis justificatif : 2 notifications
+        `portail_demande_client` au responsable ; notification en panne : le
+        dépôt rend 201 quand même."""
+        from unittest import mock
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        from apps.notifications.models import Notification
+
+        resp_interne = CustomUser.objects.create_user(
+            username='asoc46-resp', password='motdepasse-test-1234',
+            company=self.company, role_legacy='responsable')
+        stockage = mock.patch(
+            'apps.records.storage.store_attachment', return_value=({
+                'file_key': f'attachments/{self.company.id}/f.pdf',
+                'filename': 'facture.pdf', 'size': 10,
+                'mime': 'application/pdf'}, None))
+
+        def deposer():
+            return self.api.post('/api/django/portail/mes-documents/', {
+                'type_document': 'facture_onee', 'libelle': 'Facture ONEE',
+                'fichier': SimpleUploadedFile(
+                    'facture.pdf', b'%PDF-1.4', 'application/pdf'),
+            }, format='multipart')
+
+        demande = self.api.post(BASE, {'sujet': 'Onduleur muet'}, format='json')
+        self.assertEqual(demande.status_code, 201, demande.content)
+        with stockage:
+            self.assertEqual(deposer().status_code, 201)
+        notes = Notification.objects.filter(
+            user=resp_interne, event_type='portail_demande_client')
+        self.assertEqual(notes.count(), 2)
+        self.assertTrue(all('Alpha' in n.title for n in notes))
+        with stockage, mock.patch(
+                'apps.notifications.services.notify_many',
+                side_effect=RuntimeError('panne')):
+            self.assertEqual(deposer().status_code, 201)
+        self.assertEqual(notes.count(), 2)

@@ -1176,6 +1176,8 @@ class MesDemandesSavPortailViewSet(viewsets.ViewSet):
         _auditer_portail(
             AuditLog.Action.CREATE, request, instance=demande,
             detail='Ticket SAV ouvert depuis le portail client')
+        services.notifier_demande_client(
+            company, client_id, 'nouvelle demande SAV', sujet)
         return Response(self._ligne(demande),
                         status=status.HTTP_201_CREATED)
 
@@ -1807,6 +1809,8 @@ class MesDocumentsPortailViewSet(viewsets.ViewSet):
         _auditer_portail(
             AuditLog.Action.CREATE, request, instance=document,
             detail='Justificatif déposé depuis le portail client')
+        services.notifier_demande_client(
+            company, client_id, 'justificatif déposé', document.libelle or '')
         return Response(
             DocumentClientPortailSerializer(document).data,
             status=status.HTTP_201_CREATED)

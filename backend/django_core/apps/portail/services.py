@@ -894,3 +894,21 @@ def est_admin_portail_client(user):
     rôle ``ecriture``, ne gère jamais l'équipe lui-même."""
     from .models import InvitationPortail
     return not InvitationPortail.objects.filter(utilisateur_cree=user).exists()
+
+
+def notifier_demande_client(company, client_id, titre, detail):
+    """ASOC46 — prévient l'interne (type ``portail_demande_client``, routage
+    par défaut) d'un geste du client sur le portail. BEST-EFFORT : un échec de
+    notification ne fait jamais échouer le geste, déjà enregistré."""
+    try:
+        from apps.crm.selectors import client_label
+        from apps.notifications.services import notify_many, resolve_recipients
+
+        nom = client_label(company, client_id) or 'Un client'
+        notify_many(
+            resolve_recipients(company, 'portail_demande_client'),
+            'portail_demande_client', f'{nom} : {titre}', body=detail,
+            link='/portail/administration', company=company)
+    except Exception:  # noqa: BLE001 — best-effort, ne casse jamais (D-ENF22-BLE001)
+        logger.warning('ASOC46 : notification portail échouée (client %s)',
+                       client_id, exc_info=True)
