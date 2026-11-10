@@ -898,7 +898,14 @@ class SchemaVisitesPublieTests(SimpleTestCase):
             noeud['$ref'].rsplit('/', 1)[-1]]
 
     def test_la_liste_est_un_tableau_de_lignes(self):
-        schema = self._reponse('get', 'visites/')
+        # ADCG50 — la liste est paginée : le schéma publié est l'enveloppe
+        # standard (composant Paginated…List) dont `results` est le tableau
+        # de lignes — jamais un tableau DE tableaux.
+        enveloppe = self._composant(self._reponse('get', 'visites/'))
+        self.assertEqual(enveloppe['type'], 'object')
+        self.assertTrue({'count', 'next', 'previous', 'results'}
+                        <= set(enveloppe['properties']))
+        schema = enveloppe['properties']['results']
         self.assertEqual(schema['type'], 'array')
         ligne = self._composant(schema['items'])
         self.assertEqual(ligne['type'], 'object')

@@ -134,13 +134,13 @@ class PorteeDureTests(VtaBase):
         sienne = self._visite(self.bureau)
         self._visite(self.terrain)
         lignes = auth(self.bureau).get(
-            '/api/django/visites/visites/?mine=1').data
+            '/api/django/visites/visites/?mine=1').data['results']
         self.assertEqual([ligne['id'] for ligne in lignes], [sienne.id])
 
         # Le même paramètre n'ouvre RIEN à un terrain.
         self._visite(self.collegue)
         lignes = auth(self.terrain).get(
-            '/api/django/visites/visites/?mine=1').data
+            '/api/django/visites/visites/?mine=1').data['results']
         self.assertTrue(all(ligne['id'] != sienne.id for ligne in lignes))
 
     def test_la_societe_reste_la_premiere_frontiere(self):
