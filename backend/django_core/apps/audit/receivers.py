@@ -46,7 +46,10 @@ def _record_pdf_generation(sender, instance, kind, **kwargs):
     ``record`` n'élève jamais.
     """
     detail = _PDF_DETAIL.get(kind, 'PDF généré')
-    recorder.record(AuditLog.Action.PDF, instance=instance, detail=detail)
+    # ASOC8 — hors requête (tâche Celery), l'acteur vient du signal.
+    acteur = {'user': kwargs['user']} if 'user' in kwargs else {}
+    recorder.record(AuditLog.Action.PDF, instance=instance, detail=detail,
+                    **acteur)
 
 
 @receiver(devis_expired,

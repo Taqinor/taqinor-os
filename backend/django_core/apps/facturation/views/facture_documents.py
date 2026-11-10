@@ -15,7 +15,7 @@ from rest_framework.response import Response
 from authentication.permissions import IsResponsableOrAdmin
 from apps.roles.permissions import DroitDeLaGrille  # ASEC50
 from apps.ventes.views import openapi_docs as D
-from apps.ventes.models import EmailLog, Facture
+from apps.ventes.models import EmailLog
 from apps.ventes.utils.corps import valider_corps
 
 logger = logging.getLogger('apps.ventes.views.facture')
@@ -31,13 +31,10 @@ class FactureDocumentsActionsMixin:
     def generer_pdf(self, request, pk=None):
         facture = self.get_object()
         from apps.ventes.tasks import task_generate_facture_pdf
-        task = task_generate_facture_pdf.delay(facture.id)
-        # M4 — événement découplé : ventes émet, le satellite audit journalise
-        # (AuditLog.Action.PDF). ventes n'importe plus apps.audit ; le signal
-        # est synchrone (même requête), donc l'acteur/société restent identiques.
-        from core.events import document_pdf_generated
-        document_pdf_generated.send(
-            sender=Facture, instance=facture, kind='facture')
+        # ASOC8 — l'audit PDF part de la tâche APRÈS le rendu réussi, au nom
+        # du demandeur (plus à la mise en file : la tâche peut échouer).
+        task = task_generate_facture_pdf.delay(
+            facture.id, user_id=request.user.id)
         return Response(
             {'task_id': task.id, 'detail': 'Génération PDF lancée.'},
             status=status.HTTP_202_ACCEPTED,
