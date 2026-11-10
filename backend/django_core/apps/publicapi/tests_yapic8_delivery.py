@@ -124,3 +124,85 @@ class Yapic8DeliveryTests(TestCase):
         d = WebhookDelivery.objects.get()
         self.assertEqual(d.status, WebhookDelivery.Statut.FAILED)
         retry_mock.assert_not_called()
+
+
+class Ntplt11WebhookOutboxTests(TestCase):
+    """NTPLT11 — la mise en file d'un webhook est un effet DURABLE de l'outbox :
+    un broker/Redis coupé au commit ne perd rien, le worker
+    ``core.dispatch_outbox`` rejoue au redémarrage, une seule fois par
+    webhook. Seule la frontière Celery (``delay``) est simulée."""
+
+    def setUp(self):
+        self.co = _company('ntplt11-wh', 'NTPLT11 WH')
+        self.hook = Webhook.objects.create(
+            company=self.co, target_url='https://example.test/hook',
+            secret='s3cr3t', events=[EVENT_LEAD_CREATED], enabled=True)
+
+    def _plus_tard(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        return timezone.now() + timedelta(hours=2)
+
+    def test_broker_coupe_au_commit_puis_rejoue_une_fois(self):
+        from kombu.exceptions import OperationalError
+
+        from core import dispatch_outbox
+        from core.models import OutboxEvent
+        with mock.patch.object(
+                deliver_webhook, 'delay',
+                side_effect=OperationalError('Redis indisponible')), \
+                self.captureOnCommitCallbacks(execute=True):
+            delivery.dispatch_event(self.co.id, EVENT_LEAD_CREATED, {'id': 7})
+        ligne = OutboxEvent.objects.get(
+            company=self.co, event_name=delivery.EFFET_WEBHOOK)
+        # Rien n'est perdu : la ligne attend son rejeu (backoff).
+        self.assertEqual(ligne.statut, OutboxEvent.STATUT_FAILED)
+        self.assertEqual(ligne.tentatives, 1)
+        # Redis revient : le worker rejoue — UNE mise en file, même event_id.
+        with mock.patch.object(deliver_webhook, 'delay') as envoi:
+            dispatch_outbox.dispatch_pending(now=self._plus_tard())
+            dispatch_outbox.dispatch_pending(now=self._plus_tard())
+        envoi.assert_called_once()
+        args, _kw = envoi.call_args
+        self.assertEqual(args[:2], (self.hook.id, EVENT_LEAD_CREATED))
+        self.assertEqual(args[2]['id'], 7)
+        self.assertEqual(args[2]['event_id'],
+                         ligne.payload['payload']['event_id'])
+        ligne.refresh_from_db()
+        self.assertEqual(ligne.statut, OutboxEvent.STATUT_DELIVERED)
+
+    def test_echec_partiel_ne_remet_pas_en_file_le_webhook_deja_servi(self):
+        from kombu.exceptions import OperationalError
+
+        from core import dispatch_outbox
+        from core.models import OutboxEvent
+        second = Webhook.objects.create(
+            company=self.co, target_url='https://example.test/hook2',
+            secret='s2', events=[EVENT_LEAD_CREATED], enabled=True)
+
+        def broker(webhook_id, *_a):
+            if webhook_id == second.id:
+                raise OperationalError('Redis indisponible')
+
+        with mock.patch.object(deliver_webhook, 'delay',
+                               side_effect=broker) as envoi, \
+                self.captureOnCommitCallbacks(execute=True):
+            delivery.dispatch_event(self.co.id, EVENT_LEAD_CREATED, {'id': 8})
+        self.assertEqual(envoi.call_count, 2)
+        ligne = OutboxEvent.objects.get(
+            company=self.co, event_name=delivery.EFFET_WEBHOOK)
+        self.assertEqual(ligne.statut, OutboxEvent.STATUT_FAILED)
+        with mock.patch.object(deliver_webhook, 'delay') as envoi:
+            dispatch_outbox.dispatch_pending(now=self._plus_tard())
+        # Seul le webhook en échec est rejoué — le premier n'est jamais doublé.
+        self.assertEqual([c.args[0] for c in envoi.call_args_list],
+                         [second.id])
+
+    def test_sans_webhook_abonne_aucune_ligne_outbox(self):
+        from core.models import OutboxEvent
+        self.hook.enabled = False
+        self.hook.save(update_fields=['enabled'])
+        with self.captureOnCommitCallbacks(execute=True):
+            delivery.dispatch_event(self.co.id, EVENT_LEAD_CREATED, {'id': 9})
+        self.assertFalse(OutboxEvent.objects.filter(
+            event_name=delivery.EFFET_WEBHOOK).exists())

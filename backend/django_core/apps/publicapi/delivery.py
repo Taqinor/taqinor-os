@@ -265,27 +265,81 @@ def dispatch_event(company_id, event, payload):
     # et une table `Webhook` momentanément illisible (early-return ci-dessous)
     # ne doit pas créer un TROU dans le journal consommable.
     _journaliser_flux(company_id, event, payload)
+    # NTPLT11 — la mise en file passe par l'OUTBOX DURABLE (`core.events.
+    # enqueue_durable`) : la ligne est écrite DANS la transaction (annulée
+    # avec elle — AANA31 tient toujours), la mise en file est tentée AU
+    # COMMIT, et un broker/Redis coupé à cet instant ne perd plus rien — le
+    # worker `core.dispatch_outbox` la rejoue au redémarrage. Aucune ligne si
+    # aucun webhook actif n'est abonné : l'outbox ne grossit pas pour rien.
     from django.db import transaction
     try:
-        transaction.on_commit(
-            lambda: _mettre_en_file(company_id, event, payload))
+        # Point de sauvegarde : une erreur base ici ne casse jamais la
+        # transaction de l'appelant.
+        with transaction.atomic():
+            if not _webhooks_abonnes(company_id, event):
+                return
+            from core.events import enqueue_durable
+            enqueue_durable(
+                EFFET_WEBHOOK,
+                {'company_id': company_id, 'event': event,
+                 'payload': payload},
+                company=company_id)
     except Exception:  # noqa: BLE001 — jamais bloquant pour l'appelant (D-ENF22-BLE001)
         logger.exception('Could not schedule webhook delivery %s', event)
 
 
-def _mettre_en_file(company_id, event, payload):
+#: NTPLT11 — nom de l'effet durable « mettre en file les webhooks abonnés »
+#: (``OutboxEvent.event_name``, handler enregistré par ``PublicApiConfig``).
+EFFET_WEBHOOK = 'publicapi.webhook'
+
+
+def _webhooks_abonnes(company_id, event):
+    """Webhooks ACTIFS de la société abonnés à ``event`` (avant filtres
+    fins NTAPI12, évalués à la mise en file)."""
+    return [w for w in Webhook.objects.filter(company_id=company_id,
+                                              enabled=True)
+            if w.subscribes_to(event)]
+
+
+def livrer_effet_webhook(outbox_event):
+    """NTPLT11 — handler DURABLE de ``EFFET_WEBHOOK`` (``subscribe_durable``).
+
+    Met en file ``deliver_webhook`` pour chaque webhook abonné. IDEMPOTENT :
+    chaque mise en file réussie est marquée PAR WEBHOOK
+    (``effet_deja_applique``) — si le broker tombe au 2e webhook, le rejeu
+    ne re-met pas le 1er en file. Une mise en file en échec lève
+    ``EffetsPartiels`` : l'outbox garde la ligne et la rejoue (backoff), au
+    lieu de la perdre en silence.
+    Le même ``event_id`` (posé dans le payload à l'émission) traverse toutes
+    les tentatives : le consommateur déduplique dessus (NTAPI10)."""
+    from core.dispatch_outbox import (
+        effet_deja_applique, marquer_effet_applique,
+    )
+    data = outbox_event.payload or {}
+    _mettre_en_file(
+        data.get('company_id'), data.get('event'), data.get('payload') or {},
+        outbox_event=outbox_event,
+        deja_fait=effet_deja_applique, marquer=marquer_effet_applique)
+
+
+def _mettre_en_file(company_id, event, payload, *, outbox_event=None,
+                    deja_fait=None, marquer=None):
     """AANA31 — met en file la livraison aux webhooks abonnés (après commit).
 
-    Best-effort : ne lève jamais (un rappel ``on_commit`` qui lève casserait
-    les rappels suivants de la même transaction)."""
+    Sans ``outbox_event`` (appel direct historique) : best-effort, ne lève
+    jamais. Sous l'outbox (NTPLT11) : dédup par webhook, et une mise en file
+    en échec est REMONTÉE pour que l'outbox rejoue."""
     try:
         webhooks = list(
             Webhook.objects.filter(company_id=company_id, enabled=True))
     except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.exception('Could not load webhooks for company %s', company_id)
+        if outbox_event is not None:
+            raise
         return
     from .tasks import deliver_webhook
     from .webhook_filters import webhook_accepte
+    echec = None
     for webhook in webhooks:
         if not webhook.subscribes_to(event):
             continue
@@ -294,7 +348,19 @@ def _mettre_en_file(company_id, event, payload):
         # sur cet évènement : toujours livré (comportement historique).
         if not webhook_accepte(webhook, event, payload):
             continue
+        cle = f'{EFFET_WEBHOOK}:{webhook.id}'
+        if outbox_event is not None and deja_fait(outbox_event, cle):
+            continue
         try:
             deliver_webhook.delay(webhook.id, event, payload)
-        except Exception:  # noqa: BLE001 — broker indisponible ne bloque jamais (D-ENF22-BLE001)
+        except Exception as exc:  # noqa: BLE001 — broker indisponible ne bloque jamais (D-ENF22-BLE001)
             logger.exception('Could not enqueue webhook delivery %s', webhook.id)
+            echec = exc
+            continue
+        if outbox_event is not None:
+            marquer(outbox_event, cle)
+    if echec is not None and outbox_event is not None:
+        # Les webhooks déjà en file restent marqués (pas d'annulation) ; seul
+        # le reste sera rejoué.
+        from core.dispatch_outbox import EffetsPartiels
+        raise EffetsPartiels(f'mise en file webhook en échec : {echec}')
