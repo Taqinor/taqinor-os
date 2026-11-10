@@ -23,10 +23,11 @@ export default function ParrainagePage() {
   ).get('parrain') || ''
   const [rows, setRows] = useState([])
   const [clients, setClients] = useState([])
+  const [leads, setLeads] = useState([])
   const [stats, setStats] = useState(null)
   const [msg, setMsg] = useState(null)
   const [form, setForm] = useState(
-    { parrain: parrainInitial, filleul_nom: '', recompense: '' })
+    { parrain: parrainInitial, filleul_lead: '', filleul_nom: '', recompense: '' })
 
   const load = () => {
     fetchAllPages((page, { page_size: pageSize } = {}) =>
@@ -41,6 +42,12 @@ export default function ParrainagePage() {
       crmApi.getClients({ page, page_size: pageSize }).then((r) => r.data))
       .then(res => setClients(Array.isArray(res) ? res : (res?.results ?? [])))
       .catch(() => {})
+    // ASOC68 — le filleul LEAD : sans lui, l'acceptation de son devis ne
+    // convertit jamais le parrainage (le récepteur apparie filleul_lead).
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      crmApi.getLeads({ page, page_size: pageSize }).then((r) => r.data))
+      .then(res => setLeads(Array.isArray(res) ? res : (res?.results ?? [])))
+      .catch(() => {})
   }, [])
 
   const create = async () => {
@@ -48,8 +55,9 @@ export default function ParrainagePage() {
     try {
       const payload = { ...form }
       if (!payload.recompense) delete payload.recompense
+      if (!payload.filleul_lead) delete payload.filleul_lead
       await crmApi.saveParrainage(null, payload)
-      setForm({ parrain: '', filleul_nom: '', recompense: '' })
+      setForm({ parrain: '', filleul_lead: '', filleul_nom: '', recompense: '' })
       setMsg(null)
       load()
     } catch (e) { setMsg(e?.response?.data?.detail ?? 'Création impossible.') }
@@ -109,6 +117,14 @@ export default function ParrainagePage() {
           <option value="">— Parrain (client) —</option>
           {clients.map(c => (
             <option key={c.id} value={c.id}>{c.nom} {c.prenom || ''}</option>
+          ))}
+        </select>
+        <select className="form-control max-w-[220px]" aria-label="Filleul (lead)"
+                value={form.filleul_lead}
+                onChange={e => setForm(f => ({ ...f, filleul_lead: e.target.value }))}>
+          <option value="">— Filleul (lead) —</option>
+          {leads.map(l => (
+            <option key={l.id} value={l.id}>{l.nom} {l.prenom || ''}</option>
           ))}
         </select>
         <input className="form-control max-w-[200px]"
