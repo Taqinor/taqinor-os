@@ -306,8 +306,8 @@ class DevisEditionActionsMixin:
 
     @extend_schema(request=D.DevisAtomic, responses={201: DevisSerializer},
                    extensions=D.CORPS_LEAD_OU_CLIENT)
-    @action(detail=False, methods=['post'], url_path='atomic',
-            permission_classes=[IsResponsableOrAdmin])
+    @action(detail=False, methods=['post'], url_path='atomic',  # ASEC87 — grille « Créer »
+            permission_classes=[IsResponsableOrAdmin, DroitDeLaGrille('ventes_creer')])
     def atomic(self, request):
         """QX21be — création TRANSACTIONNELLE d'un devis + ses lignes en UN
         SEUL commit. Remplace les 1+N allers-retours non gardés du générateur

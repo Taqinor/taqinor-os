@@ -66,8 +66,8 @@ FIGEE = {
     'prefill_site': LECTURE, 'superior_contact_status': ANY,
     'approuver_remise': ADMIN,
     'proposal': (PORTAIL, 'LectureVentesHorsPortail'),
-    'ajouter_boq_electrique': RESP, 'atomic': RESP,
-    'auto': RESP, 'composition': RESP, 'conception_electrique': RESP,
+    'ajouter_boq_electrique': RESP,
+    'composition': RESP, 'conception_electrique': RESP,
     'contacter_superieur': RESP, 'convertir_en_bc': RESP,
     'design_context': RESP, 'dupliquer': RESP, 'dupliquer_variante': RESP,
     'dupliquer_variante_gamme': RESP, 'envoyer_email': RESP,
@@ -109,6 +109,9 @@ FIGEE = {
     'confirmer_avoir_revision': PALIER_VENTE + ('HasPermissionOrLegacy_encaisser',),
     # ASEC86 — la vraie porte d'édition du générateur : grille « Modifier ».
     'replace_lines': (RESP, 'DroitDeLaGrille_ventes_modifier'),
+    # ASEC87 — les créations réelles d'un devis : grille « Créer ».
+    'atomic': (RESP, 'DroitDeLaGrille_ventes_creer'),
+    'auto': (RESP, 'DroitDeLaGrille_ventes_creer'),
     # CADV82 — l'appel J28 prolonge la validité d'un envoyé (écriture).
     'prolonger_validite': RESP,
 }
@@ -379,3 +382,40 @@ class MatricePermissionsDevis(TestCase):
         api.force_authenticate(commercial)
         r = api.post(url, corps, format='json')
         self.assertEqual(r.status_code, 200, r.data)
+
+    def test_atomic_et_auto_exigent_ventes_creer(self):
+        """ASEC87 (C-ASEC-VER5-074, D-ASEC-4) — un rôle = Commercial du
+        registre SANS ``ventes_creer`` reçoit 403 ``droit_manquant`` à
+        ``POST devis/atomic/`` ET ``POST devis/auto/``, aucun devis créé ;
+        le Commercial du registre : ``atomic`` 201. Mutant : ôter la garde
+        d'un décorateur ⇒ échec."""
+        from decimal import Decimal
+
+        from apps.crm.models import Lead
+        from apps.stock.models import Produit
+        client = Client.objects.create(company=self.company, nom='ASEC87')
+        lead = Lead.objects.create(company=self.company, nom='Lead ASEC87')
+        produit = Produit.objects.create(
+            company=self.company, nom='Câblage ASEC87', sku='ASEC87-1',
+            prix_vente=Decimal('100'), prix_achat=Decimal('50'),
+            quantite_stock=10, tva=Decimal('20'))
+        prive = self._compte('Commercial sans creer', [
+            c for c in registre.COMMERCIAL_PERMISSIONS if c != 'ventes_creer'])
+        commercial = self._compte('Commercial', registre.COMMERCIAL_PERMISSIONS)
+        corps = {'client': client.pk, 'taux_tva': '20', 'lignes': [{
+            'produit': produit.pk, 'designation': 'Câblage ASEC87',
+            'quantite': '1', 'prix_unitaire': '100.00', 'taux_tva': '20'}]}
+        base = '/api/django/ventes/devis/'
+        api = APIClient()
+        api.force_authenticate(prive)
+        avant = Devis.objects.filter(company=self.company).count()
+        for route, donnees in (('atomic/', corps), ('auto/', {'lead': lead.pk})):
+            r = api.post(base + route, donnees, format='json')
+            self.assertEqual(r.status_code, 403, (route, r.data))
+            self.assertEqual(r.data.get('code'), 'droit_manquant', r.data)
+        # CLAUSE PERSISTANCE — garde : devis de la société inchangés.
+        self.assertEqual(Devis.objects.filter(company=self.company).count(),
+                         avant)
+        api.force_authenticate(commercial)
+        r = api.post(base + 'atomic/', corps, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
