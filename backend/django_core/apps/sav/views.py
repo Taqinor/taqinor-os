@@ -1594,8 +1594,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
                     self._annuler_ticket(ticket, request.user, motif)
                 except ConflitEtat as exc:
                     echecs.append({'id': ticket.id, 'raison': str(exc)})
-                    continue
-                traites.append(ticket.id)
+                else:
+                    traites.append(ticket.id)
 
         return Response({
             'traites': traites, 'echecs': echecs,
@@ -1783,9 +1783,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
     def annuler(self, request, pk=None):
         """Annule le ticket (DRAPEAU avec motif — pas une étape)."""
         ticket = self.get_object()
-        motif = (_valider_corps(_SCHEMA_ANNULER, request.data).get('motif')
-                 or '').strip()
-        self._annuler_ticket(ticket, request.user, motif)
+        self._annuler_ticket(ticket, request.user, (
+            _valider_corps(_SCHEMA_ANNULER, request.data).get('motif') or '').strip())
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
 
@@ -1797,8 +1796,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
             raise ConflitEtat(  # ACSV67
                 "Impossible d'annuler : un pr\u00eat d'\u00e9quipement est "
                 'encore en cours (retournez-le d\u0027abord).')
-        ticket.annule = True
-        ticket.motif_annulation = motif or None
+        ticket.annule, ticket.motif_annulation = True, motif or None
         ticket.reprendre_apres_attente()
         ticket.save(update_fields=[
             'annule', 'motif_annulation', *_CHAMPS_PAUSE])

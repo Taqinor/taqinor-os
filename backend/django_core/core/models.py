@@ -2181,11 +2181,9 @@ class DataSubjectRequest(TimestampedModel):
         (KIND_RECTIFICATION, 'Rectification'),
     ]
 
-    STATUT_RECUE = 'recue'
     # NTGRC3 — VÉRIFICATION D'IDENTITÉ avant toute livraison ; ASOC65 — PARTIELLE = effacement
     # dont une source a échoué, relançable. Statut DOCUMENTAIRE, sans rapport avec STAGES.py.
-    STATUT_EN_VERIFICATION = 'en_verification'
-    STATUT_PARTIELLE = 'partielle'
+    STATUT_RECUE, STATUT_EN_VERIFICATION, STATUT_PARTIELLE = 'recue', 'en_verification', 'partielle'
     STATUT_TRAITEE = 'traitee'
     STATUT_REFUSEE = 'refusee'
     STATUT_CHOICES = [

@@ -689,7 +689,7 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
             # (428), puis seulement le garde « archivé » de ``get_object``.
             calepinage = super().get_object()
             if _jeton_if_match(request) is None:
-                return Response({'detail': MESSAGE_JETON_MANQUANT},
+                return Response({'detail': MESSAGE_JETON_VERSION_MANQUANT},
                                 status=status.HTTP_428_PRECONDITION_REQUIRED)
         calepinage = self.get_object()  # borné société par get_queryset
         if request.method.lower() == 'get':
@@ -716,7 +716,7 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
         # ``enregistrer_layout`` directement : non concernés.
         base = _jeton_if_match(request)
         if base is None:
-            return Response({'detail': MESSAGE_JETON_MANQUANT},
+            return Response({'detail': MESSAGE_JETON_VERSION_MANQUANT},
                             status=status.HTTP_428_PRECONDITION_REQUIRED)
         try:
             resultat = enregistrer_layout(calepinage, payload,
@@ -1189,11 +1189,6 @@ def _corps_de_layout(donnees):
     if not isinstance(donnees, dict) or not donnees:
         return None
     return donnees
-
-
-#: ACAL316 — le 428 nommé d'une écriture complète sans jeton de version.
-#: ACON9 — UNE définition (services.layout), partagée avec ventes.
-MESSAGE_JETON_MANQUANT = MESSAGE_JETON_VERSION_MANQUANT
 
 
 def _jeton_if_match(request):
