@@ -1060,8 +1060,10 @@ describe('LIENS ERP — les chemins tokenisés émis par la page sont intacts', 
     expect(CODE).toContain('proposalEndpoint(API_BASE, token)');
     // ASEC53 — le PDF passe par le relais same-origin (proposalPdfEndpoint côté relais).
     expect(CODE).toContain('relaisPdfProposition(token)');
-    // La base API reste la base canonique.
-    expect(CODE).toContain("'https://api.taqinor.ma'");
+    // La base API reste la base canonique — ADCG56 : la page la lit par
+    // resolveApiBase(), dont le défaut (`_apiBase.ts`) est l'origine canonique.
+    expect(CODE).toContain('const API_BASE = resolveApiBase()');
+    expect(read('../src/pages/api/_apiBase.ts')).toContain("'https://api.taqinor.ma'");
   });
 
   it('le lien de suivi réutilise le MÊME token — aucun identifiant nouveau', () => {
