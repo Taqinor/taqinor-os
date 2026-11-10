@@ -1135,8 +1135,9 @@ def _economies_cumul_25_ans_publique(data, devis=None):
 def _emetteur_public(devis):
     """APDF110/ASOC42 — identité légale de l'ÉMETTRICE, figée à l'envoi sinon le profil ; jamais RIB/adresse/CNSS."""
     from apps.ventes.domain.reglages_figes_lecture import reglages_figes
-    identite = reglages_figes(devis).get('identite') or company_identity(devis.company)
-    return {cle: identite[cle] for cle in ('nom', 'forme_juridique', 'capital_social', 'rc', 'ice')}
+    return {cle: valeur for cle, valeur in (
+        reglages_figes(devis).get('identite') or company_identity(devis.company)).items()
+        if cle in ('nom', 'forme_juridique', 'capital_social', 'rc', 'ice')}
 
 
 @extend_schema(responses={200: SH.ProposalDataResponse, 403: SH.OtpRequis})
