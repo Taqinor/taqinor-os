@@ -149,6 +149,30 @@ else
   RIEN_CONSTRUIT=1
 fi
 
+# GARDE DB (incident 2026-07-10) : un fichier bind-monté (postgresql.conf) qui
+# change ne recrée pas db ; si la base ne répond pas, on redémarre db (relit la
+# conf montée) et on ré-attend. `-h db` teste le LISTENER TCP (la socket locale
+# répond même quand Postgres n'écoute que sur localhost).
+wait_db() {
+  for _ in $(seq 1 30); do
+    $COMPOSE exec -T db pg_isready -h db -q 2>/dev/null && return 0
+    sleep 3
+  done
+  return 1
+}
+if [ "$ok" = "1" ] && ! wait_db; then
+  log "AVERTISSEMENT: db injoignable après 90 s -> restart db"
+  $COMPOSE restart db || ok=0
+  [ "$ok" = "1" ] && { wait_db || ok=0; }
+fi
+
+# ADCG2 — `migrate` AVANT tout redémarrage ou recréation : l'image juste
+# construite (`run --rm --no-deps`, code monté) migre la base PUIS le code neuf
+# est servi (docs/online-migrations.md). Un migrate en échec ne redémarre rien.
+if [ "$ok" = "1" ]; then
+  $COMPOSE run --rm --no-deps django_core python manage.py migrate --noinput || ok=0
+fi
+
 if [ "$ok" = "1" ]; then
   $COMPOSE up -d --remove-orphans || ok=0
 fi
@@ -179,26 +203,6 @@ if [ "$ok" = "1" ] && [ "$RESTART_BACKEND" = "1" ]; then
                    celery_beat fastapi_ia || ok=0
 fi
 
-# GARDE DB (incident 2026-07-10) : un fichier bind-monté (postgresql.conf) qui
-# change ne recrée pas db ; si la base ne répond pas, on redémarre db (relit la
-# conf montée) et on ré-attend. `-h db` teste le LISTENER TCP (la socket locale
-# répond même quand Postgres n'écoute que sur localhost).
-wait_db() {
-  for _ in $(seq 1 30); do
-    $COMPOSE exec -T db pg_isready -h db -q 2>/dev/null && return 0
-    sleep 3
-  done
-  return 1
-}
-if [ "$ok" = "1" ] && ! wait_db; then
-  log "AVERTISSEMENT: db injoignable après 90 s -> restart db"
-  $COMPOSE restart db || ok=0
-  [ "$ok" = "1" ] && { wait_db || ok=0; }
-fi
-
-if [ "$ok" = "1" ]; then
-  $COMPOSE exec -T django_core python manage.py migrate --noinput   || ok=0
-fi
 if [ "$ok" = "1" ]; then
   # AANA64 — rôle Postgres lecture seule de l'agent SQL (idempotent, mot de passe
   # lu du .env serveur). Non bloquant : sans lui, l'agent SQL est désactivé.

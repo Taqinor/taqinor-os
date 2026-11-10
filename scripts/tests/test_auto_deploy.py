@@ -151,6 +151,27 @@ class AutoDeployTests(unittest.TestCase):
         self.assertEqual(banc.lire("last_deployed_commit"), B)
         self.assertIn("— OK", banc.journal)
 
+    def test_migrate_avant_tout_redemarrage(self):
+        """ADCG2 — migrate (image neuve) précède `up -d` et `restart django_core`."""
+        lot = ("backend/django_core/apps/crm/models.py\n"
+               "backend/django_core/apps/crm/migrations/0999_x.py\n")
+        banc = self.banc(changes=lot)
+        rc, sortie = banc.jouer()
+        self.assertEqual(rc, 0, sortie)
+        i_migrate = banc.index(r"run --rm --no-deps django_core python manage\.py migrate --noinput")
+        self.assertIsNotNone(i_migrate, banc.appels)
+        self.assertLess(i_migrate, banc.index(r"prod\.yml up -d"))
+        self.assertLess(i_migrate, banc.index(r" restart django_core "))
+        self.assertGreater(banc.index("init_roles"), banc.index(r"prod\.yml up -d"))
+        # Cycle 2 : migrate en échec -> rien n'est redémarré ni recréé.
+        (banc.d / "calls.log").unlink()
+        banc.ecrire("last_deployed_commit", A)
+        rc, _ = banc.jouer(FAIL="manage.py migrate")
+        self.assertNotEqual(rc, 0)
+        self.assertEqual(banc.compte(r"prod\.yml up -d"), 0, banc.appels)
+        self.assertEqual(banc.compte(r" restart "), 0, banc.appels)
+        self.assertIn("ECHEC", banc.journal)
+
     def test_zero_downtime_drapeau_lu_puis_efface(self):
         banc = self.banc(changes=LOT_ECRAN_API)
         rc, _ = banc.jouer(_remote().replace("ZERO_DOWNTIME=0", "ZERO_DOWNTIME=1"))
