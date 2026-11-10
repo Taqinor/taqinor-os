@@ -146,6 +146,45 @@ class RevisionParTauxTests(TestCase):
         self.assertEqual(Avoir.objects.filter(company=self.company).count(),
                          1)
 
+    def test_confirmer_avoir_revision_sans_encaisser_403_rien_ecrit(self, *_):
+        """ASEC85 (C-ASEC-VER5-068, D-ASEC-VER-1) — confirmer l'avoir de
+        révision exige ``encaisser`` : le VRAI rôle système Admin Ventes ⇒
+        403, 0 avoir (l'avoir reste à confirmer) ; Commercial (porte
+        ``encaisser``, hors palier) ⇒ 403 inchangé ; le compte qui encaisse
+        ⇒ 200, avoir 11 000,00 TTC. Mutant : ôter ``PeutEncaisser`` ⇒
+        échec."""
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import (
+            ADMIN_VENTES_PERMISSIONS, COMMERCIAL_PERMISSIONS)
+        self.v1 = self._accepter(self.v1)
+        self._facturer_tout(self.v1)
+        v2 = self._v2({A10: '30000'})
+        url = f'/api/django/ventes/devis/{v2.pk}/confirmer-avoir-revision/'
+        comptes = {nom: get_user_model().objects.create_user(
+            username=f'asec85_{n}', password='x', company=self.company,
+            role_legacy=legacy, role=Role.objects.create(
+                company=self.company, nom=nom, est_systeme=True,
+                permissions=list(codes)))
+            for n, (nom, legacy, codes) in enumerate((
+                ('Admin Ventes', 'responsable', ADMIN_VENTES_PERMISSIONS),
+                ('Commercial', 'normal', COMMERCIAL_PERMISSIONS)))}
+        self.assertNotIn('encaisser', ADMIN_VENTES_PERMISSIONS)
+        api = APIClient()
+        for nom, compte in comptes.items():
+            api.force_authenticate(compte)
+            statut = api.post(url, {}, format='json').status_code
+            self.assertEqual(statut, 403, nom)
+        # CLAUSE PERSISTANCE — relu en base : aucun avoir émis.
+        self.assertEqual(Avoir.objects.filter(company=self.company).count(), 0)
+        api.force_authenticate(self.user)
+        resp = api.post(url, {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(Avoir.objects.get(company=self.company).montant_ttc,
+                         Decimal('11000.00'))
+
     def test_complement_revision_ventile(self, *_):
         self.v1 = self._accepter(self.v1)
         self._facturer_tout(self.v1)
