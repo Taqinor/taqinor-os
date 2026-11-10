@@ -161,6 +161,9 @@ ALLOWED_UNCONSUMED = {
     "contrat_signe",                    # notifications (CONTRAT_SIGNE) — contrats parqué
     "projet_status_change",             # notifications (PROJET_STATUT_CHANGE) — gestion_projet parqué
     "rfq_attribuee",                    # automation (RFQ_ATTRIBUEE) — achats avancés parqués
+    # ACON41 — ``revision_abandonnee`` : émis par ``abandonner_revision`` ;
+    # abonné prévu : le calepinage (ACON91), qui retire cette réservation.
+    "revision_abandonnee",
 }
 
 # APAR43 — signaux qui ont un abonné VIVANT mais AUCUN émetteur statique dans

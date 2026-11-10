@@ -272,6 +272,19 @@ def abandonner_revision(v2, user=None, *, retrait=False):
                 f'Révision {v2.reference} abandonnée : {v1.reference} '
                 f'redevient {role} en vigueur (révision abandonnée).')
             reactivees.append(v1)
+        if reactivees:
+            # ACON41 — SYNCHRONE (pas d'``on_commit``) : l'abonné lit le
+            # lien vers la V2 AVANT la cascade SET_NULL de sa suppression ;
+            # un abonné en échec ne bloque jamais l'abandon.
+            from core.events import revision_abandonnee
+
+            for recepteur, resultat in revision_abandonnee.send_robust(
+                    sender=Devis, ancien=v2, reactivees=list(reactivees),
+                    user=user):
+                if isinstance(resultat, Exception):
+                    logger.warning(
+                        'ACON41 : abonné %r de revision_abandonnee en échec '
+                        '(%s) : %s', recepteur, v2.reference, resultat)
     return reactivees
 
 
