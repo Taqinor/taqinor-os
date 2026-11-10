@@ -20,6 +20,7 @@ from authentication.permissions import (
 )
 from core.serializers import ChampsTexteBooleenStricts, CompanyScopedRelationsMixin
 from ..permissions import MasqueMontantsAchatMixin, PeutVoirPrixAchat
+from apps.roles.permissions import DroitDeLaGrille, droits_de_la_grille  # ASEC92
 from ..openapi_helpers import ID_OU_VIDE, INT, P, STR, choix_ou_vide, corps
 from core.viewsets import CompanyScopedModelViewSet
 from ..erreurs_achats import ConflitEtat, EtatIncompatible, statut_refus_metier
@@ -148,7 +149,8 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
             return [LectureDuModule()]
         if self.action in WRITE_ACTIONS + ['declarer_consommation',
                                            'export_xlsx']:
-            return [IsResponsableOrAdmin()]
+            return [IsResponsableOrAdmin(), *droits_de_la_grille(
+                self, export_xlsx=[DroitDeLaGrille('stock_export')])]  # ASEC92
         return [IsAdminRole()]
 
     def get_queryset(self):
@@ -306,7 +308,7 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
         (200, 'application/vnd.openxmlformats-officedocument.'
               'spreadsheetml.sheet'): bytes})
     @action(detail=False, methods=['get'], url_path='export-xlsx',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[IsResponsableOrAdmin, DroitDeLaGrille('stock_export')])
     def export_xlsx(self, request):
         """NTDST41 — export XLSX de TOUS les dépôts (``?statut=actif``).
 

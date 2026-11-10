@@ -361,12 +361,10 @@ class EtatVenteVNT23Tests(TestCase):
         normal = etat_vente(devis, roles[2])
         self.assertFalse(normal['factures'][0]['peut']['annuler'])
 
-    def test_avoir_de_revision_a_confirmer_servi(self):
-        """ATOT59 (C-ATOT-VER4-022) — V1 40 000 HT à 10 % + 60 000 à 20 %
-        acceptée et facturée en entier, V2 à 30 000 à 10 % acceptée par le
-        flux normal : la vente DIT l'avoir de 11000.00 MAD TTC à confirmer ;
-        rôle sans palier : faux, phrase absente. Mutant : forcer le drapeau
-        à faux ⇒ échec."""
+    def _v2_avoir_a_confirmer(self):
+        """V1 40 000 HT à 10 % + 60 000 à 20 % acceptée et facturée en
+        entier, V2 à 30 000 à 10 % acceptée par le flux normal : avoir de
+        révision de 11 000,00 TTC à confirmer (ATOT59, ASEC91)."""
         from unittest import mock
 
         from apps.ventes.domain.cycle_vie import accept_devis
@@ -375,7 +373,6 @@ class EtatVenteVNT23Tests(TestCase):
         from apps.ventes.tests._quote_engine_common import make_devis
         from apps.ventes.utils.echeancier import creer_facture_tranche
         from apps.ventes.utils.references import create_with_reference
-        from apps.ventes.vente_facturation import etat_vente
 
         def accepter(devis):
             Devis.objects.filter(pk=devis.pk).update(
@@ -406,7 +403,15 @@ class EtatVenteVNT23Tests(TestCase):
                 devis=v2, designation='Équipement à 10').update(
                     prix_unitaire=Decimal('30000'))
             v2 = accepter(v2)
-        etat = etat_vente(Devis.objects.get(pk=v2.pk), self.user)
+        return Devis.objects.get(pk=v2.pk)
+
+    def test_avoir_de_revision_a_confirmer_servi(self):
+        """ATOT59 (C-ATOT-VER4-022) — la vente DIT l'avoir de 11000.00 MAD
+        TTC à confirmer ; rôle sans palier : faux, phrase absente. Mutant :
+        forcer le drapeau à faux ⇒ échec."""
+        from apps.ventes.vente_facturation import etat_vente
+        v2 = self._v2_avoir_a_confirmer()
+        etat = etat_vente(v2, self.user)
         self.assertTrue(etat['peut']['confirmer_avoir_revision'])
         self.assertIn('11000.00 MAD TTC', etat['raison_bloquee'])
         exemple = self._contrat()['exemple_avoir_a_confirmer']['vente']
@@ -415,6 +420,32 @@ class EtatVenteVNT23Tests(TestCase):
         normal = User.objects.create_user(
             username=f'atot59_normal_{_nxt()}', password='x',
             role_legacy='normal', company=self.company)
-        sans = etat_vente(Devis.objects.get(pk=v2.pk), normal)
+        sans = etat_vente(v2, normal)
         self.assertFalse(sans['peut']['confirmer_avoir_revision'])
         self.assertNotIn('MAD TTC', sans['raison_bloquee'])
+
+    def test_avoir_de_revision_sans_encaisser_non_propose(self):
+        """ASEC91 (C-ASEC-VER6-091) — ``peut.confirmer_avoir_revision`` suit
+        le prédicat de la route (palier ET ``encaisser``, ASEC85) : le VRAI
+        rôle système Admin Ventes (palier sans ``encaisser``) ⇒ faux,
+        ``raison_bloquee`` inchangée ; le compte hérité responsable
+        (``encaisser`` par repli) ⇒ vrai. Mutant : ôter ``and encaisse`` ⇒
+        échec."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import ADMIN_VENTES_PERMISSIONS
+        from apps.ventes.vente_facturation import (
+            etat_vente, peut_gerer_la_vente)
+        v2 = self._v2_avoir_a_confirmer()
+        self.assertNotIn('encaisser', ADMIN_VENTES_PERMISSIONS)
+        admin_ventes = User.objects.create_user(
+            username=f'asec91_av_{_nxt()}', password='x',
+            role_legacy='responsable', company=self.company,
+            role=Role.objects.create(
+                company=self.company, nom='Admin Ventes', est_systeme=True,
+                permissions=list(ADMIN_VENTES_PERMISSIONS)))
+        self.assertTrue(peut_gerer_la_vente(admin_ventes))  # le palier passe
+        herite = etat_vente(v2, self.user)
+        self.assertTrue(herite['peut']['confirmer_avoir_revision'])
+        etat = etat_vente(v2, admin_ventes)
+        self.assertFalse(etat['peut']['confirmer_avoir_revision'])
+        self.assertEqual(etat['raison_bloquee'], herite['raison_bloquee'])

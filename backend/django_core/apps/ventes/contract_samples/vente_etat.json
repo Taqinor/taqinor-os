@@ -8,7 +8,7 @@
     "peut": "gestes autorisés dits par le serveur : l'écran n'en redérive aucun.",
     "versions": "toute la chaîne ; `est_tete` vrai quand ce devis est la tête, `tete_id` = id de la tête ; `revision_en_cours` = brouillon de révision ouvert ou null.",
     "statuts": "aucun statut nouveau (règle #4).",
-    "confirmer_avoir_revision": "ATOT59 — `peut.confirmer_avoir_revision` vrai quand une révision acceptée attend son avoir d'écart (VNT64 : facturé > prix convenu de la tête, une facture émise, une version acceptée remplacée) et que l'utilisateur a le palier vente ; `raison_bloquee` nomme alors le montant (« Avoir de révision de N MAD TTC à confirmer … ») — l'écran le lit, ne le calcule jamais (ATOT60)."
+    "confirmer_avoir_revision": "ATOT59 — `peut.confirmer_avoir_revision` vrai quand une révision acceptée attend son avoir d'écart (VNT64 : facturé > prix convenu de la tête, une facture émise, une version acceptée remplacée) et que l'utilisateur a le palier vente et le droit d'encaisser (ASEC91, prédicat de la route) ; `raison_bloquee` nomme alors le montant (« Avoir de révision de N MAD TTC à confirmer … ») — l'écran le lit, ne le calcule jamais (ATOT60)."
   },
   "exemple": {
     "id": 502,

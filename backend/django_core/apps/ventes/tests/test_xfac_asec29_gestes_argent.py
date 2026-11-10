@@ -285,6 +285,68 @@ class GestesArgentTests(TestCase):
         r = self._api(directeur).post(url, corps[0], format='json')
         self.assertNotEqual(r.status_code, 403, r.data)
 
+    def test_annuler_reference_legale_exige_encaisser(self):
+        """ASEC90 (C-ASEC-VER6-090, D-ASEC-VER6-1 = exiger_encaisser) —
+        annuler une facture à référence LÉGALE émet un avoir de
+        contre-passation : 403 sans ``encaisser`` (VRAIS rôles système Admin
+        Ventes et Responsable, palier passé), 0 avoir ; Directeur : 200 +
+        avoir 1 200,00 ; ``BROUILLON-<id>`` : 200 sans avoir ; ``creer-facture``
+        d'un BC dont la vente porte un brouillon remis : 403, rien créé ;
+        ``peut.annuler`` faux. Mutant : ôter la condition de référence ⇒ échec."""
+        from apps.ventes.models import Avoir, BonCommande, Facture
+        from apps.ventes.vente_facturation import etat_vente, peut_gerer_la_vente
+        directeur = self.users['Directeur']
+        refuses = [self.users[n] for n in ('Admin Ventes', 'Responsable')]
+        facture = self._facture(directeur)
+        url = f'/api/django/ventes/factures/{facture.id}/annuler/'
+        for user in refuses:
+            self.assertTrue(peut_gerer_la_vente(user))  # le palier passe
+            self.assertNotIn('encaisser', user.role.permissions)
+            r = self._api(user).post(url, {}, format='json')
+            self.assertEqual(r.status_code, 403, r.data)
+            self.assertIn("droit d'encaissement", str(r.data['detail']))
+        facture.refresh_from_db()
+        self.assertEqual(facture.statut, Facture.Statut.EMISE)
+        self.assertFalse(Avoir.objects.exists())
+        brouillon = self._facture(directeur)
+        Facture.objects.filter(pk=brouillon.pk).update(
+            statut=Facture.Statut.BROUILLON, reference=f'BROUILLON-{brouillon.pk}')
+        r = self._api(refuses[0]).post(
+            f'/api/django/ventes/factures/{brouillon.id}/annuler/', {}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertIsNone(r.data['avoir'])
+        self.assertFalse(Avoir.objects.exists())
+        r = self._api(directeur).post(url, {}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['avoir']['montant'], '1200.00')
+        # BC : la vente porte un brouillon remis (référence légale gardée).
+        devis = self._devis(directeur)
+        remis = self._facture(directeur)
+        Facture.objects.filter(pk=remis.pk).update(
+            devis=devis, type_facture=Facture.TypeFacture.ACOMPTE)
+        # ``peut.annuler`` (facture émise de la vente) suit la route.
+        for user, attendu in ((refuses[0], False), (directeur, True)):
+            peut = [f['peut']['annuler'] for f in etat_vente(devis, user)['factures']]
+            self.assertEqual(peut, [attendu])
+        Facture.objects.filter(pk=remis.pk).update(statut=Facture.Statut.BROUILLON)
+        bc = BonCommande.objects.create(
+            company=self.company, reference=f'BC-ASEC90-{_nxt()}',
+            client=self.client_obj, devis=devis,
+            statut=BonCommande.Statut.CONFIRME)
+        avoirs, factures = Avoir.objects.count(), Facture.objects.count()
+        r = self._api(refuses[0]).post(
+            f'/api/django/ventes/bons-commande/{bc.id}/creer-facture/', {}, format='json')
+        self.assertEqual(r.status_code, 403, r.data)
+        self.assertIn("droit d'encaissement", str(r.data['detail']))
+        remis.refresh_from_db()
+        self.assertEqual(remis.statut, Facture.Statut.BROUILLON)
+        self.assertEqual((Avoir.objects.count(), Facture.objects.count()),
+                         (avoirs, factures))
+        r = self._api(directeur).post(
+            f'/api/django/ventes/bons-commande/{bc.id}/creer-facture/', {}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(Avoir.objects.count(), avoirs + 1)
+
     def test_emettre_unitaire_et_lot_exigent_encaisser(self):
         """AARG9 (D-AARG-3 = exiger_encaisser) — « Émettre » et le lot
         ``emettre`` : refusés sans ``encaisser`` (Admin Ventes), brouillon

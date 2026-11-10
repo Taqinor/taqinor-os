@@ -697,6 +697,15 @@ class BonCommandeViewSet(OrdreTotalMixin, CompanyScopedModelViewSet):
         if not porte['ok']:
             return Response({'detail': porte['motif']},
                             status=status.HTTP_409_CONFLICT)
+        # ASEC90 (D-ASEC-VER6-1) — retirer un brouillon à référence LÉGALE émet son avoir : `encaisser`.
+        from core.numbering import est_reference_provisoire as provisoire
+        from apps.facturation.views.facture_gardes import PeutEncaisser
+        from ..vente_facturation import factures_de_la_vente
+        if bc.devis_id and not PeutEncaisser().has_permission(request, self) and any(
+                f.statut == Facture.Statut.BROUILLON and not provisoire(f.reference)
+                for f in factures_de_la_vente(bc.devis)):
+            return Response({'detail': "Remplacer une facture numérotée (avoir de contre-passation) "
+                                       "exige le droit d'encaissement."}, status=status.HTTP_403_FORBIDDEN)
         # AARG32 — avertissement de vente bloquant (ZSAL9), dérogation ADEV14 :
         # comme les autres portes (`override_avertissement`, corps facultatif).
         if bc.devis_id:
