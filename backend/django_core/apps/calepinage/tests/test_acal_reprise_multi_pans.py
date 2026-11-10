@@ -127,6 +127,45 @@ class RepriseMultiPansTest(BaseApiCalepinage):
         self.assertEqual(len(notes), 1, self._notes(calepinage))
         self.assertIn('zones.0.roofType', notes[0])
 
+    def test_contour_croise_ecarte_et_nomme(self):
+        """ACON7 (C-ACON-131) — un ``roof_outline`` en « 8 » (repère dans un
+        lobe) donne un calepinage à repère seul, 1 version et le motif nommé
+        au chatter ; un document à 2 pans dont le 2e se croise ne garde que le
+        pan valide."""
+        huit = [[33.4999, -7.6001], [33.5001, -7.5999],
+                [33.4999, -7.5999], [33.5001, -7.6001]]
+        reponse = self._post(payload_site(
+            roofOutline=huit, roofPoint={'lat': 33.5, 'lng': -7.59995}))
+        self.assertEqual(reponse.status_code, 201, reponse.content)
+        calepinage = self._calepinages(self._lead_du_site()).get()
+        self.assertEqual(calepinage.versions.count(), 1)
+        self.assertEqual(calepinage.versions.get().libelle,
+                         'Tracé repris du parcours public « mon toit »')
+        layout = self._layout(calepinage)
+        self.assertEqual(layout['zones'], [])
+        self.assertAlmostEqual(layout['pin']['lat'], 33.5)
+        notes = [n for n in self._notes(calepinage)
+                 if n.startswith('Tracé multi-pans ignoré : ')]
+        self.assertEqual(len(notes), 1, self._notes(calepinage))
+        self.assertIn('« zones.0.vertices » : le contour se croise', notes[0])
+
+    def test_document_a_un_pan_croise_garde_le_pan_valide(self):
+        """ACON7 — volet document transporté : le pan croisé est écarté."""
+        document = document_trois_pans()
+        document['zones'] = document['zones'][:2]
+        sommets = document['zones'][1]['vertices']
+        sommets[1], sommets[2] = sommets[2], sommets[1]   # nœud papillon
+        reponse = self._post(payload_site(roofLayout=document,
+                                          roofOutline=CONTOUR_4))
+        self.assertEqual(reponse.status_code, 201, reponse.content)
+        calepinage = self._calepinages(self._lead_du_site()).get()
+        self.assertEqual(calepinage.versions.count(), 1)
+        layout = self._layout(calepinage)
+        self.assertEqual([z['id'] for z in layout['zones']], ['z1'])
+        notes = [n for n in self._notes(calepinage)
+                 if n.startswith('Tracé multi-pans ignoré : ')]
+        self.assertIn('« zones.1.vertices »', notes[0])
+
     def test_sans_trace_aucun_calepinage(self):
         reponse = self._post(payload_site())
         self.assertEqual(reponse.status_code, 201, reponse.content)
