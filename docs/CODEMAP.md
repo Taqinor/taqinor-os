@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 3133265676cb9eb711aa3893ac813d4000a465d4fde7b54b9095884713a81b5c
+Structure fingerprint: da78f349911b4c6ceb61bd9134b0e56634f86d8262965c011aa4d3c118245e8b
 Plan fingerprint: 1ad6c27428053a3a10e68fa31cdb01322d6549666980f67d3aa62d6e2236274e
 
 
@@ -95,14 +95,14 @@ Versions are the **pinned** values in `requirements.txt`, `package.json` and
 ### Backend — Django API (`backend/django_core/requirements.txt`)
 - Python **3.11** in the prod image and in CI (`python:3.11.x` Dockerfiles; the
   `stage-names`/lint jobs pin 3.11 so a 3.11-only SyntaxError cannot slip through)
-- Django **5.1.15**, djangorestframework **3.15.2**, djangorestframework-simplejwt **5.5.1**, django-cors-headers **4.6.0**
+- Django **5.2.18**, djangorestframework **3.18.2**, djangorestframework-simplejwt **5.5.1**, django-cors-headers **4.6.0**
 - psycopg2-binary **2.9.10**, pgvector **0.3.6**
 - redis **5.2.1**, django-redis **5.4.0**, celery **5.4.0**
 - weasyprint **62.3**, pydyf **0.11.0**, Jinja2 **3.1.6** (PDF rendering)
 - numpy **1.26.4**, matplotlib **3.9.2** (premium quote-PDF charts)
 - segno **1.6.6** (scan-to-sign QR on the residential quote PDF; imported defensively)
 - django-anymail[sendgrid] **10.3**, django-storages[s3] **1.14.4**, boto3 **1.35.99** (MinIO/S3)
-- openpyxl **3.1.5**, Pillow **12.3.0**, httpx **0.28.1**, drf-spectacular (OpenAPI 3)
+- openpyxl **3.1.5**, Pillow **13.0.0**, httpx **0.28.1**, drf-spectacular (OpenAPI 3)
 - gunicorn **22.0.0** (4 sync workers per compose)
 
 ### Backend — FastAPI AI service (`backend/fastapi_ia/requirements.txt`)

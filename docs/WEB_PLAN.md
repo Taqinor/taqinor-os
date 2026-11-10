@@ -1060,4 +1060,4 @@ each for Lydec/Redal/Amendis).
 - 2026-11-10 — WAUD29/33/78 code déjà présent, restes = mesures en prod ; WAUD41/80/62/84/82/82-b/86 bloquées sur des gestes ou validations de Reda (raisons sur chaque ligne) — run 99392c.
 - 2026-11-10 — ACON93 : visionneuse publique jusqu'à 2 000 panneaux par zone — run 99392c.
 - 2026-11-10 — Correction du run 99392c : les tâches de ce fichier cochées par les lanes mais à « Preuve en direct » sont repassées en [BLOCKED: code livré … preuve en direct due] (garde check_acceptation, AMET88 : aucune coche à preuve sans enregistrement d'acceptation) — à rejouer sur la pile locale, puis cocher avec l'enregistrement.
-- 2026-11-10 — CQSTW12 : ligne remise au format  (illisible pour plan_lanes depuis ADCG89) — run 99392c.
+- 2026-11-10 — CQSTW12 : ligne remise au format « - [BLOCKED: …] ID » (illisible pour plan_lanes depuis ADCG89) — run 99392c.
