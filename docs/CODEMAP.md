@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 96bc28de02827112d9434b88ae3c24615f81c380055a0078cc0dfbeed019f78a
-Plan fingerprint: ed6adee52f608f2d47b6aeb2a5252c3cda4406b788792a8c9284211ae6fe5293
+Structure fingerprint: 43e67e126d10184fd234971a938ce8cbefc6962165b0d3e37c958e1399732cfe
+Plan fingerprint: 6d03ab98550a1ff2dead8f4e9ab6e2f9d91b0262163c12ccb847729f02a12228
 
 
 
@@ -235,7 +235,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 | `monitoring` | `monitoring/` | 9 | Production supervision: `ProductionReading`, `UnderperformanceFlag`, `SlaDisponibilite`, `CertificatCarbone`. Swappable provider, no-op by default. |
 | `documents` | `documents/` | 0 | Field-execution PDFs (PV de réception, bon de livraison, attestation) — no models. |
 | `ged` | `ged/` | 43 | Document management: `Cabinet`/`Folder`/`Document`/`DocumentVersion`, ACL, retention/legal hold, signature requests, public deposits, `Coffre`. |
-| `portail` | `portail/` | 8 | Client self-service: quotes/invoices/deliveries, e-signature acceptance, online payment, site timeline. **Never financial detail beyond its own scope** (NTPRT14). GED links kept (SOLMVP16b). |
+| `portail` | `portail/` | 8 | Client self-service: quotes/invoices/deliveries, e-signature acceptance, online payment, site timeline. **Never financial detail beyond its own scope** (NTPRT14). GED links kept (SOLMVP16b). Demandes portail : `demandes-ticket-portail/<id>/refuser/` (refus motivé, `motif_refus`, ASOC98), résolues au ticket résolu (ASOC44). |
 | `adsengine` | `adsengine/` | 47 | Meta Ads engine: mirrors, propose->approve->apply, creative library, experiments, guardrails, `AssumptionNode` tree. **`installable: True`** (SOLMVP17 — the toggle now gates its API). Campaign creation is always PAUSED (rule #3). |
 | `reporting` | `reporting/` | 13 | Dashboards/KPIs/insights, federated KPI hub, `Classeur`, `RapportDefinition`, `KpiAlerte`, global search (`search.py`), stage-probability table (`GET reporting/probabilites-etape/`, AANA66), real-field Web Vitals (`WebVitalMetric`, VX61) and the user-problem journal (`ProblemeClient`, YJPB1 — `POST reporting/problemes-client/` posted by `frontend/src/lib/journalProblemes.js`, read by `manage.py problemes_utilisateurs`; no screen, see `docs/journal-problemes-utilisateurs.md`) — the app owns no business data. |
 | `semantic` | `semantic/` | 2 | Named, governed metrics (`MetricDefinition` + versions) — BI semantic layer consumed via `core.data_explorer`; API `semantic/metriques/` (CRUD, `<cle>/valeur|expliquer`, `pour-agent`, `export`/`import`), `semantic/glossaire/`, `seed_dashboards_modeles` (NTDATA10/12/35/44/48/49) ; FastAPI tool `metriques_gouvernees`. |
@@ -421,7 +421,7 @@ Core routes are declared in `router/index.jsx`; every module's routes come from 
 **Core (`router/index.jsx`)** — public: `/`, `/landing`, `/login`, `/register`, `/ui`,
 `/403`, `*`; public tokenized: `/rdv/:token`, `/salle-vente/:token`,
 `/ged/signature|signataire|depot|partage/:token`, `/e/:token`, `/suivi/:token`,
-`/intervention/:token`, `/intervention-rapport/:token`; portals: `/portail/client`
+`/intervention/:token`, `/intervention-rapport/:token`; `/mot-de-passe` (APFS102 — rotation forcée du mot de passe d'un compte INTERNE, sans coquille ERP); portals: `/portail/client`
 (+`/devis`, `/factures`, `/livraisons`, `/chantiers`, `/mot-de-passe`),
 `/portail/fournisseur` (+`/commandes`), `/portail/partenaire` (+`/affaires`,
 `/commissions`); authenticated shell: `/apps` (HomeMenu — the front door),
@@ -1930,7 +1930,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT109` — `reporting/insights.py` (rentabilité chantier) : « facturé » = factures ÉMISES de la…
 - `VTAG1` — [GATED: décision fondateur]
 
-**Open — to build (118)**
+**Open — to build (116)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -2017,9 +2017,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CIQM23` — Valider les textes B2B marqués ✎ de la cadence
 - `CIQM24` — Script d'appel `objection_loi_8221` : valider une réponse qui réserve la revente du…
 - `CIQM25` — Écrire les surcharges commerciales après les premières mesures
-- `ENF11` — api-fuzz bloquant
 - `ENF15` — Dettes moyennes à zéro
-- `ENF19` — Duplicats (1 181) à zéro
 - `QAH10` — [GATED: secret `ANTHROPIC_API_KEY` GitHub + URL de staging/démo joignable — fondateur]
 - `CALX44` — Brancher le rattachement d'une affaire AO à un calepinage
 - `CALX131` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
@@ -2051,9 +2049,11 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT108` — [GATED: geste du fondateur — `reparer_vente_active --lister` = 0 en prod ; aujourd'hui…
 - `VTG1` — [GATED: décision fondateur coût/infra]
 
-**Blocked — awaiting founder decision (8)**
+**Blocked — awaiting founder decision (10)**
 
 - `AGR113` — ET0 et pluie efficace par région tirées de FAO CLIMWAT (ou de la DMN), sinon étiquetées…
+- `ENF11` — api-fuzz bloquant
+- `ENF19` — Duplicats (1 181) à zéro
 - `CALX339` — Figer le contrat de l'import d'un fichier PVsyst `.PAN`/`.OND` vers une fiche technique
 - `CALX356` — Écrire le parseur de fichiers PVsyst `.PAN` et `.OND`
 - `CALX357` — Téléverser un fichier `.PAN`/`.OND` depuis le formulaire produit
