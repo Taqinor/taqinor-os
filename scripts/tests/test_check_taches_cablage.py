@@ -11,6 +11,8 @@ tache qui livre un composant monte ailleurs, un ecran public a jeton et une
 tache qui ETEND l'ecran cree par sa voisine sont toutes LEGITIMES. Les tests
 ci-dessous verrouillent ces silences autant que les detections.
 """
+import contextlib
+import io
 import re
 import sys
 import tempfile
@@ -571,6 +573,28 @@ class BaseDeReferenceTests(unittest.TestCase):
         self.assertEqual(ctc.main(["--write-baseline", "--autoriser-croissance"]), 0)
         self.assertEqual(ctc.charger_base(ctc.BASELINE_PATH),
                          {"ecran-sans-cablage|PACT1"})
+
+    def test_id_v2_perime_fait_echouer(self):
+        """ADCG79 — un id v2 coché resté dans la liste gelée sort 1 ; purgé ⇒ 0."""
+        depot = FauxDepot()
+        self.addCleanup(depot.close)
+        sauvegarde = ctc.BASELINE_PATH
+        ctc.BASELINE_PATH = depot.racine / "allow.txt"
+        self.addCleanup(lambda: setattr(ctc, "BASELINE_PATH", sauvegarde))
+        ctc.ecrire_base(set())
+        (depot.racine / "docs" / "plans").mkdir(parents=True)
+        (depot.racine / "docs" / "plans" / "PLAN_AUDIT_TEST.md").write_text(
+            "- [x] ZZ1 — Tâche close. Files: `scripts/a.py`\n", encoding="utf-8")
+        depot.gel_v2("ZZ1")
+        sortie = io.StringIO()
+        with contextlib.redirect_stdout(sortie):
+            self.assertEqual(ctc.main([]), 1)
+        self.assertIn("ZZ1", sortie.getvalue())
+        self.assertIn("--write-baseline", sortie.getvalue())
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(ctc.main(["--write-baseline"]), 0)
+            self.assertEqual(ctc.main([]), 0)
+        self.assertEqual(ctc.charger_ids_v2(), set())
 
 
 # ===========================================================================

@@ -59,21 +59,20 @@ def rouvrir(company, user=None):
 
 
 def artefact_backup_disponible(company):
-    """True s'il existe un artefact d'export/backup TERMINÉ pour cette société.
+    """True s'il existe un dump base RESTAURABLE pris APRÈS la mise en fermeture.
 
     Prérequis OBLIGATOIRE d'une purge : on ne détruit jamais les données sans
-    une sauvegarde préalable vérifiée. Accepte un ``BackupRun`` kind export OU
-    db_dump terminé (le db_dump système couvre toute l'instance)."""
+    une sauvegarde préalable vérifiée. ADCG33 (C-ADCG-013) — critère unique :
+    ``BackupRun`` db_dump ``termine``, ``object_key`` posé, NON purgé
+    (``purge_is_deleted``), ``termine_le`` ≥ ``date_fermeture``. L'« export »
+    n'est qu'un manifeste de comptages (aucun fichier) : il ne compte plus."""
     from core.models import BackupRun
-    q_company = BackupRun.objects.filter(
-        company=company, kind=BackupRun.KIND_EXPORT,
-        statut=BackupRun.STATUT_TERMINE)
-    if q_company.exists():
-        return True
-    # Un dump base système récent couvre aussi cette société.
+    if company.date_fermeture is None:
+        return False
     return BackupRun.objects.filter(
-        kind=BackupRun.KIND_DB_DUMP,
-        statut=BackupRun.STATUT_TERMINE).exclude(object_key='').exists()
+        kind=BackupRun.KIND_DB_DUMP, statut=BackupRun.STATUT_TERMINE,
+        purge_is_deleted=False, termine_le__gte=company.date_fermeture,
+    ).exclude(object_key='').exists()
 
 
 def delai_grace_ecoule(company, now=None):
@@ -105,7 +104,7 @@ def verifier_purge_possible(company, now=None):
             "mise en fermeture — purge refusée.")
     if not artefact_backup_disponible(company):
         raise PurgeRefusee(
-            "Aucun artefact d'export/sauvegarde vérifié pour cette société — "
+            "Aucune sauvegarde restaurable prise après la mise en fermeture — "
             "purge refusée (sauvegarde préalable obligatoire).")
 
 

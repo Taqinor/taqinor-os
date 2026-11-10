@@ -133,11 +133,12 @@ export function normaliserRoute(url) {
 }
 
 /** Corps exact envoyé au serveur (exporté pour les tests). */
-export function construireCorps({ genre, methode, route, statut, code, message, requestId }) {
+export function construireCorps({ genre, methode, route, statut, code, message, requestId, routeBrute }) {
   return {
     genre,
     methode: String(methode || '').slice(0, 8).toUpperCase(),
-    route: normaliserRoute(route),
+    // ADCG54 — une violation CSP porte l'ORIGINE bloquée (déjà réduite par l'adaptateur).
+    route: routeBrute ? String(route || '').slice(0, 255) : normaliserRoute(route),
     ecran: normaliserRoute(globalThis.location?.pathname || ''),
     statut_reponse: typeof statut === 'number' && Number.isFinite(statut) ? statut : null,
     code: String(code || '').slice(0, 64),
@@ -283,6 +284,27 @@ export function signalerErreurScript(error, genre = GENRES.SCRIPT, deps = {}) {
   } catch {
     return false
   }
+}
+
+/**
+ * ADCG54 — `securitypolicyviolation` (navigateur) : une ligne `script`, code
+ * `csp:<directive>`, route = ORIGINE bloquée seule (jamais la requête), sans
+ * toast ; dédoublonnée dans la minute par `signalerProbleme`. `cible` : tests.
+ */
+export function installerViolationsCsp(deps = {}) {
+  const cible = 'cible' in deps ? deps.cible : globalThis.document
+  cible?.addEventListener?.('securitypolicyviolation', (event) => {
+    try {
+      const directive = String(event?.effectiveDirective || event?.violatedDirective || '').split(' ')[0]
+      const bloquee = String(event?.blockedURI || '')
+      let origine = bloquee.split(/[?#]/)[0]
+      try { origine = new URL(bloquee).origin } catch { /* inline, eval, data : mot-clé gardé */ }
+      signalerProbleme({ genre: GENRES.SCRIPT, route: origine, routeBrute: true, statut: null,
+        code: `csp:${directive}`, message: `CSP ${directive} bloque ${origine}` }, deps)
+    } catch {
+      // RÈGLE 1 : le journal ne fait jamais planter l'application.
+    }
+  })
 }
 
 // Un seul rechargement par fenêtre : si le chunk manque ENCORE juste après, le

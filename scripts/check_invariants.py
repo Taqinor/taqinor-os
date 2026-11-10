@@ -34,8 +34,9 @@ def _find_method_in_class(tree: ast.Module, class_name: str, method_name: str) -
 
 def main() -> int:
     if not INVARIANTS_FILE.exists():
-        print("docs/invariants.md not found — nothing to check.")
-        return 0
+        # ADCG81 — un fichier renommé/supprimé ne désarme jamais la garde.
+        print("docs/invariants.md introuvable — garde désarmée, échec.")
+        return 1
 
     text = INVARIANTS_FILE.read_text(encoding="utf-8")
     references = REFERENCE_RE.findall(text)

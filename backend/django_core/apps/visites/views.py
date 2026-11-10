@@ -219,10 +219,9 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
     queryset = VisiteTerrain.objects.select_related('lead', 'commercial').all()
     serializer_class = VisiteTerrainSerializer
     parser_classes = [JSONParser]
-    # ENF11 — `list` rend un tableau NU (``selectors.ligne_visite_terrain``),
-    # jamais l'enveloppe count/results : sans cette ligne le schéma annonçait
-    # PaginatedObjectList et chaque GET était un « Response violates schema ».
-    pagination_class = None
+    # ADCG50 — pagination standard de la plateforme (50 par page, plafond 200) :
+    # `list` sert l'enveloppe count/next/previous/results (schéma
+    # PaginatedVisiteTerrainLigneList), plus un tableau nu sans plafond (ENF11).
     read_permission = 'visites_voir'
 
     #: ALEA24 — code d'écriture EXPLICITE pour CHAQUE action d'écriture du
@@ -358,9 +357,9 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         ],
         responses={200: _VISITE_LIGNE})
     def list(self, request, *args, **kwargs):
-        lignes = [selectors.ligne_visite_terrain(visite)
-                  for visite in self.filter_queryset(self.get_queryset())]
-        return Response(lignes)
+        page = self.paginate_queryset(self.filter_queryset(self.get_queryset()))
+        return self.get_paginated_response(
+            [selectors.ligne_visite_terrain(visite) for visite in page])
 
     @extend_schema(responses=_VISITE_CONTEXTE)
     def retrieve(self, request, *args, **kwargs):

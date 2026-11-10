@@ -17,10 +17,17 @@ test lit leur source et verrouille les regles qui ne doivent jamais regresser :
 Stdlib pure (unittest). Run:
     python -m unittest scripts.tests.test_nightly_qa_scripts -v
 """
+from __future__ import annotations
+
 import json
+import os
 import re
+import shutil
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
+import sys
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 SETUP = ROOT / "scripts" / "setup-nightly-qa.ps1"
@@ -187,6 +194,17 @@ class TestNightly(unittest.TestCase):
         self.assertIn("exit $ExitCode", self.code)
         self.assertRegex(self.code, r"return 1\b")
 
+    def test_gc_workspace_appele_en_fin_de_passe(self):
+        # ADCG22 : apres la passe claude, avant exit $ExitCode, encadre, sans docker.
+        appel = self.code.find("scripts\\gc-workspace.ps1') -MaxAgeDays 14 -SansDocker")
+        self.assertGreater(appel, self.code.find("Start-Process -FilePath $claudeExe"))
+        self.assertGreater(appel, self.code.find("Write-Log ('fin : code de sortie ' + $ExitCode)"))
+        self.assertLess(appel, self.code.rfind("exit $ExitCode"))
+        bloc = self.code[self.code.find("if ($script:PasseLancee) {"):self.code.rfind("exit $ExitCode")]
+        self.assertIn("try {", bloc)
+        self.assertIn("} catch { Write-Log (", bloc)
+        self.assertNotIn("$ExitCode =", bloc)
+
     def test_outils_mcp_autorises_correspondent_a_mcp_json(self):
         serveurs = json.loads(MCP.read_text(encoding="utf-8"))["mcpServers"]
         for nom in ("playwright", "chrome-devtools"):
@@ -239,8 +257,6 @@ class TestSetup(unittest.TestCase):
         self.assertIn("serena", serveurs)
 
 
-
-
 class TestProblemesProd(unittest.TestCase):
     """BPQ5 : le tri du matin passe par nightly-qa.ps1 SANS docker, seed ni Playwright."""
 
@@ -275,6 +291,99 @@ class TestProblemesProd(unittest.TestCase):
                       "PROBLEMES_PROD_STATUS", "gh pr merge --auto --merge"):
             self.assertIn(garde, texte, garde)
 
+
+LANCEUR = ROOT / "scripts" / "nightly-qa-lanceur.ps1"
+PWSH = shutil.which("pwsh") or shutil.which("powershell")
+
+
+@unittest.skipUnless(PWSH, "pwsh/powershell absent")
+class TestLanceur(unittest.TestCase):
+    """ADCG15 : lanceur hors depot, trace lisible quand nightly-qa.ps1 manque."""
+
+    def _lancer(self, depot, appdata):
+        env = dict(os.environ, LOCALAPPDATA=str(appdata))
+        r = subprocess.run(
+            [PWSH, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(LANCEUR), "-Depot", str(depot)],
+            env=env, capture_output=True, text=True, timeout=120,
+        )
+        journal = Path(appdata) / "taqinor" / "nightly-qa.log"
+        return r.returncode, journal.read_text(encoding="utf-8-sig").splitlines()
+
+    def test_script_absent_laisse_une_trace(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            depot = Path(tmp) / "depot"
+            (depot / "scripts").mkdir(parents=True)
+            code, lignes = self._lancer(depot, Path(tmp) / "appdata")
+            self.assertEqual(code, 3)
+            self.assertEqual(len(lignes), 2, lignes)
+            self.assertIn("lancement", lignes[0])
+            self.assertIn("ECHEC lancement : scripts\\nightly-qa.ps1 absent", lignes[1])
+            self.assertIn("(git status : ", lignes[1])
+            self.assertRegex(lignes[1], r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d  ")
+
+    def test_script_present_code_transmis(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            depot = Path(tmp) / "depot"
+            (depot / "scripts").mkdir(parents=True)
+            (depot / "scripts" / "nightly-qa.ps1").write_text("param([string]$Skill)\nexit 0\n", encoding="ascii")
+            code, lignes = self._lancer(depot, Path(tmp) / "appdata")
+            self.assertEqual(code, 0)
+            self.assertIn("lancement", lignes[0])
+            self.assertTrue(lignes[-1].endswith("fin code 0"), lignes)
+            code, lignes = self._lancer(depot, Path(tmp) / "appdata")
+            self.assertEqual(len(lignes), 4, "lignes horodatees conservees")
+
+    def test_setup_copie_et_enregistre_le_lanceur(self):
+        code = _code(SETUP)
+        self.assertIn("'taqinor\\nightly-qa-lanceur.ps1'", code)
+        self.assertIn("Copy-Item -LiteralPath (Join-Path $RepoRoot 'scripts\\nightly-qa-lanceur.ps1')", code)
+        self.assertIn("$tr = Get-TaskCommand $Lanceur $ExtraArgs", code)
+        self.assertIn("' -Depot '", code)
+
+
+class TestDernierPassage(unittest.TestCase):
+    """ADCG16 : contrôle « dernier passage » lu dans le journal hors dépôt."""
+
+    def _main(self, contenu):
+        import contextlib
+        import importlib.util
+        import io
+        from datetime import datetime, timedelta
+        spec = importlib.util.spec_from_file_location(
+            "nightly_qa_dernier_passage", ROOT / "scripts" / "nightly_qa_dernier_passage.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        maintenant = datetime(2026, 11, 10, 8, 0, 0)
+        with tempfile.TemporaryDirectory() as tmp:
+            journal = Path(tmp) / "nightly-qa.log"
+            if contenu is not None:
+                lignes = [f"{maintenant - timedelta(hours=h):%Y-%m-%d %H:%M:%S}  {t}" for h, t in contenu]
+                journal.write_text("\n".join(lignes) + "\n", encoding="utf-8-sig")
+            sortie = io.StringIO()
+            with contextlib.redirect_stdout(sortie):
+                code = mod.main(["--journal", str(journal)], maintenant=maintenant)
+        return code, sortie.getvalue()
+
+    def test_plus_de_36_h_rend_un(self):
+        code, texte = self._main([(40, "fin code 0"), (10, "ECHEC lancement : scripts\\nightly-qa.ps1 absent")])
+        self.assertEqual(code, 1)
+        self.assertIn("dernier passage réussi : 2026-11-08 16:00 (il y a 40 h)", texte)
+        self.assertIn("dernière tentative : 2026-11-09 22:00 ECHEC lancement", texte)
+
+    def test_passage_de_cette_nuit_rend_zero(self):
+        code, _ = self._main([(30, "fin code 1"), (8, "lancement skill qa-explorer"), (6, "fin code 0")])
+        self.assertEqual(code, 0)
+
+    def test_aucun_passage_consigne(self):
+        for contenu in (None, [(2, "fin code 1")]):
+            code, texte = self._main(contenu)
+            self.assertEqual(code, 1)
+            self.assertIn("aucun passage consigné", texte)
+
+    def test_appele_par_le_setup(self):
+        self.assertIn("scripts\\nightly_qa_dernier_passage.py", _code(SETUP))
+
+
 if __name__ == "__main__":
     unittest.main()
 
@@ -304,3 +413,276 @@ class TestNightlyRobustesse(unittest.TestCase):
         self.assertLess(self.code.find("nightly-qa.log"),
                         self.code.find("Read-KillSwitch $ConfigPath"))
 
+
+# --- Tests fusionnes depuis test_deploy_prod.py ---
+# ADCG6 — le message final de `scripts/deploy-prod.ps1` suit le JOURNAL du serveur.
+#
+# Le script est lancé par PowerShell (pwsh, présent sur les exécuteurs ubuntu ;
+# Windows PowerShell en repli sur un poste) avec `ssh` / `scp` remplacés par des
+# FONCTIONS PowerShell (résolues avant les exécutables) : aucune connexion réelle.
+#
+# Run : python -m unittest scripts.tests.test_deploy_prod -v
+PS1 = ROOT / "scripts" / "deploy-prod.ps1"
+
+
+ENVELOPPE = r'''[Console]::OutputEncoding = [Text.Encoding]::UTF8
+function scp { $global:LASTEXITCODE = 0 }
+function ssh {
+    foreach ($ligne in ($env:FAUX_SSH_SORTIE -split '\|')) { $ligne }
+    $global:LASTEXITCODE = [int]$env:FAUX_SSH_RC
+}
+& '__PS1__'
+exit $LASTEXITCODE
+'''
+
+
+def _powershell():
+    return shutil.which("pwsh") or shutil.which("powershell")
+
+
+class DeployProdTests(unittest.TestCase):
+    def jouer(self, sortie, rc):
+        shell = _powershell()
+        self.assertTrue(shell, "pwsh introuvable : ce test ne se saute jamais")
+        with tempfile.TemporaryDirectory() as d:
+            enveloppe = Path(d) / "enveloppe.ps1"
+            enveloppe.write_text(ENVELOPPE.replace("__PS1__", str(PS1)), encoding="utf-8-sig")
+            r = subprocess.run(
+                [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(enveloppe)],
+                env={**os.environ, "FAUX_SSH_SORTIE": sortie, "FAUX_SSH_RC": str(rc),
+                     "USERPROFILE": d}, capture_output=True, timeout=120)
+        return r.returncode, r.stdout.decode("utf-8", "replace") + r.stderr.decode("utf-8", "replace")
+
+    def test_message_suit_le_journal_du_serveur(self):
+        rc, sortie = self.jouer(
+            "Deploiement lance|[2026-11-10T10:00:00Z] DEPLOY b4c5d6e — ECHEC (x)|"
+            "[2026-11-10T10:01:00Z] ROLLBACK vers a1b2c3d effectué", 1)
+        self.assertEqual(rc, 1, sortie)
+        self.assertIn("ECHEC — retour arrière vers a1b2c3d effectué", sortie)
+
+        rc, sortie = self.jouer("Deploiement lance|DEPLOY b4c5d6e — ECHEC", 1)
+        self.assertEqual(rc, 1, sortie)
+        self.assertIn("ECHEC SANS retour arrière : DEPLOY b4c5d6e — ECHEC", sortie)
+        self.assertNotIn("retour arrière vers", sortie)
+        self.assertNotIn("rollback automatique", sortie.lower())
+
+        rc, sortie = self.jouer("Deploiement lance|DEPLOY b4c5d6e — OK", 0)
+        self.assertEqual(rc, 0, sortie)
+        self.assertIn("Deploiement termine", sortie)
+        self.assertNotIn("sslip.io", PS1.read_text(encoding="utf-8"))
+
+
+# --- Tests fusionnes depuis test_e2e_local.py ---
+# ADCG23 — `scripts/e2e-local.sh stop` n'arrête que les services que `up` a démarrés.
+#
+# Un FAUX `docker` (en tête du PATH) journalise ses appels ; l'état du script vit
+# dans un dossier jetable (`E2E_ETAT_DIR`), jamais dans le /tmp du poste.
+#     python -m unittest scripts.tests.test_e2e_local -v
+SCRIPT = ROOT / "scripts" / "e2e-local.sh"
+
+
+FAUX_DOCKER = '#!/bin/bash\necho "$*" >> "$FAUX_DOCKER_JOURNAL"\nexit 0\n'
+
+
+def _bash() -> str | None:
+    if sys.platform == "win32":
+        git_bash = Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Git" / "bin" / "bash.exe"
+        return str(git_bash) if git_bash.is_file() else None
+    return shutil.which("bash")
+
+
+@unittest.skipUnless(_bash(), "bash introuvable")
+class E2eLocalTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        (self.tmp / "bin").mkdir()
+        faux = self.tmp / "bin" / "docker"
+        faux.write_text(FAUX_DOCKER, encoding="utf-8", newline="\n")
+        faux.chmod(0o755)
+        self.journal = self.tmp / "journal.txt"
+        self.etat = self.tmp / "etat"
+        self.etat.mkdir()
+
+    def _stop(self):
+        env = dict(os.environ, E2E_ETAT_DIR=self.etat.as_posix(),
+                   FAUX_DOCKER_JOURNAL=self.journal.as_posix())
+        env["PATH"] = str(self.tmp / "bin") + os.pathsep + env.get("PATH", "")
+        res = subprocess.run([_bash(), SCRIPT.as_posix(), "stop"], capture_output=True, text=True,
+                             encoding="utf-8", env=env, timeout=60)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        appels = self.journal.read_text(encoding="utf-8").splitlines() if self.journal.exists() else []
+        return res.stdout, [a for a in appels if a.startswith("compose stop")]
+
+    def test_stop_ne_coupe_que_ce_que_up_a_demarre(self):
+        (self.etat / "taqinor-e2e-services.txt").write_text("minio\n", encoding="utf-8", newline="\n")
+        _, arrets = self._stop()
+        self.assertEqual(arrets, ["compose stop minio"])
+        self.assertFalse((self.etat / "taqinor-e2e-services.txt").exists(), "état non effacé après stop")
+
+    def test_sans_etat_rien_n_est_arrete(self):
+        sortie, arrets = self._stop()
+        self.assertEqual(arrets, [])
+        self.assertIn("services laissés en marche (non démarrés par up)", sortie)
+
+    def test_up_ne_retient_que_les_services_absents(self):
+        texte = SCRIPT.read_text(encoding="utf-8")
+        releve = texte.index("docker compose ps --services --status running")
+        self.assertLess(releve, texte.index("docker compose up -d db redis minio"))
+        self.assertNotIn("docker compose stop db redis minio", texte)
+
+
+# --- Tests fusionnes depuis test_gc_workspace.py ---
+# ADCG21 — scripts/gc-workspace.ps1 exécuté sur un dépôt git temporaire (en -WhatIf).
+#
+# Le script se résout par `$PSScriptRoot` : on le copie sous `scripts/` du dépôt de test.
+# Run:
+#     python -m unittest scripts.tests.test_gc_workspace -v
+SCRIPT_GC = ROOT / "scripts" / "gc-workspace.ps1"
+
+
+def _git(depot, *args):
+    return subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", *args],
+        cwd=depot, capture_output=True, text=True, check=True,
+    ).stdout
+
+
+@unittest.skipUnless(PWSH and shutil.which("git"), "pwsh/powershell ou git absent")
+class GcWorkspaceTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.depot = Path(self._tmp.name)
+        _git(self.depot, "init", "-q", "-b", "main")
+        (self.depot / "a.txt").write_text("a\n", encoding="utf-8")
+        _git(self.depot, "add", "a.txt")
+        _git(self.depot, "commit", "-q", "-m", "a")
+        _git(self.depot, "branch", "worktree-agent-x")
+        _git(self.depot, "checkout", "-q", "-b", "worktree-agent-y")
+        (self.depot / "b.txt").write_text("b\n", encoding="utf-8")
+        _git(self.depot, "add", "b.txt")
+        _git(self.depot, "commit", "-q", "-m", "b")
+        _git(self.depot, "checkout", "-q", "main")
+        (self.depot / "scripts").mkdir()
+        shutil.copy(SCRIPT_GC, self.depot / "scripts" / "gc-workspace.ps1")
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _lancer(self, *extra):
+        r = subprocess.run(
+            [PWSH, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+             str(self.depot / "scripts" / "gc-workspace.ps1"), "-WhatIf", *extra],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120,
+        )
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return r.stdout
+
+    def test_branche_worktree_agent_fusionnee_supprimee(self):
+        sortie = self._lancer()
+        self.assertIn("delete merged branch worktree-agent-x", sortie)
+        self.assertNotIn("delete merged branch worktree-agent-y", sortie)
+        garde = sortie[sortie.index("KEEP (non fusionn"):]
+        self.assertIn("- worktree-agent-y", garde)
+        branches = _git(self.depot, "branch", "--format=%(refname:short)").split()
+        self.assertEqual(sorted(branches), ["main", "worktree-agent-x", "worktree-agent-y"])
+
+    def test_sans_docker_garde_le_cache(self):
+        # ADCG22 : la passe nocturne appelle -SansDocker (cache de build garde chaud).
+        self.assertIn("docker builder prune", self._lancer())
+        sortie = self._lancer("-SansDocker")
+        self.assertNotIn("docker builder prune", sortie)
+        self.assertIn("worktrees supprimes : 0", sortie)
+
+
+# --- Tests fusionnes depuis test_valider_proxy.py ---
+# ADCG9 — `scripts/valider-proxy.sh` rend un code non nul quand le Caddyfile ou
+# nginx.conf est invalide, et nomme le fichier fautif.
+#
+# Un FAUX `docker` (en tête du PATH) imite les deux validateurs : `caddy validate`
+# refuse un Caddyfile qui porte une directive inconnue, `nginx -t` refuse un
+# nginx.conf aux accolades déséquilibrées. Le vrai docker tourne en CI (étape
+# « Valider la configuration du proxy » du job backend-lint-fast).
+SCRIPT_PROXY = ROOT / "scripts" / "valider-proxy.sh"
+
+
+FAUX_DOCKER_PROXY = r"""#!/bin/bash
+echo "$*" >> "$FAUX_DOCKER_JOURNAL"
+[ "$1" = build ] && exit 0
+for a in "$@"; do
+  case "$a" in
+    *:/etc/caddy:ro)
+      grep -q directive_inconnue "${a%:/etc/caddy:ro}/Caddyfile" \
+        && { echo "Error: unrecognized directive: directive_inconnue" >&2; exit 1; } ;;
+    *:/etc/nginx/nginx.conf:ro)
+      f="${a%:/etc/nginx/nginx.conf:ro}"
+      [ "$(tr -cd '{' < "$f" | wc -c)" = "$(tr -cd '}' < "$f" | wc -c)" ] \
+        || { echo "nginx: [emerg] unexpected end of file" >&2; exit 1; } ;;
+  esac
+done
+exit 0
+"""
+
+
+BASH = _bash()
+
+
+@unittest.skipUnless(BASH, "bash introuvable")
+class ValiderProxyTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.depot = self.tmp / "depot"
+        shutil.copytree(ROOT / "backend" / "caddy", self.depot / "backend" / "caddy")
+        shutil.copytree(ROOT / "backend" / "nginx", self.depot / "backend" / "nginx")
+        self.bin = self.tmp / "bin"
+        self.bin.mkdir()
+        faux = self.bin / "docker"
+        faux.write_text(FAUX_DOCKER_PROXY, encoding="utf-8", newline="\n")
+        faux.chmod(0o755)
+        self.journal = self.tmp / "journal.txt"
+
+    def _lancer(self, chemin=None):
+        env = dict(os.environ)
+        env["PATH"] = chemin if chemin is not None else str(self.bin) + os.pathsep + env.get("PATH", "")
+        env["VALIDER_PROXY_RACINE"] = self.depot.as_posix()
+        env["FAUX_DOCKER_JOURNAL"] = self.journal.as_posix()
+        return subprocess.run([BASH, SCRIPT_PROXY.as_posix()], capture_output=True, text=True,
+                              encoding="utf-8", env=env, timeout=60)
+
+    def test_depot_reel_valide_deux_ok(self):
+        res = self._lancer()
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertIn("OK backend/caddy/Caddyfile", res.stdout)
+        self.assertIn("OK backend/nginx/nginx.conf", res.stdout)
+        journal = self.journal.read_text(encoding="utf-8")
+        self.assertIn("caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile", journal)
+        self.assertIn("nginx -t", journal)
+        for hote in ("django_core", "fastapi_ia", "frontend"):
+            self.assertIn(f"--add-host {hote}:", journal)
+
+    def test_config_invalide_rend_un(self):
+        caddyfile = self.depot / "backend" / "caddy" / "Caddyfile"
+        caddyfile.write_text(caddyfile.read_text(encoding="utf-8").replace(
+            "{$PUBLIC_HOSTNAME}, api.taqinor.ma {", "{$PUBLIC_HOSTNAME}, api.taqinor.ma {\n\tdirective_inconnue", 1),
+            encoding="utf-8", newline="\n")
+        res = self._lancer()
+        self.assertEqual(res.returncode, 1)
+        self.assertIn("ECHEC backend/caddy/Caddyfile", res.stderr)
+        self.assertIn("OK backend/nginx/nginx.conf", res.stdout)
+
+    def test_nginx_sans_accolade_fermante_rend_un(self):
+        conf = self.depot / "backend" / "nginx" / "nginx.conf"
+        texte = conf.read_text(encoding="utf-8")
+        conf.write_text(texte[:texte.rindex("}")], encoding="utf-8", newline="\n")
+        res = self._lancer()
+        self.assertEqual(res.returncode, 1)
+        self.assertIn("ECHEC backend/nginx/nginx.conf", res.stderr)
+        self.assertIn("OK backend/caddy/Caddyfile", res.stdout)
+
+    def test_docker_absent_rend_deux_jamais_vert(self):
+        vide = self.tmp / "vide"
+        vide.mkdir()
+        res = self._lancer(chemin=str(vide))
+        self.assertEqual(res.returncode, 2)
+        self.assertIn("docker absent", res.stderr)

@@ -682,6 +682,72 @@ class ResumeEnrichiTests(TestCase):
         self.assertEqual(lignes[0]['type'], 'db_dump')
         self.assertEqual(lignes[0]['message'], 'pg_dump absent')
 
+    def test_taches_en_echec_regroupees(self):
+        """ADCG18 — `task_failure` consigné dans Redis, regroupé dans le résumé."""
+        from celery.signals import task_failure
+
+        import erp_agentique.celery  # noqa: F401 — récepteurs du signal
+
+        class FauxRedis:
+            def __init__(self):
+                self.listes = {}
+
+            def lpush(self, cle, valeur):
+                self.listes.setdefault(cle, []).insert(0, valeur)
+
+            def ltrim(self, cle, debut, fin):
+                self.listes[cle] = self.listes.get(cle, [])[debut:fin + 1]
+
+            def lrange(self, cle, debut, fin):
+                return list(self.listes.get(cle, []))
+
+        class FausseTache:
+            # Le Signal de Celery met l'expéditeur en clé de cache : il doit
+            # être hachable (une vraie tâche l'est ; SimpleNamespace non).
+            def __init__(self, name):
+                self.name = name
+
+        def echouer(nom, exc):
+            task_failure.send(sender=FausseTache(nom), task_id='t', exception=exc)
+
+        faux = FauxRedis()
+        with mock.patch('apps.reporting.journal_problemes._client_redis', return_value=faux):
+            for nom in ('crm.tache_x', 'crm.tache_x', 'crm.tache_x', 'ventes.tache_y'):
+                echouer(nom, ValueError('boom'))
+            lignes = resume_json(jours=1)['taches_en_echec']
+            self.assertEqual(resume_json(jours=1, company=self.company)['taches_en_echec'], [])
+            for _ in range(600):
+                echouer('crm.tache_z', RuntimeError('x'))
+            self.assertEqual(len(faux.listes['erp:taches_en_echec']), 500)
+        self.assertEqual(
+            [(ligne['tache'], ligne['exception'], ligne['occurrences'], ligne['message'])
+             for ligne in lignes],
+            [('crm.tache_x', 'ValueError', 3, 'boom'), ('ventes.tache_y', 'ValueError', 1, 'boom')])
+        self.assertTrue(lignes[0]['dernier'])
+        with mock.patch('apps.reporting.journal_problemes._client_redis',
+                        side_effect=OSError('pas de redis')):
+            echouer('crm.tache_x', ValueError('boom'))  # le worker ne casse pas
+            self.assertEqual(resume_json(jours=1)['taches_en_echec'], [])
+
+    def test_deploys_en_echec_regroupes_par_commit(self):
+        """ADCG12 — la liste Redis de scripts/auto-deploy.sh regroupée par (commit, étape)."""
+        maintenant = timezone.now().timestamp()
+        bruts = [json.dumps({'ts': maintenant - 60, 'sha': 'b4c5d6e7f', 'etape': 'migrate'}),
+                 json.dumps({'ts': maintenant - 600, 'sha': 'b4c5d6e7f', 'etape': 'migrate'}),
+                 json.dumps({'ts': maintenant - 9 * 86400, 'sha': 'vieux0000', 'etape': 'build'})]
+        client = mock.Mock(**{'lrange.side_effect': lambda cle, debut, fin: (
+            bruts if cle == 'erp:deploys_en_echec' else [])})
+        with mock.patch('apps.reporting.journal_problemes._client_redis', return_value=client):
+            lignes = resume_json(jours=1)['deploys_en_echec']
+            self.assertEqual(resume_json(jours=1, company=self.company)['deploys_en_echec'], [])
+        client.lrange.assert_any_call('erp:deploys_en_echec', 0, -1)
+        self.assertEqual([(ligne['sha'], ligne['etape'], ligne['occurrences']) for ligne in lignes],
+                         [('b4c5d6e7f', 'migrate', 2)])
+        self.assertLess(lignes[0]['premier'], lignes[0]['dernier'])
+        with mock.patch('apps.reporting.journal_problemes._client_redis',
+                        side_effect=OSError('pas de redis')):
+            self.assertEqual(resume_json(jours=1)['deploys_en_echec'], [])
+
     def test_sante_seulement_les_services_du_tri_et_sonde_cassee(self):
         sante = resume_json(jours=1)['sante']
         self.assertEqual(set(sante), {'database', 'cache', 'beat'})

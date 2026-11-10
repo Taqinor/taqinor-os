@@ -195,8 +195,16 @@ def build_xlsx_response(filename, headers, rows, sheet_title='Export'):
     explicitement (``neutralize=False``), pour préserver les valeurs
     (ex. un téléphone « +212… »).
     """
-    from django.http import HttpResponse
+    from django.http import HttpResponse, JsonResponse
 
+    from apps.records.storage import export_row_threshold, should_async_export
+
+    # ADCG46 — plafond À LA SOURCE (seuil NTPLT30, 0 = off) : 413 sans construire le classeur.
+    rows = rows if isinstance(rows, (list, tuple)) else list(rows)
+    if should_async_export(len(rows)):
+        nombre, plafond = (f'{n:,}'.replace(',', ' ') for n in (len(rows), export_row_threshold()))
+        return JsonResponse({'detail': f'Export trop volumineux ({nombre} lignes, plafond {plafond}) : '
+                                       'filtrez la période'}, status=413)
     wb = build_workbook(headers, neutralize_rows(rows),
                         sheet_title=sheet_title)
     response = HttpResponse(content_type=XLSX_CONTENT_TYPE)

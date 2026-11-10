@@ -73,6 +73,9 @@ COMPANY_TOKENS = ("company", "scope_queryset", "scope_client_queryset",
                   "employe__user", "visible_user_ids", "subtree_user_ids",
                   "peer_user_ids")
 
+APPELS_FILTRANTS = frozenset({"filter", "get", "exclude",
+                              "get_object_or_404", "Q"})
+
 #: APFS64 — dette GELÉE (``--list``, 09/11/2026) : ne fait que décroître.
 DETTE_FILTRE_EFFECTIF = frozenset({
     "backend/django_core/apps/crm/clients_views.py::lead_playbook_view",
@@ -94,6 +97,40 @@ DETTE_FILTRE_EFFECTIF = frozenset({
     "backend/django_core/apps/ventes/public_views.py::public_bcf_document",
     "backend/django_core/authentication/views.py::CompanyViewSet",
     "backend/django_core/core/views.py::secrets_rotation_due",
+    # APFS118 (10/11/2026) — @api_view hors fichiers « vues » ; ne fait que décroître.
+    "backend/django_core/apps/reporting/approbations.py::decider_approbation_via_push",
+    "backend/django_core/apps/reporting/archive.py::archive_chantier",
+    "backend/django_core/apps/reporting/archive.py::archive_client",
+    "backend/django_core/apps/reporting/calendar.py::calendar_events",
+    "backend/django_core/apps/reporting/calendar.py::calendar_reschedule",
+    "backend/django_core/apps/reporting/commercial.py::commercial_dashboard",
+    "backend/django_core/apps/reporting/commercial.py::win_loss_by_source",
+    "backend/django_core/apps/reporting/geo.py::geo_points",
+    "backend/django_core/apps/reporting/insights.py::analytics",
+    "backend/django_core/apps/reporting/insights.py::audit_log",
+    "backend/django_core/apps/reporting/insights.py::cohorts",
+    "backend/django_core/apps/reporting/insights.py::job_costing",
+    "backend/django_core/apps/reporting/insights.py::profitability",
+    "backend/django_core/apps/reporting/insights.py::recurring_revenue",
+    "backend/django_core/apps/reporting/insights.py::sales_leaderboard",
+    "backend/django_core/apps/reporting/pipeline.py::funnel_velocity",
+    "backend/django_core/apps/reporting/pipeline.py::pipeline",
+    "backend/django_core/apps/reporting/reports.py::sales_report",
+    "backend/django_core/apps/reporting/reports.py::service_report",
+    "backend/django_core/apps/reporting/reports.py::stock_report",
+    "backend/django_core/apps/reporting/reports_field.py::field_service_report",
+    "backend/django_core/apps/reporting/sav_sla.py::sav_sla_insight",
+    "backend/django_core/apps/ventes/public/lecture_views.py::proposal_engagement",
+    "backend/django_core/apps/ventes/public/signature_views.py::proposal_accept",
+    "backend/django_core/core/trust_center.py::trust_center_public",
+    # APFS119 (10/11/2026) — mot-clé company hors appel de filtrage ; ne fait que décroître.
+    "backend/django_core/apps/adminops/views.py::tracker_usage_view",
+    "backend/django_core/apps/audit/views.py::object_as_of",
+    "backend/django_core/apps/crm/public_chat_views.py::post_chat_message",
+    "backend/django_core/apps/ged/views.py::public_partage",
+    "backend/django_core/apps/sav/public_views.py::ticket_public_satisfaction",
+    "backend/django_core/core/export_registry.py::declencher_export_reversibilite",
+    "backend/django_core/authentication/views.py::UserViewSet",
 })
 
 
@@ -132,6 +169,22 @@ def _iter_view_files():
                 if f.name != "__init__.py" and f not in seen:
                     seen.add(f)
                     yield f
+
+
+def _iter_fichiers_api_view():
+    """APFS118 — tout autre ``*.py`` (hors tests/migrations et hors fichiers
+    déjà rendus par ``_iter_view_files``) : seules ses ``@api_view`` sont lues."""
+    deja = set(_iter_view_files())
+    for app_dir in _app_dirs_and_foundation():
+        if not app_dir.is_dir():
+            continue
+        for f in sorted(app_dir.rglob("*.py")):
+            parts = f.relative_to(app_dir).parts
+            if f in deja or any(
+                    p == "migrations" or p == "tests" or p.startswith("test")
+                    for p in parts):
+                continue
+            yield f
 
 
 def _rel(path: Path) -> str:
@@ -187,11 +240,15 @@ def _filtre_effectif(fonction):
     """APFS64 — un filtre société EFFECTIF : mot-clé ``company*`` (ou jeton
     de COMPANY_TOKENS) d'un appel, ou appel de portée (``company_qs``…)."""
     for n in ast.walk(fonction):
-        if isinstance(n, ast.keyword) and n.arg \
-                and any(t in n.arg for t in COMPANY_TOKENS):
+        if not isinstance(n, ast.Call):
+            continue
+        nom = _nom_appel(n)
+        # APFS119 — le mot-clé ne compte que sur un appel de filtrage.
+        if nom in APPELS_FILTRANTS and any(
+                k.arg and any(t in k.arg for t in COMPANY_TOKENS)
+                for k in n.keywords):
             return True
-        if isinstance(n, ast.Call) \
-                and any(t in _nom_appel(n) for t in COMPANY_TOKENS):
+        if any(t in nom for t in COMPANY_TOKENS):
             return True
     return False
 
@@ -253,7 +310,7 @@ def _subscript_key(node):
     return None
 
 
-def check_view_file(path: Path):
+def check_view_file(path: Path, fonctions_seules=False):
     """Return (views, findings). views = [(cls, compliant_bool)]."""
     try:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -272,7 +329,8 @@ def check_view_file(path: Path):
                     "API_VIEW_COMPANY_FILTER_MISSING", f"{rel}::{node.name}",
                     f"@api_view {node.name} reads the ORM without an "
                     "effective company filter (company=… / company_qs)."))
-        if not isinstance(node, ast.ClassDef) or not _is_view(node):
+        if fonctions_seules or not (
+                isinstance(node, ast.ClassDef) and _is_view(node)):
             continue
         key = f"{rel}::{node.name}"
         model_backed = _is_model_backed(node)
@@ -414,9 +472,11 @@ def main(argv):
     offenders = _morts_offenders(allow)
     dette_vue = set()
 
-    for path in _iter_view_files():
+    sources = ([(p, False) for p in _iter_view_files()]
+               + [(p, True) for p in _iter_fichiers_api_view()])
+    for path, seules in sources:
         rel = _rel(path)
-        views, findings = check_view_file(path)
+        views, findings = check_view_file(path, fonctions_seules=seules)
         for cls, scoped in views:
             all_views.append(f"{rel}::{cls} scoped={scoped}")
         for code, key, msg in findings:

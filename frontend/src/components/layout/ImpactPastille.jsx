@@ -25,12 +25,14 @@ export default function ImpactPastille({ collapsed }) {
   if (error || data == null) return null
 
   const productionKwh = Number(data.total_production_kwh) || 0
-  const co2Tonnes = Number(data.total_co2_tonnes) || 0
+  // AMON109 : `null` servi = aucun facteur CO₂ réglé → pas de segment CO₂ (jamais un 0,0 t).
+  const co2Tonnes = data.total_co2_tonnes == null ? null : Number(data.total_co2_tonnes) || 0
   // Aucune donnée réelle sur le parc → rien à afficher (pas de "0 MWh").
-  if (productionKwh <= 0 && co2Tonnes <= 0) return null
+  if (productionKwh <= 0 && !(co2Tonnes > 0)) return null
 
   const mwh = productionKwh / 1000
-  const label = `${formatNumber(mwh, { decimals: 1 })} MWh · ${formatNumber(co2Tonnes, { decimals: 1 })} t CO₂ évitées`
+  const co2 = co2Tonnes == null ? '' : ` · ${formatNumber(co2Tonnes, { decimals: 1 })} t CO₂ évitées`
+  const label = `${formatNumber(mwh, { decimals: 1 })} MWh${co2}`
   const Icon = METRIC_ICONS.co2
 
   return (

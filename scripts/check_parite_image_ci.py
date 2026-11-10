@@ -105,8 +105,32 @@ def verifier_node(racine: Path) -> list[str]:
     return erreurs
 
 
+DOCKERFILES_PYTHON = (PROD, 'backend/fastapi_ia/Dockerfile', COPIES_CI[0])
+
+
+def verifier_python(racine: Path) -> list[str]:
+    """ADCG90 — meme tag `FROM python:` pour les images de prod et l'image CI ; la
+    `python-version` de chaque workflow = majeure.mineure de ce tag."""
+    tags = {}
+    for rel in DOCKERFILES_PYTHON:
+        m = re.search(r'^FROM\s+python:(\S+)', _lire(racine, rel) or '', re.M)
+        if m:
+            tags[rel] = m.group(1)
+    if PROD not in tags:
+        return [f'{PROD} : aucun `FROM python:<tag>`']
+    ref = tags[PROD]
+    erreurs = [f'{rel} : python:{tag} contre python:{ref} dans {PROD}' for rel, tag in tags.items() if tag != ref]
+    mineure = re.match(r'\d+\.\d+', ref)
+    for wf in sorted((racine / '.github' / 'workflows').glob('*.yml')):
+        for v in sorted(set(re.findall(r"python-version:\s*['\"]?(\d+\.\d+)", wf.read_text(encoding='utf-8')))):
+            if mineure and v != mineure.group(0):
+                erreurs.append(f'.github/workflows/{wf.name} : python-version {v} contre Python '
+                               f'{mineure.group(0)} dans {PROD}')
+    return erreurs
+
+
 def verifier(racine: Path) -> list[str]:
-    return verifier_apt(racine) + verifier_node(racine)
+    return verifier_apt(racine) + verifier_node(racine) + verifier_python(racine)
 
 
 def main(argv: list[str]) -> int:

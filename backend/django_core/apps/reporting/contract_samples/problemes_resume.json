@@ -45,6 +45,24 @@
         "modifie_le": "2026-11-03T03:00:00.000000+01:00"
       }
     ],
+    "taches_en_echec": [
+      {
+        "tache": "ventes.audit_coherence_nuit",
+        "exception": "RuntimeError",
+        "occurrences": 1,
+        "dernier": "2026-11-03T02:30:00.000000+01:00",
+        "message": "audit en échec"
+      }
+    ],
+    "deploys_en_echec": [
+      {
+        "sha": "b4c5d6e7f",
+        "etape": "migrate",
+        "occurrences": 2,
+        "premier": "2026-11-03T01:10:00.000000+01:00",
+        "dernier": "2026-11-03T01:40:00.000000+01:00"
+      }
+    ],
     "sante": {
       "database": {
         "statut": "ok",

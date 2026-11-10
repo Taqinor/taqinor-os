@@ -180,3 +180,55 @@ class MarqueurDemarrageTests(TestCase):
             resp = health_ready(req)
         self.assertEqual(resp.data['dernier_tri_problemes'],
                          '2026-11-04T07:07:00+01:00')
+
+
+class StorageDiskCheckTests(TestCase):
+    """ADCG94 — la sonde ``storage`` mesure le disque qui porte les données."""
+
+    GIO = 2 ** 30
+
+    def _usage(self, pct):
+        from collections import namedtuple
+        usage = namedtuple('usage', 'total used free')
+        return usage(100 * self.GIO, pct * self.GIO, (100 - pct) * self.GIO)
+
+    def _storage(self, pct, env=None):
+        with mock.patch.object(health.shutil, 'disk_usage', return_value=self._usage(pct)), \
+                mock.patch.dict('os.environ', env or {}):
+            return health._check_storage()
+
+    def test_degraded_au_dela_du_seuil(self):
+        sonde = self._storage(85)
+        self.assertEqual(sonde['status'], health.STATUS_DEGRADED)
+        self.assertIn('disque : 85 % utilisé, 15 Gio libres', sonde['detail'])
+        services = [{'name': 'database', 'status': health.STATUS_OK, 'detail': ''}, sonde]
+        self.assertEqual(health.overall_status(services), health.STATUS_DEGRADED)
+
+    def test_ok_sous_le_seuil(self):
+        self.assertEqual(self._storage(50)['status'], health.STATUS_OK)
+
+    def test_unknown_si_mesure_impossible(self):
+        with mock.patch.object(health.shutil, 'disk_usage', side_effect=OSError('statvfs')):
+            self.assertEqual(health._check_storage()['status'], health.STATUS_UNKNOWN)
+
+    def test_seuil_par_env(self):
+        self.assertEqual(self._storage(85, {'DISK_USAGE_DEGRADED_RATIO': '0.9'})['status'],
+                         health.STATUS_OK)
+        self.assertEqual(self._storage(50, {'DISK_USAGE_DEGRADED_RATIO': '0.4'})['status'],
+                         health.STATUS_DEGRADED)
+
+    def test_composants_publics_degrades_au_tick(self):
+        from importlib import import_module
+
+        from django.apps import apps as django_apps
+        taches = import_module('apps.statuspage.tasks')
+        ComponentStatus = django_apps.get_model('statuspage', 'ComponentStatus')
+        ComponentStatusLog = django_apps.get_model('statuspage', 'ComponentStatusLog')
+        with mock.patch.object(health.shutil, 'disk_usage', return_value=self._usage(85)):
+            taches.rafraichir_composants()
+        for nom in ('Stockage documents', 'PDF-devis'):
+            statut = ComponentStatus.objects.filter(nom=nom, company__isnull=True).values_list(
+                'statut', flat=True).get()
+            self.assertEqual(statut, ComponentStatus.Statut.DEGRADED, nom)
+        self.assertTrue(ComponentStatusLog.objects.filter(
+            composant='Stockage documents', nouveau_statut=ComponentStatus.Statut.DEGRADED).exists())

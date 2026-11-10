@@ -31,7 +31,12 @@ vi.mock('../api/axios', () => {
       || (url === '/parametres/traductions/effective/'
         && reste[reste.length - 1]?.suppressErrorToast === true)
     if (url === '/core/health/ready/') {
-      return Promise.resolve({ data: { status: 'ready', dernier_tri_problemes: sante.tri } })
+      if (sante.code503) {
+        return Promise.reject({ response: { status: 503, data: { status: 'degraded', dernier_tri_problemes: sante.tri } } })
+      }
+      return Promise.resolve({
+        data: sante.sansCle ? { status: 'ready' } : { status: 'ready', dernier_tri_problemes: sante.tri },
+      })
     }
     if (autorise) return Promise.resolve({ data: {} })
     return Promise.reject({
@@ -81,6 +86,8 @@ async function stabiliser() {
 beforeEach(() => {
   appels.length = 0
   sante.tri = null
+  sante.sansCle = false
+  sante.code503 = false
   try { window.localStorage.clear() } catch { /* noop */ }
 })
 afterEach(() => cleanup())
@@ -123,13 +130,24 @@ describe('BPQ6 — bandeau du tri quotidien des problèmes', () => {
     expect(appels.filter(({ url }) => url === '/core/health/ready/')).toHaveLength(1)
   })
 
-  it("superuser : rien avant 48 h, rien si le tri n'a jamais tourné", async () => {
+  it('superuser : rien avant 48 h', async () => {
     sante.tri = ilYa(20)
     rendre({ username: 'root', portee: 'interne', is_superuser: true, langue_interface: 'fr' })
     await stabiliser()
     expect(screen.queryByTestId('bandeau-tri-problemes')).toBeNull()
-    cleanup()
+  })
+
+  it('superuser : bandeau « jamais tourné » si dernier_tri_problemes est null, rien si la clé manque', async () => {
     sante.tri = null
+    rendre({ username: 'root', portee: 'interne', is_superuser: true, langue_interface: 'fr' })
+    expect(await screen.findByText("Le tri quotidien des problèmes n'a jamais tourné.")).toBeInTheDocument()
+    cleanup()
+    sante.code503 = true // beat arrêté : 503 « degraded », le corps garde la clé
+    rendre({ username: 'root', portee: 'interne', is_superuser: true, langue_interface: 'fr' })
+    expect(await screen.findByTestId('bandeau-tri-problemes')).toBeInTheDocument()
+    cleanup()
+    sante.code503 = false
+    sante.sansCle = true
     rendre({ username: 'root', portee: 'interne', is_superuser: true, langue_interface: 'fr' })
     await stabiliser()
     expect(screen.queryByTestId('bandeau-tri-problemes')).toBeNull()

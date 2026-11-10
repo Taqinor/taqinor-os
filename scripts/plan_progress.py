@@ -198,6 +198,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     paths = [Path(f) for f in args.files] if args.files else None
+    # ADCG89 — un --files absent rendait {} rc 0 ; count_file garde son {}
+    # (surface par défaut, fichiers optionnels).
+    for absent in [p for p in paths or [] if not p.is_file()]:
+        print(f"fichier de plan introuvable : {absent}", file=sys.stderr)
+        return 2
     data = progress(paths)
 
     if args.prefix is not None:

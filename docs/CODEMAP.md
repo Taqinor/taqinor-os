@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 07661112fb09ed977fe1e043cc32f420d09ceb07b84fa7fb55278859f3abef61
+Structure fingerprint: aee65512c171c89c5c0897d14ba52858c1ce8210fb9fb11e6f3acc18364e9169
 Plan fingerprint: 1ad6c27428053a3a10e68fa31cdb01322d6549666980f67d3aa62d6e2236274e
 
 
@@ -95,14 +95,14 @@ Versions are the **pinned** values in `requirements.txt`, `package.json` and
 ### Backend — Django API (`backend/django_core/requirements.txt`)
 - Python **3.11** in the prod image and in CI (`python:3.11.x` Dockerfiles; the
   `stage-names`/lint jobs pin 3.11 so a 3.11-only SyntaxError cannot slip through)
-- Django **5.1.15**, djangorestframework **3.15.2**, djangorestframework-simplejwt **5.5.1**, django-cors-headers **4.6.0**
+- Django **5.2.18**, djangorestframework **3.18.2**, djangorestframework-simplejwt **5.5.1**, django-cors-headers **4.6.0**
 - psycopg2-binary **2.9.10**, pgvector **0.3.6**
 - redis **5.2.1**, django-redis **5.4.0**, celery **5.4.0**
 - weasyprint **62.3**, pydyf **0.11.0**, Jinja2 **3.1.6** (PDF rendering)
 - numpy **1.26.4**, matplotlib **3.9.2** (premium quote-PDF charts)
 - segno **1.6.6** (scan-to-sign QR on the residential quote PDF; imported defensively)
 - django-anymail[sendgrid] **10.3**, django-storages[s3] **1.14.4**, boto3 **1.35.99** (MinIO/S3)
-- openpyxl **3.1.5**, Pillow **12.3.0**, httpx **0.28.1**, drf-spectacular (OpenAPI 3)
+- openpyxl **3.1.5**, Pillow **13.0.0**, httpx **0.28.1**, drf-spectacular (OpenAPI 3)
 - gunicorn **22.0.0** (4 sync workers per compose)
 
 ### Backend — FastAPI AI service (`backend/fastapi_ia/requirements.txt`)
@@ -260,7 +260,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 | `onboarding` | `onboarding/` | 4 | « Premiers pas » checklist + product tours, auto-completed via `core.events`. |
 | `statuspage` | `statuspage/` | 6 | Public status page: components, incidents, 90-day uptime buckets, subscribers. `core` reads its models for SLA/uptime. |
 | `contact` | `contact/` | 0 | Public landing contact form — **PARKED by flag** (`CONTACT_FORM_ENABLED=0` -> 404, no email). No models. |
-| `core` | `core/` | ~53 | **Foundation, NOT under apps/**: abstract bases (`TenantModel`, `SoftDeleteModel`), `CompanyScopedModelViewSet`, numbering, `pdf.render_pdf`, `events.py` signal bus, platform registry + `platform_coverage.py` drift matrix, `documents` kit, workflow/BPM engine, `parked.py`, pure `calepinage`/`electrique` engines, jobs, quotas, DSR/PII registries, reliability settings (`views_fiabilite.py`, `/api/django/core/fiabilite/reglages/`, NTOBS21). |
+| `core` | `core/` | ~53 | **Foundation, NOT under apps/**: `drf_compat.py` (DRF 3.18 ramené au comportement 3.15 au `ready()` — ADCG61), abstract bases (`TenantModel`, `SoftDeleteModel`), `CompanyScopedModelViewSet`, numbering, `pdf.render_pdf`, `events.py` signal bus, platform registry + `platform_coverage.py` drift matrix, `documents` kit, workflow/BPM engine, `parked.py`, pure `calepinage`/`electrique` engines, jobs, quotas, DSR/PII registries, reliability settings (`views_fiabilite.py`, `/api/django/core/fiabilite/reglages/`, NTOBS21). |
 
 **What each SOLMVP lane changed in a kept app** (verified against
 `git log origin/main..HEAD -- backend/django_core/apps/<x>`):

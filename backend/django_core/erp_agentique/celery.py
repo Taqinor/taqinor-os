@@ -980,3 +980,12 @@ def _yhard6_on_task_failure(sender=None, **kwargs):
         metrics.record_task_queue(_queue_of(sender), ok=False)  # NTPLT44
     except Exception:  # noqa: BLE001 — best-effort, ne doit jamais casser Celery (D-ENF22-BLE001)
         logging.getLogger(__name__).warning('celery : compteur d\'échec non enregistré', exc_info=True)
+
+
+@task_failure.connect
+def _adcg18_consigner_echec(sender=None, exception=None, **kwargs):  # ADCG18 — journal des problèmes
+    try:
+        from apps.reporting.journal_problemes import consigner_echec_tache
+        consigner_echec_tache(getattr(sender, 'name', None) or sender, exception)
+    except Exception:  # noqa: BLE001 — best-effort, ne doit jamais casser Celery (D-ENF22-BLE001)
+        logging.getLogger(__name__).warning('celery : échec de tâche non consigné', exc_info=True)

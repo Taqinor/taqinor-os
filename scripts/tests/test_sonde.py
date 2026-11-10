@@ -49,8 +49,14 @@ class FauxShell:
             'observe': 'valeur=42', 'verdict': 'REPRO', 'base_inchangee': True, 'comptes_avant': 3,
             'comptes_apres': 3, 'mails': 0, 'celery_bloques': 0}
         self.rc = rc
+        # ADCG20 — empreinte servie par le « conteneur » : {} = celle d'une racine de test sans backend/.
+        self.empreinte = {}
+        self.empreintes_demandees = 0
 
     def __call__(self, cmd, programme, timeout):
+        if cmd[-1] == '-':
+            self.empreintes_demandees += 1
+            return 0, sonde.MARQUE_EMPREINTE + json.dumps(self.empreinte) + '\n', ''
         self.appels.append((cmd, programme))
         return self.rc, 'bruit\n@@RESULT ' + json.dumps(self.resultat) + '\n', ''
 
@@ -112,6 +118,8 @@ class SondeTests(unittest.TestCase):
         racine = _racine({'C-TST-001.py': ENTETE})
 
         def muet(cmd, programme, timeout):
+            if cmd[-1] == '-':  # ADCG20 : l'empreinte répond, la sonde reste muette
+                return FauxShell()(cmd, programme, timeout)
             return 1, 'Traceback...', 'boom'
         sortie = io.StringIO()
         with contextlib.redirect_stdout(sortie):
@@ -150,6 +158,33 @@ class SondeTests(unittest.TestCase):
     def test_conteneur_surcharge(self):
         _, _, faux = _lancer(_racine({'C-TST-001.py': ENTETE}), argv_extra=['--conteneur', 'autre'])
         self.assertEqual(faux.appels[0][0][3], 'autre')
+
+    def test_refuse_si_le_conteneur_sert_un_autre_code(self):
+        racine = _racine({'C-TST-001.py': ENTETE})
+        os.makedirs(os.path.join(racine, 'backend', 'django_core', 'core'))
+        with open(os.path.join(racine, 'backend', 'django_core', 'core', 'a.py'), 'w', encoding='utf-8') as f:
+            f.write('x = 1\n')
+        faux = FauxShell()
+        faux.empreinte = {'core/a.py': 'autre-contenu'}
+        code, sortie, _ = _lancer(racine, faux=faux)
+        self.assertEqual(code, 3, sortie)
+        self.assertIn('sert un autre code', sortie)
+        self.assertIn('fichiers : core/a.py', sortie)
+        self.assertEqual(faux.appels, [], 'le programme de la sonde ne doit jamais partir')
+        # Même code des deux côtés : la sonde est jouée comme avant.
+        ns = {}
+        exec(sonde.EMPREINTE, ns)
+        faux = FauxShell()
+        faux.empreinte = ns['_empreinte'](os.path.join(racine, 'backend', 'django_core'))
+        code, sortie, _ = _lancer(racine, faux=faux)
+        self.assertEqual((code, len(faux.appels), faux.empreintes_demandees), (0, 1, 1), sortie)
+
+    def test_sans_fraicheur_joue_et_le_dit(self):
+        faux = FauxShell()
+        faux.empreinte = {'core/a.py': 'autre-contenu'}
+        code, sortie, _ = _lancer(_racine({'C-TST-001.py': ENTETE}), faux=faux, argv_extra=['--sans-fraicheur'])
+        self.assertEqual((code, faux.empreintes_demandees), (0, 0))
+        self.assertIn('verdict : REPRO (fraîcheur non vérifiée)', sortie)
 
     def test_programme_execute_contre_des_faux_modules_et_rend_la_base_inchangee(self):
         programme = sonde.programme(ENTETE, {'constat': 'C-TST-001', 'sha': 'a', 'attendu': 'x'}, 30)

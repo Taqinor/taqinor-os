@@ -675,6 +675,11 @@ REST_FRAMEWORK = {
     # que du JSON — le client de test envoie donc du JSON par défaut ; les
     # tests d'upload fixent explicitement format='multipart'.
     'TEST_REQUEST_DEFAULT_FORMAT': 'json',
+    # ADCG61 — DRF 3.18 sert par défaut les erreurs d'un sérialiseur `many`
+    # en dict indexé ({"0": {...}}) ; le contrat publié (contract_samples,
+    # écrans, IdInconnu404ImbriquesMixin) est la LISTE de DRF 3.15 ([{...}, {}]).
+    # Le reste de la parité 3.15 vit dans core/drf_compat.py.
+    'LIST_SERIALIZER_ERRORS_AS_DICT': False,
     # ENF11 — un corps JSON qui n'est pas un objet : 400, jamais AttributeError.
     'DEFAULT_CONTENT_NEGOTIATION_CLASS': 'core.parseurs.NegociationCorpsObjet',
     'DEFAULT_AUTHENTICATION_CLASSES': (

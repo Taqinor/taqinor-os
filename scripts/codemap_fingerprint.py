@@ -55,6 +55,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import re
 import sys
 from pathlib import Path
@@ -145,9 +146,28 @@ def _path_only(*dirs: Path) -> list[str]:
     return sorted(found)
 
 
+_REQ_VERSION_RE = re.compile(rb"^(\s*[\w.\-\[\],]+)\s*[=<>!~]=?[^\s#;]*", re.M)
+_USES_REF_RE = re.compile(rb"(uses:\s*['\"]?[^\s@#'\"]+)@[^\s#'\"]+")
+_DEPS_KEYS = ("dependencies", "devDependencies", "peerDependencies", "optionalDependencies")
+
+
 def _normalised(path: Path) -> bytes:
-    raw = path.read_bytes()
-    return raw.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    """ADCG65 — une SEULE montée de version ne déplace pas l'empreinte (PR
+    Dependabot) : nom de paquet seul (requirements*.txt), clés de dépendances sans
+    valeur (package.json), `uses: x@ref` → `uses: x` (workflows). Un paquet ajouté
+    ou retiré la change toujours."""
+    raw = path.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    if path.name.startswith("requirements") and path.suffix == ".txt":
+        return _REQ_VERSION_RE.sub(rb"\1", raw)
+    if path.name == "package.json":
+        data = json.loads(raw)
+        for cle in _DEPS_KEYS:
+            if isinstance(data.get(cle), dict):
+                data[cle] = sorted(data[cle])
+        return json.dumps(data, sort_keys=True).encode("utf-8")
+    if path.parent.name == "workflows" and path.suffix in (".yml", ".yaml"):
+        return _USES_REF_RE.sub(rb"\1", raw)
+    return raw
 
 
 def compute_fingerprint() -> str:

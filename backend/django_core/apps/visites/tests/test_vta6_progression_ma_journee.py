@@ -83,7 +83,7 @@ class PorteeDureTests(VtaBase):
     def test_la_liste_ne_montre_que_mes_visites(self):
         mienne = self._visite(self.terrain)
         self._visite(self.collegue)
-        lignes = auth(self.terrain).get('/api/django/visites/visites/').data
+        lignes = auth(self.terrain).get('/api/django/visites/visites/').data['results']
         self.assertEqual([ligne['id'] for ligne in lignes], [mienne.id])
 
     def test_le_detail_d_un_collegue_rend_404_pas_403(self):
@@ -103,7 +103,7 @@ class PorteeDureTests(VtaBase):
     def test_un_valideur_voit_l_equipe(self):
         mienne = self._visite(self.terrain)
         collegue = self._visite(self.collegue)
-        lignes = auth(self.bureau).get('/api/django/visites/visites/').data
+        lignes = auth(self.bureau).get('/api/django/visites/visites/').data['results']
         self.assertEqual({ligne['id'] for ligne in lignes},
                          {mienne.id, collegue.id})
 
@@ -123,7 +123,7 @@ class PorteeDureTests(VtaBase):
         api = auth(responsable)
         self.assertEqual(
             api.get(f'/api/django/visites/visites/{v3.id}/').status_code, 404)
-        lignes = api.get('/api/django/visites/visites/').data
+        lignes = api.get('/api/django/visites/visites/').data['results']
         self.assertEqual({ligne['id'] for ligne in lignes},
                          {v_mien.id, assignee.id})
         self.assertEqual(
@@ -134,19 +134,19 @@ class PorteeDureTests(VtaBase):
         sienne = self._visite(self.bureau)
         self._visite(self.terrain)
         lignes = auth(self.bureau).get(
-            '/api/django/visites/visites/?mine=1').data
+            '/api/django/visites/visites/?mine=1').data['results']
         self.assertEqual([ligne['id'] for ligne in lignes], [sienne.id])
 
         # Le même paramètre n'ouvre RIEN à un terrain.
         self._visite(self.collegue)
         lignes = auth(self.terrain).get(
-            '/api/django/visites/visites/?mine=1').data
+            '/api/django/visites/visites/?mine=1').data['results']
         self.assertTrue(all(ligne['id'] != sienne.id for ligne in lignes))
 
     def test_la_societe_reste_la_premiere_frontiere(self):
         chez_nous = self._visite(self.terrain)
         self._visite(self.etranger, company=self.autre, lead=self.lead_autre)
-        lignes = auth(self.bureau).get('/api/django/visites/visites/').data
+        lignes = auth(self.bureau).get('/api/django/visites/visites/').data['results']
         self.assertEqual([ligne['id'] for ligne in lignes], [chez_nous.id])
 
 

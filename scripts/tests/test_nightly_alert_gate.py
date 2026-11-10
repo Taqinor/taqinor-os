@@ -92,6 +92,17 @@ class CliTests(unittest.TestCase):
         )
         self.assertEqual(out, "false")
 
+    def test_cli_run_vert_decide_fermer(self):
+        # ADCG70 — un run vert ferme l'issue d'alerte ouverte ; deux nuits
+        # rouges alertent ; une seule nuit rouge ne fait rien.
+        self.assertEqual(self._run("--decision", "--job-result", "success",
+                                   "--previous-conclusion", "failure"), "fermer")
+        self.assertEqual(self._run("--decision", "--job-result", "failure",
+                                   "--previous-conclusion", "failure"), "alerte")
+        self.assertEqual(self._run("--decision", "--job-result", "failure",
+                                   "--previous-conclusion", "success"), "rien")
+        self.assertEqual(self._run("--decision"), "alerte")
+
     def test_cli_missing_previous_conclusion_flag_is_fail_safe(self):
         # Le workflow omet le flag quand `gh run list` ne renvoie rien
         # (aucun run nocturne precedent connu) : doit alerter si CE run est

@@ -71,10 +71,22 @@ services:
       # défaut inchangé (répertoire du dépôt), pour un `manage.py` lancé hors
       # conteneur (rare, jamais le chemin de déploiement).
       MERYEM_DOCS_DIR: /opt/docs-meryem
+    # ADCG14 — attend une base et un broker SAINS (pas seulement démarrés).
     depends_on:
-      - db
-      - redis
-      - redis_cache
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      redis_cache:
+        condition: service_started
+    # /health/live/ (jamais /ready/ : la base a sa propre sonde) ; Host = 1re entrée
+    # de DJANGO_ALLOWED_HOSTS (la prod n'accepte pas forcément localhost).
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, urllib.request as u; h = (os.environ.get('DJANGO_ALLOWED_HOSTS') or 'localhost').split(',')[0].strip().lstrip('.'); h = 'localhost' if h in ('', '*') else h; u.urlopen(u.Request('http://localhost:8000/api/django/core/health/live/', headers={'Host': h}), timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
     expose:
       - "8000"
     restart: always
@@ -252,6 +264,11 @@ services:
         # l'inline) : le poser exige `docker compose up -d --build frontend`.
         VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
         VITE_SENTRY_ENVIRONMENT: ${VITE_SENTRY_ENVIRONMENT:-}
+        # ADCG11 — replis neutres : aucun écran ne change sans .env.
+        VITE_PRODUCT_NAME: ${VITE_PRODUCT_NAME:-}
+        VITE_TENANT_SIGNUP_ENABLED: ${VITE_TENANT_SIGNUP_ENABLED:-0}
+        VITE_VAPID_PUBLIC_KEY: ${VITE_VAPID_PUBLIC_KEY:-}
+        VITE_PUBLIC_SITE_URL: ${VITE_PUBLIC_SITE_URL:-}
     expose:
       - "80"
     depends_on:
@@ -278,6 +295,12 @@ services:
     # DEV UNIQUEMENT — supprimer ces ports en production
     ports:
       - "5433:5432"
+    healthcheck:  # ADCG14
+      test: ["CMD-SHELL", "pg_isready -h localhost -U $$POSTGRES_USER"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     restart: always
 
   # NTPLT58 — pgbouncer OPTIONNEL (transaction pooling). Opt-in derriere le
@@ -340,6 +363,12 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    healthcheck:  # ADCG14
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     restart: always
 
   redis_cache:

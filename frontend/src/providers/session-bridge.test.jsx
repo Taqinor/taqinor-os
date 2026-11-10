@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import {
-  AUTH_LOGOUT_EVENT, SESSION_EXPIRED_EVENT, brancherSourceDeSession,
+  AUTH_LOGOUT_EVENT, SESSION_EXPIRED_EVENT, SW_MEDIA_CACHE, brancherSourceDeSession,
   emitAuthLogout, emitSessionExpired, sessionEstActive,
 } from './session-bridge'
 
@@ -25,6 +28,40 @@ describe('session-bridge — emitAuthLogout', () => {
   it('AUTH_LOGOUT_EVENT correspond au LOGOUT_EVENT écouté par leadPrefetch.js', async () => {
     const { LOGOUT_EVENT } = await import('../features/crm/workspace/leadPrefetch')
     expect(AUTH_LOGOUT_EVENT).toBe(LOGOUT_EVENT)
+  })
+
+  // ADCG52 — poste partagé : les aperçus authentifiés ne survivent pas à la déconnexion.
+  it('emitAuthLogout vide le cache média du service worker', async () => {
+    const stock = new Map([[SW_MEDIA_CACHE, ['/api/django/ged/versions/1/apercu/']], ['workbox-precache-v2', []]])
+    const caches = {
+      delete: vi.fn(async (nom) => stock.delete(nom)),
+      keys: async () => [...stock.keys()],
+      has: async (nom) => stock.has(nom),
+    }
+    vi.stubGlobal('caches', caches)
+    try {
+      emitAuthLogout()
+      await Promise.resolve()
+      expect(caches.delete).toHaveBeenCalledWith(SW_MEDIA_CACHE)
+      expect(await caches.has(SW_MEDIA_CACHE)).toBe(false)
+      expect(await caches.keys()).toEqual(['workbox-precache-v2'])
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('emitAuthLogout sans Cache API ne lève rien', () => {
+    vi.stubGlobal('caches', undefined)
+    try {
+      expect(() => emitAuthLogout()).not.toThrow()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('SW_MEDIA_CACHE correspond au MEDIA_CACHE de sw.js', () => {
+    const source = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../sw.js'), 'utf8')
+    expect(source).toMatch(new RegExp(`const MEDIA_CACHE = '${SW_MEDIA_CACHE}'`))
   })
 })
 

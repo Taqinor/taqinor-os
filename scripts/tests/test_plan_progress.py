@@ -93,6 +93,19 @@ class PlanProgressTests(unittest.TestCase):
         counts = pp.count_file(Path("this/file/does/not/exist.md"))
         self.assertEqual(counts, {})
 
+    def test_files_absent_sort_2(self):
+        """ADCG89 — ``--files <plan> <absent.md>`` rendait ``{}`` rc 0."""
+        import contextlib
+        import io
+        plan = self._write(CHECKBOX_FIXTURE)
+        erreur = io.StringIO()
+        with contextlib.redirect_stderr(erreur), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(pp.main(["--files", str(plan), "absent.md"]), 2)
+            self.assertEqual(pp.main(["--files", str(plan)]), 0)
+        self.assertIn("fichier de plan introuvable : absent.md",
+                      erreur.getvalue())
+
     def test_aggregate_sums_across_files(self):
         p1 = self._write(CHECKBOX_FIXTURE)
         p2 = self._write("- [x] ARC9 — another file, done.\n")

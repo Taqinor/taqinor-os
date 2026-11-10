@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4947, operations: 7745, components: 3643}
+counts: {paths: 4947, operations: 7745, components: 3644}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -8550,7 +8550,7 @@ query_params:
   get /api/django/ventes/tests-pr-reception/: chantier ordering page page_size search verdict
   get /api/django/visites/leads-recherche/: limit q
   get /api/django/visites/ma-journee/: tous
-  get /api/django/visites/visites/: lead mine ordering search
+  get /api/django/visites/visites/: lead mine ordering page page_size search
   get /api/public/v1/achats/demandes-achat/: ordering page page_size
   get /api/public/v1/achats/rfq/: ordering page page_size
   get /api/public/v1/calepinages/: ordering page page_size
@@ -9348,7 +9348,7 @@ query_params:
   get /api/v1/ventes/tests-pr-reception/: chantier ordering page page_size search verdict
   get /api/v1/visites/leads-recherche/: limit q
   get /api/v1/visites/ma-journee/: tous
-  get /api/v1/visites/visites/: lead mine ordering search
+  get /api/v1/visites/visites/: lead mine ordering page page_size search
 components:
 - AbandonMotifEnum
 - AbonnementMonitoring
@@ -11543,6 +11543,7 @@ components:
 - PaginatedVeilleAnnonceurList
 - PaginatedVeilleDecouverteList
 - PaginatedVisiteExterneList
+- PaginatedVisiteTerrainLigneList
 - PaginatedVueGedEnregistreeList
 - PaginatedWarrantyClaimList
 - PaginatedWebhookDeliveryList
