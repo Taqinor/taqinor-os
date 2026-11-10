@@ -49,10 +49,10 @@ MODELES_LEAD_TRAITES = {
     'crm.ChatSessionPublique': 'transcript vidé',
     'crm.VisiteExterne': 'IP, navigateur, appareil et suffixe de jeton vidés',
     'crm.Parrainage': 'nom du filleul vidé',
+    'crm.LeadActivity': "lignes gardées, valeurs d'identité caviardées "
+                        '(D-ASOC-3)',
 }
 MODELES_LEAD_EXEMPTES = {
-    'crm.LeadActivity': 'historique conservé par doctrine (archivage du '
-                        'chatter hors périmètre, LSVC4-5)',
     'crm.RelanceEtape': 'touches de cadence : libellés et échéances, aucune '
                         'copie de PII',
     'crm.Appointment': 'rendez-vous : date, statut et notes métier ; '
@@ -212,6 +212,29 @@ def _anonymiser_copies_brutes(company, lead, identifiants):
         filleul_nom='')
 
 
+def _caviarder_historique(company, lead, identifiants, champs_effaces):
+    """ASOC62 (D-ASOC-3) — caviarde le chatter du lead, archive comprise,
+    lignes GARDÉES : ``old_value``/``new_value`` des champs suivis
+    (``activity.TRACKED_FIELDS``) que le scrub vient de vider deviennent
+    « Anonymisé », et les identifiants lus AVANT le scrub sortent des corps."""
+    from django.db.models import Value
+    from django.db.models.functions import Replace
+
+    from .activity import TRACKED_FIELDS
+    from .models import LeadActivity, LeadActivityArchive
+
+    champs = [c for c in champs_effaces if c in TRACKED_FIELDS]
+    for lignes in (
+            LeadActivity.objects.filter(company=company, lead=lead),
+            LeadActivityArchive.objects.filter(
+                company_id=company.pk, lead_id=lead.pk)):
+        lignes.filter(field__in=champs).update(
+            old_value=LEAD_NOM_ANONYMISE, new_value=LEAD_NOM_ANONYMISE)
+        for identifiant in identifiants:
+            lignes.filter(body__contains=identifiant).update(body=Replace(
+                'body', Value(identifiant), Value(LEAD_NOM_ANONYMISE)))
+
+
 def anonymiser_lead(company, le, *, motif, demande_droit_ref=''):
     """Anonymise UN lead (jamais de suppression) + journalise la destruction.
 
@@ -271,14 +294,17 @@ def anonymiser_lead(company, le, *, motif, demande_droit_ref=''):
     # depuis les PII désormais vidées ; on les inclut dans ``update_fields``
     # pour que les clés de dédup normalisées soient AUSSI purgées (sinon un
     # lead « anonymisé » garderait un email/téléphone normalisé recherchable).
-    le.save(update_fields=[
+    champs_effaces = [
         'nom', 'prenom', 'email', 'telephone', 'whatsapp', 'adresse',
         'appareil_id', 'custom_data', 'fbclid', 'gclid',
         'email_normalise', 'phone_normalise', 'whatsapp_normalise',
         'gps_lat', 'gps_lng', 'note', 'visite_notes', 'ombrage_notes',
         'contact_secondaire_nom', 'contact_secondaire_telephone',
         'contact_secondaire_email', 'contact_secondaire_fonction',
-        'lien_maps'])
+        'lien_maps']
+    le.save(update_fields=champs_effaces)
+    # ASOC62 — le chatter garde ses lignes, plus les valeurs d'identité.
+    _caviarder_historique(company, le, identifiants, champs_effaces)
     # Les traces de traçage du lead perdent leurs identifiants (IP,
     # navigateur, appareil, suffixe de jeton) — la ligne reste, la personne
     # n'est plus reconnaissable.
