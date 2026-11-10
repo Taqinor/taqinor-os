@@ -154,7 +154,10 @@ class LaBrancheClientEstEffaceeCompletement(TestCase):
         tiers_id = self.client_obj.tiers_id
         self.assertIsNotNone(tiers_id, 'miroir ARC18 attendu')
         erase_crm(self.company, 'amina.crx32@example.ma')
-        self.client_obj.save()  # un re-save ne re-remplit rien
+        # Re-save du client ANONYMISÉ (relu, pas l'instance d'avant
+        # l'effacement qui ré-écrirait l'identité) : ne re-remplit rien.
+        self.client_obj.refresh_from_db()
+        self.client_obj.save()
         tiers = Tiers.objects.get(pk=tiers_id)
         self.assertEqual(tiers.nom, 'Anonymisé')
         for champ in ('prenom', 'email', 'telephone', 'adresse', 'cin', 'ice',

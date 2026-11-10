@@ -23,7 +23,7 @@ from apps.calepinage.models import Calepinage
 from apps.calepinage.services.creation import (
     CreationRefusee,
     creer_pour_client,
-    creer_pour_lead,
+    _creer_pour_lead,
     obtenir_ou_creer_pour_devis,
 )
 from apps.crm.models import Client, Lead
@@ -113,27 +113,27 @@ class PorteDevisTest(BaseCreation):
 
 class PorteLeadTest(BaseCreation):
     def test_cree_sans_devis(self):
-        calepinage = creer_pour_lead(self.lead_a.pk, self.company,
-                                     user=self.user)
+        calepinage = _creer_pour_lead(self.lead_a.pk, self.company,
+                                      user=self.user)
         self.assertEqual(calepinage.lead_id, self.lead_a.pk)
         self.assertIsNone(calepinage.devis_id)
         self.assertEqual(calepinage.company_id, self.company.pk)
 
     def test_lead_d_une_autre_societe_refuse_et_ne_cree_rien(self):
         with self.assertRaises(CreationRefusee) as capture:
-            creer_pour_lead(self.lead_b.pk, self.company)
+            _creer_pour_lead(self.lead_b.pk, self.company)
         self.assertEqual(capture.exception.champ, 'lead')
         self.assertEqual(Calepinage.objects.count(), 0)
 
     def test_lead_absent_refuse_en_nommant_le_champ(self):
         with self.assertRaises(CreationRefusee) as capture:
-            creer_pour_lead(None, self.company)
+            _creer_pour_lead(None, self.company)
         self.assertEqual(capture.exception.champ, 'lead')
 
     def test_titre_jamais_derive_du_lead(self):
         # ACAL300 (D-ACAL-14) — sans titre saisi, le titre ne recopie plus le
         # nom du lead (donnée personnelle, loi 09-08) : il reste vide.
-        calepinage = creer_pour_lead(self.lead_a.pk, self.company)
+        calepinage = _creer_pour_lead(self.lead_a.pk, self.company)
         self.assertEqual(calepinage.titre, '')
         self.assertNotIn('Toiture Anfa', calepinage.titre)
 
@@ -161,7 +161,7 @@ class SocieteObligatoireTest(BaseCreation):
     def test_sans_societe_chaque_porte_refuse(self):
         for appel in (
             lambda: obtenir_ou_creer_pour_devis(self.devis.pk, None),
-            lambda: creer_pour_lead(self.lead_a.pk, None),
+            lambda: _creer_pour_lead(self.lead_a.pk, None),
             lambda: creer_pour_client(self.client_a.pk, None),
         ):
             with self.assertRaises(CreationRefusee) as capture:

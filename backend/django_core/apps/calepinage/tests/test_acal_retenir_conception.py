@@ -111,14 +111,18 @@ class RetenirConceptionTest(BaseApiCalepinage):
 
     def test_asbuilt_lit_la_conception(self):
         self._retenir(self.a)
-        # Un enregistrement ultérieur de l'atelier ne touche pas la variante,
-        # et l'as-built lit la CONCEPTION, plus la variante en parallèle.
+        # ACON25 (D-ACAL-2) : un enregistrement ultérieur de l'atelier est
+        # recopié dans la variante RETENUE (résultat périmé) ; l'as-built lit
+        # la CONCEPTION.
         plus_tard = {'version': 2, 'zones': [
             {'id': 'z1', 'label': 'Pan Sud',
              'geometry': {'count': 9, 'azimuthDeg': 180, 'tiltDeg': 15}}]}
         enregistrer_layout(self.calepinage, plus_tard, user=self.user)
         self.a.refresh_from_db()
-        self.assertEqual(self.a.roof_layout, _toit(14))
+        self.calepinage.refresh_from_db()
+        self.assertEqual(self.a.roof_layout, self.calepinage.roof_layout)
+        self.assertEqual(self.a.roof_layout['zones'][0]['label'], 'Pan Sud')
+        self.assertIsNone(self.a.resultat)
         prevus, source = asbuilt._pans_prevus(self.calepinage)
         self.assertEqual(source, asbuilt.SOURCE_CALEPINAGE)
         self.assertEqual(sum(p['modules'] for p in prevus), 9)

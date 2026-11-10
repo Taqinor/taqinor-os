@@ -297,7 +297,9 @@ def _pieces_servies(version):
     try:
         with fitz.open(stream=octets, filetype='pdf') as servi:
             return [tuple(p) for p in json.loads(servi.metadata['keywords'])]
-    except Exception:  # document d'avant ACON45, ou magasin en panne
+    except Exception as erreur:  # document d'avant ACON45, ou magasin en panne
+        logger.info('ACON45 — pièces du PDF servi non relues (version %s) : %s',
+                    getattr(version, 'pk', None), _erreur or erreur)
         return None
 
 

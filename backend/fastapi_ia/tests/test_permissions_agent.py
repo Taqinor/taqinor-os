@@ -29,6 +29,7 @@ try:
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
+    from app.api.endpoints import ocr as _ocr
     from app.api.endpoints import sql_agent as _ep
     from app.core import database as _db
     from app.services import action_tools as _at
@@ -52,7 +53,7 @@ class _FakeRedis:
         return self._Pipe()
 
 
-@unittest.skipIf(_ep is None, f"endpoint sql_agent non importable: {_ERR}")
+@unittest.skipIf(_ep is None, f"endpoints sql_agent/ocr non importables: {_ERR}")
 class PermissionsAgentTests(unittest.TestCase):
 
     def setUp(self):
@@ -143,26 +144,15 @@ class PermissionsAgentTests(unittest.TestCase):
                 "/sql-agent/confirm", json={"token": "abc"})
         self.assertEqual(seen[0].permissions, ["prix_achat_voir"])
 
+    # APFS46 (C-APFS-040, facette OCR) — l'historique OCR se décide sur les
+    # codes fins lus par `/auth/me/` (simulé côté HTTP), jamais sur le claim
+    # `role` (« responsable » pour Admin RH, Technicien responsable…). Même
+    # classe que l'agent SQL : un seul saut d'environnement signé (deps tierces).
+    CODES_OCR = {1: ["users_voir", "rh_voir"],                      # Admin RH
+                 2: ["installation_voir", "achats_receptionner"],   # Technicien responsable
+                 3: ["prix_achat_voir", "achats_commander"]}        # Directeur
 
-try:
-    from app.api.endpoints import ocr as _ocr
-    _ERR_OCR = None
-except Exception as exc:  # pragma: no cover - dependances manquantes
-    _ocr, _ERR_OCR = None, exc
-    verifier_import_optionnel(exc)
-
-
-@unittest.skipIf(_ocr is None or _ep is None, f"endpoint ocr non importable: {_ERR_OCR or _ERR}")
-class OcrPermissionsTests(unittest.TestCase):
-    """APFS46 (C-APFS-040, facette OCR) — l'historique OCR se décide sur les
-    codes fins lus par `/auth/me/` (simulé côté HTTP), jamais sur le claim
-    `role` (« responsable » pour Admin RH, Technicien responsable…)."""
-
-    CODES = {1: ["users_voir", "rh_voir"],                      # Admin RH
-             2: ["installation_voir", "achats_receptionner"],   # Technicien responsable
-             3: ["prix_achat_voir", "achats_commander"]}        # Directeur
-
-    def setUp(self):
+    def _monter_ocr(self):
         from sqlalchemy import BigInteger, create_engine
         from sqlalchemy.ext.compiler import compiles
         from sqlalchemy.orm import sessionmaker
@@ -189,7 +179,7 @@ class OcrPermissionsTests(unittest.TestCase):
         def fake_call(ctx, path, method="POST", payload=None):
             if not self.me_ok:
                 return {"ok": False, "status": 0, "error": "indisponible"}
-            return {"ok": True, "status": 200, "data": {"permissions": self.CODES[self.user_id]}}
+            return {"ok": True, "status": 200, "data": {"permissions": self.CODES_OCR[self.user_id]}}
         patcher = mock.patch.object(_at, "_django_call", fake_call)
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -204,6 +194,7 @@ class OcrPermissionsTests(unittest.TestCase):
         return ids, self.client.delete("/ocr/documents/11").status_code, save
 
     def test_documents_d_autrui_exigent_prix_achat_voir(self):
+        self._monter_ocr()
         self.assertEqual(self._gestes(1), ([10], 403, 403))       # Admin RH
         self.assertEqual(self._gestes(2), ([], 403, 403))         # Technicien responsable
         self.me_ok = False                                        # /auth/me/ injoignable : fail-closed

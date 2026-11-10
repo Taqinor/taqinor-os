@@ -235,7 +235,6 @@ class MontantTrancheBrouillonTests(TestCase):
         défaut (setUp) : NULL comme hier. Mutant : retirer la reprise ⇒ None."""
         from apps.parametres.models import CompanyProfile
         from apps.ventes.domain.facturation_vente import creer_brouillon_tranche
-        from apps.ventes.tests._quote_engine_common import make_client
         from apps.ventes.tests.test_echeancier_somme_total import creer_devis_388
         from apps.ventes.tests.test_qjr_echeancier_validation import ECHEANCIER_30_60_10
         from apps.ventes.vente_facturation import plan_facturation
@@ -243,7 +242,9 @@ class MontantTrancheBrouillonTests(TestCase):
         profil = CompanyProfile.get(company=self.company)
         profil.escompte_pct_defaut, profil.escompte_jours_defaut = Decimal('2'), 10
         profil.save()
-        devis = creer_devis_388(self.company, self.user, make_client(self.company),
+        # Le client du setUp (e-mail unique par société, CRX24) : un second
+        # make_client heurterait la contrainte.
+        devis = creer_devis_388(self.company, self.user, self.devis.client,
                                 'DEV-ASOC87-1', ECHEANCIER_30_60_10)
         brouillon = creer_brouillon_tranche(devis, plan_facturation(devis)['prochaine'], self.user)
         brouillon.refresh_from_db()  # CLAUSE PERSISTANCE

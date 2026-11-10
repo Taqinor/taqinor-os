@@ -159,8 +159,11 @@ class TestForcedRotation(TestCase):
         from apps.crm.models import Lead
         from authentication.permissions import CODE_MOT_DE_PASSE_A_CHANGER
 
+        # Un rôle qui LIT les leads (comme WrefRechercheClientRefTests) : le
+        # 403 d'après le changement ne peut alors venir que du drapeau.
         self.user.must_change_password = True
-        self.user.save(update_fields=['must_change_password'])
+        self.user.role_legacy = 'responsable'
+        self.user.save(update_fields=['must_change_password', 'role_legacy'])
         self.assertEqual(self._login().status_code, 200)
         for methode, corps in (('get', None), ('post', {'nom': 'Bloqué'})):
             with self.subTest(methode=methode):
@@ -176,8 +179,8 @@ class TestForcedRotation(TestCase):
             'new_password': 'nouveauMotDePasse2',
         }, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
-        self.assertNotEqual(
-            self.api.get('/api/django/crm/leads/').status_code, 403)
+        resp = self.api.get('/api/django/crm/leads/')
+        self.assertEqual(resp.status_code, 200, resp.data)
 
     def test_change_password_clears_flag_and_stamps(self):
         """Le changement efface le drapeau et horodate password_changed_at."""

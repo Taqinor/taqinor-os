@@ -2579,9 +2579,9 @@ def _notifier_demande_contrat_maintenance(contrat, titre):
             'maintenance. Aucun statut n\'a été modifié : la demande est à '
             'traiter en interne.')
     try:
-        cle = 'sav_demande_contrat_portail'  # ASOC93 — jamais `digest`
-        notify_many(resolve_recipients(contrat.company, cle), cle, titre,
-                    body=body, link='/sav/contrats', company=contrat.company)
+        notify_many(  # ASOC93 — type dédié, jamais `digest`
+            resolve_recipients(contrat.company, cle := 'sav_demande_contrat_portail'), cle, titre,
+            body=body, link='/sav/contrats', company=contrat.company)
     except Exception:  # pragma: no cover - défensif (best-effort)
         logger.warning(
             'NTPRT16: notification de demande portail échouée (contrat %s)',

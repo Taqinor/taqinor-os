@@ -2073,8 +2073,8 @@ def _ecart_devis(calepinage, p50):
     from apps.ventes.selectors import get_devis_by_pk, production_attendue_pour_devis
     from apps.ventes.selectors_calepinage import _conception_a_jour
 
-    devis = get_devis_by_pk(devis_id)
-    if (devis is None or devis.company_id != getattr(calepinage, 'company_id', None)
+    if ((devis := get_devis_by_pk(devis_id)) is None
+            or devis.company_id != getattr(calepinage, 'company_id', None)
             or _conception_a_jour(devis, calepinage) is False):  # ACON27 — autre conception
         return None
     production = production_attendue_pour_devis(devis_id)

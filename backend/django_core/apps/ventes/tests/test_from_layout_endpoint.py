@@ -137,7 +137,9 @@ class TestFromLayoutEndpoint(TestCase):
             FROM_LAYOUT_URL, {'layout': SAMPLE_LAYOUT, 'lead': agricole.id},
             format='json')
         self.assertEqual(resp.status_code, 409, resp.data)
-        self.assertEqual(resp.data, {'type_installation': MESSAGE_LEAD_AGRICOLE})
+        # ACON90 : même texte aussi sous ``detail`` (lu par ``httpMessage``).
+        self.assertEqual(resp.data, {'type_installation': MESSAGE_LEAD_AGRICOLE,
+                                     'detail': MESSAGE_LEAD_AGRICOLE})
         self.assertEqual(Devis.objects.filter(company=self.company).count(),
                          avant)
 

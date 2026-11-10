@@ -304,7 +304,8 @@ class GardeRoutesVerrouTest(BaseApiCalepinage):
             with self.subTest(route=suffixe):
                 reponse = self._post(suffixe, corps)
                 self.assertEqual(reponse.status_code, 409, reponse.data)
-                self.assertEqual(sorted(reponse.data),
+                # YAPIC3 : l'enveloppe ``error`` est ADDITIVE (toute 409).
+                self.assertEqual(sorted(set(reponse.data) - {'error'}),
                                  ['conception', 'devis'])
                 self.assertEqual(str(reponse.data['devis']),
                                  self.devis.reference)
