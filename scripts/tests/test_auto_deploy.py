@@ -311,6 +311,27 @@ class AutoDeployTests(unittest.TestCase):
         banc.jouer()
         self.assertIsNone(banc.index("DEPLOYED_SHA"))
 
+    def test_echec_consigne_dans_redis(self):
+        """ADCG12 — un ECHEC pousse {ts, sha, étape fautive} dans erp:deploys_en_echec, borné à 50."""
+        banc = self.banc(changes="backend/django_core/apps/crm/views.py\n")
+        rc, _ = banc.jouer(FAIL="manage.py migrate --noinput")
+        self.assertNotEqual(rc, 0)
+        i_push = banc.index(r"exec -T redis redis-cli LPUSH erp:deploys_en_echec ")
+        self.assertIsNotNone(i_push, banc.appels)
+        pousse = banc.appels[i_push]
+        self.assertIn(f'"sha": "{B[:9]}"', pousse)
+        self.assertIn('"etape": "migrate"', pousse)
+        self.assertIn("redis-cli LTRIM erp:deploys_en_echec 0 49", banc.appels[i_push + 1])
+        self.assertLess(i_push, banc.index(f"^git reset --hard {A}$"))
+        # Un deploy OK ne pousse rien ; un Redis absent ne change pas l'issue.
+        banc = self.banc("vert", changes="backend/django_core/apps/crm/views.py\n")
+        self.assertEqual(banc.jouer(FAIL="redis-cli")[0], 0, banc.journal)
+        self.assertIsNone(banc.index("LPUSH"))
+        banc = self.banc("redis_absent", changes="backend/django_core/apps/crm/views.py\n")
+        rc, _ = banc.jouer(FAIL="manage.py migrate --noinput|redis-cli")
+        self.assertEqual(rc, 1)
+        self.assertIn("ROLLBACK vers", banc.journal)
+
     def test_zero_downtime_drapeau_lu_puis_efface(self):
         banc = self.banc(changes=LOT_ECRAN_API)
         rc, _ = banc.jouer(_remote().replace("ZERO_DOWNTIME=0", "ZERO_DOWNTIME=1"))

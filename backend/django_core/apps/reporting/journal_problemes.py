@@ -478,6 +478,32 @@ def _taches_en_echec(depuis, company):
     return sorted(groupes.values(), key=lambda g: (-g['occurrences'], g['tache']))[:LIMITE_ECHECS]
 
 
+#: ADCG12 — échecs de l'auto-déploiement (`signaler_echec` de scripts/auto-deploy.sh, borne 50).
+CLE_DEPLOYS_EN_ECHEC = 'erp:deploys_en_echec'
+
+
+def _deploys_en_echec(depuis, company):
+    """Échecs de deploy regroupés par (commit, étape) ; vue globale seulement (serveur)."""
+    if company is not None:
+        return []
+    try:
+        bruts = [json.loads(b) for b in _client_redis().lrange(CLE_DEPLOYS_EN_ECHEC, 0, -1)]
+    except Exception:  # noqa: BLE001 — best-effort, le résumé doit sortir (D-ENF22-BLE001)
+        logger.debug('échecs de deploy illisibles', exc_info=True)
+        return []
+    groupes = {}
+    for brut in reversed(bruts):  # du plus ancien au plus récent
+        instant = timezone.localtime(datetime.fromtimestamp(float(brut['ts']), dt_timezone.utc))
+        if instant < depuis:
+            continue
+        groupe = groupes.setdefault((brut['sha'], brut['etape']), {
+            'sha': brut['sha'], 'etape': brut['etape'], 'occurrences': 0,
+            'premier': instant.isoformat()})
+        groupe['occurrences'] += 1
+        groupe['dernier'] = instant.isoformat()
+    return sorted(groupes.values(), key=lambda g: g['dernier'], reverse=True)
+
+
 def _etat_sante():
     """État des services que le tri surveille, ou `{}` si la sonde elle-même
     tombe (le résumé des problèmes doit sortir quand même)."""
@@ -523,6 +549,7 @@ def resume_json(jours=7, company=None, maintenant=None):
         'outbox_alimentee': _outbox_alimentee(company),
         'sauvegardes_en_echec': _sauvegardes_en_echec(depuis, company),
         'taches_en_echec': _taches_en_echec(depuis, company),
+        'deploys_en_echec': _deploys_en_echec(depuis, company),
         'sante': _etat_sante(),
     }
 
@@ -578,6 +605,7 @@ _RESUME_PROBLEMES_REPONSE = inline_serializer('ResumeProblemesService', {
     'outbox_alimentee': serializers.BooleanField(),
     'sauvegardes_en_echec': serializers.ListField(child=serializers.DictField()),
     'taches_en_echec': serializers.ListField(child=serializers.DictField()),
+    'deploys_en_echec': serializers.ListField(child=serializers.DictField()),
     'sante': serializers.DictField(child=serializers.DictField()),
     'tri_horodate': serializers.BooleanField(),
 })

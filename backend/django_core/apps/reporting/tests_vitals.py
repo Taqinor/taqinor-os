@@ -724,6 +724,25 @@ class ResumeEnrichiTests(TestCase):
             echouer('crm.tache_x', ValueError('boom'))  # le worker ne casse pas
             self.assertEqual(resume_json(jours=1)['taches_en_echec'], [])
 
+    def test_deploys_en_echec_regroupes_par_commit(self):
+        """ADCG12 — la liste Redis de scripts/auto-deploy.sh regroupée par (commit, étape)."""
+        maintenant = timezone.now().timestamp()
+        bruts = [json.dumps({'ts': maintenant - 60, 'sha': 'b4c5d6e7f', 'etape': 'migrate'}),
+                 json.dumps({'ts': maintenant - 600, 'sha': 'b4c5d6e7f', 'etape': 'migrate'}),
+                 json.dumps({'ts': maintenant - 9 * 86400, 'sha': 'vieux0000', 'etape': 'build'})]
+        client = mock.Mock(**{'lrange.side_effect': lambda cle, debut, fin: (
+            bruts if cle == 'erp:deploys_en_echec' else [])})
+        with mock.patch('apps.reporting.journal_problemes._client_redis', return_value=client):
+            lignes = resume_json(jours=1)['deploys_en_echec']
+            self.assertEqual(resume_json(jours=1, company=self.company)['deploys_en_echec'], [])
+        client.lrange.assert_any_call('erp:deploys_en_echec', 0, -1)
+        self.assertEqual([(ligne['sha'], ligne['etape'], ligne['occurrences']) for ligne in lignes],
+                         [('b4c5d6e7f', 'migrate', 2)])
+        self.assertLess(lignes[0]['premier'], lignes[0]['dernier'])
+        with mock.patch('apps.reporting.journal_problemes._client_redis',
+                        side_effect=OSError('pas de redis')):
+            self.assertEqual(resume_json(jours=1)['deploys_en_echec'], [])
+
     def test_sante_seulement_les_services_du_tri_et_sonde_cassee(self):
         sante = resume_json(jours=1)['sante']
         self.assertEqual(set(sante), {'database', 'cache', 'beat'})
