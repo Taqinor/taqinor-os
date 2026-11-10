@@ -696,12 +696,17 @@ class DevisEditionActionsMixin:
         from ..domain.revision import abandonner_revision
         ttc_avant = ttc_du_devis(serializer.instance)
         with transaction.atomic():
+            if archive:
+                # ERR-ACON-REVISION-ARCHIVEE-VERROU — l'abandon (et son
+                # événement synchrone) part AVANT l'écriture d'archivage, comme
+                # à la suppression : une V2 déjà archivée verrouille sa
+                # conception, et l'abonné calepinage ne pouvait plus restaurer
+                # le dessin de la V1. Même transaction : un refus annule tout.
+                abandonner_revision(serializer.instance, self.request.user,
+                                    retrait=True)
             super().perform_update(serializer)
             # AGNR63 — un TTC changé (remise…) re-base l'échéancier ou 409.
             rebaser_echeancier_ou_409(serializer.instance, ttc_avant=ttc_avant)
-            if archive:
-                abandonner_revision(serializer.instance, self.request.user,
-                                    retrait=True)
         # QJR552 — l'instantané APRÈS le geste (brouillon ou envoyé : l'en-tête
         # corrigé, remise / échéancier, entre dans l'historique) ; dédoublonné.
         from ..domain.historique_config import instantane_de_geste

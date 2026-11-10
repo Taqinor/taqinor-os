@@ -275,6 +275,15 @@ téléphone ; ligne de coût `H<n> S<n> O<n> F<n> · jetons sous-agents ≈ x M`
    lambda g: 'n/d'` avant `a.cmd_du()`). Le record `<date>-<mot>-verifie.md` prend le `mot` du `declencheur` tel
    quel, ACCENTS COMPRIS (`sécurité`, `générateur`) sinon `audit_registre` ne le matche pas ; une 2ᵉ contre-visite le
    même jour REMPLACE le fichier canonique (git garde la 1ʳᵉ).
+6. **Contre-visite des correctifs (10/11 : 15 groupes restés « construit » pour cela).** Un groupe dont le dernier
+   compte rendu porte des écarts S1-S2 ne devient « vérifié » qu'après une contre-visite de SES tâches d'écart, une
+   fois cochées. Échantillon = toutes les tâches d'écart déposées par ce compte rendu (S1-S2 d'abord, 14 au plus) ;
+   un vérificateur frais par groupe ; pour chaque écart S1-S2 d'origine, dire « fermé / non / partiellement » sur
+   `origin/main`. Le marqueur du nouveau compte rendu compte les écarts S1-S2 NOUVEAUX **et** ceux d'origine dont
+   la tâche n'est pas cochée (bloquée sur une preuve, en attente) : le groupe reste alors « construit ». Chercher
+   la décision existante dans `decisions.yml` avant d'en ouvrir une (ADOC196 : décision déjà prise le 04/11). Tant
+   que `audit_registre.py --du` ne les annonce pas (ADCG104), ces contre-visites se lancent à la main à partir du
+   tableau `status` (colonne « dernier vérifie », écarts > 0, tâches d'écart cochées).
 
 ---
 

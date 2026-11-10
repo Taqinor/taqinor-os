@@ -148,6 +148,7 @@ retiré plus un hook ajouté.
 | `cal-fiche-archiver` | fiche archiver. |
 | `cal-fiche-archiver-annuler` | fiche archiver annuler. |
 | `cal-fiche-archiver-confirmation` | fiche archiver confirmation. |
+| `cal-fiche-archiver-indisponible` | fiche archiver indisponible (ACON31 : raison du refus avant le clic). |
 | `cal-fiche-bandeau-archive` | fiche bandeau archive. |
 | `cal-fiche-bandeau-nom` | fiche bandeau nom. |
 | `cal-fiche-bloc` | fiche bloc. |
