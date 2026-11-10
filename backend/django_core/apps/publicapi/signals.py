@@ -179,9 +179,11 @@ def intervention_pre_save(sender, instance, **kwargs):
 
 def intervention_post_save(sender, instance, created, **kwargs):
     old = getattr(instance, _OLD_STATUT_ATTR, None)
-    done = Intervention.Statut.TERMINEE
+    # ASOC4 — clôture = « terminée » OU « validée » (saut direct permis), comme
+    # installations.services.changer_statut_intervention.
+    done = (Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE)
     # ACHT116 — première clôture seulement (borne ACHT36 du service).
-    if (instance.statut == done and old != done
+    if (instance.statut in done and old not in done
             and instance.cloturee_notifiee_le is None):
         _safe_dispatch(instance.company_id, EVENT_INTERVENTION_COMPLETED, {
             'event': EVENT_INTERVENTION_COMPLETED,

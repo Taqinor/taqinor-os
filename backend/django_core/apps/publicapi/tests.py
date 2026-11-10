@@ -608,6 +608,21 @@ class ExtraEventTriggerTests(TestCase):
             interv.save()
         self.assertIn(EVENT_INTERVENTION_COMPLETED, self._events(d))
 
+    def test_saut_direct_en_validee_dispatche(self):
+        """ASOC4 (C-ASOC-131) — prête → « validée » directement : 1
+        ``intervention.completed`` ; terminée → validée : 0 de plus. Mutant :
+        retirer ``VALIDEE`` ⇒ échec."""
+        inst = Installation.objects.create(
+            company=self.co, reference='CH-ASOC4', client=self.client_obj)
+        directe, terminee = (Intervention.objects.create(
+            company=self.co, installation=inst, type_intervention=Intervention.Type.POSE,
+            statut=statut) for statut in (Intervention.Statut.PRETE, Intervention.Statut.TERMINEE))
+        with mock.patch('apps.publicapi.signals.delivery.dispatch_event') as d:
+            for interv in (directe, terminee):
+                interv.statut = Intervention.Statut.VALIDEE
+                interv.save()
+        self.assertEqual(self._events(d).count(EVENT_INTERVENTION_COMPLETED), 1)
+
     def test_intervention_recloturee_ne_reemet_pas(self):
         """ACHT116 — terminée → sur site → terminée (PATCH ×3) n'émet
         qu'UN « intervention.completed » (borne ACHT36
