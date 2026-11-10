@@ -174,10 +174,8 @@ def tableau_de_bord_client(request):
     (``apps.portail.views_externes``) : société ET client viennent
     EXCLUSIVEMENT du compte portail connecté (``_scope``), jamais d'un
     paramètre de requête. Chaque carte lit le sélecteur PROPRIÉTAIRE de son
-    domaine (``ventes``/``sav``/``installations``) — jamais un import direct
-    de leurs modèles depuis ``portail`` (frontière cross-app CLAUDE.md) — donc
-    les compteurs matchent, par construction, ce que l'écran interne montre
-    pour ce même client.
+    domaine (``ventes``/``installations``) ; ASOC45 — ``tickets_ouverts`` =
+    les demandes non closes de « Mes demandes » (la liste qu'ouvre la carte).
 
     NTPRT37 — sélecteur de site (multi-chantiers B2B) : ``?chantier=<id>``
     est un filtre ADDITIF, aucune donnée nouvelle. SEUL ``prochain_jalon``
@@ -190,12 +188,13 @@ def tableau_de_bord_client(request):
     autre client) renvoie ``prochain_jalon: null`` — jamais un repli
     silencieux vers l'agrégat global ni les données d'un autre site."""
     from apps.installations.selectors import prochain_jalon_client_portail
-    from apps.sav.selectors import tickets_ouverts_client
     from apps.ventes.selectors import resume_portail_client
+    from .models import DemandeTicketPortail as Demande
 
     company, client_id = _scope(request)
     resume = resume_portail_client(company, client_id)
-    resume['tickets_ouverts'] = tickets_ouverts_client(company, client_id)
+    resume['tickets_ouverts'] = MesDemandesSavPortailViewSet()._mes_demandes(request).filter(
+        statut__in=(Demande.Statut.SOUMISE, Demande.Statut.PRISE_EN_CHARGE)).count()
     chantier_id = request.query_params.get('chantier')
     jalon = None
     if chantier_id:

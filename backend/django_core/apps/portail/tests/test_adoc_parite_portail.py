@@ -239,6 +239,13 @@ class PariteePortailTests(TestCase):
                  if f['statut'] in ('emise', 'en_retard')]))
         self.assertEqual(cartes['devis_en_attente'], 1)
         self.assertEqual(cartes['factures_impayees'], 1)
+        # ASOC45 — la carte SAV égale les demandes non closes de sa liste.
+        demandes = self._liste('mes-demandes-sav')
+        self.assertEqual(
+            cartes['tickets_ouverts'],
+            len([d for d in demandes
+                 if d['statut'] in ('soumise', 'prise_en_charge')]))
+        self.assertEqual(cartes['tickets_ouverts'], 1)
 
     def test_tableau_de_bord_ignore_un_chantier_hors_liste(self):
         visibles = {c['id'] for c in self._liste('mes-chantiers')}
