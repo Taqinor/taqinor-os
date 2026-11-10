@@ -122,6 +122,27 @@ class RetenirTest(BaseVariantes):
         self.assertEqual(CalepinageVersion.objects.filter(
             calepinage=self.pivot).count(), versions)
 
+    def test_le_pivot_est_verrouille_avant_la_lecture_de_la_retenue(self):
+        """ACON29 — ``SELECT … FOR UPDATE`` sur le calepinage AVANT toute
+        lecture de ``retenue`` : deux retenues concurrentes se sérialisent."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        with CaptureQueriesContext(connection) as requetes:
+            retenir_variante(self.a)
+        sql = [q['sql'] for q in requetes.captured_queries]
+        verrou = next(i for i, texte in enumerate(sql)
+                      if 'FOR UPDATE' in texte
+                      and 'calepinage_calepinage"' in texte
+                      and 'calepinagevariante' not in texte)
+        # La lecture « déjà retenue ? » de CETTE variante.
+        lecture = next(i for i, texte in enumerate(sql)
+                       if 'calepinagevariante' in texte
+                       and f'"id" = {self.a.pk}' in texte
+                       and 'retenue' in texte)
+        self.assertLess(verrou, lecture, sql)
+        self.assertEqual(self._retenues(), [self.a.pk])
+
     def test_variante_non_enregistree_refusee(self):
         with self.assertRaises(VarianteRefusee) as capture:
             retenir_variante(CalepinageVariante(company=self.company,

@@ -270,7 +270,7 @@ def retenir_variante(variante, *, user=None, appliquer=True):
     """
     from django.db import transaction
 
-    from ..models import CalepinageVariante
+    from ..models import Calepinage, CalepinageVariante
 
     if variante is None or not getattr(variante, 'pk', None):
         raise VarianteRefusee(
@@ -296,13 +296,19 @@ def retenir_variante(variante, *, user=None, appliquer=True):
         raise VarianteRefusee(MESSAGE_VARIANTE_SANS_CONCEPTION,
                               champ='roof_layout', etat=True)
 
-    deja_retenue = bool(CalepinageVariante.objects
-                        .filter(pk=variante.pk, retenue=True).exists())
-    ancienne = (CalepinageVariante.objects
-                .filter(calepinage_id=variante.calepinage_id, retenue=True)
-                .exclude(pk=variante.pk)
-                .first())
     with transaction.atomic():
+        # ACON29 — le PIVOT verrouillé AVANT de lire la retenue : deux
+        # « Retenir » simultanés se sérialisent (jamais l'IntegrityError
+        # de la contrainte partielle, rendue en 409 générique).
+        list(Calepinage.objects.select_for_update()
+             .filter(pk=variante.calepinage_id).values_list('pk', flat=True))
+        deja_retenue = bool(CalepinageVariante.objects
+                            .filter(pk=variante.pk, retenue=True).exists())
+        ancienne = (CalepinageVariante.objects
+                    .filter(calepinage_id=variante.calepinage_id,
+                            retenue=True)
+                    .exclude(pk=variante.pk)
+                    .first())
         if not deja_retenue:
             with bascule_autorisee():
                 (CalepinageVariante.objects
