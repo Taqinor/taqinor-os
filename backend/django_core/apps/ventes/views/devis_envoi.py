@@ -411,8 +411,10 @@ class DevisEnvoiActionsMixin:
             # BookingLink créé si le gabarit effectif ne référence pas le
             # placeholder (évite un jeton inutile à chaque envoi de devis).
             lien_rdv = ''
+            from apps.parametres.i18n_resolver import resolve_langue_sortie
+            langue = resolve_langue_sortie(client=client, company=devis.company)  # ASOC83
             if devis.lead_id and '{lien_rdv}' in EmailTemplate.get_template(
-                    devis.company, 'envoi_devis')['corps']:
+                    devis.company, 'envoi_devis', langue)['corps']:
                 try:
                     from apps.crm.services import public_booking_url
                     lien_rdv = public_booking_url(devis.lead, request=request)
@@ -422,7 +424,7 @@ class DevisEnvoiActionsMixin:
                         ": erreur ignorée (mode dégradé)", exc_info=True)
                     lien_rdv = ''
             rendu = EmailTemplate.render(
-                devis.company, 'envoi_devis',
+                devis.company, 'envoi_devis', langue,
                 civilite=civilite, nom=salut,
                 reference=devis.reference or '', lien=url_proposition(devis, link.token),
                 validite=(devis.date_validite.strftime('%d/%m/%Y')

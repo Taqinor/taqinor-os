@@ -65,6 +65,7 @@ def _wa_draft_for_intervention(interv):
     responsable), réutilisant le patron ``apps.ventes.utils.whatsapp``
     (normalisation téléphone). Renvoie l'URL, ou None si le client n'a aucun
     numéro exploitable."""
+    from apps.parametres.i18n_resolver import resolve_langue_sortie
     from apps.parametres.models import MessageTemplate
     from apps.ventes.utils.whatsapp import build_wa_url
 
@@ -73,7 +74,8 @@ def _wa_draft_for_intervention(interv):
     phone = getattr(client, 'telephone', None) if client is not None else None
     if not phone:
         return None
-    tpl = MessageTemplate.get_corps(interv.company, 'rappel_rdv', 'fr')
+    tpl = MessageTemplate.get_corps(interv.company, 'rappel_rdv', resolve_langue_sortie(
+        client=client, company=interv.company))  # ASOC83 — langue du client
     return build_wa_url(phone, _rendre_rappel(interv, tpl, client))
 
 
@@ -84,13 +86,15 @@ def _envoyer_email_client(interv):
     sans BREVO_API_KEY, le backend console « envoie » sans appel réseau)."""
     from django.core.mail import send_mail
     from django.conf import settings
+    from apps.parametres.i18n_resolver import resolve_langue_sortie
     from apps.parametres.models import MessageTemplate
 
     installation = interv.installation
     client = getattr(installation, 'client', None)
     if client is None or not getattr(client, 'email', None):
         return False
-    tpl = MessageTemplate.get_corps(interv.company, 'rappel_rdv', 'fr')
+    tpl = MessageTemplate.get_corps(interv.company, 'rappel_rdv', resolve_langue_sortie(
+        client=client, company=interv.company))  # ASOC83 — langue du client
     corps = _rendre_rappel(interv, tpl, client)
     try:
         send_mail(
