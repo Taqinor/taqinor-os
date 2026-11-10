@@ -31,6 +31,7 @@ from core.selectors import get_company_object
 
 from .models import (
     Activity, ActivityType, Attachment, Comment, Follower, Tag, TaggedItem,
+    ALLOWED_TARGETS,
 )
 from .openapi import (
     CibleModelField, CibleQuerySerializer, ParsersParActionMixin,
@@ -39,7 +40,8 @@ from .openapi import (
 from .serializers import (
     ActivitySerializer, ActivityTypeSerializer, AttachmentSerializer,
     ChatterActivitySerializer, CommentSerializer, FollowerSerializer,
-    TaggedItemSerializer, TagSerializer, CibleIntrouvable, resolve_target,
+    TaggedItemSerializer, TagSerializer, CibleIntrouvable, module_refuse,
+    resolve_target,
 )
 from .storage import delete_attachment, fetch_attachment, store_attachment
 import re as _re
@@ -254,11 +256,12 @@ _EFFORT_ESTIME_PAR_KIND = {
 }
 
 
-def _sans_leads_hors_portee(qs, user, garder=None):
+def pieces_visibles(qs, user, garder=None):
     """ACVI6 — une liste sans cible n'expose pas les pièces des leads hors portée
     (ni, pour un rôle fin sans ``crm_voir``, celles d'aucun lead). ACVI105 —
     aussi les commentaires et activités ; ``garder`` (Q) : ce dont ``user`` est
-    auteur ou assigné reste visible."""
+    auteur ou assigné reste visible. APFS20 — ni celles d'une cible dont le
+    module n'est pas dans le rôle (``module_refuse``, règle de ``resolve_target``)."""
     from django.contrib.contenttypes.models import ContentType
 
     from apps.crm.selectors import portee_leads  # ACVI106 — + périmètre d'entités
@@ -269,6 +272,8 @@ def _sans_leads_hors_portee(qs, user, garder=None):
     if getattr(user, 'role', None) is not None and not _user_has_or_legacy(user, 'crm_voir'):
         visibles = visibles.none()
     hors = models.Q(content_type=ct) & ~models.Q(object_id__in=visibles.values('pk'))
+    for app_label in {a for a, _m in ALLOWED_TARGETS if module_refuse(user, a)}:
+        hors |= models.Q(content_type__app_label=app_label)
     return qs.exclude(hors & ~garder if garder is not None else hors)
 
 
@@ -386,7 +391,7 @@ class ActivityViewSet(viewsets.ModelViewSet):
             qs = qs.filter(content_type=ct, object_id=oid)
         else:  # ACVI105 — sans cible : rien des leads hors portée, sauf le sien
             moi = self.request.user
-            qs = _sans_leads_hors_portee(qs, moi, models.Q(assigned_to=moi) | models.Q(created_by=moi))
+            qs = pieces_visibles(qs, moi, models.Q(assigned_to=moi) | models.Q(created_by=moi))
             if personnelle:
                 qs = qs.filter(personnelle=True, created_by=moi)
         if ouvertes:
@@ -1070,7 +1075,7 @@ class CommentViewSet(viewsets.ModelViewSet):
                 return qs.none()
             qs = qs.filter(content_type=ct, object_id=oid)
         else:  # ACVI105 — sans cible : rien des leads hors portée, sauf ses commentaires
-            qs = _sans_leads_hors_portee(qs, self.request.user, models.Q(author=self.request.user))
+            qs = pieces_visibles(qs, self.request.user, models.Q(author=self.request.user))
         # XKB13 — ?resolved=true|false : masque/affiche les fils résolus
         # (le frontend masque les fils résolus par défaut).
         # Déclaré booléen au schéma : « true »/« false » seulement (autre valeur
@@ -1160,7 +1165,7 @@ class AttachmentViewSet(ParsersParActionMixin, viewsets.ModelViewSet):
                 return qs.none()
             qs = qs.filter(content_type=ct, object_id=oid)
         else:
-            qs = _sans_leads_hors_portee(qs, self.request.user)
+            qs = pieces_visibles(qs, self.request.user)
         return qs
 
     def create(self, request, *args, **kwargs):
