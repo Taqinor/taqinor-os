@@ -854,6 +854,29 @@ _REGEX_PRECEDER = re.compile(r"[(,=:\[!&|?{};+\-*%~^<>]\s*$")
 _REGEX_KEYWORD = re.compile(r"\b(return|typeof|instanceof|in|of|new|delete|void|case|do|else|yield|await)\s*$")
 
 
+def _fin_chaine(src: str, i: int):
+    """ADCG84 — fin (exclue) de la chaîne ouverte en ``i``. ``None`` pour un `'`/`"`
+    non fermé sur sa ligne (texte JSX : une chaîne JS ne traverse pas une ligne) ;
+    un gabarit suit ses ``${…}`` (gabarits imbriqués compris) par profondeur."""
+    q, j, n = src[i], i + 1, len(src)
+    while j < n:
+        if src[j] == "\\":
+            j += 2
+        elif src[j] == q:
+            return j + 1
+        elif src[j] == "\n" and q != "`":
+            return None
+        elif q == "`" and src.startswith("${", j):
+            j, profondeur = j + 2, 1
+            while j < n and profondeur:
+                fin = _fin_chaine(src, j) if src[j] in "'\"`" else None
+                profondeur += {"{": 1, "}": -1}.get(src[j], 0) if fin is None else 0
+                j = fin or j + 1
+        else:
+            j += 1
+    return n if q == "`" else None
+
+
 def scan_js(src: str):
     """(code sans commentaires, jetons de chaine, code masque).
 
@@ -884,23 +907,16 @@ def scan_js(src: str):
                     out[k] = masked[k] = " "
             i = j
             continue
-        if c in "'\"`":
-            start = i
-            i += 1
-            while i < n:
-                if src[i] == "\\":
-                    i += 2
-                    continue
-                if src[i] == c:
-                    break
-                i += 1
-            end = min(i + 1, n)
-            tokens.append((start, end, c, src[start + 1:end - 1]))
-            for k in range(start + 1, end - 1):
-                if src[k] != "\n":
-                    masked[k] = " "
-            i = end
-            continue
+        # ADCG84 : `'`/`"` collé à un mot (`d'action`) = apostrophe de texte JSX, jamais une chaîne.
+        if c in "'\"`" and not (c != "`" and i and (src[i - 1].isalnum() or src[i - 1] == "_")):
+            end = _fin_chaine(src, i)
+            if end is not None:
+                tokens.append((i, end, c, src[i + 1:end - 1]))
+                for k in range(i + 1, end - 1):
+                    if src[k] != "\n":
+                        masked[k] = " "
+                i = end
+                continue
         if c == "/":
             before = src[max(0, i - 40):i]
             if _REGEX_PRECEDER.search(before) or _REGEX_KEYWORD.search(before) or not before.strip():

@@ -86,6 +86,20 @@ class ScanJsTests(unittest.TestCase):
         code, _, _ = cac.scan_js("/* api.get('/faux/chemin/') */\nvrai\n")
         self.assertNotIn("faux", code)
 
+    def test_apostrophe_de_texte_jsx_ne_masque_pas_l_appel(self):
+        """ADCG84 — `d'action` (texte JSX) ouvrait une chaîne qui masquait l'appel."""
+        src = ("const E = () => <p>Pas d'action {api.post('/sav/tickets/actions-groupees/')}</p>\n"
+               "api.get('/sav/tickets/')\n"
+               "const F = () => <i>{x ? ` (${y})` : ''}</i>\n"
+               "const g = `a ${b ? `c${d}` : 'e'} f`\n")
+        code, tokens, masked = cac.scan_js(src)
+        self.assertEqual(len(masked), len(src))
+        self.assertIn("api.post(", masked)
+        self.assertIn("/sav/tickets/actions-groupees/", [t[3] for t in tokens])
+        for debut, fin, _q, _c in tokens:
+            self.assertEqual(src.count("\n", debut, fin), 0, src[debut:fin])
+        self.assertIn("a ${b ? `c${d}` : 'e'} f", [t[3] for t in tokens])
+
 
 class ExtractionTests(unittest.TestCase):
     """Les 4 mecanismes sans lesquels la mesure naive etait fausse."""
