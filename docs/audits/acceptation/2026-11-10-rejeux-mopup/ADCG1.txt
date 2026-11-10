@@ -1,0 +1,27 @@
+# Preuve en direct ADCG1 — rejeu accept-mopup (rattrapage), code joué f9337084d (origin/main = merge de #1335), 2026-11-10
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau mopup-net ; mopup-db (pgvector pg16, 127.0.0.1:5561,
+# base erp_mopup = pg_dump --no-owner --no-privileges de la base locale erp_live en lecture seule, puis `manage.py
+# migrate`) ; mopup-redis ; mopup-minio (MinIO privé) ; mopup-dj (image erp-agentique-django_core, code backend du
+# commit joué COPIÉ par tar dans /app, `pip install -r requirements.txt` du commit joué — Pillow 13.0.0, DRF 3.18.2 —,
+# settings.dev, EMAIL_BACKEND locmem, DB_CONN_MAX_AGE=0, runserver 0.0.0.0:8000 publié sur 127.0.0.1:8031).
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8031 vite
+# preview --port 5231`), piloté par Playwright MCP ; comptes de test acc_mop_<rôle> (société « Acceptation MOPUP »,
+# id 278, rôles système dir/adm/rh/comresp/com/techresp + superuser acc_mop_su, mot de passe de test généré, base
+# jetable). Sondes du dossier d'audit : `python scripts/sonde.py <G>/<sonde> --conteneur mopup-dj` (fraîcheur ADCG20
+# vérifiée : même code que ce worktree) ; sondes de dépôt ADCG : `python docs/audits/sondes/ADCG/<sonde>.py` sur ce
+# worktree. Sondes C-LIVE-* écrites pour ce rejeu (source jointe) : ICI repro=true signifie que le comportement
+# ATTENDU par la tâche est observé. Captures : C:\dev\taqinor-os\logs\nightly-qa\playwright\accept-mopup\ (hors dépôt, sauf mention).
+# Verdict : PASS — C-ADCG-006 rejouée ⇒ repro faux : le distant de deploy-prod.ps1 ne fait plus que fetch, installer /opt/autodeploy/auto-deploy.sh et `systemctl start taqinor-autodeploy` (aucun docker compose) ; étapes du manuel absentes de l'auto : [] ; volet prod (« sur demande de Reda ») non demandé, non joué
+
+== C-ADCG-006 (python docs/audits/sondes/ADCG/C-ADCG-006.py, worktree au commit joué)
+{
+ "repro": false,
+ "observe": "lot frontend+backend : rc auto=1, rc manuel=127 ; build frontend auto=True, manuel=False ; restart django_core auto=True, manuel=False ; étapes du manuel absentes de l'auto : []"
+}
+
+Banc : `python -m unittest scripts.tests.test_auto_deploy` ⇒ Ran 14 tests in 194.734s … OK
+Lecture du distant (scripts/deploy-prod.ps1, here-string $remote) : git fetch, git show origin/main:scripts/auto-deploy.sh >
+  /opt/autodeploy/auto-deploy.sh.neuf, mv, rm commit_en_echec, systemctl start taqinor-autodeploy.service, tail du journal
+  — d'où « rc manuel=127 » dans le banc (pas de systemctl factice) : le chemin manuel n'exécute plus de séquence propre.
+Volet prod (« journal du deploy suivant, lecture seule, sur demande de Reda ») : non demandé — jamais de ssh ici.
+Verdict : PASS

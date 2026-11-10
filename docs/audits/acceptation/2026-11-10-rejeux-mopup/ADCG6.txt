@@ -1,0 +1,21 @@
+# Preuve en direct ADCG6 — rejeu accept-mopup (rattrapage), code joué f9337084d (origin/main = merge de #1335), 2026-11-10
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau mopup-net ; mopup-db (pgvector pg16, 127.0.0.1:5561,
+# base erp_mopup = pg_dump --no-owner --no-privileges de la base locale erp_live en lecture seule, puis `manage.py
+# migrate`) ; mopup-redis ; mopup-minio (MinIO privé) ; mopup-dj (image erp-agentique-django_core, code backend du
+# commit joué COPIÉ par tar dans /app, `pip install -r requirements.txt` du commit joué — Pillow 13.0.0, DRF 3.18.2 —,
+# settings.dev, EMAIL_BACKEND locmem, DB_CONN_MAX_AGE=0, runserver 0.0.0.0:8000 publié sur 127.0.0.1:8031).
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8031 vite
+# preview --port 5231`), piloté par Playwright MCP ; comptes de test acc_mop_<rôle> (société « Acceptation MOPUP »,
+# id 278, rôles système dir/adm/rh/comresp/com/techresp + superuser acc_mop_su, mot de passe de test généré, base
+# jetable). Sondes du dossier d'audit : `python scripts/sonde.py <G>/<sonde> --conteneur mopup-dj` (fraîcheur ADCG20
+# vérifiée : même code que ce worktree) ; sondes de dépôt ADCG : `python docs/audits/sondes/ADCG/<sonde>.py` sur ce
+# worktree. Sondes C-LIVE-* écrites pour ce rejeu (source jointe) : ICI repro=true signifie que le comportement
+# ATTENDU par la tâche est observé. Captures : C:\dev\taqinor-os\logs\nightly-qa\playwright\accept-mopup\ (hors dépôt, sauf mention).
+# Verdict : PASS — C-ADCG-003 rejouée ⇒ repro faux : le bloc PowerShell n'affiche plus « rollback automatique effectué » pour tout code non nul
+
+== C-ADCG-003 (python docs/audits/sondes/ADCG/C-ADCG-003.py, worktree au commit joué)
+{
+ "repro": false,
+ "observe": "sorties non nulles SANS rollback : 9/9 -> ['verrou 45 min (rien touché)', 'build ciblé (rien touché)', 'up -d (rien touché)', 'restart backend (rien touché)', 'UNAPPLIED≠0 (rien touché)', 'init_roles (rien touché)', 'restart nginx (rien touché)', 'caddy reload (rien touché)', 'préchauffage (rien touché)'] ; bloc PowerShell « rollback automatique effectué » pour tout code ≠ 0 : False"
+}
+Verdict : PASS

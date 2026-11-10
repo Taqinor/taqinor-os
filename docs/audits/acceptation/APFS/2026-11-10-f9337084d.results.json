@@ -1,0 +1,57 @@
+{
+  "sha": "f9337084dbda8d0f01ee32a2c93aca8eb35557f3",
+  "date": "2026-11-10",
+  "groupe": "APFS",
+  "verdict": "PASS",
+  "couvre": [
+    "APFS4",
+    "APFS45"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "MOPUPLIVE.APFS4.preuve_en_direct",
+      "taches": [
+        "APFS4"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-mopup/APFS4.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde C-APFS-020 rejouée ⇒ repro faux (ÉCART), aucun écart écran/moteur, aucune fuite B ; C-LIVE-APFS4 : POST core/formule/tester/ (ventes_factures) ⇒ 403 « Accès au jeu de données refusé. » pour Admin RH, Commercial terrain, Technicien ; Directeur 200 (défaut ERR-APFS-FORMULE-TESTER-REFUS-400 du rejeu précédent corrigé par #1332) ; API seulement — 0 écran"
+    },
+    {
+      "id": "MOPUPLIVE.APFS45.preuve_en_direct",
+      "taches": [
+        "APFS45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-mopup/APFS45.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde C-APFS-042 rejouée ⇒ repro faux (Admin RH, Technicien responsable, Admin Ventes, Commercial : 403 création, sujet intact ; Directeur 201/200) ; écran Paramètres › Confidentialité en Admin RH : GET core/dsr-requests/ 403 rendu « Accès refusé — Les demandes de personnes concernées exigent le droit « Traiter les demandes de personnes concernées » (dsr_traiter)… » au lieu de la panne générique (défaut ERR-APFS-DSR-ECRAN-REFUS-GENERIQUE du rejeu précédent corrigé par #1332)"
+    }
+  ]
+}

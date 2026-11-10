@@ -1,0 +1,35 @@
+# Preuve en direct ADCG31 — rejeu accept-mopup (rattrapage), code joué f9337084d (origin/main = merge de #1335), 2026-11-10
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau mopup-net ; mopup-db (pgvector pg16, 127.0.0.1:5561,
+# base erp_mopup = pg_dump --no-owner --no-privileges de la base locale erp_live en lecture seule, puis `manage.py
+# migrate`) ; mopup-redis ; mopup-minio (MinIO privé) ; mopup-dj (image erp-agentique-django_core, code backend du
+# commit joué COPIÉ par tar dans /app, `pip install -r requirements.txt` du commit joué — Pillow 13.0.0, DRF 3.18.2 —,
+# settings.dev, EMAIL_BACKEND locmem, DB_CONN_MAX_AGE=0, runserver 0.0.0.0:8000 publié sur 127.0.0.1:8031).
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8031 vite
+# preview --port 5231`), piloté par Playwright MCP ; comptes de test acc_mop_<rôle> (société « Acceptation MOPUP »,
+# id 278, rôles système dir/adm/rh/comresp/com/techresp + superuser acc_mop_su, mot de passe de test généré, base
+# jetable). Sondes du dossier d'audit : `python scripts/sonde.py <G>/<sonde> --conteneur mopup-dj` (fraîcheur ADCG20
+# vérifiée : même code que ce worktree) ; sondes de dépôt ADCG : `python docs/audits/sondes/ADCG/<sonde>.py` sur ce
+# worktree. Sondes C-LIVE-* écrites pour ce rejeu (source jointe) : ICI repro=true signifie que le comportement
+# ATTENDU par la tâche est observé. Captures : C:\dev\taqinor-os\logs\nightly-qa\playwright\accept-mopup\ (hors dépôt, sauf mention).
+# Verdict : PASS — pile privée sans BACKUP_OFFSITE_* : dump_database réel ⇒ detail.offsite.status off ; mes-sauvegardes sert copie_distante {etat: off} ; écran Sauvegardes ⇒ « Copie hors serveur : non configurée »
+
+FIX-MOPUP-BKP (base jetable) : tous les BackupRun globaux d'erp_live supprimés (24) ; export « termine » de la société
+  (manifeste seul, BackupRun #25).
+S1 — écran Paramètres › Sauvegardes (acc_mop_dir) : GET core/mes-sauvegardes/ 200 {"derniere_sauvegarde":null,
+  "dernier_drill":null,"rpo_planifie":"quotidien, 03:00","rto_annonce_heures":null,"copie_distante":null} ; écran :
+  « Dernière sauvegarde | Aucune sauvegarde réussie pour le moment. | … | Aucun test de restauration enregistré. »
+S2 — `manage.py dump_database` RÉEL (pg_dump vers le MinIO privé, aucun BACKUP_OFFSITE_* dans l'environnement) :
+  « dump_database: OK — BackupRun #26, 25307519 octets, objet pg_dumps/20261110-154901.dump » ; detail.offsite =
+  {"status":"off","message":"BACKUP_OFFSITE_* non configuré — hors-boîte désactivé.","configured":false}.
+  Écran : GET 200 {"derniere_sauvegarde":{"date":"2026-11-10T15:49:07…","statut":"termine"},…,"copie_distante":{"etat":"off",
+  "date":"2026-11-10T15:49:07…"}} ; « Réussie le 10 novembre 2026 à 15:49 termine | Copie hors serveur : non configurée ».
+S3 — 13 exercices « echec » sans termine_le (created_at 23/09 → 05/10/2026), 5 « termine » (termine_le 12/10, 19/10,
+  26/10, 02/11, 09/11/2026 03:00) : resume_sauvegardes ⇒ dernier_drill {date 2026-11-09T03:00, statut termine} ;
+  écran « Dernier test de restauration | Réussi le 9 novembre 2026 à 03:00 termine », aucun badge.
+S4 — + un « echec » sans termine_le créé le 09/11/2026 22:00 (hier) : dernier_drill {date 2026-11-09T22:00, statut echec} ;
+  écran « Statut le 9 novembre 2026 à 22:00 echec | Dernier test de restauration en échec le 9 novembre 2026 à 22:00 »
+  (badge danger).
+Captures : ADCG34-S1-export-seul.png, ADCG31-ADCG34-S2-dump-reel-sans-offsite.png, ADCG41-drill-reussi-0911.png,
+  ADCG42-drill-echec-hier.png.
+Pour ADCG31 : étape S2.
+Verdict : PASS
