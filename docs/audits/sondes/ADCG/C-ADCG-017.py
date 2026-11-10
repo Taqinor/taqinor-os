@@ -3,6 +3,7 @@ SONDE = {"constat": "C-ADCG-017", "sha": "ce4e5fc4f",
          "attendu": "statut termine avec ecarts_tenant non vide et comptages globaux à 0 (rien ne les compare)"}
 import importlib, logging, pathlib, shutil, sys, tempfile, types
 RACINE = pathlib.Path(__file__).resolve().parents[4]
+if not (RACINE / "backend/django_core").is_dir(): RACINE = pathlib.Path.cwd()  # copie hors dépôt : jouée depuis la racine
 DJ = RACINE / "backend/django_core"
 
 class A:  # objet permissif : décorateurs, sérialiseurs, sql.SQL(...)
@@ -20,7 +21,8 @@ def charger(tmp):
     import datetime
     mod("django.utils", timezone=types.SimpleNamespace(now=datetime.datetime.now))
     for n in ("psycopg2", "drf_spectacular", "drf_spectacular.utils", "rest_framework", "rest_framework.decorators",
-              "rest_framework.permissions", "rest_framework.response"):
+              "rest_framework.permissions", "rest_framework.response",
+              "authentication", "authentication.permissions"):
         mod(n)
     pkg = pathlib.Path(tmp) / "core"; pkg.mkdir()
     (pkg / "__init__.py").write_text("")
@@ -49,10 +51,12 @@ def sonde(ctx=None):
     with tempfile.TemporaryDirectory() as tmp:
         b = charger(tmp)
         sys.modules["psycopg2"].connect = lambda **k: types.SimpleNamespace(cursor=Cur, close=lambda: None)
-        b._dernier_dump_termine = lambda: types.SimpleNamespace(pk=1, object_key="pg_dumps/x.dump")
+        b._dernier_dump_termine = lambda: types.SimpleNamespace(pk=1, object_key="pg_dumps/x.dump",
+                                                             termine_le=b.timezone.now())  # ADCG39 : dump récent
         b._minio_client = lambda: types.SimpleNamespace(download_file=lambda *a: None)
         b.subprocess = types.SimpleNamespace(run=lambda a, **k: types.SimpleNamespace(returncode=0, stderr=b""), PIPE=-1)
         b._top_tenants_live = lambda limit=5: {1: 1640}   # prod : société 1 = 1640 lignes live
+        b._comptages_live = lambda: {t: 5 for t in b.RESTORE_DRILL_TABLES}  # tables clés peuplées en live
         run = Run(); b.restore_drill(run)
         sys.path.remove(tmp)
         for n in [n for n in sys.modules if n == "core" or n.startswith("core.")]: del sys.modules[n]

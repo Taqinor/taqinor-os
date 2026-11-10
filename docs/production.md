@@ -254,7 +254,7 @@ contient alors plus aucun écran des verticaux parqués).
    compter les données des apps parquées) :
 
    ```bash
-   docker compose exec django python manage.py preflight_edition --edition solar
+   docker compose exec django_core python manage.py preflight_edition --edition solar
    ```
 
    Il imprime, en français : lignes par société dans chaque table parquée,
@@ -274,7 +274,7 @@ contient alors plus aucun écran des verticaux parqués).
    frontend est un flag BUILD-TIME, il faut un **rebuild** de son image
    (`docker compose up -d --build frontend`), jamais un simple redémarrage.
 
-4. **Vérifier** : `docker compose exec django python manage.py verifier_edition`
+4. **Vérifier** : `docker compose exec django_core python manage.py verifier_edition`
    doit répondre « Édition « solar » cohérente », puis le contrôle de santé
    habituel (`curl` racine=200 / api=401, `docker ps` = 12 conteneurs).
 
