@@ -171,7 +171,8 @@ class MiseEnPagePage2Test(unittest.TestCase):
         html = _html_de_presentation(dict(
             presentation(),
             production_devis={'reference': 'DEV-ACON42', 'kwh': 9100}))
-        self.assertNotIn('presentation-mensuelle', html)
+        # Le tableau (l'élément), pas le sélecteur de la feuille CSS commune.
+        self.assertNotIn('<table class="presentation-mensuelle"', html)
         self.assertNotIn('P50', html)
         self.assertIn('Production : celle du devis DEV-ACON42 (9100 kWh/an)',
                       html)
