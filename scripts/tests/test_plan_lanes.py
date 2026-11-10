@@ -726,6 +726,21 @@ class ContractPairingGateTests(unittest.TestCase):
         self.assertEqual(blocked, [])
         self.assertEqual(len(allowed), 1)
 
+    def test_tache_mixte_non_refusee_contre_un_autre_producteur(self):
+        """ADCG87 — X3 (endpoint + écran ao) passe à côté de X4 (autre
+        producteur ao) ; X5 (écran ao seul, sans `@after: X4`) reste refusée."""
+        x3 = ("- [ ] X3 — endpoint + écran. "
+              "Files: `backend/django_core/apps/ao/urls.py`, "
+              "`frontend/src/features/ao/Ecran.jsx`. (ARCH)")
+        x4 = ("- [ ] X4 — autre endpoint. "
+              "Files: `backend/django_core/apps/ao/selectors.py`. (ROUTINE)")
+        x5 = ("- [ ] X5 — écran seul. "
+              "Files: `frontend/src/features/ao/Autre.jsx`. (ROUTINE)")
+        allowed, blocked = pl.apply_contract_pairing_gate(
+            self._tasks(x3, x4, x5))
+        self.assertEqual({t["id"] for t in allowed}, {"X3", "X4"})
+        self.assertEqual([t["id"] for t in blocked], ["X5"])
+
     def test_force_wave_outrepasse_la_porte(self):
         tasks = self._tasks(self.AOF166, self.AOF170, self.AOF172_SANS)
         allowed, blocked = pl.apply_contract_pairing_gate(tasks, force_wave=True)

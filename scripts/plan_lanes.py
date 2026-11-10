@@ -1460,16 +1460,15 @@ def apply_contract_pairing_gate(
     autorisees: list[dict] = []
     refusees: list[dict] = []
     for t in tasks:
-        # AMET96 : un déplacement `@atomique` (UN commit, plan transverse) n'est
-        # pas un écran qui consomme un contrat — jamais refusé ici. Il reste
-        # compté comme producteur (prudence : il peut toucher urls/selectors).
+        # AMET96 : un `@atomique` n'est jamais refusé ici (reste producteur).
+        # ADCG87 : tâche MIXTE (productrice de l'app X) = ses deux moitiés,
+        # jamais refusée pour X, même contre un AUTRE producteur de X.
         apps_front = (set() if "atomique" in t
-                      else _apps_frontend(t.get("files_bruts", ())))
+                      else _apps_frontend(t.get("files_bruts", ()))
+                      - _apps_backend(t.get("files_bruts", ())))
         manquantes = []
         for app in sorted(apps_front):
             for producteur in producteurs.get(app, []):
-                if producteur is t:
-                    continue        # tâche MIXTE : elle porte ses deux moitiés
                 if producteur["id"] in t.get("deps", set()):
                     continue
                 manquantes.append((app, producteur["id"]))
