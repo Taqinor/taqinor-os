@@ -156,13 +156,18 @@ class TestWarrantyReportData(TestCase):
         from datetime import timedelta
 
         from apps.monitoring.report_warranty import build_warranty_report_data
-        from apps.monitoring.services import production_warranty_status
+        from apps.monitoring.services import (
+            attendu_entre, production_warranty_status,
+        )
         self._garantie_2026()
         jour = date(2026, 1, 1)
         while jour <= date(2026, 6, 30):
+            # AMON107 — « au garanti » = au profil mensuel, pas à plat.
             ProductionReading.objects.create(
                 company=self.company, installation=self.inst, date=jour,
-                period_days=1, energy_kwh=Decimal('32.88'))
+                period_days=1,
+                energy_kwh=attendu_entre(12000, jour, jour).quantize(
+                    Decimal('0.01')))
             jour += timedelta(days=1)
         edition = date(2026, 11, 10)
         st = production_warranty_status(self.inst, year=2026, today=edition)
@@ -179,6 +184,43 @@ class TestWarrantyReportData(TestCase):
             jour += timedelta(days=1)
         st = production_warranty_status(
             self.inst, year=2026, today=date(2027, 1, 10))
+        self.assertEqual(st['guaranteed_kwh'], Decimal('12000.00'))
+
+    def test_systeme_au_profil_sans_penalite_ni_recours(self):
+        """AMON107 (D-AMON-3) — garanti prorata au PROFIL MENSUEL de
+        l'attendu, jamais jours / jours de l'année : un système produisant
+        exactement au profil n'a ni pénalité ni « recours fabricant » au
+        31/01 comme au 13/05 ; au 31/12 le garanti égale l'annuel complet."""
+        from datetime import timedelta
+
+        from apps.monitoring.report import build_om_report_data
+        from apps.monitoring.services import (
+            attendu_entre, production_warranty_status, warranty_curve_overlay,
+        )
+        self._garantie_2026()
+        jour = date(2026, 1, 1)
+        for fin in (date(2026, 1, 31), date(2026, 5, 13)):
+            while jour <= fin:
+                ProductionReading.objects.create(
+                    company=self.company, installation=self.inst, date=jour,
+                    period_days=1,
+                    energy_kwh=attendu_entre(12000, jour, jour).quantize(
+                        Decimal('0.01')))
+                jour += timedelta(days=1)
+            st = production_warranty_status(self.inst, year=2026, today=fin)
+            self.assertEqual(st['compensation_mad'], Decimal('0.00'), fin)
+            self.assertTrue(st['within_tolerance'], fin)
+            self.assertAlmostEqual(
+                float(st['guaranteed_kwh']),
+                float(attendu_entre(12000, date(2026, 1, 1), fin)), delta=0.01)
+            ov = warranty_curve_overlay(self.inst, today=fin)
+            self.assertFalse(ov['manufacturer_recourse'], fin)
+            self.assertNotIn(
+                'Dérive anormale vs courbe garantie : recours fabricant à '
+                'étudier.', build_om_report_data(
+                    self.inst, today=fin)['recommendations'])
+        st = production_warranty_status(
+            self.inst, year=2026, today=date(2026, 12, 31))
         self.assertEqual(st['guaranteed_kwh'], Decimal('12000.00'))
 
     def test_releve_a_cheval_au_prorata(self):
