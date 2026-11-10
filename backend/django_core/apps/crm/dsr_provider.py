@@ -49,10 +49,10 @@ MODELES_LEAD_TRAITES = {
     'crm.ChatSessionPublique': 'transcript vidé',
     'crm.VisiteExterne': 'IP, navigateur, appareil et suffixe de jeton vidés',
     'crm.Parrainage': 'nom du filleul vidé',
+    'crm.LeadActivity': "lignes gardées, valeurs d'identité caviardées "
+                        '(D-ASOC-3)',
 }
 MODELES_LEAD_EXEMPTES = {
-    'crm.LeadActivity': 'historique conservé par doctrine (archivage du '
-                        'chatter hors périmètre, LSVC4-5)',
     'crm.RelanceEtape': 'touches de cadence : libellés et échéances, aucune '
                         'copie de PII',
     'crm.Appointment': 'rendez-vous : date, statut et notes métier ; '
@@ -212,6 +212,29 @@ def _anonymiser_copies_brutes(company, lead, identifiants):
         filleul_nom='')
 
 
+def _caviarder_historique(company, lead, identifiants, champs_effaces):
+    """ASOC62 (D-ASOC-3) — caviarde le chatter du lead, archive comprise,
+    lignes GARDÉES : ``old_value``/``new_value`` des champs suivis
+    (``activity.TRACKED_FIELDS``) que le scrub vient de vider deviennent
+    « Anonymisé », et les identifiants lus AVANT le scrub sortent des corps."""
+    from django.db.models import Value
+    from django.db.models.functions import Replace
+
+    from .activity import TRACKED_FIELDS
+    from .models import LeadActivity, LeadActivityArchive
+
+    champs = [c for c in champs_effaces if c in TRACKED_FIELDS]
+    for lignes in (
+            LeadActivity.objects.filter(company=company, lead=lead),
+            LeadActivityArchive.objects.filter(
+                company_id=company.pk, lead_id=lead.pk)):
+        lignes.filter(field__in=champs).update(
+            old_value=LEAD_NOM_ANONYMISE, new_value=LEAD_NOM_ANONYMISE)
+        for identifiant in identifiants:
+            lignes.filter(body__contains=identifiant).update(body=Replace(
+                'body', Value(identifiant), Value(LEAD_NOM_ANONYMISE)))
+
+
 def anonymiser_lead(company, le, *, motif, demande_droit_ref=''):
     """Anonymise UN lead (jamais de suppression) + journalise la destruction.
 
@@ -261,14 +284,27 @@ def anonymiser_lead(company, le, *, motif, demande_droit_ref=''):
     # plus pour un lead effacé.
     le.fbclid = ''
     le.gclid = ''
+    # ASOC61 — GPS, contact secondaire, notes libres et lien Maps aussi.
+    le.gps_lat = le.gps_lng = le.note = le.visite_notes = None
+    le.ombrage_notes = le.contact_secondaire_nom = None
+    le.contact_secondaire_telephone = le.contact_secondaire_email = None
+    le.contact_secondaire_fonction = None
+    le.lien_maps = ''
     # QW10 — ``Lead.save()`` recalcule ``email_normalise``/``phone_normalise``
     # depuis les PII désormais vidées ; on les inclut dans ``update_fields``
     # pour que les clés de dédup normalisées soient AUSSI purgées (sinon un
     # lead « anonymisé » garderait un email/téléphone normalisé recherchable).
-    le.save(update_fields=[
+    champs_effaces = [
         'nom', 'prenom', 'email', 'telephone', 'whatsapp', 'adresse',
         'appareil_id', 'custom_data', 'fbclid', 'gclid',
-        'email_normalise', 'phone_normalise', 'whatsapp_normalise'])
+        'email_normalise', 'phone_normalise', 'whatsapp_normalise',
+        'gps_lat', 'gps_lng', 'note', 'visite_notes', 'ombrage_notes',
+        'contact_secondaire_nom', 'contact_secondaire_telephone',
+        'contact_secondaire_email', 'contact_secondaire_fonction',
+        'lien_maps']
+    le.save(update_fields=champs_effaces)
+    # ASOC62 — le chatter garde ses lignes, plus les valeurs d'identité.
+    _caviarder_historique(company, le, identifiants, champs_effaces)
     # Les traces de traçage du lead perdent leurs identifiants (IP,
     # navigateur, appareil, suffixe de jeton) — la ligne reste, la personne
     # n'est plus reconnaissable.
@@ -299,15 +335,21 @@ def _emettre_lead_erased(company, lead_id, phone_key):
     transaction.on_commit(emettre)
 
 
-def anonymiser_client(company, cl, *, motif, demande_droit_ref='', now=None):
+def anonymiser_client(company, cl, *, motif, demande_droit_ref='', now=None,
+                      nom='Anonymisé'):
     """Anonymise UN client (jamais de suppression) + journalise (NTGRC4).
 
-    Même scrub que l'action ``ClientViewSet.anonymize`` (FG26/CRX32) :
-    identité, contacts, identifiants fiscaux/administratifs et champs
-    personnalisés. Les documents comptables restent intacts.
+    Même scrub que l'action ``ClientViewSet.anonymize`` (FG26/CRX32), qui
+    délègue ici (ASOC61) : identité, contacts, identifiants fiscaux/
+    administratifs, champs personnalisés et GPS/notes d'ombrage du profil de
+    site. Les documents comptables restent intacts.
     """
     now = now or timezone.now()
-    cl.nom = 'Anonymisé'
+    site = getattr(cl, 'site_profile', None)  # reverse 1-1 : None si absent
+    if site is not None:
+        site.gps_lat = site.gps_lng = site.ombrage_notes = None
+        site.save(update_fields=['gps_lat', 'gps_lng', 'ombrage_notes'])
+    cl.nom = nom
     cl.prenom = None
     cl.email = None
     cl.telephone = None
@@ -329,6 +371,9 @@ def anonymiser_client(company, cl, *, motif, demande_droit_ref='', now=None):
         'nom', 'prenom', 'email', 'telephone', 'adresse',
         'cin', 'ice', 'if_fiscal', 'rc', 'custom_data',
         'is_anonymized', 'anonymized_at'])
+    # ASOC100 — l'effacement traverse le Tiers miroir (porte ASOC60).
+    from apps.tiers.services import CHAMPS_PERSONNE, anonymiser_tiers
+    anonymiser_tiers(company, cl.tiers_id, CHAMPS_PERSONNE)
     return 1
 
 
@@ -374,9 +419,11 @@ def erase_crm(company, subject_identifier):
 #   * Il ne SUPPRIME rien : il anonymise, par la MÊME fonction que le DSR
 #     (`anonymiser_lead`) — deux chemins de scrub qui divergeraient, c'est un
 #     des deux qui oublierait un champ.
-#   * Il ne touche AUCUN lead devenu client (`lead.client` posé ou étape
-#     SIGNED) : la déclaration leur oppose la durée légale COMPTABLE, pas
-#     trois ans, et une facture doit rester rattachable.
+#   * Il ne touche AUCUN lead devenu client FACTURÉ (son client porte une
+#     facture, ou étape SIGNED) : la déclaration lui oppose la durée légale
+#     COMPTABLE, pas trois ans, et une facture doit rester rattachable.
+#     ASOC74 (D-ASOC-4) — un client SANS facture (posé au premier devis) reste
+#     un prospect ; il est anonymisé quand tous ses leads sont hors durée.
 #   * Il n'anonymise rien tant que le fondateur n'a pas armé l'interrupteur
 #     `CRM_LEAD_RETENTION_ACTIF` : un réglage neuf garde le comportement
 #     d'aujourd'hui, et supprimer des données clients par surprise au premier
@@ -426,8 +473,11 @@ def prospects_hors_duree(now=None):
 
     now = now or timezone.now()
     limite = now - datetime.timedelta(days=DUREE_CONSERVATION_PROSPECTS_JOURS)
+    # ASOC74 (D-ASOC-4) — un client SANS facture reste un prospect (le
+    # client est posé dès le premier devis) ; relation inverse à chaîne.
     return (Lead.objects
-            .filter(client__isnull=True)
+            .filter(Q(client__isnull=True) | Q(client__factures__isnull=True))
+            .distinct()
             .exclude(stage=stages.SIGNED)
             .exclude(nom=LEAD_NOM_ANONYMISE)
             .annotate(dernier_contact=Coalesce(Max('activites__created_at'),
@@ -449,12 +499,17 @@ def sweep_retention_prospects(now, apply_=False):
     if not apply_ or not _retention_armee():
         return len(leads)
     compte = 0
+    motif = ('Rétention (loi 09-08) — prospect sans contact depuis '
+             f'{DUREE_CONSERVATION_PROSPECTS_ANS} ans, durée déclarée '
+             'au registre des traitements')
     for lead in leads:
-        compte += anonymiser_lead(
-            lead.company, lead,
-            motif=('Rétention (loi 09-08) — prospect sans contact depuis '
-                   f'{DUREE_CONSERVATION_PROSPECTS_ANS} ans, durée déclarée '
-                   'au registre des traitements'))
+        compte += anonymiser_lead(lead.company, lead, motif=motif)
+    # ASOC74 — le client sans facture part quand TOUS ses leads sont hors durée.
+    ids = [le.pk for le in leads]
+    for cl in {le.client_id: le.client for le in leads if le.client_id}.values():
+        if not cl.is_anonymized and not cl.leads.exclude(pk__in=ids).exclude(
+                nom=LEAD_NOM_ANONYMISE).exists():
+            anonymiser_client(cl.company, cl, motif=motif)
     return compte
 
 

@@ -95,7 +95,7 @@ class GabaritDocumentCustomViewSet(CompanyScopedModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
 
         contexte = construire_contexte(
-            gabarit.cible, request.user.company, cible_id)
+            gabarit.cible, request.user.company, cible_id, user=request.user)
         if contexte is None:
             return Response(
                 {'detail': f'Aucun {gabarit.get_cible_display().lower()} '

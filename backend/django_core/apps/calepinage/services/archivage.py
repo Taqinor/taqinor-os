@@ -54,9 +54,9 @@ class ArchivageInvalide(ValueError):
 MESSAGE_ARCHIVE = ('Calepinage archivé : restaurez-le avant toute '
                    'modification.')
 
-#: ACAL118 — le statut de devis qui laisse archiver (et détacher) : seul un
-#: BROUILLON se détache ; un devis envoyé/accepté porte la conception.
-_STATUT_DETACHABLE = 'brouillon'
+#: ACAL118/ACON12 — les statuts de devis qui laissent archiver (et détacher) :
+#: brouillon, refusé, expiré ; un devis envoyé/accepté porte la conception.
+_STATUTS_DETACHABLES = {'brouillon', 'refuse', 'expire'}
 
 
 def est_archive(calepinage):
@@ -94,28 +94,42 @@ def raison_refus_archivage(calepinage):
 
 
 def _refus_devis_porte(calepinage):
-    """ACAL118 — un calepinage qui PORTE un devis non brouillon ne s'archive
-    pas : refus nommé (champ ``devis``) — ``None`` sinon."""
+    """ACAL118 — un calepinage qui PORTE un devis actif (envoyé, accepté) ne
+    s'archive pas : refus nommé (champ ``devis``) — ``None`` sinon. ACON31 —
+    un BROUILLON qui lit l'ombrage servi de ce calepinage non plus."""
     devis = getattr(calepinage, 'devis', None)
-    if devis is None or getattr(devis, 'statut', None) == _STATUT_DETACHABLE:
+    if devis is None:
         return None
     reference = ((getattr(devis, 'reference', '') or '').strip()
                  or f'#{devis.pk}')
+    if getattr(devis, 'statut', None) == 'brouillon':
+        from ..selectors import ombrage_servi
+        servi = ombrage_servi(devis.pk, calepinage.company)
+        if not servi or servi['perime'] or not servi['global']:
+            return None
+        pct = f"{float(servi['global']):.1f}".replace('.', ',')
+        return ArchivageInvalide(
+            f"Le devis brouillon {reference} lit l'ombrage de ce calepinage "
+            f'({pct} %) : supprimez ce brouillon d\'abord, sinon sa production '
+            'changerait sans que le devis le dise.', champ='devis')
+    if getattr(devis, 'statut', None) in _STATUTS_DETACHABLES:
+        return None
     if hasattr(devis, 'get_statut_display'):
         statut = devis.get_statut_display()
     else:
         statut = str(getattr(devis, 'statut', ''))
     return ArchivageInvalide(
-        f'Ce calepinage porte le devis {reference} ({statut}) : '
-        "détachez-le d'abord", champ='devis')
+        f'Ce calepinage porte le devis {reference} ({statut}) : il reste sa '
+        'conception tant que ce devis est actif.', champ='devis')
 
 
 def archiver(calepinage, *, user=None):
     """Archive ``calepinage`` — réversible, journalisé (ACAL118).
 
-    * lié à un devis NON brouillon ⇒ refus nommé (champ ``devis``), rien
+    * lié à un devis ENVOYÉ/ACCEPTÉ ⇒ refus nommé (champ ``devis``), rien
       n'est écrit ;
-    * lié à un devis BROUILLON ⇒ archivé ET détaché (``devis=None``,
+    * lié à un devis BROUILLON/REFUSÉ/EXPIRÉ (ACON12) ⇒ archivé ET détaché
+      (``devis=None``,
       journalisé) ; le devis détaché est gardé dans l'entrée de corbeille
       pour être rattaché à la restauration s'il est libre ;
     * ``archive_le`` est posé sur le MODÈLE (survit à la purge) ; la

@@ -172,6 +172,25 @@ class LePrescripteurTests(_Base):
 
         self.assertIn('Benali', rendu['message'])
 
+    def test_parrain_anonymise_phrase_omise(self):
+        """ASOC63 (C-ASOC-062) — un parrain effacé ne devient jamais
+        « Anonymisé nous a parlé de vous » : phrase omise, manquant listé."""
+        from apps.crm.dsr_provider import erase_crm
+        lead = self._lead('reference', nom='Filleul')
+        parrain = Client.objects.create(
+            company=self.company, nom='Benali',
+            email='parrain.asoc63@example.com')
+        Parrainage.objects.create(
+            company=self.company, parrain=parrain, filleul_lead=lead)
+        erase_crm(self.company, 'parrain.asoc63@example.com')
+
+        rendu = message_pour_etape(self._touche_identite(lead),
+                                   user=self.acteur)
+
+        self.assertNotIn('Anonymisé', rendu['message'])
+        self.assertNotIn('nous a parlé de vous', rendu['message'])
+        self.assertIn('prescripteur', rendu['placeholders_manquants'])
+
     def test_sans_parrain_la_phrase_est_OMISE_jamais_un_crochet(self):
         """MRY13 : jamais un blanc, jamais un nom inventé."""
         lead = self._lead('reference', nom='SansParrain')

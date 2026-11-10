@@ -1273,6 +1273,8 @@ def _nom_prescripteur(lead):
                        getattr(lead, 'pk', '?'), exc_info=True)
         return ''
     if lien is not None and lien.parrain is not None:
+        if lien.parrain.is_anonymized:  # ASOC63 — effacé : phrase omise
+            return ''
         return (getattr(lien.parrain, 'nom', '') or '').strip()
     return _prenom_du_locataire_prescripteur(lead)
 
@@ -1299,7 +1301,8 @@ def _prenom_du_locataire_prescripteur(lead):
         logger.warning('CAD164 : locataire prescripteur illisible (lead #%s)',
                        getattr(lead, 'pk', '?'), exc_info=True)
         return ''
-    if locataire is None:
+    from .dsr_provider import LEAD_NOM_ANONYMISE
+    if locataire is None or locataire.nom == LEAD_NOM_ANONYMISE:
         return ''
     return ((locataire.prenom or '').strip()
             or (locataire.nom or '').strip())

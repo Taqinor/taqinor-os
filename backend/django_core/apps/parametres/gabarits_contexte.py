@@ -245,15 +245,37 @@ def cibles_supportees():
     return sorted(RESOLVEURS)
 
 
-def construire_contexte(cible, company, cible_id):
+#: APFS22 — le module de droits qui gouverne la LECTURE de la fiche cible.
+MODULE_DE_LA_CIBLE = {'client': 'crm', 'ticket': 'sav',
+                      'chantier': 'installations'}
+#: APFS22 — coordonnées du client masquées sans ``client_pii_voir``.
+CLES_PII_CLIENT = ('telephone', 'email', 'adresse')
+
+
+def _lecture_refusee(cible, user):
+    """APFS22 — rôle fin non administrateur sans aucun code du module."""
+    module = MODULE_DE_LA_CIBLE.get(cible)
+    if (user is None or module is None or user.is_superuser
+            or getattr(user, 'is_admin_role', False)
+            or not getattr(user, 'role_id', None)):
+        return False
+    from authentication.permissions import codes_du_module
+    return not codes_du_module(module) & set(user.role.permissions or [])
+
+
+def construire_contexte(cible, company, cible_id, user=None):
     """Contexte de placeholders pour ``cible``/``cible_id``, ou ``None``.
 
     ``None`` quand la cible n'est pas supportée, quand l'objet n'existe pas, ou
     quand il appartient à une autre société (les selectors sont tous scopés).
-    Ne lève jamais : une app absente/en erreur dégrade en ``None``.
+    Ne lève jamais : une app absente/en erreur dégrade en ``None``. APFS22 —
+    ``user`` fourni : ``None`` aussi sans droit de lecture du module de la
+    cible (même 404 qu'un id absent), coordonnées client masquées sans
+    ``client_pii_voir`` (``CustomUser.can_view_client_pii``).
     """
     resolveur = RESOLVEURS.get((cible or '').strip().lower())
-    if resolveur is None or not cible_id:
+    if (resolveur is None or not cible_id
+            or _lecture_refusee((cible or '').strip().lower(), user)):
         return None
     try:
         contexte = resolveur(company, cible_id)
@@ -264,6 +286,9 @@ def construire_contexte(cible, company, cible_id):
     if contexte is None:
         return None
     contexte = _propre(contexte)
+    if (cible or '').strip().lower() == 'client' and user is not None \
+            and not getattr(user, 'can_view_client_pii', True):
+        contexte = {k: v for k, v in contexte.items() if k not in CLES_PII_CLIENT}
     # Deux écritures pour le même contenu : ``{{ reference }}`` (plat) et
     # ``{{ chantier.reference }}`` (préfixé par la cible, comme les exemples
     # de gabarit NTEXT18). Aucune donnée supplémentaire n'est exposée.

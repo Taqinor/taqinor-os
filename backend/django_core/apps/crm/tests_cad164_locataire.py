@@ -112,6 +112,17 @@ class LocataireApiTests(TestCase):
         self.assertEqual(self.locataire.ownership, Lead.Ownership.LOCATAIRE)
         self.assertFalse(self.locataire.perdu)
 
+    def test_locataire_anonymise_phrase_omise(self):
+        """ASOC63 (C-ASOC-062) — un locataire effacé n'est plus rendu comme
+        prescripteur (jamais « Anonymisé nous a parlé de vous »)."""
+        from apps.crm.dsr_provider import anonymiser_lead
+        resp = self.api.post(self._url(), CONTRAT['corps_proprietaire'],
+                             format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        proprietaire = Lead.objects.get(pk=resp.data['lead_proprietaire']['id'])
+        anonymiser_lead(self.company, self.locataire, motif='test ASOC63')
+        self.assertEqual(cadence_messages._nom_prescripteur(proprietaire), '')
+
     def test_un_proprietaire_deja_connu_est_relie_jamais_duplique(self):
         deja = Lead.objects.create(
             company=self.company, nom='Tazi',
