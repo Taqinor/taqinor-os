@@ -30,3 +30,5 @@ class InstallationsConfig(AppConfig):
         # (l'app propriétaire déclare, le noyau exécute). Idempotent.
         from . import bi_datasets
         bi_datasets.register_dataset()
+        from . import dsr_provider  # ASOC67 — fournisseur DSR (export)
+        dsr_provider.register()

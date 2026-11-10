@@ -122,6 +122,12 @@ def exporter(company, subject_identifier):
         except Exception as exc:  # noqa: BLE001 — isolation par fournisseur (D-ENF22-BLE001)
             logger.warning("exporter : échec ignoré, comportement dégradé", exc_info=True)
             out[name] = {'erreur': str(exc)}
+    from .models import ConsentRecord  # ASOC67 — consentements : modèle PROPRE de core
+    out['core'] = {'consentements': [
+        {'id': c.pk, 'finalite': c.purpose, 'accorde': c.granted, 'source': c.source,
+         'le': c.occurred_at.isoformat() if c.occurred_at else None}
+        for c in ConsentRecord.objects.filter(company=company, subject_identifier__iexact=(
+            subject_identifier or '').strip())]}
     return out
 
 

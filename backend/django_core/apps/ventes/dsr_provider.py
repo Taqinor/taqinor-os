@@ -70,6 +70,7 @@ def _documents(company, subject_identifier):
 
 def export_ventes(company, subject_identifier):
     """Export des documents commerciaux de la personne (jamais de marge)."""
+    from .models import Facture
     devis, emails = _documents(company, subject_identifier)
     return {
         'devis': [
@@ -97,6 +98,13 @@ def export_ventes(company, subject_identifier):
             }
             for e in emails
         ],
+        'factures': [  # ASOC67 — factures du sujet + leurs avoirs (jamais de marge)
+            {'id': f.pk, 'reference': f.reference, 'statut': f.statut,
+             'date_emission': f.date_emission.isoformat() if f.date_emission else None,
+             'avoirs': [{'id': a.pk, 'reference': a.reference, 'statut': a.statut}
+                        for a in f.avoirs.all()]}
+            for f in Facture.objects.filter(company=company, client_id__in=_clients_ids(
+                company, subject_identifier)).prefetch_related('avoirs').order_by('pk')],
     }
 
 
