@@ -22,8 +22,9 @@ réunit TOUT ce qu'un livrable lit —
   de leurs dates de calcul ;
 * les saisies stockées du registre :data:`services.resultat.CLES_SAISIES`
   (entrée électrique, schéma unifilaire édité, raccordement, dérogations) ;
-* la pose réelle (``PoseReelle``), les photos de site (``PhotoSite``) et les
-  saisies des dossiers réglementaires (``DossierReglementaire``) ;
+* la pose réelle (``PoseReelle``), les photos de site (``PhotoSite``) et —
+  ACON48 — les saisies et pièces jointes du SEUL dossier réglementaire passé
+  (``dossier``) : aucun pour le pack et les documents ;
 * les gabarits ACTIFS de la société (id, code, genre, version, fichier) —
   dossiers ET manuel du propriétaire ;
 * l'identité imprimée (titre, client et adresses LUS par ``crm.selectors``) et
@@ -86,8 +87,8 @@ def _saisies_stockees(calepinage):
     return _sans_volatils({cle: resultat.get(cle) for cle in CLES_SAISIES})
 
 
-def _lignes_liees(calepinage):
-    """Pose réelle, photos de site et dossiers réglementaires du calepinage."""
+def _lignes_liees(calepinage, dossier=None):
+    """Pose réelle, photos de site et le SEUL dossier réglementaire passé."""
     from ..models import DossierReglementaire, PhotoSite, PoseReelle
 
     if not getattr(calepinage, 'pk', None):
@@ -102,8 +103,10 @@ def _lignes_liees(calepinage):
                   .order_by('pk')
                   .values('pk', 'attachment_id', 'genre', 'prise_le',
                           'legende', 'calage', 'slot_code'))
+    # ACON48 — ``pk=None`` ne retient AUCUN dossier (pack, documents).
     dossiers = list(DossierReglementaire.objects
-                    .filter(calepinage_id=calepinage.pk)
+                    .filter(calepinage_id=calepinage.pk,
+                            pk=getattr(dossier, 'pk', None))
                     .order_by('pk')
                     .values('pk', 'gabarit_id', 'champs_saisis',
                             'pieces_jointes'))
@@ -169,7 +172,8 @@ def _materiel(calepinage):
             for ligne in lignes_produits_calepinage(_devis_lie(calepinage))]
 
 
-def _entrees_du_livrable(calepinage, langue='fr', sections=None):
+def _entrees_du_livrable(calepinage, langue='fr', sections=None,
+                         dossier=None):
     """Le dictionnaire CANONIQUE des entrées d'un livrable (avant hachage).
 
     Exposé pour les diagnostics et les tests ; :func:`empreinte_des_entrees`
@@ -184,7 +188,7 @@ def _entrees_du_livrable(calepinage, langue='fr', sections=None):
         'document': empreinte_document(getattr(calepinage, 'roof_layout', None)),
         'simulation': _simulation_servie(calepinage),
         'saisies': _saisies_stockees(calepinage),
-        'lignes': _lignes_liees(calepinage),
+        'lignes': _lignes_liees(calepinage, dossier),
         'gabarits': _gabarits(company),
         'identite': _identite(calepinage),
         'marque': _marque(company),
@@ -198,7 +202,8 @@ def _entrees_du_livrable(calepinage, langue='fr', sections=None):
     }
 
 
-def empreinte_des_entrees(calepinage, langue='fr', sections=None):
+def empreinte_des_entrees(calepinage, langue='fr', sections=None,
+                          dossier=None):
     """ACAL221 — l'empreinte (SHA-256 hex) de TOUT ce qu'un livrable lit.
 
     Stable entre deux lectures sans geste ; change dès qu'UNE entrée change
@@ -206,7 +211,8 @@ def empreinte_des_entrees(calepinage, langue='fr', sections=None):
     photo, langue, sections, titre / client / adresse, marque de la société).
     Lecture PURE : aucune écriture.
     """
-    canonique = json.dumps(_entrees_du_livrable(calepinage, langue, sections),
+    canonique = json.dumps(_entrees_du_livrable(calepinage, langue, sections,
+                                                dossier),
                            sort_keys=True, separators=(',', ':'),
                            ensure_ascii=False, default=str)
     return hashlib.sha256(canonique.encode('utf-8')).hexdigest()

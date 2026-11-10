@@ -22,7 +22,8 @@ from django.contrib.contenttypes.models import ContentType
 from django.test import TestCase
 
 from apps.calepinage.models import (
-    Calepinage, GabaritDossierReglementaire, PhotoSite, PoseReelle,
+    Calepinage, DossierReglementaire, GabaritDossierReglementaire, PhotoSite,
+    PoseReelle,
 )
 from apps.calepinage.services.empreinte_livrable import empreinte_des_entrees
 from apps.calepinage.services.layout import enregistrer_layout
@@ -60,10 +61,11 @@ class EmpreinteLivrableTest(TestCase):
             version_moteur=pivot.version_moteur or '')
 
     # ── outils ──────────────────────────────────────────────────────────
-    def _empreinte(self, langue='fr', sections=None):
+    def _empreinte(self, langue='fr', sections=None, dossier=None):
         calepinage = Calepinage.objects.get(pk=self.calepinage.pk)
         with patch_materiel():
-            return empreinte_des_entrees(calepinage, langue, sections)
+            return empreinte_des_entrees(calepinage, langue, sections,
+                                         dossier=dossier)
 
     def _piece(self, nom):
         return Attachment.objects.create(
@@ -237,6 +239,36 @@ class EmpreinteLivrableTest(TestCase):
         quantite = self._empreinte()
         self.assertNotEqual(approuve, quantite)
         self.assertEqual(quantite, self._empreinte())
+
+    def test_dossier_ne_hache_que_ses_saisies_et_pieces(self):
+        # ACON48 — joindre une pièce au dossier B ne périme ni A ni le pack ;
+        # une saisie sur A périme A, pas B.
+        def dossier(code):
+            gabarit = GabaritDossierReglementaire.objects.create(
+                company=self.societe, pays='ma', code=code, intitule=code,
+                version='1')
+            return DossierReglementaire.objects.create(
+                company=self.societe, calepinage=self.calepinage,
+                gabarit=gabarit)
+
+        dossier_a, dossier_b = dossier('dp'), dossier('raccordement')
+        a, b, pack = (self._empreinte(dossier=dossier_a),
+                      self._empreinte(dossier=dossier_b), self._empreinte())
+        self.assertNotEqual(a, b)
+
+        dossier_b.pieces_jointes = {'plan': {'attachment_id': 7,
+                                             'fichier': 'plan.pdf'}}
+        dossier_b.save(update_fields=['pieces_jointes'])
+        self.assertEqual(a, self._empreinte(dossier=dossier_a))
+        self.assertEqual(pack, self._empreinte())
+        b_jointe = self._empreinte(dossier=dossier_b)
+        self.assertNotEqual(b, b_jointe)
+
+        dossier_a.champs_saisis = {'puissance': 8.8}
+        dossier_a.save(update_fields=['champs_saisis'])
+        self.assertNotEqual(a, self._empreinte(dossier=dossier_a))
+        self.assertEqual(b_jointe, self._empreinte(dossier=dossier_b))
+        self.assertEqual(pack, self._empreinte())
 
     def test_sensible_a_la_langue_et_aux_sections(self):
         base = self._empreinte('fr', None)

@@ -416,15 +416,17 @@ def dossiers_du_calepinage(calepinage, *, pays=None):
     dossiers = {d.gabarit_id: d for d in DossierReglementaire.objects
                 .filter(company=company, calepinage=calepinage)}
     infos = _infos_du_calepinage(calepinage)
-    # ACAL240 — l'empreinte COURANTE des entrées, calculée UNE fois et
-    # seulement si un dossier a été généré avec la sienne.
-    empreinte_courante = None
-    if any(d.genere_empreinte for d in dossiers.values()):
-        from .empreinte_livrable import empreinte_des_entrees
+    # ACAL240 / ACON48 — l'empreinte COURANTE de CHAQUE dossier généré, sur
+    # SES seules saisies et pièces (joindre à B ne périme pas A).
+    from .empreinte_livrable import empreinte_des_entrees
 
-        empreinte_courante = empreinte_des_entrees(calepinage, 'fr')
+    def _courante(dossier):
+        if dossier is None or not dossier.genere_empreinte:
+            return None
+        return empreinte_des_entrees(calepinage, 'fr', dossier=dossier)
+
     entrees = [_entree_depuis_orm(gabarit, dossiers.get(gabarit.pk),
-                                  empreinte_courante)
+                                  _courante(dossiers.get(gabarit.pk)))
                for gabarit in gabarits]
     return _composer_dossiers(calepinage_id=calepinage.pk, pays=pays,
                               entrees=entrees, infos=infos)
@@ -867,7 +869,7 @@ def construire_pack_dossier(dossier, *, created_by=None, rendus=None,
     if empreinte is None:
         from .empreinte_livrable import empreinte_des_entrees
 
-        empreinte = empreinte_des_entrees(calepinage, 'fr')
+        empreinte = empreinte_des_entrees(calepinage, 'fr', dossier=dossier)
 
     depot = deposer_et_fusionner(
         calepinage, pieces=[(code, libelle, octets, None)
