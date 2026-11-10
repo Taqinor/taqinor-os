@@ -3825,6 +3825,17 @@ decisions:
     date: "2026-11-07"
     source: "Reda, question interactive, audit de parcours PA7"
     taches: [AMON21]
+  - id: D-AMON-3
+    question: "Le productible garanti de la garantie de production est proraté À PLAT sur l'année (jours / jours de l'année) alors que la production attendue suit le profil mensuel : un système sain au profil porte une pénalité de janvier à avril et un « recours fabricant » jusqu'à mi-mai. Quelle règle de prorata en cours d'année ?"
+    options:
+      - cle: profil_mensuel
+        texte: "Garanti proraté au profil mensuel déjà servi à l'attendu (aucune pénalité pour un système produisant au profil)"
+      - cle: prorata_a_plat
+        texte: "Garder le prorata temporis à plat annoncé par la mention légale (aucun code ; la pénalité d'hiver reste provisoire jusqu'à la clôture de l'année)"
+    reponse: ouverte
+    date: "2026-11-10"
+    source: "vérifie AMON du 10/11/2026 (critique de complétude) : non posée, Reda absent (défaut recommandé : profil_mensuel) ; réglage garantie_production_autorisee éteint par défaut, 0 garantie en prod au 07/11"
+    taches: [AMON107]
   - id: D-ACON-1
     question: "« Générer le devis » depuis un calepinage (et la route from-layout) sur un lead commercial / industriel construit un devis RÉSIDENTIEL avec la production et les économies de l'outil toiture (interdit en C&I par CIQ117). Quelle règle ?"
     options:
