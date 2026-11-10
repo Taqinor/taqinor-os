@@ -132,7 +132,9 @@ def devis_pre_save(sender, instance, **kwargs):
 
 def devis_post_save(sender, instance, created, **kwargs):
     old = getattr(instance, _OLD_STATUT_ATTR, None)
-    if instance.statut == Devis.Statut.ENVOYE and old != Devis.Statut.ENVOYE:
+    # ASOC3 — un retour à « envoyé » depuis accepté / refusé (dés-acceptation) n'est pas un envoi.
+    if instance.statut == Devis.Statut.ENVOYE and old not in (
+            Devis.Statut.ENVOYE, Devis.Statut.ACCEPTE, Devis.Statut.REFUSE):
         _safe_dispatch(instance.company_id, EVENT_DEVIS_SENT, {
             'event': EVENT_DEVIS_SENT,
             'id': instance.pk,
