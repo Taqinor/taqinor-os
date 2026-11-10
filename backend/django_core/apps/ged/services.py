@@ -6658,8 +6658,7 @@ def router_document_module(source, *, company, file, filename='',
     except Exception:  # pragma: no cover - flux non repositionnable.
         logger.warning('%s : échec ignoré (dégradé)', 'router_document_module', exc_info=True)
     contenu = file.read() or b''
-    if isinstance(contenu, str):
-        contenu = contenu.encode('utf-8')
+    contenu = contenu.encode('utf-8') if isinstance(contenu, str) else contenu
     file.seek(0)
 
     def _stocker():
@@ -6669,14 +6668,12 @@ def router_document_module(source, *, company, file, filename='',
         return meta_
 
     if reference:
-        existant = Document.objects.filter(  # ASOC50 — clé (société, référence), jamais le dossier
+        if (existant := Document.objects.filter(  # ASOC50 — clé (société, référence), jamais le dossier
             company=company, supprime_le__isnull=True,
             custom_data__routage_reference=reference,
-        ).order_by('id').first()
-        if existant is not None:
-            if existant.folder_id != getattr(folder, 'pk', None):  # dossier cible changé : déplacé
-                existant.folder = folder
-                existant.save(update_fields=['folder'])
+        ).order_by('id').first()) is not None:
+            if folder is not None:  # dossier cible changé : déplacé (no-op s'il est le même)
+                move_document(existant, folder)
             versionner_si_modifie(
                 existant, contenu, filename=filename, uploaded_by=uploaded_by,
                 stocker=_stocker)

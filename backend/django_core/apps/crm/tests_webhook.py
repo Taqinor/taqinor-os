@@ -1246,7 +1246,9 @@ class WrefRechercheClientRefTests(TestCase):
 
     def test_omnibox_retrouve_le_lead_par_client_ref(self):
         from apps.reporting.search import _spec_lead
-        _, _, qs, _ = _spec_lead({'company': self.company}, 'PKEA')
+        # APFS24 — la recherche est bornée à la portée de l'utilisateur
+        # (sans utilisateur : rien) ; le responsable voit toute la société.
+        _, _, qs, _ = _spec_lead({'company': self.company}, 'PKEA', self.user)
         self.assertEqual(list(qs.values_list('nom', flat=True)), ['Alaoui'])
 
     def test_le_code_provisoire_affiche_par_le_site_retrouve_aussi_le_lead(self):
@@ -1260,7 +1262,7 @@ class WrefRechercheClientRefTests(TestCase):
         rows = res.json()
         rows = rows.get('results', rows)
         self.assertEqual([r['nom'] for r in rows], ['Rassam'])
-        _, _, qs, _ = _spec_lead({'company': self.company}, 'ZW42')
+        _, _, qs, _ = _spec_lead({'company': self.company}, 'ZW42', self.user)
         self.assertEqual(list(qs.values_list('nom', flat=True)), ['Rassam'])
 
 

@@ -113,7 +113,8 @@ class RetardExigibleTests(TestCase):
     def test_brouillon_echu_jamais_en_retard(self):
         """ASOC24 (C-ASOC-007) — un brouillon échu J-5 n'est ni « échu » ni en
         retard : seule l'émise identique déclenche l'alerte."""
-        from apps.notifications.models import EventType, Notification
+        from apps.notifications.models import Notification
+        from apps.notifications.types_evenements import EventType
         from apps.notifications.sweeps import _sweep_facture_overdue
         from apps.ventes.models import Facture
         from apps.ventes.selectors_facturation import factures_echues
