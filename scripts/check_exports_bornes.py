@@ -61,10 +61,6 @@ EXCEPTIONS: dict = {
     'backend/django_core/apps/parametres/glossaire_export.py::construire_classeur': (
         '2026-10-09',
         'glossaire de paramètres : volume fixe borné par le code, indépendant des données de la société'),
-    'backend/django_core/apps/records/xlsx.py::build_workbook': (
-        '2026-10-09',
-        'primitive générique de construction de classeur : la borne appartient à ses appelants (listés '
-        'ici un par un)'),
     'backend/django_core/apps/reporting/archive.py::_xlsx_export': (
         '2026-10-09',
         'rapport/agrégat de reporting : borne par période NON vérifiée au build ; à borner ou justifier '
