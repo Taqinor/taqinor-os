@@ -7,7 +7,7 @@ __init__ ré-exporte toutes les vues publiques."""
 
 from rest_framework.exceptions import ValidationError
 
-from authentication.permissions import IsAnyRole, IsAdminRole
+from authentication.permissions import LectureDuModule, IsAdminRole
 from core.viewsets import CompanyScopedModelViewSet
 from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 
@@ -31,7 +31,7 @@ class FicheInterventionTemplateViewSet(oa.JsonOnlyMixin, UsageGuardedDestroyMixi
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsAdminRole()]
 
     def destroy_guard_message(self, template):
@@ -64,7 +64,7 @@ class FicheInterventionChampViewSet(oa.JsonOnlyMixin, UsageGuardedDestroyMixin,
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsAdminRole()]
 
     def destroy_guard_message(self, champ):

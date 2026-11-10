@@ -148,7 +148,7 @@ class TenantConsoleCreateView(APIView):
         admin.must_change_password = True
         admin.save(update_fields=['must_change_password'])
         # XPLT19 — la société d'attache est aussi la première société autorisée.
-        admin.societes_autorisees.add(company)
+        admin.societes_autorisees.add(company, through_defaults={'role': admin.role})  # APFS66
 
         # SOL10 — même gabarit « Solaire » que le signup public (modules rares
         # éteints SOL8, plan de licence SOL9, rôles types, structure de

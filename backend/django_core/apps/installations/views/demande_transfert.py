@@ -13,7 +13,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from authentication.permissions import LectureDuModule, IsResponsableOrAdmin
 from core.conflit_etat import ConflitEtat
 from core.viewsets import CompanyScopedModelViewSet
 
@@ -36,7 +36,7 @@ class DemandeTransfertViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):

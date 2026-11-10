@@ -17,7 +17,7 @@ from authentication.models import Company
 from apps.crm.models import Client
 from apps.installations.models import Installation
 from apps.sav.dateutils import add_months
-from apps.sav.models import Equipement, Ticket
+from apps.sav.models import Equipement, PieceConsommee, Ticket
 from apps.stock.models import Produit
 
 User = get_user_model()
@@ -126,3 +126,33 @@ class GarantieChantierTests(TestCase):
         non = self._ticket('SAV-ACSV50-N', chantier('CHT-ACSV50-N', 'installe'),
                            sous_garantie=Ticket.SousGarantie.NON)
         self.assertEqual(non.couverture_calculee(), Ticket.Couverture.FACTURABLE)
+
+    def test_reserve_apres_pose_terminee_409_avant_recidive(self):
+        """ACSV109 (C-ACSV-VER1-060) — le ticket né d'une réserve d'un
+        chantier posé non réceptionné, marqué récidive (pose terminée < 30 j),
+        rend le 409 « à confirmer » et non le 403 récidive ; un chantier
+        réceptionné il y a 3 ans garde le 403, levé par l'override."""
+        posee = Installation.objects.create(
+            company=self.company, reference='CHT-ACSV109-P',
+            client=self.client_obj, statut='installe')
+        ticket = self._ticket('SAV-ACSV109-P', posee, non_facturable=True,
+                              est_recidive=True)
+        r = self.api.post(f'/api/django/sav/tickets/{ticket.pk}/facturer/',
+                          {}, format='json')
+        self.assertEqual(r.status_code, 409)
+        self.assertEqual(r.data['detail'],
+                         'Garantie de chantier à confirmer avant de facturer.')
+        ticket.refresh_from_db()
+        self.assertIsNone(ticket.facture_id_ext)
+        ancien = self._ticket('SAV-ACSV109-A', self._chantier('CHT-ACSV109-A', 36),
+                              non_facturable=True, est_recidive=True)
+        produit = Produit.objects.create(
+            company=self.company, nom='Onduleur 109', sku='OND-ACSV109',
+            prix_achat=0, prix_vente=Decimal('1000'))
+        PieceConsommee.objects.create(
+            company=self.company, ticket=ancien, produit=produit,
+            quantite=Decimal('1'), created_by=self.user)
+        url = f'/api/django/sav/tickets/{ancien.pk}/facturer/'
+        self.assertEqual(self.api.post(url, {}, format='json').status_code, 403)
+        r = self.api.post(url, {'override': True}, format='json')
+        self.assertEqual(r.status_code, 201)

@@ -883,7 +883,7 @@ class TestAud508WarrantyProrationAnneeEnCours(TestCase):
     def test_systeme_conforme_aucune_compensation_en_cours_annee(self):
         ProductionReading.objects.create(
             company=self.company, installation=self.inst,
-            date=date(2026, 1, 1), period_days=180, energy_kwh=Decimal('8000'))
+            date=date(2026, 1, 1), period_days=246, energy_kwh=Decimal('8000'))
         from apps.monitoring.services import production_warranty_status
         st = production_warranty_status(
             self.inst, year=2026, today=self.today)
@@ -900,7 +900,7 @@ class TestAud508WarrantyProrationAnneeEnCours(TestCase):
         contre la bonne cible (le garanti ÉCOULÉ, pas l'objectif annuel)."""
         ProductionReading.objects.create(
             company=self.company, installation=self.inst,
-            date=date(2026, 1, 1), period_days=180, energy_kwh=Decimal('5000'))
+            date=date(2026, 1, 1), period_days=246, energy_kwh=Decimal('5000'))
         from apps.monitoring.services import production_warranty_status
         st = production_warranty_status(
             self.inst, year=2026, today=self.today)
@@ -1343,7 +1343,7 @@ class TestOmReport(TestCase):
     def test_report_data(self):
         from apps.monitoring.report import build_om_report_data
         d = build_om_report_data(self.inst, period='monthly', today=self.today)
-        self.assertEqual(d['period_kwh'], Decimal('900.00'))
+        self.assertEqual(d['period_kwh'], Decimal('630.00'))  # AMON98 : prorata 21/30 j
         self.assertIn('recommendations', d)
         self.assertTrue(len(d['recommendations']) >= 1)
 

@@ -1462,6 +1462,51 @@ class PorteePRTests(unittest.TestCase):
         long = self.m.resume_markdown([f'Server error|GET /{i}/' for i in range(70)], [])
         self.assertIn('… et 10 autre(s)', long)
 
+    def test_alerte_compte_les_constats_du_verdict(self):
+        """ADCG64 — le `run:` RÉEL de l'agrégateur d'api-fuzz-full.yml, sous
+        bash, sur 16 verdicts écrits par resume_markdown (1 constat nouveau)."""
+        import shutil
+        import subprocess
+        bash = shutil.which('bash')
+        if not bash:
+            self.skipTest('bash absent')
+        lignes = (ROOT / '.github/workflows/api-fuzz-full.yml').read_text(
+            encoding='utf-8').splitlines()
+        debut = next(i for i, ligne in enumerate(lignes) if ligne.strip() == 'id: verdict')
+        debut = next(i for i in range(debut, len(lignes)) if lignes[i].strip() == 'run: |') + 1
+        retrait = len(lignes[debut]) - len(lignes[debut].lstrip())
+        bloc = []
+        for ligne in lignes[debut:]:
+            if ligne.strip() and len(ligne) - len(ligne.lstrip()) < retrait:
+                break
+            bloc.append(ligne[retrait:])
+        script = '\n'.join(bloc) + '\n'
+        rouge = self.m.resume_markdown(['Resource is not available after creation|Stateful tests'], [])
+        vert = self.m.resume_markdown([], [])
+
+        def agreger(corps_zero):
+            with tempfile.TemporaryDirectory() as tmp:
+                tmp = Path(tmp)
+                for i in range(16):
+                    d = tmp / 'rapports' / f'schemathesis-report-{i}'
+                    d.mkdir(parents=True)
+                    (d / f'verdict-{i}.md').write_text(corps_zero if i == 0 else vert, encoding='utf-8')
+                sortie, resume = tmp / 'out.txt', tmp / 'summary.md'
+                sortie.touch()
+                resume.touch()
+                env = dict(os.environ, RUNNER_TEMP=str(tmp), GITHUB_OUTPUT=str(sortie),
+                           GITHUB_STEP_SUMMARY=str(resume))
+                r = subprocess.run([bash, '--noprofile', '--norc', '-c', script], cwd=tmp,
+                                   env=env, capture_output=True, text=True, encoding='utf-8')
+                return r.stdout, sortie.read_text(encoding='utf-8')
+
+        stdout, sortie = agreger(rouge)
+        self.assertIn('constats hors dette : 1', stdout)
+        self.assertIn('regression=failure', sortie)
+        stdout, sortie = agreger(vert)
+        self.assertIn('constats hors dette : 0', stdout)
+        self.assertIn('regression=success', sortie)
+
     def test_dette_versionnee_bien_formee(self):
         # ENF11 — une dette VIDE est l'état cible (D-ENF11-CRENEAU-400 a soldé
         # la dernière ligne) : seule la forme des lignes restantes est vérifiée.
@@ -1529,14 +1574,18 @@ class ConfigSchemathesisTests(unittest.TestCase):
         # Routes nommées, jamais un motif : la route retirée du portail SAV
         # (410), le créneau hors grille (400, D-ENF11-CRENEAU-400) et le lien
         # de dépôt GED expiré (410, ENF45 b), l'étape de workflow en boucle
-        # (400, D-ENF11-WORKFLOW-BOUCLE-400).
+        # (400, D-ENF11-WORKFLOW-BOUCLE-400), l'auto-parrainage refusé
+        # (400, D-ASOC71-PARRAINAGE-400).
         self.assertEqual(sorted(op.get('include-name') for op in visees), [
             'GET /api/django/ged/depot/{token}/',
             'PATCH /api/django/core/workflow-definitions/{id}/',
+            'PATCH /api/django/crm/parrainages/{id}/',
+            'POST /api/django/crm/parrainages/',
             'POST /api/django/ged/depot/{token}/',
             'POST /api/django/public/stock/portail-fournisseur/{token}/reserver-creneau/',
             'POST /api/django/sav/portail/tickets/',
-            'PUT /api/django/core/workflow-definitions/{id}/'])
+            'PUT /api/django/core/workflow-definitions/{id}/',
+            'PUT /api/django/crm/parrainages/{id}/'])
         op = next(o for o in visees
                   if o['include-name'] == 'POST /api/django/sav/portail/tickets/')
         self.assertEqual(

@@ -103,6 +103,7 @@ def run_query_cache(dataset, company, user, spec, ttl=None):
     ttl = ttl_effectif(ttl)
     if not ttl:
         return data_explorer.run_query(dataset, company, user, spec), ''
+    data_explorer.exiger_lecture_dataset(dataset, user)  # APFS4 — le HIT aussi
     company_id = getattr(company, 'pk', None)
     nom = cle_cache(dataset, spec, user, partage=_partage(dataset))
     memorise = tenant_cache.get(company_id, nom)

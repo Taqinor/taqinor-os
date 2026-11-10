@@ -104,6 +104,7 @@ const MESSAGE_RESYNC_RESEAU = 'Conception enregistrée — resynchronisation du 
 
 function AtelierToiture({
   mode = 'lead', calepinageImpose = null, devisSynchronise = null, lectureSeuleImposee = false,
+  varianteDuDevis = false,
 }) {
   const { id: idParam } = useParams()
   const [searchParams] = useSearchParams()
@@ -132,6 +133,10 @@ function AtelierToiture({
   const devisId = devisSynchronise ? String(devisSynchronise) : ''
   const calepinageId = estCalepinage ? String(calepinageImpose || idParam || '') : ''
   const cibleId = estCalepinage ? calepinageId : leadId
+  // ACON80 (D-ACON-2) — un second devis actif du lead, porté par une VARIANTE du
+  // calepinage : le contexte (`?devis=`) sert la variante et son document (lu par
+  // `conception_du_devis`, contrat calepinage_conception_du_devis.json), l'atelier l'enregistre.
+  const paramsContexte = varianteDuDevis && devisId ? { devis: Number(devisId) } : null
 
   // ACAL209 — le mode lead ne lit plus de mesures en query params (pente/
   // orientation/longueur/largeur) : elles n'avaient aucun effet persistant. Le
@@ -304,6 +309,7 @@ function AtelierToiture({
     devisId,
     estCalepinage,
     leadId,
+    paramsContexte,
     reducedMotion,
     setBrouillonPropose,
     setBuilderApiActuel,
@@ -480,7 +486,9 @@ function AtelierToiture({
     try {
       let res = null
       if (estCalepinage && calepinageId) {
-        res = await calepinageApi.calepinages.designContext(calepinageId)
+        res = await (paramsContexte
+          ? calepinageApi.calepinages.designContext(calepinageId, paramsContexte)
+          : calepinageApi.calepinages.designContext(calepinageId))
       } else {
         return
       }
@@ -605,10 +613,13 @@ function AtelierToiture({
   // CALEPINAGE, PUIS le devis est resynchronisé par l'enveloppe du module
   // (`calepinages/<id>/sync-devis/`, D02-T09) — jamais `ventesApi.syncDevisLayout`.
   // Rend `false` quand le serveur refuse (409 : devis accepté, refusé ou expiré, révisable ou clos ; un devis envoyé se corrige sur place, tracé).
+  // ACON80 — la variante qui porte le devis synchronisé (servie par le contexte), ou null.
+  const varianteId = paramsContexte ? (contexte?.variante?.id ?? null) : null
   const resynchroniserDevisLie = async (corps = {}) => {
     if (!devisSynchronise || !calepinageId) return true
     try {
-      const res = await calepinageApi.calepinages.syncDevis(calepinageId, corps)
+      const res = await calepinageApi.calepinages.syncDevis(calepinageId,
+        varianteId ? { ...corps, devis: Number(devisSynchronise) } : corps)
       const donnees = res?.data ?? {}
       setAvertissementsSync(Array.isArray(donnees.avertissements) ? donnees.avertissements : [])
       setBloquageSync(null)
@@ -709,9 +720,11 @@ function AtelierToiture({
       try {
         // ACAL23 — l'écriture COMPLÈTE porte If-Match = l'empreinte « document »
         // lue au boot puis remplacée par celle de chaque réponse 2xx.
-        const res = await calepinageApi.calepinages
-          .enregistrerLayoutCalepinageConditionnel(calepinageId, layout, empreinteDocument)
-        resultat = res?.data ?? {}
+        const res = varianteId
+          ? await calepinageApi.calepinages.modifierVariante(calepinageId, varianteId, { roof_layout: layout })
+          : await calepinageApi.calepinages
+            .enregistrerLayoutCalepinageConditionnel(calepinageId, layout, empreinteDocument)
+        resultat = varianteId ? {} : (res?.data ?? {})
       } catch (err) {
         const code = err?.response?.status
         const data = err?.response?.data
@@ -776,7 +789,8 @@ function AtelierToiture({
       // L'aperçu de toiture, même patron que les autres modes (best-effort,
       // MÊME service de stockage MinIO — jamais un second magasin).
       setGenStatus('Capture de la vue 3D…')
-      setApercuMessage(await capturerEtEnvoyerApercu(apiTool, `calepinage-${calepinageId}.png`,
+      // ACON80 — l'aperçu d'une VARIANTE n'écrase jamais celui du calepinage.
+      setApercuMessage(varianteId ? null : await capturerEtEnvoyerApercu(apiTool, `calepinage-${calepinageId}.png`,
         (form) => calepinageApi.calepinages.envoyerImage(calepinageId, form)))
       // CALX68 — enregistrement réussi : le brouillon local ne porte plus
       // rien de plus récent que le serveur, il s'efface. Le layout SERVEUR
@@ -1473,7 +1487,10 @@ function AtelierToiture({
             // le peuvent ; le reste du fichier continue de lire
             // `builderApi.current` dans ce cadre-là, inchangé).
             builderApi={builderApiActuel}
-            lectureSeule={lectureSeule}
+            // ACON80 — en mode variante, les écrivains du rail visent encore
+            // `calepinages/<C1>/layout/section/` : lecture seule jusqu'à ce que
+            // la route connaisse les variantes (jamais une écriture sur C1).
+            lectureSeule={lectureSeule || !!varianteId}
             onRecharger={rechargerAtelier}
             documentVivant={documentVivant}
             // ACAL94 — Générer / Resynchroniser rangent d'abord l'écran (une
@@ -1651,8 +1668,19 @@ function ConceptionDuDevis() {
         // jamais l'atelier éditable sous l'URL de la version remplacée.
         const lie = res?.data?.devis
         if (calepinageId && lie?.id != null && String(lie.id) !== String(devisId)) {
-          toastInfo(noticeDevisRevise(lie.reference))
-          navigate(`/ventes/devis/${lie.id}/design`, { replace: true })
+          // ACON80 — un second devis actif porté par une VARIANTE n'est pas une révision.
+          Promise.resolve()
+            .then(() => calepinageApi.calepinages.designContext(calepinageId, { devis: Number(devisId) }))
+            .catch(() => null)
+            .then((ctx) => {
+              if (annule) return
+              if (ctx?.data?.variante) {
+                setResolution({ calepinageId, erreur: null, varianteDuDevis: true })
+                return
+              }
+              toastInfo(noticeDevisRevise(lie.reference))
+              navigate(`/ventes/devis/${lie.id}/design`, { replace: true })
+            })
           return
         }
         setResolution(calepinageId
@@ -1691,6 +1719,7 @@ function ConceptionDuDevis() {
         calepinageImpose={resolution.calepinageId}
         devisSynchronise={devisId}
         lectureSeuleImposee={!!resolution.lectureSeule}
+        varianteDuDevis={!!resolution.varianteDuDevis}
       />
     )
   }

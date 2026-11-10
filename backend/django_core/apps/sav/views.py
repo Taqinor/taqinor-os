@@ -21,9 +21,10 @@ from rest_framework.exceptions import (
 from rest_framework.response import Response
 
 from authentication.permissions import (
-    HasPermissionOrLegacy, IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
+    HasPermissionOrLegacy, IsAdminRole, IsAnyRole, IsResponsableOrAdmin, LectureDuModule,
 )
 from apps.roles.permissions import DroitDeLaGrille, droits_de_la_grille  # ASEC50
+from apps.parametres.views_common import SettingsAuditedMixin  # ASOC82
 from core.champs_stricts import (
     MOTIF_NON_BLANC_SANS_NUL, MOTIF_SANS_NUL, BooleenStrict, ChaineStricte,
     DateStricte, DecimalBornee, EntierStrict, entier_ou_400,
@@ -1589,16 +1590,12 @@ class TicketViewSet(CompanyScopedModelViewSet):
         elif operation == 'annuler':
             motif = (request.data.get('motif') or '').strip()
             for ticket in tickets:
-                if not ticket.annule:
-                    ticket.annule = True
-                    ticket.motif_annulation = motif or None
-                    ticket.reprendre_apres_attente()
-                    ticket.save(update_fields=[
-                        'annule', 'motif_annulation', *_CHAMPS_PAUSE])
-                    activity.log_note(
-                        ticket, request.user,
-                        f"Ticket annulé{(' : ' + motif) if motif else ''}")
-                traites.append(ticket.id)
+                try:  # ACSV108 — même porte que l'action unitaire
+                    self._annuler_ticket(ticket, request.user, motif)
+                except ConflitEtat as exc:
+                    echecs.append({'id': ticket.id, 'raison': str(exc)})
+                else:
+                    traites.append(ticket.id)
 
         return Response({
             'traites': traites, 'echecs': echecs,
@@ -1786,25 +1783,27 @@ class TicketViewSet(CompanyScopedModelViewSet):
     def annuler(self, request, pk=None):
         """Annule le ticket (DRAPEAU avec motif — pas une étape)."""
         ticket = self.get_object()
-        motif = (_valider_corps(_SCHEMA_ANNULER, request.data).get('motif')
-                 or '').strip()
-        if not ticket.annule:
-            if ticket.prets_equipement.filter(statut='en_cours').exists():
-                raise ConflitEtat(  # ACSV67
-                    "Impossible d'annuler : un pr\u00eat d'\u00e9quipement est "
-                    'encore en cours (retournez-le d\u0027abord).')
-            ticket.annule = True
-            ticket.motif_annulation = motif or None
-            ticket.reprendre_apres_attente()
-            ticket.save(update_fields=[
-                'annule', 'motif_annulation', *_CHAMPS_PAUSE])
-            activity.log_note(
-                ticket, request.user,
-                f"Ticket annulé{(' : ' + motif) if motif else ''}")
-            from apps.installations.services import annuler_interventions_du_ticket  # ACSV65
-            annuler_interventions_du_ticket(ticket.pk, request.user, f'Ticket {ticket.reference} annulé')
+        self._annuler_ticket(ticket, request.user, (
+            _valider_corps(_SCHEMA_ANNULER, request.data).get('motif') or '').strip())
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
+
+    def _annuler_ticket(self, ticket, user, motif):
+        # ACSV108 — porte unique de l'annulation (unitaire et en lot).
+        if ticket.annule:
+            return
+        if ticket.prets_equipement.filter(statut='en_cours').exists():
+            raise ConflitEtat(  # ACSV67
+                "Impossible d'annuler : un pr\u00eat d'\u00e9quipement est "
+                'encore en cours (retournez-le d\u0027abord).')
+        ticket.annule, ticket.motif_annulation = True, motif or None
+        ticket.reprendre_apres_attente()
+        ticket.save(update_fields=[
+            'annule', 'motif_annulation', *_CHAMPS_PAUSE])
+        activity.log_note(
+            ticket, user, f"Ticket annulé{(' : ' + motif) if motif else ''}")
+        from apps.installations.services import annuler_interventions_du_ticket  # ACSV65
+        annuler_interventions_du_ticket(ticket.pk, user, f'Ticket {ticket.reference} annulé')
 
     @extend_schema(request=None)
     @action(detail=True, methods=['post'], url_path='reactiver',
@@ -2958,9 +2957,9 @@ class TicketViewSet(CompanyScopedModelViewSet):
 # ── FG81 — Réglages SLA ────────────────────────────────────────────────────────
 
 @extend_schema_view(list=extend_schema(responses=SavSlaSettingsSerializer))
-class SavSlaSettingsViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
-    """Réglages SLA SAV par société (FG81). Singleton : list renvoie l'unique
-    enregistrement ; écriture responsable/admin."""
+class SavSlaSettingsViewSet(SettingsAuditedMixin, JsonSeulementMixin, CompanyScopedModelViewSet):
+    """Réglages SLA SAV par société (FG81), singleton ; écritures journalisées (ASOC82)."""
+    audit_section, audit_libelle = 'sav', 'Réglages SLA SAV'
     queryset = SavSlaSettings.objects.all()
     serializer_class = SavSlaSettingsSerializer
     # CI #956 (fuzz) — singleton : ``list`` ne pagine pas, donc le schéma ne
@@ -2969,7 +2968,7 @@ class SavSlaSettingsViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def list(self, request, *args, **kwargs):
@@ -2981,11 +2980,10 @@ class SavSlaSettingsViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
     @extend_schema(responses={200: SavSlaSettingsSerializer})
     def create(self, request, *args, **kwargs):
         """Upsert du singleton (PATCH-like via POST)."""
-        company = request.user.company
-        obj = SavSlaSettings.get(company)
-        serializer = self.get_serializer(obj, data=request.data, partial=True)
+        serializer = self.get_serializer(SavSlaSettings.get(
+            request.user.company), data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        serializer.save(company=company)
+        self.perform_update(serializer)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
@@ -2999,7 +2997,7 @@ class MaintenanceChecklistTemplateViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -3046,7 +3044,7 @@ class WarrantyClaimViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -3137,7 +3135,7 @@ class KbArticleViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -3184,7 +3182,7 @@ class AlarmeOnduleurViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -3321,7 +3319,7 @@ class CauseDefaillanceViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -3346,7 +3344,7 @@ class RemedeDefaillanceViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -3373,7 +3371,7 @@ class CategorieTicketViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -3403,7 +3401,7 @@ class EquipeMaintenanceViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -3431,7 +3429,7 @@ class CategorieEquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def perform_create(self, serializer):
@@ -3452,7 +3450,7 @@ class WorksheetMaintenanceModeleViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def perform_create(self, serializer):
@@ -3474,7 +3472,7 @@ class ReponseTypeViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -3534,7 +3532,7 @@ class CompatibilitePieceViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):

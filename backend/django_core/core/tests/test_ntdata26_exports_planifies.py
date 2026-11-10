@@ -120,6 +120,59 @@ class ExportsDusTests(TestCase):
         self.assertIn('detail', export.dernier_detail)
         self.assertIn('non configurée', export.dernier_detail['detail'])
 
+    def test_createur_desactive_suspend_l_extrait_sans_ligne(self):
+        """APFS103 (C-APFS-133) — droits du créateur à la création ET à l'exécution."""
+        from importlib import import_module
+        from django.apps import apps as django_apps
+        from core.serializers import ScheduledExportSerializer
+        Role = django_apps.get_model('roles', 'Role')  # ENF20 : aucune arête core -> apps.roles
+        registre = import_module('apps.roles.permissions_registre')
+        data_explorer.register_dataset(
+            'apfs103_crm', 'CRM', ['id', 'nom'], _companies_dataset, module='crm')
+        rh = User.objects.create_user(username='apfs103-rh', password='x', company=self.company,
+                                      role=Role.objects.create(company=self.company, nom=registre.ROLE_ADMIN_RH,
+                                                               permissions=registre.ADMIN_RH_PERMISSIONS))
+        requete = APIRequestFactory().post('/api/django/core/scheduled-exports/', {}, format='json')
+        requete.user = rh
+        corps = {'titre': 'RH', 'dataset': 'apfs103_crm', 'cron': '0 2 * * *', 'destination': 'sftp'}
+        with self.assertRaises(data_explorer.DatasetNonAutorise):
+            ScheduledExportSerializer(data=corps, context={'request': requete}).is_valid()
+        directeur = User.objects.create_user(username='apfs103-d', password='x', company=self.company,
+                                             role_legacy='admin')
+        requete.user = directeur
+        ser = ScheduledExportSerializer(data=corps, context={'request': requete})
+        self.assertTrue(ser.is_valid(), ser.errors)
+        export = ser.save(company=self.company)
+        self.assertEqual(export.created_by_id, directeur.pk)
+        directeur.is_active = False
+        directeur.save(update_fields=['is_active'])
+        with mock.patch.object(data_explorer, 'run_query') as moteur:
+            scheduled_export.executer_exports_dus(now=MARDI_02H)
+        moteur.assert_not_called()  # 0 ligne émise
+        export.refresh_from_db()
+        self.assertFalse(export.actif)
+        self.assertEqual(export.dernier_statut, 'erreur')
+        self.assertIn('désactivé', export.dernier_detail['detail'])
+        self.assertEqual(export.created_by_id, directeur.pk)
+
+    def test_createur_supprime_suspend_l_extrait(self):
+        """APFS103 — un créateur SUPPRIMÉ (SET_NULL) ne rend pas l'extrait
+        illimité : ``pre_delete`` le suspend avec une cause nommée."""
+        createur = User.objects.create_user(username='apfs103-sup', password='x',
+                                            company=self.company, role_legacy='admin')
+        extrait = self._export(created_by=createur)
+        autre = self._export(titre='Sans créateur')
+        createur.delete()
+        extrait.refresh_from_db()
+        self.assertIsNone(extrait.created_by_id)
+        self.assertFalse(extrait.actif)
+        self.assertEqual(extrait.dernier_statut, 'erreur')
+        self.assertEqual(extrait.dernier_detail['detail'],
+                         scheduled_export.CAUSE_CREATEUR_SUPPRIME)
+        self.assertNotIn(extrait, scheduled_export.exports_dus(MARDI_02H))
+        autre.refresh_from_db()
+        self.assertTrue(autre.actif)
+
     def test_extrait_inactif_jamais_du(self):
         self._export(actif=False)
         self.assertEqual(

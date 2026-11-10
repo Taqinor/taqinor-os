@@ -147,7 +147,9 @@ class JoursDepuisDernierDrillReussiTests(TestCase):
             kind=BackupRun.KIND_RESTORE_DRILL,
             statut=BackupRun.STATUT_ECHEC, company=None,
             termine_le=timezone.now() - datetime.timedelta(days=1))
-        self.assertIsNone(self.calc(self.company, None))
+        # ADCG36 — un échec ne compte pas comme réussi : repli sur le plus
+        # ancien run système (créé à l'instant ⇒ 0 jour), jamais None.
+        self.assertEqual(self.calc(self.company, None), Decimal(0))
 
     def test_drill_purge_ignore(self):
         BackupRun.objects.create(
@@ -155,6 +157,14 @@ class JoursDepuisDernierDrillReussiTests(TestCase):
             statut=BackupRun.STATUT_TERMINE, company=None,
             termine_le=timezone.now() - datetime.timedelta(days=1),
             purge_is_deleted=True)
+        self.assertEqual(self.calc(self.company, None), Decimal(0))  # ADCG36 : repli
+
+    def test_drill_dune_societe_jamais_compte(self):
+        """ADCG36 — un restore_drill portant une société n'est jamais compté."""
+        BackupRun.objects.create(
+            kind=BackupRun.KIND_RESTORE_DRILL,
+            statut=BackupRun.STATUT_TERMINE, company=self.company,
+            termine_le=timezone.now() - datetime.timedelta(days=1))
         self.assertIsNone(self.calc(self.company, None))
 
     def test_sauvegarde_export_non_drill_ignoree(self):
@@ -216,6 +226,29 @@ class DrillPerimeAlerteTests(TestCase):
             valeur, franchi, notifie = evaluate_kpi_alerte(alerte)
 
         self.assertEqual(valeur, Decimal(40))
+        self.assertTrue(franchi)
+        self.assertTrue(notifie)
+        mock_notify.assert_called_once()
+
+    def test_aucun_drill_jamais_reussi_declenche_lalerte(self):
+        """ADCG36 — 13 échecs (J-60 → J-5), 0 réussi : 60 jours, alerte franchie."""
+        maintenant = timezone.now()
+        for jours in [60 - i * 55 // 12 for i in range(13)]:  # 60 … 5
+            run = BackupRun.objects.create(
+                kind=BackupRun.KIND_RESTORE_DRILL,
+                statut=BackupRun.STATUT_ECHEC, company=None)
+            BackupRun.objects.filter(pk=run.pk).update(
+                created_at=maintenant - datetime.timedelta(days=jours))
+        alerte = KpiAlerte.objects.create(
+            company=self.company,
+            kpi=KpiAlerte.Kpi.JOURS_DEPUIS_DERNIER_DRILL_REUSSI,
+            operateur=KpiAlerte.Operateur.SUP, seuil=Decimal('35'))
+        alerte.destinataires_utilisateurs.add(self.user)
+
+        with mock.patch('apps.notifications.services.notify') as mock_notify:
+            valeur, franchi, notifie = evaluate_kpi_alerte(alerte)
+
+        self.assertEqual(valeur, Decimal(60))
         self.assertTrue(franchi)
         self.assertTrue(notifie)
         mock_notify.assert_called_once()

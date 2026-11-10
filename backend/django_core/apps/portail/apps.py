@@ -27,3 +27,5 @@ class PortailConfig(AppConfig):
         # `models.py` : un modèle n'orchestre pas d'écriture cross-app, et
         # l'import y cassait le contrat CI `portail-models-decoupled`).
         import_module(f'{self.name}.receivers')
+        from . import dsr_provider  # ASOC67 — fournisseur DSR (export)
+        dsr_provider.register()

@@ -164,3 +164,61 @@ class AttenduPeriodeTests(TestCase):
         self.assertAlmostEqual(float(services.attendu_entre(
             Decimal('12000'), date(2026, 1, 1), date(2026, 12, 31))),
             12000.0, delta=0.5)
+
+    def _mensuels(self, inst, annuel, mois, facteur=1):
+        """AMON97 — relevés mensuels au profil, datés du 1er, période =
+        jours du mois (2026)."""
+        import calendar
+        from datetime import date
+        for m in mois:
+            jour = date(2026, m, 1)
+            periode = calendar.monthrange(2026, m)[1]
+            ProductionReading.objects.create(
+                company=self.company, installation=inst, date=jour,
+                energy_kwh=_au_profil(
+                    annuel, jour, jour + timedelta(days=periode - 1),
+                    facteur),
+                period_days=periode)
+
+    def test_rapport_mensuel_releves_mensuels_en_retard(self):
+        """AMON97 — PR du rapport mensuel sur la fenêtre COUVERTE : un
+        système sain relevé au mois jusqu'en octobre, lu le 15/11, sert
+        ≈ 100 % (et non 60,66) ; journaliers sains jusqu'au 15/11, fenêtre
+        non bornée : ≈ 100 % (et non 103,79) ; témoin à 60 % : < 65."""
+        from datetime import date
+        quinze = date(2026, 11, 15)
+        sain = self._systeme('CHT-AMON97', '6000', date(2026, 1, 1))
+        self._mensuels(sain, '6000', range(1, 11))
+        data = build_om_report_data(sain, period='monthly', today=quinze)
+        self.assertGreaterEqual(float(data['pr_pct']), 99.0)
+        self.assertLessEqual(float(data['pr_pct']), 101.0)
+        journaliers = self._systeme('CHT-AMON97-J', '6000', None)
+        for i in range(46):
+            jour = date(2026, 10, 1) + timedelta(days=i)
+            ProductionReading.objects.create(
+                company=self.company, installation=journaliers, date=jour,
+                energy_kwh=_au_profil('6000', jour, jour), period_days=1)
+        data = build_om_report_data(
+            journaliers, period='monthly', today=quinze)
+        self.assertGreaterEqual(float(data['pr_pct']), 99.0)
+        self.assertLessEqual(float(data['pr_pct']), 101.0)
+        temoin = self._systeme('CHT-AMON97-T', '6000', date(2026, 1, 1))
+        self._mensuels(temoin, '6000', range(1, 11), facteur='0.6')
+        data = build_om_report_data(temoin, period='monthly', today=quinze)
+        self.assertLess(float(data['pr_pct']), 65.0)
+
+    def test_rapport_production_periode_au_prorata(self):
+        """AMON98 — « Production période » au prorata des relevés qui
+        recouvrent la période : mensuels jusqu'en octobre, lus le 15/11 ⇒
+        220,07 kWh (et non 0) au mensuel, 1 267,82 au trimestriel."""
+        from datetime import date
+        quinze = date(2026, 11, 15)
+        inst = self._systeme('CHT-AMON98', '6000', date(2026, 1, 1))
+        self._mensuels(inst, '6000', range(1, 11))
+        mensuel = build_om_report_data(inst, period='monthly', today=quinze)
+        self.assertAlmostEqual(
+            float(mensuel['period_kwh']), 220.07, delta=0.01)
+        trimestriel = build_om_report_data(
+            inst, period='quarterly', today=quinze)
+        self.assertAlmostEqual(
+            float(trimestriel['period_kwh']), 1267.82, delta=0.01)

@@ -16,7 +16,7 @@ from rest_framework.response import Response
 from rest_framework.decorators import api_view, parser_classes, permission_classes
 
 from authentication.permissions import (
-    HasPermissionOrLegacy, IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
+    HasPermissionOrLegacy, IsAdminRole, IsAnyRole, LectureDuModule, IsResponsableOrAdmin,
 )
 from core.serializers import ChampsTexteBooleenStricts, CompanyScopedRelationsMixin
 from ..permissions import MasqueMontantsAchatMixin, PeutVoirPrixAchat
@@ -145,7 +145,7 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
         # `get_permissions` prime sur le `permission_classes` d'une @action :
         # chaque action est listée explicitement ici.
         if self.action in READ_ACTIONS + ['releve', 'releve_pdf']:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         if self.action in WRITE_ACTIONS + ['declarer_consommation',
                                            'export_xlsx']:
             return [IsResponsableOrAdmin()]
@@ -275,7 +275,7 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
         }),
     })
     @action(detail=True, methods=['get'], url_path='releve',
-            permission_classes=[IsAnyRole])
+            permission_classes=[LectureDuModule])
     def releve(self, request, pk=None):
         """Relevé cumulé : déposé / consommé / facturé / restant."""
         from ..services_consignation import releve_consignation
@@ -283,7 +283,7 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(responses={(200, 'application/pdf'): bytes})
     @action(detail=True, methods=['get'], url_path='releve-pdf',
-            permission_classes=[IsAnyRole])
+            permission_classes=[LectureDuModule])
     def releve_pdf(self, request, pk=None):
         """NTDST24 — relevé imprimable remis AU CLIENT comme justificatif.
 
@@ -514,7 +514,7 @@ class AtpProduitMixin:
     @extend_schema(responses={
         200: inline_serializer('StockProduitAtp', ATP_SHAPE)})
     @action(detail=True, methods=['get'], url_path='atp',
-            permission_classes=[IsAnyRole])
+            permission_classes=[LectureDuModule])
     def atp(self, request, pk=None):
         """Disponibilité DATÉE : combien MAINTENANT, et à partir de QUAND.
 

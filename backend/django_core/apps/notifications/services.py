@@ -747,6 +747,21 @@ def notify(user, event_type, title, body='', link=None, company=None,
     return created
 
 
+def notifier_portail_client(company, client_id, event_type, title, body='',
+                            link=None, skip_email=False):
+    """ASOC27 — ``notify`` vers chaque compte portail ACTIF du client (accès
+    révoqué ⇒ rien) ; rend le nombre de notifications créées."""
+    from django.contrib.auth import get_user_model
+    from apps.portail.selectors import compte_portail_client_actif
+    User = get_user_model()
+    if not (company and client_id) or compte_portail_client_actif(company.id, client_id) is False:
+        return 0
+    comptes = User.objects.filter(company=company, portail_client_id=client_id,
+                                  portee=User.PORTEE_PORTAIL_CLIENT, is_active=True)
+    return sum(1 for compte in comptes if notify(
+        compte, event_type, title, body=body, link=link, company=company, skip_email=skip_email))
+
+
 #: N1 — plafond de livraisons par passage du balayage (5 min). Une nuit
 #: ordinaire en produit quelques dizaines ; le reste part au passage suivant.
 LIVRAISON_LOT_MAX = 500

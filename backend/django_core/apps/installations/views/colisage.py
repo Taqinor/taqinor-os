@@ -13,7 +13,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from authentication.permissions import LectureDuModule, IsResponsableOrAdmin
 from core.viewsets import CompanyScopedModelViewSet
 
 from apps.ventes.utils.references import create_with_reference
@@ -37,7 +37,7 @@ class ColisViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -140,7 +140,7 @@ class ColisLigneViewSet(oa.JsonOnlyMixin, viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):

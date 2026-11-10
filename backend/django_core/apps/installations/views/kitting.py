@@ -17,7 +17,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from authentication.permissions import LectureDuModule, IsResponsableOrAdmin
 from core.champs_stricts import date_ou_400
 from core.conflit_etat import ConflitEtat
 from core.viewsets import CompanyScopedModelViewSet
@@ -136,7 +136,7 @@ class KitViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['revisions', 'composition_au']:
             # XMFG18 — lecture seule (aucun prix dans les snapshots).
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -241,7 +241,7 @@ class KitComposantViewSet(oa.JsonOnlyMixin, viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -308,7 +308,7 @@ class ControleQualiteModeleViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -344,7 +344,7 @@ class EtapeAssemblageViewSet(oa.JsonOnlyMixin, viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -388,7 +388,7 @@ class OrdreAssemblageLigneViewSet(oa.JsonOnlyMixin, viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -448,7 +448,7 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -1150,7 +1150,7 @@ class OrdreDemontageLigneViewSet(oa.JsonOnlyMixin, viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -1206,7 +1206,7 @@ class OrdreDemontageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):

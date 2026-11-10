@@ -12,7 +12,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from authentication.permissions import (
-    IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
+    IsAdminRole, LectureDuModule, IsResponsableOrAdmin,
 )
 from core.serializers import CompanyScopedRelationsMixin, ChampsTexteBooleenStricts
 from core.viewsets import CompanyScopedModelViewSet
@@ -88,7 +88,7 @@ class PlanEchantillonnageViewSet(CompanyScopedModelViewSet):
         # `get_permissions` prime sur le `permission_classes` d'une @action :
         # chaque action est listée explicitement ici.
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         if self.action in WRITE_ACTIONS:
             return [IsResponsableOrAdmin()]
         return [IsAdminRole()]
@@ -127,7 +127,7 @@ class ControleReceptionActionsMixin:
         }),
     })
     @action(detail=True, methods=['get'], url_path='echantillonnage',
-            permission_classes=[IsAnyRole])
+            permission_classes=[LectureDuModule])
     def echantillonnage(self, request, pk=None):
         """NTWMS34 — le plan s'applique-t-il à cette réception, et où en est
         le contrôle ? Lecture seule."""

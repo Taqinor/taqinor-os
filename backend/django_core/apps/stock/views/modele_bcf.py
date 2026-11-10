@@ -12,7 +12,7 @@ from ..utils.params import ID_MAX, corps_objet, types_corps_ou_400
 from ..serializers import BonCommandeFournisseurSerializer
 from core.conflit_etat import ConflitEtat
 from core.viewsets import CompanyScopedModelViewSet
-from authentication.permissions import IsAnyRole, HasPermissionOrLegacy
+from authentication.permissions import LectureDuModule, HasPermissionOrLegacy
 from apps.ventes.utils.references import create_with_reference
 
 from ..models import (
@@ -45,7 +45,7 @@ class ModeleBonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         # ASTK17 (D-ASTK-3) — créer/modifier/supprimer un modèle et `generer`
         # un BCF depuis lui = « commander » : code fin ``achats_commander``
         # (repli légacy responsable/admin pour les comptes sans rôle fin).

@@ -37,6 +37,8 @@ from apps.stock.models import (
 from apps.stock.models import BudgetDepartement, EngagementBudget
 from apps.stock.models_incident_fournisseur import IncidentQualiteFournisseur
 from apps.stock.models_rfa import AccordRFAFournisseur
+from apps.installations.models import (AppelCommande, CommandeCadre, CommandeCadreLigne, ContratPrixFournisseur,
+                                       ContratPrixLigne, DossierImport, FraisImport, LandedCostLigne)
 from apps.stock.models_wms import UniteLogistique
 from authentication.models import Company
 
@@ -45,6 +47,7 @@ User = get_user_model()
 RACINES = {
     'apps.stock.urls': '/api/django/stock/',
     'apps.achats.urls': '/api/django/achats/',
+    'apps.installations.urls': '/api/django/installations/',  # APFS29 — achats restés là
 }
 CLES_EXACTES = {
     'prix_achat', 'prix_unitaire_ht', 'prix_convenu', 'montant_achete',
@@ -53,6 +56,8 @@ CLES_EXACTES = {
     'total_valeur', 'valeur',
     # ASTK255 — motif chiffré du rapprochement 3 voies.
     'motif_ecart',
+    'prix_negocie', 'valeur_fob', 'budget_materiel', 'budget_main_oeuvre',  # APFS29
+    'budget_sous_traitance', 'budget_divers', 'budget_total',
 }
 PREFIXES_CLES = ('prix_achat_', 'total_achat', 'montant_', 'cout_')
 RE_PK = re.compile(r'\(\?P<pk>[^)]*\)')
@@ -76,6 +81,7 @@ PARAMETRES_PAR_ROUTE = {
     # (ensure_emplacements) : leurs cartes kanban exigent `ids`.
     'etiquettes-kanban/': lambda t: {'ids': t.produit.id, 'sortie': 'html'},
     'unites-logistiques/{pk}/etiquette-pdf/': lambda t: {'sortie': 'html'},
+    'interventions/suggestions-creation/': lambda t: {'type_intervention': 'installation'},
 }
 
 
@@ -275,6 +281,24 @@ class GardePrixAchat(TestCase):
             periode_debut=datetime.date(2026, 1, 1),
             periode_fin=datetime.date(2026, 12, 31),
             seuil_ca_achat=Decimal('5000'), montant_fixe=Decimal('400'))
+        contrat = ContratPrixFournisseur.objects.create(  # APFS29 — achats du routeur installations
+            company=self.company, reference='CPF-APFS29', intitule='Accord',
+            fournisseur=self.fournisseur, statut='actif')
+        ContratPrixLigne.objects.create(
+            contrat=contrat, produit=self.produit, prix_convenu=Decimal('1200'))
+        cadre = CommandeCadre.objects.create(
+            company=self.company, reference='CC-APFS29', intitule='Cadre',
+            fournisseur=self.fournisseur)
+        AppelCommande.objects.create(
+            company=self.company, quantite=2, ligne=CommandeCadreLigne.objects.create(
+                commande_cadre=cadre, produit=self.produit, prix_negocie=Decimal('1100')))
+        dossier = DossierImport.objects.create(
+            company=self.company, reference='IMP-APFS29', designation='Conteneur')
+        FraisImport.objects.create(
+            company=self.company, dossier=dossier, categorie='fret', montant=Decimal('600'))
+        LandedCostLigne.objects.create(
+            company=self.company, dossier=dossier, produit=self.produit,
+            quantite=10, valeur_fob=Decimal('8000'))
 
     def test_introspection_non_vide(self):
         """Le balayage découvre bien les routes (garde contre une
@@ -365,6 +389,22 @@ class GardePrixAchat(TestCase):
             _api(self.admin), routes_get(), self.admin, self)
         self.assertTrue(violations, "l'admin ne voit aucune clé d'achat : jeu "
                                     'de données vide ou garde aveugle')
+
+    def test_serialiseurs_achat_installations_masques(self):
+        """APFS29 — chaque sérialiseur d'achat d'`installations` masque toute clé d'achat déclarée."""
+        from apps.installations import serializers as ser
+        from apps.stock.permissions import MasqueMontantsAchatMixin
+        for nom in ('ContratPrixLigne', 'CommandeCadreLigne', 'AppelCommande', 'FraisImport',
+                    'LandedCostLigne', 'Livraison', 'OrdreAssemblage', 'BudgetProjet'):
+            classe = getattr(ser, f'{nom}Serializer')
+            self.assertTrue(issubclass(classe, MasqueMontantsAchatMixin), nom)
+            declarees = cles_interdites({c: None for c in classe.Meta.fields})
+            self.assertTrue(declarees, nom)
+            self.assertLessEqual(declarees, set(classe.champs_montants_achat), nom)
+        url = '/api/django/installations/contrats-prix-fournisseur/prix-convenu/'
+        self.assertEqual(_api(self.commercial).get(url, {'produit': self.produit.id}).status_code, 403)
+        rep = _api(self.admin).get(url, {'produit': self.produit.id})
+        self.assertEqual((rep.status_code, rep.json()['prix_convenu']), (200, 1200.0))
 
     def test_le_detecteur_nomme_les_cles(self):
         """Test-du-test : le détecteur de clés repère chaque famille."""

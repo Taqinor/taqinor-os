@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -252,6 +253,17 @@ def dump_database(run: BackupRun) -> BackupRun:
             run.save(update_fields=['statut', 'detail', 'updated_at'])
             return run
 
+        # ADCG30 — les fichiers métier suivent le dump : un échec de copie
+        # fait échouer le run (même règle que l'upload du dump).
+        try:
+            fichiers = sauvegarder_fichiers(client)
+        except Exception as exc:  # noqa: BLE001 — échec copie = échec du run (D-ENF22-BLE001)
+            logger.warning("dump database : échec de la copie des fichiers", exc_info=True)
+            run.statut = BackupRun.STATUT_ECHEC
+            run.detail = {'message': f'Échec de la copie des fichiers : {exc}'}
+            run.save(update_fields=['statut', 'detail', 'updated_at'])
+            return run
+
         # SCA13 — copie hors-boîte, best-effort, APRÈS le succès du backup
         # local (MinIO reste la source de vérité du statut du run). Le
         # fichier local (dump_path) existe encore ICI, dans le `with`
@@ -263,11 +275,72 @@ def dump_database(run: BackupRun) -> BackupRun:
     run.artifact_ref = f'minio://{BACKUP_BUCKET}/{object_key}'
     run.statut = BackupRun.STATUT_TERMINE
     run.termine_le = timezone.now()
-    run.detail = {'message': 'pg_dump réussi et déposé dans MinIO.',
-                  'bytes': taille, 'offsite': offsite_detail}
+    message = 'pg_dump réussi et déposé dans MinIO.'
+    if offsite_detail.get('status') == 'echec':
+        # ADCG31 — le dump local reste restaurable (run termine), mais l'échec
+        # de la copie distante se VOIT : message du run + logger.error.
+        message += f" — copie hors serveur EN ÉCHEC : {offsite_detail.get('message', '')}"
+        logger.error('dump database : copie hors serveur en échec (run %s) : %s',
+                     run.pk, offsite_detail.get('message', ''))
+    run.detail = {'message': message,
+                  'bytes': taille, 'offsite': offsite_detail,
+                  'fichiers': fichiers}
     run.save(update_fields=['object_key', 'bytes_taille', 'artifact_ref',
                             'statut', 'termine_le', 'detail', 'updated_at'])
     return run
+
+
+def _lister_objets(client, bucket, prefix=''):
+    """``{clé: (taille, etag)}`` de tous les objets (pagination par jeton)."""
+    objets, kw = {}, {'Bucket': bucket, 'Prefix': prefix}
+    while True:
+        try:
+            resp = client.list_objects_v2(**kw)
+        except Exception as exc:  # bucket encore jamais créé = vide ; le reste remonte
+            if getattr(exc, 'response', {}).get('Error', {}).get('Code') == 'NoSuchBucket':
+                return objets
+            raise
+        for obj in resp.get('Contents', []):
+            objets[obj['Key']] = (obj.get('Size'), obj.get('ETag'))
+        if not resp.get('IsTruncated'):
+            return objets
+        kw['ContinuationToken'] = resp.get('NextContinuationToken')
+
+
+def sauvegarder_fichiers(client):
+    """ADCG30 — copie INCRÉMENTALE des buckets métier sous
+    ``erp-backups/fichiers/<bucket>/<clé>`` (objet absent ou taille/ETag
+    différent ⇒ copie ; jamais de suppression : un objet effacé à la source
+    reste dans la copie), puis vers la cible hors-boîte si configurée
+    (best-effort, comme le dump). Lève en nommant le bucket fautif."""
+    cfg = _offsite_settings()
+    resultat = {}
+    for bucket in (settings.MINIO_BUCKET_UPLOADS, settings.MINIO_BUCKET_PDF):
+        prefixe = f'fichiers/{bucket}/'
+        try:
+            source = _lister_objets(client, bucket)
+            copie = _lister_objets(client, BACKUP_BUCKET, prefixe)
+            for cle, meta in source.items():
+                if copie.get(prefixe + cle) != meta:
+                    client.copy_object(Bucket=BACKUP_BUCKET, Key=prefixe + cle,
+                                       CopySource={'Bucket': bucket, 'Key': cle})
+        except Exception as exc:
+            raise RuntimeError(f'bucket {bucket} : {exc}') from exc
+        resultat[bucket] = {'objets': len(source),
+                            'octets': sum(t or 0 for t, _e in source.values())}
+        if _offsite_configured(cfg):
+            try:
+                distant = _offsite_client(cfg)
+                deja = _lister_objets(distant, cfg['bucket'], prefixe)
+                for cle, (taille, _etag) in source.items():
+                    if (deja.get(prefixe + cle) or (None,))[0] != taille:
+                        corps = client.get_object(Bucket=bucket, Key=cle)['Body']
+                        distant.upload_fileobj(corps, cfg['bucket'], prefixe + cle)
+                resultat[bucket]['offsite'] = 'ok'
+            except Exception as exc:  # noqa: BLE001 — best-effort comme le dump (D-ENF22-BLE001)
+                logger.warning('ADCG30: copie hors-boîte %s en échec: %s', bucket, exc)
+                resultat[bucket]['offsite'] = f'echec: {exc}'
+    return resultat
 
 
 # ---------------------------------------------------------------------------
@@ -420,6 +493,16 @@ def _top_tenants_live(limit=RESTORE_DRILL_TOP_TENANTS):
     return dict(top)
 
 
+def _comptages_live():
+    """ADCG38 — comptages des tables clés dans la base LIVE (même requête
+    que la base restaurée) ; ``{}`` hors Postgres."""
+    from django.db import connection as _live
+    if _live.vendor != 'postgresql':
+        return {}
+    with _live.cursor() as cur:
+        return _compter_tables(cur)
+
+
 def detecter_ecarts_tenant(top_live, restored):
     """Croise comptages live vs restaurés par société (NTPLT62).
 
@@ -496,6 +579,56 @@ def _dernier_dump_termine():
             .first())
 
 
+def _sortie(proc):
+    return (proc.stderr or b'').decode(errors='replace')[:2000]
+
+
+def _restaurer_dump(object_key, dump_path, base_args, env, cible, options=(),
+                    recreer=True, avant_restore=None):
+    """ADCG37 — séquence UNIQUE (exercice + restauration réelle) :
+    téléchargement → (dropdb si ``recreer``) → createdb → ``avant_restore()``
+    → ``pg_restore`` + ``options``. ``None`` si tout passe, sinon le ``detail``
+    d'échec du run."""
+    try:
+        _minio_client().download_file(BACKUP_BUCKET, object_key, str(dump_path))
+    except Exception as exc:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
+        logger.warning('restauration : échec du téléchargement', exc_info=True)
+        return {'message': f'Échec du téléchargement MinIO: {exc}'}
+    if recreer:
+        subprocess.run(['dropdb', *base_args, '--if-exists', cible],
+                       env=env, stderr=subprocess.PIPE, timeout=120)
+    create = subprocess.run(['createdb', *base_args, cible],
+                            env=env, stderr=subprocess.PIPE, timeout=120)
+    if create.returncode != 0:
+        return {'message': f'createdb ({cible}) a échoué.', 'stderr': _sortie(create)}
+    echec = avant_restore() if avant_restore else None
+    if echec:
+        return echec
+    restore = subprocess.run(
+        ['pg_restore', *base_args, '-d', cible, *options, str(dump_path)],
+        env=env, stderr=subprocess.PIPE, timeout=3600)
+    if restore.returncode != 0:
+        return {'message': 'pg_restore a échoué.', 'stderr': _sortie(restore)}
+    return None
+
+
+def _connecter(db_name):
+    import psycopg2
+    db = settings.DATABASES['default']
+    return psycopg2.connect(
+        host=db.get('HOST', 'db'), port=db.get('PORT', '5432'),
+        user=db.get('USER', 'erp_user'), password=db.get('PASSWORD', ''),
+        dbname=db_name)
+
+
+def _compter_tables(cur):
+    comptages = {}
+    for table in RESTORE_DRILL_TABLES:
+        cur.execute(sql.SQL('SELECT COUNT(*) FROM {}').format(sql.Identifier(table)))
+        comptages[table] = cur.fetchone()[0]
+    return comptages
+
+
 def restore_drill(run: BackupRun) -> BackupRun:
     """YOPSB2 — restaure le dernier dump réussi dans une base scratch,
     vérifie des comptages clés, puis DROP la base scratch. ``run`` doit être
@@ -521,73 +654,40 @@ def restore_drill(run: BackupRun) -> BackupRun:
                                  'à restaurer.'}
         run.save(update_fields=['statut', 'detail', 'updated_at'])
         return run
+    # ADCG39 — jamais un « succès » sur un vieux dump : au-delà de la rétention
+    # quotidienne (ou sans date de fin), l'exercice échoue sans télécharger.
+    age = (timezone.now() - source.termine_le).days if source.termine_le else None
+    if age is None or age > _retention_settings()['daily']:
+        run.statut = BackupRun.STATUT_ECHEC
+        run.detail = {'message': f"Dump source trop ancien ({age if age is not None else '?'} jours)"}
+        run.save(update_fields=['statut', 'detail', 'updated_at'])
+        return run
 
     base_args, env, _ = _psql_env_args_for(drill_db)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         dump_path = Path(tmpdir) / 'restore.dump'
         try:
-            client = _minio_client()
-            client.download_file(BACKUP_BUCKET, source.object_key,
-                                 str(dump_path))
-        except Exception as exc:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
-            logger.warning("restore drill : échec ignoré, comportement dégradé", exc_info=True)
-            run.statut = BackupRun.STATUT_ECHEC
-            run.detail = {'message': f'Échec du téléchargement MinIO: {exc}'}
-            run.save(update_fields=['statut', 'detail', 'updated_at'])
-            return run
-
-        try:
-            # 1) (re)créer la base scratch — DROP si résiduelle d'un drill
-            #    précédent interrompu, puis CREATE.
-            subprocess.run(
-                ['dropdb', *base_args, '--if-exists', drill_db],
-                env=env, stderr=subprocess.PIPE, timeout=120)
-            create = subprocess.run(
-                ['createdb', *base_args, drill_db],
-                env=env, stderr=subprocess.PIPE, timeout=120)
-            if create.returncode != 0:
+            # 1-2) téléchargement, (re)création de la base scratch (DROP si
+            #      résiduelle d'un drill interrompu) puis pg_restore — séquence
+            #      partagée avec la restauration réelle (ADCG37).
+            echec = _restaurer_dump(source.object_key, dump_path, base_args,
+                                    env, drill_db,
+                                    options=('--no-owner', '--no-privileges'))
+            if echec:
                 run.statut = BackupRun.STATUT_ECHEC
-                run.detail = {
-                    'message': 'createdb (base scratch) a échoué.',
-                    'stderr': (create.stderr or b'').decode(
-                        errors='replace')[:2000],
-                }
-                run.save(update_fields=['statut', 'detail', 'updated_at'])
-                return run
-
-            # 2) pg_restore le dump dans la base scratch.
-            restore = subprocess.run(
-                ['pg_restore', *base_args, '-d', drill_db,
-                 '--no-owner', '--no-privileges', str(dump_path)],
-                env=env, stderr=subprocess.PIPE, timeout=3600)
-            if restore.returncode != 0:
-                run.statut = BackupRun.STATUT_ECHEC
-                run.detail = {
-                    'message': 'pg_restore a échoué.',
-                    'stderr': (restore.stderr or b'').decode(
-                        errors='replace')[:2000],
-                }
+                run.detail = echec
                 run.save(update_fields=['statut', 'detail', 'updated_at'])
                 return run
 
             # 3) comptages de tables clés dans la base restaurée.
             comptages = {}
             try:
-                import psycopg2
-                conn = psycopg2.connect(
-                    host=settings.DATABASES['default'].get('HOST', 'db'),
-                    port=settings.DATABASES['default'].get('PORT', '5432'),
-                    user=settings.DATABASES['default'].get('USER', 'erp_user'),
-                    password=settings.DATABASES['default'].get('PASSWORD', ''),
-                    dbname=drill_db)
+                conn = _connecter(drill_db)
                 try:
                     with conn.cursor() as cur:
-                        for table in RESTORE_DRILL_TABLES:
-                            cur.execute(sql.SQL(
-                                'SELECT COUNT(*) FROM {}').format(
-                                    sql.Identifier(table)))
-                            comptages[table] = cur.fetchone()[0]
+                        comptages = _compter_tables(cur)
+                        live = _comptages_live()  # ADCG38
                         # NTPLT62 — comptages PAR SOCIÉTÉ (top 5 par volume).
                         top_live = _top_tenants_live()
                         restored = _tenant_counts_in_restored(
@@ -607,10 +707,27 @@ def restore_drill(run: BackupRun) -> BackupRun:
             # live > 0 est une ALERTE.
             comptages_par_societe, ecarts = detecter_ecarts_tenant(
                 top_live, restored)
-            if ecarts:
-                logger.warning(
-                    'NTPLT62 — drill: %d société(s) sans données restaurées: %s',
-                    len(ecarts), ecarts)
+            # ADCG38 — table clé vide alors que peuplée en live, ou société
+            # perdue ⇒ l'exercice ÉCHOUE (restauré < live reste normal).
+            manques = [f'{t} 0 ligne (live {live[t]})' for t, n in comptages.items()
+                       if n == 0 and live.get(t, 0) > 0]
+            manques += [f'société {c} sans données restaurées' for c in ecarts]
+            if manques:
+                run.statut = BackupRun.STATUT_ECHEC
+                run.detail = {'message': 'Base restaurée incomplète : ' + ' ; '.join(manques),
+                              'comptages': comptages, 'comptages_par_societe': comptages_par_societe,
+                              'ecarts_tenant': [str(c) for c in ecarts]}
+                run.save(update_fields=['statut', 'detail', 'updated_at'])
+                return run
+        except BaseException as exc:
+            # ADCG35 — interruption (limite de temps Celery, erreur imprévue) :
+            # le run finit `echec`, jamais `en_cours` à vie, puis on relève.
+            logger.warning('restore drill : exercice interrompu', exc_info=True)
+            run.statut = BackupRun.STATUT_ECHEC
+            run.detail = {'message': 'Exercice de restauration interrompu : '
+                                     f'{type(exc).__name__}'}
+            run.save(update_fields=['statut', 'detail', 'updated_at'])
+            raise
         finally:
             # Toujours DROP la base scratch, succès ou échec (jamais laisser
             # traîner une base jetable en dehors du drill).
@@ -629,6 +746,101 @@ def restore_drill(run: BackupRun) -> BackupRun:
         'comptages_par_societe': comptages_par_societe,
         'ecarts_tenant': [str(c) for c in ecarts],
     }
+    run.save(update_fields=['statut', 'termine_le', 'detail', 'updated_at'])
+    return run
+
+
+# ---------------------------------------------------------------------------
+# ADCG37 — Restauration RÉELLE (commande ``restaurer_sauvegarde``) : même
+# séquence que l'exercice, mais AVEC propriétaires et droits, rôles rejoués
+# (``backend/db/rls_roles.sql``), fichiers remis, base CONSERVÉE.
+# ---------------------------------------------------------------------------
+
+_NOM_BASE_SUR = re.compile(r'^[a-z_][a-z0-9_]{0,62}$')
+
+
+def verifier_cible_restauration(cible, remplacer_production=None):
+    """Nom de base sûr ; la base de production seulement si
+    ``remplacer_production`` la NOMME (garde du patron RestoreDrillGuardError)."""
+    if not _NOM_BASE_SUR.match(cible or ''):
+        raise RestoreDrillGuardError(f'Nom de base cible invalide : {cible!r}.')
+    prod = settings.DATABASES['default']['NAME']
+    if cible == prod and remplacer_production != prod:
+        raise RestoreDrillGuardError(
+            f'La base cible est la base de production ({prod!r}) : relancer avec '
+            f'--remplacer-production {prod} pour confirmer.')
+
+
+def _appliquer_roles(base_args, env, cible, roles_sql):
+    """Rejoue rls_roles.sql (app_rls + sql_agent_ro, idempotent) sur ``cible``."""
+    try:
+        texte = Path(roles_sql).read_text(encoding='utf-8')
+    except OSError as exc:
+        return {'message': f'Script des rôles illisible ({roles_sql}) : {exc}'}
+    owner = settings.DATABASES['default'].get('USER', 'erp_user').replace('"', '""')
+    texte = texte.replace('DATABASE erp_db', f'DATABASE "{cible}"').replace('erp_user', f'"{owner}"')
+    proc = subprocess.run(
+        ['psql', *base_args, '-d', cible, '-q', '-v', 'ON_ERROR_STOP=1', '-f', '-'],
+        input=texte.encode('utf-8'), env=env, stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE, timeout=300)
+    if proc.returncode != 0:
+        return {'message': 'Application des rôles (rls_roles.sql) a échoué.', 'stderr': _sortie(proc)}
+    return None
+
+
+def _restaurer_fichiers(client, suffixe):
+    """Recopie ``erp-backups/fichiers/<bucket>/`` (ADCG30) vers ``<bucket><suffixe>``."""
+    resultat = {}
+    for bucket in (settings.MINIO_BUCKET_UPLOADS, settings.MINIO_BUCKET_PDF):
+        prefixe, cible = f'fichiers/{bucket}/', f'{bucket}{suffixe}'
+        try:
+            client.head_bucket(Bucket=cible)
+        except Exception:  # noqa: BLE001 — bucket absent : on le crée (D-ENF22-BLE001)
+            logger.info('restauration : création du bucket %s', cible)
+            client.create_bucket(Bucket=cible)
+        objets = _lister_objets(client, BACKUP_BUCKET, prefixe)
+        for cle in objets:
+            client.copy_object(Bucket=cible, Key=cle[len(prefixe):],
+                               CopySource={'Bucket': BACKUP_BUCKET, 'Key': cle})
+        resultat[cible] = {'objets': len(objets)}
+    return resultat
+
+
+def restaurer_sauvegarde(run, object_key, cible, suffixe_buckets, roles_sql,
+                         remplacer_production=None):
+    """Restaure ``object_key`` dans la base NEUVE ``cible`` (jamais supprimée,
+    ni avant ni après), rôles avant et après ``pg_restore``, puis fichiers."""
+    verifier_cible_restauration(cible, remplacer_production)
+    run.statut = BackupRun.STATUT_EN_COURS
+    run.save(update_fields=['statut', 'updated_at'])
+    base_args, env, _ = _psql_env_args_for(cible)
+    comptages = fichiers = None
+    with tempfile.TemporaryDirectory() as tmpdir:
+        echec = _restaurer_dump(
+            object_key, Path(tmpdir) / 'restore.dump', base_args, env, cible,
+            recreer=False,
+            avant_restore=lambda: _appliquer_roles(base_args, env, cible, roles_sql))
+    echec = echec or _appliquer_roles(base_args, env, cible, roles_sql)
+    if not echec:
+        try:
+            fichiers = _restaurer_fichiers(_minio_client(), suffixe_buckets)
+            conn = _connecter(cible)
+            try:
+                with conn.cursor() as cur:
+                    comptages = _compter_tables(cur)
+            finally:
+                conn.close()
+        except Exception as exc:  # noqa: BLE001 — journalisé, échec du run (D-ENF22-BLE001)
+            logger.warning('restauration : échec après pg_restore', exc_info=True)
+            echec = {'message': f'Échec après pg_restore : {exc}'}
+    if echec:
+        run.statut, run.detail = BackupRun.STATUT_ECHEC, echec
+        run.save(update_fields=['statut', 'detail', 'updated_at'])
+        return run
+    run.statut, run.termine_le = BackupRun.STATUT_TERMINE, timezone.now()
+    run.detail = {'message': 'Restauration réussie.', 'base': cible,
+                  'source_object_key': object_key, 'comptages': comptages,
+                  'fichiers': fichiers}
     run.save(update_fields=['statut', 'termine_le', 'detail', 'updated_at'])
     return run
 
@@ -775,28 +987,46 @@ def _run_resume(run):
     }
 
 
+def _plus_recent():
+    # ADCG41 — le plus RÉCENT, réussi ou non : un échec sans `termine_le`
+    # (NULL en tête d'un tri décroissant) ne masque plus les succès suivants.
+    from django.db.models.functions import Coalesce
+    return (Coalesce('termine_le', 'created_at').desc(), '-id')
+
+
+def _derniere_sauvegarde_run():
+    # ADCG34 — seul un dump réel compte : un export FG395 n'est qu'un
+    # manifeste de comptages (aucun artefact restaurable).
+    return (BackupRun.objects
+            .filter(kind=BackupRun.KIND_DB_DUMP, company__isnull=True,
+                    statut=BackupRun.STATUT_TERMINE, purge_is_deleted=False)
+            .order_by(*_plus_recent())
+            .first())
+
+
+def copie_distante(run):
+    """ADCG31 — état de la copie hors serveur du dernier dump :
+    ``{etat: off|ok|echec, date[, message]}`` ou ``None`` (aucun dump)."""
+    off = ((run.detail or {}).get('offsite') or {}) if run is not None else {}
+    if off.get('status') not in ('off', 'ok', 'echec'):
+        return None
+    etat = {'etat': off['status'], 'date': _run_resume(run)['date']}
+    if off['status'] == 'echec':
+        etat['message'] = off.get('message', '')
+    return etat
+
+
 def resume_sauvegardes(company):
     """NTOBS5 — résumé self-service pour l'admin tenant.
 
     Renvoie ``{derniere_sauvegarde, dernier_drill, rpo_planifie,
     rto_annonce_heures}`` — chaque champ ``None`` quand la donnée n'existe
     pas encore (jamais un défaut forfaitaire affiché comme réel)."""
-    from django.db.models import Q
-
-    derniere_sauvegarde = (
-        BackupRun.objects
-        .filter(
-            Q(kind=BackupRun.KIND_EXPORT, company=company) |
-            Q(kind=BackupRun.KIND_DB_DUMP, company__isnull=True),
-            statut=BackupRun.STATUT_TERMINE, purge_is_deleted=False,
-        )
-        .order_by('-termine_le', '-created_at')
-        .first()
-    )
+    derniere_sauvegarde = _derniere_sauvegarde_run()
     dernier_drill = (
         BackupRun.objects
         .filter(kind=BackupRun.KIND_RESTORE_DRILL, company__isnull=True)
-        .order_by('-termine_le', '-created_at')
+        .order_by(*_plus_recent())
         .first()
     )
 
@@ -830,9 +1060,13 @@ _RUN_RESUME_SHAPE = inline_serializer('BackupRunResume', {
     'dernier_drill': _RUN_RESUME_SHAPE,
     'rpo_planifie': drf_serializers.CharField(allow_null=True),
     'rto_annonce_heures': drf_serializers.IntegerField(allow_null=True),
+    # ADCG31 — écran interne seulement (l'API publique de fiabilité garde ses 4 clés).
+    'copie_distante': drf_serializers.DictField(allow_null=True),
 }))
 @api_view(['GET'])
 @permission_classes([IsAuthenticatedInterne])
 def mes_sauvegardes_view(request):
     """GET /api/django/core/mes-sauvegardes/ — scopé société de l'appelant."""
-    return Response(resume_sauvegardes(request.user.company))
+    donnees = resume_sauvegardes(request.user.company)
+    donnees['copie_distante'] = copie_distante(_derniere_sauvegarde_run())
+    return Response(donnees)

@@ -72,9 +72,9 @@ class MachineAEtatsTests(TestCase):
         cls.company = Company.objects.create(nom='NTGRC3 M', slug='ntgrc3-m')
 
     def _demande(self, **kw):
+        kw.setdefault('kind', DataSubjectRequest.KIND_ACCESS)
         return DataSubjectRequest.objects.create(
-            company=self.company, subject_identifier='a@b.ma',
-            kind=DataSubjectRequest.KIND_ACCESS, **kw)
+            company=self.company, subject_identifier='a@b.ma', **kw)
 
     def test_recue_passe_en_verification(self):
         demande = self._demande()
@@ -93,6 +93,84 @@ class MachineAEtatsTests(TestCase):
         demande = self._demande(statut=DataSubjectRequest.STATUT_TRAITEE)
         with self.assertRaises(dsr.TransitionInterdite):
             dsr.traiter_demande(demande)
+
+    def test_effacement_en_echec_partiel_reste_relancable(self):
+        """ASOC65 (D-ASOC-6) — une source d'effacement en échec ⇒ « partielle »,
+        relancée la source réparée ⇒ « traitee » ; un accès en échec reste
+        « traitee » (inchangé)."""
+        sauvegarde = dict(dsr._PROVIDERS)
+        etat = {'casse': True}
+
+        def _erase(co, subj):
+            if etat['casse']:
+                raise RuntimeError('stockage indisponible')
+            return 2
+
+        def _boom(co, subj):
+            raise RuntimeError('export KO')
+
+        try:
+            dsr._PROVIDERS.clear()
+            dsr.register_dsr_provider('crm', erase=lambda co, subj: 1)
+            dsr.register_dsr_provider('stock', export=_boom, erase=_erase)
+            demande = self._demande(kind=DataSubjectRequest.KIND_ERASURE)
+            dsr.traiter_demande(demande)
+            demande.refresh_from_db()
+            self.assertEqual(demande.statut, DataSubjectRequest.STATUT_PARTIELLE)
+            self.assertIn('erreur', demande.resultat['stock'])
+            self.assertEqual(demande.resultat['crm'], 1)
+            self.assertIn(demande, list(dsr.demandes_en_retard(
+                self.company, now=demande.date_echeance
+                + timezone.timedelta(days=1))))
+            etat['casse'] = False
+            dsr.traiter_demande(demande)
+            demande.refresh_from_db()
+            self.assertEqual(demande.statut, DataSubjectRequest.STATUT_TRAITEE)
+            self.assertIsNotNone(demande.traitee_le)
+            acces = DataSubjectRequest.objects.create(
+                company=self.company, subject_identifier='a@b.ma',
+                kind=DataSubjectRequest.KIND_ACCESS)
+            dsr.traiter_demande(acces)
+            self.assertEqual(acces.statut, DataSubjectRequest.STATUT_TRAITEE)
+        finally:
+            dsr._PROVIDERS.clear()
+            dsr._PROVIDERS.update(sauvegarde)
+
+    def test_echec_differe_les_sources_d_ordre_superieur(self):
+        """ASOC65 — ventes en échec ⇒ le CRM (erase_order=100, porteur de
+        l'identité) n'est PAS lancé : « partielle », puis la relance efface
+        ventes ET le CRM ⇒ « traitee »."""
+        sauvegarde = dict(dsr._PROVIDERS)
+        etat = {'casse': True, 'crm': 0}
+
+        def _ventes(co, subj):
+            if etat['casse']:
+                raise RuntimeError('ventes indisponible')
+            return 3
+
+        def _crm(co, subj):
+            etat['crm'] += 1
+            return 1
+
+        try:
+            dsr._PROVIDERS.clear()
+            dsr.register_dsr_provider('crm', erase=_crm, erase_order=100)
+            dsr.register_dsr_provider('ventes', erase=_ventes)
+            demande = self._demande(kind=DataSubjectRequest.KIND_ERASURE)
+            dsr.traiter_demande(demande)
+            demande.refresh_from_db()
+            self.assertEqual(demande.statut, DataSubjectRequest.STATUT_PARTIELLE)
+            self.assertEqual(etat['crm'], 0)
+            self.assertEqual(demande.resultat['crm'],
+                             {'erreur': 'différé : source précédente en échec'})
+            etat['casse'] = False
+            dsr.traiter_demande(demande)
+            demande.refresh_from_db()
+            self.assertEqual(demande.statut, DataSubjectRequest.STATUT_TRAITEE)
+            self.assertEqual((etat['crm'], demande.resultat['ventes']), (1, 3))
+        finally:
+            dsr._PROVIDERS.clear()
+            dsr._PROVIDERS.update(sauvegarde)
 
     def test_refus_est_terminal(self):
         demande = self._demande()

@@ -7879,6 +7879,7 @@ query_params:
   get /api/django/calepinage/calepinages/{id}/bom-fixation/: systeme
   get /api/django/calepinage/calepinages/{id}/chatter/historique/: ordering
   get /api/django/calepinage/calepinages/{id}/comparatif.xlsx/: ids
+  get /api/django/calepinage/calepinages/{id}/design-context/: devis
   get /api/django/calepinage/calepinages/{id}/diagramme-pertes.svg/: langue
   delete /api/django/calepinage/calepinages/{id}/etiquettes/: nom tag_id
   get /api/django/calepinage/calepinages/{id}/export-csv/: colonnes pas quoi
@@ -8678,6 +8679,7 @@ query_params:
   get /api/v1/calepinage/calepinages/{id}/bom-fixation/: systeme
   get /api/v1/calepinage/calepinages/{id}/chatter/historique/: ordering
   get /api/v1/calepinage/calepinages/{id}/comparatif.xlsx/: ids
+  get /api/v1/calepinage/calepinages/{id}/design-context/: devis
   get /api/v1/calepinage/calepinages/{id}/diagramme-pertes.svg/: langue
   delete /api/v1/calepinage/calepinages/{id}/etiquettes/: nom tag_id
   get /api/v1/calepinage/calepinages/{id}/export-csv/: colonnes pas quoi

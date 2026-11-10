@@ -585,6 +585,39 @@ describe('ToitureDesign — PV21 / ACAL37 : enregistrer la conception', () => {
     expect(ventesApi.shareLinkDevis).not.toHaveBeenCalled()
   })
 
+  it('l’atelier d’un devis porté par une variante enregistre la variante', async () => {
+    // ACON80 (D-ACON-2) — le devis B (second devis actif du lead) est porté par une
+    // VARIANTE du calepinage lié au devis A : pas de redirection « révisé », le
+    // contexte est lu avec `?devis=`, l'enregistrement va sur la variante (jamais
+    // le calepinage), puis la resynchro vise B.
+    const ctxVariante = exempleContrat('calepinage', 'calepinage_design_context', 'exemple_variante')
+    const devisB = ctxVariante.variante.devis
+    const calepinageId = ctxVariante.calepinage.id
+    calepinageApi.calepinages.depuisModele.mockResolvedValue(
+      { data: { id: calepinageId, devis: { id: CTX_CAL.calepinage.devis, reference: 'DEV-A' } } })
+    calepinageApi.calepinages.designContext.mockResolvedValue({ data: ctxVariante })
+    calepinageApi.calepinages.modifierVariante.mockResolvedValue({ data: { id: ctxVariante.variante.id } })
+    calepinageApi.calepinages.syncDevis.mockResolvedValue(
+      { data: { inchange: false, avertissements: [] } })
+
+    rendreDevis(devisB)
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer la conception/ }))
+
+    await waitFor(() => expect(calepinageApi.calepinages.syncDevis)
+      .toHaveBeenCalledWith(String(calepinageId), { devis: devisB }))
+    expect(calepinageApi.calepinages.designContext)
+      .toHaveBeenCalledWith(String(calepinageId), { devis: devisB })
+    expect(calepinageApi.calepinages.modifierVariante)
+      .toHaveBeenCalledWith(String(calepinageId), ctxVariante.variante.id, { roof_layout: LAYOUT })
+    expect(calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel).not.toHaveBeenCalled()
+    expect(calepinageApi.calepinages.envoyerImage).not.toHaveBeenCalled()
+    expect(toastInfo).not.toHaveBeenCalled()
+    expect(navigateMock).not.toHaveBeenCalled()
+    // Le rail (écrivains `layout/section/` de C1) est monté en LECTURE SEULE.
+    expect(await screen.findByTestId('cal-atelier-panneaux')).toBeInTheDocument()
+    expect(screen.queryByTestId('cal-allees-calepinage')).toBeNull()
+  })
+
   it('409 révisable : encart « Réviser (v2) » → nouvelle version puis sa conception', async () => {
     calepinageApi.calepinages.syncDevis.mockRejectedValue({
       response: {

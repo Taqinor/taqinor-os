@@ -318,29 +318,32 @@ class PortailDocumentsRemiseTests(TestCase):
             company=self.company, installation=self.inst, phase=phase,
             libelle=libelle, atteint=True)
 
-    def test_email_reception_mentionne_les_documents(self):
-        jalon = self._jalon(JalonProjet.Phase.RECEPTION, 'Réception')
-        with patch('apps.ventes.email_service.is_email_configured',
-                   return_value=True), \
-                patch('apps.portail.selectors.compte_portail_client_actif',
-                      return_value=True), \
-                self.captureOnCommitCallbacks(execute=True):  # ACSV98
+    def _avis_portail(self, jalon):
+        """ASOC27 — l'avis part au compte portail ACTIF du client par
+        ``notifier_portail_client`` (cloche + e-mail selon sa préférence) :
+        le texte se lit sur la notification, indépendant des heures calmes."""
+        from apps.notifications.models import Notification
+        compte = get_user_model().objects.create_user(
+            username=f'g5-portail-{next(_seq)}', password='x',
+            company=self.company, email='g5-portail@example.invalid',
+            portee='portail_client', portail_client_id=self.client_obj.id)
+        with patch('apps.portail.selectors.compte_portail_client_actif',
+                   return_value=True),                 self.captureOnCommitCallbacks(execute=True):  # ACSV98
             _notifier_client_jalon_atteint(self.inst, jalon)
-        self.assertEqual(len(mail.outbox), 1)
-        corps = mail.outbox[0].body
+        lignes = list(Notification.objects.filter(
+            recipient=compte, event_type='portail_jalon_chantier_atteint'))
+        self.assertEqual(len(lignes), 1)
+        return lignes[0].body
+
+    def test_email_reception_mentionne_les_documents(self):
+        corps = self._avis_portail(
+            self._jalon(JalonProjet.Phase.RECEPTION, 'Réception'))
         self.assertIn('Mes documents', corps)
         self.assertIn('procès-verbal de réception', corps)
 
     def test_email_d_un_autre_jalon_ne_parle_pas_des_documents(self):
-        jalon = self._jalon(JalonProjet.Phase.POSE, 'Pose')
-        with patch('apps.ventes.email_service.is_email_configured',
-                   return_value=True), \
-                patch('apps.portail.selectors.compte_portail_client_actif',
-                      return_value=True), \
-                self.captureOnCommitCallbacks(execute=True):  # ACSV98
-            _notifier_client_jalon_atteint(self.inst, jalon)
-        self.assertEqual(len(mail.outbox), 1)
-        self.assertNotIn('Mes documents', mail.outbox[0].body)
+        corps = self._avis_portail(self._jalon(JalonProjet.Phase.POSE, 'Pose'))
+        self.assertNotIn('Mes documents', corps)
 
     def test_email_jalon_aucun_envoi_si_rollback(self):
         """ACSV98 (C-ACSV-046) — l'e-mail « jalon atteint » part au commit :

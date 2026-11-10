@@ -517,6 +517,9 @@ def calepinage_du_devis(devis_id, company):
                   .filter(devis_id=courant)
                   .order_by('-created_at', '-id')
                   .first())
+        if trouve is None:  # ACON6 — le CONTENEUR d'une variante liée
+            variante = _variante_du_devis(company, courant)
+            trouve = variante.calepinage if variante is not None else None
         if trouve is not None:
             return trouve
         vus.add(str(courant))
@@ -533,6 +536,44 @@ def calepinage_du_devis(devis_id, company):
 
 #: ACAL92 — profondeur maximale de la chaîne de révision suivie (V1 → V2 → …).
 _PROFONDEUR_REVISIONS = 20
+
+
+def _variante_du_devis(company, devis_id):
+    """ACON6 — la variante (calepinage actif) qui PORTE ce devis, ou ``None``."""
+    from .models import CalepinageVariante
+
+    return (CalepinageVariante.objects.select_related('calepinage')
+            .filter(company=company, devis_id=devis_id,
+                    calepinage__in=calepinages_actifs(company)).first())
+
+
+def variante_portant_le_devis(calepinage, devis_id):
+    """ACON80 — la variante de CE calepinage qui porte ``devis_id``, ou
+    ``None`` (devis lié au calepinage lui-même, ou porté ailleurs)."""
+    if (calepinage is None or not devis_id
+            or str(calepinage.devis_id) == str(devis_id)):
+        return None
+    variante = _variante_du_devis(calepinage.company, devis_id)
+    return (variante if variante is not None
+            and variante.calepinage_id == calepinage.pk else None)
+
+
+def conception_du_devis(devis_id, company):
+    """ACON6 (D-ACON-2) — LA conception d'un devis : ``{calepinage, variante,
+    roof_layout, layout_hash}`` (contrat ``calepinage_conception_du_devis.json``).
+
+    ``variante`` est celle qui porte le devis (second devis actif du lead),
+    ``None`` quand le devis est lié au calepinage lui-même (ou par sa chaîne
+    de révision) ; le document servi est celui de la variante le cas échéant.
+    ``None`` sans conception."""
+    calepinage = calepinage_du_devis(devis_id, company)
+    if calepinage is None:
+        return None
+    variante = variante_portant_le_devis(calepinage, devis_id)
+    source = variante or calepinage
+    return {'calepinage': calepinage, 'variante': variante,
+            'roof_layout': source.roof_layout,
+            'layout_hash': source.layout_hash or ''}
 
 
 def conception_figee_du_devis(devis_id, company):
@@ -608,6 +649,8 @@ def _calepinage_lisible_pour_devis(devis_id, company):
     calepinage = calepinage_du_devis(devis_id, company)
     if calepinage is None or str(calepinage.devis_id) == str(devis_id):
         return calepinage
+    if variante_portant_le_devis(calepinage, devis_id) is not None:
+        return calepinage  # ACON80 — grandeurs de SITE du conteneur
     from .services.layout import empreinte_document
 
     document = _conception_figee(calepinage, devis_id)['roof_layout']
@@ -646,16 +689,19 @@ def ombrage_servi(devis_id, company):
     calepinage = _calepinage_lisible_pour_devis(devis_id, company)
     if calepinage is None:
         return None
-    if str(calepinage.devis_id) == str(devis_id):
+    # ACON80 — un devis porté par une VARIANTE lit la simulation de celle-ci.
+    variante = variante_portant_le_devis(calepinage, devis_id)
+    if str(calepinage.devis_id) == str(devis_id) or variante is not None:
         # ACON21 — lien direct : la conception a changé depuis le devis
         # (empreintes imprimées, ACAL46) ⇒ aucune perte d'une autre conception.
         from apps.ventes.selectors import get_devis_by_pk
         from apps.ventes.selectors_calepinage import _conception_a_jour
 
-        if _conception_a_jour(get_devis_by_pk(devis_id), calepinage) is False:
+        if _conception_a_jour(get_devis_by_pk(devis_id),
+                              variante or calepinage) is False:
             return {'perime': True, 'motif': MOTIF_CONCEPTION_DIVERGENTE,
                     'par_pan': {}, 'global': None}
-    servi = resultat_servi(calepinage)
+    servi = resultat_servi(calepinage, variante=variante)
     if servi.get('simulation_perimee'):
         return {'perime': True, 'motif': servi.get('motif') or '',
                 'par_pan': {}, 'global': None}
@@ -1173,7 +1219,7 @@ def calepinage_villa(area, *, ordre='lnglat', kit=None, produit_panneau=None,
 # compris (CALX70) — une intégration ne doit jamais recevoir une production
 # que l'écran déclarerait périmée.
 
-def resultat_servi(calepinage):
+def resultat_servi(calepinage, *, variante=None):
     """CALX369 — le ``resultat`` servi par ``GET resultat/`` (CALX70).
 
     EXACTEMENT ``services.electrique.resultat_calepinage`` : mêmes blocs,
@@ -1188,6 +1234,9 @@ def resultat_servi(calepinage):
     from .services.electrique import TemperaturesInvalides, resultat_calepinage
 
     try:
+        if variante is not None:  # ACON80 — la simulation de LA variante
+            return resultat_calepinage(calepinage, layout=variante.roof_layout,
+                                       porteur_simulation=variante)
         return resultat_calepinage(calepinage)
     except TemperaturesInvalides as refus:
         return {

@@ -73,6 +73,36 @@ class DataExplorerEngineTests(TestCase):
         with self.assertRaises(data_explorer.DatasetInconnu):
             data_explorer.run_query('inexistant', self.company, self.u1, {})
 
+    def test_droit_du_module_et_portee_du_lecteur(self):
+        """APFS4 (C-APFS-020) — le moteur applique le droit du module du jeu et la
+        portée « soi » du lecteur ; un compte hérité (sans rôle fin) voit tout."""
+        from django.apps import apps as django_apps
+        Role = django_apps.get_model('roles', 'Role')  # ENF20 : aucune arête core -> apps.roles
+        data_explorer.register_dataset(
+            'apfs4_requetes', 'Requêtes', ['id', 'titre'],
+            lambda company, user: SavedQuery.objects.filter(company=company), module='crm')
+
+        def compte(nom, perms):
+            role = Role.objects.create(company=self.company, nom=nom, permissions=perms)
+            return User.objects.create_user(username=nom, password='x', company=self.company, role=role)
+        rh = compte('apfs4-rh', ['rh_voir'])
+        lecteur = compte('apfs4-crm', ['crm_voir'])
+        soi = compte('apfs4-soi', ['crm_voir', 'records_scope_soi'])
+        SavedQuery.objects.create(company=self.company, owner=soi, titre='A moi', dataset='x')
+        SavedQuery.objects.create(company=self.company, owner=self.u1, titre='Autre', dataset='x')
+        spec = {'select': ['titre']}
+        with self.assertRaises(data_explorer.DatasetNonAutorise):
+            data_explorer.run_query('apfs4_requetes', self.company, rh, spec)
+        titres = lambda u: {r['titre'] for r in data_explorer.run_query(  # noqa: E731
+            'apfs4_requetes', self.company, u, spec)}
+        self.assertEqual(titres(lecteur), {'A moi', 'Autre'})
+        self.assertEqual(titres(soi), {'A moi'})
+        self.assertEqual(titres(self.u1), {'A moi', 'Autre'})  # hérité : tout
+        # Le HIT du cache BI repasse par le droit du module.
+        from core import bi_cache
+        with self.assertRaises(data_explorer.DatasetNonAutorise):
+            bi_cache.run_query_cache('apfs4_requetes', self.company, rh, spec, ttl=60)
+
 
 class SavedQueryViewSetTests(TestCase):
     @classmethod

@@ -144,3 +144,24 @@ checks.positive_data_acceptance.expected-statuses = ["2xx", 400, 401, 403, 404, 
 [[operations]]
 include-name = 'PATCH /api/django/core/workflow-definitions/{id}/'
 checks.positive_data_acceptance.expected-statuses = ["2xx", 400, 401, 403, 404, 409, 429, "5xx"]
+
+# ── 9. Parrainage refusé : le 400 est la règle métier (D-ASOC71-PARRAINAGE-400) ─
+# `POST`/`PUT`/`PATCH …/crm/parrainages/` refusent l'auto-parrainage (parrain =
+# filleul) et le second parrainage d'un même filleul par 400 nommant le champ
+# (ASOC71). « Le parrain diffère du filleul » et « ce filleul n'a pas déjà un
+# parrain » ne sont exprimables par aucun schéma OpenAPI 3.0 : un corps conforme
+# mais dans ce cas n'est pas « refusé à tort ». Décision fondateur du 10/11/2026,
+# même forme que les § 6 et 8 : 400 AJOUTÉ aux statuts attendus de
+# `positive_data_acceptance` pour CES SEULES trois opérations ; le check reste
+# actif partout ailleurs.
+[[operations]]
+include-name = 'POST /api/django/crm/parrainages/'
+checks.positive_data_acceptance.expected-statuses = ["2xx", 400, 401, 403, 404, 409, 429, "5xx"]
+
+[[operations]]
+include-name = 'PUT /api/django/crm/parrainages/{id}/'
+checks.positive_data_acceptance.expected-statuses = ["2xx", 400, 401, 403, 404, 409, 429, "5xx"]
+
+[[operations]]
+include-name = 'PATCH /api/django/crm/parrainages/{id}/'
+checks.positive_data_acceptance.expected-statuses = ["2xx", 400, 401, 403, 404, 409, 429, "5xx"]

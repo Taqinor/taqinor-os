@@ -94,6 +94,32 @@ class RoutageLuTests(TestCase):
             'target_user': self.commercial.pk}, format='json')
         self.assertEqual(r.status_code, 201, r.data)
 
+    def test_routage_et_jours_ouvres_journalises(self):
+        """ASOC82 (C-ASOC-164) — créer une règle de routage et modifier les
+        jours ouvrés écrivent chacun une ligne ``SettingsAuditLog`` ;
+        réponses inchangées."""
+        from apps.parametres.models import SettingsAuditLog
+        from .models import WorkingHoursConfig
+        api = APIClient()
+        api.force_authenticate(self.admin)
+        r = api.post('/api/django/notifications/routing-rules/', {
+            'event_type': EventType.APPROVAL_REQUESTED,
+            'target_user': self.commercial.pk}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        r = api.patch('/api/django/notifications/working-hours/1/',
+                      {'working_days': 63}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['working_days'], 63)
+        lignes = list(SettingsAuditLog.objects.filter(
+            company=self.company, section='notifications').order_by('id'))
+        self.assertEqual([ligne.field_label for ligne in lignes],
+                         ['Règle de routage créé', 'Jours ouvrés modifié'])
+        self.assertIn(f'target_user={self.commercial.pk}', lignes[0].new_value)
+        self.assertIn(
+            f'working_days={WorkingHoursConfig.DEFAULT_WORKING_DAYS}',
+            lignes[1].old_value)
+        self.assertIn('working_days=63', lignes[1].new_value)
+
     def test_liste_servie_a_l_ecran(self):
         lignes = {p['event_type']: p['routable']
                   for p in merged_preferences(self.admin)}

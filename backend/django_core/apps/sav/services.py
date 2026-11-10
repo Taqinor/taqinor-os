@@ -2792,10 +2792,10 @@ def decision_facturation(ticket, user, override=False):
     ``generer-facture``, ``facturer`` et ``creer-devis`` (les trois portes
     donnent la même réponse sur les mêmes cas).
 
-    Ordre : (1) récidive non facturable (XFSM15) → refus 403 sauf
-    ``override`` d'un responsable/admin ; (2) couverture : celle posée à la
-    main si elle l'est, sinon la couverture calculée (garantie, contrat —
-    quotas inclus —, facturable), jugée à l'ouverture du ticket (ASAV4).
+    Ordre (ACSV109) : (1) couverture : celle posée à la main si elle l'est,
+    sinon la calculée (garantie, contrat — quotas inclus —, facturable),
+    jugée à l'ouverture (ASAV4) ; garantie de chantier à confirmer → 409 ;
+    (2) récidive non facturable (XFSM15) → 403 sauf ``override`` responsable.
 
     Renvoie un dict ``{'refuse': bool, 'http': int|None, 'detail': str,
     'couverture': str, 'couvert': bool}``. ``couvert`` = garantie ou contrat
@@ -2803,6 +2803,17 @@ def decision_facturation(ticket, user, override=False):
     from authentication.models import CustomUser
     from .models import Ticket
 
+    couverture = ticket.couverture
+    if couverture == Ticket.Couverture.A_DETERMINER:
+        couverture = ticket.couverture_calculee()
+    if couverture == Ticket.Couverture.A_DETERMINER:
+        # ASAV11 (D-ASAV-2) — garantie de chantier à confirmer : jamais
+        # facturé d'office (ACSV109 : avant le refus récidive).
+        return {
+            'refuse': True, 'http': 409,
+            'detail': 'Garantie de chantier à confirmer avant de facturer.',
+            'couverture': couverture, 'couvert': False,
+        }
     if ticket.non_facturable:
         # ASAV104 — palier Administrateur/Responsable (``menu_tier``), celui
         # qui affiche le bouton : ``is_responsable`` passe pour tout rôle.
@@ -2815,17 +2826,6 @@ def decision_facturation(ticket, user, override=False):
                            'override responsable requis.'),
                 'couverture': ticket.couverture, 'couvert': False,
             }
-    couverture = ticket.couverture
-    if couverture == Ticket.Couverture.A_DETERMINER:
-        couverture = ticket.couverture_calculee()
-    if couverture == Ticket.Couverture.A_DETERMINER:
-        # ASAV11 (D-ASAV-2) — garantie de chantier à confirmer : jamais
-        # facturé d'office.
-        return {
-            'refuse': True, 'http': 409,
-            'detail': 'Garantie de chantier à confirmer avant de facturer.',
-            'couverture': couverture, 'couvert': False,
-        }
     return {
         'refuse': False, 'http': None, 'detail': '',
         'couverture': couverture,

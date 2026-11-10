@@ -40,22 +40,17 @@ apps/dataimport/models.py
 apps/ged/services.py
 apps/installations/energy_report.py
 apps/notifications/services.py
-apps/parametres/models_email.py
 apps/publicapi/services.py
 apps/tiers/models.py
 apps/ventes/email_service.py
-apps/ventes/public_views.py
 apps/ventes/quote_engine/agricole/__init__.py
 apps/ventes/quote_engine/commercial/cover.py
-apps/ventes/quote_engine/commercial/renderer.py
 apps/ventes/quote_engine/commercial/sample_data.py
 apps/ventes/quote_engine/commercial/trust.py
-apps/ventes/quote_engine/constants.py
 apps/ventes/quote_engine/extra_docs.py
 apps/ventes/quote_engine/generate_devis_premium.py
 apps/ventes/quote_engine/identite.py
 apps/ventes/quote_engine/industriel/cover.py
-apps/ventes/quote_engine/industriel/renderer.py
 apps/ventes/quote_engine/industriel/sample_data.py
 apps/ventes/quote_engine/industriel/trust.py
 apps/ventes/quote_engine/residential/cover.py
@@ -68,27 +63,11 @@ apps/ventes/domain/recouvrement.py
 apps/ventes/utils/filenames.py
 apps/ventes/views/roof_config.py
 frontend/src/components/layout/Sidebar.jsx
-frontend/src/components/layout/Sidebar.test.jsx
-frontend/src/features/crm/workspace/DevisTab.jsx
-frontend/src/features/gestion_projet/pages/RisquesPage.jsx
-frontend/src/features/kb/ArticleEditor.test.jsx
-frontend/src/features/kb/kbMarkdown.test.jsx
-frontend/src/features/messaging/richText.test.jsx
 frontend/src/features/onboarding/OnboardingCoachmarks.jsx
 frontend/src/features/ventes/clientProposalLink.js
 frontend/src/pages/Landing.jsx
-frontend/src/pages/Login.jsx
-frontend/src/pages/admin/UsersManagement.test.jsx
-frontend/src/pages/crm/LeadForm.jsx
-frontend/src/pages/parametres/EmailSection.test.jsx
-frontend/src/pages/parametres/KpiAlertesPage.test.jsx
 frontend/src/pages/parametres/MessagesSection.jsx
 frontend/src/pages/parametres/SocieteSection.jsx
-frontend/src/pages/reporting/DashboardConfigPage.test.jsx
-frontend/src/pages/sav/TicketSuiviClientPanel.test.jsx
-frontend/src/pages/ventes/DevisList.jsx
-frontend/src/pages/ventes/ToitureDesign.jsx
-frontend/src/test/a11y.test.jsx
 # MRY12 (04/09/2026) — TEXTES VALIDÉS PAR LE FONDATEUR, copiés VERBATIM de
 # `docs/crm/messages_meryem.md` (Guide Meryem v2.1 + Protocole de rappel v3) et
 # épinglés par `tests_mry12_messages_relance.py`, qui re-dérive le fichier
@@ -100,7 +79,6 @@ frontend/src/test/a11y.test.jsx
 # textes (`get_corps` préfère toujours la ligne de la société, écran
 # Paramètres → Messages). L'entrée deviendra inerte le jour où ces défauts
 # seront eux-mêmes tirés de `company_identity`.
-apps/parametres/models_messages.py
 # NTAPI1/5 (12/09/2026) — l'en-tete de version X-Taqinor-Api-Version est un
 # CONTRAT API public (pattern Stripe-Version) : le nom du produit dans
 # l'en-tete fait partie du contrat NTAPI5, pas un branding d'ecran ; le

@@ -126,6 +126,25 @@ class TestSynchroniserJalonPortailDirect(TestCase):
             JalonChantierPortail.objects.filter(
                 chantier=self.inst, cle_phase='mes').exists())
 
+    def test_jalon_notifie_le_compte_portail(self):
+        """ASOC27 (C-ASOC-136) — le jalon « Pose » atteint notifie le compte
+        portail ACTIF du client (1 ``portail_jalon_chantier_atteint``) ; un
+        client sans compte portail : 0."""
+        from apps.notifications.models import Notification
+        compte = get_user_model().objects.create_user(
+            username=f'asoc27-portail-{next(_seq)}', password='x',
+            company=self.company, email='asoc27-portail@example.invalid',
+            portee='portail_client', portail_client_id=self.client_obj.id)
+        sans_compte = make_installation(self.company, make_client(self.company))
+        for inst in (self.inst, sans_compte):
+            synchroniser_jalon_portail(JalonProjet.objects.create(
+                company=self.company, installation=inst,
+                phase=JalonProjet.Phase.POSE, libelle='Pose', atteint=True))
+        lignes = Notification.objects.filter(
+            event_type='portail_jalon_chantier_atteint')
+        self.assertEqual([n.recipient_id for n in lignes], [compte.id])
+        self.assertIn(self.inst.reference, lignes[0].title)
+
 
 class TestReceptionAutoSynchronisePortail(TestCase):
     def setUp(self):

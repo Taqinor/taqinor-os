@@ -105,7 +105,10 @@ class Gouvernance(BaseApiCalepinage):
         # l'avertissement consigné au chatter ; retenue permise.
         calepinage = self._calepinage(24, onduleur=False)
         reponse = self.api.post(self._url(calepinage, 'approbation/'),
-                                {'decision': 'approuve'}, format='json')
+                                {'decision': 'approuve',  # ACON23
+                                 'empreinte': Calepinage.objects.get(
+                                     pk=calepinage.pk).layout_hash or ''},
+                                format='json')
         self.assertEqual(reponse.status_code, 200, reponse.data)
         self.assertEqual(reponse.data['etat'], 'approuve')
         chatter = self.api.get(self._url(calepinage, 'chatter/historique/'))

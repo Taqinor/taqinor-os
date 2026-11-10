@@ -606,6 +606,11 @@ def contexte_conception_devis(devis, company):
                      else 'roof_point' if source_lead else None)
     contour_graine = contour_client if contour_utilisable else []
     layout = devis.roof_layout if isinstance(devis.roof_layout, dict) else None
+    # ACON80 (D-ACON-2) — un devis porté par une VARIANTE dessine SON document.
+    from apps.calepinage.selectors import conception_du_devis
+    variante = (conception_du_devis(devis.pk, company) or {}).get('variante')
+    if variante is not None and isinstance(variante.roof_layout, dict):
+        layout = variante.roof_layout
     if layout:
         source = 'devis'
         roof_layout = layout

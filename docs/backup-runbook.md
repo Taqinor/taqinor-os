@@ -34,6 +34,36 @@ Ce document couvre la sauvegarde réelle de la base Postgres de production
 - Résultat journalisé en `BackupRun` (`kind=restore_drill`, `statut`, détail
   des comptages comparés au manifeste du dump source).
 
+## ADCG37 — Restauration RÉELLE de la production (base + rôles + fichiers)
+
+L'exercice ci-dessus prouve qu'un dump se relit ; il ne remet RIEN en service
+(`--no-owner --no-privileges`, base supprimée). Pour reprendre réellement :
+
+1. Choisir le dump : `object_key` d'un `BackupRun` `kind=db_dump`
+   `statut=termine` (ex. `pg_dumps/20261110-030000.dump`). Les fichiers métier
+   de ce dump sont sous `erp-backups/fichiers/<bucket>/` (ADCG30).
+2. Mettre le script des rôles dans le conteneur (il n'est pas dans l'image) :
+   `docker compose cp backend/db/rls_roles.sql django:/tmp/rls_roles.sql`.
+3. Restaurer dans une base **neuve** (la commande la crée, ne la supprime jamais) :
+   `docker compose exec django python manage.py restaurer_sauvegarde
+   --dump <object_key> --base erp_restaure --suffixe-buckets=-restaure
+   --roles-sql /tmp/rls_roles.sql`
+   — `createdb`, rôles `app_rls` / `sql_agent_ro` rejoués (avant et après),
+   `pg_restore` AVEC propriétaires et droits, fichiers recopiés vers
+   `erp-uploads-restaure` / `erp-pdf-restaure`, `BackupRun` `kind=restore`
+   avec comptages. Code non nul en cas d'échec.
+4. Vérifier : `DB_NAME=erp_restaure python manage.py check`, puis un GET
+   authentifié (ex. `/api/django/crm/leads/`) sur la base restaurée.
+5. Poser les mots de passe des rôles (jamais dans le dépôt) :
+   `ALTER ROLE app_rls PASSWORD '…'` et `bash backend/db/provision_sql_agent_ro.sh`.
+6. Bascule (geste de Reda, jamais automatique) : pointer `DB_NAME` sur
+   `erp_restaure` et `MINIO_BUCKET_UPLOADS` / `MINIO_BUCKET_PDF` sur les buckets
+   `-restaure` dans `.env`, puis redémarrer la pile.
+
+Garde : `--base` égal à la base de production est refusé (rien n'est écrit)
+sans `--remplacer-production <ce nom>` ; un `--suffixe-buckets` vide (écrire
+dans les buckets vivants) exige la même confirmation.
+
 ## YOPSB3 — Rétention GFS (7 jours / 4 semaines / 12 mois)
 
 - Fonction `core.backup.purger_backups(now=None, apply_=False)`.

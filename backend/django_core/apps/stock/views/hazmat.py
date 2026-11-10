@@ -4,7 +4,7 @@ from rest_framework.parsers import JSONParser
 from rest_framework import serializers
 
 from authentication.permissions import (
-    IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
+    IsAdminRole, LectureDuModule, IsResponsableOrAdmin,
 )
 from core.champs_stricts import IdInconnu404Mixin
 from core.serializers import CompanyScopedRelationsMixin
@@ -55,7 +55,7 @@ class CompatibiliteHazmatCasierViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         if self.action in WRITE_ACTIONS:
             return [IsResponsableOrAdmin()]
         return [IsAdminRole()]

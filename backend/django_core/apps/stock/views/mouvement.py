@@ -11,7 +11,7 @@ from ..erreurs_achats import ConflitEtat, debordement_compteur_en_409
 from ..models import Produit, MouvementStock
 from ..utils.params import choix_ou_400, date_ou_400, id_requete_ou_400
 from ..serializers import MouvementStockSerializer
-from authentication.permissions import IsAnyRole, IsAdminRole, HasPermissionOrLegacy
+from authentication.permissions import LectureDuModule, IsAdminRole, HasPermissionOrLegacy
 from apps.roles.permissions import DroitDeLaGrille, droits_de_la_grille  # ASEC70
 import logging
 
@@ -52,7 +52,7 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['export_xlsx', 'agregation', 'telecharger_export']:
-            return [IsAnyRole(), *droits_de_la_grille(self, export_xlsx=[DroitDeLaGrille('stock_export')])]
+            return [LectureDuModule(), *droits_de_la_grille(self, export_xlsx=[DroitDeLaGrille('stock_export')])]
         elif self.action == 'create':
             return [HasPermissionOrLegacy('stock_mouvement')()]
         else:
@@ -93,7 +93,7 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
                                          status=serializers.CharField(), rows=serializers.IntegerField(),
                                          status_url=serializers.CharField())})
     @action(detail=False, methods=['post'], url_path='export-xlsx',
-            permission_classes=[IsAnyRole, DroitDeLaGrille('stock_export')])
+            permission_classes=[LectureDuModule, DroitDeLaGrille('stock_export')])
     def export_xlsx(self, request):
         """FG60 — Export Excel de la liste des mouvements de stock (INTERNE).
         Prix d'achat jamais inclus.
@@ -142,7 +142,7 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
     # headless: lien de notification d'export (tasks.py), ouvert en chargement complet (cookie)
     @extend_schema(request=None, responses={XLSX: BINARY, 404: None},
                    parameters=[OpenApiParameter('token', str, OpenApiParameter.PATH)])
-    @action(detail=False, methods=['get'], permission_classes=[IsAnyRole],
+    @action(detail=False, methods=['get'], permission_classes=[LectureDuModule],
             url_path=r'telecharger-export/(?P<token>[^/.]+)')
     def telecharger_export(self, request, token=None):
         """APRF43 — livre l'export asynchrone des mouvements (lien de la
@@ -169,7 +169,7 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
                                P('export', STR, False, 'xlsx pour télécharger', ['xlsx'])],
                    responses={200: LISTE, XLSX: BINARY})
     @action(detail=False, methods=['get'], url_path='agregation',
-            permission_classes=[IsAnyRole])
+            permission_classes=[LectureDuModule])
     def agregation(self, request):
         """ZSTK7 — « Reporting ▸ Moves History » : quantités entrées/sorties/
         nettes agrégées par produit/type/mois/emplacement sur une période.

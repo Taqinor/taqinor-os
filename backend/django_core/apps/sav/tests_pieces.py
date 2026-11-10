@@ -1,17 +1,21 @@
 """N46 (pièces consommées → stock) + N47 (renouvellement + rapport PDF)."""
+import threading
 from datetime import date, timedelta
 from decimal import Decimal
+from unittest import mock
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.db import connection, transaction
+from django.test import TestCase, TransactionTestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 from apps.crm.models import Client
-from apps.stock.models import Produit
+from apps.stock.models import MouvementStock, Produit
 from apps.sav.models import (
     Ticket, PieceConsommee, ContratMaintenance, TicketActivity)
+from core.test_utils import WideTeardownTimeoutMixin
 
 User = get_user_model()
 
@@ -184,6 +188,62 @@ class TestSavPieces(TestCase):
         self.assertEqual(r.data[0]['produit_nom'], 'Carte')
         # Aucun prix d'achat exposé.
         self.assertNotIn('prix_achat', r.data[0])
+
+
+class TestSavPiecesConcurrence(WideTeardownTimeoutMixin, TransactionTestCase):
+    """ACSV110 — deux VRAIES connexions : A tient le verrou (SORTIE 5 → 4), B relit 4."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='ACSV110', slug='acsv110-co')
+        self.user = User.objects.create_user(
+            username='acsv110_admin', password='x', role_legacy='admin', company=self.company)
+        self.ticket = Ticket.objects.create(company=self.company, reference='SAV-ACSV110',
+                                            client=Client.objects.create(company=self.company, nom='C'))
+        self.produit = Produit.objects.create(company=self.company, nom='Carte', sku='CRT-ACSV110',
+                                              prix_vente=Decimal('200'), quantite_stock=Decimal('5'))
+
+    def _course(self, geste_b):
+        from apps.stock import services as stock
+        original, a_tient, b_tente, res = stock.verrouiller_produit, threading.Event(), threading.Event(), {}
+
+        def fil_a():
+            with transaction.atomic():
+                p = original(self.produit.pk)
+                stock.record_stock_movement(
+                    company=self.company, produit=p, type_mouvement=stock.mouvement_type_sortie(),
+                    quantite=1, quantite_avant=p.quantite_stock, quantite_apres=p.quantite_stock - 1,
+                    reference='ACSV110-A', note='A', created_by=self.user)
+                a_tient.set()
+                b_tente.wait(5)  # B tente le verrou : A commite (B relit alors 4)
+            connection.close()
+
+        def fil_b():
+            a_tient.wait(5)
+            res['b'] = geste_b(auth(self.user)).status_code
+            connection.close()
+        with mock.patch.object(stock, 'verrouiller_produit',
+                               side_effect=lambda pk: (b_tente.set(), original(pk))[1]):
+            fils = [threading.Thread(target=fil_a), threading.Thread(target=fil_b)]
+            for fil in fils:
+                fil.start()
+            for fil in fils:
+                fil.join(15)
+        self.produit.refresh_from_db()
+        return res.get('b'), self.produit.quantite_stock, list(MouvementStock.objects.filter(
+            produit=self.produit).order_by('id').values_list('quantite_avant', 'quantite_apres'))
+
+    def test_deux_poses_concurrentes_stock_3(self):
+        url = f'/api/django/sav/tickets/{self.ticket.id}/pieces/'
+        self.assertEqual(self._course(lambda api: api.post(url, {
+            'produit': self.produit.id, 'quantite': '1', 'decrement': True}, format='json')),
+            (201, Decimal('3'), [(5, 4), (4, 3)]))
+
+    def test_remise_concurrente_stock_5(self):
+        piece = PieceConsommee.objects.create(
+            company=self.company, ticket=self.ticket, produit=self.produit,
+            quantite=Decimal('1'), stock_decremente=True, created_by=self.user)
+        self.assertEqual(self._course(lambda api: api.delete(
+            f'/api/django/sav/tickets/{self.ticket.id}/pieces/{piece.id}/')), (204, Decimal('5'), [(5, 4), (4, 5)]))
 
 
 class TestMaintenanceRenewal(TestCase):

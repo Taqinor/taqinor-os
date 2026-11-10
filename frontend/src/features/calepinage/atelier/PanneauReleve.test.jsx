@@ -282,6 +282,32 @@ describe('ACAL205 — le relevé courant est relu, corrigé, ou doublé', () => 
     expect(corrigerReleve).not.toHaveBeenCalled()
   })
 
+  it('après un Nouveau relevé antidaté, Enregistrer corrige le relevé affiché', async () => {
+    // ACON1 — R2 créé (antidaté) n'est PAS le courant serveur : la correction et la
+    // suppression visent R2 (le relevé affiché), jamais le courant R1.
+    const lecture = lectureContrat().data
+    const courantId = lecture.releve_courant_id
+    const r2 = { ...lecture.releves[0], id: courantId + 100, releve_le: '2026-11-01' }
+    enregistrerReleve.mockResolvedValue(
+      { data: { releve: r2, releve_courant_id: courantId, releves: [...lecture.releves, r2] } })
+    corrigerReleve.mockResolvedValue({ data: { releve: r2, releve_courant_id: courantId } })
+    const confirmation = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    supprimerReleve.mockResolvedValue({})
+    rendre()
+    await screen.findByDisplayValue(lecture.releves[0].releve_le)
+
+    fireEvent.click(screen.getByTestId('cal-releve-nouveau'))
+    await waitFor(() => expect(enregistrerReleve).toHaveBeenCalledTimes(1))
+    await screen.findByTestId('cal-releve-message')
+    fireEvent.click(screen.getByTestId('cal-releve-envoyer'))
+    await waitFor(() => expect(corrigerReleve).toHaveBeenCalledTimes(1))
+    expect(corrigerReleve.mock.calls[0][1]).toBe(r2.id)
+
+    fireEvent.click(screen.getByTestId('cal-releve-supprimer'))
+    await waitFor(() => expect(supprimerReleve).toHaveBeenCalledWith(1, r2.id))
+    confirmation.mockRestore()
+  })
+
   it('les photos du calepinage sont cochables et partent en photo_ids', async () => {
     corrigerReleve.mockResolvedValue({ data: { releve: lectureContrat().data.releves[0], releve_courant_id: 1 } })
     rendre()
@@ -312,6 +338,19 @@ describe('ACAL205 — le relevé courant est relu, corrigé, ou doublé', () => 
     confirmation.mockRestore()
   })
 
+  it('lecture seule : aucun bouton d’écriture actif', async () => {
+    // ACON10 — calepinage verrouillé : Envoyer, Nouveau relevé et Supprimer grisés, raison dite.
+    render(<MemoryRouter><PanneauReleve calepinageId={1} lectureSeule /></MemoryRouter>)
+    await screen.findByDisplayValue(lectureContrat().data.releves[0].releve_le)
+    for (const id of ['cal-releve-envoyer', 'cal-releve-nouveau', 'cal-releve-supprimer']) {
+      expect(screen.getByTestId(id)).toBeDisabled()
+    }
+    expect(screen.getByTestId('cal-releve-lecture-seule')).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('cal-releve-envoyer'))
+    expect(corrigerReleve).not.toHaveBeenCalled()
+    expect(enregistrerReleve).not.toHaveBeenCalled()
+  })
+
   it('sans relevé courant, le bouton crée (POST) et il n’y a ni Nouveau ni Supprimer', async () => {
     releve.mockResolvedValue({ data: { releves: [], releve_courant_id: null } })
     rendre()
@@ -337,8 +376,9 @@ describe('ACAL207 — appliquer une cote du relevé à un côté du pan', () => 
     releve.mockResolvedValue({ data: { releves: reponse.data.releves,
       releve_courant_id: reponse.data.releve_courant_id } })
     photos.mockResolvedValue({ data: { photos: [] } })
-    layout.mockResolvedValue({ data: { roof_layout: { zones: [PAN] } } })
-    appliquerCoteReleve.mockResolvedValue({ data: { roof_layout: { zones: [PAN] }, version: 6 } })
+    layout.mockResolvedValue({ data: { roof_layout: { zones: [PAN] }, empreinte_document: 'e0' } })
+    appliquerCoteReleve.mockResolvedValue(
+      { data: { roof_layout: { zones: [PAN] }, version: 6, empreinte_document: 'e1' } })
   })
 
   it('choisir le côté puis appliquer la cote envoie zone_id, cote_index et la mesure', async () => {
@@ -365,9 +405,29 @@ describe('ACAL207 — appliquer une cote du relevé à un côté du pan', () => 
     fireEvent.click(screen.getByTestId('cal-releve-cote-appliquer'))
 
     await waitFor(() => expect(appliquerCoteReleve).toHaveBeenCalledWith(
-      1, courant.id, { zone_id: 'z1', cote_index: 0, longueur_m: 9 }))
+      1, courant.id, { zone_id: 'z1', cote_index: 0, longueur_m: 9, base_empreinte: 'e0' }))
     expect(await screen.findByTestId('cal-releve-cote-retour'))
       .toHaveTextContent('Cote appliquée au côté 0 — nouvelle version (précision ± 0.05 m).')
+  })
+
+  it('atelier vivant : la cote part avec son jeton et la section lui revient', async () => {
+    // ACON2 — le jeton de l'atelier VIVANT fait foi ; la section `zones` et E1 lui reviennent.
+    const documentVivant = { empreinte: 'jeton-vivant', appliquerSection: vi.fn() }
+    render(<MemoryRouter>
+      <PanneauReleve calepinageId={1} documentVivant={documentVivant} />
+    </MemoryRouter>)
+    await screen.findByTestId('cal-releve-appliquer-cote')
+    fireEvent.change(screen.getByTestId('cal-releve-cote-pan'), { target: { value: 'z1' } })
+    fireEvent.change(screen.getByTestId('cal-releve-cote-cote'), { target: { value: '0' } })
+    const options = [...screen.getByTestId('cal-releve-cote-mesure').querySelectorAll('option')]
+    fireEvent.change(screen.getByTestId('cal-releve-cote-mesure'),
+      { target: { value: options.find((o) => o.textContent.startsWith('Égout sud — total')).value } })
+    fireEvent.click(screen.getByTestId('cal-releve-cote-appliquer'))
+
+    await waitFor(() => expect(appliquerCoteReleve).toHaveBeenCalledTimes(1))
+    expect(appliquerCoteReleve.mock.calls[0][2].base_empreinte).toBe('jeton-vivant')
+    await waitFor(() => expect(documentVivant.appliquerSection)
+      .toHaveBeenCalledWith('zones', [PAN], 'e1'))
   })
 
   it('un refus nommé du serveur s’affiche tel quel', async () => {

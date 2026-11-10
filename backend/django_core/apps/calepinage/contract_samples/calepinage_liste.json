@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/calepinage/calepinages/",
-  "pourquoi": "ACAL11 (C-ACAL-017) — LA LISTE DES CALEPINAGES : enveloppe de pagination DRF {count, next, previous, results[]} ; chaque ligne porte : id, titre, nom, statut, statut_libelle, lead {id, nom, ville, supprime} | null, client (IDENTIFIANT — clé d'écriture INCHANGÉE), client_apercu {id, nom, ville} | null (lecture seule : ce que la liste affiche), devis (identifiant), reference (CAL-AAMM-NNNN, DÉRIVÉE), image {url, genere_le, expire_le} (url = chemin RELATIF même origine /api/django/calepinage/calepinages/<id>/roof-image/fichier/, ou null — jamais une URL MinIO), modifie_le (ISO = updated_at), layout_stale (bool | null — null sans devis), layout_nb_panneaux, responsable (id), responsable_nom. `statuts_publies` = les trois statuts DÉRIVÉS (brouillon, valide, perime) avec leurs libellés, égaux à Calepinage.Statut.choices. Remplace la fixture tapée à la main LIGNE_AVEC_RATTACHEMENT de CalepinageList.err-qah-rattachement.test.jsx (supprimée par D06-T25). PACT10 : le contrat part AVANT D06-T24 (serveur) et D06-T25 (écran).",
+  "pourquoi": "ACAL11 (C-ACAL-017) — LA LISTE DES CALEPINAGES : enveloppe de pagination DRF {count, next, previous, results[]} ; chaque ligne porte : id, titre, nom, statut, statut_libelle, lead {id, nom, ville, supprime} | null, client (IDENTIFIANT — clé d'écriture INCHANGÉE), client_apercu {id, nom, ville} | null (lecture seule : ce que la liste affiche), devis (identifiant), reference (CAL-AAMM-NNNN, DÉRIVÉE), image {url, genere_le, expire_le} (url = chemin RELATIF même origine /api/django/calepinage/calepinages/<id>/roof-image/fichier/, ou null — jamais une URL MinIO), modifie_le (ISO = updated_at), layout_stale (bool | null — null sans devis), layout_nb_panneaux, responsable (id), responsable_nom. `statuts_publies` = les statuts DÉRIVÉS (brouillon, valide, perime ; ACON28 : refuse = dernière décision d'approbation un REFUS) avec leurs libellés, égaux à Calepinage.Statut.choices. Remplace la fixture tapée à la main LIGNE_AVEC_RATTACHEMENT de CalepinageList.err-qah-rattachement.test.jsx (supprimée par D06-T25). PACT10 : le contrat part AVANT D06-T24 (serveur) et D06-T25 (écran).",
   "exemple": {
     "count": 1,
     "next": null,
@@ -128,6 +128,10 @@
     {
       "valeur": "perime",
       "libelle": "Périmé"
+    },
+    {
+      "valeur": "refuse",
+      "libelle": "Refusé"
     }
   ]
 }

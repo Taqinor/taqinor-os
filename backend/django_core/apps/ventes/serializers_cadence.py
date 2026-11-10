@@ -50,8 +50,9 @@ class DevisActionLigneSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     reference = serializers.CharField()
     client_nom = serializers.CharField(allow_blank=True)
-    client_telephone = serializers.CharField(allow_blank=True)
-    client_whatsapp = serializers.CharField(allow_blank=True)
+    # APFS27 — null sans ``client_pii_voir``.
+    client_telephone = serializers.CharField(allow_blank=True, allow_null=True)
+    client_whatsapp = serializers.CharField(allow_blank=True, allow_null=True)
     total_ttc = serializers.CharField(
         allow_null=True,
         help_text="Total TTC en TEXTE décimal (jamais un flottant).")

@@ -198,6 +198,13 @@ def generer_devis(calepinage, *, user=None, taux_tva=None,
     servi = _consigner_et_servir(calepinage, garde, user=user)
     if journal is not None:
         journal['electrique'] = servi
+        # ACON28 — une conception REFUSÉE à l'approbation se DIT au devis.
+        from .approbation import avertissement_refus
+
+        refus = avertissement_refus(calepinage)
+        if refus:
+            journal['avertissements'] = [*journal.get('avertissements', ()),
+                                         refus]
     return devis, cree
 
 
@@ -219,9 +226,7 @@ def _generer(calepinage, layout, company, lead, client, montants, *, user,
     from django.db import transaction
 
     from apps.ventes.services import (
-        AutoDevisError, build_devis_from_layout, layout_hash,
-        poser_layout_hash, rafraichir_etudes_du_devis,
-        validate_composition_for_layout,
+        AutoDevisError, layout_hash, validate_composition_for_layout,
     )
 
     # Pré-vol de composition : le catalogue peut-il servir ce toit ? Le refus
@@ -238,6 +243,29 @@ def _generer(calepinage, layout, company, lead, client, montants, *, user,
                           donnees={'detail': erreurs[0], 'errors': erreurs})
 
     empreinte = calepinage.layout_hash or layout_hash(layout)
+    # ACON46 — UNE transaction sous verrou de ligne du calepinage : deux
+    # générations concurrentes se sérialisent ; la seconde relit le lien posé
+    # par la première (dédup) au lieu de créer un second devis.
+    with transaction.atomic():
+        from ..models import Calepinage
+
+        Calepinage.objects.select_for_update().filter(pk=calepinage.pk).exists()
+        calepinage.refresh_from_db(fields=['devis'])
+        return _generer_sous_verrou(calepinage, layout, company, lead, client,
+                                    montants, empreinte, user=user,
+                                    journal=journal)
+
+
+def _generer_sous_verrou(calepinage, layout, company, lead, client, montants,
+                         empreinte, *, user, journal):
+    """ACON46 — dédup, création et liaison, sous le verrou de ``_generer``."""
+    from django.db import transaction
+
+    from apps.ventes.services import (
+        AutoDevisError, build_devis_from_layout, poser_layout_hash,
+        rafraichir_etudes_du_devis,
+    )
+
     # ACAL89 — le lien EXISTANT est lu AVANT toute création.
     lie = _devis_lie_actif(calepinage)
     if lie is not None:
@@ -248,12 +276,14 @@ def _generer(calepinage, layout, company, lead, client, montants, *, user,
         if (lie.statut == 'brouillon'
                 and (lie.layout_hash or '') == (empreinte or '')):
             _refuser_autre_marche(lie, lead)  # ACON90
+            _refuser_montants_differents(lie, montants)  # ACON49
             return lie, False
         raise _refus_deja_rattache(lie)
     if lead is not None:
         deja = _brouillon_reutilisable(company, lead, empreinte, calepinage)
         if deja is not None:
             _refuser_autre_marche(deja, lead)  # ACON90
+            _refuser_montants_differents(deja, montants)  # ACON49
             _lier(calepinage, deja, user=user)
             # ACON85 — les études relues APRÈS le lien (ombrage servi).
             rafraichir_etudes_du_devis(deja)
@@ -380,6 +410,30 @@ def _lier(calepinage, devis, *, user=None):
         raise DevisRefuse(str(refus), champ='devis', statut=409) from None
 
 
+def _refuser_montants_differents(brouillon, montants):
+    """ACON49 — une génération DÉDUPLIQUÉE ne change jamais en silence les
+    montants demandés : TVA ou remise différente du brouillon rendu ⇒ 409
+    nommant le champ (le brouillon se modifie depuis le devis), rien écrit."""
+    for cle, quoi, geste in (('taux_tva', 'à {} %', 'la TVA'),
+                             ('remise_globale', 'avec une remise de {} %',
+                              'la remise')):
+        actuel = getattr(brouillon, cle, None)
+        if cle in montants and actuel is not None and montants[cle] != actuel:
+            message = (f"Le devis {brouillon.reference} existe déjà "
+                       f"{quoi.format(_pourcentage_lisible(actuel))} : "
+                       f"changez {geste} depuis le devis.")
+            raise DevisRefuse(message, champ=cle, statut=409,
+                              donnees={cle: message})
+
+
+def _pourcentage_lisible(valeur):
+    """ACON49 — ``Decimal('20.00')`` ⇒ ``'20'``, ``5.50`` ⇒ ``'5,5'``."""
+    texte = f'{valeur:f}'
+    if '.' in texte:
+        texte = texte.rstrip('0').rstrip('.')
+    return texte.replace('.', ',')
+
+
 def _montants(taux_tva, remise_globale, Decimal):
     """Les deux montants optionnels — absents, on laisse les DÉFAUTS ventes.
 
@@ -405,8 +459,12 @@ def _montants(taux_tva, remise_globale, Decimal):
 
 
 def resynchroniser_devis(calepinage, *, user=None,
-                         derogation_electrique=None):
+                         derogation_electrique=None, devis_id=None):
     """CAL25 — resynchronise le devis lié sur la conception COURANTE.
+
+    ACON6 — ``devis_id`` : le devis à resynchroniser, lu par
+    ``selectors.conception_du_devis`` (un devis porté par une VARIANTE suit
+    le document de la variante, jamais celui du calepinage).
 
     Le service ventes fait le travail chirurgical (quantités, batterie,
     onduleur accordé au scénario) et PRÉSERVE prix négociés, remises, sections
@@ -430,13 +488,21 @@ def resynchroniser_devis(calepinage, *, user=None,
 
     verifier_avant_publication(calepinage, geste=GESTE_DEVIS)
     layout = _exiger_layout(calepinage)
+    # ACON6/ACON80 — un devis porté par une variante de CE calepinage suit
+    # le document de la variante ; tout autre ``devis_id`` est ignoré.
+    from ..selectors import variante_portant_le_devis
+
+    variante = variante_portant_le_devis(calepinage, devis_id)
+    if variante is not None:
+        layout = _exiger_layout(variante)
     # ACAL373 — agricole / multi-villa : la raison de l'écran, 409, rien n'est
     # écrit (le refus de STATUT reste celui de ventes, revision_possible compris).
     from apps.ventes.selectors_calepinage import raison_lecture_seule_conception
 
     from .verrou import est_verrouille
-    lie = getattr(calepinage, 'devis', None)
-    if lie is not None and not est_verrouille(calepinage):
+    lie = (variante.devis if variante is not None
+           else getattr(calepinage, 'devis', None))
+    if lie is not None and not est_verrouille(calepinage, devis=lie):
         raison = raison_lecture_seule_conception(lie)
         if raison:
             raise DevisRefuse(raison, champ='roof_layout', statut=409,
@@ -445,7 +511,8 @@ def resynchroniser_devis(calepinage, *, user=None,
     # écriture (un devis ENVOYÉ suit le même refus).
     garde = _garde_electrique(calepinage, derogation_electrique, user,
                               geste='resynchronisé')
-    devis_id = getattr(calepinage, 'devis_id', None)
+    devis_id = (variante.devis_id if variante is not None
+                else getattr(calepinage, 'devis_id', None))
     if not devis_id:
         raise DevisRefuse(
             "Aucun devis n'est rattaché à ce calepinage : utilisez d'abord "
@@ -464,9 +531,12 @@ def resynchroniser_devis(calepinage, *, user=None,
         # (UNE fois) : le rattachement n'écrit plus rien sur un calepinage
         # existant (plus de miroir), et l'abonné crm note la conception.
         # ACAL98 — l'affiche du calepinage suit (copie sous la clé du devis).
+        # ACON6/ACON80 — un devis porté par une VARIANTE ne reçoit JAMAIS
+        # l'affiche du conteneur C1 (image client de /proposal et du PDF).
         resultat = resynchroniser_conception(
             devis, layout, user, emettre=True,
-            roof_image=getattr(calepinage, 'roof_image', None) or None)
+            roof_image=None if variante is not None else (
+                getattr(calepinage, 'roof_image', None) or None))
     except SyncLayoutError as refus:
         raise DevisRefuse(
             refus.detail, champ='devis', statut=409,

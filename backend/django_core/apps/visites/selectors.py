@@ -982,6 +982,15 @@ def lead_ids_visite_a_venir(company_id, today):
     ).values('lead_id')
 
 
+def visites_export_dsr(company, lead_ids):
+    """ASOC67 — export DSR des visites des leads ``lead_ids`` (société bornée)."""
+    from .models import VisiteTerrain
+    return [{'id': v.pk, 'lead': v.lead_id, 'statut': v.statut, 'notes': v.notes or '',
+             'date_prevue': v.date_prevue.isoformat() if v.date_prevue else None,
+             'retour_terrain': v.retour_terrain or ''} for v in VisiteTerrain.objects.filter(
+                company=company, lead_id__in=list(lead_ids)).order_by('pk')]
+
+
 def visites_pour_lead(lead):
     """Les visites techniques d'un lead, de la PLUS RÉCENTE à la plus ancienne.
 

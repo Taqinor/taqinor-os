@@ -209,7 +209,6 @@ monitoring.MonitoringSettings
 monitoring.ProductionReading
 monitoring.ProductionWarranty
 monitoring.UnderperformanceFlag
-notifications.Annonce
 notifications.AnnonceLecture
 notifications.AnnonceRelance
 notifications.ApprovalReminderConfig
@@ -219,8 +218,6 @@ notifications.Notification
 notifications.NotificationPreference
 notifications.NotificationRoutingRule
 notifications.PushSubscription
-notifications.WhatsAppMessageLog
-notifications.WhatsAppTemplate
 notifications.WorkingHoursConfig
 outillage.KitOutillage
 outillage.KitOutillageItem

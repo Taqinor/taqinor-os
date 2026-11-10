@@ -1,7 +1,7 @@
 from rest_framework import status
 from rest_framework.response import Response
 
-from authentication.permissions import IsAnyRole, IsAdminRole
+from authentication.permissions import LectureDuModule, IsAdminRole
 from core.viewsets import CompanyScopedModelViewSet
 from django.utils import timezone
 
@@ -98,7 +98,7 @@ class ShotListSlotViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsAdminRole()]
 
     def get_queryset(self):

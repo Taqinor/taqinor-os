@@ -343,6 +343,15 @@ class DocumentModifie(ValueError):
                 'empreinte_courante': self.empreinte_courante}
 
 
+#: ACAL316 / ACON9 — LE 428 d'une écriture COMPLÈTE sans jeton If-Match (porte
+#: du module ET portes ventes ``sync-layout`` / ``layout`` d'un devis conçu).
+MESSAGE_JETON_VERSION_MANQUANT = ("Jeton de version manquant : rechargez la "
+                                  "conception avant d'enregistrer.")
+
+#: ACAL22 / ACON2 — LE message d'un jeton d'écriture absent (section, cote).
+MESSAGE_JETON_MANQUANT = ("Jeton manquant : envoyez base_empreinte, "
+                          "l'empreinte du document ouvert.")
+
 #: ACAL22 — les SEULES clés racine qu'une écriture par section remplace.
 CLES_SECTION_RACINE = ('horizonProfile', 'poseSurfaces', 'underlay',
                        'alleeTechnique')
@@ -409,9 +418,7 @@ def enregistrer_section(calepinage, cle, valeur, *, base_empreinte,
     # ACAL360 — ``''`` est le jeton d'un document encore vide (comme
     # ``If-Match: ""`` d'ACAL316) ; seul un jeton absent / non texte est refusé.
     if not isinstance(base_empreinte, str):
-        raise LayoutRefuse(
-            "Jeton manquant : envoyez base_empreinte, l'empreinte du "
-            "document ouvert.", champ='base_empreinte')
+        raise LayoutRefuse(MESSAGE_JETON_MANQUANT, champ='base_empreinte')
     if cle == 'zones':
         if not isinstance(valeur, dict) or not valeur:
             raise LayoutRefuse(

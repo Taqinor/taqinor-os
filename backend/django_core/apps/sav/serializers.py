@@ -629,6 +629,8 @@ class TicketSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
             # services (facturer, creer-devis, récidive), jamais du corps.
             'facture_id_ext', 'devis_id_ext', 'lead_id_ext',
             'intervention_origine_id',
+            # ACSV108 — l'annulation passe par la porte gardée (annuler).
+            'annule',
         ]
         # client peut être déduit côté serveur d'un équipement lié (ticket
         # ouvert depuis le parc) ; sinon il reste exigé — voir
@@ -652,8 +654,12 @@ class TicketSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_client_telephone(self, obj):
+        # APFS27 — masqué sans ``client_pii_voir`` (``can_view_client_pii``).
+        user = getattr(self.context.get('request'), 'user', None)
         c = obj.client
-        return c.telephone if c else None
+        if not c or not getattr(user, 'can_view_client_pii', True):
+            return None
+        return c.telephone
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_technicien_nom(self, obj):
@@ -754,19 +760,24 @@ class TicketSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
 
     def validate_couverture(self, value):
         """ACSV54 - la couverture decide qui paie : changement reserve au
-        palier responsable/admin (403 sinon)."""
-        if (self.instance is not None and value != self.instance.couverture
-                and not self._palier_responsable()):
+        palier responsable/admin (403 sinon) ; ACSV107 : creation comprise."""
+        actuelle = (self.instance.couverture if self.instance is not None
+                    else Ticket.Couverture.A_DETERMINER)
+        if value != actuelle and not self._palier_responsable():
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied(
                 'Seul un responsable ou un administrateur change la couverture.')
         return value
 
-    def update(self, instance, validated_data):
-        # ACSV54 - la date d'ouverture (donc la couverture/le SLA) n'est
-        # corrigee que par le palier responsable/admin (ASAV15).
+    def validate(self, attrs):
+        # ACSV54/ACSV107 - la date d'ouverture (donc la couverture/le SLA)
+        # n'est posee/corrigee que par le palier responsable/admin (ASAV15),
+        # a la creation comme a la mise a jour (sinon : date du jour).
         if not self._palier_responsable():
-            validated_data.pop('date_ouverture', None)
+            attrs.pop('date_ouverture', None)
+        return super().validate(attrs)
+
+    def update(self, instance, validated_data):
         ancienne = instance.couverture
         instance = super().update(instance, validated_data)
         if instance.couverture != ancienne:

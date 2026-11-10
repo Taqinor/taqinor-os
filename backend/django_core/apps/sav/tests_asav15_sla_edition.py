@@ -83,6 +83,27 @@ class SlaEditionTests(TestCase):
         self.assertFalse(self.ticket.sla_pre_alert_notifiee)
         self.assertFalse(self.ticket.sla_escalade_notifiee)
 
+    def test_sla_et_supervision_journalises(self):
+        """ASOC82 (C-ASOC-164) — l'upsert des réglages SLA SAV et de
+        supervision écrit une ligne ``SettingsAuditLog`` ancien → nouveau ;
+        réponses inchangées (200 + réglage)."""
+        from apps.parametres.models import SettingsAuditLog
+        r = self.api.post('/api/django/sav/sla-settings/',
+                          {'sla_resolution_days': 3}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.data['sla_resolution_days'], 3)
+        r = self.api.post('/api/django/monitoring/settings/',
+                          {'underperf_threshold_pct': '5'}, format='json')  # DecimalLitteral
+        self.assertEqual(r.status_code, 200, r.content)
+        lignes = {ligne.section: ligne for ligne in SettingsAuditLog.objects
+                  .filter(company=self.company)}
+        self.assertEqual(set(lignes), {'sav', 'monitoring'})
+        self.assertIn('sla_resolution_days=7', lignes['sav'].old_value)
+        self.assertIn('sla_resolution_days=3', lignes['sav'].new_value)
+        self.assertIn('underperf_threshold_pct=20', lignes['monitoring'].old_value)
+        self.assertIn('underperf_threshold_pct=5', lignes['monitoring'].new_value)
+        self.assertEqual(lignes['sav'].user, self.admin)
+
     def test_autre_champ_inchange(self):
         Ticket.objects.filter(pk=self.ticket.pk).update(
             sla_due_at=self.today + timedelta(days=5))

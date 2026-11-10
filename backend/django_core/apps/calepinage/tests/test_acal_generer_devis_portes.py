@@ -21,6 +21,8 @@ from decimal import Decimal
 import json
 from pathlib import Path
 
+from django.test import TransactionTestCase
+
 from apps.calepinage.models import Calepinage
 from apps.calepinage.services.layout import enregistrer_layout
 from apps.calepinage.services.variantes import dupliquer
@@ -99,6 +101,39 @@ class GenererDevisPortesTest(BaseApiCalepinage):
         self.assertEqual(second.data['devis'], premier.data['devis'])
         self.assertEqual(Devis.objects.filter(company=self.company).count(),
                          avant)
+
+    def test_montants_differents_du_brouillon_rendu_409(self):
+        """ACON49 — un second POST dédupliqué qui demande une autre TVA ou
+        une autre remise : 409 nommant le champ, brouillon inchangé ; sans
+        montant, ou le même : 200 ``deduplique``."""
+        premier = self._generer(self.original)
+        self.assertEqual(premier.status_code, 201, premier.data)
+        devis = Devis.objects.get(pk=premier.data['devis'])
+        tva, remise = devis.taux_tva, devis.remise_globale
+        url = url_generer(self.original.pk)
+        for corps, champ in (({'taux_tva': 10}, 'taux_tva'),
+                             ({'remise_globale': 5}, 'remise_globale')):
+            with self.subTest(corps=corps):
+                reponse = self.api.post(url, corps, format='json')
+                self.assertEqual(reponse.status_code, 409, reponse.data)
+                self.assertEqual(list(reponse.data), [champ])
+                self.assertIn(devis.reference, reponse.data[champ])
+        from apps.calepinage.services.devis import _pourcentage_lisible
+
+        self.assertEqual(self.api.post(
+            url, {'taux_tva': 10}, format='json').data['taux_tva'],
+            f'Le devis {devis.reference} existe déjà à '
+            f'{_pourcentage_lisible(tva)} % : changez la TVA depuis le devis.')
+        for corps in ({}, {'taux_tva': str(tva)}):
+            with self.subTest(corps=corps):
+                reponse = self.api.post(url, corps, format='json')
+                self.assertEqual(reponse.status_code, 200, reponse.data)
+                self.assertTrue(reponse.data['deduplique'])
+        devis.refresh_from_db()
+        self.assertEqual((devis.taux_tva, devis.remise_globale),
+                         (tva, remise))
+        self.assertEqual(Devis.objects.filter(
+            company=self.company).count(), 1)
 
     def test_client_seul_deux_clics_un_devis(self):
         client = Client.objects.create(company=self.company,
@@ -272,3 +307,83 @@ class GenererDevisPortesTest(BaseApiCalepinage):
         self.assertEqual(sorted(second.data),
                          sorted(set(CONTRAT['exemple_deduplique'])
                                 | {'electrique'}))
+
+
+class GenererDevisConcurrentTest(TransactionTestCase):
+    """ACON46 — deux « Générer le devis » CONCURRENTS sur le même calepinage :
+    le verrou de ligne les sérialise, UN devis sur le lead, la seconde rend la
+    dédup (``cree`` faux). Deux fils, chacun sa connexion ; la première
+    génération est ralentie DANS la création (jamais de barrière qui
+    bloquerait sous le verrou)."""
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
+        from apps.ventes.tests.test_from_layout_endpoint import seed_catalogue
+        from authentication.models import Company
+
+        self.company = Company.objects.create(nom='ACON46 Co',
+                                              slug='acon46-co')
+        role = Role.objects.create(company=self.company, nom='Directeur',
+                                   permissions=list(DIRECTEUR_PERMISSIONS))
+        self.user = get_user_model().objects.create_user(
+            username='acon46', password='x', company=self.company, role=role)
+        self.lead = Lead.objects.create(company=self.company,
+                                        nom='Toiture ACON46')
+        seed_catalogue(self.company)
+        self.calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='ACON46')
+        enregistrer_layout(self.calepinage, copy.deepcopy(TOIT),
+                           user=self.user)
+
+    def test_deux_generations_concurrentes_un_seul_devis(self):
+        import threading
+        from unittest import mock
+
+        from django.db import connection
+
+        from apps.calepinage.services.devis import generer_devis
+        from apps.ventes.services import build_devis_from_layout as vraie
+
+        dans_la_creation = threading.Event()
+        second_lance = threading.Event()
+        resultats, erreurs = [], []
+
+        def lente(*args, **kwargs):
+            dans_la_creation.set()
+            # La seconde génération est lancée PENDANT la création (poignée
+            # de main, jamais une attente fixe).
+            second_lance.wait(30)
+            return vraie(*args, **kwargs)
+
+        def generer(signal=None):
+            try:
+                if signal is not None:
+                    signal.set()
+                cal = Calepinage.objects.get(pk=self.calepinage.pk)
+                resultats.append(generer_devis(cal, user=self.user,
+                                               journal={}))
+            except Exception as erreur:  # noqa: BLE001 — remonté par l'assertion
+                erreurs.append(erreur)
+            finally:
+                connection.close()
+
+        with mock.patch('apps.ventes.services.build_devis_from_layout',
+                        side_effect=lente):
+            premier = threading.Thread(target=generer)
+            premier.start()
+            self.assertTrue(dans_la_creation.wait(30))
+            second = threading.Thread(target=generer,
+                                      kwargs={'signal': second_lance})
+            second.start()
+            premier.join(60)
+            second.join(60)
+
+        self.assertEqual(erreurs, [])
+        self.assertEqual(sorted(cree for _devis, cree in resultats),
+                         [False, True])
+        self.assertEqual(Devis.objects.filter(lead=self.lead).count(), 1)
+        self.calepinage.refresh_from_db()
+        self.assertEqual(self.calepinage.devis_id, resultats[0][0].pk)

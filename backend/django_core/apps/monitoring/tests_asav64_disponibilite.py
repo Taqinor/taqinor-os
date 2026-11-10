@@ -114,3 +114,44 @@ class DisponibiliteTests(TestCase):
         for i in range(13):
             self._releve(premier + timedelta(days=30 * i), periode=30)
         self.assertEqual(self._dispo(), Decimal('100.00'))
+
+    def test_rapport_client_libelle_indice_de_suivi(self):
+        """AMON108 — le rapport O&M client (données servies à l'écran, HTML
+        du PDF) titre l'indicateur de jours avec relevé « indice de suivi
+        (jours avec relevé) », jamais « Disponibilité » — onduleur immobilisé
+        du 01 au 16/10 et alarme escaladée compris ; valeur inchangée."""
+        from datetime import datetime
+
+        from django.utils import timezone
+
+        from apps.monitoring.report import (
+            build_om_report_data, build_om_report_html, render_om_report_pdf,
+        )
+        from apps.monitoring.selectors import LIBELLE_INDICE_SUIVI
+        from apps.sav.models import (
+            AlarmeOnduleur, Equipement, EquipementDowntime,
+        )
+        from apps.stock.models import Produit
+        fin_octobre = date(2026, 10, 31)
+        for i in range(31):
+            self._releve(date(2026, 10, 1) + timedelta(days=i))
+        onduleur = Equipement.objects.create(
+            company=self.company, installation=self.inst,
+            produit=Produit.objects.create(
+                company=self.company, nom='Onduleur', sku='OND-AMON108',
+                prix_achat=1, prix_vente=2))
+        EquipementDowntime.objects.create(
+            company=self.company, equipement=onduleur,
+            debut=timezone.make_aware(datetime(2026, 10, 1)),
+            fin=timezone.make_aware(datetime(2026, 10, 16)))
+        AlarmeOnduleur.objects.create(
+            company=self.company, equipement=onduleur, code='F01',
+            statut=AlarmeOnduleur.Statut.ESCALADEE)
+        data = build_om_report_data(self.inst, today=fin_octobre)
+        self.assertEqual(data['libelle_indicateur'], LIBELLE_INDICE_SUIVI)
+        self.assertEqual(data['availability_pct'], Decimal('100.00'))
+        html = build_om_report_html(data)
+        self.assertIn('indice de suivi (jours avec relevé)', html)
+        self.assertNotIn('Disponibilité', html)
+        self.assertTrue(bytes(render_om_report_pdf(
+            self.inst, today=fin_octobre)).startswith(b'%PDF'))

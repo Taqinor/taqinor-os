@@ -94,6 +94,57 @@ class TicketActionPermissionTierTests(TestCase):
             with self.subTest(action=name):
                 self.assertEqual(_tier_name(name), 'HasPermissionOrLegacy_sav_voir')
 
+    def test_lectures_sav_bornees_au_module(self):
+        """APFS107 (C-APFS-080, D-APFS-4) — balai du routeur ``sav`` : la
+        lecture ``list`` de CHAQUE vue est refusée à Admin RH et Commercial
+        terrain (aucun code sav) ; Technicien, Commercial et Directeur
+        (``sav_voir``) et le compte hérité lisent les 14 vues ouvertes."""
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+
+        from apps.roles import permissions_registre as registre
+        from apps.roles.models import Role
+        from apps.sav.urls import router
+        from authentication.models import Company
+        from authentication.tests_asec11_responsable_module import (
+            lectures_acceptees,
+        )
+
+        societe = Company.objects.create(nom='APFS107', slug='apfs107')
+        User = get_user_model()
+
+        def compte(nom, permissions):
+            role = Role.objects.create(company=societe, nom=nom,
+                                       permissions=list(permissions),
+                                       est_systeme=False)
+            return User.objects.create_user(
+                username=f'apfs107-{nom}', password='x', company=societe,
+                role=role, role_legacy='responsable')
+        refuses = {nom: compte(nom, perms) for nom, perms in (
+            ('admin_rh', registre.ADMIN_RH_PERMISSIONS),
+            ('commercial_terrain', registre.COMMERCIAL_TERRAIN_PERMISSIONS))}
+        admis = {nom: compte(nom, perms) for nom, perms in (
+            ('technicien', registre.TECHNICIEN_PERMISSIONS),
+            ('commercial', registre.COMMERCIAL_PERMISSIONS),
+            ('directeur', registre.DIRECTEUR_PERMISSIONS))}
+        admis['herite'] = User.objects.create_user(
+            username='apfs107-herite', password='x', company=societe,
+            role_legacy='responsable')
+        vues = [vs for _prefixe, vs, _nom in router.registry]
+        deja_fermees = {'TicketViewSet', 'EquipementViewSet', 'ProblemeViewSet'}
+        ouvertes = [vs for vs in vues if vs.__name__ not in deja_fermees]
+        self.assertEqual(len(ouvertes), 14, [vs.__name__ for vs in ouvertes])
+        for (vue, nom), accepte in lectures_acceptees(vues, refuses).items():
+            self.assertFalse(accepte, f'{vue} : lecture ouverte à {nom}')
+        for (vue, nom), accepte in lectures_acceptees(ouvertes, admis).items():
+            self.assertTrue(accepte, f'{vue} : lecture refusée à {nom}')
+        for user, attendu in ((refuses['admin_rh'], 403),
+                              (admis['technicien'], 200)):
+            api = APIClient()
+            api.force_authenticate(user)
+            r = api.get('/api/django/sav/warranty-claims/')
+            self.assertEqual(r.status_code, attendu, r.content[:200])
+
     def test_gestes_ventes_et_stock_exigent_leur_droit(self):
         """ACSV62 / D-ACSV-3 : en plus de ``sav_gerer``, facturer / devis exigent
         ``ventes_creer`` et tout mouvement de stock d'un ticket

@@ -26,7 +26,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import (
-    HasPermissionOrLegacy, IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
+    HasPermissionOrLegacy, IsAdminRole, LectureDuModule, IsResponsableOrAdmin,
 )
 from core.conflit_etat import ConflitEtat
 from core.documents import TransitionRefusee
@@ -176,7 +176,7 @@ class DemandeAchatViewSet(oa.CorpsObjetMixin, oa.JsonOnlyMixin, ChatterViewSetMi
             return [IsResponsableOrAdmin(),
                     HasPermissionOrLegacy('achats_commander')()]
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -619,7 +619,7 @@ class RegleApprobationAchatViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         # AAPV34 — écriture des règles : Administrateur seul (patron
         # SeuilApprobationBCFViewSet).
         return [IsAdminRole()]
@@ -664,7 +664,7 @@ class DemandeAchatLigneViewSet(oa.JsonOnlyMixin, viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):

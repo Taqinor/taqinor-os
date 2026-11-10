@@ -282,7 +282,9 @@
   ],
   "calepinages.designContext": [
     {
-      "config": null,
+      "config": {
+        "params": 3
+      },
       "data": null,
       "url": "/calepinage/calepinages/7/design-context/",
       "verbe": "get"

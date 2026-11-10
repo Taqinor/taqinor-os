@@ -464,6 +464,23 @@ class AssertionsTests(_SurDepotErp):
         self.assertIn("TYPE_DE_CLE absent (déduit : par_ligne)", sortie["texte"])
         self.assertIn("python scripts/check_lignes.py --write-baseline", sortie["texte"])
 
+    def test_listes_figees_accepte_une_ancre_symbole(self):
+        # ADCG83 — `fichier::symbole` rend le meme texte que le fichier seul.
+        seul = self.sortie("listes-figees", f"{DJ}/crm/services.py")
+        ancre = executer("listes-figees", f"{DJ}/crm/services.py::merge_leads")
+        self.assertEqual(ancre["texte"], seul["texte"])
+
+    def test_ancre_jsx_refusee_en_francais(self):
+        # ADCG83 — jamais un ast.parse sur du JS : code 2, message francais, sans trace.
+        import contextlib
+        import io
+        erreur = io.StringIO()
+        with contextlib.redirect_stderr(erreur), self.assertRaises(SystemExit) as sortie:
+            executer("emplacement", "frontend/src/pages/ventes/FactureForm.jsx::FactureForm")
+        self.assertEqual(sortie.exception.code, 2)
+        self.assertIn("ancre non Python", erreur.getvalue())
+        self.assertIn("greps équivalents (tampon manuel)", erreur.getvalue())
+
     def test_type_de_cle_declare_par_les_quatre_gardes(self):
         # Lit les gardes de CE depot (scripts/, possedes par la lane) : pas du code applicatif.
         for garde in ("check_get_or_create", "check_naive_datetime", "check_duplicats_litteraux",

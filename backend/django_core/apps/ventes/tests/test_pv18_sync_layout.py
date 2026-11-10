@@ -21,6 +21,7 @@ from apps.crm.models import Client
 from apps.stock.models import FicheTechnique, Produit
 from apps.ventes.models import Devis
 from apps.ventes.services import layout_hash
+from apps.ventes.tests.test_acal_layout_enrichi import en_tete_jeton
 
 User = get_user_model()
 
@@ -115,7 +116,8 @@ class TestSyncLayout(TestCase):
     def _post(self, devis, corps):
         return self.api.post(
             f'/api/django/ventes/devis/{devis.id}/sync-layout/',
-            corps, format='json')
+            corps, format='json',
+            **en_tete_jeton(devis.id))
 
     def test_corps_multipart_refuse_415(self):
         # ENF11/D2 — le calepinage est un document JSON : un corps multipart
@@ -621,7 +623,8 @@ class TestCompletionDuKit(TestCase):
     def _post(self, devis, corps):
         return self.api.post(
             '/api/django/ventes/devis/%s/sync-layout/' % devis.id,
-            corps, format='json')
+            corps, format='json',
+            **en_tete_jeton(devis.id))
 
     def _par_designation(self, devis):
         return {ligne.designation: ligne for ligne in devis.lignes.all()}
@@ -998,7 +1001,8 @@ class TestSyncLayoutCables(TestCase):
     def _post(self, devis, corps):
         return self.api.post(
             f'/api/django/ventes/devis/{devis.id}/sync-layout/',
-            corps, format='json')
+            corps, format='json',
+            **en_tete_jeton(devis.id))
 
     def test_sync_10_vers_5_kwc_ajuste_les_deux_cables(self):
         """Le cas F8 littéral : 10 kWc (2 paliers, 120 m DC / 55 m terre)
@@ -1170,7 +1174,8 @@ class TestSyncRefuseUneCompositionImpossible(TestCase):
     def _post(self, devis, corps):
         return self.api.post(
             f'/api/django/ventes/devis/{devis.id}/sync-layout/',
-            corps, format='json')
+            corps, format='json',
+            **en_tete_jeton(devis.id))
 
     def _layout_25(self):
         return layout(panels=25, kwc=17.75, panelWatt=710)

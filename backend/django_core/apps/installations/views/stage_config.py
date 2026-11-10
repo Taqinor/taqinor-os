@@ -14,7 +14,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 
-from authentication.permissions import IsAnyRole
+from authentication.permissions import LectureDuModule
 from core.viewsets import CompanyScopedModelViewSet
 from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 
@@ -67,7 +67,7 @@ class StageModeleViewSet(oa.JsonOnlyMixin, UsageGuardedDestroyMixin, CompanyScop
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsDirecteur()]
 
     @oa.extend_schema(request=None, responses={201: oa.body('AmorcerEtapesResultat', crees=oa.i(), etapes=oa.lst())})

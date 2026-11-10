@@ -21,7 +21,7 @@ from ..serializers import RevisionKitSerializer
 from core.conflit_etat import ConflitEtat
 from core.viewsets import CompanyScopedModelViewSet
 from authentication.permissions import (
-    IsAnyRole, IsAdminRole, IsResponsableOrAdmin, HasPermissionOrLegacy,
+    LectureDuModule, IsAdminRole, IsResponsableOrAdmin, HasPermissionOrLegacy,
 )
 
 from ..models import KitProduit
@@ -91,12 +91,12 @@ class KitProduitViewSet(CompanyScopedModelViewSet):
         if self.action in READ_ACTIONS:
             # XMFG18 — `revisions` / `composition-au` sont LECTURE SEULE
             # (composition sans aucun prix), même garde que `exploser`.
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         elif self.action == 'structure':
             # XMFG5 — l'écran est accessible à tout rôle (disponibilité), le
             # coût/marge sont retirés de la réponse pour les rôles sans
             # accès responsable/admin (jamais client-facing).
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         elif self.action in WRITE_ACTIONS:
             # XMFG18 — `dupliquer` EST une écriture (crée un kit) : même
             # garde que create/update.

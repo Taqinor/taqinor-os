@@ -19,7 +19,7 @@ from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
 from ..models import Fournisseur, BonCommandeFournisseur, ReceptionFournisseur
 from ..serializers import BonCommandeFournisseurSerializer, FactureFournisseurSerializer
-from authentication.permissions import IsAnyRole, IsAdminRole, HasPermissionOrLegacy
+from authentication.permissions import LectureDuModule, IsAdminRole, HasPermissionOrLegacy
 import logging
 
 logger = logging.getLogger(__name__)
@@ -81,9 +81,9 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         if self.action in ('generer_pdf', 'historique_prix',
                            'achats_hors_contrat'):
             from ..permissions import PeutVoirPrixAchat
-            return [IsAnyRole(), PeutVoirPrixAchat()]
+            return [LectureDuModule(), PeutVoirPrixAchat()]
         if self.action in READ_ACTIONS + ['lignes_import']:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         elif self.action in COMMANDER_ACTIONS:
             # ASTK17 (D-ASTK-3) — « commander » : créer/modifier/envoyer/
             # réviser/annuler/rouvrir/confirmer/dupliquer/fusionner un BCF et
@@ -98,11 +98,11 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             # ASTK19 (D-ASTK-3) — facturer un BCF = « payer ».
             return [HasPermissionOrLegacy('achats_payer')()]
         elif self.action == 'en_retard':
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         elif self.action in (
                 'bcf_similaires', 'historique_prix', 'achats_hors_contrat',
                 'suggestions_consolidation'):
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
         return [IsAdminRole()]

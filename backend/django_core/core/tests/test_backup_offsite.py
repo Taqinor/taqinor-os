@@ -74,6 +74,7 @@ class DumpDatabaseOffsiteTests(TestCase):
         SCA13 — le run termine, AUCUN appel au client hors-boîte."""
         run = self._make_run()
         fake_minio = mock.Mock()
+        fake_minio.list_objects_v2.return_value = {'Contents': []}  # ADCG30 : buckets vides
 
         with mock.patch.dict(os.environ, {}, clear=False):
             for key in _OFFSITE_ENV:
@@ -92,6 +93,7 @@ class DumpDatabaseOffsiteTests(TestCase):
     def test_dump_with_offsite_env_pushes_and_stays_termine(self):
         run = self._make_run()
         fake_minio = mock.Mock()
+        fake_minio.list_objects_v2.return_value = {'Contents': []}  # ADCG30 : buckets vides
         fake_offsite = mock.Mock()
         fake_offsite.list_objects_v2.return_value = {'Contents': []}
 
@@ -115,6 +117,7 @@ class DumpDatabaseOffsiteTests(TestCase):
         jamais un nouveau point de défaillance pour le backup principal)."""
         run = self._make_run()
         fake_minio = mock.Mock()
+        fake_minio.list_objects_v2.return_value = {'Contents': []}  # ADCG30 : buckets vides
 
         with mock.patch.dict(os.environ, _OFFSITE_ENV, clear=False), \
                 mock.patch('subprocess.run', side_effect=self._fake_write), \
@@ -127,6 +130,43 @@ class DumpDatabaseOffsiteTests(TestCase):
         self.assertEqual(result.statut, BackupRun.STATUT_TERMINE)
         self.assertEqual(result.detail['offsite']['status'], 'echec')
         self.assertIn('offsite injoignable', result.detail['offsite']['message'])
+
+    def test_copie_distante_servie_et_marquee(self):
+        """ADCG31 — off puis échec : servis par mes-sauvegardes ; l'échec
+        marque le message du run (toujours termine) et journalise une erreur."""
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+
+        from authentication.models import Company
+        company = Company.objects.create(nom='Acme', slug='acme-adcg31')
+        user = get_user_model().objects.create_user('adcg31', password='x', company=company)
+        client = APIClient()
+        client.force_authenticate(user)
+        fake_minio = mock.Mock()
+        fake_minio.list_objects_v2.return_value = {'Contents': []}
+
+        sans = {k: '' for k in _OFFSITE_ENV}
+        with mock.patch.dict(os.environ, sans), \
+                mock.patch('subprocess.run', side_effect=self._fake_write), \
+                mock.patch.object(backup, '_minio_client', return_value=fake_minio):
+            run_off = backup.dump_database(self._make_run())
+        copie = client.get('/api/django/core/mes-sauvegardes/').json()['copie_distante']
+        self.assertEqual(copie, {'etat': 'off', 'date': run_off.termine_le.isoformat()})
+
+        with mock.patch.dict(os.environ, _OFFSITE_ENV), \
+                mock.patch('subprocess.run', side_effect=self._fake_write), \
+                mock.patch.object(backup, '_minio_client', return_value=fake_minio), \
+                mock.patch.object(backup, '_offsite_client',
+                                  side_effect=RuntimeError('offsite injoignable')), \
+                self.assertLogs('core.backup', level='ERROR'):
+            run_echec = backup.dump_database(self._make_run())
+        run_echec.refresh_from_db()
+        self.assertEqual(run_echec.statut, BackupRun.STATUT_TERMINE)
+        self.assertIn('copie hors serveur EN ÉCHEC', run_echec.detail['message'])
+        copie = client.get('/api/django/core/mes-sauvegardes/').json()['copie_distante']
+        self.assertEqual(copie['etat'], 'echec')
+        self.assertIn('offsite injoignable', copie['message'])
+        self.assertEqual(copie['date'], run_echec.termine_le.isoformat())
 
 
 class OffsiteRetentionTests(TestCase):

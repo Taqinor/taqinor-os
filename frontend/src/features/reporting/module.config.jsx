@@ -90,10 +90,10 @@ const config = {
     items: [
       { to: '/reporting',            label: 'Reporting',        k: 'nav.reporting',  icon: navIcon(BarChart3),    roles: ['responsable','admin'] },
       { to: '/rapports',             label: 'Rapports',         k: 'nav.rapports',   icon: navIcon(BarChart3),    roles: ['responsable','admin'] },
-      { to: '/reporting/balance-agee', label: 'Balance âgée',   k: 'nav.balance_agee', icon: navIcon(BarChart3),  roles: ['responsable','admin'] },
+      { to: '/reporting/balance-agee', label: 'Balance âgée',   k: 'nav.balance_agee', icon: navIcon(BarChart3),  roles: ['responsable','admin'], perm: 'ventes_voir', permRepliPalier: true },
       { to: '/reporting/commercial', label: 'Tableau commercial', k: 'nav.tableau_commercial', icon: navIcon(BarChart3), roles: ['responsable','admin'] },
       // WIR84 — écran consommateur des agrégateurs Quote-to-Cash de `ventes`.
-      { to: '/reporting/quote-to-cash', label: 'Quote-to-Cash', k: 'nav.quote_to_cash', icon: navIcon(BarChart3), roles: ['responsable','admin'] },
+      { to: '/reporting/quote-to-cash', label: 'Quote-to-Cash', k: 'nav.quote_to_cash', icon: navIcon(BarChart3), roles: ['responsable','admin'], perm: 'ventes_voir', permRepliPalier: true },
       // WIR17/FG98 — cohortes de rétention/CA (route déjà enregistrée
       // ci-dessous, jusqu'ici sans entrée de menu).
       { to: '/reporting/cohortes',   label: 'Cohortes',         k: 'nav.cohortes',   icon: navIcon(BarChart3),    roles: ['responsable','admin'] },
@@ -141,9 +141,10 @@ const config = {
   routes: [
     { path: '/reporting', component: Reporting, roles: RESPONSABLE_ADMIN },
     { path: '/rapports', component: Rapports },
-    { path: '/reporting/balance-agee', component: BalanceAgeePage },
+    // AARG72 — droit de lecture des factures (LectureFactures côté serveur).
+    { path: '/reporting/balance-agee', component: BalanceAgeePage, roles: RESPONSABLE_ADMIN, perm: 'ventes_voir', permRepliPalier: true },
     { path: '/reporting/commercial', component: CommercialDashboard, roles: RESPONSABLE_ADMIN },
-    { path: '/reporting/quote-to-cash', component: QuoteToCashPage, roles: RESPONSABLE_ADMIN },
+    { path: '/reporting/quote-to-cash', component: QuoteToCashPage, roles: RESPONSABLE_ADMIN, perm: 'ventes_voir', permRepliPalier: true },
     { path: '/reporting/cohortes', component: CohortsPage, roles: RESPONSABLE_ADMIN },
     { path: '/reporting/dashboards', component: DashboardConfigPage, roles: RESPONSABLE_ADMIN },
     { path: '/reporting/dashboards/partage', component: DashboardSharePage, roles: RESPONSABLE_ADMIN },

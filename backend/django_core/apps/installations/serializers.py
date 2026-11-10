@@ -21,8 +21,9 @@ from core.unicite import UniciteEn409Mixin
 
 from .listes_prechargees import totaux_temps_memo
 from .serializers_blocs import (
-    bloc_avertissements_cloture, bloc_calepinage, bloc_dossier_8221_resume,
-    bloc_regime_suggere)
+    MasqueBudgetProjet, MasqueCoutPrevu, MasqueCoutTransport, MasqueLandedCost, MasqueMontant,
+    MasquePrixConvenu, MasquePrixNegocie, bloc_avertissements_cloture, bloc_calepinage,
+    bloc_dossier_8221_resume, bloc_regime_suggere)
 from .serializers_stage import (
     CautionTotaleMixin, refus_protege, valider_unicite_societe)
 from .serializers_gps import GeofenceAlertGpsChampsMixin, InterventionGpsChampsMixin
@@ -1276,8 +1277,7 @@ class BudgetEngagementSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixi
 
 class BudgetProjetSerializer(
     IdInconnu404Mixin, ChampsTexteStrictsMixin,  # api-fuzz-full 28/10 : `devise` sans NUL
-    UniciteEn409Mixin,
-    SameCompanyFKSerializerMixin,
+    MasqueBudgetProjet, UniciteEn409Mixin, SameCompanyFKSerializerMixin,
         serializers.ModelSerializer):
     """FG294 — budget d'un programme (enveloppes par catégorie + seuil d'alerte).
     La société et `created_by` sont posés côté serveur ; le `projet` est validé
@@ -1668,7 +1668,8 @@ class ApprobationBCFSerializer(SameCompanyFKSerializerMixin,
         ]
 
 
-class CommandeCadreLigneSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class CommandeCadreLigneSerializer(MasquePrixNegocie, IdInconnu404Mixin, SameCompanyFKSerializerMixin,
+                                   serializers.ModelSerializer):
     """FG314 — ligne d'un contrat-cadre (SKU, prix négocié INTERNE, volume
     engagé). `volume_consomme`/`volume_restant` sont dérivés (lecture seule)."""
     # ACHT53/ENF17 — FK inscriptibles bornées à la société.
@@ -1733,7 +1734,8 @@ class CommandeCadreSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerial
         return value
 
 
-class AppelCommandeSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class AppelCommandeSerializer(MasqueMontant, IdInconnu404Mixin, SameCompanyFKSerializerMixin,
+                              serializers.ModelSerializer):
     """FG314 — commande d'appel sur une ligne de contrat-cadre. La société et
     `created_by` sont posés CÔTÉ SERVEUR. `montant` est dérivé (quantité × prix
     négocié, INTERNE)."""
@@ -1797,7 +1799,7 @@ class DossierImportSerializer(
 
 
 class FraisImportSerializer(
-    IdInconnu404Mixin,
+    MasqueMontant, IdInconnu404Mixin,
     ChampsStrictsEntiersMixin,
     SameCompanyFKSerializerMixin,
         serializers.ModelSerializer):
@@ -1822,7 +1824,7 @@ class FraisImportSerializer(
 
 
 class LandedCostLigneSerializer(ChampsTexteStrictsMixin, IdInconnu404Mixin, SameCompanyFKSerializerMixin,
-                                serializers.ModelSerializer):
+                                MasqueLandedCost, serializers.ModelSerializer):
     """FG316 — ligne de coût débarqué par SKU (valeur FOB + quantité). La société
     est posée CÔTÉ SERVEUR. `cout_fob_unitaire` est dérivé ; la quote-part de
     frais + le coût débarqué se lisent via l'action `landed-cost` du dossier."""
@@ -1887,7 +1889,8 @@ class ReceptionNonFactureeSerializer(MontantProvisionBorneMixin,
         return value
 
 
-class ContratPrixLigneSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class ContratPrixLigneSerializer(MasquePrixConvenu, IdInconnu404Mixin, SameCompanyFKSerializerMixin,
+                                 serializers.ModelSerializer):
     """FG318 — ligne de prix convenu d'un contrat fournisseur (SKU + prix
     négocié INTERNE + remise % optionnelle)."""
     # ACHT53/ENF17 — FK inscriptibles bornées à la société.
@@ -2440,7 +2443,7 @@ class OrdreAssemblageLigneSerializer(IdInconnu404Mixin, SameCompanyFKSerializerM
         return attrs
 
 
-class OrdreAssemblageSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
+class OrdreAssemblageSerializer(MasqueCoutPrevu, IdInconnu404Mixin, SameCompanyFKSerializerMixin,
                                 ChampsStrictsSansDecimalMixin, serializers.ModelSerializer):
     """FG328 - ordre d'assemblage de N kits. Reference/societe/`created_by`
     poses COTE SERVEUR ; le statut avance via `demarrer`/`terminer`/`annuler`."""
@@ -2715,7 +2718,7 @@ class LivraisonLigneSerializer(
 
 
 class LivraisonSerializer(
-    IdInconnu404Mixin,
+    MasqueCoutTransport, IdInconnu404Mixin,
     ChampsStrictsEntiersMixin,
     SameCompanyFKSerializerMixin,
         serializers.ModelSerializer):

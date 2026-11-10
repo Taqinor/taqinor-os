@@ -25,7 +25,9 @@ from celery import shared_task
 logger = logging.getLogger(__name__)
 
 
-@shared_task(name='core.dump_database')
+# ADCG35 — limites propres AU-DESSUS du timeout=3600 de leurs sous-processus
+# (les 120/180 s globaux sont prévus pour le PDF).
+@shared_task(name='core.dump_database', soft_time_limit=3900, time_limit=4200)
 def dump_database_task():
     """YOPSB1 — pg_dump quotidien réel vers MinIO (planifié 03:00)."""
     from core.models import BackupRun
@@ -40,7 +42,7 @@ def dump_database_task():
     return {'statut': run.statut, 'run_id': run.pk}
 
 
-@shared_task(name='core.restore_drill')
+@shared_task(name='core.restore_drill', soft_time_limit=3900, time_limit=4200)  # ADCG35
 def restore_drill_task():
     """YOPSB2 — drill de restauration hebdomadaire (planifié lundi 04:00)."""
     from core.models import BackupRun

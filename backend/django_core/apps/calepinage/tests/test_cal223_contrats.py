@@ -130,6 +130,10 @@ SANS_PRODUCTEUR_PUR = {
     'calepinage_du_devis.json':
         "endpoint d'une AUTRE app (apps.ventes, DevisSerializer) — couvert "
         'par apps/ventes/tests/test_calx46_calepinage_du_devis.py',
+    # ACON6
+    'calepinage_conception_du_devis.json':
+        'sélecteur sur un calepinage et sa variante en base — couvert par '
+        'tests/test_acal_reviser_relie.py (second devis actif du lead)',
     # CALX25
     'calepinage_releve.json':
         'enveloppe (`releve_en_ligne`) lue sur un `ReleveTerrain` SAUVÉ en '

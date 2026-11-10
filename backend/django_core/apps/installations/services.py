@@ -6635,26 +6635,16 @@ def synchroniser_jalon_portail(jalon, user=None):
 
 
 def _notifier_client_jalon_atteint(installation, jalon):
-    """CHT11 — email best-effort au client d'un jalon atteint.
+    """CHT11 — avis best-effort au client d'un jalon atteint, jamais bloquant.
 
-    AUCUN envoi WhatsApp automatique (le BSP n'est pas provisionné — un
-    brouillon manuel reste la seule voie WhatsApp, jamais posé ici). L'email
-    n'est envisagé QUE si un compte d'envoi est réellement configuré ET que
-    le compte portail du client est ACTIF — jamais bloquant."""
+    AUCUN envoi WhatsApp automatique (le BSP n'est pas provisionné). ASOC27 —
+    ``portail_jalon_chantier_atteint`` vers le compte portail ACTIF du client
+    (cloche + e-mail selon sa préférence, défaut ON) via
+    ``notifier_portail_client`` : plus de ``send_mail`` direct."""
     client = getattr(installation, 'client', None)
-    email_addr = getattr(client, 'email', None)
-    if not email_addr:
+    if client is None:
         return
     try:
-        from apps.ventes.email_service import is_email_configured
-        if not is_email_configured():
-            return
-        from apps.portail.selectors import compte_portail_client_actif
-        actif = compte_portail_client_actif(installation.company_id, client.id)
-        if actif is not True:
-            return
-        from django.conf import settings
-        from django.core.mail import send_mail
         corps = (
             'Bonjour,\n\n'
             f"Votre chantier {installation.reference} vient de franchir "
@@ -6667,15 +6657,15 @@ def _notifier_client_jalon_atteint(installation, jalon):
                 "\n\nLe procès-verbal de réception et le bon de livraison "
                 "sont disponibles dans la rubrique « Mes documents » de "
                 "votre espace client dès leur signature.")
-        from django.db import transaction  # ACSV98 — au commit, jamais avant (patron QJR422)
-        transaction.on_commit(lambda: send_mail(
+        from apps.notifications.services import notifier_portail_client
+        from apps.notifications.types_evenements import EventType
+        notifier_portail_client(  # e-mail au commit (``notify``, ACSV98)
+            installation.company, client.id, EventType.PORTAIL_JALON_CHANTIER_ATTEINT,
             f'Chantier {installation.reference} — {jalon.libelle} atteint',
-            corps,
-            getattr(settings, 'DEFAULT_FROM_EMAIL', None),
-            [email_addr], fail_silently=True))
+            body=corps, link='/portail/client/chantiers')
     except Exception:  # pragma: no cover - défensif, best-effort
         logger.warning(
-            'CHT11 — email jalon portail (jalon %s) échoué', jalon.pk,
+            'CHT11 — avis jalon portail (jalon %s) échoué', jalon.pk,
             exc_info=True)
 
 

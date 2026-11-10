@@ -17,7 +17,7 @@ from rest_framework.decorators import action
 from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.response import Response
 
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from authentication.permissions import LectureDuModule, IsResponsableOrAdmin
 from core.champs_stricts import IdInconnu404Mixin
 from core.serializers import ChampsTexteBooleenStricts, CompanyScopedRelationsMixin
 from ..openapi_helpers import BINARY, ID_OU_VIDE, OBJET, P, choix_ou_vide, corps
@@ -105,7 +105,7 @@ class DossierOnboardingFournisseurViewSet(CompanyScopedModelViewSet):
         if self.action == 'valider_dossier':
             return [IsResponsableOrAdmin(), PeutValiderDossierFournisseur()]
         if self.action in ('list', 'retrieve'):
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -219,7 +219,7 @@ class DocumentFournisseurViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve', 'telecharger'):
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):

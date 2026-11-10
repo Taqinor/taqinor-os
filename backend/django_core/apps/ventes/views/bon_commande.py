@@ -232,6 +232,18 @@ class BonCommandeViewSet(OrdreTotalMixin, CompanyScopedModelViewSet):
             return [IsAdminRole(), DroitDeLaGrille('ventes_supprimer')()]
         return [IsAdminRole()]
 
+    def list(self, request, *args, **kwargs):
+        # ADCG47 — `facturable` passe par LA porte (`exiger_devis_facturable`)
+        # par BC : la page lit ses ventes EN LOT (patron VNT68), le nombre de
+        # requêtes ne grandit plus avec le nombre de BC sans facture.
+        from ..vente_facturation import ventes_prechargees
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        rows = list(page) if page is not None else list(queryset)
+        with ventes_prechargees([bc.devis for bc in rows if bc.devis_id]):
+            data = self.get_serializer(rows, many=True).data
+        return self.get_paginated_response(data) if page is not None else Response(data)
+
     def get_serializer(self, *args, **kwargs):
         serializer = super().get_serializer(*args, **kwargs)
         if (self.action in ('create', 'update', 'partial_update')

@@ -48,6 +48,9 @@ class AutoApprobationTest(BaseApiCalepinage):
             roof_layout=DESSIN, **champs)
 
     def _decider(self, calepinage, api=None, **corps):
+        if corps.get('decision') == 'approuve':  # ACON23 — l'empreinte VUE
+            corps.setdefault('empreinte', Calepinage.objects.get(
+                pk=calepinage.pk).layout_hash or '')
         return (api or self.api).post(
             f'{url_detail(calepinage.pk)}approbation/', corps, format='json')
 
@@ -147,7 +150,9 @@ class SeulApprobateurTest(BaseApiCalepinage):
         calepinage = self._calepinage()
 
         reponse = self.api.post(f'{url_detail(calepinage.pk)}approbation/',
-                                {'decision': 'approuve'}, format='json')
+                                {'decision': 'approuve',
+                                 'empreinte': calepinage.layout_hash or ''},
+                                format='json')
 
         self.assertEqual(reponse.status_code, 200, reponse.data)
         self.assertEqual(reponse.data['etat'], 'approuve')
@@ -175,7 +180,9 @@ class SeulApprobateurTest(BaseApiCalepinage):
         calepinage = self._calepinage()
 
         reponse = self.api.post(f'{url_detail(calepinage.pk)}approbation/',
-                                {'decision': 'approuve'}, format='json')
+                                {'decision': 'approuve',
+                                 'empreinte': calepinage.layout_hash or ''},
+                                format='json')
 
         self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertEqual(reponse.data, {'decision': MESSAGE_AUTO_APPROBATION})

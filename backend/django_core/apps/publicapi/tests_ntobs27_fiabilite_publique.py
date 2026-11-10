@@ -67,8 +67,9 @@ class FiabilitePubliqueTests(TestCase):
         self.assertIsNone(resp.data['dernier_drill'])
 
     def test_sauvegardes_expose_date_et_statut_uniquement(self):
+        # ADCG34 — seul un dump réel (instance entière) compte comme sauvegarde.
         BackupRun.objects.create(
-            company=self.company, kind=BackupRun.KIND_EXPORT,
+            company=None, kind=BackupRun.KIND_DB_DUMP,
             statut=BackupRun.STATUT_TERMINE,
             object_key='erp-backups/interne.dump', bytes_taille=4242,
             manifest={'datasets': ['leads'], 'lignes': 12})

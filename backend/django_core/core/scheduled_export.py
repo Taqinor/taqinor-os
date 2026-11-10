@@ -397,7 +397,7 @@ def prochain_curseur(export, rows):
     spec['aggregates'] = [{'alias': 'max_curseur', 'fn': 'max', 'field': champ}]
     try:
         agg = data_explorer.run_query(
-            export.dataset, export.company, None, spec)
+            export.dataset, export.company, _lecteur(export), spec)
     except Exception:  # noqa: BLE001 — jamais d'échec d'export sur le curseur (D-ENF22-BLE001)
         logger.warning('curseur incrémental : max(%s) indisponible sur %r',
                        champ, export.dataset, exc_info=True)
@@ -516,7 +516,7 @@ def rendre_extrait_detaille(export):
     from . import data_explorer
 
     rows = data_explorer.run_query(
-        export.dataset, export.company, None, spec_effective(export))
+        export.dataset, export.company, _lecteur(export), spec_effective(export))
     base = export.titre or export.dataset or 'extrait'
     safe = ''.join(c for c in base if c.isalnum() or c in ('-', '_')) or 'extrait'
 
@@ -574,6 +574,39 @@ def _destination_for(export):
     return cls() if cls else None
 
 
+def _lecteur(export):
+    """APFS103 — le créateur (ses droits, sa portée) ; extrait antérieur sans créateur : ``None``."""
+    return export.created_by if getattr(export, 'created_by_id', None) else None
+
+
+CAUSE_CREATEUR_SUPPRIME = "Créateur de l'extrait supprimé : extrait suspendu."
+
+
+def suspendre_exports_du_createur(sender, instance, **kwargs):
+    """APFS103 — ``pre_delete`` du modèle utilisateur : ses extraits sont
+    suspendus AVANT le ``SET_NULL`` de ``created_by`` (sans créateur,
+    ``_lecteur`` rendrait ``None`` et l'extrait partirait sans borne)."""
+    from .models import ScheduledExport
+    ScheduledExport.objects.filter(created_by_id=instance.pk).update(
+        actif=False, dernier_statut='erreur',
+        dernier_detail={'detail': CAUSE_CREATEUR_SUPPRIME}, updated_at=timezone.now())
+
+
+def _cause_suspension(export):
+    """APFS103 — pourquoi l'extrait ne peut plus partir au nom de son créateur."""
+    from . import data_explorer
+    createur = _lecteur(export)
+    if createur is None:
+        return ''
+    if not createur.is_active:
+        return "Créateur de l'extrait désactivé : extrait suspendu."
+    try:
+        data_explorer.exiger_lecture_dataset(export.dataset, createur)
+    except data_explorer.DatasetNonAutorise:
+        return "Le créateur de l'extrait n'a plus le droit du module du jeu : extrait suspendu."
+    return ''
+
+
 def executer(export, now=None):
     """Rend l'extrait et le livre à la destination (no-op si non configurée).
 
@@ -581,6 +614,12 @@ def executer(export, now=None):
     Jamais d'exception réseau si non configuré.
     """
     now = now or timezone.now()
+    cause = _cause_suspension(export)
+    if cause:  # APFS103 — suspension AVANT toute ligne rendue
+        export.actif, export.dernier_statut, export.dernier_detail = False, 'erreur', {'detail': cause}
+        export.derniere_execution_le = now
+        export.save(update_fields=['actif', 'dernier_statut', 'dernier_detail', 'derniere_execution_le', 'updated_at'])
+        return export
     filename, data, content_type, rows = rendre_extrait_detaille(export)
     context = {
         'company_id': getattr(export, 'company_id', None),

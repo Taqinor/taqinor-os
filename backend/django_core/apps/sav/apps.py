@@ -37,3 +37,5 @@ class SavConfig(AppConfig):
         # handler-ci rattache le message au ticket du fil (ou en ouvre un).
         from .services import register_email_ticket_handler
         register_email_ticket_handler()
+        from . import dsr_provider  # ASOC67 — fournisseur DSR (export)
+        dsr_provider.register()
