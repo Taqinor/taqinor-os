@@ -217,6 +217,27 @@ unites:
                 self.assertEqual(attendu in texte, present, texte)
                 self.assertEqual("ZZTST" in texte, present, texte)
 
+    def test_du_contre_visite_lit_les_blocs_d_ecarts_anterieurs(self):
+        """ADCG106 — compte rendu du 10/02 qui reporte l'écart d'un bloc du 01/02 :
+        dû une fois coché, pas avant ; tâche ouverte d'un bloc ≤ 10/02 ⇒ absent ;
+        bloc postérieur ignoré."""
+        self.depot.ecrire("docs/audits/2026-02-10-truc-verifie.md",
+                          "<!-- verifie | groupe: ZZTST | pct: 100 | ecarts_s1_s2: 1 -->\n")
+        ancien = "\n### ZZTST — ÉCARTS vérifie 2026-02-01 · format v3\n- [x] ZZTST21 — x. Files: `a.py`\n"
+        attendu = "contre-visite des correctifs (écarts S1-S2 du 2026-02-10 tous cochés)"
+        for suite, present in (
+                ("- [BLOCKED: preuve] ZZTST22 — x\n", False),
+                ("- [x] ZZTST22 — x. Files: `a.py`\n", True),
+                ("- [x] ZZTST22 — x. Files: `a.py`\n"
+                 "\n### ZZTST — ÉCARTS vérifie 2026-01-15 · format v3\n- [ ] ZZTST23 — x. Files: `a.py`\n", False),
+                ("- [x] ZZTST22 — x. Files: `a.py`\n"
+                 "\n### ZZTST — ÉCARTS vérifie 2026-02-20 · format v3\n- [x] ZZTST23 — x. Files: `a.py`\n"
+                 "- [BLOCKED: x] ZZTST24 — x\n", True)):
+            with self.subTest(suite=suite, present=present):
+                self.depot.plan(taches(20, 0) + ancien + suite)
+                _, texte = sortie(ar.cmd_du)
+                self.assertEqual(attendu in texte, present, texte)
+
     def test_sans_dossier_a_auditer(self):
         (self.depot.racine / "docs/audits/2026-01-01-truc.md").unlink()
         self.depot.plan(taches(1, 1))

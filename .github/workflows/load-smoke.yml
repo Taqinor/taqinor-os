@@ -80,7 +80,7 @@ jobs:
         run: |
           python manage.py migrate --noinput
           python ../../scripts/load/creer_compte_charge.py
-          python manage.py seed_scale --companies 2 --users 20 \
+          python manage.py seed_scale --tag CHARGE --companies 1 --users 20 \
             --leads 5000 --devis 500 --lignes 5000 --mouvements 5000 \
             --force-je-sais
 
