@@ -11,7 +11,7 @@ def partie_a():
     jours = re.search(r"function joursDepuis\(iso\) \{.*?\n\}", jsx, re.S).group(0)
     calc = re.search(r"const joursDrill = .*?\n\s*const drillPerime = .*?\n", jsx, re.S).group(0)
     js = (f"{seuil}\n{jours}\nconst drill = {{statut: 'echec', date: new Date(Date.now() - 86400000).toISOString()}}\n"
-          f"{calc}\nconsole.log(JSON.stringify({{joursDrill, drillPerime}}))\n")
+          f"{calc}\nconsole.log(JSON.stringify({{joursDrill, drillPerime, drillEchec}}))\n")
     with tempfile.TemporaryDirectory() as d:
         p = pathlib.Path(d) / "calc.mjs"; p.write_text(js, encoding="utf-8")
         out = subprocess.run([shutil.which("node"), str(p)], capture_output=True, text=True, timeout=60)
@@ -35,10 +35,11 @@ def partie_b():
 
 def sonde(ctx=None):
     a, b = partie_a(), partie_b()
-    masque = a["drillPerime"] is False
+    # ADCG42 : le correctif laisse drillPerime faux sur un échec mais affiche le badge drillEchec ; masqué = ni l'un ni l'autre.
+    masque = a["drillPerime"] is False and a.get("drillEchec") is not True
     nul_en_tete = (not b["filtre_statut"]) and b["tri_nul_en_tete"] and b["affectations_termine_le"] == 1
     return {"repro": masque or nul_en_tete, "observe": (
-        f"A (page) : drill echec d'hier → joursDrill={a['joursDrill']}, drillPerime={a['drillPerime']} ; "
+        f"A (page) : drill echec d'hier → joursDrill={a['joursDrill']}, drillPerime={a['drillPerime']}, drillEchec={a.get('drillEchec')} ; "
         f"B (resume_sauvegardes) : filtre de statut sur dernier_drill={b['filtre_statut']}, tri -termine_le sans nulls_last="
         f"{b['tri_nul_en_tete']}, restore_drill : {b['branches_echec']} branches echec et {b['affectations_termine_le']} "
         f"seule affectation de termine_le (succès) → un échec a termine_le nul et passe en tête sous Postgres")}
