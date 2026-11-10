@@ -241,6 +241,25 @@ class AutoDeployTests(unittest.TestCase):
         self.assertIn("ECHEC sans retour arrière (aucun commit sain)", banc.journal)
         self.assertNotIn("ROLLBACK", banc.journal)
 
+    def test_retour_arriere_jamais_dans_un_etat_melange(self):
+        """ADCG107 — (1) le retour arrière recharge Caddy sur la configuration revenue ;
+        (2) une reconstruction de l'ancien commit en échec ne relance rien."""
+        banc = self.banc("caddy", changes="backend/caddy/Caddyfile\nbackend/django_core/apps/crm/views.py\n")
+        rc, _ = banc.jouer(HEALTH="")
+        self.assertNotEqual(rc, 0)
+        apres = banc.appels[banc.index(f"^git reset --hard {A}$"):]
+        i_valide = next((i for i, a in enumerate(apres) if "caddy validate" in a), None)
+        i_recharge = next((i for i, a in enumerate(apres) if "caddy reload" in a), None)
+        self.assertIsNotNone(i_recharge, apres)
+        self.assertLess(i_valide, i_recharge)
+        self.assertIn(f"ROLLBACK vers {A[:9]} effectué", banc.journal)
+        banc = self.banc("build_ko", changes="backend/django_core/requirements.txt\n")
+        rc, _ = banc.jouer(FAIL=r"prod\.yml build")
+        self.assertNotEqual(rc, 0)
+        for motif in (r"prod\.yml up -d", r" restart ", "caddy reload"):
+            self.assertEqual(banc.compte(motif), 0, (motif, banc.appels))
+        self.assertIn(f"ROLLBACK vers {A[:9]} EN ÉCHEC — intervention manuelle", banc.journal)
+
     def test_requirements_et_meryem_ne_sont_pas_des_docs(self):
         """ADCG7 — seuls *.md/*.markdown et docs/** (hors docs/meryem/) sont « docs »."""
         banc = self.banc("requirements",

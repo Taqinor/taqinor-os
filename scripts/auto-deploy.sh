@@ -395,15 +395,24 @@ else
     rb=1
     export DEPLOYED_SHA="$OLD"
     git reset --hard "$OLD" || rb=0
-    if [ "$TOUT" = "1" ]; then
+    if [ "$rb" = "1" ] && [ "$TOUT" = "1" ]; then
       $COMPOSE build || rb=0
-    elif [ -n "$A_CONSTRUIRE" ]; then
+    elif [ "$rb" = "1" ] && [ -n "$A_CONSTRUIRE" ]; then
       # shellcheck disable=SC2086
       $COMPOSE build $A_CONSTRUIRE || rb=0
     fi
-    $COMPOSE up -d --remove-orphans || rb=0
-    $COMPOSE restart django_core celery_worker celery_worker_interactive \
-                     celery_beat fastapi_ia nginx || rb=0
+    # ADCG107 — reset/reconstruction en échec : rien n'est relancé (image neuve + code
+    # ancien = état mélangé) ; sinon Caddy recharge la config revenue (validée, ADCG8).
+    if [ "$rb" = "1" ]; then
+      $COMPOSE up -d --remove-orphans || rb=0
+      $COMPOSE restart django_core celery_worker celery_worker_interactive \
+                       celery_beat fastapi_ia nginx || rb=0
+      if $COMPOSE exec -T caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile; then
+        $COMPOSE exec -T caddy caddy reload --config /etc/caddy/Caddyfile || rb=0
+      else
+        rb=0
+      fi
+    fi
     if [ "$rb" = "1" ]; then
       log "ROLLBACK vers $(git rev-parse --short "$OLD") effectué"
     else
