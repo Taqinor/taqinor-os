@@ -106,6 +106,10 @@ def notify_ticket_transition(ticket, statut, *, request=None):
                     ticket.pk, exc_info=True)
 
         result['sent'] = bool(result['wa_draft_url'] or result['email_sent'])
+        if client is not None:  # ASOC27 — cloche du compte portail (l'e-mail reste celui ci-dessus)
+            from apps.notifications.services import notifier_portail_client
+            notifier_portail_client(ticket.company, client.id, 'portail_ticket_maj', email['sujet'],
+                                    body=email['corps'], link='/portail/client/sav', skip_email=True)
         return result
     except Exception:  # noqa: BLE001 — best-effort, jamais fatal (D-ENF22-BLE001)
         logger.warning(
