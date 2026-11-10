@@ -1248,6 +1248,11 @@ def main(argv=None) -> int:
               "NE LA DESACTIVEZ PAS.")
         return 1
 
+    if v2_perimes:  # ADCG79 — la liste v2 ne garde que des ids encore ouverts
+        print(f"\nECHEC : {len(v2_perimes)} id(s) v2 plus ouvert(s) dans {V2_IDS_RELATIF} : "
+              f"{', '.join(v2_perimes[:20])} — python scripts/check_taches_cablage.py --write-baseline")
+        return 1
+
     print(f"OK : {stats['f1_creations']} tache(s) creent un ecran et "
           f"{stats['f3_candidates']} portent deux moities ; aucun NOUVEAU "
           f"constat bloquant ({len(base)} dette(s) historique(s) gelee(s), "
@@ -1260,9 +1265,7 @@ def main(argv=None) -> int:
         print("Ces dettes corrigees peuvent quitter la base : "
               "python scripts/check_taches_cablage.py --write-baseline")
     print(f"   FORME 5 : {stats['f5_v2']} tache(s) v2 gelee(s), "
-          f"{stats['f5_v3']} tache(s) v3"
-          + (f" ; {len(v2_perimes)} id(s) v2 plus ouvert(s) a retirer "
-             f"(--write-baseline)" if v2_perimes else "") + ".")
+          f"{stats['f5_v3']} tache(s) v3.")
     return 0
 
 
