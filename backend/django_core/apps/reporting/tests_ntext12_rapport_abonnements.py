@@ -287,6 +287,21 @@ class BeatTaskTests(TestCase):
         self.assertEqual(autre.company_id, self.autre.id)
         self.assertEqual(autre.rapport_def.company_id, self.autre.id)
 
+    def test_societe_suspendue_ne_recoit_rien(self):
+        # APFS122 — B suspendue (hors active_companies()) : abonnement dû
+        # jamais traité ; A active : 1 abonnement traité.
+        suspendue = Company.objects.create(nom='NTEXT12 Suspendue', actif=False)
+        mien = self._abonnement()
+        sien = self._abonnement(company=suspendue)
+        with mock.patch(f'{MODULE}._now_casablanca', return_value=lundi_8h()), \
+                mock.patch(f'{MODULE}._email_configure', return_value=False):
+            self.assertEqual(ab.envoyer_rapports_planifies(), 1)
+        mien.refresh_from_db()
+        sien.refresh_from_db()
+        self.assertEqual(mien.dernier_statut,
+                         RapportAbonnement.Statut.NON_CONFIGURE)
+        self.assertEqual(sien.dernier_statut, '')
+
     def test_no_active_subscription_is_a_full_noop(self):
         with mock.patch(f'{MODULE}._now_casablanca', return_value=lundi_8h()):
             self.assertEqual(ab.envoyer_rapports_planifies(), 0)

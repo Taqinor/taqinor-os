@@ -142,6 +142,18 @@ class TestKpiAlerteEvaluationDedup(KpiAlerteBase):
         results = evaluate_all_kpi_alertes(now=timezone.now())
         self.assertEqual(results, [])
 
+    def test_societe_suspendue_non_evaluee(self):
+        # APFS122 — B suspendue (hors active_companies()) : son alerte n'est
+        # jamais évaluée par le balayage ; A active : évaluée.
+        from apps.reporting.kpi_alertes import evaluate_all_kpi_alertes
+        suspendue = Company.objects.create(nom='Suspendue APFS122', actif=False)
+        alertes = [KpiAlerte.objects.create(
+            company=co, kpi=KpiAlerte.Kpi.VALEUR_STOCK_TOTALE,
+            operateur=KpiAlerte.Operateur.SUP, seuil=Decimal('1'))
+            for co in (self.company, suspendue)]
+        results = evaluate_all_kpi_alertes(now=timezone.now())
+        self.assertEqual([r['alerte_id'] for r in results], [alertes[0].id])
+
 
 class TestChampsStrictsFuzzR12(KpiAlerteBase):
     """api-fuzz r12 (CI #956) — ``actif: 0`` (POST/PATCH/PUT) → 400 comme le
