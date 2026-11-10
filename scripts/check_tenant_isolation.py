@@ -79,7 +79,7 @@ APPELS_FILTRANTS = frozenset({"filter", "get", "exclude",
 #: APFS121 — seuls ces appels rendent un queryset ou un objet DÉJÀ borné à la
 #: société (core/mixins.py, core/selectors.py, audit/views.py, records/views.py) ;
 #: un nom d'appel qui contient « company » ne suffit pas.
-APPELS_DE_PORTEE = frozenset({"company_qs", "get_company_object", "_company_qs", "_scoped"})
+APPELS_DE_PORTEE = frozenset({"company_qs", "get_company_object", "_company_qs", "_scoped", "portee_membres"})
 
 #: APFS64 — dette GELÉE (``--list``, 09/11/2026) : ne fait que décroître.
 DETTE_FILTRE_EFFECTIF = frozenset({
@@ -135,7 +135,6 @@ DETTE_FILTRE_EFFECTIF = frozenset({
     "backend/django_core/apps/ged/views.py::public_partage",
     "backend/django_core/apps/sav/public_views.py::ticket_public_satisfaction",
     "backend/django_core/core/export_registry.py::declencher_export_reversibilite",
-    "backend/django_core/authentication/views.py::UserViewSet",
     # APFS121 (10/11/2026) — portée par un seul nom d'appel « company » ; ne fait que décroître.
     "backend/django_core/apps/crm/public_chat_views.py::open_chat_session",
     "backend/django_core/apps/facturation/recouvrement.py::lettre_relance_pdf",

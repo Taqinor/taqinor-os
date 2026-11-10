@@ -316,6 +316,21 @@ class TestTenantIsolation(unittest.TestCase):
         self.assertEqual(sortie.getvalue().count("[DETTE_MORTE]"),
                          len(cti.DETTE_FILTRE_EFFECTIF))
 
+    def test_portee_membres_borne_et_son_retrait_signale(self):
+        """APFS124 — ``portee_membres(company=…)`` est un appel de portée ; sa
+        borne retirée (``objects.all()``) est signalée. Mutant : retirer
+        ``'portee_membres'`` de APPELS_DE_PORTEE."""
+        borne = ("from rest_framework import viewsets\n\n"
+                 "class UserViewSet(viewsets.ModelViewSet):\n"
+                 "    def get_queryset(self):\n"
+                 "        return CustomUser.objects.filter(\n"
+                 "            CustomUser.portee_membres(company=self.request.user.company))\n")
+        self.assertNotIn("COMPANY_FILTER_MISSING", _view_codes(borne))
+        retire = borne.replace(
+            "filter(\n            CustomUser.portee_membres(company=self.request.user.company))",
+            "all()")
+        self.assertIn("COMPANY_FILTER_MISSING", _view_codes(retire))
+
     def test_naked_modelviewset_flagged(self):
         self.assertIn("COMPANY_FILTER_MISSING", _view_codes(NAKED_VIEWSET))
 
