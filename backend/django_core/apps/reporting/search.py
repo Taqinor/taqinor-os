@@ -35,14 +35,15 @@ Téléphone / e-mail (APFS24) restent en ``icontains`` réservé à
 from datetime import date, timedelta
 
 from django.contrib.contenttypes.models import ContentType
-from django.contrib.postgres.search import SearchRank
+from django.contrib.postgres.lookups import TrigramSimilar
+from django.contrib.postgres.search import SearchRank, TrigramSimilarity
 from django.db.models import F, Q
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole
 from core import platform
-from core.recherche_fts import requete_prefixe
+from core.recherche_fts import requete_prefixe, trigramme_disponible
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import serializers as drf_serializers
@@ -467,6 +468,84 @@ def global_search(request):
     groups.extend(_custom_record_groups(request.user, co, q))
 
     return Response({'query': q, 'groups': groups})
+
+
+# ── NTPLT34 — autocomplétion tolérante aux fautes (barre ⌘K) ─────────────────
+# Lead.nom, Client.nom, Produit.nom (la « désignation » du catalogue) par
+# similarité trigramme (pg_trgm, index GIN posés par crm/0161 et stock/0181) :
+# « Benani » trouve « Bennani », « Tazy » trouve « Tazi ». Bornée société,
+# droit de lecture du module et portée du rôle (comme la recherche globale),
+# 10 résultats au plus. Sans pg_trgm : repli icontains (``score`` nul).
+SUGGEST_MAX = 10
+SEUIL_SIMILARITE = 0.3
+_SUGGEST_Q_MAX = 100
+
+
+def _suggestions(qs, q, trigramme):
+    """Les ≤ ``SUGGEST_MAX`` lignes de ``qs`` proches de ``q`` sur ``nom``.
+    L'opérateur ``%`` (index GIN) filtre ; ``similarity()`` classe."""
+    if trigramme:
+        return list(qs.filter(TrigramSimilar(F('nom'), q))
+                    .annotate(score_trgm=TrigramSimilarity('nom', q))
+                    .filter(score_trgm__gt=SEUIL_SIMILARITE)
+                    .order_by('-score_trgm', 'pk')[:SUGGEST_MAX])
+    return list(qs.filter(nom__icontains=q).order_by('nom', 'pk')[:SUGGEST_MAX])
+
+
+def _sources_suggest(user, co):
+    """(type, queryset borné, étiquetage) des sources que ``user`` peut lire.
+    Jamais de coordonnées personnelles ni de prix dans l'étiquette."""
+    from apps.crm.models import Client, Lead
+    from apps.crm.selectors import portee_leads
+    from apps.stock.models import Produit
+    cherchables = platform.searchable_models(user.company)
+    sources = []
+    if 'crm.lead' in cherchables and _groupe_permis(user, 'crm.lead'):
+        sources.append(('lead', portee_leads(Lead.objects.filter(**co), user), lambda le: (
+            f"{le.nom} {le.prenom or ''}".strip(), le.societe or le.ville or '')))
+    if 'crm.client' in cherchables and _groupe_permis(user, 'crm.client'):
+        sources.append(('client', Client.objects.filter(**co), lambda c: (
+            f"{c.nom} {c.prenom or ''}".strip(), '')))
+    if 'stock.produit' in cherchables and _groupe_permis(user, 'stock.produit'):
+        sources.append(('produit', Produit.objects.filter(**co, is_archived=False),
+                        lambda p: (p.nom, p.sku or '')))
+    return sources
+
+
+_SEARCH_SUGGEST_REPONSE = inline_serializer('SearchSuggestReponse', {
+    'query': drf_serializers.CharField(),
+    'results': drf_serializers.JSONField(),
+})
+
+
+@extend_schema(
+    parameters=[
+        OpenApiParameter('q', OpenApiTypes.STR, required=False),
+    ],
+    responses={200: _SEARCH_SUGGEST_REPONSE})
+@api_view(['GET'])
+@permission_classes([IsAnyRole])
+def suggest(request):
+    """NTPLT34 — ``?q=`` → ``{query, results: [{type, id, label, sublabel,
+    score}]}`` (≤ 10, du plus proche au plus lointain)."""
+    co = _co_filter(request.user)
+    if co is None:
+        return Response({'detail': 'Accès refusé.'}, status=403)
+    q = (request.query_params.get('q') or '').strip()[:_SUGGEST_Q_MAX]
+    if len(q) < 2:
+        return Response({'query': q, 'results': []})
+    trigramme = trigramme_disponible()
+    resultats = []
+    for type_, qs, etiquette in _sources_suggest(request.user, co):
+        for obj in _suggestions(qs, q, trigramme):
+            label, sublabel = etiquette(obj)
+            score = getattr(obj, 'score_trgm', None)
+            resultats.append({
+                'type': type_, 'id': obj.pk, 'label': label or '—',
+                'sublabel': sublabel,
+                'score': round(score, 3) if score is not None else None})
+    resultats.sort(key=lambda r: -(r['score'] or 0))  # tri stable
+    return Response({'query': q, 'results': resultats[:SUGGEST_MAX]})
 
 
 _SEARCH_NOTIFICATIONS_REPONSE = inline_serializer('SearchNotificationsReponse', {

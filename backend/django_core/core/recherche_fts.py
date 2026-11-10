@@ -156,6 +156,30 @@ def modeles(app_label=None):
     return sortie
 
 
+_SQL_SONDE_TRGM = "SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm'"
+_CACHE_TRGM = {}
+
+
+def trigramme_disponible():
+    """NTPLT34 — ``True`` si l'extension ``pg_trgm`` est installée (sondé une
+    fois par processus, comme ``stock.selectors.recherche_sans_accents_disponible``).
+    Toute anomalie vaut « indisponible » : l'appelant retombe sur icontains."""
+    if 'ok' in _CACHE_TRGM:
+        return _CACHE_TRGM['ok']
+    from django.db import connection
+
+    disponible = False
+    if connection.vendor == 'postgresql':
+        try:
+            with connection.cursor() as curseur:
+                curseur.execute(_SQL_SONDE_TRGM)
+                disponible = curseur.fetchone() is not None
+        except Exception:  # noqa: BLE001 — sonde catalogue, jamais bloquante (D-ENF22-BLE001)
+            logger.warning('recherche_fts : sonde pg_trgm échouée', exc_info=True)
+    _CACHE_TRGM['ok'] = disponible
+    return disponible
+
+
 _JETON = re.compile(r'[^\W_]+')
 _JETONS_MAX = 8
 

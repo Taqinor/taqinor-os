@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4947, operations: 7745, components: 3644}
+counts: {paths: 4949, operations: 7747, components: 3645}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -2761,6 +2761,7 @@ operations:
 - patch /api/django/reporting/saved-reports/{id}/ -> django_reporting_saved_reports_partial_update
 - put /api/django/reporting/saved-reports/{id}/ -> django_reporting_saved_reports_update
 - get /api/django/reporting/search/ -> django_reporting_search_retrieve
+- get /api/django/reporting/search/suggest/ -> django_reporting_search_suggest_retrieve
 - post /api/django/reporting/vitals/ -> django_reporting_vitals_create
 - get /api/django/reporting/vitals/p75/ -> django_reporting_vitals_p75_retrieve
 - get /api/django/roles/ -> django_roles_list
@@ -6639,6 +6640,7 @@ operations:
 - patch /api/v1/reporting/saved-reports/{id}/ -> v1_reporting_saved_reports_partial_update
 - put /api/v1/reporting/saved-reports/{id}/ -> v1_reporting_saved_reports_update
 - get /api/v1/reporting/search/ -> v1_reporting_search_retrieve
+- get /api/v1/reporting/search/suggest/ -> v1_reporting_search_suggest_retrieve
 - post /api/v1/reporting/vitals/ -> v1_reporting_vitals_create
 - get /api/v1/reporting/vitals/p75/ -> v1_reporting_vitals_p75_retrieve
 - get /api/v1/roles/ -> v1_roles_list
@@ -8314,6 +8316,7 @@ query_params:
   get /api/django/reporting/reports/stock/: export from to
   get /api/django/reporting/saved-reports/: ordering page page_size search
   get /api/django/reporting/search/: q
+  get /api/django/reporting/search/suggest/: q
   get /api/django/reporting/vitals/p75/: route
   get /api/django/roles/: ordering page page_size search
   get /api/django/roles/departements/: ordering page page_size search
@@ -9112,6 +9115,7 @@ query_params:
   get /api/v1/reporting/reports/stock/: export from to
   get /api/v1/reporting/saved-reports/: ordering page page_size search
   get /api/v1/reporting/search/: q
+  get /api/v1/reporting/search/suggest/: q
   get /api/v1/reporting/vitals/p75/: route
   get /api/v1/roles/: ordering page page_size search
   get /api/v1/roles/departements/: ordering page page_size search
@@ -12545,6 +12549,7 @@ components:
 - ScopesEnum
 - SearchGlobalSearchReponse
 - SearchNotificationsReponse
+- SearchSuggestReponse
 - SearchTypeEnum
 - SecretsRotation
 - SegmentEnum

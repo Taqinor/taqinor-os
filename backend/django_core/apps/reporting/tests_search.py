@@ -246,6 +246,61 @@ class TestGlobalSearchFts(TestCase):
         self.assertEqual(facture['results'][0]['label'], 'FAC-FTS-1')
 
 
+class TestSuggestTrigramme(TestCase):
+    """NTPLT34 — ``reporting/search/suggest/`` : tolérant aux fautes
+    (pg_trgm), borné société, 10 résultats au plus."""
+
+    URL = '/api/django/reporting/search/suggest/'
+
+    def setUp(self):
+        self.company = Company.objects.get_or_create(
+            slug='suggest-co', defaults={'nom': 'Suggest Co'})[0]
+        self.autre = Company.objects.create(slug='suggest-autre', nom='Autre')
+        self.user = User.objects.create_user(
+            username='suggest_user', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+
+    def test_faute_de_frappe_bornee_societe_et_plafond(self):
+        from core.recherche_fts import trigramme_disponible
+        if not trigramme_disponible():
+            self.skipTest("pg_trgm absente de la base de test : repli icontains.")
+        Lead.objects.create(company=self.company, nom='Bennani', prenom='Salma')
+        Lead.objects.create(company=self.autre, nom='Bennani', prenom='Autre')
+        Client.objects.create(company=self.company, nom='Benanni', prenom='Électricité')
+        resp = self.api.get(self.URL, {'q': 'Benani'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(set(resp.data), {'query', 'results'})
+        par_type = {(r['type'], r['label']) for r in resp.data['results']}
+        self.assertIn(('lead', 'Bennani Salma'), par_type)
+        self.assertIn(('client', 'Benanni Électricité'), par_type)
+        self.assertNotIn(('lead', 'Bennani Autre'), par_type)
+        for r in resp.data['results']:
+            self.assertEqual(set(r), {'type', 'id', 'label', 'sublabel', 'score'})
+            self.assertGreater(r['score'], 0.3)
+        scores = [r['score'] for r in resp.data['results']]
+        self.assertEqual(scores, sorted(scores, reverse=True))
+        for i in range(12):
+            Lead.objects.create(company=self.company, nom=f'Bennani{i}')
+        self.assertLessEqual(
+            len(self.api.get(self.URL, {'q': 'Bennani'}).data['results']), 10)
+
+    def test_requete_courte_et_repli_sans_trigramme(self):
+        from unittest import mock
+        resp = self.api.get(self.URL, {'q': 'b'})
+        self.assertEqual(resp.data, {'query': 'b', 'results': []})
+        Lead.objects.create(company=self.company, nom='Alaoui')
+        with mock.patch('apps.reporting.search.trigramme_disponible',
+                        return_value=False):
+            resp = self.api.get(self.URL, {'q': 'lao'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual([(r['type'], r['label'], r['score'])
+                          for r in resp.data['results']],
+                         [('lead', 'Alaoui', None)])
+
+
 class TestNotifications(TestCase):
     def setUp(self):
         self.company = Company.objects.get_or_create(

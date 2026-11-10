@@ -1,7 +1,7 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 from .views import dashboard
-from .search import global_search, notifications
+from .search import global_search, notifications, suggest
 from .pipeline import pipeline, funnel_velocity, probabilites_etape
 from .reports import (
     kpi_federes, sales_report, stock_report, service_report,
@@ -61,6 +61,8 @@ urlpatterns = [
     path('', include(router.urls)),
     path('dashboard/', dashboard, name='reporting-dashboard'),
     path('search/', global_search, name='global-search'),
+    # NTPLT34 — autocomplétion tolérante aux fautes (barre ⌘K).
+    path('search/suggest/', suggest, name='global-search-suggest'),
     path('notifications/', notifications, name='in-app-notifications'),
     path('calendar/', calendar_events, name='reporting-calendar'),
     path('calendar/reschedule/', calendar_reschedule,
