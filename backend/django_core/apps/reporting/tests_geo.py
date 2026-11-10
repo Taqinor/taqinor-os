@@ -162,3 +162,45 @@ class TestGeoPoints(TestCase):
         anon = APIClient()
         resp = anon.get(URL)
         self.assertIn(resp.status_code, (401, 403))
+
+    def test_points_lead_bornes_au_droit_a_la_portee_et_aux_pii(self):
+        """APFS25 (C-APFS-026) — Admin RH : aucun point ; Technicien : chantier,
+        aucun lead ; C2 « soi » : pas le lead de C1 ; rôle sans client_pii_voir :
+        aucun point lead ; C1 et Directeur : le lead de C1."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import (
+            CANONICAL_SYSTEM_ROLES, COMMERCIAL_PERMISSIONS)
+        roles = dict(CANONICAL_SYSTEM_ROLES)
+        sans_pii = [c for c in COMMERCIAL_PERMISSIONS if c != 'client_pii_voir']
+        comptes = {}
+        for nom, perms in (('C1', COMMERCIAL_PERMISSIONS),
+                           ('C2', COMMERCIAL_PERMISSIONS),
+                           ('Technicien', roles['Technicien']),
+                           ('Admin RH', roles['Admin RH']),
+                           ('Sans PII', sans_pii),
+                           ('Directeur', roles['Directeur'])):
+            comptes[nom] = User.objects.create_user(
+                username=f'apfs25-{nom}', password='x', company=self.company,
+                role=Role.objects.create(company=self.company, nom=f'APFS25 {nom}',
+                                         permissions=list(perms)))
+        lead = self._lead(nom='Alaoui026', owner=comptes['C1'])
+        self._chantier(reference='CH-APFS25',
+                       technicien_responsable=comptes['Technicien'])
+
+        def types(nom):
+            api = APIClient()
+            api.force_authenticate(comptes[nom])
+            resp = api.get(URL)
+            self.assertEqual(resp.status_code, 200, (nom, resp.data))
+            return {p['type'] for p in resp.data['points']}, {
+                p['id'] for p in resp.data['points']}
+
+        self.assertEqual(types('Admin RH'), (set(), set()))
+        tech_types, _ids = types('Technicien')
+        self.assertIn('chantier', tech_types)
+        self.assertNotIn('lead', tech_types)
+        for nom in ('C2', 'Sans PII'):
+            self.assertNotIn(f'lead-{lead.id}', types(nom)[1], nom)
+        self.assertNotIn('lead', types('Sans PII')[0])
+        for nom in ('C1', 'Directeur'):
+            self.assertIn(f'lead-{lead.id}', types(nom)[1], nom)

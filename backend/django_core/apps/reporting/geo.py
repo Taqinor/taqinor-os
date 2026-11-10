@@ -96,13 +96,26 @@ def geo_points(request):
     statuts = _wanted_set(request.query_params.get('statuts'))
 
     from apps.crm.models import Lead
+    from apps.crm.portee_selectors import portee_leads
     from apps.installations.models import Installation, Intervention
+    from apps.installations.selectors import scoper_chantiers
+    from core.permissions import _user_has_or_legacy
 
+    # APFS25 — points bornés au droit du module et à la portée : leads sous
+    # crm_voir + client_pii_voir (un point sans coordonnée n'a pas de sens) ;
+    # chantiers / installés / visites sous installation_voir.
+    user = request.user
+    leads_vus = (portee_leads(Lead.objects.filter(**co, is_archived=False), user)
+                 if _user_has_or_legacy(user, 'crm_voir') and user.can_view_client_pii
+                 else Lead.objects.none())
+    chantiers_vus = (scoper_chantiers(Installation.objects.filter(**co), user)
+                     if _user_has_or_legacy(user, 'installation_voir')
+                     else Installation.objects.none())
     points = []
 
     # ── Leads géolocalisés (prospects) ────────────────────────────────────
     if want(TYPE_LEAD):
-        leads = (Lead.objects.filter(**co, is_archived=False)
+        leads = (leads_vus
                  .exclude(gps_lat__isnull=True).exclude(gps_lng__isnull=True))
         for le in leads:
             # Filtre statut optionnel : pour un lead, le « statut » est l'étape.
@@ -131,7 +144,7 @@ def geo_points(request):
         Installation.Statut.CLOTURE,
     }
     if want(TYPE_CHANTIER) or want(TYPE_INSTALLE):
-        inst_qs = (Installation.objects.filter(**co)
+        inst_qs = (chantiers_vus
                    .exclude(gps_lat__isnull=True).exclude(gps_lng__isnull=True))
         for inst in inst_qs:
             canonical = Installation.canonical_statut(inst.statut)
@@ -162,8 +175,7 @@ def geo_points(request):
     if want(TYPE_VISITE):
         # Visite technique d'un lead (non effectuée) avec GPS.
         lead_visits = (
-            Lead.objects.filter(
-                **co, is_archived=False, visite_effectuee=False)
+            leads_vus.filter(visite_effectuee=False)
             .exclude(visite_prevue_le__isnull=True)
             .exclude(gps_lat__isnull=True)
             .exclude(gps_lng__isnull=True))
@@ -183,7 +195,7 @@ def geo_points(request):
             })
 
         # Pose prévue d'un chantier avec GPS.
-        poses = (Installation.objects.filter(**co)
+        poses = (chantiers_vus
                  .exclude(date_pose_prevue__isnull=True)
                  .exclude(gps_lat__isnull=True).exclude(gps_lng__isnull=True))
         for inst in poses:
@@ -201,7 +213,7 @@ def geo_points(request):
             })
 
         # Interventions terrain planifiées — GPS hérité du chantier lié.
-        inter = (Intervention.objects.filter(**co)
+        inter = (Intervention.objects.filter(**co, installation__in=chantiers_vus)
                  .exclude(date_prevue__isnull=True)
                  .select_related('installation')
                  .exclude(installation__gps_lat__isnull=True)
