@@ -1244,3 +1244,44 @@ class BaremeExigeTests(TestCase):
         self.assertTrue(vus, "l'échelle ne sonde rien malgré le catalogue seedé")
         for table in vus:
             self.assertEqual(list(table or []), list(attendues))
+
+    def test_l_echelle_passe_le_devis_aux_bornes_batterie(self):
+        """AMOT128 (C-AMOT-VER5-121) — l'échelle de paliers lit les bornes
+        batterie AU NIVEAU DU DEVIS : chaque appel de
+        ``puissances_batterie_des_lignes`` reçoit ce devis (un devis envoyé au
+        niveau 11 garde les bornes d'hier). Test-du-test : ôter ``devis=`` ⇒
+        ``None`` reçu, rouge."""
+        from unittest import mock
+
+        from apps.crm.models import Client, Lead
+        from apps.ventes.dimensionnement import echelle_paliers_batterie
+        from apps.ventes.horaire import batterie_lignes as module_bl
+        from apps.ventes.models import Devis
+
+        lead = Lead.objects.create(
+            company=self.company, nom='Lead', prenom='amot128',
+            telephone='+212600000000', ville=VILLE,
+            facture_hiver=2500, ete_differente=False)
+        client_obj = Client.objects.get_or_create(
+            company=self.company, nom='Client amot128', defaults={})[0]
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-AMOT128-01',
+            client=client_obj, lead=lead, statut='brouillon',
+            taux_tva=Decimal('20'), mode_installation='residentiel',
+            etude_params={})
+
+        recus = []
+        # Import DANS le corps de ``_echelle_paliers_batterie`` : on espionne
+        # le module SOURCE.
+        vrai = module_bl.puissances_batterie_des_lignes
+
+        def espion(*args, **kwargs):
+            recus.append(kwargs.get('devis'))
+            return vrai(*args, **kwargs)
+
+        with mock.patch.object(module_bl, 'puissances_batterie_des_lignes', espion):
+            echelle_paliers_batterie(devis)
+
+        self.assertTrue(recus, "l'échelle ne lit aucune borne malgré le catalogue seedé")
+        for recu in recus:
+            self.assertIs(recu, devis)

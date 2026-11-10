@@ -924,8 +924,8 @@ def _echelle_paliers_batterie(devis):
                 continue
             reels[cible] = capacite
             vues[cible] = vue
-            puissances = puissances_batterie_des_lignes(
-                lignes, roles=getattr(lignes, 'roles', None))
+            puissances = puissances_batterie_des_lignes(  # AMOT128 : niveau du devis
+                lignes, roles=getattr(lignes, 'roles', None), devis=devis)
             bornes[capacite] = {
                 'decharge_kw': puissances['packs_decharge_kw'],
                 'decharge_onduleur_kw': puissances['ond_decharge_kw'],
