@@ -30,7 +30,6 @@ au portail (``auth/me``, ``auth/logout``, ``token``/``token/refresh``) restent
 sur ``IsAuthenticated``/``AllowAny`` et demeurent donc joignables par un compte
 portail — la frontière est nette.
 """
-from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 
 # Valeur canonique de ``CustomUser.portee`` pour un compte interne (défaut).
@@ -139,27 +138,13 @@ class IsPortalScopedUser(BasePermission):
 # ``IsAuthenticated`` : sans eux le client ne pourrait jamais SORTIR de l'état
 # « mot de passe à changer ».
 
-#: Code machine renvoyé dans le corps du 403 (le frontend s'y branche).
-CODE_MOT_DE_PASSE_A_CHANGER = 'mot_de_passe_a_changer'
-
-MESSAGE_MOT_DE_PASSE_A_CHANGER = (
-    'Vous devez définir un nouveau mot de passe avant d’accéder à votre '
-    'espace.'
+# APFS3 — la règle vit désormais au point d'authentification
+# (``authentication.permissions``, une seule définition) ; ré-importée ici
+# pour les trois gardes portail ci-dessus.
+from authentication.permissions import (  # noqa: E402,F401 — ré-export (APFS3)
+    CODE_MOT_DE_PASSE_A_CHANGER, MESSAGE_MOT_DE_PASSE_A_CHANGER,
+    exiger_mot_de_passe_change,
 )
-
-
-def exiger_mot_de_passe_change(user):
-    """AUD139 — Lève 403 si ``user`` doit encore changer son mot de passe.
-
-    Le corps porte un CODE exploitable (``code``) en plus du message : un
-    écran ne doit pas avoir à reconnaître une phrase française pour router
-    l'utilisateur vers le formulaire de changement.
-    """
-    if getattr(user, 'must_change_password', False):
-        raise PermissionDenied({
-            'detail': MESSAGE_MOT_DE_PASSE_A_CHANGER,
-            'code': CODE_MOT_DE_PASSE_A_CHANGER,
-        })
 
 
 def acces_portail_revoque(user):
