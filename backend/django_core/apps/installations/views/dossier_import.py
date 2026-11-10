@@ -14,6 +14,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from apps.stock.permissions import PeutVoirPrixAchat
 from core.viewsets import CompanyScopedModelViewSet
 
 from apps.ventes.utils.references import create_with_reference
@@ -23,7 +24,7 @@ from ..serializers import DossierImportSerializer
 from .. import selectors
 from . import _openapi as oa
 
-READ_ACTIONS = ['list', 'retrieve', 'landed_cost']
+READ_ACTIONS = ['list', 'retrieve']  # APFS29 : `landed_cost` sous PeutVoirPrixAchat
 
 # Ordre canonique du statut douanier (jamais alphabétique).
 STATUT_ORDER = [
@@ -48,6 +49,8 @@ class DossierImportViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     serializer_class = DossierImportSerializer
 
     def get_permissions(self):
+        if self.action == 'landed_cost':
+            return [IsAnyRole(), PeutVoirPrixAchat()]
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]

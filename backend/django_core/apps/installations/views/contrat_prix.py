@@ -16,6 +16,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from apps.stock.permissions import PeutVoirPrixAchat
 from core.viewsets import CompanyScopedModelViewSet
 
 from apps.ventes.utils.references import create_with_reference
@@ -27,7 +28,7 @@ from ..serializers import (
 from .. import selectors
 from . import _openapi as oa
 
-READ_ACTIONS = ['list', 'retrieve', 'prix_convenu']
+READ_ACTIONS = ['list', 'retrieve']  # APFS29 : `prix_convenu` sous PeutVoirPrixAchat
 
 
 @oa.listing(p0=oa.qi('fournisseur'), p1=oa.qs('statut'))
@@ -41,6 +42,8 @@ class ContratPrixFournisseurViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet)
     serializer_class = ContratPrixFournisseurSerializer
 
     def get_permissions(self):
+        if self.action == 'prix_convenu':
+            return [IsAnyRole(), PeutVoirPrixAchat()]
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
