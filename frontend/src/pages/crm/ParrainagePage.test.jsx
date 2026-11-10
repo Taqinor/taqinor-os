@@ -23,6 +23,11 @@ vi.mock('../../api/crmApi', () => ({
   },
 }))
 
+vi.mock('../../api/parametresApi', () => ({
+  default: { getProfile: vi.fn(() => Promise.resolve({ data: { referral_enabled: true } })) },
+}))
+
+import parametresApi from '../../api/parametresApi'
 import ParrainagePage from './ParrainagePage'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
@@ -51,6 +56,24 @@ describe('ParrainagePage (P169 — sans style inline)', () => {
     expect(screen.getByRole('cell', { name: 'Libre' })).toBeInTheDocument()
     const lignes = screen.getAllByRole('row')
     expect(lignes[lignes.length - 1]).toHaveTextContent(/^Dupont—/)
+  })
+
+  it('réglage éteint : écran Parrainage désactivé sans formulaire', async () => {
+    // ASOC104 (D-ASOC-7) — ni formulaire, ni tableau, aucun appel parrainages.
+    parametresApi.getProfile.mockResolvedValueOnce({ data: { referral_enabled: false } })
+    render(<ParrainagePage />)
+    expect(await screen.findByText(/Parrainage désactivé — activez-le dans/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Paramètres › Leads' }))
+      .toHaveAttribute('href', '/parametres?onglet=leads')
+    expect(screen.queryByRole('button', { name: '+ Ajouter' })).not.toBeInTheDocument()
+    expect(crmApi.getParrainages).not.toHaveBeenCalled()
+  })
+
+  it('lecture du réglage en échec : écran actuel, jamais masqué', async () => {
+    parametresApi.getProfile.mockRejectedValueOnce(new Error('réseau'))
+    render(<ParrainagePage />)
+    await waitFor(() => expect(crmApi.getParrainages).toHaveBeenCalled())
+    expect(screen.getByRole('button', { name: '+ Ajouter' })).toBeInTheDocument()
   })
 
   it('crée un parrainage lié au lead filleul', async () => {

@@ -3,6 +3,7 @@
 // récompense par défaut + l'activation se règlent dans Paramètres.
 import { useEffect, useState } from 'react'
 import crmApi from '../../api/crmApi'
+import parametresApi from '../../api/parametresApi'
 import fetchAllPages from '../../utils/fetchAllPages'
 import { Table } from '../reporting/Table'
 import { formatMAD } from '../../lib/format'
@@ -26,6 +27,7 @@ export default function ParrainagePage() {
   const [leads, setLeads] = useState([])
   const [stats, setStats] = useState(null)
   const [msg, setMsg] = useState(null)
+  const [desactive, setDesactive] = useState(false)
   const [form, setForm] = useState(
     { parrain: parrainInitial, filleul_lead: '', filleul_nom: '', recompense: '' })
 
@@ -35,7 +37,13 @@ export default function ParrainagePage() {
       .then(res => setRows(Array.isArray(res) ? res : (res?.results ?? []))).catch(() => {})
     crmApi.parrainageStats().then(r => setStats(r.data)).catch(() => {})
   }
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    // ASOC104 (D-ASOC-7) — `referral_enabled` relu à chaque ouverture ; une
+    // lecture en échec ne masque jamais l'écran.
+    parametresApi.getProfile()
+      .then(r => (r.data?.referral_enabled === false ? setDesactive(true) : load()))
+      .catch(() => load())
+  }, [])
   useEffect(() => {
     // ALEA20 — sélecteur parrain : TOUS les clients (pagination complète).
     fetchAllPages((page, { page_size: pageSize } = {}) =>
@@ -65,6 +73,13 @@ export default function ParrainagePage() {
   const setStatut = async (id, statut) => {
     try { await crmApi.saveParrainage(id, { statut }); load() } catch { console.warn('ParrainagePage (setStatut) : échec ignoré (dégradé)') }
   }
+
+  if (desactive) return (
+    <div className="page max-w-[1000px] text-muted-foreground">
+      Parrainage désactivé — activez-le dans{' '}
+      <a className="underline" href="/parametres?onglet=leads">Paramètres › Leads</a>
+    </div>
+  )
 
   // P169 — plus aucun style={} en dur : tout passe par des classes Tailwind/tokens.
   const cardCls = 'stat-card min-w-[150px] rounded-xl border border-border bg-card px-[1.1rem] py-[0.85rem]'

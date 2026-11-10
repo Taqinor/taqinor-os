@@ -31,6 +31,10 @@ vi.mock('../../api/crmApi', () => ({
   },
 }))
 
+vi.mock('../../api/parametresApi', () => ({
+  default: { getProfile: () => Promise.resolve({ data: { referral_enabled: true } }) },
+}))
+
 import ParrainagePage from './ParrainagePage'
 
 afterEach(cleanup)
