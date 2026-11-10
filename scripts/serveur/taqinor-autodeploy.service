@@ -1,0 +1,11 @@
+# Taqinor OS — auto-déploiement (ADCG96, versionné le 10/11/2026).
+# Installé par scripts/serveur/installer-serveur.sh dans /etc/systemd/system/.
+# Réglages lus sur le serveur de production le 10/11 : Type=oneshot,
+# ExecStart=/opt/autodeploy/auto-deploy.sh. Déclenché par taqinor-autodeploy.timer
+# et par scripts/deploy-prod.ps1 (`systemctl start taqinor-autodeploy.service`).
+[Unit]
+Description=Taqinor OS - auto-deploiement de origin/main (scripts/auto-deploy.sh)
+
+[Service]
+Type=oneshot
+ExecStart=/opt/autodeploy/auto-deploy.sh
