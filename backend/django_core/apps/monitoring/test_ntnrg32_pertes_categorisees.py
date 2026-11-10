@@ -88,8 +88,29 @@ class TestPertesCategorisees(TestCase):
             company=self.company, installation=inst,
             date=self.today - timedelta(days=2), energy_kwh=Decimal('60'))
         result = pertes_categorisees(inst, window_days=10, today=self.today)
-        # 1 jour sur 10 porte un motif de limitation → 10 %.
-        self.assertEqual(result['curtailment_pct'], Decimal('10.00'))
+        # AMON103 — fenêtre bornée au premier relevé (J−2) : 3 jours, dont 1
+        # porte un motif de limitation → 33,33 % (et non 1/10).
+        self.assertEqual(result['curtailment_pct'], Decimal('33.33'))
+
+    def test_panne_rapportee_a_la_fenetre_bornee(self):
+        """AMON103 — système en service depuis 60 j, drapeau ouvert depuis
+        60 j ⇒ panne 100,00 % (et non 60/365 = 16,44)."""
+        inst = make_inst(self.company, 'AMON103-1')
+        debut = self.today - timedelta(days=59)
+        Installation.objects.filter(pk=inst.pk).update(
+            date_mise_en_service=debut)
+        inst.refresh_from_db()
+        for i in range(60):
+            ProductionReading.objects.create(
+                company=self.company, installation=inst,
+                date=debut + timedelta(days=i), energy_kwh=Decimal('30'))
+        flag = UnderperformanceFlag.objects.create(
+            company=self.company, installation=inst, is_open=True)
+        flag.date_creation = timezone.make_aware(
+            timezone.datetime.combine(debut, timezone.datetime.min.time()))
+        flag.save(update_fields=['date_creation'])
+        result = pertes_categorisees(inst, today=self.today)
+        self.assertEqual(result['panne_pct'], Decimal('100.00'))
 
     def test_soiling_reste_relaye_tel_quel(self):
         inst = make_inst(self.company, 'NTNRG32-6')

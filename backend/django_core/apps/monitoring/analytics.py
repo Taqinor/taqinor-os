@@ -340,16 +340,19 @@ def pertes_categorisees(installation, *, window_days=DEFAULT_WINDOW_DAYS,
     soiling = soiling_assessment(installation, window_days=window_days, today=today)
     soiling_pct = soiling['estimated_soiling_loss_pct']
 
-    jours_panne = _jours_panne_dans_fenetre(installation, since, today)
-    panne_pct = _q(Decimal(jours_panne) / Decimal(window_days) * Decimal('100'))
+    # AMON103 — dénominateur = jours de la fenêtre BORNÉE au début de
+    # couverture (mise en service / premier relevé), jamais 365 j fixes.
+    debut, jours = fenetre_mesuree(installation, since, today, window_days)
+    jours_panne = _jours_panne_dans_fenetre(installation, debut, today)
+    panne_pct = _q(Decimal(jours_panne) / jours * 100) if jours else None
 
     jours_curtailment = (
         analytics_queryset(ProductionReading.objects)
-        .filter(installation=installation, date__gte=since, date__lte=today)
+        .filter(installation=installation, date__gte=debut, date__lte=today)
         .exclude(motif_limitation='')
         .values('date').distinct().count())
-    curtailment_pct = _q(
-        Decimal(jours_curtailment) / Decimal(window_days) * Decimal('100'))
+    curtailment_pct = (_q(Decimal(jours_curtailment) / jours * 100)
+                       if jours else None)
 
     return {
         'installation': installation.id,
