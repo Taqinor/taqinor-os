@@ -1495,19 +1495,24 @@ def notify_security_change(user, title, body='', *, link=None, company=None):
     event_type = EventType.SECURITY_CHANGE
     created = None
     try:
-        created = Notification.objects.create(
-            company=company, recipient=user, event_type=event_type,
-            title=str(title)[:255], body=str(body or '')[:MAX_BODY_LEN],
-            link=str(link or '')[:512])
+        with transaction.atomic():  # ASOC31 — point de sauvegarde
+            created = Notification.objects.create(
+                company=company, recipient=user, event_type=event_type,
+                title=str(title)[:255], body=str(body or '')[:MAX_BODY_LEN],
+                link=str(link or '')[:512])
         _audit_notify(user, company, event_type, channel='in_app', ok=True,
                       instance=created)
     except Exception as exc:  # pragma: no cover - défensif
         logger.warning('Notification sécurité in-app échouée : %s', exc)
-    # Email TOUJOURS tenté (best-effort), indépendamment des préférences.
-    try:
-        _dispatch_email(user, str(title), str(body or ''))
-    except Exception as exc:  # pragma: no cover - défensif
-        logger.warning('Email notification sécurité échoué : %s', exc)
+
+    # Email TOUJOURS tenté (best-effort), indépendamment des préférences —
+    # ASOC31 : au COMMIT seulement (un changement annulé n'envoie rien).
+    def _envoyer_email():
+        try:
+            _dispatch_email(user, str(title), str(body or ''))
+        except Exception as exc:  # pragma: no cover - défensif
+            logger.warning('Email notification sécurité échoué : %s', exc)
+    transaction.on_commit(_envoyer_email)
     return created
 
 
