@@ -131,6 +131,14 @@ def recompense_par_defaut(company):
         return None
 
 
+def parrainage_actif(company):
+    """ASOC70 (D-ASOC-7) — le réglage ``referral_enabled`` de la société :
+    éteint, ni parrainage créé par le lien, ni notification de parrainage."""
+    from apps.parametres.models import CompanyProfile
+    prof = CompanyProfile.get(company) if company is not None else None
+    return bool(prof and prof.referral_enabled)
+
+
 def handle_parrainage_signup(lead) -> None:
     """QX35 — Wire la promesse de la page /parrainage : un lead capté avec
     ``utm_source=parrainage`` crée automatiquement un ``Parrainage`` en
@@ -163,6 +171,8 @@ def handle_parrainage_signup(lead) -> None:
     Best-effort — jamais d'exception propagée."""
     try:
         if (getattr(lead, 'utm_source', None) or '').strip().lower() != 'parrainage':
+            return
+        if not parrainage_actif(lead.company):
             return
         from .models import Parrainage
 

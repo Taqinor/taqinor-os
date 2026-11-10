@@ -139,6 +139,9 @@ def _proposer_lien_parrainage_on_devis_accepted(sender, devis, user,
     synchrone sous les verrous de l'acceptation, cf. QJR422)."""
     from django.db import transaction
 
+    from .clients_pilotage import parrainage_actif
+    if not parrainage_actif(getattr(devis, 'company', None)):
+        return  # ASOC70 (D-ASOC-7) — réglage parrainage éteint.
     # VNT53 — un AVENANT n'est pas une nouvelle vente : le lien a déjà été
     # proposé à la première signature.
     from apps.ventes.selectors import predecesseur_accepte

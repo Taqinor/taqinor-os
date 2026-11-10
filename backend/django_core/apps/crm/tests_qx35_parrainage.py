@@ -93,6 +93,10 @@ class ClientCodeParrainageTests(TestCase):
 class HandleParrainageSignupTests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(nom='Taqinor QX35 Signup', slug='taqinor-qx35-signup')
+        # ASOC70 (D-ASOC-7) — le lien ne crée rien réglage parrainage éteint.
+        from apps.parametres.models import CompanyProfile
+        CompanyProfile.objects.update_or_create(
+            company=self.company, defaults={'referral_enabled': True})
         self.parrain = Client.objects.create(
             company=self.company, nom='Client Parrain', telephone='+212600111111',
             email='parrain@example.com')
@@ -125,6 +129,30 @@ class HandleParrainageSignupTests(TestCase):
         handle_parrainage_signup(lead)
         self.assertEqual(Parrainage.objects.get(filleul_lead=lead).recompense,
                          Decimal('500'))
+
+    def test_reglage_eteint_aucun_parrainage_ni_notification(self):
+        """ASOC70 (D-ASOC-7) — éteint : 0 parrainage, 0 note, 0 notification ;
+        rallumé : le comportement actuel revient."""
+        from apps.parametres.models import CompanyProfile
+        from apps.roles.models import Role
+        role = Role.objects.create(
+            company=self.company, nom='Directeur', permissions=['crm_voir'])
+        manager = User.objects.create_user(
+            username='mgr_asoc70', password='x', company=self.company,
+            role=role)
+        CompanyProfile.objects.filter(company=self.company).update(
+            referral_enabled=False)
+        lead = self._lead()
+        handle_parrainage_signup(lead)
+        self.assertFalse(Parrainage.objects.filter(filleul_lead=lead).exists())
+        self.assertFalse(LeadActivity.objects.filter(
+            lead=lead, body__icontains='parrain').exists())
+        self.assertFalse(Notification.objects.filter(
+            recipient=manager, title__icontains='Parrainage').exists())
+        CompanyProfile.objects.filter(company=self.company).update(
+            referral_enabled=True)
+        handle_parrainage_signup(lead)
+        self.assertTrue(Parrainage.objects.filter(filleul_lead=lead).exists())
 
     def test_notifies_managers(self):
         from apps.roles.models import Role
@@ -265,6 +293,9 @@ class WebhookParrainageIntegrationTests(TestCase):
 
     def setUp(self):
         self.company = Company.objects.create(nom='Taqinor QX35 WH', slug='taqinor-qx35-wh')
+        from apps.parametres.models import CompanyProfile
+        CompanyProfile.objects.update_or_create(
+            company=self.company, defaults={'referral_enabled': True})
         self.parrain = Client.objects.create(
             company=self.company, nom='Parrain WH', telephone='+212611000000')
         self.url = reverse('website-lead-webhook')
