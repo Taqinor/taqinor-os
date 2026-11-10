@@ -143,7 +143,7 @@ export default function ParrainagePage() {
         getRowKey={(p) => p.id}
         columns={[
           { key: 'parrain', header: 'Parrain', cell: (p) => p.parrain_nom },
-          { key: 'filleul', header: 'Filleul', cell: (p) => p.filleul_nom || '—' },
+          { key: 'filleul', header: 'Filleul', cell: (p) => p.filleul_display_nom || '—' },
           { key: 'recompense', header: 'Récompense', cell: (p) => (p.recompense ? dh(p.recompense) : '—') },
           {
             key: 'statut',

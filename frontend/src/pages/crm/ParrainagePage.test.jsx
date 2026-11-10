@@ -8,7 +8,7 @@ import crmApi from '../../api/crmApi'
 
 vi.mock('../../api/crmApi', () => ({
   default: {
-    getParrainages: () => Promise.resolve({ data: [] }),
+    getParrainages: vi.fn(() => Promise.resolve({ data: [] })),
     parrainageStats: () => Promise.resolve({
       data: {
         total: 5,
@@ -36,6 +36,21 @@ describe('ParrainagePage (P169 — sans style inline)', () => {
     expect(screen.getByRole('button', { name: '+ Ajouter' })).toBeInTheDocument()
     // P169 — aucun attribut style inline ne doit subsister dans le rendu.
     expect(container.querySelectorAll('[style]')).toHaveLength(0)
+  })
+
+  it('affiche le nom du filleul lié plutôt que le texte libre', async () => {
+    // ASOC75 — la colonne lit `filleul_display_nom` (DC14 : le lien prime).
+    crmApi.getParrainages.mockResolvedValueOnce({ data: [
+      { id: 1, parrain_nom: 'Dupont', filleul_nom: 'K.', filleul_display_nom: 'Karim', statut: 'en_attente' },
+      { id: 2, parrain_nom: 'Dupont', filleul_nom: 'Libre', filleul_display_nom: 'Libre', statut: 'en_attente' },
+      { id: 3, parrain_nom: 'Dupont', filleul_nom: '', filleul_display_nom: '', statut: 'en_attente' },
+    ] })
+    render(<ParrainagePage />)
+    expect(await screen.findByRole('cell', { name: 'Karim' })).toBeInTheDocument()
+    expect(screen.queryByText('K.')).not.toBeInTheDocument()
+    expect(screen.getByRole('cell', { name: 'Libre' })).toBeInTheDocument()
+    const lignes = screen.getAllByRole('row')
+    expect(lignes[lignes.length - 1]).toHaveTextContent(/^Dupont—/)
   })
 
   it('crée un parrainage lié au lead filleul', async () => {
