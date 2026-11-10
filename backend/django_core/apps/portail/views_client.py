@@ -780,10 +780,10 @@ class MesFacturesPortailViewSet(viewsets.ViewSet):
         """
         from django.db import IntegrityError, transaction
 
-        from apps.parametres.selectors import company_identity
         from apps.ventes.selectors import (
             facture_du_client_portail, facture_est_payable_portail,
         )
+        from apps.ventes.selectors_portail import virement_facture_portail
 
         # NTPRT6 — un membre d'équipe « lecture seule » ne peut PAS créer
         # d'intention de paiement (consultation uniquement).
@@ -845,21 +845,15 @@ class MesFacturesPortailViewSet(viewsets.ViewSet):
             detail=f'Intention de paiement facture #{facture.id} '
                    'initiée depuis le portail client')
 
-        # Repli virement : UNIQUEMENT le nom, la banque et le RIB de la société
-        # émettrice — jamais le reste de son identité légale (on ne déverse pas
-        # ``company_identity`` entier vers un écran externe).
-        identite = company_identity(company)
+        # Repli virement : UNIQUEMENT bénéficiaire, banque et RIB — ASOC97 : ceux
+        # FIGÉS sur la facture (son PDF), jamais le reste de l'identité légale.
         return Response({
             'paiement_id': paiement.id,
             'reference': paiement.reference,
             'statut': paiement.statut,
             'montant': str(paiement.montant),
             'paiement_en_ligne_actif': actif,
-            'virement': {
-                'beneficiaire': identite.get('nom', ''),
-                'banque': identite.get('banque', ''),
-                'rib': identite.get('rib', ''),
-            },
+            'virement': virement_facture_portail(facture),
         })
 
 

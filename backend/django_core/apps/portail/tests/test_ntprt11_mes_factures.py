@@ -195,6 +195,25 @@ class PayerFacturePortailTests(TestCase):
         for interdit in ('ice', 'patente', 'cnss', 'identifiant_fiscal'):
             self.assertNotIn(interdit, corps)
 
+    @override_settings(CMI_ENABLED=False, CMI_MERCHANT_KEY='')
+    def test_virement_porte_le_rib_fige_de_la_facture(self):
+        """ASOC97 — émise avec R1, profil passé à R2 : le portail sert R1."""
+        from apps.parametres.models import CompanyProfile
+        from apps.ventes.utils.pdf import identite_vendeur_courante
+        profil = CompanyProfile.get(company=self.company)
+        profil.nom, profil.rib, profil.banque = 'Raison Figée', 'R1-1111', 'Banque Une'
+        profil.save()
+        self.facture.identite_vendeur = identite_vendeur_courante(self.company)
+        self.facture.save(update_fields=['identite_vendeur'])
+        profil.nom, profil.rib, profil.banque = 'Raison Neuve', 'R2-2222', 'Banque Deux'
+        profil.save()
+        self.api.force_authenticate(user=self.user_a)
+        res = self.api.post(self.url, {}, format='json')
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertEqual(res.data['virement'], {
+            'beneficiaire': 'Raison Figée', 'banque': 'Banque Une',
+            'rib': 'R1-1111'})
+
     def test_un_autre_client_ne_peut_pas_payer(self):
         self.api.force_authenticate(user=self.user_b)
         res = self.api.post(self.url, {}, format='json')
