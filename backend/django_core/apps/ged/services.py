@@ -6628,8 +6628,8 @@ def router_document_module(source, *, company, file, filename='',
 
     Sans réglage ACTIF pour cette `source`+société : no-op strict, renvoie
     `None` (comportement actuel inchangé — c'est la voie normale tant qu'un
-    admin n'a rien configuré). IDEMPOTENT par `source`+`reference` : si un
-    document du dossier résolu porte déjà cette référence (posée dans
+    admin n'a rien configuré). IDEMPOTENT par `reference` : si un document de
+    la société (quel que soit son dossier — ASOC50) porte cette référence (dans
     `custom_data['routage_reference']`), le document existant est renvoyé sans
     créer de doublon.
 
@@ -6669,11 +6669,14 @@ def router_document_module(source, *, company, file, filename='',
         return meta_
 
     if reference:
-        existant = Document.objects.filter(
-            company=company, folder=folder, supprime_le__isnull=True,
+        existant = Document.objects.filter(  # ASOC50 — clé (société, référence), jamais le dossier
+            company=company, supprime_le__isnull=True,
             custom_data__routage_reference=reference,
         ).order_by('id').first()
         if existant is not None:
+            if existant.folder_id != getattr(folder, 'pk', None):  # dossier cible changé : déplacé
+                existant.folder = folder
+                existant.save(update_fields=['folder'])
             versionner_si_modifie(
                 existant, contenu, filename=filename, uploaded_by=uploaded_by,
                 stocker=_stocker)
