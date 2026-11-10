@@ -177,6 +177,48 @@ class PorteUniqueTest(BaseApiCalepinage):
         self._poser_trace(lead_b1)
         self.assertIsNotNone(reprendre_trace_public(lead_b1.pk, self.company))
 
+    def test_apercu_import_hors_portee_404(self):
+        """ACON94 — l'APERÇU d'import résout le rattachement comme l'import
+        réel : lead d'un collègue hors portée ⇒ 404 `{lead}`, client
+        inexistant ⇒ 404 `{client}`, son propre lead ⇒ 200 `ecrit: false` ;
+        rien n'est écrit."""
+        from django.contrib.auth import get_user_model
+
+        from apps.calepinage.permissions import CAL_GERER, CAL_VOIR
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import SCOPE_SELF
+
+        from .test_calx370_projet_json import fichier
+
+        User = get_user_model()
+        role = Role.objects.create(
+            company=self.company, nom='Commercial ACON94',
+            permissions=[CAL_VOIR, CAL_GERER, SCOPE_SELF])
+        a = User.objects.create_user(username='acon94_a', password='x',
+                                     company=self.company, role=role)
+        b = User.objects.create_user(username='acon94_b', password='x',
+                                     company=self.company, role=role)
+        api_a = self._client(a)
+        lead_a = self._lead('Villa de A', owner=a)
+        lead_b = self._lead('Villa de B', owner=b)
+        avant = Calepinage.objects.count()
+
+        def apercu(**rattachement):
+            return api_a.post(f'{URL}import-projet/',
+                              {'projet': fichier(), 'apercu': True,
+                               **rattachement}, format='json')
+        reponse = apercu(lead=lead_b.pk)
+        self.assertEqual(reponse.status_code, 404, reponse.data)
+        self.assertIn('lead', reponse.data)
+        self.assertIn(f'Lead introuvable (#{lead_b.pk}).', str(reponse.data))
+        reponse = apercu(client=987654)
+        self.assertEqual(reponse.status_code, 404, reponse.data)
+        self.assertIn('client', reponse.data)
+        reponse = apercu(lead=lead_a.pk)
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertFalse(reponse.data['ecrit'])
+        self.assertEqual(Calepinage.objects.count(), avant)
+
     def test_creation_corps_multipart_refuse_415(self):
         # CI #997 fuzz : ``responsable``/``custom_data`` sont typés (clé, objet
         # JSON) — un formulaire n'en porte que des chaînes : JSON seul (415).

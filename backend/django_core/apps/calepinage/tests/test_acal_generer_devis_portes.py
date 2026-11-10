@@ -135,6 +135,35 @@ class GenererDevisPortesTest(BaseApiCalepinage):
         self.assertEqual(Devis.objects.filter(
             company=self.company).count(), 1)
 
+    def test_montants_differents_brouillon_reutilisable_409(self):
+        """ACON95 — la garde ACON49 sur le chemin « brouillon réutilisable
+        NON lié » (``_brouillon_reutilisable``) : autre TVA ou autre remise ⇒
+        409 nommant le champ, C non relié, D inchangé ; sans montant ⇒ 200
+        ``deduplique`` et C relié à D."""
+        premier = self._generer(self.original)
+        self.assertEqual(premier.status_code, 201, premier.data)
+        devis = Devis.objects.get(pk=premier.data['devis'])
+        tva, remise = devis.taux_tva, devis.remise_globale
+        Calepinage.objects.filter(pk=self.original.pk).update(devis=None)
+        url = url_generer(self.original.pk)
+        for corps, champ in (({'taux_tva': 10}, 'taux_tva'),
+                             ({'remise_globale': 5}, 'remise_globale')):
+            with self.subTest(corps=corps):
+                reponse = self.api.post(url, corps, format='json')
+                self.assertEqual(reponse.status_code, 409, reponse.data)
+                self.assertEqual(list(reponse.data), [champ])
+                self.original.refresh_from_db()
+                self.assertIsNone(self.original.devis_id)
+        devis.refresh_from_db()
+        self.assertEqual((devis.taux_tva, devis.remise_globale),
+                         (tva, remise))
+        reponse = self.api.post(url, {}, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertTrue(reponse.data['deduplique'])
+        self.assertEqual(reponse.data['devis'], devis.pk)
+        self.original.refresh_from_db()
+        self.assertEqual(self.original.devis_id, devis.pk)
+
     def test_client_seul_deux_clics_un_devis(self):
         client = Client.objects.create(company=self.company,
                                        nom='Client seul ACAL89')
