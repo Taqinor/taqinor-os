@@ -441,6 +441,10 @@ def geler_document_engage(devis, user, *, statut=None, acceptation=False):
     figer_baremes_forfaits(devis)
     # ADVS2 — fige les réglages de rendu et les fiches produit (D-ADVS-1).
     figer_reglages_rendu(devis)
+    from apps.ventes.models import Devis
+    if statut == Devis.Statut.ENVOYE:  # ASOC95 (D-ASOC-1) — échéancier figé à l'envoi
+        from apps.ventes.utils.echeancier import figer_echeancier
+        figer_echeancier(devis)
 
 
 def poser_validite_devis(devis, date_validite):

@@ -201,6 +201,40 @@ class BaremeGeleEnvoiTests(q220._Base):
         from apps.ventes.quote_engine.builder import build_quote_data
         self.assertFalse(build_quote_data(devis).get('clauses_cgv'))
 
+    def test_echeancier_fige_a_l_envoi(self):
+        """ASOC95 (C-ASOC-040, D-ASOC-1) — jalons société 30/60/10 figés à
+        l'envoi : passés à 40/50/10 ensuite, le devis lit encore 30 % ; un
+        échéancier négocié reste tel quel ; un renouvellement n'hérite pas du
+        gel automatique. Mutant : retirer l'appel ⇒ 40 %."""
+        from apps.parametres.models import CompanyProfile
+        from apps.ventes.domain.revision import renouveler_devis
+        from apps.ventes.utils.echeancier import tranches_normalisees
+        profil = CompanyProfile.get(self.company)
+        mode = 'residentiel'
+        profil.payment_terms = {mode: {'acompte': 30, 'materiel': 60, 'solde': 10}}
+        profil.save(update_fields=['payment_terms'])
+        devis = self._devis(9, pose_a=9)
+        devis.mode_installation = mode
+        devis.save(update_fields=['mode_installation'])
+        devis = self._envoyer(devis)
+        self.assertTrue(devis.echeancier)
+        self.assertTrue(all(e.get('fige_le') for e in devis.echeancier))
+        profil.payment_terms = {mode: {'acompte': 40, 'materiel': 50, 'solde': 10}}
+        profil.save(update_fields=['payment_terms'])
+        devis.refresh_from_db()  # CLAUSE PERSISTANCE
+        self.assertEqual([float(t['valeur']) for t in tranches_normalisees(devis)], [30.0, 60.0, 10.0])
+        Devis.objects.filter(pk=devis.pk).update(statut=Devis.Statut.EXPIRE)
+        devis.refresh_from_db()  # seul un expiré se renouvelle (NTCPQ13)
+        copie = renouveler_devis(devis, user=self.user)
+        copie.refresh_from_db()
+        self.assertFalse(copie.echeancier)
+        negocie = [{'libelle': 'Acompte', 'type': 'acompte', 'pct_or_montant': 50},
+                   {'libelle': 'Solde', 'type': 'solde', 'pct_or_montant': 50}]
+        autre = self._devis(9, pose_a=9)
+        autre.echeancier = negocie
+        autre.save(update_fields=['echeancier'])
+        self.assertEqual(self._envoyer(autre).echeancier, negocie)
+
     def test_v2_refigee_a_son_propre_envoi(self):
         from apps.ventes.domain.reglages_figes_lecture import (
             TYPE_REGLAGES_FIGES, reglages_figes)
