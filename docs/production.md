@@ -176,6 +176,31 @@ powershell -File scripts\deploy-prod.ps1
 (installe `scripts/auto-deploy.sh` d'`origin/main` puis lance l'unité
 `taqinor-autodeploy` : la même séquence que l'auto-déploiement de chaque fusion.)
 
+**Ordre de la séquence (ADCG109, 10/11/2026).** Le code backend de production
+est *monté* dans les conteneurs (`/opt/taqinor-os/backend/django_core` → `/app`
+de django_core et des trois celery, `backend/fastapi_ia` → `/app` de fastapi_ia) :
+dès que `/opt/taqinor-os` change, un processus en marche peut charger un fichier
+neuf. Le dépôt n'avance donc plus en premier :
+
+1. `git fetch` ; rien de neuf, ou commit déjà en échec → sortie (un drapeau
+   `-ZeroDowntime` est alors effacé et dit au journal, ADCG108) ;
+2. commit purement docs → `git reset --hard` du dépôt, fin (rien d'autre) ;
+3. **arbre de construction** : `git worktree add --detach /opt/autodeploy/arbre <commit>`,
+   `.env` du serveur relié dedans (et `frontend/.env` copié s'il existe) ;
+4. build des images, dump si migrations en attente, `migrate --noinput` — tous
+   avec `docker compose -f /opt/autodeploy/arbre/docker-compose.yml -f …prod.yml`
+   (même projet `erp-agentique`, code neuf vu SEULEMENT par ces conteneurs jetables) ;
+5. **étape `code`** : `git reset --hard <commit>` de `/opt/taqinor-os` — c'est ici, et
+   seulement si build et migrate ont réussi, que le code neuf devient visible ;
+6. `up -d`, redémarrages, `init_roles`, nginx, Caddy, préchauffage, santé ;
+7. arbre retiré en fin de cycle (succès comme échec).
+
+Un échec aux étapes 3-4 laisse `/opt/taqinor-os` sur l'ancien commit. Le retour
+arrière (ADCG5) reconstruit alors l'ancien commit (les images portent les mêmes
+noms) ; s'il ne peut pas reconstruire, il ne relance rien et écrit « ROLLBACK … EN
+ÉCHEC — intervention manuelle » ; sinon il recharge aussi Caddy sur la
+configuration revenue (ADCG107). Le schéma n'est jamais rétrogradé.
+
 ## Heure légale — 20/09/2026
 
 **Ce qui a changé.** Le Maroc est repassé **définitivement à l'heure GMT
