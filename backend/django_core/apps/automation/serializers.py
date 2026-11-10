@@ -367,6 +367,13 @@ class ApprovalRequestSerializer(SameCompanyFKSerializerMixin,
                 raise ConflitEtat({
                     k: ['Demande déjà décidée : modification impossible.']
                     for k in figes})
+        if inst is not None and 'payload' in attrs:
+            # APFS113 — les champs requis du type, rejoués comme à la
+            # soumission (``submit_request``) : un PATCH ne les vide pas.
+            type_ = attrs.get('request_type') or inst.request_type
+            erreurs = type_.validate_payload(attrs['payload'])
+            if erreurs:
+                raise serializers.ValidationError({'payload': erreurs})
         return attrs
 
     @extend_schema_field(serializers.IntegerField())

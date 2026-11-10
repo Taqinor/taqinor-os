@@ -160,6 +160,30 @@ class AutomationFkTests(TestCase):
         self.assertEqual(r.status_code, 204)
         self.assertFalse(ApprovalRequest.objects.filter(pk=libre.pk).exists())
 
+    def test_patch_en_attente_revalide_les_champs_requis(self):
+        """APFS113 — PATCH d'une demande EN ATTENTE : les champs requis de
+        son type sont rejoués (400, payload intact) ; complet : 200.
+        Mutant : retirer l'appel ``validate_payload`` ⇒ 200, payload vidé."""
+        type_taux = ApprovalRequestType.objects.create(
+            company=self.a, nom='Taux A', champs_requis=['taux'])
+        demande = ApprovalRequest.objects.create(
+            company=self.a, request_type=type_taux,
+            demandeur=self.collegue_a, payload={'taux': 10})
+        api = _api(self.collegue_a)
+        url = f'{BASE}/approval-requests/{demande.pk}/'
+
+        r = api.patch(url, {'payload': {}}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.data['payload'],
+                         ['Le champ « taux » est requis.'])
+        demande.refresh_from_db()
+        self.assertEqual(demande.payload, {'taux': 10})
+
+        r = api.patch(url, {'payload': {'taux': 12}}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        demande.refresh_from_db()
+        self.assertEqual(demande.payload, {'taux': 12})
+
     def test_patch_apres_premiere_decision_409(self):
         """ASEC69 (C-ASEC-VER4-020) — double approbation : dès la première
         décision, le demandeur ne change plus le montant (409) ; la décision
