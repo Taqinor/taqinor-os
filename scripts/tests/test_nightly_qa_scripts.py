@@ -329,6 +329,49 @@ class TestLanceur(unittest.TestCase):
         self.assertIn("' -Depot '", code)
 
 
+class TestDernierPassage(unittest.TestCase):
+    """ADCG16 : contrôle « dernier passage » lu dans le journal hors dépôt."""
+
+    def _main(self, contenu):
+        import contextlib
+        import importlib.util
+        import io
+        from datetime import datetime, timedelta
+        spec = importlib.util.spec_from_file_location(
+            "nightly_qa_dernier_passage", ROOT / "scripts" / "nightly_qa_dernier_passage.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        maintenant = datetime(2026, 11, 10, 8, 0, 0)
+        with tempfile.TemporaryDirectory() as tmp:
+            journal = Path(tmp) / "nightly-qa.log"
+            if contenu is not None:
+                lignes = [f"{maintenant - timedelta(hours=h):%Y-%m-%d %H:%M:%S}  {t}" for h, t in contenu]
+                journal.write_text("\n".join(lignes) + "\n", encoding="utf-8-sig")
+            sortie = io.StringIO()
+            with contextlib.redirect_stdout(sortie):
+                code = mod.main(["--journal", str(journal)], maintenant=maintenant)
+        return code, sortie.getvalue()
+
+    def test_plus_de_36_h_rend_un(self):
+        code, texte = self._main([(40, "fin code 0"), (10, "ECHEC lancement : scripts\\nightly-qa.ps1 absent")])
+        self.assertEqual(code, 1)
+        self.assertIn("dernier passage réussi : 2026-11-08 16:00 (il y a 40 h)", texte)
+        self.assertIn("dernière tentative : 2026-11-09 22:00 ECHEC lancement", texte)
+
+    def test_passage_de_cette_nuit_rend_zero(self):
+        code, _ = self._main([(30, "fin code 1"), (8, "lancement skill qa-explorer"), (6, "fin code 0")])
+        self.assertEqual(code, 0)
+
+    def test_aucun_passage_consigne(self):
+        for contenu in (None, [(2, "fin code 1")]):
+            code, texte = self._main(contenu)
+            self.assertEqual(code, 1)
+            self.assertIn("aucun passage consigné", texte)
+
+    def test_appele_par_le_setup(self):
+        self.assertIn("scripts\\nightly_qa_dernier_passage.py", _code(SETUP))
+
+
 if __name__ == "__main__":
     unittest.main()
 

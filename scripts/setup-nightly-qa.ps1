@@ -268,4 +268,9 @@ Say ('CREE / MIS A JOUR : ' + ($Created -join ' ; ') + '.')
 Say 'ENCORE MANUEL : approuver les 2 serveurs MCP dans /mcp ; laisser le PC allume et la session ouverte a l''heure de la passe (veille = pas de passe).'
 Say ('VERIFIER : schtasks /Query /TN "' + $TaskQa + '" /V /FO LIST (Last Run Time / Last Result) ; journaux dans logs\nightly-qa\.')
 Say ('COUPER : schtasks /Change /TN "' + $TaskQa + '" /DISABLE, ou enabled: false dans docs/qa-explorer.config.yml. Voir docs/nightly-qa.md.')
+# ADCG16 : dernier passage reussi consigne (information ; code 1 attendu sur une machine neuve).
+if ($null -ne (Get-Command python -ErrorAction SilentlyContinue)) {
+    $dp = Invoke-Native { python (Join-Path $RepoRoot 'scripts\nightly_qa_dernier_passage.py') }
+    Say ('DERNIER PASSAGE : ' + ($dp.Lines -join ' '))
+}
 exit 0

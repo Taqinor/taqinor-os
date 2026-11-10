@@ -108,6 +108,17 @@ schtasks /Query /TN "TAQINOR nightly QA" /V /FO LIST
 
 Regarder `Last Run Time` et `Last Result` (0 = OK, voir le tableau ci-dessus).
 
+Ou, plus direct (ADCG16) — l'heure du dernier passage réussi lue dans
+`%LOCALAPPDATA%\taqinor\nightly-qa.log` :
+
+```powershell
+python scripts\nightly_qa_dernier_passage.py
+```
+
+Il affiche « dernier passage réussi : … (il y a N h) ; dernière tentative : … » et
+sort en **1** au-delà de 36 h ou si aucun passage n'est consigné (`--journal <chemin>`
+pour lire un autre journal). La commande d'installation l'affiche aussi en fin de rapport.
+
 ## Lire le journal
 
 `logs\nightly-qa\` (ignoré par git via `logs/`) :
