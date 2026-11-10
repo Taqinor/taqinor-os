@@ -94,18 +94,6 @@ def _instantane(devis, user):
     create=extend_schema(extensions=D.CORPS_LIGNE_DEVIS_ECRITURE),
     update=extend_schema(extensions=D.CORPS_LIGNE_DEVIS_ECRITURE),
     partial_update=extend_schema(extensions=D.CORPS_LIGNE_DEVIS_MODIF))
-def _lecteur_sans_code_ventes(user):
-    """APFS108 — rôle fin non administrateur sans aucun code ``ventes``."""
-    from authentication.permissions import codes_du_module
-
-    if (getattr(user, 'is_superuser', False)
-            or getattr(user, 'is_admin_role', False)
-            or not getattr(user, 'role_id', None)):
-        return False
-    return not (codes_du_module('ventes')
-                & set(user.role.permissions or []))
-
-
 class LigneDevisViewSet(CompanyScopedModelViewSet):
     parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
     # ARC5 — sweep TenantMixin : base transverse unique. LigneDevis N'A PAS de
@@ -131,7 +119,8 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
             # (``owner_fields=['created_by']`` du devis parent) : une ligne
             # d'un devis hors portée est introuvable (404), jamais modifiable.
             qs = qs.filter(devis__company=user.company)
-            if _lecteur_sans_code_ventes(user):
+            from ..gardes_lecture import lecteur_sans_code_ventes
+            if lecteur_sans_code_ventes(user):
                 # APFS108 — entré par l'octroi ``installation_voir`` : les
                 # lignes des devis de SES chantiers seulement.
                 from apps.installations.selectors import chantiers_visibles
