@@ -52,6 +52,9 @@ APPS_DIR = DJANGO_CORE / "apps"
 if str(DJANGO_CORE) not in sys.path:
     sys.path.insert(0, str(DJANGO_CORE))
 from apps.records.platform_guards import (  # noqa: E402 — après sys.path/setup() (D-ENF22)
+    BASELINE_BRANDING,
+    BASELINE_HANDROLLED_MODELS,
+    BASELINE_UNSCOPED_VIEWSETS,
     activity_error_line,
     branding_error_line,
     filefield_error_line,
@@ -77,6 +80,10 @@ from apps.records.platform_guards import (  # noqa: E402 — après sys.path/set
     unscoped_viewset_error_line,
     weasyprint_error_line,
 )
+
+if str(ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(ROOT / "scripts"))
+from _cliquet import comparer  # noqa: E402 — après sys.path (D-ENF22)
 
 
 CORE_DIR = DJANGO_CORE / "core"
@@ -180,8 +187,8 @@ def _app_of_source(path: Path) -> str:
     return path.relative_to(APPS_DIR).parts[0]
 
 
-def find_new_handrolled_models() -> list[str]:
-    """SCA4 — modèles NOUVEAUX (hors baseline) déclarant une FK company à la main."""
+def _found_handrolled_models() -> list[str]:
+    """SCA4 — TOUS les modèles déclarant une FK company à la main (base comprise)."""
     found: list[str] = []
     for path in _iter_model_files():
         relpath = path.relative_to(DJANGO_CORE).as_posix()
@@ -191,16 +198,23 @@ def find_new_handrolled_models() -> list[str]:
             continue
         app = _app_of(path)
         found.extend(scan_handrolled_models(app, path.read_text(encoding="utf-8")))
-    return new_handrolled_models(sorted(set(found)))
+    return sorted(set(found))
+
+
+def find_new_handrolled_models() -> list[str]:
+    """SCA4 — modèles NOUVEAUX (hors baseline) déclarant une FK company à la main."""
+    return new_handrolled_models(_found_handrolled_models())
 
 
 def check_handrolled_models() -> list[str]:
-    """SCA4 garde (M) — plus de modèle hand-rollé hors socle (empty = OK)."""
-    return [handrolled_model_error_line(q) for q in sorted(find_new_handrolled_models())]
+    """SCA4 garde (M) — plus de modèle hand-rollé hors socle, ni d'entrée MORTE
+    dans la base (ADCG77 : elle ne fait que rétrécir) (empty = OK)."""
+    return comparer(_found_handrolled_models(), BASELINE_HANDROLLED_MODELS,
+                    nom_fichier="handrolled_models.txt", decrire=handrolled_model_error_line)
 
 
-def find_new_unscoped_viewsets() -> list[str]:
-    """SCA4 — ViewSets ModelViewSet NOUVEAUX (hors baseline) non basés socle."""
+def _found_unscoped_viewsets() -> list[str]:
+    """SCA4 — TOUS les ModelViewSet non basés socle (base comprise)."""
     found: list[str] = []
     for path in APPS_DIR.glob("**/*.py"):
         relpath = path.relative_to(DJANGO_CORE).as_posix()
@@ -210,12 +224,18 @@ def find_new_unscoped_viewsets() -> list[str]:
             continue
         app = _app_of_source(path)
         found.extend(scan_unscoped_viewsets(app, path.read_text(encoding="utf-8")))
-    return new_unscoped_viewsets(sorted(set(found)))
+    return sorted(set(found))
+
+
+def find_new_unscoped_viewsets() -> list[str]:
+    """SCA4 — ViewSets ModelViewSet NOUVEAUX (hors baseline) non basés socle."""
+    return new_unscoped_viewsets(_found_unscoped_viewsets())
 
 
 def check_unscoped_viewsets() -> list[str]:
-    """SCA4 garde (V) — plus de ModelViewSet non scopé au socle (empty = OK)."""
-    return [unscoped_viewset_error_line(q) for q in sorted(find_new_unscoped_viewsets())]
+    """SCA4 garde (V) — plus de ModelViewSet non scopé, ni d'entrée MORTE (ADCG77)."""
+    return comparer(_found_unscoped_viewsets(), BASELINE_UNSCOPED_VIEWSETS,
+                    nom_fichier="unscoped_viewsets.txt", decrire=unscoped_viewset_error_line)
 
 
 def find_new_flat_storage_keys() -> list[str]:
@@ -266,8 +286,8 @@ def check_store_attachment_sans_company() -> list[str]:
 FRONTEND_SRC = ROOT / "frontend" / "src"
 
 
-def find_new_branding_hits() -> list[str]:
-    """SCA29 — fichiers user-facing NOUVEAUX (hors baseline) avec un motif marque.
+def _found_branding_hits() -> list[str]:
+    """SCA29 — TOUS les fichiers user-facing avec un motif marque (base comprise).
 
     Surfaces : littéraux py des apps (backend) + ``frontend/src`` (JS/JSX/TS/TSX).
     Le module de gardes s'auto-exclut (il cite les motifs en littéral)."""
@@ -284,12 +304,18 @@ def find_new_branding_hits() -> list[str]:
                 relpath = path.relative_to(ROOT).as_posix()
                 if scan_branding(relpath, path.read_text(encoding="utf-8", errors="replace")):
                     found.append(relpath)
-    return new_branding_hits(sorted(set(found)))
+    return sorted(set(found))
+
+
+def find_new_branding_hits() -> list[str]:
+    """SCA29 — fichiers user-facing NOUVEAUX (hors baseline) avec un motif marque."""
+    return new_branding_hits(_found_branding_hits())
 
 
 def check_branding() -> list[str]:
-    """SCA29 guard — plus de marque taqinor hardcodée hors baseline (empty = OK)."""
-    return [branding_error_line(p) for p in sorted(set(find_new_branding_hits()))]
+    """SCA29 guard — plus de marque hardcodée hors baseline, ni d'entrée MORTE (ADCG77)."""
+    return comparer(_found_branding_hits(), BASELINE_BRANDING,
+                    nom_fichier="branding_hits.txt", decrire=branding_error_line)
 
 
 def find_new_kit_bypass_documents() -> list[str]:
