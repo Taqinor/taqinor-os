@@ -14,6 +14,13 @@ import { toast } from '../../ui/confirm'
 import frenchError from '../../lib/frenchError'
 import { SectionTitle, Field } from './peComponents'
 
+// ASOC99 — les traductions servies par l'API (colonnes NTI18N26) : une
+// paire sujet/corps repliable par langue ; l'arabe se saisit de droite à gauche.
+const LANGUES_TRADUITES = [
+  { code: 'en', libelle: 'Anglais', dir: 'ltr' },
+  { code: 'ar', libelle: 'Arabe', dir: 'rtl' },
+]
+
 export default function EmailSection() {
   const [config, setConfig] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -44,7 +51,11 @@ export default function EmailSection() {
     setTemplatesSavedCle(null)
     try {
       const res = await parametresApi.saveEmailTemplates([
-        { cle: t.cle, sujet: t.sujet, corps: t.corps },
+        {
+          cle: t.cle, sujet: t.sujet, corps: t.corps,
+          sujet_en: t.sujet_en ?? '', corps_en: t.corps_en ?? '',
+          sujet_ar: t.sujet_ar ?? '', corps_ar: t.corps_ar ?? '',
+        },
       ])
       setTemplates(res.data.results ?? res.data)
       setTemplatesSavedCle(t.cle)
@@ -164,6 +175,24 @@ export default function EmailSection() {
                           value={t.corps}
                           onChange={e => setTemplateField(t.cle, 'corps', e.target.value)} />
               </Field>
+              {LANGUES_TRADUITES.map(({ code, libelle, dir }) => (
+                <details key={code} className="mb-1.5">
+                  <summary className="cursor-pointer text-[11.5px] font-medium text-muted-foreground">
+                    {libelle}
+                  </summary>
+                  <Field label={`Sujet (${libelle.toLowerCase()})`} htmlFor={`pe-email-sujet-${code}-${t.cle}`}>
+                    <Input id={`pe-email-sujet-${code}-${t.cle}`} dir={dir}
+                           value={t[`sujet_${code}`] ?? ''}
+                           onChange={e => setTemplateField(t.cle, `sujet_${code}`, e.target.value)} />
+                  </Field>
+                  <Field label={`Corps (${libelle.toLowerCase()})`} htmlFor={`pe-email-corps-${code}-${t.cle}`}>
+                    <Textarea id={`pe-email-corps-${code}-${t.cle}`} dir={dir}
+                              className="min-h-[80px] resize-y"
+                              value={t[`corps_${code}`] ?? ''}
+                              onChange={e => setTemplateField(t.cle, `corps_${code}`, e.target.value)} />
+                  </Field>
+                </details>
+              ))}
               <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
                 <Button type="button" size="sm"
                         variant={templatesSavedCle === t.cle ? 'success' : 'default'}

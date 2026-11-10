@@ -37,16 +37,23 @@ _MOTIF_TEXTE = motif_gabarit(set.intersection(
     *(set(v) for v in EMAIL_TEMPLATE_PLACEHOLDERS.values())))
 
 
+#: ASOC99 — sujets et corps traduits (colonnes NTI18N26, migration 0092).
+CHAMPS_TRADUITS = ('sujet_en', 'sujet_ar', 'corps_en', 'corps_ar')
+CHAMPS_TEXTE = ('sujet', 'corps', *CHAMPS_TRADUITS)
+
+
 class EmailTemplateSerializer(TypageStrictParametres, serializers.ModelSerializer):
     class Meta:
         model = EmailTemplate
-        fields = ['id', 'cle', 'sujet', 'corps']
+        # ASOC99 — les traductions NTI18N26 (anglais, arabe) sont servies et
+        # éditables comme le français.
+        fields = ['id', 'cle', 'sujet', 'corps', *CHAMPS_TRADUITS]
         # company posée côté serveur (TenantMixin) — jamais depuis le corps.
 
     def get_fields(self):
         # Motif des placeholders publié côté REQUÊTE seulement (gabarits_schema).
         fields = super().get_fields()
-        for champ in ('sujet', 'corps'):
+        for champ in CHAMPS_TEXTE:
             if champ in fields:
                 promouvoir_texte_gabarit(fields[champ], _MOTIF_TEXTE)
         return fields
@@ -56,7 +63,7 @@ class EmailTemplateSerializer(TypageStrictParametres, serializers.ModelSerialize
         cle = attrs.get('cle') or getattr(self.instance, 'cle', None)
         if not cle:
             return
-        for champ, libelle in (('sujet', 'sujet'), ('corps', 'corps')):
+        for champ, libelle in ((c, c) for c in CHAMPS_TEXTE):
             if champ not in attrs:
                 continue
             # APAR13 — validé par le RENDU réel : une accolade non appariée
