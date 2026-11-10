@@ -561,6 +561,9 @@ GARDES = {
         ('Test du nettoyage gc-workspace sur un depot temporaire (ADCG21)',
          'python -m unittest scripts.tests.test_gc_workspace -v',
          '.'),
+        ('Test des healthchecks db/redis/django_core des fichiers compose (ADCG14)',
+         'python -m unittest scripts.tests.test_docker_compose -v',
+         '.'),
         # Instantanés anonymisés de prod (qa_export_anonymise) : CONFIDENTIELS,
         # ignorés par .gitignore — cette garde refuse un `git add -f`.
         ('Check aucun instantané anonymisé suivi par git (var/anon, *.anon.json.gz)',
