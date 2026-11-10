@@ -41,8 +41,8 @@ d'acceptation du 05/11 ne reproduisent plus l'écart S1 ; l'écran d'AGNR67 a é
 
 | C-id | Tâche d'origine | Grav. | Écart | Sonde | Tâches |
 |---|---|---|---|---|---|
-| C-AGNR-VER5-063 | AGNR63 | S3 | « reprendre les valeurs du lead » et la révision d'un devis commercial après visite changent le total sans repasser l'échéancier par la règle : l'impression reste bornée, mais l'échéancier enregistré peut rester hors règle (une tranche à zéro disparaît du texte des conditions) ; seul un devis envoyé avant le nouveau niveau de règles pourrait montrer un chiffre faux — déduit, non reproduit | STATIQUE (lecture) | TACHES_063 |
-| C-AGNR-VER5-067 | AGNR67, AGNR68, AGNR73 | S3 | le comportement à l'écran n'est testé que par lecture du source | STATIQUE (lecture) | TACHES_067 |
+| C-AGNR-VER5-063 | AGNR63 | S3 | « reprendre les valeurs du lead » et la révision d'un devis commercial après visite changent le total sans repasser l'échéancier par la règle : l'impression reste bornée, mais l'échéancier enregistré peut rester hors règle (une tranche à zéro disparaît du texte des conditions) ; seul un devis envoyé avant le nouveau niveau de règles pourrait montrer un chiffre faux — déduit, non reproduit | STATIQUE (lecture) | AGNR77 |
+| C-AGNR-VER5-067 | AGNR67, AGNR68, AGNR73 | S3 | le comportement à l'écran n'est testé que par lecture du source | STATIQUE (lecture) | AGNR78 |
 
 Aucun écart S1-S2 : ni seconde lentille ni critique (METHODE §C.4).
 
