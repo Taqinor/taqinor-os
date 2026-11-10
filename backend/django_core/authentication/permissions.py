@@ -204,6 +204,8 @@ class LectureDuModule(IsAnyRole):
     compte portail refusé."""
 
     message = 'Accès réservé aux rôles du module.'
+    #: APFS108 — module FIGÉ (``LectureVentes``) au lieu du module de la vue.
+    module_fige = None
 
     def has_permission(self, request, view):
         if not super().has_permission(request, view):
@@ -213,7 +215,7 @@ class LectureDuModule(IsAnyRole):
                 or getattr(user, 'is_admin_role', False)
                 or not getattr(user, 'role_id', None)):
             return True
-        module = module_de_la_vue(view)
+        module = self.module_fige or module_de_la_vue(view)
         if module is None:
             return True
         perms = set(user.role.permissions or [])
