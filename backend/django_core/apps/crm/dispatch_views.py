@@ -22,7 +22,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 
-from authentication.permissions import IsAnyRole
+from authentication.permissions import IsAnyRole, LectureDuModule
 from core.champs_stricts import EntierStrict, IdInconnu404Mixin
 from core.conflit_etat import ConflitEtat
 from core.viewsets import CompanyScopedModelViewSet
@@ -114,7 +114,7 @@ class RegleAttributionViewSet(CompanyScopedModelViewSet):
     parser_classes = [JSONParser]
     queryset = RegleAttribution.objects.select_related('membre').all()
     serializer_class = RegleAttributionSerializer
-    permission_classes = [IsAnyRole]
+    permission_classes = [LectureDuModule]
     # YAPIC2/YAPIC11 — tri et recherche explicites (jamais un champ libre).
     ordering_fields = ['ordre', 'id']
     ordering = ['equipe_id', 'ordre', 'id']
