@@ -61,6 +61,13 @@ class GcWorkspaceTests(unittest.TestCase):
         branches = _git(self.depot, "branch", "--format=%(refname:short)").split()
         self.assertEqual(sorted(branches), ["main", "worktree-agent-x", "worktree-agent-y"])
 
+    def test_sans_docker_garde_le_cache(self):
+        # ADCG22 : la passe nocturne appelle -SansDocker (cache de build garde chaud).
+        self.assertIn("docker builder prune", self._lancer())
+        sortie = self._lancer("-SansDocker")
+        self.assertNotIn("docker builder prune", sortie)
+        self.assertIn("worktrees supprimes : 0", sortie)
+
 
 if __name__ == "__main__":
     unittest.main()

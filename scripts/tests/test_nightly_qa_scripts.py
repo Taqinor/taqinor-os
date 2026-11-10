@@ -191,6 +191,17 @@ class TestNightly(unittest.TestCase):
         self.assertIn("exit $ExitCode", self.code)
         self.assertRegex(self.code, r"return 1\b")
 
+    def test_gc_workspace_appele_en_fin_de_passe(self):
+        # ADCG22 : apres la passe claude, avant exit $ExitCode, encadre, sans docker.
+        appel = self.code.find("scripts\\gc-workspace.ps1') -MaxAgeDays 14 -SansDocker")
+        self.assertGreater(appel, self.code.find("Start-Process -FilePath $claudeExe"))
+        self.assertGreater(appel, self.code.find("Write-Log ('fin : code de sortie ' + $ExitCode)"))
+        self.assertLess(appel, self.code.rfind("exit $ExitCode"))
+        bloc = self.code[self.code.find("if ($script:PasseLancee) {"):self.code.rfind("exit $ExitCode")]
+        self.assertIn("try {", bloc)
+        self.assertIn("} catch { Write-Log (", bloc)
+        self.assertNotIn("$ExitCode =", bloc)
+
     def test_outils_mcp_autorises_correspondent_a_mcp_json(self):
         serveurs = json.loads(MCP.read_text(encoding="utf-8"))["mcpServers"]
         for nom in ("playwright", "chrome-devtools"):
