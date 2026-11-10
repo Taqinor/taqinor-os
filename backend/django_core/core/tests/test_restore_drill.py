@@ -6,9 +6,13 @@
   * succès : restaure, compte, DROP la base scratch, journalise ;
   * pg_restore en échec → statut echec, la base scratch est quand même DROP.
 """
+import shutil
+import tempfile
 from io import StringIO
+from pathlib import Path
 from unittest import mock
 
+from django.conf import settings
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase, override_settings
@@ -158,3 +162,75 @@ class RestoreDrillTests(TestCase):
             call_command('restore_drill', stdout=out)
 
         self.assertIn('OK', out.getvalue())
+
+
+class RestaurerSauvegardeTests(TestCase):
+    """ADCG37 — restauration RÉELLE : propriétaires, droits, rôles, fichiers."""
+
+    def _roles_sql(self):
+        dossier = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, dossier, True)
+        chemin = dossier / 'rls_roles.sql'
+        chemin.write_text("ALTER ROLE erp_user BYPASSRLS;\n"
+                          "GRANT CONNECT ON DATABASE erp_db TO app_rls;\n", encoding='utf-8')
+        return str(chemin)
+
+    def _minio(self):
+        client = mock.Mock()
+
+        def lister(Bucket, Prefix='', **_kw):
+            if Bucket != backup.BACKUP_BUCKET:
+                return {'Contents': []}
+            return {'Contents': [{'Key': Prefix + 'ged/1/a.pdf', 'Size': 3, 'ETag': 'e'}]}
+        client.list_objects_v2.side_effect = lister
+        return client
+
+    def test_restaure_avec_proprietaires_roles_et_fichiers(self):
+        appels = []
+
+        def fake_run(args, **kwargs):
+            appels.append((args, kwargs))
+            return _completed(returncode=0)
+
+        client = self._minio()
+        fake_cursor = mock.MagicMock()
+        fake_cursor.__enter__.return_value = fake_cursor
+        fake_cursor.fetchone.return_value = (7,)
+        fake_conn = mock.Mock()
+        fake_conn.cursor.return_value = fake_cursor
+        out = StringIO()
+        with mock.patch.object(backup, '_minio_client', return_value=client), \
+                mock.patch('subprocess.run', side_effect=fake_run), \
+                mock.patch('psycopg2.connect', return_value=fake_conn):
+            call_command('restaurer_sauvegarde', '--dump', 'pg_dumps/20261110-030000.dump',
+                         '--base', 'erp_restaure', '--suffixe-buckets', '-restaure',
+                         '--roles-sql', self._roles_sql(), stdout=out)
+
+        noms = [a[0] for a, _k in appels]
+        self.assertNotIn('dropdb', noms)  # la base restaurée est CONSERVÉE
+        restore = next(a for a, _k in appels if a[0] == 'pg_restore')
+        self.assertNotIn('--no-owner', restore)
+        self.assertNotIn('--no-privileges', restore)
+        self.assertIn('erp_restaure', restore)
+        psql = [(a, k) for a, k in appels if a[0] == 'psql']
+        self.assertEqual(len(psql), 2)  # rôles avant ET après pg_restore
+        self.assertLess(noms.index('psql'), noms.index('pg_restore'))
+        self.assertIn('-f', psql[0][0])
+        self.assertIn('DATABASE "erp_restaure"', psql[0][1]['input'].decode('utf-8'))
+        cibles = sorted(c.kwargs['Bucket'] for c in client.copy_object.call_args_list)
+        self.assertEqual(cibles, ['erp-pdf-restaure', 'erp-uploads-restaure'])
+        run = BackupRun.objects.get(kind=BackupRun.KIND_RESTORE)
+        self.assertEqual(run.statut, BackupRun.STATUT_TERMINE)
+        self.assertEqual(run.detail['comptages'], {t: 7 for t in backup.RESTORE_DRILL_TABLES})
+        self.assertIn('OK', out.getvalue())
+
+    def test_refuse_la_base_de_production_sans_confirmation(self):
+        prod = settings.DATABASES['default']['NAME']
+        with mock.patch('subprocess.run') as run_mock:
+            with self.assertRaises(CommandError):
+                call_command('restaurer_sauvegarde', '--dump', 'pg_dumps/x.dump', '--base', prod)
+        run_mock.assert_not_called()
+        self.assertFalse(BackupRun.objects.filter(kind=BackupRun.KIND_RESTORE).exists())
+        backup.verifier_cible_restauration(prod, prod)  # confirmée : pas de refus
+        with self.assertRaises(backup.RestoreDrillGuardError):
+            backup.verifier_cible_restauration('erp; DROP', None)
