@@ -18,14 +18,19 @@ def sorties_de_la_vente(devis_id, company):
         mouvement_type_entree, mouvement_type_sortie,
     )
     from .models import BonCommande, Devis
-    from .selectors import devis_de_la_societe
+    from .selectors import devis_de_la_societe, devis_predecesseurs_revision_ids
     try:
         devis = devis_de_la_societe(devis_id, company)
     except Devis.DoesNotExist:
         return {}
     inst = installation_for_devis(devis, company=company)
+    # ASTK264 — + les versions que la vente REMPLACE par révision (et leurs BC) :
+    # la SORTIE d'une facture de V1 reste posée sous ``V1.reference``.
+    ventes = [devis.pk, *devis_predecesseurs_revision_ids(devis)]
     refs = {devis.reference, getattr(inst, 'reference', None), *(
-        BonCommande.objects.filter(devis=devis, company=company)
+        Devis.objects.filter(pk__in=ventes[1:], company=company)
+        .values_list('reference', flat=True)), *(
+        BonCommande.objects.filter(devis_id__in=ventes, company=company)
         .values_list('reference', flat=True))} - {None, ''}
     signe = {mouvement_type_sortie(): 1, mouvement_type_entree(): -1}
     vus, sorti = set(), {}
