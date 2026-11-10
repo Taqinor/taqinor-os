@@ -47,6 +47,9 @@ RESULTAT_SIMULE_2 = dict(RESULTAT_SIMULE, total_modules=10, kwc=7.2,
 
 #: ACON26 — on ne retient qu'une variante DESSINÉE.
 DESSIN = {'zones': [{'id': 'z1', 'panels': 12}]}
+#: Lot 2 critique #30 — simulée, ``total_modules``/``kwc`` se LISENT dans la
+#: conception : la retenue des écarts porte un dessin qui pose ses 12 modules.
+DESSIN_12_MODULES = {'zones': [{'id': 'z1', 'geometry': {'count': 12, 'kwc': 8.64}}]}
 
 
 def url_variantes(pk):
@@ -244,7 +247,7 @@ class ComparerTest(BaseVariantes):
     def test_ecarts_relatifs_a_la_retenue(self):
         retenue = CalepinageVariante.objects.create(
             company=self.company, calepinage=self.calepinage, nom='A',
-            roof_layout=DESSIN, resultat=RESULTAT_SIMULE)
+            roof_layout=DESSIN_12_MODULES, resultat=RESULTAT_SIMULE)
         retenir_variante(retenue)
         CalepinageVariante.objects.create(
             company=self.company, calepinage=self.calepinage, nom='B',

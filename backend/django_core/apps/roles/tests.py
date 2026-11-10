@@ -926,14 +926,16 @@ class CodesGrilleAppliquesTests(TestCase):
             f'archive/client/{self.client_obj.pk}/?export=xlsx',
             f'archive/chantier/{self.chantier.pk}/?export=xlsx',
             'reports/field/?export=xlsx', 'insights/sav-sla/?export=xlsx',
-            'insights/sav-tickets-pivot/?export=xlsx',
             'insights/technicien-scorecard/?export=xlsx',
             'balance-agee/export/'))
+        # APFS4 — le pivot lit le jeu ``sav_tickets`` : un code du module sav est requis.
+        lecteur_sav = (['reporting_voir', 'crm_modifier', 'sav_voir'], (
+            'insights/sav-tickets-pivot/?export=xlsx',))
         admin = (['reporting_voir', 'roles_gerer'], (
             'insights/job-costing/?export=xlsx',
             'insights/commissions/?export=xlsx',
             'insights/profitability/?export=xlsx'))
-        for base, chemins in (responsable, admin):
+        for base, chemins in (responsable, lecteur_sav, admin):
             sans, avec = self._paire(base, 'reporting_export')
             for chemin in chemins:
                 with self.subTest(url=chemin):

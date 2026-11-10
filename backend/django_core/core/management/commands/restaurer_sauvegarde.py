@@ -11,7 +11,7 @@ Consigné en ``BackupRun`` (kind=restore, toute l'instance). Une cible égale
 
 Exemple (procédure complète : docs/backup-runbook.md) :
     python manage.py restaurer_sauvegarde --dump pg_dumps/20261110-030000.dump \\
-        --base erp_restaure --suffixe-buckets -restaure
+        --base erp_restaure --suffixe-buckets=-restaure
 """
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
@@ -29,7 +29,8 @@ class Command(BaseCommand):
                             help="object_key du dump dans erp-backups (ex. pg_dumps/AAAAMMJJ-HHMMSS.dump)")
         parser.add_argument('--base', required=True, help='Base cible NEUVE (créée par la commande).')
         parser.add_argument('--suffixe-buckets', default='-restaure',
-                            help='Suffixe des buckets qui reçoivent les fichiers (défaut -restaure).')
+                            help='Suffixe des buckets qui reçoivent les fichiers (défaut -restaure ; '
+                                 'écrire --suffixe-buckets=-x, la valeur commence par un tiret).')
         parser.add_argument('--roles-sql', default=str(settings.BASE_DIR.parent / 'db' / 'rls_roles.sql'),
                             help='Chemin de backend/db/rls_roles.sql (à copier dans le conteneur).')
         parser.add_argument('--remplacer-production', default=None, metavar='NOM',

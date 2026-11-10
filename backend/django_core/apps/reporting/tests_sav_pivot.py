@@ -98,7 +98,9 @@ class TestSavTicketsCoutGating(SavPivotBase):
         role = Role.objects.create(
             company=self.company, nom='AvecPrixAchat',
             # ASEC11 — module reporting : un code reporting est désormais requis.
-            permissions=['tickets_gerer', 'prix_achat_voir', 'reporting_voir'])
+            # APFS4 — jeu ``sav_tickets`` : un code du module sav aussi.
+            permissions=['tickets_gerer', 'prix_achat_voir', 'reporting_voir',
+                         'sav_voir'])
         allowed = User.objects.create_user(
             username='zsav7_allowed', password='x', company=self.company,
             role=role)

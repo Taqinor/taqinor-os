@@ -93,7 +93,7 @@ class SlaEditionTests(TestCase):
         self.assertEqual(r.status_code, 200, r.content)
         self.assertEqual(r.data['sla_resolution_days'], 3)
         r = self.api.post('/api/django/monitoring/settings/',
-                          {'underperf_threshold_pct': 5}, format='json')
+                          {'underperf_threshold_pct': '5'}, format='json')  # DecimalLitteral
         self.assertEqual(r.status_code, 200, r.content)
         lignes = {ligne.section: ligne for ligne in SettingsAuditLog.objects
                   .filter(company=self.company)}
