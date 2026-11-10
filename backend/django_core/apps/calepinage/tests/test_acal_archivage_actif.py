@@ -185,6 +185,43 @@ class ArchivageActifTest(BaseApiCalepinage):
         self.assertEqual(calepinage.devis_id, devis.pk)
         self.assertEqual(auteurs, [restaurateur])
 
+    def test_archiver_refuse_si_le_brouillon_lit_l_ombrage(self):
+        """ACON31 (C-ACON-061) — un brouillon qui LIT l'ombrage servi (8,0 %)
+        garde sa conception : refus nommé (409, même code que le refus
+        voisin), rien écrit, ``peut_supprimer`` faux ; ombrage périmé ou nul :
+        archivé et détaché (inchangé). Seule la lecture du sélecteur ACAL143
+        est doublée (la simulation réelle est couverte par
+        ``test_acal_ombrage_servi``)."""
+        from unittest import mock
+        devis = self._devis(Devis.Statut.BROUILLON, 'DEV-ACON31-B')
+        calepinage = Calepinage.objects.create(
+            company=self.company, client=self.client_a, devis=devis,
+            titre='Brouillon ombré')
+        servi = {'perime': False, 'motif': '', 'par_pan': {}, 'global': 8.0}
+        with mock.patch('apps.calepinage.selectors.ombrage_servi',
+                        return_value=servi):
+            detail = self.api.get(f'{URL}{calepinage.pk}/').data
+            reponse = self._archiver_http(calepinage)
+        self.assertFalse(detail['permissions']['peut_supprimer'])
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertEqual(reponse.data, {'devis': (
+            "Le devis brouillon DEV-ACON31-B lit l'ombrage de ce calepinage "
+            "(8,0 %) : supprimez ce brouillon d'abord, sinon sa production "
+            'changerait sans que le devis le dise.')})
+        calepinage.refresh_from_db()
+        self.assertFalse(est_archive(calepinage))
+        self.assertEqual(calepinage.devis_id, devis.pk)
+        for inoffensif in ({'perime': True, 'motif': 'x', 'par_pan': {},
+                            'global': None},
+                           {'perime': False, 'motif': '', 'par_pan': {},
+                            'global': 0.0}):
+            with self.subTest(servi=inoffensif), mock.patch(
+                    'apps.calepinage.selectors.ombrage_servi',
+                    return_value=inoffensif):
+                from apps.calepinage.services.archivage import (
+                    raison_refus_archivage)
+                self.assertEqual(raison_refus_archivage(calepinage), '')
+
     def test_archiver_brouillon_detache(self):
         devis = self._devis(Devis.Statut.BROUILLON, 'DEV-ACAL118-B')
         calepinage = Calepinage.objects.create(

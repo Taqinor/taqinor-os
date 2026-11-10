@@ -95,12 +95,25 @@ def raison_refus_archivage(calepinage):
 
 def _refus_devis_porte(calepinage):
     """ACAL118 — un calepinage qui PORTE un devis actif (envoyé, accepté) ne
-    s'archive pas : refus nommé (champ ``devis``) — ``None`` sinon."""
+    s'archive pas : refus nommé (champ ``devis``) — ``None`` sinon. ACON31 —
+    un BROUILLON qui lit l'ombrage servi de ce calepinage non plus."""
     devis = getattr(calepinage, 'devis', None)
-    if devis is None or getattr(devis, 'statut', None) in _STATUTS_DETACHABLES:
+    if devis is None:
         return None
     reference = ((getattr(devis, 'reference', '') or '').strip()
                  or f'#{devis.pk}')
+    if getattr(devis, 'statut', None) == 'brouillon':
+        from ..selectors import ombrage_servi
+        servi = ombrage_servi(devis.pk, calepinage.company)
+        if not servi or servi['perime'] or not servi['global']:
+            return None
+        pct = f"{float(servi['global']):.1f}".replace('.', ',')
+        return ArchivageInvalide(
+            f"Le devis brouillon {reference} lit l'ombrage de ce calepinage "
+            f'({pct} %) : supprimez ce brouillon d\'abord, sinon sa production '
+            'changerait sans que le devis le dise.', champ='devis')
+    if getattr(devis, 'statut', None) in _STATUTS_DETACHABLES:
+        return None
     if hasattr(devis, 'get_statut_display'):
         statut = devis.get_statut_display()
     else:
