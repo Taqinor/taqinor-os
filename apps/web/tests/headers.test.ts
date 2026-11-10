@@ -119,3 +119,22 @@ describe('WAUD13 — repli formulaire du pixel Meta (pages arabes à URL longue)
     expect(directive('frame-ancestors')).toBe("frame-ancestors 'none'");
   });
 });
+
+describe('ADCG55 — widget partenaire /embed/* affichable en iframe tierce', () => {
+  const get = (chemin: string) =>
+    applySecurityHeaders({ method: 'GET', url: `https://taqinor.ma${chemin}` }, html());
+  const sans = (csp: string) => csp.split('; ').filter((d: string) => !d.startsWith('frame-ancestors '));
+  it('/embed/* : frame-ancestors https: sans X-Frame-Options ; le reste du site reste fermé', () => {
+    const embed = get('/embed/estimation');
+    const csp = embed.headers.get('Content-Security-Policy') ?? '';
+    expect(csp).toContain('frame-ancestors https:');
+    expect(csp).not.toContain("frame-ancestors 'none'");
+    expect(embed.headers.get('X-Frame-Options')).toBeNull();
+    expect(sans(csp)).toEqual(sans(CONTENT_SECURITY_POLICY));
+    for (const chemin of ['/', '/devis/mon-toit', '/embedded']) {
+      const res = get(chemin);
+      expect(res.headers.get('Content-Security-Policy')).toBe(CONTENT_SECURITY_POLICY);
+      expect(res.headers.get('X-Frame-Options')).toBe('DENY');
+    }
+  });
+});

@@ -14,7 +14,7 @@ import { captureException } from './monitoring'
 // YJPB1 — journal maison des problèmes vécus : la trace survit même sans
 // DSN Sentry (le cas en production), ce qui rendait `captureException`
 // ci-dessus totalement muet.
-import { signalerErreurScript } from './journalProblemes'
+import { signalerErreurScript, installerViolationsCsp } from './journalProblemes'
 import { sessionEstActive } from '../providers/session-bridge'
 import { toastError } from './toast'
 
@@ -50,6 +50,9 @@ export function installGlobalErrors() {
     if (!event?.error) return
     report(event.error)
   })
+
+  // ADCG54 — un blocage CSP (fond IGN, Sentry, futur domaine) laisse une ligne.
+  installerViolationsCsp({ sessionEstActive })
 }
 
 export default installGlobalErrors

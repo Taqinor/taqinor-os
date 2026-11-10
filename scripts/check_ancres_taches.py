@@ -11,6 +11,8 @@ au merge-base(<ref>, HEAD), ou ligne modifiee depuis) font echouer ; les autres 
 Jamais la POINTE de <ref> : une branche en retard ne « touche » pas ce que seule la base a change
 (meme resolution que check_forme_code.resoudre_base). Base indisponible ou clone superficiel :
 tout est touche (echec ferme). « Meme clause » = la tache entiere.
+ADCG80 : une ancre `::` d'une tache NON touchee qui resolvait au merge-base et ne resout plus
+a la tete (la PR a renomme/supprime le symbole) fait aussi echouer ; deja cassee a la base : rapport.
 Tache v2 : le nombre d ancres derivees est imprime, jamais bloque.
 
     python scripts/check_ancres_taches.py        # exit 1 si ECHEC
@@ -20,6 +22,7 @@ import ast
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -128,6 +131,22 @@ def lignes_a_la_base(base: str, rel: str, racine) -> dict:
             re.finditer(r"^- \[.\]\s*(?P<id>[A-Z][A-Za-z0-9]*[0-9]+)\b.*$", brut, re.M)}
 
 
+def resolvait_a_la_base(mb: str, ancre: str, racine) -> bool:
+    """ADCG80 — vrai si `fichier::symbole` resolvait au merge-base (fichier lu par `git show`) :
+    une tache non touchee dont la PR casse l'ancre est alors bloquante, pas un simple rapport."""
+    rel, _, symbole = ancre.partition("::")
+    for chemin in dict.fromkeys((fichier_de(rel, racine), rel, f"{at.DJANGO_REL}/{rel}")):
+        contenu = _git(racine, "show", f"{mb}:{chemin}")
+        if contenu is None:
+            continue
+        with tempfile.TemporaryDirectory() as tmp:
+            cible = Path(tmp) / chemin
+            cible.parent.mkdir(parents=True, exist_ok=True)
+            cible.write_text(contenu, encoding="utf-8")
+            return verifier_ancre(chemin, symbole, tmp) == ""
+    return False
+
+
 def _ascii(texte: str) -> str:
     return texte.encode("ascii", "replace").decode()
 
@@ -157,7 +176,9 @@ def main(argv=None) -> int:
             nb_v3, anc_v3 = nb_v3 + 1, anc_v3 + nb
             ligne = f"- [{tache.etat}] {tache.texte}".rstrip()
             touchee = not dispo or base_lignes.get(tache.identifiant) != ligne
-            (bloquants if touchee else rapport).extend((rel,) + e for e in res)
+            for e in res:
+                cassee_par_la_pr = dispo and "::" in e[1] and resolvait_a_la_base(mb, e[1], racine)
+                (bloquants if touchee or cassee_par_la_pr else rapport).append((rel,) + e)
     for rel, identifiant, ancre, raison in bloquants:
         print(_ascii(f"ECHEC {identifiant} : {ancre} - {raison}"))
     if rapport:

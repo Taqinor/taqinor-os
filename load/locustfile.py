@@ -18,6 +18,7 @@ Variables d'environnement :
 Locust est une dépendance DEV uniquement (``requirements-dev.txt``) — jamais
 présente dans l'image de production.
 """
+import math
 import os
 import random
 
@@ -38,6 +39,8 @@ except ImportError:  # pragma: no cover - locust est une dép dev optionnelle
 
 
 USER = os.environ.get("LOCUST_USER", "charge")
+# ADCG73 — taille de page DRF par défaut (50) : la page tirée reste dans les bornes du compte.
+TAILLE_PAGE = 50
 PASSWORD = os.environ.get("LOCUST_PASSWORD", "charge-password")
 
 
@@ -47,6 +50,7 @@ class ErpUser(HttpUser):
     wait_time = between(1, 4)
 
     client_id = None
+    nb_pages = 1
 
     def on_start(self):
         """Connexion : pose le cookie JWT réutilisé par les requêtes suivantes.
@@ -61,9 +65,12 @@ class ErpUser(HttpUser):
             json={"username": USER, "password": PASSWORD},
             name="auth:login",
         )
+        # ADCG73 — `unique_together (company, email)` : sans e-mail le client était
+        # refusé en 400, donc chaque création de devis (client None) aussi.
+        n = random.randint(1, 10**9)
         resp = self.client.post(
             "/api/django/crm/clients/",
-            json={"nom": f"Charge {random.randint(1, 10**9)}"},
+            json={"nom": f"Charge {n}", "email": f"charge-{n}@taqinor.local"},
             name="crm:clients:create",
         )
         if resp.status_code == 201:
@@ -72,9 +79,16 @@ class ErpUser(HttpUser):
     @task(6)
     def liste_leads(self):
         """Liste des leads paginée (chemin de lecture le plus fréquent)."""
-        page = random.randint(1, 5)
-        self.client.get(
+        # ADCG73 — `randint(1, 5)` rendait 404 hors bornes : page dans [1, ceil(count / 50)].
+        page = random.randint(1, self.nb_pages)
+        resp = self.client.get(
             f"/api/django/crm/leads/?page={page}", name="crm:leads:list")
+        try:
+            count = resp.json().get("count")
+        except (ValueError, AttributeError):
+            count = None
+        if isinstance(count, int):
+            self.nb_pages = max(1, math.ceil(count / TAILLE_PAGE))
 
     @task(3)
     def dashboard(self):
@@ -93,6 +107,8 @@ class ErpUser(HttpUser):
         """Création d'un devis minimal (chemin d'écriture)."""
         # ENF12 — ``client_nom`` est en lecture seule : l'ancien corps rendait
         # 400 à chaque appel. Un devis se crée sur un client (id) + TVA.
+        if self.client_id is None:  # client refusé : ne pas mesurer un 400 certain
+            return
         self.client.post(
             "/api/django/ventes/devis/",
             json={"client": self.client_id, "taux_tva": "20"},

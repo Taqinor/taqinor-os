@@ -19,7 +19,7 @@ import {
 } from './monitoring.js'
 import {
   GENRES, normaliserRoute, construireCorps, signalerProbleme,
-  signalerErreurRequete, signalerErreurScript, installerRechargementChunk,
+  signalerErreurRequete, signalerErreurScript, installerRechargementChunk, installerViolationsCsp,
   _resetJournalPourTests, _nombreSignaturesPourTests,
 } from './journalProblemes.js'
 
@@ -475,6 +475,32 @@ test('signalerErreurScript() accepte le genre « ecran » (error boundary)', () 
   const { envois, deps } = bancDEssai()
   signalerErreurScript(new Error('boom'), GENRES.ECRAN, deps)
   assert.equal(envois[0].corps.genre, 'ecran')
+})
+
+test('violation CSP : une ligne genre script, code csp:<directive>, origine seule, dédoublonnée', () => {
+  const ecouteurs = {}
+  const cible = { addEventListener: (nom, fn) => { ecouteurs[nom] = fn } }
+  const { envois, deps } = bancDEssai()
+  installerViolationsCsp({ ...deps, cible })
+  const violation = { violatedDirective: 'img-src', blockedURI: 'https://data.geopf.fr/wmts?LAYER=x&TILEROW=3' }
+  ecouteurs.securitypolicyviolation(violation)
+  ecouteurs.securitypolicyviolation(violation)
+  assert.equal(envois.length, 1)
+  assert.equal(envois[0].corps.genre, 'script')
+  assert.equal(envois[0].corps.code, 'csp:img-src')
+  assert.equal(envois[0].corps.route, 'https://data.geopf.fr')
+  assert.doesNotMatch(JSON.stringify(envois[0].corps), /wmts|LAYER/)
+
+  // Hors session : rien n'est envoyé.
+  const hors = bancDEssai({ connecte: false })
+  installerViolationsCsp({ ...hors.deps, cible })
+  ecouteurs.securitypolicyviolation(violation)
+  assert.equal(hors.envois.length, 0)
+})
+
+test('installGlobalErrors arme les violations CSP avec le lecteur de session', () => {
+  const globaux = readFileSync(new URL('./globalErrors.js', import.meta.url), 'utf8')
+  assert.match(globaux, /installerViolationsCsp\(\{ sessionEstActive \}\)/)
 })
 
 // ── Gardes de câblage ───────────────────────────────────────────────────────

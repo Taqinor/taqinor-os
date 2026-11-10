@@ -135,6 +135,9 @@ GARDES = {
         ('Tests garde CVE HIGH/CRITICAL (ENF12)',
          'python -m unittest scripts.tests.test_check_cve_severite -v',
          '.'),
+        ('Tests gardes CVE de dependency-audit.yml bloquantes (pipefail, ADCG62)',
+         'python -m unittest scripts.tests.test_dependency_audit_workflow -v',
+         '.'),
         ('Tests garde score de mutation (ENF12)',
          'python -m unittest scripts.tests.test_check_mutation_score -v',
          '.'),
@@ -586,6 +589,15 @@ GARDES = {
         ('Test the nightly alert-gate decision (CAD177)',
          'python -m unittest scripts.tests.test_nightly_alert_gate -v',
          '.'),
+        ('Tests ordre des etapes du nocturne release-verify (build avant vitest, ADCG68)',
+         'python -m unittest scripts.tests.test_release_verify_workflow -v',
+         '.'),
+        ('Tests e2e-local.sh : stop n arrete que les services demarres par up (ADCG23)',
+         'python -m unittest scripts.tests.test_e2e_local -v',
+         '.'),
+        ('Tests scenarios Locust : page dans les bornes, client avec e-mail (ADCG73)',
+         'python -m unittest scripts.tests.test_locustfile -v',
+         '.'),
         # ACAL317 - seul l'atelier réécrit le document entier (C-ACAL-044).
         ('Check écrivains du layout calepinage (aucun écran hors atelier, ACAL317)',
          'python scripts/check_calepinage_ecrivains_layout.py',
@@ -867,6 +879,11 @@ GARDES = {
          '.'),
         ('Test the liens client absolus (AFAC94) checker itself',
          'python -m unittest scripts.tests.test_check_liens_client_absolus -v',
+         '.'),
+        # ADCG9 - le validateur du proxy (Caddyfile + nginx.conf) rougit sur une
+        # config invalide ; le vrai docker tourne dans l'etape ci.yml dediee.
+        ('Tests du validateur de configuration du proxy (ADCG9)',
+         'python -m unittest scripts.tests.test_valider_proxy -v',
          '.'),
     ],
 }
