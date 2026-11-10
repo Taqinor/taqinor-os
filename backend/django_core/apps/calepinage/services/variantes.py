@@ -242,6 +242,11 @@ def supprimer_variante(variante, *, user=None):
     return True
 
 
+#: ACON26 — retenir une variante dont la conception est vide.
+MESSAGE_VARIANTE_SANS_CONCEPTION = ("La variante n'a pas de conception : "
+                                    "dessinez-la avant de la retenir.")
+
+
 def retenir_variante(variante, *, user=None, appliquer=True):
     """Bascule ``variante`` en RETENUE, atomiquement — et l'ÉCRIT comme
     conception courante (ACAL107, D-ACAL-2).
@@ -286,6 +291,10 @@ def retenir_variante(variante, *, user=None, appliquer=True):
                                variante=variante)
     document = (variante.roof_layout
                 if isinstance(variante.roof_layout, dict) else None)
+    if appliquer and document == {}:
+        # ACON26 — un document VIDE écraserait la conception courante.
+        raise VarianteRefusee(MESSAGE_VARIANTE_SANS_CONCEPTION,
+                              champ='roof_layout', etat=True)
 
     deja_retenue = bool(CalepinageVariante.objects
                         .filter(pk=variante.pk, retenue=True).exists())

@@ -104,6 +104,24 @@ class RetenirTest(BaseVariantes):
         retenir_variante(self.a)
         self.assertEqual(self._retenues(), [self.a.pk])
 
+    def test_variante_sans_conception_refusee(self):
+        """ACON26 — une variante au document VIDE ({}) n'écrase jamais la
+        conception : refus nommé (409), aucune bascule, conception intacte."""
+        from apps.calepinage.models import CalepinageVersion
+
+        vide = creer_variante(self.pivot, nom='Vide', roof_layout={})
+        versions = CalepinageVersion.objects.filter(
+            calepinage=self.pivot).count()
+        with self.assertRaises(VarianteRefusee) as capture:
+            retenir_variante(vide)
+        self.assertEqual(capture.exception.champ, 'roof_layout')
+        self.assertIn("n'a pas de conception", str(capture.exception))
+        self.assertEqual(self._retenues(), [])
+        self.pivot.refresh_from_db()
+        self.assertEqual(self.pivot.roof_layout, LAYOUT)
+        self.assertEqual(CalepinageVersion.objects.filter(
+            calepinage=self.pivot).count(), versions)
+
     def test_variante_non_enregistree_refusee(self):
         with self.assertRaises(VarianteRefusee) as capture:
             retenir_variante(CalepinageVariante(company=self.company,
