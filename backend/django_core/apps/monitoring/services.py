@@ -486,15 +486,21 @@ def _guaranteed_kwh_for_period(warranty, year, today, installation=None):
     1er janvier de ``start_year``, mise en service, premier relevé)
     (``debut_couverture``, quand ``installation`` est fourni), fin =
     min(31/12, ``today``) — un système mis en service en septembre n'est
-    plus jugé sur un garanti couru depuis janvier.
+    plus jugé sur un garanti couru depuis janvier. AMON105 — et au dernier
+    jour couvert par un relevé (des relevés arrêtés en juin ne font plus
+    courir le garanti jusqu'à aujourd'hui).
     """
     from datetime import date as _date
     guaranteed_full = warranty.guaranteed_kwh_for_year(year)
     premier_janvier = _date(year, 1, 1)
     debut = max(premier_janvier, _date(int(warranty.start_year), 1, 1))
+    fin = min(_date(year, 12, 31), today)
     if installation is not None:
         debut = debut_couverture(installation, debut)
-    fin = min(_date(year, 12, 31), today)
+        releves = releves_recouvrant(installation, debut, fin)
+        if releves:
+            fin = min(fin, max(jour + timedelta(days=max(int(p or 1), 1) - 1)
+                               for jour, p, _kwh in releves))
     year_in_progress = year == today.year
     if debut == premier_janvier and fin == _date(year, 12, 31):
         return guaranteed_full, year_in_progress

@@ -148,6 +148,39 @@ class TestWarrantyReportData(TestCase):
         self.assertIsNotNone(data['total_penalite_mad'])
         self.assertIsNotNone(data['monthly'][0]['actual_cumule_kwh'])
 
+    def test_releves_arretes_garanti_borne(self):
+        """AMON105 — relevés au garanti du 01/01 au 30/06 : à l'édition du
+        10/11, garanti borné au dernier jour couvert ⇒ compensation 0,00 (et
+        non 3 857,73), garanti cumulé figé au 30/06 de juillet à novembre ;
+        année close entièrement relevée : garanti annuel complet."""
+        from datetime import timedelta
+
+        from apps.monitoring.report_warranty import build_warranty_report_data
+        from apps.monitoring.services import production_warranty_status
+        self._garantie_2026()
+        jour = date(2026, 1, 1)
+        while jour <= date(2026, 6, 30):
+            ProductionReading.objects.create(
+                company=self.company, installation=self.inst, date=jour,
+                period_days=1, energy_kwh=Decimal('32.88'))
+            jour += timedelta(days=1)
+        edition = date(2026, 11, 10)
+        st = production_warranty_status(self.inst, year=2026, today=edition)
+        self.assertEqual(st['compensation_mad'], Decimal('0.00'))
+        data = build_warranty_report_data(self.inst, year=2026, today=edition)
+        self.assertEqual(data['total_penalite_mad'], Decimal('0.00'))
+        juin = data['monthly'][5]['guaranteed_cumule_kwh']
+        for mois in data['monthly'][6:]:
+            self.assertEqual(mois['guaranteed_cumule_kwh'], juin)
+        while jour <= date(2026, 12, 31):
+            ProductionReading.objects.create(
+                company=self.company, installation=self.inst, date=jour,
+                period_days=1, energy_kwh=Decimal('32.88'))
+            jour += timedelta(days=1)
+        st = production_warranty_status(
+            self.inst, year=2026, today=date(2027, 1, 10))
+        self.assertEqual(st['guaranteed_kwh'], Decimal('12000.00'))
+
 
 class TestWarrantyReportHtmlAndPdf(TestCase):
     def setUp(self):
