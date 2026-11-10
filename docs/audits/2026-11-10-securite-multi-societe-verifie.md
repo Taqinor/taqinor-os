@@ -47,7 +47,7 @@ rejouée comme preuve : elle ne l'a pas été.
 | C-id | Tâche d'origine | Grav. | Écart | Sonde | Tâches |
 |---|---|---|---|---|---|
 | C-APFS-VER1-064 | APFS64 | S3 | (mi-parcours) la garde d'isolement n'ouvrait que les fichiers nommés « vues » et acceptait tout mot « company » | STATIQUE (lecture) | APFS118, APFS119 (cochées, relues ok) |
-| C-APFS-VER2-063 | APFS63 | S3 | la garde des balayages planifiés ne reconnaît que les modèles qui déclarent eux-mêmes leur société : un modèle qui l'hérite (cas des abonnements de rapports) lui échappe ; rejouée sur le code d'avant correctif, elle ne signale pas ce balayage ; deux des trois balayages n'ont pas de test « société suspendue » | STATIQUE (lecture) | TACHES_063 |
+| C-APFS-VER2-063 | APFS63 | S3 | la garde des balayages planifiés ne reconnaît que les modèles qui déclarent eux-mêmes leur société : un modèle qui l'hérite (cas des abonnements de rapports) lui échappe ; rejouée sur le code d'avant correctif, elle ne signale pas ce balayage ; deux des trois balayages n'ont pas de test « société suspendue » | STATIQUE (lecture) | APFS120 (garde), APFS122 (tests) |
 | C-APFS-VER2-064 | APFS118, APFS119 | S3 | le critère de la garde d'isolement n'est fermé qu'à moitié : un appel dont le NOM contient « company » vaut encore filtre, quoi qu'il fasse ; des vues ne passent la garde que par ce nom (relues bornées autrement : aucune fuite) | STATIQUE (lecture) | APFS121 |
 
 Aucun écart S1-S2 : ni seconde lentille ni critique (METHODE §C.4).
@@ -69,7 +69,8 @@ Aucun écart S1-S2 : ni seconde lentille ni critique (METHODE §C.4).
 
 - **Couvert.** 16 tâches sur 23 cochées ; lecture du code, des commits et des tests ; gardes et mutants joués sur l'hôte.
 - **Non couvert.** Les 7 autres tâches cochées ; aucune sonde rejouée ; aucun rejeu à deux comptes en direct ; les tâches du
-  groupe en attente de décision ne sont pas construites.
+  groupe en attente de décision ne sont pas construites. Les balayages planifiés (9, comptage du rédacteur) et les vues (6)
+  que les deux gardes corrigées révéleront n'ont pas été relus un à un : « aucune fuite prouvée », pas « aucune fuite ».
 - **Statut.** Clôture sans écart S1-S2 ⇒ APFS passe « vérifié » pour sa part construite ; restent les tâches d'écart ouvertes.
 
 ## 7. Coût
