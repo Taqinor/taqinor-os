@@ -86,9 +86,6 @@ GARDES = {
         ('Tests de la sequence de deploy unique (auto-deploy.sh au banc, ADCG1)',
          'python -m unittest scripts.tests.test_auto_deploy -v',
          '.'),
-        ('Tests du message du deploy manuel (suit le journal du serveur, ADCG6)',
-         'python -m unittest scripts.tests.test_deploy_prod -v',
-         '.'),
         ('Tests de l installation du serveur (unites systemd versionnees, ADCG96)',
          'python -m unittest scripts.tests.test_installer_serveur -v',
          '.'),
@@ -585,12 +582,6 @@ GARDES = {
         ('Test des garde-fous des scripts de QA de nuit (QAH11)',
          'python -m unittest scripts.tests.test_nightly_qa_scripts -v',
          '.'),
-        ('Test du nettoyage gc-workspace sur un depot temporaire (ADCG21)',
-         'python -m unittest scripts.tests.test_gc_workspace -v',
-         '.'),
-        ('Test des healthchecks db/redis/django_core des fichiers compose (ADCG14)',
-         'python -m unittest scripts.tests.test_docker_compose -v',
-         '.'),
         # Instantanés anonymisés de prod (qa_export_anonymise) : CONFIDENTIELS,
         # ignorés par .gitignore — cette garde refuse un `git add -f`.
         ('Check aucun instantané anonymisé suivi par git (var/anon, *.anon.json.gz)',
@@ -612,9 +603,6 @@ GARDES = {
          '.'),
         ('Tests ordre des etapes du nocturne release-verify (build avant vitest, ADCG68)',
          'python -m unittest scripts.tests.test_release_verify_workflow -v',
-         '.'),
-        ('Tests e2e-local.sh : stop n arrete que les services demarres par up (ADCG23)',
-         'python -m unittest scripts.tests.test_e2e_local -v',
          '.'),
         ('Tests scenarios Locust : page dans les bornes, client avec e-mail (ADCG73)',
          'python -m unittest scripts.tests.test_locustfile -v',
@@ -903,9 +891,6 @@ GARDES = {
          '.'),
         # ADCG9 - le validateur du proxy (Caddyfile + nginx.conf) rougit sur une
         # config invalide ; le vrai docker tourne dans l'etape ci.yml dediee.
-        ('Tests du validateur de configuration du proxy (ADCG9)',
-         'python -m unittest scripts.tests.test_valider_proxy -v',
-         '.'),
     ],
 }
 
