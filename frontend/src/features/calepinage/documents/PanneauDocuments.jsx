@@ -7,6 +7,7 @@ import { formatDateTime } from '../../../lib/format'
 import { Button, Card, Spinner } from '../../../ui'
 import { PARAM_ONGLET, ONGLETS } from '../atelier/onglets'
 import EntreeFichierJson from '../commun/EntreeFichierJson'
+import { refusServeur } from '../commun/refusServeur'
 import { deposerCarteDeChaleur, svgTexteEnPng } from './deposerImage'
 
 /* ============================================================================
@@ -69,15 +70,23 @@ import { deposerCarteDeChaleur, svgTexteEnPng } from './deposerImage'
 /** Une erreur serveur -> `[{champ, message}]`, triée pour un affichage
     STABLE. Couvre les DEUX formes vues sur ce module : un objet
     `{champ: message}` et une LISTE de chaînes. Jamais un message générique
-    tant qu'un détail existe. */
+    tant qu'un détail existe. ERR-ACON-ERREUR-OBJET-AFFICHEE — l'objet passe
+    par LE décodeur du module (`commun/refusServeur`) : l'enveloppe `error` du
+    handler global n'est jamais un champ (elle s'affichait « [object Object] »)
+    et `detail` est le motif, pas un champ. */
 function detailsErreur(donnee) {
   if (Array.isArray(donnee)) {
     return donnee.map((message, index) => ({ champ: String(index + 1), message: String(message) }))
   }
   if (donnee && typeof donnee === 'object') {
-    return Object.entries(donnee)
-      .map(([champ, message]) => ({ champ, message: String(message) }))
+    const { message, champs } = refusServeur({ response: { data: donnee } })
+    const lignes = Object.entries(champs)
+      .map(([champ, texte]) => ({ champ, message: texte }))
       .sort((a, b) => a.champ.localeCompare(b.champ))
+    if (message && !Object.values(champs).includes(message)) {
+      lignes.unshift({ champ: '', message })
+    }
+    if (lignes.length) return lignes
   }
   return [{ champ: '', message: 'Le serveur a refusé la demande, sans détail lisible.' }]
 }

@@ -76,6 +76,14 @@ const DETAIL = exempleContrat('calepinage', 'calepinage_detail')
 const DETAIL_VIDE = exempleContrat('calepinage', 'calepinage_detail',
   'exemple_vide')
 
+// L'échantillon committé sert `peut_supprimer: false` (devis lié) : le
+// parcours d'archivage se joue sur un calepinage que le serveur DÉCLARE
+// archivable.
+const ARCHIVABLE = {
+  ...DETAIL,
+  permissions: { ...DETAIL.permissions, peut_supprimer: true },
+}
+
 // `statut` et `statut_libelle` sont DEUX clés du contrat, rendues en deux
 // champs distincts (le libellé lisible et le code technique).
 const CLES = Object.keys(DOC.exemple)
@@ -202,8 +210,27 @@ const SANS_DROIT = {
 }
 
 describe('CALX26 — archivage et restauration depuis la fiche', () => {
-  it('premier clic : demande confirmation, n’archive RIEN', async () => {
+  it('ACON31 — peut_supprimer faux : « Archiver » grisé, la raison dite AVANT le clic', async () => {
+    expect(DETAIL.permissions.peut_supprimer).toBe(false)
     rendre(DETAIL)
+
+    const bouton = screen.getByTestId('cal-fiche-archiver')
+    expect(bouton).toBeDisabled()
+    expect(screen.getByTestId('cal-fiche-archiver-indisponible'))
+      .toHaveTextContent(DETAIL.devis.reference)
+    await userEvent.click(bouton)
+    expect(screen.queryByTestId('cal-fiche-archiver-confirmation')).toBeNull()
+    expect(calepinageApi.calepinages.archiver).not.toHaveBeenCalled()
+  })
+
+  it('ACON31 — peut_supprimer vrai : aucune raison affichée, le bouton est actif', () => {
+    rendre(ARCHIVABLE)
+    expect(screen.getByTestId('cal-fiche-archiver')).toBeEnabled()
+    expect(screen.queryByTestId('cal-fiche-archiver-indisponible')).toBeNull()
+  })
+
+  it('premier clic : demande confirmation, n’archive RIEN', async () => {
+    rendre(ARCHIVABLE)
 
     await userEvent.click(screen.getByTestId('cal-fiche-archiver'))
 
@@ -218,7 +245,7 @@ describe('CALX26 — archivage et restauration depuis la fiche', () => {
     calepinageApi.calepinages.archiver.mockResolvedValue({
       data: { calepinage: DETAIL.id, archive: true },
     })
-    rendre(DETAIL)
+    rendre(ARCHIVABLE)
 
     await userEvent.click(screen.getByTestId('cal-fiche-archiver'))
     await userEvent.click(screen.getByTestId('cal-fiche-archiver'))
@@ -233,7 +260,7 @@ describe('CALX26 — archivage et restauration depuis la fiche', () => {
   })
 
   it('« Annuler » remet le bouton dans son état initial', async () => {
-    rendre(DETAIL)
+    rendre(ARCHIVABLE)
 
     await userEvent.click(screen.getByTestId('cal-fiche-archiver'))
     await userEvent.click(screen.getByTestId('cal-fiche-archiver-annuler'))
@@ -250,7 +277,7 @@ describe('CALX26 — archivage et restauration depuis la fiche', () => {
     calepinageApi.calepinages.restaurerCorbeille.mockResolvedValue({
       data: { calepinage: DETAIL.id, archive: false },
     })
-    rendre(DETAIL)
+    rendre(ARCHIVABLE)
 
     await userEvent.click(screen.getByTestId('cal-fiche-archiver'))
     await userEvent.click(screen.getByTestId('cal-fiche-archiver'))
@@ -268,7 +295,7 @@ describe('CALX26 — archivage et restauration depuis la fiche', () => {
     calepinageApi.calepinages.archiver.mockRejectedValue({
       response: { status: 400, data: { calepinage: MOTIF } },
     })
-    rendre(DETAIL)
+    rendre(ARCHIVABLE)
 
     await userEvent.click(screen.getByTestId('cal-fiche-archiver'))
     await userEvent.click(screen.getByTestId('cal-fiche-archiver'))
@@ -372,7 +399,7 @@ describe('CALX33 — le nom de la fiche est éditable sur place', () => {
     calepinageApi.calepinages.archiver.mockResolvedValue({
       data: { calepinage: DETAIL.id, archive: true },
     })
-    rendre(DETAIL)
+    rendre(ARCHIVABLE)
 
     await userEvent.click(screen.getByTestId('cal-fiche-archiver'))
     await userEvent.click(screen.getByTestId('cal-fiche-archiver'))
@@ -593,7 +620,7 @@ describe('CALX35 — dupliquer un calepinage depuis sa fiche', () => {
     calepinageApi.calepinages.archiver.mockResolvedValue({
       data: { calepinage: DETAIL.id, archive: true },
     })
-    rendre(DETAIL)
+    rendre(ARCHIVABLE)
 
     await userEvent.click(screen.getByTestId('cal-fiche-archiver'))
     await userEvent.click(screen.getByTestId('cal-fiche-archiver'))

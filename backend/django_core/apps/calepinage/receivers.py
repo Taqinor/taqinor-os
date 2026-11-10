@@ -142,12 +142,16 @@ def relier_calepinage_a_la_version_reactivee(sender, ancien=None,
     """ACON91 (D-ACAL-3, retour d'ACAL92) — la V2 est abandonnée : le
     calepinage lié DIRECTEMENT à elle retrouve son dessin « Version envoyée
     — V1 » (``restaurer_version``, réversible) puis est re-lié à la V1
-    réactivée (``lier_devis``). Reçu AVANT la suppression de la V2. Aucun
-    statut écrit (règle #4) ; best-effort journalisé, jamais propagé."""
+    réactivée (``lier_devis``). Reçu AVANT la suppression — et AVANT
+    l'archivage (ERR-ACON-REVISION-ARCHIVEE-VERROU) — de la V2. Aucun
+    statut écrit (règle #4) ; best-effort, jamais propagé, mais JAMAIS
+    muet : journalisé et rendu en résultat nommé
+    ``{calepinage, relie, motif}`` (lu par ``send_robust``)."""
     company = getattr(ancien, 'company', None)
     v1 = next(iter(reactivees or ()), None)
     if ancien is None or v1 is None or company is None:
-        return
+        return None
+    calepinage = None
     try:
         from django.db import transaction
 
@@ -158,7 +162,7 @@ def relier_calepinage_a_la_version_reactivee(sender, ancien=None,
         calepinage = Calepinage.objects.filter(
             company=company, devis_id=ancien.pk).first()
         if calepinage is None:
-            return
+            return None
         reference = (getattr(v1, 'reference', '') or '').strip() or (
             f'#{v1.pk}')
         envoyee = (CalepinageVersion.objects
@@ -173,10 +177,14 @@ def relier_calepinage_a_la_version_reactivee(sender, ancien=None,
                 calepinage.refresh_from_db()
             lier_devis(calepinage, v1.pk, user=user,
                        ancien_abandonne=ancien.pk)
-    except Exception:  # un re-lien ne casse jamais l'abandon
+    except Exception as erreur:  # un re-lien ne casse jamais l'abandon
         logger.exception(
-            'ACON91 : re-liaison du calepinage à la V1 en échec (%s -> %s)',
-            getattr(ancien, 'pk', None), getattr(v1, 'pk', None))
+            'ACON91 : re-liaison du calepinage %s à la V1 en échec '
+            '(%s -> %s) : %s', getattr(calepinage, 'pk', None),
+            getattr(ancien, 'pk', None), getattr(v1, 'pk', None), erreur)
+        return {'calepinage': getattr(calepinage, 'pk', None),
+                'relie': False, 'motif': str(erreur)}
+    return {'calepinage': calepinage.pk, 'relie': True, 'motif': ''}
 
 
 @receiver(lead_created, dispatch_uid='calepinage_reprise_trace_public')

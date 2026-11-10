@@ -128,6 +128,63 @@ class ReviserRelieTest(BaseApiCalepinage):
         self.assertEqual(
             Calepinage.objects.filter(lead_id=self.lead.pk).count(), 1)
 
+    def test_archivage_de_la_v2_relie_c_a_la_v1_au_dessin_envoye(self):
+        """ERR-ACON-REVISION-ARCHIVEE-VERROU (ACON91, sonde C-ACON-041 (b)) —
+        la VRAIE route d'archivage (PATCH ``is_active: false``) : le dessin
+        est restauré AVANT que la V2 archivée le verrouille, C revient à la
+        V1, et la 3D de la V1 n'ouvre aucun second calepinage."""
+        from apps.calepinage.services.layout import enregistrer_layout
+
+        v2 = self._reviser()
+        retouche = copy.deepcopy(DOCUMENT)
+        retouche['zones'][0]['geometry']['count'] = 16
+        self.c.refresh_from_db()
+        enregistrer_layout(self.c, retouche, user=self.user)
+
+        with self.captureOnCommitCallbacks(execute=True):
+            reponse = self.api.patch(f'/api/django/ventes/devis/{v2.pk}/',
+                                     {'is_active': False}, format='json')
+        statut = reponse.status_code
+        self.assertEqual(statut, 200)
+
+        self.c.refresh_from_db()
+        v2.refresh_from_db()
+        self.assertFalse(v2.is_active)
+        self.assertEqual(self.c.devis_id, self.v1.pk)
+        self.assertEqual(
+            self.c.roof_layout['zones'][0]['geometry']['count'], 12)
+        self.assertTrue(CalepinageVersion.objects.filter(
+            calepinage=self.c, libelle__startswith='Avant restauration')
+            .exists())
+        calepinage, _origine = adopter_ou_creer_pour_devis(
+            self.v1.pk, self.company, user=self.user)
+        self.assertEqual(calepinage, self.c)
+        self.assertEqual(
+            Calepinage.objects.filter(lead_id=self.lead.pk).count(), 1)
+
+    def test_abonne_en_echec_rend_un_resultat_nomme_et_journalise(self):
+        """ERR-ACON-REVISION-ARCHIVEE-VERROU — un re-lien impossible n'est plus
+        avalé en silence : l'abonné journalise et REND un résultat nommé
+        (``relie: False`` + motif) ; l'abandon reste acté."""
+        from unittest import mock
+
+        from apps.calepinage.receivers import (
+            relier_calepinage_a_la_version_reactivee)
+
+        v2 = self._reviser()
+        with mock.patch('apps.calepinage.services.liens.lier_devis',
+                        side_effect=RuntimeError('lien refusé')), \
+                self.assertLogs('apps.calepinage.receivers', 'ERROR') as journal:
+            resultat = relier_calepinage_a_la_version_reactivee(
+                Devis, ancien=v2, reactivees=[self.v1], user=self.user)
+
+        self.assertEqual(resultat['relie'], False)
+        self.assertEqual(resultat['calepinage'], self.c.pk)
+        self.assertIn('lien refusé', resultat['motif'])
+        self.assertIn('ACON91', journal.output[0])
+        self.c.refresh_from_db()
+        self.assertEqual(self.c.devis_id, v2.pk)  # savepoint annulé
+
     def test_version_envoyee_figee(self):
         self._reviser()
         libelle = LIBELLE_VERSION_ENVOYEE.format(reference=self.v1.reference)
