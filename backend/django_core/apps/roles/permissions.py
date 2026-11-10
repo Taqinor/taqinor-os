@@ -32,6 +32,11 @@ portail — la frontière est nette.
 """
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 
+# APFS3 — la règle « mot de passe à changer » vit au point d'authentification
+# (``authentication.permissions``, une seule définition) ; les gardes portail
+# ci-dessous l'appellent, ses constantes se lisent à la source.
+from authentication.permissions import exiger_mot_de_passe_change
+
 # Valeur canonique de ``CustomUser.portee`` pour un compte interne (défaut).
 # Répliquée en littéral (jamais un import de ``authentication.models`` ici) pour
 # garder ``apps.roles`` sans dépendance de démarrage — la valeur est figée par
@@ -137,14 +142,6 @@ class IsPortalScopedUser(BasePermission):
 # ``/auth/me/``, ``/auth/logout/`` et ``/auth/change-password/``, gardés par
 # ``IsAuthenticated`` : sans eux le client ne pourrait jamais SORTIR de l'état
 # « mot de passe à changer ».
-
-# APFS3 — la règle vit désormais au point d'authentification
-# (``authentication.permissions``, une seule définition) ; ré-importée ici
-# pour les trois gardes portail ci-dessus.
-from authentication.permissions import (  # noqa: E402,F401 — ré-export (APFS3)
-    CODE_MOT_DE_PASSE_A_CHANGER, MESSAGE_MOT_DE_PASSE_A_CHANGER,
-    exiger_mot_de_passe_change,
-)
 
 
 def acces_portail_revoque(user):

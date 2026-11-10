@@ -18,7 +18,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from apps.crm.models import Client
-from apps.roles.permissions import CODE_MOT_DE_PASSE_A_CHANGER
+from authentication.permissions import CODE_MOT_DE_PASSE_A_CHANGER
 from apps.portail.services import provisionner_compte_portail_client
 from authentication.models import Company, CustomUser
 
