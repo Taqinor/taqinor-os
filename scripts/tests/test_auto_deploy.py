@@ -213,6 +213,31 @@ class AutoDeployTests(unittest.TestCase):
         self.assertEqual(rc, 0, sortie + banc.journal)
         self.assertEqual(banc.lire("last_deployed_commit"), B)
 
+    def test_echec_revient_au_dernier_commit_sain(self):
+        """ADCG5 — migrate ou santé en échec : retour effectif à last_deployed_commit."""
+        lot = "backend/django_core/apps/crm/views.py\nbackend/django_core/requirements.txt\n"
+        for nom, env in {"migrate": {"FAIL": "manage.py migrate"}, "sante": {"HEALTH": ""}}.items():
+            with self.subTest(nom):
+                banc = self.banc(nom, changes=lot)
+                rc, _ = banc.jouer(**env)
+                self.assertNotEqual(rc, 0)
+                i_neuf = banc.index(f"^git reset --hard {B}$")
+                i_sain = banc.index(f"^git reset --hard {A}$")
+                self.assertIsNotNone(i_sain, banc.appels)
+                self.assertLess(i_neuf, i_sain)
+                apres = banc.appels[i_sain:]
+                self.assertTrue(any(re.search(r"prod\.yml build django_core$", a) for a in apres))
+                self.assertTrue(any(re.search(r"prod\.yml up -d", a) for a in apres))
+                self.assertTrue(any(re.search(r" restart django_core .* nginx$", a) for a in apres))
+                self.assertIn(f"ROLLBACK vers {A[:9]} effectué", banc.journal)
+                self.assertEqual((banc.d / "HEAD").read_text().strip(), A)
+                self.assertEqual(banc.lire("last_deployed_commit"), A)
+        banc = self.banc("sans_commit_sain", changes=lot, last="")
+        rc, _ = banc.jouer(FAIL="manage.py migrate")
+        self.assertNotEqual(rc, 0)
+        self.assertIn("ECHEC sans retour arrière (aucun commit sain)", banc.journal)
+        self.assertNotIn("ROLLBACK", banc.journal)
+
     def test_zero_downtime_drapeau_lu_puis_efface(self):
         banc = self.banc(changes=LOT_ECRAN_API)
         rc, _ = banc.jouer(_remote().replace("ZERO_DOWNTIME=0", "ZERO_DOWNTIME=1"))

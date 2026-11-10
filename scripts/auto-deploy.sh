@@ -320,5 +320,29 @@ if [ "$ok" = "1" ]; then
 else
   echo "$NEW" > "$ECHEC_COMMIT"
   log "DEPLOY $SHORT — ECHEC (commit non enregistré ; retenté au prochain commit ou par deploy-prod.ps1)"
+  # ADCG5 — RETOUR ARRIÈRE EFFECTIF vers le dernier commit sain (le contenu de
+  # last_deployed_commit, jamais `git rev-parse HEAD` déjà avancé) : code, mêmes
+  # images reconstruites, conteneurs, redémarrage backend + nginx. Le SCHÉMA n'est
+  # jamais rétrogradé (expand/contract, docs/online-migrations.md::BASCULE).
+  if [ -n "$OLD" ] && git cat-file -e "${OLD}^{commit}" 2>/dev/null; then
+    rb=1
+    git reset --hard "$OLD" || rb=0
+    if [ "$TOUT" = "1" ]; then
+      $COMPOSE build || rb=0
+    elif [ -n "$A_CONSTRUIRE" ]; then
+      # shellcheck disable=SC2086
+      $COMPOSE build $A_CONSTRUIRE || rb=0
+    fi
+    $COMPOSE up -d --remove-orphans || rb=0
+    $COMPOSE restart django_core celery_worker celery_worker_interactive \
+                     celery_beat fastapi_ia nginx || rb=0
+    if [ "$rb" = "1" ]; then
+      log "ROLLBACK vers $(git rev-parse --short "$OLD") effectué"
+    else
+      log "ROLLBACK vers $(git rev-parse --short "$OLD") EN ÉCHEC — intervention manuelle"
+    fi
+  else
+    log "ECHEC sans retour arrière (aucun commit sain)"
+  fi
   exit 1
 fi
