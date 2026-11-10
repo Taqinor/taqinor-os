@@ -1160,9 +1160,9 @@ class TrashViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
             'record': DeletionRecordSerializer(),
         }))
     @action(detail=True, methods=['post'],
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[IsAdminOrResponsableTier, HasPermissionOrLegacy('ux_corbeille_restaurer')])
     def restaurer(self, request, pk=None):
-        """AUD817 — remise en circulation : palier responsable/admin exigé."""
+        """AUD817 + APFS42 — palier + ``ux_corbeille_restaurer`` (= corbeille transverse)."""
         record = self.get_object()
         obj = trash_infra.restaurer(record)
         record.refresh_from_db()

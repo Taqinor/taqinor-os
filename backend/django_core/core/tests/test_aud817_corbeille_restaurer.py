@@ -71,6 +71,46 @@ class Aud817CorbeilleRestaurerTests(TestCase):
         resp = self._restaurer(self.responsable)
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
 
+    def test_restauration_exige_ux_corbeille_restaurer(self):
+        """APFS42 (C-APFS-041) — même garde que la corbeille transverse : palier
+        + ``ux_corbeille_restaurer`` ; un lead réellement soft-supprimé reste
+        supprimé après chaque 403 ; le record d'une autre société : 404."""
+        from django.core.management import call_command
+        Lead = django_apps.get_model('crm', 'Lead')  # core n'importe aucune app
+        call_command('init_roles', verbosity=0)
+        roles = {r.nom: r for r in Role.objects.filter(company=self.company)}
+        lead = Lead.objects.create(company=self.company, nom='Lead APFS42')
+
+        def restaurer(nom):
+            lead.refresh_from_db()
+            lead.soft_delete()
+            record = DeletionRecord.objects.filter(
+                object_id=lead.pk, restored_at__isnull=True).latest('pk')
+            user = User.objects.create_user(
+                username=f'apfs42_{nom.replace(" ", "_").lower()}', password='x',
+                company=self.company, role=roles[nom])
+            req = self.factory.post(f'/corbeille/{record.pk}/restaurer/')
+            force_authenticate(req, user=user)
+            return TrashViewSet.as_view({'post': 'restaurer'})(req, pk=record.pk)
+        for nom in ('Admin RH', 'Technicien', 'Commercial terrain', 'Commercial',
+                    'Admin Ventes', 'Viewer'):
+            with self.subTest(role=nom):
+                self.assertEqual(restaurer(nom).status_code, status.HTTP_403_FORBIDDEN)
+                self.assertTrue(Lead.all_objects.get(pk=lead.pk).is_deleted)
+        for nom in ('Directeur', 'Administrateur', 'Commercial responsable'):
+            with self.subTest(role=nom):
+                resp = restaurer(nom)
+                self.assertEqual(resp.status_code, status.HTTP_200_OK)
+                self.assertTrue(resp.data['restored'])
+        autre = Company.objects.create(nom='AUD817 Autre')
+        record_b = DeletionRecord.objects.create(
+            company=autre, content_type=ContentType.objects.get_for_model(Company),
+            object_id=autre.pk, label='B')
+        req = self.factory.post(f'/corbeille/{record_b.pk}/restaurer/')
+        force_authenticate(req, user=self.responsable)
+        resp = TrashViewSet.as_view({'post': 'restaurer'})(req, pk=record_b.pk)
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
     def test_liste_reste_ouverte_au_viewer(self):
         req = self.factory.get('/corbeille/')
         force_authenticate(req, user=self.viewer)
