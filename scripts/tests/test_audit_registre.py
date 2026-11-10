@@ -162,6 +162,40 @@ class RegistreTests(unittest.TestCase):
         self.depot.verifie("# Vérifie\n**ASTK39 — S1** écart\n")
         self.assertEqual(self.statut()["statut"], "construit")
 
+    def test_verifie_retenu_est_celui_de_l_unite(self):
+        """ADCG103 — `sav` ne prend ni le compte rendu de `chantier-sav` (nom
+        entier) ni un `sav-verifie` marqué d'un autre groupe ; sans marqueur,
+        le nom seul décide."""
+        self.depot.ecrire("docs/audits/unites.yml", """version: 1
+unites:
+
+  - id: J4
+    rang: 1
+    declencheur: sav
+    groupe: ZZA
+    dossier: docs/audits/2026-01-01-truc.md
+
+  - id: X9
+    rang: 2
+    declencheur: chantier-sav
+    groupe: ZZB
+    dossier: docs/audits/2026-01-01-truc.md
+""")
+        self.depot.plan(taches(20, 0, prefixe="ZZA") + taches(20, 0, prefixe="ZZB"))
+        self.depot.ecrire("docs/audits/2026-02-01-sav-verifie.md",
+                          "<!-- verifie | groupe: ZZA | pct: 100 | ecarts_s1_s2: 0 -->\n")
+        self.depot.ecrire("docs/audits/2026-03-01-chantier-sav-verifie.md",
+                          "<!-- verifie | groupe: ZZB | pct: 100 | ecarts_s1_s2: 1 -->\n")
+        self.depot.ecrire("docs/audits/2026-04-01-sav-verifie.md",
+                          "<!-- verifie | groupe: ZZB | pct: 100 | ecarts_s1_s2: 3 -->\n")
+        sav, chantier = ar.calculer()
+        self.assertEqual((sav["verifie"]["fichier"], sav["statut"]),
+                         ("2026-02-01-sav-verifie.md", "vérifié"))
+        self.assertEqual((chantier["verifie"]["fichier"], chantier["statut"]),
+                         ("2026-03-01-chantier-sav-verifie.md", "construit"))
+        self.depot.ecrire("docs/audits/2026-05-01-sav-verifie.md", "# sans marqueur\n")
+        self.assertEqual(ar.calculer()[0]["verifie"]["fichier"], "2026-05-01-sav-verifie.md")
+
     def test_sans_dossier_a_auditer(self):
         (self.depot.racine / "docs/audits/2026-01-01-truc.md").unlink()
         self.depot.plan(taches(1, 1))

@@ -99,25 +99,32 @@ def comptes(groupe: str, toutes: list, ledger: dict) -> tuple:
 
 
 def derniere_verifie(mot: str, groupe: str):
-    """Dernier dossier `<date>-<mot>-verifie.md` : {fichier, date, pct, ecarts} ou None."""
-    candidats = sorted((ROOT / "docs" / "audits").glob(f"*-{mot}-verifie.md"))
-    if not candidats:
-        return None
-    chemin = candidats[-1]
-    texte = chemin.read_text(encoding="utf-8", errors="replace")
-    pct = None
-    ecarts = None
-    m = _MARQUEUR.search(texte)
-    if m:
-        corps = m.group("corps")
-        p = re.search(r"pct:\s*(\d+)", corps)
-        e = re.search(r"ecarts_s1_s2:\s*(\d+)", corps)
-        pct = int(p.group(1)) if p else None
-        ecarts = int(e.group(1)) if e else None
-    if ecarts is None:
-        ecarts = len(_ECART.findall(texte))
-    return {"fichier": chemin.name, "date": chemin.name[:10], "pct": pct,
-            "ecarts": ecarts}
+    """Dernier dossier `<date>-<mot>-verifie.md` : {fichier, date, pct, ecarts} ou None.
+
+    ADCG103 — nom ENTIER (`sav` n'attrape pas `chantier-sav`) ; un marqueur
+    d'un AUTRE `groupe:` écarte le fichier ; sans marqueur, le nom seul décide."""
+    nom = re.compile(rf"^\d{{4}}-\d{{2}}-\d{{2}}-{re.escape(mot)}-verifie\.md$")
+    for chemin in sorted((ROOT / "docs" / "audits").glob("*-verifie.md"), reverse=True):
+        if not nom.match(chemin.name):
+            continue
+        texte = chemin.read_text(encoding="utf-8", errors="replace")
+        pct = None
+        ecarts = None
+        m = _MARQUEUR.search(texte)
+        if m:
+            corps = m.group("corps")
+            g = re.search(r"groupe:\s*([^\s|]+)", corps)
+            if g and groupe and g.group(1) != groupe:
+                continue
+            p = re.search(r"pct:\s*(\d+)", corps)
+            e = re.search(r"ecarts_s1_s2:\s*(\d+)", corps)
+            pct = int(p.group(1)) if p else None
+            ecarts = int(e.group(1)) if e else None
+        if ecarts is None:
+            ecarts = len(_ECART.findall(texte))
+        return {"fichier": chemin.name, "date": chemin.name[:10], "pct": pct,
+                "ecarts": ecarts}
+    return None
 
 
 def _git(*args):
