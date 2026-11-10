@@ -181,6 +181,30 @@ class TestWarrantyReportData(TestCase):
             self.inst, year=2026, today=date(2027, 1, 10))
         self.assertEqual(st['guaranteed_kwh'], Decimal('12000.00'))
 
+    def test_releve_a_cheval_au_prorata(self):
+        """AMON106 — un relevé de 30 j / 300 kWh daté du 07/12/2025 apporte
+        50 kWh au réel 2026 et 250 au réel 2025 ; le cumul réel de janvier
+        2026 du rapport les compte."""
+        from apps.monitoring.report_warranty import build_warranty_report_data
+        from apps.monitoring.services import production_for_calendar_year
+        ProductionWarranty.objects.create(
+            company=self.company, installation=self.inst,
+            guaranteed_year1_kwh=Decimal('12000'),
+            degradation_pct_per_year=Decimal('0'), start_year=2025,
+            tolerance_pct=Decimal('5'),
+            compensation_mad_per_kwh=Decimal('1.10'))
+        ProductionReading.objects.create(
+            company=self.company, installation=self.inst,
+            date=date(2025, 12, 7), period_days=30, energy_kwh=Decimal('300'))
+        self.assertEqual(production_for_calendar_year(self.inst, 2026),
+                         Decimal('50'))
+        self.assertEqual(production_for_calendar_year(self.inst, 2025),
+                         Decimal('250'))
+        data = build_warranty_report_data(
+            self.inst, year=2026, today=date(2026, 11, 10))
+        self.assertGreaterEqual(data['monthly'][0]['actual_cumule_kwh'],
+                                Decimal('50.00'))
+
 
 class TestWarrantyReportHtmlAndPdf(TestCase):
     def setUp(self):

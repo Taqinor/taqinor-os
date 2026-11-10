@@ -29,7 +29,7 @@ from django.utils import timezone
 
 from core.pdf import render_pdf
 
-from .models import ProductionReading, ProductionWarranty
+from .models import ProductionWarranty
 
 # Libellés de mois en FRANÇAIS (jamais `calendar.month_name`, en anglais).
 _MOIS_FR = [
@@ -101,7 +101,10 @@ def build_warranty_report_data(installation, *, year=None, today=None):
     if warranty is None or year < int(warranty.start_year):
         # AMON40 — aucune garantie avant son année de départ (404 en vue).
         return {'has_warranty': False}
-    from .services import _guaranteed_kwh_for_period
+    from .services import (
+        _guaranteed_kwh_for_period, production_couverte, releves_annee,
+        releves_recouvrant,
+    )
 
     guaranteed_full = warranty.guaranteed_kwh_for_year(year)
     tolerance_rate = Decimal(str(warranty.tolerance_pct)) / Decimal('100')
@@ -116,12 +119,9 @@ def build_warranty_report_data(installation, *, year=None, today=None):
         debut_mois = _date(year, month, 1)
         fin_mois = _fin_mois(year, month, today)
 
-        month_kwh = Decimal('0')
-        for energie in (ProductionReading.objects
-                        .filter(installation=installation,
-                                date__gte=debut_mois, date__lte=fin_mois)
-                        .values_list('energy_kwh', flat=True)):
-            month_kwh += Decimal(str(energie))
+        # AMON106 — relevés au prorata de leurs jours dans le mois.
+        month_kwh = production_couverte(releves_recouvrant(
+            installation, debut_mois, fin_mois), debut_mois, fin_mois)
         cumulative_actual += month_kwh
 
         # AMON40 — garanti cumulé sur la seule période couverte (mise en
@@ -151,8 +151,7 @@ def build_warranty_report_data(installation, *, year=None, today=None):
 
     # AMON104 — sans aucun relevé de l'année (même test que
     # ``production_warranty_status``) : réel, écart et pénalité NON mesurés.
-    if not ProductionReading.objects.filter(
-            installation=installation, date__year=year).exists():
+    if not releves_annee(installation, year):
         for m in monthly:
             m.update(production_kwh=None, actual_cumule_kwh=None,
                      ecart_cumule_kwh=None, penalite_cumulee_mad=None)

@@ -455,14 +455,19 @@ def evaluate_underperformance(installation, *, user=None, today=None):
     return result
 
 
+def releves_annee(installation, year):
+    """AMON106 — relevés qui RECOUVRENT l'année calendaire ``year``."""
+    from datetime import date as _date
+    return releves_recouvrant(
+        installation, _date(year, 1, 1), _date(year, 12, 31))
+
+
 def production_for_calendar_year(installation, year):
-    """Somme des relevés (kWh) d'une année calendaire pour un système."""
-    agg = ProductionReading.objects.filter(
-        installation=installation, date__year=year)
-    total = Decimal('0')
-    for r in agg.values_list('energy_kwh', flat=True):
-        total += Decimal(str(r))
-    return total
+    """Production (kWh) d'une année calendaire — AMON106 : chaque relevé au
+    prorata de ses jours dans l'année (à cheval : sa part dans chacune)."""
+    from datetime import date as _date
+    return production_couverte(releves_annee(installation, year),
+                               _date(year, 1, 1), _date(year, 12, 31))
 
 
 def _guaranteed_kwh_for_period(warranty, year, today, installation=None):
@@ -541,9 +546,9 @@ def production_warranty_status(installation, *, year=None, today=None):
         warranty, year, today, installation)
     actual = production_for_calendar_year(installation, year)
     q2 = Decimal('0.01')
-    if not ProductionReading.objects.filter(
-            installation=installation, date__year=year).exists():
-        # AMON40 — sans relevé : réel et compensation NON mesurés (null).
+    if not releves_annee(installation, year):
+        # AMON40 — sans relevé (AMON106 : recouvrant l'année) : réel et
+        # compensation NON mesurés (null).
         return {
             'has_warranty': True, 'year': year,
             'year_in_progress': year_in_progress,
@@ -621,8 +626,7 @@ def warranty_curve_overlay(installation, *, years=None, today=None,
         guaranteed, year_in_progress = _guaranteed_kwh_for_period(
             warranty, year, today, installation)
         actual = production_for_calendar_year(installation, year)
-        has_data = ProductionReading.objects.filter(
-            installation=installation, date__year=year).exists()
+        has_data = bool(releves_annee(installation, year))  # AMON106
         drift_pct = None
         anomalous = False
         # Garanti < 0,01 kWh (arrondi à 0,00) : dérive non définie. Un garanti
