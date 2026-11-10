@@ -20,6 +20,7 @@ from authentication.permissions import (
     IsResponsableOrAdmin,
     HasPermissionOrLegacy,
 )
+from apps.roles.permissions import DroitDeLaGrille, droits_de_la_grille  # ASEC92
 import logging
 
 logger = logging.getLogger(__name__)
@@ -93,7 +94,8 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
             # NTP2P7 — dossier d'entrée en relation : LECTURE (mêmes gardes
             # que `performance`/`vue_360` — get_permissions prime sur le
             # permission_classes de l'@action, d'où ce cas explicite).
-            return [HasPermissionOrLegacy('stock_voir')()]
+            return [HasPermissionOrLegacy('stock_voir')(), *droits_de_la_grille(
+                self, export_conformite=[DroitDeLaGrille('stock_export', export=('xlsx',))])]  # ASEC92
         elif self.action == 'vue_360':
             # XPUR25/WIR27 — agrégat fiche fournisseur 360 : lecture, ouverte à
             # tout rôle porteur du droit de lecture stock (même garde que

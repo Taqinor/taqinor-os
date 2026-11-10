@@ -178,3 +178,46 @@ class TestBulkExportAndScope(ProductBulkBase):
         resp = clients[ROLE_ADMIN_VENTES].get(f'{url}&export=xlsx')
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertIn('spreadsheetml', resp['Content-Type'])
+
+    def test_conformite_et_consignations_xlsx_exigent_stock_export(self):
+        """ASEC92 (C-ASEC-VER6-092, D-ASEC-VER4-1) — le VRAI rôle système
+        Commercial (sans ``stock_export``) : 403 ``droit_manquant`` aux
+        téléchargements de la conformité fournisseurs (``?export=xlsx``) et
+        des consignations ; conformité sans ``export`` ⇒ 200 JSON ; l'Admin
+        Ventes (porte ``stock_export``) télécharge les deux. Mutant : ôter
+        l'une des deux entrées ⇒ échec."""
+        from apps.crm.models import Client
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import (
+            ADMIN_VENTES_PERMISSIONS, COMMERCIAL_PERMISSIONS, ROLE_ADMIN_VENTES)
+        from apps.stock.models import Fournisseur
+        from apps.stock.services_consignation import creer_depot_consignation
+        from datetime import date
+        Fournisseur.objects.create(company=self.company, nom='Fournisseur ASEC92')
+        client = Client.objects.create(company=self.company, nom='Client ASEC92')
+        creer_depot_consignation(company=self.company, user=self.user, client_id=client.id,
+                                 produit_id=self.mk(nom='Panneau', quantite_stock=50).id,
+                                 quantite=10, date_depot=date(2026, 3, 1))
+        self.assertNotIn('stock_export', COMMERCIAL_PERMISSIONS)
+        self.assertIn('stock_export', ADMIN_VENTES_PERMISSIONS)
+        conformite = '/api/django/stock/fournisseurs/export-conformite/'
+        telechargements = (f'{conformite}?export=xlsx', '/api/django/stock/consignations/export-xlsx/')
+        clients = {}
+        for nom, perms in (('Commercial', COMMERCIAL_PERMISSIONS),
+                           (ROLE_ADMIN_VENTES, ADMIN_VENTES_PERMISSIONS)):
+            role = Role.objects.create(company=self.company, nom=nom, permissions=list(perms))
+            user = User.objects.create_user(username=f'asec92_{role.pk}', password='x',
+                                            role=role, company=self.company)
+            clients[nom] = APIClient()
+            clients[nom].credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+        for url in telechargements:
+            resp = clients['Commercial'].get(url)
+            self.assertEqual(resp.status_code, 403, (url, resp.content))
+            self.assertEqual(resp.json()['code'], 'droit_manquant', url)
+        resp = clients['Commercial'].get(conformite)
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertIsInstance(resp.json(), list)
+        for url in telechargements:
+            resp = clients[ROLE_ADMIN_VENTES].get(url)
+            self.assertEqual(resp.status_code, 200, (url, resp.content))
+            self.assertIn('spreadsheetml', resp['Content-Type'], url)
