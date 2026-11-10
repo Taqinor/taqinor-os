@@ -114,3 +114,55 @@ class MoisPartielsTests(TestCase):
             self.assertFalse(data['soiling_suspected'], inst.reference)
             self.assertNotIn('Nettoyage des panneaux recommandé.',
                              data['recommendations'], inst.reference)
+
+    def test_historique_egal_pr_mensuel_analytique(self):
+        """AMON100 — l'historique mensuel (JSON et CSV) sert les MÊMES PR
+        mensuels que l'analytique O&M (prorata, attendu au profil mensuel),
+        jamais un attendu à plat ``annuel × jours / 365``."""
+        import calendar
+        import csv
+        import io
+
+        from django.contrib.auth import get_user_model
+        from django.utils import timezone
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+
+        today = timezone.localdate()
+        for i in range(365):
+            jour = today - timedelta(days=364 - i)
+            ProductionReading.objects.create(
+                company=self.company, installation=self.inst, date=jour,
+                energy_kwh=services.attendu_entre(
+                    Decimal('12000'), jour, jour).quantize(Decimal('0.01')),
+                period_days=1)
+        user = get_user_model().objects.create_user(
+            username='amon100_admin', password='x', role_legacy='admin',
+            company=self.company)
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+        config = MonitoringConfig.objects.get(installation=self.inst)
+        url = f'/api/django/monitoring/configs/{config.pk}/history/?months=12'
+        reponse = api.get(url)
+        self.assertEqual(reponse.status_code, 200)
+        rows = reponse.data['data']
+        self.assertEqual(set(rows[0]), {
+            'month', 'actual_kwh', 'expected_kwh', 'ratio_pct'})
+        pr = {m['month']: m['pr_pct'] for m in analytics.om_metrics(
+            self.inst, today=today)['monthly_pr']}
+        self.assertEqual([r['month'] for r in rows], list(pr))
+        for row in rows:
+            self.assertAlmostEqual(
+                row['ratio_pct'], float(pr[row['month']]), delta=0.1,
+                msg=row['month'])
+        # Au profil : l'attendu par jour des mois pleins varie (hiver ≠ été).
+        par_jour = [
+            r['expected_kwh'] / calendar.monthrange(
+                *(int(x) for x in r['month'].split('-')))[1]
+            for r in rows[1:-1]]
+        self.assertGreater(max(par_jour) / min(par_jour), 1.5)
+        contenu = b''.join(api.get(url + '&export=csv').streaming_content)
+        lignes = list(csv.DictReader(io.StringIO(contenu.decode())))
+        self.assertEqual([float(ligne['ratio_pct']) for ligne in lignes],
+                         [r['ratio_pct'] for r in rows])

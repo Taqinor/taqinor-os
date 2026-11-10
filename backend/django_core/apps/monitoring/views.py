@@ -20,8 +20,6 @@ import csv
 import io
 from datetime import timedelta
 
-from django.db.models import Sum
-from django.db.models.functions import TruncMonth
 from django.http import HttpResponse, StreamingHttpResponse
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
@@ -473,42 +471,30 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         """
         config = self.get_object()
         months = entier_borne(request, 'months', 12, mini=1, maxi=60)
-        since = timezone.localdate() - timedelta(days=months * 31)
-
-        # Agrégation mensuelle.
-        qs = (ProductionReading.objects
-              .filter(
-                  company=request.user.company,
-                  installation=config.installation,
-                  date__gte=since)
-              .annotate(month=TruncMonth('date'))
-              .values('month')
-              .annotate(actual_kwh=Sum('energy_kwh'))
-              .order_by('month'))
-
-        # ASAV63 — production attendue de chaque mois sur ses jours
-        # réellement couverts (annuel × jours / 365) : le premier et le
-        # dernier mois partiels sont normalisés (même règle que les PR
-        # mensuels de l'analytique O&M).
-        from .analytics import jours_couverts_mois
-        from .services import debut_couverture
-
         today = timezone.localdate()
-        expected_annual = config.expected_annual_kwh
-        debut_eff = debut_couverture(config.installation, since)
+        since = today - timedelta(days=months * 31)
 
+        # AMON100 — MÊMES PR mensuels que l'analytique O&M
+        # (``serie_mensuelle`` : relevés au prorata de leurs jours dans le
+        # mois, attendu au profil mensuel sur les seuls jours couverts).
+        from .analytics import serie_mensuelle
+        from .services import debut_couverture, releves_recouvrant
+
+        expected_annual = config.expected_annual_kwh
+        releves = releves_recouvrant(
+            config.installation, since, today,
+            base=ProductionReading.objects.filter(
+                company=request.user.company))
         rows = []
-        for row in qs:
-            actual = float(row['actual_kwh'])
-            ratio_pct = None
-            expected_month = None
-            couverts = jours_couverts_mois(row['month'], debut_eff, today)
-            if expected_annual and couverts > 0:
-                expected_month = float(expected_annual) * couverts / 365
-            if expected_month and expected_month > 0:
+        for mois, actual, expected_month in serie_mensuelle(
+                config, releves,
+                debut_couverture(config.installation, since), today):
+            actual, ratio_pct = float(actual), None
+            expected_month = float(expected_month or 0) or None
+            if expected_month:
                 ratio_pct = round(actual / expected_month * 100, 1)
             rows.append({
-                'month': row['month'].strftime('%Y-%m'),
+                'month': mois.strftime('%Y-%m'),
                 'actual_kwh': round(actual, 2),
                 'expected_kwh': (
                     round(expected_month, 2) if expected_month else None),

@@ -111,16 +111,6 @@ def fenetre_mesuree(installation, since, today, window_days):
     return debut, max((today - debut).days + 1, 0)
 
 
-def jours_couverts_mois(mois, debut_effectif, today):
-    """ASAV63 — nombre de jours du mois ``mois`` (1er du mois) réellement
-    couverts : ni avant ``debut_effectif`` (mise en service / premier relevé /
-    début de fenêtre), ni après ``today``. Sert à normaliser le PR du premier
-    et du dernier mois PARTIELS."""
-    dernier = date(mois.year, mois.month,
-                   calendar.monthrange(mois.year, mois.month)[1])
-    return max((min(dernier, today) - max(mois, debut_effectif)).days + 1, 0)
-
-
 def _linear_slope(points):
     """Pente d'une régression linéaire simple sur [(x_int, y_float)].
 
