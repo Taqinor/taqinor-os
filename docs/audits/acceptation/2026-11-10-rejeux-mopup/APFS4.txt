@@ -1,0 +1,71 @@
+# Preuve en direct APFS4 — rejeu accept-mopup (rattrapage), code joué f9337084d (origin/main = merge de #1335), 2026-11-10
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau mopup-net ; mopup-db (pgvector pg16, 127.0.0.1:5561,
+# base erp_mopup = pg_dump --no-owner --no-privileges de la base locale erp_live en lecture seule, puis `manage.py
+# migrate`) ; mopup-redis ; mopup-minio (MinIO privé) ; mopup-dj (image erp-agentique-django_core, code backend du
+# commit joué COPIÉ par tar dans /app, `pip install -r requirements.txt` du commit joué — Pillow 13.0.0, DRF 3.18.2 —,
+# settings.dev, EMAIL_BACKEND locmem, DB_CONN_MAX_AGE=0, runserver 0.0.0.0:8000 publié sur 127.0.0.1:8031).
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8031 vite
+# preview --port 5231`), piloté par Playwright MCP ; comptes de test acc_mop_<rôle> (société « Acceptation MOPUP »,
+# id 278, rôles système dir/adm/rh/comresp/com/techresp + superuser acc_mop_su, mot de passe de test généré, base
+# jetable). Sondes du dossier d'audit : `python scripts/sonde.py <G>/<sonde> --conteneur mopup-dj` (fraîcheur ADCG20
+# vérifiée : même code que ce worktree) ; sondes de dépôt ADCG : `python docs/audits/sondes/ADCG/<sonde>.py` sur ce
+# worktree. Sondes C-LIVE-* écrites pour ce rejeu (source jointe) : ICI repro=true signifie que le comportement
+# ATTENDU par la tâche est observé. Captures : C:\dev\taqinor-os\logs\nightly-qa\playwright\accept-mopup\ (hors dépôt, sauf mention).
+# Verdict : PASS — sonde C-APFS-020 rejouée ⇒ repro faux (ÉCART), aucun écart écran/moteur, aucune fuite B ; C-LIVE-APFS4 : POST core/formule/tester/ (ventes_factures) ⇒ 403 « Accès au jeu de données refusé. » pour Admin RH, Commercial terrain, Technicien ; Directeur 200 (défaut ERR-APFS-FORMULE-TESTER-REFUS-400 du rejeu précédent corrigé par #1332) ; API seulement — 0 écran
+
+== C-APFS-020 (python scripts/sonde.py APFS/C-APFS-020 --conteneur mopup-dj ; fraîcheur vérifiée)
+== C-APFS-020 (sha c9e72d5b2)
+attendu : repro si une porte du moteur rend 200 + lignes là où l'écran du module (crm/leads/, ventes/factures/) rend 403, ou plus de lignes que l'écran pour le Commercial « soi » ; aucune ligne de B
+observé : {"repro": false, "observe": {"terrain": {"ecran_leads": [403, null], "ecran_factures": [403, null], "dx_run_leads": [403, null, false, false], "saved_run_leads": [403, null, false, false], "rapport_create": 201, "rapport_executer_leads": [403, null, false, false], "formule_tester_factures": [403, null, false], "dx_run_factures": [403, null]}, "rh": {"ecran_leads": [403, null], "ecran_factures": [403, null], "dx_run_leads": [403, null, false, false], "saved_run_leads": [403, null, false, false], "rapport_create": 201, "rapport_executer_leads": [403, null, false, false], "formule_tester_factures": [403, null, false], "dx_run_factures": [403, null]}, "tech": {"ecran_leads": [403, null], "ecran_factures": [403, null], "dx_run_leads": [403, null, false, false], "saved_run_leads": [403, null, false, false], "rapport_create": 201, "rapport_executer_leads": [403, null, false, false], "formule_tester_factures": [403, null, false], "dx_run_factures": [403, null]}, "c2_soi": {"ecran_leads": [200, 1], "ecran_factures": [200, 0], "dx_run_leads": [200, 1, false, false], "saved_run_leads": [200, 1, false, false], "rapport_create": 201, "rapport_executer_leads": [200, 1, false, false], "formule_tester_factures": [200, 0, false], "dx_run_factures": [200, 0]}, "directeur": {"ecran_leads": [200, 4], "ecran_factures": [200, 1], "dx_run_leads": [200, 4, true, false], "saved_run_leads": [200, 4, true, false], "rapport_create": 201, "rapport_executer_leads": [200, 4, true, false], "formule_tester_factures": [200, 1, true], "dx_run_factures": [200, 1]}, "ecarts": [], "fuite_B": false, "temoin_directeur": true}}
+verdict : ÉCART
+base inchangée : oui (avant 3293, après 3293) ; mails 0 ; tâches Celery bloquées 0
+
+== C-LIVE-APFS4 (--racine <scratch> --sans-fraicheur ; source ci-dessous)
+== C-LIVE-APFS4 (sha f9337084d)
+attendu : formule/tester ventes_factures : Admin RH, Commercial terrain, Technicien 403 « Accès au jeu de données refusé. » ; Directeur 200
+observé : {"Admin RH": {"formule_tester": [403, "{'detail': ErrorDetail(string='Accès au jeu de données refusé.', code='permission_denied'), 'error': {'code': 'permission_denied', 'message': ErrorDetail(string"], "data_explorer_run": [403, "{'detail': ErrorDetail(string='Accès au jeu de données refusé.', code='permission_denied'), 'error': {'code': 'permissio"]}, "Commercial terrain": {"formule_tester": [403, "{'detail': ErrorDetail(string='Accès au jeu de données refusé.', code='permission_denied'), 'error': {'code': 'permission_denied', 'message': ErrorDetail(string"], "data_explorer_run": [403, "{'detail': ErrorDetail(string='Accès au jeu de données refusé.', code='permission_denied'), 'error': {'code': 'permissio"]}, "Technicien": {"formule_tester": [403, "{'detail': ErrorDetail(string='Accès au jeu de données refusé.', code='permission_denied'), 'error': {'code': 'permission_denied', 'message': ErrorDetail(string"], "data_explorer_run": [403, "{'detail': ErrorDetail(string='Accès au jeu de données refusé.', code='permission_denied'), 'error': {'code': 'permissio"]}, "Directeur": {"formule_tester": [200, "{'dataset': 'ventes_factures', 'expression': 'montant_ttc', 'lignes': [], 'detail': \"Aucune donnée réelle ne correspond : la formule n'a pas pu être testée.\"}"], "data_explorer_run": [200, "{'dataset': 'ventes_factures', 'nb': 0, 'rows': []}"]}, "repro": true}
+verdict : REPRO (fraîcheur non vérifiée)
+base inchangée : oui (avant 143, après 143) ; mails 0 ; tâches Celery bloquées 0
+
+Verdict : PASS
+
+# ---- source : C-LIVE-APFS4.py (reprise du rejeu du 10/11, sha mis à jour) ----
+# flake8: noqa  (sonde LIVE du rejeu d'acceptation APFS/ASOC — volet formule/tester de APFS4)
+"""APFS4 — Admin RH / Commercial terrain / Technicien : POST core/formule/tester/ sur ventes_factures ⇒ 403
+« Accès au jeu de données refusé. » (Then de la tâche) ; Directeur 200. repro=True signifie ICI que le
+comportement ATTENDU est observé."""
+SONDE = {"constat": "C-LIVE-APFS4", "sha": "f9337084d",
+         "attendu": "formule/tester ventes_factures : Admin RH, Commercial terrain, Technicien 403 « Accès au jeu de données refusé. » ; Directeur 200",
+         "modeles": ['authentication.CustomUser', 'roles.Role']}
+
+
+def sonde(ctx):
+    from decimal import Decimal
+    from django.contrib.auth import get_user_model
+    from rest_framework.test import APIClient
+    from rest_framework_simplejwt.tokens import AccessToken
+    from authentication.models import Company
+    from authentication.role_tiers import tier_for_role_fields
+    from apps.roles.models import Role
+    from apps.roles import permissions_registre as reg
+    H = {'HTTP_HOST': 'localhost'}
+    U = get_user_model()
+    R = dict(reg.CANONICAL_SYSTEM_ROLES)
+    co = Company.objects.create(nom='Live APFS4', slug='live-apfs4')
+    out = {}
+    for nom in ('Admin RH', 'Commercial terrain', 'Technicien', 'Directeur'):
+        perms = list(R[nom])
+        role, _ = Role.objects.get_or_create(company=co, nom=nom, defaults={'permissions': perms, 'est_systeme': True})
+        u = U.objects.create_user(username='live4-' + nom.replace(' ', '').lower(), password='x', company=co, role=role,
+                                  role_legacy=tier_for_role_fields(nom, True, perms))
+        c = APIClient()
+        c.credentials(HTTP_AUTHORIZATION='Bearer ' + str(AccessToken.for_user(u)))
+        r = c.post('/api/django/core/formule/tester/', {'dataset': 'ventes_factures', 'expression': 'montant_ttc'},
+                   format='json', **H)
+        d = c.post('/api/django/core/data-explorer/run/', {'dataset': 'ventes_factures', 'limit': 10}, format='json', **H)
+        out[nom] = {'formule_tester': [r.status_code, str(getattr(r, 'data', ''))[:160]],
+                    'data_explorer_run': [d.status_code, str(getattr(d, 'data', ''))[:120]]}
+    refus = all(out[n]['formule_tester'][0] == 403 and 'refusé' in out[n]['formule_tester'][1]
+                for n in ('Admin RH', 'Commercial terrain', 'Technicien'))
+    out['repro'] = bool(refus and out['Directeur']['formule_tester'][0] == 200)
+    return out

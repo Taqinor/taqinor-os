@@ -1,0 +1,28 @@
+# Preuve en direct AAPV72 — rejeu accept-mopup (rattrapage), code joué f9337084d (origin/main = merge de #1335), 2026-11-10
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau mopup-net ; mopup-db (pgvector pg16, 127.0.0.1:5561,
+# base erp_mopup = pg_dump --no-owner --no-privileges de la base locale erp_live en lecture seule, puis `manage.py
+# migrate`) ; mopup-redis ; mopup-minio (MinIO privé) ; mopup-dj (image erp-agentique-django_core, code backend du
+# commit joué COPIÉ par tar dans /app, `pip install -r requirements.txt` du commit joué — Pillow 13.0.0, DRF 3.18.2 —,
+# settings.dev, EMAIL_BACKEND locmem, DB_CONN_MAX_AGE=0, runserver 0.0.0.0:8000 publié sur 127.0.0.1:8031).
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8031 vite
+# preview --port 5231`), piloté par Playwright MCP ; comptes de test acc_mop_<rôle> (société « Acceptation MOPUP »,
+# id 278, rôles système dir/adm/rh/comresp/com/techresp + superuser acc_mop_su, mot de passe de test généré, base
+# jetable). Sondes du dossier d'audit : `python scripts/sonde.py <G>/<sonde> --conteneur mopup-dj` (fraîcheur ADCG20
+# vérifiée : même code que ce worktree) ; sondes de dépôt ADCG : `python docs/audits/sondes/ADCG/<sonde>.py` sur ce
+# worktree. Sondes C-LIVE-* écrites pour ce rejeu (source jointe) : ICI repro=true signifie que le comportement
+# ATTENDU par la tâche est observé. Captures : C:\dev\taqinor-os\logs\nightly-qa\playwright\accept-mopup\ (hors dépôt, sauf mention).
+# Verdict : PASS — écran BCF : ligne Panneau ACC MOPUP à 1 150 sur un contrat en vigueur à 1 000 ⇒ toast « Prix à vérifier : Le prix saisi (1150.00) dépasse le prix convenu du contrat en vigueur (1000.0). » ; « Envoyer au fournisseur » ⇒ confirmation « Envoyer malgré l'avertissement prix ? » portant le même message ; jamais « [object Object] » (envoi annulé)
+
+FIX-MOPUP-BCF (persistée) : Fournisseur ACC MOPUP (172), produit Panneau ACC MOPUP (4185), ContratPrixFournisseur
+  CPF-ACC-MOP (id 2, actif, 30 j avant → 300 j après aujourd'hui), ligne prix_convenu 1 000 ;
+  `installations.selectors.prix_convenu_fournisseur` ⇒ {prix_convenu: 1000.0, contrat_id: 2}.
+Écran /stock/bons-commande-fournisseur (acc_mop_dir) : « Nouveau bon de commande » → fournisseur, « Ajouter une ligne »
+  → produit Panneau ACC MOPUP, prix 1150 → « Enregistrer » ⇒ POST 201 prix_warnings [{"ligne_id":57,"produit":4185,
+  "warnings":[{"type":"hors_contrat","prix_convenu":1000,"prix_saisi":1150,"contrat_id":2,"message":"Le prix saisi
+  (1150.00) dépasse le prix convenu du contrat en vigueur (1000.0)."}]}] ; toast : « Prix à vérifier : Le prix saisi
+  (1150.00) dépasse le prix convenu du contrat en vigueur (1000.0). »
+Réouverture du brouillon BCF-202611-0001 → « Envoyer au fournisseur » ⇒ PATCH 200 puis alertdialog « Envoyer malgré
+  l'avertissement prix ? | Le prix saisi (1150.00) dépasse le prix convenu du contrat en vigueur (1000.0). | Annuler |
+  Envoyer » — objectObject=false ; « Annuler » cliqué (aucun envoi fournisseur).
+Captures : AAPV72-toast-enregistrer.png, AAPV72-confirmation-envoi.png.
+Verdict : PASS
