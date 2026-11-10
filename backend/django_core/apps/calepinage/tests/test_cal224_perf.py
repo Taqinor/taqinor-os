@@ -31,9 +31,16 @@ poste plus lent. Reléver la borne exige de re-mesurer et de documenter la
 nouvelle valeur (même discipline que ``frontend/scripts/check_bundle_budget.mjs``),
 jamais un chiffre élargi « pour respirer ».
 
+ACON51 (C-ACON-063) — la MÊME composition bornée aussi à 2 000 modules (4 pans
+× 500, plafond admis le 23/10) : mesure du 08/11/2026 (sonde
+``docs/audits/sondes/ACON/C-ACON-063.py``, deux runs, pile locale) —
+géométrie + SVG ≈ 10 ms, ``octets_dxf`` 320-380 ms ; bornes = 3 × la mesure
+(3 × 10 ms ; 3 × 380 ms). Le layout de 2 modules garde ses bornes.
+
 Run :
     python manage.py test apps.calepinage.tests.test_cal224_perf -v2
 """
+import math
 import copy
 import json
 import pathlib
@@ -65,10 +72,36 @@ SITE = {'ville': 'Bouskoura', 'adresse': 'Zone industrielle',
 BORNE_PLANCHE_S = 0.30
 BORNE_DXF_S = 1.00
 BORNE_NOTE_S = 0.15
+#: ACON51 — bornes « 2 000 modules » (mesure 08/11/2026, voir en-tête).
+BORNE_PLANCHE_2000_S = 0.03
+BORNE_DXF_2000_S = 1.14
 
 #: Nombre de répétitions pour amortir le bruit d'une seule mesure (la première
 #: exécution paye l'import/JIT-like warmup de certains modules).
 REPETITIONS = 5
+
+
+def _layout_synthetique(pans, par_pan):
+    """ACON51 — ``pans`` pans de ``par_pan`` cellules réelles (grille 25 colonnes,
+    pas 1,15 × 2,30 m), côte à côte, géoréférencés autour de Bouskoura."""
+    m_lat, m_lng = 111320.0, 111320.0 * math.cos(math.radians(33.5))
+
+    def deg(x, y):
+        return [-7.6 + x / m_lng, 33.5 + y / m_lat]
+    zones, x0 = [], 0.0
+    largeur, hauteur = 25 * 1.15 + 2.0, math.ceil(par_pan / 25) * 2.30 + 2.0
+    for p in range(pans):
+        zones.append({'id': f'z{p + 1}', 'label': f'Pan {p + 1}', 'vertices': [
+            deg(x0, 0), deg(x0 + largeur, 0), deg(x0 + largeur, hauteur), deg(x0, hauteur)],
+            'geometry': {'azimuthDeg': 180.0, 'tiltDeg': 10.0, 'count': par_pan, 'origin': deg(x0, 0),
+                         'panels': [{'cx': 1.575 + (i % 25) * 1.15, 'cy': 2.15 + (i // 25) * 2.30}
+                                    for i in range(par_pan)]}})
+        x0 += largeur + 5.0
+    contour = [deg(0, 0), deg(x0, 0), deg(x0, hauteur), deg(0, hauteur)]  # [lng, lat]
+    return {'version': 2, 'panelWatt': 550, 'zones': zones, 'outline': [[lat, lng] for lng, lat in contour]}
+
+
+LAYOUT_2000 = _layout_synthetique(4, 500)
 
 
 def _resultat():
@@ -104,6 +137,13 @@ class PerfPlancheTest(SimpleTestCase):
         moyenne = _chronometre(lambda: geometrie_de_planche(LAYOUT))
         self.assertLess(moyenne, BORNE_PLANCHE_S)
 
+    def test_composition_a_2000_modules_reste_sous_la_borne(self):
+        """ACON51 — géométrie + SVG d'un 4 × 500 (une boucle O(n²) échoue ici, pas à 2)."""
+        moyenne = _chronometre(lambda: svg_de_planche(
+            geometrie_de_planche(LAYOUT_2000), titre='ACON51', pied='ACON51'))
+        self.assertLess(moyenne, BORNE_PLANCHE_2000_S,
+                        f'planche 2 000 modules : {moyenne * 1000:.1f} ms (mesure 08/11/2026 : ~10 ms).')
+
 
 class PerfDxfTest(SimpleTestCase):
     def test_octets_dxf_reste_sous_la_borne_mesuree(self):
@@ -114,6 +154,12 @@ class PerfDxfTest(SimpleTestCase):
             f'octets_dxf : {moyenne * 1000:.1f} ms (moyenne sur '
             f'{REPETITIONS}) > borne {BORNE_DXF_S * 1000:.0f} ms '
             '(mesure de référence 2026-09-20 : ~175 ms).')
+
+    def test_octets_dxf_a_2000_modules_reste_sous_la_borne(self):
+        geometrie = geometrie_de_planche(LAYOUT_2000)
+        moyenne = _chronometre(lambda: octets_dxf(geometrie))
+        self.assertLess(moyenne, BORNE_DXF_2000_S,
+                        f'DXF 2 000 modules : {moyenne * 1000:.1f} ms (mesure 08/11/2026 : 320-380 ms).')
 
 
 class PerfNoteCalculTest(SimpleTestCase):
