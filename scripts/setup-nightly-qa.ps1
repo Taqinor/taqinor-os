@@ -15,7 +15,8 @@
 #   4-5. pile locale (stack, migrations, seed_demo si vide) : scripts/pile_locale.ps1 ;
 #   6. rappel : approuver Playwright MCP + Chrome DevTools MCP dans /mcp ;
 #   7. tache planifiee Windows "TAQINOR nightly QA" (quotidienne, heure LOCALE,
-#      23:00 par defaut) qui lance scripts/nightly-qa.ps1 ; option
+#      23:00 par defaut) qui lance scripts/nightly-qa.ps1 via le lanceur COPIE hors
+#      du depot (%LOCALAPPDATA%\taqinor\nightly-qa-lanceur.ps1, ADCG15) ; option
 #      -WithErrorAutopilot : tache "TAQINOR error-autopilot" (12:00 par defaut).
 #
 # Usage :
@@ -35,6 +36,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $Runner = Join-Path $RepoRoot 'scripts\nightly-qa.ps1'
+$Lanceur = Join-Path $env:LOCALAPPDATA 'taqinor\nightly-qa-lanceur.ps1'
 $TaskQa = 'TAQINOR nightly QA'
 $TaskAutopilot = 'TAQINOR error-autopilot'
 
@@ -93,22 +95,24 @@ function Test-ChromeInstalled {
     return $false
 }
 
-function Get-TaskCommand([string]$ScriptPath, [string]$ExtraArgs) {
+function Get-QuotedArg([string]$Path) {
     # Chemin sans espace : aucun guillemet (fonctionne partout). Avec espaces :
     # PS 5.1 (passage d'arguments "Legacy") exige des guillemets echappes \" pour
     # que schtasks recoive "..." ; PS 7.3+ les echappe lui-meme.
-    $quoted = $ScriptPath
-    if ($ScriptPath -match '\s') {
-        $legacy = $true
-        $v = Get-Variable -Name PSNativeCommandArgumentPassing -ErrorAction SilentlyContinue
-        if ($null -ne $v) { if ([string]$v.Value -ne 'Legacy') { $legacy = $false } }
-        if ($legacy) { $quoted = '\"' + $ScriptPath + '\"' } else { $quoted = '"' + $ScriptPath + '"' }
-    }
-    return ('powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ' + $quoted + $ExtraArgs)
+    if ($Path -notmatch '\s') { return $Path }
+    $legacy = $true
+    $v = Get-Variable -Name PSNativeCommandArgumentPassing -ErrorAction SilentlyContinue
+    if ($null -ne $v) { if ([string]$v.Value -ne 'Legacy') { $legacy = $false } }
+    if ($legacy) { return ('\"' + $Path + '\"') }
+    return ('"' + $Path + '"')
+}
+
+function Get-TaskCommand([string]$ScriptPath, [string]$ExtraArgs) {
+    return ('powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ' + (Get-QuotedArg $ScriptPath) + ' -Depot ' + (Get-QuotedArg $RepoRoot) + $ExtraArgs)
 }
 
 function Register-DailyTask([string]$Name, [string]$At, [string]$ExtraArgs) {
-    $tr = Get-TaskCommand $Runner $ExtraArgs
+    $tr = Get-TaskCommand $Lanceur $ExtraArgs
     if ($tr.Length -gt 261) { Fail ('commande de tache trop longue pour schtasks (' + $tr.Length + ' > 261) : deplacer le depot vers un chemin plus court.') }
     # /F = creer OU remplacer la tache du meme nom : relancer = mise a jour, jamais de doublon.
     $code = Invoke-Shown ('schtasks /Create /TN "' + $Name + '" /SC DAILY /ST ' + $At + ' /F') { schtasks /Create /TN $Name /TR $tr /SC DAILY /ST $At /F }
@@ -244,7 +248,13 @@ Say '  "playwright" (Playwright MCP) et "chrome-devtools" (Chrome DevTools MCP) 
 Say '  La nuit, "claude -p" les charge sans demander ; l''approbation sert aux passes lancees a la main.'
 
 # ---- 7. Taches planifiees ------------------------------------------------------
+# ADCG15 : l'action est le lanceur COPIE hors du depot (recopie a chaque passage) :
+# un scripts\nightly-qa.ps1 absent du checkout laisse une ligne ECHEC dans le journal.
 Say ''
+if (-not (Test-Path -LiteralPath $Runner)) { Fail ('scripts\nightly-qa.ps1 absent de ' + $RepoRoot + '.') }
+New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Lanceur) | Out-Null
+Copy-Item -LiteralPath (Join-Path $RepoRoot 'scripts\nightly-qa-lanceur.ps1') -Destination $Lanceur -Force
+$Created.Add('lanceur ' + $Lanceur)
 Register-DailyTask $TaskQa $Time ''
 $Created.Add('tache "' + $TaskQa + '" a ' + $Time)
 if ($WithErrorAutopilot) {
@@ -258,4 +268,9 @@ Say ('CREE / MIS A JOUR : ' + ($Created -join ' ; ') + '.')
 Say 'ENCORE MANUEL : approuver les 2 serveurs MCP dans /mcp ; laisser le PC allume et la session ouverte a l''heure de la passe (veille = pas de passe).'
 Say ('VERIFIER : schtasks /Query /TN "' + $TaskQa + '" /V /FO LIST (Last Run Time / Last Result) ; journaux dans logs\nightly-qa\.')
 Say ('COUPER : schtasks /Change /TN "' + $TaskQa + '" /DISABLE, ou enabled: false dans docs/qa-explorer.config.yml. Voir docs/nightly-qa.md.')
+# ADCG16 : dernier passage reussi consigne (information ; code 1 attendu sur une machine neuve).
+if ($null -ne (Get-Command python -ErrorAction SilentlyContinue)) {
+    $dp = Invoke-Native { python (Join-Path $RepoRoot 'scripts\nightly_qa_dernier_passage.py') }
+    Say ('DERNIER PASSAGE : ' + ($dp.Lines -join ' '))
+}
 exit 0

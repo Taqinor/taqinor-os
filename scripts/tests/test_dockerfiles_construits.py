@@ -130,6 +130,19 @@ class DockerfilesConstruitsTests(unittest.TestCase):
         self.assertEqual(set(ORPHELINS_CONNUS) - reels, set(),
                          "entree morte de ORPHELINS_CONNUS : retirez-la")
 
+    def test_dependabot_groupes_sans_majeure(self):
+        # ADCG66 — une majeure incompatible ne rougit plus toute la PR de groupe.
+        import yaml
+        config = yaml.safe_load((ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8"))
+        groupes = 0
+        for entree in config["updates"]:
+            for nom, groupe in (entree.get("groups") or {}).items():
+                groupes += 1
+                self.assertEqual(groupe.get("update-types"), ["minor", "patch"], nom)
+        self.assertEqual(groupes, 6)
+        django_core = next(e for e in config["updates"] if e["directory"] == "/backend/django_core")
+        self.assertIn({"dependency-name": "django", "versions": [">=6.0"]}, django_core.get("ignore") or [])
+
     def test_squelette_celery_worker_supprime(self):
         self.assertFalse((ROOT / "backend" / "celery_worker").exists())
         self.assertFalse((ROOT / "frontend" / "Dockerfile.dev").exists())

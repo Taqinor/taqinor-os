@@ -18,7 +18,11 @@ Stdlib pure (unittest). Run:
     python -m unittest scripts.tests.test_nightly_qa_scripts -v
 """
 import json
+import os
 import re
+import shutil
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -187,6 +191,17 @@ class TestNightly(unittest.TestCase):
         self.assertIn("exit $ExitCode", self.code)
         self.assertRegex(self.code, r"return 1\b")
 
+    def test_gc_workspace_appele_en_fin_de_passe(self):
+        # ADCG22 : apres la passe claude, avant exit $ExitCode, encadre, sans docker.
+        appel = self.code.find("scripts\\gc-workspace.ps1') -MaxAgeDays 14 -SansDocker")
+        self.assertGreater(appel, self.code.find("Start-Process -FilePath $claudeExe"))
+        self.assertGreater(appel, self.code.find("Write-Log ('fin : code de sortie ' + $ExitCode)"))
+        self.assertLess(appel, self.code.rfind("exit $ExitCode"))
+        bloc = self.code[self.code.find("if ($script:PasseLancee) {"):self.code.rfind("exit $ExitCode")]
+        self.assertIn("try {", bloc)
+        self.assertIn("} catch { Write-Log (", bloc)
+        self.assertNotIn("$ExitCode =", bloc)
+
     def test_outils_mcp_autorises_correspondent_a_mcp_json(self):
         serveurs = json.loads(MCP.read_text(encoding="utf-8"))["mcpServers"]
         for nom in ("playwright", "chrome-devtools"):
@@ -274,6 +289,99 @@ class TestProblemesProd(unittest.TestCase):
         for garde in ("Jamais d'ecriture en production", "Signature:", "check_err_prod.py",
                       "PROBLEMES_PROD_STATUS", "gh pr merge --auto --merge"):
             self.assertIn(garde, texte, garde)
+
+
+LANCEUR = ROOT / "scripts" / "nightly-qa-lanceur.ps1"
+PWSH = shutil.which("pwsh") or shutil.which("powershell")
+
+
+@unittest.skipUnless(PWSH, "pwsh/powershell absent")
+class TestLanceur(unittest.TestCase):
+    """ADCG15 : lanceur hors depot, trace lisible quand nightly-qa.ps1 manque."""
+
+    def _lancer(self, depot, appdata):
+        env = dict(os.environ, LOCALAPPDATA=str(appdata))
+        r = subprocess.run(
+            [PWSH, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(LANCEUR), "-Depot", str(depot)],
+            env=env, capture_output=True, text=True, timeout=120,
+        )
+        journal = Path(appdata) / "taqinor" / "nightly-qa.log"
+        return r.returncode, journal.read_text(encoding="utf-8-sig").splitlines()
+
+    def test_script_absent_laisse_une_trace(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            depot = Path(tmp) / "depot"
+            (depot / "scripts").mkdir(parents=True)
+            code, lignes = self._lancer(depot, Path(tmp) / "appdata")
+            self.assertEqual(code, 3)
+            self.assertEqual(len(lignes), 2, lignes)
+            self.assertIn("lancement", lignes[0])
+            self.assertIn("ECHEC lancement : scripts\\nightly-qa.ps1 absent", lignes[1])
+            self.assertIn("(git status : ", lignes[1])
+            self.assertRegex(lignes[1], r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d  ")
+
+    def test_script_present_code_transmis(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            depot = Path(tmp) / "depot"
+            (depot / "scripts").mkdir(parents=True)
+            (depot / "scripts" / "nightly-qa.ps1").write_text("param([string]$Skill)\nexit 0\n", encoding="ascii")
+            code, lignes = self._lancer(depot, Path(tmp) / "appdata")
+            self.assertEqual(code, 0)
+            self.assertIn("lancement", lignes[0])
+            self.assertTrue(lignes[-1].endswith("fin code 0"), lignes)
+            code, lignes = self._lancer(depot, Path(tmp) / "appdata")
+            self.assertEqual(len(lignes), 4, "lignes horodatees conservees")
+
+    def test_setup_copie_et_enregistre_le_lanceur(self):
+        code = _code(SETUP)
+        self.assertIn("'taqinor\\nightly-qa-lanceur.ps1'", code)
+        self.assertIn("Copy-Item -LiteralPath (Join-Path $RepoRoot 'scripts\\nightly-qa-lanceur.ps1')", code)
+        self.assertIn("$tr = Get-TaskCommand $Lanceur $ExtraArgs", code)
+        self.assertIn("' -Depot '", code)
+
+
+class TestDernierPassage(unittest.TestCase):
+    """ADCG16 : contrôle « dernier passage » lu dans le journal hors dépôt."""
+
+    def _main(self, contenu):
+        import contextlib
+        import importlib.util
+        import io
+        from datetime import datetime, timedelta
+        spec = importlib.util.spec_from_file_location(
+            "nightly_qa_dernier_passage", ROOT / "scripts" / "nightly_qa_dernier_passage.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        maintenant = datetime(2026, 11, 10, 8, 0, 0)
+        with tempfile.TemporaryDirectory() as tmp:
+            journal = Path(tmp) / "nightly-qa.log"
+            if contenu is not None:
+                lignes = [f"{maintenant - timedelta(hours=h):%Y-%m-%d %H:%M:%S}  {t}" for h, t in contenu]
+                journal.write_text("\n".join(lignes) + "\n", encoding="utf-8-sig")
+            sortie = io.StringIO()
+            with contextlib.redirect_stdout(sortie):
+                code = mod.main(["--journal", str(journal)], maintenant=maintenant)
+        return code, sortie.getvalue()
+
+    def test_plus_de_36_h_rend_un(self):
+        code, texte = self._main([(40, "fin code 0"), (10, "ECHEC lancement : scripts\\nightly-qa.ps1 absent")])
+        self.assertEqual(code, 1)
+        self.assertIn("dernier passage réussi : 2026-11-08 16:00 (il y a 40 h)", texte)
+        self.assertIn("dernière tentative : 2026-11-09 22:00 ECHEC lancement", texte)
+
+    def test_passage_de_cette_nuit_rend_zero(self):
+        code, _ = self._main([(30, "fin code 1"), (8, "lancement skill qa-explorer"), (6, "fin code 0")])
+        self.assertEqual(code, 0)
+
+    def test_aucun_passage_consigne(self):
+        for contenu in (None, [(2, "fin code 1")]):
+            code, texte = self._main(contenu)
+            self.assertEqual(code, 1)
+            self.assertIn("aucun passage consigné", texte)
+
+    def test_appele_par_le_setup(self):
+        self.assertIn("scripts\\nightly_qa_dernier_passage.py", _code(SETUP))
+
 
 if __name__ == "__main__":
     unittest.main()

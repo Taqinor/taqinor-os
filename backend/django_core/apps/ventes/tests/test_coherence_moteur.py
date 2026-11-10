@@ -114,6 +114,39 @@ class TestCycleDeVie(_Base):
         self.assertIsNone(ligne.resolved_at)
         self.assertEqual(ViolationCoherence.objects.count(), 1)
 
+    def test_rendu_refuse_est_une_violation_resolue(self):
+        """ADCG44 — le refus du constructeur (le ValueError de
+        ``builder.build_quote_data``, recopié : ce module n'appelle jamais le
+        vrai constructeur) est un VERDICT QUOTE_BUILD : ouvert une fois, jamais
+        en ``rule_errors``, résolu quand le rendu repasse."""
+        company, user, client, produit = self.societe()
+        d = self.devis(company, user, client, produit)
+        refus = [True]
+
+        def constructeur(devis, options):
+            if refus[0]:
+                raise ValueError(
+                    f"Devis {devis.reference} : aucune option ne contient d'onduleur — "
+                    "génération du PDF à options refusée (règle de sécurité).")
+            return _donnees_propres(devis, options)
+        regles = ['DOC_TOTAUX_IMPRIMES']
+
+        r1 = moteur.run_audit(company=company, constructeur=constructeur, rules=regles)
+        self.assertEqual(r1.rule_errors, [])
+        self.assertEqual([(v.regle, v.object_id) for v in r1.new], [(moteur.REGLE_RENDU, d.pk)])
+        ligne = ViolationCoherence.objects.get(company=company, rule_id=moteur.REGLE_RENDU)
+        self.assertIn("aucune option ne contient d'onduleur", ligne.details['message'])
+        self.assertIsNone(ligne.resolved_at)
+
+        r2 = moteur.run_audit(company=company, constructeur=constructeur, rules=regles)
+        self.assertEqual((r2.new, r2.rule_errors), ([], []))
+        self.assertEqual(ViolationCoherence.objects.filter(rule_id=moteur.REGLE_RENDU).count(), 1)
+
+        refus[0] = False  # un onduleur réseau ajouté : le document se construit
+        moteur.run_audit(company=company, constructeur=constructeur, rules=regles)
+        ligne.refresh_from_db()
+        self.assertIsNotNone(ligne.resolved_at)
+
     def test_regle_non_executee_ne_resout_rien(self):
         company, user, client, produit = self.societe()
         self.devis(company, user, client, produit)
@@ -174,7 +207,8 @@ class TestIsolation(_Base):
 
         def constructeur(devis, options):
             if devis.pk == casse.pk:
-                raise ValueError('rendu impossible')
+                # Panne NON prévue (ADCG44 : un ValueError est un refus = verdict).
+                raise TypeError('rendu impossible')
             return _donnees_propres(devis, options)
         try:
             rep = moteur.run_audit(

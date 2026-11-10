@@ -28,7 +28,14 @@ logger = logging.getLogger(__name__)
 
 
 class ErreurRendu(Exception):
-    """La construction des données du document a échoué pour ce devis."""
+    """La construction des données du document a échoué pour ce devis.
+
+    ``refus`` (ADCG44) : le constructeur a REFUSÉ le devis (``ValueError``, ex.
+    « aucune option ne contient d'onduleur ») — un verdict, pas une panne."""
+
+    def __init__(self, message='', refus=False):
+        super().__init__(message)
+        self.refus = refus
 
 
 def num(v):
@@ -108,11 +115,16 @@ class ContexteAudit:
             except Exception as exc:  # noqa: BLE001 — isolé par devis (D-ENF22-BLE001)
                 logger.warning("contexte.ContexteAudit.donnees_devis : erreur ignorée (mode dégradé)", exc_info=True)
                 self._rendus[cle] = (
-                    'erreur', f'{type(exc).__name__}: {str(exc)[:200]}')
+                    'refus' if isinstance(exc, ValueError) else 'erreur',
+                    f'{type(exc).__name__}: {str(exc)[:200]}')
         etat, valeur = self._rendus[cle]
-        if etat == 'erreur':
-            raise ErreurRendu(valeur)
+        if etat != 'ok':
+            raise ErreurRendu(valeur, refus=etat == 'refus')
         return valeur
+
+    def devis_rendus(self):
+        """ADCG44 — pk des devis dont le document a été construit dans cette passe."""
+        return {cle[0] for cle, (etat, _) in self._rendus.items() if etat == 'ok'}
 
     def injecter_donnees(self, devis, donnees, options=None):
         """Pour les tests : fournit des données déjà construites."""

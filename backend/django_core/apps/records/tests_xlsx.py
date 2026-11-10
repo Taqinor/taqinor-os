@@ -80,6 +80,25 @@ class ResponseTest(SimpleTestCase):
         self.assertEqual(resp['Content-Type'], XLSX_CONTENT_TYPE)
         self.assertIn('devis.xlsx', resp['Content-Disposition'])
 
+    def test_au_dela_du_seuil_413_sans_classeur(self):
+        """ADCG46 — au-delà du seuil d'export (NTPLT30, défaut 5 000) : 413 sans classeur."""
+        import json
+        from unittest import mock
+
+        from apps.records import xlsx
+        lignes = [['x']] * 5001
+        with mock.patch.dict('os.environ', {'NTPLT30_EXPORT_ROW_THRESHOLD': ''}), \
+                mock.patch.object(xlsx, 'build_workbook', wraps=xlsx.build_workbook) as classeur:
+            resp = build_xlsx_response('x.xlsx', ['A'], iter(lignes))
+            self.assertEqual(resp.status_code, 413)
+            self.assertEqual(json.loads(resp.content)['detail'],
+                             'Export trop volumineux (5 001 lignes, plafond 5 000) : filtrez la période')
+            classeur.assert_not_called()
+            resp = build_xlsx_response('x.xlsx', ['A'], lignes[:5000])
+            self.assertEqual((resp.status_code, resp['Content-Type']), (200, XLSX_CONTENT_TYPE))
+        with mock.patch.dict('os.environ', {'NTPLT30_EXPORT_ROW_THRESHOLD': '0'}):
+            self.assertEqual(build_xlsx_response('x.xlsx', ['A'], lignes).status_code, 200)
+
 
 class DelegationTest(SimpleTestCase):
     """Les deux anciens points d'entrée pointent vers le builder partagé."""

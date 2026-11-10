@@ -1,4 +1,6 @@
 version: 2
+# ADCG66 — chaque groupe hebdo ne porte que mineures + correctifs : une MAJEURE
+# (souvent incompatible) arrive en PR individuelle et ne rougit plus tout le groupe.
 updates:
   - package-ecosystem: "npm"
     directory: "/frontend"
@@ -12,6 +14,7 @@ updates:
       npm-weekly:
         patterns:
           - "*"
+        update-types: ["minor", "patch"]
 
   # Sécurité 2026-08-24 — apps/web et backend/fastapi_ia n'étaient PAS
   # surveillés : leurs alertes (astro/wrangler/undici, PyJWT/langchain…)
@@ -28,6 +31,7 @@ updates:
       npm-web-weekly:
         patterns:
           - "*"
+        update-types: ["minor", "patch"]
 
   # YBW1 — site public YanBow (apps/yanbow-web), memes reglages groupes hebdo.
   - package-ecosystem: "npm"
@@ -42,6 +46,7 @@ updates:
       npm-yanbow-web-weekly:
         patterns:
           - "*"
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: "pip"
     directory: "/backend/fastapi_ia"
@@ -55,6 +60,7 @@ updates:
       pip-ia-weekly:
         patterns:
           - "*"
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: "pip"
     directory: "/backend/django_core"
@@ -64,10 +70,16 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "chore"
+    # Django 6.x exige Python >= 3.12 ; la prod tourne en python:3.11 (Dockerfile) :
+    # à retirer quand l'image passe en 3.12.
+    ignore:
+      - dependency-name: "django"
+        versions: [">=6.0"]
     groups:
       pip-weekly:
         patterns:
           - "*"
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -81,3 +93,4 @@ updates:
       github-actions-weekly:
         patterns:
           - "*"
+        update-types: ["minor", "patch"]

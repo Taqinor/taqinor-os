@@ -26,6 +26,8 @@ from django.core.cache import cache
 from django.db import connection
 
 import logging
+import os
+import shutil
 
 logger = logging.getLogger(__name__)
 
@@ -97,12 +99,23 @@ def check_beat():
 
 def etat_ready():
     """Corps + code HTTP de ``health/ready`` : 503 ``not-ready`` si la DB est
-    down, 503 ``degraded`` si beat est arrêté (BPQ12), 200 ``ready`` sinon."""
+    down, 503 ``degraded`` si Redis ne répond pas au ping (ADCG13) ou si beat est
+    arrêté (BPQ12), 200 ``ready`` sinon."""
     db_check = check_db()
     if db_check['status'] == STATUS_DOWN:
         return {'status': 'not-ready', 'detail': db_check['detail']}, 503
     extra = {'dernier_demarrage': dernier_demarrage(),
              'dernier_tri_problemes': dernier_tri_problemes()}
+    try:  # ADCG13 — Redis mort ⇒ 503 (le cache l'avale : IGNORE_EXCEPTIONS)
+        client = _client_demarrages()
+    except OSError:  # courtier non Redis (tests légers) : rien à sonder
+        client = None
+    try:
+        if client is not None:
+            client.ping()
+    except Exception as exc:  # noqa: BLE001 — journalisé, sonde best-effort (D-ENF22-BLE001)
+        logger.warning("health/ready : Redis injoignable", exc_info=True)
+        return {'status': 'degraded', 'detail': f'Redis injoignable : {exc}', **extra}, 503
     beat_check = check_beat()
     if beat_check['status'] == STATUS_DEGRADED:
         return {'status': 'degraded', 'detail': beat_check['detail'], **extra}, 503
@@ -139,15 +152,27 @@ def _check_broker():
         return {'name': 'broker', 'status': STATUS_UNKNOWN, 'detail': str(exc)}
 
 
+DISK_USAGE_DEGRADED_RATIO = 0.8
+
+
 def _check_storage():
+    """Présence du backend de stockage + ADCG94 : remplissage du disque qui porte les
+    données (``DISK_USAGE_PATH`` ou ``BASE_DIR``, bind du disque hôte) ; ``degraded``
+    au-delà de ``DISK_USAGE_DEGRADED_RATIO`` (jamais ``down``)."""
     try:
+        from django.conf import settings
         from django.core.files.storage import default_storage
-        # On ne fait qu'une présence de backend — aucun I/O réseau bloquant.
+        # Présence de backend — aucun I/O réseau bloquant ; disque : un statvfs local.
         name = type(default_storage).__name__
-        return {'name': 'storage', 'status': STATUS_OK, 'detail': name}
+        seuil = float(os.environ.get('DISK_USAGE_DEGRADED_RATIO', str(DISK_USAGE_DEGRADED_RATIO)))
+        usage = shutil.disk_usage(os.environ.get('DISK_USAGE_PATH') or settings.BASE_DIR)
+        ratio = usage.used / usage.total
     except Exception as exc:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning("check storage : échec ignoré, comportement dégradé", exc_info=True)
         return {'name': 'storage', 'status': STATUS_UNKNOWN, 'detail': str(exc)}
+    detail = f'{name} ; disque : {ratio * 100:.0f} % utilisé, {usage.free // 2 ** 30} Gio libres'
+    return {'name': 'storage', 'status': STATUS_DEGRADED if ratio >= seuil else STATUS_OK,
+            'detail': detail}
 
 
 def _check_monitoring():

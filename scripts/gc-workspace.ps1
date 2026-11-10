@@ -13,7 +13,8 @@ Usage :  powershell -File scripts\gc-workspace.ps1 [-WhatIf] [-MaxAgeDays 14]
 #>
 param(
   [switch]$WhatIf,
-  [int]$MaxAgeDays = 14
+  [int]$MaxAgeDays = 14,
+  [switch]$SansDocker  # ADCG22 : passe nocturne — garde le cache de build chaud pour --build
 )
 $ErrorActionPreference = 'Stop'
 # Résout la racine du dépôt PRINCIPAL, même si ce script est lancé depuis une
@@ -57,7 +58,8 @@ $mergedDeleted = 0; $unmergedKept = @()
 # et, sous $ErrorActionPreference='Stop', PS 5.1 promeut le stderr natif en
 # erreur terminale qui tuait la boucle). On les exclut donc en amont.
 $checkedOut = @(git worktree list --porcelain | Select-String '^branch refs/heads/' | ForEach-Object { $_.ToString().Substring(18) })
-$merged = (git branch --merged main --format '%(refname:short)') -split "`n" | Where-Object { $_ -and $_ -notin @('main','master') -and ($_ -match '^(agent-|claude/|wow-)') -and ($_ -notin $checkedOut) }
+$motif = '^(agent-|worktree-agent-|claude/|wow-)'  # ADCG21 : worktree-agent-* = outil de worktree des agents
+$merged = (git branch --merged main --format '%(refname:short)') -split "`n" | Where-Object { $_ -and $_ -notin @('main','master') -and ($_ -match $motif) -and ($_ -notin $checkedOut) }
 foreach ($b in $merged) {
   Write-Host "  ${act}delete merged branch $b"
   if (-not $WhatIf) {
@@ -67,12 +69,12 @@ foreach ($b in $merged) {
     $mergedDeleted++
   }
 }
-$unmergedKept = (git branch --no-merged main --format '%(refname:short)') -split "`n" | Where-Object { $_ -and ($_ -match '^(agent-|claude/|wow-)') }
+$unmergedKept = (git branch --no-merged main --format '%(refname:short)') -split "`n" | Where-Object { $_ -and ($_ -match $motif) }
 if ($unmergedKept) { Write-Host "  KEEP (non fusionnées, à vérifier à la main) :"; $unmergedKept | ForEach-Object { Write-Host "    - $_" } }
 
 # 3) Docker : cache de build + images pendantes.
-Write-Host "  ${act}docker builder prune + dangling images"
-if (-not $WhatIf) { docker builder prune -f 2>$null | Out-Null; docker image prune -f 2>$null | Out-Null }
+if (-not $SansDocker) { Write-Host "  ${act}docker builder prune + dangling images" }
+if ((-not $WhatIf) -and (-not $SansDocker)) { docker builder prune -f 2>$null | Out-Null; docker image prune -f 2>$null | Out-Null }
 
 $wtLeft = (git worktree list | Measure-Object).Count
 $brLeft = (git branch | Measure-Object).Count

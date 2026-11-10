@@ -107,6 +107,38 @@ class Migration(migrations.Migration):
 '''
 
 
+RUNPYTHON_DELETE = '''
+from django.db import migrations
+
+
+def dedoublonner(apps, schema_editor):
+    Bucket = apps.get_model('statuspage', 'UptimeDayBucket')
+    Bucket.objects.filter(pk__in=[1, 2]).delete()
+
+
+def restaurer(apps, schema_editor):
+    pass
+
+
+class Migration(migrations.Migration):
+    dependencies = []
+    operations = [
+        {appel},
+    ]
+'''
+
+NEW_DELETE_MODEL = '''
+from django.db import migrations
+
+
+class Migration(migrations.Migration):
+    dependencies = []
+    operations = [
+        migrations.DeleteModel(name='RoofLayout'),
+    ]
+'''
+
+
 class CheckSafeMigrationsTests(unittest.TestCase):
     def _write_and_check(self, source):
         with tempfile.TemporaryDirectory() as tmp:
@@ -143,6 +175,24 @@ class CheckSafeMigrationsTests(unittest.TestCase):
         findings = self._write_and_check(NEW_RENAME_FIELD)
         codes = [c for c, _ in findings]
         self.assertIn("RENAMEFIELD", codes)
+
+    def test_runpython_delete_sans_retour_est_signale(self):
+        # ADCG92 — calque de statuspage/0005 : RunPython(f, RunPython.noop) + .delete().
+        for appel in ("migrations.RunPython(dedoublonner, migrations.RunPython.noop)",
+                      "migrations.RunPython(dedoublonner)",
+                      "migrations.RunPython(code=dedoublonner, reverse_code=None)"):
+            with self.subTest(appel=appel):
+                codes = [c for c, _ in self._write_and_check(RUNPYTHON_DELETE.format(appel=appel))]
+                self.assertIn("RUNPYTHON_DELETE_IRREVERSIBLE", codes)
+
+    def test_runpython_delete_avec_retour_non_signale(self):
+        source = RUNPYTHON_DELETE.format(appel="migrations.RunPython(dedoublonner, restaurer)")
+        codes = [c for c, _ in self._write_and_check(source)]
+        self.assertNotIn("RUNPYTHON_DELETE_IRREVERSIBLE", codes)
+
+    def test_deletemodel_est_signale(self):
+        codes = [c for c, _ in self._write_and_check(NEW_DELETE_MODEL)]
+        self.assertIn("DELETEMODEL", codes)
 
     def test_allowlisted_migration_is_exempt_end_to_end(self):
         """A migration with a real finding, listed in the allowlist, must

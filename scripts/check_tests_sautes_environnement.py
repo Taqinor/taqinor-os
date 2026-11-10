@@ -5,7 +5,7 @@ Un test n'est sauté que si une dépendance/un service externe est absent de
 l'environnement (bibliothèque optionnelle, PostgreSQL seul, arbre partiel dans
 le conteneur, test réseau désarmé règle #5, interrupteur de capture golden) —
 jamais pour cause de bug ou de dette. Chaque site de saut (décorateur
-`skip*` ou appel `skipTest`/`skip`) de `backend/` doit figurer dans
+`skip*`, appel `skipTest`/`skip`, ou `raise SkipTest`) de `backend/` doit figurer dans
 `scripts/exceptions_permanentes.yml` (catégorie `tests_sautes_environnement`,
 clé `fichier::symbole`, entrées groupées par condition en commentaire).
 Échec : site non signé, ou entrée périmée (le saut n'existe plus).
@@ -64,6 +64,10 @@ def _sites_fichier(chemin: Path) -> dict[str, str]:
                 visite(enfant, sous)
             else:
                 if isinstance(enfant, ast.Call) and _nom(enfant.func) in {"skipTest", "skip"}:
+                    vu(pile, enfant)
+                # ADCG82 : `raise unittest.SkipTest(...)` / `raise SkipTest` est aussi un saut.
+                exc = getattr(enfant, "exc", None) if isinstance(enfant, ast.Raise) else None
+                if exc is not None and _nom(exc.func if isinstance(exc, ast.Call) else exc).endswith("SkipTest"):
                     vu(pile, enfant)
                 visite(enfant, pile)
 

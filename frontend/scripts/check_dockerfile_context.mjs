@@ -162,3 +162,46 @@ test('tout import hors frontend/ est copie dans l\'image Docker (Dockerfile.prod
   const problems = findUncovered(outside, readCopies())
   assert.deepEqual(problems, [], `\nFichiers hors contexte Docker :\n  ${problems.join('\n  ')}\n`)
 })
+
+// --- ADCG11 : chaque VITE_* lu par frontend/src est passe au build de prod ------
+// (.env racine hors contexte Docker, Vite sans envDir : seul ARG + build.args l'injecte).
+const VITE_EXEMPTES = new Set(['VITE_E2E']) // lu par vite.config.js en CI, jamais par src/
+
+export function readViteReads(files = listSources(join(FRONTEND, 'src'))) {
+  const reads = new Map()
+  for (const file of files) {
+    for (const m of readFileSync(file, 'utf8').matchAll(/import\.meta\.env\??\.(VITE_[A-Z0-9_]+)/g)) {
+      if (!reads.has(m[1])) reads.set(m[1], relRoot(file))
+    }
+  }
+  return reads
+}
+
+export function readBuilderArgs(text = readFileSync(join(FRONTEND, 'Dockerfile.prod'), 'utf8')) {
+  const builder = text.split(/^FROM\s/im)[1] ?? ''
+  return new Set([...builder.matchAll(/^ARG\s+(VITE_[A-Z0-9_]+)/gim)].map((m) => m[1]))
+}
+
+export function readComposeBuildArgs(text = readFileSync(join(ROOT, 'docker-compose.yml'), 'utf8')) {
+  const service = text.split(/^ {2}frontend:\s*$/m)[1]?.split(/^ {2}\S/m)[0] ?? ''
+  return new Set([...service.matchAll(/^\s+(VITE_[A-Z0-9_]+):/gm)].map((m) => m[1]))
+}
+
+export function findUnpassedViteVars(reads, args, buildArgs) {
+  const problems = []
+  for (const [name, file] of reads) {
+    if (VITE_EXEMPTES.has(name) || (args.has(name) && buildArgs.has(name))) continue
+    problems.push(`${name} (lu par ${file}) : ajouter ARG/ENV dans frontend/Dockerfile.prod et build.args du service frontend de docker-compose.yml`)
+  }
+  return problems
+}
+
+test('chaque VITE_* lu est passé au build de prod (Dockerfile.prod + docker-compose.yml)', () => {
+  const reads = readViteReads()
+  assert.ok(reads.has('VITE_API_URL'), 'aucune lecture VITE_* detectee : la garde est aveugle')
+  const problems = findUnpassedViteVars(reads, readBuilderArgs(), readComposeBuildArgs())
+  assert.deepEqual(problems, [], `\nVariables lues mais jamais passees au build :\n  ${problems.join('\n  ')}\n`)
+  const neuve = findUnpassedViteVars(new Map([['VITE_NOUVELLE', 'frontend/src/x.js']]), readBuilderArgs(), readComposeBuildArgs())
+  assert.equal(neuve.length, 1)
+  assert.match(neuve[0], /VITE_NOUVELLE.*frontend\/Dockerfile\.prod.*docker-compose\.yml/)
+})

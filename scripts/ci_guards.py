@@ -298,6 +298,9 @@ GARDES = {
         ('Check tests sautés = environnement signé (ENF23)',
          'python scripts/check_tests_sautes_environnement.py',
          '.'),
+        ('Tests de la garde des tests sautés (ADCG82)',
+         'python -m unittest scripts.tests.test_check_tests_sautes_environnement -v',
+         '.'),
         # AACQ77 — écrans publicité : pas de liste lue sur la page 1, pas d'échec avalé.
         ('Check écrans publicité (page 1 / échec de chargement avalé, AACQ77)',
          'python scripts/check_adsengine_ecrans.py',
@@ -581,6 +584,12 @@ GARDES = {
         # kill switch lu avant tout, schtasks /Create /F).
         ('Test des garde-fous des scripts de QA de nuit (QAH11)',
          'python -m unittest scripts.tests.test_nightly_qa_scripts -v',
+         '.'),
+        ('Test du nettoyage gc-workspace sur un depot temporaire (ADCG21)',
+         'python -m unittest scripts.tests.test_gc_workspace -v',
+         '.'),
+        ('Test des healthchecks db/redis/django_core des fichiers compose (ADCG14)',
+         'python -m unittest scripts.tests.test_docker_compose -v',
          '.'),
         # Instantanés anonymisés de prod (qa_export_anonymise) : CONFIDENTIELS,
         # ignorés par .gitignore — cette garde refuse un `git add -f`.

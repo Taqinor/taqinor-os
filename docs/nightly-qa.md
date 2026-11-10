@@ -61,6 +61,14 @@ sans demander ; l'approbation sert aux passes lancées à la main.
 
 ## Ce que fait la tâche chaque nuit (`scripts/nightly-qa.ps1`)
 
+L'action de la tâche n'est PAS le script du dépôt mais un lanceur installé HORS du
+checkout : `scripts/nightly-qa-lanceur.ps1`, recopié par la commande dans
+`%LOCALAPPDATA%\taqinor\nightly-qa-lanceur.ps1` à chaque passage (ADCG15). Il écrit
+dans `%LOCALAPPDATA%\taqinor\nightly-qa.log` une ligne `lancement …`, puis appelle
+`scripts\nightly-qa.ps1` du dépôt et écrit `fin code N`. Si ce script manque au
+checkout, il écrit `ECHEC lancement : scripts\nightly-qa.ps1 absent … (git status : …)`
+et sort en code **3** — jamais de réparation automatique du checkout.
+
 1. **Lit le kill switch `docs/qa-explorer.config.yml` en premier** : `enabled: false`
    → sortie propre, rien tiré, rien construit, rien lancé.
 2. Refuse de démarrer si une passe précédente tourne encore (verrou
@@ -90,6 +98,7 @@ Codes de sortie (colonne « Last Result » de la tâche) :
 | 0 | passe terminée, ou sortie propre voulue (kill switch off, skill absent) |
 | 1 | échec (git, docker, migrations, seed, passe claude en erreur, chien de garde) |
 | 2 | refus de démarrer (passe précédente en cours, verrou test-backend tenu, dépôt pas sur un `main` propre) |
+| 3 | lanceur : `scripts\nightly-qa.ps1` absent du checkout (ligne `ECHEC lancement` dans `%LOCALAPPDATA%\taqinor\nightly-qa.log`) |
 
 ## Vérifier qu'elle a tourné
 
@@ -98,6 +107,17 @@ schtasks /Query /TN "TAQINOR nightly QA" /V /FO LIST
 ```
 
 Regarder `Last Run Time` et `Last Result` (0 = OK, voir le tableau ci-dessus).
+
+Ou, plus direct (ADCG16) — l'heure du dernier passage réussi lue dans
+`%LOCALAPPDATA%\taqinor\nightly-qa.log` :
+
+```powershell
+python scripts\nightly_qa_dernier_passage.py
+```
+
+Il affiche « dernier passage réussi : … (il y a N h) ; dernière tentative : … » et
+sort en **1** au-delà de 36 h ou si aucun passage n'est consigné (`--journal <chemin>`
+pour lire un autre journal). La commande d'installation l'affiche aussi en fin de rapport.
 
 ## Lire le journal
 

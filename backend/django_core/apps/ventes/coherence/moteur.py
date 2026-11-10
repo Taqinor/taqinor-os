@@ -24,8 +24,8 @@ from django.db.models import Q
 from django.utils import timezone
 
 from .contexte import ContexteAudit, ErreurRendu, rendu_sans_reseau
-from .registre import (PORTEE_DEVIS, PORTEE_FACTURE, PORTEE_SOCIETE,
-                       regles_selectionnees)
+from .registre import (GRAVITE_CRITIQUE, PORTEE_DEVIS, PORTEE_FACTURE,
+                       PORTEE_SOCIETE, Violation, regles_selectionnees)
 
 logger = logging.getLogger(__name__)
 
@@ -153,7 +153,7 @@ def _executer_societe(company, regles, report, *, constructeur=None):
     pas pu être établi (erreur) — leurs violations passées ne seront PAS
     résolues."""
     ctx = _Ctx(company, constructeur=constructeur)
-    violations, inconnus = [], set()
+    violations, inconnus, rendus_vus = [], set(), set()
     par_portee = {}
     for r in regles:
         par_portee.setdefault(r.portee, []).append(r)
@@ -164,7 +164,15 @@ def _executer_societe(company, regles, report, *, constructeur=None):
                 violations.extend(r.check(r, obj, ctx) or [])
         except ErreurRendu as exc:
             inconnus.add((r.id, obj_type, obj.pk))
-            if (REGLE_RENDU, obj_type, obj.pk) not in inconnus:
+            if (obj_type, obj.pk) in rendus_vus:
+                return
+            rendus_vus.add((obj_type, obj.pk))
+            if exc.refus:  # ADCG44 — un refus du constructeur est un VERDICT nommé
+                violations.append(Violation(
+                    regle=REGLE_RENDU, gravite=GRAVITE_CRITIQUE, object_type=obj_type,
+                    object_id=obj.pk, reference=getattr(obj, 'reference', '') or '',
+                    company_id=company.pk, message=str(exc)))
+            else:
                 inconnus.add((REGLE_RENDU, obj_type, obj.pk))
                 _erreur(report, REGLE_RENDU, obj_type, obj, company, exc)
         except SoftTimeLimitExceeded:
@@ -183,6 +191,12 @@ def _executer_societe(company, regles, report, *, constructeur=None):
         exc.partiel = ([v for v in violations if v.company_id == company.pk],
                        inconnus)
         raise
+    if par_portee.get(PORTEE_DEVIS):
+        # ADCG44 — un QUOTE_BUILD ouvert ne se résout que sur un devis RENDU dans cette passe.
+        from apps.ventes.models_coherence import ViolationCoherence
+        inconnus |= {(REGLE_RENDU, 'devis', pk) for pk in ViolationCoherence.objects.filter(
+            company=company, rule_id=REGLE_RENDU, resolved_at__isnull=True).exclude(
+            object_id__in=ctx.devis_rendus()).values_list('object_id', flat=True)}
     for r in par_portee.get(PORTEE_SOCIETE, []):
         try:
             with transaction.atomic():
@@ -213,6 +227,8 @@ def _persister(company, regles, violations, inconnus, maintenant, *,
     AUCUNE résolution — les objets non audités n'ont pas de verdict."""
     from apps.ventes.models_coherence import ViolationCoherence
     ids_regles = {r.id for r in regles}
+    if any(r.portee == PORTEE_DEVIS for r in regles):
+        ids_regles.add(REGLE_RENDU)  # ADCG44 — verdict QUOTE_BUILD (garde : inconnus)
     ouvertes = {
         v.fingerprint: v for v in ViolationCoherence.objects.filter(
             company=company, rule_id__in=ids_regles, resolved_at__isnull=True)

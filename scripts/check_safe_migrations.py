@@ -20,6 +20,9 @@ migrations/*.py``):
   (d) ``RunPython`` whose callable body contains a queryset ``.update(...)``
       call with no visible batching (heuristic: no ``[:`` slice / ``.iterator(``
       / loop variable named batch/chunk nearby) — a global unbatched update.
+  (e) ADCG92 — ``DeleteModel`` (table + rows dropped), and ``RunPython`` with
+      no real reverse (none, ``reverse_code=None`` or ``RunPython.noop``) in
+      a file that calls ``.delete(`` — rows deleted for good on rollback.
 
 Each finding is a WARNING unless the migration file is listed in
 ``scripts/exceptions_permanentes.yml (safe_migrations)`` (one relative path per line, historical
@@ -143,6 +146,14 @@ def _model_names_created_in(operations):
     return created
 
 
+def _sans_vrai_retour(op):
+    """ADCG92 — RunPython(f) / RunPython(f, RunPython.noop) / reverse_code=None."""
+    retour = op.args[1] if len(op.args) > 1 else _kwarg(op, "reverse_code")
+    if retour is None or (isinstance(retour, ast.Constant) and retour.value is None):
+        return True
+    return isinstance(retour, ast.Attribute) and retour.attr == "noop"
+
+
 def check_file(path: Path):
     """Returns a list of (code, message) findings for one migration file."""
     source = path.read_text(encoding="utf-8")
@@ -197,6 +208,21 @@ def check_file(path: Path):
                     "populated table — prefer a 3-step migration (nullable "
                     "add -> RunPython backfill -> AlterField not-null).",
                 ))
+
+        elif name == "DeleteModel":
+            findings.append((
+                "DELETEMODEL",
+                "DeleteModel drops a table and every row in it — confirm a "
+                "human-reviewed plan (dump before migrate).",
+            ))
+
+        elif name == "RunPython" and ".delete(" in source and _sans_vrai_retour(op):
+            findings.append((
+                "RUNPYTHON_DELETE_IRREVERSIBLE",
+                "RunPython deletes rows (.delete() in the file) with no real "
+                "reverse (missing or RunPython.noop) — the deleted rows cannot "
+                "come back on rollback; confirm a human-reviewed plan.",
+            ))
 
         elif name in ("RenameField", "RemoveField"):
             findings.append((
