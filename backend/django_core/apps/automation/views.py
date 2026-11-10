@@ -23,6 +23,7 @@ from authentication.permissions import (
     IsAdminOrResponsableTier, IsAdminRole, IsAnyRole,
 )
 from core.champs_stricts import ChaineStricte, EntierStrict, entier_ou_400
+from core.conflit_etat import ConflitEtat
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 
 from . import engine, services
@@ -525,6 +526,13 @@ class ApprovalRequestViewSet(TenantMixin, viewsets.ModelViewSet):
                 demandeur_id__in=services.visible_demandeur_ids_for(
                     self.request.user))
         return qs
+
+    def perform_destroy(self, instance):
+        # APFS44 — même prédicat que le gel du PATCH (ASEC69) : une demande
+        # décidée (ou à décision partielle) ne s'efface pas avec sa décision.
+        if services.demande_figee(instance):
+            raise ConflitEtat('Demande déjà décidée : suppression impossible.')
+        instance.delete()
 
     @extend_schema(request=SoumettreDemandeSerializer,
                    responses={201: ApprovalRequestSerializer})

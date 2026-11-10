@@ -171,6 +171,14 @@ def visible_demandeur_ids_for(user, *, at=None):
     return ids
 
 
+def demande_figee(req):
+    """ASEC69 / APFS44 — une demande DÉCIDÉE ou portant déjà une décision
+    est figée : ni PATCH de son contenu, ni suppression (409)."""
+    return (req.status in (ApprovalRequest.Status.APPROVED,
+                           ApprovalRequest.Status.REJECTED)
+            or req.decisions.exists())
+
+
 def _distinct_favorable_approvers(req):
     return (
         req.decisions

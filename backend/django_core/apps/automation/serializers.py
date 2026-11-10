@@ -356,12 +356,11 @@ class ApprovalRequestSerializer(SameCompanyFKSerializerMixin,
         portant déjà une décision (double approbation en cours) est figée :
         ni son type ni son contenu ne changent plus par PATCH (409, refus
         d'état) ; seules les actions dédiées écrivent la décision."""
+        from .services import demande_figee
+
         attrs = super().validate(attrs)
         inst = self.instance
-        decidees = (ApprovalRequest.Status.APPROVED,
-                    ApprovalRequest.Status.REJECTED)
-        if inst is not None and (inst.status in decidees
-                                 or inst.decisions.exists()):
+        if inst is not None and demande_figee(inst):
             figes = sorted(k for k in ('request_type', 'payload')
                            if k in attrs)
             if figes:

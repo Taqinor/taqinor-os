@@ -123,6 +123,43 @@ class AutomationFkTests(TestCase):
         self.assertEqual(self.demande.status,
                          ApprovalRequest.Status.APPROVED)
 
+    def test_delete_demande_decidee_409(self):
+        """APFS44 — le demandeur ne supprime ni une demande décidée ni une
+        demande à décision partielle (409, demande ET décisions intactes) ;
+        en attente sans décision : 204. Mutant : retirer
+        ``perform_destroy`` ⇒ 204, décisions 0."""
+        from apps.automation.models import ApprovalDecision
+        self.type_a.min_approbations = 2
+        self.type_a.save(update_fields=['min_approbations'])
+        api = _api(self.collegue_a)
+
+        def demande(statut):
+            return ApprovalRequest.objects.create(
+                company=self.a, request_type=self.type_a,
+                demandeur=self.collegue_a, payload={'montant': 1},
+                status=statut)
+
+        partielle = demande(ApprovalRequest.Status.PENDING)
+        ApprovalDecision.objects.create(
+            request=partielle, decided_by=self.admin_a,
+            decision=ApprovalDecision.Decision.APPROVE)
+        rejetee = demande(ApprovalRequest.Status.REJECTED)
+        for req in (self.demande, partielle, rejetee):
+            with self.subTest(statut=req.status):
+                r = api.delete(f'{BASE}/approval-requests/{req.pk}/')
+                self.assertEqual(r.status_code, 409, r.data)
+                self.assertEqual(
+                    r.data['detail'],
+                    'Demande déjà décidée : suppression impossible.')
+                self.assertTrue(
+                    ApprovalRequest.objects.filter(pk=req.pk).exists())
+        self.assertEqual(partielle.decisions.count(), 1)
+
+        libre = demande(ApprovalRequest.Status.PENDING)
+        r = api.delete(f'{BASE}/approval-requests/{libre.pk}/')
+        self.assertEqual(r.status_code, 204)
+        self.assertFalse(ApprovalRequest.objects.filter(pk=libre.pk).exists())
+
     def test_patch_apres_premiere_decision_409(self):
         """ASEC69 (C-ASEC-VER4-020) — double approbation : dès la première
         décision, le demandeur ne change plus le montant (409) ; la décision
