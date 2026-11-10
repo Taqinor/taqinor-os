@@ -30,6 +30,7 @@ from apps.ventes.domain.catalogue import _is_panel
 from apps.ventes.domain.lignes import _classe_ligne
 from apps.ventes.models import Devis
 from authentication.models import Company
+from apps.ventes.tests.test_acal_layout_enrichi import en_tete_jeton
 
 User = get_user_model()
 
@@ -117,14 +118,16 @@ class LigneParModele(TestCase):
         devis_id = r.data['id']
         sync = self.api.post(
             f'/api/django/ventes/devis/{devis_id}/sync-layout/',
-            self._deux_modeles(n450=6), format='json')
+            self._deux_modeles(n450=6), format='json',
+            **en_tete_jeton(devis_id))
         self.assertEqual(sync.status_code, 200, sync.data)
         self.assertEqual(self._panneaux(devis_id),
                          {self.p550.pk: 8, self.p450.pk: 6})
         # Une seconde resynchro identique ne duplique rien.
         sync = self.api.post(
             f'/api/django/ventes/devis/{devis_id}/sync-layout/',
-            self._deux_modeles(n450=6), format='json')
+            self._deux_modeles(n450=6), format='json',
+            **en_tete_jeton(devis_id))
         self.assertEqual(sync.status_code, 200, sync.data)
         self.assertEqual(self._panneaux(devis_id),
                          {self.p550.pk: 8, self.p450.pk: 6})
@@ -164,7 +167,8 @@ class LigneParModele(TestCase):
             else:
                 sync = self.api.post(
                     f'/api/django/ventes/devis/{devis_id}/sync-layout/',
-                    self._mixte(5), format='json')
+                    self._mixte(5), format='json',
+                    **en_tete_jeton(devis_id))
             self.assertEqual(sync.status_code, 200, sync.data)
             self.assertEqual(self._panneaux(devis_id),
                              {self.p550.pk: 8, self.p450.pk: 5})
@@ -177,7 +181,8 @@ class LigneParModele(TestCase):
         # Persistance : une seconde resynchro du même document est inchangée.
         sync = self.api.post(
             f'/api/django/ventes/devis/{devis_id}/sync-layout/',
-            self._mixte(5, True), format='json')
+            self._mixte(5, True), format='json',
+            **en_tete_jeton(devis_id))
         self.assertEqual(sync.status_code, 200, sync.data)
         self.assertEqual(self._lignes_panneau(devis_id), etats[1])
 
@@ -228,7 +233,8 @@ class LigneParModele(TestCase):
         self.assertEqual(sum(avant[0].values()), 12)
         sync = self.api.post(
             f'/api/django/ventes/devis/{devis_id}/sync-layout/', document,
-            format='json')
+            format='json',
+            **en_tete_jeton(devis_id))
         calepinage, _ = Calepinage.objects.update_or_create(
             company=self.company, devis_id=devis_id,
             defaults={'client': self.client_obj, 'roof_layout': document})
@@ -283,7 +289,8 @@ class LigneParModele(TestCase):
             prix_vente=Decimal('3500'))
         sync = self.api.post(
             f'/api/django/ventes/devis/{devis_id}/sync-layout/', premium,
-            format='json')
+            format='json',
+            **en_tete_jeton(devis_id))
         self.assertEqual(sync.status_code, 200, sync.data)
         self.assertEqual(self._panneaux(devis_id),
                          {self.p550_premium.pk: 12})

@@ -198,7 +198,9 @@ const calepinageApi = {
     // CAL231 — le contexte de conception (pin/contour/ville résolus par le
     // serveur, CAL15) : toutes les clés toujours présentes, nulles si la source
     // manque. Aucune coordonnée devinée côté écran.
-    designContext: (id) => api.get(`${pivot(id)}design-context/`),
+    // ACON80 — `params` = `{devis}` d'un devis porté par une VARIANTE : le contexte
+    // sert alors `variante` et le document de la variante (calepinage_design_context.json).
+    designContext: (id, params) => api.get(`${pivot(id)}design-context/`, ...(params ? [{ params }] : [])),
 
     // SOLMVP15 — `importer-contour-ao` (CAL240), venu de AO, est retiré. Le
     // contour de l'atelier reste `roof_layout.outline` (v2), posé par le tracé

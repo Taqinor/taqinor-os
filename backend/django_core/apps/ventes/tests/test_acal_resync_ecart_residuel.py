@@ -25,6 +25,7 @@ from apps.stock.models import Produit
 from apps.ventes.domain.geometrie import layout_hash
 from apps.ventes.models import Devis, LigneDevis, DevisActivity
 from authentication.models import Company
+from apps.ventes.tests.test_acal_layout_enrichi import en_tete_jeton
 
 User = get_user_model()
 MONTH = timezone.now().strftime('%Y%m')
@@ -67,7 +68,8 @@ class EcartResiduelTest(TestCase):
     def _sync(self, layout):
         return self.api.post(
             f'/api/django/ventes/devis/{self.devis.pk}/sync-layout/', layout,
-            format='json')
+            format='json',
+            **en_tete_jeton(self.devis.pk))
 
     def _hash_en_base(self):
         return Devis.objects.values_list(

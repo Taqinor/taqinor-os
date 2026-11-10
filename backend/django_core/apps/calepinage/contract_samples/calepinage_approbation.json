@@ -4,7 +4,8 @@
   "code_permission_decider": "calepinage_approuver",
   "corps_approuver": {
     "decision": "approuve",
-    "motif": "Conception relue : conforme au relevé."
+    "motif": "Conception relue : conforme au relevé.",
+    "empreinte": "3f1c9a7e5b2d4c60a81e0f9b7d3c5a12e4b6f8091a2c3d4e5f60718293a4b5c6"
   },
   "corps_refuser": {
     "decision": "refuse",
@@ -20,7 +21,8 @@
     "motif": "Conception relue : conforme au relevé.",
     "exigee": true,
     "perimee": false,
-    "empreinte_approuvee": "3f1c9a7e5b2d4c60a81e0f9b7d3c5a12e4b6f8091a2c3d4e5f60718293a4b5c6"
+    "empreinte_approuvee": "3f1c9a7e5b2d4c60a81e0f9b7d3c5a12e4b6f8091a2c3d4e5f60718293a4b5c6",
+    "empreinte_courante": "3f1c9a7e5b2d4c60a81e0f9b7d3c5a12e4b6f8091a2c3d4e5f60718293a4b5c6"
   },
   "exemple_vide": {
     "etat": null,
@@ -29,7 +31,8 @@
     "motif": null,
     "exigee": false,
     "perimee": false,
-    "empreinte_approuvee": ""
+    "empreinte_approuvee": "",
+    "empreinte_courante": ""
   },
   "exemple_refuse": {
     "etat": "refuse",
@@ -41,7 +44,8 @@
     "motif": "Obstacle nord non relevé : à reprendre.",
     "exigee": true,
     "perimee": false,
-    "empreinte_approuvee": "3f1c9a7e5b2d4c60a81e0f9b7d3c5a12e4b6f8091a2c3d4e5f60718293a4b5c6"
+    "empreinte_approuvee": "3f1c9a7e5b2d4c60a81e0f9b7d3c5a12e4b6f8091a2c3d4e5f60718293a4b5c6",
+    "empreinte_courante": "3f1c9a7e5b2d4c60a81e0f9b7d3c5a12e4b6f8091a2c3d4e5f60718293a4b5c6"
   },
   "refus_sans_code_approbation": {
     "statut_http": 403,
@@ -68,9 +72,17 @@
     "motif": "Conception relue : conforme au relevé.",
     "exigee": true,
     "perimee": true,
-    "empreinte_approuvee": "0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5061728394a5b6c7d8e9f0"
+    "empreinte_approuvee": "0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5061728394a5b6c7d8e9f0",
+    "empreinte_courante": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
   },
   "refus_conception_vide": {
     "roof_layout": "Rien à approuver : dessinez la toiture"
-  }
+  },
+  "refus_conception_modifiee": {
+    "empreinte": "La conception a changé depuis votre ouverture : relisez-la avant d'approuver."
+  },
+  "refus_empreinte_absente": {
+    "empreinte": "Empreinte manquante : renvoyez l'empreinte de la conception lue (empreinte_courante)."
+  },
+  "acon23_note": "ACON23 — `empreinte_courante` (toujours présente) = l'empreinte imprimée (`layout_hash`) VUE par le relecteur ; un ACCORD la renvoie dans `corps_approuver.empreinte` : absente ⇒ 400 `refus_empreinte_absente`, différente de la conception d'aujourd'hui ⇒ 409 `refus_conception_modifiee`, rien n'est écrit. Les refus d'avant (verrou, suggestions en attente, motif, conception vide, auto-approbation, verdict électrique) passent AVANT. Un REFUS (`corps_refuser`) n'en exige aucune."
 }

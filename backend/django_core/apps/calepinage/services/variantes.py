@@ -83,8 +83,11 @@ def _nom_texte(nom):
 
 
 def creer_variante(calepinage, *, nom, roof_layout=None, resultat=None,
-                   user=None, retenir=False):
+                   user=None, retenir=False, devis=None):
     """Crée une variante sur ``calepinage``.
+
+    ACON6 (D-ACON-2) — ``devis`` : le second devis actif du lead qu'elle
+    PORTE ; le verrou lu est alors celui de CE devis, pas du devis du conteneur.
 
     ``retenir=True`` passe par la bascule atomique : l'ancienne retenue
     repasse à faux dans la MÊME transaction — jamais deux, jamais zéro.
@@ -102,7 +105,7 @@ def creer_variante(calepinage, *, nom, roof_layout=None, resultat=None,
     # ACAL43 — le verrou unique (devis lié figé ⇒ 409) AVANT toute écriture.
     from .verrou import verifier_ecriture_autorisee
 
-    verifier_ecriture_autorisee(calepinage, champ='variante')
+    verifier_ecriture_autorisee(calepinage, champ='variante', devis=devis)
     libelle = _nom_texte(nom)
     if not libelle:
         raise VarianteRefusee(
@@ -124,6 +127,7 @@ def creer_variante(calepinage, *, nom, roof_layout=None, resultat=None,
             layout_hash=layout_hash(roof_layout) or '',
             resultat=resultat,
             cree_par=user,
+            devis=devis,
         )
         # ACAL110 — la création se journalise AVEC son auteur.
         from .journal import journaliser_variante_creee
@@ -161,7 +165,8 @@ def modifier_variante(variante, *, nom=None, roof_layout=..., resultat=...,
     # ACAL43 — le verrou unique (devis lié figé ⇒ 409) AVANT toute écriture.
     from .verrou import verifier_ecriture_autorisee
 
-    verifier_ecriture_autorisee(variante.calepinage, champ='variante')
+    verifier_ecriture_autorisee(variante.calepinage, champ='variante',
+                                devis=getattr(variante, 'devis', None))
 
     champs = []
     changements = []

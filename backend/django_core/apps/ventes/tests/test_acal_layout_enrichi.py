@@ -39,6 +39,23 @@ User = get_user_model()
 MONTH = timezone.now().strftime('%Y%m')
 
 
+def en_tete_jeton(devis_id):
+    """ACON9 — l'en-tête ``If-Match`` d'une écriture ventes ``sync-layout`` /
+    ``layout`` : le jeton de la conception LIÉE au devis (celle de la variante
+    qui le porte, ACON6), ``{}`` sans calepinage lié (première conception).
+    Partagé par les modules de test qui réécrivent un devis déjà conçu."""
+    from apps.calepinage.selectors import conception_du_devis
+    from apps.calepinage.services.layout import empreinte_document
+
+    devis = Devis.objects.filter(pk=devis_id).first()
+    conception = (conception_du_devis(devis.pk, devis.company)
+                  if devis is not None else None)
+    if conception is None:
+        return {}
+    jeton = empreinte_document(conception['roof_layout']) or ''
+    return {'HTTP_IF_MATCH': f'"{jeton}"'}
+
+
 def _pan(label, azimut, count):
     return {'label': label, 'roofType': 'pitched', 'pitchDeg': 25,
             'facingAzimuthDeg': azimut,
@@ -118,10 +135,42 @@ class LayoutEnrichiTest(TestCase):
             devis.refresh_from_db()
         return devis
 
-    def _post(self, devis, route, layout, **extra):
+    def _post(self, devis, route, layout, sans_jeton=False, **extra):
+        if not sans_jeton and 'HTTP_IF_MATCH' not in extra:
+            extra.update(en_tete_jeton(devis.pk))  # ACON9
         return self.api.post(
             f'/api/django/ventes/devis/{devis.pk}/{route}/', layout,
             format='json', **extra)
+
+    def test_sans_jeton_sur_devis_concu_428(self):
+        """ACON9 — devis DÉJÀ conçu (calepinage lié, jeton E1) : sans If-Match,
+        428 nommé et rien d'écrit ; jeton périmé : 409 ; E1 : 200 ; devis sans
+        calepinage : 200 sans jeton. Idem POST ``layout``."""
+        from apps.calepinage.services.layout import empreinte_document
+
+        neuf = self._devis()
+        r = self._post(neuf, 'sync-layout', _layout(6, 6), sans_jeton=True)
+        self.assertEqual(r.status_code, 200, r.content)
+        calepinage = self._calepinage(neuf)
+        e1 = empreinte_document(calepinage.roof_layout)
+        for route in ('sync-layout', 'layout'):
+            with self.subTest(route=route):
+                r = self._post(neuf, route, _layout(9, 9), sans_jeton=True)
+                self.assertEqual(r.status_code, 428, r.content)
+                self.assertEqual(r.data, {'detail': (
+                    "Jeton de version manquant : rechargez la conception "
+                    "avant d'enregistrer.")})
+                calepinage.refresh_from_db()
+                self.assertEqual(empreinte_document(calepinage.roof_layout),
+                                 e1)
+                r = self._post(neuf, route, _layout(9, 9),
+                               HTTP_IF_MATCH='"perime"')
+                self.assertEqual(r.status_code, 409, r.content)
+        r = self._post(neuf, 'sync-layout', _layout(9, 9),
+                       HTTP_IF_MATCH=f'"{e1}"')
+        self.assertEqual(r.status_code, 200, r.content)
+        calepinage.refresh_from_db()
+        self.assertEqual(calepinage.roof_layout, _layout(9, 9))
 
     def _calepinage(self, devis):
         return Calepinage.objects.filter(company=self.company,

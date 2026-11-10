@@ -173,6 +173,21 @@ describe('ACAL203 — calage, modification, suppression, carte', () => {
     expect(await screen.findByTestId('cal-photo-calage-vide')).toBeInTheDocument()
   })
 
+  it('un retrait refusé (409 verrou) affiche le motif', async () => {
+    // ACON13 — calepinage au devis accepté : le motif SERVEUR (`photos[0]`) est dit.
+    photos.mockResolvedValue({ data: { photos: [CALEE] } })
+    supprimerPhoto.mockRejectedValue({ response: { status: 409, data: {
+      photos: ['Devis accepté : révisez-le (nouvelle version).'] } } })
+    rendre()
+    await screen.findByTestId('cal-photo-calage-carte')
+
+    fireEvent.click(screen.getByTestId('cal-photo-supprimer'))
+    fireEvent.click(screen.getByTestId('cal-photo-supprimer-confirmer'))
+
+    expect(await screen.findByTestId('cal-photo-calage-message'))
+      .toHaveTextContent('Devis accepté : révisez-le')
+  })
+
   it('la carte utilise maxNativeZoom 19 et démarre au zoom 19', async () => {
     photos.mockResolvedValue({ data: { photos: [CALEE] } })
     rendre()

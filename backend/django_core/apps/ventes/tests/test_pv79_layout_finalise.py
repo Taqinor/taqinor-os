@@ -26,6 +26,7 @@ from core.event_coverage import (
     catalog_payload_mismatches, catalogued_but_undeclared,
     uncatalogued_events,
 )
+from apps.ventes.tests.test_acal_layout_enrichi import en_tete_jeton
 
 User = get_user_model()
 
@@ -148,7 +149,8 @@ class EmissionDepuisSyncLayoutTest(TestCase):
     def _post(self, corps):
         return self.api.post(
             '/api/django/ventes/devis/%s/sync-layout/' % self.devis.id,
-            corps, format='json')
+            corps, format='json',
+            **en_tete_jeton(self.devis.id))
 
     def _notes(self):
         return LeadActivity.objects.filter(

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
 import { toastWarning } from '../../lib/toast'
@@ -105,6 +105,7 @@ export default function BoutonDevis({
   const [retour, setRetour] = useState(null)
   // ACAL94 — avertissement (jamais un refus) avant une révision.
   const [retouches, setRetouches] = useState(false)
+  const gesteEnCours = useRef(false) // ACON46 — garde ré-entrante (voir unSeulGeste)
 
   // L'ÉTAT VIENT DU SERVEUR, et d'UNE SEULE lecture : l'agrégat de détail
   // (CAL17) est chargé par `AtelierPanneaux` et descendu ici en prop. Le
@@ -162,6 +163,14 @@ export default function BoutonDevis({
     }
   }
 
+  // ACON46 — garde RÉ-ENTRANTE posée AVANT l'enregistrement préalable : un double
+  // clic rapide ne lance qu'UN enregistrement et UN POST (libérée au `finally`).
+  const unSeulGeste = (geste) => async (...args) => {
+    if (enCours || gesteEnCours.current) return
+    gesteEnCours.current = true
+    try { return await geste(...args) } finally { gesteEnCours.current = false }
+  }
+
   // ACAL94 — range l'écran d'abord ; `false` = rien ne part au serveur.
   const enregistrerDabord = async () => {
     if (typeof enregistrerAvant !== 'function') return true
@@ -178,8 +187,8 @@ export default function BoutonDevis({
     return ok
   }
 
-  const generer = async (corps = {}) => {
-    if (enCours || !(await enregistrerDabord())) return
+  const generer = unSeulGeste(async (corps = {}) => {
+    if (!(await enregistrerDabord())) return
     if (!corps.derogation_electrique) setBloquage({ geste: 'generer' })
     const res = await executer(
       () => calepinageApi.calepinages.genererDevis(calepinageId, corps))
@@ -201,7 +210,7 @@ export default function BoutonDevis({
     // On rouvre la conception SUR le devis : c'est là que le commercial
     // continue son geste, exactement comme depuis la fiche lead.
     navigate(`/ventes/devis/${nouveau}/design`)
-  }
+  })
 
   const relireEtRecharger = async () => {
     // On RELIT l'agrégat plutôt que de deviner le nouvel état du devis.
@@ -209,8 +218,8 @@ export default function BoutonDevis({
     await onRecharger?.()
   }
 
-  const resynchroniser = async (corps = {}) => {
-    if (enCours || !(await enregistrerDabord())) return
+  const resynchroniser = unSeulGeste(async (corps = {}) => {
+    if (!(await enregistrerDabord())) return
     if (!corps.derogation_electrique) setBloquage({ geste: 'sync' })
     const res = await executer(
       () => calepinageApi.calepinages.syncDevis(calepinageId, corps))
@@ -232,7 +241,7 @@ export default function BoutonDevis({
       return
     }
     await relireEtRecharger()
-  }
+  })
 
   // ACAL171 — « Passer outre et générer » : le MÊME geste, relancé avec
   // `derogation_electrique: {motif}` ; un motif vide est refusé sous le champ.

@@ -29,6 +29,7 @@ from apps.ventes.models import Devis, LigneDevis
 from apps.ventes.selectors import devis_modifiabilite
 
 from .test_api_liste import BaseApiCalepinage, url_detail
+from apps.ventes.tests.test_acal_layout_enrichi import en_tete_jeton
 
 
 def _layout(panneaux):
@@ -201,7 +202,8 @@ class MiroirEnvoyeTest(BaseApiCalepinage):
             statut=Devis.Statut.ENVOYE)
         reponse = self.api.post(
             f'/api/django/ventes/devis/{devis.pk}/sync-layout/',
-            _layout(12), format='json')
+            _layout(12), format='json',
+            **en_tete_jeton(devis.pk))
         self.assertEqual(reponse.status_code, 200, reponse.content)
         calepinage.refresh_from_db()
         self.assertEqual(calepinage.roof_layout, _layout(12))

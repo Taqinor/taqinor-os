@@ -35,6 +35,7 @@ from apps.ventes.domain.etudes import rafraichir_etudes_du_devis
 from apps.ventes.domain.geometrie import layout_hash
 from apps.ventes.models import Devis, LigneDevis, ShareLink
 from authentication.models import Company
+from apps.ventes.tests.test_acal_layout_enrichi import en_tete_jeton
 
 User = get_user_model()
 MONTH = timezone.now().strftime('%Y%m')
@@ -126,7 +127,8 @@ class ResyncParite(TestCase):
     def _sync_ventes(self, devis, panneaux):
         return self.api.post(
             f'/api/django/ventes/devis/{devis.id}/sync-layout/',
-            _layout(panneaux), format='json')
+            _layout(panneaux), format='json',
+            **en_tete_jeton(devis.id))
 
     def test_resync_module_rafraichit_etude_horaire_et_profils(self):
         devis = self._devis()

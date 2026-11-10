@@ -52,6 +52,40 @@ class EditionPhotoTest(BasePhoto):
                      f'{self.calepinage.pk}/photos/')
         self.url = f'{self.base}{self.photo.pk}/'
 
+    def test_retrait_sur_calepinage_verrouille_409(self):
+        """ACON13 — devis ACCEPTÉ : retrait, correction et ajout d'une photo
+        refusés (409, motif ventes) ; photo, pièce et objet intacts ; le
+        service (effacement 09-08) reste libre."""
+        from apps.calepinage.models import Calepinage
+        from apps.calepinage.services.photos import supprimer_photo_site
+        from apps.crm.models import Client
+        from apps.ventes.models import Devis
+
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-ACON13-1',
+            client=Client.objects.create(company=self.company,
+                                         nom='Client ACON13'),
+            statut=Devis.Statut.ACCEPTE)
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(devis=devis)
+        piece = self.photo.attachment_id
+        for reponse in (
+                self.api.delete(self.url),
+                self.api.patch(self.url, {'legende': 'Après'}, format='json'),
+                self.api.post(self.base, {
+                    'photo': _fichier(), 'genre': 'drone',
+                    'prise_le': HIER.isoformat()}, format='multipart')):
+            self.assertEqual(reponse.status_code, 409, reponse.data)
+            self.assertIn('Devis accepté : révisez-le',
+                          str(reponse.data['photos']))
+        self.photo.refresh_from_db()
+        self.assertEqual(self.photo.legende, 'Vol nord')
+        self.assertTrue(Attachment.objects.filter(pk=piece).exists())
+        self.assertEqual(PhotoSite.objects.filter(
+            calepinage=self.calepinage).count(), 1)
+        # Le service, lui, n'est jamais verrouillé (effacement DSR).
+        supprimer_photo_site(self.photo)
+        self.assertFalse(PhotoSite.objects.filter(pk=self.photo.pk).exists())
+
     def test_patch_photo_met_a_jour_genre_date_legende(self):
         reponse = self.api.patch(
             self.url, {'genre': 'oblique', 'prise_le': AVANT_HIER.isoformat(),

@@ -1,0 +1,36 @@
+{
+  "endpoint": "GET /api/django/ventes/devis/<int:pk>/design-context/",
+  "forme_serveur": "partielle",
+  "pourquoi": "ACON6 (D-ACON-2) — LA conception d'un devis, rendue par `apps.calepinage.selectors.conception_du_devis(devis_id, company)` : le point d'entrée cross-app que lisent la synchronisation du devis (`ventes/domain/resynchronisation.py::ecrire_conception_du_devis`, `services/devis.py::resynchroniser_devis`) et, avec ACON80, le contexte de l'atelier 3D (`design-context`), l'ombrage servi et l'entrée électrique. PACT10 — POURQUOI CE CONTRAT PART SEUL : ACON6 pose le sélecteur, ACON80 (même vague) branche ses lecteurs ; les deux moitiés lisent CE document. PORTÉE PARTIELLE : le contexte `design-context` porte d'autres clés ; ce document décrit le bloc de conception. QUATRE CLÉS : `calepinage` = le CONTENEUR (identifiant du calepinage ouvert du lead, celui que rend `calepinage_du_devis`) ; `variante` = la variante qui PORTE ce devis (second devis actif du lead, `CalepinageVariante.devis`), `null` quand le devis est lié au calepinage lui-même ou par sa chaîne de révision (D-ACAL-3) ; `roof_layout` / `layout_hash` = le document et l'empreinte de la variante quand elle existe, sinon ceux du calepinage — jamais le document d'un autre devis. Sans conception, le sélecteur rend `null` (`exemple_vide`). Côté Python, `calepinage` et `variante` sont des instances ; ici leurs identifiants. AUCUN ARGENT, AUCUN PRIX D'ACHAT. Valeurs = PLACEHOLDERS assumés (identifiants à un chiffre, empreintes `abab…` / `cdcd…`).",
+  "exemple": {
+    "calepinage": 1,
+    "variante": 2,
+    "roof_layout": {
+      "version": 2,
+      "zones": [
+        {
+          "id": "z1",
+          "label": "Pan Sud",
+          "geometry": {"count": 12, "azimuthDeg": 180.0, "tiltDeg": 15.0}
+        }
+      ]
+    },
+    "layout_hash": "abababababababababababababababababababababababababababababababab"
+  },
+  "exemple_sans_variante": {
+    "calepinage": 1,
+    "variante": null,
+    "roof_layout": {
+      "version": 2,
+      "zones": [
+        {
+          "id": "z1",
+          "label": "Pan Sud",
+          "geometry": {"count": 16, "azimuthDeg": 180.0, "tiltDeg": 15.0}
+        }
+      ]
+    },
+    "layout_hash": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+  },
+  "exemple_vide": null
+}

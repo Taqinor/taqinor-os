@@ -367,6 +367,32 @@ class EndpointTest(BaseReleve):
         self.assertIn('precision_azimut_deg', reponse.data)
         self.assertEqual(ReleveTerrain.objects.count(), 0)
 
+    def test_creation_sur_calepinage_verrouille_409(self):
+        """ACON10 — un calepinage au devis ACCEPTÉ refuse la CRÉATION d'un
+        relevé (409, motif ventes mot pour mot), comme sa correction."""
+        from apps.crm.models import Client
+        from apps.ventes.models import Devis
+
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-ACON10-1',
+            client=Client.objects.create(company=self.company,
+                                         nom='Client ACON10'),
+            statut=Devis.Statut.ACCEPTE)
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(devis=devis)
+        reponse = self.api.post(
+            self.url, {'releve_le': HIER.isoformat(),
+                       'chaines': [CHAINE_FRDISI]}, format='json')
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertIn('Devis accepté : révisez-le',
+                      str(reponse.data['releve']))
+        self.assertEqual(ReleveTerrain.objects.count(), 0)
+        # Brouillon : la création passe (201).
+        Devis.objects.filter(pk=devis.pk).update(statut=Devis.Statut.BROUILLON)
+        reponse = self.api.post(
+            self.url, {'releve_le': HIER.isoformat(), 'chaines': []},
+            format='json')
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+
     def test_calepinage_d_une_autre_societe_introuvable(self):
         role = Role.objects.create(company=self.autre, nom='Directeur',
                                    permissions=list(DIRECTEUR_PERMISSIONS))

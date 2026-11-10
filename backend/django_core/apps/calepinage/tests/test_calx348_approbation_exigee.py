@@ -229,7 +229,8 @@ class RetenirAvecApprobationEnBase(BaseApiCalepinage):
     def test_reglage_actif_approuve_puis_publication_passe(self):
         _exiger(self.company)
         retenir_variante(self.variante)
-        decider(self.calepinage, decision='approuve', user=self.user)
+        decider(self.calepinage, decision='approuve', user=self.user,
+                empreinte=self.calepinage.layout_hash or '')  # ACON23
         self.calepinage.refresh_from_db()
         self.assertIsNone(feu_vert.verifier_avant_publication(
             self.calepinage, geste=feu_vert.GESTE_DEVIS))

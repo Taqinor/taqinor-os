@@ -83,9 +83,13 @@ class SuggestionPenteApiTest(BaseApiCalepinage):
         relecteur = User.objects.create_user(
             username='acal65_relecteur', password='x', company=self.company,
             role=role)
-        return self._client(relecteur).post(
+        # ACON23 — l'accord renvoie l'empreinte VUE (GET approbation/).
+        api = self._client(relecteur)
+        vue = api.get(f'{url_detail(self.calepinage.pk)}approbation/').data
+        return api.post(
             f'{url_detail(self.calepinage.pk)}approbation/',
-            {'decision': 'approuve'}, format='json')
+            {'decision': 'approuve',
+             'empreinte': vue.get('empreinte_courante', '')}, format='json')
 
     def test_proposer_persiste_suggeree_sans_bloquer_l_approbation(self):
         donnees = self._proposer()
