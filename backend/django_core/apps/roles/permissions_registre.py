@@ -647,6 +647,12 @@ ALL_PERMISSIONS = [
     # aucun autre rôle système ; aucun rôle en base n'en reçoit (migration
     # roles 0013 : zéro titulaire, retour arrière = retrait).
     'integrations_gerer', 'modules_gerer', 'dsr_traiter',
+    # ── NTDMO32 — « Réinitialiser la démo » : autorise ``reset-demo/`` (NTDMO7)
+    # sans les droits Administrateur complets (ex. un « Commercial démo »).
+    # Titulaires par défaut : Directeur + Administrateur (héritage du
+    # catalogue) ; aucun autre rôle système. Fondation : volontairement absent
+    # de ``PERMISSION_MODULE`` (jamais masquable par un toggle de module).
+    'peut_reinitialiser_demo',
 ]
 
 # ───────────────────────────────────────────────────────────────────────────

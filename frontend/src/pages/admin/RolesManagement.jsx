@@ -112,6 +112,7 @@ const PERMISSION_GROUPS = [
       { code: 'modules_gerer', label: 'Activer ou couper un module' },
       { code: 'integrations_gerer', label: "Gérer les clés d'API et webhooks" },
       { code: 'dsr_traiter', label: 'Traiter les demandes loi 09-08' },
+      { code: 'peut_reinitialiser_demo', label: 'Réinitialiser la démo' },
     ],
   },
   {
