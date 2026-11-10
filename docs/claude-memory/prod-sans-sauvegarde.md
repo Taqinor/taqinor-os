@@ -1,19 +1,23 @@
 ---
 name: prod-sans-sauvegarde
-description: INCIDENT OUVERT 08/10/2026 — aucune sauvegarde de la base de prod n'a jamais réussi (pg_dump absent de l'image django)
+description: INCIDENT CLOS le 10/11/2026 — la base de prod est sauvegardée chaque nuit depuis le 09/10 ; restent ouverts : aucune copie hors serveur, fichiers jamais sauvegardés
 metadata:
   type: project
 ---
 
-**Constat (lecture seule de la prod, 08/10/2026, audit X5).** `core.BackupRun` en prod : **105 exécutions, 105 en échec, 0 réussite**
-(première = id 1, dernière = id 105 le 08/10/2026 à 03:00 UTC), message `pg_dump: exception: [Errno 2] No such file or directory: 'pg_dump'`.
-`command -v pg_dump` dans `erp-agentique-django_core-1` → absent (rc 127) ; présent dans `erp-agentique-db-1` (`/usr/bin/pg_dump`).
-Aucun autre mécanisme de sauvegarde de la base sur l'hôte (cron.d, cron.daily, timers systemd : rien hors `dpkg-db-backup`). Seul
-dump trouvé : `/root/taqinor_dump.sql` du 12/06/2026 (manuel). Les exercices de restauration planifiés échouent pour la même raison.
+**Incident du 08/10/2026 (audit X5) : clos.** `core.BackupRun` comptait 105 exécutions en échec (`pg_dump` absent de l'image).
+Corrigé par `ADEP1` (client PostgreSQL 16 dans l'image). Lecture seule de la prod le 10/11/2026 (audit PF3) : **38 réussites**
+(33 dumps, 5 exercices de restauration), une par nuit depuis le 09/10, la dernière le 10/11 à 03:00 (26 Mo, 6 à 10 s) ; dernier
+exercice de restauration : 1 640 lignes restaurées pour 1 640 en base.
 
-**Why:** une perte du volume Postgres aujourd'hui = perte de toutes les données saisies depuis juin.
+**Ce qui reste ouvert (audit PF3, groupe ADCG, `docs/audits/2026-11-10-parcours-PF3.md`).**
+- **Aucune copie hors du serveur** : les dumps sont rangés dans MinIO sur le même disque que la base ; la copie distante est
+  « off » (aucune variable `BACKUP_OFFSITE_*` dans le `.env` de prod). Décision `D-ADCG-1` ouverte : où envoyer la copie.
+- **Les fichiers ne sont pas sauvegardés** : pièces et PDF (271 Mo le 10/11) n'ont aucune copie.
+- Non vérifié : l'option « Backups » de l'hébergeur (image entière du serveur) ; si elle est active, elle couvre les deux points.
 
-**How to apply:** tâche `ADEP1` (P0, `docs/plans/PLAN_AUDIT_DEPLOY.md`) : client PostgreSQL 16 dans l'image de prod + garde
-binaire. En attendant, la mesure conservatoire (dump manuel depuis le conteneur `db`, copie hors serveur) est un geste du fondateur —
-Claude ne touche pas la prod (règle Deploys + accord de lecture seule `prod-read-access.md`). Clore ce fichier quand une
-`BackupRun` réussie existe en prod. Lié : [[prod-read-access]].
+**Why:** une perte du serveur aujourd'hui = perte de la base ET de ses sauvegardes ; une perte du volume de fichiers = perte de
+tous les documents.
+
+**How to apply:** ne plus traiter les sauvegardes comme « en échec » ; les tâches ADCG de sauvegarde sont P0 ; poser les variables
+de copie distante reste un geste du fondateur (Claude ne touche pas la prod). Lié : [[prod-read-access]].
