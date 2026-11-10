@@ -217,12 +217,27 @@ def is_offgrid_inverter(designation: str) -> bool:
     return not any(mot in d for mot in OFFGRID_AUTRE_FAMILLE_KEYWORDS)
 
 
+#: ADCG45 (D-ADCG-3 = réseau) — un micro-onduleur injecte au réseau : «
+#: Micro-onduleur 800W » (aucun « réseau » au nom) n'entrait dans aucune
+#: famille et le document à options était refusé. « micro onduleur »,
+#: « microonduleur », « micro-inverter » (séparateurs normalisés, sans
+#: accents) ; un micro-onduleur HYBRIDE reste hybride. Jumeau : solar.js.
+_MICRO_ONDULEUR_RE = re.compile(r"micro\s*(?:onduleur|inverter)")
+
+
+def _est_micro_onduleur(d: str) -> bool:
+    d = unicodedata.normalize("NFD", d)
+    d = "".join(c for c in d if unicodedata.category(c) != "Mn")
+    return bool(_MICRO_ONDULEUR_RE.search(d)) and "hybrid" not in d
+
+
 def is_reseau_inverter(designation: str) -> bool:
     if _est_cable(designation):
         return False
     d = _sans_separateurs(designation)
-    return ("onduleur" in d
-            and ("réseau" in d or "reseau" in d or "injection" in d)
+    return (("onduleur" in d
+             and ("réseau" in d or "reseau" in d or "injection" in d)
+             or _est_micro_onduleur(d))
             # QJR-OFFGRID — « hors réseau » n'est PAS « réseau ».
             and not _a_mot_cle_offgrid(d))
 

@@ -46,17 +46,24 @@ export const isOffgridInverter = (d) => {
   if (n.includes('onduleur')) return true
   return !OTHER_FAMILY_KEYWORDS.some(k => n.includes(k))
 }
+// ADCG45 (D-ADCG-3 = réseau) — un micro-onduleur (« Micro-onduleur 800W »,
+// « microonduleur », « micro-inverter ») injecte au réseau ; un micro-onduleur
+// HYBRIDE reste hybride. Jumeau : solar_classification.py `_MICRO_ONDULEUR_RE`.
+const MICRO_ONDULEUR_RE = /micro\s*(?:onduleur|inverter)/
 export const isReseauInverter = (d) => {
   const n = _sansSeparateurs(d)
+  if (_isOffgridDesignation(n) || n.includes('cable')) return false
+  if (MICRO_ONDULEUR_RE.test(n) && !n.includes('hybrid')) return true
   return n.includes('onduleur') && (n.includes('reseau') || n.includes('injection'))
-    && !_isOffgridDesignation(n) && !n.includes('cable')
 }
-// Q1 (fondateur 20/08/2026) — TOUT onduleur, hybride/réseau/non classé (ex.
-// micro-onduleur) : miroir exact de builder.py `_is_inverter` (« onduleur »
-// suffit). Sert à repérer la ligne dont le prix réel provisionne le
-// remplacement à l'année 12 — jamais un forfait sur l'investissement.
-// AMOT57 — union des familles : « Deye off-Grid 6kw » est un onduleur.
-export const isAnyInverter = (d) => !_norm(d).includes('cable') && (_norm(d).includes('onduleur') || isOffgridInverter(d))
+// Q1 (fondateur 20/08/2026) — TOUT onduleur, hybride/réseau/non classé :
+// miroir exact de builder.py `_is_inverter` (« onduleur » suffit). Sert à
+// repérer la ligne dont le prix réel provisionne le remplacement à l'année 12
+// — jamais un forfait sur l'investissement.
+// AMOT57 — union des familles : « Deye off-Grid 6kw » est un onduleur ;
+// ADCG45 : « Micro-inverter 800W » aussi (famille réseau).
+export const isAnyInverter = (d) => !_norm(d).includes('cable')
+  && (_norm(d).includes('onduleur') || isOffgridInverter(d) || isReseauInverter(d))
 
 // ── QJR92a (29/08/2026) — DÉTECTION PANNEAU ÉLARGIE CÔTÉ ÉCRAN ──────────────
 // Le seul mot « panneau » rejetait les désignations que les vendeurs écrivent

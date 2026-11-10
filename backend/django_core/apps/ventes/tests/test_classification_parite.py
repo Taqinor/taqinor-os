@@ -161,9 +161,9 @@ class ClassificationPariteBackendTest(SimpleTestCase):
 
             # Sens UNIQUE, jamais l'inverse : un onduleur classé hybride ou
             # réseau est forcément un onduleur. La réciproque est fausse par
-            # construction (un micro-onduleur est ``_is_inverter`` sans être ni
-            # l'un ni l'autre) — ne jamais l'affirmer ici, la fixture ne porte
-            # pas ce cas.
+            # construction (un « Onduleur Huawei 5kW » sans famille est
+            # ``_is_inverter`` sans être ni l'un ni l'autre ; le micro-onduleur,
+            # lui, est réseau depuis ADCG45) — ne jamais l'affirmer ici.
             if c['onduleur_hybride'] or c['onduleur_reseau']:
                 with self.subTest(cas=nom, colonne='_is_inverter'):
                     self.assertTrue(
@@ -188,6 +188,50 @@ class ClassificationPariteBackendTest(SimpleTestCase):
                 self.assertEqual(seed.is_offgrid(d), c['onduleur_offgrid'])
             with self.subTest(cas=d, colonne='onduleur'):
                 self.assertEqual(_is_inverter(d), c['onduleur'])
+
+
+class MicroOnduleurReseauAdcg45Test(SimpleTestCase):
+    """ADCG45 (D-ADCG-3 = réseau) — un micro-onduleur est un onduleur RÉSEAU.
+
+    « Micro-onduleur 800W » (``OND-800M`` de ``seed_demo``) n'entrait dans
+    aucune famille : ``familles_servables`` rendait (False, False) et le
+    document à options était refusé. Mutant : retirer « micro » du prédicat ⇒
+    ce test et le cas de fixture rougissent.
+    """
+
+    def test_graphies_reconnues_et_exclusions(self):
+        for nom in ('Micro-onduleur 800W', 'MICRO ONDULEUR 800W',
+                    'Microonduleur 600W', 'micro_onduleur 800W',
+                    'Micro-inverter 800W', 'Micro-ondûleur 800W'):
+            with self.subTest(nom=nom):
+                self.assertTrue(_is_reseau_inverter(nom))
+                self.assertFalse(_is_hybrid_inverter(nom))
+                self.assertFalse(_is_offgrid_inverter(nom))
+                self.assertTrue(_is_inverter(nom))
+        # Un micro-onduleur hybride reste hybride, un câble reste un câble, un
+        # micro-onduleur autonome reste autonome.
+        self.assertFalse(_is_reseau_inverter('Micro-onduleur hybride 800W'))
+        self.assertTrue(_is_hybrid_inverter('Micro-onduleur hybride 800W'))
+        for cable in ('Câble micro-onduleur', 'cable micro onduleur 2 m'):
+            self.assertFalse(_is_reseau_inverter(cable), cable)
+            self.assertFalse(_is_inverter(cable), cable)
+        self.assertFalse(_is_reseau_inverter('Micro-onduleur off-grid 800W'))
+        self.assertTrue(_is_offgrid_inverter('Micro-onduleur off-grid 800W'))
+
+    def test_familles_servables_option_sans_batterie(self):
+        """6 « Module PV 330 W » + 6 « Micro-onduleur 800W » : l'option « sans
+        batterie » est servable (avant : (False, False) ⇒ PDF refusé)."""
+        from apps.ventes.utils.options import (
+            familles_des_lignes, familles_servables)
+        lignes = [SimpleNamespace(designation='Module PV 330 W', quantite=6,
+                                  produit=None),
+                  SimpleNamespace(designation='Micro-onduleur 800W',
+                                  quantite=6, produit=None)]
+        familles = familles_des_lignes(lignes)
+        self.assertTrue(familles['has_reseau'])
+        self.assertEqual(familles_servables(**familles), (True, False))
+        self.assertTrue(blob_va_dans_sans('Micro-onduleur 800W'))
+        self.assertFalse(blob_va_dans_avec('Micro-onduleur 800W'))
 
 
 class BatterieCapaciteParitesTest(SimpleTestCase):
