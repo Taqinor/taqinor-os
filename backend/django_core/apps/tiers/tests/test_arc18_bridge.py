@@ -66,6 +66,34 @@ class Arc18ServiceDedupTests(TestCase):
         self.assertFalse(cree2)
         self.assertEqual(t1.id, t2.id)
 
+    def test_anonymiser_tiers_vide_l_identite_garde_les_roles(self):
+        """ASOC60 (C-ASOC-060) — la porte d'effacement du miroir."""
+        from decimal import Decimal
+        t, _ = tiers_services.attacher_ou_creer_tiers(
+            company=self.company, nom='Benali', prenom='Ahmed',
+            email='benali.asoc60@example.ma', telephone='0612345678',
+            adresse='12 rue X', cin='AB123456', ice='ICE-60', rc='RC-60',
+            identifiant_fiscal='IF-60', ville='Rabat',
+            gps_lat=Decimal('33.5'), roles=('is_client',))
+        self.assertEqual(tiers_services.anonymiser_tiers(
+            self.other_company, t.pk), 0)
+        self.assertEqual(tiers_services.anonymiser_tiers(self.company, None), 0)
+        t.refresh_from_db()
+        self.assertEqual(t.nom, 'Benali')
+        self.assertEqual(tiers_services.anonymiser_tiers(
+            self.company, t.pk, ('email', 'telephone')), 1)
+        t.refresh_from_db()
+        self.assertEqual((t.email, t.telephone, t.cin), ('', '', 'AB123456'))
+        self.assertEqual(tiers_services.anonymiser_tiers(self.company, t.pk), 1)
+        t.refresh_from_db()
+        self.assertEqual(t.nom, 'Anonymisé')
+        for champ in tiers_services.CHAMPS_PERSONNE:
+            with self.subTest(champ=champ):
+                self.assertIn(getattr(t, champ), ('', None))
+        self.assertEqual(len(tiers_services.CHAMPS_PERSONNE), 13)
+        self.assertTrue(t.is_client)
+        self.assertEqual(t.ville, 'Rabat')
+
     def test_dedup_is_company_scoped(self):
         # Même email dans DEUX sociétés → deux Tiers séparés (jamais de fuite).
         t_a, _ = tiers_services.attacher_ou_creer_tiers(

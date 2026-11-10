@@ -156,6 +156,24 @@ def attacher_ou_creer_tiers(*, company, nom, roles=None,
     return tiers, cree
 
 
+#: ASOC60 — l'identité d'une PERSONNE sur son Tiers (ni type ni ville).
+CHAMPS_PERSONNE = tuple(
+    c for c in _CHAMPS_IDENTITE if c not in ('type_tiers', 'ville'))
+
+
+def anonymiser_tiers(company, tiers_id, champs=CHAMPS_PERSONNE):
+    """ASOC60 — LA porte d'effacement du miroir : nom « Anonymisé », ``champs``
+    (parmi ``CHAMPS_PERSONNE``) vidés, rôles gardés. Bornée à ``company`` ;
+    renvoie le nombre de Tiers écrits (0 si ``tiers_id`` absent ou étranger).
+    Le miroir écartant les valeurs vides, un re-save ne les remplit plus."""
+    if tiers_id is None:
+        return 0
+    vide = {c: (None if Tiers._meta.get_field(c).null else '')
+            for c in champs if c in CHAMPS_PERSONNE}
+    return Tiers.objects.filter(company=company, pk=tiers_id).update(
+        nom='Anonymisé', **vide)
+
+
 # ── ARC21 — Bascule write-path (DÉCISION founder-gated, OFF par défaut) ──────
 #
 # Voir docs/decisions/ARC21-tiers-source-ecriture.md. Le mécanisme est LIVRÉ
