@@ -342,10 +342,33 @@ class TestNotification(_Base):
         notify.assert_called_once()
         args, kwargs = notify.call_args
         self.assertEqual(args[0], admin)
-        self.assertEqual(args[1], 'digest')
+        self.assertEqual(args[1], 'coherence_violation')  # ASOC92
         self.assertIn(d.reference, kwargs['body'])
         self.assertIn(REGLE, kwargs['body'])
         self.assertEqual(kwargs['company'], company)
+
+    def test_violation_a_sa_propre_cle(self):
+        """ASOC92 — « Récapitulatif » (digest) coupé : l'alerte d'une
+        nouvelle incohérence arrive quand même, sous `coherence_violation`."""
+        from apps.notifications.models import Notification, NotificationPreference
+        from apps.ventes.coherence.notification import (
+            notifier_nouvelles_violations)
+        from authentication.models import CustomUser
+        company, user, client, produit = self.societe()
+        self.devis(company, user, client, produit)
+        admin = User.objects.create_user(
+            username=f'cohadm_{_n()}', password='x', role_legacy='admin',
+            company=company)
+        NotificationPreference.objects.create(
+            user=admin, company=company, event_type='digest', in_app=False,
+            email=False, whatsapp=False, push=False)
+        rep = moteur.run_audit(company=company, rules=[REGLE])
+        with mock.patch.object(
+                CustomUser, 'admins_actifs_qs',
+                staticmethod(lambda c: User.objects.filter(pk=admin.pk))):
+            self.assertEqual(notifier_nouvelles_violations(rep), 1)
+        self.assertEqual(Notification.objects.filter(
+            user=admin, event_type='coherence_violation').count(), 1)
 
     def test_tache_sans_nouveaute_ne_notifie_pas(self):
         from apps.ventes.tasks import audit_coherence_nuit
