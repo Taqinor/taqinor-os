@@ -113,6 +113,32 @@ class ServiceTests(ZGed6Base):
         self.assertEqual(Folder.objects.filter(
             company=self.co_a, cabinet=self.cab_a, nom='Paie').count(), 2)
 
+    def test_dossier_change_versionne_le_meme_document(self):
+        """ASOC50 (C-ASOC-151) — le dossier cible change entre deux rendus de
+        FAC-1 : UN document, deux versions, dans le NOUVEAU dossier ; un
+        troisième rendu identique ne crée rien."""
+        routage = RoutageDocumentaire.objects.create(
+            company=self.co_a, source='facture', cabinet_cible=self.cab_a,
+            dossier_cible='Factures/{{ annee }}')
+        doc1 = services.router_document_module(
+            'facture', company=self.co_a, file=_fake_pdf('FAC-1.pdf'),
+            filename='FAC-1.pdf', reference='FAC-1', contexte={'annee': 2026})
+        routage.dossier_cible = 'Comptabilité/Factures'
+        routage.save(update_fields=['dossier_cible'])
+        autre = BytesIO(b'%PDF-1.4\n%\xe2\xe3\xcf\xd3\n' + b'1' * 120)
+        autre.name, autre.size = 'FAC-1.pdf', len(autre.getvalue())
+        for _ in range(2):  # contenu différent, puis identique
+            autre.seek(0)
+            doc2 = services.router_document_module(
+                'facture', company=self.co_a, file=autre, filename='FAC-1.pdf',
+                reference='FAC-1', contexte={'annee': 2026})
+        self.assertEqual(doc2.pk, doc1.pk)
+        docs = Document.objects.filter(company=self.co_a, custom_data__routage_reference='FAC-1')
+        self.assertEqual(docs.count(), 1)
+        doc = docs.get()
+        self.assertEqual((doc.folder.nom, doc.folder.parent.nom), ('Factures', 'Comptabilité'))
+        self.assertEqual(doc.versions.count(), 2)
+
     def test_routage_inactif_est_ignore(self):
         RoutageDocumentaire.objects.create(
             company=self.co_a, source='paie_bulletin',

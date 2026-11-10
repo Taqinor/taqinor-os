@@ -300,9 +300,12 @@ def public_apporteur_mes_deals(request, token):
     fuite « ce token existe mais est désactivé »)."""
     from .models import Apporteur
 
+    from .parcage import apporteurs_actifs
+
     apporteur = Apporteur.objects.filter(
         token_acces=token, actif=True).first()
-    if apporteur is None:
+    # APFS68 (D-ACRM-6 iii) — réglage « apporteurs » éteint : même 404 générique.
+    if apporteur is None or not apporteurs_actifs(apporteur.company_id):
         return Response({'detail': 'Introuvable.'},
                         status=status.HTTP_404_NOT_FOUND)
 

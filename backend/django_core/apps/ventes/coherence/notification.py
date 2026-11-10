@@ -60,7 +60,7 @@ def notifier_nouvelles_violations(report):
                  'incohérence(s) détectée(s)')
         corps = corps_digest(violations)
         for admin in CustomUser.admins_actifs_qs(company).distinct():
-            if notify(admin, EventType.DIGEST, titre, body=corps,
+            if notify(admin, EventType.COHERENCE_VIOLATION, titre, body=corps,
                       company=company) is not None:
                 emises += 1
     return emises

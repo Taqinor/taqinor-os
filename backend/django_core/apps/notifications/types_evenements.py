@@ -474,3 +474,23 @@ class EventType(models.TextChoices):
     MONITORING_SOUS_PERFORMANCE = (
         'monitoring_sous_performance',
         'Sous-performance détectée sur un système')
+    # ASOC46 — un client a ouvert une demande SAV ou déposé un justificatif
+    # sur le portail (``apps.portail.services.notifier_demande_client``).
+    PORTAIL_DEMANDE_CLIENT = (
+        'portail_demande_client', 'Demande ou dépôt du client (portail)')
+    # ASOC20 — alertes qui partaient sous ``digest`` (une préférence
+    # « Récapitulatif » coupée les taisait) : incohérence détectée par l'audit
+    # nocturne (ventes.coherence, ASOC92) et demande portail sur un contrat de
+    # maintenance (sav, ASOC93).
+    COHERENCE_VIOLATION = (
+        'coherence_violation', 'Incohérence détectée (audit de cohérence)')
+    SAV_DEMANDE_CONTRAT_PORTAIL = (
+        'sav_demande_contrat_portail',
+        'Demande portail sur un contrat de maintenance')
+    # ASOC28 — deux types émis mais absents du catalogue (``notify`` rendait
+    # None) : candidature au portail fournisseur (stock) et audit Trust Center
+    # de plus de 12 mois (``core.tasks.verifier_fraicheur_trust_center_task``).
+    FOURNISSEUR_CANDIDATURE = (
+        'fournisseur_candidature', 'Nouvelle candidature fournisseur')
+    TRUST_CENTER_AUDIT_EXPIRE = (
+        'trust_center_audit_expire', 'Audit Trust Center expiré')

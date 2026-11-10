@@ -13,7 +13,8 @@ import uuid
 from rest_framework.parsers import JSONParser
 from rest_framework.exceptions import ValidationError
 
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from authentication.permissions import IsResponsableOrAdmin, LectureDuModule
+from ..gardes_lecture import BorneAuChantierMixin  # APFS109
 from core.viewsets import CompanyScopedModelViewSet  # ARC5
 from ..models import (
     RegulatoryDossier, DossierChecklistItem, DossierExchange,
@@ -183,7 +184,7 @@ def _refleter_sur_chantier(dossier):
 @extend_schema_view(list=extend_schema(
     parameters=[qint('devis'),
                 qstr('statut', enum=RegulatoryDossier.Statut.values)]))
-class RegulatoryDossierViewSet(CompanyScopedModelViewSet):
+class RegulatoryDossierViewSet(BorneAuChantierMixin, CompanyScopedModelViewSet):
     # ARC5 — sweep TenantMixin : base transverse unique (idem pour les 5 viewsets
     # de ce module). get_queryset / perform_create / perform_update /
     # get_permissions SURCHARGENT la base (scoping direct sur `company`) : scoping
@@ -199,7 +200,7 @@ class RegulatoryDossierViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]  # APFS109
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -249,7 +250,7 @@ class RegulatoryDossierViewSet(CompanyScopedModelViewSet):
 
 @extend_schema_view(list=extend_schema(
     parameters=[qint('dossier')]))
-class DossierChecklistItemViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
+class DossierChecklistItemViewSet(BorneAuChantierMixin, CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG268 — CRUD pièces/étapes de checklist (scopé société)."""
     parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
 
@@ -258,7 +259,7 @@ class DossierChecklistItemViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]  # APFS109
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -297,7 +298,7 @@ class DossierChecklistItemViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note
 @extend_schema_view(list=extend_schema(
     parameters=[qint('dossier'),
                 qstr('type_echange', enum=DossierExchange.TypeEchange.values)]))
-class DossierExchangeViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
+class DossierExchangeViewSet(BorneAuChantierMixin, CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG269 — journal de la navette opérateur (scopé société)."""
     parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
 
@@ -307,7 +308,7 @@ class DossierExchangeViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-d
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]  # APFS109
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -351,7 +352,7 @@ class DossierExchangeViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-d
     parameters=[qint('devis'),
                 qstr('programme', enum=SubventionDossier.Programme.values),
                 qstr('statut', enum=SubventionDossier.Statut.values)]))
-class SubventionDossierViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
+class SubventionDossierViewSet(BorneAuChantierMixin, CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG270 — éligibilité & suivi des subventions (scopé société)."""
     parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
 
@@ -361,7 +362,7 @@ class SubventionDossierViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]  # APFS109
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -411,7 +412,7 @@ class SubventionDossierViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci
 @extend_schema_view(list=extend_schema(
     parameters=[qint('devis'),
                 qstr('statut', enum=Regularisation8221.Statut.values)]))
-class Regularisation8221ViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
+class Regularisation8221ViewSet(BorneAuChantierMixin, CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG271 — workflow de régularisation Article 33 (scopé société)."""
     parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
 
@@ -421,7 +422,7 @@ class Regularisation8221ViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note c
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]  # APFS109
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):

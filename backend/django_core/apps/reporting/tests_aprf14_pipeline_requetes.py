@@ -174,3 +174,19 @@ class PipelineRequetesConstantesTests(TestCase):
                 self.assertEqual(par_cle[stages.NEW]['sample_count'], 8)
                 self.assertEqual(par_cle[stages.CONTACTED]['avg_days'], 2.0)
                 self.assertEqual(par_cle[stages.CONTACTED]['sample_count'], 8)
+
+    def test_probabilites_etape_refusees_au_compte_portail(self):
+        """APFS100 (C-APFS-001 L2) — la table des probabilités d'étape est
+        interne : un compte portail client reçoit 403, l'interne 200."""
+        portail = User.objects.create_user(
+            username='apfs100_portail', password='x', company=self.company,
+            portee=User.PORTEE_PORTAIL_CLIENT,
+            portail_client_id=self.client_obj.pk)
+        api = APIClient()
+        api.force_authenticate(user=portail)
+        reponse = api.get(f'{BASE}/probabilites-etape/')
+        self.assertEqual(reponse.status_code, 403)
+        self.assertEqual(str(reponse.data['detail']),
+                         'Accès réservé aux comptes internes.')
+        self.assertEqual(
+            self.api.get(f'{BASE}/probabilites-etape/').status_code, 200)

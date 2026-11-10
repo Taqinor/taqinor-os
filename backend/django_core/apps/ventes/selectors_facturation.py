@@ -20,7 +20,7 @@ def compter_factures(company):
 
 def factures_echues(company, *, today=None):
     """YEVNT3 — Factures en retard d'une société : échéance dépassée, non
-    payées, non annulées. Point d'entrée cross-app sanctionné pour
+    payées, non annulées, émises (ASOC24 : jamais un brouillon). Point d'entrée cross-app sanctionné pour
     `apps.notifications` (jamais un import direct de `apps.ventes.models`).
     Lecture seule ; renvoie un QuerySet (peut être vide)."""
     from django.utils import timezone as _tz
@@ -34,7 +34,8 @@ def factures_echues(company, *, today=None):
         company=company, date_echeance__isnull=False,
         date_echeance__lt=today,
     ).exclude(
-        statut__in=[Facture.Statut.PAYEE, Facture.Statut.ANNULEE],
+        statut__in=[Facture.Statut.PAYEE, Facture.Statut.ANNULEE,
+                    Facture.Statut.BROUILLON],
     ).select_related('client', 'created_by'))
 
 

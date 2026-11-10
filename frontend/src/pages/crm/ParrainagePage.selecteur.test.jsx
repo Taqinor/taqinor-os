@@ -26,8 +26,13 @@ vi.mock('../../api/crmApi', () => ({
     getParrainages: () => Promise.resolve({ data: [] }),
     parrainageStats: () => Promise.resolve({ data: { total: 0, par_statut: {} } }),
     getClients: (params) => Promise.resolve({ data: paginer(params) }),
+    getLeads: () => Promise.resolve({ data: [] }),
     saveParrainage: () => Promise.resolve({ data: {} }),
   },
+}))
+
+vi.mock('../../api/parametresApi', () => ({
+  default: { getProfile: () => Promise.resolve({ data: { referral_enabled: true } }) },
 }))
 
 import ParrainagePage from './ParrainagePage'

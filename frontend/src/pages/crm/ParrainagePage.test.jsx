@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
+import crmApi from '../../api/crmApi'
 
 /* P169 — ParrainagePage : refonte sans style={} en dur (Tailwind/tokens). On
    garde un test de non-régression : la page se rend, affiche les stats et le
@@ -7,7 +8,7 @@ import { render, screen, cleanup, waitFor } from '@testing-library/react'
 
 vi.mock('../../api/crmApi', () => ({
   default: {
-    getParrainages: () => Promise.resolve({ data: [] }),
+    getParrainages: vi.fn(() => Promise.resolve({ data: [] })),
     parrainageStats: () => Promise.resolve({
       data: {
         total: 5,
@@ -17,10 +18,16 @@ vi.mock('../../api/crmApi', () => ({
       },
     }),
     getClients: () => Promise.resolve({ data: [{ id: 1, nom: 'Dupont', prenom: 'Jean' }] }),
-    saveParrainage: () => Promise.resolve({ data: {} }),
+    getLeads: () => Promise.resolve({ data: [{ id: 7, nom: 'Karim', prenom: '' }] }),
+    saveParrainage: vi.fn(() => Promise.resolve({ data: {} })),
   },
 }))
 
+vi.mock('../../api/parametresApi', () => ({
+  default: { getProfile: vi.fn(() => Promise.resolve({ data: { referral_enabled: true } })) },
+}))
+
+import parametresApi from '../../api/parametresApi'
 import ParrainagePage from './ParrainagePage'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
@@ -34,5 +41,52 @@ describe('ParrainagePage (P169 — sans style inline)', () => {
     expect(screen.getByRole('button', { name: '+ Ajouter' })).toBeInTheDocument()
     // P169 — aucun attribut style inline ne doit subsister dans le rendu.
     expect(container.querySelectorAll('[style]')).toHaveLength(0)
+  })
+
+  it('affiche le nom du filleul lié plutôt que le texte libre', async () => {
+    // ASOC75 — la colonne lit `filleul_display_nom` (DC14 : le lien prime).
+    crmApi.getParrainages.mockResolvedValueOnce({ data: [
+      { id: 1, parrain_nom: 'Dupont', filleul_nom: 'K.', filleul_display_nom: 'Karim', statut: 'en_attente' },
+      { id: 2, parrain_nom: 'Dupont', filleul_nom: 'Libre', filleul_display_nom: 'Libre', statut: 'en_attente' },
+      { id: 3, parrain_nom: 'Dupont', filleul_nom: '', filleul_display_nom: '', statut: 'en_attente' },
+    ] })
+    render(<ParrainagePage />)
+    expect(await screen.findByRole('cell', { name: 'Karim' })).toBeInTheDocument()
+    expect(screen.queryByText('K.')).not.toBeInTheDocument()
+    expect(screen.getByRole('cell', { name: 'Libre' })).toBeInTheDocument()
+    const lignes = screen.getAllByRole('row')
+    expect(lignes[lignes.length - 1]).toHaveTextContent(/^Dupont—/)
+  })
+
+  it('réglage éteint : écran Parrainage désactivé sans formulaire', async () => {
+    // ASOC104 (D-ASOC-7) — ni formulaire, ni tableau, aucun appel parrainages.
+    parametresApi.getProfile.mockResolvedValueOnce({ data: { referral_enabled: false } })
+    render(<ParrainagePage />)
+    expect(await screen.findByText(/Parrainage désactivé — activez-le dans/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Paramètres › Leads' }))
+      .toHaveAttribute('href', '/parametres?onglet=leads')
+    expect(screen.queryByRole('button', { name: '+ Ajouter' })).not.toBeInTheDocument()
+    expect(crmApi.getParrainages).not.toHaveBeenCalled()
+  })
+
+  it('lecture du réglage en échec : écran actuel, jamais masqué', async () => {
+    parametresApi.getProfile.mockRejectedValueOnce(new Error('réseau'))
+    render(<ParrainagePage />)
+    await waitFor(() => expect(crmApi.getParrainages).toHaveBeenCalled())
+    expect(screen.getByRole('button', { name: '+ Ajouter' })).toBeInTheDocument()
+  })
+
+  it('crée un parrainage lié au lead filleul', async () => {
+    // ASOC68 — le lead choisi part en `filleul_lead` (sinon l'acceptation
+    // de son devis ne convertit jamais le parrainage).
+    render(<ParrainagePage />)
+    await waitFor(() => expect(screen.getByRole('option', { name: /Karim/ })).toBeInTheDocument())
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filleul (lead)' }),
+      { target: { value: '7' } })
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: '1' } })
+    fireEvent.click(screen.getByRole('button', { name: '+ Ajouter' }))
+    await waitFor(() => expect(crmApi.saveParrainage).toHaveBeenCalled())
+    expect(crmApi.saveParrainage).toHaveBeenCalledWith(
+      null, expect.objectContaining({ parrain: '1', filleul_lead: '7' }))
   })
 })

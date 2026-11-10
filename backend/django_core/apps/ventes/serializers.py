@@ -472,20 +472,8 @@ class EcheancierValidationMixin:
 
 
 class TiersPayeurValidationMixin:
-    """CIQ213 — ``tiers_payeur`` (organisme financeur) : un client de la
-    MÊME société que le devis, sinon 400 nommant ``tiers_payeur``."""
-
-    def validate_tiers_payeur(self, value):
-        if value is None:
-            return value
-        company = getattr(self.instance, 'company', None)
-        if company is None:
-            request = self.context.get('request')
-            company = getattr(getattr(request, 'user', None), 'company', None)
-        if company is None or value.company_id != company.id:
-            raise serializers.ValidationError(
-                "Tiers payeur : client introuvable dans votre société.")
-        return value
+    """CIQ213 — ``tiers_payeur`` (organisme financeur) : APFS62, borné à la
+    société par ``same_company_fields`` (id voisin = id absent)."""
 
     # ── CIQ214 — retenue, pénalités, caution : SEULEMENT à la demande du
     # client (D-CIQ-14), jamais de valeur par défaut ; formes normalisées
@@ -517,7 +505,8 @@ class DevisSerializer(SameCompanyFKSerializerMixin, TiersPayeurValidationMixin,
                       EcheancierValidationMixin, serializers.ModelSerializer):
     # ENF17 — client / lead / entité / approbateur d'une AUTRE société = id
     # absent (400 « objet inexistant »).
-    same_company_fields = ('client', 'lead', 'entite', 'remise_approuvee_par')
+    same_company_fields = ('client', 'lead', 'entite', 'remise_approuvee_par',
+                           'tiers_payeur')
     lignes = LigneDevisSerializer(many=True, read_only=True)
     total_ht = serializers.DecimalField(max_digits=22, decimal_places=2, read_only=True)  # (10,2)x(10,2)
     total_tva = serializers.DecimalField(max_digits=22, decimal_places=2, read_only=True)  # (10,2)x(10,2)
@@ -1168,7 +1157,7 @@ class DevisWriteSerializer(IdInconnu404Mixin, DecimalSoupleMixin,
         DecimalField: DecimalSouple,
     }
 
-    same_company_fields = ('client', 'lead', 'entite')
+    same_company_fields = ('client', 'lead', 'entite', 'tiers_payeur')
 
     # ENF11 — lecture seule (posée par ``/accepter/``) : DRF retire
     # ``allow_blank`` d'un champ de modèle en lecture seule, donc le schéma

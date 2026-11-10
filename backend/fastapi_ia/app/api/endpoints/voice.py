@@ -25,13 +25,13 @@ import redis
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
-from app.core.security import verify_token
+from app.core.security import exiger_compte_interne, verify_token
 from app.services.transcription_service import (
     TranscriptionUnavailableError,
     groq_transcription_service,
 )
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(exiger_compte_interne)])  # APFS2
 
 # ── Constantes de securite ────────────────────────────────────────────────────
 MAX_FILE_SIZE = 25 * 1024 * 1024   # 25 Mo — clips vocaux courts

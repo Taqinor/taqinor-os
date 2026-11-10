@@ -201,6 +201,26 @@ class DeclencheurEtapeTests(_Base):
         avancer_stage_lead_vers(self.lead, self.acteur, stages.COLD)
         self.assertEqual(self._ouvertes('reveil'), len(reveils))
 
+    def test_erreur_base_arret_cadence_n_annule_pas_la_transition(self):
+        """ASOC6 (C-ASOC-003) — une erreur base dans l'arrêt de cadence reste
+        dans le point de sauvegarde de l'abonné : la transaction de
+        l'émetteur reste utilisable (relecture SIGNED), la cadence non
+        arrêtée est seulement journalisée."""
+        from unittest import mock
+
+        from django.db import connection
+
+        def _panne(*args, **kwargs):
+            with connection.cursor() as curseur:
+                curseur.execute('SELECT 1/0')
+
+        with mock.patch('apps.crm.receivers_cadence.arreter_cadence',
+                        side_effect=_panne), \
+                self.assertLogs('apps.crm', level='WARNING'):
+            avancer_stage_lead_vers(self.lead, self.acteur, stages.SIGNED)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage, stages.SIGNED)
+
 
 class DeclencheurIssueAppelTests(_Base):
     """(e) — l'issue de l'appel arrête la BONNE cadence, et elle seule."""

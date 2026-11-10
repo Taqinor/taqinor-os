@@ -54,6 +54,38 @@ class SlaReponseTests(TestCase):
         self.assertEqual(r.status_code, 201, r.content)
         return Ticket.objects.get(pk=r.data['id'])
 
+    def test_jours_ouvres_suivent_le_calendrier_societe(self):
+        """ASOC80 — jours ouvrés = calendrier de la SOCIÉTÉ (jours + fériés
+        de calendar_utils), plus le week-end/fériés marocains codés en dur."""
+        from datetime import date
+
+        from apps.notifications.models import Holiday, WorkingHoursConfig
+        from apps.sav.services import compute_sla_reponse_due_at
+
+        WorkingHoursConfig.objects.create(
+            company=self.company, working_days=0b0111111)  # lun-sam
+        Holiday.objects.create(company=self.company, date=date(2026, 11, 11),
+                               nom='Armistice', recurrent_annuel=True, pays='FR')
+        sla = SavSlaSettings.get(self.company)
+        sla.sla_jours_ouvres = True
+        sla.sla_par_priorite = {'normale': {'response': 1, 'resolution': 3}}
+        sla.save()
+        # Vendredi 13/11 + 1 jour ouvré = samedi 14/11 (ouvert).
+        self.assertEqual(compute_sla_reponse_due_at(
+            self.company, None, 'normale', date(2026, 11, 13)), date(2026, 11, 14))
+        # 18/11 (férié marocain) compte ouvré ; le 11/11 (férié société) non.
+        self.assertEqual(compute_sla_reponse_due_at(
+            self.company, None, 'normale', date(2026, 11, 17)), date(2026, 11, 18))
+        self.assertEqual(compute_sla_reponse_due_at(
+            self.company, None, 'normale', date(2026, 11, 10)), date(2026, 11, 12))
+        r = self.api.post(f'{BASE}/', {
+            'client': self.client_obj.pk, 'priorite': 'normale',
+            'type': 'correctif', 'description': 'Onduleur muet.',
+            'date_ouverture': '2026-11-13'}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        t = Ticket.objects.get(pk=r.data['id'])
+        self.assertEqual(t.sla_reponse_due_at, date(2026, 11, 14))
+
     def test_echeance_reponse_posee(self):
         t = self._creer()
         self.assertEqual(t.sla_reponse_due_at, self.today + timedelta(days=1))

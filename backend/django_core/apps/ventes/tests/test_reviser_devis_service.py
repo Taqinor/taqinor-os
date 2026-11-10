@@ -229,6 +229,36 @@ class ReviserDevisService(TestCase):
         self.assertFalse(Devis.objects.filter(pk=v2.pk).exists())
         self._assert_v1_reactivee(v1, bc)
 
+    def test_abandon_emet_revision_abandonnee_avant_suppression(self):
+        """ACON41 — DELETE, archivage et refus d'une V2 émettent chacun UN
+        ``revision_abandonnee`` (ancien = V2, reactivees = [V1]), reçu V2
+        ENCORE en base ; un abonné qui lève ne bloque pas l'abandon."""
+        from core.events import revision_abandonnee
+
+        recus = []
+
+        def recepteur(sender, ancien, reactivees, user, **kwargs):
+            recus.append((ancien.pk, [v.pk for v in reactivees],
+                          Devis.objects.filter(pk=ancien.pk).exists()))
+
+        def en_echec(sender, **kwargs):
+            raise RuntimeError('abonné cassé')
+
+        revision_abandonnee.connect(recepteur, dispatch_uid='acon41_test')
+        revision_abandonnee.connect(en_echec, dispatch_uid='acon41_echec')
+        self.addCleanup(revision_abandonnee.disconnect,
+                        dispatch_uid='acon41_test')
+        self.addCleanup(revision_abandonnee.disconnect,
+                        dispatch_uid='acon41_echec')
+        admin = User.objects.create_user(
+            username='acon41_admin', password='x', role_legacy='admin',
+            company=self.company)
+        v1, v2, bc = self._v1_acceptee_et_v2()
+        r = _api(admin).delete(f'/api/django/ventes/devis/{v2.id}/')
+        self.assertEqual(r.status_code, 204, r.content)
+        self.assertEqual(recus, [(v2.pk, [v1.pk], True)])
+        self._assert_v1_reactivee(v1, bc)
+
     def test_vnt55_archivage_de_la_v2_reactive_v1(self):
         v1, v2, bc = self._v1_acceptee_et_v2()
         r = self.api.patch(f'/api/django/ventes/devis/{v2.id}/',

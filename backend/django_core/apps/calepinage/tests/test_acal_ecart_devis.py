@@ -120,6 +120,21 @@ class EcartDevisTest(BaseApiCalepinage):
         self.assertIsNone(resultat_calepinage(
             frais, materiel=MATERIEL)['ecart_devis'])
 
+    def test_devis_d_une_autre_conception_sans_ecart(self):
+        """ACON27 (C-ACON-137) — le devis imprime une AUTRE conception (12
+        modules, H1) que le calepinage (20 modules, H2) : aucun écart servi ni
+        imprimé ; empreintes égales : écart servi ; empreinte inconnue : servi."""
+        calepinage = self._calepinage()
+        h1, h2 = 'a' * 64, 'b' * 64
+        Calepinage.objects.filter(pk=calepinage.pk).update(layout_hash=h2)
+        calepinage.refresh_from_db()
+        for empreinte_devis, servi in ((h1, False), (h2, True), (None, True)):
+            Devis.objects.filter(pk=self.devis.pk).update(layout_hash=empreinte_devis)
+            resultat = resultat_calepinage(calepinage, materiel=MATERIEL)
+            with self.subTest(empreinte_devis=empreinte_devis):
+                self.assertEqual(resultat['ecart_devis'] is not None, servi)
+                self.assertEqual('production-ecart-devis' in html_de_section({'resultat': resultat}), servi)
+
     def test_rapport_etude_imprime_ecart(self):
         exemple = CONTRAT['exemple_ecart_devis']
         html = html_de_section({'resultat': exemple})

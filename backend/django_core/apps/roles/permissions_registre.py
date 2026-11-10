@@ -640,6 +640,13 @@ ALL_PERMISSIONS = [
     # ``CODES_NON_OCTROYABLES`` ci-dessous, appliqué par ``RoleSerializer``).
     # NON élevé. Garde côté vues d'argent : ASEC29 (facturation).
     'encaisser',
+    # ── APFS40 / D-APFS-1 — codes dédiés d'administration, EN PLUS du palier :
+    # clés d'API & webhooks (``integrations_gerer``, APFS110), activer/couper
+    # un module (``modules_gerer``), demandes loi 09-08 (``dsr_traiter``,
+    # APFS45). Titulaires : Directeur + Administrateur (héritage du catalogue),
+    # aucun autre rôle système ; aucun rôle en base n'en reçoit (migration
+    # roles 0013 : zéro titulaire, retour arrière = retrait).
+    'integrations_gerer', 'modules_gerer', 'dsr_traiter',
 ]
 
 # ───────────────────────────────────────────────────────────────────────────
@@ -736,6 +743,31 @@ PERMISSION_MODULE = {
     # togglable), même statut fondation que ``parametres_voir`` ci-dessus
     # (cf. ``test_fondation_et_donnees_sensibles_sans_module``) : les
     # mapper masquerait leur case sur un toggle qui n'existe pas.
+}
+
+#: APFS28 (D-APFS-4) — lectures CROISÉES : ``(module, vue): codes`` qui ouvrent
+#: la LECTURE d'une vue d'un module à un rôle sans code de ce module
+#: (``authentication.permissions.LectureDuModule``, injecté par
+#: ``RolesConfig.ready``). Surface append-only : un octroi ne s'ajoute jamais
+#: en silence (une tâche le motive).
+_VUES_DU_CHANTIER = (
+    'LigneDevisViewSet',
+    # apps/ventes/views/regulatory.py
+    'RegulatoryDossierViewSet', 'DossierChecklistItemViewSet',
+    'DossierExchangeViewSet', 'SubventionDossierViewSet',
+    'Regularisation8221ViewSet',
+    # apps/ventes/views/commissioning.py
+    'CommissioningTestViewSet', 'IVCurveCaptureViewSet', 'AsBuiltPackViewSet',
+    'AttestationConformiteViewSet', 'TestPerformanceReceptionViewSet',
+    'AttestationREViewSet',
+)
+OCTROIS_LECTURE = {
+    # Commercial → les chantiers de ses ventes.
+    ('installations', 'InstallationViewSet'): frozenset({'ventes_voir'}),
+    # Technicien → devis / dossier / recette de SON chantier
+    # (InstallationDetail.jsx les lit).
+    **{('ventes', vue): frozenset({'installation_voir'})
+       for vue in _VUES_DU_CHANTIER},
 }
 
 # Permissions de portée : un rôle qui en porte une voit un sous-ensemble ; sans

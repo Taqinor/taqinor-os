@@ -7,14 +7,25 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.security import verify_token
+from app.core.security import exiger_compte_interne, get_raw_token, verify_token
 # AANA7 — UN seul helper (societe ACTIVE d'abord, 403 sans societe),
 # partage avec l'agent SQL ; le nom local est garde pour les appelants.
 from app.core.security import require_company_id as _require_company_id
 from app.models.ocr import OcrDocument
 from app.services.ocr_service import ocr_service
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(exiger_compte_interne)])  # APFS2
+
+
+def _peut(token_payload: dict, token: str, code: str) -> bool:
+    """APFS46 — code fin de l'appelant lu par `/auth/me/` (fail-closed :
+    Django injoignable => aucun code), JAMAIS le claim legacy `role`."""
+    if token_payload.get("is_superuser"):
+        return True
+    from app.services.action_tools import ActionContext, fetch_caller_permissions
+    ctx = ActionContext(token_payload.get("company_id"), str(token_payload.get("role") or ""), [], token)
+    return code in fetch_caller_permissions(ctx)
+
 
 # ── Constantes de sécurité ────────────────────────────────────────────────────
 MAX_FILE_SIZE = 10 * 1024 * 1024   # 10 Mo
@@ -255,13 +266,13 @@ def save_document(
     body: SaveDocumentRequest,
     token_payload: dict = Depends(verify_token),
     db: Session = Depends(get_db),
+    token: str = Depends(get_raw_token),
 ):
     """
     Enregistre un résultat OCR en base de données.
-    Réservé aux utilisateurs avec le rôle responsable ou admin.
+    APFS46 — réservé au porteur de `achats_commander` (lu par `/auth/me/`).
     """
-    role = token_payload.get("role", "")
-    if role not in ("responsable", "admin"):
+    if not _peut(token_payload, token, "achats_commander"):
         raise HTTPException(
             status_code=403,
             detail="Seuls les responsables et administrateurs peuvent enregistrer des documents OCR.",
@@ -294,19 +305,19 @@ def list_documents(
     db: Session = Depends(get_db),
     limit: int = 50,
     offset: int = 0,
+    token: str = Depends(get_raw_token),
 ):
     """
     Liste les documents OCR sauvegardés.
     Toujours filtré par entreprise.
-    - admin/responsable : voit tous les documents de leur entreprise
-    - autre rôle        : voit uniquement ses propres documents
+    - porteur de `prix_achat_voir` (APFS46, factures fournisseur) : tous
+      les documents de l'entreprise ; sinon : ses propres documents
     """
-    role = token_payload.get("role", "")
     user_id = int(token_payload.get("user_id", 0))
     company_id = _require_company_id(token_payload)
 
     query = db.query(OcrDocument).filter(OcrDocument.company_id == company_id)
-    if role not in ("responsable", "admin"):
+    if not _peut(token_payload, token, "prix_achat_voir"):
         query = query.filter(OcrDocument.user_id == user_id)
 
     docs = (
@@ -335,10 +346,10 @@ def delete_document(
     doc_id: int,
     token_payload: dict = Depends(verify_token),
     db: Session = Depends(get_db),
+    token: str = Depends(get_raw_token),
 ):
-    """Supprime un document OCR — réservé admin/responsable, scope entreprise."""
-    role = token_payload.get("role", "")
-    if role not in ("responsable", "admin"):
+    """Supprime un document OCR — porteur de `achats_commander` (APFS46), scope entreprise."""
+    if not _peut(token_payload, token, "achats_commander"):
         raise HTTPException(status_code=403, detail="Accès refusé.")
 
     company_id = _require_company_id(token_payload)

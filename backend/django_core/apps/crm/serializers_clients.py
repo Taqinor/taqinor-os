@@ -551,6 +551,22 @@ class ParrainageSerializer(_LeadEnPorteeMixin, _ClientEnPorteeMixin,
             raise serializers.ValidationError('Lead inconnu.')
         return value
 
+    def validate(self, attrs):
+        """ASOC71 — ni auto-parrainage, ni second parrainage d'un filleul
+        (borné à la société ; l'instance modifiée et ses champs non envoyés exclus)."""
+        attrs = super().validate(attrs)
+        parrain = attrs.get('parrain', getattr(self.instance, 'parrain', None))
+        client = attrs.get('filleul_client', getattr(self.instance, 'filleul_client', None))
+        if client is not None and parrain is not None and client.pk == parrain.pk:
+            raise serializers.ValidationError(
+                {'filleul_client': 'Un client ne peut pas se parrainer lui-même.'})
+        autres = Parrainage.objects.filter(company=self.context['request'].user.company)
+        autres = autres.exclude(pk=self.instance.pk) if self.instance is not None else autres
+        for cle in ('filleul_client', 'filleul_lead'):
+            if attrs.get(cle) is not None and autres.filter(**{cle: attrs[cle]}).exists():
+                raise serializers.ValidationError({cle: 'Ce filleul a déjà un parrainage.'})
+        return attrs
+
 
 class ObjectifCommercialSerializer(UniciteEn409Mixin, IdInconnu404Mixin,
                                    _CompanyScopedRelationsMixin,

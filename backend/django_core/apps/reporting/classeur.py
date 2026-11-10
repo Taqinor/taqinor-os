@@ -14,7 +14,7 @@ import re
 
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
+from authentication.permissions import IsAuthenticatedInterne
 from rest_framework.response import Response
 
 from core.champs_stricts import BooleenStrict, ChampsStrictsMixin
@@ -205,7 +205,7 @@ class ClasseurViewSet(TenantMixin, viewsets.ModelViewSet):
     (``ClasseurPartageInterne``, réutilise le pattern XPLT10)."""
     serializer_class = ClasseurSerializer
     parser_classes = [JSONParser]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedInterne]
     queryset = Classeur.objects.all()
 
     def get_queryset(self):

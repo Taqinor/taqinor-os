@@ -614,6 +614,15 @@ def _diffuser_hors_app(user, company, event_type, title, body, link, prefs,
             logger.warning('Dispatch web push notification échoué : %s', exc)
 
 
+def destinataire_actif(user, *, lead=None):
+    """ASOC1 — ``user`` s'il est actif, sinon le responsable ACTIF du lead
+    (``lead.owner``), sinon None (l'appelant retombe sur les managers)."""
+    for candidat in (user, getattr(lead, 'owner', None)):
+        if candidat is not None and getattr(candidat, 'is_active', False):
+            return candidat
+    return None
+
+
 def notify(user, event_type, title, body='', link=None, company=None,
            skip_email=False, reason='', respect_quiet_hours=True,
            approval_action=None):
@@ -672,6 +681,10 @@ def notify(user, event_type, title, body='', link=None, company=None,
         return None
 
     prefs = resolve_prefs(user, event_type)
+    if not getattr(user, 'is_active', True):
+        # ASOC1 — compte désactivé : jamais rien hors de l'app (patron de
+        # ``_livrer_differee``).
+        prefs = {'in_app': prefs.get('in_app')}
     from .models import NotificationReason
     reason = reason if reason in NotificationReason.values else ''
     programmee_pour = _report_hors_fenetre(
@@ -1482,19 +1495,24 @@ def notify_security_change(user, title, body='', *, link=None, company=None):
     event_type = EventType.SECURITY_CHANGE
     created = None
     try:
-        created = Notification.objects.create(
-            company=company, recipient=user, event_type=event_type,
-            title=str(title)[:255], body=str(body or '')[:MAX_BODY_LEN],
-            link=str(link or '')[:512])
+        with transaction.atomic():  # ASOC31 — point de sauvegarde
+            created = Notification.objects.create(
+                company=company, recipient=user, event_type=event_type,
+                title=str(title)[:255], body=str(body or '')[:MAX_BODY_LEN],
+                link=str(link or '')[:512])
         _audit_notify(user, company, event_type, channel='in_app', ok=True,
                       instance=created)
     except Exception as exc:  # pragma: no cover - défensif
         logger.warning('Notification sécurité in-app échouée : %s', exc)
-    # Email TOUJOURS tenté (best-effort), indépendamment des préférences.
-    try:
-        _dispatch_email(user, str(title), str(body or ''))
-    except Exception as exc:  # pragma: no cover - défensif
-        logger.warning('Email notification sécurité échoué : %s', exc)
+
+    # Email TOUJOURS tenté (best-effort), indépendamment des préférences —
+    # ASOC31 : au COMMIT seulement (un changement annulé n'envoie rien).
+    def _envoyer_email():
+        try:
+            _dispatch_email(user, str(title), str(body or ''))
+        except Exception as exc:  # pragma: no cover - défensif
+            logger.warning('Email notification sécurité échoué : %s', exc)
+    transaction.on_commit(_envoyer_email)
     return created
 
 

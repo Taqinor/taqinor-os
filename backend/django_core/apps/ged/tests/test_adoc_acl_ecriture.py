@@ -148,3 +148,30 @@ class AclEcritureTests(TestCase):
             'document': self.doc.pk, 'utilisateur': self.r.pk,
             'niveau': 'lecture'}, format='json')
         self.assertEqual(resp.status_code, 201, resp.content)
+
+    def test_superuser_rattache_borne_a_sa_societe(self):
+        """APFS114 (D-APFS-2) — un superutilisateur RATTACHÉ à une société
+        n'a aucune ACL sur une autre ; seul celui SANS société la garde."""
+        from apps.ged.selectors import acl_effective, documents_visible_to_user
+        co_b = Company.objects.create(slug='apfs114-b', nom='APFS114 B')
+        cab_b = Cabinet.objects.create(company=co_b, nom='Cab B')
+        dossier_b = Folder.objects.create(
+            company=co_b, cabinet=cab_b, nom='Dossier B')
+        doc_b = Document.objects.create(
+            company=co_b, folder=dossier_b, nom='b.pdf')
+        AclGed.objects.create(company=co_b, folder=dossier_b,
+                              role=Role.objects.create(company=co_b, nom='R'),
+                              niveau='lecture')
+        rattache = User.objects.create_user(
+            username='apfs114-s', password='x', company=self.co,
+            is_superuser=True, is_staff=True)
+        plateforme = User.objects.create_user(
+            username='apfs114-p', password='x', is_superuser=True,
+            is_staff=True)
+
+        self.assertIsNone(acl_effective(doc_b, rattache))
+        self.assertIsNone(acl_effective(dossier_b, rattache))
+        self.assertEqual(acl_effective(self.doc, rattache), 'gestion')
+        self.assertEqual(acl_effective(doc_b, plateforme), 'gestion')
+        self.assertNotIn(doc_b.pk, set(documents_visible_to_user(
+            rattache).values_list('pk', flat=True)))

@@ -110,6 +110,35 @@ class RetardExigibleTests(TestCase):
         self.assertTrue(
             credit_hold_check(self.client_obj, retard_jours_seuil=10)['bloque'])
 
+    def test_brouillon_echu_jamais_en_retard(self):
+        """ASOC24 (C-ASOC-007) — un brouillon échu J-5 n'est ni « échu » ni en
+        retard : seule l'émise identique déclenche l'alerte."""
+        from apps.notifications.models import EventType, Notification
+        from apps.notifications.sweeps import _sweep_facture_overdue
+        from apps.ventes.models import Facture
+        from apps.ventes.selectors_facturation import factures_echues
+        Facture.objects.filter(pk=self.facture.pk).delete()
+        ttc = Decimal('1000')
+        champs = dict(
+            company=self.company, client=self.client_obj,
+            taux_tva=Decimal('20'), montant_ht=ttc / Decimal('1.2'),
+            montant_tva=ttc / Decimal('6'), montant_ttc=ttc,
+            created_by=self.admin,
+            date_echeance=timezone.now().date() - timedelta(days=5))
+        brouillon = Facture.objects.create(
+            reference=f'BROUILLON-ASOC24-{_nxt()}', statut='brouillon',
+            **champs)
+        emise = Facture.objects.create(
+            reference=f'FAC-ASOC24-{_nxt()}', statut='emise', **champs)
+        self.assertEqual(
+            [f.pk for f in factures_echues(self.company)], [emise.pk])
+        self.assertEqual(Facture.objects.get(pk=brouillon.pk).jours_retard, 0)
+        self.assertEqual(Facture.objects.get(pk=emise.pk).jours_retard, 5)
+        self.assertEqual(_sweep_facture_overdue(self.company), 1)
+        self.assertEqual(Notification.objects.filter(
+            company=self.company,
+            event_type=EventType.FACTURE_OVERDUE).count(), 1)
+
 
 class EcheanceEffectiveTests(TestCase):
     """AFAC48 (C-AFAC-038) — une facture sans ``date_echeance`` a UNE

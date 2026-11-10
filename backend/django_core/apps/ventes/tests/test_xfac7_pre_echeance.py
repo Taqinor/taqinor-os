@@ -102,3 +102,24 @@ class XFAC7PreEcheanceTests(TestCase):
         self.facture.save(update_fields=['date_echeance'])
         sent = pre_echeance_reminders()
         self.assertEqual(sent, 1)
+
+    def test_echeance_dans_la_fenetre_rappelee_une_fois(self):
+        """ASOC85 (C-ASOC-145) — N=5, échéance J+3 (beat raté, délai < N) :
+        rappelée une fois puis jamais ; J+10 et J (échue) : jamais."""
+        today = casablanca_today()
+        self.facture.date_echeance = today + timedelta(days=3)
+        self.facture.save(update_fields=['date_echeance'])
+        self.assertEqual(pre_echeance_reminders(), 1)
+        self.assertEqual(pre_echeance_reminders(), 0)
+        self.assertEqual(EmailLog.objects.filter(
+            facture=self.facture,
+            reference__endswith='::pre_echeance').count(), 1)
+        for jours in (10, 0):
+            autre = Facture.objects.create(
+                company=self.company, reference=f'FAC-{MONTH}-00{jours + 2}',
+                client=self.client_obj, statut=Facture.Statut.EMISE,
+                montant_ht=Decimal('1000'), montant_tva=Decimal('200'),
+                montant_ttc=Decimal('1200'),
+                date_echeance=today + timedelta(days=jours))
+            self.assertEqual(pre_echeance_reminders(), 0)
+            self.assertFalse(EmailLog.objects.filter(facture=autre).exists())

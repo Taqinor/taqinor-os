@@ -570,9 +570,11 @@ def acl_effective(document_or_folder, user):
     if user is None or not getattr(user, 'is_authenticated', False):
         return None
     # Hors société de la cible : non gouverné par cette ACL (le scoping société
-    # de l'appelant tranche). Superuser excepté.
+    # de l'appelant tranche). APFS114 (D-APFS-2) — seul le superuser SANS
+    # société est excepté (même prédicat que ``core.mixins.company_qs``).
     target_company_id = getattr(document_or_folder, 'company_id', None)
-    if not user.is_superuser and user.company_id != target_company_id:
+    plateforme = user.is_superuser and not user.company_id
+    if not plateforme and user.company_id != target_company_id:
         return None
     if getattr(user, 'is_admin_role', False) or user.is_superuser:
         return 'gestion'

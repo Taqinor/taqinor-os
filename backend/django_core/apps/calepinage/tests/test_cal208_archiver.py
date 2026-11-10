@@ -102,6 +102,29 @@ class ArchiverTest(TestCase):
         self.assertFalse(est_archive(calepinage))
         self.assertEqual(calepinage.devis_id, devis.pk)
 
+    def test_archiver_lie_a_un_devis_refuse_ou_expire_detache(self):
+        """ACON12 (C-ACON-062) — un devis REFUSÉ ou EXPIRÉ ne porte plus la
+        conception : archiver détache le calepinage, le devis (statut,
+        instantané ``roof_layout``) reste intact (règle #4), ``peut_supprimer``
+        suit (même prédicat)."""
+        from apps.calepinage.services.archivage import raison_refus_archivage
+        for statut in (Devis.Statut.REFUSE, Devis.Statut.EXPIRE):
+            with self.subTest(statut=statut):
+                devis = Devis.objects.create(
+                    company=self.company, client=self.client_a,
+                    reference=f'DEV-ACON12-{statut}', statut=statut,
+                    roof_layout={'panneaux': 12})
+                calepinage = Calepinage.objects.create(
+                    company=self.company, client=self.client_a, devis=devis)
+                self.assertEqual(raison_refus_archivage(calepinage), '')
+                archiver(calepinage)
+                calepinage.refresh_from_db()
+                self.assertTrue(est_archive(calepinage))
+                self.assertIsNone(calepinage.devis_id)
+                devis.refresh_from_db()
+                self.assertEqual(devis.statut, statut)
+                self.assertEqual(devis.roof_layout, {'panneaux': 12})
+
     def test_isolation_multi_societe(self):
         autre = Company.objects.create(nom='Autre Co', slug='autre-co-208')
         archiver(self.calepinage)

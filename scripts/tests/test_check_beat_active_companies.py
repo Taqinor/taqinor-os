@@ -161,7 +161,7 @@ class BalayageGlobalNonScopeTests(unittest.TestCase):
               "    company = models.ForeignKey('authentication.Company', on_delete=models.CASCADE)\n"
               "    statut = models.CharField(max_length=10)\n")
 
-    def _lancer(self, scheduled_src, allow=''):
+    def _lancer(self, scheduled_src, allow='', fichier='scheduled.py'):
         import io
         from contextlib import redirect_stdout
         from unittest import mock
@@ -170,7 +170,7 @@ class BalayageGlobalNonScopeTests(unittest.TestCase):
             apps = r / 'backend' / 'django_core' / 'apps' / 'ventes'
             apps.mkdir(parents=True)
             (apps / 'models.py').write_text(self.MODELE, encoding='utf-8')
-            (apps / 'scheduled.py').write_text(scheduled_src, encoding='utf-8')
+            (apps / fichier).write_text(scheduled_src, encoding='utf-8')
             allow_path = r / 'allow.txt'
             allow_path.write_text(allow, encoding='utf-8')
             with mock.patch.object(guard, 'ROOT', r), \
@@ -250,6 +250,18 @@ class BeatActiveCompaniesTests(BalayageGlobalNonScopeTests):
             "def f(pk):\n    return (Facture.objects.select_related('company')\n"
             "            .filter(pk=pk).first())\n\n\n"
             "def g(i):\n    return Facture.objects.get(id=i)\n")
+        self.assertEqual(code, 0, out)
+
+    def test_module_shared_task_hors_tasks_py_lu(self):
+        # APFS63 — un module qui décore @shared_task est lu, quel que soit son
+        # nom (reporting/scheduled_reports.py) ; un module sans tâche ne l'est pas.
+        corps = ("def envoyer():\n"
+                 "    return list(Facture.objects.filter(actif=True))\n")
+        code, out = self._lancer("@shared_task(name='x')\n" + corps,
+                                 fichier='scheduled_reports.py')
+        self.assertEqual(code, 1, out)
+        self.assertIn('scheduled_reports.py::envoyer', out)
+        code, out = self._lancer(corps, fichier='scheduled_reports.py')
         self.assertEqual(code, 0, out)
 
     def test_pk_in_reste_un_balayage(self):

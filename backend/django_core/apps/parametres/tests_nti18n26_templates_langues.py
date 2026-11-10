@@ -119,3 +119,43 @@ class EmailTemplateLanguesTests(TestCase):
             sujet='Bonjour {nom}', corps='Bonjour {nom}')
         out = EmailTemplate.render(company, 'notification', nom='Reda')
         self.assertEqual(out['sujet'], 'Bonjour Reda')
+
+
+class EmailTemplateTraductionsApiTests(TestCase):
+    """ASOC99 — l'API ``email-templates`` sert et enregistre les sujets et
+    corps anglais et arabes (CRUD, ``effective`` et ``bulk``)."""
+
+    def test_api_expose_et_enregistre_les_traductions(self):
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+
+        company = _company('asoc99-co', 'ASOC99 Co')
+        admin = get_user_model().objects.create_user(
+            username='asoc99-admin', password='x', company=company,
+            role_legacy='admin')
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(admin)}')
+        base = '/api/django/parametres/email-templates/'
+        modele = EmailTemplate.objects.create(
+            company=company, cle='envoi_devis', sujet='Devis', corps='Bonjour')
+        r = api.patch(f'{base}{modele.pk}/', {
+            'sujet_ar': 'عرض سعر', 'corps_ar': 'مرحبا',
+            'sujet_en': 'Quote', 'corps_en': 'Hello'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        r = api.get(f'{base}{modele.pk}/')
+        self.assertEqual(
+            {c: r.data[c] for c in ('sujet_en', 'sujet_ar', 'corps_en',
+                                    'corps_ar')},
+            {'sujet_en': 'Quote', 'sujet_ar': 'عرض سعر',
+             'corps_en': 'Hello', 'corps_ar': 'مرحبا'})
+
+        r = api.put(f'{base}bulk/', {'templates': [
+            {'cle': 'envoi_devis', 'corps_en': 'Hi there'}]}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        ligne = next(t for t in r.data['results'] if t['cle'] == 'envoi_devis')
+        self.assertEqual(ligne['corps_en'], 'Hi there')
+        self.assertEqual(ligne['sujet_ar'], 'عرض سعر')
+        modele.refresh_from_db()
+        self.assertEqual(modele.corps_en, 'Hi there')

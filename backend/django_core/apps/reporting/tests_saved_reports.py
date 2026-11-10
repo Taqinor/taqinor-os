@@ -197,6 +197,21 @@ class ScheduledReportSelectionTests(TestCase):
             self.assertEqual(email_saved_reports(), 1)
         self.assertEqual(len(mail.outbox), 1)
 
+    def test_societe_suspendue_ne_recoit_rien(self):
+        # APFS63 — B suspendue (actif=False, hors active_companies()) : 0 envoi
+        # vers son destinataire externe ; A active : inchangé.
+        suspendue = Company.objects.create(nom='Suspendue 063', actif=False)
+        SavedReport.objects.create(
+            company=self.company, name='Ventes A 063', target_kind='sales',
+            schedule='daily', recipients='a@example.com')
+        rapport_b = SavedReport.objects.create(
+            company=suspendue, name='Ventes B 063', target_kind='sales',
+            schedule='daily', recipients='externe@example.com')
+        self.assertEqual(email_saved_reports(), 1)
+        self.assertEqual([m.to for m in mail.outbox], [['a@example.com']])
+        rapport_b.refresh_from_db()
+        self.assertIsNone(rapport_b.last_sent_at)
+
 
 class SavedReportTypesStrictsTests(TestCase):
     """CI #997 fuzz — booléens, entiers et textes du rapport sauvegardé : le

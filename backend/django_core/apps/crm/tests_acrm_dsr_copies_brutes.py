@@ -91,3 +91,47 @@ class DsrCopiesBrutesTests(TestCase):
                             f'{modele._meta.label}.{champ.name}')
         self.assertEqual(manquants, [], 'modèles à clé vers crm.Lead non '
                                         'déclarés dans dsr_provider')
+
+    def test_chatter_caviarde_lignes_gardees(self):
+        """ASOC62 (D-ASOC-3) — après effacement, aucune ligne du chatter (ni
+        de son archive) ne porte le nom, l'e-mail ni le téléphone effacés ;
+        le compte de lignes est inchangé, une ligne d'étape reste intacte."""
+        from apps.crm import stages
+        from apps.crm.models import LeadActivity, LeadActivityArchive
+
+        champ = LeadActivity.Kind.MODIFICATION
+        for nom_champ, ancien in (('nom', 'Bennani'), ('email', 'k@x.ma'),
+                                  ('telephone', '0600000000')):
+            LeadActivity.objects.create(
+                company=self.company, lead=self.lead, kind=champ,
+                field=nom_champ, old_value=ancien,
+                new_value={'nom': NOM, 'email': EMAIL,
+                           'telephone': TELEPHONE}[nom_champ])
+        etape = LeadActivity.objects.create(
+            company=self.company, lead=self.lead, kind=champ, field='stage',
+            old_value=stages.NEW, new_value=stages.CONTACTED)
+        note = LeadActivity.objects.create(
+            company=self.company, lead=self.lead,
+            kind=LeadActivity.Kind.NOTE, body=f'Rappeler Karim au {TELEPHONE}')
+        archive = LeadActivityArchive.objects.create(
+            original_id=999, company_id=self.company.pk, lead_id=self.lead.pk,
+            kind='modification', field='email', old_value=EMAIL,
+            new_value='autre@x.ma', body=f'Écrire à {EMAIL}',
+            created_at=timezone.now())
+        avant = LeadActivity.objects.filter(lead=self.lead).count()
+
+        dsr_provider.erase_crm(self.company, EMAIL)
+
+        lignes = LeadActivity.objects.filter(lead=self.lead)
+        self.assertEqual(lignes.count(), avant)
+        for ligne in lignes:
+            self._sans_pii(f'{ligne.old_value} {ligne.new_value} {ligne.body}')
+        note.refresh_from_db()
+        self.assertEqual(note.body, 'Rappeler Karim au Anonymisé')
+        etape.refresh_from_db()
+        self.assertEqual((etape.old_value, etape.new_value),
+                         (stages.NEW, stages.CONTACTED))
+        archive.refresh_from_db()
+        self.assertEqual((archive.old_value, archive.new_value),
+                         ('Anonymisé', 'Anonymisé'))
+        self._sans_pii(archive.body)

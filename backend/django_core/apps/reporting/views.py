@@ -10,6 +10,7 @@ from apps.stock.models import Produit
 from apps.crm.models import Client
 from authentication.permissions import IsResponsableOrAdmin
 from core.analytics_db import analytics_queryset
+from .metriques_ca import _part_ht  # ASOC73 — déplacé (1 définition)
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import serializers as drf_serializers
@@ -356,15 +357,6 @@ def _avec_du(factures):
 #: brouillons et annulées exclues).
 _STATUTS_CA = (Facture.Statut.EMISE, Facture.Statut.EN_RETARD,
                Facture.Statut.PAYEE)
-
-
-def _part_ht(facture, montant_ttc):
-    """AANA55 — part HT d'un montant TTC, au prorata HT/TTC de la facture."""
-    total_ttc = Decimal(facture.total_ttc or 0)
-    if total_ttc <= 0:
-        return Decimal('0')
-    montant = min(Decimal(montant_ttc or 0), total_ttc)
-    return montant * Decimal(facture.total_ht or 0) / total_ttc
 
 
 def _ht_encaisse(facture):

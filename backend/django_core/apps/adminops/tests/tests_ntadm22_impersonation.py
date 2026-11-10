@@ -184,6 +184,42 @@ class ImpersonationApiTests(TestCase):
         self.assertEqual(demarre.status_code, 200)
         self.assertIn('access', demarre.data)
 
+    def test_superuser_ne_consent_pas_pour_un_autre_tenant_ni_pour_lui(self):
+        """APFS60 (C-APFS-060, D-APFS-2) — un superutilisateur rattaché à
+        Gamma qui consent à SA demande sur un compte de Beta : 404, demande
+        inerte ; l'auto-consentement est refusé par le service ; une cible
+        superutilisateur ou support : 400, aucune demande. Mutant : remettre
+        ``and not request.user.is_superuser`` dans ``_charger`` ⇒ 200."""
+        su = CustomUser.objects.create_superuser(
+            username='su_gamma_apfs60', password='pw41827', email='su60@example.com', company=self.autre)
+        demande = impersonation_service.demander_impersonation(
+            utilisateur_cible=self.cible, initiee_par=su, motif='Diagnostic APFS60')
+        resp = self._api(su).post(f'/api/django/adminops/impersonation/{demande.pk}/consentir/')
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.data['detail'], 'Demande introuvable.')
+        demande.refresh_from_db()  # CLAUSE PERSISTANCE
+        self.assertFalse(demande.consentement_donne)
+        self.assertEqual(self._api(su).post(
+            f'/api/django/adminops/impersonation/{demande.pk}/demarrer/').status_code, 403)
+        for par in (su, demande.initiee_par, self.admin_autre):
+            with self.assertRaises(impersonation_service.ImpersonationRefusee):
+                impersonation_service.donner_consentement(demande, par=par)
+        su_beta = CustomUser.objects.create_superuser(
+            username='su_beta_apfs60', password='pw41827', email='sub60@example.com', company=self.tenant)
+        propre = impersonation_service.demander_impersonation(
+            utilisateur_cible=self.cible, initiee_par=su_beta, motif='Auto APFS60')
+        with self.assertRaises(impersonation_service.ImpersonationRefusee):
+            impersonation_service.donner_consentement(propre, par=su_beta)
+        self.assertEqual(self._api(self.admin).post(
+            f'/api/django/adminops/impersonation/{demande.pk}/consentir/').status_code, 200)
+        avant = SessionImpersonation.objects.count()
+        for cible in (su_beta, self.support):
+            resp = self._api(self.support).post('/api/django/adminops/impersonation/', {
+                'utilisateur_cible': cible.pk, 'motif': 'Cible interdite'}, format='json')
+            self.assertEqual(resp.status_code, 400, resp.data)
+            self.assertIn('detail', resp.data)
+        self.assertEqual(SessionImpersonation.objects.count(), avant)
+
     def test_session_active_faux_pour_une_requete_ordinaire(self):
         resp = self._api(self.cible).get(
             '/api/django/adminops/impersonation/session-active/')

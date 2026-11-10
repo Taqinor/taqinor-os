@@ -411,11 +411,13 @@ def _relais_arreter_cadence_on_outcome(**kwargs):
 
 @receiver(lead_stage_changed,
           dispatch_uid="crm_stop_relance_on_stage_signed_or_cold")
+@_point_de_sauvegarde
 def _relais_arreter_cadence_on_stage_change(**kwargs):
     return receivers_cadence._arreter_cadence_on_stage_change(**kwargs)
 
 
 @receiver(lead_stage_changed, dispatch_uid="crm_generate_playbook_progress_on_stage_change")
+@_point_de_sauvegarde
 def _relais_generer_playbook_progress_on_stage_change(**kwargs):
     return receivers_clients._generer_playbook_progress_on_stage_change(**kwargs)
 
@@ -547,6 +549,20 @@ def _empreinte_opposition_lead(sender, instance, **kwargs):
     if instance.ne_plus_contacter and instance.company_id:
         from .leads_doublons import poser_empreintes_opposition
         poser_empreintes_opposition(instance.company, instance)
+
+
+@receiver(post_save, sender=Lead, dispatch_uid='crm_rejouer_restauration')
+@_point_de_sauvegarde
+def _rejouer_restauration_corbeille(sender, instance, update_fields=None,
+                                    **kwargs):
+    """ASOC86 — un lead SUPPRIMÉ restauré (corbeille, ``restore()``) rejoue la
+    restauration d'un archivé : ligne « restauré » + prochaine étape."""
+    if 'is_deleted' not in (update_fields or ()) or instance.is_deleted:
+        return
+    from . import activity
+    from .cadence_filet import assurer_prochaine_etape_apres_succes
+    activity.log_restore(instance, None)
+    assurer_prochaine_etape_apres_succes(instance, None)
 
 
 # ── VTA5 — LE FEU VERT D'UNE VISITE TERRAIN REDESCEND SUR LE LEAD ────────────

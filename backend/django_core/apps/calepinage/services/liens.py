@@ -55,7 +55,7 @@ def _etiquette(calepinage):
     return f'« {titre} » (#{calepinage.pk})' if titre else f'#{calepinage.pk}'
 
 
-def lier_devis(calepinage, devis_id, *, user=None):
+def lier_devis(calepinage, devis_id, *, user=None, ancien_abandonne=None):
     """Rattache ``calepinage`` au devis ``devis_id``.
 
     Returns:
@@ -64,6 +64,9 @@ def lier_devis(calepinage, devis_id, *, user=None):
     Raises:
         LiaisonRefusee: devis introuvable/d'une autre société, ou déjà lié à
             un AUTRE calepinage (le message le nomme).
+
+    ACON91 — ``ancien_abandonne`` (pk) : la révision ABANDONNÉE que ce
+    calepinage quitte ; elle seule se re-pointe même encore active.
     """
     from django.db import IntegrityError, transaction
 
@@ -85,7 +88,7 @@ def lier_devis(calepinage, devis_id, *, user=None):
     if devis is None or devis.company_id != company.pk:
         raise LiaisonRefusee(
             f"Devis introuvable (#{devis_id}).", champ='devis')
-    if ancien_devis:
+    if ancien_devis and str(ancien_devis) != str(ancien_abandonne):
         _refuser_repointage_d_un_actif(ancien_devis, devis, company)
 
     with transaction.atomic():

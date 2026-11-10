@@ -168,6 +168,31 @@ class OrchestrationDuPackTest(SimpleTestCase):
             self.assertEqual(depose['cabinet_nom'], 'Calepinage')
             self.assertEqual(depose['folder_nom'], 'Dossiers techniques')
 
+    def test_document_inchange_decrit_le_document_servi(self):
+        # ACON45 — à empreinte égale, ``pieces``/``pages_attendues`` sont
+        # ceux du document EN VIGUEUR (métadonnée de sa fusion), jamais
+        # ceux du rendu neuf jeté.
+        servi = self._construire()
+        octets = self.deposes[0]['contenu_bytes']
+        self.rendus = {'planche': lambda: pdf_de(3),
+                       'note_calcul': lambda: pdf_de(1)}
+        version = mock.Mock(file_key='cle/servie',
+                            filename=self.deposes[0]['filename'])
+        with mock.patch('apps.ged.services.find_document_by_source',
+                        return_value='pack'), \
+                mock.patch('apps.ged.services.selectors_latest_version',
+                           return_value=version), \
+                mock.patch('apps.records.storage.fetch_attachment',
+                           return_value=(octets, None)) as lecture:
+            inchange = construire_pack(self.calepinage,
+                                       company='societe-essai',
+                                       rendus=self.rendus,
+                                       empreinte=self.EMPREINTE)
+        lecture.assert_called_once_with('cle/servie')
+        self.assertEqual(inchange['document'], 'pack')
+        self.assertEqual(inchange['pieces'], servi['pieces'])
+        self.assertEqual(inchange['pages_attendues'], 3)
+
     def test_sans_societe_le_pack_refuse(self):
         calepinage = FauxCalepinage()
         calepinage.company = None

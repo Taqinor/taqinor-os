@@ -65,9 +65,11 @@ def notify_livraison_transition(livraison, statut, *, request=None):
             'reference': livraison.reference,
             'lien': _livraison_lien(livraison, request=request),
         }
+        from apps.parametres.i18n_resolver import resolve_langue_sortie
+        langue = resolve_langue_sortie(client=client, company=livraison.company)  # ASOC83
         wa_corps = render_message_template(
-            MessageTemplate.get_corps(livraison.company, cle), ctx)
-        email = EmailTemplate.render(livraison.company, cle, **ctx)
+            MessageTemplate.get_corps(livraison.company, cle, langue), ctx)
+        email = EmailTemplate.render(livraison.company, cle, langue, **ctx)
 
         phone = getattr(client, 'telephone', None)
         if phone:

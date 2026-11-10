@@ -132,7 +132,9 @@ def devis_pre_save(sender, instance, **kwargs):
 
 def devis_post_save(sender, instance, created, **kwargs):
     old = getattr(instance, _OLD_STATUT_ATTR, None)
-    if instance.statut == Devis.Statut.ENVOYE and old != Devis.Statut.ENVOYE:
+    # ASOC3 — un retour à « envoyé » depuis accepté / refusé (dés-acceptation) n'est pas un envoi.
+    if instance.statut == Devis.Statut.ENVOYE and old not in (
+            Devis.Statut.ENVOYE, Devis.Statut.ACCEPTE, Devis.Statut.REFUSE):
         _safe_dispatch(instance.company_id, EVENT_DEVIS_SENT, {
             'event': EVENT_DEVIS_SENT,
             'id': instance.pk,
@@ -177,9 +179,11 @@ def intervention_pre_save(sender, instance, **kwargs):
 
 def intervention_post_save(sender, instance, created, **kwargs):
     old = getattr(instance, _OLD_STATUT_ATTR, None)
-    done = Intervention.Statut.TERMINEE
+    # ASOC4 — clôture = « terminée » OU « validée » (saut direct permis), comme
+    # installations.services.changer_statut_intervention.
+    done = (Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE)
     # ACHT116 — première clôture seulement (borne ACHT36 du service).
-    if (instance.statut == done and old != done
+    if (instance.statut in done and old not in done
             and instance.cloturee_notifiee_le is None):
         _safe_dispatch(instance.company_id, EVENT_INTERVENTION_COMPLETED, {
             'event': EVENT_INTERVENTION_COMPLETED,

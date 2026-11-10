@@ -24,7 +24,8 @@ def _profile(company):
     def _load():
         try:
             from apps.parametres.models import CompanyProfile
-            return CompanyProfile.get(company=company)
+            # ACON87 — LECTURE sans création (``lire``, jamais ``get``).
+            return CompanyProfile.lire(company)
         except Exception:
             logger.warning("company_settings._profile._load : erreur ignorée (mode dégradé)", exc_info=True)
             return None

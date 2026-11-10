@@ -162,6 +162,27 @@ class LienPaiementTests(TestCase):
             r = self._lien()
             self.assertEqual(r.data['pay_url'], qr.call_args[0][0])
 
+    def test_rib_fige_de_la_facture(self):
+        """ASOC43 — la page publique sert le RIB FIGÉ de la facture (celui du
+        PDF), pas le RIB du jour ; facture sans identité figée : le profil."""
+        from apps.parametres.models import CompanyProfile
+        from apps.ventes.utils.pdf import identite_vendeur_courante
+        profil = CompanyProfile.get(company=self.company)
+        profil.rib, profil.banque = 'R1-111111111111111111111111', 'Banque Une'
+        profil.save()
+        self.facture.identite_vendeur = identite_vendeur_courante(self.company)
+        self.facture.save(update_fields=['identite_vendeur'])
+        profil.rib, profil.banque = 'R2-222222222222222222222222', 'Banque Deux'
+        profil.save()
+        token = self._lien().data['token']
+        r = APIClient().get(f'/api/django/public/pay/{token}/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['rib'], 'R1-111111111111111111111111')
+        type(self.facture).objects.filter(pk=self.facture.pk).update(
+            identite_vendeur=None)
+        r = APIClient().get(f'/api/django/public/pay/{token}/')
+        self.assertEqual(r.data['rib'], 'R2-222222222222222222222222')
+
     # (4) ─────────────────────────────────────────────────────────────────
     def test_pay_page_forme_contrat(self):
         from apps.ventes.public.paiement_views import _company_rib

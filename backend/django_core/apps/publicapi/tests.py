@@ -545,6 +545,21 @@ class ExtraEventTriggerTests(TestCase):
             devis.save()
         self.assertIn(EVENT_DEVIS_SENT, self._events(d))
 
+    def test_desacceptation_n_emet_pas_devis_sent(self):
+        """ASOC3 (C-ASOC-130) — accepté → envoyé (dés-acceptation) et refusé →
+        envoyé : 0 ``devis.sent`` ; brouillon → envoyé : 1. Mutant : retirer
+        ``ACCEPTE`` de la garde ⇒ échec."""
+        for depart, attendu in ((Devis.Statut.ACCEPTE, 0), (Devis.Statut.REFUSE, 0),
+                                (Devis.Statut.BROUILLON, 1)):
+            with self.subTest(depart=depart):
+                devis = Devis.objects.create(
+                    company=self.co, reference=f'DV-ASOC3-{depart}',
+                    client=self.client_obj, statut=depart)
+                with mock.patch('apps.publicapi.signals.delivery.dispatch_event') as d:
+                    devis.statut = Devis.Statut.ENVOYE
+                    devis.save()
+                self.assertEqual(self._events(d).count(EVENT_DEVIS_SENT), attendu)
+
     def test_lead_lost_dispatches(self):
         lead = Lead.objects.create(company=self.co, nom='Perdu')
         with mock.patch('apps.publicapi.signals.delivery.dispatch_event') as d:
@@ -592,6 +607,21 @@ class ExtraEventTriggerTests(TestCase):
             interv.statut = Intervention.Statut.TERMINEE
             interv.save()
         self.assertIn(EVENT_INTERVENTION_COMPLETED, self._events(d))
+
+    def test_saut_direct_en_validee_dispatche(self):
+        """ASOC4 (C-ASOC-131) — prête → « validée » directement : 1
+        ``intervention.completed`` ; terminée → validée : 0 de plus. Mutant :
+        retirer ``VALIDEE`` ⇒ échec."""
+        inst = Installation.objects.create(
+            company=self.co, reference='CH-ASOC4', client=self.client_obj)
+        directe, terminee = (Intervention.objects.create(
+            company=self.co, installation=inst, type_intervention=Intervention.Type.POSE,
+            statut=statut) for statut in (Intervention.Statut.PRETE, Intervention.Statut.TERMINEE))
+        with mock.patch('apps.publicapi.signals.delivery.dispatch_event') as d:
+            for interv in (directe, terminee):
+                interv.statut = Intervention.Statut.VALIDEE
+                interv.save()
+        self.assertEqual(self._events(d).count(EVENT_INTERVENTION_COMPLETED), 1)
 
     def test_intervention_recloturee_ne_reemet_pas(self):
         """ACHT116 — terminée → sur site → terminée (PATCH ×3) n'émet

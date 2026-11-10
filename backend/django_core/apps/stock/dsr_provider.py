@@ -83,6 +83,7 @@ def erase_stock(company, subject_identifier):
     GRC (détaché de stock) a été retirée : la pseudonymisation reste
     identique, seule sa trace dans le registre GRC n'est plus posée.
     """
+    from apps.tiers.services import anonymiser_tiers
     fournisseurs = _matcher(company, subject_identifier)
     count = 0
     for f in fournisseurs:
@@ -90,6 +91,8 @@ def erase_stock(company, subject_identifier):
         f.email = None
         f.telephone = None
         f.save(update_fields=['contact_personne', 'email', 'telephone'])
+        # ASOC101 — le contact quitte aussi le Tiers miroir (porte ASOC60).
+        anonymiser_tiers(company, f.tiers_id, ('email', 'telephone'))
         count += 1
 
     return {

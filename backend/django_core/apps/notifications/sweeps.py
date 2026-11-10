@@ -17,7 +17,9 @@ import logging
 from datetime import date, timedelta
 
 from celery import shared_task
+from django.utils.timezone import localdate
 
+from .calendar_utils import is_jour_ouvre
 from .types_evenements import EventType
 from .services import notify
 
@@ -72,8 +74,10 @@ def _is_manager(user):
 
 
 def _notify_user_or_managers(user, company, event_type, title, body, link=''):
-    """Notifie `user` s'il est valide, sinon les managers de la société."""
-    if user is not None and getattr(user, 'pk', None):
+    """Notifie `user` s'il est valide ET actif (ASOC1), sinon les managers
+    de la société."""
+    if (user is not None and getattr(user, 'pk', None)
+            and getattr(user, 'is_active', True)):
         notify(user, event_type, title, body=body, link=link, company=company)
         return
     for mgr in _managers(company, event_type):
@@ -127,6 +131,9 @@ def _sweep_warranty_expiring(company):
                 # (route réelle : `/equipements`, sans deep-link par id
                 # aujourd'hui — jamais un paramètre fabriqué).
                 link = '/equipements'
+                if not _reserver_emission(  # ASOC23 — une fois par fin de garantie
+                        company, EventType.WARRANTY_EXPIRING, f'equipement:{eq.pk}', eq.date_fin_garantie.isoformat()):
+                    continue
                 owner = _owner_of_equipement(eq)
                 if owner is not None:
                     notify(owner, EventType.WARRANTY_EXPIRING, title,
@@ -163,7 +170,9 @@ def _sweep_maintenance_due(company):
         count = 0
         for contrat in qs:
             try:
-                if not contrat.is_due():
+                if not contrat.is_due() or not _reserver_emission(  # ASOC23
+                        company, EventType.MAINTENANCE_DUE, f'contrat:{contrat.pk}',
+                        contrat.prochaine_visite().isoformat()):
                     continue
                 client_nom = (
                     getattr(contrat.client, 'nom', '')
@@ -290,6 +299,10 @@ def _sweep_chantier_due(company):
                 # WIR176 — `/installations/<pk>` n'existe pas côté front ;
                 # InstallationsPage (`/chantiers`) consomme `?id=<pk>`.
                 link = f'/chantiers?id={chantier.pk}'
+                if not _reserver_emission(  # ASOC23 — une fois par date de pose
+                        company, EventType.CHANTIER_DUE, f'installation:{chantier.pk}',
+                        chantier.date_pose_prevue.isoformat()):
+                    continue
                 for mgr in _managers(company, EventType.CHANTIER_DUE):
                     notify(mgr, EventType.CHANTIER_DUE, title,
                            body=body, link=link, company=company)
@@ -487,6 +500,9 @@ def _sweep_sav_activite_due(company):
                 # WIR176 — `/sav/tickets/<pk>` n'existe pas côté front ;
                 # TicketsPage (`/sav`) consomme `?id=<pk>`.
                 link = f'/sav?id={taf.ticket_id}'
+                if not _reserver_emission(  # ASOC23 — une fois par échéance
+                        company, EventType.SAV_ACTIVITE_DUE, f'activite:{taf.pk}', taf.echeance.isoformat()):
+                    continue
                 _notify_user_or_managers(
                     taf.assigne, company, EventType.SAV_ACTIVITE_DUE,
                     title, body, link)
@@ -531,6 +547,9 @@ def _sweep_stock_expiration_soon(company):
                     f"({lot.quantite_restante} restant(s)) expire dans "
                     f"{delta} jours ({lot.date_peremption})."
                 )
+                if not _reserver_emission(  # ASOC23 — une fois par péremption
+                        company, EventType.STOCK_EXPIRATION_SOON, f'lot:{lot.pk}', lot.date_peremption.isoformat()):
+                    continue
                 for mgr in _managers(company, EventType.STOCK_EXPIRATION_SOON):
                     notify(mgr, EventType.STOCK_EXPIRATION_SOON, title,
                            body=body, link='/stock', company=company)
@@ -935,6 +954,8 @@ def sweep_daily():
     Best-effort par société ; renvoie le total de notifications émises."""
     total = 0
     for company in _companies():
+        if not is_jour_ouvre(localdate(), company):
+            continue  # ASOC22 — rien un jour chômé de la société.
         try:
             total += _sweep_warranty_expiring(company)
             total += _sweep_maintenance_due(company)

@@ -27,6 +27,7 @@ from django.dispatch import receiver
 
 from core.events import (
     devis_revise, layout_finalise, lead_created, lead_trace_toit_recu,
+    revision_abandonnee,
 )
 
 from .services.versions import (
@@ -37,6 +38,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     'rattacher_conception_au_devis', 'relier_calepinage_au_devis_revise',
+    'relier_calepinage_a_la_version_reactivee',
     'reprise_du_trace_public', 'reprise_du_trace_au_renvoi',
 ]
 
@@ -130,6 +132,51 @@ def relier_calepinage_au_devis_revise(sender, ancien=None, nouveau=None,
         logger.exception(
             'ACAL92 : re-liaison du calepinage en échec (%s -> %s)',
             getattr(ancien, 'pk', None), getattr(nouveau, 'pk', None))
+
+
+@receiver(revision_abandonnee,
+          dispatch_uid='calepinage_relier_a_la_version_reactivee')
+def relier_calepinage_a_la_version_reactivee(sender, ancien=None,
+                                             reactivees=(), user=None,
+                                             **kwargs):
+    """ACON91 (D-ACAL-3, retour d'ACAL92) — la V2 est abandonnée : le
+    calepinage lié DIRECTEMENT à elle retrouve son dessin « Version envoyée
+    — V1 » (``restaurer_version``, réversible) puis est re-lié à la V1
+    réactivée (``lier_devis``). Reçu AVANT la suppression de la V2. Aucun
+    statut écrit (règle #4) ; best-effort journalisé, jamais propagé."""
+    company = getattr(ancien, 'company', None)
+    v1 = next(iter(reactivees or ()), None)
+    if ancien is None or v1 is None or company is None:
+        return
+    try:
+        from django.db import transaction
+
+        from .models import Calepinage, CalepinageVersion
+        from .services.liens import lier_devis
+        from .services.versions import restaurer_version
+
+        calepinage = Calepinage.objects.filter(
+            company=company, devis_id=ancien.pk).first()
+        if calepinage is None:
+            return
+        reference = (getattr(v1, 'reference', '') or '').strip() or (
+            f'#{v1.pk}')
+        envoyee = (CalepinageVersion.objects
+                   .filter(calepinage=calepinage,
+                           libelle=LIBELLE_VERSION_ENVOYEE.format(
+                               reference=reference))
+                   .order_by('-created_at', '-id').first())
+        with transaction.atomic():
+            if envoyee is not None:
+                # Restaurée AVANT le re-lien : la V1 (acceptée) verrouille.
+                restaurer_version(envoyee, user=user)
+                calepinage.refresh_from_db()
+            lier_devis(calepinage, v1.pk, user=user,
+                       ancien_abandonne=ancien.pk)
+    except Exception:  # un re-lien ne casse jamais l'abandon
+        logger.exception(
+            'ACON91 : re-liaison du calepinage à la V1 en échec (%s -> %s)',
+            getattr(ancien, 'pk', None), getattr(v1, 'pk', None))
 
 
 @receiver(lead_created, dispatch_uid='calepinage_reprise_trace_public')

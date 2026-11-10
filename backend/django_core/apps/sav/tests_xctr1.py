@@ -78,6 +78,22 @@ class XCTR1DevisAccepteContratTest(TestCase):
         self.assertEqual(
             ContratMaintenance.objects.filter(client=self.client_obj).count(), 1)
 
+    def test_module_sav_desinstalle_aucun_contrat(self):
+        # ASOC2 (D-ASOC-2 rien_creer) — Après-vente désinstallé : une ligne
+        # récurrente acceptée ne crée aucun ContratMaintenance.
+        from core import feature_flags
+        feature_flags.desactiver_module(
+            self.company, 'sav', cascade=True, user=self.user)
+        devis = self._devis(3, statut=Devis.Statut.ACCEPTE)
+        LigneDevis.objects.create(
+            devis=devis, produit=self.produit_recurrent,
+            designation='Monitoring annuel', quantite=1,
+            prix_unitaire=Decimal('1200'), taux_tva=Decimal('20'))
+        devis_accepted.send(
+            sender=None, devis=devis, user=self.user, ancien_statut='envoye')
+        self.assertEqual(
+            ContratMaintenance.objects.filter(client=self.client_obj).count(), 0)
+
     def test_devis_without_recurring_line_creates_no_contract(self):
         devis = self._devis(2, statut=Devis.Statut.ACCEPTE)
         LigneDevis.objects.create(

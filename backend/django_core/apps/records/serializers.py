@@ -24,6 +24,23 @@ class CibleIntrouvable(ValueError):
     autorisé ou une forme invalide reste un ``ValueError`` simple (400)."""
 
 
+def module_refuse(user, app_label, ecriture=False):
+    """APFS20 — True si ``user`` (rôle fin, non administrateur) ne porte aucun
+    code du module de ``app_label`` (lecture) ou aucun code d'écriture de ce
+    module (écriture) — la règle d'``IsResponsableOrAdmin``. Compte hérité,
+    administrateur, module sans code : False (inchangé)."""
+    if (user is None or not getattr(user, 'role_id', None)
+            or getattr(user, 'is_superuser', False)
+            or getattr(user, 'is_admin_role', False)):
+        return False
+    from authentication.permissions import MODULE_DES_APPS, codes_du_module
+    du_module = codes_du_module(MODULE_DES_APPS.get(app_label, app_label))
+    if not du_module:
+        return False
+    codes = du_module & set(user.role.permissions or [])
+    return not (user._role_grants_write(codes) if ecriture else codes)
+
+
 def resolve_target(model_label, object_id, company, user=None, ecriture=False):
     """('crm.lead', 12, company) -> (ContentType, instance) ou lève ValueError.
 
@@ -83,6 +100,10 @@ def resolve_target(model_label, object_id, company, user=None, ecriture=False):
                 or not portee_leads(type(obj).objects.filter(pk=obj.pk),
                                     user).exists()):
             raise CibleIntrouvable('Cible introuvable.')
+    # APFS20 — toute cible : le droit du MODULE de la cible (lecture : un code
+    # du module ; écriture : un code d'écriture), comme les écrans du module.
+    if module_refuse(user, app_label, ecriture):
+        raise CibleIntrouvable('Cible introuvable.')
     return ct, obj
 
 

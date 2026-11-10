@@ -22,6 +22,21 @@ logger = logging.getLogger(__name__)
 # ancien→nouveau ; c'est la timeline lue par le client (D-ADOC-3).
 TRACKED_MODELS.append(('portail', 'JalonChantierPortail'))
 
+# ASOC81 — hors requête (beats : bascule en retard, relances automatiques),
+# SEULES les écritures d'argent sont journalisées, en « système » : l'acteur
+# résolu par ``recorder`` est nul hors requête (``user=None``).
+_ARGENT_HORS_REQUETE = frozenset({
+    ('facturation', 'Facture'), ('facturation', 'Avoir'),
+    ('facturation', 'Paiement'), ('facturation', 'RelanceLog'),
+    ('ventes', 'BonCommande'), ('ventes', 'NoteDebit')})
+
+
+def _a_journaliser(instance):
+    return recorder.in_request() or (
+        instance._meta.app_label,
+        instance._meta.object_name) in _ARGENT_HORS_REQUETE
+
+
 # Champs « statut » par modèle (libellé FR via get_<field>_display si dispo).
 _STATUS_FIELDS = ('statut', 'stage')
 
@@ -90,7 +105,7 @@ def _diff_from_snapshot(instance, old_values):
 
 
 def _on_pre_save(sender, instance, **kwargs):
-    if not recorder.in_request():
+    if not _a_journaliser(instance):
         return
     if not instance.pk:
         return
@@ -114,7 +129,7 @@ def _on_pre_save(sender, instance, **kwargs):
 
 
 def _on_post_save(sender, instance, created, **kwargs):
-    if not recorder.in_request():
+    if not _a_journaliser(instance):
         return
     field = _status_field_name(instance)
     if created:

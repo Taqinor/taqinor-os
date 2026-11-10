@@ -37,10 +37,10 @@ class Aud801CoutGatedTests(TestCase):
             slug='aud801-sav-co', defaults={'nom': 'AUD801 SAV Co'})[0]
         self.role_sans = Role.objects.create(
             company=self.company, nom='AUD801 sans prix achat',
-            permissions=['tickets_gerer'])
+            permissions=['tickets_gerer', 'sav_voir'])  # APFS104
         self.role_avec = Role.objects.create(
             company=self.company, nom='AUD801 avec prix achat',
-            permissions=['tickets_gerer', 'prix_achat_voir'])
+            permissions=['tickets_gerer', 'sav_voir', 'prix_achat_voir'])
         self.sans_droit = User.objects.create_user(
             username='aud801_sav_sans', password='x', company=self.company,
             role=self.role_sans)

@@ -88,3 +88,31 @@ class ExportSelecteurSocieteTests(TestCase):
         resp = _auth(self.staff_a).post(URL, {'ids': ids}, format='json')
 
         self.assertEqual(resp.status_code, 200)
+
+    def test_export_exige_le_code_export_et_la_portee(self):
+        """APFS23 (C-APFS-024) — code d'export du module de l'entité (refus
+        nommé ``droit_manquant``) et portée de l'écran : un Commercial « soi »
+        n'exporte pas le devis d'un collègue."""
+        from django.core.management import call_command
+        from apps.roles.models import Role
+        call_command('init_roles', verbosity=0)
+        roles = {r.nom: r for r in Role.objects.filter(company=self.co_a)}
+        u = {cle: User.objects.create_user(username=f'apfs23-{cle}', password='x', company=self.co_a,
+                                           role=roles[nom])
+             for cle, nom in (('Directeur', 'Directeur'), ('c1', 'Commercial'), ('c2', 'Commercial'),
+                              ('Viewer', 'Viewer'), ('Admin RH', 'Admin RH'))}
+        c1, c2 = u['c1'], u['c2']
+        devis_c1 = Devis.objects.get(reference='DEV-A315')
+        Devis.objects.filter(pk=devis_c1.pk).update(created_by=c1)
+        corps = {'ids': [devis_c1.pk]}
+        for nom, entite in (('Viewer', 'devis'), ('Viewer', 'factures'), ('Admin RH', 'devis'),
+                            ('Admin RH', 'factures'), ('Admin RH', 'tickets'), ('Admin RH', 'chantiers')):
+            with self.subTest(role=nom, entite=entite):
+                resp = _auth(u[nom]).post(f'/api/django/imports/export/{entite}/', corps, format='json')
+                self.assertEqual(resp.status_code, 403)
+                self.assertEqual(resp.data['code'], 'droit_manquant')
+        self.assertEqual(_devis_rows(c2, [devis_c1.pk])[2], [])
+        self.assertEqual(_auth(c2).post(URL, corps, format='json').status_code, 200)
+        self.assertEqual([r[0] for r in _devis_rows(c1, [devis_c1.pk])[2]], ['DEV-A315'])
+        for user in (u['Directeur'], c1, self.staff_a):  # Directeur, propriétaire, compte hérité
+            self.assertEqual(_auth(user).post(URL, corps, format='json').status_code, 200)

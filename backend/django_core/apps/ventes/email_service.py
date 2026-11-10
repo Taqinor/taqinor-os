@@ -282,16 +282,19 @@ def _modele_email_personnalise(company, cle, client, reference, **contexte):
     if company is None:
         return {}
     try:
+        from apps.parametres.i18n_resolver import resolve_langue_sortie
         from apps.parametres.models_email import EmailTemplate
         ligne = EmailTemplate.objects.filter(company=company, cle=cle).first()
         if ligne is None:
             return {}
+        langue = resolve_langue_sortie(client=client, company=company)  # ASOC83
+        textes = EmailTemplate.get_template(company, cle, langue)
         # APAR83 — un champ qui porte ``{lien}`` sans lien fourni (défaut
         # « Réinitialiser ») retombe sur le texte codé « ci-joint ».
         personnalise = {
             champ for champ in ('sujet', 'corps')
             if (getattr(ligne, champ, '') or '').strip()
-            and not ('{lien}' in getattr(ligne, champ) and not contexte.get('lien'))}
+            and not ('{lien}' in textes[champ] and not contexte.get('lien'))}
         if not personnalise:
             return {}
         nom_client = civilite = ''
@@ -301,7 +304,7 @@ def _modele_email_personnalise(company, cle, client, reference, **contexte):
             civilite = getattr(client, 'civilite', '') or ''
         contexte.setdefault('lien', '')
         rendu = EmailTemplate.render(
-            company, cle, civilite=civilite, nom=nom_client,
+            company, cle, langue, civilite=civilite, nom=nom_client,
             reference=reference, **contexte)
         return {champ: rendu[champ] for champ in personnalise if rendu[champ]}
     except Exception as exc:  # noqa: BLE001 — repli sur le texte codé (D-ENF22-BLE001)
@@ -515,8 +518,11 @@ def send_pre_echeance_email(facture, *, user=None):
         logger.warning("email_service.send_pre_echeance_email : erreur ignorée (mode dégradé)", exc_info=True)
         lien = ''
 
+    from apps.parametres.i18n_resolver import resolve_langue_sortie
+    company = getattr(facture, 'company', None)
     rendered = EmailTemplate.render(
-        getattr(facture, 'company', None), 'pre_echeance',
+        company, 'pre_echeance',
+        resolve_langue_sortie(client=client, company=company),
         civilite=civilite, nom=nom_client, reference=reference, lien=lien)
     sujet = rendered['sujet'] or f'Rappel amical — échéance {reference}'
     signature = _signature(

@@ -3,6 +3,7 @@ Verification JWT pour FastAPI.
 Lit le token depuis le cookie httpOnly 'access_token' en priorite,
 puis depuis l'en-tete Authorization: Bearer (fallback).
 """
+import logging
 import os
 from typing import Optional
 
@@ -11,6 +12,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 import jwt
 from jwt.exceptions import InvalidTokenError
 
+logger = logging.getLogger(__name__)
 _DJANGO_SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "")
 _ALGORITHM = "HS256"
 
@@ -154,3 +156,26 @@ def get_raw_token(
     if not token and credentials:
         token = credentials.credentials
     return token or ""
+
+
+def exiger_compte_interne(
+    request: Request,
+    token_payload: dict = Depends(verify_token),
+    token: str = Depends(get_raw_token),
+) -> dict:
+    """APFS2 (C-APFS-001) — l'agent SQL, la transcription et l'OCR sont
+    reserves aux comptes INTERNES (miroir de `IsAuthenticatedInterne` cote
+    Django). Le jeton ne porte pas la portee : on la relit par `/auth/me/`
+    (JWT relaye, meme relais que `fetch_caller_permissions`). ECHEC FERME :
+    Django injoignable ou portee absente => 403. Chaque refus est journalise."""
+    from app.services.action_tools import _ME_PATH, ActionContext, _django_call
+
+    ctx = ActionContext(token_payload.get("company_id"), str(token_payload.get("role") or ""), [], token)
+    res = _django_call(ctx, _ME_PATH, method="GET") if token else {"ok": False}
+    data = res.get("data") if res.get("ok") else None
+    if not (isinstance(data, dict) and data.get("portee") == "interne"):
+        logger.warning("Compte non interne refuse : user_id=%s company_id=%s chemin=%s",
+                       token_payload.get("user_id"), token_payload.get("company_id"), request.url.path)
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Accès réservé aux comptes internes.")
+    return token_payload

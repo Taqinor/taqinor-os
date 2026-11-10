@@ -1,6 +1,6 @@
 // ACAL262 - parseRoofLayout lit les cles publiees par ACAL261 et tolere leur absence.
 import { describe, expect, it } from 'vitest';
-import { parseRoofLayout } from './proposition';
+import { buildViewerModel, parseRoofLayout } from './proposition';
 
 const VERTS = [[-7.6001, 33.4999], [-7.5999, 33.4999], [-7.5999, 33.5001], [-7.6001, 33.5001]];
 const GEO = { azimuthDeg: 180, tiltDeg: 17, family: 'south', flush: false, count: 1, origin: [-7.6, 33.5] };
@@ -38,5 +38,21 @@ describe('ACAL262 - parseRoofLayout, nouvelles cles', () => {
     expect(layout).not.toHaveProperty('poseSurfaces');
     expect(layout!.zones[0].geometry!.moduleId).toBeUndefined();
     expect(layout!.zones[0].geometry!.panels[0].angleDeg).toBeUndefined();
+  });
+});
+
+// ACON93 (D-ACON-4) - plafond de 2 000 PAR ZONE, fin du budget partage de 600.
+describe('ACON93 - buildViewerModel, plafond par zone', () => {
+  const grille = (n: number) => Array.from({ length: n }, (_, i) => ({ cx: (i % 50) * 1.2, cy: Math.floor(i / 50) * 2.3 }));
+  const zone = (id: string, count: number, n: number) => ({ id, vertices: VERTS, geometry: { ...GEO, count, panels: grille(n) } });
+
+  it('buildViewerModel : 4 x 500 dessines, zone de 2 400 simplifiee', () => {
+    const quatre = buildViewerModel(parseRoofLayout({ version: 2, zones: ['a', 'b', 'c', 'd'].map((id) => zone(id, 500, 500)) }));
+    expect(quatre?.totalPanels).toBe(2000);
+    expect(quatre?.zones.map((z) => z.panels.length)).toEqual([500, 500, 500, 500]);
+    expect(quatre?.simplifie).toBe(false);
+    const grand = buildViewerModel(parseRoofLayout({ version: 2, zones: [zone('g', 2400, 2000)] }));
+    expect(grand?.totalPanels).toBe(2000);
+    expect(grand?.simplifie).toBe(true);
   });
 });

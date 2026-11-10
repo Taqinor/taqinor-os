@@ -602,8 +602,11 @@ def evaluate_all_kpi_alertes(now=None):
 
     Appelée par le job Beat quotidien. Chaque alerte est isolée (une erreur
     n'interrompt jamais les suivantes)."""
+    from authentication.selectors import active_companies
     results = []
-    for alerte in KpiAlerte.objects.filter(actif=True).select_related(
+    # APFS63 — sociétés actives seulement (une suspendue n'est plus évaluée).
+    for alerte in KpiAlerte.objects.filter(
+            actif=True, company__in=active_companies()).select_related(
             'company', 'metric_definition'):
         try:
             valeur, franchi, notifie = evaluate_kpi_alerte(alerte, now=now)

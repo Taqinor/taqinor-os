@@ -28,6 +28,7 @@ const TEMPLATE = {
   sujet: 'Votre devis {reference}', corps: 'Bonjour {nom}, voici votre devis.',
   sujet_defaut: 'Votre devis {reference}', corps_defaut: 'Bonjour {nom}, voici votre devis.',
   personnalise: false, placeholders: ['{nom}', '{reference}', '{lien}'],
+  sujet_en: '', corps_en: '', sujet_ar: '', corps_ar: '',
 }
 
 beforeEach(() => {
@@ -53,7 +54,8 @@ describe('EmailSection — ZSAL5 modèles d\'e-mail', () => {
     fireEvent.change(sujetInput, { target: { value: 'Nouveau sujet' } })
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
     await waitFor(() => expect(parametresApi.saveEmailTemplates).toHaveBeenCalledWith([
-      { cle: 'envoi_devis', sujet: 'Nouveau sujet', corps: 'Bonjour {nom}, voici votre devis.' },
+      expect.objectContaining(
+        { cle: 'envoi_devis', sujet: 'Nouveau sujet', corps: 'Bonjour {nom}, voici votre devis.' }),
     ]))
     expect(await screen.findByText('Enregistré')).toBeInTheDocument()
     expect(await screen.findByText('Personnalisé')).toBeInTheDocument()
@@ -68,6 +70,22 @@ describe('EmailSection — ZSAL5 modèles d\'e-mail', () => {
     fireEvent.click(screen.getByRole('button', { name: /Réinitialiser au modèle par défaut/ }))
     await waitFor(() => expect(parametresApi.saveEmailTemplates).toHaveBeenCalledWith([
       { cle: 'envoi_devis', sujet: TEMPLATE.sujet_defaut, corps: TEMPLATE.corps_defaut },
+    ]))
+  })
+
+  it('ASOC99 — édite les traductions anglaise et arabe (arabe de droite à gauche)', async () => {
+    parametresApi.saveEmailTemplates.mockResolvedValue({ data: { results: [TEMPLATE] } })
+    render(<EmailSection />)
+    await screen.findByText('Envoi de devis')
+    expect(screen.getByText('Anglais')).toBeInTheDocument()
+    expect(screen.getByText('Arabe')).toBeInTheDocument()
+    const sujetAr = screen.getByLabelText('Sujet (arabe)')
+    expect(sujetAr).toHaveAttribute('dir', 'rtl')
+    fireEvent.change(sujetAr, { target: { value: 'عرض سعر' } })
+    fireEvent.change(screen.getByLabelText('Corps (anglais)'), { target: { value: 'Hello' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(parametresApi.saveEmailTemplates).toHaveBeenCalledWith([
+      expect.objectContaining({ cle: 'envoi_devis', sujet_ar: 'عرض سعر', corps_en: 'Hello' }),
     ]))
   })
 })

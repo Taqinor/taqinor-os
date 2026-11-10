@@ -98,6 +98,23 @@ class EmpreinteSignatureTests(TestCase):
         # CLAUSE PERSISTANCE : relire après le 409 → toujours rien de signé.
         self.assertFalse(self._lire()['accepted'])
 
+    def test_jalons_societe_changes_apres_lecture_409(self):
+        """ASOC40 (C-ASOC-040, D-ASOC-1) — un envoyé SANS échéancier propre lit
+        les jalons société : lu à 30 %, jalons passés à 40/50/10, signer avec
+        l'empreinte lue ⇒ 409, devis envoyé, échéancier nul ; relu ⇒ 200."""
+        from apps.parametres.models import CompanyProfile
+        e1 = self._lire()['empreinte_contenu']
+        profil = CompanyProfile.get(self.company)
+        profil.payment_terms = {
+            'residentiel': {'acompte': 40, 'materiel': 50, 'solde': 10}}
+        profil.save(update_fields=['payment_terms'])
+        e2 = self._lire()['empreinte_contenu']
+        self.assertNotEqual(e2, e1)
+        self._assert_rien_ecrit(self._signer(e1))
+        self.assertFalse(self.devis.echeancier)
+        resp = self._signer(e2)
+        self.assertEqual(resp.status_code, 200, resp.data)
+
     def test_correction_commitee_entre_la_garde_et_le_verrou_409(self):
         """Course : la garde de la vue PASSE (contenu encore identique), puis
         le commercial corrige une ligne AVANT le verrou d'``accept_devis`` —

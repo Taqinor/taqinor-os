@@ -695,7 +695,7 @@ class Facture(TotauxDocumentMixin, models.Model):
         comptés depuis l'échéance de la part encore due (AARG53 ; AFAC48 : repli
         émission + 30 j)."""
         echeance = self.echeance_exigible
-        if not echeance or self.statut in ('payee', 'annulee'):
+        if not echeance or self.statut in ('payee', 'annulee', 'brouillon'):
             return 0
         if self.montant_exigible <= 0:
             return 0
