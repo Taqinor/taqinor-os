@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import visitesApi from '../../api/visitesApi'
+import { lireToutesLesPages } from '../../utils/fetchAllPages'
 import calepinageApi from '../../api/calepinageApi'
 import { apiErrorMessage } from '../../lib/apiError'
 import PageHeader from '../../components/layout/PageHeader'
@@ -462,9 +463,9 @@ export default function VisiteBureauEtudesPage() {
 
   const load = useCallback(() => {
     setLoading(true)
-    visitesApi.getVisites({})
-      .then((res) => {
-        const rows = res.data?.results ?? res.data ?? []
+    // ADCG50 : liste paginée, triée ici par statut — toutes les pages, jamais la 1ʳᵉ seule.
+    lireToutesLesPages((p) => visitesApi.getVisites(p))
+      .then((rows) => {
         // ACVI67 — à revoir d'abord, puis les validées (renvoi possible).
         setVisites([
           ...rows.filter((v) => v.statut === 'terminee'),

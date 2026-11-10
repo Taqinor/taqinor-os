@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4947, operations: 7745, components: 3643}
+counts: {paths: 4947, operations: 7745, components: 3644}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -11541,6 +11541,7 @@ components:
 - PaginatedVeilleAnnonceurList
 - PaginatedVeilleDecouverteList
 - PaginatedVisiteExterneList
+- PaginatedVisiteTerrainLigneList
 - PaginatedVueGedEnregistreeList
 - PaginatedWarrantyClaimList
 - PaginatedWebhookDeliveryList

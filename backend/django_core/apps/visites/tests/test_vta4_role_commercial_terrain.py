@@ -224,6 +224,6 @@ class PorteeServeurDuCommercialTerrainTests(TestCase):
         VisiteTerrain.objects.create(company=self.autre, lead=self.lead_autre,
                                      commercial=self.terrain_autre)
         lignes = auth(self.terrain_autre).get(
-            '/api/django/visites/visites/').data
+            '/api/django/visites/visites/').data['results']
         self.assertEqual([ligne['lead'] for ligne in lignes],
                          [self.lead_autre.id])
