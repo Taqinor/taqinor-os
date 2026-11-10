@@ -47,7 +47,7 @@
   },
   "refus": {
     "404": "{detail} — devis absent, d'une autre société ou hors portée de l'appelant",
-    "409": "{detail, field} — field ∈ mode_installation (devis non C&I) | lead (devis sans lead) | visite (aucune visite C&I VALIDÉE sur le lead) | devis (version remplacée ou archivée) | scenario (devis « avec batterie » seule dont les lignes ne portent pas à la fois un onduleur hybride et une batterie du catalogue C&I — CORC10 : sinon l'option « avec » est recomposée à la taille et à la banque de SES lignes, jamais redimensionnée) | taille (puissance des lignes illisible) | <champ du lead ou composition/taille> (même refus que le devis automatique, `etude_ci.refus_devis_auto_ci`). `detail` est une consigne en français pour le vendeur."
+    "409": "{detail, field} — field ∈ mode_installation (devis non C&I) | lead (devis sans lead) | visite (aucune visite C&I VALIDÉE sur le lead) | devis (version remplacée ou archivée) | scenario (devis « avec batterie » seule dont les lignes ne portent pas à la fois un onduleur hybride et une batterie du catalogue C&I — CORC10 : sinon l'option « avec » est recomposée à la taille et à la banque de SES lignes, jamais redimensionnée) | taille (puissance des lignes illisible) | echeancier (AGNR77 — le TTC recomposé laisse un acompte en MAD au-delà du nouveau total : rien d'écrit, aucune V+1 ; sinon l'échéancier est re-basé par la règle d'AGNR49, dernière tranche = reste en MAD) | <champ du lead ou composition/taille> (même refus que le devis automatique, `etude_ci.refus_devis_auto_ci`). `detail` est une consigne en français pour le vendeur."
   },
   "regles_sorties": {
     "devis_id": "id du devis RECOMPOSÉ — la V+1 quand `cree`, sinon le brouillon d'origine",

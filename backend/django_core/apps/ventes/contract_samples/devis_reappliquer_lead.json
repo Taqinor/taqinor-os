@@ -1,7 +1,7 @@
 {
   "endpoint": "POST /api/django/ventes/devis/<id>/reappliquer-lead/",
   "forme_serveur": "partielle",
-  "pourquoi": "QJR505 (M0 QJR5) — dérive lead -> devis : « reprendre » (POST …/devis/<id>/reappliquer-lead/) ou « garder » (POST …/devis/<id>/acquitter-derive/). Corps vide dans les deux cas. 200 {devis: <détail avec lead_valeurs_modifiees: []>, champs_repris: [str], corrige_apres_envoi: bool, avertissements: [str]} ; 409 (refus d'état, CI #997 fuzz — 400 auparavant) {detail: « Devis figé — révisez-le (reviser) pour le modifier. », code: 'devis_fige'} pour accepté / refusé / expiré.",
+  "pourquoi": "QJR505 (M0 QJR5) — dérive lead -> devis : « reprendre » (POST …/devis/<id>/reappliquer-lead/) ou « garder » (POST …/devis/<id>/acquitter-derive/). Corps vide dans les deux cas. 200 {devis: <détail avec lead_valeurs_modifiees: []>, champs_repris: [str], corrige_apres_envoi: bool, avertissements: [str]} ; 409 (refus d'état, CI #997 fuzz — 400 auparavant) {detail: « Devis figé — révisez-le (reviser) pour le modifier. », code: 'devis_fige'} pour accepté / refusé / expiré ; 409 {detail, echeancier: [str]} (AGNR77) quand le TTC repris laisse un acompte en MAD au-delà du nouveau total : rien d'écrit (lignes, panneaux, échéancier identiques) — sinon l'échéancier stocké est re-basé par la règle d'AGNR49 (dernière tranche = reste en MAD ; tout en % : inchangé).",
   "endpoints_equivalents": [
     "POST /api/django/ventes/devis/<id>/reappliquer-lead/",
     "POST /api/django/ventes/devis/<id>/acquitter-derive/"

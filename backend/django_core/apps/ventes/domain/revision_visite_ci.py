@@ -114,7 +114,10 @@ def reviser_devis_apres_visite(devis, *, user=None):
                            lignes_du_devis_ci, lire_catalogue_ci, refus_devis_auto_ci)
     from .etude_ci_batterie import lignes_des_options, option_imposee_des_lignes
     from .etude_schema import ECRAN, ecrire
+    from apps.ventes.utils.echeancier import EcheancierIncoherent
+
     from .etudes import puissances_etude_horaire
+    from .modifiabilite import rebaser_echeancier, ttc_du_devis
     from .pipeline import (MODE_ECRIRE, MODE_RAFRAICHIR, ORIGINE_AUTO,
                            IntentionDevis, appliquer)
     from .revision import reviser_devis
@@ -154,6 +157,7 @@ def reviser_devis_apres_visite(devis, *, user=None):
     # laisse jamais une V1 remplacée par une V2 non recomposée.
     with transaction.atomic():
         cible = reviser_devis(devis, user=user) if cree else devis
+        ttc_avant = ttc_du_devis(cible)  # AGNR77 — TTC lu AVANT la recomposition
         etude = etudier_ci(company, {'mode': mode, 'taille_explicite_kwc': taille},
                            devis=cible, lead=lead, option_avec_imposee=imposee)
         refus = refus_devis_auto_ci(etude)
@@ -183,6 +187,10 @@ def reviser_devis_apres_visite(devis, *, user=None):
         appliquer(cible, IntentionDevis(
             origine=ORIGINE_AUTO, mode=MODE_ECRIRE, company=company, user=user,
             lead=lead, mode_installation=mode, composition=composition))
+        try:  # AGNR77 — LA règle d'AGNR49 au nouveau TTC ; refus ⇒ rien d'écrit
+            rebaser_echeancier(cible, ttc_avant=ttc_avant)
+        except EcheancierIncoherent as exc:
+            raise RevisionVisiteError(str(exc), 'echeancier')
     appliquer(cible, IntentionDevis(
         origine=ORIGINE_AUTO, mode=MODE_RAFRAICHIR, company=company, user=user,
         lead=lead, mode_installation=mode, force_etudes=True))
