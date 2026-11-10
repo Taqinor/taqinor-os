@@ -251,6 +251,23 @@ class EndToEndCliTests(unittest.TestCase):
         self.addCleanup(lambda: Path(tmp.name).unlink(missing_ok=True))
         return Path(tmp.name)
 
+    def test_ligne_cassee_sort_1_sans_check(self):
+        """ADCG89 — sans --check, une ligne cassée rendait 0 (tâche disparue
+        du planning) ; désormais rc 1 en nommant fichier:ligne."""
+        plan = self._write("- [ ] ZZ1 — **x** : sain. (@lane: apps/zz)\n"
+                           "- [ ]ZZ2 cassée\n")
+        erreur = io.StringIO()
+        with contextlib.redirect_stderr(erreur), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(pl.main([str(plan)]), 1)
+            self.assertEqual(pl.main([str(plan) + ".absent"]), 2)
+        self.assertIn(f"ligne de tâche illisible {plan}:2", erreur.getvalue())
+        self.assertIn("fichier de plan introuvable", erreur.getvalue())
+        saine = self._write("- [ ] ZZ1 — **x** : sain. (@lane: apps/zz)\n")
+        with contextlib.redirect_stderr(io.StringIO()), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(pl.main([str(saine)]), 0)
+
     def test_missing_build_order_file_is_fully_backward_compatible(self):
         """SCA3 contract: no BUILD_ORDER.yml at all -> byte-identical
         schedule to pre-SCA3 behaviour (every buildable task included,
@@ -726,6 +743,21 @@ class ContractPairingGateTests(unittest.TestCase):
         self.assertEqual(blocked, [])
         self.assertEqual(len(allowed), 1)
 
+    def test_tache_mixte_non_refusee_contre_un_autre_producteur(self):
+        """ADCG87 — X3 (endpoint + écran ao) passe à côté de X4 (autre
+        producteur ao) ; X5 (écran ao seul, sans `@after: X4`) reste refusée."""
+        x3 = ("- [ ] X3 — endpoint + écran. "
+              "Files: `backend/django_core/apps/ao/urls.py`, "
+              "`frontend/src/features/ao/Ecran.jsx`. (ARCH)")
+        x4 = ("- [ ] X4 — autre endpoint. "
+              "Files: `backend/django_core/apps/ao/selectors.py`. (ROUTINE)")
+        x5 = ("- [ ] X5 — écran seul. "
+              "Files: `frontend/src/features/ao/Autre.jsx`. (ROUTINE)")
+        allowed, blocked = pl.apply_contract_pairing_gate(
+            self._tasks(x3, x4, x5))
+        self.assertEqual({t["id"] for t in allowed}, {"X3", "X4"})
+        self.assertEqual([t["id"] for t in blocked], ["X5"])
+
     def test_force_wave_outrepasse_la_porte(self):
         tasks = self._tasks(self.AOF166, self.AOF170, self.AOF172_SANS)
         allowed, blocked = pl.apply_contract_pairing_gate(tasks, force_wave=True)
@@ -934,7 +966,7 @@ class TaskLineGrammarTests(unittest.TestCase):
             ids = self._ids(self.NEGATIF)
         self.assertEqual(ids, [])
         # …et elle reste SIGNALÉE, pas avalée en silence.
-        self.assertIn("malformed task line", journal.getvalue())
+        self.assertIn("ligne de tâche illisible", journal.getvalue())
         self.assertEqual(pl.count_malformed(self._plan(self.NEGATIF)), 1)
 
     def test_NEGATIF_autres_formes_de_prose_restent_rejetees(self):

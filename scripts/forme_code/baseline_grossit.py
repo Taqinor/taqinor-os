@@ -1,7 +1,9 @@
 """Regle BASELINE_GROSSIT — une baseline ne fait que retrecir (C20).
 
 Baselines : `scripts/*_allow.txt`, `*allowlist*.txt`, `*_exceptions*.txt`, `*_non_branches.txt`,
-`exceptions_permanentes.yml`, tout `_dette.yml`. Entree = ligne non vide hors commentaire ;
+`exceptions_permanentes.yml`, tout `_dette.yml`, et (ADCG76, par cle = 1er mot)
+`scripts/liste_page1_non_paginees.txt`, `scripts/taches_audit_v2.txt`, `platform_baselines/*.txt`.
+Entree = ligne non vide hors commentaire ;
 toute entree absente a la base (fichier neuf compris) est refusee.
 AMET100 - CLE_LIGNE : une entree ajoutee dont la cle (1er mot) porte un numero de ligne nu
 (`fichier.py:123`, `#L123`) est refusee : une cle se nomme par symbole (`fichier::symbole[#n]`).
@@ -12,8 +14,11 @@ import re
 
 from .socle import Constat
 
+# ADCG76 — listes gelées qui échappaient au cliquet ; jugées PAR CLÉ (1er mot) : corriger
+# la citation d'une entrée existante n'est pas grossir.
+GELEES = re.compile(r"^scripts/(liste_page1_non_paginees|taches_audit_v2)\.txt$|/platform_baselines/[^/]+\.txt$")
 BASELINES = re.compile(r"^scripts/[^/]*(_allow|allowlist|_exceptions|_non_branches)[^/]*\.txt$"
-                       r"|^scripts/exceptions_permanentes\.yml$|(^|/)_dette\.yml$")
+                       r"|^scripts/exceptions_permanentes\.yml$|(^|/)_dette\.yml$|" + GELEES.pattern)
 
 
 DETTE = re.compile(r"(^|/)_dette\.yml$")
@@ -54,7 +59,10 @@ def verifier(ctx) -> list:
     for c in ctx.changements:
         if not (c.apres and BASELINES.search(c.apres)):
             continue
-        neuves = _entrees(ctx.texte("tete", c.apres), c.apres) - _entrees(ctx.texte("base", c.avant), c.apres)
+        tete, base = _entrees(ctx.texte("tete", c.apres), c.apres), _entrees(ctx.texte("base", c.avant), c.apres)
+        if GELEES.search(c.apres):
+            tete, base = ({e.split()[0] for e in s} for s in (tete, base))
+        neuves = tete - base
         if neuves:
             exemples = " ; ".join(sorted(neuves)[:3])
             constats.append(Constat("BASELINE_GROSSIT", c.apres, "", (

@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import visitesApi from '../../../api/visitesApi'
+import { lireToutesLesPages } from '../../../utils/fetchAllPages'
 import frenchError from '../../../lib/frenchError'
 import { Button, Card, Spinner, Badge } from '../../../ui'
 import { toast } from '../../../ui/confirm'
@@ -23,8 +24,9 @@ export default function VisiteTab({ leadId }) {
   const load = useCallback(() => {
     if (!leadId) return
     setLoading(true)
-    visitesApi.getVisites({ lead: leadId })
-      .then((res) => setVisites(res.data?.results ?? res.data ?? []))
+    // ADCG50 : la liste est paginée — toutes les pages du lead.
+    lireToutesLesPages((p) => visitesApi.getVisites({ lead: leadId, ...p }))
+      .then(setVisites)
       .catch(() => toast.error('Impossible de charger les visites techniques.'))
       .finally(() => setLoading(false))
   }, [leadId])

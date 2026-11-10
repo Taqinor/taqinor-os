@@ -167,6 +167,26 @@ class RegistreTests(unittest.TestCase):
         self.depot.plan(taches(1, 1))
         self.assertEqual(self.statut()["statut"], "à auditer")
 
+    def test_du_ne_lance_jamais_la_garde_d_acceptation(self):
+        """ADCG25 — `--du` ne lit pas l'acceptation : 0 sous-processus, même liste ;
+        `status` appelle toujours la garde."""
+        self.depot.plan(taches(19, 1))                 # 95 % : vérifie dû
+        appels = []
+
+        def interdite(groupe):
+            appels.append(groupe)
+            raise AssertionError("check_acceptation lancé par --du")
+        ancien = ar.acceptation
+        ar.acceptation = interdite
+        self.addCleanup(setattr, ar, "acceptation", ancien)
+        code, texte = sortie(ar.main, ["--du"])
+        self.assertEqual(code, 0)
+        self.assertIn("ZZTST", texte)
+        self.assertEqual(appels, [])
+        ar.acceptation = lambda groupe: appels.append(groupe) or "oui"
+        sortie(ar.cmd_status)
+        self.assertEqual(appels, ["ZZTST"])
+
     def test_acceptation_nd_sans_garde(self):
         self.depot.plan(taches(20, 0))
         self.assertEqual(self.statut()["acceptation"], "n/d")

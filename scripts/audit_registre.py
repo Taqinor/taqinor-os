@@ -153,7 +153,9 @@ def acceptation(groupe: str) -> str:
     return {0: "oui", 1: "non"}.get(r.returncode, "n/d")
 
 
-def calculer() -> list:
+def calculer(avec_acceptation: bool = True) -> list:
+    """``avec_acceptation=False`` (ADCG25, `--du`) : la garde d'acceptation (un
+    sous-processus par groupe, ~309 s mesurées) n'est pas lancée — `--du` ne la lit pas."""
     toutes = ctc.lire_taches()
     ledger = _ledger()
     vivants = claims_vivants()
@@ -165,7 +167,7 @@ def calculer() -> list:
         faits, total = comptes(groupe, toutes, ledger) if groupe else (0, 0)
         pct = int(100 * faits / total) if total else 0
         verifie = derniere_verifie(str(u.get("declencheur") or ""), groupe)
-        accept = acceptation(groupe) if groupe and a_dossier else "n/d"
+        accept = acceptation(groupe) if avec_acceptation and groupe and a_dossier else "n/d"
         if not a_dossier:
             statut = "en cours" if str(u.get("id")) in vivants else "à auditer"
         else:
@@ -209,7 +211,7 @@ def cmd_status() -> int:
 
 def cmd_du() -> int:
     dus = []
-    for u in calculer():
+    for u in calculer(avec_acceptation=False):
         if not u["groupe"] or not u["total"]:
             continue
         v = u["verifie"]

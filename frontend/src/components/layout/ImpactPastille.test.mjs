@@ -21,7 +21,14 @@ test('rend NULL en erreur ou avant chargement (jamais de pastille cassée)', () 
 })
 
 test('rend NULL si le parc n’a aucune donnée réelle — jamais un "0" inventé', () => {
-  assert.match(SRC, /if \(productionKwh <= 0 && co2Tonnes <= 0\) return null/)
+  assert.match(SRC, /if \(productionKwh <= 0 && !\(co2Tonnes > 0\)\) return null/)
+})
+
+test('CO₂ null ⇒ aucun segment t CO₂ (jamais un 0 inventé) — AMON109', () => {
+  assert.doesNotMatch(SRC, /= Number\(data\.total_co2_tonnes\) \|\| 0/)
+  assert.match(SRC, /data\.total_co2_tonnes == null \? null :/)
+  assert.match(SRC, /co2Tonnes == null \? '' : ` · \$\{formatNumber\(co2Tonnes/)
+  assert.match(SRC, /MWh\$\{co2\}`/)
 })
 
 test('affiche les MWh cumulés ET les tonnes de CO₂ évitées', () => {

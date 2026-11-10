@@ -12,6 +12,7 @@ processus-ci : seul un sous-processus rejoue honnêtement un démarrage).
 Test-du-test : décommenter ``EMAIL_BACKEND`` dans ``.env.example`` ⇒ échec.
 """
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -83,6 +84,21 @@ class EnvExempleTests(SimpleTestCase):
             'prod reste en commentaire (ADEP8).')
         self.assertNotIn('SENDGRID_API_KEY', self.valeurs)
         self.assertNotIn('BREVO_API_KEY', self.valeurs)
+
+    def test_chaque_variable_minio_est_lue(self):
+        """ADCG43 — toute clé ``MINIO_*`` de l'exemple a un lecteur réel
+        (``os.environ``/``os.getenv`` sous backend/, ``${CLE`` d'un compose) :
+        jamais une clé que l'opérateur croit lue alors que rien ne la lit."""
+        racine = self.path.parent
+        textes = [p.read_text(encoding='utf-8', errors='replace')
+                  for p in (racine / 'backend').rglob('*.py') if 'tests' not in p.parts]
+        textes += [p.read_text(encoding='utf-8') for p in racine.glob('docker-compose*.yml')]
+        sans_lecteur = [cle for cle in self.valeurs if cle.startswith('MINIO_') and not any(
+            re.search(r"os\.(environ\.get\(|getenv\(|environ\[)\s*['\"]%s['\"]" % cle, t)
+            or '${' + cle in t for t in textes)]
+        self.assertEqual(sans_lecteur, [])
+        self.assertIn('MINIO_ROOT_USER / MINIO_ROOT_PASSWORD',
+                      self.path.read_text(encoding='utf-8'))
 
     def test_env_exemple_backend_console(self):
         self.assertEqual(self._charger(), CONSOLE)

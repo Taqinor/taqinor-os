@@ -45,6 +45,11 @@ class ManifesteTests(unittest.TestCase):
         for job, rows in ci_guards.GARDES.items():
             self.assertGreaterEqual(len(rows), 30, f"{job} : liste anormalement courte")
 
+    def test_methode_d_audit_cablee_dans_stage_names(self):
+        """ADCG78 — un SKILL.md d'audit au-delà de 80 lignes doit rougir stage-names."""
+        commandes = [c for _n, c, _wd in ci_guards.gardes_de("stage-names")]
+        self.assertIn("python scripts/check_audit_dossier.py --methode", commandes)
+
     def test_chaque_commande_designe_un_script_ou_module_existant(self):
         for job, rows in ci_guards.GARDES.items():
             for nom, commande, wd in rows:
@@ -84,7 +89,8 @@ class ManifesteTests(unittest.TestCase):
                 vues[cle] = job
 
     def test_filtre_only(self):
-        rows = ci_guards.gardes_de("stage-names", only="codemap_fingerprint")
+        # ADCG65 : `scripts.tests.test_codemap_fingerprint` contient aussi « codemap_fingerprint ».
+        rows = ci_guards.gardes_de("stage-names", only="codemap_fingerprint.py --check")
         self.assertEqual(len(rows), 1)
         with self.assertRaises(SystemExit):
             ci_guards.gardes_de("stage-names", only="garde-qui-n-existe-pas")

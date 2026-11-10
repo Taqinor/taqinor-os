@@ -62,6 +62,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 REGISTRE = ROOT / "docs" / "ownership.yml"
+SECTIONS_OBLIGATOIRES = ("roots", "containers", "exempt", "owners",
+                         "append_only", "plans")
 PARKED_PY = Path("backend") / "django_core" / "core" / "parked.py"
 
 if str(ROOT / "scripts") not in sys.path:
@@ -252,7 +254,14 @@ def charger_registre(chemin: Path = REGISTRE, texte: str | None = None,
                      racine: Path = ROOT) -> Registre:
     if texte is None:
         texte = Path(chemin).read_text(encoding="utf-8")
-    return Registre(PL._MiniYamlParser(texte).parse(), racine, texte)
+    data = PL._MiniYamlParser(texte).parse()
+    # ADCG88 — un registre amputé (coupé, section supprimée) se lisait sans
+    # erreur : chaque section obligatoire doit être présente.
+    manquantes = [k for k in SECTIONS_OBLIGATOIRES if k not in data]
+    if manquantes:
+        raise ValueError("ownership.yml : section(s) obligatoire(s) "
+                         "absente(s) : " + ", ".join(manquantes))
+    return Registre(data, racine, texte)
 
 
 def _cles_dupliquees(texte: str) -> list[str]:
