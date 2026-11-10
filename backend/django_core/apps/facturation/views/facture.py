@@ -21,6 +21,7 @@ from authentication.permissions import (
 )
 from apps.roles.permissions import DroitDeLaGrille  # ASEC50 / D-ASEC-50
 from core.conflit_etat import ConflitEtat
+from core.events import facture_annulee  # ACSV112
 from core.permissions import declared_action_permissions
 
 # ZFAC11 — `arrondir_au_pas` ré-exporté (déplacé dans domain/encaissements.py).
@@ -264,6 +265,7 @@ class FactureViewSet(OrdreTotalMixin, FactureCycleActionsMixin,
                 'effacerait des encaissements réels. Annulez-la ou rejetez '
                 'd\'abord ses paiements.'
             )})
+        pk = instance.pk  # ACSV112 — Django remet ``pk`` à nul à la suppression
         try:
             instance.delete()
         except ProtectedError:
@@ -272,6 +274,8 @@ class FactureViewSet(OrdreTotalMixin, FactureCycleActionsMixin,
                 'avoir, une note de débit ou un paiement du portail client. '
                 'Annulez-la plutôt que de la supprimer.'
             )})
+        instance.pk = pk  # ACSV112 — mêmes abonnés que l'annulation d'un brouillon (sav, installations)
+        facture_annulee.send(sender=Facture, instance=instance, company=instance.company)
 
     def perform_update(self, serializer):
         # Refus d'ÉTAT (facture non brouillon) : 409 ConflitEtat (ENF11).
