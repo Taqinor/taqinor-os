@@ -578,10 +578,44 @@ class WebhookViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
     def deliveries(self, request, pk=None):
         """Liste des 50 dernières livraisons de ce webhook (historique/diagnostic)."""
         instance = self.get_object()
+        from core.archive_union import archive_demandee
+        if archive_demandee(request):
+            return self._deliveries_avec_archive(request, instance)
         qs = WebhookDelivery.objects.filter(
             webhook=instance, company=request.user.company
         ).order_by('-created_at')[:50]
         return Response(WebhookDeliverySerializer(qs, many=True).data)
+
+    def _deliveries_avec_archive(self, request, instance):
+        """NTPLT38 — ``?archive=1`` : UNION livraisons vives +
+        ``WebhookDeliveryArchive`` de CE webhook (lecture seule, même société,
+        keyset NTPLT14). Pas de ``idempotency_key`` dans l'archive (null)."""
+        from core.archive_union import reponse_union_archive
+        from .models import WebhookDeliveryArchive
+
+        def _vif(r):
+            d = dict(WebhookDeliverySerializer(r).data)
+            d['archive'] = False
+            return d
+
+        def _froid(r):
+            return {
+                'id': r.original_id, 'webhook': r.webhook_id,
+                'event': r.event, 'payload': r.payload, 'status': r.status,
+                'response_status': r.response_status, 'error': r.error,
+                'created_at': r.created_at, 'idempotency_key': None,
+                'archive': True,
+            }
+
+        return reponse_union_archive(
+            request,
+            live_qs=WebhookDelivery.objects.filter(
+                webhook=instance, company=request.user.company),
+            archive_qs=WebhookDeliveryArchive.objects.filter(
+                webhook_id=instance.pk),
+            company_id=request.user.company_id,
+            live_ts='created_at', archive_ts='created_at',
+            live_to_dict=_vif, archive_to_dict=_froid)
 
     @action(
         detail=True, methods=['post'],

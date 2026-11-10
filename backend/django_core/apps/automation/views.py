@@ -388,6 +388,46 @@ class AutomationRunViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(status=status)
         return qs
 
+    def list(self, request, *args, **kwargs):
+        """NTPLT38 — ``?archive=1`` : UNION journal vif + ``AutomationRunArchive``
+        (lecture seule, même société, keyset NTPLT14, filtres rule/status
+        conservés). Sans ``archive`` : liste inchangée."""
+        from core.archive_union import archive_demandee, reponse_union_archive
+        if not archive_demandee(request):
+            return super().list(request, *args, **kwargs)
+        from .models import AutomationRunArchive
+        params = request.query_params
+        live = self.get_queryset()
+        froid = AutomationRunArchive.objects.all()
+        rule = _rule_ou_400(params)
+        if rule is not None:
+            froid = froid.filter(rule_id=rule)
+        if params.get('status'):
+            froid = froid.filter(status=params['status'])
+        rules = dict(AutomationRule.objects.filter(
+            company=request.user.company).values_list('pk', 'nom'))
+
+        def _vif(r):
+            d = dict(AutomationRunSerializer(r).data)
+            d['archive'] = False
+            return d
+
+        def _froid(r):
+            return {
+                'id': r.original_id, 'rule': r.rule_id,
+                'rule_nom': rules.get(r.rule_id),
+                'target_model': r.target_model, 'target_id': r.target_id,
+                'status': r.status, 'status_display': r.status,
+                'message': r.message, 'timestamp': r.timestamp,
+                'archive': True,
+            }
+
+        return reponse_union_archive(
+            request, live_qs=live, archive_qs=froid,
+            company_id=request.user.company_id,
+            live_ts='timestamp', archive_ts='timestamp',
+            live_to_dict=_vif, archive_to_dict=_froid)
+
 
 @extend_schema_view(list=extend_schema(parameters=[_STATUS]))
 class AutomationApprovalViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
