@@ -201,6 +201,8 @@ jobs:
       yanbow: ${{ steps.detect.outputs.yanbow }}
       fastapi: ${{ steps.detect.outputs.fastapi }}
       code: ${{ steps.detect.outputs.code }}
+      # ADCG72 — un manifeste de dependances a change : lane `dependency-audit`.
+      deps: ${{ steps.detect.outputs.deps }}
       # CI-5MIN (23/10/2026) — paquets d'API modifies (portee du fuzz PR),
       # calcules UNE fois ici au lieu d'une fois par tranche `api-fuzz-pr`.
       fuzz_owners: ${{ steps.detect.outputs.fuzz_owners }}
@@ -248,6 +250,7 @@ jobs:
         run: |
           set -euo pipefail
           backend=false; frontend=false; web=false; yanbow=false; fastapi=false
+          deps=false
           run_all=false
 
           if [ "$EVENT_NAME" = "pull_request" ]; then
@@ -275,6 +278,7 @@ jobs:
           if [ "$run_all" = true ]; then
             echo "Could not resolve a precise diff range — running the FULL suite (fail-open)."
             backend=true; frontend=true; web=true; yanbow=true; fastapi=true
+            deps=true
           else
             changed="$(git diff --name-only "$base" "$head")"
             echo "Changed files between ${base} and ${head}:"
@@ -348,6 +352,11 @@ jobs:
             # ENF11 — configuration du fuzz API (racine) : lue par le job
             # `api-fuzz-pr`, qui ne tourne que sur backend == true.
             grep -qE '^schemathesis\.toml$' <<< "$changed" && backend=true || true
+            # ADCG72 — baseline bandit et regles semgrep (racine) : lues par les
+            # lanes `bandit` / `semgrep`, qui tournent sur backend == true.
+            grep -qE '^(\.bandit\.baseline$|\.semgrep/)' <<< "$changed" && backend=true || true
+            # ADCG72 — manifestes de dependances : lane `dependency-audit` (CVE).
+            grep -qE '^(backend/django_core/requirements\.txt|frontend/package(-lock)?\.json|scripts/check_cve_severite\.py|\.github/workflows/dependency-audit\.yml)$' <<< "$changed" && deps=true || true
             # Everything else (docs/**, *.md, top-level state files, etc.)
             # affects none of the heavy jobs — only the always-on stage-names
             # guard, which is not gated here.
@@ -403,6 +412,7 @@ jobs:
           fi
           if [ -n "$reused_run" ]; then
             backend=false; frontend=false; web=false; yanbow=false; fastapi=false; code=false
+            deps=false
             fuzz_owners=""
             echo "Merge queue : resultat repris du run PR ${reused_run} (meme arbre) - lanes lourdes sautees." | tee -a "$GITHUB_STEP_SUMMARY"
           fi
@@ -430,9 +440,11 @@ jobs:
             echo "fuzz_owners=$fuzz_owners"
             echo "reused_run=$reused_run"
             echo "allege=$allege"
+            echo "deps=$deps"
           } >> "$GITHUB_OUTPUT"
           echo "Resolved -> backend=$backend frontend=$frontend web=$web yanbow=$yanbow fastapi=$fastapi e2e(code)=$code"
           echo "Paquets d'API modifiés (fuzz PR) : ${fuzz_owners:-aucun}"
+          echo "Manifestes de dependances modifies (dependency-audit) : $deps"
 
   # ---------------------------------------------------------------------------
   # WOW-CI RONDE 5 (20/08/2026) — L'IMAGE CI BACKEND PRE-CONSTRUITE.
@@ -708,7 +720,7 @@ jobs:
   # (backend=false), ce qui conserve la sémantique « un check requis sauté
   # compte comme réussi » du filtre de chemins.
   backend-lint:
-    needs: [changes, ci-image-check, backend-lint-fast, backend-openapi]
+    needs: [changes, ci-image-check, backend-lint-fast, backend-openapi, bandit, semgrep, dependency-audit]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
@@ -735,8 +747,99 @@ jobs:
           echo "backend-lint-fast=${{ needs.backend-lint-fast.result }} backend-openapi=${{ needs.backend-openapi.result }}"
           echo "Une lane backend-lint n'est pas passée — voir les jobs ci-dessus."
           exit 1
+      # ADCG72 (C-ADCG-039) — SAST et audit CVE bloquent la fusion : leur échec
+      # (ou annulation) rougit ce check REQUIS ; un saut par filtre reste vert.
+      - name: Fail if a security lane (bandit / semgrep / dependency-audit) failed
+        if: ${{ needs.bandit.result == 'failure' || needs.bandit.result == 'cancelled' || needs.semgrep.result == 'failure' || needs.semgrep.result == 'cancelled' || needs.dependency-audit.result == 'failure' || needs.dependency-audit.result == 'cancelled' }}
+        run: |
+          echo "bandit=${{ needs.bandit.result }} semgrep=${{ needs.semgrep.result }} dependency-audit=${{ needs.dependency-audit.result }}"
+          exit 1
       - name: All backend-lint lanes passed (or were skipped)
-        run: echo "backend-lint-fast=${{ needs.backend-lint-fast.result }} backend-openapi=${{ needs.backend-openapi.result }} — gate OK."
+        run: echo "backend-lint-fast=${{ needs.backend-lint-fast.result }} backend-openapi=${{ needs.backend-openapi.result }} bandit=${{ needs.bandit.result }} semgrep=${{ needs.semgrep.result }} dependency-audit=${{ needs.dependency-audit.result }} — gate OK."
+
+  # ---------------------------------------------------------------------------
+  # ADCG72 (C-ADCG-039, 10/11/2026) — SAST (bandit, semgrep) et audit CVE
+  # rattachés au check REQUIS `backend-lint` (patron : `fastapi-security` dans
+  # `backend-tests`, ADEP15). Jusque-là dans `security-sast.yml`, `semgrep.yml`
+  # et `dependency-audit.yml`, hors checks requis et hors `merge_group` : leur
+  # rouge n'empêchait aucune fusion. Seuils et baselines inchangés ;
+  # `dependency-audit.yml` reste l'UNIQUE définition de l'audit CVE (appelé ici
+  # en `workflow_call`, il garde son passage hebdomadaire et son issue).
+  #
+  # bandit — NTPLT52 / ENF12 : `-ll` = MEDIUM+ ; toute découverte ABSENTE de la
+  # baseline `.bandit.baseline` fait échouer. La baseline (MEDIUM historiques)
+  # est une DETTE à ramener à zéro : ne jamais la régénérer pour faire passer
+  # une nouvelle découverte (régénération Linux seulement, après avoir CORRIGÉ
+  # des entrées : `bandit -r backend/django_core -ll -f json`).
+  # ---------------------------------------------------------------------------
+  bandit:
+    needs: changes
+    if: ${{ needs.changes.outputs.backend == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install bandit
+        run: pip install bandit==1.9.4
+      - name: Bandit (aucune découverte MEDIUM+ hors baseline)
+        run: |
+          set -o pipefail
+          bandit -r backend/django_core -ll -b .bandit.baseline \
+            -f screen 2>&1 | tee bandit-report.txt
+      - name: Upload bandit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-report
+          path: bandit-report.txt
+
+  # semgrep — NTPLT53 / ENF12 : pack Django public + règles MAISON
+  # (.semgrep/taqinor.yml : pas de SQL formaté / objects.raw, pas de `company`
+  # lu du body, pas de count()+1 pour une référence, pas de chemin PDF devis
+  # hors /proposal — RÈGLE #4). Seuil : ZÉRO découverte (`--error`), aucune
+  # baseline. Installé depuis PyPI (pas d'image Docker Hub : limite anonyme).
+  semgrep:
+    needs: changes
+    if: ${{ needs.changes.outputs.backend == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Installer semgrep
+        run: pip install 'semgrep>=1.90,<2'
+      - name: Semgrep (pack Django + règles maison, zéro découverte)
+        run: |
+          semgrep --config p/django --config .semgrep/ --metrics=off \
+            --error --sarif-output=semgrep.sarif backend/django_core
+      - name: Upload SARIF
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-sarif
+          path: semgrep.sarif
+
+  # dependency-audit — NTPLT54 / ENF12 / ADCG62 : `.github/workflows/
+  # dependency-audit.yml` (pip-audit + garde HIGH/CRITICAL, npm audit) sur
+  # toute PR / entrée de file qui touche un manifeste (`changes.deps`).
+  # `issues: write` est exigé par le workflow appelé ; son étape d'issue ne
+  # tourne qu'en `schedule`.
+  dependency-audit:
+    needs: changes
+    if: ${{ needs.changes.outputs.deps == 'true' }}
+    permissions:
+      contents: read
+      issues: write
+    uses: ./.github/workflows/dependency-audit.yml
 
   # WOW6 — the fast backend suite is sharded across free public-repo runners
   # (matrix legs run concurrently, each on its own 4-vCPU runner + Postgres). The
@@ -2314,6 +2417,9 @@ jobs:
       - stage-names
       - web-build-test
       - e2e-shard
+      - bandit
+      - semgrep
+      - dependency-audit
     runs-on: ubuntu-latest
     steps:
       - name: Report job results
@@ -2331,6 +2437,7 @@ jobs:
           echo "e2e-shard=${{ needs.e2e-shard.result }}"
           echo "stage-names=${{ needs.stage-names.result }}"
           echo "web-build-test=${{ needs.web-build-test.result }}"
+          echo "bandit=${{ needs.bandit.result }} semgrep=${{ needs.semgrep.result }} dependency-audit=${{ needs.dependency-audit.result }}"
       - name: Fail if any required job failed or was cancelled
         if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
         run: |

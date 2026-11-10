@@ -207,7 +207,9 @@ _ALL_JOBS = ("changes", "ci-image-check", "backend-lint-fast", "backend-openapi"
              # « skipped » par défaut = hit exact du cache (le cas courant).
              "backend-testdb",
              # ENF11 — sous-ensemble PR du fuzz API (suivi par `backend-tests`).
-             "api-fuzz-pr")
+             "api-fuzz-pr",
+             # ADCG72 — SAST + audit CVE (suivis par `backend-lint`).
+             "bandit", "semgrep", "dependency-audit")
 
 
 def _expr(cond, results, outputs):
@@ -320,6 +322,40 @@ class AgregateursChangesTests(unittest.TestCase):
                 results["api-fuzz-pr"] = resultat
                 self.assertEqual(_verdict(self.jobs, "backend-tests", results, out),
                                  attendu)
+
+    def test_backend_lint_suit_bandit_semgrep_et_audit_cve(self):
+        """ADCG72 (C-ADCG-039) — bandit, semgrep et l'audit CVE sont dans les
+        `needs` du check REQUIS `backend-lint` (et de `ci-gate`) : leur échec le
+        rougit, leur saut par filtre le laisse vert. Test-du-test : retirer
+        `bandit` des `needs` de `backend-lint` fait échouer ce test."""
+        lanes = ("bandit", "semgrep", "dependency-audit")
+        for lane in lanes:
+            self.assertIn(lane, self.jobs["backend-lint"]["needs"])
+            self.assertIn(lane, self.jobs["ci-gate"]["needs"])
+        self.assertIn("backend == 'true'", self.jobs["bandit"]["if"])
+        self.assertIn("backend == 'true'", self.jobs["semgrep"]["if"])
+        self.assertIn("deps == 'true'", self.jobs["dependency-audit"]["if"])
+        self.assertEqual(self.jobs["dependency-audit"]["uses"], "./.github/workflows/dependency-audit.yml")
+        results, out = self._scenario("success", {"backend": "true", "code": "true", "deps": "true"})
+        results.update({"backend-lint-fast": "success", "backend-openapi": "success"})
+        for lane in lanes:
+            for resultat, attendu in (("failure", "failure"), ("cancelled", "failure"),
+                                      ("success", "success"), ("skipped", "success")):
+                with self.subTest(lane=lane, resultat=resultat):
+                    essai = dict(results, **{lane: resultat})
+                    self.assertEqual(_verdict(self.jobs, "backend-lint", essai, out), attendu)
+
+    def test_manifestes_et_baselines_sast_declenchent_leurs_lanes(self):
+        script = _detect_step_script()
+        regle = re.search(r"grep -qE '([^']+)' <<< \"\$changed\" && deps=true", script)
+        self.assertIsNotNone(regle, "ci.yml : aucune regle `deps=true` dans detect")
+        for chemin in ("backend/django_core/requirements.txt", "frontend/package-lock.json",
+                       "frontend/package.json", "scripts/check_cve_severite.py"):
+            self.assertRegex(chemin, regle.group(1))
+        self.assertNotRegex("backend/django_core/apps/crm/models.py", regle.group(1))
+        for chemin in (".bandit.baseline", ".semgrep/taqinor.yml"):
+            self.assertTrue(_resolve(_parse_rules(script), [chemin])["backend"], chemin)
+        self.assertFalse(_resolve(_parse_rules(script), [".gitignore"])["backend"])
 
     def test_lane_api_fuzz_pr_declaree(self):
         job = self.jobs["api-fuzz-pr"]

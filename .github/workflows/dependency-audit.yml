@@ -19,18 +19,14 @@ name: dependency audit (CVE)
 # follow-redirects 1.16.2 (transitif d'axios).
 #
 # Déclencheurs : hebdomadaire (nouvelles CVE publiées sur un arbre inchangé),
-# toute PR qui modifie un manifeste de dépendances, lancement manuel.
+# lancement manuel, et `workflow_call` : ADCG72 — toute PR / entrée de merge
+# queue qui modifie un manifeste l'appelle depuis `ci.yml` (job
+# `dependency-audit`, suivi par le check REQUIS `backend-lint`).
 on:
   workflow_dispatch: {}
+  workflow_call: {}
   schedule:
     - cron: '0 6 * * 1'   # lundi 06:00 UTC, hebdomadaire
-  pull_request:
-    paths:
-      - 'backend/django_core/requirements.txt'
-      - 'frontend/package.json'
-      - 'frontend/package-lock.json'
-      - 'scripts/check_cve_severite.py'
-      - '.github/workflows/dependency-audit.yml'
 
 permissions:
   contents: read
