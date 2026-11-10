@@ -96,6 +96,25 @@ class TestSurfaceEnumeration(unittest.TestCase):
         self.assertNotIn("demo/tests/", out)
         self.assertNotIn("demo/migrations/", out)
 
+    def test_viewset_hors_fichier_vues_lu(self):
+        """APFS123 — une classe de vue d'un module quelconque est lue (pas
+        seulement ses @api_view) ; sa copie sous tests/ ne l'est pas. Mutant :
+        remettre la lecture « fonctions seules » de ces fichiers."""
+        import contextlib
+        import io
+        src = ("from rest_framework import viewsets\n\n"
+               "class DevisViewSet(viewsets.ModelViewSet):\n"
+               "    queryset = Devis.objects.all()\n")
+        (self.app_dir / "pipeline.py").write_text(src, encoding="utf-8")
+        (self.app_dir / "tests").mkdir()
+        (self.app_dir / "tests" / "pipeline.py").write_text(src, encoding="utf-8")
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            cti.main([])
+        out = sortie.getvalue()
+        self.assertIn("[COMPANY_FILTER_MISSING]", out)
+        self.assertIn("apps/demo/pipeline.py::DevisViewSet", out)
+        self.assertNotIn("demo/tests/", out)
+
 
 def _view_codes(src):
     with tempfile.NamedTemporaryFile(
