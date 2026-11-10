@@ -14,7 +14,7 @@ Run :
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from authentication.models import Company
 from apps.crm.models import Client
@@ -87,6 +87,17 @@ class XSAV4NotificationsClientTest(TestCase):
         self.assertNotIn('1234.56', wa_corps)
         self.assertNotIn('1234.56', email['corps'])
         self.assertNotIn('1234.56', email['sujet'])
+
+    @override_settings(PUBLIC_BASE_URL='https://api.taqinor.ma')
+    def test_lien_suivi_absolu_hors_requete(self):
+        # ASOC26 — hors requête (maintenance, intervention terminée), le lien
+        # /suivi/<jeton> du message client commence par la base publique.
+        from apps.sav.notifications_client import build_ticket_transition_message
+        wa_corps, email = build_ticket_transition_message(
+            self.ticket, 'ticket_planifie')
+        attendu = f'https://api.taqinor.ma/suivi/{self.ticket.share_token}'
+        self.assertIn(attendu, wa_corps)
+        self.assertIn(attendu, email['corps'])
 
     def test_migration_defaut_off(self):
         """Migration additive : le champ existe, défaut False (comportement
