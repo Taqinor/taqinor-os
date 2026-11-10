@@ -167,12 +167,15 @@ _SELECTEURS_SOCIETE = {"active_companies", "active_company_ids"}
 
 
 def modeles_a_company(scan_root: Path = None) -> set:
-    """Noms des classes de modèle qui déclarent une FK ``company`` (AST des models)."""
+    """Noms des classes de modèle qui déclarent une FK ``company`` (AST des models)
+    ou dont la chaîne de bases atteint ``TenantModel`` (APFS120, fermeture transitive
+    sur une table nom → bases lue dans les models et dans ``core/**/*.py``)."""
     scan_root = SCAN_ROOT if scan_root is None else scan_root
-    noms = set()
+    noms, bases = set(), {}
     if not scan_root.is_dir():
         return noms
-    for path in sorted(scan_root.rglob("models*.py")) + sorted(scan_root.rglob("models/*.py")):
+    modeles = sorted(scan_root.rglob("models*.py")) + sorted(scan_root.rglob("models/*.py"))
+    for path in modeles + sorted((scan_root.parent / "core").rglob("*.py")):
         if _is_test_path(path):
             continue
         try:
@@ -180,7 +183,9 @@ def modeles_a_company(scan_root: Path = None) -> set:
         except (SyntaxError, UnicodeDecodeError):
             continue
         for classe in [n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)]:
-            for stmt in classe.body:
+            bases.setdefault(classe.name, set()).update(
+                getattr(b, "id", getattr(b, "attr", "")) for b in classe.bases)
+            for stmt in classe.body if path in modeles else ():
                 cible = None
                 if isinstance(stmt, ast.Assign) and stmt.targets:
                     cible = stmt.targets[0]
@@ -193,7 +198,13 @@ def modeles_a_company(scan_root: Path = None) -> set:
                         and getattr(valeur.func, "attr", getattr(valeur.func, "id", ""))
                         == "ForeignKey"):
                     noms.add(classe.name)
-    return noms
+    heritiers = {"TenantModel"}
+    while True:
+        neufs = {n for n, b in bases.items() if b & heritiers} - heritiers
+        if not neufs:
+            break
+        heritiers |= neufs
+    return noms | (heritiers - {"TenantModel"})
 
 
 def _est_filtre_societe_queryset(n: ast.Call, modeles: set) -> bool:
