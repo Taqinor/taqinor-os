@@ -161,6 +161,28 @@ class OmbrageEtudeDevisTest(BaseApiCalepinage):
             self.assertIsNone(perte_ombrage_du_devis(self.devis))
             self.assertEqual(facteur_production_saison(self.devis), 1.0)
 
+    def test_devis_envoye_lit_la_perte_rangee(self, *_m):
+        """ACON20 — un devis ENVOYÉ lit la perte RANGÉE à son bloc horaire,
+        même quand la simulation vivante du calepinage a changé ; sans
+        ``ombrage`` rangé : ``None`` ; brouillon : la perte vivante."""
+        from apps.ventes.horaire.ombrage import perte_ombrage_du_devis
+
+        layout = copy.deepcopy(self.calepinage.roof_layout)
+        layout['zones'][0]['geometry']['count'] = 3
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(
+            roof_layout=layout)
+        Devis.objects.filter(pk=self.devis.pk).update(
+            statut=Devis.Statut.ENVOYE, etude_params={
+                'etude_horaire': {'ombrage': {'perte_pct': 8.0}}})
+        self.devis.refresh_from_db()
+        with patch_materiel():
+            self.assertEqual(perte_ombrage_du_devis(self.devis), 8.0)
+        Devis.objects.filter(pk=self.devis.pk).update(
+            etude_params={'etude_horaire': {}})
+        self.devis.refresh_from_db()
+        with patch_materiel():
+            self.assertIsNone(perte_ombrage_du_devis(self.devis))
+
     def test_d_res_2710_1_simulation_perimee_aucun_ombrage(self, *_m):
         from apps.ventes.horaire.ombrage import perte_ombrage_du_devis
         layout = copy.deepcopy(self.calepinage.roof_layout)
