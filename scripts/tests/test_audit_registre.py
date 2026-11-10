@@ -162,6 +162,61 @@ class RegistreTests(unittest.TestCase):
         self.depot.verifie("# Vérifie\n**ASTK39 — S1** écart\n")
         self.assertEqual(self.statut()["statut"], "construit")
 
+    def test_verifie_retenu_est_celui_de_l_unite(self):
+        """ADCG103 — `sav` ne prend ni le compte rendu de `chantier-sav` (nom
+        entier) ni un `sav-verifie` marqué d'un autre groupe ; sans marqueur,
+        le nom seul décide."""
+        self.depot.ecrire("docs/audits/unites.yml", """version: 1
+unites:
+
+  - id: J4
+    rang: 1
+    declencheur: sav
+    groupe: ZZA
+    dossier: docs/audits/2026-01-01-truc.md
+
+  - id: X9
+    rang: 2
+    declencheur: chantier-sav
+    groupe: ZZB
+    dossier: docs/audits/2026-01-01-truc.md
+""")
+        self.depot.plan(taches(20, 0, prefixe="ZZA") + taches(20, 0, prefixe="ZZB"))
+        self.depot.ecrire("docs/audits/2026-02-01-sav-verifie.md",
+                          "<!-- verifie | groupe: ZZA | pct: 100 | ecarts_s1_s2: 0 -->\n")
+        self.depot.ecrire("docs/audits/2026-03-01-chantier-sav-verifie.md",
+                          "<!-- verifie | groupe: ZZB | pct: 100 | ecarts_s1_s2: 1 -->\n")
+        self.depot.ecrire("docs/audits/2026-04-01-sav-verifie.md",
+                          "<!-- verifie | groupe: ZZB | pct: 100 | ecarts_s1_s2: 3 -->\n")
+        sav, chantier = ar.calculer()
+        self.assertEqual((sav["verifie"]["fichier"], sav["statut"]),
+                         ("2026-02-01-sav-verifie.md", "vérifié"))
+        self.assertEqual((chantier["verifie"]["fichier"], chantier["statut"]),
+                         ("2026-03-01-chantier-sav-verifie.md", "construit"))
+        self.depot.ecrire("docs/audits/2026-05-01-sav-verifie.md", "# sans marqueur\n")
+        self.assertEqual(ar.calculer()[0]["verifie"]["fichier"], "2026-05-01-sav-verifie.md")
+
+    def test_du_contre_visite_des_correctifs_apres_ecarts_coches(self):
+        """ADCG104 — compte rendu à 1 écart S1-S2 : `--du` annonce la
+        contre-visite une fois le bloc d'écarts tout coché ; tâche ouverte,
+        bloquée, bloc absent ou vide ⇒ absent."""
+        self.depot.verifie("<!-- verifie | groupe: ZZTST | pct: 100 | ecarts_s1_s2: 1 -->\n")
+        entete = "\n### ZZTST — ÉCARTS vérifie 2026-02-01 · format v3\n"
+        attendu = ("ZZTST (T1 truc) : 100 % cochées (22/22) — vérifie dû, contre-visite "
+                   "des correctifs (écarts S1-S2 du 2026-02-01 tous cochés)")
+        for bloc, present in (
+                (entete + "- [x] ZZTST21 — x. Files: `a.py`\n- [ ] ZZTST22 — x. Files: `a.py`\n", False),
+                (entete + "- [x] ZZTST21 — x. Files: `a.py`\n- [x] ZZTST22 — x. Files: `a.py`\n", True),
+                (entete + "- [x] ZZTST21 — x. Files: `a.py`\n- [BLOCKED: x] ZZTST22 — x\n", False),
+                (entete + "\n## Suite\n- [x] ZZTST21 — x. Files: `a.py`\n- [x] ZZTST22 — x. Files: `a.py`\n",
+                 False),
+                ("\n- [x] ZZTST21 — x. Files: `a.py`\n- [x] ZZTST22 — x. Files: `a.py`\n", False)):
+            with self.subTest(bloc=bloc, present=present):
+                self.depot.plan(taches(20, 0) + bloc)
+                _, texte = sortie(ar.cmd_du)
+                self.assertEqual(attendu in texte, present, texte)
+                self.assertEqual("ZZTST" in texte, present, texte)
+
     def test_sans_dossier_a_auditer(self):
         (self.depot.racine / "docs/audits/2026-01-01-truc.md").unlink()
         self.depot.plan(taches(1, 1))

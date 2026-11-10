@@ -746,6 +746,43 @@ class LEtudeDeDimensionnementResteInoffensive(_Base):
             (devis.statut, devis.lignes.count(), devis.total_ttc,
              devis.etude_params), avant)
 
+    def test_le_balayage_lit_les_bornes_au_niveau_du_devis(self):
+        """AMOT130 (C-AMOT-VER5-121) — chaque lecture de bornes batterie du
+        balayage des tailles reçoit LE devis, par ses deux appelants
+        (``rafraichir_dimensionnement_devis`` et ``_dimensionnement_variante``) :
+        un devis envoyé au niveau 11 garde les bornes d'hier. Mutant : ôter
+        ``devis=`` à l'un des trois maillons ⇒ ``None`` reçu, rouge."""
+        from apps.ventes.horaire import batterie_lignes as module_bl
+        from apps.ventes.profils_comparatifs import _dimensionnement_variante
+        # Une VILLE : sans elle, pas de productible ⇒ ``balayer_tailles`` rend
+        # ``[]`` avant toute composition et l'espion ne verrait jamais rien.
+        lead = self._lead(email='amot130@example.com', ville='Casablanca',
+                          facture_hiver=Decimal('1200'))
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-L2OPT-AMOT130',
+            client=self.client_obj, lead=lead,
+            statut=Devis.Statut.ENVOYE, created_by=self.user,
+            mode_installation=Devis.ModeInstallation.RESIDENTIEL)
+        produit = self.produits['PAN550']
+        LigneDevis.objects.create(
+            devis=devis, produit=produit, designation=produit.nom,
+            quantite=Decimal('8'), prix_unitaire=Decimal('1100'))
+        # Import DANS le corps de ``balayer_tailles`` : on espionne le module SOURCE.
+        vrai = module_bl.puissances_batterie_des_lignes
+        recus = []
+
+        def espion(*args, **kwargs):
+            recus.append(getattr(kwargs.get('devis'), 'pk', None))
+            return vrai(*args, **kwargs)
+
+        for appel in (lambda: services.rafraichir_dimensionnement_devis(devis, force=True),
+                      lambda: _dimensionnement_variante(devis, 'jour')):
+            recus.clear()
+            with patch.object(module_bl, 'puissances_batterie_des_lignes', espion):
+                appel()
+            self.assertTrue(recus, 'le balayage ne lit aucune borne batterie')
+            self.assertEqual(set(recus), {devis.pk})
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 6. LA DOCTRINE D'OPTIMUM (25/08/2026)

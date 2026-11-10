@@ -505,6 +505,8 @@ LIBELLES_OPTION_AVEC = {
                     "ar": "معدات خاصة بهذا الخيار"},
     "economie": {"fr": "&Eacute;conomie annuelle HT", "en": "Annual saving excl. VAT",
                  "ar": "التوفير السنوي دون ضريبة"},
+    "economie_ttc": {"fr": "&Eacute;conomie annuelle TTC", "en": "Annual saving incl. VAT",  # AMOT129
+                     "ar": "التوفير السنوي مع احتساب الضريبة"},
     "retour": {"fr": "Retour sur investissement", "en": "Payback",
                "ar": "مدة استرداد الاستثمار"},
     "ans": {"fr": "ans", "en": "years", "ar": "سنوات"},
@@ -566,8 +568,9 @@ def bloc_option_avec(d, L, fmt_mad, couleurs):
     valeur = valeur_option_avec(d) or {}
     lignes_valeur = ""
     if valeur.get("economie_annuelle_mad"):
-        lignes_valeur += (f'<tr><td>{t("economie")}</td>'
-                          f'<td>{fmt_mad(valeur["economie_annuelle_mad"])} MAD</td></tr>')
+        ttc = valeur.get("economie_annuelle_ttc_mad")  # AMOT129 — base « ttc » servie par valeur_option_avec
+        lignes_valeur += (f'<tr><td>{t("economie_ttc" if ttc else "economie")}</td>'
+                          f'<td>{fmt_mad(ttc or valeur["economie_annuelle_mad"])} MAD</td></tr>')
     if valeur.get("retour_simple_ans"):
         lignes_valeur += (f'<tr><td>{t("retour")}</td><td>'
                           f'{decimale(str(valeur["retour_simple_ans"]))} {t("ans")}</td></tr>')

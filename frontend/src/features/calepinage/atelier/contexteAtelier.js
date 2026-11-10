@@ -1,5 +1,6 @@
 // SPL213 — mappeurs purs de l'atelier 3D, déplacés VERBATIM depuis
 // pages/ventes/ToitureDesign.jsx (move only : seul `export` a été ajouté).
+import { refusServeur } from '../commun/refusServeur.js'
 
 // Convertit un data URL PNG en Blob (upload multipart de la 3D).
 export function dataUrlToBlob(dataUrl) {
@@ -248,7 +249,9 @@ export function httpMessage(status, responseData) {
     if (detail) return detail
     const errors = responseData?.errors
     if (Array.isArray(errors) && errors.length > 0) return errors[0]
-    return 'Composition invalide — vérifiez le catalogue produits puis réessayez.'
+    // ACAL369 — refus à champ nommé ({hors_reseau}…) : UN décodeur, celui du module (ACAL279).
+    return refusServeur({ response: { data: responseData } }).message
+      || 'Composition invalide — vérifiez le catalogue produits puis réessayez.'
   }
   // L2 — sync-layout renvoie désormais un 400 explicite quand la composition posée est
   // incompatible avec l'onduleur (même patron que le 422 ci-dessus) : le message SERVEUR

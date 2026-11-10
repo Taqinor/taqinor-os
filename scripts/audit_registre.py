@@ -99,25 +99,32 @@ def comptes(groupe: str, toutes: list, ledger: dict) -> tuple:
 
 
 def derniere_verifie(mot: str, groupe: str):
-    """Dernier dossier `<date>-<mot>-verifie.md` : {fichier, date, pct, ecarts} ou None."""
-    candidats = sorted((ROOT / "docs" / "audits").glob(f"*-{mot}-verifie.md"))
-    if not candidats:
-        return None
-    chemin = candidats[-1]
-    texte = chemin.read_text(encoding="utf-8", errors="replace")
-    pct = None
-    ecarts = None
-    m = _MARQUEUR.search(texte)
-    if m:
-        corps = m.group("corps")
-        p = re.search(r"pct:\s*(\d+)", corps)
-        e = re.search(r"ecarts_s1_s2:\s*(\d+)", corps)
-        pct = int(p.group(1)) if p else None
-        ecarts = int(e.group(1)) if e else None
-    if ecarts is None:
-        ecarts = len(_ECART.findall(texte))
-    return {"fichier": chemin.name, "date": chemin.name[:10], "pct": pct,
-            "ecarts": ecarts}
+    """Dernier dossier `<date>-<mot>-verifie.md` : {fichier, date, pct, ecarts} ou None.
+
+    ADCG103 — nom ENTIER (`sav` n'attrape pas `chantier-sav`) ; un marqueur
+    d'un AUTRE `groupe:` écarte le fichier ; sans marqueur, le nom seul décide."""
+    nom = re.compile(rf"^\d{{4}}-\d{{2}}-\d{{2}}-{re.escape(mot)}-verifie\.md$")
+    for chemin in sorted((ROOT / "docs" / "audits").glob("*-verifie.md"), reverse=True):
+        if not nom.match(chemin.name):
+            continue
+        texte = chemin.read_text(encoding="utf-8", errors="replace")
+        pct = None
+        ecarts = None
+        m = _MARQUEUR.search(texte)
+        if m:
+            corps = m.group("corps")
+            g = re.search(r"groupe:\s*([^\s|]+)", corps)
+            if g and groupe and g.group(1) != groupe:
+                continue
+            p = re.search(r"pct:\s*(\d+)", corps)
+            e = re.search(r"ecarts_s1_s2:\s*(\d+)", corps)
+            pct = int(p.group(1)) if p else None
+            ecarts = int(e.group(1)) if e else None
+        if ecarts is None:
+            ecarts = len(_ECART.findall(texte))
+        return {"fichier": chemin.name, "date": chemin.name[:10], "pct": pct,
+                "ecarts": ecarts}
+    return None
 
 
 def _git(*args):
@@ -209,6 +216,27 @@ def cmd_status() -> int:
     return 0
 
 
+def ecarts_tous_coches(groupe: str, date: str) -> bool:
+    """ADCG104 — vrai si les blocs `### <G> — ÉCARTS vérifie <date>` de tous les
+    plans (jusqu'à l'en-tête suivant) portent au moins une tâche, toutes `[x]`."""
+    entete = re.compile(rf"^###\s+{re.escape(groupe)}\s+—\s+ÉCARTS vérifie {re.escape(date)}\b")
+    etats = []
+    for rel in ctc.fichiers_de_plan():
+        lignes = (ROOT / rel).read_text(encoding="utf-8", errors="replace").splitlines()
+        bornes = []
+        for i, ligne in enumerate(lignes, 1):
+            if bornes and len(bornes[-1]) == 1 and ligne.startswith("#"):
+                bornes[-1].append(i)
+            if entete.match(ligne):
+                bornes.append([i])
+        if not bornes:
+            continue
+        for t in ctc.lire_taches([rel]):
+            if any(b[0] < t.ligne < (b[1] if len(b) > 1 else len(lignes) + 1) for b in bornes):
+                etats.append(t.etat.strip().lower())
+    return bool(etats) and all(e == "x" for e in etats)
+
+
 def cmd_du() -> int:
     dus = []
     for u in calculer(avec_acceptation=False):
@@ -217,6 +245,8 @@ def cmd_du() -> int:
         v = u["verifie"]
         if u["pct"] >= SEUIL_CONSTRUIT and not (v and (v["pct"] or 0) >= SEUIL_CONSTRUIT):
             seuil = f"clôture (≥ {SEUIL_CONSTRUIT} %), pas vérifié depuis"
+        elif u["pct"] >= SEUIL_CONSTRUIT and v and v["ecarts"] and ecarts_tous_coches(u["groupe"], v["date"]):
+            seuil = f"contre-visite des correctifs (écarts S1-S2 du {v['date']} tous cochés)"
         elif u["pct"] >= SEUIL_MI_PARCOURS and not v:
             seuil = f"mi-parcours (≥ {SEUIL_MI_PARCOURS} %), jamais vérifié"
         else:
