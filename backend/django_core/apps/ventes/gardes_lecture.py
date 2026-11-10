@@ -36,3 +36,52 @@ class LectureVentesHorsPortail(LectureVentes):
     def has_permission(self, request, view):
         return (is_portal_user(request.user)
                 or super().has_permission(request, view))
+
+
+def lecteur_sans_code_ventes(user):
+    """APFS108/APFS109 — rôle fin non administrateur sans aucun code
+    ``ventes`` (entré par un octroi de lecture, ``installation_voir``)."""
+    from authentication.permissions import codes_du_module
+
+    if (getattr(user, 'is_superuser', False)
+            or getattr(user, 'is_admin_role', False)
+            or not getattr(user, 'role_id', None)):
+        return False
+    return not (codes_du_module('ventes')
+                & set(user.role.permissions or []))
+
+
+#: APFS109 — comment chaque vue « dossier / recette » rejoint SON chantier :
+#: ``('chantier', <champ chantier>)`` ou ``('devis', <champ devis_id>)``.
+CHEMINS_DU_CHANTIER = {
+    'RegulatoryDossierViewSet': ('devis', 'devis_id'),
+    'DossierChecklistItemViewSet': ('devis', 'dossier__devis_id'),
+    'DossierExchangeViewSet': ('devis', 'dossier__devis_id'),
+    'SubventionDossierViewSet': ('devis', 'devis_id'),
+    'Regularisation8221ViewSet': ('devis', 'devis_id'),
+    'CommissioningTestViewSet': ('chantier', 'chantier'),
+    'IVCurveCaptureViewSet': ('chantier', 'recette__chantier'),
+    'AsBuiltPackViewSet': ('chantier', 'chantier'),
+    'AttestationConformiteViewSet': ('chantier', 'chantier'),
+    'TestPerformanceReceptionViewSet': ('chantier', 'chantier'),
+    'AttestationREViewSet': ('chantier', 'chantier'),
+}
+
+
+class BorneAuChantierMixin:
+    """APFS109 (D-APFS-4) — un lecteur entré par l'octroi
+    ``installation_voir`` (sans code ``ventes``) ne voit que les objets de
+    SES chantiers (``apps.installations.selectors.chantiers_visibles``)."""
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = getattr(getattr(self, 'request', None), 'user', None)
+        if user is None or not lecteur_sans_code_ventes(user):
+            return qs
+        from apps.installations.selectors import chantiers_visibles
+
+        genre, champ = CHEMINS_DU_CHANTIER[type(self).__name__]
+        visibles = chantiers_visibles(user)
+        if genre == 'chantier':
+            return qs.filter(**{f'{champ}__in': visibles})
+        return qs.filter(**{f'{champ}__in': visibles.values('devis_id')})

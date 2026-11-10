@@ -11,7 +11,8 @@ from ..openapi_params import choix_requete, entier_requete, qint, qstr
 from rest_framework.parsers import JSONParser
 from rest_framework.exceptions import ValidationError
 
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from authentication.permissions import IsResponsableOrAdmin, LectureDuModule
+from ..gardes_lecture import BorneAuChantierMixin  # APFS109
 from core.viewsets import CompanyScopedModelViewSet  # ARC5
 from ..models import (
     CommissioningTest, IVCurveCapture, AsBuiltPack, AttestationConformite,
@@ -70,7 +71,7 @@ def _refresh_recette_result(recette):
     parameters=[qint('chantier'),
                 qint('devis'),
                 qstr('resultat', enum=CommissioningTest.Resultat.values)]))
-class CommissioningTestViewSet(CompanyScopedModelViewSet):
+class CommissioningTestViewSet(BorneAuChantierMixin, CompanyScopedModelViewSet):
     """FG274 — CRUD fiche de recette ; résultat dérivé serveur.
 
     ARC5 — sweep TenantMixin : base transverse unique (idem pour les 6 viewsets
@@ -87,7 +88,7 @@ class CommissioningTestViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]  # APFS109
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -154,7 +155,7 @@ _DEFAUT_VRAI = ['1', 'true', 'True']
 @extend_schema_view(list=extend_schema(
     parameters=[qint('recette'),
                 qstr('defaut', enum=_DEFAUT_VRAI)]))
-class IVCurveCaptureViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
+class IVCurveCaptureViewSet(BorneAuChantierMixin, CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG275 — CRUD courbes I-V ; écart & défaut dérivés serveur."""
     parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
 
@@ -163,7 +164,7 @@ class IVCurveCaptureViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-de
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]  # APFS109
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -272,7 +273,7 @@ def _resolve_company_from_links(user, *objects):
 
 @extend_schema_view(list=extend_schema(
     parameters=[qint('chantier')]))
-class AsBuiltPackViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
+class AsBuiltPackViewSet(BorneAuChantierMixin, CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG276 — CRUD pack documentaire as-built ; ``company`` forcée serveur."""
     parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
 
@@ -282,7 +283,7 @@ class AsBuiltPackViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessu
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]  # APFS109
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -318,7 +319,7 @@ class AsBuiltPackViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessu
 @extend_schema_view(list=extend_schema(
     parameters=[qint('chantier'),
                 qstr('statut', enum=AttestationConformite.Statut.values)]))
-class AttestationConformiteViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
+class AttestationConformiteViewSet(BorneAuChantierMixin, CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG277 — CRUD attestation de conformité électrique."""
     parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
 
@@ -328,7 +329,7 @@ class AttestationConformiteViewSet(CompanyScopedModelViewSet):  # ARC5 (voir not
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]  # APFS109
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -367,7 +368,7 @@ class AttestationConformiteViewSet(CompanyScopedModelViewSet):  # ARC5 (voir not
 @extend_schema_view(list=extend_schema(
     parameters=[qint('chantier'),
                 qstr('verdict', enum=TestPerformanceReception.Verdict.values)]))
-class TestPerformanceReceptionViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
+class TestPerformanceReceptionViewSet(BorneAuChantierMixin, CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG278 — CRUD test PR de réception ; pr/ecart/verdict dérivés serveur."""
     parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
 
@@ -377,7 +378,7 @@ class TestPerformanceReceptionViewSet(CompanyScopedModelViewSet):  # ARC5 (voir 
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]  # APFS109
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -462,7 +463,7 @@ class TestPerformanceReceptionViewSet(CompanyScopedModelViewSet):  # ARC5 (voir 
 @extend_schema_view(list=extend_schema(
     parameters=[qint('chantier'),
                 qstr('statut', enum=AttestationRE.Statut.values)]))
-class AttestationREViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
+class AttestationREViewSet(BorneAuChantierMixin, CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG287 — CRUD attestation d'énergie renouvelable ; CO₂ dérivé serveur."""
     parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
 
@@ -472,7 +473,7 @@ class AttestationREViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-des
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]  # APFS109
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
