@@ -478,3 +478,12 @@ class EventType(models.TextChoices):
     # sur le portail (``apps.portail.services.notifier_demande_client``).
     PORTAIL_DEMANDE_CLIENT = (
         'portail_demande_client', 'Demande ou dépôt du client (portail)')
+    # ASOC20 — alertes qui partaient sous ``digest`` (une préférence
+    # « Récapitulatif » coupée les taisait) : incohérence détectée par l'audit
+    # nocturne (ventes.coherence, ASOC92) et demande portail sur un contrat de
+    # maintenance (sav, ASOC93).
+    COHERENCE_VIOLATION = (
+        'coherence_violation', 'Incohérence détectée (audit de cohérence)')
+    SAV_DEMANDE_CONTRAT_PORTAIL = (
+        'sav_demande_contrat_portail',
+        'Demande portail sur un contrat de maintenance')

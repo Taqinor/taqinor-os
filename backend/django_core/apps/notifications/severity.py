@@ -240,6 +240,8 @@ ACTION_EVENT_TYPES = frozenset({
     EventType.INTERVENTION_REPLANIFIEE,
     EventType.TRANCHE_A_FACTURER,
     EventType.CHANTIER_MATERIEL_CONFIRME,
+    # ASOC20 — une demande client (renouveler/résilier) attend un geste.
+    EventType.SAV_DEMANDE_CONTRAT_PORTAIL,
 })
 
 

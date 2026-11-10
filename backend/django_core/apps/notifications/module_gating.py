@@ -63,6 +63,7 @@ EVENT_MODULE = {
     EventType.SAV_VISITES_AUTO_GENEREES: 'sav',
     EventType.SAV_TICKET_RESOLU: 'sav',
     EventType.SAV_EQUIPEMENT_REMPLACE: 'sav',
+    EventType.SAV_DEMANDE_CONTRAT_PORTAIL: 'sav',  # ASOC20
     # stock
     EventType.STOCK_LOW: 'stock',
     EventType.STOCK_EXPIRATION_SOON: 'stock',

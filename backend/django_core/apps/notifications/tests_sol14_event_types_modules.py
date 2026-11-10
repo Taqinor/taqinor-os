@@ -87,3 +87,29 @@ class GrilleDesPreferencesTests(TestCase):
 
     def test_sans_societe_rien_n_est_masque(self):
         self.assertEqual(event_types_masques(None), frozenset())
+
+
+class CleesPropresDesAlertesTests(TestCase):
+    """ASOC20 — ces deux alertes ont leur propre clé : couper
+    « Récapitulatif » (``digest``) ne les tait plus."""
+
+    def test_coherence_et_contrat_portail_ont_leur_cle(self):
+        from apps.notifications.models import Notification
+        from apps.notifications.module_gating import EVENT_MODULE
+        from apps.notifications.services import notify
+        from apps.notifications.severity import is_action, severity_of
+
+        company = Company.objects.create(nom='ASOC20', slug='asoc20-n')
+        admin = User.objects.create_user(
+            username='asoc20_admin', password='x', role_legacy='admin',
+            company=company)
+        NotificationPreference.objects.create(
+            user=admin, company=company, event_type='digest', in_app=False,
+            email=False, whatsapp=False, push=False)
+        for cle in ('coherence_violation', 'sav_demande_contrat_portail'):
+            notify(admin, cle, f'Alerte {cle}', company=company)
+        self.assertEqual(Notification.objects.filter(user=admin).count(), 2)
+        self.assertTrue(is_action('sav_demande_contrat_portail'))
+        self.assertEqual(severity_of('coherence_violation'), 'normal')
+        self.assertEqual(
+            EVENT_MODULE[EventType.SAV_DEMANDE_CONTRAT_PORTAIL], 'sav')
