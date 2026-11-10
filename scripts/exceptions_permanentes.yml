@@ -259,6 +259,16 @@ safe_migrations:
     - "backend/django_core/apps/crm/migrations/0119_agr401_pompe_actuelle_cv.py"
     - "backend/django_core/apps/stock/migrations/0162_agr104_roles_pompage.py"
     - "backend/django_core/apps/calepinage/migrations/0031_acal320_retrait_gabarits_dossier.py"
+    # ADCG92 (10/11/2026) — déjà appliquées en production, révélées par les règles
+    # DELETEMODEL / RUNPYTHON_DELETE_IRREVERSIBLE (base YOPSB4) ; une migration NEUVE
+    # n'entre ici qu'après revue.
+    - "backend/django_core/core/migrations/0027_qx37_remove_webhooksubscription.py"
+    - "backend/django_core/apps/adsengine/migrations/0061_enf18_reconciliation_unique.py"
+    - "backend/django_core/apps/portail/migrations/0005_aud145_uniq_acceptation_portail_devis.py"
+    - "backend/django_core/apps/portail/migrations/0006_aud137_uniq_paiement_initie_par_facture.py"
+    - "backend/django_core/apps/scm/migrations/0008_scm_unicite_abc_politique.py"
+    - "backend/django_core/apps/statuspage/migrations/0005_enf18_uptimebucket_systeme_unique.py"
+    - "backend/django_core/apps/ventes/migrations/0120_qjr647_retrait_rooflayout.py"
 
 tenant_exempt_models:
   raison: modèles globaux/inter-sociétés PAR CONCEPTION, sans société propriétaire (check_company_fk.py)
