@@ -62,8 +62,19 @@ def is_stale(data):
     return time.time() - float(data.get("ts", 0)) > TTL_HOURS * 3600
 
 
+def session():
+    """ADCG86 — racine de travail : distingue deux sessions du même poste et de la même branche."""
+    return git("rev-parse", "--show-toplevel").stdout.strip()
+
+
+def a_moi(data, owner):
+    """Même `owner` ET même session ; un bail sans `session` (ancien format) : `owner` seul."""
+    return data.get("owner") == owner and data.get("session", session()) == session()
+
+
 def make_commit(key, owner, branch, parent=None):
-    msg = json.dumps({"key": key, "owner": owner, "branch": branch, "ts": int(time.time())})
+    msg = json.dumps({"key": key, "owner": owner, "branch": branch, "session": session(),
+                      "ts": int(time.time())})
     args = ["commit-tree", EMPTY_TREE, "-m", msg]
     if parent:
         args += ["-p", parent]
@@ -98,14 +109,15 @@ def cmd_claim(a):
     for key in a.keys:
         ref = NS + slug(key)
         cur = claims.get(slug(key))
-        if cur and cur[1].get("owner") == a.owner:
+        if cur and a_moi(cur[1], a.owner):
             # ADCG85 : déjà tenue = simple renouvellement, jamais rendue au retour arrière.
             if not push(ref, make_commit(key, a.owner, a.branch, cur[0])):
                 print(f"NON RENOUVELÉ {key}")
                 return 1
             continue
         elif cur and not is_stale(cur[1]):
-            print(f"REFUSÉ {key} : tenu par {cur[1].get('owner')} ({cur[1].get('branch', '')})")
+            autre = "autre session" if cur[1].get("owner") == a.owner else cur[1].get("branch", "")
+            print(f"REFUSÉ {key} : tenu par {cur[1].get('owner')} ({autre})")
             ok = False
         elif cur:
             ok = push(ref, make_commit(key, a.owner, a.branch), lease=cur[0])
@@ -127,7 +139,7 @@ def cmd_renew(a):
     rc = 0
     for key in a.keys:
         cur = claims.get(slug(key))
-        if not cur or cur[1].get("owner") != a.owner:
+        if not cur or not a_moi(cur[1], a.owner):
             print(f"PERDU {key} : plus à {a.owner}")
             rc = 1
             continue
@@ -142,7 +154,7 @@ def cmd_release(a):
     rc = 0
     for key in a.keys:
         cur = claims.get(slug(key))
-        if cur and cur[1].get("owner") == a.owner:
+        if cur and a_moi(cur[1], a.owner):
             ok = supprimer(key)
             print(f"{'LIBÉRÉ' if ok else 'NON LIBÉRÉ'} {key}")
             rc = rc or (0 if ok else 1)

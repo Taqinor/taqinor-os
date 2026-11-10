@@ -83,6 +83,22 @@ class ClaimTests(unittest.TestCase):
         self.assertIn("NON LIBÉRÉ file:A", out)
         self.assertIn("file_A", self.baux())
 
+    def test_meme_owner_autre_session_refuse(self):
+        """ADCG86 — même `--owner`, autre racine de travail = autre propriétaire."""
+        self.assertEqual(self.lancer("claim", "file:A", "--owner", "P/dev-all")[0], 0)
+        rc, out = self.lancer("claim", "file:A", "--owner", "P/dev-all", travail=1)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("REFUSÉ file:A : tenu par P/dev-all (autre session)", out)
+        self.assertEqual(self.lancer("renew", "file:A", "--owner", "P/dev-all", travail=1)[0], 1)
+        self.assertEqual(self.lancer("renew", "file:A", "--owner", "P/dev-all")[0], 0)
+        self.assertIn("session", self.baux()["file_A"])
+
+    def test_bail_ancien_format_sans_session_lu_par_owner(self):
+        msg = '{"key": "file:A", "owner": "P/dev-all", "branch": "", "ts": %d}' % int(pc.time.time())
+        sha = _git(self.travail[0], "commit-tree", pc.EMPTY_TREE, "-m", msg).stdout.strip()
+        _git(self.travail[0], "push", "-q", "origin", f"{sha}:{pc.NS}file_A")
+        self.assertEqual(self.lancer("renew", "file:A", "--owner", "P/dev-all", travail=1)[0], 0)
+
     def test_bail_porte_un_message_json(self):
         self.lancer("claim", "app:crm", "--owner", "X/1", "--branch", "dev-all")
         self.assertEqual(self.baux()["app_crm"]["branch"], "dev-all")
