@@ -956,26 +956,16 @@ class ClientViewSet(CompanyScopedModelViewSet):
         """FG26 — droit à l'effacement : scrube les PII du client tout en
         PRÉSERVANT l'intégrité comptable (devis/factures conservés, liés à une
         identité neutralisée). Admin uniquement, irréversible, idempotent."""
-        from django.utils import timezone
+        from .dsr_provider import anonymiser_client
         client = self.get_object()
         if client.is_anonymized:
             # ERR-ENF11-FUZZ-CRM : refus d'ÉTAT (fiche déjà effacée) = 409.
             return Response(
                 {'detail': 'Ce client est déjà anonymisé.'},
                 status=status.HTTP_409_CONFLICT)
-        client.nom = f'Client anonymisé #{client.id}'
-        client.prenom = None
-        client.email = None
-        client.telephone = None
-        client.adresse = None
-        client.cin = None
-        client.ice = None
-        client.if_fiscal = None
-        client.rc = None
-        client.custom_data = None
-        client.is_anonymized = True
-        client.anonymized_at = timezone.now()
-        client.save()
+        # ASOC61 — LE scrub unique du DSR (profil de site compris).
+        anonymiser_client(client.company, client, nom=f'Client anonymisé #{client.id}',
+                          motif='Anonymisation RGPD (action fiche client)')
         from apps.audit.recorder import record
         from apps.audit.models import AuditLog
         record(AuditLog.Action.UPDATE, instance=client,

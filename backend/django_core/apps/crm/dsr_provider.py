@@ -261,6 +261,12 @@ def anonymiser_lead(company, le, *, motif, demande_droit_ref=''):
     # plus pour un lead effacé.
     le.fbclid = ''
     le.gclid = ''
+    # ASOC61 — GPS, contact secondaire, notes libres et lien Maps aussi.
+    le.gps_lat = le.gps_lng = le.note = le.visite_notes = None
+    le.ombrage_notes = le.contact_secondaire_nom = None
+    le.contact_secondaire_telephone = le.contact_secondaire_email = None
+    le.contact_secondaire_fonction = None
+    le.lien_maps = ''
     # QW10 — ``Lead.save()`` recalcule ``email_normalise``/``phone_normalise``
     # depuis les PII désormais vidées ; on les inclut dans ``update_fields``
     # pour que les clés de dédup normalisées soient AUSSI purgées (sinon un
@@ -268,7 +274,11 @@ def anonymiser_lead(company, le, *, motif, demande_droit_ref=''):
     le.save(update_fields=[
         'nom', 'prenom', 'email', 'telephone', 'whatsapp', 'adresse',
         'appareil_id', 'custom_data', 'fbclid', 'gclid',
-        'email_normalise', 'phone_normalise', 'whatsapp_normalise'])
+        'email_normalise', 'phone_normalise', 'whatsapp_normalise',
+        'gps_lat', 'gps_lng', 'note', 'visite_notes', 'ombrage_notes',
+        'contact_secondaire_nom', 'contact_secondaire_telephone',
+        'contact_secondaire_email', 'contact_secondaire_fonction',
+        'lien_maps'])
     # Les traces de traçage du lead perdent leurs identifiants (IP,
     # navigateur, appareil, suffixe de jeton) — la ligne reste, la personne
     # n'est plus reconnaissable.
@@ -299,15 +309,21 @@ def _emettre_lead_erased(company, lead_id, phone_key):
     transaction.on_commit(emettre)
 
 
-def anonymiser_client(company, cl, *, motif, demande_droit_ref='', now=None):
+def anonymiser_client(company, cl, *, motif, demande_droit_ref='', now=None,
+                      nom='Anonymisé'):
     """Anonymise UN client (jamais de suppression) + journalise (NTGRC4).
 
-    Même scrub que l'action ``ClientViewSet.anonymize`` (FG26/CRX32) :
-    identité, contacts, identifiants fiscaux/administratifs et champs
-    personnalisés. Les documents comptables restent intacts.
+    Même scrub que l'action ``ClientViewSet.anonymize`` (FG26/CRX32), qui
+    délègue ici (ASOC61) : identité, contacts, identifiants fiscaux/
+    administratifs, champs personnalisés et GPS/notes d'ombrage du profil de
+    site. Les documents comptables restent intacts.
     """
     now = now or timezone.now()
-    cl.nom = 'Anonymisé'
+    site = getattr(cl, 'site_profile', None)  # reverse 1-1 : None si absent
+    if site is not None:
+        site.gps_lat = site.gps_lng = site.ombrage_notes = None
+        site.save(update_fields=['gps_lat', 'gps_lng', 'ombrage_notes'])
+    cl.nom = nom
     cl.prenom = None
     cl.email = None
     cl.telephone = None
