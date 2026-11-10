@@ -84,6 +84,27 @@ class RecalculerToutTest(TestCase):
         self.assertEqual(
             BackgroundJob.objects.filter(company=self.societe).count(), 3)
 
+    def test_calepinage_fige_exclu(self):
+        """ACON85 — le calepinage d'un devis ACCEPTÉ n'est jamais soumis :
+        aucun job, ``soumis`` ne le compte pas."""
+        from apps.crm.models import Client
+        from apps.ventes.models import Devis
+
+        client = Client.objects.create(company=self.societe, nom='C ACON85')
+        devis = Devis.objects.create(company=self.societe, client=client,
+                                     reference='DEV-ACON85-1')
+        Devis.objects.filter(pk=devis.pk).update(statut=Devis.Statut.ACCEPTE)
+        fige = self.simules[0]
+        Calepinage.objects.filter(pk=fige.pk).update(devis=devis)
+
+        reponse, envoi = self._poster()
+
+        self.assertEqual(reponse.status_code, 202, reponse.content[:300])
+        self.assertEqual(reponse.data['soumis'], 2)
+        self.assertNotIn(fige.pk, {job['calepinage']
+                                   for job in reponse.data['jobs']})
+        self.assertEqual(envoi.call_count, 2)
+
     def test_autre_societe_jamais_touchee(self):
         reponse, envoi = self._poster()
 

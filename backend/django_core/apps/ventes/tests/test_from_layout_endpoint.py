@@ -111,6 +111,44 @@ class TestFromLayoutEndpoint(TestCase):
         self.assertEqual(link.devis_id, devis.id)
         self.assertEqual(link.company_id, self.company.id)
 
+    def test_lead_ci_au_marche_du_lead_et_agricole_409(self):
+        """ACON40 (D-ACON-1) — un lead industriel/commercial donne un devis
+        À SON MARCHÉ, sans l'économie ni la production de l'outil de
+        toiture ; un lead agricole : 409 ``{type_installation}``, 0 devis."""
+        from apps.ventes.services import MESSAGE_LEAD_AGRICOLE
+
+        for marche in ('industriel', 'commercial'):
+            with self.subTest(marche=marche):
+                lead = self._lead(type_installation=marche)
+                resp = self.api.post(
+                    FROM_LAYOUT_URL, {'layout': SAMPLE_LAYOUT, 'lead': lead.id},
+                    format='json')
+                self.assertEqual(resp.status_code, 201, resp.data)
+                devis = Devis.objects.get(pk=resp.data['id'])
+                self.assertEqual(devis.mode_installation, marche)
+                etude = devis.etude_params or {}
+                self.assertNotIn('economies_annuelles', etude)
+                self.assertNotEqual(etude.get('production_source'),
+                                    'calepinage')
+
+        agricole = self._lead(type_installation='agricole')
+        avant = Devis.objects.filter(company=self.company).count()
+        resp = self.api.post(
+            FROM_LAYOUT_URL, {'layout': SAMPLE_LAYOUT, 'lead': agricole.id},
+            format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertEqual(resp.data, {'type_installation': MESSAGE_LEAD_AGRICOLE})
+        self.assertEqual(Devis.objects.filter(company=self.company).count(),
+                         avant)
+
+        # Lead sans marché : résidentiel, économies du layout (inchangé).
+        resp = self.api.post(
+            FROM_LAYOUT_URL, {'layout': SAMPLE_LAYOUT, 'lead': self._lead().id},
+            format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        devis = Devis.objects.get(pk=resp.data['id'])
+        self.assertEqual(devis.mode_installation, 'residentiel')
+
     def test_client_only_also_works(self):
         client = Client.objects.create(
             company=self.company, nom='Cli', prenom='Direct',

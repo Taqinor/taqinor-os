@@ -83,6 +83,27 @@ class OmbrageServiTest(BaseApiCalepinage):
         self.assertEqual(servi['par_pan'], {})
         self.assertIsNone(servi['global'])
 
+    def test_conception_divergente_du_devis_rend_perime(self):
+        """ACON21 — lien direct, empreinte du devis ≠ empreinte du
+        calepinage (conception modifiée sans resynchroniser) : périmé,
+        aucune perte ; empreintes égales : la perte est servie."""
+        from apps.calepinage.selectors import MOTIF_CONCEPTION_DIVERGENTE
+
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(
+            layout_hash='b' * 64)
+        Devis.objects.filter(pk=self.devis.pk).update(layout_hash='a' * 64)
+        with patch_materiel():
+            servi = ombrage_servi(self.devis.pk, self.company)
+        self.assertEqual(servi, {'perime': True,
+                                 'motif': MOTIF_CONCEPTION_DIVERGENTE,
+                                 'par_pan': {}, 'global': None})
+
+        Devis.objects.filter(pk=self.devis.pk).update(layout_hash='b' * 64)
+        with patch_materiel():
+            servi = ombrage_servi(self.devis.pk, self.company)
+        self.assertFalse(servi['perime'])
+        self.assertEqual(sorted(servi['par_pan']), ['PAN-1', 'PAN-2'])
+
     def test_autre_societe_none(self):
         with patch_materiel():
             self.assertIsNone(ombrage_servi(self.devis.pk, self.autre))

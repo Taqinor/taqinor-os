@@ -29,7 +29,8 @@ def _profile(company):
     def _load():
         try:
             from apps.parametres.models import CompanyProfile
-            return CompanyProfile.get(company=company)
+            # ACON30 — LECTURE sans création (``lire``, jamais ``get``).
+            return CompanyProfile.lire(company)
         except Exception:  # noqa: BLE001 — un PDF/simulateur ne casse jamais ici (D-ENF22-BLE001)
             logger.warning("_load : erreur absorbée, repli dégradé", exc_info=True)
             return None

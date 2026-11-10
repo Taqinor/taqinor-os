@@ -1179,6 +1179,24 @@ class CompanyProfile(models.Model):
 
         return request_cache.memoize(cls._cle_memo(company), _load)
 
+    @classmethod
+    def lire(cls, company=None):
+        """ACON30 — le profil de ``company`` s'il existe, sinon une instance
+        NON enregistrée aux valeurs par défaut : une LECTURE n'écrit jamais
+        (``get`` crée la ligne, et son fuseau par défaut périmait toutes les
+        simulations). Sans company : comportement de ``get``. Mémo par
+        requête sur sa propre clé, invalidé par ``save()``."""
+        if company is None:
+            return cls.get()
+        from core import request_cache
+
+        def _load():
+            return (cls.objects.filter(company=company).first()
+                    or cls(company=company, nom=company.nom))
+
+        return request_cache.memoize(
+            ('parametres.company_profile.lire', company.id), _load)
+
     def save(self, *args, **kwargs):
         # AUD157 — toute écriture périme le mémo de CETTE requête (le profil
         # peut être relu juste après par un accesseur de config). On oublie les
@@ -1189,4 +1207,6 @@ class CompanyProfile(models.Model):
             request_cache.forget(self._cle_memo_id(company_id))
             request_cache.forget(
                 ('parametres.company_profile', company_id))
+            request_cache.forget(  # ACON30
+                ('parametres.company_profile.lire', company_id))
         return super().save(*args, **kwargs)

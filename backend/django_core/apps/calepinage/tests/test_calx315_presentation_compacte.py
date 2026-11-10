@@ -165,6 +165,17 @@ class MiseEnPagePage2Test(unittest.TestCase):
         self.assertIn('Ratio de performance', html)
         self.assertIn("Taux d'autoconsommation", html)
 
+    def test_devis_lie_production_du_devis_sans_p50(self):
+        """ACON42 (D-ACAL-6) — un calepinage lié à un devis n'imprime pas
+        SON P50 : la page 2 renvoie à la production du devis."""
+        html = _html_de_presentation(dict(
+            presentation(),
+            production_devis={'reference': 'DEV-ACON42', 'kwh': 9100}))
+        self.assertNotIn('presentation-mensuelle', html)
+        self.assertNotIn('P50', html)
+        self.assertIn('Production : celle du devis DEV-ACON42 (9100 kWh/an)',
+                      html)
+
     def test_sans_resultat_la_page_2_nomme_ce_qui_manque_sans_refuser(self):
         html = _html_de_presentation(presentation(resultat=None))
         self.assertIn('data-section="production"', html)

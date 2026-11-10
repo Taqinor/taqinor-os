@@ -109,6 +109,74 @@ class PorteUniqueTest(BaseApiCalepinage):
                 ('depuis-modele', depuis_modele),
                 ('reprise du tracé public', reprise))
 
+    def test_lead_hors_portee_404_sur_chaque_porte(self):
+        """ACON3 — un Commercial A (portée « soi ») ne crée, ne rattache, ni
+        ne duplique rien sur le lead d'un collègue B : chaque porte répond
+        comme pour un lead absent ; sur son propre lead, 201."""
+        from django.contrib.auth import get_user_model
+
+        from apps.calepinage.permissions import CAL_GERER, CAL_VOIR
+        from apps.calepinage.services.modeles import marquer_modele
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import SCOPE_SELF
+
+        from .test_calx370_projet_json import fichier
+
+        User = get_user_model()
+        role = Role.objects.create(
+            company=self.company, nom='Commercial ACON3',
+            permissions=[CAL_VOIR, CAL_GERER, SCOPE_SELF])
+        a = User.objects.create_user(username='acon3_a', password='x',
+                                     company=self.company, role=role)
+        b = User.objects.create_user(username='acon3_b', password='x',
+                                     company=self.company, role=role)
+        api_a = self._client(a)
+        lead_a = self._lead('Villa de A', owner=a)
+        lead_b1 = self._lead('Villa de B', owner=b)
+        modele = Calepinage.objects.create(company=self.company,
+                                           client=self.client_lead,
+                                           titre='Modèle ACON3')
+        marquer_modele(modele, user=self.user)
+        c = creer_pour_lead(lead_a.pk, self.company, user=a)
+        motif = f'Lead introuvable (#{lead_b1.pk}).'
+        gestes = (
+            ('depuis-lead', 404, lambda: api_a.post(
+                f'{URL}depuis-lead/', {'lead': lead_b1.pk}, format='json')),
+            ('POST calepinages/', 404, lambda: api_a.post(
+                URL, {'lead': lead_b1.pk}, format='json')),
+            ('PATCH lead', 404, lambda: api_a.patch(
+                f'{URL}{c.pk}/', {'lead': lead_b1.pk}, format='json')),
+            ('depuis-modele', 404, lambda: api_a.post(
+                f'{URL}depuis-modele/',
+                {'modele_id': modele.pk, 'lead_id': lead_b1.pk},
+                format='json')),
+            ('import-projet', 404, lambda: api_a.post(
+                f'{URL}import-projet/',
+                {'projet': fichier(), 'lead': lead_b1.pk}, format='json')),
+            # Dupliquer : le MÊME refus qu'un lead absent de la société.
+            ('dupliquer', 400, lambda: api_a.post(
+                f'{URL}{c.pk}/dupliquer/', {'lead': lead_b1.pk},
+                format='json')),
+        )
+        for nom, attendu, geste in gestes:
+            with self.subTest(porte=nom):
+                reponse = geste()
+                self.assertEqual(reponse.status_code, attendu, reponse.data)
+                if nom != 'depuis-modele':
+                    self.assertIn(motif, str(reponse.data))
+        self.assertFalse(
+            Calepinage.objects.filter(lead_id=lead_b1.pk).exists())
+        c.refresh_from_db()
+        self.assertEqual(c.lead_id, lead_a.pk)
+        # Sur SON lead, A crée comme avant.
+        lead_a2 = self._lead('Villa 2 de A', owner=a)
+        reponse = api_a.post(f'{URL}depuis-lead/', {'lead': lead_a2.pk},
+                             format='json')
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        # La reprise du tracé public (sans utilisateur) reste inchangée.
+        self._poser_trace(lead_b1)
+        self.assertIsNotNone(reprendre_trace_public(lead_b1.pk, self.company))
+
     def test_creation_corps_multipart_refuse_415(self):
         # CI #997 fuzz : ``responsable``/``custom_data`` sont typés (clé, objet
         # JSON) — un formulaire n'en porte que des chaînes : JSON seul (415).
