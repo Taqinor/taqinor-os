@@ -336,6 +336,10 @@ def mark_devis_sent(*, devis, user=None, paire=True):
     # brouillon advances — accepté/refusé/expiré are terminal-or-further and
     # must stay put (the guard the test pins).
     if devis.statut != Devis.Statut.BROUILLON:
+        if devis.statut == Devis.Statut.ENVOYE and paire:
+            # ADVS50 — renvoi « les deux » : la sœur créée depuis l'envoi part aussi.
+            with transaction.atomic():
+                _envoyer_la_soeur(devis, user)
         return devis
 
     # ADEV7 — une version REMPLACÉE ou archivée (``is_active=False``) n'est

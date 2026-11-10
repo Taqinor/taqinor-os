@@ -84,6 +84,55 @@ class TestModeEnvoi(GammeBase):
         soeur_seule.refresh_from_db()
         self.assertEqual(soeur_seule.statut, Devis.Statut.BROUILLON)
 
+    def test_les_deux_soeur_creee_apres_envoi(self):
+        """ADVS50 — source DÉJÀ envoyée, gamme créée ensuite : le renvoi « les
+        deux » passe la sœur envoyée (lien vivant, servie au comparatif) sans
+        re-tamponner la source ; « seule » : sœur brouillon ; remise de la
+        sœur refusée (T17) : 409, sœur brouillon."""
+        from decimal import Decimal
+        from apps.parametres.models import CompanyProfile
+        from apps.ventes.models import Devis, ShareLink
+        from apps.ventes.public.payload_variantes import _gammes_public
+        from apps.ventes.tests._gammes_offre_common import add_ligne
+
+        def source_envoyee(ref):
+            src = make_devis(self.company, self.user, self.client_obj, ref)
+            add_ligne(src, self.panneau, qty='10')
+            url = f'/api/django/ventes/devis/{src.id}/share-link/'
+            self.assertEqual(self.api.post(url, {'envoi': True}, format='json').status_code, 200)
+            r = self.api.post(f'/api/django/ventes/devis/{src.id}/dupliquer-variante-gamme/',
+                              {'nom': 'Premium'}, format='json')
+            self.assertEqual(r.status_code, 201, r.data)
+            src.refresh_from_db()
+            return src, Devis.objects.get(pk=r.data['gamme']['id']), url
+
+        source, soeur, url = source_envoyee('DEV-GAM-050')
+        envoi_avant = source.date_envoi
+        corps = {'envoi': True, 'gamme_envoi': GAMME_ENVOI_LES_DEUX}
+        resp = self.api.post(url, corps, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        source.refresh_from_db()
+        soeur.refresh_from_db()
+        self.assertEqual((source.statut, soeur.statut), (Devis.Statut.ENVOYE, Devis.Statut.ENVOYE))
+        self.assertEqual(source.date_envoi, envoi_avant)
+        jeton = ShareLink.objects.get(devis=soeur).token
+        self.assertIn(str(jeton), _gammes_public(source)['soeur']['proposition_path'])
+        self.assertEqual(self.api.post(url, corps, format='json').status_code, 200)
+        self.assertEqual(ShareLink.objects.filter(devis=soeur).count(), 1)
+        _, soeur_seule, url_seule = source_envoyee('DEV-GAM-051')
+        self.assertEqual(self.api.post(url_seule, {'envoi': True, 'gamme_envoi': GAMME_ENVOI_SEULE},
+                                       format='json').status_code, 200)
+        soeur_seule.refresh_from_db()
+        self.assertEqual(soeur_seule.statut, Devis.Statut.BROUILLON)
+        CompanyProfile.objects.update_or_create(
+            company=self.company, defaults={'discount_approval_threshold': Decimal('10')})
+        _, soeur_remise, url_remise = source_envoyee('DEV-GAM-052')
+        Devis.objects.filter(pk=soeur_remise.pk).update(remise_globale=Decimal('30'))
+        self.assertEqual(self.api.post(url_remise, corps, format='json').status_code, 409)
+        soeur_remise.refresh_from_db()
+        self.assertEqual(soeur_remise.statut, Devis.Statut.BROUILLON)
+        self.assertFalse(ShareLink.objects.filter(devis=soeur_remise).exists())
+
     def test_share_link_expose_le_bloc_gamme(self):
         source, _ = self._paire('DEV-GAM-025')
         resp = self.api.post(
