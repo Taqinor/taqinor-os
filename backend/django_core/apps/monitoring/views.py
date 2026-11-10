@@ -286,8 +286,6 @@ class MonitoringImportRelevesCsv(serializers.Serializer):
     csv = RegexStricte(MOTIF_NON_BLANC_SANS_NUL)
 
 
-@extend_schema_view(list=extend_schema(
-    parameters=_FILTRE_INSTALLATION))
 class _RapportPdfRenderer(JSONRenderer):
     """Rend ``?format=pdf`` négociable sur le rapport O&M.
 
@@ -307,6 +305,8 @@ class _RapportPdfRenderer(JSONRenderer):
         return super().render(data, 'application/json', renderer_context)
 
 
+@extend_schema_view(list=extend_schema(
+    parameters=_FILTRE_INSTALLATION))
 class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
     """Config de supervision par système installé (N50). Lecture tout rôle ;
     écriture responsable/admin. ?installation= pour filtrer."""
