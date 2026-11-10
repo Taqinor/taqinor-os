@@ -225,6 +225,7 @@ _VIEWS_MONITORING_CONFIG_VIEW_SET_OM_REPORT_REPONSE = inline_serializer('ViewsMo
     'period_kwh': drf_serializers.JSONField(allow_null=True),
     'pr_pct': drf_serializers.JSONField(allow_null=True),
     'availability_pct': drf_serializers.JSONField(allow_null=True),
+    'libelle_indicateur': drf_serializers.CharField(),
     'degradation_pct_per_year': drf_serializers.JSONField(allow_null=True),
     'soiling_suspected': drf_serializers.JSONField(allow_null=True),
     'open_alarms': drf_serializers.JSONField(allow_null=True),

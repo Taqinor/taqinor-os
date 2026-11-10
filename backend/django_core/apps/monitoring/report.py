@@ -32,6 +32,7 @@ from core.pdf import render_pdf
 from .analytics import om_metrics, soiling_assessment
 from .models import UnderperformanceFlag
 from .services import warranty_curve_overlay
+from .selectors import LIBELLE_INDICE_SUIVI
 
 import logging
 
@@ -106,6 +107,8 @@ def build_om_report_data(installation, *, period='monthly', today=None):
         'period_kwh': period_kwh,
         'pr_pct': metrics_periode['pr_pct'],
         'availability_pct': metrics_periode['availability_pct'],
+        # AMON108 — jours avec relevé : un indice de suivi, jamais « Disponibilité ».
+        'libelle_indicateur': LIBELLE_INDICE_SUIVI,
         'degradation_pct_per_year': metrics['degradation_pct_per_year'],
         'soiling_suspected': metrics['soiling_suspected'],
         # AMON43 — drapeaux ouverts + alarmes onduleur ouvertes (SAV).
@@ -130,7 +133,7 @@ def build_om_report_html(data, *, entreprise_nom=''):
         f'<div class="big">{_v(data["period_kwh"])} kWh</div></div>'
         f'<div class="card"><div class="k">PR</div>'
         f'<div class="big">{_v(data["pr_pct"])} %</div></div>'
-        f'<div class="card"><div class="k">Disponibilité</div>'
+        f'<div class="card"><div class="k">{escape(data["libelle_indicateur"])}</div>'
         f'<div class="big">{_v(data["availability_pct"])} %</div></div>'
         '</div>'
     )

@@ -91,7 +91,8 @@ export default function OmReportPage() {
   const cards = useMemo(() => (report ? [
     { label: 'Production période', value: `${formatNumber(report.period_kwh, { decimals: 0 })} kWh` },
     { label: 'PR', value: report.pr_pct != null ? formatPercent(report.pr_pct, { decimals: 1 }) : '—' },
-    { label: 'Disponibilité', value: report.availability_pct != null ? formatPercent(report.availability_pct, { decimals: 1 }) : '—' },
+    // AMON108 — libellé SERVI (jours avec relevé = indice de suivi), jamais « Disponibilité ».
+    { label: report.libelle_indicateur, value: report.availability_pct != null ? formatPercent(report.availability_pct, { decimals: 1 }) : '—' },
   ] : []), [report])
 
   return (
