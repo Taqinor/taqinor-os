@@ -152,6 +152,30 @@ class Ntobs22PermissionsMatrixTest(TestCase):
             MaintenanceWindow.objects.get(company=self.autre).id, ids)
         self.assertIn(systeme.id, ids)
 
+    def test_maintenance_list_directeur_borne_a_sa_societe(self):
+        """AMON110 — Directeur/Administrateur/fiabilite_voir de A : fenêtres de A
+        + système, jamais celle de B ; seul le superutilisateur voit tout."""
+        def _fenetre(company, description):
+            return MaintenanceWindow.objects.create(
+                company=company, description=description,
+                debute_le=timezone.now() + timezone.timedelta(hours=1),
+                termine_le=timezone.now() + timezone.timedelta(hours=2))
+        w_a = _fenetre(self.company, 'Fenêtre A')
+        w_b = _fenetre(self.autre, 'Fenêtre B')
+        systeme = _fenetre(None, 'Annonce système')
+        role_administrateur = Role.objects.create(company=self.company, nom='Administrateur')
+        u_administrateur = User.objects.create_user(
+            'administrateur22', password='x', company=self.company, role=role_administrateur)
+        superuser = User.objects.create_user(
+            'super22liste', password='x', company=self.company,
+            role=self.role_admin_fiabilite, is_superuser=True)
+        for user in (self.u_directeur, u_administrateur, self.u_voir):
+            resp = self._client(user).get('/api/django/core/maintenance-windows/')
+            self.assertEqual(resp.status_code, 200, user.username)
+            self.assertEqual({row['id'] for row in resp.data}, {w_a.id, systeme.id}, user.username)
+        resp = self._client(superuser).get('/api/django/core/maintenance-windows/')
+        self.assertEqual({row['id'] for row in resp.data}, {w_a.id, w_b.id, systeme.id})
+
     def test_annuler_fenetre_dune_autre_societe_est_404(self):
         fenetre_autre = MaintenanceWindow.objects.create(
             company=self.autre,
