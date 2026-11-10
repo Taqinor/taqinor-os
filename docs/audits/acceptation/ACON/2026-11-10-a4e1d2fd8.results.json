@@ -1,0 +1,80 @@
+{
+  "sha": "a4e1d2fd8a536f98300a4d0754608e90d04cc599",
+  "date": "2026-11-10",
+  "groupe": "ACON",
+  "verdict": "PASS",
+  "couvre": [
+    "ACON31",
+    "ACON47",
+    "ACON91"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "FINLIVE.ACON31.preuve_en_direct",
+      "taches": [
+        "ACON31"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-final/ACON31.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "fiche du calepinage ombré à 8,0 % d’un brouillon : « Archiver » DÉSACTIVÉ (disabled) avec le motif lisible affiché ; C-ACON-061 repro faux (409, production 8 356,88 inchangée)"
+    },
+    {
+      "id": "FINLIVE.ACON47.preuve_en_direct",
+      "taches": [
+        "ACON47"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-final/ACON47.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "saisie « Puissance (kWc) » 6,6 contre 8,52 du calepinage, « Générer le dossier » ⇒ 200 ; l’écran affiche « Dossier généré — … » ET le signalement nommant le champ et les deux valeurs"
+    },
+    {
+      "id": "FINLIVE.ACON91.preuve_en_direct",
+      "taches": [
+        "ACON91"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-final/ACON91.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "C-ACON-041 repro faux sur les DEUX volets (DELETE et archivage de la V2) ; à l’écran, la conception de la V1 réactivée ouvre C (au dessin envoyé), aucun 2e calepinage"
+    }
+  ]
+}

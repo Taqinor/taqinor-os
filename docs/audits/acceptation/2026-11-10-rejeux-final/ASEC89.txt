@@ -1,0 +1,30 @@
+# Preuve en direct ASEC89 — rejeu accept-final (lot final du run 99392c), code joué a4e1d2fd8 (origin/main = merge de #1343, après #1336), 2026-11-10
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau fin-net ; fin-db (pgvector pg16, 127.0.0.1:5571, base erp_fin =
+# pg_dump --no-owner --no-privileges de la base locale erp_live en lecture seule, puis `manage.py migrate`) ; fin-redis ;
+# fin-minio (MinIO privé, seaux erp-pdf / erp-uploads) ; fin-dj (image erp-agentique-django_core, code backend du commit
+# joué COPIÉ par tar dans /app + STAGES.py dans /opt, `pip install -r requirements.txt` du commit — Django 5.2.18, DRF 3.18.2,
+# Pillow 13.0.0 —, settings.dev, EMAIL_BACKEND locmem, DB_CONN_MAX_AGE=0, runserver 0.0.0.0:8000 publié sur 127.0.0.1:8041).
+# Sondes : `python scripts/sonde.py <G>/<sonde> --conteneur fin-dj` (transaction annulée, mail en mémoire, Celery coupé,
+# HTTP sortant bloqué) ; fraîcheur prouvée par ASEC/C-ASEC-VER5-068 et ACON/C-ACON-041/061 lancées SANS --sans-fraicheur
+# (aucun refus : le conteneur sert le code de ce worktree). Sondes du dossier d'audit : verdict ÉCART = `repro` faux = le
+# défaut d'origine n'est PLUS reproduit. Sondes C-LIVE-* écrites pour ce rejeu (source jointe) : --racine <scratch>
+# --sans-fraicheur ; ICI repro=true (verdict REPRO) signifie que le comportement ATTENDU par la tâche est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8041 vite preview
+# --port 5241`), piloté par Playwright MCP ; compte de test acc_fin_dir (rôle système Directeur, société « Acceptation FIN »,
+# seed_catalogue, mot de passe de test généré, base jetable). CARTE : aucune clé MapTiler réelle — le serveur sert une clé
+# FACTICE (PUBLIC_MAPTILER_KEY) et le rejeu sert à la place d'api.maptiler.com un style de FOND NEUTRE local (style.json
+# version 8, une couche background, route Playwright) : aucune tuile, aucune requête MapTiler ; tracé, pose et 3D sont ceux
+# de l'application, seul le fond satellite manque (même substitut que le rejeu ACON). Captures : C:\dev\taqinor-os\logs\
+# nightly-qa\playwright\accept-final\ (hors dépôt). Fixtures FIX-FIN-* : scripts `manage.py shell` sur la base jetable
+# (créations par services/API, raccourcis nommés).
+# Verdict : PASS — Technicien − installation_gerer : POST reserves/recette/pack-remise/recette-pompage 403 droit_manquant, GET reserves 200, 0 Reserve/HandoverPack/CommissioningRecord/RecettePompage ; Technicien du registre : POST reserves 201
+
+== C-LIVE-ASEC85-89 (volet ASEC89 : 89_*)
+== C-LIVE-ASEC85-89 (sha a4e1d2fd8)
+attendu : ASEC85-89 : refus droit_manquant / 403 aux rôles privés, rien d'écrit ; témoins positifs 200/201
+observé : obs={'registre': {'av_encaisser': False, 'dir_encaisser': True, 'com_stock_export': False, 'av_stock_export': True}, '85_reviser': 201, '85_accepter_v2': 200, '85_admin_ventes': 403, '85_commercial': 403, '85_avoirs_apres_refus': 0, '85_directeur': 200, '85_avoirs_directeur': [('emise', '8000.00')], '86_prive': (403, ErrorDetail(string='droit_manquant', code='permission_denied')), '86_lignes_apres': ['Panneau'], '86_commercial': 200, '87_prive_atomic': (403, ErrorDetail(string='droit_manquant', code='permission_denied')), '87_prive_auto': (403, ErrorDetail(string='droit_manquant', code='permission_denied')), '87_devis_delta': 0, '87_commercial_atomic': 201, '88_commercial_xlsx': (403, ErrorDetail(string='droit_manquant', code='permission_denied')), '88_commercial_json': 200, '88_admin_ventes_xlsx': (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'), '89_prive': {'reserves': (403, ErrorDetail(string='droit_manquant', code='permission_denied')), 'recette': (403, ErrorDetail(string='droit_manquant', code='permission_denied')), 'pack-remise': (403, ErrorDetail(string='droit_manquant', code='permission_denied')), 'recette-pompage': (403, ErrorDetail(string='droit_manquant', code='permission_denied'))}, '89_get_reserves': 200, '89_ecrits': {'Reserve': 0, 'HandoverPack': 0, 'CommissioningRecord': 0, 'RecettePompage': 0}, '89_technicien_reserves': 201, 'ok': {'ASEC85': True, 'ASEC86': True, 'ASEC87': True, 'ASEC88': True, 'ASEC89': True}}
+{"repro": true, "registre": {"av_encaisser": false, "dir_encaisser": true, "com_stock_export": false, "av_stock_export": true}, "85_reviser": 201, "85_accepter_v2": 200, "85_admin_ventes": 403, "85_commercial": 403, "85_avoirs_apres_refus": 0, "85_directeur": 200, "85_avoirs_directeur": [["emise", "8000.00"]], "86_prive": [403, "droit_manquant"], "86_lignes_apres": ["Panneau"], "86_commercial": 200, "87_prive_atomic": [403, "droit_manquant"], "87_prive_auto": [403, "droit_manquant"], "87_devis_delta": 0, "87_commercial_atomic": 201, "88_commercial_xlsx": [403, "droit_manquant"], "88_commercial_json": 200, "88_admin_ventes_xlsx": [200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"], "89_prive": {"reserves": [403, "droit_manquant"], "recette": [403, "droit_manquant"], "pack-remise": [403, "droit_manquant"], "recette-pompage": [403, "droit_manquant"]}, "89_get_reserves": 200, "89_ecrits": {"Reserve": 0, "HandoverPack": 0, "CommissioningRecord": 0, "RecettePompage": 0}, "89_technicien_reserves": 201, "ok": {"ASEC85": true, "ASEC86": true, "ASEC87": true, "ASEC88": true, "ASEC89": true}}
+verdict : REPRO (fraîcheur non vérifiée)
+base inchangée : oui (avant 12569, après 12569) ; mails 0 ; tâches Celery bloquées 0
+
+(source jointe à ASEC85.txt)

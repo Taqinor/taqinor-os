@@ -1,0 +1,35 @@
+# Preuve en direct AGNR77 — rejeu accept-final (lot final du run 99392c), code joué a4e1d2fd8 (origin/main = merge de #1343, après #1336), 2026-11-10
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau fin-net ; fin-db (pgvector pg16, 127.0.0.1:5571, base erp_fin =
+# pg_dump --no-owner --no-privileges de la base locale erp_live en lecture seule, puis `manage.py migrate`) ; fin-redis ;
+# fin-minio (MinIO privé, seaux erp-pdf / erp-uploads) ; fin-dj (image erp-agentique-django_core, code backend du commit
+# joué COPIÉ par tar dans /app + STAGES.py dans /opt, `pip install -r requirements.txt` du commit — Django 5.2.18, DRF 3.18.2,
+# Pillow 13.0.0 —, settings.dev, EMAIL_BACKEND locmem, DB_CONN_MAX_AGE=0, runserver 0.0.0.0:8000 publié sur 127.0.0.1:8041).
+# Sondes : `python scripts/sonde.py <G>/<sonde> --conteneur fin-dj` (transaction annulée, mail en mémoire, Celery coupé,
+# HTTP sortant bloqué) ; fraîcheur prouvée par ASEC/C-ASEC-VER5-068 et ACON/C-ACON-041/061 lancées SANS --sans-fraicheur
+# (aucun refus : le conteneur sert le code de ce worktree). Sondes du dossier d'audit : verdict ÉCART = `repro` faux = le
+# défaut d'origine n'est PLUS reproduit. Sondes C-LIVE-* écrites pour ce rejeu (source jointe) : --racine <scratch>
+# --sans-fraicheur ; ICI repro=true (verdict REPRO) signifie que le comportement ATTENDU par la tâche est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8041 vite preview
+# --port 5241`), piloté par Playwright MCP ; compte de test acc_fin_dir (rôle système Directeur, société « Acceptation FIN »,
+# seed_catalogue, mot de passe de test généré, base jetable). CARTE : aucune clé MapTiler réelle — le serveur sert une clé
+# FACTICE (PUBLIC_MAPTILER_KEY) et le rejeu sert à la place d'api.maptiler.com un style de FOND NEUTRE local (style.json
+# version 8, une couche background, route Playwright) : aucune tuile, aucune requête MapTiler ; tracé, pose et 3D sont ceux
+# de l'application, seul le fond satellite manque (même substitut que le rejeu ACON). Captures : C:\dev\taqinor-os\logs\
+# nightly-qa\playwright\accept-final\ (hors dépôt). Fixtures FIX-FIN-* : scripts `manage.py shell` sur la base jetable
+# (créations par services/API, raccourcis nommés).
+# Verdict : PASS — brouillon à acompte en MAD = TTC, lead ramené de 1 500 à 900 : « Reprendre les valeurs du lead » ⇒ 409 {detail, echeancier} et la bannière affiche le motif d’échéancier ; devis relu identique ; acompte 1 000 MAD ⇒ 200, dernière tranche = reste
+
+FIX-FIN-AGNR77 (patron de TestReappliquerLead) : lead « Derive AGNR77 » (3413, ville d'ancrage, facture_hiver 900) →
+build_devis_auto ⇒ DEV-202611-0003 (2328, brouillon) + ligne « Prestation négociée » 777 (prix manuel) ; lead → 1 500,
+POST reappliquer-lead/ 200 (TTC 50 800,00) ; échéancier stocké [Commande acompte 50 800 MAD ; Livraison 40 % ; Réception 10 %] ;
+lead ramené à 900 ⇒ lead_valeurs_modifiees [facture_hiver].
+Écran /ventes/devis/nouveau?edit=2328 (générateur) : bannière « Valeurs du lead modifiées depuis la reprise dans ce devis :
+facture d’hiver. » → « Reprendre les valeurs du lead » ⇒ POST reappliquer-lead/ 409 {detail: « Acompte : 50 800 MAD — il doit
+rester inférieur au total TTC du devis (42 800 MAD). », echeancier: [même texte], error.code state_conflict} ; la bannière affiche
+« Acompte : 50 800 MAD — il doit rester inférieur au total TTC du devis (42 800 MAD). ».
+Persistance : devis relu avant/après identique (21 lignes id/quantité/prix, échéancier inchangé, dérive toujours [facture_hiver]).
+Capture AGNR77-bandeau.png.
+Acompte 1 000 MAD (posé en base) puis même geste à l'écran ⇒ 200 ; relu : TTC 42 800,00, échéancier [1 000 MAD ; 40 % ;
+Réception 24 680 MAD (montant)] = 42 800 − 1 000 − 17 120 ; dérive vide.
+Second geste de la tâche (révision C&I après visite, POST etude-ci/reviser-apres-visite/) : non rejoué en direct (la preuve en
+direct du plan ne porte que sur la bannière lead ; le test du plan le couvre).

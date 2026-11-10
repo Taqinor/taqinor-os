@@ -1,0 +1,35 @@
+# Preuve en direct ADCG104 — rejeu accept-final (lot final du run 99392c), code joué a4e1d2fd8 (origin/main = merge de #1343, après #1336), 2026-11-10
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau fin-net ; fin-db (pgvector pg16, 127.0.0.1:5571, base erp_fin =
+# pg_dump --no-owner --no-privileges de la base locale erp_live en lecture seule, puis `manage.py migrate`) ; fin-redis ;
+# fin-minio (MinIO privé, seaux erp-pdf / erp-uploads) ; fin-dj (image erp-agentique-django_core, code backend du commit
+# joué COPIÉ par tar dans /app + STAGES.py dans /opt, `pip install -r requirements.txt` du commit — Django 5.2.18, DRF 3.18.2,
+# Pillow 13.0.0 —, settings.dev, EMAIL_BACKEND locmem, DB_CONN_MAX_AGE=0, runserver 0.0.0.0:8000 publié sur 127.0.0.1:8041).
+# Sondes : `python scripts/sonde.py <G>/<sonde> --conteneur fin-dj` (transaction annulée, mail en mémoire, Celery coupé,
+# HTTP sortant bloqué) ; fraîcheur prouvée par ASEC/C-ASEC-VER5-068 et ACON/C-ACON-041/061 lancées SANS --sans-fraicheur
+# (aucun refus : le conteneur sert le code de ce worktree). Sondes du dossier d'audit : verdict ÉCART = `repro` faux = le
+# défaut d'origine n'est PLUS reproduit. Sondes C-LIVE-* écrites pour ce rejeu (source jointe) : --racine <scratch>
+# --sans-fraicheur ; ICI repro=true (verdict REPRO) signifie que le comportement ATTENDU par la tâche est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8041 vite preview
+# --port 5241`), piloté par Playwright MCP ; compte de test acc_fin_dir (rôle système Directeur, société « Acceptation FIN »,
+# seed_catalogue, mot de passe de test généré, base jetable). CARTE : aucune clé MapTiler réelle — le serveur sert une clé
+# FACTICE (PUBLIC_MAPTILER_KEY) et le rejeu sert à la place d'api.maptiler.com un style de FOND NEUTRE local (style.json
+# version 8, une couche background, route Playwright) : aucune tuile, aucune requête MapTiler ; tracé, pose et 3D sont ceux
+# de l'application, seul le fond satellite manque (même substitut que le rejeu ACON). Captures : C:\dev\taqinor-os\logs\
+# nightly-qa\playwright\accept-final\ (hors dépôt). Fixtures FIX-FIN-* : scripts `manage.py shell` sur la base jetable
+# (créations par services/API, raccourcis nommés).
+# Verdict : PASS — `--du` rejoué sur le dépôt réel (garde d’acceptation neutralisée) : le groupe construit au bloc d’écarts tout coché (ASEC, 2026-11-10) est annoncé « contre-visite des correctifs » ; les groupes construits à bloc ouvert/bloqué ou sans bloc sont absents
+
+Commande : python -c "import sys; sys.path.insert(0,'scripts'); import audit_registre as a; a.acceptation = lambda g: 'n/d'; a.cmd_du()"
+Vérifie dû : 1 groupe(s)
+  ASEC (X1 sécurité) : 100 % cochées (89/89) — vérifie dû, contre-visite des correctifs (écarts S1-S2 du 2026-11-10 tous cochés)
+Décisions ouvertes : 5 (D-JPB-6, D-AMON-3, D-ADCG-1, D-ADCG-2, D-ADCG-3)
+Dette d'acceptation : voir `python scripts/check_acceptation.py`
+
+Sans neutralisation (`python scripts/audit_registre.py --du`) : sortie identique.
+Groupes « construit » du statut et leurs blocs « ### <G> — ÉCARTS vérifie <date> » (relevé par lecture des plans) :
+- X1 sécurité (ASEC, compte rendu 2026-11-10, 2 écarts) : blocs 2026-11-10 dans PLAN_AUDIT_CHANTIERS (1 [x]), DEVIS (3 [x]),
+  STOCK (1 [x]) — tout coché ⇒ ANNONCÉ.
+- J6 documents (ADOC, 2026-11-10, 1 écart) : bloc 2026-11-10 de PLAN_AUDIT_DOCUMENTS = 1 tâche [BLOCKED] (ADOC202) ⇒ ABSENT.
+- D3 calepinage (2026-11-10, 1 écart) et X7 analyse (2026-11-10, 1 écart) : aucun bloc « ÉCARTS vérifie 2026-11-10 » de leur
+  groupe ⇒ ABSENTS.
+Banc : python -m unittest scripts.tests.test_audit_registre ⇒ Ran 19 tests … OK.

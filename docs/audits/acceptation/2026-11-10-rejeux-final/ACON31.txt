@@ -1,0 +1,42 @@
+# Preuve en direct ACON31 — rejeu accept-final (lot final du run 99392c), code joué a4e1d2fd8 (origin/main = merge de #1343, après #1336), 2026-11-10
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau fin-net ; fin-db (pgvector pg16, 127.0.0.1:5571, base erp_fin =
+# pg_dump --no-owner --no-privileges de la base locale erp_live en lecture seule, puis `manage.py migrate`) ; fin-redis ;
+# fin-minio (MinIO privé, seaux erp-pdf / erp-uploads) ; fin-dj (image erp-agentique-django_core, code backend du commit
+# joué COPIÉ par tar dans /app + STAGES.py dans /opt, `pip install -r requirements.txt` du commit — Django 5.2.18, DRF 3.18.2,
+# Pillow 13.0.0 —, settings.dev, EMAIL_BACKEND locmem, DB_CONN_MAX_AGE=0, runserver 0.0.0.0:8000 publié sur 127.0.0.1:8041).
+# Sondes : `python scripts/sonde.py <G>/<sonde> --conteneur fin-dj` (transaction annulée, mail en mémoire, Celery coupé,
+# HTTP sortant bloqué) ; fraîcheur prouvée par ASEC/C-ASEC-VER5-068 et ACON/C-ACON-041/061 lancées SANS --sans-fraicheur
+# (aucun refus : le conteneur sert le code de ce worktree). Sondes du dossier d'audit : verdict ÉCART = `repro` faux = le
+# défaut d'origine n'est PLUS reproduit. Sondes C-LIVE-* écrites pour ce rejeu (source jointe) : --racine <scratch>
+# --sans-fraicheur ; ICI repro=true (verdict REPRO) signifie que le comportement ATTENDU par la tâche est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8041 vite preview
+# --port 5241`), piloté par Playwright MCP ; compte de test acc_fin_dir (rôle système Directeur, société « Acceptation FIN »,
+# seed_catalogue, mot de passe de test généré, base jetable). CARTE : aucune clé MapTiler réelle — le serveur sert une clé
+# FACTICE (PUBLIC_MAPTILER_KEY) et le rejeu sert à la place d'api.maptiler.com un style de FOND NEUTRE local (style.json
+# version 8, une couche background, route Playwright) : aucune tuile, aucune requête MapTiler ; tracé, pose et 3D sont ceux
+# de l'application, seul le fond satellite manque (même substitut que le rejeu ACON). Captures : C:\dev\taqinor-os\logs\
+# nightly-qa\playwright\accept-final\ (hors dépôt). Fixtures FIX-FIN-* : scripts `manage.py shell` sur la base jetable
+# (créations par services/API, raccourcis nommés).
+# Verdict : PASS — fiche du calepinage ombré à 8,0 % d’un brouillon : « Archiver » DÉSACTIVÉ (disabled) avec le motif lisible affiché ; C-ACON-061 repro faux (409, production 8 356,88 inchangée)
+
+FIX-FIN-ACON31 : brouillon DEV-FIN-ACON31 (2324, lignes Panneau Canadien Solar 710W + Onduleur Huawei 5 kW du catalogue semé)
+lié au calepinage #206 simulé (accès solaire 0,9 par module, client PVGIS de test `_ClientParOrientation`, matériel RÉEL du
+devis) ⇒ ombrage_servi(2324) = {perime: False, par_pan: {PAN-1: 8.0, PAN-2: 8.0}, global: 8.0} ; raison_refus_archivage =
+« Le devis brouillon DEV-FIN-ACON31 lit l'ombrage de ce calepinage (8,0 %) : supprimez ce brouillon d'abord, sinon sa production
+changerait sans que le devis le dise. » ; etude_horaire_pour_devis(2324) production 8 356,88 kWh/an.
+(Premier essai écarté : simulation avec matériel injecté par mock ⇒ hors du mock la simulation se lit « périmée » et
+peut_supprimer reste vrai — fixture refaite avec le matériel réel du devis, comme le rejeu ACON.)
+Écran /calepinage/206 : GET calepinages/206/ 200 permissions {peut_modifier: true, peut_supprimer: false, …} ;
+bouton data-testid=cal-fiche-archiver « Archiver » présent mais disabled=true (non cliquable : aucun POST archiver/ émis) ;
+motif affiché : « Archivage indisponible : le devis DEV-FIN-ACON31 lit encore ce calepinage (devis actif, ou brouillon qui lit son
+ombrage). Le serveur refuse l’archivage tant que ce lien tient. » ; devis 2324 relu : brouillon. Capture ACON31-fiche.png.
+Note : la preuve du plan dit « bouton d'archivage absent, motif lisible » ; le correctif #1336 a choisi bouton désactivé + motif
+(brief de l'orchestrateur : « absent/disabled with reason ») — le geste est impossible et le motif est lisible.
+
+== C-ACON-061 (dossier d'audit, SANS --sans-fraicheur)
+== C-ACON-061 (sha 819fe0f8c)
+attendu : repro si archiver = 200 sur le calepinage d'un brouillon simulé, perte d'ombrage du devis > 0 puis None, production horaire du devis qui monte, layout_stale faux, aucune ligne au chatter du devis
+observé : {"detail_peut_supprimer": false, "archiver_http": 409, "apres_archivage_devis_id_du_calepinage": 2323, "restaurer_immediat_http": 409, "archiver_2_http": 409, "ouverture_3d_origine": "existant", "ouverture_3d_calepinage": 205, "ouverture_3d_a_simulation": true, "restaurer_apres_3d_http": 409, "restaurer_apres_3d_corps": "b'{\"calepinage\":\"Ce calepinage n\\'est pas archiv\\xc3\\xa9 : rien \\xc3\\xa0 restaurer.\"}'", "C_reste_archive": false, "m0_lie_simule": {"statut_devis": "brouillon", "perte_ombrage_pct": 8.0, "perte_apres_horaire": 8.0, "perte_apres_build_quote_data_savepoint": null, "perte_apres_rollback": 8.0, "horaire_production_kwh": 8356.88, "calepinage_du_devis": 205, "layout_stale": false, "chatter_devis": 0, "perte_apres_rollback_mesure": 8.0}, "m1_apres_archivage": {"statut_devis": "brouillon", "perte_ombrage_pct": 8.0, "perte_apres_horaire": 8.0, "perte_apres_build_quote_data_savepoint": null, "perte_apres_rollback": 8.0, "horaire_production_kwh": 8356.88, "calepinage_du_devis": 205, "layout_stale": false, "chatter_devis": 0, "perte_apres_rollback_mesure": 8.0}, "m2_apres_restauration": {"statut_devis": "brouillon", "perte_ombrage_pct": 8.0, "perte_apres_horaire": 8.0, "perte_apres_build_quote_data_savepoint": null, "perte_apres_rollback": 8.0, "horaire_production_kwh": 8356.88, "calepinage_du_devis": 205, "layout_stale": false, "chatter_devis": 0, "perte_apres_rollback_mesure": 8.0}, "m3_apres_3d_et_restauration": {"statut_devis": "brouillon", "perte_ombrage_pct": 8.0, "perte_apres_horaire": 8.0, "perte_apres_build_quote_data_savepoint": null, "perte_apres_rollback": 8.0, "horaire_production_kwh": 8356.88, "calepinage_du_devis": 205, "layout_stale": false, "chatter_devis": 0, "perte_apres_rollback_mesure": 8.0}, "ecart_production_pct": 0.0, "repro": false}
+{"detail_peut_supprimer": false, "archiver_http": 409, "apres_archivage_devis_id_du_calepinage": 2323, "restaurer_immediat_http": 409, "archiver_2_http": 409, "ouverture_3d_origine": "existant", "ouverture_3d_calepinage": 205, "ouverture_3d_a_simulation": true, "restaurer_apres_3d_http": 409, "restaurer_apres_3d_corps": "b'{\"calepinage\":\"Ce calepinage n\\'est pas archiv\\xc3\\xa9 : rien \\xc3\\xa0 restaurer.\"}'", "C_reste_archive": false, "m0_lie_simule": {"statut_devis": "brouillon", "perte_ombrage_pct": 8.0, "perte_apres_horaire": 8.0, "perte_apres_build_quote_data_savepoint": null, "perte_apres_rollback": 8.0, "horaire_production_kwh": 8356.88, "calepinage_du_devis": 205, "layout_stale": false, "chatter_devis": 0, "perte_apres_rollback_mesure": 8.0}, "m1_apres_archivage": {"statut_devis": "brouillon", "perte_ombrage_pct": 8.0, "perte_apres_horaire": 8.0, "perte_apres_build_quote_data_savepoint": null, "perte_apres_rollback": 8.0, "horaire_production_kwh": 8356.88, "calepinage_du_devis": 205, "layout_stale": false, "chatter_devis": 0, "perte_apres_rollback_mesure": 8.0}, "m2_apres_restauration": {"statut_devis": "brouillon", "perte_ombrage_pct": 8.0, "perte_apres_horaire": 8.0, "perte_apres_build_quote_data_savepoint": null, "perte_apres_rollback": 8.0, "horaire_production_kwh": 8356.88, "calepinage_du_devis": 205, "layout_stale": false, "chatter_devis": 0, "perte_apres_rollback_mesure": 8.0}, "m3_apres_3d_et_restauration": {"statut_devis": "brouillon", "perte_ombrage_pct": 8.0, "perte_apres_horaire": 8.0, "perte_apres_build_quote_data_savepoint": null, "perte_apres_rollback": 8.0, "horaire_production_kwh": 8356.88, "calepinage_du_devis": 205, "layout_stale": false, "chatter_devis": 0, "perte_apres_rollback_mesure": 8.0}, "ecart_production_pct": 0.0, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 3257, après 3257) ; mails 0 ; tâches Celery bloquées 0

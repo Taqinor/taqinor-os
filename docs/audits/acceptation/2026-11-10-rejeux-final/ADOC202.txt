@@ -1,0 +1,80 @@
+# Preuve en direct ADOC202 — rejeu accept-final (lot final du run 99392c), code joué a4e1d2fd8 (origin/main = merge de #1343, après #1336), 2026-11-10
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau fin-net ; fin-db (pgvector pg16, 127.0.0.1:5571, base erp_fin =
+# pg_dump --no-owner --no-privileges de la base locale erp_live en lecture seule, puis `manage.py migrate`) ; fin-redis ;
+# fin-minio (MinIO privé, seaux erp-pdf / erp-uploads) ; fin-dj (image erp-agentique-django_core, code backend du commit
+# joué COPIÉ par tar dans /app + STAGES.py dans /opt, `pip install -r requirements.txt` du commit — Django 5.2.18, DRF 3.18.2,
+# Pillow 13.0.0 —, settings.dev, EMAIL_BACKEND locmem, DB_CONN_MAX_AGE=0, runserver 0.0.0.0:8000 publié sur 127.0.0.1:8041).
+# Sondes : `python scripts/sonde.py <G>/<sonde> --conteneur fin-dj` (transaction annulée, mail en mémoire, Celery coupé,
+# HTTP sortant bloqué) ; fraîcheur prouvée par ASEC/C-ASEC-VER5-068 et ACON/C-ACON-041/061 lancées SANS --sans-fraicheur
+# (aucun refus : le conteneur sert le code de ce worktree). Sondes du dossier d'audit : verdict ÉCART = `repro` faux = le
+# défaut d'origine n'est PLUS reproduit. Sondes C-LIVE-* écrites pour ce rejeu (source jointe) : --racine <scratch>
+# --sans-fraicheur ; ICI repro=true (verdict REPRO) signifie que le comportement ATTENDU par la tâche est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8041 vite preview
+# --port 5241`), piloté par Playwright MCP ; compte de test acc_fin_dir (rôle système Directeur, société « Acceptation FIN »,
+# seed_catalogue, mot de passe de test généré, base jetable). CARTE : aucune clé MapTiler réelle — le serveur sert une clé
+# FACTICE (PUBLIC_MAPTILER_KEY) et le rejeu sert à la place d'api.maptiler.com un style de FOND NEUTRE local (style.json
+# version 8, une couche background, route Playwright) : aucune tuile, aucune requête MapTiler ; tracé, pose et 3D sont ceux
+# de l'application, seul le fond satellite manque (même substitut que le rejeu ACON). Captures : C:\dev\taqinor-os\logs\
+# nightly-qa\playwright\accept-final\ (hors dépôt). Fixtures FIX-FIN-* : scripts `manage.py shell` sur la base jetable
+# (créations par services/API, raccourcis nommés).
+# Verdict : PASS — vrai rôle Technicien du registre, technicien d’une intervention seulement : attestation 403 ; PV, BL, dossier de remise 200 PDF ; responsable du chantier 200 ; responsable 200 ; autre société 404
+
+== C-LIVE-ADOC202 (sha a4e1d2fd8)
+attendu : attestation 403 / PV-BL-remise 200 PDF ; responsable du chantier 200 ; responsable 200 ; autre société 404
+observé : obs={'registre_intervention_gerer': True, 'tech_intervention_pv-reception': (200, 'application/pdf'), 'tech_intervention_bon-livraison': (200, 'application/pdf'), 'tech_intervention_dossier-remise': (200, 'application/pdf'), 'tech_intervention_attestation': (403, 'application/json'), 'tech_responsable_attestation': 200, 'responsable_attestation': 200, 'autre_societe': {'pv-reception': 404, 'bon-livraison': 404, 'dossier-remise': 404, 'attestation': 404}}
+{"repro": true, "registre_intervention_gerer": true, "tech_intervention_pv-reception": [200, "application/pdf"], "tech_intervention_bon-livraison": [200, "application/pdf"], "tech_intervention_dossier-remise": [200, "application/pdf"], "tech_intervention_attestation": [403, "application/json"], "tech_responsable_attestation": 200, "responsable_attestation": 200, "autre_societe": {"pv-reception": 404, "bon-livraison": 404, "dossier-remise": 404, "attestation": 404}}
+verdict : REPRO (fraîcheur non vérifiée)
+base inchangée : oui (avant 501, après 501) ; mails 0 ; tâches Celery bloquées 0
+
+== source de la sonde C-LIVE-ADOC202
+# flake8: noqa  (sonde de rejeu en direct ADOC202, lot final du run 99392c, 10/11/2026)
+"""ADOC202 — compte au VRAI rôle Technicien du registre (TECHNICIEN_PERMISSIONS), technicien d'une intervention d'un
+chantier « Installé » dont il n'est ni technicien_responsable ni created_by : attestation 403 ; PV, BL, dossier de remise
+200 PDF ; devenu technicien_responsable : attestation 200 ; responsable (role_legacy) : 200 ; autre société : 404.
+Vraies routes (JWT Bearer, URLconf + gardes). ICI repro=true signifie : comportement ATTENDU observé."""
+SONDE = {"constat": "C-LIVE-ADOC202", "sha": "a4e1d2fd8",
+         "attendu": "attestation 403 / PV-BL-remise 200 PDF ; responsable du chantier 200 ; responsable 200 ; autre société 404",
+         "modeles": ["authentication.Company", "installations.Installation", "installations.Intervention"]}
+
+
+def sonde(ctx):
+    from django.contrib.auth import get_user_model
+    from rest_framework.test import APIClient
+    from rest_framework_simplejwt.tokens import AccessToken
+    from authentication.models import Company
+    from apps.crm.models import Client
+    from apps.installations.models import Installation, Intervention
+    from apps.roles.models import Role
+    from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
+    U = get_user_model()
+    co = Company.objects.create(nom='Live ADOC202', slug='live-adoc202')
+    autre = Company.objects.create(nom='Live ADOC202 autre', slug='live-adoc202-autre')
+    resp = U.objects.create_user(username='live-adoc202-resp', password='x', company=co, role_legacy='responsable')
+    role = Role.objects.create(company=co, nom='Technicien', permissions=list(TECHNICIEN_PERMISSIONS), est_systeme=True)
+    tech = U.objects.create_user(username='live-adoc202-tech', password='x', company=co, role=role)
+    etranger = U.objects.create_user(username='live-adoc202-ext', password='x', company=autre, role_legacy='responsable')
+    cl = Client.objects.create(company=co, nom='Client', prenom='ADOC202', telephone='+212600000202', adresse='1 rue Test')
+    ch = Installation.objects.create(company=co, reference='CH-LIVE-ADOC202', client=cl, created_by=resp,
+                                     technicien_responsable=resp, statut=Installation.Statut.INSTALLE)
+    Intervention.objects.create(company=co, installation=ch, type_intervention='pose', created_by=resp, technicien=tech)
+
+    def api(u):
+        a = APIClient(); a.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(u)}'); return a
+    D = f'/api/django/documents/chantiers/{ch.pk}'
+    H = {'HTTP_HOST': 'localhost'}
+    obs = {'registre_intervention_gerer': 'intervention_gerer' in TECHNICIEN_PERMISSIONS}
+    t = api(tech)
+    for route in ('pv-reception', 'bon-livraison', 'dossier-remise', 'attestation'):
+        r = t.get(f'{D}/{route}/', **H)
+        obs[f'tech_intervention_{route}'] = (r.status_code, r.get('Content-Type', ''))
+    Installation.objects.filter(pk=ch.pk).update(technicien_responsable=tech)
+    obs['tech_responsable_attestation'] = t.get(f'{D}/attestation/', **H).status_code
+    obs['responsable_attestation'] = api(resp).get(f'{D}/attestation/', **H).status_code
+    obs['autre_societe'] = {r: api(etranger).get(f'{D}/{r}/', **H).status_code
+                            for r in ('pv-reception', 'bon-livraison', 'dossier-remise', 'attestation')}
+    ok = (obs['tech_intervention_attestation'][0] == 403
+          and all(obs[f'tech_intervention_{r}'] == (200, 'application/pdf') for r in ('pv-reception', 'bon-livraison', 'dossier-remise'))
+          and obs['tech_responsable_attestation'] == 200 and obs['responsable_attestation'] == 200
+          and all(v == 404 for v in obs['autre_societe'].values()))
+    print(f'obs={obs}')
+    return {'repro': ok, **obs}

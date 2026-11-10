@@ -1,0 +1,34 @@
+{
+  "sha": "a4e1d2fd8a536f98300a4d0754608e90d04cc599",
+  "date": "2026-11-10",
+  "groupe": "ACAL",
+  "verdict": "PASS",
+  "couvre": [
+    "ACAL369"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "FINLIVE.ACAL369.preuve_en_direct",
+      "taches": [
+        "ACAL369"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-final/ACAL369.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "PA2.8, atelier LEAD d’un site isolé sans kit autonome tarifé : « Générer le devis » ⇒ from-layout 409 {hors_reseau, detail} et l’écran affiche le motif serveur mot pour mot (pas « Composition invalide… ») ; aucun devis créé"
+    }
+  ]
+}

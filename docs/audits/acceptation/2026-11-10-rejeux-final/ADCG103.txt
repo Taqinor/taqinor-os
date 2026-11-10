@@ -1,0 +1,62 @@
+# Preuve en direct ADCG103 — rejeu accept-final (lot final du run 99392c), code joué a4e1d2fd8 (origin/main = merge de #1343, après #1336), 2026-11-10
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau fin-net ; fin-db (pgvector pg16, 127.0.0.1:5571, base erp_fin =
+# pg_dump --no-owner --no-privileges de la base locale erp_live en lecture seule, puis `manage.py migrate`) ; fin-redis ;
+# fin-minio (MinIO privé, seaux erp-pdf / erp-uploads) ; fin-dj (image erp-agentique-django_core, code backend du commit
+# joué COPIÉ par tar dans /app + STAGES.py dans /opt, `pip install -r requirements.txt` du commit — Django 5.2.18, DRF 3.18.2,
+# Pillow 13.0.0 —, settings.dev, EMAIL_BACKEND locmem, DB_CONN_MAX_AGE=0, runserver 0.0.0.0:8000 publié sur 127.0.0.1:8041).
+# Sondes : `python scripts/sonde.py <G>/<sonde> --conteneur fin-dj` (transaction annulée, mail en mémoire, Celery coupé,
+# HTTP sortant bloqué) ; fraîcheur prouvée par ASEC/C-ASEC-VER5-068 et ACON/C-ACON-041/061 lancées SANS --sans-fraicheur
+# (aucun refus : le conteneur sert le code de ce worktree). Sondes du dossier d'audit : verdict ÉCART = `repro` faux = le
+# défaut d'origine n'est PLUS reproduit. Sondes C-LIVE-* écrites pour ce rejeu (source jointe) : --racine <scratch>
+# --sans-fraicheur ; ICI repro=true (verdict REPRO) signifie que le comportement ATTENDU par la tâche est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8041 vite preview
+# --port 5241`), piloté par Playwright MCP ; compte de test acc_fin_dir (rôle système Directeur, société « Acceptation FIN »,
+# seed_catalogue, mot de passe de test généré, base jetable). CARTE : aucune clé MapTiler réelle — le serveur sert une clé
+# FACTICE (PUBLIC_MAPTILER_KEY) et le rejeu sert à la place d'api.maptiler.com un style de FOND NEUTRE local (style.json
+# version 8, une couche background, route Playwright) : aucune tuile, aucune requête MapTiler ; tracé, pose et 3D sont ceux
+# de l'application, seul le fond satellite manque (même substitut que le rejeu ACON). Captures : C:\dev\taqinor-os\logs\
+# nightly-qa\playwright\accept-final\ (hors dépôt). Fixtures FIX-FIN-* : scripts `manage.py shell` sur la base jetable
+# (créations par services/API, raccourcis nommés).
+# Verdict : PASS — statut rejoué sur le dépôt réel (acceptation neutralisée) : J4 « sav » → vérifié — 2026-11-03 (0 écart S1-S2) ; PA5 lit son propre compte rendu
+
+Commande (worktree au commit joué) : python -c "import sys; sys.path.insert(0,'scripts'); import audit_registre as a;
+a.acceptation = lambda g: 'n/d'; a.cmd_status()"
+Lignes J4 et PA5 :
+17   | J4  | sav                    | vérifié   | 113/114 (99 %)  | n/d         | 2026-11-03 (0 écart S1-S2) | -
+24   | PA5 | chantier-sav           | vérifié   | 76/76 (100 %)   | n/d         | 2026-11-10 (0 écart S1-S2) | -
+Marqueurs : docs/audits/2026-11-03-sav-verifie.md « groupe: ASAV | pct: 100 | ecarts_s1_s2: 0 » ;
+docs/audits/2026-11-10-chantier-sav-verifie.md « groupe: ACSV | pct: 100 | ecarts_s1_s2: 0 » (ce compte rendu a été mis à jour
+depuis le constat — 0 écart aujourd'hui) : J4 ne lit plus le fichier de chantier-sav, PA5 lit le sien.
+Banc : python -m unittest scripts.tests.test_audit_registre ⇒ Ran 19 tests … OK.
+
+== sortie complète de cmd_status()
+rang | id  | mot                    | statut    | % cochées       | acceptation | dernier vérifie            | claim
+1    | X2  | totaux                 | vérifié   | 58/58 (100 %)   | n/d         | 2026-11-10 (0 écart S1-S2) | -
+2    | J5  | facturation            | vérifié   | 93/93 (100 %)   | n/d         | 2026-11-02 (0 écart S1-S2) | -
+3    | D3  | calepinage             | construit | 367/368 (99 %)  | n/d         | 2026-11-10 (1 écart S1-S2) | -
+4    | J0  | acquisition            | vérifié   | 78/78 (100 %)   | n/d         | 2026-11-04 (0 écart S1-S2) | -
+5    | J1a | lead                   | vérifié   | 62/62 (100 %)   | n/d         | 2026-11-03 (0 écart S1-S2) | -
+6    | D1  | crm                    | vérifié   | 75/75 (100 %)   | n/d         | 2026-10-24 (0 écart S1-S2) | -
+7    | X1  | sécurité               | construit | 89/89 (100 %)   | n/d         | 2026-11-10 (2 écart S1-S2) | -
+8    | X4  | pdf                    | vérifié   | 73/74 (98 %)    | n/d         | 2026-11-01 (0 écart S1-S2) | -
+9    | D2  | moteur                 | vérifié   | 128/129 (99 %)  | n/d         | 2026-11-10 (0 écart S1-S2) | -
+10   | J2  | chantiers              | vérifié   | 122/122 (100 %) | n/d         | 2026-11-10 (0 écart S1-S2) | -
+11   | J3  | stock                  | vérifié   | 208/208 (100 %) | n/d         | 2026-11-10 (0 écart S1-S2) | -
+12   | J6  | documents              | construit | 132/133 (99 %)  | n/d         | 2026-11-10 (1 écart S1-S2) | -
+13   | X3  | parametres             | vérifié   | 90/90 (100 %)   | n/d         | 2026-11-10 (0 écart S1-S2) | -
+14   | D4  | générateur             | vérifié   | 77/77 (100 %)   | n/d         | 2026-11-10 (0 écart S1-S2) | -
+15   | J1b | devis                  | vérifié   | 111/114 (97 %)  | n/d         | 2026-11-04 (0 écart S1-S2) | -
+16   | X5  | deploy                 | vérifié   | 56/56 (100 %)   | n/d         | 2026-11-02 (0 écart S1-S2) | -
+17   | J4  | sav                    | vérifié   | 113/114 (99 %)  | n/d         | 2026-11-03 (0 écart S1-S2) | -
+18   | X7  | analyse                | construit | 87/88 (98 %)    | n/d         | 2026-11-10 (1 écart S1-S2) | -
+19   | X6  | performance            | vérifié   | 41/41 (100 %)   | n/d         | 2026-11-10 (0 écart S1-S2) | -
+20   | PA4 | argent                 | vérifié   | 71/72 (98 %)    | n/d         | 2026-11-10 (0 écart S1-S2) | -
+21   | PA3 | devis-signature        | vérifié   | 49/49 (100 %)   | n/d         | 2026-11-10 (0 écart S1-S2) | -
+22   | PA1 | contact-visite         | vérifié   | 109/111 (98 %)  | n/d         | 2026-11-10 (0 écart S1-S2) | -
+23   | PA6 | approvisionnement      | vérifié   | 80/80 (100 %)   | n/d         | 2026-11-08 (0 écart S1-S2) | -
+24   | PA5 | chantier-sav           | vérifié   | 76/76 (100 %)   | n/d         | 2026-11-10 (0 écart S1-S2) | -
+25   | PA7 | monitoring-abonnement  | vérifié   | 62/62 (100 %)   | n/d         | 2026-11-10 (0 écart S1-S2) | -
+26   | PA2 | conception             | vérifié   | 40/40 (100 %)   | n/d         | 2026-11-10 (0 écart S1-S2) | -
+27   | PF1 | securite-multi-societe | vérifié   | 52/52 (100 %)   | n/d         | 2026-11-10 (0 écart S1-S2) | -
+28   | PF2 | socle                  | vérifié   | 72/72 (100 %)   | n/d         | 2026-11-10 (0 écart S1-S2) | -
+29   | PF3 | deploy-ci-gardes       | audité    | 74/78 (94 %)    | n/d         | 2026-11-10 (0 écart S1-S2) | -

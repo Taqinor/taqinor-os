@@ -1,0 +1,35 @@
+# Preuve en direct ACAL369 — rejeu accept-final (lot final du run 99392c), code joué a4e1d2fd8 (origin/main = merge de #1343, après #1336), 2026-11-10
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau fin-net ; fin-db (pgvector pg16, 127.0.0.1:5571, base erp_fin =
+# pg_dump --no-owner --no-privileges de la base locale erp_live en lecture seule, puis `manage.py migrate`) ; fin-redis ;
+# fin-minio (MinIO privé, seaux erp-pdf / erp-uploads) ; fin-dj (image erp-agentique-django_core, code backend du commit
+# joué COPIÉ par tar dans /app + STAGES.py dans /opt, `pip install -r requirements.txt` du commit — Django 5.2.18, DRF 3.18.2,
+# Pillow 13.0.0 —, settings.dev, EMAIL_BACKEND locmem, DB_CONN_MAX_AGE=0, runserver 0.0.0.0:8000 publié sur 127.0.0.1:8041).
+# Sondes : `python scripts/sonde.py <G>/<sonde> --conteneur fin-dj` (transaction annulée, mail en mémoire, Celery coupé,
+# HTTP sortant bloqué) ; fraîcheur prouvée par ASEC/C-ASEC-VER5-068 et ACON/C-ACON-041/061 lancées SANS --sans-fraicheur
+# (aucun refus : le conteneur sert le code de ce worktree). Sondes du dossier d'audit : verdict ÉCART = `repro` faux = le
+# défaut d'origine n'est PLUS reproduit. Sondes C-LIVE-* écrites pour ce rejeu (source jointe) : --racine <scratch>
+# --sans-fraicheur ; ICI repro=true (verdict REPRO) signifie que le comportement ATTENDU par la tâche est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8041 vite preview
+# --port 5241`), piloté par Playwright MCP ; compte de test acc_fin_dir (rôle système Directeur, société « Acceptation FIN »,
+# seed_catalogue, mot de passe de test généré, base jetable). CARTE : aucune clé MapTiler réelle — le serveur sert une clé
+# FACTICE (PUBLIC_MAPTILER_KEY) et le rejeu sert à la place d'api.maptiler.com un style de FOND NEUTRE local (style.json
+# version 8, une couche background, route Playwright) : aucune tuile, aucune requête MapTiler ; tracé, pose et 3D sont ceux
+# de l'application, seul le fond satellite manque (même substitut que le rejeu ACON). Captures : C:\dev\taqinor-os\logs\
+# nightly-qa\playwright\accept-final\ (hors dépôt). Fixtures FIX-FIN-* : scripts `manage.py shell` sur la base jetable
+# (créations par services/API, raccourcis nommés).
+# Verdict : PASS — PA2.8, atelier LEAD d’un site isolé sans kit autonome tarifé : « Générer le devis » ⇒ from-layout 409 {hors_reseau, detail} et l’écran affiche le motif serveur mot pour mot (pas « Composition invalide… ») ; aucun devis créé
+
+FIX-FIN-ACAL369 : lead « Site isolé ACAL369 » (3411, raccordement 'aucun', GPS Casablanca, facture 900), catalogue semé SANS
+onduleur off-grid tarifé.
+Écran /devis-design/3411 (atelier mode lead) : roof-config 200 (clé factice) ; toit tracé à l'écran (4 coins + « Terminer le
+tracé », ~334 m², pose automatique de l'atelier : 110 panneaux, 79,2 kWc) → « Générer le devis » ⇒ POST ventes/devis/from-layout/
+409 {hors_reseau: « Aucun onduleur hors réseau (off-grid) tarifé au catalogue. Le NOM du produit doit contenir « off-grid »,
+« off grid », « hors réseau » ou « autonome » (ex. « Deye Off-Grid 6kW ») — et un prix de vente renseigné. Aucun onduleur hybride
+ne lui est substitué. », detail: <même texte>} ; écran : ce texte affiché sous le bouton, mot pour mot ; « Composition invalide »
+absent ; devis du lead : 0 avant, 0 après. Capture ACAL369-refus.png. Console : uniquement le journal navigateur du 409 attendu.
+Essais précédents (tracé vide / pose absente) : 409 combiné {detail « Aucun panneau détecté… », errors [ce motif, le motif
+hors réseau]} — affiché « Aucun panneau détecté… », refus attendu d'un tracé incomplet, hors sujet.
+Note : le serveur sert désormais aussi `detail` avec `hors_reseau` ; l'affichage passe donc par la branche `detail` de
+httpMessage — la branche ACAL369 (`refusServeur` sur un corps SANS detail/errors) est couverte par le test du plan
+(ToitureDesign.acalGenererLead.test.jsx, corps = exemple du contrat). Le critère observable de PA2.8 (motif nommé lisible, aucun
+devis) est rempli.
