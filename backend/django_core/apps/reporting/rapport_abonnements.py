@@ -338,12 +338,15 @@ def executer_abonnement(abonnement, now=None):
 @shared_task(name='reporting.envoyer_rapports_planifies')
 def envoyer_rapports_planifies():
     """Exécute les abonnements DUS. Renvoie le nombre d'abonnements traités."""
+    from authentication.selectors import active_companies
     from .models import RapportAbonnement
 
     now = _now_casablanca()
     try:
+        # APFS63 — sociétés actives seulement.
         abonnements = list(
-            RapportAbonnement.objects.filter(actif=True)
+            RapportAbonnement.objects.filter(
+                actif=True, company__in=active_companies())
             .select_related('rapport_def'))
     except Exception:  # pragma: no cover - défensif
         logger.warning('envoyer_rapports_planifies: chargement impossible',

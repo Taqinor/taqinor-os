@@ -19,7 +19,9 @@ CI rapide ``backend-lint-fast``).
 CE QUI EST SCANNÉ
 -----------------
 Les modules de tâches périodiques UNIQUEMENT : ``apps/*/tasks.py``,
-``apps/*/scheduled.py``, ``apps/*/beat_tasks.py`` (y compris en sous-paquet).
+``apps/*/scheduled.py``, ``apps/*/beat_tasks.py`` (y compris en sous-paquet) et,
+APFS63, tout module de ``apps/`` ou ``core/`` qui DÉCORE une fonction
+``@shared_task`` (AST : ``reporting/scheduled_reports.py``, ``kpi_alertes.py``…).
 Le reste du dépôt est hors périmètre : une vue ou un service admin a le droit
 de lister TOUTES les sociétés.
 
@@ -86,13 +88,33 @@ def _is_test_path(path: Path) -> bool:
             or name == "tests.py")
 
 
+def _decore_shared_task(path: Path) -> bool:
+    """APFS63 — le module décore au moins une fonction ``@shared_task``."""
+    try:
+        texte = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False
+    if "shared_task" not in texte:
+        return False
+    try:
+        tree = ast.parse(texte)
+    except SyntaxError:
+        return False
+    for n in ast.walk(tree):
+        for d in getattr(n, "decorator_list", ()):
+            d = d.func if isinstance(d, ast.Call) else d
+            if getattr(d, "id", getattr(d, "attr", "")) == "shared_task":
+                return True
+    return False
+
+
 def _iter_source_files():
-    if not SCAN_ROOT.is_dir():
-        return
-    for path in sorted(SCAN_ROOT.rglob("*.py")):
-        if path.name not in FICHIERS_BEAT or _is_test_path(path):
+    racines = [r for r in (SCAN_ROOT, DJANGO_CORE / "core") if r.is_dir()]
+    for path in sorted(p for r in racines for p in r.rglob("*.py")):
+        if _is_test_path(path):
             continue
-        yield path
+        if path.name in FICHIERS_BEAT or _decore_shared_task(path):
+            yield path
 
 
 def _rel(path: Path) -> str:
