@@ -276,13 +276,15 @@ class DevisEnvoiActionsMixin:
             _exiger_remise_envoi(devis, request.user)
         # GAMME — le mode d'envoi (« seule » / « les_deux ») accompagne le lien
         # quand le vendeur le précise ; absent du corps → mode déjà posé.
-        _appliquer_gamme_envoi(devis, request.data.get('gamme_envoi'))
-        # QJ-FUNNEL — AVANT le mint : si l'envoi est refusé, l'erreur nommée
-        # part au commercial et aucun lien ne sort de ce POST.
-        if request.data.get('envoi'):
-            from ..services import mark_devis_sent
-            mark_devis_sent(devis=devis, user=request.user)
-        link = ShareLink.for_devis(devis)
+        # ADVS52 — mode, bascule et lien sous UNE transaction (un 409 n'écrit rien).
+        with transaction.atomic():
+            _appliquer_gamme_envoi(devis, request.data.get('gamme_envoi'))
+            # QJ-FUNNEL — AVANT le mint : si l'envoi est refusé, l'erreur nommée
+            # part au commercial et aucun lien ne sort de ce POST.
+            if request.data.get('envoi'):
+                from ..services import mark_devis_sent
+                mark_devis_sent(devis=devis, user=request.user)
+            link = ShareLink.for_devis(devis)
         # L-NIV — ne touche jamais au jeton : simple mise à jour de champs sur
         # le lien déjà résolu (créé ou réutilisé) ci-dessus.
         champs_modifies = []
@@ -380,99 +382,102 @@ class DevisEnvoiActionsMixin:
         sujet = (request.data.get('sujet') or '').strip() or None
         corps = (request.data.get('corps') or '').strip() or None
         pdf_mode = (request.data.get('pdf_mode') or '').strip()
-        # GAMME — mode d'envoi « à la carte », réglé au moment de l'envoi.
-        # UN PDF = UNE GAMME : la pièce jointe reste le PDF de CE devis, jamais
-        # un PDF fusionné des deux gammes (chaque gamme a le sien).
-        _appliquer_gamme_envoi(devis, request.data.get('gamme_envoi'))
-
-        # ADEV68 — le lien de proposition est créé AVANT le rendu et son jeton
-        # passé au moteur : la pièce jointe imprime CE lien, le moteur ne
-        # frappant plus de lien pour un brouillon.
-        link = ShareLink.for_devis(devis)
-
-        # Ajoute le lien de proposition tokenisé dans le corps si fourni.
-        proposal_url = chemin_proposition(devis, link.token)
-        # ZSAL5 — gabarit ``envoi_devis`` (EmailTemplate) : sujet/corps
-        # explicitement fournis dans le corps de requête restent prioritaires
-        # (comportement historique) ; sinon on rend le gabarit effectif de la
-        # société (défaut = texte historique byte-identique tant que non édité).
-        if not sujet or not corps:
-            from apps.parametres.models_email import EmailTemplate
-            client = devis.client
-            nom_client = ''
-            civilite = ''
-            if client:
-                nom_client = f"{client.nom} {getattr(client, 'prenom', '') or ''}".strip()
-                civilite = getattr(client, 'civilite', '') or ''
-            # ``{nom}`` porte le salut complet ("Bonjour X," / "Bonjour,")
-            # pour préserver EXACTEMENT le rendu historique par défaut.
-            salut = f'Bonjour {nom_client},' if nom_client else 'Bonjour,'
-            # XSAL17 — {lien_rdv} : résolu paresseusement, jamais de
-            # BookingLink créé si le gabarit effectif ne référence pas le
-            # placeholder (évite un jeton inutile à chaque envoi de devis).
-            lien_rdv = ''
-            from apps.parametres.i18n_resolver import resolve_langue_sortie
-            langue = resolve_langue_sortie(client=client, company=devis.company)  # ASOC83
-            if devis.lead_id and '{lien_rdv}' in EmailTemplate.get_template(
-                    devis.company, 'envoi_devis', langue)['corps']:
-                try:
-                    from apps.crm.services import public_booking_url
-                    lien_rdv = public_booking_url(devis.lead, request=request)
-                except Exception:  # noqa: BLE001 — jamais bloquer l'envoi (D-ENF22-BLE001)
-                    logger.warning(
-                        "devis_envoi.DevisEnvoiActionsMixin.envoyer_email "
-                        ": erreur ignorée (mode dégradé)", exc_info=True)
-                    lien_rdv = ''
-            rendu = EmailTemplate.render(
-                devis.company, 'envoi_devis', langue,
-                civilite=civilite, nom=salut,
-                reference=devis.reference or '', lien=url_proposition(devis, link.token),
-                validite=(devis.date_validite.strftime('%d/%m/%Y')
-                          if devis.date_validite else ''),
-                lien_rdv=lien_rdv,
-            )
-            sujet = sujet or rendu['sujet']
-            corps = corps or rendu['corps']
-
-        # Envoi + EmailLog via le service centralisé. attach_pdf=False car on
-        # a déjà le contenu — on passe attachment/attachment_name directement.
-        from ..email_service import _from_email, _chatter_note
-        from ..models import EmailLog
-
-        client = devis.client
-        dest = (to_email or (getattr(client, 'email', '') or '')).strip()
-        reference = devis.reference or ''
-        if not sujet:
-            sujet = f'Votre devis {reference}'
-
-        log = EmailLog(
-            company=devis.company,
-            direction=EmailLog.Direction.SORTANT,
-            client=client,
-            devis=devis,
-            to_email=dest, from_email=_from_email(),
-            sujet=(sujet or '')[:300], corps=corps,
-            reference=reference[:80],
-            created_by=request.user if getattr(request.user, 'is_authenticated', False) else None,
-        )
-
-        if not dest:
-            log.statut = EmailLog.Statut.ECHEC
-            log.erreur = 'Aucune adresse email destinataire.'
-            log.save()
-            return Response(
-                {'detail': log.erreur, 'log_id': log.id, 'statut': 'echec'},
-                # ENF11 — corps conforme au schéma (tous champs facultatifs) :
-                # c'est la FICHE (ni client ni adresse) qui s'y oppose = 409.
-                status=status.HTTP_409_CONFLICT)
-
-        # ADVS13 — bascule, rendu et envoi sous UNE transaction (voir
-        # ``_envoi_atomique``). QJR519 / ADVS12 — un échec ne marque JAMAIS le
-        # devis envoyé (ni date_envoi, ni devis_sent → funnel, ni cadence) :
-        # EmailLog ECHEC et note chatter écrits HORS de la transaction annulée.
+        # ADVS52 — mode de gamme, lien et bascule sous UNE transaction : un
+        # refus de ``mark_devis_sent`` (409) n'écrit ni le mode ni de lien.
         try:
-            log.piece_jointe = _envoi_atomique(
-                devis, request.user, dest, sujet, corps, pdf_mode, link.token)
+            with transaction.atomic():
+                # GAMME — mode d'envoi « à la carte », réglé au moment de l'envoi.
+                # UN PDF = UNE GAMME : la pièce jointe reste le PDF de CE devis, jamais
+                # un PDF fusionné des deux gammes (chaque gamme a le sien).
+                _appliquer_gamme_envoi(devis, request.data.get('gamme_envoi'))
+
+                # ADEV68 — le lien de proposition est créé AVANT le rendu et son jeton
+                # passé au moteur : la pièce jointe imprime CE lien, le moteur ne
+                # frappant plus de lien pour un brouillon.
+                link = ShareLink.for_devis(devis)
+
+                # Ajoute le lien de proposition tokenisé dans le corps si fourni.
+                proposal_url = chemin_proposition(devis, link.token)
+                # ZSAL5 — gabarit ``envoi_devis`` (EmailTemplate) : sujet/corps
+                # explicitement fournis dans le corps de requête restent prioritaires
+                # (comportement historique) ; sinon on rend le gabarit effectif de la
+                # société (défaut = texte historique byte-identique tant que non édité).
+                if not sujet or not corps:
+                    from apps.parametres.models_email import EmailTemplate
+                    client = devis.client
+                    nom_client = ''
+                    civilite = ''
+                    if client:
+                        nom_client = f"{client.nom} {getattr(client, 'prenom', '') or ''}".strip()
+                        civilite = getattr(client, 'civilite', '') or ''
+                    # ``{nom}`` porte le salut complet ("Bonjour X," / "Bonjour,")
+                    # pour préserver EXACTEMENT le rendu historique par défaut.
+                    salut = f'Bonjour {nom_client},' if nom_client else 'Bonjour,'
+                    # XSAL17 — {lien_rdv} : résolu paresseusement, jamais de
+                    # BookingLink créé si le gabarit effectif ne référence pas le
+                    # placeholder (évite un jeton inutile à chaque envoi de devis).
+                    lien_rdv = ''
+                    from apps.parametres.i18n_resolver import resolve_langue_sortie
+                    langue = resolve_langue_sortie(client=client, company=devis.company)  # ASOC83
+                    if devis.lead_id and '{lien_rdv}' in EmailTemplate.get_template(
+                            devis.company, 'envoi_devis', langue)['corps']:
+                        try:
+                            from apps.crm.services import public_booking_url
+                            lien_rdv = public_booking_url(devis.lead, request=request)
+                        except Exception:  # noqa: BLE001 — jamais bloquer l'envoi (D-ENF22-BLE001)
+                            logger.warning(
+                                "devis_envoi.DevisEnvoiActionsMixin.envoyer_email "
+                                ": erreur ignorée (mode dégradé)", exc_info=True)
+                            lien_rdv = ''
+                    rendu = EmailTemplate.render(
+                        devis.company, 'envoi_devis', langue,
+                        civilite=civilite, nom=salut,
+                        reference=devis.reference or '', lien=url_proposition(devis, link.token),
+                        validite=(devis.date_validite.strftime('%d/%m/%Y')
+                                  if devis.date_validite else ''),
+                        lien_rdv=lien_rdv,
+                    )
+                    sujet = sujet or rendu['sujet']
+                    corps = corps or rendu['corps']
+
+                # Envoi + EmailLog via le service centralisé. attach_pdf=False car on
+                # a déjà le contenu — on passe attachment/attachment_name directement.
+                from ..email_service import _from_email, _chatter_note
+                from ..models import EmailLog
+
+                client = devis.client
+                dest = (to_email or (getattr(client, 'email', '') or '')).strip()
+                reference = devis.reference or ''
+                if not sujet:
+                    sujet = f'Votre devis {reference}'
+
+                log = EmailLog(
+                    company=devis.company,
+                    direction=EmailLog.Direction.SORTANT,
+                    client=client,
+                    devis=devis,
+                    to_email=dest, from_email=_from_email(),
+                    sujet=(sujet or '')[:300], corps=corps,
+                    reference=reference[:80],
+                    created_by=request.user if getattr(request.user, 'is_authenticated', False) else None,
+                )
+
+                if not dest:
+                    log.statut = EmailLog.Statut.ECHEC
+                    log.erreur = 'Aucune adresse email destinataire.'
+                    log.save()
+                    return Response(
+                        {'detail': log.erreur, 'log_id': log.id, 'statut': 'echec'},
+                        # ENF11 — corps conforme au schéma (tous champs facultatifs) :
+                        # c'est la FICHE (ni client ni adresse) qui s'y oppose = 409.
+                        status=status.HTTP_409_CONFLICT)
+
+                # ADVS13 — bascule, rendu et envoi sous UNE transaction (voir
+                # ``_envoi_atomique``). QJR519 / ADVS12 — un échec ne marque JAMAIS le
+                # devis envoyé (ni date_envoi, ni devis_sent → funnel, ni cadence) :
+                # EmailLog ECHEC et note chatter écrits HORS de la transaction annulée.
+                log.piece_jointe = _envoi_atomique(
+                    devis, request.user, dest, sujet, corps, pdf_mode, link.token)
         except _EnvoiAvorte as avorte:
             devis.refresh_from_db()
             log.statut, log.erreur = EmailLog.Statut.ECHEC, avorte.erreur
@@ -632,12 +637,14 @@ class DevisEnvoiActionsMixin:
         # GAMME — le MODE D'ENVOI est réglé À L'ENVOI et vit sur le devis
         # (``etude_params['gamme']['envoi']``), des deux côtés de la paire.
         # Absent du corps → le mode déjà posé (défaut « les_deux »).
-        _appliquer_gamme_envoi(devis, request.data.get('gamme_envoi'))
-        message, link = build_single_devis_whatsapp(request, devis, langue)
-
-        # U4 — partager le devis le marque « envoyé » (idempotent, jamais de
-        # régression accepté/refusé/expiré). Le funnel avance via devis_sent.
-        mark_devis_sent(devis=devis, user=request.user)
+        # ADVS52 — mode, lien et bascule sous UNE transaction : un 409 de
+        # ``mark_devis_sent`` n'écrit ni le mode ni de lien.
+        with transaction.atomic():
+            _appliquer_gamme_envoi(devis, request.data.get('gamme_envoi'))
+            message, link = build_single_devis_whatsapp(request, devis, langue)
+            # U4 — partager le devis le marque « envoyé » (idempotent, jamais de
+            # régression accepté/refusé/expiré). Le funnel avance via devis_sent.
+            mark_devis_sent(devis=devis, user=request.user)
 
         # Trace l'action au chatter du devis (même app — autorisé). L'audit
         # transverse passe par le bus core.events (contrat d'import M4 : ventes

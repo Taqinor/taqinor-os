@@ -133,6 +133,32 @@ class TestModeEnvoi(GammeBase):
         self.assertEqual(soeur_remise.statut, Devis.Statut.BROUILLON)
         self.assertFalse(ShareLink.objects.filter(devis=soeur_remise).exists())
 
+    def test_envoi_refuse_ne_pose_ni_mode_ni_lien(self):
+        """ADVS52 — un envoi refusé (409 kWh déclaré contredit) par WhatsApp,
+        lien ou e-mail n'écrit ni le mode de gamme (« les_deux » des deux
+        côtés) ni de lien de partage sur la source."""
+        from decimal import Decimal
+        from apps.crm.models import Lead
+        from apps.ventes.models import Devis, ShareLink
+        source, soeur = self._paire('DEV-GAM-053')
+        lead = Lead.objects.create(
+            company=self.company, nom='Alaoui', telephone='+212611000020',
+            conso_mensuelle_kwh=Decimal('46'), facture_hiver=Decimal('10000'), ete_differente=False)
+        Devis.objects.filter(pk=source.pk).update(lead=lead)
+        base = f'/api/django/ventes/devis/{source.id}/'
+        for chemin, corps in (('whatsapp/', {'gamme_envoi': GAMME_ENVOI_SEULE}),
+                              ('share-link/', {'envoi': True, 'gamme_envoi': GAMME_ENVOI_SEULE}),
+                              ('envoyer-email/', {'gamme_envoi': GAMME_ENVOI_SEULE})):
+            with self.subTest(chemin=chemin):
+                resp = self.api.post(base + chemin, corps, format='json')
+                self.assertEqual(resp.status_code, 409, resp.content)
+                source.refresh_from_db()
+                soeur.refresh_from_db()
+                self.assertEqual((gamme_envoi(source), gamme_envoi(soeur)),
+                                 (GAMME_ENVOI_LES_DEUX, GAMME_ENVOI_LES_DEUX))
+                self.assertFalse(ShareLink.objects.filter(devis=source).exists())
+                self.assertEqual(source.statut, Devis.Statut.BROUILLON)
+
     def test_share_link_expose_le_bloc_gamme(self):
         source, _ = self._paire('DEV-GAM-025')
         resp = self.api.post(
