@@ -1,0 +1,13 @@
+# Taqinor OS — minuterie de l'auto-déploiement (ADCG96, versionné le 10/11/2026).
+# Réglages lus sur le serveur de production le 10/11 : OnBootSec=2min,
+# OnUnitActiveSec=1min. Activée par scripts/serveur/installer-serveur.sh.
+[Unit]
+Description=Taqinor OS - sonde origin/main chaque minute
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+Unit=taqinor-autodeploy.service
+
+[Install]
+WantedBy=timers.target

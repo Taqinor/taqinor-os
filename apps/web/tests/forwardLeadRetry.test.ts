@@ -52,7 +52,7 @@ function fakeKv() {
   const store = new Map<string, { value: string; ttl?: number }>();
   return {
     store,
-    put: vi.fn(async (k: string, v: string, o?: { expirationTtl?: number }) => { store.set(k, { value: v, ttl: o?.expirationTtl }); }),
+    put: vi.fn(async (k: string, v: string, o?: { expirationTtl?: number; metadata?: unknown }) => { store.set(k, { value: v, ttl: o?.expirationTtl }); }),
     get: vi.fn(async (k: string) => store.get(k)?.value ?? null),
     delete: vi.fn(async (k: string) => { store.delete(k); }),
     list: vi.fn(async (o?: { prefix?: string }) => ({
@@ -141,6 +141,43 @@ describe('resendDeadLetters — gestionnaire planifié (QJR663)', () => {
     expect(fetchFn.mock.calls[0][1].headers['x-webhook-secret']).toBe('s3');
     expect(fetchFn.mock.calls[0][1].body).toBe('{"idempotencyKey":"a"}');
     expect(JSON.stringify(log.mock.calls)).not.toContain('idempotencyKey'); // aucune donnée dans les logs
+  });
+
+  it('401 persistant → lead conservé SANS expiration sous lead-refuse: et signalé en erreur à chaque renvoi', async () => {
+    const { resendDeadLetters } = await import('../worker/deadLetter.mjs');
+    const kv = fakeKv();
+    const record = { ...mk(), idempotencyKey: 'idem-401' };
+    const r = await forwardLead(record, { ...env, LEADS_DLQ: kv }, vi.fn().mockResolvedValue(res(401)) as any,
+      { includeUnqualified: true, sleepFn: noSleep });
+    expect(r.deadLettered).toBe(true);
+    const [key, value, opts] = kv.put.mock.calls[0];
+    expect(key).toBe('lead-refuse:idem-401');
+    expect(JSON.parse(value)).toEqual(record);
+    expect(opts.expirationTtl).toBeUndefined();
+    expect(opts.metadata).toEqual({ statut: 401 });
+    // Renvois toujours à 401 : signalés en erreur, gardés ; +8 jours, le KV n'efface que les clés à TTL.
+    const logError = vi.fn();
+    for (let i = 0; i < 2; i++) {
+      const out = await resendDeadLetters({ ...env, LEADS_DLQ: kv }, vi.fn().mockResolvedValue(res(401)) as any,
+        vi.fn(), logError);
+      expect(out.refused).toBe(1);
+    }
+    expect(logError).toHaveBeenCalledTimes(2);
+    expect(logError.mock.calls[0][0]).toBe(
+      '[dead-letter] 1 lead(s) refusé(s) par le CRM (HTTP 401), conservé(s) sans expiration');
+    for (const [k, v] of kv.store) if (v.ttl !== undefined && v.ttl <= 8 * 24 * 3600) kv.store.delete(k);
+    expect(kv.store.has('lead-refuse:idem-401')).toBe(true);
+    // CRM revenu à 200 : livré puis supprimé.
+    const out = await resendDeadLetters({ ...env, LEADS_DLQ: kv }, vi.fn().mockResolvedValue(res(200)) as any,
+      vi.fn(), logError);
+    expect(out).toEqual({ skipped: false, found: 1, delivered: 1, failed: 0 });
+    expect(kv.store.has('lead-refuse:idem-401')).toBe(false);
+    // Un 503 garde le chemin d'avant (lead: + 7 jours).
+    const kv503 = fakeKv();
+    await forwardLead({ ...mk(), idempotencyKey: 'idem-503' }, { ...env, LEADS_DLQ: kv503 },
+      vi.fn().mockResolvedValue(res(503)) as any, { includeUnqualified: true, sleepFn: noSleep });
+    expect(kv503.put.mock.calls[0][0]).toBe('lead:idem-503');
+    expect(kv503.put.mock.calls[0][2].expirationTtl).toBe(7 * 24 * 60 * 60);
   });
 
   it('sans liaison → no-op (aucun appel réseau)', async () => {
