@@ -17,7 +17,7 @@ from core.conflit_etat import ConflitEtat
 from core.parseurs import sans_nul
 from core.pdf import render_pdf
 
-from .models import Cabinet, Document, DocumentVersion, Folder, RoutageDocumentaire
+from .models import LIFECYCLE_OBSOLETE, Cabinet, Document, DocumentVersion, Folder, RoutageDocumentaire
 from .pdf_etat import ouvrir_pdf_exploitable
 
 logger = logging.getLogger(__name__)
@@ -1991,8 +1991,8 @@ def resolve_partage_public(token, *, password=None):
     # Jeton inconnu OU partage révoqué → 404 indistinct (pas de fuite).
     if partage is None or not partage.actif:
         return PARTAGE_INTROUVABLE, None
-    # ADOC6 — un document mis en corbeille n'est plus servi (404 indistinct).
-    if partage.document.supprime_le is not None:
+    # ADOC6 / ASOC47 — document en corbeille OU obsolète : plus servi (404 indistinct).
+    if partage.document.supprime_le is not None or partage.document.statut == LIFECYCLE_OBSOLETE:
         return PARTAGE_INTROUVABLE, None
     # Expiré ou quota épuisé → 410 Gone.
     if partage.is_expired or partage.quota_exhausted:
