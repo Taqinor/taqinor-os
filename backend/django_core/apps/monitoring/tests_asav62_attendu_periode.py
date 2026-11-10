@@ -206,3 +206,19 @@ class AttenduPeriodeTests(TestCase):
         self._mensuels(temoin, '6000', range(1, 11), facteur='0.6')
         data = build_om_report_data(temoin, period='monthly', today=quinze)
         self.assertLess(float(data['pr_pct']), 65.0)
+
+    def test_rapport_production_periode_au_prorata(self):
+        """AMON98 — « Production période » au prorata des relevés qui
+        recouvrent la période : mensuels jusqu'en octobre, lus le 15/11 ⇒
+        220,07 kWh (et non 0) au mensuel, 1 267,82 au trimestriel."""
+        from datetime import date
+        quinze = date(2026, 11, 15)
+        inst = self._systeme('CHT-AMON98', '6000', date(2026, 1, 1))
+        self._mensuels(inst, '6000', range(1, 11))
+        mensuel = build_om_report_data(inst, period='monthly', today=quinze)
+        self.assertAlmostEqual(
+            float(mensuel['period_kwh']), 220.07, delta=0.01)
+        trimestriel = build_om_report_data(
+            inst, period='quarterly', today=quinze)
+        self.assertAlmostEqual(
+            float(trimestriel['period_kwh']), 1267.82, delta=0.01)

@@ -1343,7 +1343,7 @@ class TestOmReport(TestCase):
     def test_report_data(self):
         from apps.monitoring.report import build_om_report_data
         d = build_om_report_data(self.inst, period='monthly', today=self.today)
-        self.assertEqual(d['period_kwh'], Decimal('900.00'))
+        self.assertEqual(d['period_kwh'], Decimal('630.00'))  # AMON98 : prorata 21/30 j
         self.assertIn('recommendations', d)
         self.assertTrue(len(d['recommendations']) >= 1)
 

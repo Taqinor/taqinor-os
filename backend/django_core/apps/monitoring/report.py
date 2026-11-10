@@ -23,8 +23,6 @@ près.
 """
 from __future__ import annotations
 
-from datetime import timedelta
-from decimal import Decimal
 from html import escape
 
 from django.utils import timezone
@@ -32,7 +30,7 @@ from django.utils import timezone
 from core.pdf import render_pdf
 
 from .analytics import om_metrics, soiling_assessment
-from .models import ProductionReading, UnderperformanceFlag
+from .models import UnderperformanceFlag
 from .services import warranty_curve_overlay
 
 import logging
@@ -66,18 +64,14 @@ def build_om_report_data(installation, *, period='monthly', today=None):
     """Données du rapport O&M pour un système sur la période. 100 % lecture."""
     today = today or timezone.localdate()
     window = PERIODS.get(period, 30)
-    since = today - timedelta(days=window)
-
-    period_kwh = Decimal('0')
-    for r in (ProductionReading.objects
-              .filter(installation=installation, date__gte=since, date__lte=today)
-              .values_list('energy_kwh', flat=True)):
-        period_kwh += Decimal(str(r))
 
     metrics = om_metrics(installation, today=today)
     # AMON21 — PR et disponibilité DE LA PÉRIODE du rapport (30 / 91 j),
     # jamais ceux de 365 j ; la dérive reste lue sur l'année.
     metrics_periode = om_metrics(installation, window_days=window, today=today)
+    # AMON98 — production de la période AU PRORATA des relevés qui la
+    # recouvrent (``production_couverte``), jamais la somme des relevés datés.
+    period_kwh = metrics_periode['production_kwh']
     soiling = soiling_assessment(installation, today=today)
     # CIQ646 (D-CIQ-12) — aucune ligne de garantie de production dans un
     # rapport client tant que la société n'a pas validé l'engagement
@@ -109,7 +103,7 @@ def build_om_report_data(installation, *, period='monthly', today=None):
         'reference': getattr(installation, 'reference', None),
         'period': period,
         'period_days': window,
-        'period_kwh': period_kwh.quantize(Decimal('0.01')),
+        'period_kwh': period_kwh,
         'pr_pct': metrics_periode['pr_pct'],
         'availability_pct': metrics_periode['availability_pct'],
         'degradation_pct_per_year': metrics['degradation_pct_per_year'],
