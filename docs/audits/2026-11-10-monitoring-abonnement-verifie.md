@@ -110,4 +110,24 @@ exécutée : les vraies fonctions de calcul d'`origin/main`, extraites telles qu
 - **Statut.** Un écart S1 d'origine reste ouvert (AMON108, non cochée) : le marqueur en garde 1 et AMON reste « construit »
   jusqu'à ce que cette tâche soit cochée puis relue.
 
-<!-- verifie | groupe: AMON | pct: 100 | ecarts_s1_s2: 1 -->
+## 9. Contre-visite des tâches débloquées, le soir même (base `34bdb3c33`)
+
+Les deux tâches restées bloquées sur leur preuve en direct ont été cochées dans l'après-midi (rejeu d'acceptation d'une autre
+session, PR #1340). Un vérificateur frais (opus, effort élevé) les a relues : **AMON108 et AMON109 : ok**.
+
+- **Écart S1 fermé.** Le rapport remis au client — PDF et écran — affiche « indice de suivi (jours avec relevé) » ; le mot
+  « Disponibilité » n'y figure plus (une seule définition du libellé, lue par les deux). Le téléchargement du PDF répond.
+- **Preuve en direct réelle.** L'enregistrement d'acceptation du 10/11 (`docs/audits/acceptation/AMON/`) a été joué sur un
+  code qui contient les correctifs et qui est un ancêtre de `main` ; aucun commit postérieur ne touche les fichiers concernés.
+  Sa trace détaille les requêtes et les réponses : PDF téléchargé et relu (libellé présent, ancien mot absent), pastille
+  d'impact affichée sans CO2 pour une société sans facteur réglé. Les captures d'écran citées n'ont pas été ouvertes.
+- **Tests.** Celui d'AMON108 est comportemental (rangé dans un autre module que celui annoncé, justifié par la taille du
+  fichier) ; il n'a pas été exécuté ici. Celui d'AMON109 reste une lecture du source par expressions régulières (7 réussis
+  sur l'hôte) : le rendu « avec facteur réglé » n'est prouvé ni en direct ni par un test.
+- **Optionnel.** Un écran interne d'analyse affiche encore « Disponibilité » (hors tâche, rien n'atteint le client). Le rejeu
+  en direct imprimait un indice de performance de 140,7 % — effet probable des données d'essai, non étudié : à regarder si un
+  rapport réel dépasse 100 %.
+- **Statut.** Les trois écarts S1-S2 de cette contre-visite sont fermés ⇒ AMON passe « vérifié » ; AMON107 attend toujours
+  la décision D-AMON-3.
+
+<!-- verifie | groupe: AMON | pct: 100 | ecarts_s1_s2: 0 -->

@@ -93,7 +93,9 @@ Les tâches d'écart déposées ci-dessus ont été construites dans la journée
 - ACSV109 : le refus de facturer un ticket sous garantie de chantier passe avant le cas de la récidive (simple déplacement,
   un seul service pour les trois appelants). ACSV110 : deux poses de pièce simultanées ne sortent plus le stock deux fois
   (test à deux connexions réelles).
-- **Non cochée, non vérifiée.** ACSV108 (S3) : code livré, bloquée sur sa preuve en direct.
+- **ACSV108 (S3), cochée et relue le soir même (base `34bdb3c33`) : ok.** Un ticket dont un prêt d'outillage est en cours
+  ne s'annule plus, ni seul, ni en lot, ni par modification directe ; preuve en direct réelle (enregistrement du 10/11,
+  trace des requêtes : un ticket traité, l'autre refusé avec sa raison).
 - **Tests.** Présents et comportementaux, verts dans la CI de la PR #1316, non retouchés depuis. Les trois tâches demandaient
   la sortie rouge de leur mutant : aucun mutant n'a été exécuté (dit dans les commits) ; seule la version saine est prouvée.
 - **Optionnel.** Sur un ticket sans équipement daté, un technicien peut cocher « sous garantie » à la main : le ticket est
