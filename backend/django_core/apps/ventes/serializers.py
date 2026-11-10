@@ -9,10 +9,9 @@ from core.champs_stricts import (
     DecimalStricte,
     DecimalSoupleMixin, IdInconnu404Mixin, TexteLie,
 )
-from core.mixins import SameCompanyFKSerializerMixin
+from core.mixins import SameCompanyFKSerializerMixin, VerrouOptimisteSerializerMixin
 from core.parseurs import ListeJSON, ObjetJSON
 from core.serializer_mixins import _user_may_see
-from core.verrou_optimiste import VerrouOptimisteSerializerMixin
 from core.serializers import (
     ChampsStrictsMixin, CompanyScopedPrimaryKeyRelatedField, request_company_id,
 )

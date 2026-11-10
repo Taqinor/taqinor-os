@@ -7,9 +7,8 @@ from drf_spectacular.utils import (extend_schema_field, extend_schema_serializer
                                    inline_serializer)
 from rest_framework import serializers
 
-from core.mixins import SameCompanyFKSerializerMixin
+from core.mixins import SameCompanyFKSerializerMixin, VerrouOptimisteSerializerMixin
 from core.serializers import CompanyScopedRelationsMixin, ChampsTexteBooleenStricts
-from core.verrou_optimiste import VerrouOptimisteSerializerMixin
 from core.champs_stricts import (
     ChaineStricte, ChampsStrictsMixin, DecimalStricte, IdInconnu404Mixin,
     IdInconnu404ImbriquesMixin, QUANTITE_MAX, TexteLie)

@@ -27,9 +27,8 @@ from core.champs_stricts import (
     DecimalSouple, EntierStrict, IdInconnu404Mixin, MOTIF_NON_BLANC_SANS_NUL,
 )
 from core.conflit_etat import ConflitEtat
-from core.mixins import SameCompanyFKSerializerMixin
+from core.mixins import SameCompanyFKSerializerMixin, VerrouOptimisteSerializerMixin
 from core.unicite import UniciteEn409Mixin
-from core.verrou_optimiste import VerrouOptimisteSerializerMixin
 from apps.ventes.domain.bornes import (
     MOTIF_MONTANT_POSITIF, montant_saisi, pourcentage_saisi,
     total_ligne_hors_capacite,

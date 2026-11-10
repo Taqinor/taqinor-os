@@ -13,9 +13,8 @@ from core.champs_stricts import (
     DecimalSouple, IdInconnu404Mixin,
 )
 from core.conflit_etat import ConflitEtat
-from core.verrou_optimiste import VerrouOptimisteSerializerMixin
 from core.parseurs import ObjetJSON
-from core.mixins import SameCompanyFKSerializerMixin
+from core.mixins import SameCompanyFKSerializerMixin, VerrouOptimisteSerializerMixin
 from core.serializers import (
     model_is_company_scoped,
     request_company_id,

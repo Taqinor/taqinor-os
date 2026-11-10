@@ -4,9 +4,13 @@
 scope les FK ÉCRITES par un sérialiseur — deux moitiés du même contrat, d'où
 leur cohabitation ici (AUD601).
 """
+from django.db import transaction
 from rest_framework import serializers
 
 from core.serializer_mixins import NullableDottedSourcesMixin
+from core.verrou_optimiste import (
+    CHAMP_VERSION, CODE_CONFLIT_VERSION, MESSAGE_CONFLIT_VERSION, ConflitVersion,
+    version_envoyee)
 
 
 class SameCompanyFKSerializerMixin(NullableDottedSourcesMixin):
@@ -181,3 +185,60 @@ class TenantMixin:
             serializer.save(company=self.request.user.company)
         else:
             serializer.save()
+
+
+class VerrouOptimisteSerializerMixin:
+    """NTPLT17 — verrou optimiste OPT-IN (voir ``core.verrou_optimiste``).
+
+    À placer AVANT ``serializers.ModelSerializer`` dans les bases.
+
+    N'agit qu'en mise à jour (``self.instance`` posé) et seulement si le corps
+    porte ``lock_version`` ; ne modifie ni les champs ni la validation des
+    sous-classes."""
+
+    def _version_en_base(self, verrouiller=False):
+        modele = type(self.instance)
+        qs = modele._base_manager.filter(pk=self.instance.pk)
+        if verrouiller:
+            qs = qs.select_for_update()
+        return qs.values_list(CHAMP_VERSION, flat=True).first()
+
+    def _conflit(self, actuelle):
+        frais = type(self.instance)._base_manager.get(pk=self.instance.pk)
+        return ConflitVersion({
+            'detail': MESSAGE_CONFLIT_VERSION,
+            'code': CODE_CONFLIT_VERSION,
+            CHAMP_VERSION: actuelle,
+            'actuel': type(self)(frais, context=self.context).data,
+        })
+
+    def _verifier_version(self, verrouiller=False):
+        """``None`` si rien n'est demandé ; sinon la version en base (lève
+        ``ConflitVersion`` si elle diffère de celle envoyée)."""
+        if self.instance is None or getattr(self.instance, 'pk', None) is None:
+            return None
+        envoyee = version_envoyee(getattr(self, 'initial_data', None))
+        if envoyee is None:
+            return None
+        actuelle = self._version_en_base(verrouiller=verrouiller)
+        if actuelle is not None and actuelle != envoyee:
+            raise self._conflit(actuelle)
+        return actuelle
+
+    def is_valid(self, *args, **kwargs):
+        valide = super().is_valid(*args, **kwargs)
+        if valide:
+            self._verifier_version()
+        return valide
+
+    def save(self, **kwargs):
+        if version_envoyee(getattr(self, 'initial_data', None)) is None \
+                or self.instance is None:
+            return super().save(**kwargs)
+        with transaction.atomic():
+            actuelle = self._verifier_version(verrouiller=True)
+            if actuelle is not None:
+                # La version d'où l'on repart est celle de la base (verrouillée),
+                # jamais celle d'une instance chargée plus tôt.
+                setattr(self.instance, CHAMP_VERSION, actuelle)
+            return super().save(**kwargs)
