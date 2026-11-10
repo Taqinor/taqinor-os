@@ -180,6 +180,35 @@ describe('resendDeadLetters — gestionnaire planifié (QJR663)', () => {
     expect(kv503.put.mock.calls[0][2].expirationTtl).toBe(7 * 24 * 60 * 60);
   });
 
+  it('503 puis 401 au renvoi → déplacé sous lead-refuse: sans expiration (ADCG114)', async () => {
+    const { resendDeadLetters } = await import('../worker/deadLetter.mjs');
+    const kv = fakeKv();
+    const record = { ...mk(), idempotencyKey: 'idem-x' };
+    await forwardLead(record, { ...env, LEADS_DLQ: kv }, vi.fn().mockResolvedValue(res(503)) as any,
+      { includeUnqualified: true, sleepFn: noSleep });
+    expect(kv.store.get('lead:idem-x')?.ttl).toBe(7 * 24 * 60 * 60);
+    // Renvoi : le CRM refuse en 401 (secret changé entre-temps).
+    const logError = vi.fn();
+    const out = await resendDeadLetters({ ...env, LEADS_DLQ: kv }, vi.fn().mockResolvedValue(res(401)) as any,
+      vi.fn(), logError);
+    expect(out).toEqual({ skipped: false, found: 1, delivered: 0, failed: 0, refused: 1 });
+    expect(kv.store.has('lead:idem-x')).toBe(false);
+    expect(kv.store.get('lead-refuse:idem-x')?.ttl).toBeUndefined();
+    expect(JSON.parse(kv.store.get('lead-refuse:idem-x')!.value)).toEqual(record);
+    const [, , opts] = kv.put.mock.calls.at(-1)!;
+    expect(opts.metadata).toEqual({ statut: 401 });
+    expect(logError).toHaveBeenCalledWith(
+      '[dead-letter] 1 lead(s) refusé(s) par le CRM (HTTP 401), conservé(s) sans expiration');
+    // +8 jours : le KV efface les clés à TTL ; le lead refusé est encore là (relecture du KV).
+    for (const [k, v] of kv.store) if (v.ttl !== undefined && v.ttl <= 8 * 24 * 3600) kv.store.delete(k);
+    expect(await kv.get('lead-refuse:idem-x')).not.toBeNull();
+    // CRM revenu à 200 : livré puis supprimé.
+    const ok = await resendDeadLetters({ ...env, LEADS_DLQ: kv }, vi.fn().mockResolvedValue(res(200)) as any,
+      vi.fn(), logError);
+    expect(ok).toEqual({ skipped: false, found: 1, delivered: 1, failed: 0 });
+    expect(kv.store.size).toBe(0);
+  });
+
   it('sans liaison → no-op (aucun appel réseau)', async () => {
     const { resendDeadLetters, resetDeadLetterWarning } = await import('../worker/deadLetter.mjs');
     resetDeadLetterWarning();
