@@ -90,6 +90,43 @@ class TestMarkDevisSentService(TestCase):
         devis.refresh_from_db()
         self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
 
+    def test_conception_divergente_refuse_l_envoi(self):
+        """ACON86 (C-ACON-021) — calepinage lié (lien direct) à une conception
+        différente de celle du brouillon : 409 nommé par tous les gestes, devis
+        brouillon, 0 mail ; resynchronisé (même empreinte) : envoyé."""
+        from django.core import mail
+        from apps.calepinage.models import Calepinage
+        from core.conflit_etat import ConflitEtat
+        self.client_obj.email = 'alaoui@example.com'
+        self.client_obj.save(update_fields=['email'])
+        devis = self._devis()
+        Devis.objects.filter(pk=devis.pk).update(layout_hash='a' * 64)
+        devis.refresh_from_db()
+        calepinage = Calepinage.objects.create(
+            company=self.company, client=self.client_obj, devis=devis,
+            titre='Toit ACON86', layout_hash='b' * 64)
+        with self.assertRaises(ConflitEtat):
+            mark_devis_sent(devis=devis, user=None)
+        api = make_api(User.objects.create_user(
+            username='acon86-resp', password='x', company=self.company, role_legacy='responsable'))
+        base = f'/api/django/ventes/devis/{devis.id}/'
+        for chemin, corps in (('envoyer-email/', {}), ('share-link/', {'envoi': True}),
+                              ('whatsapp/', {})):
+            with self.subTest(chemin=chemin):
+                resp = api.post(base + chemin, corps, format='json')
+                self.assertEqual(resp.status_code, 409, resp.content)
+                self.assertEqual(str(resp.data['code']), 'conception_a_resynchroniser')
+                self.assertIn('« Toit ACON86 »', str(resp.data['detail']))
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
+        self.assertIsNone(devis.date_envoi)
+        self.assertEqual(len(mail.outbox), 0)
+        Calepinage.objects.filter(pk=calepinage.pk).update(layout_hash='')  # inconnu : part
+        devis.refresh_from_db()
+        mark_devis_sent(devis=devis, user=None)
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
+
     def test_brouillon_flips_to_envoye_and_stamps_date(self):
         devis = self._devis()
         self.assertIsNone(devis.date_envoi)

@@ -118,6 +118,20 @@ class ListeBlanche3DPublique(TestCase):
         self.assertNotIn('Jinko', texte)
         self.assertNotIn('575', texte)
 
+    def test_zone_de_1200_cellules_publiee_entiere(self):
+        """ACON50 (D-ACON-4) — plafond 2 000 PAR ZONE : 1 200 cellules publiées
+        entières, 2 400 bornées à 2 000 (``count`` 2 400 gardé), 300 inchangé."""
+        for posees, attendues in ((1200, 1200), (2400, 2000), (300, 300)):
+            with self.subTest(posees=posees):
+                zone = dict(LAYOUT['zones'][0], geometry={
+                    'moduleId': 'm550', 'mode': 'free', 'count': posees,
+                    'panels': [{'cx': float(i), 'cy': 0.0} for i in range(posees)]})
+                self.devis.roof_layout = dict(LAYOUT, zones=[zone])
+                self.devis.save(update_fields=['roof_layout'])
+                geo = _safe_roof_layout(self.devis)['zones'][0]['geometry']
+                self.assertEqual(len(geo['panels']), attendues)
+                self.assertEqual(geo['count'], posees)
+
     def test_ancien_devis_inchange(self):
         self.devis.roof_layout = {'version': 2, 'zones': []}
         self.devis.save(update_fields=['roof_layout'])

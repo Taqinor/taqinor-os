@@ -229,6 +229,26 @@ class MontantTrancheBrouillonTests(TestCase):
             [Decimal(str(e['pct_or_montant'])) for e in self.devis.echeancier],
             [Decimal('15000'), Decimal('60'), Decimal('4600')])
 
+    def test_brouillon_tranche_porte_l_escompte_par_defaut(self):
+        """ASOC87 (C-ASOC-147) — société réglée 2 % / 10 j : le brouillon
+        d'acompte né du devis porte escompte 2 / 10 (patron XFAC12) ; sans
+        défaut (setUp) : NULL comme hier. Mutant : retirer la reprise ⇒ None."""
+        from apps.parametres.models import CompanyProfile
+        from apps.ventes.domain.facturation_vente import creer_brouillon_tranche
+        from apps.ventes.tests._quote_engine_common import make_client
+        from apps.ventes.tests.test_echeancier_somme_total import creer_devis_388
+        from apps.ventes.tests.test_qjr_echeancier_validation import ECHEANCIER_30_60_10
+        from apps.ventes.vente_facturation import plan_facturation
+        self.assertIsNone(self.brouillon.escompte_pct)
+        profil = CompanyProfile.get(company=self.company)
+        profil.escompte_pct_defaut, profil.escompte_jours_defaut = Decimal('2'), 10
+        profil.save()
+        devis = creer_devis_388(self.company, self.user, make_client(self.company),
+                                'DEV-ASOC87-1', ECHEANCIER_30_60_10)
+        brouillon = creer_brouillon_tranche(devis, plan_facturation(devis)['prochaine'], self.user)
+        brouillon.refresh_from_db()  # CLAUSE PERSISTANCE
+        self.assertEqual((brouillon.escompte_pct, brouillon.escompte_jours), (Decimal('2'), 10))
+
     def test_facture_emise_409(self):
         from apps.ventes.models import Facture
         Facture.objects.filter(pk=self.brouillon.pk).update(

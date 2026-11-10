@@ -45,16 +45,22 @@ def _co_filter(user):
     return None
 
 
-def _spec_lead(co, q):
+def _spec_lead(co, q, user=None):
     from apps.crm.models import Lead
-    qs = Lead.objects.filter(**co).filter(
+    from apps.crm.selectors import portee_leads
+    pii = _voit_pii(user)
+    critere = (
         Q(nom__icontains=q) | Q(prenom__icontains=q) | Q(societe__icontains=q)
-        | Q(email__icontains=q) | Q(telephone__icontains=q) | Q(ville__icontains=q)
+        | Q(ville__icontains=q)
         # WREF (fondateur 21/08) — le « TQ-XXXX » remis au client retrouve le
         # lead depuis l'omnibox aussi. (code_parrainage vit sur crm.Client,
         # pas sur Lead — l'y interroger casserait TOUTES les recherches.)
-        | Q(client_ref__icontains=q) | Q(client_ref_provisoire__icontains=q)
-    ).order_by('-date_creation')
+        | Q(client_ref__icontains=q) | Q(client_ref_provisoire__icontains=q))
+    if pii:  # APFS24 — téléphone / e-mail : critère réservé à ``client_pii_voir``
+        critere |= Q(email__icontains=q) | Q(telephone__icontains=q)
+    qs = Lead.objects.filter(**co).filter(critere)
+    # APFS24 — la portée du rôle (propriétaire + entités), comme ``crm/leads/``.
+    qs = (portee_leads(qs, user) if user is not None else qs.none()).order_by('-date_creation')
     # Incident 02/10/2026 — un lead ARCHIVÉ reste trouvable ici (il « avait
     # disparu » pour la commerciale) mais doit se DIRE archivé : sans la
     # mention, rien n'expliquait son absence du pipeline.
@@ -63,23 +69,24 @@ def _spec_lead(co, q):
         'label': f"{le.nom} {le.prenom or ''}".strip() or le.societe or '—',
         'sublabel': ' · '.join(filter(None, [
             'Archivé' if le.is_archived else '',
-            le.societe or le.ville or le.telephone or '',
+            le.societe or le.ville or (le.telephone if pii else '') or '',
         ]))}
 
 
-def _spec_client(co, q):
+def _spec_client(co, q, user=None):
     from apps.crm.models import Client
-    qs = Client.objects.filter(**co).filter(
-        Q(nom__icontains=q) | Q(prenom__icontains=q)
-        | Q(email__icontains=q) | Q(telephone__icontains=q)
-    ).order_by('nom')
+    pii = _voit_pii(user)
+    critere = Q(nom__icontains=q) | Q(prenom__icontains=q)
+    if pii:  # APFS24 — même règle que les leads
+        critere |= Q(email__icontains=q) | Q(telephone__icontains=q)
+    qs = Client.objects.filter(**co).filter(critere).order_by('nom')
     return 'client', 'Clients', qs, lambda c: {
         'id': c.id,
         'label': f"{c.nom} {c.prenom or ''}".strip() or '—',
-        'sublabel': c.email or c.telephone or ''}
+        'sublabel': (c.email or c.telephone or '') if pii else ''}
 
 
-def _spec_devis(co, q):
+def _spec_devis(co, q, user=None):
     from apps.ventes.models import Devis
     qs = Devis.objects.filter(**co).filter(
         Q(reference__icontains=q) | Q(client__nom__icontains=q)
@@ -89,7 +96,7 @@ def _spec_devis(co, q):
         'sublabel': getattr(d.client, 'nom', '') or ''}
 
 
-def _spec_facture(co, q):
+def _spec_facture(co, q, user=None):
     from apps.ventes.models import Facture
     qs = Facture.objects.filter(**co).filter(
         Q(reference__icontains=q) | Q(client__nom__icontains=q)
@@ -99,7 +106,7 @@ def _spec_facture(co, q):
         'sublabel': getattr(f.client, 'nom', '') or ''}
 
 
-def _spec_chantier(co, q):
+def _spec_chantier(co, q, user=None):
     from apps.installations.models import Installation
     qs = Installation.objects.filter(**co).filter(
         Q(reference__icontains=q)
@@ -108,7 +115,7 @@ def _spec_chantier(co, q):
         lambda i: {'id': i.id, 'label': i.reference, 'sublabel': ''})
 
 
-def _spec_equipement(co, q):
+def _spec_equipement(co, q, user=None):
     from apps.sav.models import Equipement
     qs = Equipement.objects.filter(**co).filter(
         Q(numero_serie__icontains=q) | Q(produit__nom__icontains=q)
@@ -118,7 +125,7 @@ def _spec_equipement(co, q):
         'sublabel': getattr(e.produit, 'nom', '') or ''}
 
 
-def _spec_ticket(co, q):
+def _spec_ticket(co, q, user=None):
     from apps.sav.models import Ticket
     qs = Ticket.objects.filter(**co).filter(
         Q(reference__icontains=q) | Q(description__icontains=q)
@@ -128,7 +135,7 @@ def _spec_ticket(co, q):
         'sublabel': (t.description or '')[:40]}
 
 
-def _spec_bon_commande(co, q):
+def _spec_bon_commande(co, q, user=None):
     from apps.ventes.models import BonCommande
     qs = BonCommande.objects.filter(**co).filter(
         Q(reference__icontains=q) | Q(client__nom__icontains=q)
@@ -138,7 +145,7 @@ def _spec_bon_commande(co, q):
         'sublabel': getattr(b.client, 'nom', '') or ''}
 
 
-def _spec_contrat_maintenance(co, q):
+def _spec_contrat_maintenance(co, q, user=None):
     from apps.sav.models import ContratMaintenance
     qs = ContratMaintenance.objects.filter(**co).filter(
         Q(client__nom__icontains=q) | Q(notes__icontains=q)
@@ -149,7 +156,7 @@ def _spec_contrat_maintenance(co, q):
         'sublabel': getattr(c.client, 'nom', '') or ''}
 
 
-def _spec_dossier_reglementaire(co, q):
+def _spec_dossier_reglementaire(co, q, user=None):
     from apps.installations.models import Installation
     qs = Installation.objects.filter(**co).filter(
         Q(dossier_reference__icontains=q) | Q(dossier_operateur__icontains=q)
@@ -162,7 +169,7 @@ def _spec_dossier_reglementaire(co, q):
         'sublabel': i.dossier_operateur or i.reference}
 
 
-def _spec_produit(co, q):
+def _spec_produit(co, q, user=None):
     """ARC29 — trou comblé : ``stock.Produit`` était importable/customfieldable/
     records-isé mais absent de la recherche globale."""
     from apps.stock.models import Produit
@@ -174,7 +181,7 @@ def _spec_produit(co, q):
         'sublabel': p.sku or ''}
 
 
-def _spec_campagne(co, q):
+def _spec_campagne(co, q, user=None):
     """PUB99 — campagnes publicitaires miroir (``adsengine.AdCampaignMirror``).
     Cherchées par nom ou id Meta ; sous-libellé = statut lisible."""
     from apps.adsengine.models import AdCampaignMirror
@@ -290,10 +297,30 @@ def _spec_calepinage(co, q, user=None):
         'sublabel': getattr(c.client, 'nom', '') or c.get_statut_display()}
 
 
-# ACAL296 — specs dont la visibilité dépend de L'UTILISATEUR (et pas
-# seulement de sa société) : ``global_search`` leur transmet
-# ``request.user`` ; les autres gardent la signature ``(co, q)``.
-_SPECS_PAR_UTILISATEUR = frozenset({_spec_calepinage})
+def _voit_pii(user):
+    """APFS24 — coordonnées personnelles (téléphone, e-mail) : ``client_pii_voir``."""
+    return user is not None and bool(getattr(user, 'can_view_client_pii', False))
+
+
+# APFS24 (C-APFS-025) — chaque groupe exige le droit de LECTURE de son module,
+# celui de l'écran qui l'ouvre (``core.permissions._user_has_or_legacy``, la
+# garde des viewsets) : un rôle sans ``crm_voir`` ne reçoit aucun lead. Une clé
+# absente (calepinage : vue par utilisateur ACAL296 ; campagnes pub) : sans droit.
+# ACAL296 — chaque spec reçoit ``request.user``.
+_DROIT_DES_GROUPES = {
+    'crm.lead': 'crm_voir', 'crm.client': 'crm_voir',
+    'ventes.devis': 'ventes_voir', 'ventes.facture': 'ventes_voir',
+    'ventes.boncommande': 'ventes_voir',
+    'installations.installation': 'installation_voir',
+    'sav.equipement': 'equipement_voir', 'sav.ticket': 'sav_voir',
+    'sav.contratmaintenance': 'sav_voir', 'stock.produit': 'stock_voir',
+}
+
+
+def _groupe_permis(user, cle):
+    from core.permissions import _user_has_or_legacy
+    code = _DROIT_DES_GROUPES.get(cle)
+    return code is None or _user_has_or_legacy(user, code)
 
 
 # Registre LOCAL des specs de recherche, LISTE ORDONNÉE de couples
@@ -388,14 +415,9 @@ def global_search(request):
     # ModuleToggle) sont interrogées, dans l'ordre historique de _SEARCH_SPECS.
     cherchables = platform.searchable_models(request.user.company)
     for cle, spec_builder in _SEARCH_SPECS:
-        if cle not in cherchables:
+        if cle not in cherchables or not _groupe_permis(request.user, cle):
             continue
-        if spec_builder in _SPECS_PAR_UTILISATEUR:
-            type_key, label_fr, qs, mapper = spec_builder(
-                co, q, user=request.user)
-        else:
-            type_key, label_fr, qs, mapper = spec_builder(co, q)
-        add(type_key, label_fr, qs, mapper)
+        add(*spec_builder(co, q, user=request.user))
 
     # NTEXT35 — objets personnalisés : un groupe par objet actif, jamais un
     # modèle natif câblé en dur (adapter générique, permission par objet).
@@ -460,12 +482,16 @@ def notifications(request):
     ]
 
     # ── Factures impayées / en retard ────────────────────────────────────
+    # APFS24 — sous ``ventes_voir`` et la portée du rôle (créateur), comme
+    # ``ventes/factures/`` : Admin RH n'y lit aucune facture.
     from apps.ventes.models import Facture
-    fac_qs = (Facture.objects
-              .filter(**co, statut__in=[Facture.Statut.EMISE,
-                                        Facture.Statut.EN_RETARD])
-              .select_related('client')
-              .order_by('date_echeance')[:20])
+    from core.scoping import scope_queryset
+    fac_qs = Facture.objects.filter(
+        **co, statut__in=[Facture.Statut.EMISE, Facture.Statut.EN_RETARD])
+    if not _groupe_permis(request.user, 'ventes.facture'):
+        fac_qs = fac_qs.none()
+    fac_qs = (scope_queryset(fac_qs, request.user, ['created_by'])
+              .select_related('client').order_by('date_echeance')[:20])
     factures = [
         {'id': f.id, 'label': f.reference,
          'sublabel': getattr(f.client, 'nom', '') or '',

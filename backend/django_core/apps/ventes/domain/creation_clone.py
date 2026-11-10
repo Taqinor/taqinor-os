@@ -179,6 +179,9 @@ def echeancier_pour_copie(copie):
     from core.conflit_etat import ConflitEtat
     from core.money import quantize_mad
     entrees = copie.echeancier
+    if entrees and all(isinstance(e, dict) and e.get('fige_le') for e in entrees):
+        copie.echeancier = None  # ASOC95 — un gel automatique ne se recopie pas
+        return copie.save(update_fields=['echeancier'])
     try:
         tranches = [normaliser_tranche(e, i) for i, e in enumerate(entrees)]
     except (EcheancierInvalide, TypeError):

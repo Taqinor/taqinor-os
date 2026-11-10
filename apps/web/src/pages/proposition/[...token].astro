@@ -1797,10 +1797,10 @@ const show3d = !!viewerModel && viewerModel.totalPanels >= 0;
 // false/absent (le cas de très loin le plus courant) → aucun rendu de plus.
 const layoutStale = ok && data?.layout_stale === true;
 const layoutPanneaux = layoutStale ? (data?.layout_nb_panneaux ?? null) : null;
-// WJ118 — contour aplati [lat,lng] (roof_layout.zones[].vertices, [lng,lat] →
-// [lat,lng] — même convention que captureOutline) transmis au client pour
-// draper la VRAIE photo satellite sur la 3D (buildPublicRoofImageSpec) ; vide
-// si aucun roof_layout exploitable, le client saute alors l'appel réseau.
+// WJ118 — contour [lat,lng] (convention captureOutline) pour draper la VRAIE photo
+// satellite (buildPublicRoofImageSpec) ; vide sans roof_layout : aucun appel réseau.
+// ACON93 — « vue simplifiée » : modules dessinés / modules posés (`geometry.count`).
+const vueSimplifiee = viewerModel?.simplifie && roofLayout ? { dessines: formatNumber(viewerModel.totalPanels), poses: formatNumber(roofLayout.zones.reduce((n, z, i) => n + Math.max(z.geometry?.count ?? 0, viewerModel.zones[i].panels.length), 0)) } : null;
 const roofOutlineLatLng = roofLayout ? roofLayoutOutlineLatLng(roofLayout) : [];
 const viewerConfig = show3d ? JSON.stringify({ model: viewerModel, roofOutlineLatLng, layout: roofLayout }) : null;
 
@@ -3326,9 +3326,9 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               </button>
             </p>
           )}
-          {/* Cartes « ZONE n · … » retirées (fondateur 2026-08-15) : les chiffres
-              par pan vivent dans « Votre installation » ; zoneAnnotations reste
-              dans la lib (testée) pour un éventuel retour. */}
+          {vueSimplifiee && <p id="roof3d-simplifiee" class="mt-3 text-sm text-lune-faint" data-i18n data-fr={`Vue simplifiée : ${vueSimplifiee.dessines} des ${vueSimplifiee.poses} modules dessinés.`}
+            data-en={`Simplified view: ${vueSimplifiee.dessines} of ${vueSimplifiee.poses} modules drawn.`} data-ar={`عرض مبسّط: ${vueSimplifiee.dessines} من أصل ${vueSimplifiee.poses} لوحاً مرسوماً.`}>
+            Vue simplifiée : {vueSimplifiee.dessines} des {vueSimplifiee.poses} modules dessinés.</p>}
 
           <!-- WJ26 retirée (fondateur 2026-08-15) : la « visite guidée » 4 étapes
                et sa barre Précédent/Suivant quittent la page ; walkthroughSteps

@@ -32,6 +32,7 @@ from decimal import Decimal
 # L-NIV — LA règle d'agrégation « kit » du niveau standard, partagée avec la
 # charge utile JSON publique et le comparatif de gammes (une seule vérité).
 from apps.ventes.domain.regles_calcul import REGLES_CONSO_PUBLIQUE_0111
+from apps.ventes.domain.reglages_figes_lecture import reglages_figes  # ASOC96 — feuille pure
 from apps.ventes.utils.anticopie import agreger_lignes_kit
 
 from . import i18n_labels as _i18n
@@ -795,7 +796,9 @@ def conditions_et_liens(*, _totaux_seuls, devis, etude, lignes, mode, opts,
     entreprise = {}
     try:
         from apps.parametres.selectors import company_identity
-        entreprise = company_identity(getattr(devis, "company", None))
+        # ASOC96 — un non-brouillon imprime l'identité FIGÉE à l'envoi (ASOC42).
+        entreprise = dict(reglages_figes(devis).get("identite")
+                          or company_identity(getattr(devis, "company", None)))
     except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus (D-ENF22-BLE001)
         logger.warning("builder.build_quote_data : erreur ignorée (mode dégradé)", exc_info=True)
         entreprise = {}

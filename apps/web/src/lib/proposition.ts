@@ -3187,8 +3187,9 @@ export const VIEWER_FLUSH_STANDOFF_M = 0.06;
 /** Inclinaison VISUELLE des châssis sur toit plat (°) — représentation 3D
  *  uniquement (aucune valeur affichée n'en dérive). */
 export const VIEWER_FLAT_TILT_DEG = 15;
-/** Plafond dur d'instances panneau (garde-fou perf bas de gamme). */
-export const VIEWER_MAX_PANELS = 600;
+/** ACON93 (D-ACON-4) — plafond dur d'instances panneau PAR ZONE (garde-fou perf
+ *  bas de gamme) : celui du calepinage (2 000), au-delà « vue simplifiée ». */
+export const VIEWER_MAX_PANELS = 2000;
 
 const VIEWER_DEG2RAD = Math.PI / 180;
 import { DEG2M_GEO as VIEWER_DEG2M, meanVertex } from './geo';
@@ -3271,6 +3272,8 @@ export interface ViewerModel {
   /** Rayon englobant (m) — cadre la caméra sans calcul côté client. */
   radiusM: number;
   totalPanels: number;
+  /** ACON93 — une zone publie plus de modules (`geometry.count`) que la vue n'en dessine. */
+  simplifie: boolean;
 }
 
 /** Empreinte de panneau d'une zone : les panneaux + les dimensions du RECTANGLE
@@ -3503,7 +3506,6 @@ export function buildViewerModel(layout: RoofLayout | null): ViewerModel | null 
   const zones: ViewerZone[] = [];
   let radiusM = 0;
   let totalPanels = 0;
-  let budget = VIEWER_MAX_PANELS;
   for (const z of layout.zones) {
     const ringENU = z.vertices.map(toENU);
     for (const [x, y] of ringENU) radiusM = Math.max(radiusM, Math.hypot(x, y));
@@ -3519,8 +3521,7 @@ export function buildViewerModel(layout: RoofLayout | null): ViewerModel | null 
     const tiltDeg = real && z.geometry ? z.geometry.tiltDeg : z.roofType === 'pitched' ? z.pitchDeg : VIEWER_FLAT_TILT_DEG;
     const azimuthDeg = real && z.geometry ? z.geometry.azimuthDeg : z.facingAzimuthDeg;
     const packed = real ?? packZonePanels(ringENU, azimuthDeg, tiltDeg, z.roofType, z.neededPanels, obstaclesENU);
-    const panels = packed.panels.slice(0, Math.max(0, budget));
-    budget -= panels.length;
+    const panels = packed.panels; // ACON93 — plafond PAR ZONE (fin du budget partagé de 600)
     totalPanels += panels.length;
     zones.push({
       ringENU,
@@ -3541,7 +3542,8 @@ export function buildViewerModel(layout: RoofLayout | null): ViewerModel | null 
     });
   }
   if (zones.length === 0) return null;
-  return { zones, radiusM: Math.max(radiusM, 6), totalPanels };
+  const simplifie = layout.zones.some((z, i) => (z.geometry?.count ?? 0) > zones[i].panels.length);
+  return { zones, radiusM: Math.max(radiusM, 6), totalPanels, simplifie };
 }
 
 /**
