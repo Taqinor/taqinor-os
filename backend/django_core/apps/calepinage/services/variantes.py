@@ -296,8 +296,8 @@ def retenir_variante(variante, *, user=None, appliquer=True):
                                variante=variante)
     document = (variante.roof_layout
                 if isinstance(variante.roof_layout, dict) else None)
-    if appliquer and document == {}:
-        # ACON26 — un document VIDE écraserait la conception courante.
+    if appliquer and not document:
+        # ACON26 — absent (None) ou VIDE ({}) : rien à écrire, rien à retenir.
         raise VarianteRefusee(MESSAGE_VARIANTE_SANS_CONCEPTION,
                               champ='roof_layout', etat=True)
 
@@ -323,7 +323,7 @@ def retenir_variante(variante, *, user=None, appliquer=True):
                  .update(retenue=False))
                 variante.retenue = True
                 variante.save(update_fields=['retenue', 'updated_at'])
-        if appliquer and document is not None:
+        if appliquer:
             from .layout import LayoutRefuse, enregistrer_layout
 
             try:

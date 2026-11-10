@@ -45,6 +45,9 @@ RESULTAT_SIMULE_2 = dict(RESULTAT_SIMULE, total_modules=10, kwc=7.2,
                          production=dict(RESULTAT_SIMULE['production'],
                                          p50_kwh=10400.0))
 
+#: ACON26 — on ne retient qu'une variante DESSINÉE.
+DESSIN = {'zones': [{'id': 'z1', 'panels': 12}]}
+
 
 def url_variantes(pk):
     return f'{url_detail(pk)}variantes/'
@@ -137,7 +140,8 @@ class CrudVarianteTest(BaseVariantes):
 
     def test_suppression_de_la_retenue_refusee(self):
         variante = CalepinageVariante.objects.create(
-            company=self.company, calepinage=self.calepinage, nom='A')
+            company=self.company, calepinage=self.calepinage, nom='A',
+            roof_layout=DESSIN)
         retenir_variante(variante)
         reponse = self.api.delete(
             url_variante(self.calepinage.pk, variante.pk))
@@ -169,9 +173,11 @@ class RetenirTest(BaseVariantes):
     def setUp(self):
         super().setUp()
         self.a = CalepinageVariante.objects.create(
-            company=self.company, calepinage=self.calepinage, nom='A')
+            company=self.company, calepinage=self.calepinage, nom='A',
+            roof_layout=DESSIN)
         self.b = CalepinageVariante.objects.create(
-            company=self.company, calepinage=self.calepinage, nom='B')
+            company=self.company, calepinage=self.calepinage, nom='B',
+            roof_layout=DESSIN)
         retenir_variante(self.a)
 
     def test_bascule(self):
@@ -208,7 +214,7 @@ class ComparerTest(BaseVariantes):
     def test_forme_conforme_au_contrat(self):
         variante = CalepinageVariante.objects.create(
             company=self.company, calepinage=self.calepinage, nom='A',
-            resultat=RESULTAT_SIMULE)
+            roof_layout=DESSIN, resultat=RESULTAT_SIMULE)
         retenir_variante(variante)
         reponse = self.api.get(url_comparer(self.calepinage.pk))
         self.assertEqual(reponse.status_code, 200, reponse.data)
@@ -228,7 +234,7 @@ class ComparerTest(BaseVariantes):
     def test_une_seule_variante_les_ecarts_valent_null(self):
         variante = CalepinageVariante.objects.create(
             company=self.company, calepinage=self.calepinage, nom='A',
-            resultat=RESULTAT_SIMULE)
+            roof_layout=DESSIN, resultat=RESULTAT_SIMULE)
         retenir_variante(variante)
         ligne = self.api.get(url_comparer(self.calepinage.pk)).data['lignes'][0]
         self.assertIsNone(ligne['ecart_modules'])
@@ -238,7 +244,7 @@ class ComparerTest(BaseVariantes):
     def test_ecarts_relatifs_a_la_retenue(self):
         retenue = CalepinageVariante.objects.create(
             company=self.company, calepinage=self.calepinage, nom='A',
-            resultat=RESULTAT_SIMULE)
+            roof_layout=DESSIN, resultat=RESULTAT_SIMULE)
         retenir_variante(retenue)
         CalepinageVariante.objects.create(
             company=self.company, calepinage=self.calepinage, nom='B',
@@ -253,7 +259,7 @@ class ComparerTest(BaseVariantes):
     def test_variante_non_simulee_dit_null_jamais_zero(self):
         retenue = CalepinageVariante.objects.create(
             company=self.company, calepinage=self.calepinage, nom='A',
-            resultat=RESULTAT_SIMULE)
+            roof_layout=DESSIN, resultat=RESULTAT_SIMULE)
         retenir_variante(retenue)
         CalepinageVariante.objects.create(
             company=self.company, calepinage=self.calepinage, nom='B')

@@ -29,6 +29,10 @@ from apps.ventes.models import Devis
 from apps.visites.tests.test_visite_terrain import VisiteTerrainBase
 
 
+#: ACON26 — on ne retient qu'une variante DESSINÉE.
+DESSIN = {'zones': [{'id': 'z1', 'panels': 10}]}
+
+
 def _active(company):
     enregistrer_parametres(
         company, {'presets': {'feu_vert_bureau_etudes': True}})
@@ -48,7 +52,7 @@ class RetenirAvecFeuVertTest(ParcoursVisiteMixin, VisiteTerrainBase):
     def _variante(self, calepinage, *, retenue=False):
         return CalepinageVariante.objects.create(
             company=self.company, calepinage=calepinage, nom='V1',
-            retenue=retenue)
+            roof_layout=DESSIN, retenue=retenue)
 
     def test_option_desactivee_retenir_marche_toujours(self):
         calepinage = Calepinage.objects.create(

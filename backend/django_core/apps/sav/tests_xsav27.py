@@ -214,3 +214,33 @@ class XSAV27PretEquipementServiceTest(TestCase):
                 pret=en_cours, date_retour_reelle=date.today(), user=self.admin)
         r = api.post(f'{base}/cloturer/', {}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
+
+    def test_pret_en_cours_bloque_annulation_en_lot_et_patch(self):
+        """ACSV108 : l'annulation EN LOT passe par la même porte (T en
+        échec, U annulé) ; un PATCH ``{annule: true}`` ne change rien."""
+        api = auth(self.admin)
+        creer_pret_equipement(
+            company=self.company, ticket=self.ticket, produit=self.onduleur,
+            numero_serie='SN-PRET-108', date_sortie=date.today(),
+            date_retour_prevue=None, user=self.admin)
+        sans_pret = Ticket.objects.create(
+            company=self.company, reference='SAV-XSAV27-108',
+            client=self.client_obj, installation=self.inst,
+            type=Ticket.Type.CORRECTIF, created_by=self.admin)
+        r = api.post('/api/django/sav/tickets/actions-groupees/', {
+            'ids': [self.ticket.id, sans_pret.id], 'operation': 'annuler'},
+            format='json')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data['traites'], [sans_pret.id])
+        self.assertEqual([e['id'] for e in r.data['echecs']], [self.ticket.id])
+        self.assertIn("Impossible d'annuler", r.data['echecs'][0]['raison'])
+        sans_pret.refresh_from_db()
+        self.assertTrue(sans_pret.annule)
+        r = api.patch(f'/api/django/sav/tickets/{self.ticket.id}/',
+                      {'annule': True}, format='json')
+        self.assertEqual(r.status_code, 200)
+        self.assertFalse(r.data['annule'])
+        self.ticket.refresh_from_db()
+        self.assertFalse(self.ticket.annule)
+        self.assertTrue(self.ticket.prets_equipement.filter(
+            statut=PretEquipement.Statut.EN_COURS).exists())
