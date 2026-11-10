@@ -1534,8 +1534,7 @@ def ticket_a_facturer_non_facture(ticket, user=None):
     if ticket.facture_id_ext or not (ticket.pieces.exists() or (ticket.heures_main_oeuvre or 0) > 0
                                      or any(c.quantite for c in f11(ticket.company, ticket.id))):
         return False
-    decision = decision_facturation(ticket, user, False)
-    return not decision['refuse'] and not decision['couvert']
+    return not any(decision_facturation(ticket, user, False)[k] for k in ('refuse', 'couvert'))
 
 
 def appliquer_transition_ticket(ticket, cible, user, *, systeme=False,
