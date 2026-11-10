@@ -1403,6 +1403,19 @@ class TestOmReport(TestCase):
         self.assertEqual(r.status_code, 200, r.data)
         self.assertIn('period_kwh', r.data)
 
+    def test_report_pdf_endpoint_format_pdf(self):
+        # ERR-AMON-PDF-RAPPORT-404 — ``?format=pdf`` est le paramètre réservé
+        # de DRF : sans renderer « pdf » déclaré il rendait 404.
+        from unittest import mock
+        with mock.patch('apps.monitoring.report.render_om_report_pdf',
+                        return_value=b'%PDF-1.4 test'):
+            r = self.api.get(
+                f'/api/django/monitoring/configs/{self.config.id}/om-report/'
+                '?period=monthly&format=pdf')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r['Content-Type'], 'application/pdf')
+        self.assertTrue(r.content.startswith(b'%PDF'))
+
     def test_email_sends_via_client_email_and_notifies_internally(self):
         # ARC39 — l'envoi CLIENT (PDF joint) reste un EmailMessage direct
         # (exception documentée), mais une notification INTERNE centrale

@@ -31,6 +31,7 @@ from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
 from rest_framework.parsers import JSONParser, MultiPartParser
+from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
@@ -287,6 +288,25 @@ class MonitoringImportRelevesCsv(serializers.Serializer):
 
 @extend_schema_view(list=extend_schema(
     parameters=_FILTRE_INSTALLATION))
+class _RapportPdfRenderer(JSONRenderer):
+    """Rend ``?format=pdf`` négociable sur le rapport O&M.
+
+    DRF réserve ``?format=`` (``URL_FORMAT_OVERRIDE``) au choix du renderer :
+    sans renderer « pdf » déclaré, la négociation lève un 404 AVANT la vue
+    (bug AMON108). La vue renvoie une ``HttpResponse`` déjà construite ; ce
+    renderer ne sert qu'aux ERREURS, rendues en JSON (jamais en faux PDF).
+    """
+
+    media_type = 'application/pdf'
+    format = 'pdf'
+
+    def render(self, data, accepted_media_type=None, renderer_context=None):
+        reponse = (renderer_context or {}).get('response')
+        if reponse is not None:
+            reponse['Content-Type'] = 'application/json'
+        return super().render(data, 'application/json', renderer_context)
+
+
 class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
     """Config de supervision par système installé (N50). Lecture tout rôle ;
     écriture responsable/admin. ?installation= pour filtrer."""
@@ -651,7 +671,8 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         responses={(200, 'application/json'): _VIEWS_MONITORING_CONFIG_VIEW_SET_OM_REPORT_REPONSE,
                    (200, 'application/pdf'): OpenApiTypes.BINARY})
     @action(detail=True, methods=['get'], url_path='om-report',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[IsResponsableOrAdmin],
+            renderer_classes=[JSONRenderer, _RapportPdfRenderer])
     def om_report(self, request, pk=None):
         """FG289 — rapport O&M périodique du système. ?period=monthly|quarterly.
         ?format=pdf renvoie le PDF ; sinon les données JSON."""
