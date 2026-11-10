@@ -241,8 +241,8 @@ class DepuisModeleEnBase(BaseApiCalepinage):
 
     # ── Les trois portes de services/creation.py ───────────────────────
     def test_porte_lead_sans_jeu_identique_a_aujourd_hui(self):
-        calepinage = creation.creer_pour_lead(self.lead_2.pk, self.company,
-                                              user=self.user)
+        calepinage = creation._creer_pour_lead(self.lead_2.pk, self.company,
+                                               user=self.user)
         self.assertIsNone(calepinage.roof_layout)
         self.assertFalse(any('Jeu de réglages' in (note.body or '')
                              for note in self._notes(calepinage)))
@@ -250,8 +250,8 @@ class DepuisModeleEnBase(BaseApiCalepinage):
     def test_porte_lead_jeu_inconnu_rien_n_est_cree(self):
         avant = Calepinage.objects.count()
         with self.assertRaises(creation.CreationRefusee) as refus:
-            creation.creer_pour_lead(self.lead_2.pk, self.company,
-                                     preset_id='hangar')
+            creation._creer_pour_lead(self.lead_2.pk, self.company,
+                                      preset_id='hangar')
         self.assertEqual(refus.exception.champ, 'preset_id')
         self.assertEqual(Calepinage.objects.count(), avant)
 

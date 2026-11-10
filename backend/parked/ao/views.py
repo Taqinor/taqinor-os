@@ -311,7 +311,7 @@ def _calepinage_pour_ecriture(appel_offre, user):
         return None
 
     try:
-        calepinage = services_calepinage.creer_pour_lead(
+        calepinage = services_calepinage._creer_pour_lead(
             appel_offre.lead_id, company, user=user,
             titre=f'Calepinage {appel_offre.reference}'.strip())
     except ValueError:

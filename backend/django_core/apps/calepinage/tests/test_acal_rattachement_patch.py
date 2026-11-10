@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from apps.calepinage.models import Calepinage
 from apps.calepinage.services.creation import (
-    creer_pour_lead, obtenir_ou_creer_pour_devis,
+    _creer_pour_lead, obtenir_ou_creer_pour_devis,
 )
 from apps.calepinage.services.liens import lier_devis
 from apps.calepinage.services.variantes import dupliquer
@@ -34,8 +34,8 @@ class RattachementPatchTest(BaseApiCalepinage):
                                                   nom='Bâtiment Rif')
 
     def _quatre_calepinages(self):
-        depuis_lead = creer_pour_lead(self.lead_client.pk, self.company,
-                                      user=self.user)
+        depuis_lead = _creer_pour_lead(self.lead_client.pk, self.company,
+                                       user=self.user)
         devis = Devis.objects.create(
             company=self.company, client=self.client_a,
             lead=self.lead_client, reference='DEV-202610-1791')
@@ -95,8 +95,8 @@ class RattachementPatchTest(BaseApiCalepinage):
                 self.assertEqual(calepinage.responsable_id, self.user.pk)
 
     def test_client_incoherent_avec_le_lead_refuse(self):
-        calepinage = creer_pour_lead(self.lead_client.pk, self.company,
-                                     user=self.user)
+        calepinage = _creer_pour_lead(self.lead_client.pk, self.company,
+                                      user=self.user)
         reponse = self.api.patch(url_detail(calepinage.pk),
                                  {'client': self.autre_client.pk},
                                  format='json')
@@ -118,8 +118,8 @@ class RattachementPatchTest(BaseApiCalepinage):
         self.assertEqual(renomme.status_code, 200, renomme.data)
 
     def test_patch_nom_lecture_seule_400(self):
-        calepinage = creer_pour_lead(self.lead_client.pk, self.company,
-                                     user=self.user, titre='Avant')
+        calepinage = _creer_pour_lead(self.lead_client.pk, self.company,
+                                      user=self.user, titre='Avant')
         reponse = self.api.patch(url_detail(calepinage.pk),
                                  {'nom': 'QA-CAL-RT'}, format='json')
         self.assertEqual(reponse.status_code, 400, reponse.data)
@@ -129,8 +129,8 @@ class RattachementPatchTest(BaseApiCalepinage):
         self.assertEqual(calepinage.titre, 'Avant')
 
     def test_cle_inconnue_ou_en_lecture_seule_nommee(self):
-        calepinage = creer_pour_lead(self.lead_client.pk, self.company,
-                                     user=self.user, titre='Avant')
+        calepinage = _creer_pour_lead(self.lead_client.pk, self.company,
+                                      user=self.user, titre='Avant')
         for cle, valeur in (('layout_hash', 'x' * 64), ('inconnue', 1)):
             with self.subTest(cle=cle):
                 reponse = self.api.patch(url_detail(calepinage.pk),

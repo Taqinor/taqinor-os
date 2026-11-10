@@ -20,7 +20,7 @@ import re
 from django.contrib.contenttypes.models import ContentType
 
 from apps.calepinage.models import Calepinage, CalepinageVariante
-from apps.calepinage.services.creation import creer_pour_lead
+from apps.calepinage.services.creation import _creer_pour_lead
 from apps.calepinage.services.journal import noter
 from apps.calepinage.services.layout import enregistrer_layout
 from apps.calepinage.services.liens import lier_devis
@@ -61,8 +61,8 @@ class ChatterTest(BaseApiCalepinage):
                 'tout chatter maison — passez par records.log_activity).')
 
     def test_creation_journalisee(self):
-        calepinage = creer_pour_lead(self.lead.pk, self.company,
-                                     user=self.user)
+        calepinage = _creer_pour_lead(self.lead.pk, self.company,
+                                      user=self.user)
         entrees = self._entrees(calepinage)
         self.assertEqual(entrees.count(), 1)
         entree = entrees.first()

@@ -2,7 +2,7 @@
 """ACAL300 (C-ACAL-016, D-ACAL-14) — le calepinage est fournisseur DSR (loi
 09-08) et son titre par défaut ne recopie plus le nom d'une personne.
 
-LE CONSTAT : ``creer_pour_lead`` titrait « Calepinage Dupont » ; aucun
+LE CONSTAT : ``_creer_pour_lead`` titrait « Calepinage Dupont » ; aucun
 fournisseur ``calepinage`` n'était enregistré auprès de ``core.dsr`` — un
 effacement légal laissait le nom, les photos de la maison, l'épingle GPS et la
 géométrie absolue du toit (qui localise la personne à elle seule).
@@ -22,7 +22,7 @@ from apps.calepinage.dsr_provider import NOTE_ANONYMISATION
 from apps.calepinage.models import (
     Calepinage, CalepinageVariante, CalepinageVersion, PhotoSite,
 )
-from apps.calepinage.services.creation import creer_pour_lead
+from apps.calepinage.services.creation import _creer_pour_lead
 from apps.calepinage.services.documents.gabarit_document import (
     identite_du_calepinage,
 )
@@ -73,8 +73,8 @@ class DsrCalepinageTest(BaseApiCalepinage):
                                           email=EMAIL)
 
     def _calepinage_complet(self):
-        calepinage = creer_pour_lead(self.dupont.pk, self.company,
-                                     user=self.user)
+        calepinage = _creer_pour_lead(self.dupont.pk, self.company,
+                                      user=self.user)
         Calepinage.objects.filter(pk=calepinage.pk).update(
             titre='Maison Dupont', roof_layout=DOCUMENT)
         calepinage.refresh_from_db()
@@ -95,8 +95,8 @@ class DsrCalepinageTest(BaseApiCalepinage):
         return calepinage, piece
 
     def test_titre_par_defaut_sans_nom_de_personne(self):
-        calepinage = creer_pour_lead(self.dupont.pk, self.company,
-                                     user=self.user)
+        calepinage = _creer_pour_lead(self.dupont.pk, self.company,
+                                      user=self.user)
 
         self.assertEqual(calepinage.titre, '')
         self.assertEqual(str(calepinage), f'Calepinage #{calepinage.pk}')
@@ -104,8 +104,8 @@ class DsrCalepinageTest(BaseApiCalepinage):
             url_detail(calepinage.pk)).data['nom'])
 
     def test_titre_saisi_conserve(self):
-        calepinage = creer_pour_lead(self.dupont.pk, self.company,
-                                     user=self.user, titre='Ma toiture')
+        calepinage = _creer_pour_lead(self.dupont.pk, self.company,
+                                      user=self.user, titre='Ma toiture')
 
         self.assertEqual(calepinage.titre, 'Ma toiture')
 
@@ -196,8 +196,8 @@ class DsrCalepinageTest(BaseApiCalepinage):
         self.assertEqual(creation.new_value, 'Calepinage créé')
 
     def test_page_de_garde_projet_sans_nom(self):
-        calepinage = creer_pour_lead(self.dupont.pk, self.company,
-                                     user=self.user)
+        calepinage = _creer_pour_lead(self.dupont.pk, self.company,
+                                      user=self.user)
 
         identite = identite_du_calepinage(calepinage)
 
