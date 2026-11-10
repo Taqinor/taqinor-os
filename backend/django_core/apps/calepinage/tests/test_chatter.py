@@ -97,10 +97,13 @@ class ChatterTest(BaseApiCalepinage):
         self.assertEqual(entree.new_value, str(devis.pk))
 
     def test_bascule_de_variante_journalisee_par_les_noms(self):
+        # ACON26 — on ne retient qu'une variante DESSINÉE.
         a = CalepinageVariante.objects.create(
-            company=self.company, calepinage=self.calepinage, nom='A')
+            company=self.company, calepinage=self.calepinage, nom='A',
+            roof_layout=V1)
         b = CalepinageVariante.objects.create(
-            company=self.company, calepinage=self.calepinage, nom='B')
+            company=self.company, calepinage=self.calepinage, nom='B',
+            roof_layout=V2)
         retenir_variante(a)
         retenir_variante(b)
         entrees = list(self._entrees().filter(field='variante')

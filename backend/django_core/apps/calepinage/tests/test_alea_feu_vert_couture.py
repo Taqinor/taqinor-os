@@ -52,8 +52,10 @@ class FeuVertCoutureTests(ParcoursVisiteMixin, VisiteTerrainBase):
         super().setUp()
         self.calepinage = Calepinage.objects.create(
             company=self.company, lead_id=self.lead.pk)
+        # ACON26 — on ne retient qu'une variante DESSINÉE.
         self.variante = CalepinageVariante.objects.create(
-            company=self.company, calepinage=self.calepinage, nom='V1')
+            company=self.company, calepinage=self.calepinage, nom='V1',
+            roof_layout={'zones': [{'id': 'z1', 'panels': 10}]})
 
     def _active(self):
         enregistrer_parametres(

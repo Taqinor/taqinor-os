@@ -27,6 +27,9 @@ RESULTAT = {
     'plans': [{'surface': 'PAN-A', 'modules': 12}],
 }
 
+#: ACON26 — on ne retient qu'une variante DESSINÉE.
+DESSIN = {'zones': [{'id': 'z1', 'panels': 12}]}
+
 
 def modele(nom):
     return django_apps.get_model('calepinage', nom)
@@ -40,7 +43,7 @@ class CalepinageValideWebhookTests(TestCase):
             company=self.co, lead_id=1, titre='Toiture')
         self.variante = modele('CalepinageVariante').objects.create(
             company=self.co, calepinage=self.cal, nom='Variante A',
-            layout_hash='a' * 64, resultat=RESULTAT)
+            roof_layout=DESSIN, layout_hash='a' * 64, resultat=RESULTAT)
 
     def retenir(self, variante):
         from apps.calepinage.services.variantes import retenir_variante
@@ -73,7 +76,8 @@ class CalepinageValideWebhookTests(TestCase):
 
     def test_sans_calcul_kwc_et_modules_valent_null_jamais_zero(self):
         nue = modele('CalepinageVariante').objects.create(
-            company=self.co, calepinage=self.cal, nom='Sans calcul')
+            company=self.co, calepinage=self.cal, nom='Sans calcul',
+            roof_layout=DESSIN)
         with mock.patch.object(delivery, 'dispatch_event') as m:
             self.retenir(nue)
         charge = m.call_args[0][2]

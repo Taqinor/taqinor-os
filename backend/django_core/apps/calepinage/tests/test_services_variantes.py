@@ -56,7 +56,8 @@ class CreerTest(BaseVariantes):
         self.assertEqual(len(variante.layout_hash), 64)
 
     def test_creation_retenue_immediate(self):
-        variante = creer_variante(self.pivot, nom='Option A', retenir=True)
+        variante = creer_variante(self.pivot, nom='Option A',
+                                  roof_layout=LAYOUT, retenir=True)
         variante.refresh_from_db()
         self.assertTrue(variante.retenue)
 
@@ -80,8 +81,9 @@ class CreerTest(BaseVariantes):
 class RetenirTest(BaseVariantes):
     def setUp(self):
         super().setUp()
-        self.a = creer_variante(self.pivot, nom='Option A')
-        self.b = creer_variante(self.pivot, nom='Option B')
+        # ACON26 — on ne retient qu'une variante DESSINÉE.
+        self.a = creer_variante(self.pivot, nom='Option A', roof_layout=LAYOUT)
+        self.b = creer_variante(self.pivot, nom='Option B', roof_layout=LAYOUT)
 
     def _retenues(self):
         return list(CalepinageVariante.objects
@@ -105,18 +107,22 @@ class RetenirTest(BaseVariantes):
         self.assertEqual(self._retenues(), [self.a.pk])
 
     def test_variante_sans_conception_refusee(self):
-        """ACON26 — une variante au document VIDE ({}) n'écrase jamais la
-        conception : refus nommé (409), aucune bascule, conception intacte."""
+        """ACON26 — une variante sans conception (document VIDE {} ou ABSENT
+        None) n'est jamais retenue : refus nommé (409), aucune bascule,
+        conception intacte, aucune version."""
         from apps.calepinage.models import CalepinageVersion
 
-        vide = creer_variante(self.pivot, nom='Vide', roof_layout={})
         versions = CalepinageVersion.objects.filter(
             calepinage=self.pivot).count()
-        with self.assertRaises(VarianteRefusee) as capture:
-            retenir_variante(vide)
-        self.assertEqual(capture.exception.champ, 'roof_layout')
-        self.assertIn("n'a pas de conception", str(capture.exception))
-        self.assertEqual(self._retenues(), [])
+        for document in ({}, None):
+            sans = creer_variante(self.pivot, nom=f'Sans {document!r}',
+                                  roof_layout=document)
+            with self.assertRaises(VarianteRefusee) as capture:
+                retenir_variante(sans)
+            self.assertEqual(capture.exception.champ, 'roof_layout')
+            self.assertTrue(capture.exception.etat)
+            self.assertIn("n'a pas de conception", str(capture.exception))
+            self.assertEqual(self._retenues(), [])
         self.pivot.refresh_from_db()
         self.assertEqual(self.pivot.roof_layout, LAYOUT)
         self.assertEqual(CalepinageVersion.objects.filter(
@@ -154,7 +160,8 @@ class RetenirTest(BaseVariantes):
         """Retenir ici ne détrône pas la retenue d'un AUTRE calepinage."""
         autre = Calepinage.objects.create(company=self.company,
                                           client=self.client_a)
-        ailleurs = creer_variante(autre, nom='Ailleurs', retenir=True)
+        ailleurs = creer_variante(autre, nom='Ailleurs', roof_layout=LAYOUT,
+                                  retenir=True)
         retenir_variante(self.a)
         ailleurs.refresh_from_db()
         self.assertTrue(ailleurs.retenue)
@@ -170,7 +177,8 @@ class DupliquerTest(BaseVariantes):
         self.pivot.appel_offre_id = 55
         self.pivot.save()
         self.a = creer_variante(self.pivot, nom='Option A')
-        self.b = creer_variante(self.pivot, nom='Option B', retenir=True)
+        self.b = creer_variante(self.pivot, nom='Option B',
+                                roof_layout=LAYOUT, retenir=True)
         # ACAL187 (D-ACAL-12) — la source est OUVERTE sur ``lead_a`` : la
         # copie vise un AUTRE lead (du même client).
         self.lead_b = Lead.objects.create(company=self.company,
