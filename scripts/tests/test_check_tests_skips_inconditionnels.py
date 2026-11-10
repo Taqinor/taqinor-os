@@ -70,6 +70,14 @@ class SkipsInconditionnelsTests(unittest.TestCase):
             "def test_t(self):\n    self.skipTest('non exécuté ici')\n"),
             {("test_t", "b")})
 
+    def test_raise_skiptest_raison_interdite_est_refusee(self):
+        # ADCG101 — sans autre mot « skip » (préfiltre), `raise SkipTest` lu en règle (b).
+        source = ("import unittest\nfrom unittest import SkipTest\n\n"
+                  "def test_a():\n    raise unittest.SkipTest('CI validera')\n\n"
+                  "def test_b():\n    raise SkipTest('non exécuté ici')\n\n"
+                  "def test_c():\n    raise unittest.SkipTest('WeasyPrint indisponible')\n")
+        self.assertEqual(_regles(source), {("test_a", "b"), ("test_b", "b")})
+
     def test_depot_factice_et_cliquet(self):
         tmp = Path(tempfile.mkdtemp())
         f = tmp / guard.BACKEND / "apps" / "x" / "tests" / "test_a.py"

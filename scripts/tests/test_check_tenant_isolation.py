@@ -262,6 +262,20 @@ class TestTenantIsolation(unittest.TestCase):
         self.assertIn("API_VIEW_COMPANY_FILTER_MISSING", _view_codes(src))
         self.assertEqual(_view_codes(API_VIEW_COMPANY_QS), set())
 
+    def test_appel_au_nom_company_ne_suffit_pas(self):
+        """APFS121 — un appel dont le nom contient « company » ne borne rien :
+        seuls APPELS_DE_PORTEE comptent. Mutant : rétablir
+        ``any(t in nom for t in COMPANY_TOKENS)``."""
+        src = (
+            "from rest_framework.decorators import api_view\n\n"
+            "@api_view(['GET'])\n"
+            "def v(request, pk):\n"
+            "    c = get_company(request)\n"
+            "    return Devis.objects.get(pk=pk)\n")
+        self.assertIn("API_VIEW_COMPANY_FILTER_MISSING", _view_codes(src))
+        self.assertEqual(_view_codes(API_VIEW_COMPANY_QS), set())
+        self.assertNotIn("COMPANY_FILTER_MISSING", _view_codes(SCOPED_GET_QUERYSET))
+
     def test_company_cite_dans_une_branche_ne_suffit_pas(self):
         """APFS64 — « company » dans une condition n'est pas un filtre."""
         self.assertIn("COMPANY_FILTER_MISSING",

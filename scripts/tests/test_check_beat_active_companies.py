@@ -161,7 +161,7 @@ class BalayageGlobalNonScopeTests(unittest.TestCase):
               "    company = models.ForeignKey('authentication.Company', on_delete=models.CASCADE)\n"
               "    statut = models.CharField(max_length=10)\n")
 
-    def _lancer(self, scheduled_src, allow='', fichier='scheduled.py'):
+    def _lancer(self, scheduled_src, allow='', fichier='scheduled.py', extra=None):
         import io
         from contextlib import redirect_stdout
         from unittest import mock
@@ -171,6 +171,10 @@ class BalayageGlobalNonScopeTests(unittest.TestCase):
             apps.mkdir(parents=True)
             (apps / 'models.py').write_text(self.MODELE, encoding='utf-8')
             (apps / fichier).write_text(scheduled_src, encoding='utf-8')
+            for rel, src in (extra or {}).items():
+                cible = r / 'backend' / 'django_core' / rel
+                cible.parent.mkdir(parents=True, exist_ok=True)
+                cible.write_text(src, encoding='utf-8')
             allow_path = r / 'allow.txt'
             allow_path.write_text(allow, encoding='utf-8')
             with mock.patch.object(guard, 'ROOT', r), \
@@ -263,6 +267,22 @@ class BeatActiveCompaniesTests(BalayageGlobalNonScopeTests):
         self.assertIn('scheduled_reports.py::envoyer', out)
         code, out = self._lancer(corps, fichier='scheduled_reports.py')
         self.assertEqual(code, 0, out)
+
+    def test_modele_heritier_de_tenantmodel_lu(self):
+        # APFS120 — un héritier de TenantModel (direct, ou par une base intermédiaire
+        # déclarée dans core/) est un modèle à société, même sans champ `company`.
+        extra = {
+            'apps/reporting/models.py': "class RapportAbonnement(TenantModel):\n    actif = 1\n",
+            'core/documents.py': "class DocumentMetier(TenantModel):\n    pass\n",
+            'apps/installations/models.py': "class DemandeAchat(DocumentMetier):\n    pass\n",
+        }
+        code, out = self._lancer(
+            "@shared_task\ndef envoyer():\n    return list(RapportAbonnement.objects.filter(actif=True))\n\n\n"
+            "@shared_task\ndef purger():\n    DemandeAchat.objects.filter(statut='x').delete()\n",
+            fichier='scheduled_reports.py', extra=extra)
+        self.assertEqual(code, 1, out)
+        self.assertIn('scheduled_reports.py::envoyer', out)
+        self.assertIn('scheduled_reports.py::purger', out)
 
     def test_pk_in_reste_un_balayage(self):
         code, out = self._lancer(

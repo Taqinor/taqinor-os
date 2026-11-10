@@ -28,7 +28,7 @@ legitimately unscoped stay covered by
 APFS64 — the sweep also reads every ``@api_view`` FUNCTION (292 of them
 were never opened) and demands an EFFECTIVE company filter: a ``company*``
 keyword (or a COMPANY_TOKENS keyword) passed to a call, or a scoping call
-(``company_qs``, ``scope_queryset``…) — the word « company » cited in a
+listed in ``APPELS_DE_PORTEE`` (APFS121) — the word « company » cited in a
 condition or a branch no longer counts. The sites found on 09/11/2026 are a
 FROZEN debt (``DETTE_FILTRE_EFFECTIF``, ``path::symbol``) that only shrinks:
 a key without a site fails the guard.
@@ -75,6 +75,11 @@ COMPANY_TOKENS = ("company", "scope_queryset", "scope_client_queryset",
 
 APPELS_FILTRANTS = frozenset({"filter", "get", "exclude",
                               "get_object_or_404", "Q"})
+
+#: APFS121 — seuls ces appels rendent un queryset ou un objet DÉJÀ borné à la
+#: société (core/mixins.py, core/selectors.py, audit/views.py, records/views.py) ;
+#: un nom d'appel qui contient « company » ne suffit pas.
+APPELS_DE_PORTEE = frozenset({"company_qs", "get_company_object", "_company_qs", "_scoped"})
 
 #: APFS64 — dette GELÉE (``--list``, 09/11/2026) : ne fait que décroître.
 DETTE_FILTRE_EFFECTIF = frozenset({
@@ -131,6 +136,13 @@ DETTE_FILTRE_EFFECTIF = frozenset({
     "backend/django_core/apps/sav/public_views.py::ticket_public_satisfaction",
     "backend/django_core/core/export_registry.py::declencher_export_reversibilite",
     "backend/django_core/authentication/views.py::UserViewSet",
+    # APFS121 (10/11/2026) — portée par un seul nom d'appel « company » ; ne fait que décroître.
+    "backend/django_core/apps/crm/public_chat_views.py::open_chat_session",
+    "backend/django_core/apps/facturation/recouvrement.py::lettre_relance_pdf",
+    "backend/django_core/apps/parametres/views_documents.py::update_document_templates",
+    "backend/django_core/apps/parametres/views_tariff.py::update_tariff_settings",
+    "backend/django_core/apps/reporting/search.py::notifications",
+    "backend/django_core/apps/ventes/extra_docs_views.py::lettre_relance_premium",
 })
 
 
@@ -248,7 +260,7 @@ def _filtre_effectif(fonction):
                 k.arg and any(t in k.arg for t in COMPANY_TOKENS)
                 for k in n.keywords):
             return True
-        if any(t in nom for t in COMPANY_TOKENS):
+        if nom in APPELS_DE_PORTEE:
             return True
     return False
 
