@@ -69,6 +69,7 @@ ROUTES_SOUS_VERROU = {
     ('POST', 'schema-unifilaire'): '_sonde_schema',
     ('POST', 'raccordement'): '_sonde_raccordement',
     ('POST', 'approbation'): '_sonde_approbation',
+    ('POST', 'releve'): '_sonde_creer_releve',  # ACON10
     ('PATCH', RELEVE): '_sonde_modifier_releve',
     ('DELETE', RELEVE): '_sonde_supprimer_releve',
     ('POST', RELEVE + '/appliquer-cote'): PAR_ENREGISTRER_LAYOUT,
@@ -101,8 +102,6 @@ ROUTES_HORS_VERROU = {
     ('PATCH', PHOTO): 'photos de site',
     ('DELETE', PHOTO): 'photos de site',
     ('PATCH', PHOTO + '/calage'): 'photos de site (calage)',
-    ('POST', 'releve'): 'relevé terrain : saisie de visite, pas la '
-                        'conception',
     ('POST', 'releve-visite'): 'relevé terrain : reprise de la visite',
     ('POST', 'image-document'): 'documents : images des livrables',
     ('POST', 'dossier-fin-chantier'): 'documents : dossier de fin de chantier',
@@ -255,6 +254,10 @@ class GardeRoutesVerrouTest(BaseApiCalepinage):
 
     def _sonde_approbation(self):
         return self._post('approbation/', {'decision': 'approuve'})
+
+    def _sonde_creer_releve(self):
+        return self._post('releve/', {'releve_le': HIER.isoformat(),
+                                      'chaines': [CHAINE_FRDISI]})
 
     def _sonde_modifier_releve(self):
         return self.api.patch(f'{self.base}releve/{self.releve.pk}/',

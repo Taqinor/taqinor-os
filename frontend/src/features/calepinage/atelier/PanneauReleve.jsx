@@ -810,11 +810,16 @@ export default function PanneauReleve({
         </fieldset>
       )}
 
+      {lectureSeule && ( /* ACON10 — aucun bouton d'écriture actif, la raison dite */
+        <p className="mt-4 text-xs text-lune-faint" data-testid="cal-releve-lecture-seule">
+          {RAISON_LECTURE_SEULE}
+        </p>
+      )}
       <div className="mt-5 flex flex-wrap gap-3">
         <button
           type="button"
           onClick={() => enregistrer(releveAfficheId ? 'corriger' : 'creer')}
-          disabled={enCours}
+          disabled={enCours || lectureSeule}
           data-testid="cal-releve-envoyer"
           className="block rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200"
         >
@@ -827,7 +832,7 @@ export default function PanneauReleve({
             <button
               type="button"
               onClick={() => enregistrer('creer')}
-              disabled={enCours}
+              disabled={enCours || lectureSeule}
               data-testid="cal-releve-nouveau"
               className="block rounded border border-white/15 px-4 py-2 text-sm text-lune-soft"
             >
@@ -836,7 +841,7 @@ export default function PanneauReleve({
             <button
               type="button"
               onClick={supprimer}
-              disabled={enCours}
+              disabled={enCours || lectureSeule}
               data-testid="cal-releve-supprimer"
               className="block px-2 py-2 text-sm text-red-300 underline"
             >

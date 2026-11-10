@@ -338,6 +338,19 @@ describe('ACAL205 — le relevé courant est relu, corrigé, ou doublé', () => 
     confirmation.mockRestore()
   })
 
+  it('lecture seule : aucun bouton d’écriture actif', async () => {
+    // ACON10 — calepinage verrouillé : Envoyer, Nouveau relevé et Supprimer grisés, raison dite.
+    render(<MemoryRouter><PanneauReleve calepinageId={1} lectureSeule /></MemoryRouter>)
+    await screen.findByDisplayValue(lectureContrat().data.releves[0].releve_le)
+    for (const id of ['cal-releve-envoyer', 'cal-releve-nouveau', 'cal-releve-supprimer']) {
+      expect(screen.getByTestId(id)).toBeDisabled()
+    }
+    expect(screen.getByTestId('cal-releve-lecture-seule')).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('cal-releve-envoyer'))
+    expect(corrigerReleve).not.toHaveBeenCalled()
+    expect(enregistrerReleve).not.toHaveBeenCalled()
+  })
+
   it('sans relevé courant, le bouton crée (POST) et il n’y a ni Nouveau ni Supprimer', async () => {
     releve.mockResolvedValue({ data: { releves: [], releve_courant_id: null } })
     rendre()

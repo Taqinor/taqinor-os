@@ -233,11 +233,15 @@ def enregistrer_releve(calepinage, donnees, *, user=None):
 
     Raises:
         ReleveRefuse: saisie refusée, champ nommé, message français.
+        VerrouilleRefuse (409): calepinage verrouillé (ACON10 — comme la
+            correction et la suppression).
     """
     from django.core.exceptions import ValidationError
     from django.db import transaction
     from ..models import PhotoSite, ReleveTerrain
+    from .verrou import verifier_ecriture_autorisee
 
+    verifier_ecriture_autorisee(calepinage, champ='releve')
     if not isinstance(donnees, dict):
         raise ReleveRefuse(
             "Le corps attendu est un objet de relevé.", 'releve')
