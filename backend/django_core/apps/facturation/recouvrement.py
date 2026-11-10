@@ -17,7 +17,7 @@ from rest_framework.response import Response
 
 from apps.crm.selectors import client_base_qs
 from authentication.permissions import (
-    IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
+    IsAdminRole, IsResponsableOrAdmin, LectureDuModule,
 )
 
 from apps.ventes.gardes_lecture import LectureFactures
@@ -325,7 +325,7 @@ class FollowupLevelViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsAdminRole()]
 
     def get_queryset(self):
@@ -380,7 +380,7 @@ class ParametrageRelanceClientViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):

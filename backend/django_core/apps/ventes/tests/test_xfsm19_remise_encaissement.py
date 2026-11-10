@@ -102,7 +102,8 @@ class TestDeclarationRemise(Xfsm19TestBase):
         """ASEC62 (C-ASEC-VER-009, D-ASEC-VER-1) — déclarer, modifier,
         clôturer, supprimer une remise : code ``encaisser`` (rôles système
         réels). Refusés : 403, aucune remise ni ligne, remise relue inchangée,
-        paiements toujours remisables ; lecture inchangée (``IsAnyRole``)."""
+        paiements toujours remisables ; lecture : rôles à code ``ventes`` et
+        comptes hérités (APFS115 — Technicien et Admin RH : 403)."""
         from django.core.management import call_command
         from apps.roles.models import Role
         from apps.ventes.models import LigneRemiseEncaissement
@@ -154,7 +155,8 @@ class TestDeclarationRemise(Xfsm19TestBase):
                     self.assertEqual(photo(), avant)
             with self.subTest(role=nom, geste='lire'):
                 self.assertEqual(api.get(f'{url}{ouverte.id}/').status_code,
-                                 200)
+                                 403 if nom in ('Technicien', 'Admin RH')
+                                 else 200)
         self.assertEqual(paiements_remisables(Paiement.objects.filter(
             company=self.company)).count(), 2)
         for nom in ('Directeur', 'Commercial', 'responsable hérité'):
@@ -247,3 +249,35 @@ class TestScopingRemise(Xfsm19TestBase):
         api = self._api(other_user)
         r = api.get(f'/api/django/ventes/remises-encaissement/{remise.id}/')
         self.assertEqual(r.status_code, 404)
+
+    def test_lectures_remise_et_relance_bornees_au_module(self):
+        """APFS115 (C-APFS-080/081, D-APFS-4) — remises (liste, fiche, PDF),
+        niveaux et paramétrages de relance : Admin RH et Commercial terrain
+        403 ; Commercial, Directeur et compte hérité 200 (PDF compris)."""
+        from django.core.management import call_command
+        from apps.roles.models import Role
+        call_command('init_roles', verbosity=0)
+        roles = {r.nom: r for r in Role.objects.filter(company=self.company)}
+        remise = RemiseEncaissement.objects.create(
+            company=self.company, reference='REM-APFS115-0001',
+            technicien=self.technicien, date_collecte=timezone.localdate(),
+            montant_declare=Decimal('100'), created_by=self.resp)
+        routes = [
+            '/api/django/ventes/remises-encaissement/',
+            f'/api/django/ventes/remises-encaissement/{remise.id}/',
+            f'/api/django/ventes/remises-encaissement/{remise.id}/pdf/',
+            '/api/django/ventes/niveaux-relance/',
+            '/api/django/facturation/niveaux-relance/',
+            '/api/django/ventes/parametrages-relance-client/',
+        ]
+        for i, (nom, attendu) in enumerate((
+                ('Admin RH', 403), ('Commercial terrain', 403),
+                ('Commercial', 200), ('Directeur', 200), (None, 200))):
+            user = User.objects.create_user(
+                username=f'apfs115-{i}', password='x', company=self.company,
+                role_legacy='responsable' if nom is None else 'normal',
+                role=roles[nom] if nom else None)
+            api = self._api(user)
+            for route in routes:
+                with self.subTest(role=nom, route=route):
+                    self.assertEqual(api.get(route).status_code, attendu)
