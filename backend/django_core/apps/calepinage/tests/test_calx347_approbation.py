@@ -425,6 +425,35 @@ class ActionApprobationEnBase(BaseApiCalepinage):
         self.calepinage.refresh_from_db()
         self.assertIsNone(self.calepinage.approbation)
 
+    def test_refus_rend_le_statut_derive_refuse(self):
+        """ACON28 — un REFUS se range sous « Refusé » (Python ET SQL ``?statut=``),
+        absent de ``?statut=brouillon`` ; un accord puis un refus : le dernier
+        état gagne ; « Générer le devis » porte l'avertissement nommant le motif."""
+        from apps.calepinage.services.approbation import (
+            avertissement_refus, statut_derive)
+        from .test_api_liste import URL
+
+        reponse = self.api.post(
+            url_approbation(self.calepinage.pk),
+            {'decision': 'refuse', 'motif': 'surcharge charpente'},
+            format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.calepinage.refresh_from_db()
+        self.assertEqual(statut_derive(self.calepinage), 'refuse')
+        detail = self.api.get(url_detail(self.calepinage.pk)).data
+        self.assertEqual((detail['statut'], detail['statut_libelle']),
+                         ('refuse', 'Refusé'))
+        refuses = self.api.get(URL, {'statut': 'refuse'}).data['results']
+        self.assertEqual([ligne['id'] for ligne in refuses],
+                         [self.calepinage.pk])
+        self.assertEqual(refuses[0]['statut_libelle'], 'Refusé')
+        brouillons = self.api.get(URL, {'statut': 'brouillon'}).data['results']
+        self.assertNotIn(self.calepinage.pk, [ligne['id'] for ligne in brouillons])
+        self.assertEqual(
+            avertissement_refus(self.calepinage),
+            "Conception refusée à l'approbation (motif : surcharge charpente)"
+            " : ce devis part d'une conception à reprendre.")
+
     def test_refus_motive_est_enregistre(self):
         reponse = self.api.post(
             url_approbation(self.calepinage.pk),

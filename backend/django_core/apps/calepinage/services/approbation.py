@@ -258,8 +258,10 @@ def est_approuve(calepinage, *, empreinte=None):
 #: ACAL114 (D-ACAL-19) — le statut DÉRIVÉ (lecture seule) et ses libellés.
 STATUT_BROUILLON, STATUT_VALIDE, STATUT_PERIME = (
     'brouillon', 'valide', 'perime')
+#: ACON28 — la dernière décision est un REFUS : visible, jamais « brouillon ».
+STATUT_REFUSE = 'refuse'
 LIBELLES_STATUT = {STATUT_BROUILLON: 'Brouillon', STATUT_VALIDE: 'Validé',
-                   STATUT_PERIME: 'Périmé'}
+                   STATUT_PERIME: 'Périmé', STATUT_REFUSE: 'Refusé'}
 
 
 def statut_derive(calepinage):
@@ -269,7 +271,20 @@ def statut_derive(calepinage):
         return STATUT_VALIDE
     if _decision(calepinage).get('etat') == APPROUVE:
         return STATUT_PERIME
+    if _decision(calepinage).get('etat') == REFUSE:
+        return STATUT_REFUSE
     return STATUT_BROUILLON
+
+
+def avertissement_refus(calepinage):
+    """ACON28 — l'avertissement d'un devis généré depuis une conception
+    REFUSÉE à l'approbation (``''`` sinon), motif nommé."""
+    decision = _decision(calepinage)
+    if decision.get('etat') != REFUSE:
+        return ''
+    return (f"Conception refusée à l'approbation (motif : "
+            f"{decision.get('motif') or 'non précisé'}) : ce devis part "
+            "d'une conception à reprendre.")
 
 
 def annoter_statut_derive(queryset):
@@ -290,6 +305,7 @@ def annoter_statut_derive(queryset):
                      & ~Q(_appr_empreinte=''),
                      then=Value(STATUT_VALIDE)),
                 When(_appr_etat=APPROUVE, then=Value(STATUT_PERIME)),
+                When(_appr_etat=REFUSE, then=Value(STATUT_REFUSE)),
                 default=Value(STATUT_BROUILLON),
                 output_field=CharField())))
 

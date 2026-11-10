@@ -198,6 +198,13 @@ def generer_devis(calepinage, *, user=None, taux_tva=None,
     servi = _consigner_et_servir(calepinage, garde, user=user)
     if journal is not None:
         journal['electrique'] = servi
+        # ACON28 — une conception REFUSÉE à l'approbation se DIT au devis.
+        from .approbation import avertissement_refus
+
+        refus = avertissement_refus(calepinage)
+        if refus:
+            journal['avertissements'] = [*journal.get('avertissements', ()),
+                                         refus]
     return devis, cree
 
 

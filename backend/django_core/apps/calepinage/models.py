@@ -53,6 +53,7 @@ class Calepinage(TenantModel):
         BROUILLON = 'brouillon', 'Brouillon'
         VALIDE = 'valide', 'Validé'
         PERIME = 'perime', 'Périmé'
+        REFUSE = 'refuse', 'Refusé'  # ACON28 — refus d'approbation
 
     #: Lead d'origine — identifiant OPAQUE (jamais une FK ``crm``). Le lead est
     #: résolu, borné société, via ``apps.crm.selectors.get_company_lead``.
