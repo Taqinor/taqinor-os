@@ -144,5 +144,75 @@ class PermissionsAgentTests(unittest.TestCase):
         self.assertEqual(seen[0].permissions, ["prix_achat_voir"])
 
 
+try:
+    from app.api.endpoints import ocr as _ocr
+    _ERR_OCR = None
+except Exception as exc:  # pragma: no cover - dependances manquantes
+    _ocr, _ERR_OCR = None, exc
+    verifier_import_optionnel(exc)
+
+
+@unittest.skipIf(_ocr is None or _ep is None, f"endpoint ocr non importable: {_ERR_OCR or _ERR}")
+class OcrPermissionsTests(unittest.TestCase):
+    """APFS46 (C-APFS-040, facette OCR) — l'historique OCR se décide sur les
+    codes fins lus par `/auth/me/` (simulé côté HTTP), jamais sur le claim
+    `role` (« responsable » pour Admin RH, Technicien responsable…)."""
+
+    CODES = {1: ["users_voir", "rh_voir"],                      # Admin RH
+             2: ["installation_voir", "achats_receptionner"],   # Technicien responsable
+             3: ["prix_achat_voir", "achats_commander"]}        # Directeur
+
+    def setUp(self):
+        from sqlalchemy import BigInteger, create_engine
+        from sqlalchemy.ext.compiler import compiles
+        from sqlalchemy.orm import sessionmaker
+        from sqlalchemy.pool import StaticPool
+        from app.core.security import exiger_compte_interne, get_raw_token, verify_token
+        from app.models.ocr import OcrDocument
+        compiles(BigInteger, "sqlite")(lambda *a, **k: "INTEGER")  # PK auto-incrémentée sous SQLite
+        engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+        OcrDocument.__table__.create(engine)
+        self.Session = sessionmaker(bind=engine)
+        with self.Session() as s:
+            s.add_all([OcrDocument(id=10, company_id=7, user_id=1, username="rh", filename="a.pdf"),
+                       OcrDocument(id=11, company_id=7, user_id=3, username="dir", filename="b.pdf")])
+            s.commit()
+        self.me_ok, self.user_id = True, 1
+        self.app = FastAPI()
+        self.app.include_router(_ocr.router, prefix="/ocr")
+        self.app.dependency_overrides[exiger_compte_interne] = lambda: {}
+        self.app.dependency_overrides[verify_token] = lambda: {
+            "user_id": self.user_id, "company_id": 7, "role": "responsable", "is_superuser": False}
+        self.app.dependency_overrides[get_raw_token] = lambda: "jwt"
+        self.app.dependency_overrides[_ocr.get_db] = lambda: self.Session()
+
+        def fake_call(ctx, path, method="POST", payload=None):
+            if not self.me_ok:
+                return {"ok": False, "status": 0, "error": "indisponible"}
+            return {"ok": True, "status": 200, "data": {"permissions": self.CODES[self.user_id]}}
+        patcher = mock.patch.object(_at, "_django_call", fake_call)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.client = TestClient(self.app)
+
+    def _gestes(self, user_id):
+        self.user_id = user_id
+        ids = sorted(d["id"] for d in self.client.get("/ocr/documents").json())
+        save = self.client.post("/ocr/save_document", json={
+            "filename": "c.pdf", "type_document": "facture", "texte_brut": "", "donnees_structurees": {},
+            "confiance": 0.9}).status_code
+        return ids, self.client.delete("/ocr/documents/11").status_code, save
+
+    def test_documents_d_autrui_exigent_prix_achat_voir(self):
+        self.assertEqual(self._gestes(1), ([10], 403, 403))       # Admin RH
+        self.assertEqual(self._gestes(2), ([], 403, 403))         # Technicien responsable
+        self.me_ok = False                                        # /auth/me/ injoignable : fail-closed
+        self.assertEqual(self._gestes(1), ([10], 403, 403))
+        self.me_ok = True
+        ids, suppression, enregistrement = self._gestes(3)        # Directeur
+        self.assertEqual((ids, enregistrement), ([10, 11], 200), ids)
+        self.assertEqual(suppression, 204)
+
+
 if __name__ == "__main__":
     unittest.main()
