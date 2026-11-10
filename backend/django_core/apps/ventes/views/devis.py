@@ -501,8 +501,8 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
                               200: D.AutoDevisResponse,
                               409: D.ErreurComposition},
                    extensions=D.CORPS_LEAD_OU_CLIENT)
-    @action(detail=False, methods=['post'], url_path='auto',
-            permission_classes=[IsResponsableOrAdmin])
+    @action(detail=False, methods=['post'], url_path='auto',  # ASEC87 — grille « Créer »
+            permission_classes=[IsResponsableOrAdmin, DroitDeLaGrille('ventes_creer')])
     @_idempotente('auto')  # AGQ23 — rejoue le 1ᵉʳ devis d'une même clé
     def auto(self, request):
         """Copilote — crée un devis automatiquement dimensionné à partir de la

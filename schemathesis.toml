@@ -165,3 +165,20 @@ checks.positive_data_acceptance.expected-statuses = ["2xx", 400, 401, 403, 404, 
 [[operations]]
 include-name = 'PATCH /api/django/crm/parrainages/{id}/'
 checks.positive_data_acceptance.expected-statuses = ["2xx", 400, 401, 403, 404, 409, 429, "5xx"]
+
+# ── 10. Jeton de version manquant : le 428 est la précondition (ACON9) ─────
+# `POST …/ventes/devis/{id}/sync-layout/` et `POST …/ventes/devis/{id}/layout/`
+# exigent `If-Match` (jeton de version du calepinage) dès qu'un calepinage est
+# lié au devis : sans jeton, 428 Precondition Required (déclaré au schéma,
+# ACON9). Le fuzz envoie un `If-Match` vide, conforme au format mais sans jeton
+# lisible : ce n'est pas une requête « refusée à tort ». Comme les § 7 (410),
+# 428 est AJOUTÉ aux statuts attendus de `positive_data_acceptance` pour CES
+# SEULES deux opérations (un filtre `include-name` par entrée) ; le check reste
+# actif partout ailleurs et les endpoints sont inchangés.
+[[operations]]
+include-name = 'POST /api/django/ventes/devis/{id}/sync-layout/'
+checks.positive_data_acceptance.expected-statuses = ["2xx", 401, 403, 404, 409, 428, 429, "5xx"]
+
+[[operations]]
+include-name = 'POST /api/django/ventes/devis/{id}/layout/'
+checks.positive_data_acceptance.expected-statuses = ["2xx", 401, 403, 404, 409, 428, 429, "5xx"]

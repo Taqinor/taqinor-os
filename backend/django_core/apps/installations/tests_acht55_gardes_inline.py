@@ -173,3 +173,39 @@ class GardesInlineTests(TestCase):
             technicien_responsable=tech)
         r = self._api(tech).patch(url, {'acces_instructions': 'Revue'}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
+
+    def test_recette_reserves_pack_exigent_installation_gerer(self):
+        """ASEC89 (C-ASEC-VER5-075, D-ASEC-4) — un rôle = Technicien du
+        registre SANS ``installation_gerer`` (garde ``intervention_gerer``) :
+        403 ``droit_manquant`` aux POST ``reserves``, ``recette``,
+        ``pack-remise``, ``recette-pompage``, rien d'écrit ; GET ``reserves``
+        200 ; le Technicien du registre : POST ``reserves`` 201. Mutant : ôter
+        ``DroitDeLaGrille`` de la première branche ⇒ échec."""
+        from apps.installations.models import CommissioningRecord, RecettePompage
+        prive = self._sans('Technicien sans gerer', 'installation_gerer')
+        tech = User.objects.create_user(
+            username='tech-asec89', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom='Technicien',
+                                     permissions=list(TECHNICIEN_PERMISSIONS)))
+        Installation.objects.filter(pk__in=[self.chantier.pk, self.agricole.pk]).update(
+            technicien_responsable=prive)
+        reserves = f'{BASE}/chantiers/{self.chantier.id}/reserves/'
+        api = self._api(prive)
+        for url, corps in (
+                (reserves, {'description': 'Fissure', 'bloquante': True}),
+                (f'{BASE}/chantiers/{self.chantier.id}/recette/', {}),
+                (f'{BASE}/chantiers/{self.chantier.id}/pack-remise/', {}),
+                (f'{BASE}/chantiers/{self.agricole.id}/recette-pompage/', {})):
+            r = api.post(url, corps, format='json')
+            self.assertEqual(r.status_code, 403, (url, r.data))
+            self.assertEqual(r.data.get('code'), 'droit_manquant', (url, r.data))
+        self.assertEqual(api.get(reserves).status_code, 200)
+        # CLAUSE PERSISTANCE — relu en base : rien d'écrit.
+        for modele in (Reserve, HandoverPack, CommissioningRecord, RecettePompage):
+            self.assertEqual(modele.objects.filter(company=self.company).count(), 0,
+                             modele.__name__)
+        Installation.objects.filter(pk=self.chantier.pk).update(
+            technicien_responsable=tech)
+        r = self._api(tech).post(reserves, {'description': 'Fissure', 'bloquante': True},
+                                 format='json')
+        self.assertEqual(r.status_code, 201, r.data)

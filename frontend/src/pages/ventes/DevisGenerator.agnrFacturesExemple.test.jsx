@@ -21,10 +21,12 @@ cycleEcran({ date: DATE_FIGEE })
 const cases = () => [...document.querySelectorAll('.gen-monthly-grid input')]
 const taper = async (el, v) => { await act(async () => { fireEvent.change(el, { target: { value: v } }) }) }
 
+const cliquerEnregistrer = () => act(async () => {
+  fireEvent.click([...document.querySelectorAll('button')].find((b) => /Enregistrer les modifications/.test(b.textContent || '')))
+})
+
 async function enregistrer(vue) {
-  const bouton = [...document.querySelectorAll('button')]
-    .find((b) => /Enregistrer les modifications/.test(b.textContent || ''))
-  await act(async () => { fireEvent.click(bouton) })
+  await cliquerEnregistrer()
   await waitFor(() => expect(vue.ventesApi.replaceLignesDevis).toHaveBeenCalled(), { timeout: 5000 })
   await attendreStable(vue.container, act)
   // L'étude part par la FUSION (`PATCH etude-params`) après replace-lines.
@@ -102,5 +104,29 @@ describe('AGNR34 — deux factures hiver / été', () => {
     const etude = await enregistrer(vue)
     expect(etude.factures_hiver_ete).toEqual(DEUX_FACTURES)
     expect(etude).not.toHaveProperty('factures_mensuelles_reelles')
+  }, 60000)
+
+  const refuse = async (vue, message) => {
+    await cliquerEnregistrer()
+    await attendreStable(vue.container, act)
+    expect(vue.ventesApi.replaceLignesDevis).not.toHaveBeenCalled()
+    expect(document.querySelector('[data-testid="erreur-enregistrement"]')?.textContent).toContain(message)
+  }
+
+  it('serie_mixte_bloque_enregistrement — AGNR78 / AGNR67 : hiver 500 / été 1 200 puis Mars tapé 900 ⇒ bloqué, nommé', async () => {
+    const vue = await monter(`/ventes/devis/nouveau?edit=${DEVIS_REGISTRE.id}`, { devis: DEVIS_REGISTRE })
+    await attendreStable(vue.container, act)
+    await taper(document.getElementById('gen-hiver'), '500')
+    await taper(document.getElementById('gen-ete'), '1200')
+    await taper(cases()[2], '900')
+    await refuse(vue, 'Mars tapé : tapez les 12 mois ou effacez la correction')
+  }, 60000)
+
+  it('ete_sans_hiver_bloque_enregistrement — AGNR78 / AGNR68 : hiver vidé, été 1 200 ⇒ bloqué, nommé', async () => {
+    const vue = await monter(`/ventes/devis/nouveau?edit=${DEVIS_REGISTRE.id}`, { devis: DEVIS_REGISTRE })
+    await attendreStable(vue.container, act)
+    await taper(document.getElementById('gen-hiver'), '')
+    await taper(document.getElementById('gen-ete'), '1200')
+    await refuse(vue, "Facture d'hiver manquante")
   }, 60000)
 })

@@ -258,7 +258,8 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         if (self.action in ('recette_pompage', 'recette', 'reserves',
                             'pack_remise')
                 and self.request.method not in ('GET', 'HEAD', 'OPTIONS')):
-            return [IsResponsableOrAdmin()]
+            # ASEC89 — et la grille « Gérer » (``installation_gerer``), comme ASEC75.
+            return [IsResponsableOrAdmin(), DroitDeLaGrille('installation_gerer')()]
         if self.action == 'commander_besoin':
             # ACHT54 — crée un BCF : `achats_commander` en plus du module.
             return [IsResponsableOrAdmin(),

@@ -6,7 +6,7 @@ Brouillon et envoyé sur place (envoyé : statut inchangé, instantané, chatter
 #997 fuzz — 400 auparavant), rien d'écrit.
 """
 import json
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 from django.contrib.auth import get_user_model
@@ -135,3 +135,58 @@ class TestReappliquerLead(TestCase):
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(intrus)}')
         r = api.post(self._url('reappliquer-lead'), {}, format='json')
         self.assertEqual(r.status_code, 404, r.content)
+
+    def test_ttc_baisse_echeancier_rebase_ou_409(self):
+        """AGNR77 (C-AGNR-VER5-063) — « Reprendre les valeurs du lead » qui
+        BAISSE le TTC re-base l'échéancier stocké par LA règle d'AGNR49 ou
+        répond 409 ``{detail, echeancier}`` sans rien écrire ; tout en % :
+        inchangé. Mutant : ôter l'appel ⇒ 200 et acompte au-delà du total."""
+        from apps.ventes.domain.modifiabilite import ttc_du_devis
+        from apps.ventes.utils.echeancier import UNITE_MONTANT
+
+        def _ech(acompte):
+            return [
+                {'libelle': 'Commande', 'type': 'acompte', 'unite': 'montant',
+                 'pct_or_montant': acompte},
+                {'libelle': 'Livraison', 'unite': 'pct', 'pct_or_montant': 40},
+                {'libelle': 'Réception', 'unite': 'pct', 'pct_or_montant': 10}]
+
+        def _lignes():
+            return list(LigneDevis.objects.filter(devis=self.devis).order_by('id')
+                        .values_list('id', 'quantite', 'prix_unitaire'))
+        self._modifier_lead()  # repris à 1 500
+        r = self.api.post(self._url('reappliquer-lead'), {}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        trop = _ech(float(ttc_du_devis(self.devis)))  # acompte = TTC courant
+        Devis.objects.filter(pk=self.devis.pk).update(echeancier=trop)
+        self.lead.facture_hiver = Decimal('900')
+        self.lead.save(update_fields=['facture_hiver'])
+        lignes, panneaux = _lignes(), self._panneaux()
+        r = self.api.post(self._url('reappliquer-lead'), {}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertIn('detail', r.data)
+        self.assertIn('echeancier', r.data)
+        # CLAUSE PERSISTANCE — relu en base : rien d'écrit.
+        self.assertEqual((_lignes(), self._panneaux()), (lignes, panneaux))
+        self.assertEqual(Devis.objects.get(pk=self.devis.pk).echeancier, trop)
+        # Acompte 1 000 MAD : 200, dernière tranche = reste au nouveau TTC.
+        Devis.objects.filter(pk=self.devis.pk).update(echeancier=_ech(1000))
+        r = self.api.post(self._url('reappliquer-lead'), {}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertLess(self._panneaux(), panneaux)
+        ttc = ttc_du_devis(self.devis)
+        reste = ttc - Decimal('1000') - (ttc * 40 / 100).quantize(Decimal('0.01'), ROUND_HALF_UP)
+        relu = Devis.objects.get(pk=self.devis.pk).echeancier
+        self.assertEqual(relu[-1]['unite'], UNITE_MONTANT)
+        self.assertEqual(Decimal(str(relu[-1]['pct_or_montant'])), reste)
+        self.assertEqual(relu[:-1], _ech(1000)[:-1])
+        # Tout en % : inchangé.
+        tout_pct = [{'libelle': 'A', 'type': 'acompte', 'unite': 'pct',
+                     'pct_or_montant': 30},
+                    {'libelle': 'S', 'type': 'solde', 'unite': 'pct',
+                     'pct_or_montant': 70}]
+        Devis.objects.filter(pk=self.devis.pk).update(echeancier=tout_pct)
+        self._modifier_lead()
+        r = self.api.post(self._url('reappliquer-lead'), {}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(Devis.objects.get(pk=self.devis.pk).echeancier, tout_pct)
