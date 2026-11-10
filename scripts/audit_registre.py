@@ -216,6 +216,27 @@ def cmd_status() -> int:
     return 0
 
 
+def ecarts_tous_coches(groupe: str, date: str) -> bool:
+    """ADCG104 — vrai si les blocs `### <G> — ÉCARTS vérifie <date>` de tous les
+    plans (jusqu'à l'en-tête suivant) portent au moins une tâche, toutes `[x]`."""
+    entete = re.compile(rf"^###\s+{re.escape(groupe)}\s+—\s+ÉCARTS vérifie {re.escape(date)}\b")
+    etats = []
+    for rel in ctc.fichiers_de_plan():
+        lignes = (ROOT / rel).read_text(encoding="utf-8", errors="replace").splitlines()
+        bornes = []
+        for i, ligne in enumerate(lignes, 1):
+            if bornes and len(bornes[-1]) == 1 and ligne.startswith("#"):
+                bornes[-1].append(i)
+            if entete.match(ligne):
+                bornes.append([i])
+        if not bornes:
+            continue
+        for t in ctc.lire_taches([rel]):
+            if any(b[0] < t.ligne < (b[1] if len(b) > 1 else len(lignes) + 1) for b in bornes):
+                etats.append(t.etat.strip().lower())
+    return bool(etats) and all(e == "x" for e in etats)
+
+
 def cmd_du() -> int:
     dus = []
     for u in calculer(avec_acceptation=False):
@@ -224,6 +245,8 @@ def cmd_du() -> int:
         v = u["verifie"]
         if u["pct"] >= SEUIL_CONSTRUIT and not (v and (v["pct"] or 0) >= SEUIL_CONSTRUIT):
             seuil = f"clôture (≥ {SEUIL_CONSTRUIT} %), pas vérifié depuis"
+        elif u["pct"] >= SEUIL_CONSTRUIT and v and v["ecarts"] and ecarts_tous_coches(u["groupe"], v["date"]):
+            seuil = f"contre-visite des correctifs (écarts S1-S2 du {v['date']} tous cochés)"
         elif u["pct"] >= SEUIL_MI_PARCOURS and not v:
             seuil = f"mi-parcours (≥ {SEUIL_MI_PARCOURS} %), jamais vérifié"
         else:
