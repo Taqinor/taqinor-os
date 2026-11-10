@@ -267,6 +267,60 @@ class TestNoteDebit(TestCase):
         check_overdue_factures()
         self.assertEqual(etat(retenue)[:2], (Facture.Statut.EN_RETARD, 1))
 
+    def test_nd_sur_facture_historique_suit_le_delai_client(self):
+        """AARG73 (C-AARG-OPT1-070) — facture historique SANS ``date_echeance``
+        d'un client à 90 j : sa note de débit court aussi 90 j (pas 30 j),
+        comme la base de la facture ; client sans délai : repli 30 j ; fin
+        de mois respectée."""
+        import calendar
+        import datetime
+        from decimal import Decimal as D
+
+        from apps.ventes.domain.encaissements import recalculer_statut_paiement
+        from apps.ventes.models import Paiement
+        jour = datetime.date.today()
+        nd_le = jour - datetime.timedelta(days=40)
+
+        def ligne_relance(ref, delai, fin_de_mois=False):
+            Client.objects.filter(pk=self.client_obj.pk).update(
+                delai_paiement_jours=delai, fin_de_mois=fin_de_mois)
+            facture = Facture.objects.create(
+                company=self.company, reference=ref, client=self.client_obj,
+                statut=Facture.Statut.EMISE, taux_tva=D('20.00'),
+                date_emission=jour - datetime.timedelta(days=120))
+            LigneFacture.objects.create(
+                facture=facture, produit=self.panneau, designation='Panneau PV',
+                quantite=D('1'), prix_unitaire=D('1000'), taux_tva=D('20.00'))
+            Paiement.objects.create(
+                company=self.company, facture=facture, montant=D('1200'),
+                date_paiement=jour - datetime.timedelta(days=100),
+                mode='virement', created_by=self.admin)
+            recalculer_statut_paiement(facture)
+            r = self._api(self.admin).post(
+                f'/api/django/ventes/factures/{facture.id}/creer-note-debit/',
+                {'motif': 'Complément', 'montant': '250.00', 'taux_tva': '20'},
+                format='json')
+            self.assertEqual(r.status_code, 201, r.data)
+            NoteDebit.objects.filter(pk=r.data['id']).update(date_emission=nd_le)
+            self.assertIsNone(Facture.objects.get(pk=facture.pk).date_echeance)
+            rows = self._api(self.admin).get('/api/django/ventes/relances/')
+            self.assertEqual(rows.status_code, 200)
+            return next(row for row in rows.data if row['id'] == facture.id)
+
+        row = ligne_relance('FAC-ND-H90', 90)
+        self.assertEqual(row['jours_retard'], 0)
+        self.assertEqual(row['date_echeance'],
+                         (nd_le + datetime.timedelta(days=90)).isoformat())
+        # Client sans délai négocié : repli 30 j ⇒ 10 jours de retard.
+        row = ligne_relance('FAC-ND-H00', None)
+        self.assertEqual(row['jours_retard'], 10)
+        # Fin de mois : reportée à la fin du mois de J-40 + 90 j.
+        row = ligne_relance('FAC-ND-HFM', 90, fin_de_mois=True)
+        brute = nd_le + datetime.timedelta(days=90)
+        fin = brute.replace(day=calendar.monthrange(brute.year, brute.month)[1])
+        self.assertEqual(row['date_echeance'], fin.isoformat())
+        self.assertEqual(row['jours_retard'], 0)
+
     def test_note_debit_pdf_renders(self):
         api = self._api(self.admin)
         resp = api.post(
