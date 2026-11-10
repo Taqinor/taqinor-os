@@ -33,7 +33,8 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/automation/models.py::ApprovalRequest.company` | backend/django_core/apps/automation/models.py:650 | authentication.Company | CASCADE |
 | `backend/django_core/apps/automation/models.py::ApprovalDelegation.company` | backend/django_core/apps/automation/models.py:740 | authentication.Company | CASCADE |
 | `backend/django_core/apps/automation/models.py::IncomingWebhookTrigger.company` | backend/django_core/apps/automation/models.py:816 | authentication.Company | CASCADE |
-| `backend/django_core/apps/calepinage/models.py::Calepinage.devis` | backend/django_core/apps/calepinage/models.py:68 | ventes.Devis | SET_NULL |
+| `backend/django_core/apps/calepinage/models.py::Calepinage.devis` | backend/django_core/apps/calepinage/models.py:69 | ventes.Devis | SET_NULL |
+| `backend/django_core/apps/calepinage/models.py::CalepinageVariante.devis` | backend/django_core/apps/calepinage/models.py:358 | ventes.Devis | SET_NULL |
 | `backend/django_core/apps/crm/models.py::Lead.company` | backend/django_core/apps/crm/models.py:735 | authentication.Company | CASCADE |
 | `backend/django_core/apps/crm/models.py::Lead.structure_produit` | backend/django_core/apps/crm/models.py:1273 | stock.Produit | SET_NULL |
 | `backend/django_core/apps/crm/models.py::WebsiteLeadPayload.company` | backend/django_core/apps/crm/models.py:2066 | authentication.Company | CASCADE |
@@ -529,7 +530,8 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/ventes/models_regulatory.py::Regularisation8221.company` | backend/django_core/apps/ventes/models_regulatory.py:388 | authentication.Company | CASCADE |
 | `backend/django_core/apps/ventes/models_regulatory.py::Regularisation8221.devis` | backend/django_core/apps/ventes/models_regulatory.py:391 | ventes.Devis | SET_NULL |
 | `backend/django_core/authentication/models.py::CustomUser.company` | backend/django_core/authentication/models.py:218 | Company | SET_NULL |
-| `backend/django_core/authentication/models.py::UserSession.company` | backend/django_core/authentication/models.py:694 | Company | CASCADE |
+| `backend/django_core/authentication/models.py::AppartenanceSociete.company` | backend/django_core/authentication/models.py:703 | Company | CASCADE |
+| `backend/django_core/authentication/models.py::UserSession.company` | backend/django_core/authentication/models.py:729 | Company | CASCADE |
 | `backend/django_core/core/models.py::TenantModel.company` | backend/django_core/core/models.py:79 | authentication.Company | CASCADE |
 | `backend/django_core/core/models.py::DeletionRecord.company` | backend/django_core/core/models.py:252 | authentication.Company | CASCADE |
 | `backend/django_core/core/models.py::AnomalyFlag.company` | backend/django_core/core/models.py:331 | authentication.Company | CASCADE |
@@ -542,7 +544,7 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/core/models.py::Dashboard.company` | backend/django_core/core/models.py:1609 | authentication.Company | CASCADE |
 | `backend/django_core/core/models.py::PaymentTransaction.company` | backend/django_core/core/models.py:1688 | authentication.Company | CASCADE |
 | `backend/django_core/core/models.py::SavedQuery.company` | backend/django_core/core/models.py:1760 | authentication.Company | CASCADE |
-| `backend/django_core/core/models.py::ScheduledExport.company` | backend/django_core/core/models.py:1853 | authentication.Company | CASCADE |
+| `backend/django_core/core/models.py::ScheduledExport.company` | backend/django_core/core/models.py:1851 | authentication.Company | CASCADE |
 | `backend/django_core/core/models.py::ModuleToggle.company` | backend/django_core/core/models.py:1930 | authentication.Company | CASCADE |
 | `backend/django_core/core/models.py::TenantTheme.company` | backend/django_core/core/models.py:1995 | authentication.Company | CASCADE |
 | `backend/django_core/core/models.py::BrandedTemplate.company` | backend/django_core/core/models.py:2060 | authentication.Company | CASCADE |
