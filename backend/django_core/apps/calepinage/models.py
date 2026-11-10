@@ -352,6 +352,15 @@ class CalepinageVariante(TenantModel):
         related_name='calepinage_variantes_creees',
         verbose_name='Créée par',
     )
+    #: ACON6 (D-ACON-2) — le second devis ACTIF du lead que porte cette
+    #: variante (conteneur = l'ouvert du lead) ; ``None`` = simple option.
+    devis = models.ForeignKey(
+        'ventes.Devis',
+        on_delete=models.SET_NULL,  # on_delete: un devis supprimé laisse la variante et son document
+        null=True, blank=True,
+        related_name='variantes_calepinage',
+        verbose_name='Devis porté',
+    )
 
     class Meta:
         verbose_name = 'Variante de calepinage'
@@ -361,6 +370,9 @@ class CalepinageVariante(TenantModel):
             models.UniqueConstraint(
                 fields=['calepinage'], condition=models.Q(retenue=True),
                 name='uniq_variante_retenue_par_calepinage'),
+            models.UniqueConstraint(
+                fields=['devis'], condition=models.Q(devis__isnull=False),
+                name='uniq_variante_par_devis'),
         ]
         indexes = [
             models.Index(fields=['calepinage', 'retenue'],

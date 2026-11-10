@@ -517,6 +517,9 @@ def calepinage_du_devis(devis_id, company):
                   .filter(devis_id=courant)
                   .order_by('-created_at', '-id')
                   .first())
+        if trouve is None:  # ACON6 — le CONTENEUR d'une variante liée
+            variante = _variante_du_devis(company, courant)
+            trouve = variante.calepinage if variante is not None else None
         if trouve is not None:
             return trouve
         vus.add(str(courant))
@@ -533,6 +536,36 @@ def calepinage_du_devis(devis_id, company):
 
 #: ACAL92 — profondeur maximale de la chaîne de révision suivie (V1 → V2 → …).
 _PROFONDEUR_REVISIONS = 20
+
+
+def _variante_du_devis(company, devis_id):
+    """ACON6 — la variante (calepinage actif) qui PORTE ce devis, ou ``None``."""
+    from .models import CalepinageVariante
+
+    return (CalepinageVariante.objects.select_related('calepinage')
+            .filter(company=company, devis_id=devis_id,
+                    calepinage__in=calepinages_actifs(company)).first())
+
+
+def conception_du_devis(devis_id, company):
+    """ACON6 (D-ACON-2) — LA conception d'un devis : ``{calepinage, variante,
+    roof_layout, layout_hash}`` (contrat ``calepinage_conception_du_devis.json``).
+
+    ``variante`` est celle qui porte le devis (second devis actif du lead),
+    ``None`` quand le devis est lié au calepinage lui-même (ou par sa chaîne
+    de révision) ; le document servi est celui de la variante le cas échéant.
+    ``None`` sans conception."""
+    calepinage = calepinage_du_devis(devis_id, company)
+    if calepinage is None:
+        return None
+    variante = (None if str(calepinage.devis_id) == str(devis_id)
+                else _variante_du_devis(company, devis_id))
+    if variante is not None and variante.calepinage_id != calepinage.pk:
+        variante = None
+    source = variante or calepinage
+    return {'calepinage': calepinage, 'variante': variante,
+            'roof_layout': source.roof_layout,
+            'layout_hash': source.layout_hash or ''}
 
 
 def conception_figee_du_devis(devis_id, company):

@@ -53,10 +53,10 @@ def _devis_lie(calepinage):
     return getattr(calepinage, 'devis', None)
 
 
-def _verdict_verrou(calepinage):
-    """Le verdict ventes du geste ``CALEPINAGE`` sur le devis lié, ou
-    ``None`` sans devis lié (jamais verrouillé)."""
-    devis = _devis_lie(calepinage)
+def _verdict_verrou(calepinage, devis=None):
+    """Le verdict ventes du geste ``CALEPINAGE`` sur le devis lié (ACON6 :
+    ou ``devis``, celui que porte une variante), ``None`` sans devis."""
+    devis = devis if devis is not None else _devis_lie(calepinage)
     if devis is None:
         return None
     from apps.ventes.selectors import devis_modifiabilite
@@ -71,7 +71,8 @@ def est_verrouille(calepinage):
     return verdict is not None and not verdict.get('modifiable', True)
 
 
-def verifier_ecriture_autorisee(calepinage, champ='roof_layout'):
+def verifier_ecriture_autorisee(calepinage, champ='roof_layout', *,
+                                devis=None):
     """Refuse (409, clé ``roof_layout``) toute écriture de conception quand le
     calepinage est verrouillé (ACAL43 : ``champ`` nomme l'écriture refusée),
     avec le MOTIF de ventes mot pour mot (ex.
@@ -86,7 +87,7 @@ def verifier_ecriture_autorisee(calepinage, champ='roof_layout'):
 
     if est_archive(calepinage):
         raise VerrouilleRefuse(MESSAGE_ARCHIVE, champ='calepinage')
-    verdict = _verdict_verrou(calepinage)
+    verdict = _verdict_verrou(calepinage, devis)
     if verdict is not None and not verdict.get('modifiable', True):
         raise VerrouilleRefuse(
             verdict.get('raison_non_modifiable')
@@ -95,7 +96,8 @@ def verifier_ecriture_autorisee(calepinage, champ='roof_layout'):
     if verdict is not None:  # ACAL373 — agricole / multi-villa : la raison de l'écran
         from apps.ventes.selectors_calepinage import (
             raison_lecture_seule_conception)
-        raison = raison_lecture_seule_conception(_devis_lie(calepinage))
+        raison = raison_lecture_seule_conception(
+            devis if devis is not None else _devis_lie(calepinage))
         if raison:
             raise VerrouilleRefuse(raison, champ=champ)
 

@@ -269,6 +269,8 @@ def obtenir_ou_creer_pour_devis(devis_id, company, *, user=None, titre='',
 ORIGINE_EXISTANT = 'existant'
 ORIGINE_ADOPTE = 'adopte'
 ORIGINE_CREE = 'cree'
+#: ACON6 (D-ACON-2) — le devis est porté par une VARIANTE neuve de l'ouvert.
+ORIGINE_VARIANTE = 'variante'
 
 
 def _sans_cles_privees(roof_layout):
@@ -371,7 +373,9 @@ def adopter_ou_creer_pour_devis(devis_id, company, *, user=None, titre='',
         # Lot 2 critique #4 — un ARCHIVÉ qui tient déjà ce devis : refus
         # nommé (409, « restaurez-le »), jamais un IntegrityError en 500.
         _refuser_si_un_archive_tient_le_devis(company, devis.pk)
-        adopte = _adopter_l_ouvert_du_lead(devis, company, lead_id, user=user)
+        adopte = (_adopter_l_ouvert_du_lead(devis, company, lead_id, user=user)
+                  or _variante_de_l_ouvert_lie(devis, company, lead_id,
+                                               user=user))
         if adopte is not None:
             return adopte
         try:
@@ -431,6 +435,33 @@ def _adopter_l_ouvert_du_lead(devis, company, lead_id, *, user=None):
             raise
         return gagnant, ORIGINE_EXISTANT
     return calepinage, ORIGINE_ADOPTE
+
+
+def _variante_de_l_ouvert_lie(devis, company, lead_id, *, user=None):
+    """ACON6 (D-ACON-2) — ``(C1, 'variante')`` quand l'UNIQUE ouvert du lead
+    est lié à un AUTRE devis actif : le devis naît comme variante liée de C1
+    (copie de son document sans clés privées), jamais un second calepinage."""
+    import copy
+
+    from ..selectors import liste_calepinages
+    from .modeles import est_modele
+    from .variantes import creer_variante
+
+    if not lead_id:
+        return None
+    ouverts = [c for c in liste_calepinages(company, lead_id=lead_id)
+               if not est_modele(c)]
+    lie = getattr(ouverts[0], 'devis', None) if len(ouverts) == 1 else None
+    if (lie is None or lie.pk == devis.pk
+            or not getattr(lie, 'is_active', True)
+            or getattr(lie, 'superseded_by_id', None) == devis.pk):
+        return None  # pas d'autre devis ACTIF (ou B est sa révision, ACAL92)
+    reference = (getattr(devis, 'reference', '') or '').strip()
+    creer_variante(ouverts[0], nom=f'Devis {reference or devis.pk}',
+                   roof_layout=copy.deepcopy(
+                       _sans_cles_privees(ouverts[0].roof_layout)),
+                   user=user, devis=devis)
+    return ouverts[0], ORIGINE_VARIANTE
 
 
 def _titre_du_devis(devis):

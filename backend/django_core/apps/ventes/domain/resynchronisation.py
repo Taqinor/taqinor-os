@@ -1498,12 +1498,25 @@ def ecrire_conception_du_devis(devis, layout, user=None, *,
     try:
         calepinage, _origine = calepinage_services.adopter_ou_creer_pour_devis(
             devis.pk, devis.company, user=user)
-        calepinage_services.enregistrer_layout(
-            calepinage, _sans_cles_privees(layout), user=user,
-            base_empreinte=base_empreinte)
+        from apps.calepinage.selectors import conception_du_devis
+
+        variante = (conception_du_devis(devis.pk, devis.company)
+                    or {}).get('variante')
+        if variante is not None:  # ACON6 — B écrit SA variante, jamais C1
+            courante = calepinage_services.empreinte_document(
+                variante.roof_layout)
+            if base_empreinte is not None and base_empreinte != courante:
+                raise calepinage_services.DocumentModifie(courante)
+            calepinage_services.modifier_variante(
+                variante, roof_layout=_sans_cles_privees(layout), user=user)
+        else:
+            calepinage_services.enregistrer_layout(
+                calepinage, _sans_cles_privees(layout), user=user,
+                base_empreinte=base_empreinte)
     except calepinage_services.DocumentModifie as conflit:
         raise ConceptionRefusee(409, conflit.corps()) from None
     except (calepinage_services.LayoutRefuse,
+            calepinage_services.VarianteRefusee,
             calepinage_services.CreationRefusee) as erreur:
         champ = getattr(erreur, 'champ', '') or 'roof_layout'
         raise ConceptionRefusee(400, {champ: str(erreur)}) from None
@@ -1516,7 +1529,8 @@ def ecrire_conception_du_devis(devis, layout, user=None, *,
     from rest_framework.exceptions import ValidationError
 
     try:
-        return calepinage_services.resynchroniser_devis(calepinage, user=user)
+        return calepinage_services.resynchroniser_devis(
+            calepinage, user=user, devis_id=devis.pk)
     except calepinage_services.DevisRefuse as refus:
         raise ConceptionRefusee(
             refus.statut,
