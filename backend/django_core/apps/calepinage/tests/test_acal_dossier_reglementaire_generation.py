@@ -50,9 +50,9 @@ CHAMPS = [
     {'code': 'commune', 'libelle': 'Commune du projet', 'type': 'texte',
      'obligatoire': False},
 ]
+SOURCE = 'Cahier des charges du gestionnaire'
 PIECES = [{'code': 'plan_masse', 'intitule': 'Plan de masse',
-           'obligatoire': False,
-           'source_reference': 'Cahier des charges du gestionnaire'}]
+           'obligatoire': False, 'source_reference': SOURCE}]
 
 
 def _pdf(*textes):
@@ -252,10 +252,11 @@ class GenerationDossierTest(BaseGeneration):
 
         gabarit_id = self._deposer_gabarit(pieces=[
             {'code': 'titre', 'intitule': 'Titre de propriété',
-             'obligatoire': True},
+             'obligatoire': True, 'source_reference': SOURCE},
             {'code': 'plan', 'intitule': 'Plan cadastral',
-             'obligatoire': True},
-            {'code': 'photo', 'intitule': 'Photo', 'obligatoire': False}])
+             'obligatoire': True, 'source_reference': SOURCE},
+            {'code': 'photo', 'intitule': 'Photo', 'obligatoire': False,
+             'source_reference': SOURCE}])
         self._saisir(gabarit_id, {'puissance': '12,5'})
         for code in ('titre', 'plan', 'photo'):
             self._joindre(gabarit_id, piece=code)
