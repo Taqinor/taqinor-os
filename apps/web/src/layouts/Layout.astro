@@ -219,6 +219,9 @@ const jsonLd = {
     <link rel="preload" as="font" type="font/woff2" href="/fonts/archivo-latin.woff2" fetchpriority="low" crossorigin />
     {/* WAUD44 — police arabe libre (OFL), auto-hébergée, préchargée sur /ar/ seulement. */}
     {lang === 'ar' && <link rel="preload" as="font" type="font/woff2" href="/fonts/noto-sans-arabic-400.woff2" fetchpriority="low" crossorigin />}
+    {/* WAUD89 — la 700 (H1 et titres arabes) n'était découverte qu'à la 1re mise en page et
+        arrivait après : remise en page de presque tout le document + décalages du H1. */}
+    {lang === 'ar' && <link rel="preload" as="font" type="font/woff2" href="/fonts/noto-sans-arabic-700.woff2" fetchpriority="low" crossorigin />}
     {/* WAUD79 — Hanken Grotesk porte le texte au-dessus du pli : son échange décale aussi. */}
     <link rel="preload" as="font" type="font/woff2" href="/fonts/hanken-latin.woff2" fetchpriority="low" crossorigin />
     {preloadHeroPoster && (
