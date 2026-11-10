@@ -440,6 +440,44 @@ def _sauvegardes_en_echec(depuis, company):
     ]
 
 
+#: ADCG18 — échecs de tâches Celery (récepteur `task_failure` de `erp_agentique/celery.py`).
+CLE_TACHES_EN_ECHEC = 'erp:taches_en_echec'
+BORNE_TACHES_EN_ECHEC = 500
+
+
+def consigner_echec_tache(nom, exc):
+    """Pose `{ts, tache, exception, message}` en tête de la liste bornée ; best-effort."""
+    try:
+        client = _client_redis()
+        client.lpush(CLE_TACHES_EN_ECHEC, json.dumps({
+            'ts': timezone.now().timestamp(), 'tache': str(nom),
+            'exception': type(exc).__name__, 'message': str(exc)[:LONGUEUR_ERREUR]}))
+        client.ltrim(CLE_TACHES_EN_ECHEC, 0, BORNE_TACHES_EN_ECHEC - 1)
+    except Exception:  # noqa: BLE001 — best-effort, ne casse jamais le worker (D-ENF22-BLE001)
+        logger.debug('échec de tâche non consigné', exc_info=True)
+
+
+def _taches_en_echec(depuis, company):
+    """Échecs regroupés par (tâche, exception) ; vue globale seulement (messages nommant des documents)."""
+    if company is not None:
+        return []
+    try:
+        bruts = [json.loads(b) for b in _client_redis().lrange(CLE_TACHES_EN_ECHEC, 0, -1)]
+    except Exception:  # noqa: BLE001 — best-effort, le résumé doit sortir (D-ENF22-BLE001)
+        logger.debug('échecs de tâches illisibles', exc_info=True)
+        return []
+    groupes = {}
+    for brut in bruts:  # du plus récent au plus ancien (LPUSH)
+        instant = datetime.fromtimestamp(float(brut['ts']), dt_timezone.utc)
+        if instant < depuis:
+            continue
+        groupe = groupes.setdefault((brut['tache'], brut['exception']), {
+            'tache': brut['tache'], 'exception': brut['exception'], 'occurrences': 0,
+            'dernier': timezone.localtime(instant).isoformat(), 'message': brut['message']})
+        groupe['occurrences'] += 1
+    return sorted(groupes.values(), key=lambda g: (-g['occurrences'], g['tache']))[:LIMITE_ECHECS]
+
+
 def _etat_sante():
     """État des services que le tri surveille, ou `{}` si la sonde elle-même
     tombe (le résumé des problèmes doit sortir quand même)."""
@@ -484,6 +522,7 @@ def resume_json(jours=7, company=None, maintenant=None):
         'outbox_en_echec': _outbox_en_echec(depuis, company),
         'outbox_alimentee': _outbox_alimentee(company),
         'sauvegardes_en_echec': _sauvegardes_en_echec(depuis, company),
+        'taches_en_echec': _taches_en_echec(depuis, company),
         'sante': _etat_sante(),
     }
 
@@ -538,6 +577,7 @@ _RESUME_PROBLEMES_REPONSE = inline_serializer('ResumeProblemesService', {
     'outbox_en_echec': serializers.ListField(child=serializers.DictField()),
     'outbox_alimentee': serializers.BooleanField(),
     'sauvegardes_en_echec': serializers.ListField(child=serializers.DictField()),
+    'taches_en_echec': serializers.ListField(child=serializers.DictField()),
     'sante': serializers.DictField(child=serializers.DictField()),
     'tri_horodate': serializers.BooleanField(),
 })
