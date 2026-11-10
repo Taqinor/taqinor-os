@@ -91,6 +91,8 @@ TRACKED_MODELS = [
     ('monitoring', 'CleaningEvent'),
     ('monitoring', 'AbonnementMonitoring'),
     ('monitoring', 'CertificatCarbone'),
+    # ASOC81 — la note de débit majore une facture : écriture d'argent.
+    ('ventes', 'NoteDebit'),
 ]
 
 # ── UN SEUL ÉCRIVAIN PAR LIGNE D'AUDIT ─────────────────────────────────────

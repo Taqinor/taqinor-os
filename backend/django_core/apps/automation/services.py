@@ -19,10 +19,6 @@ from .models import ApprovalDecision, ApprovalDelegation, ApprovalRequest
 
 logger = logging.getLogger(__name__)
 
-# Clé d'événement notifications (ZCTR8). Voir la note de module : no-op sûr
-# tant que `notifications.EventType` ne la porte pas encore.
-NOTIFY_EVENT_INFO_REQUESTED = 'approval_info_requested'
-
 
 def _notify_best_effort(user, event_type, title, body='', company=None):
     """Notifie ``user`` best-effort ; n'élève JAMAIS (voir docstring module)."""
@@ -34,6 +30,20 @@ def _notify_best_effort(user, event_type, title, body='', company=None):
     except Exception:  # pragma: no cover - best-effort
         logger.debug('automation: notification best-effort échouée',
                      exc_info=True)
+
+
+def _prevenir_approbateurs(req, titre, corps):
+    """ASOC21 — les approbateurs (``resolve_recipients``, APPROVAL_REQUESTED)
+    hors demandeur et hors décideurs déjà passés : ceux qui doivent agir."""
+    from apps.notifications.services import resolve_recipients
+    from apps.notifications.types_evenements import EventType
+
+    deja = {req.demandeur_id, *req.decisions.values_list('decided_by_id',
+                                                         flat=True)}
+    for user in resolve_recipients(req.company, EventType.APPROVAL_REQUESTED):
+        if user.pk not in deja:
+            _notify_best_effort(user, EventType.APPROVAL_REQUESTED, titre,
+                                body=corps, company=req.company)
 
 
 # ── APAR27 — service UNIQUE d'écriture du journal de configuration ─────────
@@ -129,12 +139,16 @@ def submit_request(
     if request_type.piece_jointe_obligatoire and not has_attachment:
         raise ApprovalError(
             'Une pièce jointe est requise pour ce type de demande.')
-    return ApprovalRequest.objects.create(
+    req = ApprovalRequest.objects.create(
         company=company,
         request_type=request_type,
         demandeur=demandeur,
         payload=payload or {},
     )
+    _prevenir_approbateurs(
+        req, f'Approbation demandée — « {request_type.nom} »',
+        'Une demande attend votre décision.')
+    return req
 
 
 # ── XKB3 — Délégation d'approbation (suppléant) ──────────────────────────────
@@ -169,6 +183,14 @@ def visible_demandeur_ids_for(user, *, at=None):
         ).values_list('delegant_id', flat=True)
     )
     return ids
+
+
+def demande_figee(req):
+    """ASEC69 / APFS44 — une demande DÉCIDÉE ou portant déjà une décision
+    est figée : ni PATCH de son contenu, ni suppression (409)."""
+    return (req.status in (ApprovalRequest.Status.APPROVED,
+                           ApprovalRequest.Status.REJECTED)
+            or req.decisions.exists())
 
 
 def _distinct_favorable_approvers(req):
@@ -215,6 +237,13 @@ def decide_request(req, *, decider, approve, note=''):
     engine.enforce_requester_not_approver(
         requester=req.demandeur, approver=decider, company=req.company,
         label=f'approval_request#{req.pk}')
+    # APFS111 — le palier du TYPE : « admin » n'est décidé que par un admin
+    # (superutilisateur compris) ; 403 sans décision ni changement d'état.
+    if (req.request_type.palier_approbateur
+            == req.request_type.ApproverTier.ADMIN
+            and not getattr(decider, 'is_admin_role', False)):
+        raise DecisionInterdite('Décision réservée au palier administrateur '
+                                'pour ce type de demande.')
 
     already_decided = req.decisions.filter(decided_by=decider).exists()
     if already_decided:
@@ -272,17 +301,13 @@ def decide_request(req, *, decider, approve, note=''):
 def notify_next_rank(req):
     """ZCTR8 — notifie best-effort le PROCHAIN rang d'approbateurs (mode
     séquentiel) : appelé après chaque décision favorable qui ne clôt pas
-    encore la demande. Sans destinataire nommé (le palier n'est pas une
-    liste d'utilisateurs identifiés dans XKB2), on notifie best-effort le
-    demandeur d'avancement — laisse la place à un futur ciblage nommé par
-    rang sans changer la signature."""
+    encore la demande. ASOC21 — sans destinataire nommé par rang, ce sont
+    les approbateurs du palier qui n'ont pas encore décidé (jamais le
+    demandeur) — un futur ciblage nommé garde la signature."""
     rank = rank_of_next_approver(req)
-    _notify_best_effort(
-        req.demandeur, NOTIFY_EVENT_INFO_REQUESTED,
-        title=f'Approbation « {req.request_type.nom} » — rang {rank}',
-        body='Une décision favorable vient de faire avancer votre demande '
-             'au rang suivant.',
-        company=req.company)
+    _prevenir_approbateurs(
+        req, f'Approbation « {req.request_type.nom} » — rang {rank}',
+        'Le rang précédent a approuvé : la demande attend votre décision.')
 
 
 # ── ZCTR8 — Demander un complément d'information ────────────────────────────
@@ -307,8 +332,10 @@ def request_more_info(req, *, user, motif):
     req.save(update_fields=[
         'status', 'decided_by', 'decided_at', 'decision_note'])
 
+    from apps.notifications.types_evenements import EventType
+
     _notify_best_effort(
-        req.demandeur, NOTIFY_EVENT_INFO_REQUESTED,
+        req.demandeur, EventType.APPROVAL_DECIDED,
         title=f'Complément demandé — « {req.request_type.nom} »',
         body=motif, company=req.company)
     return req

@@ -1008,6 +1008,47 @@ class ApprovalRequestTests(TestCase):
         }, format='json')
         self.assertEqual(resp.status_code, 409)
 
+    def test_chaque_geste_previent_qui_doit_agir(self):
+        """ASOC21 — soumission ⇒ approbateurs ; complément ⇒ demandeur ;
+        rang 1 approuvé ⇒ rang suivant. Mutant : retirer l'appel de
+        ``submit_request`` ⇒ 0 notification aux approbateurs."""
+        from apps.notifications.models import Notification
+        ap1 = make_user(self.co, 'asoc21-ap1', 'admin')
+        ap2 = make_user(self.co, 'asoc21-ap2', 'admin')
+        req_type = self._type(
+            champs_requis=[], min_approbations=2,
+            sequence_approbateurs=(
+                ApprovalRequestType.SequenceApprobateurs.SEQUENTIEL))
+
+        def recus(user, evenement):
+            return Notification.objects.filter(
+                recipient=user, event_type=evenement).count()
+
+        url = '/api/django/automation/approval-requests/'
+        resp = auth(self.employe).post(url, {
+            'request_type': req_type.pk, 'payload': {}}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        for approbateur in (ap1, ap2):
+            self.assertEqual(recus(approbateur, 'approval_requested'), 1)
+        self.assertEqual(recus(self.employe, 'approval_requested'), 0)
+
+        req_id = resp.data['id']
+        resp = auth(ap1).post(f'{url}{req_id}/demande-info/',
+                              {'motif': 'Joindre le devis'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        complement = Notification.objects.filter(
+            recipient=self.employe, event_type='approval_decided')
+        self.assertEqual(complement.count(), 1)
+        self.assertIn('Joindre le devis', complement.get().body)
+
+        resp = auth(self.employe).post(f'{url}{req_id}/resoumettre/', {},
+                                       format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        resp = auth(ap1).post(f'{url}{req_id}/approve/', {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(recus(ap2, 'approval_requested'), 2)
+        self.assertEqual(recus(ap1, 'approval_requested'), 1)
+
     def test_type_inconnu_404_et_type_illisible_400(self):
         # ENF11 — id bien formé mais inconnu : 404 ; id illisible : 400.
         api = auth(self.employe)

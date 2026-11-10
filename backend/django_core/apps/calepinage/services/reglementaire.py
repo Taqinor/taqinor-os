@@ -416,15 +416,17 @@ def dossiers_du_calepinage(calepinage, *, pays=None):
     dossiers = {d.gabarit_id: d for d in DossierReglementaire.objects
                 .filter(company=company, calepinage=calepinage)}
     infos = _infos_du_calepinage(calepinage)
-    # ACAL240 — l'empreinte COURANTE des entrées, calculée UNE fois et
-    # seulement si un dossier a été généré avec la sienne.
-    empreinte_courante = None
-    if any(d.genere_empreinte for d in dossiers.values()):
-        from .empreinte_livrable import empreinte_des_entrees
+    # ACAL240 / ACON48 — l'empreinte COURANTE de CHAQUE dossier généré, sur
+    # SES seules saisies et pièces (joindre à B ne périme pas A).
+    from .empreinte_livrable import empreinte_des_entrees
 
-        empreinte_courante = empreinte_des_entrees(calepinage, 'fr')
+    def _courante(dossier):
+        if dossier is None or not dossier.genere_empreinte:
+            return None
+        return empreinte_des_entrees(calepinage, 'fr', dossier=dossier)
+
     entrees = [_entree_depuis_orm(gabarit, dossiers.get(gabarit.pk),
-                                  empreinte_courante)
+                                  _courante(dossiers.get(gabarit.pk)))
                for gabarit in gabarits]
     return _composer_dossiers(calepinage_id=calepinage.pk, pays=pays,
                               entrees=entrees, infos=infos)
@@ -704,9 +706,10 @@ def _texte_valeur(valeur):
     return str(valeur)
 
 
-def _lignes_des_champs(gabarit, champs_saisis, infos):
+def _lignes_des_champs(gabarit, champs_saisis, infos, signalements=None):
     """``[(libellé, valeur imprimée, source)]`` — la saisie EN PRIORITÉ,
-    sinon la valeur du calepinage, sinon « à compléter ». PUR."""
+    sinon la valeur du calepinage, sinon « à compléter ». ACON47 — une saisie
+    qui CONTREDIT le calepinage est nommée dans ``signalements``."""
     lignes = []
     for champ in getattr(gabarit, 'champs', None) or []:
         if not isinstance(champ, dict):
@@ -720,6 +723,12 @@ def _lignes_des_champs(gabarit, champs_saisis, infos):
         calcul = _valeur_reelle((infos or {}).get(cle)) if cle else None
         if saisie is not None:
             lignes.append((libelle, _texte_valeur(saisie), 'saisie'))
+            if (calcul is not None and signalements is not None
+                    and not _meme_valeur(saisie, calcul)):
+                signalements.append(
+                    "Champ « %s » : saisi %s, le calepinage dit %s — la "
+                    "valeur saisie est imprimée." % (
+                        libelle, _texte_valeur(saisie), _texte_valeur(calcul)))
         elif calcul is not None:
             lignes.append((libelle, _texte_valeur(calcul), 'calepinage'))
         else:
@@ -748,12 +757,15 @@ def _page_des_champs(gabarit, calepinage, lignes):
     return render_pdf(html=html)
 
 
-def _pieces_du_dossier(dossier, *, company, infos=None):
+def _pieces_du_dossier(dossier, *, company, infos=None, signalements=None):
     """``[(code, libellé, octets)]`` : gabarit, page des champs, pièces
-    jointes PDF — dans cet ordre.
+    jointes PDF — dans cet ordre. ACON43 — une jointe FACULTATIVE illisible
+    est nommée dans ``signalements`` (liste complétée), jamais sautée en
+    silence.
 
     Raises:
-        DossierRefuse: fichier du gabarit illisible ou NON PDF (``gabarit``).
+        DossierRefuse: fichier du gabarit illisible ou NON PDF (``gabarit``) ;
+            jointe OBLIGATOIRE illisible (code de la pièce).
     """
     gabarit = dossier.gabarit
     octets_gabarit = _octets_attachment(
@@ -771,7 +783,8 @@ def _pieces_du_dossier(dossier, *, company, infos=None):
     if infos is None:
         infos = _infos_du_calepinage(dossier.calepinage)
     pieces = [('gabarit', 'Gabarit — %s' % gabarit.intitule, octets_gabarit)]
-    lignes = _lignes_des_champs(gabarit, dossier.champs_saisis, infos)
+    lignes = _lignes_des_champs(gabarit, dossier.champs_saisis, infos,
+                                signalements)
     if lignes:
         pieces.append(('champs', 'Champs du dossier', _page_des_champs(
             gabarit, dossier.calepinage, lignes)))
@@ -783,10 +796,17 @@ def _pieces_du_dossier(dossier, *, company, infos=None):
         jointe = jointes.get(code)
         if not isinstance(jointe, dict):
             continue
+        intitule = str(attendue.get('intitule') or code)
         octets = _octets_attachment(company, jointe.get('attachment_id'))
         if _est_octets_pdf(octets):
-            pieces.append(('jointe:%s' % code,
-                           str(attendue.get('intitule') or code), octets))
+            pieces.append(('jointe:%s' % code, intitule, octets))
+        elif attendue.get('obligatoire'):
+            raise DossierRefuse(
+                "La pièce obligatoire « %s » est illisible dans le stockage "
+                ": joignez-la à nouveau." % intitule, piece=code)
+        elif signalements is not None:
+            signalements.append(
+                "Pièce « %s » illisible : non jointe au dossier." % intitule)
     return pieces
 
 
@@ -833,11 +853,14 @@ def construire_pack_dossier(dossier, *, created_by=None, rendus=None,
     # seulement quand l'EMPREINTE DES ENTRÉES change (gabarit compris).
     from .pack_technique import deposer_et_fusionner
 
+    signales = []
     if pieces_dossier is None:
-        pieces_dossier = _pieces_du_dossier(dossier, company=company)
+        pieces_dossier = _pieces_du_dossier(dossier, company=company,
+                                            signalements=signales)
     rendus = rendus if rendus is not None else _rendus_du_module(calepinage,
                                                                  company)
     pieces, signalements = _rendre_pieces_produites(rendus)
+    signalements = signales + signalements
     pieces = list(pieces_dossier) + list(pieces)
     if not pieces:
         raise DossierRefuse(
@@ -846,7 +869,7 @@ def construire_pack_dossier(dossier, *, created_by=None, rendus=None,
     if empreinte is None:
         from .empreinte_livrable import empreinte_des_entrees
 
-        empreinte = empreinte_des_entrees(calepinage, 'fr')
+        empreinte = empreinte_des_entrees(calepinage, 'fr', dossier=dossier)
 
     depot = deposer_et_fusionner(
         calepinage, pieces=[(code, libelle, octets, None)
