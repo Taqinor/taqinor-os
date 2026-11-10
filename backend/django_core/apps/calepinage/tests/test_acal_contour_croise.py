@@ -89,6 +89,20 @@ class ContourCroiseApiTest(BaseApiCalepinage):
         self.assertIn('exclusionZones.0.vertices', reponse.data)
         self.assertEqual(self._lire(), D0)
 
+    def test_champ_au_sol_croise_refuse_400_nomme(self):
+        # ACON8 — le champ au sol (``poseSurfaces``) est contrôlé lui aussi.
+        avec_sol = dict(copy.deepcopy(D0), poseSurfaces=[{
+            'kind': 'sol', 'id': 'sol-1', 'label': 'Champ au sol',
+            'vertices': copy.deepcopy(RECTANGLE)}])
+        self.assertEqual(self._poster(avec_sol).status_code, 200)
+        document = copy.deepcopy(avec_sol)
+        document['poseSurfaces'][0]['vertices'] = copy.deepcopy(PAPILLON)
+        reponse = self._poster(document)
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('poseSurfaces.0.vertices', reponse.data)
+        self.assertIn('se croise', reponse.data['poseSurfaces.0.vertices'])
+        self.assertEqual(self._lire(), avec_sol)
+
     def test_papillon_deja_stocke_et_inchange_accepte(self):
         ancien = copy.deepcopy(D0)
         ancien['zones'][0]['vertices'] = copy.deepcopy(PAPILLON)
