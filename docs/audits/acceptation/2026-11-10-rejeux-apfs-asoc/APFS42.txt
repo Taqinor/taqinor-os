@@ -1,0 +1,98 @@
+# Preuve en direct APFS42 — rejeu accept-apfs-asoc, code joué c97df310d (origin/main, merge de #1318), 2026-11-10
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau accept-apfs-net ; accept-apfs-db (pgvector pg16,
+# 127.0.0.1:5548, base erp_accept_apfs = pg_dump --no-owner de la base locale erp_live en lecture seule, puis
+# `manage.py migrate`) ; accept-apfs-redis ; accept-apfs-minio (MinIO privé : le rendu /proposal et l'envoi de devis
+# écrivent leur PDF dans le stockage) ; accept-apfs-dj (image erp-agentique-django_core, code backend du commit joué
+# COPIÉ par tar dans /srv/app, settings.dev, mail locmem, runserver 127.0.0.1:8018, DB_CONN_MAX_AGE=0) ;
+# accept-apfs-fa (image erp-agentique-fastapi_ia, code backend/fastapi_ia du commit joué copié, uvicorn 127.0.0.1:8019,
+# relais Django = accept-apfs-dj, aucune clé Groq/Zhipu).
+# Sondes : python scripts/sonde.py <G>/<sonde> --conteneur accept-apfs-dj (transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sondes du dossier d'audit : verdict ÉCART = `repro` faux = le défaut d'origine
+# n'est PLUS reproduit. Sondes C-LIVE-* écrites pour ce rejeu (source jointe) : elles rejouent le Given/When/Then de la
+# tâche ; ICI repro=true (verdict REPRO) signifie que le comportement ATTENDU est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8018
+# vite preview --port 5198`), piloté par Playwright MCP, comptes de test acc_apfs_<rôle> (société « Acceptation APFS »,
+# rôles système, mot de passe de test généré, base jetable) et compte portail acc_portail@example.invalid.
+# Fixtures écran FIX-APFS (persistées dans la base jetable) : leads Zerouali Karim (Commercial acc_apfs_com, GPS),
+# Collegue Samir (acc_apfs_com2), Corbeille Test, Filleul Nadia ; devis DEV-ACC-APFS-1 accepté → chantier
+# CH-ACC-APFS-1 (technicien acc_apfs_tech) + dossier réglementaire ; fournisseur ACC ; remise REM-ACC-APFS-1 ;
+# garantie SN-ACC-APFS-1 ; réquisition DA-ACC-APFS-1 (10 × 750) ; facture FAC-ACC-APFS-14 (TVA 14 %) ; demande
+# portail « Onduleur en défaut ACC » ; type d'approbation « Remise exceptionnelle ACC » (palier admin) ; demandes
+# 09-08 (reçues, en vérification, partielle) ; société B « Acceptation APFS B » (acc_apfs_adm membre).
+# Captures : C:\dev\taqinor-os\logs\nightly-qa\playwright\accept-apfs\.
+# Verdict : PASS — sondes C-APFS-041 (Admin RH, Technicien, Commercial terrain, Commercial, Viewer 403, lead toujours supprimé ; Directeur 200 ; B 404) et C-LIVE-APFS42 (Admin Ventes 403 + lead supprimé ; Administrateur et Commercial responsable 200 restored) ; écran : Directeur « Supprimer » puis « Annuler » du toast → lead revenu. L'écran ne propose pas « Supprimer » à Admin Ventes (vérifié : actions de ligne sans Supprimer), son refus de restauration est donc prouvé au serveur
+
+== C-APFS-041 (sha 57d3fd371d)
+attendu : repro si Admin RH / Technicien / Commercial terrain (aucun code CRM, pas de ux_corbeille_restaurer) sont refusés (403) sur trash/corbeille mais restaurent le lead (200, is_deleted=False) par core/corbeille ; Viewer 403 sur les deux ; record de B jamais atteint (404)
+observé : {'roles': {'Directeur': {'menu_tier': 'admin', 'is_responsable': True, 'a_ux_corbeille_restaurer': True, 'codes_crm': ['crm_creer', 'crm_export', 'crm_modifier'], 'element_trash_present': True, 'trash_http': 200, 'restaure_par_trash': True, 'core_http': 200, 'restaure_par_core': True, 'liste_core_http': 200, 'liste_voit_B': False, 'restaurer_B_http': 404}, 'Admin RH': {'menu_tier': 'responsable', 'is_responsable': True, 'a_ux_corbeille_restaurer': False, 'codes_crm': [], 'element_trash_present': True, 'trash_http': 403, 'restaure_par_trash': False, 'core_http': 403, 'restaure_par_core': False, 'liste_core_http': 200, 'liste_voit_B': False, 'restaurer_B_http': 403}, 'Technicien': {'menu_tier': 'normal', 'is_responsable': True, 'a_ux_corbeille_restaurer': False, 'codes_crm': [], 'element_trash_present': True, 'trash_http': 403, 'restaure_par_trash': False, 'core_http': 403, 'restaure_par_core': False, 'liste_core_http': 200, 'liste_voit_B': False, 'restaurer_B_http': 403}, 'Commercial terrain': {'menu_tier': 'normal', 'is_responsable': True, 'a_ux_corbeille_restaurer': False, 'codes_crm': [], 'element_trash_present': True, 'trash_http': 403, 'restaure_par_trash': False, 'core_http': 403, 'restaure_par_core': False, 'liste_core_http': 200, 'liste_voit_B': False, 'restaurer_B_http': 403}, 'Technicien responsable': {'menu_tier': 'responsable', 'is_responsable': True, 'a_ux_corbeille_restaurer': True, 'codes_crm': [], 'element_trash_present': True, 'trash_http': 200, 'restaure_par_trash': True, 'core_http': 200, 'restaure_par_core': True, 'liste_core_http': 200, 'liste_voit_B': False, 'restaurer_B_http': 404}, 'Viewer': {'menu_tier': 'normal', 'is_responsable': False, 'a_ux_corbeille_restaurer': False, 'codes_crm': ['crm_voir'], 'element_trash_present': True, 'trash_http': 403, 'restaure_par_trash': False, 'core_http': 403, 'restaure_par_core': False, 'liste_core_http': 200, 'liste_voit_B': False, 'restaurer_B_http': 403}, 'Commercial': {'menu_tier': 'normal', 'is_responsable': True, 'a_ux_corbeille_restaurer': False, 'codes_crm': ['crm_creer', 'crm_export', 'crm_modifier'], 'element_trash_present': True, 'trash_http': 403, 'restaure_par_trash': False, 'core_http': 403, 'restaure_par_core': False, 'liste_core_http': 200, 'liste_voit_B': False, 'restaurer_B_http': 403}}, 'leadB_toujours_supprime': True}
+{"roles": {"Directeur": {"menu_tier": "admin", "is_responsable": true, "a_ux_corbeille_restaurer": true, "codes_crm": ["crm_creer", "crm_export", "crm_modifier"], "element_trash_present": true, "trash_http": 200, "restaure_par_trash": true, "core_http": 200, "restaure_par_core": true, "liste_core_http": 200, "liste_voit_B": false, "restaurer_B_http": 404}, "Admin RH": {"menu_tier": "responsable", "is_responsable": true, "a_ux_corbeille_restaurer": false, "codes_crm": [], "element_trash_present": true, "trash_http": 403, "restaure_par_trash": false, "core_http": 403, "restaure_par_core": false, "liste_core_http": 200, "liste_voit_B": false, "restaurer_B_http": 403}, "Technicien": {"menu_tier": "normal", "is_responsable": true, "a_ux_corbeille_restaurer": false, "codes_crm": [], "element_trash_present": true, "trash_http": 403, "restaure_par_trash": false, "core_http": 403, "restaure_par_core": false, "liste_core_http": 200, "liste_voit_B": false, "restaurer_B_http": 403}, "Commercial terrain": {"menu_tier": "normal", "is_responsable": true, "a_ux_corbeille_restaurer": false, "codes_crm": [], "element_trash_present": true, "trash_http": 403, "restaure_par_trash": false, "core_http": 403, "restaure_par_core": false, "liste_core_http": 200, "liste_voit_B": false, "restaurer_B_http": 403}, "Technicien responsable": {"menu_tier": "responsable", "is_responsable": true, "a_ux_corbeille_restaurer": true, "codes_crm": [], "element_trash_present": true, "trash_http": 200, "restaure_par_trash": true, "core_http": 200, "restaure_par_core": true, "liste_core_http": 200, "liste_voit_B": false, "restaurer_B_http": 404}, "Viewer": {"menu_tier": "normal", "is_responsable": false, "a_ux_corbeille_restaurer": false, "codes_crm": ["crm_voir"], "element_trash_present": true, "trash_http": 403, "restaure_par_trash": false, "core_http": 403, "restaure_par_core": false, "liste_core_http": 200, "liste_voit_B": false, "restaurer_B_http": 403}, "Commercial": {"menu_tier": "normal", "is_responsable": true, "a_ux_corbeille_restaurer": false, "codes_crm": ["crm_creer", "crm_export", "crm_modifier"], "element_trash_present": true, "trash_http": 403, "restaure_par_trash": false, "core_http": 403, "restaure_par_core": false, "liste_core_http": 200, "liste_voit_B": false, "restaurer_B_http": 403}}, "leadB_toujours_supprime": true, "restaurent_par_core_sans_crm": ["Technicien responsable"], "temoin_ok": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 2392, après 2392) ; mails 0 ; tâches Celery bloquées 0
+
+== C-LIVE-APFS42 (sha c97df310d)
+attendu : Admin Ventes 403 + lead supprimé ; Administrateur 200 restored ; Commercial responsable 200 restored
+observé : {"Admin Ventes": {"http": 403, "restored": null, "lead_supprime_apres": true}, "Administrateur": {"http": 200, "restored": true, "lead_supprime_apres": false}, "Commercial responsable": {"http": 200, "restored": true, "lead_supprime_apres": false}, "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 2397, après 2397) ; mails 0 ; tâches Celery bloquées 0
+
+== Écran
+Écran Leads (vue liste) en Admin Ventes (acc_apfs_av) : actions de la ligne « Corbeille Test » = Marquer perdu,
+Éditer, Parcours, Devis auto, Archiver — aucun « Supprimer » (canDelete = palier admin).
+Écran Leads (vue liste) en Directeur : « Supprimer » → confirmation « Supprimer ce lead ? » → 200 DELETE
+/api/django/crm/leads/3484/ → ligne absente, toast « Lead supprimé. Restaurable pendant 30 minutes… Annuler » →
+« Annuler » → 200 POST /api/django/core/corbeille/121/restaurer/ → ligne « Corbeille Test » revenue.
+Capture : APFS42-directeur-annuler.png
+
+# ---- source : C-LIVE-APFS42.py ----
+# flake8: noqa  (sonde LIVE du rejeu d'acceptation APFS/ASOC — rôles de APFS42 absents de la sonde 041)
+"""APFS42 — lead de A soft-supprimé (vraie soft_delete) ; POST core/corbeille/<id>/restaurer/ par Admin Ventes
+⇒ 403, lead toujours supprimé ; Administrateur et Commercial responsable ⇒ 200 restored (lead re-supprimé entre
+deux essais). repro=True signifie ICI que le comportement ATTENDU est observé."""
+SONDE = {"constat": "C-LIVE-APFS42", "sha": "c97df310d",
+         "attendu": "Admin Ventes 403 + lead supprimé ; Administrateur 200 restored ; Commercial responsable 200 restored",
+         "modeles": ['crm.Lead', 'core.DeletionRecord', 'trash.ElementSupprime', 'roles.Role', 'authentication.Company']}
+
+
+def sonde(ctx):
+    from django.contrib.auth import get_user_model
+    from django.contrib.contenttypes.models import ContentType
+    from rest_framework.test import APIClient
+    from rest_framework_simplejwt.tokens import AccessToken
+    from authentication.models import Company
+    from authentication.role_tiers import tier_for_role_fields
+    from apps.crm.models import Lead
+    from apps.roles.models import Role
+    from apps.roles import permissions_registre as reg
+    from core.models import DeletionRecord
+    H = {'HTTP_HOST': 'localhost'}
+    U = get_user_model()
+    R = dict(reg.CANONICAL_SYSTEM_ROLES)
+    co = Company.objects.create(nom='Live APFS42', slug='live-apfs42')
+
+    def compte(nom):
+        perms = list(R[nom])
+        role, _ = Role.objects.get_or_create(company=co, nom=nom, defaults={'permissions': perms, 'est_systeme': True})
+        u = U.objects.create_user(username='live42-' + nom.replace(' ', '').lower(), password='x', company=co,
+                                  role=role, role_legacy=tier_for_role_fields(nom, True, perms))
+        c = APIClient()
+        c.credentials(HTTP_AUTHORIZATION='Bearer ' + str(AccessToken.for_user(u)))
+        return u, c
+    dirc, _ = compte('Directeur')
+    lead = Lead.objects.create(company=co, nom='Corbeille L42', stage='NEW')
+    ct = ContentType.objects.get_for_model(Lead)
+    out = {}
+    for nom in ('Admin Ventes', 'Administrateur', 'Commercial responsable'):
+        Lead.all_objects.filter(pk=lead.pk).first().soft_delete(dirc)
+        rec = DeletionRecord.objects.filter(company=co, content_type=ct, object_id=lead.pk).order_by('-pk').first()
+        _, c = compte(nom)
+        r = c.post(f'/api/django/core/corbeille/{rec.id}/restaurer/', {}, format='json', **H)
+        l2 = Lead.all_objects.get(pk=lead.pk)
+        out[nom] = {'http': r.status_code, 'restored': (r.data or {}).get('restored') if isinstance(r.data, dict) else None,
+                    'lead_supprime_apres': bool(getattr(l2, 'is_deleted', False))}
+        if not l2.is_deleted:
+            pass
+    out['repro'] = bool(out['Admin Ventes']['http'] == 403 and out['Admin Ventes']['lead_supprime_apres']
+                        and out['Administrateur']['http'] == 200 and not out['Administrateur']['lead_supprime_apres']
+                        and out['Commercial responsable']['http'] == 200
+                        and not out['Commercial responsable']['lead_supprime_apres'])
+    return out

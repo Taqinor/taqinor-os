@@ -1,0 +1,76 @@
+# Preuve en direct APFS4 — rejeu accept-apfs-asoc, code joué c97df310d (origin/main, merge de #1318), 2026-11-10
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau accept-apfs-net ; accept-apfs-db (pgvector pg16,
+# 127.0.0.1:5548, base erp_accept_apfs = pg_dump --no-owner de la base locale erp_live en lecture seule, puis
+# `manage.py migrate`) ; accept-apfs-redis ; accept-apfs-minio (MinIO privé : le rendu /proposal et l'envoi de devis
+# écrivent leur PDF dans le stockage) ; accept-apfs-dj (image erp-agentique-django_core, code backend du commit joué
+# COPIÉ par tar dans /srv/app, settings.dev, mail locmem, runserver 127.0.0.1:8018, DB_CONN_MAX_AGE=0) ;
+# accept-apfs-fa (image erp-agentique-fastapi_ia, code backend/fastapi_ia du commit joué copié, uvicorn 127.0.0.1:8019,
+# relais Django = accept-apfs-dj, aucune clé Groq/Zhipu).
+# Sondes : python scripts/sonde.py <G>/<sonde> --conteneur accept-apfs-dj (transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sondes du dossier d'audit : verdict ÉCART = `repro` faux = le défaut d'origine
+# n'est PLUS reproduit. Sondes C-LIVE-* écrites pour ce rejeu (source jointe) : elles rejouent le Given/When/Then de la
+# tâche ; ICI repro=true (verdict REPRO) signifie que le comportement ATTENDU est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8018
+# vite preview --port 5198`), piloté par Playwright MCP, comptes de test acc_apfs_<rôle> (société « Acceptation APFS »,
+# rôles système, mot de passe de test généré, base jetable) et compte portail acc_portail@example.invalid.
+# Fixtures écran FIX-APFS (persistées dans la base jetable) : leads Zerouali Karim (Commercial acc_apfs_com, GPS),
+# Collegue Samir (acc_apfs_com2), Corbeille Test, Filleul Nadia ; devis DEV-ACC-APFS-1 accepté → chantier
+# CH-ACC-APFS-1 (technicien acc_apfs_tech) + dossier réglementaire ; fournisseur ACC ; remise REM-ACC-APFS-1 ;
+# garantie SN-ACC-APFS-1 ; réquisition DA-ACC-APFS-1 (10 × 750) ; facture FAC-ACC-APFS-14 (TVA 14 %) ; demande
+# portail « Onduleur en défaut ACC » ; type d'approbation « Remise exceptionnelle ACC » (palier admin) ; demandes
+# 09-08 (reçues, en vérification, partielle) ; société B « Acceptation APFS B » (acc_apfs_adm membre).
+# Captures : C:\dev\taqinor-os\logs\nightly-qa\playwright\accept-apfs\.
+# Verdict : FAIL — sonde C-APFS-020 repro faux (data-explorer, saved-queries, rapport-definitions/executer : 403 Admin RH / Commercial terrain / Technicien ; C2 = ses leads ; Directeur 4 leads, 1 facture) MAIS POST core/formule/tester/ (ventes_factures) rend 400 « Impossible de lire ce dataset avec ces filtres. » aux trois rôles refusés au lieu du 403 « Accès au jeu de données refusé. » exigé par le Then (sonde C-LIVE-APFS4) : `core/formule_api.py::FormuleTestView.post` avale le refus de `data_explorer.run_query` dans son `except Exception` — aucune donnée ne fuit. Défaut ERR-APFS-FORMULE-TESTER-400
+
+== C-APFS-020 (sha c9e72d5b2)
+attendu : repro si une porte du moteur rend 200 + lignes là où l'écran du module (crm/leads/, ventes/factures/) rend 403, ou plus de lignes que l'écran pour le Commercial « soi » ; aucune ligne de B
+observé : {"repro": false, "observe": {"terrain": {"ecran_leads": [403, null], "ecran_factures": [403, null], "dx_run_leads": [403, null, false, false], "saved_run_leads": [403, null, false, false], "rapport_create": 201, "rapport_executer_leads": [403, null, false, false], "formule_tester_factures": [400, null, false], "dx_run_factures": [403, null]}, "rh": {"ecran_leads": [403, null], "ecran_factures": [403, null], "dx_run_leads": [403, null, false, false], "saved_run_leads": [403, null, false, false], "rapport_create": 201, "rapport_executer_leads": [403, null, false, false], "formule_tester_factures": [400, null, false], "dx_run_factures": [403, null]}, "tech": {"ecran_leads": [403, null], "ecran_factures": [403, null], "dx_run_leads": [403, null, false, false], "saved_run_leads": [403, null, false, false], "rapport_create": 201, "rapport_executer_leads": [403, null, false, false], "formule_tester_factures": [400, null, false], "dx_run_factures": [403, null]}, "c2_soi": {"ecran_leads": [200, 1], "ecran_factures": [200, 0], "dx_run_leads": [200, 1, false, false], "saved_run_leads": [200, 1, false, false], "rapport_create": 201, "rapport_executer_leads": [200, 1, false, false], "formule_tester_factures": [200, 0, false], "dx_run_factures": [200, 0]}, "directeur": {"ecran_leads": [200, 4], "ecran_factures": [200, 1], "dx_run_leads": [200, 4, true, false], "saved_run_leads": [200, 4, true, false], "rapport_create": 201, "rapport_executer_leads": [200, 4, true, false], "formule_tester_factures": [200, 1, true], "dx_run_factures": [200, 1]}, "ecarts": [], "fuite_B": false, "temoin_directeur": true}}
+verdict : ÉCART
+base inchangée : oui (avant 3279, après 3279) ; mails 0 ; tâches Celery bloquées 0
+
+== C-LIVE-APFS4 (sha c97df310d)
+attendu : formule/tester ventes_factures : Admin RH, Commercial terrain, Technicien 403 « Accès au jeu de données refusé. » ; Directeur 200
+observé : {"Admin RH": {"formule_tester": [400, "{'detail': 'Impossible de lire ce dataset avec ces filtres.'}"], "data_explorer_run": [403, "{'detail': ErrorDetail(string='Accès au jeu de données refusé.', code='permission_denied'), 'error': {'code': 'permissio"]}, "Commercial terrain": {"formule_tester": [400, "{'detail': 'Impossible de lire ce dataset avec ces filtres.'}"], "data_explorer_run": [403, "{'detail': ErrorDetail(string='Accès au jeu de données refusé.', code='permission_denied'), 'error': {'code': 'permissio"]}, "Technicien": {"formule_tester": [400, "{'detail': 'Impossible de lire ce dataset avec ces filtres.'}"], "data_explorer_run": [403, "{'detail': ErrorDetail(string='Accès au jeu de données refusé.', code='permission_denied'), 'error': {'code': 'permissio"]}, "Directeur": {"formule_tester": [200, "{'dataset': 'ventes_factures', 'expression': 'montant_ttc', 'lignes': [], 'detail': \"Aucune donnée réelle ne correspond : la formule n'a pas pu être testée.\"}"], "data_explorer_run": [200, "{'dataset': 'ventes_factures', 'nb': 0, 'rows': []}"]}, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 151, après 151) ; mails 0 ; tâches Celery bloquées 0
+
+# ---- source : C-LIVE-APFS4.py ----
+# flake8: noqa  (sonde LIVE du rejeu d'acceptation APFS/ASOC — volet formule/tester de APFS4)
+"""APFS4 — Admin RH / Commercial terrain / Technicien : POST core/formule/tester/ sur ventes_factures ⇒ 403
+« Accès au jeu de données refusé. » (Then de la tâche) ; Directeur 200. repro=True signifie ICI que le
+comportement ATTENDU est observé."""
+SONDE = {"constat": "C-LIVE-APFS4", "sha": "c97df310d",
+         "attendu": "formule/tester ventes_factures : Admin RH, Commercial terrain, Technicien 403 « Accès au jeu de données refusé. » ; Directeur 200",
+         "modeles": ['authentication.CustomUser', 'roles.Role']}
+
+
+def sonde(ctx):
+    from decimal import Decimal
+    from django.contrib.auth import get_user_model
+    from rest_framework.test import APIClient
+    from rest_framework_simplejwt.tokens import AccessToken
+    from authentication.models import Company
+    from authentication.role_tiers import tier_for_role_fields
+    from apps.roles.models import Role
+    from apps.roles import permissions_registre as reg
+    H = {'HTTP_HOST': 'localhost'}
+    U = get_user_model()
+    R = dict(reg.CANONICAL_SYSTEM_ROLES)
+    co = Company.objects.create(nom='Live APFS4', slug='live-apfs4')
+    out = {}
+    for nom in ('Admin RH', 'Commercial terrain', 'Technicien', 'Directeur'):
+        perms = list(R[nom])
+        role, _ = Role.objects.get_or_create(company=co, nom=nom, defaults={'permissions': perms, 'est_systeme': True})
+        u = U.objects.create_user(username='live4-' + nom.replace(' ', '').lower(), password='x', company=co, role=role,
+                                  role_legacy=tier_for_role_fields(nom, True, perms))
+        c = APIClient()
+        c.credentials(HTTP_AUTHORIZATION='Bearer ' + str(AccessToken.for_user(u)))
+        r = c.post('/api/django/core/formule/tester/', {'dataset': 'ventes_factures', 'expression': 'montant_ttc'},
+                   format='json', **H)
+        d = c.post('/api/django/core/data-explorer/run/', {'dataset': 'ventes_factures', 'limit': 10}, format='json', **H)
+        out[nom] = {'formule_tester': [r.status_code, str(getattr(r, 'data', ''))[:160]],
+                    'data_explorer_run': [d.status_code, str(getattr(d, 'data', ''))[:120]]}
+    refus = all(out[n]['formule_tester'][0] == 403 and 'refusé' in out[n]['formule_tester'][1]
+                for n in ('Admin RH', 'Commercial terrain', 'Technicien'))
+    out['repro'] = bool(refus and out['Directeur']['formule_tester'][0] == 200)
+    return out

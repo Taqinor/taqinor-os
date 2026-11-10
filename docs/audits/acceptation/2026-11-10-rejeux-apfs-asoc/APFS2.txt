@@ -1,0 +1,132 @@
+# Preuve en direct APFS2 — rejeu accept-apfs-asoc, code joué c97df310d (origin/main, merge de #1318), 2026-11-10
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau accept-apfs-net ; accept-apfs-db (pgvector pg16,
+# 127.0.0.1:5548, base erp_accept_apfs = pg_dump --no-owner de la base locale erp_live en lecture seule, puis
+# `manage.py migrate`) ; accept-apfs-redis ; accept-apfs-minio (MinIO privé : le rendu /proposal et l'envoi de devis
+# écrivent leur PDF dans le stockage) ; accept-apfs-dj (image erp-agentique-django_core, code backend du commit joué
+# COPIÉ par tar dans /srv/app, settings.dev, mail locmem, runserver 127.0.0.1:8018, DB_CONN_MAX_AGE=0) ;
+# accept-apfs-fa (image erp-agentique-fastapi_ia, code backend/fastapi_ia du commit joué copié, uvicorn 127.0.0.1:8019,
+# relais Django = accept-apfs-dj, aucune clé Groq/Zhipu).
+# Sondes : python scripts/sonde.py <G>/<sonde> --conteneur accept-apfs-dj (transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sondes du dossier d'audit : verdict ÉCART = `repro` faux = le défaut d'origine
+# n'est PLUS reproduit. Sondes C-LIVE-* écrites pour ce rejeu (source jointe) : elles rejouent le Given/When/Then de la
+# tâche ; ICI repro=true (verdict REPRO) signifie que le comportement ATTENDU est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8018
+# vite preview --port 5198`), piloté par Playwright MCP, comptes de test acc_apfs_<rôle> (société « Acceptation APFS »,
+# rôles système, mot de passe de test généré, base jetable) et compte portail acc_portail@example.invalid.
+# Fixtures écran FIX-APFS (persistées dans la base jetable) : leads Zerouali Karim (Commercial acc_apfs_com, GPS),
+# Collegue Samir (acc_apfs_com2), Corbeille Test, Filleul Nadia ; devis DEV-ACC-APFS-1 accepté → chantier
+# CH-ACC-APFS-1 (technicien acc_apfs_tech) + dossier réglementaire ; fournisseur ACC ; remise REM-ACC-APFS-1 ;
+# garantie SN-ACC-APFS-1 ; réquisition DA-ACC-APFS-1 (10 × 750) ; facture FAC-ACC-APFS-14 (TVA 14 %) ; demande
+# portail « Onduleur en défaut ACC » ; type d'approbation « Remise exceptionnelle ACC » (palier admin) ; demandes
+# 09-08 (reçues, en vérification, partielle) ; société B « Acceptation APFS B » (acc_apfs_adm membre).
+# Captures : C:\dev\taqinor-os\logs\nightly-qa\playwright\accept-apfs\.
+# Verdict : PASS — rejeu HTTP réel (jetons émis par Django, FastAPI du commit joué) : portail 403 « Accès réservé aux comptes internes. » sur /sql-agent/query, /sql-agent/transcribe, /ocr/process_document, 3 refus journalisés par app.core.security (user_id, company_id, chemin) ; Directeur passe la garde (query 200, transcribe 200 ; OCR 503 du limiteur, sans clé Zhipu — la garde est franchie). Volet « relais injoignable ⇒ 403 » non rejoué (couvert par les tests nommés)
+
+{
+ "portail": {
+  "jeton": true,
+  "sql_agent_query": [
+   403,
+   "{\"detail\":\"Accès réservé aux comptes internes.\"}"
+  ],
+  "sql_agent_transcribe": [
+   403,
+   "{\"detail\":\"Accès réservé aux comptes internes.\"}"
+  ],
+  "ocr_process_document": [
+   403,
+   "{\"detail\":\"Accès réservé aux comptes internes.\"}"
+  ]
+ },
+ "interne_directeur": {
+  "jeton": true,
+  "sql_agent_query": [
+   200,
+   "{\"answer\":\"GROQ_API_KEY manquante dans .env\",\"sql_query\":\"\",\"data\":null,\"action_performed\":false,\"proposal\":null,\"result\":null,\"evenement_id\":null}"
+  ],
+  "sql_agent_transcribe": [
+   200,
+   "{\"text\":\"\",\"language\":\"\",\"available\":false,\"detail\":\"La transcription vocale est indisponible : la clé GROQ_API_KEY n'est pas configurée.\"}"
+  ],
+  "ocr_process_document": [
+   503,
+   "{\"detail\":\"Service de limitation temporairement indisponible. Réessayez dans quelques instants.\"}"
+  ]
+ },
+ "interne_passe_la_garde": true,
+ "repro": true
+}
+
+== Journal FastAPI (accept-apfs-fa, logger app.core.security)
+Compte non interne refuse : user_id=638 company_id=364 chemin=/sql-agent/query
+Compte non interne refuse : user_id=638 company_id=364 chemin=/sql-agent/transcribe
+Compte non interne refuse : user_id=638 company_id=364 chemin=/ocr/process_document
+
+# ---- source : live_apfs2.py (rejeu HTTP réel Django → FastAPI) ----
+# C-LIVE-APFS2 — rejeu HTTP réel : Django accept-apfs-dj (:8018) émet les jetons, FastAPI accept-apfs-fa (:8019,
+# code du commit joué) reçoit les appels. Comptes de test de la base jetable uniquement.
+import io
+import json
+import urllib.request
+import urllib.error
+
+DJ = 'http://127.0.0.1:8018'
+FA = 'http://127.0.0.1:8019'
+PWD = 'AccApfs-2026-tq7Wz'
+
+
+def post(url, data=None, token=None, files=None):
+    headers = {}
+    body = None
+    if files:
+        b = '----accapfs'
+        buf = io.BytesIO()
+        for name, (fn, content, ct) in files.items():
+            buf.write(('--%s\r\nContent-Disposition: form-data; name="%s"; filename="%s"\r\nContent-Type: %s\r\n\r\n'
+                       % (b, name, fn, ct)).encode())
+            buf.write(content + b'\r\n')
+        buf.write(('--%s--\r\n' % b).encode())
+        body = buf.getvalue()
+        headers['Content-Type'] = 'multipart/form-data; boundary=' + b
+    elif data is not None:
+        body = json.dumps(data).encode()
+        headers['Content-Type'] = 'application/json'
+    if token:
+        headers['Authorization'] = 'Bearer ' + token
+    req = urllib.request.Request(url, data=body, headers=headers, method='POST')
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            return r.status, r.read()[:300].decode('utf-8', 'replace')
+    except urllib.error.HTTPError as e:
+        return e.code, e.read()[:300].decode('utf-8', 'replace')
+
+
+def jeton(user):
+    # le jeton d'accès est posé en cookie HttpOnly `access_token` (corps `{}`)
+    req = urllib.request.Request(DJ + '/api/django/token/', method='POST',
+                                 data=json.dumps({'username': user, 'password': PWD}).encode(),
+                                 headers={'Content-Type': 'application/json'})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        for h in r.headers.get_all('Set-Cookie') or []:
+            h = h.strip()
+            if h.startswith('access_token='):
+                return h.split(';')[0].split('=', 1)[1]
+    return None
+
+
+out = {}
+for nom, user in (('portail', 'acc_portail@example.invalid'), ('interne_directeur', 'acc_apfs_dir')):
+    t = jeton(user)
+    out[nom] = {'jeton': bool(t),
+                'sql_agent_query': post(FA + '/sql-agent/query', {'question': 'liste des clients'}, t),
+                'sql_agent_transcribe': post(FA + '/sql-agent/transcribe', token=t,
+                                             files={'file': ('a.webm', b'\x1a\x45\xdf\xa3', 'audio/webm')}),
+                'ocr_process_document': post(FA + '/ocr/process_document', token=t,
+                                             files={'file': ('f.png', b'\x89PNG\r\n\x1a\n', 'image/png')})}
+p = out['portail']
+ok = all(p[k][0] == 403 and 'comptes internes' in p[k][1] for k in ('sql_agent_query', 'sql_agent_transcribe',
+                                                                     'ocr_process_document'))
+i = out['interne_directeur']
+out['interne_passe_la_garde'] = all(i[k][0] != 403 for k in ('sql_agent_query', 'ocr_process_document'))
+out['repro'] = ok and out['interne_passe_la_garde']
+print(json.dumps(out, ensure_ascii=False, indent=1))

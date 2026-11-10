@@ -1,0 +1,35 @@
+# Preuve en direct APFS115 — rejeu accept-apfs-asoc, code joué c97df310d (origin/main, merge de #1318), 2026-11-10
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau accept-apfs-net ; accept-apfs-db (pgvector pg16,
+# 127.0.0.1:5548, base erp_accept_apfs = pg_dump --no-owner de la base locale erp_live en lecture seule, puis
+# `manage.py migrate`) ; accept-apfs-redis ; accept-apfs-minio (MinIO privé : le rendu /proposal et l'envoi de devis
+# écrivent leur PDF dans le stockage) ; accept-apfs-dj (image erp-agentique-django_core, code backend du commit joué
+# COPIÉ par tar dans /srv/app, settings.dev, mail locmem, runserver 127.0.0.1:8018, DB_CONN_MAX_AGE=0) ;
+# accept-apfs-fa (image erp-agentique-fastapi_ia, code backend/fastapi_ia du commit joué copié, uvicorn 127.0.0.1:8019,
+# relais Django = accept-apfs-dj, aucune clé Groq/Zhipu).
+# Sondes : python scripts/sonde.py <G>/<sonde> --conteneur accept-apfs-dj (transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sondes du dossier d'audit : verdict ÉCART = `repro` faux = le défaut d'origine
+# n'est PLUS reproduit. Sondes C-LIVE-* écrites pour ce rejeu (source jointe) : elles rejouent le Given/When/Then de la
+# tâche ; ICI repro=true (verdict REPRO) signifie que le comportement ATTENDU est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8018
+# vite preview --port 5198`), piloté par Playwright MCP, comptes de test acc_apfs_<rôle> (société « Acceptation APFS »,
+# rôles système, mot de passe de test généré, base jetable) et compte portail acc_portail@example.invalid.
+# Fixtures écran FIX-APFS (persistées dans la base jetable) : leads Zerouali Karim (Commercial acc_apfs_com, GPS),
+# Collegue Samir (acc_apfs_com2), Corbeille Test, Filleul Nadia ; devis DEV-ACC-APFS-1 accepté → chantier
+# CH-ACC-APFS-1 (technicien acc_apfs_tech) + dossier réglementaire ; fournisseur ACC ; remise REM-ACC-APFS-1 ;
+# garantie SN-ACC-APFS-1 ; réquisition DA-ACC-APFS-1 (10 × 750) ; facture FAC-ACC-APFS-14 (TVA 14 %) ; demande
+# portail « Onduleur en défaut ACC » ; type d'approbation « Remise exceptionnelle ACC » (palier admin) ; demandes
+# 09-08 (reçues, en vérification, partielle) ; société B « Acceptation APFS B » (acc_apfs_adm membre).
+# Captures : C:\dev\taqinor-os\logs\nightly-qa\playwright\accept-apfs\.
+# Verdict : PASS — sonde C-APFS-081 (remise : liste, fiche et PDF 403 à Admin RH et Commercial terrain) ; écran Ventes › Remises en Commercial : liste REM-ACC-APFS-1 et « Bordereau PDF » 200 application/pdf (après clôture par le Directeur)
+
+== C-APFS-081 (sha 57d3fd371d)
+attendu : repro si Admin RH / Commercial terrain de A obtiennent 200 sur list+retrieve des 7 objets avec les clés sensibles (site_adresse, gps, contact_site_telephone, rib, ice, prix_unitaire, montant_declare, prix…) alors que crm/leads, ventes/factures, sav/tickets leur répondent 403 ; aucun id de B
+observé : {"erreurs_creation": {}, "Admin RH": {"chantier": "list=403 retrieve=403 A_listé=False B_listé=False clés=[]", "fournisseur": "list=403 retrieve=403 A_listé=False B_listé=False clés=[]", "ligne_devis": "list=403 retrieve=403 A_listé=False B_listé=False clés=[]", "remise": "list=403 retrieve=403 A_listé=False B_listé=False clés=[] pdf=403 application/jso", "garantie": "list=403 retrieve=403 A_listé=False B_listé=False clés=[]", "contrat": "list=403 retrieve=403 A_listé=False B_listé=False clés=[]", "alarme": "list=403 retrieve=403 A_listé=False B_listé=False clés=[]", "témoins": "leads=403 factures=403 tickets=403"}, "Commercial terrain": {"chantier": "list=403 retrieve=403 A_listé=False B_listé=False clés=[]", "fournisseur": "list=403 retrieve=403 A_listé=False B_listé=False clés=[]", "ligne_devis": "list=403 retrieve=403 A_listé=False B_listé=False clés=[]", "remise": "list=403 retrieve=403 A_listé=False B_listé=False clés=[] pdf=403 application/jso", "garantie": "list=403 retrieve=403 A_listé=False B_listé=False clés=[]", "contrat": "list=403 retrieve=403 A_listé=False B_listé=False clés=[]", "alarme": "list=403 retrieve=403 A_listé=False B_listé=False clés=[]", "témoins": "leads=403 factures=403 tickets=403"}, "Directeur (témoin)": {"chantier": "list=200 retrieve=200 A_listé=True B_listé=False clés=['site_adresse', 'gps_lat', 'contact_site_telephone', 'client'] adresse='12 rue du Site A' tel='0600000081'", "fournisseur": "list=200 retrieve=200 A_listé=True B_listé=False clés=['rib', 'ice', 'identifiant_fiscal', 'telephone'] rib='011780000012345678901234'", "ligne_devis": "list=200 retrieve=200 A_listé=True B_listé=False clés=['prix_unitaire']", "remise": "list=200 retrieve=200 A_listé=True B_listé=False clés=['montant_declare'] pdf=200 application/pdf", "garantie": "list=200 retrieve=200 A_listé=True B_listé=False clés=['cout_recupere']", "contrat": "list=200 retrieve=200 A_listé=True B_listé=False clés=['prix']", "alarme": "list=200 retrieve=200 A_listé=True B_listé=False clés=['code', 'gravite']", "témoins": "leads=200 factures=200 tickets=200"}, "ouverts_RH": [], "ouverts_CT": [], "B_jamais_listé": true, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 10579, après 10579) ; mails 0 ; tâches Celery bloquées 0
+
+== Écran
+Écran /ventes/remises-encaissement en Commercial acc_apfs_com : « REM-ACC-APFS-1, acc_apfs_dir, 8 100,00 MAD » ;
+clôturée par le Directeur à l'écran (« Clôturer » → confirmation → statut Clôturée) ; en Commercial « Bordereau PDF »
+→ 200 GET /api/django/ventes/remises-encaissement/8/pdf/ (application/pdf, 11 078 octets), téléchargé
+Bordereau_REM-ACC-APFS-1.pdf ; aucune réponse ≥ 400.

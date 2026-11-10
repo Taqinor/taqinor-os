@@ -1,0 +1,108 @@
+# Preuve en direct ASOC40 — rejeu accept-apfs-asoc, code joué c97df310d (origin/main, merge de #1318), 2026-11-10
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau accept-apfs-net ; accept-apfs-db (pgvector pg16,
+# 127.0.0.1:5548, base erp_accept_apfs = pg_dump --no-owner de la base locale erp_live en lecture seule, puis
+# `manage.py migrate`) ; accept-apfs-redis ; accept-apfs-minio (MinIO privé : le rendu /proposal et l'envoi de devis
+# écrivent leur PDF dans le stockage) ; accept-apfs-dj (image erp-agentique-django_core, code backend du commit joué
+# COPIÉ par tar dans /srv/app, settings.dev, mail locmem, runserver 127.0.0.1:8018, DB_CONN_MAX_AGE=0) ;
+# accept-apfs-fa (image erp-agentique-fastapi_ia, code backend/fastapi_ia du commit joué copié, uvicorn 127.0.0.1:8019,
+# relais Django = accept-apfs-dj, aucune clé Groq/Zhipu).
+# Sondes : python scripts/sonde.py <G>/<sonde> --conteneur accept-apfs-dj (transaction annulée, mail en mémoire,
+# Celery coupé, HTTP sortant bloqué). Sondes du dossier d'audit : verdict ÉCART = `repro` faux = le défaut d'origine
+# n'est PLUS reproduit. Sondes C-LIVE-* écrites pour ce rejeu (source jointe) : elles rejouent le Given/When/Then de la
+# tâche ; ICI repro=true (verdict REPRO) signifie que le comportement ATTENDU est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8018
+# vite preview --port 5198`), piloté par Playwright MCP, comptes de test acc_apfs_<rôle> (société « Acceptation APFS »,
+# rôles système, mot de passe de test généré, base jetable) et compte portail acc_portail@example.invalid.
+# Fixtures écran FIX-APFS (persistées dans la base jetable) : leads Zerouali Karim (Commercial acc_apfs_com, GPS),
+# Collegue Samir (acc_apfs_com2), Corbeille Test, Filleul Nadia ; devis DEV-ACC-APFS-1 accepté → chantier
+# CH-ACC-APFS-1 (technicien acc_apfs_tech) + dossier réglementaire ; fournisseur ACC ; remise REM-ACC-APFS-1 ;
+# garantie SN-ACC-APFS-1 ; réquisition DA-ACC-APFS-1 (10 × 750) ; facture FAC-ACC-APFS-14 (TVA 14 %) ; demande
+# portail « Onduleur en défaut ACC » ; type d'approbation « Remise exceptionnelle ACC » (palier admin) ; demandes
+# 09-08 (reçues, en vérification, partielle) ; société B « Acceptation APFS B » (acc_apfs_adm membre).
+# Captures : C:\dev\taqinor-os\logs\nightly-qa\playwright\accept-apfs\.
+# Verdict : PASS — sonde C-ASOC-040-L2 repro faux (devis envoyé : échéancier figé 30/60/10, signature avec l'empreinte lue 200 à 30 %) ; sonde C-LIVE-ASOC40 (devis envoyé SANS échéancier propre, cas antérieur au gel) : page lue 30 %, jalons 40/50/10, signature avec E1 ⇒ 409 empreinte_perimee, « envoye », 0 facture ; relu E2 ≠ E1 à 40 %, signature E2 ⇒ 200
+
+== C-ASOC-040 (sha c514bd8ba)
+attendu : repro si pièce jointe e-mail = 30 %, page client lue = 30 %, réglage écran 40/50/10 accepté, empreinte inchangée, signature client avec l'empreinte LUE = 200 (aucun 409 empreinte_perimee), acompte annoncé au client et brouillon d'acompte = 40 %
+observé : {'echeancier_brouillon': None, 'envoi': {'http': 200, 'statut': 'envoye', 'echeancier': [{'type': 'acompte', 'unite': 'pct', 'fige_le': '2026-11-10T12:08:57.973160+00:00', 'libelle': 'Acompte', 'pct_or_montant': 30.0}, {'type': 'materiel', 'unite': 'pct', 'fige_le': '2026-11-10T12:08:57.973160+00:00', 'libelle': 'Livraison du matériel', 'pct_or_montant': 60.0}, {'type': 'solde', 'unite': 'pct', 'fige_le': '2026-11-10T12:08:57.973160+00:00', 'libelle': 'Solde', 'pct_or_montant': 10.0}], 'emails': 1, 'piece_jointe_acompte_pct': '30'}, 'client_lit': {'http': 200, 'acompte_pct': '30.00', 'acompte_ttc': '6690.00', 'empreinte': True}, 'reglage_ecran': [200, None], 'client_relit': {'http': 200, 'acompte_pct': '30.00', 'acompte_ttc': '6690.00', 'empreinte_identique': True}, 'signature': {'http': 200, 'code': None, 'statut': 'accepte', 'acompte_annonce_ttc': '6690.00'}, 'echeancier_fige': [('acompte', 30.0), ('materiel', 60.0), ('solde', 10.0)], 'devis_ttc': '22300.00', 'acompte_brouillon': {'reference': 'BROUILLON-1236', 'statut': 'brouillon', 'ttc': '6690.00', 'pct_du_ttc': 30.0}}
+{"echeancier_brouillon": null, "envoi": {"http": 200, "statut": "envoye", "echeancier": [{"type": "acompte", "unite": "pct", "fige_le": "2026-11-10T12:08:57.973160+00:00", "libelle": "Acompte", "pct_or_montant": 30.0}, {"type": "materiel", "unite": "pct", "fige_le": "2026-11-10T12:08:57.973160+00:00", "libelle": "Livraison du matériel", "pct_or_montant": 60.0}, {"type": "solde", "unite": "pct", "fige_le": "2026-11-10T12:08:57.973160+00:00", "libelle": "Solde", "pct_or_montant": 10.0}], "emails": 1, "piece_jointe_acompte_pct": "30"}, "client_lit": {"http": 200, "acompte_pct": "30.00", "acompte_ttc": "6690.00", "empreinte": true}, "reglage_ecran": [200, null], "client_relit": {"http": 200, "acompte_pct": "30.00", "acompte_ttc": "6690.00", "empreinte_identique": true}, "signature": {"http": 200, "code": null, "statut": "accepte", "acompte_annonce_ttc": "6690.00"}, "echeancier_fige": [["acompte", 30.0], ["materiel", 60.0], ["solde", 10.0]], "devis_ttc": "22300.00", "acompte_brouillon": {"reference": "BROUILLON-1236", "statut": "brouillon", "ttc": "6690.00", "pct_du_ttc": 30.0}, "acompte_annonce_pct": 30.0, "repro": false}
+verdict : ÉCART
+base inchangée : oui (avant 16280, après 16280) ; mails 1 ; tâches Celery bloquées 0
+
+== C-LIVE-ASOC40 (sha c97df310d)
+attendu : E1 30 % ; jalons 40/50/10 ; accept(E1) 409 empreinte_perimee, envoye, 0 facture ; relire E2 != E1, 40 % ; accept(E2) 200
+observé : {"envoi_http": 200, "lecture1": [200, "30.00", true], "reglage_http": 200, "signature_E1": {"http": 409, "code": "empreinte_perimee", "statut": "envoye", "echeancier": null, "factures": 0}, "lecture2": [200, "40.00", true], "signature_E2": [200, "accepte"], "repro": true}
+verdict : REPRO
+base inchangée : oui (avant 2026, après 2026) ; mails 1 ; tâches Celery bloquées 0
+
+# ---- source : C-LIVE-ASOC40.py ----
+# flake8: noqa  (sonde LIVE du rejeu d'acceptation APFS/ASOC — Given/When/Then exact de ASOC40)
+"""ASOC40 — devis ENVOYÉ SANS échéancier propre (cas d'un envoi antérieur au gel ASOC95 : `echeancier` nul),
+page client lue à 30 % (empreinte E1), jalons société passés à 40/50/10, signature avec E1 ⇒ 409
+empreinte_perimee, devis « envoyé », aucun brouillon d'acompte ; relire ⇒ E2 ≠ E1 et 40 % ; signer avec E2 ⇒ 200.
+repro=True signifie ICI que le comportement ATTENDU est observé."""
+SONDE = {"constat": "C-LIVE-ASOC40", "sha": "c97df310d",
+         "attendu": "E1 30 % ; jalons 40/50/10 ; accept(E1) 409 empreinte_perimee, envoye, 0 facture ; relire E2 != E1, 40 % ; accept(E2) 200",
+         "modeles": ['ventes.Devis', 'ventes.Facture', 'ventes.ShareLink', 'authentication.Company']}
+
+
+def sonde(ctx):
+    from decimal import Decimal
+    from django.contrib.auth import get_user_model
+    from rest_framework.test import APIClient
+    from authentication.models import Company
+    from apps.crm.models import Client
+    from apps.parametres.models import CompanyProfile
+    from apps.stock.models import Produit
+    from apps.ventes.models import Devis, Facture, LigneDevis, ShareLink
+    H = {'HTTP_HOST': 'localhost'}
+    co = Company.objects.create(nom='Live ASOC40', slug='live-asoc40')
+    u = get_user_model().objects.create_user(username='live_asoc40', password='x', role_legacy='admin',
+                                             company=co, email='vendeur40@example.invalid')
+    prof = CompanyProfile.get(company=co)
+    prof.payment_terms = {'residentiel': [{'jalon': 'acompte', 'pct': 30}, {'jalon': 'materiel', 'pct': 60},
+                                          {'jalon': 'solde', 'pct': 10}]}
+    prof.save()
+    cl = Client.objects.create(company=co, nom='Bennani', prenom='L40', email='live40@example.invalid',
+                               telephone='+212600000040')
+    d = Devis.objects.create(company=co, client=cl, reference='DEV-LIVE-ASOC40', statut=Devis.Statut.BROUILLON,
+                             taux_tva=Decimal('20'), mode_installation='residentiel', created_by=u)
+    for i, (nom, qte, pu) in enumerate((('Panneau Canadien Solar 710W', '8', '1200'),
+                                        ('Onduleur réseau Huawei 5kW Monophasé', '1', '9000'))):
+        p = Produit.objects.create(company=co, nom=nom, sku=f'LIVE40-{i}', prix_vente=Decimal(pu),
+                                   prix_achat=Decimal('1'), quantite_stock=50)
+        LigneDevis.objects.create(devis=d, produit=p, designation=nom, quantite=Decimal(qte),
+                                  prix_unitaire=Decimal(pu), remise=Decimal('0'), ordre=i)
+    vendeur = APIClient()
+    vendeur.force_authenticate(u)
+    client = APIClient()
+    r = vendeur.post(f'/api/django/ventes/devis/{d.pk}/envoyer-email/', {}, format='json', **H)
+    # devis envoyé AVANT le gel ASOC95 : aucun échéancier propre (état réel des envois antérieurs)
+    Devis.objects.filter(pk=d.pk).update(echeancier=None)
+    d.refresh_from_db()
+    tok = ShareLink.objects.filter(devis=d).order_by('-pk').first().token
+
+    def lire():
+        rr = client.get(f'/api/django/ventes/proposal/{tok}/', **H)
+        data = rr.data if isinstance(getattr(rr, 'data', None), dict) else {}
+        return rr.status_code, (data.get('acompte') or {}).get('pourcentage'), data.get('empreinte_contenu')
+    s1, pct1, e1 = lire()
+    rp = vendeur.patch('/api/django/parametres/update/', {'payment_terms': {'residentiel': [
+        {'jalon': 'acompte', 'pct': '40'}, {'jalon': 'materiel', 'pct': '50'}, {'jalon': 'solde', 'pct': '10'}]}},
+        format='json', **H)
+    a1 = client.post(f'/api/django/ventes/proposal/{tok}/accept/',
+                     {'nom': 'L40 Bennani', 'consent_esign': True, 'empreinte_contenu': e1}, format='json', **H)
+    d.refresh_from_db()
+    apres_a1 = {'http': a1.status_code, 'code': (a1.data or {}).get('code') if isinstance(a1.data, dict) else None,
+                'statut': d.statut, 'echeancier': d.echeancier, 'factures': Facture.objects.filter(devis=d).count()}
+    s2, pct2, e2 = lire()
+    a2 = client.post(f'/api/django/ventes/proposal/{tok}/accept/',
+                     {'nom': 'L40 Bennani', 'consent_esign': True, 'empreinte_contenu': e2}, format='json', **H)
+    d.refresh_from_db()
+    obs = {'envoi_http': r.status_code, 'lecture1': [s1, pct1, bool(e1)], 'reglage_http': rp.status_code,
+           'signature_E1': apres_a1, 'lecture2': [s2, pct2, e2 != e1], 'signature_E2': [a2.status_code, d.statut]}
+    obs['repro'] = bool(str(pct1).startswith('30') and a1.status_code == 409
+                        and apres_a1['code'] == 'empreinte_perimee' and apres_a1['statut'] == 'envoye'
+                        and apres_a1['factures'] == 0 and str(pct2).startswith('40') and e2 != e1
+                        and a2.status_code == 200)
+    return obs
