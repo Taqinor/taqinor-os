@@ -3,6 +3,7 @@ SONDE = {"constat": "C-ADCG-012", "sha": "ce4e5fc4f",
          "attendu": "env vide : offsite off + termine ; copie distante en échec : statut termine, offsite echec rangé dans detail ; aucun ExtraArgs de chiffrement"}
 import importlib, logging, os, pathlib, shutil, sys, tempfile, types
 RACINE = pathlib.Path(__file__).resolve().parents[4]
+if not (RACINE / "backend/django_core").is_dir(): RACINE = pathlib.Path.cwd()  # copie hors dépôt : jouée depuis la racine
 DJ = RACINE / "backend/django_core"
 
 class A:  # objet permissif : décorateurs, sérialiseurs, sql.SQL(...)
@@ -20,7 +21,8 @@ def charger(tmp):
     import datetime
     mod("django.utils", timezone=types.SimpleNamespace(now=datetime.datetime.now))
     for n in ("psycopg2", "drf_spectacular", "drf_spectacular.utils", "rest_framework", "rest_framework.decorators",
-              "rest_framework.permissions", "rest_framework.response"):
+              "rest_framework.permissions", "rest_framework.response",
+              "authentication", "authentication.permissions"):
         mod(n)
     pkg = pathlib.Path(tmp) / "core"; pkg.mkdir()
     (pkg / "__init__.py").write_text("")
@@ -53,6 +55,7 @@ def sonde(ctx=None):
             b.subprocess = types.SimpleNamespace(run=lambda a, **k: types.SimpleNamespace(returncode=0, stderr=b""), PIPE=-1)
             b._minio_client = lambda: types.SimpleNamespace(head_bucket=lambda **k: None, upload_file=lambda *a, **k: None)
             b._offsite_client = distant
+            b.sauvegarder_fichiers = lambda client: {}  # ADCG30 : copie des fichiers simulée (réussie)
             r1 = Run(); b.dump_database(r1)
             os.environ.update({k: "x" for k in cles})
             r2 = Run(); b.dump_database(r2)
@@ -64,11 +67,14 @@ def sonde(ctx=None):
             if v is not None: os.environ[k] = v
     o1, o2 = r1.detail.get("offsite", {}), r2.detail.get("offsite", {})
     chiffre = any("ExtraArgs" in k for k in appels)
+    # échec invisible : le message du run ne dit rien de la copie distante en échec
+    muet = "EN ÉCHEC" not in (r2.detail.get("message") or "")
     repro = (r1.statut == "termine" and o1.get("status") == "off" and r2.statut == "termine"
-             and o2.get("status") == "echec" and not chiffre)
+             and o2.get("status") == "echec" and not chiffre and muet)
     return {"repro": repro, "observe": (
         f"sans variables : statut={r1.statut}, offsite={o1.get('status')} ; copie distante en échec : statut={r2.statut}, "
-        f"offsite={o2.get('status')} ({o2.get('message')}) ; ExtraArgs de chiffrement passés={chiffre}")}
+        f"offsite={o2.get('status')} ({o2.get('message')}) ; message du run={r2.detail.get('message')!r} ; "
+        f"ExtraArgs de chiffrement passés={chiffre}")}
 
 
 if __name__ == "__main__":
