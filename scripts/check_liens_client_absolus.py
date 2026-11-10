@@ -91,10 +91,17 @@ class _Visiteur(ast.NodeVisitor):
             self.docstrings.add(id(node.body[0].value))
         # ASOC26 — une constante de MODULE (`SUIVI_PATH = '/suivi/'`) nomme une
         # route, elle ne construit aucun lien : ignorée.
+        # Un tuple/liste de constantes au niveau module (préfixes d'une
+        # allowlist, APFS67) nomme des routes de la même façon.
         for stmt in node.body:
-            if isinstance(stmt, (ast.Assign, ast.AnnAssign)) and isinstance(
-                    getattr(stmt, "value", None), ast.Constant):
-                self.docstrings.add(id(stmt.value))
+            if not isinstance(stmt, (ast.Assign, ast.AnnAssign)):
+                continue
+            valeur = getattr(stmt, "value", None)
+            elements = (valeur.elts if isinstance(valeur, (ast.Tuple, ast.List))
+                        else [valeur])
+            for el in elements:
+                if isinstance(el, ast.Constant):
+                    self.docstrings.add(id(el))
         self.generic_visit(node)
 
     def visit_Call(self, node):

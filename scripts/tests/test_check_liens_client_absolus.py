@@ -67,6 +67,8 @@ class LiensClientAbsolusTests(unittest.TestCase):
         self.assertEqual(guard.analyser(_repo(absolu)), {})
         constante = "SUIVI_PATH = '/suivi/{token}'\n"
         self.assertEqual(guard.analyser(_repo(constante)), {})
+        prefixes = "PREFIXES = ('/api/django/public/', '/suivi/')\n"
+        self.assertEqual(guard.analyser(_repo(prefixes)), {})
 
     def test_cle_morte_echoue(self):
         erreurs = guard.verifier({}, {"a.py::f"})
