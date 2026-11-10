@@ -252,6 +252,11 @@ services:
         # l'inline) : le poser exige `docker compose up -d --build frontend`.
         VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
         VITE_SENTRY_ENVIRONMENT: ${VITE_SENTRY_ENVIRONMENT:-}
+        # ADCG11 — replis neutres : aucun écran ne change sans .env.
+        VITE_PRODUCT_NAME: ${VITE_PRODUCT_NAME:-}
+        VITE_TENANT_SIGNUP_ENABLED: ${VITE_TENANT_SIGNUP_ENABLED:-0}
+        VITE_VAPID_PUBLIC_KEY: ${VITE_VAPID_PUBLIC_KEY:-}
+        VITE_PUBLIC_SITE_URL: ${VITE_PUBLIC_SITE_URL:-}
     expose:
       - "80"
     depends_on:
