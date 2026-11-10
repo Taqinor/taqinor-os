@@ -337,7 +337,7 @@
 - frontend/src/api/parametresApi.js :: getEmailTemplates -> /api/django/parametres/email-templates/effective
     results:inconnu
 - frontend/src/api/parametresApi.js :: getMesSauvegardes -> /api/django/core/mes-sauvegardes
-    dernier_drill:inconnu, derniere_sauvegarde:inconnu, rpo_planifie:inconnu, rto_annonce_heures:inconnu
+    copie_distante:inconnu, dernier_drill:inconnu, derniere_sauvegarde:inconnu, rpo_planifie:inconnu, rto_annonce_heures:inconnu
 - frontend/src/api/parametresApi.js :: getStatutsEffective -> /api/django/parametres/statuts/effective
     detail:texte, domaine:inconnu, results:inconnu
 - frontend/src/api/parametresApi.js :: getTranslationOverrides -> /api/django/parametres/traductions/effective
