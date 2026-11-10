@@ -130,7 +130,8 @@ class TestResolveByCodeBarres(Xstk3Base):
 
     def test_ean_cross_tenant_404(self):
         other = _company('xstk3-other2')
-        other_user = _user(other, 'xstk3-other-user')
+        # APFS106 — droit du module stock : l'isolation société se prouve avec un lecteur stock.
+        other_user = _user(other, 'xstk3-other-user', permissions=['stock_voir'])
         api = _api(other_user)
         resp = api.get(
             '/api/django/stock/produits/resolve/'

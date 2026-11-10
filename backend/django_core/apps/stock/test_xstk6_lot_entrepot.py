@@ -269,7 +269,8 @@ class TestEndpoints(Xstk6Base):
     def test_endpoint_list_scoped_company(self):
         self._confirm_reception_avec_lot(5, 'LOT-EP-4')
         other = _company('xstk6-other')
-        other_user = _user(other, 'xstk6-other-user')
+        # APFS106 — droit du module stock : l'isolation société se prouve avec un lecteur stock.
+        other_user = _user(other, 'xstk6-other-user', permissions=['stock_voir'])
         api = _api(other_user)
         resp = api.get('/api/django/stock/lots-entrepot/')
         results = resp.data.get('results', resp.data)
