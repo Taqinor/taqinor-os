@@ -952,6 +952,10 @@ class BackupRunSerializer(ChampsStrictsMixin, CompanyScopedRelationsMixin,
     # ERR-ENF11-FUZZ-CORE — liste de NOMS de datasets, non nulle : un élément
     # non textuel (``[{}]``) levait TypeError (500) dans ``core.backup``.
     datasets = ListeJSON(element=str, required=False)
+    # ADCG40 — une société ne crée ni ne transforme qu'un export / une
+    # restauration : db_dump / restore_drill sont des runs SYSTÈME (400 sur kind).
+    kind = serializers.ChoiceField(required=False, choices=[
+        c for c in BackupRun.KIND_CHOICES if c[0] in (BackupRun.KIND_EXPORT, BackupRun.KIND_RESTORE)])
 
     class Meta:
         model = BackupRun
