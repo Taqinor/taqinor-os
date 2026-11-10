@@ -136,6 +136,42 @@ class MachineAEtatsTests(TestCase):
             dsr._PROVIDERS.clear()
             dsr._PROVIDERS.update(sauvegarde)
 
+    def test_echec_differe_les_sources_d_ordre_superieur(self):
+        """ASOC65 — ventes en échec ⇒ le CRM (erase_order=100, porteur de
+        l'identité) n'est PAS lancé : « partielle », puis la relance efface
+        ventes ET le CRM ⇒ « traitee »."""
+        sauvegarde = dict(dsr._PROVIDERS)
+        etat = {'casse': True, 'crm': 0}
+
+        def _ventes(co, subj):
+            if etat['casse']:
+                raise RuntimeError('ventes indisponible')
+            return 3
+
+        def _crm(co, subj):
+            etat['crm'] += 1
+            return 1
+
+        try:
+            dsr._PROVIDERS.clear()
+            dsr.register_dsr_provider('crm', erase=_crm, erase_order=100)
+            dsr.register_dsr_provider('ventes', erase=_ventes)
+            demande = self._demande(kind=DataSubjectRequest.KIND_ERASURE)
+            dsr.traiter_demande(demande)
+            demande.refresh_from_db()
+            self.assertEqual(demande.statut, DataSubjectRequest.STATUT_PARTIELLE)
+            self.assertEqual(etat['crm'], 0)
+            self.assertEqual(demande.resultat['crm'],
+                             {'erreur': 'différé : source précédente en échec'})
+            etat['casse'] = False
+            dsr.traiter_demande(demande)
+            demande.refresh_from_db()
+            self.assertEqual(demande.statut, DataSubjectRequest.STATUT_TRAITEE)
+            self.assertEqual((etat['crm'], demande.resultat['ventes']), (1, 3))
+        finally:
+            dsr._PROVIDERS.clear()
+            dsr._PROVIDERS.update(sauvegarde)
+
     def test_refus_est_terminal(self):
         demande = self._demande()
         dsr.refuser_demande(demande, motif='Identité non prouvée.')

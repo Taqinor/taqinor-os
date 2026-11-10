@@ -143,19 +143,30 @@ def effacer(company, subject_identifier):
     encore. C'est une DÉPENDANCE RÉELLE, pas une préférence : en ordre
     alphabétique (``crm`` avant ``ventes``) l'effacement des Ventes ne
     trouvait plus aucun devis et repartait à zéro, en silence.
+
+    ASOC65 — une source en échec DIFFÈRE les sources d'ordre supérieur
+    (``{'erreur': ...}`` sans les lancer) : la clé de résolution survit, la
+    demande reste « partielle » et la relance retrouve les documents.
     """
     out = {}
+    ordre_echec = None
     for name, prov in sorted(
             _PROVIDERS.items(),
             key=lambda item: (item[1].get('erase_order', 0) or 0, item[0])):
         fn = prov.get('erase')
         if fn is None:
             continue
+        ordre = prov.get('erase_order', 0) or 0
+        if ordre_echec is not None and ordre > ordre_echec:
+            out[name] = {'erreur': 'différé : source précédente en échec'}
+            continue
         try:
             out[name] = fn(company, subject_identifier)
         except Exception as exc:  # noqa: BLE001 — isolation par fournisseur (D-ENF22-BLE001)
             logger.warning("effacer : échec ignoré, comportement dégradé", exc_info=True)
             out[name] = {'erreur': str(exc)}
+            if ordre_echec is None:
+                ordre_echec = ordre
     return out
 
 
