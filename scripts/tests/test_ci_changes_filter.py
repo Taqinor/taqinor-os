@@ -176,6 +176,20 @@ class CiChangesFilterTest(unittest.TestCase):
                      "backend/django_core/apps/crm/models.py"):
             self.assertFalse(_resolve(self.rules, [path])["fastapi"], path)
 
+    def test_fichiers_d_image_de_prod_declenchent_images_prod(self):
+        """ADCG91 — un fichier d'image de production pose images_prod=true ;
+        le code applicatif seul ne la pose pas (le build compose est lourd)."""
+        regle = re.search(r"grep -qE '([^']+)' <<< \"\$changed\" && images_prod=true",
+                          _detect_step_script())
+        self.assertIsNotNone(regle, "ci.yml : aucune regle `images_prod=true` dans detect")
+        for chemin in ("backend/django_core/requirements.txt", "backend/django_core/Dockerfile",
+                       "backend/fastapi_ia/requirements.txt", "frontend/Dockerfile.prod",
+                       "frontend/package-lock.json", ".dockerignore"):
+            self.assertRegex(chemin, regle.group(1))
+        for chemin in ("backend/django_core/apps/crm/views.py", "apps/web/src/pages/index.astro",
+                       "docs/PLAN.md"):
+            self.assertNotRegex(chemin, regle.group(1))
+
     def test_docs_only_diff_stays_cheap(self):
         """Cas negatif : docs/**.md ne doit declencher aucun job lourd.
 
@@ -211,7 +225,9 @@ _ALL_JOBS = ("changes", "ci-image-check", "backend-lint-fast", "backend-openapi"
              # ADCG72 — SAST + audit CVE (suivis par `backend-lint`).
              "bandit", "semgrep", "dependency-audit",
              # ADCG74 — suite RLS hors des lanes (suivie par `backend-tests`).
-             "backend-rls")
+             "backend-rls",
+             # ADCG91 — build des images de production (suivi par `backend-lint`).
+             "images-prod")
 
 
 def _expr(cond, results, outputs):
@@ -359,6 +375,18 @@ class AgregateursChangesTests(unittest.TestCase):
             self.assertTrue(_resolve(_parse_rules(script), [chemin])["backend"], chemin)
         self.assertFalse(_resolve(_parse_rules(script), [".gitignore"])["backend"])
 
+    def test_echec_images_prod_rougit_backend_lint(self):
+        """ADCG91 — l'échec du build des images de prod rougit `backend-lint` (et
+        figure dans `ci-gate`) ; sauté (aucun fichier d'image) = vert."""
+        self.assertIn("images-prod", self.jobs["ci-gate"]["needs"])
+        results, out = self._scenario("success", {"backend": "true", "images_prod": "true"})
+        results.update({"backend-lint-fast": "success", "backend-openapi": "success"})
+        for resultat, attendu in (("failure", "failure"), ("cancelled", "failure"),
+                                  ("success", "success"), ("skipped", "success")):
+            with self.subTest(images_prod=resultat):
+                essai = dict(results, **{"images-prod": resultat})
+                self.assertEqual(_verdict(self.jobs, "backend-lint", essai, out), attendu)
+
     def test_lane_api_fuzz_pr_declaree(self):
         job = self.jobs["api-fuzz-pr"]
         self.assertIn("backend == 'true'", job["if"])
@@ -409,7 +437,7 @@ class RunAllegeTests(unittest.TestCase):
     (allege=false) reste le seul gate complet."""
 
     LOURDES = ("backend-testdb", "backend-tests-shard", "backend-rls", "api-fuzz-pr",
-               "frontend-vitest-shard", "e2e-shard")
+               "frontend-vitest-shard", "e2e-shard", "images-prod")
     RAPIDES = ("backend-lint-fast", "backend-openapi", "frontend-static",
                "stage-names", "web-build-test", "fastapi-security", "ci-image-check")
 
