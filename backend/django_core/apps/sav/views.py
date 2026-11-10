@@ -21,7 +21,7 @@ from rest_framework.exceptions import (
 from rest_framework.response import Response
 
 from authentication.permissions import (
-    HasPermissionOrLegacy, IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
+    HasPermissionOrLegacy, IsAdminRole, IsAnyRole, IsResponsableOrAdmin, LectureDuModule,
 )
 from apps.roles.permissions import DroitDeLaGrille, droits_de_la_grille  # ASEC50
 from apps.parametres.views_common import SettingsAuditedMixin  # ASOC82
@@ -2970,7 +2970,7 @@ class SavSlaSettingsViewSet(SettingsAuditedMixin, JsonSeulementMixin, CompanySco
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def list(self, request, *args, **kwargs):
@@ -2999,7 +2999,7 @@ class MaintenanceChecklistTemplateViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -3046,7 +3046,7 @@ class WarrantyClaimViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -3137,7 +3137,7 @@ class KbArticleViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -3184,7 +3184,7 @@ class AlarmeOnduleurViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -3321,7 +3321,7 @@ class CauseDefaillanceViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -3346,7 +3346,7 @@ class RemedeDefaillanceViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -3373,7 +3373,7 @@ class CategorieTicketViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -3403,7 +3403,7 @@ class EquipeMaintenanceViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -3431,7 +3431,7 @@ class CategorieEquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def perform_create(self, serializer):
@@ -3452,7 +3452,7 @@ class WorksheetMaintenanceModeleViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def perform_create(self, serializer):
@@ -3474,7 +3474,7 @@ class ReponseTypeViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -3534,7 +3534,7 @@ class CompatibilitePieceViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
