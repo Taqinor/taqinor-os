@@ -423,16 +423,19 @@ _RESUME_MAX = 60
 
 def resume_markdown(nouveaux: list, revus: list) -> str:
     """Corps d'alerte (issue du nocturne) : les régressions NOMMÉES."""
+    # ADCG64 — dernière ligne MACHINE lue par l'agrégateur d'api-fuzz-full.yml
+    # (plus aucun grep sur la mise en forme des puces).
+    machine = f"\nconstats-hors-dette: {len(nouveaux)}\n"
     if not nouveaux:
         return (f"Aucune régression api-fuzz hors dette gelée "
-                f"({len(revus)} constat(s) de la dette re-vu(s)).\n")
+                f"({len(revus)} constat(s) de la dette re-vu(s)).\n") + machine
     lignes = [f"{len(nouveaux)} constat(s) api-fuzz HORS de la dette gelée "
               f"`scripts/fuzz/api_fuzz_dette.txt` ({len(revus)} constat(s) de la "
               f"dette re-vu(s)) :", ""]
     lignes += [f"- `{ligne}`" for ligne in nouveaux[:_RESUME_MAX]]
     if len(nouveaux) > _RESUME_MAX:
         lignes.append(f"- … et {len(nouveaux) - _RESUME_MAX} autre(s) (rapport du job).")
-    return "\n".join(lignes) + "\n"
+    return "\n".join(lignes) + "\n" + machine
 
 
 def soldes(rapport: dict, dette: set) -> list:

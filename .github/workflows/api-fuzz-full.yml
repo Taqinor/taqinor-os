@@ -383,10 +383,14 @@ jobs:
             if [ -z "$v" ]; then
               echo "## $(basename "$d") : AUCUN verdict rendu (tranche interrompue ?)" >> "$corps"; continue
             fi
+            # ADCG64 — ligne machine `constats-hors-dette: <n>` de resume_markdown.
+            n=$(tr -d '\r' < "$v" | sed -n 's/^constats-hors-dette: \([0-9][0-9]*\)$/\1/p' | tail -1)
+            if [ -z "$n" ]; then
+              echo "## $(basename "$d") : verdict illisible (ligne constats-hors-dette absente)" >> "$corps"; continue
+            fi
             nb_verdicts=$((nb_verdicts+1))
-            n=$(grep -c '^  NOUVEAU' "$v" || true)
             nb_nouveaux=$((nb_nouveaux+n))
-            { echo "## $(basename "$d") — $n constat(s) NOUVEAU(x)"; grep '^  NOUVEAU' "$v" || true; echo; } >> "$corps"
+            { echo "## $(basename "$d") — $n constat(s) NOUVEAU(x)"; grep '^- ' "$v" || true; echo; } >> "$corps"
           done
           echo "Tranches : $nb_tranches, verdicts rendus : $nb_verdicts, constats hors dette : $nb_nouveaux" | tee -a "$corps"
           cat "$corps" >> "$GITHUB_STEP_SUMMARY"
@@ -412,7 +416,7 @@ jobs:
               owner: context.repo.owner, repo: context.repo.repo,
               state: 'open', labels: 'api-fuzz-regression',
             });
-            const dup = existing.data.find(i => i.title === title);
+            const dup = existing.data.find(i => i.title.startsWith('[api-fuzz]'));  // ADCG64 : survit aux renommages
             if (!regression) {
               if (dup) {
                 await github.rest.issues.createComment({
