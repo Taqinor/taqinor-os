@@ -1529,10 +1529,10 @@ class TransitionTicketRefusee(Exception):
 
 
 def ticket_a_facturer_non_facture(ticket, user=None):
-    """ACSV60 - ticket facturable (ni garantie, ni contrat, ni recidive non
-    facturable) qui porte pieces ou main-d'oeuvre et aucune facture."""
-    if ticket.facture_id_ext or not (
-            ticket.pieces.exists() or (ticket.heures_main_oeuvre or 0) > 0):
+    """ACSV60/ACSV111 - facturable, pièces (dont F11) ou MO, sans facture."""
+    from apps.installations.selectors import consommations_appliquees_du_ticket as f11
+    if ticket.facture_id_ext or not (ticket.pieces.exists() or (ticket.heures_main_oeuvre or 0) > 0
+                                     or any(c.quantite for c in f11(ticket.company, ticket.id))):
         return False
     decision = decision_facturation(ticket, user, False)
     return not decision['refuse'] and not decision['couvert']
