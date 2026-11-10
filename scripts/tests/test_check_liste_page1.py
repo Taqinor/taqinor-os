@@ -283,8 +283,33 @@ class TestRegistreNonPagine(Depot):
     PAGINEE = "class V(ViewSet):\n    def x(self): ...\n"
     CITE = "backend/django_core/apps/portail/views.py"
 
-    def _ligne(self, ligne_vue=2):
-        return f"{self.CLE}  portail/comptes/  non paginé @{self.CITE}:{ligne_vue}\n"
+    def _ligne(self, symbole="V.x"):
+        return f"{self.CLE}  portail/comptes/  non paginé @{self.CITE}::{symbole}\n"
+
+    def test_citation_par_symbole_survit_a_un_decalage(self):
+        """ADCG75 — 3 lignes insérées au-dessus du symbole : toujours vert ;
+        l'ancienne forme `:LIGNE` est refusée."""
+        self._monter({"portail/ComptesPortailAdmin.jsx": PAGE1},
+                     backend={"views.py": "# a\n# b\n# c\n" + self.VUE},
+                     registre=self._ligne())
+        code, out = self._main()
+        self.assertEqual(code, 0, out)
+        guard.NON_PAGINEES_PATH.write_text(
+            self._ligne().replace("::V.x", ":5"), encoding="utf-8")
+        code, out = self._main()
+        self.assertEqual(code, 1, out)
+        self.assertIn("citation backend `@fichier.py::Symbole` manquante", out)
+
+    def test_decorateur_multiligne_et_symbole_absent(self):
+        vue = ("class V(ViewSet):\n    @action(\n        detail=True,\n"
+               "        pagination_class=None)\n    def x(self): ...\n")
+        self._monter({"portail/ComptesPortailAdmin.jsx": PAGE1},
+                     backend={"views.py": vue}, registre=self._ligne())
+        self.assertEqual(self._main()[0], 0)
+        guard.NON_PAGINEES_PATH.write_text(self._ligne("V.y"), encoding="utf-8")
+        code, out = self._main()
+        self.assertEqual(code, 1, out)
+        self.assertIn("introuvable", out)
 
     def test_site_du_registre_vert(self):
         self._monter({"portail/ComptesPortailAdmin.jsx": PAGE1},
