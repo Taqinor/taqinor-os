@@ -192,10 +192,12 @@ def _executer_societe(company, regles, report, *, constructeur=None):
                        inconnus)
         raise
     if par_portee.get(PORTEE_DEVIS):
-        # ADCG44 — un QUOTE_BUILD ouvert ne se résout que sur un devis RENDU dans cette passe.
+        # ADCG44 — un QUOTE_BUILD ouvert ne se résout que sur un devis RENDU dans cette passe ;
+        # ADCG113 — ou sorti de l'audit (archivé, supprimé) : seuls les devis audités restent inconnus.
         from apps.ventes.models_coherence import ViolationCoherence
         inconnus |= {(REGLE_RENDU, 'devis', pk) for pk in ViolationCoherence.objects.filter(
-            company=company, rule_id=REGLE_RENDU, resolved_at__isnull=True).exclude(
+            company=company, rule_id=REGLE_RENDU, resolved_at__isnull=True,
+            object_id__in=_devis_qs(company).values('pk')).exclude(
             object_id__in=ctx.devis_rendus()).values_list('object_id', flat=True)}
     for r in par_portee.get(PORTEE_SOCIETE, []):
         try:
