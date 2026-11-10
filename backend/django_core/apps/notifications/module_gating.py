@@ -66,6 +66,7 @@ EVENT_MODULE = {
     EventType.SAV_DEMANDE_CONTRAT_PORTAIL: 'sav',  # ASOC20
     # stock
     EventType.STOCK_LOW: 'stock',
+    EventType.FOURNISSEUR_CANDIDATURE: 'stock',  # ASOC28
     EventType.STOCK_EXPIRATION_SOON: 'stock',
     EventType.SUPPLIER_DOC_EXPIRING: 'stock',
     EventType.BCF_LATE: 'stock',

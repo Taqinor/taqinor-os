@@ -487,3 +487,10 @@ class EventType(models.TextChoices):
     SAV_DEMANDE_CONTRAT_PORTAIL = (
         'sav_demande_contrat_portail',
         'Demande portail sur un contrat de maintenance')
+    # ASOC28 — deux types émis mais absents du catalogue (``notify`` rendait
+    # None) : candidature au portail fournisseur (stock) et audit Trust Center
+    # de plus de 12 mois (``core.tasks.verifier_fraicheur_trust_center_task``).
+    FOURNISSEUR_CANDIDATURE = (
+        'fournisseur_candidature', 'Nouvelle candidature fournisseur')
+    TRUST_CENTER_AUDIT_EXPIRE = (
+        'trust_center_audit_expire', 'Audit Trust Center expiré')

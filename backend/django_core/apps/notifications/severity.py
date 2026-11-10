@@ -169,6 +169,7 @@ EVENT_CATEGORY = {
     EventType.MONITORING_RAPPORT: 'exploitation',
     EventType.PAIE_RIB_DIVERGENCE: 'rh',
     EventType.PAIE_RUN_PRET: 'rh',
+    EventType.FOURNISSEUR_CANDIDATURE: 'stock',  # ASOC28
 }
 
 _CATEGORY_DEFAULT = 'general'
