@@ -103,3 +103,17 @@ class ResyncOnduleurTests(TestCase):
         self.assertEqual(self._onduleurs(devis), [RESEAU_TRI])
         texte = ' | '.join(resultat.get('avertissements') or ())
         self.assertIn('hybride', texte.lower())
+
+    def test_adcg45_jamais_un_micro_onduleur_en_permutation(self):
+        """ADCG45 (revue) — à kWc ≤ 1 la règle « plus petit ≥ 0,8 × kWc »
+        aurait pris un micro-onduleur tarifé (classé réseau par D-ADCG-3) :
+        la permutation ne choisit que de vrais onduleurs de système.
+        Test-du-test : retirer ``_pas_micro_onduleur`` de
+        ``choisir_onduleur_permutation`` ⇒ le micro-onduleur sort."""
+        from apps.ventes.domain.catalogue import (
+            _is_reseau_inverter, choisir_onduleur_permutation)
+        self._produit('Micro-onduleur 0,8kW', '1490')
+        choisi = choisir_onduleur_permutation(
+            self.company, _is_reseau_inverter, kwc=0.9,
+            role='onduleur_reseau')
+        self.assertEqual(choisi, self.reseau)

@@ -225,10 +225,18 @@ def is_offgrid_inverter(designation: str) -> bool:
 _MICRO_ONDULEUR_RE = re.compile(r"micro\s*(?:onduleur|inverter)")
 
 
-def _est_micro_onduleur(d: str) -> bool:
-    d = unicodedata.normalize("NFD", d)
+def est_micro_onduleur(designation: str) -> bool:
+    """ADCG45 — un MICRO-onduleur (toute famille, jamais un câble).
+
+    Sert aussi aux SÉLECTEURS catalogue : D-ADCG-3 classe réseau une ligne
+    micro-onduleur DÉJÀ au devis, il n'autorise pas un sélecteur à choisir un
+    micro-onduleur comme L'onduleur du système (``domain.catalogue``,
+    ``solar_design.match_inverter``)."""
+    if _est_cable(designation):
+        return False
+    d = unicodedata.normalize("NFD", _sans_separateurs(designation))
     d = "".join(c for c in d if unicodedata.category(c) != "Mn")
-    return bool(_MICRO_ONDULEUR_RE.search(d)) and "hybrid" not in d
+    return bool(_MICRO_ONDULEUR_RE.search(d))
 
 
 def is_reseau_inverter(designation: str) -> bool:
@@ -237,7 +245,7 @@ def is_reseau_inverter(designation: str) -> bool:
     d = _sans_separateurs(designation)
     return (("onduleur" in d
              and ("réseau" in d or "reseau" in d or "injection" in d)
-             or _est_micro_onduleur(d))
+             or (est_micro_onduleur(d) and "hybrid" not in d))
             # QJR-OFFGRID — « hors réseau » n'est PAS « réseau ».
             and not _a_mot_cle_offgrid(d))
 

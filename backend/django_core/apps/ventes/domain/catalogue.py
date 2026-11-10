@@ -536,6 +536,16 @@ def _filtrer_onduleurs_complets(candidats):
     return complets or candidats
 
 
+def _pas_micro_onduleur(produit) -> bool:
+    """ADCG45 (revue) — un sélecteur catalogue ne choisit JAMAIS un
+    micro-onduleur comme L'onduleur du système. D-ADCG-3 classe réseau une
+    ligne micro-onduleur DÉJÀ posée au devis (rendu) ; elle n'autorise pas
+    ``_pick_product`` / ``choisir_onduleur_permutation`` (composition,
+    resynchronisation, ``reparer_devis_deux_options``) à poser un 800 W sur
+    un système de 5 kWc parce qu'il est le moins cher."""
+    return not _sc.est_micro_onduleur(getattr(produit, 'nom', '') or '')
+
+
 # QJR78 — même table unique que ci-dessus (``solar_design``).
 _is_hybrid_inverter = _sc.is_hybrid_inverter
 _is_reseau_inverter = _sc.is_reseau_inverter
@@ -631,6 +641,7 @@ def _pick_product(company, predicate, *, watt=None, produit_predicate=None,
           .select_related('fiche_technique'))
     candidates = [p for p in qs
                   if predicate(p.nom) and _has_price(p)
+                  and _pas_micro_onduleur(p)
                   and (produit_predicate is None or produit_predicate(p))]
     # PVOND — VERROU DE COMPLÉTUDE (miroir de solar.js::pickInverter) : sur un
     # vivier d'onduleurs, ceux au contrat incomplet passent derrière. Sans
@@ -683,7 +694,8 @@ def choisir_onduleur_permutation(company, predicate, *, kwc, phase=None,
                   is_archived=False)
           .select_related('fiche_technique'))
     candidats = _filtrer_onduleurs_complets(
-        [p for p in qs if predicate(p.nom) and _has_price(p)])
+        [p for p in qs if predicate(p.nom) and _has_price(p)
+         and _pas_micro_onduleur(p)])
     if role:
         marque = marque_preferee(company, gamme, role)
         if marque:

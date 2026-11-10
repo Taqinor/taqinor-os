@@ -50,6 +50,7 @@ from apps.ventes.solar_finance import tariff_escalation_projection
 # SPL261 — la classification produit vit dans ``solar_classification`` ;
 # seul ``match_inverter`` (plus bas) s'en sert ici, POUR USAGE.
 from apps.ventes.solar_classification import (
+    est_micro_onduleur,
     is_hybrid_inverter,
     is_reseau_inverter,
     parse_kw,
@@ -793,7 +794,9 @@ def match_inverter(produits, *, n_panels, panel_w=None, hybrid=False,
     candidates = []
     for p in produits:
         nom = getattr(p, "nom", "") or ""
-        if not family_pred(nom):
+        # ADCG45 (revue) — un micro-onduleur, classé réseau quand il est DÉJÀ
+        # au devis, n'est jamais proposé comme L'onduleur du système.
+        if not family_pred(nom) or est_micro_onduleur(nom):
             continue
         kw = parse_kw(nom)
         if kw is None or kw <= 0:

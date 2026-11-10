@@ -820,3 +820,19 @@ class CompositionRaccordementTest(SimpleTestCase):
         self.assertIsNone(cp.normaliser_phase('inconnu'))
         self.assertIsNone(cp.normaliser_phase(None))
         self.assertIsNone(cp.normaliser_phase(''))
+
+
+class MatchInverterSansMicroOnduleurTest(SimpleTestCase):
+    """ADCG45 (revue) — ``solar_design.match_inverter`` ne propose JAMAIS un
+    micro-onduleur comme l'onduleur du système, même classé réseau
+    (D-ADCG-3) et premier au tri (même kW, id plus petit). Nom de test
+    « 5kW » volontaire : il passe le ratio DC/AC, seul le filtre l'écarte."""
+
+    def test_le_vrai_onduleur_reseau_est_propose(self):
+        micro = _FauxProduit(1, 'Micro-onduleur 5kW', prix_vente='900')
+        huawei = _FauxProduit(2, 'Onduleur réseau Huawei 5kW Monophasé',
+                              prix_vente='14000')
+        res = _match_inverter([micro, huawei], n_panels=12, panel_w=400,
+                              hybrid=False)
+        self.assertIs(res['inverter'], huawei)
+        self.assertEqual(res['candidates_considered'], 1)
