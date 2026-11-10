@@ -647,6 +647,14 @@ def restore_drill(run: BackupRun) -> BackupRun:
                                  'à restaurer.'}
         run.save(update_fields=['statut', 'detail', 'updated_at'])
         return run
+    # ADCG39 — jamais un « succès » sur un vieux dump : au-delà de la rétention
+    # quotidienne (ou sans date de fin), l'exercice échoue sans télécharger.
+    age = (timezone.now() - source.termine_le).days if source.termine_le else None
+    if age is None or age > _retention_settings()['daily']:
+        run.statut = BackupRun.STATUT_ECHEC
+        run.detail = {'message': f"Dump source trop ancien ({age if age is not None else '?'} jours)"}
+        run.save(update_fields=['statut', 'detail', 'updated_at'])
+        return run
 
     base_args, env, _ = _psql_env_args_for(drill_db)
 

@@ -6,6 +6,7 @@
   * succès : restaure, compte, DROP la base scratch, journalise ;
   * pg_restore en échec → statut echec, la base scratch est quand même DROP.
 """
+import datetime
 import shutil
 import tempfile
 from io import StringIO
@@ -16,6 +17,7 @@ from django.conf import settings
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase, override_settings
+from django.utils import timezone
 
 from core import backup
 from core.models import BackupRun
@@ -43,10 +45,31 @@ class RestoreDrillGuardTests(TestCase):
 
 
 class RestoreDrillTests(TestCase):
-    def _make_source_dump(self):
+    def _make_source_dump(self, jours=0):
+        # ADCG39 — un dump source porte sa date de fin (sinon « trop ancien »).
         return BackupRun.objects.create(
             kind=BackupRun.KIND_DB_DUMP, statut=BackupRun.STATUT_TERMINE,
-            object_key='pg_dumps/20260101-000000.dump', company=None)
+            object_key='pg_dumps/20260101-000000.dump', company=None,
+            termine_le=timezone.now() - datetime.timedelta(days=jours))
+
+    def test_dump_source_trop_ancien_echec(self):
+        """ADCG39 — dump de J-20 ⇒ echec sans téléchargement ; sans date ⇒ idem."""
+        for source in (self._make_source_dump(jours=20), None):
+            if source is None:
+                BackupRun.objects.filter(kind=BackupRun.KIND_DB_DUMP).update(termine_le=None)
+            run = BackupRun.objects.create(kind=BackupRun.KIND_RESTORE_DRILL, company=None)
+            client = mock.Mock()
+            with mock.patch.object(backup, '_minio_client', return_value=client), \
+                    mock.patch('subprocess.run') as run_mock:
+                backup.restore_drill(run)
+            run.refresh_from_db()
+            self.assertEqual(run.statut, BackupRun.STATUT_ECHEC)
+            self.assertIn('Dump source trop ancien (', run.detail['message'])
+            client.download_file.assert_not_called()
+            run_mock.assert_not_called()
+        self.assertEqual(
+            BackupRun.objects.filter(kind=BackupRun.KIND_RESTORE_DRILL).order_by('pk').first().detail['message'],
+            'Dump source trop ancien (20 jours)')
 
     def test_no_dump_available_fails_cleanly(self):
         run = BackupRun.objects.create(kind=BackupRun.KIND_RESTORE_DRILL,
