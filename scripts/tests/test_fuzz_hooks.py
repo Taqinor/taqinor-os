@@ -1575,7 +1575,7 @@ class ConfigSchemathesisTests(unittest.TestCase):
         # (410), le créneau hors grille (400, D-ENF11-CRENEAU-400) et le lien
         # de dépôt GED expiré (410, ENF45 b), l'étape de workflow en boucle
         # (400, D-ENF11-WORKFLOW-BOUCLE-400), l'auto-parrainage refusé
-        # (400, D-ASOC71-PARRAINAGE-400).
+        # (400, D-ASOC71-PARRAINAGE-400), le jeton de version manquant (428, ACON9).
         self.assertEqual(sorted(op.get('include-name') for op in visees), [
             'GET /api/django/ged/depot/{token}/',
             'PATCH /api/django/core/workflow-definitions/{id}/',
@@ -1584,6 +1584,8 @@ class ConfigSchemathesisTests(unittest.TestCase):
             'POST /api/django/ged/depot/{token}/',
             'POST /api/django/public/stock/portail-fournisseur/{token}/reserver-creneau/',
             'POST /api/django/sav/portail/tickets/',
+            'POST /api/django/ventes/devis/{id}/layout/',
+            'POST /api/django/ventes/devis/{id}/sync-layout/',
             'PUT /api/django/core/workflow-definitions/{id}/',
             'PUT /api/django/crm/parrainages/{id}/'])
         op = next(o for o in visees

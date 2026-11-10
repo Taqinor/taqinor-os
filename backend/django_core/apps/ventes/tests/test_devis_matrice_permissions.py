@@ -367,8 +367,8 @@ class MatricePermissionsDevis(TestCase):
             devis=devis, designation='Panneau', quantite=Decimal('1'),
             prix_unitaire=Decimal('100'), remise=Decimal('0'))
         url = '/api/django/ventes/devis/%s/replace-lines/' % devis.pk
-        corps = {'lignes': [{'designation': 'Pirate', 'quantite': '1',
-                             'prix_unitaire': '100.00', 'taux_tva': '20'}]}
+        # Ligne de SECTION : valide sans produit — le refus ne peut venir que du droit.
+        corps = {'lignes': [{'type_ligne': 'section', 'designation': 'Pirate'}]}
         api = APIClient()
         api.force_authenticate(prive)
         r = api.post(url, corps, format='json')
