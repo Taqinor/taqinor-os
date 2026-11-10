@@ -754,7 +754,9 @@ class LEtudeDeDimensionnementResteInoffensive(_Base):
         ``devis=`` à l'un des trois maillons ⇒ ``None`` reçu, rouge."""
         from apps.ventes.horaire import batterie_lignes as module_bl
         from apps.ventes.profils_comparatifs import _dimensionnement_variante
-        lead = self._lead(email='amot130@example.com',
+        # Une VILLE : sans elle, pas de productible ⇒ ``balayer_tailles`` rend
+        # ``[]`` avant toute composition et l'espion ne verrait jamais rien.
+        lead = self._lead(email='amot130@example.com', ville='Casablanca',
                           facture_hiver=Decimal('1200'))
         devis = Devis.objects.create(
             company=self.company, reference='DEV-L2OPT-AMOT130',
