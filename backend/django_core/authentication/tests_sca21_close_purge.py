@@ -42,12 +42,19 @@ class SoftCloseTest(TenantAPITestCase):
         self.assertTrue(c.actif)
 
 
+def _dump_restaurable(apres=None, **champs):
+    """ADCG33 — seul artefact accepté : db_dump terminé, fichier posé, non purgé,
+    pris APRÈS la mise en fermeture (``apres``, défaut : maintenant)."""
+    from core.models import BackupRun
+    valeurs = dict(kind=BackupRun.KIND_DB_DUMP, statut=BackupRun.STATUT_TERMINE,
+                   object_key='backups/db/dump.sql.gz', termine_le=apres or timezone.now())
+    valeurs.update(champs)
+    return BackupRun.objects.create(**valeurs)
+
+
 class PurgeGuardsTest(TenantAPITestCase):
     def _backup_termine(self, company):
-        from core.models import BackupRun
-        return BackupRun.objects.create(
-            company=company, kind=BackupRun.KIND_EXPORT,
-            statut=BackupRun.STATUT_TERMINE)
+        return _dump_restaurable(apres=company.date_fermeture)
 
     def test_purge_refuse_sans_soft_close(self):
         c = CompanyFactory(nom='NoClose', slug='noclose')
@@ -71,6 +78,32 @@ class PurgeGuardsTest(TenantAPITestCase):
         with self.assertRaises(services.PurgeRefusee):
             services.verifier_purge_possible(c)
 
+    def test_purge_refuse_export_comptage_dump_purge_ou_ancien(self):
+        from core.models import BackupRun
+        c = CompanyFactory(nom='Artefacts', slug='artefacts')
+        services.mettre_en_fermeture(c)
+        c.date_fermeture = timezone.now() - timedelta(days=40)
+        c.save()
+        cas = (
+            lambda: BackupRun.objects.create(  # (1) export « comptage », sans artefact
+                company=c, kind=BackupRun.KIND_EXPORT, statut=BackupRun.STATUT_TERMINE),
+            lambda: _dump_restaurable(apres=timezone.now() - timedelta(days=1),
+                                      purge_is_deleted=True),  # (2) dump purgé
+            lambda: _dump_restaurable(apres=timezone.now() - timedelta(days=60)),  # (3) avant fermeture
+        )
+        for creer in cas:
+            run = creer()
+            with self.assertRaisesMessage(services.PurgeRefusee,
+                                          'Aucune sauvegarde restaurable prise après la mise en fermeture'):
+                services.verifier_purge_possible(c)
+            with self.assertRaises(CommandError):
+                call_command('close_company', 'artefacts', '--purge', '--yes-je-confirme',
+                             stdout=StringIO())
+            self.assertTrue(Company.objects.filter(pk=c.pk).exists())
+            run.delete()
+        _dump_restaurable(apres=timezone.now() - timedelta(days=1))  # (4) dump J-1 non purgé
+        services.verifier_purge_possible(c)
+
     def test_purge_possible_toutes_conditions(self):
         c = CompanyFactory(nom='PurgeOK', slug='purgeok')
         services.mettre_en_fermeture(c)
@@ -93,14 +126,11 @@ class CloseCompanyCommandTest(TenantAPITestCase):
         self.assertEqual(c.statut, Company.STATUT_FERMETURE)
 
     def test_purge_dry_run_par_defaut_ne_supprime_rien(self):
-        from core.models import BackupRun
         c = CompanyFactory(nom='DryPurge', slug='drypurge')
         services.mettre_en_fermeture(c)
         c.date_fermeture = timezone.now() - timedelta(days=40)
         c.save()
-        BackupRun.objects.create(
-            company=c, kind=BackupRun.KIND_EXPORT,
-            statut=BackupRun.STATUT_TERMINE)
+        _dump_restaurable()
         out = StringIO()
         # --purge SANS --yes-je-confirme = dry-run : ne supprime rien.
         call_command('close_company', 'drypurge', '--purge', stdout=out)
@@ -117,14 +147,11 @@ class CloseCompanyCommandTest(TenantAPITestCase):
                          '--yes-je-confirme')
 
     def test_purge_reelle_avec_confirmation(self):
-        from core.models import BackupRun
         c = CompanyFactory(nom='RealPurge', slug='realpurge')
         services.mettre_en_fermeture(c)
         c.date_fermeture = timezone.now() - timedelta(days=40)
         c.save()
-        BackupRun.objects.create(
-            company=c, kind=BackupRun.KIND_EXPORT,
-            statut=BackupRun.STATUT_TERMINE)
+        _dump_restaurable()
         cid = c.id
         out = StringIO()
         call_command('close_company', 'realpurge', '--purge',
