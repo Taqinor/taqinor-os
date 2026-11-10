@@ -9,7 +9,7 @@ from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 from django.core.cache import cache
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -59,6 +59,59 @@ class TestCapture(AuditBase):
         Lead.objects.create(company=self.company, nom='Direct ORM')
         self.assertFalse(
             AuditLog.objects.filter(action='create').exists())
+
+    @override_settings(
+        EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    def test_ecritures_argent_hors_requete_journalisees_systeme(self):
+        """ASOC81 — bascule en retard et relance automatique (hors requête)
+        journalisées « système » ; note de débit (requête) : 1 CREATE.
+        Mutant : retirer ``RelanceLog`` de l'ensemble ⇒ échec."""
+        from datetime import timedelta
+
+        from django.contrib.contenttypes.models import ContentType
+
+        from apps.ventes.models import Facture, NoteDebit, RelanceLog
+        from apps.ventes.recouvrement import ensure_default_followup_levels
+        from apps.ventes.scheduled import (
+            casablanca_today, check_overdue_factures, relance_reminders,
+        )
+
+        def lignes(action, objet):
+            return AuditLog.objects.filter(
+                action=action, object_id=str(objet.pk),
+                content_type=ContentType.objects.get_for_model(type(objet)))
+
+        ensure_default_followup_levels(self.company)
+        aujourdhui = casablanca_today()
+        facture = Facture.objects.create(
+            company=self.company, reference='FAC-ASOC81-0001',
+            client=Client.objects.create(
+                company=self.company, nom='ASOC81',
+                email='asoc81@example.invalid'),
+            statut=Facture.Statut.EMISE, taux_tva=Decimal('20'),
+            montant_ht=Decimal('1000'), montant_tva=Decimal('200'),
+            montant_ttc=Decimal('1200'),
+            date_echeance=aujourdhui - timedelta(days=10))
+        self.assertEqual(check_overdue_factures(), 1)
+        bascule = lignes(AuditLog.Action.STATUS, facture)
+        self.assertEqual(bascule.count(), 1)
+        self.assertIsNone(bascule.get().user_id)
+
+        Facture.objects.filter(pk=facture.pk).update(
+            prochaine_relance=aujourdhui)
+        relance_reminders()
+        relance = RelanceLog.objects.get(facture=facture)
+        creation = lignes(AuditLog.Action.CREATE, relance)
+        self.assertEqual(creation.count(), 1)
+        self.assertIsNone(creation.get().user_id)
+
+        r = auth(self.directeur).post(
+            f'/api/django/ventes/factures/{facture.id}/creer-note-debit/',
+            {'motif': 'pénalité', 'montant': '4000.00', 'taux_tva': '20'},
+            format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        note = NoteDebit.objects.get(pk=r.data['id'])
+        self.assertEqual(lignes(AuditLog.Action.CREATE, note).count(), 1)
 
     def test_api_create_logs(self):
         auth(self.com).post('/api/django/crm/leads/', {'nom': 'Via API'})
