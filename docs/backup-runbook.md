@@ -46,7 +46,7 @@ L'exercice ci-dessus prouve qu'un dump se relit ; il ne remet RIEN en service
    `docker compose cp backend/db/rls_roles.sql django:/tmp/rls_roles.sql`.
 3. Restaurer dans une base **neuve** (la commande la crée, ne la supprime jamais) :
    `docker compose exec django python manage.py restaurer_sauvegarde
-   --dump <object_key> --base erp_restaure --suffixe-buckets -restaure
+   --dump <object_key> --base erp_restaure --suffixe-buckets=-restaure
    --roles-sql /tmp/rls_roles.sql`
    — `createdb`, rôles `app_rls` / `sql_agent_ro` rejoués (avant et après),
    `pg_restore` AVEC propriétaires et droits, fichiers recopiés vers
