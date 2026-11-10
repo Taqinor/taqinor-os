@@ -257,6 +257,25 @@ class AutoDeployTests(unittest.TestCase):
         self.assertIn("docs/markdown uniquement", banc.journal)
         self.assertIsNone(banc.index("manage.py"))
 
+    def test_caddy_invalide_fait_echouer_le_deploy(self):
+        """ADCG8 — validate en échec : 0 reload ; reload en échec : ECHEC ; sinon OK."""
+        lot = "backend/caddy/Caddyfile\n"
+        for nom, fail in {"validate": "caddy validate", "reload": "caddy reload"}.items():
+            with self.subTest(nom):
+                banc = self.banc(nom, changes=lot)
+                rc, _ = banc.jouer(FAIL=fail)
+                self.assertNotEqual(rc, 0)
+                self.assertIn("ECHEC", banc.journal)
+                self.assertEqual(banc.lire("last_deployed_commit"), A)
+                if nom == "validate":
+                    self.assertEqual(banc.compte("caddy reload"), 0, banc.appels)
+        banc = self.banc("vert", changes=lot)
+        rc, sortie = banc.jouer()
+        self.assertEqual(rc, 0, sortie + banc.journal)
+        self.assertLess(banc.index("caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile"),
+                        banc.index("caddy reload"))
+        self.assertIn("— OK", banc.journal)
+
     def test_zero_downtime_drapeau_lu_puis_efface(self):
         banc = self.banc(changes=LOT_ECRAN_API)
         rc, _ = banc.jouer(_remote().replace("ZERO_DOWNTIME=0", "ZERO_DOWNTIME=1"))

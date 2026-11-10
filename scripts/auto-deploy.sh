@@ -243,7 +243,12 @@ if [ "$ok" = "1" ]; then
   # nginx garde l'ancienne adresse de django après recréation -> 502 sinon.
   $COMPOSE restart nginx                                            || ok=0
   # Caddyfile est un bind mount : reload explicite (zéro coupure), inoffensif sinon.
-  $COMPOSE exec -T caddy caddy reload --config /etc/caddy/Caddyfile || true
+  # ADCG8 — validée AVANT le reload ; un refus (validation ou reload) est un ÉCHEC.
+  if $COMPOSE exec -T caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile; then
+    $COMPOSE exec -T caddy caddy reload --config /etc/caddy/Caddyfile || ok=0
+  else
+    log "AVERTISSEMENT: Caddyfile invalide (caddy validate)"; ok=0
+  fi
   # PRÉCHAUFFAGE OBLIGATOIRE : construit les caches de polices (fontconfig) et
   # importe matplotlib/weasyprint -> évite le gel à froid du premier rendu PDF.
   $COMPOSE exec -T django_core python - <<'PYEOF' || log "AVERTISSEMENT: préchauffage en échec (app servie, mais premier PDF lent)"
