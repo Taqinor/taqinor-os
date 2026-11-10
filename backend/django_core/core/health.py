@@ -26,6 +26,8 @@ from django.core.cache import cache
 from django.db import connection
 
 import logging
+import os
+import shutil
 
 logger = logging.getLogger(__name__)
 
@@ -150,15 +152,27 @@ def _check_broker():
         return {'name': 'broker', 'status': STATUS_UNKNOWN, 'detail': str(exc)}
 
 
+DISK_USAGE_DEGRADED_RATIO = 0.8
+
+
 def _check_storage():
+    """Présence du backend de stockage + ADCG94 : remplissage du disque qui porte les
+    données (``DISK_USAGE_PATH`` ou ``BASE_DIR``, bind du disque hôte) ; ``degraded``
+    au-delà de ``DISK_USAGE_DEGRADED_RATIO`` (jamais ``down``)."""
     try:
+        from django.conf import settings
         from django.core.files.storage import default_storage
-        # On ne fait qu'une présence de backend — aucun I/O réseau bloquant.
+        # Présence de backend — aucun I/O réseau bloquant ; disque : un statvfs local.
         name = type(default_storage).__name__
-        return {'name': 'storage', 'status': STATUS_OK, 'detail': name}
+        seuil = float(os.environ.get('DISK_USAGE_DEGRADED_RATIO', str(DISK_USAGE_DEGRADED_RATIO)))
+        usage = shutil.disk_usage(os.environ.get('DISK_USAGE_PATH') or settings.BASE_DIR)
+        ratio = usage.used / usage.total
     except Exception as exc:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning("check storage : échec ignoré, comportement dégradé", exc_info=True)
         return {'name': 'storage', 'status': STATUS_UNKNOWN, 'detail': str(exc)}
+    detail = f'{name} ; disque : {ratio * 100:.0f} % utilisé, {usage.free // 2 ** 30} Gio libres'
+    return {'name': 'storage', 'status': STATUS_DEGRADED if ratio >= seuil else STATUS_OK,
+            'detail': detail}
 
 
 def _check_monitoring():
