@@ -32,6 +32,7 @@ case "$a" in
  "git show origin/main:scripts/auto-deploy.sh") cat "$BANC/auto_origin.sh";;
  *"python -c"*health*) echo "${HEALTH-ok}";;
  *showmigrations*) printf '%b' "${SHOWMIG-}";;
+ "curl "*) printf '%s' "${HTTP_CODE-200}";;
 esac
 if [ -n "${FAIL:-}" ] && echo "$a" | grep -qE "$FAIL"; then exit 1; fi
 exit 0
@@ -93,7 +94,7 @@ class Banc:
         r = subprocess.run(
             [_bash(), "-c", 'export PATH="$1:$PATH"; bash "$2"', "_",
              _px(self.d / "bin"), _px(script)],
-            env={**os.environ, "BANC": _px(self.d), **env}, capture_output=True,
+            env={**os.environ, "BANC": _px(self.d), "PAUSE_SANTE": "0", **env}, capture_output=True,
             text=True, encoding="utf-8", errors="replace", timeout=180)
         return r.returncode, r.stdout + r.stderr
 
@@ -122,8 +123,8 @@ class AutoDeployTests(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
 
-    def banc(self, **kw):
-        return Banc(self._tmp.name, **kw)
+    def banc(self, sous="", **kw):
+        return Banc(Path(self._tmp.name) / sous, **kw)
 
     def test_manuel_declenche_la_sequence_unique(self):
         banc = self.banc(changes=LOT_ECRAN_API)
@@ -192,6 +193,25 @@ class AutoDeployTests(unittest.TestCase):
         self.assertEqual(banc.compte("manage.py migrate --noinput"), 3)
         self.assertIsNone(banc.lire("commit_en_echec"))
         self.assertEqual(banc.lire("last_deployed_commit"), C)
+
+    def test_sante_vide_ou_http_non_200_est_un_echec(self):
+        """ADCG4 — sonde vide, showmigrations en échec, health/ready ≠ 200 : ECHEC."""
+        lot = "backend/django_core/apps/crm/views.py\n"
+        cas = {"sonde vide": {"HEALTH": ""}, "showmigrations": {"FAIL": "showmigrations"},
+               "http 502": {"HTTP_CODE": "502"}}
+        for nom, env in cas.items():
+            with self.subTest(nom):
+                banc = self.banc(nom.replace(" ", "_"), changes=lot)
+                rc, _ = banc.jouer(**env)
+                self.assertNotEqual(rc, 0, banc.journal)
+                self.assertIn("ECHEC", banc.journal)
+                self.assertEqual(banc.lire("last_deployed_commit"), A)
+        self.assertEqual(banc.compte(r"^curl .*--resolve api\.taqinor\.ma:443:127\.0\.0\.1 "
+                                     r"https://api\.taqinor\.ma/api/django/core/health/ready/"), 5)
+        banc = self.banc("vert", changes=lot)
+        rc, sortie = banc.jouer(HEALTH="degraded")
+        self.assertEqual(rc, 0, sortie + banc.journal)
+        self.assertEqual(banc.lire("last_deployed_commit"), B)
 
     def test_zero_downtime_drapeau_lu_puis_efface(self):
         banc = self.banc(changes=LOT_ECRAN_API)

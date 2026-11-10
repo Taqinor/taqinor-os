@@ -216,8 +216,10 @@ if [ "$ok" = "1" ]; then
     || log "AVERTISSEMENT: provisionnement sql_agent_ro en échec"
   # WOW26 — TOUTES les migrations appliquées (un up -d partiel laissait des
   # migrations en attente + un 502 silencieux).
-  UNAPPLIED=$($COMPOSE exec -T django_core python manage.py showmigrations --plan 2>/dev/null \
-              | grep -c '\[ \]' || true)
+  # ADCG4 : un showmigrations en échec est un échec (jamais compté « 0 en attente »).
+  PLAN_MIG=$($COMPOSE exec -T django_core python manage.py showmigrations --plan 2>/dev/null) \
+    || { log "AVERTISSEMENT: showmigrations en échec"; ok=0; }
+  UNAPPLIED=$(printf '%s\n' "$PLAN_MIG" | grep -c '\[ \]' || true)
   if [ "$UNAPPLIED" != "0" ]; then
     log "AVERTISSEMENT: migrations non appliquées restantes : $UNAPPLIED"
     ok=0
@@ -250,12 +252,38 @@ print('prechauffage PDF/graphiques: %.1fs' % (time.time() - t0))
 PYEOF
 fi
 
-# NTPLT57 — bascule SANS coupure (opt-in, drapeau du deploy manuel) : scale à 2
-# (l'ancien sert toujours), attente de la santé du neuf, recharge nginx, retour à
-# 1. Le neuf non sain -> redescente à 1, ECHEC (l'ancien n'a jamais cessé de servir).
+# ── CONTRÔLE DE SANTÉ (ADCG4) — rouge quand il ne s'exécute pas ─────────────
+# 1. Sonde interne (core/health.py) : sortie ∈ {ok, degraded}, sinon ÉCHEC (un
+#    `exec` en échec rendait une chaîne vide, prise pour un succès).
+# 2. Le CHEMIN SERVI : `health/ready` à travers Caddy (--resolve sur 127.0.0.1),
+#    200 exigé en ≤ 5 essais à 6 s (503 si db down ou beat arrêté ; le seuil beat
+#    BEAT_HEARTBEAT_STALE_SECONDS = 15 min dépasse la durée d'un redémarrage).
 sante_interne() {
   $COMPOSE exec -T django_core python -c "import django, os; os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'erp_agentique.settings.prod'); django.setup(); from core import health; print(health.overall_status(health.check_services()))" 2>/dev/null | tail -n 1 | tr -d '\r'
 }
+URL_SANTE="${URL_SANTE:-https://api.taqinor.ma/api/django/core/health/ready/}"
+HOTE_SANTE=${URL_SANTE#https://}; HOTE_SANTE=${HOTE_SANTE%%/*}
+if [ "$ok" = "1" ]; then
+  STATUT=$(sante_interne)
+  case "$STATUT" in
+    ok|degraded) ;;
+    *) log "AVERTISSEMENT: sonde de santé interne « ${STATUT:-vide} »"; ok=0 ;;
+  esac
+fi
+if [ "$ok" = "1" ]; then
+  CODE_HTTP=""
+  for _ in 1 2 3 4 5; do
+    CODE_HTTP=$(curl -sS -o /dev/null -w '%{http_code}' --resolve "$HOTE_SANTE:443:127.0.0.1" \
+                "$URL_SANTE" 2>/dev/null || true)
+    [ "$CODE_HTTP" = "200" ] && break
+    sleep "${PAUSE_SANTE:-6}"
+  done
+  [ "$CODE_HTTP" = "200" ] || { log "AVERTISSEMENT: health/ready HTTP ${CODE_HTTP:-aucune réponse}"; ok=0; }
+fi
+
+# NTPLT57 — bascule SANS coupure (opt-in, drapeau du deploy manuel) : scale à 2
+# (l'ancien sert toujours), attente de la santé du neuf, recharge nginx, retour à
+# 1. Le neuf non sain -> redescente à 1, ECHEC (l'ancien n'a jamais cessé de servir).
 if [ "$ok" = "1" ] && [ "$ZERO_DOWNTIME" = "1" ]; then
   $COMPOSE up -d --no-deps --no-recreate --scale django_core=2 django_core || ok=0
   ZD_OK=0
