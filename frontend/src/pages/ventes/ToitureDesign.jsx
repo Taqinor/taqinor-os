@@ -1487,7 +1487,10 @@ function AtelierToiture({
             // le peuvent ; le reste du fichier continue de lire
             // `builderApi.current` dans ce cadre-là, inchangé).
             builderApi={builderApiActuel}
-            lectureSeule={lectureSeule}
+            // ACON80 — en mode variante, les écrivains du rail visent encore
+            // `calepinages/<C1>/layout/section/` : lecture seule jusqu'à ce que
+            // la route connaisse les variantes (jamais une écriture sur C1).
+            lectureSeule={lectureSeule || !!varianteId}
             onRecharger={rechargerAtelier}
             documentVivant={documentVivant}
             // ACAL94 — Générer / Resynchroniser rangent d'abord l'écran (une

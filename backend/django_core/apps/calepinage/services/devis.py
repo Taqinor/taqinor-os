@@ -531,9 +531,12 @@ def resynchroniser_devis(calepinage, *, user=None,
         # (UNE fois) : le rattachement n'écrit plus rien sur un calepinage
         # existant (plus de miroir), et l'abonné crm note la conception.
         # ACAL98 — l'affiche du calepinage suit (copie sous la clé du devis).
+        # ACON6/ACON80 — un devis porté par une VARIANTE ne reçoit JAMAIS
+        # l'affiche du conteneur C1 (image client de /proposal et du PDF).
         resultat = resynchroniser_conception(
             devis, layout, user, emettre=True,
-            roof_image=getattr(calepinage, 'roof_image', None) or None)
+            roof_image=None if variante is not None else (
+                getattr(calepinage, 'roof_image', None) or None))
     except SyncLayoutError as refus:
         raise DevisRefuse(
             refus.detail, champ='devis', statut=409,

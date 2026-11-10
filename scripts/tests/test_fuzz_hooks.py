@@ -1574,14 +1574,18 @@ class ConfigSchemathesisTests(unittest.TestCase):
         # Routes nommées, jamais un motif : la route retirée du portail SAV
         # (410), le créneau hors grille (400, D-ENF11-CRENEAU-400) et le lien
         # de dépôt GED expiré (410, ENF45 b), l'étape de workflow en boucle
-        # (400, D-ENF11-WORKFLOW-BOUCLE-400).
+        # (400, D-ENF11-WORKFLOW-BOUCLE-400), l'auto-parrainage refusé
+        # (400, D-ASOC71-PARRAINAGE-400).
         self.assertEqual(sorted(op.get('include-name') for op in visees), [
             'GET /api/django/ged/depot/{token}/',
             'PATCH /api/django/core/workflow-definitions/{id}/',
+            'PATCH /api/django/crm/parrainages/{id}/',
+            'POST /api/django/crm/parrainages/',
             'POST /api/django/ged/depot/{token}/',
             'POST /api/django/public/stock/portail-fournisseur/{token}/reserver-creneau/',
             'POST /api/django/sav/portail/tickets/',
-            'PUT /api/django/core/workflow-definitions/{id}/'])
+            'PUT /api/django/core/workflow-definitions/{id}/',
+            'PUT /api/django/crm/parrainages/{id}/'])
         op = next(o for o in visees
                   if o['include-name'] == 'POST /api/django/sav/portail/tickets/')
         self.assertEqual(

@@ -54,9 +54,11 @@ class SwitchCompanyApiTest(TenantAPITestCase):
             role_legacy='responsable',
         )
         self.bi_user.societes_autorisees.add(self.company)
-        # APFS66 (D-APFS-3) — un rôle DANS B est exigé pour y basculer.
+        # APFS66 (D-APFS-3) — un rôle DANS B est exigé pour y basculer. Rôle
+        # « Responsable » (aucun marqueur de portée) : le « Commercial » ne voit
+        # que SES enregistrements, ce qui masquerait ClientB (fabrique nue).
         self.bi_user.societes_autorisees.add(
-            self.company_b, through_defaults={'role': _role(self.company_b, 'Commercial')})
+            self.company_b, through_defaults={'role': _role(self.company_b, 'Responsable')})
         # Données distinctes par société.
         self.client_a = ClientFactory(company=self.company, nom='ClientA')
         self.client_b = ClientFactory(company=self.company_b, nom='ClientB')

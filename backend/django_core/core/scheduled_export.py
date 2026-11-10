@@ -579,6 +579,19 @@ def _lecteur(export):
     return export.created_by if getattr(export, 'created_by_id', None) else None
 
 
+CAUSE_CREATEUR_SUPPRIME = "Créateur de l'extrait supprimé : extrait suspendu."
+
+
+def suspendre_exports_du_createur(sender, instance, **kwargs):
+    """APFS103 — ``pre_delete`` du modèle utilisateur : ses extraits sont
+    suspendus AVANT le ``SET_NULL`` de ``created_by`` (sans créateur,
+    ``_lecteur`` rendrait ``None`` et l'extrait partirait sans borne)."""
+    from .models import ScheduledExport
+    ScheduledExport.objects.filter(created_by_id=instance.pk).update(
+        actif=False, dernier_statut='erreur',
+        dernier_detail={'detail': CAUSE_CREATEUR_SUPPRIME}, updated_at=timezone.now())
+
+
 def _cause_suspension(export):
     """APFS103 — pourquoi l'extrait ne peut plus partir au nom de son créateur."""
     from . import data_explorer

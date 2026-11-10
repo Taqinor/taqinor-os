@@ -145,6 +145,11 @@ class ClientPermissionsTests(TestCase):
                     self.assertNotIn(code, (401, 403), f'{nom} {vue} {url}')
                 else:
                     self.assertEqual(code, 403, f'{nom} {vue} {url}')
+            # QJ-EQUIPE-3 — « ce navigateur » reste ouvert à TOUT rôle (le
+            # Header l'appelle pour chaque utilisateur connecté).
+            code = api.post('/api/django/crm/appareils-equipe/ce-navigateur/',
+                            {}, format='json').status_code
+            self.assertNotIn(code, (401, 403), f'{nom} ce-navigateur')
 
     def test_commercial_inchange(self):
         api = self._api('Commercial')

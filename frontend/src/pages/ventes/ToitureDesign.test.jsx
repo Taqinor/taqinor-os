@@ -613,6 +613,9 @@ describe('ToitureDesign — PV21 / ACAL37 : enregistrer la conception', () => {
     expect(calepinageApi.calepinages.envoyerImage).not.toHaveBeenCalled()
     expect(toastInfo).not.toHaveBeenCalled()
     expect(navigateMock).not.toHaveBeenCalled()
+    // Le rail (écrivains `layout/section/` de C1) est monté en LECTURE SEULE.
+    expect(await screen.findByTestId('cal-atelier-panneaux')).toBeInTheDocument()
+    expect(screen.queryByTestId('cal-allees-calepinage')).toBeNull()
   })
 
   it('409 révisable : encart « Réviser (v2) » → nouvelle version puis sa conception', async () => {
