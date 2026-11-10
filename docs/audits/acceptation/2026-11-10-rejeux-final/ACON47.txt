@@ -1,0 +1,34 @@
+# Preuve en direct ACON47 — rejeu accept-final (lot final du run 99392c), code joué a4e1d2fd8 (origin/main = merge de #1343, après #1336), 2026-11-10
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau fin-net ; fin-db (pgvector pg16, 127.0.0.1:5571, base erp_fin =
+# pg_dump --no-owner --no-privileges de la base locale erp_live en lecture seule, puis `manage.py migrate`) ; fin-redis ;
+# fin-minio (MinIO privé, seaux erp-pdf / erp-uploads) ; fin-dj (image erp-agentique-django_core, code backend du commit
+# joué COPIÉ par tar dans /app + STAGES.py dans /opt, `pip install -r requirements.txt` du commit — Django 5.2.18, DRF 3.18.2,
+# Pillow 13.0.0 —, settings.dev, EMAIL_BACKEND locmem, DB_CONN_MAX_AGE=0, runserver 0.0.0.0:8000 publié sur 127.0.0.1:8041).
+# Sondes : `python scripts/sonde.py <G>/<sonde> --conteneur fin-dj` (transaction annulée, mail en mémoire, Celery coupé,
+# HTTP sortant bloqué) ; fraîcheur prouvée par ASEC/C-ASEC-VER5-068 et ACON/C-ACON-041/061 lancées SANS --sans-fraicheur
+# (aucun refus : le conteneur sert le code de ce worktree). Sondes du dossier d'audit : verdict ÉCART = `repro` faux = le
+# défaut d'origine n'est PLUS reproduit. Sondes C-LIVE-* écrites pour ce rejeu (source jointe) : --racine <scratch>
+# --sans-fraicheur ; ICI repro=true (verdict REPRO) signifie que le comportement ATTENDU par la tâche est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8041 vite preview
+# --port 5241`), piloté par Playwright MCP ; compte de test acc_fin_dir (rôle système Directeur, société « Acceptation FIN »,
+# seed_catalogue, mot de passe de test généré, base jetable). CARTE : aucune clé MapTiler réelle — le serveur sert une clé
+# FACTICE (PUBLIC_MAPTILER_KEY) et le rejeu sert à la place d'api.maptiler.com un style de FOND NEUTRE local (style.json
+# version 8, une couche background, route Playwright) : aucune tuile, aucune requête MapTiler ; tracé, pose et 3D sont ceux
+# de l'application, seul le fond satellite manque (même substitut que le rejeu ACON). Captures : C:\dev\taqinor-os\logs\
+# nightly-qa\playwright\accept-final\ (hors dépôt). Fixtures FIX-FIN-* : scripts `manage.py shell` sur la base jetable
+# (créations par services/API, raccourcis nommés).
+# Verdict : PASS — saisie « Puissance (kWc) » 6,6 contre 8,52 du calepinage, « Générer le dossier » ⇒ 200 ; l’écran affiche « Dossier généré — … » ET le signalement nommant le champ et les deux valeurs
+
+FIX-FIN-ACON47 : gabarit société « Dossier de raccordement BT (FIN) » déposé par l'API (champ obligatoire « Puissance (kWc) »,
+cle_calepinage puissance_kwc ; PDF PyMuPDF), pays société MA ; calepinage #209 = copie de la géométrie réelle (contour + pan
+géoréférencés) d'un calepinage local, lié au brouillon DEV-FIN-ACON47 (2327, module + onduleur du catalogue), simulé (client
+PVGIS de test, matériel réel). (Calepinage #207 sans géométrie géoréférencée écarté : 409 planche « Aucune géométrie
+enregistrée » — refus attendu, hors sujet.)
+Écran /calepinage/209?onglet=dossiers : champ pré-rempli 8.52 ; saisi « 6,6 » → « Enregistrer les champs » ⇒ POST
+champs-dossier/ 200 (champs_saisis : valeur 6.6, valeur_calepinage 8.52, ecart_saisie true ; écran « Valeur du calepinage : 8.52 /
+Utiliser la valeur du calepinage », « Champs enregistrés. ») → « Générer le dossier » ⇒ POST generer-dossier/ 200 signalements
+[« Champ « Puissance (kWc) » : saisi 6,6, le calepinage dit 8,52 — la valeur saisie est imprimée. »].
+Écran après le 200 : data-testid calx40-genere-2 « Dossier généré — Gabarit — Dossier de raccordement BT (FIN), Champs du
+dossier, Planche de calepinage, Note de calcul, Schéma unifilaire » ; data-testid calx40-signalement « Champ « Puissance (kWc) » :
+saisi 6,6, le calepinage dit 8,52 — la valeur saisie est imprimée. » ; « Dernière génération : 10/11/2026 18:38 », « Ouvrir le
+document généré (GED) ». Console : aucune erreur de page. Capture ACON47-dossier.png.

@@ -1,0 +1,34 @@
+{
+  "sha": "a4e1d2fd8a536f98300a4d0754608e90d04cc599",
+  "date": "2026-11-10",
+  "groupe": "ADOC",
+  "verdict": "PASS",
+  "couvre": [
+    "ADOC202"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "FINLIVE.ADOC202.preuve_en_direct",
+      "taches": [
+        "ADOC202"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-final/ADOC202.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "vrai rôle Technicien du registre, technicien d’une intervention seulement : attestation 403 ; PV, BL, dossier de remise 200 PDF ; responsable du chantier 200 ; responsable 200 ; autre société 404"
+    }
+  ]
+}

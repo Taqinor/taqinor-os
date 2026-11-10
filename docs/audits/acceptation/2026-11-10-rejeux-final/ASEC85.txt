@@ -1,0 +1,226 @@
+# Preuve en direct ASEC85 — rejeu accept-final (lot final du run 99392c), code joué a4e1d2fd8 (origin/main = merge de #1343, après #1336), 2026-11-10
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau fin-net ; fin-db (pgvector pg16, 127.0.0.1:5571, base erp_fin =
+# pg_dump --no-owner --no-privileges de la base locale erp_live en lecture seule, puis `manage.py migrate`) ; fin-redis ;
+# fin-minio (MinIO privé, seaux erp-pdf / erp-uploads) ; fin-dj (image erp-agentique-django_core, code backend du commit
+# joué COPIÉ par tar dans /app + STAGES.py dans /opt, `pip install -r requirements.txt` du commit — Django 5.2.18, DRF 3.18.2,
+# Pillow 13.0.0 —, settings.dev, EMAIL_BACKEND locmem, DB_CONN_MAX_AGE=0, runserver 0.0.0.0:8000 publié sur 127.0.0.1:8041).
+# Sondes : `python scripts/sonde.py <G>/<sonde> --conteneur fin-dj` (transaction annulée, mail en mémoire, Celery coupé,
+# HTTP sortant bloqué) ; fraîcheur prouvée par ASEC/C-ASEC-VER5-068 et ACON/C-ACON-041/061 lancées SANS --sans-fraicheur
+# (aucun refus : le conteneur sert le code de ce worktree). Sondes du dossier d'audit : verdict ÉCART = `repro` faux = le
+# défaut d'origine n'est PLUS reproduit. Sondes C-LIVE-* écrites pour ce rejeu (source jointe) : --racine <scratch>
+# --sans-fraicheur ; ICI repro=true (verdict REPRO) signifie que le comportement ATTENDU par la tâche est observé.
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8041 vite preview
+# --port 5241`), piloté par Playwright MCP ; compte de test acc_fin_dir (rôle système Directeur, société « Acceptation FIN »,
+# seed_catalogue, mot de passe de test généré, base jetable). CARTE : aucune clé MapTiler réelle — le serveur sert une clé
+# FACTICE (PUBLIC_MAPTILER_KEY) et le rejeu sert à la place d'api.maptiler.com un style de FOND NEUTRE local (style.json
+# version 8, une couche background, route Playwright) : aucune tuile, aucune requête MapTiler ; tracé, pose et 3D sont ceux
+# de l'application, seul le fond satellite manque (même substitut que le rejeu ACON). Captures : C:\dev\taqinor-os\logs\
+# nightly-qa\playwright\accept-final\ (hors dépôt). Fixtures FIX-FIN-* : scripts `manage.py shell` sur la base jetable
+# (créations par services/API, raccourcis nommés).
+# Verdict : PASS — C-ASEC-VER5-068 repro faux (Admin Ventes : prix-négocié 403, confirmer-avoir-revision 403, 0 avoir) ; rejeu API : Admin Ventes 403 et Commercial 403 sans avoir, Directeur (porte encaisser) 200 avec 1 avoir émis
+
+== C-ASEC-VER5-068 (dossier d'audit, SANS --sans-fraicheur)
+== C-ASEC-VER5-068 (sha c1a99568a)
+attendu : Admin Ventes sans encaisser : témoin prix-negocie confirmé 403 ; reviser 201, accepter V2 200, confirmer-avoir-revision 200 avec un Avoir statut émis numéroté sur la facture de la V1 (REPRO) ; attendu sain : 403 droit encaisser, aucun avoir
+observé : obs={'role': ('Admin Ventes', True, 'ventes'), 'menu_tier': 'responsable', 'role_a_encaisser': False, 'codes_ventes_du_role': ['ventes_creer', 'ventes_export', 'ventes_modifier', 'ventes_pdf', 'ventes_reassign', 'ventes_supprimer', 'ventes_valider', 'ventes_voir'], 'temoin_prix_negocie': (403, {'detail': "Émettre ou encaisser une facture exige le droit d'encaissement."}), 'temoin_avoirs_crees': 0, 'v1_ttc': '54500.00', 'v1_factures': [('FAC-202611-0004', 'emise', '16350.00'), ('FAC-202611-0005', 'emise', '32700.00'), ('FAC-202611-0006', 'emise', '5450.00')], 'reviser': 201, 'accepter_v2': (200, None), 'v2_statut': 'accepte', 'v2_ttc': '46500.00', 'avoirs_apres_accepter': 0, 'confirmer_avoir_revision': (403, {'detail': ErrorDetail(string="Vous n'avez pas la permission d'effectuer cette action.", code='permission_denied'), 'error': {'code': 'permission_denied', 'message': ErrorDetail(string="Vous n'avez pas la permission d'effectuer cette action.", code='permission_denied'), 'fields': None, 'request_id': '9c22fea9a4524c8db654163180e3d8e5'}}), 'avoirs_parcours': [], 'refus_avant_porte': None}
+{"repro": false, "role": ["Admin Ventes", true, "ventes"], "menu_tier": "responsable", "role_a_encaisser": false, "codes_ventes_du_role": ["ventes_creer", "ventes_export", "ventes_modifier", "ventes_pdf", "ventes_reassign", "ventes_supprimer", "ventes_valider", "ventes_voir"], "temoin_prix_negocie": [403, {"detail": "Émettre ou encaisser une facture exige le droit d'encaissement."}], "temoin_avoirs_crees": 0, "v1_ttc": "54500.00", "v1_factures": [["FAC-202611-0004", "emise", "16350.00"], ["FAC-202611-0005", "emise", "32700.00"], ["FAC-202611-0006", "emise", "5450.00"]], "reviser": 201, "accepter_v2": [200, null], "v2_statut": "accepte", "v2_ttc": "46500.00", "avoirs_apres_accepter": 0, "confirmer_avoir_revision": [403, {"detail": "Vous n'avez pas la permission d'effectuer cette action.", "error": {"code": "permission_denied", "message": "Vous n'avez pas la permission d'effectuer cette action.", "fields": null, "request_id": "9c22fea9a4524c8db654163180e3d8e5"}}], "avoirs_parcours": [], "refus_avant_porte": null}
+verdict : ÉCART
+base inchangée : oui (avant 12100, après 12100) ; mails 0 ; tâches Celery bloquées 0
+
+== C-LIVE-ASEC85-89 (volet ASEC85 : 85_*)
+== C-LIVE-ASEC85-89 (sha a4e1d2fd8)
+attendu : ASEC85-89 : refus droit_manquant / 403 aux rôles privés, rien d'écrit ; témoins positifs 200/201
+observé : obs={'registre': {'av_encaisser': False, 'dir_encaisser': True, 'com_stock_export': False, 'av_stock_export': True}, '85_reviser': 201, '85_accepter_v2': 200, '85_admin_ventes': 403, '85_commercial': 403, '85_avoirs_apres_refus': 0, '85_directeur': 200, '85_avoirs_directeur': [('emise', '8000.00')], '86_prive': (403, ErrorDetail(string='droit_manquant', code='permission_denied')), '86_lignes_apres': ['Panneau'], '86_commercial': 200, '87_prive_atomic': (403, ErrorDetail(string='droit_manquant', code='permission_denied')), '87_prive_auto': (403, ErrorDetail(string='droit_manquant', code='permission_denied')), '87_devis_delta': 0, '87_commercial_atomic': 201, '88_commercial_xlsx': (403, ErrorDetail(string='droit_manquant', code='permission_denied')), '88_commercial_json': 200, '88_admin_ventes_xlsx': (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'), '89_prive': {'reserves': (403, ErrorDetail(string='droit_manquant', code='permission_denied')), 'recette': (403, ErrorDetail(string='droit_manquant', code='permission_denied')), 'pack-remise': (403, ErrorDetail(string='droit_manquant', code='permission_denied')), 'recette-pompage': (403, ErrorDetail(string='droit_manquant', code='permission_denied'))}, '89_get_reserves': 200, '89_ecrits': {'Reserve': 0, 'HandoverPack': 0, 'CommissioningRecord': 0, 'RecettePompage': 0}, '89_technicien_reserves': 201, 'ok': {'ASEC85': True, 'ASEC86': True, 'ASEC87': True, 'ASEC88': True, 'ASEC89': True}}
+{"repro": true, "registre": {"av_encaisser": false, "dir_encaisser": true, "com_stock_export": false, "av_stock_export": true}, "85_reviser": 201, "85_accepter_v2": 200, "85_admin_ventes": 403, "85_commercial": 403, "85_avoirs_apres_refus": 0, "85_directeur": 200, "85_avoirs_directeur": [["emise", "8000.00"]], "86_prive": [403, "droit_manquant"], "86_lignes_apres": ["Panneau"], "86_commercial": 200, "87_prive_atomic": [403, "droit_manquant"], "87_prive_auto": [403, "droit_manquant"], "87_devis_delta": 0, "87_commercial_atomic": 201, "88_commercial_xlsx": [403, "droit_manquant"], "88_commercial_json": 200, "88_admin_ventes_xlsx": [200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"], "89_prive": {"reserves": [403, "droit_manquant"], "recette": [403, "droit_manquant"], "pack-remise": [403, "droit_manquant"], "recette-pompage": [403, "droit_manquant"]}, "89_get_reserves": 200, "89_ecrits": {"Reserve": 0, "HandoverPack": 0, "CommissioningRecord": 0, "RecettePompage": 0}, "89_technicien_reserves": 201, "ok": {"ASEC85": true, "ASEC86": true, "ASEC87": true, "ASEC88": true, "ASEC89": true}}
+verdict : REPRO (fraîcheur non vérifiée)
+base inchangée : oui (avant 12569, après 12569) ; mails 0 ; tâches Celery bloquées 0
+
+== source de la sonde C-LIVE-ASEC85-89
+# flake8: noqa  (sonde de rejeu en direct ASEC85-89, lot final du run 99392c, 10/11/2026)
+"""Rejeu API des preuves en direct ASEC85-89 par les VRAIES routes (APIClient, URLconf + gardes de prod),
+rôles SYSTÈME du registre vivant. ICI repro=true signifie : TOUT le comportement ATTENDU par les tâches est observé.
+ASEC85 : Admin Ventes ⇒ confirmer-avoir-revision 403, 0 avoir ; Directeur (porte encaisser) ⇒ 200, 1 avoir émis.
+ASEC86 : Commercial − ventes_modifier ⇒ replace-lines 403 droit_manquant, lignes intactes ; Commercial ⇒ 200.
+ASEC87 : Commercial − ventes_creer ⇒ devis/atomic/ et devis/auto/ 403 droit_manquant, 0 devis ; Commercial ⇒ atomic 201.
+ASEC88 : Commercial ⇒ agregation?export=xlsx 403 droit_manquant, JSON 200 ; Admin Ventes ⇒ xlsx 200.
+ASEC89 : Technicien − installation_gerer ⇒ reserves/recette/pack-remise/recette-pompage 403 droit_manquant,
+GET reserves 200, rien d'écrit ; Technicien ⇒ POST reserves 201."""
+SONDE = {"constat": "C-LIVE-ASEC85-89", "sha": "a4e1d2fd8",
+         "attendu": "ASEC85-89 : refus droit_manquant / 403 aux rôles privés, rien d'écrit ; témoins positifs 200/201",
+         "modeles": ["authentication.Company", "ventes.Devis", "ventes.LigneDevis", "Facture", "Avoir",
+                     "installations.Installation", "installations.Reserve"]}
+
+
+def sonde(ctx):
+    from datetime import date
+    from decimal import Decimal
+    from unittest import mock
+    from django.contrib.auth import get_user_model
+    from rest_framework.test import APIClient
+    from authentication.models import Company
+    from apps.crm.models import Client, Lead
+    from apps.roles.models import Role
+    from apps.roles import permissions_registre as R
+    from apps.stock.models import Produit, MouvementStock
+    from apps.facturation.models import Avoir, Facture
+    from apps.ventes.models import Devis, LigneDevis
+    from apps.ventes.domain.cycle_vie import accept_devis
+    from apps.ventes.domain.facturation_ops import emettre_facture
+    from apps.ventes.utils.echeancier import creer_facture_tranche
+    from apps.ventes.utils.references import create_with_reference
+    from apps.installations.models import (Installation, Reserve, HandoverPack, CommissioningRecord,
+                                           RecettePompage)
+
+    p1 = mock.patch('apps.ventes.domain.cycle_vie._send_acceptance_emails')
+    p2 = mock.patch('apps.ventes.domain.cycle_vie._store_signed_pdf')
+    p1.start(); p2.start()
+    obs = {}
+    try:
+        co = Company.objects.create(nom='Live ASEC85-89', slug='live-asec85-89')
+        U = get_user_model()
+        n = [0]
+
+        def compte(nom_role, codes, legacy='normal', systeme=True):
+            n[0] += 1
+            role = Role.objects.create(company=co, nom=nom_role, permissions=list(codes), est_systeme=systeme)
+            if nom_role in R.SYSTEM_ROLE_PERIMETRES:
+                role.perimetre = R.SYSTEM_ROLE_PERIMETRES[nom_role]
+                role.save(update_fields=['perimetre'])
+            return U.objects.create_user(username=f'live-asec-{n[0]}', password='x', company=co, role=role,
+                                         role_legacy=legacy)
+
+        setup = U.objects.create_user(username='live-asec-setup', password='x', company=co, role_legacy='responsable')
+        av = compte(R.ROLE_ADMIN_VENTES, R.ADMIN_VENTES_PERMISSIONS, 'responsable')
+        dirc = compte('Directeur', R.DIRECTEUR_PERMISSIONS, 'responsable')
+        com = compte('Commercial', R.COMMERCIAL_PERMISSIONS)
+        com_sans_mod = compte('Commercial sans modifier', [c for c in R.COMMERCIAL_PERMISSIONS if c != 'ventes_modifier'], systeme=False)
+        com_sans_cre = compte('Commercial sans creer', [c for c in R.COMMERCIAL_PERMISSIONS if c != 'ventes_creer'], systeme=False)
+        tech = compte('Technicien', R.TECHNICIEN_PERMISSIONS)
+        tech_sans = compte('Technicien sans gerer', [c for c in R.TECHNICIEN_PERMISSIONS if c != 'installation_gerer'], systeme=False)
+        obs['registre'] = {'av_encaisser': 'encaisser' in R.ADMIN_VENTES_PERMISSIONS,
+                           'dir_encaisser': 'encaisser' in R.DIRECTEUR_PERMISSIONS,
+                           'com_stock_export': 'stock_export' in R.COMMERCIAL_PERMISSIONS,
+                           'av_stock_export': 'stock_export' in R.ADMIN_VENTES_PERMISSIONS}
+        H = {'format': 'json', 'HTTP_HOST': 'localhost'}
+        B = '/api/django/ventes'
+
+        def api(u):
+            a = APIClient(); a.force_authenticate(u); return a
+
+        def code(r):
+            d = getattr(r, 'data', None)
+            return d.get('code') if isinstance(d, dict) else None
+
+        # ── ASEC85 ──
+        cl = Client.objects.create(company=co, nom='V1 ASEC85', email='asec85@example.invalid')
+        d = Devis.objects.create(company=co, reference='DEV-LIVE-ASEC85', client=cl, statut=Devis.Statut.ENVOYE,
+                                 taux_tva=Decimal('20.00'), created_by=setup)
+        for i, (des, pu, t) in enumerate([('Panneaux 10 %', '9600.00', '10'), ('Installation 20 %', '36643.50', '20')]):
+            pr = Produit.objects.create(company=co, nom=des, sku=f'LA85-{i}', prix_vente=Decimal(pu),
+                                        prix_achat=Decimal('1'), quantite_stock=100)
+            LigneDevis.objects.create(devis=d, produit=pr, designation=des, quantite=Decimal('1'),
+                                      prix_unitaire=Decimal(pu), taux_tva=Decimal(t))
+        d = accept_devis(devis=Devis.objects.get(pk=d.pk), user=setup, nom='Client', date_acceptation=date.today(),
+                         option='sans_batterie')
+        for _ in range(10):
+            br = Facture.objects.filter(devis=d, statut=Facture.Statut.BROUILLON).order_by('pk').first()
+            try:
+                if br is not None:
+                    emettre_facture(br, user=setup)
+                else:
+                    creer_facture_tranche(Devis.objects.get(pk=d.pk), setup, co, create_with_reference)
+            except ValueError:
+                break
+        r1 = api(dirc).post(f'{B}/devis/{d.pk}/reviser/', {}, **H)
+        obs['85_reviser'] = r1.status_code
+        v2 = Devis.objects.get(pk=r1.data['id'])
+        LigneDevis.objects.filter(devis=v2, designation='Installation 20 %').update(prix_unitaire=Decimal('30000'))
+        Devis.objects.filter(pk=v2.pk).update(statut=Devis.Statut.ENVOYE)
+        r2 = api(dirc).post(f'{B}/devis/{v2.pk}/accepter/', {'nom': 'Client', 'option': 'sans_batterie'}, **H)
+        obs['85_accepter_v2'] = r2.status_code
+        n0 = Avoir.objects.filter(company=co).count()
+        url85 = f'{B}/devis/{v2.pk}/confirmer-avoir-revision/'
+        obs['85_admin_ventes'] = api(av).post(url85, {}, **H).status_code
+        obs['85_commercial'] = api(com).post(url85, {}, **H).status_code
+        obs['85_avoirs_apres_refus'] = Avoir.objects.filter(company=co).count() - n0
+        rd = api(dirc).post(url85, {}, **H)
+        obs['85_directeur'] = rd.status_code
+        obs['85_avoirs_directeur'] = [(a.statut, str(a.montant_ttc)) for a in Avoir.objects.filter(company=co).order_by('pk')[n0:]]
+
+        # ── ASEC86 ──
+        c86 = Client.objects.create(company=co, nom='ASEC86')
+        d86 = Devis.objects.create(company=co, reference='DEV-LIVE-ASEC86', client=c86, statut=Devis.Statut.BROUILLON,
+                                   created_by=com_sans_mod)
+        LigneDevis.objects.create(devis=d86, designation='Panneau', quantite=Decimal('1'), prix_unitaire=Decimal('100'),
+                                  remise=Decimal('0'))
+        u86 = f'{B}/devis/{d86.pk}/replace-lines/'
+        corps86 = {'lignes': [{'type_ligne': 'section', 'designation': 'Pirate'}]}
+        r = api(com_sans_mod).post(u86, corps86, **H)
+        obs['86_prive'] = (r.status_code, code(r))
+        obs['86_lignes_apres'] = list(LigneDevis.objects.filter(devis=d86).values_list('designation', flat=True))
+        Devis.objects.filter(pk=d86.pk).update(created_by=com)
+        obs['86_commercial'] = api(com).post(u86, corps86, **H).status_code
+
+        # ── ASEC87 ──
+        c87 = Client.objects.create(company=co, nom='ASEC87')
+        l87 = Lead.objects.create(company=co, nom='Lead ASEC87')
+        p87 = Produit.objects.create(company=co, nom='Câblage ASEC87', sku='LA87-1', prix_vente=Decimal('100'),
+                                     prix_achat=Decimal('50'), quantite_stock=10, tva=Decimal('20'))
+        corps87 = {'client': c87.pk, 'taux_tva': '20', 'lignes': [{'produit': p87.pk, 'designation': 'Câblage ASEC87',
+                                                                     'quantite': '1', 'prix_unitaire': '100.00', 'taux_tva': '20'}]}
+        avant = Devis.objects.filter(company=co).count()
+        ra = api(com_sans_cre).post(f'{B}/devis/atomic/', corps87, **H)
+        ru = api(com_sans_cre).post(f'{B}/devis/auto/', {'lead': l87.pk}, **H)
+        obs['87_prive_atomic'] = (ra.status_code, code(ra))
+        obs['87_prive_auto'] = (ru.status_code, code(ru))
+        obs['87_devis_delta'] = Devis.objects.filter(company=co).count() - avant
+        obs['87_commercial_atomic'] = api(com).post(f'{B}/devis/atomic/', corps87, **H).status_code
+
+        # ── ASEC88 ──
+        MouvementStock.objects.create(company=co, produit=p87, type_mouvement=MouvementStock.TypeMouvement.ENTREE,
+                                      quantite=5, quantite_avant=0, quantite_apres=5)
+        ag = '/api/django/stock/mouvements/agregation/?group_by=produit'
+        rx = api(com).get(ag + '&export=xlsx', HTTP_HOST='localhost')
+        rj = api(com).get(ag, HTTP_HOST='localhost')
+        rv = api(av).get(ag + '&export=xlsx', HTTP_HOST='localhost')
+        obs['88_commercial_xlsx'] = (rx.status_code, code(rx))
+        obs['88_commercial_json'] = rj.status_code
+        obs['88_admin_ventes_xlsx'] = (rv.status_code, rv.get('Content-Type', ''))
+
+        # ── ASEC89 ──
+        ch = Installation.objects.create(company=co, reference='CH-LIVE-ASEC89', technicien_responsable=tech_sans)
+        agr = Installation.objects.create(company=co, reference='CH-LIVE-ASEC89-AGR', technicien_responsable=tech_sans,
+                                          type_installation=Installation.TypeInstallation.AGRICOLE)
+        BI = '/api/django/installations'
+        res = f'{BI}/chantiers/{ch.id}/reserves/'
+        out = {}
+        for nom, url, corps in (('reserves', res, {'description': 'Fissure', 'bloquante': True}),
+                                ('recette', f'{BI}/chantiers/{ch.id}/recette/', {}),
+                                ('pack-remise', f'{BI}/chantiers/{ch.id}/pack-remise/', {}),
+                                ('recette-pompage', f'{BI}/chantiers/{agr.id}/recette-pompage/', {})):
+            r = api(tech_sans).post(url, corps, **H)
+            out[nom] = (r.status_code, code(r))
+        obs['89_prive'] = out
+        obs['89_get_reserves'] = api(tech_sans).get(res, HTTP_HOST='localhost').status_code
+        obs['89_ecrits'] = {m.__name__: m.objects.filter(company=co).count()
+                            for m in (Reserve, HandoverPack, CommissioningRecord, RecettePompage)}
+        Installation.objects.filter(pk=ch.pk).update(technicien_responsable=tech)
+        obs['89_technicien_reserves'] = api(tech).post(res, {'description': 'Fissure', 'bloquante': True}, **H).status_code
+
+        ok = {
+            'ASEC85': (obs['85_admin_ventes'] == 403 and obs['85_commercial'] == 403 and obs['85_avoirs_apres_refus'] == 0
+                       and obs['85_directeur'] == 200 and len(obs['85_avoirs_directeur']) == 1),
+            'ASEC86': (obs['86_prive'] == (403, 'droit_manquant') and obs['86_lignes_apres'] == ['Panneau']
+                       and obs['86_commercial'] == 200),
+            'ASEC87': (obs['87_prive_atomic'] == (403, 'droit_manquant') and obs['87_prive_auto'] == (403, 'droit_manquant')
+                       and obs['87_devis_delta'] == 0 and obs['87_commercial_atomic'] == 201),
+            'ASEC88': (obs['88_commercial_xlsx'] == (403, 'droit_manquant') and obs['88_commercial_json'] == 200
+                       and obs['88_admin_ventes_xlsx'][0] == 200 and 'spreadsheet' in obs['88_admin_ventes_xlsx'][1]),
+            'ASEC89': (all(v == (403, 'droit_manquant') for v in out.values()) and obs['89_get_reserves'] == 200
+                       and not any(obs['89_ecrits'].values()) and obs['89_technicien_reserves'] == 201),
+        }
+        obs['ok'] = ok
+        print(f'obs={obs}')
+        return {'repro': all(ok.values()), **obs}
+    finally:
+        p1.stop(); p2.stop()

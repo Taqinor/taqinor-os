@@ -1,0 +1,57 @@
+{
+  "sha": "a4e1d2fd8a536f98300a4d0754608e90d04cc599",
+  "date": "2026-11-10",
+  "groupe": "ADCG",
+  "verdict": "PASS",
+  "couvre": [
+    "ADCG103",
+    "ADCG104"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "FINLIVE.ADCG103.preuve_en_direct",
+      "taches": [
+        "ADCG103"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-final/ADCG103.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "statut rejoué sur le dépôt réel (acceptation neutralisée) : J4 « sav » → vérifié — 2026-11-03 (0 écart S1-S2) ; PA5 lit son propre compte rendu"
+    },
+    {
+      "id": "FINLIVE.ADCG104.preuve_en_direct",
+      "taches": [
+        "ADCG104"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-final/ADCG104.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "`--du` rejoué sur le dépôt réel (garde d’acceptation neutralisée) : le groupe construit au bloc d’écarts tout coché (ASEC, 2026-11-10) est annoncé « contre-visite des correctifs » ; les groupes construits à bloc ouvert/bloqué ou sans bloc sont absents"
+    }
+  ]
+}

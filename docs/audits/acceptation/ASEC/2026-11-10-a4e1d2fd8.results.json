@@ -1,0 +1,126 @@
+{
+  "sha": "a4e1d2fd8a536f98300a4d0754608e90d04cc599",
+  "date": "2026-11-10",
+  "groupe": "ASEC",
+  "verdict": "PASS",
+  "couvre": [
+    "ASEC85",
+    "ASEC86",
+    "ASEC87",
+    "ASEC88",
+    "ASEC89"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "FINLIVE.ASEC85.preuve_en_direct",
+      "taches": [
+        "ASEC85"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-final/ASEC85.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "C-ASEC-VER5-068 repro faux (Admin Ventes : prix-négocié 403, confirmer-avoir-revision 403, 0 avoir) ; rejeu API : Admin Ventes 403 et Commercial 403 sans avoir, Directeur (porte encaisser) 200 avec 1 avoir émis"
+    },
+    {
+      "id": "FINLIVE.ASEC86.preuve_en_direct",
+      "taches": [
+        "ASEC86"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-final/ASEC86.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Commercial − ventes_modifier : replace-lines 403 droit_manquant, lignes « Panneau » seule ; Commercial du registre : 200"
+    },
+    {
+      "id": "FINLIVE.ASEC87.preuve_en_direct",
+      "taches": [
+        "ASEC87"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-final/ASEC87.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Commercial − ventes_creer : devis/atomic/ et devis/auto/ 403 droit_manquant, 0 devis créé ; Commercial du registre : atomic 201"
+    },
+    {
+      "id": "FINLIVE.ASEC88.preuve_en_direct",
+      "taches": [
+        "ASEC88"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-final/ASEC88.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Commercial du registre : agregation?export=xlsx 403 droit_manquant, lecture JSON 200 ; Admin Ventes (porte stock_export) : 200 xlsx"
+    },
+    {
+      "id": "FINLIVE.ASEC89.preuve_en_direct",
+      "taches": [
+        "ASEC89"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-final/ASEC89.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Technicien − installation_gerer : POST reserves/recette/pack-remise/recette-pompage 403 droit_manquant, GET reserves 200, 0 Reserve/HandoverPack/CommissioningRecord/RecettePompage ; Technicien du registre : POST reserves 201"
+    }
+  ]
+}
