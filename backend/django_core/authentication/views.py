@@ -661,9 +661,9 @@ class SwitchCompanyView(APIView):
         company_id = entree.validated_data['company_id']
         # Garde d'appartenance STRICTE : jamais de switch vers une société non
         # autorisée (défense contre l'escalade cross-tenant).
-        if not user.peut_operer_societe(company_id):
+        if not user.peut_basculer_vers(company_id):  # APFS66 — membre ET un rôle dans la cible
             return Response(
-                {'detail': "Vous n'êtes pas membre de cette société."},
+                {'detail': "Vous n'êtes pas membre de cette société ou n'y avez aucun rôle."},
                 status=status.HTTP_403_FORBIDDEN,
             )
         cible = Company.objects.filter(pk=company_id).first()
@@ -860,7 +860,7 @@ class RegisterCompanyView(APIView):  # ENF15 : endpoint d'action, aucun queryset
             # XPLT19 — la société d'attache est aussi la première société
             # autorisée (membre). Un compte mono-société démarre donc avec
             # {sa société}.
-            user.societes_autorisees.add(company)
+            user.societes_autorisees.add(company, through_defaults={'role': admin_role})  # APFS66
 
         # SOL10 — gabarit de tenant « Solaire » : compose l'existant (modules
         # rares éteints SOL8, plan de licence Solaire SOL9, rôles types,
@@ -1123,8 +1123,8 @@ class UserViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.company_id:
             return (
-                CustomUser.objects
-                .filter(company=user.company)
+                CustomUser.objects.filter(CustomUser.portee_membres(  # APFS66 — + membres (lecture)
+                    company=user.company, ecriture=getattr(self, 'action', None) in _ACTIONS_ECRITURE_COMPTES))
                 .select_related('role', 'fonction__departement')
                 .order_by('date_joined')
             )

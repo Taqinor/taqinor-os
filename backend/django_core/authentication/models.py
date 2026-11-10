@@ -237,6 +237,7 @@ class CustomUser(AbstractUser):
         blank=True,
         related_name='membres_autorises',
         verbose_name='Sociétés autorisées',
+        through='AppartenanceSociete',  # APFS66 — porte le rôle par société
     )
     # Compte propriétaire protégé : ne peut être ni supprimé ni rétrogradé,
     # par personne (y compris lui-même). Garantit, avec la garde « dernier
@@ -604,6 +605,11 @@ class CustomUser(AbstractUser):
         from authentication.active_company import user_can_operate
         return user_can_operate(self, company_id)
 
+    def peut_basculer_vers(self, company_id):
+        """APFS66 (D-APFS-3) — membre de ``company_id`` ET y portant un rôle."""
+        from authentication.active_company import role_dans_societe
+        return self.peut_operer_societe(company_id) and role_dans_societe(self, company_id)[0]
+
     # ── Rotation forcée des identifiants (N96) — strictement OPT-IN ──────────
     # Drapeau de rotation : quand un administrateur le passe à True, l'utilisateur
     # est invité à changer son mot de passe à sa PROCHAINE session (le frontend
@@ -675,6 +681,35 @@ class CustomUser(AbstractUser):
 
     def __str__(self):
         return self.username
+
+    @staticmethod
+    def portee_membres(company, ecriture=False):
+        """APFS66 — comptes de ``company`` : attachés, plus en LECTURE ses membres
+        par appartenance ; une écriture ne vise jamais le compte d'une autre société."""
+        from django.db.models import Q
+        if ecriture:
+            return Q(company=company)
+        membres = AppartenanceSociete.objects.filter(company=company).values('user_id')
+        return Q(company=company) | Q(pk__in=membres)
+
+
+class AppartenanceSociete(models.Model):
+    """APFS66 (D-APFS-3) — appartenance d'un compte à une société AVEC son rôle dans
+    elle. Table de l'ancien M2M auto (aucune ligne perdue) ; ``role`` nul = aucun
+    rôle dans cette société → bascule refusée jusqu'à attribution."""
+    user = models.ForeignKey(
+        CustomUser, on_delete=models.CASCADE,  # on_delete: suit le compte (ex-M2M)
+        db_column='customuser_id', related_name='appartenances')
+    company = models.ForeignKey(
+        Company, on_delete=models.CASCADE,  # on_delete: purge tenant (ex-M2M)
+        related_name='appartenances')
+    role = models.ForeignKey(
+        'roles.Role', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='appartenances')
+
+    class Meta:
+        db_table = 'authentication_customuser_societes_autorisees'
+        unique_together = [('user', 'company')]
 
 
 class UserSession(models.Model):
