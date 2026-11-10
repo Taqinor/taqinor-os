@@ -475,11 +475,36 @@ def public_api_reference():
                     'methode': 'GET',
                     'description': (
                         "Suivi d'un job bulk : statut, progression %, "
-                        "compteurs, liens résultat/erreurs (présignés, "
-                        "courte durée)."
+                        "compteurs, liens résultat/erreurs (chemins de "
+                        "l'API publique ci-dessous, gardés par la clé)."
                     ),
                     'success_status': '200',
                     'request_body': False,
+                },
+                {
+                    # APRF46 — livrables servis par l'API (jamais l'URL MinIO).
+                    'chemin': '/api/public/v1/jobs/<id>/resultat/',
+                    'methode': 'GET',
+                    'description': (
+                        "Fichier résultat (CSV/JSONL) d'un job terminé, "
+                        "en pièce jointe ; 404 tant que le job n'est pas "
+                        "terminé."
+                    ),
+                    'success_status': '200',
+                    'request_body': False,
+                    'response_fichier': True,
+                },
+                {
+                    'chemin': '/api/public/v1/jobs/<id>/erreurs/',
+                    'methode': 'GET',
+                    'description': (
+                        "Fichier des lignes en échec d'un job (dès la "
+                        "première, même en cours), en pièce jointe ; 404 "
+                        "sans ligne en échec."
+                    ),
+                    'success_status': '200',
+                    'request_body': False,
+                    'response_fichier': True,
                 },
                 {
                     'chemin': '/api/public/v1/jobs/<id>/relancer/',

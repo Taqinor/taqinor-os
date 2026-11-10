@@ -112,9 +112,11 @@ class Ntapi20OpenApiSchemaTests(TestCase):
         # scope `read:calepinages`) = 38.
         # NTI18N42 (2026-11-07) : + 1 lecture simple (`clients/{id}/langue/`,
         # scope `read:clients`) = 39.
+        # APRF46 (2026-11-10) : + 2 bulk (`jobs/<id>/resultat/`,
+        # `jobs/<id>/erreurs/` GET — livrables servis par l'API) = 41.
         schema = build_openapi_schema()
         nb_operations = sum(len(ops) for ops in schema['paths'].values())
-        self.assertEqual(nb_operations, 39)
+        self.assertEqual(nb_operations, 41)
 
     def test_covers_licence_statut_ntadm42(self):
         schema = build_openapi_schema()

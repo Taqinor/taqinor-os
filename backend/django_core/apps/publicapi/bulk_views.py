@@ -259,12 +259,14 @@ class PublicJobViewSet(PublicApiResponseMixin, viewsets.ReadOnlyModelViewSet):
         return reponse
 
     @extend_schema(responses={(200, 'application/octet-stream'): OpenApiTypes.BINARY, 404: None})
-    @action(detail=True, methods=['get'], url_path='resultat')
+    @action(detail=True, methods=['get'], url_path='resultat',
+            permission_classes=[HasAnyApiKey])  # + get_queryset (AANA33)
     def resultat(self, request, pk=None):
         return self._livrable('resultat')
 
     @extend_schema(responses={(200, 'application/octet-stream'): OpenApiTypes.BINARY, 404: None})
-    @action(detail=True, methods=['get'], url_path='erreurs')
+    @action(detail=True, methods=['get'], url_path='erreurs',
+            permission_classes=[HasAnyApiKey])  # + get_queryset (AANA33)
     def erreurs(self, request, pk=None):
         return self._livrable('erreurs')
 

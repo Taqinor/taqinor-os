@@ -579,7 +579,10 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         champs = {}
         if data.get('date_mise_en_service'):
             # ACSV114 — ISO et jamais dans le futur (400 avant toute écriture).
-            d = oa.serializers.DateField().run_validation(data['date_mise_en_service'])
+            try:
+                d = oa.serializers.DateField().run_validation(data['date_mise_en_service'])
+            except oa.serializers.ValidationError as exc:
+                raise oa.serializers.ValidationError({'date_mise_en_service': exc.detail})
             if d > timezone.localdate():
                 raise oa.serializers.ValidationError({'date_mise_en_service': 'Date future refusée.'})
             champs['date_mise_en_service'] = d

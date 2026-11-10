@@ -214,6 +214,11 @@ class JalonsStatutTests(TestCase):
         self.assertEqual(r.status_code, 200, getattr(r, 'data', r))
         self.chantier.refresh_from_db()
         self.assertNotIn('date_reception_defaite', self.chantier.custom_data)
+        # CI api-fuzz (PR #1355) — un tableau n'est pas un custom_data : 400
+        # nommant le champ, jamais un 500 dans la reprise de la clé.
+        r = self.api.patch(url, {'custom_data': [None, None]}, format='json')
+        self.assertEqual(r.status_code, 400, getattr(r, 'data', r))
+        self.assertIn('custom_data', r.data)
 
     def test_retour_arriere_ne_coche_rien(self):
         self._passer(Installation.Statut.INSTALLE)

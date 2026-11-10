@@ -563,6 +563,17 @@ class InterventionActivitySerializer(serializers.ModelSerializer):
         return getattr(obj.user, 'username', None)
 
 
+@extend_schema_field({'type': 'object', 'additionalProperties': True, 'nullable': True})
+class CustomDataObjet(serializers.JSONField):
+    """ACSV113 (CI api-fuzz) — ``custom_data`` d'un chantier est un OBJET ou
+    ``null`` (sa clé interne y est reprise) : un tableau est refusé 400."""
+
+    def to_internal_value(self, data):
+        if not isinstance(data, dict):
+            raise serializers.ValidationError('Objet « clé : valeur » attendu.')
+        return super().to_internal_value(data)
+
+
 class InstallationSerializer(IdInconnu404Mixin, ChampsStrictsEntiersMixin,  # id inconnu → 404 (ENF11)
                              SameCompanyFKSerializerMixin,
                              serializers.ModelSerializer):
@@ -626,6 +637,7 @@ class InstallationSerializer(IdInconnu404Mixin, ChampsStrictsEntiersMixin,  # id
     # et pour tout statut autre que « Réceptionné » (contrat
     # ``contract_samples/chantier_avertissements_cloture.json``).
     avertissements_cloture = serializers.SerializerMethodField()
+    custom_data = CustomDataObjet(required=False, allow_null=True)
 
     class Meta:
         model = Installation

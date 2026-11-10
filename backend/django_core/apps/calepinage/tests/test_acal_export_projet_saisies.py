@@ -33,6 +33,7 @@ import json
 import pathlib
 import unittest
 from types import SimpleNamespace
+from unittest import mock
 
 from apps.calepinage.services import export_projet as ep
 from apps.calepinage.services.electrique import CHAMPS_ENTREE
@@ -154,6 +155,9 @@ class RegistreDesSaisiesTest(unittest.TestCase):
             with self.subTest(chemin=chemin):
                 self.assertEqual(refus(document).champ, chemin)
 
+    # ACON94 — l'aperçu résout le lead comme l'import réel : ces tests de FORME le
+    # supposent trouvé (le refus 404 est prouvé par test_acal_creation_porte_unique).
+    @mock.patch('apps.calepinage.services.creation.lead_en_portee', new=lambda *a, **k: SimpleNamespace(pk=1))
     def test_format_2_reste_importable(self):
         ancien = fichier(format_version=2)
         ancien.pop('saisies')
@@ -168,6 +172,9 @@ class RegistreDesSaisiesTest(unittest.TestCase):
         self.assertNotIn(BLOC_PRODUITS_IGNORES,
                          [i['bloc'] for i in apercu['ignores']])
 
+    # ACON94 — l'aperçu résout le lead comme l'import réel : ces tests de FORME le
+    # supposent trouvé (le refus 404 est prouvé par test_acal_creation_porte_unique).
+    @mock.patch('apps.calepinage.services.creation.lead_en_portee', new=lambda *a, **k: SimpleNamespace(pk=1))
     def test_l_apercu_nomme_les_blocs_repris_et_les_produits_ignores(self):
         apercu = importer_projet(fichier(), None, lead_id=1, apercu=True)
         self.assertIn('saisies', apercu['repris'])
