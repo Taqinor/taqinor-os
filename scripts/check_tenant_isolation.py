@@ -73,6 +73,9 @@ COMPANY_TOKENS = ("company", "scope_queryset", "scope_client_queryset",
                   "employe__user", "visible_user_ids", "subtree_user_ids",
                   "peer_user_ids")
 
+APPELS_FILTRANTS = frozenset({"filter", "get", "exclude",
+                              "get_object_or_404", "Q"})
+
 #: APFS64 — dette GELÉE (``--list``, 09/11/2026) : ne fait que décroître.
 DETTE_FILTRE_EFFECTIF = frozenset({
     "backend/django_core/apps/crm/clients_views.py::lead_playbook_view",
@@ -120,6 +123,14 @@ DETTE_FILTRE_EFFECTIF = frozenset({
     "backend/django_core/apps/ventes/public/lecture_views.py::proposal_engagement",
     "backend/django_core/apps/ventes/public/signature_views.py::proposal_accept",
     "backend/django_core/core/trust_center.py::trust_center_public",
+    # APFS119 (10/11/2026) — mot-clé company hors appel de filtrage ; ne fait que décroître.
+    "backend/django_core/apps/adminops/views.py::tracker_usage_view",
+    "backend/django_core/apps/audit/views.py::object_as_of",
+    "backend/django_core/apps/crm/public_chat_views.py::post_chat_message",
+    "backend/django_core/apps/ged/views.py::public_partage",
+    "backend/django_core/apps/sav/public_views.py::ticket_public_satisfaction",
+    "backend/django_core/core/export_registry.py::declencher_export_reversibilite",
+    "backend/django_core/authentication/views.py::UserViewSet",
 })
 
 
@@ -229,11 +240,15 @@ def _filtre_effectif(fonction):
     """APFS64 — un filtre société EFFECTIF : mot-clé ``company*`` (ou jeton
     de COMPANY_TOKENS) d'un appel, ou appel de portée (``company_qs``…)."""
     for n in ast.walk(fonction):
-        if isinstance(n, ast.keyword) and n.arg \
-                and any(t in n.arg for t in COMPANY_TOKENS):
+        if not isinstance(n, ast.Call):
+            continue
+        nom = _nom_appel(n)
+        # APFS119 — le mot-clé ne compte que sur un appel de filtrage.
+        if nom in APPELS_FILTRANTS and any(
+                k.arg and any(t in k.arg for t in COMPANY_TOKENS)
+                for k in n.keywords):
             return True
-        if isinstance(n, ast.Call) \
-                and any(t in _nom_appel(n) for t in COMPANY_TOKENS):
+        if any(t in nom for t in COMPANY_TOKENS):
             return True
     return False
 

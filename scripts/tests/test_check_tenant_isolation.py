@@ -249,6 +249,19 @@ class TestTenantIsolation(unittest.TestCase):
                       _view_codes(API_VIEW_SANS_FILTRE))
         self.assertEqual(_view_codes(API_VIEW_COMPANY_QS), set())
 
+    def test_mot_cle_company_hors_filtre_ne_suffit_pas(self):
+        """APFS119 — ``company=…`` d'un ``create`` n'est pas un filtre : le
+        ``get(pk=pk)`` non borné reste signalé. Mutant : accepter tout
+        mot-clé."""
+        src = (
+            "from rest_framework.decorators import api_view\n\n"
+            "@api_view(['POST'])\n"
+            "def note(request, pk):\n"
+            "    d = Devis.objects.get(pk=pk)\n"
+            "    Note.objects.create(company=request.user.company, devis=d)\n")
+        self.assertIn("API_VIEW_COMPANY_FILTER_MISSING", _view_codes(src))
+        self.assertEqual(_view_codes(API_VIEW_COMPANY_QS), set())
+
     def test_company_cite_dans_une_branche_ne_suffit_pas(self):
         """APFS64 — « company » dans une condition n'est pas un filtre."""
         self.assertIn("COMPANY_FILTER_MISSING",
