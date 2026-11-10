@@ -75,6 +75,11 @@ SERIALIZER_GLOBS = ("serializers*.py", "*_serializers.py")
 TENANT_BASES = {"TenantModel", "CompanyScopedModel", "SoftDeleteTenantModel"}
 #: Apps « socle » : une FK vers elles n'est pas une FK métier cross-app.
 FOUNDATION_APPS = {"authentication", "auth", "contenttypes", "admin"}
+#: APFS65 — référence ENTIÈRE opaque (``IntegerField`` nommé ``*_id`` /
+#: ``*_id_ext`` d'un modèle société) : une clé d'une autre ligne sans FK, donc
+#: sans cible lisible ; même couverture que les FK.
+INT_CALLS = ("IntegerField", "PositiveIntegerField", "BigIntegerField")
+REF_OPAQUE = ("entier", "reference_opaque")
 
 
 # ── helpers AST ────────────────────────────────────────────────────────────
@@ -193,6 +198,11 @@ def build_model_map():
                 if not noms:
                     continue
                 value = getattr(stmt, "value", None)
+                if _call_name(value) in INT_CALLS:
+                    for nom in noms:
+                        if nom.endswith(("_id", "_id_ext")):
+                            champs[nom] = REF_OPAQUE
+                    continue
                 if _call_name(value) not in FK_CALLS + M2M_CALLS:
                     continue
                 est_m2m = _call_name(value) in M2M_CALLS
@@ -423,9 +433,12 @@ def collect_sites():
                     continue
                 t_app, t_model = cible
                 force = (t_app, t_model) in FORCED_TENANT_TARGETS
-                if not force and t_app in FOUNDATION_APPS:
+                if cible == REF_OPAQUE:
+                    if key not in tenant:
+                        continue      # APFS65 : modèle hors société
+                elif not force and t_app in FOUNDATION_APPS:
                     continue
-                if not force and (t_app, t_model) not in tenant:
+                elif not force and (t_app, t_model) not in tenant:
                     continue          # cible non scopée société : rien à valider
                 if champ in read_only or champ in read_only_meta:
                     continue

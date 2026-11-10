@@ -196,6 +196,31 @@ class TestDetection(BaseArbre):
         self.assertIn("UserSerializer.responsable", out)
         self.assertIn("authentication.CustomUser", out)
 
+    def test_reference_entiere_opaque_ecrivable_signalee(self):
+        # APFS65 — ``facture_id_ext = IntegerField`` d'un modèle société,
+        # écrivable : signalé ``chemin::Serializer.champ`` ; en
+        # ``read_only_fields`` : accepté.
+        modele = MODELS_USER.replace(
+            "responsable = models.ForeignKey(settings.AUTH_USER_MODEL,\n"
+            "                                    on_delete=models.CASCADE)",
+            "facture_id_ext = models.IntegerField(null=True)\n"
+            "    quantite = models.IntegerField(default=0)")
+        ser = SER_USER.replace("fields = ['id', 'responsable']",
+                               "fields = '__all__'")
+        self._monter(SER_MIXIN, extra={"models_x.py": modele,
+                                       "serializers_u.py": ser})
+        code, out = self._main()
+        self.assertEqual(code, 1, out)
+        self.assertIn("serializers_u.py::UserSerializer.facture_id_ext", out)
+        self.assertNotIn("UserSerializer.quantite", out)
+        self._restaurer()
+        ser_ro = ser.replace("fields = '__all__'", "fields = '__all__'\n"
+                             "        read_only_fields = ['facture_id_ext']")
+        self._monter(SER_MIXIN, extra={"models_x.py": modele,
+                                       "serializers_u.py": ser_ro})
+        code, out = self._main()
+        self.assertEqual(code, 0, out)
+
     def test_serializer_dans_views(self):
         self._monter(SER_VIDE, extra={"views/api.py": SER_X_NU})
         code, out = self._main()

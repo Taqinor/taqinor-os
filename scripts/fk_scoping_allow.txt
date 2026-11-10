@@ -21,3 +21,11 @@
 # ASEC46 — FactureWriteSerializer déclare ses champs par Meta.exclude (invisible avant ASEC46) : 8 FK
 # écrivables non bornées CONSTATÉES, à corriger par la lane ventes (same_company_fields) ; chaque ligne
 # se retire dès que son champ est borné (sinon « ligne d'allowlist inutile »).
+
+# APFS65 - references ENTIERES opaques ecrivables (IntegerField *_id / *_id_ext d'un modele societe), relevees le 2026-11-10 par --list. CONSTATEES, pas approuvees : chaque ligne se retire des que le champ est borne ou passe en read_only_fields. Les quatre pointeurs de TicketSerializer (ACSV54) sont deja en lecture seule.
+backend/django_core/apps/monitoring/serializers.py::AbonnementMonitoringSerializer.installation_id
+backend/django_core/apps/monitoring/serializers.py::CertificatCarboneSerializer.client_id
+backend/django_core/apps/monitoring/serializers.py::CertificatCarboneSerializer.installation_id
+backend/django_core/apps/reporting/saved_reports_api.py::SavedReportSerializer.cible_id
+backend/django_core/apps/sav/serializers.py::WarrantyClaimSerializer.fournisseur_id_ext
+backend/django_core/apps/uxviews/serializers.py::FavoriUtilisateurSerializer.object_id
