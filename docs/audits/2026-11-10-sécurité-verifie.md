@@ -82,4 +82,31 @@ session), sans appel supplémentaire.
 
 - 1 vérificateur + 1 seconde lentille + 1 rédacteur (opus, effort élevé) ≈ 0,9 M de jetons ; aucun appel Fable.
 
-<!-- verifie | groupe: ASEC | pct: 100 | ecarts_s1_s2: 2 -->
+## 8. Contre-visite des correctifs, le soir même (base `a4e1d2fd8`)
+
+Les cinq tâches d'écart ci-dessus ont été construites dans la soirée (PR #1343). Un vérificateur frais (opus, effort élevé)
+les a relues, ainsi que les cinq tâches laissées de côté l'après-midi : **ASEC85 à ASEC89 : ok ; ASEC80 à ASEC84 : ok**.
+
+- **Écarts S1 et S2 fermés dans le code.** La confirmation de l'avoir de révision exige le droit d'encaisser ; le test joue le
+  vrai rôle « Admin Ventes » (refus, aucun avoir), la matrice de permissions est resserrée, rien n'est affaibli (ASEC85).
+  L'export de l'agrégation du stock exige le droit d'export ; le test joue le vrai rôle « Commercial » (ASEC88). Toutes les
+  autres routes qui émettent un avoir ont été recherchées : voir le premier reste ci-dessous.
+- **Preuve en direct absente.** La CI de la PR est verte, mais la sonde du constat S1 n'a toujours pas été rejouée et aucun
+  enregistrement d'acceptation ne couvre ASEC85 à ASEC89 ; elles sont cochées alors que leur journal les dit bloquées sur ce
+  point. Par lecture, la sonde rendrait aujourd'hui « non reproduit ». Rejeu demandé à la session qui tient la pile.
+- **Restes retenus.**
+
+| C-id | Grav. | Écart | Sonde | Tâches |
+|---|---|---|---|---|
+| C-ASEC-VER6-092 | S2 | deux autres exports du stock (conformité des fournisseurs, consignations) ne lisent pas le droit d'export : six rôles livrés sans ce droit les téléchargent ; ni l'un ni l'autre ne porte de prix d'achat ; les cinq exports restants sont déjà réservés à l'administration ou au droit de voir les prix d'achat | STATIQUE (lecture, registre des rôles calculé) | ASEC92 |
+| C-ASEC-VER6-090 | S2 (si la décision le confirme) | annuler une facture à référence légale émet un avoir de contre-passation numéroté sans exiger le droit d'encaisser : « Admin Ventes » et « Responsable » y arrivent ; même effet par la création de facture depuis un bon de commande et par le prix négocié quand un brouillon déjà remis est retiré ; une tâche du groupe argent avait laissé l'annulation « sans argent » au palier | STATIQUE (lecture) | ASEC90, ASEC93 — en attente de D-ASEC-VER6-1 |
+| C-ASEC-VER6-091 | S3 | l'écran propose encore « Confirmer l'avoir » à un rôle que la route refuse désormais | STATIQUE (lecture) | ASEC91 |
+
+- **Décision ouverte D-ASEC-VER6-1.** Tout geste qui émet un avoir de contre-passation exige-t-il le droit d'encaisser ?
+  Défaut recommandé : oui (c'est un geste sur une créance, au sens de D-ASEC-VER-1).
+- **Optionnel.** D'autres écritures du devis restent au seul palier dans la matrice (composition, métré électrique) ; le cas
+  positif du test d'ASEC85 se joue avec un compte hérité sans rôle plutôt qu'avec un rôle qui porte le droit.
+- **Statut.** Les écarts S1 et S2 de l'après-midi sont fermés dans le code ; un nouvel écart S2 (ASEC92) ⇒ le marqueur en
+  garde 1 et ASEC reste « construit ».
+
+<!-- verifie | groupe: ASEC | pct: 100 | ecarts_s1_s2: 1 -->
