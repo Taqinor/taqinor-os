@@ -198,6 +198,19 @@ def identite_vendeur_courante(company):
     return instantane
 
 
+def virement_de_la_facture(facture):
+    """ASOC43 — ``{beneficiaire, banque, rib}`` d'une facture : identité FIGÉE à
+    l'émission (APAR61, celle du PDF), sinon le profil (brouillon, avant APAR61).
+    UNE définition : page publique de paiement et « Payer » du portail."""
+    figee = facture.identite_vendeur if isinstance(facture.identite_vendeur, dict) else {}
+    if not figee:
+        from apps.parametres.selectors import company_identity
+        vivant = company_identity(facture.company)
+        figee = {'entreprise_nom': vivant.get('nom'), 'banque': vivant.get('banque'), 'rib': vivant.get('rib')}
+    return {'beneficiaire': figee.get('entreprise_nom') or '', 'banque': figee.get('banque') or '',
+            'rib': (figee.get('rib') or '').strip()}
+
+
 def _appliquer_identite_figee(ctx, identite, company=None):
     """APAR61 — le contexte de rendu reprend l'identité FIGÉE (textes + logo
     du jour de l'émission) à la place du profil vivant."""
