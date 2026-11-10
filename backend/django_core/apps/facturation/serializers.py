@@ -443,6 +443,10 @@ class FactureSerializer(SameCompanyFKSerializerMixin,
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
+        # APFS27 — téléphone masqué sans ``client_pii_voir``.
+        user = getattr(self.context.get('request'), 'user', None)
+        if not getattr(user, 'can_view_client_pii', True):
+            data['client_telephone'] = None
         vente = self._vente_pdf(instance)
         if vente is None:  # liste, ou toute action autre que le détail
             data.pop('situation_vente', None)

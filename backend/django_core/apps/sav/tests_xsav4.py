@@ -125,6 +125,34 @@ class XSAV4NotificationsClientTest(TestCase):
         self.assertEqual(wa_corps, 'واتساب SAV-XSAV4-1')
         self.assertEqual(wa_fr, 'WA FR SAV-XSAV4-1')
 
+    @override_settings(ANYMAIL={'SENDGRID_API_KEY': 'sg-test-key'},
+                       EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    def test_transition_notifie_le_compte_portail(self):
+        """ASOC27 (C-ASOC-136) — la transition « planifié » notifie le compte
+        portail ACTIF du client (1 ``portail_ticket_maj``, sans e-mail : celui
+        du SAV reste le seul) ; compte désactivé : 0."""
+        from django.core import mail
+        from apps.notifications.models import Notification
+        sla = SavSlaSettings.get(self.company)
+        sla.notifications_client_sav = True
+        sla.save(update_fields=['notifications_client_sav'])
+        compte = User.objects.create_user(
+            username='xsav4_portail', password='x', company=self.company,
+            email='xsav4-portail@example.invalid', portee='portail_client',
+            portail_client_id=self.client_obj.id)
+        User.objects.create_user(
+            username='xsav4_portail_inactif', password='x', is_active=False,
+            company=self.company, portee='portail_client',
+            portail_client_id=self.client_obj.id)
+        mail.outbox = []
+        with self.captureOnCommitCallbacks(execute=True):
+            result = notify_ticket_transition(self.ticket, 'planifie')
+        self.assertTrue(result['email_sent'])
+        lignes = Notification.objects.filter(event_type='portail_ticket_maj')
+        self.assertEqual([n.recipient_id for n in lignes], [compte.id])
+        self.assertEqual([m.to for m in mail.outbox],
+                         [['xsav4-client@example.invalid']])
+
     def test_migration_defaut_off(self):
         """Migration additive : le champ existe, défaut False (comportement
         actuel inchangé pour toute société déjà en base)."""

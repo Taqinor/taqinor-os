@@ -15,7 +15,7 @@ from ..models import (
 )
 from ..serializers import FournisseurSerializer, CategorieFournisseurSerializer, ContactFournisseurSerializer
 from authentication.permissions import (
-    IsAnyRole,
+    LectureDuModule,
     IsAdminRole,
     IsResponsableOrAdmin,
     HasPermissionOrLegacy,
@@ -72,7 +72,7 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         elif self.action in ('performance', 'otif'):
             # XPUR7 — rapport de performance fournisseur (OTD…) : lecture, ouvert
             # à tout rôle porteur du droit de lecture stock (get_permissions
@@ -713,7 +713,7 @@ class ContactFournisseurViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
         return [HasPermissionOrLegacy('stock_modifier')()]
@@ -743,7 +743,7 @@ class CategorieFournisseurViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
         return [HasPermissionOrLegacy('stock_modifier')()]

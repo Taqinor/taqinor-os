@@ -20,7 +20,7 @@ from ..serializers import (
     EcheanceFactureFournisseurSerializer,
 )
 from authentication.permissions import (
-    IsAnyRole,
+    LectureDuModule,
     IsAdminRole,
     HasPermissionOrLegacy,
 )
@@ -92,9 +92,9 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
             # ASTK11 (D-ASTK-2) — files dont l'objet est un montant d'achat :
             # `prix_achat_voir` requis (repli légacy can_view_buy_prices).
             from ..permissions import PeutVoirPrixAchat
-            return [IsAnyRole(), PeutVoirPrixAchat()]
+            return [LectureDuModule(), PeutVoirPrixAchat()]
         if self.action in READ_ACTIONS + ['suggestions_bcf']:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         if self.action == 'paiements' and self.request.method == 'GET':
             # ASTK241 — lire les règlements = règle UNIQUE de /paiements-fournisseur/.
             from .paiement_fournisseur import PeutLirePaiementsFournisseur

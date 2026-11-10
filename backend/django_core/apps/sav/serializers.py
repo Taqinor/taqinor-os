@@ -652,8 +652,12 @@ class TicketSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_client_telephone(self, obj):
+        # APFS27 — masqué sans ``client_pii_voir`` (``can_view_client_pii``).
+        user = getattr(self.context.get('request'), 'user', None)
         c = obj.client
-        return c.telephone if c else None
+        if not c or not getattr(user, 'can_view_client_pii', True):
+            return None
+        return c.telephone
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_technicien_nom(self, obj):

@@ -2,7 +2,7 @@ from rest_framework.parsers import JSONParser
 from rest_framework import viewsets
 
 from core.viewsets import CompanyScopedModelViewSet
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from authentication.permissions import LectureDuModule, IsResponsableOrAdmin
 
 from ..models import NomenclatureCodeBarres, RegleCodeBarres
 from ..serializers import (
@@ -27,7 +27,7 @@ class NomenclatureCodeBarresViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def perform_create(self, serializer):
@@ -45,7 +45,7 @@ class RegleCodeBarresViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):

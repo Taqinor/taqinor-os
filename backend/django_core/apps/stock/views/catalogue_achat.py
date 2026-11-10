@@ -24,7 +24,7 @@ from rest_framework import serializers, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from authentication.permissions import IsAnyRole
+from authentication.permissions import LectureDuModule
 from core.mixins import TenantMixin
 from core.serializers import CompanyScopedRelationsMixin
 
@@ -94,15 +94,15 @@ class CatalogueAchatSerializer(CompanyScopedRelationsMixin,
 class CatalogueAchatViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     """NTP2P3 — catalogue d'achat en LECTURE SEULE, scopé société.
 
-    Ouvert à TOUS les rôles (``IsAnyRole``) : un demandeur terrain doit pouvoir
-    composer sa réquisition. Aucune écriture n'est exposée (ReadOnly).
+    Lecture bornée au module stock (``LectureDuModule``, APFS106) : le
+    demandeur compose sa réquisition. Aucune écriture n'est exposée (ReadOnly).
 
     Filtres : ``?q=`` (nom / SKU / catégorie), ``?categorie=<id>``,
     ``?fournisseur=<id>``, ``?recent=1`` (NTP2P22 — « déjà commandé
     récemment » : restreint aux articles que CET employé a déjà demandés).
     """
     serializer_class = CatalogueAchatSerializer
-    permission_classes = [IsAnyRole]
+    permission_classes = [LectureDuModule]
     queryset = Produit.objects.select_related(
         'categorie', 'fournisseur').filter(is_archived=False)
 
@@ -150,7 +150,7 @@ class CatalogueAchatViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
                                    recents=serializers.ListField(child=serializers.IntegerField()),
                                    produit_ids=serializers.ListField(child=serializers.IntegerField())))
     @action(detail=False, methods=['get', 'put'],
-            permission_classes=[IsAnyRole])
+            permission_classes=[LectureDuModule])
     def favoris(self, request):
         """NTP2P22 — favoris du demandeur pour l'écran de demande d'achat.
 

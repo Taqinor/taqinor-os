@@ -127,3 +127,41 @@ class PorteeSortiesTests(TestCase):
         # rendu lui-même est hors du constat).
         self.assertNotEqual(self._lettre_premium(self.admin).status_code, 404)
         self.assertNotEqual(self._lettre_pdf(self.b).status_code, 404)
+
+    def test_telephone_client_masque_sans_client_pii_voir(self):
+        """APFS27 (C-APFS-028) — sans ``client_pii_voir`` : téléphone client
+        null sur la fiche facture et les relances (deux routes) ; Responsable
+        témoin et compte hérité : présent."""
+        from apps.crm.models import Client
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import RESPONSABLE_PERMISSIONS
+        Client.objects.filter(pk=self.client_b.pk).update(
+            telephone='0661028028')
+
+        def compte(nom, permissions):
+            role = Role.objects.create(company=self.company, nom=nom,
+                                       permissions=permissions,
+                                       est_systeme=False)
+            return User.objects.create_user(
+                username=f'apfs27_{len(nom)}', password='x', role=role,
+                role_legacy='responsable', company=self.company)
+        sans = compte('Responsable sans client_pii_voir', [
+            p for p in RESPONSABLE_PERMISSIONS if p != 'client_pii_voir'])
+        temoin = compte('Responsable', list(RESPONSABLE_PERMISSIONS))
+
+        def telephones(user):
+            api = self._api(user)
+            fiche = api.get(f'/api/django/ventes/factures/{self.facture_b.id}/')
+            self.assertEqual(fiche.status_code, 200, fiche.content)
+            vus = [fiche.data['client_telephone']]
+            for url in ('/api/django/facturation/relances/',
+                        '/api/django/ventes/relances/'):
+                r = api.get(url)
+                self.assertEqual(r.status_code, 200, r.content)
+                vus.append(next(x for x in r.data
+                                if x['id'] == self.facture_b.id)
+                           ['client_telephone'])
+            return vus
+        self.assertEqual(telephones(sans), [None] * 3)
+        self.assertEqual(telephones(temoin), ['0661028028'] * 3)
+        self.assertEqual(telephones(self.admin), ['0661028028'] * 3)

@@ -32,7 +32,7 @@ from ..models import Produit, Categorie, Fournisseur, MouvementStock, Emplacemen
 from ..serializers import ProduitSerializer, PrixFournisseurSerializer
 from apps.roles.permissions import DroitDeLaGrille, droits_de_la_grille  # ASEC70
 from authentication.permissions import (
-    IsAnyRole,
+    LectureDuModule,
     IsAdminRole,
     IsResponsableOrAdmin,
     HasPermissionOrLegacy,
@@ -375,14 +375,14 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                 'classe_abc', 'tracabilite',
                 # PVCOMPAT — `compatibilites` est LECTURE SEULE et ne rend
                 # AUCUN prix (que des grandeurs électriques et des verdicts) :
-                # même garde `IsAnyRole` que `previsionnel`. Ce cas explicite
+                # même garde `LectureDuModule` que `previsionnel`. Ce cas explicite
                 # est OBLIGATOIRE — `get_permissions` prime sur le
                 # `permission_classes` de l'@action, sinon repli IsAdminRole.
                 'compatibilites',
                 # STKCAT25 — `utilise-dans` est LECTURE SEULE et ne rend AUCUN
                 # prix d'achat ni marge (des références de devis/leads/
                 # chantiers déjà visibles dans leur propre module, chacun avec
-                # SA portée rejouée). Même garde `IsAnyRole` que
+                # SA portée rejouée). Même garde `LectureDuModule` que
                 # `compatibilites` — ce cas explicite est OBLIGATOIRE :
                 # `get_permissions` prime sur le `permission_classes` de
                 # l'@action, sinon repli IsAdminRole.
@@ -400,13 +400,13 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                 'pret_devis_residentiel']:
             # XSTK3/XSTK4 — `resolve` (scan code-barres/GS1) est LECTURE
             # SEULE, accessible à tout rôle authentifié — même garde que
-            # `@action(permission_classes=[IsAnyRole])` sur l'action
+            # `@action(permission_classes=[LectureDuModule])` sur l'action
             # (`get_permissions` prime sur le `permission_classes` de
             # l'@action, d'où ce cas explicite — sinon repli IsAdminRole).
             # ZSTK3 — `previsionnel` est LECTURE SEULE, même garde.
             # XSTK7 — `tracer` (rapport de traçabilité) est LECTURE SEULE,
             # même garde. ASEC70 — l'export applique EN PLUS `stock_export`.
-            return [IsAnyRole(), *droits_de_la_grille(self, export_xlsx=[DroitDeLaGrille('stock_export')])]
+            return [LectureDuModule(), *droits_de_la_grille(self, export_xlsx=[DroitDeLaGrille('stock_export')])]
         elif self.action in ('create', 'dupliquer'):
             # QG4 — création réservée à Directeur + Commercial responsable.
             # QP2 — le clone (`dupliquer`) EST une création : même garde. Ce
@@ -659,7 +659,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                                  ids=serializers.ListField(child=serializers.IntegerField(),
                                                            min_length=1)), responses={XLSX: BINARY})
     @action(detail=False, methods=['post'], url_path='export-xlsx',
-            permission_classes=[IsAnyRole, DroitDeLaGrille('stock_export')])
+            permission_classes=[LectureDuModule, DroitDeLaGrille('stock_export')])
     def export_xlsx(self, request):
         """Exporte une sélection de produits en .xlsx (prix d'achat exclu)."""
         from ..services import export_products_xlsx
@@ -818,7 +818,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
 
     @extend_schema(responses=LISTE)
     @action(detail=True, methods=['get'], url_path='casiers',
-            permission_classes=[IsAnyRole])
+            permission_classes=[LectureDuModule])
     def casiers(self, request, *args, **kwargs):
         """NTWMS1 — localisation CASIER PAR CASIER de ce produit (zone/allée/
         casier), dans l'ordre de parcours physique du magasin.
@@ -835,7 +835,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                                    classe_abc=serializers.CharField(allow_null=True), depuis=serializers.DateField(),
                                    jusqu_a=serializers.DateField()))
     @action(detail=True, methods=['get'], url_path='classe-abc',  # headless: D-ENF15-STOCK-22
-            permission_classes=[IsAnyRole])
+            permission_classes=[LectureDuModule])
     def classe_abc(self, request, *args, **kwargs):
         """NTWMS13 — classe ABC de rotation de ce produit sur 12 mois
         glissants (A = 20 % de la valeur de rotation cumulée, B = 30 %
@@ -862,7 +862,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                    responses=corps('ProduitPlanPicking', strategie=serializers.CharField(),
                                    lignes=serializers.ListField(child=serializers.DictField())))
     @action(detail=True, methods=['get'], url_path='plan-picking',  # headless: D-ENF15-STOCK-22
-            permission_classes=[IsAnyRole])
+            permission_classes=[LectureDuModule])
     def plan_picking(self, request, *args, **kwargs):
         """NTWMS3 — plan de prélèvement de ce produit pour la quantité
         demandée (`?quantite=`), ordonné par la stratégie de sa catégorie
@@ -1013,7 +1013,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                                P('sortie', STR, False, 'html (aperçu) ou pdf', ['html', 'pdf'], vide=True)],
                    responses={PDF: BINARY, (200, 'text/html'): STR})
     @action(detail=False, methods=['get'], url_path='etiquettes-prix',  # headless: D-ENF15-STOCK-22
-            permission_classes=[IsAnyRole])
+            permission_classes=[LectureDuModule])
     def etiquettes_prix(self, request):
         """NTRET17 — Étiquettes PRIX de rayon (EAN-13 + prix TTC en gros).
 
@@ -1241,7 +1241,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
 
     @extend_schema(responses=OBJET)
     @action(detail=True, methods=['get'], url_path='previsionnel',
-            permission_classes=[IsAnyRole])
+            permission_classes=[LectureDuModule])
     def previsionnel(self, request, pk=None):
         """ZSTK3 — rapport prévisionnel (Forecasted report) : disponible +
         entrées attendues (BCF ouverts) + sorties attendues (réservations
@@ -1252,7 +1252,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
 
     @extend_schema(responses=OBJET)
     @action(detail=True, methods=['get'], url_path='compatibilites',
-            permission_classes=[IsAnyRole])
+            permission_classes=[LectureDuModule])
     def compatibilites(self, request, pk=None):
         """PVCOMPAT — ce produit est-il INSTALLABLE avec le reste du stock ?
 
@@ -1275,7 +1275,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
 
     @extend_schema(responses=OBJET)
     @action(detail=True, methods=['get'], url_path='utilise-dans',
-            permission_classes=[IsAnyRole])
+            permission_classes=[LectureDuModule])
     def utilise_dans(self, request, pk=None):
         """STKCAT25 — OÙ ce produit est-il utilisé ? Devis / leads / chantiers.
 
@@ -1321,7 +1321,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                                  pattern=MOTIF_NON_BLANC_SANS_NUL),
                                P('lot', STR, False, 'Numéro de lot', pattern=MOTIF_SANS_NUL)], responses=OBJET)
     @action(detail=False, methods=['get'], url_path='tracer',
-            permission_classes=[IsAnyRole])
+            permission_classes=[LectureDuModule])
     def tracer(self, request):
         """XSTK7 — rapport de traçabilité bout-en-bout (rappel fabricant) :
         `?serie=<numero>` ou `?lot=<numero>`. Remonte réception fournisseur
@@ -1369,7 +1369,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         }),
     })
     @action(detail=False, methods=['get'], url_path='tracabilite',
-            permission_classes=[IsAnyRole])
+            permission_classes=[LectureDuModule])
     def tracabilite(self, request):
         """NTWMS16 — traçabilité AMONT/AVAL bout-en-bout : ``?lot=`` ou
         ``?serie=``.
@@ -1411,7 +1411,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
 
     @extend_schema(responses=OBJET)
     @action(detail=False, methods=['get'], url_path='pret-devis-ci',
-            permission_classes=[IsAnyRole])
+            permission_classes=[LectureDuModule])
     def pret_devis_ci(self, request):
         """CCAT8 — chaque poste du devis C&I : statut, article en cause, raison,
         lien où corriger. Lecture seule, bornée à la société, jamais de prix."""
@@ -1420,7 +1420,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
 
     @extend_schema(responses=OBJET)
     @action(detail=False, methods=['get'], url_path='pret-devis-agricole',
-            permission_classes=[IsAnyRole])
+            permission_classes=[LectureDuModule])
     def pret_devis_agricole(self, request):
         """CCAT13 — jumeau agricole de ``pret_devis_ci`` : chaque poste du kit de
         pompage (pompes à courbe tri/mono, variateur, panneau, structure,
@@ -1431,7 +1431,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
 
     @extend_schema(responses=OBJET)
     @action(detail=False, methods=['get'], url_path='pret-devis-residentiel',
-            permission_classes=[IsAnyRole])
+            permission_classes=[LectureDuModule])
     def pret_devis_residentiel(self, request):
         """CCAT16 — volet résidentiel du même tableau : les règles sont celles
         du composeur résidentiel, servies par ``apps.ventes.selectors`` (RSIZ11).
@@ -1442,7 +1442,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
     @extend_schema(parameters=[P('code', STR, True, 'Code scanné (PRODUIT:<id> / SYSTEME:<id>)',
                                  pattern=MOTIF_NON_BLANC_SANS_NUL)], responses=OBJET)
     @action(detail=False, methods=['get'], url_path='resolve',
-            permission_classes=[IsAnyRole])
+            permission_classes=[LectureDuModule])
     def resolve(self, request):
         """N20 — Résout un code scanné (`PRODUIT:<id>` / `SYSTEME:<id>`) vers
         l'enregistrement correspondant, STRICTEMENT scopé à la société.

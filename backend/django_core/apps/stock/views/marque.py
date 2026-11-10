@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from core.viewsets import CompanyScopedModelViewSet
 from ..models import Produit, Marque
 from ..serializers import MarqueSerializer
-from authentication.permissions import IsAnyRole, IsAdminRole
+from authentication.permissions import LectureDuModule, IsAdminRole
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -40,7 +40,7 @@ class MarqueViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsAdminRole()]
 
     def list(self, request, *args, **kwargs):

@@ -212,11 +212,12 @@ def devis_action_requise(company, *, user=None, today=None,
             for cle, ids in paniers.items()
         },
         'wa_drafts': wa_drafts,
-        'devis': {d.id: _ligne_action_requise(d, touches) for d in lignes},
+        'devis': {d.id: _ligne_action_requise(d, touches, user=user)
+                  for d in lignes},
     }
 
 
-def _ligne_action_requise(devis, touches=None):
+def _ligne_action_requise(devis, touches=None, user=None):
     """PACT17 — de quoi RENDRE une ligne de « Relances du jour », rien de plus.
 
     Le WhatsApp vient du lead lié quand il existe (``crm.Lead.whatsapp``, lu
@@ -236,6 +237,8 @@ def _ligne_action_requise(devis, touches=None):
     whatsapp = ''
     if devis.lead_id:
         whatsapp = getattr(devis.lead, 'whatsapp', '') or ''
+    if not getattr(user, 'can_view_client_pii', True):  # APFS27
+        telephone = whatsapp = None
     total = devis.total_ttc
     touche = (touches or {}).get(devis.lead_id) if devis.lead_id else None
     prochaine_touche_crm = None

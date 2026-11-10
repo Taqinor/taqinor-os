@@ -21,7 +21,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.permissions import IsAnyRole
+from authentication.permissions import LectureDuModule
 from core.conflit_etat import ConflitEtat
 from core.viewsets import CompanyScopedModelViewSet  # ARC5
 from apps.ventes.models import Paiement, RemiseEncaissement, LigneRemiseEncaissement
@@ -68,7 +68,7 @@ class RemiseEncaissementViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['pdf']:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         # ASEC62 / D-ASEC-VER-1 — déclarer, modifier, clôturer, supprimer une
         # remise immobilise des paiements : geste d'argent, code ``encaisser``.
         return [PeutEncaisser()]

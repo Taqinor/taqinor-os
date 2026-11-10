@@ -13,7 +13,7 @@ from .document_fige import DocumentFigeMixin
 from apps.ventes.utils.references import create_with_reference
 from ..models import RetourFournisseur
 from ..serializers import RetourFournisseurSerializer, AvoirFournisseurSerializer
-from authentication.permissions import IsAnyRole, IsAdminRole, HasPermissionOrLegacy
+from authentication.permissions import LectureDuModule, IsAdminRole, HasPermissionOrLegacy
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -54,7 +54,7 @@ class RetourFournisseurViewSet(DocumentFigeMixin, CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         elif self.action in WRITE_ACTIONS + [
             'valider', 'annuler',
             # NTWMS41 — validation depuis le poste scanner : ÉCRITURE.

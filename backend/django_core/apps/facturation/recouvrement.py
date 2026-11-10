@@ -17,7 +17,7 @@ from rest_framework.response import Response
 
 from apps.crm.selectors import client_base_qs
 from authentication.permissions import (
-    IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
+    IsAdminRole, IsResponsableOrAdmin, LectureDuModule,
 )
 
 from apps.ventes.gardes_lecture import LectureFactures
@@ -325,7 +325,7 @@ class FollowupLevelViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsAdminRole()]
 
     def get_queryset(self):
@@ -380,7 +380,7 @@ class ParametrageRelanceClientViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):
-            return [IsAnyRole()]
+            return [LectureDuModule()]
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
@@ -478,6 +478,7 @@ def relances_list(request):
     mes_relances = str(request.GET.get('mes_relances') or '').strip() in (
         '1', 'true', 'True')
     rows = []
+    pii = getattr(request.user, 'can_view_client_pii', True)
     for f in _facture_due_rows(request.user):
         param = param_par_client.get(f.client_id)
         if mes_relances and (
@@ -508,7 +509,9 @@ def relances_list(request):
             'client_nom': f"{f.client.nom} {f.client.prenom or ''}".strip(),
             # L853 — téléphone client pour valider/désactiver le bouton WhatsApp
             # côté front (aucun envoi ici ; affichage/validation seulement).
-            'client_telephone': f.client.telephone if f.client_id else None,
+            # APFS27 — masqué sans ``client_pii_voir``.
+            'client_telephone': (f.client.telephone if f.client_id and pii
+                                 else None),
             'date_echeance': echeance.isoformat() if echeance else None,
             'montant_du': _s(du),
             'jours_retard': jr,
