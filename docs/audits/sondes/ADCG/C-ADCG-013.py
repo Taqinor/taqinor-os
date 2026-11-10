@@ -3,6 +3,7 @@ SONDE = {"constat": "C-ADCG-013", "sha": "ce4e5fc4f",
          "attendu": "export-comptage (artifact_ref et object_key vides) → True ; dump purgé de 2024 → True"}
 import ast, datetime, importlib, logging, pathlib, shutil, sys, tempfile, types
 RACINE = pathlib.Path(__file__).resolve().parents[4]
+if not (RACINE / "backend/django_core").is_dir(): RACINE = pathlib.Path.cwd()  # copie hors dépôt : jouée depuis la racine
 DJ = RACINE / "backend/django_core"
 
 class A:  # objet permissif : décorateurs, sérialiseurs, sql.SQL(...)
@@ -20,7 +21,8 @@ def charger(tmp):
     import datetime
     mod("django.utils", timezone=types.SimpleNamespace(now=datetime.datetime.now))
     for n in ("psycopg2", "drf_spectacular", "drf_spectacular.utils", "rest_framework", "rest_framework.decorators",
-              "rest_framework.permissions", "rest_framework.response"):
+              "rest_framework.permissions", "rest_framework.response",
+              "authentication", "authentication.permissions"):
         mod(n)
     pkg = pathlib.Path(tmp) / "core"; pkg.mkdir()
     (pkg / "__init__.py").write_text("")
@@ -37,8 +39,10 @@ class Run:
 
 
 class QS(list):
-    def filter(s, **kw): return QS(r for r in s if all(getattr(r, k) == v for k, v in kw.items()))
-    def exclude(s, **kw): return QS(r for r in s if not all(getattr(r, k) == v for k, v in kw.items()))
+    @staticmethod
+    def _ok(r, k, v): return getattr(r, k[:-5]) >= v if k.endswith("__gte") else getattr(r, k) == v
+    def filter(s, **kw): return QS(r for r in s if all(s._ok(r, k, v) for k, v in kw.items()))
+    def exclude(s, **kw): return QS(r for r in s if not all(s._ok(r, k, v) for k, v in kw.items()))
     def exists(s): return bool(s)
 
 
@@ -57,13 +61,14 @@ def sonde(ctx=None):
         BR = sys.modules["core.models"].BackupRun
         BR.KIND_EXPORT, BR.KIND_DB_DUMP = "export", "db_dump"
         ok = garde()
-        export = Run(); export.company, export.kind, export.datasets, export.declenche_par = "C", "export", [], None
+        C = types.SimpleNamespace(date_fermeture=datetime.datetime(2026, 10, 1))  # société en fermeture depuis le 01/10
+        export = Run(); export.company, export.kind, export.datasets, export.declenche_par = C, "export", [], None
         export.artifact_ref = ""
         b.executer_sauvegarde(export)                       # le vrai geste POST core/sauvegardes/
-        BR.objects = QS([export]); a = ok("C")
+        BR.objects = QS([export]); a = ok(C)
         vieux = Run(); vieux.__dict__.update(kind="db_dump", statut="termine", company=None, object_key="pg_dumps/20240101.dump",
                                              purge_is_deleted=True, termine_le=datetime.datetime(2024, 1, 1))
-        BR.objects = QS([vieux]); bb = ok("C")
+        BR.objects = QS([vieux]); bb = ok(C)
         sys.path.remove(tmp)
         for n in [n for n in sys.modules if n == "core" or n.startswith("core.")]: del sys.modules[n]
     repro = a and bb and export.artifact_ref == "" and export.object_key == ""

@@ -3,6 +3,7 @@ SONDE = {"constat": "C-ADCG-014", "sha": "ce4e5fc4f",
          "attendu": "drill : exception propagée + statut final en_cours ; dump : statut echec ; limite souple globale 120 s, aucune limite propre aux deux tâches"}
 import ast, importlib, logging, pathlib, re, shutil, sys, tempfile, types
 RACINE = pathlib.Path(__file__).resolve().parents[4]
+if not (RACINE / "backend/django_core").is_dir(): RACINE = pathlib.Path.cwd()  # copie hors dépôt : jouée depuis la racine
 DJ = RACINE / "backend/django_core"
 
 class A:  # objet permissif : décorateurs, sérialiseurs, sql.SQL(...)
@@ -24,7 +25,8 @@ def charger(tmp):
     import datetime
     mod("django.utils", timezone=types.SimpleNamespace(now=datetime.datetime.now))
     for n in ("psycopg2", "drf_spectacular", "drf_spectacular.utils", "rest_framework", "rest_framework.decorators",
-              "rest_framework.permissions", "rest_framework.response"):
+              "rest_framework.permissions", "rest_framework.response",
+              "authentication", "authentication.permissions"):
         mod(n)
     pkg = pathlib.Path(tmp) / "core"; pkg.mkdir()
     (pkg / "__init__.py").write_text("")
@@ -51,7 +53,8 @@ def sonde(ctx=None):
     logging.disable(50)
     with tempfile.TemporaryDirectory() as tmp:
         b = charger(tmp)
-        b._dernier_dump_termine = lambda: types.SimpleNamespace(pk=1, object_key="pg_dumps/x.dump")
+        b._dernier_dump_termine = lambda: types.SimpleNamespace(pk=1, object_key="pg_dumps/x.dump",
+                                                             termine_le=b.timezone.now())
         b._minio_client = lambda: types.SimpleNamespace(download_file=lambda *a: None)
         b.subprocess = sub("pg_restore")
         drill, leve = Run(), False
