@@ -445,6 +445,8 @@ def geler_document_engage(devis, user, *, statut=None, acceptation=False):
     if statut == Devis.Statut.ENVOYE:  # ASOC95 (D-ASOC-1) — échéancier figé à l'envoi
         from apps.ventes.utils.echeancier import figer_echeancier
         figer_echeancier(devis)
+        # ASOC41 — validité = envoi + réglage du jour, posée si vide (même date que CADV81).
+        poser_validite_devis(devis, date_validite_credit(devis))
 
 
 def poser_validite_devis(devis, date_validite):
