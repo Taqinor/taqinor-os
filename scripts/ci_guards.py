@@ -286,6 +286,9 @@ GARDES = {
         ('Check tests sautés = environnement signé (ENF23)',
          'python scripts/check_tests_sautes_environnement.py',
          '.'),
+        ('Tests de la garde des tests sautés (ADCG82)',
+         'python -m unittest scripts.tests.test_check_tests_sautes_environnement -v',
+         '.'),
         # AACQ77 — écrans publicité : pas de liste lue sur la page 1, pas d'échec avalé.
         ('Check écrans publicité (page 1 / échec de chargement avalé, AACQ77)',
          'python scripts/check_adsengine_ecrans.py',

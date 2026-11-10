@@ -393,6 +393,9 @@ tests_sautes_environnement:
     # Condition : test réseau désarmé (règle #5, armement fondateur VAO4)
     - "backend/parked/veille_ao/tests/test_client_portail.py::IntegrationReseauTests.test_la_sequence_contre_le_portail_reel"
     # Condition : bibliothèque optionnelle absente : PyMuPDF / WeasyPrint / qrcode / pypdf / ezdxf / Pillow / pvlib / fontTools / python-docx / langchain_core / PyJWT / fastapi (import impossible)
+    # ADCG82 — `raise unittest.SkipTest` désormais vu par la garde (sauts déjà présents) :
+    - "backend/django_core/apps/calepinage/tests/acal_livrables_helpers.py::exiger_bibliotheques_pdf"
+    - "backend/django_core/apps/calepinage/tests/test_acal_rapport_etude_servi.py::RapportEtudeServiTest.setUpClass"
     - "backend/django_core/apps/calepinage/tests/test_acal_dossier_reglementaire_generation.py::BaseGeneration.setUp"
     - "backend/django_core/apps/calepinage/tests/test_acal_nom_de_fichier.py::MemeFonctionPourLesExportsTest.test_planche_d_un_titre_arabe_garde_nom_et_extension"
     - "backend/django_core/apps/calepinage/tests/test_acal_planche_surfaces_pose.py::ChampSeulTest.test_dxf_porte_le_calque_des_surfaces"
