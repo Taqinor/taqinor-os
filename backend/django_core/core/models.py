@@ -2182,16 +2182,16 @@ class DataSubjectRequest(TimestampedModel):
     ]
 
     STATUT_RECUE = 'recue'
-    # NTGRC3 — étape de VÉRIFICATION D'IDENTITÉ : on ne livre jamais les
-    # données d'une personne sans s'être assuré que le demandeur est bien
-    # elle. Couche de statut DOCUMENTAIRE, séparée et permanente, sans aucun
-    # rapport avec le funnel commercial de STAGES.py.
+    # NTGRC3 — VÉRIFICATION D'IDENTITÉ avant toute livraison ; ASOC65 — PARTIELLE = effacement
+    # dont une source a échoué, relançable. Statut DOCUMENTAIRE, sans rapport avec STAGES.py.
     STATUT_EN_VERIFICATION = 'en_verification'
+    STATUT_PARTIELLE = 'partielle'
     STATUT_TRAITEE = 'traitee'
     STATUT_REFUSEE = 'refusee'
     STATUT_CHOICES = [
         (STATUT_RECUE, 'Reçue'),
         (STATUT_EN_VERIFICATION, "En vérification d'identité"),
+        (STATUT_PARTIELLE, 'Partiellement traitée'),
         (STATUT_TRAITEE, 'Traitée'),
         (STATUT_REFUSEE, 'Refusée'),
     ]

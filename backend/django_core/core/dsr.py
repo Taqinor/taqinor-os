@@ -180,12 +180,20 @@ def transitions_autorisees(statut):
     table = {
         DataSubjectRequest.STATUT_RECUE: {
             DataSubjectRequest.STATUT_EN_VERIFICATION,
+            DataSubjectRequest.STATUT_PARTIELLE,
             DataSubjectRequest.STATUT_TRAITEE,
             DataSubjectRequest.STATUT_REFUSEE,
         },
         DataSubjectRequest.STATUT_EN_VERIFICATION: {
+            DataSubjectRequest.STATUT_PARTIELLE,
             DataSubjectRequest.STATUT_TRAITEE,
             DataSubjectRequest.STATUT_REFUSEE,
+        },
+        # ASOC65 (D-ASOC-6) — un effacement PARTIEL se relance par ``traiter``
+        # jusqu'à complétude.
+        DataSubjectRequest.STATUT_PARTIELLE: {
+            DataSubjectRequest.STATUT_TRAITEE,
+            DataSubjectRequest.STATUT_PARTIELLE,
         },
         # Statuts TERMINAUX : une demande close ne se rouvre pas.
         DataSubjectRequest.STATUT_TRAITEE: set(),
@@ -308,8 +316,13 @@ def traiter_demande(request):
             'donnees_actuelles': exporter(company, subject),
             'note': 'Correction à traiter manuellement par le responsable.',
         }
-    request.statut = DataSubjectRequest.STATUT_TRAITEE
-    request.traitee_le = timezone.now()
+    # ASOC65 (D-ASOC-6) — un effacement dont UNE source a échoué n'est pas
+    # « traité » : il reste ouvert (partielle) et se relance par ``traiter``.
+    partiel = (request.kind == DataSubjectRequest.KIND_ERASURE and any(
+        'erreur' in v for v in request.resultat.values() if isinstance(v, dict)))
+    request.statut = (DataSubjectRequest.STATUT_PARTIELLE if partiel
+                      else DataSubjectRequest.STATUT_TRAITEE)
+    request.traitee_le = None if partiel else timezone.now()
     request.save(update_fields=['resultat', 'statut', 'traitee_le',
                                 'updated_at'])
     return request
