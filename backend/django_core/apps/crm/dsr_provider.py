@@ -416,9 +416,11 @@ def erase_crm(company, subject_identifier):
 #   * Il ne SUPPRIME rien : il anonymise, par la MÊME fonction que le DSR
 #     (`anonymiser_lead`) — deux chemins de scrub qui divergeraient, c'est un
 #     des deux qui oublierait un champ.
-#   * Il ne touche AUCUN lead devenu client (`lead.client` posé ou étape
-#     SIGNED) : la déclaration leur oppose la durée légale COMPTABLE, pas
-#     trois ans, et une facture doit rester rattachable.
+#   * Il ne touche AUCUN lead devenu client FACTURÉ (son client porte une
+#     facture, ou étape SIGNED) : la déclaration lui oppose la durée légale
+#     COMPTABLE, pas trois ans, et une facture doit rester rattachable.
+#     ASOC74 (D-ASOC-4) — un client SANS facture (posé au premier devis) reste
+#     un prospect ; il est anonymisé quand tous ses leads sont hors durée.
 #   * Il n'anonymise rien tant que le fondateur n'a pas armé l'interrupteur
 #     `CRM_LEAD_RETENTION_ACTIF` : un réglage neuf garde le comportement
 #     d'aujourd'hui, et supprimer des données clients par surprise au premier
@@ -468,8 +470,11 @@ def prospects_hors_duree(now=None):
 
     now = now or timezone.now()
     limite = now - datetime.timedelta(days=DUREE_CONSERVATION_PROSPECTS_JOURS)
+    # ASOC74 (D-ASOC-4) — un client SANS facture reste un prospect (le
+    # client est posé dès le premier devis) ; relation inverse à chaîne.
     return (Lead.objects
-            .filter(client__isnull=True)
+            .filter(Q(client__isnull=True) | Q(client__factures__isnull=True))
+            .distinct()
             .exclude(stage=stages.SIGNED)
             .exclude(nom=LEAD_NOM_ANONYMISE)
             .annotate(dernier_contact=Coalesce(Max('activites__created_at'),
@@ -491,12 +496,17 @@ def sweep_retention_prospects(now, apply_=False):
     if not apply_ or not _retention_armee():
         return len(leads)
     compte = 0
+    motif = ('Rétention (loi 09-08) — prospect sans contact depuis '
+             f'{DUREE_CONSERVATION_PROSPECTS_ANS} ans, durée déclarée '
+             'au registre des traitements')
     for lead in leads:
-        compte += anonymiser_lead(
-            lead.company, lead,
-            motif=('Rétention (loi 09-08) — prospect sans contact depuis '
-                   f'{DUREE_CONSERVATION_PROSPECTS_ANS} ans, durée déclarée '
-                   'au registre des traitements'))
+        compte += anonymiser_lead(lead.company, lead, motif=motif)
+    # ASOC74 — le client sans facture part quand TOUS ses leads sont hors durée.
+    ids = [le.pk for le in leads]
+    for cl in {le.client_id: le.client for le in leads if le.client_id}.values():
+        if not cl.is_anonymized and not cl.leads.exclude(pk__in=ids).exclude(
+                nom=LEAD_NOM_ANONYMISE).exists():
+            anonymiser_client(cl.company, cl, motif=motif)
     return compte
 
 
