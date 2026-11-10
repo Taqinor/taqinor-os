@@ -118,12 +118,12 @@ class GenererDevisPortesTest(BaseApiCalepinage):
                 self.assertEqual(reponse.status_code, 409, reponse.data)
                 self.assertEqual(list(reponse.data), [champ])
                 self.assertIn(devis.reference, reponse.data[champ])
-        from apps.calepinage.services.devis import pourcentage_lisible
+        from apps.calepinage.services.devis import _pourcentage_lisible
 
         self.assertEqual(self.api.post(
             url, {'taux_tva': 10}, format='json').data['taux_tva'],
             f'Le devis {devis.reference} existe déjà à '
-            f'{pourcentage_lisible(tva)} % : changez la TVA depuis le devis.')
+            f'{_pourcentage_lisible(tva)} % : changez la TVA depuis le devis.')
         for corps in ({}, {'taux_tva': str(tva)}):
             with self.subTest(corps=corps):
                 reponse = self.api.post(url, corps, format='json')

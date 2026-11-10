@@ -420,13 +420,13 @@ def _refuser_montants_differents(brouillon, montants):
         actuel = getattr(brouillon, cle, None)
         if cle in montants and actuel is not None and montants[cle] != actuel:
             message = (f"Le devis {brouillon.reference} existe déjà "
-                       f"{quoi.format(pourcentage_lisible(actuel))} : "
+                       f"{quoi.format(_pourcentage_lisible(actuel))} : "
                        f"changez {geste} depuis le devis.")
             raise DevisRefuse(message, champ=cle, statut=409,
                               donnees={cle: message})
 
 
-def pourcentage_lisible(valeur):
+def _pourcentage_lisible(valeur):
     """ACON49 — ``Decimal('20.00')`` ⇒ ``'20'``, ``5.50`` ⇒ ``'5,5'``."""
     texte = f'{valeur:f}'
     if '.' in texte:
