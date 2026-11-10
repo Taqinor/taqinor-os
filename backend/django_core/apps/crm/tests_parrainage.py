@@ -49,6 +49,29 @@ class TestParrainage(TestCase):
             'parrain': foreign.id, 'filleul_nom': 'Ami'}, format='json')
         self.assertEqual(r.status_code, 400)
 
+    def test_auto_parrainage_et_doublon_refuses(self):
+        """ASOC71 — auto-parrainage et second parrainage du même filleul : 400
+        nommant le champ ; PATCH du statut d'un parrainage existant : 200."""
+        from apps.crm.models import Lead
+
+        url = '/api/django/crm/parrainages/'
+        r = self.api.post(url, {'parrain': self.parrain.id,
+                                'filleul_client': self.parrain.id}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('se parrainer lui-même', str(r.data['filleul_client']))
+        lead = Lead.objects.create(company=self.company, nom='Filleul')
+        premier = self.api.post(url, {'parrain': self.parrain.id,
+                                      'filleul_lead': lead.id}, format='json')
+        self.assertEqual(premier.status_code, 201, premier.data)
+        p2 = Client.objects.create(company=self.company, nom='Parrain 2')
+        r = self.api.post(url, {'parrain': p2.id, 'filleul_lead': lead.id},
+                          format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('déjà un parrainage', str(r.data['filleul_lead']))
+        r = self.api.patch(f"{url}{premier.data['id']}/", {'statut': 'converti'},
+                           format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+
     def test_list_scoped_to_company(self):
         Parrainage.objects.create(company=self.company, parrain=self.parrain)
         Parrainage.objects.create(
