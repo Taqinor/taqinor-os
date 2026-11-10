@@ -19,6 +19,7 @@ from rest_framework.response import Response
 from ..models import Devis
 from ..serializers import DevisSerializer, DevisWriteSerializer
 from authentication.permissions import IsResponsableOrAdmin
+from apps.roles.permissions import DroitDeLaGrille
 from ..utils.company_settings import create_numbered
 from .devis_gardes import (
     _refus_modifiabilite,
@@ -501,8 +502,8 @@ class DevisEditionActionsMixin:
 
     @extend_schema(request=D.ReplaceLinesRequest, responses=DevisSerializer,
                    extensions=D.CORPS_REPLACE_LINES)
-    @action(detail=True, methods=['post'], url_path='replace-lines',
-            permission_classes=[IsResponsableOrAdmin])
+    @action(detail=True, methods=['post'], url_path='replace-lines',  # ASEC86 — grille « Modifier »
+            permission_classes=[IsResponsableOrAdmin, DroitDeLaGrille('ventes_modifier')])
     def replace_lines(self, request, pk=None):
         """QX21be — remplace ATOMIQUEMENT toutes les lignes d'un devis en un
         seul commit (édition). Remplace le delete-all-puis-recréer à erreurs

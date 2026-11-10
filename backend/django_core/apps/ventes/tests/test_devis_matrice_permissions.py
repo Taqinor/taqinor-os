@@ -77,7 +77,7 @@ FIGEE = {
     'offres_tailles': RESP, 'offres_tailles_appliquer': RESP,
     'offres_tailles_config': RESP, 'offres_tailles_regenerer': RESP,
     'override_regenerer': RESP, 'overrides': RESP, 'proforma_pdf': RESP, 'renouveler': RESP,
-    'replace_lines': RESP, 'reviser': RESP, 'roof_image': RESP,
+    'reviser': RESP, 'roof_image': RESP,
     'save_preset': RESP, 'share_link': RESP, 'simulation_status': RESP,
     'simuler': RESP, 'sync_layout': RESP, 'telecharger_pdf': RESP,
     'variantes': RESP, 'whatsapp': RESP, 'whatsapp_preview': RESP,
@@ -107,6 +107,8 @@ FIGEE = {
     # ATOT62 — confirmer l'avoir de révision en attente : même palier ;
     # ASEC85 (D-ASEC-VER-1) — un avoir émis exige aussi ``encaisser``.
     'confirmer_avoir_revision': PALIER_VENTE + ('HasPermissionOrLegacy_encaisser',),
+    # ASEC86 — la vraie porte d'édition du générateur : grille « Modifier ».
+    'replace_lines': (RESP, 'DroitDeLaGrille_ventes_modifier'),
     # CADV82 — l'appel J28 prolonge la validité d'un envoyé (écriture).
     'prolonger_validite': RESP,
 }
@@ -341,3 +343,39 @@ class MatricePermissionsDevis(TestCase):
         api.force_authenticate(commercial)
         r = api.post('/api/django/ventes/devis/', corps, format='json')
         self.assertEqual(r.status_code, 201, r.data)
+
+    def test_replace_lines_exige_ventes_modifier(self):
+        """ASEC86 (C-ASEC-VER5-071, D-ASEC-4) — un rôle = Commercial du
+        registre SANS ``ventes_modifier`` reçoit 403 ``droit_manquant`` à
+        ``POST replace-lines``, lignes intactes ; le Commercial du registre :
+        200. Mutant : ôter ``DroitDeLaGrille`` ⇒ échec."""
+        from decimal import Decimal
+
+        from apps.ventes.models import LigneDevis
+        client = Client.objects.create(company=self.company, nom='ASEC86')
+        prive = self._compte('Commercial sans modifier', [
+            c for c in registre.COMMERCIAL_PERMISSIONS
+            if c != 'ventes_modifier'])
+        commercial = self._compte('Commercial', registre.COMMERCIAL_PERMISSIONS)
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-ASEC86-1', client=client,
+            statut=Devis.Statut.BROUILLON, created_by=prive)
+        LigneDevis.objects.create(
+            devis=devis, designation='Panneau', quantite=Decimal('1'),
+            prix_unitaire=Decimal('100'), remise=Decimal('0'))
+        url = '/api/django/ventes/devis/%s/replace-lines/' % devis.pk
+        corps = {'lignes': [{'designation': 'Pirate', 'quantite': '1',
+                             'prix_unitaire': '100.00', 'taux_tva': '20'}]}
+        api = APIClient()
+        api.force_authenticate(prive)
+        r = api.post(url, corps, format='json')
+        self.assertEqual(r.status_code, 403, r.data)
+        self.assertEqual(r.data.get('code'), 'droit_manquant', r.data)
+        # CLAUSE PERSISTANCE — relu en base : « Panneau » seule.
+        self.assertEqual(list(LigneDevis.objects.filter(devis=devis)
+                              .values_list('designation', flat=True)),
+                         ['Panneau'])
+        Devis.objects.filter(pk=devis.pk).update(created_by=commercial)
+        api.force_authenticate(commercial)
+        r = api.post(url, corps, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
