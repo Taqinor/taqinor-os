@@ -184,6 +184,13 @@ class TableauDeBordClientTests(TestCase):
             str(date.today() + timedelta(days=5)))
 
     def test_tickets_ouverts(self):
+        """ASOC45 — la carte compte les demandes portail non closes (la liste
+        qu'elle ouvre), jamais les tickets SAV internes (3 en setUp)."""
+        from apps.portail.models import DemandeTicketPortail
+        for statut in ('soumise', 'prise_en_charge', 'resolue', 'refusee'):
+            DemandeTicketPortail.objects.create(
+                company=self.company, client=self.client_a, sujet=statut,
+                statut=statut)
         self.api.force_authenticate(user=self.user_a)
         res = self.api.get(URL)
         self.assertEqual(res.data['tickets_ouverts'], 2)

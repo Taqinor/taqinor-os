@@ -26,6 +26,7 @@ from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
+from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL, non_blanc
 from authentication.permissions import (
     HasPermissionOrLegacy, IsAdminRole, IsResponsableOrAdmin,
 )
@@ -68,6 +69,9 @@ _TICKET_ID = inline_serializer('PortailTicketIdRequest', {
 })
 _TICKET_ID_OPT = inline_serializer('PortailTicketIdOptionnelRequest', {
     'ticket_id': serializers.IntegerField(required=False, allow_null=True),
+})
+_MOTIF_REFUS = inline_serializer('PortailRefusDemandeRequest', {
+    'motif': serializers.RegexField(MOTIF_NON_BLANC_SANS_NUL),
 })
 _RAPPROCHER = inline_serializer('PortailRapprocherRequest', {
     'reference': serializers.CharField(required=False, allow_blank=True, allow_null=True),
@@ -550,4 +554,22 @@ class DemandeTicketPortailViewSet(_PortailBaseViewSet):
             return self._refus_ticket()
         demande.ticket_id = ticket.id
         demande.save(update_fields=['ticket_id'])
+        return Response(self.get_serializer(demande).data)
+
+    @extend_schema(request=_MOTIF_REFUS, responses=DemandeTicketPortailSerializer)
+    @action(detail=True, methods=['post'], permission_classes=[IsResponsableOrAdmin])
+    def refuser(self, request, pk=None):
+        """ASOC98 — refus motivé (le client lit « Refusée » et le motif) ;
+        même borne 409 que ``lier-ticket`` sur une demande close."""
+        demande = self.get_object()
+        if demande.statut in (DemandeTicketPortail.Statut.RESOLUE,
+                              DemandeTicketPortail.Statut.REFUSEE):
+            return Response({'detail': 'Demande close : refus impossible.'},
+                            status=status.HTTP_409_CONFLICT)
+        motif = request.data.get('motif')
+        if not isinstance(motif, str) or '\x00' in motif or not non_blanc(motif):
+            raise ValidationError({'motif': 'Motif obligatoire.'})
+        demande.statut = DemandeTicketPortail.Statut.REFUSEE
+        demande.motif_refus = motif.strip()
+        demande.save(update_fields=['statut', 'motif_refus'])
         return Response(self.get_serializer(demande).data)

@@ -130,6 +130,26 @@ class DemandePortailContratMaintenanceTests(TestCase):
         self.assertFalse(
             Notification.objects.exclude(company=self.company).exists())
 
+    def test_demande_a_sa_propre_cle(self):
+        """ASOC93 — « Récapitulatif » (digest) coupé : l'admin reçoit quand
+        même la demande, sous `sav_demande_contrat_portail`, comptée en action."""
+        from apps.notifications.models import Notification, NotificationPreference
+        from apps.notifications.severity import is_action
+
+        admin = User.objects.create_user(
+            username='asoc93-admin', password='x', role_legacy='admin',
+            company=self.company)
+        NotificationPreference.objects.create(
+            user=admin, company=self.company, event_type='digest',
+            in_app=False, email=False, whatsapp=False, push=False)
+        services.demander_action_portail_maintenance(
+            self.contrat, type_demande='resiliation')
+        notes = Notification.objects.filter(recipient=admin)
+        self.assertEqual(
+            list(notes.values_list('event_type', flat=True)),
+            ['sav_demande_contrat_portail'])
+        self.assertTrue(is_action(notes.get().event_type))
+
 
 class ListePortailContratsMaintenanceTests(TestCase):
 
