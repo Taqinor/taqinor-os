@@ -72,9 +72,13 @@ ENFORCED_ENDPOINT = """\
 
 
 class TestManifestAbsent(_Harness):
-    def test_missing_manifest_is_ok(self):
+    def test_missing_manifest_is_red(self):
+        """ADCG81 — un manifeste renommé/supprimé ne désarme pas la garde."""
         self.assertFalse(self.manifest.exists())
-        self.assertEqual(cqb.main(), 0)
+        erreur = io.StringIO()
+        with contextlib.redirect_stderr(erreur):
+            self.assertEqual(cqb.main(), 1)
+        self.assertIn("docs/query-budgets.yml introuvable", erreur.getvalue())
 
 
 class TestRougeDabordEnforcedWithoutTest(_Harness):

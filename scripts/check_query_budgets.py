@@ -19,7 +19,7 @@ occurrence : un endpoint déclaré ``enforced: true`` sans test de budget ne
 faisait rougir AUCUN job CI.
 
 Comportement :
-- manifeste absent          -> notice + exit 0 (rien à garder) ;
+- manifeste absent          -> exit 1 (ADCG81 : jamais désarmé en silence) ;
 - PyYAML absent             -> ÉCHEC EXPLICITE (exit 1, AUD831). Un
   environnement CI où PyYAML manque est une régression d'environnement, pas
   un cas légitime — un exit 0 silencieux serait exactement le faux-vert que
@@ -163,8 +163,9 @@ def _colonnes_non_verifiees(entry: dict, corpus: dict):
 
 def main() -> int:
     if not MANIFEST.exists():
-        print("check_query_budgets: docs/query-budgets.yml absent — skip.")
-        return 0
+        print("check_query_budgets: docs/query-budgets.yml introuvable.",
+              file=sys.stderr)
+        return 1
     try:
         import yaml
     except ImportError:

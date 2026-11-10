@@ -176,13 +176,12 @@ class MainEndToEndTests(unittest.TestCase):
         exit_code = cbo.main([])
         self.assertEqual(exit_code, 0)
 
-    def test_missing_file_is_green_not_red(self):
-        """A missing BUILD_ORDER.yml (pre-SCA1 repo state) must never fail
-        the build -- it's an optional file whose absence just means gating
-        hasn't landed yet."""
+    def test_missing_file_is_red(self):
+        """ADCG81 — BUILD_ORDER.yml absent = garde désarmée en silence :
+        échec (SCA1 a atterri ; le planificateur garde son None)."""
         missing = Path(tempfile.mktemp(suffix=".yml"))
         exit_code = cbo.main([str(missing)])
-        self.assertEqual(exit_code, 0)
+        self.assertEqual(exit_code, 1)
 
     def test_injected_cycle_fails_the_build_specifically_on_the_cycle(self):
         # Insert INSIDE edges: (appending after unmapped_ok's list would
