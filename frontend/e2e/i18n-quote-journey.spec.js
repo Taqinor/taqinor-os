@@ -133,7 +133,14 @@ test('NTI18N47: interface en arabe, client arabe, devis multilingue généré', 
   await page.getByRole('switch', { name: /Composition libre/ }).check()
   const creation = page.waitForResponse((r) => r.request().method() === 'POST'
     && /\/ventes\/devis\/atomic\/$/.test(new URL(r.url()).pathname), { timeout: 30_000 })
-  await page.locator('#gen-form').getByRole('button', { name: /Créer le devis/ }).click()
+  const boutonCreer = page.locator('#gen-form').getByRole('button', { name: /Créer le devis/ })
+  await boutonCreer.click()
+  // ADCG69 — AGNR73 : avec des lignes sans produit, le 1er clic n'envoie rien et
+  // annonce « … sans produit ne sera/seront pas enregistrée(s) » ; le 2e confirme.
+  const ecartees = page.getByText(/sans produit ne ser(a|ont) pas enregistrée/).first()
+  if (await ecartees.waitFor({ state: 'visible', timeout: 5_000 }).then(() => true, () => false)) {
+    await boutonCreer.click()
+  }
   const reponseCreation = await creation
   expect(reponseCreation.status(), `création du devis : ${await reponseCreation.text()}`)
     .toBeLessThan(300)
