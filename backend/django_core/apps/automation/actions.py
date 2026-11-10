@@ -286,9 +286,9 @@ def _message_body(rule, context, instance=None, company=None):
     """Corps du message : texte littéral, sinon modèle Paramètres existant.
 
     Substitue les variables ``{var}`` connues (enregistrement — APAR6 — puis
-    ``context``, XPRJ23) ; une variable inconnue reste littérale. Les envois
-    e-mail passent par :func:`rendre_texte` (strict : SKIPPED si une variable
-    manque).
+    ``context``, XPRJ23) ; une variable inconnue reste littérale. L'e-mail et
+    la tâche WhatsApp (APAR91) passent par :func:`rendre_texte` (strict :
+    SKIPPED si une variable manque).
     """
     if company is None:
         company = getattr(rule, 'company', None)
@@ -363,7 +363,10 @@ def preparer_whatsapp(rule, instance, company, context):
     phone = _resolve_phone(instance)
     if not phone:
         return 'Aucun numéro WhatsApp : envoi ignoré.', None, None, ''
-    body = _message_body(rule, context, instance, company)
+    # APAR91 — rendu strict comme l'e-mail : jamais une tâche avec « {…} ».
+    body, manquantes = rendre_texte(_texte_brut(rule, company), instance, company, context)
+    if manquantes:
+        return motif_variables(manquantes, 'tâche WhatsApp non créée'), phone, None, ''
     try:
         from apps.ventes.utils.whatsapp import build_wa_url
         url = build_wa_url(phone, body or '')
@@ -411,8 +414,8 @@ def _send_whatsapp(rule, instance, company, context, user):
         return refus
     motif, phone, url, body = preparer_whatsapp(
         rule, instance, company, context)
-    if motif:
-        return Status.NOOP, motif
+    if motif:  # APAR91 — variable non résolue : SKIPPED, comme l'e-mail
+        return (Status.SKIPPED if motif.startswith('Variable(s) non résolue(s)') else Status.NOOP), motif
     report = reporter_hors_fenetre(rule, instance, company, context)
     if report is not None:  # APAR26 — jamais en pleine nuit
         return report

@@ -104,6 +104,17 @@ def _co_filter(user):
     return None
 
 
+def _activites_visibles(user, co):
+    """ACHT138 — la vue de ``ActivityViewSet.get_queryset`` : sans l'à-faire
+    personnel d'autrui (XKB4) ni les leads hors portée (ACVI105)."""
+    from django.db.models import Q
+
+    from apps.records.models import Activity
+    from apps.records.views import pieces_visibles
+    qs = Activity.objects.filter(**co).exclude(Q(personnelle=True) & ~Q(created_by=user))
+    return pieces_visibles(qs, user, Q(assigned_to=user) | Q(created_by=user))
+
+
 def _parse_date(value, fallback):
     try:
         return date.fromisoformat((value or '').strip())
@@ -251,9 +262,8 @@ def calendar_events(request):
 
     # ── Activités de suivi (records.Activity ouvertes) ────────────────────
     if want('activite'):
-        from apps.records.models import Activity
-        qs = (Activity.objects.filter(**co, done=False,
-                                      due_date__gte=start, due_date__lte=end)
+        qs = (_activites_visibles(request.user, co)
+              .filter(done=False, due_date__gte=start, due_date__lte=end)
               .select_related('assigned_to'))
         if assignee_id:
             qs = qs.filter(assigned_to_id=assignee_id)
@@ -340,8 +350,8 @@ def calendar_reschedule(request):
             iv = scoper_interventions(
                 Intervention.objects.filter(**co), request.user).get(pk=obj_id)
             replanifier(iv, new_date, 'Agenda — glisser-déposer', request.user)
-        else:  # activite
-            act = Activity.objects.filter(**co).get(pk=obj_id)
+        else:  # activite — ACHT139 : hors de la vue des activités = 404
+            act = _activites_visibles(request.user, co).get(pk=obj_id)
             act.due_date = new_date
             act.save(update_fields=['due_date'])
     except (Installation.DoesNotExist, Intervention.DoesNotExist,
