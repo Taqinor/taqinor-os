@@ -942,7 +942,15 @@ def importer_projet(document, company, *, user=None, lead_id=None,
             'le projet importé (un seul des deux).', champ='lead', statut=400)
     _trier_produits(plan, company)
     if apercu:
+        from apps.crm.selectors import get_company_client
+
         from ..selectors import calepinage_ouvert_du_lead
+        from .creation import lead_en_portee
+        # ACON94 — même résolution que l'import réel : lead en portée CRM, client de la société.
+        if lead_id and lead_en_portee(company, lead_id, user) is None:
+            raise ImportProjetRefuse(f'Lead introuvable (#{lead_id}).', champ='lead', statut=404)
+        if client_id and get_company_client(company, client_id) is None:
+            raise ImportProjetRefuse(f'Client introuvable (#{client_id}).', champ='client', statut=404)
         existant = calepinage_ouvert_du_lead(company, lead_id)
         if existant is not None:
             raise _refus_deja_ouvert(existant, user)
