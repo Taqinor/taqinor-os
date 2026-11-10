@@ -271,3 +271,44 @@ class LesCinqCheminsDisentLaMemePhrase(TestCase):
         devis = creer_devis_automatique_depuis_lead(
             lead_id=self._lead().id, company_id=self.company.id)
         self.assertIsNotNone(devis)
+
+
+class UnMicroOnduleurNestJamaisLOnduleurDuSysteme(TestCase):
+    """ADCG45 (revue) — D-ADCG-3 classe RÉSEAU une ligne micro-onduleur déjà
+    posée au devis ; ``_pick_product`` (étape ``verifier``, composition) ne
+    choisit JAMAIS un micro-onduleur tarifé comme l'onduleur du système, même
+    le moins cher. Test-du-test : retirer ``_pas_micro_onduleur`` de
+    ``_pick_product`` ⇒ les deux assertions rougissent."""
+
+    def setUp(self):
+        from authentication.models import Company
+
+        self.company, _ = Company.objects.get_or_create(
+            slug='adcg45-verifier', defaults={'nom': 'adcg45-verifier'})
+        self._produit('Panneau Canadien Solar 710W', 'A45-PAN', '1450')
+        self._produit('Micro-onduleur 800W', 'A45-MICRO', '1490')
+
+    def _produit(self, nom, sku, prix):
+        return Produit.objects.create(
+            company=self.company, nom=nom, sku='%s-%s' % (sku, self.company.pk),
+            prix_vente=Decimal(prix), prix_achat=Decimal('1'),
+            quantite_stock=500)
+
+    def _verifier(self):
+        return etape_composer.verifier(etape_composer.IntentionComposition(
+            company=self.company, nb_panneaux=9, kwc=6.39, scenario='sans'))
+
+    def test_un_micro_onduleur_seul_ne_sert_pas_l_option_sans(self):
+        self.assertIsNone(etape_composer._pick_product(
+            self.company, etape_composer._is_reseau_inverter,
+            role='onduleur_reseau'))
+        self.assertIn(etape_composer.MSG_SANS_ONDULEUR_RESEAU,
+                      self._verifier() or [])
+
+    def test_le_vrai_onduleur_reseau_gagne_meme_plus_cher(self):
+        huawei = self._produit('Onduleur réseau Huawei 5kW Monophasé',
+                               'A45-ONDR', '14000')
+        self.assertEqual(etape_composer._pick_product(
+            self.company, etape_composer._is_reseau_inverter,
+            role='onduleur_reseau'), huawei)
+        self.assertIsNone(self._verifier())
