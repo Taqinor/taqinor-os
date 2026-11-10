@@ -30,6 +30,7 @@ from authentication.permissions import (
     IsAdminOrResponsableTier,
     HasPermissionOrLegacy,
 )
+from apps.facturation.views.facture_gardes import PeutEncaisser
 from ..gardes_lecture import LectureVentes
 from .devis_gardes import _refus_modifiabilite, _reponse_non_modifiable
 
@@ -545,7 +546,7 @@ class DevisCycleActionsMixin:
             'avoirs': serializers.ListField(child=serializers.DictField())}),
         409: D.ErreurDevisFige})
     @action(detail=True, methods=['post'], url_path='confirmer-avoir-revision',
-            permission_classes=PALIER_VENTE)
+            permission_classes=PALIER_VENTE + [PeutEncaisser])  # ASEC85 — un avoir exige encaisser
     def confirmer_avoir_revision(self, request, pk=None):
         """ATOT62 (C-ATOT-VER4-022) — émet l'avoir de révision qui attend sa
         confirmation (VNT64 ; contrat ``devis_confirmer_avoir_revision.json``,

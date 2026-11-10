@@ -721,7 +721,7 @@ def reappliquer_lead(devis, *, user=None, company=None):
     from apps.crm.selectors import lead_du_devis, lead_values_changed_since
     from apps.ventes.domain.modifiabilite import (
         consigner_correction_apres_envoi, debut_de_geste_devis,
-        empreinte_visible)
+        empreinte_visible, rebaser_echeancier_ou_409, ttc_du_devis)
 
     company = company or getattr(devis, 'company', None)
     ancienne = (getattr(devis, 'etude_params', None) or {}).get('provenance')
@@ -732,6 +732,7 @@ def reappliquer_lead(devis, *, user=None, company=None):
     corrige = False
     with transaction.atomic():
         avant = debut_de_geste_devis(devis, user)
+        ttc_avant = ttc_du_devis(devis)  # AGNR77 — TTC lu AVANT le geste
         appliquer(devis, IntentionDevis(
             origine=ORIGINE_ECRAN, mode=MODE_RAFRAICHIR, company=company,
             force_etudes=True))
@@ -740,6 +741,9 @@ def reappliquer_lead(devis, *, user=None, company=None):
             avertissements.extend(
                 _reconcilier_sur_le_lead(devis, lead, company, user))
         devis.refresh_from_db()
+        # AGNR77 — LA règle d'AGNR49 au nouveau TTC ; dépassement ⇒ 409
+        # ``{detail, echeancier}``, tout le geste annulé.
+        rebaser_echeancier_ou_409(devis, ttc_avant=ttc_avant)
         restamper_provenance(devis)
         if avant is not None and empreinte_visible(devis) != avant:
             consigner_correction_apres_envoi(

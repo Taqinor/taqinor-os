@@ -1305,6 +1305,78 @@ class RevisionApresVisiteCorc2Tests(_Base):
         self.assertEqual(devis.statut, Devis.Statut.ENVOYE)  # règle #4
         self.assertEqual(list(devis.lignes.values_list('designation', 'quantite')), lignes_v1)
 
+    def test_revision_echeancier_rebase_ou_refus(self):
+        """AGNR77 (C-AGNR-VER5-063) — la révision C&I après visite qui change
+        le TTC re-base l'échéancier stocké par LA règle d'AGNR49 ou refuse
+        (``field`` = ``echeancier``) sans rien écrire — envoyé : aucune V2,
+        V1 active ; tout en % : inchangé. Mutant : ôter l'appel ⇒ échec."""
+        from decimal import ROUND_FLOOR, ROUND_HALF_UP
+
+        from apps.ventes.domain.modifiabilite import ttc_du_devis
+        from apps.ventes.domain.revision_visite_ci import RevisionVisiteError
+
+        def _ech(acompte):
+            return [{'libelle': 'Commande', 'type': 'acompte', 'unite': 'montant',
+                     'pct_or_montant': acompte},
+                    {'libelle': 'Livraison', 'unite': 'pct', 'pct_or_montant': 40},
+                    {'libelle': 'Réception', 'unite': 'pct', 'pct_or_montant': 10}]
+
+        def _devis(statut, echeancier):
+            lead = self._lead(conso_mensuelle_kwh=Decimal('6000'))
+            devis = self._auto(lead)
+            self._visite(lead, dc=5, ac=5)  # cheminements plus courts : TTC en baisse
+            ttc = ttc_du_devis(devis)
+            Devis.objects.filter(pk=devis.pk).update(statut=statut, echeancier=echeancier(ttc))
+            devis.refresh_from_db()
+            return devis, ttc
+
+        # (1) Brouillon, acompte en MAD = TTC courant : refus nommé, rien d'écrit.
+        devis, ttc_avant = _devis(Devis.Statut.BROUILLON, lambda ttc: _ech(float(ttc)))
+        trop = devis.echeancier
+        lignes = list(devis.lignes.order_by('id').values_list('id', 'quantite', 'prix_unitaire'))
+        with self.assertRaises(RevisionVisiteError) as ctx:
+            self._reviser(devis)
+        self.assertEqual(ctx.exception.champ, 'echeancier')
+        # CLAUSE PERSISTANCE — relu en base : lignes et échéancier identiques.
+        relu = Devis.objects.get(pk=devis.pk)
+        self.assertEqual(relu.echeancier, trop)
+        self.assertEqual(list(relu.lignes.order_by('id').values_list(
+            'id', 'quantite', 'prix_unitaire')), lignes)
+        # (2) Acompte 1 000 MAD : recomposé, dernière tranche = reste au nouveau TTC.
+        Devis.objects.filter(pk=devis.pk).update(echeancier=_ech(1000))
+        devis.refresh_from_db()
+        self._reviser(devis)
+        ttc = ttc_du_devis(devis)
+        self.assertLess(ttc, ttc_avant)
+        relu = Devis.objects.get(pk=devis.pk).echeancier
+        self.assertEqual(relu[-1]['unite'], 'montant')
+        self.assertEqual(Decimal(str(relu[-1]['pct_or_montant'])), ttc - Decimal('1000') - (
+            ttc * 40 / 100).quantize(Decimal('0.01'), ROUND_HALF_UP))
+        # (3) Envoyé, acompte au plafond d'avant (≤ 60 % du TTC) : la route
+        # répond 409 ``{detail, field: 'echeancier'}``, aucune V2, V1 active.
+        envoye, _ttc = _devis(Devis.Statut.ENVOYE, lambda ttc: _ech(int(
+            (ttc * Decimal('0.6')).to_integral_value(ROUND_FLOOR))))
+        nb_devis = Devis.objects.filter(company=self.co).count()
+        api = APIClient()
+        api.force_authenticate(self.user)
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
+            r = api.post('/api/django/ventes/etude-ci/reviser-apres-visite/',
+                         {'devis': envoye.pk}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual((r.data.get('field'), bool(r.data.get('detail'))), ('echeancier', True))
+        self.assertEqual(Devis.objects.filter(company=self.co).count(), nb_devis)
+        envoye.refresh_from_db()
+        self.assertTrue(envoye.is_active)
+        self.assertIsNone(envoye.superseded_by_id)
+        # (4) Tout en % : la V2 recomposée garde l'échéancier tel quel.
+        tout_pct = [{'libelle': 'A', 'type': 'acompte', 'unite': 'pct', 'pct_or_montant': 30},
+                    {'libelle': 'S', 'type': 'solde', 'unite': 'pct', 'pct_or_montant': 70}]
+        Devis.objects.filter(pk=envoye.pk).update(echeancier=tout_pct)
+        envoye.refresh_from_db()
+        resultat = self._reviser(envoye)
+        self.assertTrue(resultat['cree'])
+        self.assertEqual(Devis.objects.get(pk=resultat['devis'].pk).echeancier, tout_pct)
+
 
 class BrouillonsMultiplesCorc7Tests(_Base):
     """CORC7 (27/10/2026) — un 2ᵉ devis automatique C&I sur le même lead
