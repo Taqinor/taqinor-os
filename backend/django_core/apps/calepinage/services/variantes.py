@@ -242,6 +242,11 @@ def supprimer_variante(variante, *, user=None):
     return True
 
 
+#: ACON26 — retenir une variante dont la conception est vide.
+MESSAGE_VARIANTE_SANS_CONCEPTION = ("La variante n'a pas de conception : "
+                                    "dessinez-la avant de la retenir.")
+
+
 def retenir_variante(variante, *, user=None, appliquer=True):
     """Bascule ``variante`` en RETENUE, atomiquement — et l'ÉCRIT comme
     conception courante (ACAL107, D-ACAL-2).
@@ -265,7 +270,7 @@ def retenir_variante(variante, *, user=None, appliquer=True):
     """
     from django.db import transaction
 
-    from ..models import CalepinageVariante
+    from ..models import Calepinage, CalepinageVariante
 
     if variante is None or not getattr(variante, 'pk', None):
         raise VarianteRefusee(
@@ -286,14 +291,24 @@ def retenir_variante(variante, *, user=None, appliquer=True):
                                variante=variante)
     document = (variante.roof_layout
                 if isinstance(variante.roof_layout, dict) else None)
+    if appliquer and document == {}:
+        # ACON26 — un document VIDE écraserait la conception courante.
+        raise VarianteRefusee(MESSAGE_VARIANTE_SANS_CONCEPTION,
+                              champ='roof_layout', etat=True)
 
-    deja_retenue = bool(CalepinageVariante.objects
-                        .filter(pk=variante.pk, retenue=True).exists())
-    ancienne = (CalepinageVariante.objects
-                .filter(calepinage_id=variante.calepinage_id, retenue=True)
-                .exclude(pk=variante.pk)
-                .first())
     with transaction.atomic():
+        # ACON29 — le PIVOT verrouillé AVANT de lire la retenue : deux
+        # « Retenir » simultanés se sérialisent (jamais l'IntegrityError
+        # de la contrainte partielle, rendue en 409 générique).
+        list(Calepinage.objects.select_for_update()
+             .filter(pk=variante.calepinage_id).values_list('pk', flat=True))
+        deja_retenue = bool(CalepinageVariante.objects
+                            .filter(pk=variante.pk, retenue=True).exists())
+        ancienne = (CalepinageVariante.objects
+                    .filter(calepinage_id=variante.calepinage_id,
+                            retenue=True)
+                    .exclude(pk=variante.pk)
+                    .first())
         if not deja_retenue:
             with bascule_autorisee():
                 (CalepinageVariante.objects
@@ -331,7 +346,49 @@ def retenir_variante(variante, *, user=None, appliquer=True):
 #: ``appel_offre_id`` ; les variantes copiées naissent NON retenues et SANS
 #: résultat. Ni ``version_moteur`` (lot 2 critique #14) : elle qualifie un
 #: RÉSULTAT, et la copie n'en a aucun — vide jusqu'au premier calcul.
+#: ACON11 — vers un AUTRE site, le DOCUMENT lui-même perd en plus
+#: :data:`CLES_D_UN_AUTRE_SITE` (``preparer_pour_cible``).
 CHAMPS_COPIES = ('roof_layout', 'layout_hash', 'pertes')
+
+#: ACON11 (D-ACAL-15) — les clés du document propres au site et au client
+#: de la SOURCE : jamais recopiées vers un autre lead/client (modèle compris).
+CLES_D_UN_AUTRE_SITE = ('consumption', 'billKwh', 'result', 'underlay')
+
+MESSAGE_CIBLE_SANS_REPERE = ("Le lead n'a pas de repère toit (GPS ou point "
+                             "de toit) : placez-le d'abord")
+
+
+def preparer_pour_cible(source, pin):
+    """ACON11 (D-ACAL-15) — LA règle de copie d'un document vers un autre
+    site : translaté sur ``pin`` (s'il y en a un), sans
+    :data:`CLES_D_UN_AUTRE_SITE`. Lue par Dupliquer ET le modèle."""
+    if pin is not None:
+        from .translation_conception import translater_conception
+
+        prepare = translater_conception(source, pin)
+    else:
+        prepare = copy.deepcopy(source)
+    if isinstance(prepare, dict):
+        for cle in CLES_D_UN_AUTRE_SITE:
+            prepare.pop(cle, None)
+    return prepare
+
+
+def _preparateur_vers_un_autre_site(calepinage, lead_id):
+    """ACON11 — la préparation d'une copie vers un AUTRE lead/client : le
+    repère toit du lead cible (``apps.crm.selectors.repere_toit``) ; une
+    source épinglée vers un lead sans repère est refusée (409, nommé)."""
+    pin = None
+    if lead_id:
+        from apps.crm.selectors import get_company_lead, repere_toit
+
+        pin = repere_toit(get_company_lead(calepinage.company, lead_id))[0]
+        document = calepinage.roof_layout
+        if pin is None and isinstance(document, dict) and document.get('pin'):
+            raise DuplicationEnConflit(
+                MESSAGE_CIBLE_SANS_REPERE,
+                corps={'lead': MESSAGE_CIBLE_SANS_REPERE}, champ='lead')
+    return lambda document: preparer_pour_cible(document, pin)
 
 
 #: ACAL187 (D-ACAL-12) — Dupliquer un calepinage OUVERT sans cible : la
@@ -366,7 +423,7 @@ def _reconstruire_duplication_en_conflit(message, corps, champ):
     return DuplicationEnConflit(message, corps=corps, champ=champ)
 
 
-def _cible_de_copie(calepinage, lead_id, client_id):
+def _cible_de_copie(calepinage, lead_id, client_id, user=None):
     """ACAL187 — ``(lead_id, client_id)`` de la copie, ou un refus.
 
     Cible EXPLICITE (``lead_id`` et/ou ``client_id`` donnés) : bornée à la
@@ -390,9 +447,10 @@ def _cible_de_copie(calepinage, lead_id, client_id):
         raise VarianteRefusee(
             "Indiquez le lead ou le client de la copie.", champ='lead')
     if lead_id:
-        from apps.crm.selectors import get_company_lead
+        from .creation import lead_en_portee
 
-        lead = get_company_lead(company, lead_id)
+        # ACON3 — dans la portée CRM de l'auteur (hors portée = absent).
+        lead = lead_en_portee(company, lead_id, user)
         if lead is None:
             raise VarianteRefusee(f"Lead introuvable (#{lead_id}).",
                                   champ='lead')
@@ -478,7 +536,18 @@ def dupliquer(calepinage, *, user=None, titre='', avec_variantes=True,
             champ='calepinage')
     # ACAL187 — la CIBLE (lead/client) est résolue et le « un seul ouvert
     # par lead » (D-ACAL-12) tenu AVANT toute écriture.
-    lead_cible, client_cible = _cible_de_copie(calepinage, lead_id, client_id)
+    lead_cible, client_cible = _cible_de_copie(calepinage, lead_id, client_id,
+                                               user=user)
+    autre_site = (preparer_document is None and roof_layout is ...
+                  and (lead_cible, client_cible)
+                  != (calepinage.lead_id, calepinage.client_id))
+    if autre_site:  # ACON11 — même règle que le modèle (D-ACAL-15)
+        preparer_document = _preparateur_vers_un_autre_site(calepinage,
+                                                            lead_cible)
+        if isinstance(calepinage.roof_layout, dict):
+            roof_layout = preparer_document(calepinage.roof_layout)
+            if roof_layout == calepinage.roof_layout:
+                roof_layout = ...
 
     copies = {champ: copy.deepcopy(getattr(calepinage, champ, None))
               for champ in CHAMPS_COPIES}
@@ -518,9 +587,11 @@ def dupliquer(calepinage, *, user=None, titre='', avec_variantes=True,
         for source in sources:
             document_variante = source.roof_layout
             empreinte_variante = source.layout_hash or ''
-            if preparer_document is not None:
-                document_variante = preparer_document(
-                    copy.deepcopy(document_variante))
+            prepare = (preparer_document(copy.deepcopy(document_variante))
+                       if preparer_document is not None
+                       else document_variante)
+            if prepare != document_variante:
+                document_variante = prepare
                 empreinte_variante = (layout_hash(document_variante) or ''
                                       if document_variante else '')
             CalepinageVariante.objects.create(
@@ -548,7 +619,9 @@ def dupliquer(calepinage, *, user=None, titre='', avec_variantes=True,
     journaliser_creation(copie, user=user)
     source = (getattr(calepinage, 'titre', '') or '').strip()
     noter(copie, f'Dupliqué depuis #{calepinage.pk}'
-          + (f' (« {source} »)' if source else ''), user=user)
+          + (f' (« {source} »)' if source else '')
+          + (' — consommation, production et fond de plan non recopiés'
+             if autre_site else ''), user=user)
     return copie
 
 

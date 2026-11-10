@@ -22,5 +22,6 @@ class RolesConfig(AppConfig):
         # fondation qui est APPELÉE, elle n'importe jamais apps.roles.
         from authentication.permissions import enregistrer_registre_modules
 
-        from .permissions_registre import PERMISSION_MODULE
-        enregistrer_registre_modules(PERMISSION_MODULE)
+        from .permissions_registre import OCTROIS_LECTURE, PERMISSION_MODULE
+        enregistrer_registre_modules(PERMISSION_MODULE,
+                                     octrois_lecture=OCTROIS_LECTURE)  # APFS28

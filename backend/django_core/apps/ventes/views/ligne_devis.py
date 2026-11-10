@@ -5,7 +5,7 @@ from rest_framework import viewsets
 from ..models import LigneDevis
 from ..serializers import LigneDevisSerializer
 from authentication.permissions import (
-    IsAnyRole,
+    LectureDuModule,
     IsResponsableOrAdmin,
     IsAdminRole,
 )
@@ -94,6 +94,18 @@ def _instantane(devis, user):
     create=extend_schema(extensions=D.CORPS_LIGNE_DEVIS_ECRITURE),
     update=extend_schema(extensions=D.CORPS_LIGNE_DEVIS_ECRITURE),
     partial_update=extend_schema(extensions=D.CORPS_LIGNE_DEVIS_MODIF))
+def _lecteur_sans_code_ventes(user):
+    """APFS108 — rôle fin non administrateur sans aucun code ``ventes``."""
+    from authentication.permissions import codes_du_module
+
+    if (getattr(user, 'is_superuser', False)
+            or getattr(user, 'is_admin_role', False)
+            or not getattr(user, 'role_id', None)):
+        return False
+    return not (codes_du_module('ventes')
+                & set(user.role.permissions or []))
+
+
 class LigneDevisViewSet(CompanyScopedModelViewSet):
     parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
     # ARC5 — sweep TenantMixin : base transverse unique. LigneDevis N'A PAS de
@@ -118,16 +130,22 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
             # ADEV21 (C-ADEV-025) — même portée équipe que ``DevisViewSet``
             # (``owner_fields=['created_by']`` du devis parent) : une ligne
             # d'un devis hors portée est introuvable (404), jamais modifiable.
+            qs = qs.filter(devis__company=user.company)
+            if _lecteur_sans_code_ventes(user):
+                # APFS108 — entré par l'octroi ``installation_voir`` : les
+                # lignes des devis de SES chantiers seulement.
+                from apps.installations.selectors import chantiers_visibles
+                return qs.filter(devis_id__in=chantiers_visibles(user)
+                                 .values('devis_id'))
             from core.scoping import scope_queryset
-            return scope_queryset(qs.filter(devis__company=user.company),
-                                  user, ['devis__created_by'])
+            return scope_queryset(qs, user, ['devis__created_by'])
         if user.is_superuser:
             return qs
         return qs.none()
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
+            return [LectureDuModule()]  # APFS108
         elif self.action in WRITE_ACTIONS + ['destroy']:
             # Retirer une LIGNE fait partie de l'édition normale d'un
             # brouillon (le générateur remplace les lignes) — même niveau

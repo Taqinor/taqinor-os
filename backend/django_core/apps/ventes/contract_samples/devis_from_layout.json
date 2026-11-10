@@ -38,6 +38,11 @@
     ]
   },
   "exemple_409_hors_reseau": {
-    "hors_reseau": "Site isolé : le devis automatique n'est pas disponible, une étude hors-réseau est requise."
+    "hors_reseau": "Site isolé : le devis automatique n'est pas disponible, une étude hors-réseau est requise.",
+    "detail": "Site isolé : le devis automatique n'est pas disponible, une étude hors-réseau est requise."
+  },
+  "exemple_409_autre_marche": {
+    "devis": "Le devis DEV-202611-0001 est au marché résidentiel, le lead est industriel : archivez ce brouillon (ou corrigez son marché) puis générez à nouveau.",
+    "detail": "Le devis DEV-202611-0001 est au marché résidentiel, le lead est industriel : archivez ce brouillon (ou corrigez son marché) puis générez à nouveau."
   }
 }

@@ -99,6 +99,35 @@ class ReviserRelieTest(BaseApiCalepinage):
         self.assertEqual(
             Calepinage.objects.filter(lead_id=self.lead.pk).count(), 1)
 
+    def test_abandon_de_la_v2_relie_c_a_la_v1_au_dessin_envoye(self):
+        """ACON91 — « Réviser », C retouché sur la V2 (16 modules), puis
+        abandon de la V2 : C lié à la V1 au dessin envoyé (version
+        « Avant restauration » + restaurée), un seul calepinage sur le lead."""
+        from apps.calepinage.services.layout import enregistrer_layout
+        from apps.ventes.domain.revision import abandonner_revision
+
+        v2 = self._reviser()
+        retouche = copy.deepcopy(DOCUMENT)
+        retouche['zones'][0]['geometry']['count'] = 16
+        self.c.refresh_from_db()
+        enregistrer_layout(self.c, retouche, user=self.user)
+        v2.refresh_from_db()
+
+        reactivees = abandonner_revision(v2, self.user, retrait=True)
+
+        self.assertEqual([v.pk for v in reactivees], [self.v1.pk])
+        self.c.refresh_from_db()
+        self.assertEqual(self.c.devis_id, self.v1.pk)
+        self.assertEqual(
+            self.c.roof_layout['zones'][0]['geometry']['count'], 12)
+        self.assertTrue(CalepinageVersion.objects.filter(
+            calepinage=self.c, libelle__startswith='Avant restauration')
+            .exists())
+        self.assertEqual(
+            selectors.calepinage_du_devis(self.v1.pk, self.company), self.c)
+        self.assertEqual(
+            Calepinage.objects.filter(lead_id=self.lead.pk).count(), 1)
+
     def test_version_envoyee_figee(self):
         self._reviser()
         libelle = LIBELLE_VERSION_ENVOYEE.format(reference=self.v1.reference)

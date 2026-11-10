@@ -146,6 +146,9 @@ def remettre_document(self, request, pk=None):
              % (code, ', '.join(REGISTRE_REMISE))},
             status=status.HTTP_400_BAD_REQUEST)
     langue = corps.get('langue') or None
+    from .sorties import porte_conception_vendue
+
+    porte_conception_vendue(calepinage)  # ACON42 — avant tout rendu
     # Le RENDU d'abord : une pièce refusée par son GET l'est ici à
     # l'identique (même statut, même corps), avant toute lecture d'empreinte.
     octets, refus = rendre_document(self, request, code, langue)

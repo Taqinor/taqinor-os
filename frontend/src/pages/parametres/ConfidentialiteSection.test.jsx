@@ -113,6 +113,33 @@ describe('ConfidentialiteSection (XPLT23)', () => {
     await waitFor(() => expect(traiterDsr).toHaveBeenCalledWith(5))
   })
 
+  it('confirme un effacement avant de le traiter et montre le résultat d\'un accès', async () => {
+    // ASOC64 — annuler la confirmation ⇒ aucun POST ; un accès traité montre
+    // ses sources et se télécharge en JSON.
+    const { downloadBlob } = await import('../../api/importApi')
+    listDsr.mockResolvedValueOnce({
+      data: [
+        { id: 6, subject_identifier: 'efface@x.ma', kind: 'effacement', statut: 'recue' },
+        { id: 7, subject_identifier: 'acces@x.ma', kind: 'acces', statut: 'traitee',
+          resultat: { crm: { leads: 1 }, ventes: { devis: 2 } } },
+      ],
+    })
+    const confirmer = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const user = userEvent.setup()
+    renderWithRole('admin')
+    await screen.findByText('efface@x.ma')
+
+    await user.click(screen.getByRole('button', { name: /Traiter/ }))
+    expect(confirmer).toHaveBeenCalled()
+    expect(traiterDsr).not.toHaveBeenCalled()
+
+    expect(screen.getByTestId('dsr-sources')).toHaveTextContent('crm, ventes')
+    await user.click(screen.getByRole('button', { name: /Télécharger \(JSON\)/ }))
+    expect(downloadBlob).toHaveBeenCalledWith(
+      expect.stringContaining('"crm"'), 'dsr-acces-7.json')
+    confirmer.mockRestore()
+  })
+
   it('liste les consentements par sujet et finalité avec leur statut (PACT119)', async () => {
     renderWithRole('admin')
 

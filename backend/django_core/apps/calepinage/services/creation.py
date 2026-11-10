@@ -186,6 +186,12 @@ def ouvrir_ou_creer_pour_lead(lead_id, company, *, user=None, titre='',
     from ..selectors import calepinage_ouvert_du_lead
 
     _exiger_societe(company)
+    if lead_id and user is not None and lead_en_portee(
+            company, lead_id, user) is None:
+        # ACON3 — résolu AVANT la relecture de l'ouvert : un lead hors de la
+        # portée CRM de l'appelant ne fait jamais servir son calepinage.
+        raise RattachementIntrouvable(
+            f"Lead introuvable (#{lead_id}).", champ='lead')
     with transaction.atomic():
         with _verrou_creation(company.pk, lead_id):
             existant = calepinage_ouvert_du_lead(company, lead_id)
@@ -195,6 +201,22 @@ def ouvrir_ou_creer_pour_lead(lead_id, company, *, user=None, titre='',
                 lead_id, company, user=user, titre=titre,
                 preset_id=preset_id, responsable=responsable)
     return calepinage, True
+
+
+def lead_en_portee(company, lead_id, user=None):
+    """ACON3 — le lead ``lead_id`` de ``company`` DANS la portée CRM de
+    ``user`` (``apps.crm.selectors.leads_visibles``), ou ``None``.
+
+    Sans utilisateur authentifié (reprise du tracé public, scripts) : la
+    société seule (``get_company_lead``). Un lead hors portée est
+    « introuvable », exactement comme un lead absent — aucun oracle."""
+    from apps.crm.selectors import get_company_lead, leads_visibles
+
+    if not lead_id:
+        return None
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return get_company_lead(company, lead_id)
+    return leads_visibles(user, company).filter(pk=lead_id).first()
 
 
 def responsable_par_defaut(company, lead_id):
@@ -433,8 +455,6 @@ def creer_pour_lead(lead_id, company, *, user=None, titre='',
         CreationRefusee: lead absent ou d'une autre société — rien n'est
             créé ; jeu de réglages inconnu (``preset_id``).
     """
-    from apps.crm.selectors import get_company_lead
-
     from ..models import Calepinage
 
     _exiger_societe(company)
@@ -444,7 +464,7 @@ def creer_pour_lead(lead_id, company, *, user=None, titre='',
             "Aucun lead n'a été indiqué : choisissez le lead dont vous "
             "concevez la toiture.", champ='lead')
 
-    lead = get_company_lead(company, lead_id)
+    lead = lead_en_portee(company, lead_id, user)  # ACON3
     if lead is None:
         raise RattachementIntrouvable(
             f"Lead introuvable (#{lead_id}).", champ='lead')

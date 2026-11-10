@@ -104,10 +104,13 @@ class CookieJWTAuthentication(BaseAuthentication):
         # est mémorisé, pour CE jeton et CETTE requête uniquement.
         porteur = getattr(request, '_request', request)
         memo = getattr(porteur, '_taqinor_jwt_auth', None)
+        from .permissions import exiger_mot_de_passe_change_hors_sortie
+
         if memo is not None and memo[0] == token:
             user, validated = memo[1]
             from authentication.active_company import set_active_company_id
             set_active_company_id(user.company_id)
+            exiger_mot_de_passe_change_hors_sortie(request, user)  # APFS3
             return memo[1]
 
         try:
@@ -197,6 +200,7 @@ class CookieJWTAuthentication(BaseAuthentication):
             porteur._taqinor_jwt_auth = (token, (user, validated))
         except AttributeError:  # pragma: no cover - requête sans __dict__
             pass
+        exiger_mot_de_passe_change_hors_sortie(request, user)  # APFS3
         return (user, validated)
 
     def authenticate_header(self, request):
