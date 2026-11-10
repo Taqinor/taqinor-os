@@ -97,12 +97,23 @@ def check_beat():
 
 def etat_ready():
     """Corps + code HTTP de ``health/ready`` : 503 ``not-ready`` si la DB est
-    down, 503 ``degraded`` si beat est arrêté (BPQ12), 200 ``ready`` sinon."""
+    down, 503 ``degraded`` si Redis ne répond pas au ping (ADCG13) ou si beat est
+    arrêté (BPQ12), 200 ``ready`` sinon."""
     db_check = check_db()
     if db_check['status'] == STATUS_DOWN:
         return {'status': 'not-ready', 'detail': db_check['detail']}, 503
     extra = {'dernier_demarrage': dernier_demarrage(),
              'dernier_tri_problemes': dernier_tri_problemes()}
+    try:  # ADCG13 — Redis mort ⇒ 503 (le cache l'avale : IGNORE_EXCEPTIONS)
+        client = _client_demarrages()
+    except OSError:  # courtier non Redis (tests légers) : rien à sonder
+        client = None
+    try:
+        if client is not None:
+            client.ping()
+    except Exception as exc:  # noqa: BLE001 — journalisé, sonde best-effort (D-ENF22-BLE001)
+        logger.warning("health/ready : Redis injoignable", exc_info=True)
+        return {'status': 'degraded', 'detail': f'Redis injoignable : {exc}', **extra}, 503
     beat_check = check_beat()
     if beat_check['status'] == STATUS_DEGRADED:
         return {'status': 'degraded', 'detail': beat_check['detail'], **extra}, 503

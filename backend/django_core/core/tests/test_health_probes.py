@@ -65,6 +65,32 @@ class HealthProbesTests(TestCase):
         self.assertEqual(resp.data['status'], 'degraded')
         self.assertIn('dernier_tri_problemes', resp.data)
 
+    def test_ready_returns_503_when_redis_down(self):
+        """ADCG13 — base vivante, Redis qui ne répond plus ⇒ 503 ``degraded`` ;
+        le corps garde dernier_demarrage / dernier_tri_problemes."""
+        import redis as redis_lib
+
+        from core import health
+        panne = redis_lib.exceptions.ConnectionError('Connection refused')
+        client = mock.Mock(**{'ping.side_effect': panne, 'lindex.side_effect': panne,
+                              'get.side_effect': panne})
+        with mock.patch.object(health, '_client_demarrages', return_value=client):
+            resp = self.client.get('/api/django/core/health/ready/')
+        self.assertEqual(resp.status_code, 503)
+        self.assertEqual(resp.data['status'], 'degraded')
+        self.assertIn('Redis injoignable', resp.data['detail'])
+        self.assertIn('dernier_demarrage', resp.data)
+        self.assertIn('dernier_tri_problemes', resp.data)
+
+    def test_ready_stays_200_when_broker_not_redis(self):
+        from core import health
+        fake_beat = {'name': 'beat', 'status': health.STATUS_OK, 'detail': ''}
+        with mock.patch.object(health, '_client_demarrages', side_effect=OSError('broker non Redis')), \
+                mock.patch.object(health, 'check_beat', return_value=fake_beat):
+            resp = self.client.get('/api/django/core/health/ready/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data['status'], 'ready')
+
     def test_ready_stays_200_when_beat_unknown(self):
         from core import health
         fake_beat = {'name': 'beat', 'status': health.STATUS_UNKNOWN,
