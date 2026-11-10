@@ -117,8 +117,12 @@ def _creer_contrat_maintenance_on_devis_accepted(sender, devis, user,
     récurrente ne déclenche rien. Best-effort (ADEV54, APAR48) :
     ``@abonne_best_effort`` l'isole dans son point de sauvegarde — une erreur
     base est annulée seule et journalisée, la signature passe."""
+    from core.feature_flags import module_actif
     from .services import creer_contrat_depuis_devis_accepte
 
+    # ASOC2 (D-ASOC-2 rien_creer) — Après-vente désinstallé : aucun contrat.
+    if not module_actif(getattr(devis, 'company', None), 'sav'):
+        return
     creer_contrat_depuis_devis_accepte(devis=devis, user=user)
 
 
