@@ -701,7 +701,7 @@ def _etat_vente(devis, palier, encaisse=False) -> dict:
                       if t['statut'] == 'brouillon'), None)
     avoir = _avoir_revision_a_confirmer(tete, plan) if (
         actionnable and palier) else ZERO
-    peut['confirmer_avoir_revision'] = avoir > 0
+    peut['confirmer_avoir_revision'] = avoir > 0 and encaisse  # ASEC91
     raison = _raison_bloquee(devis, tete, revision, brouillon)
     if avoir > 0:
         raison = ' '.join(filter(None, [raison, (
