@@ -46,12 +46,20 @@ class IsAdminRole(BasePermission):
 # l'ancien import fonction-local de ``PERMISSION_MODULE``.
 _REGISTRE_MODULES = None
 
+#: APFS28 (D-APFS-4) — lectures CROISÉES admises : ``{(module, nom de la
+#: classe de vue): frozenset(codes)}`` injecté par ``apps.roles`` (jamais
+#: importé d'ici) ; lu par ``LectureDuModule``.
+_OCTROIS_LECTURE = {}
 
-def enregistrer_registre_modules(permission_module):
+
+def enregistrer_registre_modules(permission_module, *, octrois_lecture=None):
     """Branché par ``apps.roles.apps.RolesConfig.ready()`` avec
-    ``apps.roles.permissions_registre.PERMISSION_MODULE``."""
-    global _REGISTRE_MODULES
+    ``apps.roles.permissions_registre.PERMISSION_MODULE`` (et, APFS28,
+    ``OCTROIS_LECTURE``)."""
+    global _REGISTRE_MODULES, _OCTROIS_LECTURE
     _REGISTRE_MODULES = permission_module
+    if octrois_lecture is not None:
+        _OCTROIS_LECTURE = octrois_lecture
 
 
 def _registre_modules():
@@ -182,6 +190,37 @@ class IsAnyRole(BasePermission):
             and user.is_authenticated
             and getattr(user, 'portee', 'interne') == 'interne'
         )
+
+
+class LectureDuModule(IsAnyRole):
+    """APFS28 (D-APFS-4, C-APFS-080) — LECTURE d'une vue de module.
+
+    Compte interne (``IsAnyRole``) ET, pour un rôle fin non administrateur, au
+    moins un code du module de la vue (``module_de_la_vue``) OU un code
+    octroyé pour CETTE vue (``OCTROIS_LECTURE`` : le Commercial lit les
+    chantiers de ses ventes, le Technicien les lignes / dossiers / recette du
+    devis de son chantier). Inchangés : superuser, palier administrateur,
+    compte hérité sans rôle fin, module non résolu (règle d'``IsAnyRole``) ;
+    compte portail refusé."""
+
+    message = 'Accès réservé aux rôles du module.'
+
+    def has_permission(self, request, view):
+        if not super().has_permission(request, view):
+            return False
+        user = request.user
+        if (getattr(user, 'is_superuser', False)
+                or getattr(user, 'is_admin_role', False)
+                or not getattr(user, 'role_id', None)):
+            return True
+        module = module_de_la_vue(view)
+        if module is None:
+            return True
+        perms = set(user.role.permissions or [])
+        if codes_du_module(module) & perms:
+            return True
+        octroi = _OCTROIS_LECTURE.get((module, type(view).__name__), ())
+        return bool(set(octroi) & perms)
 
 
 def HasPermissionOrLegacy(code):
