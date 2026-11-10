@@ -187,6 +187,11 @@ if [ "$ok" = "1" ]; then
   $COMPOSE run --rm --no-deps django_core python manage.py migrate --noinput || ok=0
 fi
 
+# ADCG19 — le commit servi rejoint l'environnement des services Django
+# (core/health.py::sha_deploye -> health/ready `dernier_demarrage.sha`). La
+# valeur change à chaque commit : `up -d` recrée ces quatre services (le restart
+# RESTART_BACKEND plus bas devient redondant, gardé).
+export DEPLOYED_SHA="$NEW"
 if [ "$ok" = "1" ]; then
   $COMPOSE up -d --remove-orphans || ok=0
 fi
@@ -350,6 +355,7 @@ else
   # jamais rétrogradé (expand/contract, docs/online-migrations.md::BASCULE).
   if [ -n "$OLD" ] && git cat-file -e "${OLD}^{commit}" 2>/dev/null; then
     rb=1
+    export DEPLOYED_SHA="$OLD"
     git reset --hard "$OLD" || rb=0
     if [ "$TOUT" = "1" ]; then
       $COMPOSE build || rb=0

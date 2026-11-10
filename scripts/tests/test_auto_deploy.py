@@ -23,6 +23,7 @@ A, B, C = "a" * 40, "b" * 40, "c" * 40
 # et sort en 1 quand l'appel correspond au motif FAIL (regex étendue).
 SHIM = r'''#!/usr/bin/env bash
 n=$(basename "$0"); a="$n $*"; echo "$a" >> "$BANC/calls.log"
+case "$a" in *" up -d"*) echo "env DEPLOYED_SHA=${DEPLOYED_SHA-}" >> "$BANC/calls.log";; esac
 case "$a" in
  "git rev-parse origin/main") cat "$BANC/origin";;
  "git rev-parse HEAD") cat "$BANC/HEAD";;
@@ -293,6 +294,21 @@ class AutoDeployTests(unittest.TestCase):
         banc = self.banc("pgconf_sans_restart", changes="backend/db/postgresql.conf\n")
         banc.jouer()
         self.assertNotIn("exige un redémarrage", banc.journal)
+
+    def test_commit_deploye_passe_aux_conteneurs(self):
+        """ADCG19 — `up -d` reçoit DEPLOYED_SHA = B ; le compose prod le passe aux 4 services."""
+        banc = self.banc(changes="backend/django_core/apps/crm/views.py\n")
+        rc, sortie = banc.jouer()
+        self.assertEqual(rc, 0, sortie + banc.journal)
+        i_up = banc.index(r"prod\.yml up -d --remove-orphans$")
+        self.assertEqual(banc.appels[i_up + 1], f"env DEPLOYED_SHA={B}")
+        compose = (ROOT / "docker-compose.prod.yml").read_text(encoding="utf-8")
+        for service in ("django_core", "celery_worker", "celery_worker_interactive", "celery_beat"):
+            bloc = re.search(rf"(?ms)^  {service}:\n(.*?)(?=^  \S)", compose.replace("\r\n", "\n")).group(1)
+            self.assertIn("DEPLOYED_SHA: ${DEPLOYED_SHA:-}", bloc, service)
+        banc = self.banc("docs", changes="docs/CODEMAP.md\n")
+        banc.jouer()
+        self.assertIsNone(banc.index("DEPLOYED_SHA"))
 
     def test_zero_downtime_drapeau_lu_puis_efface(self):
         banc = self.banc(changes=LOT_ECRAN_API)
