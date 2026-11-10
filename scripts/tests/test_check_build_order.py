@@ -183,6 +183,25 @@ class MainEndToEndTests(unittest.TestCase):
         exit_code = cbo.main([str(missing)])
         self.assertEqual(exit_code, 1)
 
+    def test_build_order_tronque_rouge(self):
+        """ADCG88 — le vrai BUILD_ORDER.yml coupé à 30 % se lisait avec
+        ``waves`` seul (0 arête), rc 0 : désormais rc 1 en nommant les
+        sections manquantes, au CLI comme au chargement."""
+        import subprocess
+        texte = cbo.BUILD_ORDER_FILE.read_text(encoding="utf-8")
+        path = _write(texte[: int(len(texte) * 0.3)])
+        with self.assertRaises(ValueError) as ctx:
+            plan_lanes.load_build_order(path)
+        attendu = ("section(s) obligatoire(s) absente(s) : "
+                   "aliases, edges, unmapped_ok")
+        self.assertIn(attendu, str(ctx.exception))
+        cli = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "check_build_order.py"),
+             str(path)], capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(cli.returncode, 1)
+        self.assertIn(attendu, cli.stderr)
+        self.assertIsNotNone(plan_lanes.load_build_order(cbo.BUILD_ORDER_FILE))
+
     def test_injected_cycle_fails_the_build_specifically_on_the_cycle(self):
         # Insert INSIDE edges: (appending after unmapped_ok's list would
         # attach it there instead -- see CheckAcyclicTests.test_self_loop_is_caught).

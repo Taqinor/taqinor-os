@@ -586,16 +586,15 @@ class _MiniYamlParser:
 
 def load_build_order(path: Path) -> dict | None:
     """Load+parse ``docs/BUILD_ORDER.yml``; ``None`` if the file is absent.
-
-    A malformed file raises (loudly) rather than being silently ignored --
-    the caller decides whether that should abort gating (it does not; see
-    ``build_order_gate`` which treats a *load* failure as "skip gating" but
-    prints a warning, matching the SCA3 backward-compatibility contract of
-    never blocking a run over a broken/missing optional file).
-    """
+    A malformed or TRUNCATED file (ADCG88 : section obligatoire absente —
+    coupé à 30 %, il se lisait avec ``waves`` seul) raises, loudly."""
     if not path.is_file():
         return None
-    return _MiniYamlParser(path.read_text(encoding="utf-8")).parse()
+    data = _MiniYamlParser(path.read_text(encoding="utf-8")).parse()
+    manquantes = [k for k in ("waves", "aliases", "edges", "unmapped_ok") if k not in data]
+    if manquantes:
+        raise ValueError("BUILD_ORDER.yml : section(s) obligatoire(s) absente(s) : " + ", ".join(manquantes))
+    return data
 
 
 def _resolve_alias_prefixes(build_order: dict, name: str) -> set[str]:
