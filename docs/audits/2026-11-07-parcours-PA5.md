@@ -1,5 +1,5 @@
 # Audit PA5 « chantier → SAV » — 2026-11-07 — L3
-<!-- dossier-v3 | groupe: ACSV | base: ddf1f97 | fraicheur: 39313d4 | constats: 58 | taches: 70 | decisions: 4 -->
+<!-- dossier-v3 | groupe: ACSV | base: ddf1f97 | fraicheur: 39313d4 | constats: 58 | taches: 71 | decisions: 4 -->
 
 ## 1. Charte
 | Champ | Valeur |
