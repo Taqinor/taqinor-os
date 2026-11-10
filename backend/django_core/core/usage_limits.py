@@ -25,7 +25,7 @@ from django.utils import timezone
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from authentication.permissions import IsAuthenticatedInterne
 from rest_framework.response import Response
 
 import logging
@@ -180,7 +180,7 @@ def usage_summary(company):
     'genere_le': drf_serializers.DateTimeField(),
 }))
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticatedInterne])
 def usage_view(request):
     """GET /api/django/core/usage/ — scopé société de l'appelant."""
     return Response(usage_summary(request.user.company))

@@ -37,9 +37,11 @@ from rest_framework.decorators import (
 )
 from rest_framework.parsers import JSONParser
 from rest_framework.permissions import (
-    SAFE_METHODS, BasePermission, IsAuthenticated,
+    SAFE_METHODS, BasePermission,
 )
 from rest_framework.response import Response
+
+from authentication.permissions import IsAuthenticatedInterne
 
 from .models import TenantModel
 
@@ -517,7 +519,7 @@ class SlaSnapshotListView(generics.ListAPIView):
     """GET /api/django/core/sla/ — historique 12 mois, scopé société."""
 
     serializer_class = SlaSnapshotSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedInterne]
     pagination_class = None
     # ERR-ENF11-FUZZ-CORE — la liste est une fenêtre FIXE de 12 mois (une
     # liste Python) : ``?ordering=`` des filtres par défaut levait
@@ -555,7 +557,7 @@ def _sla_pdf_html(snapshot, company):
         OpenApiParameter.PATH, description='Période AAAA-MM.')],
     responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticatedInterne])
 def sla_export_pdf(request, periode):
     """GET /api/django/core/sla/<periode:YYYY-MM>/export-pdf/ — scopé société."""
     try:
@@ -617,7 +619,7 @@ class SlaCreditsDusListView(generics.ListAPIView):
     toutes les sociétés — un admin de tenant n'est jamais l'opérateur."""
 
     serializer_class = SlaCreditDuSerializer
-    permission_classes = [IsAuthenticated, FiabilitePermission]
+    permission_classes = [IsAuthenticatedInterne, FiabilitePermission]
     pagination_class = None
 
     def get_queryset(self):
@@ -642,7 +644,7 @@ _REQUETE_CREDIT_STATUT = inline_serializer('SlaCreditStatutRequete', {
     409: OpenApiResponse(description=(
         "Conflit d'état : seul un crédit « à émettre » se décide (AMON32)."))})
 @api_view(['POST'])
-@permission_classes([IsAuthenticated, FiabilitePermission])
+@permission_classes([IsAuthenticatedInterne, FiabilitePermission])
 @parser_classes([JSONParser])  # ENF8 (D2) — aucun upload
 def sla_credit_statut(request, pk):
     """POST /api/django/core/sla/credits/<pk>/statut/ — trace la décision

@@ -61,6 +61,52 @@ def _vues_drf_sur_le_defaut():
     return vues
 
 
+# APFS1 — vues COMMUNES ouvertes au portail par un ``IsAuthenticated`` explicite (profil, 2FA, thème, annonces…).
+VUES_PORTAIL_ADMISES = {f'{m}.{c}' for m, cs in (
+    ('authentication.views', 'MeView LogoutView ChangePasswordView SwitchCompanyView MobileHomeRouteView UserViewSet '
+     'LangueInterfaceView CalendrierHegirienView SessionListView SessionRevokeView TwoFactorSetupView '
+     'TwoFactorEnableView TwoFactorDisableView TwoFactorStatusView'),
+    ('core.views', 'ChangelogViewSet SystemStatusViewSet TenantThemeViewSet'),
+    ('core.maintenance_windows', 'fenetres_actives'), ('apps.adminops.views', 'tracker_usage_view'),
+    ('apps.adminops.views_annonces', 'AnnonceProduitListView AnnonceProduitMarquerLuView'),
+    ('apps.adminops.views_impersonation', 'ImpersonationEnAttenteView ImpersonationConsentirView '
+     'ImpersonationRefuserView ImpersonationTerminerView ImpersonationSessionActiveView'),
+    ('apps.onboarding.views', 'OnboardingProgressViewSet ProductTourViewSet'),
+    ('apps.reporting.dashboard_config_api', 'DashboardConfigViewSet'), ('apps.identity.views', 'TrustedDeviceViewSet'),
+    ('apps.reporting.journal_problemes', 'signaler_probleme'), ('apps.reporting.vitals', 'collect_vital vitals_p75'),
+    ('drf_spectacular.views', 'SpectacularAPIView SpectacularRedocView SpectacularSwaggerView')) for c in cs.split()}
+# Refus du compte portail fait SEULEMENT dans le corps : dette, ne fait que rétrécir.
+PROTEGEES_DANS_LE_CORPS = {f'{m}.{c}' for m, cs in (
+    ('apps.adsengine.views', 'AttributionBilanView AudienceDeliveryEstimateView AudienceView CampaignFunnelView '
+     'CohortReportView CostPerSignatureView CreativeLeaderboardView CreativeScatterView EngagementAudienceView '
+     'ExplorationLedgerView GroundedGenerationView LeadsTimeseriesView MdeCalculatorView RegretRegistryView '
+     'ReportExportView StatusView VariantFunnelView VariantReportView VeilleCouvertureView WiringHealthView'),
+    ('apps.adsengine.incrementality', 'GeoHoldoutReportView'), ('apps.audit.views', 'object_history'),
+    ('apps.adsengine.odoo_views', 'OdooCostPerSignatureView')) for c in cs.split()}
+
+
+def _vues_ouvertes_au_portail(portail):
+    """Route × action, ``get_permissions()`` réel : gardes à ``IsAuthenticated`` explicite qui laissent passer."""
+    from rest_framework.permissions import IsAuthenticated
+    factory, ouvertes, pile = APIRequestFactory(), set(), list(get_resolver().url_patterns)
+    while pile:
+        p = pile.pop()
+        pile.extend(p.url_patterns if isinstance(p, URLResolver) else ())
+        cls, actions = getattr(getattr(p, 'callback', None), 'cls', None), getattr(p, 'callback', None)
+        actions = getattr(actions, 'actions', None) or {}
+        for meth in ([] if cls is None or not issubclass(cls, APIView) else actions
+                     or [m for m in ('get', 'post', 'put', 'patch', 'delete') if hasattr(cls, m)]):
+            view = cls(**(getattr(p.callback, 'initkwargs', None) or {}))
+            view.action_map, view.action = actions, actions.get(meth)
+            view.request = view.initialize_request(getattr(factory, meth)('/'))
+            view.request.user, view.args, view.kwargs, view.format_kwarg = portail, (), {}, None
+            perms = view.get_permissions()
+            if any(type(x) is IsAuthenticated for x in perms) and all(
+                    x.has_permission(view.request, view) for x in perms):
+                ouvertes.add(f'{cls.__module__}.{cls.__name__}')
+    return ouvertes
+
+
 class PortailDefautTests(TestCase):
     def setUp(self):
         self.company, _ = Company.objects.get_or_create(
@@ -115,6 +161,27 @@ class PortailDefautTests(TestCase):
                     all(p.has_permission(drf_request, None) for p in perms),
                     f'{route} ({cls.__module__}.{cls.__name__}) laisse '
                     'passer un compte portail sur le défaut global')
+
+    def test_portail_refuse_vues_internes_a_garde_explicite(self):
+        """APFS1 (C-APFS-001) — un ``IsAuthenticated`` EXPLICITE écrase le défaut ASEC51."""
+        from core.models import SavedQuery
+        api, base = self._api(self.portail), '/api/django/core/'
+        avant = SavedQuery.objects.count()
+        for verbe, route, corps in (('post', 'saved-queries/run/', {'dataset': 'crm_leads'}),
+                                    ('post', 'saved-queries/', {'titre': 'x'}), ('get', 'dashboards/', None),
+                                    ('get', 'corbeille/', None), ('get', 'paiements-en-ligne/', None),
+                                    ('get', 'scheduled-exports/', None)):
+            res = getattr(api, verbe)(base + route, corps, format='json')
+            with self.subTest(route=route):
+                self.assertEqual(res.status_code, 403)
+                self.assertEqual(str(res.data['detail']), IsAuthenticatedInterne.message)
+        self.assertEqual(SavedQuery.objects.count(), avant)
+        self.assertEqual(api.get('/api/django/auth/me/').status_code, 200)
+        ouvertes = _vues_ouvertes_au_portail(self.portail)
+        self.assertEqual(sorted(ouvertes - VUES_PORTAIL_ADMISES - PROTEGEES_DANS_LE_CORPS), [],
+                         'vue hors liste ouverte au compte portail par IsAuthenticated explicite')
+        self.assertEqual(sorted((VUES_PORTAIL_ADMISES | PROTEGEES_DANS_LE_CORPS) - ouvertes), [],
+                         'entrée périmée : la retirer de la liste')
 
     def test_portail_vues_portail_ok(self):
         res = self._api(self.portail).get(PORTAIL_URL)

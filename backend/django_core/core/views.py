@@ -42,7 +42,7 @@ from rest_framework.views import APIView
 
 from authentication.permissions import (
     IsAdminOrResponsableTier,
-    HasPermissionOrLegacy, IsAdminRole,
+    HasPermissionOrLegacy, IsAdminRole, IsAuthenticatedInterne,
     IsAnyRole,
     IsResponsableOrAdmin,
 )
@@ -235,7 +235,7 @@ class WorkflowTemplateViewSet(viewsets.ViewSet):
         # Lecture : tout utilisateur authentifié ; install : admin/responsable.
         if getattr(self, 'action', None) == 'installer':
             return [IsAdminOrResponsableTier()]
-        return [IsAuthenticated()]
+        return [IsAuthenticatedInterne()]
 
     @extend_schema(responses=WorkflowTemplateSerializer(many=True))
     def list(self, request):
@@ -309,7 +309,7 @@ class WorkflowDefinitionViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.request.method in ('GET', 'HEAD', 'OPTIONS'):
-            return [IsAuthenticated()]
+            return [IsAuthenticatedInterne()]
         return [IsAdminOrResponsableTier()]
 
     @extend_schema(request=None, responses={201: WorkflowDefinitionSerializer})
@@ -343,7 +343,7 @@ class MatriceApprobationViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.request.method in ('GET', 'HEAD', 'OPTIONS'):
-            return [IsAuthenticated()]
+            return [IsAuthenticatedInterne()]
         return [IsAdminOrResponsableTier()]
 
 
@@ -358,7 +358,7 @@ class FormulaireDefinitionViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.request.method in ('GET', 'HEAD', 'OPTIONS'):
-            return [IsAuthenticated()]
+            return [IsAuthenticatedInterne()]
         return [IsAdminOrResponsableTier()]
 
 
@@ -372,7 +372,7 @@ class FormulaireChampReutilisableViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.request.method in ('GET', 'HEAD', 'OPTIONS'):
-            return [IsAuthenticated()]
+            return [IsAuthenticatedInterne()]
         return [IsAdminOrResponsableTier()]
 
 
@@ -397,7 +397,7 @@ class WorkflowStepDefinitionViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.request.method in ('GET', 'HEAD', 'OPTIONS'):
-            return [IsAuthenticated()]
+            return [IsAuthenticatedInterne()]
         return [IsAdminOrResponsableTier()]
 
     def get_queryset(self):
@@ -722,7 +722,7 @@ class DashboardViewSet(TenantMixin, viewsets.ModelViewSet):
     """
     parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     serializer_class = DashboardSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedInterne]
     queryset = Dashboard.objects.all()
     pagination_class = None  # petite liste par utilisateur — renvoyée à plat.
 
@@ -807,7 +807,7 @@ class PaymentTransactionViewSet(TenantMixin, viewsets.ModelViewSet):
     """
     parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     serializer_class = PaymentTransactionSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedInterne]
     queryset = PaymentTransaction.objects.all()
 
     def get_permissions(self):
@@ -816,7 +816,7 @@ class PaymentTransactionViewSet(TenantMixin, viewsets.ModelViewSet):
         # modification, suppression, et la capture par ``rafraichir`` — exige
         # le palier responsable/admin.
         if self.action in ('list', 'retrieve'):
-            return [IsAuthenticated()]
+            return [IsAuthenticatedInterne()]
         return [IsAdminOrResponsableTier(), HasPermissionOrLegacy('encaisser')()]  # AARG11
 
     def perform_create(self, serializer):
@@ -883,7 +883,7 @@ class SavedQueryViewSet(TenantMixin, viewsets.ModelViewSet):
     """
     parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     serializer_class = SavedQuerySerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedInterne]
     queryset = SavedQuery.objects.all()
     pagination_class = None
     #: ENF11 — ``POST …/run/`` (ad-hoc) et ``POST …/{id}/run/`` ont les mêmes
@@ -959,7 +959,7 @@ class DataExplorerDatasetsView(APIView):
     """
     parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedInterne]
     #: ENF11 — le catalogue (route SANS ``{name}``) est ``…_datasets_list`` ;
     #: le détail (sous-classe ci-dessous) garde ``…_datasets_retrieve``.
     schema = mots_operation(get='list')
@@ -1098,7 +1098,7 @@ class ScheduledExportViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):
-            return [IsAuthenticated()]
+            return [IsAuthenticatedInterne()]
         return [IsAdminOrResponsableTier()]
 
     @extend_schema(request=None, responses=ScheduledExportSerializer)
@@ -1133,7 +1133,7 @@ class TrashViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     """
     parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     serializer_class = DeletionRecordSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedInterne]
     queryset = DeletionRecord.objects.all()
     pagination_class = None
 
@@ -1144,7 +1144,7 @@ class TrashViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         declared = declared_action_permissions(self)
         if declared is not None:
             return declared
-        return [IsAuthenticated()]
+        return [IsAuthenticatedInterne()]
 
     def get_queryset(self):
         qs = super().get_queryset().filter(restored_at__isnull=True)
@@ -1205,7 +1205,7 @@ class BulkEditViewSet(viewsets.ViewSet):
     ``bulk_edit_applied`` — journalisé par ``apps/audit/receivers.py``.
     """
     parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedInterne]
 
     def get_permissions(self):
         """Lecture du catalogue : tout authentifié. Écriture : palier de rôle.
@@ -1216,7 +1216,7 @@ class BulkEditViewSet(viewsets.ViewSet):
         illisible retombe sur le palier par défaut, jamais sur ``IsAuthenticated``.
         """
         if self.action == 'targets':
-            return [IsAuthenticated()]
+            return [IsAuthenticatedInterne()]
         try:
             target = (self.request.data or {}).get('target')
         except Exception:  # noqa: BLE001 — corps illisible → palier par défaut (D-ENF22-BLE001)
@@ -1287,7 +1287,7 @@ class ModuleToggleViewSet(TenantMixin, viewsets.ModelViewSet):
     http_method_names = ['get', 'head', 'options']
 
     def get_permissions(self):
-        return [IsAuthenticated()]
+        return [IsAuthenticatedInterne()]
 
 
 #: ENF11 — ``{id}`` des actions du catalogue = la CLÉ texte du module (manifeste
@@ -1316,7 +1316,7 @@ class ModuleCatalogViewSet(viewsets.ViewSet):
 
     def get_permissions(self):
         if self.action in ('list',):
-            return [IsAuthenticated()]
+            return [IsAuthenticatedInterne()]
         return [IsAdminOrResponsableTier()]
 
     # ERR-ENF11-FUZZ-CORE — l'action ``list`` est déjà publiée en tableau :
@@ -1451,7 +1451,7 @@ class BrandedTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):
-            return [IsAuthenticated()]
+            return [IsAuthenticatedInterne()]
         return [IsAdminOrResponsableTier()]
 
     @extend_schema(
@@ -1793,7 +1793,7 @@ class ApiUsagePlanViewSet(TenantMixin, viewsets.GenericViewSet):
     def get_permissions(self):
         if self.request.method in ('PUT', 'PATCH', 'POST'):
             return [IsAdminOrResponsableTier()]
-        return [IsAuthenticated()]
+        return [IsAuthenticatedInterne()]
 
     @extend_schema(request=ApiUsagePlanSerializer,
                    responses=ApiUsagePlanSerializer)
@@ -2158,7 +2158,7 @@ class BackgroundJobViewSet(viewsets.ReadOnlyModelViewSet):
     parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
 
     serializer_class = BackgroundJobSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedInterne]
     #: ENF11 — modèle déclaré pour le schéma (type de ``{id}``) ; la lecture
     #: réelle reste ``get_queryset`` (double portée société + utilisateur).
     queryset = BackgroundJob.objects.none()
@@ -2260,7 +2260,7 @@ def _est_directeur_ou_admin(user):
                    "Conflit d'état : `periode_fin` antérieure à `periode_debut` "
                    "(relation entre deux paramètres, inexprimable au schéma)."))})
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticatedInterne])
 def registre_fiabilite_export_pdf(request):
     """GET /api/django/core/registre-fiabilite/export-pdf/
     ?periode_debut=YYYY-MM&periode_fin=YYYY-MM — Directeur/Administrateur
@@ -2394,7 +2394,7 @@ def _sla_export_xlsx_response(snapshots, incidents):
         (200, _XLSX): OpenApiTypes.BINARY,
     })
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticatedInterne])
 def sla_export_csv(request):
     """GET /api/django/core/sla/export-csv/?export=csv|xlsx — historique SLA
     (une ligne par mois) + incidents (une ligne par incident), scopé société.
