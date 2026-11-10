@@ -376,3 +376,17 @@ def est_operateur_plateforme(user):
                 and getattr(user, 'is_authenticated', False)
                 and getattr(user, 'is_superuser', False)
                 and not attache)
+
+
+class PeutReinitialiserDemo(BasePermission):
+    """NTDMO32 — qui peut déclencher ``reset-demo/`` : un compte ``is_staff``
+    (accès historique) ou un rôle portant ``peut_reinitialiser_demo``."""
+
+    message = "Réservé aux comptes autorisés à réinitialiser la démo."
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not (user and user.is_authenticated):
+            return False
+        return bool(getattr(user, 'is_staff', False)
+                    or user.has_erp_permission('peut_reinitialiser_demo'))
