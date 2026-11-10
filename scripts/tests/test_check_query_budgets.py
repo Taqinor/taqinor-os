@@ -139,6 +139,28 @@ class TestRougeDabordEnforcedWithoutTest(_Harness):
         """)
         self.assertEqual(cqb.main(), 0)
 
+    def test_budget_different_de_l_assertion_echoue(self):
+        """ADCG48 — le manifeste dit 12, le test affirme 13 : la garde
+        compare la VALEUR, pas seulement l'existence du test."""
+        self._write_manifest(ENFORCED_ENDPOINT)
+        f = self._write_test_file("test_leads_budget.py", """\
+            class T:
+                def test_budget(self):
+                    # 12 dans un commentaire ne compte pas : query-budgets.yml
+                    with self.assertMaxQueries(13):
+                        self.client.get('/api/django/crm/leads/')
+        """)
+        erreur = io.StringIO()
+        with contextlib.redirect_stderr(erreur):
+            self.assertEqual(cqb.main(), 1)
+        self.assertIn("/api/django/crm/leads/ (12)", erreur.getvalue())
+        self.assertIn("[13]", erreur.getvalue())
+        # Un test qui LIT le manifeste est accepté sans comparaison.
+        f.write_text(f.read_text(encoding="utf-8")
+                     + "MANIFESTE = 'docs/query-budgets.yml'\n",
+                     encoding="utf-8")
+        self.assertEqual(cqb.main(), 0)
+
     def test_assert_num_queries_also_counts(self):
         self._write_manifest(ENFORCED_ENDPOINT)
         self._write_test_file("test_leads_budget.py", """\
