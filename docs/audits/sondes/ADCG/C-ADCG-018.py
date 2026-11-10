@@ -4,13 +4,15 @@ SONDE = {"constat": "C-ADCG-018", "sha": "ce4e5fc4f",
 import ast, datetime, pathlib, sys, types
 from decimal import Decimal
 RACINE = pathlib.Path(__file__).resolve().parents[4]
+if not (RACINE / "backend/django_core").is_dir(): RACINE = pathlib.Path.cwd()  # copie hors dépôt : jouée depuis la racine
 DJ = RACINE / "backend/django_core"
 MAINTENANT = datetime.datetime(2026, 11, 10, 9, 0)
 
 
 class QS(list):
     def _ok(s, r, kw):
-        return all((getattr(r, k[:-8]) is None) == v if k.endswith("__isnull") else getattr(r, k) == v for k, v in kw.items())
+        return all((getattr(r, k[:-8]) is None) == v if k.endswith("__isnull")
+                   else getattr(r, k[:-4]) in v if k.endswith("__in") else getattr(r, k) == v for k, v in kw.items())
     def filter(s, **kw): return QS(r for r in s if s._ok(r, kw))
     def exclude(s, **kw): return QS(r for r in s if not s._ok(r, kw))
     def order_by(s, cle): return QS(sorted(s, key=lambda r: getattr(r, cle.lstrip("-")), reverse=cle.startswith("-")))
@@ -28,7 +30,7 @@ def fonction(chemin, nom, classe=None):
 
 def kpi(runs):
     """Valeur du KPI drill + franchissement de l'alerte par défaut (> 35 j) sur la liste ``runs``."""
-    BR = types.SimpleNamespace(KIND_RESTORE_DRILL="restore_drill", STATUT_TERMINE="termine", objects=QS(runs))
+    BR = types.SimpleNamespace(KIND_RESTORE_DRILL="restore_drill", KIND_DB_DUMP="db_dump", STATUT_TERMINE="termine", objects=QS(runs))
     vieux = {n: sys.modules.get(n) for n in ("django", "django.utils", "core", "core.models")}
     for n in vieux: sys.modules[n] = types.ModuleType(n)
     sys.modules["django.utils"].timezone = types.SimpleNamespace(now=lambda: MAINTENANT)
@@ -45,7 +47,8 @@ def kpi(runs):
 
 
 def run(**kw):
-    base = dict(kind="restore_drill", statut="echec", company=None, purge_is_deleted=False, termine_le=None)
+    base = dict(kind="restore_drill", statut="echec", company=None, purge_is_deleted=False, termine_le=None,
+                created_at=MAINTENANT - datetime.timedelta(days=60))
     return types.SimpleNamespace(**{**base, **kw})
 
 
@@ -56,7 +59,8 @@ def sonde(ctx=None):
     champs = {t.targets[0].id: ast.literal_eval(t.value) for t in meta.body if isinstance(t, ast.Assign)
               and t.targets[0].id in ("fields", "read_only_fields")}
     kind_ecrivable = "kind" in champs["fields"] and "kind" not in champs["read_only_fields"]
-    validate = any(isinstance(n, ast.FunctionDef) and n.name in ("validate_kind", "validate") for n in cls.body)
+    validate = any(isinstance(n, ast.FunctionDef) and n.name in ("validate_kind", "validate") for n in cls.body) or any(
+        isinstance(n, ast.Assign) and any(getattr(t, "id", None) == "kind" for t in n.targets) for n in cls.body)  # champ kind redéclaré (choix bornés)
     vue = ast.get_source_segment(src := (DJ / "core/views.py").read_text(encoding="utf-8"), next(
         n for n in ast.walk(ast.parse(src)) if isinstance(n, ast.FunctionDef) and n.name == "_executer"))
     termine = "KIND_RESTORE:" in vue and "executer_sauvegarde(run)" in vue and "KIND_RESTORE_DRILL" not in vue
