@@ -98,6 +98,25 @@ def _calepinage_range(layout, toiture, kwc):
     return layout_stocke, etude_initiale
 
 
+#: ACON40 (ACAL89) — un lead AGRICOLE se chiffre depuis l'écran devis
+#: agricole (pompage), jamais depuis un calepinage toiture.
+MESSAGE_LEAD_AGRICOLE = ("Lead agricole : le pompage se chiffre depuis l'écran "
+                         "devis agricole.")
+
+
+def _marche_du_lead(lead):
+    """ACON40 (D-ACON-1) — le marché du devis = ``lead.type_installation``
+    s'il est un ``Devis.ModeInstallation``, sinon résidentiel ; agricole :
+    refus nommé AVANT toute écriture."""
+    from apps.ventes.models import Devis
+
+    marche = (getattr(lead, 'type_installation', '') or '').lower()
+    if marche == Devis.ModeInstallation.AGRICOLE:
+        raise AutoDevisError(MESSAGE_LEAD_AGRICOLE, field='type_installation')
+    return (marche if marche in Devis.ModeInstallation.values
+            else Devis.ModeInstallation.RESIDENTIEL)
+
+
 def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
                             taux_tva=None, remise_globale=Decimal('0'),
                             deux_options=False, journal=None, phase=None,
@@ -193,6 +212,7 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
       options pouvait naître avec un seul onduleur composable, et ne servir
       qu'une des deux options qu'il promet au client.
     """
+    marche = _marche_du_lead(lead)  # ACON40 — avant toute écriture
     # APAR49 — taux absent ⇒ taux STANDARD de la société (jamais 20 codé).
     if taux_tva is None:
         from apps.ventes.utils.company_settings import tva_standard
@@ -203,7 +223,6 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     # défaut historique — un appelant qui passe 'acier' compose comme hier).
     structure_produit_id, structure_type = _structure_demandee(
         lead, structure_produit_id, structure_type)
-    from apps.ventes.models import Devis
     from apps.ventes.utils.options import deux_options_composables
 
     # ── ACAL32 (C-ACAL-105) — LA PHASE ET LE SITE ISOLÉ DU LEAD ────────────
@@ -295,7 +314,7 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
         user=user,
         lead=lead,
         client=client,
-        mode_installation=Devis.ModeInstallation.RESIDENTIEL,
+        mode_installation=marche,  # ACON40 — le marché du lead
         cible=CibleDevis(
             nb_panneaux=nb_panneaux,
             panel_watt=watt,

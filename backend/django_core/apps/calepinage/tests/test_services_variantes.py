@@ -104,6 +104,45 @@ class RetenirTest(BaseVariantes):
         retenir_variante(self.a)
         self.assertEqual(self._retenues(), [self.a.pk])
 
+    def test_variante_sans_conception_refusee(self):
+        """ACON26 — une variante au document VIDE ({}) n'écrase jamais la
+        conception : refus nommé (409), aucune bascule, conception intacte."""
+        from apps.calepinage.models import CalepinageVersion
+
+        vide = creer_variante(self.pivot, nom='Vide', roof_layout={})
+        versions = CalepinageVersion.objects.filter(
+            calepinage=self.pivot).count()
+        with self.assertRaises(VarianteRefusee) as capture:
+            retenir_variante(vide)
+        self.assertEqual(capture.exception.champ, 'roof_layout')
+        self.assertIn("n'a pas de conception", str(capture.exception))
+        self.assertEqual(self._retenues(), [])
+        self.pivot.refresh_from_db()
+        self.assertEqual(self.pivot.roof_layout, LAYOUT)
+        self.assertEqual(CalepinageVersion.objects.filter(
+            calepinage=self.pivot).count(), versions)
+
+    def test_le_pivot_est_verrouille_avant_la_lecture_de_la_retenue(self):
+        """ACON29 — ``SELECT … FOR UPDATE`` sur le calepinage AVANT toute
+        lecture de ``retenue`` : deux retenues concurrentes se sérialisent."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        with CaptureQueriesContext(connection) as requetes:
+            retenir_variante(self.a)
+        sql = [q['sql'] for q in requetes.captured_queries]
+        verrou = next(i for i, texte in enumerate(sql)
+                      if 'FOR UPDATE' in texte
+                      and 'calepinage_calepinage"' in texte
+                      and 'calepinagevariante' not in texte)
+        # La lecture « déjà retenue ? » de CETTE variante.
+        lecture = next(i for i, texte in enumerate(sql)
+                       if 'calepinagevariante' in texte
+                       and f'"id" = {self.a.pk}' in texte
+                       and 'retenue' in texte)
+        self.assertLess(verrou, lecture, sql)
+        self.assertEqual(self._retenues(), [self.a.pk])
+
     def test_variante_non_enregistree_refusee(self):
         with self.assertRaises(VarianteRefusee) as capture:
             retenir_variante(CalepinageVariante(company=self.company,
@@ -156,9 +195,14 @@ class DupliquerTest(BaseVariantes):
         self.assertEqual(copie.lead_id, self.lead_b.pk)
 
     def test_la_copie_reprend_le_layout(self):
+        from apps.ventes.services import layout_hash
+
         copie = self._dupliquer()
-        self.assertEqual(copie.roof_layout, LAYOUT)
-        self.assertEqual(copie.layout_hash, self.pivot.layout_hash)
+        # ACON11 — vers un AUTRE lead : la production de la source
+        # (``result``) n'est jamais recopiée ; la conception l'est.
+        attendu = {'zones': LAYOUT['zones']}
+        self.assertEqual(copie.roof_layout, attendu)
+        self.assertEqual(copie.layout_hash, layout_hash(attendu))
 
     def test_la_copie_repart_en_brouillon(self):
         self.pivot.statut = Calepinage.Statut.VALIDE

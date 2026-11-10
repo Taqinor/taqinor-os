@@ -152,6 +152,11 @@ class EmailTemplatesBulkLigneSerializer(serializers.Serializer):
     cle = ChaineStricte()
     sujet = ChaineStricte(required=False, allow_null=True, allow_blank=True)
     corps = ChaineStricte(required=False, allow_null=True, allow_blank=True)
+    # ASOC99 — traductions (anglais, arabe), mêmes règles que le français.
+    sujet_en = ChaineStricte(required=False, allow_null=True, allow_blank=True)
+    sujet_ar = ChaineStricte(required=False, allow_null=True, allow_blank=True)
+    corps_en = ChaineStricte(required=False, allow_null=True, allow_blank=True)
+    corps_ar = ChaineStricte(required=False, allow_null=True, allow_blank=True)
 
 
 class EmailTemplatesBulkRequestSerializer(serializers.Serializer):

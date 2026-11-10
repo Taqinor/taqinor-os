@@ -229,3 +229,66 @@ class ResponsableParModuleTests(TestCase):
                     SimpleNamespace(user=user, method='GET'), vue))
         self.assertTrue(perm.has_permission(SimpleNamespace(
             user=self._user('Administrateur'), method='POST'), vue))
+
+
+def _compte_en_memoire(permissions, **champs):
+    """APFS28 — un compte INTERNE à rôle fin, en mémoire (patron ACHT79)."""
+    valeurs = dict(is_authenticated=True, portee='interne', is_superuser=False,
+                   is_admin_role=False, role_id=1,
+                   role=SimpleNamespace(permissions=list(permissions)))
+    valeurs.update(champs)
+    return SimpleNamespace(**valeurs)
+
+
+def lectures_acceptees(viewsets, utilisateurs):
+    """APFS28 — le BALAI réutilisable : ``{(vue, nom du compte): bool}`` —
+    la lecture (``list``, GET) de chaque viewset est-elle acceptée par TOUTES
+    les gardes de son ``get_permissions`` pour ce compte ?"""
+    resultat = {}
+    for classe in viewsets:
+        for nom, user in utilisateurs.items():
+            vue = classe()
+            vue.action = 'list'
+            vue.format_kwarg = None
+            requete = SimpleNamespace(method='GET', user=user)
+            vue.request = requete
+            resultat[(classe.__name__, nom)] = all(
+                garde.has_permission(requete, vue)
+                for garde in vue.get_permissions())
+    return resultat
+
+
+class LectureDuModuleTests(TestCase):
+    def test_lecture_exige_un_code_du_module_ou_un_octroi(self):
+        from apps.roles.permissions_registre import (
+            ADMIN_RH_PERMISSIONS, COMMERCIAL_PERMISSIONS,
+            COMMERCIAL_TERRAIN_PERMISSIONS, TECHNICIEN_PERMISSIONS,
+        )
+        from authentication.permissions import LectureDuModule
+
+        garde = LectureDuModule()
+
+        def vue(nom):
+            return type(nom, (), {'__module__': 'apps.installations.views'})()
+
+        def lit(user, nom='VueInstallations'):
+            return garde.has_permission(
+                SimpleNamespace(method='GET', user=user), vue(nom))
+
+        self.assertFalse(lit(_compte_en_memoire(ADMIN_RH_PERMISSIONS)))
+        self.assertFalse(lit(_compte_en_memoire(COMMERCIAL_TERRAIN_PERMISSIONS)))
+        self.assertTrue(lit(_compte_en_memoire(TECHNICIEN_PERMISSIONS)))
+        commercial = _compte_en_memoire(COMMERCIAL_PERMISSIONS)
+        self.assertFalse(lit(commercial))
+        self.assertTrue(lit(commercial, 'InstallationViewSet'))  # octroi
+        # Inchangés : superuser, palier administrateur, compte hérité,
+        # module non résolu ; portail refusé.
+        self.assertTrue(lit(_compte_en_memoire([], is_superuser=True)))
+        self.assertTrue(lit(_compte_en_memoire([], is_admin_role=True)))
+        self.assertTrue(lit(_compte_en_memoire([], role_id=None)))
+        self.assertTrue(garde.has_permission(
+            SimpleNamespace(method='GET',
+                            user=_compte_en_memoire(ADMIN_RH_PERMISSIONS)),
+            type('VueFondation', (), {'__module__': 'core.views'})()))
+        self.assertFalse(lit(_compte_en_memoire(
+            TECHNICIEN_PERMISSIONS, portee='portail_client')))
