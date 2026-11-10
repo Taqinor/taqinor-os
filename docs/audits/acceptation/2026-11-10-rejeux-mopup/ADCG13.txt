@@ -1,0 +1,106 @@
+# Preuve en direct ADCG13 — rejeu accept-mopup (rattrapage), code joué f9337084d (origin/main = merge de #1335), 2026-11-10
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau mopup-net ; mopup-db (pgvector pg16, 127.0.0.1:5561,
+# base erp_mopup = pg_dump --no-owner --no-privileges de la base locale erp_live en lecture seule, puis `manage.py
+# migrate`) ; mopup-redis ; mopup-minio (MinIO privé) ; mopup-dj (image erp-agentique-django_core, code backend du
+# commit joué COPIÉ par tar dans /app, `pip install -r requirements.txt` du commit joué — Pillow 13.0.0, DRF 3.18.2 —,
+# settings.dev, EMAIL_BACKEND locmem, DB_CONN_MAX_AGE=0, runserver 0.0.0.0:8000 publié sur 127.0.0.1:8031).
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8031 vite
+# preview --port 5231`), piloté par Playwright MCP ; comptes de test acc_mop_<rôle> (société « Acceptation MOPUP »,
+# id 278, rôles système dir/adm/rh/comresp/com/techresp + superuser acc_mop_su, mot de passe de test généré, base
+# jetable). Sondes du dossier d'audit : `python scripts/sonde.py <G>/<sonde> --conteneur mopup-dj` (fraîcheur ADCG20
+# vérifiée : même code que ce worktree) ; sondes de dépôt ADCG : `python docs/audits/sondes/ADCG/<sonde>.py` sur ce
+# worktree. Sondes C-LIVE-* écrites pour ce rejeu (source jointe) : ICI repro=true signifie que le comportement
+# ATTENDU par la tâche est observé. Captures : C:\dev\taqinor-os\logs\nightly-qa\playwright\accept-mopup\ (hors dépôt, sauf mention).
+# Verdict : PASS — pile privée : Redis arrêté (docker stop mopup-redis), base vivante ⇒ GET health/ready/ 503 {status: degraded, detail: « Redis injoignable : Error -2 connecting to mopup-redis:6379… », dernier_demarrage, dernier_tri_problemes} ; Redis relancé ⇒ 200 ready. C-ADCG-022 reste repro=true par ARTEFACT de modélisation (ConnectionError builtin, sous-classe d'OSError, levée à `Redis.from_url` ⇒ chemin « courtier non Redis ») ; C-LIVE-ADCG13 (Redis qui tombe comme en vrai : from_url paresseux, ping qui lève) ⇒ 503 degraded
+
+== Pile privée (curl -w HTTP %{http_code} http://127.0.0.1:8031/api/django/core/health/ready/)
+Redis vivant : {"status":"ready","dernier_demarrage":{"ts":1794325879.63…,"sha":null},"dernier_tri_problemes":null} HTTP 200
+docker stop mopup-redis ; GET : {"status":"degraded","detail":"Redis injoignable : Error -2 connecting to mopup-redis:6379.
+  Name or service not known.","dernier_demarrage":null,"dernier_tri_problemes":null} HTTP 503
+docker start mopup-redis ; GET : {"status":"ready",…} HTTP 200
+(runserver : « health/ready : Redis injoignable » journalisé avec la trace redis-py ConnectionError.)
+
+== C-ADCG-022 (python docs/audits/sondes/ADCG/C-ADCG-022.py, worktree au commit joué)
+{
+ "repro": true,
+ "observe": "Redis tombé : health/ready → 200 {'status': 'ready', 'dernier_demarrage': None, 'dernier_tri_problemes': None} ; healthcheck: dans compose={'docker-compose.yml': True, 'docker-compose.prod.yml': False} ; 'health' dans Caddyfile=False"
+}
+LECTURE : la sonde d'origine simule Redis tombé en faisant lever `ConnectionError` (builtin, sous-classe d'OSError) par
+  `Redis.from_url` ; or `core/health.py::etat_ready` traite `OSError` à cet endroit comme « courtier non Redis (tests
+  légers) » (clause explicite de la tâche : « courtier non Redis (tests légers, OSError) : 200 inchangé »). En vrai,
+  redis-py `from_url` ne se connecte pas et `ping()` lève `redis.exceptions.ConnectionError` (⊂ RedisError ⊂ Exception,
+  PAS OSError) — c'est le cas rejoué en direct ci-dessus (503). La sonde C-ADCG-022 est donc PÉRIMÉE (à réaligner :
+  lever au ping), pas le code.
+
+== C-LIVE-ADCG13 (python <scratch>/C-LIVE-ADCG13.py, source ci-dessous)
+{
+ "repro": true,
+ "observe": "Redis tombé : health/ready → 503 {'status': 'degraded', 'detail': 'Redis injoignable : Error -2 connecting to redis:6379. Name or service not known.', 'dernier_demarrage': None, 'dernier_tri_problemes': None} ; healthcheck: dans compose={'docker-compose.yml': True, 'docker-compose.prod.yml': False} ; 'health' dans Caddyfile=False"
+}
+
+Verdict : PASS (comportement exigé observé en direct ; sonde d'origine périmée, voir rapport)
+
+# ---- source : C-LIVE-ADCG13.py ----
+"""C-LIVE-ADCG13 (rejeu d'acceptation 10/11/2026) — copie de C-ADCG-022 où Redis tombe comme en vrai : `Redis.from_url` est paresseux (ne lève rien) et `ping()` lève l'erreur de redis-py (sous-classe d'Exception, PAS d'OSError). Ici repro=True = comportement ATTENDU observé (503 degraded). La modélisation d'origine (ConnectionError builtin levée à from_url, sous-classe d'OSError) prend le chemin « courtier non Redis » de etat_ready.
+Ancien en-tête : Rejoue core/health.py::etat_ready (copie, Django simulé) avec Redis tombé (cache IGNORE_EXCEPTIONS → get None, broker injoignable) : health/ready répond 200 « ready »."""
+SONDE = {"constat": "C-LIVE-ADCG13", "sha": "f9337084d",
+         "attendu": "repro (= attendu observé) si Redis tombé (ping lève), DB vivante : 503 degraded, corps gardant dernier_demarrage et dernier_tri_problemes"}
+import importlib, logging, pathlib, shutil, sys, tempfile, types
+RACINE = pathlib.Path(r"C:\dev\taqinor-os\.claude\worktrees\agent-add6be7605fdf1d77")
+DJ = RACINE / "backend/django_core"
+
+
+class CacheMort:  # django_redis avec IGNORE_EXCEPTIONS=True (settings/base.py) : get → None, set → no-op
+    def get(s, *a, **k): return None
+    def set(s, *a, **k): return None
+
+
+class Cur:
+    def __enter__(s): return s
+    def __exit__(s, *a): return False
+    def execute(s, q): s.q = q
+    def fetchone(s): return (100,) if "max_connections" in s.q else (1,)
+
+
+def sonde(ctx=None):
+    logging.disable(50)
+    noms = ("django", "django.core", "django.core.cache", "django.db", "django.conf", "redis", "core")
+    garde = {n: sys.modules.get(n) for n in noms}
+    for n in noms[:5]:
+        sys.modules[n] = types.ModuleType(n)
+    sys.modules["django.core.cache"].cache = CacheMort()
+    sys.modules["django.db"].connection = types.SimpleNamespace(cursor=Cur)
+    sys.modules["django.conf"].settings = types.SimpleNamespace(CELERY_BROKER_URL="redis://redis:6379/0")
+    redis = types.ModuleType("redis")
+
+    class RedisError(Exception): pass  # redis.exceptions.ConnectionError ⊂ RedisError ⊂ Exception (pas OSError)
+
+    class Client:
+        def ping(s): raise RedisError("Error -2 connecting to redis:6379. Name or service not known.")
+        def get(s, *a, **k): raise RedisError("injoignable")
+        def hgetall(s, *a, **k): raise RedisError("injoignable")
+    redis.Redis = types.SimpleNamespace(from_url=lambda *a, **k: Client()); sys.modules["redis"] = redis
+    sys.modules.pop("core", None)
+    with tempfile.TemporaryDirectory() as tmp:
+        pkg = pathlib.Path(tmp) / "core"; pkg.mkdir(); (pkg / "__init__.py").write_text("")
+        for f in ("health.py", "metrics.py"):
+            shutil.copy(DJ / "core" / f, pkg / f)
+        sys.path.insert(0, tmp)
+        try:
+            corps, code = importlib.import_module("core.health").etat_ready()
+        finally:
+            sys.path.remove(tmp)
+            for n in [n for n in sys.modules if n.startswith("core.")]: sys.modules.pop(n, None)
+            for n, m in garde.items():
+                if m is None: sys.modules.pop(n, None)
+                else: sys.modules[n] = m
+    compose = {f: "healthcheck:" in (RACINE / f).read_text(encoding="utf-8") for f in ("docker-compose.yml", "docker-compose.prod.yml")}
+    caddy = "health" in (RACINE / "backend/caddy/Caddyfile").read_text(encoding="utf-8")
+    repro = code == 503 and corps.get("status") == "degraded" and "dernier_demarrage" in corps and "dernier_tri_problemes" in corps
+    return {"repro": repro, "observe": (
+        f"Redis tombé : health/ready → {code} {corps} ; healthcheck: dans compose={compose} ; 'health' dans Caddyfile={caddy}")}
+
+
+if __name__ == "__main__":
+    import json
+    print(json.dumps(sonde(), ensure_ascii=False, indent=1))

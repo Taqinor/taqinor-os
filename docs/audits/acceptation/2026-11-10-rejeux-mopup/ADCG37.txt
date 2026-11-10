@@ -1,0 +1,26 @@
+# Preuve en direct ADCG37 — rejeu accept-mopup (rattrapage), code joué f9337084d (origin/main = merge de #1335), 2026-11-10
+# Pile PRIVÉE (aucun conteneur erp-agentique modifié) : réseau mopup-net ; mopup-db (pgvector pg16, 127.0.0.1:5561,
+# base erp_mopup = pg_dump --no-owner --no-privileges de la base locale erp_live en lecture seule, puis `manage.py
+# migrate`) ; mopup-redis ; mopup-minio (MinIO privé) ; mopup-dj (image erp-agentique-django_core, code backend du
+# commit joué COPIÉ par tar dans /app, `pip install -r requirements.txt` du commit joué — Pillow 13.0.0, DRF 3.18.2 —,
+# settings.dev, EMAIL_BACKEND locmem, DB_CONN_MAX_AGE=0, runserver 0.0.0.0:8000 publié sur 127.0.0.1:8031).
+# Écran : front du commit joué (`VITE_E2E=1 vite build`, puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:8031 vite
+# preview --port 5231`), piloté par Playwright MCP ; comptes de test acc_mop_<rôle> (société « Acceptation MOPUP »,
+# id 278, rôles système dir/adm/rh/comresp/com/techresp + superuser acc_mop_su, mot de passe de test généré, base
+# jetable). Sondes du dossier d'audit : `python scripts/sonde.py <G>/<sonde> --conteneur mopup-dj` (fraîcheur ADCG20
+# vérifiée : même code que ce worktree) ; sondes de dépôt ADCG : `python docs/audits/sondes/ADCG/<sonde>.py` sur ce
+# worktree. Sondes C-LIVE-* écrites pour ce rejeu (source jointe) : ICI repro=true signifie que le comportement
+# ATTENDU par la tâche est observé. Captures : C:\dev\taqinor-os\logs\nightly-qa\playwright\accept-mopup\ (hors dépôt, sauf mention).
+# Verdict : PASS — restauration RÉELLE du dump pg_dumps/20261110-154901.dump vers erp_restaure (`manage.py restaurer_sauvegarde`) ⇒ OK BackupRun #27 (users 59, devis 1291, leads 2201) ; `DB_NAME=erp_restaure manage.py check` sans erreur ; runserver :8001 sur erp_restaure : POST token 200 puis GET authentifié /api/django/crm/leads/ 200
+
+$ docker cp backend/db/rls_roles.sql mopup-dj:/tmp/rls_roles.sql
+$ python manage.py restaurer_sauvegarde --dump pg_dumps/20261110-154901.dump --base erp_restaure --suffixe-buckets=-restaure --roles-sql /tmp/rls_roles.sql
+restaurer_sauvegarde: OK — BackupRun #27, base=erp_restaure, comptages={'authentication_customuser': 59, 'ventes_devis': 1291,
+  'crm_lead': 2201}, fichiers={'erp-uploads-restaure': {'objets': 0}, 'erp-pdf-restaure': {'objets': 0}}
+$ DB_NAME=erp_restaure python manage.py check
+System check identified 2 issues (0 silenced).   (les 2 avertissements W010 des secrets webhook non posés, aucune erreur)
+$ DB_NAME=erp_restaure python manage.py runserver 0.0.0.0:8001 (dans mopup-dj)
+$ (client cookies) POST http://localhost:8001/api/django/token/ {acc_mop_dir} ⇒ 200, cookies access_token + refresh_token
+$ GET http://localhost:8001/api/django/crm/leads/ ⇒ 200 count 0 results 0  (la société d'acc_mop_dir n'avait aucun lead au
+  moment du dump ; la base restaurée porte 2 201 leads d'autres sociétés, comptés par la commande)
+Verdict : PASS

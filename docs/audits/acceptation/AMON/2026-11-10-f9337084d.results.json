@@ -1,0 +1,57 @@
+{
+  "sha": "f9337084dbda8d0f01ee32a2c93aca8eb35557f3",
+  "date": "2026-11-10",
+  "groupe": "AMON",
+  "verdict": "PASS",
+  "couvre": [
+    "AMON108",
+    "AMON109"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "MOPUPLIVE.AMON108.preuve_en_direct",
+      "taches": [
+        "AMON108"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-mopup/AMON108.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écran Rapports O&M (Système #783, ACC-MOP-MON relevé chaque jour d'octobre) : carte « INDICE DE SUIVI (JOURS AVEC RELEVÉ) 70,0 % » ; « Télécharger le PDF » ⇒ GET om-report/?period=monthly&format=pdf 200 application/pdf, rapport-om-ACC-MOP-MON.pdf téléchargé ; texte pypdf : « INDICE DE SUIVI (JOURS AVEC RELEVÉ) 70.00 % », aucun « Disponibilité » (défaut du rejeu précédent, 404, corrigé par #1320)"
+    },
+    {
+      "id": "MOPUPLIVE.AMON109.preuve_en_direct",
+      "taches": [
+        "AMON109"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/2026-11-10-rejeux-mopup/AMON109.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "société sans facteur CO₂ (facteur_co2_reseau = None), parc de 12 000 kWh : co2-fleet sert total_co2_tonnes null ; pied de barre latérale « 12,0 MWh » seul, aucun « t CO₂ »"
+    }
+  ]
+}
