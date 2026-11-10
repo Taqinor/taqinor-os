@@ -481,7 +481,8 @@ def _guaranteed_kwh_for_period(warranty, year, today, installation=None):
     reçus depuis le 1er janvier — comparer ce réel forcément partiel à un
     objectif annuel complet gonfle mécaniquement le manque et la
     compensation MAD tant que l'année n'est pas finie. On prorate donc le
-    garanti au jour de l'année écoulé (day-of-year / jours-de-l'année).
+    garanti selon le profil mensuel de production (``attendu_entre``,
+    AMON107 — jamais jours / jours de l'année).
 
     Renvoie ``(guaranteed_kwh, year_in_progress)`` — ``year_in_progress``
     laisse l'appelant exposer un flag explicite (jamais une compensation
@@ -509,9 +510,9 @@ def _guaranteed_kwh_for_period(warranty, year, today, installation=None):
     year_in_progress = year == today.year
     if debut == premier_janvier and fin == _date(year, 12, 31):
         return guaranteed_full, year_in_progress
-    days_in_year = (_date(year, 12, 31) - premier_janvier).days + 1
-    jours = max((fin - debut).days + 1, 0)
-    fraction = Decimal(jours) / Decimal(days_in_year)
+    # AMON107 (D-AMON-3) — prorata au PROFIL MENSUEL de l'attendu
+    # (``attendu_entre``), jamais jours / jours de l'année.
+    fraction = attendu_entre(1, debut, fin) if fin >= debut else Decimal('0')
     return guaranteed_full * fraction, year_in_progress
 
 
