@@ -18,9 +18,11 @@ DB-free AST sweep (mirrors ``check_unique_scoping.py`` /
   2. Every ``*ModelSerializer`` subclass under ``apps/*/serializers*.py`` /
      ``apps/*/*_serializers.py`` (+ ``serializers/``) is
      matched to its ``Meta.model``; each ``Meta.fields`` entry that is a
-     WRITABLE cross-app FK to a tenant-scoped model must be covered by either
-     ``def validate_<field>`` or a declarative
-     ``same_company_fields = (...)`` (``core.mixins.SameCompanyFKSerializerMixin``).
+     WRITABLE cross-app FK to a tenant-scoped model must be covered by a
+     declarative ``same_company_fields = (...)``
+     (``core.mixins.SameCompanyFKSerializerMixin``). APFS62 — a hand-written
+     ``def validate_<field>`` no longer counts: it resolves the foreign row
+     first, so its own message tells « exists elsewhere » from « absent ».
 
 AANA47 / ASTK9 extensions: M2M fields, FK/M2M to the user (``CustomUser``) or
 ``roles.Role``, SAME-APP FKs to a tenant model, and ANY app module defining a
@@ -292,14 +294,14 @@ def _meta_of(cls: ast.ClassDef):
 
 
 def _serializer_facts(cls: ast.ClassDef):
-    """Champs read-only déclarés, ``same_company_fields``, ``validate_*``."""
+    """Champs read-only déclarés et ``same_company_fields``.
+
+    APFS62 — un ``validate_<champ>`` n'est PLUS une couverture : il résout la
+    ligne voisine puis répond par son propre message (oracle d'existence)."""
     read_only = set()
     same_company = set()
-    validates = set()
     for stmt in cls.body:
         if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            if stmt.name.startswith("validate_"):
-                validates.add(stmt.name[len("validate_"):])
             continue
         noms = _assigned_targets(stmt)
         if not noms:
@@ -324,7 +326,7 @@ def _serializer_facts(cls: ast.ClassDef):
         if isinstance(value, ast.Call) and _call_name(value) in (
                 "SerializerMethodField",):
             read_only.update(noms)
-    return read_only, same_company, validates
+    return read_only, same_company
 
 
 def collect_sites():
@@ -400,7 +402,7 @@ def collect_sites():
             if not champs_fk:
                 continue
 
-            read_only, same_company, validates = _serializer_facts(cls)
+            read_only, same_company = _serializer_facts(cls)
             borne_par_base = bool(SCOPING_BASES & set(bases))
             # Héritage intra-APP : une base (même fichier ou autre fichier
             # sérialiseur de l'app) couvre ses sous-classes, transitivement.
@@ -414,10 +416,9 @@ def collect_sites():
                 vus.add(b)
                 if b in SCOPING_BASES:
                     borne_par_base = True
-                b_ro, b_sc, b_val = _serializer_facts(base_cls)
+                b_ro, b_sc = _serializer_facts(base_cls)
                 read_only |= b_ro
                 same_company |= b_sc
-                validates |= b_val
                 pile.extend(_base_names(base_cls))
                 if SCOPING_BASES & set(_base_names(base_cls)):
                     borne_par_base = True
@@ -442,8 +443,7 @@ def collect_sites():
                     continue          # cible non scopée société : rien à valider
                 if champ in read_only or champ in read_only_meta:
                     continue
-                couvert = (borne_par_base or champ in same_company
-                           or champ in validates)
+                couvert = borne_par_base or champ in same_company
                 sites.append((rel, cls.name, champ,
                               f"{t_app}.{t_model}", couvert))
     return sites
@@ -638,8 +638,8 @@ def main(argv):
         print(
             "\nAjoutez le mixin partagé "
             "(core.mixins.SameCompanyFKSerializerMixin) et déclarez "
-            "same_company_fields = ('<champ>',), ou écrivez un "
-            "validate_<champ> même-société. Si ce site est un cas relu et "
+            "same_company_fields = ('<champ>',) (un validate_<champ> ne "
+            "couvre plus — APFS62). Si ce site est un cas relu et "
             "légitime, ajoutez 'chemin::Serializer.champ' à "
             "scripts/fk_scoping_allow.txt."
         )
