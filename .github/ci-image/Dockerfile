@@ -36,7 +36,8 @@
 # paquets construits pour bookworm (libpq5 pgdg12+ exige libldap-2.5-0,
 # absent de trixie) - exit 100 au premier build reel. La base et la ligne
 # bookworm-pgdg doivent TOUJOURS bouger ensemble.
-FROM python:3.11-slim-bookworm
+# ADCG90 : correctif EPINGLE = celui des images de prod (check_parite_image_ci.py).
+FROM python:3.11.11-slim-bookworm
 
 # MEME version majeure/mineure que la production (backend/django_core/Dockerfile
 # et backend/fastapi_ia : python:3.11.x). Une CI en 3.12+ ne verrait pas les

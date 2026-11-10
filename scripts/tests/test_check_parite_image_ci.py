@@ -72,6 +72,37 @@ class NodeTests(unittest.TestCase):
             self.assertEqual(cp.verifier_node(_arbre(tmp, '')), [])
 
 
+class PythonTests(unittest.TestCase):
+    """ADCG90 — tag `FROM python:` identique prod / CI ; workflows sur la même mineure."""
+
+    def _python(self, tmp, ci='3.11.11-slim-bookworm', ia='3.11.11-slim-bookworm', wf='3.11'):
+        r = _arbre(tmp, 'fonts-noto-core')
+        (r / cp.PROD).write_text('FROM python:3.11.11-slim-bookworm\n' + PROD, encoding='utf-8')
+        (r / cp.COPIES_CI[0]).write_text(f'FROM python:{ci}\n', encoding='utf-8')
+        (r / 'backend' / 'fastapi_ia').mkdir(parents=True)
+        (r / 'backend' / 'fastapi_ia' / 'Dockerfile').write_text(f'FROM python:{ia}\n', encoding='utf-8')
+        workflow = r / '.github' / 'workflows' / 'x.yml'
+        workflow.write_text(f"          python-version: '{wf}'\n", encoding='utf-8')
+        return cp.verifier_python(r)
+
+    def test_tag_python_ci_divergent_rouge(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            erreurs = self._python(tmp, ci='3.11-slim-bookworm')
+            self.assertEqual(len(erreurs), 1, erreurs)
+            self.assertIn('python:3.11-slim-bookworm contre python:3.11.11-slim-bookworm', erreurs[0])
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertIn('backend/fastapi_ia/Dockerfile', ' '.join(self._python(tmp, ia='3.12.1-slim')))
+
+    def test_python_version_workflow_divergente_rouge(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            erreurs = self._python(tmp, wf='3.12')
+            self.assertTrue(any('x.yml : python-version 3.12 contre Python 3.11' in e for e in erreurs), erreurs)
+
+    def test_python_vert(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(self._python(tmp), [])
+
+
 class DepotReelTests(unittest.TestCase):
     def test_depot_reel_vert(self):
         self.assertEqual(cp.verifier(ROOT), [])
