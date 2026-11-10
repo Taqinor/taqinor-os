@@ -69,3 +69,7 @@ class NotificationsConfig(AppConfig):
         # agrège sans importer cette app (patron ``calepinage.dsr_provider``).
         from . import dsr_provider
         dsr_provider.register()
+        # ASOC102 — purge par âge du même journal (durée déclarée au registre).
+        from core.retention import register_retention_policy
+        register_retention_policy(dsr_provider.RETENTION_POLICY_WHATSAPP,
+                                  dsr_provider.sweep_retention_whatsapp)

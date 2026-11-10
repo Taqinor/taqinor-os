@@ -64,6 +64,25 @@ def erase_notifications(company, subject_identifier):
     return WhatsAppMessageLog.objects.filter(pk__in=ids).update(recipient='', body='')
 
 
+#: ASOC102 — nom de la politique au registre de rétention partagé (``core.retention``).
+RETENTION_POLICY_WHATSAPP = 'notifications_whatsapp_journal'
+
+
+def sweep_retention_whatsapp(now, apply_=False):
+    """ASOC102 — caviarde (numéro et corps vidés, date et statut gardés) les messages
+    journalisés au-delà de la durée DÉCLARÉE au registre (crm, « 3 ans après le
+    dernier contact ») ; dry-run : le compte seul. Rend le nombre de lignes."""
+    import datetime
+
+    from apps.crm.dsr_provider import DUREE_CONSERVATION_PROSPECTS_JOURS
+
+    from .models import WhatsAppMessageLog
+
+    limite = now - datetime.timedelta(days=DUREE_CONSERVATION_PROSPECTS_JOURS)
+    lignes = WhatsAppMessageLog.objects.filter(created_at__lt=limite).exclude(recipient='', body='')
+    return lignes.update(recipient='', body='') if apply_ else lignes.count()
+
+
 def register():
     """Enregistre le fournisseur DSR (idempotent). Appelé en ``ready()``."""
     from core import dsr
