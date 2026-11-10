@@ -86,7 +86,12 @@ export default function Approbation({ calepinageId: idPropose = null, lectureSeu
     if (!calepinageId) return
     setErreurs({})
     setEnCours(true)
-    Promise.resolve(calepinageApi.calepinages.decisionApprobation(calepinageId, { decision, motif }))
+    // ACON23 — un accord renvoie l'empreinte VUE (`empreinte_courante`) : la conception
+    // changée depuis l'ouverture est refusée (409 nommé), jamais approuvée en silence.
+    const corps = decision === 'approuve'
+      ? { decision, motif, empreinte: (etatDecide ?? data)?.empreinte_courante ?? '' }
+      : { decision, motif }
+    Promise.resolve(calepinageApi.calepinages.decisionApprobation(calepinageId, corps))
       .then((reponse) => {
         setEtatDecide(reponse?.data ?? null)
         setMotif('')
@@ -205,6 +210,11 @@ export default function Approbation({ calepinageId: idPropose = null, lectureSeu
           {erreurs.decision && (
             <p role="alert" data-testid="calx349-erreur-decision" className="mt-1 text-xs text-red-300">
               {erreurs.decision}
+            </p>
+          )}
+          {erreurs.empreinte && (
+            <p role="alert" data-testid="acon23-erreur-empreinte" className="mt-1 text-xs text-red-300">
+              {erreurs.empreinte}
             </p>
           )}
           <div className="mt-3 flex gap-2">

@@ -200,7 +200,9 @@ def approbation_perimee(calepinage):
 
 def etat_approbation(calepinage):
     """``{etat, decide_par, decide_le, motif, exigee, perimee,
-    empreinte_approuvee}`` — le contrat CALX334 (+ ACAL6/ACAL114).
+    empreinte_approuvee, empreinte_courante}`` — le contrat CALX334 (+ ACAL6/
+    ACAL114 ; ACON23 : ``empreinte_courante`` = l'empreinte imprimée VUE, que
+    l'accord renvoie).
 
     ``etat`` vaut ``None`` tant que personne n'a décidé ; ``exigee`` reflète
     le réglage société (jamais supposé) ; ``perimee`` dit qu'un accord ne
@@ -218,7 +220,24 @@ def etat_approbation(calepinage):
         'exigee': approbation_exigee(getattr(calepinage, 'company', None)),
         'perimee': approbation_perimee(calepinage),
         'empreinte_approuvee': _empreinte_approuvee(calepinage) if etat else '',
+        'empreinte_courante': getattr(calepinage, 'layout_hash', '') or '',
     }
+
+
+#: ACON23 — un accord porte l'empreinte VUE (``empreinte_courante`` du GET).
+MESSAGE_EMPREINTE_ABSENTE = ("Empreinte manquante : renvoyez l'empreinte de la "
+                             "conception lue (empreinte_courante).")
+MESSAGE_EMPREINTE_PERIMEE = ("La conception a changé depuis votre ouverture : "
+                             "relisez-la avant d'approuver.")
+
+
+def _exiger_empreinte_vue(calepinage, empreinte):
+    """ACON23 — absente ⇒ refus ``empreinte`` (corps mal formé, 400) ;
+    différente de l'empreinte imprimée d'aujourd'hui ⇒ refus (409)."""
+    if not isinstance(empreinte, str):
+        raise ApprobationRefusee(MESSAGE_EMPREINTE_ABSENTE, champ='empreinte')
+    if empreinte != (getattr(calepinage, 'layout_hash', '') or ''):
+        raise ApprobationRefusee(MESSAGE_EMPREINTE_PERIMEE, champ='empreinte')
 
 
 def est_approuve(calepinage, *, empreinte=None):
@@ -314,7 +333,8 @@ def _valider(decision, motif, roof_layout):
     return motif
 
 
-def decider(calepinage, *, decision, motif='', user=None, maintenant=None):
+def decider(calepinage, *, decision, motif='', user=None, maintenant=None,
+            empreinte=None):
     """Enregistre la décision d'approbation et la note au chatter.
 
     Args:
@@ -323,6 +343,8 @@ def decider(calepinage, *, decision, motif='', user=None, maintenant=None):
         motif: obligatoire pour un refus, facultatif pour un accord.
         user: le décideur — posé côté serveur.
         maintenant: horodatage injectable (aware) ; ``timezone.now()`` sinon.
+        empreinte: ACON23 — l'empreinte VUE (``empreinte_courante``), EXIGÉE
+            pour un accord, vérifiée APRÈS les refus d'avant.
 
     Returns:
         ``etat_approbation(calepinage)`` après écriture.
@@ -352,6 +374,8 @@ def decider(calepinage, *, decision, motif='', user=None, maintenant=None):
     # refus nommé, rien n'est écrit ; indéterminé ⇒ accord AVEC avertissement.
     avertissement = (_verdict_electrique_avant_accord(calepinage)
                      if decision == APPROUVE else '')
+    if decision == APPROUVE:
+        _exiger_empreinte_vue(calepinage, empreinte)
     horodatage = maintenant or timezone.now()
     calepinage.approbation = {
         'etat': decision,

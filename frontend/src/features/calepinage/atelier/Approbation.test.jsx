@@ -17,7 +17,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { reponseContrat } from '../../../test/fixtures/contractSamples'
+import { documentContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
 
 const mocks = vi.hoisted(() => ({ hasPermission: vi.fn(() => false) }))
 vi.mock('../../../hooks/useHasPermission', () => ({
@@ -103,9 +103,27 @@ describe('Approbation (CALX349) — décider, avec le code', () => {
     fireEvent.click(screen.getByTestId('calx349-approuver'))
 
     await waitFor(() => expect(calepinageApi.calepinages.decisionApprobation)
-      .toHaveBeenCalledWith(1, { decision: 'approuve', motif: '' }))
+      .toHaveBeenCalledWith(1, { decision: 'approuve', motif: '',
+        empreinte: echantillon('exemple_vide').empreinte_courante }))
     await screen.findByTestId('calx349-decision')
     expect(screen.getByTestId('calx349-decision')).toHaveTextContent('Approuvée')
+  })
+
+  it('l’accord renvoie l’empreinte VUE ; conception changée depuis : le motif serveur est dit', async () => {
+    // ACON23 — 409 `{empreinte}` : rien n'est approuvé, le message nommé s'affiche.
+    servir('exemple')
+    const refus = documentContrat('calepinage', 'calepinage_approbation').refus_conception_modifiee
+    calepinageApi.calepinages.decisionApprobation.mockRejectedValue({
+      response: { status: 409, data: refus } })
+    rendre()
+    await screen.findByTestId('calx349-decider')
+
+    fireEvent.click(screen.getByTestId('calx349-approuver'))
+
+    await waitFor(() => expect(calepinageApi.calepinages.decisionApprobation)
+      .toHaveBeenCalledWith(1, { decision: 'approuve', motif: '',
+        empreinte: echantillon('exemple').empreinte_courante }))
+    expect(await screen.findByTestId('acon23-erreur-empreinte')).toHaveTextContent(refus.empreinte)
   })
 
   it('un refus SANS motif est rendu SOUS le champ « motif », bandeau nommé', async () => {

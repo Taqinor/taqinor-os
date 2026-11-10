@@ -271,7 +271,8 @@ class FormeDeLaReponseTest(SimpleTestCase):
         self.assertEqual(etat, {'etat': None, 'decide_par': None,
                                 'decide_le': None, 'motif': None,
                                 'exigee': False, 'perimee': False,
-                                'empreinte_approuvee': ''})
+                                'empreinte_approuvee': '',
+                                'empreinte_courante': ''})
 
     def test_etat_illisible_publie_comme_non_decide(self):
         etat = self._etat(faux_calepinage(approbation={'etat': 'peut-etre'}))
@@ -391,8 +392,11 @@ class ActionApprobationEnBase(BaseApiCalepinage):
         api, relecteur = self._compte('calx347_relecteur',
                                       [CAL_VOIR, CAL_APPROUVER])
         avant = self._notes().count()
+        vue = api.get(url_approbation(self.calepinage.pk)).data
         reponse = api.post(url_approbation(self.calepinage.pk),
-                           {'decision': 'approuve'}, format='json')
+                           {'decision': 'approuve',  # ACON23
+                            'empreinte': vue['empreinte_courante']},
+                           format='json')
         self.assertEqual(reponse.status_code, 200, reponse.data)
         self.assertEqual(reponse.data['etat'], 'approuve')
         self.assertEqual(reponse.data['decide_par']['id'], relecteur.pk)
@@ -456,7 +460,10 @@ class ActionApprobationEnBase(BaseApiCalepinage):
         self.calepinage.roof_layout = document
         self.calepinage.save(update_fields=['roof_layout'])
         reponse = self.api.post(url_approbation(self.calepinage.pk),
-                                {'decision': 'approuve'}, format='json')
+                                {'decision': 'approuve',  # ACON23
+                                 'empreinte': Calepinage.objects.get(
+                                     pk=self.calepinage.pk).layout_hash or ''},
+                                format='json')
         self.assertEqual(reponse.status_code, 200, reponse.data)
 
     def test_autre_societe_introuvable(self):
