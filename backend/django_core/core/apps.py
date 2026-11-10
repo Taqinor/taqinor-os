@@ -75,6 +75,12 @@ class CoreConfig(AppConfig):
         from .ai.search import connect_signals
         connect_signals()
 
+        # NTPLT32 — colonnes plein-texte ``search_vector`` des 7 entités de la
+        # recherche globale, recalculées après chaque écriture (libellés par
+        # CHAÎNE : aucun import d'app métier ici).
+        from .recherche_fts import connecter as connecter_recherche_fts
+        connecter_recherche_fts()
+
         # ENFP (décision fondateur D1, 09/10/2026) — un paramètre de requête
         # non déclaré au schéma OpenAPI est refusé (400). Enveloppe UNE fois
         # ``APIView.initial`` ; le réglage ``API_QUERY_PARAMS_STRICT`` est lu

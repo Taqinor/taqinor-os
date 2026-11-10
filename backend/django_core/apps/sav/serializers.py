@@ -76,7 +76,7 @@ class EquipementSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
 
     class Meta:
         model = Equipement
-        fields = '__all__'
+        exclude = ['search_vector']  # NTPLT32 — index plein-texte, jamais servi
         # company / dates de garantie / created_by posés côté serveur — jamais
         # depuis le corps. Les dates de garantie sont CALCULÉES (read-only).
         read_only_fields = [
@@ -583,7 +583,7 @@ class TicketSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
 
     class Meta:
         model = Ticket
-        fields = '__all__'
+        exclude = ['search_vector']  # NTPLT32 — index plein-texte, jamais servi
         list_serializer_class = TicketListSerializer
         # company / reference / created_by posés côté serveur — jamais du corps.
         read_only_fields = [

@@ -35,6 +35,7 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
+from core.champs_plateforme import RechercheFTSMixin, index_fts
 from core.models import TenantModel
 
 from .dateutils import add_months
@@ -355,7 +356,7 @@ class CategorieEquipement(models.Model):
         return self.nom
 
 
-class Equipement(models.Model):
+class Equipement(RechercheFTSMixin, models.Model):
     class Statut(models.TextChoices):
         EN_SERVICE = 'en_service', 'En service'
         REMPLACE = 'remplace', 'Remplacé'
@@ -466,6 +467,7 @@ class Equipement(models.Model):
         verbose_name_plural = 'Équipements'
         ordering = ['-date_creation']
         indexes = [
+            index_fts('sav_equipement_fts_gin'),  # NTPLT32 — plein-texte (GIN)
             models.Index(fields=['company', 'produit']),
             models.Index(fields=['company', 'date_fin_garantie']),
         ]
@@ -668,7 +670,7 @@ class EquipeMaintenance(models.Model):
 
 # ── Modèle Ticket ─────────────────────────────────────────────────────────────
 
-class Ticket(models.Model):
+class Ticket(RechercheFTSMixin, models.Model):
     class Statut(models.TextChoices):
         NOUVEAU = 'nouveau', 'Nouveau'
         PLANIFIE = 'planifie', 'Planifié'
@@ -997,6 +999,7 @@ class Ticket(models.Model):
         ordering = ['-date_creation']
         unique_together = [('company', 'reference')]
         indexes = [
+            index_fts('sav_ticket_fts_gin'),  # NTPLT32 — plein-texte (GIN)
             models.Index(fields=['company', 'statut']),
             models.Index(fields=['company', 'sla_breach']),
         ]

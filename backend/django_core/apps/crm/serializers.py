@@ -1270,7 +1270,7 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
 
     class Meta:
         model = Lead
-        fields = '__all__'
+        exclude = ['search_vector']  # NTPLT32 — index plein-texte, jamais servi
         # company/source/external refs are set server-side, never trusted from
         # input. The lead→client link is resolved server-side too (no-duplicate
         # rules in services.py), never accepted from the browser.

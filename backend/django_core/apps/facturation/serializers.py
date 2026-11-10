@@ -488,7 +488,7 @@ class FactureSerializer(SameCompanyFKSerializerMixin,
 
     class Meta:
         model = Facture
-        fields = '__all__'
+        exclude = ['search_vector']  # NTPLT32 — index plein-texte, jamais servi
         read_only_fields = ['reference', 'created_by', 'fichier_pdf', 'date_emission',
                             'updated_at', 'updated_by',  # VX98 — server-side only
                             # ARRONDI-100 — hérités du devis côté serveur.

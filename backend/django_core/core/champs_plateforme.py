@@ -9,12 +9,22 @@ NTPLT17 — :class:`VerrouOptimisteMixin`, verrou optimiste OPT-IN.
 révision V1/V2 lu par le moteur de devis — le réutiliser casserait les
 révisions) avance de 1 à chaque ``save()`` d'une ligne existante. La
 vérification (409 quand le client renvoie une version périmée) vit dans
-``core.verrou_optimiste.VerrouOptimisteSerializerMixin`` ; un client qui
+``core.mixins.VerrouOptimisteSerializerMixin`` ; un client qui
 n'envoie rien garde le comportement d'avant, à l'identique.
 
 Limite assumée : un ``QuerySet.update()`` / ``bulk_update`` ne fait pas avancer
 la version (aucun ``save()``), comme ``auto_now``.
+
+NTPLT32 — :class:`RechercheFTSMixin`, colonne plein-texte ``search_vector``
+(tsvector, config 'french') des entités de la recherche globale, indexée en GIN
+(:func:`index_fts`, posé CONCURREMMENT via ``core.migrations_utils``). Elle est
+entretenue hors du ``save()`` par ``core.recherche_fts`` (signal ``post_save``,
+patron GED11) et remplie par lots par ``manage.py rebuild_search_index``.
+``NULL`` = ligne pas encore indexée : la recherche retombe alors sur
+``icontains`` pour CETTE ligne (déploiement progressif sûr).
 """
+from django.contrib.postgres.indexes import GinIndex
+from django.contrib.postgres.search import SearchVectorField
 from django.db import models
 
 
@@ -41,3 +51,19 @@ class VerrouOptimisteMixin(models.Model):
             if update_fields is not None and 'lock_version' not in update_fields:
                 kwargs['update_fields'] = [*update_fields, 'lock_version']
         super().save(*args, **kwargs)
+
+
+class RechercheFTSMixin(models.Model):
+    """``search_vector`` : jamais saisi, jamais servi par l'API (les
+    sérialiseurs ``__all__`` l'excluent) ; écrit par ``core.recherche_fts``."""
+
+    search_vector = SearchVectorField(null=True, blank=True, editable=False)
+
+    class Meta:
+        abstract = True
+
+
+def index_fts(nom):
+    """L'index GIN de ``search_vector`` (à déclarer dans ``Meta.indexes`` ; la
+    migration le pose avec ``concurrent_index_migration(index_class=GinIndex)``)."""
+    return GinIndex(fields=['search_vector'], name=nom)

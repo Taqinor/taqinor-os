@@ -1071,7 +1071,7 @@ class DevisSerializer(SameCompanyFKSerializerMixin, TiersPayeurValidationMixin,
 
     class Meta:
         model = Devis
-        fields = '__all__'
+        exclude = ['search_vector']  # NTPLT32 — index plein-texte, jamais servi
         # SCA47 — prix_par_kwc est DÉRIVÉ et gelé côté serveur (write-once au
         # save) : lecture seule sur l'API interne générateur/BI, JAMAIS accepté
         # du corps de requête (même régime interne que prix_achat, qui n'est

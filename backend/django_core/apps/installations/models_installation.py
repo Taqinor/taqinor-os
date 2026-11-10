@@ -18,12 +18,14 @@ from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
+from core.champs_plateforme import RechercheFTSMixin, index_fts
+
 # NOTE: découpage de l'ancien models.py monolithe (un fichier par
 # domaine). app_label, noms de table et Meta inchangés : models.py
 # ré-exporte toutes les classes pour la découverte Django + migrations.
 
 
-class Installation(models.Model):
+class Installation(RechercheFTSMixin, models.Model):
     class Statut(models.TextChoices):
         # ── Entonnoir CANONIQUE du chantier (N1) — ordre d'exécution ──
         SIGNE = 'signe', 'Signé'
@@ -355,6 +357,7 @@ class Installation(models.Model):
         unique_together = [('company', 'reference')]
         indexes = [
             models.Index(fields=['company', 'statut']),
+            index_fts('installations_inst_fts_gin'),  # NTPLT32 — plein-texte (GIN)
         ]
         constraints = [
             # ACHT4 — un seul chantier par devis (l'affaire et sa chaîne de

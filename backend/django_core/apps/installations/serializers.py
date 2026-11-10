@@ -630,7 +630,7 @@ class InstallationSerializer(IdInconnu404Mixin, ChampsStrictsEntiersMixin,  # id
 
     class Meta:
         model = Installation
-        fields = '__all__'
+        exclude = ['search_vector']  # NTPLT32 — index plein-texte, jamais servi
         # company/reference/created_by posés côté serveur — jamais du corps.
         read_only_fields = [
             'company', 'reference', 'created_by',

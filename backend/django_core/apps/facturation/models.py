@@ -5,7 +5,7 @@ from django.utils import timezone
 # AUD105/AUD106/AUD107 — la chaîne d'argent des documents client vit dans
 # un module SANS modèle, pour que ``apps.ventes.models`` (NoteDebit)
 # puisse l'importer en tête de fichier sans toucher l'ordre de chargement.
-from core.champs_plateforme import VerrouOptimisteMixin
+from core.champs_plateforme import RechercheFTSMixin, VerrouOptimisteMixin, index_fts
 
 from .totaux import TotauxDocumentMixin
 
@@ -32,7 +32,7 @@ from .totaux import TotauxDocumentMixin
 DEFAULT_ECHEANCE_DAYS = 30
 
 
-class Facture(TotauxDocumentMixin, VerrouOptimisteMixin, models.Model):
+class Facture(TotauxDocumentMixin, VerrouOptimisteMixin, RechercheFTSMixin, models.Model):
     class Statut(models.TextChoices):
         BROUILLON = 'brouillon', 'Brouillon'
         EMISE = 'emise', 'Émise'
@@ -441,6 +441,7 @@ class Facture(TotauxDocumentMixin, VerrouOptimisteMixin, models.Model):
         # (scopée société, triée -date_emission). Posés SANS verrou d'écriture
         # bloquant via AddIndexConcurrently + lock_timeout (YOPSB6).
         indexes = [
+            index_fts('facturation_fac_fts_gin'),  # NTPLT32 — plein-texte (GIN)
             models.Index(
                 fields=['company', 'statut'],
                 name='ventes_fact_co_statut_idx'),

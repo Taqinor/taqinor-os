@@ -85,6 +85,20 @@ class ConcurrentIndexMigrationTests(SimpleTestCase):
         self.assertIsNot(m1, m2)
         self.assertEqual(m2.operations[0].model_name, 'devis')
 
+    def test_index_class_gin_pour_le_plein_texte(self):
+        """NTPLT32 — même pose concurrente pour un index GIN (search_vector) ;
+        sans ``index_class``, l'index reste un B-tree (inchangé)."""
+        from django.contrib.postgres.indexes import GinIndex
+        from django.db import models
+        gin = concurrent_index_migration(
+            app_label='crm', dependencies=[('crm', '0158_ntplt32_search_vector')],
+            model_name='lead', fields=['search_vector'],
+            index_name='crm_lead_fts_gin', index_class=GinIndex)
+        self.assertFalse(gin.atomic)
+        self.assertIsInstance(gin.operations[0].index, GinIndex)
+        self.assertEqual(gin.operations[0].index.fields, ['search_vector'])
+        self.assertIs(type(self._build().operations[0].index), models.Index)
+
 
 class LockTimeoutRemisTests(SimpleTestCase):
     """Finding #11 — le réglage ne fuit plus sur la suite du plan."""

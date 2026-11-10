@@ -1,7 +1,7 @@
 from django.db import models
 from django.conf import settings
 
-from core.champs_plateforme import VerrouOptimisteMixin
+from core.champs_plateforme import RechercheFTSMixin, VerrouOptimisteMixin, index_fts
 from core.models import TenantModel
 # STKCAT21 — LE vocabulaire de rôles de devis, déclaré une seule fois dans la
 # couche de FONDATION (``core``), parce que ``apps.stock`` doit lire le même
@@ -34,7 +34,7 @@ __all__ = [
 # stock⇄ventes import cycles without any schema change).
 
 
-class Devis(VerrouOptimisteMixin, models.Model):
+class Devis(VerrouOptimisteMixin, RechercheFTSMixin, models.Model):
     class Statut(models.TextChoices):
         BROUILLON = 'brouillon', 'Brouillon'
         ENVOYE = 'envoye', 'Envoyé'
@@ -451,6 +451,7 @@ class Devis(VerrouOptimisteMixin, models.Model):
         # triée -date_creation). Posés SANS verrou d'écriture bloquant via
         # AddIndexConcurrently + lock_timeout (YOPSB6) dans la migration.
         indexes = [
+            index_fts('ventes_devis_fts_gin'),  # NTPLT32 — plein-texte (GIN)
             models.Index(
                 fields=['company', 'statut'],
                 name='ventes_devis_co_statut_idx'),

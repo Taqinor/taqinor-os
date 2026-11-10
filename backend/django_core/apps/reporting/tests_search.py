@@ -125,6 +125,68 @@ class TestGlobalSearch(TestCase):
         self.assertIn('MaintCli', group['results'][0]['sublabel'])
 
 
+class TestRechercheFtsEntretien(TestCase):
+    """NTPLT32 — ``search_vector`` entretenu après validation (signal
+    ``post_save``), jamais servi par l'API, reconstruit par lots."""
+
+    def setUp(self):
+        self.company = Company.objects.get_or_create(
+            slug='fts-co', defaults={'nom': 'FTS Co'})[0]
+
+    def test_signal_indexe_apres_commit_sans_accents(self):
+        from core.recherche_fts import requete_prefixe
+        with self.captureOnCommitCallbacks(execute=True):
+            lead = Lead.objects.create(
+                company=self.company, nom='Élodie', ville='Fès')
+        lead.refresh_from_db()
+        self.assertIsNotNone(lead.search_vector)
+        for q in ('elodie', 'Élo', 'FES'):
+            self.assertTrue(Lead.objects.filter(
+                pk=lead.pk, search_vector=requete_prefixe(q)).exists(), q)
+        self.assertFalse(Lead.objects.filter(
+            pk=lead.pk, search_vector=requete_prefixe('martin')).exists())
+
+    def test_ecriture_bornee_hors_index_ne_recalcule_pas(self):
+        lead = Lead.objects.create(company=self.company, nom='Borne')
+        Lead.objects.filter(pk=lead.pk).update(search_vector=None)
+        with self.captureOnCommitCallbacks(execute=True):
+            lead.save(update_fields=['note'])
+        lead.refresh_from_db()
+        self.assertIsNone(lead.search_vector)
+        with self.captureOnCommitCallbacks(execute=True):
+            lead.save(update_fields=['nom'])
+        lead.refresh_from_db()
+        self.assertIsNotNone(lead.search_vector)
+
+    def test_rebuild_search_index_par_lots_et_api_sans_vecteur(self):
+        from io import StringIO
+
+        from django.core.management import CommandError, call_command
+        # Hors captureOnCommitCallbacks, le signal ne s'exécute pas : lignes NULL.
+        leads = [Lead.objects.create(company=self.company, nom=f'Lot{i}')
+                 for i in range(3)]
+        client = Client.objects.create(company=self.company, nom='Clientlot')
+        self.assertEqual(Lead.objects.filter(
+            pk__in=[le.pk for le in leads], search_vector__isnull=True).count(), 3)
+        call_command('rebuild_search_index', '--app', 'crm', '--lot', '2',
+                     '--pause-ms', '0', stdout=StringIO())
+        self.assertFalse(Lead.objects.filter(
+            pk__in=[le.pk for le in leads], search_vector__isnull=True).exists())
+        client.refresh_from_db()
+        self.assertIsNotNone(client.search_vector)
+        with self.assertRaises(CommandError):
+            call_command('rebuild_search_index', '--app', 'inconnue',
+                         stdout=StringIO())
+        user = User.objects.create_user(
+            username='fts_user', password='x', role_legacy='responsable',
+            company=self.company)
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+        resp = api.get(f'/api/django/crm/leads/{leads[0].pk}/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertNotIn('search_vector', resp.data)
+
+
 class TestNotifications(TestCase):
     def setUp(self):
         self.company = Company.objects.get_or_create(
