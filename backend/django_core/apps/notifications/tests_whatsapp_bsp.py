@@ -673,3 +673,37 @@ class WhatsAppTemplateViewSetApiTests(TestCase):
             {"statut_approbation": "approuve"}, format="json")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data["statut_approbation"], "approuve")
+
+
+class WhatsAppJournalDsrTests(TestCase):
+    """ASOC66 / ASOC102 (C-ASOC-064) — le journal WhatsApp d'une personne entre
+    dans l'export et l'effacement DSR (loi 09-08), et vieillit selon la durée
+    déclarée au registre."""
+
+    def setUp(self):
+        from apps.crm.models import Lead
+        self.company = _make_company("ASOC66")
+        self.autre = _make_company("ASOC66-B")
+        Lead.objects.create(company=self.company, nom="Idrissi", prenom="Mounir",
+                            email="mounir@example.com", telephone="0612000066")
+        self.siens = [WhatsAppMessageLog.objects.create(
+            company=self.company, recipient="212612000066",
+            body=f"Bonjour Mounir Idrissi, touche n{i}") for i in range(3)]
+        self.etranger = WhatsAppMessageLog.objects.create(
+            company=self.company, recipient="212699999999", body="Autre client")
+        self.autre_societe = WhatsAppMessageLog.objects.create(
+            company=self.autre, recipient="212612000066", body="Autre société")
+
+    def test_export_et_effacement_du_journal(self):
+        from core import dsr
+        export = dsr.exporter(self.company, "mounir@example.com")
+        self.assertEqual(len(export["notifications"]["whatsapp"]), 3)
+        self.assertEqual(len(dsr.exporter(self.company, "+212 6 12 00 00 66")["notifications"]["whatsapp"]), 3)
+        self.assertEqual(dsr.effacer(self.company, "mounir@example.com")["notifications"], 3)
+        for ligne in self.siens:  # CLAUSE PERSISTANCE — relues en base
+            ligne.refresh_from_db()
+            self.assertEqual((ligne.recipient, ligne.body), ("", ""))
+            self.assertEqual(ligne.status, WhatsAppMessageLog.Status.MANUAL)
+        for intacte in (self.etranger, self.autre_societe):
+            intacte.refresh_from_db()
+            self.assertTrue(intacte.recipient and intacte.body)
