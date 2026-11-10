@@ -91,4 +91,23 @@ describe('AGNR31 — lignes que l’enregistrement ne gardera pas', () => {
     const [, lignes] = vue.ventesApi.replaceLignesDevis.mock.calls.at(-1)
     expect(lignes).toHaveLength(2)
   }, 60000)
+
+  it('ligne_sans_produit_deux_clics_ecran — AGNR78 / AGNR73 : 1er clic averti sans envoi, 2e clic envoyé sans elle', async () => {
+    const vue = await monter(`/ventes/devis/nouveau?edit=${DEVIS_REGISTRE.id}`, { devis: DEVIS_REGISTRE })
+    await attendreStable(vue.container, act)
+    await act(async () => {
+      fireEvent.click([...document.querySelectorAll('button')].find((b) => /Ajouter ligne/.test(b.textContent || '')))
+    })
+    const derniere = [...document.querySelectorAll('tr[data-line-key]')].at(-1)
+    await taper(derniere.querySelectorAll('input')[0], 'Câble')
+    await taper(derniere.querySelector('[data-role="line-qty"]'), '2')
+    await enregistrer()
+    await attendreStable(vue.container, act)
+    expect(vue.ventesApi.replaceLignesDevis).not.toHaveBeenCalled()
+    expect(document.body.textContent).toContain('1 ligne sans produit ne sera pas enregistrée : Câble')
+    await enregistrer()
+    await waitFor(() => expect(vue.ventesApi.replaceLignesDevis).toHaveBeenCalled(), { timeout: 5000 })
+    const [, lignes] = vue.ventesApi.replaceLignesDevis.mock.calls.at(-1)
+    expect(lignes.map((l) => l.designation)).not.toContain('Câble')
+  }, 60000)
 })
