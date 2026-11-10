@@ -149,3 +149,32 @@ class TestBulkExportAndScope(ProductBulkBase):
         lecteur.save(update_fields=['permissions'])
         resp = api.post('/api/django/stock/produits/export-xlsx/', {'ids': [p.id]}, format='json')
         self.assertEqual(resp.status_code, 200, resp.content)
+
+    def test_agregation_xlsx_exige_stock_export(self):
+        """ASEC88 (C-ASEC-VER5-070, D-ASEC-VER4-1) — le VRAI rôle système
+        Commercial (``stock_voir`` sans ``stock_export``) : 403
+        ``droit_manquant`` à ``agregation/?export=xlsx``, 200 JSON sans
+        ``export`` ; l'Admin Ventes (porte ``stock_export``) exporte.
+        Mutant : ôter ``agregation=`` de ``droits_de_la_grille`` ⇒ échec."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import (
+            ADMIN_VENTES_PERMISSIONS, COMMERCIAL_PERMISSIONS, ROLE_ADMIN_VENTES)
+        self.mk(nom='Panneau')
+        url = '/api/django/stock/mouvements/agregation/?group_by=produit'
+        clients = {}
+        for nom, perms in (('Commercial', COMMERCIAL_PERMISSIONS),
+                           (ROLE_ADMIN_VENTES, ADMIN_VENTES_PERMISSIONS)):
+            role = Role.objects.create(company=self.company, nom=nom, permissions=list(perms))
+            user = User.objects.create_user(username=f'pb_{role.pk}', password='x',
+                                            role=role, company=self.company)
+            clients[nom] = APIClient()
+            clients[nom].credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+        resp = clients['Commercial'].get(f'{url}&export=xlsx')
+        self.assertEqual(resp.status_code, 403, resp.content)
+        self.assertEqual(resp.json()['code'], 'droit_manquant')
+        resp = clients['Commercial'].get(url)
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertIsInstance(resp.json(), list)
+        resp = clients[ROLE_ADMIN_VENTES].get(f'{url}&export=xlsx')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertIn('spreadsheetml', resp['Content-Type'])

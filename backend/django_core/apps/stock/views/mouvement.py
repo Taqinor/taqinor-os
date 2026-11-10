@@ -52,7 +52,9 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['export_xlsx', 'agregation', 'telecharger_export']:
-            return [LectureDuModule(), *droits_de_la_grille(self, export_xlsx=[DroitDeLaGrille('stock_export')])]
+            return [LectureDuModule(), *droits_de_la_grille(
+                self, export_xlsx=[DroitDeLaGrille('stock_export')],
+                agregation=[DroitDeLaGrille('stock_export', export=('xlsx',))])]  # ASEC88
         elif self.action == 'create':
             return [HasPermissionOrLegacy('stock_mouvement')()]
         else:
@@ -169,7 +171,7 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
                                P('export', STR, False, 'xlsx pour télécharger', ['xlsx'])],
                    responses={200: LISTE, XLSX: BINARY})
     @action(detail=False, methods=['get'], url_path='agregation',
-            permission_classes=[LectureDuModule])
+            permission_classes=[LectureDuModule, DroitDeLaGrille('stock_export', export=('xlsx',))])
     def agregation(self, request):
         """ZSTK7 — « Reporting ▸ Moves History » : quantités entrées/sorties/
         nettes agrégées par produit/type/mois/emplacement sur une période.
