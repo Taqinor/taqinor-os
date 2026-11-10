@@ -52,6 +52,11 @@ OLD=$(cat "$LAST" 2>/dev/null || echo "")
 
 # Rien de neuf -> sortie silencieuse (pas de bruit dans le journal).
 [ "$NEW" = "$OLD" ] && exit 0
+# ADCG3 — un commit déjà en ÉCHEC n'est pas rejoué à chaque minute (reset, build,
+# redémarrages, migrate sans fin) : seul un nouveau commit ou le deploy manuel
+# (qui efface cet état) le relance.
+ECHEC_COMMIT="$STATE/commit_en_echec"
+[ "$NEW" = "$(cat "$ECHEC_COMMIT" 2>/dev/null)" ] && exit 0
 
 SHORT=$(git rev-parse --short "$NEW")
 
@@ -77,6 +82,7 @@ git reset --hard "$NEW" || { log "ERREUR: git reset --hard $SHORT a échoué"; e
 if [ "$DOCS_ONLY" = "1" ]; then
   log "DEPLOY $SHORT — docs/markdown uniquement : rebuild ignoré"
   echo "$NEW" > "$LAST"
+  rm -f "$ECHEC_COMMIT"
   exit 0
 fi
 
@@ -266,6 +272,7 @@ fi
 
 if [ "$ok" = "1" ]; then
   echo "$NEW" > "$LAST"
+  rm -f "$ECHEC_COMMIT"
   # AUTO-MISE À JOUR : la copie de référence est celle du dépôt. On l'installe
   # pour le PROCHAIN cycle — jamais en cours de route (on ne se réécrit pas
   # sous les pieds). Le déploiement manuel l'installe aussi, ce qui amorce le
@@ -283,6 +290,7 @@ if [ "$ok" = "1" ]; then
   log "DEPLOY $SHORT — OK"
   exit 0
 else
-  log "DEPLOY $SHORT — ECHEC (commit non enregistré ; nouvelle tentative au prochain cycle)"
+  echo "$NEW" > "$ECHEC_COMMIT"
+  log "DEPLOY $SHORT — ECHEC (commit non enregistré ; retenté au prochain commit ou par deploy-prod.ps1)"
   exit 1
 fi

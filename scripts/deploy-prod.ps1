@@ -35,6 +35,8 @@ git show origin/main:scripts/auto-deploy.sh > /opt/autodeploy/auto-deploy.sh.neu
 chmod +x /opt/autodeploy/auto-deploy.sh.neuf
 mv /opt/autodeploy/auto-deploy.sh.neuf /opt/autodeploy/auto-deploy.sh
 if [ "$ZERO_DOWNTIME" = "1" ]; then touch /opt/autodeploy/zero_downtime; fi
+# ADCG3 — reessai explicite : l'auto ne rejoue jamais seul un commit en echec.
+rm -f /opt/autodeploy/commit_en_echec
 echo "Deploiement lance (systemctl start taqinor-autodeploy) — detail : journalctl -u taqinor-autodeploy"
 systemctl start taqinor-autodeploy.service
 '@ -replace "`r`n", "`n"

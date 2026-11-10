@@ -172,6 +172,27 @@ class AutoDeployTests(unittest.TestCase):
         self.assertEqual(banc.compte(r" restart "), 0, banc.appels)
         self.assertIn("ECHEC", banc.journal)
 
+    def test_echec_meme_commit_pas_rejoue(self):
+        """ADCG3 — deux cycles sur un commit en échec = un seul migrate."""
+        banc = self.banc(changes="backend/django_core/apps/crm/views.py\n")
+        for _ in range(2):
+            rc, _ = banc.jouer(FAIL="manage.py migrate")
+        self.assertEqual(banc.compte("manage.py migrate --noinput"), 1, banc.appels)
+        self.assertEqual(banc.lire("commit_en_echec"), B)
+        self.assertEqual(banc.journal.count("ECHEC"), 1, banc.journal)
+        # Le chemin manuel efface l'état : B est retenté.
+        banc.jouer(_remote())
+        self.assertIsNone(banc.lire("commit_en_echec"))
+        banc.jouer(FAIL="manage.py migrate")
+        self.assertEqual(banc.compte("manage.py migrate --noinput"), 2)
+        # Un nouveau commit C est tenté ; un succès efface l'état.
+        (banc.d / "origin").write_text(C)
+        rc, sortie = banc.jouer()
+        self.assertEqual(rc, 0, sortie)
+        self.assertEqual(banc.compte("manage.py migrate --noinput"), 3)
+        self.assertIsNone(banc.lire("commit_en_echec"))
+        self.assertEqual(banc.lire("last_deployed_commit"), C)
+
     def test_zero_downtime_drapeau_lu_puis_efface(self):
         banc = self.banc(changes=LOT_ECRAN_API)
         rc, _ = banc.jouer(_remote().replace("ZERO_DOWNTIME=0", "ZERO_DOWNTIME=1"))
