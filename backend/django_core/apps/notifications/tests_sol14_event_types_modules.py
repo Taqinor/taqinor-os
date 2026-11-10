@@ -108,7 +108,7 @@ class CleesPropresDesAlertesTests(TestCase):
             email=False, whatsapp=False, push=False)
         for cle in ('coherence_violation', 'sav_demande_contrat_portail'):
             notify(admin, cle, f'Alerte {cle}', company=company)
-        self.assertEqual(Notification.objects.filter(user=admin).count(), 2)
+        self.assertEqual(Notification.objects.filter(recipient=admin).count(), 2)
         self.assertTrue(is_action('sav_demande_contrat_portail'))
         self.assertEqual(severity_of('coherence_violation'), 'normal')
         self.assertEqual(
