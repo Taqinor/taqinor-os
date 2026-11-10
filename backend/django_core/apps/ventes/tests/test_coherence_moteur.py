@@ -368,7 +368,7 @@ class TestNotification(_Base):
                 staticmethod(lambda c: User.objects.filter(pk=admin.pk))):
             self.assertEqual(notifier_nouvelles_violations(rep), 1)
         self.assertEqual(Notification.objects.filter(
-            user=admin, event_type='coherence_violation').count(), 1)
+            recipient=admin, event_type='coherence_violation').count(), 1)
 
     def test_tache_sans_nouveaute_ne_notifie_pas(self):
         from apps.ventes.tasks import audit_coherence_nuit
