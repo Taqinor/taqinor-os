@@ -288,7 +288,7 @@ def create_devis_from_reserve(*, reserve, user):
     aval (règle #4). Aucun impact sur `/proposal`.
     """
     from apps.ventes.models import Devis
-    from apps.ventes.utils.company_settings import create_numbered
+    from apps.ventes.utils.company_settings import create_numbered, tva_standard
 
     installation = reserve.intervention.installation
     if installation is None or installation.client_id is None:
@@ -313,7 +313,7 @@ def create_devis_from_reserve(*, reserve, user):
     # (``Installation.type_installation``) ; à défaut COMMERCIAL — un devis de
     # RÉPARATION n'est pas une étude solaire résidentielle, et le laisser à NULL
     # le faisait router vers ce rendu-là (page publique client comprise).
-    from apps.ventes.domain.creation import mode_installation_declare
+    from apps.ventes.domain.creation import devise_par_defaut, mode_installation_declare
     mode = mode_installation_declare(
         getattr(installation, 'devis', None), installation,
         defaut=Devis.ModeInstallation.COMMERCIAL)
@@ -327,6 +327,8 @@ def create_devis_from_reserve(*, reserve, user):
             created_by=user,
             note=note,
             mode_installation=mode,
+            # ASOC48 — taux et devise par défaut de la société (comme l'upsell).
+            taux_tva=tva_standard(company), devise=devise_par_defaut(company),
         )
 
     devis = create_numbered(Devis, company, 'devis', _create)

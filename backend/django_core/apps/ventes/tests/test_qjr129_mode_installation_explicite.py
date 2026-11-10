@@ -202,3 +202,24 @@ class LeDevisDeReparationPorteLeMarcheDuChantier(_Base):
 
         devis = create_devis_from_reserve(reserve=reserve, user=self.user)
         self.assertEqual(devis.mode_installation, 'agricole')
+
+    def test_tva_et_devise_par_defaut_de_la_societe(self):
+        """ASOC48 — devis de réserve ET d'import : taux et devise du profil
+        (14 % / EUR), comme l'upsell — plus les défauts du modèle (20 / MAD)."""
+        from decimal import Decimal
+
+        from apps.parametres.models import CompanyProfile
+        from apps.ventes.domain.gammes import create_devis_from_reserve
+        from apps.ventes.domain.imports import creer_devis_import
+
+        profil = CompanyProfile.get(company=self.company)
+        profil.tva_standard, profil.devise_defaut = Decimal('14'), 'EUR'
+        profil.save()
+        reserve = self._reserve()
+        devis = create_devis_from_reserve(reserve=reserve, user=self.user)
+        _etat, _motif, importe = creer_devis_import(self.company, {
+            'client_email': reserve.intervention.installation.client.email,
+            'statut': 'brouillon'})
+        for d in (devis, importe):
+            d.refresh_from_db()
+            self.assertEqual((d.taux_tva, d.devise), (Decimal('14.00'), 'EUR'))
