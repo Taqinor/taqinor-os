@@ -95,7 +95,8 @@ class _AddIndexConcurrentlyBorne(AddIndexConcurrently):
 
 
 def concurrent_index_migration(app_label, dependencies, model_name, fields,
-                               index_name, index_class=models.Index):
+                               index_name, index_class=models.Index,
+                               condition=None):
     """Construit une classe ``Migration`` prête (``atomic=False`` +
     ``lock_timeout`` borné + ``AddIndexConcurrently``) pour poser ``index_name``
     sur ``model_name.fields`` sans verrou d'écriture bloquant.
@@ -104,6 +105,7 @@ def concurrent_index_migration(app_label, dependencies, model_name, fields,
     tout fichier de migration Django standard.
     ``index_class`` (NTPLT32) : ``models.Index`` par défaut (B-tree, inchangé) ;
     ``GinIndex`` pour un ``SearchVectorField`` — même pose concurrente.
+    ``condition`` (NTPLT33) : un ``Q`` pour un index PARTIEL (``WHERE …``).
     Renvoie la CLASSE (pas une instance) — à assigner à ``Migration`` dans le
     fichier de migration appelant."""
 
@@ -118,7 +120,9 @@ def concurrent_index_migration(app_label, dependencies, model_name, fields,
             # laissait le réglage fuir sur toute la suite du plan (finding #11).
             _AddIndexConcurrentlyBorne(
                 model_name=model_name,
-                index=index_class(fields=fields, name=index_name),
+                index=index_class(
+                    fields=fields, name=index_name,
+                    **({'condition': condition} if condition is not None else {})),
             ),
         ]
 

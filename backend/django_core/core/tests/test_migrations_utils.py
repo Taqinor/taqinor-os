@@ -98,6 +98,15 @@ class ConcurrentIndexMigrationTests(SimpleTestCase):
         self.assertIsInstance(gin.operations[0].index, GinIndex)
         self.assertEqual(gin.operations[0].index.fields, ['search_vector'])
         self.assertIs(type(self._build().operations[0].index), models.Index)
+        # NTPLT33 — index PARTIEL des lignes non indexées (même pose).
+        from django.db.models import Q
+        from core.champs_plateforme import index_fts_attente
+        partiel = concurrent_index_migration(
+            app_label='crm', dependencies=[('crm', '0161_ntplt34_trgm_lead_client')],
+            model_name='lead', fields=['id'], index_name='crm_lead_fts_null',
+            condition=Q(search_vector__isnull=True)).operations[0].index
+        self.assertEqual(partiel, index_fts_attente('crm_lead_fts_null'))
+        self.assertIsNone(self._build().operations[0].index.condition)
 
 
 class LockTimeoutRemisTests(SimpleTestCase):

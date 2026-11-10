@@ -35,7 +35,7 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
-from core.champs_plateforme import RechercheFTSMixin, index_fts
+from core.champs_plateforme import RechercheFTSMixin, index_fts, index_fts_attente
 from core.models import TenantModel
 
 from .dateutils import add_months
@@ -468,6 +468,7 @@ class Equipement(RechercheFTSMixin, models.Model):
         ordering = ['-date_creation']
         indexes = [
             index_fts('sav_equipement_fts_gin'),  # NTPLT32 — plein-texte (GIN)
+            index_fts_attente('sav_equipement_fts_null'),  # NTPLT33 — lignes non indexées
             models.Index(fields=['company', 'produit']),
             models.Index(fields=['company', 'date_fin_garantie']),
         ]
@@ -1000,6 +1001,7 @@ class Ticket(RechercheFTSMixin, models.Model):
         unique_together = [('company', 'reference')]
         indexes = [
             index_fts('sav_ticket_fts_gin'),  # NTPLT32 — plein-texte (GIN)
+            index_fts_attente('sav_ticket_fts_null'),  # NTPLT33 — lignes non indexées
             models.Index(fields=['company', 'statut']),
             models.Index(fields=['company', 'sla_breach']),
         ]

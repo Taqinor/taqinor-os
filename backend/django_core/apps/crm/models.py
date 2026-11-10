@@ -5,7 +5,7 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models.functions import Lower  # noqa: F401 — façade crm.models (golden SPL70) (D-ENF22)
 
-from core.champs_plateforme import RechercheFTSMixin, VerrouOptimisteMixin, index_fts
+from core.champs_plateforme import RechercheFTSMixin, VerrouOptimisteMixin, index_fts, index_fts_attente
 from core.models import SoftDeleteModel, TenantModel
 
 from .stages import STAGE_CHOICES, NEW
@@ -1994,6 +1994,7 @@ class Lead(LeadPompageMixin, VerrouOptimisteMixin, RechercheFTSMixin, SoftDelete
         ordering = ['-date_creation']
         indexes = [
             index_fts('crm_lead_fts_gin'),  # NTPLT32 — plein-texte (GIN)
+            index_fts_attente('crm_lead_fts_null'),  # NTPLT33 — lignes non indexées
             models.Index(fields=['company', 'source']),
             models.Index(fields=['company', 'stage']),
             models.Index(fields=['company', 'score'], name='crm_lead_company_score_idx'),

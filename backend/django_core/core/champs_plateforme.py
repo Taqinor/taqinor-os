@@ -67,3 +67,13 @@ def index_fts(nom):
     """L'index GIN de ``search_vector`` (à déclarer dans ``Meta.indexes`` ; la
     migration le pose avec ``concurrent_index_migration(index_class=GinIndex)``)."""
     return GinIndex(fields=['search_vector'], name=nom)
+
+
+def index_fts_attente(nom):
+    """NTPLT33 — index PARTIEL des lignes pas encore indexées (``search_vector``
+    NULL). Le repli ``icontains`` de la recherche globale vise ces seules lignes
+    (``… OR (search_vector IS NULL AND …)``) : avec cet index, le planificateur
+    combine GIN + cet index (BitmapOr) au lieu de balayer la table — et, une
+    fois ``rebuild_search_index`` passé, il est vide."""
+    return models.Index(fields=['id'], name=nom,
+                        condition=models.Q(search_vector__isnull=True))
