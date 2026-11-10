@@ -63,7 +63,7 @@ problèmes) n'est dans aucun enregistrement alors que sa preuve le demandait.
 | C-ADCG-VER3-104 | ADCG104 | S3 | le registre ne cherche les tâches d'écart qu'à la date du dernier compte rendu : un groupe dont l'écart ouvert vit dans un bloc plus ancien (calepinage, analyse) ne sera jamais annoncé dû quand sa tâche sera cochée | STATIQUE (lecture, essai du script) | ADCG106 |
 | C-ADCG-VER3-005 | ADCG5 | S3 | deux trous du retour arrière, lus dans le script : le serveur web n'est pas rechargé sur la configuration revenue ; si la reconstruction de l'ancien commit échoue, le service est quand même relancé (image neuve, code ancien) | STATIQUE (lecture) | ADCG107 |
 | C-ADCG-VER3-001 | ADCG1 | S3 | un deploy « zéro coupure » demandé alors qu'il n'y a rien à déployer laisse son drapeau sur le serveur : il s'appliquera au prochain deploy automatique | STATIQUE (lecture) | ADCG108 |
-| C-ADCG-VER3-002 | ADCG2 | S3 (à confirmer) | le code neuf serait visible des processus en marche pendant le build, avant les migrations (déduit à la lecture, non reproduit) | STATIQUE (lecture) | TACHE_109 |
+| C-ADCG-VER3-002 | ADCG2 | S3 | le code neuf est visible des processus en marche pendant le build, avant les migrations : le code de production est monté en liaison dans les conteneurs (vérifié dans les fichiers de composition) ; effet déduit à la lecture, non reproduit | STATIQUE (lecture) | ADCG109 |
 
 Aucun écart S1-S2 : ni seconde lentille ni critique (METHODE §C.4).
 
