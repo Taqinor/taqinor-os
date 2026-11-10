@@ -249,7 +249,7 @@ const itemClass =
       <Logo size={24} theme="dark" />
     </a>
     <nav class="hidden items-center gap-6 xl:flex" aria-label={t('nav.primary')}>
-      <!-- Solutions (déroulant) -->
+      {/* Solutions (déroulant) */}
       <div class="dropdown group relative" data-dropdown>
         <a
           href={L('/nos-solutions')}
@@ -350,7 +350,7 @@ const itemClass =
         {...(isActive('/équipement') ? { 'aria-current': 'page' } : {})}
       >{t('nav.equipment')}</a>
 
-      <!-- Ressources (déroulant) -->
+      {/* Ressources (déroulant) */}
       <div class="dropdown group relative" data-dropdown>
         <a
           href={L('/guides')}
