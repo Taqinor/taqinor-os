@@ -1095,6 +1095,13 @@ def _explique(constat: Constat):
     return lignes
 
 
+def _echec_v2_perimes(v2_perimes) -> int:
+    """ADCG79 — la liste v2 gelee ne garde que des ids encore ouverts : sinon ECHEC."""
+    print(f"\nECHEC : {len(v2_perimes)} id(s) v2 plus ouvert(s) dans {V2_IDS_RELATIF} : "
+          f"{', '.join(v2_perimes[:20])} — python scripts/check_taches_cablage.py --write-baseline")
+    return 1
+
+
 def main(argv=None) -> int:
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -1248,10 +1255,8 @@ def main(argv=None) -> int:
               "NE LA DESACTIVEZ PAS.")
         return 1
 
-    if v2_perimes:  # ADCG79 — la liste v2 ne garde que des ids encore ouverts
-        print(f"\nECHEC : {len(v2_perimes)} id(s) v2 plus ouvert(s) dans {V2_IDS_RELATIF} : "
-              f"{', '.join(v2_perimes[:20])} — python scripts/check_taches_cablage.py --write-baseline")
-        return 1
+    if v2_perimes:
+        return _echec_v2_perimes(v2_perimes)
 
     print(f"OK : {stats['f1_creations']} tache(s) creent un ecran et "
           f"{stats['f3_candidates']} portent deux moities ; aucun NOUVEAU "
