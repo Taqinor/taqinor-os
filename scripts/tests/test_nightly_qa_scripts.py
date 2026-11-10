@@ -18,7 +18,11 @@ Stdlib pure (unittest). Run:
     python -m unittest scripts.tests.test_nightly_qa_scripts -v
 """
 import json
+import os
 import re
+import shutil
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -274,6 +278,56 @@ class TestProblemesProd(unittest.TestCase):
         for garde in ("Jamais d'ecriture en production", "Signature:", "check_err_prod.py",
                       "PROBLEMES_PROD_STATUS", "gh pr merge --auto --merge"):
             self.assertIn(garde, texte, garde)
+
+
+LANCEUR = ROOT / "scripts" / "nightly-qa-lanceur.ps1"
+PWSH = shutil.which("pwsh") or shutil.which("powershell")
+
+
+@unittest.skipUnless(PWSH, "pwsh/powershell absent")
+class TestLanceur(unittest.TestCase):
+    """ADCG15 : lanceur hors depot, trace lisible quand nightly-qa.ps1 manque."""
+
+    def _lancer(self, depot, appdata):
+        env = dict(os.environ, LOCALAPPDATA=str(appdata))
+        r = subprocess.run(
+            [PWSH, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(LANCEUR), "-Depot", str(depot)],
+            env=env, capture_output=True, text=True, timeout=120,
+        )
+        journal = Path(appdata) / "taqinor" / "nightly-qa.log"
+        return r.returncode, journal.read_text(encoding="utf-8-sig").splitlines()
+
+    def test_script_absent_laisse_une_trace(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            depot = Path(tmp) / "depot"
+            (depot / "scripts").mkdir(parents=True)
+            code, lignes = self._lancer(depot, Path(tmp) / "appdata")
+            self.assertEqual(code, 3)
+            self.assertEqual(len(lignes), 2, lignes)
+            self.assertIn("lancement", lignes[0])
+            self.assertIn("ECHEC lancement : scripts\\nightly-qa.ps1 absent", lignes[1])
+            self.assertIn("(git status : ", lignes[1])
+            self.assertRegex(lignes[1], r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d  ")
+
+    def test_script_present_code_transmis(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            depot = Path(tmp) / "depot"
+            (depot / "scripts").mkdir(parents=True)
+            (depot / "scripts" / "nightly-qa.ps1").write_text("param([string]$Skill)\nexit 0\n", encoding="ascii")
+            code, lignes = self._lancer(depot, Path(tmp) / "appdata")
+            self.assertEqual(code, 0)
+            self.assertIn("lancement", lignes[0])
+            self.assertTrue(lignes[-1].endswith("fin code 0"), lignes)
+            code, lignes = self._lancer(depot, Path(tmp) / "appdata")
+            self.assertEqual(len(lignes), 4, "lignes horodatees conservees")
+
+    def test_setup_copie_et_enregistre_le_lanceur(self):
+        code = _code(SETUP)
+        self.assertIn("'taqinor\\nightly-qa-lanceur.ps1'", code)
+        self.assertIn("Copy-Item -LiteralPath (Join-Path $RepoRoot 'scripts\\nightly-qa-lanceur.ps1')", code)
+        self.assertIn("$tr = Get-TaskCommand $Lanceur $ExtraArgs", code)
+        self.assertIn("' -Depot '", code)
+
 
 if __name__ == "__main__":
     unittest.main()
