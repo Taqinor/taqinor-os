@@ -35,6 +35,7 @@ MESSAGE = ("Ajoutez l'adresse e-mail du client avant d'ouvrir son accès "
 
 
 @override_settings(
+    ANYMAIL={'SENDGRID_API_KEY': 'sg-test-key'},  # AMSG58 — envoi opérationnel
     EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
 class ProvisionnementSansEmailTests(TestCase):
     def setUp(self):

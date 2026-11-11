@@ -89,6 +89,42 @@ class TicketActionPermissionTierTests(TestCase):
     def test_destroy_stays_admin_only(self):
         self.assertEqual(_tier_name('destroy'), 'IsAdminRole')
 
+    def test_delete_ticket_et_contrat_refuse_405(self):
+        """ASUP21 — un ticket numéroté et un contrat de maintenance ne se
+        suppriment plus (405, rien n'est détruit) ; le DELETE de l'action
+        ``suivre`` (se désabonner) reste servi."""
+        import datetime
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+        from apps.crm.models import Client
+        from apps.roles import permissions_registre as registre
+        from apps.roles.models import Role
+        from apps.sav.models import ContratMaintenance, Ticket, TicketActivity
+        from authentication.models import Company
+        societe = Company.objects.create(nom='ASUP21', slug='asup21')
+        role = Role.objects.create(company=societe, nom='Directeur',
+                                   permissions=registre.DIRECTEUR_PERMISSIONS)
+        api = APIClient()
+        api.force_authenticate(get_user_model().objects.create_user(
+            username='asup21-dir', password='x', company=societe, role=role))
+        client = Client.objects.create(company=societe, nom='C')
+        ticket = Ticket.objects.create(company=societe, reference='SAV-ASUP21',
+                                       client=client, statut='resolu')
+        TicketActivity.objects.create(company=societe, ticket=ticket,
+                                      kind='note', body='Réglé')
+        activites = TicketActivity.objects.filter(ticket=ticket).count()
+        contrat = ContratMaintenance.objects.create(
+            company=societe, client=client, date_debut=datetime.date(2026, 1, 1))
+        for url in (f'/api/django/sav/tickets/{ticket.pk}/',
+                    f'/api/django/sav/contrats-maintenance/{contrat.pk}/'):
+            self.assertEqual(api.delete(url).status_code, 405, url)
+        self.assertTrue(Ticket.objects.filter(pk=ticket.pk).exists())
+        self.assertEqual(
+            TicketActivity.objects.filter(ticket=ticket).count(), activites)
+        self.assertTrue(ContratMaintenance.objects.filter(pk=contrat.pk).exists())
+        r = api.delete(f'/api/django/sav/tickets/{ticket.pk}/suivre/')
+        self.assertEqual(r.status_code, 200, r.content[:200])
+
     def test_reads_stay_sav_voir(self):
         for name in ['historique', 'rapport_pdf', 'lien_client', 'similaires']:
             with self.subTest(action=name):

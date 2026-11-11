@@ -191,6 +191,9 @@ class Intervention(VerrouOptimisteMixin, models.Model):
     rdv_confirme = models.BooleanField(default=False)
     rdv_confirme_le = models.DateTimeField(null=True, blank=True)
     rdv_reschedule_count = models.PositiveIntegerField(default=0)
+    # AMSG76 — rappel J-1 traité (e-mail parti ou brouillon remis) : un
+    # balayage rejoué le même jour ne le renvoie pas. Interne, non sérialisé.
+    rappel_j1_traite_le = models.DateTimeField(null=True, blank=True)
 
     # ── XFSM5 — fenêtre de RDV promise (ex. 8h–10h) + ponctualité ────────────
     # Affichées sur la confirmation client et « Ma journée » F22. Nullable :

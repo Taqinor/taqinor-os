@@ -177,8 +177,8 @@ class ComptePortailClientViewSet(_PortailBaseViewSet):
         """
         compte = self.get_object()
         try:
-            user, cree = services.provisionner_compte_portail_client(
-                request.user.company, compte.client_id)
+            user, cree, envoye = services.provisionner_compte_portail_client(
+                request.user.company, compte.client_id, avec_envoi=True)
         except services.ProvisionnementSansEmail as exc:
             # ADOC123 — refus NOMMÉ : aucun compte créé, aucun e-mail.
             return Response({'detail': str(exc)}, status=409)  # ENF11 : la fiche s'oppose
@@ -191,11 +191,14 @@ class ComptePortailClientViewSet(_PortailBaseViewSet):
             'email': user.email,
             'actif': user.is_active,
             'cree': cree,
+            # AMSG58 — « envoyé » seulement si l'e-mail est réellement parti.
+            'email_envoye': envoye,
             'detail': (
-                'Accès portail créé — mot de passe temporaire envoyé par '
-                'email.'
-                if cree else
-                'Un accès portail existe déjà pour ce client.'
+                'Un accès portail existe déjà pour ce client.' if not cree
+                else 'Accès portail créé — mot de passe temporaire envoyé '
+                'par email.' if envoye
+                else 'Accès portail créé — e-mail non opérationnel : '
+                'identifiants non envoyés.'
             ),
         })
 
@@ -225,6 +228,7 @@ class ComptePortailClientViewSet(_PortailBaseViewSet):
         navigateur ou un log d'accès HTTP. Réservée à l'administrateur, et
         journalisée (qui, quand, quel compte — jamais le jeton lui-même).
         """
+        from apps.ventes.services import public_url
         compte = self.get_object()
         logger.info(
             'AUD141 lien-acces revele — compte=%s client=%s societe=%s par=%s',
@@ -234,7 +238,7 @@ class ComptePortailClientViewSet(_PortailBaseViewSet):
             # ERR-QAH-PORTAIL-LIEN-ACCES-404 — `/portail-contrats/<jeton>`
             # (module contrats parqué) renvoyait 404 : le lien pointe vers
             # l'espace client VIVANT (`/portail/client`, route du routeur).
-            'lien': request.build_absolute_uri(LIEN_ESPACE_CLIENT),
+            'lien': public_url(LIEN_ESPACE_CLIENT, request),  # AMSG69
             'detail': ("Lien d'accès révélé — cette demande est journalisée."),
         })
 

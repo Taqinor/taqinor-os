@@ -133,6 +133,15 @@ EMAIL_TEMPLATE_DEFAULTS = {
             'Nous restons à votre disposition pour toute question.\n\n'
             'Cordialement,\nL\'équipe {entreprise}',
     },
+    # AMSG66 — rappel de pose J-1 : SEUL le sujet est lu par l'envoi (le corps
+    # suit le modèle WhatsApp ``rappel_rdv`` de ``MessageTemplate``, sa règle
+    # d'omission comprise) ; défaut = sujet d'aujourd'hui, byte-identique.
+    'rappel_rdv': {
+        'sujet': 'Rappel de rendez-vous — demain',
+        'corps':
+            'Bonjour {civilite} {nom}, petit rappel : notre équipe est prévue '
+            'chez vous demain pour {reference}.',
+    },
 }
 
 
@@ -162,6 +171,7 @@ EMAIL_TEMPLATE_PLACEHOLDERS = {
     'envoi_devis': [
         '{civilite}', '{nom}', '{reference}', '{lien}', '{validite}',
         '{lien_rdv}', '{entreprise}'],
+    'rappel_rdv': ['{civilite}', '{nom}', '{reference}', '{entreprise}'],
 }
 
 # SCA25 — littéral de repli du placeholder {entreprise} quand la société n'a
@@ -199,6 +209,8 @@ class EmailTemplate(models.Model):
         # ZSAL5 — gabarit dédié « envoi de devis » (distinct de DEVIS, encore
         # inutilisé par l'action d'envoi).
         ENVOI_DEVIS = 'envoi_devis', 'Envoi de devis'
+        # AMSG66 — sujet du rappel de pose J-1, éditable et traduit.
+        RAPPEL_RDV = 'rappel_rdv', 'Rappel de RDV (J-1)'
 
     company = models.ForeignKey(
         'authentication.Company',

@@ -351,16 +351,30 @@ class TestFG55FacturePDF(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r['Content-Type'], 'application/pdf')
 
-    def test_pdf_not_accessible_non_admin(self):
-        """PDF facture fournisseur : réservé aux utilisateurs responsable/admin.
-        Un utilisateur 'normal' doit recevoir 403."""
-        user_normal = User.objects.create_user(
-            username='normal_fg55', password='x',
-            company=self.company, role_legacy='normal')
-        client2 = auth_client(user_normal)
-        r = client2.get(
-            f'/api/django/stock/factures-fournisseur/{self.facture.id}/pdf/')
-        self.assertIn(r.status_code, [403, 404])
+    def test_pdf_refuse_aux_roles_livres_sans_prix_achat(self):
+        """ATST3 — PDF interne (lignes, HT/TVA/TTC, paiements) : 403 EXACT sur
+        les deux routes pour les 8 rôles livrés non administrateurs (rouge si
+        ``pdf`` passe en ``IsResponsableOrAdmin``) ; le rendu n'est jamais
+        appelé pour un refus."""
+        from unittest import mock
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        perms = dict(CANONICAL_SYSTEM_ROLES)
+        with mock.patch('apps.stock.services.generate_facture_fournisseur_pdf') as rendu:
+            for nom in ('Commercial', 'Commercial responsable', 'Technicien',
+                        'Technicien responsable', 'Responsable', 'Admin Ventes',
+                        'Viewer', 'Utilisateur'):
+                role = Role.objects.create(company=self.company, nom=nom,
+                                           permissions=perms[nom])
+                api = auth_client(User.objects.create_user(
+                    username=f'fg55-{nom}', password='x',
+                    company=self.company, role=role))
+                for base in ('stock', 'achats'):
+                    with self.subTest(role=nom, base=base):
+                        r = api.get(f'/api/django/{base}/factures-fournisseur/'
+                                    f'{self.facture.id}/pdf/')
+                        self.assertEqual(r.status_code, 403)
+        rendu.assert_not_called()
 
 
 # ── FG58 — Comparaison prix fournisseurs ──────────────────────────────────────

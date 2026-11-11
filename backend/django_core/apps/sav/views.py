@@ -16,7 +16,7 @@ from drf_spectacular.utils import (
 from rest_framework import filters, serializers as drf_serializers, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import (
-    APIException, NotFound, PermissionDenied, ValidationError,
+    APIException, MethodNotAllowed, NotFound, PermissionDenied, ValidationError,
 )
 from rest_framework.response import Response
 
@@ -990,6 +990,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         'reference', 'date_creation', 'date_ouverture', 'priorite', 'statut',
     ]
     ordering = ['-date_creation']
+    def destroy(self, request, *args, **kwargs): raise MethodNotAllowed(request.method)  # ASUP21 : pas de DELETE
 
     def get_queryset(self):
         qs = super().get_queryset()

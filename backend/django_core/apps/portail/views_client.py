@@ -1618,9 +1618,10 @@ class MonEquipePortailViewSet(viewsets.ViewSet):
         company, client_id = _scope(request)
         # ADOC116 — le lien de l'e-mail pointe sur l'hôte ERP de CETTE
         # requête (patron WIR216), jamais sur SITE_URL (site public).
-        invitation = services.inviter_membre_portail(
+        from apps.ventes.services import public_url
+        invitation = services.inviter_membre_portail(  # AMSG69 — base publique
             company, client_id, email, role,
-            base_url=request.build_absolute_uri('/'))
+            base_url=public_url('/', request))
         if invitation is None:
             return Response(
                 {'detail': "Impossible de créer l'invitation."},

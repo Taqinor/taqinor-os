@@ -382,6 +382,8 @@ class InterventionSerializer(SansJetonsPublicsMixin,  # ALEC37
             # api-fuzz full : horodatage de notification pose par le serveur
             # (service de cloture), jamais du corps (an 1194 -> offset LMT).
             'cloturee_notifiee_le', 'devis_upsell_id',
+            # AMSG76 — posé uniquement par le balayage rappel J-1.
+            'rappel_j1_traite_le',
         ]
 
     @extend_schema_field(serializers.IntegerField())

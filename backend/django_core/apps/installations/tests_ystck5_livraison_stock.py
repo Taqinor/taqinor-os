@@ -135,3 +135,47 @@ class TestExpedierVentileStock(TestCase):
         self.assertFalse(self.liv.stock_mouvemente)
         self.assertFalse(
             StockEmplacement.objects.filter(produit=self.produit).exists())
+
+    def test_suppression_des_pieces_de_preuve_fermee(self):
+        """ASUP20 — livraison livrée à preuve signée : 409 nommant la preuve,
+        rien supprimé ; livraison planifiée sans preuve : 204 ; consentement
+        GPS et provision GR/IR : 405, intacts (compte Directeur livré)."""
+        from django.utils import timezone
+        from apps.installations.models import (
+            GpsConsentRecord, PreuveLivraison, ReceptionNonFacturee,
+        )
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        role = Role.objects.create(
+            company=self.company, nom='Directeur',
+            permissions=dict(CANONICAL_SYSTEM_ROLES)['Directeur'])
+        directeur = User.objects.create_user(
+            username=f'ystck5-dir-{next(_seq)}', password='x',
+            company=self.company, role=role)
+        api = auth(directeur)
+        Livraison.objects.filter(pk=self.liv.pk).update(
+            statut=Livraison.Statut.LIVREE)
+        preuve = PreuveLivraison.objects.create(
+            company=self.company, livraison=self.liv,
+            signataire_nom='M. Client', horodatage=timezone.now())
+        r = api.delete(f'{BASE}/livraisons/{self.liv.id}/')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('preuve de livraison est signée', r.data['detail'])
+        self.assertTrue(PreuveLivraison.objects.filter(pk=preuve.pk).exists())
+        brouillon = Livraison.objects.create(
+            company=self.company, reference='LIV-YSTCK5-0002',
+            installation=self.inst, statut=Livraison.Statut.PLANIFIEE)
+        r = api.delete(f'{BASE}/livraisons/{brouillon.id}/')
+        self.assertEqual(r.status_code, 204, getattr(r, 'data', None))
+        consentement = GpsConsentRecord.objects.create(
+            company=self.company, technicien=self.user)
+        provision = ReceptionNonFacturee.objects.create(
+            company=self.company, montant_provision=Decimal('100'),
+            lettre=True)
+        for url in (f'{BASE}/gps-consentements/{consentement.id}/',
+                    f'{BASE}/receptions-non-facturees/{provision.id}/'):
+            self.assertEqual(api.delete(url).status_code, 405, url)
+        self.assertTrue(GpsConsentRecord.objects.filter(
+            pk=consentement.pk).exists())
+        self.assertTrue(ReceptionNonFacturee.objects.filter(
+            pk=provision.pk).exists())

@@ -54,7 +54,9 @@ class SuppressionDevisAccepte(TestCase):
         lien = ShareLink.for_devis(devis)
         r = self.api.delete(f'/api/django/ventes/devis/{devis.id}/')
         self.assertEqual(r.status_code, 409, r.content)
-        self.assertIn('archivez-le', r.data['detail'])
+        # ASUP54 — plus de geste impossible : un accepté ne se désactive pas.
+        self.assertNotIn('archivez-le', r.data['detail'])
+        self.assertIn('révisez-le', r.data['detail'])
         self.assertTrue(Devis.objects.filter(pk=devis.pk).exists())
         self.assertTrue(DevisSignature.objects.filter(devis=devis).exists())
         self.assertTrue(ShareLink.objects.filter(pk=lien.pk).exists())

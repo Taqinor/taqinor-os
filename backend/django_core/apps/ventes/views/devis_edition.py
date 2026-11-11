@@ -159,6 +159,7 @@ def _gardes_mise_a_jour(instance, validated_data, user, *, t17=True):
     ``perform_update`` et ``replace-lines`` avec ``entete``) :
 
     * QJR521 — un devis remplacé / archivé ne se réactive jamais (409) ;
+    * ASUP54 — un devis ACCEPTÉ ne se désactive pas (409, révision seule) ;
     * QJR516 — prédicat de modifiabilité (geste ENTETE), {'statut'} et
       l'exception « désactivation seule » conservés — 409 (refus d'état,
       CI #997), plus 400 ;
@@ -176,6 +177,11 @@ def _gardes_mise_a_jour(instance, validated_data, user, *, t17=True):
         # CI #997 (3) — corps conforme, devis REMPLACÉ : refus d'état, 409.
         raise ConflitEtat({
             'is_active': 'Un devis remplacé ou archivé ne se réactive pas.'})
+    if (instance.statut == 'accepte' and instance.is_active is True
+            and validated_data.get('is_active') is False):
+        # ASUP54 — un accepté ne sort du CA signé que par révision (service).
+        raise ConflitEtat({'is_active': 'Devis accepté : il ne se désactive '
+                                        'pas — révisez-le.'})
     from ..domain.modifiabilite import ENTETE, verdict
     if not verdict(instance, ENTETE)['modifiable']:
         nouveau_is_active = validated_data.get(

@@ -66,7 +66,8 @@ class AnnuleeSuspendueTests(TestCase):
             date_prevue=self.j3, annulee=annulee)
         return iv
 
-    @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.'
+    @override_settings(ANYMAIL={'SENDGRID_API_KEY': 'sg-test-key'},  # AMSG56
+                       EMAIL_BACKEND='django.core.mail.backends.locmem.'
                                      'EmailBackend')
     def test_rappel_ni_annulee_ni_suspendue(self):
         mail.outbox.clear()

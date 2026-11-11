@@ -32,6 +32,7 @@ _seq = itertools.count(1)
 @override_settings(
     ALLOWED_HOSTS=['erp.exemple.test', 'testserver'],
     SITE_URL='https://taqinor.ma',
+    ANYMAIL={'SENDGRID_API_KEY': 'sg-test-key'},  # AMSG58 — envoi opérationnel
     EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
 )
 class InvitationLienTests(TestCase):

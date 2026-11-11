@@ -94,8 +94,13 @@ def _tracer_acces(report, ip):
 
 def lien_rapport(report, base_url=''):
     """Lien profond tokenisé vers le rendu du rapport."""
+    from django.conf import settings
+
+    from apps.ventes.services import public_url
     chemin = CHEMIN_PARTAGE.format(token=make_report_token(report))
-    return f"{base_url.rstrip('/')}{chemin}" if base_url else chemin
+    if base_url and not getattr(settings, 'PUBLIC_BASE_URL', ''):
+        return f"{base_url.rstrip('/')}{chemin}"
+    return public_url(chemin)  # AMSG69 — base publique d'abord (beat inclus)
 
 
 def corps_message(report, lien):
