@@ -95,6 +95,7 @@ export default function DevisRow({ d, ctx }) {
     etudeOpenId, setEtudeOpenId,
     navigate, dispatch,
     role, canDelete, canValiderVente, canSeePublicite, highlightId,
+    peutCreer = true, peutModifier = true, peutPdf = true,
     deletingId, statutActionId, superieurBusyId, superieurStatus, shareBusyId, previewingId,
     pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, setFacturerTarget,
     panneauVenteOpenId, setPanneauVenteOpenId,
@@ -475,7 +476,7 @@ export default function DevisRow({ d, ctx }) {
               l'ancien menu « Autres actions ») vit dans UN SEUL menu « ⋯ ».
               Anatomie de rangée Linear/Attio — actions révélées, jamais
               empilées. Hauteur de ligne stable, aucun bouton perdu. */}
-          <Button
+          {peutPdf && <Button
             size="sm"
             variant="outline"
             onClick={() => openPdfModal(d)}
@@ -483,7 +484,7 @@ export default function DevisRow({ d, ctx }) {
             title="Générer le PDF (choix du format)"
           >
             <FileText /> {isGenerating ? pdfLabel : 'PDF'}
-          </Button>
+          </Button>}
           {/* QX21 — passé 30 s, on n'abandonne plus le suivi : ce badge reste
               visible tant que le polling se poursuit (aucun second job
               n'est jamais relancé en dessous). */}
@@ -493,7 +494,7 @@ export default function DevisRow({ d, ctx }) {
             </Badge>
           )}
 
-          {d.statut === 'brouillon' && (
+          {d.statut === 'brouillon' && peutModifier && (
             <Button
               size="sm"
               variant="outline"
@@ -516,7 +517,7 @@ export default function DevisRow({ d, ctx }) {
               le flux WhatsApp EXISTANT en mode rappel (aperçu-puis-clic, jamais
               d'envoi auto) + consigne la relance au chatter. N'apparaît que sur
               un devis « Envoyé ». */}
-          {d.statut === 'envoye' && d.is_active !== false && (
+          {d.statut === 'envoye' && d.is_active !== false && peutModifier && (
             <Button
               size="sm"
               variant="outline"
@@ -576,12 +577,12 @@ export default function DevisRow({ d, ctx }) {
               </Button>
           }>
               <DropdownMenuLabel>Plus d'actions</DropdownMenuLabel>
-              <DropdownMenuItem
+              {peutModifier && <DropdownMenuItem
                 disabled={!peutEditerDevis(d)}
                 onSelect={() => openEdit(d)}
               >
                 Éditer
-              </DropdownMenuItem>
+              </DropdownMenuItem>}
               {/* VX79 — « Copier le lien interne » : URL de l'ERP partageable
                   (/ventes/devis?devis=<pk>) à envoyer à un collègue. Distinct
                   du lien PUBLIC de proposition (règle #4) plus bas — celui-ci
@@ -591,13 +592,13 @@ export default function DevisRow({ d, ctx }) {
                 <Link2 className="size-3.5" aria-hidden="true" />
                 Lien interne
               </DropdownMenuItem>
-              <DropdownMenuItem
+              {peutPdf && <DropdownMenuItem
                 disabled={previewingId === d.id}
                 onSelect={() => handlePreview(d)}
               >
                 <Eye className="size-3.5" aria-hidden="true" />
                 {previewingId === d.id ? 'Aperçu du PDF…' : 'Aperçu du PDF'}
-              </DropdownMenuItem>
+              </DropdownMenuItem>}
               {d.fichier_pdf && (
                 <DropdownMenuItem
                   disabled={isDownloading}
@@ -645,7 +646,7 @@ export default function DevisRow({ d, ctx }) {
                   confirmer/éditer le pourcentage (défaut = config société),
                   créer les 3 variantes puis router vers la comparaison
                   côte-à-côte. */}
-              {d.statut === 'brouillon' && (
+              {d.statut === 'brouillon' && peutModifier && (
                 <DropdownMenuItem onSelect={() => openVarianteModal(d)}>
                   <Copy className="size-3.5" aria-hidden="true" />
                   Variante
@@ -655,7 +656,7 @@ export default function DevisRow({ d, ctx }) {
                   FRÈRE d'une seconde gamme (composition et prix propres, à
                   retoucher ensuite). Le libellé est libre — aucune marque
                   codée en dur ; défauts proposés : Essentielle / Premium. */}
-              {d.statut === 'brouillon' && (
+              {d.statut === 'brouillon' && peutModifier && (
                 <DropdownMenuItem onSelect={() => openGammeModal(d)}>
                   <Copy className="size-3.5" aria-hidden="true" />
                   Créer une variante de gamme
@@ -704,7 +705,7 @@ export default function DevisRow({ d, ctx }) {
                   Design 3D — nouvelle fenêtre
                 </DropdownMenuItem>
               )}
-              {d.statut === 'accepte' && (
+              {d.statut === 'accepte' && peutCreer && (
                 <DropdownMenuItem
                   disabled={convertingId === d.id}
                   onSelect={() => handleConvertBC(d)}
@@ -725,7 +726,7 @@ export default function DevisRow({ d, ctx }) {
               {/* ADOC131 (D-ADOC-4) — le lien public d'un devis accepté vit
                   jusqu'à la réception du chantier + 90 jours ; le responsable
                   peut le couper (confirmation) : proposition ET suivi → 404. */}
-              {d.statut === 'accepte' && (
+              {d.statut === 'accepte' && peutModifier && (
                 <DropdownMenuItem onSelect={() => handleRevoquerLienPublic(d)}>
                   <Link2Off className="size-3.5" aria-hidden="true" />
                   Révoquer le lien client
@@ -737,9 +738,9 @@ export default function DevisRow({ d, ctx }) {
                 {histoOpenId === d.id ? "Masquer l'historique" : "Historique des modifications"}
               </DropdownMenuItem>
               {/* WIR103/XFAC10 — proforma PDF (aucun impact comptable). */}
-              <DropdownMenuItem onSelect={() => handleProformaPdf(d)}>
+              {peutPdf && <DropdownMenuItem onSelect={() => handleProformaPdf(d)}>
                 Proforma (PDF)
-              </DropdownMenuItem>
+              </DropdownMenuItem>}
               {/* ZSAL8 — PDF du bon de commande lié (client `getBonCommandePdf`
                   déjà présent dans ventesApi.js, jamais appelé). Endpoint BC
                   distinct, ne touche pas au rendu /proposal du devis (règle #4). */}
@@ -769,7 +770,7 @@ export default function DevisRow({ d, ctx }) {
               </DropdownMenuItem>
               {/* QX27 — actions historiquement dans « Autres actions » :
                   Réviser, Approuver remise, Contacter mon supérieur, Email. */}
-              {peutReviserDevis(d) && (
+              {peutReviserDevis(d) && peutCreer && (
                 <DropdownMenuItem onSelect={() => {
                   // QJR533 — UN seul geste (features/ventes/reviserDevis) :
                   // avertit si chantier en cours (VX216(a)), dit le résultat,
@@ -792,7 +793,7 @@ export default function DevisRow({ d, ctx }) {
                   Approuver la remise
                 </DropdownMenuItem>
               )}
-              {(d.statut === 'brouillon' || d.statut === 'envoye') && (
+              {(d.statut === 'brouillon' || d.statut === 'envoye') && peutModifier && (
                 <DropdownMenuItem
                   disabled={superieurBusyId === d.id}
                   onSelect={() => handleContacterSuperieur(d)}
@@ -800,7 +801,7 @@ export default function DevisRow({ d, ctx }) {
                   Contacter mon supérieur
                 </DropdownMenuItem>
               )}
-              {(d.statut === 'brouillon' || d.statut === 'envoye') && (
+              {(d.statut === 'brouillon' || d.statut === 'envoye') && peutModifier && (
                 <DropdownMenuItem onSelect={() => openEmailModal(d)}>
                   Envoyer par email
                 </DropdownMenuItem>

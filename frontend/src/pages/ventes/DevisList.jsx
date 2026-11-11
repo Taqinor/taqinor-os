@@ -99,6 +99,16 @@ const DEVIS_DT_COLUMNS = [
 // APX13 — la piste est désormais partagée avec FactureList et la liste des
 // bons de commande (`features/ventes/documentChain.js`) : UNE définition.
 
+// ADRG19 — un geste de la liste n'est offert qu'avec le code que sa route
+// exige (palier admin : rôles porteurs de tous les codes ; compte hérité sans
+// rôle fin : son palier, comme `HasPermissionOrLegacy`).
+function useDroitVentes(code) {
+  const droit = useHasPermission(code)
+  const { role, role_nom: roleNom, permissions } = useSelector(s => s.auth)
+  return droit || role === 'admin'
+    || (role === 'responsable' && !roleNom && !(permissions || []).length)
+}
+
 export default function DevisList() {
   // VX82 — titre d'onglet dédié (chrome navigateur vivant).
   useDocumentTitle('Devis')
@@ -119,6 +129,10 @@ export default function DevisList() {
   // l'affordance pour les rôles « lecture + une écriture » (ex. Commercial)
   // qui recevraient sinon 403 sur l'appel direct.
   const canValiderVente = useCanValiderVente()
+  const peutExporter = useDroitVentes('ventes_export')
+  const peutCreer = useDroitVentes('ventes_creer')
+  const peutModifier = useDroitVentes('ventes_modifier')
+  const peutPdf = useDroitVentes('ventes_pdf')
   // PUB53 — badge « Vient de la pub » (lien retour vers /publicite/ad/:id) sur
   // une ligne dont le lead lié est un lead Meta : gaté aux mêmes rôles que le
   // module Publicité (responsable/admin — module.config.jsx).
@@ -813,6 +827,7 @@ export default function DevisList() {
     suiviOpenId, toggleSuiviPartage, lectureClientCache, canSeeLectureClient,
     conceptionOpenId, setConceptionOpenId, etudeOpenId, setEtudeOpenId,
     role, canDelete, canValiderVente, canSeePublicite, highlightId,
+    peutCreer, peutModifier, peutPdf,
     deletingId, statutActionId, convertingId, chantierBusy, setFacturerTarget,
     panneauVenteOpenId, setPanneauVenteOpenId,
     conflitLigne, setConflitLigne, ouvrirDevis,
@@ -859,6 +874,8 @@ export default function DevisList() {
       xlsxBusy={xlsxBusy}
       setXlsxBusy={setXlsxBusy}
       openNew={openNew}
+      peutExporter={peutExporter}
+      peutCreer={peutCreer}
     />
   )
 
@@ -1197,7 +1214,7 @@ export default function DevisList() {
           illustrated
           title="Aucun devis"
           description="Créez votre premier devis depuis le générateur solaire."
-          action={<Button onClick={openNew}><Plus /> Nouveau devis</Button>}
+          action={peutCreer && <Button onClick={openNew}><Plus /> Nouveau devis</Button>}
           className="mt-4"
         />
       ) : viewMode === 'board' ? (
