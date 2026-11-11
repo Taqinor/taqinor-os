@@ -173,7 +173,9 @@ class NotificationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         unread = choix_ou_400(self.request, 'unread', _UNREAD_ENUM)
         if unread in ('1', 'true', 'True'):
             qs = qs.filter(read=False)
-        if self.action == 'list':
+        # ASUP43 — le badge (`unread_count`) et « tout marquer lu » portent sur ce
+        # que la LISTE montre : jamais les non-lues archivées par la purge.
+        if self.action in ('list', 'unread_count', 'mark_all_read'):
             # VX209(c) — `list()` renvoyait TOUT sans borne (croissance sans
             # fin). Bornée à 90 j + non archivées (la purge quotidienne
             # supprime les lues > 60 j et archive les non-lues > 60 j — cette
