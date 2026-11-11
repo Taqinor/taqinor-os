@@ -20,6 +20,7 @@ from authentication.models import Company
 from apps.crm.models import Client
 from apps.parametres.models import CompanyProfile
 from apps.roles.models import Role
+from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
 from apps.stock.models import Produit
 from apps.ventes.models import Devis, LigneDevis
 
@@ -34,6 +35,11 @@ def _user(company, username, role=None, legacy='responsable'):
     return User.objects.create_user(
         username=username, password='x', company=company, role=role,
         role_legacy=legacy)
+
+
+def _role_livre(company, nom):
+    return Role.objects.create(
+        company=company, nom=nom, permissions=list(dict(CANONICAL_SYSTEM_ROLES)[nom]))
 
 
 def _api(user):
@@ -101,16 +107,13 @@ class VariantePctScalingTests(TestCase):
 class VarianteConfigEndpointTests(TestCase):
     def setUp(self):
         self.company = _company('qg9-cfg')
-        self.dir_role = Role.objects.create(
-            company=self.company, nom='Directeur', permissions=['ventes_voir'])
-        self.comm_role = Role.objects.create(
-            company=self.company, nom='Commercial responsable',
-            permissions=['ventes_voir'])
-        self.viewer_role = Role.objects.create(
-            company=self.company, nom='Viewer', permissions=['ventes_voir'])
-        self.directeur = _user(self.company, 'qg9-dir', role=self.dir_role)
-        self.commercial = _user(self.company, 'qg9-comm', role=self.comm_role)
-        self.viewer = _user(self.company, 'qg9-viewer', role=self.viewer_role,
+        # ATST21 — les rôles LIVRÉS du registre, jamais un jeu de codes fabriqué.
+        self.directeur = _user(self.company, 'qg9-dir', role=_role_livre(self.company, 'Directeur'))
+        self.commercial = _user(self.company, 'qg9-comm',
+                                role=_role_livre(self.company, 'Commercial responsable'))
+        self.commercial_livre = _user(self.company, 'qg9-commercial',
+                                      role=_role_livre(self.company, 'Commercial'), legacy='normal')
+        self.viewer = _user(self.company, 'qg9-viewer', role=_role_livre(self.company, 'Viewer'),
                             legacy='normal')
 
     def _get(self, user):
@@ -137,12 +140,13 @@ class VarianteConfigEndpointTests(TestCase):
         resp = self._put(self.commercial, 15)
         self.assertEqual(resp.status_code, 200)
 
-    def test_viewer_forbidden(self):
-        resp = self._put(self.viewer, 30)
-        self.assertEqual(resp.status_code, 403)
-        self.assertEqual(
-            CompanyProfile.get(company=self.company).variante_pct,
-            Decimal('20'))  # inchangé
+    def test_commercial_et_viewer_livres_refuses(self):
+        for user in (self.commercial_livre, self.viewer):
+            with self.subTest(role=user.role.nom):
+                self.assertEqual(self._put(user, 30).status_code, 403)
+                self.assertEqual(
+                    CompanyProfile.get(company=self.company).variante_pct,
+                    Decimal('20'))  # inchangé
 
     def test_invalid_pct_rejected(self):
         resp = self._put(self.directeur, 150)
@@ -172,9 +176,7 @@ class VarianteConfigEndpointTests(TestCase):
 
     def test_company_scoped(self):
         other = _company('qg9-autre')
-        other_role = Role.objects.create(
-            company=other, nom='Directeur', permissions=['ventes_voir'])
-        other_dir = _user(other, 'qg9-other-dir', role=other_role)
+        other_dir = _user(other, 'qg9-other-dir', role=_role_livre(other, 'Directeur'))
         self._put(self.directeur, 33)
         # La config de l'autre société reste au défaut.
         self.assertEqual(
