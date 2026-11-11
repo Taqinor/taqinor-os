@@ -74,6 +74,26 @@ class ReinitialisationMotDePasseTests(TestCase):
         self.assertTrue(self.cible.check_password('Nouveau-mdp-456!'))
         self.assertTrue(self.cible.must_change_password)
 
+    def test_cible_avertie_par_notification_securite(self):
+        """AMSG82 — réinitialisation réussie : 1 notification SECURITY_CHANGE à
+        la cible, sans le mot de passe ; refus de politique : aucune."""
+        from apps.notifications.models import Notification
+        from apps.notifications.types_evenements import EventType
+
+        def avertissements():
+            return Notification.objects.filter(recipient=self.cible, event_type=EventType.SECURITY_CHANGE)
+        resp = self.api.post(_URL.format(self.cible.id), {'password': 'a'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(avertissements().count(), 0)
+        with self.captureOnCommitCallbacks(execute=True):
+            resp = self.api.post(_URL.format(self.cible.id), {'password': 'Nouveau-mdp-456!'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        avis = avertissements().get()
+        self.assertEqual(avis.company_id, self.company.id)
+        self.assertNotIn('Nouveau-mdp-456!', avis.title + avis.body)
+        self.assertFalse(Notification.objects.filter(
+            recipient=self.directeur, event_type=EventType.SECURITY_CHANGE).exists())
+
     def test_action_dediee_revoque_sessions_cible(self):
         api_cible = self._session_active(self.cible)
         self.assertEqual(api_cible.get('/api/django/auth/me/').status_code, 200)

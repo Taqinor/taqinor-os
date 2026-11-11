@@ -183,6 +183,14 @@ def reinitialiser_mot_de_passe(acteur, cible, nouveau):
     cible.save(update_fields=[
         'password', 'must_change_password', 'password_changed_at'])
     revoke_user_sessions(cible)
+    try:  # AMSG82 — NTSEC30 : la personne concernée est TOUJOURS avertie
+        from apps.notifications.services import notify_security_change
+        notify_security_change(cible, 'Mot de passe réinitialisé', (
+            "Le mot de passe de votre compte a été réinitialisé par un administrateur ; "
+            "choisissez-en un nouveau à la prochaine connexion. Si vous n'êtes pas à "
+            "l'origine de cette demande, contactez immédiatement votre administrateur."))
+    except Exception:
+        logger.exception('AMSG82 : avertissement de réinitialisation non émis')
     try:
         from apps.parametres.models import SettingsAuditLog
         SettingsAuditLog.log_change(
