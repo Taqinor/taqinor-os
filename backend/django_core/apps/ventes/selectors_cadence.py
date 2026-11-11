@@ -146,7 +146,7 @@ def devis_action_requise(company, *, user=None, today=None,
     # ── Devis ENVOYÉS : un seul panier par devis, priorité au signal le plus
     # fort (engagement mesuré > échéance qui approche > simple cadence).
     envoyes = (devis_en_jeu(devis_societe.filter(statut=Devis.Statut.ENVOYE))
-               .select_related('client')
+               .select_related('client', 'lead')
                .prefetch_related('share_links')
                .order_by('id'))
     limite_expiration = today + timedelta(days=jours_avant_expiration)
@@ -168,8 +168,9 @@ def devis_action_requise(company, *, user=None, today=None,
             declencheurs |= declencheurs_actifs(link, devis=devis, now=now)
         if declencheurs:
             engagement_relance.append(devis.id)
-            wa_drafts[devis.id] = _brouillon_relance_engagement(
-                devis, declencheurs)
+            if not _lead_refuse(devis):  # AMSG2 — opposé, perdu, archivé
+                wa_drafts[devis.id] = _brouillon_relance_engagement(
+                    devis, declencheurs)
             continue
         envoye_le = devis.date_envoi
         if (envoye_le is not None
@@ -217,6 +218,15 @@ def devis_action_requise(company, *, user=None, today=None,
     }
 
 
+def _lead_refuse(devis):
+    """AMSG2 (D-ACVI-7) — règle de ``crm.cadence_messages.refus_rendu_whatsapp``
+    sur le lead préchargé : opposé, perdu ou archivé ⇒ ni brouillon ni numéro."""
+    from apps.crm.selectors import peut_contacter
+    lead = devis.lead if devis.lead_id else None
+    return lead is not None and (not peut_contacter(lead) or bool(
+        getattr(lead, 'perdu', False) or getattr(lead, 'is_archived', False)))
+
+
 def _ligne_action_requise(devis, touches=None, user=None):
     """PACT17 — de quoi RENDRE une ligne de « Relances du jour », rien de plus.
 
@@ -237,7 +247,7 @@ def _ligne_action_requise(devis, touches=None, user=None):
     whatsapp = ''
     if devis.lead_id:
         whatsapp = getattr(devis.lead, 'whatsapp', '') or ''
-    if not getattr(user, 'can_view_client_pii', True):  # APFS27
+    if not getattr(user, 'can_view_client_pii', True) or _lead_refuse(devis):  # APFS27, AMSG2
         telephone = whatsapp = None
     total = devis.total_ttc
     touche = (touches or {}).get(devis.lead_id) if devis.lead_id else None
