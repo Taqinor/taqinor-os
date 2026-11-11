@@ -242,6 +242,9 @@ class DashboardPartageInterneViewSet(TenantMixin, viewsets.ModelViewSet):
     parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     queryset = DashboardPartageInterne.objects.all()
 
+    def get_queryset(self):  # APUB56 — partages des seuls tableaux visibles (404 sinon).
+        return super().get_queryset().filter(dashboards_visibles_q(self.request.user, 'dashboard__'))
+
 
 def user_can_view_dashboard(user, dashboard):
     """XPLT10 — un utilisateur voit un dashboard PERSONNEL d'autrui SEULEMENT

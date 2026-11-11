@@ -219,6 +219,53 @@ class TestInternalSharing(DashboardPartageBase):
         self.dashboard.save(update_fields=['partage'])
         self.assertTrue(user_can_view_dashboard(self.viewer, self.dashboard))
 
+    def test_commercial_ne_partage_pas_le_tableau_d_un_collegue(self):
+        """APUB56 — un « Commercial » (rôle système du registre) ne s'ajoute
+        pas au tableau PERSONNEL d'un collègue, ni ne modifie ou supprime un
+        partage interne existant de ce tableau (404, rien d'écrit, absent de
+        son mode TV) ; le propriétaire garde la main (201 / 200 / 204)."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        perms = dict(CANONICAL_SYSTEM_ROLES)['Commercial']
+        commercial = User.objects.create_user(
+            username='apub56_commercial', password='x', company=self.company,
+            role=Role.objects.create(
+                company=self.company, nom='Commercial', permissions=list(perms)))
+        api_a = APIClient()
+        api_a.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(commercial)}')
+        url = '/api/django/core/dashboards-partages-internes/'
+        existant = DashboardPartageInterne.objects.create(
+            company=self.company, dashboard=self.dashboard,
+            utilisateur=self.viewer,
+            niveau=DashboardPartageInterne.Niveau.LECTURE)
+        nb = DashboardPartageInterne.objects.count()
+
+        r = api_a.post(url, {'dashboard': self.dashboard.id,
+                             'utilisateur': commercial.id,
+                             'niveau': 'edition'}, format='json')
+        self.assertEqual(r.status_code, 404, r.data)
+        r = api_a.patch(f'{url}{existant.id}/', {'niveau': 'edition'},
+                        format='json')
+        self.assertEqual(r.status_code, 404, r.data)
+        r = api_a.delete(f'{url}{existant.id}/')
+        self.assertEqual(r.status_code, 404)
+        self.assertEqual(DashboardPartageInterne.objects.count(), nb)
+        existant.refresh_from_db()
+        self.assertEqual(existant.niveau, DashboardPartageInterne.Niveau.LECTURE)
+        tv = api_a.get('/api/django/core/dashboards-tv/')
+        self.assertEqual(tv.status_code, 200, tv.data)
+        self.assertNotIn(self.dashboard.id, [d['id'] for d in tv.data['dashboards']])
+
+        r = self.api.post(url, {'dashboard': self.dashboard.id,
+                                'utilisateur': commercial.id}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        r = self.api.patch(f'{url}{existant.id}/', {'niveau': 'edition'},
+                           format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        r = self.api.delete(f'{url}{existant.id}/')
+        self.assertEqual(r.status_code, 204)
+
 
 class TestTvMode(DashboardPartageBase):
     def test_tv_mode_lists_company_wide_and_internally_shared(self):
