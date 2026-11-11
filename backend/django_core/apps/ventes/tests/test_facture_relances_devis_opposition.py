@@ -68,3 +68,51 @@ class NudgeOppositionTests(TestCase):
         self.assertEqual(send_devis_followup_nudges(), 1)
         self.assertEqual(DevisNudgeLog.objects.filter(
             devis=self.devis_oppose).count(), 1)
+
+    def test_brouillon_client_texte_client_numero_e164(self):
+        """AMSG39 (C-AMSG-027) — le brouillon wa.me de la notification vise le
+        numéro E.164 du client et porte le gabarit CLIENT `devis_unique` de la
+        société (jamais le mot au vendeur ni « TAQINOR ») ; numéro non
+        normalisable ⇒ pas de brouillon. Mutant : remettre `msg_fr` ⇒ échec."""
+        import urllib.parse
+        from apps.crm.models import Client
+        from apps.notifications.models import Notification
+        from apps.parametres.models_company import CompanyProfile
+        from apps.ventes.domain import recouvrement
+        from apps.ventes.models import Devis
+        from apps.ventes.services import send_devis_followup_nudges
+        from apps.ventes.utils.whatsapp import build_single_devis_whatsapp
+        profil = CompanyProfile.get(company=self.company)
+        profil.nom = 'Soleil Nord'
+        profil.save()
+        envoi = self.devis_normal.date_envoi
+
+        def devis(n, tel):
+            client = Client.objects.create(
+                company=self.company, nom=f'Tel{n}', prenom='AMSG39',
+                email=f'amsg39-{n}@example.invalid', telephone=tel)
+            return Devis.objects.create(
+                company=self.company, reference=f'DEV-AMSG39-{n}',
+                client=client, statut=Devis.Statut.ENVOYE,
+                taux_tva=Decimal('20'), date_envoi=envoi,
+                created_by=self.vendeur)
+        valide, invalide = devis(1, '0600000058'), devis(2, '12')
+        send_devis_followup_nudges()
+
+        def corps(d):
+            return Notification.objects.get(
+                recipient=self.vendeur,
+                link=f'/ventes/devis?devis={d.id}').body
+        prefixe = 'Brouillon WhatsApp : https://wa.me/212600000058?text='
+        ligne = next(x for x in corps(valide).splitlines()
+                     if x.startswith('Brouillon WhatsApp'))
+        self.assertTrue(ligne.startswith(prefixe), ligne)
+        texte = urllib.parse.unquote(ligne[len(prefixe):])
+        self.assertEqual(texte, build_single_devis_whatsapp(None, valide)[0])
+        self.assertIn('DEV-AMSG39-1', texte)
+        self.assertNotIn('Pensez à relancer', texte)
+        self.assertNotIn('TAQINOR', texte)
+        self.assertNotIn('Brouillon WhatsApp', corps(invalide))
+        for gabarit in (recouvrement._NUDGE_MSG_FR, recouvrement._NUDGE_MSG_AR):
+            self.assertNotIn('TAQINOR', gabarit)
+            self.assertIn('{signature}', gabarit)

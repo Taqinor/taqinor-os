@@ -569,7 +569,7 @@ _NUDGE_MSG_FR = (
     "Le devis {ref} envoyé à {client_nom} il y a {jours} jours est toujours "
     "en attente de validation.\n\n"
     "Pensez à relancer votre client :\n{wa_url}\n\n"
-    "Cordialement,\nL'équipe TAQINOR"
+    "Cordialement,\n{signature}"
 )
 
 _NUDGE_MSG_AR = (
@@ -581,14 +581,16 @@ _NUDGE_MSG_AR = (
     "يُرجى متابعة "
     "العميل:\n{wa_url}\n\n"
     "مع التحيات،\n"
-    "فريق TAQINOR"
+    "{signature}"
 )
 
 
 def _build_wa_draft_url(phone, text):
-    """Construit un lien wa.me pré-rempli. phone peut inclure '+' ou non."""
+    """Construit un lien wa.me pré-rempli vers un numéro E.164 (AMSG39 :
+    ``normalize_phone_e164``, jamais les chiffres bruts) ; sinon None."""
     import urllib.parse
-    digits = ''.join(c for c in (phone or '') if c.isdigit())
+    from apps.ventes.utils.phone import normalize_phone_e164
+    digits = normalize_phone_e164(phone)
     if not digits:
         return None
     encoded = urllib.parse.quote(text)
@@ -776,17 +778,19 @@ def send_devis_followup_nudges():
                     "recouvrement.send_devis_followup_nudges : erreur ignorée (mode dégradé)", exc_info=True)
                 proposal_url = ''
 
+            from apps.ventes.email_service import _signature
+            signature = _signature(devis.company)  # AMSG39 — jamais « TAQINOR »
             msg_fr = _NUDGE_MSG_FR.format(
                 ref=devis.reference,
                 client_nom=client_nom or 'votre client',
                 jours=jours,
-                wa_url=proposal_url,
+                wa_url=proposal_url, signature=signature,
             )
             msg_ar = _NUDGE_MSG_AR.format(
                 ref=devis.reference,
                 client_nom=client_nom or 'عميلك',
                 jours=jours,
-                wa_url=proposal_url,
+                wa_url=proposal_url, signature=signature,
             )
 
             canal = DevisNudgeLog.Canal.WA_DRAFT
@@ -808,8 +812,17 @@ def send_devis_followup_nudges():
                 # partager), et non le téléphone du vendeur.
                 client_phone = (getattr(client, 'telephone', '') or ''
                                 if client else '')
-                wa_url = (_build_wa_draft_url(client_phone, msg_fr)
-                          or proposal_url)
+                # AMSG39 — le brouillon porte le texte DESTINÉ AU CLIENT
+                # (gabarit `devis_unique` de la société), pas le mot au vendeur.
+                wa_url = None
+                try:
+                    from apps.ventes.utils.whatsapp import (
+                        build_single_devis_whatsapp)
+                    texte_client, _lien = build_single_devis_whatsapp(None, devis)
+                    wa_url = _build_wa_draft_url(client_phone, texte_client)
+                except Exception:  # noqa: BLE001 — pas de brouillon (D-ENF22-BLE001)
+                    logger.warning('QJ4: brouillon client indisponible devis %s',
+                                   devis.reference, exc_info=True)
                 logger.info(
                     'QJ4 nudge wa_draft devis=%s niveau=%d j+%d vendeur=%s url=%s',
                     devis.reference, idx, jours,
