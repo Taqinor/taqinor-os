@@ -1375,6 +1375,11 @@ class MesChantiersPortailViewSet(viewsets.ViewSet):
             return Response({'detail': 'Chantier introuvable.'},
                             status=status.HTTP_404_NOT_FOUND)
         if request.method == 'POST':
+            if not services.peut_ecrire_portail_client(request.user):  # APUB44
+                return Response(
+                    {'detail': "Votre accès est en lecture seule : vous ne "
+                               "pouvez pas saisir de relevé."},
+                    status=status.HTTP_403_FORBIDDEN)
             return self._poster_releve(request, company, client_id, chantier)
         equipements = sav_selectors.equipements_releve_portail(
             company, client_id, chantier.id)
