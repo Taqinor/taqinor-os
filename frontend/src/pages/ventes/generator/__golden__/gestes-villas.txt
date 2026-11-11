@@ -148,40 +148,40 @@ Smart Meter
 span]:line-clamp-1 [&amp;>span]:text-left h-[var(--control-h-sm)]">
 Équipement commun
 Équipement commun
-Villa A
 Villa B
+Villa A bis
 HT : 1 200 MAD
 1 440 MADHT : 1 200 MAD
 Panneau Canadien Solar 715W
 span]:line-clamp-1 [&amp;>span]:text-left h-[var(--control-h-sm)]">
 Villa A bis
 Équipement commun
-Villa A
 Villa B
+Villa A bis
 HT : 1 200 MAD
 10 560 MADHT : 9 600 MAD
 Onduleur réseau 5kW Monophasé
 span]:line-clamp-1 [&amp;>span]:text-left h-[var(--control-h-sm)]">
 Villa A bis
 Équipement commun
-Villa A
 Villa B
+Villa A bis
 HT : 9 000 MAD
 10 800 MADHT : 9 000 MAD
 Panneau Canadien Solar 715W
 span]:line-clamp-1 [&amp;>span]:text-left h-[var(--control-h-sm)]">
 Villa B
 Équipement commun
-Villa A
 Villa B
+Villa A bis
 HT : 1 200 MAD
 13 200 MADHT : 12 000 MAD
 Onduleur réseau 5kW Monophasé
 span]:line-clamp-1 [&amp;>span]:text-left h-[var(--control-h-sm)]">
 Villa B
 Équipement commun
-Villa A
 Villa B
+Villa A bis
 HT : 9 000 MAD
 10 800 MADHT : 9 000 MAD
 Total SANS batterie ⭐
