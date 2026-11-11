@@ -11,7 +11,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
-from authentication.permissions import IsResponsableOrAdmin
+from authentication.permissions import HasPermissionOrLegacy, IsResponsableOrAdmin
 from core.champs_stricts import ChampsStrictsEntiersMixin
 from core.conflit_etat import ConflitEtat
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
@@ -133,7 +133,8 @@ class SavedReportViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @extend_schema(request=None, responses=inline_serializer(
         'SavedReportPartageCoupe', {'partage_revoque_le': serializers.DateTimeField()}))
-    @action(detail=True, methods=['post'], url_path='couper-partage')
+    @action(detail=True, methods=['post'], url_path='couper-partage',
+            permission_classes=[IsResponsableOrAdmin, HasPermissionOrLegacy('reporting_export')])  # ADRG79
     def couper_partage(self, request, pk=None):
         """APUB41 — coupe le lien public du rapport (``resolve_report_token`` rend
         alors 404). Idempotent : la première date reste ; aucune route ne la
