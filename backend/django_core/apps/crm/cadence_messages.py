@@ -186,11 +186,13 @@ def _nom_affiche_conseiller(lead, user):
     — même lecture que ``default_responsable_for``, sans son round-robin : on
     rend un message, on n'assigne pas un lead) ; en dernier repli seulement,
     l'utilisateur courant."""
-    conseiller = getattr(lead, 'owner', None)
+    def _actif(compte):  # AMSG14 — un compte désactivé ne signe jamais
+        return compte if getattr(compte, 'is_active', False) else None
+    conseiller = _actif(getattr(lead, 'owner', None))
     if conseiller is None:
         from apps.parametres.models import CompanyProfile
         profile = CompanyProfile.objects.filter(company=lead.company).first()
-        conseiller = profile.responsable_defaut_leads if profile else None
+        conseiller = _actif(profile.responsable_defaut_leads if profile else None)
     if conseiller is None:
         conseiller = user
     if conseiller is None:
