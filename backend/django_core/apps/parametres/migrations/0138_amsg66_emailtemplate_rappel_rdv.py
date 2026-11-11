@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('parametres', '0136_companyprofile_devise_tenant'),
+        ('parametres', '0137_relance_devis_message'),
     ]
 
     operations = [
