@@ -417,7 +417,7 @@ def render_bcf_pdf_by_id(bc_id):
     PDF montre légitimement les PRIX D'ACHAT au FOURNISSEUR (le jeton l'y
     autorise) — il n'est jamais servi à un client final."""
     bcf = get_bcf_by_id(bc_id)
-    if bcf is None:
+    if bcf is None or bcf.statut == bcf.Statut.ANNULE:  # APUB32 : annulé => 404
         return None, None
     from .utils.pdf_fournisseur import generate_bcf_pdf
     pdf_bytes = generate_bcf_pdf(bcf)

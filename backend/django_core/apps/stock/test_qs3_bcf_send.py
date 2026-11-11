@@ -175,6 +175,24 @@ class BcfPublicPdfTests(BcfSendBase):
         self.assertEqual(resp['Content-Type'], 'application/pdf')
         self.assertIn('noindex', resp['X-Robots-Tag'])
 
+    def test_bcf_annule_404(self):
+        """APUB32 (C-APUB-013) — un BCF annulé ne se lit plus par son lien
+        public : 200 PDF tant qu'il est envoyé, 404 neutre (noindex) une fois
+        annulé. Mutant : retirer le test de statut ⇒ échec."""
+        self.bcf.statut = BonCommandeFournisseur.Statut.ENVOYE
+        self.bcf.save(update_fields=['statut'])
+        link = ShareLink.for_bon_commande_fournisseur(self.bcf)
+        public = APIClient()
+        url = f'/api/django/public/bcf/{link.token}/'
+        resp = public.get(url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp['Content-Type'], 'application/pdf')
+        self.bcf.statut = BonCommandeFournisseur.Statut.ANNULE
+        self.bcf.save(update_fields=['statut'])
+        resp = public.get(url)
+        self.assertEqual(resp.status_code, 404)
+        self.assertIn('noindex', resp['X-Robots-Tag'])
+
     def test_invalid_token_404(self):
         public = APIClient()
         resp = public.get('/api/django/public/bcf/pas-un-jeton/')
