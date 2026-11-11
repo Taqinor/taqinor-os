@@ -1439,11 +1439,17 @@ def echeance_de_la_part_due(facture):
     delai = DEFAULT_ECHEANCE_DAYS
     if facture.date_echeance and facture.date_emission:
         delai = max((facture.date_echeance - facture.date_emission).days, 0)
+    client = None if facture.date_echeance or not facture.client_id else facture.client
+
+    def court(depart):  # AARG73 — sans date_echeance : délai négocié du client, comme la base
+        return (echeance_selon_delai(depart, getattr(client, 'delai_paiement_jours', None),
+                                     getattr(client, 'fin_de_mois', False))
+                or depart + timedelta(days=delai))
     retenue = facture.retenue_garantie_mad or Decimal('0')
     parts = [(base, d['facture'] - retenue)]
     if retenue and facture.retenue_liberee_le:
-        parts.append((facture.retenue_liberee_le + timedelta(days=delai), retenue))
-    parts += [(n.date_emission + timedelta(days=delai), n.total_ttc)
+        parts.append((court(facture.retenue_liberee_le), retenue))
+    parts += [(court(n.date_emission), n.total_ttc)
               for pk, n in notes.items() if pk not in annulees]
     for echeance, montant in sorted(parts, key=lambda part: part[0]):
         if montant - credit > Decimal('0.01'):
