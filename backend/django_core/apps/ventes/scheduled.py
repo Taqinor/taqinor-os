@@ -783,6 +783,9 @@ def engagement_followup_engine():
         devis = link.devis
         if getattr(devis, 'created_by', None) is None:
             continue
+        from .domain.recouvrement import _lead_ecarte
+        if _lead_ecarte(devis):
+            continue  # ASUP42 — lead opposé, perdu ou archivé : lien sauté
         # ASOC90 — vendeur inactif ⇒ responsable actif du lead, sinon managers.
         from apps.notifications.services import destinataire_actif
         vendeur = destinataire_actif(devis.created_by, lead=devis.lead)
