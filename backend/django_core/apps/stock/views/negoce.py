@@ -435,7 +435,9 @@ class AccordRFAFournisseurViewSet(CompanyScopedModelViewSet):
         if self.action == 'calcul':
             # ERR-STK-PRIX-ACHAT-SUITE — CA d'achat et montant dû : prix_achat_voir.
             return [IsResponsableOrAdmin(), PeutVoirPrixAchat()]
-        if self.action in READ_ACTIONS + WRITE_ACTIONS:
+        if self.action in WRITE_ACTIONS:  # ADRG32 — écrire un accord RFA = « commander »
+            return [IsResponsableOrAdmin(), DroitDeLaGrille('achats_commander')()]
+        if self.action in READ_ACTIONS:
             return [IsResponsableOrAdmin()]
         return [IsAdminRole()]
 
