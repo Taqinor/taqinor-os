@@ -142,8 +142,13 @@ def amorcer_cadence(facture, *, echeance=None, niveaux=None, save=True):
         echeance = _echeance_effective(facture, casablanca_today())
     if echeance is None:
         return False
-    facture.prochaine_relance = echeance + timedelta(
-        days=niveaux[0].delai_jours or 0)
+    cible = echeance + timedelta(days=niveaux[0].delai_jours or 0)
+    try:  # AMSG43 — DC19 : le 1er niveau tombe aussi sur un jour ouvré
+        from apps.notifications.calendar_utils import prochain_jour_ouvre
+        cible = prochain_jour_ouvre(cible, facture.company)
+    except Exception:  # noqa: BLE001 — calendrier absent → date brute (D-ENF22-BLE001)
+        logger.warning("recouvrement.amorcer_cadence : erreur ignorée (mode dégradé)", exc_info=True)
+    facture.prochaine_relance = cible
     if save:
         facture.save(update_fields=['prochaine_relance'])
     return True

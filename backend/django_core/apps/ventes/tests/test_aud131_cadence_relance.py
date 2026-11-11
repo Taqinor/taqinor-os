@@ -72,9 +72,12 @@ class TestAud131CadenceDemarreSeule(_Base):
 
         facture.refresh_from_db()
         self.assertEqual(facture.statut, Facture.Statut.EN_RETARD)
+        # AMSG43 — le 1er niveau est posé au jour ouvré (DC19).
+        from apps.notifications.calendar_utils import prochain_jour_ouvre
         self.assertEqual(
             facture.prochaine_relance,
-            facture.date_echeance + timedelta(days=7))
+            prochain_jour_ouvre(facture.date_echeance + timedelta(days=7),
+                                self.company))
 
     def test_le_beat_relance_ensuite_sans_intervention_humaine(self):
         FollowupLevel.objects.create(
