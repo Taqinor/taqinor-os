@@ -154,6 +154,8 @@ def purger_expires(*, now=None, company=None):
     par_company = {}
     for company_id, object_id in qs.values_list('company_id', 'id'):
         par_company[company_id] = par_company.get(company_id, 0) + 1
+    from core.trash import purger_deletion_records
+    purger_deletion_records(now=now, company=company)  # ASUP15 — même rétention que la corbeille commune
     if par_company:
         # ASUP16 — une pièce jointe RETIRÉE (jamais restaurée) perd son binaire par l'API de stockage de la pièce
         # (une clé encore tenue ailleurs est conservée) ; la ligne métier reste.

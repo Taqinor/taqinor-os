@@ -236,6 +236,8 @@ class SoftDeleteModel(models.Model):
         (DeletionRecord.objects
          .filter(content_type=ct, object_id=self.pk, restored_at__isnull=True)
          .update(restored_at=timezone.now()))
+        from core.events import record_soft_restored  # ASUP15 — les deux corbeilles d'accord
+        record_soft_restored.send(sender=type(self), instance=self, company=getattr(self, 'company', None))
         return self
 
 
