@@ -905,3 +905,25 @@ unites:
     date: 2026-11-10
     dossier: docs/audits/2026-11-10-parcours-PF4.md
     notes: "Onzième audit de PARCOURS (L2, 10/11/2026, base 7e845af, fraîcheur 29787bc) : environ 1 650 routes d'écriture et d'export et gestes d'écran confrontés au code de la grille des rôles ; 65 constats, tous lus (aucune pile ne servait main : aucune sonde jouée, aucun test exécuté ; rôles livrés calculés sur le registre, refaits par chaque vérificateur) ; gravités 2 S1, 24 S2, 39 S3. S1 : un commercial lie l'accès portail du client A au client B (exploitable aujourd'hui : 3 comptes commerciaux réels, 1 compte portail actif) ; l'import de factures consomme un numéro légal pour un rôle sans droit de vente (non exploitable aujourd'hui : aucun compte visé, aucun import). Deux sondes écrites, non rejouées (ADRG105). D-ADRG-1..14 ouvertes. Tâches ADRG1-105 (80 posées : ANALYSE 13, STOCK 9, CHANTIERS 9, SAV 8, FACTURATION 7, DOCUMENTS 7, LEAD 6, DEVIS 4, PARAMETRES 4, TRANSVERSE 4, CALEPINAGE 3, SECURITE 3, DEPLOY 3)."
+
+  - id: PF6
+    rang: 32
+    declencheur: lecture-sensible
+    titre: "Parcours PF6 « Lecture des données sensibles » : chaque route de lecture (liste, détail, action GET, sérialiseur imbriqué, recherche, agrégat, tuile, journal, assistant SQL) rend-elle un prix d'achat, une marge, une donnée personnelle de client, une donnée hors de la portée du rôle ou un secret à qui n'a pas le droit de les voir"
+    possede: []
+    perimetre_lu:
+      - "backend/django_core/apps/** (vues, sérialiseurs, sélecteurs, journaux), backend/django_core/core/**, backend/django_core/apps/roles/permissions_registre.py, backend/fastapi_ia/**, frontend/src/**"
+    coutures:
+      - "champ sensible ↔ droit de la grille (prix_achat_voir, marge_voir, client_pii_voir, journal_activite_voir) ↔ masque du sérialiseur ↔ écran ; lecture ↔ portée du rôle ; journal et notification ↔ donnée recopiée ; jeton ↔ seul destinataire"
+    P: 3
+    I: 5
+    score: 15
+    niveau: L2
+    statut: audité
+    groupe: ALEC
+    plan: docs/plans/PLAN_AUDIT_SECURITE.md
+    plans_alimentes: [docs/plans/PLAN_AUDIT_DOCUMENTS.md, docs/plans/PLAN_AUDIT_STOCK.md, docs/plans/PLAN_AUDIT_SECURITE.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_PARAMETRES.md, docs/plans/PLAN_AUDIT_ANALYSE.md, docs/plans/PLAN_AUDIT_SAV.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_CALEPINAGE.md, docs/plans/PLAN_AUDIT_DEPLOY.md]
+    pr: 0
+    date: 2026-11-11
+    dossier: docs/audits/2026-11-11-parcours-PF6.md
+    notes: "Audit de PARCOURS (L2, 11/11/2026, base ae5a7ae, fraîcheur 1ea772d) : environ 360 routes de lecture et sources de données sensibles inventoriées en quatre lectures (prix d'achat stock et chantiers ; prix d'achat et marges ventes, client, assistant SQL, journaux ; données personnelles ; portée, journal, secrets) ; 35 constats, 24 prouvés par sonde hôte (vrai code, bouchons, aucune pile), 11 lus ; gravités 1 S1, 23 S2, 11 S3. S1 : tout compte interne lit le jeton de signature électronique d'un client et peut signer à sa place ; le jeton global d'une signature à plusieurs personnes signe tout le circuit sans code SMS (exploitable aujourd'hui : 2 Commercial et 1 Commercial responsable, dès qu'une demande est en attente). Porte : 0 réfuté, 7 gravités revues ; seconde lentille : S1 maintenu et élargi. D-ALEC-1..5 ouvertes. Tâches ALEC1-40 (40 posées, dont 7 GATED : STOCK 6, ANALYSE 5, CHANTIERS 5, DOCUMENTS 5, LEAD 4, SECURITE 4, PARAMETRES 3, SAV 2, FACTURATION 2, CALEPINAGE 2, DEVIS 1, DEPLOY 1)."
