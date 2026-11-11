@@ -138,7 +138,10 @@ export function noterChoixPush(actif, userId = utilisateurCourant) {
   if (!actif) refus.push(id)
   try {
     window.localStorage.setItem(CLE_REFUS_PUSH, JSON.stringify(refus))
-  } catch { /* stockage indisponible : le choix reste celui de la session */ }
+  } catch (err) {
+    // Stockage indisponible (navigation privée…) : le choix ne survit pas.
+    console.warn('pushSubscribe.noterChoixPush : stockage indisponible', err)
+  }
 }
 
 /* Réabonne CET appareil pour `userId` si la permission est déjà accordée et
