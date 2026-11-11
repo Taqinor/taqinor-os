@@ -1,4 +1,5 @@
 """NTOBS7 — écran de téléchargement de l'export de réversibilité + historique."""
+from importlib import import_module
 from unittest import mock
 
 from django.apps import apps as django_apps
@@ -76,10 +77,10 @@ class HistoriqueEndpointTest(TestCase):
     def test_historique_refuse_aux_roles_livres_non_lanceurs(self):
         """APUB1 — Commercial et Commercial responsable livrés : 403, aucun
         jeton servi ; Directeur livré : 200 avec le jeton du run prêt."""
-        from apps.roles.permissions_registre import (
-            COMMERCIAL_PERMISSIONS, COMMERCIAL_RESP_PERMISSIONS,
-            DIRECTEUR_PERMISSIONS,
-        )
+        registre = import_module('apps.roles.permissions_registre')
+        COMMERCIAL_PERMISSIONS = registre.COMMERCIAL_PERMISSIONS
+        COMMERCIAL_RESP_PERMISSIONS = registre.COMMERCIAL_RESP_PERMISSIONS
+        DIRECTEUR_PERMISSIONS = registre.DIRECTEUR_PERMISSIONS
         ExportReversibiliteRun.objects.create(
             company=self.company, statut=ExportReversibiliteRun.Statut.PRET,
             token='jeton-apub1')
@@ -124,9 +125,9 @@ class HistoriqueEndpointTest(TestCase):
         """APUB2 — le Directeur coupe le lien d'un export « prêt » : lien
         inactif, run « Expiré », téléchargement 404 ; Commercial responsable
         livré : 403 sans écriture ; second POST identique ; autre société 404."""
-        from apps.roles.permissions_registre import (
-            COMMERCIAL_RESP_PERMISSIONS, DIRECTEUR_PERMISSIONS,
-        )
+        registre = import_module('apps.roles.permissions_registre')
+        COMMERCIAL_RESP_PERMISSIONS = registre.COMMERCIAL_RESP_PERMISSIONS
+        DIRECTEUR_PERMISSIONS = registre.DIRECTEUR_PERMISSIONS
         from core import signed_download
         from core.tasks import REVERSIBILITE_BUCKET
 

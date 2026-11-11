@@ -45,7 +45,9 @@ class EmplacementStockViewSet(CompanyScopedModelViewSet):
             # (`get_permissions` prime sur le `permission_classes` de
             # l'@action, d'où ce cas explicite — sinon repli IsAdminRole).
             return [LectureDuModule()]
-        return [PeutSupprimerStock() if self.action == 'destroy' else IsAdminRole()]  # ADRG44
+        if self.action == 'destroy':
+            return [PeutSupprimerStock()]  # ADRG44
+        return [IsAdminRole()]
 
     def get_queryset(self):
         """NTWMS19 — filtre `?type_proprietaire=interne|chez_tiers|de_tiers`

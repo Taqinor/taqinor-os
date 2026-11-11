@@ -71,15 +71,8 @@ CHEMINS_SIMPLES = ('/api/django/stock/tableau-bord-achats/',
 #: ALEC30 — routes dont le correctif n'est pas sur `main` au build : leur fuite
 #: est RAPPORTÉE sans faire échouer ; une entrée qui ne fuit plus fait échouer
 #: la garde (la retirer). Gabarit de route → constat (tâche du correctif).
-EN_ATTENTE = {
-    '/api/django/stock/kits/{pk}/structure/': 'C-ALEC-002 (ALEC3)',
-    '/api/django/stock/accords-rfa-fournisseur/': 'C-ALEC-005 (ALEC7)',
-    '/api/django/stock/accords-rfa-fournisseur/{pk}/': 'C-ALEC-005 (ALEC7)',
-    '/api/django/installations/approbations-bcf/': 'C-ALEC-006 (ALEC8)',
-    '/api/django/installations/approbations-bcf/{pk}/': 'C-ALEC-006 (ALEC8)',
-    '/api/django/installations/controle-budgetaire/': 'C-ALEC-007 (ALEC9)',
-    '/api/django/stock/entrepot/cockpit/': 'C-ALEC-009 (ALEC11)',
-}
+#: Vague 12 : ALEC3/7/8/9/11 ont livré leurs correctifs — plus aucune attente.
+EN_ATTENTE = {}
 #: ASTK243 — paramètres VALIDES (objets de démo du ``setUp``) des routes qui
 #: répondent 400 sans eux : suffixe de gabarit → fabrique(test).
 PARAMETRES_PAR_ROUTE = {

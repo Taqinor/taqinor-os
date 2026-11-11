@@ -197,7 +197,8 @@ describe('FactureList — WR2b : Export DGI + badge conformité (gated par dgi_e
   it('affiche le badge conformité et l\'action Export DGI quand le flag société est ON', async () => {
     const user = userEvent.setup()
     parametresApi.getProfile.mockResolvedValueOnce({ data: { dgi_export_actif: true } })
-    renderList({ factures: [{ ...baseFacture }] })
+    // ADRG18 — l'Export DGI exige `ventes_export` (code de sa route).
+    renderList({ factures: [{ ...baseFacture }], permissions: ['encaisser', 'ventes_export'] })
     const row = await screen.findByText('FAC-2026-07-0001').then(el => el.closest('tr'))
     await waitFor(() => {
       expect(within(row).getByText(/Conformité DGI/)).toBeVisible()
@@ -294,7 +295,8 @@ describe('FactureList — VX142(a) : toolbar « Exporter » unique, plus de wind
   it('le menu « Exporter » regroupe Exporter Excel / Journal comptable / Export comptable / Audit numérotation', async () => {
     const user = userEvent.setup()
     const promptSpy = vi.spyOn(window, 'prompt')
-    renderList({ factures: [{ ...baseFacture }] })
+    // ADRG18 — « Exporter Excel » exige `ventes_export` (code de sa route).
+    renderList({ factures: [{ ...baseFacture }], permissions: ['encaisser', 'ventes_export'] })
     await user.click(screen.getByRole('button', { name: /^Exporter$/ }))
     expect(screen.getByRole('menuitem', { name: /Exporter Excel/ })).toBeVisible()
     expect(screen.getByRole('menuitem', { name: /Journal comptable/ })).toBeVisible()

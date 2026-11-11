@@ -20,6 +20,8 @@ vi.mock('../../api/ventesApi', () => ({
 }))
 // Axios et confirmations neutralisés (la page lit aussi des endpoints REST directs).
 vi.mock('../../api/axios', () => ({ default: { get: vi.fn(), post: vi.fn(), patch: vi.fn() } }))
+// ADRG2 — la page lit le droit `encaisser` (Exclure, Promesse) : ce compte le porte.
+vi.mock('../../hooks/useHasPermission', () => ({ useHasPermission: () => true }))
 vi.mock('../../ui/confirm', () => {
   const oui = async () => true
   return {

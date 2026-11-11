@@ -16,7 +16,9 @@ Couvre :
     inexistant », le même corps qu'un id absent (ERR-ENF11-FUZZ-CORE).
 """
 import datetime
+from importlib import import_module
 
+from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
@@ -144,9 +146,9 @@ class TestPublicLink(DashboardPartageBase):
         ne révoque ni ne supprime le lien public du tableau PERSONNEL d'un
         collègue (404, rien d'écrit) ; un tableau ``partage=True`` reste
         publiable ; le propriétaire garde la main (201 / 200 / 204)."""
-        from apps.roles.models import Role
-        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
-        perms = dict(CANONICAL_SYSTEM_ROLES)['Commercial']
+        Role = django_apps.get_model('roles', 'Role')
+        perms = dict(import_module(
+            'apps.roles.permissions_registre').CANONICAL_SYSTEM_ROLES)['Commercial']
         commercial = User.objects.create_user(
             username='adrg102_commercial', password='x', company=self.company,
             role=Role.objects.create(
@@ -224,9 +226,9 @@ class TestInternalSharing(DashboardPartageBase):
         pas au tableau PERSONNEL d'un collègue, ni ne modifie ou supprime un
         partage interne existant de ce tableau (404, rien d'écrit, absent de
         son mode TV) ; le propriétaire garde la main (201 / 200 / 204)."""
-        from apps.roles.models import Role
-        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
-        perms = dict(CANONICAL_SYSTEM_ROLES)['Commercial']
+        Role = django_apps.get_model('roles', 'Role')
+        perms = dict(import_module(
+            'apps.roles.permissions_registre').CANONICAL_SYSTEM_ROLES)['Commercial']
         commercial = User.objects.create_user(
             username='apub56_commercial', password='x', company=self.company,
             role=Role.objects.create(

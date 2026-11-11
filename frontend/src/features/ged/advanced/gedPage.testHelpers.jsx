@@ -16,6 +16,11 @@ export const uiToastEspion = (actual) => ({
   ...actual, toast: { success: vi.fn(), error: vi.fn(), message: vi.fn() },
 })
 
+/** ADRG85 — comptes livrés : purge et legal holds suivent `ged_gouvernance`
+ *  (Directeur ; le Commercial responsable ne le porte pas). */
+export const AUTH_DIRECTEUR = { role: 'admin', role_nom: 'Directeur', permissions: ['ged_voir', 'ged_gerer', 'ged_gouvernance'] }
+export const AUTH_COMMERCIAL_RESP = { role: 'responsable', role_nom: 'Commercial responsable', permissions: ['ged_voir', 'ged_gerer'] }
+
 export function renderGedPage(Page) {
   return render(<MemoryRouter><ThemeProvider>{createElement(Page)}</ThemeProvider></MemoryRouter>)
 }

@@ -15,6 +15,10 @@ backend/django_core/apps/crm/cadence_views.py::RelanceEtapeViewSet.reporter
 backend/django_core/apps/crm/cadence_views.py::RelanceEtapeViewSet.sauter
 backend/django_core/apps/crm/cadence_views.py::RelanceEtapeViewSet.whatsapp
 backend/django_core/apps/crm/clients_views.py::ClientViewSet.dupliquer
+backend/django_core/apps/crm/clients_views.py::DealEnregistreViewSet.approuver
+backend/django_core/apps/crm/clients_views.py::DealEnregistreViewSet.rejeter
+backend/django_core/apps/crm/clients_views.py::SalleVenteViewSet.ajouter_item
+backend/django_core/apps/crm/clients_views.py::SalleVenteViewSet.retirer_item
 backend/django_core/apps/crm/devis_views.py::LeadDevisActionsMixin.devis_auto
 backend/django_core/apps/crm/devis_views.py::LeadDevisActionsMixin.whatsapp_devis
 backend/django_core/apps/crm/devis_views.py::LeadDevisActionsMixin.whatsapp_devis_apercu

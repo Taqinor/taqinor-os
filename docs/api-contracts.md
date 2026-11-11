@@ -232,8 +232,6 @@
     bons_commande:inconnu, detail:texte, fournisseur:texte, fournisseurs:objet, sans_fournisseur:inconnu, statut_chantier:inconnu, statut_raison:inconnu
 - frontend/src/api/installationsApi.js :: confirmerToolReturn -> /api/django/installations/interventions/<>/confirmer-tool-return
     detail:texte, non_rendus:inconnu, tool_returns:inconnu
-- frontend/src/api/installationsApi.js :: couperLienRapportIntervention -> /api/django/installations/interventions/<>/couper-lien-rapport
-    coupe:booleen
 - frontend/src/api/installationsApi.js :: creerInterventionsStandard -> /api/django/installations/chantiers/<>/creer-interventions-standard
     created:inconnu, detail:texte, existants:inconnu
 - frontend/src/api/installationsApi.js :: declarerRebutAssemblage -> /api/django/installations/ordres-assemblage/<>/declarer-rebut
@@ -398,6 +396,8 @@
     action_mix:inconnu, daily_counts:inconnu, detail:texte, failed_logins:inconnu, from:texte, object_churn:inconnu, to:texte, top_users:inconnu, total_entries:inconnu, window_days:inconnu
 - frontend/src/api/reportingApi.js :: commercialDashboard -> /api/django/reporting/commercial/dashboard
     detail:texte, funnel:inconnu, leaderboard:inconnu, sales_velocity:inconnu, time_in_stage:inconnu, time_to_first_touch:inconnu, total_leads:nombre, total_signes:inconnu, win_rate_pct:inconnu
+- frontend/src/api/reportingApi.js :: couperPartageSavedReport -> /api/django/reporting/saved-reports/<>/couper-partage
+    partage_revoque_le:inconnu
 - frontend/src/api/reportingApi.js :: effectiveDashboardConfig -> /api/django/reporting/dashboard-config/effective
     cards:inconnu, config_id:inconnu, menu_tier:inconnu, source:texte
 - frontend/src/api/reportingApi.js :: executerRapportDefinition -> /api/django/reporting/rapport-definitions/<>/executer
@@ -419,7 +419,7 @@
 - frontend/src/api/reportingApi.js :: kpiFederes -> /api/django/reporting/reports/kpi-federes
     badges:inconnu, count:nombre, tuiles:inconnu
 - frontend/src/api/reportingApi.js :: kpiP2p -> /api/django/reporting/p2p/kpi
-    budgets_departement:inconnu, conformite_fournisseur_moyenne:inconnu, debut:inconnu, delai_demande_bcf_jours:inconnu, fin:inconnu, taux_conversion_pct:inconnu
+    budgets_departement:liste, conformite_fournisseur_moyenne:inconnu, debut:inconnu, delai_demande_bcf_jours:inconnu, fin:inconnu, taux_conversion_pct:inconnu
 - frontend/src/api/reportingApi.js :: rafraichirClasseur -> /api/django/reporting/classeurs/<>/rafraichir
     cellules:inconnu
 - frontend/src/api/reportingApi.js :: regenererCalendarSubscription -> /api/django/reporting/calendar/subscription

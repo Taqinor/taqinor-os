@@ -52,7 +52,7 @@ describe('WIR135 GouvernanceAccesPage', () => {
     expect(await screen.findByText('Q3 2026')).toBeInTheDocument()
   })
 
-  it('révoque un item de campagne (retire le rôle via le serveur)', async () => {
+  it('révoquer un item demande confirmation ; « Annuler » ne retire rien', async () => {
     renderPage()
     fireEvent.click(await screen.findByText('Q3 2026'))
     // Le rôle figé s'affiche par son libellé (jamais l'objet brut : React #31).
@@ -63,6 +63,13 @@ describe('WIR135 GouvernanceAccesPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Annuler' }))
     await waitFor(() => expect(screen.queryByText(/perd le rôle/)).toBeNull())
     expect(H.attester).not.toHaveBeenCalled()
+  })
+
+  it('APUB4 — « Révoquer l’accès » confirmé retire le rôle via le serveur', async () => {
+    // Rendu neuf : rouvrir la même AlertDialog Radix juste après « Annuler »
+    // n'est pas fiable sous jsdom (2 échecs sur 3 en local, rouge en CI).
+    renderPage()
+    fireEvent.click(await screen.findByText('Q3 2026'))
     fireEvent.click(await screen.findByText('Révoquer'))
     fireEvent.click(await screen.findByRole('button', { name: 'Révoquer l’accès' }))
     await waitFor(() => expect(H.attester).toHaveBeenCalledWith(1,

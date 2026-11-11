@@ -52,8 +52,11 @@ class TiersViewSet(
     write_permission = None
 
     def get_permissions(self):
-        # APUB13 — un rôle en lecture seule n'écrit pas le répertoire.
-        return [*super().get_permissions(), EcritureRefuseeLectureSeule()]
+        # APUB13 — un rôle en lecture seule n'écrit pas le répertoire (CRUD
+        # seulement ; les @action gardent leur déclaration via super()).
+        if self.action in EcritureRefuseeLectureSeule.ACTIONS:
+            return [*super().get_permissions(), EcritureRefuseeLectureSeule()]
+        return super().get_permissions()
 
     def get_queryset(self):
         """ALEC20 — lecture bornée au droit du lecteur (hors palier admin) :

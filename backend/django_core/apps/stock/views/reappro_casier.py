@@ -144,12 +144,6 @@ class TacheReapproInterneViewSet(CompanyScopedModelViewSet):
         return Response(resultat)
 
 
-@extend_schema(request=None, responses={
-    200: inline_serializer('StockCasiersAReapprovisionner', {
-        'casiers': serializers.ListField(child=serializers.DictField()),
-        'taches_creees': serializers.IntegerField(),
-    }),
-})
 class _MouvementSurPost(DroitDeLaGrille('stock_mouvement')):
     """ADRG35 — le POST (génération des tâches) est un mouvement ; GET libre."""
 
@@ -157,6 +151,12 @@ class _MouvementSurPost(DroitDeLaGrille('stock_mouvement')):
         return request.method != 'POST' or super().has_permission(request, view)
 
 
+@extend_schema(request=None, responses={
+    200: inline_serializer('StockCasiersAReapprovisionner', {
+        'casiers': serializers.ListField(child=serializers.DictField()),
+        'taches_creees': serializers.IntegerField(),
+    }),
+})
 @api_view(['GET', 'POST'])
 @permission_classes([IsResponsableOrAdmin, _MouvementSurPost])
 def casiers_a_reapprovisionner_view(request):

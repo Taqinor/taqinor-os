@@ -107,7 +107,7 @@ class SalleVenteViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
-        return _garde_ecriture(self)  # ADRG4
+        return declared_action_permissions(self) or _garde_ecriture(self)  # ADRG4
 
     def get_queryset(self):
         # ACRM65 (D-ACRM-6 (ii)=(b)) — salles PARQUÉES quand le réglage
@@ -284,7 +284,7 @@ class DealEnregistreViewSet(ApporteursParquesMixin, _PorteeEnfantsMixin,
     def get_permissions(self):
         if self.action in READ_ACTIONS or self.action == 'a_payer':
             return [IsAnyRole()]
-        return _garde_ecriture(self)  # ADRG4
+        return declared_action_permissions(self) or _garde_ecriture(self)  # ADRG4
 
     @extend_schema(request=None, responses=DealEnregistreSerializer)
     @action(detail=True, methods=['post'], url_path='approuver',

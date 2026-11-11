@@ -38,8 +38,9 @@ const LEAD = { id: 1569, nom: 'ouissam merbahi', stage: 'FOLLOW_UP', is_archived
 
 installerHooksLeadWorkspace()
 
+// ADRG20 — « Archiver » exige `crm_modifier` : Meryem (Commercial du registre) le porte.
 function renderLead({ initialDevis = null, lead = LEAD, ...props } = {}) {
-  return renderLeadWorkspace({ lead, initialDevis, ...props }, 4)
+  return renderLeadWorkspace({ lead, initialDevis, ...props }, 4, { permissions: ['crm_modifier'] })
 }
 const renderWithDevisPanel = () => renderLead({ initialDevis: 'edit' })
 

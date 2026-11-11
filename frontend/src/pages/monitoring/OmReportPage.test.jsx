@@ -33,13 +33,7 @@ vi.mock('../../api/monitoringApi', () => ({
   },
 }))
 
-vi.mock('../../api/installationsApi', () => ({
-  default: {
-    getInstallations: vi.fn(() => Promise.resolve({
-      data: [{ id: 11, reference: 'INST-2026-001', client_nom: 'Amrani' }],
-    })),
-  },
-}))
+vi.mock('../../api/installationsApi', async () => (await import('./monitoring.testHelpers.js')).installationsApiAmrani())
 
 // ADRG47 — droit d'écriture du monitoring (`sav_gerer`, palier sav) simulé :
 // vrai = porteur (Technicien) ; faux = Commercial du registre (aucun code sav).
