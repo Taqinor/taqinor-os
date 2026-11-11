@@ -23,7 +23,7 @@ psycopg2-binary==2.9.13
 pgvector==0.5.1
 
 # Cache / Queue
-redis==5.2.1
+redis==8.1.0
 django-redis==5.4.0
 celery==5.4.0
 # ERR-CELERY-KOMBU-REDIS — kombu ÉPINGLÉ : celery 5.4 l'accepte jusqu'à < 6, or kombu 5.7 exige
