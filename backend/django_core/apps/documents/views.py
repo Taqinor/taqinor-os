@@ -10,7 +10,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from authentication.permissions import IsResponsableOrAdmin, LectureDuModule
 from apps.installations.models import Installation
 from core.selectors import get_company_object
 
@@ -115,8 +115,18 @@ _Refus409 = inline_serializer('DocumentChantierRefusEtat', {
 _PDF = {(200, 'application/pdf'): OpenApiTypes.BINARY, 409: _Refus409}
 
 
+class LectureChantiersOuVentes(LectureDuModule):
+    """ALEC19 (patron APFS108) — un code ``installations`` OU ``ventes``."""
+
+    def has_permission(self, request, view):
+        for self.module_fige in ('installations', 'ventes'):
+            if super().has_permission(request, view):
+                return True
+        return False
+
+
 class _BaseDocumentView(APIView):
-    permission_classes = [IsAnyRole]
+    permission_classes = [LectureChantiersOuVentes]
 
 
 class PVReceptionView(_BaseDocumentView):
@@ -177,7 +187,7 @@ class AttestationView(_BaseDocumentView):
     ADOC69 — l'attestation porte la signature de la société : réservée aux
     responsables et admins (``IsResponsableOrAdmin``), un compte portail reste
     refusé (``IsAnyRole``)."""
-    permission_classes = [IsAnyRole, IsResponsableOrAdmin]
+    permission_classes = [LectureChantiersOuVentes, IsResponsableOrAdmin]
 
     @extend_schema(
         parameters=[

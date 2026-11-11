@@ -723,6 +723,7 @@ def file_attente(user):
         return vide
     attentes = [a for a in attentes if a.equipe_id == affichee.pk]
     maintenant = timezone.now()
+    from .serializers import masquer_pii_dict  # ALEC35 : sans client_pii_voir ⇒ null
     plafond = _plafond(user.company_id)
     membres = affichee.membres.filter(
         is_active=True, company_id=user.company_id).order_by('first_name', 'username', 'id')
@@ -731,7 +732,7 @@ def file_attente(user):
                    'delai_minutes': affichee.delai_attribution_minutes,
                    'a_prendre': affichee.file_a_prendre},
         'en_attente': len(attentes),
-        'leads': [_ligne_lead(a, maintenant) for a in attentes],
+        'leads': [masquer_pii_dict(_ligne_lead(a, maintenant), user) for a in attentes],
         'membres': [_ligne_membre(m, plafond, affichee.responsable_id)
                     for m in _choix_equipe(affichee, membres)],
         'equipes_reglables': vide['equipes_reglables'],

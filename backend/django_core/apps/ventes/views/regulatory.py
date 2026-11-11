@@ -14,6 +14,7 @@ from rest_framework.parsers import JSONParser
 from rest_framework.exceptions import ValidationError
 
 from authentication.permissions import IsResponsableOrAdmin, LectureDuModule
+from apps.roles.permissions import DroitDeLaGrille
 from ..gardes_lecture import BorneAuChantierMixin  # APFS109
 from core.viewsets import CompanyScopedModelViewSet  # ARC5
 from ..models import (
@@ -181,6 +182,16 @@ def _refleter_sur_chantier(dossier):
         company=dossier.company)
 
 
+def _permissions_dossier(action):
+    """APFS109 lecture du module ; ADRG6 (D-ASEC-50) — supprimer un dossier,
+    une pièce, un échange, une subvention ou une 82-21 exige `ventes_supprimer`."""
+    if action in READ_ACTIONS:
+        return [LectureDuModule()]
+    if action == 'destroy':
+        return [IsResponsableOrAdmin(), DroitDeLaGrille('ventes_supprimer')()]
+    return [IsResponsableOrAdmin()]
+
+
 @extend_schema_view(list=extend_schema(
     parameters=[qint('devis'),
                 qstr('statut', enum=RegulatoryDossier.Statut.values)]))
@@ -199,9 +210,7 @@ class RegulatoryDossierViewSet(BorneAuChantierMixin, CompanyScopedModelViewSet):
     serializer_class = RegulatoryDossierSerializer
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
-            return [LectureDuModule()]  # APFS109
-        return [IsResponsableOrAdmin()]
+        return _permissions_dossier(self.action)
 
     def get_queryset(self):
         user = self.request.user
@@ -258,9 +267,7 @@ class DossierChecklistItemViewSet(BorneAuChantierMixin, CompanyScopedModelViewSe
     serializer_class = DossierChecklistItemSerializer
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
-            return [LectureDuModule()]  # APFS109
-        return [IsResponsableOrAdmin()]
+        return _permissions_dossier(self.action)
 
     def get_queryset(self):
         user = self.request.user
@@ -307,9 +314,7 @@ class DossierExchangeViewSet(BorneAuChantierMixin, CompanyScopedModelViewSet):  
     serializer_class = DossierExchangeSerializer
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
-            return [LectureDuModule()]  # APFS109
-        return [IsResponsableOrAdmin()]
+        return _permissions_dossier(self.action)
 
     def get_queryset(self):
         user = self.request.user
@@ -361,9 +366,7 @@ class SubventionDossierViewSet(BorneAuChantierMixin, CompanyScopedModelViewSet):
     serializer_class = SubventionDossierSerializer
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
-            return [LectureDuModule()]  # APFS109
-        return [IsResponsableOrAdmin()]
+        return _permissions_dossier(self.action)
 
     def get_queryset(self):
         user = self.request.user
@@ -421,9 +424,7 @@ class Regularisation8221ViewSet(BorneAuChantierMixin, CompanyScopedModelViewSet)
     serializer_class = Regularisation8221Serializer
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
-            return [LectureDuModule()]  # APFS109
-        return [IsResponsableOrAdmin()]
+        return _permissions_dossier(self.action)
 
     def get_queryset(self):
         user = self.request.user

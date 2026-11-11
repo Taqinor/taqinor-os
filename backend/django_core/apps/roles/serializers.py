@@ -1,6 +1,7 @@
 import re
 
 from rest_framework import serializers
+from rest_framework.exceptions import PermissionDenied
 
 from core.champs_stricts import ChampsStrictsMixin
 from core.conflit_etat import ConflitEtat
@@ -19,7 +20,9 @@ from drf_spectacular.utils import extend_schema_field, inline_serializer
 #: ne disait que « chaîne » alors que le serveur refusait tout code hors
 #: catalogue (``"00"`` « conforme » → 400). Catalogue ``ALL_PERMISSIONS`` OU
 #: famille ODY26 « app visible » (``permissions_registre.EST_PERMISSION_APP``).
-MOTIF_CODE_PERMISSION = '^(?:%s|app_[a-z0-9][a-z0-9_]*_voir)$' % '|'.join(
+#: APUB54 — + famille XPLT16 ``custom_object.<code>.voir|gerer``, par forme.
+MOTIF_CODE_PERMISSION = ('^(?:%s|app_[a-z0-9][a-z0-9_]*_voir'
+                         r'|custom_object\.[-a-zA-Z0-9_]+\.(?:voir|gerer))$') % '|'.join(
     re.escape(code) for code in ALL_PERMISSIONS)
 _RE_CODE_PERMISSION = re.compile(MOTIF_CODE_PERMISSION)
 
@@ -159,6 +162,19 @@ class RoleSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
         # Directeur, etc. Sans cela un Responsable édite le rôle système qui le
         # porte (ou un autre) pour s'octroyer des droits.
         user = self._request_user()
+        if user is not None and not getattr(user, 'is_admin_role', False):
+            # ADRG98 — périmètre de données posé par l'admin seul (celui que la
+            # vue réimpose à un délégué passe par ``save(**extra)``).
+            inst = self.instance
+            avant_ent = sorted(inst.entites_visibles.values_list(
+                'pk', flat=True)) if inst is not None else []
+            if ('entites_visibles' in attrs and sorted(
+                    e.pk for e in attrs['entites_visibles']) != avant_ent) \
+                    or ('perimetre' in attrs and (attrs['perimetre'] or None)
+                        != (getattr(inst, 'perimetre', None) or None)):
+                raise PermissionDenied(
+                    "Seul un administrateur modifie le périmètre de données "
+                    "d'un rôle (entités visibles, périmètre).")
         if self.instance is not None and self.instance.est_systeme \
                 and user is not None \
                 and not getattr(user, 'is_admin_role', False):

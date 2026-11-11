@@ -57,7 +57,7 @@ class PorteeDocumentsChantierTests(TestCase):
         # T : technicien de portée restreinte, lecture seule.
         role_t = Role.objects.create(
             company=self.company, nom='Technicien restreint',
-            permissions=[SCOPE_TEAM, 'installations_voir'])
+            permissions=[SCOPE_TEAM, 'installation_voir'])  # ALEC19 : code réel
         self.tech = User.objects.create_user(
             username=f'adoc69-t-{n}', password='x', company=self.company,
             role=role_t)
@@ -160,3 +160,33 @@ class PorteeDocumentsChantierTests(TestCase):
                 r = api.get(f'{DOCS}/{self.chantier_x.pk}/{route}/')
                 self.assertIn(r.status_code, (403, 404))
                 self.assertNotIn(b'Idrissi', r.content)
+
+    def test_commercial_terrain_et_admin_rh_403(self):
+        """ALEC19 (C-ALEC-017) — lire un PDF de chantier exige un code
+        chantiers ou ventes : Commercial terrain et Admin RH 403 sur les 4
+        routes ; Technicien du chantier, Commercial créateur et Directeur 200."""
+        from django.core.management import call_command
+        call_command('init_roles', verbosity=0)
+
+        def compte(nom):
+            return User.objects.create_user(
+                username=f'alec19-{next(_seq)}', password='x',
+                company=self.company,
+                role=Role.objects.get(company=self.company, nom=nom))
+        tech, c1 = compte('Technicien'), compte('Commercial')
+        Installation.objects.filter(pk=self.chantier_x.pk).update(
+            technicien_responsable=tech, created_by=c1)
+        for nom in ('Commercial terrain', 'Admin RH'):
+            api = _api(compte(nom))
+            for route in ROUTES:
+                with self.subTest(role=nom, route=route):
+                    r = api.get(f'{DOCS}/{self.chantier_x.pk}/{route}/')
+                    self.assertEqual(r.status_code, 403, route)
+                    self.assertNotIn(b'Idrissi', r.content)
+        for user, routes in ((tech, ROUTES), (c1, ROUTES[:3]),
+                             (compte('Directeur'), ROUTES)):
+            for route in routes:
+                with self.subTest(user=user.username, route=route):
+                    r = _api(user).get(f'{DOCS}/{self.chantier_x.pk}/{route}/')
+                    self.assertEqual(r.status_code, 200, route)
+                    self.assertEqual(r['Content-Type'], 'application/pdf')

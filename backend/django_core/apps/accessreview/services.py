@@ -56,6 +56,8 @@ def attester(item, *, decision, reviewer, commentaire=''):
     ``apps.roles.services`` (scopé société). Renvoie l'item mis à jour."""
     from .models import AccessReviewItem
 
+    if decision == AccessReviewItem.Decision.REVOQUE:
+        _exiger_revocation_permise(reviewer, item.user)
     item.decision = decision
     item.reviewer = reviewer
     item.commentaire = commentaire or ''
@@ -68,3 +70,19 @@ def attester(item, *, decision, reviewer, commentaire=''):
         role_id = (item.role_snapshot or {}).get('role_id') or item.user.role_id
         remove_role_from_user(item.user, role_id)
     return item
+
+
+def _exiger_revocation_permise(acteur, cible):
+    """APUB4 — même garde que l'écran Comptes (``UserViewSet.update``) : rang
+    de la cible (``peut_gerer``), compte protégé, dernier propriétaire."""
+    from rest_framework.exceptions import PermissionDenied
+    from authentication.role_tiers import MESSAGES_REFUS_GESTION, peut_gerer
+    ok, code = peut_gerer(acteur, cible)
+    if not ok:
+        raise PermissionDenied(MESSAGES_REFUS_GESTION[code])
+    if cible.is_protected:
+        raise PermissionDenied('Ce compte propriétaire est protégé : il ne '
+                               'peut pas être rétrogradé ni désactivé.')
+    if cible.est_dernier_proprietaire():
+        raise PermissionDenied('Impossible de rétrograder le dernier propriétaire : '
+                               "le système doit toujours garder un administrateur.")

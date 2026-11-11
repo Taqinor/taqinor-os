@@ -407,6 +407,37 @@ class RolesEscalationGuardTest(TestCase):
         r.refresh_from_db()
         self.assertIn('paie_gerer', r.permissions)
 
+    def test_non_admin_ne_change_pas_le_perimetre_de_donnees(self):
+        """ADRG98 — le Commercial responsable (rôle système `init_roles`) ne
+        vide pas les entités visibles ni ne pose un périmètre sur son propre
+        rôle : 403, rien d'écrit ; le Directeur garde la main (200)."""
+        from django.core.management import call_command
+        from apps.entites.services import creer_entite
+        call_command('init_roles', verbosity=0)
+        sys_role = {r.nom: r for r in Role.objects.filter(company=self.company)}
+        c_role = sys_role['Commercial responsable']
+        e1 = creer_entite(self.company, nom='Agence 1', code='E1')
+        c_role.entites_visibles.set([e1])
+        c = User.objects.create_user(
+            username='adrg98_c', password='x', role=c_role,
+            company=self.company)
+        d = User.objects.create_user(
+            username='adrg98_d', password='x', role=sys_role['Directeur'],
+            company=self.company)
+        url = f'/api/django/roles/{c_role.id}/'
+        for corps in ({'entites_visibles': []}, {'perimetre': 'ventes'}):
+            with self.subTest(corps=corps):
+                resp = self._api(c).patch(url, corps, format='json')
+                self.assertEqual(resp.status_code, 403, resp.data)
+                c_role.refresh_from_db()
+                self.assertEqual(
+                    list(c_role.entites_visibles.values_list('pk', flat=True)),
+                    [e1.pk])
+                self.assertIsNone(c_role.perimetre)
+        resp = self._api(d).patch(url, {'entites_visibles': []}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertFalse(c_role.entites_visibles.exists())
+
 
 class RevueAccesTest(TestCase):
     """XPLT12 — Rapport de revue d'accès & comptes dormants.
@@ -914,28 +945,36 @@ class CodesGrilleAppliquesTests(TestCase):
         (``?export=xlsx|pdf``, export de la balance âgée) exige
         ``reporting_export`` ; la lecture JSON reste ouverte."""
         r = '/api/django/reporting/'
-        responsable = (['reporting_voir', 'crm_modifier'], (
+        # ADRG68 — chaque chemin porte la lecture de son module SOURCE (et
+        # `journal_activite_voir` pour le journal) : le test reste vert avant
+        # ET après la garde de lecture des rapports (ADRG69-ADRG71).
+        b = ['reporting_voir', 'crm_modifier']
+        ventes = (b + ['ventes_voir'], (
             'reports/sales/?export=xlsx', 'reports/sales/?export=pdf',
-            'reports/stock/?export=xlsx', 'reports/service/?export=xlsx',
-            'insights/recurring-revenue/?export=xlsx',
-            'insights/audit-log/?export=xlsx',
             'insights/analytics/?export=xlsx',
             'insights/sales-leaderboard/?export=xlsx',
-            'insights/cf-group-by/?export=xlsx',
-            'insights/cohorts/?export=xlsx',
             f'archive/client/{self.client_obj.pk}/?export=xlsx',
-            f'archive/chantier/{self.chantier.pk}/?export=xlsx',
-            'reports/field/?export=xlsx', 'insights/sav-sla/?export=xlsx',
-            'insights/technicien-scorecard/?export=xlsx',
             'balance-agee/export/'))
-        # APFS4 — le pivot lit le jeu ``sav_tickets`` : un code du module sav est requis.
-        lecteur_sav = (['reporting_voir', 'crm_modifier', 'sav_voir'], (
-            'insights/sav-tickets-pivot/?export=xlsx',))
+        chantiers = (b + ['installation_voir'], (
+            'reports/service/?export=xlsx', 'reports/field/?export=xlsx',
+            'insights/technicien-scorecard/?export=xlsx',
+            f'archive/chantier/{self.chantier.pk}/?export=xlsx'))
+        sav = (b + ['sav_voir'], (
+            'insights/sav-sla/?export=xlsx',
+            'insights/recurring-revenue/?export=xlsx',
+            # APFS4 — le pivot lit le jeu ``sav_tickets``.
+            'insights/sav-tickets-pivot/?export=xlsx'))
+        stock = (b + ['stock_voir'], ('reports/stock/?export=xlsx',))
+        journal = (b + ['journal_activite_voir'], (
+            'insights/audit-log/?export=xlsx',))
+        reporting = (b, ('insights/cf-group-by/?export=xlsx',
+                         'insights/cohorts/?export=xlsx'))
         admin = (['reporting_voir', 'roles_gerer'], (
             'insights/job-costing/?export=xlsx',
             'insights/commissions/?export=xlsx',
             'insights/profitability/?export=xlsx'))
-        for base, chemins in (responsable, lecteur_sav, admin):
+        for base, chemins in (ventes, chantiers, sav, stock, journal,
+                              reporting, admin):
             sans, avec = self._paire(base, 'reporting_export')
             for chemin in chemins:
                 with self.subTest(url=chemin):
@@ -943,7 +982,7 @@ class CodesGrilleAppliquesTests(TestCase):
                     if not chemin.endswith('export=pdf'):
                         self.assertNotEqual(
                             avec.get(r + chemin).status_code, 403)
-        sans, _avec = self._paire(responsable[0], 'reporting_export')
+        sans, _avec = self._paire(ventes[0], 'reporting_export')
         self.assertEqual(sans.get(r + 'reports/sales/').status_code, 200)
 
     def test_sav_reassign_technicien_actions_groupees_et_patch(self):
