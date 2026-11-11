@@ -146,6 +146,58 @@ class LaBrancheClientEstEffaceeCompletement(TestCase):
         self.assertIsNone(site.gps_lat)
         self.assertIsNone(site.ombrage_notes)
 
+    def _api_admin(self, username):
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+        admin = get_user_model().objects.create_user(
+            username=username, password='x', role_legacy='admin',
+            company=self.company)
+        api = APIClient()
+        api.force_authenticate(admin)
+        return api
+
+    def test_l_action_anonymize_scrube_aussi_les_leads_lies(self):
+        """AMSG4 (C-AMSG-004) — « Anonymiser » efface aussi les leads du
+        client (identité, cadence) ; le WhatsApp du devis n'a plus de numéro ;
+        le lead d'un autre client est intact."""
+        from django.utils import timezone
+
+        from apps.crm.models import RelanceEtape
+        from apps.ventes.models import Devis
+        from apps.ventes.utils.whatsapp import devis_recipient_phone
+        lead = Lead.objects.create(
+            company=self.company, nom='Benali', client=self.client_obj,
+            email='lead.amsg4@example.ma', telephone='+212600000044',
+            whatsapp='+212600000045')
+        touche = RelanceEtape.objects.create(
+            company=self.company, lead=lead, cadence='contact', ordre=1,
+            canal=RelanceEtape.Canal.APPEL, libelle='Appeler',
+            due_date=timezone.localdate())
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-AMSG4-0001',
+            client=self.client_obj, lead=lead, statut='envoye')
+        autre_client = Client.objects.create(company=self.company, nom='Autre')
+        autre = Lead.objects.create(
+            company=self.company, nom='Témoin', client=autre_client,
+            telephone='+212600000046')
+        api = self._api_admin('amsg4-admin')
+        url = f'/api/django/crm/clients/{self.client_obj.id}/anonymize/'
+        r = api.post(url)
+        self.assertEqual(r.status_code, 200, r.data)
+        lead.refresh_from_db()
+        self.assertEqual(lead.nom, 'Anonymisé')
+        for champ in ('email', 'telephone', 'whatsapp'):
+            with self.subTest(champ=champ):
+                self.assertIsNone(getattr(lead, champ))
+        touche.refresh_from_db()
+        self.assertEqual(touche.statut, RelanceEtape.Statut.ANNULEE)
+        self.assertEqual(devis_recipient_phone(
+            Devis.objects.select_related('client', 'lead').get(pk=devis.pk)), '')
+        autre.refresh_from_db()
+        self.assertEqual(autre.nom, 'Témoin')
+        self.assertTrue(autre.telephone)
+        self.assertEqual(api.post(url).status_code, 409)
+
     def test_le_tiers_miroir_est_vide(self):
         """ASOC100 (C-ASOC-060) — l'effacement traverse le Tiers miroir :
         identité vide, rôle client gardé, recherche par téléphone → rien."""

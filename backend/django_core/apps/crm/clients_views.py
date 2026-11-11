@@ -977,7 +977,7 @@ class ClientViewSet(CompanyScopedModelViewSet):
         """FG26 — droit à l'effacement : scrube les PII du client tout en
         PRÉSERVANT l'intégrité comptable (devis/factures conservés, liés à une
         identité neutralisée). Admin uniquement, irréversible, idempotent."""
-        from .dsr_provider import anonymiser_client
+        from .dsr_provider import anonymiser_client, anonymiser_lead
         client = self.get_object()
         if client.is_anonymized:
             # ERR-ENF11-FUZZ-CRM : refus d'ÉTAT (fiche déjà effacée) = 409.
@@ -987,6 +987,9 @@ class ClientViewSet(CompanyScopedModelViewSet):
         # ASOC61 — LE scrub unique du DSR (profil de site compris).
         anonymiser_client(client.company, client, nom=f'Client anonymisé #{client.id}',
                           motif='Anonymisation RGPD (action fiche client)')
+        # AMSG4 (C-AMSG-004) — ses leads aussi, même scrub que le DSR (cadence arrêtée).
+        for lead in client.leads.all():
+            anonymiser_lead(client.company, lead, motif='Anonymisation RGPD (action fiche client)')
         from apps.audit.recorder import record
         from apps.audit.models import AuditLog
         record(AuditLog.Action.UPDATE, instance=client,
