@@ -6038,12 +6038,14 @@ def apply_devise_facture(montant_ttc_devise, devise, taux_change):
 def check_fournisseur_statut_commande(fournisseur):
     """XPUR4 — lève ValueError si le fournisseur est bloqué pour les
     COMMANDES (bloque_commandes ou bloque_total). No-op pour 'actif' et
-    'bloque_paiements' (comportement historique préservé)."""
+    'bloque_paiements' (comportement historique préservé). ASUP47 — un
+    fournisseur ARCHIVÉ (l'archivage ne pose pas ``statut``) est refusé d'abord."""
     from .models import Fournisseur
-    if fournisseur.statut in (
+    if fournisseur.is_archived or fournisseur.statut in (
         Fournisseur.Statut.BLOQUE_COMMANDES, Fournisseur.Statut.BLOQUE_TOTAL,
     ):
         raise ValueError(
+            'Fournisseur archivé : désarchivez-le pour lui commander.' if fournisseur.is_archived else
             f"Impossible de créer un bon de commande : {fournisseur.nom} est "
             f"{fournisseur.get_statut_display().lower()}"
             f"{' (' + fournisseur.motif_blocage + ')' if fournisseur.motif_blocage else ''}.")
@@ -6055,8 +6057,6 @@ def exiger_fournisseur_commandable(company, fournisseur):
     Lève ``EtatIncompatible`` (409) ; no-op pour un fournisseur commandable."""
     if fournisseur is None:
         return
-    if fournisseur.is_archived:  # ASUP47 — l'archivage garde les prix, jamais la commande
-        raise EtatIncompatible('Fournisseur archivé : désarchivez-le pour lui commander.')
     try:
         check_fournisseur_statut_commande(fournisseur)
     except EtatIncompatible:
@@ -8232,15 +8232,13 @@ def _envoyer_identifiants_portail_fournisseur(user, mot_de_passe, company):
     n'est jamais renvoyé à l'appelant HTTP. AMSG59 — rend True SEULEMENT si
     l'e-mail est réellement parti (envoi configuré, aucune erreur).
     """
-    if not user.email:
+    from apps.ventes.email_service import is_email_configured
+    if not user.email or not is_email_configured():
         return False
     try:
         from django.conf import settings as dj_settings
         from django.core.mail import send_mail
 
-        from apps.ventes.email_service import is_email_configured
-        if not is_email_configured():
-            return False
         societe = _nom_affiche_societe(company) or 'votre client'
         send_mail(
             subject=f'Votre accès au portail fournisseur {societe}',
