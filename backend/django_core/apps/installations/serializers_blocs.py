@@ -92,3 +92,13 @@ class MasqueCoutTransport(MasqueMontantsAchatMixin):
 class MasqueMontantApprouve(MasqueMontantsAchatMixin):
     """ALEC8 — montant d'achat HT du BCF figé à l'approbation (masqué comme le BCF, ASTK10)."""
     champs_montants_achat = ('montant_approuve',)
+
+
+# ALEC37 — jetons des pages publiques client (suivi « en route », compte-rendu) jamais servis par la
+# lecture d'une intervention : les actions ``lien-client`` / ``lien-rapport`` (responsable) restent la source.
+class SansJetonsPublicsMixin:
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        for cle in ('lien_client_token', 'lien_rapport_token'):
+            data.pop(cle, None)
+        return data

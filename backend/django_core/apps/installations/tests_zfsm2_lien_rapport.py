@@ -130,6 +130,52 @@ class TestLienRapportToken(TestCase):
         self.assertNotIn('prix_achat', resp.data)
         self.assertNotIn('marge', resp.data)
 
+    def test_lecture_sans_jetons_publics(self):
+        """ALEC37 — ni la fiche intervention ni le chantier qui l'imbrique ne
+        servent ``lien_client_token`` / ``lien_rapport_token`` (Commercial
+        livré et Directeur) ; l'action ``lien-rapport`` reste la source."""
+        from apps.installations.models import Installation
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import (
+            COMMERCIAL_PERMISSIONS, DIRECTEUR_PERMISSIONS,
+        )
+
+        def compte(nom, perms):
+            role = Role.objects.create(
+                company=self.company, nom=nom, permissions=list(perms))
+            return User.objects.create_user(
+                username=f'zfsm2-{next(_seq)}', password='x',
+                company=self.company, role=role)
+
+        commercial = compte('Commercial', COMMERCIAL_PERMISSIONS)
+        directeur = compte('Directeur', DIRECTEUR_PERMISSIONS)
+        # Portée du Commercial : le devis du chantier et l'intervention sont les siens.
+        Devis.objects.filter(pk=self.inst.devis_id).update(created_by=commercial)
+        Installation.objects.filter(pk=self.inst.pk).update(created_by=commercial)
+        Intervention.objects.filter(pk=self.interv.pk).update(created_by=commercial)
+        jeton_client = self.interv.ensure_lien_client_token()
+        jeton_rapport = self.interv.ensure_lien_rapport_token()
+        for user in (commercial, directeur):
+            api = auth(user)
+            r = api.get(f'{BASE}/interventions/{self.interv.id}/')
+            self.assertEqual(r.status_code, 200, (user.role.nom, r.content))
+            self.assertNotIn('lien_client_token', r.data)
+            self.assertNotIn('lien_rapport_token', r.data)
+            r = api.get(f'{BASE}/chantiers/{self.inst.id}/')
+            self.assertEqual(r.status_code, 200, (user.role.nom, r.content))
+            imbriquees = [i for i in r.data['interventions']
+                          if i['id'] == self.interv.id]
+            self.assertEqual(len(imbriquees), 1)
+            self.assertNotIn('lien_client_token', imbriquees[0])
+            self.assertNotIn('lien_rapport_token', imbriquees[0])
+        r = auth(directeur).get(
+            f'{BASE}/interventions/{self.interv.id}/lien-rapport/')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.data['token'], jeton_rapport)
+        self.interv.refresh_from_db()
+        self.assertEqual(self.interv.lien_client_token, jeton_client)
+        self.assertEqual(self.interv.lien_rapport_token, jeton_rapport)
+
     def test_public_page_unknown_token_404(self):
         pub = APIClient()
         resp = pub.get(f'{PUBLIC_BASE}/intervention-rapport/does-not-exist/')
