@@ -59,12 +59,15 @@ export default function BulkProductBar({
           className="border-white/20 bg-white/10"
           options={panels}
         />
-        <button
-          type="button" disabled={busy} onClick={onExport}
-          className="inline-flex items-center gap-1.5 rounded-md border border-white/20 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-white/10 disabled:opacity-50"
-        >
-          <Download className="size-3.5" /> Exporter Excel
-        </button>
+        {/* ADRG24 — export serveur seulement si l'écran le fournit (`stock_export`). */}
+        {onExport && (
+          <button
+            type="button" disabled={busy} onClick={onExport}
+            className="inline-flex items-center gap-1.5 rounded-md border border-white/20 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-white/10 disabled:opacity-50"
+          >
+            <Download className="size-3.5" /> Exporter Excel
+          </button>
+        )}
         {onPrintLabels && (
           <button
             type="button" disabled={busy || labelsBusy} onClick={onPrintLabels}
