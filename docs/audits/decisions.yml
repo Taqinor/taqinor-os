@@ -4386,3 +4386,147 @@ decisions:
     date: "2026-11-11"
     source: "audit de parcours PF7 (11/11/2026) : non posée (défaut recommandé : servir_le_site)"
     taches: [ATST30, ATST54]
+
+  - id: D-AMSG-1
+    question: "Les messages clients hors cadence commerciale partent avant 8 h 30 et le week-end : relances de facture 07:00, rappel avant échéance 07:20, rappel de pose J-1 07:45, relance de signature 07:45, relevé du 1er à 08:00. La règle « messages à partir de 8 h 30 » ne vise par écrit que la cadence commerciale. Ces messages suivent-ils la même fenêtre ?"
+    options:
+      - cle: fenetre_commerciale
+        texte: "Oui : même fenêtre que les messages commerciaux, à partir de 08:30, jours ouvrés, report au créneau suivant"
+      - cle: heures_actuelles
+        texte: "Non : garder les heures actuelles, ce sont des messages contractuels"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF8 (11/11/2026) : non posée (défaut recommandé : fenetre_commerciale)"
+    taches: [AMSG44, AMSG72, AMSG73]
+
+  - id: D-AMSG-2
+    question: "Quand une personne répond STOP sur une fiche, une AUTRE fiche déjà existante au même numéro ou au même e-mail reste contactable (relances, WhatsApp en masse, liens). D-ACVI-6 ne vise que les fiches créées ou fusionnées après. L'opposition s'étend-elle aux fiches déjà existantes ?"
+    options:
+      - cle: toutes_les_fiches
+        texte: "Oui : au STOP, toutes les fiches vivantes de la société aux mêmes coordonnées deviennent « ne plus contacter », et c'est relu à chaque changement de coordonnées"
+      - cle: nouvelles_fiches_seulement
+        texte: "Non : seules les fiches créées ou fusionnées après le STOP en héritent"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF8 (11/11/2026) : non posée (défaut recommandé : toutes_les_fiches)"
+    taches: [AMSG3]
+
+  - id: D-AMSG-3
+    question: "Les conversions envoyées à Meta (étape du lead, visite faite, devis signé) portent l'e-mail et le téléphone hachés d'un lead qui a demandé à ne plus être contacté. D-ACRM-5 l'exclut de toute audience, pas des conversions. Envoie-t-on ces conversions pour une personne opposée ?"
+    options:
+      - cle: rien_vers_meta
+        texte: "Non : rien n'est envoyé à Meta pour une personne opposée"
+      - cle: envoyer_quand_meme
+        texte: "Oui : la conversion part quand même, pour mesurer les campagnes"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF8 (11/11/2026) : non posée (défaut recommandé : rien_vers_meta)"
+    taches: [AMSG10, AMSG36]
+
+  - id: D-AMSG-4
+    question: "Aujourd'hui tout rôle qui peut modifier une fiche peut décocher « ne plus contacter », sans motif (la trace et la reprise des relances existent). Qui peut lever l'opposition hors demande du client ?"
+    options:
+      - cle: responsable_avec_motif
+        texte: "Seulement un responsable ou un administrateur, avec un motif obligatoire"
+      - cle: tout_role_trace
+        texte: "Tout rôle qui modifie la fiche, comme aujourd'hui, avec la trace"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF8 (11/11/2026) : non posée (défaut recommandé : responsable_avec_motif)"
+    taches: []
+
+  - id: D-AMSG-5
+    question: "Quatre factures en retard ont consommé leurs trois niveaux de relance automatique alors qu'aucun e-mail n'est parti (e-mail éteint) : elles ne seront plus jamais relancées automatiquement. Leur rend-on leur relance ?"
+    options:
+      - cle: remettre_niveau_1
+        texte: "Oui : après une liste des 4 factures montrée au fondateur, leur relance repart au niveau 1 (elles partiront quand l'e-mail sera allumé ; celle du client de démonstration attend D-AMSG-6)"
+      - cle: laisser_consommees
+        texte: "Non : les laisser telles quelles, relance à la main"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF8 (11/11/2026) : non posée (défaut recommandé : remettre_niveau_1)"
+    taches: [AMSG30]
+
+  - id: D-AMSG-6
+    question: "Cinq clients et deux fournisseurs du jeu de démonstration, avec des adresses e-mail de vrais fournisseurs de messagerie, sont restés dans la société réelle ; deux portent de vrais documents. Que fait-on de leurs coordonnées ?"
+    options:
+      - cle: neutraliser_sauf_confirmes
+        texte: "Après une liste montrée au fondateur, remplacer leurs e-mails et téléphones par des valeurs qui ne peuvent rien recevoir, sauf ceux que le fondateur confirme réels"
+      - cle: garder
+        texte: "Les garder telles quelles"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF8 (11/11/2026) : non posée (défaut recommandé : neutraliser_sauf_confirmes)"
+    taches: [AMSG62]
+
+  - id: D-ASUP-1
+    question: "À l'effacement d'une personne, ses anciennes valeurs sont-elles caviardées dans le journal d'audit ?"
+    options:
+      - cle: caviarder
+        texte: "Oui : à l'effacement, les anciennes valeurs des champs personnels sont remplacées dans le journal d'audit (la trace du changement reste)"
+      - cle: garder
+        texte: "Non : le journal d'audit garde les anciennes valeurs (preuve complète, mais la donnée effacée y survit)"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF10 (11/11/2026) : non posée (défaut recommandé : caviarder)"
+    taches: [ASUP13]
+
+  - id: D-ASUP-2
+    question: "Un compte d'employé qui a laissé des traces peut-il être supprimé, ou seulement désactivé ?"
+    options:
+      - cle: desactiver_seulement
+        texte: "Seulement désactivé : un compte qui a laissé des traces (auteur, propriétaire de leads, documents) ne se supprime pas ; seul un compte sans aucune trace se supprime"
+      - cle: supprimer
+        texte: "Supprimable : la suppression reste offerte, les traces perdent leur auteur"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF10 (11/11/2026) : non posée (défaut recommandé : desactiver_seulement)"
+    taches: [ASUP5, ASUP6, ASUP55]
+
+  - id: D-ASUP-3
+    question: "Supprimer définitivement un produit qui a des mouvements de stock : refuser, ou effacer son historique ?"
+    options:
+      - cle: refuser
+        texte: "Refuser : un produit qui a des mouvements de stock reste archivé, son historique est gardé"
+      - cle: effacer
+        texte: "Garder : la suppression définitive efface aussi l'historique de stock du produit"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF10 (11/11/2026) : non posée (défaut recommandé : refuser)"
+    taches: [ASUP4]
+
+  - id: D-ASUP-4
+    question: "Combien de temps garder l'export d'une demande d'accès après l'effacement de la personne ?"
+    options:
+      - cle: supprimer_a_l_effacement
+        texte: "L'export est supprimé quand la personne est effacée ; seule la trace « demande traitée le … » reste"
+      - cle: garder
+        texte: "L'export reste gardé comme preuve de la réponse"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF10 (11/11/2026) : non posée (défaut recommandé : supprimer_a_l_effacement)"
+    taches: [ASUP14]
+
+  - id: D-ASUP-5
+    question: "Quelle durée minimale pour le journal d'audit des pièces comptables ?"
+    options:
+      - cle: dix_ans
+        texte: "10 ans pour le journal des factures, avoirs, paiements et mouvements de stock (durée comptable), quel que soit le réglage"
+      - cle: reglage_libre
+        texte: "Le réglage du Directeur s'applique à tout le journal (plancher actuel : 1 an)"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF10 (11/11/2026) : non posée (défaut recommandé : dix_ans)"
+    taches: [ASUP17, ASUP18]
+
+  - id: D-ASUP-6
+    question: "Archiver un lead signé : refuser comme la sortie d'étape, ou laisser archiver ?"
+    options:
+      - cle: refuser
+        texte: "Refuser comme la sortie de « Signé » : 409 tant qu'une facture, un BC ou un chantier avancé existe"
+      - cle: laisser_archiver
+        texte: "Laisser archiver un lead signé (il sort alors des « signés »)"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF10 (11/11/2026) : non posée (défaut recommandé : refuser)"
+    taches: [ASUP48]
