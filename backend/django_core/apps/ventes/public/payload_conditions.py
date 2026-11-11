@@ -9,6 +9,11 @@ relatifs locaux change), prouvé par ``tests/golden/split_pv_conditions.json``.
 
 import logging
 
+#: PREVIEW-V3-FIX (audit C6) — les backends d'e-mail qui n'envoient nulle part :
+#: AMSG28 — la constante vit dans ``email_service`` (``_send`` la lit) ;
+#: ré-exportée ici, survivant unique.
+from ..email_service import EMAIL_BACKENDS_SANS_ENVOI  # noqa: F401
+
 logger = logging.getLogger(__name__)
 
 
@@ -203,21 +208,6 @@ def _date_validite_publique(devis):
     except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', '_date_validite_publique', exc_info=True)
         return None
-
-
-#: PREVIEW-V3-FIX (audit C6) — LES BACKENDS D'E-MAIL QUI N'ENVOIENT NULLE PART.
-#: ``console`` (le DÉFAUT du projet, settings/base.py : « SANS clé […] l'envoi
-#: est un NO-OP ») imprime dans les logs ; ``dummy`` jette. Dans les deux cas
-#: ``send_mail`` ne lève pas, ``email_service._send`` journalise « envoyé », et
-#: la page promettait un accusé de réception que le client n'a jamais reçu.
-#: ``locmem`` n'y figure PAS volontairement : ce n'est pas un réglage de
-#: production, c'est celui que le lanceur de tests Django impose (il capture
-#: dans ``mail.outbox``) — l'exclure rendrait tout test aveugle à la
-#: distinction que cette fonction existe pour faire.
-EMAIL_BACKENDS_SANS_ENVOI = (
-    'django.core.mail.backends.console.EmailBackend',
-    'django.core.mail.backends.dummy.EmailBackend',
-)
 
 
 def _confirmation_email_publique(devis):

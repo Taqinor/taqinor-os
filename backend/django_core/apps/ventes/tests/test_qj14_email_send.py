@@ -493,3 +493,25 @@ class TestEnvoyerEmailEchecNeMarquePas(TestCase):
         log = EmailLog.objects.get(devis=devis)
         self.assertEqual(log.statut, EmailLog.Statut.ECHEC)
         self.assertEqual(log.erreur, 'boom')
+
+    @override_settings(EMAIL_BACKEND='django.core.mail.backends.console.EmailBackend')
+    def test_backend_console_ne_marque_pas_envoye(self):
+        """AMSG28 (C-AMSG-008) — backend console : rien ne part, donc échec
+        nommé, devis brouillon sans date d'envoi, lead inchangé, EmailLog échec."""
+        from apps.ventes.email_service import EMAIL_NON_OPERATIONNEL
+        rendu_ok(self)
+        devis = make_devis(self.company, self.user, self.client_obj,
+                           'brouillon', 'DEV-QJ14-C1')
+        devis.lead = self.lead
+        devis.save(update_fields=['lead'])
+        resp = self.api.post(url(devis.id), {}, format='json')
+        self.assertEqual(resp.status_code, 502, resp.data)
+        self.assertIn(EMAIL_NON_OPERATIONNEL, resp.data['detail'])
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, 'brouillon')
+        self.assertIsNone(devis.date_envoi)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage, self.stage_initial)
+        log = EmailLog.objects.get(devis=devis)
+        self.assertEqual(log.statut, EmailLog.Statut.ECHEC)
+        self.assertEqual(log.erreur, EMAIL_NON_OPERATIONNEL)

@@ -93,7 +93,8 @@ def scenario(canal):
     reel("core/checks.py", {"BACKENDS_NON_ENVOYEURS", "CLES_ENVOI", "backend_email_envoie", "cles_envoi_posees"}, ns)
     reel("apps/facturation/recouvrement.py", {"STATUTS_NON_RELANCABLES", "facture_relancable", "montant_exigible"}, ns)
     reel("apps/ventes/domain/recouvrement.py", {"prochain_niveau"}, ns)
-    reel("apps/ventes/email_service.py", {"is_email_configured", "_from_email", "_reply_to_address", "_send",
+    reel("apps/ventes/email_service.py", {"EMAIL_BACKENDS_SANS_ENVOI", "EMAIL_NON_OPERATIONNEL",  # AMSG28 : lues par _send
+                                          "is_email_configured", "_from_email", "_reply_to_address", "_send",
                                           "_refuser_sans_pdf_facture", "send_relance_email"}, ns)
     reel("apps/ventes/scheduled.py", {"_dispatch_relance_canal", "_email_parti", "_reporter_relance", "_promesse_honoree",
                                       "_check_promesses_expirees", "relance_reminders"}, ns)

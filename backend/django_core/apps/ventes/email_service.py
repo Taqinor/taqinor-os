@@ -11,9 +11,8 @@ Stack d'envoi :
     on pointe sur `anymail.backends.sendinblue.EmailBackend` (Brevo, ex-
     Sendinblue) en passant la clé `BREVO_API_KEY`. `django-anymail` est déjà
     installé ; aucune nouvelle dépendance pip.
-  - À défaut de clé Brevo/SMTP, Django reste sur le backend console : l'email
-    est « envoyé » sans appel réseau (NO-OP fonctionnel), exactement comme
-    aujourd'hui.
+  - À défaut de clé Brevo/SMTP, Django reste sur le backend console : rien ne
+    part, et ``_send`` le dit (AMSG28 : ``EmailLog`` « échec », jamais « envoyé »).
 
 Chaque envoi est consigné dans `EmailLog` (fil du client + document) ET, pour un
 devis, une note est ajoutée au chatter `DevisActivity` — on réutilise le patron
@@ -34,6 +33,17 @@ from django.core.mail import EmailMultiAlternatives, get_connection
 from .models import EmailLog
 
 logger = logging.getLogger(__name__)
+
+#: PREVIEW-V3-FIX (audit C6) / AMSG28 — LES BACKENDS D'E-MAIL QUI N'ENVOIENT
+#: NULLE PART : ``console`` (le défaut du projet) imprime, ``dummy`` jette ;
+#: ``send_mail`` ne lève pas, donc ``_send`` les refuse lui-même. ``locmem``
+#: n'y figure PAS : c'est le double de test du lanceur Django (``mail.outbox``).
+EMAIL_BACKENDS_SANS_ENVOI = (
+    'django.core.mail.backends.console.EmailBackend',
+    'django.core.mail.backends.dummy.EmailBackend',
+)
+#: AMSG28 — motif consigné quand le backend chargé n'envoie rien (D-ADEP-2 = b).
+EMAIL_NON_OPERATIONNEL = 'E-mail non opérationnel : aucun message ne part'
 
 
 def _branded_html(company, sujet, corps):
@@ -130,9 +140,10 @@ def _send(to_email, sujet, corps, attachment=None, attachment_name=None,
           company=None):
     """Envoie via le backend Django configuré. Retourne (ok, erreur).
 
-    Sans clé configurée → backend console → l'email est « envoyé » sans appel
-    réseau ni exception (NO-OP). Toute exception réelle est capturée et
-    renvoyée comme erreur, jamais propagée à l'appelant.
+    AMSG28 — backend console / dummy (``EMAIL_BACKENDS_SANS_ENVOI``) : rien ne
+    part, donc ``(False, EMAIL_NON_OPERATIONNEL)`` — jamais un faux « envoyé ».
+    Toute exception réelle est capturée et renvoyée comme erreur, jamais
+    propagée à l'appelant.
 
     QX36 — pose un ``Reply-To`` vers la boîte entrante (si configurée) pour
     qu'une réponse client atterrisse sur le fil du devis (voir
@@ -142,6 +153,9 @@ def _send(to_email, sujet, corps, attachment=None, attachment_name=None,
     ``text/plain`` inchangé) ; une alternative ``text/html`` brandée
     (wrapper logo/en-tête navy/pied) est ajoutée quand le rendu réussit —
     additif, jamais cassant."""
+    if str(getattr(settings, 'EMAIL_BACKEND', '') or '').strip() in EMAIL_BACKENDS_SANS_ENVOI:
+        logger.warning('Envoi email refusé vers %s : %s', to_email, EMAIL_NON_OPERATIONNEL)
+        return False, EMAIL_NON_OPERATIONNEL
     try:
         connection = get_connection(fail_silently=False)
         reply_to = _reply_to_address()
@@ -317,8 +331,8 @@ def send_document_email(document, *, to_email=None, sujet=None, corps=None,
     """Envoie un document (Devis ou Facture) au client par email et consigne
     l'envoi sur le fil (EmailLog + chatter du devis le cas échéant).
 
-    NO-OP réseau quand aucune clé n'est configurée (backend console) : l'email
-    est tout de même journalisé comme « envoyé » pour garder une trace lisible.
+    Backend console / dummy : rien ne part, l'email est journalisé « échec »
+    (AMSG28, motif ``EMAIL_NON_OPERATIONNEL``).
     Templates FR par défaut. Renvoie l'EmailLog créé.
     """
     from .models import Devis, Facture
