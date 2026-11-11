@@ -191,18 +191,21 @@ def pay_page(request, token):
         montant = '0.00'
     else:
         montant = str(link.montant_a_payer)
+    expire = not link.is_valid and link.statut != PaymentLink.Statut.PAYE
+    # APUB33 — un lien fermé (annulé ou expiré) ne livre ni client, ni montant, ni RIB.
+    ferme = expire or statut == PaymentLink.Statut.ANNULE
     return _noindex(Response({
         'reference': facture.reference,
-        'client_name': str(facture.client) if facture.client_id else '',
+        'client_name': str(facture.client) if facture.client_id and not ferme else '',
         'montant': montant,
-        'montant_initial': str(link.montant),
+        'montant_initial': '0.00' if ferme else str(link.montant),
         'devise': 'MAD',
         'statut': statut,
         'paye': link.statut == PaymentLink.Statut.PAYE,
-        'expire': not link.is_valid and link.statut != PaymentLink.Statut.PAYE,
+        'expire': expire,
         # AFAC21 — clé du contrat ``paiement_public.json`` ; ASOC43 — le RIB
         # FIGÉ de la facture (celui du PDF), null si aucun n'est paramétré.
-        'rib': virement_de_la_facture(facture)['rib'] or None,
+        'rib': None if ferme else (virement_de_la_facture(facture)['rib'] or None),
     }))
 
 

@@ -23,5 +23,16 @@
     "paye": true,
     "expire": false,
     "rib": "011 780 0000123456789012 34"
+  },
+  "exemple_ferme": {
+    "reference": "FAC-2026-10-0007",
+    "client_name": "",
+    "montant": "0.00",
+    "montant_initial": "0.00",
+    "devise": "MAD",
+    "statut": "annule",
+    "paye": false,
+    "expire": true,
+    "rib": null
   }
 }
