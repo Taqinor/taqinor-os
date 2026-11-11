@@ -78,7 +78,10 @@ const REPONSES = vi.hoisted(() => ({
   shareLinkDevis: () => ({
     data: { token: 'tok123', path: '/proposition/tok123', path_interne: '/proposition/int456' },
   }),
-  whatsappPreviewDevis: () => ({ data: { wa_url: 'https://wa.me/212600000000', message: 'Bonjour' } }),
+  // AMSG37 — `message_relance` : texte de « Relancer » servi par le serveur.
+  whatsappPreviewDevis: () => ({ data: {
+    wa_url: 'https://wa.me/212600000000', message: 'Bonjour',
+    message_relance: 'Bonjour, petit rappel concernant votre devis DEV-F-ENVOYE' } }),
   whatsappDevis: () => ({ data: { statut: 'envoye' } }),
   partagePdfDevis: () => ({ data: { devis_statut: 'envoye' } }),
   envoyerEmailDevis: () => ({ data: { ok: true } }),

@@ -129,6 +129,7 @@ WhatsappPreviewResponse = _ser('DevisWhatsappPreviewResponse', {
     'phone': s.CharField(),
     'message': s.CharField(),
     'url': s.CharField(),
+    'message_relance': s.CharField(),  # AMSG37 — gabarit `relance_devis` rendu
     'devis_statut': s.CharField(),
     'preview': s.BooleanField(),
     'gamme': s.DictField(allow_null=True),

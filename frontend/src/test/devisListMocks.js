@@ -50,7 +50,10 @@ export async function ventesApiMock(importOriginal, extra = {}) {
       dupliquerVariante: vi.fn(() => Promise.resolve({ data: [] })),
       dupliquerVarianteGamme: vi.fn(() => Promise.resolve({ data: { source: {}, gamme: {}, gammes: [] } })),
       shareLinkDevis: vi.fn(() => Promise.resolve({ data: { token: 'tok123', path: '/proposition/tok123' } })),
-      whatsappPreviewDevis: vi.fn(() => Promise.resolve({ data: { wa_url: 'https://wa.me/212600000000', message: 'Bonjour' } })),
+      // AMSG37 — `message_relance` : texte de « Relancer » servi par le serveur.
+      whatsappPreviewDevis: vi.fn(() => Promise.resolve({ data: {
+        wa_url: 'https://wa.me/212600000000', message: 'Bonjour',
+        message_relance: 'Bonjour, petit rappel concernant votre devis DEV-G-ENVOYE' } })),
       whatsappDevis: vi.fn(() => Promise.resolve({ data: { statut: 'envoye' } })),
       partagePdfDevis: vi.fn(() => Promise.resolve({ data: { devis_statut: 'envoye' } })),
       reviserDevis: vi.fn(() => Promise.resolve({ data: {} })),

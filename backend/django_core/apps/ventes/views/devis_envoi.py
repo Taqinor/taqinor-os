@@ -177,6 +177,17 @@ def _envoi_atomique(devis, user, dest, sujet, corps, pdf_mode, token):
     return nom
 
 
+def _message_relance(devis, langue, url):
+    """AMSG37 — « Relancer ce devis » : gabarit ``relance_devis`` de la société
+    (langue du lead, Darija vide ⇒ FR), rendu comme ``build_single_devis_whatsapp``."""
+    from apps.parametres.models import MessageTemplate
+    from ..utils.whatsapp import _nom_complet, marque_societe, render_message_template
+    personne = devis.client if devis.client_id else getattr(devis, 'lead', None)
+    return render_message_template(MessageTemplate.get_corps(devis.company, 'relance_devis', langue), {
+        'civilite': '', 'nom': _nom_complet(getattr(personne, 'prenom', ''), getattr(personne, 'nom', '')),
+        'reference': devis.reference, 'lien': url, 'marque': marque_societe(devis.company)})
+
+
 def _options_piece_jointe(devis, pdf_mode, token):
     """AMOT117 — options de la pièce jointe : celles du dernier rendu persisté
     (``pdf_render_meta['options']``, même lecture que ``cle_pdf_a_jour``) ;
@@ -584,6 +595,7 @@ class DevisEnvoiActionsMixin:
         return Response({
             'wa_url': build_wa_url(phone, message),
             'phone': phone, 'message': message, 'url': link['url'],
+            'message_relance': _message_relance(devis, langue, link['url']),
             'devis_statut': devis.statut,  # inchangé
             'preview': True,
             # GAMME — de quoi afficher le choix « envoyer cette gamme seule /

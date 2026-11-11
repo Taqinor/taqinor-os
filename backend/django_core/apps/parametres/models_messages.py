@@ -23,6 +23,10 @@ MESSAGE_TEMPLATE_DEFAULTS = {
     'relance':
         'Bonjour {civilite} {nom}, petit rappel concernant votre facture '
         '{marque} ({reference}) : {lien}',
+    # AMSG37 — « Relancer ce devis » (liste des devis), même forme que `relance`.
+    'relance_devis':
+        'Bonjour {civilite} {nom}, petit rappel concernant votre devis '
+        '{marque} ({reference}) : {lien}',
     # XSAV4 — transitions de ticket SAV (client). {lien} = lien-client FG86.
     'ticket_recu':
         'Bonjour {civilite} {nom}, votre ticket SAV {reference} a bien été '
@@ -661,6 +665,7 @@ class MessageTemplate(models.Model):
         DEVIS_MULTI_LIGNE = 'devis_multi_ligne', 'Devis (plusieurs) — ligne'
         FACTURE = 'facture', 'Facture'
         RELANCE = 'relance', 'Rappel de paiement'
+        RELANCE_DEVIS = 'relance_devis', 'Relance de devis'  # AMSG37
         # XSAV4 — notifications client aux transitions du ticket SAV.
         TICKET_RECU = 'ticket_recu', 'Ticket SAV reçu'
         TICKET_PLANIFIE = 'ticket_planifie', 'Ticket SAV planifié'

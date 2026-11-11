@@ -21,19 +21,18 @@ export function frenchError(err, fallback) {
 
 // VX222 — « Relancer ce devis » : à partir de l'aperçu WhatsApp EXISTANT (même
 // modale, mêmes données), on remplace UNIQUEMENT le texte du message wa.me par
-// un RAPPEL (« petit rappel concernant votre devis ») au lieu de l'envoi
-// initial. On réutilise le numéro déjà normalisé côté serveur (base de
-// `waData.wa_url`, avant le `?text=`) + le lien public déjà émis (`waData.url`),
-// donc aucun backend ni duplication de logique de téléphone. Aperçu-puis-clic :
-// rien n'est envoyé automatiquement (règle manuel-wa.me fondateur).
-export function buildRelanceMessage(waData, reference) {
-  const lien = waData?.url || ''
-  return `Bonjour, petit rappel concernant votre devis ${reference || ''}${lien ? ' : ' + lien : ''}`.trim()
+// le RAPPEL. AMSG37 — ce texte est SERVI par `whatsapp-preview`
+// (`message_relance` : gabarit `relance_devis` de la société, langue du lead) ;
+// l'écran l'utilise tel quel, jamais un texte codé ici. On réutilise le numéro
+// déjà normalisé côté serveur (base de `waData.wa_url`, avant le `?text=`).
+// Aperçu-puis-clic : rien n'est envoyé automatiquement (règle manuel-wa.me).
+export function buildRelanceMessage(waData) {
+  return waData?.message_relance || ''
 }
-export function buildRelanceWaUrl(waData, reference) {
-  if (!waData?.wa_url) return null
+export function buildRelanceWaUrl(waData) {
+  if (!waData?.wa_url || !waData?.message_relance) return null
   const base = waData.wa_url.split('?')[0]   // https://wa.me/<numéro normalisé>
-  return `${base}?text=${encodeURIComponent(buildRelanceMessage(waData, reference))}`
+  return `${base}?text=${encodeURIComponent(buildRelanceMessage(waData))}`
 }
 
 // ADEV44 (C-ADEV-001) — le corps du POST « Refuser » selon le contrat
