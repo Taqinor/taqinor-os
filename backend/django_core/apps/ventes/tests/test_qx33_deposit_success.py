@@ -174,6 +174,29 @@ class Qx33DepositSuccessTests(TestCase):
         self.assertEqual(
             Paiement.objects.filter(facture__devis=self.devis).count(), 0)
 
+    def test_virement_avant_acceptation_409(self):
+        """APUB34 (C-APUB-015) — un devis seulement envoyé : 409 nommé, ni
+        note ni notification, la clé d'idempotence non consommée ; accepté :
+        200 et le vendeur notifié."""
+        from apps.notifications.models import Notification
+        from apps.ventes.models import DevisActivity
+        url = f'/api/django/public/proposal/{self.link.token}/virement/'
+        notes = DevisActivity.objects.filter(devis=self.devis).count()
+        resp = self.api.post(url, {}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertEqual(resp.data['detail'],
+                         "Le virement d'acompte se déclare après l'acceptation du devis.")
+        self.assertEqual(DevisActivity.objects.filter(devis=self.devis).count(), notes)
+        virement = Notification.objects.filter(
+            recipient=self.seller, title__startswith='Virement déclaré')
+        self.assertFalse(virement.exists())
+        self.devis.statut = Devis.Statut.ACCEPTE
+        self.devis.save(update_fields=['statut'])
+        ok = self.api.post(url, {}, format='json')
+        self.assertEqual(ok.status_code, 200, ok.data)
+        self.assertFalse(ok.data.get('already'))
+        self.assertTrue(virement.exists())
+
     def test_virement_declaration_idempotent(self):
         self.devis.statut = Devis.Statut.ACCEPTE
         self.devis.save(update_fields=['statut'])

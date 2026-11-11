@@ -102,6 +102,10 @@ def proposal_virement_declare(request, token):
         return _noindex(Response(
             {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
     devis = link.devis
+    # APUB34 — un acompte n'est dû qu'une fois le devis accepté (avant la clé d'idempotence).
+    if devis.statut != 'accepte':
+        return _noindex(Response({'detail': "Le virement d'acompte se déclare après "
+                                  "l'acceptation du devis."}, status=status.HTTP_409_CONFLICT))
     # Idempotence : une déclaration par lien et par heure.
     try:
         from django.core.cache import cache
