@@ -45,6 +45,35 @@ class TestSavedMapping(ImportBase):
                 '/api/django/imports/mapping/', corps, format='json')
             self.assertEqual(resp.status_code, 400, (corps, resp.content))
 
+    def test_save_mapping_exige_le_droit_de_la_cible(self):
+        """ADRG103 — enregistrer un mapping exige le droit de la cible, comme
+        l'aperçu et l'import : le mapping nommé d'un collègue reste intact."""
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        roles = dict(CANONICAL_SYSTEM_ROLES)
+        url = '/api/django/imports/mapping/'
+        resp = self.api.post(url, {'target': 'leads', 'nom': 'Odoo',
+                                   'mapping': {'Name': 'nom'}}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        corps = {'target': 'leads', 'nom': 'Odoo', 'mapping': {'Mail': 'email'}}
+        for nom, attendu in (('Technicien', 403), ('Commercial', 200)):
+            role = Role.objects.create(company=self.company, nom=f'{nom} 103',
+                                       permissions=list(roles[nom]))
+            client = APIClient()
+            client.force_authenticate(get_user_model().objects.create_user(
+                username=f'adrg103-{nom}', password='x',
+                company=self.company, role=role))
+            resp = client.post(url, corps, format='json')
+            self.assertEqual(resp.status_code, attendu, resp.data)
+            if attendu == 403:
+                self.assertEqual(resp.data['code'], 'droit_manquant')
+                self.assertEqual(ImportMapping.objects.get(
+                    company=self.company, entity='leads', nom='Odoo').mapping,
+                    {'Name': 'nom'})
+
 
 class TestImportJobLog(ImportBase):
     def test_commit_creates_job_with_row_errors(self):

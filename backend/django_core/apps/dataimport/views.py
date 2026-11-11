@@ -355,6 +355,8 @@ def save_mapping(request):
     # (la lecture à la main levait AttributeError → 500).
     corps = corps_valide(request, _MAPPING_REQUETE)
     target, nom, mapping = corps['target'], corps['nom'], corps['mapping']
+    if refus := _refus_droit_cible(request, target):  # ADRG103
+        return refus
     if not mapping:
         return Response(
             {'detail': 'Mapping invalide (dict colonne→champ attendu).'},
