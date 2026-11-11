@@ -126,6 +126,14 @@ def valider_contenu_import(contenu):
                     f'Élément {i} : champ(s) invalide(s) : '
                     f'{", ".join(faux)}.']
                 break
+            # APUB53 — chaque permission d'un rôle importé passe la règle du
+            # rôle (motif unique ``_RE_CODE_PERMISSION`` de RoleSerializer).
+            if categorie == 'roles_custom' and isinstance(item.get('permissions'), list):
+                from apps.roles.serializers import _RE_CODE_PERMISSION
+                invalides = [p for p in item['permissions'] if not _RE_CODE_PERMISSION.fullmatch(p)]
+                if invalides:
+                    erreurs[categorie] = [f'Permissions invalides : {invalides}']
+                    break
     if erreurs:
         raise serializers.ValidationError(erreurs)
     if _contient_nul(contenu):

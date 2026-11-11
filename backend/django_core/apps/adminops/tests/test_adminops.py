@@ -125,6 +125,37 @@ class ConfigPackageTests(TestCase):
         self.assertEqual(len(diff2['roles_custom']['ajouts']), 0)
         self.assertEqual(len(diff2['roles_custom']['modifications']), 0)
 
+    def test_permission_hors_catalogue_refusee(self):
+        """APUB53 — un rôle importé ne porte que des codes au motif du rôle
+        (``RoleSerializer``) : ``code_inexistant`` → 400 nommé, en
+        prévisualisation comme en application, aucun rôle écrit ; un package
+        aux codes du catalogue s'applique (Administrateur livré)."""
+        from django.core.management import call_command
+        from apps.roles.models import Role
+        call_command('init_roles', verbosity=0)
+        admin = User.objects.create_user(
+            username='apub53-admin', password='pw', company=self.company,
+            role=Role.objects.get(company=self.company, nom='Administrateur'))
+        api = APIClient()
+        api.force_authenticate(admin)
+        base = '/api/django/adminops/config-packages/'
+        mauvais = {'roles_custom': [
+            {'nom': 'X', 'permissions': ['crm_voir', 'code_inexistant']}]}
+        for action in ('previsualiser', 'appliquer'):
+            with self.subTest(action=action):
+                resp = api.post(f'{base}{action}/', {'contenu': mauvais},
+                                format='json')
+                self.assertEqual(resp.status_code, 400, resp.content)
+                self.assertEqual(resp.json()['roles_custom'], [
+                    "Permissions invalides : ['code_inexistant']"])
+        self.assertFalse(Role.objects.filter(company=self.company, nom='X').exists())
+        bon = {'roles_custom': [{'nom': 'X', 'permissions': ['crm_voir']}]}
+        resp = api.post(f'{base}appliquer/', {'contenu': bon}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(
+            Role.objects.get(company=self.company, nom='X').permissions,
+            ['crm_voir'])
+
     def test_versionning(self):
         from ..config_package_service import exporter_config
         p1 = exporter_config(self.company, nom='Cfg', user=self.admin)
