@@ -110,9 +110,9 @@ def _activites_visibles(user, co):
     from django.db.models import Q
 
     from apps.records.models import Activity
-    from apps.records.views import pieces_visibles
+    from apps.records.views import pieces_visibles, sans_cibles_archivees
     qs = Activity.objects.filter(**co).exclude(Q(personnelle=True) & ~Q(created_by=user))
-    return pieces_visibles(qs, user, Q(assigned_to=user) | Q(created_by=user))
+    return sans_cibles_archivees(pieces_visibles(qs, user, Q(assigned_to=user) | Q(created_by=user)))  # ASUP45
 
 
 def _parse_date(value, fallback):
@@ -489,9 +489,9 @@ def _user_calendar_events(user):
             })
 
     from apps.records.models import Activity
-    acts = (Activity.objects.filter(**co, done=False,
-                                    assigned_to_id=user.pk,
-                                    due_date__gte=start, due_date__lte=end))
+    from apps.records.views import sans_cibles_archivees
+    acts = sans_cibles_archivees(Activity.objects.filter(  # ASUP45
+        **co, done=False, assigned_to_id=user.pk, due_date__gte=start, due_date__lte=end))
     for a in acts:
         events.append({
             'uid': f'activite-{a.id}', 'date': a.due_date,

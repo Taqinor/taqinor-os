@@ -37,7 +37,7 @@ def _lignes(data):
 
 
 @override_settings(
-    PUBLIC_BASE_URL=BASE,
+    PUBLIC_BASE_URL=BASE, ANYMAIL={'SENDINBLUE_API_KEY': 'cle-factice'},  # AMSG81
     EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
 class LienSignatureBase(TestCase):
     def setUp(self):

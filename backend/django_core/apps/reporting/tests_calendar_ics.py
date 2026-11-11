@@ -56,6 +56,31 @@ class TestCalendarIcs(TestCase):
         self.assertIn('BEGIN:VEVENT', body)
         self.assertIn('SUMMARY:Pose', body)
 
+    def test_flux_sans_a_faire_de_lead_archive(self):
+        """ASUP45 — l'agenda du téléphone et l'écran Calendrier ne servent plus
+        l'à-faire d'un lead archivé ou supprimé ; celui d'un lead actif reste."""
+        from django.contrib.contenttypes.models import ContentType
+        from apps.crm.models import Lead
+        from apps.records.models import Activity
+        ct = ContentType.objects.get_for_model(Lead)
+        soon = date.today() + timedelta(days=2)
+        for nom in ('ARCHIVE', 'SUPPRIME', 'ACTIF'):
+            lead = Lead.objects.create(company=self.company, nom=nom, is_archived=nom == 'ARCHIVE')
+            Activity.objects.create(company=self.company, content_type=ct, object_id=lead.pk,
+                                    summary=f'Rappeler {nom}', assigned_to=self.user, due_date=soon)
+            if nom == 'SUPPRIME':
+                lead.soft_delete()
+        body = self.api.get(f'/api/django/reporting/calendar.ics?token={self.token}').content.decode('utf-8')
+        self.assertIn('Rappeler ACTIF', body)
+        self.assertNotIn('Rappeler ARCHIVE', body)
+        self.assertNotIn('Rappeler SUPPRIME', body)
+        self.api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        resp = self.api.get('/api/django/reporting/calendar/', {
+            'from': date.today().isoformat(), 'to': (soon + timedelta(days=1)).isoformat(), 'types': 'activite'})
+        self.assertEqual(resp.status_code, 200, resp.content)
+        titres = [e['title'] for e in (resp.data.get('events') if isinstance(resp.data, dict) else resp.data)]
+        self.assertEqual(titres, ['Rappeler ACTIF'])
+
     def test_missing_token_unauthorized(self):
         resp = self.api.get('/api/django/reporting/calendar.ics')
         # ASEC45 — réponse neutre unique pour tout lien inutilisable.

@@ -33,15 +33,19 @@ class AccuseHorsHeuresTests(TestCase):
     def setUp(self):
         cache.clear()
         self.company = Company.objects.create(nom='Accusé Co', slug='accuse-co')
+        # AMSG7 — l'accusé n'existe que pour la société propriétaire du numéro.
+        reglage = override_settings(WHATSAPP_CLOUD_COMPANY_ID=str(self.company.pk))
+        reglage.enable()
+        self.addCleanup(reglage.disable)
         patcheur = mock.patch('apps.adsengine.whatsapp_ack.httpx.post')
         self.post = patcheur.start()
         self.addCleanup(patcheur.stop)
 
-    def _lead(self, arrivee=SAMEDI_0310, telephone='+212612345678', **champs):
+    def _lead(self, arrivee=SAMEDI_0310, telephone='+212612345678', company=None, **champs):
         champs.setdefault('whatsapp_opt_in', True)
         champs.setdefault('nom', 'Amina Alaoui')
         lead = Lead.objects.create(
-            company=self.company, telephone=telephone, **champs)
+            company=company or self.company, telephone=telephone, **champs)
         Lead.objects.filter(pk=lead.pk).update(date_creation=arrivee)
         lead.refresh_from_db()
         return lead
@@ -51,7 +55,7 @@ class AccuseHorsHeuresTests(TestCase):
             with self.captureOnCommitCallbacks(execute=True):
                 meta_lead_captured.send(
                     sender='crm.meta_lead_ads_webhook', lead=lead,
-                    company=self.company, leadgen_id=leadgen_id,
+                    company=lead.company, leadgen_id=leadgen_id,
                     ad_id='ad1', adset_id='as1', campaign_id='', form_id='f1',
                     created_time=None, is_organic=False)
 
@@ -131,6 +135,24 @@ class AccuseHorsHeuresTests(TestCase):
         with override_settings(WHATSAPP_CLOUD_COMPANY_ID=str(self.company.pk + 1)):
             self._emettre(self._lead())
         self.post.assert_not_called()
+
+    def test_sans_societe_du_numero_aucun_accuse(self):
+        """AMSG7 — sans WHATSAPP_CLOUD_COMPANY_ID, aucun lead d'aucune société
+        n'est accusé ; avec l'id de A, seul le lead de A l'est."""
+        autre = Company.objects.create(nom='Autre Co', slug='autre-co')
+        lead_a = self._lead()
+        lead_b = self._lead(telephone='+212612345671', company=autre)
+        with override_settings(WHATSAPP_CLOUD_COMPANY_ID=None):
+            self._emettre(lead_a)
+            self._emettre(lead_b, leadgen_id='lg-2')
+        self.post.assert_not_called()
+        self.assertEqual(self._notes(lead_a).count() + self._notes(lead_b).count(), 0)
+        cache.clear()
+        self._emettre(Lead.objects.get(pk=lead_a.pk), leadgen_id='lg-3')
+        self._emettre(Lead.objects.get(pk=lead_b.pk), leadgen_id='lg-4')
+        self.assertEqual(self.post.call_count, 1)
+        self.assertEqual(self._notes(lead_a).count(), 1)
+        self.assertEqual(self._notes(lead_b).count(), 0)
 
     def test_chacune_des_trois_variables_manquante_rien(self):
         for cle in TROIS_CLES:

@@ -3053,6 +3053,11 @@ def _envoyer_lien_signature(email, nom, demande, lien, *, relance=False,
             '(PUBLIC_BASE_URL) ni requête, lien non envoyé à %s.',
             demande.pk, email)
         return False
+    from apps.ventes.email_service import is_email_configured
+    if not is_email_configured():  # AMSG81 — rien ne partirait : jamais « envoyé »
+        logger.warning('AMSG81 — demande de signature %s : e-mail non configuré, '
+                       'lien non envoyé à %s.', demande.pk, email)
+        return False
     try:
         from django.conf import settings
         from django.core.mail import send_mail
@@ -4059,11 +4064,12 @@ def relancer_signataires_dus(company, *, now=None):
     from datetime import timedelta
 
     from django.utils import timezone
-    from .models import SIGNATAIRE_NOTIFIE, SignataireDemande
+    from .models import SIGNATAIRE_NOTIFIE, SIGNATURE_EN_ATTENTE, SignataireDemande
 
     now = now or timezone.now()
     candidats = (SignataireDemande.objects
                  .filter(company=company, statut=SIGNATAIRE_NOTIFIE,
+                         demande__statut=SIGNATURE_EN_ATTENTE,  # AMSG74 — demande close : jamais relancée
                          demande__relance_cadence_jours__isnull=False)
                  .exclude(demande__relance_cadence_jours=0)
                  .select_related('demande'))
@@ -4075,11 +4081,12 @@ def relancer_signataires_dus(company, *, now=None):
             continue
         if now - reference < timedelta(days=cadence):
             continue
+        if not _send_signataire_email(signataire, signataire.demande, relance=True):
+            continue  # AMSG81 — relance non partie : ni compteur ni date
         signataire.derniere_relance_le = now
         signataire.nb_relances = F('nb_relances') + 1  # ENF28 : incrément atomique
         signataire.save(update_fields=['derniere_relance_le', 'nb_relances', 'updated_at'])
         signataire.refresh_from_db(fields=['nb_relances'])
-        _send_signataire_email(signataire, signataire.demande, relance=True)
         relances.append(signataire)
     return relances
 

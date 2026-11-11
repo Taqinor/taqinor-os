@@ -129,6 +129,58 @@ class DevisWhatsappActionTests(TestCase):
         devis = self._devis(client=client_no_phone, lead=lead)
         self.assertEqual(devis_recipient_phone(devis), '0698765432')
 
+    def test_numero_du_lead_prime_sur_le_client(self):
+        """AMSG33 — lead (WhatsApp A) lié à un client (téléphone B) : l'aperçu
+        vise A ; lead sans numéro ou devis sans lead : téléphone du client."""
+        client_b = Client.objects.create(
+            company=self.company, nom='ClientB', telephone='+212600000002')
+        lead_a = Lead.objects.create(
+            company=self.company, nom='LeadA', whatsapp='+212600000001')
+        devis = self._devis(client=client_b, lead=lead_a)
+        resp = self.api.post(
+            f'/api/django/ventes/devis/{devis.id}/whatsapp-preview/', {},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.data['phone'], '+212600000001')
+        sans_num = Lead.objects.create(company=self.company, nom='SansNum')
+        self.assertEqual(devis_recipient_phone(
+            self._devis(client=client_b, lead=sans_num)), '+212600000002')
+        self.assertEqual(devis_recipient_phone(
+            self._devis(client=client_b)), '+212600000002')
+
+    def test_lead_perdu_ou_archive_tout_envoi_409(self):
+        """AMSG35 (D-ACVI-7) — devis d'un lead perdu ou archivé : les gestes
+        d'envoi répondent 409 nommé, 0 mail, 0 lien, brouillon ; témoin
+        contactable inchangé."""
+        from django.core import mail
+        from apps.ventes.domain.envoi import MOTIF_LEAD_PERDU_ARCHIVE
+        self.client_obj.email = 'idrissi@example.com'
+        self.client_obj.save(update_fields=['email'])
+        perdu = Lead.objects.create(company=self.company, nom='Perdu', perdu=True)
+        archive = Lead.objects.create(
+            company=self.company, nom='Archive', is_archived=True)
+        gestes = [('whatsapp-preview/', {}), ('whatsapp/', {}), ('envoyer-email/', {}),
+                  ('share-link/', {'envoi': True}), ('pdf-partage/', {}), ('pdf-partage/', None)]
+        for lead in (perdu, archive):
+            devis = self._devis(lead=lead)
+            base = f'/api/django/ventes/devis/{devis.id}/'
+            for chemin, corps in gestes:
+                with self.subTest(lead=lead.nom, chemin=chemin, get=corps is None):
+                    resp = (self.api.get(base + chemin) if corps is None
+                            else self.api.post(base + chemin, corps, format='json'))
+                    self.assertEqual(resp.status_code, 409, resp.content)
+                    self.assertEqual(str(resp.data['detail']), MOTIF_LEAD_PERDU_ARCHIVE)
+            devis.refresh_from_db()
+            self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
+            self.assertIsNone(devis.date_envoi)
+            self.assertFalse(ShareLink.objects.filter(devis=devis).exists())
+        self.assertEqual(len(mail.outbox), 0)
+        temoin = self._devis(lead=self.lead)
+        resp = self.api.post(
+            f'/api/django/ventes/devis/{temoin.id}/whatsapp-preview/', {},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+
     def test_lead_oppose_tout_envoi_409(self):
         """ACVI102 (D-ACVI-7) — les six gestes d'envoi d'un devis de lead opposé :
         409 nommé, 0 mail, 0 EmailLog, brouillon ; déjà envoyé : 409 aussi."""

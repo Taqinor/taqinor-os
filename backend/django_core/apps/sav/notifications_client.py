@@ -54,6 +54,20 @@ def build_ticket_transition_message(ticket, cle, *, request=None):
     return wa_corps, email
 
 
+def remettre_brouillon_whatsapp(ticket, result, user=None):
+    """AMSG57 — e-mail non parti : brouillon WhatsApp → tâche sur le ticket (patron APAR25)."""
+    if not result or result.get('email_sent') or not result.get('wa_draft_url'):
+        return None
+    from django.contrib.contenttypes.models import ContentType
+    from django.utils import timezone
+    from apps.automation.actions import RESUME_TACHE_WHATSAPP
+    from apps.records.models import Activity
+    return Activity.objects.create(
+        company=ticket.company, content_type=ContentType.objects.get_for_model(type(ticket)),
+        object_id=ticket.pk, summary=RESUME_TACHE_WHATSAPP, due_date=timezone.localdate(),
+        note=f"{result.get('wa_corps') or ''}\n\n{result['wa_draft_url']}".strip(), created_by=user)
+
+
 def notify_ticket_transition(ticket, statut, *, request=None):
     """XSAV4 — Notifie le client d'une transition de ticket (best-effort).
 
@@ -85,9 +99,11 @@ def notify_ticket_transition(ticket, statut, *, request=None):
         if phone:
             from apps.ventes.services import _build_wa_draft_url
             result['wa_draft_url'] = _build_wa_draft_url(phone, wa_corps)
+            result['wa_corps'] = wa_corps
 
         email_addr = getattr(client, 'email', None) if client else None
-        if email_addr:
+        from apps.ventes.email_service import is_email_configured
+        if email_addr and is_email_configured():  # AMSG57 — sinon rien ne part
             try:
                 from django.conf import settings
                 from django.core.mail import send_mail
@@ -98,7 +114,7 @@ def notify_ticket_transition(ticket, statut, *, request=None):
                 send_mail(
                     email['sujet'], email['corps'],
                     getattr(settings, 'DEFAULT_FROM_EMAIL', None),
-                    [email_addr], fail_silently=True)
+                    [email_addr], fail_silently=False)
                 result['email_sent'] = True
             except Exception:  # noqa: BLE001 — best-effort, jamais fatal (D-ENF22-BLE001)
                 logger.warning(

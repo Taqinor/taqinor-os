@@ -125,6 +125,25 @@ class XSAV4NotificationsClientTest(TestCase):
         self.assertEqual(wa_corps, 'واتساب SAV-XSAV4-1')
         self.assertEqual(wa_fr, 'WA FR SAV-XSAV4-1')
 
+    @override_settings(ANYMAIL={}, EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    def test_sans_email_configure_brouillon_remis(self):
+        """AMSG57 — sans clé d'envoi : ``email_sent`` faux, aucun e-mail, et la
+        transition remet le brouillon WhatsApp en tâche « Envoyer ce WhatsApp »."""
+        from django.core import mail
+        from apps.records.models import Activity
+        from apps.sav.services import appliquer_transition_ticket
+        sla = SavSlaSettings.get(self.company)
+        sla.notifications_client_sav = True
+        sla.save(update_fields=['notifications_client_sav'])
+        mail.outbox = []
+        self.assertFalse(notify_ticket_transition(self.ticket, 'planifie')['email_sent'])
+        appliquer_transition_ticket(self.ticket, Ticket.Statut.PLANIFIE, self.user)
+        self.assertEqual(mail.outbox, [])
+        taches = Activity.objects.filter(object_id=self.ticket.pk, summary='Envoyer ce WhatsApp')
+        self.assertEqual(taches.count(), 1)
+        self.assertIn('wa.me', taches.get().note)
+        self.assertIn('/suivi/', taches.get().note)
+
     @override_settings(ANYMAIL={'SENDGRID_API_KEY': 'sg-test-key'},
                        EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
     def test_transition_notifie_le_compte_portail(self):

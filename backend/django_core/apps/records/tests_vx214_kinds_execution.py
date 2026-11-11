@@ -59,6 +59,31 @@ class Vx214ChantierAssigneTests(TestCase):
         kinds = [it['kind'] for it in resp.data['items']]
         self.assertIn('chantier_assigne', kinds)
 
+    def test_a_faire_d_un_lead_archive_ou_supprime_absent_de_ma_file(self):
+        """ASUP45 — à-faire ouverts sur un lead archivé (A1), supprimé (A2),
+        actif (A3) : seul A3 dans Ma file et dans ``en_retard`` ; le lead de A1
+        restauré ⇒ A1 réapparaît."""
+        from django.contrib.contenttypes.models import ContentType
+        from apps.crm.models import Lead
+        from apps.records.models import Activity
+        ct = ContentType.objects.get_for_model(Lead)
+        hier = datetime.date.today() - datetime.timedelta(days=1)
+        leads = [Lead.objects.create(company=self.company, nom=f'Lead {n}') for n in ('A1', 'A2', 'A3')]
+        acts = [Activity.objects.create(
+            company=self.company, content_type=ct, object_id=lead.pk, summary=lead.nom,
+            assigned_to=self.tech, due_date=hier) for lead in leads]
+        Lead.objects.filter(pk=leads[0].pk).update(is_archived=True)
+        leads[1].soft_delete()
+
+        def _file():
+            data = _api(self.tech).get('/api/django/records/activities/ma-file/').data
+            return [it['activity_id'] for it in data['items'] if it['kind'] == 'activite'], data
+        ids, data = _file()
+        self.assertEqual(ids, [acts[2].id])
+        self.assertEqual(data['resume']['en_retard'], 1)
+        Lead.objects.filter(pk=leads[0].pk).update(is_archived=False)
+        self.assertEqual(sorted(_file()[0]), [acts[0].id, acts[2].id])
+
     def test_chantier_receptionne_n_apparait_plus(self):
         from apps.installations.models import Installation
         Installation.objects.create(

@@ -809,6 +809,7 @@ class PaymentTransactionViewSet(TenantMixin, viewsets.ModelViewSet):
     serializer_class = PaymentTransactionSerializer
     permission_classes = [IsAuthenticatedInterne]
     queryset = PaymentTransaction.objects.all()
+    http_method_names = ['get', 'post', 'put', 'patch', 'head', 'options']  # ASUP22 — jamais de DELETE
 
     def get_permissions(self):
         # AUD806 — lecture ouverte à tout authentifié (une facture consultée

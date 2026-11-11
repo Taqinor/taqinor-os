@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4966, operations: 7758, components: 3650}
+counts: {paths: 4966, operations: 7756, components: 3650}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -798,7 +798,6 @@ operations:
 - post /api/django/core/outbox/{id}/rejouer/ -> django_core_outbox_rejouer_create
 - get /api/django/core/paiements-en-ligne/ -> django_core_paiements_en_ligne_list
 - post /api/django/core/paiements-en-ligne/ -> django_core_paiements_en_ligne_create
-- delete /api/django/core/paiements-en-ligne/{id}/ -> django_core_paiements_en_ligne_destroy
 - get /api/django/core/paiements-en-ligne/{id}/ -> django_core_paiements_en_ligne_retrieve
 - patch /api/django/core/paiements-en-ligne/{id}/ -> django_core_paiements_en_ligne_partial_update
 - put /api/django/core/paiements-en-ligne/{id}/ -> django_core_paiements_en_ligne_update
@@ -4718,7 +4717,6 @@ operations:
 - post /api/v1/core/outbox/{id}/rejouer/ -> v1_core_outbox_rejouer_create
 - get /api/v1/core/paiements-en-ligne/ -> v1_core_paiements_en_ligne_list
 - post /api/v1/core/paiements-en-ligne/ -> v1_core_paiements_en_ligne_create
-- delete /api/v1/core/paiements-en-ligne/{id}/ -> v1_core_paiements_en_ligne_destroy
 - get /api/v1/core/paiements-en-ligne/{id}/ -> v1_core_paiements_en_ligne_retrieve
 - patch /api/v1/core/paiements-en-ligne/{id}/ -> v1_core_paiements_en_ligne_partial_update
 - put /api/v1/core/paiements-en-ligne/{id}/ -> v1_core_paiements_en_ligne_update

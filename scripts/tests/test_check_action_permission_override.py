@@ -3,10 +3,13 @@
 Stdlib pur (unittest), sans Django — miroir de la garde DB-free. Run :
     python -m unittest scripts.tests.test_check_action_permission_override -v
 """
+import contextlib
+import io
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -157,6 +160,36 @@ class ClientViewSet(viewsets.ModelViewSet):
 REPLI_EGAL = REPLI_PLUS_STRICT.replace('[IsAdminRole()]', '[IsAnyRole()]')
 
 
+def _main(src, allow=''):
+    """ATST48 — ``guard.main([])`` joué sur un arbre temporaire (hors ``tests``)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        racine = Path(tmp)
+        (racine / 'apps' / 'demo').mkdir(parents=True)
+        (racine / 'apps' / 'demo' / 'views.py').write_text(src, encoding='utf-8')
+        (racine / 'allow.txt').write_text(allow, encoding='utf-8')
+        sortie = io.StringIO()
+        with mock.patch.multiple(guard, ROOT=racine, SCAN_ROOTS=[racine / 'apps'],
+                                 ALLOWLIST_PATH=racine / 'allow.txt'), \
+                contextlib.redirect_stdout(sortie):
+            return guard.main([]), sortie.getvalue()
+
+
+class MainSurArbreFautifTests(unittest.TestCase):
+    def test_repli_divergent_fait_sortir_un(self):
+        code, sortie = _main(REPLI_PLUS_STRICT)
+        self.assertEqual(code, 1, sortie)
+        self.assertIn('repli plus strict', sortie)
+        self.assertIn('ClientViewSet.segments', sortie)
+
+    def test_repli_egal_sort_zero(self):
+        self.assertEqual(_main(REPLI_EGAL)[0], 0)
+
+    def test_entree_morte_fait_sortir_un(self):
+        code, sortie = _main(REPLI_EGAL, 'apps/absent.py::X  # raison propre et longue\n')
+        self.assertEqual(code, 1, sortie)
+        self.assertIn('morte', sortie)
+
+
 class DivergenceTests(unittest.TestCase):
     def test_repli_plus_strict_detecte(self):
         """ACRM48 : repli IsAdminRole pour une action déclarée IsAnyRole."""
@@ -175,10 +208,10 @@ class DivergenceTests(unittest.TestCase):
         self.assertEqual(_divergences(REPLI_EGAL), [])
 
     def test_allowlist_sans_raison_propre_refusee(self):
-        for raison in ('', 'ok', 'vérifiées bénignes par le sweep AUD403'):
-            self.assertTrue(
-                len(raison) < guard.RAISON_MIN
-                or guard.RAISON_COLLECTIVE in raison.lower(), raison)
+        # ATST48 — cas (3) : main() refuse une ligne d'allowlist sans raison propre.
+        code, sortie = _main(REPLI_EGAL, 'apps/demo/views.py::ClientViewSet  # ok\n')
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("n'a pas sa raison propre", sortie)
         # ENF27/ENF28 : l'allowlist peut être vide (tous les écarts corrigés) ;
         # chaque raison encore présente doit rester propre.
         raisons = guard._load_allowlist_raisons()

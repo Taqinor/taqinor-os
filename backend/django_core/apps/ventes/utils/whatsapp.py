@@ -135,18 +135,17 @@ def build_devis_whatsapp(request, lead, devis_list, langue='fr'):
 
 
 def devis_recipient_phone(devis):
-    """QG8 — Numéro du destinataire d'un devis : client, sinon lead
-    (WhatsApp puis téléphone). Renvoie la chaîne brute ou '' si aucune."""
-    client = getattr(devis, 'client', None)
-    if client is not None:
-        phone = getattr(client, 'telephone', None)
-        if phone:
-            return phone
+    """QG8 / AMSG33 — Numéro du destinataire d'un devis : contact du lead
+    d'abord (WhatsApp puis téléphone), client en repli — même ordre que
+    ``_build_acceptance_wa_url``. Renvoie la chaîne brute ou '' si aucune."""
     lead = getattr(devis, 'lead', None)
     if lead is not None:
-        return (getattr(lead, 'whatsapp', None)
-                or getattr(lead, 'telephone', None) or '')
-    return ''
+        phone = (getattr(lead, 'whatsapp', None)
+                 or getattr(lead, 'telephone', None))
+        if phone:
+            return phone
+    client = getattr(devis, 'client', None)
+    return (getattr(client, 'telephone', None) or '') if client is not None else ''
 
 
 def build_single_devis_whatsapp(request, devis, langue='fr'):

@@ -41,5 +41,20 @@ class OrdreWebFullTests(unittest.TestCase):
             self.assertLess(build, test)
 
 
+class AlerteNocturneTests(unittest.TestCase):
+    def test_le_corps_nomme_les_jobs_non_verts(self):
+        # ATST42 — l'issue nightly-alert liste les jobs non verts de la nuit.
+        doc = yaml.safe_load((WORKFLOWS / "release-verify.yml").read_text(encoding="utf-8"))
+        etapes = {e.get("name"): e for e in doc["jobs"]["alert-on-repeated-failure"]["steps"]}
+        decision = etapes["Decider s'il faut alerter (scripts/nightly_alert_gate.py)"]["run"]
+        self.assertIn('--job "backend-full=', decision)
+        self.assertIn("--jobs-non-verts", decision)
+        self.assertIn('rouges=$ROUGES', decision)
+        alerte = etapes["Ouvrir/mettre à jour l'issue d'alerte (2 nuits rouges de suite)"]
+        self.assertEqual(alerte["env"]["ROUGES"], "${{ steps.decision.outputs.rouges }}")
+        self.assertIn("`Jobs non verts : ${rouges}`", alerte["with"]["script"])
+        self.assertIn("pdf/slow non prouvés cette nuit", alerte["with"]["script"])
+
+
 if __name__ == "__main__":
     unittest.main()

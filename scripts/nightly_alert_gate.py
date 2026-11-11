@@ -74,6 +74,11 @@ def decision(job_results: Sequence[str], previous_conclusion: Optional[str]) -> 
     return "alerte" if should_alert(job_results, previous_conclusion) else "rien"
 
 
+def jobs_non_verts(jobs: Sequence[tuple]) -> list:
+    """ATST42 — les NOMS des jobs non `success` (skipped compris), dans l'ordre."""
+    return [nom for nom, resultat in jobs if resultat != SUCCESS]
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -81,6 +86,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         metavar="RESULT",
         help="Resultat ('success'/'failure'/'skipped'/'cancelled') d'un job "
              "de CE run — repeter une fois par job surveille.")
+    parser.add_argument(
+        "--job", dest="jobs", action="append", default=[], metavar="NOM=RESULTAT",
+        help="ATST42 — un job NOMME (vaut aussi --job-result RESULTAT).")
+    parser.add_argument(
+        "--jobs-non-verts", action="store_true",
+        help="Imprimer les noms des jobs non verts (virgules ; vide si tout vert).")
     parser.add_argument(
         "--previous-conclusion", dest="previous_conclusion", default=None,
         metavar="CONCLUSION",
@@ -92,6 +103,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     previous = args.previous_conclusion or None
+    jobs = [tuple(j.split("=", 1)) if "=" in j else (j, "") for j in args.jobs]
+    args.job_results += [resultat for _nom, resultat in jobs]
+    if args.jobs_non_verts:
+        print(", ".join(jobs_non_verts(jobs)))
+        return 0
     if args.decision:
         print(decision(args.job_results, previous))
         return 0

@@ -146,6 +146,16 @@ class CustomUserAdmin(CompanyScopedAdminMixin, UserAdmin):
         return obj.role_legacy
     role_display.short_description = 'Role'
 
+    def has_delete_permission(self, request, obj=None):
+        """ASUP22 — un compte ne se supprime jamais depuis /admin/ : il se
+        désactive (``is_active``), hors des gardes de ``UserViewSet.destroy``."""
+        return False
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        actions.pop('delete_selected', None)
+        return actions
+
 
 # ── ASEC12 — connexion à l'admin Django par la même porte que l'API ────────
 # ``admin.site`` (monté par erp_agentique/urls.py) n'est PAS remplacé : on lui

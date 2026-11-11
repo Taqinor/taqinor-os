@@ -119,6 +119,17 @@ class CliTests(unittest.TestCase):
         )
         self.assertEqual(out, "false")
 
+    def test_cli_nomme_les_jobs_non_verts(self):
+        # ATST42 — la décision est inchangée ; --jobs-non-verts nomme les rouges.
+        jobs = ["--job", "ci-image-check=success", "--job", "backend-full=failure",
+                "--job", "frontend-full=success", "--job", "e2e-full=failure",
+                "--job", "web-full=failure", "--job", "fastapi-tests=success",
+                "--previous-conclusion", "failure"]
+        self.assertEqual(self._run("--decision", *jobs), "alerte")
+        self.assertEqual(self._run("--jobs-non-verts", *jobs), "backend-full, e2e-full, web-full")
+        self.assertEqual(self._run("--jobs-non-verts", "--job", "a=success"), "")
+        self.assertEqual(self._run("--jobs-non-verts", "--job", "a=skipped"), "a")
+
 
 if __name__ == "__main__":
     unittest.main()

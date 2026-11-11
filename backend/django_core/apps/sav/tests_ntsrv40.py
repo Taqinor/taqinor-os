@@ -8,7 +8,7 @@ Run :
     docker compose exec django_core python manage.py test apps.sav.tests_ntsrv40 -v 2
 """
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -60,6 +60,8 @@ class NTSRV40CatalogueTest(TestCase):
         self.assertIn('sav_gerer', ALL_PERMISSIONS)
 
 
+@override_settings(ANYMAIL={'SENDINBLUE_API_KEY': 'cle-factice'},  # AMSG57 — l'e-mail part
+                   EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
 class NTSRV40GardeReponseExterneTest(TestCase):
     def setUp(self):
         self.company, _ = Company.objects.get_or_create(

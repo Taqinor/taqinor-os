@@ -31,7 +31,6 @@ from django.urls import reverse
 
 from apps.crm.admin import SUPPRESSION_CLIENT_INTERDITE
 from apps.crm.models import Client, PlanCompte, SiteProfile
-from authentication.models import CustomUser
 from testkit.factories import ClientFactory, CompanyFactory, DevisFactory, UserFactory
 
 
@@ -138,13 +137,15 @@ class ClientAdminDeleteGuardTests(TestCase):
                 request, Client.objects.filter(pk=self.client_propre.pk))
         self._catalogue_intact()
 
-    def test_garde_cible_un_utilisateur_reste_supprimable(self):
+    def test_garde_cible_une_categorie_reste_supprimable(self):
         """Le garde ne désactive PAS la suppression partout : un objet jetable
-        (ici un utilisateur sans dépendance) part normalement."""
-        jetable = UserFactory(company=self.company, username='jetable-client-guard')
-        url = reverse('admin:authentication_customuser_delete', args=[jetable.pk])
-        response = self.http.post(url, {'post': 'yes'}, format='json')
+        (ici une catégorie de stock ; ASUP22 : un compte ne se supprime plus
+        depuis /admin/) part normalement."""
+        Categorie = django_apps.get_model('stock', 'Categorie')
+        jetable = Categorie.objects.create(company=self.company, nom='Catégorie jetable')
+        url = reverse('admin:stock_categorie_delete', args=[jetable.pk])
+        response = self.http.post(url, {'post': 'yes'})
 
         self.assertEqual(response.status_code, 302)
-        self.assertFalse(CustomUser.objects.filter(pk=jetable.pk).exists())
+        self.assertFalse(Categorie.objects.filter(pk=jetable.pk).exists())
         self._catalogue_intact()
