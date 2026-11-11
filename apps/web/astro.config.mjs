@@ -1,5 +1,6 @@
 // @ts-check
-import { copyFile, readFile, writeFile } from 'node:fs/promises';
+import { copyFile, readdir, readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { defineConfig } from 'astro/config';
 import { dossierClient, retirerPreviewToiture } from './scripts/retirer-preview-toiture.mjs';
 import { maplibreWorker } from './scripts/maplibre-worker.mjs';
@@ -79,6 +80,40 @@ const previewToitureHorsBuild = () => ({
   },
 });
 
+/**
+ * WAUD93 — aucun commentaire de développement dans le HTML public : les `<!-- … -->`
+ * des gabarits (identifiants de tâche, notes internes) sont retirés des pages
+ * construites. Le contenu des <script>, <style>, <textarea> et <pre> n'est pas touché.
+ */
+const PROTEGES = /(<script\b[\s\S]*?<\/script>|<style\b[\s\S]*?<\/style>|<textarea\b[\s\S]*?<\/textarea>|<pre\b[\s\S]*?<\/pre>)/gi;
+/** @param {string} html */
+const retirerCommentairesHtml = (html) =>
+  html
+    .split(PROTEGES)
+    .map((bout, i) => (i % 2 === 1 ? bout : bout.replace(/<!--[\s\S]*?-->/g, '')))
+    .join('');
+
+const commentairesHorsBuild = () => ({
+  name: 'taqinor:retirer-commentaires-html',
+  hooks: {
+    'astro:build:done': async ({ dir }) => {
+      const racine = dossierClient(dir);
+      const fichiers = (await readdir(racine, { recursive: true })).filter((f) => String(f).endsWith('.html'));
+      let n = 0;
+      for (const f of fichiers) {
+        const chemin = join(racine, f);
+        const avant = await readFile(chemin, 'utf-8');
+        const apres = retirerCommentairesHtml(avant);
+        if (apres !== avant) {
+          await writeFile(chemin, apres);
+          n++;
+        }
+      }
+      console.log(`[retirer-commentaires-html] ${n} page(s) nettoyée(s)`);
+    },
+  },
+});
+
 // https://astro.build/config
 export default defineConfig({
   site: 'https://taqinor.ma',
@@ -122,6 +157,7 @@ export default defineConfig({
       }
     }),
     workersDevRedirect(),
-    previewToitureHorsBuild()
+    previewToitureHorsBuild(),
+    commentairesHorsBuild()
   ]
 });

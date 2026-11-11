@@ -564,8 +564,8 @@ def _facture_etat(facture, ids, palier, actionnable, encaisse=False) -> dict:
             'emettre': brouillon and actionnable,
             'pdf': True,
             'envoyer': emise,
-            'encaisser': statut in ('emise', 'en_retard')
-            and _d(facture.montant_du) > 0,
+            'encaisser': encaisse and statut in ('emise', 'en_retard')
+            and _d(facture.montant_du) > 0,  # ERR-ACC-ENCAISSER-OFFERT-REFUSE
             'annuler': emise and palier and (encaisse or est_reference_provisoire(facture.reference)),  # ASEC90
             'supprimer': (brouillon and palier
                           and est_reference_provisoire(facture.reference)),

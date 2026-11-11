@@ -213,12 +213,15 @@ const jsonLd = {
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="sitemap" href="/sitemap-index.xml" />
     <link rel="alternate" type="application/rss+xml" title="Taqinor — Blog" href="/rss.xml" />
-    <!-- W215 — Préchargement de la fonte display du titre (LCP <h1> = Archivo).
+    {/* W215 — Préchargement de la fonte display du titre (LCP <h1> = Archivo).
          Réduit le FOUT sur le headline principal sans bloquer la bande passante
-         critique (4G lent). Le subset latin.woff2 couvre le français. -->
+         critique (4G lent). Le subset latin.woff2 couvre le français. */}
     <link rel="preload" as="font" type="font/woff2" href="/fonts/archivo-latin.woff2" fetchpriority="low" crossorigin />
     {/* WAUD44 — police arabe libre (OFL), auto-hébergée, préchargée sur /ar/ seulement. */}
     {lang === 'ar' && <link rel="preload" as="font" type="font/woff2" href="/fonts/noto-sans-arabic-400.woff2" fetchpriority="low" crossorigin />}
+    {/* WAUD89 — la 700 (H1 et titres arabes) n'était découverte qu'à la 1re mise en page et
+        arrivait après : remise en page de presque tout le document + décalages du H1. */}
+    {lang === 'ar' && <link rel="preload" as="font" type="font/woff2" href="/fonts/noto-sans-arabic-700.woff2" fetchpriority="low" crossorigin />}
     {/* WAUD79 — Hanken Grotesk porte le texte au-dessus du pli : son échange décale aussi. */}
     <link rel="preload" as="font" type="font/woff2" href="/fonts/hanken-latin.woff2" fetchpriority="low" crossorigin />
     {preloadHeroPoster && (
@@ -242,7 +245,7 @@ const jsonLd = {
     <meta property="og:image:type" content="image/png" />
     {ogImageAlt && <meta property="og:image:alt" content={ogImageAlt} />}
     <meta property="og:locale" content={lang === 'en' ? 'en_US' : lang === 'ar' ? 'ar_MA' : 'fr_MA'} />
-    <!-- W219 — Carte Twitter/X complète -->
+    {/* W219 — Carte Twitter/X complète */}
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={ogTitle} />
     <meta name="twitter:description" content={description} />
@@ -318,18 +321,18 @@ const jsonLd = {
         } catch (e) {}
       })();
     </script>
-    <!-- WB33 — Pixel Meta navigateur (fbq) : PageView sitewide + pont
+    {/* WB33 — Pixel Meta navigateur (fbq) : PageView sitewide + pont
          window.tqPixelTrack pour l'événement Lead dédupliqué (eventId WJ92)
          du tunnel. Gated comme le CAPI (QJW14) : « Refuser » explicite le
-         bloque/révoque. Jamais sur les pages privées (noindex sans `mesure`). -->
+         bloque/révoque. Jamais sur les pages privées (noindex sans `mesure`). */}
     {mesure && <MetaPixel />}
-    <!-- Google tag (Google Ads + GA4) : rien sans PUBLIC_GOOGLE_TAG_ID ; mêmes
-         règles de consentement et même exclusion noindex que le pixel Meta. -->
+    {/* Google tag (Google Ads + GA4) : rien sans PUBLIC_GOOGLE_TAG_ID ; mêmes
+         règles de consentement et même exclusion noindex que le pixel Meta. */}
     {mesure && <GoogleTag />}
   </head>
   <body class="bg-nuit font-sans text-lune antialiased">
-    <!-- W216 — Lien d'évitement accessible : premier élément focusable du corps.
-         Masqué visuellement jusqu'au focus clavier, puis affiché en brass. -->
+    {/* W216 — Lien d'évitement accessible : premier élément focusable du corps.
+         Masqué visuellement jusqu'au focus clavier, puis affiché en brass. */}
     <a href="#main" class="skip-link">Aller au contenu</a>
     {lang === 'ar' ? <Bidi><Header /></Bidi> : <Header />}
     <main id="main">
@@ -355,11 +358,11 @@ const jsonLd = {
     ) : (
       lang === 'ar' ? <Bidi><Footer /></Bidi> : <Footer />
     )}
-    <!-- WB31 — Bandeau minimal de consentement analytics/tracking : fournit
+    {/* WB31 — Bandeau minimal de consentement analytics/tracking : fournit
          le signal `tq_consent` (localStorage) lu par la capture fbclid/UTM
-         ci-dessus (WB29) et par le funnel beacon (WB30). -->
+         ci-dessus (WB29) et par le funnel beacon (WB30). */}
     <ConsentBanner inline={consentInline} />
-    <!-- LANE T-WEB (25/08/2026) — Balise de visite site entier : empreinte
+    {/* LANE T-WEB (25/08/2026) — Balise de visite site entier : empreinte
          d'appareil anonyme + durée cumulée par page (lib/visite.ts,
          demarrerBalise). Le pont define:vars→window est nécessaire pour faire
          passer `lang`/`skipVisitBeacon` (calculés côté serveur) au module
@@ -368,7 +371,7 @@ const jsonLd = {
          sont pas traités). Gated en interne par demarrerBalise elle-même :
          aperçu interne (skipVisitBeacon) ET consentement `tq_consent`
          (ConsentBanner ci-dessus, WB29/WB30/WB31) — jamais de balise avant
-         l'un des deux. -->
+         l'un des deux. */}
     <script define:vars={{ tqVisiteLangue: lang, tqVisiteSkip: skipVisitBeacon }}>
       window.__TQ_VISITE__ = { langue: tqVisiteLangue, skip: tqVisiteSkip };
     </script>
@@ -381,10 +384,10 @@ const jsonLd = {
         apercuInterne: init?.skip === true,
       });
     </script>
-    <!-- W357 — PWA installable + tolérante au hors-ligne : enregistrement du
+    {/* W357 — PWA installable + tolérante au hors-ligne : enregistrement du
          service worker de mise en cache (coquille + dernière estimation du
          visiteur). AUCUN push/notification — voir public/sw.js. Différé à
-         `load` pour ne jamais concurrencer le rendu critique (LCP). -->
+         `load` pour ne jamais concurrencer le rendu critique (LCP). */}
     <script is:inline>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', function () {

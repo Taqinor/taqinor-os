@@ -1,15 +1,22 @@
-import { describe, it, expect } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
 import Sidebar from './Sidebar'
+import monitoringApi from '../../api/monitoringApi'
+
+// ERR-ACC-SIDEBAR-CO2-403 — la pastille d'impact lit `co2-fleet` : on compte
+// ses appels au lieu de toucher le réseau.
+vi.mock('../../api/monitoringApi', () => ({
+  default: { getCo2Fleet: vi.fn(() => Promise.resolve({ data: null })) },
+}))
 
 // Reducers minimaux pour alimenter les sélecteurs lus par la Sidebar.
-function makeStore({ role = 'admin', permissions = [], modulesDesactives = [] } = {}) {
+function makeStore({ role = 'admin', permissions = [], modulesDesactives = [], role_nom = null } = {}) {
   return configureStore({
     reducer: {
-      auth: (s = { role, permissions, modulesDesactives, user: null }) => s,
+      auth: (s = { role, role_nom, permissions, modulesDesactives, user: null }) => s,
       parametres: (s = { profile: { nom: 'TAQINOR' } }) => s,
     },
   })
@@ -119,5 +126,41 @@ describe('Sidebar — ODY4 : identité de l’app active + sortie ⊞', () => {
     // La sortie reste offerte (on est déjà au Menu d'accueil, mais la coquille
     // ne se contredit jamais d'un écran à l'autre).
     expect(screen.getByRole('link', { name: 'Toutes les apps' })).toBeInTheDocument()
+  })
+})
+
+// ERR-ACC-SIDEBAR-CO2-403 (rejeu ASEC90/91, rôle système Admin Ventes) —
+// `GET /monitoring/configs/co2-fleet/` est gardé `IsResponsableOrAdmin` sur le
+// module `sav` (`permission_module`, AMON45) : un rôle fin sans aucun code
+// `sav_*`/`equipement_*` reçoit 403. La Sidebar n'appelle donc pas la route
+// pour lui ; la direction l'appelle toujours.
+describe('Sidebar — pastille d’impact : appel seulement si la route l’accepte', () => {
+  // Le module paresseux est chargé d'avance : un « aucun appel » ne doit pas
+  // tenir seulement parce que le chunk n'était pas encore arrivé.
+  beforeAll(async () => { await import('./ImpactPastille') })
+  beforeEach(() => { monitoringApi.getCo2Fleet.mockClear() })
+  const laisserMonter = () => new Promise((r) => setTimeout(r, 300))
+  const ADMIN_VENTES = {
+    role: 'responsable', role_nom: 'Admin Ventes',
+    permissions: ['crm_voir', 'crm_creer', 'ventes_voir', 'ventes_creer', 'stock_voir', 'reporting_voir'],
+  }
+
+  it('Admin Ventes (responsable, aucun code sav) : aucun appel co2-fleet', async () => {
+    renderSidebar({ path: '/ventes/devis', ...ADMIN_VENTES })
+    await laisserMonter()
+    expect(monitoringApi.getCo2Fleet).not.toHaveBeenCalled()
+  })
+
+  it('Commercial terrain (écriture visites, aucun code sav) : aucun appel', async () => {
+    renderSidebar({ path: '/ventes/devis', role: 'normal', role_nom: 'Commercial terrain', permissions: ['visites_creer'] })
+    await laisserMonter()
+    expect(monitoringApi.getCo2Fleet).not.toHaveBeenCalled()
+  })
+
+  it('Technicien (écriture sav) et Directeur (palier admin) : la pastille lit co2-fleet', async () => {
+    renderSidebar({ path: '/ventes/devis', role: 'normal', role_nom: 'Technicien', permissions: ['sav_voir', 'sav_gerer'] })
+    await waitFor(() => expect(monitoringApi.getCo2Fleet).toHaveBeenCalledTimes(1))
+    renderSidebar({ path: '/ventes/devis', role: 'admin', role_nom: 'Directeur', permissions: [] })
+    await waitFor(() => expect(monitoringApi.getCo2Fleet).toHaveBeenCalledTimes(2))
   })
 })

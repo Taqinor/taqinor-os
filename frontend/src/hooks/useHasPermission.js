@@ -146,14 +146,21 @@ function estResponsable(role, roleNom, permissions) {
     && !c.startsWith('records_scope') && !c.startsWith('portail_'))
 }
 
-// `GET /monitoring/configs/co2-fleet/` (ImpactPastille) : `IsResponsableOrAdmin`,
-// app `monitoring` sans module de droits propre (APPS_SANS_MODULE) : seul le
-// caractère « responsable » compte.
+// `GET /monitoring/configs/co2-fleet/` (ImpactPastille) : `IsResponsableOrAdmin`
+// sur le module `sav` (`MonitoringConfigViewSet.permission_module`, AMON45) :
+// responsable ET, pour un rôle fin non admin, au moins un code du module `sav`
+// (`sav_*`, `equipement_voir`/`equipement_gerer` — PERMISSION_MODULE de
+// apps/roles/permissions_registre.py, lecture comprise). Admin Ventes et
+// Commercial terrain n'en portent aucun : 403 (ERR-ACC-SIDEBAR-CO2-403).
 export function useCanLireParcMonitoring() {
   const role = useSelector((s) => s.auth.role)
   const roleNom = useSelector((s) => s.auth.role_nom)
   const permissions = useSelector((s) => s.auth.permissions) || []
-  return estResponsable(role, roleNom, permissions)
+  if (role === 'admin') return true
+  if (!estResponsable(role, roleNom, permissions)) return false
+  if (!roleNom && permissions.length === 0) return true
+  return permissions.some((c) => typeof c === 'string'
+    && (c.startsWith('sav_') || c === 'equipement_voir' || c === 'equipement_gerer'))
 }
 
 // `GET /crm/equipes/statistiques/` (MesEquipesCard) : `IsResponsableOrAdmin`

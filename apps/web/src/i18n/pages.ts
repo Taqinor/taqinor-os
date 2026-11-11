@@ -104,9 +104,9 @@ const STATIC_TRANSLATED: readonly string[] = [
  */
 const PARTIAL_TRANSLATED: Record<string, readonly Locale[]> = {
   '/ressources/10-questions-avant-de-signer': ['fr', 'ar'],
-  // WAUD74 (FR seule) et WAUD75 (FR + AR) : pages d'information sans miroir EN.
-  '/kit-solaire-maroc': ['fr'],
-  '/devis-panneaux-solaires-maroc': ['fr', 'ar'],
+  // WAUD74/WAUD75 puis WAUD91 : kit et devis en FR/EN/AR (coquille partagée InfoPageBody).
+  '/kit-solaire-maroc': ['fr', 'en', 'ar'],
+  '/devis-panneaux-solaires-maroc': ['fr', 'en', 'ar'],
 };
 
 /**
