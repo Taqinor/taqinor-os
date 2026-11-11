@@ -230,6 +230,11 @@ class FactureDocumentsActionsMixin:
         être surchargés dans le body de la requête."""
         from apps.ventes.email_service import send_document_email
         facture = self.get_object()
+        from apps.facturation.recouvrement import facture_envoyable
+        envoyable, motif_refus = facture_envoyable(facture)  # AMSG31
+        if not envoyable:
+            return Response({'detail': motif_refus},
+                            status=status.HTTP_409_CONFLICT)
         saisie = valider_corps(request, D.EnvoyerEmailFactureRequest)
         log = send_document_email(
             facture, user=request.user,

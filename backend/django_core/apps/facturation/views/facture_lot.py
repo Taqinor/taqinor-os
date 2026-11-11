@@ -228,6 +228,11 @@ class FactureLotActionsMixin:
                 elif action_name == 'envoyer-email':
                     from apps.ventes.email_service import send_document_email
                     from apps.ventes.models import EmailLog
+                    from apps.facturation.recouvrement import facture_envoyable
+                    envoyable, motif_refus = facture_envoyable(facture)  # AMSG31
+                    if not envoyable:
+                        results[fid_int] = {'ok': False, 'detail': motif_refus}
+                        continue
                     log = send_document_email(
                         facture, user=request.user, attach_pdf=True)
                     if log.statut == EmailLog.Statut.ECHEC:
