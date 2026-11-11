@@ -12,10 +12,13 @@ Ce que ces tests verrouillent, dans l'ordre du Done= de QJR4 :
   * supprimer un site laisse une entree ORPHELINE, signalee ;
   * ajouter un site NOUVEAU est rouge.
 """
+import contextlib
+import io
 import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -257,6 +260,51 @@ class TestDetecteurQuantize(unittest.TestCase):
         offenders, orphans = cmr.evaluate(sites, set())
         self.assertEqual(len(offenders), 1)
         self.assertEqual(orphans, [])
+
+
+class MainSurModuleFautifTests(unittest.TestCase):
+    """ATST49 -- `main()` joue sur un module fautif : un `if offenders:`
+    neutralise ou un balayage vide rougit ce module (C-ATST-025)."""
+
+    def _fichier(self, texte, suffix):  # sous le depot : `_rel` exige ROOT
+        fd, nom = tempfile.mkstemp(prefix="_cmr_tmp_", suffix=suffix,
+                                   dir=Path(__file__).resolve().parent)
+        os.close(fd)
+        chemin = Path(nom)
+        chemin.write_text(texte, encoding="utf-8")
+        self.addCleanup(lambda: chemin.exists() and chemin.unlink())
+        return chemin
+
+    def _main(self, base_texte):
+        module = self._fichier(ADDED_SITE_SRC, ".py")
+        rel = cmr._rel(module)
+        base = self._fichier(base_texte(rel), ".txt")
+        sortie, lire = io.StringIO(), cmr.load_allowlist
+        with mock.patch.object(cmr, "TARGET_FILES", [module]), \
+                mock.patch.object(cmr, "ALLOWLIST_PATH", base), \
+                mock.patch.object(cmr, "load_allowlist",
+                                  lambda path=base: lire(path)), \
+                contextlib.redirect_stdout(sortie):
+            return cmr.main([]), sortie.getvalue(), rel
+
+    def test_nouveau_round_fait_sortir_un(self):
+        code, sortie, rel = self._main(lambda rel: _base(BASE_SRC, rel))
+        self.assertEqual((code, "NOUVEAU(X)" in sortie), (1, True), sortie)
+        (ajoute,) = set(_keys(ADDED_SITE_SRC, rel)) - set(_keys(BASE_SRC, rel))
+        self.assertIn(ajoute, sortie)
+
+    def test_base_complete_sort_zero(self):
+        code, sortie, _ = self._main(lambda rel: _base(ADDED_SITE_SRC, rel))
+        self.assertEqual((code, "OK (bloquant" in sortie), (0, True), sortie)
+
+    def test_ligne_morte_fait_sortir_un(self):
+        code, sortie, _ = self._main(
+            lambda rel: "scripts/tests/_cmr_absent.py::f::0123456789ab | x\n")
+        self.assertEqual((code, "MORTE(S)" in sortie), (1, True), sortie)
+
+
+def _base(source, rel):
+    return "".join(f"{k} | relu\n" for k in _keys(source, rel))
 
 
 if __name__ == "__main__":
