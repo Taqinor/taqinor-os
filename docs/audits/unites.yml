@@ -1038,6 +1038,28 @@ unites:
     dossier: docs/audits/2026-11-11-parcours-PF11.md
     notes: "Audit de PARCOURS (L2, 11/11/2026, base 3acfee4) : 126 entrées du planning et 150 tâches Celery inventoriées par script ast, puis quatre lectures (argent, stock, chantiers, SAV ; CRM, notifications, GED, publicité ; plateforme et configuration Celery ; tâches mortes, signaux, déploiement, service IA), quatre vérificateurs frais et une critique ; mécanique Celery rejouée sur la vraie version 5.4.0 ; 37 constats, 4 prouvés par sonde hôte (toutes repro), 33 lus ou rejoués hors dépôt ; gravités 0 S1, 4 S2, 33 S3 ; aucun mélange de sociétés, aucun numéro ni montant dupliqué par une tâche planifiée. D-ACEL-1..3 ouvertes. Tâches ACEL1-18, ACEL31-48, ACEL61-80 (56 posées, dont 8 GATED : DEPLOY 9, SECURITE 9, ANALYSE 8, STOCK 6, DOCUMENTS 5, LEAD 4, ACQUISITION 3, FACTURATION 3, PARAMETRES 3, CHANTIERS 2, DEVIS 2, SAV 2)."
 
+  - id: PF9
+    rang: 35
+    declencheur: rejeu-concurrence
+    titre: "Parcours PF9 « Doubles clics, gestes rejoués, courses » : un geste envoyé deux fois (double clic, nouvel essai après un délai, deux onglets) ou deux gestes croisés sur le même objet créent-ils un doublon d'argent, de stock ou de numéro légal, ou écrasent-ils l'état posé par un collègue"
+    possede: []
+    perimetre_lu:
+      - "backend/django_core/apps/** (vues d'écriture, services, domaine, abonnés, webhooks, imports, traitements en masse), backend/django_core/core/** (numérotation, idempotence, mixins, paiement, workflow), backend/fastapi_ia/** (confirmation de l'assistant), frontend/src/** (dialogues, boutons, api/axios.js), scripts/check_read_modify_write.py, scripts/check_get_or_create.py"
+    coutures:
+      - "clic ↔ requête ↔ clé d'idempotence ↔ contrainte ; délai de l'écran (20 s) ↔ requête qui continue côté serveur ; statut lu ↔ verrou ↔ écriture ; transition d'un collègue ↔ sauvegarde complète d'un PATCH ; jeton de l'assistant ↔ exécution ; garde CI ↔ surface balayée"
+    P: 3
+    I: 4
+    score: 12
+    niveau: L2
+    statut: audité
+    groupe: ACNC
+    plan: docs/plans/PLAN_AUDIT_FACTURATION.md
+    plans_alimentes: [docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_STOCK.md, docs/plans/PLAN_AUDIT_SAV.md, docs/plans/PLAN_AUDIT_ANALYSE.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_SECURITE.md, docs/plans/PLAN_AUDIT_ACQUISITION.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_PARAMETRES.md]
+    pr: 1373
+    date: 2026-11-11
+    dossier: docs/audits/2026-11-11-parcours-PF9.md
+    notes: "Audit de PARCOURS (L2, 11/11/2026, base 3acfee4, fraîcheur 93f8626) : 77 gestes d'argent et de vente, 565 gestes routés stock, achats, chantiers et SAV, environ 650 sites transversaux et 1 260 écritures d'écran inventoriés en quatre lectures, quatre vérificateurs frais, une seconde lentille sur les candidats S1, une critique de complétude et son vérificateur ; 33 constats, 10 prouvés par sonde hôte jouée le 11/11 (vrai code, bouchons, toutes repro), 23 lus ; gravités 0 S1, 7 S2 (tous réels aujourd'hui : paiement partiel et avoir rejouables, facture supprimée pendant son émission, annulations croisées d'une vente, bon fournisseur à deux onglets, mouvements de stock rejouables, hausse de prix en masse doublée, statut réécrit par un PATCH concurrent), 26 S3 dont 15 latents. Prod lue le 11/11 : aucun paiement en double constaté. Limites : aucune pile ne servait main (aucun test Django, aucun rejeu par l'API). D-ACNC-1..2 ouvertes. Tâches ACNC1-16, ACNC21-36, ACNC41-56 (48 posées, dont 2 GATED : FACTURATION 14, STOCK 7, SAV 5, ANALYSE 4, CHANTIERS 4, DEPLOY 3, SECURITE 3, ACQUISITION 2, DEVIS 2, LEAD 2, PARAMETRES 1 ; acceptation ACNC56)."
+
   - id: PF12
     rang: 38
     declencheur: erreurs-ecran
