@@ -7887,17 +7887,14 @@ def resoudre_token_portail_fournisseur(token):
     « total » ou dont la candidature est rejetée est refusé comme un jeton
     inconnu (None ⇒ 404 INDISTINCT côté vue) : un fournisseur coupé ne voit
     plus ses montants de factures ni ne modifie une date de BCF."""
-    from .models import Fournisseur, PortailFournisseurToken
+    from .models import PortailFournisseurToken
+    from .selectors import fournisseur_coupe_du_portail  # APUB70 : règle unique
     token_obj = (PortailFournisseurToken.objects
                  .select_related('fournisseur', 'company')
                  .filter(token=token).first())
     if token_obj is None or not token_obj.est_valide:
         return None
-    fournisseur = token_obj.fournisseur
-    if (fournisseur is None or fournisseur.is_archived
-            or fournisseur.statut == Fournisseur.Statut.BLOQUE_TOTAL
-            or fournisseur.statut_validation
-            == Fournisseur.StatutValidation.REJETE):
+    if fournisseur_coupe_du_portail(token_obj.fournisseur):
         return None
     return token_obj
 
