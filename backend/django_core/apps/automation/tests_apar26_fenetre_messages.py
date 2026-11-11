@@ -130,3 +130,32 @@ class FenetreMessagesTests(TestCase):
             with self.captureOnCommitCallbacks(execute=True):
                 run_action(self.regle, self.lead, self.co)
         self.assertEqual(mail.outbox[0].reply_to, [])
+
+    def test_send_email_sans_corps_refuse_et_ignore(self):
+        """AMSG68 — sans ``body``/``message``/``template`` : 400 à la création ;
+        une règle ancienne sans corps finit SKIPPED, aucun e-mail."""
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+        admin = get_user_model().objects.create_user(
+            username='amsg68-admin', password='x', company=self.co, role_legacy='admin')
+        api = APIClient()
+        api.force_authenticate(admin)
+        avant = AutomationRule.objects.count()
+        r = api.post('/api/django/automation/rules/', {
+            'nom': 'Sans corps', 'trigger_type': 'lead_stage_change', 'trigger_config': {},
+            'action_type': 'send_email', 'action_config': {'subject': 'Bonjour'}}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('corps obligatoire', str(r.data['action_config']))
+        self.assertEqual(AutomationRule.objects.count(), avant)
+
+        ancienne = AutomationRule.objects.create(
+            company=self.co, nom='Ancienne', enabled=False, trigger_type=TriggerType.LEAD_STAGE_CHANGE,
+            trigger_config={}, action_type=ActionType.SEND_EMAIL, action_config={'subject': 'Bonjour'})
+        mail.outbox = []
+        with frozen(LENDEMAIN):
+            with self.captureOnCommitCallbacks(execute=True):
+                run_action(ancienne, self.lead, self.co)
+        self.assertEqual(mail.outbox, [])
+        run = AutomationRun.objects.get(rule=ancienne)
+        self.assertEqual(run.status, AutomationRun.Status.SKIPPED)
+        self.assertEqual(run.message, 'Corps vide : e-mail non envoyé.')

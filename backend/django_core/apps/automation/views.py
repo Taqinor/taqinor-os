@@ -36,7 +36,7 @@ from .models import (
 )
 from .selectors import DECLENCHEURS_PARQUES
 from .serializers import (
-    WEBHOOK_REGLE_INCOMPATIBLE, ApprovalDelegationSerializer,
+    CLES_CORPS_EMAIL, WEBHOOK_REGLE_INCOMPATIBLE, ApprovalDelegationSerializer,
     ApprovalRequestSerializer, ApprovalRequestTypeSerializer,
     AutomationApprovalSerializer, AutomationRuleSerializer,
     AutomationRuleVersionSerializer, AutomationRunSerializer,
@@ -145,8 +145,16 @@ def _regles_conditionnelles_creation():
             'type': 'object', 'required': ['field'],
             'properties': {'field': {
                 'enum': sorted(set_field_champs_autorises())}}}}}
+    # AMSG68 — un e-mail porte son corps (``serializers._valider_corps_email``).
+    email = {'required': ['action_type'], 'properties': {
+        'action_type': {'enum': [ActionType.SEND_EMAIL.value]}}}
+    corps_email = {'required': ['action_config'], 'properties': {'action_config': {
+        'type': 'object', 'anyOf': [
+            {'required': [cle], 'properties': {cle: {'type': 'string', 'minLength': 1}}}
+            for cle in CLES_CORPS_EMAIL]}}}
     return [{'anyOf': [{'not': declencheur}] + couples},
-            {'anyOf': [{'not': action}, champ_assignable]}]
+            {'anyOf': [{'not': action}, champ_assignable]},
+            {'anyOf': [{'not': email}, corps_email]}]
 
 
 REGLE_CORPS_CREATION = dict(

@@ -349,6 +349,9 @@ def reporter_hors_fenetre(rule, instance, company, context):
         f'{quand:%d/%m/%Y à %H:%M}.')
 
 
+#: AMSG68 — règle WhatsApp sans texte : aucune tâche « Envoyer ce WhatsApp » vide.
+MOTIF_CORPS_VIDE_WHATSAPP = 'Corps vide : tâche WhatsApp non créée.'
+
 #: APAR25 — résumé de la tâche qui porte le lien WhatsApp préparé.
 RESUME_TACHE_WHATSAPP = 'Envoyer ce WhatsApp'
 
@@ -367,6 +370,8 @@ def preparer_whatsapp(rule, instance, company, context):
     body, manquantes = rendre_texte(_texte_brut(rule, company), instance, company, context)
     if manquantes:
         return motif_variables(manquantes, 'tâche WhatsApp non créée'), phone, None, ''
+    if not (body or '').strip():  # AMSG68 — jumeau de l'e-mail : jamais une tâche vide
+        return MOTIF_CORPS_VIDE_WHATSAPP, phone, None, ''
     try:
         from apps.ventes.utils.whatsapp import build_wa_url
         url = build_wa_url(phone, body or '')
@@ -415,7 +420,8 @@ def _send_whatsapp(rule, instance, company, context, user):
     motif, phone, url, body = preparer_whatsapp(
         rule, instance, company, context)
     if motif:  # APAR91 — variable non résolue : SKIPPED, comme l'e-mail
-        return (Status.SKIPPED if motif.startswith('Variable(s) non résolue(s)') else Status.NOOP), motif
+        return (Status.SKIPPED if motif.startswith(('Variable(s) non résolue(s)', MOTIF_CORPS_VIDE_WHATSAPP))
+                else Status.NOOP), motif
     report = reporter_hors_fenetre(rule, instance, company, context)
     if report is not None:  # APAR26 — jamais en pleine nuit
         return report
@@ -454,6 +460,8 @@ def _send_email(rule, instance, company, context, user):
     if manquantes:
         return Status.SKIPPED, motif_variables(
             manquantes, 'e-mail non envoyé')
+    if not (body or '').strip():  # AMSG68 — jamais un e-mail sans corps
+        return Status.SKIPPED, 'Corps vide : e-mail non envoyé.'
     report = reporter_hors_fenetre(rule, instance, company, context)
     if report is not None:  # APAR26 — aucun e-mail client en pleine nuit
         return report
