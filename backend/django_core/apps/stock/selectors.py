@@ -419,6 +419,8 @@ def render_bcf_pdf_by_id(bc_id):
     bcf = get_bcf_by_id(bc_id)
     if bcf is None or bcf.statut == bcf.Statut.ANNULE:  # APUB32 : annulé => 404
         return None, None
+    if compte_fournisseur_portail_actif(bcf.company_id, bcf.fournisseur_id) is False:
+        return None, None  # APUB72 : accès portail fermé (révoqué ou coupé)
     from .utils.pdf_fournisseur import generate_bcf_pdf
     pdf_bytes = generate_bcf_pdf(bcf)
     from apps.ventes.utils.filenames import document_filename
