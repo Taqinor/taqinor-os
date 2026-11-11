@@ -51,7 +51,7 @@ matplotlib==3.9.2
 statsmodels==0.14.4
 
 # Email
-django-anymail[sendgrid]==10.3
+django-anymail[sendgrid]==15.2
 
 # XMKT33 — vérification DNS (SPF/DKIM/DMARC) du domaine d'envoi marketing.
 # Dépendance libre (MIT), aucun coût.
