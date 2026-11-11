@@ -129,6 +129,30 @@ class TestRappelRdvJ1(TestCase):
             summary='Envoyer ce WhatsApp').exists())
 
     @AVEC_CLE
+    def test_sujet_suit_la_langue_du_client(self):
+        """AMSG66 — sujet du rappel lu du modèle d'e-mail ``rappel_rdv`` de
+        la société, dans la langue du client ; sans langue : sujet d'avant."""
+        from apps.parametres.models_email import EmailTemplate
+        EmailTemplate.objects.create(
+            company=self.company, cle='rappel_rdv',
+            sujet_ar='تذكير بموعد الغد {reference}')
+        arabe = make_chantier(self.company, self.user,
+                              client_email='ar@example.invalid')
+        arabe.client.langue_document = 'ar'
+        arabe.client.save(update_fields=['langue_document'])
+        for inst in (self.inst, arabe):
+            Intervention.objects.create(
+                company=self.company, installation=inst,
+                type_intervention='pose', created_by=self.user,
+                date_prevue=self.demain, rdv_confirme=False)
+        rappel_rdv_j1()
+        sujets = {m.to[0]: m.subject for m in mail.outbox}
+        self.assertEqual(sujets['ar@example.invalid'],
+                         f'تذكير بموعد الغد {arabe.reference}')
+        self.assertEqual(sujets['client@example.invalid'],
+                         'Rappel de rendez-vous — demain')
+
+    @AVEC_CLE
     def test_balayage_rejoue_n_envoie_pas_deux_fois(self):
         """AMSG76 — un balayage rejoué le même jour (worker tué) ne renvoie
         pas le rappel : le marqueur est posé une fois après l'envoi ; un

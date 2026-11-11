@@ -132,9 +132,17 @@ def _envoyer_email_client(interv):
         logger.info('AMSG67 : rappel vide, aucun e-mail (intervention %s)',
                     interv.id)
         return 0
+    from apps.parametres.i18n_resolver import resolve_langue_sortie
+    from apps.parametres.models_email import EmailTemplate
     try:
+        sujet = EmailTemplate.render(  # AMSG66 — sujet éditable et traduit
+            interv.company, 'rappel_rdv', resolve_langue_sortie(
+                client=client, company=interv.company), civilite='',
+            nom=f"{getattr(client, 'prenom', '') or ''} {client.nom}".strip(),
+            reference=interv.installation.reference
+            or interv.installation.id)['sujet']
         return send_mail(
-            subject='Rappel de rendez-vous — demain',
+            subject=sujet,
             message=corps,
             from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', '')
             or 'noreply@erp.local',
