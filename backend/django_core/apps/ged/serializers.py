@@ -1474,6 +1474,13 @@ class DepotPublicSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                            "modifiable : créez un nouveau lien."]})
         return attrs
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        # ALEC36 — le jeton ouvre le dépôt : créateur et administrateur seuls.
+        if not voit_le_secret(self.context, instance.created_by_id):
+            data.pop('token', None)
+        return data
+
 
 class ExigenceDossierSerializer(ChampsStrictsSansDecimalMixin,
                                 SameCompanyFKSerializerMixin, serializers.ModelSerializer):
