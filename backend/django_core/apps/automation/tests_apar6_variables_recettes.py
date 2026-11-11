@@ -14,7 +14,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from django.core import mail
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from apps.automation import actions, engine
 from apps.automation.models import (
@@ -138,3 +138,42 @@ class VariablesRecettesTests(TestCase):
         run = AutomationRun.objects.get(rule=regle)
         self.assertEqual(run.status, AutomationRun.Status.SKIPPED)
         self.assertIn('{inconnue}', run.message)
+
+    @override_settings(NOTIFICATIONS_QUIET_HOURS_ENABLED=False)
+    def test_whatsapp_variable_non_resolue_skipped(self):
+        """APAR91 (C-APAR-OPT1-084) — le modèle « devis_unique » garde
+        {civilite}, {nom}, {lien} : SKIPPED nommé, 0 tâche, même motif en
+        simulation ; un texte entièrement résolu crée la tâche comme avant."""
+        from django.contrib.contenttypes.models import ContentType
+
+        from apps.automation.simulation import simuler_regle
+        from apps.records.models import Activity
+        self.cli.telephone = '+212612345678'
+        self.cli.save(update_fields=['telephone'])
+        devis = self._instance('devis_accepted')
+
+        def regle(nom, cfg):
+            return AutomationRule.objects.create(
+                company=self.co, nom=nom, enabled=False, trigger_type=TriggerType.DEVIS_ACCEPTED,
+                trigger_config={}, action_type=ActionType.SEND_WHATSAPP, action_config=cfg)
+
+        def taches():
+            return Activity.objects.filter(content_type=ContentType.objects.get_for_model(Devis),
+                                           object_id=devis.pk).count()
+        avant = taches()
+        modele = regle('WA modèle', {'template': 'devis_unique'})
+        effets = simuler_regle(modele, devis, self.co, journaliser=False)
+        with self.captureOnCommitCallbacks(execute=True):
+            engine.run_action(modele, devis, self.co)
+        run = AutomationRun.objects.get(rule=modele)
+        self.assertEqual(run.status, AutomationRun.Status.SKIPPED)
+        self.assertTrue(run.message.startswith(
+            'Variable(s) non résolue(s) : {civilite}, {lien}, {nom} — '), run.message)
+        self.assertEqual(effets[0]['effet'], run.message)
+        self.assertEqual(taches(), avant)
+
+        texte = regle('WA texte', {'message': 'Bonjour {client_nom}, devis {reference}.'})
+        with self.captureOnCommitCallbacks(execute=True):
+            engine.run_action(texte, devis, self.co)
+        self.assertEqual(AutomationRun.objects.get(rule=texte).status, AutomationRun.Status.SUCCESS)
+        self.assertEqual(taches(), avant + 1)

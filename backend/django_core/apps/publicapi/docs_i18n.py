@@ -253,7 +253,13 @@ ENDPOINTS_EN = {
     '/api/public/v1/jobs/': "Paginated list of the company's bulk jobs.",
     '/api/public/v1/jobs/<id>/': (
         "Bulk job tracking: status, progress %, counters, result/error "
-        "links (presigned, short-lived)."),
+        "links (public API paths below, guarded by the key)."),
+    '/api/public/v1/jobs/<id>/resultat/': (
+        "Result file (CSV/JSONL) of a finished job, as an attachment; 404 "
+        "until the job is finished."),
+    '/api/public/v1/jobs/<id>/erreurs/': (
+        "File of a job's failed rows (from the first one, even while "
+        "running), as an attachment; 404 without a failed row."),
     '/api/public/v1/jobs/<id>/relancer/': (
         "Resumes a failed job from its persistent cursor — never a "
         "duplicate, never a skip."),

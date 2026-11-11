@@ -92,6 +92,29 @@ describe('SauvegardesPage (NTOBS5)', () => {
       expect(screen.getByText(/Copie hors serveur en échec le/)).toBeInTheDocument())
   })
 
+  it('échec de la copie : la cause est affichée (ADCG115)', async () => {
+    const hier = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+    const base = {
+      derniere_sauvegarde: { date: hier, statut: 'termine' },
+      dernier_drill: { date: hier, statut: 'termine' },
+      rpo_planifie: null,
+      rto_annonce_heures: null,
+    }
+    parametresApi.getMesSauvegardes.mockResolvedValueOnce({
+      data: { ...base, copie_distante: { etat: 'echec', date: hier, message: 'injoignable' } },
+    })
+    const { unmount } = renderPage(<SauvegardesPage />)
+    await waitFor(() =>
+      expect(screen.getByText(/^Copie hors serveur en échec le .+ : injoignable$/)).toBeInTheDocument())
+    unmount()
+    parametresApi.getMesSauvegardes.mockResolvedValueOnce({
+      data: { ...base, copie_distante: { etat: 'echec', date: hier, message: '' } },
+    })
+    renderPage(<SauvegardesPage />)
+    const badge = await screen.findByText(/Copie hors serveur en échec le/)
+    expect(badge.textContent).not.toContain(' : ') // l'heure de la date garde son « : »
+  })
+
   it("affiche un état vide propre quand aucune sauvegarde n'existe encore", async () => {
     parametresApi.getMesSauvegardes.mockResolvedValueOnce({
       data: {

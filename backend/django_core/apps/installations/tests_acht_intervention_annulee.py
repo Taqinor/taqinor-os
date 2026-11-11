@@ -158,3 +158,43 @@ class InterventionAnnuleeTests(TestCase):
                          [(fusible, Decimal('1'))])
         autre = Company.objects.create(nom='Autre ACSV101', slug='autre-acsv101')
         self.assertEqual(consommations_appliquees_du_ticket(autre, ticket.id), [])
+
+    def test_consommations_appliquees_sans_quantite_nulle(self):
+        """ACSV116 (C-ACSV-OPT1-053b) — une ligne F11 validée à 0 (marquée
+        appliquée sans mouvement de stock) n'est pas rendue : la facture du
+        ticket ne porte pas de ligne à quantité 0."""
+        from decimal import Decimal
+        from apps.crm.models import Client
+        from apps.installations.models import (
+            ConsommationLigne, MaterielConsommation,
+        )
+        from apps.installations.selectors import (
+            consommations_appliquees_du_ticket,
+        )
+        from apps.sav.models import Ticket
+        from apps.stock.models import Produit
+        client = Client.objects.create(
+            company=self.company, nom='Sav', prenom='Zero',
+            email='acsv116@example.invalid')
+        ticket = Ticket.objects.create(
+            company=self.company, reference='SAV-ACSV116-1', client=client)
+        fusible = Produit.objects.create(
+            company=self.company, nom='Fusible', sku='FUS-ACSV116',
+            prix_vente=Decimal('10'), quantite_stock=5)
+        cable = Produit.objects.create(
+            company=self.company, nom='Câble', sku='CAB-ACSV116',
+            prix_vente=Decimal('4'), quantite_stock=5)
+        iv = Intervention.objects.create(
+            company=self.company, installation=self.iv.installation,
+            ticket=ticket, type_intervention='depannage',
+            created_by=self.user)
+        conso = MaterielConsommation.objects.create(
+            company=self.company, intervention=iv, valide=True)
+        for produit, qte in ((fusible, '1'), (cable, '0')):
+            ConsommationLigne.objects.create(
+                company=self.company, consommation=conso, produit=produit,
+                designation=produit.nom, quantite_utilisee=Decimal(qte),
+                stock_applique=True)
+        rendu = consommations_appliquees_du_ticket(self.company, ticket.id)
+        self.assertEqual([(p.produit, p.quantite) for p in rendu],
+                         [(fusible, Decimal('1'))])

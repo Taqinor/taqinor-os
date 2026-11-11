@@ -343,6 +343,37 @@ class TestAsav102RegistreApi(TestCase):
         self.assertEqual(self.api_b.get(
             f'{self.URL}{certif.pk}/pdf/').status_code, 404)
 
+    def test_pdf_d_un_certificat_annule_porte_la_mention(self):
+        """AMON111 — le PDF d'un certificat annulé porte « ANNULÉ le
+        JJ/MM/AAAA — motif » (référence et tonnes inchangées), jamais la
+        version GED d'émission ; aucune nouvelle version GED déposée."""
+        from unittest import mock
+
+        from django.utils import timezone
+
+        from apps.ged.services import find_document_by_source
+        faux_pdf = (lambda html: b'%PDF-1.4 ' + html.encode('utf-8'))
+        with mock.patch('apps.monitoring.report_carbon.render_pdf',
+                        side_effect=faux_pdf):
+            r = self._emettre()
+            self.assertEqual(r.status_code, 201, r.data)
+            certif = CertificatCarbone.objects.get(pk=r.data['id'])
+            r = self.api.post(f'{self.URL}{certif.pk}/annuler/',
+                              {'motif': 'période erronée'}, format='json')
+            self.assertEqual(r.status_code, 200, r.data)
+            pdf = self.api.get(f'{self.URL}{certif.pk}/pdf/')
+        self.assertEqual(pdf.status_code, 200)
+        contenu = pdf.content.decode('utf-8', errors='ignore')
+        certif.refresh_from_db()
+        le = timezone.localtime(certif.annule_le).strftime('%d/%m/%Y')
+        self.assertIn(f'ANNULÉ le {le} — période erronée', contenu)
+        self.assertIn(certif.reference, contenu)
+        self.assertIn('0.810', contenu)
+        document = find_document_by_source(
+            self.company, source_type='monitoring.certificat_carbone',
+            source_id=certif.pk)
+        self.assertEqual(document.versions.count(), 1)
+
     def test_annuler_puis_reemettre(self):
         """AMON93 — annulation (motif, auteur, date) puis ré-émission de la
         même cible et période ; second « annuler » 409 ; motif vide 400."""

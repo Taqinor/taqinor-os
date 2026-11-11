@@ -198,3 +198,72 @@ class TestCalendar(TestCase):
         self.assertEqual(p['i1'].date_prevue.isoformat(), cible)
         self.assertEqual(bouger(p['admin'], 'pose', p['c2']).status_code, 200)
         self.assertEqual(bouger(p['admin'], 'intervention', p['i2']).status_code, 200)
+
+    def _activites(self):
+        """ACHT138/139 — Directeur D et son à-faire personnel P, Commercial C
+        (portée soi) et l'activité A de son lead, Technicien T et A_T."""
+        from django.contrib.contenttypes.models import ContentType
+
+        from apps.crm.models import Lead
+        from apps.records.models import Activity
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import (
+            CANONICAL_SYSTEM_ROLES, COMMERCIAL_PERMISSIONS, TECHNICIEN_PERMISSIONS)
+        roles = {nom: Role.objects.create(company=self.company, nom=nom, permissions=list(perms))
+                 for nom, perms in (('Directeur', dict(CANONICAL_SYSTEM_ROLES)['Directeur']),
+                                    ('Commercial', COMMERCIAL_PERMISSIONS),
+                                    ('Technicien', TECHNICIEN_PERMISSIONS))}
+        p = {k: User.objects.create_user(username=f'{k}-act', password='x',
+                                         company=self.company, role=roles[nom])
+             for k, nom in (('D', 'Directeur'), ('C', 'Commercial'), ('T', 'Technicien'))}
+        lead = Lead.objects.create(company=self.company, nom='L-act', owner=p['C'])
+        ct, jour = ContentType.objects.get_for_model(Lead), date.today() + timedelta(days=3)
+        p['P'] = Activity.objects.create(company=self.company, summary='perso D', personnelle=True,
+                                         created_by=p['D'], assigned_to=p['D'], due_date=jour)
+        for k, qui in (('A', p['C']), ('A_T', p['T'])):
+            p[k] = Activity.objects.create(company=self.company, content_type=ct,
+                                           object_id=lead.pk, summary=k, created_by=p['C'],
+                                           assigned_to=qui, due_date=jour)
+        return p
+
+    def test_activites_bornees_a_la_vue_des_activites(self):
+        """ACHT138 (C-ACHT-OPT1-136) — T : {A_T} ; C : A, jamais P ; D : tout ;
+        autre société : rien."""
+        p = self._activites()
+
+        def vus(user):
+            r = self._api_de(user).get('/api/django/reporting/calendar/?types=activite')
+            self.assertEqual(r.status_code, 200, r.data)
+            return {e['obj_id'] for e in r.data['events']}
+        self.assertEqual(vus(p['T']), {p['A_T'].pk})
+        self.assertIn(p['A'].pk, vus(p['C']))
+        self.assertNotIn(p['P'].pk, vus(p['C']))
+        self.assertEqual(vus(p['D']), {p['P'].pk, p['A'].pk, p['A_T'].pk})
+        autre = User.objects.create_user(
+            username='autre-act', password='x', role_legacy='responsable', company=self.other)
+        self.assertEqual(vus(autre), set())
+
+    def test_reschedule_activite_hors_vue_404(self):
+        """ACHT139 (C-ACHT-OPT1-137) — T sur A et P : 404, échéances
+        inchangées ; T sur A_T : 200 ; C sur P : 404 ; D sur A : 200 ; autre
+        société : 404."""
+        p = self._activites()
+        jour, cible = p['A'].due_date, (date.today() + timedelta(days=10)).isoformat()
+
+        def bouger(user, act):
+            return self._api_de(user).post('/api/django/reporting/calendar/reschedule/',
+                                           {'type': 'activite', 'id': act.pk, 'date': cible},
+                                           format='json').status_code
+        self.assertEqual(bouger(p['T'], p['A']), 404)
+        self.assertEqual(bouger(p['T'], p['P']), 404)
+        self.assertEqual(bouger(p['C'], p['P']), 404)
+        autre = User.objects.create_user(
+            username='autre-act2', password='x', role_legacy='responsable', company=self.other)
+        self.assertEqual(bouger(autre, p['A']), 404)
+        for k in ('A', 'P'):
+            p[k].refresh_from_db()
+            self.assertEqual(p[k].due_date, jour)
+        self.assertEqual(bouger(p['T'], p['A_T']), 200)
+        p['A_T'].refresh_from_db()
+        self.assertEqual(p['A_T'].due_date.isoformat(), cible)
+        self.assertEqual(bouger(p['D'], p['A']), 200)

@@ -397,6 +397,11 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         # CIQ621 — dérogation Directeur (motif) aux travaux sans convention.
         motif_derogation_8221 = (
             self.request.data.get('motif_derogation_8221') or '').strip()
+        if 'custom_data' in serializer.validated_data:  # ACSV113
+            from ..jalon_reception import CLE_RECEPTION_DEFAITE as cle
+            cd = {k: v for k, v in (serializer.validated_data['custom_data'] or {}).items() if k != cle}
+            cd.update({k: v for k, v in (old.custom_data or {}).items() if k == cle})
+            serializer.validated_data['custom_data'] = cd
         with transaction.atomic():
             super().perform_update(serializer)
             inst = serializer.instance
@@ -573,7 +578,14 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         # écrits par le service, dans le MÊME `save()` que le statut.
         champs = {}
         if data.get('date_mise_en_service'):
-            champs['date_mise_en_service'] = data['date_mise_en_service']
+            # ACSV114 — ISO et jamais dans le futur (400 avant toute écriture).
+            try:
+                d = oa.serializers.DateField().run_validation(data['date_mise_en_service'])
+            except oa.serializers.ValidationError as exc:
+                raise oa.serializers.ValidationError({'date_mise_en_service': exc.detail})
+            if d > timezone.localdate():
+                raise oa.serializers.ValidationError({'date_mise_en_service': 'Date future refusée.'})
+            champs['date_mise_en_service'] = d
         if 'mes_pv_notes' in data:
             champs['mes_pv_notes'] = data.get('mes_pv_notes')
         if data.get('mes_production_test') not in (None, ''):

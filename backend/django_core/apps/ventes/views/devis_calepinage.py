@@ -19,6 +19,7 @@ from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from apps.roles.permissions import DroitDeLaGrille
 from ..utils.client_links import chemin_proposition
 from .devis_gardes import _refus_modifiabilite, _reponse_non_modifiable
 from ..domain.bornes import arrondi_si_nombre_json
@@ -607,8 +608,8 @@ class DevisCalepinageActionsMixin:
                    responses={200: D.AjouterBoqResponse,
                               409: D.ErreurSyncLayout})
     @action(detail=True, methods=['post'],
-            url_path='ajouter-boq-electrique',
-            permission_classes=[IsResponsableOrAdmin])
+            url_path='ajouter-boq-electrique',  # ASEC94 — grille « Modifier »
+            permission_classes=[IsResponsableOrAdmin, DroitDeLaGrille('ventes_modifier')])
     def ajouter_boq_electrique(self, request, pk=None):
         """PV47 — reporte le BORDEREAU électrique (PV41) en lignes de devis.
 
