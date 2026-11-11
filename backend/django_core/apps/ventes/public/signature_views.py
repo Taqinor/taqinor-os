@@ -112,6 +112,10 @@ def _refus_aucun_canal(err):
         status=status.HTTP_409_CONFLICT))
 
 
+#: APUB8 — vocabulaire ``channel`` du site (``proposition.ts`` / QW5).
+CANAUX_CONTACT_PUBLIC = frozenset({'rappel', 'whatsapp', 'question', 'voice', 'revision'})
+
+
 @api_view(['POST'])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -163,6 +167,10 @@ def proposal_contact_request(request, token):
     canal = (str(
         request.data.get('channel') or request.data.get('canal') or ''
     )).strip()[:20]
+    # APUB8 — seuls les canaux du site (sans canal : clé `default`, inchangé) :
+    # un canal libre ouvrait une clé d'idempotence neuve par valeur.
+    if canal and canal not in CANAUX_CONTACT_PUBLIC:
+        return _noindex(Response({'canal': ['Canal de contact inconnu.']}, status=status.HTTP_400_BAD_REQUEST))
     message = (str(request.data.get('message') or '')).strip()[:2000]
     revision_kind = (str(request.data.get('revision_kind') or '')).strip()[:20]
 
