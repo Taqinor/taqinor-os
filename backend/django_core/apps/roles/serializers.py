@@ -20,7 +20,9 @@ from drf_spectacular.utils import extend_schema_field, inline_serializer
 #: ne disait que « chaîne » alors que le serveur refusait tout code hors
 #: catalogue (``"00"`` « conforme » → 400). Catalogue ``ALL_PERMISSIONS`` OU
 #: famille ODY26 « app visible » (``permissions_registre.EST_PERMISSION_APP``).
-MOTIF_CODE_PERMISSION = '^(?:%s|app_[a-z0-9][a-z0-9_]*_voir)$' % '|'.join(
+#: APUB54 — + famille XPLT16 ``custom_object.<code>.voir|gerer``, par forme.
+MOTIF_CODE_PERMISSION = ('^(?:%s|app_[a-z0-9][a-z0-9_]*_voir'
+                         r'|custom_object\.[-a-zA-Z0-9_]+\.(?:voir|gerer))$') % '|'.join(
     re.escape(code) for code in ALL_PERMISSIONS)
 _RE_CODE_PERMISSION = re.compile(MOTIF_CODE_PERMISSION)
 

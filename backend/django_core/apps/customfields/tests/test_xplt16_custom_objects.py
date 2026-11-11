@@ -189,3 +189,36 @@ class TestCustomObjectRolePermission(CF16Base):
         resp = self.api.get(
             '/api/django/custom-fields/custom-objects/registre_cles/records/')
         self.assertEqual(resp.status_code, 200, resp.data)
+
+    def test_directeur_livre_lit_et_ecrit_et_octroie(self):
+        """APUB54 — le Directeur livré (`init_roles`) lit et écrit les
+        enregistrements ; il octroie `custom_object.<code>.voir` par l'API des
+        rôles (200) ; le porteur lit (200) ; le Commercial reste à 403."""
+        from django.core.management import call_command
+        call_command('init_roles', verbosity=0)
+        url = '/api/django/custom-fields/custom-objects/registre_cles/records/'
+
+        def api_de(role, nom):
+            api = APIClient()
+            api.credentials(HTTP_AUTHORIZATION='Bearer %s' % AccessToken.for_user(
+                User.objects.create_user(username=nom, password='x',
+                                         company=self.company, role=role)))
+            return api
+        directeur = api_de(Role.objects.get(
+            company=self.company, nom='Directeur'), 'apub54_dir')
+        self.assertEqual(directeur.get(url).status_code, 200)
+        resp = directeur.post(url, {'data': {'numero_cle': 'D1'}}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        perso = Role.objects.create(
+            company=self.company, nom='APUB54 perso', permissions=[])
+        resp = directeur.patch(
+            f'/api/django/roles/{perso.id}/',
+            {'permissions': ['custom_object.registre_cles.voir']},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        perso.refresh_from_db()
+        self.assertEqual(perso.permissions, ['custom_object.registre_cles.voir'])
+        self.assertEqual(api_de(perso, 'apub54_porteur').get(url).status_code, 200)
+        commercial = api_de(Role.objects.get(
+            company=self.company, nom='Commercial'), 'apub54_com')
+        self.assertEqual(commercial.get(url).status_code, 403)
