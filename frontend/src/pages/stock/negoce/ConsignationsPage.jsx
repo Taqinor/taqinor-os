@@ -7,6 +7,7 @@ import {
   messageServeur, messageServeurBlob, ouvrirBlob,
 } from '../../../features/stock/api/erreurs'
 import { todayLocalIso } from '../../../lib/dateLocale.js'
+import usePeutEcrireStock from '../usePeutEcrireStock'
 
 /* ASTK221 — Consignation : dépôts chez les clients, déclaration de
    consommation (la facture brouillon créée est affichée avec son lien),
@@ -56,6 +57,8 @@ function Declaration({ d }) {
 }
 
 function CarteDepot({ depot, onGeste, occupe, onErreur }) {
+  // ADRG34 — déclarer crée une facture brouillon : `ventes_creer`, comme le serveur.
+  const peutDeclarer = usePeutEcrireStock('ventes_creer')
   const [qte, setQte] = useState('')
   const [erreurQte, setErreurQte] = useState(null)
 
@@ -91,7 +94,7 @@ function CarteDepot({ depot, onGeste, occupe, onErreur }) {
           {depot.declarations.map((d) => <Declaration key={d.id} d={d} />)}
         </ul>
       )}
-      {depot.statut === 'actif' && (
+      {depot.statut === 'actif' && peutDeclarer && (
         <div className="flex flex-wrap items-start gap-2">
           <div className="flex flex-col gap-1">
             <Input

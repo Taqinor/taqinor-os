@@ -150,7 +150,9 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
         if self.action in WRITE_ACTIONS + ['declarer_consommation',
                                            'export_xlsx']:
             return [IsResponsableOrAdmin(), *droits_de_la_grille(
-                self, export_xlsx=[DroitDeLaGrille('stock_export')])]  # ASEC92
+                self, export_xlsx=[DroitDeLaGrille('stock_export')],  # ASEC92
+                # ADRG34 — déclarer = créer une facture brouillon : `ventes_creer`.
+                declarer_consommation=[DroitDeLaGrille('ventes_creer')])]
         return [IsAdminRole()]
 
     def get_queryset(self):

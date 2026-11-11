@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react'
+import { makeAuthStore, renderStockPage } from '../stockPage.testHelpers'
 import { documentContrat } from '../../../test/fixtures/contractSamples'
 
 /* ============================================================================
@@ -33,12 +33,20 @@ function brancher() {
   })
 }
 
-const monter = () => render(<MemoryRouter><ConsignationsPage /></MemoryRouter>)
+// ADRG34 — « Déclarer » suit `ventes_creer` : le store de test le porte par défaut.
+const monter = (permissions = ['stock_voir', 'stock_modifier', 'ventes_creer']) =>
+  renderStockPage(ConsignationsPage, makeAuthStore({ permissions }))
 
 beforeEach(() => { vi.clearAllMocks(); brancher() })
 afterEach(() => { cleanup() })
 
 describe('ASTK221 — ConsignationsPage', () => {
+  it('ADRG34 — sans `ventes_creer` : pas de « Déclarer la consommation »', async () => {
+    monter(['stock_voir', 'stock_modifier', 'stock_mouvement'])
+    expect((await screen.findAllByRole('button', { name: /Relevé PDF/ })).length).toBeGreaterThan(0)
+    expect(screen.queryByRole('button', { name: /Déclarer la consommation/i })).toBeNull()
+  })
+
   it('déclarer affiche la facture créée', async () => {
     api.post.mockImplementation(() => {
       etat = { ...LISTE, results: [{
