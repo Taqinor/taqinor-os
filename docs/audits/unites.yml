@@ -1033,7 +1033,7 @@ unites:
     groupe: ACEL
     plan: docs/plans/PLAN_AUDIT_DEPLOY.md
     plans_alimentes: [docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_SECURITE.md, docs/plans/PLAN_AUDIT_ANALYSE.md, docs/plans/PLAN_AUDIT_STOCK.md, docs/plans/PLAN_AUDIT_DOCUMENTS.md, docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_ACQUISITION.md, docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_PARAMETRES.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_SAV.md]
-    pr: 0
+    pr: 1369
     date: 2026-11-11
     dossier: docs/audits/2026-11-11-parcours-PF11.md
     notes: "Audit de PARCOURS (L2, 11/11/2026, base 3acfee4) : 126 entrées du planning et 150 tâches Celery inventoriées par script ast, puis quatre lectures (argent, stock, chantiers, SAV ; CRM, notifications, GED, publicité ; plateforme et configuration Celery ; tâches mortes, signaux, déploiement, service IA), quatre vérificateurs frais et une critique ; mécanique Celery rejouée sur la vraie version 5.4.0 ; 37 constats, 4 prouvés par sonde hôte (toutes repro), 33 lus ou rejoués hors dépôt ; gravités 0 S1, 4 S2, 33 S3 ; aucun mélange de sociétés, aucun numéro ni montant dupliqué par une tâche planifiée. D-ACEL-1..3 ouvertes. Tâches ACEL1-18, ACEL31-48, ACEL61-80 (56 posées, dont 8 GATED : DEPLOY 9, SECURITE 9, ANALYSE 8, STOCK 6, DOCUMENTS 5, LEAD 4, ACQUISITION 3, FACTURATION 3, PARAMETRES 3, CHANTIERS 2, DEVIS 2, SAV 2)."
