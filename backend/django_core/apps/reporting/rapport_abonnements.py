@@ -290,9 +290,9 @@ def _envoyer(abonnement, adresses, filename, contenu, content_type):
         body=(f'Bonjour,\n\nVeuillez trouver ci-joint le rapport '
               f'« {titre} ».\n\nCordialement.'),
         from_email=from_email, to=adresses,
-        connection=get_connection(fail_silently=True))
+        connection=get_connection(fail_silently=False))
     message.attach(filename, contenu, content_type)
-    message.send(fail_silently=True)
+    message.send(fail_silently=False)  # AMSG80 — l'échec lève : statut ``erreur``
 
 
 def executer_abonnement(abonnement, now=None):
