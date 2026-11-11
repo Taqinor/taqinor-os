@@ -45,6 +45,12 @@ export function jsonLdInvalides(html: string): string[] {
   return out;
 }
 
+/** WAUD93 — commentaires HTML hors <script>/<style>/<textarea>/<pre> (notes de dev livrées au public). */
+export function commentairesHtml(html: string): string[] {
+  const horsProteges = html.replace(/<(script|style|textarea|pre)\b[\s\S]*?<\/\1>/gi, '');
+  return [...horsProteges.matchAll(/<!--[\s\S]*?-->/g)].map((m) => m[0].slice(0, 80));
+}
+
 export function nonReciproques(pages: { route: string; html: string }[]): string[] {
   const parUrl = new Map(pages.map((p) => [decodeURI(new URL(p.route, SITE).href), p]));
   const fautes: string[] = [];
@@ -89,6 +95,19 @@ describe('WAUD59 — tech SEO du HTML construit', () => {
     expect(fautes.length).toBeLessThanOrEqual(LIENS_SANS_BARRE_MAX);
   });
 
+  it('WAUD93 — aucun commentaire HTML (notes de développement) dans le HTML construit', () => {
+    const fautes = pages.flatMap(({ route, html }) => commentairesHtml(html).map((c) => `${route}: ${c}`));
+    expect(fautes.slice(0, 10), `${fautes.length} commentaires`).toEqual([]);
+  });
+
+  it('WAUD91 — kit (EN, AR) et devis (EN) construits, avec leurs 4 hreflang', () => {
+    for (const route of ['/en/kit-solaire-maroc/', '/ar/kit-solaire-maroc/', '/en/devis-panneaux-solaires-maroc/']) {
+      const p = pages.find((x) => x.route === route);
+      expect(p, route).toBeDefined();
+      expect([...alternates(p!.html).keys()].sort(), route).toEqual(['ar', 'en', 'fr', 'x-default']);
+    }
+  });
+
   it('JSON-LD parsable partout', () => {
     expect(pages.flatMap(({ route, html }) => jsonLdInvalides(html).map((j) => `${route}: ${j}`))).toEqual([]);
   });
@@ -107,5 +126,9 @@ describe('WAUD59 — test du test : casser une règle fait rougir la garde', () 
   it('lien sans barre et JSON-LD cassé détectés ; fichier et ancre tolérés', () => {
     expect(liensSansBarre('<a href="/faq">x</a><a href="/faq/">y</a><a href="/rss.xml">z</a>')).toEqual(['/faq']);
     expect(jsonLdInvalides('<script type="application/ld+json">{oups</script>')).toHaveLength(1);
+  });
+  it('WAUD93 — commentaire HTML détecté ; celui d’un script toléré', () => {
+    expect(commentairesHtml('<p>a</p><!-- W215 — note --><b>b</b>')).toHaveLength(1);
+    expect(commentairesHtml('<script>var s = "<!-- x -->";</script><p>ok</p>')).toEqual([]);
   });
 });

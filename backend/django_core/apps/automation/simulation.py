@@ -99,8 +99,12 @@ def _decrire_message(source, instance, company, context):
     motif, phone, url, corps = actions.preparer_whatsapp(
         source, instance, company, context)
     if motif:
+        # APAR91 — même prédicat que ``actions._send_whatsapp`` : variable non
+        # résolue = SKIPPED (comme l'e-mail), toute autre cause = NOOP.
+        prevu = ('skipped' if motif.startswith('Variable(s) non résolue(s)')
+                 else 'noop')
         return _effet(source.action_type, motif, destinataire=phone or '',
-                      statut_prevu='noop')
+                      statut_prevu=prevu)
     return _effet(source.action_type,
                   f'Une tâche « {actions.RESUME_TACHE_WHATSAPP} » serait '
                   f'créée (lien pour {phone}).',

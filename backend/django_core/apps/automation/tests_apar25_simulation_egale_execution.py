@@ -194,6 +194,21 @@ class SimulationEgaleExecutionTests(TestCase):
         self.assertEqual(len(mail.outbox), 0)
         self.assertEqual(Activity.objects.count(), taches)
 
+    def test_whatsapp_variable_non_resolue_simulee_skipped(self):
+        # APAR91 — variable non résolue : la simulation prédit « skipped »
+        # (comme l'exécution), avec le motif « Variable(s) non résolue(s) ».
+        lead = Lead.objects.create(
+            company=self.co, nom='Variable', stage='NEW',
+            telephone='+212612345678')
+        regle = AutomationRule.objects.create(
+            company=self.co, nom='WA variable', enabled=False,
+            trigger_type=TriggerType.LEAD_STAGE_CHANGE, trigger_config={},
+            action_type=ActionType.SEND_WHATSAPP,
+            action_config={'body': 'Bonjour {variable_inconnue_apar91}'})
+        effets = simuler_regle(regle, lead, self.co, journaliser=False)
+        self.assertEqual(effets[0]['statut_prevu'], 'skipped')
+        self.assertTrue(effets[0]['effet'].startswith('Variable(s) non'))
+
     def test_client_d_un_equipement_resolu(self):
         equipement = self._instance('warranty_expiring')
         self.assertEqual(actions._resolve_client(equipement),
