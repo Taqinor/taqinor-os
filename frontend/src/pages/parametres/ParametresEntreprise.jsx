@@ -116,6 +116,8 @@ const DEMO_ONBOARDING_TAB = { key: 'demo_onboarding', label: 'Démo & Onboarding
 const TABS_ECRITURE_PARAMETRES = [
   'societe', 'leads', 'devis', 'avance', 'messages', 'email', 'statuts',
   'automatisations', 'notifications',
+  // APUB57 — masquer/démasquer un conseil « Premiers pas » exige parametres_modifier.
+  'demo_onboarding',
 ]
 
 // ── Conteneur de la page Paramètres (D1) ───────────────────────────────────────

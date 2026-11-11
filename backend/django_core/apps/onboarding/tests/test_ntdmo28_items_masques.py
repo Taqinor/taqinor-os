@@ -129,3 +129,34 @@ class MasquageEndpointTest(TestCase):
         r = self._client(self.limite).post(
             f'/api/django/onboarding/items-masques/{item.id}/masquer/')
         self.assertEqual(r.status_code, 403)
+
+    def test_commercial_responsable_livre_ne_masque_pas(self):
+        """APUB57 — masquer/démasquer un conseil pour TOUTE la société exige
+        ``parametres_modifier`` : le « Commercial responsable » livré (registre
+        vivant, ``init_roles``) reçoit 403 sans effet mais lit la liste ; le
+        « Directeur » livré masque et démasque (200)."""
+        from django.core.management import call_command
+        call_command('init_roles', verbosity=0)
+        roles = {r.nom: r for r in Role.objects.filter(company=self.company)}
+        resp = User.objects.create_user(
+            'apub57-resp', password='x', company=self.company,
+            role=roles['Commercial responsable'])
+        directeur = User.objects.create_user(
+            'apub57-dir', password='x', company=self.company,
+            role=roles['Directeur'])
+        item = OnboardingChecklistItem.objects.get(key='import_clients')
+        base = f'/api/django/onboarding/items-masques/{item.id}'
+        c = self._client(resp)
+        for geste in ('masquer', 'demasquer'):
+            with self.subTest(geste=geste):
+                self.assertEqual(c.post(f'{base}/{geste}/').status_code, 403)
+        r = c.get('/api/django/onboarding/items-masques/')
+        self.assertEqual(r.status_code, 200)
+        row = next(x for x in r.data if x['key'] == 'import_clients')
+        self.assertFalse(row['masque'])
+        d = self._client(directeur)
+        r = d.post(f'{base}/masquer/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertTrue(next(x for x in r.data
+                             if x['key'] == 'import_clients')['masque'])
+        self.assertEqual(d.post(f'{base}/demasquer/').status_code, 200)
