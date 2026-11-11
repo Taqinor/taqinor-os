@@ -51,7 +51,7 @@
     "clsx": "^2.1.1",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.70.0",
-    "maplibre-gl": "^6.16.0",
+    "maplibre-gl": "^6.4.1",
     "pdfjs-dist": "^6.5.438",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
