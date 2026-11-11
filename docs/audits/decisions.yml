@@ -4459,6 +4459,78 @@ decisions:
     source: "audit de parcours PF8 (11/11/2026) : non posée (défaut recommandé : neutraliser_sauf_confirmes)"
     taches: [AMSG62]
 
+  - id: D-ASUP-1
+    question: "À l'effacement d'une personne, ses anciennes valeurs sont-elles caviardées dans le journal d'audit ?"
+    options:
+      - cle: caviarder
+        texte: "Oui : à l'effacement, les anciennes valeurs des champs personnels sont remplacées dans le journal d'audit (la trace du changement reste)"
+      - cle: garder
+        texte: "Non : le journal d'audit garde les anciennes valeurs (preuve complète, mais la donnée effacée y survit)"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF10 (11/11/2026) : non posée (défaut recommandé : caviarder)"
+    taches: [ASUP13]
+
+  - id: D-ASUP-2
+    question: "Un compte d'employé qui a laissé des traces peut-il être supprimé, ou seulement désactivé ?"
+    options:
+      - cle: desactiver_seulement
+        texte: "Seulement désactivé : un compte qui a laissé des traces (auteur, propriétaire de leads, documents) ne se supprime pas ; seul un compte sans aucune trace se supprime"
+      - cle: supprimer
+        texte: "Supprimable : la suppression reste offerte, les traces perdent leur auteur"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF10 (11/11/2026) : non posée (défaut recommandé : desactiver_seulement)"
+    taches: [ASUP5, ASUP6, ASUP55]
+
+  - id: D-ASUP-3
+    question: "Supprimer définitivement un produit qui a des mouvements de stock : refuser, ou effacer son historique ?"
+    options:
+      - cle: refuser
+        texte: "Refuser : un produit qui a des mouvements de stock reste archivé, son historique est gardé"
+      - cle: effacer
+        texte: "Garder : la suppression définitive efface aussi l'historique de stock du produit"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF10 (11/11/2026) : non posée (défaut recommandé : refuser)"
+    taches: [ASUP4]
+
+  - id: D-ASUP-4
+    question: "Combien de temps garder l'export d'une demande d'accès après l'effacement de la personne ?"
+    options:
+      - cle: supprimer_a_l_effacement
+        texte: "L'export est supprimé quand la personne est effacée ; seule la trace « demande traitée le … » reste"
+      - cle: garder
+        texte: "L'export reste gardé comme preuve de la réponse"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF10 (11/11/2026) : non posée (défaut recommandé : supprimer_a_l_effacement)"
+    taches: [ASUP14]
+
+  - id: D-ASUP-5
+    question: "Quelle durée minimale pour le journal d'audit des pièces comptables ?"
+    options:
+      - cle: dix_ans
+        texte: "10 ans pour le journal des factures, avoirs, paiements et mouvements de stock (durée comptable), quel que soit le réglage"
+      - cle: reglage_libre
+        texte: "Le réglage du Directeur s'applique à tout le journal (plancher actuel : 1 an)"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF10 (11/11/2026) : non posée (défaut recommandé : dix_ans)"
+    taches: [ASUP17, ASUP18]
+
+  - id: D-ASUP-6
+    question: "Archiver un lead signé : refuser comme la sortie d'étape, ou laisser archiver ?"
+    options:
+      - cle: refuser
+        texte: "Refuser comme la sortie de « Signé » : 409 tant qu'une facture, un BC ou un chantier avancé existe"
+      - cle: laisser_archiver
+        texte: "Laisser archiver un lead signé (il sort alors des « signés »)"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF10 (11/11/2026) : non posée (défaut recommandé : refuser)"
+    taches: [ASUP48]
+
   - id: D-ACEL-1
     question: "L'écran « Envois programmés » laisse choisir l'heure d'envoi d'un rapport, mais la tâche ne passe qu'à 6 h : un rapport réglé à une autre heure ne part jamais. Faut-il respecter l'heure choisie, ou tout envoyer à 6 h et retirer le champ ?"
     options:
