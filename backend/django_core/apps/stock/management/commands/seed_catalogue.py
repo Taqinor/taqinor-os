@@ -1940,6 +1940,9 @@ class Command(BaseCommand):
 
         created, skipped = [], []
         categories = {}
+        # ASUP55 — seuls les placeholders NÉS de ce passage sont archivés (une fiche désarchivée reste active).
+        _a_archiver = PLACEHOLDER_VFD_SKUS + ARTEFACTS_ONDULEUR_SKUS
+        _deja_la = set(Produit.objects.filter(company=company, sku__in=_a_archiver).values_list('sku', flat=True))
 
         _ordres = dict(TAXONOMIE)
 
@@ -2281,8 +2284,7 @@ class Command(BaseCommand):
         # bigger installations »). Sa garde d'exclusion vit côté composition
         # (stock-gating batterie, ``apps.ventes.services``), jamais ici.
         archived_count = Produit.objects.filter(
-            company=company,
-            sku__in=(PLACEHOLDER_VFD_SKUS + ARTEFACTS_ONDULEUR_SKUS),
+            company=company, sku__in=set(_a_archiver) - _deja_la,
             is_archived=False).update(is_archived=True)
 
         # ── Fiches commerciales : mise à jour ADDITIVE des seuls champs

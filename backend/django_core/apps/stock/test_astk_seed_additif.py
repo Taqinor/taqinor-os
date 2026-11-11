@@ -65,6 +65,22 @@ class SeedAdditifTests(TestCase):
                 self.assertEqual(
                     getattr(self._produit(sku), champ), SAISIE[champ])
 
+    def test_placeholder_desarchive_survit_au_seed(self):
+        """ASUP55 (C-ASUP-027) — un placeholder NAÎT archivé (prix intacts) ;
+        désarchivé par un humain, il reste actif au déploiement suivant.
+        Mutant : remettre le ``filter`` sans borne ⇒ ré-archivé."""
+        produit = self._produit('OND-R-HUA-10M')
+        self.assertTrue(produit.is_archived)
+        self.assertGreater(produit.prix_vente, 0)
+        Produit.objects.filter(pk=produit.pk).update(is_archived=False)
+
+        _seed(self.company)  # run nu = chaque déploiement
+        _seed(self.company)
+
+        apres = self._produit('OND-R-HUA-10M')
+        self.assertFalse(apres.is_archived)
+        self.assertEqual((apres.prix_vente, apres.prix_achat), (produit.prix_vente, produit.prix_achat))
+
     def test_champ_vide_est_comble(self):
         sku = _sku_avec('description')
         declare = FICHES[sku]['description']
