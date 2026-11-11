@@ -121,6 +121,39 @@ class TenantIsolationTests(unittest.TestCase):
         with self.assertRaises(svc.SQLSecurityError):
             svc._validate_and_secure(sql, self.CID)
 
+    def test_module_et_portee_de_l_appelant(self):
+        """ALEC16 (C-ALEC-014) — codes LIVRES (registre Django, ceux que sert
+        /auth/me/) : Technicien refuse « module » sur `ventes_facture` et
+        « portee » sur `installations_installation` ; Commercial (soi) refuse
+        « portee » sur `ventes_devis` ; Directeur : SQL reecrit ; appel sans
+        `permissions` inchange."""
+        import importlib.util
+        chemin = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(
+                os.path.abspath(__file__)))),
+            "django_core", "apps", "roles", "permissions_registre.py")
+        spec = importlib.util.spec_from_file_location("_registre_livre", chemin)
+        registre = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(registre)
+        roles = dict(registre.CANONICAL_SYSTEM_ROLES)
+        facture = "SELECT reference FROM ventes_facture"
+        devis = "SELECT reference FROM ventes_devis"
+        chantier = "SELECT reference FROM installations_installation"
+
+        def refus(sql, nom, motif):
+            with self.assertRaisesRegex(svc.SQLSecurityError, motif):
+                svc._validate_and_secure(
+                    sql, self.CID, permissions=list(roles[nom]))
+
+        refus(facture, "Technicien", "module")
+        refus(chantier, "Technicien", "(?i)portee")
+        refus(devis, "Commercial", "(?i)portee")
+        for sql in (facture, devis, chantier):
+            out = svc._validate_and_secure(
+                sql, self.CID, permissions=list(roles["Directeur"]))
+            self.assertIn("company_id = 7", out)
+            self.assertIn("company_id = 7", self._ok(sql))
+
     def test_single_table_injects_company_id(self):
         out = self._ok("SELECT nom FROM stock_produit")
         self.assertIn("company_id = 7", out)
