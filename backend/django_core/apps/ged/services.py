@@ -3243,7 +3243,7 @@ def resolve_signature_publique(token):
                .select_related('document', 'document__company', 'company')
                .filter(token=token)
                .first())
-    if demande is None:
+    if demande is None or demande.signataires.exists():
         return SIGNATURE_PUBLIQUE_INTROUVABLE, None
     if demande.statut == SIGNATURE_ANNULE or demande.is_expired:
         return SIGNATURE_PUBLIQUE_EXPIREE, demande
