@@ -4530,3 +4530,39 @@ decisions:
     date: "2026-11-11"
     source: "audit de parcours PF10 (11/11/2026) : non posée (défaut recommandé : refuser)"
     taches: [ASUP48]
+
+  - id: D-ACEL-1
+    question: "L'écran « Envois programmés » laisse choisir l'heure d'envoi d'un rapport, mais la tâche ne passe qu'à 6 h : un rapport réglé à une autre heure ne part jamais. Faut-il respecter l'heure choisie, ou tout envoyer à 6 h et retirer le champ ?"
+    options:
+      - cle: heure_respectee
+        texte: "Respecter l'heure choisie : la tâche passe chaque heure de 6 h à 23 h et envoie le rapport dès que son heure est atteinte, une fois par jour ; sans heure, il part à 6 h"
+      - cle: tout_a_6h
+        texte: "Tout part à 6 h : retirer le champ « Heure d'envoi » de l'écran"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF11 (11/11/2026) : non posée (défaut recommandé : heure_respectee)"
+    taches: [ACEL1, ACEL31]
+
+  - id: D-ACEL-2
+    question: "Des réglages allument une tâche planifiée mais n'ont aucun écran (relance automatique des commandes fournisseur en retard, délai de désactivation des comptes dormants, relevé de compte mensuel automatique d'un client, récurrences d'intervention) : personne ne peut les allumer. Faut-il les montrer dans l'ERP, ou les retirer avec leurs tâches ?"
+    options:
+      - cle: montrer_dans_parametres
+        texte: "Les montrer : chaque réglage reçoit son interrupteur ou son champ à l'écran (paramètres, fiche client, fiche chantier)"
+      - cle: retirer
+        texte: "Les retirer, avec les tâches planifiées qui en dépendent"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF11 (11/11/2026) : non posée (défaut recommandé : montrer_dans_parametres)"
+    taches: [ACEL13, ACEL42, ACEL43, ACEL46, ACEL78]
+
+  - id: D-ACEL-3
+    question: "La page d'état publique et son taux de disponibilité sont calculés par le worker lui-même : si le worker s'arrête, la page reste « opérationnel » à 100 %. Faut-il afficher « données périmées » quand le dernier contrôle a plus de 15 minutes ?"
+    options:
+      - cle: donnees_perimees
+        texte: "Oui : au-delà de 15 minutes sans contrôle, la page dit « inconnu, données périmées » et la disponibilité du jour n'est plus comptée à 100 %"
+      - cle: garder
+        texte: "Non : garder l'affichage actuel"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF11 (11/11/2026) : non posée (défaut recommandé : donnees_perimees)"
+    taches: [ACEL36]
