@@ -30,6 +30,7 @@ from ..corps_achats import ProduitDecoupeCorps, valider_corps
 from ..erreurs_achats import ConflitEtat, IntrouvableMetier
 from ..models import Produit, Categorie, Fournisseur, MouvementStock, EmplacementStock, RegleCodeBarres
 from ..serializers import ProduitSerializer, PrixFournisseurSerializer
+from ..permissions import PeutSupprimerStock, PeutVoirPrixAchat
 from apps.roles.permissions import DroitDeLaGrille, droits_de_la_grille  # ASEC70
 from authentication.permissions import (
     LectureDuModule,
@@ -422,7 +423,6 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             return [HasPermissionOrLegacy('stock_mouvement' if self.action in ('rebuter', 'decoupes')
                                           else 'stock_modifier')()]
         elif self.action in ('destroy', 'force_delete'):  # ADRG44 : destroy suit `stock_supprimer`
-            from ..permissions import PeutSupprimerStock
             return [PeutSupprimerStock() if self.action == 'destroy' else IsAdminRole()]
         elif self.action == 'emplacements':
             # AAPV74 (rejeu 08/11) — la ventilation par emplacement alimente le
@@ -453,7 +453,6 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             # permission_classes de l'@action, d'où ce cas explicite —
             # sinon repli IsAdminRole). ERR-STK-PRIX-ACHAT-3-ROUTES — montants
             # et prix d'achat (prix_nu, engagements) : `prix_achat_voir` EN PLUS.
-            from ..permissions import PeutVoirPrixAchat
             return [IsResponsableOrAdmin(), PeutVoirPrixAchat()]
         # XSTK10 — `rapport_pertes` reste admin-only (valeur d'achat
         # interne, jamais client-facing) via le repli ci-dessous.
