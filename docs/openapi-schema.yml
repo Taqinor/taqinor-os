@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4963, operations: 7761, components: 3650}
+counts: {paths: 4965, operations: 7763, components: 3650}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -749,6 +749,7 @@ operations:
 - post /api/django/core/export-reversibilite/ -> django_core_export_reversibilite_create
 - get /api/django/core/export-reversibilite/historique/ -> django_core_export_reversibilite_historique_list
 - get /api/django/core/export-reversibilite/telecharger/{token}/ -> django_core_export_reversibilite_telecharger_retrieve
+- post /api/django/core/export-reversibilite/{id}/couper-lien/ -> django_core_export_reversibilite_couper_lien_create
 - get /api/django/core/fiabilite/reglages/ -> django_core_fiabilite_reglages_retrieve
 - patch /api/django/core/fiabilite/reglages/ -> django_core_fiabilite_reglages_partial_update
 - get /api/django/core/formulaire-champs/ -> django_core_formulaire_champs_list
@@ -4671,6 +4672,7 @@ operations:
 - post /api/v1/core/export-reversibilite/ -> v1_core_export_reversibilite_create
 - get /api/v1/core/export-reversibilite/historique/ -> v1_core_export_reversibilite_historique_list
 - get /api/v1/core/export-reversibilite/telecharger/{token}/ -> v1_core_export_reversibilite_telecharger_retrieve
+- post /api/v1/core/export-reversibilite/{id}/couper-lien/ -> v1_core_export_reversibilite_couper_lien_create
 - get /api/v1/core/fiabilite/reglages/ -> v1_core_fiabilite_reglages_retrieve
 - patch /api/v1/core/fiabilite/reglages/ -> v1_core_fiabilite_reglages_partial_update
 - get /api/v1/core/formulaire-champs/ -> v1_core_formulaire_champs_list

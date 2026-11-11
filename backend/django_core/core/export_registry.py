@@ -320,6 +320,30 @@ class ExportReversibiliteHistoriqueView(generics.ListAPIView):
         )
 
 
+@extend_schema(request=None, responses={200: ExportReversibiliteRunSerializer})
+@api_view(['POST'])
+@permission_classes([IsAuthenticatedInterne])
+@parser_classes([JSONParser])  # ENF8 (D2) — aucun upload
+def couper_lien_export_reversibilite(request, pk):
+    """POST /api/django/core/export-reversibilite/<id>/couper-lien/ — APUB2 :
+    Directeur/Administrateur coupent le lien public d'un export avant ses 7
+    jours (``SignedDownload.actif=False``, run « Expiré ») ; idempotent ; run
+    d'une autre société → 404."""
+    if not _is_directeur_or_admin(request.user):
+        raise PermissionDenied()
+    run = ExportReversibiliteRun.objects.filter(
+        company=request.user.company, pk=pk).first()
+    if run is None:
+        raise Http404
+    if run.token:
+        from .signed_download import SignedDownload
+        SignedDownload.objects.filter(
+            company=run.company, token=run.token).update(actif=False)
+        run.statut = ExportReversibiliteRun.Statut.EXPIRE
+        run.save(update_fields=['statut'])
+    return Response(ExportReversibiliteRunSerializer(run).data)
+
+
 @extend_schema(responses={
     (200, 'application/zip'): OpenApiTypes.BINARY,
     403: inline_serializer('ExportTelechargementRefuse', {

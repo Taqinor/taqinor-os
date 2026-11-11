@@ -119,3 +119,55 @@ class HistoriqueEndpointTest(TestCase):
         self.assertEqual(
             ExportReversibiliteRun.objects.filter(company=self.company).count(), 1)
         self.assertIn('run_id', kwargs)
+
+    def test_couper_le_lien_rend_le_telechargement_404(self):
+        """APUB2 — le Directeur coupe le lien d'un export « prêt » : lien
+        inactif, run « Expiré », téléchargement 404 ; Commercial responsable
+        livré : 403 sans écriture ; second POST identique ; autre société 404."""
+        from apps.roles.permissions_registre import (
+            COMMERCIAL_RESP_PERMISSIONS, DIRECTEUR_PERMISSIONS,
+        )
+        from core import signed_download
+        from core.tasks import REVERSIBILITE_BUCKET
+
+        def compte(nom, perms):
+            user = User.objects.create_user(
+                f'apub2-{nom}', password='x', company=self.company,
+                role=Role.objects.create(
+                    company=self.company, nom=nom, permissions=list(perms)))
+            api = APIClient()
+            api.force_authenticate(user)
+            return api
+
+        lien = signed_download.creer_lien(
+            self.company, REVERSIBILITE_BUCKET, 'export.zip')
+        run = ExportReversibiliteRun.objects.create(
+            company=self.company, statut=ExportReversibiliteRun.Statut.PRET,
+            token=lien.token)
+        url = f'/api/django/core/export-reversibilite/{run.id}/couper-lien/'
+        resp = compte('Commercial responsable', COMMERCIAL_RESP_PERMISSIONS).post(url)
+        self.assertEqual(resp.status_code, 403, resp.data)
+        lien.refresh_from_db()
+        run.refresh_from_db()
+        self.assertTrue(lien.actif)
+        self.assertEqual(run.statut, ExportReversibiliteRun.Statut.PRET)
+
+        directeur = compte('Directeur', DIRECTEUR_PERMISSIONS)
+        for _ in range(2):  # idempotent : le second POST rend la même chose
+            resp = directeur.post(url)
+            self.assertEqual(resp.status_code, 200, resp.data)
+            self.assertEqual(resp.data['statut'], 'expire')
+        lien.refresh_from_db()
+        run.refresh_from_db()
+        self.assertFalse(lien.actif)
+        self.assertEqual(run.statut, ExportReversibiliteRun.Statut.EXPIRE)
+        resp = APIClient().get(
+            f'/api/django/core/export-reversibilite/telecharger/{lien.token}/')
+        self.assertEqual(resp.status_code, 404)
+
+        autre = Company.objects.create(nom='Autre', slug='autre-apub2')
+        run_autre = ExportReversibiliteRun.objects.create(
+            company=autre, statut=ExportReversibiliteRun.Statut.PRET, token='x')
+        resp = directeur.post(
+            f'/api/django/core/export-reversibilite/{run_autre.id}/couper-lien/')
+        self.assertEqual(resp.status_code, 404)
