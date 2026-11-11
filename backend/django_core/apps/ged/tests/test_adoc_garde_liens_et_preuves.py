@@ -225,7 +225,7 @@ class GardeLiensTests(GardeLiensEtPreuvesBase):
         signataire.notifie_le = timezone.now() - timezone.timedelta(days=10)
         signataire.save(update_fields=['notifie_le'])
         mail.outbox = []
-        with override_settings(ANYMAIL={}),                 self.assertLogs('apps.ged.services', level='WARNING'):
+        with override_settings(ANYMAIL={}), self.assertLogs('apps.ged.services', level='WARNING'):
             self.assertEqual(services.relancer_signataires_dus(self.co_a), [])
         self.assertEqual(mail.outbox, [])
         signataire.refresh_from_db()
