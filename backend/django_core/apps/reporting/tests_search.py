@@ -264,9 +264,10 @@ class TestSuggestTrigramme(TestCase):
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
 
     def test_faute_de_frappe_bornee_societe_et_plafond(self):
+        # ENF23 — jamais sauté : pg_trgm est posée par stock/0148 (base de test
+        # CI comprise) ; le repli icontains a son propre test (mock) ci-dessous.
         from core.recherche_fts import trigramme_disponible
-        if not trigramme_disponible():
-            self.skipTest("pg_trgm absente de la base de test : repli icontains.")
+        self.assertTrue(trigramme_disponible(), "pg_trgm attendue (stock/0148).")
         Lead.objects.create(company=self.company, nom='Bennani', prenom='Salma')
         Lead.objects.create(company=self.autre, nom='Bennani', prenom='Autre')
         Client.objects.create(company=self.company, nom='Benanni', prenom='Électricité')

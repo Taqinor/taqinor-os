@@ -358,7 +358,6 @@ tests_sautes_environnement:
     - "backend/django_core/apps/calepinage/tests/test_acal_creation_porte_unique.py::VerrouCreationTest"
     - "backend/django_core/apps/installations/tests_aud320_comptage_verrou.py::TestVerrouSessionComptage.test_la_lecture_du_statut_est_verrouillee"
     - "backend/django_core/apps/installations/tests_cht4_approbation_achat_verrou.py::TestVerrouDecisionEtape.test_la_relecture_de_l_etape_est_verrouillee"
-    - "backend/django_core/apps/reporting/tests_search.py::TestSuggestTrigramme.test_faute_de_frappe_bornee_societe_et_plafond"
     - "backend/django_core/apps/stock/test_stkcat27_recherche_accents.py::TestMigrationIdempotente"
     - "backend/django_core/apps/stock/test_stkcat27_recherche_accents.py::TestMigrationIdempotente.test_l_index_porte_bien_le_nom_annonce"
     - "backend/django_core/apps/stock/test_stkcat27_recherche_accents.py::TestRechercheSansAccents.setUp"
