@@ -5,8 +5,10 @@ journalisation d'une suppression, restauration, purge de rétention.
 """
 import logging
 
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
+from core.conflit_etat import ConflitEtat
 from core.events import record_restored
 
 from .models import ElementSupprime
@@ -91,6 +93,18 @@ def _restauration_generique(element):
     return obj
 
 
+def _vivant_en_conflit(element):
+    """ASUP16 — l'enregistrement vivant qui porte déjà les valeurs uniques de la cible, sinon ``None``."""
+    modele = element.content_type.model_class()
+    obj = getattr(modele, 'all_objects', modele._default_manager).filter(pk=element.object_id).first()
+    for c in (modele._meta.constraints if obj else ()):
+        valeurs = {f: getattr(obj, f) for f in getattr(c, 'fields', ())}
+        if valeurs and None not in valeurs.values() and (
+                autre := modele._default_manager.filter(**valeurs).exclude(pk=obj.pk).first()):
+            return autre
+    return None
+
+
 def restaurer(element, *, user=None, now=None):
     """Restaure la cible d'une entrée de corbeille et ferme l'entrée.
 
@@ -103,11 +117,14 @@ def restaurer(element, *, user=None, now=None):
     """
     if element.restaure_le is not None:
         return None
-    fonction = restaurateur(element.cle_modele)
-    if fonction is not None:
-        obj = fonction(element)
-    else:
-        obj = _restauration_generique(element)
+    fonction = restaurateur(element.cle_modele) or _restauration_generique
+    try:
+        with transaction.atomic():
+            obj = fonction(element)
+    except IntegrityError:  # ASUP16 — une contrainte d'unicité refuse : 409 nommé, jamais un 500
+        autre = _vivant_en_conflit(element)
+        raise ConflitEtat("Restauration impossible : un élément vivant porte déjà le même identifiant"
+                          + (f" — « {autre} » (#{autre.pk})." if autre else "."))
     element.restaure_le = now or timezone.now()
     element.save(update_fields=['restaure_le', 'updated_at'])
     # NTUX32 — webhook sortant (jamais sur le no-op « déjà restauré » ci-dessus,
@@ -138,6 +155,14 @@ def purger_expires(*, now=None, company=None):
     for company_id, object_id in qs.values_list('company_id', 'id'):
         par_company[company_id] = par_company.get(company_id, 0) + 1
     if par_company:
+        # ASUP16 — une pièce jointe RETIRÉE (jamais restaurée) perd son binaire par l'API de stockage de la pièce
+        # (une clé encore tenue ailleurs est conservée) ; la ligne métier reste.
+        from apps.records.models import Attachment
+        from apps.records.storage import delete_attachment
+        for piece in Attachment.objects.filter(pk__in=qs.filter(
+                restaure_le__isnull=True, content_type__app_label='records',
+                content_type__model='attachment').values('object_id')):
+            delete_attachment(piece.file_key, liberee_par=(piece,))
         qs.delete()
         logger.info('purger_corbeille: %d entrée(s) purgée(s) sur %d société(s).',
                     sum(par_company.values()), len(par_company))

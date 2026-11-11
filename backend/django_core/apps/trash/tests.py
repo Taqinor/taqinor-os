@@ -490,6 +490,46 @@ class PurgeTests(CorbeilleBase):
         purger_expires()
         self.assertTrue(Lead.all_objects.filter(pk=self.lead.pk).exists())
 
+    def test_purge_supprime_le_binaire_d_une_piece_retiree(self):
+        """ASUP16 (C-ASUP-012) — la purge d'une pièce météo retirée efface son
+        binaire (la ligne reste) ; une pièce restaurée garde le sien. Mutant :
+        ne plus supprimer le fichier ⇒ aucun delete_object."""
+        from unittest import mock
+
+        from apps.records.models import Attachment
+        from .services import journaliser_suppression
+        ct = ContentType.objects.get_for_model(Lead)
+        retiree, gardee = (Attachment.objects.create(
+            company=self.co_a, content_type=ct, object_id=self.lead.pk,
+            file_key=f'meteo/{nom}.csv', filename=f'{nom}.csv') for nom in ('retiree', 'gardee'))
+        self._perimer(journaliser_suppression(instance=retiree, company=self.co_a))
+        restaure = journaliser_suppression(instance=gardee, company=self.co_a)
+        restaure.restaure_le = timezone.now()
+        restaure.save(update_fields=['restaure_le'])
+        self._perimer(restaure)
+        with mock.patch('apps.records.storage.get_minio_client') as client:
+            purger_expires()
+        cles = [c.kwargs['Key'] for c in client.return_value.delete_object.call_args_list]
+        self.assertEqual(cles, ['meteo/retiree.csv'])
+        self.assertTrue(Attachment.objects.filter(pk=retiree.pk).exists())
+
+    def test_restauration_en_conflit_d_unicite_rend_409_nomme(self):
+        """ASUP16 — restaurer un lead importé dont l'identifiant externe est
+        repris par un lead vivant : 409 nommant ce lead (pas une IntegrityError
+        500), lead toujours en corbeille, entrée ouverte."""
+        from core.conflit_etat import ConflitEtat
+        Lead.objects.filter(pk=self.lead.pk).update(external_system='odoo', external_id='42')
+        archiver(Lead.objects.get(pk=self.lead.pk))
+        vivant = Lead.objects.create(company=self.co_a, nom='Reimport',
+                                     external_system='odoo', external_id='42')
+        element = ElementSupprime.objects.get()
+        with self.assertRaises(ConflitEtat) as refus:
+            restaurer(element)
+        self.assertIn(f'#{vivant.pk}', str(refus.exception.detail))
+        self.assertTrue(Lead.all_objects.get(pk=self.lead.pk).is_deleted)
+        element.refresh_from_db()
+        self.assertIsNone(element.restaure_le)
+
     def test_commande_purger_corbeille(self):
         # `purger_corbeille_transverse` : `purger_corbeille` tout court est déjà
         # pris par GED25 et Django résoudrait le doublon vers `apps.ged`.
