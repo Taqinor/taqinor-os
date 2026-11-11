@@ -288,6 +288,8 @@ export default function InstallationsPage() {
   const peutListerUsers = useCanListAssignableUsers()
   // ADRG21 — « Exporter Excel » seulement avec le code de la route d'export.
   const peutExporter = useHasPermission('installation_export')
+  // ADRG99 — (ré)affecter l'installateur : `technicien_assign` (route PATCH).
+  const peutAffecter = useHasPermission('technicien_assign')
   useEffect(() => {
     if (peutListerUsers) crmApi.getAssignableUsers().then(r => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})
   }, [peutListerUsers])
@@ -536,14 +538,14 @@ export default function InstallationsPage() {
         )}
         {!showSkeleton && view === 'liste' && (
           <ListView items={filtered} onOpen={onOpen} users={users}
-                    onChangeStatus={onChangeStatus} onReassign={onReassign}
+                    onChangeStatus={onChangeStatus} onReassign={peutAffecter ? onReassign : undefined}
                     onChangeStatusStrict={changeStatusStrict}
-                    onReassignStrict={reassignStrict} onBatchDone={refetch}
+                    onReassignStrict={peutAffecter ? reassignStrict : undefined} onBatchDone={refetch}
                     nouveauxIds={nouveauxIds} />
         )}
         {!showSkeleton && view === 'kanban' && (
           <KanbanView items={filtered} onOpen={onOpen} onChangeStatus={onChangeStatus}
-                      users={users} onReassign={onReassign} nouveauxIds={nouveauxIds} />
+                      users={users} onReassign={peutAffecter ? onReassign : undefined} nouveauxIds={nouveauxIds} />
         )}
         {!showSkeleton && view === 'calendrier' && (
           filtered.length === 0 ? (

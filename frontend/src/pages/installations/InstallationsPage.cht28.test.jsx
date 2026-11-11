@@ -136,4 +136,21 @@ describe('InstallationsPage (CHT28)', () => {
     renderPage('/chantiers', { user: { id: 1 }, role: 'admin', permissions: ['installation_export'] })
     expect(await screen.findByRole('button', { name: /Exporter Excel/ })).toBeInTheDocument()
   })
+
+  // ADRG99 — (ré)affecter l'installateur exige `technicien_assign` (route PATCH).
+  it('Technicien sans technicien_assign : aucun sélecteur « Installateur » ; avec : présent', async () => {
+    localStorage.setItem('taqinor.chantiers.view', 'kanban')
+    mocks.getInstallations.mockResolvedValue({
+      data: { count: 1, results: [{ id: 31, reference: 'CH-ADRG99', client_nom: 'Client K', statut: 'signe' }] },
+    })
+    renderPage('/chantiers', { user: { id: 4 }, role: 'normal', role_nom: 'Technicien',
+      permissions: ['chantiers_voir', 'installation_gerer', 'intervention_gerer'] })
+    await waitFor(() => expect(screen.getAllByText('CH-ADRG99').length).toBeGreaterThan(0))
+    expect(screen.queryByLabelText('Installateur')).toBeNull()
+    cleanup()
+    localStorage.setItem('taqinor.chantiers.view', 'kanban')
+    renderPage('/chantiers', { user: { id: 5 }, role: 'normal', role_nom: 'Technicien responsable',
+      permissions: ['chantiers_voir', 'installation_gerer', 'technicien_assign'] })
+    await waitFor(() => expect(screen.getAllByLabelText('Installateur').length).toBeGreaterThan(0))
+  })
 })
