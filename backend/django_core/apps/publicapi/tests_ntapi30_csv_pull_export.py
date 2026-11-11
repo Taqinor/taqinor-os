@@ -44,6 +44,22 @@ class Ntapi30CsvPullExportTests(TestCase):
         self.assertIn('Lead B', text)
         self.assertNotIn('Lead fuite', text)
 
+    def test_cellule_formule_neutralisee(self):
+        """APUB47 (C-APUB-026) — une cellule à formule sort neutralisée
+        (``'=1+1``), un nombre en texte (``-12.50``) reste intact. Mutant :
+        retirer ``neutralize_csv_cell`` du pull ⇒ échec."""
+        import csv
+        import io
+        Lead.objects.create(company=self.co, nom='=1+1')
+        Lead.objects.create(company=self.co, nom='-12.50')
+        resp = APIClient().get(f'/api/public/v1/exports/leads.csv?token={self.raw}')
+        self.assertEqual(resp.status_code, 200)
+        cellules = {c for ligne in csv.reader(io.StringIO(resp.content.decode('utf-8')))
+                    for c in ligne}
+        self.assertIn("'=1+1", cellules)
+        self.assertNotIn('=1+1', cellules)
+        self.assertIn('-12.50', cellules)
+
     def test_empty_result_still_returns_valid_csv_header(self):
         resp = APIClient().get(f'/api/public/v1/exports/leads.csv?token={self.raw}')
         self.assertEqual(resp.status_code, 200)

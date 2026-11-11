@@ -25,6 +25,7 @@ import io
 import json
 import logging
 
+from apps.records.xlsx import neutralize_csv_cell  # APUB47 — ENF12, définition unique
 from .models import BulkJob
 
 logger = logging.getLogger(__name__)
@@ -151,7 +152,7 @@ def run_export_job(job_id, *, batch_size=DEFAULT_BATCH_SIZE):
             if writer is None:
                 writer = csv.DictWriter(buf, fieldnames=list(row.keys()))
                 writer.writeheader()
-            writer.writerow(row)
+            writer.writerow({k: neutralize_csv_cell(v) for k, v in row.items()})
 
     try:
         # AANA35 — le fichier stocké est TOUJOURS complet : sur une reprise,

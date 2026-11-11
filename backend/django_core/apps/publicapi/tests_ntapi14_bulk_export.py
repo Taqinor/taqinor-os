@@ -159,6 +159,32 @@ class Ntapi14RunExportJobTests(_MinioMixin, TestCase):
         self.assertEqual(job.statut, BulkJob.STATUT_TERMINE)
         self.assertTrue(job.resultat_file_key.endswith('.jsonl'))
 
+    def test_run_export_job_neutralise_les_formules(self):
+        """APUB47 (C-APUB-026) — le fichier stocké d'un job CSV porte
+        ``'=1+1`` (``-12.50`` intact) ; le JSONL garde ``=1+1`` brut. Mutant :
+        retirer ``neutralize_csv_cell`` de ``run_export_job`` ⇒ échec."""
+        import csv
+        import io
+        import json
+        Lead.objects.create(company=self.co, nom='=1+1')
+        Lead.objects.create(company=self.co, nom='-12.50')
+        api_key, _raw = _key(self.co, [SCOPE_READ_LEADS])
+        stocke = {}
+        for fmt in ('csv', 'jsonl'):
+            job = BulkJob.objects.create(
+                company=self.co, api_key=api_key, type=BulkJob.TYPE_EXPORT,
+                entite='leads', params={'format': fmt, 'filtres': {}})
+            bulk.run_export_job(job.id)
+            job.refresh_from_db()
+            self.assertEqual(job.statut, BulkJob.STATUT_TERMINE, fmt)
+            stocke[fmt] = self.client_minio.upload_fileobj.call_args[0][0].read().decode('utf-8')
+        cellules = {c for ligne in csv.reader(io.StringIO(stocke['csv'])) for c in ligne}
+        self.assertIn("'=1+1", cellules)
+        self.assertNotIn('=1+1', cellules)
+        self.assertIn('-12.50', cellules)
+        noms = {json.loads(ligne)['nom'] for ligne in stocke['jsonl'].splitlines() if ligne}
+        self.assertIn('=1+1', noms)
+
     def test_run_export_job_unknown_job_is_noop(self):
         bulk.run_export_job(999999)  # ne lève jamais
 
