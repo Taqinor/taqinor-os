@@ -292,11 +292,10 @@ class Intervention(VerrouOptimisteMixin, models.Model):
     @property
     def lien_client_expire(self):
         """XFSM7 — le lien expire le lendemain de la date prévue (une visite
-        d'un jour passé n'a plus de sens à suivre « en route »). Sans date
-        prévue, le lien n'expire jamais par cette règle (couvert par le
-        statut : une intervention VALIDEE/TERMINEE cesse d'avoir un ETA)."""
+        d'un jour passé n'a plus de sens à suivre « en route »). APUB35 —
+        sans date prévue, le lien expire à la clôture (TERMINEE/VALIDEE)."""
         if not self.date_prevue:
-            return False
+            return self.statut in (self.Statut.TERMINEE, self.Statut.VALIDEE)
         from datetime import timedelta
 
         from django.utils import timezone

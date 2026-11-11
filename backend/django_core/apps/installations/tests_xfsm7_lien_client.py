@@ -141,3 +141,26 @@ class TestLienClientToken(TestCase):
         pub = APIClient()
         resp = pub.get(f'{PUBLIC_BASE}/intervention/{token}/')
         self.assertEqual(resp.status_code, 404)
+
+    def test_sans_date_prevue_expire_a_la_cloture(self):
+        """APUB35 — sans ``date_prevue``, le lien « en route » est servi avant
+        la clôture puis rend 404 une fois l'intervention Terminée / Validée."""
+        sans_date = Intervention.objects.create(
+            company=self.company, installation=self.inst,
+            type_intervention='pose', created_by=self.user,
+            technicien=self.user, date_prevue=None)
+        token = sans_date.ensure_lien_client_token()
+        pub = APIClient()
+        resp = pub.get(f'{PUBLIC_BASE}/intervention/{token}/')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        for statut in (Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE):
+            Intervention.objects.filter(pk=sans_date.pk).update(statut=statut)
+            resp = pub.get(f'{PUBLIC_BASE}/intervention/{token}/')
+            self.assertEqual(resp.status_code, 404, statut)
+            self.assertEqual(resp.data['detail'], 'Lien invalide ou expiré.')
+        # Une intervention DATÉE garde la règle « lendemain de la date prévue ».
+        Intervention.objects.filter(pk=self.interv.pk).update(
+            statut=Intervention.Statut.TERMINEE)
+        token_date = self.interv.ensure_lien_client_token()
+        resp = pub.get(f'{PUBLIC_BASE}/intervention/{token_date}/')
+        self.assertEqual(resp.status_code, 200, resp.content)
