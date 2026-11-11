@@ -96,6 +96,56 @@ class TiersApiTests(TenantAPITestCase):
         self.assertEqual(r2.status_code, 204)
         self.assertFalse(Tiers.objects.filter(pk=tid).exists())
 
+    def _role_user(self, nom, perms, **extra):
+        from apps.roles.models import Role
+        from testkit.factories import UserFactory
+        role = Role.objects.create(
+            company=self.company, nom=nom, permissions=list(perms))
+        return UserFactory(company=self.company, role=role, **extra)
+
+    def _rows(self, r):
+        self.assertEqual(r.status_code, 200, r.content)
+        return r.data['results'] if isinstance(r.data, dict) else r.data
+
+    def test_lecture_bornee_au_droit_portee_et_pii(self):
+        """ALEC20 — un Commercial (portée « soi ») ne lit plus le tiers CLIENT
+        (404 au détail) mais garde le fournisseur ; un Admin RH ne lit ni l'un
+        ni l'autre et reçoit le partenaire SANS ses 8 clés personnelles ; le
+        Directeur lit tout, coordonnées comprises."""
+        from apps.roles import permissions_registre as reg
+        client = Tiers.objects.create(
+            company=self.company, nom='Client C2', is_client=True,
+            cin='AB123456', telephone='0661000000')
+        fournisseur = Tiers.objects.create(
+            company=self.company, nom='Fournisseur F', is_fournisseur=True)
+        partenaire = Tiers.objects.create(
+            company=self.company, nom='Partenaire P', is_partenaire=True,
+            telephone='0662000000', cin='CD7')
+        c1 = self._role_user('Commercial', reg.COMMERCIAL_PERMISSIONS)
+        rh = self._role_user('Admin RH', reg.ADMIN_RH_PERMISSIONS)
+        directeur = self._role_user('Directeur', reg.DIRECTEUR_PERMISSIONS)
+
+        ids = {row['id'] for row in self._rows(self.client_as(user=c1).get(URL))}
+        self.assertNotIn(client.id, ids)
+        self.assertIn(fournisseur.id, ids)
+        self.assertEqual(
+            self.client_as(user=c1).get(f'{URL}{client.id}/').status_code, 404)
+
+        rows = {row['id']: row for row in self._rows(
+            self.client_as(user=rh).get(URL))}
+        self.assertNotIn(client.id, rows)
+        self.assertNotIn(fournisseur.id, rows)
+        self.assertIn(partenaire.id, rows)
+        for cle in ('telephone', 'whatsapp', 'email', 'adresse',
+                    'gps_lat', 'gps_lng', 'cin', 'rib'):
+            self.assertNotIn(cle, rows[partenaire.id], cle)
+
+        rows = {row['id']: row for row in self._rows(
+            self.client_as(user=directeur).get(URL))}
+        self.assertEqual(
+            {client.id, fournisseur.id, partenaire.id} - set(rows), set())
+        self.assertEqual(rows[client.id]['cin'], 'AB123456')
+
     def test_nom_complet_particulier(self):
         t = Tiers.objects.create(
             company=self.company, type_tiers='particulier',

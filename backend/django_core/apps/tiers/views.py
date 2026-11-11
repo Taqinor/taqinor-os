@@ -11,9 +11,10 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.settings import api_settings
 
-from authentication.permissions import IsAdminRole
+from authentication.permissions import IsAdminRole, peut_lire_module
 from core.mixins import TenantMixin
 from core.permissions import WriteScopedPermissionMixin
+from core.scoping import record_scope_for
 
 from . import selectors
 from .models import Tiers
@@ -48,6 +49,18 @@ class TiersViewSet(
     # + scopé société suffit (le repli légacy reste géré par ScopedPermission).
     read_permission = None
     write_permission = None
+
+    def get_queryset(self):
+        """ALEC20 — lecture bornée au droit du lecteur (hors palier admin) :
+        un tiers CLIENT exige la lecture CRM en portée « all » (comme
+        ``ClientViewSet``), un FOURNISSEUR la lecture stock ; autres inchangés."""
+        qs = super().get_queryset()
+        user = self.request.user
+        if not (peut_lire_module(user, 'crm') and record_scope_for(user) == 'all'):
+            qs = qs.exclude(is_client=True)
+        if not peut_lire_module(user, 'stock'):
+            qs = qs.exclude(is_fournisseur=True)
+        return qs
 
     def perform_destroy(self, instance):
         """AUD609 — un tiers RÉFÉRENCÉ par une pièce comptable ne s'efface pas.
