@@ -380,7 +380,11 @@ class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.Js
                 update=[DroitDeLaGrille('technicien_assign', champ='technicien')],
                 partial_update=[
                     DroitDeLaGrille('technicien_assign', champ='technicien')],
-                replanifier_en_masse=[DroitDeLaGrille('technicien_assign')])
+                replanifier_en_masse=[DroitDeLaGrille('technicien_assign')],
+                # ADRG33 — créer une facture / un devis : ``ventes_creer``.
+                generer_facture=[DroitDeLaGrille('ventes_creer')],
+                generer_devis=[DroitDeLaGrille('ventes_creer')],
+                generer_devis_reserve=[DroitDeLaGrille('ventes_creer')])
         return [IsAdminRole()]
 
     def _check_tenant(self, serializer):
