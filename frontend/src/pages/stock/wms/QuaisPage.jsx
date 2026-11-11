@@ -4,6 +4,7 @@ import { EnteteStock, BandeauxStock } from '../EnteteStock'
 import quaisApi from '../../../features/stock/api/quaisApi'
 import { messageServeur, telechargerTexte } from '../../../features/stock/api/erreurs'
 import { todayLocalIso } from '../../../lib/dateLocale.js'
+import usePeutEcrireStock from '../usePeutEcrireStock'
 
 /* ASTK218 — Quais & rendez-vous : quais (création / activation), planning
    d'une journée avec, pour chaque rendez-vous, le fournisseur et le BCF
@@ -41,6 +42,8 @@ const lireFichier = (fichier) => new Promise((resolve, reject) => {
 })
 
 export default function QuaisPage() {
+  // ADRG36 — rendez-vous transporteur = référentiel : `stock_modifier`, comme le serveur.
+  const peutReferentiel = usePeutEcrireStock()
   const [quais, setQuais] = useState([])
   const [emplacements, setEmplacements] = useState([])
   const [planning, setPlanning] = useState(null)
@@ -183,7 +186,7 @@ export default function QuaisPage() {
                           <span>Fournisseur : {detail.fournisseur_nom || '—'}</span>
                           <span>BCF : {detail.bon_commande_reference || '—'}</span>
                           {r.transporteur_nom && <span>{r.transporteur_nom}</span>}
-                          {r.statut !== 'annule' && (
+                          {peutReferentiel && r.statut !== 'annule' && (
                             <Button
                               size="sm" variant="outline" disabled={occupe}
                               aria-label={`Annuler le rendez-vous ${r.id}`}
@@ -202,6 +205,7 @@ export default function QuaisPage() {
         )}
       </Section>
 
+      {peutReferentiel && (
       <Section id="nouveau-rdv" titre="Nouveau rendez-vous">
         <form onSubmit={creerRdv} noValidate className="flex flex-wrap items-end gap-2">
           <label className="flex flex-col gap-1 text-xs">
@@ -230,6 +234,7 @@ export default function QuaisPage() {
           <Button type="submit" disabled={occupe}>Créer le rendez-vous</Button>
         </form>
       </Section>
+      )}
 
       <Section id="liste-quais" titre="Quais">
         <form onSubmit={ajouterQuai} noValidate className="mb-3 flex flex-wrap items-end gap-2">

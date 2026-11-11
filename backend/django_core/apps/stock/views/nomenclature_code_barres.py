@@ -3,6 +3,8 @@ from rest_framework import viewsets
 
 from core.viewsets import CompanyScopedModelViewSet
 from authentication.permissions import LectureDuModule, IsResponsableOrAdmin
+from ..permissions import PeutSupprimerStock  # ADRG36 (règle ADRG44)
+from apps.roles.permissions import DroitDeLaGrille  # ADRG36
 
 from ..models import NomenclatureCodeBarres, RegleCodeBarres
 from ..serializers import (
@@ -28,7 +30,9 @@ class NomenclatureCodeBarresViewSet(CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin()]
+        if self.action == 'destroy':  # ADRG36 — suppression : règle stock (ADRG44)
+            return [PeutSupprimerStock()]
+        return [IsResponsableOrAdmin(), DroitDeLaGrille('stock_modifier')()]  # ADRG36
 
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)
@@ -46,7 +50,9 @@ class RegleCodeBarresViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin()]
+        if self.action == 'destroy':  # ADRG36 — suppression : règle stock (ADRG44)
+            return [PeutSupprimerStock()]
+        return [IsResponsableOrAdmin(), DroitDeLaGrille('stock_modifier')()]  # ADRG36
 
     def get_queryset(self):
         qs = super().get_queryset()

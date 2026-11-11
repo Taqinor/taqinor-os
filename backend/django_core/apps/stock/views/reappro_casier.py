@@ -67,8 +67,8 @@ class SeuilReapproCasierViewSet(CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
-        if self.action in WRITE_ACTIONS:
-            return [IsResponsableOrAdmin()]
+        if self.action in WRITE_ACTIONS:  # ADRG36 — écrire un référentiel : `stock_modifier`
+            return [IsResponsableOrAdmin(), DroitDeLaGrille('stock_modifier')()]
         return [PeutSupprimerStock() if self.action == 'destroy' else IsAdminRole()]  # ADRG44
 
     def get_queryset(self):

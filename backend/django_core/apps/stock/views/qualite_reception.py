@@ -14,6 +14,7 @@ from rest_framework.response import Response
 from authentication.permissions import (
     IsAdminRole, LectureDuModule, IsResponsableOrAdmin,
 )
+from apps.roles.permissions import DroitDeLaGrille  # ADRG36
 from ..permissions import PeutSupprimerStock  # ADRG44
 from core.serializers import CompanyScopedRelationsMixin, ChampsTexteBooleenStricts
 from core.viewsets import CompanyScopedModelViewSet
@@ -90,8 +91,8 @@ class PlanEchantillonnageViewSet(CompanyScopedModelViewSet):
         # chaque action est listée explicitement ici.
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
-        if self.action in WRITE_ACTIONS:
-            return [IsResponsableOrAdmin()]
+        if self.action in WRITE_ACTIONS:  # ADRG36 — écrire un référentiel : `stock_modifier`
+            return [IsResponsableOrAdmin(), DroitDeLaGrille('stock_modifier')()]
         return [PeutSupprimerStock() if self.action == 'destroy' else IsAdminRole()]  # ADRG44
 
     def get_queryset(self):

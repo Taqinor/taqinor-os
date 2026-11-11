@@ -20,6 +20,7 @@ from rest_framework.response import Response
 from authentication.permissions import (
     IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
+from apps.roles.permissions import DroitDeLaGrille  # ADRG36
 from ..permissions import PeutSupprimerStock  # ADRG44
 from core.champs_stricts import ChampsStrictsMixin, IdInconnu404Mixin
 from core.serializers import CompanyScopedRelationsMixin
@@ -82,8 +83,10 @@ class IncidentQualiteFournisseurViewSet(CompanyScopedModelViewSet):
     parser_classes = [JSONParser]
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + WRITE_ACTIONS:
+        if self.action in READ_ACTIONS:
             return [IsResponsableOrAdmin()]
+        if self.action in WRITE_ACTIONS:  # ADRG36 — écrire un référentiel : `stock_modifier`
+            return [IsResponsableOrAdmin(), DroitDeLaGrille('stock_modifier')()]
         return [PeutSupprimerStock() if self.action == 'destroy' else IsAdminRole()]  # ADRG44
 
     def get_queryset(self):
