@@ -736,6 +736,16 @@ def resume_scheduled_step(scheduled, *, user=None):
         return AutomationRun.Status.SKIPPED, message
     steps = _rule_steps(rule)
     contexte = dict(scheduled.context or {})
+    # AMSG75 — comme ``run_approved`` : l'état métier (facture payée), le module
+    # et le déclencheur ont pu changer entre la suspension et la reprise.
+    module = _rule_disabled_module(rule, instance, company)
+    motif = motif_etat_metier(rule.trigger_type, instance) or (
+        f'Module désactivé ({module}) : automatisation ignorée.' if module else None)
+    if not motif and not _trigger_matches(rule, instance, contexte):
+        motif = 'Déclencheur plus satisfait : reprise ignorée.'
+    if motif:
+        _log_run(rule, company, instance, AutomationRun.Status.SKIPPED, motif)
+        return AutomationRun.Status.SKIPPED, motif
     if contexte.pop(CLE_REPORT_FENETRE, False):
         # APAR26 — reprise d'UNE action reportée hors de la fenêtre des
         # messages (``actions.reporter_hors_fenetre``) : seule cette action

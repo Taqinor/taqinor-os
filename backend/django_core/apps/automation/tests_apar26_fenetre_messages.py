@@ -159,3 +159,42 @@ class FenetreMessagesTests(TestCase):
         run = AutomationRun.objects.get(rule=ancienne)
         self.assertEqual(run.status, AutomationRun.Status.SKIPPED)
         self.assertEqual(run.message, 'Corps vide : e-mail non envoyé.')
+
+    def test_reprise_relit_l_etat_metier(self):
+        """AMSG75 — reportés de nuit, l'e-mail et la tâche WhatsApp d'une facture
+        payée entre-temps ne partent pas à la reprise ; module coupé : rien."""
+        from django.contrib.contenttypes.models import ContentType
+
+        from apps.records.models import Activity
+        from core.models import ModuleToggle
+        facture = _facture_echue(self.co, 'FAC-AMSG75')
+        facture.client.telephone = '+212612345678'
+        facture.client.save(update_fields=['telephone'])
+        regles = [AutomationRule.objects.create(
+            company=self.co, nom=f'Relance {action}', enabled=True, trigger_type=TriggerType.FACTURE_OVERDUE,
+            trigger_config={}, action_type=action, action_config={'subject': 'Relance', cle: 'Facture en attente'})
+            for action, cle in ((ActionType.SEND_EMAIL, 'body'), (ActionType.SEND_WHATSAPP, 'message'))]
+        with frozen(NUIT):
+            with self.captureOnCommitCallbacks(execute=True):
+                for regle in regles:
+                    run_action(regle, facture, self.co)
+                run_action(self.regle, self.lead, self.co)
+        self.assertEqual(AutomationScheduledStep.objects.filter(company=self.co).count(), 3)
+        Facture.objects.filter(pk=facture.pk).update(statut=Facture.Statut.PAYEE)
+        ModuleToggle.objects.create(company=self.co, module='crm', actif=False)
+        mail.outbox = []
+        with frozen(LENDEMAIN):
+            with self.captureOnCommitCallbacks(execute=True):
+                process_due_automation_steps()
+        self.assertEqual(mail.outbox, [])
+        self.assertEqual(Activity.objects.filter(
+            content_type=ContentType.objects.get_for_model(Facture), object_id=facture.pk).count(), 0)
+        for regle in regles:
+            dernier = AutomationRun.objects.filter(rule=regle).order_by('-id').first()
+            self.assertEqual(dernier.status, AutomationRun.Status.SKIPPED)
+            self.assertEqual(dernier.message, 'Facture soldée : relance sans objet.')
+        dernier = AutomationRun.objects.filter(rule=self.regle).order_by('-id').first()
+        self.assertEqual(dernier.status, AutomationRun.Status.SKIPPED)
+        self.assertIn('Module désactivé (crm)', dernier.message)
+        self.assertFalse(AutomationScheduledStep.objects.filter(
+            company=self.co, statut=AutomationScheduledStep.Statut.EN_ATTENTE).exists())
