@@ -47,6 +47,45 @@ class PiiMaskedFieldTests(TestCase):
     def _detail_url(self):
         return f'/api/django/crm/leads/{self.lead.id}/'
 
+    def test_champs_personnels_oublies_masques(self):
+        """ALEC31 (C-ALEC-028) — sans `client_pii_voir` (jeu Commercial privé
+        du code) : `email_normalise`, `contact_secondaire_email`,
+        `adresse_siege` du lead et `cin`, `adresse_siege` du client à null ; le
+        Commercial livré les reçoit."""
+        from apps.crm.models import Client
+        from apps.roles.permissions_registre import COMMERCIAL_PERMISSIONS
+        Lead.objects.filter(pk=self.lead.pk).update(
+            contact_secondaire_email='second@example.com',
+            adresse_siege='1 bd Siège')
+        self.lead.refresh_from_db()
+        self.assertTrue(self.lead.email_normalise)
+        client = Client.objects.create(
+            company=self.company, nom='LW29 Client', cin='AB123456',
+            adresse_siege='2 bd Siège')
+        roles = {
+            'sans': [c for c in COMMERCIAL_PERMISSIONS if c != 'client_pii_voir'],
+            'avec': list(COMMERCIAL_PERMISSIONS)}
+        for cas, perms in roles.items():
+            role = Role.objects.create(
+                company=self.company, nom=f'ALEC31 {cas}', permissions=perms)
+            user = User.objects.create_user(
+                username=f'alec31-{cas}', password='x', role=role,
+                company=self.company)
+            # Portée « soi » du jeu Commercial : le lead (et donc son client)
+            # appartient à l'appelant.
+            Lead.objects.filter(pk=self.lead.pk).update(owner=user, client=client)
+            api = _api(user)
+            lead = api.get(self._detail_url()).data
+            fiche = api.get(f'/api/django/crm/clients/{client.id}/').data
+            valeurs = [lead['email_normalise'], lead['contact_secondaire_email'],
+                       lead['adresse_siege'], fiche['cin'], fiche['adresse_siege']]
+            if cas == 'sans':
+                self.assertEqual(valeurs, [None] * 5)
+            else:
+                self.assertEqual(valeurs, [
+                    self.lead.email_normalise, 'second@example.com',
+                    '1 bd Siège', 'AB123456', '2 bd Siège'])
+
     def test_pii_masked_true_and_telephone_null_without_permission(self):
         u = User.objects.create_user(
             username='lw29_masked', password='x',
@@ -230,4 +269,5 @@ class ChatterPiiMasqueTests(TestCase):
         # ACRM5 (09/10/2026) : + `phone_normalise` — la clé normalisée du
         # numéro est le numéro lui-même.
         # ACRM32 : + `whatsapp_normalise` (clé normalisée du WhatsApp).
-        self.assertEqual(len(LEAD_PII_FIELDS), 10)
+        # ALEC31 : + `email_normalise`, `contact_secondaire_email`, `adresse_siege`.
+        self.assertEqual(len(LEAD_PII_FIELDS), 13)

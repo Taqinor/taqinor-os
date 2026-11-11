@@ -63,7 +63,9 @@ logger = logging.getLogger(__name__)
 LEAD_PII_FIELDS = ('telephone', 'email', 'adresse', 'whatsapp',
                    'gps_lat', 'gps_lng', 'lien_maps',
                    'contact_secondaire_telephone', 'phone_normalise',
-                   'whatsapp_normalise')  # ACRM32
+                   'whatsapp_normalise',  # ACRM32
+                   'email_normalise', 'contact_secondaire_email',
+                   'adresse_siege')  # ALEC31
 
 #: Remplacement affiché à la place d'une valeur PII masquée.
 PII_MASQUE = '•••'
