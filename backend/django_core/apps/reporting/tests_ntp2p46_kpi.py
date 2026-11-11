@@ -160,6 +160,36 @@ class KpiP2pEndpointTests(TestCase):
         self.assertEqual(resp.status_code, 400, resp.content)
         self.assertIn('Société requise.', resp.content.decode('utf-8'))
 
+    def test_budgets_vides_sans_prix_achat_voir(self):
+        """ADRG64 (C-ADRG-005) — les budgets d'achat ne sont servis qu'avec
+        ``prix_achat_voir`` : rôle LIVRÉ Commercial responsable ⇒ 200 et
+        ``budgets_departement == []`` (les autres clés présentes) ; Directeur
+        ⇒ une entrée avec ``montant_alloue``. Mutant : retirer la condition
+        ⇒ échec."""
+        from django.utils import timezone
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        livres = dict(CANONICAL_SYSTEM_ROLES)
+        BudgetDepartement.objects.create(
+            company=self.company, periodicite='annuelle',
+            annee=timezone.localdate().year, mois=0, montant_alloue=100000)
+        servis = {}
+        for nom in ('Commercial responsable', 'Directeur'):
+            role = Role.objects.create(
+                company=self.company, nom=nom, est_systeme=True,
+                permissions=list(livres[nom]))
+            user = User.objects.create_user(
+                username=f'adrg64_{nom.split()[0].lower()}', password='x',
+                company=self.company, role_legacy='normal', role=role)
+            resp = self._client_for(user).get(self.URL)
+            self.assertEqual(resp.status_code, 200, (nom, resp.content))
+            servis[nom] = json.loads(resp.content)
+        self.assertNotIn('prix_achat_voir', livres['Commercial responsable'])
+        self.assertEqual(servis['Commercial responsable']['budgets_departement'], [])
+        self.assertEqual(set(servis['Commercial responsable']), set(servis['Directeur']))
+        self.assertEqual(len(servis['Directeur']['budgets_departement']), 1)
+        self.assertIn('montant_alloue', servis['Directeur']['budgets_departement'][0])
+
     def test_forme_servie_egale_l_echantillon_partage(self):
         """AANA45 — avec un VRAI budget en base, la réponse porte
         exactement les clés/natures du contrat consommé par l'écran."""

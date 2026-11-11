@@ -22,6 +22,7 @@ const NO_OWNER = '__none'
 
 export default function BulkActionBar({
   count, users = [], canDelete, hasArchivedSelected = false,
+  canReassign = true, canWrite = true, canExport = true, // ADRG20 — droits des gestes (crm_*)
   busy, onAction, onExport, onClear, messageTemplates = [],
 }) {
   // panneau ouvert ('reassign' | 'stage' | 'tag' | 'relance' | 'perdu' | null)
@@ -60,23 +61,23 @@ export default function BulkActionBar({
           (Canal, Priorité, Tag, Relance, Planifier activité, Perdu,
           Restaurer, Supprimer) vit dans un seul menu « Plus ». */}
       <div className="bulk-bar-actions">
-        <Button type="button" size="sm" variant="outline"
+        {canReassign && <Button type="button" size="sm" variant="outline"
                 onClick={() => toggle('reassign')} disabled={busy}>
           Responsable
-        </Button>
-        <Button type="button" size="sm" variant="outline"
+        </Button>}
+        {canWrite && <Button type="button" size="sm" variant="outline"
                 onClick={() => toggle('stage')} disabled={busy}>
           Étape
-        </Button>
-        <Button type="button" size="sm" variant="outline"
+        </Button>}
+        {canWrite && <Button type="button" size="sm" variant="outline"
                 onClick={() => run('archive')} disabled={busy}>
           Archiver
-        </Button>
-        <Button type="button" size="sm" variant="outline"
+        </Button>}
+        {canExport && <Button type="button" size="sm" variant="outline"
                 onClick={onExport} disabled={busy}>
           <Download /> Exporter Excel
-        </Button>
-        <DropdownMenu>
+        </Button>}
+        {(canWrite || canDelete) && <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button type="button" size="sm" variant="outline" disabled={busy}
                     aria-label="Plus d'actions en masse">
@@ -84,7 +85,7 @@ export default function BulkActionBar({
               Plus
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
+          <DropdownMenuContent align="start">{canWrite && <>
             <DropdownMenuItem onSelect={() => toggle('canal')}>
               Canal
             </DropdownMenuItem>
@@ -112,7 +113,7 @@ export default function BulkActionBar({
               onSelect={() => run('unarchive')}
             >
               Restaurer
-            </DropdownMenuItem>
+            </DropdownMenuItem></>}
             {canDelete && (
               <DropdownMenuItem
                 destructive
@@ -122,7 +123,7 @@ export default function BulkActionBar({
               </DropdownMenuItem>
             )}
           </DropdownMenuContent>
-        </DropdownMenu>
+        </DropdownMenu>}
         <Button type="button" size="sm" variant="ghost" className="bulk-bar-clear"
                 onClick={onClear} disabled={busy}>
           <X /> Désélectionner

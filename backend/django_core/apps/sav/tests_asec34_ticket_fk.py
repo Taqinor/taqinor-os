@@ -199,6 +199,42 @@ class TicketFkEtChampsServeurTests(TestCase):
         self.assertEqual((ticket.couverture, ticket.date_ouverture),
                          ('garantie', date(2020, 1, 1)))
 
+    def test_creation_affectee_exige_sav_reassign(self):
+        """ADRG40 (C-ADRG-015) — créer un ticket DÉJÀ affecté (technicien ou
+        équipe) est la même réaffectation que le PATCH : le rôle LIVRÉ
+        Technicien reçoit 403 et aucun ticket n'est créé ; sans affectation,
+        201 ; le rôle livré Responsable et le compte hérité responsable
+        créent affecté (201). Mutant : retirer l'entrée ``create`` ⇒ échec."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        livres = dict(CANONICAL_SYSTEM_ROLES)
+
+        def compte(nom, legacy='normal'):
+            role = None if nom is None else Role.objects.create(
+                company=self.a, nom=nom, est_systeme=True,
+                permissions=list(livres[nom]))
+            return _api(User.objects.create_user(
+                username=f'adrg40_{(nom or "herite").replace(" ", "_").lower()}',
+                password='x', role_legacy=legacy, company=self.a, role=role))
+
+        equipe = EquipeMaintenance.objects.create(company=self.a, nom='Équipe A')
+        base = {'client': self.client_a.id, 'type': 'correctif',
+                'description': 'panne'}
+        technicien = compte('Technicien')
+        avant = Ticket.objects.count()
+        for extra in ({'technicien_responsable': self.tech_a.id},
+                      {'equipe': equipe.id}):
+            r = technicien.post(URL, {**base, **extra}, format='json')
+            self.assertEqual(r.status_code, 403, (extra, r.data))
+            self.assertIn('sav_reassign', str(r.data))
+        self.assertEqual(Ticket.objects.count(), avant)
+        self.assertEqual(
+            technicien.post(URL, base, format='json').status_code, 201)
+        for api in (compte('Responsable'), compte(None, 'responsable')):
+            r = api.post(URL, {**base, 'technicien_responsable': self.tech_a.id,
+                               'equipe': equipe.id}, format='json')
+            self.assertEqual(r.status_code, 201, r.data)
+
     def test_cout_fige(self):
         r = self._patch({'cout': '999.00'})
         self.assertEqual(r.status_code, 200, r.data)

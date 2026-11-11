@@ -521,6 +521,15 @@ def _apply_one(company, user, op):
     if op_type not in FIELD_OP_HANDLERS:
         return {'client_op_id': op_id, 'op_type': op_type,
                 'status': 'error', 'error': f'op_type inconnu : {op_type}.'}
+    # ADRG42 — le code du GESTE rejoué, comme en ligne (ASEC72 / ASEC75) :
+    # sémantique ``HasPermissionOrLegacy`` (rôle fin → code ; hérité → palier).
+    from types import SimpleNamespace
+    from apps.roles.permissions import DroitDeLaGrille
+    garde = DroitDeLaGrille('intervention_gerer' if op_type.startswith('intervention.')
+                            else 'installation_gerer')()
+    if not garde.has_permission(SimpleNamespace(user=user), None):
+        return {'client_op_id': op_id, 'op_type': op_type,
+                'status': 'error', 'error': garde.message['detail']}
 
     # REJEU : la même clé d'un même locataire ne s'applique qu'une fois → on
     # renvoie le résultat mémorisé SANS rejouer l'effet (no-op idempotent).

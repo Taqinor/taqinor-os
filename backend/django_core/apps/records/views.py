@@ -274,6 +274,11 @@ def pieces_visibles(qs, user, garder=None):
     hors = models.Q(content_type=ct) & ~models.Q(object_id__in=visibles.values('pk'))
     for app_label in {a for a, _m in ALLOWED_TARGETS if module_refuse(user, a)}:
         hors |= models.Q(content_type__app_label=app_label)
+    if not getattr(user, 'is_admin_role', False):  # ALEC4 — cible non déclarée : comme ``resolve_target``
+        declarees = models.Q()
+        for app_label, model in ALLOWED_TARGETS:
+            declarees |= models.Q(content_type__app_label=app_label, content_type__model=model)
+        hors |= ~declarees
     return qs.exclude(hors & ~garder if garder is not None else hors)
 
 

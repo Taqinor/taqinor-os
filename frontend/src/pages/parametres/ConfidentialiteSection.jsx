@@ -16,6 +16,7 @@
 import { useEffect, useState } from 'react'
 import { useDispatch } from 'react-redux'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
+import { useCanModifierParametres } from '../../features/parametres/useCanModifierParametres'
 import { Plus, Trash2, Download, Lock, FileCheck2, ShieldCheck } from 'lucide-react'
 import { toast, useConfirmDialog } from '../../ui/confirm'
 import coreApi from '../../api/coreApi'
@@ -463,6 +464,7 @@ function BenchmarkingConsent() {
   const [optIn, setOptIn] = useState(false)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
+  const peutModifier = useCanModifierParametres() // ADRG84 — `parametres/update/` l'exige
 
   useEffect(() => {
     let actif = true
@@ -499,7 +501,7 @@ function BenchmarkingConsent() {
           <input
             type="checkbox"
             checked={optIn}
-            disabled={loading || busy}
+            disabled={loading || busy || !peutModifier}
             onChange={toggle}
             aria-label="Consentir au benchmarking anonymisé"
           />

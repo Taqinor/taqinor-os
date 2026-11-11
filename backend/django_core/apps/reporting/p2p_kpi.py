@@ -130,5 +130,7 @@ def kpi_p2p(request):
         raise ParseError('Société requise.')
     debut = _qdate(request.query_params.get('debut'))
     fin = _qdate(request.query_params.get('fin'))
-    return Response(
-        dashboard_p2p(request.user.company, debut=debut, fin=fin))
+    data = dashboard_p2p(request.user.company, debut=debut, fin=fin)
+    if not request.user.can_view_buy_prices:  # ADRG64 — budgets d'achat (D-ASTK-2)
+        data['budgets_departement'] = []
+    return Response(data)

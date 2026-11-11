@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest'
+import { describe, it, expect, vi, beforeAll, onTestFinished } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
@@ -48,6 +48,11 @@ vi.mock('../../api/installationsApi', () => ({
   },
 }))
 
+// ADRG47 — droit d'écriture du monitoring (`sav_gerer`, palier sav) simulé :
+// vrai = porteur (Technicien) ; faux = Commercial du registre (aucun code sav).
+const droit = vi.hoisted(() => ({ ecrire: true }))
+vi.mock('../../features/sav/useDroitMetier', () => ({ default: () => droit.ecrire }))
+
 import monitoringApi from '../../api/monitoringApi'
 import CleaningsPage from './CleaningsPage'
 import { polyfillResizeObserver } from '../../test/selectNatif'
@@ -67,5 +72,20 @@ describe('CleaningsPage (WR7 — nettoyages + salissure)', () => {
 
     // Le journal a bien été demandé pour l'installation (pas la config).
     expect(monitoringApi.getCleanings).toHaveBeenCalledWith(expect.objectContaining({ installation: 11 }))
+  })
+
+  it('ADRG47 — un Commercial ne voit ni Ajouter ni Supprimer', async () => {
+    droit.ecrire = false
+    onTestFinished(() => { droit.ecrire = true })
+    renderPage(<CleaningsPage />)
+    await waitFor(() => expect(screen.getAllByText('Nettoyage complet').length).toBeGreaterThan(0))
+    expect(screen.queryByRole('button', { name: /Ajouter/ })).toBeNull()
+    expect(screen.queryAllByLabelText('Supprimer')).toHaveLength(0)
+  })
+
+  it('ADRG47 — un porteur de sav_gerer voit Ajouter et Supprimer', async () => {
+    renderPage(<CleaningsPage />)
+    expect(await screen.findByRole('button', { name: /Ajouter/ })).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryAllByLabelText('Supprimer').length).toBeGreaterThan(0))
   })
 })

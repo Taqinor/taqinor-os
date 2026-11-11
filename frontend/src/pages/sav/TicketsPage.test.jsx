@@ -1,7 +1,23 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import {
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
+import { MemoryRouter } from 'react-router-dom'
+import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+
+// ADRG22 — doublures réseau de la fiche et de la liste (aucun effet sur les
+// briques de présentation testées plus bas, qui n'appellent aucune API).
+vi.mock('../../features/sav/store/ticketsSlice', async (io) => ({
+  ...(await import('./__tests__/ticketDetailMocks.js')).ticketsSliceMock(await io()),
+  fetchTickets: () => ({ type: 'sav/fetchTickets/noop' }),
+}))
+vi.mock('../../api/savApi', async () => (await import('./__tests__/ticketDetailMocks.js')).savApiMock())
+vi.mock('../../api/axios', async () => (await import('./__tests__/ticketDetailMocks.js')).axiosMock())
+vi.mock('../../api/installationsApi', async () => (await import('./__tests__/ticketDetailMocks.js')).installationsApiMock())
+
+import TicketsPage, {
+  TicketDetail,
   StatutPill,
   PrioriteBadge,
   TicketSlaBadge,
@@ -225,3 +241,82 @@ describe('KanbanColumn (J144 — vue Kanban par statut)', () => {
   })
 })
 
+/* ADRG22 (C-ADRG-047) — l'écran n'offre que les gestes que la route accepte :
+   écriture du ticket = `sav_gerer` ; réaffectation (« Technicien responsable »,
+   « Assigner à … » en masse) = `sav_reassign`. Codes recopiés du registre
+   (`apps/roles/permissions_registre.py`, rôles LIVRÉS Technicien / Commercial). */
+const TECHNICIEN = ['equipement_voir', 'sav_voir', 'sav_gerer', 'sav_repondre_client_externe']
+const COMMERCIAL = ['equipement_voir', 'sav_voir', 'ventes_creer']
+const T1 = {
+  id: 1, reference: 'SAV-1', statut: 'en_cours', type: 'correctif', priorite: 'normale',
+  sous_garantie: 'non', sous_garantie_effectif: 'non', couverture: 'a_determiner',
+  devis_id_ext: null, facture_id_ext: null, instructions: '', annule: false,
+  technicien_responsable: 7, technicien_nom: 'Karim', client_nom: 'ACME',
+}
+const T2 = { ...T1, id: 2, reference: 'SAV-2', technicien_responsable: 8, technicien_nom: 'Yassine' }
+
+function storeAdrg22(permissions, role = 'normal') {
+  return configureStore({
+    reducer: {
+      tickets: (state = { items: [T1, T2], loading: false, error: null }) => state,
+      auth: (state = { role, permissions }) => state,
+    },
+  })
+}
+
+function renderFiche(permissions) {
+  return render(<Provider store={storeAdrg22(permissions)}><MemoryRouter>
+    <TicketDetail ticket={T1} onClose={() => {}} onSaved={() => {}} />
+  </MemoryRouter></Provider>)
+}
+
+const comboTechnicien = () => screen.getAllByRole('combobox')
+  .find((c) => c.textContent === '— Non assigné —' || c.textContent === 'Karim')
+
+describe("TicketDetail — ADRG22 gestes d'écriture selon les droits de la route", () => {
+  it('Technicien (sav_gerer sans sav_reassign) : technicien en lecture, transitions et enregistrement présents', async () => {
+    renderFiche(TECHNICIEN)
+    await screen.findByText('SAV-1', { exact: false })
+    expect(comboTechnicien()).toBeDisabled()
+    expect(screen.getAllByRole('combobox').find((c) => c.textContent === 'En cours')).not.toBeDisabled()
+    expect(screen.getByRole('button', { name: /Mettre à jour/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Annuler le ticket/ })).toBeInTheDocument()
+  }, 60000)
+
+  it("Commercial (sav_voir sans sav_gerer) : aucun geste d'écriture du ticket", async () => {
+    renderFiche(COMMERCIAL)
+    await screen.findByText('SAV-1', { exact: false })
+    for (const nom of [/Mettre à jour/, /Annuler le ticket/, /^Noter$/, /Ajouter la pièce/,
+      /Retirer une pièce/, /Ajouter une intervention/, /Planifier une intervention/,
+      /Créer un devis/, /^Facturer$/, /Mettre en attente client/]) {
+      expect(screen.queryByRole('button', { name: nom })).toBeNull()
+    }
+    expect(screen.getAllByRole('combobox').find((c) => c.textContent === 'En cours')).toBeDisabled()
+    expect(comboTechnicien()).toBeDisabled()
+  }, 60000)
+})
+
+async function actionsGroupees(permissions, role) {
+  const user = userEvent.setup()
+  render(<ThemeProvider><Provider store={storeAdrg22(permissions, role)}><MemoryRouter>
+    <TicketsPage />
+  </MemoryRouter></Provider></ThemeProvider>)
+  const cases = await screen.findAllByRole('checkbox', { name: /^Sélectionner la ligne/ })
+  await user.click(cases[0])
+  await user.click(cases[1])
+  const barre = await screen.findByRole('region', { name: /ligne\(s\) sélectionnée\(s\)/ })
+  const plus = within(barre).queryByRole('button', { name: /Plus/ })
+  if (plus) await user.click(plus)
+  return document.body.textContent
+}
+
+describe('TicketsPage — ADRG22 « Assigner à … » en masse', () => {
+  it('responsable (palier) : « Assigner à » proposé', async () => {
+    expect(await actionsGroupees([], 'responsable')).toContain('Assigner à Karim')
+  }, 60000)
+
+  it('sans sav_reassign : aucun « Assigner à »', async () => {
+    const texte = await actionsGroupees(TECHNICIEN)
+    expect(texte).not.toContain('Assigner à')
+  }, 60000)
+})

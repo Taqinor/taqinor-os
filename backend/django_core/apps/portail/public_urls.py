@@ -9,7 +9,6 @@ from django.urls import path
 
 from .public_views import (
     accepter_invitation_portail_public,
-    portail_mon_releve,
     theme_portail_public,
 )
 
@@ -18,8 +17,6 @@ urlpatterns = [
     # NTPRT6 — l'invité pose son mot de passe via le lien reçu par email.
     path('invitations/accepter/', accepter_invitation_portail_public,
          name='portail-invitation-accepter'),
-    # XFAC26/AUD148 — relevé de compte self-service par lien tokenisé (voir
-    # le commentaire de tête de ``portail_mon_releve`` dans public_views.py).
-    path('<str:token>/mon-releve/', portail_mon_releve,
-         name='portail-mon-releve'),
+    # APUB43 (C-APUB-022) — le relevé de compte par jeton permanent (sans
+    # écran ni lien émis) est retiré : aucune route publique ne le sert.
 ]

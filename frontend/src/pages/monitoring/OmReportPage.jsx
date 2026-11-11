@@ -12,6 +12,7 @@ import BarreSysteme from './BarreSysteme'
 import useSupervisedSystems from './useSupervisedSystems'
 import { lancerChargement } from '../../lib/chargementEffet'
 import EnTeteMonitoring from './EnTeteMonitoring'
+import useDroitMetier from '../../features/sav/useDroitMetier'
 import SegmentedPetit from './SegmentedPetit'
 import { ChargementPage } from '../../ui/ChargementPage'
 
@@ -25,6 +26,7 @@ const PERIODS = [
 ]
 
 export default function OmReportPage() {
+  const peutEcrire = useDroitMetier('sav_gerer') // ADRG47 — écriture du monitoring = palier sav
   const { systems, loading: loadingSystems } = useSupervisedSystems()
   const [selectedId, setSelectedId] = useState('')
   const [period, setPeriod] = useState('monthly')
@@ -125,9 +127,9 @@ export default function OmReportPage() {
             <Button variant="outline" onClick={download} loading={downloading}>
               <FileDown /> Télécharger le PDF
             </Button>
-            <Button onClick={() => setEmailOpen(true)}>
+            {peutEcrire && <Button onClick={() => setEmailOpen(true)}>
               <Mail /> Envoyer par e-mail
-            </Button>
+            </Button>}
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3">

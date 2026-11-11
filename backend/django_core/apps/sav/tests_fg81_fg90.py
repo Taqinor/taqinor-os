@@ -635,6 +635,35 @@ class TestPartsF89(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.data, [])
 
+    def test_analyses_sav_refusees_sans_lecture_sav(self):
+        """ADRG72 (C-ADRG-019) — les trois analyses SAV exigent la lecture du
+        module SAV : Admin Ventes (rôle LIVRÉ sans code SAV) ⇒ 403 aux trois,
+        Technicien ⇒ 200 aux trois. Mutant : remettre ``IsAnyRole`` sur une
+        des trois ⇒ échec."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import (
+            ADMIN_VENTES_PERMISSIONS, TECHNICIEN_PERMISSIONS)
+        t = make_ticket(self.co, self.user, self.client, self.inst)
+        make_equipement(self.co, self.user, self.prod, self.inst)
+        PieceConsommee.objects.create(
+            company=self.co, ticket=t, produit=self.prod, quantite=Decimal('1'))
+        comptes = {}
+        for nom, perms in (('Admin Ventes', ADMIN_VENTES_PERMISSIONS),
+                           ('Technicien', TECHNICIEN_PERMISSIONS)):
+            role = Role.objects.create(
+                company=self.co, nom=nom, est_systeme=True,
+                permissions=list(perms))
+            comptes[nom] = auth(User.objects.create_user(
+                username=f'adrg72_{nom.split()[0].lower()}', password='x',
+                role_legacy='normal', company=self.co, role=role))
+        routes = ('sav-parts-forecast/', 'sav-pannes/', 'sav-fiabilite/')
+        for route in routes:
+            url = f'/api/django/sav/insights/{route}'
+            self.assertEqual(
+                comptes['Admin Ventes'].get(url).status_code, 403, route)
+            self.assertEqual(
+                comptes['Technicien'].get(url).status_code, 200, route)
+
 
 # ── FG90 — nb_tickets_12m ────────────────────────────────────────────────────
 

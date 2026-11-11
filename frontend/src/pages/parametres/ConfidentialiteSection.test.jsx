@@ -63,8 +63,8 @@ import ConfidentialiteSection from './ConfidentialiteSection'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
-function renderWithRole(role) {
-  const store = configureStore({ reducer: { auth: (state = { role }) => state } })
+function renderWithRole(role, auth = { role }) {
+  const store = configureStore({ reducer: { auth: (state = auth) => state } })
   return render(<Provider store={store}><ConfidentialiteSection /></Provider>)
 }
 
@@ -222,5 +222,17 @@ describe('ConfidentialiteSection (XPLT23)', () => {
     await user.click(screen.getByRole('button', { name: /Exporter en CSV/ }))
 
     await waitFor(() => expect(exportCsv).toHaveBeenCalled())
+  })
+
+  it('ADRG84 — le consentement de benchmarking ne s\u2019écrit qu\u2019avec parametres_modifier', async () => {
+    renderWithRole('responsable', { role: 'responsable', role_nom: 'Commercial responsable',
+      permissions: ['parametres_voir', 'users_voir', 'crm_voir', 'crm_modifier'] })
+    const caseCR = await screen.findByRole('checkbox', { name: 'Consentir au benchmarking anonymisé' })
+    await waitFor(() => expect(caseCR).toBeDisabled())
+    cleanup()
+    renderWithRole('admin', { role: 'admin', role_nom: 'Directeur',
+      permissions: ['parametres_voir', 'parametres_modifier', 'roles_gerer'] })
+    const caseDir = await screen.findByRole('checkbox', { name: 'Consentir au benchmarking anonymisé' })
+    await waitFor(() => expect(caseDir).not.toBeDisabled())
   })
 })

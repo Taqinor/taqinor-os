@@ -11,12 +11,14 @@ import { formatMAD, formatNumber } from '../../../lib/format'
 import { Card, Button, Input, StatusPill, toast } from '../../../ui'
 import SystemPicker from '../../../pages/monitoring/SystemPicker'
 import ListeOuVide from './ListeOuVide'
+import useDroitMetier from '../useDroitMetier'
 import { libelleSysteme as libelle, useListeServeur } from './partage'
 
 const FORM_VIDE = { systeme: '', taux: '', compensation: '' }
 const pct = (v) => (v === null || v === undefined ? '—' : `${formatNumber(v, { decimals: 2 })} %`)
 
 export default function SlaDisponibiliteSection({ systems, loadingSystems }) {
+  const peutEcrire = useDroitMetier('sav_gerer') // ADRG47 — écriture du monitoring = palier sav
   const { rows, loading, load } = useListeServeur(monitoringApi.getSlasDisponibilite)
   const [form, setForm] = useState(FORM_VIDE)
   const [busy, setBusy] = useState(false)
@@ -69,10 +71,10 @@ export default function SlaDisponibiliteSection({ systems, loadingSystems }) {
         <Input aria-label="Compensation par jour d'indisponibilité (MAD)" type="number" step="any"
                placeholder="Compensation / jour (MAD)" value={form.compensation}
                onChange={(e) => setForm((f) => ({ ...f, compensation: e.target.value }))} />
-        <Button type="button" size="sm" loading={busy}
+        {peutEcrire && <Button type="button" size="sm" loading={busy}
                 disabled={!form.systeme || !form.taux} onClick={enregistrer}>
           Enregistrer le SLA
-        </Button>
+        </Button>}
       </div>
       {erreur && <p role="alert" className="text-sm text-destructive">{erreur}</p>}
 

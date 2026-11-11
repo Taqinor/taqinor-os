@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest'
+import { describe, it, expect, vi, beforeAll, onTestFinished } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
@@ -54,6 +54,11 @@ vi.mock('../../api/installationsApi', () => ({
     })),
   },
 }))
+
+// ADRG47 — droit d'écriture du monitoring (`sav_gerer`, palier sav) simulé :
+// vrai = porteur (Technicien) ; faux = Commercial du registre (aucun code sav).
+const droit = vi.hoisted(() => ({ ecrire: true }))
+vi.mock('../../features/sav/useDroitMetier', () => ({ default: () => droit.ecrire }))
 
 import monitoringApi from '../../api/monitoringApi'
 import WarrantiesPage from './WarrantiesPage'
@@ -121,5 +126,16 @@ describe('WarrantiesPage (WR6 — garanties de production)', () => {
     // Liberté de saisie du fondateur : jamais de snap/rejet des valeurs tapées.
     expect(year1).toHaveAttribute('step', 'any')
     expect(year1.closest('form')).toHaveProperty('noValidate', true)
+  })
+
+  it('ADRG47 — un Commercial ne voit ni Nouvelle garantie, ni Modifier, ni Supprimer', async () => {
+    droit.ecrire = false
+    onTestFinished(() => { droit.ecrire = true })
+    renderPage(<WarrantiesPage />)
+    await screen.findAllByText('INST-2026-001 — Amrani')
+    expect(screen.queryByRole('button', { name: /Nouvelle garantie/ })).toBeNull()
+    expect(screen.queryAllByLabelText('Modifier')).toHaveLength(0)
+    expect(screen.queryAllByLabelText('Supprimer')).toHaveLength(0)
+    expect(screen.getAllByLabelText('Statut et courbe').length).toBeGreaterThan(0)
   })
 })

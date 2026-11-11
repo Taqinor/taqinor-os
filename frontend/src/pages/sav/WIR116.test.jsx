@@ -31,6 +31,8 @@ vi.mock('../../api/importApi', () => ({ default: { exportList: vi.fn(() => Promi
 vi.mock('./RegistreGarantiesDialog', () => ({ default: () => null }))
 vi.mock('./EquipementFiabilitePanel', () => ({ default: () => null }))
 vi.mock('../../components/ExcelImport', () => ({ default: () => null }))
+// ADRG66 — react-redux est mocké sans `auth` : droit métier simulé (porteur).
+vi.mock('../../features/sav/useDroitMetier', () => ({ default: () => true }))
 
 import EquipementsPage from './EquipementsPage'
 

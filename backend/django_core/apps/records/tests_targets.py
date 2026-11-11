@@ -315,3 +315,44 @@ class DroitDuModuleDesCiblesTests(TestCase):
                 self.assertEqual(rep.data['detail'], 'Cible introuvable.')
                 self.assertEqual(
                     Comment.objects.filter(object_id=self.devis.pk).count(), avant)
+
+    def test_liste_sans_cible_exclut_une_cible_non_declaree(self):
+        """ALEC4 (C-ALEC-003) — la note de révision d'un BCF (« prix_achat_unitaire :
+        100 → 120 », cible ``achats.boncommandefournisseur`` déclarée par aucun
+        ``platform.py``) n'est plus lue par ``records/comments/`` sans cible hors
+        palier administrateur : le Commercial ne la liste pas (404 au détail) et
+        garde le commentaire de son lead ; le Directeur la liste. Mutant :
+        retirer l'exclusion ⇒ échec."""
+        from django.contrib.auth import get_user_model
+        from django.contrib.contenttypes.models import ContentType
+        from rest_framework.test import APIClient
+
+        from apps.crm.models import Lead
+        from apps.records.models import ALLOWED_TARGETS, Comment
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+
+        self.assertNotIn(('achats', 'boncommandefournisseur'), ALLOWED_TARGETS)
+        commercial = get_user_model().objects.create_user(
+            username='alec4-commercial', password='x', company=self.company,
+            role=Role.objects.create(
+                company=self.company, nom='Commercial',
+                permissions=list(dict(CANONICAL_SYSTEM_ROLES)['Commercial'])))
+        lead = Lead.objects.create(company=self.company, nom='Lead ALEC4', owner=commercial)
+        note_lead = Comment.objects.create(
+            company=self.company, author=self.users['Directeur'],
+            content_type=ContentType.objects.get_for_model(Lead),
+            object_id=lead.pk, body='Rappeler mardi')
+        note_bcf = Comment.objects.create(
+            company=self.company, author=self.users['Directeur'],
+            content_type=ContentType.objects.get_by_natural_key('achats', 'boncommandefournisseur'),
+            object_id=1, body='Révision 2 :\nprix_achat_unitaire : 100 → 120')
+        coms = '/api/django/records/comments/'
+        for user, voit in ((commercial, False), (self.users['Directeur'], True)):
+            api = APIClient()
+            api.force_authenticate(user)
+            ids = self._ids(api, coms)
+            self.assertEqual(note_bcf.pk in ids, voit, user.username)
+            self.assertIn(note_lead.pk, ids, user.username)
+            rep = api.get(f'{coms}{note_bcf.pk}/')
+            self.assertEqual(rep.status_code, 200 if voit else 404, user.username)

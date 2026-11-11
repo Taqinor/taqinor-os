@@ -186,3 +186,35 @@ class JetonAccesPortailTests(TestCase):
                 self.assertEqual(res.status_code, 404, res.content)
         compte_b.refresh_from_db()
         self.assertEqual(compte_b.token_acces, 'aud141-jeton-b')
+
+    # ── ADRG96 — le client d'un compte ne se réaffecte pas ─────────────────
+
+    def test_le_client_d_un_compte_ne_se_reaffecte_pas(self):
+        """ADRG96 (C-ADRG-053) — un compte au rôle système « Commercial » (semé
+        comme ``init_roles``) PATCH ``{client: B}`` sur le compte de A ⇒ 400
+        sur ``client``, le compte reste à A et le jeton de A sert toujours le
+        client A ; renvoyer le MÊME client reste accepté. Mutant : retirer
+        ``validate_client`` ⇒ échec (200, relevé de B par le jeton de A)."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        role = Role.objects.create(
+            company=self.co, nom='Commercial', est_systeme=True,
+            permissions=list(dict(CANONICAL_SYSTEM_ROLES)['Commercial']))
+        commercial = auth(CustomUser.objects.create_user(
+            username='adrg96-commercial', password='motdepasse-test-1234',
+            company=self.co, role_legacy='normal', role=role))
+        client_b = make_client_crm(self.co, 'Beta')
+        url = f'{RACINE}{self.compte.id}/'
+        for api in (commercial, self.api):
+            res = api.patch(url, {'client': client_b.id}, format='json')
+            self.assertEqual(res.status_code, 400, res.content)
+            self.assertIn('client', res.data)
+        self.compte.refresh_from_db()
+        self.assertEqual(self.compte.client_id, self.client_crm.id)
+        res = self.api.patch(url, {'client': self.client_crm.id, 'actif': True},
+                             format='json')
+        self.assertEqual(res.status_code, 200, res.content)
+        # APUB43 — le relevé par jeton est retiré : l'oracle lit le compte
+        # que le jeton de A résout (même requête que ``selectors``).
+        compte = compte_portail_par_token(self.compte.token_acces)
+        self.assertEqual(compte.client_id, self.client_crm.id)

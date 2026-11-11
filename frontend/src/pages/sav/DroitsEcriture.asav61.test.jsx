@@ -41,6 +41,9 @@ const ROLES = {
   normal: { role: 'technicien', role_nom: 'Technicien', permissions: ['sav_voir'] },
   equipement_voir: { role: 'technicien', role_nom: 'Technicien', permissions: ['sav_voir', 'equipement_voir'] },
   responsable: { role: 'responsable', role_nom: 'Responsable', permissions: ['sav_voir', 'sav_probleme_gerer'] },
+  // ADRG39 — le rebut exige aussi `equipement_gerer` (Technicien responsable).
+  responsable_parc: { role: 'responsable', role_nom: 'Technicien responsable',
+    permissions: ['sav_voir', 'equipement_voir', 'equipement_gerer'] },
 }
 const monter = (ui, profil) => render(
   <Provider store={configureStore({ reducer: { auth: (s = ROLES[profil]) => s } })}>
@@ -83,12 +86,17 @@ describe('ASAV61 — gestes d\'écriture selon le rôle', () => {
     expect(await screen.findByRole('button', { name: 'Créer le problème' })).toBeInTheDocument()
   })
 
-  it('parc : « Mettre au rebut » réservé responsable/admin', async () => {
+  it('parc : « Mettre au rebut » réservé au palier responsable AVEC equipement_gerer (ADRG39)', async () => {
     monter(<EquipementDetail equipement={equipement} onClose={() => {}} onSaved={() => {}} />, 'equipement_voir')
     await screen.findByRole('button', { name: /Créer un ticket SAV/ })
     expect(screen.queryByRole('button', { name: /Mettre au rebut/ })).toBeNull()
     cleanup()
+    // Responsable sans `equipement_gerer` : le serveur répond 403 → pas de bouton.
     monter(<EquipementDetail equipement={equipement} onClose={() => {}} onSaved={() => {}} />, 'responsable')
+    await screen.findByRole('button', { name: /Créer un ticket SAV/ })
+    expect(screen.queryByRole('button', { name: /Mettre au rebut/ })).toBeNull()
+    cleanup()
+    monter(<EquipementDetail equipement={equipement} onClose={() => {}} onSaved={() => {}} />, 'responsable_parc')
     expect(await screen.findByRole('button', { name: /Mettre au rebut/ })).toBeInTheDocument()
   })
 })
