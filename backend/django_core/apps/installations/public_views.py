@@ -145,7 +145,12 @@ class InterventionRapportPhotoPublicView(APIView):
         from . import field_services
         att = (field_services.intervention_photos(interv)
                .filter(pk=att_id, mime__startswith='image/').first())
-        if att is None:
+        # APUB30 — seules les photos que la page publie (créneau ACTIF, règle
+        # de ``intervention_pdf._photos_payload``) ; plaque, image sans créneau → 404.
+        par_creneau = field_services.photos_by_slot(interv)
+        publiees = {a.pk for slot in field_services.active_shotlist(interv.company)
+                    for a in par_creneau.get(slot.cle, [])}
+        if att is None or att.pk not in publiees:
             return Response(
                 {'detail': 'Lien invalide ou expiré.'},
                 status=status.HTTP_404_NOT_FOUND)
