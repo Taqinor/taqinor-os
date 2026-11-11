@@ -10,6 +10,7 @@ from .models import (
     DocumentVersion, Folder, JournalAcces, LegalHold, PartageGed,
     PolitiqueRetention, RegleAclMetadonnee,
 )
+from core.scoping import visible_user_ids
 
 import logging
 
@@ -98,6 +99,15 @@ def documents_visible_to_user(user):
         return qs
     # Couche 1 — ACL coffre-fort (GED8).
     qs = qs.filter(Q(coffre__isnull=True) | Q(coffre__proprietaire_id=user.id))
+    # ALEC18 — document produit par un AUTRE module (routage ZGED6, dépôt
+    # cross-app) : `client_pii_voir`, puis la portée de son auteur (même
+    # borne que les factures).
+    produit = (Q(custom_data__has_key='routage_reference')
+               | Q(custom_data__has_key='source_type'))
+    if not user.can_view_client_pii:
+        qs = qs.exclude(produit)
+    elif (ids := visible_user_ids(user)) is not None:
+        qs = qs.filter(~produit | Q(created_by_id__in=ids))
     # Couche 2 — ACL GED19 (SOFT, backward-compatible). Si AUCUNE entrée ACL
     # n'existe dans la société, on n'a rien à filtrer : comportement existant
     # préservé sans le moindre travail supplémentaire (court-circuit).

@@ -134,3 +134,46 @@ class GedPermissionContractTests(TestCase):
             self.assertNotIn(
                 f'"{champ}"', blob,
                 f'Champ de prix « {champ} » exposé dans une réponse GED.')
+
+    # ── ALEC18 — droit du module, PII et portée des documents produits ──────
+    def _role_livre(self, nom, username):
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        role = Role.objects.create(
+            company=self.co, nom=f'{nom} {username}',
+            permissions=list(dict(CANONICAL_SYSTEM_ROLES)[nom]))
+        return User.objects.create_user(
+            username=username, password='x', company=self.co, role=role)
+
+    def test_roles_livres_module_pii_et_portee(self):
+        c1 = self._role_livre('Commercial', 'alec18-c1')
+        c2 = self._role_livre('Commercial', 'alec18-c2')
+        terrain = self._role_livre('Commercial terrain', 'alec18-terrain')
+        rh = self._role_livre('Admin RH', 'alec18-rh')
+        directeur = self._role_livre('Directeur', 'alec18-dir')
+        facture = Document.objects.create(
+            company=self.co, folder=self.folder, nom='FAC-C1.pdf',
+            created_by=c1, custom_data={'routage_reference': 'FAC-C1'})
+        upload = Document.objects.create(
+            company=self.co, folder=self.folder, nom='CIN.pdf',
+            custom_data={'source_type': 'portail.piece', 'source_id': 1})
+
+        def ids(user):
+            resp = auth(user).get(f'{BASE}/documents/')
+            self.assertEqual(resp.status_code, 200, user.username)
+            data = resp.data
+            rows = data['results'] if isinstance(data, dict) else data
+            return {row['id'] for row in rows}
+
+        for path in ('documents/', f'documents/{self.doc.pk}/', 'versions/'):
+            with self.subTest(path=path):
+                self.assertEqual(
+                    auth(terrain).get(f'{BASE}/{path}').status_code, 403)
+        self.assertEqual(ids(rh), {self.doc.pk})
+        self.assertEqual(ids(c2), {self.doc.pk})
+        self.assertEqual(ids(c1), {self.doc.pk, facture.pk})
+        self.assertEqual(
+            ids(directeur), {self.doc.pk, facture.pk, upload.pk})
+        for doc in (facture, upload):
+            self.assertEqual(auth(c2).get(
+                f'{BASE}/documents/{doc.pk}/').status_code, 404)
