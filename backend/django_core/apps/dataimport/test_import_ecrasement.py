@@ -419,6 +419,40 @@ class TestIsolationTenantEcrasement(EcrasementBase):
         lead.refresh_from_db()
         self.assertEqual(lead.email, 'b@y.ma')
 
+    def _api_role(self, nom, permissions):
+        """Client authentifié d'un compte au rôle LIVRÉ ``permissions``."""
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+
+        from apps.roles.models import Role
+        role = Role.objects.create(
+            company=self.company, nom=f'{nom} ADRG', permissions=list(permissions))
+        client = APIClient()
+        client.force_authenticate(get_user_model().objects.create_user(
+            username=f'adrg-{nom}', password='x', company=self.company, role=role))
+        return client
+
+    def test_import_factures_exige_ventes_creer(self):
+        """ADRG61 — un Technicien n'importe aucune facture (série légale)."""
+        from apps.crm.models import Client
+        from apps.facturation.models import Facture
+        from apps.roles.permissions_registre import (
+            COMMERCIAL_PERMISSIONS, TECHNICIEN_PERMISSIONS)
+        Client.objects.create(company=self.company, nom='Alaoui', email='a@x.ma')
+        csv_text = 'client_email,statut\na@x.ma,emise\n'
+        tech = self._api_role('tech61', TECHNICIEN_PERMISSIONS)
+        for url in (DRY_RUN_URL, COMMIT_URL):
+            resp = tech.post(url, {'file': self._csv(csv_text), 'target': 'factures'},
+                             format='multipart')
+            self.assertEqual(resp.status_code, 403, resp.data)
+            self.assertEqual(resp.data['code'], 'droit_manquant')
+            self.assertIn('ventes_creer', resp.data['detail'])
+        self.assertFalse(Facture.objects.filter(company=self.company).exists())
+        resp = self._commit(csv_text, target='factures',
+                            client=self._api_role('com61', COMMERCIAL_PERMISSIONS))
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['created'], 1)
+
     def test_upsert_contact_hors_portee_jamais_cree(self):
         """ERR-W33-IMPORT-DOUBLON — en ``upsert``, le contact d'un lead hors de
         portée n'est ni réécrit ni recréé : la ligne est ignorée, avec son motif,

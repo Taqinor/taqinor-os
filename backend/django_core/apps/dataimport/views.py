@@ -74,14 +74,16 @@ PRODUIT_CREATE_PERMISSION = HasPermissionAndRole(
     'stock_creer', 'Directeur', 'Commercial responsable')
 
 #: ACVI1 — droit exigé par cible en plus du palier (l'aperçu montre, le commit réécrit).
-DROIT_PAR_CIBLE = {'leads': 'crm_modifier', 'clients': 'crm_modifier'}
+#: ADRG61 — factures : le code de création unitaire (numéro de série légale).
+DROIT_PAR_CIBLE = {'leads': 'crm_modifier', 'clients': 'crm_modifier',
+                   'factures': 'ventes_creer'}
 
 
 def _refus_droit_cible(request, target):
     code = DROIT_PAR_CIBLE.get(target)
     if code is None or _user_has_or_legacy(request.user, code):
         return None
-    return Response({'detail': "Droit « Modifier » du CRM manquant.",
+    return Response({'detail': f"Droit « {code} » manquant pour cet import.",
                      'code': 'droit_manquant'}, status=403)
 
 
