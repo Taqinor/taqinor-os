@@ -40,6 +40,8 @@ from rest_framework.permissions import (
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from core.proprietaire_seul import ProprietaireSeulMixin
+
 from authentication.permissions import (
     EcritureRefuseeLectureSeule, IsAdminOrResponsableTier,
     HasPermissionOrLegacy, IsAdminRole, IsAuthenticatedInterne,
@@ -711,14 +713,7 @@ def _conformite_xlsx_response(rapport):
     return resp
 
 
-def _exiger_proprietaire(user, instance, quoi):
-    """APUB14 — modifier/supprimer : le propriétaire seul ; objet société (sans
-    propriétaire) : palier administrateur seul (patron ``apps/uxviews``)."""
-    if not ((instance.owner_id == user.id) if instance.owner_id else user.is_admin_role):
-        raise PermissionDenied(f'Vous ne pouvez modifier que vos propres {quoi}.')
-
-
-class DashboardViewSet(TenantMixin, viewsets.ModelViewSet):
+class DashboardViewSet(ProprietaireSeulMixin, TenantMixin, viewsets.ModelViewSet):
     """FG381 — dashboards sans-code, sauvegardés par utilisateur/société.
 
     Multi-tenant : ``TenantMixin`` filtre déjà par société et impose
@@ -747,14 +742,7 @@ class DashboardViewSet(TenantMixin, viewsets.ModelViewSet):
         serializer.save(company=self.request.user.company,
                         owner=self.request.user)
 
-    def perform_update(self, serializer):
-        _exiger_proprietaire(self.request.user, serializer.instance, 'tableaux')  # APUB14
-        # Ne jamais réécrire company/owner depuis le corps.
-        serializer.save(company=self.request.user.company)
-
-    def perform_destroy(self, instance):
-        _exiger_proprietaire(self.request.user, instance, 'tableaux')  # APUB14
-        super().perform_destroy(instance)
+    proprietaire_quoi = 'tableaux'  # APUB14 — perform_update/destroy : ProprietaireSeulMixin
 
     @extend_schema(
         parameters=[_q('filtre', OpenApiTypes.STR,
@@ -880,7 +868,7 @@ _REQUETE_ADHOC = inline_serializer('SavedQueryAdhocRequest', {
 })
 
 
-class SavedQueryViewSet(TenantMixin, viewsets.ModelViewSet):
+class SavedQueryViewSet(ProprietaireSeulMixin, TenantMixin, viewsets.ModelViewSet):
     """FG382 — explorateur de données : requêtes ad-hoc sauvegardées + run.
 
     Multi-tenant : ``TenantMixin`` filtre par société et impose ``company``.
@@ -913,13 +901,7 @@ class SavedQueryViewSet(TenantMixin, viewsets.ModelViewSet):
         serializer.save(company=self.request.user.company,
                         owner=self.request.user)
 
-    def perform_update(self, serializer):
-        _exiger_proprietaire(self.request.user, serializer.instance, 'requêtes')  # APUB14
-        serializer.save(company=self.request.user.company)
-
-    def perform_destroy(self, instance):
-        _exiger_proprietaire(self.request.user, instance, 'requêtes')  # APUB14
-        super().perform_destroy(instance)
+    proprietaire_quoi = 'requêtes'  # APUB14 — perform_update/destroy : ProprietaireSeulMixin
 
     @extend_schema(responses={200: _LISTE_OBJETS})
     @action(detail=False, methods=['get'])
