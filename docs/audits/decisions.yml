@@ -4386,3 +4386,75 @@ decisions:
     date: "2026-11-11"
     source: "audit de parcours PF7 (11/11/2026) : non posée (défaut recommandé : servir_le_site)"
     taches: [ATST30, ATST54]
+
+  - id: D-AMSG-1
+    question: "Les messages clients hors cadence commerciale partent avant 8 h 30 et le week-end : relances de facture 07:00, rappel avant échéance 07:20, rappel de pose J-1 07:45, relance de signature 07:45, relevé du 1er à 08:00. La règle « messages à partir de 8 h 30 » ne vise par écrit que la cadence commerciale. Ces messages suivent-ils la même fenêtre ?"
+    options:
+      - cle: fenetre_commerciale
+        texte: "Oui : même fenêtre que les messages commerciaux, à partir de 08:30, jours ouvrés, report au créneau suivant"
+      - cle: heures_actuelles
+        texte: "Non : garder les heures actuelles, ce sont des messages contractuels"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF8 (11/11/2026) : non posée (défaut recommandé : fenetre_commerciale)"
+    taches: [AMSG44, AMSG72, AMSG73]
+
+  - id: D-AMSG-2
+    question: "Quand une personne répond STOP sur une fiche, une AUTRE fiche déjà existante au même numéro ou au même e-mail reste contactable (relances, WhatsApp en masse, liens). D-ACVI-6 ne vise que les fiches créées ou fusionnées après. L'opposition s'étend-elle aux fiches déjà existantes ?"
+    options:
+      - cle: toutes_les_fiches
+        texte: "Oui : au STOP, toutes les fiches vivantes de la société aux mêmes coordonnées deviennent « ne plus contacter », et c'est relu à chaque changement de coordonnées"
+      - cle: nouvelles_fiches_seulement
+        texte: "Non : seules les fiches créées ou fusionnées après le STOP en héritent"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF8 (11/11/2026) : non posée (défaut recommandé : toutes_les_fiches)"
+    taches: [AMSG3]
+
+  - id: D-AMSG-3
+    question: "Les conversions envoyées à Meta (étape du lead, visite faite, devis signé) portent l'e-mail et le téléphone hachés d'un lead qui a demandé à ne plus être contacté. D-ACRM-5 l'exclut de toute audience, pas des conversions. Envoie-t-on ces conversions pour une personne opposée ?"
+    options:
+      - cle: rien_vers_meta
+        texte: "Non : rien n'est envoyé à Meta pour une personne opposée"
+      - cle: envoyer_quand_meme
+        texte: "Oui : la conversion part quand même, pour mesurer les campagnes"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF8 (11/11/2026) : non posée (défaut recommandé : rien_vers_meta)"
+    taches: [AMSG10, AMSG36]
+
+  - id: D-AMSG-4
+    question: "Aujourd'hui tout rôle qui peut modifier une fiche peut décocher « ne plus contacter », sans motif (la trace et la reprise des relances existent). Qui peut lever l'opposition hors demande du client ?"
+    options:
+      - cle: responsable_avec_motif
+        texte: "Seulement un responsable ou un administrateur, avec un motif obligatoire"
+      - cle: tout_role_trace
+        texte: "Tout rôle qui modifie la fiche, comme aujourd'hui, avec la trace"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF8 (11/11/2026) : non posée (défaut recommandé : responsable_avec_motif)"
+    taches: []
+
+  - id: D-AMSG-5
+    question: "Quatre factures en retard ont consommé leurs trois niveaux de relance automatique alors qu'aucun e-mail n'est parti (e-mail éteint) : elles ne seront plus jamais relancées automatiquement. Leur rend-on leur relance ?"
+    options:
+      - cle: remettre_niveau_1
+        texte: "Oui : après une liste des 4 factures montrée au fondateur, leur relance repart au niveau 1 (elles partiront quand l'e-mail sera allumé ; celle du client de démonstration attend D-AMSG-6)"
+      - cle: laisser_consommees
+        texte: "Non : les laisser telles quelles, relance à la main"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF8 (11/11/2026) : non posée (défaut recommandé : remettre_niveau_1)"
+    taches: [AMSG30]
+
+  - id: D-AMSG-6
+    question: "Cinq clients et deux fournisseurs du jeu de démonstration, avec des adresses e-mail de vrais fournisseurs de messagerie, sont restés dans la société réelle ; deux portent de vrais documents. Que fait-on de leurs coordonnées ?"
+    options:
+      - cle: neutraliser_sauf_confirmes
+        texte: "Après une liste montrée au fondateur, remplacer leurs e-mails et téléphones par des valeurs qui ne peuvent rien recevoir, sauf ceux que le fondateur confirme réels"
+      - cle: garder
+        texte: "Les garder telles quelles"
+    reponse: ouverte
+    date: "2026-11-11"
+    source: "audit de parcours PF8 (11/11/2026) : non posée (défaut recommandé : neutraliser_sauf_confirmes)"
+    taches: [AMSG62]
