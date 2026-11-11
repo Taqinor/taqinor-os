@@ -25,11 +25,11 @@ pgvector==0.5.1
 # Cache / Queue
 redis==5.2.1
 django-redis==5.4.0
-celery==5.7.0
+celery==5.4.0
 # ERR-CELERY-KOMBU-REDIS — kombu ÉPINGLÉ : celery 5.4 l'accepte jusqu'à < 6, or kombu 5.7 exige
 # redis-py >= 6.1 (VersionMismatch au démarrage : worker et beat redémarrent en boucle, chaque .delay()
 # bloque le worker gunicorn). 5.5.4 est le dernier à accepter redis 5.2.1 (extra redis <= 5.2.1).
-kombu==5.7.0
+kombu==5.5.4
 
 # PDF generation
 weasyprint==70.0
@@ -131,7 +131,7 @@ django-prometheus==2.5.0
 # viewsets étaient documentés nulle part de façon machine-lisible ; FG105
 # (apps/publicapi/docs.py) reste une page FR statique pour l'API PUBLIQUE
 # uniquement et n'est pas remplacée.
-drf-spectacular==0.30.0
+drf-spectacular==0.28.0
 
 # PVG1 — import DXF réel du contour de toiture (apps/ao/dxf.py), NOUVELLE
 # DÉPENDANCE approuvée fondateur 2026-08-14. Parse en mémoire (LWPOLYLINE/
