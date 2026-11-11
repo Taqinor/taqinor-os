@@ -211,8 +211,9 @@ export default function FactureRow({ f, ctx }) {
         ) : (
           <>
           {/* VX52 — l'affordance de modification d'échéance ne vivait que dans
-              `title` (survol) : au tactile, un vrai bouton à label accessible. */}
-          {['emise', 'en_retard'].includes(f.statut) || overdue ? (
+              `title` (survol) : au tactile, un vrai bouton à label accessible.
+              ADRG3 — décaler l'échéance d'une émise exige `encaisser`. */}
+          {peutEncaisser && (['emise', 'en_retard'].includes(f.statut) || overdue) ? (
             <button
               type="button"
               className={`${overdue ? 'font-semibold text-destructive' : ''} cursor-pointer text-left hover:underline`}

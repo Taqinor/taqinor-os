@@ -518,6 +518,48 @@ class GestesArgentTests(TestCase):
         facture.refresh_from_db()
         self.assertTrue(facture.exclu_relances)
 
+    def test_patch_champs_relance_emise_exige_encaisser(self):
+        """ADRG3 (C-ADRG-003, D-ASEC-VER-1) — sur une facture ÉMISE, changer
+        un champ qui suspend ou décale la relance exige ``encaisser`` : 403
+        nommant ``encaisser`` pour l'Admin Ventes, rien d'écrit ; le même
+        PATCH sur un brouillon : 200 ; le Directeur reporte l'échéance (200).
+        Mutant : retirer ``exclu_relances_jusquau`` de
+        ``FACTURE_CHAMPS_RELANCE`` ⇒ échec."""
+        from datetime import timedelta
+
+        from apps.ventes.models import Facture, FactureActivity
+        directeur, admin_ventes = (self.users['Directeur'],
+                                   self.users['Admin Ventes'])
+        emise = self._facture(directeur)
+        Facture.objects.filter(pk=emise.pk).update(
+            date_echeance=date.today() - timedelta(days=10))
+        emise.refresh_from_db()
+        url = f'/api/django/ventes/factures/{emise.id}/'
+        corps = ({'exclu_relances_jusquau':
+                  (date.today() + timedelta(days=365)).isoformat()},
+                 {'date_echeance':
+                  (date.today() + timedelta(days=30)).isoformat()})
+        activites = FactureActivity.objects.filter(facture=emise).count()
+        for c in corps:
+            with self.subTest(corps=c):
+                r = self._api(admin_ventes).patch(url, c, format='json')
+                self.assertEqual(r.status_code, 403, r.data)
+                self.assertIn('encaisser', str(r.data['detail']))
+        relue = Facture.objects.get(pk=emise.pk)
+        self.assertIsNone(relue.exclu_relances_jusquau)
+        self.assertEqual(relue.date_echeance, emise.date_echeance)
+        self.assertEqual(
+            FactureActivity.objects.filter(facture=emise).count(), activites)
+        brouillon = self._facture(directeur)
+        Facture.objects.filter(pk=brouillon.pk).update(
+            statut=Facture.Statut.BROUILLON, reference=f'BROUILLON-{_nxt()}')
+        r = self._api(admin_ventes).patch(
+            f'/api/django/ventes/factures/{brouillon.id}/', corps[0],
+            format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        r = self._api(directeur).patch(url, corps[1], format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+
     def test_get_permissions_respecte_action(self):
         from apps.facturation.views.facture import FactureViewSet
         from apps.facturation.views.facture_gardes import PeutEncaisser

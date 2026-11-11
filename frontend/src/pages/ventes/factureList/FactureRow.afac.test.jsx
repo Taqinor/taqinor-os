@@ -64,6 +64,14 @@ describe('FactureRow — AFAC10 : actions d’encaissement pilotées par le serv
     expect(await screen.findByRole('menuitem', { name: /Remettre en brouillon/ })).toBeInTheDocument()
   })
 
+  it('ADRG3 — l’échéance d’une émise n’est un bouton qu’avec `encaisser`', () => {
+    const { unmount } = rendre(CONTRAT.exemple)
+    expect(screen.getByRole('button', { name: /Modifier l’échéance/ })).toBeInTheDocument()
+    unmount()
+    rendre(CONTRAT.exemple, { peutEncaisser: false })
+    expect(screen.queryByRole('button', { name: /Modifier l’échéance/ })).toBeNull()
+  })
+
   it('ASEC64 — avec `encaisser` sans palier admin : Avoir visible', () => {
     rendre(CONTRAT.exemple, { isAdmin: false, canManage: false })
     expect(screen.getByRole('button', { name: /^Avoir$/ })).toBeInTheDocument()
