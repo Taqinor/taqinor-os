@@ -24,6 +24,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.roles.models import Role
+from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
 from apps.ventes.models import PlanCommission
 from testkit.factories import CompanyFactory, UserFactory, another_tenant
 
@@ -36,13 +37,22 @@ def auth(user):
     return api
 
 
-def user_avec_prix_achat(company, username):
-    """Rôle FIN portant `prix_achat_voir` (lecture) et `parametres_modifier`
-    (écriture, ADRG14) — le palier exact de l'endpoint."""
+#: ATST2 — les 4 rôles LIVRÉS vendeurs, sans `prix_achat_voir` (registre).
+VENDEURS_LIVRES = ('Commercial', 'Commercial responsable', 'Responsable', 'Admin Ventes')
+
+
+def user_livre(company, username, nom_role):
+    """Un compte au rôle LIVRÉ ``nom_role`` (codes de ``CANONICAL_SYSTEM_ROLES``)."""
     role = Role.objects.create(
-        company=company, nom=f'Directeur {username}',
-        permissions=['prix_achat_voir', 'parametres_modifier'])
+        company=company, nom=f'{nom_role} {username}',
+        permissions=list(dict(CANONICAL_SYSTEM_ROLES)[nom_role]))
     return UserFactory(company=company, username=username, role=role)
+
+
+def user_avec_prix_achat(company, username):
+    """Le Directeur LIVRÉ : `prix_achat_voir` (lecture) et `parametres_modifier`
+    (écriture, ADRG14) — le palier exact de l'endpoint."""
+    return user_livre(company, username, 'Directeur')
 
 
 class TestGarde(TestCase):
@@ -51,21 +61,42 @@ class TestGarde(TestCase):
         self.directeur = user_avec_prix_achat(self.company, 'wir281-dir')
 
     def test_lecture_refusee_sans_prix_achat_voir(self):
-        role = Role.objects.create(
-            company=self.company, nom='Commercial', permissions=['ventes_voir'])
-        vendeur = UserFactory(
-            company=self.company, username='wir281-vendeur', role=role)
+        vendeur = user_livre(self.company, 'wir281-vendeur', 'Commercial')
         r = auth(vendeur).get(f'{BASE}/')
         self.assertEqual(r.status_code, 403, r.content)
 
     def test_ecriture_refusee_sans_prix_achat_voir(self):
-        role = Role.objects.create(
-            company=self.company, nom='Commercial2', permissions=['ventes_voir'])
-        vendeur = UserFactory(
-            company=self.company, username='wir281-vendeur2', role=role)
+        vendeur = user_livre(self.company, 'wir281-vendeur2', 'Commercial')
         r = auth(vendeur).post(f'{BASE}/', {
             'base': 'ca_devis_signe', 'taux_pct': '3'}, format='json')
         self.assertEqual(r.status_code, 403, r.content)
+
+    def test_roles_livres_sans_prix_achat_voir_refuses(self):
+        """ATST2 — liste, création, modification et `resoudre` : 403 aux 4 rôles
+        livrés vendeurs, rien d'écrit ; le Directeur livré passe."""
+        defaut = PlanCommission.objects.create(
+            company=self.company, base='ca_devis_signe', taux_pct=Decimal('2'))
+        vendeur = user_livre(self.company, 'atst2-vendeur', 'Commercial')
+        PlanCommission.objects.create(company=self.company, owner=vendeur,
+                                      base='ca_devis_signe', taux_pct=Decimal('7'))
+        for i, nom in enumerate(VENDEURS_LIVRES):
+            api = auth(user_livre(self.company, f'atst2-{i}', nom))
+            for r in (api.get(f'{BASE}/'),
+                      api.post(f'{BASE}/', {'base': 'ca_devis_signe', 'taux_pct': '3'}, format='json'),
+                      api.patch(f'{BASE}/{defaut.pk}/', {'taux_pct': '9'}, format='json'),
+                      api.get(f'{BASE}/resoudre/?owner={vendeur.id}')):
+                self.assertEqual(r.status_code, 403, (nom, r.content))
+        self.assertEqual(PlanCommission.objects.filter(company=self.company).count(), 2)
+        defaut.refresh_from_db()
+        self.assertEqual(defaut.taux_pct, Decimal('2'))
+        api = auth(self.directeur)
+        self.assertEqual(api.get(f'{BASE}/').status_code, 200)
+        self.assertEqual(api.post(f'{BASE}/', {'base': 'ca_devis_signe', 'taux_pct': '3'},
+                                  format='json').status_code, 201)
+        self.assertEqual(api.patch(f'{BASE}/{defaut.pk}/', {'taux_pct': '9'},
+                                   format='json').status_code, 200)
+        r = api.get(f'{BASE}/resoudre/?owner={vendeur.id}')
+        self.assertEqual((r.status_code, r.data['source']), (200, 'plan_dedie'))
 
     def test_ecriture_exige_parametres_modifier(self):
         """ADRG14 — le rôle système « Directeur » (`init_roles`) dont on a
@@ -372,10 +403,6 @@ class TestResoudre(TestCase):
         self.assertIsNone(r.data['owner_nom'])
 
     def test_resoudre_gate_par_prix_achat_voir(self):
-        role = Role.objects.create(
-            company=self.company, nom='Commercial3',
-            permissions=['ventes_voir'])
-        vendeur = UserFactory(
-            company=self.company, username='wir281-vendeur3', role=role)
+        vendeur = user_livre(self.company, 'wir281-vendeur3', 'Commercial')
         r = auth(vendeur).get(f'{BASE}/resoudre/?owner={self.commercial.id}')
         self.assertEqual(r.status_code, 403, r.content)
