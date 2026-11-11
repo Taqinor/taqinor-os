@@ -807,6 +807,36 @@ class RecepteurRetourVisiteTests(VisiteCadenceBase):
         self.assertTrue(self.lead.activites.filter(
             body__contains='Accès par le garage.').exists())
 
+    def test_les_trois_abonnes_bornent_le_lead_a_la_societe_de_la_visite(self):
+        # ATST7 — une visite de A n'écrit jamais le lead de B (mutant : lead lu
+        # sans société) et écrit bien celui de A (mutant : `company_id=visite.pk`).
+        from core.events import visite_planifiee, visite_terminee, visite_validee
+
+        visite = VisiteTerrain.objects.create(
+            company=self.company, lead=self.lead, date_prevue=AUJOURDHUI)
+        while visite.pk == self.company.pk:  # un mutant `visite.pk` doit rater A
+            visite = VisiteTerrain.objects.create(
+                company=self.company, lead=self.lead, date_prevue=AUJOURDHUI)
+        for lead in (self.lead_autre, self.lead):
+            with frozen(MAINTENANT):
+                commun = dict(sender=VisiteTerrain, visite=visite,
+                              lead_id=lead.id, user=self.acteur)
+                visite_planifiee.send(**commun, date_prevue=AUJOURDHUI)
+                visite_terminee.send(**commun, retour={
+                    'notes': '', 'commentaires_photos': [], 'nb_photos': 0})
+                visite_validee.send(**commun, recap='Toiture saine')
+            self.lead_autre.refresh_from_db()
+            self.assertFalse(self.lead_autre.relance_etapes.exists())
+            self.assertFalse(self.lead_autre.activites.exists())
+            self.assertIsNone(self.lead_autre.visite_prevue_le)
+            self.assertFalse(self.lead_autre.visite_effectuee)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.visite_prevue_le, AUJOURDHUI)
+        self.assertTrue(self.lead.visite_effectuee)
+        self.assertIn('Toiture saine', self.lead.visite_notes or '')
+        self.assertTrue(self.lead.activites.filter(
+            body__startswith='Visite technique planifiée').exists())
+
 
 class RecepteurPlanificationTests(VisiteCadenceBase):
     """Le récepteur : émettre l'événement suffit à recaler le suivi."""
