@@ -41,8 +41,12 @@ function monter(locale: LocaleTunnel, extra: Partial<ConfigCarte> = {}, langue =
   ctx.crochets.installer('markDataEntered', () => appels.push('mark'));
   ctx.crochets.installer('saveWizardState', () => appels.push('save'));
   ctx.crochets.installer('langueActive', () => langue);
+  // Le repère confirmé emmène à la facture : `profil.choisi` simule le profil coché.
+  const profil = { choisi: true };
+  ctx.crochets.installer('validateStep0', () => profil.choisi);
+  ctx.crochets.installer('goStep', (n: number) => appels.push(`etape:${n}`));
   installerCarte(ctx);
-  return { ctx, appels, bootCaptureOnly, chargeurs };
+  return { ctx, appels, bootCaptureOnly, chargeurs, profil };
 }
 const attendre = () => new Promise((r) => setTimeout(r, 0));
 
@@ -109,13 +113,29 @@ describe('carte — repli et démarrage', () => {
 describe('carte — repère et statuts', () => {
   it('repère confirmé : confirmation masquée et statut par locale', () => {
     for (const loc of ['fr', 'en', 'ar'] as const) {
-      const { ctx } = monter(loc, {}, 'ar');
+      const { ctx, appels } = monter(loc, {}, 'ar');
       ctx.etat.capturePin = { lat: 1, lng: 2 };
       document.getElementById('mt-pin-confirm-yes')!.click();
       expect(ctx.etat.confirmedPinKey).toBe('1.000000,2.000000');
       expect(document.getElementById('mt-pin-confirm')!.hidden).toBe(true);
       const attendu = loc === 'en' ? TEXTES_CARTE.en : loc === 'ar' ? TEXTES_CARTE.ar : TEXTES_CARTE.fr;
       expect(document.getElementById('rp9-status')!.textContent).toBe(attendu.confirme);
+      // Cul-de-sac du 03/11 : « Oui, c'est mon toit » ne menait nulle part.
+      expect(appels).toContain('etape:1');
+    }
+  });
+
+  it('repère confirmé sans profil choisi : on reste sur l’écran (validateStep0 montre l’erreur)', () => {
+    const { ctx, appels, profil } = monter('fr');
+    profil.choisi = false;
+    ctx.etat.capturePin = { lat: 1, lng: 2 };
+    document.getElementById('mt-pin-confirm-yes')!.click();
+    expect(appels).not.toContain('etape:1');
+  });
+
+  it('aucun statut ne renvoie « ci-dessous » : rien ne suit la carte sur cet écran', () => {
+    for (const t of Object.values(TEXTES_CARTE)) {
+      expect(t.confirme).not.toMatch(/ci-dessous|below|أدناه/);
     }
   });
 
@@ -379,10 +399,27 @@ describe('WAUD43 — étape toit : outils de dessinateur masqués au grand publi
     for (const p of ['devis/mon-toit', 'en/devis/mon-toit', 'ar/devis/mon-toit']) {
       const page = lire(`src/pages/${p}.astro`);
       // Garde ACAL345 : le bouton vit dans un composant partagé, placé ici sous les profils.
-      expect(lire('src/components/blocs/DevisMonToitContinuer.astro')).toContain('id="mt-next-0"');
+      // L'id est un paramètre du composant (défaut : le bouton du haut) depuis sa reprise sous la carte.
+      expect(lire('src/components/blocs/DevisMonToitContinuer.astro')).toContain("id = 'mt-next-0'");
       const suivant = page.indexOf('<DevisMonToitContinuer>');
       expect(suivant).toBeGreaterThan(page.indexOf('id="mt-mode-grid"'));
       expect(suivant).toBeLessThan(page.indexOf('id="mt-stage"'));
+    }
+  });
+
+  it('« Continuer » est repris SOUS la carte, dans les 3 langues (cul-de-sac du 03/11)', () => {
+    // Après « Localiser » ou le repère, le bouton du haut est hors écran : sans cette
+    // reprise, le visiteur ne voyait plus aucun bouton (constat fondateur du 11/11).
+    for (const p of ['devis/mon-toit', 'en/devis/mon-toit', 'ar/devis/mon-toit']) {
+      const page = lire(`src/pages/${p}.astro`);
+      // FR/AR : la reprise suit la confirmation du repère dans leur bloc partagé ; EN la pose elle-même.
+      const partage = lire('src/components/blocs/DevisMonToitPinConfirm.astro');
+      expect(partage.indexOf('<DevisMonToitContinuerBas')).toBeGreaterThan(partage.indexOf('id="mt-pin-confirm-adjust"'));
+      const bas = page.indexOf(p.startsWith('en/') ? '<DevisMonToitContinuerBas' : '<DevisMonToitPinConfirm />');
+      expect(lire('src/components/blocs/DevisMonToitContinuerBas.astro')).toContain('id="mt-next-0-bas"');
+      expect(bas).toBeGreaterThan(page.indexOf('id="rp9-map"'));
+      expect(bas).toBeGreaterThan(page.indexOf('id="rp9-status"'));
+      expect(bas).toBeLessThan(page.indexOf('id="mt-panel-1"'));
     }
   });
 });
