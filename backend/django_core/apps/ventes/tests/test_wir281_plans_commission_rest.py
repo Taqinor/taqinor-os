@@ -37,10 +37,11 @@ def auth(user):
 
 
 def user_avec_prix_achat(company, username):
-    """Rôle FIN portant `prix_achat_voir` — le palier exact de l'endpoint."""
+    """Rôle FIN portant `prix_achat_voir` (lecture) et `parametres_modifier`
+    (écriture, ADRG14) — le palier exact de l'endpoint."""
     role = Role.objects.create(
         company=company, nom=f'Directeur {username}',
-        permissions=['prix_achat_voir'])
+        permissions=['prix_achat_voir', 'parametres_modifier'])
     return UserFactory(company=company, username=username, role=role)
 
 
@@ -65,6 +66,41 @@ class TestGarde(TestCase):
         r = auth(vendeur).post(f'{BASE}/', {
             'base': 'ca_devis_signe', 'taux_pct': '3'}, format='json')
         self.assertEqual(r.status_code, 403, r.content)
+
+    def test_ecriture_exige_parametres_modifier(self):
+        """ADRG14 — le rôle système « Directeur » (`init_roles`) dont on a
+        décoché UN code, `parametres_modifier` : 403 à la création et à la
+        suppression, rien d'écrit ; la liste reste lisible ; le Directeur
+        intact crée (201)."""
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        perms = [c for c in dict(CANONICAL_SYSTEM_ROLES)['Directeur']
+                 if c != 'parametres_modifier']
+        role = Role.objects.create(
+            company=self.company, nom='Directeur sans parametres_modifier',
+            permissions=perms)
+        sans = UserFactory(
+            company=self.company, username='adrg14-dir-moins', role=role)
+        plan = PlanCommission.objects.create(
+            company=self.company, base='par_kwc',
+            montant_par_kwc=Decimal('40'))
+        api = auth(sans)
+        r = api.post(f'{BASE}/', {'base': 'par_kwc', 'montant_par_kwc': '50'},
+                     format='json')
+        self.assertEqual(r.status_code, 403, r.content)
+        self.assertEqual(
+            api.delete(f'{BASE}/{plan.pk}/').status_code, 403)
+        self.assertEqual(api.get(f'{BASE}/').status_code, 200)
+        self.assertEqual(list(PlanCommission.objects.filter(
+            company=self.company).values_list('pk', flat=True)), [plan.pk])
+        directeur = UserFactory(
+            company=self.company, username='adrg14-dir',
+            role=Role.objects.create(
+                company=self.company, nom='Directeur intact',
+                permissions=list(dict(CANONICAL_SYSTEM_ROLES)['Directeur'])))
+        r = auth(directeur).post(
+            f'{BASE}/', {'base': 'par_kwc', 'montant_par_kwc': '50'},
+            format='json')
+        self.assertEqual(r.status_code, 201, r.content)
 
     def test_lecture_autorisee_avec_prix_achat_voir(self):
         r = auth(self.directeur).get(f'{BASE}/')
