@@ -103,8 +103,9 @@ def _exiger_version_en_jeu(devis, geste):
     quand ``geste`` (ENVOYER, RELANCER…) vise une version hors jeu."""
     from ..domain.modifiabilite import (
         corps_version_remplacee, geste_cycle_permis)
-    if not geste_cycle_permis(devis, geste)[0]:
-        raise _VersionRemplaceeConflit(corps_version_remplacee(devis))
+    permis, message = geste_cycle_permis(devis, geste)
+    if not permis:  # AMSG38 — le motif du prédicat (refusé / expiré compris)
+        raise _VersionRemplaceeConflit(corps_version_remplacee(devis, message))
 
 
 def _exiger_remise_envoi(devis, user, *, enregistrer=True):

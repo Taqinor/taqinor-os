@@ -91,6 +91,15 @@ class LeadDevisActionsMixin:
             # ENF48 : le lead existe, un id bien formé ne désigne aucun de SES
             # devis (absent ou autre société, même corps) = 409, règle d'ENF40.
             raise ConflitEtat('Un devis sélectionné est introuvable pour ce lead.')
+        # AMSG38 — une version remplacée, un devis refusé ou expiré ne
+        # s'envoie plus : 409 ``corps_version_remplacee`` avant tout effet.
+        from apps.ventes.domain.modifiabilite import (
+            ENVOYER, corps_version_remplacee, geste_cycle_permis)
+        for d in devis_list:
+            permis, motif = geste_cycle_permis(d, ENVOYER)
+            if not permis:
+                return Response(corps_version_remplacee(d, motif),
+                                status=status.HTTP_409_CONFLICT), None
         phone = lead.whatsapp or lead.telephone
         if not normalize_phone_e164(phone):
             # ERR-ENF11-FUZZ-CRM — le numéro vient de la FICHE du lead, pas du
