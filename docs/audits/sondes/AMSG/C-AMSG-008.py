@@ -98,7 +98,7 @@ def scenario(canal):
     reel("apps/ventes/public/payload_conditions.py", {"EMAIL_BACKENDS_SANS_ENVOI"}, ns)  # AMSG29 — prédicat du correctif
     reel("apps/ventes/scheduled.py", {"_dispatch_relance_canal", "_email_parti", "_reporter_relance", "_promesse_honoree",
                                       "_check_promesses_expirees", "relance_reminders", "_email_sans_envoi",
-                                      "_activite_relance"}, ns)
+                                      "_activite_relance", "_clients_manuels"}, ns)
     compte = ns["relance_reminders"]()
     return {"is_email_configured": ns["is_email_configured"](), "relances_comptees": compte,
             "messages_imprimes_par_le_backend_console": len(console), "emaillog_statuts": [l.statut for l in emaillogs],

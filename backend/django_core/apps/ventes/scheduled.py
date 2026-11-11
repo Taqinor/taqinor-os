@@ -286,6 +286,18 @@ def _activite_relance(facture, nom_type, icone, summary, note):
         return False
 
 
+def _clients_manuels():
+    """ZFAC8 — un client en mode MANUEL est ignoré par les crons automatiques
+    (son responsable le suit via la liste manuelle). AFAC47 (C-AFAC-035) —
+    couples (société, client) : un paramétrage « manuel » d'une AUTRE société
+    ne coupe jamais le client d'un voisin. AMSG32 — partagé par la relance et
+    le rappel avant échéance."""
+    from .models import ParametrageRelanceClient
+    return set(ParametrageRelanceClient.objects.filter(
+        mode=ParametrageRelanceClient.Mode.MANUEL,
+    ).values_list('company_id', 'client_id'))
+
+
 def _email_sans_envoi():
     """AMSG29 — le backend chargé n'envoie rien (console/dummy) : aucun
     e-mail ne consomme alors un niveau ni ne pose un marqueur."""
@@ -350,24 +362,14 @@ def relance_reminders():
     cours) : la relance reste suspendue jusqu'à la date promise ou la rupture
     de la promesse."""
     from datetime import timedelta
-    from .models import (
-        Facture, FollowupLevel, ParametrageRelanceClient, RelanceLog)
+    from .models import Facture, FollowupLevel, RelanceLog
     from .email_service import send_relance_email
 
     today = casablanca_today()
     _check_promesses_expirees(today)
     sent = 0
     sans_envoi = _email_sans_envoi()  # AMSG29 — lu une fois par passage
-    # ZFAC8 — un client en mode MANUEL est ignoré par le cron automatique (son
-    # responsable le suit via la liste manuelle, pas cet envoi programmé).
-    # AFAC47 (C-AFAC-035) — couples (société, client) : un paramétrage
-    # « manuel » d'une AUTRE société (ligne corrompue) ne coupe jamais les
-    # relances du client d'un locataire voisin.
-    clients_manuels = set(
-        ParametrageRelanceClient.objects.filter(
-            mode=ParametrageRelanceClient.Mode.MANUEL,
-        ).values_list('company_id', 'client_id')
-    )
+    clients_manuels = _clients_manuels()
     # AUD131 — MÊME liste de statuts que la vue `relancer` et que la liste des
     # impayés : un seul propriétaire de la définition (`recouvrement`).
     from .recouvrement import STATUTS_NON_RELANCABLES, facture_relancable
@@ -560,18 +562,26 @@ def pre_echeance_reminders():
     sent = 0
     if _email_sans_envoi():  # AMSG29 — aucun rappel ne partirait
         return sent
-    # AFAC43 — sociétés suspendues ignorées (SCA19).
+    # AFAC43 — sociétés suspendues ignorées (SCA19). AMSG32 — mêmes
+    # exclusions que la relance : promesse active, client MANUEL, contestée.
     from authentication.selectors import active_company_ids
+    from .recouvrement import facture_relancable
     candidates = Facture.objects.filter(
         statut=Facture.Statut.EMISE, exclu_relances=False,
         date_echeance__isnull=False,
         company_id__in=active_company_ids(),
+    ).exclude(
+        exclu_relances_jusquau__gte=today,
     ).select_related('client', 'company').prefetch_related(
         *RELATIONS_MONTANT_DU)
+    clients_manuels = _clients_manuels()
 
     profiles_cache = {}
     for facture in candidates:
-        if facture.montant_exigible <= 0:  # CIQ214 — exigible seulement
+        if (facture.company_id, facture.client_id) in clients_manuels:
+            continue
+        # CIQ214 (exigible seulement) + AARG22 (contestée) : LE prédicat.
+        if not facture_relancable(facture)[0]:
             continue
         company_id = facture.company_id
         if company_id not in profiles_cache:
