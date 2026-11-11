@@ -53,6 +53,14 @@ def make_user(company, role='responsable', username=None):
         role_legacy=role, company=company)
 
 
+def make_role_user(company, nom, perms):
+    """Compte au rôle LIVRÉ ``nom`` (permissions du registre)."""
+    from apps.roles.models import Role
+    role = Role.objects.create(company=company, nom=nom, permissions=list(perms))
+    return User.objects.create_user(
+        username=f'zfsm2-{next(_seq)}', password='x', company=company, role=role)
+
+
 def make_chantier(company, user):
     n = next(_seq)
     client = Client.objects.create(
@@ -130,6 +138,96 @@ class TestLienRapportToken(TestCase):
         self.assertNotIn('prix_achat', resp.data)
         self.assertNotIn('marge', resp.data)
 
+    def test_lecture_sans_jetons_publics(self):
+        """ALEC37 — ni la fiche intervention ni le chantier qui l'imbrique ne
+        servent ``lien_client_token`` / ``lien_rapport_token`` (Commercial
+        livré et Directeur) ; l'action ``lien-rapport`` reste la source."""
+        from apps.installations.models import Installation
+        from apps.roles.permissions_registre import (
+            COMMERCIAL_PERMISSIONS, DIRECTEUR_PERMISSIONS,
+        )
+        commercial = make_role_user(self.company, 'Commercial', COMMERCIAL_PERMISSIONS)
+        directeur = make_role_user(self.company, 'Directeur', DIRECTEUR_PERMISSIONS)
+        # Portée du Commercial : le devis du chantier et l'intervention sont les siens.
+        Devis.objects.filter(pk=self.inst.devis_id).update(created_by=commercial)
+        Installation.objects.filter(pk=self.inst.pk).update(created_by=commercial)
+        Intervention.objects.filter(pk=self.interv.pk).update(created_by=commercial)
+        jeton_client = self.interv.ensure_lien_client_token()
+        jeton_rapport = self.interv.ensure_lien_rapport_token()
+        for user in (commercial, directeur):
+            api = auth(user)
+            r = api.get(f'{BASE}/interventions/{self.interv.id}/')
+            self.assertEqual(r.status_code, 200, (user.role.nom, r.content))
+            self.assertNotIn('lien_client_token', r.data)
+            self.assertNotIn('lien_rapport_token', r.data)
+            r = api.get(f'{BASE}/chantiers/{self.inst.id}/')
+            self.assertEqual(r.status_code, 200, (user.role.nom, r.content))
+            imbriquees = [i for i in r.data['interventions']
+                          if i['id'] == self.interv.id]
+            self.assertEqual(len(imbriquees), 1)
+            self.assertNotIn('lien_client_token', imbriquees[0])
+            self.assertNotIn('lien_rapport_token', imbriquees[0])
+        r = auth(directeur).get(
+            f'{BASE}/interventions/{self.interv.id}/lien-rapport/')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.data['token'], jeton_rapport)
+        self.interv.refresh_from_db()
+        self.assertEqual(self.interv.lien_client_token, jeton_client)
+        self.assertEqual(self.interv.lien_rapport_token, jeton_rapport)
+
+    def test_couper_le_lien_rend_404_et_le_suivant_est_neuf(self):
+        """APUB6 — le responsable coupe le lien du compte-rendu : page, PDF et
+        photo publics rendent 404 sur l'ancien jeton, ``lien-rapport`` en pose
+        un neuf ; un Viewer livré reçoit 403, jeton inchangé."""
+        from unittest import mock
+
+        from django.contrib.contenttypes.models import ContentType
+
+        from apps.installations import field_services
+        from apps.records.models import Attachment
+        from apps.roles.permissions_registre import (
+            TECHNICIEN_RESP_PERMISSIONS, VIEWER_PERMISSIONS,
+        )
+        viewer = make_role_user(self.company, 'Viewer', VIEWER_PERMISSIONS)
+        resp = make_role_user(
+            self.company, 'Technicien responsable', TECHNICIEN_RESP_PERMISSIONS)
+        Intervention.objects.filter(pk=self.interv.pk).update(technicien=resp)
+        field_services.seed_shotlist_slots(self.company)
+        slot = next(s for s in field_services.active_shotlist(self.company)
+                    if s.phase == 'avant')
+        photo = Attachment.objects.create(
+            company=self.company,
+            content_type=ContentType.objects.get_for_model(Intervention),
+            object_id=self.interv.id, file_key='k/apub6/1', mime='image/jpeg',
+            filename=field_services.encode_slot_filename(slot.cle, 'p1.jpg'))
+        ancien = self.interv.ensure_lien_rapport_token()
+        url = f'{BASE}/interventions/{self.interv.id}/couper-lien-rapport/'
+
+        r = auth(viewer).post(url, format='json')
+        self.assertEqual(r.status_code, 403, r.content)
+        self.interv.refresh_from_db()
+        self.assertEqual(self.interv.lien_rapport_token, ancien)
+
+        r = auth(resp).post(url, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.interv.refresh_from_db()
+        self.assertFalse(self.interv.lien_rapport_token)
+
+        pub = APIClient()
+        with mock.patch('apps.records.storage.fetch_attachment',
+                        lambda key: (b'JPEG-test', None)):
+            for chemin in (f'{ancien}/', f'{ancien}/pdf/',
+                           f'{ancien}/photos/{photo.id}/'):
+                rep = pub.get(f'{PUBLIC_BASE}/intervention-rapport/{chemin}')
+                self.assertEqual(rep.status_code, 404, chemin)
+
+        r = auth(resp).get(f'{BASE}/interventions/{self.interv.id}/lien-rapport/')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertTrue(r.data['token'])
+        self.assertNotEqual(r.data['token'], ancien)
+        self.interv.refresh_from_db()
+        self.assertEqual(self.interv.lien_rapport_token, r.data['token'])
+
     def test_public_page_unknown_token_404(self):
         pub = APIClient()
         resp = pub.get(f'{PUBLIC_BASE}/intervention-rapport/does-not-exist/')
@@ -155,3 +253,39 @@ class TestLienRapportToken(TestCase):
         resp = pub.get(f'{PUBLIC_BASE}/intervention-rapport/{token}/')
         for key in resp.data:
             self.assertNotIn('prix', key.lower())
+
+    def test_reponses_publiques_noindex_no_store(self):
+        """APUB36 — page de compte-rendu, PDF, photo et leurs 404 : jamais
+        indexés ni gardés en cache partagé ; PDF et photos en ``nosniff``."""
+        from unittest import mock
+
+        from django.contrib.contenttypes.models import ContentType
+
+        from apps.installations import field_services
+        from apps.records.models import Attachment
+        field_services.seed_shotlist_slots(self.company)
+        slot = next(s for s in field_services.active_shotlist(self.company)
+                    if s.phase == 'avant')
+        photo = Attachment.objects.create(
+            company=self.company,
+            content_type=ContentType.objects.get_for_model(Intervention),
+            object_id=self.interv.id, file_key='k/apub36/1', mime='image/jpeg',
+            filename=field_services.encode_slot_filename(slot.cle, 'p1.jpg'))
+        token = self.interv.ensure_lien_rapport_token()
+        pub = APIClient()
+        cas = (
+            (f'{token}/', 200, False), ('inconnu/', 404, False),
+            (f'{token}/pdf/', 200, True), ('inconnu/pdf/', 404, True),
+            (f'{token}/photo/{photo.id}/', 200, True),
+            (f'inconnu/photo/{photo.id}/', 404, True),
+        )
+        with mock.patch('apps.records.storage.fetch_attachment',
+                        lambda key: (b'JPEG-test', None)):
+            for chemin, code, binaire in cas:
+                with self.subTest(chemin=chemin):
+                    rep = pub.get(f'{PUBLIC_BASE}/intervention-rapport/{chemin}')
+                    self.assertEqual(rep.status_code, code)
+                    self.assertEqual(rep['X-Robots-Tag'], 'noindex, nofollow, noarchive')
+                    self.assertEqual(rep['Cache-Control'], 'private, no-store')
+                    if binaire:
+                        self.assertEqual(rep['X-Content-Type-Options'], 'nosniff')

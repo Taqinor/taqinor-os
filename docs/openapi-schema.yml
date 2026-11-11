@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4963, operations: 7763, components: 3651}
+counts: {paths: 4967, operations: 7767, components: 3651}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -749,6 +749,7 @@ operations:
 - post /api/django/core/export-reversibilite/ -> django_core_export_reversibilite_create
 - get /api/django/core/export-reversibilite/historique/ -> django_core_export_reversibilite_historique_list
 - get /api/django/core/export-reversibilite/telecharger/{token}/ -> django_core_export_reversibilite_telecharger_retrieve
+- post /api/django/core/export-reversibilite/{id}/couper-lien/ -> django_core_export_reversibilite_couper_lien_create
 - get /api/django/core/fiabilite/reglages/ -> django_core_fiabilite_reglages_retrieve
 - patch /api/django/core/fiabilite/reglages/ -> django_core_fiabilite_reglages_partial_update
 - get /api/django/core/formulaire-champs/ -> django_core_formulaire_champs_list
@@ -1922,6 +1923,7 @@ operations:
 - post /api/django/installations/interventions/{id}/confirmer-rdv/ -> django_installations_interventions_confirmer_rdv_create
 - post /api/django/installations/interventions/{id}/confirmer-tool-return/ -> django_installations_interventions_confirmer_tool_return_create
 - get /api/django/installations/interventions/{id}/consommation/ -> django_installations_interventions_consommation_retrieve
+- post /api/django/installations/interventions/{id}/couper-lien-rapport/ -> django_installations_interventions_couper_lien_rapport_create
 - get /api/django/installations/interventions/{id}/crew-time/ -> django_installations_interventions_crew_time_retrieve
 - post /api/django/installations/interventions/{id}/depart-depot/ -> django_installations_interventions_depart_depot_create
 - post /api/django/installations/interventions/{id}/enregistrer-reverification/ -> django_installations_interventions_enregistrer_reverification_create
@@ -4672,6 +4674,7 @@ operations:
 - post /api/v1/core/export-reversibilite/ -> v1_core_export_reversibilite_create
 - get /api/v1/core/export-reversibilite/historique/ -> v1_core_export_reversibilite_historique_list
 - get /api/v1/core/export-reversibilite/telecharger/{token}/ -> v1_core_export_reversibilite_telecharger_retrieve
+- post /api/v1/core/export-reversibilite/{id}/couper-lien/ -> v1_core_export_reversibilite_couper_lien_create
 - get /api/v1/core/fiabilite/reglages/ -> v1_core_fiabilite_reglages_retrieve
 - patch /api/v1/core/fiabilite/reglages/ -> v1_core_fiabilite_reglages_partial_update
 - get /api/v1/core/formulaire-champs/ -> v1_core_formulaire_champs_list
@@ -5845,6 +5848,7 @@ operations:
 - post /api/v1/installations/interventions/{id}/confirmer-rdv/ -> v1_installations_interventions_confirmer_rdv_create
 - post /api/v1/installations/interventions/{id}/confirmer-tool-return/ -> v1_installations_interventions_confirmer_tool_return_create
 - get /api/v1/installations/interventions/{id}/consommation/ -> v1_installations_interventions_consommation_retrieve
+- post /api/v1/installations/interventions/{id}/couper-lien-rapport/ -> v1_installations_interventions_couper_lien_rapport_create
 - get /api/v1/installations/interventions/{id}/crew-time/ -> v1_installations_interventions_crew_time_retrieve
 - post /api/v1/installations/interventions/{id}/depart-depot/ -> v1_installations_interventions_depart_depot_create
 - post /api/v1/installations/interventions/{id}/enregistrer-reverification/ -> v1_installations_interventions_enregistrer_reverification_create

@@ -91,6 +91,14 @@ def dashboard_public(request, token):
     })
 
 
+def dashboards_visibles_q(user, prefix=''):
+    """ADRG102 — tableaux que ``user`` voit (règle de ``DashboardViewSet.get_queryset``) :
+    les siens, ceux partagés à la société, ceux sans propriétaire ; ``prefix``
+    = chemin vers le ``Dashboard`` (``'dashboard__'`` depuis un partage)."""
+    from django.db.models import Q
+    return Q(**{f'{prefix}owner': user}) | Q(**{f'{prefix}partage': True}) | Q(**{f'{prefix}owner__isnull': True})
+
+
 class DashboardScopeMixin:
     """Validation MULTI-TENANT des cibles d'un partage de dashboard.
 
@@ -120,6 +128,15 @@ class DashboardScopeMixin:
     absente — plus 400, et aucun oracle d'existence). Les ``validate_*``
     ci-dessous restent une défense en profondeur.
     """
+
+    def get_fields(self):
+        # ADRG102 — le ``dashboard`` visé est un tableau que l'acteur VOIT : le
+        # tableau personnel d'un collègue répond 404 « objet inexistant ».
+        fields = super().get_fields()
+        champ, request = fields.get('dashboard'), self.context.get('request')
+        if request is not None and getattr(champ, 'queryset', None) is not None:
+            champ.queryset = champ.queryset.filter(dashboards_visibles_q(request.user))
+        return fields
 
     def _request_company_id(self):
         request = self.context.get('request')
@@ -167,6 +184,9 @@ class PartageDashboardViewSet(TenantMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticatedInterne]
     parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     queryset = PartageDashboard.objects.all()
+
+    def get_queryset(self):  # ADRG102 — liens des seuls tableaux visibles (404 sinon).
+        return super().get_queryset().filter(dashboards_visibles_q(self.request.user, 'dashboard__'))
 
     def perform_create(self, serializer):
         serializer.save(
@@ -221,6 +241,9 @@ class DashboardPartageInterneViewSet(TenantMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticatedInterne]
     parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
     queryset = DashboardPartageInterne.objects.all()
+
+    def get_queryset(self):  # APUB56 — partages des seuls tableaux visibles (404 sinon).
+        return super().get_queryset().filter(dashboards_visibles_q(self.request.user, 'dashboard__'))
 
 
 def user_can_view_dashboard(user, dashboard):

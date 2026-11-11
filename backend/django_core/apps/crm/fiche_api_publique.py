@@ -3,12 +3,16 @@
 Module de type (a) de la scission : il n'importe ni ``.services`` ni un
 module racine ; ``services`` réexporte ce qu'il faut (façade).
 """
+from django.db import transaction
 from rest_framework.exceptions import ValidationError as DRFValidationError
+
+from core.conflit_etat import ConflitEtat
 
 from . import activity, stages
 from .cadence_plan import demarrer_cadence_contact, sync_relance_activity
 from .fiche_funnel import (
-    _bulk_stage_allowed, _emit_stage_changed, parquer_lead, refus_mise_au_froid)
+    SortieSigneBloquee, _bulk_stage_allowed, _emit_stage_changed,
+    desaccepter_devis_du_lead, parquer_lead, refus_mise_au_froid)
 from .leads_premier_contact import maybe_set_first_contacted_at
 from .leads_score import recompute_lead_score
 from .models import Lead, LeadActivity
@@ -96,7 +100,9 @@ def update_lead_from_public_api(*, company, lead_id, fields):
       ET PATCH unitaire).
 
     Lève ``ValueError`` (traduit en 400 par les vues publiques) sur une étape
-    inconnue, un lead perdu, ou un recul de funnel.
+    inconnue, un lead perdu, ou un recul de funnel. APUB11 — sortir de
+    « Signé » dés-accepte les devis acceptés (règle du 08/10) ; un devis à
+    suite réelle (facture émise…) lève ``ConflitEtat`` (409), rien d'écrit.
     """
     lead = Lead.objects.get(company=company, pk=lead_id)
     clean = {k: v for k, v in (fields or {}).items()
@@ -126,32 +132,40 @@ def update_lead_from_public_api(*, company, lead_id, fields):
         if refus:
             raise DRFValidationError({'parc_raison': [refus]})
         del clean['stage']
-    old = Lead.objects.get(pk=lead.pk)
-    changed_fields = []
-    for field, value in clean.items():
-        if value in (None, '') and field != 'stage':
-            continue
-        if getattr(lead, field) != value:
-            setattr(lead, field, value)
-            changed_fields.append(field)
-    if changed_fields:
-        ecrits = list(changed_fields)
-        for source, derivee in PUBLIC_LEAD_COLONNES_DERIVEES.items():
-            if source in changed_fields:
-                ecrits.append(derivee)
-        lead.save(update_fields=ecrits)
-        activity.log_changes(old, lead, None)
-        # Les 4 effets du PATCH de l'écran, dans le même ordre. Tous sont
-        # best-effort par construction (chacun catche pour son compte) : une
-        # intégration ne doit jamais échouer sur un effet secondaire.
-        sync_relance_activity(lead, None)
-        maybe_set_first_contacted_at(old, lead)
-        recompute_lead_score(lead)
-        _emit_stage_changed(lead, old.stage, lead.stage, user=None)
-    if raison_froid:
-        parquer_lead(lead, raison_froid, None, None)
-        sync_relance_activity(lead, None)
-        recompute_lead_score(lead)
+    with transaction.atomic():
+        # APUB11 — règle du 08/10 (lead sorti de « Signé » = dés-acceptation),
+        # comme l'écran : AVANT toute écriture d'étape ; facture émise… → 409.
+        if stage is not None and stage != lead.stage and lead.stage == stages.SIGNED:
+            try:
+                desaccepter_devis_du_lead(lead, None)
+            except SortieSigneBloquee as exc:
+                raise ConflitEtat({'stage': [exc.message]}) from exc
+        old = Lead.objects.get(pk=lead.pk)
+        changed_fields = []
+        for field, value in clean.items():
+            if value in (None, '') and field != 'stage':
+                continue
+            if getattr(lead, field) != value:
+                setattr(lead, field, value)
+                changed_fields.append(field)
+        if changed_fields:
+            ecrits = list(changed_fields)
+            for source, derivee in PUBLIC_LEAD_COLONNES_DERIVEES.items():
+                if source in changed_fields:
+                    ecrits.append(derivee)
+            lead.save(update_fields=ecrits)
+            activity.log_changes(old, lead, None)
+            # Les 4 effets du PATCH de l'écran, dans le même ordre. Tous sont
+            # best-effort par construction (chacun catche pour son compte) : une
+            # intégration ne doit jamais échouer sur un effet secondaire.
+            sync_relance_activity(lead, None)
+            maybe_set_first_contacted_at(old, lead)
+            recompute_lead_score(lead)
+            _emit_stage_changed(lead, old.stage, lead.stage, user=None)
+        if raison_froid:
+            parquer_lead(lead, raison_froid, None, None)
+            sync_relance_activity(lead, None)
+            recompute_lead_score(lead)
     return lead
 
 

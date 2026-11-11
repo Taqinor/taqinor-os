@@ -234,6 +234,8 @@
     bons_commande:inconnu, detail:texte, fournisseur:texte, fournisseurs:objet, sans_fournisseur:inconnu, statut_chantier:inconnu, statut_raison:inconnu
 - frontend/src/api/installationsApi.js :: confirmerToolReturn -> /api/django/installations/interventions/<>/confirmer-tool-return
     detail:texte, non_rendus:inconnu, tool_returns:inconnu
+- frontend/src/api/installationsApi.js :: couperLienRapportIntervention -> /api/django/installations/interventions/<>/couper-lien-rapport
+    coupe:booleen
 - frontend/src/api/installationsApi.js :: creerInterventionsStandard -> /api/django/installations/chantiers/<>/creer-interventions-standard
     created:inconnu, detail:texte, existants:inconnu
 - frontend/src/api/installationsApi.js :: declarerRebutAssemblage -> /api/django/installations/ordres-assemblage/<>/declarer-rebut

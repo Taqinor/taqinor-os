@@ -94,3 +94,22 @@ class PhotosPagePubliqueTests(TestCase):
             rep = self.client.get(
                 f'{PUBLIC}/jeton-invalide/photo/{self.p1.id}/')
             self.assertEqual(rep.status_code, 404)
+
+    def test_photo_hors_creneau_404(self):
+        """APUB30 — une image de l'intervention rangée hors créneau actif
+        (plaque signalétique, sans préfixe ``slot:``) n'est pas publiée par la
+        page : la route publique rend 404 ; la photo du créneau actif, 200."""
+        ct = ContentType.objects.get_for_model(Intervention)
+        plaque = Attachment.objects.create(
+            company=self.company, content_type=ct, object_id=self.iv.id,
+            file_key='k/apub30/plaque', mime='image/jpeg',
+            filename='plaque-signaletique.jpg')
+        with self._fetch():
+            for route in ('photo', 'photos'):
+                rep = self.client.get(
+                    f'{PUBLIC}/{self.token}/{route}/{plaque.id}/')
+                self.assertEqual(rep.status_code, 404, route)
+                rep = self.client.get(
+                    f'{PUBLIC}/{self.token}/{route}/{self.p1.id}/')
+                self.assertEqual(rep.status_code, 200, route)
+                self.assertEqual(rep['Content-Type'], 'image/jpeg')

@@ -199,6 +199,42 @@ class TestApprobation(TestCase):
             self.assertEqual(r.status_code, 400, valeur)
             self.assertIn('bcf', r.json())
 
+    def test_technicien_livre_ne_lit_pas_le_montant_approuve(self):
+        """ALEC8 — ``montant_approuve`` (montant d'achat HT figé) masqué sans
+        ``prix_achat_voir`` en liste et en détail ; le Directeur le lit."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import (
+            DIRECTEUR_PERMISSIONS, TECHNICIEN_PERMISSIONS,
+        )
+
+        def compte(nom, perms):
+            role = Role.objects.create(
+                company=self.company, nom=nom, permissions=list(perms))
+            return User.objects.create_user(
+                username=f'fg312-{next(_seq)}', password='x',
+                company=self.company, role=role)
+
+        directeur = compte('Directeur', DIRECTEUR_PERMISSIONS)
+        technicien = compte('Technicien', TECHNICIEN_PERMISSIONS)
+        bcf = make_bcf_with_line(self.company, prix_unitaire=10000, quantite=1)
+        appr = ApprobationBCF.objects.create(
+            company=self.company, bcf=bcf, palier='admin',
+            montant_approuve=10000, approuve_par=directeur)
+        api = auth(technicien)
+        r = api.get(f'{BASE}/approbations-bcf/', {'bcf': bcf.id})
+        self.assertEqual(r.status_code, 200, r.data)
+        lignes = r.data.get('results', r.data)
+        self.assertEqual(len(lignes), 1)
+        for ligne in (lignes[0],
+                      api.get(f'{BASE}/approbations-bcf/{appr.id}/').data):
+            self.assertNotIn('montant_approuve', ligne)
+            self.assertEqual(ligne['palier'], 'admin')
+            self.assertEqual(ligne['approuve_par'], directeur.id)
+            self.assertIn('date_approbation', ligne)
+        r = auth(directeur).get(f'{BASE}/approbations-bcf/{appr.id}/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(float(r.data['montant_approuve']), 10000.0)
+
     def test_note_non_texte_refusee(self):
         # api-fuzz — `note` est une chaîne : `{}`, `[]`, `0`, `null` ne sont
         # plus avalés par un `or ''` (400 nommé, rien d'approuvé).

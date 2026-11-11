@@ -126,3 +126,36 @@ class DeclarationEndpointTest(TestCase):
                f'declaration-raccordement/')
         resp = self.api.get(url)
         self.assertEqual(resp.status_code, 404)
+
+    def test_lecture_exige_un_code_ventes(self):
+        """ADRG9 (D-APFS-4) — la déclaration se lit par la lecture du module
+        ventes : Commercial terrain et Admin RH livrés (aucun code ventes)
+        reçoivent 403, JSON comme PDF, sans rendu ; le Commercial auteur
+        obtient la déclaration de son devis."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import (
+            ADMIN_RH_PERMISSIONS, COMMERCIAL_PERMISSIONS,
+            COMMERCIAL_TERRAIN_PERMISSIONS,
+        )
+
+        def compte(nom, perms):
+            user = User.objects.create_user(
+                username=f'adrg9-{len(nom)}-{nom[:5]}', password='x',
+                company=self.company, role=Role.objects.create(
+                    company=self.company, nom=nom, permissions=list(perms)))
+            api = APIClient()
+            api.force_authenticate(user)
+            return user, api
+
+        for nom, perms in (('Commercial terrain', COMMERCIAL_TERRAIN_PERMISSIONS),
+                           ('Admin RH', ADMIN_RH_PERMISSIONS)):
+            _user, api = compte(nom, perms)
+            for params in ({}, {'format': 'pdf'}):
+                with self.subTest(role=nom, params=params):
+                    resp = api.get(self.url, params)
+                    self.assertEqual(resp.status_code, 403, resp.content)
+        commercial, api = compte('Commercial', COMMERCIAL_PERMISSIONS)
+        Devis.objects.filter(pk=self.devis.pk).update(created_by=commercial)
+        resp = api.get(self.url)
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertAlmostEqual(resp.data['systeme']['kwc'], 9.9, places=1)

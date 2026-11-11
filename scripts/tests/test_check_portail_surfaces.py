@@ -21,6 +21,7 @@ router.register(r'mes-demandes-sav', MesDemandesSavViewSet, basename='y')
 router.register(r'comptes-portail', ComptesViewSet, basename='z')
 urlpatterns = [
     path('client/ma-consommation/', ma_consommation, name='c'),
+    path('fournisseur/tableau-de-bord/', tdb_fournisseur, name='f'),
     path('', include(router.urls)),
 ]
 """
@@ -35,6 +36,9 @@ const portailApi = {
   demandesSav: {
     liste: () => api.get('/portail/mes-demandes-sav/'),
   },
+  fournisseur: {
+    tableauDeBord: () => api.get('/portail/fournisseur/tableau-de-bord/'),
+  },
 }
 export default portailApi
 """
@@ -44,11 +48,12 @@ import portailApi from '../../api/portailApi'
 portailApi.documents.liste()
 portailApi.consommation({})
 portailApi.demandesSav.liste()
+portailApi.fournisseur.tableauDeBord()
 """
 
 
 class Depot(unittest.TestCase):
-    def _monter(self, urls=URLS, api=API, ecrans=None, allow=""):
+    def _monter(self, urls=URLS, api=API, ecrans=None, allow="", public_urls=""):
         tmp = Path(tempfile.mkdtemp())
         (tmp / "backend" / "django_core" / "apps" / "portail").mkdir(parents=True)
         (tmp / "frontend" / "src" / "api").mkdir(parents=True)
@@ -57,6 +62,8 @@ class Depot(unittest.TestCase):
         (tmp / "scripts").mkdir()
         (tmp / "backend/django_core/apps/portail/urls.py").write_text(
             urls, encoding="utf-8")
+        (tmp / "backend/django_core/apps/portail/public_urls.py").write_text(
+            public_urls, encoding="utf-8")
         (tmp / "frontend/src/api/portailApi.js").write_text(api, encoding="utf-8")
         for nom, contenu in (ecrans if ecrans is not None
                              else {"Ecran.jsx": ECRAN}).items():
@@ -64,15 +71,16 @@ class Depot(unittest.TestCase):
         (tmp / "scripts/portail_surfaces_allow.txt").write_text(
             allow, encoding="utf-8")
         sauve = (guard.URLS_PATH, guard.API_PATH, guard.FEATURES_DIR,
-                 guard.ALLOWLIST_PATH)
+                 guard.ALLOWLIST_PATH, guard.PUBLIC_URLS_PATH)
         guard.URLS_PATH = tmp / "backend/django_core/apps/portail/urls.py"
+        guard.PUBLIC_URLS_PATH = tmp / "backend/django_core/apps/portail/public_urls.py"
         guard.API_PATH = tmp / "frontend/src/api/portailApi.js"
         guard.FEATURES_DIR = feat
         guard.ALLOWLIST_PATH = tmp / "scripts/portail_surfaces_allow.txt"
 
         def restaurer():
             (guard.URLS_PATH, guard.API_PATH, guard.FEATURES_DIR,
-             guard.ALLOWLIST_PATH) = sauve
+             guard.ALLOWLIST_PATH, guard.PUBLIC_URLS_PATH) = sauve
         self.addCleanup(restaurer)
 
     @staticmethod
@@ -87,7 +95,8 @@ class TestSurfaces(Depot):
     def test_routes_self_service_seules(self):
         self.assertEqual(
             guard.routes_self_service(URLS),
-            ["mes-documents", "mes-demandes-sav", "client/ma-consommation"])
+            ["mes-documents", "mes-demandes-sav", "client/ma-consommation",
+             "fournisseur/tableau-de-bord"])
 
     def test_tout_branche_est_vert(self):
         self._monter()
@@ -130,6 +139,56 @@ class TestSurfaces(Depot):
             allow="mes-demandes-sav\n")
         code, out = self._main()
         self.assertEqual(code, 0, out)
+
+    def test_route_publique_et_fournisseur_sans_ecran_rougissent(self):
+        """APUB45 — une route ``fournisseur/…`` et une route PUBLIQUE à jeton
+        sans appelant rougissent en se nommant ; leurs appelants (ou une ligne
+        d'allowlist) ramènent le vert."""
+        publiques = "path('<str:token>/x/', vue_x, name='x'),\n"
+        api_sans = API.replace(
+            "    tableauDeBord: () => api.get('/portail/fournisseur/tableau-de-bord/'),\n", "")
+        self._monter(api=api_sans, public_urls=publiques)
+        code, out = self._main()
+        self.assertEqual(code, 1, out)
+        self.assertIn("fournisseur/tableau-de-bord", out)
+        self.assertIn("<>/x", out)
+        api_avec = API.replace(
+            "  fournisseur: {",
+            "  publics: {\n    x: (t) => api.get(`/public/portail/${t}/x/`),\n  },\n"
+            "  fournisseur: {")
+        self._monter(api=api_avec, public_urls=publiques,
+                     ecrans={"Ecran.jsx": ECRAN + "portailApi.publics.x('t')\n"})
+        code, out = self._main()
+        self.assertEqual(code, 0, out)
+        self._monter(public_urls=publiques, allow="<>/x\n")
+        code, out = self._main()
+        self.assertEqual(code, 0, out)
+
+    def test_headless_et_ecran_public_hors_features(self):
+        """APUB45 — une ``path`` marquée ``# headless: <raison>`` est ignorée ;
+        l'écran d'une route PUBLIQUE peut vivre hors ``features/portail``
+        (page de connexion) ; une route self-service, non."""
+        urls = URLS.replace(
+            "    path('', include(router.urls)),",
+            "    # headless: auto-inscription publique, aucun ecran ERP\n"
+            "    path('fournisseurs/candidature/', candidature, name='k'),\n"
+            "    path('', include(router.urls)),")
+        api = API.replace(
+            "  fournisseur: {",
+            "  themePublic: () => api.get('/public/portail/theme/'),\n"
+            "  fournisseur: {")
+        self._monter(urls=urls, api=api,
+                     public_urls="path('theme/', theme, name='t'),\n")
+        login = guard.API_PATH.parent.parent / "pages" / "Login.jsx"
+        login.parent.mkdir(parents=True)
+        login.write_text("portailApi.themePublic()\n", encoding="utf-8")
+        code, out = self._main()
+        self.assertEqual(code, 0, out)
+        self.assertNotIn("fournisseurs/candidature", out)
+        login.unlink()
+        code, out = self._main()
+        self.assertEqual(code, 1, out)
+        self.assertIn("theme", out)
 
     def test_ligne_devenue_inutile_fait_echouer(self):
         self._monter(allow="mes-demandes-sav\n")
