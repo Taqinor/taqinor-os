@@ -8,6 +8,7 @@ import { useSearchParams } from 'react-router-dom'
 // LeadForm.jsx, features/crm/stages : un seul vocabulaire visuel).
 import { Upload, Download, X, Plus, MoreHorizontal, Zap, GitMerge, Maximize2, Minimize2, Move } from 'lucide-react'
 import { useIsAdmin } from '../../../hooks/useHasPermission'
+import useDroitMetier from '../../../features/sav/useDroitMetier' // ADRG20 — code fin, sinon palier
 import StateBlock from '../../../components/StateBlock'
 import { fetchLeads, updateLead, leadStagePatched } from '../../../features/crm/store/crmSlice'
 import crmApi from '../../../api/crmApi'
@@ -443,6 +444,7 @@ export default function LeadsPage() {
   // ERR-CADV-WA-MOTIF (CADV10) — les leads écartés de la file, avec le motif du serveur.
   const [waSkipped, setWaSkipped] = useState([])
   const canDelete = useIsAdmin()
+  const canReassign = useDroitMetier('crm_reassign'), canWrite = useDroitMetier('crm_modifier'), canExport = useDroitMetier('crm_export')
 
   // Le filtre « Archivés » est une dimension SERVEUR : on refait l'appel avec
   // le bon paramètre quand il change (les autres filtres restent côté client).
@@ -972,9 +974,9 @@ export default function LeadsPage() {
               <DropdownMenuItem onSelect={() => setShowImport(true)}>
                 <Upload /> Importer
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={exportFiltered}>
+              {canExport && <DropdownMenuItem onSelect={exportFiltered}>
                 <Download /> Exporter Excel
-              </DropdownMenuItem>
+              </DropdownMenuItem>}
               {/* LB47 — au téléphone, ⋯ porte AUSSI le changement de vue
                   (items depuis la MÊME liste VIEWS que le sélecteur desktop)
                   et l'application des vues enregistrées du compte. */}
@@ -1059,6 +1061,7 @@ export default function LeadsPage() {
             onExport={exportSelection}
             onClear={clearSelection}
             messageTemplates={messageTemplates}
+            canReassign={canReassign} canWrite={canWrite} canExport={canExport}
           />
         </div>
       )}

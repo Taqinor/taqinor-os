@@ -18,6 +18,7 @@ import { EVENEMENT_OUVRIR } from '../../ia/copilotMessages'
 // CALX47 — la porte du module Calepinage, ouverte depuis la fiche du lead.
 import calepinageApi from '../../../api/calepinageApi'
 import AssigneePicker from '../../../components/AssigneePicker'
+import useDroitMetier from '../../sav/useDroitMetier' // code fin, sinon palier (HasPermissionOrLegacy)
 import ScoreBadge from '../ScoreBadge'
 import StageControl from './StageControl'
 // QJR654 — libellés de statut devis : la table unique de devisStatuts.js.
@@ -317,6 +318,7 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
   // /publicite (responsable/admin — même liste que module.config.jsx).
   const metaAdId = server.meta_ad_id || null
   const canSeePublicite = useIsAdminOrResponsable()
+  const peutReassigner = useDroitMetier('crm_reassign'), peutModifier = useDroitMetier('crm_modifier') // ADRG20
   const showAdBadge = !!metaAdId && canSeePublicite
 
   // ── Faits clés (LWC2) — bande d'INFO qui remplace 4 des 6 boutons ──────────
@@ -597,7 +599,7 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
         <div className="lw-rail-field">
           <span className="lw-rail-label">Responsable</span>
           <AssigneePicker
-            users={users}
+            users={users} disabled={!peutReassigner}
             value={owner ?? ''}
             onChange={(id) => onAction('set-field', { key: 'owner', value: id ?? '' })}
           />
@@ -823,7 +825,7 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
               Envoyer un questionnaire
             </DropdownMenuItem>
             {!alreadyClient && (
-              <DropdownMenuItem
+              <DropdownMenuItem disabled={!peutModifier}
                 onSelect={() => onAction('convert')}
                 title="Convertir ce lead en client (nouveau, existant, ou aucun)"
               >
@@ -834,13 +836,13 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
                 cadence + l'arrêt avec motif vivent aussi dans Suivi
                 commercial, SectionPipeline) : jamais de crmApi direct ici
                 (contrat PerduPopover), tout passe par onAction. */}
-            <DropdownMenuItem
+            <DropdownMenuItem disabled={!peutModifier}
               onSelect={() => onAction('relance-cadence')}
               title="Relancer la cadence de contact de ce lead"
             >
               Relancer la cadence
             </DropdownMenuItem>
-            <DropdownMenuItem
+            <DropdownMenuItem disabled={!peutModifier}
               onSelect={() => onAction('relance-arreter')}
               title="Arrêter les cadences de relance en cours (motif demandé)"
             >
@@ -849,7 +851,7 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
             <DropdownMenuSeparator />
             <DropdownMenuItem
               destructive={!archived}
-              disabled={archiveBusy}
+              disabled={archiveBusy || !peutModifier}
               onSelect={() => onAction('archive')}
               title={archived ? 'Restaurer ce lead' : 'Archiver ce lead'}
             >
