@@ -329,16 +329,19 @@ def refus_restauration_lead(lead):
     return None
 
 
-def restaurer_lead(lead, user, *, note=None):
+def restaurer_lead(lead, user, *, note=None, sur_refus=None):
     """ACVI36 — LA restauration d'un lead archivé (fiche et lot) : écriture et
     chatter dans la même transaction (ALEA30), puis la prochaine étape.
     ``note`` : le texte du lot, sinon la ligne de restauration de la fiche.
-    ASUP9 — refus 409 nommé (rien écrit) pour un absorbé ou un doublon."""
+    ASUP9 — refus 409 nommé (rien écrit) pour un absorbé ou un doublon ; le lot
+    passe ``sur_refus(motif)`` et reçoit ``None`` au lieu du 409."""
     from django.db import transaction
 
     from core.conflit_etat import ConflitEtat
     if refus := refus_restauration_lead(lead):
-        raise ConflitEtat(refus)
+        if sur_refus is None:
+            raise ConflitEtat(refus)
+        return sur_refus(refus)
 
     from . import activity
     from .cadence_filet import assurer_prochaine_etape_apres_succes
