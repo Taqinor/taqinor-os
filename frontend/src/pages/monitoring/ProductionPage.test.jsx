@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest'
+import { describe, it, expect, vi, beforeAll, onTestFinished } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
@@ -96,6 +96,11 @@ vi.mock('../../ui/confirm', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }))
 
+// ADRG47 — droit d'écriture du monitoring (`sav_gerer`, palier sav) simulé :
+// vrai = porteur (Technicien) ; faux = Commercial du registre (aucun code sav).
+const droit = vi.hoisted(() => ({ ecrire: true }))
+vi.mock('../../features/sav/useDroitMetier', () => ({ default: () => droit.ecrire }))
+
 import monitoringApi from '../../api/monitoringApi'
 import ProductionPage from './ProductionPage'
 
@@ -179,5 +184,18 @@ describe('ProductionPage (WIR122 — suppression de relevé + historique mensuel
     expect(await screen.findByText('Historique mensuel (attendu vs réel)')).toBeInTheDocument()
     // DataTable rend bureau + mobile (2 occurrences de la même valeur).
     expect(screen.getAllByText('2026-06').length).toBeGreaterThan(0)
+  })
+
+  it('ADRG47 — un Commercial ne voit ni Ajouter, ni Supprimer, ni Synchroniser', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    droit.ecrire = false
+    onTestFinished(() => { droit.ecrire = true })
+    renderPage(<ProductionPage />)
+    await userEvent.selectOptions(
+      await screen.findByRole('combobox', { name: 'Choisir un système installé' }), '11')
+    await waitFor(() => expect(screen.getAllByText('120.5 kWh').length).toBeGreaterThan(0))
+    expect(screen.queryByRole('button', { name: /Ajouter/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Synchroniser maintenant/ })).toBeNull()
+    expect(screen.queryAllByLabelText('Supprimer')).toHaveLength(0)
   })
 })

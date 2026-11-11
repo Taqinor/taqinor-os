@@ -14,12 +14,14 @@ import {
 } from '../../../ui'
 import SystemPicker from '../../../pages/monitoring/SystemPicker'
 import ListeOuVide from './ListeOuVide'
+import useDroitMetier from '../useDroitMetier'
 import { libelleSysteme as libelle, useListeServeur } from './partage'
 
 const STATUT_TONES = { actif: 'success', suspendu: 'warning', resilie: 'neutral' }
 const FORM_VIDE = { systeme: '', periodicite: 'mensuel', montant: '', date_debut: '' }
 
 export default function AbonnementsSection({ systems, loadingSystems }) {
+  const peutEcrire = useDroitMetier('sav_gerer') // ADRG47 — écriture du monitoring = palier sav
   const { rows, loading, load } = useListeServeur(monitoringApi.getAbonnements)
   const [form, setForm] = useState(FORM_VIDE)
   const [busy, setBusy] = useState(false)
@@ -86,10 +88,10 @@ export default function AbonnementsSection({ systems, loadingSystems }) {
                onChange={(e) => setForm((f) => ({ ...f, montant: e.target.value }))} />
         <Input aria-label="Date de début" type="date" value={form.date_debut}
                onChange={(e) => setForm((f) => ({ ...f, date_debut: e.target.value }))} />
-        <Button type="button" size="sm" loading={busy}
+        {peutEcrire && <Button type="button" size="sm" loading={busy}
                 disabled={!form.systeme || !form.montant} onClick={creer}>
           Créer l'abonnement
-        </Button>
+        </Button>}
       </div>
       {erreur && <p role="alert" className="text-sm text-destructive">{erreur}</p>}
 
@@ -106,7 +108,7 @@ export default function AbonnementsSection({ systems, loadingSystems }) {
                     {a.periodicite_display} — {formatMAD(a.montant)}
                   </span>
                 </div>
-                {a.statut !== 'resilie' && aResilier !== a.id && (
+                {peutEcrire && a.statut !== 'resilie' && aResilier !== a.id && (
                   <Button size="sm" variant="outline" onClick={() => { setAResilier(a.id); setMotif('') }}>
                     Résilier
                   </Button>

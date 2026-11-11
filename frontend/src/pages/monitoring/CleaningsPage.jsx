@@ -13,6 +13,7 @@ import useSupervisedSystems from './useSupervisedSystems'
 import { todayLocalIso } from '../../lib/dateLocale'
 import { lancerChargement } from '../../lib/chargementEffet'
 import EnTeteMonitoring from './EnTeteMonitoring'
+import useDroitMetier from '../../features/sav/useDroitMetier'
 
 /* WR7 — Journal de nettoyages + évaluation de salissure (FG283).
    Liste et enregistre les nettoyages (bornes pour l'estimation d'encrassement)
@@ -22,6 +23,7 @@ import EnTeteMonitoring from './EnTeteMonitoring'
 const todayISO = () => todayLocalIso()
 
 export default function CleaningsPage() {
+  const peutEcrire = useDroitMetier('sav_gerer') // ADRG47 — écriture du monitoring = palier sav
   const { confirmDelete } = useConfirmDialog()
   const { systems, loading: loadingSystems } = useSupervisedSystems()
   const [selectedId, setSelectedId] = useState('')
@@ -104,14 +106,14 @@ export default function CleaningsPage() {
     {
       id: 'actions', header: '', width: 70, align: 'right',
       accessor: () => '',
-      cell: (v, r) => (
+      cell: (v, r) => peutEcrire && (
         <IconButton variant="ghost" label="Supprimer" onClick={() => remove(r)}>
           <Trash2 />
         </IconButton>
       ),
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps -- remove recréé par rendu (D-ENF22)
-  ], [])
+  ], [peutEcrire])
 
   return (
     <div className="page">
@@ -166,7 +168,7 @@ export default function CleaningsPage() {
           )}
 
           {/* Saisie d'un nettoyage */}
-          <Card>
+          {peutEcrire && <Card>
             <CardContent className="p-4">
               <div className="mb-3 text-sm font-semibold">Enregistrer un nettoyage</div>
               <form onSubmit={addCleaning} noValidate className="flex flex-wrap items-end gap-3">
@@ -181,7 +183,7 @@ export default function CleaningsPage() {
                 <Button type="submit" loading={saving}><Plus /> Ajouter</Button>
               </form>
             </CardContent>
-          </Card>
+          </Card>}
 
           {/* Journal */}
           {loading ? (

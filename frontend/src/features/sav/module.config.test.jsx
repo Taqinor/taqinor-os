@@ -98,6 +98,8 @@ vi.mock('../../api/installationsApi', () => ({
     ] } })),
   },
 }))
+// ADRG47 — rendu sans store : porteur de `sav_gerer` simulé (gestes d'écriture visibles).
+vi.mock('./useDroitMetier', () => ({ default: () => true }))
 
 import SavMonitoringPage from './monitoring/SavMonitoringPage'
 

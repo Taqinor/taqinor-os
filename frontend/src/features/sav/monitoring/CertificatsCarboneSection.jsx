@@ -11,11 +11,13 @@ import { formatDate, formatNumber } from '../../../lib/format'
 import { Card, Button, Input, toast } from '../../../ui'
 import SystemPicker from '../../../pages/monitoring/SystemPicker'
 import ListeOuVide from './ListeOuVide'
+import useDroitMetier from '../useDroitMetier'
 import { libelleSysteme, useListeServeur } from './partage'
 
 const FORM_VIDE = { systeme: '', periode_debut: '', periode_fin: '' }
 
 export default function CertificatsCarboneSection({ systems, loadingSystems }) {
+  const peutEcrire = useDroitMetier('sav_gerer') // ADRG47 — écriture du monitoring = palier sav
   const { rows, loading, load } = useListeServeur(monitoringApi.getCertificatsCarbone)
   const [form, setForm] = useState(FORM_VIDE)
   const [busy, setBusy] = useState(false)
@@ -95,11 +97,11 @@ export default function CertificatsCarboneSection({ systems, loadingSystems }) {
                onChange={(e) => setForm((f) => ({ ...f, periode_debut: e.target.value }))} />
         <Input aria-label="Fin de période" type="date" value={form.periode_fin}
                onChange={(e) => setForm((f) => ({ ...f, periode_fin: e.target.value }))} />
-        <Button type="button" size="sm" loading={busy}
+        {peutEcrire && <Button type="button" size="sm" loading={busy}
                 disabled={!form.systeme || !form.periode_debut || !form.periode_fin}
                 onClick={emettre}>
           Émettre le certificat
-        </Button>
+        </Button>}
       </div>
       {erreur && <p role="alert" className="text-sm text-destructive">{erreur}</p>}
 
@@ -113,7 +115,7 @@ export default function CertificatsCarboneSection({ systems, loadingSystems }) {
                 <span className="text-sm text-muted-foreground">{cible(c)}</span>
                 <span className="text-sm">{formatNumber(c.tco2_evitees, { decimals: 3 })} tCO₂ évitées</span>
                 <Button size="sm" variant="ghost" onClick={() => telechargerPdf(c)}>PDF</Button>
-                {c.statut !== 'annule' && aAnnuler !== c.id && (
+                {peutEcrire && c.statut !== 'annule' && aAnnuler !== c.id && (
                   <Button size="sm" variant="outline" onClick={() => { setAAnnuler(c.id); setMotif(''); setErreurAnnulation(null) }}>
                     Annuler
                   </Button>

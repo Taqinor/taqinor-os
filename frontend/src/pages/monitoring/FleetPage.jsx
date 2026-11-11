@@ -10,6 +10,7 @@ import { METRIC_ICONS } from '../../ui/metricIcons'
 import useVisibilityAwarePoll from './useVisibilityAwarePoll'
 import FreshnessBadge from './FreshnessBadge'
 import EnTeteMonitoring from './EnTeteMonitoring'
+import useDroitMetier from '../../features/sav/useDroitMetier'
 import SegmentedPetit from './SegmentedPetit'
 import { TableauDeBordSystemes, TableSystemes } from './PartiesSystemes'
 
@@ -55,6 +56,7 @@ const FLEET_POLL_MS = 5 * 60 * 1000
 // AMON88 — alertes de sous-performance OUVERTES (système, ratio, depuis,
 // ticket) avec un geste « Classer » à motif (POST …/classer/, AMON24).
 function AlertesOuvertes({ version, onClasse }) {
+  const peutEcrire = useDroitMetier('sav_gerer') // ADRG47 — écriture du monitoring = palier sav
   const [alertes, setAlertes] = useState(null)
   const [aClasser, setAClasser] = useState(null)
   const [motif, setMotif] = useState('')
@@ -95,7 +97,7 @@ function AlertesOuvertes({ version, onClasse }) {
                   {` · ${formatPercent(a.ratio_pct, { decimals: 1 })} de l’attendu · depuis le ${formatDate(a.date_creation)}`}
                   {a.ticket ? ` · ticket #${a.ticket}` : ' · sans ticket'}
                 </span>
-                {aClasser !== a.id && (
+                {peutEcrire && aClasser !== a.id && (
                   <Button size="sm" variant="outline" onClick={() => { setAClasser(a.id); setMotif(''); setErreur(null) }}>
                     Classer
                   </Button>

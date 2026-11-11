@@ -16,6 +16,7 @@ import { formatMAD, formatNumber, formatPercent } from '../../lib/format'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import { lancerChargement } from '../../lib/chargementEffet'
 import EnTeteMonitoring from './EnTeteMonitoring'
+import useDroitMetier from '../../features/sav/useDroitMetier'
 import { ChargementPage } from '../../ui/ChargementPage'
 import PiedModaleFormulaire from '../../ui/PiedModaleFormulaire'
 
@@ -34,6 +35,7 @@ const EMPTY_FORM = {
 }
 
 export default function WarrantiesPage() {
+  const peutEcrire = useDroitMetier('sav_gerer') // ADRG47 — écriture du monitoring = palier sav
   const { confirmDelete } = useConfirmDialog()
   const [warranties, setWarranties] = useState([])
   const [installations, setInstallations] = useState([])
@@ -185,17 +187,17 @@ export default function WarrantiesPage() {
           <IconButton variant="ghost" label="Statut et courbe" onClick={() => setSelected(r)}>
             <LineChart />
           </IconButton>
-          <IconButton variant="ghost" label="Modifier" onClick={() => openEdit(r)}>
+          {peutEcrire && <><IconButton variant="ghost" label="Modifier" onClick={() => openEdit(r)}>
             <Pencil />
           </IconButton>
           <IconButton variant="ghost" label="Supprimer" onClick={() => remove(r)}>
             <Trash2 />
-          </IconButton>
+          </IconButton></>}
         </span>
       ),
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps -- openEdit/remove recréés à chaque rendu ; colonnes rafraîchies via nameOf/selected (D-ENF22)
-  ], [nameOf, selected])
+  ], [nameOf, selected, peutEcrire])
 
   const curvePoints = useMemo(() => curve?.points ?? [], [curve])
   const curveChart = useMemo(() => curvePoints
@@ -238,7 +240,7 @@ export default function WarrantiesPage() {
       <EnTeteMonitoring titre="Garanties de production" sousTitre="Productible garanti par système, écart annuel et courbe de dégradation." />
 
       <div className="mb-4 flex justify-end">
-        <Button onClick={openCreate}><Plus /> Nouvelle garantie</Button>
+        {peutEcrire && <Button onClick={openCreate}><Plus /> Nouvelle garantie</Button>}
       </div>
 
       {loading ? (
