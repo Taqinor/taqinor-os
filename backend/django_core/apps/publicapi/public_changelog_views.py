@@ -18,8 +18,17 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.models import ChangelogEntry
+from core.throttling import PublicIpRateThrottle
 
 from .auth import ApiKeyRateThrottle
+
+
+class CataloguePublicIpThrottle(PublicIpRateThrottle):
+    """APUB51 (C-APUB-030) — vrai débit par IP du changelog et du catalogue
+    d'erreurs (``ApiKeyRateThrottle`` ne compte rien sans clé)."""
+    scope = 'publicapi_catalogue_ip'
+    rate = '60/minute'
+
 
 #: Borne du filtre ``?version=`` = ``ChangelogEntry.version.max_length`` (40).
 VERSION_MAX = ChangelogEntry._meta.get_field('version').max_length
@@ -60,7 +69,7 @@ class PublicChangelogView(APIView):
     # (comme openapi.json) : rien à brute-forcer, mais on garde la même classe
     # de throttle que les autres vues publiques de l'app (no-op sans clé, cf.
     # ApiKeyRateThrottle) plutôt que d'élargir l'allowlist THROTTLE_EXEMPT.
-    throttle_classes = [ApiKeyRateThrottle]
+    throttle_classes = [ApiKeyRateThrottle, CataloguePublicIpThrottle]
 
     @extend_schema(
         parameters=[OpenApiParameter(

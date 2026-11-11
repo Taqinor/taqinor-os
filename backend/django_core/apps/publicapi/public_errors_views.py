@@ -17,6 +17,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .auth import ApiKeyRateThrottle
+from .public_changelog_views import CataloguePublicIpThrottle  # APUB51
 from .error_catalog import catalogue
 
 
@@ -43,7 +44,7 @@ class PublicErrorCatalogView(APIView):
     # YRBAC9 — tout endpoint AllowAny déclare un throttle. Même classe que les
     # autres vues publiques (no-op sans clé, cf. ApiKeyRateThrottle) plutôt
     # que d'élargir l'allowlist THROTTLE_EXEMPT.
-    throttle_classes = [ApiKeyRateThrottle]
+    throttle_classes = [ApiKeyRateThrottle, CataloguePublicIpThrottle]
 
     def get(self, request):
         entrees = catalogue()
