@@ -91,3 +91,35 @@ class Aud803RevocationDuLienPublicTests(TestCase):
         self.report.save(update_fields=['partage_revoque_le'])
         self.client.get(URL.format(token=self.token))
         self.assertEqual(AccesRapportPartage.objects.count(), 0)
+
+    # ── APUB41 — geste « Couper le lien public » ──────────────────────────
+    def test_couper_partage_par_l_api_rend_404(self):
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+
+        def api(company, nom):
+            user = get_user_model().objects.create_user(
+                username=nom, password='x', company=company,
+                role_legacy='responsable')
+            client = APIClient()
+            client.credentials(
+                HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+            return client
+        couper = f'/api/django/reporting/saved-reports/{self.report.pk}/couper-partage/'
+        autre = Company.objects.create(nom='APUB41 B')
+        self.assertEqual(api(autre, 'apub41-b').post(couper).status_code, 404)
+        self.report.refresh_from_db()
+        self.assertIsNone(self.report.partage_revoque_le)
+        responsable = api(self.company, 'apub41-a')
+        res = responsable.post(couper)
+        self.assertEqual(res.status_code, 200, res.content)
+        self.report.refresh_from_db()
+        date = self.report.partage_revoque_le
+        self.assertIsNotNone(date)
+        self.assertIn('partage_revoque_le', res.json())
+        self.assertEqual(self.client.get(URL.format(token=self.token)).status_code, 404)
+        self.assertEqual(AccesRapportPartage.objects.count(), 0)
+        self.assertEqual(responsable.post(couper).status_code, 200)
+        self.report.refresh_from_db()
+        self.assertEqual(self.report.partage_revoque_le, date)  # idempotent
