@@ -162,7 +162,6 @@ class MainSurArbreFautifTests(unittest.TestCase):
         self.svc = base / "apps" / "demo" / "services.py"
         self.svc.parent.mkdir(parents=True)
         self.allow = base / "allow.txt"
-        self.allow.write_text("", encoding="utf-8")
         for nom in ("APPS_DIR", "CORE_DIR", "AUTH_DIR", "ALLOWLIST_PATH"):
             self.addCleanup(setattr, crmw, nom, getattr(crmw, nom))
         crmw.APPS_DIR, crmw.CORE_DIR = base / "apps", base / "core"
@@ -170,21 +169,18 @@ class MainSurArbreFautifTests(unittest.TestCase):
 
     def _main(self, src):
         self.svc.write_text(src, encoding="utf-8")
-        out = io.StringIO()
-        with contextlib.redirect_stdout(out):
-            code = crmw.main([])
-        return code, out.getvalue()
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            return crmw.main([]), out.getvalue()
 
     def test_services_fautif_rend_un(self):
         code, out = self._main(BARE_RMW)
         self.assertEqual(code, 1, out)
-        self.assertIn(f"{crmw._rel(self.svc)}::incr", out)
-        self.assertIn("apps/demo/services.py", out)
+        self.assertIn("apps/demo/services.py::incr", out)
 
     def test_allowlist_ou_verrou_rend_zero(self):
         self.allow.write_text(f"{crmw._rel(self.svc)}::incr\n", encoding="utf-8")
         self.assertEqual(self._main(BARE_RMW)[0], 0)
-        self.allow.write_text("", encoding="utf-8")
+        self.allow.unlink()
         self.assertEqual(self._main(LOCKED_SELECT_FOR_UPDATE)[0], 0)
 
 
