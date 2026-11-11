@@ -711,6 +711,13 @@ def _conformite_xlsx_response(rapport):
     return resp
 
 
+def _exiger_proprietaire(user, instance, quoi):
+    """APUB14 — modifier/supprimer : le propriétaire seul ; objet société (sans
+    propriétaire) : palier administrateur seul (patron ``apps/uxviews``)."""
+    if not ((instance.owner_id == user.id) if instance.owner_id else user.is_admin_role):
+        raise PermissionDenied(f'Vous ne pouvez modifier que vos propres {quoi}.')
+
+
 class DashboardViewSet(TenantMixin, viewsets.ModelViewSet):
     """FG381 — dashboards sans-code, sauvegardés par utilisateur/société.
 
@@ -741,8 +748,13 @@ class DashboardViewSet(TenantMixin, viewsets.ModelViewSet):
                         owner=self.request.user)
 
     def perform_update(self, serializer):
+        _exiger_proprietaire(self.request.user, serializer.instance, 'tableaux')  # APUB14
         # Ne jamais réécrire company/owner depuis le corps.
         serializer.save(company=self.request.user.company)
+
+    def perform_destroy(self, instance):
+        _exiger_proprietaire(self.request.user, instance, 'tableaux')  # APUB14
+        super().perform_destroy(instance)
 
     @extend_schema(
         parameters=[_q('filtre', OpenApiTypes.STR,
@@ -902,7 +914,12 @@ class SavedQueryViewSet(TenantMixin, viewsets.ModelViewSet):
                         owner=self.request.user)
 
     def perform_update(self, serializer):
+        _exiger_proprietaire(self.request.user, serializer.instance, 'requêtes')  # APUB14
         serializer.save(company=self.request.user.company)
+
+    def perform_destroy(self, instance):
+        _exiger_proprietaire(self.request.user, instance, 'requêtes')  # APUB14
+        super().perform_destroy(instance)
 
     @extend_schema(responses={200: _LISTE_OBJETS})
     @action(detail=False, methods=['get'])

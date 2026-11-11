@@ -134,6 +134,35 @@ class DashboardViewSetTests(TestCase):
         kwargs = {'pk': pk} if pk else {}
         return vue.as_view({methode: action})(req, **kwargs).status_code
 
+    def test_collegue_ne_modifie_ni_supprime_le_tableau_partage(self):
+        """APUB14 — le tableau partagé du Directeur A : 403 au Commercial B
+        (dé-partage, suppression) et au Directeur C ; tableau société (sans
+        propriétaire) : 403 à B, 200 à C ; A garde ses gestes."""
+        from importlib import import_module
+        reg = import_module('apps.roles.permissions_registre')
+        a = self._role('dir-a', reg.DIRECTEUR_PERMISSIONS)
+        b = self._role('com-b', reg.COMMERCIAL_PERMISSIONS)
+        c = self._role('dir-c', reg.DIRECTEUR_PERMISSIONS)
+        dash = Dashboard.objects.create(
+            company=self.company, owner=a, titre='De A', partage=True)
+        societe = Dashboard.objects.create(
+            company=self.company, owner=None, titre='Société', partage=True)
+        appel = self._appel
+        self.assertEqual(appel(DashboardViewSet, 'patch', 'partial_update', b,
+                               {'partage': False}, dash.pk), 403)
+        self.assertEqual(appel(DashboardViewSet, 'delete', 'destroy', b, pk=dash.pk), 403)
+        self.assertEqual(appel(DashboardViewSet, 'patch', 'partial_update', c,
+                               {'titre': 'Pris'}, dash.pk), 403)
+        dash.refresh_from_db()
+        self.assertEqual((dash.partage, dash.titre), (True, 'De A'))
+        self.assertEqual(appel(DashboardViewSet, 'patch', 'partial_update', b,
+                               {'titre': 'S2'}, societe.pk), 403)
+        self.assertEqual(appel(DashboardViewSet, 'patch', 'partial_update', c,
+                               {'titre': 'S2'}, societe.pk), 200)
+        self.assertEqual(appel(DashboardViewSet, 'patch', 'partial_update', a,
+                               {'titre': 'De A v2'}, dash.pk), 200)
+        self.assertEqual(appel(DashboardViewSet, 'delete', 'destroy', a, pk=dash.pk), 204)
+
     def test_viewer_n_ecrit_ni_tableau_ni_requete(self):
         """APUB13 — les rôles LIVRÉS lecture seule (Viewer, Utilisateur) ne
         créent, ne modifient ni ne suppriment un tableau ou une requête ; ils
