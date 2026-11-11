@@ -142,6 +142,17 @@ class TestLienClientToken(TestCase):
         resp = pub.get(f'{PUBLIC_BASE}/intervention/{token}/')
         self.assertEqual(resp.status_code, 404)
 
+    def test_page_en_route_noindex_no_store(self):
+        """APUB36 — la page « en route » (200 comme 404) n'est jamais indexée
+        ni gardée en cache partagé."""
+        token = self.interv.ensure_lien_client_token()
+        pub = APIClient()
+        for chemin, code in ((token, 200), ('inconnu', 404)):
+            rep = pub.get(f'{PUBLIC_BASE}/intervention/{chemin}/')
+            self.assertEqual(rep.status_code, code, chemin)
+            self.assertEqual(rep['X-Robots-Tag'], 'noindex, nofollow, noarchive')
+            self.assertEqual(rep['Cache-Control'], 'private, no-store')
+
     def test_sans_date_prevue_expire_a_la_cloture(self):
         """APUB35 — sans ``date_prevue``, le lien « en route » est servi avant
         la clôture puis rend 404 une fois l'intervention Terminée / Validée."""

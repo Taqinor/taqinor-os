@@ -253,3 +253,39 @@ class TestLienRapportToken(TestCase):
         resp = pub.get(f'{PUBLIC_BASE}/intervention-rapport/{token}/')
         for key in resp.data:
             self.assertNotIn('prix', key.lower())
+
+    def test_reponses_publiques_noindex_no_store(self):
+        """APUB36 — page de compte-rendu, PDF, photo et leurs 404 : jamais
+        indexés ni gardés en cache partagé ; PDF et photos en ``nosniff``."""
+        from unittest import mock
+
+        from django.contrib.contenttypes.models import ContentType
+
+        from apps.installations import field_services
+        from apps.records.models import Attachment
+        field_services.seed_shotlist_slots(self.company)
+        slot = next(s for s in field_services.active_shotlist(self.company)
+                    if s.phase == 'avant')
+        photo = Attachment.objects.create(
+            company=self.company,
+            content_type=ContentType.objects.get_for_model(Intervention),
+            object_id=self.interv.id, file_key='k/apub36/1', mime='image/jpeg',
+            filename=field_services.encode_slot_filename(slot.cle, 'p1.jpg'))
+        token = self.interv.ensure_lien_rapport_token()
+        pub = APIClient()
+        cas = (
+            (f'{token}/', 200, False), ('inconnu/', 404, False),
+            (f'{token}/pdf/', 200, True), ('inconnu/pdf/', 404, True),
+            (f'{token}/photo/{photo.id}/', 200, True),
+            (f'inconnu/photo/{photo.id}/', 404, True),
+        )
+        with mock.patch('apps.records.storage.fetch_attachment',
+                        lambda key: (b'JPEG-test', None)):
+            for chemin, code, binaire in cas:
+                with self.subTest(chemin=chemin):
+                    rep = pub.get(f'{PUBLIC_BASE}/intervention-rapport/{chemin}')
+                    self.assertEqual(rep.status_code, code)
+                    self.assertEqual(rep['X-Robots-Tag'], 'noindex, nofollow, noarchive')
+                    self.assertEqual(rep['Cache-Control'], 'private, no-store')
+                    if binaire:
+                        self.assertEqual(rep['X-Content-Type-Options'], 'nosniff')
