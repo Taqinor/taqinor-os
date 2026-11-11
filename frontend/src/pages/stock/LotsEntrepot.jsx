@@ -152,7 +152,8 @@ function OutilFefo({ produits }) {
 }
 
 export default function LotsEntrepot() {
-  const canWrite = usePeutEcrireStock()
+  // ADRG35 — sortir un lot est un mouvement : `stock_mouvement`, comme le serveur.
+  const canWrite = usePeutEcrireStock('stock_mouvement')
 
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)

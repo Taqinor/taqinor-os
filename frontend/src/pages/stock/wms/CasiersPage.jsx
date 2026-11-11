@@ -8,6 +8,7 @@ import {
   messageServeur, messageServeurBlob, ouvrirBlob,
 } from '../../../features/stock/api/erreurs'
 import TableauDefilant from '../../../ui/TableauDefilant'
+import usePeutEcrireStock from '../usePeutEcrireStock'
 
 /* ASTK215 — Casiers de l'entrepôt : seuils de réappro par casier, tâches de
    réappro (« Exécuter »), casiers sous seuil, historique d'un casier,
@@ -51,6 +52,8 @@ const toutesLesPages = (appel, params = {}) => fetchAllPages(
 ).then((data) => ({ data }))
 
 export default function CasiersPage() {
+  // ADRG35 — écritures d'entrepôt : `stock_mouvement`, comme le serveur.
+  const peutMouvement = usePeutEcrireStock('stock_mouvement')
   const [seuils, setSeuils] = useState([])
   const [taches, setTaches] = useState([])
   const [sousSeuil, setSousSeuil] = useState([])
@@ -164,7 +167,7 @@ export default function CasiersPage() {
 
       <Section id="casiers-sous-seuil" titre="Casiers à réapprovisionner">
         <div className="mb-3">
-          <Button onClick={generer} disabled={enCours === 'gen'}>Générer les tâches</Button>
+          {peutMouvement && <Button onClick={generer} disabled={enCours === 'gen'}>Générer les tâches</Button>}
         </div>
         {sousSeuil.length === 0 ? <Vide>Aucun casier sous son seuil.</Vide> : (
           <TableauDefilant enveloppe="overflow-x-auto" className="w-full min-w-[40rem]">
@@ -223,7 +226,7 @@ export default function CasiersPage() {
                   <TD>{t.bin_source_code ?? '—'}</TD><TD>{t.bin_cible_code}</TD>
                   <TD>{t.quantite}</TD><TD>{STATUTS_TACHE[t.statut] ?? t.statut}</TD>
                   <TD>
-                    {t.statut === 'a_faire' && (
+                    {peutMouvement && t.statut === 'a_faire' && (
                       <Button size="sm" disabled={enCours === `exec-${t.id}`}
                         onClick={() => executer(t.id)}>
                         Exécuter

@@ -5,6 +5,7 @@ import qualiteApi from '../../../features/stock/api/qualiteApi'
 import { messageServeur } from '../../../features/stock/api/erreurs'
 import { Section, Vide } from './ElementsEcran'
 import useGesteEcran from './useGesteEcran'
+import usePeutEcrireStock from '../usePeutEcrireStock'
 import { SELECT_CLS, enListe, champDe } from './constantesEcran'
 
 /* ASTK224 — Qualité & rappels : alertes de rappel (impact, blocages créés,
@@ -22,6 +23,8 @@ const CLASSES_DANGER = {
 }
 
 export default function QualitePage() {
+  // ADRG35 — écritures d'entrepôt : `stock_mouvement`, comme le serveur.
+  const peutMouvement = usePeutEcrireStock('stock_mouvement')
   const [rappels, setRappels] = useState([])
   const [blocages, setBlocages] = useState([])
   const [plans, setPlans] = useState([])
@@ -183,6 +186,7 @@ export default function QualitePage() {
       </Section>
 
       <Section id="blocages" titre="Blocages qualité">
+        {peutMouvement && (
         <form onSubmit={leverQuarantaine} noValidate className="mb-3 flex flex-wrap items-end gap-2">
           <label className="flex flex-col gap-1 text-xs">
             <span>Casier en quarantaine</span>
@@ -194,6 +198,7 @@ export default function QualitePage() {
           </label>
           <Button type="submit" variant="outline" disabled={occupe}>Lever la quarantaine du casier</Button>
         </form>
+        )}
         {blocages.length === 0 ? <Vide>Aucun blocage.</Vide> : (
           <ul className="space-y-1 text-sm">
             {blocages.map((b) => (
@@ -203,7 +208,7 @@ export default function QualitePage() {
                 <span>{b.bin_code || '—'}</span>
                 <span>{STATUTS_BLOCAGE[b.statut] ?? b.statut}</span>
                 <span className="text-[var(--muted-foreground)]">{b.motif}</span>
-                {b.statut === 'en_quarantaine' && (
+                {peutMouvement && b.statut === 'en_quarantaine' && (
                   <Button size="sm" disabled={occupe} aria-label={`Lever le blocage ${b.id}`}
                     onClick={() => geste(() => qualiteApi.leverBlocage(b.id),
                       'Levée impossible.', 'Blocage levé.')}>

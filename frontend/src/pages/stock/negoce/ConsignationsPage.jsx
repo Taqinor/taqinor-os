@@ -152,6 +152,8 @@ function Reglages({ onErreur }) {
 }
 
 export default function ConsignationsPage() {
+  // ADRG35 — poser un dépôt sort du stock : `stock_mouvement`, comme le serveur.
+  const peutMouvement = usePeutEcrireStock('stock_mouvement')
   const [onglet, setOnglet] = useState('depots')
   const [depots, setDepots] = useState([])
   const [clients, setClients] = useState([])
@@ -220,6 +222,7 @@ export default function ConsignationsPage() {
 
       {onglet === 'depots' && (
         <div role="tabpanel" className="space-y-4">
+          {peutMouvement && (
           <Carte titre="Nouveau dépôt">
             <form onSubmit={creer} noValidate className="flex flex-wrap items-start gap-2">
               <label className="flex flex-col gap-1 text-xs">
@@ -251,6 +254,7 @@ export default function ConsignationsPage() {
               <Button type="submit" disabled={occupe} className="mt-5">Créer le dépôt</Button>
             </form>
           </Carte>
+          )}
 
           <Carte titre="Dépôts chez les clients">
             <div className="mb-3">

@@ -28,6 +28,7 @@ from ..erreurs_achats import (
 from authentication.permissions import (
     IsAnyRole, LectureDuModule, IsAdminRole, IsResponsableOrAdmin, HasPermissionOrLegacy,
 )
+from apps.roles.permissions import DroitDeLaGrille  # ADRG35
 from ..permissions import PeutSupprimerStock  # ADRG44
 
 from ..models_wms import (
@@ -175,7 +176,7 @@ class VaguePickingViewSet(CompanyScopedModelViewSet):
             return [LectureDuModule()]
         if self.action in WRITE_ACTIONS + [
                 'lancer', 'prelever', 'configurer_liberation']:
-            return [IsResponsableOrAdmin()]
+            return [IsResponsableOrAdmin(), DroitDeLaGrille('stock_mouvement')()]  # ADRG35
         return [PeutSupprimerStock() if self.action == 'destroy' else IsAdminRole()]  # ADRG44
 
     def get_queryset(self):
@@ -300,7 +301,7 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
         if self.action in WRITE_ACTIONS + [
                 'sceller', 'ajouter_ligne', 'controler_scan', 'deplacer',
                 'import_asn']:
-            return [IsResponsableOrAdmin()]
+            return [IsResponsableOrAdmin(), DroitDeLaGrille('stock_mouvement')()]  # ADRG35
         return [PeutSupprimerStock() if self.action == 'destroy' else IsAdminRole()]  # ADRG44
 
     def get_queryset(self):
@@ -706,7 +707,7 @@ class ExpeditionTransporteurViewSet(CompanyScopedModelViewSet):
         if self.action in READ_ACTIONS + ['tracking', 'tarifs', 'cmr_pdf']:
             return [LectureDuModule()]
         if self.action in WRITE_ACTIONS + ['generer_etiquette']:
-            return [IsResponsableOrAdmin()]
+            return [IsResponsableOrAdmin(), DroitDeLaGrille('stock_mouvement')()]  # ADRG35
         return [PeutSupprimerStock() if self.action == 'destroy' else IsAdminRole()]  # ADRG44
 
     @extend_schema(responses={(200, 'application/pdf'): bytes})
@@ -959,9 +960,9 @@ class BlocageQualiteViewSet(CompanyScopedModelViewSet):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
         if self.action in WRITE_ACTIONS:
-            return [IsResponsableOrAdmin()]
+            return [IsResponsableOrAdmin(), DroitDeLaGrille('stock_mouvement')()]  # ADRG35
         if self.action in ['lever', 'lever_quarantaine_bin']:
-            return [IsResponsableOrAdmin()]
+            return [IsResponsableOrAdmin(), DroitDeLaGrille('stock_mouvement')()]  # ADRG35
         return [PeutSupprimerStock() if self.action == 'destroy' else IsAdminRole()]  # ADRG44
 
     def get_queryset(self):
@@ -1063,7 +1064,7 @@ class PlanChargementViewSet(CompanyScopedModelViewSet):
         if self.action in READ_ACTIONS + ['verifier_capacite']:
             return [LectureDuModule()]
         if self.action in WRITE_ACTIONS + ['ajouter_unite']:
-            return [IsResponsableOrAdmin()]
+            return [IsResponsableOrAdmin(), DroitDeLaGrille('stock_mouvement')()]  # ADRG35
         return [PeutSupprimerStock() if self.action == 'destroy' else IsAdminRole()]  # ADRG44
 
     def get_queryset(self):
@@ -1235,7 +1236,7 @@ class RetourClientViewSet(CompanyScopedModelViewSet):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
         if self.action in WRITE_ACTIONS + ['receptionner', 'inspecter']:
-            return [IsResponsableOrAdmin()]
+            return [IsResponsableOrAdmin(), DroitDeLaGrille('stock_mouvement')()]  # ADRG35
         return [IsAdminRole()]
 
     def get_queryset(self):

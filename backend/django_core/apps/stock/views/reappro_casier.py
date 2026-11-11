@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from authentication.permissions import (
     IsAdminRole, LectureDuModule, IsResponsableOrAdmin,
 )
+from apps.roles.permissions import DroitDeLaGrille  # ADRG35
 from ..permissions import PeutSupprimerStock  # ADRG44
 from core.champs_stricts import IdInconnu404Mixin, TexteLie
 from core.serializers import ChampsTexteBooleenStricts, CompanyScopedRelationsMixin
@@ -97,7 +98,7 @@ class TacheReapproInterneViewSet(CompanyScopedModelViewSet):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
         if self.action in WRITE_ACTIONS + ['executer']:
-            return [IsResponsableOrAdmin()]
+            return [IsResponsableOrAdmin(), DroitDeLaGrille('stock_mouvement')()]  # ADRG35
         return [PeutSupprimerStock() if self.action == 'destroy' else IsAdminRole()]  # ADRG44
 
     def get_queryset(self):
@@ -149,8 +150,15 @@ class TacheReapproInterneViewSet(CompanyScopedModelViewSet):
         'taches_creees': serializers.IntegerField(),
     }),
 })
+class _MouvementSurPost(DroitDeLaGrille('stock_mouvement')):
+    """ADRG35 — le POST (génération des tâches) est un mouvement ; GET libre."""
+
+    def has_permission(self, request, view):
+        return request.method != 'POST' or super().has_permission(request, view)
+
+
 @api_view(['GET', 'POST'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([IsResponsableOrAdmin, _MouvementSurPost])
 def casiers_a_reapprovisionner_view(request):
     """NTWMS40 — GET liste les casiers picking sous leur seuil ;
     POST génère les tâches de réappro interne correspondantes (idempotent :

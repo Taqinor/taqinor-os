@@ -152,7 +152,9 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
             return [IsResponsableOrAdmin(), *droits_de_la_grille(
                 self, export_xlsx=[DroitDeLaGrille('stock_export')],  # ASEC92
                 # ADRG34 — déclarer = créer une facture brouillon : `ventes_creer`.
-                declarer_consommation=[DroitDeLaGrille('ventes_creer')])]
+                declarer_consommation=[DroitDeLaGrille('ventes_creer')],
+                # ADRG35 — poser/modifier un dépôt sort du stock : `stock_mouvement`.
+                **dict.fromkeys(WRITE_ACTIONS, [DroitDeLaGrille('stock_mouvement')]))]
         return [IsAdminRole()]
 
     def get_queryset(self):

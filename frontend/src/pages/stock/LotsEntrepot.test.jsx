@@ -22,9 +22,23 @@ vi.mock('../../api/stockApi', () => ({
 import stockApi from '../../api/stockApi'
 import LotsEntrepot from './LotsEntrepot'
 
-const renderPage = (store = makeStore()) => renderStockPage(LotsEntrepot, store)
+// ADRG35 — « Sortir » suit `stock_mouvement` : le store de test le porte.
+const renderPage = (store = makeStore({ permissions: ['stock_voir', 'stock_modifier', 'stock_mouvement'] })) =>
+  renderStockPage(LotsEntrepot, store)
 
 describe('LotsEntrepot (WIR109)', () => {
+  it('ADRG35 — sans `stock_mouvement` : pas de « Sortir »', async () => {
+    stockApi.getProduits.mockResolvedValue({ data: [] })
+    stockApi.getLotsEntrepot.mockResolvedValue({ data: [{
+      id: 5, numero_lot: 'LOT-005', produit_nom: 'Batterie 100Ah', date_peremption: null,
+      est_perime: false, quantite_restante: 3, quantite_recue: 10, emplacement_nom: 'Dépôt A',
+    }] })
+    renderPage(makeStore({ permissions: ['stock_voir', 'stock_modifier'] }))
+    const grid = await screen.findByRole('grid', { name: 'Lots en entrepôt' })
+    expect(within(grid).getByText('LOT-005')).toBeInTheDocument()
+    expect(within(grid).queryByRole('button', { name: /Sortir/ })).toBeNull()
+  })
+
   it('liste les lots avec la péremption colorée', async () => {
     stockApi.getProduits.mockResolvedValue({ data: [{ id: 1, nom: 'Batterie 100Ah' }] })
     stockApi.getLotsEntrepot.mockResolvedValue({

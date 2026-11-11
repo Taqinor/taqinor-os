@@ -34,7 +34,7 @@ function brancher() {
 }
 
 // ADRG34 — « Déclarer » suit `ventes_creer` : le store de test le porte par défaut.
-const monter = (permissions = ['stock_voir', 'stock_modifier', 'ventes_creer']) =>
+const monter = (permissions = ['stock_voir', 'stock_modifier', 'stock_mouvement', 'ventes_creer']) =>
   renderStockPage(ConsignationsPage, makeAuthStore({ permissions }))
 
 beforeEach(() => { vi.clearAllMocks(); brancher() })
