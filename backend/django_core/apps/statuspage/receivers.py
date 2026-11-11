@@ -98,14 +98,15 @@ def _envoyer_notification_abonnes(incident, evenement):
         f'{incident.titre}\n\nSévérité : {incident.severite}\n'
         f'Statut : {incident.statut}\n'
     )
+    # APUB49 — lien ABSOLU (``PUBLIC_BASE_URL``) ; sans base, ligne omise (jamais relative).
+    base = (getattr(settings, 'PUBLIC_BASE_URL', '') or '').strip().rstrip('/')
     for abonne in _abonnes_de_la_region(incident.region):
         try:
-            lien_desabonnement = (
-                '/api/django/statuspage/public/desabonner/'
-                f'{abonne.token_desabonnement}/')
+            lien = (f'\nSe désabonner : {base}/api/django/statuspage/public/desabonner/'
+                    f'{abonne.token_desabonnement}/' if base else '')
             send_mail(
                 sujet,
-                f'{corps}\nSe désabonner : {lien_desabonnement}',
+                f'{corps}{lien}',
                 getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@erp.local'),
                 [abonne.email],
                 fail_silently=True,

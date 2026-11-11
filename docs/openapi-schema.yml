@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4963, operations: 7761, components: 3651}
+counts: {paths: 4963, operations: 7763, components: 3651}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -3006,6 +3006,7 @@ operations:
 - post /api/django/statuspage/public/abonner/ -> django_statuspage_public_abonner_create
 - get /api/django/statuspage/public/confirmer/{token}/ -> django_statuspage_public_confirmer_retrieve
 - get /api/django/statuspage/public/desabonner/{token}/ -> django_statuspage_public_desabonner_retrieve
+- post /api/django/statuspage/public/desabonner/{token}/ -> django_statuspage_public_desabonner_create
 - get /api/django/statuspage/public/incidents/ -> django_statuspage_public_incidents_list
 - get /api/django/statuspage/public/incidents/{id}/ -> django_statuspage_public_incidents_retrieve
 - get /api/django/statuspage/public/uptime-90j/ -> django_statuspage_public_uptime_90j_retrieve
@@ -6893,6 +6894,7 @@ operations:
 - post /api/v1/statuspage/public/abonner/ -> v1_statuspage_public_abonner_create
 - get /api/v1/statuspage/public/confirmer/{token}/ -> v1_statuspage_public_confirmer_retrieve
 - get /api/v1/statuspage/public/desabonner/{token}/ -> v1_statuspage_public_desabonner_retrieve
+- post /api/v1/statuspage/public/desabonner/{token}/ -> v1_statuspage_public_desabonner_create
 - get /api/v1/statuspage/public/incidents/ -> v1_statuspage_public_incidents_list
 - get /api/v1/statuspage/public/incidents/{id}/ -> v1_statuspage_public_incidents_retrieve
 - get /api/v1/statuspage/public/uptime-90j/ -> v1_statuspage_public_uptime_90j_retrieve

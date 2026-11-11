@@ -1,7 +1,7 @@
 """NTOBS15 — abonnement aux notifications d'incidents (e-mail à l'ouverture/
 résolution) pour la page de statut publique."""
 from django.core import mail
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -42,13 +42,43 @@ class PublicConfirmerTest(TestCase):
 
 class PublicDesabonnerTest(TestCase):
     def test_valid_token_unsubscribes_without_auth(self):
+        # APUB49 — le POST désabonne (le GET ne fait que confirmer).
         abonne = StatusSubscriber.objects.create(
             email='c@example.com', confirme=True)
-        resp = APIClient().get(
+        resp = APIClient().post(
             f'/api/django/statuspage/public/desabonner/{abonne.token_desabonnement}/')
         self.assertEqual(resp.status_code, 200)
         self.assertFalse(
             StatusSubscriber.objects.filter(email='c@example.com').exists())
+
+    @override_settings(PUBLIC_BASE_URL='https://api.taqinor.ma')
+    def test_lien_absolu_et_get_ne_desabonne_pas(self):
+        """APUB49 — l'e-mail porte un lien ABSOLU ; GET = confirmation sans
+        effet (noindex) ; POST du même jeton = désabonnement."""
+        abonne = StatusSubscriber.objects.create(email='f@example.com', confirme=True)
+        mail.outbox.clear()
+        IncidentPublic.objects.create(
+            titre='Panne API', company=None, debute_le=timezone.now())
+        chemin = f'/api/django/statuspage/public/desabonner/{abonne.token_desabonnement}/'
+        self.assertIn(f'Se désabonner : https://api.taqinor.ma{chemin}', mail.outbox[0].body)
+        page = APIClient().get(chemin)
+        self.assertEqual(page.status_code, 200)
+        self.assertIn('method="post"', page.content.decode())
+        self.assertIn('noindex', page.content.decode())
+        self.assertTrue(StatusSubscriber.objects.filter(pk=abonne.pk).exists())
+        resp = APIClient().post(chemin)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data['detail'], 'Désabonnement effectué.')
+        self.assertFalse(StatusSubscriber.objects.filter(pk=abonne.pk).exists())
+        self.assertEqual(APIClient().get(chemin).status_code, 404)
+
+    @override_settings(PUBLIC_BASE_URL='')
+    def test_sans_base_publique_ligne_omise(self):
+        StatusSubscriber.objects.create(email='g@example.com', confirme=True)
+        mail.outbox.clear()
+        IncidentPublic.objects.create(
+            titre='Panne API', company=None, debute_le=timezone.now())
+        self.assertNotIn('désabonner', mail.outbox[0].body)
 
     def test_unknown_token_is_404(self):
         resp = APIClient().get('/api/django/statuspage/public/desabonner/bogus/')
