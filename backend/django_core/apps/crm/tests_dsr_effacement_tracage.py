@@ -114,6 +114,30 @@ class EffacementTracageTests(TestCase):
         self.assertEqual(visite_autre.ip, '41.77.9.9')
         self.assertEqual(visite_autre.appareil_id, 'appareil-autre-uuid')
 
+    def test_effacement_par_email_trouve_la_fiche_soeur_au_seul_telephone(self):
+        """AMSG5 (C-AMSG-005) — un rebond : la fiche Meta au seul téléphone
+        (écrit autrement) et le client lié partent avec la fiche site ;
+        l'autre société est intacte ; un inconnu ne ramène personne."""
+        from apps.crm.models import Client
+        client = Client.objects.create(company=self.company, nom='Benali')
+        Lead.objects.filter(pk=self.lead.pk).update(client=client)
+        meta = Lead.objects.create(
+            company=self.company, nom='Amina (Meta)', telephone='0600 00 00 00')
+        autre_co = Company.objects.create(nom='Autre DSR', slug='autre-dsr-amsg5')
+        ailleurs = Lead.objects.create(
+            company=autre_co, nom='Ailleurs', telephone='+212600000000')
+        self.assertEqual(dsr_provider._matcher(
+            self.company, 'inconnu@example.ma')[0].count(), 0)
+        erase_crm(self.company, 'amina@example.ma')
+        meta.refresh_from_db()
+        self.assertEqual(meta.nom, 'Anonymisé')
+        self.assertIsNone(meta.telephone)
+        client.refresh_from_db()
+        self.assertTrue(client.is_anonymized)
+        ailleurs.refresh_from_db()
+        self.assertEqual(ailleurs.nom, 'Ailleurs')
+        self.assertEqual(ailleurs.telephone, '+212600000000')
+
     def test_lead_sans_visite_ne_leve_pas(self):
         lead = Lead.objects.create(
             company=self.company, nom='Sans trace',

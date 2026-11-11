@@ -82,31 +82,55 @@ def _matcher(company, subject_identifier):
 
     Match sur email exact (insensible à la casse) OU téléphone/WhatsApp
     normalisé. Toujours borné par ``company``.
+
+    AMSG5 (C-AMSG-005) — UN rebond : les AUTRES identifiants (e-mails,
+    téléphones, WhatsApp) des fiches trouvées et de leurs fiches liées par
+    ``Lead.client`` sont recherchés à leur tour (la fiche Meta au seul
+    téléphone d'une personne demandée par e-mail) ; pas de fermeture
+    transitive, même société, mêmes normaliseurs et colonne indexée.
     """
     from .models import Client, Lead
     from .leads_doublons import normalize_email, normalize_phone
 
-    email = normalize_email(subject_identifier)
-    phone = normalize_phone(subject_identifier)
-
     leads = Lead.objects.filter(company=company)
     clients = Client.objects.filter(company=company)
+    lead_q, client_q = _predicats(
+        company, {normalize_email(subject_identifier)} - {''},
+        {normalize_phone(subject_identifier)} - {''})
+    champs = ('client_id', 'email', 'telephone', 'whatsapp')
+    lignes = list(leads.filter(lead_q).values_list(*champs))
+    cids = {c for c, *_ in lignes if c} | set(
+        clients.filter(client_q).values_list('pk', flat=True))
+    lignes += list(leads.filter(client_id__in=cids).values_list(*champs))
+    lignes += [(None, e, t, None) for e, t in clients.filter(
+        pk__in=cids).values_list('email', 'telephone')]
+    rebond_leads, rebond_clients = _predicats(
+        company, {normalize_email(e) for _, e, _, _ in lignes} - {''},
+        {normalize_phone(t) for _, _, *ts in lignes for t in ts} - {''})
+    return (leads.filter(lead_q | rebond_leads | Q(client_id__in=cids)),
+            clients.filter(client_q | rebond_clients | Q(pk__in=cids)))
 
-    if email:
-        lead_q = Q(email__iexact=email)
-        client_q = Q(email__iexact=email)
-    else:
-        lead_q = Q(pk__in=[])
-        client_q = Q(pk__in=[])
 
-    if phone:
+def _predicats(company, emails, phones):
+    """Prédicats (leads, clients) d'un jeu d'e-mails et de téléphones déjà
+    normalisés — corps historique de ``_matcher`` (CRX32)."""
+    from .models import Client, Lead
+    from .leads_doublons import normalize_phone
+
+    lead_q = Q(pk__in=[])
+    client_q = Q(pk__in=[])
+    for email in emails:
+        lead_q |= Q(email__iexact=email)
+        client_q |= Q(email__iexact=email)
+
+    if phones:
         # CRX32 — LE TÉLÉPHONE DU LEAD PASSE PAR LA COLONNE INDEXÉE.
         # ``Lead.phone_normalise`` est maintenu à chaque ``save()`` (QW10) et
         # porte un index ``(company, phone_normalise)`` : la recherche devient
         # une requête indexée au lieu d'un scan Python de TOUTE la table des
         # leads de la société (le chemin DSR pouvait donc devenir illisible sur
         # un tenant chargé). L'ancien scan est SUPPRIMÉ, jamais gardé en repli.
-        lead_q |= Q(phone_normalise=phone)
+        lead_q |= Q(phone_normalise__in=sorted(phones))
         # Le WhatsApp n'a PAS de colonne normalisée : on restreint d'abord en
         # BASE aux leads qui en portent un (une petite minorité), puis on
         # normalise ce seul sous-ensemble — la couverture est identique à
@@ -116,7 +140,7 @@ def _matcher(company, subject_identifier):
             .filter(company=company)
             .exclude(whatsapp__isnull=True).exclude(whatsapp='')
             .values_list('pk', 'whatsapp')
-            if normalize_phone(whatsapp) == phone
+            if normalize_phone(whatsapp) in phones
         ]
         if whatsapp_ids:
             lead_q |= Q(pk__in=whatsapp_ids)
@@ -124,11 +148,11 @@ def _matcher(company, subject_identifier):
         # Python (hors périmètre de cette tâche — inchangé).
         client_ids = [
             cl.pk for cl in Client.objects.filter(company=company)
-            if normalize_phone(cl.telephone) == phone
+            if normalize_phone(cl.telephone) in phones
         ]
         client_q |= Q(pk__in=client_ids)
 
-    return leads.filter(lead_q), clients.filter(client_q)
+    return lead_q, client_q
 
 
 def export_crm(company, subject_identifier):
