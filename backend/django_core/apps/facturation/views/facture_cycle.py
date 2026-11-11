@@ -68,7 +68,7 @@ class FactureCycleActionsMixin:
         except CreditHoldError as exc:
             return Response({'detail': exc.motif},
                             status=status.HTTP_403_FORBIDDEN)
-        data = FactureSerializer(facture).data
+        data = FactureSerializer(facture, context={'request': request}).data
         if anomalies:
             data['anomalies'] = anomalies
         return Response(data)
@@ -166,7 +166,7 @@ class FactureCycleActionsMixin:
             revoquer_lien_paiement(facture=facture, user=request.user)
         from apps.ventes import activity
         activity.log_facture_remise_brouillon(facture, request.user, ancien)
-        return Response(FactureSerializer(facture).data)
+        return Response(FactureSerializer(facture, context={'request': request}).data)
 
     @extend_schema(request=D.MarquerPayeeRequest, responses=FactureListeSerializer)
     @action(detail=True, methods=['post'], url_path='marquer-payee',
@@ -247,7 +247,7 @@ class FactureCycleActionsMixin:
         # AUD124 — trace systématique : qui, quand, pourquoi.
         from apps.ventes import activity
         activity.log_facture_marquee_payee(facture, request.user, motif)
-        return Response(FactureSerializer(facture).data)
+        return Response(FactureSerializer(facture, context={'request': request}).data)
 
     @extend_schema(request=D.FactureAnnulerRequest, responses=D.FactureAnnulee,
                    extensions=D.CORPS_ANNULER_CIBLE_SI_TRANSFERT)
@@ -294,7 +294,7 @@ class FactureCycleActionsMixin:
             # directive, cible d'un autre devis ou soldée, rien à rendre)
             # → 409, corps inchangé (``code`` lu par l'écran).
             return Response(refus.corps, status=status.HTTP_409_CONFLICT)
-        return Response({**FactureSerializer(facture).data,
+        return Response({**FactureSerializer(facture, context={'request': request}).data,
                          'avoir': avoir_annulation_corps(facture)})
 
     # api-only: l'écran arrive avec le panneau de vente (VNT75/VNT79).
@@ -318,4 +318,4 @@ class FactureCycleActionsMixin:
                 user=request.user)
         except FacturationVenteRefusee as exc:
             return Response(exc.corps, status=exc.status)
-        return Response(FactureSerializer(facture).data)
+        return Response(FactureSerializer(facture, context={'request': request}).data)

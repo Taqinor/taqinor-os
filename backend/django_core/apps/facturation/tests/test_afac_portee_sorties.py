@@ -239,3 +239,59 @@ class PorteeSortiesTests(TestCase):
         self.assertEqual(telephones(sans), [None] * 3)
         self.assertEqual(telephones(temoin), ['0661028028'] * 3)
         self.assertEqual(telephones(self.admin), ['0661028028'] * 3)
+
+    def test_releve_et_emission_masquent_les_coordonnees(self):
+        """ALEC33 (C-ALEC-030) — sans ``client_pii_voir`` : e-mail, téléphone
+        et adresse du relevé à ``null`` et ``client_telephone`` à ``null``
+        dans la réponse d'émission (sérialiseur rendu AVEC la requête) ; un
+        Responsable témoin les reçoit ; le relevé interne (``user=None``)
+        inchangé. Mutant : retirer ``context=`` d'``emettre`` ⇒ échec."""
+        from apps.crm.models import Client
+        from apps.facturation.recouvrement import _releve_data
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import RESPONSABLE_PERMISSIONS
+        from apps.stock.models import Produit
+        from apps.ventes.models import Facture, LigneFacture
+        Client.objects.filter(pk=self.client_b.pk).update(
+            telephone='0661028028', adresse='12 rue ALEC33')
+        self.client_b.refresh_from_db()
+        produit = Produit.objects.create(
+            company=self.company, nom='Kit ALEC33', sku='ALEC33-K',
+            prix_vente=Decimal('1000'), quantite_stock=100)
+
+        def compte(nom, permissions):
+            role = Role.objects.create(company=self.company, nom=nom,
+                                       permissions=permissions + ['encaisser'],
+                                       est_systeme=False)
+            return User.objects.create_user(
+                username=f'alec33_{len(nom)}', password='x', role=role,
+                role_legacy='responsable', company=self.company)
+        sans = compte('Responsable sans client_pii_voir', [
+            p for p in RESPONSABLE_PERMISSIONS if p != 'client_pii_voir'])
+        temoin = compte('Responsable', list(RESPONSABLE_PERMISSIONS))
+        url = f'/api/django/facturation/clients/{self.client_b.id}/releve/'
+        attendus = ((sans, None), (temoin, '0661028028'))
+        for user, tel in attendus:
+            with self.subTest(user=user.username):
+                r = self._api(user).get(url)
+                self.assertEqual(r.status_code, 200, r.data)
+                coord = r.data['client']
+                self.assertEqual(coord['telephone'], tel)
+                self.assertEqual(coord['email'] is None, tel is None)
+                self.assertEqual(coord['adresse'] is None, tel is None)
+                brouillon = Facture.objects.create(
+                    company=self.company, reference=f'BROUILLON-A33-{user.pk}',
+                    client=self.client_b, statut=Facture.Statut.BROUILLON,
+                    taux_tva=Decimal('20'), created_by=user)
+                LigneFacture.objects.create(
+                    facture=brouillon, produit=produit, designation='Kit',
+                    quantite=Decimal('1'), prix_unitaire=Decimal('1000'))
+                r = self._api(user).post(
+                    f'/api/django/ventes/factures/{brouillon.id}/emettre/')
+                self.assertEqual(r.status_code, 200, r.data)
+                self.assertEqual(r.data['client_telephone'], tel)
+                self.assertEqual(Facture.objects.get(pk=brouillon.pk).statut,
+                                 Facture.Statut.EMISE)
+        interne = _releve_data(self.client_b)['client']
+        self.assertEqual(interne['telephone'], '0661028028')
+        self.assertEqual(interne['adresse'], '12 rue ALEC33')

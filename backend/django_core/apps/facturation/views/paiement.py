@@ -425,7 +425,8 @@ class PaiementViewSet(OrdreTotalMixin, viewsets.ReadOnlyModelViewSet):
             'paiement': PaiementSerializer(paiement).data,
             'retenue': RetenueSubieSerializer(retenue).data,
             'facture': FactureSerializer(facture.__class__.objects.get(
-                pk=facture.pk, company_id=facture.company_id)).data,
+                pk=facture.pk, company_id=facture.company_id),
+                context={'request': request}).data,  # ALEC33
         }, status=status.HTTP_201_CREATED)
 
     @extend_schema(responses=RetenueSubieSerializer(many=True))

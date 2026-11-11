@@ -112,7 +112,7 @@ class FactureRecouvrementActionsMixin:
         if prochaine:
             facture.prochaine_relance = prochaine
             facture.save(update_fields=['prochaine_relance'])
-        data = FactureSerializer(facture).data
+        data = FactureSerializer(facture, context={'request': request}).data
         data['email_log_id'] = email_log_id
         return Response(data)
 
