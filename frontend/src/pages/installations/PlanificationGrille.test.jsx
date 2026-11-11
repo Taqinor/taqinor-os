@@ -24,7 +24,7 @@ import PlanificationPage from './PlanificationPage'
 import { blocGeometry, chevauchements, minutesDeHeure, heureEnTime, payloadDeplacement } from './PlanificationPage.helpers'
 import { renderAvecAuth } from '../../test/renderAvecAuth'
 
-const renderPage = () => renderAvecAuth(<PlanificationPage />, { role: 'responsable' }, { routeur: false })
+const renderPage = () => renderAvecAuth(<PlanificationPage />, { role: 'responsable', permissions: ['technicien_assign'] }, { routeur: false }) // ADRG21
 
 beforeEach(() => {
   api.getMaTournee.mockResolvedValue({ data: { stops: [] } })

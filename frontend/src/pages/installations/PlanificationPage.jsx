@@ -16,7 +16,7 @@ import {
   DndContext, DragOverlay, PointerSensor, TouchSensor,
   useDraggable, useDroppable, useSensor, useSensors,
 } from '@dnd-kit/core'
-import { useIsAdmin } from '../../hooks/useHasPermission'
+import { useHasPermission, useIsAdmin } from '../../hooks/useHasPermission'
 import {
   CalendarRange, Navigation, Users, AlertTriangle, Scale, Truck,
   Wrench, Gauge, GripVertical,
@@ -290,7 +290,9 @@ function CalendrierTab() {
   const [pendingDrop, setPendingDrop] = useState(null)
   // Mobile = lecture seule (pas de glisser-déposer au pouce sur une grille).
   const isMobile = useIsMobile()
-  const draggable = !isMobile
+  // ADRG21 — glisser une carte peut changer son technicien : `technicien_assign`.
+  const peutAffecter = useHasPermission('technicien_assign')
+  const draggable = !isMobile && peutAffecter
 
   const debut = mode === 'jour' ? jour : range.debut
   const fin = mode === 'jour' ? jour : range.fin
@@ -485,7 +487,8 @@ function CalendrierTab() {
       ) : !draggable ? (
         <>
           <p className="text-xs text-muted-foreground">
-            Lecture seule sur mobile — la replanification se fait au bureau.
+            {isMobile ? 'Lecture seule sur mobile — la replanification se fait au bureau.'
+              : 'Lecture seule : déplacer une intervention demande le droit « Assigner techniciens ».'}
           </p>
           {contenu}
         </>

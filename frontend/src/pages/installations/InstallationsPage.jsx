@@ -16,7 +16,7 @@ import {
 import importApi from '../../api/importApi'
 import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import crmApi from '../../api/crmApi'
-import { useCanListAssignableUsers } from '../../hooks/useHasPermission'
+import { useCanListAssignableUsers, useHasPermission } from '../../hooks/useHasPermission'
 import { Button, Badge, Spinner, EmptyState, Card, StatusAccentCard, toast } from '../../ui'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import useStatutConfig from '../../features/parametres/useStatutConfig'
@@ -286,6 +286,8 @@ export default function InstallationsPage() {
   const [xlsxBusy, setXlsxBusy] = useState(false)
   const [users, setUsers] = useState([])
   const peutListerUsers = useCanListAssignableUsers()
+  // ADRG21 — « Exporter Excel » seulement avec le code de la route d'export.
+  const peutExporter = useHasPermission('installation_export')
   useEffect(() => {
     if (peutListerUsers) crmApi.getAssignableUsers().then(r => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})
   }, [peutListerUsers])
@@ -449,7 +451,7 @@ export default function InstallationsPage() {
               <Link2 /> Copier le lien
             </Button>
           )}
-          <Button
+          {peutExporter && <Button
             type="button"
             size="sm"
             variant="outline"
@@ -464,7 +466,7 @@ export default function InstallationsPage() {
             }}
           >
             {xlsxBusy ? <Spinner /> : <Download />} Exporter Excel
-          </Button>
+          </Button>}
           <SelecteurVue view={view} onChange={setView}
             options={[
               { value: 'liste', label: 'Liste' },

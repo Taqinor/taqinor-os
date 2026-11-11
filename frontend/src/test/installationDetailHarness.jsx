@@ -10,7 +10,10 @@ import InstallationDetail from '../pages/installations/InstallationDetail'
    endroit plutôt qu'une copie dans chaque fichier de test
    (check_duplicats_litteraux). */
 
-export function renderInstallationDetail(installation, auth = { role: 'admin' }) {
+// ADRG21 — l'administrateur livré porte les codes de la grille du chantier.
+const AUTH_ADMIN = { role: 'admin', permissions: ['installation_gerer', 'intervention_gerer', 'equipement_gerer'] }
+
+export function renderInstallationDetail(installation, auth = AUTH_ADMIN) {
   const store = configureStore({
     reducer: { auth: (state = auth) => state, stock: (state = { produits: [{ id: 1, nom: 'Panneau' }] }) => state },
   })

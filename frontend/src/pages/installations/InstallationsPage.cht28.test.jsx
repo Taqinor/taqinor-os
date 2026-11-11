@@ -125,4 +125,15 @@ describe('InstallationsPage (CHT28)', () => {
     await waitFor(() => expect(appel).toHaveBeenCalled())
     appel.mockRestore()
   })
+
+  // ADRG21 — « Exporter Excel » suit le code de la route d'export.
+  it('sans installation_export : pas d’Exporter Excel ; avec : présent', async () => {
+    mocks.getInstallations.mockResolvedValue({ data: { count: 0, results: [] } })
+    renderPage('/chantiers', { user: { id: 3 }, role: 'normal', role_nom: 'Commercial', permissions: ['ventes_voir'] })
+    await waitFor(() => expect(mocks.getInstallations).toHaveBeenCalled())
+    expect(screen.queryByRole('button', { name: /Exporter Excel/ })).toBeNull()
+    cleanup()
+    renderPage('/chantiers', { user: { id: 1 }, role: 'admin', permissions: ['installation_export'] })
+    expect(await screen.findByRole('button', { name: /Exporter Excel/ })).toBeInTheDocument()
+  })
 })
