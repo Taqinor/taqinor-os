@@ -119,7 +119,8 @@ class XFAC8CanalRelanceTests(TestCase):
         facture = make_facture(self.company, self.client_obj)
         Facture.objects.filter(pk=facture.pk).update(created_by=resp)
         sans_tel = make_facture(
-            self.company, make_client(self.company, telephone=''))
+            self.company, make_client(
+                self.company, email='sans-tel@example.com', telephone=''))
         ct = ContentType.objects.get_for_model(Facture)
         self.assertEqual(relance_reminders(), 1)
         act = Activity.objects.get(content_type=ct, object_id=facture.id)
