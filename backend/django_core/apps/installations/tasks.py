@@ -8,11 +8,10 @@ responsable ET envoie un email (Brevo, key-gated, NO-OP sans clé) au client.
 
 Le modèle de message vit dans ``apps.parametres`` (app foundation, exempte de
 la règle cross-app selectors/services — cf. CLAUDE.md), clé ``rappel_rdv``
-(FR + darija). Idempotent par construction : le sweep ne mute AUCUN champ sur
-l'intervention — seule l'action de confirmation existante (``confirmer-rdv``,
-FG78) modifie l'état, donc une ré-exécution du sweep avant confirmation
-regénère simplement le même brouillon (pas de double « envoi » traçable côté
-serveur, cohérent avec le manuel-first : c'est un humain qui clique Envoyer).
+(FR + darija). AMSG76 — idempotent par marqueur : le sweep ne pose que
+``rappel_j1_traite_le`` (e-mail parti ou brouillon remis en tâche), si bien
+qu'un balayage rejoué le même jour (worker tué, acks tardifs) ne renvoie rien ;
+l'état du RDV ne change que par ``confirmer-rdv`` (FG78).
 """
 import logging
 
@@ -150,15 +149,26 @@ def _envoyer_email_client(interv):
 def rappel_rdv_j1():
     """XFSM6 — sweep quotidien : cible EXACTEMENT les interventions planifiées
     DEMAIN (Africa/Casablanca) non confirmées (``rdv_confirme=False``), génère
-    le brouillon WhatsApp responsable + envoie l'email client. NE MUTE aucun
-    champ de l'intervention (le brouillon WhatsApp n'est jamais auto-envoyé —
-    politique manuel-first). Renvoie un compte {cibles, wa_generes, emails_envoyes}
+    le brouillon WhatsApp responsable + envoie l'email client. Ne pose que le
+    marqueur ``rappel_j1_traite_le`` (AMSG76 — jamais deux rappels le même
+    jour ; le brouillon WhatsApp n'est jamais auto-envoyé). Renvoie un compte {cibles, wa_generes, emails_envoyes}
     pour observabilité/tests."""
-    from datetime import timedelta
+    from datetime import datetime, time, timedelta
+    from zoneinfo import ZoneInfo
+
+    from django.db.models import Q
+    from django.utils import timezone
+
     from authentication.selectors import active_companies
     from .models import Intervention
 
     demain = casablanca_today() + timedelta(days=1)
+    # AMSG76 — déjà traité AUJOURD'HUI (balayage rejoué) ⇒ hors cible ; un
+    # marqueur d'un jour passé (RDV replanifié) ne bloque pas le rappel.
+    debut_jour = datetime.combine(
+        casablanca_today(), time.min, tzinfo=ZoneInfo(CASABLANCA_TZ))
+    non_traite = (Q(rappel_j1_traite_le__isnull=True)
+                  | Q(rappel_j1_traite_le__lt=debut_jour))
 
     cibles = 0
     wa_generes = 0
@@ -166,7 +176,7 @@ def rappel_rdv_j1():
     for company in active_companies():  # ACHT51 — pas les suspendus
         # ACHT51 — jamais d'intervention annulée (rien n'est annoncé).
         qs = (Intervention.objects.actives()
-              .filter(company=company, date_prevue=demain,
+              .filter(non_traite, company=company, date_prevue=demain,
                       rdv_confirme=False)
               .select_related('installation', 'installation__client',
                               'installation__technicien_responsable'))
@@ -183,8 +193,11 @@ def rappel_rdv_j1():
                     '%s', interv.id, exc)
             envoyes = _envoyer_email_client(interv)
             emails_envoyes += envoyes
-            if not envoyes and url:  # AMSG56 — brouillon remis, pas jeté
-                _remettre_brouillon_whatsapp(interv, url)
+            remis = bool(envoyes) or bool(  # AMSG56 — brouillon remis
+                url and _remettre_brouillon_whatsapp(interv, url))
+            if remis:  # AMSG76 — marqueur posé après l'envoi ou la remise
+                Intervention.objects.filter(pk=interv.pk).update(
+                    rappel_j1_traite_le=timezone.now())
 
     return {
         'jour_cible': str(demain), 'cibles': cibles,

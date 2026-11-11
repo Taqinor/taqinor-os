@@ -128,6 +128,34 @@ class TestRappelRdvJ1(TestCase):
         self.assertFalse(Activity.objects.filter(  # AMSG56 — e-mail parti
             summary='Envoyer ce WhatsApp').exists())
 
+    @AVEC_CLE
+    def test_balayage_rejoue_n_envoie_pas_deux_fois(self):
+        """AMSG76 — un balayage rejoué le même jour (worker tué) ne renvoie
+        pas le rappel : le marqueur est posé une fois après l'envoi ; un
+        marqueur d'un jour passé (RDV replanifié) ne bloque pas."""
+        from django.utils import timezone
+        premiere = Intervention.objects.create(
+            company=self.company, installation=self.inst,
+            type_intervention='pose', created_by=self.user,
+            date_prevue=self.demain, rdv_confirme=False)
+        rappel_rdv_j1()
+        premiere.refresh_from_db()
+        marque = premiere.rappel_j1_traite_le
+        self.assertIsNotNone(marque)
+        autre = make_chantier(self.company, self.user,
+                              client_email='autre@example.invalid')
+        Intervention.objects.create(
+            company=self.company, installation=autre,
+            type_intervention='pose', created_by=self.user,
+            date_prevue=self.demain, rdv_confirme=False,
+            rappel_j1_traite_le=timezone.now() - timedelta(days=3))
+        rappel_rdv_j1()
+        destinataires = sorted(m.to[0] for m in mail.outbox)
+        self.assertEqual(destinataires, ['autre@example.invalid',
+                                         'client@example.invalid'])
+        premiere.refresh_from_db()
+        self.assertEqual(premiere.rappel_j1_traite_le, marque)
+
     def test_sans_email_configure_rien_n_est_compte_et_brouillon_remis(self):
         """AMSG56 — état de la prod (``locmem`` sans clé) : aucun e-mail
         compté, le brouillon WhatsApp devient une tâche sur l'intervention."""
