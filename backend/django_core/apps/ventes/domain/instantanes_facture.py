@@ -179,3 +179,19 @@ def figer_identite_acheteur_manquante(company=None, client_id=None,
                 pk=facture.pk, identite_acheteur__isnull=True).update(
                 identite_acheteur=identite_acheteur_courante(facture))
     return a_figer, perdues
+
+
+def garde_pieces_legales_sans_identite_figee(company, subject_identifier):
+    """ASUP3 (C-ASUP-001) — garde d'effacement (``core.dsr``) : refuse tant
+    qu'une facture non brouillon de la personne n'a pas d'instantané
+    d'acheteur (l'effacement viderait son acheteur imprimé). Rend le motif
+    (références + commande) ou ``None`` ; n'écrit rien."""
+    from apps.crm.selectors import client_ids_par_identifiant
+    refs = [f.reference
+            for cid in client_ids_par_identifiant(company, subject_identifier)
+            for f in figer_identite_acheteur_manquante(company, cid)[0]]
+    if not refs:
+        return None
+    return (f"Effacement refusé : facture(s) {', '.join(refs)} sans identité "
+            "d'acheteur figée — jouer d'abord « manage.py "
+            "figer_identite_acheteur --appliquer ».")

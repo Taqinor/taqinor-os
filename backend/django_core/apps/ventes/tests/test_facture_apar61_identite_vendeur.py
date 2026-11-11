@@ -189,6 +189,51 @@ class IdentiteVendeurFigeeTests(TestCase):
         for f in cibles:
             self.assertNotIn(f.reference, rejeu)
 
+    def test_effacement_refuse_tant_qu_une_facture_emise_n_a_pas_d_identite_figee(self):
+        """ASUP3 (C-ASUP-001) — ``traiter`` d'une demande d'effacement rend
+        409 nommant la facture et la commande, client intact ; après
+        ``figer_identite_acheteur --appliquer`` l'effacement s'exécute."""
+        from io import StringIO
+
+        from django.contrib.auth import get_user_model
+        from django.core.management import call_command
+        from rest_framework.test import APIClient
+
+        from apps.crm.models import Client
+        from apps.roles.models import Role
+        from core import dsr
+        from core.models import DataSubjectRequest
+        self.assertIn('pieces_legales_sans_identite_figee',
+                      dsr.list_erasure_guards())
+        ice = '001234567000089'
+        Client.objects.filter(pk=self.client_obj.pk).update(
+            nom='X SARL', prenom='', type_client='entreprise', ice=ice)
+        facture = self._facture('FAC-ASUP3-0001', statut='emise')
+        demande = DataSubjectRequest.objects.create(
+            company=self.company, subject_identifier='apar61@example.invalid',
+            kind=DataSubjectRequest.KIND_ERASURE)
+        call_command('init_roles', verbosity=0)
+        user = get_user_model().objects.create_user(
+            username='asup3-directeur', password='x', company=self.company,
+            role=Role.objects.get(company=self.company, nom='Directeur'))
+        api = APIClient()
+        api.force_authenticate(user)
+        url = f'/api/django/core/dsr-requests/{demande.pk}/traiter/'
+        r = api.post(url)
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('FAC-ASUP3-0001', r.data['detail'])
+        self.assertIn('figer_identite_acheteur', r.data['detail'])
+        self.client_obj.refresh_from_db()
+        self.assertFalse(self.client_obj.is_anonymized)
+        self.assertEqual(self.client_obj.ice, ice)
+        call_command('figer_identite_acheteur', '--appliquer', stdout=StringIO())
+        r = api.post(url)
+        self.assertEqual(r.status_code, 200, r.data)
+        self.client_obj.refresh_from_db()
+        self.assertTrue(self.client_obj.is_anonymized)
+        facture.refresh_from_db()
+        self.assertEqual(facture.identite_acheteur['ice'], ice)
+
     def test_rib_fige_a_l_emission(self):
         f120 = self._emettre(self._facture('FAC-APAR61-0120'))
         self.assertIn(R1, self._pdf(f120))

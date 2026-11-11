@@ -9,7 +9,20 @@ facturation) : ce module ne fait que s'abonner (enregistré par
 """
 from django.dispatch import receiver
 
+from core import dsr
 from core.events import devis_accepted, devis_acceptation_annulee
+
+
+def _garde_identite_acheteur(company, subject_identifier):
+    """ASUP3 (C-ASUP-001) — garde d'effacement : une facture non brouillon
+    sans instantané d'acheteur bloque l'effacement de la personne (409)."""
+    from apps.ventes.domain.instantanes_facture import (
+        garde_pieces_legales_sans_identite_figee)
+    return garde_pieces_legales_sans_identite_figee(company, subject_identifier)
+
+
+dsr.register_erasure_guard('pieces_legales_sans_identite_figee',
+                           _garde_identite_acheteur)
 
 
 @receiver(devis_accepted,
