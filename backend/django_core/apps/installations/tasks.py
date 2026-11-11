@@ -50,8 +50,15 @@ def _rendre_rappel(interv, tpl, client):
         nom_client = f"{getattr(client, 'prenom', '') or ''} {client.nom}".strip()
     lien = ''
     if not lien:
-        phrases = re.split(r'(?<=[.!?])\s+', tpl.strip())
-        tpl = ' '.join(p for p in phrases if '{lien}' not in p)
+        # AMSG67 — découpe aussi sur « ؟ », « ؛ » et les retours à la ligne :
+        # seul le segment portant ``{lien}`` part, les autres gardent leur
+        # séparateur (un texte arabe ou en lignes n'est plus vidé en entier).
+        morceaux = re.split(r'((?<=[.!?؟؛])\s+|\s*\n\s*)', tpl.strip())
+        garde = ''
+        for i in range(0, len(morceaux), 2):
+            if '{lien}' not in morceaux[i]:
+                garde += (morceaux[i - 1] if garde else '') + morceaux[i]
+        tpl = garde
     return render_message_template(tpl, {
         'civilite': '', 'nom': nom_client,
         'reference': installation.reference or installation.id,
@@ -83,6 +90,10 @@ def _wa_draft_for_intervention(interv):
     client, corps = _corps_rappel_client(interv)
     phone = getattr(client, 'telephone', None) if client is not None else None
     if not phone:
+        return None
+    if not corps.strip():  # AMSG67 — rappel vide : aucun brouillon
+        logger.info('AMSG67 : rappel vide, aucun brouillon (intervention %s)',
+                    interv.id)
         return None
     return build_wa_url(phone, corps)
 
@@ -117,6 +128,10 @@ def _envoyer_email_client(interv):
     if client is None or not getattr(client, 'email', None):
         return 0
     if not _is_email_configured():
+        return 0
+    if not corps.strip():  # AMSG67 — jamais un e-mail au corps vide
+        logger.info('AMSG67 : rappel vide, aucun e-mail (intervention %s)',
+                    interv.id)
         return 0
     try:
         return send_mail(

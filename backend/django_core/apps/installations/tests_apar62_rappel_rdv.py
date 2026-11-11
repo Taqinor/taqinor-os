@@ -69,3 +69,29 @@ class RappelRdvTests(TestCase):
         self.iv.installation.refresh_from_db()
         self.iv.installation.client.refresh_from_db()
         self.assertIsNone(tasks._wa_draft_for_intervention(self.iv))
+
+    def test_omission_sans_ponctuation_latine_garde_le_reste(self):
+        """AMSG67 — seul le segment portant ``{lien}`` est omis : un texte
+        arabe terminé par « ؟ » ou en lignes garde ses autres phrases ; un
+        rendu vide n'envoie ni e-mail ni brouillon."""
+        from apps.parametres.models import MessageTemplate
+        from apps.records.models import Activity
+        client = self.iv.installation.client
+        arabe = 'مرحبا {nom}، فريقنا عندك غدا لـ {reference}؟ أكد هنا {lien}'
+        rendu = tasks._rendre_rappel(self.iv, arabe, client)
+        self.assertIn('CHT-APAR62؟', rendu)
+        self.assertNotIn('أكد هنا', rendu)
+        lignes = 'Bonjour {nom}\nRDV demain : {reference}\nConfirmez : {lien}'
+        self.assertEqual(tasks._rendre_rappel(self.iv, lignes, client),
+                         'Bonjour Sara Alaoui\nRDV demain : CHT-APAR62')
+        une_phrase = 'Bonjour {nom}, confirmez demain ici {lien}'
+        self.assertEqual(
+            tasks._rendre_rappel(self.iv, une_phrase, client), '')
+        MessageTemplate.objects.create(
+            company=self.company, cle='rappel_rdv', corps_fr=une_phrase)
+        mail.outbox.clear()
+        res = tasks.rappel_rdv_j1()
+        self.assertEqual(len(mail.outbox), 0)   # ni e-mail…
+        self.assertEqual(res['wa_generes'], 0)  # … ni brouillon
+        self.assertFalse(Activity.objects.filter(
+            summary='Envoyer ce WhatsApp').exists())
