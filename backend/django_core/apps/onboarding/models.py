@@ -164,6 +164,11 @@ class TourProgress(TenantModel):
         related_name='onboarding_tour_progress')
     tour_key = models.SlugField(max_length=60)
     vu_le = models.DateTimeField(null=True, blank=True)
+    # Follow-up NTDMO42 : distingue « vu jusqu'au bout » de « fermé avant la
+    # fin ». Vide = ligne historique (la distinction n'était pas journalisée).
+    ISSUE_CHOICES = [('termine', 'Terminé'), ('ferme', 'Fermé avant la fin')]
+    issue = models.CharField(
+        max_length=10, choices=ISSUE_CHOICES, blank=True, default='')
 
     class Meta:
         unique_together = [('user', 'tour_key')]
