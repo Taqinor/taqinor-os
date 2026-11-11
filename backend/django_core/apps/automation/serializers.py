@@ -444,6 +444,18 @@ class IncomingWebhookTriggerSerializer(SameCompanyFKSerializerMixin,
         ]
         read_only_fields = ['id', 'rule_nom', 'token', 'url_path',
                             'date_creation', 'date_modification']
+        # ALEC38 — le secret HMAC s'écrit, ne se relit jamais.
+        extra_kwargs = {'hmac_secret': {'write_only': True}}
+
+    def to_representation(self, instance):
+        """ALEC38 — jeton et URL masqués à la relecture ; complets une seule
+        fois, dans la réponse de création ou de rotation (``montrer_secret``)."""
+        data = super().to_representation(instance)
+        if not self.context.get('montrer_secret'):
+            from .services import masquer_secret
+            for cle in ('token', 'url_path'):
+                data[cle] = masquer_secret(data.get(cle))
+        return data
 
     @extend_schema_field(serializers.CharField())
     def get_url_path(self, obj):

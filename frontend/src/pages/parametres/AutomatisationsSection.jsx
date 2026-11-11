@@ -84,6 +84,8 @@ function IncomingWebhookPanel({ rules }) {
   const [ruleId, setRuleId] = useState('')
   const [secret, setSecret] = useState('')
   const [busy, setBusy] = useState(false)
+  // ALEC38 — l'URL complète n'est servie qu'une fois (création / rotation).
+  const [urlNeuve, setUrlNeuve] = useState(null)
 
   const load = () => toutesLesPages((params) => automationApi.getWebhooks(params))
     .then((rows) => setHooks(rows)).catch(() => {})
@@ -96,14 +98,18 @@ function IncomingWebhookPanel({ rules }) {
     if (!ruleId) { toast.error('Choisissez une règle « Webhook entrant ».'); return }
     setBusy(true)
     try {
-      await automationApi.createWebhook({ rule: ruleId, hmac_secret: secret })
+      const r = await automationApi.createWebhook({ rule: ruleId, hmac_secret: secret })
+      setUrlNeuve(r?.data?.url_path || null)
       setRuleId(''); setSecret(''); load()
       toast.success('Webhook créé.')
     } catch (e) { toast.error(e?.response?.data?.detail ?? 'Création impossible.') }
     finally { setBusy(false) }
   }
   const rotate = async (h) => {
-    try { await automationApi.rotateWebhook(h.id); load(); toast.success('Token régénéré.') }
+    try {
+      const r = await automationApi.rotateWebhook(h.id)
+      setUrlNeuve(r?.data?.url_path || null); load(); toast.success('Token régénéré.')
+    }
     catch (e) { toast.error(e?.response?.data?.detail ?? 'Rotation impossible.') }
   }
   const toggle = async (h) => {
@@ -148,6 +154,12 @@ function IncomingWebhookPanel({ rules }) {
           </div>
         )}
 
+        {urlNeuve && (
+          <div role="status" className="mb-3 rounded-lg border border-border bg-muted p-3 text-xs">
+            URL complète — copiez-la maintenant, elle ne sera plus affichée :
+            <code className="mt-1 block break-all">{urlNeuve}</code>
+          </div>
+        )}
         <div className="flex flex-col gap-2">
           {hooks.map((h) => (
             <div key={h.id} className="rounded-lg border border-border p-3 text-xs">
