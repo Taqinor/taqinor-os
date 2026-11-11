@@ -153,9 +153,9 @@ export default function RfaPage() {
                     <span>{fmtDate(a.periode_debut)} → {fmtDate(a.periode_fin)}</span>
                     <span>{a.statut === 'actif' ? 'Actif' : 'Clos'}</span>
                     <span>
-                      {/* Clé absente = montant masqué sans prix_achat_voir (jamais « undefined »). */}
-                      {a.taux_pct != null ? `${a.taux_pct} %` : (a.montant_fixe != null ? `${a.montant_fixe} fixe`
-                        : ('montant_fixe' in a ? '—' : 'Montant fixe'))}
+                      {/* Clé absente = montant masqué sans prix_achat_voir (jamais « undefined ») ;
+                          ALEC7 — taux et montant fixe masqués : « — ». */}
+                      {a.taux_pct != null ? `${a.taux_pct} %` : (a.montant_fixe != null ? `${a.montant_fixe} fixe` : '—')}
                     </span>
                     <Link className="underline" to={`/stock/fournisseurs/${a.fournisseur}/360`}>Fiche fournisseur</Link>
                   </div>

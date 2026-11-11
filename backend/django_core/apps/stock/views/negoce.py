@@ -368,8 +368,8 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
 class AccordRFAFournisseurSerializer(MasqueMontantsAchatMixin,
                                      CompanyScopedRelationsMixin,
                                      ChampsTexteBooleenStricts, serializers.ModelSerializer):
-    # ERR-STK-PRIX-ACHAT-SUITE — seuil de CA d'achat et montant fixe.
-    champs_montants_achat = ('seuil_ca_achat', 'montant_fixe')
+    # ERR-STK-PRIX-ACHAT-SUITE — seuil de CA d'achat et montant fixe ; ALEC7 — le taux aussi.
+    champs_montants_achat = ('seuil_ca_achat', 'taux_pct', 'montant_fixe')
     fournisseur_nom = serializers.CharField(
         source='fournisseur.nom', read_only=True, default='')
     avoir_deja_genere = serializers.BooleanField(read_only=True)
