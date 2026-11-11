@@ -1011,7 +1011,7 @@ unites:
     groupe: ASUP
     plan: docs/plans/PLAN_AUDIT_LEAD.md
     plans_alimentes: [docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_STOCK.md, docs/plans/PLAN_AUDIT_SECURITE.md, docs/plans/PLAN_AUDIT_SAV.md, docs/plans/PLAN_AUDIT_PARAMETRES.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_ANALYSE.md, docs/plans/PLAN_AUDIT_DEVIS.md]
-    pr: 0
+    pr: 1366
     date: 2026-11-11
     dossier: docs/audits/2026-11-11-parcours-PF10.md
     notes: "Audit de PARCOURS (L2, 11/11/2026, base 3acfee4, fraîcheur bbb283e) : 1 596 clés étrangères (856 en cascade), 343 routes de suppression, 132 champs d'archivage, trois corbeilles et l'effacement loi 09-08 inventoriés en trois lectures ; 27 constats, 17 prouvés par sonde hôte (vrai code, bouchons, aucune pile), 10 lus ; gravités 1 S1, 16 S2, 10 S3. S1 : « Anonymiser (RGPD) » d'un client facturé efface l'identité légale de l'acheteur sur ses factures émises (exploitable aujourd'hui : 2 Directeur ; prod lue le 11/11 : 10 factures émises sur 10 sans copie de l'acheteur). D-ASUP-1..6 ouvertes. Tâches ASUP1-ASUP55 (38 posées, dont 8 GATED : LEAD 11, SECURITE 9, STOCK 5, FACTURATION 4, SAV 2, PARAMETRES 2, DEVIS 2, CHANTIERS 1, TRANSVERSE 1, ANALYSE 1)."
