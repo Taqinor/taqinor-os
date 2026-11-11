@@ -212,6 +212,26 @@ class TestDispatchReminder(TestCase):
         appt.refresh_from_db()
         self.assertTrue(appt.reminder_sent)
 
+    def test_aucun_numero_ni_lien_client_au_journal(self):
+        """AMSG17 — le rappel ne fabrique plus de brouillon wa.me client et
+        n'écrit ni le numéro ni le texte du client au journal ; la notification
+        interne au responsable reste."""
+        from apps.notifications.models import Notification
+
+        self.lead.telephone = '+212661234567'
+        self.lead.save(update_fields=['telephone'])
+        appt = self._make_appt(minutes=45)
+        with self.assertLogs('apps.crm.visites_rdv', level='DEBUG') as journal:
+            self.assertTrue(dispatch_appointment_reminder(appt))
+        texte = ' | '.join(journal.output)
+        for interdit in ('661234567', 'wa.me'):
+            self.assertNotIn(interdit, texte)
+        self.assertTrue(Notification.objects.filter(
+            recipient=self.lead.owner,
+            title__startswith='Rappel visite').exists())
+        appt.refresh_from_db()
+        self.assertTrue(appt.reminder_sent)
+
 
 class TestSendDueReminders(TestCase):
     """send_due_appointment_reminders filters correctly."""

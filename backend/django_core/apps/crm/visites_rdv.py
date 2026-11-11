@@ -387,9 +387,9 @@ def _notifier_reservation_publique(appointment):
 def dispatch_appointment_reminder(appointment) -> bool:
     """QJ20 — Envoie le rappel de visite pour un rendez-vous à venir.
 
-    Canaux (par priorité) :
-      1. WhatsApp wa.me draft (log uniquement — pas d'API WhatsApp gated).
-      2. Notifications in-app via notifications.services.notify.
+    Canal : notification in-app via notifications.services.notify. AMSG17 —
+    plus de brouillon wa.me client (personne ne le lisait ; il écrivait le
+    numéro et le texte du client au journal).
 
     RAMADAN-AWARE PACING : si le drapeau est actif pour la société ET que
     l'heure du rappel tombe dans la plage iftar-sensible (18h–21h Casablanca),
@@ -412,36 +412,8 @@ def dispatch_appointment_reminder(appointment) -> bool:
             return False
 
     lead = appointment.lead
-    phone = (
-        getattr(lead, 'whatsapp', '') or getattr(lead, 'telephone', '') or ''
-    ).strip()
 
-    # 1) wa.me draft logged (no WhatsApp API dependency).
-    try:
-        import urllib.parse
-        import zoneinfo
-        local = appointment.scheduled_at.astimezone(
-            zoneinfo.ZoneInfo(RAMADAN_TZ))
-        date_str = local.strftime('%d/%m/%Y à %H:%M')
-        msg = (
-            f'Rappel : votre visite est prévue le {date_str}. '
-            f'Notre équipe sera présente. Merci !'
-        )
-        # ACRM39 — même normaliseur E.164 que les autres liens wa.me ;
-        # numéro non normalisable ⇒ aucun lien.
-        from apps.ventes.utils.phone import normalize_phone_e164
-        digits = normalize_phone_e164(phone) if phone else None
-        if digits:
-            wa_url = (f'https://wa.me/{digits}?text='
-                      f'{urllib.parse.quote(msg)}')
-            _appt_logger.info(
-                'QJ20 rappel wa.me RDV #%d lead %s → %s',
-                appointment.pk, lead.pk, wa_url)
-    except Exception as exc:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
-        _appt_logger.warning(
-            'QJ20: wa.me draft échec RDV #%d : %s', appointment.pk, exc)
-
-    # 2) Notification in-app — ACRM42 : au responsable du lead ET à son
+    # Notification in-app — ACRM42 : au responsable du lead ET à son
     # supérieur (``lead_notification_recipients`` : repli managers quand l'un
     # manque). Un lead SANS responsable n'est plus un rappel perdu.
     notifies = 0
