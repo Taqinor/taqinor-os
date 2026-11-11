@@ -262,12 +262,21 @@ PDF_FACTURE_INDISPONIBLE = (
     'produite — aucun e-mail envoyé.')
 
 
-def _refuser_sans_pdf_facture(log):
+PDF_RECU_INDISPONIBLE = (
+    "PDF indisponible : la quittance promise « ci-joint » n'a pas pu être "
+    'produite — aucun e-mail envoyé.')
+PDF_RELEVE_INDISPONIBLE = (
+    "PDF indisponible : le relevé promis « ci-joint » n'a pas pu être "
+    'produit — aucun e-mail envoyé.')
+
+
+def _refuser_sans_pdf_facture(log, motif=None):
     """AFAC42 — un e-mail de FACTURE qui promet le PDF « ci-joint » ne part
     jamais sans lui : on consigne l'échec (EmailLog ``echec``, aucun message
-    envoyé) et on rend le log à l'appelant (400 / ``ok: false``)."""
+    envoyé) et on rend le log à l'appelant (400 / ``ok: false``). AMSG42 —
+    ``motif`` nomme le document (quittance, relevé)."""
     log.statut = EmailLog.Statut.ECHEC
-    log.erreur = PDF_FACTURE_INDISPONIBLE
+    log.erreur = motif or PDF_FACTURE_INDISPONIBLE
     log.piece_jointe = ''
     log.save()
     return log
@@ -611,10 +620,11 @@ def send_recu_email(paiement, *, user=None, to_email=None):
     except Exception as exc:  # pragma: no cover — rendu best-effort
         logger.warning('Quittance PDF indisponible pour envoi : %s', exc)
         pdf_bytes = None
+    if not pdf_bytes:  # AMSG42 — « ci-joint » sans pièce : rien ne part
+        return _refuser_sans_pdf_facture(log, PDF_RECU_INDISPONIBLE)
 
     ok, err = _send(
-        dest, sujet, corps, pdf_bytes,
-        f'Quittance_{reference}.pdf' if pdf_bytes else None,
+        dest, sujet, corps, pdf_bytes, f'Quittance_{reference}.pdf',
         company=getattr(paiement, 'company', None))
     log.statut = EmailLog.Statut.ENVOYE if ok else EmailLog.Statut.ECHEC
     log.erreur = err
@@ -658,10 +668,11 @@ def send_releve_email(client, releve_data, *, user=None):
     except Exception as exc:  # pragma: no cover — rendu best-effort
         logger.warning('Relevé PDF indisponible pour envoi : %s', exc)
         pdf_bytes = None
+    if not pdf_bytes:  # AMSG42 — « ci-joint » sans pièce : rien ne part
+        return _refuser_sans_pdf_facture(log, PDF_RELEVE_INDISPONIBLE)
 
     ok, err = _send(
-        dest, sujet, corps, pdf_bytes,
-        f'Releve_{client.nom}.pdf' if pdf_bytes else None,
+        dest, sujet, corps, pdf_bytes, f'Releve_{client.nom}.pdf',
         company=getattr(client, 'company', None))
     log.statut = EmailLog.Statut.ENVOYE if ok else EmailLog.Statut.ECHEC
     log.erreur = err
