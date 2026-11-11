@@ -122,7 +122,7 @@ Porte : 0 réfuté en entier / 38 retenus · 7 gravités revues (+ 1 gravité d'
 
 ## 9. Coût et routage
 Coût : H0 S0 O19 F0 · jetons sous-agents ≈ 5,4 M · tâches 48 (M0 0 M1 15 M2 0 M3 28 GATED 5).
-Routage : `PLAN_AUDIT_SECURITE.md` 11 · `PLAN_AUDIT_ANALYSE.md` 7 · `PLAN_AUDIT_CHANTIERS.md` 5 · `PLAN_AUDIT_DOCUMENTS.md` 4 · `PLAN_AUDIT_STOCK.md` 4 · `PLAN_AUDIT_DEPLOY.md` 3 · `PLAN_AUDIT_DEVIS.md` 3 · `PLAN_AUDIT_LEAD.md` 3 · `PLAN_AUDIT_PARAMETRES.md` 2 · `PLAN_AUDIT_SAV.md` 2 · `PLAN_AUDIT_TRANSVERSE.md` 2 · `PLAN_AUDIT_ACQUISITION.md` 1 · acceptation APUB74 · PR #0.
+Routage : `PLAN_AUDIT_SECURITE.md` 11 · `PLAN_AUDIT_ANALYSE.md` 7 · `PLAN_AUDIT_CHANTIERS.md` 5 · `PLAN_AUDIT_DOCUMENTS.md` 4 · `PLAN_AUDIT_STOCK.md` 4 · `PLAN_AUDIT_DEPLOY.md` 3 · `PLAN_AUDIT_DEVIS.md` 3 · `PLAN_AUDIT_LEAD.md` 3 · `PLAN_AUDIT_PARAMETRES.md` 2 · `PLAN_AUDIT_SAV.md` 2 · `PLAN_AUDIT_TRANSVERSE.md` 2 · `PLAN_AUDIT_ACQUISITION.md` 1 · acceptation APUB74 · PR #1363.
 Rapport : deux défauts graves, chacun prouvé par une sonde sur le vrai code et confirmé par une seconde lecture.
 - Export de réversibilité (C-APUB-001) : l'historique de l'export donne à presque tous les comptes internes (dont les 3 commerciaux) le lien du ZIP de toute la base de la société (clients, prospects, factures, paiements, devis). Ce lien s'ouvre sans compte pendant 7 jours et ne se coupe pas. → APUB1, APUB2, APUB3.
 - Revue d'accès (C-APUB-002) : un Directeur peut, d'un clic et sans confirmation, retirer le rôle du propriétaire puis le sien ; la société n'a plus d'administrateur, il faut une commande sur le serveur pour s'en sortir. → APUB4.
