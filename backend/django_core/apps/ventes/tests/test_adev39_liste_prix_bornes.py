@@ -168,3 +168,31 @@ class ListePrixBornesTests(TestCase):
             _valider({'structure': gratuit.pk})
         with self.assertRaises(NotFound):
             _valider({'structure': gratuit.pk, 'cable_dc': 999999})
+
+    def test_offre_taille_produit_archive_409(self):
+        """ASUP53 — un produit ARCHIVÉ (prix gardé) ne chiffre pas une taille :
+        409 nommé, configuration inchangée ; un produit actif passe."""
+        from apps.crm.models import Client
+        from apps.ventes.models import Devis
+        from apps.ventes.serializers import OffreTailleEcritureSerializer
+        archive = Produit.objects.create(
+            company=self.company, nom='Coffret archivé', sku='ADEV39-CA',
+            prix_vente=Decimal('4000'), quantite_stock=1, is_archived=True)
+        actif = Produit.objects.create(
+            company=self.company, nom='Coffret actif', sku='ADEV39-CO',
+            prix_vente=Decimal('4000'), quantite_stock=1)
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-ASUP53', statut='brouillon',
+            client=Client.objects.create(company=self.company, nom='ASUP53'))
+        resp = self.api.patch(
+            '/api/django/ventes/devis/%s/offres-tailles/config/' % devis.pk,
+            {'cle': 'eco', 'config': {'equipements': {'tableau': archive.pk}}},
+            format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+        self.assertIn('Ce produit est archivé : choisissez un produit actif du catalogue.',
+                      resp.content.decode('utf-8'))
+        devis.refresh_from_db()
+        self.assertIn(devis.offres_tailles_config, (None, {}))
+        self.assertTrue(OffreTailleEcritureSerializer(
+            data={'cle': 'eco', 'config': {'equipements': {'tableau': actif.pk}}},
+            context={'company': self.company}).is_valid())
