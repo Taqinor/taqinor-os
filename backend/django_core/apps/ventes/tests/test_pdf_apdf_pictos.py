@@ -56,13 +56,9 @@ class PictosCategoriesTests(SimpleTestCase):
             from weasyprint import HTML
         except ImportError:
             self.skipTest('WeasyPrint absent : vérifié dans l\'image backend')
-        import io
-        try:
-            from pypdf import PdfReader
-        except ImportError:
-            self.skipTest('pypdf absent')
+        import fitz  # ATST28 — PyMuPDF (requirements), jamais sauté
         for categorie in ('autre', 'hotel', 'froid'):
             with self.subTest(categorie=categorie):
                 pdf = HTML(string=_html(categorie)).write_pdf()
-                texte = PdfReader(io.BytesIO(pdf)).pages[0].extract_text()
+                texte = fitz.open(stream=pdf, filetype='pdf')[0].get_text()
                 self.assertEqual(_SANS_POLICE.findall(texte), [])
