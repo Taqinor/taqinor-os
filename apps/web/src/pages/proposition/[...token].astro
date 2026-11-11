@@ -2274,15 +2274,15 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
     </section>
   ) : !ok ? (
     <section class="mx-auto flex min-h-[60dvh] max-w-2xl flex-col items-center justify-center px-5 py-24 text-center">
-    <!-- ── État « lien expiré / introuvable » ─────────────────────────────── -->
-    <!-- WJ81 — la page ne reste JAMAIS blanche : ce cadre de marque (rappel
+    {/* ── État « lien expiré / introuvable » ─────────────────────────────── */}
+    {/* WJ81 — la page ne reste JAMAIS blanche : ce cadre de marque (rappel
          visuel Taqinor, jamais une page d'erreur générique du navigateur/
          plateforme) affiche un message honnête. Pour un TIMEOUT (backend
          lent) spécifiquement, un bouton « Réessayer » (recharge la MÊME URL,
          lien pur — fonctionne sans JS) et un repli WhatsApp direct sont
          proposés, plutôt que le seul lien « Retour à l'accueil ». W316 — un
          429 (rate-limit) est tout aussi RETRYABLE (relire dans un instant) :
-         même bouton « Réessayer », jamais un cul-de-sac. -->
+         même bouton « Réessayer », jamais un cul-de-sac. */}
       <div class="rule-brass mx-auto text-brass-300" aria-hidden="true"></div>
       <h1 class="display mt-6 text-3xl text-lune sm:text-4xl">Proposition indisponible</h1>
       <p class="v2-body mt-4 max-w-md">{errorDetail}</p>
@@ -2315,20 +2315,20 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
           class="sticky top-0 z-50 border-b border-brass-400/60 bg-brass-50 px-4 py-2 text-center text-sm font-semibold text-azur-950 print:hidden"
           role="status"
         >
-        <!-- L-INTPREV / LANE T-WEB (25/08/2026) — bandeau discret, TOUJOURS
+        {/* L-INTPREV / LANE T-WEB (25/08/2026) — bandeau discret, TOUJOURS
              visible en haut de page (sticky) : le commercial ne doit jamais
              confondre son propre aperçu avec une visite du client. La
              signature/le contact sont désactivés plus bas ; aucune
              balise/beacon ne part depuis cette page (voir skipVisitBeacon et
-             cfg.apercuInterne dans le script client). -->
+             cfg.apercuInterne dans le script client). */}
           Aperçu interne — le client ne voit pas cette visite
         </div>
       )}
-      <!-- WJ84 — imprimable proprement : invisible à l'écran (print:block only),
+      {/* WJ84 — imprimable proprement : invisible à l'écran (print:block only),
            rappelle qu'un Ctrl-P sur cette page « UI » n'est pas le document
            officiel — le PDF premium (même token) est le document contractuel.
            Le reste du chrome (bascule langue, CTA collant, overlay 3D) est
-           masqué en impression par les règles @media print ci-dessous. -->
+           masqué en impression par les règles @media print ci-dessous. */}
       <p class="print-hint hidden">
         <span data-i18n
           data-fr="Pour un PDF officiel, utilisez « Télécharger le devis (PDF) » — cette page imprimée est une vue d'écran, pas le document contractuel."
@@ -2338,11 +2338,11 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
         </span>
       </p>
 
-      <!-- WJ45 — bandeau hors-ligne (navigator.onLine + online/offline) : une
+      {/* WJ45 — bandeau hors-ligne (navigator.onLine + online/offline) : une
            coupure réseau au moment de signer ne doit jamais ressembler à un
            échec muet. Le formulaire de signature reste rempli (aucune
            soumission n'a eu lieu) : on prévient explicitement ET on rassure
-           que rien n'est perdu, plutôt que le message générique de panne. -->
+           que rien n'est perdu, plutôt que le message générique de panne. */}
       <div id="prop-offline-banner" hidden role="status" aria-live="polite"
         class="mx-auto mt-4 flex max-w-4xl items-start gap-2 border border-brass-400/40 bg-brass-400/10 p-3 text-sm text-white sm:px-8">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="mt-0.5 flex-none text-brass-300">
@@ -2356,12 +2356,12 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
         </span>
       </div>
 
-      <!-- WJ17/WJ43 — bascule de langue FR/EN/عربي, flottante (ne perturbe aucun
+      {/* WJ17/WJ43 — bascule de langue FR/EN/عربي, flottante (ne perturbe aucun
            rythme existant, zéro CLS). Même mécanisme tri-node (dual-node élargi)
            que WJ33 (mon-toit.astro) : voir le <script> de fin de page. Le contenu
            reste TOUJOURS lisible FR sans JS (pas de gate v2-js ici, page déjà
            rendue serveur). WJ43 — EN ajouté comme 3ᵉ langue (segment
-           marocains-du-monde), au même niveau que FR/AR, jamais un repli dégradé. -->
+           marocains-du-monde), au même niveau que FR/AR, jamais un repli dégradé. */}
       <div class="prop-lang-switch fixed right-3 z-50 flex gap-1 rounded-sm border border-white/15 bg-nuit/80 p-0.5 backdrop-blur" style="top: calc(0.75rem + env(safe-area-inset-top));" role="group" aria-label="Langue / Language / اللغة">
         <button type="button" id="prop-lang-fr" aria-pressed="true"
           class="min-h-11 px-2.5 py-2.5 text-xs font-semibold text-azur-950 bg-brass-400 transition-colors">FR</button>
@@ -2371,12 +2371,12 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
           class="min-h-11 px-2.5 py-2.5 text-xs font-semibold text-lune-soft transition-colors hover:text-white">عربي</button>
       </div>
 
-      <!-- ── HÉRO (WJ28 — cinéma du chantier : ancré bas, entrée cine-in ; WJ35 —
-           rythme rehaussé, cohérent avec l'accueil élevé v3, zéro CLS : min-h). -->
+      {/* ── HÉRO (WJ28 — cinéma du chantier : ancré bas, entrée cine-in ; WJ35 —
+           rythme rehaussé, cohérent avec l'accueil élevé v3, zéro CLS : min-h). */}
       <section class="relative min-h-[72dvh] overflow-hidden sm:min-h-[78dvh]" data-track-section="hero">
         {roofImg ? (
           <>
-            <!-- WJ34 — poster blur-up : la photo backend (URL dynamique, pas de
+            {/* WJ34 — poster blur-up : la photo backend (URL dynamique, pas de
                  pipeline LQIP base64 disponible pour ces images) est servie par-
                  dessus un dégradé « heure dorée » qui tient le cadrage. On ne
                  masque JAMAIS l'image elle-même (LCP protégé) : seule son
@@ -2384,7 +2384,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                  navigateur avec l'image déjà en cache (retour visiteur) la
                  voit s'afficher instantanément (classe déjà posée par l'attribut
                  onload s'il a déjà `complete`). Zéro CLS : le dégradé occupe
-                 EXACTEMENT le même cadre (absolute inset-0). -->
+                 EXACTEMENT le même cadre (absolute inset-0). */}
             <div class="hero-lqip absolute inset-0" aria-hidden="true"></div>
             <img
               src={roofImg}
@@ -2400,7 +2400,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
         ) : (
           <div class="absolute inset-0 bg-azur-950" aria-hidden="true"></div>
         )}
-        <!-- Scrim pour garantir le contraste AA du texte par-dessus la photo. -->
+        {/* Scrim pour garantir le contraste AA du texte par-dessus la photo. */}
         <div class="hero-scrim absolute inset-0" aria-hidden="true"></div>
         <div class="relative mx-auto flex min-h-[72dvh] w-full max-w-4xl flex-col justify-end px-5 pb-12 pt-24 sm:min-h-[78dvh] sm:px-8 sm:pb-16 sm:pt-32">
           <p class="tech-label rule-brass cine-in text-brass-300" data-i18n
@@ -2421,7 +2421,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             vous pouvez la signer en ligne en bas de page.
           </p>
 
-          <!-- ── WJ114 · « DÉCIDER EN 10 SECONDES » ───────────────────────────
+          {/* ── WJ114 · « DÉCIDER EN 10 SECONDES » ───────────────────────────
                Storydoc (1,3 M sessions) : 31 % rebondissent en 10 s ; 82 % de
                ceux qui atteignent la section 4 vont au bout ; le prix est la
                section la plus regardée ; la personnalisation complète relève
@@ -2430,7 +2430,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                (mêmes valeurs que le CTA collant / les cartes plus bas — jamais
                recalculées) + UN CTA principal. Note personnelle du vendeur
                rendue UNIQUEMENT si le backend la fournit (WJ114 — lecture
-               défensive, `sellerNote`) : rien n'est affiché en son absence. -->
+               défensive, `sellerNote`) : rien n'est affiché en son absence. */}
           {/* ── PV81 · DEUX nombres, pas quatre ────────────────────────────────
               Le bloc en portait quatre (kWc, kWh/an, TTC, économie) : au-dessus
               du pli, quatre chiffres d'importance égale ne se retiennent pas —
@@ -2560,9 +2560,9 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             </p>
           )}
 
-          <!-- WJ114 — UN CTA principal au-dessus du pli (même destination que le
+          {/* WJ114 — UN CTA principal au-dessus du pli (même destination que le
                CTA collant : #signer si un prix réel existe, sinon le conseiller
-               WhatsApp — jamais un devis à 0 MAD). -->
+               WhatsApp — jamais un devis à 0 MAD). */}
           {/* ── PREVIEW v2 · DEUX SORTIES, PAS UNE ───────────────────────────
               Un unique « Signer en ligne » sous le prix se lit, au Maroc, comme
               la « vente flash » que les checklists anti-arnaque apprennent à
@@ -2646,7 +2646,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             </nav>
           </div>
 
-          <!-- WJ114 — note personnelle du vendeur : dégrade à RIEN si absente. -->
+          {/* WJ114 — note personnelle du vendeur : dégrade à RIEN si absente. */}
           {seller ? (
             <div id="prop-seller-note" class="cine-in cine-in-3 mt-5 flex items-start gap-3 rounded-xl border border-white/10 bg-white/5 p-3.5 sm:p-4">
               {seller.photoUrl ? (
@@ -2694,13 +2694,13 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               </div>
             )}
           </dl>
-          <!-- ── WJ56 · PARTAGER SUR WHATSAPP ─────────────────────────────────
+          {/* ── WJ56 · PARTAGER SUR WHATSAPP ─────────────────────────────────
                Partage le lien TOKENISÉ (cette page) tel quel — un conjoint ou
                co-décideur peut l'ouvrir sans rien ressaisir. Web Share API
                native quand disponible (meilleure expérience tablette/mobile,
                feuille de partage système) ; repli sur le compositeur wa.me
                générique sinon (toujours fonctionnel, aucun JS requis pour le
-               lien lui-même). -->
+               lien lui-même). */}
           <div class="cine-in cine-in-3 mt-5">
             <a
               id="prop-share-whatsapp"
@@ -2739,7 +2739,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
           l'information. */}
 
       {ok && <BandeauAvenant data={data} />}
-      <!-- ── BANDEAU « déjà signé » (si accepté au chargement) ─────────────── -->
+      {/* ── BANDEAU « déjà signé » (si accepté au chargement) ─────────────── */}
       {accepted && (
         <section class="mx-auto max-w-4xl px-5 pt-8 sm:px-8">
           <div class="cine-card rounded-xl border-brass-400/40 p-5 sm:p-6" style="border-color: rgb(232 181 74 / 0.4)">
@@ -2764,11 +2764,11 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
         </section>
       )}
 
-      <!-- ── PV80 · CHAPITRE 3 — VOTRE INSTALLATION ───────────────────────────
+      {/* ── PV80 · CHAPITRE 3 — VOTRE INSTALLATION ───────────────────────────
            Fusion de l'ancien encart « Votre système » (3 chiffres) et de la
            liste d'équipement qui vivait, en vrac, à l'intérieur de la carte de
            PRIX. Les 3 specs clés restent en tête ; le matériel devient un
-           tableau structuré juste en dessous. -->
+           tableau structuré juste en dessous. */}
       {(puissance || nbPanneaux || equipmentGroups.length > 0) && (
         <section id="installation" class="mx-auto max-w-4xl px-5 pt-12 sm:px-8">
           {/* PREVIEW v2 (fondateur Reda, 2026-09-16) — « Votre installation »
@@ -3221,7 +3221,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
         <SectionRentabiliteIndustrielle {ciRent} {ciRentBaseTexte} />
       )}
 
-      <!-- ── WJ25 · VOTRE TOIT EN 3D (lecture seule — layout backend optionnel) -->
+      {/* ── WJ25 · VOTRE TOIT EN 3D (lecture seule — layout backend optionnel) */}
       {/* Rendu UNIQUEMENT quand le backend fournit un roof_layout exploitable
           (QJ26). Sans layout : rien ici — le héros statique reste inchangé.
           Boîte à ratio RÉSERVÉ (zéro CLS) : poster (photo d'étude ou fond) puis
@@ -3279,7 +3279,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             </p>
           </div>
 
-          <!-- ── WJ26 · Légende : ce que vous voyez, pan par pan ─────────────── -->
+          {/* ── WJ26 · Légende : ce que vous voyez, pan par pan ─────────────── */}
           <div class="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm" aria-label="Légende de la vue 3D">
             <span class="inline-flex items-center gap-2 text-lune-soft">
               <span class="inline-block h-3 w-3 rounded-sm" style="background: #14263f; outline: 1px solid rgb(255 255 255 / 0.25)" aria-hidden="true"></span>
@@ -3295,13 +3295,13 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             </span>
           </div>
 
-          <!-- ── PVUNI · Calepinage à rejouer (fondateur 2026-08-18) ──────────
+          {/* ── PVUNI · Calepinage à rejouer (fondateur 2026-08-18) ──────────
                La vue ci-dessus a été étudiée pour un autre nombre de panneaux
                que celui du devis. On le DIT, sous la vue, plutôt que de laisser
                le client compter les panneaux à l'écran et trouver un autre
                chiffre dans son devis. Le nombre qui fait foi reste celui des
                lignes (« Votre installation ») — c'est exactement ce que la
-               phrase annonce. Bloc absent du DOM sur un devis sain. -->
+               phrase annonce. Bloc absent du DOM sur un devis sain. */}
           {layoutStale && (
             <p id="roof3d-stale" class="mt-3 text-sm text-lune-faint" data-i18n
               data-fr={`Calepinage à rejouer : cette vue 3D a été étudiée pour ${layoutPanneaux} panneaux. Les chiffres de votre proposition suivent votre devis, pas cette vue.`}
@@ -3330,15 +3330,15 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             data-en={`Simplified view: ${vueSimplifiee.dessines} of ${vueSimplifiee.poses} modules drawn.`} data-ar={`عرض مبسّط: ${vueSimplifiee.dessines} من أصل ${vueSimplifiee.poses} لوحاً مرسوماً.`}>
             Vue simplifiée : {vueSimplifiee.dessines} des {vueSimplifiee.poses} modules dessinés.</p>}
 
-          <!-- WJ26 retirée (fondateur 2026-08-15) : la « visite guidée » 4 étapes
+          {/* WJ26 retirée (fondateur 2026-08-15) : la « visite guidée » 4 étapes
                et sa barre Précédent/Suivant quittent la page ; walkthroughSteps
-               reste dans la lib (testée) au cas où elle revient. -->
+               reste dans la lib (testée) au cas où elle revient. */}
         </section>
         <div class="seam-soft" aria-hidden="true"></div>
         </>
       )}
 
-      <!-- ── PV80 · CHAPITRE 5 — VOS ÉCONOMIES (ex-WJ9 « argent dans le temps ») ────────────────────────────────
+      {/* ── PV80 · CHAPITRE 5 — VOS ÉCONOMIES (ex-WJ9 « argent dans le temps ») ────────────────────────────────
            Le bloc porte un id historique TROMPEUR : « financing-headline » ne
            parle pas de financement, il porte le cumul d'ÉCONOMIES sur 25 ans.
            On lui donne son nom lisible — ancre #economies — mais l'id observé
@@ -3346,10 +3346,10 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
            WJ55 (`proposal_scrolled_financing`) l'observe avec un seuil de 40 %
            de SURFACE ; déplacer cet id sur une ancre invisible de 0 px aurait
            silencieusement changé le moment où l'événement part. L'alias
-           lisible est donc l'ancre vide ci-dessous — zéro pixel, zéro risque. -->
-      <!-- WJ126 — jamais en pompage (agricole) : la valeur d'un pompage solaire est
+           lisible est donc l'ancre vide ci-dessous — zéro pixel, zéro risque. */}
+      {/* WJ126 — jamais en pompage (agricole) : la valeur d'un pompage solaire est
            l'eau livrée + le carburant évité, pas un cumul de facture réseau ; le
-           cadrage « économies cumulées 25 ans » est résidentiel/autoconso. -->
+           cadrage « économies cumulées 25 ans » est résidentiel/autoconso. */}
       {!isAgricole && headline && (headline.gainNet !== null || headline.cumulative || headline.annual || paybackHero || prodKwh || synthese || showCouvertureDonut) && (
         <section id="financing-headline" class="mx-auto max-w-4xl px-5 pt-12 sm:px-8 sm:pt-16" data-track-section="economies">
           <span id="economies" aria-hidden="true"></span>
@@ -3365,7 +3365,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                 {headline.gainNet !== null ? `Gain net sur ${headline.years} ans${gainNetSuffixe.fr}` : `Sans le solaire, votre facture continue de courir. Avec, vous économisez sur ${headline.years} ans`}
               </p>
               <p class="fig lum mt-3 text-4xl sm:text-5xl" dir="ltr" {...(headline.gainNet !== null ? { 'data-detail-gain-net-value': '' } : { 'data-detail-cumul-value': '' })} data-figure={headline.gainNet !== null ? 'gain_net_25_ans' : 'economies_cumul_25_ans'} data-figure-option={(headline.gainNetOption ?? reco) === 'avec_batterie' ? 'avec' : 'sans'}>{headline.gainNet !== null ? `≈ ${formatMAD(headline.gainNet)}` : formatMAD(headline.cumulative)}</p>
-              <!-- RWEB24 — `gain_net_25_ans` (niveau 3) = la carte « Gain net sur 25 ans » du PDF, même option ; sinon le cumul brut ADEV50, jamais dit « du PDF ». -->
+              {/* RWEB24 — `gain_net_25_ans` (niveau 3) = la carte « Gain net sur 25 ans » du PDF, même option ; sinon le cumul brut ADEV50, jamais dit « du PDF ». */}
               <p class="v2-body mt-2 text-sm text-lune-soft" data-i18n {...(headline.gainNet !== null ? {} : { 'data-detail-cumul-sous': '' })}
                 data-fr={headline.gainNet !== null ? `Vos économies cumulées sur ${headline.years} ans, moins le prix de votre installation (loi 82-21, autoconsommation).` : sousLigneCumul(headline).fr}
                 data-en={headline.gainNet !== null ? `Your cumulative savings over ${headline.years} years, minus the price of your installation (law 82-21, self-consumption).` : sousLigneCumul(headline).en}
@@ -3528,7 +3528,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                 data-fr="Comment ces économies sont-elles calculées ?"
                 data-en="How are these savings calculated?"
                 data-ar="كيف تُحتسب هذه التوفيرات؟">Comment ces économies sont-elles calculées ?</summary>
-      <!-- ── PV80 · CHAPITRE 4 — VOTRE PRODUCTION (UN SEUL GRAPHIQUE) ────────
+      {/* ── PV80 · CHAPITRE 4 — VOTRE PRODUCTION (UN SEUL GRAPHIQUE) ────────
            Trois blocs graphiques se disputaient la même histoire : les barres
            mensuelles (« Production estimée »), la courbe journalière (« Votre
            journée solaire ») et, pour un devis à deux options, un TROISIÈME
@@ -3539,7 +3539,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
            mêmes SVG pré-rendus serveur qu'avant (aucun chiffre ne change) ;
            seule leur mise en scène change. Quelle couche est visible est
            décidé par productionLayers() — la MÊME fonction pure ici (premier
-           rendu) et dans le script client (au clic). -->
+           rendu) et dans le script client (au clic). */}
       {showProduction && (
         <section id="production" class="mx-auto max-w-4xl px-5 pt-14 sm:px-8" data-production-config={productionConfig} data-track-section="graphs">
           <h2 class="tech-label rule-brass text-brass-300" data-i18n
@@ -3621,17 +3621,17 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             {/* ── CALQUE ANNÉE : 12 barres mensuelles (inchangé). ─────────── */}
             {showChart && (
               <div data-prod-layer="monthly" hidden={!prodLayers.monthly}>
-              <!-- WJ80 — trois variantes langue pré-rendues (FR visible par
+              {/* WJ80 — trois variantes langue pré-rendues (FR visible par
                    défaut) : le script de bascule de langue affiche la bonne au
-                   lieu de réimporter la chaîne de rendu SVG côté client. -->
+                   lieu de réimporter la chaîne de rendu SVG côté client. */}
               <div class="chart-svg" data-chart-lang="fr" set:html={chartSvgFr}></div>
               <div class="chart-svg" data-chart-lang="en" hidden set:html={chartSvgEn}></div>
               <div class="chart-svg" data-chart-lang="ar" hidden set:html={chartSvgAr}></div>
-              <!-- WJ80 — tap-to-reveal : le `<title>` SVG (survol souris) est
+              {/* WJ80 — tap-to-reveal : le `<title>` SVG (survol souris) est
                    invisible au tactile — l'essentiel du trafic de cette page.
                    Un tap/clic sur une barre affiche ici son mois + sa valeur ;
                    câblé par le script de fin de page (délégation d'événement,
-                   aucune dépendance au SVG choisi). -->
+                   aucune dépendance au SVG choisi). */}
               <p id="chart-tap-caption" class="mt-2 min-h-[1.25rem] text-sm text-brass-300" aria-live="polite"></p>
               <div class="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
                 <span class="inline-flex items-center gap-2 text-lune-soft">
@@ -3753,12 +3753,12 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                     data-fr="profil déclaré" data-en="declared profile" data-ar="ملف مصرح به">profil déclaré</p>
                 )
               ) : null}
-              <!-- WJ80 — mêmes trois variantes langue pré-rendues que le graphe
+              {/* WJ80 — mêmes trois variantes langue pré-rendues que le graphe
                    ci-dessus (FR visible par défaut). WJ119 — croisées avec la
                    variante été/Ramadan (normal/ete/ramadan) quand le toggle
                    s'applique (résidentiel/commercial, curveVariantToggle) ;
                    industriel/agricole n'ont que "normal" — zéro poids HTML en
-                   plus quand le toggle ne s'applique pas. -->
+                   plus quand le toggle ne s'applique pas. */}
               {CURVE_VARIANTS.map((variant) => (
                 <div class="daily-curve-wrap" data-curve-lang="fr" data-curve-variant={variant} hidden={variant !== 'normal'} set:html={dailyCurvesByVariant.fr[variant]?.svg ?? ''}></div>
               ))}
@@ -3768,8 +3768,8 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               {CURVE_VARIANTS.map((variant) => (
                 <div class="daily-curve-wrap" data-curve-lang="ar" data-curve-variant={variant} hidden set:html={dailyCurvesByVariant.ar[variant]?.svg ?? ''}></div>
               ))}
-              <!-- WJ80 — tap-to-reveal du repère pic/moyenne (même discipline que
-                   le graphe ci-dessus — le survol est invisible au tactile). -->
+              {/* WJ80 — tap-to-reveal du repère pic/moyenne (même discipline que
+                   le graphe ci-dessus — le survol est invisible au tactile). */}
               <p id="curve-tap-caption" class="mt-2 min-h-[1.25rem] text-sm text-brass-300" aria-live="polite"></p>
               <div class="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
                 <span class="inline-flex items-center gap-2 text-lune-soft">
@@ -3791,7 +3791,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                   <span class="text-lune-faint" data-i18n data-fr="profil — année type (forme indicative)" data-en="profile — typical year (indicative shape)" data-ar="نمط — سنة نموذجية (شكل إرشادي)">profil — année type (forme indicative)</span>
                 )}
               </div>
-              <!-- WJ119/CJ1 — libellé honnête : jamais « mesuré », toujours
+              {/* WJ119/CJ1 — libellé honnête : jamais « mesuré », toujours
                    « type ». CJ1 le rend EXACT dans les deux sens : quand le
                    backend a servi le kWh/jour réel du client, la silhouette est
                    VRAIMENT calée sur ses factures et la phrase le dit en
@@ -3799,7 +3799,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                    formulation prudente d'avant. Cette ligne est réécrite en JS
                    (changement de puce d'occupation) : elle ne passe donc PAS par
                    `data-i18n` mais par le registre `__propRegisterBusyLabel`,
-                   comme les autres libellés pilotés par un état. -->
+                   comme les autres libellés pilotés par un état. */}
               <p id="curve-profile-note" class="mt-1 text-xs text-lune-faint">{
                 (() => {
                   // L4 — même suffixe sobre que le re-rendu client (renderProfileNote),
@@ -3862,9 +3862,9 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                 Déplacez le curseur : voyez l’effet d’une ou plusieurs batteries — plus d’autonomie, moins de réseau le soir.
               </p>
 
-              <!-- ORDRE FONDATEUR (24/08/2026, soir) — curseur 0..N unités,
+              {/* ORDRE FONDATEUR (24/08/2026, soir) — curseur 0..N unités,
                    N = plafond RÉEL (storageSweep) quand servi, sinon 3
-                   (comportement historique). -->
+                   (comportement historique). */}
               <div class="mt-5">
                 <div class="flex items-center justify-between text-sm">
                   <label for="battery-sim-slider" class="text-lune-soft" data-i18n data-fr="Nombre de batteries" data-en="Number of batteries" data-ar="عدد البطاريات">Nombre de batteries</label>
@@ -3993,7 +3993,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                 </p>
               )}
 
-              <!-- 3 chiffres live : autoconsommation %, autosuffisance %, heures de secours -->
+              {/* 3 chiffres live : autoconsommation %, autosuffisance %, heures de secours */}
               <div class="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3">
                 <div>
                   <p class="text-2xl font-bold text-brass-300" id="battery-sim-selfconso" dir="ltr">{formatPercent(batteryInitial.selfConsumptionPct, 0)}</p>
@@ -4019,7 +4019,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                 </div>
               </div>
 
-              <!-- Aire empilée style SolarEdge : direct / batterie / réseau, sur 24 h -->
+              {/* Aire empilée style SolarEdge : direct / batterie / réseau, sur 24 h */}
               <div class="mt-6">
                 <div class="battery-split-wrap" id="battery-sim-chart" set:html={batterySplitSvgInitial}></div>
                 <div class="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs">
@@ -4044,14 +4044,14 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                 </p>
               </div>
 
-              <!-- Prix : réel du devis quand N correspond à l'offre, sinon le prix
-                   RÉEL du palier de stockage à ce N (balayage), sinon « sur étude ». -->
+              {/* Prix : réel du devis quand N correspond à l'offre, sinon le prix
+                   RÉEL du palier de stockage à ce N (balayage), sinon « sur étude ». */}
               <p class="mt-4 text-sm">
                 <span class="text-lune-soft" data-i18n data-fr="Prix de cette configuration :" data-en="Price for this configuration:" data-ar="سعر هذا التكوين:">Prix de cette configuration :</span>
                 <span class="ms-1 font-semibold text-brass-300" id="battery-sim-price" dir="ltr">{batteryInitialPrice ?? 'Sur étude'}</span>
               </p>
 
-              <!-- ORDRE FONDATEUR (24/08/2026) — LA PÉRIODE DE RETOUR DU PALIER.
+              {/* ORDRE FONDATEUR (24/08/2026) — LA PÉRIODE DE RETOUR DU PALIER.
                    Le chiffre est celui du MOTEUR (`balayage_stockage.paliers[].
                    payback_annees` = coût TTC du palier ÷ économie annuelle du
                    palier, calculé dans `dimensionnement._palier_rendu`) : cette
@@ -4059,20 +4059,20 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                    arithmétique en JS. Quand le curseur s'écarte de la
                    configuration du devis, les DEUX chiffres servis sont montrés
                    (« X ans → Y ans »). Palier sans payback servi ⇒ ligne
-                   masquée (omission, jamais une valeur approchée). -->
+                   masquée (omission, jamais une valeur approchée). */}
               <p id="battery-sim-payback" class="mt-2 text-sm" hidden={batteryInitialPayback == null}>
                 <span class="text-lune-soft" data-i18n
                   data-fr="Retour sur investissement :" data-en="Payback period:" data-ar="مدة استرداد الاستثمار:">Retour sur investissement :</span>
                 <span class="ms-1 font-semibold text-brass-300" id="battery-sim-payback-value" dir="ltr">{batteryInitialPayback != null ? `${formatNumber(batteryInitialPayback, 1)} ans` : ''}</span>
               </p>
 
-              <!-- ORDRE FONDATEUR (24/08/2026) — CHARGE INCOMPLÈTE d'un palier
+              {/* ORDRE FONDATEUR (24/08/2026) — CHARGE INCOMPLÈTE d'un palier
                    ACCEPTÉ (à distinguer du palier REFUSÉ ci-dessous) : le
                    moteur retient ce palier mais sa batterie n'est remplie qu'à
                    `remplissage_moyen_pct` en moyenne. Le pourcentage est celui
                    du palier, servi tel quel ; ≥ 100 % ⇒ aucun message (la
                    batterie se remplit chaque jour — même règle de libellé que
-                   le bloc « régime batterie »). -->
+                   le bloc « régime batterie »). */}
               <p id="battery-sim-fill" class="mt-3 rounded-lg border border-azur-300/30 bg-azur-300/10 px-3 py-2 text-xs text-lune-soft" hidden={batteryInitialFillPct == null}>
                 <span data-i18n
                   data-fr="La batterie supplémentaire ne se remplira pas à 100 %"
@@ -4083,12 +4083,12 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                 ><span data-i18n data-fr=" — la production solaire ne suffit pas." data-en=" — the solar production is not enough." data-ar=" — الإنتاج الشمسي غير كافٍ."> — la production solaire ne suffit pas.</span>
               </p>
 
-              <!-- ORDRE FONDATEUR (24/08/2026, soir) — message de sur-stockage : ne
+              {/* ORDRE FONDATEUR (24/08/2026, soir) — message de sur-stockage : ne
                    s'affiche QUE quand storageRefuse est servi ET que N sélectionné
                    l'atteint (le moteur a refusé ce palier car la batterie ne se
                    rechargerait plus chaque jour). Le pourcentage inséré est RÉEL
                    (remplissage du pire mois, servi par le backend) — jamais une
-                   nouvelle donnée calculée côté client. -->
+                   nouvelle donnée calculée côté client. */}
               <p id="battery-sim-overstorage" class="mt-3 rounded-lg border border-brass-400/30 bg-brass-400/10 px-3 py-2 text-xs text-lune-soft" hidden={!batteryInitialOverStorage}>
                 <span data-i18n
                   data-fr="Au-delà de cette quantité, votre toit ne remplirait plus la batterie tous les jours"
@@ -4098,7 +4098,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                 ><span data-i18n data-fr=" — une capacité plus petite se rentabilise mieux." data-en=" — a smaller capacity pays back faster." data-ar=" — سعة أصغر تكون أكثر ربحية."> — une capacité plus petite se rentabilise mieux.</span>
               </p>
 
-              <!-- Hypothèses (DoD / rendement) + libellé honnête « jamais mesuré ». -->
+              {/* Hypothèses (DoD / rendement) + libellé honnête « jamais mesuré ». */}
               <p id="battery-sim-assumptions" class="mt-4 text-xs text-lune-faint" data-i18n
                 data-fr="Hypothèses : batterie lithium LFP, décharge 90 %, rendement aller-retour ≈ 92 %. Profil type au Maroc ajusté à votre facture — jamais un chiffre mesuré. Toute autre configuration est chiffrée sur étude."
                 data-en="Assumptions: LFP lithium battery, 90% depth of discharge, round-trip efficiency ≈ 92%. Typical Moroccan profile adjusted to your bill — never a measured figure. Any other configuration is priced on request."
@@ -4675,12 +4675,12 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
           le plus persuasif pour ce genre de clip. */}
       <VideoCompteur />
 
-      <!-- ── PV80 · CHAPITRE 7 — VOTRE PRIX, PUIS LA SIGNATURE ────────────────
+      {/* ── PV80 · CHAPITRE 7 — VOTRE PRIX, PUIS LA SIGNATURE ────────────────
            L'argent est dit ICI, à un seul endroit, et une seule fois : plus de
            liste d'équipement noyée dans la carte, plus de mensualités, plus de
            comparatif bancaire. Le chapitre enchaîne prix → contact → signature
            → demande de modification, sans rien intercaler. L'ancre historique
-           id="options" est CONSERVÉE (liens internes de la page). -->
+           id="options" est CONSERVÉE (liens internes de la page). */}
       <section id="options" class="mx-auto max-w-4xl px-5 pt-14 sm:px-8" data-track-section="options">
         <h2 class="tech-label rule-brass text-brass-300" data-i18n
           data-fr={twoOptions ? 'Vos deux options' : 'Votre prix'}
@@ -4801,7 +4801,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                 {!isAutoconso && !isAgricole && (() => { const av = opt === 'avec_batterie'; const l = phraseRentabilise(libellesRetour(av ? q?.roi_a : q?.roi_s), (av ? q?.roi_a_jamais : q?.roi_s_jamais) === true); return l ? (
                   <p class="mt-1 text-sm text-lune-soft" data-card-payback={opt} data-i18n data-fr={l.fr} data-en={l.en} data-ar={l.ar}>{l.fr}</p>) : null; })()}
 
-                <!-- ── P2-C (ordre fondateur 25/08/2026, soir) — SÉLECTEUR DE
+                {/* ── P2-C (ordre fondateur 25/08/2026, soir) — SÉLECTEUR DE
                      PALIERS BATTERIE. « add more than just 2 batteries in the
                      web page battery option ; extra batteries might add extra
                      panels with extra cost, that is still fine. » Rendu
@@ -4811,7 +4811,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                      pixel près à l'existant. Choisir un palier NON retenu est
                      une pure EXPLORATION (voir panneau ci-dessous) : ni le
                      prix officiel affiché plus haut, ni la signature, ne
-                     changent jamais. -->
+                     changent jamais. */}
                 {opt === 'avec_batterie' && battTiers.length > 0 && (
                   <div class="mt-5 border-t border-white/10 pt-4" data-batt-tiers={JSON.stringify(battTiersPourCurseur)}>
                     <p class="tech-label text-lune-faint" data-i18n
@@ -4894,9 +4894,9 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                   </div>
                 )}
 
-                <!-- PV80 — la liste d’équipement a quitté la carte de PRIX pour le
+                {/* PV80 — la liste d’équipement a quitté la carte de PRIX pour le
                      chapitre « Votre installation » (tableau structuré, groupé par
-                     famille) : ici on ne parle plus que d’argent, une seule fois. -->
+                     famille) : ici on ne parle plus que d’argent, une seule fois. */}
                 {items.length > 0 && (
                   <p class="mt-4 text-sm text-lune-faint">
                     <a href="#equipement" class="underline-offset-2 hover:underline" data-i18n
@@ -4920,9 +4920,9 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                     data-fr="Voir le détail du prix"
                     data-en="See the price breakdown"
                     data-ar="عرض تفصيل الثمن">Voir le détail du prix</summary>
-                <!-- ATOT34 — la chaîne ENTIÈRE du contrat (Sous-total → Remise → Arrondi
+                {/* ATOT34 — la chaîne ENTIÈRE du contrat (Sous-total → Remise → Arrondi
                      commercial → Total HT → TVA → Total TTC), au centime, par le seul
-                     composant qui la rend : ChainePrix.astro. -->
+                     composant qui la rend : ChainePrix.astro. */}
                   <ChainePrix totaux={totaux} option={figOption(opt)} />
                   </details>
                 )}
@@ -4947,7 +4947,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
         )}
       </section>
 
-      <!-- ── TAILLES · « EXPLORER D'AUTRES TAILLES » (fondateur, 26/08/2026) ──
+      {/* ── TAILLES · « EXPLORER D'AUTRES TAILLES » (fondateur, 26/08/2026) ──
            APERÇU D'ABORD (fondateur, 26/08/2026) : cette section vient
            IMMÉDIATEMENT APRÈS LE HÉROS. Elle vivait auparavant après le
            calepinage, l'installation, la production, les économies et le
@@ -4974,7 +4974,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
            qui ne touche à aucune carte lit exactement son devis.
 
            Contrat absent / moins de deux tailles ⇒ la section n'existe pas
-           dans le DOM et la page est byte-identique à aujourd'hui. -->
+           dans le DOM et la page est byte-identique à aujourd'hui. */}
       {tailles && tailleDefaut && (
         <section
           id="tailles"
@@ -5512,14 +5512,14 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
         </section>
       )}
 
-      <!-- ── GAMMES · CHOIX DE GAMME (fondateur 2026-08-18) ──────────────────
+      {/* ── GAMMES · CHOIX DE GAMME (fondateur 2026-08-18) ──────────────────
            Rendu UNIQUEMENT en mode d'envoi « les_deux » (gammes !== null) : en
            mode « seule », le backend n'envoie rien de l'autre gamme et ce bloc
            n'existe pas. Chaque gamme est décrite par ses FAITS (sa composition
            réelle, ci-dessous) — jamais un mot qui dénigre la moins chère. Le
            prix de l'autre gamme est donné en MAD ABSOLUS (« + 8 500 MAD »).
            Choisir une gamme ouvre SON lien : le client lit alors le document
-           COMPLET de la gamme qu'il signera (un PDF = une gamme). -->
+           COMPLET de la gamme qu'il signera (un PDF = une gamme). */}
       {gammes && (
         <section id="gammes" class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
           {/* ── CONSOLIDATION (fondateur, 26/08/2026) — HIÉRARCHIE DES PRIX ───
@@ -5649,11 +5649,11 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
         </section>
       )}
 
-      <!-- ── WJ32 · VARIANTES CÔTE-À-CÔTE (« autres tailles ») ───────────────
+      {/* ── WJ32 · VARIANTES CÔTE-À-CÔTE (« autres tailles ») ───────────────
            Résumés minimaux des devis frères/sœurs actifs (QJ15). Masqué si le
            devis est isolé (variants=[]) — jamais un chiffre calculé ici.
            GAMMES — les sœurs porteuses d'une gamme sont exclues côté backend :
-           cette bande ne doublonne donc jamais le bloc « Vos deux gammes ». -->
+           cette bande ne doublonne donc jamais le bloc « Vos deux gammes ». */}
       {variants.length > 0 && (
         <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
           {/* ── CONSOLIDATION · LA QUATRIÈME SURFACE DE PRIX (26/08/2026) ─────
@@ -5697,7 +5697,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
         </section>
       )}
 
-      <!-- ── WJ13/WJ35 · BLOC CRÉDIBILITÉ (garanties · certifications · réassurance) -->
+      {/* ── WJ13/WJ35 · BLOC CRÉDIBILITÉ (garanties · certifications · réassurance) */}
       {/* Aucune donnée chiffrée fabriquée : nombre de clients / avis / photos
           réelles marqués `pending real content` tant que Reda ne les fournit pas.
           Les garanties et normes ci-dessous sont des FAITS techniques vérifiables.
@@ -5758,9 +5758,9 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
           </a>
         </p>
 
-        <!-- WJ35 — compteur de production réellement mesurée (aucune note/avis
+        {/* WJ35 — compteur de production réellement mesurée (aucune note/avis
              ici : décision fondateur 2026-08-17). La DATE DE RELEVÉ accompagne le
-             cumul — et n'est rendue que si realisations.ts en documente une. -->
+             cumul — et n'est rendue que si realisations.ts en documente une. */}
         <div class="mt-4 cine-card rounded-xl p-5 sm:p-6">
           <InstallCounter />
           {MEASURED_FLEET_READ_AT_FR && (
@@ -5811,14 +5811,14 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
           </div>
         )}
 
-        <!-- WJ35 — bandeau certifications/garanties (texte, sobre — aucun logo
+        {/* WJ35 — bandeau certifications/garanties (texte, sobre — aucun logo
              fabriqué). (fondateur 2026-08-17) chaque badge rendu ici est un LIEN
              vers une page réelle : garanties panneaux/onduleur → /garanties,
              IEC → la fiche du panneau réellement devisé, « Loi 82-21 » →
              /loi-82-21 (page dédiée FR/EN/AR + guide, dans la nav). Le badge
              IEC est le seul OMIS quand sa cible manque — aucun panneau apparié,
              donc aucun lien honnête. Ne retirez pas 'loi8221' de `certKeys` :
-             sa page existe et le fondateur a demandé ce badge. -->
+             sa page existe et le fondateur a demandé ce badge. */}
         <div class="mt-4">
           <CertLogoRow keys={certKeys} hrefs={certHrefs} />
         </div>
@@ -5839,10 +5839,10 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
           </div>
         )}
 
-        <!-- WJ86 — « Nos chantiers » (photos réelles) : NO-OP tant que WG5/WG6
+        {/* WJ86 — « Nos chantiers » (photos réelles) : NO-OP tant que WG5/WG6
              ne fournissent pas de vraies photos — jamais de mention "à venir"
              sur un document commercial. Même discipline que
-             <TestimonialCarousel/> (hasTestimonials()). -->
+             <TestimonialCarousel/> (hasTestimonials()). */}
         {REAL_PROJECT_PHOTOS_AVAILABLE && (
           <div class="mt-4 cine-card rounded-xl p-5">
             <p class="tech-label text-lune-faint" data-i18n data-fr="Nos chantiers" data-en="Our projects" data-ar="ورشاتنا">Nos chantiers</p>
@@ -5855,16 +5855,16 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
           </div>
         )}
 
-        <!-- WJ17/WJ86 — mot du fondateur : NO-OP tant qu'aucune citation réelle
+        {/* WJ17/WJ86 — mot du fondateur : NO-OP tant qu'aucune citation réelle
              n'est fournie (WG6) — un texte placeholder affiché comme un vrai
              mot du fondateur lit comme un produit inachevé au moment critique
-             de la confiance. -->
+             de la confiance. */}
         {REAL_FOUNDER_QUOTE_AVAILABLE && (
           <div class="mt-4 cine-card rounded-xl p-6">
             <p class="tech-label text-lune-faint" data-i18n data-fr="Le mot du fondateur" data-en="A word from the founder" data-ar="كلمة المؤسس">Le mot du fondateur</p>
             <blockquote class="mt-3 v2-body text-lune" data-i18n
               data-fr="« Chez Taqinor, nous traitons chaque toit comme le nôtre : une étude honnête, du matériel certifié, et un accompagnement après l’installation. Merci de votre confiance. »"
-              data-en="\"At Taqinor, we treat every roof as our own: an honest study, certified equipment, and support after installation. Thank you for your trust.\""
+              data-en="&quot;At Taqinor, we treat every roof as our own: an honest study, certified equipment, and support after installation. Thank you for your trust.&quot;"
               data-ar="« في تاقينور، نتعامل مع كل سطح كأنه سطحنا: دراسة صادقة، معدات معتمدة، ومرافقة بعد التركيب. شكراً على ثقتكم. »">
               « Chez Taqinor, nous traitons chaque toit comme le nôtre : une étude honnête,
               du matériel certifié, et un accompagnement après l’installation. Merci de votre confiance. »
@@ -5873,7 +5873,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
           </div>
         )}
 
-      <!-- ── WJ12/WJ29 · CONTACT AU MOINDRE DOUTE (avant la signature) ─────── -->
+      {/* ── WJ12/WJ29 · CONTACT AU MOINDRE DOUTE (avant la signature) ─────── */}
       {/* WJ29 — les trois boutons gardent leur lien instantané (wa.me / tel:)
           intact, ET notifient l'équipe en interne via le proxy same-origin
           /api/proposition-contact (dégrade toujours proprement — voir script
@@ -5895,11 +5895,11 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             data-ar="سؤال قبل التوقيع؟ لنتحدث — بدون التزام، وبدون مكالمات تجارية غير مرغوبة.">
             Une question avant de signer ? Parlons-en — sans engagement, et sans appel commercial non sollicité.
           </p>
-          <!-- WJ58 — promesse de délai honnête near la CTA de contact (WG9
+          {/* WJ58 — promesse de délai honnête near la CTA de contact (WG9
                résolu par le fondateur, 2026-07-03 : « sous 1 h, 7j/7 »). Badge
                statique, jamais un compte à rebours. L'icône reste HORS du
                nœud data-i18n (le tri-node FR/EN/AR ne préserve le markup
-               imbriqué que côté FR — l'icône disparaîtrait en EN/AR sinon). -->
+               imbriqué que côté FR — l'icône disparaîtrait en EN/AR sinon). */}
           <p class="mt-2 flex items-center gap-1.5 text-sm text-lune-faint">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="flex-none text-ok-600">
               <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
@@ -5912,10 +5912,10 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             </span>
           </p>
           <div class="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-            <!-- WJ85 — chaque bouton porte désormais un prérempli WhatsApp
+            {/* WJ85 — chaque bouton porte désormais un prérempli WhatsApp
                  DISTINCT (whatsappLinkForIntent) : "Discuter" et "Poser une
                  question" partageaient auparavant le même waLink générique —
-                 deux boutons identiques au point de décision de la page. -->
+                 deux boutons identiques au point de décision de la page. */}
             <a
               href={apercuInterne ? undefined : waLinkDiscuss}
               aria-disabled={apercuInterne || undefined}
@@ -5957,8 +5957,8 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               <span data-i18n data-fr="Poser une question" data-en="Ask a question" data-ar="طرح سؤال">Poser une question</span>
             </a>
           </div>
-          <!-- WJ85 — invitation à la note vocale : canal WhatsApp natif, souvent
-               plus rapide à envoyer qu'un texte long pour expliquer un doute. -->
+          {/* WJ85 — invitation à la note vocale : canal WhatsApp natif, souvent
+               plus rapide à envoyer qu'un texte long pour expliquer un doute. */}
           <p class="mt-3 text-sm text-lune-faint">
             <a
               href={apercuInterne ? undefined : waLinkVoice}
@@ -6103,18 +6103,18 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
         </section>
       )}
 
-      <!-- ── SIGNATURE EN LIGNE ───────────────────────────────────────────── -->
+      {/* ── SIGNATURE EN LIGNE ───────────────────────────────────────────── */}
       {isAutoconso && ci && ci.echeancier.length > 0 && (<EcheancierCi {ci} />)}
       {isAutoconso && ci && financementCi(ci) && (<FinancementCi {ci} />)}
       {installMode === 'industriel' && <span id="achats" aria-hidden="true"></span>}
       <section id="signer" class="mx-auto max-w-4xl px-5 pt-16 sm:px-8" data-track-section="signature">
         <div class="cine-card rounded-2xl p-6 sm:p-8">
-          <!-- État confirmé (caché par défaut, affiché après signature ou si déjà accepté).
+          {/* État confirmé (caché par défaut, affiché après signature ou si déjà accepté).
                WJ78 — le moment le plus « haute intention » de toute l'entreprise ne
                doit plus se contenter de démasquer un paragraphe : un accusé visuel
                (sceau ✓, reduced-motion-safe), l'écho de la signature manuscrite du
                client (ou un sceau textuel si non dessinée), le PDF et « Et après ? »
-               vivent directement ICI, pas seulement plus bas dans la page. -->
+               vivent directement ICI, pas seulement plus bas dans la page. */}
           <div id="sign-success" class="result-fade" hidden>
             <p id="sign-avenant-signe" class="fig text-xl text-brass-300" data-i18n hidden></p>
             <div class="success-seal" aria-hidden="true">
@@ -6131,20 +6131,20 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               Merci <span id="sign-success-name" class="text-lune"></span> — votre acceptation est bien enregistrée.
               Votre conseiller Taqinor revient vers vous très vite.
             </p>
-            <!-- WJ79 — « Réf. » passe par le data-i18n tri-node (comme #sign-stamp
+            {/* WJ79 — « Réf. » passe par le data-i18n tri-node (comme #sign-stamp
                  plus bas) au lieu d'un texte français figé : sans ce wrapper, la
                  mention restait en FR même en mode arabe/anglais. Le suffixe
                  (#sign-success-time) est lui déjà une busy-label enregistrée
                  (renderSuccessTime), qui utilise localizedStamp → un timestamp
-                 ar-MA/en-GB/fr-MA — jamais un fr-FR figé. -->
+                 ar-MA/en-GB/fr-MA — jamais un fr-FR figé. */}
             <p id="sign-success-stamp" class="mt-3 text-sm text-lune-faint">
               <span data-i18n data-fr="Réf." data-en="Ref." data-ar="المرجع">Réf.</span> <span dir="ltr">{reference}</span><span id="sign-success-time"></span>.
             </p>
 
-            <!-- WJ78 — écho de l'artefact du client : la signature manuscrite si
+            {/* WJ78 — écho de l'artefact du client : la signature manuscrite si
                  dessinée (image capturée par le pad, WJ11), sinon un sceau textuel
                  « signature enregistrée ✓ » — jamais un vide après un geste aussi
-                 engageant. -->
+                 engageant. */}
             <div class="mt-5 rounded-xl border border-white/10 bg-nuit-800/60 p-4">
               <p class="tech-label text-lune-faint" data-i18n data-fr="Votre signature" data-en="Your signature" data-ar="توقيعكم">Votre signature</p>
               <img id="sign-success-echo-img" class="mt-2 h-16 w-auto" style="filter: invert(1) brightness(1.4);" alt="" hidden />
@@ -6154,11 +6154,11 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               </p>
             </div>
 
-            <!-- ADEV53 (C-ADEV-023) — l'acompte et le virement, LUS dans `paiement` de la
+            {/* ADEV53 (C-ADEV-023) — l'acompte et le virement, LUS dans `paiement` de la
                  réponse d'acceptation (contrat `proposal_accept.json`) : rien n'est rendu sans
                  valeur servie (jamais un montant ni un RIB de repli), aucun lien de paiement
                  par carte (aucune route serveur ne l'accepte). « J'ai effectué le virement » poste au proxy
-                 same-origin /api/proposition-virement (→ `/virement/`). -->
+                 same-origin /api/proposition-virement (→ `/virement/`). */}
             <div id="sign-paiement" class="mt-5 rounded-xl border border-white/10 bg-nuit-800/60 p-4" hidden>
               <p class="tech-label text-brass-300" data-i18n data-fr="Acompte à régler" data-en="Deposit to pay" data-ar="العربون المستحق">Acompte à régler</p>
               <p id="sign-paiement-acompte" class="mt-2 fig text-lg text-lune" dir="ltr" hidden></p>
@@ -6173,9 +6173,9 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               <p id="sign-virement-status" class="mt-2 text-sm text-lune-soft" role="status" aria-live="polite" hidden></p>
             </div>
 
-            <!-- WJ78 — PDF + « Et après ? » directement dans le bloc de succès :
+            {/* WJ78 — PDF + « Et après ? » directement dans le bloc de succès :
                  le client n'a plus besoin de chercher plus bas dans la page au
-                 moment précis où il vient de s'engager. -->
+                 moment précis où il vient de s'engager. */}
             <div class="mt-6 flex flex-col gap-3 sm:flex-row">
               {avecPdf && (<a
                 href={pdfUrl}
@@ -6220,14 +6220,14 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               </ol>
             </div>
 
-            <!-- ── W343 · « Partager avec un proche » (parrainage) ────────────
+            {/* ── W343 · « Partager avec un proche » (parrainage) ────────────
                  DISTINCT du partage WJ56 plus haut sur la page (qui partage CE
                  devis avec un co-décideur du MÊME foyer, avant signature) : ici
                  le client vient de SIGNER — le moment de satisfaction maximale
                  — et partage le programme de parrainage (/parrainage, W338)
                  avec un PROCHE différent. Lien tagué (utm_campaign = référence
                  de son devis) : zéro changement backend, même convention que
-                 /parrainage.astro. -->
+                 /parrainage.astro. */}
             <div class="mt-5 border-t border-white/10 pt-5">
               <h2 class="tech-label rule-brass text-brass-300" data-i18n
                 data-fr="Partager avec un proche" data-en="Share with someone close to you" data-ar="شاركوا مع أحد المقربين">
@@ -6265,9 +6265,9 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             </div>
           )}
 
-          <!-- ── WJ82 · États explicites d'une offre morte (refusée/expirée/retirée) —
+          {/* ── WJ82 · États explicites d'une offre morte (refusée/expirée/retirée) —
                masque le formulaire de signature et affiche un message localisé
-               clair à la place, jamais un formulaire signable sur une offre morte. -->
+               clair à la place, jamais un formulaire signable sur une offre morte. */}
           {remplacement && (
             <div id="sign-remplacee" class="result-fade">
               <p class="fig text-xl text-alert-300" data-i18n
@@ -6350,13 +6350,13 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             </div>
           )}
 
-          <!-- L-INTPREV / LANE T-WEB (25/08/2026) — la signature est
+          {/* L-INTPREV / LANE T-WEB (25/08/2026) — la signature est
                masquée/désactivée sous un jeton d'aperçu interne : un aperçu
                commercial ne peut jamais engager le client (le backend refuse
                déjà l'acceptation via ce jeton, cf. public_views.py
                proposal_accept). Rendu UNIQUEMENT quand l'offre serait sinon
                signable (offerState === 'live') — sur une offre morte, le
-               message WJ82 ci-dessus suffit déjà. -->
+               message WJ82 ci-dessus suffit déjà. */}
           {apercuInterne && offerState === 'live' && (
             <div id="sign-apercu-interne-note" class="result-fade">
               <p class="v2-body" data-i18n
@@ -6368,12 +6368,12 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             </div>
           )}
 
-          <!-- Formulaire de signature — masqué si l'offre est morte (WJ82) ou
-               si le jeton est un aperçu interne (L-INTPREV / LANE T-WEB). -->
+          {/* Formulaire de signature — masqué si l'offre est morte (WJ82) ou
+               si le jeton est un aperçu interne (L-INTPREV / LANE T-WEB). */}
           <form id="sign-form" novalidate hidden={offerState !== 'live' || apercuInterne}>
-            <!-- ── WJ44 · Bandeau d'offre échue, directement au-dessus du formulaire
+            {/* ── WJ44 · Bandeau d'offre échue, directement au-dessus du formulaire
                  de signature — le client ne doit jamais découvrir l'expiration
-                 seulement après avoir rempli tout le formulaire. -->
+                 seulement après avoir rempli tout le formulaire. */}
             {offerState === 'expired' && (
               <div class="mb-6 rounded-xl border border-alert-300/40 bg-alert-300/10 p-4">
                 <p class="text-sm font-bold text-alert-300" data-i18n
@@ -6631,7 +6631,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                   43-20 vit maintenant dans l'étiquette du champ. */}
             </div>
 
-            <!-- WJ11/WJ101 · SIGNATURE MANUSCRITE (canvas natif, tactile + souris)
+            {/* WJ11/WJ101 · SIGNATURE MANUSCRITE (canvas natif, tactile + souris)
                  — le canvas lui-même reste POINTEUR-SEUL (dessiner un trait au
                  clavier n'a pas de sens ergonomique), mais WJ101 rend l'étape
                  elle-même keyboard-OPÉRABLE : le canvas est focusable
@@ -6639,7 +6639,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                  bouton dédié permet d'ignorer explicitement le dessin — le
                  flux légal fonctionne déjà uniquement par nom + cases à
                  cocher (voir plus bas), donc « ignorer » ne bloque jamais la
-                 signature électronique. ── -->
+                 signature électronique. ── */}
             {/* PREVIEW-V3C · LES DEUX OPTIONS FACULTATIVES, SUR UNE SEULE LIGNE.
                 Elles occupaient deux lignes de 14 px chacune pour deux gestes
                 que presque personne ne fait ; elles tiennent sur une ligne de
@@ -6684,12 +6684,12 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                   data-fr="Facultatif : votre nom tapé et votre accord ci-dessous suffisent (loi 43-20)."
                   data-en="Optional: your typed name and your agreement below are enough (law 43-20)."
                   data-ar="اختياري: اسمكم المكتوب وموافقتكم أدناه يكفيان (القانون 43.20).">Facultatif : votre nom tapé et votre accord ci-dessous suffisent (loi 43-20).</p>
-                <!-- WJ101 — affordance clavier explicite : un visiteur au
+                {/* WJ101 — affordance clavier explicite : un visiteur au
                      clavier n'a pas à deviner qu'il peut passer cette étape
                      (le canvas ne peut pas se "remplir" au clavier). Cliquer
                      ce bouton avance simplement le focus vers le champ nom —
                      aucun état à gérer, la signature restait déjà facultative
-                     côté backend/validation. -->
+                     côté backend/validation. */}
                 <button
                   type="button"
                   id="sign-pad-skip"
@@ -6700,10 +6700,10 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               </div>
             </details>
 
-            <!-- ── WJ87 · SIGNER AU NOM DU FOYER (optionnel) — champ FACULTATIF,
+            {/* ── WJ87 · SIGNER AU NOM DU FOYER (optionnel) — champ FACULTATIF,
                  additif dans le payload d'acceptation. Baymard range « pour le
                  compte d'une société » dans les champs à masquer par défaut :
-                 il reste donc derrière un lien. -->
+                 il reste donc derrière un lien. */}
             {!entrepriseRequise && (
             <details class="fold-native">
               <summary class="cursor-pointer text-brass-300 underline-offset-2 hover:underline" data-i18n
@@ -6807,16 +6807,16 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               </details>
             )}
 
-            <!-- Récapitulatif horodaté — PREVIEW-V3C : la ligne EN ATTENTE
+            {/* Récapitulatif horodaté — PREVIEW-V3C : la ligne EN ATTENTE
                  (« Réf. … l'horodatage s'affichera ici ») est retirée. Elle
                  occupait deux lignes pour annoncer un vide, et la référence
                  est déjà affichée deux fois sur la page (bloc Référence, pied
                  de section). Le <p> reste dans le DOM, VIDE et masqué :
                  renderStamp() (WJ42) le remplit et le démasque À LA SIGNATURE,
-                 exactement comme avant, dans la langue courante. -->
+                 exactement comme avant, dans la langue courante. */}
             <p id="sign-stamp" class="mt-3 text-xs text-lune-faint" hidden></p>
 
-            <!-- WJ108 — étape OTP LATENTE : le backend porte un toggle
+            {/* WJ108 — étape OTP LATENTE : le backend porte un toggle
                  (ESIGN_OTP_ENABLED) qui, une fois activé côté ERP, exige un
                  code de confirmation avant l'acceptation — sans ce bloc web,
                  flipper ce toggle aurait BRIQUÉ toute signature publique (le
@@ -6825,7 +6825,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                  le toggle est OFF (comportement d'aujourd'hui, inchangé) : il
                  n'apparaît QUE si la réponse d'acceptation signale
                  explicitement un besoin d'OTP (isOtpRequiredDetail,
-                 lib/proposition.ts), jamais de manière proactive. -->
+                 lib/proposition.ts), jamais de manière proactive. */}
             <div id="sign-otp-block" hidden class="mt-4 border border-brass-400/40 bg-brass-400/10 p-4">
               <label for="sign-otp-code" class="tech-label text-brass-300" data-i18n
                 data-fr="Code de confirmation" data-en="Confirmation code" data-ar="رمز التأكيد">
@@ -6936,12 +6936,12 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                 héros porte déjà le même href). Le paramètre `?variante=`, sa
                 liste blanche et l'endpoint restent EXACTEMENT les mêmes. ── */}
 
-        <!-- ── P3/WJ34 · TÉLÉCHARGER LE DEVIS PDF (même token, nouvel onglet) ───
+        {/* ── P3/WJ34 · TÉLÉCHARGER LE DEVIS PDF (même token, nouvel onglet) ───
              Affordance « génération du PDF… » : le rendu backend (WeasyPrint)
              prend quelques secondes, l'utilisateur doit voir qu'il se passe
              quelque chose. Le lien continue de s'ouvrir normalement (nouvel
              onglet) — l'affordance retombe seule après quelques secondes ou
-             dès que l'utilisateur revient sur cet onglet. -->
+             dès que l'utilisateur revient sur cet onglet. */}
         {avecPdf && (<div class="mt-6 text-center">
           <a
             id="pdf-download"
@@ -6982,11 +6982,11 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       </section>
 
 
-      <!-- ── WJ128 · SCHÉMA ÉLECTRIQUE (SLD) — visible seulement si l'étude
+      {/* ── WJ128 · SCHÉMA ÉLECTRIQUE (SLD) — visible seulement si l'étude
            électrique du devis existe (backend `sld_svg`). Le PDF téléchargeable
            embarque déjà ce schéma en annexe quand l'étude existe — cette
            section est un affichage web SUPPLÉMENTAIRE, pas un nouveau chemin
-           de génération (CLAUDE.md règle #4, flux PDF inchangé). -->
+           de génération (CLAUDE.md règle #4, flux PDF inchangé). */}
       {showSld && (
         <>
         <div class="seam-soft" aria-hidden="true"></div>
@@ -6997,14 +6997,14 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               PDF embarque déjà en annexe). Ils descendent DANS le repli : la
               section, son ancre #sld et son data-track-section restent, le
               titre devient la ligne qu'on ouvre. */}
-          <!-- WJ129 — carte-teaser cliquable (remplace l'ancien SVG écrasé à
+          {/* WJ129 — carte-teaser cliquable (remplace l'ancien SVG écrasé à
                302×213 px illisible en mobile) : mobile = hauteur maîtrisée +
                crop haut-gauche + voile + affordance « Agrandir » ; desktop
                (sm+) = SVG entier, lisible à l'échelle de la carte. Toute la
                carte ouvre la visionneuse plein écran (#sld-viewer, JS
                ci-dessous) ; le SVG lui-même est marqué aria-hidden ici (le
                nom accessible du bouton vient du libellé « Agrandir »), la
-               visionneuse porte le vrai contenu accessible. -->
+               visionneuse porte le vrai contenu accessible. */}
           {/* PREVIEW DENSITE (2026-09-15) — la SECTION, son ancre #sld, son
                  data-track-section et son <h2> restent VISIBLES ; seule la
                  carte-teaser et ses deux boutons se replient. */}
@@ -7064,7 +7064,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
           </details>
         </section>
 
-        <!-- WJ129 — visionneuse plein écran (pan/pinch/molette/double-tap,
+        {/* WJ129 — visionneuse plein écran (pan/pinch/molette/double-tap,
              AUCUNE bibliothèque — géométrie pure dans lib/sldViewer.ts).
              SIBLING du <section id="sld"> (jamais imbriquée dans .cine-in/
              .cine-card) : un ancêtre transformé (l'animation d'entrée
@@ -7072,7 +7072,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
              chargement) créerait un bloc de confinement local et casserait
              `position: fixed` — voir la note CSS `.sld-viewer` plus bas.
              `hidden` par défaut : ni rendu ni coût tant que l'utilisateur n'a
-             pas cliqué la carte ou « Voir en plein écran ». -->
+             pas cliqué la carte ou « Voir en plein écran ». */}
         <div
           id="sld-viewer"
           role="dialog"
@@ -7137,9 +7137,9 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
         </>
       )}
 
-      <!-- ── WJ32 · « ET APRÈS ? » — timeline des prochaines étapes ───────────
+      {/* ── WJ32 · « ET APRÈS ? » — timeline des prochaines étapes ───────────
            WJ78 — ancre ciblée par le lien « Voir « Et après ? » » du bloc de
-           succès (au-dessus, plus haut sur la page). -->
+           succès (au-dessus, plus haut sur la page). */}
       {isAutoconso && ci && servicesCi(ci) && (<ServicesCi {ci} societe={nomSocieteEmettrice(data)} />)}
       {installMode === 'industriel' && <span id="exploitation" aria-hidden="true"></span>}
       <section id="etapes-suivantes" class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
@@ -7180,10 +7180,10 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                 </li>
               ))}
             </ol>
-        <!-- PV80 — « Après l’installation » était une SECTION à part, juste
+        {/* PV80 — « Après l’installation » était une SECTION à part, juste
              en dessous, avec son propre titre pour trois puces de suivi : elle
              raconte la même histoire que la timeline ci-dessus. Fusionnée ici,
-             en pied du même bloc. -->
+             en pied du même bloc. */}
         <div class="cine-card mt-4 rounded-2xl p-5 sm:p-6">
           <p class="tech-label text-lune-faint" data-i18n data-fr="Après l’installation" data-en="After installation" data-ar="بعد التركيب">Après l’installation</p>
           <ul class="mt-3 space-y-2 text-sm text-lune-soft">
@@ -7196,9 +7196,9 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
         )}
       </section>
 
-      <!-- ── PV80 · FAQ — les TROIS objections qui reviennent vraiment. La liste
+      {/* ── PV80 · FAQ — les TROIS objections qui reviennent vraiment. La liste
            complète (objectionFaq) reste dans la lib ; on n’en rend plus que le
-           haut du panier — un accordéon de 5 items lit comme un mode d’emploi. -->
+           haut du panier — un accordéon de 5 items lit comme un mode d’emploi. */}
       <section id="faq" class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
         <h2 class="tech-label rule-brass text-brass-300" data-i18n data-fr="Vos questions, nos réponses" data-en="Your questions, our answers" data-ar="أسئلتكم، وأجوبتنا">Vos questions, nos réponses</h2>
         <div class="mt-5 space-y-3">
@@ -7211,7 +7211,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
         </div>
       </section>
 
-      <!-- ── IMPACT CO₂ — RÈGLE « CHIFFRES VÉRIFIÉS » (fondateur, 26/08/2026) ──
+      {/* ── IMPACT CO₂ — RÈGLE « CHIFFRES VÉRIFIÉS » (fondateur, 26/08/2026) ──
            Ce bloc affichait un équivalent « arbres » bâti sur 22 kg de CO₂ par
            arbre et par an — un ordre de grandeur sans source, posé à côté d'un
            devis. Il est RETIRÉ, ici et partout ailleurs sur le web (hypothèses
@@ -7226,7 +7226,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
            encore « source à préciser » tant que le fondateur n'a pas fourni la
            référence datée. Dire « source à préciser » à côté d'un chiffre est
            honnête ; laisser croire à une publication qui n'est pas citée ne
-           l'est pas. Le jour où la source arrive, seule cette ligne change. -->
+           l'est pas. Le jour où la source arrive, seule cette ligne change. */}
       {/* PREVIEW-V3 (16/09/2026) — LA CARTE CO₂ FOND DANS LE REPLI.
            Le même chiffre était dit DEUX fois : en grand dans une carte à
            lui seul, puis dans la ligne de méthode « Impact CO₂ » du repli
@@ -7236,8 +7236,8 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
            rejoint donc sa méthode, dans le repli — rien n'est perdu, et le
            facteur d'émission continue de dire que sa source est à préciser. */}
 
-      <!-- ── WJ32 · « NOS HYPOTHÈSES » — disclosure sourcée ──────────────────
-           <details> natif : accessible sans JS, zéro CLS (rien ne bouge autour). -->
+      {/* ── WJ32 · « NOS HYPOTHÈSES » — disclosure sourcée ──────────────────
+           <details> natif : accessible sans JS, zéro CLS (rien ne bouge autour). */}
       {(assumptions.length > 0 || paramSite) && (
         <section class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
           <details class="cine-card rounded-2xl p-6 sm:p-7">
@@ -7339,10 +7339,10 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                 </div>
               )}
             </dl>
-            <!-- W359 — lien vers la page de transparence méthodologique
+            {/* W359 — lien vers la page de transparence méthodologique
                  (source PVGIS, pertes système, autoconsommation d'abord,
                  tarif BT ANRE non publié) : le détail de la méthode derrière
-                 ces hypothèses. -->
+                 ces hypothèses. */}
             <p class="mt-4 text-xs">
               <a href="/methodologie-estimation/" class="text-brass-300 underline-offset-2 hover:underline" data-i18n
                 data-fr="En savoir plus sur notre méthode de calcul"
@@ -7356,7 +7356,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       )}
 
 
-      <!-- ── PV81 · MANIFESTO — UNE phrase, et qui ne se contredit pas ────────
+      {/* ── PV81 · MANIFESTO — UNE phrase, et qui ne se contredit pas ────────
            L'ancienne ligne disait « Chaque chiffre de cette proposition est
            MESURÉ, pas promis » — alors que toute la page dit honnêtement
            l'inverse trois fois (« production ESTIMÉE », « profil type au Maroc
@@ -7367,7 +7367,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
            <ZelligeSignature/> n'est pas traduisible (texte en prop simple, et
            le composant est partagé avec d'autres pages — hors périmètre ici) :
            le manifesto est rendu en ligne pour porter ses trois langues comme
-           tout le reste de la page. -->
+           tout le reste de la page. */}
       <section class="mx-auto max-w-4xl px-5 pt-16 text-center sm:px-8">
         <div class="rule-brass mx-auto text-brass-300" aria-hidden="true"></div>
         {isAgricole ? (
@@ -7389,7 +7389,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
         </p>
       </section>
 
-      <!-- ── CTA COLLANT (WJ34 — safe-area-inset-bottom pour les iPhone à encoche
+      {/* ── CTA COLLANT (WJ34 — safe-area-inset-bottom pour les iPhone à encoche
            / barre de geste : le CTA ne se cache jamais derrière la zone système).
            WJ82 — sur une offre morte (refusée/expirée/retirée), le CTA de
            signature devient « Demander un devis actualisé » pointant vers le
@@ -7400,7 +7400,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
            pleine largeur avec conteneur interne `max-w-4xl` centré à toutes les
            largeurs ; la bascule de langue (`fixed top-3 right-3`) et le bouton
            « Partager » (flux normal, jamais `fixed`) ne se chevauchent à aucune
-           largeur testée. Aucune régression de layout introduite par WJ53/WJ56. -->
+           largeur testée. Aucune régression de layout introduite par WJ53/WJ56. */}
       <div
         id="sticky-cta"
         class="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-nuit-800/95 px-4 pt-3 backdrop-blur supports-[backdrop-filter]:bg-nuit-800/80"
@@ -7432,8 +7432,8 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                 data-fr="Prix communiqué par votre conseiller"
                 data-en="Price provided by your advisor"
                 data-ar="السعر يُبلَّغ من طرف مستشاركم">
-              <!-- WJ83 — garde-fou zéro-total : jamais "0 MAD TTC" comme un
-                   vrai prix. -->
+              {/* WJ83 — garde-fou zéro-total : jamais "0 MAD TTC" comme un
+                   vrai prix. */}
                 Prix communiqué par votre conseiller
               </p>
             )}
@@ -7472,9 +7472,9 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
               data-i18n data-fr="Contacter mon conseiller" data-en="Contact my advisor" data-ar="التواصل مع مستشاري"
             >
-            <!-- WJ83 — sans prix réel, le CTA principal ne peut pas pointer vers
+            {/* WJ83 — sans prix réel, le CTA principal ne peut pas pointer vers
                  une signature à 0 MAD : on renvoie vers le conseiller (WhatsApp),
-                 jamais vers un formulaire de signature sur un montant fabriqué. -->
+                 jamais vers un formulaire de signature sur un montant fabriqué. */}
               Contacter mon conseiller
             </a>
           )}

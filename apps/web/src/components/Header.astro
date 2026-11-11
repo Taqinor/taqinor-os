@@ -257,7 +257,7 @@ const itemClass =
           data-dropdown-trigger
           aria-haspopup="true"
           aria-expanded="false"
-          {solutionsActive ? { 'aria-current': 'page' } : {}}
+          {...(solutionsActive ? { 'aria-current': 'page' } : {})}
         >{t('nav.solutions')}
           {/* W163 — chevron: rotates 180° when dropdown is open (.is-open on parent) */}
           <svg
