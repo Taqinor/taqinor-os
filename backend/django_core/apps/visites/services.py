@@ -1199,6 +1199,8 @@ def appliquer_mesures_hors_ligne(company, user, visite_id, categorie, valeurs):
               .filter(company=company, pk=visite_id).first())
     if visite is None:
         return None, 'Visite inconnue.'
+    if not _user_has_or_legacy(user, 'visites_modifier'):  # ADRG7 — comme en ligne
+        return None, 'Droit manquant (visites_modifier) : mesures non enregistrées.'
     if (visite.commercial_id != getattr(user, 'id', None)
             and not _user_has_or_legacy(user, 'visites_valider')):
         return None, ('Cette visite est assignée à un autre commercial : '

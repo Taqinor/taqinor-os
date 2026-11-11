@@ -227,3 +227,54 @@ class PorteeServeurDuCommercialTerrainTests(TestCase):
             '/api/django/visites/visites/').data['results']
         self.assertEqual([ligne['lead'] for ligne in lignes],
                          [self.lead_autre.id])
+
+
+class MesuresHorsLigneDroitTests(TestCase):
+    """ADRG7 (C-ADRG-016) — le rejeu hors ligne de ``visite.mesures`` exige
+    ``visites_modifier``, comme la route en ligne : le Technicien responsable
+    (``visites_valider`` sans ``visites_modifier``) est refusé, mesures
+    inchangées ; le commercial terrain de la visite garde son geste."""
+
+    BATCH = '/api/django/offlinesync/operations/batch/'
+
+    def setUp(self):
+        from apps.crm.models import Lead
+        from apps.visites.models import VisiteTerrain
+
+        self.company = Company.objects.create(nom='ADRG7', slug='adrg7-co')
+        call_command('init_roles')
+
+        def compte(nom_role, username):
+            return User.objects.create_user(
+                username=username, password='x', company=self.company,
+                role_legacy='normal',
+                role=Role.objects.get(company=self.company, nom=nom_role))
+        self.terrain = compte('Commercial terrain', 'adrg7-terrain')
+        self.chef = compte('Technicien responsable', 'adrg7-chef')
+        lead = Lead.objects.create(company=self.company, nom='Toit ADRG7',
+                                   owner=self.terrain)
+        self.visite = VisiteTerrain.objects.create(
+            company=self.company, lead=lead, commercial=self.terrain)
+
+    def _lot(self, cle):
+        return {'ops': [{'client_op_id': cle, 'op_type': 'visite.mesures',
+                         'payload': {'visite': self.visite.id,
+                                     'categorie': 'toiture',
+                                     'valeurs': {'longueur_m': 12.5}}}]}
+
+    def test_technicien_responsable_refuse_hors_ligne(self):
+        from apps.visites.models import VisiteTerrain
+
+        for _ in range(2):  # le même lot rejoué ⇒ même refus
+            refus = auth(self.chef).post(self.BATCH, self._lot('adrg7-chef'),
+                                         format='json')
+            self.assertEqual(refus.status_code, 200, refus.data)
+            self.assertEqual(refus.data['results'][0]['status'], 'error',
+                             refus.data)
+            self.assertIn('visites_modifier', refus.data['results'][0]['error'])
+        self.assertEqual(VisiteTerrain.objects.get(pk=self.visite.pk).mesures, {})
+        ok = auth(self.terrain).post(self.BATCH, self._lot('adrg7-terrain'),
+                                     format='json')
+        self.assertEqual(ok.data['results'][0]['status'], 'applied', ok.data)
+        self.assertEqual(VisiteTerrain.objects.get(pk=self.visite.pk)
+                         .mesures['toiture']['longueur_m'], 12.5)
