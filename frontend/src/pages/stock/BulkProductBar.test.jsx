@@ -58,3 +58,17 @@ describe('BulkProductBar — export serveur (ADRG24)', () => {
     expect(screen.getByRole('button', { name: /Exporter Excel/ })).toBeInTheDocument()
   })
 })
+
+describe('BulkProductBar — suggestions de marque (ASUP52)', () => {
+  it('ne propose pas une marque archivée', async () => {
+    const marques = [
+      { id: 1, nom: 'Huawei', archived: false },
+      { id: 2, nom: 'Ancienne', archived: true },
+    ]
+    const { container } = render(<BulkProductBar {...baseProps} count={3} marques={marques} />)
+    await userEvent.click(screen.getByRole('radio', { name: 'Marque' }))
+    const suggestions = [...container.querySelectorAll('#bpb-marques option')].map((o) => o.value)
+    expect(suggestions).toEqual(['Huawei'])
+    expect(screen.getByPlaceholderText('Marque')).not.toBeDisabled() // saisie libre conservée
+  })
+})
