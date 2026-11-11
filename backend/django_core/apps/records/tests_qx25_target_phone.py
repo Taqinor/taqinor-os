@@ -68,3 +68,38 @@ class Qx25TargetPhoneTests(TestCase):
                     self.assertEqual(row.get('target_phone'), '+212600000060')
                     found = True
         self.assertTrue(found)
+
+    def test_target_phone_masque_sans_client_pii_voir(self):
+        """ALEC34 (C-ALEC-031) — Commercial terrain livré (sans
+        `client_pii_voir`) : `target_phone` null dans `activities/mine/` ;
+        Directeur : le numéro."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        roles = dict(CANONICAL_SYSTEM_ROLES)
+
+        def lignes(nom):
+            role = Role.objects.create(company=self.company, nom=nom,
+                                       permissions=list(roles[nom]))
+            user = User.objects.create_user(
+                username=f'alec34-{nom}', password='x', role=role,
+                company=self.company)
+            Activity.objects.create(
+                company=self.company,
+                content_type=ContentType.objects.get_for_model(Lead),
+                object_id=self.lead.id, activity_type=self.type_appel,
+                summary=f'Appel {nom}', due_date=date.today(),
+                assigned_to=user, created_by=user)
+            api = APIClient()
+            api.credentials(
+                HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+            resp = api.get('/api/django/records/activities/mine/')
+            self.assertEqual(resp.status_code, 200, resp.content)
+            return [row for bucket in resp.data.values() if isinstance(bucket, list)
+                    for row in bucket if row.get('summary') == f'Appel {nom}']
+
+        terrain = lignes('Commercial terrain')
+        self.assertEqual(len(terrain), 1)
+        self.assertIsNone(terrain[0]['target_phone'])
+        directeur = lignes('Directeur')
+        self.assertEqual(len(directeur), 1)
+        self.assertEqual(directeur[0]['target_phone'], '+212600000060')

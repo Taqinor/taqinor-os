@@ -53,7 +53,9 @@ class SavedViewApiTests(TestCase):
     def setUp(self):
         self.co_a = make_company('uxv-a', 'A')
         self.co_b = make_company('uxv-b', 'B')
-        self.directeur = make_user(self.co_a, 'uxv-directeur', role_legacy='responsable')
+        # ADRG81 — la gouvernance des vues (toutes-company, export, import) est
+        # réservée au palier administrateur : le « directeur » du patron l'est.
+        self.directeur = make_user(self.co_a, 'uxv-directeur', role_legacy='admin')
         self.commercial1 = make_user(self.co_a, 'uxv-com1', role_legacy='normal')
         self.commercial2 = make_user(self.co_a, 'uxv-com2', role_legacy='normal')
         self.other_co_user = make_user(self.co_b, 'uxv-b-user', role_legacy='normal')
@@ -251,6 +253,36 @@ class SavedViewApiTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         noms = {r['nom'] for r in rows(resp)}
         self.assertEqual(noms, {'Perso com1', 'Perso com2'})
+
+    def test_gouvernance_des_vues_reservee_a_l_administrateur(self):
+        """ADRG81 (C-ADRG-042) — Commercial responsable livré : 403 sur
+        toutes-company, export-xlsx et importer (aucune vue importée) ;
+        Directeur livré : 200 ; ses vues personnelles restent ouvertes."""
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        roles = dict(CANONICAL_SYSTEM_ROLES)
+
+        def compte(nom):
+            role = Role.objects.create(company=self.co_a, nom=nom,
+                                       permissions=list(roles[nom]))
+            return User.objects.create_user(
+                username=f'adrg81-{nom}', password='x', company=self.co_a,
+                role=role)
+
+        SavedView.objects.create(company=self.co_a, owner=self.commercial1,
+                                 ecran='crm.leads', nom='Perso com1')
+        avant = set(SavedView.objects.filter(company=self.co_a)
+                    .values_list('id', 'nom'))
+        for nom, attendu in (('Commercial responsable', 403), ('Directeur', 200)):
+            api = auth(compte(nom))
+            fichier = self._csv([('crm.leads', f'Import {nom}', '{}')])
+            self.assertEqual(api.get(f'{self.BASE}toutes-company/').status_code, attendu, nom)
+            self.assertEqual(api.get(f'{self.BASE}export-xlsx/').status_code, attendu, nom)
+            self.assertEqual(api.post(f'{self.BASE}importer/', {'fichier': fichier},
+                                      format='multipart').status_code, attendu, nom)
+            if attendu == 403:
+                self.assertEqual(set(SavedView.objects.filter(company=self.co_a)
+                                     .values_list('id', 'nom')), avant)
+                self.assertEqual(api.get(self.BASE).status_code, 200)
 
     def test_export_xlsx_forbidden_for_commercial(self):
         resp = auth(self.commercial1).get(f'{self.BASE}export-xlsx/')

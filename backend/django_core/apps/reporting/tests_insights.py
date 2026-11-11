@@ -74,6 +74,35 @@ class TestRecurringRevenue(InsightsBase):
 
 
 class TestAuditLog(InsightsBase):
+    def setUp(self):
+        # ADRG69 — le journal exige `journal_activite_voir` : le compte du
+        # patron porte le rôle LIVRÉ Directeur (le compte hérité ne l'a pas).
+        super().setUp()
+        self.user.role = self._role_livre('Directeur')
+        self.user.save(update_fields=['role'])
+
+    def _role_livre(self, nom):
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        return Role.objects.create(
+            company=self.company, nom=nom,
+            permissions=list(dict(CANONICAL_SYSTEM_ROLES)[nom]))
+
+    def test_commercial_sans_journal_activite_voir_refuse(self):
+        """ADRG69 (C-ADRG-018) — Commercial livré : 403 au JSON et à
+        l'export ; Directeur livré : 200."""
+        lead = Lead.objects.create(company=self.company, nom='LJ', stage='CONTACTED')
+        LeadActivity.objects.create(
+            company=self.company, lead=lead, kind='note', body='n', user=self.user)
+        commercial = User.objects.create_user(
+            username='ins_com', password='x', company=self.company,
+            role=self._role_livre('Commercial'))
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(commercial)}')
+        for url in (f'{BASE}/audit-log/', f'{BASE}/audit-log/?export=xlsx'):
+            self.assertEqual(api.get(url).status_code, 403, url)
+        self.assertEqual(self.api.get(f'{BASE}/audit-log/').status_code, 200)
+
     def test_unified_feed_and_scope(self):
         # stage CONTACTED (pas NEW) : la note ne déclenche pas l'auto-avance QJ7
         # (qui ajouterait une activité « modification ») — le feed reste focalisé.

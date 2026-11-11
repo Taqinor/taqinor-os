@@ -62,6 +62,42 @@ class TestFieldServiceReport(FieldReportBase):
         resp = api.get(URL)
         self.assertEqual(resp.status_code, 403)
 
+    def test_lecture_du_module_source_exigee(self):
+        """ADRG71 (C-ADRG-019) — rapports chantiers / SAV / stock : lecture du
+        module SOURCE exigée. Commercial : 403 sur les 5 routes chantiers, 200
+        sur SAV et stock ; Admin RH : 403 partout ; Technicien responsable :
+        200 partout."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        roles = dict(CANONICAL_SYSTEM_ROLES)
+        chantiers = ['reports/service/', 'reports/field/',
+                     'insights/technicien-scorecard/?technicien={moi}',
+                     'reports/chantier/',
+                     f'archive/chantier/{self.installation.pk}/']
+        autres = ['insights/sav-sla/', 'insights/recurring-revenue/',
+                  'reports/stock/']
+
+        def statuts(nom, routes):
+            role = Role.objects.create(company=self.company, nom=nom,
+                                       permissions=list(roles[nom]))
+            user = User.objects.create_user(
+                username=f'adrg71-{nom}', password='x',
+                company=self.company, role=role)
+            api = APIClient()
+            api.credentials(
+                HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+            return {r: api.get('/api/django/reporting/'
+                               + r.format(moi=user.pk)).status_code
+                    for r in routes}
+
+        commercial = statuts('Commercial', chantiers + autres)
+        self.assertEqual({commercial[r] for r in chantiers}, {403}, commercial)
+        self.assertEqual({commercial[r] for r in autres}, {200}, commercial)
+        rh = statuts('Admin RH', chantiers + autres)
+        self.assertEqual(set(rh.values()), {403}, rh)
+        tr = statuts('Technicien responsable', chantiers + autres)
+        self.assertEqual(set(tr.values()), {200}, tr)
+
     def test_first_time_fix_rate(self):
         today = date.today()
         # Résolu en UNE seule intervention → FTF.

@@ -32,6 +32,10 @@ def _liens(message):
     return RE_LIEN.findall(message.body)
 
 
+def _lignes(data):
+    return data['results'] if isinstance(data, dict) else data
+
+
 @override_settings(
     PUBLIC_BASE_URL=BASE,
     EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
@@ -97,6 +101,57 @@ class LienSignatureTests(LienSignatureBase):
         self.assertEqual(
             self.anon.get(f'/api/django/ged/signataire/{alice.token}/')
             .status_code, 200)
+
+    def test_lien_et_jeton_reserves_au_createur_et_admin(self):
+        """ALEC1 (C-ALEC-001) — `token` et `lien_signature` (demande et chaque
+        destinataire) : créateur et administrateur seulement ; le jeton global
+        d'une demande à destinataires n'est servi à personne."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        roles = dict(CANONICAL_SYSTEM_ROLES)
+
+        def compte(nom, username):
+            role, _ = Role.objects.get_or_create(
+                company=self.co_a, nom=nom,
+                defaults={'permissions': list(roles[nom])})
+            return User.objects.create_user(
+                username=username, password='x', company=self.co_a, role=role)
+
+        c1 = compte('Commercial', 'alec1-c1')
+        lecteurs = {'c2': compte('Commercial', 'alec1-c2'),
+                    'viewer': compte('Viewer', 'alec1-v'),
+                    'c1': c1, 'directeur': compte('Directeur', 'alec1-d')}
+        cab = Cabinet.objects.create(company=self.co_a, nom='Commun')
+        doc = Document.objects.create(
+            company=self.co_a, nom='Contrat ALEC1', folder=Folder.objects.create(
+                company=self.co_a, cabinet=cab, nom='Ventes'))
+        mono = services.demander_signature(
+            doc, signataire_nom='M', signataire_email='m@x.ma',
+            company=self.co_a, created_by=c1, notifier=False)
+        multi = services.creer_demande_multi_signataires(
+            doc, destinataires=[{'nom': 'A', 'email': 'a@x.ma'},
+                                {'nom': 'B', 'email': 'b@x.ma'}],
+            company=self.co_a, created_by=c1)
+        for qui, user in lecteurs.items():
+            api = APIClient()
+            api.credentials(
+                HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+            liste = api.get('/api/django/ged/demandes-signature/')
+            self.assertEqual(liste.status_code, 200, qui)
+            lignes = {d['id']: d for d in _lignes(liste.data)}
+            detail = api.get(f'/api/django/ged/demandes-signature/{mono.pk}/').data
+            dest = api.get('/api/django/ged/signataires-demande/')
+            dests = list(_lignes(dest.data))
+            dests += lignes[multi.pk]['signataires']
+            self.assertNotIn('token', lignes[multi.pk], qui)
+            voit = qui in ('c1', 'directeur')
+            for ligne in (lignes[mono.pk], detail):
+                self.assertEqual('token' in ligne, voit, qui)
+                self.assertEqual('lien_signature' in ligne, voit, qui)
+            self.assertEqual(len(dests), 4, qui)
+            for d in dests:
+                self.assertEqual('lien_signature' in d, voit, (qui, d))
+                self.assertNotIn('token', d, qui)
 
     def test_relance_meme_lien(self):
         demande = services.creer_demande_multi_signataires(

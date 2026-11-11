@@ -179,3 +179,39 @@ class RevocationAccesPortailTests(TestCase):
         self.assertFalse(self.compte.actif)
         # ROUGE avant AUD138 : le compte utilisateur restait actif.
         self.assertFalse(self.user.is_active)
+
+    def test_reactivation_par_le_commercial_refusee(self):
+        """ADRG97 (C-ADRG-053) — le Commercial livré ne rouvre pas un accès
+        révoqué (403, tout reste fermé) ; le Directeur le rouvre ; le
+        Commercial révoque toujours."""
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        roles = dict(CANONICAL_SYSTEM_ROLES)
+
+        def api_de(nom):
+            role, _ = Role.objects.get_or_create(
+                company=self.company, nom=nom,
+                defaults={'permissions': list(roles[nom]), 'est_systeme': True})
+            user = CustomUser.objects.create_user(
+                username=f'adrg97-{nom}', password='motdepasse-test-1234',
+                company=self.company, role=role)
+            api = APIClient()
+            api.force_authenticate(user=user)
+            return api
+
+        url = f'/api/django/portail/comptes-portail/{self.compte.id}/'
+        revoquer_acces_client(self.company, self.client_crm.id)
+        commercial = api_de('Commercial')
+        refus = commercial.patch(url, {'actif': True}, format='json')
+        self.assertEqual(refus.status_code, 403, refus.data)
+        self.compte.refresh_from_db()
+        self.user.refresh_from_db()
+        self.assertFalse(self.compte.actif)
+        self.assertFalse(self.user.is_active)
+        self.assertEqual(api_de('Directeur').patch(
+            url, {'actif': True}, format='json').status_code, 200)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.is_active)
+        self.assertEqual(commercial.patch(
+            url, {'actif': False}, format='json').status_code, 200)
+        self.compte.refresh_from_db()
+        self.assertFalse(self.compte.actif)
