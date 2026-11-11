@@ -137,6 +137,14 @@ class ComptePortailClientSerializer(SameCompanyFKSerializerMixin,
         token = getattr(obj, 'token_acces', '') or ''
         return f'••••{token[-4:]}' if token else ''
 
+    def validate_client(self, value):
+        """ADRG96 (C-ADRG-053) — le client d'un compte portail est FIGÉ après la
+        création : son jeton servirait sinon le relevé d'un autre client. Un
+        accès pour un autre client se crée par provisionnement."""
+        if self.instance is not None and getattr(value, 'pk', value) != self.instance.client_id:
+            raise serializers.ValidationError("Le client d'un compte portail ne se modifie pas.")
+        return value
+
 
 class AcceptationDevisPortailSerializer(serializers.ModelSerializer):
     # WIR95 — ``devis_id`` n'est plus un champ modèle littéral (c'est
