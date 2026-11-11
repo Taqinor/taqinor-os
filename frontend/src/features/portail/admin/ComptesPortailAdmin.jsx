@@ -19,6 +19,7 @@ import crmApi from '../../../api/crmApi'
 import { fetchAllPages } from '../../../utils/fetchAllPages'
 import { chargerToutesLesPages } from './chargerToutesLesPages'
 import EtatChargementAdmin from './EtatChargementAdmin'
+import { useIsAdmin } from '../../../hooks/useHasPermission'
 import {
   Button, Card, EmptyState, Switch, Select, SelectTrigger,
   SelectValue, SelectContent, SelectItem, Form, FormField, DataTable, toast,
@@ -27,6 +28,8 @@ import {
 const formatDateHeure = (iso) => formatDateTime(iso)
 
 export default function ComptesPortailAdmin() {
+  // ADRG97 — rouvrir un accès révoqué est réservé à l'administrateur (serveur : 403).
+  const estAdmin = useIsAdmin()
   const [rows, setRows] = useState([])
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
@@ -143,7 +146,7 @@ export default function ComptesPortailAdmin() {
     {
       id: 'actif', header: 'Actif', width: 90, sortable: false,
       cell: (_v, row) => (
-        <Switch checked={!!row.actif} disabled={busyId === row.id}
+        <Switch checked={!!row.actif} disabled={busyId === row.id || (!row.actif && !estAdmin)}
                 onCheckedChange={() => toggleActif(row)}
                 aria-label={`${row.actif ? 'Révoquer' : 'Activer'} le compte ${row.email || row.client}`} />
       ),
