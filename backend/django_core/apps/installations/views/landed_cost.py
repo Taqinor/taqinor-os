@@ -10,7 +10,7 @@ posés côté serveur ; le dossier et le produit sont validés tenant. Cross-app
 """
 from rest_framework.exceptions import ValidationError
 
-from authentication.permissions import LectureDuModule, IsResponsableOrAdmin
+from authentication.permissions import HasPermissionOrLegacy, LectureDuModule, IsResponsableOrAdmin
 from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import FraisImport, LandedCostLigne
@@ -40,7 +40,7 @@ class FraisImportViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin()]
+        return [IsResponsableOrAdmin(), HasPermissionOrLegacy('achats_commander')()]  # ADRG31
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -76,7 +76,7 @@ class LandedCostLigneViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin()]
+        return [IsResponsableOrAdmin(), HasPermissionOrLegacy('achats_commander')()]  # ADRG31
 
     def get_queryset(self):
         qs = super().get_queryset()

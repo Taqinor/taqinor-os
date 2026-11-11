@@ -20,6 +20,8 @@ import { unwrap, useFilteredList } from './chargementListe'
 import ListShell from './ListeEtat'
 import MaitreDetail from './MaitreDetail'
 import PiedCreation from './PiedCreation'
+// ADRG31 — écrire un dossier d'import, ses frais, ses lignes : `achats_commander`.
+import { usePermissionAchats } from '../stock/useVoitPrixAchat'
 
 const INCOTERMS = [
   ['exw', "EXW — À l'usine"], ['fob', 'FOB — Franco à bord'],
@@ -140,14 +142,15 @@ function FraisTab({ dossierId }) {
   const { rows, loading, error, reload } = useFilteredList(
     installationsApi.getFraisImport, { dossier: dossierId })
   const [showCreate, setShowCreate] = useState(false)
+  const peutCommander = usePermissionAchats('achats_commander')
   const total = rows.reduce((sum, f) => sum + Number(f.montant || 0), 0)
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <span className="text-sm text-muted-foreground">Total des frais : <strong>{formatMAD(total)}</strong></span>
-        <Button size="sm" onClick={() => setShowCreate(true)}>
+        {peutCommander && <Button size="sm" onClick={() => setShowCreate(true)}>
           <PlusCircle className="size-4" aria-hidden="true" /> Nouveau frais
-        </Button>
+        </Button>}
       </div>
       <ListShell loading={loading} error={error} empty="Aucun frais saisi">
         {rows.length > 0 && rows.map((f) => (
@@ -215,6 +218,7 @@ function CoutDebarqueTab({ dossierId }) {
   const [showCreate, setShowCreate] = useState(false)
   const [calcul, setCalcul] = useState(null)
   const [calculBusy, setCalculBusy] = useState(false)
+  const peutCommander = usePermissionAchats('achats_commander')
 
   const calculer = async () => {
     setCalculBusy(true)
@@ -231,9 +235,9 @@ function CoutDebarqueTab({ dossierId }) {
         <Button size="sm" variant="outline" loading={calculBusy} disabled={calculBusy} onClick={calculer}>
           Calculer le coût débarqué
         </Button>
-        <Button size="sm" onClick={() => setShowCreate(true)}>
+        {peutCommander && <Button size="sm" onClick={() => setShowCreate(true)}>
           <PlusCircle className="size-4" aria-hidden="true" /> Nouvelle ligne SKU
-        </Button>
+        </Button>}
       </div>
       <ListShell loading={loading} error={error} empty="Aucune ligne SKU">
         {rows.length > 0 && rows.map((l) => {
@@ -276,6 +280,7 @@ function CoutDebarqueTab({ dossierId }) {
 // ── Fiche dossier (onglets) ──────────────────────────────────────────────────
 function DossierFiche({ dossier, onAdvanced }) {
   const [busy, setBusy] = useState(false)
+  const peutCommander = usePermissionAchats('achats_commander')
   const idx = STATUT_DOUANE_ORDER.findIndex(([v]) => v === dossier.statut_douane)
   const dernier = idx === STATUT_DOUANE_ORDER.length - 1
   const avancer = async () => {
@@ -291,7 +296,7 @@ function DossierFiche({ dossier, onAdvanced }) {
         <Badge tone="info">
           {dossier.statut_douane_display || STATUT_DOUANE_LABEL[dossier.statut_douane]}
         </Badge>
-        {!dernier && (
+        {!dernier && peutCommander && (
           <Button size="sm" variant="outline" loading={busy} disabled={busy} onClick={avancer}>
             Faire avancer
           </Button>
@@ -318,6 +323,7 @@ export default function SuiviImport() {
   const [loadingList, setLoadingList] = useState(true)
   const [selected, setSelected] = useState(null)
   const [showCreate, setShowCreate] = useState(false)
+  const peutCommander = usePermissionAchats('achats_commander')
 
   const fetchDossiers = useCallback(() => installationsApi.getDossiersImport({ page_size: 200 })
     .then((res) => {
@@ -346,7 +352,7 @@ export default function SuiviImport() {
       />
       <MaitreDetail
         titre="Dossiers d'import"
-        action={(
+        action={peutCommander && (
           <IconButton size="md" variant="outline" label="Nouveau dossier" onClick={() => setShowCreate(true)}>
             <PlusCircle className="size-4" aria-hidden="true" />
           </IconButton>

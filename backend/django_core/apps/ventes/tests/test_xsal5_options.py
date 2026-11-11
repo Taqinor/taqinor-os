@@ -277,3 +277,16 @@ class TestPublicActivateEndpoint(TestCase):
             '/api/django/ventes/proposal/nope-nope-nope/activer-option/',
             {'ligne_id': 1}, format='json')
         self.assertEqual(resp.status_code, 404)
+
+    def test_ligne_id_non_fini_400(self):
+        """APUB37 — `ligne_id` = 1e400 (JSON ⇒ inf) : 400 « Option invalide. »,
+        jamais 500 (OverflowError)."""
+        devis, opt = self._devis_with_option()
+        link = ShareLink.for_devis(devis)
+        resp = self.api.post(
+            f'/api/django/ventes/proposal/{link.token}/activer-option/',
+            data='{"ligne_id": 1e400}', content_type='application/json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.data['detail'], 'Option invalide.')
+        opt.refresh_from_db()
+        self.assertTrue(opt.optionnelle)

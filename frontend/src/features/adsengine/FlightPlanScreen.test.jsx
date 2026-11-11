@@ -25,7 +25,7 @@ const mocks = vi.hoisted(() => ({
   createEngagement: vi.fn(),
   deliveryEstimate: vi.fn(),
   // PUB10 — pleines permissions par défaut ; restreintes dans les tests dédiés.
-  permissions: ['adsengine_manage'],
+  permissions: ['adsengine_manage', 'adsengine_flightplan_manage'],
 }))
 
 vi.mock('./adsengineApi', () => ({
@@ -100,7 +100,7 @@ beforeEach(() => {
   mocks.phaseRemove.mockResolvedValue({ data: {} })
   mocks.phaseUpdate.mockImplementation((id, body) =>
     Promise.resolve({ data: { id, ...body } }))
-  mocks.permissions = ['adsengine_manage']
+  mocks.permissions = ['adsengine_manage', 'adsengine_flightplan_manage']
 })
 
 describe('FlightPlanScreen (ENG40)', () => {
@@ -365,12 +365,14 @@ describe('FlightPlanScreen (ENG40)', () => {
       expect(mocks.phaseRemove).not.toHaveBeenCalled()
     })
 
-    it('sans adsengine_manage, « Enregistrer le plan » est grisé', async () => {
-      mocks.permissions = []
+    it('APUB12 — sans adsengine_flightplan_manage, « Enregistrer le plan » est grisé', async () => {
+      // Valider/Simuler gardent `adsengine_manage` ; l'enregistrement exige le code des plans de vol.
+      mocks.permissions = ['adsengine_manage']
       renderScreen()
       fireEvent.change(await screen.findByTestId('ae-fp-nom'), { target: { value: 'Test' } })
       fireEvent.change(await screen.findByTestId('ae-fp-template'), { target: { value: 'lancement' } })
       expect(screen.getByTestId('ae-fp-save')).toBeDisabled()
+      expect(screen.getByTestId('ae-fp-validate')).not.toBeDisabled()
       fireEvent.click(screen.getByTestId('ae-fp-save'))
       expect(mocks.planCreate).not.toHaveBeenCalled()
     })

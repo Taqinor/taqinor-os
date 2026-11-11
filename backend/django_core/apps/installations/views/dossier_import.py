@@ -13,7 +13,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.permissions import LectureDuModule, IsResponsableOrAdmin
+from authentication.permissions import HasPermissionOrLegacy, LectureDuModule, IsResponsableOrAdmin
 from apps.stock.permissions import PeutVoirPrixAchat
 from core.viewsets import CompanyScopedModelViewSet
 
@@ -53,7 +53,9 @@ class DossierImportViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             return [LectureDuModule(), PeutVoirPrixAchat()]
         if self.action in READ_ACTIONS:
             return [LectureDuModule()]
-        return [IsResponsableOrAdmin()]
+        # ADRG31 — écrire le dossier (avancer, appliquer-cout-stock compris) :
+        # `achats_commander`, patron ACHT54.
+        return [IsResponsableOrAdmin(), HasPermissionOrLegacy('achats_commander')()]
 
     def get_queryset(self):
         qs = super().get_queryset()

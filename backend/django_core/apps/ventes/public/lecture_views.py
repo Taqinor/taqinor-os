@@ -648,7 +648,7 @@ def proposal_engagement(request, token):
     seconds_raw = request.data.get('seconds')
     try:
         seconds = max(0, int(float(seconds_raw)))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):  # APUB37 — inf
         seconds = None
 
     if section not in _ENGAGEMENT_SECTIONS or seconds is None or seconds == 0:

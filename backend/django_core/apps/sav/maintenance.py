@@ -57,7 +57,7 @@ def _haversine_km(lat1, lng1, lat2, lng2):
     return round(2 * r * asin(sqrt(a)), 3)
 
 
-def tournee_preventive(company, origin_lat=None, origin_lng=None):
+def tournee_preventive(company, origin_lat=None, origin_lng=None, user=None):
     """FG88 — File des visites préventives DUES, enrichie du GPS du chantier et
     triée par proximité (haversine) depuis un point d'origine optionnel.
 
@@ -70,11 +70,14 @@ def tournee_preventive(company, origin_lat=None, origin_lng=None):
     """
     from apps.installations.selectors import installation_gps_map
 
+    qs = Ticket.objects.filter(
+        company=company, type=Ticket.Type.PREVENTIF,
+        statut__in=Ticket.OPEN_STATUTS, annule=False)
+    if user is not None:  # ALEC26 — même portée que `_tickets_visibles`
+        from authentication.scoping import scope_queryset
+        qs = scope_queryset(qs, user, ['technicien_responsable', 'created_by'])
     tickets = list(
-        Ticket.objects
-        .filter(company=company, type=Ticket.Type.PREVENTIF,
-                statut__in=Ticket.OPEN_STATUTS, annule=False)
-        .select_related('client', 'installation', 'technicien_responsable')
+        qs.select_related('client', 'installation', 'technicien_responsable')
         .order_by('date_ouverture', 'id'))
 
     gps = installation_gps_map(
@@ -355,7 +358,7 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
         service de routage externe."""
         rows = tournee_preventive(
             request.user.company, nombre_param(request, 'lat', -90, 90),
-            nombre_param(request, 'lng', -180, 180))
+            nombre_param(request, 'lng', -180, 180), user=request.user)
         return Response({'count': len(rows), 'results': rows},
                         status=status.HTTP_200_OK)
 

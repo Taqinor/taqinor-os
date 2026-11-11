@@ -7,6 +7,7 @@
  * serveur : un refus 403 est surfacé en toast propre, jamais un écran cassé.
  */
 import { useEffect, useMemo, useState } from 'react'
+import { useSelector } from 'react-redux'
 import { RotateCcw, Trash2 } from 'lucide-react'
 import { ListShell } from '../../../ui/module'
 import {
@@ -15,6 +16,7 @@ import {
 import { formatDateTime } from '../../../lib/format'
 import gedApi from '../../../api/gedApi'
 import { errMessage, toutesLesPages } from './shared.js'
+import { useHasPermission, useHasRole } from '../../../hooks/useHasPermission'
 
 function unpage(data) {
   if (Array.isArray(data)) return data
@@ -26,6 +28,11 @@ export default function CorbeillePage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [purge, setPurge] = useState(null) // document à purger (confirmation)
+  // ADRG85 — purge / legal holds : `ged_gouvernance` (repli hérité : palier sans rôle fin).
+  const droitGouvernance = useHasPermission('ged_gouvernance')
+  const palierEcriture = useHasRole(['admin', 'responsable'])
+  const roleNom = useSelector((s) => s.auth.role_nom)
+  const peutGouverner = droitGouvernance || (palierEcriture && !roleNom)
 
   const load = async () => {
     setLoading(true)
@@ -77,7 +84,8 @@ export default function CorbeillePage() {
 
   const actions = (r) => [
     { id: 'restaurer', label: 'Restaurer', icon: RotateCcw, onClick: () => restaurer(r) },
-    { id: 'purger', label: 'Supprimer définitivement', icon: Trash2, destructive: true, onClick: () => setPurge(r) },
+    ...(peutGouverner ? [{ id: 'purger', label: 'Supprimer définitivement', icon: Trash2, destructive: true,
+      onClick: () => setPurge(r) }] : []),
   ]
 
   return (

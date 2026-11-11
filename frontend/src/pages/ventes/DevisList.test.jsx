@@ -472,7 +472,9 @@ describe('DevisList — QG10 : modale « Variante » (% + navigation comparaison
 
   it('rend le champ % en lecture seule pour un rôle non autorisé', async () => {
     const user = userEvent.setup()
-    renderList({ loading: false, devis: draft(), role: 'commercial', role_nom: 'Commercial' })
+    // ADRG19 — le Commercial porte `ventes_modifier` (le geste Variante l'exige).
+    renderList({ loading: false, devis: draft(), role: 'commercial', role_nom: 'Commercial',
+      permissions: ['ventes_voir', 'ventes_modifier'] })
     const row = screen.getByText('DEV-VAR').closest('tr')
     await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
     await user.click(await screen.findByRole('menuitem', { name: /Variante/ }))
@@ -1501,5 +1503,50 @@ describe('DevisList — VNT79 : puce de vente, sous-ligne, bouton unique « Fact
     const row = screen.getByText('DEV-202610-0021').closest('tr')
     await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
     expect(screen.queryByRole('menuitem', { name: /Réviser/ })).toBeNull()
+  })
+})
+
+// ADRG19 — chaque geste de la liste suit le code que sa route exige : le
+// Viewer (`ventes_voir` seul) n'en voit aucun, le Commercial les voit tous.
+describe('DevisList — ADRG19 : gestes gardés par le code de leur route', () => {
+  const DEVIS_GESTES = [
+    { id: 41, reference: 'DEV-ADRG-B', client_nom: 'ACME', statut: 'brouillon',
+      date_creation: '2026-07-01', total_ttc: 4000, nb_options: 1, version: 1 },
+    { id: 42, reference: 'DEV-ADRG-A', client_nom: 'ACME', statut: 'accepte',
+      date_creation: '2026-07-01', total_ttc: 4000, nb_options: 1, version: 1 },
+  ]
+  const VIEWER = { role: 'normal', role_nom: 'Viewer', permissions: ['ventes_voir'] }
+  const COMMERCIAL = { role: 'responsable', role_nom: 'Commercial', permissions: [
+    'ventes_voir', 'ventes_creer', 'ventes_modifier', 'ventes_pdf', 'ventes_export'] }
+  const MENU = [/Éditer/, /Variante$/, /Proforma/, /Envoyer par email/, /Contacter mon supérieur/]
+
+  async function menuDe(user, reference) {
+    const row = screen.getByText(reference).closest('tr')
+    await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
+    return row
+  }
+
+  it('Viewer : ni export ni Nouveau devis ni geste d\'écriture', async () => {
+    const user = userEvent.setup()
+    renderList({ loading: false, devis: DEVIS_GESTES, ...VIEWER })
+    expect(screen.queryByRole('button', { name: /Exporter Excel/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Nouveau devis/ })).toBeNull()
+    const row = screen.getByText('DEV-ADRG-B').closest('tr')
+    expect(within(row).queryByRole('button', { name: /^PDF$/ })).toBeNull()
+    expect(within(row).queryByRole('button', { name: /Envoyer/ })).toBeNull()
+    await menuDe(user, 'DEV-ADRG-B')
+    for (const nom of MENU) expect(screen.queryByRole('menuitem', { name: nom })).toBeNull()
+  })
+
+  it('Commercial : tous les gestes présents', async () => {
+    const user = userEvent.setup()
+    renderList({ loading: false, devis: DEVIS_GESTES, ...COMMERCIAL })
+    expect(screen.getByRole('button', { name: /Exporter Excel/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Nouveau devis/ })).toBeInTheDocument()
+    const row = screen.getByText('DEV-ADRG-B').closest('tr')
+    expect(within(row).getByRole('button', { name: /^PDF$/ })).toBeInTheDocument()
+    expect(within(row).getByRole('button', { name: /Envoyer/ })).toBeInTheDocument()
+    await menuDe(user, 'DEV-ADRG-B')
+    for (const nom of MENU) expect(await screen.findByRole('menuitem', { name: nom })).toBeInTheDocument()
   })
 })

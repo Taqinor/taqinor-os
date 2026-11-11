@@ -90,6 +90,8 @@ import { ThemeProvider } from '../../design/ThemeProvider'
 // Le moteur DataTable appelle TOUJOURS useSearchParams (hook, même sans
 // persistToUrl) → il lui faut aussi un <Router>, en plus du <ThemeProvider>.
 import { MemoryRouter } from 'react-router-dom'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
 
 const ok = (data) => Promise.resolve({ data })
 
@@ -103,13 +105,21 @@ const paginer = (items, taille = 50) => (params = {}) => {
     results: items.slice(debut, debut + taille),
   } })
 }
-const renderGed = () =>
+// ADRG23 — les gestes d'écriture suivent `ged_gerer` : store du Commercial
+// (porteur du code) par défaut, store du Viewer (lecture seule) à la demande.
+const AUTH_COMMERCIAL = { role: 'responsable', role_nom: 'Commercial', permissions: ['ged_voir', 'ged_gerer'] }
+const AUTH_VIEWER = { role: 'normal', role_nom: 'Viewer', permissions: ['ged_voir'] }
+// ADRG89 — « Caviarder… » suit `ged_gouvernance` (Directeur).
+const AUTH_DIRECTEUR = { role: 'admin', role_nom: 'Directeur', permissions: ['ged_voir', 'ged_gerer', 'ged_gouvernance'] }
+const renderGed = (auth = AUTH_COMMERCIAL) =>
   render(
-    <ThemeProvider>
-      <MemoryRouter>
-        <GedNavigator />
-      </MemoryRouter>
-    </ThemeProvider>,
+    <Provider store={configureStore({ reducer: { auth: (state = auth) => state } })}>
+      <ThemeProvider>
+        <MemoryRouter>
+          <GedNavigator />
+        </MemoryRouter>
+      </ThemeProvider>
+    </Provider>,
   )
 
 beforeEach(() => {
@@ -236,7 +246,7 @@ describe('GedNavigator — écriture (U14)', () => {
       { id: 22, version: 1, mime: 'application/pdf', filename: 'facture.pdf' },
     ]))
 
-    renderGed()
+    renderGed(AUTH_DIRECTEUR)
     await userEvent.click(await screen.findByText('Docs'))
     await userEvent.click(await screen.findByRole('button', { name: /Aperçu de facture\.pdf/i }))
     await waitFor(() => expect(gedApi.getVersions).toHaveBeenCalledWith(expect.objectContaining({ document: 8 })))
@@ -361,7 +371,7 @@ describe('GedNavigator — écriture (U14)', () => {
       { id: 22, version: 1, mime: 'application/pdf', filename: 'facture.pdf' },
     ]))
 
-    renderGed()
+    renderGed(AUTH_DIRECTEUR)
     await userEvent.click(await screen.findByText('Docs'))
     await userEvent.click(await screen.findByRole('button', { name: /Aperçu de facture\.pdf/i }))
     await userEvent.click(await screen.findByRole('button', { name: /Caviarder…/i }))
@@ -821,6 +831,63 @@ describe('GedNavigator — écriture (U14)', () => {
     await waitFor(() => expect(gedApi.officeOuvrir).toHaveBeenCalledWith(8))
     expect(openSpy).toHaveBeenCalledWith('https://office.example/edit/8', '_blank', 'noopener')
     openSpy.mockRestore()
+  })
+
+  it("ADRG23 — sans `ged_gerer` : aucun téléversement ni renommer ni corbeille ; avec : tous présents", async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'a.pdf', updated_at: '2026-06-01T10:00:00Z' },
+    ]))
+    const gestes = [/^Téléverser$/, /^Renommer$/, /^Déplacer$/, /Lien de dépôt/, /Nouvelle armoire/,
+      /Mettre a\.pdf en corbeille/]
+
+    const vue = renderGed(AUTH_VIEWER)
+    await userEvent.click(await screen.findByText('Docs'))
+    await userEvent.click(await screen.findByRole('checkbox', { name: /Sélectionner a\.pdf/i }))
+    for (const nom of gestes) expect(screen.queryByRole('button', { name: nom })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Mettre en corbeille/ })).toBeNull()
+    // Lecture et gestes ouverts à tout rôle : ZIP, extraction, verrou.
+    expect(screen.getByRole('button', { name: /Télécharger \(\.zip\)/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Extraire a\.pdf/ })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /Plus d'actions pour a\.pdf/i }))
+    expect(await screen.findByText('Verrouiller (avertissement)')).toBeInTheDocument()
+    expect(screen.queryByText('Nouvelle version…')).toBeNull()
+    expect(screen.queryByText('Cycle de vie…')).toBeNull()
+    vue.unmount()
+
+    renderGed()
+    await userEvent.click(await screen.findByText('Docs'))
+    for (const nom of gestes) expect(await screen.findByRole('button', { name: nom })).toBeInTheDocument()
+  })
+
+  it('ADRG89 — sans ged_gouvernance : pas de Caviarder ; le Directeur le voit', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'facture.pdf', version_count: 1, updated_at: '2026-06-01T10:00:00Z' },
+    ]))
+    gedApi.getVersions.mockResolvedValue(ok([
+      { id: 22, version: 1, mime: 'application/pdf', filename: 'facture.pdf' },
+    ]))
+    const ouvrirApercu = async () => {
+      await userEvent.click(await screen.findByText('Docs'))
+      await userEvent.click(await screen.findByRole('button', { name: /Aperçu de facture\.pdf/i }))
+      await screen.findByRole('button', { name: /Scinder…/i })
+    }
+
+    const vue = renderGed()
+    await ouvrirApercu()
+    expect(screen.queryByRole('button', { name: /Caviarder…/i })).toBeNull()
+    vue.unmount()
+
+    renderGed(AUTH_DIRECTEUR)
+    await ouvrirApercu()
+    expect(screen.getByRole('button', { name: /Caviarder…/i })).toBeInTheDocument()
   })
 
   it('FG352/XKB20/WIR249 — assistant documentaire (DocQA)', async () => {

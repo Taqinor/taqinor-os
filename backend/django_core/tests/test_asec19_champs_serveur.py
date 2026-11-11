@@ -173,7 +173,8 @@ class ChampsServeurTests(TestCase):
             company=self.company)
         role_ads = Role.objects.create(
             company=self.company, nom='asec19-ads',
-            permissions=['adsengine_view', 'adsengine_manage'])
+            permissions=['adsengine_view', 'adsengine_manage',
+                         'adsengine_flightplan_manage'])  # APUB12 — plans de vol
         self.ads_user = User.objects.create_user(
             username='asec19_ads', password='x', role=role_ads,
             company=self.company)

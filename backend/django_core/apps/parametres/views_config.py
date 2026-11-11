@@ -28,7 +28,7 @@ from rest_framework.decorators import (
 from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 
-from authentication.permissions import IsAdminOrResponsableTier, IsAdminRole
+from authentication.permissions import HasPermissionOrLegacy, IsAdminOrResponsableTier, IsAdminRole
 
 from core.champs_stricts import EntierStrict
 from core.parametres_requete import choix_ou_400
@@ -199,7 +199,7 @@ def _serialize_statuts(company):
     'statuts': serializers.JSONField(),
 }))
 @api_view(['GET'])
-@permission_classes([IsAdminOrResponsableTier])
+@permission_classes([IsAdminOrResponsableTier, HasPermissionOrLegacy('parametres_voir')])  # ADRG83
 def config_export(request):
     """Exporte la configuration de la société de l'appelant (JSON)."""
     company = request.user.company if request.user.company_id else None

@@ -1549,6 +1549,7 @@ class FlightPlanViewSet(AdsengineViewSet):
 
     queryset = FlightPlan.objects.all()
     serializer_class = FlightPlanSerializer
+    write_permission = 'adsengine_flightplan_manage'  # APUB12 — code de la grille
 
     @action(detail=False, methods=['get'], url_path='templates',
             permission_classes=[HasPermissionOrLegacy('adsengine_view')])
@@ -1798,6 +1799,7 @@ class FlightPhaseViewSet(AdsengineViewSet):
 
     queryset = FlightPhase.objects.all()
     serializer_class = FlightPhaseSerializer
+    write_permission = 'adsengine_flightplan_manage'  # APUB12
 
 
 class ReconciliationSnapshotViewSet(AdsengineViewSet):

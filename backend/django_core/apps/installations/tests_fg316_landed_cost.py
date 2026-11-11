@@ -191,6 +191,57 @@ class TestScopeRole(TestCase):
         results = r.data['results'] if 'results' in r.data else r.data
         self.assertEqual(len(results), 1)
 
+    def test_technicien_responsable_livre_403_achats(self):
+        """ADRG31 — sans `achats_commander` (rôle LIVRÉ Technicien
+        responsable) : 403 aux six écritures, rien d'écrit ; l'Administrateur
+        du registre et le compte hérité responsable écrivent."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        roles = dict(CANONICAL_SYSTEM_ROLES)
+
+        def compte(nom):
+            role = Role.objects.create(
+                company=self.company, nom=f'{nom} adrg31',
+                permissions=list(roles[nom]))
+            return User.objects.create_user(
+                username=f'adrg31-{next(_seq)}', password='x',
+                company=self.company, role=role)
+
+        frais = FraisImport.objects.create(
+            company=self.company, dossier=self.dossier, categorie='fret',
+            montant=1)
+        api = auth(compte('Technicien responsable'))
+        d = self.dossier.id
+        gestes = (
+            ('post', f'{BASE}/dossiers-import/', {'designation': 'X'}),
+            ('patch', f'{BASE}/dossiers-import/{d}/', {'designation': 'Y'}),
+            ('post', f'{BASE}/dossiers-import/{d}/avancer/', {}),
+            ('post', f'{BASE}/dossiers-import/{d}/appliquer-cout-stock/', {}),
+            ('post', f'{BASE}/frais-import/', {
+                'dossier': d, 'categorie': 'fret', 'montant': '5'}),
+            ('post', f'{BASE}/landed-cost-lignes/', {
+                'dossier': d, 'designation': 'Z', 'quantite': '1',
+                'valeur_fob': '10'}),
+        )
+        for methode, url, corps in gestes:
+            with self.subTest(url=url):
+                r = getattr(api, methode)(url, corps, format='json')
+                self.assertEqual(r.status_code, 403, r.data)
+        self.dossier.refresh_from_db()
+        self.assertEqual(self.dossier.designation, 'Conteneur')
+        self.assertEqual(DossierImport.objects.filter(
+            company=self.company).count(), 1)
+        self.assertEqual(list(FraisImport.objects.filter(
+            company=self.company).values_list('pk', flat=True)), [frais.pk])
+        self.assertFalse(LandedCostLigne.objects.filter(
+            company=self.company).exists())
+        for user in (compte('Administrateur'), self.user):
+            with self.subTest(user=user.username):
+                r = auth(user).post(f'{BASE}/frais-import/', {
+                    'dossier': d, 'categorie': 'fret', 'montant': '2'},
+                    format='json')
+                self.assertEqual(r.status_code, 201, r.data)
+
 
 # ── DC38 — Le coût débarqué (FG316) se replie dans le coût moyen pondéré ──────
 #          stock via `frais_annexes` (FG67), pas de champ de coût parallèle. ──

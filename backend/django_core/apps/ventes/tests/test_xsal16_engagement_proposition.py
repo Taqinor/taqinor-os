@@ -81,6 +81,19 @@ class EngagementBeaconTests(TestCase):
         self.link.refresh_from_db()
         self.assertEqual(self.link.engagement or {}, {})
 
+    def test_secondes_non_finies_ignorees(self):
+        """APUB37 — `1e400` (JSON ⇒ inf) ou `"inf"` : 204, rien d'écrit,
+        jamais 500 (OverflowError)."""
+        url = f'/api/django/public/proposal/{self.link.token}/engagement/'
+        for corps in ('{"section": "prix", "seconds": 1e400}',
+                      '{"section": "prix", "seconds": "inf"}'):
+            with self.subTest(corps=corps):
+                resp = self.api.post(
+                    url, data=corps, content_type='application/json')
+                self.assertEqual(resp.status_code, 204)
+        self.link.refresh_from_db()
+        self.assertEqual(self.link.engagement or {}, {})
+
     def test_invalid_token_returns_404(self):
         resp = self._post(token='not-a-real-token', body={'section': 'prix', 'seconds': 5})
         self.assertEqual(resp.status_code, 404)
