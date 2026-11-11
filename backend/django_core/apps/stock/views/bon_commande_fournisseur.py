@@ -250,15 +250,18 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                 {'detail': 'Aucune adresse email fournisseur.'},
                 status=status.HTTP_400_BAD_REQUEST)
 
-        # PDF du BCF (rendu à la volée) — indisponible n'empêche pas l'email.
-        attachment = attachment_name = None
+        # PDF du BCF (rendu à la volée). AMSG70 (C-AMSG-030) — le corps promet
+        # « ci-joint » : PDF indisponible ⇒ 502, rien ne part (jumeau AFAC42).
         try:
             attachment = generate_bcf_pdf(bc)
             attachment_name = f'{bc.reference}.pdf'
-        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
+        except Exception:  # noqa: BLE001 — journalisé, refus nommé (D-ENF22-BLE001)
             logger.warning(
                 "bon_commande_fournisseur.BonCommandeFournisseurViewSet.envoyer_email "
-                ": erreur ignorée (mode dégradé)", exc_info=True)
+                ": PDF indisponible, envoi refusé", exc_info=True)
+            return Response(
+                {'detail': "PDF du bon de commande indisponible : rien n'est parti."},
+                status=status.HTTP_502_BAD_GATEWAY)
 
         fournisseur_nom = bc.fournisseur.nom if bc.fournisseur_id else ''
         sujet = ((saisie.get('sujet') or '').strip()

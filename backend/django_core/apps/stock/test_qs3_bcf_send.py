@@ -149,6 +149,24 @@ class BcfEmailTests(BcfSendBase):
         self.assertEqual(self.bcf.statut,
                          BonCommandeFournisseur.Statut.ENVOYE)
 
+    def test_pdf_indisponible_refuse_sans_email(self):
+        """AMSG70 (C-AMSG-030) — PDF promis « ci-joint » en échec : 502
+        nommant le PDF, aucun e-mail, aucun EmailLog, BCF en brouillon."""
+        from unittest import mock
+
+        from django.core import mail
+        with mock.patch('apps.stock.utils.pdf_fournisseur.generate_bcf_pdf',
+                        side_effect=RuntimeError('rendu en panne')):
+            resp = self._post('envoyer-email')
+        self.assertEqual(resp.status_code, 502, resp.data)
+        self.assertEqual(resp.data['detail'],
+                         "PDF du bon de commande indisponible : rien n'est parti.")
+        self.assertEqual(mail.outbox, [])
+        self.assertFalse(EmailLog.objects.filter(reference='BCF-QS3-0001').exists())
+        self.bcf.refresh_from_db()
+        self.assertEqual(self.bcf.statut,
+                         BonCommandeFournisseur.Statut.BROUILLON)
+
     def test_email_no_address_400_keeps_status(self):
         self.fournisseur.email = ''
         self.fournisseur.save(update_fields=['email'])
