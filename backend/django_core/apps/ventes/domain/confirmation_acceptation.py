@@ -189,15 +189,17 @@ def envoyer_confirmations(*, devis, user, acompte_bloc=''):
                 user=user, attach_pdf=True, log_activity=False)
         except Exception:  # noqa: BLE001 — best-effort, journalisé (D-ENF22-BLE001)
             logger.warning('ADEV99 : copie vendeur non partie (%s)', devis.reference, exc_info=True)
+    from apps.ventes.models import EmailLog
     servies = []
     for dest in dests:
         try:
-            send_document_email(
+            log = send_document_email(
                 devis, to_email=dest, sujet=t['sujet'].format(ref=devis.reference),
                 corps=corps, user=user, attach_pdf=True, log_activity=False)
         except Exception:  # noqa: BLE001 — un destinataire n'arrête pas l'autre (D-ENF22-BLE001)
             logger.warning('ADEV99 : confirmation non partie à %s (%s)', dest,
                            devis.reference, exc_info=True)
             continue
-        servies.append(dest)
+        if getattr(log, 'statut', None) == EmailLog.Statut.ENVOYE:  # AMSG45 — échec non servi
+            servies.append(dest)
     return servies

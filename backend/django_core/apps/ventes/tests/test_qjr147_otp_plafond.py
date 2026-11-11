@@ -140,6 +140,18 @@ class LePlafondJournalierParJeton(_BaseOtp):
         self.assertEqual(refus, OTP_PLAFOND_MESSAGE)
         self.assertEqual(envoi.call_count, 0)
 
+    @override_settings(EMAIL_BACKEND='django.core.mail.backends.console.EmailBackend')
+    def test_backend_console_aucun_canal(self):
+        """AMSG45 (C-AMSG-041) — sous console aucun code ne part : la demande
+        rend « aucun canal » et aucun code ne reste en cache."""
+        from apps.ventes.domain.cycle_vie import OTP_AUCUN_CANAL
+        with patch('apps.ventes.domain.cycle_vie._send_otp_whatsapp', return_value=False), \
+                patch('django.core.mail.send_mail') as envoi:
+            refus = request_otp_lecture(self.link)
+        self.assertEqual(refus, OTP_AUCUN_CANAL)
+        envoi.assert_not_called()
+        self.assertIsNone(cache.get(_otp_lecture_cache_key(self.link.token)))
+
 
 class LeVerrouDEchecsSurvitALaRegeneration(_BaseOtp):
     """ES5, seconde moitié — le verrouillage n'est plus annulable d'un clic."""

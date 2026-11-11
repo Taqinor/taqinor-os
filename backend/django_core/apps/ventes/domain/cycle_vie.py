@@ -771,7 +771,11 @@ def _send_otp_email(email, code, devis_ref, company=None):
     try:
         from django.core.mail import send_mail
         from django.conf import settings
-        from ..email_service import _signature
+        from ..email_service import EMAIL_BACKENDS_SANS_ENVOI, _signature
+        # AMSG45 — backend console / dummy : aucun code ne part, on le dit.
+        if str(getattr(settings, 'EMAIL_BACKEND', '') or '').strip() in EMAIL_BACKENDS_SANS_ENVOI:
+            logger.warning('QJ11: email OTP non envoyé (devis %s) — backend sans envoi', devis_ref)
+            return False
         from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@erp.local')
         sujet = f'Code de confirmation — devis {devis_ref}'
         corps = (
