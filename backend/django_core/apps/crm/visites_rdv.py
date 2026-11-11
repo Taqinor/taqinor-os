@@ -492,6 +492,9 @@ def send_due_appointment_reminders() -> int:
         scheduled_at__gte=now,
         scheduled_at__lte=horizon,
         reminder_sent=False,
+        # ASUP46 — jamais le rappel d'un rendez-vous d'un lead archivé, perdu
+        # ou supprimé.
+        lead__is_archived=False, lead__is_deleted=False, lead__perdu=False,
     ).select_related('lead', 'lead__owner', 'company')
 
     pacing = {}

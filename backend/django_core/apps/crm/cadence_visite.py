@@ -45,7 +45,7 @@ from .cadence_reperes import (
 )
 from .cadence_touche import marquer_etape_relance
 from .leads_socle import visite_point_eau_requise, visite_pro_avant_devis
-from .models import LeadActivity, RelanceEtape
+from .models import Appointment, LeadActivity, RelanceEtape
 from .cadence_signaux import poser_etape_preparer_devis
 from .visites_retour_lead import ecrire_retour_lead_visite
 
@@ -572,6 +572,11 @@ def annuler_rendez_vous_du_lead(lead, user, *, motif='',
         logger.warning(
             'SUIVI E21 : rendez-vous de visite non annulé (lead #%s)',
             getattr(lead, 'pk', '?'), exc_info=True)
+    # ASUP46 — les rendez-vous d'agenda À VENIR du lead s'annulent aussi.
+    Appointment.objects.filter(
+        lead_id=lead.pk, scheduled_at__gte=timezone.now(),
+        statut__in=[Appointment.Statut.PLANIFIE, Appointment.Statut.CONFIRME],
+    ).update(statut=Appointment.Statut.ANNULE)
     jour = getattr(lead, 'visite_prevue_le', None)
     if jour is not None and (vider_date_passee
                              or jour >= aujourd_hui_local()):

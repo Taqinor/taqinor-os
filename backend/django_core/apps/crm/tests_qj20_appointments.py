@@ -295,6 +295,32 @@ class TestSendDueReminders(TestCase):
         sent = send_due_appointment_reminders()
         self.assertEqual(sent, 0)
 
+    def test_lead_archive_perdu_ou_supprime_non_rappele(self):
+        """ASUP46 — aucun rappel pour le rendez-vous d'un lead archivé, perdu
+        ou supprimé ; le témoin (lead actif) est rappelé."""
+        from apps.notifications.models import Notification
+
+        morts = []
+        for etat in ({'is_archived': True}, {'perdu': True}, {'is_deleted': True}):
+            lead = Lead.objects.create(
+                company=self.co, nom='Mort', stage='NEW',
+                owner=self.lead.owner, **etat)
+            morts.append(Appointment.objects.create(
+                company=self.co, lead=lead,
+                scheduled_at=timezone.now() + timedelta(minutes=20)))
+        temoin = Appointment.objects.create(
+            company=self.co, lead=self.lead,
+            scheduled_at=timezone.now() + timedelta(minutes=20))
+
+        self.assertEqual(send_due_appointment_reminders(), 1)
+        temoin.refresh_from_db()
+        self.assertTrue(temoin.reminder_sent)
+        for appt in morts:
+            appt.refresh_from_db()
+            self.assertFalse(appt.reminder_sent)
+            self.assertFalse(Notification.objects.filter(
+                body__contains=f'(RDV #{appt.pk})').exists())
+
 
 class TestAppointmentCompanyScoping(TestCase):
     """Company FK is always taken from the lead (multi-tenant guard)."""
